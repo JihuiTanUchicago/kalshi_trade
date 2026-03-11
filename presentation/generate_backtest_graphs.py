@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 from typing import Dict, List
+import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -154,6 +155,96 @@ def _plot_curve_table(
     plt.close(fig)
 
 
+def _slugify_model_name(name: str) -> str:
+    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)
+    return re.sub(r"[^a-z0-9]+", "_", spaced.lower()).strip("_")
+
+
+def _plot_single_model_backtest(
+    model_name: str,
+    validation_curve: pd.DataFrame,
+    test_curve: pd.DataFrame,
+    summary_row: Dict[str, object],
+    output_path: Path,
+) -> None:
+    try:
+        plt.style.use("seaborn-v0_8-whitegrid")
+    except OSError:
+        plt.style.use("seaborn-whitegrid")
+
+    palette = {
+        "Random Forest Resolution Edge": "#1F5AA6",
+        "HistGradientBoosting Resolution Edge": "#2E8B57",
+    }
+    color = palette.get(model_name, "#444444")
+
+    fig, (ax_validation, ax_test) = plt.subplots(2, 1, figsize=(12, 8))
+    fig.suptitle(f"{model_name} Backtest (Starting Cash $100)", fontsize=16, weight="bold")
+
+    plot_specs = [
+        (
+            ax_validation,
+            validation_curve,
+            "In-Sample / Validation Slice",
+            "validation_pnl",
+            "validation_trades",
+            "validation_win_rate",
+        ),
+        (
+            ax_test,
+            test_curve,
+            "Out-of-Sample / Held-Out Test Slice",
+            "test_pnl",
+            "test_trades",
+            "test_win_rate",
+        ),
+    ]
+
+    for ax, curve, split_label, pnl_key, trades_key, win_rate_key in plot_specs:
+        ax.plot(curve["timestamp"], curve[model_name] + 100.0, color=color, linewidth=2.4)
+        ax.axhline(100.0, color="#444444", linewidth=1.0, linestyle=":")
+        ax.set_title(split_label, fontsize=12, loc="left")
+        ax.set_ylabel("Equity ($)")
+        ax.text(
+            0.01,
+            0.98,
+            (
+                f"PnL ${float(summary_row[pnl_key]):+.2f} | "
+                f"Trades {int(summary_row[trades_key])} | "
+                f"Win Rate {(100.0 * float(summary_row[win_rate_key])):.1f}%"
+            ),
+            transform=ax.transAxes,
+            va="top",
+            fontsize=10,
+            color="#333333",
+            bbox={
+                "boxstyle": "round,pad=0.3",
+                "facecolor": "white",
+                "edgecolor": "#cccccc",
+                "alpha": 0.9,
+            },
+        )
+
+    ax_validation.text(
+        0.01,
+        0.03,
+        (
+            f"Buy rule: p_yes >= {float(summary_row['probability_threshold']):.2f} and "
+            f"p_yes - ask >= {float(summary_row['edge_threshold']):.2f}"
+        ),
+        transform=ax_validation.transAxes,
+        va="bottom",
+        fontsize=10,
+        color="#444444",
+    )
+    ax_test.set_xlabel("Timestamp (UTC)")
+
+    fig.autofmt_xdate()
+    fig.tight_layout(rect=[0.0, 0.0, 1.0, 0.97])
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate in-sample and out-of-sample backtest graphs.")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
@@ -280,6 +371,19 @@ def main() -> None:
         test_png,
     )
 
+    model_pngs: List[Path] = []
+    for row in summary_rows:
+        model_name = str(row["model"])
+        model_png = output_dir / f"{_slugify_model_name(model_name)}_backtest.png"
+        _plot_single_model_backtest(
+            model_name=model_name,
+            validation_curve=validation_table.loc[:, ["timestamp", model_name]].copy(),
+            test_curve=test_table.loc[:, ["timestamp", model_name]].copy(),
+            summary_row=row,
+            output_path=model_png,
+        )
+        model_pngs.append(model_png)
+
     print(
         pd.DataFrame(summary_rows)
         .sort_values("test_pnl", ascending=False)
@@ -290,6 +394,8 @@ def main() -> None:
     print(f"Saved: {validation_csv}")
     print(f"Saved: {test_csv}")
     print(f"Saved: {summary_csv}")
+    for model_png in model_pngs:
+        print(f"Saved: {model_png}")
 
 
 if __name__ == "__main__":

@@ -423,19 +423,24 @@ What this implies:
 
 Presentation artifacts generated from the same corrected backtest logic:
 
-- in-sample plot = validation slice from `2026-03-09 22:38:00` to `2026-03-10 21:21:00` UTC
-- out-of-sample plot = test slice from `2026-03-10 21:22:00` to `2026-03-11 20:06:00` UTC
-- both PNGs start from `$100` cash and show only the two tree-model research candidates; the logistic benchmark is omitted from the chart to keep the comparison focused
+- each presentation PNG is now **model-specific**
+- within each PNG:
+  - the top panel is the in-sample / validation slice from `2026-03-09 22:38:00` to `2026-03-10 21:21:00` UTC
+  - the bottom panel is the out-of-sample / test slice from `2026-03-10 21:22:00` to `2026-03-11 20:06:00` UTC
+- both PNGs start from `$100` cash and omit the logistic benchmark so the presentation stays focused on the two new tree-model candidates
 
-![In-Sample Backtest](presentation/in_sample_backtest.png)
+![Random Forest Backtest](presentation/random_forest_resolution_edge_backtest.png)
 
-![Out-of-Sample Backtest](presentation/out_of_sample_backtest.png)
+![HistGradientBoosting Backtest](presentation/hist_gradient_boosting_resolution_edge_backtest.png)
 
 Artifacts and rerun commands:
 
 - research report: `work/expiry_resolution_report.md`
 - research results JSON: `work/expiry_resolution_results.json`
-- presentation charts: `presentation/in_sample_backtest.png`, `presentation/out_of_sample_backtest.png`
+- presentation charts:
+  - `presentation/random_forest_resolution_edge_backtest.png`
+  - `presentation/hist_gradient_boosting_resolution_edge_backtest.png`
+  - backup combined charts: `presentation/in_sample_backtest.png`, `presentation/out_of_sample_backtest.png`
 - regenerate research results:
   - `python work/run_horizon_model_research.py --end '2026-03-11 20:07:00'`
 - regenerate presentation charts:
