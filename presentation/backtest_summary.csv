@@ -1,4 +1,3 @@
-model,validation_pnl,validation_trades,test_pnl,test_trades,probability_threshold,edge_threshold
-Logistic Resolution Edge (Benchmark),1.7099999999999997,11,0.10999999999999999,1,0.8,0.08
-Random Forest Resolution Edge,0.6099999999999999,6,0.1599999999999998,9,0.65,0.08
-HistGradientBoosting Resolution Edge,1.0499999999999998,24,0.14999999999999947,131,0.55,0.08
+model,validation_pnl,validation_trades,validation_win_rate,test_pnl,test_trades,test_win_rate,probability_threshold,edge_threshold
+Random Forest Resolution Edge,0.6099999999999999,6,1.0,0.1599999999999998,9,0.8888888888888888,0.65,0.08
+HistGradientBoosting Resolution Edge,1.0499999999999998,24,0.9166666666666666,0.14999999999999947,131,0.8320610687022901,0.55,0.08

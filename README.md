@@ -342,24 +342,37 @@ Interpretation:
 
 - the **validation slice is the in-sample/model-selection period**
 - the **test slice is the true out-of-sample period**
+- frozen in-sample window used in the presentation artifacts: `2026-03-09 22:38:00` to `2026-03-10 21:21:00` UTC
+- frozen out-of-sample window used in the presentation artifacts: `2026-03-10 21:22:00` to `2026-03-11 20:06:00` UTC
 
 Signal generation:
 
 - predict `p_yes = P(contract resolves YES | x_t)`
 - compute `edge = p_yes - yes_ask_dollars`
-- buy one new YES position only if:
-  - no position is already open
-  - `p_yes >= probability_threshold`
-  - `edge >= edge_threshold`
+- buy signal:
+  - the research backtest is **long-only**
+  - buy one new YES position only if no position is already open, `p_yes >= probability_threshold`, and `edge >= edge_threshold`
+  - on the frozen run used in the README/presentation:
+    - `Random Forest Resolution Edge` buys when `p_yes >= 0.65` and `p_yes - yes_ask_dollars >= 0.08`
+    - `HistGradientBoosting Resolution Edge` buys when `p_yes >= 0.55` and `p_yes - yes_ask_dollars >= 0.08`
 
 Trade management:
 
 - only one position is open at a time
-- once entered, the backtest exits at:
-  - the first future YES bid that reaches `entry ask + $0.05`, or
-  - the final observed YES bid for that ticker if the take-profit is never hit
+- there is **no model-driven short signal** and no discretionary sell signal after entry
+- sell/exit signal:
+  - once entered, the backtest exits at the first future YES bid that reaches `entry ask + $0.05`
+  - if that take-profit is never hit, it exits at the final observed YES bid for that ticker
 - exits are timestamp-based, not row-offset based, so the backtest does not accidentally close trades early due to filtered rows
 - if the exit timestamp would occur outside the evaluated slice, that trade is skipped
+
+Position sizing / units:
+
+- position size is fixed at **1 YES contract per entry signal**
+- PnL is therefore computed in normalized per-contract dollars: `trade_pnl = exit_bid - entry_ask`
+- the `$100` starting cash shown in the presentation PNGs is only a visualization baseline: plotted equity = `100 + cumulative per-contract PnL`
+- the current research intentionally does **not** size up by confidence, available cash, or order-book depth yet
+- that was deliberate: it isolates signal quality first, so model comparison is not distorted by an ad hoc sizing rule
 
 Parameter selection:
 
@@ -409,6 +422,10 @@ What this implies:
 - the next step should be better label quality and execution realism, not immediate live promotion
 
 Presentation artifacts generated from the same corrected backtest logic:
+
+- in-sample plot = validation slice from `2026-03-09 22:38:00` to `2026-03-10 21:21:00` UTC
+- out-of-sample plot = test slice from `2026-03-10 21:22:00` to `2026-03-11 20:06:00` UTC
+- both PNGs start from `$100` cash and show only the two tree-model research candidates; the logistic benchmark is omitted from the chart to keep the comparison focused
 
 ![In-Sample Backtest](presentation/in_sample_backtest.png)
 

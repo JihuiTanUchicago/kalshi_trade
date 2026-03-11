@@ -49,48 +49,105 @@ def _plot_curve_table(
     curve_table: pd.DataFrame,
     title: str,
     subtitle: str,
+    summary_rows: List[Dict[str, object]],
     output_path: Path,
 ) -> None:
     try:
         plt.style.use("seaborn-v0_8-whitegrid")
     except OSError:
         plt.style.use("seaborn-whitegrid")
-    fig, ax = plt.subplots(figsize=(12, 6))
+    fig, (ax_curve, ax_stats) = plt.subplots(
+        2,
+        1,
+        figsize=(12, 8),
+        gridspec_kw={"height_ratios": [3.2, 1.2]},
+    )
     palette = {
-        "Logistic Resolution Edge (Benchmark)": "#8B5E3C",
         "Random Forest Resolution Edge": "#1F5AA6",
         "HistGradientBoosting Resolution Edge": "#2E8B57",
     }
     line_styles = {
-        "Logistic Resolution Edge (Benchmark)": "--",
         "Random Forest Resolution Edge": "-",
         "HistGradientBoosting Resolution Edge": "-",
     }
+    stats_by_model = {str(row["model"]): row for row in summary_rows}
 
     for column in [c for c in curve_table.columns if c != "timestamp"]:
-        ax.plot(
+        stats = stats_by_model.get(column, {})
+        final_pnl = float(stats.get("plot_pnl", 0.0))
+        win_rate = stats.get("plot_win_rate")
+        legend_label = (
+            f"{column} | PnL ${final_pnl:+.2f} | WR "
+            f"{(100.0 * float(win_rate)):.1f}%"
+            if win_rate is not None
+            else f"{column} | PnL ${final_pnl:+.2f} | WR n/a"
+        )
+        ax_curve.plot(
             curve_table["timestamp"],
-            curve_table[column],
-            label=column,
+            curve_table[column] + 100.0,
+            label=legend_label,
             linewidth=2.2,
             color=palette.get(column),
             linestyle=line_styles.get(column, "-"),
         )
 
-    ax.axhline(0.0, color="#444444", linewidth=1.0, linestyle=":")
-    ax.set_title(title, fontsize=15, weight="bold")
-    ax.set_xlabel("Timestamp (UTC)")
-    ax.set_ylabel("Cumulative Realized PnL ($)")
-    ax.text(
+    ax_curve.axhline(100.0, color="#444444", linewidth=1.0, linestyle=":")
+    ax_curve.set_title(title, fontsize=15, weight="bold")
+    ax_curve.set_xlabel("Timestamp (UTC)")
+    ax_curve.set_ylabel("Equity ($)")
+    ax_curve.text(
         0.01,
         0.02,
         subtitle,
-        transform=ax.transAxes,
+        transform=ax_curve.transAxes,
         fontsize=10,
         color="#444444",
         va="bottom",
     )
-    ax.legend(frameon=True)
+    ax_curve.legend(frameon=True)
+
+    labels = [str(row["model"]) for row in summary_rows]
+    pnls = [float(row["plot_pnl"]) for row in summary_rows]
+    win_rates = [
+        (100.0 * float(row["plot_win_rate"])) if row["plot_win_rate"] is not None else 0.0
+        for row in summary_rows
+    ]
+    x = range(len(labels))
+    width = 0.36
+    pnl_colors = [palette.get(label, "#666666") for label in labels]
+    pnl_bars = ax_stats.bar(
+        [i - width / 2 for i in x],
+        pnls,
+        width=width,
+        color=pnl_colors,
+        alpha=0.85,
+        label="PnL ($)",
+    )
+    ax_stats.axhline(0.0, color="#444444", linewidth=1.0, linestyle=":")
+    ax_stats.set_ylabel("PnL ($)")
+    ax_stats.set_xticks(list(x))
+    ax_stats.set_xticklabels(labels)
+
+    ax_stats_wr = ax_stats.twinx()
+    win_rate_bars = ax_stats_wr.bar(
+        [i + width / 2 for i in x],
+        win_rates,
+        width=width,
+        color=pnl_colors,
+        alpha=0.35,
+        label="Win Rate (%)",
+    )
+    ax_stats_wr.set_ylabel("Win Rate (%)")
+    ax_stats_wr.set_ylim(0.0, 100.0)
+
+    ax_stats.legend(
+        [pnl_bars[0], win_rate_bars[0]],
+        ["PnL ($)", "Win Rate (%)"],
+        frameon=True,
+        ncol=2,
+        loc="upper right",
+    )
+
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(output_path, dpi=180, bbox_inches="tight")
@@ -133,6 +190,8 @@ def main() -> None:
     summary_rows: List[Dict[str, object]] = []
 
     for spec in MODEL_SPECS:
+        if spec.is_benchmark:
+            continue
         label = spec.display_name + (" (Benchmark)" if spec.is_benchmark else "")
         model = build_model(spec)
         train_x = build_feature_matrix(train, spec.feature_columns)
@@ -161,8 +220,10 @@ def main() -> None:
                 "model": label,
                 "validation_pnl": validation_result.pnl,
                 "validation_trades": validation_result.trades,
+                "validation_win_rate": validation_result.win_rate,
                 "test_pnl": test_result.pnl,
                 "test_trades": test_result.trades,
+                "test_win_rate": test_result.win_rate,
                 "probability_threshold": trade_rule.probability_threshold,
                 "edge_threshold": trade_rule.edge_threshold,
             }
@@ -188,8 +249,36 @@ def main() -> None:
     test_subtitle = (
         "Held-out test slice after refitting each model on train + validation with the validation-selected trade rule locked."
     )
-    _plot_curve_table(validation_table, "In-Sample Backtest (Validation Slice)", validation_subtitle, validation_png)
-    _plot_curve_table(test_table, "Out-of-Sample Backtest (Held-Out Test Slice)", test_subtitle, test_png)
+    validation_plot_rows = [
+        {
+            "model": row["model"],
+            "plot_pnl": row["validation_pnl"],
+            "plot_win_rate": row["validation_win_rate"],
+        }
+        for row in summary_rows
+    ]
+    test_plot_rows = [
+        {
+            "model": row["model"],
+            "plot_pnl": row["test_pnl"],
+            "plot_win_rate": row["test_win_rate"],
+        }
+        for row in summary_rows
+    ]
+    _plot_curve_table(
+        validation_table,
+        "In-Sample Backtest (Validation Slice, Starting Cash $100)",
+        validation_subtitle,
+        validation_plot_rows,
+        validation_png,
+    )
+    _plot_curve_table(
+        test_table,
+        "Out-of-Sample Backtest (Held-Out Test Slice, Starting Cash $100)",
+        test_subtitle,
+        test_plot_rows,
+        test_png,
+    )
 
     print(
         pd.DataFrame(summary_rows)
