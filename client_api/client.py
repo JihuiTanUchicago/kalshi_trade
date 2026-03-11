@@ -34,6 +34,7 @@ NUMERIC_COLUMNS_BY_TABLE = {
         "drawdown_dollars",
     ],
     "model_features_1m": [
+        "target_btc_price",
         "yes_bid_dollars",
         "yes_ask_dollars",
         "spread_dollars",

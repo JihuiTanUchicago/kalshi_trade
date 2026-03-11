@@ -5,7 +5,7 @@ from typing import Dict, List
 
 from data_pipeline.common import get_db_conn, utc_now
 
-BASE_MODELS = (
+MODELS = (
     "naive_logistic_baseline",
     "logistic",
     "random_forest",
@@ -77,27 +77,6 @@ def latest_yes_bid_and_size(cur, ticker: str):
     bid = float(r["yes_bid_dollars"])
     size = float(r["yes_bid_size_fp"]) if r.get("yes_bid_size_fp") is not None else 0.0
     return bid, size
-
-
-def runtime_models(cur) -> List[str]:
-    models = list(BASE_MODELS)
-    try:
-        cur.execute(
-            """
-            SELECT model_name
-            FROM sim_models_registry
-            WHERE is_active=1 AND status='ready'
-            ORDER BY created_at_utc ASC, model_name ASC
-            """
-        )
-        for r in cur.fetchall():
-            model_name = str(r["model_name"])
-            if model_name not in models:
-                models.append(model_name)
-    except Exception:
-        # If registry table is not initialized yet, keep base models running.
-        pass
-    return models
 
 
 def compute_model_snapshot(cur, model_name: str) -> Dict:
@@ -175,7 +154,7 @@ def run_loop() -> None:
                 # Avoid writing while full sim recompute is rebuilding sim tables.
                 if is_sim_recompute_in_progress(cur):
                     continue
-                for model_name in runtime_models(cur):
+                for model_name in MODELS:
                     row = compute_model_snapshot(cur, model_name)
                     cur.execute(
                         """

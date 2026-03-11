@@ -4,7 +4,6 @@ from datetime import datetime
 import numpy as np
 
 from data_pipeline.common import get_db_conn, utc_now
-from data_pipeline.sim_model_registry import active_custom_model_configs, build_custom_frozen_models
 from data_pipeline.simulated_trading_engine import (
     ALL_MODELS,
     BASELINE_IDX,
@@ -60,13 +59,6 @@ def recompute() -> None:
 
             cutoff = choose_effective_cutoff(rows, get_live_cutoff_utc(cur))
             frozen = fit_frozen_models(rows, cutoff)
-            custom_cfgs = active_custom_model_configs(cur)
-            custom_models = {}
-            if custom_cfgs:
-                try:
-                    custom_models = build_custom_frozen_models(custom_cfgs, rows, cutoff)
-                except Exception as e:
-                    print(f"[WARN] custom model recompute skipped: {e}")
             reset_sim_tables(cur)
             processed = 0
 
@@ -91,20 +83,8 @@ def recompute() -> None:
                     )
 
                 outputs.update(train_walk_forward_outputs(rows, latest["snapshot_minute_utc"], x_latest))
-                for model_name, fm in custom_models.items():
-                    px = x_latest[list(fm.feature_idx)]
-                    prob = float(fm.estimator.predict_proba([px])[0, 1])
-                    outputs[model_name] = ModelOutput(
-                        prob=prob,
-                        train_rows=fm.train_rows,
-                        test_rows=fm.test_rows,
-                        brier=fm.brier,
-                        ll=fm.ll,
-                        rf_regime=fm.rf_regime,
-                    )
 
-                active_models = list(ALL_MODELS) + sorted(custom_models.keys())
-                for model_name in active_models:
+                for model_name in ALL_MODELS:
                     out = outputs[model_name]
                     signal = 1 if out.prob >= PRED_THRESHOLD else 0
                     edge = out.prob - float(latest.get("yes_ask_dollars") or 0.0)

@@ -1,0 +1,252 @@
+{
+  "config": {
+    "take_profit_buffer_dollars": 0.05,
+    "min_time_to_expiry_sec": 120,
+    "train_fraction": 0.6,
+    "validation_fraction": 0.2,
+    "probability_threshold_grid": [
+      0.55,
+      0.6,
+      0.65,
+      0.7,
+      0.75,
+      0.8,
+      0.85,
+      0.9
+    ],
+    "edge_threshold_grid": [
+      0.0,
+      0.01,
+      0.02,
+      0.03,
+      0.05,
+      0.08,
+      0.1,
+      0.12,
+      0.15,
+      0.2
+    ],
+    "trade_count_target": 20
+  },
+  "dataset": {
+    "rows": 5909,
+    "start_utc": "2026-03-07 02:11:00",
+    "end_utc": "2026-03-11 20:06:00",
+    "positive_rate": 0.4792689118294128,
+    "train_rows": 3545,
+    "validation_rows": 1182,
+    "test_rows": 1182
+  },
+  "models": [
+    {
+      "name": "random_forest_resolution_edge",
+      "display_name": "Random Forest Resolution Edge",
+      "feature_columns": [
+        "yes_bid_dollars",
+        "yes_ask_dollars",
+        "spread_dollars",
+        "mid_dollars",
+        "yes_bid_size_fp",
+        "yes_ask_size_fp",
+        "orderbook_imbalance",
+        "mid_ret_1m",
+        "mid_ret_3m",
+        "trades_last_60s_count",
+        "trades_last_60s_volume_fp",
+        "trades_last_60s_vwap_yes",
+        "quote_change_events_60s",
+        "time_to_expiry_sec",
+        "cb_price",
+        "cb_ret_1m",
+        "cb_ret_3m",
+        "cb_ret_5m",
+        "cb_vol_5m",
+        "kalshi_data_age_sec",
+        "coinbase_data_age_sec",
+        "target_btc_price",
+        "moneyness_abs",
+        "moneyness_pct",
+        "moneyness_vol_scaled",
+        "moneyness_x_sqrt_tte",
+        "moneyness_x_imbalance",
+        "moneyness_x_qchg",
+        "depth_total",
+        "depth_pressure",
+        "vwap_mid_gap",
+        "return_accel_1v3",
+        "cb_return_accel_1v5",
+        "volume_per_trade",
+        "quote_intensity",
+        "microprice_proxy",
+        "carry_to_target",
+        "spread_x_imbalance",
+        "ret_cross_cb"
+      ],
+      "params": {
+        "n_estimators": 500,
+        "max_depth": 10,
+        "min_samples_leaf": 4,
+        "min_samples_split": 12,
+        "max_features": "sqrt",
+        "class_weight": "balanced_subsample"
+      },
+      "is_benchmark": false,
+      "validation_trade_rule": {
+        "probability_threshold": 0.65,
+        "edge_threshold": 0.08
+      },
+      "validation_backtest": {
+        "pnl": 0.6099999999999999,
+        "trades": 6,
+        "win_rate": 1.0,
+        "avg_pnl": 0.10166666666666664
+      },
+      "test_backtest": {
+        "pnl": 0.1599999999999998,
+        "trades": 9,
+        "win_rate": 0.8888888888888888,
+        "avg_pnl": 0.017777777777777757
+      },
+      "test_metrics": {
+        "average_precision": 0.8482543176643434,
+        "auc": 0.8467671672589705,
+        "brier": 0.15757215326752086,
+        "logloss": 0.46335002198037223
+      }
+    },
+    {
+      "name": "hist_gradient_boosting_resolution_edge",
+      "display_name": "HistGradientBoosting Resolution Edge",
+      "feature_columns": [
+        "yes_bid_dollars",
+        "yes_ask_dollars",
+        "spread_dollars",
+        "mid_dollars",
+        "yes_bid_size_fp",
+        "yes_ask_size_fp",
+        "orderbook_imbalance",
+        "mid_ret_1m",
+        "mid_ret_3m",
+        "trades_last_60s_count",
+        "trades_last_60s_volume_fp",
+        "trades_last_60s_vwap_yes",
+        "quote_change_events_60s",
+        "time_to_expiry_sec",
+        "cb_price",
+        "cb_ret_1m",
+        "cb_ret_3m",
+        "cb_ret_5m",
+        "cb_vol_5m",
+        "kalshi_data_age_sec",
+        "coinbase_data_age_sec",
+        "target_btc_price",
+        "moneyness_abs",
+        "moneyness_pct",
+        "moneyness_vol_scaled",
+        "moneyness_x_sqrt_tte",
+        "moneyness_x_imbalance",
+        "moneyness_x_qchg",
+        "depth_total",
+        "depth_pressure",
+        "vwap_mid_gap",
+        "return_accel_1v3",
+        "cb_return_accel_1v5",
+        "volume_per_trade",
+        "quote_intensity",
+        "microprice_proxy",
+        "carry_to_target",
+        "spread_x_imbalance",
+        "ret_cross_cb"
+      ],
+      "params": {
+        "learning_rate": 0.03,
+        "max_depth": 4,
+        "max_iter": 250,
+        "min_samples_leaf": 25,
+        "l2_regularization": 0.01,
+        "max_leaf_nodes": 63
+      },
+      "is_benchmark": false,
+      "validation_trade_rule": {
+        "probability_threshold": 0.55,
+        "edge_threshold": 0.08
+      },
+      "validation_backtest": {
+        "pnl": 1.0499999999999998,
+        "trades": 24,
+        "win_rate": 0.9166666666666666,
+        "avg_pnl": 0.04374999999999999
+      },
+      "test_backtest": {
+        "pnl": 0.14999999999999947,
+        "trades": 131,
+        "win_rate": 0.8320610687022901,
+        "avg_pnl": 0.0011450381679389272
+      },
+      "test_metrics": {
+        "average_precision": 0.8137400057930586,
+        "auc": 0.8094692193052848,
+        "brier": 0.18555962124359246,
+        "logloss": 0.5361767032418101
+      }
+    },
+    {
+      "name": "logistic_resolution_edge",
+      "display_name": "Logistic Resolution Edge",
+      "feature_columns": [
+        "yes_bid_dollars",
+        "yes_ask_dollars",
+        "spread_dollars",
+        "mid_dollars",
+        "orderbook_imbalance",
+        "mid_ret_1m",
+        "mid_ret_3m",
+        "trades_last_60s_count",
+        "trades_last_60s_volume_fp",
+        "trades_last_60s_vwap_yes",
+        "quote_change_events_60s",
+        "time_to_expiry_sec",
+        "cb_ret_1m",
+        "cb_ret_3m",
+        "cb_ret_5m",
+        "cb_vol_5m",
+        "moneyness_abs",
+        "moneyness_pct",
+        "moneyness_vol_scaled",
+        "moneyness_x_sqrt_tte",
+        "moneyness_x_imbalance",
+        "moneyness_x_qchg"
+      ],
+      "params": {
+        "C": 0.5
+      },
+      "is_benchmark": true,
+      "validation_trade_rule": {
+        "probability_threshold": 0.8,
+        "edge_threshold": 0.08
+      },
+      "validation_backtest": {
+        "pnl": 1.7099999999999997,
+        "trades": 11,
+        "win_rate": 1.0,
+        "avg_pnl": 0.15545454545454543
+      },
+      "test_backtest": {
+        "pnl": 0.10999999999999999,
+        "trades": 1,
+        "win_rate": 1.0,
+        "avg_pnl": 0.10999999999999999
+      },
+      "test_metrics": {
+        "average_precision": 0.8539891925725756,
+        "auc": 0.8501175054453743,
+        "brier": 0.15870957427635402,
+        "logloss": 0.46684544147317625
+      }
+    }
+  ],
+  "selected_models": [
+    "random_forest_resolution_edge",
+    "hist_gradient_boosting_resolution_edge"
+  ]
+}
