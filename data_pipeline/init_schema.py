@@ -235,25 +235,6 @@ DDL = [
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     """
-    CREATE TABLE IF NOT EXISTS sim_models_registry (
-      model_name VARCHAR(32) PRIMARY KEY,
-      family VARCHAR(16) NOT NULL,
-      algo VARCHAR(32) NOT NULL,
-      mode VARCHAR(16) NOT NULL,
-      feature_cols_json JSON NOT NULL,
-      hyperparams_json JSON NOT NULL,
-      is_active TINYINT(1) NOT NULL DEFAULT 1,
-      is_visible TINYINT(1) NOT NULL DEFAULT 1,
-      status VARCHAR(16) NOT NULL DEFAULT 'pending',
-      notes VARCHAR(255) NULL,
-      last_error TEXT NULL,
-      created_at_utc DATETIME NOT NULL,
-      updated_at_utc DATETIME NOT NULL,
-      INDEX idx_sim_models_status (status, updated_at_utc),
-      INDEX idx_sim_models_active (is_active, is_visible, updated_at_utc)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """,
-    """
     CREATE TABLE IF NOT EXISTS model_research_runs (
       id BIGINT AUTO_INCREMENT PRIMARY KEY,
       created_at_utc DATETIME NOT NULL,
