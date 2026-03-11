@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  11 MAR 2026 16:52
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  11 MAR 2026 17:52
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -1079,18 +1079,32 @@ Overfull \hbox (1.82512pt too wide) has occurred while \output is active
 [7
 
  <./logistic_insample.png> <./logistic_outsample_compare.png>]
-Overfull \hbox (1.82512pt too wide) in paragraph at lines 290--290
+Overfull \hbox (1.82512pt too wide) in paragraph at lines 324--324
 [][] 
  []
 
 
-Overfull \hbox (182.37843pt too wide) detected at line 290
+Overfull \hbox (182.37843pt too wide) detected at line 324
  [] [] [] [] [] [] [] [] [] []  [] 
  []
 
 
-Overfull \hbox (4.25006pt too wide) in paragraph at lines 290--290
+Overfull \hbox (4.25006pt too wide) in paragraph at lines 324--324
 [][][][] 
+ []
+
+<gbm_insample.png, id=386, 431.6928pt x 229.8186pt>
+File: gbm_insample.png Graphic file (type png)
+<use gbm_insample.png>
+Package pdftex.def Info: gbm_insample.png  used on input line 324.
+(pdftex.def)             Requested size: 195.18874pt x 103.91187pt.
+<gbm_outsample_compare.png, id=387, 432.1746pt x 229.8186pt>
+File: gbm_outsample_compare.png Graphic file (type png)
+<use gbm_outsample_compare.png>
+Package pdftex.def Info: gbm_outsample_compare.png  used on input line 324.
+(pdftex.def)             Requested size: 195.18237pt x 103.79263pt.
+
+Overfull \vbox (4.66803pt too high) detected at line 324
  []
 
 
@@ -1110,19 +1124,33 @@ Overfull \hbox (1.82512pt too wide) has occurred while \output is active
 
 [8
 
-]
-Overfull \hbox (1.82512pt too wide) in paragraph at lines 300--300
+ <./gbm_insample.png> <./gbm_outsample_compare.png>]
+Overfull \hbox (1.82512pt too wide) in paragraph at lines 370--370
 [][] 
  []
 
 
-Overfull \hbox (182.37843pt too wide) detected at line 300
+Overfull \hbox (182.37843pt too wide) detected at line 370
  [] [] [] [] [] [] [] [] [] []  [] 
  []
 
 
-Overfull \hbox (4.25006pt too wide) in paragraph at lines 300--300
+Overfull \hbox (4.25006pt too wide) in paragraph at lines 370--370
 [][][][] 
+ []
+
+<rf_insample.png, id=430, 431.6928pt x 229.8186pt>
+File: rf_insample.png Graphic file (type png)
+<use rf_insample.png>
+Package pdftex.def Info: rf_insample.png  used on input line 370.
+(pdftex.def)             Requested size: 195.18874pt x 103.91187pt.
+<rf_outsample_compare.png, id=431, 432.1746pt x 229.8186pt>
+File: rf_outsample_compare.png Graphic file (type png)
+<use rf_outsample_compare.png>
+Package pdftex.def Info: rf_outsample_compare.png  used on input line 370.
+(pdftex.def)             Requested size: 195.18237pt x 103.79263pt.
+
+Overfull \vbox (16.41803pt too high) detected at line 370
  []
 
 
@@ -1142,18 +1170,18 @@ Overfull \hbox (1.82512pt too wide) has occurred while \output is active
 
 [9
 
-]
-Overfull \hbox (1.82512pt too wide) in paragraph at lines 310--310
+ <./rf_insample.png> <./rf_outsample_compare.png>]
+Overfull \hbox (1.82512pt too wide) in paragraph at lines 380--380
 [][] 
  []
 
 
-Overfull \hbox (182.37843pt too wide) detected at line 310
+Overfull \hbox (182.37843pt too wide) detected at line 380
  [] [] [] [] [] [] [] [] [] []  [] 
  []
 
 
-Overfull \hbox (4.25006pt too wide) in paragraph at lines 310--310
+Overfull \hbox (4.25006pt too wide) in paragraph at lines 380--380
 [][][][] 
  []
 
@@ -1175,17 +1203,17 @@ Overfull \hbox (1.82512pt too wide) has occurred while \output is active
 [10
 
 ]
-Overfull \hbox (1.82512pt too wide) in paragraph at lines 320--320
+Overfull \hbox (1.82512pt too wide) in paragraph at lines 390--390
 [][] 
  []
 
 
-Overfull \hbox (182.37843pt too wide) detected at line 320
+Overfull \hbox (182.37843pt too wide) detected at line 390
  [] [] [] [] [] [] [] [] [] []  [] 
  []
 
 
-Overfull \hbox (4.25006pt too wide) in paragraph at lines 320--320
+Overfull \hbox (4.25006pt too wide) in paragraph at lines 390--390
 [][][][] 
  []
 
@@ -1225,18 +1253,18 @@ Package rerunfilecheck Info: File `main.out' has not changed.
 (rerunfilecheck)             Checksum: E4CFFF649CD8E0F9256E95533C72645C;1432.
  ) 
 Here is how much of TeX's memory you used:
- 25807 strings out of 469006
- 508634 string characters out of 5454814
+ 25835 strings out of 469006
+ 509386 string characters out of 5454814
  909303 words of memory out of 5000000
- 53978 multiletter control sequences out of 15000+600000
+ 54006 multiletter control sequences out of 15000+600000
  639711 words of font info for 84 fonts, out of 8000000 for 9000
  319 hyphenation exceptions out of 8191
  101i,17n,112p,478b,663s stack positions out of 10000i,1000n,20000p,200000b,200000s
  </Users/toddtan/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour/jknappen/ec/tcss0900.600pk> </Users/toddtan/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour/jknappen/ec/tcsx0900.600pk> </Users/toddtan/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour/jknappen/ec/tcss1000.600pk></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi9.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmss10.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmss12.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmss8.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmss9.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmssbx10.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmssi8.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmssi9.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy9.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt12.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt9.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/symbols/msam10.pfb>
-Output written on main.pdf (11 pages, 933630 bytes).
+Output written on main.pdf (11 pages, 1098927 bytes).
 PDF statistics:
- 620 PDF objects out of 1000 (max. 8388607)
+ 628 PDF objects out of 1000 (max. 8388607)
  457 compressed objects within 5 object streams
  31 named destinations out of 1000 (max. 500000)
- 137 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 157 words of extra memory for PDF output out of 10000 (max. 10000000)
 

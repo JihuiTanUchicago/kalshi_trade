@@ -286,7 +286,41 @@
 \section{\sectiontitle}
 
 \begin{frame}{\sectiontitle}
-% Content to be added
+\footnotesize
+\textbf{Label:} $y_t = \mathbf{1}[\text{final YES bid} \geq \$0.90]$ (expiry-resolution) \quad
+\textbf{Features (39):} all 22 production features $+$ depth/pressure, flow context, return interactions, strike carry
+
+\vspace{0.05cm}
+\textbf{Params:} \texttt{learning\_rate=0.03, max\_depth=4, max\_iter=250, min\_samples\_leaf=25}
+
+\texttt{l2=0.01, max\_leaf\_nodes=63}
+
+\vspace{0.05cm}
+\begin{tabular}{llll}
+\textbf{Train}       & Mar 7 -- Mar 9 (UTC)                  & 3,545 rows & 60\% split \\
+\textbf{Validation}  & Mar 9 22:38 -- Mar 10 21:21 (UTC)     & 1,182 rows & In-sample holdout \\
+\textbf{OOS (Test)}  & Mar 10 21:22 -- Mar 11 20:06 (UTC)    & 1,182 rows & Forward test \\
+\end{tabular}
+
+\vspace{0.05cm}
+\textbf{Buy:} $p_{\text{yes}} \geq 0.55$ \& edge $\geq \$0.08$ \quad
+\textbf{Exit:} take-profit at entry $+\$0.05$, else final YES bid \quad
+\textbf{Size:} 1
+
+\textbf{OOS PnL:} \textbf{+\$0.15} / 131 trades / 83.2\% win rate \quad
+\textbf{OOS AP:} 0.814, \textbf{AUC:} 0.810
+
+\vspace{0.05cm}
+\begin{columns}[T]
+    \begin{column}{0.49\textwidth}
+        \centering
+        \includegraphics[width=\textwidth, height=0.48\textheight, keepaspectratio]{gbm_insample.png}
+    \end{column}
+    \begin{column}{0.49\textwidth}
+        \centering
+        \includegraphics[width=\textwidth, height=0.48\textheight, keepaspectratio]{gbm_outsample_compare.png}
+    \end{column}
+\end{columns}
 \end{frame}
 
 % =========================
@@ -296,7 +330,43 @@
 \section{\sectiontitle}
 
 \begin{frame}{\sectiontitle}
-% Content to be added
+\footnotesize
+\textbf{Label:} $y_t = \mathbf{1}[\text{final YES bid} \geq \$0.90]$ (expiry-resolution) \quad
+\textbf{Features (39):} all 22 production features $+$ depth/pressure, flow context, return interactions, strike carry
+
+\vspace{0.05cm}
+\textbf{Params:} \texttt{n\_estimators=500, max\_depth=10, min\_samples\_leaf=4, min\_samples\_split=12,}
+
+\texttt{max\_features=sqrt, class\_weight=balanced\_subsample}
+
+\vspace{0.05cm}
+\begin{tabular}{llll}
+\textbf{Train}       & Mar 7 -- Mar 9 (UTC)                  & 3,545 rows & 60\% split \\
+\textbf{Validation}  & Mar 9 22:38 -- Mar 10 21:21 (UTC)     & 1,182 rows & In-sample holdout \\
+\textbf{OOS (Test)}  & Mar 10 21:22 -- Mar 11 20:06 (UTC)    & 1,182 rows & Forward test \\
+\end{tabular}
+
+\vspace{0.05cm}
+\textbf{Buy:} $p_{\text{yes}} \geq 0.65$ \& edge $\geq \$0.08$ \quad
+\textbf{Exit:} take-profit at entry $+\$0.05$, else final YES bid \quad
+\textbf{Size:} 1
+
+\textbf{OOS PnL:} \textbf{+\$0.16} / 9 trades / 88.9\% win rate \quad
+\textbf{OOS AP:} 0.848, \textbf{AUC:} 0.847
+
+\textbf{Comment:} selectivity and expiry-resolution label are the key drivers
+
+\vspace{0.05cm}
+\begin{columns}[T]
+    \begin{column}{0.49\textwidth}
+        \centering
+        \includegraphics[width=\textwidth, height=0.48\textheight, keepaspectratio]{rf_insample.png}
+    \end{column}
+    \begin{column}{0.49\textwidth}
+        \centering
+        \includegraphics[width=\textwidth, height=0.48\textheight, keepaspectratio]{rf_outsample_compare.png}
+    \end{column}
+\end{columns}
 \end{frame}
 
 % =========================
