@@ -1,6 +1,6 @@
 # Fdb version 4
-["pdflatex"] 1773269540.19697 "/Users/toddtan/Desktop/Records/codespace/kalshi_trade/Machine_Learning_Final_Presentation/main.tex" "main.pdf" "main" 1773269541.72798 0
-  "/Users/toddtan/Desktop/Records/codespace/kalshi_trade/Machine_Learning_Final_Presentation/main.tex" 1773269539.94419 13720 acd8a08d7f31aa23da864adb31c27271 ""
+["pdflatex"] 1773269604.17982 "/Users/toddtan/Desktop/Records/codespace/kalshi_trade/Machine_Learning_Final_Presentation/main.tex" "main.pdf" "main" 1773269605.72234 0
+  "/Users/toddtan/Desktop/Records/codespace/kalshi_trade/Machine_Learning_Final_Presentation/main.tex" 1773269603.99636 13641 f9720482edb960283192e9f7d65c88b9 ""
   "/Users/toddtan/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour/jknappen/ec/tcss0900.600pk" 1773264539.68074 9524 04622c1510f44a541e71aeebefefac83 ""
   "/Users/toddtan/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour/jknappen/ec/tcss1000.600pk" 1773259999.0753 10604 eb86377674c8cdcb29075d4ab42135f1 ""
   "/Users/toddtan/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour/jknappen/ec/tcsx0900.600pk" 1773263886.3403 9672 8abeef3bba889c1d394c152507b925dc ""
@@ -228,10 +228,10 @@
   "kalshi_market.png" 1773260173.6074 326394 3a91fd17dfcd560b4bf0c2efddb9f05e ""
   "logistic_insample.png" 1773265204.86171 57325 7cdcb37d3b3ba36c5db80a4850ab737d ""
   "logistic_outsample_compare.png" 1773265204.93109 65651 7cd974e42fa294d87f860ad4f68e5390 ""
-  "main.aux" 1773269541.64097 4521 bff3d28f827f4f2ffcd75c136422c26f "pdflatex"
-  "main.nav" 1773269541.642 2679 34de2db1d162842af9cd70ace1edbde4 "pdflatex"
-  "main.out" 1773269541.64183 1432 e4cfff649cd8e0f9256e95533c72645c "pdflatex"
-  "main.tex" 1773269539.94419 13720 acd8a08d7f31aa23da864adb31c27271 ""
+  "main.aux" 1773269605.65093 4521 bff3d28f827f4f2ffcd75c136422c26f "pdflatex"
+  "main.nav" 1773269605.65197 2679 34de2db1d162842af9cd70ace1edbde4 "pdflatex"
+  "main.out" 1773269605.65181 1432 e4cfff649cd8e0f9256e95533c72645c "pdflatex"
+  "main.tex" 1773269603.99636 13641 f9720482edb960283192e9f7d65c88b9 ""
   "rf_insample.png" 1773267029.86243 32646 fd9f77bf60dee30057c7aee712f68f00 ""
   "rf_outsample_compare.png" 1773267029.93666 53505 2f06a74ef5abc92fde5ed64988d43ac5 ""
   (generated)
