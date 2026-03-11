@@ -118,7 +118,6 @@ nohup /opt/kalshi/.venv/bin/python -m data_pipeline.feature_1m_collector >/opt/k
 nohup /opt/kalshi/.venv/bin/python -m data_pipeline.model_features_1m_builder >/opt/kalshi/model_features_1m_builder.log 2>&1 &
 nohup /opt/kalshi/.venv/bin/python -m data_pipeline.simulated_trading_engine >/opt/kalshi/simulated_trading_engine.log 2>&1 &
 nohup /opt/kalshi/.venv/bin/python -m data_pipeline.sim_portfolio_20s_updater >/opt/kalshi/sim_portfolio_20s_updater.log 2>&1 &
-nohup /opt/kalshi/.venv/bin/python -m data_pipeline.model_lab_scheduler >/opt/kalshi/model_lab_scheduler.log 2>&1 &
 nohup /opt/kalshi/.venv/bin/python -m data_pipeline.live_trading_engine >/opt/kalshi/live_trading_engine.log 2>&1 &
 nohup /opt/kalshi/.venv/bin/python -m data_pipeline.live_portfolio_20s_updater >/opt/kalshi/live_portfolio_20s_updater.log 2>&1 &
 nohup /opt/kalshi/.venv/bin/python -m data_pipeline.dashboard_server >/opt/kalshi/dashboard.log 2>&1 &

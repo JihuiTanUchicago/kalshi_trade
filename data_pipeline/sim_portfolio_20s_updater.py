@@ -5,8 +5,26 @@ from typing import Dict, List
 
 from data_pipeline.common import get_db_conn, utc_now
 
-MODELS = ("logistic", "random_forest")
+MODELS = ("naive_logistic_baseline", "logistic", "random_forest")
 STARTING_CAPITAL = 100.0
+
+
+def is_sim_recompute_in_progress(cur) -> bool:
+    cur.execute("SELECT state_value FROM collector_state WHERE state_key='sim_recompute_in_progress' LIMIT 1")
+    row = cur.fetchone()
+    if not row:
+        return False
+    sv = row.get("state_value")
+    if isinstance(sv, dict):
+        return bool(sv.get("in_progress"))
+    if isinstance(sv, str):
+        try:
+            j = json.loads(sv)
+            if isinstance(j, dict):
+                return bool(j.get("in_progress"))
+        except Exception:
+            return False
+    return False
 
 
 def next_20s_mark(now: datetime = None) -> datetime:
@@ -36,6 +54,25 @@ def latest_yes_bid(cur, ticker: str):
     return float(r["yes_bid_dollars"]) if r and r.get("yes_bid_dollars") is not None else None
 
 
+def latest_yes_bid_and_size(cur, ticker: str):
+    cur.execute(
+        """
+        SELECT yes_bid_dollars, yes_bid_size_fp
+        FROM forward_quotes
+        WHERE market_ticker=%s
+        ORDER BY snapshot_time_utc DESC
+        LIMIT 1
+        """,
+        (ticker,),
+    )
+    r = cur.fetchone()
+    if not r or r.get("yes_bid_dollars") is None:
+        return None, None
+    bid = float(r["yes_bid_dollars"])
+    size = float(r["yes_bid_size_fp"]) if r.get("yes_bid_size_fp") is not None else 0.0
+    return bid, size
+
+
 def compute_model_snapshot(cur, model_name: str) -> Dict:
     cur.execute(
         "SELECT COALESCE(SUM(pnl_dollars),0) p FROM sim_trades WHERE model_name=%s AND status='closed'",
@@ -52,18 +89,22 @@ def compute_model_snapshot(cur, model_name: str) -> Dict:
     for p in positions:
         qty = int(p["qty_contracts"])
         entry = float(p["entry_price_dollars"])
-        bid = latest_yes_bid(cur, p["market_ticker"])
+        bid, bid_size = latest_yes_bid_and_size(cur, p["market_ticker"])
         if bid is None:
-            bid = entry
+            bid = 0.0
+            bid_size = 0.0
+        fill_qty = min(float(qty), max(0.0, float(bid_size or 0.0)))
+        value = fill_qty * bid
         cost += entry * qty
-        pos_value += bid * qty
+        pos_value += value
         details.append(
             {
                 "ticker": p["market_ticker"],
                 "qty": qty,
                 "entry": entry,
                 "mark_bid": bid,
-                "value": bid * qty,
+                "mark_bid_size": bid_size,
+                "value": value,
             }
         )
 
@@ -103,6 +144,9 @@ def run_loop() -> None:
             mark = next_20s_mark()
             time.sleep(max(0.0, (mark - utc_now()).total_seconds()))
             try:
+                # Avoid writing while full sim recompute is rebuilding sim tables.
+                if is_sim_recompute_in_progress(cur):
+                    continue
                 for model_name in MODELS:
                     row = compute_model_snapshot(cur, model_name)
                     cur.execute(

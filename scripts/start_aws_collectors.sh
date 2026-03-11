@@ -40,9 +40,6 @@ echo $! > pids/simulated_trading_engine.pid
 nohup ./.venv/bin/python -m data_pipeline.sim_portfolio_20s_updater > logs/sim_portfolio_20s_updater.log 2>&1 &
 echo $! > pids/sim_portfolio_20s_updater.pid
 
-nohup ./.venv/bin/python -m data_pipeline.model_lab_scheduler > logs/model_lab_scheduler.log 2>&1 &
-echo $! > pids/model_lab_scheduler.pid
-
 nohup ./.venv/bin/python -m data_pipeline.live_trading_engine > logs/live_trading_engine.log 2>&1 &
 echo $! > pids/live_trading_engine.pid
 
@@ -54,7 +51,7 @@ echo $! > pids/dashboard.pid
 
 echo "[INFO] Started jobs"
 if [[ -f pids/backfill.pid ]]; then
-  cat pids/backfill.pid pids/forward_collector.pid pids/coinbase_collector.pid pids/feature_1m_collector.pid pids/model_features_1m_builder.pid pids/simulated_trading_engine.pid pids/sim_portfolio_20s_updater.pid pids/model_lab_scheduler.pid pids/live_trading_engine.pid pids/live_portfolio_20s_updater.pid pids/dashboard.pid | nl -ba
+  cat pids/backfill.pid pids/forward_collector.pid pids/coinbase_collector.pid pids/feature_1m_collector.pid pids/model_features_1m_builder.pid pids/simulated_trading_engine.pid pids/sim_portfolio_20s_updater.pid pids/live_trading_engine.pid pids/live_portfolio_20s_updater.pid pids/dashboard.pid | nl -ba
 else
-  cat pids/forward_collector.pid pids/coinbase_collector.pid pids/feature_1m_collector.pid pids/model_features_1m_builder.pid pids/simulated_trading_engine.pid pids/sim_portfolio_20s_updater.pid pids/model_lab_scheduler.pid pids/live_trading_engine.pid pids/live_portfolio_20s_updater.pid pids/dashboard.pid | nl -ba
+  cat pids/forward_collector.pid pids/coinbase_collector.pid pids/feature_1m_collector.pid pids/model_features_1m_builder.pid pids/simulated_trading_engine.pid pids/sim_portfolio_20s_updater.pid pids/live_trading_engine.pid pids/live_portfolio_20s_updater.pid pids/dashboard.pid | nl -ba
 fi

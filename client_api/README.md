@@ -38,6 +38,3 @@ df_trades = client.fetch_table("sim_trades")
 - `sim_model_predictions_1m`
 - `sim_trades`
 - `sim_portfolio_20s`
-- `sim_model_lab_runs`
-- `sim_model_lab_results`
-

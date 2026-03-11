@@ -127,6 +127,7 @@ DDL = [
       snapshot_minute_utc DATETIME NOT NULL,
       market_ticker VARCHAR(128) NULL,
       event_ticker VARCHAR(128) NULL,
+      target_btc_price DECIMAL(18,4) NULL,
       yes_bid_dollars DECIMAL(10,4) NULL,
       yes_ask_dollars DECIMAL(10,4) NULL,
       spread_dollars DECIMAL(10,4) NULL,
@@ -234,40 +235,36 @@ DDL = [
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     """
-    CREATE TABLE IF NOT EXISTS sim_model_lab_runs (
-      run_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-      run_time_utc DATETIME NOT NULL,
-      cutoff_utc DATETIME NULL,
-      sample_rows INT NOT NULL,
-      notes_json JSON NOT NULL,
-      INDEX idx_model_lab_runs_time (run_time_utc)
+    CREATE TABLE IF NOT EXISTS model_research_runs (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      created_at_utc DATETIME NOT NULL,
+      model_name VARCHAR(64) NOT NULL,
+      stage VARCHAR(32) NOT NULL,
+      objective_pnl_dollars DECIMAL(14,6) NOT NULL,
+      n_train INT NOT NULL,
+      n_eval INT NOT NULL,
+      params_json JSON NOT NULL,
+      selected_features_json JSON NOT NULL,
+      metrics_json JSON NOT NULL,
+      status VARCHAR(16) NOT NULL,
+      notes VARCHAR(255) NULL,
+      INDEX idx_mr_model_stage_time (model_name, stage, created_at_utc),
+      INDEX idx_mr_status_time (status, created_at_utc)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     """
-    CREATE TABLE IF NOT EXISTS sim_model_lab_results (
-      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    CREATE TABLE IF NOT EXISTS model_research_feature_importance (
       run_id BIGINT NOT NULL,
-      variant_id VARCHAR(128) NOT NULL,
-      model_family VARCHAR(32) NOT NULL,
-      horizon_min INT NOT NULL,
-      pred_threshold DECIMAL(10,6) NOT NULL,
-      edge_threshold DECIMAL(10,6) NOT NULL,
-      segment VARCHAR(32) NOT NULL,
-      n_samples INT NOT NULL,
-      n_trades INT NOT NULL,
-      trade_rate DECIMAL(12,8) NULL,
-      win_rate DECIMAL(12,8) NULL,
-      total_pnl DECIMAL(16,6) NULL,
-      avg_pnl DECIMAL(16,6) NULL,
-      pnl_per_trade DECIMAL(16,6) NULL,
-      brier DECIMAL(16,8) NULL,
-      logloss DECIMAL(16,8) NULL,
-      max_drawdown DECIMAL(16,6) NULL,
-      sharpe_like DECIMAL(16,8) NULL,
-      meta_json JSON NOT NULL,
-      INDEX idx_model_lab_results_run (run_id),
-      INDEX idx_model_lab_results_variant (variant_id, segment),
-      INDEX idx_model_lab_results_segment (segment, total_pnl)
+      model_name VARCHAR(64) NOT NULL,
+      feature_name VARCHAR(128) NOT NULL,
+      importance_abs_mean DECIMAL(18,10) NOT NULL,
+      importance_signed_mean DECIMAL(18,10) NOT NULL,
+      rank_order INT NOT NULL,
+      method VARCHAR(32) NOT NULL,
+      created_at_utc DATETIME NOT NULL,
+      PRIMARY KEY (run_id, feature_name),
+      INDEX idx_mrfi_model_run (model_name, run_id),
+      CONSTRAINT fk_mrfi_run FOREIGN KEY (run_id) REFERENCES model_research_runs(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     """
@@ -344,6 +341,25 @@ def main() -> None:
     with conn.cursor() as cur:
         for stmt in DDL:
             cur.execute(stmt)
+        # Backward-compatible schema migration for existing deployments.
+        cur.execute(
+            """
+            SELECT COUNT(*) AS c
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA=DATABASE()
+              AND TABLE_NAME='model_features_1m'
+              AND COLUMN_NAME='target_btc_price'
+            """
+        )
+        has_col = cur.fetchone()["c"] > 0
+        if not has_col:
+            cur.execute(
+                """
+                ALTER TABLE model_features_1m
+                ADD COLUMN target_btc_price DECIMAL(18,4) NULL
+                AFTER event_ticker
+                """
+            )
     conn.close()
     print("Schema initialized.")
 

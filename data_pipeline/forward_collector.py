@@ -18,15 +18,28 @@ from data_pipeline.common import api_get, get_db_conn, parse_iso_to_dt, utc_now
 
 def choose_active_event(markets: List[Dict]) -> Optional[str]:
     now = utc_now()
-    candidates = []
+    in_window = []
+    fallback = []
     for m in markets:
-        et = parse_iso_to_dt(m.get("expected_expiration_time") or m.get("close_time"))
-        if et and et >= now and m.get("event_ticker"):
-            candidates.append((et, m.get("event_ticker")))
-    if not candidates:
-        return None
-    candidates.sort(key=lambda x: x[0])
-    return candidates[0][1]
+        event_ticker = m.get("event_ticker")
+        if not event_ticker:
+            continue
+        open_t = parse_iso_to_dt(m.get("open_time"))
+        close_t = parse_iso_to_dt(m.get("close_time"))
+        exp_t = parse_iso_to_dt(m.get("expected_expiration_time"))
+        if open_t and close_t and open_t <= now < close_t:
+            in_window.append((close_t, event_ticker))
+        elif close_t and close_t >= now:
+            fallback.append((close_t, event_ticker))
+        elif exp_t and exp_t >= now:
+            fallback.append((exp_t, event_ticker))
+    if in_window:
+        in_window.sort(key=lambda x: x[0])
+        return in_window[0][1]
+    if fallback:
+        fallback.sort(key=lambda x: x[0])
+        return fallback[0][1]
+    return None
 
 
 def end_minute_bucket(dt: datetime) -> datetime:

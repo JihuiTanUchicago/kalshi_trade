@@ -7,3 +7,4 @@ websockets==14.1
 datetime==5.5
 numpy==2.0.2
 scikit-learn==1.5.2
+optuna==3.6.1

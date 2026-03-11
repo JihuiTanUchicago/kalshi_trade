@@ -1,6 +1,7 @@
 import html
 import os
 import base64
+import ast
 import json
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -29,8 +30,8 @@ TABLES = [
     "sim_trades",
     "sim_equity_1m",
     "sim_portfolio_20s",
-    "sim_model_lab_runs",
-    "sim_model_lab_results",
+    "model_research_runs",
+    "model_research_feature_importance",
     "live_settings",
     "live_orders",
     "live_positions",
@@ -46,8 +47,8 @@ API_TABLES = [
     "sim_model_predictions_1m",
     "sim_trades",
     "sim_portfolio_20s",
-    "sim_model_lab_runs",
-    "sim_model_lab_results",
+    "model_research_runs",
+    "model_research_feature_importance",
 ]
 API_TIME_COLUMN = {
     "model_features_1m": "snapshot_minute_utc",
@@ -57,8 +58,8 @@ API_TIME_COLUMN = {
     "sim_model_predictions_1m": "snapshot_minute_utc",
     "sim_trades": "opened_at_utc",
     "sim_portfolio_20s": "snapshot_time_utc",
-    "sim_model_lab_runs": "run_time_utc",
-    "sim_model_lab_results": None,
+    "model_research_runs": "created_at_utc",
+    "model_research_feature_importance": "created_at_utc",
 }
 API_MAX_LIMIT = 5000
 
@@ -356,7 +357,7 @@ def sim_metrics(window_hours: int = 6):
     out = {
         "starting_capital": 100.0,
         "live_cutoff_utc": None,
-        "live_forward_start_utc": None,
+        "recompute_in_progress": False,
         "equity_series_20s": {},
         "equity_series_1m": {},
         "stack_series_20s": {},
@@ -368,11 +369,6 @@ def sim_metrics(window_hours: int = 6):
         "execution_quality": [],
         "in_sample": [],
         "out_of_sample": [],
-        "live_forward": [],
-        "model_lab_latest": [],
-        "model_lab_run": None,
-        "lab_variant_series": {},
-        "model_selector_items": [],
     }
     with conn.cursor() as cur:
         cur.execute("SELECT state_value FROM collector_state WHERE state_key='sim_live_cutoff_utc' LIMIT 1")
@@ -384,6 +380,16 @@ def sim_metrics(window_hours: int = 6):
                 out["live_cutoff_utc"] = j.get("cutoff_utc")
             except Exception:
                 out["live_cutoff_utc"] = str(sv)
+
+        cur.execute("SELECT state_value FROM collector_state WHERE state_key='sim_recompute_in_progress' LIMIT 1")
+        prog_row = cur.fetchone()
+        if prog_row:
+            sv = prog_row["state_value"]
+            try:
+                j = sv if isinstance(sv, dict) else json.loads(sv)
+                out["recompute_in_progress"] = bool(j.get("in_progress"))
+            except Exception:
+                out["recompute_in_progress"] = False
 
         cur.execute(
             """
@@ -405,7 +411,7 @@ def sim_metrics(window_hours: int = 6):
 
         cur.execute(
             """
-            SELECT snapshot_minute_utc, model_name, cumulative_pnl_dollars
+            SELECT snapshot_minute_utc, model_name, cumulative_pnl_dollars, raw_json
             FROM sim_equity_1m
             ORDER BY snapshot_minute_utc ASC
             """
@@ -414,6 +420,26 @@ def sim_metrics(window_hours: int = 6):
             m = r["model_name"]
             ts = str(r["snapshot_minute_utc"])
             eq = 100.0 + float(r["cumulative_pnl_dollars"] or 0.0)
+            try:
+                raw_blob = r["raw_json"]
+                if isinstance(raw_blob, dict):
+                    raw = raw_blob
+                elif isinstance(raw_blob, str):
+                    try:
+                        raw = json.loads(raw_blob or "{}")
+                    except Exception:
+                        raw = ast.literal_eval(raw_blob) if raw_blob else {}
+                else:
+                    raw = {}
+                if isinstance(raw, dict):
+                    # Prefer explicit equity when present; otherwise reconstruct
+                    # from cumulative + unrealized to avoid flat-line fallback.
+                    if raw.get("equity_dollars") is not None:
+                        eq = float(raw["equity_dollars"])
+                    elif raw.get("unrealized_pnl_dollars") is not None:
+                        eq = 100.0 + float(r["cumulative_pnl_dollars"] or 0.0) + float(raw["unrealized_pnl_dollars"])
+            except Exception:
+                pass
             out["equity_series_1m"].setdefault(m, []).append({"t": ts, "equity": eq})
 
         cur.execute(
@@ -635,243 +661,14 @@ def sim_metrics(window_hours: int = 6):
                 )
             return out_rows
 
-        cur.execute("SELECT run_id, run_time_utc FROM sim_model_lab_runs ORDER BY run_id DESC LIMIT 1")
-        rr = cur.fetchone()
-        if rr:
-            out["model_lab_run"] = {"run_id": int(rr["run_id"]), "run_time_utc": str(rr["run_time_utc"])}
-            out["live_forward_start_utc"] = str(rr["run_time_utc"])
-
         cutoff = out.get("live_cutoff_utc")
-        live_start = out.get("live_forward_start_utc")
-        if cutoff and live_start:
-            out["in_sample"] = _segment_stats("opened_at_utc < %s", "snapshot_minute_utc < %s", (cutoff,))
-            out["out_of_sample"] = _segment_stats(
-                "opened_at_utc >= %s AND opened_at_utc < %s",
-                "snapshot_minute_utc >= %s AND snapshot_minute_utc < %s",
-                (cutoff, live_start),
-            )
-            out["live_forward"] = _segment_stats(
-                "opened_at_utc >= %s",
-                "snapshot_minute_utc >= %s",
-                (live_start,),
-            )
-        elif cutoff:
-            out["in_sample"] = _segment_stats("opened_at_utc < %s", "snapshot_minute_utc < %s", (cutoff,))
-            out["out_of_sample"] = _segment_stats("opened_at_utc >= %s", "snapshot_minute_utc >= %s", (cutoff,))
-            out["live_forward"] = _segment_stats("1=0", "1=0", tuple())
+        if cutoff:
+            out["in_sample"] = _segment_stats("closed_at_utc < %s", "snapshot_minute_utc < %s", (cutoff,))
+            out["out_of_sample"] = _segment_stats("closed_at_utc >= %s", "snapshot_minute_utc >= %s", (cutoff,))
         else:
-            out["in_sample"] = _segment_stats("1=1", "1=1", tuple())
+            out["in_sample"] = _segment_stats("closed_at_utc IS NOT NULL", "1=1", tuple())
             out["out_of_sample"] = _segment_stats("1=0", "1=0", tuple())
-            out["live_forward"] = _segment_stats("1=0", "1=0", tuple())
 
-        if rr:
-            cur.execute(
-                """
-                SELECT variant_id, model_family, horizon_min, pred_threshold, edge_threshold, segment,
-                       n_trades, total_pnl, win_rate, brier, logloss, max_drawdown, sharpe_like
-                FROM sim_model_lab_results
-                WHERE run_id=%s
-                ORDER BY
-                  CASE segment
-                    WHEN 'live_forward' THEN 1
-                    WHEN 'out_of_sample' THEN 2
-                    ELSE 3
-                  END,
-                  total_pnl DESC
-                LIMIT 120
-                """,
-                (rr["run_id"],),
-            )
-            for r in cur.fetchall():
-                out["model_lab_latest"].append(
-                    {
-                        "variant_id": r["variant_id"],
-                        "model_family": r["model_family"],
-                        "horizon_min": int(r["horizon_min"]),
-                        "pred_threshold": float(r["pred_threshold"]),
-                        "edge_threshold": float(r["edge_threshold"]),
-                        "segment": r["segment"],
-                        "n_trades": int(r["n_trades"]),
-                        "total_pnl": float(r["total_pnl"] or 0.0),
-                        "win_rate": float(r["win_rate"]) if r["win_rate"] is not None else None,
-                        "brier": float(r["brier"]) if r["brier"] is not None else None,
-                        "logloss": float(r["logloss"]) if r["logloss"] is not None else None,
-                        "max_drawdown": float(r["max_drawdown"] or 0.0),
-                        "sharpe_like": float(r["sharpe_like"]) if r["sharpe_like"] is not None else None,
-                    }
-                )
-
-            cur.execute(
-                """
-                SELECT r.run_time_utc, x.variant_id, x.total_pnl
-                FROM sim_model_lab_results x
-                JOIN sim_model_lab_runs r ON r.run_id=x.run_id
-                WHERE x.segment='live_forward'
-                  AND r.run_time_utc >= (UTC_TIMESTAMP() - INTERVAL 7 DAY)
-                ORDER BY r.run_time_utc ASC
-                """
-            )
-            for r in cur.fetchall():
-                vid = r["variant_id"]
-                ts = str(r["run_time_utc"])
-                eq = 100.0 + float(r["total_pnl"] or 0.0)
-                out["lab_variant_series"].setdefault(vid, []).append({"t": ts, "equity": eq})
-
-        # Model selector list (ranked): one model/variant per row with compact IS/OOS/LIVE sub-metrics.
-        selector_items = []
-        for sc in out["scorecards"]:
-            total_pnl = float(sc.get("total_pnl") or 0.0)
-            current_pnl = float(sc.get("equity", 100.0)) - 100.0
-            out["model_selector_items"].append(
-                {
-                    "id": f"sim:{sc['model_name']}",
-                    "kind": "sim",
-                    "name": sc["model_name"],
-                    "rank": 0,
-                    "total_pnl": total_pnl,
-                    "win_rate": sc.get("win_rate"),
-                    "n_trades": int(sc.get("closed_trades") or 0),
-                    "horizon_min": 1,
-                    "segment": "combined",
-                    "current_pnl": current_pnl,
-                    "current_position": float(sc.get("position_value") or 0.0),
-                    "eval_mode": "online",
-                    "segments": {
-                        "live_forward": {
-                            "n_trades": int(sc.get("closed_trades") or 0),
-                            "total_pnl": total_pnl,
-                            "win_rate": sc.get("win_rate"),
-                        }
-                    },
-                }
-            )
-
-        lab_rollup: Dict[str, Dict[str, Any]] = {}
-        for lr in out["model_lab_latest"]:
-            vid = lr["variant_id"]
-            seg = str(lr.get("segment") or "unknown")
-            rec = lab_rollup.setdefault(
-                vid,
-                {
-                    "id": f"lab:{vid}",
-                    "kind": "lab",
-                    "name": vid,
-                    "rank": 0,
-                    "total_pnl": 0.0,
-                    "n_trades": 0,
-                    "horizon_min": int(lr.get("horizon_min") or 1),
-                    "segment": "combined",
-                    "current_position": None,
-                    "eval_mode": "offline_eval",
-                    "segments": {},
-                    "_win_num": 0.0,
-                    "_win_den": 0,
-                },
-            )
-            seg_trades = int(lr.get("n_trades") or 0)
-            seg_pnl = float(lr.get("total_pnl") or 0.0)
-            seg_win = lr.get("win_rate")
-            rec["segments"][seg] = {"n_trades": seg_trades, "total_pnl": seg_pnl, "win_rate": seg_win}
-            rec["total_pnl"] += seg_pnl
-            rec["n_trades"] += seg_trades
-            if seg_win is not None and seg_trades > 0:
-                rec["_win_num"] += float(seg_win) * seg_trades
-                rec["_win_den"] += seg_trades
-            if seg == "live_forward":
-                rec["current_pnl"] = seg_pnl
-
-        for rec in lab_rollup.values():
-            den = int(rec.pop("_win_den", 0))
-            num = float(rec.pop("_win_num", 0.0))
-            rec["win_rate"] = (num / den) if den > 0 else None
-            rec.setdefault("current_pnl", rec["total_pnl"])
-            selector_items.append(rec)
-
-        selector_items.extend(out["model_selector_items"])
-        selector_items.sort(
-            key=lambda x: (
-                -(x.get("current_pnl") or 0.0),
-                -(x.get("total_pnl") or 0.0),
-                -(x.get("n_trades") or 0),
-                x["id"],
-            )
-        )
-        for i, item in enumerate(selector_items, start=1):
-            item["rank"] = i
-        out["model_selector_items"] = selector_items
-
-    conn.close()
-    return out
-
-
-def model_lab_metrics(limit_rows: int = 600):
-    conn = get_db_conn()
-    out = {"latest_run": None, "champion": None, "rows": []}
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT run_id, run_time_utc, cutoff_utc, sample_rows
-            FROM sim_model_lab_runs
-            ORDER BY run_id DESC
-            LIMIT 1
-            """
-        )
-        rr = cur.fetchone()
-        if not rr:
-            conn.close()
-            return out
-        out["latest_run"] = {
-            "run_id": int(rr["run_id"]),
-            "run_time_utc": str(rr["run_time_utc"]),
-            "cutoff_utc": str(rr["cutoff_utc"]) if rr.get("cutoff_utc") else None,
-            "sample_rows": int(rr.get("sample_rows") or 0),
-        }
-
-        cur.execute("SELECT state_value FROM collector_state WHERE state_key='sim_model_lab_champion' LIMIT 1")
-        ch = cur.fetchone()
-        if ch:
-            sv = ch["state_value"]
-            try:
-                out["champion"] = sv if isinstance(sv, dict) else json.loads(sv)
-            except Exception:
-                out["champion"] = {"raw": str(sv)}
-
-        cur.execute(
-            """
-            SELECT variant_id, model_family, horizon_min, pred_threshold, edge_threshold, segment,
-                   n_samples, n_trades, trade_rate, win_rate, total_pnl, avg_pnl, pnl_per_trade,
-                   brier, logloss, max_drawdown, sharpe_like
-            FROM sim_model_lab_results
-            WHERE run_id=%s
-            ORDER BY
-              CASE segment WHEN 'live_forward' THEN 1 WHEN 'out_of_sample' THEN 2 ELSE 3 END,
-              total_pnl DESC
-            LIMIT %s
-            """,
-            (rr["run_id"], limit_rows),
-        )
-        for r in cur.fetchall():
-            out["rows"].append(
-                {
-                    "variant_id": r["variant_id"],
-                    "model_family": r["model_family"],
-                    "horizon_min": int(r["horizon_min"]),
-                    "pred_threshold": float(r["pred_threshold"]),
-                    "edge_threshold": float(r["edge_threshold"]),
-                    "segment": r["segment"],
-                    "n_samples": int(r["n_samples"]),
-                    "n_trades": int(r["n_trades"]),
-                    "trade_rate": float(r["trade_rate"] or 0.0),
-                    "win_rate": float(r["win_rate"]) if r["win_rate"] is not None else None,
-                    "total_pnl": float(r["total_pnl"] or 0.0),
-                    "avg_pnl": float(r["avg_pnl"] or 0.0),
-                    "pnl_per_trade": float(r["pnl_per_trade"] or 0.0),
-                    "brier": float(r["brier"]) if r["brier"] is not None else None,
-                    "logloss": float(r["logloss"]) if r["logloss"] is not None else None,
-                    "max_drawdown": float(r["max_drawdown"] or 0.0),
-                    "sharpe_like": float(r["sharpe_like"]) if r["sharpe_like"] is not None else None,
-                }
-            )
     conn.close()
     return out
 
@@ -1046,6 +843,113 @@ def live_metrics(window_hours: int = 12):
     return out
 
 
+def model_research_summary():
+    conn = get_db_conn()
+    out = {"best_models": [], "recent_runs": [], "last_run_state": None}
+    with conn.cursor() as cur:
+        cur.execute("SELECT state_value FROM collector_state WHERE state_key='model_research_last_run' LIMIT 1")
+        state = cur.fetchone()
+        if state:
+            sv = state.get("state_value")
+            if isinstance(sv, dict):
+                out["last_run_state"] = sv
+            else:
+                try:
+                    out["last_run_state"] = json.loads(sv)
+                except Exception:
+                    out["last_run_state"] = {"raw": str(sv)}
+
+        cur.execute(
+            """
+            SELECT r.*
+            FROM model_research_runs r
+            JOIN (
+              SELECT model_name, MAX(objective_pnl_dollars) best_pnl
+              FROM model_research_runs
+              WHERE stage='selected' AND status='success'
+              GROUP BY model_name
+            ) b ON b.model_name=r.model_name AND b.best_pnl=r.objective_pnl_dollars
+            JOIN (
+              SELECT model_name, objective_pnl_dollars, MAX(id) mx
+              FROM model_research_runs
+              WHERE stage='selected' AND status='success'
+              GROUP BY model_name, objective_pnl_dollars
+            ) x ON x.model_name=r.model_name AND x.objective_pnl_dollars=r.objective_pnl_dollars AND x.mx=r.id
+            ORDER BY r.model_name
+            """
+        )
+        best_runs = cur.fetchall()
+        for b in best_runs:
+            run_id = int(b["id"])
+            cur.execute(
+                """
+                SELECT feature_name, importance_abs_mean, importance_signed_mean, rank_order, method
+                FROM model_research_feature_importance
+                WHERE run_id=%s
+                ORDER BY rank_order ASC
+                LIMIT 20
+                """,
+                (run_id,),
+            )
+            imp = [
+                {
+                    "feature_name": r["feature_name"],
+                    "importance_abs_mean": float(r["importance_abs_mean"]),
+                    "importance_signed_mean": float(r["importance_signed_mean"]),
+                    "rank_order": int(r["rank_order"]),
+                    "method": r["method"],
+                }
+                for r in cur.fetchall()
+            ]
+            params = b["params_json"] if isinstance(b["params_json"], dict) else json.loads(b["params_json"] or "{}")
+            metrics = b["metrics_json"] if isinstance(b["metrics_json"], dict) else json.loads(b["metrics_json"] or "{}")
+            feats = (
+                b["selected_features_json"]
+                if isinstance(b["selected_features_json"], list)
+                else json.loads(b["selected_features_json"] or "[]")
+            )
+            out["best_models"].append(
+                {
+                    "run_id": run_id,
+                    "model_name": b["model_name"],
+                    "created_at_utc": str(b["created_at_utc"]),
+                    "stage": b["stage"],
+                    "objective_pnl_dollars": float(b["objective_pnl_dollars"]),
+                    "n_train": int(b["n_train"]),
+                    "n_eval": int(b["n_eval"]),
+                    "params": params,
+                    "metrics": metrics,
+                    "selected_features": feats,
+                    "feature_importance": imp,
+                }
+            )
+
+        cur.execute(
+            """
+            SELECT id, created_at_utc, model_name, stage, objective_pnl_dollars, n_train, n_eval, status, notes
+            FROM model_research_runs
+            ORDER BY id DESC
+            LIMIT 60
+            """
+        )
+        out["recent_runs"] = [
+            {
+                "id": int(r["id"]),
+                "created_at_utc": str(r["created_at_utc"]),
+                "model_name": r["model_name"],
+                "stage": r["stage"],
+                "objective_pnl_dollars": float(r["objective_pnl_dollars"]),
+                "n_train": int(r["n_train"]),
+                "n_eval": int(r["n_eval"]),
+                "status": r["status"],
+                "notes": r["notes"],
+            }
+            for r in cur.fetchall()
+        ]
+    conn.close()
+    return out
+
+
 def render_page(title: str, body_html: str) -> str:
     css = """
     @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
@@ -1071,6 +975,7 @@ def render_page(title: str, body_html: str) -> str:
     .grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:16px 0 22px}
     .grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:12px 0 0}
     .row4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+    .row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
     .card{background:linear-gradient(180deg,#112334 0%,#0e1b29 100%);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:0 14px 32px rgba(0,0,0,.25)}
     .k{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
     .v{font-size:26px;font-weight:700;margin-top:6px}
@@ -1091,9 +996,30 @@ def render_page(title: str, body_html: str) -> str:
     .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .metric-pos{color:#34d399}
     .metric-neg{color:#fb7185}
-    @media (max-width: 1000px){.grid{grid-template-columns:repeat(2,minmax(0,1fr));}.grid4{grid-template-columns:repeat(2,minmax(0,1fr));}.row4{grid-template-columns:repeat(2,minmax(0,1fr));}}
+    @media (max-width: 1000px){.grid{grid-template-columns:repeat(2,minmax(0,1fr));}.grid4{grid-template-columns:repeat(2,minmax(0,1fr));}.row4{grid-template-columns:repeat(2,minmax(0,1fr));}.row3{grid-template-columns:repeat(1,minmax(0,1fr));}}
     """
     js = """
+    function toUtcMs(v){
+      if(v==null) return null;
+      if(typeof v === 'number' && Number.isFinite(v)) return v;
+      let s=String(v).trim();
+      if(/^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$/.test(s)) s=s.replace(' ','T')+'Z';
+      else if(/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$/.test(s)) s=s+'Z';
+      const ms=Date.parse(s);
+      return Number.isFinite(ms) ? ms : null;
+    }
+    function fmtNy(v){
+      const ms = toUtcMs(v);
+      if(ms==null) return String(v??'');
+      const d = new Date(ms);
+      const txt = new Intl.DateTimeFormat('en-US', {
+        timeZone:'America/New_York',
+        year:'numeric', month:'2-digit', day:'2-digit',
+        hour:'2-digit', minute:'2-digit', second:'2-digit',
+        hour12:false
+      }).format(d).replace(',', '');
+      return `${txt} ET`;
+    }
     function drawLineChart(canvasId, seriesMap, key, colors, opts){
       const c = document.getElementById(canvasId);
       if(!c) return;
@@ -1208,6 +1134,39 @@ def render_page(title: str, body_html: str) -> str:
         }
       }
     }
+    function sliceAndRebaseSeries(byModelRaw, models, startTs, endTs){
+      const startMs=toUtcMs(startTs);
+      const endMs=toUtcMs(endTs);
+      const out={};
+      for(const m of models){
+        const src=(byModelRaw[m]||[]);
+        const seg=src.filter(p => {
+          const pms=toUtcMs(p.t);
+          if(pms==null) return false;
+          if(startMs!=null && pms < startMs) return false;
+          if(endMs!=null && pms >= endMs) return false;
+          return true;
+        });
+        if(seg.length===0) continue;
+        const baseEq=Number(seg[0].equity||0);
+        out[m]=seg.map(p => ({t:p.t, equity: 100 + (Number(p.equity||0) - baseEq)}));
+      }
+      return out;
+    }
+    function segmentRangeText(seriesMap){
+      let minT=null, maxT=null;
+      for(const k of Object.keys(seriesMap||{})){
+        const arr=seriesMap[k]||[];
+        if(arr.length===0) continue;
+        const s=arr[0].t, e=arr[arr.length-1].t;
+        const sms=toUtcMs(s), ems=toUtcMs(e);
+        if(sms==null || ems==null) continue;
+        if(minT===null || sms < minT) minT=sms;
+        if(maxT===null || ems > maxT) maxT=ems;
+      }
+      if(minT===null || maxT===null) return '(no data)';
+      return `(${fmtNy(minT)} → ${fmtNy(maxT)})`;
+    }
     function segmentTotals(rows){
       const out={closed:0,pnl:0,wins:0,preds:0,brierSum:0,brierN:0,loglossSum:0,loglossN:0};
       for(const r of (rows||[])){
@@ -1225,32 +1184,42 @@ def render_page(title: str, body_html: str) -> str:
       out.avg_logloss = out.loglossN>0 ? (out.loglossSum/out.loglossN) : null;
       return out;
     }
-    function renderSegmentSummary(d, models){
+    function renderSegmentSummary(d, models, currentBasisLabel, inSampleSeries, outSampleSeries){
       const pick = (arr)=> (arr||[]).filter(r=>models.includes(r.model_name));
       const segs=[
         ['in_sample','In-Sample', 'before live cutoff', pick(d.in_sample)],
-        ['out_of_sample','Out-of-Sample', 'from live cutoff to live-forward start', pick(d.out_of_sample)],
-        ['live_forward','Live-Forward', 'after live-forward start', pick(d.live_forward)]
+        ['out_of_sample','Out-of-Sample', 'from live cutoff onward', pick(d.out_of_sample)]
       ];
       const el=document.getElementById('sim_model_rows');
       if(!el) return;
       const blocks=[];
       for(const m of models){
         const cards=[]; 
-        const lfRow=(pick(d.live_forward)||[]).find(x=>x.model_name===m);
-        const lf=segmentTotals(lfRow?[lfRow]:[]);
-        const curEq=100 + Number(lf.pnl||0);
+        const oosRow=(pick(d.out_of_sample)||[]).find(x=>x.model_name===m);
+        const inRow=(pick(d.in_sample)||[]).find(x=>x.model_name===m);
+        const hasCutoff=!!d.live_cutoff_utc;
+        const curSeg = hasCutoff ? segmentTotals(oosRow ? [oosRow] : []) : segmentTotals(inRow ? [inRow] : []);
+        const oosArr=(outSampleSeries && outSampleSeries[m]) ? outSampleSeries[m] : [];
+        const insArr=(inSampleSeries && inSampleSeries[m]) ? inSampleSeries[m] : [];
+        const curEq = oosArr.length > 0
+          ? Number(oosArr[oosArr.length-1].equity||100)
+          : (insArr.length > 0 ? Number(insArr[insArr.length-1].equity||100) : (100 + Number(curSeg.pnl||0)));
+        const curPnl=curEq-100;
         const curRet=((curEq/100)-1)*100;
-        const curWr=(lf.win_rate==null?'N/A':`${(100*Number(lf.win_rate)).toFixed(1)}%`);
-        cards.push(`<div class='card'><div class='k'>${m} | Current (live-forward basis)</div><div class='v' style='font-size:20px'>$${curEq.toFixed(2)}</div><div class='muted'>ret ${curRet.toFixed(2)}% | closed ${lf.closed} | win ${curWr}</div></div>`);
+        const curWr=(curSeg.win_rate==null?'N/A':`${(100*Number(curSeg.win_rate)).toFixed(1)}%`);
+        const curBasis = currentBasisLabel || (hasCutoff ? 'since out-of-sample start' : 'since in-sample start');
+        cards.push(`<div class='card'><div class='k'>${m} | Current (${curBasis})</div><div class='v' style='font-size:20px'>PnL $${curPnl.toFixed(2)}</div><div class='muted'>equity $${curEq.toFixed(2)} | ret ${curRet.toFixed(2)}% | closed ${curSeg.closed} | win ${curWr}</div></div>`);
         for(const [key,label,scope,rows] of segs){
           const row=(rows||[]).find(x=>x.model_name===m);
           const one=row ? [row] : [];
           const s=segmentTotals(one);
+          const segMap = key === 'in_sample' ? (inSampleSeries||{}) : (outSampleSeries||{});
+          const segArr = segMap[m] || [];
+          const segPnl = segArr.length > 0 ? (Number(segArr[segArr.length-1].equity||100) - 100) : Number(s.pnl||0);
           const wr=(s.win_rate==null?'N/A':`${(100*s.win_rate).toFixed(1)}%`);
           const b=(s.avg_brier==null?'N/A':s.avg_brier.toFixed(4));
           const ll=(s.avg_logloss==null?'N/A':s.avg_logloss.toFixed(4));
-          cards.push(`<div class='card'><div class='k'>${m} | ${label}</div><div class='v' style='font-size:20px'>$${s.pnl.toFixed(2)}</div><div class='muted'>${scope}</div><div class='muted'>closed ${s.closed} | win ${wr} | preds ${s.preds} | brier ${b} | logloss ${ll}</div></div>`);
+          cards.push(`<div class='card'><div class='k'>${m} | ${label}</div><div class='v' style='font-size:20px'>$${segPnl.toFixed(2)}</div><div class='muted'>${scope}</div><div class='muted'>closed ${s.closed} | win ${wr} | preds ${s.preds} | brier ${b} | logloss ${ll}</div></div>`);
         }
         blocks.push(`<div style="margin-top:12px"><div class="bar" style="margin-bottom:8px"><div class="nav">${m}</div></div><div class="row4">${cards.join('')}</div></div>`);
       }
@@ -1278,22 +1247,37 @@ def render_page(title: str, body_html: str) -> str:
         const r=await fetch('/sim_metrics',{cache:'no-store'});
         if(!r.ok) return;
         const d=await r.json();
-        const fixedModels=['logistic','random_forest'];
+        const fixedModels=['naive_logistic_baseline','logistic','random_forest'];
         const byModelRaw=(d.equity_series_1m && Object.keys(d.equity_series_1m).length>0) ? d.equity_series_1m : (d.equity_series_20s||{});
-        const series={};
         const colors={};
         let idx=0;
         for(const m of fixedModels){
-          if(byModelRaw[m]){ series[m]=byModelRaw[m]; colors[m]=simColor(`sim:${m}`, idx++); }
+          if(byModelRaw[m]){ colors[m]=simColor(`sim:${m}`, idx++); }
         }
-        drawLineChart('equity_chart', series, 'equity', colors, {unit:'$', cutoff:d.live_cutoff_utc});
+        const inSampleSeries = sliceAndRebaseSeries(byModelRaw, fixedModels, null, d.live_cutoff_utc || null);
+        const outSampleSeries = sliceAndRebaseSeries(byModelRaw, fixedModels, d.live_cutoff_utc || null, null);
+        const hasCutoff = !!d.live_cutoff_utc;
+        const currentBasisLabel = hasCutoff ? 'since out-of-sample start' : 'since in-sample start';
+        if(Object.keys(inSampleSeries).length===0 && !d.live_cutoff_utc){
+          // Fallback for environments with no cutoff configured yet.
+          for(const m of fixedModels){
+            if(byModelRaw[m] && byModelRaw[m].length>0){
+              const baseEq = Number(byModelRaw[m][0].equity||0);
+              inSampleSeries[m]=byModelRaw[m].map(p => ({t:p.t, equity:100 + (Number(p.equity||0)-baseEq)}));
+            }
+          }
+        }
+        drawLineChart('equity_chart_in_sample', inSampleSeries, 'equity', colors, {unit:'$'});
+        drawLineChart('equity_chart_out_sample', outSampleSeries, 'equity', colors, {unit:'$'});
+        const rin=document.getElementById('range_in_sample'); if(rin) rin.textContent=segmentRangeText(inSampleSeries);
+        const roo=document.getElementById('range_out_sample'); if(roo) roo.textContent=segmentRangeText(outSampleSeries);
         const ddSel={};
         for(const m of fixedModels){ if((d.drawdown_series_20s||{})[m]) ddSel[m]=d.drawdown_series_20s[m]; }
         drawLineChart('drawdown_chart', ddSel, 'drawdown', colors, {cutoff:d.live_cutoff_utc});
         const basePicked=fixedModels;
         const model=(d.stack_series_20s&&d.stack_series_20s.logistic) ? 'logistic' : (Object.keys(d.stack_series_20s||{})[0]);
         if(model && d.stack_series_20s && d.stack_series_20s[model]) drawStackChart('stack_chart', d.stack_series_20s[model], 'cash', 'position', {cutoff:d.live_cutoff_utc});
-        renderSegmentSummary(d, basePicked);
+        renderSegmentSummary(d, basePicked, currentBasisLabel, inSampleSeries, outSampleSeries);
 
         renderRows('open_positions_body', (d.open_positions||[]).filter(r => basePicked.includes(r.model_name)), ['model_name','market_ticker','qty_contracts','entry_price','mark_bid','unrealized_pnl','opened_at_utc']);
         renderRows('trades_body', (d.recent_trades||[]).filter(r => basePicked.includes(r.model_name)).slice(0,30), ['id','model_name','market_ticker','opened_at_utc','closed_at_utc','qty_contracts','entry_price','exit_price','pnl','status','expected_entry','slippage','fill_mode']);
@@ -1301,29 +1285,54 @@ def render_page(title: str, body_html: str) -> str:
         renderRows('exec_body', (d.execution_quality||[]).filter(r => basePicked.includes(r.model_name)), ['model_name','n','avg_slippage','avg_abs_slippage']);
         renderRows('insample_body', (d.in_sample||[]).filter(r => basePicked.includes(r.model_name)), ['model_name','closed_trades','total_pnl','avg_pnl','win_rate','n_preds','avg_brier','avg_logloss']);
         renderRows('oos_body', (d.out_of_sample||[]).filter(r => basePicked.includes(r.model_name)), ['model_name','closed_trades','total_pnl','avg_pnl','win_rate','n_preds','avg_brier','avg_logloss']);
-        renderRows('model_lab_body', d.model_lab_latest||[], ['segment','variant_id','model_family','horizon_min','pred_threshold','edge_threshold','n_trades','total_pnl','win_rate','max_drawdown','brier','logloss','sharpe_like']);
         const cut=document.getElementById('sim_cutoff');
         if(cut){
-          if(d.live_cutoff_utc && d.live_forward_start_utc){
-            cut.textContent = `train/live cutoff: ${d.live_cutoff_utc} | live-forward start: ${d.live_forward_start_utc}`;
-          }else if(d.live_cutoff_utc){
-            cut.textContent = `train/live cutoff: ${d.live_cutoff_utc}`;
+          const runNote = d.recompute_in_progress ? ' | recompute in progress (charts temporarily partial)' : '';
+          if(d.live_cutoff_utc){
+            cut.textContent = `train/live cutoff: ${fmtNy(d.live_cutoff_utc)}${runNote}`;
           }else{
-            cut.textContent = 'cutoff not set';
-          }
-        }
-        const ml=document.getElementById('model_lab_meta');
-        if(ml){
-          if(d.model_lab_run && d.model_lab_run.run_time_utc){
-            ml.textContent = `latest model lab run: ${d.model_lab_run.run_time_utc} UTC`;
-          }else{
-            ml.textContent = 'model lab run pending';
+            cut.textContent = `cutoff not set${runNote}`;
           }
         }
         const lg=document.getElementById('sim_legend');
         if(lg){
-          lg.innerHTML = Object.keys(series).map((k,i)=>`<span class='pill' style='border-color:${colors[k]};color:${colors[k]}'>${k}</span>`).join(' ');
+          const known=fixedModels.filter(m => byModelRaw[m] && byModelRaw[m].length>0);
+          lg.innerHTML = known.map((k,i)=>`<span class='pill' style='border-color:${colors[k]};color:${colors[k]}'>${k}</span>`).join(' ');
         }
+        try{
+          const rr = await fetch('/model_research',{cache:'no-store'});
+          if(rr.ok){
+            const mr = await rr.json();
+            const hdr=document.getElementById('mr_last_run');
+            if(hdr){
+              const s=mr.last_run_state||{};
+              hdr.textContent = s.ran_at_utc ? `last run: ${fmtNy(s.ran_at_utc)} | cutoff: ${fmtNy(s.cutoff_utc)} | train ${s.train_rows||0} | eval ${s.eval_rows||0}` : 'no research run yet';
+            }
+            const bestBody=document.getElementById('mr_best_models_body');
+            if(bestBody){
+              bestBody.innerHTML = (mr.best_models||[]).map(x=>{
+                const m=x.metrics||{};
+                const p=JSON.stringify(x.params||{});
+                const feats=(x.selected_features||[]).join(', ');
+                return `<tr><td>${x.model_name}</td><td>${x.run_id}</td><td>${fmtNy(x.created_at_utc)}</td><td>${Number(x.objective_pnl_dollars||0).toFixed(2)}</td><td>${m.brier==null?'':Number(m.brier).toFixed(4)}</td><td>${m.logloss==null?'':Number(m.logloss).toFixed(4)}</td><td>${x.n_train}</td><td>${x.n_eval}</td><td style='max-width:320px;white-space:normal;word-break:break-word'>${p}</td><td style='max-width:380px;white-space:normal;word-break:break-word'>${feats}</td></tr>`;
+              }).join('');
+            }
+            const fiBody=document.getElementById('mr_feature_importance_body');
+            if(fiBody){
+              const rows=[];
+              for(const bm of (mr.best_models||[])){
+                for(const f of (bm.feature_importance||[]).slice(0,10)){
+                  rows.push(`<tr><td>${bm.model_name}</td><td>${bm.run_id}</td><td>${f.rank_order}</td><td>${f.feature_name}</td><td>${Number(f.importance_abs_mean||0).toFixed(6)}</td><td>${Number(f.importance_signed_mean||0).toFixed(6)}</td><td>${f.method||''}</td></tr>`);
+                }
+              }
+              fiBody.innerHTML = rows.join('');
+            }
+            const recentBody=document.getElementById('mr_recent_runs_body');
+            if(recentBody){
+              recentBody.innerHTML = (mr.recent_runs||[]).map(r=>`<tr><td>${r.id}</td><td>${fmtNy(r.created_at_utc)}</td><td>${r.model_name}</td><td>${r.stage}</td><td>${Number(r.objective_pnl_dollars||0).toFixed(2)}</td><td>${r.n_train}</td><td>${r.n_eval}</td><td>${r.status}</td><td>${r.notes||''}</td></tr>`).join('');
+            }
+          }
+        }catch(e){}
       }catch(e){}
     }
     async function refreshLiveMetrics(){
@@ -1405,7 +1414,7 @@ def render_page(title: str, body_html: str) -> str:
         }
         const latest = document.getElementById('latest-forward');
         if(latest && d.latest_forward){
-          latest.textContent = `last forward: ${d.latest_forward.snapshot_time_utc} | ${d.latest_forward.market_ticker} | ${d.latest_forward.status}`;
+          latest.textContent = `last forward: ${fmtNy(d.latest_forward.snapshot_time_utc)} | ${d.latest_forward.market_ticker} | ${d.latest_forward.status}`;
         }
         if(d.forward_health){
           const fh = d.forward_health;
@@ -1415,63 +1424,14 @@ def render_page(title: str, body_html: str) -> str:
           bind('fh_na_rate', `${fh.na_rate_pct}%`);
           bind('fh_gaps', Number(fh.gaps_missing_slots).toLocaleString());
           bind('fh_misaligned', Number(fh.misaligned_rows).toLocaleString());
-          bind('fh_last', fh.last_snapshot_time || 'N/A');
+          bind('fh_last', fh.last_snapshot_time ? fmtNy(fh.last_snapshot_time) : 'N/A');
         }
       }catch(e){}
     }
-    function fmt(x, d){
-      if(x===null || x===undefined || x==='') return '';
-      const n=Number(x); if(Number.isNaN(n)) return String(x);
-      return n.toFixed(d);
-    }
-    async function refreshModelLab(){
-      const root=document.getElementById('model-lab-root');
-      if(!root) return;
-      try{
-        const r=await fetch('/model_lab_metrics',{cache:'no-store'});
-        if(!r.ok) return;
-        const d=await r.json();
-        const seg=(document.getElementById('lab_seg')||{}).value||'all';
-        const sortKey=(document.getElementById('lab_sort')||{}).value||'total_pnl';
-        const rows=(d.rows||[]).filter(x=>seg==='all' ? true : x.segment===seg);
-        rows.sort((a,b)=>Number(b[sortKey]||0)-Number(a[sortKey]||0));
-        const top = rows.slice(0, 240).map(x=>({
-          ...x,
-          win_rate: x.win_rate==null ? '' : fmt(100*x.win_rate,1)+'%',
-          trade_rate: fmt(100*(x.trade_rate||0),2)+'%',
-          total_pnl: fmt(x.total_pnl,2),
-          avg_pnl: fmt(x.avg_pnl,3),
-          brier: x.brier==null?'':fmt(x.brier,4),
-          logloss: x.logloss==null?'':fmt(x.logloss,4),
-          max_drawdown: fmt(x.max_drawdown,2),
-          sharpe_like: x.sharpe_like==null?'':fmt(x.sharpe_like,3),
-        }));
-        renderRows('lab_rows', top, ['segment','variant_id','model_family','horizon_min','pred_threshold','edge_threshold','n_samples','n_trades','trade_rate','win_rate','total_pnl','avg_pnl','brier','logloss','max_drawdown','sharpe_like']);
-        const meta=document.getElementById('lab_meta');
-        if(meta){
-          const rr=d.latest_run||{};
-          meta.textContent = rr.run_time_utc ? `run ${rr.run_id} | ${rr.run_time_utc} UTC | samples ${rr.sample_rows}` : 'no model-lab run yet';
-        }
-        const champ=document.getElementById('lab_champion');
-        if(champ){
-          const c=d.champion||{};
-          if(c.variant_id){
-            const wr=(c.win_rate==null?'N/A':(100*Number(c.win_rate)).toFixed(1)+'%');
-            champ.innerHTML = `<div class='card'><div class='k'>Champion</div><div class='v' style='font-size:18px'>${c.variant_id}</div><div class='muted'>${c.segment} | h=${c.horizon_min} | pnl ${fmt(c.total_pnl,2)} | win ${wr} | obj ${fmt(c.objective,3)}</div></div>`;
-          }else{
-            champ.innerHTML = `<div class='card'><div class='k'>Champion</div><div class='v' style='font-size:16px'>pending</div></div>`;
-          }
-        }
-      }catch(e){}
-    }
-    document.addEventListener('change', (e)=>{
-      if(e.target && (e.target.id==='lab_seg' || e.target.id==='lab_sort')){ refreshModelLab(); }
-    });
     setInterval(refreshHealth, 10000);
     setInterval(refreshSimMetrics, 10000);
     setInterval(refreshLiveMetrics, 10000);
-    setInterval(refreshModelLab, 15000);
-    window.addEventListener('load', ()=>{ refreshHealth(); refreshSimMetrics(); refreshLiveMetrics(); refreshModelLab(); });
+    window.addEventListener('load', ()=>{ refreshHealth(); refreshSimMetrics(); refreshLiveMetrics(); });
     """
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1537,6 +1497,16 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         parsed = urlparse(self.path)
+        if parsed.path == "/model_research":
+            payload = model_research_summary()
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if parsed.path == "/live_unlock":
             qs = parse_qs(parsed.query)
             pw = qs.get("password", [""])[0]
@@ -1574,7 +1544,6 @@ class Handler(BaseHTTPRequestHandler):
                 "<div class='table-links'>"
                 "<a class='pill' href='/?tab=data-pipeline'>data pipeline</a>"
                 "<a class='pill' href='/?tab=simulated-trading'>simulated trading</a>"
-                "<a class='pill' href='/?tab=model-lab'>model lab</a>"
                 "<a class='pill' href='/?tab=live-trading'>live trading</a>"
                 "</div></div>"
             )
@@ -1584,7 +1553,7 @@ class Handler(BaseHTTPRequestHandler):
                 <div class="top">
                   <div>
                     <h1 class="title">Simulated Trading</h1>
-                    <div class="sub">Historical backtest + live-forward simulation with regime-aware diagnostics.</div>
+                    <div class="sub">Historical backtest with fixed-model in-sample vs out-of-sample evaluation.</div>
                   </div>
                   <div class="sub">Auth user: <b>{html.escape(AUTH_USER)}</b></div>
                 </div>
@@ -1597,9 +1566,12 @@ class Handler(BaseHTTPRequestHandler):
                 </div>
                 <div id="sim_model_rows" style="margin-top:12px"></div>
                 <div class="panel" style="margin-top:12px">
-                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Portfolio Equity (historical + live)</a></div></div>
+                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Portfolio Equity (Segmented, each starts at $100)</a></div></div>
                   <div id="sim_legend" class="toolbar" style="margin-bottom:8px"></div>
-                  <canvas id="equity_chart" width="1120" height="260" style="width:100%;height:260px"></canvas>
+                  <div class="muted" style="margin-bottom:6px">In-Sample <span id="range_in_sample"></span></div>
+                  <canvas id="equity_chart_in_sample" width="1120" height="220" style="width:100%;height:220px"></canvas>
+                  <div class="muted" style="margin:10px 0 6px 0">Out-of-Sample <span id="range_out_sample"></span></div>
+                  <canvas id="equity_chart_out_sample" width="1120" height="220" style="width:100%;height:220px"></canvas>
                 </div>
                 <div class="panel" style="margin-top:12px">
                   <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Cash vs Position Value (20s)</a></div></div>
@@ -1652,15 +1624,24 @@ class Handler(BaseHTTPRequestHandler):
                   </div>
                 </div>
                 <div class="panel" style="margin-top:12px">
-                  <div class="bar">
-                    <div class="nav"><a href="/?tab=simulated-trading">Model Lab Leaderboard (hourly retrain/scan)</a></div>
-                    <div id="model_lab_meta" class="muted">model lab run pending</div>
+                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Model Research (Hyper-Tuned + Shapley Selection)</a></div><div id="mr_last_run" class="muted">loading...</div></div>
+                  <div style="overflow:auto;max-height:30vh">
+                    <table><thead><tr><th>model</th><th>run id</th><th>run time</th><th>oos pnl</th><th>brier</th><th>logloss</th><th>train</th><th>eval</th><th>params</th><th>selected features</th></tr></thead>
+                    <tbody id="mr_best_models_body"></tbody></table>
                   </div>
-                  <div style="overflow:auto;max-height:32vh">
-                    <table>
-                      <thead><tr><th>segment</th><th>variant</th><th>family</th><th>horizon</th><th>p_thr</th><th>e_thr</th><th>trades</th><th>total pnl</th><th>win rate</th><th>max dd</th><th>brier</th><th>logloss</th><th>sharpe*</th></tr></thead>
-                      <tbody id="model_lab_body"></tbody>
-                    </table>
+                </div>
+                <div class="panel" style="margin-top:12px">
+                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Feature Importance (Best Models)</a></div></div>
+                  <div style="overflow:auto;max-height:26vh">
+                    <table><thead><tr><th>model</th><th>run id</th><th>rank</th><th>feature</th><th>|shap| mean</th><th>signed mean</th><th>method</th></tr></thead>
+                    <tbody id="mr_feature_importance_body"></tbody></table>
+                  </div>
+                </div>
+                <div class="panel" style="margin-top:12px">
+                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Research Runs (Recent)</a></div></div>
+                  <div style="overflow:auto;max-height:24vh">
+                    <table><thead><tr><th>id</th><th>time</th><th>model</th><th>stage</th><th>oos pnl</th><th>train</th><th>eval</th><th>status</th><th>notes</th></tr></thead>
+                    <tbody id="mr_recent_runs_body"></tbody></table>
                   </div>
                 </div>
                 </div>
@@ -1721,51 +1702,6 @@ class Handler(BaseHTTPRequestHandler):
                 </div>
                 """
                 self._send(render_page("Live Trading", body))
-                return
-
-            if tab == "model-lab":
-                body = f"""
-                <div class="top">
-                  <div>
-                    <h1 class="title">Model Lab</h1>
-                    <div class="sub">Hourly walk-forward experiment engine across model families, horizons, and thresholds.</div>
-                  </div>
-                  <div class="sub">Auth user: <b>{html.escape(AUTH_USER)}</b></div>
-                </div>
-                {tabs}
-                <div id="model-lab-root">
-                  <div id="lab_champion" class="grid4"></div>
-                  <div class="panel" style="margin-top:12px">
-                    <div class="bar">
-                      <div id="lab_meta" class="muted">loading...</div>
-                      <div class="toolbar">
-                        <label class="muted">segment</label>
-                        <select id="lab_seg">
-                          <option value="all">all</option>
-                          <option value="live_forward">live_forward</option>
-                          <option value="out_of_sample">out_of_sample</option>
-                          <option value="in_sample">in_sample</option>
-                        </select>
-                        <label class="muted">sort</label>
-                        <select id="lab_sort">
-                          <option value="total_pnl">total_pnl</option>
-                          <option value="sharpe_like">sharpe_like</option>
-                          <option value="win_rate">win_rate</option>
-                          <option value="n_trades">n_trades</option>
-                          <option value="brier">brier</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div style="overflow:auto;max-height:70vh">
-                      <table>
-                        <thead><tr><th>segment</th><th>variant</th><th>family</th><th>horizon</th><th>p_thr</th><th>e_thr</th><th>samples</th><th>trades</th><th>trade rate</th><th>win</th><th>total pnl</th><th>avg pnl</th><th>brier</th><th>logloss</th><th>max dd</th><th>sharpe*</th></tr></thead>
-                        <tbody id="lab_rows"></tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-                """
-                self._send(render_page("Model Lab", body))
                 return
 
             body = f"""
@@ -1879,14 +1815,6 @@ class Handler(BaseHTTPRequestHandler):
 
         if parsed.path == "/sim_metrics":
             data = sim_metrics()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(json.dumps(data).encode("utf-8"))
-            return
-
-        if parsed.path == "/model_lab_metrics":
-            data = model_lab_metrics()
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()

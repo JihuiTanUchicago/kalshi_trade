@@ -65,6 +65,9 @@ These instructions apply to contributors and coding agents working on strategies
 - If required data is missing, proactively propose practical data-acquisition paths and identify what support is needed from the repo owner.
 - After implementing a strategy, include comprehensive strategy documentation. Prefer diagrams/graphs to explain architecture and signal flow.
 
+### TODOs
+- Put things in TODOs you feel necessary to improve the current trading infrastructure for scalability, separate of concerns, and other best engineering and quantitative trading standards. You should organize and categorize the todos by the nature of the tasks.
+
 ### Engineering Standards
 - Enforce DRY aggressively; flag duplication early.
 - Keep code "engineered enough": avoid both fragile hacks and premature complexity.

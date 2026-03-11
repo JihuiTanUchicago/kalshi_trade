@@ -23,15 +23,25 @@ def fetch_open_kxbtc15m_markets() -> List[Dict]:
 
 def choose_active_market(markets: List[Dict]) -> Optional[Dict]:
     now = utc_now()
-    candidates = []
+    in_window = []
+    fallback = []
     for m in markets:
-        et = parse_iso_to_dt(m.get('expected_expiration_time') or m.get('close_time'))
-        if et and et >= now:
-            candidates.append((et, m))
-    if not candidates:
-        return None
-    candidates.sort(key=lambda x: x[0])
-    return candidates[0][1]
+        open_t = parse_iso_to_dt(m.get('open_time'))
+        close_t = parse_iso_to_dt(m.get('close_time'))
+        exp_t = parse_iso_to_dt(m.get('expected_expiration_time'))
+        if open_t and close_t and open_t <= now < close_t:
+            in_window.append((close_t, m))
+        elif close_t and close_t >= now:
+            fallback.append((close_t, m))
+        elif exp_t and exp_t >= now:
+            fallback.append((exp_t, m))
+    if in_window:
+        in_window.sort(key=lambda x: x[0])
+        return in_window[0][1]
+    if fallback:
+        fallback.sort(key=lambda x: x[0])
+        return fallback[0][1]
+    return None
 
 
 def compute_quote_change_events(cur, ticker: str, end_minute) -> int:

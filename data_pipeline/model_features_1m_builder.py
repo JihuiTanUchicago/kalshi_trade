@@ -64,7 +64,79 @@ def compute_std(values: List[float]) -> Optional[float]:
     return math.sqrt(var)
 
 
-def build_row(cur, minute_mark: datetime) -> Dict[str, Any]:
+def _to_json_obj(value: Any) -> Dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            obj = json.loads(value)
+            return obj if isinstance(obj, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
+def _target_from_market_raw(raw: Dict[str, Any]) -> Optional[float]:
+    floor = raw.get("floor_strike")
+    strike = raw.get("strike_price")
+    if floor is not None:
+        return to_float(floor)
+    if strike is not None:
+        return to_float(strike)
+    return None
+
+
+def _resolve_target_btc_price(
+    cur,
+    ticker: Optional[str],
+    event_ticker: Optional[str],
+    minute_mark: datetime,
+    target_cache: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    minute_naive = minute_mark.replace(tzinfo=None)
+    if not ticker:
+        return {"target_btc_price": None, "target_source": "missing_ticker", "close_time": None}
+
+    if target_cache is not None:
+        cached = target_cache.get(ticker)
+        if cached:
+            close_t = cached.get("close_time")
+            cache_event = cached.get("event_ticker")
+            if close_t and minute_naive < close_t and (not event_ticker or not cache_event or cache_event == event_ticker):
+                return {
+                    "target_btc_price": cached.get("target_btc_price"),
+                    "target_source": "cache",
+                    "close_time": close_t,
+                }
+
+    cur.execute(
+        """
+        SELECT close_time, raw_json
+        FROM markets
+        WHERE ticker=%s
+        LIMIT 1
+        """,
+        (ticker,),
+    )
+    m = cur.fetchone()
+    if not m:
+        return {"target_btc_price": None, "target_source": "markets_missing", "close_time": None}
+
+    close_t = m.get("close_time")
+    raw = _to_json_obj(m.get("raw_json"))
+    target = _target_from_market_raw(raw)
+    source = "floor_strike" if raw.get("floor_strike") is not None else ("strike_price" if raw.get("strike_price") is not None else "missing")
+
+    if target_cache is not None:
+        target_cache[ticker] = {
+            "target_btc_price": target,
+            "close_time": close_t,
+            "event_ticker": event_ticker,
+        }
+    return {"target_btc_price": target, "target_source": source, "close_time": close_t}
+
+
+def build_row(cur, minute_mark: datetime, target_cache: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, Any]:
     cur.execute(
         """
         SELECT snapshot_minute_utc, market_ticker, event_ticker, trades_last_60s_count, trades_last_60s_volume_fp,
@@ -89,6 +161,7 @@ def build_row(cur, minute_mark: datetime) -> Dict[str, Any]:
             "snapshot_minute_utc": minute_mark,
             "market_ticker": None,
             "event_ticker": None,
+            "target_btc_price": None,
             "guard_status": guard_status,
             "guard_reasons": guard_reasons,
             "model_eligible": model_eligible,
@@ -156,6 +229,9 @@ def build_row(cur, minute_mark: datetime) -> Dict[str, Any]:
     if c0 and c0.get("snapshot_time_utc"):
         coinbase_age = int((minute_mark.replace(tzinfo=None) - c0["snapshot_time_utc"]).total_seconds())
 
+    target_info = _resolve_target_btc_price(cur, ticker, event_ticker, minute_mark, target_cache)
+    target_btc_price = target_info.get("target_btc_price")
+
     cur.execute("SELECT close_time FROM markets WHERE ticker=%s LIMIT 1", (ticker,))
     m = cur.fetchone()
     tte = None
@@ -186,6 +262,7 @@ def build_row(cur, minute_mark: datetime) -> Dict[str, Any]:
         "snapshot_minute_utc": minute_mark,
         "market_ticker": ticker,
         "event_ticker": event_ticker,
+        "target_btc_price": target_btc_price,
         "yes_bid_dollars": yes_bid,
         "yes_ask_dollars": yes_ask,
         "spread_dollars": spread,
@@ -214,6 +291,8 @@ def build_row(cur, minute_mark: datetime) -> Dict[str, Any]:
             "trade_quote": tq,
             "forward_asof": f0,
             "coinbase_asof": c0,
+            "target_source": target_info.get("target_source"),
+            "target_close_time": target_info.get("close_time").isoformat() if target_info.get("close_time") else None,
             "guard_reasons": guard_reasons,
         },
     }
@@ -223,13 +302,13 @@ def upsert_row(cur, row: Dict[str, Any]) -> None:
     cur.execute(
         """
         INSERT INTO model_features_1m
-        (snapshot_minute_utc,market_ticker,event_ticker,yes_bid_dollars,yes_ask_dollars,spread_dollars,mid_dollars,
+        (snapshot_minute_utc,market_ticker,event_ticker,target_btc_price,yes_bid_dollars,yes_ask_dollars,spread_dollars,mid_dollars,
          yes_bid_size_fp,yes_ask_size_fp,orderbook_imbalance,mid_ret_1m,mid_ret_3m,trades_last_60s_count,trades_last_60s_volume_fp,
          trades_last_60s_vwap_yes,quote_change_events_60s,time_to_expiry_sec,cb_price,cb_ret_1m,cb_ret_3m,cb_ret_5m,cb_vol_5m,
          kalshi_data_age_sec,coinbase_data_age_sec,model_eligible,guard_status,guard_reasons_json,raw_json)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         ON DUPLICATE KEY UPDATE
-          market_ticker=VALUES(market_ticker), event_ticker=VALUES(event_ticker),
+          market_ticker=VALUES(market_ticker), event_ticker=VALUES(event_ticker), target_btc_price=VALUES(target_btc_price),
           yes_bid_dollars=VALUES(yes_bid_dollars), yes_ask_dollars=VALUES(yes_ask_dollars),
           spread_dollars=VALUES(spread_dollars), mid_dollars=VALUES(mid_dollars),
           yes_bid_size_fp=VALUES(yes_bid_size_fp), yes_ask_size_fp=VALUES(yes_ask_size_fp), orderbook_imbalance=VALUES(orderbook_imbalance),
@@ -246,6 +325,7 @@ def upsert_row(cur, row: Dict[str, Any]) -> None:
             row["snapshot_minute_utc"].replace(tzinfo=None),
             row.get("market_ticker"),
             row.get("event_ticker"),
+            row.get("target_btc_price"),
             row.get("yes_bid_dollars"),
             row.get("yes_ask_dollars"),
             row.get("spread_dollars"),
@@ -277,6 +357,7 @@ def upsert_row(cur, row: Dict[str, Any]) -> None:
 
 def run_loop() -> None:
     conn = get_db_conn()
+    target_cache: Dict[str, Dict[str, Any]] = {}
     with conn.cursor() as cur:
         print("model_features_1m builder started. Writing minute-sharp rows (+5s).")
         while True:
@@ -284,7 +365,7 @@ def run_loop() -> None:
             time.sleep(max(0.0, (wake - utc_now()).total_seconds()))
             minute_mark = wake.replace(second=0, microsecond=0)
             try:
-                row = build_row(cur, minute_mark)
+                row = build_row(cur, minute_mark, target_cache)
                 upsert_row(cur, row)
                 cur.execute(
                     """
