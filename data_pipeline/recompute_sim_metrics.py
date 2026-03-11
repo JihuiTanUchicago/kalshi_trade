@@ -5,11 +5,13 @@ import numpy as np
 
 from data_pipeline.common import get_db_conn, utc_now
 from data_pipeline.simulated_trading_engine import (
+    ALL_MODELS,
     BASELINE_IDX,
     EDGE_THRESHOLD,
-    MODELS,
+    FROZEN_MODELS,
     ModelOutput,
     PRED_THRESHOLD,
+    train_walk_forward_outputs,
     build_feature_vector,
     close_existing_position,
     choose_effective_cutoff,
@@ -66,11 +68,12 @@ def recompute() -> None:
                 now_ts = to_minute_ts(latest["snapshot_minute_utc"])
                 x_latest = np.asarray(build_feature_vector(latest), dtype=float)
 
-                for model_name in MODELS:
+                outputs = {}
+                for model_name in FROZEN_MODELS:
                     fm = frozen[model_name]
                     px = x_latest if model_name != "naive_logistic_baseline" else x_latest[list(BASELINE_IDX)]
                     prob = float(fm.estimator.predict_proba([px])[0, 1])
-                    out = ModelOutput(
+                    outputs[model_name] = ModelOutput(
                         prob=prob,
                         train_rows=fm.train_rows,
                         test_rows=fm.test_rows,
@@ -78,6 +81,11 @@ def recompute() -> None:
                         ll=fm.ll,
                         rf_regime=fm.rf_regime,
                     )
+
+                outputs.update(train_walk_forward_outputs(rows, latest["snapshot_minute_utc"], x_latest))
+
+                for model_name in ALL_MODELS:
+                    out = outputs[model_name]
                     signal = 1 if out.prob >= PRED_THRESHOLD else 0
                     edge = out.prob - float(latest.get("yes_ask_dollars") or 0.0)
                     upsert_prediction(cur, now_ts, model_name, latest, out, signal, edge)

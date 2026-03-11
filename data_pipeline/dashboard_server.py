@@ -1134,6 +1134,17 @@ def render_page(title: str, body_html: str) -> str:
         }
       }
     }
+    function computeDrawdownSeriesFromEquity(series){
+      if(!series || series.length===0) return [];
+      let peak = Number(series[0].equity||0);
+      const out=[];
+      for(const p of series){
+        const eq = Number(p.equity||0);
+        if(eq > peak) peak = eq;
+        out.push({t:p.t, drawdown:eq - peak});
+      }
+      return out;
+    }
     function sliceAndRebaseSeries(byModelRaw, models, startTs, endTs){
       const startMs=toUtcMs(startTs);
       const endMs=toUtcMs(endTs);
@@ -1152,6 +1163,19 @@ def render_page(title: str, body_html: str) -> str:
         out[m]=seg.map(p => ({t:p.t, equity: 100 + (Number(p.equity||0) - baseEq)}));
       }
       return out;
+    }
+    function rebaseWholeSeries(byModelRaw, models){
+      const out={};
+      for(const m of models){
+        const src=(byModelRaw[m]||[]);
+        if(src.length===0) continue;
+        const baseEq=Number(src[0].equity||0);
+        out[m]=src.map(p => ({t:p.t, equity: 100 + (Number(p.equity||0) - baseEq)}));
+      }
+      return out;
+    }
+    function isWalkForwardModel(m){
+      return String(m||'').startsWith('walk_forward_');
     }
     function segmentRangeText(seriesMap){
       let minT=null, maxT=null;
@@ -1186,19 +1210,20 @@ def render_page(title: str, body_html: str) -> str:
     }
     function renderSegmentSummary(d, models, currentBasisLabel, inSampleSeries, outSampleSeries){
       const pick = (arr)=> (arr||[]).filter(r=>models.includes(r.model_name));
-      const segs=[
-        ['in_sample','In-Sample', 'before live cutoff', pick(d.in_sample)],
-        ['out_of_sample','Out-of-Sample', 'from live cutoff onward', pick(d.out_of_sample)]
-      ];
+      const inRows=pick(d.in_sample);
+      const oosRows=pick(d.out_of_sample);
       const el=document.getElementById('sim_model_rows');
       if(!el) return;
       const blocks=[];
       for(const m of models){
         const cards=[]; 
-        const oosRow=(pick(d.out_of_sample)||[]).find(x=>x.model_name===m);
-        const inRow=(pick(d.in_sample)||[]).find(x=>x.model_name===m);
+        const oosRow=(oosRows||[]).find(x=>x.model_name===m);
+        const inRow=(inRows||[]).find(x=>x.model_name===m);
         const hasCutoff=!!d.live_cutoff_utc;
-        const curSeg = hasCutoff ? segmentTotals(oosRow ? [oosRow] : []) : segmentTotals(inRow ? [inRow] : []);
+        const isWF=isWalkForwardModel(m);
+        const curSeg = isWF
+          ? segmentTotals([...(inRow?[inRow]:[]), ...(oosRow?[oosRow]:[])])
+          : (hasCutoff ? segmentTotals(oosRow ? [oosRow] : []) : segmentTotals(inRow ? [inRow] : []));
         const oosArr=(outSampleSeries && outSampleSeries[m]) ? outSampleSeries[m] : [];
         const insArr=(inSampleSeries && inSampleSeries[m]) ? inSampleSeries[m] : [];
         const curEq = oosArr.length > 0
@@ -1207,11 +1232,21 @@ def render_page(title: str, body_html: str) -> str:
         const curPnl=curEq-100;
         const curRet=((curEq/100)-1)*100;
         const curWr=(curSeg.win_rate==null?'N/A':`${(100*Number(curSeg.win_rate)).toFixed(1)}%`);
-        const curBasis = currentBasisLabel || (hasCutoff ? 'since out-of-sample start' : 'since in-sample start');
+        const curBasis = isWF
+          ? 'full walk-forward history'
+          : (currentBasisLabel || (hasCutoff ? 'since out-of-sample start' : 'since in-sample start'));
         cards.push(`<div class='card'><div class='k'>${m} | Current (${curBasis})</div><div class='v' style='font-size:20px'>PnL $${curPnl.toFixed(2)}</div><div class='muted'>equity $${curEq.toFixed(2)} | ret ${curRet.toFixed(2)}% | closed ${curSeg.closed} | win ${curWr}</div></div>`);
+        const segs = isWF
+          ? [
+              ['in_sample','Warmup', 'pre-walk-forward warmup', []],
+              ['out_of_sample','Walk-Forward OOS', 'all walk-forward predictions/trades', [...(inRow?[inRow]:[]), ...(oosRow?[oosRow]:[])]],
+            ]
+          : [
+              ['in_sample','In-Sample', 'before live cutoff', inRow ? [inRow] : []],
+              ['out_of_sample','Out-of-Sample', 'from live cutoff onward', oosRow ? [oosRow] : []],
+            ];
         for(const [key,label,scope,rows] of segs){
-          const row=(rows||[]).find(x=>x.model_name===m);
-          const one=row ? [row] : [];
+          const one=rows||[];
           const s=segmentTotals(one);
           const segMap = key === 'in_sample' ? (inSampleSeries||{}) : (outSampleSeries||{});
           const segArr = segMap[m] || [];
@@ -1247,15 +1282,22 @@ def render_page(title: str, body_html: str) -> str:
         const r=await fetch('/sim_metrics',{cache:'no-store'});
         if(!r.ok) return;
         const d=await r.json();
-        const fixedModels=['naive_logistic_baseline','logistic','random_forest'];
+        const fixedModels=['naive_logistic_baseline','logistic','random_forest','walk_forward_logistic','walk_forward_random_forest'];
         const byModelRaw=(d.equity_series_1m && Object.keys(d.equity_series_1m).length>0) ? d.equity_series_1m : (d.equity_series_20s||{});
         const colors={};
         let idx=0;
         for(const m of fixedModels){
           if(byModelRaw[m]){ colors[m]=simColor(`sim:${m}`, idx++); }
         }
-        const inSampleSeries = sliceAndRebaseSeries(byModelRaw, fixedModels, null, d.live_cutoff_utc || null);
-        const outSampleSeries = sliceAndRebaseSeries(byModelRaw, fixedModels, d.live_cutoff_utc || null, null);
+        const frozenModels=fixedModels.filter(m => !isWalkForwardModel(m));
+        const wfModels=fixedModels.filter(m => isWalkForwardModel(m));
+        const inSampleSeries = {
+          ...sliceAndRebaseSeries(byModelRaw, frozenModels, null, d.live_cutoff_utc || null),
+        };
+        const outSampleSeries = {
+          ...sliceAndRebaseSeries(byModelRaw, frozenModels, d.live_cutoff_utc || null, null),
+          ...rebaseWholeSeries(byModelRaw, wfModels),
+        };
         const hasCutoff = !!d.live_cutoff_utc;
         const currentBasisLabel = hasCutoff ? 'since out-of-sample start' : 'since in-sample start';
         if(Object.keys(inSampleSeries).length===0 && !d.live_cutoff_utc){
@@ -1271,12 +1313,40 @@ def render_page(title: str, body_html: str) -> str:
         drawLineChart('equity_chart_out_sample', outSampleSeries, 'equity', colors, {unit:'$'});
         const rin=document.getElementById('range_in_sample'); if(rin) rin.textContent=segmentRangeText(inSampleSeries);
         const roo=document.getElementById('range_out_sample'); if(roo) roo.textContent=segmentRangeText(outSampleSeries);
-        const ddSel={};
-        for(const m of fixedModels){ if((d.drawdown_series_20s||{})[m]) ddSel[m]=d.drawdown_series_20s[m]; }
-        drawLineChart('drawdown_chart', ddSel, 'drawdown', colors, {cutoff:d.live_cutoff_utc});
         const basePicked=fixedModels;
-        const model=(d.stack_series_20s&&d.stack_series_20s.logistic) ? 'logistic' : (Object.keys(d.stack_series_20s||{})[0]);
-        if(model && d.stack_series_20s && d.stack_series_20s[model]) drawStackChart('stack_chart', d.stack_series_20s[model], 'cash', 'position', {cutoff:d.live_cutoff_utc});
+        let focusModel=null;
+        const opens=(d.open_positions||[]);
+        for(const m of fixedModels){
+          if(opens.some(r => r.model_name===m)){ focusModel=m; break; }
+        }
+        if(!focusModel){
+          for(const m of fixedModels){
+            if((d.stack_series_20s||{})[m] && (d.stack_series_20s[m]||[]).length>0){ focusModel=m; break; }
+          }
+        }
+        if(!focusModel){
+          const ks=Object.keys(d.stack_series_20s||{});
+          focusModel=ks.length?ks[0]:null;
+        }
+        if(focusModel && d.stack_series_20s && d.stack_series_20s[focusModel]){
+          drawStackChart('stack_chart', d.stack_series_20s[focusModel], 'cash', 'position', {cutoff:d.live_cutoff_utc});
+        }else{
+          drawStackChart('stack_chart', [], 'cash', 'position', {cutoff:d.live_cutoff_utc});
+        }
+        const ddSel={};
+        if(focusModel && d.equity_series_20s && d.equity_series_20s[focusModel]){
+          const dd = computeDrawdownSeriesFromEquity(d.equity_series_20s[focusModel]);
+          if(dd.length>0) ddSel[focusModel]=dd;
+        }
+        if(Object.keys(ddSel).length===0 && focusModel && d.drawdown_series_20s && d.drawdown_series_20s[focusModel]){
+          ddSel[focusModel]=d.drawdown_series_20s[focusModel];
+        }
+        const ddColors = focusModel ? {[focusModel]: (colors[focusModel] || '#22d3ee')} : {};
+        drawLineChart('drawdown_chart', ddSel, 'drawdown', ddColors, {cutoff:d.live_cutoff_utc});
+        const stNote=document.getElementById('sim_stack_model');
+        if(stNote) stNote.textContent = focusModel ? `model: ${focusModel}` : 'model: N/A';
+        const ddNote=document.getElementById('sim_drawdown_model');
+        if(ddNote) ddNote.textContent = focusModel ? `model: ${focusModel}` : 'model: N/A';
         renderSegmentSummary(d, basePicked, currentBasisLabel, inSampleSeries, outSampleSeries);
 
         renderRows('open_positions_body', (d.open_positions||[]).filter(r => basePicked.includes(r.model_name)), ['model_name','market_ticker','qty_contracts','entry_price','mark_bid','unrealized_pnl','opened_at_utc']);
@@ -1574,11 +1644,11 @@ class Handler(BaseHTTPRequestHandler):
                   <canvas id="equity_chart_out_sample" width="1120" height="220" style="width:100%;height:220px"></canvas>
                 </div>
                 <div class="panel" style="margin-top:12px">
-                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Cash vs Position Value (20s)</a></div></div>
+                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Cash vs Position Value (20s)</a></div><div class="muted" id="sim_stack_model"></div></div>
                   <canvas id="stack_chart" width="1120" height="220" style="width:100%;height:220px"></canvas>
                 </div>
                 <div class="panel" style="margin-top:12px">
-                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Drawdown (20s)</a></div></div>
+                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Drawdown (20s)</a></div><div class="muted" id="sim_drawdown_model"></div></div>
                   <canvas id="drawdown_chart" width="1120" height="180" style="width:100%;height:180px"></canvas>
                 </div>
                 <div class="panel" style="margin-top:12px">

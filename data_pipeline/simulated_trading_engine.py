@@ -23,12 +23,16 @@ from data_pipeline.modeling_features import (
     has_target,
 )
 
-MODELS = ("naive_logistic_baseline", "logistic", "random_forest")
+FROZEN_MODELS = ("naive_logistic_baseline", "logistic", "random_forest")
+WALK_FORWARD_MODELS = ("walk_forward_logistic", "walk_forward_random_forest")
+ALL_MODELS = FROZEN_MODELS + WALK_FORWARD_MODELS
 MIN_SAMPLES_DEFAULT_RF = 1000
 PRED_THRESHOLD = 0.55
 EDGE_THRESHOLD = 0.01
 MAX_QTY = 10
 MIN_INSAMPLE_HOURS = 48
+WF_LOOKBACK_HOURS = 72
+WF_MIN_SAMPLES = 120
 # L1 regularization strength for logistic models.
 # sklearn uses C = 1 / lambda, so lambda=2.0 => C=0.5.
 LOGREG_L1_C = 0.5
@@ -386,6 +390,33 @@ def fit_frozen_models(rows: List[Dict], cutoff_utc: Optional[datetime]) -> Dict[
             ll=rf_ll,
             rf_regime=rf_regime,
         ),
+    }
+
+
+def train_walk_forward_outputs(rows: List[Dict], now_ts: datetime, x_latest: np.ndarray) -> Dict[str, ModelOutput]:
+    lookback_start = now_ts - timedelta(hours=WF_LOOKBACK_HOURS)
+    train_rows = [r for r in rows if r.get("snapshot_minute_utc") and (lookback_start <= r["snapshot_minute_utc"] < now_ts)]
+    X, y = build_supervised(train_rows)
+    if len(X) < WF_MIN_SAMPLES:
+        neutral = ModelOutput(prob=0.5, train_rows=len(X), test_rows=0, brier=None, ll=None, rf_regime="wf_cold_start")
+        return {
+            "walk_forward_logistic": neutral,
+            "walk_forward_random_forest": ModelOutput(
+                prob=0.5, train_rows=len(X), test_rows=0, brier=None, ll=None, rf_regime="wf_cold_start"
+            ),
+        }
+    train_X, train_y, test_X, test_y = split_train_test(X, y)
+    if len(train_X) < 20:
+        neutral = ModelOutput(prob=0.5, train_rows=len(train_X), test_rows=len(test_X), brier=None, ll=None, rf_regime="wf_small_train")
+        return {
+            "walk_forward_logistic": neutral,
+            "walk_forward_random_forest": ModelOutput(
+                prob=0.5, train_rows=len(train_X), test_rows=len(test_X), brier=None, ll=None, rf_regime="wf_small_train"
+            ),
+        }
+    return {
+        "walk_forward_logistic": train_logistic(train_X, train_y, test_X, test_y, x_latest),
+        "walk_forward_random_forest": train_rf(train_X, train_y, test_X, test_y, x_latest),
     }
 
 
@@ -785,7 +816,7 @@ def run_loop() -> None:
                     continue
                 x_latest = np.asarray(build_feature_vector(latest), dtype=float)
                 outputs: Dict[str, ModelOutput] = {}
-                for model_name in MODELS:
+                for model_name in FROZEN_MODELS:
                     fm = frozen_models[model_name]
                     px = x_latest if model_name != "naive_logistic_baseline" else x_latest[list(BASELINE_IDX)]
                     p = float(fm.estimator.predict_proba([px])[0, 1])
@@ -797,8 +828,10 @@ def run_loop() -> None:
                         ll=fm.ll,
                         rf_regime=fm.rf_regime,
                     )
+                wf_rows = load_feature_rows(cur, limit=12000)
+                outputs.update(train_walk_forward_outputs(wf_rows, feature_minute, x_latest))
 
-                for model_name in MODELS:
+                for model_name in ALL_MODELS:
                     out = outputs[model_name]
                     signal = 1 if out.prob >= PRED_THRESHOLD else 0
                     edge = out.prob - float(latest.get("yes_ask_dollars") or 0.0)

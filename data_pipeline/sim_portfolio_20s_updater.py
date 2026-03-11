@@ -5,7 +5,13 @@ from typing import Dict, List
 
 from data_pipeline.common import get_db_conn, utc_now
 
-MODELS = ("naive_logistic_baseline", "logistic", "random_forest")
+MODELS = (
+    "naive_logistic_baseline",
+    "logistic",
+    "random_forest",
+    "walk_forward_logistic",
+    "walk_forward_random_forest",
+)
 STARTING_CAPITAL = 100.0
 
 
@@ -93,8 +99,9 @@ def compute_model_snapshot(cur, model_name: str) -> Dict:
         if bid is None:
             bid = 0.0
             bid_size = 0.0
-        fill_qty = min(float(qty), max(0.0, float(bid_size or 0.0)))
-        value = fill_qty * bid
+        # Mark-to-market uses full qty at best bid for consistency with
+        # the current conservative sim execution assumptions.
+        value = float(qty) * bid
         cost += entry * qty
         pos_value += value
         details.append(
