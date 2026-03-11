@@ -3,12 +3,22 @@ import os
 import base64
 import ast
 import json
+import threading
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
 from data_pipeline.common import get_db_conn
+from data_pipeline.sim_custom_model_backfill import run_pending_jobs
+from data_pipeline.sim_model_registry import (
+    BUILTIN_MODELS,
+    delete_custom_model,
+    list_ui_models,
+    normalize_custom_model_payload,
+    set_model_visible,
+    upsert_custom_model,
+)
 
 HOST = os.getenv("DASHBOARD_HOST", "0.0.0.0")
 PORT = int(os.getenv("DASHBOARD_PORT", "8080"))
@@ -30,6 +40,7 @@ TABLES = [
     "sim_trades",
     "sim_equity_1m",
     "sim_portfolio_20s",
+    "sim_models_registry",
     "model_research_runs",
     "model_research_feature_importance",
     "live_settings",
@@ -62,6 +73,31 @@ API_TIME_COLUMN = {
     "model_research_feature_importance": "created_at_utc",
 }
 API_MAX_LIMIT = 5000
+_SIM_CUSTOM_BACKFILL_THREAD = None
+_SIM_CUSTOM_BACKFILL_LOCK = threading.Lock()
+
+
+def _sim_custom_backfill_worker():
+    try:
+        run_pending_jobs()
+    except Exception as e:
+        print(f"[ERROR] sim custom backfill worker: {e}")
+
+
+def start_sim_custom_backfill_worker() -> bool:
+    global _SIM_CUSTOM_BACKFILL_THREAD
+    with _SIM_CUSTOM_BACKFILL_LOCK:
+        if _SIM_CUSTOM_BACKFILL_THREAD and _SIM_CUSTOM_BACKFILL_THREAD.is_alive():
+            return False
+        t = threading.Thread(target=_sim_custom_backfill_worker, name="sim-custom-backfill", daemon=True)
+        _SIM_CUSTOM_BACKFILL_THREAD = t
+        t.start()
+        return True
+
+
+def sim_custom_backfill_running() -> bool:
+    with _SIM_CUSTOM_BACKFILL_LOCK:
+        return bool(_SIM_CUSTOM_BACKFILL_THREAD and _SIM_CUSTOM_BACKFILL_THREAD.is_alive())
 
 
 def query_rows(table: str, page: int):
@@ -344,6 +380,26 @@ def sim_health_summary():
             )
     conn.close()
     return out
+
+
+def _delete_sim_model_rows(cur, model_name: str) -> None:
+    for table in ("sim_positions", "sim_trades", "sim_equity_1m", "sim_model_predictions_1m", "sim_portfolio_20s"):
+        cur.execute(f"DELETE FROM {table} WHERE model_name=%s", (model_name,))
+
+
+def sim_models_payload():
+    conn = get_db_conn()
+    try:
+        with conn.cursor() as cur:
+            models = list_ui_models(cur)
+    except Exception:
+        models = [dict(v) for _, v in BUILTIN_MODELS.items()]
+    finally:
+        conn.close()
+    return {
+        "models": models,
+        "backfill_running": sim_custom_backfill_running(),
+    }
 
 
 def _bucket_key(p: float) -> str:
@@ -1275,22 +1331,110 @@ def render_page(title: str, body_html: str) -> str:
       let h=0; for(let i=0;i<String(id).length;i++){ h=(h*31 + String(id).charCodeAt(i))>>>0; }
       return SIM_PALETTE[(h + idx) % SIM_PALETTE.length];
     }
+    async function fetchSimModels(){
+      try{
+        const r=await fetch('/sim_models',{cache:'no-store'});
+        if(!r.ok) return {models:[],backfill_running:false};
+        return await r.json();
+      }catch(e){
+        return {models:[],backfill_running:false};
+      }
+    }
+    async function simModelVisibility(modelName, visible){
+      await fetch('/sim_models/visibility', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({model_name:modelName, is_visible: !!visible})
+      });
+      await refreshSimMetrics();
+    }
+    async function simModelDelete(modelName){
+      await fetch('/sim_models/delete', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({model_name:modelName})
+      });
+      await refreshSimMetrics();
+    }
+    async function simModelRetry(modelName){
+      await fetch('/sim_models/backfill', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({model_name:modelName})
+      });
+      await refreshSimMetrics();
+    }
+    async function simModelAdd(){
+      const nameEl=document.getElementById('sim_new_model_name');
+      const algoEl=document.getElementById('sim_new_model_algo');
+      const featEl=document.getElementById('sim_new_model_features');
+      const hpEl=document.getElementById('sim_new_model_hyper');
+      const noteEl=document.getElementById('sim_new_model_notes');
+      const msgEl=document.getElementById('sim_model_manager_msg');
+      if(!nameEl || !algoEl || !featEl || !hpEl) return;
+      const model_name=String(nameEl.value||'').trim();
+      const algo=String(algoEl.value||'').trim();
+      const feature_cols=String(featEl.value||'').split(',').map(x=>x.trim()).filter(Boolean);
+      let hyperparams={};
+      if(String(hpEl.value||'').trim()){
+        try{ hyperparams=JSON.parse(hpEl.value); }
+        catch(e){
+          if(msgEl) msgEl.textContent='Invalid hyperparams JSON';
+          return;
+        }
+      }
+      const notes=noteEl ? String(noteEl.value||'').trim() : '';
+      const r=await fetch('/sim_models/add', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({model_name,algo,feature_cols,hyperparams,notes})
+      });
+      let j={};
+      try{ j=await r.json(); }catch(e){}
+      if(msgEl){
+        msgEl.textContent = r.ok ? `Added ${model_name}. Backfill ${j.started ? 'started' : 'queued'}.` : (`Add failed: ${(j && j.error) ? j.error : r.status}`);
+      }
+      await refreshSimMetrics();
+    }
+    function renderSimModelManager(models, backfillRunning){
+      const body=document.getElementById('sim_models_body');
+      const stat=document.getElementById('sim_models_status');
+      if(stat){
+        stat.textContent = backfillRunning ? 'backfill running (sim writers paused)' : 'idle';
+      }
+      if(!body) return;
+      body.innerHTML=(models||[]).map(m=>{
+        const isBuiltin = m.family === 'builtin';
+        const visible = !!m.is_visible;
+        const badge = `${m.family||'model'} | ${m.algo||''} | ${m.mode||''}`.trim();
+        const featureCount = Array.isArray(m.feature_cols) ? m.feature_cols.length : 0;
+        const btnVis = `<a class='pill' href='javascript:void(0)' onclick="simModelVisibility('${m.model_name}', ${visible ? 'false':'true'})">${visible ? 'hide':'show'}</a>`;
+        const btnRetry = (!isBuiltin && (m.status==='error' || m.status==='pending')) ? `<a class='pill' href='javascript:void(0)' onclick="simModelRetry('${m.model_name}')">retry</a>` : '';
+        const btnDelete = !isBuiltin ? `<a class='pill' href='javascript:void(0)' onclick="simModelDelete('${m.model_name}')">delete</a>` : '';
+        return `<tr><td>${m.model_name}</td><td>${badge}</td><td>${m.status||''}</td><td>${visible ? 'yes':'no'}</td><td>${featureCount}</td><td style='max-width:280px;white-space:normal;word-break:break-word'>${m.last_error||''}</td><td>${btnVis} ${btnRetry} ${btnDelete}</td></tr>`;
+      }).join('');
+    }
     async function refreshSimMetrics(){
       const simRoot=document.getElementById('sim-root');
       if(!simRoot) return;
       try{
+        const sm=await fetchSimModels();
+        const modelRows=Array.isArray(sm.models) ? sm.models : [];
+        const visibleModels=modelRows.filter(m => m.is_active !== false && m.is_visible !== false).map(m => m.model_name);
+        const fallbackModels=['naive_logistic_baseline','logistic','random_forest','walk_forward_logistic','walk_forward_random_forest'];
+        const selectedModels=visibleModels.length ? visibleModels : fallbackModels;
+        renderSimModelManager(modelRows, !!sm.backfill_running);
         const r=await fetch('/sim_metrics',{cache:'no-store'});
         if(!r.ok) return;
         const d=await r.json();
-        const fixedModels=['naive_logistic_baseline','logistic','random_forest','walk_forward_logistic','walk_forward_random_forest'];
         const byModelRaw=(d.equity_series_1m && Object.keys(d.equity_series_1m).length>0) ? d.equity_series_1m : (d.equity_series_20s||{});
         const colors={};
         let idx=0;
-        for(const m of fixedModels){
+        for(const m of selectedModels){
           if(byModelRaw[m]){ colors[m]=simColor(`sim:${m}`, idx++); }
         }
-        const frozenModels=fixedModels.filter(m => !isWalkForwardModel(m));
-        const wfModels=fixedModels.filter(m => isWalkForwardModel(m));
+        const frozenModels=selectedModels.filter(m => !isWalkForwardModel(m));
+        const wfModels=selectedModels.filter(m => isWalkForwardModel(m));
         const inSampleSeries = {
           ...sliceAndRebaseSeries(byModelRaw, frozenModels, null, d.live_cutoff_utc || null),
         };
@@ -1302,7 +1446,7 @@ def render_page(title: str, body_html: str) -> str:
         const currentBasisLabel = hasCutoff ? 'since out-of-sample start' : 'since in-sample start';
         if(Object.keys(inSampleSeries).length===0 && !d.live_cutoff_utc){
           // Fallback for environments with no cutoff configured yet.
-          for(const m of fixedModels){
+          for(const m of selectedModels){
             if(byModelRaw[m] && byModelRaw[m].length>0){
               const baseEq = Number(byModelRaw[m][0].equity||0);
               inSampleSeries[m]=byModelRaw[m].map(p => ({t:p.t, equity:100 + (Number(p.equity||0)-baseEq)}));
@@ -1313,14 +1457,14 @@ def render_page(title: str, body_html: str) -> str:
         drawLineChart('equity_chart_out_sample', outSampleSeries, 'equity', colors, {unit:'$'});
         const rin=document.getElementById('range_in_sample'); if(rin) rin.textContent=segmentRangeText(inSampleSeries);
         const roo=document.getElementById('range_out_sample'); if(roo) roo.textContent=segmentRangeText(outSampleSeries);
-        const basePicked=fixedModels;
+        const basePicked=selectedModels;
         let focusModel=null;
         const opens=(d.open_positions||[]);
-        for(const m of fixedModels){
+        for(const m of selectedModels){
           if(opens.some(r => r.model_name===m)){ focusModel=m; break; }
         }
         if(!focusModel){
-          for(const m of fixedModels){
+          for(const m of selectedModels){
             if((d.stack_series_20s||{})[m] && (d.stack_series_20s[m]||[]).length>0){ focusModel=m; break; }
           }
         }
@@ -1366,7 +1510,7 @@ def render_page(title: str, body_html: str) -> str:
         }
         const lg=document.getElementById('sim_legend');
         if(lg){
-          const known=fixedModels.filter(m => byModelRaw[m] && byModelRaw[m].length>0);
+          const known=selectedModels.filter(m => byModelRaw[m] && byModelRaw[m].length>0);
           lg.innerHTML = known.map((k,i)=>`<span class='pill' style='border-color:${colors[k]};color:${colors[k]}'>${k}</span>`).join(' ');
         }
         try{
@@ -1634,6 +1778,23 @@ class Handler(BaseHTTPRequestHandler):
                   <div class="card"><div class="k">Refresh</div><div class="v" style="font-size:18px">every 10s</div></div>
                   <div class="card"><div class="k">Live Cutoff</div><div id="sim_cutoff" class="v" style="font-size:13px">loading...</div></div>
                 </div>
+                <div class="panel" style="margin-top:12px">
+                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Model Manager</a></div><div class="muted" id="sim_models_status">loading...</div></div>
+                  <div class="grid4">
+                    <div class="card"><div class="k">Model Name</div><div class="v" style="font-size:16px"><input id="sim_new_model_name" type="text" placeholder="rf_custom_1" /></div></div>
+                    <div class="card"><div class="k">Algo</div><div class="v" style="font-size:16px"><select id="sim_new_model_algo"><option value="logistic">logistic</option><option value="random_forest">random_forest</option></select></div></div>
+                    <div class="card"><div class="k">Features (csv)</div><div class="v" style="font-size:16px"><input id="sim_new_model_features" type="text" placeholder="moneyness_abs,spread_dollars,cb_ret_1m" /></div></div>
+                    <div class="card"><div class="k">Hyperparams (json)</div><div class="v" style="font-size:16px"><input id="sim_new_model_hyper" type="text" placeholder='{{"C":0.5}}' /></div></div>
+                  </div>
+                  <div class="grid4" style="margin-top:8px">
+                    <div class="card"><div class="k">Notes</div><div class="v" style="font-size:16px"><input id="sim_new_model_notes" type="text" placeholder="optional" /></div></div>
+                    <div class="card"><div class="k">Actions</div><div class="v" style="font-size:16px"><a class="pill" href="javascript:void(0)" onclick="simModelAdd()">add + backfill</a></div></div>
+                    <div class="card"><div class="k">Message</div><div id="sim_model_manager_msg" class="v" style="font-size:14px">ready</div></div>
+                  </div>
+                  <div style="overflow:auto;max-height:26vh;margin-top:8px">
+                    <table><thead><tr><th>model</th><th>type</th><th>status</th><th>visible</th><th>features</th><th>last error</th><th>actions</th></tr></thead><tbody id="sim_models_body"></tbody></table>
+                  </div>
+                </div>
                 <div id="sim_model_rows" style="margin-top:12px"></div>
                 <div class="panel" style="margin-top:12px">
                   <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Portfolio Equity (Segmented, each starts at $100)</a></div></div>
@@ -1891,6 +2052,15 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(data).encode("utf-8"))
             return
 
+        if parsed.path == "/sim_models":
+            data = sim_models_payload()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(json.dumps(data).encode("utf-8"))
+            return
+
         if parsed.path == "/live_metrics":
             if not self._live_authorized(parsed):
                 self.send_response(403)
@@ -1972,6 +2142,91 @@ class Handler(BaseHTTPRequestHandler):
             self._send_unauthorized()
             return
         parsed = urlparse(self.path)
+        if parsed.path in ("/sim_models/add", "/sim_models/visibility", "/sim_models/delete", "/sim_models/backfill"):
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
+            except Exception:
+                payload = {}
+            now_ts = datetime.utcnow().replace(microsecond=0)
+            try:
+                if parsed.path == "/sim_models/add":
+                    cfg = normalize_custom_model_payload(payload)
+                    conn = get_db_conn()
+                    with conn.cursor() as cur:
+                        upsert_custom_model(cur, cfg, now_ts)
+                    conn.commit()
+                    conn.close()
+                    started = start_sim_custom_backfill_worker()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"ok": True, "started": started, **sim_models_payload()}).encode("utf-8"))
+                    return
+
+                if parsed.path == "/sim_models/visibility":
+                    model_name = str(payload.get("model_name") or "").strip()
+                    is_visible = bool(payload.get("is_visible", True))
+                    if not model_name:
+                        raise ValueError("model_name is required")
+                    conn = get_db_conn()
+                    with conn.cursor() as cur:
+                        set_model_visible(cur, model_name, is_visible, now_ts)
+                    conn.commit()
+                    conn.close()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"ok": True, **sim_models_payload()}).encode("utf-8"))
+                    return
+
+                if parsed.path == "/sim_models/delete":
+                    model_name = str(payload.get("model_name") or "").strip()
+                    if not model_name:
+                        raise ValueError("model_name is required")
+                    conn = get_db_conn()
+                    with conn.cursor() as cur:
+                        if model_name in BUILTIN_MODELS:
+                            set_model_visible(cur, model_name, False, now_ts)
+                        else:
+                            delete_custom_model(cur, model_name, now_ts)
+                            _delete_sim_model_rows(cur, model_name)
+                    conn.commit()
+                    conn.close()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"ok": True, **sim_models_payload()}).encode("utf-8"))
+                    return
+
+                if parsed.path == "/sim_models/backfill":
+                    model_name = str(payload.get("model_name") or "").strip()
+                    conn = get_db_conn()
+                    with conn.cursor() as cur:
+                        if model_name:
+                            cur.execute(
+                                """
+                                UPDATE sim_models_registry
+                                SET status='pending', last_error=NULL, updated_at_utc=%s
+                                WHERE model_name=%s AND is_active=1
+                                """,
+                                (now_ts, model_name),
+                            )
+                    conn.commit()
+                    conn.close()
+                    started = start_sim_custom_backfill_worker()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"ok": True, "started": started, **sim_models_payload()}).encode("utf-8"))
+                    return
+            except Exception as e:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": False, "error": str(e)}).encode("utf-8"))
+                return
+
         if parsed.path == "/live_settings":
             if not self._live_authorized():
                 self.send_response(403)

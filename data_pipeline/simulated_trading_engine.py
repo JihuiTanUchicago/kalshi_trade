@@ -22,6 +22,11 @@ from data_pipeline.modeling_features import (
     coalesce_float,
     has_target,
 )
+from data_pipeline.sim_model_registry import (
+    active_custom_model_configs,
+    build_custom_frozen_models,
+    custom_model_stamp,
+)
 
 FROZEN_MODELS = ("naive_logistic_baseline", "logistic", "random_forest")
 WALK_FORWARD_MODELS = ("walk_forward_logistic", "walk_forward_random_forest")
@@ -758,6 +763,9 @@ def run_loop() -> None:
     with conn.cursor() as cur:
         print("simulated trading engine started. Running minute-sharp (+10s).")
         frozen_models: Dict[str, FrozenModel] = {}
+        custom_models = {}
+        custom_stamp = ""
+        current_cutoff = None
         last_processed_minute: Optional[datetime] = None
         while True:
             wake = next_minute_plus_delay(10)
@@ -770,12 +778,16 @@ def run_loop() -> None:
                     if frozen_models:
                         print("sim engine pause: recompute in progress; will reload frozen models on resume")
                     frozen_models = {}
+                    custom_models = {}
+                    custom_stamp = ""
+                    current_cutoff = None
                     last_processed_minute = None
                     continue
                 if not frozen_models:
                     rows = load_feature_rows(cur, limit=200000)
                     requested_cutoff = get_live_cutoff_utc(cur)
                     cutoff = choose_effective_cutoff(rows, requested_cutoff)
+                    current_cutoff = cutoff
                     try:
                         frozen_models = fit_frozen_models(rows, cutoff)
                     except Exception as e:
@@ -801,6 +813,28 @@ def run_loop() -> None:
                                 utc_now().replace(tzinfo=None),
                             ),
                         )
+
+                # Load custom frozen models when config set changes.
+                custom_cfgs = active_custom_model_configs(cur)
+                stamp = custom_model_stamp(custom_cfgs)
+                if stamp != custom_stamp:
+                    custom_models = {}
+                    if custom_cfgs:
+                        try:
+                            rows_for_custom = load_feature_rows(cur, limit=200000)
+                            custom_models = build_custom_frozen_models(custom_cfgs, rows_for_custom, current_cutoff)
+                            print(
+                                "sim custom models ready: "
+                                + ", ".join(
+                                    [
+                                        f"{name}(train={model.train_rows},test={model.test_rows})"
+                                        for name, model in sorted(custom_models.items())
+                                    ]
+                                )
+                            )
+                        except Exception as e:
+                            print(f"sim custom model refresh skipped: {e}")
+                    custom_stamp = stamp
 
                 latest = latest_feature_row(cur)
                 if not latest:
@@ -830,8 +864,20 @@ def run_loop() -> None:
                     )
                 wf_rows = load_feature_rows(cur, limit=12000)
                 outputs.update(train_walk_forward_outputs(wf_rows, feature_minute, x_latest))
+                for model_name, fm in custom_models.items():
+                    px = x_latest[list(fm.feature_idx)]
+                    p = float(fm.estimator.predict_proba([px])[0, 1])
+                    outputs[model_name] = ModelOutput(
+                        prob=p,
+                        train_rows=fm.train_rows,
+                        test_rows=fm.test_rows,
+                        brier=fm.brier,
+                        ll=fm.ll,
+                        rf_regime=fm.rf_regime,
+                    )
 
-                for model_name in ALL_MODELS:
+                active_models = list(ALL_MODELS) + sorted(custom_models.keys())
+                for model_name in active_models:
                     out = outputs[model_name]
                     signal = 1 if out.prob >= PRED_THRESHOLD else 0
                     edge = out.prob - float(latest.get("yes_ask_dollars") or 0.0)
@@ -871,6 +917,7 @@ def run_loop() -> None:
                                 "feature_snapshot_minute_utc": str(feature_minute),
                                 "frozen": True,
                                 "train_rows": frozen_models["logistic"].train_rows,
+                                "custom_models": sorted(custom_models.keys()),
                             }
                         ),
                         utc_now().replace(tzinfo=None),

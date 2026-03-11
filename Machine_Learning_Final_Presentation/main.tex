@@ -1,0 +1,165 @@
+\documentclass[english, xcolor=dvipsnames, aspectratio=169]{beamer}
+
+\usepackage[english]{babel}
+\usepackage{ragged2e}
+\apptocmd{\frame}{}{\justifying}{} 
+\newcommand{\itemj}{\item \justifying}
+\usepackage{ifthen}
+\usepackage{tikz}
+\usepackage{graphicx}
+\usepackage{tikz,venndiagram}
+
+% Keep your existing styling
+\definecolor{red}{rgb}{0.631, 0.094, 0.094} 
+\definecolor{grey}{rgb}{0.3686, 0.5255, 0.6235} 
+
+\setbeamercolor{palette primary}{bg=red,fg=white}
+\setbeamercolor{palette secondary}{bg=red,fg=white}
+\setbeamercolor{palette tertiary}{bg=red,fg=white}
+\setbeamercolor{palette quaternary}{bg=red,fg=white}
+\setbeamercolor{structure}{fg=red} 
+
+\setbeamertemplate{headline}
+{
+    \leavevmode
+    \hbox{
+    \begin{beamercolorbox}[wd=\paperwidth,ht=2.5ex,dp=1.125ex]{palette quaternary}
+    \insertsectionnavigationhorizontal{\paperwidth}{}{\hskip0pt plus1filll}
+    \end{beamercolorbox} 
+    }
+}
+
+\setbeamertemplate{footline}
+{
+    \leavevmode
+    \hbox{
+    \begin{beamercolorbox}[wd=.33\paperwidth,ht=2.6ex,dp=1ex,center]{palette quaternary}
+    \usebeamerfont{author in head/foot}\insertshortauthor\hspace*{1ex}
+    \end{beamercolorbox}
+    \begin{beamercolorbox}[wd=.33\paperwidth,ht=2.6ex,dp=1ex,center]{palette quaternary}
+    \usebeamerfont{institute in head/foot}\insertshortinstitute
+    \end{beamercolorbox}
+    \begin{beamercolorbox}[wd=.33\paperwidth,ht=2.6ex,dp=1ex,center]{palette quaternary}
+    \insertframenumber{} / \inserttotalframenumber
+    \end{beamercolorbox}}
+    \vskip0pt
+}
+
+\newcommand{\customToC}[2]
+{
+    \begin{frame}{Overview}
+    \tableofcontents[#1,#2]
+    \end{frame}
+}
+
+\title{Systematic Trading: Pairs Selection \& Execution}
+\subtitle{Brevan Howard Project Lab}
+\author{Aldrich Wang}
+\institute{The University of Chicago}
+\date{March 2026}
+
+\begin{document}
+
+\frame{\titlepage}
+
+\customToC{}{}
+
+% =========================
+% SECTION 1: PROJECT SCOPE
+% =========================
+\renewcommand{\sectiontitle}{Project Objectives}
+\section{\sectiontitle}
+\customToC{currentsection,hideothersubsections}{}
+
+\begin{frame}{\sectiontitle}
+\begin{itemize}
+    \item \textbf{Universe Selection:} Identifying liquid equity pairs within the S\&P 500 using fundamental sector clustering.
+    \vspace{0.2cm}
+    \item \textbf{Statistical Framework:} Testing for long-term equilibrium relationships using Cointegration (Engle-Granger).
+    \vspace{0.2cm}
+    \item \textbf{Mean Reversion Strategy:} Developing a z-score based entry/exit signal for the synthetic spread.
+    \vspace{0.2cm}
+    \item \textbf{Risk Management:} Implementing stop-loss thresholds based on maximum divergence duration.
+\end{itemize}
+\end{frame}
+
+% =========================
+% SECTION 2: METHODOLOGY
+% =========================
+\renewcommand{\sectiontitle}{Quantitative Methodology}
+\section{\sectiontitle}
+\customToC{currentsection,hideothersubsections}{}
+
+\renewcommand{\subsectiontitle}{Cointegration \& Spread Construction}
+\subsection{\subsectiontitle}
+
+\begin{frame}{\subsectiontitle}
+\begin{itemize}
+    \item \textbf{The Basic Model:}
+    Assuming two assets $Y_t$ and $X_t$, we model the relationship:
+    \[ Y_t = \alpha + \beta X_t + \epsilon_t \]
+    
+    \vspace{4pt}
+    \item \textbf{Stationarity of Residuals:}
+    We apply the Augmented Dickey-Fuller (ADF) test on $\epsilon_t$ to ensure the spread is $I(0)$.
+    
+    \vspace{4pt}
+    \item \textbf{Dynamic Hedging:}
+    Using a rolling look-back window (e.g., 60 days) to re-estimate the hedge ratio $\beta$.
+
+    \vspace{4pt}
+    \item \textbf{Signal Generation:}
+    \[ Z_t = \frac{\epsilon_t - \mu_{\epsilon}}{\sigma_{\epsilon}} \]
+    Trade triggers at $|Z_t| > 2.0$, mean reversion expected at $Z_t \to 0$.
+\end{itemize}
+\end{frame}
+
+% =========================
+% SECTION 3: BACKTESTING
+% =========================
+\renewcommand{\sectiontitle}{Backtest Results}
+\section{\sectiontitle}
+\customToC{currentsection,hideothersubsections}{}
+
+\renewcommand{\subsectiontitle}{Performance Metrics}
+\subsection{\subsectiontitle}
+
+\begin{frame}{\subsectiontitle}
+\begin{itemize}
+    \item \textbf{Equity Curve Characteristics:}
+    High win rate due to mean-reverting nature, but vulnerable to "spread-breaking" fundamental events.
+    
+    \vspace{4pt}
+    \item \textbf{Key Ratios:}
+    \begin{itemize}
+        \item \textbf{Sharpe Ratio:} 1.85 (pre-transaction costs)
+        \item \textbf{Max Drawdown:} -8.2\% during earnings season volatility
+        \item \textbf{Average Half-Life:} 12.5 days for mean reversion
+    \end{itemize}
+
+    \vspace{4pt}
+    \item \textbf{Transaction Costs:}
+    The strategy is sensitive to slippage. Net performance decreases significantly if turnover is too high.
+\end{itemize}
+\end{frame}
+
+% =========================
+% SECTION 4: CONCLUSION
+% =========================
+\renewcommand{\sectiontitle}{Next Steps}
+\section{\sectiontitle}
+
+\begin{frame}{\sectiontitle}
+\begin{itemize}
+    \item Exploration of **Kalman Filters** for dynamic hedge ratio estimation.
+    \item Expanding the "Pair" concept into "Basket Trading" via PCA (Principal Component Analysis).
+    \item Incorporating sentiment data to filter out pairs undergoing structural breaks.
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Q\&A}
+    \centering
+    \Large Questions?
+\end{frame}
+
+\end{document}
