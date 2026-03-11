@@ -63,7 +63,7 @@ python -m data_pipeline.init_schema
 
 ## Model Training & Backtest Methodology
 
-### Labeling
+### Current production label
 
 - Base table: `model_features_1m` where `model_eligible=1`.
 - Binary next-minute direction label:
@@ -182,6 +182,270 @@ Configured thresholds in code/settings:
 - Frozen in simulation after in-sample fit.
 - Used for live trading decisions.
 
+## Expiry-Resolution Research (March 2026)
+
+This repo now also contains a separate research path under `work/` for **multi-minute models built from `model_features_1m` via `client_api.KalshiDataClient`**.
+These models are **not** in the live trading loop yet. They are research candidates only.
+
+### 1) Y-label definition
+
+The new research does **not** use the production next-minute label.
+Instead, it uses an **expiry-resolution label** that is more consistent with holding a 15-minute contract for longer than one minute.
+
+- Training rows come from `model_features_1m` with:
+  - `model_eligible = 1`
+  - non-null `yes_ask_dollars`
+  - `time_to_expiry_sec >= 120`
+- Rows are grouped by `market_ticker`.
+- For each row `t`, define:
+  - `y_t = 1` if the contract finishes in a YES-like terminal state, proxied by the ticker's **final observed YES bid >= 0.90**
+  - `y_t = 0` otherwise
+
+Why this label:
+
+- The contract is a binary event contract, so a multi-minute trader really cares about **terminal resolution direction**, not whether the midpoint blips up over the next minute.
+- `model_features_1m` does not currently store an explicit settlement flag, so the final YES bid is used as the best available proxy.
+
+The same dataset also precomputes a simple executable trade path for backtesting:
+
+- Entry price = current `yes_ask_dollars`
+- Exit price = first future YES bid that reaches `entry + $0.05`
+- If that take-profit is never hit, exit at the ticker's final observed YES bid
+
+### 2) Models used
+
+Three models are evaluated in the research runner:
+
+- `logistic_resolution_edge`
+  - benchmark only
+  - compact linear model for calibration/reference, not the candidate we intend to deploy
+- `random_forest_resolution_edge`
+  - main non-linear tree candidate
+  - designed to capture strike/time/microstructure interactions without requiring feature scaling
+- `hist_gradient_boosting_resolution_edge`
+  - boosting candidate
+  - designed as the more flexible high-capacity tree baseline
+
+The selected research candidates are the two tree models:
+
+- `random_forest_resolution_edge`
+- `hist_gradient_boosting_resolution_edge`
+
+The benchmark is kept to answer a hard question: **are the tree models actually adding value beyond a simpler linear odds model?**
+
+### 3) Hyperparameters, features, and why they are included
+
+#### Logistic benchmark
+
+- Model: `LogisticRegression`
+- Setup:
+  - `class_weight="balanced"`
+  - `C=0.5`
+  - standardized inputs via `StandardScaler`
+
+Reason:
+
+- This is the cleanest reference model.
+- If the trees cannot beat this benchmark on ranking quality or tradable PnL, there is no case for added complexity.
+
+Features used:
+
+- quote state: `yes_bid_dollars`, `yes_ask_dollars`, `spread_dollars`, `mid_dollars`
+- microstructure: `orderbook_imbalance`
+- short-horizon momentum: `mid_ret_1m`, `mid_ret_3m`, `cb_ret_1m`, `cb_ret_3m`, `cb_ret_5m`
+- activity/liquidity: `trades_last_60s_count`, `trades_last_60s_volume_fp`, `trades_last_60s_vwap_yes`, `quote_change_events_60s`
+- horizon context: `time_to_expiry_sec`
+- strike context: `moneyness_abs`, `moneyness_pct`, `moneyness_vol_scaled`, `moneyness_x_sqrt_tte`, `moneyness_x_imbalance`, `moneyness_x_qchg`
+
+#### Random forest candidate
+
+- Model: `RandomForestClassifier`
+- Setup:
+  - `n_estimators=500`
+  - `max_depth=10`
+  - `min_samples_leaf=4`
+  - `min_samples_split=12`
+  - `max_features="sqrt"`
+  - `class_weight="balanced_subsample"`
+
+Reason:
+
+- The expiry-resolution problem is non-linear.
+- Whether a contract should mean-revert or trend into expiry depends on joint interactions between:
+  - current price vs strike,
+  - remaining time,
+  - order-book pressure,
+  - recent Coinbase drift,
+  - and current liquidity.
+- A random forest is a robust first tree model for a small, noisy sample.
+
+#### HistGradientBoosting candidate
+
+- Model: `HistGradientBoostingClassifier`
+- Setup:
+  - `learning_rate=0.03`
+  - `max_depth=4`
+  - `max_iter=250`
+  - `min_samples_leaf=25`
+  - `l2_regularization=0.01`
+  - `max_leaf_nodes=63`
+
+Reason:
+
+- This is the boosting candidate requested for the research extension.
+- It is smoother than the forest and can fit interaction structure more aggressively, while the shallow depth and regularization keep the model from exploding on a short sample.
+
+#### Tree-model feature expansion and rationale
+
+The tree candidates use the linear benchmark features plus additional state variables:
+
+- depth and pressure:
+  - `yes_bid_size_fp`
+  - `yes_ask_size_fp`
+  - `depth_total`
+  - `depth_pressure`
+- execution/flow context:
+  - `vwap_mid_gap`
+  - `volume_per_trade`
+  - `quote_intensity`
+  - `microprice_proxy`
+- nonlinear return interactions:
+  - `return_accel_1v3`
+  - `cb_return_accel_1v5`
+  - `ret_cross_cb`
+  - `spread_x_imbalance`
+- strike carry context:
+  - `cb_price`
+  - `target_btc_price`
+  - `carry_to_target`
+  - `kalshi_data_age_sec`
+  - `coinbase_data_age_sec`
+
+Why these are reasonable:
+
+- binary BTC buckets are driven by **distance to strike + time left**
+- fills depend on **current quote state and size imbalance**
+- short-term conviction depends on **spot drift, quote momentum, and trade pressure**
+- stale data can create fake edge, so feed age is explicitly included
+
+### 4) Backtesting mechanism
+
+The research backtest is intentionally simple and explicit.
+
+Chronological split:
+
+- train = first 60%
+- validation = next 20%
+- test = final 20%
+
+Interpretation:
+
+- the **validation slice is the in-sample/model-selection period**
+- the **test slice is the true out-of-sample period**
+- frozen in-sample window used in the presentation artifacts: `2026-03-09 22:38:00` to `2026-03-10 21:21:00` UTC
+- frozen out-of-sample window used in the presentation artifacts: `2026-03-10 21:22:00` to `2026-03-11 20:06:00` UTC
+
+Signal generation:
+
+- predict `p_yes = P(contract resolves YES | x_t)`
+- compute `edge = p_yes - yes_ask_dollars`
+- buy signal:
+  - the research backtest is **long-only**
+  - buy one new YES position only if no position is already open, `p_yes >= probability_threshold`, and `edge >= edge_threshold`
+  - on the frozen run used in the README/presentation:
+    - `Random Forest Resolution Edge` buys when `p_yes >= 0.65` and `p_yes - yes_ask_dollars >= 0.08`
+    - `HistGradientBoosting Resolution Edge` buys when `p_yes >= 0.55` and `p_yes - yes_ask_dollars >= 0.08`
+
+Trade management:
+
+- only one position is open at a time
+- there is **no model-driven short signal** and no discretionary sell signal after entry
+- sell/exit signal:
+  - once entered, the backtest exits at the first future YES bid that reaches `entry ask + $0.05`
+  - if that take-profit is never hit, it exits at the final observed YES bid for that ticker
+- exits are timestamp-based, not row-offset based, so the backtest does not accidentally close trades early due to filtered rows
+- if the exit timestamp would occur outside the evaluated slice, that trade is skipped
+
+Position sizing / units:
+
+- position size is fixed at **1 YES contract per entry signal**
+- PnL is therefore computed in normalized per-contract dollars: `trade_pnl = exit_bid - entry_ask`
+- the `$100` starting cash shown in the presentation PNGs is only a visualization baseline: plotted equity = `100 + cumulative per-contract PnL`
+- the current research intentionally does **not** size up by confidence, available cash, or order-book depth yet
+- that was deliberate: it isolates signal quality first, so model comparison is not distorted by an ad hoc sizing rule
+
+Parameter selection:
+
+- model hyperparameters are fixed in code
+- trade rules are tuned only on validation using:
+  - `probability_threshold in {0.55, 0.60, ..., 0.90}`
+  - `edge_threshold in {0.00, 0.01, 0.02, 0.03, 0.05, 0.08, 0.10, 0.12, 0.15, 0.20}`
+- after the validation rule is chosen, the model is refit on `train + validation` and tested on the held-out test slice with the rule locked
+
+### 5) Performance, interpretation, and what it implies
+
+Frozen documentation snapshot from `work/expiry_resolution_results.json`:
+
+- command used: `python work/run_horizon_model_research.py --end '2026-03-11 20:07:00'`
+
+- dataset rows: `5909`
+- date range: `2026-03-07 02:11:00` to `2026-03-11 20:06:00` UTC
+- positive-rate for the expiry-resolution label: `0.4793`
+
+Held-out results:
+
+- `Logistic Resolution Edge` (benchmark)
+  - AP `0.8540`, AUC `0.8501`
+  - test PnL `+0.11`
+  - trades `1`
+  - interpretation: slight positive result, but far too sparse to support deployment conclusions
+- `Random Forest Resolution Edge`
+  - AP `0.8483`, AUC `0.8468`
+  - test PnL `+0.16`
+  - trades `9`
+  - win rate `0.8889`
+  - interpretation: this is the strongest of the two new models because it stays selective, remains slightly profitable on the frozen out-of-sample slice, and keeps the best balance between ranking quality and trade density
+- `HistGradientBoosting Resolution Edge`
+  - AP `0.8137`, AUC `0.8095`
+  - test PnL `+0.15`
+  - trades `131`
+  - win rate `0.8321`
+  - interpretation: the model is now slightly positive on the frozen test slice, but the average PnL per trade is only about `0.0011`, so the edge is too thin to trust without a better execution model and much more data
+
+What this implies:
+
+- there is likely **real directional information** in `model_features_1m`
+- the new label is materially better aligned with a multi-minute hold than the old next-minute label
+- the frozen out-of-sample slice is now mildly positive for both tree candidates, but the realized edge is still too small to call production-ready
+- the random forest is the more credible near-term candidate
+- the boosting model is still worth keeping because it gives a second non-linear view of the same feature set, but its edge is too thin after turnover to justify deployment
+- the next step should be better label quality and execution realism, not immediate live promotion
+
+Presentation artifacts generated from the same corrected backtest logic:
+
+- each presentation PNG is now **model-specific**
+- within each PNG:
+  - the top panel is the in-sample / validation slice from `2026-03-09 22:38:00` to `2026-03-10 21:21:00` UTC
+  - the bottom panel is the out-of-sample / test slice from `2026-03-10 21:22:00` to `2026-03-11 20:06:00` UTC
+- both PNGs start from `$100` cash and omit the logistic benchmark so the presentation stays focused on the two new tree-model candidates
+
+![Random Forest Backtest](presentation/random_forest_resolution_edge_backtest.png)
+
+![HistGradientBoosting Backtest](presentation/hist_gradient_boosting_resolution_edge_backtest.png)
+
+Artifacts and rerun commands:
+
+- research report: `work/expiry_resolution_report.md`
+- research results JSON: `work/expiry_resolution_results.json`
+- presentation charts:
+  - `presentation/random_forest_resolution_edge_backtest.png`
+  - `presentation/hist_gradient_boosting_resolution_edge_backtest.png`
+  - backup combined charts: `presentation/in_sample_backtest.png`, `presentation/out_of_sample_backtest.png`
+- regenerate research results:
+  - `python work/run_horizon_model_research.py --end '2026-03-11 20:07:00'`
+- regenerate presentation charts:
+  - `python presentation/generate_backtest_graphs.py --end '2026-03-11 20:07:00'`
+
 ## Feature Set Used by Models
 
 Full model feature set from `data_pipeline/modeling_features.py` (`FEATURE_COLS`):
@@ -278,4 +542,3 @@ Notebook examples: `client_api/example.ipynb`.
 - Keep API keys and private key files out of git.
 - Use `.env.aws` / environment variables for DB + API credentials.
 - Live tab has an additional password gate.
-
