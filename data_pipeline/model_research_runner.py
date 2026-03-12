@@ -10,11 +10,12 @@ try:
     import optuna
 except Exception:
     optuna = None
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import AdaBoostClassifier, BaggingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import brier_score_loss, log_loss
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.tree import DecisionTreeClassifier
 
 from data_pipeline.common import get_db_conn, utc_now
 from data_pipeline.modeling_features import BASELINE_FEATURE_COLS, FEATURE_COLS, SOURCE_COLS, build_feature_vector, has_target
@@ -25,6 +26,8 @@ TOPK_BY_MODEL = {
     "naive_logistic_baseline": 10,
     "logistic": 14,
     "random_forest": 16,
+    "bagging_tree": 16,
+    "adaboost": 16,
 }
 
 
@@ -199,16 +202,47 @@ def build_estimator(model_name: str, params: Dict):
                 ),
             ]
         )
-    return RandomForestClassifier(
-        n_estimators=int(params["n_estimators"]),
-        max_depth=(None if params["max_depth"] is None else int(params["max_depth"])),
-        min_samples_leaf=int(params["min_samples_leaf"]),
-        min_samples_split=int(params["min_samples_split"]),
-        max_features=params["max_features"],
-        class_weight=params["class_weight"],
-        random_state=42,
-        n_jobs=-1,
-    )
+    if model_name == "random_forest":
+        return RandomForestClassifier(
+            n_estimators=int(params["n_estimators"]),
+            max_depth=(None if params["max_depth"] is None else int(params["max_depth"])),
+            min_samples_leaf=int(params["min_samples_leaf"]),
+            min_samples_split=int(params["min_samples_split"]),
+            max_features=params["max_features"],
+            class_weight=params["class_weight"],
+            random_state=42,
+            n_jobs=-1,
+        )
+    if model_name == "bagging_tree":
+        base = DecisionTreeClassifier(
+            max_depth=int(params["max_depth"]),
+            min_samples_leaf=int(params["min_samples_leaf"]),
+            min_samples_split=int(params["min_samples_split"]),
+            random_state=42,
+        )
+        return BaggingClassifier(
+            estimator=base,
+            n_estimators=int(params["n_estimators"]),
+            max_samples=float(params["max_samples"]),
+            max_features=float(params["max_features"]),
+            bootstrap=True,
+            n_jobs=-1,
+            random_state=42,
+        )
+    if model_name == "adaboost":
+        base = DecisionTreeClassifier(
+            max_depth=int(params["max_depth"]),
+            min_samples_leaf=int(params["min_samples_leaf"]),
+            min_samples_split=int(params["min_samples_split"]),
+            random_state=42,
+        )
+        return AdaBoostClassifier(
+            estimator=base,
+            n_estimators=int(params["n_estimators"]),
+            learning_rate=float(params["learning_rate"]),
+            random_state=42,
+        )
+    raise ValueError(f"unsupported model_name: {model_name}")
 
 
 def sample_params(model_name: str, rng: random.Random) -> Dict:
@@ -224,17 +258,40 @@ def sample_params(model_name: str, rng: random.Random) -> Dict:
             "signal_threshold": rng.uniform(0.52, 0.72),
             "edge_threshold": rng.uniform(0.0, 0.03),
         }
-    max_feat = rng.choice(["sqrt", "log2", round(rng.uniform(0.3, 1.0), 2)])
-    return {
-        "n_estimators": rng.randint(80, 220),
-        "max_depth": rng.choice([4, 5, 6, 7, 8, 10]),
-        "min_samples_leaf": rng.randint(3, 24),
-        "min_samples_split": rng.randint(6, 50),
-        "max_features": max_feat,
-        "class_weight": rng.choice([None, "balanced", "balanced_subsample"]),
-        "signal_threshold": rng.uniform(0.52, 0.72),
-        "edge_threshold": rng.uniform(0.0, 0.03),
-    }
+    if model_name == "random_forest":
+        max_feat = rng.choice(["sqrt", "log2", round(rng.uniform(0.3, 1.0), 2)])
+        return {
+            "n_estimators": rng.randint(80, 220),
+            "max_depth": rng.choice([4, 5, 6, 7, 8, 10]),
+            "min_samples_leaf": rng.randint(3, 24),
+            "min_samples_split": rng.randint(6, 50),
+            "max_features": max_feat,
+            "class_weight": rng.choice([None, "balanced", "balanced_subsample"]),
+            "signal_threshold": rng.uniform(0.52, 0.72),
+            "edge_threshold": rng.uniform(0.0, 0.03),
+        }
+    if model_name == "bagging_tree":
+        return {
+            "n_estimators": rng.randint(50, 200),
+            "max_depth": rng.choice([3, 4, 5, 6, 7, 8]),
+            "min_samples_leaf": rng.randint(2, 16),
+            "min_samples_split": rng.randint(4, 32),
+            "max_samples": rng.uniform(0.5, 1.0),
+            "max_features": rng.uniform(0.5, 1.0),
+            "signal_threshold": rng.uniform(0.52, 0.72),
+            "edge_threshold": rng.uniform(0.0, 0.03),
+        }
+    if model_name == "adaboost":
+        return {
+            "n_estimators": rng.randint(50, 250),
+            "max_depth": rng.choice([1, 2, 3]),
+            "min_samples_leaf": rng.randint(1, 8),
+            "min_samples_split": rng.randint(2, 16),
+            "learning_rate": rng.uniform(0.01, 0.3),
+            "signal_threshold": rng.uniform(0.52, 0.72),
+            "edge_threshold": rng.uniform(0.0, 0.03),
+        }
+    raise ValueError(f"unsupported model_name: {model_name}")
 
 
 def suggest_params_optuna(model_name: str, trial) -> Dict:
@@ -250,22 +307,45 @@ def suggest_params_optuna(model_name: str, trial) -> Dict:
             "signal_threshold": trial.suggest_float("signal_threshold", 0.52, 0.72),
             "edge_threshold": trial.suggest_float("edge_threshold", 0.0, 0.03),
         }
-    class_weight_tok = trial.suggest_categorical("class_weight", ["none", "balanced", "balanced_subsample"])
-    max_features_tok = trial.suggest_categorical("max_features_mode", ["sqrt", "log2", "float"])
-    if max_features_tok == "float":
-        max_features = round(float(trial.suggest_float("max_features_float", 0.3, 1.0)), 2)
-    else:
-        max_features = max_features_tok
-    return {
-        "n_estimators": int(trial.suggest_int("n_estimators", 80, 220)),
-        "max_depth": int(trial.suggest_int("max_depth", 4, 10)),
-        "min_samples_leaf": int(trial.suggest_int("min_samples_leaf", 3, 24)),
-        "min_samples_split": int(trial.suggest_int("min_samples_split", 6, 50)),
-        "max_features": max_features,
-        "class_weight": None if class_weight_tok == "none" else class_weight_tok,
-        "signal_threshold": trial.suggest_float("signal_threshold", 0.52, 0.72),
-        "edge_threshold": trial.suggest_float("edge_threshold", 0.0, 0.03),
-    }
+    if model_name == "random_forest":
+        class_weight_tok = trial.suggest_categorical("class_weight", ["none", "balanced", "balanced_subsample"])
+        max_features_tok = trial.suggest_categorical("max_features_mode", ["sqrt", "log2", "float"])
+        if max_features_tok == "float":
+            max_features = round(float(trial.suggest_float("max_features_float", 0.3, 1.0)), 2)
+        else:
+            max_features = max_features_tok
+        return {
+            "n_estimators": int(trial.suggest_int("n_estimators", 80, 220)),
+            "max_depth": int(trial.suggest_int("max_depth", 4, 10)),
+            "min_samples_leaf": int(trial.suggest_int("min_samples_leaf", 3, 24)),
+            "min_samples_split": int(trial.suggest_int("min_samples_split", 6, 50)),
+            "max_features": max_features,
+            "class_weight": None if class_weight_tok == "none" else class_weight_tok,
+            "signal_threshold": trial.suggest_float("signal_threshold", 0.52, 0.72),
+            "edge_threshold": trial.suggest_float("edge_threshold", 0.0, 0.03),
+        }
+    if model_name == "bagging_tree":
+        return {
+            "n_estimators": int(trial.suggest_int("n_estimators", 50, 200)),
+            "max_depth": int(trial.suggest_int("max_depth", 3, 8)),
+            "min_samples_leaf": int(trial.suggest_int("min_samples_leaf", 2, 16)),
+            "min_samples_split": int(trial.suggest_int("min_samples_split", 4, 32)),
+            "max_samples": float(trial.suggest_float("max_samples", 0.5, 1.0)),
+            "max_features": float(trial.suggest_float("max_features", 0.5, 1.0)),
+            "signal_threshold": trial.suggest_float("signal_threshold", 0.52, 0.72),
+            "edge_threshold": trial.suggest_float("edge_threshold", 0.0, 0.03),
+        }
+    if model_name == "adaboost":
+        return {
+            "n_estimators": int(trial.suggest_int("n_estimators", 50, 250)),
+            "max_depth": int(trial.suggest_int("max_depth", 1, 3)),
+            "min_samples_leaf": int(trial.suggest_int("min_samples_leaf", 1, 8)),
+            "min_samples_split": int(trial.suggest_int("min_samples_split", 2, 16)),
+            "learning_rate": float(trial.suggest_float("learning_rate", 0.01, 0.3)),
+            "signal_threshold": trial.suggest_float("signal_threshold", 0.52, 0.72),
+            "edge_threshold": trial.suggest_float("edge_threshold", 0.0, 0.03),
+        }
+    raise ValueError(f"unsupported model_name: {model_name}")
 
 
 def estimate_shapley_mc(estimator, x_ref: np.ndarray, x_samples: np.ndarray, n_perm: int, seed: int) -> np.ndarray:
@@ -491,11 +571,13 @@ def main():
         if len(train_rows) < 150 or len(eval_rows) < 120:
             raise RuntimeError(f"insufficient split sizes train={len(train_rows)} eval={len(eval_rows)} cutoff={cutoff}")
 
-        model_order = ["naive_logistic_baseline", "logistic", "random_forest"]
+        model_order = ["naive_logistic_baseline", "logistic", "random_forest", "bagging_tree", "adaboost"]
         default_features = {
             "naive_logistic_baseline": list(BASELINE_FEATURE_COLS),
             "logistic": list(FEATURE_COLS),
             "random_forest": list(FEATURE_COLS),
+            "bagging_tree": list(FEATURE_COLS),
+            "adaboost": list(FEATURE_COLS),
         }
         outputs = []
 

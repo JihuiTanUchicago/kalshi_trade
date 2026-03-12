@@ -368,17 +368,148 @@
 \end{frame}
 
 % =========================
-% SLIDE 9: CONCLUSION
+% SLIDE 9: BAGGING TREES
+% =========================
+\renewcommand{\sectiontitle}{Model \#4 --- Bagging Trees}
+\section{\sectiontitle}
+
+\begin{frame}{\sectiontitle}
+\footnotesize
+\textbf{Label:} $y_t = \mathbf{1}[\text{final YES bid} \geq \$0.90]$ (expiry-resolution) \quad
+\textbf{Features (22):} same production features as logistic / random forest (order book, returns, moneyness, Coinbase)
+
+\vspace{0.05cm}
+\textbf{Params:} \texttt{BaggingClassifier}: \texttt{n\_estimators=100}, base \texttt{DecisionTreeClassifier} \texttt{max\_depth=6, min\_samples\_leaf=8, min\_samples\_split=16, max\_samples=0.8, max\_features=0.8}
+
+\vspace{0.05cm}
+\begin{tabular}{llll}
+\textbf{Train}       & Mar 7 -- Mar 9 (UTC)                  & 3,545 rows & 60\% split \\
+\textbf{Validation}  & Mar 9 22:38 -- Mar 10 21:21 (UTC)     & 1,182 rows & In-sample holdout \\
+\textbf{OOS (Test)}  & Mar 10 21:22 -- Mar 11 20:06 (UTC)    & 1,182 rows & Forward test \\
+\end{tabular}
+
+\vspace{0.05cm}
+\textbf{Buy:} $p_{\text{yes}} \geq 0.55$ \& edge $\geq \$0.08$ \quad
+\textbf{Exit:} take-profit at entry $+\$0.05$, else final YES bid \quad
+\textbf{Size:} 1
+
+\textbf{OOS PnL:} TBD (run pending) \quad
+\textbf{OOS AP:} --, \textbf{AUC:} --
+
+\vspace{0.05cm}
+\begin{columns}[T]
+    \begin{column}{0.49\textwidth}
+        \centering
+        \includegraphics[width=\textwidth, height=0.48\textheight, keepaspectratio]{bagging_insample.png}
+    \end{column}
+    \begin{column}{0.49\textwidth}
+        \centering
+        \includegraphics[width=\textwidth, height=0.48\textheight, keepaspectratio]{bagging_outsample_compare.png}
+    \end{column}
+\end{columns}
+\end{frame}
+
+% =========================
+% SLIDE 10: ADABOOST
+% =========================
+\renewcommand{\sectiontitle}{Model \#5 --- AdaBoost (Boosted Trees)}
+\section{\sectiontitle}
+
+\begin{frame}{\sectiontitle}
+\footnotesize
+\textbf{Label:} $y_t = \mathbf{1}[\text{final YES bid} \geq \$0.90]$ (expiry-resolution) \quad
+\textbf{Features (22):} same production features as logistic / random forest (order book, returns, moneyness, Coinbase)
+
+\vspace{0.05cm}
+\textbf{Params:} \texttt{AdaBoostClassifier}: \texttt{n\_estimators=100, learning\_rate=0.1}, base \texttt{DecisionTreeClassifier} \texttt{max\_depth=2, min\_samples\_leaf=4, min\_samples\_split=8}
+
+\vspace{0.05cm}
+\begin{tabular}{llll}
+\textbf{Train}       & Mar 7 -- Mar 9 (UTC)                  & 3,545 rows & 60\% split \\
+\textbf{Validation}  & Mar 9 22:38 -- Mar 10 21:21 (UTC)     & 1,182 rows & In-sample holdout \\
+\textbf{OOS (Test)}  & Mar 10 21:22 -- Mar 11 20:06 (UTC)    & 1,182 rows & Forward test \\
+\end{tabular}
+
+\vspace{0.05cm}
+\textbf{Buy:} $p_{\text{yes}} \geq 0.55$ \& edge $\geq \$0.08$ \quad
+\textbf{Exit:} take-profit at entry $+\$0.05$, else final YES bid \quad
+\textbf{Size:} 1
+
+\textbf{OOS PnL:} TBD (run pending) \quad
+\textbf{OOS AP:} --, \textbf{AUC:} --
+
+\vspace{0.05cm}
+\begin{columns}[T]
+    \begin{column}{0.49\textwidth}
+        \centering
+        \includegraphics[width=\textwidth, height=0.48\textheight, keepaspectratio]{adaboost_insample.png}
+    \end{column}
+    \begin{column}{0.49\textwidth}
+        \centering
+        \includegraphics[width=\textwidth, height=0.48\textheight, keepaspectratio]{adaboost_outsample_compare.png}
+    \end{column}
+\end{columns}
+\end{frame}
+
+% =========================
+% SLIDE 11: CONCLUSION
 % =========================
 \renewcommand{\sectiontitle}{Conclusion}
 \section{\sectiontitle}
 
 \begin{frame}{\sectiontitle}
-% Content to be added
+\footnotesize
+\textbf{What we did}
+\begin{itemize}
+    \itemj Built an end-to-end pipeline: Kalshi + Coinbase data, 20s$\to$1-min features, MySQL, shared research and live trading engine
+    \itemj Trained six models: naive logistic (baseline), L1 logistic, gradient boosting, random forest, bagging trees, AdaBoost --- with the same train/validation/OOS splits and trading rules where applicable
+\end{itemize}
+
+\vspace{0.1cm}
+\textbf{Results (in-sample vs out-of-sample)}
+\begin{itemize}
+    \itemj Linear models (baseline, L1): negative OOS PnL; signal near 50/50 --- motivated moving to non-linear models
+    \itemj Tree ensembles (GBM, RF): positive OOS PnL, better calibration (AP/AUC $\sim$0.81--0.85); RF more selective (fewer trades, higher win rate)
+    \itemj Bagging and AdaBoost: integrated into the research runner; same format and splits; backtest and plots TBD
+\end{itemize}
+
+\vspace{0.1cm}
+\textbf{Takeaways}
+\begin{itemize}
+    \itemj Feature design (moneyness, order book, BTC flow) and label choice (mid-price vs expiry-resolution) matter as much as model choice
+    \itemj Risk and execution discipline (thresholds, position size, drawdown limits) are essential; avoid overfitting to noise
+\end{itemize}
 \end{frame}
 
 % =========================
-% SLIDE 10: THANK YOU
+% SLIDE 12: NEXT STEPS
+% =========================
+\renewcommand{\sectiontitle}{Next Steps}
+\section{\sectiontitle}
+
+\begin{frame}{\sectiontitle}
+\footnotesize
+\textbf{Models}
+\begin{itemize}
+    \itemj Complete bagging and AdaBoost backtests on the same train/validation/OOS splits; report in-sample and OOS PnL, win rate, AP, AUC in the same format as models 1--3
+    \itemj Use feature importance (e.g., Shapley) to select a stable feature set and compare across all five ensemble types
+\end{itemize}
+
+\vspace{0.1cm}
+\textbf{Execution \& risk}
+\begin{itemize}
+    \itemj Harden live engine: slippage and partial fills, expiry-boundary rules; keep drawdown and position limits
+\end{itemize}
+
+\vspace{0.1cm}
+\textbf{Monitoring}
+\begin{itemize}
+    \itemj Dashboards for calibration, PnL, and risk state; use the shared research/live stack to iterate on models and features without overfitting
+\end{itemize}
+\end{frame}
+
+% =========================
+% SLIDE 13: THANK YOU
 % =========================
 \begin{frame}{}
     \centering
