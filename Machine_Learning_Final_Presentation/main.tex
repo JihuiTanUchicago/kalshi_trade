@@ -75,24 +75,24 @@
 \section{\sectiontitle}
 
 \begin{frame}{\sectiontitle}
+\scriptsize
 \begin{columns}[T]
-    \begin{column}{0.42\textwidth}
-        \small
+    \begin{column}{0.40\textwidth}
         \textbf{The Exchange: Kalshi}
         \begin{itemize}
             \item CFTC-regulated prediction market exchange
             \item Binary contracts: pays \$1 if event occurs, \$0 otherwise
         \end{itemize}
-        \vspace{0.15cm}
+        \vspace{0.1cm}
         \textbf{BTC Up or Down --- 15 Min}
         \begin{itemize}
             \item New contract every 15 min: ``Will BTC be $\geq$ \$X at expiry?''
             \item YES/NO sides trade as probabilities (cents); live bid/ask order book
             \item Settles at \$1 (YES) or \$0 (NO)
         \end{itemize}
-        \vspace{0.15cm}
+        \vspace{0.1cm}
     \end{column}
-    \begin{column}{0.56\textwidth}
+    \begin{column}{0.58\textwidth}
         \centering
         \includegraphics[width=\textwidth, height=0.78\textheight, keepaspectratio]{kalshi_market.png}
     \end{column}
@@ -106,9 +106,9 @@
 \section{\sectiontitle}
 
 \begin{frame}{\sectiontitle}
-\small
+\scriptsize
 \begin{columns}[T]
-    \begin{column}{0.48\textwidth}
+    \begin{column}{0.47\textwidth}
         \textbf{Kalshi API (REST \& WebSocket)}
         \begin{itemize}
             \item Top-of-book YES/NO: bid/ask price \& size
@@ -116,13 +116,13 @@
             \item Quote-change event count per minute
             \item Frequency: \textbf{20-second snapshots}, real-time
         \end{itemize}
-        \vspace{0.15cm}
+        \vspace{0.1cm}
         \textbf{Coinbase API}
         \begin{itemize}
             \item BTC/USD spot price, \textbf{every 20 seconds}, real-time
         \end{itemize}
     \end{column}
-    \begin{column}{0.48\textwidth}
+    \begin{column}{0.47\textwidth}
         \textbf{Collection \& Storage}
         \begin{itemize}
             \item Live rerun window: \textbf{Mar 7 02:11 -- Mar 12 06:04 UTC}
@@ -130,7 +130,7 @@
             \item MySQL on AWS RDS; 20s snapshots aggregated to 1-min bars
             \item EC2 workers: \texttt{forward\_collector}, \texttt{coinbase\_collector}, \texttt{feature\_1m\_collector}
         \end{itemize}
-        \vspace{0.15cm}
+        \vspace{0.1cm}
         \textbf{Key Tables}
         \begin{itemize}
             \item \texttt{forward\_quotes} --- 20s top-of-book
@@ -156,21 +156,21 @@
 \section{\sectiontitle}
 
 \begin{frame}{\texttt{Feature Set}}
-\footnotesize
+\scriptsize
 \begin{columns}[T]
-    \begin{column}{0.48\textwidth}
+    \begin{column}{0.47\textwidth}
         \textbf{Order Book \& Pricing}
         \begin{itemize}
             \item \texttt{yes\_bid/ask\_dollars} --- top-of-book prices
             \item \texttt{spread\_dollars}, \texttt{mid\_dollars}
             \item \texttt{orderbook\_imbalance} --- $(bid\_sz - ask\_sz)/(bid\_sz + ask\_sz)$
         \end{itemize}
-        \vspace{0.1cm}
+        \vspace{0.05cm}
         \textbf{Contract Returns}
         \begin{itemize}
             \item \texttt{mid\_ret\_1m}, \texttt{mid\_ret\_3m}
         \end{itemize}
-        \vspace{0.1cm}
+        \vspace{0.05cm}
         \textbf{Trade Activity (last 60s)}
         \begin{itemize}
             \item \texttt{trades\_last\_60s\_count} --- trade count
@@ -178,19 +178,19 @@
             \item \texttt{trades\_last\_60s\_vwap\_yes} --- VWAP
             \item \texttt{quote\_change\_events\_60s} --- book update frequency
         \end{itemize}
-        \vspace{0.1cm}
+        \vspace{0.05cm}
         \textbf{Time to Expiry}
         \begin{itemize}
             \item \texttt{time\_to\_expiry\_sec}
         \end{itemize}
     \end{column}
-    \begin{column}{0.48\textwidth}
+    \begin{column}{0.47\textwidth}
         \textbf{Coinbase BTC Spot}
         \begin{itemize}
             \item \texttt{cb\_ret\_1m}, \texttt{cb\_ret\_3m}, \texttt{cb\_ret\_5m}
             \item \texttt{cb\_vol\_5m} --- 5-min realized volatility
         \end{itemize}
-        \vspace{0.1cm}
+        \vspace{0.05cm}
         \textbf{Moneyness \& Interactions}
         \begin{itemize}
             \item \texttt{moneyness\_abs/pct} --- spot vs.\ strike
@@ -199,7 +199,7 @@
             \item \texttt{moneyness\_x\_imbalance} --- $\times$ imbalance
             \item \texttt{moneyness\_x\_qchg} --- $\times$ quote changes
         \end{itemize}
-        \vspace{0.2cm}
+        \vspace{0.1cm}
     \end{column}
 \end{columns}
 \end{frame}
@@ -211,25 +211,26 @@
 \section{\sectiontitle}
 
 \begin{frame}{\sectiontitle}
-\footnotesize
+\scriptsize
 \textbf{Label:} $y_t = \mathbf{1}[\,\text{bid}_{t+1} > \text{ask}_t\,]$ \quad
 \textbf{Features (13):} \texttt{bid, ask, spread, mid, imbalance, mid\_ret\_1m/3m, cb\_ret\_1m/3m, trades\_count, quote\_chg, tte, moneyness\_pct}
 
-\vspace{0.1cm}
+\vspace{0.05cm}
+\scalebox{0.93}{
 \begin{tabular}{llll}
 \textbf{Train (UTC)}      & Mar 7 02:11 -- Mar 10 04:31 & 4,457 rows & Train \\
 \textbf{Validation (UTC)} & Mar 10 04:32 -- Mar 11 05:17 & 1,486 rows & In-sample holdout \\
 \textbf{OOS (UTC)}        & Mar 11 05:18 -- Mar 12 06:04 & 1,486 rows & Forward test \\
-\end{tabular}
+\end{tabular}}
 
-\vspace{0.1cm}
+\vspace{0.05cm}
 \textbf{Buy YES:} $p_{\text{yes}} \geq 0.55$ \& edge $> \$0.01$ \quad
 \textbf{Sell YES:} $p_{\text{yes}} < 0.55$ or edge $\leq \$0.01$ (or TTE $\leq 60$s) \quad
 
 \textbf{Qty:} 1--10 contracts (scaled by edge) \quad
 \textbf{OOS PnL:} \textbf{-\$18.26} / 135 trades / 45.2\% win rate
 
-\vspace{0.1cm}
+\vspace{0.05cm}
 \begin{columns}[T]
     \begin{column}{0.49\textwidth}
         \centering
