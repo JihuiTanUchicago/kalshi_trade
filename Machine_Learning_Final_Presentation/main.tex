@@ -59,7 +59,7 @@
 \subtitle{Machine Learning Final Project}
 \author{Todd Tan \and Aldrich Wang \ and Arush Guliani}
 \institute{The University of Chicago}
-\date{March 2026}
+\date{March 12, 2026}
 
 \begin{document}
 
@@ -125,7 +125,8 @@
     \begin{column}{0.48\textwidth}
         \textbf{Collection \& Storage}
         \begin{itemize}
-            \item Continuous collection: \textbf{Mar 6, 2026, 7:16 PM CST -- present}
+            \item Live rerun window: \textbf{Mar 7 02:11 -- Mar 12 06:04 UTC}
+            \item Current presentation refresh uses \textbf{7,429 eligible 1-min rows}
             \item MySQL on AWS RDS; 20s snapshots aggregated to 1-min bars
             \item EC2 workers: \texttt{forward\_collector}, \texttt{coinbase\_collector}, \texttt{feature\_1m\_collector}
         \end{itemize}
@@ -216,9 +217,9 @@
 
 \vspace{0.1cm}
 \begin{tabular}{llll}
-\textbf{Train (CST)} & Mar 6 7:16 PM -- Mar 8 6:16 AM & 2,044 rows & In-sample \\
-\textbf{Test (CST)}  & Mar 8 6:16 AM -- 2:47 PM       & 511 rows   & In-sample holdout \\
-\textbf{OOS (CST)}   & Mar 8 2:47 PM -- present       & live       & Forward test \\
+\textbf{Train (UTC)}      & Mar 7 02:11 -- Mar 10 04:31 & 4,457 rows & Train \\
+\textbf{Validation (UTC)} & Mar 10 04:32 -- Mar 11 05:17 & 1,486 rows & In-sample holdout \\
+\textbf{OOS (UTC)}        & Mar 11 05:18 -- Mar 12 06:04 & 1,486 rows & Forward test \\
 \end{tabular}
 
 \vspace{0.1cm}
@@ -226,7 +227,7 @@
 \textbf{Sell YES:} $p_{\text{yes}} < 0.55$ or edge $\leq \$0.01$ (or TTE $\leq 60$s) \quad
 
 \textbf{Qty:} 1--10 contracts (scaled by edge) \quad
-\textbf{OOS PnL:} \textbf{--\$56.79} / 474 trades / 49.7\% win rate
+\textbf{OOS PnL:} \textbf{-\$18.26} / 135 trades / 45.2\% win rate
 
 \vspace{0.1cm}
 \begin{columns}[T]
@@ -257,14 +258,14 @@
 
 \vspace{0.05cm}
 \begin{tabular}{llll}
-\textbf{Train (CST)} & Mar 6 7:16 PM -- Mar 8 6:16 AM & 2,044 rows & In-sample \\
-\textbf{Test (CST)}  & Mar 8 6:16 AM -- 2:47 PM       & 511 rows   & In-sample holdout \\
-\textbf{OOS (CST)}   & Mar 8 2:47 PM -- present       & live       & Forward test \\
+\textbf{Train (UTC)}      & Mar 7 02:11 -- Mar 10 04:31 & 4,457 rows & Train \\
+\textbf{Validation (UTC)} & Mar 10 04:32 -- Mar 11 05:17 & 1,486 rows & In-sample holdout \\
+\textbf{OOS (UTC)}        & Mar 11 05:18 -- Mar 12 06:04 & 1,486 rows & Forward test \\
 \end{tabular}
 
-\textbf{OOS PnL:} \textbf{--\$89.63} (\$100$\to$\$10.37) / 501 trades / 46.3\% win rate \quad
+\textbf{OOS PnL:} \textbf{-\$54.49} (\$100$\to$\$45.51) / 147 trades / 43.5\% win rate \quad
 
-\textbf{Comment:} Added complexity is not justified; near-random signal ($\sim$50/50) motivates non-linear models
+\textbf{Comment:} Validation improved (+\$8.20), but OOS stayed sharply negative; linear complexity still does not hold up live
 
 \vspace{0.05cm}
 \begin{columns}[T]
@@ -297,18 +298,18 @@
 
 \vspace{0.05cm}
 \begin{tabular}{llll}
-\textbf{Train}       & Mar 7 -- Mar 9 (UTC)                  & 3,545 rows & 60\% split \\
-\textbf{Validation}  & Mar 9 22:38 -- Mar 10 21:21 (UTC)     & 1,182 rows & In-sample holdout \\
-\textbf{OOS (Test)}  & Mar 10 21:22 -- Mar 11 20:06 (UTC)    & 1,182 rows & Forward test \\
+\textbf{Train (UTC)}      & Mar 7 02:11 -- Mar 10 05:33 & 3,776 rows & 60\% split \\
+\textbf{Validation (UTC)} & Mar 10 05:34 -- Mar 11 05:46 & 1,259 rows & In-sample holdout \\
+\textbf{OOS (UTC)}        & Mar 11 05:47 -- Mar 12 05:58 & 1,259 rows & Forward test \\
 \end{tabular}
 
 \vspace{0.05cm}
-\textbf{Buy:} $p_{\text{yes}} \geq 0.55$ \& edge $\geq \$0.08$ \quad
+\textbf{Buy:} $p_{\text{yes}} \geq 0.60$ \& edge $\geq \$0.20$ \quad
 \textbf{Exit:} take-profit at entry $+\$0.05$, else final YES bid \quad
 \textbf{Size:} 1
 
-\textbf{OOS PnL:} \textbf{+\$0.15} / 131 trades / 83.2\% win rate \quad
-\textbf{OOS AP:} 0.814, \textbf{AUC:} 0.810
+\textbf{OOS PnL:} \textbf{+\$0.13} / 1 trade / 100.0\% win rate \quad
+\textbf{OOS AP:} 0.820, \textbf{AUC:} 0.837
 
 \vspace{0.05cm}
 \begin{columns}[T]
@@ -341,18 +342,18 @@
 
 \vspace{0.05cm}
 \begin{tabular}{llll}
-\textbf{Train}       & Mar 7 -- Mar 9 (UTC)                  & 3,545 rows & 60\% split \\
-\textbf{Validation}  & Mar 9 22:38 -- Mar 10 21:21 (UTC)     & 1,182 rows & In-sample holdout \\
-\textbf{OOS (Test)}  & Mar 10 21:22 -- Mar 11 20:06 (UTC)    & 1,182 rows & Forward test \\
+\textbf{Train (UTC)}      & Mar 7 02:11 -- Mar 10 05:33 & 3,776 rows & 60\% split \\
+\textbf{Validation (UTC)} & Mar 10 05:34 -- Mar 11 05:46 & 1,259 rows & In-sample holdout \\
+\textbf{OOS (UTC)}        & Mar 11 05:47 -- Mar 12 05:58 & 1,259 rows & Forward test \\
 \end{tabular}
 
 \vspace{0.05cm}
-\textbf{Buy:} $p_{\text{yes}} \geq 0.65$ \& edge $\geq \$0.08$ \quad
+\textbf{Buy:} $p_{\text{yes}} \geq 0.90$ \& edge $\geq \$0.08$ \quad
 \textbf{Exit:} take-profit at entry $+\$0.05$, else final YES bid \quad
 \textbf{Size:} 1
 
-\textbf{OOS PnL:} \textbf{+\$0.16} / 9 trades / 88.9\% win rate \quad
-\textbf{OOS AP:} 0.848, \textbf{AUC:} 0.847
+\textbf{OOS PnL:} \textbf{-\$0.68} / 4 trades / 75.0\% win rate \quad
+\textbf{OOS AP:} 0.846, \textbf{AUC:} 0.865
 
 \vspace{0.05cm}
 \begin{columns}[T]
@@ -383,9 +384,9 @@
 
 \vspace{0.05cm}
 \begin{tabular}{llll}
-\textbf{Train}       & Mar 7 -- Mar 9 (UTC)                  & 3,545 rows & 60\% split \\
-\textbf{Validation}  & Mar 9 22:38 -- Mar 10 21:21 (UTC)     & 1,182 rows & In-sample holdout \\
-\textbf{OOS (Test)}  & Mar 10 21:22 -- Mar 11 20:06 (UTC)    & 1,182 rows & Forward test \\
+\textbf{Train (UTC)}      & Mar 7 02:11 -- Mar 10 05:33 & 3,776 rows & 60\% split \\
+\textbf{Validation (UTC)} & Mar 10 05:34 -- Mar 11 05:46 & 1,259 rows & In-sample holdout \\
+\textbf{OOS (UTC)}        & Mar 11 05:47 -- Mar 12 05:58 & 1,259 rows & Forward test \\
 \end{tabular}
 
 \vspace{0.05cm}
@@ -393,8 +394,8 @@
 \textbf{Exit:} take-profit at entry $+\$0.05$, else final YES bid \quad
 \textbf{Size:} 1
 
-\textbf{OOS PnL:} TBD (run pending) \quad
-\textbf{OOS AP:} --, \textbf{AUC:} --
+\textbf{OOS PnL:} \textbf{-\$0.35} / 11 trades / 81.8\% win rate \quad
+\textbf{OOS AP:} 0.858, \textbf{AUC:} 0.875
 
 \vspace{0.05cm}
 \begin{columns}[T]
@@ -425,18 +426,18 @@
 
 \vspace{0.05cm}
 \begin{tabular}{llll}
-\textbf{Train}       & Mar 7 -- Mar 9 (UTC)                  & 3,545 rows & 60\% split \\
-\textbf{Validation}  & Mar 9 22:38 -- Mar 10 21:21 (UTC)     & 1,182 rows & In-sample holdout \\
-\textbf{OOS (Test)}  & Mar 10 21:22 -- Mar 11 20:06 (UTC)    & 1,182 rows & Forward test \\
+\textbf{Train (UTC)}      & Mar 7 02:11 -- Mar 10 05:33 & 3,776 rows & 60\% split \\
+\textbf{Validation (UTC)} & Mar 10 05:34 -- Mar 11 05:46 & 1,259 rows & In-sample holdout \\
+\textbf{OOS (UTC)}        & Mar 11 05:47 -- Mar 12 05:58 & 1,259 rows & Forward test \\
 \end{tabular}
 
 \vspace{0.05cm}
-\textbf{Buy:} $p_{\text{yes}} \geq 0.55$ \& edge $\geq \$0.08$ \quad
+\textbf{Buy:} $p_{\text{yes}} \geq 0.55$ \& edge $\geq \$0.00$ \quad
 \textbf{Exit:} take-profit at entry $+\$0.05$, else final YES bid \quad
 \textbf{Size:} 1
 
-\textbf{OOS PnL:} TBD (run pending) \quad
-\textbf{OOS AP:} --, \textbf{AUC:} --
+\textbf{OOS PnL:} \textbf{-\$0.23} / 8 trades / 62.5\% win rate \quad
+\textbf{OOS AP:} 0.848, \textbf{AUC:} 0.871
 
 \vspace{0.05cm}
 \begin{columns}[T]
@@ -462,22 +463,23 @@
 \textbf{What we did}
 \begin{itemize}
     \itemj Built an end-to-end pipeline: Kalshi + Coinbase data, 20s$\to$1-min features, MySQL, shared research and live trading engine
-    \itemj Trained six models: naive logistic (baseline), L1 logistic, gradient boosting, random forest, bagging trees, AdaBoost --- with the same train/validation/OOS splits and trading rules where applicable
+    \itemj Re-ran the benchmark and Models 1--5 on live data from Mar 7 02:11 through Mar 12 06:04 UTC, then regenerated every slide plot from that refresh
+    \itemj Expiry-model threshold tuning now requires at least 10 validation trades when possible, with fallback to the unconstrained search if no rule meets that floor
 \end{itemize}
 
 \vspace{0.1cm}
 \textbf{Results (in-sample vs out-of-sample)}
 \begin{itemize}
-    \itemj Linear models (baseline, L1): negative OOS PnL; signal near 50/50 --- motivated moving to non-linear models
-    \itemj Tree ensembles (GBM, RF): positive OOS PnL, better calibration (AP/AUC $\sim$0.81--0.85); RF more selective (fewer trades, higher win rate)
-    \itemj Bagging and AdaBoost: integrated into the research runner; same format and splits; backtest and plots TBD
+    \itemj Linear models stayed negative OOS: benchmark \textbf{-\$18.26} and L1 logistic \textbf{-\$54.49}, despite modest ranking lift (AUC $\sim$0.66)
+    \itemj Expiry-resolution tree models kept strong ranking quality (test AP/AUC roughly 0.82--0.88), but realized tradable edge was sparse on the refreshed OOS slice
+    \itemj GBM finished slightly positive at \textbf{+\$0.13} on 1 OOS trade; RF lost \textbf{-\$0.68} on 4 trades; Bagging traded \textbf{11} times for \textbf{-\$0.35}; AdaBoost lost \textbf{-\$0.23} on 8 trades
 \end{itemize}
 
 \vspace{0.1cm}
 \textbf{Takeaways}
 \begin{itemize}
-    \itemj Feature design (moneyness, order book, BTC flow) and label choice (mid-price vs expiry-resolution) matter as much as model choice
-    \itemj Risk and execution discipline (thresholds, position size, drawdown limits) are essential; avoid overfitting to noise
+    \itemj Predictive ranking alone is not enough; threshold selection and execution assumptions dominate realized PnL once we demand live, non-synthetic trades
+    \itemj More data, more robust walk-forward validation, and transaction-cost-aware tuning are still required before promoting any tree model into production
 \end{itemize}
 \end{frame}
 
@@ -491,20 +493,20 @@
 \footnotesize
 \textbf{Models}
 \begin{itemize}
-    \itemj Complete bagging and AdaBoost backtests on the same train/validation/OOS splits; report in-sample and OOS PnL, win rate, AP, AUC in the same format as models 1--3
-    \itemj Use feature importance (e.g., Shapley) to select a stable feature set and compare across all five ensemble types
+    \itemj Expand to longer walk-forward windows and retune thresholds with a minimum-trade, transaction-cost-aware objective so inactivity does not dominate model selection
+    \itemj Use feature importance (e.g., Shapley) to shrink the 39-feature tree set and test whether we can preserve AP/AUC while improving trade density
 \end{itemize}
 
 \vspace{0.1cm}
 \textbf{Execution \& risk}
 \begin{itemize}
-    \itemj Harden live engine: slippage and partial fills, expiry-boundary rules; keep drawdown and position limits
+    \itemj Harden live engine: slippage and partial fills, expiry-boundary rules, quote-age filters, and drawdown / position limits
 \end{itemize}
 
 \vspace{0.1cm}
 \textbf{Monitoring}
 \begin{itemize}
-    \itemj Dashboards for calibration, PnL, and risk state; use the shared research/live stack to iterate on models and features without overfitting
+    \itemj Add calibration drift, threshold stability, and per-model trade-density panels so we can see when strong AP/AUC is failing to convert into executable edge
 \end{itemize}
 \end{frame}
 
