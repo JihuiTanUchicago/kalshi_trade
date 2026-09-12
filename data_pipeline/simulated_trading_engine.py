@@ -30,10 +30,28 @@ from data_pipeline.sim_model_registry import (
 
 FROZEN_MODELS = ("naive_logistic_baseline", "logistic", "random_forest")
 WALK_FORWARD_MODELS = ("walk_forward_logistic", "walk_forward_random_forest")
-ALL_MODELS = FROZEN_MODELS + WALK_FORWARD_MODELS
+ALL_MODELS = FROZEN_MODELS  # walk-forward models disabled
 MIN_SAMPLES_DEFAULT_RF = 1000
 PRED_THRESHOLD = 0.55
+EXIT_THRESHOLD = 0.50   # hysteresis band lower bound (used by non-1m-hold models)
 EDGE_THRESHOLD = 0.01
+
+# Models that should close exactly one tick after entry (pure 1-min round-trip).
+# The current frozen models use hysteresis instead: the next-minute prob is treated
+# as a momentum signal — hold while prob >= EXIT_THRESHOLD, exit when conviction drops.
+# Add a model here only if it is explicitly designed for 1-minute round-trip evaluation.
+HOLD_1M_MODELS: frozenset = frozenset()
+
+
+def should_close_position(model_name: str, prob: float, edge: float) -> bool:
+    """Decide whether to close an open position this tick.
+
+    1-minute-hold models (HOLD_1M_MODELS): always close after one tick.
+    Other models: symmetric threshold — buy >= PRED_THRESHOLD, sell < PRED_THRESHOLD.
+    """
+    if model_name in HOLD_1M_MODELS:
+        return True
+    return (prob < PRED_THRESHOLD) or (edge <= EDGE_THRESHOLD)
 MAX_QTY = 10
 MIN_INSAMPLE_HOURS = 48
 WF_LOOKBACK_HOURS = 72
@@ -862,8 +880,6 @@ def run_loop() -> None:
                         ll=fm.ll,
                         rf_regime=fm.rf_regime,
                     )
-                wf_rows = load_feature_rows(cur, limit=12000)
-                outputs.update(train_walk_forward_outputs(wf_rows, feature_minute, x_latest))
                 for model_name, fm in custom_models.items():
                     px = x_latest[list(fm.feature_idx)]
                     p = float(fm.estimator.predict_proba([px])[0, 1])
@@ -882,7 +898,7 @@ def run_loop() -> None:
                     signal = 1 if out.prob >= PRED_THRESHOLD else 0
                     edge = out.prob - float(latest.get("yes_ask_dollars") or 0.0)
                     upsert_prediction(cur, now_ts, model_name, latest, out, signal, edge)
-                    should_close = (signal == 0) or (edge <= EDGE_THRESHOLD)
+                    should_close = should_close_position(model_name, out.prob, edge)
                     cur.execute("SELECT 1 FROM sim_positions WHERE model_name=%s LIMIT 1", (model_name,))
                     had_position = cur.fetchone() is not None
                     realized = close_existing_position(

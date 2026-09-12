@@ -223,10 +223,11 @@
 
 \vspace{0.1cm}
 \textbf{Buy YES:} $p_{\text{yes}} \geq 0.55$ \& edge $> \$0.01$ \quad
-\textbf{Sell YES:} $p_{\text{yes}} < 0.55$ or edge $\leq \$0.01$ (or TTE $\leq 60$s) \quad
+\textbf{Sell YES:} $p_{\text{yes}} < 0.50$ or edge $\leq 0$ (or TTE $\leq 60$s) \quad
+\textbf{Hold:} $0.50 \leq p_{\text{yes}} < 0.55$ (hysteresis band)
 
 \textbf{Qty:} 1--10 contracts (scaled by edge) \quad
-\textbf{OOS PnL:} \textbf{--\$56.79} / 474 trades / 49.7\% win rate
+\textbf{OOS PnL:} \textbf{+\$132.42} (\$100$\to$\$232.42) / 513 trades / 57.3\% win rate
 
 \vspace{0.1cm}
 \begin{columns}[T]
@@ -262,9 +263,13 @@
 \textbf{OOS (CST)}   & Mar 8 2:47 PM -- present       & live       & Forward test \\
 \end{tabular}
 
-\textbf{OOS PnL:} \textbf{--\$89.63} (\$100$\to$\$10.37) / 501 trades / 46.3\% win rate \quad
+\textbf{Buy YES:} $p_{\text{yes}} \geq 0.55$ \& edge $> \$0.01$ \quad
+\textbf{Sell YES:} $p_{\text{yes}} < 0.50$ or edge $\leq 0$ (or TTE $\leq 60$s) \quad
+\textbf{Hold:} $0.50 \leq p_{\text{yes}} < 0.55$ (hysteresis band)
 
-\textbf{Comment:} Added complexity is not justified; near-random signal ($\sim$50/50) motivates non-linear models
+\textbf{OOS PnL:} \textbf{+\$121.00} (\$100$\to$\$221.00) / 537 trades / 53.8\% win rate \quad
+
+\textbf{Comment:} Hysteresis recovers edge; with proper exit rule both linear models turn positive --- but overfitting risk remains with complex features on short data.
 
 \vspace{0.05cm}
 \begin{columns}[T]

@@ -1420,8 +1420,8 @@ def render_page(title: str, body_html: str) -> str:
       try{
         const sm=await fetchSimModels();
         const modelRows=Array.isArray(sm.models) ? sm.models : [];
-        const visibleModels=modelRows.filter(m => m.is_active !== false && m.is_visible !== false).map(m => m.model_name);
-        const fallbackModels=['naive_logistic_baseline','logistic','random_forest','walk_forward_logistic','walk_forward_random_forest'];
+        const visibleModels=modelRows.filter(m => m.is_active !== false && m.is_visible !== false && !isWalkForwardModel(m.model_name)).map(m => m.model_name);
+        const fallbackModels=['naive_logistic_baseline','logistic','random_forest'];
         const selectedModels=visibleModels.length ? visibleModels : fallbackModels;
         renderSimModelManager(modelRows, !!sm.backfill_running);
         const r=await fetch('/sim_metrics',{cache:'no-store'});

@@ -1,4 +1,5 @@
 import json
+import sys
 from datetime import datetime
 
 import numpy as np
@@ -6,16 +7,19 @@ import numpy as np
 from data_pipeline.common import get_db_conn, utc_now
 from data_pipeline.sim_model_registry import build_custom_frozen_models, list_custom_models, mark_custom_model_status
 from data_pipeline.simulated_trading_engine import (
-    EDGE_THRESHOLD,
+    BASELINE_IDX,
+    FROZEN_MODELS,
     PRED_THRESHOLD,
     ModelOutput,
     build_feature_vector,
     choose_effective_cutoff,
     close_existing_position,
+    fit_frozen_models,
     get_live_cutoff_utc,
     has_target,
     load_feature_rows,
     open_new_position,
+    should_close_position,
     upsert_equity,
     upsert_prediction,
 )
@@ -88,7 +92,7 @@ def backfill_one_model(cur, model_name: str) -> int:
         signal = 1 if out.prob >= PRED_THRESHOLD else 0
         edge = out.prob - float(latest.get("yes_ask_dollars") or 0.0)
         upsert_prediction(cur, now_ts, model_name, latest, out, signal, edge)
-        should_close = (signal == 0) or (edge <= EDGE_THRESHOLD)
+        should_close = should_close_position(model_name, out.prob, edge)
         cur.execute("SELECT 1 FROM sim_positions WHERE model_name=%s LIMIT 1", (model_name,))
         had_position = cur.fetchone() is not None
         realized = close_existing_position(cur, model_name, latest, now_ts, should_close_same_ticker=should_close)
@@ -100,6 +104,92 @@ def backfill_one_model(cur, model_name: str) -> int:
         upsert_equity(cur, now_ts, model_name, realized)
         processed += 1
     return processed
+
+
+def backfill_frozen_models() -> None:
+    """Clear and replay all built-in frozen models (naive_logistic_baseline, logistic, random_forest)
+    using the hysteresis exit rule. Pauses the sim engine during recompute."""
+    conn = get_db_conn()
+    try:
+        with conn.cursor() as cur:
+            _set_backfill_flag(cur, True)
+            conn.commit()
+            print("Recompute flag set — sim engine will pause.")
+
+            rows = load_feature_rows(cur, limit=200000)
+            print(f"Loaded {len(rows)} feature rows.")
+            if len(rows) < 30:
+                raise RuntimeError("insufficient feature rows for frozen model backfill")
+
+            cutoff = choose_effective_cutoff(rows, get_live_cutoff_utc(cur))
+            print(f"Cutoff UTC: {cutoff}")
+
+            frozen = fit_frozen_models(rows, cutoff)
+            print(
+                f"Models fitted. logistic train={frozen['logistic'].train_rows}, "
+                f"rf train={frozen['random_forest'].train_rows}"
+            )
+
+            for model_name in FROZEN_MODELS:
+                _delete_model_rows(cur, model_name)
+                print(f"Cleared old data for {model_name}.")
+            conn.commit()
+
+            processed = 0
+            for latest in rows:
+                if not has_target(latest):
+                    continue
+                now_ts = to_minute_ts(latest["snapshot_minute_utc"])
+                x_latest = np.asarray(build_feature_vector(latest), dtype=float)
+
+                for model_name in FROZEN_MODELS:
+                    fm = frozen[model_name]
+                    px = x_latest if model_name != "naive_logistic_baseline" else x_latest[list(BASELINE_IDX)]
+                    prob = float(fm.estimator.predict_proba([px])[0, 1])
+                    out = ModelOutput(
+                        prob=prob,
+                        train_rows=fm.train_rows,
+                        test_rows=fm.test_rows,
+                        brier=fm.brier,
+                        ll=fm.ll,
+                        rf_regime=fm.rf_regime,
+                    )
+                    signal = 1 if out.prob >= PRED_THRESHOLD else 0
+                    edge = out.prob - float(latest.get("yes_ask_dollars") or 0.0)
+                    upsert_prediction(cur, now_ts, model_name, latest, out, signal, edge)
+                    should_close = should_close_position(model_name, out.prob, edge)
+                    cur.execute("SELECT 1 FROM sim_positions WHERE model_name=%s LIMIT 1", (model_name,))
+                    had_position = cur.fetchone() is not None
+                    realized = close_existing_position(cur, model_name, latest, now_ts, should_close_same_ticker=should_close)
+                    cur.execute("SELECT 1 FROM sim_positions WHERE model_name=%s LIMIT 1", (model_name,))
+                    has_position_after = cur.fetchone() is not None
+                    closed_this_tick = had_position and not has_position_after
+                    if not closed_this_tick:
+                        open_new_position(cur, model_name, latest, now_ts, out.prob)
+                    upsert_equity(cur, now_ts, model_name, realized)
+
+                processed += 1
+                if processed % 500 == 0:
+                    conn.commit()
+                    print(f"  processed {processed} rows...")
+
+            conn.commit()
+            print(f"Backfill done. Processed {processed} rows.")
+
+            for model_name in FROZEN_MODELS:
+                cur.execute(
+                    "SELECT COUNT(*), MAX(cumulative_pnl_dollars) FROM sim_equity_1m WHERE model_name=%s",
+                    (model_name,),
+                )
+                r = cur.fetchone()
+                print(f"  {model_name}: {r['COUNT(*)']} equity rows, final_pnl={r['MAX(cumulative_pnl_dollars)']}")
+
+    finally:
+        with conn.cursor() as cur:
+            _set_backfill_flag(cur, False)
+        conn.commit()
+        conn.close()
+        print("Recompute flag cleared — sim engine will resume.")
 
 
 def run_pending_jobs() -> None:
@@ -141,4 +231,7 @@ def run_pending_jobs() -> None:
 
 
 if __name__ == "__main__":
-    run_pending_jobs()
+    if len(sys.argv) > 1 and sys.argv[1] == "frozen":
+        backfill_frozen_models()
+    else:
+        run_pending_jobs()
