@@ -209,6 +209,41 @@ append-only table" is a pattern, not a one-off - worth auditing `dashboard_serve
 aggregation queries (`table_counts()`, `sim_metrics()`) for the same shape before the next
 multi-month milestone.
 
+### Hourly check, 2026-09-13 (blocked - dashboard unreachable)
+
+First run of the new hourly monitoring/research task. Confirmed the checkout is
+current (`origin/main` at `9f01355`, all expected files from the 2026-09-12/13
+work present: `sim_config.py`, `binary_theory.py`, `kalshi_fees.py`,
+`research/`, `tests/`) - not a stale-checkout issue. Note for future runs:
+this session's local `main` branch ref was itself stale (`f83afbc`, pre-dating
+all of this) even though `HEAD` was correctly detached at `origin/main` -
+branch new work off `origin/main` explicitly, not off local `main`.
+
+**Could not reach the dashboard.** `https://dehiuraiut9ro.cloudfront.net` is
+unreachable from this session's network: both a plain `curl` and
+`client_api.KalshiDataClient` got `CONNECT tunnel failed, response 403` from
+the outbound egress proxy - `curl: (56) CONNECT tunnel failed, response 403`,
+and the proxy's own status endpoint reports `"kind": "connect_rejected"` /
+`"detail": "gateway answered 403 to CONNECT (policy denial or upstream
+failure)"` for `dehiuraiut9ro.cloudfront.net:443`. Reproduced twice (Python
+`requests` session and raw `curl -u todd:...`), identical rejection both
+times - this is the environment's outbound network egress policy denying the
+CloudFront domain, not a transient blip or a dashboard-side outage. No AWS
+credentials are available in this session to investigate further (by design -
+this task is read-only via the public dashboard API only).
+
+Neither Part 1 (`/sim_metrics` per-model check) nor Part 2 (any new research
+angle needs historical data via `/api/table`) can proceed without dashboard
+access. Not fabricating findings or forcing a low-value research entry -
+stopping here per instructions.
+
+**Action needed from a human**: this session's network egress policy needs
+`dehiuraiut9ro.cloudfront.net` allowed (or an equivalent reachable path) for
+this hourly routine to do anything. Until fixed, every future hourly run will
+hit the same wall - worth checking the environment's network policy config
+directly rather than assuming a future "blocked" entry here is new
+information.
+
 ## Action Plan
 
 1. **Monitor the two live, unvalidated strategy candidates** - give both real time to accumulate
