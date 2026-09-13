@@ -237,6 +237,34 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+### Check (2026-09-13, ~07:38 UTC): dashboard still unreachable - egress block persists across a second consecutive hourly run
+
+Same failure as the prior run (see the `research/2026-09-13-egress-blocked` /
+`claude/magical-shannon-4j9sln` branches off this commit, ~06:53-06:54 UTC, ~45 minutes before
+this one): every request to `https://dehiuraiut9ro.cloudfront.net` fails at the session's own
+egress proxy with a 403 before reaching CloudFront. Confirmed again via
+`curl -u todd:kalshimakesmepoor https://dehiuraiut9ro.cloudfront.net/health` (`CONNECT tunnel
+failed, response 403`) and the proxy's `/__agentproxy/status` endpoint, whose
+`recentRelayFailures` shows `connect_rejected` / "gateway answered 403 to CONNECT (policy denial
+or upstream failure)" for `dehiuraiut9ro.cloudfront.net:443` at 07:38:10 UTC. Per the proxy's own
+README, a 403 here means the destination host is not on this session's egress allowlist - not
+retried or routed around.
+
+Checkout is current and was re-verified before concluding this (not assumed stale): fetched and
+reset to `origin/main` @ `9f01355`, which is the same commit the prior blocked run was on;
+`PLAN.md`, `data_pipeline/sim_config.py`, `data_pipeline/binary_theory.py`,
+`data_pipeline/kalshi_fees.py`, `research/`, `tests/` all present as expected.
+
+This is now two consecutive hourly runs (~06:53 and ~07:38 UTC) unable to reach the dashboard at
+all, so neither Part 1 (candidate monitoring via `/sim_metrics`) nor Part 2 (new-angle research,
+which needs real historical data via `/api/table`) could be attempted either time. No model
+state, trade counts, or PnL can be checked or guessed at without the API - stopping here again
+per this task's own instructions rather than fabricating a backtest.
+
+**This needs a human to fix the session's egress allowlist for `dehiuraiut9ro.cloudfront.net`
+before this hourly task can do anything at all.** Once connectivity is restored, a subsequent run
+should delete both this note and the prior one and resume normal monitoring/research.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
