@@ -237,6 +237,32 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+### Check (2026-09-13, ~06:54 UTC): dashboard unreachable - this session's egress policy blocks it
+
+This hourly monitoring/research run could not reach the dashboard at all. Every request to
+`https://dehiuraiut9ro.cloudfront.net` (tried via plain HTTPS through this session's egress
+proxy, and independently via a second fetch path) failed at the proxy layer with a 403/`EGRESS_BLOCKED`
+before ever reaching CloudFront - confirmed via the proxy's own status endpoint
+(`recentRelayFailures`: `connect_rejected`, "gateway answered 403 to CONNECT") and its README,
+which is explicit that a 403 here means "the destination host is not allowed by your
+organization's egress policy for this session" and instructs not to retry or route around it.
+
+This is a session/environment network-policy block, not a dashboard outage, a stale checkout, or
+a credentials problem - the checkout itself is current (`origin/main` @ `9f01355`, all expected
+files present: `PLAN.md`, `data_pipeline/sim_config.py`, `data_pipeline/binary_theory.py`,
+`data_pipeline/kalshi_fees.py`, `research/`, `tests/`). Confirmed from source (not assumed)
+that `ALL_MODELS` in `simulated_trading_engine.py` is currently
+`(naive_logistic_baseline, logistic, random_forest, random_forest_high_conviction,
+binary_theory_edge)` - unchanged from the previous entry - but no `/sim_metrics` or `/api/table`
+call could be made to check trade counts, PnL, or pause status, so neither Part 1 (candidate
+monitoring) nor Part 2 (new-angle research, which also needs live historical data via the API)
+could be carried out this run. Per this task's own instructions, stopping here rather than
+guessing at model state or fabricating a backtest without real data.
+
+**Follow-up for whoever can fix the egress allowlist / next run**: if this session's network
+policy has since been changed to allow `dehiuraiut9ro.cloudfront.net`, this note can be deleted
+once a subsequent run confirms connectivity is restored.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
