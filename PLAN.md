@@ -237,6 +237,38 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+## Check (2026-09-13, hourly monitoring run)
+
+**Blocked before either part could start: the dashboard is unreachable from this session.**
+Confirmed repo state is current (fetched origin/main, `9f01355`, matches the merge commit
+described in prior entries; `PLAN.md`, `data_pipeline/sim_config.py`, `binary_theory.py`,
+`kalshi_fees.py`, `research/`, `tests/` all present as expected).
+
+Every HTTPS request to `https://dehiuraiut9ro.cloudfront.net` (via `client_api.KalshiDataClient`,
+plain `requests`, and raw `curl`) fails identically: `CONNECT tunnel failed, response 403` from
+this session's outbound network proxy, with the proxy's own status endpoint reporting
+`connect_rejected` / "gateway answered 403 to CONNECT (policy denial)". This is **not** specific
+to this one hostname or a dashboard-side outage: a second, unrelated `*.cloudfront.net` test host
+(`d111111abcdef8.cloudfront.net`) gets the identical 403, while `https://api.github.com` succeeds
+immediately through the same proxy. So general HTTPS egress works - this session's network policy
+specifically blocks the `cloudfront.net` domain wholesale.
+
+Per the task's constraints (read-only, no AWS credentials/CLI/SSH/SSM), there is no alternate path
+to the dashboard from this session. Did not touch `sim_config.py`'s `ALL_MODELS` monitoring or any
+new research backtest this run, since both need real data from `/health`, `/sim_metrics`, or
+`/api/table` and fabricating either would be worse than reporting nothing.
+
+**Action needed (outside this session's ability to fix):** the environment's outbound network
+policy needs `dehiuraiut9ro.cloudfront.net` (or `*.cloudfront.net`) added to its allowlist, or a
+less restrictive egress policy chosen for this scheduled routine's environment. Until then, every
+future hourly run will hit the same wall - worth checking after the policy is changed rather than
+assuming subsequent silent hourly runs mean "nothing new to report."
+
+`research/ou_mispricing_reversion_check.py` exists in the repo (OU mean-reversion of the
+binary_theory mispricing residual, a genuinely new angle per the family list) but was apparently
+never run/reported - it needs live DB rows via the same blocked path, so it's next up once
+connectivity is restored, not attempted here against stale/no data.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
