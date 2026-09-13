@@ -12,7 +12,20 @@ from data_pipeline.architecture.execution_kernel import DummyExecutionKernel
 from data_pipeline.architecture.risk_engine import DummyRiskEngine, LiveSettingsRiskEngine
 from data_pipeline.common import api_get, api_post_auth, get_db_conn, utc_now
 from data_pipeline.modeling_features import FEATURE_COLS, SOURCE_COLS, build_feature_vector, has_target
-from data_pipeline.simulated_trading_engine import choose_effective_cutoff, fit_frozen_models, get_live_cutoff_utc
+from data_pipeline.simulated_trading_engine import (
+    EDGE_THRESHOLD_OVERRIDES,
+    choose_effective_cutoff,
+    fit_frozen_models,
+    get_live_cutoff_utc,
+    score_frozen_models,
+    should_close_position,
+)
+
+# Candidates deliberately deployable to live, one settings row and one
+# pause/enable state each - a strategy going live is a bigger decision than
+# going into sim, so this list is narrower than sim's ALL_MODELS (no bare
+# baselines here, only things that cleared sim research first).
+LIVE_MODELS: Tuple[str, ...] = ("random_forest", "random_forest_high_conviction", "binary_theory_edge")
 
 DEFAULT_SETTINGS = {
     "live_enabled": False,
@@ -38,22 +51,113 @@ def next_minute_plus_delay(delay_seconds: int = 12) -> datetime:
     return now.replace(second=0, microsecond=0) + timedelta(minutes=1, seconds=delay_seconds)
 
 
-def load_settings(cur) -> Dict:
-    cur.execute("SELECT settings_json FROM live_settings WHERE settings_key='live_config' LIMIT 1")
+def load_settings(cur, model_name: str = "random_forest") -> Dict:
+    """Per-strategy settings row, keyed by model_name (one legacy row still
+    exists under the old fixed key 'live_config' - migrate_legacy_settings()
+    below folds that into random_forest's row once, on first startup)."""
+    cur.execute("SELECT settings_json FROM live_settings WHERE settings_key=%s LIMIT 1", (model_name,))
     row = cur.fetchone()
     if not row:
+        defaults = dict(DEFAULT_SETTINGS)
+        if model_name in EDGE_THRESHOLD_OVERRIDES:
+            # Seed with the sim-validated threshold for this strategy rather
+            # than the generic 0.01 - still just a starting point, the user
+            # can change it from the Live Trading tab.
+            defaults["edge_threshold"] = EDGE_THRESHOLD_OVERRIDES[model_name]
         cur.execute(
             """
             INSERT INTO live_settings (settings_key, settings_json, updated_at_utc)
-            VALUES ('live_config', %s, %s)
+            VALUES (%s, %s, %s)
             """,
-            (json.dumps(DEFAULT_SETTINGS), utc_now().replace(tzinfo=None)),
+            (model_name, json.dumps(defaults), utc_now().replace(tzinfo=None)),
         )
-        return dict(DEFAULT_SETTINGS)
+        return defaults
     cfg = row["settings_json"] if isinstance(row["settings_json"], dict) else json.loads(row["settings_json"])
     out = dict(DEFAULT_SETTINGS)
     out.update(cfg or {})
     return out
+
+
+def update_settings(cur, model_name: str, patch: Dict) -> Dict:
+    allowed = set(DEFAULT_SETTINGS.keys())
+    cfg = load_settings(cur, model_name)
+    for k, v in patch.items():
+        if k in allowed:
+            cfg[k] = v
+    cur.execute(
+        """
+        INSERT INTO live_settings (settings_key, settings_json, updated_at_utc)
+        VALUES (%s, %s, %s)
+        ON DUPLICATE KEY UPDATE settings_json=VALUES(settings_json), updated_at_utc=VALUES(updated_at_utc)
+        """,
+        (model_name, json.dumps(cfg), utc_now().replace(tzinfo=None)),
+    )
+    return cfg
+
+
+def migrate_legacy_settings(cur) -> None:
+    """One-time fold-in of the old single global 'live_config' row into
+    random_forest's per-model row, so a pre-multi-strategy deployment's
+    settings (and, importantly, live_enabled) aren't silently dropped."""
+    cur.execute("SELECT settings_json FROM live_settings WHERE settings_key='live_config' LIMIT 1")
+    legacy = cur.fetchone()
+    if not legacy:
+        return
+    cur.execute("SELECT 1 FROM live_settings WHERE settings_key='random_forest' LIMIT 1")
+    if cur.fetchone():
+        cur.execute("DELETE FROM live_settings WHERE settings_key='live_config'")
+        return
+    cfg = legacy["settings_json"] if isinstance(legacy["settings_json"], dict) else json.loads(legacy["settings_json"])
+    cur.execute(
+        """
+        INSERT INTO live_settings (settings_key, settings_json, updated_at_utc)
+        VALUES ('random_forest', %s, %s)
+        """,
+        (json.dumps(cfg), utc_now().replace(tzinfo=None)),
+    )
+    cur.execute("DELETE FROM live_settings WHERE settings_key='live_config'")
+
+
+def get_model_pause(cur, model_name: str) -> Optional[Dict]:
+    cur.execute(
+        "SELECT paused_reason, paused_at_utc FROM live_model_state WHERE model_name=%s AND paused=1",
+        (model_name,),
+    )
+    row = cur.fetchone()
+    return None if not row else {"paused_reason": row.get("paused_reason"), "paused_at_utc": row.get("paused_at_utc")}
+
+
+def get_all_live_pause_states(cur) -> Dict[str, Dict]:
+    cur.execute("SELECT model_name, paused_reason, paused_at_utc FROM live_model_state WHERE paused=1")
+    return {
+        r["model_name"]: {"paused_reason": r.get("paused_reason"), "paused_at_utc": str(r.get("paused_at_utc"))}
+        for r in cur.fetchall()
+    }
+
+
+def set_model_paused(cur, model_name: str, reason: str, now_ts: datetime) -> None:
+    cur.execute(
+        """
+        INSERT INTO live_model_state (model_name, paused, paused_reason, paused_at_utc, updated_at_utc)
+        VALUES (%s, 1, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE
+          paused=1, paused_reason=VALUES(paused_reason), paused_at_utc=VALUES(paused_at_utc),
+          updated_at_utc=VALUES(updated_at_utc)
+        """,
+        (model_name, reason, now_ts.replace(tzinfo=None), now_ts.replace(tzinfo=None)),
+    )
+
+
+def clear_model_paused(cur, model_name: str, now_ts: datetime) -> None:
+    cur.execute(
+        """
+        INSERT INTO live_model_state (model_name, paused, paused_reason, paused_at_utc, updated_at_utc)
+        VALUES (%s, 0, NULL, NULL, %s)
+        ON DUPLICATE KEY UPDATE
+          paused=0, paused_reason=NULL, paused_at_utc=NULL, updated_at_utc=VALUES(updated_at_utc)
+        """,
+        (model_name, now_ts.replace(tzinfo=None)),
+    )
 
 
 def load_feature_rows(cur, limit=8000) -> List[Dict]:
@@ -71,14 +175,22 @@ def load_feature_rows(cur, limit=8000) -> List[Dict]:
     return rows
 
 
-def current_risk_state(cur, cfg: Dict) -> Tuple[str, Dict]:
-    cur.execute("SELECT COALESCE(SUM(pnl_dollars),0) p FROM live_trades WHERE status='closed'")
+def current_risk_state(cur, cfg: Dict, model_name: str) -> Tuple[str, Dict]:
+    """Risk is evaluated per-strategy, on that strategy's own closed trades -
+    independent strategies sharing one real account shouldn't be able to
+    trip each other's breaker, any more than sim's per-model risk gate lets
+    one sim model's drawdown pause another's."""
+    cur.execute("SELECT COALESCE(SUM(pnl_dollars),0) p FROM live_trades WHERE status='closed' AND model_name=%s", (model_name,))
     total_realized = float(cur.fetchone()["p"] or 0.0)
     cur.execute(
-        "SELECT COALESCE(SUM(pnl_dollars),0) p FROM live_trades WHERE status='closed' AND DATE(closed_at_utc)=UTC_DATE()"
+        "SELECT COALESCE(SUM(pnl_dollars),0) p FROM live_trades WHERE status='closed' AND model_name=%s AND DATE(closed_at_utc)=UTC_DATE()",
+        (model_name,),
     )
     daily_realized = float(cur.fetchone()["p"] or 0.0)
-    cur.execute("SELECT COUNT(*) c, COALESCE(SUM(entry_price_dollars*qty_contracts),0) n FROM live_positions")
+    cur.execute(
+        "SELECT COUNT(*) c, COALESCE(SUM(entry_price_dollars*qty_contracts),0) n FROM live_positions WHERE model_name=%s",
+        (model_name,),
+    )
     pos = cur.fetchone()
     open_count = int(pos["c"] or 0)
     open_notional = float(pos["n"] or 0.0)
@@ -125,14 +237,16 @@ def place_limit_order(ticker: str, action: str, side: str, qty: int, price_dolla
     return {"client_order_id": client_order_id, "body": body, "resp": resp}
 
 
-def open_live_position(cur, kernel: DummyExecutionKernel, ticker: str, qty: int, ask: float, prob: float, now_ts: datetime) -> None:
+def open_live_position(
+    cur, kernel: DummyExecutionKernel, model_name: str, ticker: str, qty: int, ask: float, prob: float, now_ts: datetime
+) -> None:
     intent = TradeIntent(
         action="buy",
         side="yes",
         ticker=ticker,
         qty_contracts=qty,
         limit_price_dollars=ask,
-        model_name="random_forest",
+        model_name=model_name,
         now_ts=now_ts,
         metadata={"prob_yes": prob},
     )
@@ -156,29 +270,35 @@ def open_live_position(cur, kernel: DummyExecutionKernel, ticker: str, qty: int,
     # Conservative assumption for MVP: treat accepted order as filled at limit price.
     cur.execute(
         """
-        INSERT INTO live_positions (market_ticker,opened_at_utc,qty_contracts,entry_price_dollars,model_name,raw_json)
-        VALUES (%s,%s,%s,%s,'random_forest',%s)
+        INSERT INTO live_positions (model_name,market_ticker,opened_at_utc,qty_contracts,entry_price_dollars,raw_json)
+        VALUES (%s,%s,%s,%s,%s,%s)
         ON DUPLICATE KEY UPDATE
           opened_at_utc=VALUES(opened_at_utc),
           qty_contracts=VALUES(qty_contracts),
           entry_price_dollars=VALUES(entry_price_dollars),
           raw_json=VALUES(raw_json)
         """,
-        (ticker, now_ts.replace(tzinfo=None), qty, ask, json.dumps({"prob": prob, "order": rep.raw_json})),
+        (model_name, ticker, now_ts.replace(tzinfo=None), qty, ask, json.dumps({"prob": prob, "order": rep.raw_json})),
     )
     cur.execute(
         """
         INSERT INTO live_trades (opened_at_utc,market_ticker,model_name,qty_contracts,entry_price_dollars,status,raw_json)
-        VALUES (%s,%s,'random_forest',%s,%s,'open',%s)
+        VALUES (%s,%s,%s,%s,%s,'open',%s)
         """,
-        (now_ts.replace(tzinfo=None), ticker, qty, ask, json.dumps({"prob": prob, "order": rep.raw_json})),
+        (now_ts.replace(tzinfo=None), ticker, model_name, qty, ask, json.dumps({"prob": prob, "order": rep.raw_json})),
     )
 
 
 def close_live_position(
-    cur, kernel: DummyExecutionKernel, ticker: str, bid: float, now_ts: datetime, limit_price: Optional[float] = None
+    cur,
+    kernel: DummyExecutionKernel,
+    model_name: str,
+    ticker: str,
+    bid: float,
+    now_ts: datetime,
+    limit_price: Optional[float] = None,
 ) -> None:
-    cur.execute("SELECT * FROM live_positions WHERE market_ticker=%s", (ticker,))
+    cur.execute("SELECT * FROM live_positions WHERE model_name=%s AND market_ticker=%s", (model_name, ticker))
     pos = cur.fetchone()
     if not pos:
         return
@@ -193,7 +313,7 @@ def close_live_position(
         ticker=ticker,
         qty_contracts=qty,
         limit_price_dollars=px,
-        model_name="random_forest",
+        model_name=model_name,
         now_ts=now_ts,
         metadata={"entry_price": entry},
     )
@@ -219,13 +339,13 @@ def close_live_position(
         """
         UPDATE live_trades
         SET closed_at_utc=%s, exit_price_dollars=%s, pnl_dollars=%s, status='closed'
-        WHERE market_ticker=%s AND status='open'
+        WHERE market_ticker=%s AND model_name=%s AND status='open'
         ORDER BY opened_at_utc DESC
         LIMIT 1
         """,
-        (now_ts.replace(tzinfo=None), px, pnl, ticker),
+        (now_ts.replace(tzinfo=None), px, pnl, ticker, model_name),
     )
-    cur.execute("DELETE FROM live_positions WHERE market_ticker=%s", (ticker,))
+    cur.execute("DELETE FROM live_positions WHERE model_name=%s AND market_ticker=%s", (model_name, ticker))
 
 
 def latest_bid_for_ticker(ticker: str) -> Optional[float]:
@@ -243,29 +363,28 @@ def latest_bid_for_ticker(ticker: str) -> Optional[float]:
 def run_loop() -> None:
     conn = get_db_conn()
     with conn.cursor() as cur:
-        print("live trading engine started (RF-only).")
+        print(f"live trading engine started (multi-strategy: {', '.join(LIVE_MODELS)}).")
+        migrate_legacy_settings(cur)
         kernel = DummyExecutionKernel(place_limit_order)
         risk_engine = DummyRiskEngine() if RISK_ENGINE_MODE == "dummy" else LiveSettingsRiskEngine()
-        frozen_rf = None
+        frozen_models = None
         frozen_cutoff = None
         while True:
             wake = next_minute_plus_delay(12)
             time.sleep(max(0.0, (wake - utc_now()).total_seconds()))
             now_ts = wake.replace(second=0, microsecond=0)
             try:
-                cfg = load_settings(cur)
                 rows = load_feature_rows(cur, limit=200000)
                 if len(rows) < 20:
                     continue
-                if frozen_rf is None:
+                if frozen_models is None:
                     requested_cutoff = get_live_cutoff_utc(cur)
                     frozen_cutoff = choose_effective_cutoff(rows, requested_cutoff)
                     frozen_models = fit_frozen_models(rows, frozen_cutoff)
-                    frozen_rf = frozen_models["random_forest"].estimator
                     print(
-                        "live frozen RF ready: "
+                        "live frozen models ready: "
                         f"cutoff={frozen_cutoff.isoformat() if frozen_cutoff else 'none'} "
-                        f"train_rows={frozen_models['random_forest'].train_rows} "
+                        f"rf_train={frozen_models['random_forest'].train_rows} "
                         f"rf_regime={frozen_models['random_forest'].rf_regime}"
                     )
                 latest = rows[-1]
@@ -279,64 +398,91 @@ def run_loop() -> None:
                 if bid <= 0 or ask <= 0:
                     continue
 
-                risk_state, risk_meta = current_risk_state(cur, cfg)
                 x_latest = np.asarray(build_feature_vector(latest), dtype=float)
-                prob = float(frozen_rf.predict_proba([x_latest])[0, 1])
-                edge = prob - ask
-                signal = prob >= float(cfg["signal_threshold"]) and edge > float(cfg["edge_threshold"])
+                outputs = score_frozen_models(frozen_models, x_latest, latest_row=latest)
                 tte = latest.get("time_to_expiry_sec")
                 near_expiry = tte is not None and float(tte) <= 60
+                pause_states = get_all_live_pause_states(cur)
+                snapshot_by_model = {}
 
-                # Close stale positions when ticker rotates or signal collapses.
-                cur.execute("SELECT market_ticker FROM live_positions LIMIT 1")
-                pos = cur.fetchone()
-                if pos and pos["market_ticker"] != ticker:
-                    old_bid = latest_bid_for_ticker(pos["market_ticker"]) or 0.0
-                    close_live_position(cur, kernel, pos["market_ticker"], old_bid, now_ts)
-                elif pos and near_expiry:
-                    close_live_position(cur, kernel, pos["market_ticker"], bid, now_ts, limit_price=0.99)
-                elif pos and not signal:
-                    close_live_position(cur, kernel, pos["market_ticker"], bid, now_ts)
+                for model_name in LIVE_MODELS:
+                    cfg = load_settings(cur, model_name)
+                    out = outputs[model_name]
+                    prob = out.prob
+                    edge_threshold = float(cfg["edge_threshold"])
+                    edge = prob - ask
+                    signal = prob >= float(cfg["signal_threshold"]) and edge > edge_threshold
+                    already_paused = model_name in pause_states
 
-                if not bool(cfg["live_enabled"]):
-                    state = {"live_enabled": False, "risk_state": risk_state, "prob": prob, "signal": signal}
+                    risk_state, risk_meta = current_risk_state(cur, cfg, model_name)
+                    if risk_state == "RED" and not already_paused:
+                        reason = f"risk breach: {','.join(risk_meta['reasons'])} (daily=${risk_meta['daily_realized']:.2f} total=${risk_meta['total_realized']:.2f})"
+                        set_model_paused(cur, model_name, reason, now_ts)
+                        already_paused = True
+                        print(f"live {model_name}: AUTO-PAUSED - {reason}")
+
+                    # Manage any existing position regardless of pause state -
+                    # a paused strategy still needs to be able to exit, only
+                    # new entries are blocked.
                     cur.execute(
-                        """
-                        INSERT INTO collector_state (state_key,state_value,updated_at_utc)
-                        VALUES ('live_trading_last_snapshot',%s,%s)
-                        ON DUPLICATE KEY UPDATE state_value=VALUES(state_value), updated_at_utc=VALUES(updated_at_utc)
-                        """,
-                        (json.dumps(state), utc_now().replace(tzinfo=None)),
+                        "SELECT market_ticker FROM live_positions WHERE model_name=%s LIMIT 1", (model_name,)
                     )
-                    continue
+                    pos = cur.fetchone()
+                    should_close_here = should_close_position(model_name, prob, edge, edge_threshold) or near_expiry
+                    if pos and pos["market_ticker"] != ticker:
+                        old_bid = latest_bid_for_ticker(pos["market_ticker"]) or 0.0
+                        close_live_position(cur, kernel, model_name, pos["market_ticker"], old_bid, now_ts)
+                    elif pos and should_close_here:
+                        # Price to the real current bid, not a flat $0.99 - Kalshi
+                        # quotes in $0.001 increments right up to the extremes (our
+                        # own forward_quotes history shows real bids from 0.001 to
+                        # 0.999), so a hardcoded $0.99 either leaves value on the
+                        # table on a winner or, worse, would never fill at all on a
+                        # position that's actually losing near expiry.
+                        close_live_position(cur, kernel, model_name, pos["market_ticker"], bid, now_ts)
 
-                decision = risk_engine.evaluate(
-                    RiskContext(
-                        cfg=cfg,
-                        risk_state=risk_state,
-                        risk_meta=risk_meta,
-                        ticker=ticker,
-                        signal=bool(signal),
-                        prob=float(prob),
-                        edge=float(edge),
-                        near_expiry=bool(near_expiry),
+                    live_enabled = bool(cfg["live_enabled"])
+                    decision_allowed = False
+                    decision_reasons = []
+                    if live_enabled and not already_paused:
+                        decision = risk_engine.evaluate(
+                            RiskContext(
+                                cfg=cfg,
+                                risk_state=risk_state,
+                                risk_meta=risk_meta,
+                                ticker=ticker,
+                                signal=bool(signal),
+                                prob=float(prob),
+                                edge=float(edge),
+                                near_expiry=bool(near_expiry),
+                            )
+                        )
+                        decision_allowed = decision.allowed
+                        decision_reasons = decision.reasons
+                        if decision.allowed and signal:
+                            qty = compute_buy_qty(prob, ask, cfg)
+                            if qty > 0:
+                                open_live_position(cur, kernel, model_name, ticker, qty, ask, prob, now_ts)
+
+                    snapshot_by_model[model_name] = {
+                        "live_enabled": live_enabled,
+                        "paused": already_paused,
+                        "risk_state": risk_state,
+                        "risk_decision": {"allowed": decision_allowed, "reasons": decision_reasons},
+                        "risk": risk_meta,
+                        "prob": prob,
+                        "signal": signal,
+                        "edge": edge,
+                    }
+                    print(
+                        f"live {model_name} t={now_ts.isoformat()} ticker={ticker} p={prob:.4f} edge={edge:.4f} "
+                        f"signal={int(signal)} enabled={int(live_enabled)} paused={int(already_paused)} risk={risk_state}"
                     )
-                )
-                if decision.allowed and signal:
-                    qty = compute_buy_qty(prob, ask, cfg)
-                    if qty > 0:
-                        open_live_position(cur, kernel, ticker, qty, ask, prob, now_ts)
 
                 state = {
-                    "live_enabled": True,
-                    "risk_state": risk_state,
-                    "risk_decision": {"allowed": decision.allowed, "reasons": decision.reasons},
-                    "risk": risk_meta,
-                    "prob": prob,
-                    "signal": signal,
                     "ticker": ticker,
-                    "edge": edge,
                     "frozen_cutoff_utc": frozen_cutoff.isoformat() if frozen_cutoff else None,
+                    "models": snapshot_by_model,
                 }
                 cur.execute(
                     """
@@ -346,9 +492,13 @@ def run_loop() -> None:
                     """,
                     (json.dumps(state), utc_now().replace(tzinfo=None)),
                 )
-                print(f"live rf t={now_ts.isoformat()} ticker={ticker} p={prob:.4f} edge={edge:.4f} signal={int(signal)} risk={risk_state}")
             except Exception as e:
                 print(f"live trading error at {now_ts.isoformat()}: {e}")
+                # Re-raise so the outer loop tears down this connection/cursor and
+                # acquires a fresh one, instead of retrying forever on a dead connection.
+                # No change to signal/trigger/risk logic above - this only affects
+                # recovery from a broken DB connection.
+                raise
 
 
 if __name__ == "__main__":

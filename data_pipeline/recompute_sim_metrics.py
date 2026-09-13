@@ -1,28 +1,23 @@
+"""One-shot full rebuild of the sim tables from historical model_features_1m
+rows. Reuses simulated_trading_engine.process_model_tick so the replay
+follows the exact same rules (risk gate, near-expiry force-close, sizing) as
+the live paper-trading loop - this used to hand-roll its own copy of that
+logic and silently computed unused walk-forward outputs on every row."""
 import json
 from datetime import datetime
 
 import numpy as np
 
 from data_pipeline.common import get_db_conn, utc_now
-from data_pipeline.sim_model_registry import active_custom_model_configs, build_custom_frozen_models
+from data_pipeline.modeling_features import build_feature_vector
+from data_pipeline.sim_repository import get_live_cutoff_utc, get_sim_risk_settings, load_feature_rows
 from data_pipeline.simulated_trading_engine import (
     ALL_MODELS,
-    BASELINE_IDX,
-    EDGE_THRESHOLD,
-    FROZEN_MODELS,
-    ModelOutput,
-    PRED_THRESHOLD,
-    train_walk_forward_outputs,
-    build_feature_vector,
-    close_existing_position,
     choose_effective_cutoff,
     fit_frozen_models,
-    get_live_cutoff_utc,
     has_target,
-    load_feature_rows,
-    open_new_position,
-    upsert_equity,
-    upsert_prediction,
+    process_model_tick,
+    score_frozen_models,
 )
 
 
@@ -38,10 +33,13 @@ def reset_sim_tables(cur) -> None:
     cur.execute("DELETE FROM sim_equity_1m")
     cur.execute("DELETE FROM sim_model_predictions_1m")
     cur.execute("DELETE FROM sim_portfolio_20s")
+    cur.execute("DELETE FROM sim_model_state")
 
 
 def recompute() -> None:
     conn = get_db_conn()
+    cutoff = None
+    processed = 0
     try:
         with conn.cursor() as cur:
             cur.execute(
@@ -60,72 +58,17 @@ def recompute() -> None:
 
             cutoff = choose_effective_cutoff(rows, get_live_cutoff_utc(cur))
             frozen = fit_frozen_models(rows, cutoff)
-            custom_cfgs = active_custom_model_configs(cur)
-            custom_models = {}
-            if custom_cfgs:
-                try:
-                    custom_models = build_custom_frozen_models(custom_cfgs, rows, cutoff)
-                except Exception as e:
-                    print(f"[WARN] custom model recompute skipped: {e}")
+            risk = get_sim_risk_settings(cur)
             reset_sim_tables(cur)
-            processed = 0
 
             for latest in rows:
                 if not has_target(latest):
                     continue
                 now_ts = to_minute_ts(latest["snapshot_minute_utc"])
                 x_latest = np.asarray(build_feature_vector(latest), dtype=float)
-
-                outputs = {}
-                for model_name in FROZEN_MODELS:
-                    fm = frozen[model_name]
-                    px = x_latest if model_name != "naive_logistic_baseline" else x_latest[list(BASELINE_IDX)]
-                    prob = float(fm.estimator.predict_proba([px])[0, 1])
-                    outputs[model_name] = ModelOutput(
-                        prob=prob,
-                        train_rows=fm.train_rows,
-                        test_rows=fm.test_rows,
-                        brier=fm.brier,
-                        ll=fm.ll,
-                        rf_regime=fm.rf_regime,
-                    )
-
-                outputs.update(train_walk_forward_outputs(rows, latest["snapshot_minute_utc"], x_latest))
-                for model_name, fm in custom_models.items():
-                    px = x_latest[list(fm.feature_idx)]
-                    prob = float(fm.estimator.predict_proba([px])[0, 1])
-                    outputs[model_name] = ModelOutput(
-                        prob=prob,
-                        train_rows=fm.train_rows,
-                        test_rows=fm.test_rows,
-                        brier=fm.brier,
-                        ll=fm.ll,
-                        rf_regime=fm.rf_regime,
-                    )
-
-                active_models = list(ALL_MODELS) + sorted(custom_models.keys())
-                for model_name in active_models:
-                    out = outputs[model_name]
-                    signal = 1 if out.prob >= PRED_THRESHOLD else 0
-                    edge = out.prob - float(latest.get("yes_ask_dollars") or 0.0)
-                    upsert_prediction(cur, now_ts, model_name, latest, out, signal, edge)
-                    should_close = (signal == 0) or (edge <= EDGE_THRESHOLD)
-                    cur.execute("SELECT 1 FROM sim_positions WHERE model_name=%s LIMIT 1", (model_name,))
-                    had_position = cur.fetchone() is not None
-                    realized = close_existing_position(
-                        cur,
-                        model_name,
-                        latest,
-                        now_ts,
-                        should_close_same_ticker=should_close,
-                    )
-                    cur.execute("SELECT 1 FROM sim_positions WHERE model_name=%s LIMIT 1", (model_name,))
-                    has_position_after = cur.fetchone() is not None
-                    closed_this_tick = had_position and not has_position_after
-                    if not closed_this_tick:
-                        open_new_position(cur, model_name, latest, now_ts, out.prob)
-                    upsert_equity(cur, now_ts, model_name, realized)
-
+                outputs = score_frozen_models(frozen, x_latest, latest_row=latest)
+                for model_name in ALL_MODELS:
+                    process_model_tick(cur, model_name, latest, now_ts, outputs[model_name], risk)
                 processed += 1
 
             cur.execute(
