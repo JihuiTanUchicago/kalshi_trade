@@ -242,3 +242,28 @@ multi-month milestone.
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
 - The leaked `client_api` password (`kalshimakesmepoor`, hardcoded in `client_api/client.py` and `client_api/README.md`) was intentionally left as-is per explicit instruction - not rotated.
 - `venv/` was untracked from git (was previously committed - 7500+ files); `.gitignore` updated. Files remain on disk, only git tracking changed.
+
+## Hourly check (2026-09-13 15:38 UTC) - blocked, no dashboard access
+
+Checkout verified current (`origin/main` at `9f01355`, fast-forwarded cleanly; `PLAN.md`,
+`data_pipeline/sim_config.py`, `data_pipeline/binary_theory.py`, `data_pipeline/kalshi_fees.py`,
+`research/`, `tests/` all present as expected). Installed missing `pandas`/`scipy` into this
+session's Python (not in `requirements.txt` but needed by `client_api/client.py`).
+
+**Dashboard unreachable from this session.** Every request to
+`https://dehiuraiut9ro.cloudfront.net` (via `client_api.KalshiDataClient`, raw `requests`, and
+`curl`) fails at the network proxy with `403 Forbidden` before any TLS/HTTP request reaches the
+host - confirmed via the proxy's own status endpoint and raw `CONNECT` response:
+`request blocked: no rule or allowlist entry allows host "dehiuraiut9ro.cloudfront.net"`. This is
+an organization egress-policy denial for this session's environment, not a transient network
+issue, an auth problem, or anything wrong with the dashboard itself - the proxy README is explicit
+that 403/407 responses are policy denials to report, not retry or route around, so no further
+connection attempts were made.
+
+**Consequence**: neither Part 1 (checking `/sim_metrics` for all `ALL_MODELS` and any newly
+30-trade-eligible candidate) nor Part 2 (backtesting a new research angle, which needs
+`/api/table` reads of `sim_trades`/`model_features_1m`/`forward_quotes`) could run this hour - both
+depend on live dashboard reads that are not available in this session. No code or research changes
+were made. Whoever can adjust this session's/environment's network allowlist should add
+`dehiuraiut9ro.cloudfront.net` so future scheduled runs can reach the dashboard again; until then,
+expect this same block on each hourly run.
