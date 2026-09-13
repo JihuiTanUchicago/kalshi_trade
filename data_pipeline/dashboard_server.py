@@ -4,21 +4,26 @@ import base64
 import ast
 import json
 import threading
+import time
 from datetime import datetime
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
-from data_pipeline.common import get_db_conn
-from data_pipeline.sim_custom_model_backfill import run_pending_jobs
-from data_pipeline.sim_model_registry import (
-    BUILTIN_MODELS,
-    delete_custom_model,
-    list_ui_models,
-    normalize_custom_model_payload,
-    set_model_visible,
-    upsert_custom_model,
+from data_pipeline.architecture.execution_kernel import DummyExecutionKernel
+from data_pipeline.common import get_db_conn, utc_now
+from data_pipeline.live_trading_engine import (
+    LIVE_MODELS,
+    close_live_position,
+    current_risk_state as live_current_risk_state,
+    clear_model_paused as clear_live_model_paused,
+    get_all_live_pause_states,
+    latest_bid_for_ticker,
+    load_settings as live_load_settings,
+    place_limit_order,
+    update_settings as live_update_settings,
 )
+from data_pipeline.sim_repository import clear_model_paused, get_all_model_pause_states, get_model_recommendation_status
 
 HOST = os.getenv("DASHBOARD_HOST", "0.0.0.0")
 PORT = int(os.getenv("DASHBOARD_PORT", "8080"))
@@ -40,7 +45,6 @@ TABLES = [
     "sim_trades",
     "sim_equity_1m",
     "sim_portfolio_20s",
-    "sim_models_registry",
     "model_research_runs",
     "model_research_feature_importance",
     "live_settings",
@@ -48,6 +52,7 @@ TABLES = [
     "live_positions",
     "live_trades",
     "live_portfolio_20s",
+    "live_model_state",
     "collector_state",
 ]
 API_TABLES = [
@@ -73,31 +78,6 @@ API_TIME_COLUMN = {
     "model_research_feature_importance": "created_at_utc",
 }
 API_MAX_LIMIT = 5000
-_SIM_CUSTOM_BACKFILL_THREAD = None
-_SIM_CUSTOM_BACKFILL_LOCK = threading.Lock()
-
-
-def _sim_custom_backfill_worker():
-    try:
-        run_pending_jobs()
-    except Exception as e:
-        print(f"[ERROR] sim custom backfill worker: {e}")
-
-
-def start_sim_custom_backfill_worker() -> bool:
-    global _SIM_CUSTOM_BACKFILL_THREAD
-    with _SIM_CUSTOM_BACKFILL_LOCK:
-        if _SIM_CUSTOM_BACKFILL_THREAD and _SIM_CUSTOM_BACKFILL_THREAD.is_alive():
-            return False
-        t = threading.Thread(target=_sim_custom_backfill_worker, name="sim-custom-backfill", daemon=True)
-        _SIM_CUSTOM_BACKFILL_THREAD = t
-        t.start()
-        return True
-
-
-def sim_custom_backfill_running() -> bool:
-    with _SIM_CUSTOM_BACKFILL_LOCK:
-        return bool(_SIM_CUSTOM_BACKFILL_THREAD and _SIM_CUSTOM_BACKFILL_THREAD.is_alive())
 
 
 def query_rows(table: str, page: int):
@@ -178,14 +158,45 @@ def query_api_rows(
     }
 
 
+def _parse_window_hours(qs, default: int) -> int:
+    try:
+        return int(qs.get("window_hours", [str(default)])[0])
+    except (ValueError, TypeError):
+        return default
+
+
+_TABLE_COUNTS_CACHE: Dict[str, Any] = {"data": None, "ts": 0.0}
+_TABLE_COUNTS_LOCK = threading.Lock()
+_TABLE_COUNTS_TTL_SECONDS = 30
+
+
 def table_counts():
+    """Row counts for the dashboard's table cards. Uses information_schema's
+    TABLE_ROWS estimate rather than SELECT COUNT(*) per table - an exact count
+    on InnoDB requires a full index scan, and doing that for ~20 tables
+    (several hundred thousand rows each after 6+ months of collection) on
+    every cache miss was slow enough to time out requests under load. This is
+    a display metric, not a trading input, so an estimate is the right
+    tradeoff - see the 2026-09-13 connection-exhaustion incident in PLAN.md."""
+    now = time.time()
+    with _TABLE_COUNTS_LOCK:
+        cached = _TABLE_COUNTS_CACHE["data"]
+        if cached is not None and (now - _TABLE_COUNTS_CACHE["ts"]) < _TABLE_COUNTS_TTL_SECONDS:
+            return cached
     conn = get_db_conn()
-    out = {}
+    out = {t: 0 for t in TABLES}
     with conn.cursor() as cur:
-        for t in TABLES:
-            cur.execute(f"SELECT COUNT(*) AS c FROM {t}")
-            out[t] = cur.fetchone()["c"]
+        cur.execute(
+            "SELECT TABLE_NAME, TABLE_ROWS FROM information_schema.TABLES "
+            "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN %s",
+            (tuple(TABLES),),
+        )
+        for r in cur.fetchall():
+            out[r["TABLE_NAME"]] = int(r["TABLE_ROWS"] or 0)
     conn.close()
+    with _TABLE_COUNTS_LOCK:
+        _TABLE_COUNTS_CACHE["data"] = out
+        _TABLE_COUNTS_CACHE["ts"] = now
     return out
 
 
@@ -307,6 +318,8 @@ def sim_summary():
         cur.execute("SELECT COUNT(*) c FROM sim_positions")
         out["open_positions"] = cur.fetchone()["c"]
 
+        pause_states = get_all_model_pause_states(cur)
+
         cur.execute(
             """
             SELECT model_name, COUNT(*) closed_trades,
@@ -322,12 +335,15 @@ def sim_summary():
         for r in model_rows:
             closed = int(r["closed_trades"] or 0)
             wins = int(r["wins"] or 0)
+            pause = pause_states.get(r["model_name"])
             out["models"].append(
                 {
                     "model_name": r["model_name"],
                     "closed_trades": closed,
                     "total_pnl": float(r["total_pnl"] or 0),
                     "win_rate": (wins / closed) if closed > 0 else None,
+                    "paused": pause is not None,
+                    "paused_reason": pause.get("paused_reason") if pause else None,
                 }
             )
 
@@ -346,7 +362,7 @@ def sim_summary():
             """
             SELECT snapshot_minute_utc, model_name, prob_yes, signal_yes, edge_est, train_rows, test_rows, brier, logloss, rf_regime
             FROM sim_model_predictions_1m
-            ORDER BY snapshot_minute_utc DESC, model_name ASC
+            ORDER BY snapshot_minute_utc DESC
             LIMIT 20
             """
         )
@@ -361,6 +377,7 @@ def sim_health_summary():
     with conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) c FROM sim_positions")
         out["open_positions"] = int(cur.fetchone()["c"])
+        pause_states = get_all_model_pause_states(cur)
         cur.execute(
             """
             SELECT model_name, COUNT(*) closed_trades, COALESCE(SUM(pnl_dollars),0) total_pnl
@@ -371,35 +388,18 @@ def sim_health_summary():
             """
         )
         for r in cur.fetchall():
+            pause = pause_states.get(r["model_name"])
             out["models"].append(
                 {
                     "model_name": r["model_name"],
                     "closed_trades": int(r["closed_trades"] or 0),
                     "total_pnl": float(r["total_pnl"] or 0),
+                    "paused": pause is not None,
+                    "paused_reason": pause.get("paused_reason") if pause else None,
                 }
             )
     conn.close()
     return out
-
-
-def _delete_sim_model_rows(cur, model_name: str) -> None:
-    for table in ("sim_positions", "sim_trades", "sim_equity_1m", "sim_model_predictions_1m", "sim_portfolio_20s"):
-        cur.execute(f"DELETE FROM {table} WHERE model_name=%s", (model_name,))
-
-
-def sim_models_payload():
-    conn = get_db_conn()
-    try:
-        with conn.cursor() as cur:
-            models = list_ui_models(cur)
-    except Exception:
-        models = [dict(v) for _, v in BUILTIN_MODELS.items()]
-    finally:
-        conn.close()
-    return {
-        "models": models,
-        "backfill_running": sim_custom_backfill_running(),
-    }
 
 
 def _bucket_key(p: float) -> str:
@@ -408,7 +408,28 @@ def _bucket_key(p: float) -> str:
     return f"{lo:.1f}-{hi:.1f}"
 
 
+_METRICS_CACHE: Dict[Any, Any] = {}
+_METRICS_CACHE_LOCK = threading.Lock()
+_METRICS_CACHE_TTL_SECONDS = 25
+
+
+def _cached(cache_key, ttl_seconds, compute_fn):
+    now = time.time()
+    with _METRICS_CACHE_LOCK:
+        entry = _METRICS_CACHE.get(cache_key)
+        if entry is not None and (now - entry[1]) < ttl_seconds:
+            return entry[0]
+    data = compute_fn()
+    with _METRICS_CACHE_LOCK:
+        _METRICS_CACHE[cache_key] = (data, now)
+    return data
+
+
 def sim_metrics(window_hours: int = 6):
+    return _cached(("sim_metrics", window_hours), _METRICS_CACHE_TTL_SECONDS, lambda: _sim_metrics_uncached(window_hours))
+
+
+def _sim_metrics_uncached(window_hours: int = 6):
     conn = get_db_conn()
     out = {
         "starting_capital": 100.0,
@@ -469,8 +490,10 @@ def sim_metrics(window_hours: int = 6):
             """
             SELECT snapshot_minute_utc, model_name, cumulative_pnl_dollars, raw_json
             FROM sim_equity_1m
+            WHERE snapshot_minute_utc >= (UTC_TIMESTAMP() - INTERVAL %s HOUR)
             ORDER BY snapshot_minute_utc ASC
-            """
+            """,
+            (window_hours,),
         )
         for r in cur.fetchall():
             m = r["model_name"]
@@ -498,6 +521,8 @@ def sim_metrics(window_hours: int = 6):
                 pass
             out["equity_series_1m"].setdefault(m, []).append({"t": ts, "equity": eq})
 
+        pause_states = get_all_model_pause_states(cur)
+
         cur.execute(
             """
             SELECT model_name, COUNT(*) closed_trades,
@@ -513,12 +538,15 @@ def sim_metrics(window_hours: int = 6):
         for r in cur.fetchall():
             closed = int(r["closed_trades"] or 0)
             wins = int(r["wins"] or 0)
+            pause = pause_states.get(r["model_name"])
             score_map[r["model_name"]] = {
                 "model_name": r["model_name"],
                 "closed_trades": closed,
                 "total_pnl": float(r["total_pnl"] or 0),
                 "avg_trade_pnl": float(r["avg_pnl"] or 0),
                 "win_rate": (wins / closed) if closed > 0 else None,
+                "paused": pause is not None,
+                "paused_reason": pause.get("paused_reason") if pause else None,
             }
 
         cur.execute(
@@ -534,29 +562,45 @@ def sim_metrics(window_hours: int = 6):
         )
         for r in cur.fetchall():
             m = r["model_name"]
-            sc = score_map.get(m, {"model_name": m, "closed_trades": 0, "total_pnl": 0.0, "avg_trade_pnl": 0.0, "win_rate": None})
+            pause = pause_states.get(m)
+            sc = score_map.get(
+                m,
+                {
+                    "model_name": m, "closed_trades": 0, "total_pnl": 0.0, "avg_trade_pnl": 0.0, "win_rate": None,
+                    "paused": pause is not None, "paused_reason": pause.get("paused_reason") if pause else None,
+                },
+            )
             sc["equity"] = float(r["equity_dollars"])
             sc["return_pct"] = ((sc["equity"] / 100.0) - 1.0) * 100.0
             sc["position_value"] = float(r["position_value_dollars"] or 0.0)
+            sc["recommendation"] = get_model_recommendation_status(cur, m, pause is not None)
             out["scorecards"].append(sc)
 
-        cur.execute(
-            """
-            SELECT p.model_name, p.market_ticker, p.qty_contracts, p.entry_price_dollars, p.opened_at_utc,
-                   fq.yes_bid_dollars, fq.yes_ask_dollars
-            FROM sim_positions p
-            LEFT JOIN (
-              SELECT f1.*
-              FROM forward_quotes f1
-              JOIN (
-                SELECT market_ticker, MAX(snapshot_time_utc) mx
-                FROM forward_quotes
-                GROUP BY market_ticker
-              ) f2 ON f2.market_ticker=f1.market_ticker AND f2.mx=f1.snapshot_time_utc
-            ) fq ON fq.market_ticker=p.market_ticker
-            ORDER BY p.opened_at_utc DESC
-            """
-        )
+        cur.execute("SELECT DISTINCT market_ticker FROM sim_positions")
+        open_tickers = [r["market_ticker"] for r in cur.fetchall()]
+        if open_tickers:
+            placeholders = ",".join(["%s"] * len(open_tickers))
+            cur.execute(
+                f"""
+                SELECT p.model_name, p.market_ticker, p.qty_contracts, p.entry_price_dollars, p.opened_at_utc,
+                       fq.yes_bid_dollars, fq.yes_ask_dollars
+                FROM sim_positions p
+                LEFT JOIN (
+                  SELECT f1.*
+                  FROM forward_quotes f1
+                  JOIN (
+                    SELECT market_ticker, MAX(snapshot_time_utc) mx
+                    FROM forward_quotes
+                    WHERE market_ticker IN ({placeholders})
+                    GROUP BY market_ticker
+                  ) f2 ON f2.market_ticker=f1.market_ticker AND f2.mx=f1.snapshot_time_utc
+                ) fq ON fq.market_ticker=p.market_ticker
+                ORDER BY p.opened_at_utc DESC
+                """,
+                tuple(open_tickers),
+            )
+        else:
+            cur.execute("SELECT NULL LIMIT 0")
         for r in cur.fetchall():
             entry = float(r["entry_price_dollars"])
             qty = int(r["qty_contracts"])
@@ -729,67 +773,36 @@ def sim_metrics(window_hours: int = 6):
     return out
 
 
-def default_live_settings():
-    return {
-        "live_enabled": False,
-        "starting_capital": 30.0,
-        "signal_threshold": 0.55,
-        "edge_threshold": 0.01,
-        "max_trade_cost": 2.0,
-        "max_open_notional": 6.0,
-        "max_concurrent_positions": 1,
-        "max_daily_loss": 5.0,
-        "max_total_drawdown": 10.0,
-        "min_samples_default_rf": 1000,
-    }
-
-
-def live_settings_get():
+def live_settings_get(model_name: str):
+    """Thin wrapper so the dashboard shares one source of truth for live
+    settings with the engine that actually trades on them - see
+    live_trading_engine.load_settings()."""
     conn = get_db_conn()
-    out = default_live_settings()
     with conn.cursor() as cur:
-        cur.execute("SELECT settings_json FROM live_settings WHERE settings_key='live_config' LIMIT 1")
-        r = cur.fetchone()
-        if r:
-            cfg = r["settings_json"] if isinstance(r["settings_json"], dict) else json.loads(r["settings_json"])
-            out.update(cfg or {})
-        else:
-            cur.execute(
-                """
-                INSERT INTO live_settings (settings_key, settings_json, updated_at_utc)
-                VALUES ('live_config', %s, UTC_TIMESTAMP())
-                """,
-                (json.dumps(out),),
-            )
+        out = live_load_settings(cur, model_name)
+    conn.commit()
     conn.close()
     return out
 
 
-def live_settings_update(patch: Dict):
-    allowed = set(default_live_settings().keys())
-    cur_cfg = live_settings_get()
-    for k, v in patch.items():
-        if k not in allowed:
-            continue
-        cur_cfg[k] = v
+def live_settings_update(model_name: str, patch: Dict):
     conn = get_db_conn()
     with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO live_settings (settings_key, settings_json, updated_at_utc)
-            VALUES ('live_config', %s, UTC_TIMESTAMP())
-            ON DUPLICATE KEY UPDATE settings_json=VALUES(settings_json), updated_at_utc=VALUES(updated_at_utc)
-            """,
-            (json.dumps(cur_cfg),),
-        )
+        out = live_update_settings(cur, model_name, patch)
+    conn.commit()
     conn.close()
-    return cur_cfg
+    return out
 
 
 def live_metrics(window_hours: int = 12):
+    return _cached(("live_metrics", window_hours), _METRICS_CACHE_TTL_SECONDS, lambda: _live_metrics_uncached(window_hours))
+
+
+def _live_metrics_uncached(window_hours: int = 12):
     conn = get_db_conn()
     out = {
-        "settings": live_settings_get(),
+        "settings": {},
+        "models": {},
         "equity_series_20s": [],
         "stack_series_20s": [],
         "drawdown_series_20s": [],
@@ -810,19 +823,24 @@ def live_metrics(window_hours: int = 12):
             """,
             (window_hours,),
         )
+        latest_equity = None
         for r in cur.fetchall():
             ts = str(r["snapshot_time_utc"])
             out["equity_series_20s"].append({"t": ts, "equity": float(r["equity_dollars"])})
             out["stack_series_20s"].append({"t": ts, "cash": float(r["cash_dollars"]), "position": float(r["position_value_dollars"])})
             out["drawdown_series_20s"].append({"t": ts, "drawdown": float(r["drawdown_dollars"])})
             out["risk_state"] = r["risk_state"]
+            latest_equity = float(r["equity_dollars"])
             try:
                 raw = r["raw_json"] if isinstance(r["raw_json"], dict) else json.loads(r["raw_json"] or "{}")
                 out["cash_source"] = raw.get("cash_source", out["cash_source"])
             except Exception:
                 pass
 
-        cur.execute("SELECT COUNT(*) c, COALESCE(SUM(pnl_dollars),0) p, COALESCE(AVG(pnl_dollars),0) a, COALESCE(SUM(pnl_dollars>0),0) w FROM live_trades WHERE status='closed'")
+        cur.execute(
+            "SELECT COUNT(*) c, COALESCE(SUM(pnl_dollars),0) p, COALESCE(AVG(pnl_dollars),0) a, COALESCE(SUM(pnl_dollars>0),0) w "
+            "FROM live_trades WHERE status='closed'"
+        )
         s = cur.fetchone()
         closed = int(s["c"] or 0)
         wins = int(s["w"] or 0)
@@ -831,17 +849,39 @@ def live_metrics(window_hours: int = 12):
             "total_pnl": float(s["p"] or 0),
             "avg_pnl": float(s["a"] or 0),
             "win_rate": (wins / closed) if closed > 0 else None,
-            "equity": (out["equity_series_20s"][-1]["equity"] if out["equity_series_20s"] else out["settings"]["starting_capital"]),
+            "equity": latest_equity,
         }
 
-        cur.execute("SELECT market_ticker, qty_contracts, entry_price_dollars, opened_at_utc FROM live_positions ORDER BY opened_at_utc DESC")
+        cur.execute("SELECT model_name, qty_contracts, entry_price_dollars, opened_at_utc, market_ticker FROM live_positions ORDER BY opened_at_utc DESC")
         pos_rows = cur.fetchall()
+        latest_bids: Dict[str, Optional[float]] = {}
+        tickers = list({p["market_ticker"] for p in pos_rows})
+        if tickers:
+            placeholders = ",".join(["%s"] * len(tickers))
+            cur.execute(
+                f"""
+                SELECT f1.market_ticker, f1.yes_bid_dollars
+                FROM forward_quotes f1
+                JOIN (
+                  SELECT market_ticker, MAX(snapshot_time_utc) mx
+                  FROM forward_quotes
+                  WHERE market_ticker IN ({placeholders})
+                  GROUP BY market_ticker
+                ) f2 ON f2.market_ticker=f1.market_ticker AND f2.mx=f1.snapshot_time_utc
+                """,
+                tuple(tickers),
+            )
+            latest_bids = {
+                r["market_ticker"]: float(r["yes_bid_dollars"]) if r["yes_bid_dollars"] is not None else None
+                for r in cur.fetchall()
+            }
         for p in pos_rows:
-            cur.execute("SELECT yes_bid_dollars FROM forward_quotes WHERE market_ticker=%s ORDER BY snapshot_time_utc DESC LIMIT 1", (p["market_ticker"],))
-            q = cur.fetchone()
-            bid = float(q["yes_bid_dollars"]) if q and q.get("yes_bid_dollars") is not None else float(p["entry_price_dollars"])
+            bid = latest_bids.get(p["market_ticker"])
+            if bid is None:
+                bid = float(p["entry_price_dollars"])
             out["open_positions"].append(
                 {
+                    "model_name": p["model_name"],
                     "market_ticker": p["market_ticker"],
                     "qty_contracts": int(p["qty_contracts"]),
                     "entry_price": float(p["entry_price_dollars"]),
@@ -876,7 +916,7 @@ def live_metrics(window_hours: int = 12):
 
         cur.execute(
             """
-            SELECT opened_at_utc, closed_at_utc, market_ticker, qty_contracts, entry_price_dollars, exit_price_dollars, pnl_dollars, status
+            SELECT model_name, opened_at_utc, closed_at_utc, market_ticker, qty_contracts, entry_price_dollars, exit_price_dollars, pnl_dollars, status
             FROM live_trades
             ORDER BY id DESC
             LIMIT 40
@@ -884,6 +924,7 @@ def live_metrics(window_hours: int = 12):
         )
         out["recent_trades"] = [
             {
+                "model_name": r["model_name"],
                 "opened_at_utc": str(r["opened_at_utc"]),
                 "closed_at_utc": str(r["closed_at_utc"]) if r["closed_at_utc"] else None,
                 "market_ticker": r["market_ticker"],
@@ -895,6 +936,49 @@ def live_metrics(window_hours: int = 12):
             }
             for r in cur.fetchall()
         ]
+
+        # Per-strategy settings, pause state, closed-trade record, and the
+        # most recent tick's live signal (prob/edge/risk) from the engine's
+        # own snapshot - this is what makes each strategy card independently
+        # meaningful instead of one global block for everything.
+        pause_states = get_all_live_pause_states(cur)
+        cur.execute(
+            "SELECT model_name, COUNT(*) closed_trades, COALESCE(SUM(pnl_dollars),0) total_pnl, COALESCE(SUM(pnl_dollars>0),0) wins "
+            "FROM live_trades WHERE status='closed' GROUP BY model_name"
+        )
+        trade_stats = {r["model_name"]: r for r in cur.fetchall()}
+
+        cur.execute("SELECT state_value FROM collector_state WHERE state_key='live_trading_last_snapshot' LIMIT 1")
+        snap_row = cur.fetchone()
+        snap = {}
+        if snap_row:
+            sv = snap_row.get("state_value")
+            try:
+                snap = sv if isinstance(sv, dict) else json.loads(sv or "{}")
+            except Exception:
+                snap = {}
+        snap_models = snap.get("models", {}) if isinstance(snap, dict) else {}
+
+        for model_name in LIVE_MODELS:
+            cfg = live_load_settings(cur, model_name)
+            out["settings"][model_name] = cfg
+            ts_stat = trade_stats.get(model_name)
+            closed_m = int(ts_stat["closed_trades"]) if ts_stat else 0
+            wins_m = int(ts_stat["wins"]) if ts_stat else 0
+            pause = pause_states.get(model_name)
+            live_snap = snap_models.get(model_name, {})
+            out["models"][model_name] = {
+                "live_enabled": bool(cfg.get("live_enabled")),
+                "paused": pause is not None,
+                "paused_reason": pause.get("paused_reason") if pause else None,
+                "closed_trades": closed_m,
+                "total_pnl": float(ts_stat["total_pnl"]) if ts_stat else 0.0,
+                "win_rate": (wins_m / closed_m) if closed_m > 0 else None,
+                "risk_state": live_snap.get("risk_state", "GREEN"),
+                "prob": live_snap.get("prob"),
+                "edge": live_snap.get("edge"),
+                "signal": live_snap.get("signal"),
+            }
     conn.close()
     return out
 
@@ -1039,6 +1123,23 @@ def render_page(title: str, body_html: str) -> str:
     .table-links{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;list-style:none}
     .pill{display:inline-block;padding:8px 12px;border-radius:999px;text-decoration:none;font-size:13px;color:#c8f1ff;background:var(--brand-soft);border:1px solid #1c5b72}
     .pill:hover{filter:brightness(.98)}
+    .pill.warn{color:#ffd9d9;background:#3a1414;border-color:#5a1f1f}
+    .live-panel{border:2px solid #7a1f1f;background:linear-gradient(180deg,#2a1010 0%,#160a0a 100%);box-shadow:0 0 0 1px #5a1f1f,0 14px 32px rgba(122,31,31,.35)}
+    .live-banner{color:#ffb4b4;font-weight:700;letter-spacing:.02em;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+    .status-badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px}
+    .status-badge.good{color:#eafff0;background:rgba(12,163,12,.22);border:1px solid #0ca30c}
+    .status-badge.critical{color:#ffecec;background:rgba(208,59,59,.22);border:1px solid #d03b3b}
+    .status-badge.muted{color:var(--muted);background:rgba(255,255,255,.04);border:1px solid var(--line)}
+    .pm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+    .pm-card{background:linear-gradient(180deg,#112334 0%,#0e1b29 100%);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+    .pm-card .pm-name{font-size:13px;font-weight:700;color:var(--text)}
+    .pm-card .pm-equity{font-size:24px;font-weight:700;margin-top:6px}
+    .pm-card .pm-pnl{font-size:13px;margin-top:2px}
+    .pm-card .pm-reason{font-size:11px;color:var(--muted);margin-top:6px}
+    .pm-card .pm-rec{font-size:12px;font-weight:600;margin-top:8px;padding:6px 8px;border-radius:8px}
+    .pm-card .pm-rec.promising{color:#eafff0;background:rgba(12,163,12,.16);border:1px solid #0ca30c}
+    .pm-card .pm-rec.muted-neg{color:var(--muted);background:rgba(208,59,59,.08);border:1px solid #3a2020}
+    .pm-card .pm-rec.muted-neutral{color:var(--muted);background:rgba(255,255,255,.03);border:1px solid var(--line)}
     .bar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
     table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
     th,td{padding:10px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
@@ -1331,102 +1432,60 @@ def render_page(title: str, body_html: str) -> str:
       let h=0; for(let i=0;i<String(id).length;i++){ h=(h*31 + String(id).charCodeAt(i))>>>0; }
       return SIM_PALETTE[(h + idx) % SIM_PALETTE.length];
     }
-    async function fetchSimModels(){
-      try{
-        const r=await fetch('/sim_models',{cache:'no-store'});
-        if(!r.ok) return {models:[],backfill_running:false};
-        return await r.json();
-      }catch(e){
-        return {models:[],backfill_running:false};
-      }
-    }
-    async function simModelVisibility(modelName, visible){
-      await fetch('/sim_models/visibility', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({model_name:modelName, is_visible: !!visible})
-      });
-      await refreshSimMetrics();
-    }
-    async function simModelDelete(modelName){
-      await fetch('/sim_models/delete', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({model_name:modelName})
-      });
-      await refreshSimMetrics();
-    }
-    async function simModelRetry(modelName){
-      await fetch('/sim_models/backfill', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({model_name:modelName})
-      });
-      await refreshSimMetrics();
-    }
-    async function simModelAdd(){
-      const nameEl=document.getElementById('sim_new_model_name');
-      const algoEl=document.getElementById('sim_new_model_algo');
-      const featEl=document.getElementById('sim_new_model_features');
-      const hpEl=document.getElementById('sim_new_model_hyper');
-      const noteEl=document.getElementById('sim_new_model_notes');
-      const msgEl=document.getElementById('sim_model_manager_msg');
-      if(!nameEl || !algoEl || !featEl || !hpEl) return;
-      const model_name=String(nameEl.value||'').trim();
-      const algo=String(algoEl.value||'').trim();
-      const feature_cols=String(featEl.value||'').split(',').map(x=>x.trim()).filter(Boolean);
-      let hyperparams={};
-      if(String(hpEl.value||'').trim()){
-        try{ hyperparams=JSON.parse(hpEl.value); }
-        catch(e){
-          if(msgEl) msgEl.textContent='Invalid hyperparams JSON';
-          return;
-        }
-      }
-      const notes=noteEl ? String(noteEl.value||'').trim() : '';
-      const r=await fetch('/sim_models/add', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({model_name,algo,feature_cols,hyperparams,notes})
-      });
+    const SIM_MODELS=['naive_logistic_baseline','logistic','random_forest','random_forest_high_conviction','binary_theory_edge'];
+    const LIVE_MODELS=['random_forest','random_forest_high_conviction','binary_theory_edge'];
+    async function resumeModel(modelName){
+      if(!confirm(`Resume ${modelName}? It will be allowed to open new positions again.`)) return;
+      const r=await fetch('/sim_risk/resume',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model_name:modelName})});
       let j={};
       try{ j=await r.json(); }catch(e){}
-      if(msgEl){
-        msgEl.textContent = r.ok ? `Added ${model_name}. Backfill ${j.started ? 'started' : 'queued'}.` : (`Add failed: ${(j && j.error) ? j.error : r.status}`);
-      }
+      if(!r.ok || !j.ok){ alert(`Resume failed: ${(j&&j.error)||r.status}`); }
       await refreshSimMetrics();
     }
-    function renderSimModelManager(models, backfillRunning){
-      const body=document.getElementById('sim_models_body');
-      const stat=document.getElementById('sim_models_status');
-      if(stat){
-        stat.textContent = backfillRunning ? 'backfill running (sim writers paused)' : 'idle';
-      }
-      if(!body) return;
-      body.innerHTML=(models||[]).map(m=>{
-        const isBuiltin = m.family === 'builtin';
-        const visible = !!m.is_visible;
-        const badge = `${m.family||'model'} | ${m.algo||''} | ${m.mode||''}`.trim();
-        const featureCount = Array.isArray(m.feature_cols) ? m.feature_cols.length : 0;
-        const btnVis = `<a class='pill' href='javascript:void(0)' onclick="simModelVisibility('${m.model_name}', ${visible ? 'false':'true'})">${visible ? 'hide':'show'}</a>`;
-        const btnRetry = (!isBuiltin && (m.status==='error' || m.status==='pending')) ? `<a class='pill' href='javascript:void(0)' onclick="simModelRetry('${m.model_name}')">retry</a>` : '';
-        const btnDelete = !isBuiltin ? `<a class='pill' href='javascript:void(0)' onclick="simModelDelete('${m.model_name}')">delete</a>` : '';
-        return `<tr><td>${m.model_name}</td><td>${badge}</td><td>${m.status||''}</td><td>${visible ? 'yes':'no'}</td><td>${featureCount}</td><td style='max-width:280px;white-space:normal;word-break:break-word'>${m.last_error||''}</td><td>${btnVis} ${btnRetry} ${btnDelete}</td></tr>`;
+    function renderPortfolioManager(scorecards){
+      const grid=document.getElementById('pm_grid');
+      const stat=document.getElementById('pm_status');
+      if(!grid) return;
+      const cards=(scorecards||[]).filter(c=>SIM_MODELS.includes(c.model_name)).sort((a,b)=>a.model_name.localeCompare(b.model_name));
+      const pausedCount=cards.filter(c=>c.paused).length;
+      if(stat) stat.textContent = pausedCount>0 ? `${pausedCount} of ${cards.length} paused` : `${cards.length} active`;
+      grid.innerHTML=cards.map(c=>{
+        const pnl=Number(c.total_pnl||0);
+        const pnlSign=pnl>0?'+':'';
+        const badge=c.paused
+          ? `<span class="status-badge critical">&#9679; PAUSED</span>`
+          : `<span class="status-badge good">&#9679; ACTIVE</span>`;
+        const resumeBtn=c.paused
+          ? `<div style="margin-top:8px"><a class="pill warn" href="javascript:void(0)" onclick="resumeModel('${c.model_name}')">Resume trading</a></div>`
+          : '';
+        const reason=c.paused && c.paused_reason ? `<div class="pm-reason">${c.paused_reason}</div>` : '';
+        const equity=(c.equity!==undefined && c.equity!==null) ? `$${Number(c.equity).toFixed(2)}` : 'n/a';
+        const rec=c.recommendation||{};
+        const recClass = rec.status==='promising' ? 'promising' : (rec.status==='negative' || rec.status==='thin_edge' ? 'muted-neg' : 'muted-neutral');
+        const recLine = (!c.paused && rec.label) ? `<div class="pm-rec ${recClass}">${rec.label}</div>` : '';
+        const deployBtn = (!c.paused && rec.status==='promising')
+          ? `<div style="margin-top:8px"><a class="pill" href="/?tab=live-trading">Review for live deployment &rarr;</a></div>`
+          : '';
+        return `<div class="pm-card">
+          <div style="display:flex;justify-content:space-between;align-items:center"><div class="pm-name">${c.model_name}</div>${badge}</div>
+          <div class="pm-equity">${equity}</div>
+          <div class="pm-pnl">Total PnL: ${pnlSign}$${pnl.toFixed(2)} &middot; ${c.closed_trades||0} trades${c.win_rate!=null ? ' &middot; '+(c.win_rate*100).toFixed(0)+'% win' : ''}</div>
+          ${recLine}
+          ${reason}
+          ${resumeBtn}
+          ${deployBtn}
+        </div>`;
       }).join('');
     }
     async function refreshSimMetrics(){
       const simRoot=document.getElementById('sim-root');
       if(!simRoot) return;
       try{
-        const sm=await fetchSimModels();
-        const modelRows=Array.isArray(sm.models) ? sm.models : [];
-        const visibleModels=modelRows.filter(m => m.is_active !== false && m.is_visible !== false).map(m => m.model_name);
-        const fallbackModels=['naive_logistic_baseline','logistic','random_forest','walk_forward_logistic','walk_forward_random_forest'];
-        const selectedModels=visibleModels.length ? visibleModels : fallbackModels;
-        renderSimModelManager(modelRows, !!sm.backfill_running);
+        const selectedModels=SIM_MODELS;
         const r=await fetch('/sim_metrics',{cache:'no-store'});
         if(!r.ok) return;
         const d=await r.json();
+        renderPortfolioManager(d.scorecards);
         const byModelRaw=(d.equity_series_1m && Object.keys(d.equity_series_1m).length>0) ? d.equity_series_1m : (d.equity_series_20s||{});
         const colors={};
         let idx=0;
@@ -1549,6 +1608,8 @@ def render_page(title: str, body_html: str) -> str:
         }catch(e){}
       }catch(e){}
     }
+    const LIVE_SETTINGS_FIELDS = ['signal_threshold','edge_threshold','max_trade_cost','max_open_notional','max_concurrent_positions','max_daily_loss','max_total_drawdown'];
+    const LIVE_FIELD_STEP = {signal_threshold:'0.01', edge_threshold:'0.001', max_trade_cost:'0.1', max_open_notional:'0.1', max_concurrent_positions:'1', max_daily_loss:'0.1', max_total_drawdown:'0.1'};
     async function refreshLiveMetrics(){
       const root=document.getElementById('live-root');
       if(!root) return;
@@ -1560,60 +1621,131 @@ def render_page(title: str, body_html: str) -> str:
         drawLineChart('live_equity_chart', {'live': d.equity_series_20s||[]}, 'equity', {'live':'#22d3ee'}, {unit:'$'});
         drawLineChart('live_drawdown_chart', {'live': d.drawdown_series_20s||[]}, 'drawdown', {'live':'#f97316'});
         drawStackChart('live_stack_chart', d.stack_series_20s||[], 'cash', 'position');
-        renderRows('live_open_positions_body', d.open_positions||[], ['market_ticker','qty_contracts','entry_price','mark_bid','unrealized_pnl','opened_at_utc']);
+        renderLiveOpenPositions(d.open_positions||[]);
         renderRows('live_orders_body', d.recent_orders||[], ['created_at_utc','market_ticker','action','side','qty_contracts','limit_price_dollars','status','kalshi_order_id','client_order_id']);
-        renderRows('live_trades_body', d.recent_trades||[], ['opened_at_utc','closed_at_utc','market_ticker','qty_contracts','entry_price','exit_price','pnl','status']);
+        renderRows('live_trades_body', d.recent_trades||[], ['model_name','opened_at_utc','closed_at_utc','market_ticker','qty_contracts','entry_price','exit_price','pnl','status']);
         const sc=document.getElementById('live_score');
         if(sc){
           const s=d.scorecard||{};
           const wr=(s.win_rate==null?'N/A':`${(s.win_rate*100).toFixed(1)}%`);
-          sc.innerHTML=`<div class='card'><div class='k'>risk state</div><div class='v' style='font-size:18px'>${d.risk_state||'N/A'}</div></div>` +
+          const cashNote = d.cash_source==='kalshi_api' ? '' : ` <span class="muted-neg" style="font-size:12px">(estimated - real balance unavailable, see note below)</span>`;
+          sc.innerHTML=`<div class='card'><div class='k'>account risk</div><div class='v' style='font-size:18px'>${d.risk_state||'N/A'}</div></div>` +
                        `<div class='card'><div class='k'>cash source</div><div class='v' style='font-size:16px'>${d.cash_source||'unknown'}</div></div>` +
-                       `<div class='card'><div class='k'>equity</div><div class='v' style='font-size:18px'>$${Number(s.equity||d.settings.starting_capital||0).toFixed(2)}</div></div>` +
-                       `<div class='card'><div class='k'>total pnl</div><div class='v' style='font-size:18px'>$${Number(s.total_pnl||0).toFixed(2)}</div></div>` +
+                       `<div class='card'><div class='k'>equity</div><div class='v' style='font-size:18px'>${s.equity==null?'N/A':'$'+Number(s.equity).toFixed(2)}${cashNote}</div></div>` +
+                       `<div class='card'><div class='k'>total pnl (all strategies)</div><div class='v' style='font-size:18px'>$${Number(s.total_pnl||0).toFixed(2)}</div></div>` +
                        `<div class='card'><div class='k'>closed/win</div><div class='v' style='font-size:16px'>${Number(s.closed_trades||0)} / ${wr}</div></div>`;
         }
-        const cfg=d.settings||{};
-        const bind=(id,v)=>{const el=document.getElementById(id); if(el) el.value=String(v);};
-        bind('ls_live_enabled', cfg.live_enabled ? '1' : '0');
-        bind('ls_signal_threshold', cfg.signal_threshold);
-        bind('ls_edge_threshold', cfg.edge_threshold);
-        bind('ls_max_trade_cost', cfg.max_trade_cost);
-        bind('ls_max_open_notional', cfg.max_open_notional);
-        bind('ls_max_concurrent_positions', cfg.max_concurrent_positions);
-        bind('ls_max_daily_loss', cfg.max_daily_loss);
-        bind('ls_max_total_drawdown', cfg.max_total_drawdown);
+        const balanceNote = document.getElementById('live_balance_note');
+        if(balanceNote){
+          balanceNote.style.display = (d.cash_source==='kalshi_api') ? 'none' : 'block';
+        }
+        renderLiveStrategyCards(d.models||{}, d.settings||{});
       }catch(e){}
     }
-    async function saveLiveSettings(){
-      const root=document.getElementById('live-root');
-      if(!root) return;
-      const payload={
-        live_enabled: document.getElementById('ls_live_enabled').value === '1',
-        signal_threshold: Number(document.getElementById('ls_signal_threshold').value),
-        edge_threshold: Number(document.getElementById('ls_edge_threshold').value),
-        max_trade_cost: Number(document.getElementById('ls_max_trade_cost').value),
-        max_open_notional: Number(document.getElementById('ls_max_open_notional').value),
-        max_concurrent_positions: Number(document.getElementById('ls_max_concurrent_positions').value),
-        max_daily_loss: Number(document.getElementById('ls_max_daily_loss').value),
-        max_total_drawdown: Number(document.getElementById('ls_max_total_drawdown').value)
-      };
+    function renderLiveOpenPositions(rows){
+      const el=document.getElementById('live_open_positions_body'); if(!el) return;
+      const cols=['model_name','market_ticker','qty_contracts','entry_price','mark_bid','unrealized_pnl','opened_at_utc'];
+      el.innerHTML = (rows||[]).map(r => {
+        const t = r.market_ticker, m = r.model_name;
+        const cells = cols.map(c => `<td>${(r[c]??'')}</td>`).join('');
+        const btn = `<td><a class="pill warn" href="javascript:void(0)" onclick="closeLivePosition('${String(m).replace(/'/g,"\\'")}','${String(t).replace(/'/g,"\\'")}')">Close</a></td>`;
+        return '<tr>' + cells + btn + '</tr>';
+      }).join('');
+    }
+    async function closeLivePosition(modelName, ticker){
+      if(!confirm(`Close LIVE position (${modelName}) on ${ticker} now at the current market bid? This places a real order.`)) return;
       try{
-        const q=new URLSearchParams({
-          live_enabled: payload.live_enabled ? '1':'0',
-          signal_threshold: String(payload.signal_threshold),
-          edge_threshold: String(payload.edge_threshold),
-          max_trade_cost: String(payload.max_trade_cost),
-          max_open_notional: String(payload.max_open_notional),
-          max_concurrent_positions: String(payload.max_concurrent_positions),
-          max_daily_loss: String(payload.max_daily_loss),
-          max_total_drawdown: String(payload.max_total_drawdown)
-        });
+        const r=await fetch('/live_position/close',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model_name:modelName, market_ticker:ticker})});
+        let j={};
+        try{ j=await r.json(); }catch(e){}
+        if(!r.ok || !j.ok){ alert(`Close failed: ${(j&&j.error)||r.status}`); }
+        else{ alert(`Close order submitted for ${ticker} at bid $${Number(j.close_bid||0).toFixed(2)}.`); }
+      }catch(e){ alert(`Close failed: ${e}`); }
+      await refreshLiveMetrics();
+    }
+    function renderLiveStrategyCards(models, settings){
+      const el = document.getElementById('live_strategy_cards');
+      if(!el) return;
+      el.innerHTML = LIVE_MODELS.map(m => {
+        const st = models[m] || {};
+        const cfg = settings[m] || {};
+        const enabled = !!st.live_enabled;
+        const paused = !!st.paused;
+        const badge = paused
+          ? `<span class="status-badge critical">&#9679; AUTO-PAUSED</span>`
+          : (enabled ? `<span class="status-badge good">&#9679; LIVE - ON</span>` : `<span class="status-badge muted">&#9679; OFF</span>`);
+        const toggleLabel = enabled ? 'Turn OFF' : 'Turn ON';
+        const toggleClass = enabled ? 'pill warn' : 'pill';
+        const toggleBtn = `<a class="${toggleClass}" href="javascript:void(0)" onclick="toggleLiveModel('${m}', ${!enabled})">${toggleLabel}</a>`;
+        const resumeBtn = paused ? `<a class="pill warn" href="javascript:void(0)" onclick="resumeLiveModel('${m}')">Clear auto-pause</a>` : '';
+        const reason = paused && st.paused_reason ? `<div class="pm-reason">${st.paused_reason}</div>` : '';
+        const wr = st.win_rate==null ? 'N/A' : `${(st.win_rate*100).toFixed(0)}%`;
+        const prob = st.prob==null ? 'N/A' : Number(st.prob).toFixed(3);
+        const edge = st.edge==null ? 'N/A' : Number(st.edge).toFixed(3);
+        const signalTxt = st.signal==null ? 'N/A' : (st.signal ? 'YES' : 'no');
+        const settingsInputs = LIVE_SETTINGS_FIELDS.map(f =>
+          `<div style="display:flex;flex-direction:column;gap:2px;min-width:110px">
+             <label style="font-size:11px;color:var(--muted,#8aa)">${f.replace(/_/g,' ')}</label>
+             <input id="ls_${m}_${f}" type="number" step="${LIVE_FIELD_STEP[f]}" min="0" value="${cfg[f]??''}" style="background:#0b1723;border:1px solid #1f3448;border-radius:6px;color:#e5edf7;padding:4px 6px;font-size:12px">
+           </div>`
+        ).join('');
+        return `<div class="pm-card">
+          <div style="display:flex;justify-content:space-between;align-items:center"><div class="pm-name">${m}</div>${badge}</div>
+          <div class="pm-pnl">Live PnL: $${Number(st.total_pnl||0).toFixed(2)} &middot; ${st.closed_trades||0} trades &middot; ${wr} win</div>
+          <div class="muted" style="font-size:12px;margin-top:4px">prob ${prob} &middot; edge ${edge} &middot; signal ${signalTxt}</div>
+          ${reason}
+          <div style="display:flex;gap:8px;margin-top:8px">${toggleBtn}${resumeBtn}</div>
+          <details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--muted,#8aa)">Strategy settings</summary>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">${settingsInputs}</div>
+            <a class="pill" href="javascript:void(0)" onclick="saveLiveModelSettings('${m}')" style="margin-top:8px;display:inline-block">Save settings</a>
+          </details>
+        </div>`;
+      }).join('');
+    }
+    async function toggleLiveModel(modelName, turnOn){
+      const verb = turnOn ? 'Turn ON' : 'Turn OFF';
+      const warn = turnOn ? ' This lets it place REAL orders with REAL money on its next tick.' : '';
+      if(!confirm(`${verb} live trading for ${modelName}?${warn}`)) return;
+      try{
         const lp = livePass();
-        if(lp) q.set('live_password', lp);
-        await fetch('/live_settings_update?' + q.toString(), {cache:'no-store'});
-      }catch(e){}
-      refreshLiveMetrics();
+        const r = await fetch('/live_model/toggle' + (lp?('?live_password='+encodeURIComponent(lp)):''), {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({model_name: modelName, live_enabled: turnOn})
+        });
+        let j={}; try{ j=await r.json(); }catch(e){}
+        if(!r.ok || !j.ok){ alert(`Failed: ${(j&&j.error)||r.status}`); }
+      }catch(e){ alert(`Failed: ${e}`); }
+      await refreshLiveMetrics();
+    }
+    async function resumeLiveModel(modelName){
+      if(!confirm(`Clear the auto-pause on ${modelName}? It will be allowed to open new positions again.`)) return;
+      try{
+        const lp = livePass();
+        const r = await fetch('/live_model/resume' + (lp?('?live_password='+encodeURIComponent(lp)):''), {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({model_name: modelName})
+        });
+        let j={}; try{ j=await r.json(); }catch(e){}
+        if(!r.ok || !j.ok){ alert(`Failed: ${(j&&j.error)||r.status}`); }
+      }catch(e){ alert(`Failed: ${e}`); }
+      await refreshLiveMetrics();
+    }
+    async function saveLiveModelSettings(modelName){
+      const patch = {};
+      for(const f of LIVE_SETTINGS_FIELDS){
+        const el = document.getElementById(`ls_${modelName}_${f}`);
+        if(el && el.value !== '') patch[f] = Number(el.value);
+      }
+      try{
+        const lp = livePass();
+        const r = await fetch('/live_settings' + (lp?('?live_password='+encodeURIComponent(lp)):''), {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({model_name: modelName, ...patch})
+        });
+        let j={}; try{ j=await r.json(); }catch(e){}
+        if(!r.ok || !j.ok){ alert(`Save failed: ${(j&&j.error)||r.status}`); }
+      }catch(e){ alert(`Save failed: ${e}`); }
+      await refreshLiveMetrics();
     }
     async function refreshHealth(){
       try{
@@ -1779,21 +1911,8 @@ class Handler(BaseHTTPRequestHandler):
                   <div class="card"><div class="k">Live Cutoff</div><div id="sim_cutoff" class="v" style="font-size:13px">loading...</div></div>
                 </div>
                 <div class="panel" style="margin-top:12px">
-                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Model Manager</a></div><div class="muted" id="sim_models_status">loading...</div></div>
-                  <div class="grid4">
-                    <div class="card"><div class="k">Model Name</div><div class="v" style="font-size:16px"><input id="sim_new_model_name" type="text" placeholder="rf_custom_1" /></div></div>
-                    <div class="card"><div class="k">Algo</div><div class="v" style="font-size:16px"><select id="sim_new_model_algo"><option value="logistic">logistic</option><option value="random_forest">random_forest</option></select></div></div>
-                    <div class="card"><div class="k">Features (csv)</div><div class="v" style="font-size:16px"><input id="sim_new_model_features" type="text" placeholder="moneyness_abs,spread_dollars,cb_ret_1m" /></div></div>
-                    <div class="card"><div class="k">Hyperparams (json)</div><div class="v" style="font-size:16px"><input id="sim_new_model_hyper" type="text" placeholder='{{"C":0.5}}' /></div></div>
-                  </div>
-                  <div class="grid4" style="margin-top:8px">
-                    <div class="card"><div class="k">Notes</div><div class="v" style="font-size:16px"><input id="sim_new_model_notes" type="text" placeholder="optional" /></div></div>
-                    <div class="card"><div class="k">Actions</div><div class="v" style="font-size:16px"><a class="pill" href="javascript:void(0)" onclick="simModelAdd()">add + backfill</a></div></div>
-                    <div class="card"><div class="k">Message</div><div id="sim_model_manager_msg" class="v" style="font-size:14px">ready</div></div>
-                  </div>
-                  <div style="overflow:auto;max-height:26vh;margin-top:8px">
-                    <table><thead><tr><th>model</th><th>type</th><th>status</th><th>visible</th><th>features</th><th>last error</th><th>actions</th></tr></thead><tbody id="sim_models_body"></tbody></table>
-                  </div>
+                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Portfolio Manager</a></div><div class="muted" id="pm_status">loading...</div></div>
+                  <div id="pm_grid" class="pm-grid" style="margin-top:10px"></div>
                 </div>
                 <div id="sim_model_rows" style="margin-top:12px"></div>
                 <div class="panel" style="margin-top:12px">
@@ -1902,34 +2021,31 @@ class Handler(BaseHTTPRequestHandler):
                 <div class="top">
                   <div>
                     <h1 class="title">Live Trading</h1>
-                    <div class="sub">RF-only live execution with adjustable risk caps and signal thresholds.</div>
+                    <div class="sub">Multi-strategy live execution - each strategy has its own on/off switch, risk caps, and auto-pause on breach.</div>
                   </div>
                   <div class="sub">Auth user: <b>{html.escape(AUTH_USER)}</b></div>
                 </div>
                 {tabs}
                 <div id="live-root">
-                <div class="panel">
-                  <div class="bar"><div class="nav"><a href="/?tab=live-trading">Live Settings</a></div><div><a class="pill" href="javascript:void(0)" onclick="saveLiveSettings()">Save Settings</a></div></div>
-                  <div class="grid4">
-                    <div class="card"><div class="k">Live Enabled</div><div class="v" style="font-size:16px"><select id="ls_live_enabled"><option value="0">OFF</option><option value="1">ON</option></select></div></div>
-                    <div class="card"><div class="k">Signal Threshold</div><div class="v" style="font-size:16px"><input id="ls_signal_threshold" type="number" step="0.01" min="0" max="1" /></div></div>
-                    <div class="card"><div class="k">Edge Threshold</div><div class="v" style="font-size:16px"><input id="ls_edge_threshold" type="number" step="0.001" min="0" max="1" /></div></div>
-                    <div class="card"><div class="k">Max Trade Cost $</div><div class="v" style="font-size:16px"><input id="ls_max_trade_cost" type="number" step="0.1" min="0" /></div></div>
-                  </div>
-                  <div class="grid4">
-                    <div class="card"><div class="k">Max Open Notional $</div><div class="v" style="font-size:16px"><input id="ls_max_open_notional" type="number" step="0.1" min="0" /></div></div>
-                    <div class="card"><div class="k">Max Concurrent Positions</div><div class="v" style="font-size:16px"><input id="ls_max_concurrent_positions" type="number" step="1" min="1" /></div></div>
-                    <div class="card"><div class="k">Max Daily Loss $</div><div class="v" style="font-size:16px"><input id="ls_max_daily_loss" type="number" step="0.1" min="0" /></div></div>
-                    <div class="card"><div class="k">Max Total Drawdown $</div><div class="v" style="font-size:16px"><input id="ls_max_total_drawdown" type="number" step="0.1" min="0" /></div></div>
-                  </div>
+                <div id="live_balance_note" class="panel live-panel" style="display:none">
+                  <div class="live-banner">&#9888; REAL BALANCE UNAVAILABLE &#9888;</div>
+                  <div class="muted">Kalshi API trading credentials are not configured on this server, so the account cash/equity shown below is an internal estimate (starting capital plus tracked PnL), not your real Kalshi balance. Real order placement will also fail until credentials are configured. This does not block strategy toggles or monitoring below - it only affects the balance shown and whether an ON strategy can actually place a real order.</div>
                 </div>
-                <div id="live_score" class="grid4" style="margin-top:12px"></div>
+                <div class="panel live-panel">
+                  <div class="live-banner">&#9888; REAL MONEY - LIVE EXECUTION CONTROLS &#9888;</div>
+                  <div class="bar"><div class="nav">Account</div></div>
+                  <div id="live_score" class="grid4"></div>
+                </div>
                 <div class="panel" style="margin-top:12px"><div class="bar"><div class="nav">Live Equity (20s)</div></div><canvas id="live_equity_chart" width="1120" height="250" style="width:100%;height:250px"></canvas></div>
                 <div class="panel" style="margin-top:12px"><div class="bar"><div class="nav">Live Cash vs Position Value (20s)</div></div><canvas id="live_stack_chart" width="1120" height="220" style="width:100%;height:220px"></canvas></div>
                 <div class="panel" style="margin-top:12px"><div class="bar"><div class="nav">Live Drawdown (20s)</div></div><canvas id="live_drawdown_chart" width="1120" height="180" style="width:100%;height:180px"></canvas></div>
-                <div class="panel" style="margin-top:12px"><div class="bar"><div class="nav">Open Positions</div></div><div style="overflow:auto;max-height:24vh"><table><thead><tr><th>ticker</th><th>qty</th><th>entry</th><th>mark bid</th><th>unrealized</th><th>opened</th></tr></thead><tbody id="live_open_positions_body"></tbody></table></div></div>
+                <div class="panel live-panel" style="margin-top:12px">
+                  <div class="bar"><div class="nav">Strategies</div></div>
+                  <div id="live_strategy_cards" class="row4"></div>
+                </div>
+                <div class="panel live-panel" style="margin-top:12px"><div class="bar"><div class="nav">Open Positions</div></div><div style="overflow:auto;max-height:24vh"><table><thead><tr><th>strategy</th><th>ticker</th><th>qty</th><th>entry</th><th>mark bid</th><th>unrealized</th><th>opened</th><th>action</th></tr></thead><tbody id="live_open_positions_body"></tbody></table></div></div>
                 <div class="panel" style="margin-top:12px"><div class="bar"><div class="nav">Recent Orders</div></div><div style="overflow:auto;max-height:24vh"><table><thead><tr><th>time</th><th>ticker</th><th>action</th><th>side</th><th>qty</th><th>limit</th><th>status</th><th>order id</th><th>client id</th></tr></thead><tbody id="live_orders_body"></tbody></table></div></div>
-                <div class="panel" style="margin-top:12px"><div class="bar"><div class="nav">Recent Trades</div></div><div style="overflow:auto;max-height:24vh"><table><thead><tr><th>opened</th><th>closed</th><th>ticker</th><th>qty</th><th>entry</th><th>exit</th><th>pnl</th><th>status</th></tr></thead><tbody id="live_trades_body"></tbody></table></div></div>
+                <div class="panel" style="margin-top:12px"><div class="bar"><div class="nav">Recent Trades</div></div><div style="overflow:auto;max-height:24vh"><table><thead><tr><th>strategy</th><th>opened</th><th>closed</th><th>ticker</th><th>qty</th><th>entry</th><th>exit</th><th>pnl</th><th>status</th></tr></thead><tbody id="live_trades_body"></tbody></table></div></div>
                 </div>
                 """
                 self._send(render_page("Live Trading", body))
@@ -2045,18 +2161,11 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/sim_metrics":
-            data = sim_metrics()
+            qs = parse_qs(parsed.query)
+            window_hours = _parse_window_hours(qs, 6)
+            data = sim_metrics(window_hours=window_hours)
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(json.dumps(data).encode("utf-8"))
-            return
-
-        if parsed.path == "/sim_models":
-            data = sim_models_payload()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(json.dumps(data).encode("utf-8"))
             return
@@ -2068,44 +2177,13 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({"ok": False, "error": "live_locked"}).encode("utf-8"))
                 return
-            data = live_metrics()
+            qs = parse_qs(parsed.query)
+            window_hours = _parse_window_hours(qs, 12)
+            data = live_metrics(window_hours=window_hours)
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
             self.wfile.write(json.dumps(data).encode("utf-8"))
-            return
-
-        if parsed.path == "/live_settings_update":
-            if not self._live_authorized(parsed):
-                self.send_response(403)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(json.dumps({"ok": False, "error": "live_locked"}).encode("utf-8"))
-                return
-            qs = parse_qs(parsed.query)
-            def _g(name, default=None):
-                return qs.get(name, [default])[0]
-            patch = {}
-            if _g("live_enabled") is not None:
-                patch["live_enabled"] = _g("live_enabled") in ("1", "true", "True", "yes", "on")
-            for k in ("signal_threshold", "edge_threshold", "max_trade_cost", "max_open_notional", "max_daily_loss", "max_total_drawdown"):
-                v = _g(k)
-                if v is not None:
-                    try:
-                        patch[k] = float(v)
-                    except Exception:
-                        pass
-            v = _g("max_concurrent_positions")
-            if v is not None:
-                try:
-                    patch["max_concurrent_positions"] = int(float(v))
-                except Exception:
-                    pass
-            cfg = live_settings_update(patch)
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(json.dumps({"ok": True, "settings": cfg}).encode("utf-8"))
             return
 
         if parsed.path == "/table":
@@ -2142,93 +2220,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_unauthorized()
             return
         parsed = urlparse(self.path)
-        if parsed.path in ("/sim_models/add", "/sim_models/visibility", "/sim_models/delete", "/sim_models/backfill"):
-            try:
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
-            except Exception:
-                payload = {}
-            now_ts = datetime.utcnow().replace(microsecond=0)
-            try:
-                if parsed.path == "/sim_models/add":
-                    cfg = normalize_custom_model_payload(payload)
-                    conn = get_db_conn()
-                    with conn.cursor() as cur:
-                        upsert_custom_model(cur, cfg, now_ts)
-                    conn.commit()
-                    conn.close()
-                    started = start_sim_custom_backfill_worker()
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/json; charset=utf-8")
-                    self.end_headers()
-                    self.wfile.write(json.dumps({"ok": True, "started": started, **sim_models_payload()}).encode("utf-8"))
-                    return
-
-                if parsed.path == "/sim_models/visibility":
-                    model_name = str(payload.get("model_name") or "").strip()
-                    is_visible = bool(payload.get("is_visible", True))
-                    if not model_name:
-                        raise ValueError("model_name is required")
-                    conn = get_db_conn()
-                    with conn.cursor() as cur:
-                        set_model_visible(cur, model_name, is_visible, now_ts)
-                    conn.commit()
-                    conn.close()
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/json; charset=utf-8")
-                    self.end_headers()
-                    self.wfile.write(json.dumps({"ok": True, **sim_models_payload()}).encode("utf-8"))
-                    return
-
-                if parsed.path == "/sim_models/delete":
-                    model_name = str(payload.get("model_name") or "").strip()
-                    if not model_name:
-                        raise ValueError("model_name is required")
-                    conn = get_db_conn()
-                    with conn.cursor() as cur:
-                        if model_name in BUILTIN_MODELS:
-                            set_model_visible(cur, model_name, False, now_ts)
-                        else:
-                            delete_custom_model(cur, model_name, now_ts)
-                            _delete_sim_model_rows(cur, model_name)
-                    conn.commit()
-                    conn.close()
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/json; charset=utf-8")
-                    self.end_headers()
-                    self.wfile.write(json.dumps({"ok": True, **sim_models_payload()}).encode("utf-8"))
-                    return
-
-                if parsed.path == "/sim_models/backfill":
-                    model_name = str(payload.get("model_name") or "").strip()
-                    conn = get_db_conn()
-                    with conn.cursor() as cur:
-                        if model_name:
-                            cur.execute(
-                                """
-                                UPDATE sim_models_registry
-                                SET status='pending', last_error=NULL, updated_at_utc=%s
-                                WHERE model_name=%s AND is_active=1
-                                """,
-                                (now_ts, model_name),
-                            )
-                    conn.commit()
-                    conn.close()
-                    started = start_sim_custom_backfill_worker()
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/json; charset=utf-8")
-                    self.end_headers()
-                    self.wfile.write(json.dumps({"ok": True, "started": started, **sim_models_payload()}).encode("utf-8"))
-                    return
-            except Exception as e:
-                self.send_response(400)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(json.dumps({"ok": False, "error": str(e)}).encode("utf-8"))
-                return
-
         if parsed.path == "/live_settings":
-            if not self._live_authorized():
+            if not self._live_authorized(parsed):
                 self.send_response(403)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.end_headers()
@@ -2237,7 +2230,10 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
-                cfg = live_settings_update(payload)
+                model_name = str(payload.pop("model_name", "") or "").strip()
+                if model_name not in LIVE_MODELS:
+                    raise ValueError(f"model_name must be one of {LIVE_MODELS}")
+                cfg = live_settings_update(model_name, payload)
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.end_headers()
@@ -2249,11 +2245,139 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({"ok": False, "error": str(e)}).encode("utf-8"))
                 return
+
+        if parsed.path == "/live_model/toggle":
+            # The ON/OFF switch a human clicks per strategy. Never called by
+            # any automated code path in this codebase - only from the
+            # dashboard button, gated by the live password.
+            if not self._live_authorized(parsed):
+                self.send_response(403)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": False, "error": "live_locked"}).encode("utf-8"))
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
+                model_name = str(payload.get("model_name") or "").strip()
+                if model_name not in LIVE_MODELS:
+                    raise ValueError(f"model_name must be one of {LIVE_MODELS}")
+                live_enabled = bool(payload.get("live_enabled"))
+                cfg = live_settings_update(model_name, {"live_enabled": live_enabled})
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": True, "settings": cfg}).encode("utf-8"))
+                return
+            except Exception as e:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": False, "error": str(e)}).encode("utf-8"))
+                return
+
+        if parsed.path == "/live_model/resume":
+            # Clears an auto-triggered risk-breach pause. Does not turn the
+            # strategy ON by itself - live_enabled is unaffected.
+            if not self._live_authorized(parsed):
+                self.send_response(403)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": False, "error": "live_locked"}).encode("utf-8"))
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
+                model_name = str(payload.get("model_name") or "").strip()
+                if model_name not in LIVE_MODELS:
+                    raise ValueError(f"model_name must be one of {LIVE_MODELS}")
+                conn = get_db_conn()
+                with conn.cursor() as cur:
+                    clear_live_model_paused(cur, model_name, utc_now())
+                conn.commit()
+                conn.close()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": True}).encode("utf-8"))
+                return
+            except Exception as e:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": False, "error": str(e)}).encode("utf-8"))
+                return
+
+        if parsed.path == "/live_position/close":
+            # Manually close one existing live position. This is a real,
+            # human-clicked action - the account owner reviews and clicks,
+            # this handler never fires on its own. Gated by the same live
+            # password as /live_settings.
+            if not self._live_authorized():
+                self.send_response(403)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": False, "error": "live_locked"}).encode("utf-8"))
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
+                ticker = str(payload.get("market_ticker") or "").strip()
+                model_name = str(payload.get("model_name") or "").strip()
+                if not ticker:
+                    raise ValueError("market_ticker is required")
+                if not model_name:
+                    raise ValueError("model_name is required")
+                bid = latest_bid_for_ticker(ticker)
+                if bid is None or bid <= 0:
+                    raise ValueError(f"no valid current bid available for {ticker} - refusing to close blind")
+                conn = get_db_conn()
+                with conn.cursor() as cur:
+                    kernel = DummyExecutionKernel(place_limit_order)
+                    close_live_position(cur, kernel, model_name, ticker, bid, utc_now())
+                conn.commit()
+                conn.close()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": True, "market_ticker": ticker, "close_bid": bid}).encode("utf-8"))
+                return
+            except Exception as e:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": False, "error": str(e)}).encode("utf-8"))
+                return
+
+        if parsed.path == "/sim_risk/resume":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
+                model_name = str(payload.get("model_name") or "").strip()
+                if not model_name:
+                    raise ValueError("model_name is required")
+                conn = get_db_conn()
+                with conn.cursor() as cur:
+                    clear_model_paused(cur, model_name, utc_now())
+                conn.commit()
+                conn.close()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": True, "model_name": model_name}).encode("utf-8"))
+                return
+            except Exception as e:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": False, "error": str(e)}).encode("utf-8"))
+                return
         self._send("not found", 404)
 
 
 def main():
-    server = HTTPServer((HOST, PORT), Handler)
+    server = ThreadingHTTPServer((HOST, PORT), Handler)
+    server.daemon_threads = True
     print(f"Dashboard listening on {HOST}:{PORT}")
     server.serve_forever()
 

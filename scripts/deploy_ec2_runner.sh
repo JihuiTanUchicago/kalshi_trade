@@ -93,7 +93,7 @@ aws s3 cp s3://${BUCKET}/${KEY} /opt/kalshi/bundle.tgz
 
 tar -xzf /opt/kalshi/bundle.tgz -C /opt/kalshi
 python3 -m venv /opt/kalshi/.venv
-/opt/kalshi/.venv/bin/pip install -r /opt/kalshi/requirements.txt pymysql
+/opt/kalshi/.venv/bin/pip install -r /opt/kalshi/requirements.txt
 
 cat >/opt/kalshi/.env.aws <<EOT
 export AWS_PROFILE=${AWS_PROFILE}

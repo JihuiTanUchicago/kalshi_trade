@@ -271,8 +271,8 @@ def insert_snapshot_rows(
         cur.execute(
             """
             INSERT INTO forward_quotes
-            (snapshot_time_utc,market_ticker,event_ticker,yes_bid_dollars,yes_ask_dollars,yes_bid_size_fp,yes_ask_size_fp,volume_fp,open_interest_fp,status,raw_json)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            (snapshot_time_utc,market_ticker,event_ticker,yes_bid_dollars,yes_ask_dollars,yes_bid_size_fp,yes_ask_size_fp,volume_fp,open_interest_fp,no_bid_dollars,no_ask_dollars,status,raw_json)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """,
             (
                 snapshot_naive,
@@ -284,6 +284,12 @@ def insert_snapshot_rows(
                 _pick_value(ws_msg, m, "yes_ask_size_fp"),
                 _pick_value(ws_msg, m, "volume_fp"),
                 _pick_value(ws_msg, m, "open_interest_fp"),
+                # WS ticker messages don't carry the NO side; fall back to the
+                # last REST market snapshot so this is populated on (almost)
+                # every row instead of only the ~0.7% of rows where ws_msg was
+                # entirely absent (see research/two_sided_quote_check.py).
+                _pick_value(ws_msg, m, "no_bid_dollars"),
+                _pick_value(ws_msg, m, "no_ask_dollars"),
                 m.get("status"),
                 json.dumps(ws_msg if ws_msg else m),
             ),

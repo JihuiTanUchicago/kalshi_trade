@@ -64,6 +64,8 @@ DDL = [
       yes_ask_size_fp DECIMAL(18,2) NULL,
       volume_fp DECIMAL(18,2) NULL,
       open_interest_fp DECIMAL(18,2) NULL,
+      no_bid_dollars DECIMAL(10,4) NULL,
+      no_ask_dollars DECIMAL(10,4) NULL,
       status VARCHAR(32) NULL,
       raw_json JSON NOT NULL,
       INDEX idx_fq_ticker_time (market_ticker, snapshot_time_utc),
@@ -174,7 +176,8 @@ DDL = [
       rf_regime VARCHAR(32) NULL,
       raw_json JSON NOT NULL,
       PRIMARY KEY (snapshot_minute_utc, model_name),
-      INDEX idx_sim_pred_model_time (model_name, snapshot_minute_utc)
+      INDEX idx_sim_pred_model_time (model_name, snapshot_minute_utc),
+      INDEX idx_sim_pred_time_only (snapshot_minute_utc)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     """
@@ -202,7 +205,8 @@ DDL = [
       status VARCHAR(16) NOT NULL,
       raw_json JSON NOT NULL,
       INDEX idx_sim_trades_model_time (model_name, opened_at_utc),
-      INDEX idx_sim_trades_status (status, opened_at_utc)
+      INDEX idx_sim_trades_status (status, opened_at_utc),
+      INDEX idx_sim_trades_status_model (status, model_name)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     """
@@ -215,7 +219,8 @@ DDL = [
       win_rate DECIMAL(10,6) NULL,
       raw_json JSON NOT NULL,
       PRIMARY KEY (snapshot_minute_utc, model_name),
-      INDEX idx_sim_equity_model_time (model_name, snapshot_minute_utc)
+      INDEX idx_sim_equity_model_time (model_name, snapshot_minute_utc),
+      INDEX idx_sim_equity_time_only (snapshot_minute_utc)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     """
@@ -232,25 +237,6 @@ DDL = [
       raw_json JSON NOT NULL,
       PRIMARY KEY (snapshot_time_utc, model_name),
       INDEX idx_sim_portfolio_model_time (model_name, snapshot_time_utc)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS sim_models_registry (
-      model_name VARCHAR(32) PRIMARY KEY,
-      family VARCHAR(16) NOT NULL,
-      algo VARCHAR(32) NOT NULL,
-      mode VARCHAR(16) NOT NULL,
-      feature_cols_json JSON NOT NULL,
-      hyperparams_json JSON NOT NULL,
-      is_active TINYINT(1) NOT NULL DEFAULT 1,
-      is_visible TINYINT(1) NOT NULL DEFAULT 1,
-      status VARCHAR(16) NOT NULL DEFAULT 'pending',
-      notes VARCHAR(255) NULL,
-      last_error TEXT NULL,
-      created_at_utc DATETIME NOT NULL,
-      updated_at_utc DATETIME NOT NULL,
-      INDEX idx_sim_models_status (status, updated_at_utc),
-      INDEX idx_sim_models_active (is_active, is_visible, updated_at_utc)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     """
@@ -294,6 +280,22 @@ DDL = [
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     """
+    CREATE TABLE IF NOT EXISTS sim_settings (
+      settings_key VARCHAR(64) PRIMARY KEY,
+      settings_json JSON NOT NULL,
+      updated_at_utc DATETIME NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS sim_model_state (
+      model_name VARCHAR(32) PRIMARY KEY,
+      paused TINYINT(1) NOT NULL DEFAULT 0,
+      paused_reason VARCHAR(255) NULL,
+      paused_at_utc DATETIME NULL,
+      updated_at_utc DATETIME NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
     CREATE TABLE IF NOT EXISTS live_orders (
       id BIGINT AUTO_INCREMENT PRIMARY KEY,
       created_at_utc DATETIME NOT NULL,
@@ -312,12 +314,22 @@ DDL = [
     """,
     """
     CREATE TABLE IF NOT EXISTS live_positions (
-      market_ticker VARCHAR(128) PRIMARY KEY,
+      model_name VARCHAR(32) NOT NULL,
+      market_ticker VARCHAR(128) NOT NULL,
       opened_at_utc DATETIME NOT NULL,
       qty_contracts INT NOT NULL,
       entry_price_dollars DECIMAL(10,6) NOT NULL,
-      model_name VARCHAR(32) NOT NULL,
-      raw_json JSON NOT NULL
+      raw_json JSON NOT NULL,
+      PRIMARY KEY (model_name, market_ticker)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS live_model_state (
+      model_name VARCHAR(32) PRIMARY KEY,
+      paused TINYINT(1) NOT NULL DEFAULT 0,
+      paused_reason VARCHAR(255) NULL,
+      paused_at_utc DATETIME NULL,
+      updated_at_utc DATETIME NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     """
@@ -379,6 +391,78 @@ def main() -> None:
                 AFTER event_ticker
                 """
             )
+
+        for col_name, add_col_sql in (
+            ("no_bid_dollars", "ALTER TABLE forward_quotes ADD COLUMN no_bid_dollars DECIMAL(10,4) NULL AFTER open_interest_fp"),
+            ("no_ask_dollars", "ALTER TABLE forward_quotes ADD COLUMN no_ask_dollars DECIMAL(10,4) NULL AFTER no_bid_dollars"),
+        ):
+            cur.execute(
+                """
+                SELECT COUNT(*) AS c
+                FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='forward_quotes' AND COLUMN_NAME=%s
+                """,
+                (col_name,),
+            )
+            if cur.fetchone()["c"] == 0:
+                cur.execute(add_col_sql)
+
+        # live_positions used to be PK'd on market_ticker alone (one global
+        # RF-only book) - multi-strategy live trading needs one position per
+        # (model_name, market_ticker) so independent strategies can't clobber
+        # each other's position rows. Safe to run unconditionally: only
+        # touches the PK shape, and this table is empty between trades by
+        # design (a position lives here only while open).
+        cur.execute(
+            """
+            SELECT COUNT(*) AS c
+            FROM information_schema.KEY_COLUMN_USAGE
+            WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='live_positions'
+              AND CONSTRAINT_NAME='PRIMARY' AND COLUMN_NAME='model_name'
+            """
+        )
+        if cur.fetchone()["c"] == 0:
+            cur.execute("SELECT COUNT(*) AS c FROM live_positions")
+            if cur.fetchone()["c"] == 0:
+                cur.execute("ALTER TABLE live_positions DROP PRIMARY KEY, ADD PRIMARY KEY (model_name, market_ticker)")
+            else:
+                print("[WARN] live_positions has open rows and an old PK shape - skipping automatic migration, resolve manually.")
+
+        # Indexes added after these tables already existed in deployed
+        # environments - CREATE TABLE IF NOT EXISTS above is a no-op there,
+        # so add them explicitly if missing.
+        for table, index_name, add_index_sql in (
+            ("sim_equity_1m", "idx_sim_equity_time_only", "ALTER TABLE sim_equity_1m ADD INDEX idx_sim_equity_time_only (snapshot_minute_utc)"),
+            ("sim_trades", "idx_sim_trades_status_model", "ALTER TABLE sim_trades ADD INDEX idx_sim_trades_status_model (status, model_name)"),
+            ("sim_model_predictions_1m", "idx_sim_pred_time_only", "ALTER TABLE sim_model_predictions_1m ADD INDEX idx_sim_pred_time_only (snapshot_minute_utc)"),
+            # sim_portfolio_20s_updater.py re-derives the running peak equity
+            # with "SELECT MAX(peak_equity_dollars) WHERE model_name=..." every
+            # 20s, forever, over an append-only table - after 6 months of
+            # history this became a slow full scan per model per tick, and a
+            # pileup of those queries queuing behind each other on a small RDS
+            # instance is what exhausted max_connections in the 2026-09-13
+            # incident. A covering index lets MySQL answer the MAX via a loose
+            # index scan instead of reading every row.
+            ("sim_portfolio_20s", "idx_sim_portfolio_model_peak", "ALTER TABLE sim_portfolio_20s ADD INDEX idx_sim_portfolio_model_peak (model_name, peak_equity_dollars)"),
+            ("live_portfolio_20s", "idx_live_portfolio_peak", "ALTER TABLE live_portfolio_20s ADD INDEX idx_live_portfolio_peak (peak_equity_dollars)"),
+            # forward_feed_health() filters purely by snapshot_time_utc (no
+            # ticker), which the existing (market_ticker, snapshot_time_utc)
+            # and (event_ticker, snapshot_time_utc) composite indexes can't
+            # serve - it was doing a full scan of forward_quotes (the largest
+            # table, ~1M+ rows) on every /health and every "/" page load,
+            # 10-14s each, part of the same 2026-09-13 incident.
+            ("forward_quotes", "idx_fq_time_only", "ALTER TABLE forward_quotes ADD INDEX idx_fq_time_only (snapshot_time_utc)"),
+        ):
+            cur.execute(
+                """
+                SELECT COUNT(*) AS c
+                FROM information_schema.STATISTICS
+                WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s AND INDEX_NAME=%s
+                """,
+                (table, index_name),
+            )
+            if cur.fetchone()["c"] == 0:
+                cur.execute(add_index_sql)
     conn.close()
     print("Schema initialized.")
 

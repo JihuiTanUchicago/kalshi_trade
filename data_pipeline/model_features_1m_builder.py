@@ -392,6 +392,9 @@ def run_loop() -> None:
                 )
             except Exception as e:
                 print(f"model_features_1m error at {minute_mark.isoformat()}: {e}")
+                # Re-raise so the outer loop tears down this connection/cursor and
+                # acquires a fresh one, instead of retrying forever on a dead connection.
+                raise
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (MiKTeX 24.1) (preloaded format=pdflatex 2025.12.13)  12 MAR 2026 02:55
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  12 MAR 2026 09:11
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1196,50 +1196,48 @@ Overfull \hbox (1.82512pt too wide) has occurred while \output is active
 [5
 
 ]
-Overfull \hbox (1.82512pt too wide) in paragraph at lines 244--244
+Overfull \hbox (1.82512pt too wide) in paragraph at lines 243--243
 [][] 
  []
 
 
-Overfull \hbox (411.20398pt too wide) detected at line 244
- [] [] [] [] [] [] [] [] [] [] [] [] []  [] 
+Overfull \hbox (182.37843pt too wide) detected at line 243
+ [] [] [] [] [] [] [] [] [] []  [] 
  []
 
 
-Overfull \hbox (4.25006pt too wide) in paragraph at lines 244--244
+Overfull \hbox (4.25006pt too wide) in paragraph at lines 243--243
 [][][][] 
  []
 
-LaTeX Font Info:    Font shape `OT1/cmss/b/n' in size <8> not available
-(Font)              Font shape `OT1/cmss/bx/n' tried instead on input line 244.
-
+LaTeX Font Info:    Font shape `OT1/cmss/b/n' in size <9> not available
+(Font)              Font shape `OT1/cmss/bx/n' tried instead on input line 243.
 LaTeX Font Info:    Font shape `OT1/cmss/b/n' in size <6> not available
-(Font)              Font shape `OT1/cmss/bx/n' tried instead on input line 244.
-
+(Font)              Font shape `OT1/cmss/bx/n' tried instead on input line 243.
 LaTeX Font Info:    Font shape `OT1/cmss/b/n' in size <5> not available
-(Font)              Font shape `OT1/cmss/bx/n' tried instead on input line 244.
+(Font)              Font shape `OT1/cmss/bx/n' tried instead on input line 243.
 
-
-Overfull \hbox (29.59088pt too wide) in paragraph at lines 244--244
-[]\OT1/cmss/bx/n/8 Label: $\OT1/mathkerncmss/m/sl/8 y[] \OT1/cmss/m/n/8 = \OT1/
-cmss/bx/n/8 1\OT1/cmss/m/n/8 [ [][] \OML/cmm/m/it/8 > [][] \OT1/cmss/m/n/8 ]$  
-\OT1/cmss/bx/n/8 Fea-tures (13): \OT1/cmtt/m/n/8 bid, ask, spread, mid, imbalan
-ce, mid[]ret[]1m/3m, cb[]ret[]1m/3m,
+Overfull \hbox (11.21162pt too wide) in paragraph at lines 243--243
+[]\OT1/cmss/bx/n/9 Label: $\OT1/cmss/m/it/9 y[] \OT1/cmss/m/n/9 = \OT1/cmss/bx/n/9 1\OT1/cmss/m/n/9 [ [][] \OML/cmm/m/it/9 > [][] \OT1/cmss/m/n/9 ]$  \OT1/cmss/bx/n/9 Fea-tures (13): \OT1/cmtt/m/n/9 bid, ask, spread, mid, imbalance, mid[]ret[]1m/3m,
  []
 
 <equity_insample.png, id=339, 425.03793pt x 223.13362pt>
 File: equity_insample.png Graphic file (type png)
 <use equity_insample.png>
-Package pdftex.def Info: equity_insample.png  used on input line 244.
-(pdftex.def)             Requested size: 195.18904pt x 102.46906pt.
-<equity_outsample.png, id=340, 425.03793pt x 223.13362pt>
+Package pdftex.def Info: equity_insample.png  used on input line 243.
+(pdftex.def)             Requested size: 195.18903pt x 102.86989pt.
+<equity_outsample.png, id=294, 427.8384pt x 225.4824pt>
 File: equity_outsample.png Graphic file (type png)
 <use equity_outsample.png>
-Package pdftex.def Info: equity_outsample.png  used on input line 244.
-(pdftex.def)             Requested size: 195.18904pt x 102.46906pt.
+Package pdftex.def Info: equity_outsample.png  used on input line 243.
+(pdftex.def)             Requested size: 195.18903pt x 102.86989pt.
 
-Overfull \hbox (411.20398pt too wide) has occurred while \output is active
- [] [] [] [] [] [] [] [] [] [] [] [] []  [] 
+Overfull \vbox (7.22153pt too high) detected at line 243
+ []
+
+
+Overfull \hbox (182.37843pt too wide) has occurred while \output is active
+ [] [] [] [] [] [] [] [] [] []  [] 
  []
 
 
@@ -1255,42 +1253,39 @@ Overfull \hbox (1.82512pt too wide) has occurred while \output is active
 [6
 
  <./equity_insample.png> <./equity_outsample.png>]
-Overfull \hbox (1.82512pt too wide) in paragraph at lines 282--282
+Overfull \hbox (1.82512pt too wide) in paragraph at lines 285--285
 [][] 
  []
 
 
-Overfull \hbox (411.20398pt too wide) detected at line 282
- [] [] [] [] [] [] [] [] [] [] [] [] []  [] 
+Overfull \hbox (182.37843pt too wide) detected at line 285
+ [] [] [] [] [] [] [] [] [] []  [] 
  []
 
 
-Overfull \hbox (4.25006pt too wide) in paragraph at lines 282--282
+Overfull \hbox (4.25006pt too wide) in paragraph at lines 285--285
 [][][][] 
  []
 
 LaTeX Font Info:    Font shape `OT1/cmss/b/n' in size <9> not available
 (Font)              Font shape `OT1/cmss/bx/n' tried instead on input line 282.
 
-
-Overfull \hbox (56.20099pt too wide) in paragraph at lines 282--282
-\OT1/cmtt/m/n/9 moneyness[]abs, moneyness[]vol[]scaled, moneyness[]x[]sqrt[]tte
-, moneyness[]x[]imbalance, moneyness[]x[]qchg,
+Overfull \hbox (56.20099pt too wide) in paragraph at lines 285--285
+\OT1/cmtt/m/n/9 moneyness[]abs, moneyness[]vol[]scaled, moneyness[]x[]sqrt[]tte, moneyness[]x[]imbalance, moneyness[]x[]qchg,
  []
 
-<logistic_insample.png, id=390, 425.03793pt x 223.13362pt>
+<logistic_insample.png, id=341, 427.8384pt x 225.4824pt>
 File: logistic_insample.png Graphic file (type png)
 <use logistic_insample.png>
-Package pdftex.def Info: logistic_insample.png  used on input line 282.
-(pdftex.def)             Requested size: 195.18904pt x 102.46906pt.
-<logistic_outsample_compare.png, id=391, 425.03793pt x 223.13362pt>
+Package pdftex.def Info: logistic_insample.png  used on input line 285.
+(pdftex.def)             Requested size: 195.18903pt x 102.86989pt.
+<logistic_outsample_compare.png, id=342, 427.8384pt x 225.4824pt>
 File: logistic_outsample_compare.png Graphic file (type png)
 <use logistic_outsample_compare.png>
-Package pdftex.def Info: logistic_outsample_compare.png  used on input line 282
-.
-(pdftex.def)             Requested size: 195.18904pt x 102.46906pt.
+Package pdftex.def Info: logistic_outsample_compare.png  used on input line 285.
+(pdftex.def)             Requested size: 195.18903pt x 102.86989pt.
 
-Overfull \vbox (15.22523pt too high) detected at line 282
+Overfull \vbox (37.62607pt too high) detected at line 285
  []
 
 
@@ -1311,32 +1306,32 @@ Overfull \hbox (1.82512pt too wide) has occurred while \output is active
 [7
 
  <./logistic_insample.png> <./logistic_outsample_compare.png>]
-Overfull \hbox (1.82512pt too wide) in paragraph at lines 326--326
+Overfull \hbox (1.82512pt too wide) in paragraph at lines 329--329
 [][] 
  []
 
 
-Overfull \hbox (411.20398pt too wide) detected at line 326
- [] [] [] [] [] [] [] [] [] [] [] [] []  [] 
+Overfull \hbox (182.37843pt too wide) detected at line 329
+ [] [] [] [] [] [] [] [] [] []  [] 
  []
 
 
-Overfull \hbox (4.25006pt too wide) in paragraph at lines 326--326
+Overfull \hbox (4.25006pt too wide) in paragraph at lines 329--329
 [][][][] 
  []
 
 <gbm_insample.png, id=448, 425.03793pt x 223.13362pt>
 File: gbm_insample.png Graphic file (type png)
 <use gbm_insample.png>
-Package pdftex.def Info: gbm_insample.png  used on input line 326.
-(pdftex.def)             Requested size: 195.18904pt x 102.46906pt.
-<gbm_outsample_compare.png, id=449, 425.03793pt x 223.13362pt>
+Package pdftex.def Info: gbm_insample.png  used on input line 329.
+(pdftex.def)             Requested size: 195.18874pt x 103.91187pt.
+<gbm_outsample_compare.png, id=387, 432.1746pt x 229.8186pt>
 File: gbm_outsample_compare.png Graphic file (type png)
 <use gbm_outsample_compare.png>
-Package pdftex.def Info: gbm_outsample_compare.png  used on input line 326.
-(pdftex.def)             Requested size: 195.18904pt x 102.46906pt.
+Package pdftex.def Info: gbm_outsample_compare.png  used on input line 329.
+(pdftex.def)             Requested size: 195.18237pt x 103.79263pt.
 
-Overfull \vbox (3.22522pt too high) detected at line 326
+Overfull \vbox (4.66803pt too high) detected at line 329
  []
 
 
@@ -1357,32 +1352,32 @@ Overfull \hbox (1.82512pt too wide) has occurred while \output is active
 [8
 
  <./gbm_insample.png> <./gbm_outsample_compare.png>]
-Overfull \hbox (1.82512pt too wide) in paragraph at lines 370--370
+Overfull \hbox (1.82512pt too wide) in paragraph at lines 373--373
 [][] 
  []
 
 
-Overfull \hbox (411.20398pt too wide) detected at line 370
- [] [] [] [] [] [] [] [] [] [] [] [] []  [] 
+Overfull \hbox (182.37843pt too wide) detected at line 373
+ [] [] [] [] [] [] [] [] [] []  [] 
  []
 
 
-Overfull \hbox (4.25006pt too wide) in paragraph at lines 370--370
+Overfull \hbox (4.25006pt too wide) in paragraph at lines 373--373
 [][][][] 
  []
 
 <rf_insample.png, id=498, 425.03793pt x 223.13362pt>
 File: rf_insample.png Graphic file (type png)
 <use rf_insample.png>
-Package pdftex.def Info: rf_insample.png  used on input line 370.
-(pdftex.def)             Requested size: 195.18904pt x 102.46906pt.
-<rf_outsample_compare.png, id=499, 425.03793pt x 223.13362pt>
+Package pdftex.def Info: rf_insample.png  used on input line 373.
+(pdftex.def)             Requested size: 195.18874pt x 103.91187pt.
+<rf_outsample_compare.png, id=431, 432.1746pt x 229.8186pt>
 File: rf_outsample_compare.png Graphic file (type png)
 <use rf_outsample_compare.png>
-Package pdftex.def Info: rf_outsample_compare.png  used on input line 370.
-(pdftex.def)             Requested size: 195.18904pt x 102.46906pt.
+Package pdftex.def Info: rf_outsample_compare.png  used on input line 373.
+(pdftex.def)             Requested size: 195.18237pt x 103.79263pt.
 
-Overfull \vbox (3.97522pt too high) detected at line 370
+Overfull \vbox (5.41803pt too high) detected at line 373
  []
 
 
@@ -1403,17 +1398,17 @@ Overfull \hbox (1.82512pt too wide) has occurred while \output is active
 [9
 
  <./rf_insample.png> <./rf_outsample_compare.png>]
-Overfull \hbox (1.82512pt too wide) in paragraph at lines 412--412
+Overfull \hbox (1.82512pt too wide) in paragraph at lines 383--383
 [][] 
  []
 
 
-Overfull \hbox (411.20398pt too wide) detected at line 412
- [] [] [] [] [] [] [] [] [] [] [] [] []  [] 
+Overfull \hbox (182.37843pt too wide) detected at line 383
+ [] [] [] [] [] [] [] [] [] []  [] 
  []
 
 
-Overfull \hbox (4.25006pt too wide) in paragraph at lines 412--412
+Overfull \hbox (4.25006pt too wide) in paragraph at lines 383--383
 [][][][] 
  []
 
@@ -1449,18 +1444,18 @@ Overfull \hbox (1.82512pt too wide) has occurred while \output is active
 
 [10
 
- <./bagging_insample.png> <./bagging_outsample_compare.png>]
-Overfull \hbox (1.82512pt too wide) in paragraph at lines 454--454
+]
+Overfull \hbox (1.82512pt too wide) in paragraph at lines 393--393
 [][] 
  []
 
 
-Overfull \hbox (411.20398pt too wide) detected at line 454
- [] [] [] [] [] [] [] [] [] [] [] [] []  [] 
+Overfull \hbox (182.37843pt too wide) detected at line 393
+ [] [] [] [] [] [] [] [] [] []  [] 
  []
 
 
-Overfull \hbox (4.25006pt too wide) in paragraph at lines 454--454
+Overfull \hbox (4.25006pt too wide) in paragraph at lines 393--393
 [][][][] 
  []
 
@@ -1622,32 +1617,15 @@ Package rerunfilecheck Info: File `main.out' has not changed.
 (rerunfilecheck)             Checksum: 27D3C86F20E92D054D83C6AC5897A88F;1958.
  ) 
 Here is how much of TeX's memory you used:
- 26005 strings out of 474486
- 512567 string characters out of 5753569
- 1948542 words of memory out of 5000000
- 47722 multiletter control sequences out of 15000+600000
- 569808 words of font info for 78 fonts, out of 8000000 for 9000
- 1141 hyphenation exceptions out of 8191
- 128i,17n,123p,390b,663s stack positions out of 10000i,1000n,20000p,200000b,200000s
- <C:\Users\gucha\AppData\Local\MiKTeX\fonts/pk/ljfour/jknappen/ec/dpi600\tcss
-0900.pk> <C:\Users\gucha\AppData\Local\MiKTeX\fonts/pk/ljfour/jknappen/ec/dpi60
-0\tcsx0900.pk> <C:\Users\gucha\AppData\Local\MiKTeX\fonts/pk/ljfour/jknappen/ec
-/dpi600\tcsx0800.pk> <C:\Users\gucha\AppData\Local\MiKTeX\fonts/pk/ljfour/jknap
-pen/ec/dpi600\tcss0800.pk><C:/Program Files/MiKTeX/fonts/type1/public/amsfonts/
-cm/cmmi8.pfb><C:/Program Files/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi9.pfb>
-<C:/Program Files/MiKTeX/fonts/type1/public/amsfonts/cm/cmss10.pfb><C:/Program 
-Files/MiKTeX/fonts/type1/public/amsfonts/cm/cmss12.pfb><C:/Program Files/MiKTeX
-/fonts/type1/public/amsfonts/cm/cmss8.pfb><C:/Program Files/MiKTeX/fonts/type1/
-public/amsfonts/cm/cmss9.pfb><C:/Program Files/MiKTeX/fonts/type1/public/amsfon
-ts/cm/cmssbx10.pfb><C:/Program Files/MiKTeX/fonts/type1/public/amsfonts/cm/cmss
-i8.pfb><C:/Program Files/MiKTeX/fonts/type1/public/amsfonts/cm/cmssi9.pfb><C:/P
-rogram Files/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy8.pfb><C:/Program Files/
-MiKTeX/fonts/type1/public/amsfonts/cm/cmsy9.pfb><C:/Program Files/MiKTeX/fonts/
-type1/public/amsfonts/cm/cmtt12.pfb><C:/Program Files/MiKTeX/fonts/type1/public
-/amsfonts/cm/cmtt8.pfb><C:/Program Files/MiKTeX/fonts/type1/public/amsfonts/cm/
-cmtt9.pfb><C:/Program Files/MiKTeX/fonts/type1/public/amsfonts/symbols/msam10.p
-fb>
-Output written on main.pdf (14 pages, 1211083 bytes).
+ 25835 strings out of 469006
+ 509386 string characters out of 5454814
+ 909303 words of memory out of 5000000
+ 54006 multiletter control sequences out of 15000+600000
+ 639711 words of font info for 84 fonts, out of 8000000 for 9000
+ 319 hyphenation exceptions out of 8191
+ 101i,17n,112p,478b,663s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ </Users/toddtan/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour/jknappen/ec/tcss0900.600pk> </Users/toddtan/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour/jknappen/ec/tcsx0900.600pk> </Users/toddtan/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour/jknappen/ec/tcss1000.600pk></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi9.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmss10.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmss12.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmss8.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmss9.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmssbx10.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmssi8.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmssi9.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy9.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt12.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt9.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/symbols/msam10.pfb>
+Output written on main.pdf (11 pages, 1086856 bytes).
 PDF statistics:
  866 PDF objects out of 1000 (max. 8388607)
  40 named destinations out of 1000 (max. 500000)

@@ -129,6 +129,9 @@ def run_loop():
                 )
             except Exception as e:
                 print(f"live_portfolio_20s error at {mark.isoformat()}: {e}")
+                # Re-raise so the outer loop tears down this connection/cursor and
+                # acquires a fresh one, instead of retrying forever on a dead connection.
+                raise
 
 
 if __name__ == "__main__":
