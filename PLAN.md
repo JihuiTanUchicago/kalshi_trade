@@ -237,6 +237,26 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+### Hourly check (2026-09-13, blocked - could not reach dashboard)
+
+Repo checkout confirmed correct and current (`main` @ `9f01355`, `PLAN.md`/`data_pipeline/sim_config.py`/
+`data_pipeline/binary_theory.py`/`data_pipeline/kalshi_fees.py`/`research/`/`tests/` all present as expected).
+Read `ALL_MODELS` from `simulated_trading_engine.py` for reference (5 models:
+`naive_logistic_baseline`, `logistic`, `random_forest`, `random_forest_high_conviction`,
+`binary_theory_edge`) but **could not query `/health`, `/sim_metrics`, or `/api/table` at all** -
+this session's network egress proxy rejects the CONNECT to `dehiuraiut9ro.cloudfront.net` outright
+(`403` at the proxy layer, confirmed two independent ways: a direct HTTPS request via `requests`
+and this session's own `WebFetch` tool, which returned an explicit `EGRESS_BLOCKED` error for the
+domain). This is a session/environment network-policy restriction, not a dashboard-side outage -
+nothing in `client_api/client.py` or the dashboard itself was reachable to even test.
+
+**No monitoring or research work could be done this run** - both Part 1 (model performance check)
+and Part 2 (new-strategy research) require live data from the API. Stopping per instructions rather
+than guessing at model states or fabricating backtest results. **Action needed**: whoever configures
+this session's network egress allowlist needs to permit `dehiuraiut9ro.cloudfront.net:443` (or
+CloudFront generally) for future hourly runs to function. If this recurs next hour, it confirms the
+block is a standing environment/policy setting rather than a transient blip.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
