@@ -237,6 +237,33 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+## Scheduled research-run check (2026-09-13, blocked)
+
+**Could not run - dashboard unreachable from this session.** Both HTTPS attempts to
+`https://dehiuraiut9ro.cloudfront.net/health` (plain `curl` through this session's egress
+proxy, and the `WebFetch` tool) failed with an explicit egress-policy denial - the proxy's own
+status endpoint logged `connect_rejected: "gateway answered 403 to CONNECT (policy denial or
+upstream failure)"` for that host, and `WebFetch` returned `EGRESS_BLOCKED`. This is a network
+policy block on this remote session's outbound access, not a dashboard/DB outage - per the task's
+own instruction ("if you cannot reach the dashboard... note it plainly and stop rather than
+attempting workarounds"), stopped here rather than trying alternate paths (direct RDS access,
+etc., neither of which this session has credentials for anyway).
+
+Consequence: **Part 1** (checking `ALL_MODELS` via `/sim_metrics` for `random_forest_high_conviction`/
+`binary_theory_edge` progress and any new-trade thresholds) and **Part 2** (pulling `sim_trades`/
+`model_features_1m`/`forward_quotes` for the variable-sizing and faster-tick-frequency research)
+both require dashboard reads this run did not have. No new research scripts were written this
+run - writing a sizing/tick-frequency backtest without being able to pull or validate against real
+data would not meet this project's own bar for rigor (every existing `research/*.py` script reports
+real numbers on real pulled rows). Next scheduled run should retry; if this session's network
+policy is the persistent cause rather than a one-off, the environment's egress allowlist needs
+`dehiuraiut9ro.cloudfront.net` added for this recurring task to make progress.
+
+(Side note, not actioned this run: `research/ou_mispricing_reversion_check.py` exists in the repo
+- checked in as part of the 2026-09-12 `e31c635` commit - but has no corresponding write-up above.
+Worth reading and either documenting its result or re-running it in a future session with
+dashboard access.)
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
