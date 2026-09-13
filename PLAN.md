@@ -242,3 +242,34 @@ multi-month milestone.
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
 - The leaked `client_api` password (`kalshimakesmepoor`, hardcoded in `client_api/client.py` and `client_api/README.md`) was intentionally left as-is per explicit instruction - not rotated.
 - `venv/` was untracked from git (was previously committed - 7500+ files); `.gitignore` updated. Files remain on disk, only git tracking changed.
+
+## Scheduled check: 2026-09-13 (hourly research/monitoring run)
+
+**Blocked - could not reach the dashboard.** The repo checkout itself was fine this run (confirmed
+`origin/main` at `9f01355` has `PLAN.md`, `data_pipeline/sim_config.py`, `binary_theory.py`,
+`kalshi_fees.py`, `research/`, `tests/` as expected - no stale-checkout issue this time). But this
+session's outbound network policy rejects all HTTPS egress to
+`dehiuraiut9ro.cloudfront.net`, confirmed two independent ways: a direct `requests.get()` to
+`/health` failed at the environment's egress proxy (`Tunnel connection failed: 403 Forbidden`,
+`connect_rejected` per the proxy's own status endpoint - "gateway answered 403 to CONNECT (policy
+denial)"), and the `WebFetch` tool returned an explicit `EGRESS_BLOCKED` error for the same host.
+This is a policy-level block, not a flaky retry-able failure, so per instructions this run stops
+here rather than guessing at a workaround (no AWS/SSH/SSM access exists in this sandbox regardless,
+and none was attempted).
+
+**Consequence**: neither Part 1 (per-model `/sim_metrics` monitoring, new-trade-count checks
+against the risk-gate-paused/candidate models) nor Part 2 (a new backtest needs real historical
+rows via `/api/table`) could be attempted this run - both require dashboard reachability. Nothing
+in `research/` was added or modified.
+
+**For whoever owns the environment config**: this session's egress allowlist needs
+`dehiuraiut9ro.cloudfront.net` (or `*.cloudfront.net`) added, or these hourly runs cannot do
+anything beyond reading the git history. Every previous dated entry in this file was written by a
+session that *could* reach the dashboard, so this looks like a new/changed restriction on this
+particular scheduled session rather than the dashboard itself being down - worth confirming from
+outside this sandbox (e.g. curling it from a machine with normal internet access) before assuming
+the EC2 instance or CloudFront distribution is the problem.
+
+**Next scheduled run**: retry the dashboard first; if still blocked, no need to re-derive the above
+diagnosis - just confirm the block persists and stop again, noting so in one line, until the
+network policy is fixed.
