@@ -237,6 +237,30 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+### Hourly check (2026-09-14, 02:38 UTC - blocked, could not reach dashboard)
+
+Repo checkout confirmed correct and current (`main` @ `9f01355`, `PLAN.md`/`data_pipeline/sim_config.py`/
+`data_pipeline/binary_theory.py`/`data_pipeline/kalshi_fees.py`/`research/`/`tests/` all present as
+expected). **Could not query `/health`, `/sim_metrics`, or `/api/table` at all** - confirmed two
+independent ways (a direct `curl`/proxy-status check and this session's `WebFetch` tool, which
+returned an explicit `EGRESS_BLOCKED` error). The agent proxy's own status log shows the root cause
+plainly: `connect_rejected` / "gateway answered 403 to CONNECT (policy denial or upstream failure)"
+for `dehiuraiut9ro.cloudfront.net:443`. Same failure mode as every prior hourly run since this
+started (checked all 8 unmerged `research/*`/`scheduled-check/*` branches off `main` from
+2026-09-13 06:54 UTC through 22:39 UTC - every single one hit the identical egress-proxy 403, none
+were network blips that self-resolved). This is now confirmed a **standing environment/session
+network-policy restriction that has blocked every hourly run for over 19 hours straight (9 runs, 0
+successful)**, not a transient dashboard-side outage - nothing in `client_api/client.py` or the
+dashboard itself was reachable to even test.
+
+**No monitoring or research work could be done this run** - both Part 1 (model performance check)
+and Part 2 (new-strategy research) require live data from the API, and there is none to fall back
+on locally. Stopping per instructions rather than guessing at model states or fabricating backtest
+results. **Action needed, unchanged from every prior blocked run**: whoever configures this
+session's network egress allowlist needs to permit `dehiuraiut9ro.cloudfront.net:443` (or
+CloudFront generally) for these hourly runs to do anything. Given the streak length, it's worth
+flagging this to a human directly rather than letting more blocked runs accumulate silently.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
