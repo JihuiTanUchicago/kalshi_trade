@@ -237,6 +237,20 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+### Hourly check, 2026-09-14 ~08:38 UTC - still blocked, 12th consecutive run
+
+Per the prior run's note, checked proxy status first rather than re-deriving the full diagnosis:
+`$HTTPS_PROXY/__agentproxy/status` still logs `connect_rejected` for
+`dehiuraiut9ro.cloudfront.net:443` at this run's own attempt (`2026-09-14T08:38:32Z`), and a direct
+`curl` to `/health` still returns `CONNECT tunnel failed, response 403`. Nothing has changed since
+the `research/2026-09-14-egress-blocked-follow-up` entry an hour ago - this is the 12th consecutive
+hourly run blocked since 2026-09-13 07:38 UTC (>25h), still a broad egress-allowlist gap, not a
+CloudFront-side issue. No code/research changes possible without live data. Root cause and required
+fix (allowlist `dehiuraiut9ro.cloudfront.net` in this session's egress policy - not doable from
+inside the session) unchanged from the prior entry; see that entry for full detail. Not re-deriving
+further each hour per that entry's own guidance - future runs should do the same one-line check
+until this is fixed.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
