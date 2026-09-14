@@ -237,6 +237,37 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+### Check 2026-09-14 18:38 UTC - dashboard unreachable, blocked before Part 1/2 could start
+
+First run of the new hourly monitoring routine. Confirmed the checkout is current (`main` @
+`9f01355`, matches origin, `PLAN.md`/`data_pipeline/sim_config.py`/`data_pipeline/binary_theory.py`/
+`data_pipeline/kalshi_fees.py`/`research/`/`tests/` all present as expected) and read all prior
+dated entries above before doing anything else.
+
+Could not reach `https://dehiuraiut9ro.cloudfront.net` at all this run - every attempt (plain
+`requests`/`curl` through the environment's egress proxy, and the sandbox's own `WebFetch` tool)
+was rejected before completing a TLS handshake: `curl` got `CONNECT tunnel failed, response 403`
+from the local proxy, and `WebFetch` returned `EGRESS_BLOCKED - Access to dehiuraiut9ro.cloudfront.net
+is blocked by the network egress proxy`. This is a network-policy denial at the sandbox boundary,
+not a dashboard-side outage, auth failure, or transient blip (retried once after a few seconds,
+same result both ways). Per this task's explicit instructions, no AWS credentials/CLI/SSH/SSM were
+attempted to route around it.
+
+Practical effect: every research script in `research/` and both monitoring parts of this task
+depend on `client_api.KalshiDataClient` / direct HTTPS reads from that host (or, for scripts using
+`data_pipeline.common.get_db_conn`, DB access this environment also has no path to without the
+network route). With the dashboard host blocked, there is no reachable data source this run - Part 1
+(checking `/sim_metrics` for the 5 `ALL_MODELS` entries: `naive_logistic_baseline`, `logistic`,
+`random_forest`, `random_forest_high_conviction`, `binary_theory_edge`) and Part 2 (new-angle
+backtest, e.g. finishing the already-written-but-never-run `research/ou_mispricing_reversion_check.py`
+mean-reversion check, which is a good candidate to pick up first next time this succeeds) could not
+be attempted. No code changes made this run.
+
+**Action needed from a human**: this looks like an environment/network-policy configuration issue
+(the CloudFront domain isn't on this sandbox's egress allowlist) rather than something fixable from
+inside the session - if this persists across the next scheduled run too, the hourly job cannot do
+anything useful until that's addressed.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
