@@ -1,5 +1,20 @@
 # PLAN
 
+## Hourly check (2026-09-14 ~10:38 UTC) - still blocked, 13th consecutive run, >24h
+
+Checkout confirmed current (`main` at `9f01355`, all expected files present: `PLAN.md`,
+`data_pipeline/sim_config.py`, `data_pipeline/binary_theory.py`, `data_pipeline/kalshi_fees.py`,
+`research/`, `tests/`). Direct `curl https://dehiuraiut9ro.cloudfront.net/health` and the proxy
+status endpoint both confirm the CONNECT tunnel to the dashboard host is still rejected
+(`403`/`connect_rejected`) - same egress-policy denial every prior run has logged since
+2026-09-13 ~06:54 UTC (see the `research/2026-09-13-egress-blocked` ... `research/2026-09-14-egress-blocked-0838utc`
+branches). No AWS/SSM access available to investigate or fix this from here per the read-only
+research mandate. Nothing to add beyond confirming the outage is unchanged and now spans over a
+full day - stopping per the task's own instruction rather than guessing at Part 1/Part 2 work with
+no data access. **Action needed from a human**: add `dehiuraiut9ro.cloudfront.net` to this
+session's/environment's network egress allowlist so future hourly runs can actually reach
+`/health`, `/sim_metrics`, and `/api/table`.
+
 ## Current Codebase Knowledge
 
 - `data_pipeline/` is the real system: ingestion (`forward_collector`, `coinbase_collector`, `feature_1m_collector`), feature building (`model_features_1m_builder`), simulated trading (`simulated_trading_engine`, `sim_portfolio_20s_updater`, `sim_repository`, `sim_config`), live trading (`live_trading_engine`, `live_portfolio_20s_updater`, `architecture/{contracts,risk_engine,execution_kernel}.py`), and the dashboard (`dashboard_server.py`).
