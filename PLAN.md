@@ -237,6 +237,34 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+## Check (2026-09-14, hourly monitor, ~23:38 UTC) - BLOCKED, no data collected, 40+ hours ongoing
+
+Checkout confirmed correct against `origin/main` (`9f01355`, fast-forwarded from a stale local
+detached HEAD at the start of this run): `PLAN.md`, `data_pipeline/sim_config.py`,
+`binary_theory.py`, `kalshi_fees.py`, `research/`, `tests/` all present as expected.
+
+**Dashboard still unreachable - no change from the last recorded check.** `curl
+https://dehiuraiut9ro.cloudfront.net/health` fails at the CONNECT stage with `403`;
+`/__agentproxy/status` confirms `connect_rejected` / "gateway answered 403 to CONNECT (policy
+denial or upstream failure)" for `dehiuraiut9ro.cloudfront.net:443`, i.e. this session's org
+egress policy denying the host, not an AWS/dashboard-side problem. Per the proxy README this is a
+policy denial to report, not to retry or route around, so no workaround was attempted.
+
+**Not a one-off, and not yet resolved.** Per-branch, the same 403 has now been hit on essentially
+every hourly run since **2026-09-13 06:54 UTC** through this run (**2026-09-14 23:38 UTC**) -
+over **40 consecutive hours**, dozens of runs (16+ distinct `*blocked*`/`*unreachable*` branches
+pushed, none merged to `main` since none change what's actually deployed), zero successful data
+collection in that entire window. Neither Part 1 (model monitoring) nor Part 2
+(portfolio-correlation check / new research) can execute without dashboard access, so nothing new
+has been checked or researched since the 2026-09-12/13 entries above.
+
+**Action needed from a human, repeated from the prior check**: `dehiuraiut9ro.cloudfront.net` is a
+public, publicly-readable distribution (basic-auth creds already committed) - the block is on this
+session's org egress allowlist, not anything on the AWS/dashboard side. Either add it to the
+allowlist for this scheduled task's environment, or confirm read-only monitoring is no longer
+intended to run this way, since as configured it has now produced nothing for over 40 hours across
+dozens of runs.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
