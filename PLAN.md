@@ -237,6 +237,40 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+### Hourly check, 2026-09-14 ~07:39 UTC - still blocked, egress denial now >24h old
+
+Repeated the connectivity check before doing any Part 1/Part 2 work, per the standing instruction
+to verify the dashboard is reachable before assuming staleness or forcing an entry. Still fully
+blocked: `curl https://dehiuraiut9ro.cloudfront.net/health` returns `CONNECT tunnel failed,
+response 403`; the session's own proxy status endpoint (`$HTTPS_PROXY/__agentproxy/status`) logs
+it as `connect_rejected` / "gateway answered 403 to CONNECT (policy denial or upstream failure)"
+for `dehiuraiut9ro.cloudfront.net:443` specifically, timestamped at this run's own attempt
+(`2026-09-14T07:38:29Z`) - not a stale cached failure.
+
+**New this check**: confirmed it's a broad egress allowlist, not something specific to this
+CloudFront distribution. `https://www.google.com` is *also* `connect_rejected` by the same proxy,
+while `https://api.github.com` succeeds (200) - so this sandbox's network policy allows only a
+specific host allowlist (GitHub, presumably package registries per the proxy's `noProxy` list) and
+`dehiuraiut9ro.cloudfront.net` was never added to it. This rules out a CloudFront-side outage or a
+wrong URL as the cause; it's purely an environment/allowlist configuration gap.
+
+This is at least the **11th consecutive hourly run** hitting this exact block, spanning
+`research/2026-09-13-check-0738` through `research/check-2026-09-14-1500utc-blocked` (none merged
+to `main`) - over 24 hours with zero forward progress on Part 1 (candidate monitoring) or Part 2
+(new-angle research), since neither is possible without reading `sim_trades`/`sim_metrics`/etc.
+from the dashboard. No code or research changes made this run for the same reason - there is
+nothing new to test against without live data, and duplicating the prior 10 branches' identical
+diagnosis further would not add information.
+
+**Action needed (outside this repo, not fixable from this session)**: this session has no
+AWS/infra credentials by design and cannot modify its own egress policy. Someone with access to
+this scheduled session's environment configuration needs to allowlist `dehiuraiut9ro.cloudfront.net`
+(or the underlying CloudFront distribution/origin) in the egress proxy policy. Until that happens,
+every future hourly run will almost certainly hit the same wall - this note is being kept brief
+and pointed at the root cause rather than re-deriving it, so future runs can check proxy status
+first and skip straight to a one-line "still blocked, see 2026-09-13/09-14 entries" if nothing has
+changed, rather than re-running the full diagnosis each time.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
