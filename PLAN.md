@@ -237,6 +237,14 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+### Check 2026-09-14: dashboard unreachable, no work done this hour
+
+Repo checkout was stale at session start (detached at `f83afbc`, missing `PLAN.md`/`data_pipeline/sim_config.py`/`binary_theory.py`/`kalshi_fees.py`/`research/`/`tests/`); fixed by fetching and resetting local `main` to `origin/main` (`9f01355`, "Merge production trading infra work from user/jihtan/presentation") - all expected files present there, confirmed via `git ls-tree`.
+
+With the checkout fixed, attempted to reach `https://dehiuraiut9ro.cloudfront.net/health` (both via `client_api.KalshiDataClient` and plain `curl`) to run Part 1 (model monitoring) and Part 2 (portfolio-correlation check + new research angle, which needs `/api/table` for real historical data). Every attempt failed identically: the sandbox's egress proxy returns `403` on the `CONNECT` tunnel to that host (`ProxyError: Tunnel connection failed: 403 Forbidden`, confirmed on retry, agent-proxy status log shows `connect_rejected` / "policy denial"). This is an environment/network-policy block on this session, not a dashboard outage or credential problem - no data was fetched, so `ALL_MODELS` status, new-closed-trade counts, and the model-PnL correlation check are all unchanged from the 2026-09-12/13 entries above. No new research script was written this hour since there was no historical data to backtest against.
+
+**Action needed**: this session's outbound network policy needs `dehiuraiut9ro.cloudfront.net` (or CloudFront generally) allow-listed for future hourly checks to do anything. Until then, expect this same one-line result each run.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
