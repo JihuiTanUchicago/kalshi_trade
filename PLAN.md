@@ -242,3 +242,30 @@ multi-month milestone.
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
 - The leaked `client_api` password (`kalshimakesmepoor`, hardcoded in `client_api/client.py` and `client_api/README.md`) was intentionally left as-is per explicit instruction - not rotated.
 - `venv/` was untracked from git (was previously committed - 7500+ files); `.gitignore` updated. Files remain on disk, only git tracking changed.
+
+## Hourly check 2026-09-14 ~14:38 UTC - dashboard still unreachable
+
+Blocked before any monitoring or research work could start. Direct `curl` to
+`https://dehiuraiut9ro.cloudfront.net/health` fails with `CONNECT tunnel failed, response 403`;
+the agent proxy's own `/__agentproxy/status` confirms this is a policy denial, not a transient
+network blip: `recentRelayFailures` shows `connect_rejected` / "gateway answered 403 to CONNECT
+(policy denial or upstream failure)" for `dehiuraiut9ro.cloudfront.net:443` at `2026-09-14T14:38:31Z`.
+
+This is not a new problem - `git branch -r` shows every hourly run since **2026-09-13 06:54 UTC**
+has hit the identical block (`research/2026-09-13-egress-blocked`,
+`research/hourly-check-2026-09-13-1538utc`, `research/check-2026-09-13-blocked`,
+`research/2026-09-13-dashboard-unreachable`, `research/hourly-check-2026-09-13-blocked`,
+`scheduled-check/2026-09-13-egress-blocked`, `research/check-2026-09-13-network-blocked`,
+`research/2026-09-14-egress-blocked-0238utc`, `research/check-2026-09-14-blocked`,
+`research/2026-09-14-egress-blocked-follow-up`, `research/check-2026-09-14-1500utc-blocked`,
+`research/2026-09-14-egress-blocked-0838utc`, `research/2026-09-14-egress-blocked-1038utc`,
+`research/hourly-check-2026-09-14`). None of these branches have been merged to `main`, so this
+entry is the first time the outage is recorded on `main`'s history. **This makes 15+ consecutive
+blocked hourly runs spanning >30 hours** with no indication the environment's network egress
+policy has been updated to allowlist the dashboard's CloudFront host.
+
+This session has no AWS credentials and no ability to change the sandbox's own egress policy -
+this needs a human to either allowlist `dehiuraiut9ro.cloudfront.net` for this environment's
+network policy, or reconfigure the schedule/environment differently. Per task instructions,
+stopping here rather than guessing at a workaround. No monitoring or research work was possible
+this run.
