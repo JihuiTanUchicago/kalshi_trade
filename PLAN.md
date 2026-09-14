@@ -209,6 +209,39 @@ append-only table" is a pattern, not a one-off - worth auditing `dashboard_serve
 aggregation queries (`table_counts()`, `sim_metrics()`) for the same shape before the next
 multi-month milestone.
 
+### Tenth check (2026-09-14): dashboard unreachable from this research session - blocked, no data collected
+
+Repo checkout confirmed current and correct (`origin/main` at `9f01355`, all expected files present:
+`PLAN.md`, `data_pipeline/sim_config.py`, `data_pipeline/binary_theory.py`,
+`data_pipeline/kalshi_fees.py`, `research/`, `tests/` - not a stale-checkout issue). Confirmed the
+5 models currently in `ALL_MODELS` (`simulated_trading_engine.py`): `naive_logistic_baseline`,
+`logistic`, `random_forest` (all three paused per the 2026-09-12 entries above),
+`random_forest_high_conviction`, `binary_theory_edge` (both live candidates from 2026-09-12,
+not yet checked this run).
+
+**Blocked**: every attempt to reach `https://dehiuraiut9ro.cloudfront.net` (via
+`client_api.KalshiDataClient` and via plain `curl`/`requests`, both with and without the basic-auth
+header) failed identically - the outbound egress proxy in this research session's environment
+rejects the HTTPS `CONNECT` to that host with a 403, logged as `connect_rejected` /
+"policy denial" (`__agentproxy/status`'s `recentRelayFailures`), not a Kalshi-side or
+CloudFront-side error (no TLS handshake even attempted, no application response of any kind - the
+proxy itself is refusing to open the tunnel). This is a network-policy restriction on this
+sandboxed research environment, not an infra problem to fix in the trading pipeline - out of scope
+for this session (no AWS creds, no ability to adjust the environment's egress allowlist).
+
+**Consequence**: no `/health`, `/sim_metrics`, or `/api/table` calls succeeded this run. Could not
+check the two live candidates' trade counts (Part 1), could not compute the deployed-model PnL
+correlation (Part 2 prerequisite), and did not start new research requiring real historical data,
+since fabricating results from stale local knowledge would be worse than no result. Stopping here
+per instructions rather than guessing.
+
+**Next run**: if this was a transient/one-off proxy issue, next hour's check should retry the same
+three endpoints before anything else. If it recurs, this needs a human to check whether the
+session's egress policy changed (this is the first time this dashboard host was blocked - no prior
+PLAN.md entry mentions a connectivity problem) - flagging as **READY FOR REVIEW** on the
+infrastructure question only (not a trading-strategy verdict): *is the research session's network
+policy still supposed to allow `dehiuraiut9ro.cloudfront.net`, or did it change?*
+
 ## Action Plan
 
 1. **Monitor the two live, unvalidated strategy candidates** - give both real time to accumulate
