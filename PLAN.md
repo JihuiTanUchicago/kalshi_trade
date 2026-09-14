@@ -237,6 +237,37 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+## Check (2026-09-14, hourly monitor) - BLOCKED, no data collected
+
+Checkout confirmed correct (`PLAN.md`, `data_pipeline/sim_config.py`, `binary_theory.py`,
+`kalshi_fees.py`, `research/`, `tests/` all present, matching the last main-branch state described
+above - local `main`/`origin/main` were stale in this container until `git fetch origin main`, then
+matched). `ALL_MODELS` per `simulated_trading_engine.py` (line 78) is 5 models:
+`naive_logistic_baseline`, `logistic`, `random_forest`, `random_forest_high_conviction`,
+`binary_theory_edge`.
+
+**Could not reach the dashboard.** Every request to `https://dehiuraiut9ro.cloudfront.net`
+(`/health` via both `client_api.KalshiDataClient` and plain `curl`, with and without the basic-auth
+creds) fails at the TLS CONNECT stage with `403` from this session's egress proxy, repeatable
+across 4+ attempts over several minutes - not a transient blip. Per the proxy's own diagnostics
+(`curl http://127.0.0.1:44409/__agentproxy/status`): `recentRelayFailures` shows
+`connect_rejected` / "gateway answered 403 to CONNECT (policy denial or upstream failure)" for
+`dehiuraiut9ro.cloudfront.net:443` every time. The proxy's README is explicit that a 403/407 here
+is an organization egress-policy denial, not to be retried or routed around, and should be
+reported rather than worked around (no TLS-verification bypass, no unsetting `HTTPS_PROXY`
+attempted, per that guidance).
+
+**Consequence**: Part 1 (model monitoring via `/sim_metrics`) and Part 2's correlation check (needs
+`/api/table`) could not run this hour - no live data was reachable, so nothing was checked, nothing
+new was researched, and no code changes were made. This is an environment/network-policy issue,
+not a code or trading issue - no evidence anything is wrong with the deployed system itself, only
+that this particular session cannot currently reach it.
+
+**Next steps for a human**: confirm whether this session's environment is supposed to allow egress
+to `dehiuraiut9ro.cloudfront.net` (it's a public CloudFront distribution, so the block is on the
+session's org egress allowlist, not a change on the AWS side) and adjust the network policy for
+future scheduled runs if so.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
