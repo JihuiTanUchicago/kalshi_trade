@@ -237,6 +237,32 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+### Hourly check, 2026-09-14 ~15:00 UTC - blocked, persistent egress denial
+
+Dashboard unreachable again: `curl https://dehiuraiut9ro.cloudfront.net/health` fails with
+`CONNECT tunnel failed, response 403`, and the session's own proxy status endpoint
+(`$HTTPS_PROXY/__agentproxy/status`) confirms it as a policy denial, not a transient network
+blip: `recentRelayFailures` shows `connect_rejected` / "gateway answered 403 to CONNECT (policy
+denial or upstream failure)" for `dehiuraiut9ro.cloudfront.net:443` specifically (other hosts are
+not denied). `base_url` in `client_api/client.py` matches exactly what was tried, so this isn't a
+wrong-host mistake.
+
+This is not a one-off: `git ls-remote`/`git log` shows this exact failure mode recorded on **10
+consecutive prior hourly-check branches** going back to 2026-09-13 07:38 UTC (e.g.
+`research/2026-09-13-check-0738`, `research/check-2026-09-13-blocked`,
+`research/hourly-check-2026-09-13-1538utc`, `research/2026-09-14-egress-blocked-0238utc`,
+`research/check-2026-09-14-blocked`, others) - none merged to `main`, so each hourly run has been
+independently rediscovering the same block with zero forward progress on either PART 1 (candidate
+monitoring) or PART 2 (new-angle research) for **over 24 hours**. No new research script added
+this run since there is no data to test anything against; nothing in the codebase can fix an
+external network/egress policy from inside this repo, and this session has no AWS/infra access to
+change it (by design - read-only monitoring only).
+
+**Action needed (outside this repo)**: whoever manages this scheduled session's environment needs
+to allowlist `dehiuraiut9ro.cloudfront.net` (or its underlying CloudFront distribution) in the
+egress policy so future hourly runs can actually reach `/health`, `/sim_metrics`, and
+`/api/table`. Until that's done, every future hourly run will almost certainly hit the same wall.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
