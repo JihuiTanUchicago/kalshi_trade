@@ -237,6 +237,28 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+## Check (2026-09-15)
+
+Repo checkout confirmed current: `HEAD`/`origin/main` both at `9f01355` (2026-09-12), all
+expected files present (`PLAN.md`, `data_pipeline/sim_config.py`, `data_pipeline/binary_theory.py`,
+`data_pipeline/kalshi_fees.py`, `research/`, `tests/`). `ALL_MODELS` per
+`simulated_trading_engine.py` is `naive_logistic_baseline`, `logistic`, `random_forest`,
+`random_forest_high_conviction`, `binary_theory_edge`.
+
+**Dashboard unreachable this run.** `https://dehiuraiut9ro.cloudfront.net/health` failed with a
+403 at the sandbox's outbound egress proxy (`connect_rejected` / "gateway answered 403 to CONNECT
+- policy denial", confirmed via the proxy status endpoint, not a transient network blip). This
+session's network policy does not currently allow reaching that CloudFront host at all, so no
+`/health`, `/sim_metrics`, or `/api/table` calls could be made - Part 1 (per-model trade-count/PnL
+check) and Part 2's correlation step (needs `sim_trades` via the API) could not run this hour.
+Not a code or pipeline problem - purely this session's egress allowlist. No PLAN.md claims below
+this point are based on fabricated or stale-cached data; this entry is the full extent of what
+could be verified this run (static repo/code state only).
+
+**Action needed**: whoever configures this session's environment should add
+`dehiuraiut9ro.cloudfront.net` (and its port 443) to the outbound allowlist so future hourly runs
+can actually reach the dashboard. Until then, this monitoring task cannot do its job.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
