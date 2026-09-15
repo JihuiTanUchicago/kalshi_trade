@@ -242,3 +242,32 @@ multi-month milestone.
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
 - The leaked `client_api` password (`kalshimakesmepoor`, hardcoded in `client_api/client.py` and `client_api/README.md`) was intentionally left as-is per explicit instruction - not rotated.
 - `venv/` was untracked from git (was previously committed - 7500+ files); `.gitignore` updated. Files remain on disk, only git tracking changed.
+
+## Check: 2026-09-15 ~16:38 UTC
+
+Checkout verified current: `git fetch origin main` confirmed `origin/main` @ `9f01355`,
+`PLAN.md`/`data_pipeline/sim_config.py`/`binary_theory.py`/`kalshi_fees.py`/`research/`/`tests/`
+all present as expected - not a stale-checkout issue. (Note: none of the prior hourly-check
+branches below are merged into `main`, which is why `main`'s `PLAN.md` doesn't show this streak's
+earlier entries - reconstructed from `origin/research/hourly-check-*` branch history instead.)
+
+**Dashboard still unreachable, no change.** `https://dehiuraiut9ro.cloudfront.net/health` fails at
+the TLS CONNECT stage with `403` (`curl: (56) CONNECT tunnel failed, response 403`), confirmed via
+the proxy's `/__agentproxy/status` (`recentRelayFailures` -> `connect_rejected`, "gateway answered
+403 to CONNECT (policy denial or upstream failure)", host `dehiuraiut9ro.cloudfront.net:443`,
+timestamped `2026-09-15T16:38:11.177Z`, matching this run). Per the proxy README this is an org
+egress-policy denial, not retried, no TLS-bypass or workaround attempted, no AWS/SSH/SSM used.
+
+Same root cause as every hourly branch since `origin/research/2026-09-13-check-0738` (first seen
+2026-09-13 ~07:38 UTC) - now ~57h continuous with no sign of resolution, per
+`origin/research/hourly-check-2026-09-15-{0338,0638,0738,0838,1038,1139,1438,1538}utc-blocked` and
+the equivalent 2026-09-14 branches. Per `origin/research/hourly-check-2026-09-15-1538utc-blocked`,
+the user was already explicitly notified once at `~1139utc` and nothing has changed since (the
+`1538utc` check also held); this run does not re-notify for the same reason - recorded here for
+the continuous record only. Neither Part 1 (`/sim_metrics` monitoring of `ALL_MODELS`) nor Part 2
+(new research angle) could run this hour, purely due to this session's network policy - no code or
+trading issue.
+
+**Unchanged next step for a human**: add `dehiuraiut9ro.cloudfront.net` to this session's egress
+allowlist, or confirm the block is intentional so the hourly monitor can be paused instead of
+recording the same blocked result indefinitely.
