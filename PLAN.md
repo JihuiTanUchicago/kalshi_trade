@@ -237,6 +237,35 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+### Hourly check, 2026-09-15 06:38 UTC (BLOCKED - could not reach dashboard, same as ~20+ prior runs)
+
+Checkout verified current (`origin/main` @ `9f01355`, matches the PLAN.md/`sim_config.py`/
+`binary_theory.py`/`kalshi_fees.py`/`research/` state described above - not a stale-checkout
+issue; note this run's initial `git clone` itself returned a stale `origin/main` cached at
+`f83afbc` - March 2026, pre-pipeline - and only an explicit `git fetch origin main` afterward
+produced the real `9f01355` HEAD. Future runs should not assume a fresh clone's `origin/main` is
+actually current without an explicit fetch check).
+
+Could not run Part 1 or Part 2 this hour: this session's outbound egress proxy still returns a
+hard `403` on the CONNECT tunnel to `dehiuraiut9ro.cloudfront.net` (`curl -sS
+https://dehiuraiut9ro.cloudfront.net/health` -> `curl: (56) CONNECT tunnel failed, response 403`,
+confirmed twice, once before and once after fixing the stale-clone issue above). Per
+`/root/.ccr/README.md` this is an organization-level egress policy denial, not a transient or
+retryable error, so - per instructions - no retry loop and no attempt to route around it via AWS/
+SSH/SSM.
+
+**This is no longer a one-off**: `git ls-remote --heads origin` shows essentially every
+hourly-check branch since main picked up the real pipeline on 2026-09-13 has hit this identical
+block (`research/*-egress-blocked*`, `*-dashboard-unreachable*`, `*-blocked*` - roughly 20+
+branches spanning 2026-09-13 07:38 UTC through 2026-09-15 05:38 UTC, i.e. essentially the entire
+history of this scheduled job). The dashboard-monitoring half of this task has not produced a
+single real data point in that window. This needs a human to add `dehiuraiut9ro.cloudfront.net`
+to the session's egress allowlist (or otherwise change how this job reaches the dashboard) -
+retrying hourly without that change will keep producing the same result.
+
+No code changes this run. `research/ou_mispricing_reversion_check.py` remains the natural next
+Part 2 candidate once the dashboard is reachable (per the prior run's note).
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
