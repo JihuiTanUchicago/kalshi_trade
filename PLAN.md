@@ -242,3 +242,28 @@ multi-month milestone.
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
 - The leaked `client_api` password (`kalshimakesmepoor`, hardcoded in `client_api/client.py` and `client_api/README.md`) was intentionally left as-is per explicit instruction - not rotated.
 - `venv/` was untracked from git (was previously committed - 7500+ files); `.gitignore` updated. Files remain on disk, only git tracking changed.
+
+## Check 2026-09-15: dashboard unreachable, blocked at network egress
+
+Checkout confirmed current (`origin/main` at `9f01355`, all expected files present -
+`PLAN.md`, `data_pipeline/sim_config.py`, `data_pipeline/binary_theory.py`,
+`data_pipeline/kalshi_fees.py`, `research/`, `tests/` all exist as described). But this
+run's sandbox cannot reach `https://dehiuraiut9ro.cloudfront.net` at all: both a direct
+`curl`/`requests` call (through the environment's mandatory egress proxy) and an independent
+`WebFetch` attempt were rejected with an explicit `EGRESS_BLOCKED` / `403` from the proxy layer
+itself (organization network policy), not a DNS/TLS/auth failure and not a dashboard-side error.
+No AWS/SSH/SSM access is available or permitted to investigate further from this side, and none
+was attempted.
+
+**Consequence**: neither Part 1 (checking `/sim_metrics` for `random_forest_high_conviction` /
+`binary_theory_edge` / the three paused baselines) nor Part 2 (which also needs `/api/table` data
+for any new backtest) could be done this run - both require reaching the dashboard. No PLAN.md
+research or monitoring content to add this hour beyond this note.
+
+**For future runs**: if this egress block is still in place, don't re-attempt the same
+curl/requests/WebFetch calls repeatedly - check `curl -sS $HTTPS_PROXY/__agentproxy/status`
+first (or equivalent) to confirm whether the block is still active before spending time on it.
+If reachable again, resume from the Action Plan above (two live candidates still needed real
+forward time as of 2026-09-12/13; no correlation-of-deployed-models check has been done yet since
+only `random_forest_high_conviction` and `binary_theory_edge` are the non-baseline candidates and
+neither had a confirmed 30-trade forward sample as of the last entry).
