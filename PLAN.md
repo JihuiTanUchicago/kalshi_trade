@@ -237,6 +237,40 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+### Hourly check, 2026-09-15 08:38 UTC (BLOCKED - could not reach dashboard, persistent, ~50h)
+
+Checkout verified current (`origin/main` @ `9f01355`, matches the pipeline files described above
+- not a stale-checkout issue).
+
+Same failure as every hourly run since **2026-09-13 06:53/06:54 UTC** (first noted in
+`research/2026-09-13-check-0738`; confirmed again in every run since, including
+`hourly-check-2026-09-15-0338utc-blocked`, `hourly-check-20260915-0638utc-blocked`, and
+`hourly-check-2026-09-15-0738utc-blocked` immediately preceding this one): this session's
+outbound egress proxy denies `dehiuraiut9ro.cloudfront.net` at the CONNECT stage. Confirmed again
+directly this run - `curl -u todd:kalshimakesmepoor https://dehiuraiut9ro.cloudfront.net/health`
+returns `curl: (56) CONNECT tunnel failed, response 403`, and `$HTTPS_PROXY/__agentproxy/status`
+logged a fresh `recentRelayFailures` entry at `2026-09-15T08:38:37.918Z`:
+`connect_rejected` / "gateway answered 403 to CONNECT (policy denial or upstream failure)" for
+`dehiuraiut9ro.cloudfront.net:443`. Per `/root/.ccr/README.md` this is an organization-level
+egress policy denial, not a transient error, so - per instructions - not retried and no attempt
+made to route around it (no AWS/SSH/SSM).
+
+Neither Part 1 (`/sim_metrics` monitoring of `ALL_MODELS`) nor Part 2 (new research angle, which
+needs real historical data via `/api/table`) could run - both require live HTTP reads this
+session cannot make. `research/ou_mispricing_reversion_check.py` remains the queued next Part-2
+candidate once access is restored.
+
+**Running total: ~50 consecutive hours / ~25+ hourly runs blocked identically**, spanning 25+
+orphaned `research/*` branches (none merged to `main`, since none change anything actually
+deployed), zero real data points collected in that entire window. This run sends a fresh
+notification to the account owner given the length of the outage and that the monitoring
+routine's core purpose (catching a problem while nobody's watching) is itself failing silently
+without one. **Action needed from a human**: add `dehiuraiut9ro.cloudfront.net` to this session's
+egress allowlist (it is a public, publicly-readable CloudFront distribution - basic-auth creds
+already committed and intentionally not secret), or confirm this task should run a different way.
+Once restored, a subsequent run should collapse this entire blocked streak (2026-09-13 06:53 UTC
+through here) into one short summary line and resume normal monitoring/research.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
