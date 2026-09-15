@@ -237,6 +237,37 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+## Check (2026-09-15 ~11:39 UTC, hourly monitor) - BLOCKED, no data collected
+
+Checkout confirmed current against `origin/main` (`9f0135567c14f88d848ef1183a2af05eab310088`):
+`PLAN.md`, `data_pipeline/sim_config.py`, `binary_theory.py`, `kalshi_fees.py`, `research/`,
+`tests/` all present as expected. (Note for future runs: a stale/detached local git checkout in
+this session initially showed an old `main` at `f83afbc` missing all of the above - a fresh
+`git clone` confirmed via the GitHub API that `origin/main` was correctly at `9f01355` the whole
+time. This was a local git-state artifact in this session, not a remote branch problem - if a
+future run sees main missing these files, re-clone fresh before concluding the remote is stale.)
+
+**Dashboard still unreachable.** `https://dehiuraiut9ro.cloudfront.net/health` fails at the TLS
+CONNECT stage with a `403` from this session's egress proxy (`curl: (56) CONNECT tunnel failed,
+response 403`, agent-proxy reporting `connect_rejected` for `dehiuraiut9ro.cloudfront.net:443` -
+"the egress proxy denied the CONNECT (organization policy) or could not reach the destination").
+Per the proxy README this is an org egress-policy denial to report, not retry or route around -
+no TLS-bypass, no unsetting `HTTPS_PROXY` attempted.
+
+**This is not a one-off.** Every hourly run's branch since `2026-09-13-check-0738` through
+`hourly-check-20260915-1038utc-blocked` (~30 branches spanning roughly 48 hours) recorded this
+exact same failure - same host, same `connect_rejected`/403, nothing about the block has changed.
+Part 1 (model monitoring via `/sim_metrics`) and Part 2 (uncorrelated-strategy research, which
+also needs `/api/table` for historical data) could not run this hour either, for the same reason
+as every prior run in this stretch - no code or trading issue, purely this session's network
+policy.
+
+**Next step for a human**: confirm whether this session's environment is meant to allow egress to
+`dehiuraiut9ro.cloudfront.net` and, if so, adjust the org/session egress allowlist. The scheduled
+hourly monitor has now been blind for roughly two full days and will keep recording this same
+blocked check every hour until that changes - flagging this explicitly via notification this run
+since prior hourly branches don't appear to have resolved it.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
