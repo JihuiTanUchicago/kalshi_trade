@@ -237,6 +237,33 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+## Check (2026-09-15 ~10:38 UTC, hourly monitor) - BLOCKED, no data collected
+
+Checkout confirmed current against `origin/main` (`9f01355`): `PLAN.md`, `data_pipeline/sim_config.py`,
+`binary_theory.py`, `kalshi_fees.py`, `research/`, `tests/` all present as expected.
+
+**Dashboard still unreachable.** `https://dehiuraiut9ro.cloudfront.net/health` fails at the TLS
+CONNECT stage with a `403` from this session's egress proxy (confirmed via both `curl` and the
+proxy's own `/__agentproxy/status`, which shows `recentRelayFailures` -> `connect_rejected` /
+"gateway answered 403 to CONNECT (policy denial or upstream failure)" for
+`dehiuraiut9ro.cloudfront.net:443`, timestamped to this run). Per the proxy README's own guidance
+this is an org egress-policy denial to report, not retry or route around - no TLS-bypass, no
+unsetting `HTTPS_PROXY` attempted.
+
+**This is not a one-off.** Every hourly run's branch in this repo since 2026-09-13 (~25 branches,
+spanning `2026-09-13-check-0738` through `hourly-check-20260915-0838utc-blocked`, i.e. roughly the
+last 48 hours continuously) recorded this exact same failure. Nothing about the block has changed
+across that entire window - same host, same `connect_rejected`/403, same root cause. Part 1 (model
+monitoring via `/sim_metrics`) and Part 2 (uncorrelated-strategy research, which also needs
+`/api/table` for real historical data) could not run this hour either, for the same reason as every
+prior run in this stretch - no code or trading issue, purely this session's network policy.
+
+**Next step for a human** (repeating prior runs' recommendation, now with 2 days of continuous
+evidence behind it): confirm whether this session's environment is meant to allow egress to
+`dehiuraiut9ro.cloudfront.net` and, if so, adjust the org/session egress allowlist - the scheduled
+hourly monitor has been completely blind for ~48 hours and will keep recording this same blocked
+check every hour until that changes.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
