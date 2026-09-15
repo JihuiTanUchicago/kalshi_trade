@@ -242,3 +242,31 @@ multi-month milestone.
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
 - The leaked `client_api` password (`kalshimakesmepoor`, hardcoded in `client_api/client.py` and `client_api/README.md`) was intentionally left as-is per explicit instruction - not rotated.
 - `venv/` was untracked from git (was previously committed - 7500+ files); `.gitignore` updated. Files remain on disk, only git tracking changed.
+
+## Check: 2026-09-15 ~14:38 UTC
+
+`git fetch origin main` + `git checkout main` + `git pull` confirmed the checkout current against
+`origin/main` (`9f01355`, fast-forwarded 3 commits from a stale detached-HEAD state this session
+started in): `PLAN.md`, `data_pipeline/sim_config.py`, `binary_theory.py`, `kalshi_fees.py`,
+`research/`, `tests/` all present as expected.
+
+**Dashboard still unreachable.** `https://dehiuraiut9ro.cloudfront.net/health` fails at the TLS
+CONNECT stage with a `403` (`curl: (56) CONNECT tunnel failed, response 403`), confirmed again via
+the proxy's own `/__agentproxy/status` (`recentRelayFailures` -> `connect_rejected`, "gateway
+answered 403 to CONNECT (policy denial or upstream failure)" for `dehiuraiut9ro.cloudfront.net:443`,
+timestamped to this run). Per the proxy README this is an org egress-policy denial to report, not
+retry or route around - no TLS-bypass, no unsetting `HTTPS_PROXY` attempted.
+
+**Still not a one-off.** Every hourly branch in this repo from `2026-09-13-check-0738` through the
+prior run (`hourly-check-2026-09-15-1139utc-blocked`) recorded this exact same `connect_rejected`/403
+against the same host - now over 2 days continuously with zero change. The `1139utc` run already
+explicitly notified the user about this; nothing has changed since, so this entry records the
+continued block for the record but does not re-send a duplicate notification. Part 1 (model
+monitoring via `/sim_metrics`) and Part 2 (research via `/api/table`) could not run this hour either,
+for the same reason as every prior run in this stretch - no code or trading issue, purely this
+session's network policy blocking the one host this task needs.
+
+**Next step for a human** (unchanged): confirm whether this session's environment is meant to allow
+egress to `dehiuraiut9ro.cloudfront.net` and, if so, adjust the org/session egress allowlist - the
+scheduled hourly monitor remains completely blind and will keep recording this same blocked check
+every hour until that changes.
