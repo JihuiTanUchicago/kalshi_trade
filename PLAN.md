@@ -237,6 +237,26 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+### Hourly check 2026-09-15 ~17:38 UTC: dashboard still unreachable (egress 403)
+
+Checkout verified current against `origin/main` @ `9f01355` (matches PLAN.md's documented
+production-infra state, `data_pipeline/sim_config.py`, `binary_theory.py`, `kalshi_fees.py`,
+`research/`, `tests/` all present as expected - no stale-checkout concern).
+
+`curl -v` to `https://dehiuraiut9ro.cloudfront.net/health` fails at the CONNECT tunnel step with
+an explicit `403 Forbidden` from this session's egress proxy (`recentRelayFailures` in
+`$HTTPS_PROXY/__agentproxy/status`: `"gateway answered 403 to CONNECT (policy denial or upstream
+failure)"`), not a DNS/timeout/network issue - i.e. this session's org egress policy is blocking
+the host outright, same as every hourly check since **2026-09-13 ~07:38 UTC** (~58h, ~30+
+consecutive runs now per the `research/hourly-check-*-blocked` / `*-egress-blocked` /
+`*-dashboard-unreachable` branch history). Per README guidance this is a policy denial to report,
+not retry or route around. No re-notification sent this run - already flagged in earlier runs and
+nothing has changed; will re-flag if the situation changes (access restored, or if this stretches
+meaningfully longer without any prior escalation landing).
+
+No dashboard access means no way to check `/sim_metrics` (Part 1) or pull `/api/table` history
+(Part 2) this run. Nothing else to safely add without live data - stopping here per instructions.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
