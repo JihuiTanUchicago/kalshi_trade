@@ -237,6 +237,31 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+## Hourly check, 2026-09-16 - BLOCKED: dashboard unreachable
+
+Read all prior dated entries above before doing anything else (per the standing hourly-check
+instructions) - no new work was possible this run, so nothing above needed re-litigating.
+
+**Could not reach the dashboard.** Every attempt to hit `https://dehiuraiut9ro.cloudfront.net`
+(`/health`, or anything else) failed at the network layer with a `403` on the CONNECT tunnel from
+this session's egress proxy - i.e. an organization network-policy denial for this host, not a
+dashboard-side outage, an auth failure, or a stale-DNS/TLS issue. Confirmed via the proxy's own
+status endpoint (`recentRelayFailures`: `connect_rejected`, "gateway answered 403 to CONNECT
+(policy denial or upstream failure)" for `dehiuraiut9ro.cloudfront.net:443`). Per this session's
+own tooling guidance, a 403/407 from the egress proxy should be reported, not retried or routed
+around, so no further attempt was made this run.
+
+Consequently: Part 1 (per-model `/sim_metrics` check for new closed trades) and Part 2 (correlation
+of deployed models' PnL series, plus any new research angle - both need real historical data via
+`/api/table`) were both skipped entirely this run. Nothing below the codebase-knowledge/action-plan
+sections above should be treated as updated; the last real data-backed findings remain the
+2026-09-12/13 entries.
+
+**Action needed from a human**: this session's egress allowlist does not currently permit
+`dehiuraiut9ro.cloudfront.net`. Either add it to the network policy for future scheduled runs, or
+confirm the dashboard has moved/been reconfigured behind a different, allowed host. Until then,
+this hourly check cannot do anything beyond re-reading `PLAN.md`.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
