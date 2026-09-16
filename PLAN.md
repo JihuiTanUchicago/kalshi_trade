@@ -209,6 +209,43 @@ append-only table" is a pattern, not a one-off - worth auditing `dashboard_serve
 aggregation queries (`table_counts()`, `sim_metrics()`) for the same shape before the next
 multi-month milestone.
 
+### Check (2026-09-16, hourly research run) - dashboard unreachable, stopped before any analysis
+
+Repo checkout confirmed current: `origin/main` is at `9f01355` (the 2026-09-13 production-infra
+merge), `PLAN.md`, `data_pipeline/sim_config.py`, `data_pipeline/binary_theory.py`,
+`data_pipeline/kalshi_fees.py`, `research/`, and `tests/` are all present as expected - not a stale
+checkout. (Caught mid-run: this session's local `main` branch was itself stale, pinned at the old
+pre-rewrite `f83afbc` with `clients.py`/`main.py`/`example.py`/`venv/` still present - branching off
+it by name instead of `origin/main` silently reproduced the exact legacy layout PLAN.md documents
+as removed. Re-created this branch from `origin/main` explicitly; worth remembering for future runs
+that the local `main` ref in this checkout is not trustworthy.) This is the first scheduled run
+against the updated main (no prior scheduled-check branches exist on the remote), so there was
+nothing to deduplicate against yet.
+
+**Blocked at the very first step**: every attempt to reach `https://dehiuraiut9ro.cloudfront.net`
+(both via `client_api.KalshiDataClient`/`requests` and plain `curl`, with the documented
+`todd`/`kalshimakesmepoor` basic-auth creds) failed before completing a TLS handshake. This
+session's outbound egress proxy rejects the CONNECT tunnel to `dehiuraiut9ro.cloudfront.net:443`
+with **403 Forbidden**, logged twice in the proxy's own status endpoint
+(`http://127.0.0.1:40477/__agentproxy/status`) as `connect_rejected` / "gateway answered 403 to
+CONNECT (policy denial or upstream failure)". Per this session's proxy README, a 403/407 from the
+proxy is an organization egress-policy denial, not a transient fault, and should be reported rather
+than retried or routed around - so this run stopped after two confirming attempts rather than
+looping on retries.
+
+**Consequence**: neither Part 1 (checking `/sim_metrics` for new closed trades on the deployed
+candidates - `random_forest_high_conviction`, `binary_theory_edge`, plus the three paused
+baselines) nor Part 2 (any correlation check or new research angle, both of which need real
+historical data via `/api/table`) could be attempted this run - both depend entirely on dashboard
+reachability. No conclusions, monitoring updates, or new research were produced this hour as a
+result; this is purely a connectivity/access-policy note, not a finding about the trading system
+itself.
+
+**Action needed (human)**: this session's egress allowlist needs `dehiuraiut9ro.cloudfront.net`
+added, or the dashboard's hostname changed to one already allowed, before this hourly job can do
+anything. Next run should retry the health check first and only proceed with Part 1/2 if it
+succeeds.
+
 ## Action Plan
 
 1. **Monitor the two live, unvalidated strategy candidates** - give both real time to accumulate
