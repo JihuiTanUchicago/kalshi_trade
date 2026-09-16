@@ -237,6 +237,14 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+## Check: 2026-09-16 09:38 UTC - still blocked, dashboard unreachable (outage now 3+ days)
+
+Same egress-policy denial every prior run since 2026-09-13 06:54 UTC has reported: `curl`/`KalshiDataClient` to `https://dehiuraiut9ro.cloudfront.net` fails at CONNECT with an explicit `403` from the session's own egress proxy (confirmed again via `/__agentproxy/status`'s `recentRelayFailures`: `connect_rejected`, "gateway answered 403 to CONNECT (policy denial or upstream failure)"). Repo checkout reconfirmed current (`main` at `9f01355`, all 2026-09-13 pipeline files present). This is a policy denial, not a transient fault, so not retried further and no diagnosis re-derived - see the 2026-09-16 07:39 UTC entry above for the full writeup.
+
+Neither Part 1 (monitor `ALL_MODELS` via `/sim_metrics`) nor Part 2 (pull historical data for a new research angle) can run without dashboard access. No research script written this run. Roughly 30 prior hourly runs across as many branches have hit this identical block since 2026-09-13 - this is a standing environment network-policy issue (the CloudFront host needs allow-listing) that no further automated run can fix; it needs a human to update the session/environment's egress allowlist.
+
+**Next run**: retry connectivity first; if resolved, resume from the 2026-09-12/13 entries (two live sim-only candidates - `random_forest_high_conviction`, `binary_theory_edge` - awaiting >=30 new closed trades each). If still blocked, a one-line note is enough - no need to keep re-deriving or re-branching the same diagnosis every hour.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
