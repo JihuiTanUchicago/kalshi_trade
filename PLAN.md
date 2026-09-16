@@ -237,6 +237,32 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+### Hourly check 2026-09-16 13:39 UTC - dashboard unreachable, now a 3+ day outage of this routine
+
+`curl https://dehiuraiut9ro.cloudfront.net/health` fails at TLS CONNECT with `403` from the
+session's egress proxy; `$HTTPS_PROXY/__agentproxy/status` confirms it's a policy denial
+(`connect_rejected`, "gateway answered 403 to CONNECT"), not a transient/dashboard-side outage.
+
+This is not a new finding - every hourly run since **2026-09-13 07:38 UTC** (the first check after
+the production-infra merge landed at 06:46 UTC) has hit this identical 403 and recorded it on its
+own throwaway branch (`research/*-blocked`, `research/hourly-check-*-blocked`,
+`scheduled-check/*-blocked`, etc. - ~25+ separate branches as of this run). None of those branches
+were ever merged to `main`, so `main`'s `PLAN.md` still only reflects the 2026-09-12/13 research
+session and carries no record of this outage at all unless you look at branches directly. **As of
+this run, the routine has been unable to reach the dashboard for over 3 days straight (~79+ hours,
+dozens of runs) - zero monitoring of `sim_metrics`/model pause status and zero new research this
+entire window.** Neither Part 1 (candidate monitoring) nor Part 2 (new research angle) could be
+attempted, same as every run since the 13th. This needs a human to update the session's network
+egress allowlist to permit `dehiuraiut9ro.cloudfront.net:443` - no action available from inside
+this sandbox (no AWS/SSH access, and the proxy denial is enforced outside this session).
+
+**Process note for whoever reviews this**: since these check branches never reach `main`, future
+runs re-discover this same blocker from scratch every hour with no way to see prior attempts'
+detail beyond branch names. Once the network access is fixed, it would be worth merging (or at
+least squash-summarizing) the useful `research/*` branches' `PLAN.md` entries back into `main` so
+the dated-entry history the task instructions rely on ("read PLAN.md's dated entries first") is
+actually visible from `main` going forward.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
