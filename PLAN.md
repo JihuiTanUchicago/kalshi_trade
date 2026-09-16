@@ -242,3 +242,20 @@ multi-month milestone.
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
 - The leaked `client_api` password (`kalshimakesmepoor`, hardcoded in `client_api/client.py` and `client_api/README.md`) was intentionally left as-is per explicit instruction - not rotated.
 - `venv/` was untracked from git (was previously committed - 7500+ files); `.gitignore` updated. Files remain on disk, only git tracking changed.
+
+### Hourly check 2026-09-16 14:38 UTC - dashboard still unreachable, outage now 4th day
+
+`curl https://dehiuraiut9ro.cloudfront.net/health` fails at TLS CONNECT with `403` from the
+session's egress proxy; `$HTTPS_PROXY/__agentproxy/status` confirms `connect_rejected` ("gateway
+answered 403 to CONNECT" - a policy denial at the environment's network gateway, not a
+dashboard-side or transient failure).
+
+Not a new finding: every hourly run since **2026-09-13 07:38 UTC** has hit this identical 403 and
+recorded it on its own throwaway branch (`research/*-blocked`, `research/hourly-check-*-blocked`,
+etc. - 25+ branches as of this run, none merged to `main`, so `main`'s `PLAN.md` carries no record
+of the outage outside these branches). This run confirms the block is still live as of
+**2026-09-16 14:38 UTC - the outage has now run ~79 hours (3+ days) with zero successful checks**.
+Neither Part 1 (candidate monitoring) nor Part 2 (new research) could be attempted, same as every
+run since the 13th. **Needs a human to add `dehiuraiut9ro.cloudfront.net:443` to this session's
+network egress allowlist** - nothing fixable from inside this sandbox (no AWS/SSH/SSM access, and
+the denial is enforced outside this session, at the proxy gateway).
