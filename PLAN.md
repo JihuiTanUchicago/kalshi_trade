@@ -237,6 +237,35 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+## Check: 2026-09-16 - blocked, dashboard unreachable from this session
+
+Repo checkout confirmed current (`main` at `9f01355`, all files from the 2026-09-13 pipeline
+update present: `PLAN.md`, `data_pipeline/sim_config.py`, `data_pipeline/binary_theory.py`,
+`data_pipeline/kalshi_fees.py`, `research/`, `tests/`). No prior dated "check" entries existed in
+`PLAN.md` before this one, so this is effectively the first hourly run.
+
+Could not proceed with either part: this session's outbound network egress is policy-restricted,
+and `https://dehiuraiut9ro.cloudfront.net` is not on the allowed destination list. Every request
+(both `requests`/`KalshiDataClient` and a raw `curl`) fails identically at the CONNECT stage with
+an explicit `403 Forbidden` from the egress proxy itself (`curl -sSv`: `CONNECT tunnel failed,
+response 403`, confirmed via `/__agentproxy/status`'s `recentRelayFailures` as
+`connect_rejected` / "gateway answered 403 to CONNECT (policy denial)"). This is a hard
+organization-policy denial, not a transient DNS/TLS/timeout issue, so per the proxy's own guidance
+it should not be retried or routed around - it needs a session/environment network-policy change
+(allow-listing the CloudFront host) from whoever administers this account's remote-execution
+environments, not a code fix.
+
+Practical consequence: **Part 1 (monitor `sim_metrics`/`ALL_MODELS`) and Part 2 (pull historical
+data for a new research angle) both require live dashboard reads and cannot run at all this hour.**
+No model statuses, trade counts, or correlations could be checked or recorded - nothing below the
+2026-09-12/13 entries above should be assumed current. Wrote no research script this run since
+there was no data to backtest against; a placeholder script would not have been genuine work.
+
+**Next run**: retry the same connectivity check first. If still blocked, skip straight to noting
+that again (no need to re-derive the diagnosis) and stop; if resolved, resume Part 1/2 as normal
+starting from where the 2026-09-12/13 entries left off (two live sim-only candidates -
+`random_forest_high_conviction`, `binary_theory_edge` - awaiting >=30 new closed trades each).
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
