@@ -237,6 +237,28 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+## Hourly check, 2026-09-16 05:38 UTC - BLOCKED: dashboard unreachable (persistent, 3+ days)
+
+Read all prior dated entries above, plus the unmerged `research/*`, `scheduled-check/*` branches
+documenting this same outage since 2026-09-13 06:54 UTC, before doing anything else. No new
+findings possible - not re-litigating detail already recorded in those branches.
+
+**Still blocked**: `https://dehiuraiut9ro.cloudfront.net` fails at the network layer with a `403`
+on the CONNECT tunnel (proxy status: `connect_rejected`, "gateway answered 403 to CONNECT (policy
+denial or upstream failure)", `dehiuraiut9ro.cloudfront.net:443`, timestamped
+2026-09-16T05:38:43Z). Identical failure mode, same host, confirmed via both `curl` and the proxy's
+own `/__agentproxy/status` endpoint. Per this session's tooling guidance a 403 from the egress
+proxy is an org-level policy denial, reported not retried. Repo checkout itself is current and
+correct (`origin/main` at `9f01355`, all expected files present).
+
+**Status**: this is now a 3+ day, multi-dozen-run total outage of the standing hourly-check task -
+Parts 1 and 2 have been completely unexecutable the entire time. Last real data-backed findings
+anywhere remain the 2026-09-12/13 entries above. No further per-hour entries planned unless either
+(a) connectivity is restored, or (b) something about the failure mode itself changes - repeating
+the identical note hourly adds no information. **Action needed from a human**: add
+`dehiuraiut9ro.cloudfront.net` to this session's egress allowlist, or move the dashboard behind an
+already-allowed host.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
