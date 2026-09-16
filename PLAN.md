@@ -237,6 +237,23 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+## Check: 2026-09-16 12:38 UTC - still blocked, dashboard unreachable (outage now 3+ days, ~31st consecutive blocked run)
+
+Same standing egress-policy denial as every run since 2026-09-13 06:54 UTC: `curl` to
+`https://dehiuraiut9ro.cloudfront.net/health` fails at CONNECT with an explicit `403`
+(`$HTTPS_PROXY/__agentproxy/status` -> `recentRelayFailures`: `connect_rejected`, "gateway
+answered 403 to CONNECT (policy denial or upstream failure)", timestamped this run). Repo
+checkout reconfirmed current (`main` at `9f01355`, all 2026-09-13 pipeline files present). Not a
+transient fault - not retried further, no diagnosis re-derived. Neither Part 1 (`/sim_metrics`
+monitoring) nor Part 2 (pull historical data for new research) can run without dashboard access;
+no research script written this run. This needs a human to allowlist the CloudFront host in the
+session/environment's egress policy - no automated run can fix it. Sending a notification this
+run since the outage has now persisted 3+ days across ~31 runs with no human action visible yet.
+
+**Next run**: retry connectivity first; if resolved, resume from the 2026-09-12/13 entries (two
+live sim-only candidates - `random_forest_high_conviction`, `binary_theory_edge` - awaiting >=30
+new closed trades each). If still blocked, a one-line note is enough.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
