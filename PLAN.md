@@ -237,6 +237,42 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+### Check (2026-09-16 19:38 UTC): dashboard unreachable, blocked at the network layer
+
+Repo checkout is current (`origin/main` @ `9f01355`, matches the "actual current
+pipeline" state described in the task - `PLAN.md`, `data_pipeline/sim_config.py`,
+`data_pipeline/binary_theory.py`, `data_pipeline/kalshi_fees.py`, `research/`,
+`tests/` all present as expected). Read `ALL_MODELS` from
+`simulated_trading_engine.py`: 5 models - `naive_logistic_baseline`, `logistic`,
+`random_forest` (frozen baselines), `random_forest_high_conviction` (edge>0.17
+alias of `random_forest`), `binary_theory_edge` (closed-form GBM, hold-to-settlement).
+
+**Could not reach the dashboard.** Both `client_api.KalshiDataClient` and a plain
+`curl -u todd:... https://dehiuraiut9ro.cloudfront.net/health` fail identically:
+the outbound egress proxy returns `403` on the `CONNECT` to
+`dehiuraiut9ro.cloudfront.net:443` before any request reaches the app -
+`curl: (56) CONNECT tunnel failed, response 403`, proxy status log shows
+`connect_rejected` / "gateway answered 403 to CONNECT (policy denial or upstream
+failure)". This is a network-policy-level denial in this session's execution
+environment, not a dashboard outage, an auth problem, or a stale checkout - no
+request got far enough to hit basic auth or the app. Two independent clients
+failed the same way, so this isn't a client bug either.
+
+**Stopping here per instructions** ("If you can't reach the dashboard or
+something looks broken, note it plainly and stop") rather than guessing at a
+workaround or fabricating monitoring/research results without real data. Did
+not attempt to disable TLS verification, unset the proxy, or otherwise route
+around the policy. Neither Part 1 (model monitoring via `/sim_metrics`) nor
+Part 2 (research requiring real historical data via `/api/table`) could be
+performed this run - no PnL/trade-count figures below are new since nothing
+could be fetched.
+
+**Action needed**: this session's outbound network policy needs to allow
+`dehiuraiut9ro.cloudfront.net`, or the hourly monitoring task will keep failing
+identically every run until that's fixed. Next run should retry first before
+assuming this is still broken - it may have been a one-off policy/session
+config issue rather than a permanent block.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
