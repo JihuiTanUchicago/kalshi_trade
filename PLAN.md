@@ -237,6 +237,36 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+## Check: 2026-09-16 (blocked - dashboard unreachable)
+
+This hourly monitoring run could not reach the dashboard at all, so no PnL/trade-count
+check and no new research were possible this hour.
+
+- `git fetch`/checkout confirmed the working tree is current with `origin/main`
+  (`9f01355`, "Merge production trading infra work..."), so the repo itself is fine -
+  `PLAN.md`, `data_pipeline/sim_config.py`, `data_pipeline/binary_theory.py`,
+  `data_pipeline/kalshi_fees.py`, `research/`, and `tests/` are all present as expected.
+- `ALL_MODELS` (from `simulated_trading_engine.py`) currently lists 5 models:
+  `naive_logistic_baseline`, `logistic`, `random_forest` (the 3 frozen baselines),
+  `random_forest_high_conviction`, and `binary_theory_edge` (the two live research
+  candidates from the 2026-09-12/13 session).
+- Every HTTPS attempt to `https://dehiuraiut9ro.cloudfront.net` (via `client_api`'s
+  `KalshiDataClient` and plain `requests`) failed before reaching the host at all: the
+  outbound egress proxy in this environment returned `403 Forbidden` on the CONNECT to
+  `dehiuraiut9ro.cloudfront.net:443`, i.e. an **organization network-policy denial**, not
+  a dashboard/server-side error (confirmed via `curl .../__agentproxy/status`, which
+  logged the same host+reason under `recentRelayFailures`). Per this environment's own
+  proxy guidance, a 403 from the egress proxy should be reported rather than retried or
+  routed around, so this run stopped here rather than guessing at trade counts or forcing
+  a research entry without real data access.
+- No PnL/win-rate/pause check was possible (Part 1) and no new research angle was
+  attempted (Part 2) this hour - there was no way to pull real historical data to backtest
+  against. Nothing was deployed, paused, or otherwise changed.
+- **Action needed from a human**: either this session's egress allowlist needs
+  `dehiuraiut9ro.cloudfront.net` added, or the CloudFront distribution/basic-auth changed
+  since 2026-09-13 and needs to be re-confirmed. Next run will retry the dashboard fresh;
+  if it's reachable again this note can be treated as resolved.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
