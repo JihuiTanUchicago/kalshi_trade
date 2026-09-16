@@ -237,6 +237,33 @@ multi-month milestone.
    `/sim_risk/resume`) and verified visually in-browser. Still open: manual trigger buttons for
    recompute/model-guard-refresh/re-run-research, further visual cleanup of the older panels.
 
+## Hourly check, 2026-09-16 01:39 UTC - BLOCKED: dashboard unreachable (persistent, 3+ days)
+
+Read all prior dated entries above, including the unmerged `research/hourly-check-2026-09-16`
+branch (00:39 UTC, also blocked) before doing anything else. No new work was possible this run.
+
+**Could not reach the dashboard**, same failure mode as every hourly check since the first
+`egress-blocked` entry at 2026-09-13 06:54 UTC: `https://dehiuraiut9ro.cloudfront.net` fails at
+the network layer with a `403` on the CONNECT tunnel from this session's egress proxy
+(`recentRelayFailures`: `connect_rejected`, "gateway answered 403 to CONNECT (policy denial or
+upstream failure)" for `dehiuraiut9ro.cloudfront.net:443`, timestamped 2026-09-16T01:38:55Z). This
+is an organization network-policy denial for this host, not a dashboard-side outage, auth failure,
+or stale DNS/TLS. Per this session's tooling guidance, a 403 from the egress proxy is reported, not
+retried or routed around.
+
+**This is not a one-off**: surveying the unmerged `research/*`, `scheduled-check/*` branches in
+this repo shows the identical `connect_rejected` 403 on every single hourly run from 2026-09-13
+06:54 UTC through 2026-09-16 00:39 UTC (dozens of runs, ~3 days) with zero successful checks in
+that entire window. Parts 1 and 2 of the standing hourly-check task (per-model `/sim_metrics`,
+`/api/table` correlation and new-research work) have been unexecutable this whole time. The last
+real data-backed findings anywhere in this history remain the 2026-09-12/13 entries on `main`.
+
+**Action needed from a human**: this session's egress allowlist does not permit
+`dehiuraiut9ro.cloudfront.net`. Add it to the network policy for scheduled runs, or confirm the
+dashboard has moved behind a different, allowed host. Until that changes, every future hourly
+check will keep producing the same no-op result - flagging this explicitly now via notification
+rather than letting another 3 days of silent no-ops accumulate.
+
 ## Open Items / Follow-ups
 
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
