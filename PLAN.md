@@ -14,6 +14,50 @@ A MySQL connection drop on **2026-04-27** silently broke every long-lived-connec
 
 Practical consequence: the 3 baseline sim models (`naive_logistic_baseline`, `logistic`, `random_forest`) have a real 6-month paper track record and it is **badly negative** (-$719, -$678, -$266 respectively as of 2026-09-12). The new risk gate (see below) auto-paused all three the moment it went live. There is currently no viable running strategy - see Action Plan.
 
+## Dashboard PnL/equity consistency (fixed 2026-09-26)
+
+Two panels on the Simulated Trading tab reported numbers that contradicted the PnL next to them.
+Both were display bugs - no sim/trade data was wrong.
+
+1. **Portfolio Manager cards** printed `equity` from the newest `sim_portfolio_20s` row (whole
+   table, no recency bound) next to a `total_pnl` summed live from `sim_trades`. Those are two
+   different processes: the 20s updater is a separate daemon and it `continue`s (writes nothing)
+   for the whole duration of a `recompute_sim_metrics.py` run, so its last row goes stale while
+   `total_pnl` keeps moving - producing e.g. `binary_theory_edge` showing `$108.42` above
+   `Total PnL: +$521.66`. Paused models looked fine only because nothing was closing for them.
+   `dashboard_server.build_scorecards()` now derives equity as
+   `STARTING_CAPITAL + total_pnl + unrealized`, from the same closed-trade rows as the PnL, with
+   unrealized/position value taken from the open-position rows the endpoint already builds (no
+   extra queries). Side effect: a model with trades but no `sim_portfolio_20s` snapshot yet now
+   gets a card instead of silently vanishing from the panel. Covered by
+   `tests/test_dashboard_scorecards.py`.
+2. **Per-model segment cards** (`Current` / `In-Sample` / `Out-of-Sample`) took their `$` figure
+   from the endpoint of the rebased equity series that feeds the charts. Those series only cover
+   the last `window_hours` (6) and are rebased so their first point is `$100`, so the card was
+   showing "change over the visible window" - `$0.00` for an idle/paused model - labelled as the
+   segment's total PnL, next to `closed 8099`. `renderSegmentSummary()` now reads `total_pnl`
+   from the `d.in_sample` / `d.out_of_sample` trade aggregates (which sum exactly to the
+   Portfolio Manager card's total), and computes equity as `100 + pnl`.
+
+The equity *charts* still come from `sim_portfolio_20s`/`sim_equity_1m` and will still flatline if
+the 20s updater is down. The Live Trading tab's equity is deliberately left alone: it comes from
+the real Kalshi cash balance (`get_kalshi_cash_balance_dollars`), so it is genuinely not
+`$100 + PnL`.
+
+**Root cause of the stale number, confirmed on the box:** `sim_portfolio_20s_updater` had been dead
+since **2026-09-13 06:27:40** (13 days; absent from `ps`, last row in `sim_portfolio_20s` at that
+timestamp) while `sim_trades` kept closing trades through 2026-09-26. `live_portfolio_20s_updater`
+was also down and was left down. Neither runs under systemd - only `dashboard_server` does - so
+nothing restarted them. **Worth doing:** put the remaining `nohup`/`setsid` processes under systemd
+units too, so a crash doesn't silently freeze a panel for weeks. This is the same failure shape as
+the April 27 incident above, just with a process that stays dead instead of a wedged connection.
+
+Deployed 2026-09-26 22:51 UTC: `data_pipeline/dashboard_server.py` copied to `/opt/kalshi` via SSM
+(backup at `dashboard_server.py.bak.20260926_225140`), `kalshi-dashboard.service` restarted, and
+`sim_portfolio_20s_updater` restarted. Verified against production: every card now satisfies
+`equity == 100 + total_pnl + unrealized`, and in-sample + out-of-sample PnL sums to the card total.
+CloudFront (`E3W0CV5JMD953I`) has all TTLs at 0, so it caches nothing - no invalidation needed.
+
 ## Risk management (added 2026-09-12)
 
 - `sim_config.SimRiskSettings` (stored in the `sim_settings` table, key `risk_config`): `max_position_fraction` (cap new-position notional as a fraction of a model's own current equity, default 0.20), `max_drawdown_pct` (pause a model once its drawdown from peak exceeds this, default 0.30), `min_equity_floor` (hard floor, default $10).

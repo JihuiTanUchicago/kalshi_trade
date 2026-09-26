@@ -23,6 +23,7 @@ from data_pipeline.live_trading_engine import (
     place_limit_order,
     update_settings as live_update_settings,
 )
+from data_pipeline.sim_config import STARTING_CAPITAL
 from data_pipeline.sim_repository import clear_model_paused, get_all_model_pause_states, get_model_recommendation_status
 
 HOST = os.getenv("DASHBOARD_HOST", "0.0.0.0")
@@ -429,10 +430,60 @@ def sim_metrics(window_hours: int = 6):
     return _cached(("sim_metrics", window_hours), _METRICS_CACHE_TTL_SECONDS, lambda: _sim_metrics_uncached(window_hours))
 
 
+def build_scorecards(
+    score_map: Dict[str, Dict],
+    open_positions: List[Dict],
+    pause_states: Dict[str, Dict],
+    recommendation_fn,
+) -> List[Dict]:
+    """Portfolio Manager cards: one row per model, equity reconciled with PnL.
+
+    Equity is derived from the same closed-trade aggregates that produce
+    total_pnl (plus unrealized on any open position) rather than read off the
+    latest sim_portfolio_20s snapshot. That snapshot is written by a separate
+    20s process which is skipped entirely while a full sim recompute runs and
+    can be down independently of this server, so its last row goes stale while
+    total_pnl keeps moving - which showed up as a card reporting an equity that
+    contradicted the PnL printed directly underneath it. Deriving it here also
+    means a model that has traded but has no portfolio snapshot yet still gets
+    a card instead of silently disappearing from the panel.
+    """
+    unrealized_by_model: Dict[str, float] = {}
+    position_value_by_model: Dict[str, float] = {}
+    for pos in open_positions:
+        m = pos["model_name"]
+        qty = int(pos["qty_contracts"])
+        unrealized_by_model[m] = unrealized_by_model.get(m, 0.0) + float(pos["unrealized_pnl"])
+        position_value_by_model[m] = position_value_by_model.get(m, 0.0) + float(pos["mark_bid"]) * qty
+
+    scorecards: List[Dict] = []
+    for m in sorted(set(score_map) | set(unrealized_by_model)):
+        pause = pause_states.get(m)
+        sc = dict(
+            score_map.get(
+                m,
+                {
+                    "model_name": m, "closed_trades": 0, "total_pnl": 0.0, "avg_trade_pnl": 0.0,
+                    "win_rate": None,
+                    "paused": pause is not None,
+                    "paused_reason": pause.get("paused_reason") if pause else None,
+                },
+            )
+        )
+        unrealized = unrealized_by_model.get(m, 0.0)
+        sc["unrealized_pnl"] = unrealized
+        sc["equity"] = STARTING_CAPITAL + float(sc["total_pnl"]) + unrealized
+        sc["return_pct"] = ((sc["equity"] / STARTING_CAPITAL) - 1.0) * 100.0
+        sc["position_value"] = position_value_by_model.get(m, 0.0)
+        sc["recommendation"] = recommendation_fn(m, pause is not None)
+        scorecards.append(sc)
+    return scorecards
+
+
 def _sim_metrics_uncached(window_hours: int = 6):
     conn = get_db_conn()
     out = {
-        "starting_capital": 100.0,
+        "starting_capital": STARTING_CAPITAL,
         "live_cutoff_utc": None,
         "recompute_in_progress": False,
         "equity_series_20s": {},
@@ -549,33 +600,6 @@ def _sim_metrics_uncached(window_hours: int = 6):
                 "paused_reason": pause.get("paused_reason") if pause else None,
             }
 
-        cur.execute(
-            """
-            SELECT p.model_name, p.equity_dollars, p.position_value_dollars
-            FROM sim_portfolio_20s p
-            JOIN (
-              SELECT model_name, MAX(snapshot_time_utc) mx
-              FROM sim_portfolio_20s
-              GROUP BY model_name
-            ) x ON x.model_name=p.model_name AND x.mx=p.snapshot_time_utc
-            """
-        )
-        for r in cur.fetchall():
-            m = r["model_name"]
-            pause = pause_states.get(m)
-            sc = score_map.get(
-                m,
-                {
-                    "model_name": m, "closed_trades": 0, "total_pnl": 0.0, "avg_trade_pnl": 0.0, "win_rate": None,
-                    "paused": pause is not None, "paused_reason": pause.get("paused_reason") if pause else None,
-                },
-            )
-            sc["equity"] = float(r["equity_dollars"])
-            sc["return_pct"] = ((sc["equity"] / 100.0) - 1.0) * 100.0
-            sc["position_value"] = float(r["position_value_dollars"] or 0.0)
-            sc["recommendation"] = get_model_recommendation_status(cur, m, pause is not None)
-            out["scorecards"].append(sc)
-
         cur.execute("SELECT DISTINCT market_ticker FROM sim_positions")
         open_tickers = [r["market_ticker"] for r in cur.fetchall()]
         if open_tickers:
@@ -616,6 +640,13 @@ def _sim_metrics_uncached(window_hours: int = 6):
                     "opened_at_utc": str(r["opened_at_utc"]),
                 }
             )
+
+        out["scorecards"] = build_scorecards(
+            score_map,
+            out["open_positions"],
+            pause_states,
+            lambda m, paused: get_model_recommendation_status(cur, m, paused),
+        )
 
         cur.execute(
             """
@@ -1365,7 +1396,12 @@ def render_page(title: str, body_html: str) -> str:
       out.avg_logloss = out.loglossN>0 ? (out.loglossSum/out.loglossN) : null;
       return out;
     }
-    function renderSegmentSummary(d, models, currentBasisLabel, inSampleSeries, outSampleSeries){
+    // PnL here comes from the closed-trade aggregates in d.in_sample /
+    // d.out_of_sample, never from the equity series feeding the charts: those
+    // series only cover the last window_hours and are rebased so their first
+    // point is $100, so reading their endpoint reported the change over the
+    // visible window (often $0.00) as if it were the segment's total PnL.
+    function renderSegmentSummary(d, models, currentBasisLabel){
       const pick = (arr)=> (arr||[]).filter(r=>models.includes(r.model_name));
       const inRows=pick(d.in_sample);
       const oosRows=pick(d.out_of_sample);
@@ -1381,12 +1417,8 @@ def render_page(title: str, body_html: str) -> str:
         const curSeg = isWF
           ? segmentTotals([...(inRow?[inRow]:[]), ...(oosRow?[oosRow]:[])])
           : (hasCutoff ? segmentTotals(oosRow ? [oosRow] : []) : segmentTotals(inRow ? [inRow] : []));
-        const oosArr=(outSampleSeries && outSampleSeries[m]) ? outSampleSeries[m] : [];
-        const insArr=(inSampleSeries && inSampleSeries[m]) ? inSampleSeries[m] : [];
-        const curEq = oosArr.length > 0
-          ? Number(oosArr[oosArr.length-1].equity||100)
-          : (insArr.length > 0 ? Number(insArr[insArr.length-1].equity||100) : (100 + Number(curSeg.pnl||0)));
-        const curPnl=curEq-100;
+        const curPnl=Number(curSeg.pnl||0);
+        const curEq=100+curPnl;
         const curRet=((curEq/100)-1)*100;
         const curWr=(curSeg.win_rate==null?'N/A':`${(100*Number(curSeg.win_rate)).toFixed(1)}%`);
         const curBasis = isWF
@@ -1395,19 +1427,17 @@ def render_page(title: str, body_html: str) -> str:
         cards.push(`<div class='card'><div class='k'>${m} | Current (${curBasis})</div><div class='v' style='font-size:20px'>PnL $${curPnl.toFixed(2)}</div><div class='muted'>equity $${curEq.toFixed(2)} | ret ${curRet.toFixed(2)}% | closed ${curSeg.closed} | win ${curWr}</div></div>`);
         const segs = isWF
           ? [
-              ['in_sample','Warmup', 'pre-walk-forward warmup', []],
-              ['out_of_sample','Walk-Forward OOS', 'all walk-forward predictions/trades', [...(inRow?[inRow]:[]), ...(oosRow?[oosRow]:[])]],
+              ['Warmup', 'pre-walk-forward warmup', []],
+              ['Walk-Forward OOS', 'all walk-forward predictions/trades', [...(inRow?[inRow]:[]), ...(oosRow?[oosRow]:[])]],
             ]
           : [
-              ['in_sample','In-Sample', 'before live cutoff', inRow ? [inRow] : []],
-              ['out_of_sample','Out-of-Sample', 'from live cutoff onward', oosRow ? [oosRow] : []],
+              ['In-Sample', 'before live cutoff', inRow ? [inRow] : []],
+              ['Out-of-Sample', 'from live cutoff onward', oosRow ? [oosRow] : []],
             ];
-        for(const [key,label,scope,rows] of segs){
+        for(const [label,scope,rows] of segs){
           const one=rows||[];
           const s=segmentTotals(one);
-          const segMap = key === 'in_sample' ? (inSampleSeries||{}) : (outSampleSeries||{});
-          const segArr = segMap[m] || [];
-          const segPnl = segArr.length > 0 ? (Number(segArr[segArr.length-1].equity||100) - 100) : Number(s.pnl||0);
+          const segPnl = Number(s.pnl||0);
           const wr=(s.win_rate==null?'N/A':`${(100*s.win_rate).toFixed(1)}%`);
           const b=(s.avg_brier==null?'N/A':s.avg_brier.toFixed(4));
           const ll=(s.avg_logloss==null?'N/A':s.avg_logloss.toFixed(4));
@@ -1460,6 +1490,12 @@ def render_page(title: str, body_html: str) -> str:
           : '';
         const reason=c.paused && c.paused_reason ? `<div class="pm-reason">${c.paused_reason}</div>` : '';
         const equity=(c.equity!==undefined && c.equity!==null) ? `$${Number(c.equity).toFixed(2)}` : 'n/a';
+        const unreal=Number(c.unrealized_pnl||0);
+        // equity = $100 + realized + unrealized; show the open leg when there
+        // is one so the two numbers on the card visibly add up.
+        const unrealLine = Math.abs(unreal) >= 0.005
+          ? `<div class="pm-pnl">Open position: ${unreal>0?'+':''}$${unreal.toFixed(2)} unrealized</div>`
+          : '';
         const rec=c.recommendation||{};
         const recClass = rec.status==='promising' ? 'promising' : (rec.status==='negative' || rec.status==='thin_edge' ? 'muted-neg' : 'muted-neutral');
         const recLine = (!c.paused && rec.label) ? `<div class="pm-rec ${recClass}">${rec.label}</div>` : '';
@@ -1470,6 +1506,7 @@ def render_page(title: str, body_html: str) -> str:
           <div style="display:flex;justify-content:space-between;align-items:center"><div class="pm-name">${c.model_name}</div>${badge}</div>
           <div class="pm-equity">${equity}</div>
           <div class="pm-pnl">Total PnL: ${pnlSign}$${pnl.toFixed(2)} &middot; ${c.closed_trades||0} trades${c.win_rate!=null ? ' &middot; '+(c.win_rate*100).toFixed(0)+'% win' : ''}</div>
+          ${unrealLine}
           ${recLine}
           ${reason}
           ${resumeBtn}
@@ -1550,7 +1587,7 @@ def render_page(title: str, body_html: str) -> str:
         if(stNote) stNote.textContent = focusModel ? `model: ${focusModel}` : 'model: N/A';
         const ddNote=document.getElementById('sim_drawdown_model');
         if(ddNote) ddNote.textContent = focusModel ? `model: ${focusModel}` : 'model: N/A';
-        renderSegmentSummary(d, basePicked, currentBasisLabel, inSampleSeries, outSampleSeries);
+        renderSegmentSummary(d, basePicked, currentBasisLabel);
 
         renderRows('open_positions_body', (d.open_positions||[]).filter(r => basePicked.includes(r.model_name)), ['model_name','market_ticker','qty_contracts','entry_price','mark_bid','unrealized_pnl','opened_at_utc']);
         renderRows('trades_body', (d.recent_trades||[]).filter(r => basePicked.includes(r.model_name)).slice(0,30), ['id','model_name','market_ticker','opened_at_utc','closed_at_utc','qty_contracts','entry_price','exit_price','pnl','status','expected_entry','slippage','fill_mode']);
