@@ -990,6 +990,24 @@ def _live_metrics_uncached(window_hours: int = 12):
                 snap = {}
         snap_models = snap.get("models", {}) if isinstance(snap, dict) else {}
 
+        # The same strategy's paper-trading record, so a live card can be read
+        # against the sim track record it was promoted on without switching
+        # tabs. Same source and shape as the Portfolio Manager's total_pnl, so
+        # the two panels always agree.
+        placeholders = ",".join(["%s"] * len(LIVE_MODELS))
+        cur.execute(
+            f"""
+            SELECT model_name, COUNT(*) closed_trades,
+                   COALESCE(SUM(pnl_dollars),0) total_pnl,
+                   COALESCE(SUM(pnl_dollars > 0),0) wins
+            FROM sim_trades
+            WHERE status='closed' AND model_name IN ({placeholders})
+            GROUP BY model_name
+            """,
+            tuple(LIVE_MODELS),
+        )
+        sim_stats = {r["model_name"]: r for r in cur.fetchall()}
+
         for model_name in LIVE_MODELS:
             cfg = live_load_settings(cur, model_name)
             out["settings"][model_name] = cfg
@@ -1010,6 +1028,16 @@ def _live_metrics_uncached(window_hours: int = 12):
                 "edge": live_snap.get("edge"),
                 "signal": live_snap.get("signal"),
             }
+            sim_stat = sim_stats.get(model_name)
+            sim_closed = int(sim_stat["closed_trades"]) if sim_stat else 0
+            sim_wins = int(sim_stat["wins"]) if sim_stat else 0
+            out["models"][model_name].update(
+                {
+                    "sim_total_pnl": float(sim_stat["total_pnl"]) if sim_stat else 0.0,
+                    "sim_closed_trades": sim_closed,
+                    "sim_win_rate": (sim_wins / sim_closed) if sim_closed > 0 else None,
+                }
+            )
     conn.close()
     return out
 
@@ -1168,6 +1196,9 @@ def render_page(title: str, body_html: str) -> str:
     .pm-card .pm-pnl{font-size:13px;margin-top:2px}
     .pm-card .pm-reason{font-size:11px;color:var(--muted);margin-top:6px}
     .pm-card .pm-rec{font-size:12px;font-weight:600;margin-top:8px;padding:6px 8px;border-radius:8px}
+    .pm-card .pm-pnl.sim-pos{color:#4ade80}
+    .pm-card .pm-pnl.sim-neg{color:#f87171}
+    .pm-card .pm-pnl.sim-flat{color:var(--muted)}
     .pm-card .pm-rec.promising{color:#eafff0;background:rgba(12,163,12,.16);border:1px solid #0ca30c}
     .pm-card .pm-rec.muted-neg{color:var(--muted);background:rgba(208,59,59,.08);border:1px solid #3a2020}
     .pm-card .pm-rec.muted-neutral{color:var(--muted);background:rgba(255,255,255,.03);border:1px solid var(--line)}
@@ -1514,13 +1545,34 @@ def render_page(title: str, body_html: str) -> str:
         </div>`;
       }).join('');
     }
+    // A failed metrics fetch used to `return` silently, leaving a tab that
+    // looked identical to "no data yet" - a 500 from /live_metrics went
+    // unnoticed that way. Surface it at the top of the tab instead.
+    function setFetchError(rootId, msg){
+      const root=document.getElementById(rootId);
+      if(!root) return;
+      const id=rootId+'_fetch_error';
+      let el=document.getElementById(id);
+      if(!msg){ if(el) el.remove(); return; }
+      if(!el){
+        el=document.createElement('div');
+        el.id=id;
+        el.style.cssText='border:1px solid #7f1d1d;background:#2a1215;color:#fca5a5;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px;line-height:1.5';
+        root.insertBefore(el, root.firstChild);
+      }
+      el.textContent=msg;
+    }
     async function refreshSimMetrics(){
       const simRoot=document.getElementById('sim-root');
       if(!simRoot) return;
       try{
         const selectedModels=SIM_MODELS;
         const r=await fetch('/sim_metrics',{cache:'no-store'});
-        if(!r.ok) return;
+        if(!r.ok){
+          setFetchError('sim-root', `Simulated-trading data unavailable: /sim_metrics returned HTTP ${r.status}. The panels below are stale or empty until this is fixed - check the dashboard log on the server.`);
+          return;
+        }
+        setFetchError('sim-root', null);
         const d=await r.json();
         renderPortfolioManager(d.scorecards);
         const byModelRaw=(d.equity_series_1m && Object.keys(d.equity_series_1m).length>0) ? d.equity_series_1m : (d.equity_series_20s||{});
@@ -1643,7 +1695,9 @@ def render_page(title: str, body_html: str) -> str:
             }
           }
         }catch(e){}
-      }catch(e){}
+      }catch(e){
+        setFetchError('sim-root', `Simulated-trading data unavailable: /sim_metrics request failed (${e}).`);
+      }
     }
     const LIVE_SETTINGS_FIELDS = ['signal_threshold','edge_threshold','max_trade_cost','max_open_notional','max_concurrent_positions','max_daily_loss','max_total_drawdown'];
     const LIVE_FIELD_STEP = {signal_threshold:'0.01', edge_threshold:'0.001', max_trade_cost:'0.1', max_open_notional:'0.1', max_concurrent_positions:'1', max_daily_loss:'0.1', max_total_drawdown:'0.1'};
@@ -1653,7 +1707,13 @@ def render_page(title: str, body_html: str) -> str:
       try{
         const lp = livePass();
         const r=await fetch('/live_metrics' + (lp?('?live_password='+encodeURIComponent(lp)):'') ,{cache:'no-store'});
-        if(!r.ok) return;
+        if(!r.ok){
+          setFetchError('live-root', r.status===403
+            ? 'Live panel locked. Append &live_password=... to the URL (or use the unlock link) to view live execution controls.'
+            : `Live-trading data unavailable: /live_metrics returned HTTP ${r.status}. Strategy toggles, account status and charts stay empty until this is fixed - check the dashboard log on the server.`);
+          return;
+        }
+        setFetchError('live-root', null);
         const d=await r.json();
         drawLineChart('live_equity_chart', {'live': d.equity_series_20s||[]}, 'equity', {'live':'#22d3ee'}, {unit:'$'});
         drawLineChart('live_drawdown_chart', {'live': d.drawdown_series_20s||[]}, 'drawdown', {'live':'#f97316'});
@@ -1677,7 +1737,9 @@ def render_page(title: str, body_html: str) -> str:
           balanceNote.style.display = (d.cash_source==='kalshi_api') ? 'none' : 'block';
         }
         renderLiveStrategyCards(d.models||{}, d.settings||{});
-      }catch(e){}
+      }catch(e){
+        setFetchError('live-root', `Live-trading data unavailable: /live_metrics request failed (${e}).`);
+      }
     }
     function renderLiveOpenPositions(rows){
       const el=document.getElementById('live_open_positions_body'); if(!el) return;
@@ -1717,6 +1779,9 @@ def render_page(title: str, body_html: str) -> str:
         const resumeBtn = paused ? `<a class="pill warn" href="javascript:void(0)" onclick="resumeLiveModel('${m}')">Clear auto-pause</a>` : '';
         const reason = paused && st.paused_reason ? `<div class="pm-reason">${st.paused_reason}</div>` : '';
         const wr = st.win_rate==null ? 'N/A' : `${(st.win_rate*100).toFixed(0)}%`;
+        const simPnl = Number(st.sim_total_pnl||0);
+        const simWr = st.sim_win_rate==null ? 'N/A' : `${(st.sim_win_rate*100).toFixed(0)}%`;
+        const simClass = simPnl > 0 ? 'sim-pos' : (simPnl < 0 ? 'sim-neg' : 'sim-flat');
         const prob = st.prob==null ? 'N/A' : Number(st.prob).toFixed(3);
         const edge = st.edge==null ? 'N/A' : Number(st.edge).toFixed(3);
         const signalTxt = st.signal==null ? 'N/A' : (st.signal ? 'YES' : 'no');
@@ -1729,6 +1794,7 @@ def render_page(title: str, body_html: str) -> str:
         return `<div class="pm-card">
           <div style="display:flex;justify-content:space-between;align-items:center"><div class="pm-name">${m}</div>${badge}</div>
           <div class="pm-pnl">Live PnL: $${Number(st.total_pnl||0).toFixed(2)} &middot; ${st.closed_trades||0} trades &middot; ${wr} win</div>
+          <div class="pm-pnl ${simClass}">Sim PnL: ${simPnl>0?'+':''}$${simPnl.toFixed(2)} &middot; ${st.sim_closed_trades||0} trades &middot; ${simWr} win</div>
           <div class="muted" style="font-size:12px;margin-top:4px">prob ${prob} &middot; edge ${edge} &middot; signal ${signalTxt}</div>
           ${reason}
           <div style="display:flex;gap:8px;margin-top:8px">${toggleBtn}${resumeBtn}</div>

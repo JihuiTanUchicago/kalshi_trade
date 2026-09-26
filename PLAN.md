@@ -58,6 +58,100 @@ Deployed 2026-09-26 22:51 UTC: `data_pipeline/dashboard_server.py` copied to `/o
 `equity == 100 + total_pnl + unrealized`, and in-sample + out-of-sample PnL sums to the card total.
 CloudFront (`E3W0CV5JMD953I`) has all TTLs at 0, so it caches nothing - no invalidation needed.
 
+## Live Trading tab was blank (fixed 2026-09-26)
+
+`/live_metrics` was returning **HTTP 500** on every request:
+`pymysql.err.ProgrammingError: (1146, "Table 'kalshi_trade.live_model_state' doesn't exist")`, raised
+by `get_all_live_pause_states()`. The table is defined in `init_schema.py` but the production DB
+never got it - `init_schema` only runs at instance launch and the table was added to the file after
+that. The front-end did `if(!r.ok) return;`, so the entire tab (strategy toggles, account block,
+all three 20s charts, orders/trades tables) rendered as empty with no error anywhere. Fixed by
+running `python -m data_pipeline.init_schema` on the box (additive/idempotent; the only DROP is a
+PK reshape on `live_positions`, guarded on that table being empty).
+
+`live_portfolio_20s_updater` was also down and is now running. Note it needs **both** env files -
+`/opt/kalshi/.env.aws` (MySQL) and `/opt/kalshi/.env` (`PROD_KEYID`/`PROD_KEYFILE`) - or
+`get_kalshi_cash_balance_dollars()` returns None and the snapshot silently falls back to
+`cash_source=local_fallback` (an estimate, not the real balance). The currently-running
+`live_trading_engine` has only the MySQL vars in its environment, so it is in that fallback state
+too. Real account cash as of 2026-09-26 23:02 UTC: **$90.26**, `cash_source=kalshi_api`.
+
+Both metrics endpoints now surface failures instead of swallowing them: `setFetchError()` paints a
+banner at the top of the tab naming the endpoint and status, and distinguishes the legitimate 403
+live-password gate from a real server error. A blank tab reading as "no data yet" is exactly what
+hid this 500.
+
+## Dashboard access control (closed 2026-09-26)
+
+The whole dashboard was world-readable: `DASHBOARD_PASSWORD` was unset and `_authorized()` returns
+True when it is unset, and the EC2 security group exposed port 8080 to `0.0.0.0/0`, so both the
+CloudFront URL and the raw origin `http://54.156.90.14:8080` answered 200 to anyone. Now:
+
+- **Basic auth on every route.** `_authorized()` is the first statement of both `do_GET` and
+  `do_POST`, so one password covers pages, `/sim_metrics`, `/live_metrics`, `/health`, `/table`,
+  `/api/table` and every POST. A 24-char random password now lives in `/opt/kalshi/.env.dashboard`
+  (root:root, `chmod 600`) and the systemd `ExecStart` sources it alongside `.env.aws`. It is
+  deliberately NOT in the unit file, which is world-readable in `/etc`, and not in this repo.
+  To rotate: edit that file and `systemctl restart kalshi-dashboard`.
+- **Origin no longer public.** Port 8080 ingress is now AWS's managed CloudFront prefix list
+  (`pl-3b927c52`, `com.amazonaws.global.cloudfront.origin-facing`) plus the owner's `73.186.198.44/32`;
+  the `0.0.0.0/0` rule is revoked. Normal traffic is HTTPS via CloudFront, so Basic credentials no
+  longer cross plain HTTP in the open. CloudFront already forwards the `Authorization` header.
+- Verified: unauthenticated `-> 401`, wrong password `-> 401`, wrong user `-> 401`, correct `-> 200`;
+  the separate live-execution gate still returns 403 without `live_password`, so live controls keep
+  their second factor.
+
+**Consequence:** `client_api/client.py` defaults to `password="kalshimakesmepoor"` and now gets 401.
+Pass the new dashboard password (or better, read it from an env var) when using that client.
+
+## Live strategy settings were not in force (fixed 2026-09-26)
+
+The Live Trading tab's per-strategy settings form was writing to rows nothing read. Three causes,
+all in the deployment rather than the code:
+
+1. **The running engine was the pre-multi-strategy build.** PID 2099628 started `Sun Sep 13
+   05:11:53`; the new `live_trading_engine.py` landed at `06:16:20` - an hour later. Python had the
+   old module in memory, and the outer `while True` retry wrapper re-enters `run_loop()` without
+   re-importing, so the file update never took effect. Tell-tale: it logged
+   `live trading engine started (RF-only).` where current code logs `(multi-strategy: ...)`.
+2. **The old build read a different row.** `load_settings(cur)` there was
+   `SELECT ... WHERE settings_key='live_config'` - one global row, last updated 2026-03-07 - while
+   the UI writes per-model rows. So the UI showed `edge_threshold 0.15` for `binary_theory_edge`
+   while the engine was using `0.01` from `live_config`, plus `max_trade_cost 8.0` vs the UI's 2.0.
+3. **The old build hardcoded `model_name="random_forest"`**, so the other two strategies were not
+   live-traded at all and their cards controlled nothing.
+
+Restarted the engine (with **both** env files, same lesson as the 20s updater). It now logs
+`multi-strategy: random_forest, random_forest_high_conviction, binary_theory_edge`, ticks all three,
+and `migrate_legacy_settings()` dropped the stale `live_config` row. All `live_enabled` remain
+`false` - nothing trades. Confirmed in force on the first tick: `binary_theory_edge` prob 0.847,
+edge 0.097 against its `edge_threshold` 0.15 -> `signal=False`.
+
+Settings wiring in current code, verified end to end - every field on the form is consumed, and
+`cfg = load_settings(cur, model_name)` sits inside the per-tick per-model loop, so saves take
+effect on the next tick with no restart:
+
+| field | consumed at |
+|---|---|
+| `signal_threshold` | `live_trading_engine.py:414` (signal) |
+| `edge_threshold` | `:414` signal, `:217` sizing gate, `should_close_position` |
+| `max_trade_cost` | `:219` `compute_buy_qty` |
+| `max_concurrent_positions` | `architecture/risk_engine.py:26` |
+| `max_open_notional` | `architecture/risk_engine.py:28` |
+| `max_daily_loss` | `:200` -> RED -> auto-pause |
+| `max_total_drawdown` | `:202` -> RED -> auto-pause |
+
+`LiveSettingsRiskEngine` (not `DummyRiskEngine`) is the active one: `RISK_ENGINE_MODE` is unset
+anywhere in the repo or on the box, and defaults to `live_settings`.
+
+**Standing lesson:** a file copy is not a deploy for anything long-running. After updating
+`data_pipeline/*.py` on the box, restart the process that imports it, and confirm by its startup
+line rather than by the file's mtime.
+
+Live strategy cards now also show that strategy's **Sim PnL** (`sim_total_pnl`/`sim_closed_trades`/
+`sim_win_rate` on each `/live_metrics` `models` entry), read from `sim_trades` with the same query
+shape as the Portfolio Manager so the two panels cannot disagree.
+
 ## Risk management (added 2026-09-12)
 
 - `sim_config.SimRiskSettings` (stored in the `sim_settings` table, key `risk_config`): `max_position_fraction` (cap new-position notional as a fraction of a model's own current equity, default 0.20), `max_drawdown_pct` (pause a model once its drawdown from peak exceeds this, default 0.30), `min_equity_floor` (hard floor, default $10).
