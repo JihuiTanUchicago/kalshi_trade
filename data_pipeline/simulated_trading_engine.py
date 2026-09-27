@@ -8,6 +8,7 @@ how much to size a new position, when to force-close near expiry, and the
 risk gate that pauses a model once its drawdown breaches the configured cap.
 """
 import json
+import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -28,6 +29,10 @@ from data_pipeline.modeling_features import (
     build_feature_vector,
     has_target,
 )
+from data_pipeline.architecture.contracts import TradeIntent
+from data_pipeline.architecture.execution_kernel import MarketableLimitKernel
+from data_pipeline.architecture.simulated_venue import SimulatedVenue
+from data_pipeline.market_data import MarketFeed
 from data_pipeline.sim_config import (
     BINARY_THEORY_EDGE_THRESHOLD,
     EDGE_THRESHOLD,
@@ -46,6 +51,7 @@ from data_pipeline.sim_config import (
     SimRiskSettings,
 )
 from data_pipeline.sim_repository import (
+    reconcile_settled_sim_positions,
     close_existing_position,
     get_latest_drawdown_pct,
     get_live_cutoff_utc,
@@ -76,6 +82,15 @@ HIGH_CONVICTION_MODELS = ("random_forest_high_conviction",)
 # not the early-exit-on-signal-decay behavior every other model uses.
 THEORY_MODELS = ("binary_theory_edge",)
 ALL_MODELS = FROZEN_MODELS + HIGH_CONVICTION_MODELS + THEORY_MODELS
+# Deliberately read from the same environment variables the live engine uses:
+# a paper book run under a different execution policy is not a forecast of the
+# live one. See data_pipeline/live_trading_engine.py.
+SIM_ENTRY_CROSS_TICKS = int(os.getenv("KALSHI_ENTRY_CROSS_TICKS", "1"))
+SIM_EXIT_CROSS_TICKS = int(os.getenv("KALSHI_EXIT_CROSS_TICKS", "2"))
+SIM_MAX_ENTRY_SLIPPAGE = float(os.getenv("KALSHI_MAX_ENTRY_SLIPPAGE", "0.02"))
+SIM_ORDER_MAX_ATTEMPTS = int(os.getenv("KALSHI_ORDER_MAX_ATTEMPTS", "3"))
+SIM_MAX_QUOTE_AGE_SECONDS = float(os.getenv("KALSHI_MAX_QUOTE_AGE_SECONDS", "2.0"))
+
 EDGE_THRESHOLD_OVERRIDES: Dict[str, float] = {
     "random_forest_high_conviction": HIGH_CONVICTION_EDGE_THRESHOLD,
     "binary_theory_edge": BINARY_THEORY_EDGE_THRESHOLD,
@@ -282,12 +297,20 @@ def decide_new_position(
     return qty, ask
 
 
-def process_model_tick(cur, model_name: str, latest: Dict, now_ts: datetime, out: ModelOutput, risk: SimRiskSettings) -> Dict:
+def process_model_tick(cur, model_name: str, latest: Dict, now_ts: datetime, out: ModelOutput, risk: SimRiskSettings, kernel=None, feed=None) -> Dict:
     """Manage one model's prediction/position/equity for a single tick.
     Returns a small summary dict for logging."""
     edge_threshold = EDGE_THRESHOLD_OVERRIDES.get(model_name, EDGE_THRESHOLD)
     signal = 1 if out.prob >= PRED_THRESHOLD else 0
+    # Same split as the live engine: features from the bar, price from the
+    # book. Scoring the edge against a one-minute-old ask is what made the
+    # paper book and the account disagree.
     ask = float(latest.get("yes_ask_dollars") or 0.0)
+    if feed is not None:
+        live = feed.quote(latest["market_ticker"])
+        if live is not None and live.tradable:
+            ask = float(live.yes_ask)
+            latest = dict(latest, yes_ask_dollars=ask, yes_bid_dollars=float(live.yes_bid))
     edge = out.prob - ask
     x_vec = np.asarray(build_feature_vector(latest), dtype=float)
     upsert_prediction(cur, now_ts, model_name, latest, x_vec, FEATURE_COLS, out, signal, edge)
@@ -299,7 +322,8 @@ def process_model_tick(cur, model_name: str, latest: Dict, now_ts: datetime, out
 
     had_position = get_open_position(cur, model_name) is not None
     realized = close_existing_position(
-        cur, model_name, latest, now_ts, should_close_same_ticker=should_close, force_exit_price=force_price
+        cur, model_name, latest, now_ts, should_close_same_ticker=should_close,
+        force_exit_price=force_price, kernel=kernel,
     )
     has_position_after = get_open_position(cur, model_name) is not None
     closed_this_tick = had_position and not has_position_after
@@ -320,7 +344,18 @@ def process_model_tick(cur, model_name: str, latest: Dict, now_ts: datetime, out
         decision = decide_new_position(cur, model_name, latest, out.prob, risk, edge_threshold)
         if decision:
             qty, entry_price = decision
-            open_meta = open_new_position(cur, model_name, latest, now_ts, out.prob, edge, qty, entry_price)
+            report = None
+            if kernel is not None:
+                report = kernel.execute(
+                    TradeIntent(
+                        action="buy", side="yes", ticker=latest["market_ticker"],
+                        qty_contracts=qty, limit_price_dollars=entry_price,
+                        model_name=model_name, now_ts=now_ts, metadata={"prob_yes": out.prob},
+                    )
+                )
+            open_meta = open_new_position(
+                cur, model_name, latest, now_ts, out.prob, edge, qty, entry_price, report=report
+            )
 
     equity = upsert_equity(cur, now_ts, model_name, realized)
     return {
@@ -411,7 +446,24 @@ def _record_tick_snapshot(cur, now_ts: datetime, feature_minute, frozen_models: 
 def run_loop() -> None:
     conn = get_db_conn()
     cur = conn.cursor()
+    # One execution policy, two venues. The kernel, the cross ticks, the edge
+    # tolerance and the retry behaviour are identical to the live engine's -
+    # only the submitter differs, so paper P&L is comparable to live P&L.
+    feed = MarketFeed(max_quote_age_seconds=SIM_MAX_QUOTE_AGE_SECONDS)
+    venue = SimulatedVenue(feed, max_quote_age_seconds=SIM_MAX_QUOTE_AGE_SECONDS)
+    kernel = MarketableLimitKernel(
+        venue, feed,
+        entry_cross_ticks=SIM_ENTRY_CROSS_TICKS,
+        exit_cross_ticks=SIM_EXIT_CROSS_TICKS,
+        max_entry_slippage=SIM_MAX_ENTRY_SLIPPAGE,
+        max_attempts=SIM_ORDER_MAX_ATTEMPTS,
+        max_quote_age_seconds=SIM_MAX_QUOTE_AGE_SECONDS,
+    )
     print("simulated trading engine started. Running minute-sharp (+10s).")
+    print(
+        "sim execution: marketable limit, entry_cross=%s exit_cross=%s max_slippage=%s attempts=%s"
+        % (SIM_ENTRY_CROSS_TICKS, SIM_EXIT_CROSS_TICKS, SIM_MAX_ENTRY_SLIPPAGE, SIM_ORDER_MAX_ATTEMPTS)
+    )
     frozen_models: Dict[str, FrozenModel] = {}
     last_processed_minute: Optional[datetime] = None
     while True:
@@ -433,6 +485,10 @@ def run_loop() -> None:
                 if not frozen_models:
                     continue
 
+            # A market that has expired cannot be sold, only booked. This has
+            # to run before any exit is attempted, exactly as in the live engine.
+            reconcile_settled_sim_positions(cur, now_ts)
+
             latest = latest_feature_row(cur)
             if not latest:
                 print("sim engine waiting: no eligible model_features_1m row")
@@ -451,7 +507,7 @@ def run_loop() -> None:
 
             for model_name in ALL_MODELS:
                 out = outputs[model_name]
-                summary = process_model_tick(cur, model_name, latest, now_ts, out, risk)
+                summary = process_model_tick(cur, model_name, latest, now_ts, out, risk, kernel=kernel, feed=feed)
                 print(
                     f"sim {model_name} t={now_ts.isoformat()} p={out.prob:.4f} signal={summary['signal']} "
                     f"edge={summary['edge']:.4f} realized={summary['realized']:.4f} open={summary['open']} "

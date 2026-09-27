@@ -610,6 +610,47 @@ model and the history cannot be reconstructed after the fact, which is why it we
 
 All three strategies remain `live_enabled=false`.
 
+## One execution policy, two venues (2026-09-27)
+
+The simulator and the live engine now run the **same** `MarketableLimitKernel`, against the same
+`MarketFeed`, with the same cross ticks, the same edge tolerance and the same retry behaviour.
+Only the submitter differs:
+
+    live:  MarketableLimitKernel(place_limit_order,    feed)
+    sim:   MarketableLimitKernel(SimulatedVenue(feed), feed)
+
+The policy knobs are read from the **same environment variables** in both engines
+(`KALSHI_ENTRY_CROSS_TICKS`, `KALSHI_EXIT_CROSS_TICKS`, `KALSHI_MAX_ENTRY_SLIPPAGE`,
+`KALSHI_ORDER_MAX_ATTEMPTS`), so a paper book cannot silently be run under a policy the live
+account is not. That was the structural reason the two disagreed.
+
+**`architecture/simulated_venue.py`** returns Kalshi's flat v2 response shape, so one fill parser
+reads both venues and they cannot drift. It models crossing the touch, partial fills against the
+size resting at the touch, Kalshi's taker fee, and orders that simply do not fill. It does not
+model queue position (every order here is a taker) or depth past the touch (the ticker channel
+does not carry it, and touch depth is ~100x our order size).
+
+**What the simulator can now do that it could not before**, each of which happened live on
+2026-09-27 and was invisible in paper:
+- **miss an entry** - an order that does not fill is not a position
+- **fail an exit** - an unfilled sell leaves the position exactly where it was
+- **be carried into settlement** - `reconcile_settled_sim_positions()` books expired contracts at
+  $1.00/$0.00 from the *public* market result, since the simulator has no account to query
+- **abandon a trade whose edge has gone** - if the live ask has run past the signal price
+
+The sim also now scores its edge against the **live book** rather than the bar's ask, matching the
+live engine's features-from-the-bar / prices-from-the-book split.
+
+Startup line, for confirming the two match: `sim execution: marketable limit, entry_cross=1
+exit_cross=2 max_slippage=0.02 attempts=3`.
+
+**Remaining gap.** This is forward paper trading with a realistic fill model, not a backtest.
+`forward_quote_ticks` only began recording on 2026-09-27, so there is no tick history to replay
+older signals against; a historical backtest would still have to use 20-second `forward_quotes`
+samples and would inherit their optimism. Judge the strategies on paper results recorded from
+tonight onward, not on the pre-existing 25,442 trades - those were produced by the old
+fill-everything model and are an upper bound.
+
 ## Risk management (added 2026-09-12)
 
 - `sim_config.SimRiskSettings` (stored in the `sim_settings` table, key `risk_config`): `max_position_fraction` (cap new-position notional as a fraction of a model's own current equity, default 0.20), `max_drawdown_pct` (pause a model once its drawdown from peak exceeds this, default 0.30), `min_equity_floor` (hard floor, default $10).

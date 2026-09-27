@@ -162,6 +162,131 @@ def get_open_position(cur, model_name: str) -> Optional[Dict]:
     return cur.fetchone()
 
 
+def market_result(ticker: str) -> Optional[str]:
+    """Public settlement result for a market, or None if it has not settled.
+
+    The simulator has no account, so unlike the live engine it cannot read
+    /portfolio/settlements. The public market endpoint carries the same fact.
+    """
+    from data_pipeline.common import api_get
+
+    try:
+        market = (api_get(f"/markets/{ticker}") or {}).get("market") or {}
+    except Exception:
+        return None
+    status = str(market.get("status") or "").lower()
+    if status not in ("settled", "finalized", "closed"):
+        return None
+    result = str(market.get("result") or "").lower()
+    return result if result in ("yes", "no") else None
+
+
+def reconcile_settled_sim_positions(cur, now_ts: datetime) -> float:
+    """Book simulated positions whose market has expired.
+
+    Once exits go through a real execution policy the simulator can fail to
+    sell, exactly as the live engine does. A contract that expires is worth
+    $1.00 or $0.00 and there is nothing left to trade out of, so it is booked
+    rather than sold. Without this, an unfilled exit would leave a paper
+    position open forever and quietly stop the model trading at all.
+    """
+    cur.execute("SELECT * FROM sim_positions")
+    realized = 0.0
+    for pos in list(cur.fetchall() or []):
+        result = market_result(pos["market_ticker"])
+        if result is None:
+            continue
+        qty = int(pos["qty_contracts"])
+        entry_px = float(pos["entry_price_dollars"])
+        exit_px = 1.0 if result == "yes" else 0.0
+        entry_fee = 0.0
+        raw = pos.get("raw_json")
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except Exception:
+                raw = {}
+        if isinstance(raw, dict):
+            entry_fee = float((raw.get("fill") or {}).get("entry_fee") or 0.0)
+        if entry_fee <= 0:
+            entry_fee = taker_fee_dollars(qty, entry_px)
+        # Settlement pays out; there is no taker fee on the exit leg.
+        pnl = (exit_px - entry_px) * qty - entry_fee
+        cur.execute(
+            """
+            UPDATE sim_trades
+            SET closed_at_utc=%s, exit_price_dollars=%s, pnl_dollars=%s, status='closed'
+            WHERE id=%s
+            """,
+            (now_ts.replace(tzinfo=None), exit_px, pnl, pos["trade_id"]),
+        )
+        cur.execute("DELETE FROM sim_positions WHERE model_name=%s", (pos["model_name"],))
+        realized += pnl
+        print(
+            "sim %s %s SETTLED %s: %s contracts at %.4f -> %.2f, pnl %.2f"
+            % (pos["model_name"], pos["market_ticker"], result, qty, entry_px, exit_px, pnl)
+        )
+    return realized
+
+
+def _close_via_kernel(cur, kernel, model_name: str, pos: Dict, now_ts: datetime) -> float:
+    """Exit through the same execution policy the live engine uses.
+
+    An exit that does not fill leaves the position exactly where it was, which
+    is the single most important thing the old simulator got wrong: it always
+    sold at the quoted bid, so it could never be left holding a contract into
+    settlement. Live, that cost $9.46 on 27 contracts in one afternoon.
+    """
+    from data_pipeline.architecture.contracts import TradeIntent
+
+    qty = int(pos["qty_contracts"])
+    entry_px = float(pos["entry_price_dollars"])
+    report = kernel.execute(
+        TradeIntent(
+            action="sell",
+            side="yes",
+            ticker=pos["market_ticker"],
+            qty_contracts=qty,
+            limit_price_dollars=entry_px,
+            model_name=model_name,
+            now_ts=now_ts,
+            metadata={"entry_price": entry_px},
+        )
+    )
+    sold = int(report.fill_qty_contracts)
+    if sold <= 0:
+        return 0.0
+    exit_px = float(report.fill_price_dollars)
+    entry_fee = 0.0
+    raw = pos.get("raw_json")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            raw = {}
+    if isinstance(raw, dict):
+        entry_fee = float((raw.get("fill") or {}).get("entry_fee") or 0.0)
+    if entry_fee <= 0:
+        entry_fee = taker_fee_dollars(qty, entry_px)
+    fee = float(report.fee_dollars) + entry_fee * (sold / float(qty) if qty else 1.0)
+    pnl = (exit_px - entry_px) * sold - fee
+    cur.execute(
+        """
+        UPDATE sim_trades
+        SET closed_at_utc=%s, exit_price_dollars=%s, pnl_dollars=%s, qty_contracts=%s, status='closed'
+        WHERE id=%s
+        """,
+        (now_ts.replace(tzinfo=None), exit_px, pnl, sold, pos["trade_id"]),
+    )
+    if sold < qty:
+        cur.execute(
+            "UPDATE sim_positions SET qty_contracts=%s WHERE model_name=%s", (qty - sold, model_name)
+        )
+    else:
+        cur.execute("DELETE FROM sim_positions WHERE model_name=%s", (model_name,))
+    return pnl
+
+
 def close_existing_position(
     cur,
     model_name: str,
@@ -169,12 +294,17 @@ def close_existing_position(
     now_ts: datetime,
     should_close_same_ticker: bool = False,
     force_exit_price: Optional[float] = None,
+    kernel=None,
 ) -> float:
     pos = get_open_position(cur, model_name)
     if not pos:
         return 0.0
 
     same_ticker = pos["market_ticker"] == now_row["market_ticker"]
+    if kernel is not None:
+        if same_ticker and not should_close_same_ticker:
+            return 0.0
+        return _close_via_kernel(cur, kernel, model_name, pos, now_ts)
     if same_ticker:
         if not should_close_same_ticker:
             return 0.0
@@ -225,6 +355,7 @@ def open_new_position(
     edge: float,
     qty: int,
     entry_price: float,
+    report=None,
 ) -> Optional[Dict]:
     """Persist a new position. Sizing/eligibility decisions are the caller's
     job (see simulated_trading_engine.decide_new_position) - this function
@@ -235,6 +366,24 @@ def open_new_position(
     if get_open_position(cur, model_name):
         return None
     raw = {"prob_yes": prob, "edge": edge, "qty_requested": qty, "fill": {"mode": "quote_ask_conservative", "ticker": now_row["market_ticker"]}}
+    if report is not None:
+        # Executed through the same kernel the live engine uses. An order that
+        # did not fill is not a position - the old simulator could not miss an
+        # entry, which is one of the reasons it disagreed with the account.
+        filled = int(report.fill_qty_contracts)
+        if filled <= 0:
+            return None
+        entry_price = float(report.fill_price_dollars)
+        qty = filled
+        raw["fill"] = {
+            "mode": "kernel",
+            "ticker": now_row["market_ticker"],
+            "status": report.status,
+            "qty_requested": int(raw["qty_requested"]),
+            "fill_qty": filled,
+            "fill_price": entry_price,
+            "entry_fee": float(report.fee_dollars),
+        }
     cur.execute(
         """
         INSERT INTO sim_trades
