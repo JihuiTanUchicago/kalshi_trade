@@ -152,6 +152,123 @@ Live strategy cards now also show that strategy's **Sim PnL** (`sim_total_pnl`/`
 `sim_win_rate` on each `/live_metrics` `models` entry), read from `sim_trades` with the same query
 shape as the Portfolio Manager so the two panels cannot disagree.
 
+## Dashboard redesign: Kursbuch (2026-09-26)
+
+The dashboard was rebuilt as a replacement visual world, not a polish pass. Product truth is now
+recorded in `PRODUCT.md`; the durable route strategy lives in
+`.impeccable/surfaces/data-pipeline-dashboard-server-py.md` (direction contract, seed key
+`abd048b8`). Visitor mode: **Operate**. Confirmed by the owner: the primary job is *watching real
+money move*, the audience is *only him*, and ultrawide, laptop and phone are all first-class.
+
+**World.** A Swiss station timetable, not a trading terminal. Grey newsprint stock (`#E9EBE5`), ink
+that is never pure black (`#191B16`), hairline rules at one weight, tabular lining figures
+everywhere, and **no monospace anywhere** - the terminal look was the category rut and it was also
+the incumbent. One reserved signal red (`#C8102E`) that appears nowhere except "this needs you";
+money direction rides a desaturated tint field behind the figure, never the reserved red. The live
+surface prints on a tinted stock (`#EFE4E7`) with a red head rule, the way a timetable tints a
+different service, so real money can never be mistaken for the simulator. Archivo / Archivo Narrow,
+two weights. Cards are gone: every panel is a ruled table, because cards at equal weight were why
+nothing told you where to look.
+
+**Signature interaction - the as-of rule.** Every section states the age of the writer behind it.
+When that writer stops, the rule under its heading breaks to dashed red, the figures strike through
+and mute, and a red `STALE 13d` mark states the age. This is the direct structural answer to the
+failure that opened this session: two writers dead for 13 days while the UI rendered their last
+values as current. It needed new server data - `/sim_metrics` and `/live_metrics` now return a
+`writers` map (`last_utc`, `age_sec`, `expect_sec`, measured against the **database** clock so a
+skewed server cannot invent freshness) plus `generated_at_utc`. Staleness is declared at
+`WRITER_CADENCE_SECONDS` x `STALE_CADENCE_MULTIPLE` (6).
+
+**Other structural changes.**
+- `/` now defaults to **live-trading**, not data-pipeline. Live execution is the front page because
+  that is the operator's first question.
+- A status line above every page states the dominant answer in words before any figure is read
+  ("Live trading off / No open positions / All writers current"), red only when it needs him.
+- The pipeline tab's expensive queries (`table_counts`, `forward_feed_health`, `latest_model_guard`)
+  no longer run on every page load, only on the tab that shows them. The unused `sim_summary()` call
+  was dropped from the request path entirely.
+- Responsive: tables restack into labelled rows below 640px; plates go 2-up at 1500px and 3-up at
+  2200px; the page runs to 2560px instead of 1200px so an ultrawide is not a column in a void.
+
+**Verification.** Built code-led (no image generation in this harness). Inspected in one batched
+round at ultrawide, laptop and 390px phone, plus a deliberately-aged fixture to audit the stale
+path. The mechanical detector went 166 -> 4 findings; the four that remain are the detector summing
+sibling micro-labels on the `.measure` and `.plates` rows, where each label is 8-27 characters, and
+were a deliberate keep. Contrast was computed, not eyeballed: muted ink clears 4.5:1 on all three
+grounds.
+
+**Two traps worth remembering.**
+1. The production box runs **Python 3.9**: an f-string expression cannot contain a backslash there.
+   Local Python 3.14 accepts it silently. The deploy's `py_compile` step caught it before install.
+2. A local harness (`scratchpad/harness.py`) serves the real handler against captured production
+   JSON with auth disabled. That is how this was inspected without pointing a browser at the live
+   box or triggering a basic-auth modal. Fixtures come from SSM, which truncates output at ~24KB, so
+   they are subsampled and fetched in two chunks.
+
+## Strategy dossiers + finish-review fixes (2026-09-26)
+
+**Strategy dossiers.** Each book on the Simulation tab now links to `/?tab=strategy&name=<model>`,
+a Read-mode page inside the Operate app (`.reading`, 1060px measure) that states what the strategy
+actually is. Content lives in `STRATEGY_DOSSIER` / `SHARED_LABEL` / `SHARED_LIFECYCLE` in
+`dashboard_server.py`, written from the engine source rather than from memory: the tradeable label
+(`1 if next_minute_yes_bid > this_minute_yes_ask else 0`, from `build_supervised()`), the exact
+feature subsets, the real estimator hyper-parameters, the per-strategy edge thresholds, and the
+research finding behind each candidate. **If the engine changes, this dossier must change with it —
+a dossier that has drifted from the engine is worse than none.**
+
+Worth knowing, because the dossiers now say it out loud: `random_forest_high_conviction` is not a
+separate model at all (it re-uses `random_forest`'s probability and only raises the entry bar to
+edge > 0.17), and `binary_theory_edge` fits nothing (closed-form driftless-GBM
+`P(YES) = Phi(ln(S0/K) / (sigma*sqrt(T)))`, and it holds to settlement rather than exiting on
+signal decay).
+
+**Finish review.** The shipped `impeccable-finish-reviewer` refused the first pass outright because
+it was given source instead of rendered pixels — correctly. Captures now live in
+`.impeccable/review/`. Of its eight material findings, seven were real and are fixed:
+
+1. The stale strike shipped invisible — 1px in `--rule-2` over a muted glyph. Now 2px in `--ink-2`.
+   Half the signature interaction was not reaching the eye.
+2. **The Data Pipeline tab had no as-of rule at all**, and hardcoded captions ("last 120 minutes")
+   sat in the exact slot every other tab uses for writer age — so the one surface whose job is
+   "confirm the pipeline is alive" was the only one that could not go stale. `/health` now returns
+   `writers` via `pipeline_writer_freshness()`, and the feed and guard sections are wired to it.
+   The masthead clock on that tab is fixed too (it read `READING...` forever).
+3. Drawdown axes printed raw unitless floats (`-2848.6229`). Both now pass `unit:'$'`.
+4. `--neg` was invisible on the rose live stock: money read in one direction only, on the one
+   surface where a loss is the fact that matters. `body.live-service` now overrides both tints.
+5. The status line was capped at 104ch, so the "full-width" promise broke; the rule now spans and
+   only the sentence is capped. `.measure` tracks are capped so figures spread rather than stranding.
+6. **No more `window.confirm` / `window.alert` anywhere.** A browser dialog states no recovery and
+   belongs to no design system. Destructive live actions now arm in place (click once to arm, again
+   within 6s to fire) and every outcome reports through an in-page `.notice`.
+7. On phone the strategy rows exploded into eight label/value lines with the switch at the bottom.
+   The switch is now lifted directly under the name, prob/edge/signal are hidden behind the
+   existing disclosure, and rows carry **leader dots** — the timetable device that ties a label to
+   its figure across a gap, and one of the FORM block's own named donations.
+
+The eighth finding — a duplicated disclosure row — was **not** a bug. It was an artifact of my own
+stitched full-page capture: I screenshotted at `scrollY=840` with an 840px viewport, so the boundary
+row appeared at the bottom of segment 1 and the top of segment 2. Verified in the DOM: 6 rows, 3
+disclosures, stable across re-renders. Recorded here so nobody "fixes" it later.
+
+Still open from the ceiling check, honestly: bar-length-as-duration is unbuilt, and the tint-field
+wash (the one authored motion moment) is coded but never captured, so it stands unverified.
+
+DESIGN.md is now written from the shipped build by the shipped documenter, with `.impeccable/design.json`
+alongside it.
+
+## Two live-path bugs found by the over-engineering review (fixed 2026-09-26)
+
+Found while counting duplication, not while looking for bugs:
+
+- **The Close button on a live position always 403'd for a URL-password session.**
+  `/live_position/close` was the only live route calling `self._live_authorized()` with no `parsed`,
+  and `closeLivePosition()` was the only live POST that did not append `?live_password=`. The two
+  defects hid each other: closing worked only if the `live_gate` cookie happened to be set. This is
+  the control that manually exits a real-money position, so it is the last one that should be
+  unreliable. Both halves fixed; no bare `_live_authorized()` call remains.
+- `_authorized()` compared the dashboard password with `==`. Now `secrets.compare_digest`.
+
 ## Risk management (added 2026-09-12)
 
 - `sim_config.SimRiskSettings` (stored in the `sim_settings` table, key `risk_config`): `max_position_fraction` (cap new-position notional as a fraction of a model's own current equity, default 0.20), `max_drawdown_pct` (pause a model once its drawdown from peak exceeds this, default 0.30), `min_equity_floor` (hard floor, default $10).

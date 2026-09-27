@@ -1,6 +1,7 @@
 import html
 import os
 import base64
+import secrets
 import ast
 import json
 import threading
@@ -31,6 +32,170 @@ PORT = int(os.getenv("DASHBOARD_PORT", "8080"))
 AUTH_USER = os.getenv("DASHBOARD_USER", "todd")
 AUTH_PASSWORD = os.getenv("DASHBOARD_PASSWORD")
 LIVE_TRADING_PASSWORD = os.getenv("LIVE_TRADING_PASSWORD", "iwanttoberich")
+# What each strategy actually is, written from the code that runs it
+# (simulated_trading_engine.py, sim_config.py, binary_theory.py,
+# modeling_features.py). Every claim here is checkable against those files;
+# nothing is inferred. Keep this in sync when the engine changes - a dossier
+# that drifts from the engine is worse than no dossier.
+SHARED_LABEL = (
+    "Every fitted model is trained on the same question, and it is a tradeable one rather than a "
+    "price-forecasting one: given this minute's order book, could you buy at the current ask and "
+    "sell into the bid one minute later for more than you paid? The label is literally "
+    "1 if next_minute_yes_bid > this_minute_yes_ask else 0, built in build_supervised(). Rows are "
+    "dropped across a ticker rotation, so a label never spans two different contracts."
+)
+SHARED_LIFECYCLE = [
+    ("Fit once, then frozen",
+     "Models are fitted a single time on the in-sample window (at least 48 hours, "
+     "MIN_INSAMPLE_HOURS) and then never refitted. Everything after the live cutoff is genuinely "
+     "out of sample, which is why out-of-sample is the only honest read of a book."),
+    ("Entry",
+     "A position opens only when the model's probability clears PRED_THRESHOLD (0.55) and its "
+     "edge clears that strategy's own edge threshold. Edge is probability minus the current ask, "
+     "so it is the model's claim about how mispriced the contract is right now."),
+    ("Sizing",
+     "Quantity scales with edge, capped at MAX_QTY (10 contracts), by what the book's cash can "
+     "afford, and by max_position_fraction of that book's own equity."),
+    ("Exit",
+     "Default exit is signal decay: the position closes when probability falls back below the "
+     "threshold. Every strategy also force-closes inside the last 60 seconds before expiry "
+     "(NEAR_EXPIRY_SEC) at FORCE_CLOSE_NEAR_EXPIRY_PRICE, and closes on ticker rotation."),
+    ("Self-halt",
+     "A book that draws down past max_drawdown_pct (30%) from its own peak pauses itself and "
+     "stays paused until you clear it by hand. Drawdown is read from sim_equity_1m so the gate "
+     "behaves identically whether the engine is ticking live or replaying history."),
+]
+STRATEGY_DOSSIER: Dict[str, Dict] = {
+    "naive_logistic_baseline": {
+        "kind": "Fitted - linear",
+        "thesis": (
+            "A deliberately weak benchmark. It exists so the richer models have something honest "
+            "to beat: if a random forest on the full feature set cannot outperform an L1 logistic "
+            "regression on a reduced linear subset, the extra machinery is not earning its keep."
+        ),
+        "reads": (
+            "A reduced 13-column subset with no interaction terms (BASELINE_FEATURE_COLS): both "
+            "sides of the book and the spread, mid price, order-book imbalance, one- and "
+            "three-minute mid returns, trade count and quote-change count over the last 60 "
+            "seconds, time to expiry, one- and three-minute Coinbase BTC returns, and moneyness "
+            "as a percentage."
+        ),
+        "decides": (
+            "StandardScaler into LogisticRegression with L1 penalty, C=0.5 (lambda=2.0), "
+            "class_weight='balanced', max_iter=1000, random_state=42. Opens on probability >= 0.55 "
+            "with edge > 0.01."
+        ),
+        "caveat": (
+            "It is the control, not a candidate. Its long negative record is informative rather "
+            "than disappointing - it is what an unsophisticated reading of this book earns."
+        ),
+    },
+    "logistic": {
+        "kind": "Fitted - linear",
+        "thesis": (
+            "The same linear machinery as the baseline, but allowed to see the engineered "
+            "interaction terms. It isolates one question: how much of any edge comes from the "
+            "feature engineering rather than from model capacity?"
+        ),
+        "reads": (
+            "The full feature set (FEATURE_COLS), which adds to the baseline's columns: traded "
+            "volume and VWAP over the last 60 seconds, five-minute Coinbase return and realised "
+            "volatility, absolute moneyness, volatility-scaled moneyness, and four interaction "
+            "terms - moneyness against sqrt(time to expiry), against order-book imbalance, and "
+            "against quote-change count."
+        ),
+        "decides": (
+            "Identical pipeline to the baseline (StandardScaler, L1 logistic, C=0.5, balanced "
+            "classes, seed 42) on the wider matrix. Opens on probability >= 0.55 with edge > 0.01."
+        ),
+        "caveat": (
+            "Shares the baseline's ceiling: a linear decision boundary on a book whose structure "
+            "is unlikely to be linear."
+        ),
+    },
+    "random_forest": {
+        "kind": "Fitted - non-linear",
+        "thesis": (
+            "Allow non-linear structure and interactions the linear models cannot express, on the "
+            "same tradeable label. This is the capacity arm of the comparison."
+        ),
+        "reads": "The full feature set (FEATURE_COLS), the same matrix the logistic model sees.",
+        "decides": (
+            "RandomForestClassifier with 400 trees, max_depth 8, min_samples_leaf 20, "
+            "min_samples_split 50, max_features='sqrt', class_weight='balanced_subsample', "
+            "random_state=42. When fewer than 1000 training rows are available it falls back to a "
+            "smaller configuration (120 trees, depth 5) and records which regime it used. Opens on "
+            "probability >= 0.55 with edge > 0.01."
+        ),
+        "caveat": (
+            "Its overall record is negative, but that record is what motivated the edge-magnitude "
+            "research: the losses are not uniform across trades. See random_forest_high_conviction."
+        ),
+    },
+    "random_forest_high_conviction": {
+        "kind": "Filter - not a separate model",
+        "thesis": (
+            "Not a new model at all. It reuses random_forest's probability output unchanged and "
+            "differs only in how sure it insists on being before it trades. It exists to test one "
+            "research finding forward, on data that did not produce it."
+        ),
+        "reads": "Nothing of its own - it is random_forest's probability, aliased.",
+        "decides": (
+            "Opens only when edge > 0.17 (HIGH_CONVICTION_EDGE_THRESHOLD) instead of 0.01. Same "
+            "0.55 probability floor, same exits, same sizing."
+        ),
+        "caveat": (
+            "The finding behind it: among random_forest's trades from March-April 2026, PnL rose "
+            "monotonically with edge at entry, and the top quintile (edge above roughly 0.167) was "
+            "the only clearly profitable one, at about +$0.062 per trade against -$0.01 to -$0.15 "
+            "for the rest. That came from a limited window which visibly decayed inside itself "
+            "(March about +$0.125 per trade, April about +$0.006) and had no out-of-sample "
+            "evidence. It is explicitly NOT treated as validated. This book is the forward test."
+        ),
+    },
+    "binary_theory_edge": {
+        "kind": "Closed form - nothing fitted",
+        "thesis": (
+            "Price the contract from options theory instead of learning it from history, then "
+            "trade only the largest disagreements with the market. Zero parameters are fitted to "
+            "this data, so there is nothing here to overfit."
+        ),
+        "reads": (
+            "Spot BTC, the contract's strike, time remaining, and a volatility estimate. That is "
+            "all - no order-book microstructure, no learned weights."
+        ),
+        "decides": (
+            "Treats BTC as a driftless geometric Brownian motion over the contract's remaining "
+            "life and takes the closed-form probability P(YES) = Phi( ln(S0/K) / (sigma * sqrt(T)) ). "
+            "That is the same d2 term Black-Scholes uses for a cash-or-nothing digital, minus the "
+            "risk-neutral drift correction, which makes it a physical-measure probability of the "
+            "outcome rather than a risk-neutral price. Drift is deliberately set to zero: "
+            "short-horizon crypto drift is not reliably predictable, so a random walk is the "
+            "honest null. Opens only when edge > 0.15."
+        ),
+        "caveat": (
+            "Two things to hold onto. First, its exit rule is fundamentally different from every "
+            "other book here: it holds to settlement and never closes on signal decay - only "
+            "near-expiry force-close or ticker rotation ends a position. Second, it is known to be "
+            "systematically overconfident: predicted probabilities run well above realised rates "
+            "in the middle deciles, even though standalone AUC was 0.858 with zero fitting. Its "
+            "validation window was only about seven to eight weeks."
+        ),
+    },
+}
+
+
+# Authored rather than borrowed from a glyph set, so it carries one stroke
+# weight with the rest of the page and inherits the status line's colour.
+STATUS_MARK_SVG = (
+    '<svg class="mark mark-calm" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    '<circle cx="12" cy="12" r="8.4"/><path d="m8.3 12.2 2.6 2.6 4.8-5.2"/></svg>'
+    '<svg class="mark mark-needs" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    '<path d="M12 4.2 21.3 20H2.7z"/><path d="M12 10.2v4.1"/><path d="M12 17.1v.1"/></svg>'
+)
+
 LIVE_COOKIE_NAME = "live_gate"
 PAGE_SIZE = 100
 TABLES = [
@@ -312,66 +477,6 @@ def latest_model_guard():
     return row
 
 
-def sim_summary():
-    conn = get_db_conn()
-    out = {"models": [], "open_positions": 0, "recent_trades": []}
-    with conn.cursor() as cur:
-        cur.execute("SELECT COUNT(*) c FROM sim_positions")
-        out["open_positions"] = cur.fetchone()["c"]
-
-        pause_states = get_all_model_pause_states(cur)
-
-        cur.execute(
-            """
-            SELECT model_name, COUNT(*) closed_trades,
-                   COALESCE(SUM(pnl_dollars),0) total_pnl,
-                   COALESCE(SUM(pnl_dollars > 0),0) wins
-            FROM sim_trades
-            WHERE status='closed'
-            GROUP BY model_name
-            ORDER BY model_name
-            """
-        )
-        model_rows = cur.fetchall()
-        for r in model_rows:
-            closed = int(r["closed_trades"] or 0)
-            wins = int(r["wins"] or 0)
-            pause = pause_states.get(r["model_name"])
-            out["models"].append(
-                {
-                    "model_name": r["model_name"],
-                    "closed_trades": closed,
-                    "total_pnl": float(r["total_pnl"] or 0),
-                    "win_rate": (wins / closed) if closed > 0 else None,
-                    "paused": pause is not None,
-                    "paused_reason": pause.get("paused_reason") if pause else None,
-                }
-            )
-
-        cur.execute(
-            """
-            SELECT id, model_name, market_ticker, opened_at_utc, closed_at_utc, qty_contracts,
-                   entry_price_dollars, exit_price_dollars, pnl_dollars, status
-            FROM sim_trades
-            ORDER BY id DESC
-            LIMIT 20
-            """
-        )
-        out["recent_trades"] = cur.fetchall()
-
-        cur.execute(
-            """
-            SELECT snapshot_minute_utc, model_name, prob_yes, signal_yes, edge_est, train_rows, test_rows, brier, logloss, rf_regime
-            FROM sim_model_predictions_1m
-            ORDER BY snapshot_minute_utc DESC
-            LIMIT 20
-            """
-        )
-        out["recent_preds"] = cur.fetchall()
-    conn.close()
-    return out
-
-
 def sim_health_summary():
     conn = get_db_conn()
     out = {"open_positions": 0, "models": []}
@@ -424,6 +529,68 @@ def _cached(cache_key, ttl_seconds, compute_fn):
     with _METRICS_CACHE_LOCK:
         _METRICS_CACHE[cache_key] = (data, now)
     return data
+
+
+# How often each background writer is expected to write. A figure whose writer
+# has stopped must say so itself rather than render as current: that failure has
+# already happened twice here, once for 13 days.
+WRITER_CADENCE_SECONDS: Dict[str, int] = {
+    "sim_portfolio_20s": 20,
+    "sim_equity_1m": 60,
+    "sim_trades": 900,
+    "live_portfolio_20s": 20,
+    "live_engine": 60,
+    "forward_quotes": 20,
+    "model_features_1m": 60,
+}
+STALE_CADENCE_MULTIPLE = 6
+
+
+def _writer_freshness(cur, specs: Dict[str, str]) -> Dict[str, Dict]:
+    """Age of each named writer's newest row, measured against the database
+    clock so a skewed server cannot invent freshness."""
+    out: Dict[str, Dict] = {}
+    for name, sql in specs.items():
+        expect = WRITER_CADENCE_SECONDS.get(name, 60)
+        try:
+            cur.execute(sql)
+            row = cur.fetchone() or {}
+            age = row.get("age_sec")
+            last = row.get("last_utc")
+            out[name] = {
+                "last_utc": str(last) if last is not None else None,
+                "age_sec": float(age) if age is not None else None,
+                "expect_sec": expect,
+            }
+        except Exception:
+            out[name] = {"last_utc": None, "age_sec": None, "expect_sec": expect}
+    return out
+
+
+def pipeline_writer_freshness() -> Dict[str, Dict]:
+    """Ages of the ingestion writers, so the Data Pipeline tab can state its own
+    staleness instead of being the one surface that cannot. Its whole job is
+    confirming the pipeline is alive."""
+    conn = get_db_conn()
+    try:
+        with conn.cursor() as cur:
+            return _writer_freshness(
+                cur,
+                {
+                    "forward_quotes": _freshness_sql("forward_quotes", "snapshot_time_utc"),
+                    "model_features_1m": _freshness_sql("model_features_1m", "snapshot_minute_utc"),
+                },
+            )
+    finally:
+        conn.close()
+
+
+def _freshness_sql(table: str, column: str, where: str = "") -> str:
+    clause = f" WHERE {where}" if where else ""
+    return (
+        f"SELECT MAX({column}) last_utc, "
+        f"TIMESTAMPDIFF(SECOND, MAX({column}), UTC_TIMESTAMP()) age_sec FROM {table}{clause}"
+    )
 
 
 def sim_metrics(window_hours: int = 6):
@@ -648,6 +815,17 @@ def _sim_metrics_uncached(window_hours: int = 6):
             lambda m, paused: get_model_recommendation_status(cur, m, paused),
         )
 
+        out["writers"] = _writer_freshness(
+            cur,
+            {
+                "sim_portfolio_20s": _freshness_sql("sim_portfolio_20s", "snapshot_time_utc"),
+                "sim_equity_1m": _freshness_sql("sim_equity_1m", "snapshot_minute_utc"),
+                "sim_trades": _freshness_sql("sim_trades", "closed_at_utc", "status='closed'"),
+            },
+        )
+        cur.execute("SELECT UTC_TIMESTAMP() now_utc")
+        out["generated_at_utc"] = str((cur.fetchone() or {}).get("now_utc") or "")
+
         cur.execute(
             """
             SELECT id, model_name, market_ticker, opened_at_utc, closed_at_utc, qty_contracts,
@@ -800,18 +978,6 @@ def _sim_metrics_uncached(window_hours: int = 6):
             out["in_sample"] = _segment_stats("closed_at_utc IS NOT NULL", "1=1", tuple())
             out["out_of_sample"] = _segment_stats("1=0", "1=0", tuple())
 
-    conn.close()
-    return out
-
-
-def live_settings_get(model_name: str):
-    """Thin wrapper so the dashboard shares one source of truth for live
-    settings with the engine that actually trades on them - see
-    live_trading_engine.load_settings()."""
-    conn = get_db_conn()
-    with conn.cursor() as cur:
-        out = live_load_settings(cur, model_name)
-    conn.commit()
     conn.close()
     return out
 
@@ -1038,6 +1204,21 @@ def _live_metrics_uncached(window_hours: int = 12):
                     "sim_win_rate": (sim_wins / sim_closed) if sim_closed > 0 else None,
                 }
             )
+
+        out["writers"] = _writer_freshness(
+            cur,
+            {
+                "live_portfolio_20s": _freshness_sql("live_portfolio_20s", "snapshot_time_utc"),
+                "live_engine": (
+                    "SELECT updated_at_utc last_utc, "
+                    "TIMESTAMPDIFF(SECOND, updated_at_utc, UTC_TIMESTAMP()) age_sec "
+                    "FROM collector_state WHERE state_key='live_trading_last_snapshot' LIMIT 1"
+                ),
+                "forward_quotes": _freshness_sql("forward_quotes", "snapshot_time_utc"),
+            },
+        )
+        cur.execute("SELECT UTC_TIMESTAMP() now_utc")
+        out["generated_at_utc"] = str((cur.fetchone() or {}).get("now_utc") or "")
     conn.close()
     return out
 
@@ -1149,73 +1330,288 @@ def model_research_summary():
     return out
 
 
-def render_page(title: str, body_html: str) -> str:
+def render_page(title: str, body_html: str, service: str = "pipeline") -> str:
     css = """
-    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;600&family=Archivo+Narrow:wght@400;600&display=swap');
+    /* Kursbuch: a station timetable, not a terminal. Ink on stock, hairline
+       rules, tabular figures. One reserved signal colour, used nowhere but
+       "this needs you". No cards, no shadows, no glass, no monospace. */
     :root{
-      --bg:#071018;
-      --bg-soft:#0d1722;
-      --card:#0f1e2d;
-      --text:#e5edf7;
-      --muted:#95a7bd;
-      --line:#1f3448;
-      --brand:#22d3ee;
-      --brand-soft:#0b3344;
+      --stock:#E9EBE5;
+      --stock-live:#EFE4E7;
+      --stock-sunk:#DFE2DA;
+      --stock-raised:#F1F3ED;
+      --ink:#191B16;
+      --ink-2:#444841;
+      --ink-3:#5F645D;
+      --rule:#C9CDC2;
+      --rule-2:#B1B6AA;
+      --signal:#C8102E;
+      --signal-wash:#F8E4E6;
+      --pos:#D9E7D6;
+      --neg:#F0DEDC;
+      --radius:3px;
+      --gut:clamp(14px,2.2vw,28px);
     }
     *{box-sizing:border-box}
-    body{margin:0;font-family:"Space Grotesk",ui-sans-serif,system-ui;background:
-      radial-gradient(1200px 500px at 10% -10%, #12304a 0%, transparent 55%),
-      radial-gradient(900px 500px at 100% -20%, #1d3655 0%, transparent 50%),
-      linear-gradient(180deg,var(--bg) 0%,var(--bg-soft) 100%);color:var(--text)}
-    .wrap{max-width:1200px;margin:0 auto;padding:28px 20px 40px}
-    .top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:20px}
-    .title{font-size:28px;font-weight:750;letter-spacing:-0.02em;margin:0}
-    .sub{color:var(--muted);font-size:14px}
-    .grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:16px 0 22px}
-    .grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:12px 0 0}
-    .row4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
-    .row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-    .card{background:linear-gradient(180deg,#112334 0%,#0e1b29 100%);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:0 14px 32px rgba(0,0,0,.25)}
-    .k{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
-    .v{font-size:26px;font-weight:700;margin-top:6px}
-    .panel{background:linear-gradient(180deg,#101f2f 0%,#0d1b2a 100%);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:0 14px 32px rgba(0,0,0,.24)}
-    .table-links{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;list-style:none}
-    .pill{display:inline-block;padding:8px 12px;border-radius:999px;text-decoration:none;font-size:13px;color:#c8f1ff;background:var(--brand-soft);border:1px solid #1c5b72}
-    .pill:hover{filter:brightness(.98)}
-    .pill.warn{color:#ffd9d9;background:#3a1414;border-color:#5a1f1f}
-    .live-panel{border:2px solid #7a1f1f;background:linear-gradient(180deg,#2a1010 0%,#160a0a 100%);box-shadow:0 0 0 1px #5a1f1f,0 14px 32px rgba(122,31,31,.35)}
-    .live-banner{color:#ffb4b4;font-weight:700;letter-spacing:.02em;margin-bottom:10px;display:flex;align-items:center;gap:8px}
-    .status-badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px}
-    .status-badge.good{color:#eafff0;background:rgba(12,163,12,.22);border:1px solid #0ca30c}
-    .status-badge.critical{color:#ffecec;background:rgba(208,59,59,.22);border:1px solid #d03b3b}
-    .status-badge.muted{color:var(--muted);background:rgba(255,255,255,.04);border:1px solid var(--line)}
-    .pm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
-    .pm-card{background:linear-gradient(180deg,#112334 0%,#0e1b29 100%);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
-    .pm-card .pm-name{font-size:13px;font-weight:700;color:var(--text)}
-    .pm-card .pm-equity{font-size:24px;font-weight:700;margin-top:6px}
-    .pm-card .pm-pnl{font-size:13px;margin-top:2px}
-    .pm-card .pm-reason{font-size:11px;color:var(--muted);margin-top:6px}
-    .pm-card .pm-rec{font-size:12px;font-weight:600;margin-top:8px;padding:6px 8px;border-radius:8px}
-    .pm-card .pm-pnl.sim-pos{color:#4ade80}
-    .pm-card .pm-pnl.sim-neg{color:#f87171}
-    .pm-card .pm-pnl.sim-flat{color:var(--muted)}
-    .pm-card .pm-rec.promising{color:#eafff0;background:rgba(12,163,12,.16);border:1px solid #0ca30c}
-    .pm-card .pm-rec.muted-neg{color:var(--muted);background:rgba(208,59,59,.08);border:1px solid #3a2020}
-    .pm-card .pm-rec.muted-neutral{color:var(--muted);background:rgba(255,255,255,.03);border:1px solid var(--line)}
-    .bar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
-    table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
-    th,td{padding:10px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
-    th{position:sticky;top:0;background:#102338;font-weight:650}
-    tr:nth-child(even) td{background:#0d1c2c}
-    .muted{color:var(--muted)}
-    .nav a{text-decoration:none;color:#69e0ff;font-weight:600}
-    .badge{display:inline-block;background:#123149;color:#b6ecff;border:1px solid #1e5875;border-radius:999px;padding:3px 8px;font-size:12px}
-    input,select,button{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
-    input,select{background:#0b1723;border:1px solid #1f3448;border-radius:10px;color:#e5edf7;padding:8px 10px;min-width:88px}
-    .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    .metric-pos{color:#34d399}
-    .metric-neg{color:#fb7185}
-    @media (max-width: 1000px){.grid{grid-template-columns:repeat(2,minmax(0,1fr));}.grid4{grid-template-columns:repeat(2,minmax(0,1fr));}.row4{grid-template-columns:repeat(2,minmax(0,1fr));}.row3{grid-template-columns:repeat(1,minmax(0,1fr));}}
+    html{-webkit-text-size-adjust:100%}
+    body{
+      margin:0;
+      background:var(--stock);
+      color:var(--ink);
+      font-family:"Archivo",ui-sans-serif,system-ui,sans-serif;
+      font-size:14px;
+      line-height:1.45;
+      font-variant-numeric:tabular-nums lining-nums;
+      -webkit-font-smoothing:antialiased;
+    }
+    body.live-service{background:var(--stock-live)}
+    /* --neg is a rose, and so is the live stock; on that surface the loss
+       field needs its own value or money reads in one direction only. */
+    body.live-service{--neg:#E7CFC9;--pos:#D2E4CE}
+    ::selection{background:var(--ink);color:#F1F3ED}
+    a{color:var(--ink);text-decoration-thickness:1px;text-underline-offset:2px;
+      text-decoration-color:var(--rule-2)}
+    a:hover{text-decoration-color:var(--ink)}
+    input,textarea{caret-color:var(--signal)}
+    :focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+    * ::-webkit-scrollbar{width:11px;height:11px}
+    * ::-webkit-scrollbar-track{background:var(--stock-sunk)}
+    * ::-webkit-scrollbar-thumb{background:var(--rule-2);border:3px solid var(--stock-sunk)}
+    * ::-webkit-scrollbar-thumb:hover{background:var(--ink-3)}
+    *{scrollbar-color:var(--rule-2) var(--stock-sunk);scrollbar-width:thin}
+
+    /* ---- service head ------------------------------------------------- */
+    .masthead{border-bottom:2px solid var(--ink);background:var(--stock)}
+    body.live-service .masthead{background:var(--stock-live);border-bottom-color:var(--signal)}
+    .masthead-in{max-width:2560px;margin:0 auto;padding:14px var(--gut) 10px;
+      display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap}
+    .wordmark{font-family:"Archivo Narrow",Archivo,sans-serif;font-weight:600;font-size:13px;
+      letter-spacing:.16em;text-transform:uppercase;margin:0}
+    .wordmark .sep{color:var(--rule-2);margin:0 .5em}
+    .wordmark .svc{color:var(--ink-3)}
+    body.live-service .wordmark .svc{color:var(--signal)}
+    .asof{font-family:"Archivo Narrow",Archivo,sans-serif;font-size:12px;letter-spacing:.08em;
+      text-transform:uppercase;color:var(--ink-3);white-space:nowrap}
+    .asof b{color:var(--ink);font-weight:600}
+
+    /* ---- service links (tabs) ----------------------------------------- */
+    .services{border-bottom:1px solid var(--rule)}
+    .services-in{max-width:2560px;margin:0 auto;padding:0 var(--gut);display:flex;gap:0;flex-wrap:wrap}
+    .svc-link{display:inline-block;padding:9px 16px 8px;text-decoration:none;color:var(--ink-2);
+      font-family:"Archivo Narrow",Archivo,sans-serif;font-size:12.5px;letter-spacing:.1em;
+      text-transform:uppercase;border-bottom:2px solid transparent;margin-bottom:-1px}
+    .svc-link:hover{color:var(--ink);background:var(--stock-raised)}
+    .svc-link[aria-current="page"]{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+    body.live-service .svc-link[aria-current="page"]{border-bottom-color:var(--signal)}
+
+    .wrap{max-width:2560px;margin:0 auto;padding:0 var(--gut) 64px}
+
+    /* ---- status line: the one dominant answer -------------------------- */
+    .statusline{display:flex;align-items:flex-start;gap:12px;padding:16px 0 15px;
+      border-bottom:1px solid var(--rule)}
+    .statusline .mark{flex:none;width:17px;height:17px;margin-top:1px;color:var(--ink-3)}
+    .statusline .mark-needs,.statusline.needs .mark-calm{display:none}
+    .statusline.needs .mark-needs{display:block;color:var(--signal)}
+    .statusline .said{font-family:"Archivo Narrow",Archivo,sans-serif;font-size:clamp(16px,2.1vw,20px);
+      letter-spacing:.01em;font-weight:600;line-height:1.35;max-width:92ch}
+    .statusline .said em{font-style:normal;color:var(--ink-3)}
+    .statusline.needs .said em{color:var(--signal)}
+    .statusline .sep{color:var(--rule-2);margin:0 .45em}
+
+    /* ---- measured row: figures on one rule, never a card --------------- */
+    /* Tracks are capped so four figures spread across the sheet instead of
+       each sitting at the left edge of a 640px cell on an ultrawide. */
+    .measure{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,300px));
+      justify-content:space-between;border-bottom:1px solid var(--rule)}
+    .measure > div{padding:14px 18px 13px;border-left:1px solid var(--rule)}
+    .measure > div:first-child{border-left:0;padding-left:0}
+    .lab{font-family:"Archivo Narrow",Archivo,sans-serif;font-size:11px;letter-spacing:.11em;
+      text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:5px}
+    .fig{font-size:clamp(21px,2.6vw,27px);font-weight:600;letter-spacing:-.015em;line-height:1.1;
+      display:inline-block}
+    .fig.sm{font-size:17px}
+    .fig.tint{padding:1px 7px;margin-left:-7px;border-radius:var(--radius)}
+    .fig.pos{background:var(--pos)}
+    .fig.neg{background:var(--neg)}
+    .sub-fig{font-size:12px;color:var(--ink-3);margin-top:4px}
+
+    /* ---- section: ruled head + as-of rule (signature interaction) ------ */
+    .sect{margin-top:32px}
+    .sect-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+      flex-wrap:wrap;padding-bottom:7px;border-bottom:2px solid var(--ink)}
+    .sect.stale .sect-head{border-bottom:2px dashed var(--signal)}
+    .sect-head h2{margin:0;font-family:"Archivo Narrow",Archivo,sans-serif;font-size:13px;
+      font-weight:600;letter-spacing:.13em;text-transform:uppercase}
+    .sect-note{font-family:"Archivo Narrow",Archivo,sans-serif;font-size:12px;letter-spacing:.02em;
+      color:var(--ink-3)}
+    .sect.stale .sect-note{color:var(--signal);font-weight:600}
+    /* The strike is half the stale signal; at 27px a 1px hairline in rule
+       grey disappears, so it is drawn in ink and at 2px. */
+    .sect.stale .measure .fig,.sect.stale tbody td{color:var(--ink-3);text-decoration:line-through;
+      text-decoration-thickness:2px;text-decoration-color:var(--ink-2)}
+    .stale-mark{color:var(--signal);font-weight:600;text-transform:uppercase;letter-spacing:.09em;
+      text-decoration:none!important}
+
+    /* ---- timetable ------------------------------------------------------ */
+    .sheet{overflow-x:auto;overflow-y:visible}
+    /* Fixed columns so a long strategy name cannot swallow the slack and
+       strand the figures at the far right of a 2500px sheet. */
+    .t-books,.t-strat,.t-period,.t-pos8,.t-pos7{table-layout:fixed;min-width:860px}
+    .t-books col.c1{width:30%} .t-books col.c2,.t-books col.c3{width:13%}
+    .t-books col.c4{width:10%} .t-books col.c5{width:8%}
+    .t-books col.c6{width:12%} .t-books col.c7{width:14%}
+    .t-strat col.c1{width:22%} .t-strat col.c2{width:9%}
+    .t-strat col.c3{width:14%} .t-strat col.c4{width:17%}
+    .t-strat col.c5{width:10%} .t-strat col.c6{width:8%}
+    .t-strat col.c7{width:8%} .t-strat col.c8{width:12%}
+    .t-period col.c1{width:18%} .t-period col.c2{width:13%}
+    .t-period col.c3{width:12%} .t-period col.c4{width:10%}
+    .t-period col.c5{width:9%} .t-period col.c6{width:12%}
+    .t-period col.c7,.t-period col.c8{width:13%}
+    .t-pos8 col.c1{width:20%} .t-pos8 col.c2{width:24%} .t-pos8 col.c3{width:7%}
+    .t-pos8 col.c4{width:9%} .t-pos8 col.c5{width:10%} .t-pos8 col.c6{width:12%}
+    .t-pos8 col.c7{width:12%} .t-pos8 col.c8{width:6%}
+    .t-pos7 col.c1{width:22%} .t-pos7 col.c2{width:26%} .t-pos7 col.c3{width:8%}
+    .t-pos7 col.c4{width:10%} .t-pos7 col.c5{width:11%} .t-pos7 col.c6{width:12%}
+    .t-pos7 col.c7{width:11%}
+    .t-books td,.t-strat td,.t-period td,.t-pos8 td,.t-pos7 td{overflow:hidden;text-overflow:ellipsis}
+    .t-books td .sub-fig,.t-strat td .sub-fig{white-space:normal}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th,td{padding:9px 12px 8px;text-align:left;vertical-align:baseline;
+      border-bottom:1px solid var(--rule);white-space:nowrap}
+    th{font-family:"Archivo Narrow",Archivo,sans-serif;font-size:12px;letter-spacing:.02em;
+      color:var(--ink-3);font-weight:600;
+      border-bottom:1px solid var(--rule-2);position:sticky;top:0;background:var(--stock);z-index:1}
+    body.live-service th{background:var(--stock-live)}
+    td:first-child,th:first-child{padding-left:0}
+    td:last-child,th:last-child{padding-right:0}
+    tbody tr:hover td{background:var(--stock-raised)}
+    td.num,th.num{text-align:right;font-variant-numeric:tabular-nums lining-nums}
+    td.name{font-weight:600}
+    .cellwrap{max-width:46ch;white-space:normal;word-break:break-word;line-height:1.5;color:var(--ink-2)}
+    .tick{font-family:"Archivo Narrow",Archivo,sans-serif;letter-spacing:.02em;color:var(--ink-2)}
+    .empty-row td{color:var(--ink-3);padding:16px 0;border-bottom:1px solid var(--rule);
+      display:block;max-width:66ch;white-space:normal}
+
+    /* ---- marks: state never by colour alone ---------------------------- */
+    .mk{font-family:"Archivo Narrow",Archivo,sans-serif;font-size:11px;letter-spacing:.09em;
+      text-transform:uppercase;font-weight:600;padding:2px 7px 1px;border:1px solid var(--rule-2);
+      border-radius:var(--radius);color:var(--ink-2);white-space:nowrap;display:inline-block}
+    .mk.on{border-color:var(--ink);color:#F1F3ED;background:var(--ink)}
+    .mk.armed{border-color:var(--signal);color:var(--signal);background:var(--signal-wash)}
+    .mk.halt{border-color:var(--signal);color:#FDF2F3;background:var(--signal)}
+    .mk.quiet{color:var(--ink-3)}
+    .fnote{font-size:11px;color:var(--ink-3);vertical-align:super;line-height:0;margin-left:3px}
+    .legend{font-size:12.5px;color:var(--ink-3);padding:10px 0 0;line-height:1.7;max-width:66ch}
+    .legend b{color:var(--ink);font-weight:600}
+    .legend .fnote{vertical-align:baseline;margin:0 4px 0 0}
+
+    /* ---- controls ------------------------------------------------------- */
+    .btn{font-family:"Archivo Narrow",Archivo,sans-serif;font-size:11.5px;letter-spacing:.1em;
+      text-transform:uppercase;font-weight:600;padding:6px 13px 5px;border:1px solid var(--ink);
+      border-radius:var(--radius);background:transparent;color:var(--ink);cursor:pointer;
+      text-decoration:none;display:inline-block;transition:background .16s cubic-bezier(.16,1,.3,1),
+      color .16s cubic-bezier(.16,1,.3,1)}
+    .btn:hover{background:var(--ink);color:#F1F3ED}
+    .btn:active{transform:translateY(1px)}
+    .btn[disabled]{border-color:var(--rule-2);color:var(--ink-3);cursor:not-allowed;background:transparent}
+    .btn.danger{border-color:var(--signal);color:var(--signal)}
+    .btn.armed{background:var(--signal);color:#FDF2F3;border-color:var(--signal)}
+    .btn.danger:hover{background:var(--signal);color:#FDF2F3}
+    .btn.sm{font-size:11px;padding:4px 10px 3px}
+    input,select,button{font-family:inherit;font-size:13px;color:var(--ink)}
+    input[type=number],input[type=password],input[type=text],select{
+      background:var(--stock-raised);border:1px solid var(--rule-2);border-radius:var(--radius);
+      padding:6px 9px;width:100%;font-variant-numeric:tabular-nums}
+    input:hover,select:hover{border-color:var(--ink-3)}
+    input:focus,select:focus{border-color:var(--ink);outline:none;background:var(--stock)}
+    .field{display:flex;flex-direction:column;gap:3px;min-width:104px}
+    .field .lab{margin:0}
+    details > summary{cursor:pointer;font-family:"Archivo Narrow",Archivo,sans-serif;font-size:12px;
+      letter-spacing:.01em;color:var(--ink-3);list-style:none;padding:3px 0}
+    details > summary::-webkit-details-marker{display:none}
+    details > summary::before{content:"+ ";color:var(--rule-2)}
+    details[open] > summary::before{content:"\\2212 "}
+    details > summary:hover{color:var(--ink)}
+
+    /* ---- plate: the ruled chart field ---------------------------------- */
+    .plate{border:1px solid var(--rule);background:var(--stock-raised);padding:10px 12px 6px;
+      margin-top:12px}
+    body.live-service .plate{background:var(--stock)}
+    canvas{display:block;width:100%;height:auto}
+    @media (min-width:1500px){
+      .plates{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+      .plates > .plate:first-child{grid-column:1 / -1}
+    }
+    @media (min-width:2200px){
+      .plates{grid-template-columns:repeat(3,1fr)}
+      .plates > .plate:first-child{grid-column:auto}
+    }
+    /* Model names are snake_case identifiers; upper-casing a 29-character
+       identifier costs legibility and buys nothing. */
+    .keys{display:flex;flex-wrap:wrap;gap:14px;padding:9px 0 2px;font-size:12px;color:var(--ink-2);
+      font-family:"Archivo Narrow",Archivo,sans-serif;letter-spacing:.01em}
+    .keys span{display:inline-flex;align-items:center;gap:6px}
+    .keys i{width:14px;height:0;border-top:2px solid currentColor;display:inline-block}
+
+    /* ---- the one authored moment: a figure washes when it changes ------ */
+    @keyframes wash{from{background-color:var(--rule-2)}to{background-color:transparent}}
+    .washed{animation:wash .18s cubic-bezier(.16,1,.3,1) 1}
+    @media (prefers-reduced-motion:reduce){
+      *,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important}
+    }
+
+    /* ---- notices -------------------------------------------------------- */
+    .notice{border:1px solid var(--signal);background:var(--signal-wash);
+      padding:12px 14px;margin:16px 0;font-size:13px;color:var(--ink);max-width:66ch}
+    .notice h3{margin:0 0 4px;font-family:"Archivo Narrow",Archivo,sans-serif;font-size:11.5px;
+      letter-spacing:.1em;text-transform:uppercase;color:var(--signal)}
+    .prose{max-width:74ch;color:var(--ink-2);font-size:14.5px;line-height:1.6}
+    /* A dossier is Read mode inside an Operate app: the page takes its own
+       measure so the rules do not span 2500px over a 370px text column. */
+    .reading{max-width:1060px}
+    /* In the narrower reading column the capped tracks wrap and orphan a cell
+       behind a border-left, so the record row shares the width evenly there. */
+    .reading .measure{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));justify-content:stretch}
+    h1.page{font-size:clamp(23px,3vw,30px);font-weight:600;letter-spacing:-.02em;margin:22px 0 3px}
+    .deck{color:var(--ink-3);font-size:14px;max-width:68ch;margin-bottom:2px}
+    .pager{display:flex;gap:10px;align-items:center;padding:12px 0}
+
+    /* ---- responsive: one dominant answer owns the phone ----------------- */
+    @media (max-width:860px){
+      .measure{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .measure > div{border-left:0;padding:12px 0 11px}
+      .measure > div:nth-child(even){padding-left:16px;border-left:1px solid var(--rule)}
+      .sheet{margin:0 calc(var(--gut) * -1);padding:0 var(--gut)}
+      th{position:static}
+    }
+    @media (max-width:640px){
+      .stack thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+      .stack tbody tr{display:block;border-bottom:1px solid var(--rule-2);padding:9px 0 7px}
+      .stack tbody tr{display:flex;flex-direction:column}
+      .stack tbody td{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;
+        border:0;padding:2px 0;white-space:normal;text-align:left}
+      .stack tbody td .sub-fig{flex:1 0 100%;text-align:right;margin-top:0}
+      .stack tbody td.name{font-size:14px;order:-2}
+      .stack tbody td.act{order:-1;padding:4px 0 6px}
+      /* Leader dots: the device that lets a dense timetable be read standing
+         up, and the reason a label and its figure stay tied across a gap. */
+      .stack tbody td::before{order:-2}
+      .stack tbody td::after{content:"";order:-1;flex:1 1 auto;min-width:14px;align-self:flex-end;
+        margin:0 2px 5px;border-bottom:1px dotted var(--rule-2)}
+      .stack tbody td.name::after,.stack tbody td.act::after{content:none}
+      .stack tbody td.phone-hide{display:none}
+      .stack tbody td::before{content:attr(data-lab);font-family:"Archivo Narrow",Archivo,sans-serif;
+        font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);flex:none}
+      .stack tbody td.num{text-align:right}
+      .stack tbody tr:hover td{background:transparent}
+      .statusline .said{font-size:15px}
+    }
+    @media print{
+      body{background:#fff}
+      .services,.btn{display:none}
+    }
     """
     js = """
     function toUtcMs(v){
@@ -1239,119 +1635,137 @@ def render_page(title: str, body_html: str) -> str:
       }).format(d).replace(',', '');
       return `${txt} ET`;
     }
+    // Ink on stock. Traces separate by value AND dash pattern, so a reading is
+    // never carried by colour alone.
+    var TRACE=['#191B16','#7A5C2E','#31566F','#55693F','#6B4257'];
+    var DASH=[[],[6,3],[2,3],[9,3,2,3],[4,2]];
+    function fitCanvas(c, cssHeight){
+      var dpr = window.devicePixelRatio || 1;
+      var cssW = Math.max(240, c.clientWidth || c.parentElement.clientWidth || 640);
+      c.width = Math.round(cssW * dpr);
+      c.height = Math.round(cssHeight * dpr);
+      c.style.height = cssHeight + 'px';
+      var ctx = c.getContext('2d');
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+      return {ctx:ctx, w:cssW, h:cssHeight};
+    }
+    function gridText(ctx){
+      ctx.font='11px "Archivo Narrow", Archivo, sans-serif';
+      ctx.fillStyle='#5F645D';
+    }
     function drawLineChart(canvasId, seriesMap, key, colors, opts){
       const c = document.getElementById(canvasId);
       if(!c) return;
-      const ctx = c.getContext('2d');
-      const w = c.width, h = c.height;
+      const models = Object.keys(seriesMap||{}).filter(m => (seriesMap[m]||[]).length>0);
+      const fit = fitCanvas(c, Number(c.dataset.h||200));
+      const ctx=fit.ctx, w=fit.w, h=fit.h;
       ctx.clearRect(0,0,w,h);
       opts = opts || {};
-      const models = Object.keys(seriesMap||{});
-      if(models.length===0) return;
+      const padL=58, padR=14, padT=12, padB=24;
+      if(models.length===0){
+        gridText(ctx);
+        ctx.fillText('no readings in this window', padL, h/2);
+        return;
+      }
       let all=[];
       for(const m of models){ for(const p of (seriesMap[m]||[])){ all.push(Number(p[key]||0)); } }
-      if(all.length===0) return;
-      let min=Math.min(...all), max=Math.max(...all);
+      let min=Math.min.apply(null,all), max=Math.max.apply(null,all);
       if(min===max){ min-=1; max+=1; }
-      const pad=40;
-      const toX=(i,n)=> pad + (i*(w-2*pad))/Math.max(1,n-1);
-      const toY=(v)=> h-pad - ((v-min)*(h-2*pad))/Math.max(1e-9,(max-min));
-      // Axes + y-grid/ticks
-      ctx.strokeStyle='#263040'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(pad,pad); ctx.lineTo(pad,h-pad); ctx.lineTo(w-pad,h-pad); ctx.stroke();
-      ctx.font='11px "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
-      ctx.fillStyle='#9ca3af';
+      const span=max-min; min-=span*0.06; max+=span*0.06;
+      const toX=(i,n)=> padL + (i*(w-padL-padR))/Math.max(1,n-1);
+      const toY=(v)=> h-padB - ((v-min)*(h-padT-padB))/Math.max(1e-9,(max-min));
+      gridText(ctx);
+      ctx.textBaseline='middle';
       for(let k=0;k<=4;k++){
-        const v=min + (max-min)*(k/4);
-        const y=toY(v);
-        ctx.strokeStyle='rgba(148,163,184,0.18)';
-        ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(w-pad,y); ctx.stroke();
-        const label = opts.unit==='$' ? `$${v.toFixed(2)}` : v.toFixed(4);
-        ctx.fillText(label, 6, y+3);
+        const v=min+(max-min)*(k/4), y=Math.round(toY(v))+0.5;
+        ctx.strokeStyle = (k===0||k===4) ? '#B1B6AA' : '#D7DBD0';
+        ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(w-padR,y); ctx.stroke();
+        const label = opts.unit==='$' ? ('$'+v.toFixed(2)) : v.toFixed(4);
+        ctx.textAlign='right';
+        ctx.fillText(label, padL-8, y);
+      }
+      // zero line reads heavier than the graticule
+      if(min<0 && max>0){
+        const y=Math.round(toY(0))+0.5;
+        ctx.strokeStyle='#191B16'; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(w-padR,y); ctx.stroke();
       }
       let idx=0;
       for(const m of models){
-        const s=seriesMap[m]||[];
-        if(s.length===0) continue;
+        const ser=seriesMap[m]||[];
         ctx.beginPath();
-        for(let i=0;i<s.length;i++){
-          const x=toX(i,s.length), y=toY(Number(s[i][key]||0));
+        for(let i=0;i<ser.length;i++){
+          const x=toX(i,ser.length), y=toY(Number(ser[i][key]||0));
           if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
         }
-        ctx.strokeStyle=(colors&&colors[m])||['#0f766e','#ea580c','#1d4ed8'][idx%3];
-        ctx.lineWidth=2;
+        ctx.setLineDash(DASH[idx%DASH.length]);
+        ctx.strokeStyle=(colors&&colors[m])||TRACE[idx%TRACE.length];
+        ctx.lineWidth=1.75; ctx.lineJoin='round';
         ctx.stroke();
+        ctx.setLineDash([]);
         idx++;
       }
       if(opts.cutoff && (seriesMap[models[0]]||[]).length>1){
-        const base = seriesMap[models[0]];
-        const cutoffIdx = base.findIndex(p => String(p.t) >= String(opts.cutoff));
-        if(cutoffIdx >= 0){
-          const x=toX(cutoffIdx, base.length);
-          ctx.strokeStyle='rgba(245,158,11,0.95)';
-          ctx.setLineDash([6,4]);
-          ctx.beginPath(); ctx.moveTo(x,pad); ctx.lineTo(x,h-pad); ctx.stroke();
+        const base=seriesMap[models[0]];
+        const ci=base.findIndex(p => String(p.t) >= String(opts.cutoff));
+        if(ci>=0){
+          const x=Math.round(toX(ci, base.length))+0.5;
+          ctx.strokeStyle='#C8102E'; ctx.lineWidth=1; ctx.setLineDash([5,3]);
+          ctx.beginPath(); ctx.moveTo(x,padT); ctx.lineTo(x,h-padB); ctx.stroke();
           ctx.setLineDash([]);
-          ctx.fillStyle='rgba(245,158,11,0.95)';
-          ctx.fillText('LIVE START', Math.min(w-96, x+4), pad+12);
+          ctx.fillStyle='#C8102E'; ctx.textAlign='left'; ctx.textBaseline='top';
+          ctx.fillText('LIVE', Math.min(w-40, x+5), padT);
         }
       }
+      ctx.textAlign='left'; ctx.textBaseline='alphabetic';
     }
     function drawStackChart(canvasId, series, keyA, keyB, opts){
-      const c = document.getElementById(canvasId);
+      const c=document.getElementById(canvasId);
       if(!c) return;
-      const ctx = c.getContext('2d');
-      const w=c.width,h=c.height,pad=40;
+      const fit=fitCanvas(c, Number(c.dataset.h||180));
+      const ctx=fit.ctx, w=fit.w, h=fit.h;
       ctx.clearRect(0,0,w,h);
-      opts = opts || {};
-      if(!series || series.length===0) return;
+      opts=opts||{};
+      const padL=58,padR=14,padT=12,padB=24;
+      gridText(ctx); ctx.textBaseline='middle';
+      if(!series || series.length===0){ ctx.fillText('no readings in this window', padL, h/2); return; }
       const va=series.map(p=>Number(p[keyA]||0));
       const vb=series.map(p=>Number(p[keyB]||0));
-      const all=[...va,...vb];
-      let min=Math.min(...all,0), max=Math.max(...all,1);
+      const all=va.concat(vb);
+      let min=Math.min(Math.min.apply(null,all),0), max=Math.max(Math.max.apply(null,all),1);
       if(min===max){ min-=1; max+=1; }
-      const toX=(i,n)=> pad + (i*(w-2*pad))/Math.max(1,n-1);
-      const toY=(v)=> h-pad - ((v-min)*(h-2*pad))/Math.max(1e-9,(max-min));
-      const fillLine=(vals,fillColor,lineColor)=>{
+      const toX=(i,n)=> padL + (i*(w-padL-padR))/Math.max(1,n-1);
+      const toY=(v)=> h-padB - ((v-min)*(h-padT-padB))/Math.max(1e-9,(max-min));
+      for(let k=0;k<=4;k++){
+        const v=min+(max-min)*(k/4), y=Math.round(toY(v))+0.5;
+        ctx.strokeStyle=(k===0||k===4)?'#B1B6AA':'#D7DBD0'; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(w-padR,y); ctx.stroke();
+        ctx.textAlign='right'; ctx.fillText('$'+v.toFixed(2), padL-8, y);
+      }
+      const band=(vals,fill,stroke,dash)=>{
         ctx.beginPath();
-        for(let i=0;i<vals.length;i++){
-          const x=toX(i,vals.length), y=toY(vals[i]);
-          if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-        }
+        for(let i=0;i<vals.length;i++){ const x=toX(i,vals.length), y=toY(vals[i]); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }
         ctx.lineTo(toX(vals.length-1,vals.length),toY(min));
         ctx.lineTo(toX(0,vals.length),toY(min));
-        ctx.closePath();
-        ctx.fillStyle=fillColor; ctx.fill();
+        ctx.closePath(); ctx.fillStyle=fill; ctx.fill();
         ctx.beginPath();
-        for(let i=0;i<vals.length;i++){
-          const x=toX(i,vals.length), y=toY(vals[i]);
-          if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-        }
-        ctx.strokeStyle=lineColor; ctx.lineWidth=2; ctx.stroke();
+        for(let i=0;i<vals.length;i++){ const x=toX(i,vals.length), y=toY(vals[i]); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+        ctx.setLineDash(dash); ctx.strokeStyle=stroke; ctx.lineWidth=1.75; ctx.stroke(); ctx.setLineDash([]);
       };
-      ctx.strokeStyle='#263040'; ctx.beginPath(); ctx.moveTo(pad,pad); ctx.lineTo(pad,h-pad); ctx.lineTo(w-pad,h-pad); ctx.stroke();
-      ctx.font='11px "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
-      ctx.fillStyle='#9ca3af';
-      for(let k=0;k<=4;k++){
-        const v=min + (max-min)*(k/4);
-        const y=toY(v);
-        ctx.strokeStyle='rgba(148,163,184,0.14)';
-        ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(w-pad,y); ctx.stroke();
-        ctx.fillText(`$${v.toFixed(2)}`, 6, y+3);
-      }
-      fillLine(va,'rgba(34,211,238,0.12)','rgba(34,211,238,0.95)');
-      fillLine(vb,'rgba(245,158,11,0.12)','rgba(245,158,11,0.95)');
+      band(va,'rgba(25,27,22,0.07)','#191B16',[]);
+      band(vb,'rgba(122,92,46,0.10)','#7A5C2E',[6,3]);
       if(opts.cutoff && series.length>1){
-        const cutoffIdx = series.findIndex(p => String(p.t) >= String(opts.cutoff));
-        if(cutoffIdx >= 0){
-          const x=toX(cutoffIdx, series.length);
-          ctx.strokeStyle='rgba(245,158,11,0.95)';
-          ctx.setLineDash([6,4]);
-          ctx.beginPath(); ctx.moveTo(x,pad); ctx.lineTo(x,h-pad); ctx.stroke();
-          ctx.setLineDash([]);
-          ctx.fillStyle='rgba(245,158,11,0.95)';
-          ctx.fillText('LIVE START', Math.min(w-96, x+4), pad+12);
+        const ci=series.findIndex(p=>String(p.t)>=String(opts.cutoff));
+        if(ci>=0){
+          const x=Math.round(toX(ci,series.length))+0.5;
+          ctx.strokeStyle='#C8102E'; ctx.lineWidth=1; ctx.setLineDash([5,3]);
+          ctx.beginPath(); ctx.moveTo(x,padT); ctx.lineTo(x,h-padB); ctx.stroke(); ctx.setLineDash([]);
+          ctx.fillStyle='#C8102E'; ctx.textAlign='left'; ctx.textBaseline='top';
+          ctx.fillText('LIVE', Math.min(w-40,x+5), padT);
         }
       }
+      ctx.textAlign='left'; ctx.textBaseline='alphabetic';
     }
     function computeDrawdownSeriesFromEquity(series){
       if(!series || series.length===0) return [];
@@ -1433,54 +1847,128 @@ def render_page(title: str, body_html: str) -> str:
     // point is $100, so reading their endpoint reported the change over the
     // visible window (often $0.00) as if it were the segment's total PnL.
     function renderSegmentSummary(d, models, currentBasisLabel){
-      const pick = (arr)=> (arr||[]).filter(r=>models.includes(r.model_name));
-      const inRows=pick(d.in_sample);
-      const oosRows=pick(d.out_of_sample);
-      const el=document.getElementById('sim_model_rows');
-      if(!el) return;
-      const blocks=[];
+      const body=document.getElementById('sim_segments_body');
+      if(!body) return;
+      const pick=(arr)=>(arr||[]).filter(r=>models.includes(r.model_name));
+      const inRows=pick(d.in_sample), oosRows=pick(d.out_of_sample);
+      const hasCutoff=!!d.live_cutoff_utc;
+      const out=[];
       for(const m of models){
-        const cards=[]; 
-        const oosRow=(oosRows||[]).find(x=>x.model_name===m);
-        const inRow=(inRows||[]).find(x=>x.model_name===m);
-        const hasCutoff=!!d.live_cutoff_utc;
+        const inRow=inRows.find(x=>x.model_name===m);
+        const oosRow=oosRows.find(x=>x.model_name===m);
+        if(!inRow && !oosRow) continue;
         const isWF=isWalkForwardModel(m);
-        const curSeg = isWF
-          ? segmentTotals([...(inRow?[inRow]:[]), ...(oosRow?[oosRow]:[])])
-          : (hasCutoff ? segmentTotals(oosRow ? [oosRow] : []) : segmentTotals(inRow ? [inRow] : []));
-        const curPnl=Number(curSeg.pnl||0);
-        const curEq=100+curPnl;
-        const curRet=((curEq/100)-1)*100;
-        const curWr=(curSeg.win_rate==null?'N/A':`${(100*Number(curSeg.win_rate)).toFixed(1)}%`);
-        const curBasis = isWF
-          ? 'full walk-forward history'
-          : (currentBasisLabel || (hasCutoff ? 'since out-of-sample start' : 'since in-sample start'));
-        cards.push(`<div class='card'><div class='k'>${m} | Current (${curBasis})</div><div class='v' style='font-size:20px'>PnL $${curPnl.toFixed(2)}</div><div class='muted'>equity $${curEq.toFixed(2)} | ret ${curRet.toFixed(2)}% | closed ${curSeg.closed} | win ${curWr}</div></div>`);
         const segs = isWF
-          ? [
-              ['Warmup', 'pre-walk-forward warmup', []],
-              ['Walk-Forward OOS', 'all walk-forward predictions/trades', [...(inRow?[inRow]:[]), ...(oosRow?[oosRow]:[])]],
-            ]
-          : [
-              ['In-Sample', 'before live cutoff', inRow ? [inRow] : []],
-              ['Out-of-Sample', 'from live cutoff onward', oosRow ? [oosRow] : []],
-            ];
-        for(const [label,scope,rows] of segs){
-          const one=rows||[];
-          const s=segmentTotals(one);
-          const segPnl = Number(s.pnl||0);
-          const wr=(s.win_rate==null?'N/A':`${(100*s.win_rate).toFixed(1)}%`);
-          const b=(s.avg_brier==null?'N/A':s.avg_brier.toFixed(4));
-          const ll=(s.avg_logloss==null?'N/A':s.avg_logloss.toFixed(4));
-          cards.push(`<div class='card'><div class='k'>${m} | ${label}</div><div class='v' style='font-size:20px'>$${segPnl.toFixed(2)}</div><div class='muted'>${scope}</div><div class='muted'>closed ${s.closed} | win ${wr} | preds ${s.preds} | brier ${b} | logloss ${ll}</div></div>`);
-        }
-        blocks.push(`<div style="margin-top:12px"><div class="bar" style="margin-bottom:8px"><div class="nav">${m}</div></div><div class="row4">${cards.join('')}</div></div>`);
+          ? [['Walk-forward', [inRow,oosRow].filter(Boolean)]]
+          : [['In-sample', inRow?[inRow]:[]], ['Out-of-sample', oosRow?[oosRow]:[]]];
+        segs.forEach(([label,rows],i)=>{
+          const t=segmentTotals(rows);
+          const pnl=money(t.pnl);
+          out.push(`<tr>
+            <td class="name" data-lab="Strategy">${i===0?esc(m):''}</td>
+            <td data-lab="Period">${esc(label)}</td>
+            <td class="num" data-lab="P&amp;L"><span class="fig sm tint ${pnl.cls}">${pnl.txt}</span></td>
+            <td class="num" data-lab="Closed">${Number(t.closed||0).toLocaleString()}</td>
+            <td class="num" data-lab="Win">${t.win_rate==null?'n/a':pct(t.win_rate,1)}</td>
+            <td class="num" data-lab="Predictions">${Number(t.preds||0).toLocaleString()}</td>
+            <td class="num" data-lab="Brier">${t.avg_brier==null?'n/a':t.avg_brier.toFixed(4)}</td>
+            <td class="num" data-lab="Log loss">${t.avg_logloss==null?'n/a':t.avg_logloss.toFixed(4)}</td>
+          </tr>`);
+        });
       }
-      el.innerHTML=blocks.join('');
+      body.innerHTML = out.length ? out.join('')
+        : '<tr class="empty-row"><td colspan="8">No closed paper trades on either side of the cutoff yet.</td></tr>';
+      const basis=document.getElementById('sim_basis');
+      if(basis) basis.textContent = hasCutoff ? 'split at the live cutoff' : 'no cutoff set';
     }
-    function renderRows(tbodyId, rows, cols){
+    function esc(v){
+      return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    var MINUS='\u2212';
+    function money(v, decimals){
+      const n=Number(v||0), d=(decimals==null?2:decimals);
+      const txt=(n>0?'+$':(n<0?MINUS+'$':'$'))+Math.abs(n).toFixed(d);
+      return {txt:txt, cls:(n>0?'pos':(n<0?'neg':''))};
+    }
+    function pct(v, d){ return v==null ? 'n/a' : (Number(v)*100).toFixed(d==null?0:d)+'%'; }
+    function labelOf(col){ return String(col).replace(/_/g,' '); }
+    function isNumericCol(col){
+      return /(pnl|qty|price|bid|entry|exit|n$|_n$|rate|count|trades|brier|logloss|preds|avg|slippage|limit|equity|value|unrealized)/i.test(col);
+    }
+    function renderRows(tbodyId, rows, cols, emptyMsg){
       const el=document.getElementById(tbodyId); if(!el) return;
-      el.innerHTML = rows.map(r => '<tr>' + cols.map(c => `<td>${(r[c]??'')}</td>`).join('') + '</tr>').join('');
+      if(!rows || rows.length===0){
+        el.innerHTML = `<tr class="empty-row"><td colspan="${cols.length}">${esc(emptyMsg||'Nothing recorded yet.')}</td></tr>`;
+        return;
+      }
+      el.innerHTML = rows.map(r => '<tr>' + cols.map(c => {
+        let v = r[c];
+        if(/(_utc|^opened|^closed|^created|^time$)/.test(c) && v) v = fmtNy(v);
+        if(typeof v === 'number' && !Number.isInteger(v)) v = v.toFixed(4).replace(/0+$/,'').replace(/\\.$/,'');
+        const cls = isNumericCol(c) ? ' class="num"' : '';
+        return `<td${cls} data-lab="${esc(labelOf(c))}">${esc(v)}</td>`;
+      }).join('') + '</tr>').join('');
+    }
+    // ---- the as-of rule -------------------------------------------------
+    // A panel states the age of the writer behind it. When that writer stops,
+    // the rule under its heading breaks to dashed and the figures strike out.
+    // Nothing here pops a toast; the page tells the truth typographically.
+    function ageWords(sec){
+      if(sec==null) return 'unknown';
+      const s=Math.max(0,Math.round(sec));
+      if(s<90) return s+'s';
+      const m=Math.round(s/60); if(m<90) return m+'m';
+      const h=Math.round(m/60); if(h<48) return h+'h';
+      return Math.round(h/24)+'d';
+    }
+    function fresh(writers, name){
+      const w=(writers||{})[name];
+      if(!w || w.age_sec==null) return {known:false, stale:false, age:null};
+      const expect=Number(w.expect_sec||60);
+      return {known:true, stale:Number(w.age_sec) > expect*6, age:Number(w.age_sec), last:w.last_utc};
+    }
+    function markSection(sectId, f, whatWrites){
+      const sect=document.getElementById(sectId); if(!sect) return;
+      const note=sect.querySelector('.sect-note');
+      if(!f.known){
+        sect.classList.remove('stale');
+        if(note) note.textContent='never written';
+        return;
+      }
+      sect.classList.toggle('stale', f.stale);
+      if(!note) return;
+      note.innerHTML = f.stale
+        ? `<span class="stale-mark">stale ${esc(ageWords(f.age))}</span> &#183; ${esc(whatWrites)} stopped writing`
+        : `as of ${esc(ageWords(f.age))} ago`;
+    }
+    // ---- the one authored moment ----------------------------------------
+    var LAST_FIG={};
+    function washIfChanged(key, value, el){
+      if(!el) return;
+      const prev=LAST_FIG[key];
+      LAST_FIG[key]=value;
+      if(prev===undefined || prev===value) return;
+      el.classList.remove('washed');
+      void el.offsetWidth;
+      el.classList.add('washed');
+    }
+    function setStatusLine(elId, parts, needsYou){
+      const el=document.getElementById(elId); if(!el) return;
+      el.classList.toggle('needs', !!needsYou);
+      const said=el.querySelector('.said');
+      if(said){
+        said.innerHTML = parts.map(pt =>
+          pt.alarm ? `<em>${esc(pt.text)}</em>` : esc(pt.text)
+        ).join('<span class="sep">&#183;</span>');
+      }
+    }
+    function headClock(generatedAt){
+      const el=document.getElementById('head_asof'); if(!el) return;
+      const now=new Date();
+      const t=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'2-digit',
+        minute:'2-digit',second:'2-digit',hour12:false}).format(now);
+      el.innerHTML = `read <b>${esc(t)}</b> ET`;
     }
     function livePass(){
       const sp = new URLSearchParams(window.location.search || '');
@@ -1488,66 +1976,135 @@ def render_page(title: str, body_html: str) -> str:
       if(q){ try{ localStorage.setItem('live_password', q); }catch(e){} return q; }
       try{ return localStorage.getItem('live_password') || ''; }catch(e){ return ''; }
     }
-    const SIM_PALETTE=['#22d3ee','#fb7185','#a3e635','#f59e0b','#c084fc','#60a5fa','#34d399','#f472b6','#f43f5e','#2dd4bf'];
-    function simColor(id, idx){
-      let h=0; for(let i=0;i<String(id).length;i++){ h=(h*31 + String(id).charCodeAt(i))>>>0; }
-      return SIM_PALETTE[(h + idx) % SIM_PALETTE.length];
-    }
     const SIM_MODELS=['naive_logistic_baseline','logistic','random_forest','random_forest_high_conviction','binary_theory_edge'];
     const LIVE_MODELS=['random_forest','random_forest_high_conviction','binary_theory_edge'];
+    function simColor(id, idx){ return TRACE[idx % TRACE.length]; }
+    function simDash(idx){
+      const d=DASH[idx % DASH.length];
+      return d.length===0 ? 'solid' : (d.length===2 && d[0]<=2 ? 'dotted' : 'dashed');
+    }
     async function resumeModel(modelName){
-      if(!confirm(`Resume ${modelName}? It will be allowed to open new positions again.`)) return;
       const r=await fetch('/sim_risk/resume',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model_name:modelName})});
       let j={};
       try{ j=await r.json(); }catch(e){}
-      if(!r.ok || !j.ok){ alert(`Resume failed: ${(j&&j.error)||r.status}`); }
+      if(!r.ok || !j.ok){ setNotice('sim-root', `Could not resume ${modelName}: ${(j&&j.error)||('HTTP '+r.status)}. The book stays halted.`, 'Resume failed'); }
+      else { setNotice('sim-root', `${modelName} may open paper positions again.`, 'Resumed'); }
       await refreshSimMetrics();
     }
-    function renderPortfolioManager(scorecards){
-      const grid=document.getElementById('pm_grid');
-      const stat=document.getElementById('pm_status');
-      if(!grid) return;
-      const cards=(scorecards||[]).filter(c=>SIM_MODELS.includes(c.model_name)).sort((a,b)=>a.model_name.localeCompare(b.model_name));
-      const pausedCount=cards.filter(c=>c.paused).length;
-      if(stat) stat.textContent = pausedCount>0 ? `${pausedCount} of ${cards.length} paused` : `${cards.length} active`;
-      grid.innerHTML=cards.map(c=>{
-        const pnl=Number(c.total_pnl||0);
-        const pnlSign=pnl>0?'+':'';
-        const badge=c.paused
-          ? `<span class="status-badge critical">&#9679; PAUSED</span>`
-          : `<span class="status-badge good">&#9679; ACTIVE</span>`;
-        const resumeBtn=c.paused
-          ? `<div style="margin-top:8px"><a class="pill warn" href="javascript:void(0)" onclick="resumeModel('${c.model_name}')">Resume trading</a></div>`
-          : '';
-        const reason=c.paused && c.paused_reason ? `<div class="pm-reason">${c.paused_reason}</div>` : '';
-        const equity=(c.equity!==undefined && c.equity!==null) ? `$${Number(c.equity).toFixed(2)}` : 'n/a';
-        const unreal=Number(c.unrealized_pnl||0);
-        // equity = $100 + realized + unrealized; show the open leg when there
-        // is one so the two numbers on the card visibly add up.
-        const unrealLine = Math.abs(unreal) >= 0.005
-          ? `<div class="pm-pnl">Open position: ${unreal>0?'+':''}$${unreal.toFixed(2)} unrealized</div>`
-          : '';
+    var VERDICT_MARK={promising:'\u2020', thin_edge:'\u2021', negative:'\u00a7', paused:'\u00b6', gathering_data:'\u2022'};
+    function renderStrategyRecord(d, name){
+      const el=document.getElementById('strat_record');
+      if(!el) return;
+      const c=(d.scorecards||[]).find(x=>x.model_name===name);
+      if(!c){
+        el.innerHTML='<div><span class="lab">Record</span><span class="fig sm">no closed trades yet</span></div>';
+        return;
+      }
+      const eq=money(c.equity==null?0:c.equity), pnl=money(c.total_pnl);
+      const state=c.paused?'Halted':'Trading';
+      el.innerHTML=
+        `<div><span class="lab">Equity</span><span class="fig">${eq.txt}</span>`+
+          `<div class="sub-fig">started at $100.00</div></div>`+
+        `<div><span class="lab">Total P&amp;L</span><span class="fig tint ${pnl.cls}">${pnl.txt}</span>`+
+          `<div class="sub-fig">${Number(c.closed_trades||0).toLocaleString()} closed trades</div></div>`+
+        `<div><span class="lab">Win rate</span><span class="fig">${c.win_rate==null?'n/a':pct(c.win_rate,1)}</span>`+
+          `<div class="sub-fig">of closed trades</div></div>`+
+        `<div><span class="lab">State</span><span class="fig sm">${esc(state)}</span>`+
+          `<div class="sub-fig">${c.paused?esc(c.paused_reason||'auto-halted'):'trading on its own book'}</div></div>`;
+      const v=document.getElementById('strat_verdict');
+      if(v){
         const rec=c.recommendation||{};
-        const recClass = rec.status==='promising' ? 'promising' : (rec.status==='negative' || rec.status==='thin_edge' ? 'muted-neg' : 'muted-neutral');
-        const recLine = (!c.paused && rec.label) ? `<div class="pm-rec ${recClass}">${rec.label}</div>` : '';
-        const deployBtn = (!c.paused && rec.status==='promising')
-          ? `<div style="margin-top:8px"><a class="pill" href="/?tab=live-trading">Review for live deployment &rarr;</a></div>`
+        v.innerHTML = rec.label
+          ? `<b>Fee-adjusted verdict</b> &#8212; ${esc(rec.label)}`
           : '';
-        return `<div class="pm-card">
-          <div style="display:flex;justify-content:space-between;align-items:center"><div class="pm-name">${c.model_name}</div>${badge}</div>
-          <div class="pm-equity">${equity}</div>
-          <div class="pm-pnl">Total PnL: ${pnlSign}$${pnl.toFixed(2)} &middot; ${c.closed_trades||0} trades${c.win_rate!=null ? ' &middot; '+(c.win_rate*100).toFixed(0)+'% win' : ''}</div>
-          ${unrealLine}
-          ${recLine}
-          ${reason}
-          ${resumeBtn}
-          ${deployBtn}
-        </div>`;
-      }).join('');
+      }
+      markSection('sect_strat_record', fresh(d.writers,'sim_trades'), 'the simulated engine');
     }
-    // A failed metrics fetch used to `return` silently, leaving a tab that
-    // looked identical to "no data yet" - a 500 from /live_metrics went
-    // unnoticed that way. Surface it at the top of the tab instead.
+    function renderPortfolioManager(scorecards){
+      const body=document.getElementById('pm_body');
+      const legend=document.getElementById('pm_legend');
+      if(!body) return;
+      const cards=(scorecards||[]).filter(c=>SIM_MODELS.includes(c.model_name))
+        .sort((a,b)=>Number(b.total_pnl||0)-Number(a.total_pnl||0));
+      if(cards.length===0){
+        body.innerHTML='<tr class="empty-row"><td colspan="7">No paper books have traded yet. They appear here once the simulated engine closes its first position.</td></tr>';
+        return;
+      }
+      const marks=[];
+      body.innerHTML = cards.map(c => {
+        const eq=money(c.equity==null?0:c.equity);
+        const pnl=money(c.total_pnl);
+        const rec=c.recommendation||{};
+        const mark=VERDICT_MARK[rec.status]||'';
+        if(mark) marks.push({mark:mark, model:c.model_name, label:rec.label||rec.status});
+        const unreal=Number(c.unrealized_pnl||0);
+        const state=c.paused
+          ? '<span class="mk halt">Halted</span>'
+          : '<span class="mk on">Trading</span>';
+        const act=c.paused
+          ? `<button class="btn sm" onclick="resumeModel('${esc(c.model_name)}')">Resume</button>`
+          : (rec.status==='promising' ? '<a class="btn sm" href="/?tab=live-trading">Review</a>' : '');
+        const why=c.paused && c.paused_reason ? `<div class="sub-fig">${esc(c.paused_reason)}</div>` : '';
+        const open=Math.abs(unreal)>=0.005 ? `<div class="sub-fig">open position ${money(unreal).txt} unrealised</div>` : '';
+        return `<tr>
+          <td class="name" data-lab="Strategy"><a href="/?tab=strategy&amp;name=${encodeURIComponent(c.model_name)}">${esc(c.model_name)}</a>${mark?`<span class="fnote">${mark}</span>`:''}${why}${open}</td>
+          <td class="num" data-lab="Equity"><span class="fig sm">${eq.txt}</span></td>
+          <td class="num" data-lab="Total P&amp;L"><span class="fig sm tint ${pnl.cls}">${pnl.txt}</span></td>
+          <td class="num" data-lab="Trades">${Number(c.closed_trades||0).toLocaleString()}</td>
+          <td class="num" data-lab="Win">${c.win_rate==null?'n/a':pct(c.win_rate)}</td>
+          <td data-lab="State">${state}</td>
+          <td class="act" data-lab="">${act}</td>
+        </tr>`;
+      }).join('');
+      if(legend){
+        // Keyed by strategy, not by status: two books can both be promising
+        // with different fee-adjusted figures, and one shared line would show
+        // whichever rendered last as if it spoke for both.
+        legend.innerHTML = marks.map(mk =>
+          `<div><span class="fnote">${mk.mark}</span><b>${esc(mk.model)}</b> &#8212; ${esc(mk.label)}</div>`
+        ).join('');
+      }
+    }
+    // A dialog drawn by the browser states no recovery and belongs to no
+    // design system. Notices render in the page's own voice; destructive
+    // actions arm in place and need a second, deliberate click.
+    function setNotice(rootId, msg, kind){
+      const root=document.getElementById(rootId);
+      if(!root) return;
+      const id=rootId+'_notice';
+      let el=document.getElementById(id);
+      if(!msg){ if(el) el.remove(); return; }
+      if(!el){
+        el=document.createElement('div');
+        el.id=id; el.className='notice'; el.setAttribute('role','status');
+        el.innerHTML='<h3></h3><p style="margin:0"></p>';
+        root.insertBefore(el, root.firstChild);
+      }
+      el.querySelector('h3').textContent = kind || 'Notice';
+      el.querySelector('p').textContent = msg;
+      clearTimeout(el._t);
+      el._t=setTimeout(()=>{ el.remove(); }, 12000);
+    }
+    var ARMED=null;
+    function arm(btn, confirmLabel, run){
+      if(ARMED && ARMED.btn===btn){
+        clearTimeout(ARMED.t); ARMED=null;
+        btn.textContent=btn.dataset.idle; btn.classList.remove('armed');
+        run();
+        return;
+      }
+      if(ARMED){
+        ARMED.btn.textContent=ARMED.btn.dataset.idle;
+        ARMED.btn.classList.remove('armed');
+        clearTimeout(ARMED.t);
+      }
+      btn.dataset.idle = btn.dataset.idle || btn.textContent;
+      btn.textContent = confirmLabel;
+      btn.classList.add('armed');
+      ARMED={btn:btn, t:setTimeout(()=>{
+        btn.textContent=btn.dataset.idle; btn.classList.remove('armed'); ARMED=null;
+      }, 6000)};
+    }
     function setFetchError(rootId, msg){
       const root=document.getElementById(rootId);
       if(!root) return;
@@ -1556,17 +2113,19 @@ def render_page(title: str, body_html: str) -> str:
       if(!msg){ if(el) el.remove(); return; }
       if(!el){
         el=document.createElement('div');
-        el.id=id;
-        el.style.cssText='border:1px solid #7f1d1d;background:#2a1215;color:#fca5a5;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px;line-height:1.5';
+        el.id=id; el.className='notice'; el.setAttribute('role','status');
+        el.innerHTML='<h3>Reading failed</h3><p style="margin:0"></p>';
         root.insertBefore(el, root.firstChild);
       }
-      el.textContent=msg;
+      el.querySelector('p').textContent=msg;
     }
     async function refreshSimMetrics(){
       const simRoot=document.getElementById('sim-root');
       if(!simRoot) return;
       try{
-        const selectedModels=SIM_MODELS;
+        // A dossier page is the same data narrowed to one book.
+        const only = simRoot.dataset.strategy || '';
+        const selectedModels = only ? [only] : SIM_MODELS;
         const r=await fetch('/sim_metrics',{cache:'no-store'});
         if(!r.ok){
           setFetchError('sim-root', `Simulated-trading data unavailable: /sim_metrics returned HTTP ${r.status}. The panels below are stale or empty until this is fixed - check the dashboard log on the server.`);
@@ -1575,6 +2134,29 @@ def render_page(title: str, body_html: str) -> str:
         setFetchError('sim-root', null);
         const d=await r.json();
         renderPortfolioManager(d.scorecards);
+        if(only) renderStrategyRecord(d, only);
+        (function(){
+          const cards=(d.scorecards||[]).filter(c=>SIM_MODELS.includes(c.model_name));
+          const halted=cards.filter(c=>c.paused).length;
+          const best=cards.slice().sort((a,b)=>Number(b.total_pnl||0)-Number(a.total_pnl||0))[0];
+          const wTrades=fresh(d.writers,'sim_trades');
+          const wPort=fresh(d.writers,'sim_portfolio_20s');
+          const stale=[];
+          if(wTrades.stale) stale.push('trade engine');
+          if(wPort.stale) stale.push('equity writer');
+          const parts=[];
+          parts.push({text:(cards.length-halted)+' of '+cards.length+' books trading'});
+          if(halted) parts.push({text:halted+' auto-halted', alarm:true});
+          if(best) parts.push({text:'Best '+best.model_name+' '+money(best.total_pnl).txt});
+          if(d.recompute_in_progress) parts.push({text:'Recompute running', alarm:true});
+          parts.push(stale.length ? {text:stale.join(' + ')+' stale', alarm:true}
+                                  : {text:'All writers current'});
+          if(!only) setStatusLine('sim_status', parts, stale.length>0 || d.recompute_in_progress);
+          markSection('sect_sim_books', wTrades, 'the simulated engine');
+          markSection('sect_sim_plates', wPort, 'the equity writer');
+          markSection('sect_sim_segments', wTrades, 'the simulated engine');
+          headClock(d.generated_at_utc);
+        })();
         const byModelRaw=(d.equity_series_1m && Object.keys(d.equity_series_1m).length>0) ? d.equity_series_1m : (d.equity_series_20s||{});
         const colors={};
         let idx=0;
@@ -1633,20 +2215,18 @@ def render_page(title: str, body_html: str) -> str:
         if(Object.keys(ddSel).length===0 && focusModel && d.drawdown_series_20s && d.drawdown_series_20s[focusModel]){
           ddSel[focusModel]=d.drawdown_series_20s[focusModel];
         }
-        const ddColors = focusModel ? {[focusModel]: (colors[focusModel] || '#22d3ee')} : {};
-        drawLineChart('drawdown_chart', ddSel, 'drawdown', ddColors, {cutoff:d.live_cutoff_utc});
+        const ddColors = focusModel ? {[focusModel]: (colors[focusModel] || TRACE[0])} : {};
+        drawLineChart('drawdown_chart', ddSel, 'drawdown', ddColors, {cutoff:d.live_cutoff_utc, unit:'$'});
         const stNote=document.getElementById('sim_stack_model');
         if(stNote) stNote.textContent = focusModel ? `model: ${focusModel}` : 'model: N/A';
         const ddNote=document.getElementById('sim_drawdown_model');
         if(ddNote) ddNote.textContent = focusModel ? `model: ${focusModel}` : 'model: N/A';
         renderSegmentSummary(d, basePicked, currentBasisLabel);
 
-        renderRows('open_positions_body', (d.open_positions||[]).filter(r => basePicked.includes(r.model_name)), ['model_name','market_ticker','qty_contracts','entry_price','mark_bid','unrealized_pnl','opened_at_utc']);
+        renderRows('open_positions_body', (d.open_positions||[]).filter(r => basePicked.includes(r.model_name)), ['model_name','market_ticker','qty_contracts','entry_price','mark_bid','unrealized_pnl','opened_at_utc'], 'No paper position is open right now.');
         renderRows('trades_body', (d.recent_trades||[]).filter(r => basePicked.includes(r.model_name)).slice(0,30), ['id','model_name','market_ticker','opened_at_utc','closed_at_utc','qty_contracts','entry_price','exit_price','pnl','status','expected_entry','slippage','fill_mode']);
-        renderRows('calib_body', (d.calibration||[]).filter(r => basePicked.includes(r.model_name)), ['model_name','bucket','n','avg_pred','avg_realized']);
-        renderRows('exec_body', (d.execution_quality||[]).filter(r => basePicked.includes(r.model_name)), ['model_name','n','avg_slippage','avg_abs_slippage']);
-        renderRows('insample_body', (d.in_sample||[]).filter(r => basePicked.includes(r.model_name)), ['model_name','closed_trades','total_pnl','avg_pnl','win_rate','n_preds','avg_brier','avg_logloss']);
-        renderRows('oos_body', (d.out_of_sample||[]).filter(r => basePicked.includes(r.model_name)), ['model_name','closed_trades','total_pnl','avg_pnl','win_rate','n_preds','avg_brier','avg_logloss']);
+        renderRows('calib_body', (d.calibration||[]).filter(r => basePicked.includes(r.model_name)), ['model_name','bucket','n','avg_pred','avg_realized'], 'No predictions inside the window to bucket yet.');
+        renderRows('exec_body', (d.execution_quality||[]).filter(r => basePicked.includes(r.model_name)), ['model_name','n','avg_slippage','avg_abs_slippage'], 'No recent fills to measure slippage against.');
         const cut=document.getElementById('sim_cutoff');
         if(cut){
           const runNote = d.recompute_in_progress ? ' | recompute in progress (charts temporarily partial)' : '';
@@ -1659,7 +2239,7 @@ def render_page(title: str, body_html: str) -> str:
         const lg=document.getElementById('sim_legend');
         if(lg){
           const known=selectedModels.filter(m => byModelRaw[m] && byModelRaw[m].length>0);
-          lg.innerHTML = known.map((k,i)=>`<span class='pill' style='border-color:${colors[k]};color:${colors[k]}'>${k}</span>`).join(' ');
+          lg.innerHTML = known.map((k,i)=>`<span style='color:${colors[k]}'><i style='border-top-style:${simDash(i)}'></i>${esc(k)}</span>`).join('');
         }
         try{
           const rr = await fetch('/model_research',{cache:'no-store'});
@@ -1676,7 +2256,7 @@ def render_page(title: str, body_html: str) -> str:
                 const m=x.metrics||{};
                 const p=JSON.stringify(x.params||{});
                 const feats=(x.selected_features||[]).join(', ');
-                return `<tr><td>${x.model_name}</td><td>${x.run_id}</td><td>${fmtNy(x.created_at_utc)}</td><td>${Number(x.objective_pnl_dollars||0).toFixed(2)}</td><td>${m.brier==null?'':Number(m.brier).toFixed(4)}</td><td>${m.logloss==null?'':Number(m.logloss).toFixed(4)}</td><td>${x.n_train}</td><td>${x.n_eval}</td><td style='max-width:320px;white-space:normal;word-break:break-word'>${p}</td><td style='max-width:380px;white-space:normal;word-break:break-word'>${feats}</td></tr>`;
+                return `<tr><td>${x.model_name}</td><td>${x.run_id}</td><td>${fmtNy(x.created_at_utc)}</td><td>${Number(x.objective_pnl_dollars||0).toFixed(2)}</td><td>${m.brier==null?'':Number(m.brier).toFixed(4)}</td><td>${m.logloss==null?'':Number(m.logloss).toFixed(4)}</td><td>${x.n_train}</td><td>${x.n_eval}</td><td><div class="cellwrap">${p}</div></td><td><div class="cellwrap">${feats}</div></td></tr>`;
               }).join('');
             }
             const fiBody=document.getElementById('mr_feature_importance_body');
@@ -1715,23 +2295,65 @@ def render_page(title: str, body_html: str) -> str:
         }
         setFetchError('live-root', null);
         const d=await r.json();
-        drawLineChart('live_equity_chart', {'live': d.equity_series_20s||[]}, 'equity', {'live':'#22d3ee'}, {unit:'$'});
-        drawLineChart('live_drawdown_chart', {'live': d.drawdown_series_20s||[]}, 'drawdown', {'live':'#f97316'});
+        drawLineChart('live_equity_chart', {'live': d.equity_series_20s||[]}, 'equity', {'live':TRACE[0]}, {unit:'$'});
+        drawLineChart('live_drawdown_chart', {'live': d.drawdown_series_20s||[]}, 'drawdown', {'live':TRACE[1]}, {unit:'$'});
         drawStackChart('live_stack_chart', d.stack_series_20s||[], 'cash', 'position');
         renderLiveOpenPositions(d.open_positions||[]);
-        renderRows('live_orders_body', d.recent_orders||[], ['created_at_utc','market_ticker','action','side','qty_contracts','limit_price_dollars','status','kalshi_order_id','client_order_id']);
-        renderRows('live_trades_body', d.recent_trades||[], ['model_name','opened_at_utc','closed_at_utc','market_ticker','qty_contracts','entry_price','exit_price','pnl','status']);
+        renderRows('live_orders_body', d.recent_orders||[], ['created_at_utc','market_ticker','action','side','qty_contracts','limit_price_dollars','status','kalshi_order_id','client_order_id'], 'No real order has been placed.');
+        renderRows('live_trades_body', d.recent_trades||[], ['model_name','opened_at_utc','closed_at_utc','market_ticker','qty_contracts','entry_price','exit_price','pnl','status'], 'No live trade has closed yet.');
         const sc=document.getElementById('live_score');
         if(sc){
-          const s=d.scorecard||{};
-          const wr=(s.win_rate==null?'N/A':`${(s.win_rate*100).toFixed(1)}%`);
-          const cashNote = d.cash_source==='kalshi_api' ? '' : ` <span class="muted-neg" style="font-size:12px">(estimated - real balance unavailable, see note below)</span>`;
-          sc.innerHTML=`<div class='card'><div class='k'>account risk</div><div class='v' style='font-size:18px'>${d.risk_state||'N/A'}</div></div>` +
-                       `<div class='card'><div class='k'>cash source</div><div class='v' style='font-size:16px'>${d.cash_source||'unknown'}</div></div>` +
-                       `<div class='card'><div class='k'>equity</div><div class='v' style='font-size:18px'>${s.equity==null?'N/A':'$'+Number(s.equity).toFixed(2)}${cashNote}</div></div>` +
-                       `<div class='card'><div class='k'>total pnl (all strategies)</div><div class='v' style='font-size:18px'>$${Number(s.total_pnl||0).toFixed(2)}</div></div>` +
-                       `<div class='card'><div class='k'>closed/win</div><div class='v' style='font-size:16px'>${Number(s.closed_trades||0)} / ${wr}</div></div>`;
+          const st=d.scorecard||{};
+          const eq=(st.equity==null)?null:Number(st.equity);
+          const pnl=money(st.total_pnl);
+          const est=d.cash_source!=='kalshi_api';
+          sc.innerHTML=
+            `<div><span class="lab">Account cash</span>`+
+              `<span class="fig" id="fig_cash">${eq==null?'n/a':'$'+eq.toFixed(2)}</span>`+
+              `<div class="sub-fig">${est?'estimated &#8212; real balance unavailable':'from Kalshi'}</div></div>`+
+            `<div><span class="lab">Realised, all time</span>`+
+              `<span class="fig tint ${pnl.cls}">${pnl.txt}</span>`+
+              `<div class="sub-fig">${Number(st.closed_trades||0)} closed &#183; ${st.win_rate==null?'n/a':pct(st.win_rate,1)} win</div></div>`+
+            `<div><span class="lab">Exposure</span>`+
+              `<span class="fig">${(d.open_positions||[]).length}</span>`+
+              `<div class="sub-fig">open position${(d.open_positions||[]).length===1?'':'s'}</div></div>`+
+            `<div><span class="lab">Risk state</span>`+
+              `<span class="fig sm">${esc(d.risk_state||'n/a')}</span>`+
+              `<div class="sub-fig">${esc(d.cash_source||'unknown')} feed</div></div>`;
+          washIfChanged('live_cash', eq, document.getElementById('fig_cash'));
         }
+        // ---- the dominant answer, in words, before any figure is read
+        (function(){
+          const models=d.models||{};
+          const names=Object.keys(models);
+          const on=names.filter(m=>models[m].live_enabled);
+          const halted=names.filter(m=>models[m].paused);
+          const opens=(d.open_positions||[]).length;
+          const wPort=fresh(d.writers,'live_portfolio_20s');
+          const wEng=fresh(d.writers,'live_engine');
+          const wFwd=fresh(d.writers,'forward_quotes');
+          const staleNames=[];
+          if(wPort.stale) staleNames.push('balance');
+          if(wEng.stale) staleNames.push('engine');
+          if(wFwd.stale) staleNames.push('market feed');
+          const red=String(d.risk_state||'').toUpperCase()==='RED';
+          const parts=[];
+          parts.push(on.length
+            ? {text:on.length+' strateg'+(on.length===1?'y':'ies')+' live', alarm:true}
+            : {text:'Live trading off'});
+          parts.push({text: opens ? opens+' position'+(opens===1?'':'s')+' open' : 'No open positions',
+                      alarm: opens>0});
+          if(halted.length) parts.push({text:halted.length+' auto-halted', alarm:true});
+          if(red) parts.push({text:'Risk red', alarm:true});
+          parts.push(staleNames.length
+            ? {text:staleNames.join(' + ')+' stale', alarm:true}
+            : {text:'All writers current'});
+          setStatusLine('live_status', parts, on.length>0 || staleNames.length>0 || red || halted.length>0);
+          markSection('sect_live_account', wPort, 'the balance writer');
+          markSection('sect_live_strat', wEng, 'the trading engine');
+          markSection('sect_live_plates', wPort, 'the balance writer');
+          headClock(d.generated_at_utc);
+        })();
         const balanceNote = document.getElementById('live_balance_note');
         if(balanceNote){
           balanceNote.style.display = (d.cash_source==='kalshi_api') ? 'none' : 'block';
@@ -1743,72 +2365,80 @@ def render_page(title: str, body_html: str) -> str:
     }
     function renderLiveOpenPositions(rows){
       const el=document.getElementById('live_open_positions_body'); if(!el) return;
-      const cols=['model_name','market_ticker','qty_contracts','entry_price','mark_bid','unrealized_pnl','opened_at_utc'];
-      el.innerHTML = (rows||[]).map(r => {
-        const t = r.market_ticker, m = r.model_name;
-        const cells = cols.map(c => `<td>${(r[c]??'')}</td>`).join('');
-        const btn = `<td><a class="pill warn" href="javascript:void(0)" onclick="closeLivePosition('${String(m).replace(/'/g,"\\'")}','${String(t).replace(/'/g,"\\'")}')">Close</a></td>`;
-        return '<tr>' + cells + btn + '</tr>';
+      if(!rows || rows.length===0){
+        el.innerHTML='<tr class="empty-row"><td colspan="8">No live position is open. A strategy that is on will open one when its edge clears its threshold.</td></tr>';
+        return;
+      }
+      el.innerHTML = rows.map(r => {
+        const un=money(r.unrealized_pnl);
+        return `<tr>
+          <td class="name" data-lab="Strategy">${esc(r.model_name)}</td>
+          <td class="tick" data-lab="Market">${esc(r.market_ticker)}</td>
+          <td class="num" data-lab="Qty">${esc(r.qty_contracts)}</td>
+          <td class="num" data-lab="Entry">$${Number(r.entry_price).toFixed(2)}</td>
+          <td class="num" data-lab="Mark bid">$${Number(r.mark_bid).toFixed(2)}</td>
+          <td class="num" data-lab="Unrealised"><span class="fig sm tint ${un.cls}">${un.txt}</span></td>
+          <td data-lab="Opened">${esc(fmtNy(r.opened_at_utc))}</td>
+          <td class="act" data-lab=""><button class="btn sm danger" data-idle="Close" onclick="arm(this, 'Confirm close', ()=>closeLivePosition('${esc(r.model_name)}','${esc(r.market_ticker)}'))">Close</button></td>
+        </tr>`;
       }).join('');
     }
     async function closeLivePosition(modelName, ticker){
-      if(!confirm(`Close LIVE position (${modelName}) on ${ticker} now at the current market bid? This places a real order.`)) return;
       try{
-        const r=await fetch('/live_position/close',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model_name:modelName, market_ticker:ticker})});
+        const lp = livePass();
+        const r=await fetch('/live_position/close' + (lp?('?live_password='+encodeURIComponent(lp)):''),
+          {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model_name:modelName, market_ticker:ticker})});
         let j={};
         try{ j=await r.json(); }catch(e){}
-        if(!r.ok || !j.ok){ alert(`Close failed: ${(j&&j.error)||r.status}`); }
-        else{ alert(`Close order submitted for ${ticker} at bid $${Number(j.close_bid||0).toFixed(2)}.`); }
-      }catch(e){ alert(`Close failed: ${e}`); }
+        if(!r.ok || !j.ok){ setNotice('live-root', `Could not close ${ticker}: ${(j&&j.error)||('HTTP '+r.status)}. The position is still open.`, 'Close failed'); }
+        else{ setNotice('live-root', `Close order submitted for ${ticker} at bid $${Number(j.close_bid||0).toFixed(2)}.`, 'Order sent'); }
+      }catch(e){ setNotice('live-root', `Could not close ${ticker}: ${e}. The position is still open.`, 'Close failed'); }
       await refreshLiveMetrics();
     }
     function renderLiveStrategyCards(models, settings){
-      const el = document.getElementById('live_strategy_cards');
-      if(!el) return;
-      el.innerHTML = LIVE_MODELS.map(m => {
-        const st = models[m] || {};
-        const cfg = settings[m] || {};
-        const enabled = !!st.live_enabled;
-        const paused = !!st.paused;
-        const badge = paused
-          ? `<span class="status-badge critical">&#9679; AUTO-PAUSED</span>`
-          : (enabled ? `<span class="status-badge good">&#9679; LIVE - ON</span>` : `<span class="status-badge muted">&#9679; OFF</span>`);
-        const toggleLabel = enabled ? 'Turn OFF' : 'Turn ON';
-        const toggleClass = enabled ? 'pill warn' : 'pill';
-        const toggleBtn = `<a class="${toggleClass}" href="javascript:void(0)" onclick="toggleLiveModel('${m}', ${!enabled})">${toggleLabel}</a>`;
-        const resumeBtn = paused ? `<a class="pill warn" href="javascript:void(0)" onclick="resumeLiveModel('${m}')">Clear auto-pause</a>` : '';
-        const reason = paused && st.paused_reason ? `<div class="pm-reason">${st.paused_reason}</div>` : '';
-        const wr = st.win_rate==null ? 'N/A' : `${(st.win_rate*100).toFixed(0)}%`;
-        const simPnl = Number(st.sim_total_pnl||0);
-        const simWr = st.sim_win_rate==null ? 'N/A' : `${(st.sim_win_rate*100).toFixed(0)}%`;
-        const simClass = simPnl > 0 ? 'sim-pos' : (simPnl < 0 ? 'sim-neg' : 'sim-flat');
-        const prob = st.prob==null ? 'N/A' : Number(st.prob).toFixed(3);
-        const edge = st.edge==null ? 'N/A' : Number(st.edge).toFixed(3);
-        const signalTxt = st.signal==null ? 'N/A' : (st.signal ? 'YES' : 'no');
-        const settingsInputs = LIVE_SETTINGS_FIELDS.map(f =>
-          `<div style="display:flex;flex-direction:column;gap:2px;min-width:110px">
-             <label style="font-size:11px;color:var(--muted,#8aa)">${f.replace(/_/g,' ')}</label>
-             <input id="ls_${m}_${f}" type="number" step="${LIVE_FIELD_STEP[f]}" min="0" value="${cfg[f]??''}" style="background:#0b1723;border:1px solid #1f3448;border-radius:6px;color:#e5edf7;padding:4px 6px;font-size:12px">
-           </div>`
+      const body=document.getElementById('live_strat_body');
+      if(!body) return;
+      body.innerHTML = LIVE_MODELS.map(m => {
+        const st=models[m]||{}, cfg=settings[m]||{};
+        const on=!!st.live_enabled, halted=!!st.paused;
+        const state = halted ? '<span class="mk halt">Halted</span>'
+                    : (on ? '<span class="mk armed">Live</span>' : '<span class="mk quiet">Off</span>');
+        const livePnl=money(st.total_pnl);
+        const simPnl=money(st.sim_total_pnl);
+        const sig = st.signal==null ? 'n/a' : (st.signal ? 'yes' : 'no');
+        const toggle = `<button class="btn sm${on?' danger':''}" data-idle="${on?'Turn off':'Turn on'}" onclick="arm(this, ${on?"'Confirm off'":"'Confirm live'"}, ()=>toggleLiveModel('${esc(m)}', ${!on}))">${on?'Turn off':'Turn on'}</button>`;
+        const resume = halted ? `<button class="btn sm" onclick="resumeLiveModel('${esc(m)}')">Clear halt</button>` : '';
+        const why = halted && st.paused_reason ? `<div class="sub-fig">${esc(st.paused_reason)}</div>` : '';
+        const fields = LIVE_SETTINGS_FIELDS.map(f =>
+          `<label class="field"><span class="lab">${esc(labelOf(f))}</span>`+
+          `<input id="ls_${esc(m)}_${esc(f)}" type="number" step="${LIVE_FIELD_STEP[f]}" min="0" value="${cfg[f]==null?'':esc(cfg[f])}"></label>`
         ).join('');
-        return `<div class="pm-card">
-          <div style="display:flex;justify-content:space-between;align-items:center"><div class="pm-name">${m}</div>${badge}</div>
-          <div class="pm-pnl">Live PnL: $${Number(st.total_pnl||0).toFixed(2)} &middot; ${st.closed_trades||0} trades &middot; ${wr} win</div>
-          <div class="pm-pnl ${simClass}">Sim PnL: ${simPnl>0?'+':''}$${simPnl.toFixed(2)} &middot; ${st.sim_closed_trades||0} trades &middot; ${simWr} win</div>
-          <div class="muted" style="font-size:12px;margin-top:4px">prob ${prob} &middot; edge ${edge} &middot; signal ${signalTxt}</div>
-          ${reason}
-          <div style="display:flex;gap:8px;margin-top:8px">${toggleBtn}${resumeBtn}</div>
-          <details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--muted,#8aa)">Strategy settings</summary>
-            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">${settingsInputs}</div>
-            <a class="pill" href="javascript:void(0)" onclick="saveLiveModelSettings('${m}')" style="margin-top:8px;display:inline-block">Save settings</a>
-          </details>
-        </div>`;
+        return `<tr>
+            <td class="name" data-lab="Strategy"><a href="/?tab=strategy&amp;name=${encodeURIComponent(m)}">${esc(m)}</a>${why}</td>
+            <td data-lab="State">${state}</td>
+            <td class="num" data-lab="Live P&amp;L"><span class="fig sm tint ${livePnl.cls}">${livePnl.txt}</span>
+              <div class="sub-fig">${Number(st.closed_trades||0)} trades</div></td>
+            <td class="num" data-lab="Paper P&amp;L"><span class="fig sm tint ${simPnl.cls}">${simPnl.txt}</span>
+              <div class="sub-fig">${Number(st.sim_closed_trades||0).toLocaleString()} trades &#183; ${st.sim_win_rate==null?'n/a':pct(st.sim_win_rate)} win</div></td>
+            <td class="num phone-hide" data-lab="Probability">${st.prob==null?'n/a':Number(st.prob).toFixed(3)}</td>
+            <td class="num phone-hide" data-lab="Edge">${st.edge==null?'n/a':Number(st.edge).toFixed(3)}</td>
+            <td class="phone-hide" data-lab="Signal">${sig}</td>
+            <td class="act" data-lab="">${toggle} ${resume}</td>
+          </tr>
+          <tr class="cfg">
+            <td colspan="8" style="padding-top:0">
+              <details>
+                <summary>Risk caps and thresholds for ${esc(m)}</summary>
+                <div style="display:flex;flex-wrap:wrap;gap:12px;padding:10px 0 12px">${fields}
+                  <label class="field"><span class="lab">&nbsp;</span>
+                    <button class="btn sm" onclick="saveLiveModelSettings('${esc(m)}')">Save caps</button></label>
+                </div>
+              </details>
+            </td>
+          </tr>`;
       }).join('');
     }
     async function toggleLiveModel(modelName, turnOn){
-      const verb = turnOn ? 'Turn ON' : 'Turn OFF';
-      const warn = turnOn ? ' This lets it place REAL orders with REAL money on its next tick.' : '';
-      if(!confirm(`${verb} live trading for ${modelName}?${warn}`)) return;
       try{
         const lp = livePass();
         const r = await fetch('/live_model/toggle' + (lp?('?live_password='+encodeURIComponent(lp)):''), {
@@ -1816,12 +2446,14 @@ def render_page(title: str, body_html: str) -> str:
           body: JSON.stringify({model_name: modelName, live_enabled: turnOn})
         });
         let j={}; try{ j=await r.json(); }catch(e){}
-        if(!r.ok || !j.ok){ alert(`Failed: ${(j&&j.error)||r.status}`); }
-      }catch(e){ alert(`Failed: ${e}`); }
+        if(!r.ok || !j.ok){ setNotice('live-root', `Could not switch ${modelName}: ${(j&&j.error)||('HTTP '+r.status)}. Its state is unchanged.`, 'Switch failed'); }
+        else{ setNotice('live-root', turnOn
+          ? `${modelName} is live. It can place real orders on its next tick.`
+          : `${modelName} is off. It will not open new positions.`, turnOn ? 'Now live' : 'Switched off'); }
+      }catch(e){ setNotice('live-root', `Could not switch ${modelName}: ${e}. Its state is unchanged.`, 'Switch failed'); }
       await refreshLiveMetrics();
     }
     async function resumeLiveModel(modelName){
-      if(!confirm(`Clear the auto-pause on ${modelName}? It will be allowed to open new positions again.`)) return;
       try{
         const lp = livePass();
         const r = await fetch('/live_model/resume' + (lp?('?live_password='+encodeURIComponent(lp)):''), {
@@ -1829,8 +2461,9 @@ def render_page(title: str, body_html: str) -> str:
           body: JSON.stringify({model_name: modelName})
         });
         let j={}; try{ j=await r.json(); }catch(e){}
-        if(!r.ok || !j.ok){ alert(`Failed: ${(j&&j.error)||r.status}`); }
-      }catch(e){ alert(`Failed: ${e}`); }
+        if(!r.ok || !j.ok){ setNotice('live-root', `Could not clear the halt on ${modelName}: ${(j&&j.error)||('HTTP '+r.status)}.`, 'Clear failed'); }
+        else{ setNotice('live-root', `Halt cleared on ${modelName}. Its switch still governs whether it trades.`, 'Halt cleared'); }
+      }catch(e){ setNotice('live-root', `Could not clear the halt on ${modelName}: ${e}.`, 'Clear failed'); }
       await refreshLiveMetrics();
     }
     async function saveLiveModelSettings(modelName){
@@ -1846,8 +2479,9 @@ def render_page(title: str, body_html: str) -> str:
           body: JSON.stringify({model_name: modelName, ...patch})
         });
         let j={}; try{ j=await r.json(); }catch(e){}
-        if(!r.ok || !j.ok){ alert(`Save failed: ${(j&&j.error)||r.status}`); }
-      }catch(e){ alert(`Save failed: ${e}`); }
+        if(!r.ok || !j.ok){ setNotice('live-root', `Could not save caps for ${modelName}: ${(j&&j.error)||('HTTP '+r.status)}.`, 'Save failed'); }
+        else{ setNotice('live-root', `Caps saved for ${modelName}. They apply on its next tick.`, 'Saved'); }
+      }catch(e){ setNotice('live-root', `Could not save caps for ${modelName}: ${e}.`, 'Save failed'); }
       await refreshLiveMetrics();
     }
     async function refreshHealth(){
@@ -1860,6 +2494,13 @@ def render_page(title: str, body_html: str) -> str:
             const el = document.querySelector(`[data-count-key="${k}"]`);
             if(el) el.textContent = Number(v).toLocaleString();
           }
+        }
+        headClock();
+        if(d.writers){
+          const wf=fresh(d.writers,'forward_quotes');
+          const wm=fresh(d.writers,'model_features_1m');
+          markSection('sect_pipe_feed', wf, 'the forward collector');
+          markSection('sect_pipe_guard', wm, 'the feature builder');
         }
         const latest = document.getElementById('latest-forward');
         if(latest && d.latest_forward){
@@ -1877,15 +2518,46 @@ def render_page(title: str, body_html: str) -> str:
         }
       }catch(e){}
     }
+    var RESIZE_T=null;
+    window.addEventListener('resize', ()=>{
+      clearTimeout(RESIZE_T);
+      RESIZE_T=setTimeout(()=>{ refreshSimMetrics(); refreshLiveMetrics(); }, 180);
+    });
     setInterval(refreshHealth, 10000);
     setInterval(refreshSimMetrics, 10000);
     setInterval(refreshLiveMetrics, 10000);
     window.addEventListener('load', ()=>{ refreshHealth(); refreshSimMetrics(); refreshLiveMetrics(); });
     """
+    services = (
+        ("live", "/?tab=live-trading", "Live"),
+        ("sim", "/?tab=simulated-trading", "Simulated"),
+        ("pipeline", "/?tab=data-pipeline", "Pipeline"),
+    )
+    nav = "".join(
+        f'<a class="svc-link" href="{href}"'
+        + (' aria-current="page"' if key == service else "")
+        + f">{label}</a>"
+        for key, href, label in services
+    )
+    svc_label = {
+        "live": "Live execution",
+        "sim": "Simulation",
+        "pipeline": "Data pipeline",
+        "table": "Records",
+    }.get(service, "Records")
+    body_class = "live-service" if service == "live" else ""
     return f"""<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
 <title>{html.escape(title)}</title><style>{css}</style></head>
-<body><div class="wrap">{body_html}</div><script>{js}</script></body></html>"""
+<body class="{body_class}">
+<header class="masthead"><div class="masthead-in">
+  <p class="wordmark">Kalshi&nbsp;BTC&nbsp;15M<span class="sep">/</span><span class="svc">{svc_label}</span></p>
+  <p class="asof" id="head_asof">reading&#8230;</p>
+</div></header>
+<nav class="services" aria-label="Services"><div class="services-in">{nav}</div></nav>
+<main class="wrap">{body_html}</main>
+<script>{js}</script></body></html>"""
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -1898,7 +2570,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             raw = base64.b64decode(header.split(" ", 1)[1]).decode("utf-8")
             user, pw = raw.split(":", 1)
-            return user == AUTH_USER and pw == AUTH_PASSWORD
+            return secrets.compare_digest(user, AUTH_USER) and secrets.compare_digest(pw, AUTH_PASSWORD)
         except Exception:
             return False
 
@@ -1970,235 +2642,348 @@ class Handler(BaseHTTPRequestHandler):
 
         if parsed.path == "/":
             qs = parse_qs(parsed.query)
-            tab = qs.get("tab", ["data-pipeline"])[0]
-            counts = table_counts()
-            latest = latest_forward_status()
-            fh = forward_feed_health()
-            mg = latest_model_guard()
-            ss = sim_summary()
-            cards = "".join(
-                [
-                    f'<div class="card"><div class="k">{html.escape(t)}</div><div class="v" data-count-key="{html.escape(t)}">{counts.get(t,0):,}</div></div>'
-                    for t in TABLES
-                ]
-            )
-            links = "".join([f'<li><a class="pill" href="/table?name={t}">{t}</a></li>' for t in TABLES])
-            latest_text = (
-                f"last forward: {latest['snapshot_time_utc']} | {latest['market_ticker']} | {latest['status']}"
-                if latest
-                else "no forward snapshots yet"
-            )
-            tabs = (
-                "<div class='panel' style='margin-bottom:12px'>"
-                "<div class='table-links'>"
-                "<a class='pill' href='/?tab=data-pipeline'>data pipeline</a>"
-                "<a class='pill' href='/?tab=simulated-trading'>simulated trading</a>"
-                "<a class='pill' href='/?tab=live-trading'>live trading</a>"
-                "</div></div>"
-            )
+            # Live execution is the front page: the operator's first question is
+            # "what is it doing with real money right now", not "how is ingestion".
+            tab = qs.get("tab", ["live-trading"])[0]
+
+            if tab == "strategy":
+                name = qs.get("name", [""])[0]
+                dossier = STRATEGY_DOSSIER.get(name)
+                if not dossier:
+                    body = (
+                        "<h1 class='page'>Unknown strategy</h1>"
+                        "<p class='deck'>No dossier exists for that name. "
+                        "<a href='/?tab=simulated-trading'>Back to the books</a>.</p>"
+                    )
+                    self._send(render_page("Unknown strategy", body, "sim"))
+                    return
+                lifecycle = "".join(
+                    f"<tr><td class='name' data-lab='Stage'>{html.escape(t)}</td>"
+                    f"<td data-lab='Rule'><div class='cellwrap'>{html.escape(d)}</div></td></tr>"
+                    for t, d in SHARED_LIFECYCLE
+                )
+                body = f"""
+                <p class="deck" style="margin-top:22px">
+                  <a href="/?tab=simulated-trading" style="color:inherit">Books</a> &#8594;
+                  {html.escape(dossier['kind'])}</p>
+                <h1 class="page" style="margin-top:2px">{html.escape(name)}</h1>
+                <div id="sim-root" class="reading" data-strategy="{html.escape(name)}">
+
+                <section class="sect" id="sect_strat_record" style="margin-top:20px">
+                  <div class="sect-head"><h2>Its record</h2><p class="sect-note">reading&#8230;</p></div>
+                  <div class="measure" id="strat_record"></div>
+                  <p class="legend" id="strat_verdict"></p>
+                </section>
+
+                <section class="sect">
+                  <div class="sect-head"><h2>Thesis</h2></div>
+                  <p class="prose" style="margin:12px 0 0">{html.escape(dossier['thesis'])}</p>
+                </section>
+
+                <section class="sect">
+                  <div class="sect-head"><h2>What it reads</h2></div>
+                  <p class="prose" style="margin:12px 0 0">{html.escape(dossier['reads'])}</p>
+                </section>
+
+                <section class="sect">
+                  <div class="sect-head"><h2>How it decides</h2></div>
+                  <p class="prose" style="margin:12px 0 0">{html.escape(dossier['decides'])}</p>
+                </section>
+
+                <section class="sect">
+                  <div class="sect-head"><h2>What you should hold against it</h2></div>
+                  <p class="prose" style="margin:12px 0 0">{html.escape(dossier['caveat'])}</p>
+                </section>
+
+                <section class="sect">
+                  <div class="sect-head"><h2>The question every fitted book is asked</h2></div>
+                  <p class="prose" style="margin:12px 0 0">{html.escape(SHARED_LABEL)}</p>
+                </section>
+
+                <section class="sect">
+                  <div class="sect-head"><h2>Lifecycle, shared by every book</h2></div>
+                  <div class="sheet"><table class="stack"><colgroup><col style="width:22%"><col></colgroup>
+                    <thead><tr><th>Stage</th><th>Rule</th></tr></thead>
+                    <tbody>{lifecycle}</tbody></table></div>
+                </section>
+
+                <section class="sect">
+                  <div class="sect-head"><h2>Record by period</h2><p class="sect-note" id="sim_basis"></p></div>
+                  <div class="sheet"><table class="stack t-period">
+                    <colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"><col class="c5"><col class="c6"><col class="c7"><col class="c8"></colgroup>
+                    <thead><tr><th>Strategy</th><th>Period</th><th class="num">P&amp;L</th><th class="num">Closed</th>
+                    <th class="num">Win</th><th class="num">Predictions</th><th class="num">Brier</th>
+                    <th class="num">Log loss</th></tr></thead>
+                    <tbody id="sim_segments_body"></tbody>
+                  </table></div>
+                  <p class="legend">Lower Brier and log loss are better; both judge the probability,
+                  not the trade. <span id="sim_cutoff"></span></p>
+                </section>
+                </div>
+                """
+                self._send(render_page(name, body, "sim"))
+                return
 
             if tab == "simulated-trading":
                 body = f"""
-                <div class="top">
-                  <div>
-                    <h1 class="title">Simulated Trading</h1>
-                    <div class="sub">Historical backtest with fixed-model in-sample vs out-of-sample evaluation.</div>
-                  </div>
-                  <div class="sub">Auth user: <b>{html.escape(AUTH_USER)}</b></div>
-                </div>
-                {tabs}
+                <h1 class="page">Simulation</h1>
+                <p class="deck">Five paper books, each funded with its own $100. Models are frozen at the
+                live cutoff, so out-of-sample is the only honest read.</p>
                 <div id="sim-root">
-                <div class="grid4">
-                  <div class="card"><div class="k">Initial Capital</div><div class="v">$100.00</div></div>
-                  <div class="card"><div class="k">Refresh</div><div class="v" style="font-size:18px">every 10s</div></div>
-                  <div class="card"><div class="k">Live Cutoff</div><div id="sim_cutoff" class="v" style="font-size:13px">loading...</div></div>
-                </div>
-                <div class="panel" style="margin-top:12px">
-                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Portfolio Manager</a></div><div class="muted" id="pm_status">loading...</div></div>
-                  <div id="pm_grid" class="pm-grid" style="margin-top:10px"></div>
-                </div>
-                <div id="sim_model_rows" style="margin-top:12px"></div>
-                <div class="panel" style="margin-top:12px">
-                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Portfolio Equity (Segmented, each starts at $100)</a></div></div>
-                  <div id="sim_legend" class="toolbar" style="margin-bottom:8px"></div>
-                  <div class="muted" style="margin-bottom:6px">In-Sample <span id="range_in_sample"></span></div>
-                  <canvas id="equity_chart_in_sample" width="1120" height="220" style="width:100%;height:220px"></canvas>
-                  <div class="muted" style="margin:10px 0 6px 0">Out-of-Sample <span id="range_out_sample"></span></div>
-                  <canvas id="equity_chart_out_sample" width="1120" height="220" style="width:100%;height:220px"></canvas>
-                </div>
-                <div class="panel" style="margin-top:12px">
-                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Cash vs Position Value (20s)</a></div><div class="muted" id="sim_stack_model"></div></div>
-                  <canvas id="stack_chart" width="1120" height="220" style="width:100%;height:220px"></canvas>
-                </div>
-                <div class="panel" style="margin-top:12px">
-                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Drawdown (20s)</a></div><div class="muted" id="sim_drawdown_model"></div></div>
-                  <canvas id="drawdown_chart" width="1120" height="180" style="width:100%;height:180px"></canvas>
-                </div>
-                <div class="panel" style="margin-top:12px">
-                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Open Positions</a></div></div>
-                  <div style="overflow:auto;max-height:22vh">
-                    <table><thead><tr><th>model</th><th>ticker</th><th>qty</th><th>entry</th><th>mark bid</th><th>unrealized</th><th>opened</th></tr></thead>
-                    <tbody id="open_positions_body"></tbody></table>
+                <div class="statusline" id="sim_status">{STATUS_MARK_SVG}<div class="said">reading&#8230;</div></div>
+
+                <section class="sect" id="sect_sim_books">
+                  <div class="sect-head"><h2>Books</h2><p class="sect-note">reading&#8230;</p></div>
+                  <div class="sheet"><table class="stack t-books">
+                    <colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"><col class="c5"><col class="c6"><col class="c7"></colgroup>
+                    <thead><tr><th>Strategy</th><th class="num">Equity</th><th class="num">Total P&amp;L</th>
+                    <th class="num">Trades</th><th class="num">Win</th><th>State</th><th></th></tr></thead>
+                    <tbody id="pm_body"></tbody>
+                  </table></div>
+                  <div class="legend" id="pm_legend"></div>
+                </section>
+
+                <section class="sect" id="sect_sim_segments">
+                  <div class="sect-head"><h2>Record by period</h2><p class="sect-note" id="sim_basis"></p></div>
+                  <div class="sheet"><table class="stack t-period">
+                    <colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"><col class="c5"><col class="c6"><col class="c7"><col class="c8"></colgroup>
+                    <thead><tr><th>Strategy</th><th>Period</th><th class="num">P&amp;L</th><th class="num">Closed</th>
+                    <th class="num">Win</th><th class="num">Predictions</th><th class="num">Brier</th>
+                    <th class="num">Log loss</th></tr></thead>
+                    <tbody id="sim_segments_body"></tbody>
+                  </table></div>
+                  <p class="legend">Lower Brier and log loss are better; both judge the probability, not the
+                  trade. <span id="sim_cutoff"></span></p>
+                </section>
+
+                <section class="sect" id="sect_sim_plates">
+                  <div class="sect-head"><h2>Equity, each book rebased to $100</h2><p class="sect-note">reading&#8230;</p></div>
+                  <div class="keys" id="sim_legend"></div>
+                  <div class="plates">
+                  <div class="plate">
+                    <p class="lab">In-sample <span id="range_in_sample"></span></p>
+                    <canvas id="equity_chart_in_sample" data-h="200"></canvas>
                   </div>
-                </div>
-                <div class="panel" style="margin-top:12px">
-                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Trade Timeline / Recent Trades</a></div></div>
-                  <div style="overflow:auto;max-height:32vh">
-                    <table><thead><tr><th>id</th><th>model</th><th>ticker</th><th>opened</th><th>closed</th><th>qty</th><th>entry</th><th>exit</th><th>pnl</th><th>status</th><th>expected entry</th><th>slippage</th><th>fill mode</th></tr></thead>
-                    <tbody id="trades_body"></tbody></table>
+                  <div class="plate">
+                    <p class="lab">Out-of-sample <span id="range_out_sample"></span></p>
+                    <canvas id="equity_chart_out_sample" data-h="200"></canvas>
                   </div>
-                </div>
-                <div class="panel" style="margin-top:12px">
-                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Prediction Diagnostics (Calibration)</a></div></div>
-                  <div style="overflow:auto;max-height:32vh">
-                    <table><thead><tr><th>model</th><th>bucket</th><th>n</th><th>avg pred</th><th>avg realized</th></tr></thead>
-                    <tbody id="calib_body"></tbody></table>
+                  <div class="plate">
+                    <p class="lab">Cash against position value <span class="sect-note" id="sim_stack_model"></span></p>
+                    <canvas id="stack_chart" data-h="170"></canvas>
                   </div>
-                </div>
-                <div class="panel" style="margin-top:12px">
-                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Execution Quality</a></div></div>
-                  <div style="overflow:auto;max-height:24vh">
-                    <table><thead><tr><th>model</th><th>n</th><th>avg slippage</th><th>avg abs slippage</th></tr></thead>
-                    <tbody id="exec_body"></tbody></table>
+                  <div class="plate">
+                    <p class="lab">Drawdown from peak <span class="sect-note" id="sim_drawdown_model"></span></p>
+                    <canvas id="drawdown_chart" data-h="150"></canvas>
                   </div>
-                </div>
-                <div class="panel" style="margin-top:12px">
-                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">In-Sample Metrics (before live cutoff)</a></div></div>
-                  <div style="overflow:auto;max-height:24vh">
-                    <table><thead><tr><th>model</th><th>closed</th><th>total pnl</th><th>avg pnl</th><th>win rate</th><th>pred n</th><th>brier</th><th>logloss</th></tr></thead>
-                    <tbody id="insample_body"></tbody></table>
                   </div>
-                </div>
-                <div class="panel" style="margin-top:12px">
-                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Out-of-Sample Metrics (from live cutoff)</a></div></div>
-                  <div style="overflow:auto;max-height:24vh">
-                    <table><thead><tr><th>model</th><th>closed</th><th>total pnl</th><th>avg pnl</th><th>win rate</th><th>pred n</th><th>brier</th><th>logloss</th></tr></thead>
-                    <tbody id="oos_body"></tbody></table>
-                  </div>
-                </div>
-                <div class="panel" style="margin-top:12px">
-                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Model Research (Hyper-Tuned + Shapley Selection)</a></div><div id="mr_last_run" class="muted">loading...</div></div>
-                  <div style="overflow:auto;max-height:30vh">
-                    <table><thead><tr><th>model</th><th>run id</th><th>run time</th><th>oos pnl</th><th>brier</th><th>logloss</th><th>train</th><th>eval</th><th>params</th><th>selected features</th></tr></thead>
-                    <tbody id="mr_best_models_body"></tbody></table>
-                  </div>
-                </div>
-                <div class="panel" style="margin-top:12px">
-                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Feature Importance (Best Models)</a></div></div>
-                  <div style="overflow:auto;max-height:26vh">
-                    <table><thead><tr><th>model</th><th>run id</th><th>rank</th><th>feature</th><th>|shap| mean</th><th>signed mean</th><th>method</th></tr></thead>
-                    <tbody id="mr_feature_importance_body"></tbody></table>
-                  </div>
-                </div>
-                <div class="panel" style="margin-top:12px">
-                  <div class="bar"><div class="nav"><a href="/?tab=simulated-trading">Research Runs (Recent)</a></div></div>
-                  <div style="overflow:auto;max-height:24vh">
-                    <table><thead><tr><th>id</th><th>time</th><th>model</th><th>stage</th><th>oos pnl</th><th>train</th><th>eval</th><th>status</th><th>notes</th></tr></thead>
-                    <tbody id="mr_recent_runs_body"></tbody></table>
-                  </div>
-                </div>
+                </section>
+
+                <section class="sect">
+                  <div class="sect-head"><h2>Open paper positions</h2></div>
+                  <div class="sheet"><table class="stack t-pos7"><colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"><col class="c5"><col class="c6"><col class="c7"></colgroup><thead><tr><th>Strategy</th><th>Market</th>
+                  <th class="num">Qty</th><th class="num">Entry</th><th class="num">Mark bid</th>
+                  <th class="num">Unrealised</th><th>Opened</th></tr></thead>
+                  <tbody id="open_positions_body"></tbody></table></div>
+                </section>
+
+                <section class="sect">
+                  <div class="sect-head"><h2>Recent paper trades</h2></div>
+                  <div class="sheet"><table><thead><tr><th class="num">#</th><th>Strategy</th><th>Market</th>
+                  <th>Opened</th><th>Closed</th><th class="num">Qty</th><th class="num">Entry</th>
+                  <th class="num">Exit</th><th class="num">P&amp;L</th><th>Status</th><th class="num">Expected</th>
+                  <th class="num">Slippage</th><th>Fill</th></tr></thead>
+                  <tbody id="trades_body"></tbody></table></div>
+                </section>
+
+                <section class="sect">
+                  <div class="sect-head"><h2>Calibration</h2><p class="sect-note">predicted against realised</p></div>
+                  <div class="sheet"><table class="stack"><thead><tr><th>Strategy</th><th>Bucket</th>
+                  <th class="num">n</th><th class="num">Predicted</th><th class="num">Realised</th></tr></thead>
+                  <tbody id="calib_body"></tbody></table></div>
+                </section>
+
+                <section class="sect">
+                  <div class="sect-head"><h2>Execution quality</h2><p class="sect-note">fill against expected entry</p></div>
+                  <div class="sheet"><table class="stack"><thead><tr><th>Strategy</th><th class="num">n</th>
+                  <th class="num">Avg slippage</th><th class="num">Avg absolute</th></tr></thead>
+                  <tbody id="exec_body"></tbody></table></div>
+                </section>
+
+                <section class="sect">
+                  <div class="sect-head"><h2>Research runs</h2><p class="sect-note" id="mr_last_run">reading&#8230;</p></div>
+                  <div class="sheet"><table><thead><tr><th>Strategy</th><th class="num">Run</th><th>Created</th>
+                  <th class="num">Objective P&amp;L</th><th class="num">Brier</th><th class="num">Log loss</th>
+                  <th class="num">Train</th><th class="num">Eval</th><th>Parameters</th><th>Features</th></tr></thead>
+                  <tbody id="mr_best_models_body"></tbody></table></div>
+                  <details style="margin-top:10px"><summary>Feature importance and full run history</summary>
+                    <div class="sheet" style="margin-top:8px"><table><thead><tr><th>Strategy</th><th class="num">Run</th>
+                    <th class="num">Rank</th><th>Feature</th><th class="num">Importance</th>
+                    <th class="num">Signed</th><th>Method</th></tr></thead>
+                    <tbody id="mr_feature_importance_body"></tbody></table></div>
+                    <div class="sheet" style="margin-top:14px"><table><thead><tr><th class="num">#</th><th>Created</th>
+                    <th>Strategy</th><th>Stage</th><th class="num">Objective</th><th class="num">Train</th>
+                    <th class="num">Eval</th><th>Status</th><th>Notes</th></tr></thead>
+                    <tbody id="mr_recent_runs_body"></tbody></table></div>
+                  </details>
+                </section>
                 </div>
                 """
-                self._send(render_page("Simulated Trading", body))
+                self._send(render_page("Simulation", body, "sim"))
                 return
 
             if tab == "live-trading":
                 if not self._live_authorized(parsed):
                     body = f"""
-                    <div class="top">
-                      <div><h1 class="title">Live Trading Locked</h1><div class="sub">Enter secondary password to access live execution controls.</div></div>
-                      <div class="sub">Auth user: <b>{html.escape(AUTH_USER)}</b></div>
-                    </div>
-                    {tabs}
-                    <div class="panel" style="max-width:620px;margin:24px auto">
-                      <form method="GET" action="/" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-                        <input type="hidden" name="tab" value="live-trading">
-                        <input type="password" name="live_password" placeholder="Live trading password" style="flex:1;min-width:220px;background:#0b1723;border:1px solid #1f3448;border-radius:10px;color:#e5edf7;padding:10px 12px">
-                        <button class="pill" type="submit">Unlock Live Trading</button>
-                      </form>
-                    </div>
+                    <h1 class="page">Live execution is locked</h1>
+                    <p class="deck">This surface can place real orders. It takes a second password.</p>
+                    <form method="GET" action="/" style="display:flex;gap:10px;align-items:flex-end;
+                      flex-wrap:wrap;max-width:460px;margin-top:22px">
+                      <input type="hidden" name="tab" value="live-trading">
+                      <label class="field" style="flex:1"><span class="lab">Live trading password</span>
+                        <input type="password" name="live_password" autocomplete="current-password" autofocus></label>
+                      <button class="btn" type="submit">Unlock</button>
+                    </form>
+                    <p class="legend" style="max-width:460px">Simulation and pipeline stay readable without it.</p>
                     """
-                    self._send(render_page("Live Trading Locked", body))
+                    self._send(render_page("Live execution locked", body, "live"))
                     return
                 body = f"""
-                <div class="top">
-                  <div>
-                    <h1 class="title">Live Trading</h1>
-                    <div class="sub">Multi-strategy live execution - each strategy has its own on/off switch, risk caps, and auto-pause on breach.</div>
-                  </div>
-                  <div class="sub">Auth user: <b>{html.escape(AUTH_USER)}</b></div>
-                </div>
-                {tabs}
+                <h1 class="page">Live execution</h1>
+                <p class="deck">Real money. Every strategy carries its own switch, its own caps, and halts
+                itself on breach.</p>
                 <div id="live-root">
-                <div id="live_balance_note" class="panel live-panel" style="display:none">
-                  <div class="live-banner">&#9888; REAL BALANCE UNAVAILABLE &#9888;</div>
-                  <div class="muted">Kalshi API trading credentials are not configured on this server, so the account cash/equity shown below is an internal estimate (starting capital plus tracked PnL), not your real Kalshi balance. Real order placement will also fail until credentials are configured. This does not block strategy toggles or monitoring below - it only affects the balance shown and whether an ON strategy can actually place a real order.</div>
+                <div class="statusline" id="live_status">{STATUS_MARK_SVG}<div class="said">reading&#8230;</div></div>
+
+                <section class="sect" id="sect_live_account">
+                  <div class="sect-head"><h2>Account</h2><p class="sect-note">reading&#8230;</p></div>
+                  <div class="measure" id="live_score"></div>
+                </section>
+
+                <div id="live_balance_note" class="notice" style="display:none">
+                  <h3>Balance is an estimate</h3>
+                  <p style="margin:0">Kalshi API credentials are not configured on this server, so the cash
+                  above is starting capital plus tracked P&amp;L, not your real balance. Real order placement
+                  will also fail until they are configured. Monitoring and switches are unaffected.</p>
                 </div>
-                <div class="panel live-panel">
-                  <div class="live-banner">&#9888; REAL MONEY - LIVE EXECUTION CONTROLS &#9888;</div>
-                  <div class="bar"><div class="nav">Account</div></div>
-                  <div id="live_score" class="grid4"></div>
-                </div>
-                <div class="panel" style="margin-top:12px"><div class="bar"><div class="nav">Live Equity (20s)</div></div><canvas id="live_equity_chart" width="1120" height="250" style="width:100%;height:250px"></canvas></div>
-                <div class="panel" style="margin-top:12px"><div class="bar"><div class="nav">Live Cash vs Position Value (20s)</div></div><canvas id="live_stack_chart" width="1120" height="220" style="width:100%;height:220px"></canvas></div>
-                <div class="panel" style="margin-top:12px"><div class="bar"><div class="nav">Live Drawdown (20s)</div></div><canvas id="live_drawdown_chart" width="1120" height="180" style="width:100%;height:180px"></canvas></div>
-                <div class="panel live-panel" style="margin-top:12px">
-                  <div class="bar"><div class="nav">Strategies</div></div>
-                  <div id="live_strategy_cards" class="row4"></div>
-                </div>
-                <div class="panel live-panel" style="margin-top:12px"><div class="bar"><div class="nav">Open Positions</div></div><div style="overflow:auto;max-height:24vh"><table><thead><tr><th>strategy</th><th>ticker</th><th>qty</th><th>entry</th><th>mark bid</th><th>unrealized</th><th>opened</th><th>action</th></tr></thead><tbody id="live_open_positions_body"></tbody></table></div></div>
-                <div class="panel" style="margin-top:12px"><div class="bar"><div class="nav">Recent Orders</div></div><div style="overflow:auto;max-height:24vh"><table><thead><tr><th>time</th><th>ticker</th><th>action</th><th>side</th><th>qty</th><th>limit</th><th>status</th><th>order id</th><th>client id</th></tr></thead><tbody id="live_orders_body"></tbody></table></div></div>
-                <div class="panel" style="margin-top:12px"><div class="bar"><div class="nav">Recent Trades</div></div><div style="overflow:auto;max-height:24vh"><table><thead><tr><th>strategy</th><th>opened</th><th>closed</th><th>ticker</th><th>qty</th><th>entry</th><th>exit</th><th>pnl</th><th>status</th></tr></thead><tbody id="live_trades_body"></tbody></table></div></div>
+
+                <section class="sect" id="sect_live_strat">
+                  <div class="sect-head"><h2>Strategies</h2><p class="sect-note">reading&#8230;</p></div>
+                  <div class="sheet"><table class="stack t-strat">
+                    <colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"><col class="c5"><col class="c6"><col class="c7"><col class="c8"></colgroup>
+                    <thead><tr><th>Strategy</th><th>State</th><th class="num">Live P&amp;L</th>
+                    <th class="num">Paper P&amp;L</th><th class="num">Probability</th><th class="num">Edge</th>
+                    <th>Signal</th><th></th></tr></thead>
+                    <tbody id="live_strat_body"></tbody>
+                  </table></div>
+                  <p class="legend">A strategy opens a position when its probability clears the signal
+                  threshold and its edge clears the edge threshold. Paper P&amp;L is the same strategy's
+                  simulated record, for comparison.</p>
+                </section>
+
+                <section class="sect">
+                  <div class="sect-head"><h2>Open positions</h2></div>
+                  <div class="sheet"><table class="stack t-pos8"><colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"><col class="c5"><col class="c6"><col class="c7"><col class="c8"></colgroup><thead><tr><th>Strategy</th><th>Market</th>
+                  <th class="num">Qty</th><th class="num">Entry</th><th class="num">Mark bid</th>
+                  <th class="num">Unrealised</th><th>Opened</th><th></th></tr></thead>
+                  <tbody id="live_open_positions_body"></tbody></table></div>
+                </section>
+
+                <section class="sect" id="sect_live_plates">
+                  <div class="sect-head"><h2>Account over time</h2><p class="sect-note">reading&#8230;</p></div>
+                  <div class="plates">
+                  <div class="plate">
+                    <p class="lab">Equity, 20-second marks</p>
+                    <canvas id="live_equity_chart" data-h="210"></canvas>
+                  </div>
+                  <div class="plate">
+                    <p class="lab">Cash against position value</p>
+                    <canvas id="live_stack_chart" data-h="170"></canvas>
+                    <div class="keys"><span><i></i>Cash</span>
+                      <span style="color:#7A5C2E"><i style="border-top-style:dashed"></i>Position value</span></div>
+                  </div>
+                  <div class="plate">
+                    <p class="lab">Drawdown from peak</p>
+                    <canvas id="live_drawdown_chart" data-h="150"></canvas>
+                  </div>
+                  </div>
+                </section>
+
+                <section class="sect">
+                  <div class="sect-head"><h2>Orders</h2></div>
+                  <div class="sheet"><table><thead><tr><th>Time</th><th>Market</th><th>Action</th><th>Side</th>
+                  <th class="num">Qty</th><th class="num">Limit</th><th>Status</th><th>Order id</th>
+                  <th>Client id</th></tr></thead><tbody id="live_orders_body"></tbody></table></div>
+                </section>
+
+                <section class="sect">
+                  <div class="sect-head"><h2>Closed trades</h2></div>
+                  <div class="sheet"><table><thead><tr><th>Strategy</th><th>Opened</th><th>Closed</th>
+                  <th>Market</th><th class="num">Qty</th><th class="num">Entry</th><th class="num">Exit</th>
+                  <th class="num">P&amp;L</th><th>Status</th></tr></thead>
+                  <tbody id="live_trades_body"></tbody></table></div>
+                </section>
                 </div>
                 """
-                self._send(render_page("Live Trading", body))
+                self._send(render_page("Live execution", body, "live"))
                 return
 
+            counts = table_counts()
+            latest = latest_forward_status()
+            fh = forward_feed_health()
+            mg = latest_model_guard()
+            rows = "".join(
+                [
+                    f'<tr><td class="name"><a href="/table?name={t}" style="color:inherit">{html.escape(t)}</a></td>'
+                    f'<td class="num" data-count-key="{html.escape(t)}">{counts.get(t,0):,}</td></tr>'
+                    for t in TABLES
+                ]
+            )
+            latest_text = (
+                f"{latest['market_ticker']} &#183; {latest['status']}"
+                if latest
+                else "no forward snapshots yet"
+            )
+            guard = mg or {}
             body = f"""
-            <div class="top">
-              <div>
-                <h1 class="title">Data Pipeline</h1>
-                <div class="sub">Live data observability for markets, candles, forward snapshots, and 1m features.</div>
+            <h1 class="page">Data pipeline</h1>
+            <p class="deck">Everything downstream is only as honest as this. Ingestion for markets,
+            candles, forward snapshots and one-minute features.</p>
+
+            <section class="sect" id="sect_pipe_feed">
+              <div class="sect-head"><h2>Forward feed</h2>
+                <p class="sect-note">reading&#8230;</p></div>
+              <div class="measure">
+                <div><span class="lab">Rows total</span><span class="fig" id="fh_rows_total">{fh['rows_total']:,}</span></div>
+                <div><span class="lab">Rows real</span><span class="fig" id="fh_rows_real">{fh['rows_real']:,}</span></div>
+                <div><span class="lab">N/A rate</span><span class="fig" id="fh_na_rate">{fh['na_rate_pct']}%</span></div>
+                <div><span class="lab">Missing 20s slots</span><span class="fig" id="fh_gaps">{fh['gaps_missing_slots']:,}</span></div>
+                <div><span class="lab">Misaligned</span><span class="fig" id="fh_misaligned">{fh['misaligned_rows']:,}</span></div>
               </div>
-              <div class="sub">Auth user: <b>{html.escape(AUTH_USER)}</b></div>
-            </div>
-            {tabs}
-            <div class="grid">{cards}</div>
-            <div class="panel">
-              <div class="bar"><div class="nav"><a href="/?tab=data-pipeline">Overview</a></div><div><span id="latest-forward" class='badge'>{latest_text}</span></div></div>
-              <div class="muted" style="margin-bottom:10px">Data tables</div>
-              <ul class="table-links">{links}</ul>
-            </div>
-            <div class="panel" style="margin-top:12px">
-              <div class="bar">
-                <div class="nav"><a href="/">Forward Feed Health</a></div>
-                <div class="muted">window: last {fh['window_minutes']} minutes</div>
+              <p class="legend">Counted over the last {fh['window_minutes']} minutes.
+                Newest snapshot <b id="fh_last">{fh['last_snapshot_time'] or 'none'}</b>
+                &#183; <span id="latest-forward">{latest_text}</span></p>
+            </section>
+
+            <section class="sect" id="sect_pipe_guard">
+              <div class="sect-head"><h2>Model data guard</h2>
+                <p class="sect-note">reading&#8230;</p></div>
+              <div class="measure">
+                <div><span class="lab">Guard</span><span class="fig sm">{html.escape(str(guard.get('guard_status','n/a')))}</span></div>
+                <div><span class="lab">Model eligible</span><span class="fig sm">{html.escape(str(guard.get('model_eligible','n/a')))}</span></div>
+                <div><span class="lab">Minute</span><span class="fig sm">{html.escape(str(guard.get('snapshot_minute_utc','n/a')))}</span></div>
+                <div><span class="lab">Market</span><span class="fig sm">{html.escape(str(guard.get('market_ticker','n/a')))}</span></div>
               </div>
-              <div class="grid4">
-                <div class="card"><div class="k">Rows Total</div><div id="fh_rows_total" class="v">{fh['rows_total']:,}</div></div>
-                <div class="card"><div class="k">Rows Real</div><div id="fh_rows_real" class="v">{fh['rows_real']:,}</div></div>
-                <div class="card"><div class="k">N/A Rate</div><div id="fh_na_rate" class="v">{fh['na_rate_pct']}%</div></div>
-                <div class="card"><div class="k">Missing 20s Slots</div><div id="fh_gaps" class="v">{fh['gaps_missing_slots']:,}</div></div>
-              </div>
-              <div class="grid4">
-                <div class="card"><div class="k">Misaligned Rows</div><div id="fh_misaligned" class="v">{fh['misaligned_rows']:,}</div></div>
-                <div class="card"><div class="k">Last Snapshot UTC</div><div id="fh_last" class="v" style="font-size:18px">{fh['last_snapshot_time'] or 'N/A'}</div></div>
-              </div>
-            </div>
-            <div class="panel" style="margin-top:12px">
-              <div class="bar">
-                <div class="nav"><a href="/">Model Data Guard</a></div>
-                <div class="muted">latest minute eligibility check</div>
-              </div>
-              <div class="grid4">
-                <div class="card"><div class="k">Guard Status</div><div class="v">{(mg or {}).get('guard_status','N/A')}</div></div>
-                <div class="card"><div class="k">Model Eligible</div><div class="v">{(mg or {}).get('model_eligible','N/A')}</div></div>
-                <div class="card"><div class="k">Snapshot Minute UTC</div><div class="v" style="font-size:18px">{(str((mg or {}).get('snapshot_minute_utc')) if mg else 'N/A')}</div></div>
-                <div class="card"><div class="k">Ticker</div><div class="v" style="font-size:16px">{html.escape(str((mg or {}).get('market_ticker','N/A')))}</div></div>
-              </div>
-            </div>
+              <p class="legend">Eligibility of the most recent minute for model input.</p>
+            </section>
+
+            <section class="sect">
+              <div class="sect-head"><h2>Records</h2><p class="sect-note">row counts</p></div>
+              <div class="sheet"><table class="stack"><thead><tr><th>Table</th>
+                <th class="num">Rows</th></tr></thead><tbody>{rows}</tbody></table></div>
+            </section>
             """
-            self._send(render_page("Data Pipeline", body))
+            self._send(render_page("Data pipeline", body, "pipeline"))
             return
 
         if parsed.path == "/health":
@@ -2207,6 +2992,7 @@ class Handler(BaseHTTPRequestHandler):
             fh = forward_feed_health()
             mg = latest_model_guard()
             ss = sim_health_summary()
+            writers = pipeline_writer_freshness()
             if latest and latest.get("snapshot_time_utc"):
                 latest["snapshot_time_utc"] = str(latest["snapshot_time_utc"])
             if mg and mg.get("snapshot_minute_utc"):
@@ -2216,7 +3002,15 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(
                 json.dumps(
-                    {"ok": True, "counts": counts, "latest_forward": latest, "forward_health": fh, "model_guard": mg, "sim_summary": ss}
+                    {
+                        "ok": True,
+                        "counts": counts,
+                        "latest_forward": latest,
+                        "forward_health": fh,
+                        "model_guard": mg,
+                        "sim_summary": ss,
+                        "writers": writers,
+                    }
                 ).encode("utf-8")
             )
             return
@@ -2301,19 +3095,42 @@ class Handler(BaseHTTPRequestHandler):
             header = "".join([f"<th>{html.escape(str(c))}</th>" for c in cols])
             body_rows = []
             for r in rows:
-                tds = "".join([f"<td>{html.escape(str(r[c]))}</td>" for c in cols])
+                num_attr = " class='num'"
+                tds = "".join(
+                    [
+                        "<td"
+                        + (num_attr if isinstance(r[c], (int, float)) else "")
+                        + ">"
+                        + html.escape(str(r[c]))
+                        + "</td>"
+                        for c in cols
+                    ]
+                )
                 body_rows.append(f"<tr>{tds}</tr>")
-            prev_link = f"<a class='pill' href='/table?name={name}&page={max(1,page-1)}'>Prev</a>"
-            next_link = f"<a class='pill' href='/table?name={name}&page={page+1}'>Next</a>"
-            body = (
-                f"<div class='top'><div><h1 class='title'>Table: {html.escape(name)}</h1>"
-                f"<div class='sub'>Total rows: {total:,} | Page: {page}</div></div>"
-                f"<div class='nav'><a href='/'>Back to overview</a></div></div>"
-                f"<div class='panel'><div class='bar'><div>{prev_link} {next_link}</div>"
-                f"<div class='muted'>page size {PAGE_SIZE}</div></div>"
-                f"<div style='overflow:auto;max-height:70vh'><table><thead><tr>{header}</tr></thead><tbody>{''.join(body_rows)}</tbody></table></div></div>"
+            prev_dis = " aria-disabled='true' tabindex='-1'" if page <= 1 else ""
+            prev_link = (
+                f"<a class='btn sm'{prev_dis} href='/table?name={name}&page={max(1,page-1)}'>Previous</a>"
             )
-            self._send(render_page(f"Table {name}", body))
+            next_link = f"<a class='btn sm' href='/table?name={name}&page={page+1}'>Next</a>"
+            empty = (
+                "<tr class='empty-row'><td>This page is past the end of the table.</td></tr>"
+                if not rows
+                else ""
+            )
+            body = (
+                f"<h1 class='page'>{html.escape(name)}</h1>"
+                f"<p class='deck'>{total:,} rows, {PAGE_SIZE} to a page. "
+                f"<a href='/?tab=data-pipeline' style='color:inherit'>Back to the pipeline</a>.</p>"
+                f"<section class='sect'>"
+                f"<div class='sect-head'><h2>Page {page}</h2>"
+                f"<p class='sect-note'>rows {min(total, (page-1)*PAGE_SIZE + 1):,}"
+                f"&#8211;{min(total, page*PAGE_SIZE):,}</p></div>"
+                f"<div class='sheet' style='max-height:72vh'><table><thead><tr>{header}</tr></thead>"
+                f"<tbody>{''.join(body_rows) or empty}</tbody></table></div>"
+                f"<div class='pager'>{prev_link} {next_link}</div>"
+                f"</section>"
+            )
+            self._send(render_page(f"Table {name}", body, "table"))
             return
 
         self._send("not found", 404)
@@ -2416,7 +3233,7 @@ class Handler(BaseHTTPRequestHandler):
             # human-clicked action - the account owner reviews and clicks,
             # this handler never fires on its own. Gated by the same live
             # password as /live_settings.
-            if not self._live_authorized():
+            if not self._live_authorized(parsed):
                 self.send_response(403)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.end_headers()

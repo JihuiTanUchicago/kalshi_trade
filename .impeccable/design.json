@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-26T00:00:00Z",
+  "title": "Design System: Kalshi BTC 15M Control Room",
+  "extensions": {
+    "colorMeta": {
+      "stock": { "role": "neutral", "displayName": "Paper Stock", "canonical": "#E9EBE5", "tonalRamp": ["#22241F", "#3A3D36", "#55594F", "#767B6E", "#9BA092", "#C2C7B9", "#E9EBE5", "#F5F6F1"] },
+      "stock-live": { "role": "neutral", "displayName": "Live Stock (rose newsprint)", "canonical": "#EFE4E7", "tonalRamp": ["#2A2024", "#42343A", "#5E4C53", "#826C75", "#A8909A", "#CDB9C0", "#EFE4E7", "#F8F1F3"] },
+      "stock-sunk": { "role": "neutral", "displayName": "Sunk Stock", "canonical": "#DFE2DA", "tonalRamp": ["#1F211C", "#363933", "#50544A", "#707567", "#95998B", "#BCC0B2", "#DFE2DA", "#F1F2EE"] },
+      "stock-raised": { "role": "neutral", "displayName": "Raised Stock", "canonical": "#F1F3ED", "tonalRamp": ["#242621", "#3C3F37", "#575B50", "#787D6F", "#9DA293", "#C4C9BA", "#E4E7DF", "#F1F3ED"] },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#191B16", "tonalRamp": ["#0D0E0B", "#191B16", "#2E312A", "#474B42", "#666B5F", "#8B9083", "#B4B9AC", "#DDE0D6"] },
+      "ink-2": { "role": "neutral", "displayName": "Ink 2", "canonical": "#444841", "tonalRamp": ["#15170F", "#22241D", "#33362D", "#444841", "#5F645A", "#838878", "#ADB2A2", "#D8DCCE"] },
+      "ink-3": { "role": "neutral", "displayName": "Ink 3", "canonical": "#5F645D", "tonalRamp": ["#1B1D19", "#2B2E28", "#3F4239", "#4F534A", "#5F645D", "#868B80", "#AFB4A6", "#D9DDD0"] },
+      "rule": { "role": "neutral", "displayName": "Hairline Rule", "canonical": "#C9CDC2", "tonalRamp": ["#1D1F1A", "#323530", "#4C5047", "#6B7063", "#909586", "#B0B5A6", "#C9CDC2", "#E6E8E1"] },
+      "rule-2": { "role": "neutral", "displayName": "Heavy Hairline", "canonical": "#B1B6AA", "tonalRamp": ["#1A1C17", "#2E312B", "#464A40", "#63685A", "#868B7B", "#B1B6AA", "#CDD1C5", "#E9EBE4"] },
+      "signal": { "role": "primary", "displayName": "Signal Red", "canonical": "#C8102E", "tonalRamp": ["#2B0308", "#4B060F", "#6D0919", "#920C22", "#C8102E", "#E34459", "#F08A97", "#F9D3D9"] },
+      "signal-wash": { "role": "primary", "displayName": "Signal Wash", "canonical": "#F8E4E6", "tonalRamp": ["#33191C", "#4E282C", "#6D3A40", "#8F5158", "#B37B81", "#D6A9AE", "#F8E4E6", "#FCF2F3"] },
+      "signal-ink": { "role": "primary", "displayName": "Signal Ink (knockout)", "canonical": "#FDF2F3", "tonalRamp": ["#3A2426", "#573638", "#754A4D", "#946367", "#B48A8D", "#D5B6B8", "#EFDCDE", "#FDF2F3"] },
+      "pos": { "role": "tertiary", "displayName": "Positive Tint Field", "canonical": "#D9E7D6", "tonalRamp": ["#1B2619", "#2D3E2A", "#42583E", "#5B7556", "#7B9575", "#A2B89C", "#D9E7D6", "#EEF5EC"] },
+      "neg": { "role": "tertiary", "displayName": "Negative Tint Field", "canonical": "#F0DEDC", "tonalRamp": ["#2B1D1B", "#43302D", "#5F4642", "#7F615C", "#A2837E", "#C6AAA5", "#F0DEDC", "#F9EFEE"] },
+      "trace-ink": { "role": "tertiary", "displayName": "Trace 1 — Ink", "canonical": "#191B16", "tonalRamp": ["#0D0E0B", "#191B16", "#2E312A", "#474B42", "#666B5F", "#8B9083", "#B4B9AC", "#DDE0D6"] },
+      "trace-umber": { "role": "tertiary", "displayName": "Trace 2 — Umber", "canonical": "#7A5C2E", "tonalRamp": ["#22190C", "#382916", "#4F3B20", "#66492A", "#7A5C2E", "#A07B48", "#C6A579", "#E7D6BB"] },
+      "trace-slate": { "role": "tertiary", "displayName": "Trace 3 — Slate Blue", "canonical": "#31566F", "tonalRamp": ["#0E1921", "#182833", "#223A4B", "#2B4860", "#31566F", "#4D7896", "#83A5BC", "#C4D6E2"] },
+      "trace-olive": { "role": "tertiary", "displayName": "Trace 4 — Olive", "canonical": "#55693F", "tonalRamp": ["#171D12", "#26301D", "#35422A", "#455536", "#55693F", "#748C5B", "#9FB289", "#D0DBC1"] },
+      "trace-plum": { "role": "tertiary", "displayName": "Trace 5 — Plum", "canonical": "#6B4257", "tonalRamp": ["#1E1219", "#311D28", "#452937", "#583546", "#6B4257", "#8E6178", "#B491A2", "#DDCAD3"] }
+    },
+    "typographyMeta": {
+      "page-title": { "displayName": "Page Title", "purpose": "One per page, sentence case, Archivo 600." },
+      "said": { "displayName": "Status Line", "purpose": "The single dominant answer under the title; drops to 15px under 640px." },
+      "figure": { "displayName": "Figure", "purpose": "Measured numbers on a ruled measure row; tabular lining figures." },
+      "figure-sm": { "displayName": "Small Figure", "purpose": "Denser measure rows (.fig.sm)." },
+      "section-head": { "displayName": "Section Head", "purpose": "Uppercase Archivo Narrow over a 2px ink rule." },
+      "body": { "displayName": "Body", "purpose": "Page default; prose capped at 68ch, legends/notices at 66ch." },
+      "table": { "displayName": "Table", "purpose": "Timetable rows, baseline-aligned, 9px/12px/8px cells." },
+      "column-head": { "displayName": "Column Head", "purpose": "Sticky sentence-case Narrow 600 over a 1px rule-2." },
+      "label": { "displayName": "Micro-label", "purpose": "Uppercase Narrow above every figure and field." },
+      "wordmark": { "displayName": "Wordmark", "purpose": "Masthead identity, widest letterspacing in the system." }
+    },
+    "shadows": [],
+    "motion": [
+      { "name": "wash", "value": "wash .18s cubic-bezier(.16,1,.3,1) 1 — @keyframes wash{from{background-color:#B1B6AA}to{background-color:transparent}}", "purpose": "The one authored moment. Applied as .washed to a figure whose value actually changed (re-triggered by removing the class, forcing reflow, re-adding)." },
+      { "name": "control-shift", "value": "background .16s cubic-bezier(.16,1,.3,1), color .16s cubic-bezier(.16,1,.3,1)", "purpose": "Button hover fill and knockout. The only transition in the system." },
+      { "name": "press", "value": "transform: translateY(1px)", "purpose": "Button :active. No easing, no scale." },
+      { "name": "reduced-motion", "value": "@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important}}", "purpose": "Global collapse of all motion. Non-negotiable." }
+    ],
+    "breakpoints": [
+      { "name": "stack", "value": "640px" },
+      { "name": "narrow", "value": "860px" },
+      { "name": "plates-2up", "value": "1500px" },
+      { "name": "plates-3up", "value": "2200px" },
+      { "name": "page-max", "value": "2560px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Control Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "The system's only button form: hairline-nicked rectangle that fills ink on hover.",
+      "html": "<button class=\"ds-btn\">Turn on</button> <button class=\"ds-btn ds-btn-danger\">Halt</button> <button class=\"ds-btn\" disabled>Turn on</button>",
+      "css": ".ds-btn{font-family:\"Archivo Narrow\",Archivo,sans-serif;font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;padding:6px 13px 5px;border:1px solid #191B16;border-radius:3px;background:transparent;color:#191B16;cursor:pointer;display:inline-block;transition:background .16s cubic-bezier(.16,1,.3,1),color .16s cubic-bezier(.16,1,.3,1)}.ds-btn:hover{background:#191B16;color:#F1F3ED}.ds-btn:focus-visible{outline:2px solid #191B16;outline-offset:2px}.ds-btn:active{transform:translateY(1px)}.ds-btn[disabled]{border-color:#B1B6AA;color:#5F645D;cursor:not-allowed;background:transparent}.ds-btn-danger{border-color:#C8102E;color:#C8102E}.ds-btn-danger:hover{background:#C8102E;color:#FDF2F3}"
+    },
+    {
+      "name": "State Mark",
+      "kind": "chip",
+      "refersTo": "mark",
+      "description": "The state vocabulary: OFF / ON / ARMED / HALT. Colour is always paired with a word.",
+      "html": "<span class=\"ds-mk\">Off</span> <span class=\"ds-mk ds-mk-on\">On</span> <span class=\"ds-mk ds-mk-armed\">Armed</span> <span class=\"ds-mk ds-mk-halt\">Halt</span>",
+      "css": ".ds-mk{font-family:\"Archivo Narrow\",Archivo,sans-serif;font-size:11px;letter-spacing:.09em;text-transform:uppercase;font-weight:600;padding:2px 7px 1px;border:1px solid #B1B6AA;border-radius:3px;color:#444841;white-space:nowrap;display:inline-block}.ds-mk-on{border-color:#191B16;color:#F1F3ED;background:#191B16}.ds-mk-armed{border-color:#C8102E;color:#C8102E;background:#F8E4E6}.ds-mk-halt{border-color:#C8102E;color:#FDF2F3;background:#C8102E}"
+    },
+    {
+      "name": "Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Micro-labelled input on raised stock; focus darkens the border and drops the fill back to page stock.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-lab\">Max position</span><input class=\"ds-input\" type=\"number\" value=\"25\"></label>",
+      "css": ".ds-field{display:flex;flex-direction:column;gap:3px;min-width:104px}.ds-lab{font-family:\"Archivo Narrow\",Archivo,sans-serif;font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:#5F645D;display:block}.ds-input{background:#F1F3ED;border:1px solid #B1B6AA;border-radius:3px;padding:6px 9px;width:100%;font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-size:13px;color:#191B16;font-variant-numeric:tabular-nums lining-nums;caret-color:#C8102E}.ds-input:hover{border-color:#5F645D}.ds-input:focus{border-color:#191B16;outline:none;background:#E9EBE5}"
+    },
+    {
+      "name": "Service Navigation",
+      "kind": "nav",
+      "refersTo": "nav-link",
+      "description": "Masthead wordmark plus three ruled uppercase service tabs; the current tab carries a 2px ink underline overlapping the strip rule.",
+      "html": "<div class=\"ds-nav-shell\"><header class=\"ds-masthead\"><p class=\"ds-wordmark\">Kalshi BTC 15M<span class=\"ds-sep\">/</span><span class=\"ds-svc\">Live execution</span></p><p class=\"ds-asof\">Read <b>20:22:26</b> ET</p></header><nav class=\"ds-services\"><a class=\"ds-svc-link\" href=\"#\" aria-current=\"page\">Live</a><a class=\"ds-svc-link\" href=\"#\">Simulated</a><a class=\"ds-svc-link\" href=\"#\">Pipeline</a></nav></div>",
+      "css": ".ds-nav-shell{background:#EFE4E7;color:#191B16}.ds-masthead{border-bottom:2px solid #C8102E;display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:14px 20px 10px;margin:0}.ds-wordmark{font-family:\"Archivo Narrow\",Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.16em;text-transform:uppercase;margin:0}.ds-sep{color:#B1B6AA;margin:0 .5em}.ds-svc{color:#C8102E}.ds-asof{font-family:\"Archivo Narrow\",Archivo,sans-serif;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#5F645D;white-space:nowrap;margin:0}.ds-asof b{color:#191B16;font-weight:600}.ds-services{border-bottom:1px solid #C9CDC2;display:flex;padding:0 20px}.ds-svc-link{display:inline-block;padding:9px 16px 8px;text-decoration:none;color:#444841;font-family:\"Archivo Narrow\",Archivo,sans-serif;font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;border-bottom:2px solid transparent;margin-bottom:-1px}.ds-svc-link:hover{color:#191B16;background:#F1F3ED}.ds-svc-link[aria-current=\"page\"]{color:#191B16;border-bottom-color:#C8102E;font-weight:600}.ds-svc-link:focus-visible{outline:2px solid #191B16;outline-offset:2px}"
+    },
+    {
+      "name": "Status Line",
+      "kind": "custom",
+      "refersTo": "said",
+      "description": "The one dominant answer. Calm state shows an authored circled check in ink-3; .ds-needs swaps to a warning triangle and turns the alarm segments signal red.",
+      "html": "<div class=\"ds-statusline ds-needs\"><svg class=\"ds-mark ds-mark-calm\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"8.4\"/><path d=\"m8.3 12.2 2.6 2.6 4.8-5.2\"/></svg><svg class=\"ds-mark ds-mark-needs\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 4.2 21.3 20H2.7z\"/><path d=\"M12 10.2v4.1\"/><path d=\"M12 17.1v.1\"/></svg><div class=\"ds-said\">Live trading off<span class=\"ds-sep2\">&#183;</span>No open positions<span class=\"ds-sep2\">&#183;</span><em>balance stale</em></div></div>",
+      "css": ".ds-statusline{display:flex;align-items:flex-start;gap:12px;padding:16px 0 15px;border-bottom:1px solid #C9CDC2;max-width:104ch;color:#191B16}.ds-statusline .ds-mark{flex:none;width:17px;height:17px;margin-top:1px;color:#5F645D}.ds-statusline .ds-mark-needs,.ds-statusline.ds-needs .ds-mark-calm{display:none}.ds-statusline.ds-needs .ds-mark-needs{display:block;color:#C8102E}.ds-said{font-family:\"Archivo Narrow\",Archivo,sans-serif;font-size:clamp(16px,2.1vw,20px);letter-spacing:.01em;font-weight:600;line-height:1.35}.ds-said em{font-style:normal;color:#5F645D}.ds-statusline.ds-needs .ds-said em{color:#C8102E}.ds-sep2{color:#B1B6AA;margin:0 .45em}@media(max-width:640px){.ds-said{font-size:15px}}"
+    },
+    {
+      "name": "As-of Rule (Section Head)",
+      "kind": "custom",
+      "refersTo": "section-head",
+      "description": "The signature component. A ruled section head carrying live freshness; .ds-stale breaks the rule to dashed signal, reddens the note and strikes every figure.",
+      "html": "<section class=\"ds-sect ds-stale\"><div class=\"ds-sect-head\"><h2>Account</h2><p class=\"ds-sect-note\"><span class=\"ds-stale-mark\">Stale 13d</span> &#183; the balance writer stopped writing</p></div><div class=\"ds-measure\"><div><span class=\"ds-lab2\">Account cash</span><span class=\"ds-fig\">$90.26</span></div><div><span class=\"ds-lab2\">Realised, all time</span><span class=\"ds-fig ds-tint ds-neg\">&#8722;$1.82</span></div></div></section>",
+      "css": ".ds-sect{margin-top:32px;color:#191B16;font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-variant-numeric:tabular-nums lining-nums}.ds-sect-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-bottom:7px;border-bottom:2px solid #191B16}.ds-sect.ds-stale .ds-sect-head{border-bottom:2px dashed #C8102E}.ds-sect-head h2{margin:0;font-family:\"Archivo Narrow\",Archivo,sans-serif;font-size:13px;font-weight:600;letter-spacing:.13em;text-transform:uppercase}.ds-sect-note{font-family:\"Archivo Narrow\",Archivo,sans-serif;font-size:12px;letter-spacing:.02em;color:#5F645D;margin:0}.ds-sect.ds-stale .ds-sect-note{color:#C8102E;font-weight:600}.ds-stale-mark{color:#C8102E;font-weight:600;text-transform:uppercase;letter-spacing:.09em}.ds-measure{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));border-bottom:1px solid #C9CDC2}.ds-measure>div{padding:14px 18px 13px;border-left:1px solid #C9CDC2}.ds-measure>div:first-child{border-left:0;padding-left:0}.ds-lab2{font-family:\"Archivo Narrow\",Archivo,sans-serif;font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:#5F645D;display:block;margin-bottom:5px}.ds-fig{font-size:clamp(21px,2.6vw,27px);font-weight:600;letter-spacing:-.015em;line-height:1.1;display:inline-block}.ds-tint{padding:1px 7px;margin-left:-7px;border-radius:3px}.ds-neg{background:#F0DEDC}.ds-sect.ds-stale .ds-fig{color:#5F645D;text-decoration:line-through;text-decoration-thickness:1px;text-decoration-color:#B1B6AA}"
+    },
+    {
+      "name": "Timetable",
+      "kind": "custom",
+      "refersTo": "table",
+      "description": "Ruled rows with sticky sentence-case column heads and right-aligned tabular figures; restacks into labelled rows under 640px via data-lab.",
+      "html": "<div class=\"ds-sheet\"><table class=\"ds-table ds-stack\"><thead><tr><th>Strategy</th><th class=\"ds-num\">Live P&amp;L</th><th>State</th></tr></thead><tbody><tr><td class=\"ds-name\" data-lab=\"Strategy\">random_forest</td><td class=\"ds-num\" data-lab=\"Live P&amp;L\"><span class=\"ds-fig3 ds-tint3 ds-neg3\">&#8722;$1.82</span><div class=\"ds-sub\">2 trades</div></td><td data-lab=\"State\"><span class=\"ds-mk2\">Off</span></td></tr><tr><td class=\"ds-name\" data-lab=\"Strategy\">binary_theory_edge</td><td class=\"ds-num\" data-lab=\"Live P&amp;L\"><span class=\"ds-fig3 ds-tint3 ds-pos3\">+$518.01</span><div class=\"ds-sub\">379 trades</div></td><td data-lab=\"State\"><span class=\"ds-mk2\">Off</span></td></tr></tbody></table></div>",
+      "css": ".ds-sheet{overflow-x:auto;background:#E9EBE5;color:#191B16;font-family:Archivo,ui-sans-serif,system-ui,sans-serif}.ds-table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums lining-nums}.ds-table th,.ds-table td{padding:9px 12px 8px;text-align:left;vertical-align:baseline;border-bottom:1px solid #C9CDC2;white-space:nowrap}.ds-table th{font-family:\"Archivo Narrow\",Archivo,sans-serif;font-size:12px;letter-spacing:.02em;color:#5F645D;font-weight:600;border-bottom:1px solid #B1B6AA;background:#E9EBE5}.ds-table td:first-child,.ds-table th:first-child{padding-left:0}.ds-table td:last-child,.ds-table th:last-child{padding-right:0}.ds-table tbody tr:hover td{background:#F1F3ED}.ds-num{text-align:right}.ds-name{font-weight:600}.ds-sub{font-size:12px;color:#5F645D;margin-top:4px}.ds-fig3{font-size:17px;font-weight:600;letter-spacing:-.015em;display:inline-block}.ds-tint3{padding:1px 7px;border-radius:3px}.ds-pos3{background:#D9E7D6}.ds-neg3{background:#F0DEDC}.ds-mk2{font-family:\"Archivo Narrow\",Archivo,sans-serif;font-size:11px;letter-spacing:.09em;text-transform:uppercase;font-weight:600;padding:2px 7px 1px;border:1px solid #B1B6AA;border-radius:3px;color:#444841;display:inline-block}@media(max-width:640px){.ds-stack thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}.ds-stack tbody tr{display:block;border-bottom:1px solid #B1B6AA;padding:9px 0 7px}.ds-stack tbody td{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 16px;border:0;padding:2px 0;white-space:normal}.ds-stack tbody td::before{content:attr(data-lab);font-family:\"Archivo Narrow\",Archivo,sans-serif;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#5F645D;flex:none}.ds-stack tbody tr:hover td{background:transparent}}"
+    },
+    {
+      "name": "Notice",
+      "kind": "card",
+      "refersTo": "notice",
+      "description": "The only signal-filled block. Used when the operator must act; head is uppercase Narrow in signal, body is sentence case.",
+      "html": "<div class=\"ds-notice\"><h3>Live trading gate</h3>Live trading is off. Arming a strategy places real orders against the account.</div>",
+      "css": ".ds-notice{border:1px solid #C8102E;background:#F8E4E6;padding:12px 14px;font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-size:13px;color:#191B16;max-width:66ch;line-height:1.45}.ds-notice h3{margin:0 0 4px;font-family:\"Archivo Narrow\",Archivo,sans-serif;font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:#C8102E}"
+    },
+    {
+      "name": "Plate",
+      "kind": "card",
+      "refersTo": "plate",
+      "description": "The only filled container in the system: a ruled chart field with a rule-swatch key. Zero radius, no shadow. Fill inverts to page stock on the live surface.",
+      "html": "<div class=\"ds-plate\"><span class=\"ds-lab4\">Equity, 20-second marks</span><div class=\"ds-canvas\"></div><div class=\"ds-keys\"><span><i></i>Equity</span><span style=\"color:#7A5C2E\"><i style=\"border-top-style:dashed\"></i>Position value</span></div></div>",
+      "css": ".ds-plate{border:1px solid #C9CDC2;background:#F1F3ED;padding:10px 12px 6px;font-family:Archivo,ui-sans-serif,system-ui,sans-serif;color:#191B16}.ds-lab4{font-family:\"Archivo Narrow\",Archivo,sans-serif;font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:#5F645D;display:block;margin-bottom:5px}.ds-canvas{height:120px;border-bottom:1px solid #B1B6AA;background:transparent}.ds-keys{display:flex;flex-wrap:wrap;gap:14px;padding:9px 0 2px;font-size:12px;color:#444841;font-family:\"Archivo Narrow\",Archivo,sans-serif;letter-spacing:.01em}.ds-keys span{display:inline-flex;align-items:center;gap:6px}.ds-keys i{width:14px;height:0;border-top:2px solid currentColor;display:inline-block}"
+    },
+    {
+      "name": "Washed Figure",
+      "kind": "custom",
+      "refersTo": "figure",
+      "description": "The system's one authored motion: a 180ms rule-grey wash behind a figure whose value actually changed. Collapses under prefers-reduced-motion.",
+      "html": "<span class=\"ds-fig5 ds-washed\">$90.26</span>",
+      "css": "@keyframes ds-wash{from{background-color:#B1B6AA}to{background-color:transparent}}.ds-fig5{font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-size:27px;font-weight:600;letter-spacing:-.015em;line-height:1.1;color:#191B16;display:inline-block;font-variant-numeric:tabular-nums lining-nums;padding:1px 7px;border-radius:3px}.ds-washed{animation:ds-wash .18s cubic-bezier(.16,1,.3,1) 1}@media(prefers-reduced-motion:reduce){.ds-washed{animation-duration:.001ms!important}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Station Timetable",
+    "overview": "This is a departures board for money, not a trading terminal. Everything is printed on a warm grey stock, ruled with hairlines, and read top to bottom in a single column of sections. Figures sit on a rule; they never sit in a card. The page has no shadow, no gradient, no glass, no blur, and no rounded panel: the only radius in the system is a 3px hairline nick on small inset objects. Depth is a printing problem, solved by rule weight and by two stock tints, never by lifting anything off the page.\n\nThe world deliberately refuses the terminal look that trading software defaults to. There is no monospace anywhere in the build — not in tables, not in chart axes, not in identifiers. Alignment of figures is bought with font-variant-numeric: tabular-nums lining-nums set on body and reasserted on every numeric cell, which is what a timetable actually does. Typography is one family in two cuts (Archivo and Archivo Narrow) at two weights (400 and 600). The narrow cut carries every label, head, chip, tab and status line; the normal cut carries sentences and figures.\n\nThe page is built to be read by one operator at a glance, so the system spends its scarcity budget on a single reserved red. Money direction is never told in that red; it rides a desaturated tint field behind the figure instead. The whole surface is served as plain CSS and vanilla JS embedded in Python string literals — there is no build step, no framework, no icon package, and no runtime dependency beyond one Google Fonts import.",
+    "keyCharacteristics": [
+      "Ruled rows on stock; no cards, no shadows, no gradients, no glass.",
+      "One reserved signal red, spent only on attention and on the live-money boundary.",
+      "Two stocks — grey newsprint for paper, rose-tinted for real money.",
+      "Archivo + Archivo Narrow, two weights, tabular lining figures everywhere.",
+      "No monospace, anywhere, ever.",
+      "One authored motion: a 180ms wash on a figure whose value just changed."
+    ],
+    "rules": [
+      { "name": "The Reserved Signal Rule", "body": "#C8102E means \"this needs you\" or \"this is real money.\" It is spent on: the attention state of the status line, the stale rule and note, the armed/halt marks, the danger button, the notice box, the caret, the live masthead and live active-tab underline, and the LIVE cutoff marker on a chart. Adding a sixth use dilutes the other five.", "section": "colors" },
+      { "name": "The Money-Rides-a-Field Rule", "body": "Profit and loss direction is told by a tint field behind the figure (--pos / --neg) with the figure kept in ink — never by colouring the figure, and never by the reserved red. A losing number is not an alarm; it is a number.", "section": "colors" },
+      { "name": "The Two Stocks Rule", "body": "Paper trading and pipeline sit on --stock. Real money sits on --stock-live via body.live-service, which also swaps the masthead's bottom rule and the active tab's underline to --signal. The two surfaces must never be confusable at a glance.", "section": "colors" },
+      { "name": "The State-Not-By-Colour Rule", "body": "Every state that carries colour also carries a word or a shape: the stale rule goes dashed and the figures get struck through, the marks read OFF / ON / ARMED / HALT, the status line swaps a check glyph for a triangle. Remove all colour and the page still reports correctly.", "section": "colors" },
+      { "name": "The No-Monospace Rule", "body": "No monospace font is permitted anywhere, including chart axis labels and code-like identifiers. Numeric alignment comes from tabular lining figures, not from a fixed-pitch face. The terminal look is the rut this world was built to leave.", "section": "typography" },
+      { "name": "The Short-Caps Rule", "body": "Uppercase is reserved for short labels: section heads, micro-labels, field labels, chips, tabs, marks, buttons, the wordmark, and the stale mark. Anything that reads as a sentence is sentence case. snake_case model names stay lowercase, because upper-casing a 29-character identifier costs legibility and buys nothing.", "section": "typography" },
+      { "name": "The Two-Weights Rule", "body": "400 and 600 only. There is no 300, 500 or 700 anywhere in the system; emphasis is bought with the narrow cut, letterspacing, and case instead.", "section": "typography" },
+      { "name": "The One Dominant Answer Rule", "body": "Each page opens with exactly one status line stating what the system is doing right now; every section below is supporting evidence. On a phone that line owns the first viewport.", "section": "layout" },
+      { "name": "The Flush-Edge Rule", "body": "The leftmost column of any measure grid or table drops its padding and its rule so figures align to the same vertical as the page title. Nothing is indented into a box.", "section": "layout" },
+      { "name": "The Printed-Depth Rule", "body": "If something needs to separate, rule it or tint it. Never lift it. A shadow, gradient, or glass panel anywhere in this world is a defect.", "section": "elevation" },
+      { "name": "The Hairline-Nick Rule", "body": "3px radius on inset objects, 0 everywhere else. There is no medium or large radius step, and adding one would break the printed register.", "section": "shapes" },
+      { "name": "The Drawn-Icon Rule", "body": "Icons are inline SVG strokes at 1.6 drawn to match the type's weight, using currentColor. No icon font, no glyph package, no emoji.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do separate with a rule or a stock tint. The rule scale is 2px ink / 2px signal / 1px rule-2 / 1px rule; the tint scale is stock-sunk → stock → stock-raised.",
+      "Do put every new figure block on a .measure grid and every new dataset in a .sect with a .sect-head and a live .sect-note, so its freshness is always on the page.",
+      "Do tell money direction with a .fig.tint.pos / .fig.tint.neg field behind an ink figure.",
+      "Do keep font-variant-numeric: tabular-nums lining-nums on anything numeric.",
+      "Do reserve uppercase for short labels and write every sentence in sentence case, including empty-state copy, notes, and legends.",
+      "Do give every new table a .stack class and data-lab on each td so it restacks into labelled rows under 640px.",
+      "Do pin column widths on any new table via a colgroup and a .t-* width class.",
+      "Do pair colour with a word or a shape for every state.",
+      "Do draw icons inline as 1.6-stroke SVG with currentColor.",
+      "Do honour prefers-reduced-motion; the global reduce block collapses all animation and transition to 0.001ms."
+    ],
+    "donts": [
+      "Don't add a shadow, gradient, glass/backdrop-filter, or a card. Containers are sections and plates only.",
+      "Don't use a monospace font anywhere, for any reason, including identifiers and chart axes.",
+      "Don't spend --signal on anything but attention or the live-money boundary. Never on a losing number, a heading, a link, or decoration.",
+      "Don't colour a P&L figure itself; the field behind it carries direction.",
+      "Don't introduce a third font family, a third weight, or a radius other than 3px.",
+      "Don't uppercase a sentence, a model identifier, or anything longer than a few words.",
+      "Don't add a second animation. .washed (180ms, cubic-bezier(.16,1,.3,1), rule-2 fading to transparent, fired only when a figure's value actually changed) is the system's one authored moment; transitions are limited to the 160ms button colour change.",
+      "Don't add a build step, a framework, an icon package, or a runtime dependency. The surface is plain CSS and vanilla JS inside Python string literals.",
+      "Don't let the live surface and the paper surfaces converge. body.live-service must keep its own stock, its red head rule, and its red active tab."
+    ]
+  }
+}
