@@ -11,6 +11,9 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
 KALSHI_BASE_URL = os.getenv("KALSHI_BASE_URL", "https://api.elections.kalshi.com/trade-api/v2")
+# Host for authenticated calls. Configurable so the order path can be proven
+# against Kalshi's demo environment before it is pointed at real money.
+KALSHI_API_HOST = os.getenv("KALSHI_API_HOST", "https://api.elections.kalshi.com").rstrip("/")
 MYSQL_HOST = os.getenv("MYSQL_HOST")
 MYSQL_PORT = int(os.getenv("MYSQL_PORT", "3306"))
 MYSQL_USER = os.getenv("MYSQL_USER")
@@ -109,7 +112,7 @@ def kalshi_auth_headers(method: str, path: str) -> Dict[str, str]:
 
 
 def api_post_auth(path: str, body: Dict[str, Any], timeout: int = 20) -> Dict[str, Any]:
-    url = f"https://api.elections.kalshi.com{path}"
+    url = f"{KALSHI_API_HOST}{path}"
     headers = kalshi_auth_headers("POST", path)
     resp = requests.post(url, json=body, headers=headers, timeout=timeout)
     if resp.status_code >= 400:
@@ -118,7 +121,7 @@ def api_post_auth(path: str, body: Dict[str, Any], timeout: int = 20) -> Dict[st
 
 
 def api_get_auth(path: str, params: Optional[Dict[str, Any]] = None, timeout: int = 20) -> Dict[str, Any]:
-    url = f"https://api.elections.kalshi.com{path}"
+    url = f"{KALSHI_API_HOST}{path}"
     headers = kalshi_auth_headers("GET", path)
     resp = requests.get(url, params=params, headers=headers, timeout=timeout)
     if resp.status_code >= 400:

@@ -217,19 +217,43 @@ def compute_buy_qty(prob: float, ask: float, cfg: Dict) -> int:
     return max(0, min(max_by_cost, max(1, scaled)))
 
 
+# Kalshi retired the old order endpoint: POST /trade-api/v2/portfolio/orders
+# now answers 410 deprecated_v1_order_endpoint, which crashed this engine every
+# time a strategy actually wanted to trade. The replacement quotes everything
+# from the YES leg and takes fixed-point strings rather than integer cents.
+ORDER_PATH = "/trade-api/v2/portfolio/events/orders"
+# immediate_or_cancel, not good_till_canceled, and deliberately: this engine
+# records a position straight after the call and never reconciles fills, so a
+# resting order would leave it believing it holds something it does not. That
+# already happened once - live_orders still carries a March order stuck at
+# "resting". IOC either crosses now, matching what the simulator assumes, or
+# nothing happens at all.
+ORDER_TIME_IN_FORCE = os.getenv("KALSHI_ORDER_TIF", "immediate_or_cancel")
+
+
 def place_limit_order(ticker: str, action: str, side: str, qty: int, price_dollars: float) -> Dict:
-    cents = max(1, min(99, int(round(price_dollars * 100))))
+    """Submit one limit order. `action` is buy/sell and `side` is the leg
+    ("yes"); v2 folds both into bid/ask on the YES leg, so buying YES is a bid
+    and selling a YES position is an ask."""
+    if str(side).lower() != "yes":
+        raise ValueError(f"only the YES leg is supported, got side={side!r}")
+    if str(action).lower() not in ("buy", "sell"):
+        raise ValueError(f"action must be buy or sell, got {action!r}")
+    v2_side = "bid" if str(action).lower() == "buy" else "ask"
+    # Same 1c..99c bounds and whole-cent rounding the old endpoint enforced, so
+    # this change alters the transport and not the prices being sent.
+    cents = max(1, min(99, int(round(float(price_dollars) * 100))))
     client_order_id = str(uuid.uuid4())
     body = {
         "ticker": ticker,
-        "action": action,
-        "side": side,
-        "count": qty,
-        "type": "limit",
-        "yes_price": cents,
+        "side": v2_side,
+        "count": f"{int(qty)}.00",
+        "price": f"{cents / 100.0:.4f}",
+        "time_in_force": ORDER_TIME_IN_FORCE,
+        "self_trade_prevention_type": "taker_at_cross",
         "client_order_id": client_order_id,
     }
-    resp = api_post_auth("/trade-api/v2/portfolio/orders", body)
+    resp = api_post_auth(ORDER_PATH, body)
     return {"client_order_id": client_order_id, "body": body, "resp": resp}
 
 

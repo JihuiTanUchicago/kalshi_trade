@@ -337,6 +337,57 @@ disabled: its sandbox egress proxy refuses connections to the CloudFront host
 (`connect_rejected ... organization policy`), and `user_declared_urls` is dropped by the server.
 The routine is kept disabled at `trig_01RdZe7mQyrWJaXnx9JFUmZV` in case that policy ever changes.
 
+## Kalshi retired the order endpoint (fixed 2026-09-27)
+
+Live trading could not place a single order, and every attempt crashed the engine.
+`POST /trade-api/v2/portfolio/orders` now returns **410 `deprecated_v1_order_endpoint`**. The
+exception propagated out of the per-strategy loop, so the whole tick aborted and the engine
+restarted - which is why `binary_theory_edge`'s own log lines for 05:24 and 05:25 are missing while
+its neighbours' are present.
+
+New endpoint is `POST /trade-api/v2/portfolio/events/orders`, and the schema is genuinely
+different: no `action` or `type` field, `side` is `bid`/`ask` on the YES leg (bid = buy YES, ask =
+sell a YES position), and `count`/`price` are fixed-point **strings in dollars**, not integer cents.
+Verified without creating an order by probing with a deliberately invalid body: the new path
+answers `400 missing_parameters: CreateOrderV2Request.SelfTradePreventionType` (so it exists and
+parses), the old path answers 410. Both `api.elections.kalshi.com` and `external-api.kalshi.com`
+behave identically, so no host change was needed. Same 1c-99c bounds and whole-cent rounding as
+before: this changed the transport, not the prices sent.
+
+`time_in_force` is **immediate_or_cancel**, deliberately. The engine records a position straight
+after the call and never reconciles fills, so a resting order would leave it believing it holds
+something it does not - which already happened once, and `live_orders` still carries a March order
+stuck at `resting`. IOC either crosses now, matching what the simulator assumes, or nothing happens.
+**Open gap:** a partial fill is still recorded as a full fill. Reconciliation against Kalshi's
+positions endpoint is not implemented.
+
+**Second blocker, owner action only:** a well-formed order then returns
+`403 "Your location attestation for API trading is missing or expired."` Kalshi requires a
+geolocation attestation for API trading. No code can fix it - verify location in the Kalshi app.
+
+## UI: actions that silently did nothing (fixed 2026-09-27)
+
+`arm()` compared `ARMED.btn === btn`, a **DOM node identity** check, while the strategies table
+re-renders every 10s and replaces that node. The confirming click therefore landed on a fresh
+button and silently re-armed. Arming is now keyed by a stable `data-arm-key` string.
+
+The deeper fix is that the table simply does not re-render while the operator is working in it -
+armed, a config panel open, or focus inside. That also removes the chance of a re-render swallowing
+the click itself. Hover was deliberately **not** included in that condition: parking the pointer
+over the table would have frozen prob/edge indefinitely.
+
+That guard made the state-preservation code written alongside it redundant - armed implies busy,
+open panel implies busy, focus inside implies busy - so `restoreArmed` and the `CFG_OPEN`
+machinery were deleted (-30 lines). Only `CFG_EDITED` survives, covering the one case the guard
+does not: a value typed and then clicked away from.
+
+Save confirmations now render in `#strat_notice` inside the Strategies section. They previously
+appeared at the top of `live-root`, which on a tall page meant a successful save looked exactly
+like nothing happening.
+
+The alerter now tails the engine log for error lines, reporting each once. It would not have caught
+this failure otherwise: a crash-loop restarts too fast to look stale and writes no trade.
+
 ## Risk management (added 2026-09-12)
 
 - `sim_config.SimRiskSettings` (stored in the `sim_settings` table, key `risk_config`): `max_position_fraction` (cap new-position notional as a fraction of a model's own current equity, default 0.20), `max_drawdown_pct` (pause a model once its drawdown from peak exceeds this, default 0.30), `min_equity_floor` (hard floor, default $10).

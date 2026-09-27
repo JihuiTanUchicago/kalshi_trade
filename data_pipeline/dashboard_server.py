@@ -2213,7 +2213,10 @@ def render_page(title: str, body_html: str, service: str = "pipeline") -> str:
     // design system. Notices render in the page's own voice; destructive
     // actions arm in place and need a second, deliberate click.
     function setNotice(rootId, msg, kind){
-      const root=document.getElementById(rootId);
+      // Strategy actions report next to the strategy table; a confirmation
+      // rendered at the top of a tall page is a confirmation nobody sees.
+      const anchor = document.getElementById('strat_notice');
+      const root = (anchor && rootId === 'live-root') ? anchor : document.getElementById(rootId);
       if(!root) return;
       const id=rootId+'_notice';
       let el=document.getElementById(id);
@@ -2226,28 +2229,37 @@ def render_page(title: str, body_html: str, service: str = "pipeline") -> str:
       }
       el.querySelector('h3').textContent = kind || 'Notice';
       el.querySelector('p').textContent = msg;
+      const box=el.getBoundingClientRect();
+      if(box.top < 0 || box.bottom > innerHeight) el.scrollIntoView({block:'nearest'});
       clearTimeout(el._t);
       el._t=setTimeout(()=>{ el.remove(); }, 12000);
     }
-    var ARMED=null;
+    // Keyed by a stable string, never by the DOM node: the strategies table
+    // re-renders every 10s, so an armed button object is destroyed under the
+    // operator's hand and the confirming click used to land on a fresh node and
+    // silently re-arm. That is the "I had to click it several times" bug.
+    var ARMED=null;   // {key, label, run, t}
+    function disarm(){
+      if(!ARMED) return;
+      clearTimeout(ARMED.t);
+      const el=document.querySelector('[data-arm-key="'+ARMED.key+'"]');
+      if(el && el.dataset.idle){ el.textContent=el.dataset.idle; el.classList.remove('armed'); }
+      ARMED=null;
+    }
     function arm(btn, confirmLabel, run){
-      if(ARMED && ARMED.btn===btn){
-        clearTimeout(ARMED.t); ARMED=null;
-        btn.textContent=btn.dataset.idle; btn.classList.remove('armed');
-        run();
+      const key=btn.dataset.armKey;
+      if(ARMED && ARMED.key===key){
+        const go=ARMED.run;
+        disarm();
+        go();
         return;
       }
-      if(ARMED){
-        ARMED.btn.textContent=ARMED.btn.dataset.idle;
-        ARMED.btn.classList.remove('armed');
-        clearTimeout(ARMED.t);
-      }
+      disarm();
       btn.dataset.idle = btn.dataset.idle || btn.textContent;
       btn.textContent = confirmLabel;
       btn.classList.add('armed');
-      ARMED={btn:btn, t:setTimeout(()=>{
-        btn.textContent=btn.dataset.idle; btn.classList.remove('armed'); ARMED=null;
-      }, 6000)};
+      ARMED={key:key, label:confirmLabel, run:run,
+             t:setTimeout(()=>{ disarm(); }, 8000)};
     }
     function setFetchError(rootId, msg){
       const root=document.getElementById(rootId);
@@ -2523,7 +2535,7 @@ def render_page(title: str, body_html: str, service: str = "pipeline") -> str:
           <td class="num" data-lab="Mark bid">$${Number(r.mark_bid).toFixed(2)}</td>
           <td class="num" data-lab="Unrealised"><span class="fig sm tint ${un.cls}">${un.txt}</span></td>
           <td data-lab="Opened">${esc(fmtNy(r.opened_at_utc))}</td>
-          <td class="act" data-lab=""><button class="btn sm danger" data-idle="Close" onclick="arm(this, 'Confirm close', ()=>closeLivePosition('${esc(r.model_name)}','${esc(r.market_ticker)}'))">Close</button></td>
+          <td class="act" data-lab=""><button class="btn sm danger" data-arm-key="close:${esc(r.model_name)}:${esc(r.market_ticker)}" data-idle="Close" onclick="arm(this, 'Confirm close', ()=>closeLivePosition('${esc(r.model_name)}','${esc(r.market_ticker)}'))">Close</button></td>
         </tr>`;
       }).join('');
     }
@@ -2543,13 +2555,9 @@ def render_page(title: str, body_html: str, service: str = "pipeline") -> str:
     // used to blow away an open settings panel and anything half-typed in it,
     // which is the page moving under the operator's hands. Open state, edited
     // values and the caret are captured and restored around the re-render.
-    var CFG_OPEN = {};
+    // Only edits survive a re-render: an open panel or a focused field already
+    // blocks the render, but a value typed and then clicked away from does not.
     var CFG_EDITED = {};
-    document.addEventListener('toggle', function(e){
-      const d = e.target;
-      if(!d || d.tagName !== 'DETAILS' || !d.dataset.model) return;
-      if(d.open) CFG_OPEN[d.dataset.model] = 1; else delete CFG_OPEN[d.dataset.model];
-    }, true);
     document.addEventListener('input', function(e){
       const el = e.target;
       if(el && el.id && el.id.indexOf('ls_') === 0) CFG_EDITED[el.id] = el.value;
@@ -2557,11 +2565,14 @@ def render_page(title: str, body_html: str, service: str = "pipeline") -> str:
     function renderLiveStrategyCards(models, settings){
       const body=document.getElementById('live_strat_body');
       if(!body) return;
-      const active = document.activeElement;
-      const keepId = (active && active.id && active.id.indexOf('ls_') === 0) ? active.id : null;
-      // number inputs do not support selection; reading it can throw
-      let selA = null, selB = null;
-      if(keepId){ try{ selA = active.selectionStart; selB = active.selectionEnd; }catch(e){} }
+      // Re-rendering the table under the operator's cursor can swallow the
+      // click itself, which is the other half of "sometimes it does nothing".
+      // While they are actually working in here, hold the render: prob/edge go
+      // a few seconds stale, which is a far smaller cost than a lost action.
+      const busy = ARMED
+        || body.querySelector('details[data-model][open]')
+        || body.contains(document.activeElement);
+      if(busy && body.children.length) return;
       body.innerHTML = LIVE_MODELS.map(m => {
         const st=models[m]||{}, cfg=settings[m]||{};
         const on=!!st.live_enabled, halted=!!st.paused;
@@ -2570,7 +2581,7 @@ def render_page(title: str, body_html: str, service: str = "pipeline") -> str:
         const livePnl=money(st.total_pnl);
         const simPnl=money(st.sim_total_pnl);
         const sig = st.signal==null ? 'n/a' : (st.signal ? 'yes' : 'no');
-        const toggle = `<button class="btn sm${on?' danger':''}" data-idle="${on?'Turn off':'Turn on'}" onclick="arm(this, ${on?"'Confirm off'":"'Confirm live'"}, ()=>toggleLiveModel('${esc(m)}', ${!on}))">${on?'Turn off':'Turn on'}</button>`;
+        const toggle = `<button class="btn sm${on?' danger':''}" data-arm-key="toggle:${esc(m)}" data-idle="${on?'Turn off':'Turn on'}" onclick="arm(this, ${on?"'Confirm off'":"'Confirm live'"}, ()=>toggleLiveModel('${esc(m)}', ${!on}))">${on?'Turn off':'Turn on'}</button>`;
         const resume = halted ? `<button class="btn sm" onclick="resumeLiveModel('${esc(m)}')">Clear halt</button>` : '';
         const why = halted && st.paused_reason ? `<div class="sub-fig">${esc(st.paused_reason)}</div>` : '';
         const fields = LIVE_SETTINGS_FIELDS.map(f =>
@@ -2601,17 +2612,9 @@ def render_page(title: str, body_html: str, service: str = "pipeline") -> str:
             </td>
           </tr>`;
       }).join('');
-      for(const m in CFG_OPEN){
-        const d = body.querySelector('details[data-model="' + m + '"]');
-        if(d) d.open = true;
-      }
       for(const id in CFG_EDITED){
         const el = document.getElementById(id);
         if(el) el.value = CFG_EDITED[id];
-      }
-      if(keepId){
-        const el = document.getElementById(keepId);
-        if(el){ el.focus(); if(selA !== null){ try{ el.setSelectionRange(selA, selB); }catch(e){} } }
       }
     }
     async function toggleLiveModel(modelName, turnOn){
@@ -3075,6 +3078,7 @@ class Handler(BaseHTTPRequestHandler):
 
                 <section class="sect" id="sect_live_strat">
                   <div class="sect-head"><h2>Strategies</h2><p class="sect-note">reading&#8230;</p></div>
+                  <div id="strat_notice"></div>
                   <div class="sheet"><table class="stack t-strat">
                     <colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"><col class="c5"><col class="c6"><col class="c7"><col class="c8"></colgroup>
                     <thead><tr><th>Strategy</th><th>State</th><th class="num">Live P&amp;L</th>

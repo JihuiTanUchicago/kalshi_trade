@@ -40,6 +40,12 @@ POSITION_COST_ALERT = float(os.getenv("ALERT_POSITION_COST", "20"))
 STALE_MULTIPLE = 6
 WRITER_CADENCE = {"live_portfolio_20s": 20, "live_engine": 60, "forward_quotes": 20}
 DASHBOARD_URL = os.getenv("DASHBOARD_URL", "https://dehiuraiut9ro.cloudfront.net/?tab=live-trading")
+# The engine crash-looping is invisible to every other check here: it restarts
+# fast enough that its snapshot never looks stale, and it writes no trade. That
+# is exactly how a deprecated order endpoint went unnoticed while the strategy
+# it broke was the one actually trying to trade.
+LIVE_LOG = os.getenv("LIVE_ENGINE_LOG", "/opt/kalshi/live_trading_engine.log")
+ENGINE_ERROR_MARKERS = ("live trading error", "engine crashed")
 
 
 def load_state() -> Dict:
@@ -136,6 +142,29 @@ def collect(cur) -> Dict:
     }
 
 
+def engine_errors_since(offset: int) -> Tuple[int, List[str]]:
+    """New engine error lines since the last check, and the new read offset.
+    A rotated or truncated log resets the offset rather than replaying."""
+    try:
+        size = os.path.getsize(LIVE_LOG)
+    except OSError:
+        return offset, []
+    if size < offset:
+        offset = 0
+    hits: List[str] = []
+    try:
+        with open(LIVE_LOG, "r", errors="replace") as fh:
+            fh.seek(offset)
+            for line in fh:
+                low = line.lower()
+                if any(m in low for m in ENGINE_ERROR_MARKERS):
+                    hits.append(line.strip()[:300])
+            offset = fh.tell()
+    except OSError:
+        return offset, []
+    return offset, hits
+
+
 def new_closed_trades(cur, since_id: int) -> List[Dict]:
     cur.execute(
         "SELECT id, model_name, market_ticker, qty_contracts, entry_price_dollars, "
@@ -198,6 +227,18 @@ def build_alerts(now: Dict, prev: Dict, cur) -> Tuple[List[str], List[str]]:
         urgent.append(f"CASH ${cash:.2f} is below the ${CASH_FLOOR:.0f} floor")
     if now["cash_source"] != "kalshi_api" and prev.get("cash_source") == "kalshi_api":
         urgent.append(f"Balance is no longer coming from the Kalshi API (now: {now['cash_source']}) - it is an estimate")
+
+    new_offset, errs = engine_errors_since(int(prev.get("log_offset") or 0))
+    now["log_offset"] = new_offset
+    if errs and not first_run:
+        uniq = []
+        for e in errs:
+            short = e.split(": ", 1)[-1][:160]
+            if short not in uniq:
+                uniq.append(short)
+        urgent.append(
+            f"ENGINE ERRORED {len(errs)}x since the last check - it cannot place orders: {uniq[0]}"
+        )
 
     prev_stale = set(prev.get("stale") or [])
     stale_now = []
