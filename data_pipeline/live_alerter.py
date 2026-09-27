@@ -147,6 +147,49 @@ def collect(cur) -> Dict:
     }
 
 
+def position_mismatches(cur) -> List[str]:
+    """Where our book and Kalshi's disagree about what we hold.
+
+    This is the check that was missing on 2026-09-27. Orders were recorded as
+    filled when they had been cancelled, so the engine "closed" positions it
+    did not hold - and a sell with nothing behind it opens a short. Kalshi
+    knew the whole time; nothing ever asked it.
+
+    Deliberately stateless and cheap: it compares holdings, not money. A
+    balance check would need deposits and withdrawals tracked, which they are
+    not, and would be wrong the first time either happened.
+    """
+    try:
+        raw = api_get_auth("/trade-api/v2/portfolio/positions").get("market_positions") or []
+    except Exception as e:
+        return ["could not read Kalshi positions to reconcile: %s" % e]
+
+    theirs: Dict[str, int] = {}
+    for p in raw:
+        qty = int(float(p.get("position_fp") or p.get("position") or 0))
+        if qty:
+            theirs[p["ticker"]] = qty
+
+    cur.execute("SELECT model_name, market_ticker, qty_contracts FROM live_positions")
+    ours: Dict[str, int] = {}
+    for r in cur.fetchall():
+        ours[r["market_ticker"]] = ours.get(r["market_ticker"], 0) + int(r["qty_contracts"])
+
+    out = []
+    for ticker, qty in sorted(theirs.items()):
+        if qty < 0:
+            # We only ever buy YES, so a negative position cannot be intended.
+            out.append("SHORT position on Kalshi we never opened: %s %s contracts" % (ticker, qty))
+        elif ticker not in ours:
+            out.append("Kalshi holds %s x %s that our book does not know about" % (qty, ticker))
+        elif ours[ticker] != qty:
+            out.append("size mismatch on %s: Kalshi %s, our book %s" % (ticker, qty, ours[ticker]))
+    for ticker, qty in sorted(ours.items()):
+        if ticker not in theirs:
+            out.append("our book holds %s x %s that Kalshi does not" % (qty, ticker))
+    return out
+
+
 def engine_errors_since(offset: int) -> Tuple[int, List[str]]:
     """New engine error lines since the last check, and the new read offset.
     A rotated or truncated log resets the offset rather than replaying."""
@@ -244,6 +287,15 @@ def build_alerts(now: Dict, prev: Dict, cur) -> Tuple[List[str], List[str]]:
         urgent.append(f"CASH ${cash:.2f} is below the ${CASH_FLOOR:.0f} floor")
     if now["cash_source"] != "kalshi_api" and prev.get("cash_source") == "kalshi_api":
         urgent.append(f"Balance is no longer coming from the Kalshi API (now: {now['cash_source']}) - it is an estimate")
+
+    # Settlement moves Kalshi's position to zero a beat before the engine
+    # books it, so a single disagreement is usually just that. Only report a
+    # mismatch that is still there on the next run five minutes later.
+    mismatches = position_mismatches(cur)
+    now["position_mismatch"] = mismatches
+    for line in mismatches:
+        if line in (prev.get("position_mismatch") or []):
+            (urgent if "SHORT" in line else normal).append("book disagrees with Kalshi: " + line)
 
     new_offset, errs = engine_errors_since(int(prev.get("log_offset") or 0))
     now["log_offset"] = new_offset

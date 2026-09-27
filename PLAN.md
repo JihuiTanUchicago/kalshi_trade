@@ -424,6 +424,24 @@ stops routing through the `finally:`.
 hardcoded default in `dashboard_server.py` when the environment variable is unset - and it is unset
 on the box, so the committed default is the live gate in production.
 
+## Position reconciliation (added 2026-09-27)
+
+`position_mismatches()` in the alerter, which already runs every 5 minutes with a DB cursor,
+Kalshi auth, SNS and a state file - so no new service. It compares `live_positions` against
+`GET /portfolio/positions` and reports:
+
+- a **short** position (loud): we only ever buy YES, so a negative position cannot be intended.
+  This is the exact signature of the 2026-09-27 phantom-order damage, which ran for hours because
+  nothing ever asked Kalshi what we held.
+- a holding Kalshi has and our book does not, or vice versa
+- a size mismatch
+
+Settlement clears Kalshi's position a beat before the engine books it, so a mismatch is only
+reported if it is **still there on the next run** five minutes later.
+
+Deliberately compares holdings, not money: a balance check needs deposits and withdrawals tracked,
+which they are not, and would be wrong the first time either happened.
+
 ## The engine believed its own orders (fixed 2026-09-27) - INCIDENT
 
 Reported as "the P&L doesn't add up": dashboard said **+$2.20 realised, 66.7% win** while cash had
