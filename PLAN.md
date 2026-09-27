@@ -481,6 +481,70 @@ one-time back-correction against Kalshi fills/settlements was scoped out and is 
 step. Nothing reconciles `live_trades` against Kalshi periodically, so a fill that happens outside
 the engine's own call path is still invisible to it.
 
+## Positions that expire were never booked (fixed 2026-09-27)
+
+The engine only ever closed a position by **selling** it. When the exit order could not fill -
+no bid, which is routine in the last minutes of a 15-minute contract - the market expired
+underneath the position, the row stayed `open` forever, and the loss was never booked. The
+dashboard went on showing it as a live holding at a stale mark.
+
+It happened to 27 contracts of `KXBTC15M-26SEP271315-15`: six consecutive sell orders cancelled
+(17:09-17:14), market settled `no`, $8.64 gone and invisible. `reconcile_settled_positions()` now
+runs at the top of every tick, before any exit is attempted, and books settled markets directly
+from `/portfolio/settlements` at $1.00 or $0.00. First tick after deploy:
+
+    live random_forest_high_conviction KXBTC15M-26SEP271315-15 SETTLED no:
+      27 contracts entered at 0.3200 -> 0.00, pnl -9.46
+
+Status stays `'closed'`, deliberately: every P&L query **and the daily-loss / drawdown caps in
+`current_risk_state`** filter on `status='closed'`. A separate `'settled'` status would have hidden
+settlement losses from the risk caps - the same class of bug as the one being fixed. An exit price
+of exactly 1.00 or 0.00 is what marks a trade as settled rather than sold.
+
+## Why paper and live disagreed (2026-09-27)
+
+The simulator is not modelling execution, it is modelling **quotes**. Measured, not assumed:
+
+| finding | evidence |
+|---|---|
+| Paper P&L was **gross of fees** | `pnl = (exit - entry) * qty`, no fee term. rf_high_conviction: +$469.03 gross, **$154.36 of fees**, net **+$314.67** - a third of the headline |
+| `FORCE_CLOSE_NEAR_EXPIRY_PRICE = 0.99` | An empty bid ladder near expiry was marked as a **near-certain win**, in exactly the illiquid case where live gets nothing |
+| Exits assume the quoted bid is always hittable, in full | Live, 6/6 exit orders on `...271315-15` were cancelled |
+| The sim never holds to settlement | Live does, whenever the sell does not fill |
+| Sim sizes ~10 contracts, live sized 25-33 | Live ran ~3x the position the sim validated |
+
+Head-to-head on the same markets that day: sim averaged **+8.7c per contract** per round trip over
+its last 200 `rf_high_conviction` trades; live paid **-8c**. On `...271315-15` the sim booked +$0.30
+and live lost $9.46.
+
+Two hypotheses were **disproved** by measuring, and are recorded so they are not re-litigated:
+the 0.99 force-close is *not* a major P&L driver for `rf_high_conviction` (0 trades of 462 hit it;
+10 of 396 for `binary_theory_edge`, worth $35.10), and fees alone do not flip either strategy
+negative in the sim.
+
+**Applied:** fees on both legs now subtracted in `close_existing_position`; `FORCE_CLOSE_NEAR_EXPIRY_PRICE`
+is `0.0` (no bid means no exit - a forward-running sim cannot know the settlement outcome, so the
+mark must not assume a win); all 25,442 closed sim trades rebased from gross to net.
+
+**Not done, and it is the real gap:** the simulator still has no fill model. It assumes every order
+fills at the quoted price, in full, instantly, on both legs. Until it models partial fills, unfilled
+IOC orders and holding to settlement, paper P&L remains an upper bound rather than a forecast.
+
+## Live P&L rebuilt against Kalshi (2026-09-27)
+
+`live_trades` ids 6-9 were voided (Kalshi: canceled, zero fill - they are not trades). Id 5 was
+corrected to its real fill, 18 @ **0.74** (recorded 0.82), settled YES at 1.00, pnl **+$4.08**.
+
+Dashboard now reads **-$11.37 over 10 real trades**: random_forest -$1.82, binary_theory_edge
++$3.06, random_forest_high_conviction -$12.61.
+
+Cash went $90.26 -> ~$56.58. The difference between that ~-$33.68 and the -$11.37 of real strategy
+P&L is one-off damage from the phantom-order bug - unintended short positions that belong to no
+strategy - and is not recoverable into any `live_trades` row. **Nothing reconciles `live_trades`
+against Kalshi on a schedule**, so this gap can reopen silently.
+
+All three strategies set `live_enabled=false` on 2026-09-27 pending a fill model in the simulator.
+
 ## Risk management (added 2026-09-12)
 
 - `sim_config.SimRiskSettings` (stored in the `sim_settings` table, key `risk_config`): `max_position_fraction` (cap new-position notional as a fraction of a model's own current equity, default 0.20), `max_drawdown_pct` (pause a model once its drawdown from peak exceeds this, default 0.30), `min_equity_floor` (hard floor, default $10).

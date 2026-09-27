@@ -197,7 +197,13 @@ def close_existing_position(
 
     entry_px = float(pos["entry_price_dollars"])
     qty = int(pos["qty_contracts"])
-    pnl = (exit_px - entry_px) * qty
+    # Both legs cross the spread as taker fills, so both pay Kalshi's taker
+    # fee. This used to record gross P&L: for random_forest_high_conviction
+    # that overstated the book by $154 on $469 of "profit" - a third of the
+    # headline - and the dashboard's Paper P&L column showed the gross figure
+    # straight against a live column that is necessarily net.
+    fees = taker_fee_dollars(qty, entry_px) + taker_fee_dollars(qty, exit_px)
+    pnl = (exit_px - entry_px) * qty - fees
     cur.execute(
         """
         UPDATE sim_trades

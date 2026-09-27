@@ -4,6 +4,7 @@ instead of a live database - this is exactly what the Phase 3 repository
 extraction was for."""
 from datetime import datetime, timedelta
 
+from data_pipeline.kalshi_fees import taker_fee_dollars
 from data_pipeline.sim_config import STARTING_CAPITAL, SimRiskSettings
 from data_pipeline.simulated_trading_engine import ModelOutput, process_model_tick
 
@@ -28,14 +29,17 @@ def test_open_position_respects_notional_cap(fake_cursor):
     assert notional <= cap + 1e-9
 
 
-def test_near_expiry_forces_close_at_099(fake_cursor):
+def test_near_expiry_marks_an_unsellable_position_at_zero(fake_cursor):
     risk = SimRiskSettings()
     now_ts = datetime(2026, 1, 1, 12, 0, 0)
     process_model_tick(fake_cursor, "random_forest", _row("TICK-1", 0.50, 500), now_ts, _strong_signal(), risk)
     entry_px = fake_cursor.sim_positions["random_forest"]["entry_price_dollars"]
 
-    # Next tick: near expiry, empty bid ladder - must still force-close at $0.99,
-    # not fall through to a $0.00 exit from a missing quote.
+    # Next tick: near expiry with an empty bid ladder. There is no bid, so the
+    # position cannot be sold at any price. This used to be marked at $0.99 -
+    # assumed to win - which is precisely the illiquid case where the live
+    # engine gets nothing: on 2026-09-27 six consecutive exit orders on such a
+    # contract were cancelled and it settled at $0.00.
     fake_cursor.forward_quotes["TICK-1"] = 0.0
     summary = process_model_tick(
         fake_cursor, "random_forest", _row("TICK-1", 0.50, 30), now_ts + timedelta(minutes=1), _strong_signal(), risk
@@ -43,9 +47,34 @@ def test_near_expiry_forces_close_at_099(fake_cursor):
 
     assert "random_forest" not in fake_cursor.sim_positions
     closed = [t for t in fake_cursor.sim_trades if t["status"] == "closed"][0]
-    assert closed["exit_price_dollars"] == 0.99
-    assert closed["pnl_dollars"] == (0.99 - entry_px) * closed["qty_contracts"]
+    assert closed["exit_price_dollars"] == 0.0
+    qty = closed["qty_contracts"]
+    fees = taker_fee_dollars(qty, entry_px) + taker_fee_dollars(qty, 0.0)
+    assert closed["pnl_dollars"] == (0.0 - entry_px) * qty - fees
     assert summary["realized"] == closed["pnl_dollars"]
+
+
+def test_sim_pnl_is_net_of_taker_fees_on_both_legs(fake_cursor):
+    """Paper P&L must be comparable to the live column, which is necessarily
+    net. Recording gross overstated random_forest_high_conviction by $154 on
+    $469 of reported profit."""
+    risk = SimRiskSettings()
+    now_ts = datetime(2026, 1, 1, 12, 0, 0)
+    process_model_tick(fake_cursor, "random_forest", _row("TICK-1", 0.50, 500), now_ts, _strong_signal(), risk)
+    pos = fake_cursor.sim_positions["random_forest"]
+    entry_px, qty = pos["entry_price_dollars"], pos["qty_contracts"]
+
+    fake_cursor.forward_quotes["TICK-1"] = 0.60
+    process_model_tick(
+        fake_cursor, "random_forest", _row("TICK-1", 0.50, 400), now_ts + timedelta(minutes=1),
+        ModelOutput(prob=0.1, train_rows=0, test_rows=0, brier=None, ll=None, rf_regime="rf"), risk,
+    )
+    closed = [t for t in fake_cursor.sim_trades if t["status"] == "closed"][0]
+    gross = (0.60 - entry_px) * qty
+    fees = taker_fee_dollars(qty, entry_px) + taker_fee_dollars(qty, 0.60)
+    assert fees > 0
+    assert closed["pnl_dollars"] == gross - fees
+    assert closed["pnl_dollars"] < gross
 
 
 def test_drawdown_breach_pauses_model_and_blocks_new_entries(fake_cursor):
@@ -150,7 +179,11 @@ def test_hold_to_settlement_model_still_force_closes_near_expiry(fake_cursor):
     )
     assert "binary_theory_edge" not in fake_cursor.sim_positions, "should still force-close near expiry"
     closed = [t for t in fake_cursor.sim_trades if t["status"] == "closed"][0]
-    assert closed["exit_price_dollars"] == 0.99
+    # No bid at all near expiry means the position cannot be sold. It used to
+    # be marked at $0.99 - i.e. assumed to win - which is the optimism that
+    # made the paper book disagree with the live account on exactly the
+    # illiquid contracts where live got nothing.
+    assert closed["exit_price_dollars"] == 0.0
 
 
 def test_equity_floor_blocks_new_entries(fake_cursor):

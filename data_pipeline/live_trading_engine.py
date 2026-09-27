@@ -10,7 +10,7 @@ import numpy as np
 from data_pipeline.architecture.contracts import RiskContext, TradeIntent
 from data_pipeline.architecture.execution_kernel import DummyExecutionKernel
 from data_pipeline.architecture.risk_engine import DummyRiskEngine, LiveSettingsRiskEngine
-from data_pipeline.common import api_get, api_post_auth, get_db_conn, utc_now
+from data_pipeline.common import api_get, api_get_auth, api_post_auth, get_db_conn, utc_now
 from data_pipeline.modeling_features import FEATURE_COLS, SOURCE_COLS, build_feature_vector, has_target
 from data_pipeline.simulated_trading_engine import (
     EDGE_THRESHOLD_OVERRIDES,
@@ -439,6 +439,97 @@ def close_live_position(
     cur.execute("DELETE FROM live_positions WHERE model_name=%s AND market_ticker=%s", (model_name, ticker))
 
 
+def settled_results() -> Dict[str, Dict]:
+    """Markets this account held that Kalshi has already settled, by ticker.
+
+    `market_result` is "yes" or "no"; we are always long the YES leg, so a
+    settled market is worth exactly $1.00 or $0.00 per contract.
+    """
+    try:
+        data = api_get_auth("/trade-api/v2/portfolio/settlements?limit=100")
+    except Exception as e:
+        print(f"live settlement lookup failed: {e}")
+        return {}
+    out: Dict[str, Dict] = {}
+    for row in data.get("settlements") or []:
+        ticker = row.get("ticker")
+        if ticker and ticker not in out:
+            out[ticker] = row
+    return out
+
+
+def reconcile_settled_positions(cur, now_ts: datetime) -> None:
+    """Book positions whose market has expired.
+
+    The engine only ever closed a position by selling it. When the exit order
+    could not fill - no bid, which is routine in the last minutes of a
+    15-minute contract - the market simply expired underneath the position and
+    the row stayed 'open' forever, so a total loss was never booked and the
+    dashboard kept showing it as a live holding at a stale mark. That happened
+    on 2026-09-27 to 27 contracts of KXBTC15M-26SEP271315-15: six consecutive
+    sell orders were cancelled, the market settled "no", and $8.64 vanished
+    without ever reaching live_trades.
+
+    A settled contract is worth $1.00 or $0.00 - there is nothing left to sell,
+    so this books it directly instead of trying to trade out of it.
+
+    Status stays 'closed' rather than a new 'settled': every P&L query in the
+    dashboard and, more importantly, the daily-loss and drawdown caps in
+    current_risk_state filter on status='closed'. A distinct status would hide
+    settlement losses from the risk caps - the same class of bug as the one
+    this function exists to fix. The exit price of exactly 1.00 or 0.00 is
+    what marks a trade as settled rather than sold.
+    """
+    cur.execute("SELECT * FROM live_positions")
+    positions = cur.fetchall()
+    if not positions:
+        return
+    results = settled_results()
+    if not results:
+        return
+    for pos in positions:
+        ticker = pos["market_ticker"]
+        row = results.get(ticker)
+        if not row:
+            continue
+        model_name = pos["model_name"]
+        qty = int(pos["qty_contracts"])
+        entry = float(pos["entry_price_dollars"])
+        won = str(row.get("market_result", "")).lower() == "yes"
+        exit_px = 1.0 if won else 0.0
+        entry_fee = 0.0
+        raw = pos.get("raw_json")
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except Exception:
+                raw = {}
+        if isinstance(raw, dict):
+            entry_fee = float(raw.get("entry_fee") or 0.0)
+        try:
+            settle_fee = float(row.get("fee_cost") or 0.0)
+        except (TypeError, ValueError):
+            settle_fee = 0.0
+        pnl = (exit_px - entry) * qty - entry_fee - settle_fee
+        cur.execute(
+            """
+            UPDATE live_trades
+            SET closed_at_utc=%s, exit_price_dollars=%s, pnl_dollars=%s, status='closed'
+            WHERE market_ticker=%s AND model_name=%s AND status='open'
+            ORDER BY opened_at_utc DESC
+            LIMIT 1
+            """,
+            (now_ts.replace(tzinfo=None), exit_px, pnl, ticker, model_name),
+        )
+        cur.execute(
+            "DELETE FROM live_positions WHERE model_name=%s AND market_ticker=%s", (model_name, ticker)
+        )
+        print(
+            "live %s %s SETTLED %s: %s contracts entered at %.4f -> %.2f, pnl %.2f"
+            % (model_name, ticker, row.get("market_result"), qty, entry, exit_px, pnl)
+        )
+
+
 def latest_bid_for_ticker(ticker: str) -> Optional[float]:
     try:
         data = api_get(f"/markets/{ticker}")
@@ -493,6 +584,10 @@ def run_loop() -> None:
                 outputs = score_frozen_models(frozen_models, x_latest, latest_row=latest)
                 tte = latest.get("time_to_expiry_sec")
                 near_expiry = tte is not None and float(tte) <= 60
+                # Before any exit is attempted: a market that has already
+                # settled cannot be sold, only booked.
+                reconcile_settled_positions(cur, now_ts)
+
                 pause_states = get_all_live_pause_states(cur)
                 snapshot_by_model = {}
 

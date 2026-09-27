@@ -56,11 +56,19 @@ MIN_SAMPLES_DEFAULT_RF = 1000
 # so lambda=2.0 => C=0.5.
 LOGREG_L1_C = 0.5
 
-# Near-expiry handling: block new entries this close to expiry, and force-close
-# any open position at this price rather than leave it to a possibly-empty bid
-# ladder in the contract's final seconds.
+# Near-expiry handling: block new entries this close to expiry, and mark any
+# position that cannot be sold at all in the contract's final seconds.
+#
+# This was 0.99, which assumed the position WON whenever the bid ladder was
+# empty - and an empty ladder is exactly the illiquid case where live gets
+# nothing. On 2026-09-27 the live engine had 27 contracts it could not sell
+# (six consecutive exit orders cancelled, no bid); the market settled "no" and
+# the position went to $0.00. The simulator's own record of that same market
+# was a small gain. An unsellable position is worth what settlement pays,
+# which a forward-running simulator does not know yet, so the honest mark is
+# the conservative one: no bid means no exit.
 NEAR_EXPIRY_SEC = 60
-FORCE_CLOSE_NEAR_EXPIRY_PRICE = 0.99
+FORCE_CLOSE_NEAR_EXPIRY_PRICE = 0.0
 
 RF_PARAMS_DEFAULT = dict(
     n_estimators=400,
