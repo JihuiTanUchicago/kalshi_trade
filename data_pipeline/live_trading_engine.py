@@ -222,12 +222,10 @@ def compute_buy_qty(prob: float, ask: float, cfg: Dict) -> int:
 # time a strategy actually wanted to trade. The replacement quotes everything
 # from the YES leg and takes fixed-point strings rather than integer cents.
 ORDER_PATH = "/trade-api/v2/portfolio/events/orders"
-# immediate_or_cancel, not good_till_canceled, and deliberately: this engine
-# records a position straight after the call and never reconciles fills, so a
-# resting order would leave it believing it holds something it does not. That
-# already happened once - live_orders still carries a March order stuck at
-# "resting". IOC either crosses now, matching what the simulator assumes, or
-# nothing happens at all.
+# immediate_or_cancel, not good_till_canceled: an IOC order either crosses now
+# or is gone, so there is never a resting order whose state the engine would
+# have to track. What it fills is read from the response - see
+# DummyExecutionKernel.execute - and nothing is recorded unless it filled.
 ORDER_TIME_IN_FORCE = os.getenv("KALSHI_ORDER_TIF", "immediate_or_cancel")
 
 
@@ -287,7 +285,36 @@ def open_live_position(
             json.dumps(rep.raw_json),
         ),
     )
-    # Conservative assumption for MVP: treat accepted order as filled at limit price.
+    # Record only what Kalshi actually filled. This used to record the full
+    # requested quantity at the requested price for any order that was not
+    # explicitly rejected - "conservative assumption for MVP" - so an
+    # immediate-or-cancel order that crossed nothing still produced a position
+    # in the book. On 2026-09-27 four such phantom positions were opened; the
+    # engine then "closed" each one, and a sell against a position that does
+    # not exist is not a no-op on Kalshi, it opens a short. Those unintended
+    # shorts settled worthless and cost real money, while the dashboard
+    # reported the phantom round-trips as wins.
+    filled = int(rep.fill_qty_contracts)
+    if filled <= 0:
+        print(
+            "live %s %s no fill (%s), requested %s @ %.2f - nothing recorded"
+            % (model_name, ticker, rep.status, qty, ask)
+        )
+        return
+    entry_px = float(rep.fill_price_dollars)
+    if filled < qty:
+        print("live %s %s partial fill %s of %s @ %.4f" % (model_name, ticker, filled, qty, entry_px))
+    meta = json.dumps(
+        {
+            "prob": prob,
+            "order": rep.raw_json,
+            "requested_qty": qty,
+            "requested_price": ask,
+            "fill_qty": filled,
+            "fill_price": entry_px,
+            "entry_fee": float(rep.fee_dollars),
+        }
+    )
     cur.execute(
         """
         INSERT INTO live_positions (model_name,market_ticker,opened_at_utc,qty_contracts,entry_price_dollars,raw_json)
@@ -298,14 +325,14 @@ def open_live_position(
           entry_price_dollars=VALUES(entry_price_dollars),
           raw_json=VALUES(raw_json)
         """,
-        (model_name, ticker, now_ts.replace(tzinfo=None), qty, ask, json.dumps({"prob": prob, "order": rep.raw_json})),
+        (model_name, ticker, now_ts.replace(tzinfo=None), filled, entry_px, meta),
     )
     cur.execute(
         """
         INSERT INTO live_trades (opened_at_utc,market_ticker,model_name,qty_contracts,entry_price_dollars,status,raw_json)
         VALUES (%s,%s,%s,%s,%s,'open',%s)
         """,
-        (now_ts.replace(tzinfo=None), ticker, model_name, qty, ask, json.dumps({"prob": prob, "order": rep.raw_json})),
+        (now_ts.replace(tzinfo=None), ticker, model_name, filled, entry_px, meta),
     )
 
 
@@ -354,17 +381,61 @@ def close_live_position(
             json.dumps(rep.raw_json),
         ),
     )
-    pnl = (px - entry) * qty
+    # A sell that did not fill leaves the position exactly where it was. The
+    # position row must survive so the next tick can try again; deleting it
+    # here is what would let the engine forget a holding it still has.
+    sold = int(rep.fill_qty_contracts)
+    if sold <= 0:
+        print(
+            "live %s %s exit did not fill (%s), still holding %s - position kept"
+            % (model_name, ticker, rep.status, qty)
+        )
+        return
+    exit_px = float(rep.fill_price_dollars)
+    entry_fee = 0.0
+    pos_raw = pos.get("raw_json")
+    if isinstance(pos_raw, str):
+        try:
+            pos_raw = json.loads(pos_raw)
+        except Exception:
+            pos_raw = {}
+    if isinstance(pos_raw, dict):
+        entry_fee = float(pos_raw.get("entry_fee") or 0.0)
+    # Fees are real money and were previously left out entirely.
+    fee = float(rep.fee_dollars) + entry_fee * (sold / float(qty) if qty else 1.0)
+    pnl = (exit_px - entry) * sold - fee
     cur.execute(
         """
         UPDATE live_trades
-        SET closed_at_utc=%s, exit_price_dollars=%s, pnl_dollars=%s, status='closed'
+        SET closed_at_utc=%s, exit_price_dollars=%s, pnl_dollars=%s, qty_contracts=%s, status='closed'
         WHERE market_ticker=%s AND model_name=%s AND status='open'
         ORDER BY opened_at_utc DESC
         LIMIT 1
         """,
-        (now_ts.replace(tzinfo=None), px, pnl, ticker, model_name),
+        (now_ts.replace(tzinfo=None), exit_px, pnl, sold, ticker, model_name),
     )
+    if sold < qty:
+        # Partial exit: keep the remainder on the books at the same entry.
+        print("live %s %s partial exit %s of %s @ %.4f" % (model_name, ticker, sold, qty, exit_px))
+        cur.execute(
+            "UPDATE live_positions SET qty_contracts=%s WHERE model_name=%s AND market_ticker=%s",
+            (qty - sold, model_name, ticker),
+        )
+        cur.execute(
+            """
+            INSERT INTO live_trades (opened_at_utc,market_ticker,model_name,qty_contracts,entry_price_dollars,status,raw_json)
+            VALUES (%s,%s,%s,%s,%s,'open',%s)
+            """,
+            (
+                pos["opened_at_utc"],
+                ticker,
+                model_name,
+                qty - sold,
+                entry,
+                json.dumps({"carried_from_partial_exit": True, "original_qty": qty}),
+            ),
+        )
+        return
     cur.execute("DELETE FROM live_positions WHERE model_name=%s AND market_ticker=%s", (model_name, ticker))
 
 

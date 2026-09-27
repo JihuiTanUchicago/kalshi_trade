@@ -424,6 +424,63 @@ stops routing through the `finally:`.
 hardcoded default in `dashboard_server.py` when the environment variable is unset - and it is unset
 on the box, so the committed default is the live gate in production.
 
+## The engine believed its own orders (fixed 2026-09-27) - INCIDENT
+
+Reported as "the P&L doesn't add up": dashboard said **+$2.20 realised, 66.7% win** while cash had
+gone **$90.26 -> $74.25**. The dashboard was summing the engine's *intentions*.
+
+**Root cause.** `DummyExecutionKernel.execute` read `resp["order"]["status"]`. The Kalshi **v2**
+create-order response has no nested `order` object - it is flat:
+
+    filled   {"fill_count": "18.00", "average_fill_price": "0.7400", "average_fee_paid": "0.0134", ...}
+    unfilled {"fill_count": "0.00",  "order_id": "...", "remaining_count": "0.00"}     <- no price at all
+
+So since the v2 migration the kernel saw `{}` for every order, defaulted `status` to `"submitted"`,
+set `accepted=True`, and reported `fill_price_dollars=intent.limit_price_dollars` and
+`fill_qty_contracts=intent.qty_contracts` - the request echoed back as though it were a fill.
+`open_live_position` then recorded the position under the comment *"Conservative assumption for
+MVP: treat accepted order as filled at limit price"*, and never checked `rep.accepted` anyway.
+
+**Why it cost money rather than just misreporting.** Orders are immediate-or-cancel. Four of six
+buys on 2026-09-27 crossed nothing and were canceled. The engine recorded them as positions. A
+minute later it "closed" each one - and **a sell against a position you do not hold is not a no-op
+on Kalshi, it opens a short.** Three phantom closes bought 64 NO contracts on
+`KXBTC15M-26SEP270315-15` for $17.76 + $1.44 fees. That market settled YES. All 64 expired worthless.
+
+| market | dashboard said | actually |
+|---|---|---|
+| `...0300-00` | -$11.34 | **+$2.23** (18 YES @0.74 settled YES) |
+| `...0315-15` | +$15.36 | **-$19.41** (64 worthless NO) |
+
+Wrong in both directions: the one genuine trade *made* $2.23 and was booked as an $11.34 loss,
+because the exit price was taken from the quote rather than the fill too.
+
+**Fix.** Three layers, each independently sufficient for the four phantom trades:
+- `DummyExecutionKernel` parses `fill_count` / `average_fill_price` / `average_fee_paid` from the
+  flat v2 response. `accepted = fill_count > 0`. Status is `unfilled` / `partially_filled` / `filled`.
+  A fill with an unreadable price falls back to the **limit**, never to something flattering.
+- `open_live_position` records nothing when `fill_qty_contracts == 0`, records the partial when
+  partial, and stores the real entry price and fee. The order is still written to `live_orders`
+  for the audit trail.
+- `close_live_position` returns without deleting the position when the exit does not fill, carries
+  the remainder forward on a partial exit, and subtracts entry+exit fees from P&L. It already
+  returned early when no position row existed, so fill-based recording alone closes the naked-sell
+  hole: a position that was never recorded can never be sold.
+
+Covered by `tests/test_execution_fills.py` (verbatim captured Kalshi payloads, including the v1
+shape that must **not** read as a fill) and `tests/test_live_fill_recording.py`.
+
+**Timeline.** Fix deployed and engine restarted 07:35:11 UTC. One last naked sell fired at
+07:34:15, ~55s earlier, leaving a real **-21 contract short** on `KXBTC15M-26SEP270345-45`
+($4.20 exposure) that settled on its own. `live_positions` and the phantom `open` rows were
+voided against Kalshi's own position list (status `void`, not deleted - the attempts stay auditable).
+
+**Still open.** `live_trades` ids 5-9 remain historically wrong (recorded from intentions), so the
+dashboard reads **+$8.50 over 7 closed trades** against a real balance of ~$69.82 from ~$90. A
+one-time back-correction against Kalshi fills/settlements was scoped out and is the obvious next
+step. Nothing reconciles `live_trades` against Kalshi periodically, so a fill that happens outside
+the engine's own call path is still invisible to it.
+
 ## Risk management (added 2026-09-12)
 
 - `sim_config.SimRiskSettings` (stored in the `sim_settings` table, key `risk_config`): `max_position_fraction` (cap new-position notional as a fraction of a model's own current equity, default 0.20), `max_drawdown_pct` (pause a model once its drawdown from peak exceeds this, default 0.30), `min_equity_floor` (hard floor, default $10).

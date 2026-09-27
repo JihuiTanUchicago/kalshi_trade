@@ -19,10 +19,13 @@ class TradeIntent:
 class ExecutionReport:
     accepted: bool
     status: str
+    # What Kalshi actually filled, never what we asked for. A fully unfilled
+    # order reports fill_qty_contracts=0 and fill_price_dollars=0.0.
     fill_price_dollars: float
     fill_qty_contracts: int
     external_order_id: Optional[str]
     client_order_id: Optional[str]
+    fee_dollars: float = 0.0
     raw_json: Dict[str, Any] = field(default_factory=dict)
 
 

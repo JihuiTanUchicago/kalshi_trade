@@ -106,11 +106,15 @@ class FakeCursor:
                 pnl_dollars=None, status="open", raw_json=raw,
             ))
         elif s.startswith("UPDATE live_trades"):
-            closed_at, px, pnl, ticker, model_name = params
+            closed_at, px, pnl, qty, ticker, model_name = params
             for t in reversed(self.live_trades):
                 if t["market_ticker"] == ticker and t["model_name"] == model_name and t["status"] == "open":
-                    t.update(closed_at_utc=closed_at, exit_price_dollars=px, pnl_dollars=pnl, status="closed")
+                    t.update(closed_at_utc=closed_at, exit_price_dollars=px, pnl_dollars=pnl,
+                             qty_contracts=qty, status="closed")
                     break
+        elif s.startswith("UPDATE live_positions SET qty_contracts"):
+            qty, model_name, ticker = params
+            self.live_positions[(model_name, ticker)]["qty_contracts"] = qty
         elif s.startswith("INSERT INTO live_orders"):
             pass
         else:
@@ -129,11 +133,17 @@ def fake_cursor():
 
 
 class DummyKernel:
+    """Stands in for a venue that fills everything at the limit. Only valid
+    for tests about position scoping and pause flags; anything asserting on
+    fill handling must drive the real kernel with a captured Kalshi response
+    (see tests/test_execution_fills.py)."""
+
     def execute(self, intent):
         from data_pipeline.architecture.contracts import ExecutionReport
         return ExecutionReport(
             accepted=True, status="filled", fill_price_dollars=intent.limit_price_dollars,
-            fill_qty_contracts=intent.qty_contracts, external_order_id="x", client_order_id="y", raw_json={},
+            fill_qty_contracts=intent.qty_contracts, external_order_id="x", client_order_id="y",
+            fee_dollars=0.0, raw_json={},
         )
 
 
