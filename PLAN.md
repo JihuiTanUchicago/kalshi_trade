@@ -305,6 +305,38 @@ Monospace is used in those pseudocode blocks, which DESIGN.md's No-Monospace rul
 The rule is about monospace as technical costume; pseudocode is code, where indentation carries the
 structure. Scoped exception, recorded rather than silently broken.
 
+## Push alerts for live trading (added 2026-09-26)
+
+`data_pipeline/live_alerter.py` runs on the box under a **systemd timer**
+(`kalshi-alerter.timer`, every 5 minutes) and publishes to SNS topic
+`arn:aws:sns:us-east-1:568386354218:kalshi-live-alerts`. Alerts on: a strategy halting itself, a
+position opening (loudly if it cost more than $20), each closed trade, a switch flipping, the day's
+realised loss passing a floor, cash under $70, the balance falling back to an estimate, and any
+writer going stale. Two rules keep it usable: it fires **only on change** (state in
+`/opt/kalshi/.alerter_state.json`), and it sends **one heartbeat a day** so silence can be
+distinguished from a dead alerter - the exact failure mode this system has already suffered twice.
+
+Permissions are deliberately narrow: a `KalshiLiveAlertsPublish` policy granting `sns:Publish` on
+that one topic, attached to `kalshi-collector-ec2-role`. The alerter never writes to a trading
+table and never places an order.
+
+Two traps found deploying it. **`crontab` does not exist on this AMI** - use a systemd timer, which
+is the better fit anyway. And **`/opt/kalshi/.env.aws` sets `AWS_PROFILE`**, which is right for a
+laptop and fatal on the box: boto3 then looks for a credentials file that is not there instead of
+falling through to the instance role. `run_alerter.sh` unsets it after sourcing.
+
+## Read-only monitor token (added 2026-09-26)
+
+`MONITOR_TOKEN` in `/opt/kalshi/.env.dashboard` unlocks `GET /health`, `/live_metrics` and
+`/sim_metrics` and nothing else - verified refused for pages, `/table`, and every POST including the
+live switch. It exists so anything off-box that must store a credential stores the least valuable
+one available, rather than `DASHBOARD_PASSWORD`.
+
+**Cloud routines cannot monitor this system.** A scheduled Claude cloud session was built, run, and
+disabled: its sandbox egress proxy refuses connections to the CloudFront host
+(`connect_rejected ... organization policy`), and `user_declared_urls` is dropped by the server.
+The routine is kept disabled at `trig_01RdZe7mQyrWJaXnx9JFUmZV` in case that policy ever changes.
+
 ## Risk management (added 2026-09-12)
 
 - `sim_config.SimRiskSettings` (stored in the `sim_settings` table, key `risk_config`): `max_position_fraction` (cap new-position notional as a fraction of a model's own current equity, default 0.20), `max_drawdown_pct` (pause a model once its drawdown from peak exceeds this, default 0.30), `min_equity_floor` (hard floor, default $10).

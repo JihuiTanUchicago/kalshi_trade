@@ -32,6 +32,13 @@ PORT = int(os.getenv("DASHBOARD_PORT", "8080"))
 AUTH_USER = os.getenv("DASHBOARD_USER", "todd")
 AUTH_PASSWORD = os.getenv("DASHBOARD_PASSWORD")
 LIVE_TRADING_PASSWORD = os.getenv("LIVE_TRADING_PASSWORD", "iwanttoberich")
+# A read-only credential for an off-box monitor. It unlocks exactly the three
+# status endpoints below, over GET only, and nothing else: no pages, no table
+# browsing, no POST, so it can never trade or change a cap. Kept separate from
+# DASHBOARD_PASSWORD precisely so a monitor that has to store a secret stores
+# the least valuable one available.
+MONITOR_TOKEN = os.getenv("MONITOR_TOKEN")
+MONITOR_PATHS = frozenset({"/health", "/live_metrics", "/sim_metrics"})
 # What each strategy actually is, written from the code that runs it
 # (simulated_trading_engine.py, sim_config.py, binary_theory.py,
 # modeling_features.py). Every claim here is checkable against those files;
@@ -2772,7 +2779,18 @@ class Handler(BaseHTTPRequestHandler):
             out[k.strip()] = v.strip()
         return out
 
+    def _monitor_authorized(self, parsed) -> bool:
+        """True only for a GET of a status endpoint carrying the monitor token."""
+        if not MONITOR_TOKEN or self.command != "GET":
+            return False
+        if parsed.path not in MONITOR_PATHS:
+            return False
+        token = parse_qs(parsed.query).get("monitor_token", [""])[0]
+        return bool(token) and secrets.compare_digest(token, MONITOR_TOKEN)
+
     def _live_authorized(self, parsed=None) -> bool:
+        if parsed is not None and self._monitor_authorized(parsed):
+            return True
         if not LIVE_TRADING_PASSWORD:
             return True
         if self._cookie_map().get(LIVE_COOKIE_NAME) == "ok":
@@ -2785,11 +2803,11 @@ class Handler(BaseHTTPRequestHandler):
         return False
 
     def do_GET(self):
-        if not self._authorized():
+        parsed = urlparse(self.path)
+        if not self._authorized() and not self._monitor_authorized(parsed):
             self._send_unauthorized()
             return
 
-        parsed = urlparse(self.path)
         if parsed.path == "/model_research":
             payload = model_research_summary()
             body = json.dumps(payload).encode("utf-8")
