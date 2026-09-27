@@ -371,15 +371,9 @@ geolocation attestation for API trading. No code can fix it - verify location in
 re-renders every 10s and replaces that node. The confirming click therefore landed on a fresh
 button and silently re-armed. Arming is now keyed by a stable `data-arm-key` string.
 
-The deeper fix is that the table simply does not re-render while the operator is working in it -
-armed, a config panel open, or focus inside. That also removes the chance of a re-render swallowing
-the click itself. Hover was deliberately **not** included in that condition: parking the pointer
-over the table would have frozen prob/edge indefinitely.
-
-That guard made the state-preservation code written alongside it redundant - armed implies busy,
-open panel implies busy, focus inside implies busy - so `restoreArmed` and the `CFG_OPEN`
-machinery were deleted (-30 lines). Only `CFG_EDITED` survives, covering the one case the guard
-does not: a value typed and then clicked away from.
+A second fix here - holding the render entirely while the operator was armed, had a config panel
+open, or had focus inside the table - **was wrong and has since been reverted.** See the next
+section: it is what made a strategy that had just been switched on keep reading "Off".
 
 Save confirmations now render in `#strat_notice` inside the Strategies section. They previously
 appeared at the top of `live-root`, which on a tall page meant a successful save looked exactly
@@ -387,6 +381,48 @@ like nothing happening.
 
 The alerter now tails the engine log for error lines, reporting each once. It would not have caught
 this failure otherwise: a crash-loop restarts too fast to look stale and writes no trade.
+
+## "I turned it on, then it was off again" (fixed 2026-09-27)
+
+Reported as: click **Turn on**, the banner says the strategy is live, refresh, and it reads `OFF`
+again. The same shape for **Save caps**. Nothing was actually wrong with the write - the database
+had `binary_theory_edge` at `live_enabled: true`, stamped `06:36:55 UTC`, the second the button was
+clicked, with the operator's caps intact. **The strategy was live the whole time; only the screen
+was lying.** Two independent staleness bugs, both on the read side, stacked:
+
+**1. The read cache outlived the write.** `/live_metrics` and `/sim_metrics` go through `_cached`
+with a 25-second TTL and nothing ever invalidated it. A POST committed, returned the fresh settings
+(which is why the banner was correct), and then `refreshLiveMetrics()` - fired by the button itself
+a millisecond later - was served the pre-write payload. Every read for the next 25 seconds, page
+reloads included, showed the old state. Fixed by clearing the whole cache after **every** POST,
+from a `finally:` on `do_POST` rather than per route, so no future route can forget it:
+
+    def do_POST(self):
+        try:
+            self._handle_post()
+        finally:
+            invalidate_metrics_cache()
+
+Clearing all keys rather than tracking which ones a write dirtied is deliberate: the cost is one
+recomputed query on the next read, and the bookkeeping version is what rots.
+
+**2. The render guard added the same day (above) refused to redraw the table.** It held the render
+whenever a config panel was open - and the reporting screenshot shows exactly that: the
+`binary_theory_edge` caps drawer open, the "NOW LIVE" banner up, and the row still reading `OFF`.
+Even with fresh data arriving, the row could not repaint. Saving caps left the drawer open too, so
+a successful save also never showed.
+
+The guard was solving something real (a re-render under the cursor swallowing the click), but
+"never repaint" is too blunt. The table now always renders and afterwards restores the three things
+a redraw would otherwise destroy: open drawers, the focused field, and a half-confirmed armed
+button. `CFG_EDITED` already carried in-progress values across a repaint.
+
+Covered by `tests/test_dashboard_cache.py`, including a wiring test that fails if `do_POST` ever
+stops routing through the `finally:`.
+
+**Still open, noted here rather than changed silently:** `LIVE_TRADING_PASSWORD` falls back to a
+hardcoded default in `dashboard_server.py` when the environment variable is unset - and it is unset
+on the box, so the committed default is the live gate in production.
 
 ## Risk management (added 2026-09-12)
 

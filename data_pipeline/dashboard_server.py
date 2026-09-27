@@ -636,6 +636,16 @@ _METRICS_CACHE_LOCK = threading.Lock()
 _METRICS_CACHE_TTL_SECONDS = 25
 
 
+def invalidate_metrics_cache() -> None:
+    """Every mutating POST clears this. Without it a toggle or a caps save
+    lands in the database and then the very next read - including the one the
+    button itself triggers - serves the pre-write payload for up to
+    _METRICS_CACHE_TTL_SECONDS, so the row keeps reading "Off" and the save
+    looks like it did nothing."""
+    with _METRICS_CACHE_LOCK:
+        _METRICS_CACHE.clear()
+
+
 def _cached(cache_key, ttl_seconds, compute_fn):
     now = time.time()
     with _METRICS_CACHE_LOCK:
@@ -2565,14 +2575,16 @@ def render_page(title: str, body_html: str, service: str = "pipeline") -> str:
     function renderLiveStrategyCards(models, settings){
       const body=document.getElementById('live_strat_body');
       if(!body) return;
-      // Re-rendering the table under the operator's cursor can swallow the
-      // click itself, which is the other half of "sometimes it does nothing".
-      // While they are actually working in here, hold the render: prob/edge go
-      // a few seconds stale, which is a far smaller cost than a lost action.
-      const busy = ARMED
-        || body.querySelector('details[data-model][open]')
-        || body.contains(document.activeElement);
-      if(busy && body.children.length) return;
+      // Re-rendering under the operator's cursor used to swallow the click, so
+      // this held the render whenever a caps drawer was open or a button armed.
+      // That is why a strategy could be switched on and keep reading "Off":
+      // the drawer below it was open, so the row never redrew. Render always,
+      // and put back the three things a redraw would otherwise destroy - the
+      // open drawers, the focused field, and a half-confirmed button.
+      const openModels = Array.from(body.querySelectorAll('details[data-model][open]'))
+        .map(d => d.dataset.model);
+      const act = document.activeElement;
+      const focusId = (act && act.id && body.contains(act)) ? act.id : null;
       body.innerHTML = LIVE_MODELS.map(m => {
         const st=models[m]||{}, cfg=settings[m]||{};
         const on=!!st.live_enabled, halted=!!st.paused;
@@ -2615,6 +2627,19 @@ def render_page(title: str, body_html: str, service: str = "pipeline") -> str:
       for(const id in CFG_EDITED){
         const el = document.getElementById(id);
         if(el) el.value = CFG_EDITED[id];
+      }
+      for(const m of openModels){
+        const d = body.querySelector(`details[data-model="${m}"]`);
+        if(d) d.open = true;
+      }
+      if(focusId){
+        const el = document.getElementById(focusId);
+        if(el && el !== document.activeElement) el.focus();
+      }
+      if(ARMED){
+        const b = body.querySelector(`[data-arm-key="${ARMED.key}"]`);
+        if(b){ b.textContent = ARMED.label; b.classList.add('armed'); }
+        else { disarm(); }
       }
     }
     async function toggleLiveModel(modelName, turnOn){
@@ -3346,6 +3371,13 @@ class Handler(BaseHTTPRequestHandler):
         self._send("not found", 404)
 
     def do_POST(self):
+        # One place, so no future POST route can forget it.
+        try:
+            self._handle_post()
+        finally:
+            invalidate_metrics_cache()
+
+    def _handle_post(self):
         if not self._authorized():
             self._send_unauthorized()
             return

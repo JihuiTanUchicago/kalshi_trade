@@ -22,10 +22,11 @@ Run it from cron every few minutes:
 """
 import json
 import os
+import time
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
-from data_pipeline.common import get_db_conn, utc_now
+from data_pipeline.common import api_get_auth, get_db_conn, utc_now
 
 SNS_TOPIC_ARN = os.getenv("SNS_TOPIC_ARN", "")
 STATE_PATH = os.getenv("ALERTER_STATE_PATH", "/opt/kalshi/.alerter_state.json")
@@ -46,6 +47,10 @@ DASHBOARD_URL = os.getenv("DASHBOARD_URL", "https://dehiuraiut9ro.cloudfront.net
 # it broke was the one actually trying to trade.
 LIVE_LOG = os.getenv("LIVE_ENGINE_LOG", "/opt/kalshi/live_trading_engine.log")
 ENGINE_ERROR_MARKERS = ("live trading error", "engine crashed")
+# Kalshi requires a periodic location attestation for API trading. It lapses on
+# a 7-day window and then every order 403s, silently, exactly like it did on
+# 2026-09-27. Warn before that rather than after.
+ATTEST_WARN_DAYS = float(os.getenv("ALERT_ATTESTATION_DAYS", "2"))
 
 
 def load_state() -> Dict:
@@ -165,6 +170,18 @@ def engine_errors_since(offset: int) -> Tuple[int, List[str]]:
     return offset, hits
 
 
+def attestation_days_left() -> Optional[float]:
+    """Days until the Kalshi location attestation expires, or None if it cannot
+    be read. Absent timestamp means never attested, which is also a warning."""
+    try:
+        ts = api_get_auth("/trade-api/v2/api_keys").get("api_key_region_expiration_ts")
+    except Exception:
+        return None
+    if not ts:
+        return -1.0
+    return (int(ts) - time.time()) / 86400.0
+
+
 def new_closed_trades(cur, since_id: int) -> List[Dict]:
     cur.execute(
         "SELECT id, model_name, market_ticker, qty_contracts, entry_price_dollars, "
@@ -239,6 +256,16 @@ def build_alerts(now: Dict, prev: Dict, cur) -> Tuple[List[str], List[str]]:
         urgent.append(
             f"ENGINE ERRORED {len(errs)}x since the last check - it cannot place orders: {uniq[0]}"
         )
+
+    days = attestation_days_left()
+    now["attest_days"] = days
+    if days is not None and days < ATTEST_WARN_DAYS:
+        was = prev.get("attest_days")
+        if was is None or was >= ATTEST_WARN_DAYS:
+            urgent.append(
+                f"Kalshi location attestation {'EXPIRED' if days <= 0 else f'expires in {days:.1f} days'}"
+                " - re-verify in the Kalshi app or every order will 403"
+            )
 
     prev_stale = set(prev.get("stale") or [])
     stale_now = []
