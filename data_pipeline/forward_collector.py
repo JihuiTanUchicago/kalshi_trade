@@ -174,6 +174,31 @@ class WsTickerFeed:
         self._msg_id += 1
         await self._ws.send(json.dumps(payload))
 
+    def _record_quote_tick(self, msg: Dict, ts) -> None:
+        """One row per top-of-book change. Best effort: a failure here must
+        never interrupt the feed the trading engine prices from."""
+        try:
+            self._ensure_db()
+            self._db_cur.execute(
+                """
+                INSERT INTO forward_quote_ticks
+                (observed_at_utc,market_ticker,event_ticker,yes_bid_dollars,yes_ask_dollars,
+                 yes_bid_size_fp,yes_ask_size_fp)
+                VALUES (%s,%s,%s,%s,%s,%s,%s)
+                """,
+                (
+                    ts.replace(tzinfo=None),
+                    msg.get("market_ticker"),
+                    self._event_by_ticker.get(msg.get("market_ticker")),
+                    msg.get("yes_bid_dollars"),
+                    msg.get("yes_ask_dollars"),
+                    msg.get("yes_bid_size_fp") or msg.get("yes_bid_size"),
+                    msg.get("yes_ask_size_fp") or msg.get("yes_ask_size"),
+                ),
+            )
+        except Exception as e:
+            print(f"[WARN] quote tick insert failed: {e}")
+
     def _record_quote_change(self, msg: Dict) -> None:
         ticker = msg.get("market_ticker")
         if not ticker:
@@ -190,6 +215,12 @@ class WsTickerFeed:
             return
 
         ts = parse_iso_to_dt(msg.get("time")) or utc_now()
+        # Every top-of-book change, at tick resolution. forward_quotes samples
+        # this same socket on 20-second marks and throws the rest away, which
+        # is fine for features and useless for execution: a fill model cannot
+        # be built from a price that is only observed three times a minute,
+        # and this history cannot be reconstructed after the fact.
+        self._record_quote_tick(msg, ts)
         bucket = end_minute_bucket(ts).replace(tzinfo=None)
         event_ticker = self._event_by_ticker.get(ticker)
 

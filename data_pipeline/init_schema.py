@@ -125,6 +125,20 @@ DDL = [
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     """
+    CREATE TABLE IF NOT EXISTS forward_quote_ticks (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      observed_at_utc DATETIME(3) NOT NULL,
+      market_ticker VARCHAR(128) NOT NULL,
+      event_ticker VARCHAR(128) NULL,
+      yes_bid_dollars DECIMAL(10,4) NULL,
+      yes_ask_dollars DECIMAL(10,4) NULL,
+      yes_bid_size_fp DECIMAL(18,2) NULL,
+      yes_ask_size_fp DECIMAL(18,2) NULL,
+      INDEX idx_fqt_market_time (market_ticker, observed_at_utc),
+      INDEX idx_fqt_time (observed_at_utc)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
     CREATE TABLE IF NOT EXISTS model_features_1m (
       snapshot_minute_utc DATETIME NOT NULL,
       market_ticker VARCHAR(128) NULL,

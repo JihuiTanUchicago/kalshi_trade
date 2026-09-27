@@ -8,9 +8,10 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 from data_pipeline.architecture.contracts import RiskContext, TradeIntent
-from data_pipeline.architecture.execution_kernel import DummyExecutionKernel
+from data_pipeline.architecture.execution_kernel import DummyExecutionKernel, MarketableLimitKernel
 from data_pipeline.architecture.risk_engine import DummyRiskEngine, LiveSettingsRiskEngine
 from data_pipeline.common import api_get, api_get_auth, api_post_auth, get_db_conn, utc_now
+from data_pipeline.market_data import MarketFeed
 from data_pipeline.modeling_features import FEATURE_COLS, SOURCE_COLS, build_feature_vector, has_target
 from data_pipeline.simulated_trading_engine import (
     EDGE_THRESHOLD_OVERRIDES,
@@ -227,6 +228,20 @@ ORDER_PATH = "/trade-api/v2/portfolio/events/orders"
 # have to track. What it fills is read from the response - see
 # DummyExecutionKernel.execute - and nothing is recorded unless it filled.
 ORDER_TIME_IN_FORCE = os.getenv("KALSHI_ORDER_TIF", "immediate_or_cancel")
+
+# Execution policy. Kalshi has no market order, so crossing the book means a
+# limit priced through the touch; these say how far through.
+#   entry: 1 tick. A missed entry costs nothing, so there is no reason to pay
+#          more than the insurance against the book ticking mid-flight.
+#   exit:  2 ticks, escalating by one per retry. A missed exit is what leaves
+#          a position to settle at zero.
+ENTRY_CROSS_TICKS = int(os.getenv("KALSHI_ENTRY_CROSS_TICKS", "1"))
+EXIT_CROSS_TICKS = int(os.getenv("KALSHI_EXIT_CROSS_TICKS", "2"))
+# If the live ask has run this far past the price the signal was computed at,
+# the edge is gone: abandon the entry rather than chase it.
+MAX_ENTRY_SLIPPAGE = float(os.getenv("KALSHI_MAX_ENTRY_SLIPPAGE", "0.02"))
+ORDER_MAX_ATTEMPTS = int(os.getenv("KALSHI_ORDER_MAX_ATTEMPTS", "3"))
+MAX_QUOTE_AGE_SECONDS = float(os.getenv("KALSHI_MAX_QUOTE_AGE_SECONDS", "2.0"))
 
 
 def place_limit_order(ticker: str, action: str, side: str, qty: int, price_dollars: float) -> Dict:
@@ -547,7 +562,18 @@ def run_loop() -> None:
     with conn.cursor() as cur:
         print(f"live trading engine started (multi-strategy: {', '.join(LIVE_MODELS)}).")
         migrate_legacy_settings(cur)
-        kernel = DummyExecutionKernel(place_limit_order)
+        # Prices come from the live book at submit time. The bar below is
+        # only ever used for model features - never for a price.
+        feed = MarketFeed(ws_feed=None, max_quote_age_seconds=MAX_QUOTE_AGE_SECONDS)
+        kernel = MarketableLimitKernel(
+            place_limit_order,
+            feed,
+            entry_cross_ticks=ENTRY_CROSS_TICKS,
+            exit_cross_ticks=EXIT_CROSS_TICKS,
+            max_entry_slippage=MAX_ENTRY_SLIPPAGE,
+            max_attempts=ORDER_MAX_ATTEMPTS,
+            max_quote_age_seconds=MAX_QUOTE_AGE_SECONDS,
+        )
         risk_engine = DummyRiskEngine() if RISK_ENGINE_MODE == "dummy" else LiveSettingsRiskEngine()
         frozen_models = None
         frozen_cutoff = None
@@ -575,10 +601,16 @@ def run_loop() -> None:
                 ticker = latest["market_ticker"]
                 if not ticker:
                     continue
-                bid = float(latest.get("yes_bid_dollars") or 0.0)
-                ask = float(latest.get("yes_ask_dollars") or 0.0)
-                if bid <= 0 or ask <= 0:
+                # The bar's own bid/ask are deliberately NOT used to price or
+                # size anything: on 2026-09-27 that bar read 0.58/0.59 against
+                # a live book of 0.70/0.71. Features come from the bar, prices
+                # come from the book.
+                live = feed.quote(ticker)
+                if live is None or not live.tradable:
+                    print(f"live: no usable quote for {ticker}, skipping tick")
                     continue
+                bid = float(live.yes_bid)
+                ask = float(live.yes_ask)
 
                 x_latest = np.asarray(build_feature_vector(latest), dtype=float)
                 outputs = score_frozen_models(frozen_models, x_latest, latest_row=latest)

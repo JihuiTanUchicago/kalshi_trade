@@ -545,6 +545,71 @@ against Kalshi on a schedule**, so this gap can reopen silently.
 
 All three strategies set `live_enabled=false` on 2026-09-27 pending a fill model in the simulator.
 
+## Execution rebuilt to price from the live book (2026-09-27)
+
+**The defect.** Every order was built from `model_features_1m` `rows[-1]` - a completed one-minute
+bar, up to ~75s stale by the time the order landed at :15s. Measured live: the bar read
+**0.58 / 0.59** while Kalshi's book was **0.70 / 0.71**. It failed in both directions, which is why
+the symptoms looked contradictory:
+
+- **buying** at the stale ask, under the real ask -> never crosses -> cancelled (the unfilled entries)
+- **selling** at the stale bid, under the real bid -> crosses instantly and gives away the difference
+
+Top-of-book depth is **2,000-3,000 contracts** against orders of 25-33, so liquidity was never the
+constraint. Stale pricing was the whole problem.
+
+**Kalshi has no market order.** `type: "market"` on `/portfolio/events/orders` is rejected with
+`invalid price: can't convert '' to decimal` - a price is always mandatory. Crossing the book
+therefore means a *marketable limit*, which makes the quote the order is built from the single most
+important input.
+
+**What was built.**
+
+`data_pipeline/market_data.py` - `MarketFeed` / `Quote`. Top of book with an explicit age.
+Websocket-first with REST as both fallback and freshness backstop, because a socket that silently
+stops updating looks exactly like a calm market. Returning `None` is a valid answer: no quote means
+no order. In production `ws_feed=None`, so every quote is a REST read - at a one-minute decision
+cadence that is 1-4 calls/min and *always* correct, where a second in-process socket would add a
+stale-socket failure mode for latency that does not yet matter. The `ws_feed` hook exists for when
+tick-level triggering makes it matter.
+
+`MarketableLimitKernel` in `architecture/execution_kernel.py`, replacing the passthrough on the
+live path. Three things the old kernel did not do:
+1. re-prices from the live book at submit time;
+2. **re-checks the edge at the price actually available** - if the live ask has run more than
+   `MAX_ENTRY_SLIPPAGE` (default 2c) past the price the signal was computed at, the entry is
+   abandoned, not paid up for. Following the book must not become chasing it;
+3. **escalates one tick per retry on an exit.** Deliberately asymmetric: a missed entry costs
+   nothing, a missed exit is how 27 contracts were carried into settlement for -$9.46. Bounded by
+   `ORDER_MAX_ATTEMPTS` so it cannot walk the book down indefinitely.
+
+Knobs (env): `KALSHI_ENTRY_CROSS_TICKS=1`, `KALSHI_EXIT_CROSS_TICKS=2`,
+`KALSHI_MAX_ENTRY_SLIPPAGE=0.02`, `KALSHI_ORDER_MAX_ATTEMPTS=3`, `KALSHI_MAX_QUOTE_AGE_SECONDS=2.0`.
+
+The engine's split is now explicit: **features from the bar** (what the model was trained on),
+**prices, edge and sizing from the book** (what you can actually trade at). The bar's bid/ask no
+longer reach any decision.
+
+**Tick-level capture.** `forward_collector` subscribed to the `ticker` channel and sampled it on
+20-second marks, discarding everything between - 180 distinct timestamps an hour, and 0 of 880,745
+rows ever carried depth. New table `forward_quote_ticks` now records every top-of-book change:
+**20 rows in 2 minutes where the sampler gave 6**, catching real intra-minute moves
+(0.61 -> 0.60 -> 0.59 -> 0.58 inside 20 seconds). This is the prerequisite for a simulator fill
+model and the history cannot be reconstructed after the fact, which is why it went first.
+
+**Still open.**
+- The simulator still has no fill model: it assumes every order fills at the quoted price, in full,
+  instantly, on both legs. Until it replays `forward_quote_ticks` against the real cross policy,
+  paper P&L is an upper bound, not a forecast.
+- Triggering on book events rather than a minute timer. Constrained by the model itself: its label
+  is `bid(t+1) > ask(t)` at **one-minute spacing**, so the prediction horizon is one minute however
+  often it is evaluated. Changing the trigger changes the feature distribution it was fit on and
+  needs retraining plus revalidation - which needs the fill model first to measure whether it helps.
+- No `orderbook_delta` subscription, so still no depth beyond touch. Not currently a constraint
+  (touch depth is ~100x our order size) but required for any strategy that sizes up.
+
+All three strategies remain `live_enabled=false`.
+
 ## Risk management (added 2026-09-12)
 
 - `sim_config.SimRiskSettings` (stored in the `sim_settings` table, key `risk_config`): `max_position_fraction` (cap new-position notional as a fraction of a model's own current equity, default 0.20), `max_drawdown_pct` (pause a model once its drawdown from peak exceeds this, default 0.30), `min_equity_floor` (hard floor, default $10).
