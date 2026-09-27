@@ -13,7 +13,7 @@ import websockets
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
-from data_pipeline.common import api_get, get_db_conn, parse_iso_to_dt, utc_now
+from data_pipeline.common import next_20s_mark, api_get, get_db_conn, parse_iso_to_dt, utc_now
 
 
 def choose_active_event(markets: List[Dict]) -> Optional[str]:
@@ -47,18 +47,6 @@ def end_minute_bucket(dt: datetime) -> datetime:
     if dt.second == 0 and dt.microsecond == 0:
         return base
     return base + timedelta(minutes=1)
-
-
-def next_20s_mark(now: Optional[datetime] = None) -> datetime:
-    if now is None:
-        now = utc_now()
-    base = now.replace(microsecond=0)
-    sec = base.second
-    if sec < 20:
-        return base.replace(second=20)
-    if sec < 40:
-        return base.replace(second=40)
-    return (base + timedelta(minutes=1)).replace(second=0)
 
 
 def fetch_active_kxbtc15m_markets() -> List[Dict]:

@@ -3,61 +3,11 @@ import time
 from datetime import datetime, timedelta
 from typing import Dict, List
 
-from data_pipeline.common import get_db_conn, utc_now
+from data_pipeline.common import next_20s_mark, get_db_conn, utc_now
 from data_pipeline.sim_config import STARTING_CAPITAL
+from data_pipeline.sim_repository import is_sim_recompute_in_progress
+from data_pipeline.simulated_trading_engine import ALL_MODELS
 
-BASE_MODELS = (
-    "naive_logistic_baseline",
-    "logistic",
-    "random_forest",
-    "random_forest_high_conviction",
-    "binary_theory_edge",
-)
-
-
-def is_sim_recompute_in_progress(cur) -> bool:
-    cur.execute("SELECT state_value FROM collector_state WHERE state_key='sim_recompute_in_progress' LIMIT 1")
-    row = cur.fetchone()
-    if not row:
-        return False
-    sv = row.get("state_value")
-    if isinstance(sv, dict):
-        return bool(sv.get("in_progress"))
-    if isinstance(sv, str):
-        try:
-            j = json.loads(sv)
-            if isinstance(j, dict):
-                return bool(j.get("in_progress"))
-        except Exception:
-            return False
-    return False
-
-
-def next_20s_mark(now: datetime = None) -> datetime:
-    if now is None:
-        now = utc_now()
-    base = now.replace(microsecond=0)
-    sec = base.second
-    if sec < 20:
-        return base.replace(second=20)
-    if sec < 40:
-        return base.replace(second=40)
-    return (base + timedelta(minutes=1)).replace(second=0)
-
-
-def latest_yes_bid(cur, ticker: str):
-    cur.execute(
-        """
-        SELECT yes_bid_dollars
-        FROM forward_quotes
-        WHERE market_ticker=%s
-        ORDER BY snapshot_time_utc DESC
-        LIMIT 1
-        """,
-        (ticker,),
-    )
-    r = cur.fetchone()
-    return float(r["yes_bid_dollars"]) if r and r.get("yes_bid_dollars") is not None else None
 
 
 def latest_yes_bid_and_size(cur, ticker: str):
@@ -77,10 +27,6 @@ def latest_yes_bid_and_size(cur, ticker: str):
     bid = float(r["yes_bid_dollars"])
     size = float(r["yes_bid_size_fp"]) if r.get("yes_bid_size_fp") is not None else 0.0
     return bid, size
-
-
-def runtime_models(cur) -> List[str]:
-    return list(BASE_MODELS)
 
 
 def compute_model_snapshot(cur, model_name: str) -> Dict:
@@ -158,7 +104,7 @@ def run_loop() -> None:
             # Avoid writing while full sim recompute is rebuilding sim tables.
             if is_sim_recompute_in_progress(cur):
                 continue
-            for model_name in runtime_models(cur):
+            for model_name in ALL_MODELS:
                 row = compute_model_snapshot(cur, model_name)
                 cur.execute(
                     """

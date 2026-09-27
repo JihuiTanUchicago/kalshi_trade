@@ -2,20 +2,8 @@ import json
 import time
 from datetime import datetime, timedelta
 
-from data_pipeline.common import get_db_conn, get_kalshi_cash_balance_dollars, utc_now
+from data_pipeline.common import next_20s_mark, get_db_conn, get_kalshi_cash_balance_dollars, utc_now
 from data_pipeline.live_trading_engine import load_settings
-
-
-def next_20s_mark(now: datetime = None) -> datetime:
-    if now is None:
-        now = utc_now()
-    base = now.replace(microsecond=0)
-    sec = base.second
-    if sec < 20:
-        return base.replace(second=20)
-    if sec < 40:
-        return base.replace(second=40)
-    return (base + timedelta(minutes=1)).replace(second=0)
 
 
 def latest_yes_bid(cur, ticker: str):

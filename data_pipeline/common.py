@@ -179,12 +179,10 @@ def get_kalshi_cash_balance_dollars() -> Optional[float]:
     return None
 
 
-def next_quarter_utc(now: Optional[datetime] = None) -> datetime:
-    if now is None:
-        now = utc_now()
-    minute = (now.minute // 15 + 1) * 15
-    if minute >= 60:
-        next_dt = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
-    else:
-        next_dt = now.replace(minute=minute, second=0, microsecond=0)
-    return next_dt
+def next_20s_mark(now: Optional[datetime] = None) -> datetime:
+    """Next :00/:20/:40 wall-clock mark. Four collectors ticked on their own
+    copy of this; they now share one."""
+    now = (now or utc_now()).replace(microsecond=0)
+    return now + timedelta(seconds=20 - (now.second % 20))
+
+

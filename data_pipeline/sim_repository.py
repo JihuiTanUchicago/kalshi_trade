@@ -6,7 +6,6 @@ trust, how much to buy, when to force-close) lives in simulated_trading_engine.p
 and calls into this module rather than issuing SQL directly - this is what
 makes that logic unit-testable against a mocked cursor.
 """
-import ast
 import json
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -95,63 +94,6 @@ def is_sim_recompute_in_progress(cur) -> bool:
     return False
 
 
-def _parse_orderbook_levels(raw_json: Optional[dict]) -> List[Tuple[float, float]]:
-    if not raw_json:
-        return []
-    candidates = [
-        raw_json.get("yes_bids"),
-        raw_json.get("yes_bid_levels"),
-        raw_json.get("orderbook_yes_bids"),
-    ]
-    ob = raw_json.get("orderbook")
-    if isinstance(ob, dict):
-        candidates.extend([ob.get("yes_bids"), ob.get("yes"), ob.get("bids")])
-    levels: List[Tuple[float, float]] = []
-    for cand in candidates:
-        if not isinstance(cand, list):
-            continue
-        for lv in cand:
-            p = None
-            q = None
-            if isinstance(lv, dict):
-                p = (
-                    lv.get("price")
-                    or lv.get("yes_bid_dollars")
-                    or lv.get("yes_bid")
-                    or lv.get("p")
-                    or lv.get("price_dollars")
-                )
-                q = (
-                    lv.get("size")
-                    or lv.get("size_fp")
-                    or lv.get("yes_bid_size_fp")
-                    or lv.get("qty")
-                    or lv.get("quantity")
-                    or lv.get("contracts")
-                    or lv.get("count")
-                    or lv.get("q")
-                )
-            elif isinstance(lv, (list, tuple)) and len(lv) >= 2:
-                p, q = lv[0], lv[1]
-            if p is None or q is None:
-                continue
-            try:
-                pf = float(p)
-                qf = float(q)
-            except Exception:
-                continue
-            # Some payloads use cent units (0..100) instead of dollars (0..1).
-            if pf > 1.0 and pf <= 100.0:
-                pf = pf / 100.0
-            if pf <= 0 or qf <= 0:
-                continue
-            levels.append((pf, qf))
-        if levels:
-            break
-    levels.sort(key=lambda x: x[0], reverse=True)
-    return levels
-
-
 def best_bid_snapshot(cur, ticker: str, as_of_ts: Optional[datetime] = None) -> Dict:
     if as_of_ts is None:
         cur.execute(
@@ -194,52 +136,25 @@ def best_bid_snapshot(cur, ticker: str, as_of_ts: Optional[datetime] = None) -> 
             (ticker,),
         )
         r = cur.fetchone()
-    r = r or {}
-    raw = r.get("raw_json")
-    if isinstance(raw, str):
-        try:
-            raw = json.loads(raw)
-        except Exception:
-            try:
-                raw = ast.literal_eval(raw)
-            except Exception:
-                raw = {}
-    elif not isinstance(raw, dict):
-        raw = {}
-    bid = r.get("yes_bid_dollars")
-    size = r.get("yes_bid_size_fp")
-    levels = _parse_orderbook_levels(raw)
-    if bid is not None:
-        bid_f = float(bid)
-        size_f = float(size) if size is not None else 0.0
-        if bid_f > 0:
-            if not levels:
-                levels = [(bid_f, size_f)]
-            elif levels[0][0] != bid_f:
-                levels = [(bid_f, size_f)] + levels
-    return {
-        "bid": (float(bid) if bid is not None else None),
-        "bid_size": (float(size) if size is not None else None),
-        "levels": levels,
-    }
+    bid = (r or {}).get("yes_bid_dollars")
+    return {"bid": (float(bid) if bid is not None else None)}
 
 
 def estimate_sell_proceeds(snapshot: Dict, qty: int) -> Tuple[float, float]:
+    """Exit price and proceeds for selling `qty` at the best bid.
+
+    There is no depth to walk: forward_collector subscribes to the ticker
+    channel only, so forward_quotes.raw_json has never carried an order book
+    (checked 2026-09-26: 0 of 880,745 rows). This used to parse a bid ladder
+    and average across it, which meant a function that read as depth-aware
+    was in fact always pricing the whole order at the top of book.
+    """
     if qty <= 0:
         return 0.0, 0.0
-    levels = list(snapshot.get("levels") or [])
-    if levels:
-        best_bid = float(levels[0][0])
-        if best_bid > 0:
-            proceeds = float(qty) * best_bid
-            avg_px = proceeds / float(qty)
-            return avg_px, proceeds
     bid = snapshot.get("bid")
     if bid is None or float(bid) <= 0:
         return 0.0, 0.0
-    proceeds = float(qty) * float(bid)
-    avg_px = proceeds / float(qty)
-    return avg_px, proceeds
+    return float(bid), float(qty) * float(bid)
 
 
 def get_open_position(cur, model_name: str) -> Optional[Dict]:
@@ -479,20 +394,6 @@ def get_sim_risk_settings(cur) -> SimRiskSettings:
     sv = row["settings_json"]
     cfg = sv if isinstance(sv, dict) else json.loads(sv)
     return sim_risk_settings_from_dict(cfg)
-
-
-def update_sim_risk_settings(cur, patch: Dict) -> SimRiskSettings:
-    current = sim_risk_settings_to_dict(get_sim_risk_settings(cur))
-    current.update({k: v for k, v in (patch or {}).items() if k in current})
-    cur.execute(
-        """
-        INSERT INTO sim_settings (settings_key, settings_json, updated_at_utc)
-        VALUES ('risk_config', %s, UTC_TIMESTAMP())
-        ON DUPLICATE KEY UPDATE settings_json=VALUES(settings_json), updated_at_utc=VALUES(updated_at_utc)
-        """,
-        (json.dumps(current),),
-    )
-    return sim_risk_settings_from_dict(current)
 
 
 def get_model_pause_state(cur, model_name: str) -> Optional[Dict]:

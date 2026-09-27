@@ -4,20 +4,10 @@ from datetime import datetime, timedelta
 
 import requests
 
-from data_pipeline.common import get_db_conn, utc_now
+from data_pipeline.common import next_20s_mark, get_db_conn, utc_now
 
 PRODUCT_ID = "BTC-USD"
 TICKER_URL = f"https://api.exchange.coinbase.com/products/{PRODUCT_ID}/ticker"
-
-
-def next_20s_mark(now: datetime) -> datetime:
-    base = now.replace(microsecond=0)
-    sec = base.second
-    if sec < 20:
-        return base.replace(second=20)
-    if sec < 40:
-        return base.replace(second=40)
-    return (base + timedelta(minutes=1)).replace(second=0)
 
 
 def fetch_ticker() -> dict:

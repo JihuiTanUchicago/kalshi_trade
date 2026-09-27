@@ -16,7 +16,6 @@ class FakeCursor:
         self.sim_positions = {}  # model_name -> row dict
         self.sim_trades = []  # list of dicts, id = index+1
         self.sim_equity_1m = {}  # model_name -> list of rows (append order)
-        self.sim_portfolio_20s = {}  # model_name -> drawdown_dollars
         self.sim_model_state = {}  # model_name -> {"paused":..., "paused_reason":...}
         self.forward_quotes = {}  # ticker -> yes_bid_dollars
         self.sim_settings = {}

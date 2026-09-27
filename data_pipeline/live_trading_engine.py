@@ -42,10 +42,6 @@ DEFAULT_SETTINGS = {
 RISK_ENGINE_MODE = os.getenv("RISK_ENGINE_MODE", "live_settings").strip().lower()
 
 
-def to_float(v):
-    return 0.0 if v is None else float(v)
-
-
 def next_minute_plus_delay(delay_seconds: int = 12) -> datetime:
     now = utc_now()
     return now.replace(second=0, microsecond=0) + timedelta(minutes=1, seconds=delay_seconds)
