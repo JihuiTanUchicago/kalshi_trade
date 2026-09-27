@@ -269,6 +269,42 @@ Found while counting duplication, not while looking for bugs:
   unreliable. Both halves fixed; no bare `_live_authorized()` call remains.
 - `_authorized()` compared the dashboard password with `==`. Now `secrets.compare_digest`.
 
+## CloudFront was rejecting every POST (fixed 2026-09-26)
+
+**No control on the dashboard had ever worked through the public URL.** The distribution
+(`E3W0CV5JMD953I`) was configured `AllowedMethods: [HEAD, GET]`, so CloudFront rejected every POST
+with its own 403 - "This distribution is not configured to allow the HTTP request method that was
+used for this request" - before the origin ever saw it. That silently disabled: save caps, the live
+on/off switch, clear-halt, resume a paused sim book, close a live position, and manual orders.
+
+Fixed by setting `AllowedMethods` to the full seven-method set while leaving `CachedMethods` at
+`[GET, HEAD]` and all TTLs at 0. The pre-change config is preserved for revert. Verified: a POST
+probe with a deliberately invalid `model_name` went 403 -> 400, meaning auth now passes and the
+handler is the thing rejecting it; a real no-op save of `binary_theory_edge`'s existing caps
+returned `ok: true` with `live_enabled` untouched.
+
+Related and still true: the distribution also sets `Cookies: Forward: none`, so the `live_gate`
+cookie is stripped and can never authorize anything in production. Only `?live_password=` in the
+query string works - which is what the front-end sends. Do not "simplify" the live gate down to the
+cookie path; through CloudFront it does not exist.
+
+**Config panel no longer disappears mid-edit.** `renderLiveStrategyCards` re-renders every 10s so
+prob/edge stay live, which was wiping an open settings panel and anything half-typed in it. Open
+state, edited values and the caret are now captured and restored around the re-render, and a
+successful save clears the pending-edit record. Reading `selectionStart` is guarded: number inputs
+do not support selection and throw.
+
+**Strategy dossiers now carry the math and the algorithm.** Formulas are native MathML - no KaTeX,
+no CDN, nothing to load, so they render on a page whose job is telling you when things are broken.
+Each dossier carries its decision formula, the probability step in pseudocode, and a shared
+"one tick, end to end" block in the order `process_model_tick` actually runs it. A separate block
+records that **live sizing is not paper sizing**: live has no `MAX_QTY` and no cash check, so the
+cost cap is the only bound and a $0.05 ask buys 40 contracts for the same $2.
+
+Monospace is used in those pseudocode blocks, which DESIGN.md's No-Monospace rule otherwise bars.
+The rule is about monospace as technical costume; pseudocode is code, where indentation carries the
+structure. Scoped exception, recorded rather than silently broken.
+
 ## Risk management (added 2026-09-12)
 
 - `sim_config.SimRiskSettings` (stored in the `sim_settings` table, key `risk_config`): `max_position_fraction` (cap new-position notional as a fraction of a model's own current equity, default 0.20), `max_drawdown_pct` (pause a model once its drawdown from peak exceeds this, default 0.30), `min_equity_floor` (hard floor, default $10).

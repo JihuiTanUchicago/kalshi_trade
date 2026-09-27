@@ -37,6 +37,61 @@ LIVE_TRADING_PASSWORD = os.getenv("LIVE_TRADING_PASSWORD", "iwanttoberich")
 # modeling_features.py). Every claim here is checkable against those files;
 # nothing is inferred. Keep this in sync when the engine changes - a dossier
 # that drifts from the engine is worse than no dossier.
+# One tick of the engine, in the order the code actually runs it
+# (simulated_trading_engine.process_model_tick). Exit is evaluated before
+# entry so a stale position never blocks a fresh read.
+SHARED_TICK_PSEUDO = """EVERY MINUTE, at second :10
+
+  row  <- newest model_features_1m row for the live 15-minute contract
+  if row has no settled target price:   wait for the next minute
+  x    <- build_feature_vector(row)                    # 22 columns
+
+  FOR EACH strategy:
+
+      p    <- strategy.probability(x, row)             # this is what differs
+      ask  <- row.yes_ask_dollars
+      edge <- p - ask
+      tte  <- row.time_to_expiry_sec
+
+      # --- exit is decided first
+      IF holding a position:
+          IF the contract rotated            -> close at that contract's last bid
+          ELIF tte <= 60s                    -> force close at $0.99
+          ELIF strategy holds to settlement  -> hold, whatever p says
+          ELIF p < 0.55 OR edge <= threshold -> close at the current bid
+
+      # --- risk gate, before any new risk is added
+      IF drawdown from peak <= -30%:
+          halt this strategy and skip entry        # stays halted until cleared by hand
+
+      # --- entry
+      IF no position AND not halted AND tte > 60s AND p >= 0.55 AND edge > threshold:
+          equity  <- 100 + realised + unrealised
+          cap     <- equity x max_position_fraction
+          qty     <- clamp( floor((edge / 0.03) x 10), 1, 10 )
+          qty     <- min( qty, floor(cap / ask) )      # never more than the book can fund
+          IF qty > 0:  buy qty at the ask"""
+
+# Live sizing is not the same arithmetic as paper sizing, which is worth
+# knowing before promoting anything: live has no MAX_QTY, only a cost cap.
+LIVE_SIZING_PSEUDO = """LIVE, the same strategy sizes differently:
+
+  qty_max <- floor(max_trade_cost / ask)        # $2 / $0.50 = 4 contracts
+  qty     <- clamp( floor((edge / 0.03) x qty_max), 1, qty_max )
+
+  # no MAX_QTY ceiling and no cash check on this path - the cost cap is the
+  # only bound, so a $0.05 ask buys 40 contracts for the same $2."""
+
+
+def _eq(*rows):
+    return '<math display="block">' + "".join(rows) + "</math>"
+
+
+FRAC = '<mfrac><mrow>{0}</mrow><mrow>{1}</mrow></mfrac>'
+EDGE_MATH = _eq(
+    "<mi>edge</mi><mo>=</mo><mi>p</mi><mo>&#8722;</mo><mi>ask</mi>"
+)
+
 SHARED_LABEL = (
     "Every fitted model is trained on the same question, and it is a tradeable one rather than a "
     "price-forecasting one: given this minute's order book, could you buy at the current ask and "
@@ -67,6 +122,14 @@ SHARED_LIFECYCLE = [
 ]
 STRATEGY_DOSSIER: Dict[str, Dict] = {
     "naive_logistic_baseline": {
+        "formula_caption": 'Logistic response on the reduced 13-column subset',
+        "formula": '<math display="block"><mi>p</mi><mo>=</mo><mi>&#963;</mi><mo>(</mo><mi>w</mi><mo>&#183;</mo><msub><mi>z</mi><mn>13</mn></msub><mo>+</mo><mi>b</mi><mo>)</mo><mo>=</mo><mfrac><mn>1</mn><mrow><mn>1</mn><mo>+</mo><msup><mi>e</mi><mrow><mo>&#8722;</mo><mo>(</mo><mi>w</mi><mo>&#183;</mo><msub><mi>z</mi><mn>13</mn></msub><mo>+</mo><mi>b</mi><mo>)</mo></mrow></msup></mrow></mfrac></math>',
+        "pseudo": """z13 <- StandardScaler( x restricted to the 13 baseline columns )
+p   <- sigmoid( w . z13 + b )
+
+# L1 penalty, C = 0.5 (lambda = 2.0), class_weight = balanced,
+# max_iter = 1000, random_state = 42. No interaction terms are in z13,
+# which is the whole point: this is the control.""",
         "kind": "Fitted - linear",
         "thesis": (
             "A deliberately weak benchmark. It exists so the richer models have something honest "
@@ -91,6 +154,14 @@ STRATEGY_DOSSIER: Dict[str, Dict] = {
         ),
     },
     "logistic": {
+        "formula_caption": 'Same response, all 22 columns including the interaction terms',
+        "formula": '<math display="block"><mi>p</mi><mo>=</mo><mi>&#963;</mi><mo>(</mo><mi>w</mi><mo>&#183;</mo><mi>z</mi><mo>+</mo><mi>b</mi><mo>)</mo><mo>,</mo><mspace width="0.6em"/><mi>z</mi><mo>=</mo><mtext>StandardScaler</mtext><mo>(</mo><mi>x</mi><mo>)</mo></math>',
+        "pseudo": """z <- StandardScaler( x )          # all 22 columns
+p <- sigmoid( w . z + b )
+
+# Identical pipeline and hyper-parameters to the baseline. The only
+# difference is the width of the matrix, which isolates one question:
+# how much of any edge is the feature engineering rather than capacity?""",
         "kind": "Fitted - linear",
         "thesis": (
             "The same linear machinery as the baseline, but allowed to see the engineered "
@@ -114,6 +185,16 @@ STRATEGY_DOSSIER: Dict[str, Dict] = {
         ),
     },
     "random_forest": {
+        "formula_caption": 'Mean vote across the forest',
+        "formula": '<math display="block"><mi>p</mi><mo>=</mo><mfrac><mn>1</mn><mi>N</mi></mfrac><munderover><mo>&#8721;</mo><mrow><mi>t</mi><mo>=</mo><mn>1</mn></mrow><mi>N</mi></munderover><msub><mi>tree</mi><mi>t</mi></msub><mo>(</mo><mi>x</mi><mo>)</mo><mo>,</mo><mspace width="0.6em"/><mi>N</mi><mo>=</mo><mn>400</mn></math>',
+        "pseudo": """p <- mean over 400 trees of tree_t(x)
+
+# max_depth 8, min_samples_leaf 20, min_samples_split 50,
+# max_features sqrt, class_weight balanced_subsample, seed 42.
+#
+# IF training rows < 1000:
+#     fall back to 120 trees, depth 5, leaf 5, split 20
+#     and record which regime was used (rf_regime).""",
         "kind": "Fitted - non-linear",
         "thesis": (
             "Allow non-linear structure and interactions the linear models cannot express, on the "
@@ -133,6 +214,15 @@ STRATEGY_DOSSIER: Dict[str, Dict] = {
         ),
     },
     "random_forest_high_conviction": {
+        "formula_caption": 'No probability of its own - only the entry bar moves',
+        "formula": '<math display="block"><msub><mi>p</mi><mtext>hc</mtext></msub><mo>=</mo><msub><mi>p</mi><mtext>rf</mtext></msub><mo>,</mo><mspace width="1.2em"/><mtext>open&#160;iff</mtext><mspace width="0.4em"/><mi>edge</mi><mo>&#62;</mo><mn>0.17</mn></math>',
+        "pseudo": """p <- random_forest.p              # the same number, not a second model
+
+# The ONLY difference between the two books:
+#     random_forest                  opens when edge > 0.01
+#     random_forest_high_conviction  opens when edge > 0.17
+#
+# Everything else - features, trees, exits, sizing - is identical.""",
         "kind": "Filter - not a separate model",
         "thesis": (
             "Not a new model at all. It reuses random_forest's probability output unchanged and "
@@ -154,6 +244,26 @@ STRATEGY_DOSSIER: Dict[str, Dict] = {
         ),
     },
     "binary_theory_edge": {
+        "formula_caption": 'Closed-form digital-option probability. Nothing is fitted.',
+        "formula": '<math display="block"><mi>P</mi><mo>(</mo><mtext>YES</mtext><mo>)</mo><mo>=</mo><mi>&#934;</mi><mo>(</mo><mfrac><mrow><mi>ln</mi><mo>(</mo><msub><mi>S</mi><mn>0</mn></msub><mo>/</mo><mi>K</mi><mo>)</mo></mrow><mrow><mi>&#963;</mi><msqrt><mi>T</mi></msqrt></mrow></mfrac><mo>)</mo></math>',
+        "pseudo": """S <- spot BTC                      K <- the contract's strike
+T <- time_to_expiry as a fraction of a year
+sigma <- realised volatility estimate
+
+d <- ln(S / K) / (sigma * sqrt(T))
+p <- Phi(d)                        # standard normal CDF
+
+# Drift is deliberately zero. Short-horizon crypto drift is not reliably
+# predictable, so a driftless random walk is the honest null.
+#
+# This is the same d2 term Black-Scholes uses for a cash-or-nothing
+# digital, MINUS the risk-neutral drift correction (-0.5*sigma^2*T).
+# That makes it the physical-measure probability of the outcome, not a
+# risk-neutral price - which is exactly what you want to compare against
+# a market quote.
+#
+# Exit differs from every other book: hold to settlement, never close
+# on signal decay.""",
         "kind": "Closed form - nothing fitted",
         "thesis": (
             "Price the contract from options theory instead of learning it from history, then "
@@ -1330,6 +1440,20 @@ def model_research_summary():
     return out
 
 
+def _comment(code: str) -> str:
+    """Escape pseudocode and mute its comment lines, so the algorithm reads
+    before the commentary does."""
+    out = []
+    for line in code.split("\n"):
+        esc = html.escape(line)
+        idx = line.find("#")
+        if idx >= 0:
+            out.append(html.escape(line[:idx]) + '<span class="cm">' + html.escape(line[idx:]) + "</span>")
+        else:
+            out.append(esc)
+    return "\n".join(out)
+
+
 def render_page(title: str, body_html: str, service: str = "pipeline") -> str:
     css = """
     @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;600&family=Archivo+Narrow:wght@400;600&display=swap');
@@ -1489,6 +1613,19 @@ def render_page(title: str, body_html: str, service: str = "pipeline") -> str:
     tbody tr:hover td{background:var(--stock-raised)}
     td.num,th.num{text-align:right;font-variant-numeric:tabular-nums lining-nums}
     td.name{font-weight:600}
+    /* Formulas and pseudocode sit on a recessed plate, the way a worked
+       example sits in a printed manual. */
+    .plate-eq{border:1px solid var(--rule);background:var(--stock-raised);
+      padding:6px 16px 10px;margin:12px 0 0;overflow-x:auto}
+    .plate-eq math{font-size:19px;color:var(--ink)}
+    /* Monospace is barred as decoration, not where alignment carries meaning.
+       Pseudocode is code: the indentation is the structure. */
+    pre.code{margin:12px 0 0;padding:14px 16px;border:1px solid var(--rule);
+      background:var(--stock-raised);overflow-x:auto;
+      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+      font-size:12.5px;line-height:1.75;color:var(--ink);
+      font-variant-ligatures:none;white-space:pre;tab-size:2}
+    pre.code .cm{color:var(--ink-3)}
     .cellwrap{max-width:46ch;white-space:normal;word-break:break-word;line-height:1.5;color:var(--ink-2)}
     .tick{font-family:"Archivo Narrow",Archivo,sans-serif;letter-spacing:.02em;color:var(--ink-2)}
     .empty-row td{color:var(--ink-3);padding:16px 0;border-bottom:1px solid var(--rule);
@@ -2395,9 +2532,29 @@ def render_page(title: str, body_html: str, service: str = "pipeline") -> str:
       }catch(e){ setNotice('live-root', `Could not close ${ticker}: ${e}. The position is still open.`, 'Close failed'); }
       await refreshLiveMetrics();
     }
+    // The strategies table re-renders every 10s so prob/edge stay live. That
+    // used to blow away an open settings panel and anything half-typed in it,
+    // which is the page moving under the operator's hands. Open state, edited
+    // values and the caret are captured and restored around the re-render.
+    var CFG_OPEN = {};
+    var CFG_EDITED = {};
+    document.addEventListener('toggle', function(e){
+      const d = e.target;
+      if(!d || d.tagName !== 'DETAILS' || !d.dataset.model) return;
+      if(d.open) CFG_OPEN[d.dataset.model] = 1; else delete CFG_OPEN[d.dataset.model];
+    }, true);
+    document.addEventListener('input', function(e){
+      const el = e.target;
+      if(el && el.id && el.id.indexOf('ls_') === 0) CFG_EDITED[el.id] = el.value;
+    });
     function renderLiveStrategyCards(models, settings){
       const body=document.getElementById('live_strat_body');
       if(!body) return;
+      const active = document.activeElement;
+      const keepId = (active && active.id && active.id.indexOf('ls_') === 0) ? active.id : null;
+      // number inputs do not support selection; reading it can throw
+      let selA = null, selB = null;
+      if(keepId){ try{ selA = active.selectionStart; selB = active.selectionEnd; }catch(e){} }
       body.innerHTML = LIVE_MODELS.map(m => {
         const st=models[m]||{}, cfg=settings[m]||{};
         const on=!!st.live_enabled, halted=!!st.paused;
@@ -2427,7 +2584,7 @@ def render_page(title: str, body_html: str, service: str = "pipeline") -> str:
           </tr>
           <tr class="cfg">
             <td colspan="8" style="padding-top:0">
-              <details>
+              <details data-model="${esc(m)}">
                 <summary>Risk caps and thresholds for ${esc(m)}</summary>
                 <div style="display:flex;flex-wrap:wrap;gap:12px;padding:10px 0 12px">${fields}
                   <label class="field"><span class="lab">&nbsp;</span>
@@ -2437,6 +2594,18 @@ def render_page(title: str, body_html: str, service: str = "pipeline") -> str:
             </td>
           </tr>`;
       }).join('');
+      for(const m in CFG_OPEN){
+        const d = body.querySelector('details[data-model="' + m + '"]');
+        if(d) d.open = true;
+      }
+      for(const id in CFG_EDITED){
+        const el = document.getElementById(id);
+        if(el) el.value = CFG_EDITED[id];
+      }
+      if(keepId){
+        const el = document.getElementById(keepId);
+        if(el){ el.focus(); if(selA !== null){ try{ el.setSelectionRange(selA, selB); }catch(e){} } }
+      }
     }
     async function toggleLiveModel(modelName, turnOn){
       try{
@@ -2480,7 +2649,10 @@ def render_page(title: str, body_html: str, service: str = "pipeline") -> str:
         });
         let j={}; try{ j=await r.json(); }catch(e){}
         if(!r.ok || !j.ok){ setNotice('live-root', `Could not save caps for ${modelName}: ${(j&&j.error)||('HTTP '+r.status)}.`, 'Save failed'); }
-        else{ setNotice('live-root', `Caps saved for ${modelName}. They apply on its next tick.`, 'Saved'); }
+        else{
+          for(const f of LIVE_SETTINGS_FIELDS) delete CFG_EDITED['ls_' + modelName + '_' + f];
+          setNotice('live-root', `Caps saved for ${modelName}. They apply on its next tick.`, 'Saved');
+        }
       }catch(e){ setNotice('live-root', `Could not save caps for ${modelName}: ${e}.`, 'Save failed'); }
       await refreshLiveMetrics();
     }
@@ -2688,6 +2860,22 @@ class Handler(BaseHTTPRequestHandler):
                 <section class="sect">
                   <div class="sect-head"><h2>How it decides</h2></div>
                   <p class="prose" style="margin:12px 0 0">{html.escape(dossier['decides'])}</p>
+                  <p class="lab" style="margin:18px 0 0">{html.escape(dossier['formula_caption'])}</p>
+                  <div class="plate-eq">{dossier['formula']}</div>
+                  <p class="lab" style="margin:18px 0 0">The probability step, in pseudocode</p>
+                  <pre class="code">{_comment(dossier['pseudo'])}</pre>
+                  <p class="lab" style="margin:18px 0 0">Edge, the number every entry is gated on</p>
+                  <div class="plate-eq">{EDGE_MATH}</div>
+                  <p class="legend">Edge is the strategy's claim about how mispriced the contract is
+                  right now: its own probability minus what the market is asking.</p>
+                </section>
+
+                <section class="sect">
+                  <div class="sect-head"><h2>One tick, end to end</h2>
+                    <p class="sect-note">every minute at :10</p></div>
+                  <pre class="code">{_comment(SHARED_TICK_PSEUDO)}</pre>
+                  <p class="lab" style="margin:18px 0 0">Sizing on the live path is not this arithmetic</p>
+                  <pre class="code">{_comment(LIVE_SIZING_PSEUDO)}</pre>
                 </section>
 
                 <section class="sect">
