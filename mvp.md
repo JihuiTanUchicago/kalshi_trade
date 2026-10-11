@@ -41,4 +41,5 @@ strategies and their model parameters.
 
 ## How do we charge customers? (v0.2)
 - Charging a small percentage fee on user transactions and credit purchases
+    - Try this revenue model first to see if it makes sense
 
