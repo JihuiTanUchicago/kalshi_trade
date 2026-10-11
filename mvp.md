@@ -38,6 +38,7 @@ strategies and their model parameters.
     - And angent through the same chat window provide suggestions to adjust model prameters or strategies
     - If `dangerously-skip-permission` is turned on, agent will handle model adjustment/strategy deployment
     automatically, but its thought will be output in the chat window.
+- A page/tab to deposit/withdraw money
 
 ## How do we charge customers? (v0.2)
 - Charging a small percentage fee on user transactions and credit purchases
