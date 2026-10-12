@@ -1,0 +1,23 @@
+{
+  "id": "2d9e926c-e17c-47c3-ad8c-26c7a594e48f",
+  "class": "us_equity",
+  "exchange": "NASDAQ",
+  "symbol": "QQQ",
+  "name": "Invesco QQQ Trust, Series 1",
+  "status": "active",
+  "tradable": true,
+  "marginable": true,
+  "maintenance_margin_requirement": 30,
+  "margin_requirement_long": "30",
+  "margin_requirement_short": "30",
+  "shortable": true,
+  "easy_to_borrow": true,
+  "borrow_status": "easy_to_borrow",
+  "fractionable": true,
+  "attributes": [
+    "fractional_eh_enabled",
+    "has_options",
+    "options_late_close",
+    "overnight_tradable"
+  ]
+}

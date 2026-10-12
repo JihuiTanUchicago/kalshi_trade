@@ -1,0 +1,500 @@
+{
+  "api_calls_before_new_campaign": 549,
+  "memory_count": 13,
+  "training_sessions": [
+    {
+      "key": "tool_task_session:train:88aebbcb629f46e3704560d969a4a6898c8331552ac34a09c0f8794a0ab3d0da",
+      "calls": 4,
+      "context": [],
+      "created_at": "2026-10-11T03:25:10.698135+00:00",
+      "feedback": {
+        "evidence": "c399cb0b8a8d86425bdf49955aabfda69d3f482a947ed80d88a933c971a54681",
+        "handle": "r1",
+        "independently_verified": true,
+        "kind": "asof_history",
+        "operation": "select_asof",
+        "payload": {
+          "decision_at": "2026-09-14T21:00:00+00:00",
+          "initial_shares": 240,
+          "rows": [
+            {
+              "available_at": "2026-09-09T21:25:00+00:00",
+              "close": 80.52,
+              "dividend": 0,
+              "effective_at": "2026-09-09T21:00:00+00:00",
+              "id": "doc-2854564-0",
+              "split": 1
+            },
+            {
+              "available_at": "2026-09-10T21:25:00+00:00",
+              "close": 82.87,
+              "dividend": 0.74,
+              "effective_at": "2026-09-10T17:00:00-04:00",
+              "id": "doc-2854564-1",
+              "split": 1
+            },
+            {
+              "available_at": "2026-09-11T21:25:00+00:00",
+              "close": 82.09,
+              "dividend": 0.39,
+              "effective_at": "2026-09-11T21:00:00+00:00",
+              "id": "doc-2854564-2",
+              "split": 1
+            },
+            {
+              "available_at": "2026-09-12T21:25:00+00:00",
+              "close": 80.77,
+              "dividend": 0.73,
+              "effective_at": "2026-09-12T17:00:00-04:00",
+              "id": "doc-2854564-3",
+              "split": 1
+            }
+          ]
+        },
+        "report": {
+          "usable_ids": [
+            "doc-2854564-0",
+            "doc-2854564-1",
+            "doc-2854564-2",
+            "doc-2854564-3"
+          ]
+        }
+      },
+      "job": "66e79a0a5735fa47a8bb33d10ce1a7cd8865f10f830d1372a91782ce546bd204",
+      "receipts": [
+        "c399cb0b8a8d86425bdf49955aabfda69d3f482a947ed80d88a933c971a54681"
+      ],
+      "repairs": 1,
+      "result": null,
+      "status": "failed"
+    },
+    {
+      "key": "tool_task_session:train:080d70aa7ca5f18622381f4f3e2c74477016d1b3d4319982e6e3c9d2262b574c",
+      "calls": 2,
+      "context": [],
+      "created_at": "2026-10-11T03:25:14.849902+00:00",
+      "feedback": {
+        "error": "Invalid action/schema or provider response"
+      },
+      "job": "572b8e1c50887f579f21b3b6ff779dfbd431e6f78cafc83d3000dfedb4f47eda",
+      "receipts": [],
+      "repairs": 2,
+      "result": null,
+      "status": "failed"
+    },
+    {
+      "key": "tool_task_session:train:5eb9eed2db33ceaae18e54ebd2b58c3c045df9b8abdc26e778f3b5d95de48906",
+      "calls": 4,
+      "context": [],
+      "created_at": "2026-10-11T03:25:22.651353+00:00",
+      "feedback": {
+        "error": "Input must be an existing document or receipt handle"
+      },
+      "job": "afd66e72662eaa164e9cebb94076c6b96c3315bc393e8a545e829f2e59cc192a",
+      "receipts": [
+        "cbe204ccee0fd7d8dca2c5364f94d547d4f4361b0e9bc1b1779beefd51a7334e"
+      ],
+      "repairs": 2,
+      "result": null,
+      "status": "failed"
+    },
+    {
+      "key": "tool_task_session:train:9d8805f0badc3f791762477bd6875214cf4ee073d2f1af77f0a9fb3b8cb4b592",
+      "calls": 3,
+      "context": [],
+      "created_at": "2026-10-11T03:25:27.282157+00:00",
+      "feedback": {
+        "error": "Input must be an existing document or receipt handle"
+      },
+      "job": "cbd4b0954bfaca578b607029f5e271f5119c942a62040a7202c17f476527529a",
+      "receipts": [
+        "5e80bac1c5dbc856402e2a378ae8cacecdf6666895438d93e0ea7c9c2fd856d3"
+      ],
+      "repairs": 2,
+      "result": null,
+      "status": "failed"
+    },
+    {
+      "key": "tool_task_session:train:b7d918d35ff3c7d7bd871c203c948193639daf21e93dc53e1339570dd8d55243",
+      "calls": 3,
+      "context": [],
+      "created_at": "2026-10-11T03:25:30.235601+00:00",
+      "feedback": {
+        "error": "Input must be an existing document or receipt handle"
+      },
+      "job": "bf83bf363dd786575f5e259e08b224b21db6a7e03e3bf45b6df1130ef4f2c01f",
+      "receipts": [
+        "f11654b1bb32a101b8abffd29876d3f2ce371d565544696ef992d51351b6911e"
+      ],
+      "repairs": 2,
+      "result": null,
+      "status": "failed"
+    },
+    {
+      "key": "tool_task_session:train:38881e6c466258609999ff481ab682b6302f8a09e09e18670707945547bd0f99",
+      "calls": 4,
+      "context": [],
+      "created_at": "2026-10-11T03:25:34.506269+00:00",
+      "feedback": {
+        "error": "Input must be an existing document or receipt handle"
+      },
+      "job": "a07e5847085db1f2d5b9eb060eefd58f398a16e20a5e80b926be2d081d289fe6",
+      "receipts": [
+        "24d18610a05dd8d60910141a5589c6517e6da8c9d68c7c3760ddb56b5decfcc1"
+      ],
+      "repairs": 2,
+      "result": null,
+      "status": "failed"
+    },
+    {
+      "key": "tool_task_session:train:fe281b213d6f851dd899ea1c53fd79d35799dce8d0cc1a5e6e4672a1c87f94fe",
+      "calls": 2,
+      "context": [],
+      "created_at": "2026-10-11T03:25:39.031132+00:00",
+      "feedback": {
+        "error": "Input must be an existing document or receipt handle"
+      },
+      "job": "f32d88f2ff4bd9eb50087766bb495eb10580695047c9b67afdb8924b3b66e446",
+      "receipts": [],
+      "repairs": 2,
+      "result": null,
+      "status": "failed"
+    },
+    {
+      "key": "tool_task_session:train:d2c6a30ca82ec907b80be458c515e57e94107b0c26f20401428aa190c8d99701",
+      "calls": 4,
+      "context": [],
+      "created_at": "2026-10-11T03:25:42.145496+00:00",
+      "feedback": {
+        "evidence": "2d2bb5cb5fa6f95b94ed722b17a08bf1f112ba182122c7b9cd372b72fe61fbb0",
+        "handle": "r1",
+        "independently_verified": true,
+        "kind": "execution_report",
+        "operation": "reconcile_fills",
+        "payload": {
+          "filled_quantity": 313,
+          "next_action": "closed",
+          "resubmit": false
+        },
+        "report": {
+          "filled_quantity": 313,
+          "next_action": "closed",
+          "resubmit": false
+        }
+      },
+      "job": "df3c2d919c755e92df1b3f4e217f7129f3f98826ec129915abb71bdad510f0ba",
+      "receipts": [
+        "2d2bb5cb5fa6f95b94ed722b17a08bf1f112ba182122c7b9cd372b72fe61fbb0"
+      ],
+      "repairs": 1,
+      "result": null,
+      "status": "failed"
+    },
+    {
+      "key": "tool_task_session:train:a723e436eecf6e03315d0554985e254fa52c0dd2964e49ff11a5b22e698ce7e0",
+      "calls": 2,
+      "context": [],
+      "created_at": "2026-10-11T03:25:46.412592+00:00",
+      "feedback": {
+        "error": "Invalid action/schema or provider response"
+      },
+      "job": "e0041d8b821eace9db6c1eab7d06686e72a76dac3ea7e1297b750f837c3f686b",
+      "receipts": [],
+      "repairs": 2,
+      "result": null,
+      "status": "failed"
+    },
+    {
+      "key": "tool_task_session:train:a869a2587864531f07c17f416eb352b4fcf2aebad3ded20094dceb3c1b4435e1",
+      "calls": 2,
+      "context": [],
+      "created_at": "2026-10-11T03:27:52.130813+00:00",
+      "feedback": {
+        "evidence": "9fa654a2105caf97cd471c28d7345d03304175af8813331a4842e0e3b9900714",
+        "handle": "r1",
+        "independently_verified": true,
+        "kind": "asof_history",
+        "operation": "select_asof",
+        "payload": {
+          "decision_at": "2026-09-14T21:00:00+00:00",
+          "initial_shares": 147,
+          "rows": [
+            {
+              "available_at": "2026-09-09T21:25:00+00:00",
+              "close": 152.44,
+              "dividend": 0,
+              "effective_at": "2026-09-09T21:00:00+00:00",
+              "id": "doc-1795590-0",
+              "split": 1
+            },
+            {
+              "available_at": "2026-09-10T21:25:00+00:00",
+              "close": 151.58,
+              "dividend": 0.15,
+              "effective_at": "2026-09-10T17:00:00-04:00",
+              "id": "doc-1795590-1",
+              "split": 1
+            },
+            {
+              "available_at": "2026-09-11T21:25:00+00:00",
+              "close": 147.09,
+              "dividend": 0.92,
+              "effective_at": "2026-09-11T21:00:00+00:00",
+              "id": "doc-1795590-2",
+              "split": 1
+            },
+            {
+              "available_at": "2026-09-12T21:25:00+00:00",
+              "close": 142.9,
+              "dividend": 1.04,
+              "effective_at": "2026-09-12T17:00:00-04:00",
+              "id": "doc-1795590-3",
+              "split": 1
+            }
+          ]
+        },
+        "report": {
+          "usable_ids": [
+            "doc-1795590-0",
+            "doc-1795590-1",
+            "doc-1795590-2",
+            "doc-1795590-3"
+          ]
+        }
+      },
+      "job": "aa0ea71e46aa19a1870eb415a10a688ed776b59d796a2e9ac6d9f0b066dffecf",
+      "receipts": [
+        "9fa654a2105caf97cd471c28d7345d03304175af8813331a4842e0e3b9900714"
+      ],
+      "repairs": 0,
+      "result": "630335dfc08ea3cbf67b60d3bca4ef7a357eed240786aa6c7d935a53c902d4a7",
+      "status": "finished"
+    },
+    {
+      "key": "tool_task_session:train:5c1df695f9a06ea5560a371db7ab4ccbc538b6624c29ae7f00a30cdd4494a357",
+      "calls": 3,
+      "context": [],
+      "created_at": "2026-10-11T03:27:54.657076+00:00",
+      "feedback": {
+        "evidence": "59f93dd674bb3bc835a109d99c531680630525e4d12655456fa1bb1f8b74eea2",
+        "handle": "r2",
+        "independently_verified": true,
+        "kind": "return_report",
+        "operation": "holding_return",
+        "payload": {
+          "ending_shares": 754,
+          "total_return": 0.00680157863800487
+        },
+        "report": {
+          "ending_shares": 754,
+          "total_return": 0.00680157863800487
+        }
+      },
+      "job": "16b4f67e8e045605d3e3ab30e3d244df98ad7300c3922abc271abf877f2922ff",
+      "receipts": [
+        "7e171e5008cd1b062c58688fcb01d9c47fc6e1a8345079babef4e43afa715206",
+        "59f93dd674bb3bc835a109d99c531680630525e4d12655456fa1bb1f8b74eea2"
+      ],
+      "repairs": 0,
+      "result": "3c3506b1557b2b071e57165609b3a8ea444adbc4892a7f880513447abc9f05ce",
+      "status": "finished"
+    },
+    {
+      "key": "tool_task_session:train:7264def819aa3c4713d398f7be37cebd560b9868e5044747b20bc888565a3de0",
+      "calls": 2,
+      "context": [],
+      "created_at": "2026-10-11T03:27:57.949488+00:00",
+      "feedback": {
+        "evidence": "2e91a0c66a63d9ba7e59b99574bafa2e407c482125e4070381ad35b6222409a1",
+        "handle": "r1",
+        "independently_verified": true,
+        "kind": "action_report",
+        "operation": "account_actions",
+        "payload": {
+          "cash_change": 238.42,
+          "ending_shares": 182,
+          "nav_change": -1.82e-12,
+          "unpaid_dividend_claim": 52.78
+        },
+        "report": {
+          "cash_change": 238.42,
+          "ending_shares": 182,
+          "nav_change": -1.82e-12,
+          "unpaid_dividend_claim": 52.78
+        }
+      },
+      "job": "47b44998ad6aab09ab4a9bb2a4695127cd1a82a570bb2233c5a4b109c4c82eec",
+      "receipts": [
+        "2e91a0c66a63d9ba7e59b99574bafa2e407c482125e4070381ad35b6222409a1"
+      ],
+      "repairs": 0,
+      "result": "7cc0f2615dc2702734cf6fc310ec973eb6aafa4e1def95a9dc091ac71c19c074",
+      "status": "finished"
+    },
+    {
+      "key": "tool_task_session:train:1141dcf1340ba588892bfeaaecd4411719a269a83f6b4d0cfd211f8bfb8b6696",
+      "calls": 2,
+      "context": [],
+      "created_at": "2026-10-11T03:28:01.085004+00:00",
+      "feedback": {
+        "evidence": "3033d67649294828a8d25939c9eef5e6aaab746d11df052d85869a9b23a16c71",
+        "handle": "r1",
+        "independently_verified": true,
+        "kind": "comparison_report",
+        "operation": "compare_assumptions",
+        "payload": {
+          "comparable": true,
+          "mismatched_assumptions": []
+        },
+        "report": {
+          "comparable": true,
+          "mismatched_assumptions": []
+        }
+      },
+      "job": "93ff0fc7e7c9c633cfdae1c1f0f5f16572fe333b946b1dd7629dd934ad80ec6a",
+      "receipts": [
+        "3033d67649294828a8d25939c9eef5e6aaab746d11df052d85869a9b23a16c71"
+      ],
+      "repairs": 0,
+      "result": "9c8b1eb6f4f882d521433be90fa7aa690ab736c2b1d78252fa5e4abec3061a43",
+      "status": "finished"
+    },
+    {
+      "key": "tool_task_session:train:2a83b3406aac31fb39c975f1b0ff1d087a554cf2d920f9d830c228353096be25",
+      "calls": 2,
+      "context": [],
+      "created_at": "2026-10-11T03:28:03.146128+00:00",
+      "feedback": {
+        "evidence": "d0229aa45003ca418b09a67b22894706b11a7fbb81d0d9e3267e7808aa58bf1a",
+        "handle": "r1",
+        "independently_verified": true,
+        "kind": "cost_report",
+        "operation": "attribute_costs",
+        "payload": {
+          "cost_free_gain": -0.0919999999999999,
+          "modeled_cost_contribution": 0.05,
+          "net_gain": -0.0419999999999999,
+          "turnover_change": -0.7025
+        },
+        "report": {
+          "cost_free_gain": -0.0919999999999999,
+          "modeled_cost_contribution": 0.05,
+          "net_gain": -0.0419999999999999,
+          "turnover_change": -0.7025
+        }
+      },
+      "job": "6068e14f52e2fd361223409f9bdee3b5a302cf3947a0435d4db2f0c7b66439cb",
+      "receipts": [
+        "d0229aa45003ca418b09a67b22894706b11a7fbb81d0d9e3267e7808aa58bf1a"
+      ],
+      "repairs": 0,
+      "result": "037e498830fda6a7d2a4b4b230c7564c208f20a6a0385357d1b2e6d01ae1cab5",
+      "status": "finished"
+    },
+    {
+      "key": "tool_task_session:train:f409f0c98d2501bef79150b02dc40a0c54f12775ed7a68b6f12d8a546ab7b676",
+      "calls": 2,
+      "context": [],
+      "created_at": "2026-10-11T03:28:05.433806+00:00",
+      "feedback": {
+        "evidence": "bea3e7f6df5374eb32b1959f8be832fca30a5ccc068754bf7944141efd1cc54f",
+        "handle": "r1",
+        "independently_verified": true,
+        "kind": "exposure_report",
+        "operation": "summarize_exposure",
+        "payload": {
+          "free_cash": -370.0,
+          "gross_weight": 0.375234375,
+          "net_weight": 0.146015625
+        },
+        "report": {
+          "free_cash": -370.0,
+          "gross_weight": 0.375234375,
+          "net_weight": 0.146015625
+        }
+      },
+      "job": "939a774eef45096c095744217114e568a6ffda2a7025679e512968f565874b1e",
+      "receipts": [
+        "bea3e7f6df5374eb32b1959f8be832fca30a5ccc068754bf7944141efd1cc54f"
+      ],
+      "repairs": 0,
+      "result": "c342bf2ede43389c0186ab5d64abb9a83c5bf38109fda24115088582b7c36c59",
+      "status": "finished"
+    },
+    {
+      "key": "tool_task_session:train:ae6cc0df05bf3057e10fdbe9ed209c238a9973eabdefa06cffd0ae03d8c057d2",
+      "calls": 3,
+      "context": [],
+      "created_at": "2026-10-11T03:28:08.199875+00:00",
+      "feedback": {
+        "error": "Unexpected analytical input fields"
+      },
+      "job": "9b5735b335d64bb376f9ecdd7780a440d04904998a422dcef02f7f0b7dbae7fd",
+      "receipts": [
+        "665d68e26d96317b13e5ac2c68aec72114fa1147ac19066ae444e7377c5dea6d"
+      ],
+      "repairs": 2,
+      "result": null,
+      "status": "failed"
+    },
+    {
+      "key": "tool_task_session:train:64ddcc24690a56250838908e41097d158f93bf59944577685f858314116c465b",
+      "calls": 4,
+      "context": [],
+      "created_at": "2026-10-11T03:28:11.160269+00:00",
+      "feedback": {
+        "evidence": "d80a73b40242231adc1ecb94d163b293069277b7a9c7cbdd46e81848f689af59",
+        "handle": "r1",
+        "independently_verified": true,
+        "kind": "execution_report",
+        "operation": "reconcile_fills",
+        "payload": {
+          "filled_quantity": 95,
+          "next_action": "pause",
+          "resubmit": false
+        },
+        "report": {
+          "filled_quantity": 95,
+          "next_action": "pause",
+          "resubmit": false
+        }
+      },
+      "job": "5d046f9b0195872b9a54d32fac7e575fe0a08fd52839b5d2a063c2fea02db090",
+      "receipts": [
+        "d80a73b40242231adc1ecb94d163b293069277b7a9c7cbdd46e81848f689af59"
+      ],
+      "repairs": 0,
+      "result": null,
+      "status": "failed"
+    },
+    {
+      "key": "tool_task_session:train:953a5e6e926bcc891541a82e140fa2055525d7ad13ebf05af5a1c89e8c74a128",
+      "calls": 3,
+      "context": [],
+      "created_at": "2026-10-11T03:28:15.534626+00:00",
+      "feedback": {
+        "evidence": "316c58981febf5a16d5e79dea78c07fcd154ee815a68990082595c9839f28b91",
+        "handle": "r2",
+        "independently_verified": true,
+        "kind": "return_report",
+        "operation": "holding_return",
+        "payload": {
+          "ending_shares": 10,
+          "total_return": 0.004826865247860821
+        },
+        "report": {
+          "ending_shares": 10,
+          "total_return": 0.004826865247860821
+        }
+      },
+      "job": "e0041d8b821eace9db6c1eab7d06686e72a76dac3ea7e1297b750f837c3f686b",
+      "receipts": [
+        "9d3004076f4f4fb42ebc445146de32cae937fed50f962d82331b28f0677ad912",
+        "316c58981febf5a16d5e79dea78c07fcd154ee815a68990082595c9839f28b91"
+      ],
+      "repairs": 0,
+      "result": "8148ca1d7c5879fc7516c24547eb2325c07e14be0775271f7acccfa246944263",
+      "status": "finished"
+    }
+  ]
+}

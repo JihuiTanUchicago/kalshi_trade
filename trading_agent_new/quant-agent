@@ -1,0 +1,9 @@
+#!/usr/bin/env python3
+"""Repository-local CLI without package installation."""
+from pathlib import Path
+import sys
+if sys.version_info < (3,12):
+    raise SystemExit("quant-agent requires Python 3.12 or newer")
+sys.path.insert(0,str(Path(__file__).resolve().parent/"src"))
+from quant_agent.cli import main
+raise SystemExit(main())

@@ -1,0 +1,27 @@
+{
+  "passed": true,
+  "before": {
+    "reservations": 497,
+    "episodes": 240,
+    "memory": 6
+  },
+  "after": {
+    "reservations": 497,
+    "episodes": 240,
+    "memory": 6
+  },
+  "cached_result_identical": true,
+  "new_model_requests": 0,
+  "paper_gate": {
+    "gates": {
+      "completed_research": true,
+      "verified_task_transfer": true,
+      "fixed_learning_benchmark_passed": false,
+      "qualified_strategy_and_data": false
+    },
+    "research_ready_for_separate_broker_preflight": false,
+    "broker_connection_attempted": false,
+    "orders_submitted": 0,
+    "remaining_broker_gate": "Separate reviewed DU account, Gateway permissions, fresh qualified inputs and operational acceptance"
+  }
+}

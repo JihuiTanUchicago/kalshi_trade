@@ -1,0 +1,10 @@
+.venv/
+.mpl-cache/
+__pycache__/
+*.pyc
+.quant-agent/
+*.egg-info/
+config/*.local.json
+.env
+.runtime/
+.agent-venv/

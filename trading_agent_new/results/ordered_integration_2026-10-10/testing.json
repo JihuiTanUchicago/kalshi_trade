@@ -1,0 +1,47 @@
+{
+  "core_regression": {
+    "tests": 94,
+    "passed": true,
+    "seconds": 3.455,
+    "log": "regression_after_transfer_normalization.log",
+    "command": "PYTHONPATH=src:tests .agent-venv/bin/python -m unittest test_core test_research test_operations test_ibkr_sdk test_paper_evaluation test_first_episode -v"
+  },
+  "enrichment_boundaries": {
+    "tests": 4,
+    "passed": true,
+    "command": ".runtime/alpaca-venv/bin/python -m unittest discover -s research -p test_alpaca_enrichment.py -v"
+  },
+  "import_accounting_and_sources": {
+    "tests": 6,
+    "passed": true,
+    "command": ".agent-venv/bin/python -m unittest discover -s research -p test_alpaca_import.py -v"
+  },
+  "offline_tests_total": 104,
+  "fixtures_are_authentic_provider_or_alpha_evidence": false,
+  "previous_applicable_results": [
+    {
+      "tests": 91,
+      "passed": true,
+      "seconds": 2.437
+    },
+    {
+      "tests": 92,
+      "passed": true,
+      "seconds": 2.933,
+      "log": "regression_after_memory_interface_fix.log"
+    },
+    {
+      "tests": 93,
+      "passed": true,
+      "seconds": 3.055,
+      "log": "regression_after_transfer_spec_fix.log"
+    }
+  ],
+  "failure_history": [
+    "Initial nine-test coordinator run failed on a memory retrieval procedure query; corrected before genuine calls.",
+    "Genuine research stopped during memory write; type-only rejected events retained. Explicit resume followed a contract-interface fix without rerunning the experiment.",
+    "Citation-only genuine transfer failed scope/risk review; retained as unaccepted.",
+    "First protected transfer command failed; exact original cause not captured. Typed numeric normalization was tested before the accepted proposal."
+  ],
+  "protected_runtime": "Unchanged previously validated immutable Docker image; prior 15 actual-container checks not repeated."
+}

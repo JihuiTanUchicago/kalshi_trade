@@ -1,0 +1,25 @@
+{
+  "run": "ff68fae9bfcf4801807b1477e197742a",
+  "authentic_model": true,
+  "stage": "memory_write_after_retained_decision",
+  "initial_cli_exit": 2,
+  "original_output": "grok_research_command.json",
+  "repair_limit_preserved": true,
+  "frozen_evidence": {
+    "spec": "8a512560a312ecdf8eff465bcdc88356bcc588772bef95227d37e6e13d0869ce",
+    "strategy": "9f540c45ae58d1ff490a6fa81b533444702d6b25d81a0c61284e72003446ffaa",
+    "result": "79c012dc9b8047c505d5202287a7888752d79fcd4c538105abd36171283d0050",
+    "challenge": "0abe828db27a5f39958efd6ed7d61737f79ba03449bb09e4c159df0b968b0cf3",
+    "decision": "87bd4542c0ce8211e24f2aaa6e77fafea7f76d5081d24ecf0ece1bac895ff449"
+  },
+  "retained_failed_events": 2,
+  "limitation": "Initial rejection events retained exception type only; their exact causes cannot be reconstructed.",
+  "harness_fix": "Expose exact evidence handles and artifact-root scalar-pointer instructions. Resume explicitly from decided state with unchanged model/price/token counters; no repeated experiment or changed financial rule.",
+  "regression": {
+    "command": "PYTHONPATH=src:tests .agent-venv/bin/python -m unittest test_core test_research test_operations test_ibkr_sdk test_paper_evaluation test_first_episode -v",
+    "tests": 92,
+    "exit": 0,
+    "seconds": 2.933,
+    "log": "regression_after_memory_interface_fix.log"
+  }
+}

@@ -1,0 +1,1147 @@
+{
+  "snapshot": "fe253636866d61745691d8ef505ebf354035c3c9f2edf0622c8f765d097d84a6",
+  "training_memory_ids": [
+    "b589d3e7dcf4fe9e2129e3232dd9dd3570e3d6847807c520daabb822274004dc",
+    "b936a1d4c715c459bb2e12f42b8f293fecd3854c3117fca79a31428649547cc1",
+    "57408988dfa3620ea773a2b74720676b745f45cb70da58d5be0a609e5fa7ec1d",
+    "c8eee016071d998300908c6aa7846dfd982da8f961effc760f95fd493d7463c8",
+    "c2b96da11c3a587c309cfeea9f2f360fb55f73bbcfda83de15389fe9b771f52c",
+    "9992b21b557d6252ee74cf51cc7d60c86ab733a0868a6740c8ac6874d8358c04",
+    "00d374866929b69c74abe94392811fca956711be2dc057544146cd2105013d56"
+  ],
+  "procedures": [
+    {
+      "claims": [
+        {
+          "equals": "select_asof",
+          "pointer": "/operations/0"
+        },
+        {
+          "equals": "holding_return",
+          "pointer": "/operations/1"
+        },
+        {
+          "equals": "market_history",
+          "pointer": "/input_kinds/0"
+        },
+        {
+          "equals": "asof_history",
+          "pointer": "/input_kinds/1"
+        },
+        {
+          "equals": true,
+          "pointer": "/passed"
+        },
+        {
+          "equals": false,
+          "pointer": "/alpha_claim"
+        }
+      ],
+      "evidence": "7e724372aadc44ca3ba4000b803b1a49a0472a3011721c1d7de470e8e26729bf",
+      "id": "00d374866929b69c74abe94392811fca956711be2dc057544146cd2105013d56",
+      "observations": [
+        "/operations/0 = \"select_asof\"",
+        "/operations/1 = \"holding_return\"",
+        "/input_kinds/0 = \"market_history\"",
+        "/input_kinds/1 = \"asof_history\"",
+        "/passed = true",
+        "/alpha_claim = false"
+      ],
+      "procedure": "timing",
+      "procedure_text": "Use actual availability timestamps and challenge prefix/future invariance.",
+      "scope": {
+        "frequency": "daily",
+        "market": "US",
+        "original_input_kinds": [
+          "market_history"
+        ],
+        "quality": "proxy",
+        "source_dataset_id": "fe82dd1197dbcc5744028632f6368f1d1aa6243f8abda370b630588d5d3c487b",
+        "task_kind": "features",
+        "training_job": "e0041d8b821eace9db6c1eab7d06686e72a76dac3ea7e1297b750f837c3f686b",
+        "transfer": "procedure_only"
+      },
+      "uncertainty": "Scoped past observation; current task inputs and protected rules remain authoritative."
+    },
+    {
+      "claims": [
+        {
+          "equals": "account_actions",
+          "pointer": "/operations/0"
+        },
+        {
+          "equals": "action_account",
+          "pointer": "/input_kinds/0"
+        },
+        {
+          "equals": true,
+          "pointer": "/passed"
+        },
+        {
+          "equals": false,
+          "pointer": "/alpha_claim"
+        }
+      ],
+      "evidence": "a71505780489dbf0799e6284b9287537c3726208b2eb0b7048b5334dbb73bfc2",
+      "id": "57408988dfa3620ea773a2b74720676b745f45cb70da58d5be0a609e5fa7ec1d",
+      "observations": [
+        "/operations/0 = \"account_actions\"",
+        "/input_kinds/0 = \"action_account\"",
+        "/passed = true",
+        "/alpha_claim = false"
+      ],
+      "procedure": "operational_attribution",
+      "procedure_text": "Separate model errors, strategy failures, data failures, and execution discrepancies.",
+      "scope": {
+        "frequency": "daily",
+        "market": "US",
+        "original_input_kinds": [
+          "action_account"
+        ],
+        "quality": "synthetic",
+        "task_kind": "corporate_actions",
+        "training_job": "3273efd46e71b8ba284d97801c5c6e2bfa21c4816be29d09473e93b68f0e1b7a",
+        "transfer": "procedure_only"
+      },
+      "uncertainty": "Scoped past observation; current task inputs and protected rules remain authoritative."
+    },
+    {
+      "claims": [
+        {
+          "equals": "summarize_exposure",
+          "pointer": "/operations/0"
+        },
+        {
+          "equals": "exposure_account",
+          "pointer": "/input_kinds/0"
+        },
+        {
+          "equals": true,
+          "pointer": "/passed"
+        },
+        {
+          "equals": false,
+          "pointer": "/alpha_claim"
+        }
+      ],
+      "evidence": "e96293bb2d38d4d2de739b7589b77a4a226a101fa6173ac6ba7a6df4d7f3bf5a",
+      "id": "9992b21b557d6252ee74cf51cc7d60c86ab733a0868a6740c8ac6874d8358c04",
+      "observations": [
+        "/operations/0 = \"summarize_exposure\"",
+        "/input_kinds/0 = \"exposure_account\"",
+        "/passed = true",
+        "/alpha_claim = false"
+      ],
+      "procedure": "exposure_control",
+      "procedure_text": "Compare exposures and a risky benchmark under identical accounting assumptions.",
+      "scope": {
+        "frequency": "daily",
+        "market": "US",
+        "original_input_kinds": [
+          "exposure_account"
+        ],
+        "quality": "synthetic",
+        "task_kind": "exposures",
+        "training_job": "38ef5b5f13f9dce39dd46960a585be6635e8f9410d0f38c0d01ed6258f07fc53",
+        "transfer": "procedure_only"
+      },
+      "uncertainty": "Scoped past observation; current task inputs and protected rules remain authoritative."
+    },
+    {
+      "claims": [
+        {
+          "equals": "select_asof",
+          "pointer": "/operations/0"
+        },
+        {
+          "equals": "market_history",
+          "pointer": "/input_kinds/0"
+        },
+        {
+          "equals": true,
+          "pointer": "/passed"
+        },
+        {
+          "equals": false,
+          "pointer": "/alpha_claim"
+        }
+      ],
+      "evidence": "5b7ed4657f8cb0afa308c47733c25f1d3265587d1fb65acae34d1f5081d1b26d",
+      "id": "b589d3e7dcf4fe9e2129e3232dd9dd3570e3d6847807c520daabb822274004dc",
+      "observations": [
+        "/operations/0 = \"select_asof\"",
+        "/input_kinds/0 = \"market_history\"",
+        "/passed = true",
+        "/alpha_claim = false"
+      ],
+      "procedure": "timing",
+      "procedure_text": "Use actual availability timestamps and challenge prefix/future invariance.",
+      "scope": {
+        "frequency": "daily",
+        "market": "US",
+        "original_input_kinds": [
+          "market_history"
+        ],
+        "quality": "synthetic",
+        "task_kind": "timing",
+        "training_job": "346964f7e2769c3182b7a2585972b8e43b3f1509fbc731a2ab104e7cbb1bfe9a",
+        "transfer": "procedure_only"
+      },
+      "uncertainty": "Scoped past observation; current task inputs and protected rules remain authoritative."
+    },
+    {
+      "claims": [
+        {
+          "equals": "select_asof",
+          "pointer": "/operations/0"
+        },
+        {
+          "equals": "holding_return",
+          "pointer": "/operations/1"
+        },
+        {
+          "equals": "market_history",
+          "pointer": "/input_kinds/0"
+        },
+        {
+          "equals": "asof_history",
+          "pointer": "/input_kinds/1"
+        },
+        {
+          "equals": true,
+          "pointer": "/passed"
+        },
+        {
+          "equals": false,
+          "pointer": "/alpha_claim"
+        }
+      ],
+      "evidence": "735d765ff5ef1c25b2f037e9a39f3bb34d74cfe41f34b9566e6d2bb4318279b7",
+      "id": "b936a1d4c715c459bb2e12f42b8f293fecd3854c3117fca79a31428649547cc1",
+      "observations": [
+        "/operations/0 = \"select_asof\"",
+        "/operations/1 = \"holding_return\"",
+        "/input_kinds/0 = \"market_history\"",
+        "/input_kinds/1 = \"asof_history\"",
+        "/passed = true",
+        "/alpha_claim = false"
+      ],
+      "procedure": "timing",
+      "procedure_text": "Use actual availability timestamps and challenge prefix/future invariance.",
+      "scope": {
+        "frequency": "daily",
+        "market": "US",
+        "original_input_kinds": [
+          "market_history"
+        ],
+        "quality": "synthetic",
+        "task_kind": "features",
+        "training_job": "71d249654250d12ff2d98ec4ecacfdcf0d9abb24ec3e6a0937bbc991409bb2a4",
+        "transfer": "procedure_only"
+      },
+      "uncertainty": "Scoped past observation; current task inputs and protected rules remain authoritative."
+    },
+    {
+      "claims": [
+        {
+          "equals": "attribute_costs",
+          "pointer": "/operations/0"
+        },
+        {
+          "equals": "cost_controls",
+          "pointer": "/input_kinds/0"
+        },
+        {
+          "equals": true,
+          "pointer": "/passed"
+        },
+        {
+          "equals": false,
+          "pointer": "/alpha_claim"
+        }
+      ],
+      "evidence": "bd5c099e520762a4927ad347948b77778fe89a96edf97a42d59b2c80172a9612",
+      "id": "c2b96da11c3a587c309cfeea9f2f360fb55f73bbcfda83de15389fe9b771f52c",
+      "observations": [
+        "/operations/0 = \"attribute_costs\"",
+        "/input_kinds/0 = \"cost_controls\"",
+        "/passed = true",
+        "/alpha_claim = false"
+      ],
+      "procedure": "cost_attribution",
+      "procedure_text": "Compare matched cost-free controls before attributing gains to signal quality.",
+      "scope": {
+        "frequency": "daily",
+        "market": "US",
+        "original_input_kinds": [
+          "cost_controls"
+        ],
+        "quality": "synthetic",
+        "task_kind": "cost_attribution",
+        "training_job": "d296066c492db3efce5445b2ab2934c3bb18121c0f949f6fc669b25aed8827eb",
+        "transfer": "procedure_only"
+      },
+      "uncertainty": "Scoped past observation; current task inputs and protected rules remain authoritative."
+    },
+    {
+      "claims": [
+        {
+          "equals": "compare_assumptions",
+          "pointer": "/operations/0"
+        },
+        {
+          "equals": "paired_assumptions",
+          "pointer": "/input_kinds/0"
+        },
+        {
+          "equals": true,
+          "pointer": "/passed"
+        },
+        {
+          "equals": false,
+          "pointer": "/alpha_claim"
+        }
+      ],
+      "evidence": "842b990676b4c503dee0aaef0544f06a432e9ad849e23b4456d8dff92686c7a2",
+      "id": "c8eee016071d998300908c6aa7846dfd982da8f961effc760f95fd493d7463c8",
+      "observations": [
+        "/operations/0 = \"compare_assumptions\"",
+        "/input_kinds/0 = \"paired_assumptions\"",
+        "/passed = true",
+        "/alpha_claim = false"
+      ],
+      "procedure": "cost_attribution",
+      "procedure_text": "Compare matched cost-free controls before attributing gains to signal quality.",
+      "scope": {
+        "frequency": "daily",
+        "market": "US",
+        "original_input_kinds": [
+          "paired_assumptions"
+        ],
+        "quality": "synthetic",
+        "task_kind": "controlled_experiments",
+        "training_job": "afeb9eb67199503a624cee128965ccad71537a4ef91f5ae5e178fb2783676613",
+        "transfer": "procedure_only"
+      },
+      "uncertainty": "Scoped past observation; current task inputs and protected rules remain authoritative."
+    }
+  ],
+  "selected_context": {
+    "controlled_experiments-tools-0": [
+      {
+        "evidence": "842b990676b4c503dee0aaef0544f06a432e9ad849e23b4456d8dff92686c7a2",
+        "memory_id": "c8eee016071d998300908c6aa7846dfd982da8f961effc760f95fd493d7463c8",
+        "method": "Compare matched cost-free controls before attributing gains to signal quality.",
+        "procedure": "cost_attribution",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "paired_assumptions"
+          ],
+          "quality": "synthetic",
+          "task_kind": "controlled_experiments",
+          "training_job": "afeb9eb67199503a624cee128965ccad71537a4ef91f5ae5e178fb2783676613",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "paired_assumptions",
+            "operation": "compare_assumptions"
+          }
+        ]
+      }
+    ],
+    "controlled_experiments-tools-1": [
+      {
+        "evidence": "842b990676b4c503dee0aaef0544f06a432e9ad849e23b4456d8dff92686c7a2",
+        "memory_id": "c8eee016071d998300908c6aa7846dfd982da8f961effc760f95fd493d7463c8",
+        "method": "Compare matched cost-free controls before attributing gains to signal quality.",
+        "procedure": "cost_attribution",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "paired_assumptions"
+          ],
+          "quality": "synthetic",
+          "task_kind": "controlled_experiments",
+          "training_job": "afeb9eb67199503a624cee128965ccad71537a4ef91f5ae5e178fb2783676613",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "paired_assumptions",
+            "operation": "compare_assumptions"
+          }
+        ]
+      }
+    ],
+    "controlled_experiments-tools-2": [
+      {
+        "evidence": "842b990676b4c503dee0aaef0544f06a432e9ad849e23b4456d8dff92686c7a2",
+        "memory_id": "c8eee016071d998300908c6aa7846dfd982da8f961effc760f95fd493d7463c8",
+        "method": "Compare matched cost-free controls before attributing gains to signal quality.",
+        "procedure": "cost_attribution",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "paired_assumptions"
+          ],
+          "quality": "synthetic",
+          "task_kind": "controlled_experiments",
+          "training_job": "afeb9eb67199503a624cee128965ccad71537a4ef91f5ae5e178fb2783676613",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "paired_assumptions",
+            "operation": "compare_assumptions"
+          }
+        ]
+      }
+    ],
+    "controlled_experiments-tools-3": [
+      {
+        "evidence": "842b990676b4c503dee0aaef0544f06a432e9ad849e23b4456d8dff92686c7a2",
+        "memory_id": "c8eee016071d998300908c6aa7846dfd982da8f961effc760f95fd493d7463c8",
+        "method": "Compare matched cost-free controls before attributing gains to signal quality.",
+        "procedure": "cost_attribution",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "paired_assumptions"
+          ],
+          "quality": "synthetic",
+          "task_kind": "controlled_experiments",
+          "training_job": "afeb9eb67199503a624cee128965ccad71537a4ef91f5ae5e178fb2783676613",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "paired_assumptions",
+            "operation": "compare_assumptions"
+          }
+        ]
+      }
+    ],
+    "controlled_experiments-tools-4": [
+      {
+        "evidence": "842b990676b4c503dee0aaef0544f06a432e9ad849e23b4456d8dff92686c7a2",
+        "memory_id": "c8eee016071d998300908c6aa7846dfd982da8f961effc760f95fd493d7463c8",
+        "method": "Compare matched cost-free controls before attributing gains to signal quality.",
+        "procedure": "cost_attribution",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "paired_assumptions"
+          ],
+          "quality": "synthetic",
+          "task_kind": "controlled_experiments",
+          "training_job": "afeb9eb67199503a624cee128965ccad71537a4ef91f5ae5e178fb2783676613",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "paired_assumptions",
+            "operation": "compare_assumptions"
+          }
+        ]
+      }
+    ],
+    "corporate_actions-tools-0": [
+      {
+        "evidence": "a71505780489dbf0799e6284b9287537c3726208b2eb0b7048b5334dbb73bfc2",
+        "memory_id": "57408988dfa3620ea773a2b74720676b745f45cb70da58d5be0a609e5fa7ec1d",
+        "method": "Separate model errors, strategy failures, data failures, and execution discrepancies.",
+        "procedure": "operational_attribution",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "action_account"
+          ],
+          "quality": "synthetic",
+          "task_kind": "corporate_actions",
+          "training_job": "3273efd46e71b8ba284d97801c5c6e2bfa21c4816be29d09473e93b68f0e1b7a",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "action_account",
+            "operation": "account_actions"
+          }
+        ]
+      }
+    ],
+    "corporate_actions-tools-1": [
+      {
+        "evidence": "a71505780489dbf0799e6284b9287537c3726208b2eb0b7048b5334dbb73bfc2",
+        "memory_id": "57408988dfa3620ea773a2b74720676b745f45cb70da58d5be0a609e5fa7ec1d",
+        "method": "Separate model errors, strategy failures, data failures, and execution discrepancies.",
+        "procedure": "operational_attribution",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "action_account"
+          ],
+          "quality": "synthetic",
+          "task_kind": "corporate_actions",
+          "training_job": "3273efd46e71b8ba284d97801c5c6e2bfa21c4816be29d09473e93b68f0e1b7a",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "action_account",
+            "operation": "account_actions"
+          }
+        ]
+      }
+    ],
+    "corporate_actions-tools-2": [
+      {
+        "evidence": "a71505780489dbf0799e6284b9287537c3726208b2eb0b7048b5334dbb73bfc2",
+        "memory_id": "57408988dfa3620ea773a2b74720676b745f45cb70da58d5be0a609e5fa7ec1d",
+        "method": "Separate model errors, strategy failures, data failures, and execution discrepancies.",
+        "procedure": "operational_attribution",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "action_account"
+          ],
+          "quality": "synthetic",
+          "task_kind": "corporate_actions",
+          "training_job": "3273efd46e71b8ba284d97801c5c6e2bfa21c4816be29d09473e93b68f0e1b7a",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "action_account",
+            "operation": "account_actions"
+          }
+        ]
+      }
+    ],
+    "corporate_actions-tools-3": [
+      {
+        "evidence": "a71505780489dbf0799e6284b9287537c3726208b2eb0b7048b5334dbb73bfc2",
+        "memory_id": "57408988dfa3620ea773a2b74720676b745f45cb70da58d5be0a609e5fa7ec1d",
+        "method": "Separate model errors, strategy failures, data failures, and execution discrepancies.",
+        "procedure": "operational_attribution",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "action_account"
+          ],
+          "quality": "synthetic",
+          "task_kind": "corporate_actions",
+          "training_job": "3273efd46e71b8ba284d97801c5c6e2bfa21c4816be29d09473e93b68f0e1b7a",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "action_account",
+            "operation": "account_actions"
+          }
+        ]
+      }
+    ],
+    "corporate_actions-tools-4": [
+      {
+        "evidence": "a71505780489dbf0799e6284b9287537c3726208b2eb0b7048b5334dbb73bfc2",
+        "memory_id": "57408988dfa3620ea773a2b74720676b745f45cb70da58d5be0a609e5fa7ec1d",
+        "method": "Separate model errors, strategy failures, data failures, and execution discrepancies.",
+        "procedure": "operational_attribution",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "action_account"
+          ],
+          "quality": "synthetic",
+          "task_kind": "corporate_actions",
+          "training_job": "3273efd46e71b8ba284d97801c5c6e2bfa21c4816be29d09473e93b68f0e1b7a",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "action_account",
+            "operation": "account_actions"
+          }
+        ]
+      }
+    ],
+    "cost_attribution-tools-0": [
+      {
+        "evidence": "bd5c099e520762a4927ad347948b77778fe89a96edf97a42d59b2c80172a9612",
+        "memory_id": "c2b96da11c3a587c309cfeea9f2f360fb55f73bbcfda83de15389fe9b771f52c",
+        "method": "Compare matched cost-free controls before attributing gains to signal quality.",
+        "procedure": "cost_attribution",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "cost_controls"
+          ],
+          "quality": "synthetic",
+          "task_kind": "cost_attribution",
+          "training_job": "d296066c492db3efce5445b2ab2934c3bb18121c0f949f6fc669b25aed8827eb",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "cost_controls",
+            "operation": "attribute_costs"
+          }
+        ]
+      }
+    ],
+    "cost_attribution-tools-1": [
+      {
+        "evidence": "bd5c099e520762a4927ad347948b77778fe89a96edf97a42d59b2c80172a9612",
+        "memory_id": "c2b96da11c3a587c309cfeea9f2f360fb55f73bbcfda83de15389fe9b771f52c",
+        "method": "Compare matched cost-free controls before attributing gains to signal quality.",
+        "procedure": "cost_attribution",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "cost_controls"
+          ],
+          "quality": "synthetic",
+          "task_kind": "cost_attribution",
+          "training_job": "d296066c492db3efce5445b2ab2934c3bb18121c0f949f6fc669b25aed8827eb",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "cost_controls",
+            "operation": "attribute_costs"
+          }
+        ]
+      }
+    ],
+    "cost_attribution-tools-2": [
+      {
+        "evidence": "bd5c099e520762a4927ad347948b77778fe89a96edf97a42d59b2c80172a9612",
+        "memory_id": "c2b96da11c3a587c309cfeea9f2f360fb55f73bbcfda83de15389fe9b771f52c",
+        "method": "Compare matched cost-free controls before attributing gains to signal quality.",
+        "procedure": "cost_attribution",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "cost_controls"
+          ],
+          "quality": "synthetic",
+          "task_kind": "cost_attribution",
+          "training_job": "d296066c492db3efce5445b2ab2934c3bb18121c0f949f6fc669b25aed8827eb",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "cost_controls",
+            "operation": "attribute_costs"
+          }
+        ]
+      }
+    ],
+    "cost_attribution-tools-3": [
+      {
+        "evidence": "bd5c099e520762a4927ad347948b77778fe89a96edf97a42d59b2c80172a9612",
+        "memory_id": "c2b96da11c3a587c309cfeea9f2f360fb55f73bbcfda83de15389fe9b771f52c",
+        "method": "Compare matched cost-free controls before attributing gains to signal quality.",
+        "procedure": "cost_attribution",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "cost_controls"
+          ],
+          "quality": "synthetic",
+          "task_kind": "cost_attribution",
+          "training_job": "d296066c492db3efce5445b2ab2934c3bb18121c0f949f6fc669b25aed8827eb",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "cost_controls",
+            "operation": "attribute_costs"
+          }
+        ]
+      }
+    ],
+    "cost_attribution-tools-4": [
+      {
+        "evidence": "bd5c099e520762a4927ad347948b77778fe89a96edf97a42d59b2c80172a9612",
+        "memory_id": "c2b96da11c3a587c309cfeea9f2f360fb55f73bbcfda83de15389fe9b771f52c",
+        "method": "Compare matched cost-free controls before attributing gains to signal quality.",
+        "procedure": "cost_attribution",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "cost_controls"
+          ],
+          "quality": "synthetic",
+          "task_kind": "cost_attribution",
+          "training_job": "d296066c492db3efce5445b2ab2934c3bb18121c0f949f6fc669b25aed8827eb",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "cost_controls",
+            "operation": "attribute_costs"
+          }
+        ]
+      }
+    ],
+    "decisions-tools-0": [],
+    "decisions-tools-1": [],
+    "decisions-tools-2": [],
+    "decisions-tools-3": [],
+    "decisions-tools-4": [],
+    "execution-tools-0": [],
+    "execution-tools-1": [],
+    "execution-tools-2": [],
+    "execution-tools-3": [],
+    "execution-tools-4": [],
+    "exposures-tools-0": [
+      {
+        "evidence": "e96293bb2d38d4d2de739b7589b77a4a226a101fa6173ac6ba7a6df4d7f3bf5a",
+        "memory_id": "9992b21b557d6252ee74cf51cc7d60c86ab733a0868a6740c8ac6874d8358c04",
+        "method": "Compare exposures and a risky benchmark under identical accounting assumptions.",
+        "procedure": "exposure_control",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "exposure_account"
+          ],
+          "quality": "synthetic",
+          "task_kind": "exposures",
+          "training_job": "38ef5b5f13f9dce39dd46960a585be6635e8f9410d0f38c0d01ed6258f07fc53",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "exposure_account",
+            "operation": "summarize_exposure"
+          }
+        ]
+      }
+    ],
+    "exposures-tools-1": [
+      {
+        "evidence": "e96293bb2d38d4d2de739b7589b77a4a226a101fa6173ac6ba7a6df4d7f3bf5a",
+        "memory_id": "9992b21b557d6252ee74cf51cc7d60c86ab733a0868a6740c8ac6874d8358c04",
+        "method": "Compare exposures and a risky benchmark under identical accounting assumptions.",
+        "procedure": "exposure_control",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "exposure_account"
+          ],
+          "quality": "synthetic",
+          "task_kind": "exposures",
+          "training_job": "38ef5b5f13f9dce39dd46960a585be6635e8f9410d0f38c0d01ed6258f07fc53",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "exposure_account",
+            "operation": "summarize_exposure"
+          }
+        ]
+      }
+    ],
+    "exposures-tools-2": [
+      {
+        "evidence": "e96293bb2d38d4d2de739b7589b77a4a226a101fa6173ac6ba7a6df4d7f3bf5a",
+        "memory_id": "9992b21b557d6252ee74cf51cc7d60c86ab733a0868a6740c8ac6874d8358c04",
+        "method": "Compare exposures and a risky benchmark under identical accounting assumptions.",
+        "procedure": "exposure_control",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "exposure_account"
+          ],
+          "quality": "synthetic",
+          "task_kind": "exposures",
+          "training_job": "38ef5b5f13f9dce39dd46960a585be6635e8f9410d0f38c0d01ed6258f07fc53",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "exposure_account",
+            "operation": "summarize_exposure"
+          }
+        ]
+      }
+    ],
+    "exposures-tools-3": [
+      {
+        "evidence": "e96293bb2d38d4d2de739b7589b77a4a226a101fa6173ac6ba7a6df4d7f3bf5a",
+        "memory_id": "9992b21b557d6252ee74cf51cc7d60c86ab733a0868a6740c8ac6874d8358c04",
+        "method": "Compare exposures and a risky benchmark under identical accounting assumptions.",
+        "procedure": "exposure_control",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "exposure_account"
+          ],
+          "quality": "synthetic",
+          "task_kind": "exposures",
+          "training_job": "38ef5b5f13f9dce39dd46960a585be6635e8f9410d0f38c0d01ed6258f07fc53",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "exposure_account",
+            "operation": "summarize_exposure"
+          }
+        ]
+      }
+    ],
+    "exposures-tools-4": [
+      {
+        "evidence": "e96293bb2d38d4d2de739b7589b77a4a226a101fa6173ac6ba7a6df4d7f3bf5a",
+        "memory_id": "9992b21b557d6252ee74cf51cc7d60c86ab733a0868a6740c8ac6874d8358c04",
+        "method": "Compare exposures and a risky benchmark under identical accounting assumptions.",
+        "procedure": "exposure_control",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "exposure_account"
+          ],
+          "quality": "synthetic",
+          "task_kind": "exposures",
+          "training_job": "38ef5b5f13f9dce39dd46960a585be6635e8f9410d0f38c0d01ed6258f07fc53",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "exposure_account",
+            "operation": "summarize_exposure"
+          }
+        ]
+      }
+    ],
+    "features-tools-0": [
+      {
+        "evidence": "7e724372aadc44ca3ba4000b803b1a49a0472a3011721c1d7de470e8e26729bf",
+        "memory_id": "00d374866929b69c74abe94392811fca956711be2dc057544146cd2105013d56",
+        "method": "Use actual availability timestamps and challenge prefix/future invariance.",
+        "procedure": "timing",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "market_history"
+          ],
+          "quality": "proxy",
+          "source_dataset_id": "fe82dd1197dbcc5744028632f6368f1d1aa6243f8abda370b630588d5d3c487b",
+          "task_kind": "features",
+          "training_job": "e0041d8b821eace9db6c1eab7d06686e72a76dac3ea7e1297b750f837c3f686b",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "market_history",
+            "operation": "select_asof"
+          },
+          {
+            "input_kind": "asof_history",
+            "operation": "holding_return"
+          }
+        ]
+      }
+    ],
+    "features-tools-1": [
+      {
+        "evidence": "7e724372aadc44ca3ba4000b803b1a49a0472a3011721c1d7de470e8e26729bf",
+        "memory_id": "00d374866929b69c74abe94392811fca956711be2dc057544146cd2105013d56",
+        "method": "Use actual availability timestamps and challenge prefix/future invariance.",
+        "procedure": "timing",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "market_history"
+          ],
+          "quality": "proxy",
+          "source_dataset_id": "fe82dd1197dbcc5744028632f6368f1d1aa6243f8abda370b630588d5d3c487b",
+          "task_kind": "features",
+          "training_job": "e0041d8b821eace9db6c1eab7d06686e72a76dac3ea7e1297b750f837c3f686b",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "market_history",
+            "operation": "select_asof"
+          },
+          {
+            "input_kind": "asof_history",
+            "operation": "holding_return"
+          }
+        ]
+      }
+    ],
+    "features-tools-2": [
+      {
+        "evidence": "7e724372aadc44ca3ba4000b803b1a49a0472a3011721c1d7de470e8e26729bf",
+        "memory_id": "00d374866929b69c74abe94392811fca956711be2dc057544146cd2105013d56",
+        "method": "Use actual availability timestamps and challenge prefix/future invariance.",
+        "procedure": "timing",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "market_history"
+          ],
+          "quality": "proxy",
+          "source_dataset_id": "fe82dd1197dbcc5744028632f6368f1d1aa6243f8abda370b630588d5d3c487b",
+          "task_kind": "features",
+          "training_job": "e0041d8b821eace9db6c1eab7d06686e72a76dac3ea7e1297b750f837c3f686b",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "market_history",
+            "operation": "select_asof"
+          },
+          {
+            "input_kind": "asof_history",
+            "operation": "holding_return"
+          }
+        ]
+      }
+    ],
+    "features-tools-3": [
+      {
+        "evidence": "7e724372aadc44ca3ba4000b803b1a49a0472a3011721c1d7de470e8e26729bf",
+        "memory_id": "00d374866929b69c74abe94392811fca956711be2dc057544146cd2105013d56",
+        "method": "Use actual availability timestamps and challenge prefix/future invariance.",
+        "procedure": "timing",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "market_history"
+          ],
+          "quality": "proxy",
+          "source_dataset_id": "fe82dd1197dbcc5744028632f6368f1d1aa6243f8abda370b630588d5d3c487b",
+          "task_kind": "features",
+          "training_job": "e0041d8b821eace9db6c1eab7d06686e72a76dac3ea7e1297b750f837c3f686b",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "market_history",
+            "operation": "select_asof"
+          },
+          {
+            "input_kind": "asof_history",
+            "operation": "holding_return"
+          }
+        ]
+      }
+    ],
+    "features-tools-4": [
+      {
+        "evidence": "7e724372aadc44ca3ba4000b803b1a49a0472a3011721c1d7de470e8e26729bf",
+        "memory_id": "00d374866929b69c74abe94392811fca956711be2dc057544146cd2105013d56",
+        "method": "Use actual availability timestamps and challenge prefix/future invariance.",
+        "procedure": "timing",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "market_history"
+          ],
+          "quality": "proxy",
+          "source_dataset_id": "fe82dd1197dbcc5744028632f6368f1d1aa6243f8abda370b630588d5d3c487b",
+          "task_kind": "features",
+          "training_job": "e0041d8b821eace9db6c1eab7d06686e72a76dac3ea7e1297b750f837c3f686b",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "market_history",
+            "operation": "select_asof"
+          },
+          {
+            "input_kind": "asof_history",
+            "operation": "holding_return"
+          }
+        ]
+      }
+    ],
+    "timing-tools-0": [
+      {
+        "evidence": "5b7ed4657f8cb0afa308c47733c25f1d3265587d1fb65acae34d1f5081d1b26d",
+        "memory_id": "b589d3e7dcf4fe9e2129e3232dd9dd3570e3d6847807c520daabb822274004dc",
+        "method": "Use actual availability timestamps and challenge prefix/future invariance.",
+        "procedure": "timing",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "market_history"
+          ],
+          "quality": "synthetic",
+          "task_kind": "timing",
+          "training_job": "346964f7e2769c3182b7a2585972b8e43b3f1509fbc731a2ab104e7cbb1bfe9a",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "market_history",
+            "operation": "select_asof"
+          }
+        ]
+      }
+    ],
+    "timing-tools-1": [
+      {
+        "evidence": "5b7ed4657f8cb0afa308c47733c25f1d3265587d1fb65acae34d1f5081d1b26d",
+        "memory_id": "b589d3e7dcf4fe9e2129e3232dd9dd3570e3d6847807c520daabb822274004dc",
+        "method": "Use actual availability timestamps and challenge prefix/future invariance.",
+        "procedure": "timing",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "market_history"
+          ],
+          "quality": "synthetic",
+          "task_kind": "timing",
+          "training_job": "346964f7e2769c3182b7a2585972b8e43b3f1509fbc731a2ab104e7cbb1bfe9a",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "market_history",
+            "operation": "select_asof"
+          }
+        ]
+      }
+    ],
+    "timing-tools-2": [
+      {
+        "evidence": "5b7ed4657f8cb0afa308c47733c25f1d3265587d1fb65acae34d1f5081d1b26d",
+        "memory_id": "b589d3e7dcf4fe9e2129e3232dd9dd3570e3d6847807c520daabb822274004dc",
+        "method": "Use actual availability timestamps and challenge prefix/future invariance.",
+        "procedure": "timing",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "market_history"
+          ],
+          "quality": "synthetic",
+          "task_kind": "timing",
+          "training_job": "346964f7e2769c3182b7a2585972b8e43b3f1509fbc731a2ab104e7cbb1bfe9a",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "market_history",
+            "operation": "select_asof"
+          }
+        ]
+      }
+    ],
+    "timing-tools-3": [
+      {
+        "evidence": "5b7ed4657f8cb0afa308c47733c25f1d3265587d1fb65acae34d1f5081d1b26d",
+        "memory_id": "b589d3e7dcf4fe9e2129e3232dd9dd3570e3d6847807c520daabb822274004dc",
+        "method": "Use actual availability timestamps and challenge prefix/future invariance.",
+        "procedure": "timing",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "market_history"
+          ],
+          "quality": "synthetic",
+          "task_kind": "timing",
+          "training_job": "346964f7e2769c3182b7a2585972b8e43b3f1509fbc731a2ab104e7cbb1bfe9a",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "market_history",
+            "operation": "select_asof"
+          }
+        ]
+      }
+    ],
+    "timing-tools-4": [
+      {
+        "evidence": "5b7ed4657f8cb0afa308c47733c25f1d3265587d1fb65acae34d1f5081d1b26d",
+        "memory_id": "b589d3e7dcf4fe9e2129e3232dd9dd3570e3d6847807c520daabb822274004dc",
+        "method": "Use actual availability timestamps and challenge prefix/future invariance.",
+        "procedure": "timing",
+        "scope": {
+          "frequency": "daily",
+          "market": "US",
+          "original_input_kinds": [
+            "market_history"
+          ],
+          "quality": "synthetic",
+          "task_kind": "timing",
+          "training_job": "346964f7e2769c3182b7a2585972b8e43b3f1509fbc731a2ab104e7cbb1bfe9a",
+          "transfer": "procedure_only"
+        },
+        "uncertainty": "Verified on a prior task; bind to current handles and rules. No past numerical answers or profitability claim.",
+        "verified_tool_sequence": [
+          {
+            "input_kind": "market_history",
+            "operation": "select_asof"
+          }
+        ]
+      }
+    ]
+  },
+  "scope": "Immutable evaluation snapshot; no historical numeric answer in selected procedural contexts."
+}

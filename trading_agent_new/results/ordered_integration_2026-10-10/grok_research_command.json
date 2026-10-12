@@ -1,0 +1,4 @@
+{
+  "status": "blocked_or_failed",
+  "error": "Agent exceeded its one schema/action repair allowance"
+}

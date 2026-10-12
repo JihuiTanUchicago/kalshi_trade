@@ -1,0 +1,10 @@
+{
+  "plan": "dcf4e8a36449bbb58f5d3fc32dcb8dd85b6941bfc08e3be6a643d8f062728389",
+  "suite": "8a47f95633398985fbd26df6553343fffc78a1e94f5a0547e3739e282bfeb67e",
+  "prepared_at": "2026-10-11T02:48:12.376901+00:00",
+  "consumed": false,
+  "result": null,
+  "learning_demonstrated": false,
+  "paper_eligible": false,
+  "output": "/Users/jonathanzhang/Desktop/Polygon/results/learning_revision_2026-10-11/campaign"
+}

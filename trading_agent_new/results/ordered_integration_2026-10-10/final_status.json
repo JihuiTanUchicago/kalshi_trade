@@ -1,0 +1,17 @@
+{
+  "plan": "70aeb6f3b5bde56dcdaae5438067cc605980e38eb3d4971b812b70e29a8c8eb4",
+  "run": "ff68fae9bfcf4801807b1477e197742a",
+  "state": "finished",
+  "dataset_id": "fe82dd1197dbcc5744028632f6368f1d1aa6243f8abda370b630588d5d3c487b",
+  "spec": "8a512560a312ecdf8eff465bcdc88356bcc588772bef95227d37e6e13d0869ce",
+  "report_directory": "/Users/jonathanzhang/Desktop/Polygon/results/ordered_integration_2026-10-10/research/ff68fae9bfcf4801807b1477e197742a",
+  "research_complete": true,
+  "transfer_receipt": "3c34729510d2b7537967bfb8edbfc0ca78a70c28854707e63248c65108b7b13f",
+  "verified_task_transfer": true,
+  "learning_suite": "c32c142428fea4904d243f27c1939aef273f4aba8948d1fa74ff7b8df07e1e66",
+  "learning_evaluation": "bf2f3ccffd66f3bfcf37878465d18ee9b17f1c56093c95015b7a04c84f567808",
+  "learning_improvement_measured": true,
+  "learning_demonstrated": false,
+  "paper_eligible": false,
+  "broker_connection_attempted": false
+}

@@ -1,0 +1,46 @@
+{
+  "recorded_at": "2026-10-10T14:10:49.366720+00:00",
+  "status": "passed",
+  "authenticated_historical_request": true,
+  "snapshot": "/Users/jonathanzhang/Desktop/Polygon/data/alpaca_snapshots/20261010T140939.395972Z",
+  "manifest_sha256": "225c4ed77137fabff40470bb4922aa190248eaf752d009449b35169939d10e19",
+  "feed": "sip",
+  "adjustment": "raw",
+  "coverage": {
+    "IWM": {
+      "first_session": "2016-01-04",
+      "last_session": "2026-10-09",
+      "rows": 2708
+    },
+    "QQQ": {
+      "first_session": "2016-01-04",
+      "last_session": "2026-10-09",
+      "rows": 2708
+    },
+    "SPY": {
+      "first_session": "2016-01-04",
+      "last_session": "2026-10-09",
+      "rows": 2708
+    }
+  },
+  "total_rows": 8124,
+  "checks": {
+    "provider_to_csv_values_and_timestamps": true,
+    "payload_and_csv_keys_match": true,
+    "recorded_file_hashes": true,
+    "required_fields_finite_positive_ohlc_nonnegative_volume": true,
+    "no_duplicate_symbol_sessions": true,
+    "inside_requested_window_completed_daily_dates_only": true,
+    "coverage_receipt_matches_files": true,
+    "complete_october_5_through_9_week": true,
+    "credentials_absent_from_snapshot_files": true,
+    "legacy_181_file_preservation": true
+  },
+  "missing_required_values": 0,
+  "duplicate_symbol_sessions": 0,
+  "legacy_files_preserved": 181,
+  "credentials_recorded": false,
+  "quality": "proxy",
+  "agent_import_ready": false,
+  "qualification_status": "exploratory snapshot; original availability/vintages, commercial rights and seven-table review are pending"
+}

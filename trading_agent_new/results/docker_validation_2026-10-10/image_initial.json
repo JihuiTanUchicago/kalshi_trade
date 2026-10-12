@@ -1,0 +1,16 @@
+{
+  "image_id": "sha256:bb1cc087a7cc04443ba89e864c5907377507284bdf2c0922dfd8d64467f0234f",
+  "architecture": "arm64",
+  "os": "linux",
+  "created": "2026-10-10T14:06:45.351907349+08:00",
+  "base_reference": "python:3.12.12-slim-bookworm@sha256:593bd06efe90efa80dc4eee3948be7c0fde4134606dd40d8dd8dbcade98e669c",
+  "base_repo_digests": [
+    "python@sha256:593bd06efe90efa80dc4eee3948be7c0fde4134606dd40d8dd8dbcade98e669c"
+  ],
+  "source_hashes": {
+    "sandbox/Dockerfile": "9970d39c381721c6b9f16280463c34b5237aeb305875edc50024ea60e235b326",
+    "sandbox/requirements.txt": "983cdc62971ed1127bfd018abe32e0360d7179049ea0b00ed76ac9e9739fa5d5",
+    "sandbox/runner.py": "4188805312824da0471f6446cb637c8a63b8311473ccb0dd39fd5f4c0e80772c"
+  },
+  "build": "Initial legacy-builder image, before pinning base digest/transitive packages; not the final validation target."
+}

@@ -1,0 +1,18 @@
+{
+  "offline_core": true,
+  "container_runtime": {
+    "installed": false,
+    "daemon_available": false
+  },
+  "ibkr_sdk_available": true,
+  "ibkr_sdk_version": "10.50.2",
+  "model_routes": [],
+  "paid_calls_made_by_doctor": 0,
+  "broker_connection_attempted": false,
+  "remaining_gates": [
+    "Qualified licensed imports and independent source review",
+    "Pinned sandbox image and execution isolation tests",
+    "Two real adapter smoke tests and reserved-task memory comparison",
+    "Configured paper Gateway/account and five-session broker acceptance"
+  ]
+}

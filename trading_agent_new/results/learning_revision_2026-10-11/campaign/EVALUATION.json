@@ -1,0 +1,4457 @@
+{
+  "context": "629b23f7403160e17ee68c1cdf55f57b4cf8ed002ab87c7dc5fbb2e4449a5a3e",
+  "cost": 0.4210075,
+  "episodes": 240,
+  "episodes_detail": [
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-0",
+      "condition": "raw_logs",
+      "cost": 0.0025262500000000077,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": -714,
+        "nav_change": 0.44,
+        "unpaid_dividend_claim": -442.68
+      },
+      "case": "corporate_actions-v2-1",
+      "condition": "verified_memory",
+      "cost": 0.002096249999999966,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 188,
+        "next_action": "pause",
+        "resubmit": false
+      },
+      "case": "execution-v2-4",
+      "condition": "no_learning",
+      "cost": 0.0006325000000000358,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-1",
+      "condition": "raw_logs",
+      "cost": 0.0025274999999999603,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 2420,
+        "gross_weight": 0.529,
+        "net_weight": 0.165
+      },
+      "case": "exposures-v2-1",
+      "condition": "verified_memory",
+      "cost": 0.0019500000000000073,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 370,
+        "total_return": -0.2006578947368421
+      },
+      "case": "features-v2-4",
+      "condition": "no_learning",
+      "cost": 0.000593750000000004,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "candidate.reference_rate"
+        ]
+      },
+      "case": "controlled_experiments-v2-1",
+      "condition": "verified_memory",
+      "cost": 0.0019224999999999937,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.03,
+        "modeled_cost_contribution": 0.09,
+        "net_gain": 0.12,
+        "turnover_change": 0.0
+      },
+      "case": "cost_attribution-v2-4",
+      "condition": "verified_memory",
+      "cost": 0.002197500000000019,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 188,
+        "next_action": "pause",
+        "resubmit": false
+      },
+      "case": "execution-v2-4",
+      "condition": "raw_logs",
+      "cost": 0.0025025000000000186,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-127599-0",
+          "timing-127599-2",
+          "timing-127599-3"
+        ]
+      },
+      "case": "timing-v2-3",
+      "condition": "verified_memory",
+      "cost": 0.002322500000000005,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 55,
+        "total_return": 0.07647058823529412
+      },
+      "case": "features-v2-3",
+      "condition": "verified_memory",
+      "cost": 0.0020212499999999745,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 2420,
+        "gross_weight": 0.529,
+        "net_weight": 0.165
+      },
+      "case": "exposures-v2-1",
+      "condition": "raw_logs",
+      "cost": 0.002478749999999974,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 370,
+        "total_return": -0.10855263157894737
+      },
+      "case": "features-v2-4",
+      "condition": "verified_memory",
+      "cost": 0.00202125000000003,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "scored_start"
+        ]
+      },
+      "case": "controlled_experiments-v2-2",
+      "condition": "raw_logs",
+      "cost": 0.0025012500000000104,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 2420,
+        "gross_weight": 0.529,
+        "net_weight": 0.165
+      },
+      "case": "exposures-v2-1",
+      "condition": "verified_memory",
+      "cost": 0.0019500000000000073,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 183,
+        "next_action": "reconcile",
+        "resubmit": false
+      },
+      "case": "execution-v2-2",
+      "condition": "raw_logs",
+      "cost": 0.0025062499999999877,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": -0.017,
+        "modeled_cost_contribution": 0.09,
+        "net_gain": 0.073,
+        "turnover_change": 0.0
+      },
+      "case": "cost_attribution-v2-2",
+      "condition": "raw_logs",
+      "cost": 0.0025924999999999976,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": -417,
+        "nav_change": -300.24,
+        "unpaid_dividend_claim": -300.24
+      },
+      "case": "corporate_actions-v2-3",
+      "condition": "no_learning",
+      "cost": 0.0006637500000000185,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 3905,
+        "gross_weight": 0.3838,
+        "net_weight": 0.1166
+      },
+      "case": "exposures-v2-4",
+      "condition": "no_learning",
+      "cost": 0.0006137499999999685,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-3",
+      "condition": "verified_memory",
+      "cost": 0.0020275000000000154,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": -714,
+        "nav_change": -0.62,
+        "unpaid_dividend_claim": -0.62
+      },
+      "case": "corporate_actions-v2-1",
+      "condition": "raw_logs",
+      "cost": 0.0025387499999999785,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 1925.0,
+        "gross_weight": 0.4186,
+        "net_weight": 0.1282
+      },
+      "case": "exposures-v2-0",
+      "condition": "raw_logs",
+      "cost": 0.002488749999999984,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": -0.030000000000000027,
+        "modeled_cost_contribution": 0.09000000000000002,
+        "net_gain": 0.06,
+        "turnover_change": 0.0
+      },
+      "case": "cost_attribution-v2-0",
+      "condition": "raw_logs",
+      "cost": 0.002630000000000021,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 374,
+        "total_return": 0.05614035087719298
+      },
+      "case": "features-v2-2",
+      "condition": "no_learning",
+      "cost": 0.0005762500000000004,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 95,
+        "total_return": 0.0695
+      },
+      "case": "features-v2-1",
+      "condition": "no_learning",
+      "cost": 0.000583749999999994,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 54,
+        "next_action": "closed",
+        "resubmit": false
+      },
+      "case": "execution-v2-3",
+      "condition": "raw_logs",
+      "cost": 0.0024875000000000314,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.021,
+        "modeled_cost_contribution": 0.09,
+        "net_gain": 0.111,
+        "turnover_change": 1.18
+      },
+      "case": "cost_attribution-v2-1",
+      "condition": "no_learning",
+      "cost": 0.0006899999999999684,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 374,
+        "total_return": 0.001260815
+      },
+      "case": "features-v2-2",
+      "condition": "raw_logs",
+      "cost": 0.002456249999999993,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "advance_to_paper_qualification"
+      },
+      "case": "decisions-v2-1",
+      "condition": "no_learning",
+      "cost": 0.0006675000000000431,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "capital",
+          "rebalance_timing",
+          "transaction_bps"
+        ]
+      },
+      "case": "controlled_experiments-v2-4",
+      "condition": "verified_memory",
+      "cost": 0.0019599999999999618,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 3410,
+        "gross_weight": 0.1918,
+        "net_weight": 0.0526
+      },
+      "case": "exposures-v2-3",
+      "condition": "no_learning",
+      "cost": 0.0005887500000000268,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": -0.044980631299752605,
+        "modeled_cost_contribution": -0.007938602450148765,
+        "net_gain": -0.05291923374990137,
+        "turnover_change": 1.99
+      },
+      "case": "cost_attribution-v2-3",
+      "condition": "verified_memory",
+      "cost": 0.002234999999999987,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-475545-0",
+          "timing-475545-1",
+          "timing-475545-2",
+          "timing-475545-3",
+          "timing-475545-4"
+        ]
+      },
+      "case": "timing-v2-1",
+      "condition": "verified_memory",
+      "cost": 0.0023575000000000124,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "advance_to_paper_qualification"
+      },
+      "case": "decisions-v2-0",
+      "condition": "no_learning",
+      "cost": 0.0006562499999999694,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "capital",
+          "rebalance_timing"
+        ]
+      },
+      "case": "controlled_experiments-v2-4",
+      "condition": "no_learning",
+      "cost": 0.0006212500000000176,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 73,
+        "next_action": "pause",
+        "resubmit": false
+      },
+      "case": "execution-v2-0",
+      "condition": "verified_memory",
+      "cost": 0.001847500000000002,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "transaction_bps"
+        ]
+      },
+      "case": "controlled_experiments-v2-3",
+      "condition": "verified_memory",
+      "cost": 0.0019399999999999973,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 2915.0,
+        "gross_weight": 0.2806,
+        "net_weight": 0.0822
+      },
+      "case": "exposures-v2-2",
+      "condition": "verified_memory",
+      "cost": 0.0019600000000000173,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-898766-0",
+          "timing-898766-2",
+          "timing-898766-3",
+          "timing-898766-4"
+        ]
+      },
+      "case": "timing-v2-2",
+      "condition": "raw_logs",
+      "cost": 0.0027774999999999883,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 342,
+        "total_return": -0.34411764705882353
+      },
+      "case": "features-v2-0",
+      "condition": "raw_logs",
+      "cost": 0.002463749999999987,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 95,
+        "total_return": 0.0843
+      },
+      "case": "features-v2-1",
+      "condition": "no_learning",
+      "cost": 0.000583749999999994,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "transaction_bps"
+        ]
+      },
+      "case": "controlled_experiments-v2-3",
+      "condition": "raw_logs",
+      "cost": 0.0025012500000000104,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-475545-0",
+          "timing-475545-3",
+          "timing-475545-4"
+        ]
+      },
+      "case": "timing-v2-1",
+      "condition": "raw_logs",
+      "cost": 0.0027249999999999774,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 300.24,
+        "ending_shares": -417,
+        "nav_change": -299.52,
+        "unpaid_dividend_claim": 0
+      },
+      "case": "corporate_actions-v2-3",
+      "condition": "verified_memory",
+      "cost": 0.0020912500000000445,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-488778-0",
+          "timing-488778-1",
+          "timing-488778-2",
+          "timing-488778-3",
+          "timing-488778-4"
+        ]
+      },
+      "case": "timing-v2-4",
+      "condition": "verified_memory",
+      "cost": 0.002357499999999957,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-463450-0",
+          "timing-463450-1",
+          "timing-463450-2",
+          "timing-463450-3",
+          "timing-463450-4"
+        ]
+      },
+      "case": "timing-v2-0",
+      "condition": "verified_memory",
+      "cost": 0.0023575000000000124,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 54,
+        "next_action": "closed",
+        "resubmit": false
+      },
+      "case": "execution-v2-3",
+      "condition": "verified_memory",
+      "cost": 0.0018325000000000147,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-127599-0",
+          "timing-127599-2",
+          "timing-127599-3"
+        ]
+      },
+      "case": "timing-v2-3",
+      "condition": "raw_logs",
+      "cost": 0.0027249999999999774,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-127599-0",
+          "timing-127599-2",
+          "timing-127599-3"
+        ]
+      },
+      "case": "timing-v2-3",
+      "condition": "raw_logs",
+      "cost": 0.002725000000000033,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-488778-0",
+          "timing-488778-1",
+          "timing-488778-2",
+          "timing-488778-3",
+          "timing-488778-4"
+        ]
+      },
+      "case": "timing-v2-4",
+      "condition": "verified_memory",
+      "cost": 0.0023575000000000124,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 342,
+        "total_return": -0.4441176470588235
+      },
+      "case": "features-v2-0",
+      "condition": "no_learning",
+      "cost": 0.0005937499999999485,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 207,
+        "next_action": "wait",
+        "resubmit": false
+      },
+      "case": "execution-v2-1",
+      "condition": "raw_logs",
+      "cost": 0.002503750000000027,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "candidate.reference_rate"
+        ]
+      },
+      "case": "controlled_experiments-v2-1",
+      "condition": "raw_logs",
+      "cost": 0.002498749999999994,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-127599-0",
+          "timing-127599-2",
+          "timing-127599-3",
+          "timing-127599-4"
+        ]
+      },
+      "case": "timing-v2-3",
+      "condition": "verified_memory",
+      "cost": 0.0023400000000000087,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 207,
+        "next_action": "wait",
+        "resubmit": false
+      },
+      "case": "execution-v2-1",
+      "condition": "verified_memory",
+      "cost": 0.00184875000000001,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "transaction_bps"
+        ]
+      },
+      "case": "controlled_experiments-v2-3",
+      "condition": "no_learning",
+      "cost": 0.0006162499999999849,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 2915.0,
+        "gross_weight": 0.2806,
+        "net_weight": 0.0822
+      },
+      "case": "exposures-v2-2",
+      "condition": "raw_logs",
+      "cost": 0.002488749999999984,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": -0.005,
+        "modeled_cost_contribution": 0.09,
+        "net_gain": 0.085,
+        "turnover_change": 1.99
+      },
+      "case": "cost_attribution-v2-3",
+      "condition": "no_learning",
+      "cost": 0.0006962500000000094,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.03,
+        "modeled_cost_contribution": -0.09,
+        "net_gain": 0.12,
+        "turnover_change": 0.0
+      },
+      "case": "cost_attribution-v2-4",
+      "condition": "raw_logs",
+      "cost": 0.002598749999999983,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "transaction_bps"
+        ]
+      },
+      "case": "controlled_experiments-v2-3",
+      "condition": "verified_memory",
+      "cost": 0.00192500000000001,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 3410.0,
+        "gross_weight": 0.1918,
+        "net_weight": 0.0526
+      },
+      "case": "exposures-v2-3",
+      "condition": "raw_logs",
+      "cost": 0.0024887500000000395,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 73,
+        "next_action": "pause",
+        "resubmit": false
+      },
+      "case": "execution-v2-0",
+      "condition": "no_learning",
+      "cost": 0.0006324999999999803,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-2",
+      "condition": "no_learning",
+      "cost": 0.0006574999999999775,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": -0.017,
+        "modeled_cost_contribution": 0.09,
+        "net_gain": 0.073,
+        "turnover_change": 0
+      },
+      "case": "cost_attribution-v2-2",
+      "condition": "no_learning",
+      "cost": 0.0006849999999999912,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 442.68,
+        "ending_shares": -714,
+        "nav_change": -7.33,
+        "unpaid_dividend_claim": 0
+      },
+      "case": "corporate_actions-v2-1",
+      "condition": "no_learning",
+      "cost": 0.0006362500000000049,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "transaction_bps"
+        ]
+      },
+      "case": "controlled_experiments-v2-3",
+      "condition": "no_learning",
+      "cost": 0.0006162500000000404,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 1925,
+        "gross_weight": 0.4186,
+        "net_weight": 0.1282
+      },
+      "case": "exposures-v2-0",
+      "condition": "no_learning",
+      "cost": 0.0005887499999999712,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.03,
+        "modeled_cost_contribution": 0.09,
+        "net_gain": 0.12,
+        "turnover_change": 0
+      },
+      "case": "cost_attribution-v2-4",
+      "condition": "no_learning",
+      "cost": 0.0006912500000000321,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 55,
+        "total_return": 0.0793
+      },
+      "case": "features-v2-3",
+      "condition": "no_learning",
+      "cost": 0.000583749999999994,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-898766-0",
+          "timing-898766-1",
+          "timing-898766-2",
+          "timing-898766-3",
+          "timing-898766-4"
+        ]
+      },
+      "case": "timing-v2-2",
+      "condition": "verified_memory",
+      "cost": 0.0023575000000000124,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.03,
+        "modeled_cost_contribution": 0.09,
+        "net_gain": 0.12,
+        "turnover_change": 0
+      },
+      "case": "cost_attribution-v2-4",
+      "condition": "verified_memory",
+      "cost": 0.002192499999999986,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 73,
+        "next_action": "pause",
+        "resubmit": false
+      },
+      "case": "execution-v2-0",
+      "condition": "raw_logs",
+      "cost": 0.002502499999999963,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 2915.0,
+        "gross_weight": 0.2806,
+        "net_weight": 0.0822
+      },
+      "case": "exposures-v2-2",
+      "condition": "raw_logs",
+      "cost": 0.0024887500000000395,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": -0.005,
+        "modeled_cost_contribution": 0.09,
+        "net_gain": 0.085,
+        "turnover_change": 1.99
+      },
+      "case": "cost_attribution-v2-3",
+      "condition": "raw_logs",
+      "cost": 0.002598749999999983,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 188,
+        "next_action": "pause",
+        "resubmit": false
+      },
+      "case": "execution-v2-4",
+      "condition": "no_learning",
+      "cost": 0.0006324999999999803,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 3410.0,
+        "gross_weight": 0.1918,
+        "net_weight": 0.0526
+      },
+      "case": "exposures-v2-3",
+      "condition": "verified_memory",
+      "cost": 0.0019850000000000145,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 187,
+        "total_return": 0.027027027027027
+      },
+      "case": "features-v2-2",
+      "condition": "no_learning",
+      "cost": 0.000573749999999984,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-1",
+      "condition": "raw_logs",
+      "cost": 0.002527500000000016,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 1925.0,
+        "gross_weight": 0.4186,
+        "net_weight": 0.1282
+      },
+      "case": "exposures-v2-0",
+      "condition": "raw_logs",
+      "cost": 0.002488749999999984,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "transaction_bps"
+        ]
+      },
+      "case": "controlled_experiments-v2-3",
+      "condition": "raw_logs",
+      "cost": 0.0025012500000000104,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 374,
+        "total_return": -0.0360905
+      },
+      "case": "features-v2-2",
+      "condition": "verified_memory",
+      "cost": 0.0020137500000000363,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 2420,
+        "gross_weight": 0.529,
+        "net_weight": 0.165
+      },
+      "case": "exposures-v2-1",
+      "condition": "no_learning",
+      "cost": 0.000583749999999994,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "capital",
+          "rebalance_timing",
+          "transaction_bps"
+        ]
+      },
+      "case": "controlled_experiments-v2-4",
+      "condition": "raw_logs",
+      "cost": 0.002521249999999975,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-3",
+      "condition": "no_learning",
+      "cost": 0.0006575000000000331,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 54,
+        "next_action": "closed",
+        "resubmit": false
+      },
+      "case": "execution-v2-3",
+      "condition": "no_learning",
+      "cost": 0.0006174999999999931,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 207,
+        "next_action": "wait",
+        "resubmit": false
+      },
+      "case": "execution-v2-1",
+      "condition": "raw_logs",
+      "cost": 0.0025037499999999713,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 183,
+        "next_action": "reconcile",
+        "resubmit": false
+      },
+      "case": "execution-v2-2",
+      "condition": "verified_memory",
+      "cost": 0.0018512500000000265,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-0",
+      "condition": "verified_memory",
+      "cost": 0.002026250000000007,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 207,
+        "next_action": "wait",
+        "resubmit": false
+      },
+      "case": "execution-v2-1",
+      "condition": "no_learning",
+      "cost": 0.0006337499999999885,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-488778-0",
+          "timing-488778-3",
+          "timing-488778-4"
+        ]
+      },
+      "case": "timing-v2-4",
+      "condition": "raw_logs",
+      "cost": 0.0027249999999999774,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 300.24,
+        "ending_shares": -417,
+        "nav_change": 300.24,
+        "unpaid_dividend_claim": 0
+      },
+      "case": "corporate_actions-v2-3",
+      "condition": "no_learning",
+      "cost": 0.0006312500000000276,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.021,
+        "modeled_cost_contribution": 0.09,
+        "net_gain": 0.111,
+        "turnover_change": 1.18
+      },
+      "case": "cost_attribution-v2-1",
+      "condition": "raw_logs",
+      "cost": 0.0025924999999999976,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-2",
+      "condition": "no_learning",
+      "cost": 0.0006574999999999775,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 207,
+        "next_action": "wait",
+        "resubmit": false
+      },
+      "case": "execution-v2-1",
+      "condition": "no_learning",
+      "cost": 0.0006337499999999885,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 342,
+        "total_return": -0.020560000000000033
+      },
+      "case": "features-v2-0",
+      "condition": "verified_memory",
+      "cost": 0.00202125000000003,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": 708,
+        "nav_change": -12.92,
+        "unpaid_dividend_claim": 665.76
+      },
+      "case": "corporate_actions-v2-2",
+      "condition": "raw_logs",
+      "cost": 0.0025337500000000013,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 95,
+        "total_return": -0.05291923374990137
+      },
+      "case": "features-v2-1",
+      "condition": "verified_memory",
+      "cost": 0.002003749999999971,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "data_hash",
+          "rebalance_timing",
+          "reference_rate",
+          "scored_start",
+          "transaction_bps"
+        ]
+      },
+      "case": "controlled_experiments-v2-0",
+      "condition": "raw_logs",
+      "cost": 0.002566249999999992,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-4",
+      "condition": "raw_logs",
+      "cost": 0.002527500000000016,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 3905.0,
+        "gross_weight": 0.3838,
+        "net_weight": 0.1166
+      },
+      "case": "exposures-v2-4",
+      "condition": "verified_memory",
+      "cost": 0.0019600000000000173,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 1925.0,
+        "gross_weight": 0.4186,
+        "net_weight": 0.1282
+      },
+      "case": "exposures-v2-0",
+      "condition": "verified_memory",
+      "cost": 0.0019599999999999618,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-898766-0",
+          "timing-898766-3",
+          "timing-898766-4"
+        ]
+      },
+      "case": "timing-v2-2",
+      "condition": "no_learning",
+      "cost": 0.0008550000000000502,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-1",
+      "condition": "verified_memory",
+      "cost": 0.00202749999999996,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 183,
+        "next_action": "reconcile",
+        "resubmit": false
+      },
+      "case": "execution-v2-2",
+      "condition": "verified_memory",
+      "cost": 0.00182874999999999,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 2915,
+        "gross_weight": 0.2806,
+        "net_weight": 0.0822
+      },
+      "case": "exposures-v2-2",
+      "condition": "verified_memory",
+      "cost": 0.00195500000000004,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": 684,
+        "nav_change": 0,
+        "unpaid_dividend_claim": 147.12
+      },
+      "case": "corporate_actions-v2-0",
+      "condition": "verified_memory",
+      "cost": 0.0020862500000000117,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "reference_rate"
+        ]
+      },
+      "case": "controlled_experiments-v2-1",
+      "condition": "no_learning",
+      "cost": 0.0006112499999999521,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": 684,
+        "nav_change": 0,
+        "unpaid_dividend_claim": 147.12
+      },
+      "case": "corporate_actions-v2-0",
+      "condition": "raw_logs",
+      "cost": 0.002528750000000024,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "advance_to_paper_qualification"
+      },
+      "case": "decisions-v2-4",
+      "condition": "no_learning",
+      "cost": 0.0006674999999999875,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 370,
+        "total_return": 0.0
+      },
+      "case": "features-v2-4",
+      "condition": "raw_logs",
+      "cost": 0.002451250000000016,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-3",
+      "condition": "raw_logs",
+      "cost": 0.002527500000000016,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": 684,
+        "nav_change": 0,
+        "unpaid_dividend_claim": 294.12
+      },
+      "case": "corporate_actions-v2-0",
+      "condition": "no_learning",
+      "cost": 0.0006587499999999857,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 3410.0,
+        "gross_weight": 0.1918,
+        "net_weight": 0.0526
+      },
+      "case": "exposures-v2-3",
+      "condition": "verified_memory",
+      "cost": 0.0019600000000000173,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "advance_to_paper_qualification"
+      },
+      "case": "decisions-v2-4",
+      "condition": "no_learning",
+      "cost": 0.0006674999999999875,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "reference_rate"
+        ]
+      },
+      "case": "controlled_experiments-v2-1",
+      "condition": "verified_memory",
+      "cost": 0.0019199999999999773,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": 708,
+        "nav_change": -4.04,
+        "unpaid_dividend_claim": 1331.04
+      },
+      "case": "corporate_actions-v2-2",
+      "condition": "verified_memory",
+      "cost": 0.0020937500000000053,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.03,
+        "modeled_cost_contribution": 0.09,
+        "net_gain": 0.12,
+        "turnover_change": 0
+      },
+      "case": "cost_attribution-v2-4",
+      "condition": "no_learning",
+      "cost": 0.0006912500000000321,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": -0.044980631299752605,
+        "modeled_cost_contribution": -0.007938602450148765,
+        "net_gain": -0.05291923374990137,
+        "turnover_change": 0
+      },
+      "case": "cost_attribution-v2-2",
+      "condition": "verified_memory",
+      "cost": 0.002223749999999969,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-3",
+      "condition": "verified_memory",
+      "cost": 0.0020275000000000154,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "reference_rate"
+        ]
+      },
+      "case": "controlled_experiments-v2-1",
+      "condition": "no_learning",
+      "cost": 0.0006112500000000076,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.03,
+        "modeled_cost_contribution": -0.15,
+        "net_gain": 0.12,
+        "turnover_change": 0
+      },
+      "case": "cost_attribution-v2-4",
+      "condition": "raw_logs",
+      "cost": 0.0025937500000000058,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 73,
+        "next_action": "pause",
+        "resubmit": false
+      },
+      "case": "execution-v2-0",
+      "condition": "raw_logs",
+      "cost": 0.002502499999999963,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-3",
+      "condition": "raw_logs",
+      "cost": 0.0025274999999999603,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": -0.005,
+        "modeled_cost_contribution": 0.09,
+        "net_gain": 0.085,
+        "turnover_change": 1.99
+      },
+      "case": "cost_attribution-v2-3",
+      "condition": "raw_logs",
+      "cost": 0.002598750000000094,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": true,
+        "mismatched_assumptions": []
+      },
+      "case": "controlled_experiments-v2-0",
+      "condition": "verified_memory",
+      "cost": 0.0019174999999999054,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-2",
+      "condition": "verified_memory",
+      "cost": 0.002027500000000071,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": -0.044980631299752605,
+        "modeled_cost_contribution": -0.007938602450148765,
+        "net_gain": -0.05291923374990137,
+        "turnover_change": 0
+      },
+      "case": "cost_attribution-v2-0",
+      "condition": "verified_memory",
+      "cost": 0.0022362499999999397,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-463450-0",
+          "timing-463450-3",
+          "timing-463450-4"
+        ]
+      },
+      "case": "timing-v2-0",
+      "condition": "raw_logs",
+      "cost": 0.002755000000000063,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 73,
+        "next_action": "pause",
+        "resubmit": false
+      },
+      "case": "execution-v2-0",
+      "condition": "no_learning",
+      "cost": 0.0006325000000000358,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-3",
+      "condition": "no_learning",
+      "cost": 0.0006574999999999775,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": 132,
+        "nav_change": -0.84,
+        "unpaid_dividend_claim": 244.2
+      },
+      "case": "corporate_actions-v2-4",
+      "condition": "no_learning",
+      "cost": 0.000663749999999963,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 95,
+        "total_return": 0.091422700565
+      },
+      "case": "features-v2-1",
+      "condition": "raw_logs",
+      "cost": 0.002458749999999954,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": 132,
+        "nav_change": 244.2,
+        "unpaid_dividend_claim": 244.2
+      },
+      "case": "corporate_actions-v2-4",
+      "condition": "no_learning",
+      "cost": 0.000663750000000074,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 3905.0,
+        "gross_weight": 0.3838,
+        "net_weight": 0.1166
+      },
+      "case": "exposures-v2-4",
+      "condition": "no_learning",
+      "cost": 0.0006187500000000012,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 188,
+        "next_action": "pause",
+        "resubmit": false
+      },
+      "case": "execution-v2-4",
+      "condition": "verified_memory",
+      "cost": 0.001847500000000002,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "candidate.reference_rate"
+        ]
+      },
+      "case": "controlled_experiments-v2-1",
+      "condition": "raw_logs",
+      "cost": 0.002498749999999994,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-463450-0",
+          "timing-463450-3",
+          "timing-463450-4"
+        ]
+      },
+      "case": "timing-v2-0",
+      "condition": "no_learning",
+      "cost": 0.0008549999999999391,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": -0.044980631299752605,
+        "modeled_cost_contribution": -0.007938602450148765,
+        "net_gain": -0.05291923374990137,
+        "turnover_change": 0
+      },
+      "case": "cost_attribution-v2-2",
+      "condition": "verified_memory",
+      "cost": 0.00222375000000008,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 55,
+        "total_return": 0.0
+      },
+      "case": "features-v2-3",
+      "condition": "raw_logs",
+      "cost": 0.002451249999999905,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 188,
+        "next_action": "pause",
+        "resubmit": false
+      },
+      "case": "execution-v2-4",
+      "condition": "raw_logs",
+      "cost": 0.002502500000000074,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "scored_start"
+        ]
+      },
+      "case": "controlled_experiments-v2-2",
+      "condition": "raw_logs",
+      "cost": 0.0025012500000000104,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-488778-0",
+          "timing-488778-3",
+          "timing-488778-4"
+        ]
+      },
+      "case": "timing-v2-4",
+      "condition": "no_learning",
+      "cost": 0.0008549999999999391,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-4",
+      "condition": "verified_memory",
+      "cost": 0.002027500000000071,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 374,
+        "total_return": -0.0272105
+      },
+      "case": "features-v2-2",
+      "condition": "verified_memory",
+      "cost": 0.0020137499999999253,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": -714,
+        "nav_change": -0.62,
+        "unpaid_dividend_claim": -442.68
+      },
+      "case": "corporate_actions-v2-1",
+      "condition": "raw_logs",
+      "cost": 0.002538750000000034,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 2915.0,
+        "gross_weight": 0.2806,
+        "net_weight": 0.0822
+      },
+      "case": "exposures-v2-2",
+      "condition": "no_learning",
+      "cost": 0.0005937499999999485,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": -0.044980631299752605,
+        "modeled_cost_contribution": -0.007938602450148765,
+        "net_gain": -0.05291923374990137,
+        "turnover_change": 1.18
+      },
+      "case": "cost_attribution-v2-1",
+      "condition": "verified_memory",
+      "cost": 0.0022287500000000016,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": -0.017,
+        "modeled_cost_contribution": 0.09,
+        "net_gain": 0.073,
+        "turnover_change": 0
+      },
+      "case": "cost_attribution-v2-2",
+      "condition": "no_learning",
+      "cost": 0.0006850000000000467,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": -417,
+        "nav_change": 0,
+        "unpaid_dividend_claim": -300.24
+      },
+      "case": "corporate_actions-v2-3",
+      "condition": "raw_logs",
+      "cost": 0.0025287499999999685,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 55,
+        "total_return": -0.0071
+      },
+      "case": "features-v2-3",
+      "condition": "verified_memory",
+      "cost": 0.00201125000000002,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-127599-0",
+          "timing-127599-2",
+          "timing-127599-3"
+        ]
+      },
+      "case": "timing-v2-3",
+      "condition": "no_learning",
+      "cost": 0.0008700000000000374,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 54,
+        "next_action": "closed",
+        "resubmit": false
+      },
+      "case": "execution-v2-3",
+      "condition": "raw_logs",
+      "cost": 0.002487499999999976,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 183,
+        "next_action": "reconcile",
+        "resubmit": false
+      },
+      "case": "execution-v2-2",
+      "condition": "no_learning",
+      "cost": 0.0006362500000000049,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-127599-0",
+          "timing-127599-2",
+          "timing-127599-3"
+        ]
+      },
+      "case": "timing-v2-3",
+      "condition": "no_learning",
+      "cost": 0.0008550000000000502,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-488778-0",
+          "timing-488778-3",
+          "timing-488778-4"
+        ]
+      },
+      "case": "timing-v2-4",
+      "condition": "no_learning",
+      "cost": 0.0008549999999999391,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 2920,
+        "gross_weight": 0.2806,
+        "net_weight": 0.0822
+      },
+      "case": "exposures-v2-2",
+      "condition": "no_learning",
+      "cost": 0.0005887500000000268,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 1930,
+        "gross_weight": 0.4186,
+        "net_weight": 0.1282
+      },
+      "case": "exposures-v2-0",
+      "condition": "no_learning",
+      "cost": 0.0005887500000000268,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "scored_start"
+        ]
+      },
+      "case": "controlled_experiments-v2-2",
+      "condition": "verified_memory",
+      "cost": 0.0019249999999999545,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-4",
+      "condition": "verified_memory",
+      "cost": 0.00202749999999996,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "data_hash",
+          "scored_start"
+        ]
+      },
+      "case": "controlled_experiments-v2-2",
+      "condition": "no_learning",
+      "cost": 0.000623750000000034,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 183,
+        "next_action": "reconcile",
+        "resubmit": false
+      },
+      "case": "execution-v2-2",
+      "condition": "no_learning",
+      "cost": 0.0006362500000000049,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": -417,
+        "nav_change": -300.24,
+        "unpaid_dividend_claim": -300.24
+      },
+      "case": "corporate_actions-v2-3",
+      "condition": "verified_memory",
+      "cost": 0.002091249999999989,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": -0.044980631299752605,
+        "modeled_cost_contribution": -0.007938602450148765,
+        "net_gain": -0.05291923374990137,
+        "turnover_change": 1.99
+      },
+      "case": "cost_attribution-v2-3",
+      "condition": "verified_memory",
+      "cost": 0.002234999999999987,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 442.68,
+        "ending_shares": -714,
+        "nav_change": 0,
+        "unpaid_dividend_claim": 0
+      },
+      "case": "corporate_actions-v2-1",
+      "condition": "no_learning",
+      "cost": 0.000663750000000074,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": 708,
+        "nav_change": 0,
+        "unpaid_dividend_claim": 1331.04
+      },
+      "case": "corporate_actions-v2-2",
+      "condition": "no_learning",
+      "cost": 0.0006612499999999466,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 183,
+        "next_action": "reconcile",
+        "resubmit": false
+      },
+      "case": "execution-v2-2",
+      "condition": "raw_logs",
+      "cost": 0.002506250000000043,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": true,
+        "mismatched_assumptions": []
+      },
+      "case": "controlled_experiments-v2-0",
+      "condition": "no_learning",
+      "cost": 0.0006087499999999357,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 374,
+        "total_return": -0.004964
+      },
+      "case": "features-v2-2",
+      "condition": "raw_logs",
+      "cost": 0.0024537500000000323,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "data_hash",
+          "scored_start"
+        ]
+      },
+      "case": "controlled_experiments-v2-2",
+      "condition": "no_learning",
+      "cost": 0.000623750000000034,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": 684,
+        "nav_change": 0,
+        "unpaid_dividend_claim": 147.12
+      },
+      "case": "corporate_actions-v2-0",
+      "condition": "raw_logs",
+      "cost": 0.0025287499999999685,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.021,
+        "modeled_cost_contribution": 0.09,
+        "net_gain": 0.111,
+        "turnover_change": 1.18
+      },
+      "case": "cost_attribution-v2-1",
+      "condition": "raw_logs",
+      "cost": 0.0025924999999999976,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 2419.9999999999995,
+        "gross_weight": 0.529,
+        "net_weight": 0.165
+      },
+      "case": "exposures-v2-1",
+      "condition": "raw_logs",
+      "cost": 0.0024937499999999613,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-475545-0",
+          "timing-475545-1",
+          "timing-475545-3",
+          "timing-475545-4"
+        ]
+      },
+      "case": "timing-v2-1",
+      "condition": "no_learning",
+      "cost": 0.0008725000000000538,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 73,
+        "next_action": "pause",
+        "resubmit": false
+      },
+      "case": "execution-v2-0",
+      "condition": "verified_memory",
+      "cost": 0.001847500000000002,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": -0.005,
+        "modeled_cost_contribution": 0.09,
+        "net_gain": 0.085,
+        "turnover_change": 1.99
+      },
+      "case": "cost_attribution-v2-3",
+      "condition": "no_learning",
+      "cost": 0.0006962499999999539,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 342,
+        "total_return": -0.2003
+      },
+      "case": "features-v2-0",
+      "condition": "no_learning",
+      "cost": 0.000583749999999994,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-898766-0",
+          "timing-898766-1",
+          "timing-898766-2",
+          "timing-898766-3"
+        ]
+      },
+      "case": "timing-v2-2",
+      "condition": "no_learning",
+      "cost": 0.0008725000000000538,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 3905,
+        "gross_weight": 0.3838,
+        "net_weight": 0.1166
+      },
+      "case": "exposures-v2-4",
+      "condition": "verified_memory",
+      "cost": 0.001954999999999929,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-2",
+      "condition": "raw_logs",
+      "cost": 0.002527500000000016,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "candidate.capital",
+          "candidate.rebalance_timing",
+          "candidate.transaction_bps"
+        ]
+      },
+      "case": "controlled_experiments-v2-4",
+      "condition": "verified_memory",
+      "cost": 0.0019700000000000273,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": -417,
+        "nav_change": 0,
+        "unpaid_dividend_claim": -300.24
+      },
+      "case": "corporate_actions-v2-3",
+      "condition": "raw_logs",
+      "cost": 0.0025287499999999685,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": 708,
+        "nav_change": 0,
+        "unpaid_dividend_claim": 1331.04
+      },
+      "case": "corporate_actions-v2-2",
+      "condition": "no_learning",
+      "cost": 0.0006612500000000576,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "data_hash",
+          "reference_rate",
+          "scored_start",
+          "transaction_bps"
+        ]
+      },
+      "case": "controlled_experiments-v2-0",
+      "condition": "raw_logs",
+      "cost": 0.002551250000000005,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-0",
+      "condition": "verified_memory",
+      "cost": 0.002026250000000007,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": 132,
+        "nav_change": -244.68,
+        "unpaid_dividend_claim": 244.2
+      },
+      "case": "corporate_actions-v2-4",
+      "condition": "raw_logs",
+      "cost": 0.0025337500000000013,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": -0.03,
+        "modeled_cost_contribution": 0.09,
+        "net_gain": 0.06,
+        "turnover_change": 0
+      },
+      "case": "cost_attribution-v2-0",
+      "condition": "no_learning",
+      "cost": 0.0006975000000000176,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-898766-0",
+          "timing-898766-1",
+          "timing-898766-2",
+          "timing-898766-3",
+          "timing-898766-4"
+        ]
+      },
+      "case": "timing-v2-2",
+      "condition": "verified_memory",
+      "cost": 0.0023574999999999013,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "capital",
+          "rebalance_timing"
+        ]
+      },
+      "case": "controlled_experiments-v2-4",
+      "condition": "no_learning",
+      "cost": 0.0006212500000000176,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-1",
+      "condition": "verified_memory",
+      "cost": 0.002027500000000071,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 95,
+        "total_return": 0.080636876
+      },
+      "case": "features-v2-1",
+      "condition": "verified_memory",
+      "cost": 0.0020137499999999253,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 54,
+        "next_action": "closed",
+        "resubmit": false
+      },
+      "case": "execution-v2-3",
+      "condition": "no_learning",
+      "cost": 0.0006175000000000486,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-488778-0",
+          "timing-488778-3",
+          "timing-488778-4"
+        ]
+      },
+      "case": "timing-v2-4",
+      "condition": "raw_logs",
+      "cost": 0.0027249999999999774,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": -0.044980631299752605,
+        "modeled_cost_contribution": -0.007938602450148765,
+        "net_gain": -0.05291923374990137,
+        "turnover_change": 1.18
+      },
+      "case": "cost_attribution-v2-1",
+      "condition": "verified_memory",
+      "cost": 0.0022287500000000016,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 54,
+        "next_action": "closed",
+        "resubmit": false
+      },
+      "case": "execution-v2-3",
+      "condition": "verified_memory",
+      "cost": 0.0018325000000000147,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 370,
+        "total_return": 0.0
+      },
+      "case": "features-v2-4",
+      "condition": "raw_logs",
+      "cost": 0.002451250000000016,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": 708,
+        "nav_change": -3.76,
+        "unpaid_dividend_claim": -3.76
+      },
+      "case": "corporate_actions-v2-2",
+      "condition": "verified_memory",
+      "cost": 0.002091249999999989,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 55,
+        "total_return": 0.084468
+      },
+      "case": "features-v2-3",
+      "condition": "raw_logs",
+      "cost": 0.0024537500000000323,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "advance_to_paper_qualification"
+      },
+      "case": "decisions-v2-1",
+      "condition": "no_learning",
+      "cost": 0.000667499999999932,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-2",
+      "condition": "verified_memory",
+      "cost": 0.002027500000000071,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": 132,
+        "nav_change": -244.4,
+        "unpaid_dividend_claim": 244.2
+      },
+      "case": "corporate_actions-v2-4",
+      "condition": "verified_memory",
+      "cost": 0.002091249999999989,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 3905,
+        "gross_weight": 0.3838,
+        "net_weight": 0.1166
+      },
+      "case": "exposures-v2-4",
+      "condition": "raw_logs",
+      "cost": 0.002483750000000007,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "scored_start"
+        ]
+      },
+      "case": "controlled_experiments-v2-2",
+      "condition": "verified_memory",
+      "cost": 0.0019249999999999545,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": 684,
+        "nav_change": 0.43,
+        "unpaid_dividend_claim": 0.43
+      },
+      "case": "corporate_actions-v2-0",
+      "condition": "verified_memory",
+      "cost": 0.002091249999999989,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 342,
+        "total_return": -0.032426
+      },
+      "case": "features-v2-0",
+      "condition": "verified_memory",
+      "cost": 0.00201125000000002,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-463450-0",
+          "timing-463450-1",
+          "timing-463450-2",
+          "timing-463450-3",
+          "timing-463450-4"
+        ]
+      },
+      "case": "timing-v2-0",
+      "condition": "verified_memory",
+      "cost": 0.0023575000000000124,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": 708,
+        "nav_change": 0,
+        "unpaid_dividend_claim": 1331.04
+      },
+      "case": "corporate_actions-v2-2",
+      "condition": "raw_logs",
+      "cost": 0.002531249999999985,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 2420,
+        "gross_weight": 0.529,
+        "net_weight": 0.165
+      },
+      "case": "exposures-v2-1",
+      "condition": "no_learning",
+      "cost": 0.000583749999999994,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "capital",
+          "rebalance_timing",
+          "transaction_bps"
+        ]
+      },
+      "case": "controlled_experiments-v2-4",
+      "condition": "raw_logs",
+      "cost": 0.0025362500000000177,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-0",
+      "condition": "raw_logs",
+      "cost": 0.002526249999999952,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-4",
+      "condition": "raw_logs",
+      "cost": 0.002527500000000016,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": true,
+        "mismatched_assumptions": []
+      },
+      "case": "controlled_experiments-v2-0",
+      "condition": "verified_memory",
+      "cost": 0.0019299999999999873,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 55,
+        "total_return": 0.1016
+      },
+      "case": "features-v2-3",
+      "condition": "no_learning",
+      "cost": 0.000583749999999994,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 95,
+        "total_return": 0.12134102567924987
+      },
+      "case": "features-v2-1",
+      "condition": "raw_logs",
+      "cost": 0.002463749999999987,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": 684,
+        "nav_change": 0,
+        "unpaid_dividend_claim": 294.12
+      },
+      "case": "corporate_actions-v2-0",
+      "condition": "no_learning",
+      "cost": 0.0006587500000000412,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 370,
+        "total_return": -0.27580000000000005
+      },
+      "case": "features-v2-4",
+      "condition": "verified_memory",
+      "cost": 0.0020212499999999745,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-463450-0",
+          "timing-463450-3",
+          "timing-463450-4"
+        ]
+      },
+      "case": "timing-v2-0",
+      "condition": "no_learning",
+      "cost": 0.0008550000000000502,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-475545-0",
+          "timing-475545-1",
+          "timing-475545-3",
+          "timing-475545-4"
+        ]
+      },
+      "case": "timing-v2-1",
+      "condition": "no_learning",
+      "cost": 0.0008724999999999428,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": -0.03,
+        "modeled_cost_contribution": 0.09,
+        "net_gain": 0.06,
+        "turnover_change": 0
+      },
+      "case": "cost_attribution-v2-0",
+      "condition": "no_learning",
+      "cost": 0.0006975000000000176,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 342,
+        "total_return": -0.145072794117647
+      },
+      "case": "features-v2-0",
+      "condition": "raw_logs",
+      "cost": 0.0024612499999999704,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": -0.017,
+        "modeled_cost_contribution": 0.09,
+        "net_gain": 0.073,
+        "turnover_change": 0.0
+      },
+      "case": "cost_attribution-v2-2",
+      "condition": "raw_logs",
+      "cost": 0.0025924999999999976,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 1925.0,
+        "gross_weight": 0.4186,
+        "net_weight": 0.1282
+      },
+      "case": "exposures-v2-0",
+      "condition": "verified_memory",
+      "cost": 0.001960000000000073,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 3410,
+        "gross_weight": 0.1918,
+        "net_weight": 0.0526
+      },
+      "case": "exposures-v2-3",
+      "condition": "no_learning",
+      "cost": 0.0005887500000000268,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "ending_shares": 185,
+        "total_return": 0.0373355263157895
+      },
+      "case": "features-v2-4",
+      "condition": "no_learning",
+      "cost": 0.0005762499999999449,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 188,
+        "next_action": "pause",
+        "resubmit": false
+      },
+      "case": "execution-v2-4",
+      "condition": "verified_memory",
+      "cost": 0.001847500000000002,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 3410.0,
+        "gross_weight": 0.1918,
+        "net_weight": 0.0526
+      },
+      "case": "exposures-v2-3",
+      "condition": "raw_logs",
+      "cost": 0.0024887500000000395,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-v2-2",
+      "condition": "raw_logs",
+      "cost": 0.002527500000000016,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "filled_quantity": 207,
+        "next_action": "wait",
+        "resubmit": false
+      },
+      "case": "execution-v2-1",
+      "condition": "verified_memory",
+      "cost": 0.0018487499999999546,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "decision": "advance_to_paper_qualification"
+      },
+      "case": "decisions-v2-0",
+      "condition": "no_learning",
+      "cost": 0.0006662499999999794,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-463450-0",
+          "timing-463450-3",
+          "timing-463450-4"
+        ]
+      },
+      "case": "timing-v2-0",
+      "condition": "raw_logs",
+      "cost": 0.0027249999999999774,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "free_cash": 3905,
+        "gross_weight": 0.3838,
+        "net_weight": 0.1166
+      },
+      "case": "exposures-v2-4",
+      "condition": "raw_logs",
+      "cost": 0.002483750000000007,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-475545-0",
+          "timing-475545-3",
+          "timing-475545-4"
+        ]
+      },
+      "case": "timing-v2-1",
+      "condition": "raw_logs",
+      "cost": 0.0027249999999999774,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": -0.03,
+        "modeled_cost_contribution": 0.09,
+        "net_gain": 0.06,
+        "turnover_change": 0.0
+      },
+      "case": "cost_attribution-v2-0",
+      "condition": "raw_logs",
+      "cost": 0.0026050000000000795,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "comparable": true,
+        "mismatched_assumptions": []
+      },
+      "case": "controlled_experiments-v2-0",
+      "condition": "no_learning",
+      "cost": 0.0006087499999999357,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-475545-0",
+          "timing-475545-1",
+          "timing-475545-2",
+          "timing-475545-3",
+          "timing-475545-4"
+        ]
+      },
+      "case": "timing-v2-1",
+      "condition": "verified_memory",
+      "cost": 0.0023575000000000124,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "timing-898766-0",
+          "timing-898766-1",
+          "timing-898766-2",
+          "timing-898766-3",
+          "timing-898766-4"
+        ]
+      },
+      "case": "timing-v2-2",
+      "condition": "raw_logs",
+      "cost": 0.0027599999999999847,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": -714,
+        "nav_change": -1.24,
+        "unpaid_dividend_claim": -1.24
+      },
+      "case": "corporate_actions-v2-1",
+      "condition": "verified_memory",
+      "cost": 0.0020962500000000217,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": 132,
+        "nav_change": -244.2,
+        "unpaid_dividend_claim": 244.2
+      },
+      "case": "corporate_actions-v2-4",
+      "condition": "raw_logs",
+      "cost": 0.0025337500000000013,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.021,
+        "modeled_cost_contribution": 0.09,
+        "net_gain": 0.111,
+        "turnover_change": 1.18
+      },
+      "case": "cost_attribution-v2-1",
+      "condition": "no_learning",
+      "cost": 0.0006899999999999684,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": true,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cash_change": 0,
+        "ending_shares": 132,
+        "nav_change": -244.64,
+        "unpaid_dividend_claim": 244.2
+      },
+      "case": "corporate_actions-v2-4",
+      "condition": "verified_memory",
+      "cost": 0.0020912500000001,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    },
+    {
+      "answer": {
+        "cost_free_gain": -0.044980631299752605,
+        "modeled_cost_contribution": -0.007938602450148765,
+        "net_gain": -0.05291923374990137,
+        "turnover_change": 0
+      },
+      "case": "cost_attribution-v2-0",
+      "condition": "verified_memory",
+      "cost": 0.0022362499999999397,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1,
+      "schema_passed": true,
+      "semantic_passed": false,
+      "served_model": "grok-4.20-0309-non-reasoning",
+      "system_fingerprint": "fp_41d52165d8"
+    }
+  ],
+  "gains": {
+    "no_learning": -0.22500000000000003,
+    "raw_logs": -0.12499999999999994
+  },
+  "gates": {
+    "authentic_model": true,
+    "gain_vs_no_learning": false,
+    "gain_vs_raw_logs": false,
+    "positive_paired_95_lower": false,
+    "zero_hard_errors": false
+  },
+  "hard_errors_verified_memory": 16,
+  "learning_demonstrated": false,
+  "original_campaign_overwritten": false,
+  "paired_95_lower": -0.4,
+  "paper_eligible": false,
+  "plan": "dcf4e8a36449bbb58f5d3fc32dcb8dd85b6941bfc08e3be6a643d8f062728389",
+  "protocol_version": 2,
+  "research_competence_not_alpha": true,
+  "schema_failure_counts": {
+    "no_learning": 0,
+    "raw_logs": 0,
+    "verified_memory": 0
+  },
+  "scope": "New synthetic task scenarios; known broad families, no previously reserved prompts. Not open-ended discovery or alpha.",
+  "semantic_rates": {
+    "no_learning": 0.6125,
+    "raw_logs": 0.5125,
+    "verified_memory": 0.3875
+  },
+  "success_rates": {
+    "no_learning": 0.6125,
+    "raw_logs": 0.5125,
+    "verified_memory": 0.3875
+  },
+  "suite": "8a47f95633398985fbd26df6553343fffc78a1e94f5a0547e3739e282bfeb67e"
+}

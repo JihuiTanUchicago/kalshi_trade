@@ -1,0 +1,4 @@
+{
+  "status": "blocked_or_failed",
+  "error": "Partial tool evaluation is retired; do not replay inspected cases"
+}

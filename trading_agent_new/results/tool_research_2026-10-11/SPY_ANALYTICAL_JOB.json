@@ -1,0 +1,164 @@
+{
+  "dataset_id": "fe82dd1197dbcc5744028632f6368f1d1aa6243f8abda370b630588d5d3c487b",
+  "documents": {
+    "snapshot": {
+      "kind": "market_history",
+      "payload": {
+        "decision_at": "2026-10-09T16:30:00-04:00",
+        "initial_shares": 10,
+        "rows": [
+          {
+            "available_at": "2026-10-05T16:15:00-04:00",
+            "close": 774.83,
+            "dividend": 0.0,
+            "effective_at": "2026-10-05T16:00:00-04:00",
+            "id": "ALPACA:b28f4066-5c6d-479b-a2af-85dc1a8f16fb-2026-10-05",
+            "split": 1.0
+          },
+          {
+            "available_at": "2026-10-06T16:15:00-04:00",
+            "close": 779.09,
+            "dividend": 0.0,
+            "effective_at": "2026-10-06T16:00:00-04:00",
+            "id": "ALPACA:b28f4066-5c6d-479b-a2af-85dc1a8f16fb-2026-10-06",
+            "split": 1.0
+          },
+          {
+            "available_at": "2026-10-07T16:15:00-04:00",
+            "close": 777.22,
+            "dividend": 0.0,
+            "effective_at": "2026-10-07T16:00:00-04:00",
+            "id": "ALPACA:b28f4066-5c6d-479b-a2af-85dc1a8f16fb-2026-10-07",
+            "split": 1.0
+          },
+          {
+            "available_at": "2026-10-08T16:15:00-04:00",
+            "close": 773.93,
+            "dividend": 0.0,
+            "effective_at": "2026-10-08T16:00:00-04:00",
+            "id": "ALPACA:b28f4066-5c6d-479b-a2af-85dc1a8f16fb-2026-10-08",
+            "split": 1.0
+          },
+          {
+            "available_at": "2026-10-09T16:15:00-04:00",
+            "close": 778.57,
+            "dividend": 0.0,
+            "effective_at": "2026-10-09T16:00:00-04:00",
+            "id": "ALPACA:b28f4066-5c6d-479b-a2af-85dc1a8f16fb-2026-10-09",
+            "split": 1.0
+          }
+        ]
+      }
+    }
+  },
+  "frequency": "daily",
+  "goal": "Compute the five-session SPY buy-and-hold return, ending shares and usable observation identities from this imported snapshot; timing is an explicit provider-import assumption.",
+  "market": "US",
+  "output_fields": [
+    "usable_ids",
+    "ending_shares",
+    "total_return"
+  ],
+  "provenance": {
+    "directory": "/Users/jonathanzhang/Desktop/Polygon/data/agent_imports/alpaca_proxy_20261010",
+    "mode": "proxy_training_example",
+    "qualification_gaps": {
+      "action_amount_disagreements": [
+        {
+          "independent": 0.378,
+          "key": [
+            "QQQ",
+            "2018-06-18",
+            "dividend"
+          ],
+          "primary": 0.37638
+        },
+        {
+          "independent": 1.633,
+          "key": [
+            "SPY",
+            "2021-12-17",
+            "dividend"
+          ],
+          "primary": 1.636431
+        }
+      ],
+      "ambiguous_same_day_primary_actions": [
+        {
+          "additional": {
+            "cusip": "46090E103",
+            "ex_date": "2022-09-19",
+            "foreign": false,
+            "id": "1966d92d-c3ae-4da1-8daa-483789298533",
+            "payable_date": "2022-10-31",
+            "process_date": "2022-10-31",
+            "rate": 0.51856,
+            "record_date": "2022-09-20",
+            "special": false,
+            "symbol": "QQQ"
+          },
+          "first": {
+            "basis": "Alpaca current-vintage",
+            "pay_date": "2022-09-23",
+            "provider_id": "d0409c14-2b32-4cdb-9d5d-57a8a9a0818f",
+            "source_file": "actions_000.json",
+            "value": 0.51856
+          },
+          "key": [
+            "QQQ",
+            "2022-09-19",
+            "dividend"
+          ],
+          "proxy_policy": "one independently corroborated amount; payment date assumed"
+        }
+      ],
+      "assumed_dividend_pay_dates": 46,
+      "commercial_rights_reviewed": false,
+      "current_security_master_is_historical": false,
+      "independent_price_checks": {
+        "IWM": {
+          "matched_closes": 2708,
+          "maximum_relative_close_difference": 0.017912967997516575,
+          "present": true,
+          "within_fixed_5bp_tolerance": false
+        },
+        "QQQ": {
+          "matched_closes": 2708,
+          "maximum_relative_close_difference": 0.0009302277511115007,
+          "present": true,
+          "within_fixed_5bp_tolerance": false
+        },
+        "SPY": {
+          "matched_closes": 2708,
+          "maximum_relative_close_difference": 0.027934490634886563,
+          "present": true,
+          "within_fixed_5bp_tolerance": false
+        }
+      },
+      "missing_independent_actions": [
+        [
+          "QQQ",
+          "2020-09-21",
+          "dividend"
+        ]
+      ],
+      "missing_primary_actions": [
+        [
+          "SPY",
+          "2016-03-18",
+          "dividend"
+        ],
+        [
+          "SPY",
+          "2018-06-15",
+          "dividend"
+        ]
+      ],
+      "original_availability_proven": false,
+      "survivorship_free_universe": false
+    }
+  },
+  "quality": "proxy",
+  "task_kind": "features",
+  "version": 1
+}

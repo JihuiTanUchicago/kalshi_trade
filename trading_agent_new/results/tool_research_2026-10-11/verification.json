@@ -1,0 +1,192 @@
+{
+  "status": "failed",
+  "checks": {
+    "all_240_unique_paired_episodes": true,
+    "episode_order_matches_preregistered_shuffle": true,
+    "immutable_episode_receipts_match_export": true,
+    "all_answer_keys_independently_reconstructed": true,
+    "strict_grades_match_independent_answers": true,
+    "all_completed_receipt_chains_independently_valid": true,
+    "strict_schema_and_host_answer_keys_separate": false,
+    "forty_unique_jobs_disjoint_from_every_practice_plan": true,
+    "disjoint_from_all_prior_reserved_tool_jobs": true,
+    "genuine_training_before_preregistration": true,
+    "preregistered_before_first_evaluation_session": true,
+    "frozen_controller_case_and_grader_sources_unchanged": true,
+    "same_model_prices_weights_and_original_gates": true,
+    "identical_session_jobs_frozen_contexts_and_call_limits": true,
+    "both_contexts_within_1500_bytes": true,
+    "bounded_repair_policy_preserved": true,
+    "selected_procedures_do_not_carry_past_numerical_answers": true,
+    "same_underlying_training_trace_comparator": true,
+    "memory_exact_procedure_facts_and_original_quality": true,
+    "no_memory_changes_during_evaluation": true,
+    "independent_statistics_and_acceptance_match": true,
+    "tool_completion_and_repair_counts_match": true,
+    "prior_modules_and_graders_unchanged": true,
+    "prechange_source_copies_match_baseline": true,
+    "provider_patch_only_normalizes_transport_exceptions": true,
+    "failed_training_and_pinned_source_preserved": true,
+    "partial_connection_campaign_preserved_and_retired": true,
+    "retired_campaign_not_replayed_or_rescored": true,
+    "all_181_original_files_unchanged": true,
+    "prior_result_files_and_data_audit_unchanged": true,
+    "prior_learning_controls_preserved": true,
+    "original_rejected_strategy_run_unchanged": true,
+    "frozen_seven_table_proxy_unchanged": true,
+    "raw_snapshot_unchanged": true,
+    "original_phase_and_aggregate_caps": true,
+    "genuine_provider_usage_and_unknown_billing_match_reservations": true,
+    "provider_token_prices_independently_match_cost": true,
+    "private_env_permissions_preserved": true,
+    "no_broker_releases_intents_executions_or_paper_authority": true
+  },
+  "passed": 38,
+  "total": 39,
+  "plan": "1976c09fe42d1ed13bcc409382ea9d1475416186e96d9432b16747c3d81235b4",
+  "evaluation": "2fa3763fee81cff5204d3a6a132fff49cebc26246fb4759fe053e5e99f82228d",
+  "genuine_episodes": 240,
+  "genuine_evaluation_calls": 600,
+  "rates": {
+    "no_learning": 0.8375,
+    "raw_logs": 0.8,
+    "verified_memory": 0.8125
+  },
+  "gates": {
+    "authentic_model": true,
+    "gain_vs_no_learning": false,
+    "gain_vs_raw_logs": false,
+    "positive_paired_95_lower": false,
+    "zero_hard_errors": false
+  },
+  "learning_demonstrated": false,
+  "memory_hard_failures": 13,
+  "family_correct_out_of_10": {
+    "controlled_experiments": {
+      "no_learning": 10,
+      "raw_logs": 10,
+      "verified_memory": 9
+    },
+    "corporate_actions": {
+      "no_learning": 9,
+      "raw_logs": 10,
+      "verified_memory": 10
+    },
+    "cost_attribution": {
+      "no_learning": 10,
+      "raw_logs": 10,
+      "verified_memory": 9
+    },
+    "decisions": {
+      "no_learning": 7,
+      "raw_logs": 3,
+      "verified_memory": 6
+    },
+    "execution": {
+      "no_learning": 1,
+      "raw_logs": 10,
+      "verified_memory": 1
+    },
+    "exposures": {
+      "no_learning": 10,
+      "raw_logs": 10,
+      "verified_memory": 10
+    },
+    "features": {
+      "no_learning": 10,
+      "raw_logs": 10,
+      "verified_memory": 10
+    },
+    "timing": {
+      "no_learning": 10,
+      "raw_logs": 1,
+      "verified_memory": 10
+    }
+  },
+  "diagnostics": {
+    "family_cluster_bootstrap_95_lower": -0.0625,
+    "clusters": 8,
+    "cost_by_condition": {
+      "no_learning": 0.40073375000000033,
+      "raw_logs": 0.5116774999999985,
+      "verified_memory": 0.40116625000000106
+    },
+    "calls_by_condition": {
+      "no_learning": 209,
+      "raw_logs": 192,
+      "verified_memory": 199
+    },
+    "largest_possible_gain_over_no_context": 0.16249999999999998,
+    "limits": "Known template families, two repetitions and correlated workflows limit generalization. Family bootstrap is diagnostic only and does not alter the preregistered task-bootstrap gates."
+  },
+  "budget_phases": [
+    {
+      "campaign": "v1-benchmark",
+      "calls": 1437,
+      "used": 2.76155875
+    },
+    {
+      "campaign": "v1-research-demo",
+      "calls": 90,
+      "used": 0.21322375
+    },
+    {
+      "campaign": "v1-smoke",
+      "calls": 2,
+      "used": 0.00053625
+    }
+  ],
+  "uncertain_billing_reservations": [
+    {
+      "campaign": "v1-benchmark",
+      "amount": 0.0114575,
+      "status": "unknown",
+      "created": "2026-10-11T03:35:27.444632+00:00"
+    },
+    {
+      "campaign": "v1-benchmark",
+      "amount": 0.0112075,
+      "status": "unknown",
+      "created": "2026-10-11T03:47:16.979558+00:00"
+    },
+    {
+      "campaign": "v1-benchmark",
+      "amount": 0.01181375,
+      "status": "unknown",
+      "created": "2026-10-11T03:47:41.688155+00:00"
+    },
+    {
+      "campaign": "v1-benchmark",
+      "amount": 0.01151,
+      "status": "unknown",
+      "created": "2026-10-11T03:48:13.928839+00:00"
+    },
+    {
+      "campaign": "v1-benchmark",
+      "amount": 0.0115,
+      "status": "unknown",
+      "created": "2026-10-11T03:56:02.926431+00:00"
+    },
+    {
+      "campaign": "v1-benchmark",
+      "amount": 0.0115675,
+      "status": "unknown",
+      "created": "2026-10-11T03:56:03.850756+00:00"
+    },
+    {
+      "campaign": "v1-benchmark",
+      "amount": 0.01323125,
+      "status": "unknown",
+      "created": "2026-10-11T03:56:04.769456+00:00"
+    },
+    {
+      "campaign": "v1-benchmark",
+      "amount": 0.01151,
+      "status": "unknown",
+      "created": "2026-10-11T03:57:24.434577+00:00"
+    }
+  ],
+  "total_configured_price_estimate": 2.97531875,
+  "scope": "Independent engineering audit; synthetic workflow competence is not investing alpha or data/broker qualification.",
+  "paper_eligible": false
+}

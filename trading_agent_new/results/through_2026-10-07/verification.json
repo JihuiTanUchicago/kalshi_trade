@@ -1,0 +1,30 @@
+{
+  "status": "passed",
+  "raw_and_normalized_hashes_checked": 12,
+  "analysis_output_hashes_checked": 25,
+  "independent_raw_response_recomputation": "return quantiles, volatility and complete Pearson matrix agree",
+  "additional_windows_verified": [
+    "Full_2016_to_current",
+    "Recent_2021_to_current",
+    "Year_2026"
+  ],
+  "recent_session_tables_verified": true,
+  "calendar_closures_checked": [
+    "2018-12-05",
+    "2022-06-20",
+    "2025-01-09"
+  ],
+  "analysis_observations_per_asset": {
+    "SPY": 2706,
+    "IWM": 2706,
+    "EFA": 2706,
+    "IEF": 2706,
+    "TLT": 2706,
+    "GLD": 2706
+  },
+  "latest_completed_session": "2026-10-07",
+  "historical_holdout_explored": true,
+  "holdout_observations_analyzed": 16236,
+  "strategy_performance_calculated": false,
+  "limitations": "Arithmetic and provenance verification; not independent market-data-source validation."
+}

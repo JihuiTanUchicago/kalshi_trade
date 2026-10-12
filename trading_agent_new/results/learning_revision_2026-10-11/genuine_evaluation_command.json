@@ -1,0 +1,24 @@
+{
+  "receipt": "9444d4dd151b844169b1d76a5dd74cc9b55c775fc7fa03a4ccd275a44967f29a",
+  "episodes": 240,
+  "success_rates": {
+    "no_learning": 0.6125,
+    "raw_logs": 0.5125,
+    "verified_memory": 0.3875
+  },
+  "semantic_rates": {
+    "no_learning": 0.6125,
+    "raw_logs": 0.5125,
+    "verified_memory": 0.3875
+  },
+  "gates": {
+    "authentic_model": true,
+    "gain_vs_no_learning": false,
+    "gain_vs_raw_logs": false,
+    "positive_paired_95_lower": false,
+    "zero_hard_errors": false
+  },
+  "learning_demonstrated": false,
+  "cost": 0.4210075,
+  "paper_eligible": false
+}

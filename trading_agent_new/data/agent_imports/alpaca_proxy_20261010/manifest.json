@@ -1,0 +1,237 @@
+{
+  "schema_version": 1,
+  "quality": "proxy",
+  "availability_basis": "assumed_close_plus_15_minutes",
+  "corporate_action_coverage": "proxy_union_current_vintages",
+  "universe_coverage": "fixed_current_etf_basket",
+  "borrow_basis": "excluded_etf_shorts",
+  "financing_basis": "fixed_zero_yield_long_only_account_assumption",
+  "data_constraints": {
+    "exploratory_only": true,
+    "allow_short": false,
+    "maximum_scored_end": "2026-10-09",
+    "paper_eligible": false,
+    "pay_date_policy": "provider date, otherwise ex-date + 30 calendar days",
+    "historical_availability": "assumed; not evidence of original publication",
+    "price_precedence": "raw Alpaca SIP; independent prices never replace bars"
+  },
+  "qualification_gaps": {
+    "commercial_rights_reviewed": false,
+    "original_availability_proven": false,
+    "survivorship_free_universe": false,
+    "current_security_master_is_historical": false,
+    "missing_primary_actions": [
+      [
+        "SPY",
+        "2016-03-18",
+        "dividend"
+      ],
+      [
+        "SPY",
+        "2018-06-15",
+        "dividend"
+      ]
+    ],
+    "missing_independent_actions": [
+      [
+        "QQQ",
+        "2020-09-21",
+        "dividend"
+      ]
+    ],
+    "action_amount_disagreements": [
+      {
+        "key": [
+          "QQQ",
+          "2018-06-18",
+          "dividend"
+        ],
+        "primary": 0.37638,
+        "independent": 0.378
+      },
+      {
+        "key": [
+          "SPY",
+          "2021-12-17",
+          "dividend"
+        ],
+        "primary": 1.636431,
+        "independent": 1.633
+      }
+    ],
+    "assumed_dividend_pay_dates": 46,
+    "ambiguous_same_day_primary_actions": [
+      {
+        "key": [
+          "QQQ",
+          "2022-09-19",
+          "dividend"
+        ],
+        "first": {
+          "value": 0.51856,
+          "pay_date": "2022-09-23",
+          "source_file": "actions_000.json",
+          "provider_id": "d0409c14-2b32-4cdb-9d5d-57a8a9a0818f",
+          "basis": "Alpaca current-vintage"
+        },
+        "additional": {
+          "cusip": "46090E103",
+          "ex_date": "2022-09-19",
+          "foreign": false,
+          "id": "1966d92d-c3ae-4da1-8daa-483789298533",
+          "payable_date": "2022-10-31",
+          "process_date": "2022-10-31",
+          "rate": 0.51856,
+          "record_date": "2022-09-20",
+          "special": false,
+          "symbol": "QQQ"
+        },
+        "proxy_policy": "one independently corroborated amount; payment date assumed"
+      }
+    ],
+    "independent_price_checks": {
+      "IWM": {
+        "present": true,
+        "matched_closes": 2708,
+        "maximum_relative_close_difference": 0.017912967997516575,
+        "within_fixed_5bp_tolerance": false
+      },
+      "QQQ": {
+        "present": true,
+        "matched_closes": 2708,
+        "maximum_relative_close_difference": 0.0009302277511115007,
+        "within_fixed_5bp_tolerance": false
+      },
+      "SPY": {
+        "present": true,
+        "matched_closes": 2708,
+        "maximum_relative_close_difference": 0.027934490634886563,
+        "within_fixed_5bp_tolerance": false
+      }
+    }
+  },
+  "provenance": {
+    "price_manifest_sha256": "225c4ed77137fabff40470bb4922aa190248eaf752d009449b35169939d10e19",
+    "enrichment_manifest_sha256": "0759460d00f18c682f1494d0cb62859804851fecf157e03ca6d3fd4fd2ade642",
+    "source_retrievals": [
+      {
+        "url": "https://data.alpaca.markets/v1/corporate-actions",
+        "params": {
+          "symbols": "IWM,QQQ,SPY",
+          "start": "2016-01-04",
+          "end": "2027-04-07",
+          "limit": 1000,
+          "sort": "asc",
+          "data_quality": "all"
+        },
+        "retrieved_at": "2026-10-10T14:25:35.378830+00:00",
+        "file": "actions_000.json",
+        "http_status": 200
+      },
+      {
+        "url": "https://paper-api.alpaca.markets/v2/calendar",
+        "params": {
+          "start": "2016-01-04",
+          "end": "2026-10-09"
+        },
+        "retrieved_at": "2026-10-10T14:25:36.619554+00:00",
+        "file": "calendar.json",
+        "http_status": 200
+      },
+      {
+        "url": "https://paper-api.alpaca.markets/v2/assets/IWM",
+        "params": {},
+        "retrieved_at": "2026-10-10T14:25:36.944793+00:00",
+        "file": "asset_IWM.json",
+        "http_status": 200
+      },
+      {
+        "url": "https://paper-api.alpaca.markets/v2/assets/QQQ",
+        "params": {},
+        "retrieved_at": "2026-10-10T14:25:37.267891+00:00",
+        "file": "asset_QQQ.json",
+        "http_status": 200
+      },
+      {
+        "url": "https://paper-api.alpaca.markets/v2/assets/SPY",
+        "params": {},
+        "retrieved_at": "2026-10-10T14:25:37.593791+00:00",
+        "file": "asset_SPY.json",
+        "http_status": 200
+      },
+      {
+        "url": "https://query1.finance.yahoo.com/v8/finance/chart/IWM",
+        "params": {
+          "period1": 1451883600,
+          "period2": 1791604800,
+          "interval": "1d",
+          "events": "div,splits",
+          "includeAdjustedClose": "false"
+        },
+        "retrieved_at": "2026-10-10T14:25:38.073038+00:00",
+        "file": "independent_IWM.json",
+        "http_status": 200
+      },
+      {
+        "url": "https://query1.finance.yahoo.com/v8/finance/chart/QQQ",
+        "params": {
+          "period1": 1451883600,
+          "period2": 1791604800,
+          "interval": "1d",
+          "events": "div,splits",
+          "includeAdjustedClose": "false"
+        },
+        "retrieved_at": "2026-10-10T14:25:38.252456+00:00",
+        "file": "independent_QQQ.json",
+        "http_status": 200
+      },
+      {
+        "url": "https://query1.finance.yahoo.com/v8/finance/chart/SPY",
+        "params": {
+          "period1": 1451883600,
+          "period2": 1791604800,
+          "interval": "1d",
+          "events": "div,splits",
+          "includeAdjustedClose": "false"
+        },
+        "retrieved_at": "2026-10-10T14:25:38.437428+00:00",
+        "file": "independent_SPY.json",
+        "http_status": 200
+      }
+    ]
+  },
+  "files": {
+    "sessions": {
+      "path": "sessions.csv",
+      "sha256": "292eb28a1c9a3a9826bce8e4463b02eb58fd2c4f59b24420fdcce97b28385abe"
+    },
+    "assets": {
+      "path": "assets.csv",
+      "sha256": "dd69ef557268a0cd5a9cbd71a08a64858cf56eb23314bdca97623e74a6ab07de"
+    },
+    "bars": {
+      "path": "bars.csv",
+      "sha256": "9379e67ba5d7b6aebb7260a48de5bdb3f02b038ae2b56caa05a7ad79b31044f9"
+    },
+    "membership": {
+      "path": "membership.csv",
+      "sha256": "f5961036cff98ca2e73fd86f5a07987ca1c0a56e39165749942ea61d9d1781d4"
+    },
+    "actions": {
+      "path": "actions.csv",
+      "sha256": "a75017ed8e8bd2f36e5bf1285e35f51a942dfb29260bece3ad3cb3d3b13c7c05"
+    },
+    "borrow": {
+      "path": "borrow.csv",
+      "sha256": "aa4ba7520e3e3cac06e562955588c00c97e7b224970b474f5b72302b48dfb4ba"
+    },
+    "financing": {
+      "path": "financing.csv",
+      "sha256": "57b4b106dafdad475a5f0f5eba2e62dc82e651643476be34f2486449741cf80f"
+    }
+  },
+  "action_provenance": {
+    "path": "action_provenance.json",
+    "sha256": "adbe1d5a41afa550589be9ac628a2d96b401b68a0a67813aef70e23689ed79ae"
+  }
+}

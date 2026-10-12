@@ -1,0 +1,72 @@
+{
+  "scope": "Declared practice only; no evaluated responses inspected or tuned.",
+  "actions": [
+    {
+      "case": "decisions-training",
+      "kind": "analytical_action",
+      "action": {
+        "arguments": {
+          "input": "doc-6765079"
+        },
+        "tool": "apply_research_gates"
+      },
+      "evidence": "665d68e26d96317b13e5ac2c68aec72114fa1147ac19066ae444e7377c5dea6d"
+    },
+    {
+      "case": "decisions-training",
+      "kind": "analytical_action_rejected",
+      "reason": "Unexpected analytical input fields",
+      "repair": 1
+    },
+    {
+      "case": "decisions-training",
+      "kind": "analytical_action_rejected",
+      "reason": "Unexpected analytical input fields",
+      "repair": 2
+    },
+    {
+      "case": "execution-training",
+      "kind": "analytical_action",
+      "action": {
+        "arguments": {
+          "input": "doc-6002156"
+        },
+        "tool": "reconcile_fills"
+      },
+      "evidence": "d80a73b40242231adc1ecb94d163b293069277b7a9c7cbdd46e81848f689af59"
+    },
+    {
+      "case": "execution-training",
+      "kind": "analytical_action",
+      "action": {
+        "arguments": {
+          "input": "doc-6002156"
+        },
+        "tool": "reconcile_fills"
+      },
+      "evidence": "d80a73b40242231adc1ecb94d163b293069277b7a9c7cbdd46e81848f689af59"
+    },
+    {
+      "case": "execution-training",
+      "kind": "analytical_action",
+      "action": {
+        "arguments": {
+          "input": "doc-6002156"
+        },
+        "tool": "reconcile_fills"
+      },
+      "evidence": "d80a73b40242231adc1ecb94d163b293069277b7a9c7cbdd46e81848f689af59"
+    },
+    {
+      "case": "execution-training",
+      "kind": "analytical_action",
+      "action": {
+        "arguments": {
+          "input": "doc-6002156"
+        },
+        "tool": "reconcile_fills"
+      },
+      "evidence": "d80a73b40242231adc1ecb94d163b293069277b7a9c7cbdd46e81848f689af59"
+    }
+  ]
+}

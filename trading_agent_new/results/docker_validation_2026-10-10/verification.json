@@ -1,0 +1,102 @@
+{
+  "as_of": "2026-10-10T06:26:13.981699+00:00",
+  "status": "passed",
+  "scope": "Docker stage-3 validation, scripted synthetic integration, core regression, preservation and commercial data shortlist; not full V1 acceptance",
+  "checks": {
+    "locked_image_sources_match": true,
+    "image_lock_matches": true,
+    "image_identity_matches_all_final_receipts": true,
+    "actual_container_tests_passed": true,
+    "actual_test_source_matches": true,
+    "core_regression_passed": true,
+    "replay_source_matches": true,
+    "synthetic_docker_research_passed": true,
+    "research_artifacts_reproduced_exactly": true,
+    "original_research_preserved": true,
+    "validation_containers_removed": true,
+    "docker_currently_reachable": true
+  },
+  "image": "sha256:bc33f68b6b2439d2d6ecf7f94af043019448b865341ce6455d10b4841cb48a82",
+  "platform": "Linux arm64 via project-local rootless Docker/Lima on macOS arm64",
+  "tests": {
+    "actual_docker": 15,
+    "core_offline": 82
+  },
+  "original_preservation": {
+    "checked": 181,
+    "matched": 181,
+    "changed": []
+  },
+  "evidence_stores": {
+    "research_state": {
+      "verified_artifacts": 13,
+      "finished_run": "67e97b7dbedc417da5c383936ca404e9",
+      "state": "finished",
+      "references": {
+        "spec": "310b9f25e5b6b02afb5a8e84aa1209e4c5caf7f064299531aa982e7852ed2769",
+        "strategy": "42b4c6c882b9dc78fea6e304abc6603155ec62c4267e8e7d06ba2fa7b8b1ba4a",
+        "result": "68214fe4a030b631fe99168a84c4c2fd5e3fd042be067e13c4dec939df83e1f7",
+        "challenge": "0d3816bcf8dded863dfca61b5c047058e64d39703a7f188787338b12c85bfd88",
+        "decision": "f276e8b2cfb3d90b3aeab17ba0d6da60cd385ec24e8bc0ca9c49d1f0df2b0f95"
+      }
+    },
+    "research_replay_corrected/state": {
+      "verified_artifacts": 12,
+      "finished_run": "a4eb32f86ace47eb885fb437e9d3edaa",
+      "state": "finished",
+      "references": {
+        "spec": "310b9f25e5b6b02afb5a8e84aa1209e4c5caf7f064299531aa982e7852ed2769",
+        "strategy": "42b4c6c882b9dc78fea6e304abc6603155ec62c4267e8e7d06ba2fa7b8b1ba4a",
+        "result": "68214fe4a030b631fe99168a84c4c2fd5e3fd042be067e13c4dec939df83e1f7",
+        "challenge": "0d3816bcf8dded863dfca61b5c047058e64d39703a7f188787338b12c85bfd88",
+        "decision": "f276e8b2cfb3d90b3aeab17ba0d6da60cd385ec24e8bc0ca9c49d1f0df2b0f95"
+      }
+    }
+  },
+  "retained_attempts": {
+    "frozen_buffer_mismatch": "research_attempt_initial.json",
+    "replay_report_wrapper_error_after_finished_run": "research_replay/receipt.json",
+    "successful_corrected_replay": "research_replay_corrected/receipt.json",
+    "initial_image_and_tests": "image_initial.json and container_tests_initial.json"
+  },
+  "remaining_gates": [
+    "Qualified licensed data and independent seven-table review",
+    "Real adapter smoke tests and qualified-data research episode",
+    "Full fixed real-model memory-comparison campaign within existing budget",
+    "Identified paper Gateway/account and five real-session statement reconciliations"
+  ],
+  "data_candidates": "data_candidates.json",
+  "data_candidates_are_unqualified": true,
+  "paid_model_calls": 0,
+  "broker_connections": 0,
+  "broker_orders": 0,
+  "data_purchases": 0,
+  "vendor_messages": 0,
+  "learning_improvement_measured": false,
+  "alpha_evidence": false,
+  "runtime_left_running": true,
+  "automatic_host_startup_installed": false,
+  "runtime_select": "source sandbox/environment.sh",
+  "runtime_stop": "limactl stop quant-docker after selecting project-local LIMA_HOME",
+  "limits": [
+    "Passing declared controls does not prove absence of all kernel/container exploits",
+    "Only this arm64 runtime/image was validated",
+    "Explicit JSON checkpoints do not automatically preserve random-generator process state",
+    "Doctor remaining_gates is a static checklist; dated receipts establish completion",
+    "Synthetic calendar/prices and ReplayModel are engineering inputs"
+  ],
+  "evidence_hashes": {
+    "image.json": "c56e29e7e7b94de47ac2bc45954314e48c044b51b00e1ac50ac2f7bdf09abd71",
+    "container_tests.json": "fccbed40827ee4e9ccc9a3969ef8bddba8448880821acb9ff87927e4099be2a2",
+    "core_regression.json": "0e305fcedad5cb81ff63647c5fec677e2387b5280e342cb021133ca4b88ad15a",
+    "environment.json": "bcd735478b8251a7980dacbc8393c951434bed4a7eab9522bc21e1d2ae8f0f20",
+    "docker_client_download.json": "9ec6d48d9ba5f69da9dc30fd9753b99af2488df114420c643feec545f0c42d90",
+    "buildx_download.json": "3e1b28a81acfba04734bb6d3216ce8f2223cf7110c88c27517a6b7c81729c528",
+    "data_candidates.json": "8396ff7969ff7c8810c0123eb6218ce336ebb5ed8acb75a5d95fa9e755c6a4be",
+    "research_integration.json": "fae7fc0d31443bbc225ec4beb6c001897e46e5a818c26e91244c88ee161deba8",
+    "research_attempt_initial.json": "9a0b04757dfcc11121bc7c012a6aadb0c7fb754c9f5d711913e10474ce6ef93b",
+    "research_replay/receipt.json": "7377e4257765c1837cedd3c472c6cb851fc4183b836594e800143f0884ca2c75",
+    "research_replay_corrected/receipt.json": "ec6a37c06753ee40639ff2a56e50ab092cfad4362d660b1ab42af8e8c752b95c",
+    "source_checksums.json": "195a0724fd3bbf7f24aeebf1572d1ede8cb0f37426dedb011ba4bd8ec5d7b704"
+  }
+}

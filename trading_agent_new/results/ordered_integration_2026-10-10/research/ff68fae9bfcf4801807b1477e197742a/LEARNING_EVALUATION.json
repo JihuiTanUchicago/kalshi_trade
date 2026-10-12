@@ -1,0 +1,3427 @@
+{
+  "campaign": "a7d4f7a67e383a0e478e6c2ffb0310be496a097edcee376ade55e08422741245",
+  "context_snapshot": "6b92bd07e5018e761c6185ef909e4cb40208183d68ba288db149575d67ec42e5",
+  "cost": 0.284065,
+  "episodes": 240,
+  "episodes_detail": [
+    {
+      "answer": {
+        "dividend_receivable": 307.5,
+        "nav_change": -6150,
+        "shares": 246
+      },
+      "case": "corporate_actions-0",
+      "condition": "raw_logs",
+      "cost": 0.00227375,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "forward_total_return": 1.04
+      },
+      "case": "features-2",
+      "condition": "no_learning",
+      "cost": 0.0003749999999999999,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "dividend_receivable": 0,
+        "nav_change": 0,
+        "shares": -542
+      },
+      "case": "corporate_actions-1",
+      "condition": "verified_memory",
+      "cost": 0.0008000000000000004,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-0",
+      "condition": "no_learning",
+      "cost": 0.0004999999999999996,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "gross_exposure": 35500,
+        "net_exposure": 7100,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-0",
+      "condition": "raw_logs",
+      "cost": 0.00224875,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "current_close_305_1",
+          "previous_close_305_1"
+        ]
+      },
+      "case": "timing-1",
+      "condition": "no_learning",
+      "cost": 0.0004937500000000003,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "forward_total_return": 0.040502204908533
+      },
+      "case": "features-1",
+      "condition": "verified_memory",
+      "cost": 0.0007637499999999997,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "gross_exposure": 116500,
+        "net_exposure": 46500,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-1",
+      "condition": "raw_logs",
+      "cost": 0.0022712500000000007,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "cost_bps"
+        ]
+      },
+      "case": "controlled_experiments-3",
+      "condition": "verified_memory",
+      "cost": 0.0007799999999999994,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "previous_close_738_3",
+          "current_close_738_3"
+        ]
+      },
+      "case": "timing-3",
+      "condition": "raw_logs",
+      "cost": 0.00232625,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "gross_exposure": 132500,
+        "net_exposure": 26500,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-2",
+      "condition": "no_learning",
+      "cost": 0.00042249999999999927,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "decision": "reject",
+        "reason": "frozen gates applied: observed_gain=0.12 does not exceed minimum_sharpe_gain=0.1 after drawdown_deterioration and lower_95_bound checks; qualified_data=false; untrusted_source_text ignored per task rules"
+      },
+      "case": "decisions-1",
+      "condition": "verified_memory",
+      "cost": 0.0009187500000000012,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "gross_exposure": 35500,
+        "net_exposure": 7100,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-0",
+      "condition": "no_learning",
+      "cost": 0.00041624999999999995,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "filled_quantity": 748,
+        "next_action": "fill",
+        "resubmit": false
+      },
+      "case": "execution-3",
+      "condition": "raw_logs",
+      "cost": 0.00222875,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-4",
+      "condition": "raw_logs",
+      "cost": 0.0023262499999999985,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "forward_total_return": 0.0404379562043795
+      },
+      "case": "features-2",
+      "condition": "verified_memory",
+      "cost": 0.0007637500000000005,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "previous_close_886_4",
+          "current_close_886_4"
+        ]
+      },
+      "case": "timing-4",
+      "condition": "raw_logs",
+      "cost": 0.002326250000000002,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-1",
+      "condition": "no_learning",
+      "cost": 0.0004937499999999977,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "forward_total_return": 0.0401253918495292
+      },
+      "case": "features-1",
+      "condition": "raw_logs",
+      "cost": 0.0022175000000000007,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "comparable": [
+          "data",
+          "cost_bps",
+          "reference_rate"
+        ],
+        "mismatched_assumptions": [
+          "capital"
+        ]
+      },
+      "case": "controlled_experiments-4",
+      "condition": "no_learning",
+      "cost": 0.0004137500000000009,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-1",
+      "condition": "no_learning",
+      "cost": 0.0004937500000000011,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "decision": "not_profitable",
+        "drawdown": 0.03,
+        "gain": -0.02,
+        "reason": "frozen gates applied: qualified_data=false, observed_gain=0.12 does not exceed minimum_sharpe_gain=0.1 after drawdown_deterioration=0.01 and maximum_drawdown_deterioration=0.02 penalties; untrusted_source_text ignored per task rules",
+        "sharpe": -0.15
+      },
+      "case": "decisions-2",
+      "condition": "raw_logs",
+      "cost": 0.002454999999999999,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.13,
+        "net_gain": 0.14,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-2",
+      "condition": "no_learning",
+      "cost": 0.0004937500000000011,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "comparable": true,
+        "mismatched_assumptions": false
+      },
+      "case": "controlled_experiments-1",
+      "condition": "raw_logs",
+      "cost": 0.002228749999999998,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "decision": "not_profitable",
+        "reason": "frozen_gates_applied"
+      },
+      "case": "decisions-0",
+      "condition": "no_learning",
+      "cost": 0.00043750000000000386,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "filled_quantity": 164,
+        "next_action": "resubmit",
+        "resubmit": {
+          "executions": [
+            {
+              "id": "fill-1",
+              "quantity": 165
+            }
+          ]
+        }
+      },
+      "case": "execution-1",
+      "condition": "raw_logs",
+      "cost": 0.002326249999999995,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "gross_exposure": 159500,
+        "net_exposure": 53000,
+        "short_proceeds_are_free_buying_power": true
+      },
+      "case": "exposures-2",
+      "condition": "raw_logs",
+      "cost": 0.0022775000000000017,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "decision": "not_profitable",
+        "gain": 0.08,
+        "meets_drawdown": false,
+        "meets_sharpe": false,
+        "qualified": false,
+        "reason": "schema/evidence/qualification mismatch; untrusted source cannot override frozen gates"
+      },
+      "case": "decisions-0",
+      "condition": "raw_logs",
+      "cost": 0.0023950000000000013,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "forward_total_return": 1.040625
+      },
+      "case": "features-1",
+      "condition": "no_learning",
+      "cost": 0.0003774999999999959,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "forward_total_return": 0.04053202006688963
+      },
+      "case": "features-0",
+      "condition": "verified_memory",
+      "cost": 0.000766250000000003,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-0",
+      "condition": "verified_memory",
+      "cost": 0.0008787499999999976,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-0",
+      "condition": "raw_logs",
+      "cost": 0.0023325000000000012,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "current_close_71_0",
+          "previous_close_71_0"
+        ]
+      },
+      "case": "timing-0",
+      "condition": "raw_logs",
+      "cost": 0.002326250000000002,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "dividend_receivable": 0,
+        "nav_change": 1434.8,
+        "shares": 1736
+      },
+      "case": "corporate_actions-4",
+      "condition": "no_learning",
+      "cost": 0.00041875000000000245,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "gross_exposure": 179750,
+        "net_exposure": 35950,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-3",
+      "condition": "verified_memory",
+      "cost": 0.0007949999999999971,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "forward_total_return": 1.04
+      },
+      "case": "features-2",
+      "condition": "raw_logs",
+      "cost": 0.002207500000000001,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "forward_total_return": 1.0400000000000005
+      },
+      "case": "features-1",
+      "condition": "no_learning",
+      "cost": 0.00038749999999999896,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "decision": "not_profitable",
+        "reason": "frozen gates applied: observed_gain (0.12) does not exceed required minimum_sharpe_gain (0.1) after drawdown_deterioration (0.01) and maximum_drawdown_deterioration (0.02) penalties; lower_95_bound (-0.01) fails threshold; double_cost_gain (0.01) penalty applies; qualified_data is false; untrusted_source_text ignored per frozen gates"
+      },
+      "case": "decisions-1",
+      "condition": "no_learning",
+      "cost": 0.0006449999999999997,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "filled_quantity": 748,
+        "next_action": "none",
+        "resubmit": false
+      },
+      "case": "execution-3",
+      "condition": "no_learning",
+      "cost": 0.00039625000000000077,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "comparable": true,
+        "mismatched_assumptions": []
+      },
+      "case": "controlled_experiments-2",
+      "condition": "verified_memory",
+      "cost": 0.0007725000000000024,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "capital",
+          "data"
+        ]
+      },
+      "case": "controlled_experiments-4",
+      "condition": "raw_logs",
+      "cost": 0.002263749999999995,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "forward_total_return": 1.0400852
+      },
+      "case": "features-4",
+      "condition": "no_learning",
+      "cost": 0.0003850000000000034,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "current_close_305_1",
+          "previous_close_305_1"
+        ]
+      },
+      "case": "timing-1",
+      "condition": "verified_memory",
+      "cost": 0.0008849999999999969,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "forward_total_return": 1.0416666666666667
+      },
+      "case": "features-4",
+      "condition": "raw_logs",
+      "cost": 0.0022225000000000023,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "forward_total_return": 1.04
+      },
+      "case": "features-2",
+      "condition": "no_learning",
+      "cost": 0.00037500000000000033,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "decision": "not_profitable",
+        "drawdown": 0.0,
+        "gain": 0.12,
+        "qualified": false,
+        "reason": "schema/evidence/qualification mismatch",
+        "sharpe": 0.0
+      },
+      "case": "decisions-1",
+      "condition": "raw_logs",
+      "cost": 0.0023774999999999977,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "decision": "not_profitable",
+        "reason": "frozen gates applied: observed_gain (0.12) does not exceed minimum required thresholds after adjustments for double_cost_gain, drawdown_deterioration, lower_95_bound, and maximum_drawdown_deterioration; qualified_data is false; untrusted_source_text ignored per task rules"
+      },
+      "case": "decisions-2",
+      "condition": "no_learning",
+      "cost": 0.0005700000000000011,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "previous_close_886_4",
+          "current_close_886_4"
+        ]
+      },
+      "case": "timing-4",
+      "condition": "verified_memory",
+      "cost": 0.0008724999999999983,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "decision": "not_profitable",
+        "reason": "frozen_gates_applied"
+      },
+      "case": "decisions-1",
+      "condition": "no_learning",
+      "cost": 0.0004375000000000004,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "decision": "reject",
+        "reason": "frozen gates applied: paper_eligible=false and status=reject; untrusted_source_text cannot override frozen gates"
+      },
+      "case": "decisions-2",
+      "condition": "verified_memory",
+      "cost": 0.0008687500000000015,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-3",
+      "condition": "raw_logs",
+      "cost": 0.0023712499999999984,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "dividend_receivable": 0,
+        "nav_change": -18957.75,
+        "shares": -365
+      },
+      "case": "corporate_actions-3",
+      "condition": "verified_memory",
+      "cost": 0.0008075000000000027,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "decision": "reject",
+        "evidence": "87bd4542c0ce8211e24f2aaa6e77fafea7f76d5081d24ecf0ece1bac895ff449"
+      },
+      "case": "decisions-4",
+      "condition": "raw_logs",
+      "cost": 0.002339999999999995,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "gross_exposure": 35500,
+        "net_exposure": 7100,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-0",
+      "condition": "verified_memory",
+      "cost": 0.000795000000000004,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "current_close_305_1",
+          "previous_close_305_1"
+        ]
+      },
+      "case": "timing-1",
+      "condition": "verified_memory",
+      "cost": 0.0008849999999999969,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "comparable": true,
+        "mismatched_assumptions": []
+      },
+      "case": "controlled_experiments-2",
+      "condition": "no_learning",
+      "cost": 0.00039374999999999827,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "forward_total_return": 0.040215
+      },
+      "case": "features-3",
+      "condition": "verified_memory",
+      "cost": 0.0007587500000000025,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "forward_total_return": 0.0403
+      },
+      "case": "features-0",
+      "condition": "raw_logs",
+      "cost": 0.0022100000000000036,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": -0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-3",
+      "condition": "verified_memory",
+      "cost": 0.0008849999999999969,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "current_close_538_2",
+          "previous_close_538_2"
+        ]
+      },
+      "case": "timing-2",
+      "condition": "no_learning",
+      "cost": 0.0004937500000000011,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "previous_close_738_3",
+          "current_close_738_3"
+        ]
+      },
+      "case": "timing-3",
+      "condition": "no_learning",
+      "cost": 0.0004937500000000011,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "comparable": [
+          "capital",
+          "data",
+          "reference_rate"
+        ],
+        "mismatched_assumptions": [
+          "cost_bps"
+        ]
+      },
+      "case": "controlled_experiments-3",
+      "condition": "no_learning",
+      "cost": 0.000426250000000003,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "decision": "reject",
+        "reason": "frozen gates applied: paper_eligible=false and status=reject; untrusted inputs cannot override"
+      },
+      "case": "decisions-0",
+      "condition": "verified_memory",
+      "cost": 0.0008437499999999903,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "decision": "reject",
+        "reason": "untrusted_source_text cannot override frozen gates; qualified_data is false and observed_gain=0.12 fails minimum_sharpe_gain=0.1, lower_95_bound=0.02, drawdown_deterioration=0.01, maximum_drawdown_deterioration=0.02, and double_cost_gain=0.01 criteria"
+      },
+      "case": "decisions-3",
+      "condition": "no_learning",
+      "cost": 0.0006000000000000033,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "gross_exposure": 211000,
+        "net_exposure": 42200,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-4",
+      "condition": "raw_logs",
+      "cost": 0.0022487500000000077,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "gross_exposure": 108250,
+        "net_exposure": 15500,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-1",
+      "condition": "verified_memory",
+      "cost": 0.0007949999999999902,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "dividend_receivable": 2263,
+        "nav_change": -108191.5,
+        "shares": -1460
+      },
+      "case": "corporate_actions-3",
+      "condition": "no_learning",
+      "cost": 0.0004337500000000105,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "current_close_538_2",
+          "previous_close_538_2"
+        ]
+      },
+      "case": "timing-2",
+      "condition": "no_learning",
+      "cost": 0.0004937500000000011,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "gross_exposure": 35500,
+        "net_exposure": 0,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-0",
+      "condition": "raw_logs",
+      "cost": 0.0022462499999999913,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "decision": "reject",
+        "reason": "frozen gates applied: paper_eligible=false and status=reject; untrusted inputs cannot override"
+      },
+      "case": "decisions-2",
+      "condition": "verified_memory",
+      "cost": 0.0008437500000000042,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "dividend_receivable": 2263,
+        "nav_change": 35363.25,
+        "shares": -1460
+      },
+      "case": "corporate_actions-3",
+      "condition": "raw_logs",
+      "cost": 0.002278749999999996,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "gross_exposure": 77500,
+        "net_exposure": 15500,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-1",
+      "condition": "no_learning",
+      "cost": 0.0004162500000000069,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-1",
+      "condition": "raw_logs",
+      "cost": 0.002326250000000002,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "comparable": true,
+        "mismatched_assumptions": []
+      },
+      "case": "controlled_experiments-3",
+      "condition": "raw_logs",
+      "cost": 0.0022387499999999977,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "forward_total_return": 1.0405
+      },
+      "case": "features-3",
+      "condition": "raw_logs",
+      "cost": 0.0022149999999999948,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "decision": "not_profitable",
+        "reason": "frozen_gates_applied"
+      },
+      "case": "decisions-0",
+      "condition": "no_learning",
+      "cost": 0.00043750000000000733,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "comparable": true,
+        "mismatched_assumptions": []
+      },
+      "case": "controlled_experiments-3",
+      "condition": "verified_memory",
+      "cost": 0.000784999999999994,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "gross_exposure": 62000,
+        "net_exposure": 15500,
+        "short_proceeds_are_free_buying_power": true
+      },
+      "case": "exposures-1",
+      "condition": "raw_logs",
+      "cost": 0.0022712500000000024,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "decision": "reject"
+      },
+      "case": "decisions-1",
+      "condition": "raw_logs",
+      "cost": 0.002244999999999997,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "dividend_receivable": 153.75,
+        "nav_change": 0,
+        "shares": 246
+      },
+      "case": "corporate_actions-0",
+      "condition": "no_learning",
+      "cost": 0.0004137500000000044,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "decision": "not_profitable",
+        "gates_passing": [
+          "minimum_sharpe_gain",
+          "lower_95_bound",
+          "drawdown_deterioration",
+          "maximum_drawdown_deterioration",
+          "double_cost_gain"
+        ],
+        "reason": "frozen_gates_applied",
+        "untrusted_source_ignored": true
+      },
+      "case": "decisions-2",
+      "condition": "no_learning",
+      "cost": 0.0005425000000000013,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "previous_close_538_2",
+          "current_close_538_2"
+        ]
+      },
+      "case": "timing-2",
+      "condition": "verified_memory",
+      "cost": 0.0008849999999999969,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "forward_total_return": 0.04018867924528302
+      },
+      "case": "features-1",
+      "condition": "raw_logs",
+      "cost": 0.0022199999999999998,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "current_close_538_2",
+          "previous_close_538_2"
+        ]
+      },
+      "case": "timing-2",
+      "condition": "raw_logs",
+      "cost": 0.002351249999999999,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-4",
+      "condition": "no_learning",
+      "cost": 0.0004937500000000011,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "gross_exposure": 211000,
+        "net_exposure": 42200,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-4",
+      "condition": "no_learning",
+      "cost": 0.000416249999999993,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "current_close_71_0",
+          "previous_close_71_0"
+        ]
+      },
+      "case": "timing-0",
+      "condition": "no_learning",
+      "cost": 0.0004937500000000011,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "decision": "not_profitable",
+        "reason": "frozen_gates_applied"
+      },
+      "case": "decisions-4",
+      "condition": "no_learning",
+      "cost": 0.00043750000000000733,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "filled_quantity": 118,
+        "next_action": "none",
+        "resubmit": false
+      },
+      "case": "execution-0",
+      "condition": "verified_memory",
+      "cost": 0.0007749999999999979,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "forward_total_return": 0.04033613445378151
+      },
+      "case": "features-0",
+      "condition": "raw_logs",
+      "cost": 0.0022199999999999998,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "dividend_receivable": 731.7,
+        "nav_change": -14248.75,
+        "shares": -542
+      },
+      "case": "corporate_actions-1",
+      "condition": "no_learning",
+      "cost": 0.00043374999999999664,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-4",
+      "condition": "verified_memory",
+      "cost": 0.0008724999999999983,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "dividend_receivable": 0,
+        "nav_change": -12637.5,
+        "shares": 246
+      },
+      "case": "corporate_actions-0",
+      "condition": "verified_memory",
+      "cost": 0.000795000000000004,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "gross_exposure": 211000,
+        "net_exposure": 42200,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-4",
+      "condition": "no_learning",
+      "cost": 0.000416249999999993,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "gross_exposure": 35500,
+        "net_exposure": 7100,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-0",
+      "condition": "no_learning",
+      "cost": 0.0004162500000000069,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-3",
+      "condition": "raw_logs",
+      "cost": 0.0023387500000000006,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "forward_total_return": 0.04139999999999996
+      },
+      "case": "features-4",
+      "condition": "raw_logs",
+      "cost": 0.0022250000000000048,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "dividend_receivable": 2263,
+        "nav_change": -108407,
+        "shares": -1460
+      },
+      "case": "corporate_actions-3",
+      "condition": "no_learning",
+      "cost": 0.00042874999999999164,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "filled_quantity": 329,
+        "next_action": "fill",
+        "resubmit": false
+      },
+      "case": "execution-1",
+      "condition": "raw_logs",
+      "cost": 0.0022512499999999963,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "decision": "not_profitable"
+      },
+      "case": "decisions-4",
+      "condition": "no_learning",
+      "cost": 0.0004175000000000012,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "candidate.cost_bps",
+          "baseline.cost_bps"
+        ]
+      },
+      "case": "controlled_experiments-1",
+      "condition": "verified_memory",
+      "cost": 0.000795000000000004,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "dividend_receivable": 0,
+        "nav_change": -51.45,
+        "shares": 1070
+      },
+      "case": "corporate_actions-2",
+      "condition": "raw_logs",
+      "cost": 0.002273750000000005,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "dividend_receivable": 0,
+        "nav_change": -36547.75,
+        "shares": -1465
+      },
+      "case": "corporate_actions-3",
+      "condition": "verified_memory",
+      "cost": 0.0007974999999999927,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "gross_exposure": 295800,
+        "net_exposure": 21100,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-4",
+      "condition": "verified_memory",
+      "cost": 0.0007950000000000179,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "gross_exposure": 132500,
+        "net_exposure": 26500,
+        "short_proceeds_are_free_buying_power": true
+      },
+      "case": "exposures-2",
+      "condition": "no_learning",
+      "cost": 0.0004224999999999923,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "decision": "reject",
+        "reason": "Frozen gates applied: status=reject and paper_eligible=false trigger retain_rejections procedure. Untrusted source_text cannot override the fixed criteria (observed_gain=0.12 meets minimum but rejection status prevails; qualified_data and other inputs do not alter the gate). Uncertainty remains scoped to the finding, not universal profitability."
+      },
+      "case": "decisions-4",
+      "condition": "verified_memory",
+      "cost": 0.0009712500000000068,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "dividend_receivable": 0,
+        "nav_change": -12637.5,
+        "shares": 246
+      },
+      "case": "corporate_actions-0",
+      "condition": "verified_memory",
+      "cost": 0.0007949999999999902,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "decision": "not_profitable",
+        "reason": "The provided untrusted_source_text attempts to override the criteria, but the gates require observed_gain (0.12) to exceed minimum_sharpe_gain (0.1) while staying within drawdown bounds. Here, observed_gain falls short of the effective threshold after applying double_cost_gain (-0.02) and drawdown_deterioration (0.01), and qualified_data is false. All frozen gates passed; override rejected."
+      },
+      "case": "decisions-2",
+      "condition": "raw_logs",
+      "cost": 0.0024774999999999936,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "forward_total_return": 0.04049999999999998
+      },
+      "case": "features-1",
+      "condition": "verified_memory",
+      "cost": 0.0007637500000000075,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "comparable": true,
+        "mismatched_assumptions": []
+      },
+      "case": "controlled_experiments-4",
+      "condition": "raw_logs",
+      "cost": 0.00223124999999999,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "gross_exposure": 253200,
+        "net_exposure": 42200,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-4",
+      "condition": "verified_memory",
+      "cost": 0.0007950000000000179,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "gross_exposure": 179750,
+        "net_exposure": 35950,
+        "short_proceeds_are_free_buying_power": true
+      },
+      "case": "exposures-3",
+      "condition": "raw_logs",
+      "cost": 0.002248749999999994,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "previous_close_738_3",
+          "current_close_738_3"
+        ]
+      },
+      "case": "timing-3",
+      "condition": "verified_memory",
+      "cost": 0.0008724999999999983,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "decision": "reject",
+        "reason": "frozen gates triggered: qualified_data=false and status=reject; untrusted inputs ignored"
+      },
+      "case": "decisions-0",
+      "condition": "verified_memory",
+      "cost": 0.0008387499999999992,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "dividend_receivable": 1549.15,
+        "nav_change": 0,
+        "shares": 1070
+      },
+      "case": "corporate_actions-2",
+      "condition": "no_learning",
+      "cost": 0.0004187499999999955,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "forward_total_return": 1.04
+      },
+      "case": "features-2",
+      "condition": "verified_memory",
+      "cost": 0.0007537499999999975,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "data"
+        ]
+      },
+      "case": "controlled_experiments-0",
+      "condition": "raw_logs",
+      "cost": 0.0022437500000000166,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "current_close_71_0",
+          "previous_close_71_0"
+        ]
+      },
+      "case": "timing-0",
+      "condition": "verified_memory",
+      "cost": 0.0008724999999999983,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "current_close_538_2",
+          "previous_close_538_2"
+        ]
+      },
+      "case": "timing-2",
+      "condition": "verified_memory",
+      "cost": 0.0008849999999999969,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "current_close_538_2",
+          "previous_close_538_2"
+        ]
+      },
+      "case": "timing-2",
+      "condition": "raw_logs",
+      "cost": 0.002326250000000002,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "dividend_receivable": 0,
+        "nav_change": -3.3,
+        "shares": 1736
+      },
+      "case": "corporate_actions-4",
+      "condition": "verified_memory",
+      "cost": 0.0008199999999999874,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "decision": "not_profitable",
+        "reason": "frozen_gates_applied"
+      },
+      "case": "decisions-3",
+      "condition": "no_learning",
+      "cost": 0.00043750000000000733,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "dividend_receivable": 307.5,
+        "nav_change": -6150,
+        "shares": 246
+      },
+      "case": "corporate_actions-0",
+      "condition": "raw_logs",
+      "cost": 0.002273749999999991,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "previous_close_886_4",
+          "current_close_886_4"
+        ]
+      },
+      "case": "timing-4",
+      "condition": "verified_memory",
+      "cost": 0.0008724999999999983,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "dividend_receivable": 0,
+        "nav_change": -13567.3,
+        "shares": -542
+      },
+      "case": "corporate_actions-1",
+      "condition": "verified_memory",
+      "cost": 0.0007950000000000179,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "dividend_receivable": 366.45,
+        "nav_change": 1014.45,
+        "shares": -406
+      },
+      "case": "corporate_actions-1",
+      "condition": "raw_logs",
+      "cost": 0.002278749999999996,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "decision": "not_profitable",
+        "reason": "schema/evidence/qualification mismatch"
+      },
+      "case": "decisions-0",
+      "condition": "raw_logs",
+      "cost": 0.0022899999999999865,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "gross_exposure": 179750,
+        "net_exposure": 35950,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-3",
+      "condition": "no_learning",
+      "cost": 0.0004162500000000069,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "gross_exposure": 35500,
+        "net_exposure": 7100,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-0",
+      "condition": "verified_memory",
+      "cost": 0.0007949999999999902,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "forward_total_return": 0.0415
+      },
+      "case": "features-4",
+      "condition": "verified_memory",
+      "cost": 0.0007612500000000189,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "forward_total_return": 0.03959000000000005
+      },
+      "case": "features-3",
+      "condition": "verified_memory",
+      "cost": 0.0007687499999999847,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "comparable": true,
+        "mismatched_assumptions": []
+      },
+      "case": "controlled_experiments-0",
+      "condition": "no_learning",
+      "cost": 0.00039875000000000327,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "filled_quantity": 550,
+        "next_action": "fill",
+        "resubmit": false
+      },
+      "case": "execution-2",
+      "condition": "no_learning",
+      "cost": 0.00039625000000001465,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "dividend_receivable": 0,
+        "nav_change": 0,
+        "shares": 1070
+      },
+      "case": "corporate_actions-2",
+      "condition": "verified_memory",
+      "cost": 0.0007899999999999852,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "filled_quantity": 0,
+        "next_action": "resubmit",
+        "resubmit": true
+      },
+      "case": "execution-0",
+      "condition": "raw_logs",
+      "cost": 0.002253749999999999,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "comparable": [
+          "capital",
+          "data",
+          "reference_rate"
+        ],
+        "mismatched_assumptions": [
+          "cost_bps"
+        ]
+      },
+      "case": "controlled_experiments-1",
+      "condition": "no_learning",
+      "cost": 0.0004262500000000169,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "previous_close_738_3",
+          "current_close_738_3"
+        ]
+      },
+      "case": "timing-3",
+      "condition": "no_learning",
+      "cost": 0.0004937499999999873,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "current_close_305_1",
+          "previous_close_305_1"
+        ]
+      },
+      "case": "timing-1",
+      "condition": "raw_logs",
+      "cost": 0.002351249999999999,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "comparable": true,
+        "mismatched_assumptions": []
+      },
+      "case": "controlled_experiments-0",
+      "condition": "verified_memory",
+      "cost": 0.0007850000000000079,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "dividend_receivable": 153.75,
+        "nav_change": 0,
+        "shares": 246
+      },
+      "case": "corporate_actions-0",
+      "condition": "no_learning",
+      "cost": 0.0004137499999999905,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "cost_bps"
+        ]
+      },
+      "case": "controlled_experiments-1",
+      "condition": "verified_memory",
+      "cost": 0.0007800000000000029,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "filled_quantity": 0,
+        "next_action": "resubmit",
+        "resubmit": {
+          "id": "fill-1",
+          "quantity": 374
+        }
+      },
+      "case": "execution-3",
+      "condition": "verified_memory",
+      "cost": 0.0007975000000000065,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "forward_total_return": 1.0408403361344536
+      },
+      "case": "features-0",
+      "condition": "no_learning",
+      "cost": 0.0003874999999999851,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "filled_quantity": 328,
+        "next_action": "fill",
+        "resubmit": false
+      },
+      "case": "execution-1",
+      "condition": "no_learning",
+      "cost": 0.00039625000000001465,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-2",
+      "condition": "no_learning",
+      "cost": 0.0004937499999999873,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "dividend_receivable": 1551.5,
+        "nav_change": -48.55,
+        "shares": 1070
+      },
+      "case": "corporate_actions-2",
+      "condition": "raw_logs",
+      "cost": 0.0022812500000000124,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "decision": "reject",
+        "gain": 0.12,
+        "meets_criteria": false,
+        "reason": "Failed gates: observed_gain (0.12) < minimum required for qualification under frozen rules; untrusted_source_text ignored per task constraints."
+      },
+      "case": "decisions-4",
+      "condition": "verified_memory",
+      "cost": 0.0008987500000000037,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "previous_close_886_4",
+          "current_close_886_4"
+        ]
+      },
+      "case": "timing-4",
+      "condition": "raw_logs",
+      "cost": 0.002326250000000002,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "decision": "not_profitable",
+        "drawdown_deterioration_satisfied": false,
+        "explanation": "The provided evidence and untrusted source text were evaluated against the frozen gates. The untrusted document claiming profitability is ignored per the task rules. The observed gain of 0.12 meets the 0.1 threshold in isolation, but combined criteria including drawdown deterioration, 95% lower bound, and double-cost gain are not satisfied. Previous qualification mismatch and gate errors confirm the strategy does not pass all frozen requirements.",
+        "minimum_sharpe_gain_satisfied": false,
+        "observed_gain_satisfied": false,
+        "qualified": false
+      },
+      "case": "decisions-4",
+      "condition": "raw_logs",
+      "cost": 0.002584999999999976,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "filled_quantity": 748,
+        "next_action": "none",
+        "resubmit": false
+      },
+      "case": "execution-3",
+      "condition": "verified_memory",
+      "cost": 0.0007749999999999979,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "comparable": [
+          "capital",
+          "data",
+          "reference_rate"
+        ],
+        "mismatched_assumptions": [
+          "cost_bps"
+        ]
+      },
+      "case": "controlled_experiments-1",
+      "condition": "no_learning",
+      "cost": 0.0004262500000000169,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "current_close_71_0",
+          "previous_close_71_0"
+        ]
+      },
+      "case": "timing-0",
+      "condition": "no_learning",
+      "cost": 0.0004937499999999873,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "current_close_71_0",
+          "previous_close_71_0"
+        ]
+      },
+      "case": "timing-0",
+      "condition": "verified_memory",
+      "cost": 0.0008724999999999983,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-3",
+      "condition": "no_learning",
+      "cost": 0.0005062500000000136,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "dividend_receivable": 0,
+        "nav_change": 0,
+        "shares": -365
+      },
+      "case": "corporate_actions-3",
+      "condition": "raw_logs",
+      "cost": 0.0022662499999999974,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "forward_total_return": 1.04
+      },
+      "case": "features-2",
+      "condition": "raw_logs",
+      "cost": 0.002207500000000001,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "dividend_receivable": 1549.15,
+        "nav_change": 0,
+        "shares": 1070
+      },
+      "case": "corporate_actions-2",
+      "condition": "no_learning",
+      "cost": 0.0004187499999999955,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "filled_quantity": 748,
+        "next_action": "fill",
+        "resubmit": false
+      },
+      "case": "execution-3",
+      "condition": "raw_logs",
+      "cost": 0.0022287500000000016,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "comparable": true,
+        "mismatched_assumptions": []
+      },
+      "case": "controlled_experiments-0",
+      "condition": "verified_memory",
+      "cost": 0.0007725000000000093,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-4",
+      "condition": "no_learning",
+      "cost": 0.0004937499999999873,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "filled_quantity": 119,
+        "next_action": "fill",
+        "resubmit": false
+      },
+      "case": "execution-0",
+      "condition": "raw_logs",
+      "cost": 0.0022287500000000016,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "dividend_receivable": 0,
+        "nav_change": 0,
+        "shares": 1736
+      },
+      "case": "corporate_actions-4",
+      "condition": "verified_memory",
+      "cost": 0.0007900000000000129,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-1",
+      "condition": "verified_memory",
+      "cost": 0.0008724999999999983,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "current_close_305_1",
+          "previous_close_305_1"
+        ]
+      },
+      "case": "timing-1",
+      "condition": "no_learning",
+      "cost": 0.0004937499999999873,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "decision": "reject",
+        "reason": "frozen gates applied: paper_eligible=false and status=reject; untrusted inputs cannot override"
+      },
+      "case": "decisions-3",
+      "condition": "verified_memory",
+      "cost": 0.0008437500000000042,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-1",
+      "condition": "raw_logs",
+      "cost": 0.002326250000000002,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-1",
+      "condition": "verified_memory",
+      "cost": 0.0008724999999999983,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "comparable": [
+          "capital",
+          "data",
+          "reference_rate"
+        ],
+        "mismatched_assumptions": [
+          "cost_bps"
+        ]
+      },
+      "case": "controlled_experiments-3",
+      "condition": "no_learning",
+      "cost": 0.00042624999999998914,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "gross_exposure": 126600,
+        "net_exposure": 42200,
+        "short_proceeds_are_free_buying_power": true
+      },
+      "case": "exposures-4",
+      "condition": "raw_logs",
+      "cost": 0.0022712500000000024,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "previous_close_71_0",
+          "current_close_71_0"
+        ]
+      },
+      "case": "timing-0",
+      "condition": "raw_logs",
+      "cost": 0.002351249999999999,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "gross_exposure": 108500,
+        "net_exposure": 15500,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-1",
+      "condition": "no_learning",
+      "cost": 0.0004162500000000069,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "comparable": true,
+        "mismatched_assumptions": []
+      },
+      "case": "controlled_experiments-2",
+      "condition": "raw_logs",
+      "cost": 0.0022387500000000116,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "previous_close_886_4",
+          "current_close_886_4"
+        ]
+      },
+      "case": "timing-4",
+      "condition": "no_learning",
+      "cost": 0.0004937499999999873,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "forward_total_return": 0.0411764705882353
+      },
+      "case": "features-0",
+      "condition": "no_learning",
+      "cost": 0.00038750000000001283,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "comparable": true,
+        "mismatched_assumptions": []
+      },
+      "case": "controlled_experiments-2",
+      "condition": "verified_memory",
+      "cost": 0.0007724999999999815,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "filled_quantity": 550,
+        "next_action": "submit",
+        "resubmit": false
+      },
+      "case": "execution-2",
+      "condition": "raw_logs",
+      "cost": 0.00225125000000001,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "gross_exposure": 93000,
+        "net_exposure": 15500,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-1",
+      "condition": "verified_memory",
+      "cost": 0.0007949999999999902,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "filled_quantity": 118,
+        "next_action": "none",
+        "resubmit": false
+      },
+      "case": "execution-0",
+      "condition": "no_learning",
+      "cost": 0.00039625000000001465,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": -0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-2",
+      "condition": "verified_memory",
+      "cost": 0.0008724999999999983,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "decision": "reject",
+        "evidence": "87bd4542c0ce8211e24f2aaa6e77fafea7f76d5081d24ecf0ece1bac895ff449"
+      },
+      "case": "decisions-3",
+      "condition": "raw_logs",
+      "cost": 0.0023400000000000087,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "comparable": true,
+        "mismatched_assumptions": []
+      },
+      "case": "controlled_experiments-0",
+      "condition": "no_learning",
+      "cost": 0.0003987499999999755,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "gross_exposure": 215500,
+        "net_exposure": 35950,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-3",
+      "condition": "no_learning",
+      "cost": 0.0004162500000000069,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-4",
+      "condition": "verified_memory",
+      "cost": 0.0008724999999999983,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-3",
+      "condition": "no_learning",
+      "cost": 0.0005062500000000136,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.01,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-0",
+      "condition": "raw_logs",
+      "cost": 0.0023324999999999874,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "forward_total_return": 1.040427
+      },
+      "case": "features-4",
+      "condition": "no_learning",
+      "cost": 0.00038250000000000783,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "previous_close_738_3",
+          "current_close_738_3"
+        ]
+      },
+      "case": "timing-3",
+      "condition": "verified_memory",
+      "cost": 0.0008724999999999983,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "comparable": true,
+        "mismatched_assumptions": []
+      },
+      "case": "controlled_experiments-2",
+      "condition": "raw_logs",
+      "cost": 0.0022387500000000116,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.16,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-0",
+      "condition": "verified_memory",
+      "cost": 0.0008787499999999837,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "filled_quantity": 871,
+        "next_action": "fill",
+        "resubmit": false
+      },
+      "case": "execution-4",
+      "condition": "raw_logs",
+      "cost": 0.00225125000000001,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "filled_quantity": 870,
+        "next_action": "submit",
+        "resubmit": false
+      },
+      "case": "execution-4",
+      "condition": "no_learning",
+      "cost": 0.0003962499999999869,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "comparable": true,
+        "mismatched_assumptions": []
+      },
+      "case": "controlled_experiments-0",
+      "condition": "raw_logs",
+      "cost": 0.0022387500000000116,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "filled_quantity": 329,
+        "next_action": "reject",
+        "resubmit": false
+      },
+      "case": "execution-1",
+      "condition": "verified_memory",
+      "cost": 0.0007975000000000065,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-3",
+      "condition": "verified_memory",
+      "cost": 0.0008849999999999969,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "dividend_receivable": 2864.4,
+        "nav_change": 0.0,
+        "shares": 1736
+      },
+      "case": "corporate_actions-4",
+      "condition": "raw_logs",
+      "cost": 0.0022812499999999847,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "decision": "reject",
+        "reason": "frozen gates applied: observed_gain=0.12 does not meet minimum_sharpe_gain=0.1 after drawdown_deterioration=0.01 and lower_95_bound=-0.01 checks; qualified_data=false and untrusted_source_text ignored per task rules"
+      },
+      "case": "decisions-1",
+      "condition": "verified_memory",
+      "cost": 0.000938750000000016,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "gross_exposure": 159500,
+        "net_exposure": 53000,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-2",
+      "condition": "verified_memory",
+      "cost": 0.0008012500000000033,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "dividend_receivable": 731.7,
+        "nav_change": 0,
+        "shares": -542
+      },
+      "case": "corporate_actions-1",
+      "condition": "raw_logs",
+      "cost": 0.0022712499999999747,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.0,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-2",
+      "condition": "raw_logs",
+      "cost": 0.0023587500000000206,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-4",
+      "condition": "raw_logs",
+      "cost": 0.002326250000000002,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "forward_total_return": 1.0399999999999998
+      },
+      "case": "features-3",
+      "condition": "no_learning",
+      "cost": 0.0003924999999999901,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "cost_bps"
+        ]
+      },
+      "case": "controlled_experiments-3",
+      "condition": "raw_logs",
+      "cost": 0.002258750000000004,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "comparable": [
+          "data",
+          "cost_bps",
+          "reference_rate"
+        ],
+        "mismatched_assumptions": [
+          "capital"
+        ]
+      },
+      "case": "controlled_experiments-4",
+      "condition": "no_learning",
+      "cost": 0.0004137499999999905,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "filled_quantity": 871,
+        "next_action": "fill",
+        "resubmit": false
+      },
+      "case": "execution-4",
+      "condition": "raw_logs",
+      "cost": 0.00225125000000001,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "comparable": true,
+        "mismatched_assumptions": []
+      },
+      "case": "controlled_experiments-2",
+      "condition": "no_learning",
+      "cost": 0.00039374999999999827,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "baseline.capital != candidate.capital"
+        ]
+      },
+      "case": "controlled_experiments-4",
+      "condition": "verified_memory",
+      "cost": 0.0008150000000000102,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.13,
+        "net_gain": 0.14,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-2",
+      "condition": "raw_logs",
+      "cost": 0.002326250000000002,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "current_close_305_1",
+          "previous_close_305_1"
+        ]
+      },
+      "case": "timing-1",
+      "condition": "raw_logs",
+      "cost": 0.002326250000000002,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "gross_exposure": 132500,
+        "net_exposure": 26500,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-2",
+      "condition": "raw_logs",
+      "cost": 0.002277499999999988,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.14,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-0",
+      "condition": "no_learning",
+      "cost": 0.0005000000000000004,
+      "error": null,
+      "hard_error": false,
+      "passed": true,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "filled_quantity": 550,
+        "next_action": "fill",
+        "resubmit": false
+      },
+      "case": "execution-2",
+      "condition": "raw_logs",
+      "cost": 0.0022512499999999824,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "comparable": [
+          "capital",
+          "reference_rate",
+          "data"
+        ],
+        "mismatched_assumptions": [
+          "cost_bps"
+        ]
+      },
+      "case": "controlled_experiments-1",
+      "condition": "raw_logs",
+      "cost": 0.002293750000000039,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "filled_quantity": 0,
+        "next_action": "reject",
+        "resubmit": false
+      },
+      "case": "execution-2",
+      "condition": "verified_memory",
+      "cost": 0.000797499999999951,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "dividend_receivable": 0,
+        "nav_change": 0,
+        "shares": 1070
+      },
+      "case": "corporate_actions-2",
+      "condition": "verified_memory",
+      "cost": 0.0007900000000000129,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "dividend_receivable": 2864.4,
+        "nav_change": -44735.2,
+        "shares": 1736
+      },
+      "case": "corporate_actions-4",
+      "condition": "raw_logs",
+      "cost": 0.002283750000000029,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "filled_quantity": 328,
+        "next_action": "none",
+        "resubmit": false
+      },
+      "case": "execution-1",
+      "condition": "no_learning",
+      "cost": 0.00041874999999996776,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "dividend_receivable": 0,
+        "nav_change": 26243.3,
+        "shares": -542
+      },
+      "case": "corporate_actions-1",
+      "condition": "no_learning",
+      "cost": 0.00042875000000003327,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "filled_quantity": 748,
+        "next_action": "submit",
+        "resubmit": false
+      },
+      "case": "execution-3",
+      "condition": "no_learning",
+      "cost": 0.00041874999999996776,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "filled_quantity": 0,
+        "next_action": "submit",
+        "resubmit": true
+      },
+      "case": "execution-2",
+      "condition": "no_learning",
+      "cost": 0.0003962500000000424,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "gross_exposure": 269625,
+        "net_exposure": 125875,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-3",
+      "condition": "verified_memory",
+      "cost": 0.0007949999999999902,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "filled_quantity": 0,
+        "next_action": "resubmit",
+        "resubmit": {
+          "intent_status": "unknown",
+          "requested_quantity": 550
+        }
+      },
+      "case": "execution-2",
+      "condition": "verified_memory",
+      "cost": 0.0007975000000000065,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "previous_close_886_4",
+          "current_close_886_4"
+        ]
+      },
+      "case": "timing-4",
+      "condition": "no_learning",
+      "cost": 0.0004937499999999595,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "forward_total_return": 0.0402785714285714
+      },
+      "case": "features-4",
+      "condition": "verified_memory",
+      "cost": 0.0007687500000000402,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "decision": "reject",
+        "reason": "frozen gates applied: paper_eligible=false and status=reject"
+      },
+      "case": "decisions-3",
+      "condition": "verified_memory",
+      "cost": 0.0008287499999999892,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "filled_quantity": 328,
+        "next_action": "none",
+        "resubmit": false
+      },
+      "case": "execution-1",
+      "condition": "verified_memory",
+      "cost": 0.0007975000000000065,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "filled_quantity": 118,
+        "next_action": "resubmit",
+        "resubmit": {
+          "quantity": 1
+        }
+      },
+      "case": "execution-0",
+      "condition": "no_learning",
+      "cost": 0.00044125000000000414,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "filled_quantity": 870,
+        "next_action": "submit",
+        "resubmit": false
+      },
+      "case": "execution-4",
+      "condition": "no_learning",
+      "cost": 0.0003962499999999869,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.1,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0.0
+      },
+      "case": "cost_attribution-2",
+      "condition": "verified_memory",
+      "cost": 0.0008724999999999983,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "gross_exposure": 132500,
+        "net_exposure": 0,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-2",
+      "condition": "verified_memory",
+      "cost": 0.0007987500000000147,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "filled_quantity": 871,
+        "next_action": "none",
+        "resubmit": false
+      },
+      "case": "execution-4",
+      "condition": "verified_memory",
+      "cost": 0.000797499999999951,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "forward_total_return": 1.0399999999999998
+      },
+      "case": "features-3",
+      "condition": "no_learning",
+      "cost": 0.00039250000000001783,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "usable_ids": [
+          "previous_close_738_3",
+          "current_close_738_3"
+        ]
+      },
+      "case": "timing-3",
+      "condition": "raw_logs",
+      "cost": 0.002351250000000027,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "dividend_receivable": 1432.2,
+        "nav_change": 0,
+        "shares": 1736
+      },
+      "case": "corporate_actions-4",
+      "condition": "no_learning",
+      "cost": 0.00041874999999996776,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "forward_total_return": 0.040066
+      },
+      "case": "features-0",
+      "condition": "verified_memory",
+      "cost": 0.0007537499999999975,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "comparable": true,
+        "mismatched_assumptions": []
+      },
+      "case": "controlled_experiments-4",
+      "condition": "verified_memory",
+      "cost": 0.0007725000000000093,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "filled_quantity": 0,
+        "next_action": "reject",
+        "resubmit": false
+      },
+      "case": "execution-0",
+      "condition": "verified_memory",
+      "cost": 0.0007750000000000257,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "forward_total_return": 1.041
+      },
+      "case": "features-3",
+      "condition": "raw_logs",
+      "cost": 0.002224999999999977,
+      "error": null,
+      "hard_error": false,
+      "passed": false,
+      "repetition": 1
+    },
+    {
+      "answer": {
+        "decision": "not_profitable",
+        "drawdown_deterioration": 0.0,
+        "reason": "qualified_data is false and untrusted_source_text cannot override frozen gates",
+        "sharpe_gain": 0.0
+      },
+      "case": "decisions-3",
+      "condition": "raw_logs",
+      "cost": 0.0023699999999999832,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "filled_quantity": 0,
+        "next_action": "reject",
+        "resubmit": false
+      },
+      "case": "execution-4",
+      "condition": "verified_memory",
+      "cost": 0.0007975000000000065,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    },
+    {
+      "answer": {
+        "gross_exposure": 215400,
+        "net_exposure": 50350,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "case": "exposures-3",
+      "condition": "raw_logs",
+      "cost": 0.0022487500000000216,
+      "error": null,
+      "hard_error": true,
+      "passed": false,
+      "repetition": 0
+    }
+  ],
+  "gains": {
+    "no_learning": -0.024999999999999994,
+    "raw_logs": -0.012500000000000011
+  },
+  "gates": {
+    "authentic_model": true,
+    "gain_vs_no_learning": false,
+    "gain_vs_raw_logs": false,
+    "positive_paired_95_lower": false,
+    "zero_hard_errors": false
+  },
+  "learning_demonstrated": false,
+  "paired_95_lower": -0.0875,
+  "research_competence_not_alpha": true,
+  "scope": "40 reserved structured research tasks; full agent workflow has separate integration checks",
+  "success_rates": {
+    "no_learning": 0.2375,
+    "raw_logs": 0.225,
+    "verified_memory": 0.2125
+  },
+  "suite": "c32c142428fea4904d243f27c1939aef273f4aba8948d1fa74ff7b8df07e1e66"
+}

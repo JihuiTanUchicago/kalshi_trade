@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "raw_and_normalized_hashes_checked": 12,
+  "analysis_output_hashes_checked": 17,
+  "independent_raw_response_recomputation": "return quantiles, volatility and complete Pearson matrix agree",
+  "calendar_closures_checked": [
+    "2007-01-02",
+    "2012-10-29",
+    "2012-10-30"
+  ],
+  "development_observations_per_asset": 2015,
+  "holdout_observations_analyzed": 0,
+  "strategy_performance_calculated": false,
+  "limitations": "Arithmetic and provenance verification; not independent market-data-source validation."
+}

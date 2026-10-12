@@ -1,0 +1,49 @@
+{
+  "recorded_at": "2026-10-10 14:12:13 UTC",
+  "status": "authenticated_download_succeeded",
+  "preflight": {
+    "command": ".runtime/alpaca-venv/bin/python research/fetch_alpaca.py --check-config",
+    "exit_code": 0,
+    "summary": {
+      "status": "ready",
+      "endpoint": "https://data.alpaca.markets",
+      "credentials_present": true,
+      "authenticated": false
+    }
+  },
+  "download": {
+    "command": ".runtime/alpaca-venv/bin/python research/fetch_alpaca.py",
+    "exit_code": 0,
+    "summary": {
+      "status": "downloaded",
+      "snapshot": "/Users/jonathanzhang/Desktop/Polygon/data/alpaca_snapshots/20261010T140939.395972Z",
+      "coverage": {
+        "SPY": {
+          "first_session": "2016-01-04",
+          "last_session": "2026-10-09",
+          "rows": 2708
+        },
+        "QQQ": {
+          "first_session": "2016-01-04",
+          "last_session": "2026-10-09",
+          "rows": 2708
+        },
+        "IWM": {
+          "first_session": "2016-01-04",
+          "last_session": "2026-10-09",
+          "rows": 2708
+        }
+      },
+      "feed": "sip",
+      "adjustment": "raw",
+      "quality": "proxy"
+    }
+  },
+  "verification": "verification.json",
+  "credentials_or_env_content_recorded": false,
+  "actual_http_page_count": "Not instrumented; the pinned SDK handles pagination.",
+  "orders_submitted": 0,
+  "subscriptions_purchased": 0,
+  "model_requests": 0,
+  "full_source_qualification": false
+}

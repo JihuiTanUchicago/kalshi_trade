@@ -1,0 +1,21 @@
+{
+  "run": "67e97b7dbedc417da5c383936ca404e9",
+  "state": "finished",
+  "strategy_execution": "actual Docker container",
+  "controller_model": "scripted ReplayModel",
+  "image": "sha256:bc33f68b6b2439d2d6ecf7f94af043019448b865341ce6455d10b4841cb48a82",
+  "data_quality": "synthetic",
+  "scored_start": "2026-06-29",
+  "scored_end": "2026-10-08",
+  "controlled_trials": 6,
+  "independent_ledger": true,
+  "prefix_invariance": true,
+  "future_perturbation": true,
+  "challenge_passed": true,
+  "decision": "revise_data_qualification",
+  "paper_eligible": false,
+  "learning_improvement_measured": false,
+  "paid_model_calls": 0,
+  "broker_orders": 0,
+  "report": "/Users/jonathanzhang/Desktop/Polygon/results/docker_validation_2026-10-10/research_report/REPORT.md"
+}

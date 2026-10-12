@@ -1,0 +1,53 @@
+primary_B0 valid
+primary_B1 valid
+primary_B2 valid
+primary_B3 valid
+primary_Monthly valid
+primary_NoTrend valid
+primary_EqualWeight valid
+primary_SPY valid
+cost10_B0 valid
+cost10_B2 valid
+cost25_B0 valid
+cost25_B2 valid
+capital10000_B0 valid
+capital10000_B2 valid
+capital1000000_B0 valid
+capital1000000_B2 valid
+service_B0 valid
+cashyield_B0 valid
+settled_B0 valid
+dividend0_B0 valid
+dividend60_B0 valid
+lag_B0 valid
+nocommission_B0 valid
+service_B2 valid
+cashyield_B2 valid
+settled_B2 valid
+dividend0_B2 valid
+dividend60_B2 valid
+lag_B2 valid
+nocommission_B2 valid
+costfree_B0 valid
+costfree_B2 valid
+bootstrap full 21 done
+bootstrap full 63 done
+bootstrap 2016_2020 21 done
+bootstrap 2016_2020 63 done
+bootstrap 2021_current 21 done
+bootstrap 2021_current 63 done
+{
+  "decision": "PRACTICALLY REJECTED UNDER PROXY ASSUMPTIONS",
+  "comparison": {
+    "sharpe_gain": 0.08015939776464748,
+    "turnover_reduction": 0.13050810715940797,
+    "volatility_ratio": 1.0017155941235882,
+    "drawdown_deterioration": -0.0040784148157387845,
+    "cagr_difference": 0.0056759345255497085
+  },
+  "lower_ci": 0.0574970121008663,
+  "failed": [
+    "sharpe_gain_at_least_0_10",
+    "turnover_reduction_at_least_25pct"
+  ]
+}

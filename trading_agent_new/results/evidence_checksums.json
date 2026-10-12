@@ -1,0 +1,19 @@
+{
+  "results/EDA_REPORT.md": "8dadde8f7810e956345b465093a52a387667b60e3d3dac003cde7bd310412dbd",
+  "results/annual_correlations.csv": "1f5fec6ea1110a4dd0d2805307d8214f01b23c8ca48239afb8a3a87f0a989fcd",
+  "results/charts/return_correlations.png": "32c9d437589a463ee9aabec7c703708800bb1d685249944e833638ab971b422a",
+  "results/charts/return_distributions.png": "80054bb11d07936687122c55562835e64d3eb37bd9230a5bdfd89b118812f9a7",
+  "results/charts/rolling_risk.png": "d7c2141bfb001ac9d2adabab98c80658229c0bac71dc300fe1940f85cc4c3213",
+  "results/correlation_pair_counts.csv": "c16d7be1e4d4b2db451cefa0ea047a1fc1b7be69bb0fb50343a51a502c6effa0",
+  "results/correlation_pearson.csv": "02ff57fd3bdf5e4ebab0feae5aa76a55bd4d1db9a829f04ca8490a622a1cb08b",
+  "results/correlation_spearman.csv": "e74c76bfe7a73a0c9e5dc8a56c9bf34c1edd74c127dd48e5f210d539dcb2ff35",
+  "results/daily_asset_returns.csv": "d5abb793140863afd4d6b293c60aebb64f99d065e7cccea58da418ae2bdb44e0",
+  "results/eda_summary.json": "405ab4938cc73d711a816b37e0aa63661a08fa33d427692398fdfea32c75371c",
+  "results/expected_sessions.csv": "0efa264b55524888a4b81efbec6bd1442a7ef43c729aae228fb75982927a7287",
+  "results/flagged_observations.csv": "33f077ab97688c49256800e2647bff042cd132fde566c384df05740d2accda31",
+  "results/lagged_correlations.csv": "2c4b188ab5ea0b5212b2e556f831dccd5dd4135f87f878eb6b0b1cbb9b09b968",
+  "results/largest_moves.csv": "9bcc7fc756704cd5d7c0300f6e0e7bd1f435f9757c879b3525671175da128c0c",
+  "results/return_distributions.csv": "f40aa329d952257e70bf6eada047fed8ea2946c12a8022c69f892d1646824777",
+  "results/rolling_correlation_summary.csv": "dc6e355c01f3299dc452d5e4f214620b71610b826e61b8cdea202b898fa721bc",
+  "results/volume_relationships.csv": "45f4dc77fc86ce579cdaf69049f7d5b48387f85a5ea20506af1f389833680d0a"
+}

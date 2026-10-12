@@ -1,0 +1,5 @@
+asset_id,currency,kind,symbol
+S-A,USD,common_stock,AAA
+S-B,USD,common_stock,BBB
+F-SPY,USD,etf,SPY
+S-IPO,USD,common_stock,NEW

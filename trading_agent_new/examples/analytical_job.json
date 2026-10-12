@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "goal": "Calculate gross and net risky exposure and free cash after restricted collateral and unpaid short dividends.",
+  "task_kind": "exposures",
+  "quality": "synthetic",
+  "market": "US",
+  "frequency": "daily",
+  "documents": {
+    "account": {
+      "kind": "exposure_account",
+      "payload": {
+        "nav": 100000,
+        "signed_market_values": [25000, -12000, 18000],
+        "cash": 25000,
+        "restricted_collateral": 18000,
+        "short_dividend_obligation": 130
+      }
+    }
+  },
+  "output_fields": ["gross_weight", "net_weight", "free_cash"]
+}

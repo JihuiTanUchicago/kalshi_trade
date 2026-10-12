@@ -1,0 +1,154 @@
+{
+  "as_of": "2026-10-10",
+  "status": "primary-source candidate review; no vendor selected or licensed import qualified",
+  "recommendation": "Evaluate Intrinio Startup/Enterprise and Massive Business first with contract-specific rights and a seven-table sample audit; use other candidates for research history/reference/corroboration and a separate finance source for shorts.",
+  "recommendation_is_inference": true,
+  "candidates": [
+    {
+      "provider": "Intrinio",
+      "products": "Startup/Enterprise order form; U.S. Historical Stock Prices + Global Security Master + corporate actions/event feed",
+      "role": "First commercial daily-data sample/quote candidate",
+      "documented": [
+        "Adjusted and unadjusted OHLCV; daily updates; API/CSV/S3/Snowflake",
+        "Separate corporate-action records include dividend ex and pay dates",
+        "Commercial/third-party usage is available through a scoped Startup/Enterprise order form"
+      ],
+      "gaps": [
+        "Require raw security histories without merger-history splicing",
+        "Verify delisted stock/ETF coverage, original availability and revision vintages from 2016 onward",
+        "Hosted LLM/API transmission requires explicit order-form rights; verify permanent research/memory/backup retention",
+        "Historical broker borrow and financing are separate"
+      ],
+      "price": "Request quote for the exact feeds and AI/customer-use rights; individual prices are not a commercial quote",
+      "sources": [
+        "https://intrinio.com/financial-market-data/stock-prices-eod",
+        "https://intrinio.com/blog/corporate-actions-api",
+        "https://help.intrinio.com/stock-price-adjustments-ipos-and-mergers",
+        "https://data.intrinio.com/terms"
+      ]
+    },
+    {
+      "provider": "Massive (formerly Polygon.io)",
+      "products": "Stocks Business / Enterprise; raw flat files plus reference/corporate actions",
+      "role": "First commercial operational-data sample/quote candidate",
+      "documented": [
+        "20+ years historical data on business offering; API and flat files",
+        "Raw stock flat files are unadjusted",
+        "Stocks page advertises retention of delisted histories and corporate actions since 2008",
+        "Business plans provide commercial/display rights; scope remains subject to the agreement"
+      ],
+      "gaps": [
+        "Verify historical as-of revisions, pay dates and delisting cash consideration",
+        "Specify regular-session/primary-open prices rather than treating FMV or extended-hours aggregates as execution prices",
+        "Verify hosted-model processing, customer-derived outputs and retention terms",
+        "Historical broker borrow and financing are separate"
+      ],
+      "price": "Published Stocks Business: USD 2,499/month billed monthly; exchange expansions can add fees. Startup discounts subject to eligibility.",
+      "sources": [
+        "https://massive.com/business",
+        "https://massive.com/stocks",
+        "https://massive.com/docs/flat-files/stocks/overview"
+      ]
+    },
+    {
+      "provider": "Nasdaq Data Link / Sharadar",
+      "products": "Sharadar Equity Prices (SEP), actions/reference; separately confirm fund-price offering",
+      "role": "Daily historical research sample/quote candidate",
+      "documented": [
+        "Adjusted and unadjusted EOD equity prices and actions from 1998",
+        "Daily delivery; active and delisted US company coverage",
+        "Tables API and reference identifiers"
+      ],
+      "gaps": [
+        "Obtain appropriate commercial/AI/customer use license; no startup quote verified",
+        "Confirm ETFs/fund feed coverage and retained identifiers separately",
+        "Inspect actual dividend pay dates, delisting payouts and point-in-time revisions; lastupdated is not original publication time",
+        "Historical broker borrow and financing are separate"
+      ],
+      "price": "Premium access; pricing requires account/quote. No commercial price verified.",
+      "sources": [
+        "https://data.nasdaq.com/databases/SEP/documentation"
+      ]
+    },
+    {
+      "provider": "Databento",
+      "products": "Selected US equities price dataset + Corporate Actions + Security Master",
+      "role": "Reference/PIT and market-data candidate; useful for independent corroboration",
+      "documented": [
+        "Corporate actions advertise six years PIT history with dividend payment dates",
+        "Security master advertises historical listing/status/symbology changes",
+        "Reference data permits internal commercial display/non-display use but not external file/API redistribution under the published standard terms"
+      ],
+      "gaps": [
+        "Confirm exact US price dataset/venue coverage and 2016 history; aggregate history lengths are not coverage guarantees",
+        "Six-year PIT action history alone does not establish our entire 2016-2026 window",
+        "Customer-facing/redistributed data and hosted-LLM use need scoped rights",
+        "Historical broker borrow and financing are separate"
+      ],
+      "price": "Historical data usage/subscription plans plus separately priced reference datasets; request exact coverage estimate",
+      "sources": [
+        "https://databento.com/corporate-actions",
+        "https://databento.com/security-master",
+        "https://databento.com/equities",
+        "https://databento.com/pricing"
+      ]
+    },
+    {
+      "provider": "Morningstar / CRSP Research Data Products",
+      "products": "CRSP US Stock Database, CIZ files; commercial institutional license",
+      "role": "Institutional historical benchmark/corroboration candidate",
+      "documented": [
+        "Daily/monthly data and actions for active/inactive US securities",
+        "Permanent security/company identifiers and survivorship-free history",
+        "Released monthly/quarterly/annually; flat-file/cloud access"
+      ],
+      "gaps": [
+        "Needs a daily operational companion for current-session paper inputs",
+        "Review actual trade/quote flags, OHLC definitions, corporate-action/payment timing and original release vintages",
+        "Confirm stock/ETF scope and commercial/AI/customer-output licensing with Morningstar",
+        "No broker-specific borrow availability"
+      ],
+      "price": "Institutional subscription quote; university/WRDS access is not assumed to authorize startup usage",
+      "sources": [
+        "https://www.crsp.org/research__trashed/crsp-us-stock-databases/",
+        "https://indexes.morningstar.com/research-data-products/document-library"
+      ]
+    },
+    {
+      "provider": "S&P Global Securities Finance / EquiLend DataLend",
+      "products": "Historical securities-finance supply/fee data",
+      "role": "Complement for equity shorting; not a price-data replacement",
+      "documented": [
+        "Historical fees, inventory/supply, utilization and securities-finance analytics",
+        "DataLend documents T+1 data availability and raw data files"
+      ],
+      "gaps": [
+        "Verify 2016-current security coverage, publication time, mapping and fee units",
+        "Aggregated lendable inventory is not the number of shares available to this IBKR account",
+        "Need broker-specific current shares/fee/locate evidence and separate cash-financing terms"
+      ],
+      "price": "Quote-based; no price or contract obtained",
+      "sources": [
+        "https://www.spglobal.com/market-intelligence/en/solutions/products/securities-finance",
+        "https://datalend.com/services/datalend/"
+      ]
+    }
+  ],
+  "excluded_for_startup": {
+    "provider": "Norgate",
+    "reason": "Published FAQ says licensing is personal only and no business/commercial licensing is available. Do not use its retail license for this startup product.",
+    "source": "https://norgatedata.com/faq.php"
+  },
+  "questions_for_sample_and_quote": [
+    "Provide raw, regular-session US common-stock/ETF history from 2016 through the latest completed session, stable IDs, listings/delistings, prices and action samples.",
+    "Show original published/available timestamps and retained revisions, not only latest-download or lastupdated timestamps.",
+    "Provide dividend declaration/ex/record/pay dates and amounts, split ratios, mergers/spinoffs, delisting cash payouts and full event status histories.",
+    "State rights for commercial non-display research, hosted LLM inference, future fine-tuning, verified-memory storage, customer-derived outputs, raw-data display/API distribution, and retention/backups after expiry.",
+    "Provide exact feed/exchange fees, permitted users, minimum term, symbol/volume limits, export rights, sample files, and latest daily update schedule.",
+    "For finance data, distinguish actual account-specific borrow availability/fees from market-level inventory and indicative rates; include historical publication timing."
+  ],
+  "qualification": "No reviewed product has yet passed our full source-qualification gate. A paid subscription does not establish original availability, independent corroboration or account-specific borrowing.",
+  "data_licenses_purchased": 0,
+  "vendor_messages_sent": 0,
+  "licensed_datasets_downloaded": 0
+}

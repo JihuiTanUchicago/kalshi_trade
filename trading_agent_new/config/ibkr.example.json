@@ -1,0 +1,10 @@
+{
+  "host": "127.0.0.1",
+  "port": 4002,
+  "client_id": 71,
+  "paper_account": "DU_CONFIGURE_EXACT_PAPER_ACCOUNT",
+  "contracts": {
+    "YOUR_STABLE_SECURITY_ID": {"con_id": 0}
+  },
+  "borrow_fee_file": "config/borrow-fees.local.json"
+}

@@ -1,0 +1,20 @@
+test_actual_timestamp_offsets_filter_future_effective_and_late_rows (test_tool_research.ToolResearchTests.test_actual_timestamp_offsets_filter_future_effective_and_late_rows) ... ok
+test_all_new_cases_complete_with_independently_verified_tool_values (test_tool_research.ToolResearchTests.test_all_new_cases_complete_with_independently_verified_tool_values) ... ok
+test_conflicting_fills_and_inconsistent_filled_status_pause_without_submission (test_tool_research.ToolResearchTests.test_conflicting_fills_and_inconsistent_filled_status_pause_without_submission) ... ok
+test_core_research_analysis_keeps_state_risk_and_dataset_binding (test_tool_research.ToolResearchTests.test_core_research_analysis_keeps_state_risk_and_dataset_binding) ... ok
+test_disjoint_training_cases_and_frozen_contracts (test_tool_research.ToolResearchTests.test_disjoint_training_cases_and_frozen_contracts) ... ok
+test_full_fixture_study_cannot_claim_genuine_learning_or_rebill_replay (test_tool_research.ToolResearchTests.test_full_fixture_study_cannot_claim_genuine_learning_or_rebill_replay) ... ok
+test_independent_receipt_tamper_is_not_a_verified_procedure (test_tool_research.ToolResearchTests.test_independent_receipt_tamper_is_not_a_verified_procedure) ... ok
+test_inputs_cannot_be_rewritten_and_finish_cannot_guess_or_relabel_values (test_tool_research.ToolResearchTests.test_inputs_cannot_be_rewritten_and_finish_cannot_guess_or_relabel_values) ... ok
+test_nonfinite_boolean_money_fractional_splits_and_overrides_refused (test_tool_research.ToolResearchTests.test_nonfinite_boolean_money_fractional_splits_and_overrides_refused) ... ok
+test_one_repair_and_call_allowance_survive_failed_resume (test_tool_research.ToolResearchTests.test_one_repair_and_call_allowance_survive_failed_resume) ... ok
+test_partial_campaign_cannot_reset_consumption (test_tool_research.ToolResearchTests.test_partial_campaign_cannot_reset_consumption) ... ok
+test_procedural_memory_transfers_verified_chain_without_old_numbers (test_tool_research.ToolResearchTests.test_procedural_memory_transfers_verified_chain_without_old_numbers) ... ok
+test_qualified_flag_cannot_upgrade_actual_proxy_inputs (test_tool_research.ToolResearchTests.test_qualified_flag_cannot_upgrade_actual_proxy_inputs) ... ok
+test_return_cannot_bypass_host_produced_asof_history (test_tool_research.ToolResearchTests.test_return_cannot_bypass_host_produced_asof_history) ... ok
+test_short_paid_and_unpaid_dividends_match_hand_cash_and_nav (test_tool_research.ToolResearchTests.test_short_paid_and_unpaid_dividends_match_hand_cash_and_nav) ... ok
+
+----------------------------------------------------------------------
+Ran 15 tests in 1.228s
+
+OK

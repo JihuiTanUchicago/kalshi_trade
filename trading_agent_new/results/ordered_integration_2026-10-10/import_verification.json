@@ -1,0 +1,119 @@
+{
+  "status": "passed",
+  "checks": {
+    "snapshot_binding_and_hashes": true,
+    "enrichment_hashes_and_binding": true,
+    "raw_prices_and_keys_preserved": true,
+    "calendar_hours_and_settlement_preserved": true,
+    "current_uuid_and_fixed_etf_scope": true,
+    "action_entitlements_and_declared_payment_policy": true,
+    "source_disagreements_preserved": true,
+    "assumptions_cannot_be_source_qualification": true,
+    "assumed_asof_context_excludes_future_rows": true,
+    "legacy_files_preserved": true
+  },
+  "checks_passed": 10,
+  "checks_total": 10,
+  "dataset_id": "fe82dd1197dbcc5744028632f6368f1d1aa6243f8abda370b630588d5d3c487b",
+  "counts": {
+    "sessions": 2708,
+    "assets": 3,
+    "bars": 8124,
+    "membership": 8124,
+    "actions": 130,
+    "borrow": 0,
+    "financing": 2708
+  },
+  "assumed_payment_dates": 46,
+  "independent_close_disagreements_over_5bp": 176,
+  "largest_close_disagreements": [
+    {
+      "symbol": "SPY",
+      "session": "2020-03-12",
+      "alpaca_close": 255.24,
+      "independent_close": 248.11000061035156,
+      "relative_difference": 0.027934490634886563
+    },
+    {
+      "symbol": "SPY",
+      "session": "2020-03-18",
+      "alpaca_close": 235.69,
+      "independent_close": 240.0,
+      "relative_difference": 0.018286732572446868
+    },
+    {
+      "symbol": "IWM",
+      "session": "2020-03-16",
+      "alpaca_close": 105.51,
+      "independent_close": 103.62000274658203,
+      "relative_difference": 0.017912967997516575
+    },
+    {
+      "symbol": "IWM",
+      "session": "2020-03-18",
+      "alpaca_close": 100.86,
+      "independent_close": 99.97000122070312,
+      "relative_difference": 0.008824100528424295
+    },
+    {
+      "symbol": "SPY",
+      "session": "2020-03-09",
+      "alpaca_close": 276.32,
+      "independent_close": 274.2300109863281,
+      "relative_difference": 0.007563654508077115
+    },
+    {
+      "symbol": "IWM",
+      "session": "2020-02-28",
+      "alpaca_close": 147.42,
+      "independent_close": 146.3300018310547,
+      "relative_difference": 0.007393828306507259
+    },
+    {
+      "symbol": "SPY",
+      "session": "2020-03-17",
+      "alpaca_close": 254.19,
+      "independent_close": 252.8000030517578,
+      "relative_difference": 0.005468338440702566
+    },
+    {
+      "symbol": "SPY",
+      "session": "2020-03-16",
+      "alpaca_close": 241.065,
+      "independent_close": 239.85000610351562,
+      "relative_difference": 0.005040109084621876
+    },
+    {
+      "symbol": "SPY",
+      "session": "2020-03-24",
+      "alpaca_close": 242.0,
+      "independent_close": 243.14999389648438,
+      "relative_difference": 0.004752040894563533
+    },
+    {
+      "symbol": "IWM",
+      "session": "2020-03-17",
+      "alpaca_close": 108.87,
+      "independent_close": 108.37000274658203,
+      "relative_difference": 0.004592608187911944
+    },
+    {
+      "symbol": "SPY",
+      "session": "2020-03-13",
+      "alpaca_close": 270.2,
+      "independent_close": 269.32000732421875,
+      "relative_difference": 0.0032568196735056946
+    },
+    {
+      "symbol": "IWM",
+      "session": "2021-02-26",
+      "alpaca_close": 217.69,
+      "independent_close": 218.30999755859375,
+      "relative_difference": 0.0028480755137753333
+    }
+  ],
+  "data_qualified": false,
+  "source_corroboration_passed": false,
+  "performance_measured": false,
+  "legacy_files_checked": 181
+}

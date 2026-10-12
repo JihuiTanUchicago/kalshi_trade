@@ -1,0 +1,2 @@
+date,decision_bar_date,decision_time_assumed,fill_time,symbol,signal,target_weight,current_weight,submitted_quantity,filled_quantity,fill_reference,fill_price,nav_before_fill,commission,slippage,participation_limit,reason,partial_or_rejected,cash_reduced_session,resulting_shares,closing_cash
+2016-01-04,2015-12-31,2015-12-31 21:00:00+00:00 + 1 minute,2016-01-04 14:30:00+00:00,SPY,True,0.95,0,465,465,200.490005493,200.590250496,100000,2.325,46.6139262772,115503,initial buy and hold,False,False,465,6723.2085194

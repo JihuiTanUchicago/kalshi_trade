@@ -1,0 +1,17 @@
+{
+  "baseRefName": "main",
+  "headRefName": "jonathan-20261012",
+  "headRefOid": "fe6d0bf4752eb3beb412be5cb0fbe8d67a7d273a",
+  "isDraft": false,
+  "number": 3,
+  "state": "OPEN",
+  "url": "https://github.com/JihuiTanUchicago/kalshi_trade/pull/3",
+  "verified_at": "2026-10-12T10:06:06.312259+08:00",
+  "import_commit": "fe6d0bf4752eb3beb412be5cb0fbe8d67a7d273a",
+  "base_commit": "d115975b29f06dd30ba302838010e1bf95f783fc",
+  "only_folder_added": "trading_agent_new/",
+  "publication_metadata_update": "Same PR receives subsequent documentation-only publication receipts.",
+  "source_code_data_hashes_preserved": 630,
+  "offline_tests_passed": 122,
+  "docker_tests_skipped": 15
+}

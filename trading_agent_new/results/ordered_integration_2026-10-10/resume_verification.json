@@ -1,0 +1,25 @@
+{
+  "passed": true,
+  "command": "bash research/run_first_episode.sh",
+  "exit": 0,
+  "before": {
+    "reservations": 253,
+    "total_recorded_cost": 0.3312825,
+    "experiment_attempts": 1,
+    "benchmark_episodes": 240,
+    "transfer": "3c34729510d2b7537967bfb8edbfc0ca78a70c28854707e63248c65108b7b13f",
+    "learning": "bf2f3ccffd66f3bfcf37878465d18ee9b17f1c56093c95015b7a04c84f567808"
+  },
+  "after": {
+    "reservations": 253,
+    "total_recorded_cost": 0.3312825,
+    "experiment_attempts": 1,
+    "benchmark_episodes": 240,
+    "transfer": "3c34729510d2b7537967bfb8edbfc0ca78a70c28854707e63248c65108b7b13f",
+    "learning": "bf2f3ccffd66f3bfcf37878465d18ee9b17f1c56093c95015b7a04c84f567808"
+  },
+  "new_api_calls": 0,
+  "new_experiment_attempts": 0,
+  "output_log": "completed_sequence_replay.log",
+  "scope": "Actual completed-coordinator replay; protected evidence, cost and case counts unchanged."
+}

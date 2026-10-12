@@ -1,0 +1,8 @@
+{
+  "tests_run": 82,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "passed": true,
+  "scope": "Core and SDK offline tests; actual container checks recorded separately"
+}

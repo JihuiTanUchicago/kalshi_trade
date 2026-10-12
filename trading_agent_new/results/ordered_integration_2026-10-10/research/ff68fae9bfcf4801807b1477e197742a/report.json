@@ -1,0 +1,359 @@
+{
+  "run": {
+    "id": "ff68fae9bfcf4801807b1477e197742a",
+    "goal": "Test the preregistered 63-session total-return trend filter against equal-weight allocation. Keep matched costs, capital, execution timing and risk controls; challenge uncertainty and exposures, preserve source qualification limits, and retain rejected findings in verified memory.",
+    "state": "finished",
+    "spec": "8a512560a312ecdf8eff465bcdc88356bcc588772bef95227d37e6e13d0869ce",
+    "strategy": "9f540c45ae58d1ff490a6fa81b533444702d6b25d81a0c61284e72003446ffaa",
+    "result": "79c012dc9b8047c505d5202287a7888752d79fcd4c538105abd36171283d0050",
+    "challenge": "0abe828db27a5f39958efd6ed7d61737f79ba03449bb09e4c159df0b968b0cf3",
+    "decision": "87bd4542c0ce8211e24f2aaa6e77fafea7f76d5081d24ecf0ece1bac895ff449",
+    "created": "2026-10-10T14:38:17.443047+00:00"
+  },
+  "spec": {
+    "allow_short": false,
+    "baseline": "equal_weight",
+    "block_length": 21,
+    "bootstrap_samples": 2000,
+    "buffer": 0.0,
+    "commission_per_share": 0.005,
+    "dataset_id": "fe82dd1197dbcc5744028632f6368f1d1aa6243f8abda370b630588d5d3c487b",
+    "decision_delay_minutes": 30,
+    "end": "2026-10-09",
+    "hypothesis": "A fixed 63-session total-return filter improves excess Sharpe by at least 0.10 versus the same equal-weight ETF allocation, with positive paired uncertainty lower bound, no more than two percentage points worse drawdown, and positive improvement under doubled costs.",
+    "limits": {
+      "capital": 100000.0,
+      "cash_buffer": 0.05,
+      "daily_loss": 0.02,
+      "drawdown": 0.1,
+      "gross": 1.0,
+      "participation": 0.001,
+      "position": 0.25,
+      "short_collateral": 1.5
+    },
+    "lookback": 63,
+    "maximum_drawdown_deterioration": 0.02,
+    "minimum_commission": 1.0,
+    "minimum_sharpe_gain": 0.1,
+    "prospective": false,
+    "seed": 20261009,
+    "sources": [
+      "fc24655dcdb8d727ff4dd9a0b7048998baaf6197d83b008e6b8c3b6992b0a73f"
+    ],
+    "start": "2016-04-05",
+    "transaction_bps": 5.0
+  },
+  "strategy": {
+    "api_version": "1",
+    "buffer": 0.0,
+    "code": "",
+    "kind": "builtin",
+    "lookback": 63,
+    "name": "trend",
+    "target_shares": 0
+  },
+  "result": {
+    "alpha_claim": false,
+    "comparison": {
+      "annual_sharpe_gains": {
+        "2016": -0.8473301748885329,
+        "2017": -0.46382353823615086,
+        "2018": 0.199065136322188,
+        "2019": -0.8523206808628767,
+        "2020": -0.07250895526866163,
+        "2021": -0.28457971182515807,
+        "2022": -1.6479379976343491,
+        "2023": -0.24147372159280978,
+        "2024": -0.5330123971746163,
+        "2025": 0.5614566593656728,
+        "2026": -0.0822884660202663
+      },
+      "benchmark_beta": 0.43900832292272857,
+      "block_length": 21,
+      "bootstrap_samples": 2000,
+      "confirmatory_alpha": false,
+      "lower_95_one_sided": -0.4409338395271817,
+      "retrospective_selection": true,
+      "seed": 20261009,
+      "sharpe_gain": -0.09789986504965398,
+      "sufficient_blocks": true,
+      "upper_95_one_sided": 0.2344167277075656
+    },
+    "data_constraints": {
+      "allow_short": false,
+      "exploratory_only": true,
+      "historical_availability": "assumed; not evidence of original publication",
+      "maximum_scored_end": "2026-10-09",
+      "paper_eligible": false,
+      "pay_date_policy": "provider date, otherwise ex-date + 30 calendar days",
+      "price_precedence": "raw Alpaca SIP; independent prices never replace bars"
+    },
+    "dataset_id": "fe82dd1197dbcc5744028632f6368f1d1aa6243f8abda370b630588d5d3c487b",
+    "gross_net_gain_difference": -0.05291923374990137,
+    "ledgers": {
+      "baseline_0": "20df8b9cc2e63d3dcdb0c62e5e3528b416a6465e3f6cd53521607045464e6340",
+      "baseline_1": "286857c6b3a711b61113b2aae2366ceb71d6b1f1e71456e737a9c7ed99c547ab",
+      "baseline_2": "9191d025d56964189f504fec63cb75e923f48929958e9e1e3ad2a85fbf29dcef",
+      "candidate_0": "744dffce2d716e28bf8c5382b787bc8d4e19af9b5e7af10abeddd51a325a4420",
+      "candidate_1": "b6083dc95803b06e61e1a3ce455442a9c97f0885734a90c257b8f567a459badd",
+      "candidate_2": "9968f6c8a8511974be1e341bd814cbd0990930933961db6502695f7b3d4bf06d"
+    },
+    "metrics": {
+      "baseline_0": {
+        "annualized_turnover": 0.5973060148744209,
+        "borrow_cost": 0.0,
+        "excess_sharpe": 0.8537833928558033,
+        "max_drawdown": 0.265745503681871,
+        "mean_gross": 0.7470984415354465,
+        "net_return": 2.3157648139370006,
+        "orders_filled": 3218,
+        "sessions": 2645,
+        "transaction_cost": 0.0
+      },
+      "baseline_1": {
+        "annualized_turnover": 0.581053665963297,
+        "borrow_cost": 0.0,
+        "excess_sharpe": 0.8394237271276859,
+        "max_drawdown": 0.2658053998368778,
+        "mean_gross": 0.7470100235581081,
+        "net_return": 2.2440279883395013,
+        "orders_filled": 3064,
+        "sessions": 2645,
+        "transaction_cost": 3635.124438849935
+      },
+      "baseline_2": {
+        "annualized_turnover": 0.5656375302170749,
+        "borrow_cost": 0.0,
+        "excess_sharpe": 0.8257643285303936,
+        "max_drawdown": 0.26613664763763667,
+        "mean_gross": 0.7468793495692233,
+        "net_return": 2.1763861084120006,
+        "orders_filled": 2936,
+        "sessions": 2645,
+        "transaction_cost": 6969.233554699938
+      },
+      "candidate_0": {
+        "annualized_turnover": 8.925108246123774,
+        "borrow_cost": 0.0,
+        "excess_sharpe": 0.8088027615560507,
+        "max_drawdown": 0.19955944532910408,
+        "mean_gross": 0.551439275332538,
+        "net_return": 1.0884300636240005,
+        "orders_filled": 2229,
+        "sessions": 2645,
+        "transaction_cost": 0.0
+      },
+      "candidate_1": {
+        "annualized_turnover": 8.924389128195859,
+        "borrow_cost": 0.0,
+        "excess_sharpe": 0.7415238620780319,
+        "max_drawdown": 0.20541694479137584,
+        "mean_gross": 0.551281249488456,
+        "net_return": 0.9566208853755074,
+        "orders_filled": 2112,
+        "sessions": 2645,
+        "transaction_cost": 8546.186622149296
+      },
+      "candidate_2": {
+        "annualized_turnover": 8.94717317234489,
+        "borrow_cost": 0.0,
+        "excess_sharpe": 0.6746189910325412,
+        "max_drawdown": 0.21114064742349448,
+        "mean_gross": 0.5511192212498706,
+        "net_return": 0.8341451782620086,
+        "orders_filled": 2096,
+        "sessions": 2645,
+        "transaction_cost": 16618.241630799334
+      }
+    },
+    "no_cost_sharpe_gain": -0.044980631299752605,
+    "observations": "Historical selection is exploratory; paper eligibility is separate.",
+    "qualification": {
+      "qualified": false,
+      "quality": "proxy",
+      "receipt": null
+    },
+    "qualification_gaps": {
+      "action_amount_disagreements": [
+        {
+          "independent": 0.378,
+          "key": [
+            "QQQ",
+            "2018-06-18",
+            "dividend"
+          ],
+          "primary": 0.37638
+        },
+        {
+          "independent": 1.633,
+          "key": [
+            "SPY",
+            "2021-12-17",
+            "dividend"
+          ],
+          "primary": 1.636431
+        }
+      ],
+      "ambiguous_same_day_primary_actions": [
+        {
+          "additional": {
+            "cusip": "46090E103",
+            "ex_date": "2022-09-19",
+            "foreign": false,
+            "id": "1966d92d-c3ae-4da1-8daa-483789298533",
+            "payable_date": "2022-10-31",
+            "process_date": "2022-10-31",
+            "rate": 0.51856,
+            "record_date": "2022-09-20",
+            "special": false,
+            "symbol": "QQQ"
+          },
+          "first": {
+            "basis": "Alpaca current-vintage",
+            "pay_date": "2022-09-23",
+            "provider_id": "d0409c14-2b32-4cdb-9d5d-57a8a9a0818f",
+            "source_file": "actions_000.json",
+            "value": 0.51856
+          },
+          "key": [
+            "QQQ",
+            "2022-09-19",
+            "dividend"
+          ],
+          "proxy_policy": "one independently corroborated amount; payment date assumed"
+        }
+      ],
+      "assumed_dividend_pay_dates": 46,
+      "commercial_rights_reviewed": false,
+      "current_security_master_is_historical": false,
+      "independent_price_checks": {
+        "IWM": {
+          "matched_closes": 2708,
+          "maximum_relative_close_difference": 0.017912967997516575,
+          "present": true,
+          "within_fixed_5bp_tolerance": false
+        },
+        "QQQ": {
+          "matched_closes": 2708,
+          "maximum_relative_close_difference": 0.0009302277511115007,
+          "present": true,
+          "within_fixed_5bp_tolerance": false
+        },
+        "SPY": {
+          "matched_closes": 2708,
+          "maximum_relative_close_difference": 0.027934490634886563,
+          "present": true,
+          "within_fixed_5bp_tolerance": false
+        }
+      },
+      "missing_independent_actions": [
+        [
+          "QQQ",
+          "2020-09-21",
+          "dividend"
+        ]
+      ],
+      "missing_primary_actions": [
+        [
+          "SPY",
+          "2016-03-18",
+          "dividend"
+        ],
+        [
+          "SPY",
+          "2018-06-15",
+          "dividend"
+        ]
+      ],
+      "original_availability_proven": false,
+      "survivorship_free_universe": false
+    },
+    "spec": "8a512560a312ecdf8eff465bcdc88356bcc588772bef95227d37e6e13d0869ce",
+    "strategy": "9f540c45ae58d1ff490a6fa81b533444702d6b25d81a0c61284e72003446ffaa",
+    "stress_sharpe_gain": -0.15114533749785242,
+    "trial_register": "3bf81e8484d7502873b3b156efebdcf43d8bdcce0c1be222e765f3adf51d09ac",
+    "verification": {
+      "baseline_0": {
+        "fills": 3997,
+        "max_cash_nav_error": 0.0,
+        "method": "independent raw-price/account reconstruction",
+        "passed": true,
+        "sessions": 2645
+      },
+      "baseline_1": {
+        "fills": 3930,
+        "max_cash_nav_error": 0.0,
+        "method": "independent raw-price/account reconstruction",
+        "passed": true,
+        "sessions": 2645
+      },
+      "baseline_2": {
+        "fills": 3930,
+        "max_cash_nav_error": 0.0,
+        "method": "independent raw-price/account reconstruction",
+        "passed": true,
+        "sessions": 2645
+      },
+      "candidate_0": {
+        "fills": 2682,
+        "max_cash_nav_error": 0.0,
+        "method": "independent raw-price/account reconstruction",
+        "passed": true,
+        "sessions": 2645
+      },
+      "candidate_1": {
+        "fills": 2589,
+        "max_cash_nav_error": 0.0,
+        "method": "independent raw-price/account reconstruction",
+        "passed": true,
+        "sessions": 2645
+      },
+      "candidate_2": {
+        "fills": 2641,
+        "max_cash_nav_error": 0.0,
+        "method": "independent raw-price/account reconstruction",
+        "passed": true,
+        "sessions": 2645
+      }
+    }
+  },
+  "challenge": {
+    "boundary": "2021-07-06",
+    "diagnostics": {
+      "annual_instability": true,
+      "cost_attribution": true,
+      "exposures": true,
+      "paired_bootstrap": true
+    },
+    "future_perturbation": true,
+    "independent_ledger": {
+      "fills": 2589,
+      "max_cash_nav_error": 0.0,
+      "method": "independent raw-price/account reconstruction",
+      "passed": true,
+      "sessions": 2645
+    },
+    "limits": "Empirical invariance and container isolation do not prove arbitrary Python causality.",
+    "passed": true,
+    "prefix_invariance": true,
+    "result": "79c012dc9b8047c505d5202287a7888752d79fcd4c538105abd36171283d0050"
+  },
+  "decision": {
+    "challenge": "0abe828db27a5f39958efd6ed7d61737f79ba03449bb09e4c159df0b968b0cf3",
+    "data_qualified": false,
+    "gates": {
+      "double_transaction_and_borrow_costs": false,
+      "drawdown": true,
+      "minimum_sharpe_gain": false,
+      "positive_uncertainty_lower_bound": false,
+      "sufficient_blocks": true,
+      "verified_accounting_causality": true
+    },
+    "live_capital_eligible": false,
+    "paper_eligible": false,
+    "practical_passed": false,
+    "reason": "Fixed preregistered gates; no outcome-driven changes. Rejection is a retained research output.",
+    "result": "79c012dc9b8047c505d5202287a7888752d79fcd4c538105abd36171283d0050",
+    "status": "reject"
+  }
+}

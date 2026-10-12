@@ -1,0 +1,96 @@
+{
+  "started_at": "2026-10-10T06:14:19.800947+00:00",
+  "finished_at": "2026-10-10T06:14:26.410822+00:00",
+  "image": "sha256:bc33f68b6b2439d2d6ecf7f94af043019448b865341ce6455d10b4841cb48a82",
+  "image_architecture": "arm64",
+  "docker_client": "29.9.0",
+  "docker_server": "29.9.0",
+  "tests_run": 15,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "passed": true,
+  "cases": [
+    {
+      "test": "actual_sandbox_tests.SandboxIntegrationTests.test_excess_memory_terminates_container",
+      "status": "passed",
+      "seconds": 0.44724750000750646
+    },
+    {
+      "test": "actual_sandbox_tests.SandboxIntegrationTests.test_external_network_is_unreachable",
+      "status": "passed",
+      "seconds": 0.2198724579939153
+    },
+    {
+      "test": "actual_sandbox_tests.SandboxIntegrationTests.test_file_size_and_open_file_limits_are_enforced",
+      "status": "passed",
+      "seconds": 0.2127717919938732
+    },
+    {
+      "test": "actual_sandbox_tests.SandboxIntegrationTests.test_host_canary_and_credentials_are_not_exposed",
+      "status": "passed",
+      "seconds": 0.22350199999345932
+    },
+    {
+      "test": "actual_sandbox_tests.SandboxIntegrationTests.test_hung_code_times_out_and_is_removed",
+      "status": "passed",
+      "seconds": 2.1065035419887863
+    },
+    {
+      "test": "actual_sandbox_tests.SandboxIntegrationTests.test_incremental_asof_context_has_no_future_file",
+      "status": "passed",
+      "seconds": 0.20818250000593252
+    },
+    {
+      "test": "actual_sandbox_tests.SandboxIntegrationTests.test_kernel_cgroup_limits_match_the_declared_budget",
+      "status": "passed",
+      "seconds": 0.21019291700213216
+    },
+    {
+      "test": "actual_sandbox_tests.SandboxIntegrationTests.test_malformed_stdout_and_api_fail_closed",
+      "status": "passed",
+      "seconds": 0.402623041998595
+    },
+    {
+      "test": "actual_sandbox_tests.SandboxIntegrationTests.test_nonfinite_or_oversized_state_fails_closed",
+      "status": "passed",
+      "seconds": 0.38692091600387357
+    },
+    {
+      "test": "actual_sandbox_tests.SandboxIntegrationTests.test_output_quotas_are_enforced",
+      "status": "passed",
+      "seconds": 0.42636862500512507
+    },
+    {
+      "test": "actual_sandbox_tests.SandboxIntegrationTests.test_process_limit_is_enforced",
+      "status": "passed",
+      "seconds": 0.2607150000112597
+    },
+    {
+      "test": "actual_sandbox_tests.SandboxIntegrationTests.test_random_seeds_and_checkpoint_replay",
+      "status": "passed",
+      "seconds": 0.8289261669997359
+    },
+    {
+      "test": "actual_sandbox_tests.SandboxIntegrationTests.test_real_security_settings_and_only_strategy_mount",
+      "status": "passed",
+      "seconds": 0.22381545799726155
+    },
+    {
+      "test": "actual_sandbox_tests.SandboxIntegrationTests.test_root_and_strategy_are_read_only",
+      "status": "passed",
+      "seconds": 0.2059579170017969
+    },
+    {
+      "test": "actual_sandbox_tests.SandboxIntegrationTests.test_tmp_is_writable_but_not_executable",
+      "status": "passed",
+      "seconds": 0.2017654590017628
+    }
+  ],
+  "test_source_sha256": "8d21f3ad63bc686b971e5f3143fd63e0513e3ed0ff45918c76c4cb423b769b0e",
+  "actual_container_execution": true,
+  "synthetic_inputs": true,
+  "paid_model_calls": 0,
+  "broker_orders": 0,
+  "scope": "Declared container/API/resource/replay controls; not proof against all container/kernel exploits."
+}

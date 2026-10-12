@@ -1,0 +1,10 @@
+{
+  "plan": "1976c09fe42d1ed13bcc409382ea9d1475416186e96d9432b16747c3d81235b4",
+  "episodes": 240,
+  "maximum_calls": 960,
+  "max_estimated_cost": 27.8976,
+  "remaining_phase_cap": 33.55201875,
+  "remaining_total_cap": 48.33825875,
+  "can_run": true,
+  "caps_unchanged": true
+}

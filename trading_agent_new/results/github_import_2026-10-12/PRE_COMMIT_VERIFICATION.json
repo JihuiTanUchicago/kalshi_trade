@@ -1,0 +1,22 @@
+{
+  "status": "passed",
+  "original_immutable_files_checked": 630,
+  "immutable_sha256_mismatches": [],
+  "staged_files": 636,
+  "all_staged_changes_additions_in_requested_folder": true,
+  "staged_blob_byte_mismatches": [],
+  "secret_findings_paths": [],
+  "live_credential_values_checked": 3,
+  "public_env_template_staged": true,
+  "private_env_or_local_configuration_staged": false,
+  "copied_regression": {
+    "executed": 137,
+    "passed": 122,
+    "skipped_container_checks": 15,
+    "model_data_or_broker_calls": 0
+  },
+  "source_csv_and_archive_line_endings_preserved": true,
+  "known_preserved_blank_at_eof_notices": 5,
+  "base_commit": "d115975b29f06dd30ba302838010e1bf95f783fc",
+  "branch": "jonathan-20261012"
+}

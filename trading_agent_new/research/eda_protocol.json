@@ -1,0 +1,41 @@
+{
+  "version": "eda-v1",
+  "recorded_at": "2026-10-08",
+  "timezone": "Asia/Shanghai",
+  "scope": "Development-period data exploration only; no strategy backtests or parameter selection.",
+  "source_policy": "Free public daily ETF snapshot. Exploratory proxy; does not replace specified point-in-time corporate-action data.",
+  "symbols": [
+    "SPY",
+    "IWM",
+    "EFA",
+    "IEF",
+    "TLT",
+    "GLD"
+  ],
+  "requested_start": "2006-01-01",
+  "requested_end_exclusive": "2016-01-01",
+  "distribution_scoring_start": "2008-01-01",
+  "distribution_scoring_end": "2015-12-31",
+  "sealed_from": "2016-01-01",
+  "checks": [
+    "Coverage versus historical NYSE session calendar, including exceptional closures and half days.",
+    "Dates sorted and unique; OHLCV/adjusted-close missingness; finite and positive prices; nonnegative and zero volume; OHLC consistency.",
+    "Timestamp conversion in America/New_York; daily bars do not establish release time or auction executability.",
+    "Distribution of unfilled adjusted-close simple returns, volatility, skewness, excess kurtosis, quantiles and empirical tail frequency.",
+    "Flag absolute daily returns above 10%, robust median/MAD scores above 8 and intraday range above 15%; retain observations, no winsorization.",
+    "Log suspicious date gaps, flat-price runs, volume spikes and corporate-action events.",
+    "Same-session Pearson and Spearman daily-return correlations, annual correlation stability and 63-session rolling correlations.",
+    "Descriptive within-instrument lagged-return correlations at lags 1, 5 and 21; no prediction claim or tuning.",
+    "Compare unadjusted/split-adjusted close returns with adjusted-close returns around reported dividend/split events when provided.",
+    "Estimate return/volume relationships within each ETF using lagged 20-session median volume; treat them as descriptive.",
+    "Inspect public raw responses and provider metadata; record provenance, hashes and unresolved licensing/point-in-time limitations."
+  ],
+  "gates": [
+    "Reject rows outside authorized date range; no forward filling of prices or returns.",
+    "Report non-session bars or absent expected sessions before computing matched-session relationships.",
+    "Flag rather than delete valid market extremes; unresolved structural defects block formal backtesting.",
+    "No strategy weights, P&L, Sharpe, threshold search or holdout statistics.",
+    "Preserve original research rules and rejection criteria regardless of EDA findings."
+  ]
+}
+

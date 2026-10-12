@@ -1,0 +1,28 @@
+{
+  "receipt": "b4a6d285dac99461b1c17f7a0e3d1966cd2059e5f955fe0fbbbb16657f00586e",
+  "created_at": "2026-10-10T15:03:38.039119+00:00",
+  "evidence_reference_checks_passed": true,
+  "learning_improvement_measured": false,
+  "model": "grok-4.20-0309-non-reasoning",
+  "proposal": {
+    "baseline": "Static 100% allocation to the same US equity ETF (SPY) held without volatility scaling or rebalancing.",
+    "evidence_hashes": [
+      "87bd4542c0ce8211e24f2aaa6e77fafea7f76d5081d24ecf0ece1bac895ff449"
+    ],
+    "experiment": "Simulate daily volatility-scaled positions on SPY from 2000-01-01 onward using the verified US equity proxy dataset (spec 8a512560a312ecdf8eff465bcdc88356bcc588772bef95227d37e6e13d0869ce). Scale exposure each day as target_vol / realized_vol (capped at 200% gross exposure). Incorporate double-transaction costs on rebalancing, borrowing costs on any leveraged notional, and slippage. Run the experiment on out-of-sample periods not used in any prior volatility-scaling tests. Record daily portfolio returns, drawdowns, Sharpe ratio, and turnover.",
+    "hypothesis": "A volatility-scaled allocation to a broad US equity ETF (e.g., daily target volatility scaling of SPY to a fixed 10% annualized volatility level using 20-day historical volatility) will not produce statistically distinguishable risk-adjusted returns from a static unscaled buy-and-hold allocation after accounting for transaction costs, borrowing costs on leverage, and realistic slippage.",
+    "paper_eligible": false,
+    "rejection_criteria": [
+      "The volatility-scaled strategy fails any of the fixed preregistered gates (drawdown, sufficient_blocks, verified_accounting_causality).",
+      "The 95% confidence interval on the Sharpe ratio difference (scaled minus baseline) includes zero or is negative.",
+      "The strategy produces a maximum drawdown greater than the baseline by more than 5 percentage points.",
+      "After-cost and slippage-adjusted returns do not exceed the baseline on a total-return basis."
+    ]
+  },
+  "retrieved_evidence": [
+    "87bd4542c0ce8211e24f2aaa6e77fafea7f76d5081d24ecf0ece1bac895ff449"
+  ],
+  "run": "ff68fae9bfcf4801807b1477e197742a",
+  "scope": "Research proposal transfer; benchmark must measure any performance improvement",
+  "task_is_distinct": true
+}

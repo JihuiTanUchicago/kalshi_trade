@@ -1,0 +1,188 @@
+{
+  "status": "passed",
+  "checks_passed": 17,
+  "checks_total": 17,
+  "run": "ff68fae9bfcf4801807b1477e197742a",
+  "dataset_id": "fe82dd1197dbcc5744028632f6368f1d1aa6243f8abda370b630588d5d3c487b",
+  "checks": [
+    {
+      "name": "frozen_inputs_and_completed_workflow",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "preregistration_precedes_authentic_model_calls",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "immutable_evidence_hashes",
+      "passed": true,
+      "details": {
+        "artifacts": 263
+      }
+    },
+    {
+      "name": "two_authentic_configuration_bound_smokes",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "six_preregistered_trials_and_single_attempt",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "six_independently_reverified_ledgers",
+      "passed": true,
+      "details": {
+        "baseline_0": {
+          "passed": true,
+          "sessions": 2645,
+          "fills": 3997,
+          "max_cash_nav_error": 0.0,
+          "method": "independent raw-price/account reconstruction"
+        },
+        "baseline_1": {
+          "passed": true,
+          "sessions": 2645,
+          "fills": 3930,
+          "max_cash_nav_error": 0.0,
+          "method": "independent raw-price/account reconstruction"
+        },
+        "baseline_2": {
+          "passed": true,
+          "sessions": 2645,
+          "fills": 3930,
+          "max_cash_nav_error": 0.0,
+          "method": "independent raw-price/account reconstruction"
+        },
+        "candidate_0": {
+          "passed": true,
+          "sessions": 2645,
+          "fills": 2682,
+          "max_cash_nav_error": 0.0,
+          "method": "independent raw-price/account reconstruction"
+        },
+        "candidate_1": {
+          "passed": true,
+          "sessions": 2645,
+          "fills": 2589,
+          "max_cash_nav_error": 0.0,
+          "method": "independent raw-price/account reconstruction"
+        },
+        "candidate_2": {
+          "passed": true,
+          "sessions": 2645,
+          "fills": 2641,
+          "max_cash_nav_error": 0.0,
+          "method": "independent raw-price/account reconstruction"
+        }
+      }
+    },
+    {
+      "name": "challenge_and_rejection_qualification_retained",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "scoped_memory_exact_observations",
+      "passed": true,
+      "details": {
+        "records": 1
+      }
+    },
+    {
+      "name": "distinct_transfer_preserves_protected_specification",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "failed_proposals_and_action_attempts_retained",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "complete_frozen_authentic_learning_campaign",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "learning_outcomes_and_uncertainty_recomputed",
+      "passed": true,
+      "details": {
+        "success_rates": {
+          "no_learning": 0.2375,
+          "raw_logs": 0.225,
+          "verified_memory": 0.2125
+        },
+        "paired_95_lower": -0.0875,
+        "hard_errors": 35,
+        "learning_demonstrated": false
+      }
+    },
+    {
+      "name": "original_durable_spend_caps",
+      "passed": true,
+      "details": {
+        "usd": 0.33128250000000004,
+        "campaigns": [
+          {
+            "campaign": "v1-benchmark",
+            "requests": 240,
+            "usd": 0.284065
+          },
+          {
+            "campaign": "v1-research-demo",
+            "requests": 11,
+            "usd": 0.04668125
+          },
+          {
+            "campaign": "v1-smoke",
+            "requests": 2,
+            "usd": 0.00053625
+          }
+        ]
+      }
+    },
+    {
+      "name": "legacy_research_preserved",
+      "passed": true,
+      "details": {
+        "files": 181
+      }
+    },
+    {
+      "name": "protected_engine_grader_and_broker_sources_preserved",
+      "passed": true,
+      "details": {
+        "changed_original_sources": [
+          "src/quant_agent/agent.py",
+          "src/quant_agent/cli.py",
+          "src/quant_agent/experiments.py",
+          "src/quant_agent/memory.py",
+          "src/quant_agent/models.py",
+          "src/quant_agent/report.py"
+        ]
+      }
+    },
+    {
+      "name": "no_execution_intents_or_releases",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "private_credentials_excluded_from_artifacts_and_source",
+      "passed": true,
+      "details": {
+        "files_checked": 99,
+        "credential_values_logged": false
+      }
+    }
+  ],
+  "data_qualified": false,
+  "learning_demonstrated": false,
+  "paper_eligible": false,
+  "model_usage_cost_usd": 0.33128250000000004,
+  "limitations": "Verification proves the stated engineering/provenance checks. It does not resolve market-data disagreements, original availability, rights, generalized learning or investment alpha."
+}
