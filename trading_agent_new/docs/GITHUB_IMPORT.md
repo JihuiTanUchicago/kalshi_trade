@@ -1,6 +1,6 @@
 # Polygon import into kalshi_trade
 
-This project is imported as the standalone `trading_agent_new/` directory in the private `JihuiTanUchicago/kalshi_trade` repository. Publication uses `jonathan-20261012` with a review PR against `main`. Existing Kalshi application files are unchanged; this import does not connect the agent to that application, deploy a service or enable broker operations.
+This project is imported as the standalone `trading_agent_new/` directory in the private `JihuiTanUchicago/kalshi_trade` repository. [PR #3](https://github.com/JihuiTanUchicago/kalshi_trade/pull/3) is ready for review from `jonathan-20261012` against `main`. Existing Kalshi application files are unchanged; this import does not connect the agent to that application, deploy a service or enable broker operations.
 
 The import includes source, tests, research scripts, configuration templates, datasets, archived experiment outputs and validation records. Initial inventory: 631 files and 84,820,149 bytes. Import notes and verification records are added separately. Original code/data/archive bytes and CSV line endings are preserved.
 
