@@ -1,0 +1,2977 @@
+{
+  "receipt": "d7595a384bcc00a1e8015d745eaa860edf4a5e295e3a504c12cc271a8ffc83a8",
+  "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc",
+  "completed_episodes": 139,
+  "episodes": [
+    {
+      "episode": {
+        "answer": {
+          "free_cash": 3040.0,
+          "gross_weight": 0.12409090909090909,
+          "net_weight": 0.04004132231404959
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "exposures-tools-3",
+        "condition": "verified_memory",
+        "cost": 0.003678749999999953,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "c50f21514404704b348069a7e70defb93506750c15cadc336363e9dcbb4a514f",
+        "session": "eval:9f7cc777337a919a2ef682fba711b9e8b53aa2cb3f5ca413abe0d73bffe032f6"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cash_change": 893.88,
+          "ending_shares": 764,
+          "nav_change": -1433.645999999997,
+          "unpaid_dividend_claim": 305.6
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "corporate_actions-tools-4",
+        "condition": "raw_logs",
+        "cost": 0.004947500000000105,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "26eb138c60e4204d8158eaf1fd2df737d71ee15046d521573f4de8239139b714",
+        "session": "eval:911f153fe77de400dae0a2b7a85ed2357ea54bb085fffddd063a135e1435d4d9"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "comparable": false,
+          "mismatched_assumptions": [
+            "capital",
+            "transaction_bps"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "controlled_experiments-tools-3",
+        "condition": "no_learning",
+        "cost": 0.0033725000000000005,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "761ef0865ba16d8637343e032e23ad046f274d2336a198bcb9954d453bfc8489",
+        "session": "eval:6dae7fed565d43f9fdfe4e389ffca78578148132537cef24aaaa675698515a17"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cost_free_gain": -0.0100000000000001,
+          "modeled_cost_contribution": -0.09,
+          "net_gain": -0.1000000000000001,
+          "turnover_change": 0.8025
+        },
+        "blocked_attempts": 1,
+        "calls": 3,
+        "case": "cost_attribution-tools-0",
+        "condition": "no_learning",
+        "cost": 0.00498624999999997,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "fc516e6da0d39878580e0147e6f2b7e855369868e646a6732b30359ab72cfdd3",
+        "session": "eval:31bc9967495be7ce1fcaf14ba3c1b5c69b8f654c09673005dc3742e53c5231f8"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cash_change": 713.8,
+          "ending_shares": 430,
+          "nav_change": 4.3e-12,
+          "unpaid_dividend_claim": 417.1
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "corporate_actions-tools-2",
+        "condition": "verified_memory",
+        "cost": 0.00392625000000002,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "ad6b96bca03c95e77448fe91fda75bfb6577a948e826a4d1e4bec2245b1c2aa8",
+        "session": "eval:4766c8db084fa676b57c67cdda6cad89b0fae907bfc842a108f016b76e572733"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cost_free_gain": 0.0759999999999999,
+          "modeled_cost_contribution": 0.0500000000000001,
+          "net_gain": 0.126,
+          "turnover_change": -0.8650000000000002
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "cost_attribution-tools-3",
+        "condition": "no_learning",
+        "cost": 0.003494999999999915,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "638ed88b04b9e7557e53044f67d036a1bfcd0863e9f71fe9d40249e769f2456f",
+        "session": "eval:8f3a22a2c6d201238fe05dd5729c662d6da4332d9b734c67553803046396bc79"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 2,
+        "calls": 3,
+        "case": "timing-tools-2",
+        "condition": "raw_logs",
+        "cost": 0.008300000000000085,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 1,
+        "result": null,
+        "session": "eval:c88bf653bd633f9bd41d5d3883e9f38b818186865aba16d1dd0962ac7c66f5c0"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 2,
+        "calls": 3,
+        "case": "decisions-tools-4",
+        "condition": "verified_memory",
+        "cost": 0.0045999999999999375,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 0,
+        "result": null,
+        "session": "eval:0f07afb95ef47e68965cfe713bae5d3c4319272d5cbc12f197b13e92afdda1d5"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "ending_shares": 170,
+          "total_return": 0.04732636754763368,
+          "usable_ids": [
+            "doc-6467867-0",
+            "doc-6467867-1",
+            "doc-6467867-2",
+            "doc-6467867-3"
+          ]
+        },
+        "blocked_attempts": 1,
+        "calls": 4,
+        "case": "features-tools-0",
+        "condition": "no_learning",
+        "cost": 0.008160000000000056,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "044b07114d1767fb6b7533e40148ebd1844999e8cf886f3090b1b5b3acf02310",
+        "session": "eval:95e3fca44962195d762cb64ab80b9289c33418918b66a8bb2c5ad9560d9f7094"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cost_free_gain": -0.0100000000000001,
+          "modeled_cost_contribution": -0.09,
+          "net_gain": -0.1000000000000001,
+          "turnover_change": 0.8025
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "cost_attribution-tools-0",
+        "condition": "verified_memory",
+        "cost": 0.004031249999999931,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "c19349bbf6b56307d6fed5b1cbac10a8eb1ac963ee988d5dbacea762b0ab712d",
+        "session": "eval:8af1ee2d64a3309d323ef31124ea35ff6875e56d57330d8cab6a0b65f23f103c"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "filled_quantity": 94,
+          "next_action": "reconcile",
+          "resubmit": false
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "execution-tools-0",
+        "condition": "no_learning",
+        "cost": 0.0031849999999999934,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "328c66956c308eba36b5448a47b2f3434e794d17f3ba29aac29dc17efbe9cfdb",
+        "session": "eval:0fb6e6a4552bb63d44a7ef506860f732e3fdeaf9ba08716a338cdc3ab01f11a9"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cost_free_gain": -0.046,
+          "modeled_cost_contribution": -0.0900000000000001,
+          "net_gain": -0.1360000000000001,
+          "turnover_change": 0.3025
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "cost_attribution-tools-4",
+        "condition": "raw_logs",
+        "cost": 0.005022500000000041,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "8e0e4366f9111786f9672c988c94768f90460b8401dcddcd2dd120c5c6b26fda",
+        "session": "eval:f9ad96e62d9e6765836f338bbf8b0229c742e4b6992c3331c3d4840eeafe8a5c"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cash_change": -228.75,
+          "ending_shares": -183,
+          "nav_change": 0.0,
+          "unpaid_dividend_claim": -376.98
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "corporate_actions-tools-3",
+        "condition": "verified_memory",
+        "cost": 0.0039162499999999545,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "b1625f9a6144a0dc905c4ef3cec2b7e714a78ce716903c7b7cb7f2b7e4fa46b9",
+        "session": "eval:1e0c357784c385593b8ad2d45e5def1353c13d68ed383d9b6d600ee7030e2525"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cash_change": -137.7,
+          "ending_shares": -170,
+          "nav_change": -1.7e-12,
+          "unpaid_dividend_claim": -423.3
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "corporate_actions-tools-1",
+        "condition": "no_learning",
+        "cost": 0.0033975000000000533,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "0ab5df142cf259ad95d2c346e546363eb0545b82b8cfdcb039eb820ef16780b9",
+        "session": "eval:fef7f4b137b0013c2e27ddf6ce28e5fc518a2fdfd93a1680902e90cddc442abe"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "ending_shares": 390,
+          "total_return": 0.07930325651844639,
+          "usable_ids": [
+            "doc-5846045-0",
+            "doc-5846045-1",
+            "doc-5846045-2",
+            "doc-5846045-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 3,
+        "case": "features-tools-2",
+        "condition": "verified_memory",
+        "cost": 0.0070949999999999624,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "cb8d03504e9e9cfcf30822def7f2fcbc6882b38b93a7cedd884bc34094e4b9c3",
+        "session": "eval:8275c3a3a7c6cc5563a70d4928c0bc4881c35545ffad7b7c75afca52781fac00"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "ending_shares": 148,
+          "total_return": 0.0903998319445417,
+          "usable_ids": [
+            "doc-7634696-0",
+            "doc-7634696-1",
+            "doc-7634696-2",
+            "doc-7634696-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 3,
+        "case": "features-tools-4",
+        "condition": "raw_logs",
+        "cost": 0.008582500000000048,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "20bf7f4a180671a041c3fcb633df4f7c0373dc714e58355bb3c5bc32ef8ea6fd",
+        "session": "eval:496025f8a77b731a53f1d6677b87f7b0a689ad0e0953b63b621b8baeb8f693d6"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cost_free_gain": -0.046,
+          "modeled_cost_contribution": -0.0900000000000001,
+          "net_gain": -0.1360000000000001,
+          "turnover_change": 0.3025
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "cost_attribution-tools-4",
+        "condition": "raw_logs",
+        "cost": 0.00502249999999993,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "2bb1e8cc989c1545cd488f3e3b6cbc1753cc8caf24204bff96706f7cb6868355",
+        "session": "eval:886f20682d8d5359cee72d0a4b35db130adbce8df2d38942570c8b558840c899"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "ending_shares": 170,
+          "total_return": 0.04732636754763368,
+          "usable_ids": [
+            "doc-6467867-0",
+            "doc-6467867-1",
+            "doc-6467867-2",
+            "doc-6467867-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 3,
+        "case": "features-tools-0",
+        "condition": "raw_logs",
+        "cost": 0.00857125000000003,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "e4136df5f7350f568e8d30a163bbbe94c2cd02df64c5f0172d6cfdd5e6227d8c",
+        "session": "eval:b7bd6a9a223a3d1f8ca3ea6d464c409a5337cef818f3e71e83c996f66eba5d44"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "comparable": true,
+          "mismatched_assumptions": []
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "controlled_experiments-tools-0",
+        "condition": "no_learning",
+        "cost": 0.0033775000000000333,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "4e2a892ce175f593ccda038fc9d962f60fe20c195c667b2e5e29655de291acec",
+        "session": "eval:d2c903657107b8a9379cede47851e976b1609aab407632e12ba336cd11618be4"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cost_free_gain": 0.0490000000000001,
+          "modeled_cost_contribution": 0.0499999999999999,
+          "net_gain": 0.099,
+          "turnover_change": -0.9250000000000003
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "cost_attribution-tools-1",
+        "condition": "no_learning",
+        "cost": 0.0034975000000000422,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "a6e4606e77b067c876dc478e9a72dc58f9273efc1992891883ff8041c18ca0d3",
+        "session": "eval:3621675d9937875637ed3d83eef96712e15c06507563dfc7f484af518fa8dafa"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "comparable": false,
+          "mismatched_assumptions": [
+            "timing"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "controlled_experiments-tools-1",
+        "condition": "raw_logs",
+        "cost": 0.004911249999999923,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "59ebde23105ad1883a844c700a776518ad829b028816c6c358156d549c1fd4f4",
+        "session": "eval:f32f2bc41fe90ea762009b588995cb719f1252b91df2fa78e1313672623cfcf6"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "free_cash": 3040.0,
+          "gross_weight": 0.12409090909090909,
+          "net_weight": 0.04004132231404959
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "exposures-tools-3",
+        "condition": "verified_memory",
+        "cost": 0.003678750000000064,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "9ca2ca5d53b942f7797d9a2759b110654258a0b26ecd25914dca7d057a42ff7f",
+        "session": "eval:d6d13c10352faf8882e5fe4b8f33a41f43b2e22edc3ea3df5ade7f623fc3e137"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cash_change": 713.8,
+          "ending_shares": 430,
+          "nav_change": 4.3e-12,
+          "unpaid_dividend_claim": 417.1
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "corporate_actions-tools-2",
+        "condition": "verified_memory",
+        "cost": 0.003926249999999909,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "25fc06f0c06529b28fcbeb394e071d6679ccfab16a043f20ef43c81160094c9f",
+        "session": "eval:c0d2800da9ae4765b4cd593fc6f485001a2b649d424048dfd7e421b8b01924af"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "usable_ids": [
+            "doc-2392648-0",
+            "doc-2392648-1",
+            "doc-2392648-2",
+            "doc-2392648-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "timing-tools-3",
+        "condition": "no_learning",
+        "cost": 0.003902500000000031,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "a4669da5d98e7f24d4930db28e7fb53650303781f6225e5bee291f86cd1f7cc1",
+        "session": "eval:fbc8771f63a1569526790c6a3620be67fef9fb04730aac8c7107391c09383ecd"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "ending_shares": 70,
+          "total_return": 0.0023932987634623054,
+          "usable_ids": [
+            "doc-3447920-0",
+            "doc-3447920-1",
+            "doc-3447920-2",
+            "doc-3447920-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 3,
+        "case": "features-tools-3",
+        "condition": "verified_memory",
+        "cost": 0.0070950000000000735,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "8a43b79009f64784e387661c863f68e033e409a3a5a71c653be880c8f7415fb6",
+        "session": "eval:3997fad75b5d315bc62ceafc67a5adeb3fb17ca10367982908828051c36453b7"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cash_change": 893.88,
+          "ending_shares": 764,
+          "nav_change": -1433.645999999997,
+          "unpaid_dividend_claim": 305.6
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "corporate_actions-tools-4",
+        "condition": "verified_memory",
+        "cost": 0.003927499999999973,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "be4ab811ed4a04e07d0ad5fc1e19d72e0e4008591e0d9b1237ce3aca2ddb5782",
+        "session": "eval:51c8dc5d85e14080ddd3b0d528cd7e1cdd4ccf677a3788f51135f641e57f1fbf"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cost_free_gain": 0.0490000000000001,
+          "modeled_cost_contribution": 0.0499999999999999,
+          "net_gain": 0.099,
+          "turnover_change": -0.9250000000000003
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "cost_attribution-tools-1",
+        "condition": "verified_memory",
+        "cost": 0.004049999999999998,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "bb401c10d9ae009ceaf8b392ccd44d67d27d8b8199906a2a4a3af47a9b93b302",
+        "session": "eval:26e2927ee99511a608fba41ed1fe3a200218b5115d3baab786b546f9220c9b38"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "filled_quantity": 48,
+          "next_action": "pause",
+          "resubmit": false
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "execution-tools-4",
+        "condition": "raw_logs",
+        "cost": 0.004736249999999997,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "217b8f2d4d8d73825107a01a1b624f5976a1c034a4d79a588c119deadc473973",
+        "session": "eval:720139c6a13eb1b1fb6fe2385f2164884e13550ad09b9c2659933d08b4849a75"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 2,
+        "calls": 3,
+        "case": "decisions-tools-4",
+        "condition": "verified_memory",
+        "cost": 0.0045999999999999375,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 1,
+        "result": null,
+        "session": "eval:72aed0e4aead9ee604287f22eb33f4c4a4b585650b343a70ea66f0b44c90b436"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 0,
+        "calls": 4,
+        "case": "execution-tools-4",
+        "condition": "no_learning",
+        "cost": 0.006448750000000003,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 0,
+        "result": null,
+        "session": "eval:968c94deff160d473c48aacb67a71c794fc2e7e03fcc901ab691fc439ec8b3d4"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cost_free_gain": 0.0490000000000001,
+          "modeled_cost_contribution": 0.0499999999999999,
+          "net_gain": 0.099,
+          "turnover_change": -0.9250000000000003
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "cost_attribution-tools-1",
+        "condition": "raw_logs",
+        "cost": 0.005049999999999999,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "3bb68b44d691f252cf67c5c7092cc7ccc5c9d119cdb2ee5ff14e5c9b3c38cba1",
+        "session": "eval:a6f0d0f0bab9945333ddde49ff0ad5ed208987dd3a19525ed41c0c323a667ef0"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cash_change": 320.58,
+          "ending_shares": 234,
+          "nav_change": 0.0,
+          "unpaid_dividend_claim": 210.6
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "corporate_actions-tools-0",
+        "condition": "no_learning",
+        "cost": 0.003391250000000068,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "8f3185f851cb4f2874f2c7f69696af671604e76bfe2908bb592c29cb60e473f9",
+        "session": "eval:1be0b3138415080e1e38418a6f4c5bd1795163847372a09dc791f8d148fe3e58"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 1,
+        "calls": 4,
+        "case": "execution-tools-4",
+        "condition": "verified_memory",
+        "cost": 0.006223749999999972,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 0,
+        "result": null,
+        "session": "eval:fdaee92dd9f583c305ab3e13ebcd8678b5e87bbe001cbbd9b1b226831fd89701"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "ending_shares": 148,
+          "total_return": 0.0903998319445417,
+          "usable_ids": [
+            "doc-7634696-0",
+            "doc-7634696-1",
+            "doc-7634696-2",
+            "doc-7634696-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 3,
+        "case": "features-tools-4",
+        "condition": "verified_memory",
+        "cost": 0.007090000000000041,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "60be7be16f782b92caa2cc8124f51d4f5184c7bde138976f68d533dcde67a90e",
+        "session": "eval:4de7365c07b9994945687a4a1e2e31943052493d8c581fbcc13b1ececa2ef090"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "usable_ids": [
+            "doc-8735578-0",
+            "doc-8735578-1",
+            "doc-8735578-2",
+            "doc-8735578-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "timing-tools-2",
+        "condition": "verified_memory",
+        "cost": 0.004427499999999918,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "d36440585589aa38b90929d8ce54b7ed690e10b5cd7d2dd8ba13f8c26d0eaed7",
+        "session": "eval:96106708d76374e30970446a1c824b92b6abbe2d4cabd3a9bd86420caa20b796"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "decision": "reject"
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "decisions-tools-0",
+        "condition": "verified_memory",
+        "cost": 0.003007500000000052,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "f95d94cbc9d4d8cafed03fefea53ffc0463afbde60c2e5b4720e4533d50164c3",
+        "session": "eval:64115162c5a1696042030d8430c762668f0333e731debf8461bf7468f415c002"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 0,
+        "calls": 4,
+        "case": "execution-tools-3",
+        "condition": "verified_memory",
+        "cost": 0.006445000000000034,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 1,
+        "result": null,
+        "session": "eval:d196fbafed310e22f5325deeb21e5410df01786ebc758d11fb07959bad828d40"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "usable_ids": [
+            "doc-8735578-0",
+            "doc-8735578-1",
+            "doc-8735578-2",
+            "doc-8735578-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 3,
+        "case": "timing-tools-2",
+        "condition": "no_learning",
+        "cost": 0.0059274999999999745,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "aa2497008923224478e94b210c69ca5a927a084eedbaff0a4a0135869cb00d71",
+        "session": "eval:396aa3b5ebc4b0126643825e04e29fa97d8a2c330d4910e6bd3ab75db501ceb7"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 2,
+        "calls": 3,
+        "case": "decisions-tools-3",
+        "condition": "raw_logs",
+        "cost": 0.006916249999999957,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 0,
+        "result": null,
+        "session": "eval:ad37afb9a9b9e6234f982970a5389afbdf6ec3d3c762549893f38b76642430cd"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "comparable": false,
+          "mismatched_assumptions": [
+            "capital",
+            "transaction_bps"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "controlled_experiments-tools-3",
+        "condition": "raw_logs",
+        "cost": 0.004925000000000068,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "050d125c1ba7bd187c11ccb6ce87e64866298a205b5b3a0b24a0b0dbf9a81948",
+        "session": "eval:35c6a150c1a04883fbc67ded09db5e8afbc44aeb5971f97136075ea7701adb54"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cost_free_gain": -0.046,
+          "modeled_cost_contribution": -0.0900000000000001,
+          "net_gain": -0.1360000000000001,
+          "turnover_change": 0.3025
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "cost_attribution-tools-4",
+        "condition": "no_learning",
+        "cost": 0.003469999999999973,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "719759c90e867cfcabb2f668e5c5cc774aab393fcd52d9d21f4ec491742a5a35",
+        "session": "eval:83763329a60c685e8347de9b1de8b10f37d4d1b893c70e06f1f6b5e337d73c10"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 0,
+        "calls": 4,
+        "case": "execution-tools-2",
+        "condition": "no_learning",
+        "cost": 0.006461249999999974,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 0,
+        "result": null,
+        "session": "eval:2645e0001022d7f5554669c4ac6def4cb947fd96c8235257f830be20d68fabf5"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "usable_ids": [
+            "doc-2163496-0",
+            "doc-2163496-1",
+            "doc-2163496-2",
+            "doc-2163496-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 3,
+        "case": "timing-tools-4",
+        "condition": "no_learning",
+        "cost": 0.00591750000000002,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "8faee5aee8e898bbbe4f7e131424a5b51fb8f0b0ec2ada1515112b4731272d40",
+        "session": "eval:d071c81b601612ae2ad75d0f3dbd60f97ea2d3791326f7bcdf1d767e11330ef2"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 2,
+        "calls": 3,
+        "case": "timing-tools-1",
+        "condition": "raw_logs",
+        "cost": 0.008294999999999941,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 0,
+        "result": null,
+        "session": "eval:1e3ae343e0bb16b9cb35873f400551e7aeba7827a3d3a71b775c23bce36b9670"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cost_free_gain": -0.049,
+          "modeled_cost_contribution": -0.0899999999999999,
+          "net_gain": -0.1389999999999999,
+          "turnover_change": 0.7125
+        },
+        "blocked_attempts": 1,
+        "calls": 3,
+        "case": "cost_attribution-tools-2",
+        "condition": "no_learning",
+        "cost": 0.004966250000000061,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "d074a81d5923cc7bb9c75275d832d9a94600eccb810361cb77eae82a6e425169",
+        "session": "eval:93889afbe33e7b40dad4ad5a8e43185727753a1f3e9c2536ad84e6032f8a0acb"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cost_free_gain": -0.049,
+          "modeled_cost_contribution": -0.0899999999999999,
+          "net_gain": -0.1389999999999999,
+          "turnover_change": 0.7125
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "cost_attribution-tools-2",
+        "condition": "verified_memory",
+        "cost": 0.004017500000000007,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "ef167094eaec06034131c5596b1e9a0d14829b00e805cf84bce0be2109d2bca7",
+        "session": "eval:3c25df7b099c51d0db8b26c98b90772358e15e780d53b8c0410f7ef95e5f5376"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 0,
+        "calls": 4,
+        "case": "execution-tools-1",
+        "condition": "verified_memory",
+        "cost": 0.006449999999999956,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 1,
+        "result": null,
+        "session": "eval:a24b100c9e4614a89845c65c67fcac90f7f0b0a4d35d7d1f96cfb5d18b03f5e8"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "free_cash": 3070.0,
+          "gross_weight": 0.2974,
+          "net_weight": 0.1102
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "exposures-tools-0",
+        "condition": "raw_logs",
+        "cost": 0.004706250000000023,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "77c7058feed822b1a7c076eb8ddfae3a75e86cd7a90f30129d9f5becd680f13d",
+        "session": "eval:e4d38be00d764720daaa23f6a77f5fb5065bdc608676f2b41801527203008833"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 2,
+        "calls": 3,
+        "case": "decisions-tools-4",
+        "condition": "raw_logs",
+        "cost": 0.006926250000000023,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 1,
+        "result": null,
+        "session": "eval:22b75f660a488cd7de78f3fccd85c4fc7aa9a96283d9c03c8471dc3ffe90c477"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "comparable": false,
+          "mismatched_assumptions": [
+            "timing"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "controlled_experiments-tools-1",
+        "condition": "verified_memory",
+        "cost": 0.0039012499999999672,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "a41235c7c413c6368dc63472b27a30e56bf29ed67ab36b43befc7512240c0c5e",
+        "session": "eval:b496c250b28e6e1242bc6626d1d083fc6f1776749b8fae45272d36e74426e404"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "free_cash": 3050.0,
+          "gross_weight": 0.10723684210526316,
+          "net_weight": 0.03223684210526316
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "exposures-tools-2",
+        "condition": "raw_logs",
+        "cost": 0.004715000000000025,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "3e83cdc28dcbf60e0088c52bb486caa788fc64b93ffac57bdaed62dbc179f4f3",
+        "session": "eval:02b2f1da2a1b54a41e6dc87819586fefdbe927da35eceb43d1afc63d92929775"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "comparable": false,
+          "mismatched_assumptions": [
+            "dividend_policy"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "controlled_experiments-tools-4",
+        "condition": "raw_logs",
+        "cost": 0.0048837499999999645,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "3b64c988b12cd47bfcab789cbd7f0c7e4ce8d94c09efbeb21fc6433d922a9b1e",
+        "session": "eval:c84d4c3f4275867e91abca956d95d07213da4793cdb42773c7a40f2be6bbc14c"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "decision": "reject"
+        },
+        "blocked_attempts": 1,
+        "calls": 3,
+        "case": "decisions-tools-2",
+        "condition": "no_learning",
+        "cost": 0.004572499999999979,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "7c3b2d2ab1ef2a5f09151598536989876ceb1809922babed4973b623860c3290",
+        "session": "eval:4725c9b7b12bbbf7859c6915f0cba910146a21e0f6f2d7ef8de0c9d7ec2a77f1"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 0,
+        "calls": 4,
+        "case": "execution-tools-3",
+        "condition": "no_learning",
+        "cost": 0.006445000000000034,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 0,
+        "result": null,
+        "session": "eval:ee6a78a3635504c9d93bee121079eef3f4b2747f09a9bddde082c47058adc746"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cash_change": 713.8,
+          "ending_shares": 430,
+          "nav_change": 4.3e-12,
+          "unpaid_dividend_claim": 417.1
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "corporate_actions-tools-2",
+        "condition": "no_learning",
+        "cost": 0.003393749999999973,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "d08b1a085160107705e45d3acf6dca29ed4d57aa419c6c06018e00f3d59ad06c",
+        "session": "eval:8bd5790d9cfb7e96294f155a8a23d06b7f0f22fb651db1f395da3e606784860a"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "usable_ids": [
+            "doc-2392648-0",
+            "doc-2392648-1",
+            "doc-2392648-2",
+            "doc-2392648-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "timing-tools-3",
+        "condition": "verified_memory",
+        "cost": 0.004427500000000029,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "ac1062a32fa9ff484020615c1c21bad8963262f29229113db8382a86b9caa6a6",
+        "session": "eval:f7c8f8928c70ef68925c95aac7cc8edd38afb5b7be2ca331d0df9f5108ef79ea"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "free_cash": 3050.0,
+          "gross_weight": 0.10723684210526316,
+          "net_weight": 0.03223684210526316
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "exposures-tools-2",
+        "condition": "no_learning",
+        "cost": 0.003162499999999957,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "a3cd343a4c54d55ce56e56311aeb03209cf8a51f9164d5c13bf9f9e3ec65847b",
+        "session": "eval:6908b7f052cd79918176f82e74b53231600c4a9265dcb0b6151335bca73e2e2e"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 2,
+        "calls": 3,
+        "case": "decisions-tools-3",
+        "condition": "no_learning",
+        "cost": 0.004590000000000094,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 1,
+        "result": null,
+        "session": "eval:59bca3f5a2bd1bc41e4f72dac6a285e2b147aa0ed44af417cc6106c894f03f40"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "ending_shares": 70,
+          "total_return": 0.0023932987634623054,
+          "usable_ids": [
+            "doc-3447920-0",
+            "doc-3447920-1",
+            "doc-3447920-2",
+            "doc-3447920-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 3,
+        "case": "features-tools-3",
+        "condition": "raw_logs",
+        "cost": 0.00858749999999986,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "b91f4dc3593a68667806507c7a2f77ab16f4c509163edac5081fa26644bf2864",
+        "session": "eval:a24724c34cb67c36c4a15923bbbd116e49702528f049cd6ad363a1ee6c20b6ce"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "usable_ids": [
+            "doc-2126106-0",
+            "doc-2126106-1",
+            "doc-2126106-2",
+            "doc-2126106-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "timing-tools-0",
+        "condition": "verified_memory",
+        "cost": 0.004431250000000109,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "f7e178ee2e93ce1f0c23ea45493739a7c24ed1b671df4acbac1c61c3b89a167a",
+        "session": "eval:39949f79997fd76debc6eb41e4aa0d399be85b8f02bb14d4f1fbbb3ab6c25ca2"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "comparable": false,
+          "mismatched_assumptions": [
+            "dividend_policy"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "controlled_experiments-tools-4",
+        "condition": "verified_memory",
+        "cost": 0.003873749999999898,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "ff0effdc57a1e7a16e9cab1f51d65dc25ece4140f7b50d3b4e574df7bb6719d3",
+        "session": "eval:fb0a7d135d96d05bfdf32fde4ab25fdb96151358f8e6b01d3afa6387748dc8b1"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cash_change": -137.7,
+          "ending_shares": -170,
+          "nav_change": -1.7e-12,
+          "unpaid_dividend_claim": -423.3
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "corporate_actions-tools-1",
+        "condition": "verified_memory",
+        "cost": 0.003929999999999989,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "de5a51bc2a351654709e615fadeeb97e205932bf8eaca6cc9234525f64628cd4",
+        "session": "eval:5b823ce0b50155a92fb65e0d35320da1cf9a9ebc714caac0bebde92ab9e29f30"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 2,
+        "calls": 3,
+        "case": "timing-tools-3",
+        "condition": "raw_logs",
+        "cost": 0.008300000000000196,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 1,
+        "result": null,
+        "session": "eval:c753bcf083b0991f4653b72fd972bbc57db08d8d3f7928309236dfa1a3dc3656"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "usable_ids": [
+            "doc-6442850-0",
+            "doc-6442850-1",
+            "doc-6442850-2",
+            "doc-6442850-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "timing-tools-1",
+        "condition": "verified_memory",
+        "cost": 0.004426249999999854,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "2c73afe2c9d5f86b95d05df852942a209a12f13e1ea9bf4bbd475693270a5f1e",
+        "session": "eval:7953e703910debb75a3cf8fb6925104c8b659fe532b341e05da8a3cc286af55b"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "ending_shares": 244,
+          "total_return": 0.010865022983702465,
+          "usable_ids": [
+            "doc-3973209-0",
+            "doc-3973209-1",
+            "doc-3973209-2",
+            "doc-3973209-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 3,
+        "case": "features-tools-1",
+        "condition": "raw_logs",
+        "cost": 0.008573750000000047,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "7b3e7f64df197c035f896cd6aa9ab1bd7fc3eba4064c796c01dd8e18557bca8b",
+        "session": "eval:d7cc73d7b4f4239beb89fdf34d80e28317d128b6b3ee63c58787cc50e3de7e9d"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "ending_shares": 148,
+          "total_return": 0.0903998319445417,
+          "usable_ids": [
+            "doc-7634696-0",
+            "doc-7634696-1",
+            "doc-7634696-2",
+            "doc-7634696-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 3,
+        "case": "features-tools-4",
+        "condition": "raw_logs",
+        "cost": 0.008582499999999937,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "c993ed6002e306c76d3893eaa794b1c815bb1f29a103bcd9b4ba1abc47cbd08f",
+        "session": "eval:7ec3a1d23bb5b412248209d3119f57db733148b0d9d2fd90cc42c812002acaab"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "comparable": true,
+          "mismatched_assumptions": []
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "controlled_experiments-tools-0",
+        "condition": "raw_logs",
+        "cost": 0.004930000000000101,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "bf9b1f0045089bb008bd348d021bf10b1ec526df8de6e0f343d4744b0b3e5ab5",
+        "session": "eval:7e6ecceb6dfa29750a093279a71cc7f05f933069a6bcc2644b6e58f962773897"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cash_change": -137.7,
+          "ending_shares": -170,
+          "nav_change": -1.7e-12,
+          "unpaid_dividend_claim": -423.3
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "corporate_actions-tools-1",
+        "condition": "verified_memory",
+        "cost": 0.003929999999999989,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "b8de09d510f81aa19bd38b71bc6ca650c33529906e0c944c737f45f30f412f65",
+        "session": "eval:aff0e2b2c8bc3e1678eea02352784b14749d6591b23ab7319256943ddf2aef23"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "free_cash": -370.0,
+          "gross_weight": 0.4297265625,
+          "net_weight": 0.1688671875
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "exposures-tools-4",
+        "condition": "raw_logs",
+        "cost": 0.0047037500000000065,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "79dc80219ae845e3a8193d3f77495d21d5e0f7dff2453fe2c05e4d5caaf5d6f5",
+        "session": "eval:e90f55c32b45e7d979de8e7485ac0da9468e2cab8a700d0ec8dbb858661add31"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "ending_shares": 70,
+          "total_return": 0.0023932987634623054,
+          "usable_ids": [
+            "doc-3447920-0",
+            "doc-3447920-1",
+            "doc-3447920-2",
+            "doc-3447920-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 3,
+        "case": "features-tools-3",
+        "condition": "raw_logs",
+        "cost": 0.00858749999999997,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "477021267e9367c4e01bcc43dadc2fbcea20eb7745a5d582eded74e0cd0e0a75",
+        "session": "eval:95dffd47a8abd58bd59390725653ba14fec5a86272f2086e5d9b2d1ba5815b93"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "usable_ids": [
+            "doc-8735578-0",
+            "doc-8735578-1",
+            "doc-8735578-2",
+            "doc-8735578-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "timing-tools-2",
+        "condition": "verified_memory",
+        "cost": 0.004427500000000029,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "3e27a866635e4e69c47d43c308901c1fb64de9a1a71bc61cb56d8bd84eba129d",
+        "session": "eval:665a08db56edd82c2735713d7ceff6e1ef0a7741925c60a38f1057ba21ec5d56"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 2,
+        "calls": 4,
+        "case": "decisions-tools-4",
+        "condition": "no_learning",
+        "cost": 0.006161249999999896,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 1,
+        "result": null,
+        "session": "eval:c9f9e68a6be3d347819d4cab198fceb332dc09af24c1e12ded3cecdb7d4e3072"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 2,
+        "calls": 3,
+        "case": "decisions-tools-1",
+        "condition": "raw_logs",
+        "cost": 0.006901250000000081,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 0,
+        "result": null,
+        "session": "eval:2f4b2f0c601e74fea931c49d225a47b5d14d7cd4156243dc952c9b30d7fcf5e0"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cost_free_gain": -0.049,
+          "modeled_cost_contribution": -0.0899999999999999,
+          "net_gain": -0.1389999999999999,
+          "turnover_change": 0.7125
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "cost_attribution-tools-2",
+        "condition": "raw_logs",
+        "cost": 0.005017499999999897,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "3a83d711493af27a60c3af2a41a21e96e90d300072f3b1a19fd1edc262ff1852",
+        "session": "eval:09a4eba69a69800d31ac337c3f86ed82e7bb091029898e552d5fb30788d22c65"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "comparable": false,
+          "mismatched_assumptions": [
+            "capital",
+            "transaction_bps"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "controlled_experiments-tools-3",
+        "condition": "verified_memory",
+        "cost": 0.003915000000000113,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "c995d943ab728b2dad1ec028da4e5b84e2645c85f2abf37b69527cf3c7dc243b",
+        "session": "eval:70aeceb099801b29c786e58f03ff2380a10e061c81540b546c267853bd8dc8f1"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 2,
+        "calls": 3,
+        "case": "decisions-tools-2",
+        "condition": "raw_logs",
+        "cost": 0.006908750000000019,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 1,
+        "result": null,
+        "session": "eval:1a5fffd8f080ce673bc78e35a29d586d760c61320070bea49f805b55c0faf3a0"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "free_cash": 3070.0,
+          "gross_weight": 0.2974,
+          "net_weight": 0.1102
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "exposures-tools-0",
+        "condition": "verified_memory",
+        "cost": 0.0036712500000000148,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "cd718e809224df7e36e54ee2c7653f5e9e890bcc7eedee67753beb30226e4ab0",
+        "session": "eval:c1d3a9d97482ca2ba68b2c49f261fdf696012dc0be19abfe85aa5b1e0ff0d844"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "free_cash": 3070.0,
+          "gross_weight": 0.2974,
+          "net_weight": 0.1102
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "exposures-tools-0",
+        "condition": "no_learning",
+        "cost": 0.003153749999999844,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "e551c62c33fe1afc37292db8f7c368cda1b3749b9ecf5a9b300f8783cf711ba6",
+        "session": "eval:f596087207b3363feec5faf64ff77a9791073dacab0f8a18eee7b88ede2169de"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cash_change": -228.75,
+          "ending_shares": -183,
+          "nav_change": 0.0,
+          "unpaid_dividend_claim": -376.98
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "corporate_actions-tools-3",
+        "condition": "raw_logs",
+        "cost": 0.004936250000000086,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "4a9f4cb9398a5d0adfa687fabcde3f9afe305d9ec4cfbe85a389e9ac253dbd5f",
+        "session": "eval:84a8437ae43e30e66c3583f1154f12797065c9be608ee63002210bca8200cd0b"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "decision": "advance_to_paper_qualification"
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "decisions-tools-4",
+        "condition": "no_learning",
+        "cost": 0.003007500000000052,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "1f360534586352eee700c6d749ae0d1d5c5a4659ba41ecd8fb8172fa47db2f51",
+        "session": "eval:13340a8097db14f791649316fdb894519912223c1929c86976301d22a6c5ea96"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cost_free_gain": 0.0759999999999999,
+          "modeled_cost_contribution": 0.0500000000000001,
+          "net_gain": 0.126,
+          "turnover_change": -0.8650000000000002
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "cost_attribution-tools-3",
+        "condition": "verified_memory",
+        "cost": 0.004047499999999982,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "d81188293f6b3b4e18d11a9b2a9af6420211ad912a1ad354dfe267930d78bddf",
+        "session": "eval:8ae357a9f6ebf509e26cc1308c8216895576ae566d72f8239c2f62c3eebbde98"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "decision": "reject"
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "decisions-tools-1",
+        "condition": "verified_memory",
+        "cost": 0.002993749999999906,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "4e4e22f7e659fc111c9e41d53f7557e094623e77280011713e66ce17bdd8cfcc",
+        "session": "eval:7e01e6af3751cfc03c2b95a9ec0dec46b0257586093dc8cbd533f36598729c97"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "usable_ids": [
+            "doc-2126106-0",
+            "doc-2126106-1",
+            "doc-2126106-2",
+            "doc-2126106-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 3,
+        "case": "timing-tools-0",
+        "condition": "no_learning",
+        "cost": 0.005935000000000024,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "cc11039df384e0da95af1cd670170919bb3c7ef30a8d94e2f6080492c0292a38",
+        "session": "eval:cffa88b50e2fa471feb18049bdba19bbb6ad324bf6f9492ec329b0454d91655a"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 2,
+        "calls": 3,
+        "case": "decisions-tools-3",
+        "condition": "raw_logs",
+        "cost": 0.006916249999999957,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 1,
+        "result": null,
+        "session": "eval:eff0d7b52a26ab0d89138108ba6a9ea7af781f86b249e3ec417d9b82ff8bd8ac"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 0,
+        "calls": 4,
+        "case": "execution-tools-0",
+        "condition": "verified_memory",
+        "cost": 0.006462500000000038,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 1,
+        "result": null,
+        "session": "eval:55000544a416a619fccad1e46cd00325fff04012735a0770f4187367ddf90eb4"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "comparable": false,
+          "mismatched_assumptions": [
+            "timing"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "controlled_experiments-tools-1",
+        "condition": "no_learning",
+        "cost": 0.003358750000000077,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "831eb86802f98df8a95a9f04c426cc735b88433a97201e89718c9104faed7f0f",
+        "session": "eval:c0fa38a8c3ec146e879c51671a93419781238d0f13d322ef014c17e7beb407ee"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "comparable": false,
+          "mismatched_assumptions": [
+            "reference_rate",
+            "scored_start"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "controlled_experiments-tools-2",
+        "condition": "verified_memory",
+        "cost": 0.0039199999999999235,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "99c3a4b1ec3e5955929a05baaa052ac154d12dfc8441bc9fc5f9413c2c754e17",
+        "session": "eval:14bb059d15fe6a97871319944193afe0fa536fa08717b0031ce2b3ce8cd7084a"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "free_cash": -370.0,
+          "gross_weight": 0.4297265625,
+          "net_weight": 0.1688671875
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "exposures-tools-4",
+        "condition": "raw_logs",
+        "cost": 0.0047037500000000065,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "dff5207412b6c043b42185b149833dd121ce523f62e4e8d077e4bd3286cf3e04",
+        "session": "eval:4c027d923b50249070d012a4d4213ebb295c7e6ac1993cb8dc0d24c6332281e2"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "free_cash": 3060.0,
+          "gross_weight": 0.3677570093457944,
+          "net_weight": 0.14065420560747663
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "exposures-tools-1",
+        "condition": "raw_logs",
+        "cost": 0.004711249999999945,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "de05fdb6f380127da3a2d69be26d7cbf32b858ac543f1305a09524b4c52fc518",
+        "session": "eval:df7fa62a3ffb88cf68fbc2b366072c358307b12bdff57c826e2920882a232b8c"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "filled_quantity": 122,
+          "next_action": "pause",
+          "resubmit": false
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "execution-tools-2",
+        "condition": "raw_logs",
+        "cost": 0.004741250000000141,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "6539a096fcd948a4c0fce062ecedab26aa1d505b2fc1b622a5d706abdf44020b",
+        "session": "eval:f9511ff5cf7829936d18c55ffcd9b613a9f622b64600545115045bffb325b787"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "ending_shares": 390,
+          "total_return": 0.07930325651844639,
+          "usable_ids": [
+            "doc-5846045-0",
+            "doc-5846045-1",
+            "doc-5846045-2",
+            "doc-5846045-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 3,
+        "case": "features-tools-2",
+        "condition": "raw_logs",
+        "cost": 0.00858749999999997,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "fb758df10c97b9a31c4537c6f22e2981d06276cbae733809d3548f539dc28082",
+        "session": "eval:9cc68f01d0fd424b9131e6533e996a1cb7aa0ddd8a3982604ebf8f25037e81a7"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cash_change": -137.7,
+          "ending_shares": -170,
+          "nav_change": -1.7e-12,
+          "unpaid_dividend_claim": -423.3
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "corporate_actions-tools-1",
+        "condition": "raw_logs",
+        "cost": 0.00495000000000001,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "b298f79ba96de5452fbe87038049805f41e6350d27ab5ebe201158f3e692b221",
+        "session": "eval:deb2de6fce19675cd4c03935be55c8a1b4b8462927cf685b1687c102f75389f5"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 0,
+        "calls": 4,
+        "case": "execution-tools-4",
+        "condition": "no_learning",
+        "cost": 0.006448749999999892,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 1,
+        "result": null,
+        "session": "eval:281b36ada0cc83080d8a2af07cb77d778590352a2cda2219e351587288e75de4"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cost_free_gain": -0.0100000000000001,
+          "modeled_cost_contribution": -0.09,
+          "net_gain": -0.1000000000000001,
+          "turnover_change": 0.8025
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "cost_attribution-tools-0",
+        "condition": "verified_memory",
+        "cost": 0.004031250000000153,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "71a36e727546b24d3021050d5472cbc403933af2b42e064dd4bac1586edbc662",
+        "session": "eval:028579b5937f6cc32fce19cac9c865aba9e39f696dccc9fc21e59b37cf87db76"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "usable_ids": [
+            "doc-2126106-0",
+            "doc-2126106-1",
+            "doc-2126106-2",
+            "doc-2126106-3"
+          ]
+        },
+        "blocked_attempts": 1,
+        "calls": 3,
+        "case": "timing-tools-0",
+        "condition": "verified_memory",
+        "cost": 0.006567499999999837,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "1098401c9e97600f3318a61da057ca4fef6df5fd1f0f85b55c8e2a18201ce801",
+        "session": "eval:a44d4b439588ab110b794f0f7c6d6123fff2bad1523042d5c2090f5a98c021f4"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cost_free_gain": -0.046,
+          "modeled_cost_contribution": -0.0900000000000001,
+          "net_gain": -0.1360000000000001,
+          "turnover_change": 0.3025
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "cost_attribution-tools-4",
+        "condition": "verified_memory",
+        "cost": 0.00402250000000004,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "7dcd97f8fde06ad34510cb7703282846ec1b9f4664f85f76dcaaaec23fe84f12",
+        "session": "eval:b5dd50ea40f677ff61ae33482e9768c1d1928cb556f7eb93ad42696e68606110"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cash_change": 713.8,
+          "ending_shares": 430,
+          "nav_change": 4.3e-12,
+          "unpaid_dividend_claim": 417.1
+        },
+        "blocked_attempts": 1,
+        "calls": 3,
+        "case": "corporate_actions-tools-2",
+        "condition": "no_learning",
+        "cost": 0.00487375000000001,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "f3f974d68e45a55c31c7051805a5a272379e5042aa54ed6f6d38be7b85162787",
+        "session": "eval:744e05a1195d32d4b1c2d6410c76f3a6a57b56912fd2d48a7b48a79b0a50483c"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "decision": "reject"
+        },
+        "blocked_attempts": 1,
+        "calls": 4,
+        "case": "decisions-tools-0",
+        "condition": "no_learning",
+        "cost": 0.0061512500000000525,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "a870ee1b0d5108d4bc3846af0d8f01fe3add76f5307918c2ea0401c8a8b271a6",
+        "session": "eval:ea3704b34c00e998e6598c427bc7fba7d8708553f0a772d2afb3f03bfdfb51e0"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cash_change": 320.58,
+          "ending_shares": 234,
+          "nav_change": 0.0,
+          "unpaid_dividend_claim": 210.6
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "corporate_actions-tools-0",
+        "condition": "raw_logs",
+        "cost": 0.0049437500000000245,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "e8a7b524d50511c66f68d8a43a15707cfe668c970310d2035a6dc6a779b6a7f7",
+        "session": "eval:e8b6a674112ce7f42ece49131f6f4f6900f5082ae78c822dba4a1b358bfc3b1d"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 0,
+        "calls": 4,
+        "case": "execution-tools-3",
+        "condition": "verified_memory",
+        "cost": 0.006445000000000034,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 0,
+        "result": null,
+        "session": "eval:b01bca047908df3175051bd2aa28ef4b5f7e100d72a561681651ba35d52cb383"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "usable_ids": [
+            "doc-6442850-0",
+            "doc-6442850-1",
+            "doc-6442850-2",
+            "doc-6442850-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 3,
+        "case": "timing-tools-1",
+        "condition": "no_learning",
+        "cost": 0.005924999999999958,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "e6ba40782eb4f4b8b47de44345e39feb2b413681c3223cab6f145af661223fa7",
+        "session": "eval:56a4c627ec199cd0cb73e63f55cab353a756627541f2d5b1464764cd952078b3"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "filled_quantity": 94,
+          "next_action": "reconcile",
+          "resubmit": false
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "execution-tools-0",
+        "condition": "raw_logs",
+        "cost": 0.004737500000000061,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "6f6154c50385e687a413f43d329aff5a67b4aa0f8d2f58014bf40aa499b8988a",
+        "session": "eval:fc8e5f6e9d4126da93aaffcf8a5861414b0a3f9d8291bfec4b60c1244eaf8a71"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "filled_quantity": 48,
+          "next_action": "pause",
+          "resubmit": false
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "execution-tools-4",
+        "condition": "raw_logs",
+        "cost": 0.004736249999999886,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "ca152e2c0f4c4b5a8739d4da4ed4f07e0520b4265cbbe4c39360311ee6f5e358",
+        "session": "eval:871405ed8333dab516d3477b508ee31156925ce5e9959dbcbd7478d74f11d678"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "filled_quantity": 129,
+          "next_action": "wait",
+          "resubmit": false
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "execution-tools-1",
+        "condition": "raw_logs",
+        "cost": 0.004737500000000061,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "90fd8e45caf2bd24ded93be012eaabf33c9996c437c066fa42f8dc8d7d6ab639",
+        "session": "eval:422e42d5c9fb714e16da7d35b54d2d67e8d31de8259720e3b26a8dbe838f838a"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cash_change": -228.75,
+          "ending_shares": -183,
+          "nav_change": 0.0,
+          "unpaid_dividend_claim": -376.98
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "corporate_actions-tools-3",
+        "condition": "raw_logs",
+        "cost": 0.004936250000000086,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "4931b608fcf5b3f8b7bcd1b3aa75cc0005176cbf43e543015fd01001d4481679",
+        "session": "eval:273a97fe604790f0925d633c2b93b1c8329489ef2b79a5430743acf36391ca0f"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "free_cash": 3040.0,
+          "gross_weight": 0.12409090909090909,
+          "net_weight": 0.04004132231404959
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "exposures-tools-3",
+        "condition": "raw_logs",
+        "cost": 0.00471374999999985,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "68970d6a8d9142c3e1a9b018c1a8f590103fd5c8a7d70ef4cec5f4980af3e461",
+        "session": "eval:cc84d87d267872daf419c07c0bc708c0a9c319647a693ab5fee579d487b6c696"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "decision": "reject"
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "decisions-tools-1",
+        "condition": "no_learning",
+        "cost": 0.0029937500000001283,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "f07dc5a39b6002478db604ba9ae71bac22af26a6e617a834f7a381bc1bd4e0cd",
+        "session": "eval:808ecaf6a64aba08591b1ff73f7f69f340da0ad29d38e09d4ffc73ad7d4139a6"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 0,
+        "calls": 4,
+        "case": "execution-tools-3",
+        "condition": "no_learning",
+        "cost": 0.006444999999999812,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 1,
+        "result": null,
+        "session": "eval:cc2a08c4e1dec217aa1d3761967e46e8ba4237c56e5f9e01eb6a71561a9f21a9"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "comparable": false,
+          "mismatched_assumptions": [
+            "timing"
+          ]
+        },
+        "blocked_attempts": 1,
+        "calls": 3,
+        "case": "controlled_experiments-tools-1",
+        "condition": "no_learning",
+        "cost": 0.00492125000000021,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "da0a927ce70b3e5a75223deac0cfdf8899ef1a75f63b4b5279d60e8bfbaa40a1",
+        "session": "eval:928c8b34701f818b7d7e38cb40f8c18ce635680eb2498189e12b4b6759a78c17"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 0,
+        "calls": 4,
+        "case": "execution-tools-1",
+        "condition": "no_learning",
+        "cost": 0.006449999999999845,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 1,
+        "result": null,
+        "session": "eval:37d9f4658095f7d37befc7280ab499aac678c043dad8125fac75b564fa9494e9"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cost_free_gain": 0.0759999999999999,
+          "modeled_cost_contribution": 0.0500000000000001,
+          "net_gain": 0.126,
+          "turnover_change": -0.8650000000000002
+        },
+        "blocked_attempts": 1,
+        "calls": 3,
+        "case": "cost_attribution-tools-3",
+        "condition": "no_learning",
+        "cost": 0.005012500000000086,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "8683b2d0dd55009ead648cf736efbc072b9f3c100f20fd295e79d95828290c72",
+        "session": "eval:8929ecc30854c975b7b12764e4e0f494781d85e9b0c0d5aef19270cf85efcd3b"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cost_free_gain": 0.0759999999999999,
+          "modeled_cost_contribution": 0.0500000000000001,
+          "net_gain": 0.126,
+          "turnover_change": -0.8650000000000002
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "cost_attribution-tools-3",
+        "condition": "raw_logs",
+        "cost": 0.0050474999999998715,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "bc80e62cafad2652fa5e27ab56023c1ac75468f3931801566eebeece194ce473",
+        "session": "eval:780d790e42fb32c8a28f6bae2af030874572f69251bfa26ebd6d13650d80cfb3"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "free_cash": 3050.0,
+          "gross_weight": 0.10723684210526316,
+          "net_weight": 0.03223684210526316
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "exposures-tools-2",
+        "condition": "raw_logs",
+        "cost": 0.004715000000000025,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "aa5d29269cc84ab55a73d8b75f2c40c3cc12f989949dc4326549a92cc6ba9f0b",
+        "session": "eval:8ae56b3457871c079b05d6bcbd37479acb76e53226abf2b0e636eee73a741e98"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 0,
+        "calls": 4,
+        "case": "execution-tools-0",
+        "condition": "verified_memory",
+        "cost": 0.006462500000000038,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 0,
+        "result": null,
+        "session": "eval:56081022f3dcb4e305420099906daa4e48ec0c07bc83be4c0fcce4ec710b2983"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "usable_ids": [
+            "doc-6442850-0",
+            "doc-6442850-1",
+            "doc-6442850-2",
+            "doc-6442850-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "timing-tools-1",
+        "condition": "no_learning",
+        "cost": 0.0039012499999999672,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "d86cc6d678b809dd7b63d408f0ce1e8acd620d3034742e3923ced729e738e1ea",
+        "session": "eval:df81d51f552613aece4f90d6a235b4c449fca16cef3f789d03e9d2f6122741d0"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cost_free_gain": 0.0490000000000001,
+          "modeled_cost_contribution": 0.0499999999999999,
+          "net_gain": 0.099,
+          "turnover_change": -0.9250000000000003
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "cost_attribution-tools-1",
+        "condition": "no_learning",
+        "cost": 0.0034975000000001533,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "10d00eb6435c8015bdb5d4ed8004d853ae5c25fc06e6fa7a2f146c3a82490157",
+        "session": "eval:92d449e38edaa96b32aff2fbf954b716208d112b3bed410a120b42238193baef"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "comparable": false,
+          "mismatched_assumptions": [
+            "dividend_policy"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "controlled_experiments-tools-4",
+        "condition": "raw_logs",
+        "cost": 0.0048837499999998535,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "5734911798219376b7fa6750ff5cb2cb89678dbe8287f03c6621588c22f1ed1f",
+        "session": "eval:7b045a332e82ef012a6654201c1bae90d5c8ade752070292fc2665b113116fea"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "usable_ids": [
+            "doc-2163496-0",
+            "doc-2163496-1",
+            "doc-2163496-2",
+            "doc-2163496-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "timing-tools-4",
+        "condition": "verified_memory",
+        "cost": 0.004422499999999996,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "81d4920fbf7ee7d3d497aa76bb9e154402457b2ab7a65125904d030ac09ffb25",
+        "session": "eval:ef1a2921c0721d1d53341856a3cd4d617497327c9ac28b7ad0460492885b04b6"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 2,
+        "calls": 3,
+        "case": "timing-tools-4",
+        "condition": "raw_logs",
+        "cost": 0.00829000000000013,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 0,
+        "result": null,
+        "session": "eval:ec6df941418bbb8a5b03109e77d5136ba8d5ed0542d07496e32258c1252e3195"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "comparable": false,
+          "mismatched_assumptions": [
+            "timing"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "controlled_experiments-tools-1",
+        "condition": "verified_memory",
+        "cost": 0.0039012499999999672,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "45c98fd83575206e97b72c83f443e22a65dbd107d76f60e86db490a48da198f6",
+        "session": "eval:cbee7bf0f6ca0cc411f08c0c5e2beeb86ff07303a112d2818e587fa8f1cfba40"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "filled_quantity": 328,
+          "next_action": "closed",
+          "resubmit": false
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "execution-tools-3",
+        "condition": "raw_logs",
+        "cost": 0.004734999999999934,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "7c57dc3b2609c39455b857d9a1fb2737ebfa2478933ae5cb1cf9110092b2109a",
+        "session": "eval:88baa452462c72b44441a906062601d485a803004800579cc485859a55b27d5a"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "ending_shares": 244,
+          "total_return": 0.010865022983702465,
+          "usable_ids": [
+            "doc-3973209-0",
+            "doc-3973209-1",
+            "doc-3973209-2",
+            "doc-3973209-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 3,
+        "case": "features-tools-1",
+        "condition": "raw_logs",
+        "cost": 0.008573750000000047,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "f6801d8ff26a719bac04f08a5c4ab37737f76d6ccfefe648511f20c0d26f3934",
+        "session": "eval:4578b20839d56e178f5363243c7ada6381befc80112b58f17c02f05618743d4a"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "ending_shares": 390,
+          "total_return": 0.07930325651844639,
+          "usable_ids": [
+            "doc-5846045-0",
+            "doc-5846045-1",
+            "doc-5846045-2",
+            "doc-5846045-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 3,
+        "case": "features-tools-2",
+        "condition": "raw_logs",
+        "cost": 0.00858749999999997,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "841a4c1a52c4b127a616764f820858cc7ede1aec5c80cc436f21bc1a90f14ca6",
+        "session": "eval:f414ec516c8c9111e79d5eba537438194cb92297f319f11ceba9935735f76c7f"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "ending_shares": 70,
+          "total_return": 0.0023932987634623054,
+          "usable_ids": [
+            "doc-3447920-0",
+            "doc-3447920-1",
+            "doc-3447920-2",
+            "doc-3447920-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 3,
+        "case": "features-tools-3",
+        "condition": "verified_memory",
+        "cost": 0.0070950000000000735,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "0a4906eec4850b36c0b7f521e45d06cdf3942dd2d97e18c75535ece3d64f568f",
+        "session": "eval:1242c36fe5c157e01213b651e79c705880f35df4b4d5060cb74c3f08bd44f5cc"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 0,
+        "calls": 4,
+        "case": "execution-tools-2",
+        "condition": "verified_memory",
+        "cost": 0.006461249999999863,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 0,
+        "result": null,
+        "session": "eval:fd63a3273d82cd6e8c53e6b2b16543f6d3febb6ea6f414babb3abfdb8a3e1838"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cash_change": -137.7,
+          "ending_shares": -170,
+          "nav_change": -1.7e-12,
+          "unpaid_dividend_claim": -423.3
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "corporate_actions-tools-1",
+        "condition": "raw_logs",
+        "cost": 0.00495000000000001,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "f4195a8a0b38b1870b80cd1e1a97e5c6c80f9f8cc7c55d0351d8f399c6acf4cb",
+        "session": "eval:d647a158a5b043e6c7ea87a19fabc27bc8db0c6a88aa5a278d87aebe2cb8dc81"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "free_cash": 3070.0,
+          "gross_weight": 0.2974,
+          "net_weight": 0.1102
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "exposures-tools-0",
+        "condition": "verified_memory",
+        "cost": 0.0036712500000000148,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "67822b6f3c1aca5869b0142c27e8728c7d5d59fbe1fc63004f44bf8ee680d120",
+        "session": "eval:75c59efedc2b6e8d01f0c22ab51e891f62f9d36833524b9a0dbd9baa3d576526"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "usable_ids": [
+            "doc-2392648-0",
+            "doc-2392648-1",
+            "doc-2392648-2",
+            "doc-2392648-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "timing-tools-3",
+        "condition": "verified_memory",
+        "cost": 0.004427500000000029,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "7dda46c53f0ee054fe0e3172cac79f496d49a911ef4b84c092256479fda20e92",
+        "session": "eval:eb310e1be1494305dda138ac970df227302fa56083877d6e496a1eec7d9f96ec"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 2,
+        "calls": 2,
+        "case": "execution-tools-0",
+        "condition": "no_learning",
+        "cost": 0.0028837500000000738,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 1,
+        "result": null,
+        "session": "eval:e46d4f68f62306cfd6cb3db5671b720375a6cbd2696957c26153aa9c681323ff"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "cash_change": 893.88,
+          "ending_shares": 764,
+          "nav_change": -1433.645999999997,
+          "unpaid_dividend_claim": 305.6
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "corporate_actions-tools-4",
+        "condition": "raw_logs",
+        "cost": 0.0049474999999998825,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "81898859203294038575f717db9e7dd5f8adfd2b4c5a0e51cb414d1ac7a09076",
+        "session": "eval:bfe1abbab1896807f6c819790374b4eef9e6a06ba3cbdc73ddb1c9faeb1dfc59"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 2,
+        "calls": 3,
+        "case": "decisions-tools-4",
+        "condition": "raw_logs",
+        "cost": 0.006926250000000023,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 0,
+        "result": null,
+        "session": "eval:4c46bf17158d178347a25c66af0e5cb9c5508ad8d32390ec3004161eef973e2b"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 1,
+        "calls": 4,
+        "case": "execution-tools-2",
+        "condition": "verified_memory",
+        "cost": 0.006233750000000038,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 1,
+        "result": null,
+        "session": "eval:894819a94d62dcec5bf1ff293f14ab4a62cab57b60ddb0b4b71f2bbf71730754"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 0,
+        "calls": 4,
+        "case": "execution-tools-4",
+        "condition": "verified_memory",
+        "cost": 0.006448749999999892,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 1,
+        "result": null,
+        "session": "eval:d65d56161ede9846743a8622cfeae30caaf9d1e597e706034226358bf01f0372"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "free_cash": 3040.0,
+          "gross_weight": 0.12409090909090909,
+          "net_weight": 0.04004132231404959
+        },
+        "blocked_attempts": 1,
+        "calls": 3,
+        "case": "exposures-tools-3",
+        "condition": "no_learning",
+        "cost": 0.004586250000000014,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "8472be5fdace4cbb3b3272ec42d3813b956ef3b82290e6320dcbde43bcedd423",
+        "session": "eval:4c8be4c55f7bf52655c09feccced5320c65ed2a1b6b7d9f8fc02968437e2fa5e"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "comparable": false,
+          "mismatched_assumptions": [
+            "capital",
+            "transaction_bps"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "controlled_experiments-tools-3",
+        "condition": "no_learning",
+        "cost": 0.0033725000000000005,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "4fb1375a13a04bba0cc46d99491f8b0b7f6ea10cbf0cdc31ba5875d3fad46ffa",
+        "session": "eval:0da1e492394ca774b26cfc492fd58254e71cb8dc56743e4adbeb6f0522ae200c"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": null,
+        "blocked_attempts": 2,
+        "calls": 3,
+        "case": "decisions-tools-2",
+        "condition": "raw_logs",
+        "cost": 0.006908750000000019,
+        "error": "Analytical task exhausted its bounded calls or repair allowance",
+        "hard_error": true,
+        "passed": false,
+        "repetition": 0,
+        "result": null,
+        "session": "eval:95a53020612ff5f3509b33d7f3d2678a69673cdd15c55db785d93326b5ed45b0"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "usable_ids": [
+            "doc-6442850-0",
+            "doc-6442850-1",
+            "doc-6442850-2",
+            "doc-6442850-3"
+          ]
+        },
+        "blocked_attempts": 1,
+        "calls": 3,
+        "case": "timing-tools-1",
+        "condition": "raw_logs",
+        "cost": 0.00829000000000013,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "5633e3559328ae973936c1937dc245bd1e94f02139c1754553b98fc44da18059",
+        "session": "eval:039c3abac92770224967c518f8f8897da40e81455d793411ace50518d85d5059"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "comparable": false,
+          "mismatched_assumptions": [
+            "capital",
+            "transaction_bps"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 2,
+        "case": "controlled_experiments-tools-3",
+        "condition": "raw_logs",
+        "cost": 0.004924999999999846,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 1,
+        "result": "49d4c5ffa53d911f173fb25c7e4bac5fa5da40fab194d2b8eeacb7f85d5a79fc",
+        "session": "eval:29a1061facd5452e1545c3448f7b12ffc5f6b28bc59f3c2e0983334a26584191"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    },
+    {
+      "episode": {
+        "answer": {
+          "ending_shares": 170,
+          "total_return": 0.04732636754763368,
+          "usable_ids": [
+            "doc-6467867-0",
+            "doc-6467867-1",
+            "doc-6467867-2",
+            "doc-6467867-3"
+          ]
+        },
+        "blocked_attempts": 0,
+        "calls": 3,
+        "case": "features-tools-0",
+        "condition": "no_learning",
+        "cost": 0.006242500000000151,
+        "error": null,
+        "hard_error": false,
+        "passed": true,
+        "repetition": 0,
+        "result": "e0cf9124b15870e2c22b062effccd7c8a214f32c75046d8759fbf43d9d5f22e8",
+        "session": "eval:1ee5e72c3b058cd89c9b8dca8a0221156a271db19c86bd1bb34d659c714f9530"
+      },
+      "plan": "7e9b105503005fda909b24232d5a6312434c492453b106fa797d0d2da27443dc"
+    }
+  ],
+  "reason": "RemoteDisconnected escaped provider/task error normalization; no aggregate learning decision.",
+  "performance_inspected": false,
+  "learning_demonstrated": false,
+  "paper_eligible": false,
+  "uncertain_billing": [
+    {
+      "campaign": "v1-benchmark",
+      "amount": 0.0114575,
+      "actual": null,
+      "status": "unknown",
+      "created": "2026-10-11T03:35:27.444632+00:00"
+    }
+  ],
+  "retired_at": "2026-10-11T03:38:46.387183+00:00"
+}

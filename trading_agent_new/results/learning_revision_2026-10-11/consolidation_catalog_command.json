@@ -1,0 +1,25 @@
+{
+  "receipt": "f5b8d73c64f07f4083766f9105eb9a9d0b3bbfb3cdca329bfaf033e7b132d911",
+  "all_claims_exactly_verified": true,
+  "alpha_claim": false,
+  "created_at": "2026-10-11T02:47:52.903867+00:00",
+  "model": "grok-4.20-0309-non-reasoning",
+  "observations": 17,
+  "procedures": [
+    "cost_attribution",
+    "notional_turnover",
+    "uncertainty",
+    "exposure_control",
+    "operational_attribution"
+  ],
+  "proposal": "f02c20ff47292e23942c6dd68a037ba28abe242f92842ab8268271e65fdb2c30",
+  "records": [
+    "a70e33564a566cf0ee30622773539c0dd77e58405bc9732324a73e1c9ff39391",
+    "51df4da33cd29bc87e3ec8a46814f71886c6d09cf98240eeb1ebab0094e3a4cf",
+    "f5a83ac6f79e237100d49b0907fc3af130d51b8ca04f805d3e88db48831a763e",
+    "b2ae6dba1f78bbc1e58d8c4d5c2e57c040562f943627371b4d3d569a7495a9a5",
+    "43812aa3a88ff9cbcfab1fc3cd41ee2b934c956a8b89637d6bc915a760eb353f"
+  ],
+  "run": "ff68fae9bfcf4801807b1477e197742a",
+  "source_quality_preserved": "proxy"
+}

@@ -1,0 +1,6 @@
+{"run_id": "2026-10-08T07:56:45.221106+00:00", "event": "started", "code_hash": "4d76f8e5d6d2483c76923d305f35e530e0203e62a669bed7a3cbf727fc258cc7", "engine_hash": "30ba8b32b189cbdb2e1f053eb38b40e05569001479bdf9540cff42c4a2ec5d41"}
+{"run_id": "2026-10-08T07:56:45.221106+00:00", "event": "completed", "decision": "PRACTICALLY REJECTED UNDER PROXY ASSUMPTIONS", "trials": 32}
+{"run_id": "2026-10-08T07:58:52.504283+00:00", "event": "started", "code_hash": "d6ccfa07f532b1d66ff0403103b802311153c73952bcdf25951155b159d57764", "engine_hash": "d9b9bf5d60ca4d3fe816d274a872df487079ed7bda4263306be8454246deeb6f"}
+{"run_id": "2026-10-08T07:58:52.504283+00:00", "event": "completed", "decision": "PRACTICALLY REJECTED UNDER PROXY ASSUMPTIONS", "trials": 32}
+{"run_id": "2026-10-08T08:02:04.717627+00:00", "event": "started", "code_hash": "8e953e791f6344b0834416f657a2a18bad08ad8e9640a24d3ce0c18d0f56d5bb", "engine_hash": "d9b9bf5d60ca4d3fe816d274a872df487079ed7bda4263306be8454246deeb6f"}
+{"run_id": "2026-10-08T08:02:04.717627+00:00", "event": "completed", "decision": "PRACTICALLY REJECTED UNDER PROXY ASSUMPTIONS", "trials": 32}

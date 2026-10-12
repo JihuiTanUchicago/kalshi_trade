@@ -1,0 +1,12 @@
+{
+  "copied_file_count": 631,
+  "content_sha256_mismatches": [],
+  "live_credential_values_checked": 3,
+  "secret_findings_paths": [],
+  "largest_file_bytes": 2484691,
+  "all_files_below_100mb": true,
+  "excluded_private_env": true,
+  "public_env_template_present": true,
+  "local_state_excluded": true,
+  "vm_and_environments_excluded": true
+}

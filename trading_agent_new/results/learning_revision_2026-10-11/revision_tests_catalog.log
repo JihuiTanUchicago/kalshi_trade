@@ -1,0 +1,14 @@
+test_complete_fixture_evaluation_is_not_genuine_learning_and_cached_resume_is_free (test_learning_revision.LearningRevisionTests.test_complete_fixture_evaluation_is_not_genuine_learning_and_cached_resume_is_free) ... ok
+test_consolidation_copies_exact_facts_and_resume_never_calls_twice (test_learning_revision.LearningRevisionTests.test_consolidation_copies_exact_facts_and_resume_never_calls_twice) ... ok
+test_invalid_consolidation_does_not_write_partial_findings (test_learning_revision.LearningRevisionTests.test_invalid_consolidation_does_not_write_partial_findings) ... ok
+test_memory_identity_and_source_scope_cannot_be_forged (test_learning_revision.LearningRevisionTests.test_memory_identity_and_source_scope_cannot_be_forged) ... ok
+test_new_cases_have_explicit_valid_contracts_and_do_not_reuse_v1_prompts (test_learning_revision.LearningRevisionTests.test_new_cases_have_explicit_valid_contracts_and_do_not_reuse_v1_prompts) ... ok
+test_output_contract_rejects_extra_fields_boolean_numbers_and_wrong_enums (test_learning_revision.LearningRevisionTests.test_output_contract_rejects_extra_fields_boolean_numbers_and_wrong_enums) ... ok
+test_partial_campaign_is_retired_without_new_calls (test_learning_revision.LearningRevisionTests.test_partial_campaign_is_retired_without_new_calls) ... ok
+test_prepare_freezes_memory_model_source_and_original_thresholds_before_calls (test_learning_revision.LearningRevisionTests.test_prepare_freezes_memory_model_source_and_original_thresholds_before_calls) ... ok
+test_retrieval_ranks_by_task_and_skips_oversized_findings (test_learning_revision.LearningRevisionTests.test_retrieval_ranks_by_task_and_skips_oversized_findings) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 3.652s
+
+OK

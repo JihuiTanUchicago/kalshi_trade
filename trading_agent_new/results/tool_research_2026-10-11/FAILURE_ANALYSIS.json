@@ -1,0 +1,126 @@
+{
+  "scope": "Post-completion diagnostics only; no source, case, grader, context or gate changes.",
+  "all_completed_reports_match_answers": true,
+  "completed_reports": 196,
+  "failed_reports": 44,
+  "safe_rejection_reasons": {
+    "Invalid action/schema or provider response": 28,
+    "Unexpected analytical input fields": 16,
+    "Output fields must cite the same named verified report field": 32,
+    "Tool requires its declared input kind": 1
+  },
+  "repeated_accepted_action_count": 60,
+  "verified_memory_failed_cases": [
+    {
+      "case": "execution-tools-3",
+      "repetition": 0,
+      "calls": 4,
+      "blocked_attempts": 0,
+      "hard_error": true
+    },
+    {
+      "case": "decisions-tools-3",
+      "repetition": 1,
+      "calls": 3,
+      "blocked_attempts": 2,
+      "hard_error": true
+    },
+    {
+      "case": "execution-tools-3",
+      "repetition": 1,
+      "calls": 4,
+      "blocked_attempts": 0,
+      "hard_error": true
+    },
+    {
+      "case": "execution-tools-2",
+      "repetition": 1,
+      "calls": 4,
+      "blocked_attempts": 0,
+      "hard_error": true
+    },
+    {
+      "case": "execution-tools-1",
+      "repetition": 1,
+      "calls": 4,
+      "blocked_attempts": 0,
+      "hard_error": true
+    },
+    {
+      "case": "decisions-tools-0",
+      "repetition": 0,
+      "calls": 3,
+      "blocked_attempts": 2,
+      "hard_error": true
+    },
+    {
+      "case": "execution-tools-4",
+      "repetition": 1,
+      "calls": 4,
+      "blocked_attempts": 0,
+      "hard_error": true
+    },
+    {
+      "case": "execution-tools-4",
+      "repetition": 0,
+      "calls": 4,
+      "blocked_attempts": 0,
+      "hard_error": true
+    },
+    {
+      "case": "execution-tools-1",
+      "repetition": 0,
+      "calls": 4,
+      "blocked_attempts": 0,
+      "hard_error": true
+    },
+    {
+      "case": "execution-tools-2",
+      "repetition": 0,
+      "calls": 4,
+      "blocked_attempts": 0,
+      "hard_error": true
+    },
+    {
+      "case": "cost_attribution-tools-3",
+      "repetition": 0,
+      "calls": 2,
+      "blocked_attempts": 2,
+      "hard_error": false
+    },
+    {
+      "case": "execution-tools-0",
+      "repetition": 1,
+      "calls": 4,
+      "blocked_attempts": 0,
+      "hard_error": true
+    },
+    {
+      "case": "decisions-tools-1",
+      "repetition": 1,
+      "calls": 3,
+      "blocked_attempts": 2,
+      "hard_error": true
+    },
+    {
+      "case": "decisions-tools-4",
+      "repetition": 1,
+      "calls": 3,
+      "blocked_attempts": 2,
+      "hard_error": true
+    },
+    {
+      "case": "controlled_experiments-tools-3",
+      "repetition": 1,
+      "calls": 2,
+      "blocked_attempts": 2,
+      "hard_error": false
+    }
+  ],
+  "call_accounting": {
+    "training_calls": 75,
+    "retired_complete_episode_calls": 355,
+    "final_evaluation_calls": 600
+  },
+  "decision": "Retain protected tools and independently verified procedures; reject the measured-memory improvement claim for this protocol. Investigate action adherence and relevant failure-based procedures in a new preregistration."
+}

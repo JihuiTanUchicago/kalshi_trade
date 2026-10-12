@@ -1,0 +1,204 @@
+{
+  "status": "passed",
+  "trials": 32,
+  "ledger_checks": {
+    "primary_B0": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.394540494307876e-07,
+      "max_cash_error_usd": 5.380061338655651e-07
+    },
+    "primary_B1": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.35743311047554e-07,
+      "max_cash_error_usd": 4.90006641484797e-07
+    },
+    "primary_B2": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.456095095723867e-07,
+      "max_cash_error_usd": 4.5999331632629037e-07
+    },
+    "primary_B3": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.40821929462254e-07,
+      "max_cash_error_usd": 5.519941623788327e-07
+    },
+    "primary_Monthly": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.422916729003191e-07,
+      "max_cash_error_usd": 3.809982445091009e-07
+    },
+    "primary_NoTrend": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.460751708596945e-07,
+      "max_cash_error_usd": 1.0100075087393634e-07
+    },
+    "primary_EqualWeight": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.367037374526262e-07,
+      "max_cash_error_usd": 6.839900379418395e-08
+    },
+    "primary_SPY": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 4.96511347591877e-07,
+      "max_cash_error_usd": 4.0003214962780476e-08
+    },
+    "cost10_B0": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.44547219760716e-07,
+      "max_cash_error_usd": 5.640031304210424e-07
+    },
+    "cost10_B2": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.407346179708838e-07,
+      "max_cash_error_usd": 5.879919626750052e-07
+    },
+    "cost25_B0": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.408364813774824e-07,
+      "max_cash_error_usd": 1.610005710972473e-07
+    },
+    "cost25_B2": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.45303919352591e-07,
+      "max_cash_error_usd": 4.2100873542949557e-07
+    },
+    "capital10000_B0": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.454967322293669e-08,
+      "max_cash_error_usd": 4.800085662282072e-08
+    },
+    "capital10000_B2": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.449328455142677e-08,
+      "max_cash_error_usd": 4.9999016482615843e-08
+    },
+    "capital1000000_B0": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.4265838116407394e-06,
+      "max_cash_error_usd": 4.75090928375721e-06
+    },
+    "capital1000000_B2": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.440553650259972e-06,
+      "max_cash_error_usd": 5.8551086112856865e-06
+    },
+    "service_B0": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.428737495094538e-07,
+      "max_cash_error_usd": 5.120091373100877e-07
+    },
+    "cashyield_B0": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.42961061000824e-07,
+      "max_cash_error_usd": 9.240926281961492e-07
+    },
+    "settled_B0": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.670881364494562e-07,
+      "max_cash_error_usd": 5.130059435032308e-07
+    },
+    "dividend0_B0": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.394540494307876e-07,
+      "max_cash_error_usd": 5.380061338655651e-07
+    },
+    "dividend60_B0": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.394540494307876e-07,
+      "max_cash_error_usd": 5.380061338655651e-07
+    },
+    "lag_B0": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.476467777043581e-07,
+      "max_cash_error_usd": 5.000001692678779e-07
+    },
+    "nocommission_B0": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.478650564327836e-07,
+      "max_cash_error_usd": 5.210022209212184e-07
+    },
+    "service_B2": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.4629344958812e-07,
+      "max_cash_error_usd": 4.4999615056440234e-07
+    },
+    "cashyield_B2": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.450274329632521e-07,
+      "max_cash_error_usd": 9.284213740023972e-07
+    },
+    "settled_B2": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.578040145337582e-07,
+      "max_cash_error_usd": 5.000074452254921e-07
+    },
+    "dividend0_B2": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.456095095723867e-07,
+      "max_cash_error_usd": 4.5999331632629037e-07
+    },
+    "dividend60_B2": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.456095095723867e-07,
+      "max_cash_error_usd": 4.5999331632629037e-07
+    },
+    "lag_B2": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.459005478769541e-07,
+      "max_cash_error_usd": 5.699985194951296e-07
+    },
+    "nocommission_B2": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.417969077825546e-07,
+      "max_cash_error_usd": 5.440015229396522e-07
+    },
+    "costfree_B0": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.420006345957518e-07,
+      "max_cash_error_usd": 5.720066837966442e-07
+    },
+    "costfree_B2": {
+      "nav_cash_shares_fills_costs_returns_metrics": true,
+      "raw_open_fill_dividend_trend_volume_and_rate_checks": true,
+      "max_nav_error_usd": 5.389010766521096e-07,
+      "max_cash_error_usd": 5.600013537332416e-07
+    }
+  },
+  "maximum_nav_difference_usd": 5.440553650259972e-06,
+  "maximum_cash_difference_usd": 5.8551086112856865e-06,
+  "evidence_and_source_hashes_checked": 80,
+  "raw_and_normalized_hashes_checked": 12,
+  "protocol_and_preregistered_amendment_hashes_verified": true,
+  "scope": "Independent arithmetic/provenance audit from raw provider closes and persisted ledgers; not independent market-source verification."
+}

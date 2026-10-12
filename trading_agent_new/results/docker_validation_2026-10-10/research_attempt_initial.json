@@ -1,0 +1,7 @@
+{
+  "run": "cae6fa9026294eaaa8c32d30faf9dadb",
+  "state": "specified",
+  "registered_strategy": false,
+  "trusted_metrics": false,
+  "reason": "Test harness proposed buffer 0.0 after freezing the default 0.02 buffer; protected registration rejected it. Corrected by a new specification/run, not editing the frozen record."
+}

@@ -1,0 +1,6 @@
+{
+  "new_40_answer_keys_independently_match": true,
+  "training_answer_keys_independently_match": true,
+  "complete_training_receipts_independently_valid": true,
+  "disjoint_from_retired_reserved_jobs": true
+}

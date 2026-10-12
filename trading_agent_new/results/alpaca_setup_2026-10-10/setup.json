@@ -1,0 +1,60 @@
+{
+  "recorded_at": "2026-10-10T14:05:07.216904+00:00",
+  "status": "offline_verified_waiting_for_credentials",
+  "python": "3.12.14",
+  "environment": ".runtime/alpaca-venv",
+  "installed": {
+    "alpaca-py": "0.44.0",
+    "python-dotenv": "1.2.4"
+  },
+  "configuration_file": ".env",
+  "env_permissions": "0o600",
+  "env_ignored": true,
+  "credentials_or_env_content_recorded": false,
+  "credentials_or_env_content_hashed": false,
+  "offline_tests": {
+    "command": ".runtime/alpaca-venv/bin/python -m unittest discover -s research -p test_fetch_alpaca.py -v",
+    "tests_run": 6,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "exit_code": 0,
+    "elapsed_reported_seconds": 0.012,
+    "kind": "offline fixtures with HTTP transport replaced; not genuine API evidence"
+  },
+  "pip_check": {
+    "exit_code": 0,
+    "result": "No broken requirements found."
+  },
+  "configuration_preflight": {
+    "command": ".runtime/alpaca-venv/bin/python research/fetch_alpaca.py --check-config",
+    "exit_code": 2,
+    "status": "not_ready",
+    "missing_variables": [
+      "APCA_API_KEY_ID",
+      "APCA_API_SECRET_KEY"
+    ],
+    "authenticated": false
+  },
+  "original_preservation": {
+    "files": 181,
+    "matched": 181,
+    "changed_paths": []
+  },
+  "genuine_alpaca_requests": 0,
+  "orders_submitted": 0,
+  "subscriptions_purchased": 0,
+  "agent_dataset_qualified": false,
+  "source_sha256": {
+    ".env.example": "af761364a36ce1615f76bdc6f3c0e4a582f1e87a1f98e836c35114a6f00badf9",
+    "research/fetch_alpaca.py": "b86810e8cf7f2109f2255d18c188aa1dd720d1714e8f0c30dee8435078f039cb",
+    "research/test_fetch_alpaca.py": "1ab7a0e84ff18f21c6b0ed00925ff7964fe8270665d1bf7c98aa9d1b5a54b4ee",
+    "research/requirements-alpaca.txt": "13bbdd599bc98d664fa1f70a0154c058dae8e3ed4f3a0edfff25668c56b9b849",
+    "README.md": "fa39d693b94a629173e7220f1592a7e3836ecc597c658bee55a929416266ab3d",
+    "docs/AGENT_ACCEPTANCE.md": "bc5d619e9b3735d013e7c2f0d9808184d5bf354fc8065faa009c63770363b5e4",
+    "docs/PROGRESS.md": "3f8416f1e9c547fedfa4bbd327141da7cdcb635ab2d5cd7af304ef4f2079f3e9"
+  },
+  "dependency_inventory_sha256": "81117a984a503810f765bc6373f58eade4a33939596ca4d51e3207395fcdaf05",
+  "next_command": ".runtime/alpaca-venv/bin/python research/fetch_alpaca.py",
+  "remaining_gate": "User saves real credentials locally; then run preflight and authenticated historical download. Commercial rights and seven-table source qualification remain separate."
+}

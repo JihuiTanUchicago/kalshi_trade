@@ -1,0 +1,108 @@
+{
+  "release": "0.1.0 candidate",
+  "recorded_at": "2026-10-09T13:48:32.195966+00:00",
+  "status": "offline_verified_external_acceptance_pending",
+  "unit_tests": {
+    "command": ".agent-venv/bin/python -m unittest discover -s tests -v",
+    "tests_run": 82,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "exit_code": 0,
+    "observed_unittest_seconds": 1.365,
+    "observation": "Final runtime-source test invocation, tool chunk fb4646; only documentation changed afterward."
+  },
+  "legacy_tests": {
+    "command": ".venv/bin/python research/test_backtest_engine.py",
+    "tests_run": 6,
+    "exit_code": 0,
+    "observation": "Passed earlier in this implementation workstream; original source/data/results remain unchanged."
+  },
+  "syntax_checks": {
+    "files": 32,
+    "passed": true
+  },
+  "original_artifact_preservation": {
+    "files": 181,
+    "unchanged": true,
+    "changed": []
+  },
+  "source_manifest": {
+    "path": "results/agent_v1/release_checksums.json",
+    "sha256": "3a17b7d6f27746c65eb412ad819db6249f1ccac6073fd35fe131fb514676969f",
+    "files": 43
+  },
+  "demo": {
+    "mode": "scripted engineering demonstration",
+    "run": "593ff84e8daf4c28bfdd3396dac8686b",
+    "report": "/Users/jonathanzhang/Desktop/Polygon/results/agent_v1/demo/research/REPORT.md",
+    "verified_memory_records": 1,
+    "retrieved_evidence": [
+      "d79f361855797eb53bd9eb7f023ea91e85b0c759c2a75d58904ed65618b09d89"
+    ],
+    "new_task": "Determine whether a new strategy's net improvement comes from modeled trading costs or signal quality.",
+    "memory_procedure_transferred": true,
+    "paid_model_calls": 0,
+    "broker_orders": 0,
+    "learning_improvement_measured": false,
+    "alpha_evidence": false,
+    "state": "finished",
+    "decision": "revise_data_qualification",
+    "independent_ledger_passed": true,
+    "prefix_invariance": true,
+    "future_perturbation": true
+  },
+  "artifact_integrity": {
+    "artifacts_verified": 14,
+    "all_read_hashes_valid": true
+  },
+  "backup_restore": {
+    "directory": "results/agent_v1/demo_backup",
+    "artifacts": 14,
+    "database_tables_matched": true,
+    "memory_records": 4
+  },
+  "reserved_evaluation": {
+    "suite": "c32c142428fea4904d243f27c1939aef273f4aba8948d1fa74ff7b8df07e1e66",
+    "cases": 40,
+    "conditions": 3,
+    "repetitions": 2,
+    "episodes": 240,
+    "real_model_campaign_run": false,
+    "learning_improvement_measured": false
+  },
+  "ibkr_sdk": {
+    "version": "10.50.2",
+    "callbacks_objects_and_wire_serialization_tested": true,
+    "broker_sockets": "replaced by fixtures",
+    "actual_gateway_validated": false
+  },
+  "external_readiness": {
+    "offline_core": true,
+    "container_runtime": {
+      "installed": false,
+      "daemon_available": false
+    },
+    "ibkr_sdk_available": true,
+    "ibkr_sdk_version": "10.50.2",
+    "model_routes": [],
+    "paid_calls_made_by_doctor": 0,
+    "broker_connection_attempted": false,
+    "remaining_gates": [
+      "Qualified licensed imports and independent source review",
+      "Pinned sandbox image and execution isolation tests",
+      "Two real adapter smoke tests and reserved-task memory comparison",
+      "Configured paper Gateway/account and five-session broker acceptance"
+    ]
+  },
+  "real_paid_model_calls": 0,
+  "real_broker_orders": 0,
+  "model_validation_spend_usd": 0,
+  "qualified_alpha": false,
+  "v1_accepted": false,
+  "documentation_links": {
+    "local_links_checked": 16,
+    "missing": [],
+    "passed": true
+  }
+}

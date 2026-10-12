@@ -1,0 +1,16 @@
+{
+  "session": "train:953a5e6e926bcc891541a82e140fa2055525d7ad13ebf05af5a1c89e8c74a128",
+  "result": "8148ca1d7c5879fc7516c24547eb2325c07e14be0775271f7acccfa246944263",
+  "quality": "proxy",
+  "expected_for_offline_audit_only": {
+    "ending_shares": 10,
+    "total_return": 0.004826865247860821,
+    "usable_ids": [
+      "ALPACA:b28f4066-5c6d-479b-a2af-85dc1a8f16fb-2026-10-05",
+      "ALPACA:b28f4066-5c6d-479b-a2af-85dc1a8f16fb-2026-10-06",
+      "ALPACA:b28f4066-5c6d-479b-a2af-85dc1a8f16fb-2026-10-07",
+      "ALPACA:b28f4066-5c6d-479b-a2af-85dc1a8f16fb-2026-10-08",
+      "ALPACA:b28f4066-5c6d-479b-a2af-85dc1a8f16fb-2026-10-09"
+    ]
+  }
+}

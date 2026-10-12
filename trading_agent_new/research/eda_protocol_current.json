@@ -1,0 +1,62 @@
+{
+  "version": "eda-v2-current",
+  "recorded_at": "2026-10-08",
+  "timezone": "Asia/Shanghai",
+  "scope": "User-directed current-history exploration, 2016 through the latest completed session this week. No strategy backtests or parameter selection.",
+  "source_policy": "Free public daily ETF snapshot. Exploratory proxy; does not replace specified point-in-time corporate-action data.",
+  "symbols": [
+    "SPY",
+    "IWM",
+    "EFA",
+    "IEF",
+    "TLT",
+    "GLD"
+  ],
+  "requested_start": "2015-12-31",
+  "requested_end_exclusive": "2026-10-08",
+  "distribution_scoring_start": "2016-01-01",
+  "distribution_scoring_end": "2026-10-07",
+  "sealed_from": "2026-10-08",
+  "checks": [
+    "Coverage versus historical NYSE session calendar, including exceptional closures and half days.",
+    "Dates sorted and unique; OHLCV/adjusted-close missingness; finite and positive prices; nonnegative and zero volume; OHLC consistency.",
+    "Timestamp conversion in America/New_York; daily bars do not establish release time or auction executability.",
+    "Distribution of unfilled adjusted-close simple returns, volatility, skewness, excess kurtosis, quantiles and empirical tail frequency.",
+    "Flag absolute daily returns above 10%, robust median/MAD scores above 8 and intraday range above 15%; retain observations, no winsorization.",
+    "Log suspicious date gaps, flat-price runs, volume spikes and corporate-action events.",
+    "Same-session Pearson and Spearman daily-return correlations, annual correlation stability and 63-session rolling correlations.",
+    "Descriptive within-instrument lagged-return correlations at lags 1, 5 and 21; no prediction claim or tuning.",
+    "Compare unadjusted/split-adjusted close returns with adjusted-close returns around reported dividend/split events when provided.",
+    "Estimate return/volume relationships within each ETF using lagged 20-session median volume; treat them as descriptive.",
+    "Inspect public raw responses and provider metadata; record provenance, hashes and unresolved licensing/point-in-time limitations."
+  ],
+  "gates": [
+    "Reject rows outside authorized date range; no forward filling of prices or returns.",
+    "Report non-session bars or absent expected sessions before computing matched-session relationships.",
+    "Flag rather than delete valid market extremes; unresolved structural defects block formal backtesting.",
+    "No strategy weights, portfolio P&L, strategy Sharpe or threshold search. Historical asset statistics through the authorized current cutoff are permitted.",
+    "Preserve original research rules and rejection criteria regardless of EDA findings."
+  ],
+  "historical_holdout_explored": true,
+  "former_holdout_start": "2016-01-01",
+  "as_of_utc": "2026-10-08T07:08:58Z",
+  "latest_completed_session": "2026-10-07",
+  "data_directory": "data/through_2026-10-07",
+  "output_directory": "results/through_2026-10-07",
+  "windows": [
+    {
+      "name": "Full_2016_to_current",
+      "start": "2016-01-01"
+    },
+    {
+      "name": "Recent_2021_to_current",
+      "start": "2021-01-01"
+    },
+    {
+      "name": "Year_2026",
+      "start": "2026-01-01"
+    }
+  ],
+  "amendment": "User replaced the 2006–2015-only analysis with a current horizon. Previous historical validation/holdout periods are exploratory and are not untouched confirmatory data. Keep economic strategy rules and thresholds unchanged."
+}
+

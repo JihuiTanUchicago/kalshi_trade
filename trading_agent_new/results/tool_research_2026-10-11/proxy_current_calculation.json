@@ -1,0 +1,54 @@
+{
+  "alpha_claim": false,
+  "calls": 3,
+  "citations": {
+    "ending_shares": {
+      "evidence": "316c58981febf5a16d5e79dea78c07fcd154ee815a68990082595c9839f28b91",
+      "pointer": "/result/report/ending_shares"
+    },
+    "total_return": {
+      "evidence": "316c58981febf5a16d5e79dea78c07fcd154ee815a68990082595c9839f28b91",
+      "pointer": "/result/report/total_return"
+    },
+    "usable_ids": {
+      "evidence": "9d3004076f4f4fb42ebc445146de32cae937fed50f962d82331b28f0677ad912",
+      "pointer": "/result/report/usable_ids"
+    }
+  },
+  "completed_at": "2026-10-11T03:40:47.808817+00:00",
+  "component": "analytical_task",
+  "input_kinds": [
+    "market_history",
+    "asof_history"
+  ],
+  "job": "e0041d8b821eace9db6c1eab7d06686e72a76dac3ea7e1297b750f837c3f686b",
+  "operations": [
+    "select_asof",
+    "holding_return"
+  ],
+  "paper_eligible": false,
+  "passed": true,
+  "quality": "proxy",
+  "receipts": [
+    "9d3004076f4f4fb42ebc445146de32cae937fed50f962d82331b28f0677ad912",
+    "316c58981febf5a16d5e79dea78c07fcd154ee815a68990082595c9839f28b91"
+  ],
+  "repairs": 0,
+  "reported_values": {
+    "ending_shares": 10,
+    "total_return": 0.004826865247860821,
+    "usable_ids": [
+      "ALPACA:b28f4066-5c6d-479b-a2af-85dc1a8f16fb-2026-10-05",
+      "ALPACA:b28f4066-5c6d-479b-a2af-85dc1a8f16fb-2026-10-06",
+      "ALPACA:b28f4066-5c6d-479b-a2af-85dc1a8f16fb-2026-10-07",
+      "ALPACA:b28f4066-5c6d-479b-a2af-85dc1a8f16fb-2026-10-08",
+      "ALPACA:b28f4066-5c6d-479b-a2af-85dc1a8f16fb-2026-10-09"
+    ]
+  },
+  "session": "train:2598dbf6eb6b5ada832628eac74c53a2cbdb5aee8a9f8c7cccbc430b45221bb3",
+  "source_handles": [
+    "snapshot",
+    "r1"
+  ],
+  "task_kind": "features"
+}

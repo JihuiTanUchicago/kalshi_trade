@@ -1,0 +1,154 @@
+{
+  "recorded_at": "2026-10-10T14:52:22.521329+00:00",
+  "plan_hash": "70aeb6f3b5bde56dcdaae5438067cc605980e38eb3d4971b812b70e29a8c8eb4",
+  "spec_hash": "8a512560a312ecdf8eff465bcdc88356bcc588772bef95227d37e6e13d0869ce",
+  "run": "ff68fae9bfcf4801807b1477e197742a",
+  "specification": {
+    "allow_short": false,
+    "baseline": "equal_weight",
+    "block_length": 21,
+    "bootstrap_samples": 2000,
+    "buffer": 0.0,
+    "commission_per_share": 0.005,
+    "dataset_id": "fe82dd1197dbcc5744028632f6368f1d1aa6243f8abda370b630588d5d3c487b",
+    "decision_delay_minutes": 30,
+    "end": "2026-10-09",
+    "hypothesis": "A fixed 63-session total-return filter improves excess Sharpe by at least 0.10 versus the same equal-weight ETF allocation, with positive paired uncertainty lower bound, no more than two percentage points worse drawdown, and positive improvement under doubled costs.",
+    "limits": {
+      "capital": 100000.0,
+      "cash_buffer": 0.05,
+      "daily_loss": 0.02,
+      "drawdown": 0.1,
+      "gross": 1.0,
+      "participation": 0.001,
+      "position": 0.25,
+      "short_collateral": 1.5
+    },
+    "lookback": 63,
+    "maximum_drawdown_deterioration": 0.02,
+    "minimum_commission": 1.0,
+    "minimum_sharpe_gain": 0.1,
+    "prospective": false,
+    "seed": 20261009,
+    "sources": [
+      "fc24655dcdb8d727ff4dd9a0b7048998baaf6197d83b008e6b8c3b6992b0a73f"
+    ],
+    "start": "2016-04-05",
+    "transaction_bps": 5.0
+  },
+  "candidate": {
+    "api_version": "1",
+    "buffer": 0.0,
+    "code": "",
+    "kind": "builtin",
+    "lookback": 63,
+    "name": "trend",
+    "target_shares": 0
+  },
+  "data_constraints": {
+    "exploratory_only": true,
+    "allow_short": false,
+    "maximum_scored_end": "2026-10-09",
+    "paper_eligible": false,
+    "pay_date_policy": "provider date, otherwise ex-date + 30 calendar days",
+    "historical_availability": "assumed; not evidence of original publication",
+    "price_precedence": "raw Alpaca SIP; independent prices never replace bars"
+  },
+  "qualification_gaps": {
+    "commercial_rights_reviewed": false,
+    "original_availability_proven": false,
+    "survivorship_free_universe": false,
+    "current_security_master_is_historical": false,
+    "missing_primary_actions": [
+      [
+        "SPY",
+        "2016-03-18",
+        "dividend"
+      ],
+      [
+        "SPY",
+        "2018-06-15",
+        "dividend"
+      ]
+    ],
+    "missing_independent_actions": [
+      [
+        "QQQ",
+        "2020-09-21",
+        "dividend"
+      ]
+    ],
+    "action_amount_disagreements": [
+      {
+        "key": [
+          "QQQ",
+          "2018-06-18",
+          "dividend"
+        ],
+        "primary": 0.37638,
+        "independent": 0.378
+      },
+      {
+        "key": [
+          "SPY",
+          "2021-12-17",
+          "dividend"
+        ],
+        "primary": 1.636431,
+        "independent": 1.633
+      }
+    ],
+    "assumed_dividend_pay_dates": 46,
+    "ambiguous_same_day_primary_actions": [
+      {
+        "key": [
+          "QQQ",
+          "2022-09-19",
+          "dividend"
+        ],
+        "first": {
+          "value": 0.51856,
+          "pay_date": "2022-09-23",
+          "source_file": "actions_000.json",
+          "provider_id": "d0409c14-2b32-4cdb-9d5d-57a8a9a0818f",
+          "basis": "Alpaca current-vintage"
+        },
+        "additional": {
+          "cusip": "46090E103",
+          "ex_date": "2022-09-19",
+          "foreign": false,
+          "id": "1966d92d-c3ae-4da1-8daa-483789298533",
+          "payable_date": "2022-10-31",
+          "process_date": "2022-10-31",
+          "rate": 0.51856,
+          "record_date": "2022-09-20",
+          "special": false,
+          "symbol": "QQQ"
+        },
+        "proxy_policy": "one independently corroborated amount; payment date assumed"
+      }
+    ],
+    "independent_price_checks": {
+      "IWM": {
+        "present": true,
+        "matched_closes": 2708,
+        "maximum_relative_close_difference": 0.017912967997516575,
+        "within_fixed_5bp_tolerance": false
+      },
+      "QQQ": {
+        "present": true,
+        "matched_closes": 2708,
+        "maximum_relative_close_difference": 0.0009302277511115007,
+        "within_fixed_5bp_tolerance": false
+      },
+      "SPY": {
+        "present": true,
+        "matched_closes": 2708,
+        "maximum_relative_close_difference": 0.027934490634886563,
+        "within_fixed_5bp_tolerance": false
+      }
+    }
+  },
+  "performance_computed": false,
+  "prospective_holdout": false
+}

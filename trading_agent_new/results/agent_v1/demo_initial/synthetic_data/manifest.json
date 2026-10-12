@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "quality": "synthetic",
+  "source": "deterministic engineering fixture; weekdays are NOT an exchange calendar",
+  "files": {
+    "sessions": {
+      "path": "sessions.csv",
+      "sha256": "85ef64e923d670a1be7012bf9fc95dc3d871958b195923134487f2e99160c5a5"
+    },
+    "assets": {
+      "path": "assets.csv",
+      "sha256": "9d414ae2d31ebeaaf5f258a63b1b0235a2e0b77a105016a725544f6f7700c353"
+    },
+    "bars": {
+      "path": "bars.csv",
+      "sha256": "bb9d6c525eb32ae1b863c4c3fc115c6f5e65da7e9e053aa443c1eb64c25614bc"
+    },
+    "membership": {
+      "path": "membership.csv",
+      "sha256": "d7e10ec0d5bf63bd1ba1eb2261e4db8e584e281715c83a913f19c61d5823a735"
+    },
+    "actions": {
+      "path": "actions.csv",
+      "sha256": "b57e5a761300b6f8075320b64d9dfaa61272a0c76b3de87b34a63d57a579892a"
+    },
+    "borrow": {
+      "path": "borrow.csv",
+      "sha256": "25bce61d0cb04e5c1dd3ef80b1bdc5cb213ed24947b01d4c722de9c666aa2861"
+    },
+    "financing": {
+      "path": "financing.csv",
+      "sha256": "6e1b1437e519c9fd84d76b932948d23d2e49d3a52a78b2e57dcb0b447ec208e8"
+    }
+  },
+  "next_session": {
+    "session": "2026-10-09",
+    "previous_session": "2026-10-08",
+    "open_at": "2026-10-09T09:30:00-04:00"
+  }
+}

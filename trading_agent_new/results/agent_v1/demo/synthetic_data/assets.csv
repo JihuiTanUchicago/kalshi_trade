@@ -1,0 +1,5 @@
+asset_id,currency,inverse,kind,leverage_factor,symbol
+S-A,USD,0,common_stock,1,AAA
+S-B,USD,0,common_stock,1,BBB
+F-SPY,USD,0,etf,1,SPY
+S-IPO,USD,0,common_stock,1,NEW

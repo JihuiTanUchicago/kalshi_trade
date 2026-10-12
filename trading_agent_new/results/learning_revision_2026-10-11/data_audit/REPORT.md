@@ -1,0 +1,9 @@
+# Auction and daily-bar close diagnostic
+
+One read-only Alpaca SIP auction request on October 11 captured 69 symbol-sessions for SPY, QQQ and IWM, March 2–April 1, 2020. The original daily bars and Yahoo corroboration were read from their frozen October 10 snapshots. Listing-venue selection (SPY/IWM `P`, QQQ `T`) and the last timestamped auction update on that venue are disclosed diagnostic assumptions.
+
+All 69 selected auction closes matched the independent raw close within the existing 5bp tolerance. Twenty-five daily-bar closes differed from both the auction and independent close by more than 5bp. These counts concern this stress-period sample, not the full historical dataset. Raw response, timestamps, hashes and all comparisons are in [receipt.json](receipt.json).
+
+Alpaca documents daily bars as aggregates of trades subject to condition-dependent update rules; its table excludes condition `M` (market-center official close) from bar updates. Auctions are available from a separate historical endpoint with SIP feed. These definitions make the source comparison relevant, but they do not establish the cause of each discrepancy. [Bar aggregation rules](https://docs.alpaca.markets/us/docs/market-data-faq), [historical auctions](https://docs.alpaca.markets/us/reference/stockauctions-1).
+
+The source dataset, research specification, ledgers and rejection remain unchanged. The full 176 prior differences are not resolved, and current-vintage auctions do not prove original historical availability or commercial rights. Forty-six assumed dividend pay dates, stable-ID/membership history and source-rights gaps remain. A future import should explicitly separate the signal close, valuation price and execution-price definitions, corroborate the full period, and receive its own qualification and frozen research specification before scoring.

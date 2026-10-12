@@ -1,0 +1,10 @@
+{
+  "adapter": "chat_completions",
+  "endpoint": "https://api.x.ai/v1/chat/completions",
+  "model": "grok-4.20-0309-non-reasoning",
+  "api_key_env": "XAI_API_KEY",
+  "input_per_million": 1.25,
+  "output_per_million": 2.5,
+  "token_limit_field": "max_tokens",
+  "supports_temperature": false
+}

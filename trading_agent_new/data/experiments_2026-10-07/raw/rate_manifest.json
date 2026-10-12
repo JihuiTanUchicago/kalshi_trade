@@ -1,0 +1,6 @@
+{
+  "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DFF&cosd=2014-12-01&coed=2026-10-07",
+  "retrieved_at": "2026-10-08T07:48:20.083593+00:00",
+  "sha256": "cabcca3735e3e206d1c48dd447fdb2b2fc2e88d4d81e1a7210d7c6e01417eedd",
+  "qualification": "Current vintage, lagged two exchange sessions; original publication vintages unavailable."
+}

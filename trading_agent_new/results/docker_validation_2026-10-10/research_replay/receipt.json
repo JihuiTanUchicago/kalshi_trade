@@ -1,0 +1,19 @@
+{
+  "started_at": "2026-10-10T06:22:56.863592+00:00",
+  "image": "sha256:bc33f68b6b2439d2d6ecf7f94af043019448b865341ce6455d10b4841cb48a82",
+  "passed": false,
+  "controller_model": "scripted ReplayModel",
+  "data_quality": "synthetic",
+  "strategy_execution": "actual Docker container",
+  "paid_model_calls": 0,
+  "broker_orders": 0,
+  "learning_improvement_measured": false,
+  "alpha_evidence": false,
+  "validator_sha256": "5b09f4c99475bdf2703ef99884d02c0ab4bc257694f575de0a0639109adf401a",
+  "strategy_source_sha256": "188a5e57ce4ed6bdcb31a6d85b213103ae12274aa7df81e9eb35de4c829cfceb",
+  "run": "898892283e124c6883861fc82216399e",
+  "error_type": "KeyError",
+  "error": "'trials'",
+  "state": "finished",
+  "finished_at": "2026-10-10T06:23:03.079764+00:00"
+}

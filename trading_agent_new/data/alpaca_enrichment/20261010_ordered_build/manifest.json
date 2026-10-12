@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "provider": "Alpaca plus optional Yahoo public corroboration",
+  "quality": "proxy",
+  "availability_basis": "retrieval_time_only",
+  "source_snapshot_manifest_sha256": "225c4ed77137fabff40470bb4922aa190248eaf752d009449b35169939d10e19",
+  "source_snapshot": "/Users/jonathanzhang/Desktop/Polygon/data/alpaca_snapshots/20261010T140939.395972Z",
+  "symbols": [
+    "IWM",
+    "QQQ",
+    "SPY"
+  ],
+  "first_session": "2016-01-04",
+  "last_session": "2026-10-09",
+  "commercial_rights_reviewed": false,
+  "files": {
+    "actions_000.json": {
+      "path": "actions_000.json",
+      "sha256": "46e255f12fc22afaf0e10faff18cd4ecd2f70acec763043703d3a0975fd696fe"
+    },
+    "calendar.json": {
+      "path": "calendar.json",
+      "sha256": "7a946917cbaa396e4c7ec06f49379148894f912bbe202e39db12c1ef25306c5c"
+    },
+    "asset_IWM.json": {
+      "path": "asset_IWM.json",
+      "sha256": "6b653b8284132176b083b055c7ac94c81b45f81e423e58f4db1009b082c89925"
+    },
+    "asset_QQQ.json": {
+      "path": "asset_QQQ.json",
+      "sha256": "fb3e4785c81db3e41996ebbc7ec3fcf14f6a21c8f9984e12e57f1b2361274e1a"
+    },
+    "asset_SPY.json": {
+      "path": "asset_SPY.json",
+      "sha256": "2e44e8bf537807e5bd1e1ffbf5046fe2b82ea3919c2f24c562e82d6b164687d8"
+    },
+    "independent_IWM.json": {
+      "path": "independent_IWM.json",
+      "sha256": "4548c0fb4bfd925ec8da98b01e1c6b87871d6aa94b35c59d6441f9564ab1bafe"
+    },
+    "independent_QQQ.json": {
+      "path": "independent_QQQ.json",
+      "sha256": "4912bb195474bfa3e2923113253f80170f0972980f6da5fd6b051c31fd55c6a9"
+    },
+    "independent_SPY.json": {
+      "path": "independent_SPY.json",
+      "sha256": "c671e11d7508227039330002b30225c4301c3b1d7bef51262f18e27b9a6f4b33"
+    }
+  },
+  "requests": [
+    {
+      "url": "https://data.alpaca.markets/v1/corporate-actions",
+      "params": {
+        "symbols": "IWM,QQQ,SPY",
+        "start": "2016-01-04",
+        "end": "2027-04-07",
+        "limit": 1000,
+        "sort": "asc",
+        "data_quality": "all"
+      },
+      "retrieved_at": "2026-10-10T14:25:35.378830+00:00",
+      "file": "actions_000.json",
+      "http_status": 200
+    },
+    {
+      "url": "https://paper-api.alpaca.markets/v2/calendar",
+      "params": {
+        "start": "2016-01-04",
+        "end": "2026-10-09"
+      },
+      "retrieved_at": "2026-10-10T14:25:36.619554+00:00",
+      "file": "calendar.json",
+      "http_status": 200
+    },
+    {
+      "url": "https://paper-api.alpaca.markets/v2/assets/IWM",
+      "params": {},
+      "retrieved_at": "2026-10-10T14:25:36.944793+00:00",
+      "file": "asset_IWM.json",
+      "http_status": 200
+    },
+    {
+      "url": "https://paper-api.alpaca.markets/v2/assets/QQQ",
+      "params": {},
+      "retrieved_at": "2026-10-10T14:25:37.267891+00:00",
+      "file": "asset_QQQ.json",
+      "http_status": 200
+    },
+    {
+      "url": "https://paper-api.alpaca.markets/v2/assets/SPY",
+      "params": {},
+      "retrieved_at": "2026-10-10T14:25:37.593791+00:00",
+      "file": "asset_SPY.json",
+      "http_status": 200
+    },
+    {
+      "url": "https://query1.finance.yahoo.com/v8/finance/chart/IWM",
+      "params": {
+        "period1": 1451883600,
+        "period2": 1791604800,
+        "interval": "1d",
+        "events": "div,splits",
+        "includeAdjustedClose": "false"
+      },
+      "retrieved_at": "2026-10-10T14:25:38.073038+00:00",
+      "file": "independent_IWM.json",
+      "http_status": 200
+    },
+    {
+      "url": "https://query1.finance.yahoo.com/v8/finance/chart/QQQ",
+      "params": {
+        "period1": 1451883600,
+        "period2": 1791604800,
+        "interval": "1d",
+        "events": "div,splits",
+        "includeAdjustedClose": "false"
+      },
+      "retrieved_at": "2026-10-10T14:25:38.252456+00:00",
+      "file": "independent_QQQ.json",
+      "http_status": 200
+    },
+    {
+      "url": "https://query1.finance.yahoo.com/v8/finance/chart/SPY",
+      "params": {
+        "period1": 1451883600,
+        "period2": 1791604800,
+        "interval": "1d",
+        "events": "div,splits",
+        "includeAdjustedClose": "false"
+      },
+      "retrieved_at": "2026-10-10T14:25:38.437428+00:00",
+      "file": "independent_SPY.json",
+      "http_status": 200
+    }
+  ],
+  "status": "captured",
+  "completed_at": "2026-10-10T14:25:38.438232+00:00"
+}

@@ -1,0 +1,4 @@
+asset_id,currency,inverse,kind,leverage_factor,symbol
+ALPACA:ef2b4bb6-00eb-494a-ba4d-aa40dd9a701c,USD,0,etf,1,IWM
+ALPACA:2d9e926c-e17c-47c3-ad8c-26c7a594e48f,USD,0,etf,1,QQQ
+ALPACA:b28f4066-5c6d-479b-a2af-85dc1a8f16fb,USD,0,etf,1,SPY

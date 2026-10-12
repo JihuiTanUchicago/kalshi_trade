@@ -1,0 +1,9 @@
+{
+  "episodes": 240,
+  "max_estimated_cost": 2.27246,
+  "remaining_phase_cap": 34.715935,
+  "remaining_total_cap": 49.6443025,
+  "can_run": true,
+  "plan": "dcf4e8a36449bbb58f5d3fc32dcb8dd85b6941bfc08e3be6a643d8f062728389",
+  "caps_unchanged": true
+}

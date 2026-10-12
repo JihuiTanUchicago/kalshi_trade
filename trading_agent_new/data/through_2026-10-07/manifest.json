@@ -1,0 +1,113 @@
+{
+  "provider": "Yahoo Finance public chart response",
+  "role": "exploratory proxy",
+  "commercial_reuse_authorization": "not established",
+  "point_in_time_revision_history": "unavailable",
+  "adjustment_note": "Adjusted close includes dividend and split adjustments; OHLC is not guaranteed raw historical executable price.",
+  "raw_metadata_note": "Raw responses contain current quote metadata; it is excluded from the analysis.",
+  "protocol_path": "research/eda_protocol_current.json",
+  "protocol_sha256": "4234b6a07dd30840ce4f21f76a0b197f6b3112fa92ede3e72aa9b7267a5ca30c",
+  "specification_sha256": "63879b05937b6be6194193924046f32447ff8fe052098710a05e26f79825be02",
+  "files": [
+    {
+      "symbol": "SPY",
+      "url": "https://query1.finance.yahoo.com/v8/finance/chart/SPY?period1=1451520000&period2=1791417600&interval=1d&events=div%2Csplits&includeAdjustedClose=true",
+      "retrieved_at_utc": "2026-10-08T07:12:05.454941+00:00",
+      "raw_path": "data/through_2026-10-07/raw/SPY.json",
+      "raw_sha256": "d6943425795342d605d56717514936c46dda43d7af0cb6a7adadbb51cbae1227",
+      "normalized_path": "data/through_2026-10-07/normalized/SPY.csv",
+      "normalized_sha256": "8bb3e96e5a2877858db8fce53ad7cbb3acdf4c0f0115ea73d93f5b64262f41ec",
+      "rows": 2707,
+      "first_date": "2015-12-31",
+      "last_date": "2026-10-07",
+      "currency": "USD",
+      "exchange_timezone": "America/New_York",
+      "events": {
+        "dividends": 43
+      }
+    },
+    {
+      "symbol": "IWM",
+      "url": "https://query1.finance.yahoo.com/v8/finance/chart/IWM?period1=1451520000&period2=1791417600&interval=1d&events=div%2Csplits&includeAdjustedClose=true",
+      "retrieved_at_utc": "2026-10-08T07:12:05.612961+00:00",
+      "raw_path": "data/through_2026-10-07/raw/IWM.json",
+      "raw_sha256": "13426282062d7d095153c8e2bf99b5f14ef7980a0531a7e18a7f43d15dab021c",
+      "normalized_path": "data/through_2026-10-07/normalized/IWM.csv",
+      "normalized_sha256": "87e64480f9a4c89eab41fa4e65418301f109fca6a8b47dcb1ccd719bd1b7c51d",
+      "rows": 2707,
+      "first_date": "2015-12-31",
+      "last_date": "2026-10-07",
+      "currency": "USD",
+      "exchange_timezone": "America/New_York",
+      "events": {
+        "dividends": 43
+      }
+    },
+    {
+      "symbol": "EFA",
+      "url": "https://query1.finance.yahoo.com/v8/finance/chart/EFA?period1=1451520000&period2=1791417600&interval=1d&events=div%2Csplits&includeAdjustedClose=true",
+      "retrieved_at_utc": "2026-10-08T07:12:07.349061+00:00",
+      "raw_path": "data/through_2026-10-07/raw/EFA.json",
+      "raw_sha256": "1ee52dfe8ffeed048db21806decf59a1e6a023d877f94710ea3df0294cbdc645",
+      "normalized_path": "data/through_2026-10-07/normalized/EFA.csv",
+      "normalized_sha256": "b4b7bc8322348469e85c06da7b9e38d6c0b93603376d402c28ad2b67405919de",
+      "rows": 2707,
+      "first_date": "2015-12-31",
+      "last_date": "2026-10-07",
+      "currency": "USD",
+      "exchange_timezone": "America/New_York",
+      "events": {
+        "dividends": 22
+      }
+    },
+    {
+      "symbol": "IEF",
+      "url": "https://query1.finance.yahoo.com/v8/finance/chart/IEF?period1=1451520000&period2=1791417600&interval=1d&events=div%2Csplits&includeAdjustedClose=true",
+      "retrieved_at_utc": "2026-10-08T07:12:07.378898+00:00",
+      "raw_path": "data/through_2026-10-07/raw/IEF.json",
+      "raw_sha256": "a807299c56d10bcf2f7f98765e11483f465575c4a63b6b61362c87d327cff4c0",
+      "normalized_path": "data/through_2026-10-07/normalized/IEF.csv",
+      "normalized_sha256": "75fc72c4af79f677816569562686e279595d17b7ad966c7c77e79637aaf7e1de",
+      "rows": 2707,
+      "first_date": "2015-12-31",
+      "last_date": "2026-10-07",
+      "currency": "USD",
+      "exchange_timezone": "America/New_York",
+      "events": {
+        "dividends": 129
+      }
+    },
+    {
+      "symbol": "TLT",
+      "url": "https://query1.finance.yahoo.com/v8/finance/chart/TLT?period1=1451520000&period2=1791417600&interval=1d&events=div%2Csplits&includeAdjustedClose=true",
+      "retrieved_at_utc": "2026-10-08T07:12:08.608043+00:00",
+      "raw_path": "data/through_2026-10-07/raw/TLT.json",
+      "raw_sha256": "e49a88414f5a62dbae598314fe63a35526a2c5741a5e2edeefc601361c7752ac",
+      "normalized_path": "data/through_2026-10-07/normalized/TLT.csv",
+      "normalized_sha256": "ac0c9009642c9db694c90143cd4e504d63d78dcce670fbfbe79c7fe965862c04",
+      "rows": 2707,
+      "first_date": "2015-12-31",
+      "last_date": "2026-10-07",
+      "currency": "USD",
+      "exchange_timezone": "America/New_York",
+      "events": {
+        "dividends": 129
+      }
+    },
+    {
+      "symbol": "GLD",
+      "url": "https://query1.finance.yahoo.com/v8/finance/chart/GLD?period1=1451520000&period2=1791417600&interval=1d&events=div%2Csplits&includeAdjustedClose=true",
+      "retrieved_at_utc": "2026-10-08T07:12:13.294965+00:00",
+      "raw_path": "data/through_2026-10-07/raw/GLD.json",
+      "raw_sha256": "2edfcdb9f215b19df2234d996294c29a4accd71da6390ce83dc9037a1493a864",
+      "normalized_path": "data/through_2026-10-07/normalized/GLD.csv",
+      "normalized_sha256": "c36e5fb1241ccb6ad23f31d979ad600c3ecb1099d99ff2a30a7bf09c2046212f",
+      "rows": 2707,
+      "first_date": "2015-12-31",
+      "last_date": "2026-10-07",
+      "currency": "USD",
+      "exchange_timezone": "America/New_York",
+      "events": {}
+    }
+  ]
+}

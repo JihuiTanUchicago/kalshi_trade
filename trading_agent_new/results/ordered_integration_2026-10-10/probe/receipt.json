@@ -1,0 +1,96 @@
+[
+  {
+    "name": "corporate_actions",
+    "url": "https://data.alpaca.markets/v1/corporate-actions",
+    "params": {
+      "symbols": "SPY,QQQ,IWM",
+      "start": "2016-01-01",
+      "end": "2026-10-10",
+      "limit": 1000,
+      "sort": "asc",
+      "data_quality": "all"
+    },
+    "http_status": 200,
+    "retrieved_at": "2026-10-10T14:21:54.869924+00:00",
+    "counts": {
+      "cash_dividends": 128
+    },
+    "next_page_present": false,
+    "fields": {
+      "cash_dividends": [
+        "cusip",
+        "ex_date",
+        "foreign",
+        "id",
+        "process_date",
+        "rate",
+        "special",
+        "symbol"
+      ]
+    },
+    "sample_dates": {
+      "cash_dividends": [
+        {
+          "symbol": "IWM",
+          "ex_date": "2016-03-23",
+          "payable_date": null,
+          "process_date": "2016-03-23"
+        },
+        {
+          "symbol": "IWM",
+          "ex_date": "2016-07-06",
+          "payable_date": null,
+          "process_date": "2016-07-06"
+        },
+        {
+          "symbol": "IWM",
+          "ex_date": "2016-09-26",
+          "payable_date": null,
+          "process_date": "2016-09-26"
+        }
+      ]
+    }
+  },
+  {
+    "name": "calendar",
+    "url": "https://paper-api.alpaca.markets/v2/calendar",
+    "params": {
+      "start": "2016-01-01",
+      "end": "2026-10-31"
+    },
+    "http_status": 200,
+    "retrieved_at": "2026-10-10T14:21:56.094351+00:00",
+    "rows": 2723,
+    "first": {
+      "close": "16:00",
+      "date": "2016-01-04",
+      "open": "09:30",
+      "session_close": "2000",
+      "session_open": "0400",
+      "settlement_date": "2016-01-07"
+    },
+    "last": {
+      "close": "16:00",
+      "date": "2026-10-30",
+      "open": "09:30",
+      "session_close": "2000",
+      "session_open": "0400",
+      "settlement_date": "2026-11-02"
+    }
+  },
+  {
+    "name": "asset_spy",
+    "url": "https://paper-api.alpaca.markets/v2/assets/SPY",
+    "params": {},
+    "http_status": 200,
+    "retrieved_at": "2026-10-10T14:21:56.435291+00:00",
+    "identity": {
+      "id": "b28f4066-5c6d-479b-a2af-85dc1a8f16fb",
+      "symbol": "SPY",
+      "class": "us_equity",
+      "exchange": "ARCA",
+      "status": "active",
+      "name": "State Street SPDR S&P 500 ETF Trust"
+    }
+  }
+]

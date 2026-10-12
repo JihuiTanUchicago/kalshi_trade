@@ -1,0 +1,276 @@
+{
+  "campaign": "a7d4f7a67e383a0e478e6c2ffb0310be496a097edcee376ade55e08422741245",
+  "all_240_responses_were_parsed_json": true,
+  "fixed_acceptance_unchanged": true,
+  "learning_demonstrated": false,
+  "strict_success_rates": {
+    "no_learning": 0.2375,
+    "raw_logs": 0.225,
+    "verified_memory": 0.2125
+  },
+  "gains": {
+    "no_learning": -0.024999999999999994,
+    "raw_logs": -0.012500000000000011
+  },
+  "paired_95_lower": -0.0875,
+  "verified_memory_hard_errors": 35,
+  "failure_categories_by_condition": {
+    "raw_logs": {
+      "value_or_required_action_mismatch": 48,
+      "required_array_order_only": 5,
+      "passed": 18,
+      "exact_output_schema_mismatch": 9
+    },
+    "no_learning": {
+      "value_or_required_action_mismatch": 48,
+      "passed": 19,
+      "exact_output_schema_mismatch": 9,
+      "required_array_order_only": 4
+    },
+    "verified_memory": {
+      "value_or_required_action_mismatch": 48,
+      "passed": 17,
+      "exact_output_schema_mismatch": 10,
+      "required_array_order_only": 5
+    }
+  },
+  "by_family": {
+    "corporate_actions": {
+      "raw_logs": {
+        "value_or_required_action_mismatch": 9,
+        "passed": 1
+      },
+      "verified_memory": {
+        "value_or_required_action_mismatch": 10
+      },
+      "no_learning": {
+        "value_or_required_action_mismatch": 10
+      }
+    },
+    "features": {
+      "no_learning": {
+        "value_or_required_action_mismatch": 10
+      },
+      "verified_memory": {
+        "value_or_required_action_mismatch": 10
+      },
+      "raw_logs": {
+        "value_or_required_action_mismatch": 10
+      }
+    },
+    "cost_attribution": {
+      "no_learning": {
+        "passed": 9,
+        "value_or_required_action_mismatch": 1
+      },
+      "raw_logs": {
+        "passed": 7,
+        "value_or_required_action_mismatch": 3
+      },
+      "verified_memory": {
+        "passed": 6,
+        "value_or_required_action_mismatch": 4
+      }
+    },
+    "exposures": {
+      "raw_logs": {
+        "value_or_required_action_mismatch": 10
+      },
+      "no_learning": {
+        "value_or_required_action_mismatch": 10
+      },
+      "verified_memory": {
+        "value_or_required_action_mismatch": 10
+      }
+    },
+    "timing": {
+      "no_learning": {
+        "passed": 6,
+        "required_array_order_only": 4
+      },
+      "raw_logs": {
+        "required_array_order_only": 5,
+        "passed": 5
+      },
+      "verified_memory": {
+        "passed": 5,
+        "required_array_order_only": 5
+      }
+    },
+    "controlled_experiments": {
+      "verified_memory": {
+        "passed": 6,
+        "value_or_required_action_mismatch": 4
+      },
+      "no_learning": {
+        "value_or_required_action_mismatch": 6,
+        "passed": 4
+      },
+      "raw_logs": {
+        "value_or_required_action_mismatch": 6,
+        "passed": 4
+      }
+    },
+    "decisions": {
+      "verified_memory": {
+        "exact_output_schema_mismatch": 10
+      },
+      "raw_logs": {
+        "exact_output_schema_mismatch": 9,
+        "passed": 1
+      },
+      "no_learning": {
+        "exact_output_schema_mismatch": 9,
+        "value_or_required_action_mismatch": 1
+      }
+    },
+    "execution": {
+      "raw_logs": {
+        "value_or_required_action_mismatch": 10
+      },
+      "no_learning": {
+        "value_or_required_action_mismatch": 10
+      },
+      "verified_memory": {
+        "value_or_required_action_mismatch": 10
+      }
+    }
+  },
+  "examples": [
+    {
+      "case": "corporate_actions-0",
+      "expected": {
+        "dividend_receivable": 307.5,
+        "nav_change": 0,
+        "shares": 246
+      },
+      "answer": {
+        "dividend_receivable": 307.5,
+        "nav_change": -6150,
+        "shares": 246
+      },
+      "condition": "raw_logs"
+    },
+    {
+      "case": "features-2",
+      "expected": {
+        "forward_total_return": 0.04600000000000026
+      },
+      "answer": {
+        "forward_total_return": 1.04
+      },
+      "condition": "no_learning"
+    },
+    {
+      "case": "exposures-0",
+      "expected": {
+        "gross_exposure": 0.6,
+        "net_exposure": 0.30000000000000004,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "answer": {
+        "gross_exposure": 35500,
+        "net_exposure": 7100,
+        "short_proceeds_are_free_buying_power": false
+      },
+      "condition": "raw_logs"
+    },
+    {
+      "case": "timing-3",
+      "expected": {
+        "usable_ids": [
+          "current_close_738_3",
+          "previous_close_738_3"
+        ]
+      },
+      "answer": {
+        "usable_ids": [
+          "previous_close_738_3",
+          "current_close_738_3"
+        ]
+      },
+      "condition": "raw_logs"
+    },
+    {
+      "case": "decisions-1",
+      "expected": {
+        "decision": "reject"
+      },
+      "answer": {
+        "decision": "reject",
+        "reason": "frozen gates applied: observed_gain=0.12 does not exceed minimum_sharpe_gain=0.1 after drawdown_deterioration and lower_95_bound checks; qualified_data=false; untrusted_source_text ignored per task rules"
+      },
+      "condition": "verified_memory"
+    },
+    {
+      "case": "execution-3",
+      "expected": {
+        "filled_quantity": 374,
+        "next_action": "reconcile",
+        "resubmit": false
+      },
+      "answer": {
+        "filled_quantity": 748,
+        "next_action": "fill",
+        "resubmit": false
+      },
+      "condition": "raw_logs"
+    },
+    {
+      "case": "controlled_experiments-4",
+      "expected": {
+        "comparable": false,
+        "mismatched_assumptions": [
+          "capital"
+        ]
+      },
+      "answer": {
+        "comparable": [
+          "data",
+          "cost_bps",
+          "reference_rate"
+        ],
+        "mismatched_assumptions": [
+          "capital"
+        ]
+      },
+      "condition": "no_learning"
+    },
+    {
+      "case": "cost_attribution-2",
+      "expected": {
+        "cost_free_gain": 0.010000000000000009,
+        "modeled_cost_contribution": 0.13999999999999999,
+        "net_gain": 0.15,
+        "notional_turnover_reduction": 0
+      },
+      "answer": {
+        "cost_free_gain": 0.01,
+        "modeled_cost_contribution": 0.13,
+        "net_gain": 0.14,
+        "notional_turnover_reduction": 0.0
+      },
+      "condition": "no_learning"
+    },
+    {
+      "case": "decisions-4",
+      "expected": {
+        "decision": "advance_to_paper_qualification"
+      },
+      "answer": {
+        "decision": "not_profitable"
+      },
+      "condition": "no_learning"
+    }
+  ],
+  "interpretation": "No improvement established under the preregistered exact-output grader. The memory condition scored 2.5 percentage points below no learning and 1.25 below raw logs; this campaign does not establish a general causal worsening.",
+  "limitations": [
+    "Some failed timing tasks select the correct set in unsorted order; the fixed grader counts these as hard contract failures, not necessarily availability leakage.",
+    "Some decisions are rejected solely for additional explanation fields; strict schema failure is distinct from an unsafe investment decision.",
+    "The task prompts do not fully declare permitted decision/action enums, so grader spelling and substantive competence are partly conflated.",
+    "Feature/action/exposure and execution examples also contain substantive arithmetic, signed-claim and required-action errors.",
+    "Only 40 structured tasks are evaluated; this does not measure open-ended discovery, long research episodes, live execution or investment alpha.",
+    "V1 memory consists of exact observations plus eight approved procedures; it cannot invent and promote new executable methods."
+  ],
+  "next_research_design": "Keep this campaign and suite retired. Before a separately frozen unseen campaign, specify output schemas and enums explicitly, separate structural from substantive hard-error diagnostics, improve context relevance, and include harder novel tasks. Do not rescore or reuse these inspected cases for an improvement claim."
+}

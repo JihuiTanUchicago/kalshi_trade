@@ -1,0 +1,241 @@
+{
+  "run": {
+    "id": "06e5e6e3f3254de5b624ca21858fab3e",
+    "goal": "Compare notional turnover and order counts; challenge cost attribution and retain rejected findings.",
+    "state": "finished",
+    "spec": "db3040aeab7e6f091baf0408826a1b10e7a10d70aba65096d4adfd1859407eed",
+    "strategy": "537bbb7a009d35977c1eca2704a3646b34bc550ee798f0475ca70b560b6436bc",
+    "result": "c0cbded0ade8550b7930cb154112c9a552cc33805325ee1b96be1dcfbd7ccf57",
+    "challenge": "c59c5dcd52d2053a8337e59801e8c31ffcf97fb48a5d580e66f7a93d5be476a8",
+    "decision": "7eb13a3599cb5beadbdc81e99b4dc49fc712a07e29d5c9b464c33959bfc5ba35",
+    "created": "2026-10-09T12:27:48.408268+00:00"
+  },
+  "spec": {
+    "allow_short": true,
+    "baseline": "equal_weight",
+    "block_length": 21,
+    "bootstrap_samples": 500,
+    "buffer": 0.02,
+    "commission_per_share": 0.005,
+    "dataset_id": "11b4a30c86476b36124b4fdca75372ffbd65b3c0c11747cc9344349624cf5a27",
+    "end": "2026-10-08",
+    "hypothesis": "A fixed two-percentage-point buffer reduces notional turnover without violating preregistered performance gates.",
+    "limits": {
+      "capital": 100000.0,
+      "cash_buffer": 0.05,
+      "daily_loss": 0.02,
+      "drawdown": 0.1,
+      "gross": 1.0,
+      "participation": 0.001,
+      "position": 0.25,
+      "short_collateral": 1.5
+    },
+    "lookback": 20,
+    "maximum_drawdown_deterioration": 0.02,
+    "minimum_commission": 1.0,
+    "minimum_sharpe_gain": 0.1,
+    "prospective": false,
+    "seed": 20261009,
+    "sources": [],
+    "start": "2026-06-29",
+    "transaction_bps": 5.0
+  },
+  "strategy": {
+    "api_version": "1",
+    "buffer": 0.02,
+    "code": "",
+    "kind": "builtin",
+    "lookback": 20,
+    "name": "equal_weight"
+  },
+  "result": {
+    "alpha_claim": false,
+    "comparison": {
+      "annual_sharpe_gains": {
+        "2026": 0.10338545898706508
+      },
+      "benchmark_beta": 1.0073834678169349,
+      "block_length": 21,
+      "bootstrap_samples": 500,
+      "confirmatory_alpha": false,
+      "lower_95_one_sided": 0.05919941138815665,
+      "retrospective_selection": true,
+      "seed": 20261009,
+      "sharpe_gain": 0.10338545898706508,
+      "sufficient_blocks": true,
+      "upper_95_one_sided": 0.33856949279654636
+    },
+    "dataset_id": "11b4a30c86476b36124b4fdca75372ffbd65b3c0c11747cc9344349624cf5a27",
+    "gross_net_gain_difference": 0.06246493980838541,
+    "ledgers": {
+      "baseline_0": "5ef311ed2e02123572a20b13e7243fd1921c9f324fdc923cca6d336019de1606",
+      "baseline_1": "0a367cf45f527aadc70a59974fae966ac4039e34640853e4ffa07d82d7dec277",
+      "baseline_2": "5f8477c96cf6e3d79f9443736d83552a8e9083c68960c30d88546bcd98ffbb7f",
+      "candidate_0": "5b42114a598c1bd87a44c6a451d407c1f4f6af2637b08af22160f2a3a756101b",
+      "candidate_1": "6f8a60959723f7da7465e37167a28144d22ed590cc9c224d87a341214c18be8b",
+      "candidate_2": "f49f079b87a6d8b74d9a5e6d5fd1503ee5ac2e0fd736dfb7debbe26ea2556e4d"
+    },
+    "metrics": {
+      "baseline_0": {
+        "annualized_turnover": 4.224514731804844,
+        "borrow_cost": 0.0,
+        "excess_sharpe": -1.3301544172895035,
+        "max_drawdown": 0.05985604864121685,
+        "mean_gross": 0.81485713580523,
+        "net_return": -0.029115952053811345,
+        "orders_filled": 161,
+        "sessions": 74,
+        "transaction_cost": 0.0
+      },
+      "baseline_1": {
+        "annualized_turnover": 4.258815593534587,
+        "borrow_cost": 0.0,
+        "excess_sharpe": -1.4139832679662678,
+        "max_drawdown": 0.060000765624457664,
+        "mean_gross": 0.8148700360936204,
+        "net_return": -0.03128665934108876,
+        "orders_filled": 167,
+        "sessions": 74,
+        "transaction_cost": 230.70312484686622
+      },
+      "baseline_2": {
+        "annualized_turnover": 4.226170549401682,
+        "borrow_cost": 0.0,
+        "excess_sharpe": -1.4892557260927328,
+        "max_drawdown": 0.060276752054734484,
+        "mean_gross": 0.814760707785969,
+        "net_return": -0.03334236766698451,
+        "orders_filled": 158,
+        "sessions": 74,
+        "transaction_cost": 442.268101202859
+      },
+      "candidate_0": {
+        "annualized_turnover": 3.524085306963182,
+        "borrow_cost": 0.0,
+        "excess_sharpe": -1.2892338981108238,
+        "max_drawdown": 0.06039155672336238,
+        "mean_gross": 0.8148859310365357,
+        "net_return": -0.028232490423178436,
+        "orders_filled": 9,
+        "sessions": 74,
+        "transaction_cost": 0.0
+      },
+      "candidate_1": {
+        "annualized_turnover": 3.5359028825169134,
+        "borrow_cost": 0.0,
+        "excess_sharpe": -1.3105978089792027,
+        "max_drawdown": 0.060436994719560544,
+        "mean_gross": 0.8148707412333365,
+        "net_return": -0.028800181384543655,
+        "orders_filled": 8,
+        "sessions": 74,
+        "transaction_cost": 61.1446493431243
+      },
+      "candidate_2": {
+        "annualized_turnover": 3.5242407204010133,
+        "borrow_cost": 0.0,
+        "excess_sharpe": -1.3388270419240318,
+        "max_drawdown": 0.06046979081882908,
+        "mean_gross": 0.814660678540468,
+        "net_return": -0.029559180198714508,
+        "orders_filled": 8,
+        "sessions": 74,
+        "transaction_cost": 121.87921172413401
+      }
+    },
+    "no_cost_sharpe_gain": 0.04092051917867967,
+    "observations": "Historical selection is exploratory; paper eligibility is separate.",
+    "qualification": {
+      "qualified": false,
+      "quality": "synthetic",
+      "receipt": null
+    },
+    "spec": "db3040aeab7e6f091baf0408826a1b10e7a10d70aba65096d4adfd1859407eed",
+    "strategy": "537bbb7a009d35977c1eca2704a3646b34bc550ee798f0475ca70b560b6436bc",
+    "stress_sharpe_gain": 0.15042868416870103,
+    "trial_register": "6b3b0c3545bd8d1a41bd744e873dbca4e529a0fedfe89fd8e065f3de9b032932",
+    "verification": {
+      "baseline_0": {
+        "fills": 168,
+        "max_cash_nav_error": 0.0,
+        "method": "independent raw-price/account reconstruction",
+        "passed": true,
+        "sessions": 74
+      },
+      "baseline_1": {
+        "fills": 180,
+        "max_cash_nav_error": 0.0,
+        "method": "independent raw-price/account reconstruction",
+        "passed": true,
+        "sessions": 74
+      },
+      "baseline_2": {
+        "fills": 170,
+        "max_cash_nav_error": 0.0,
+        "method": "independent raw-price/account reconstruction",
+        "passed": true,
+        "sessions": 74
+      },
+      "candidate_0": {
+        "fills": 17,
+        "max_cash_nav_error": 0.0,
+        "method": "independent raw-price/account reconstruction",
+        "passed": true,
+        "sessions": 74
+      },
+      "candidate_1": {
+        "fills": 15,
+        "max_cash_nav_error": 0.0,
+        "method": "independent raw-price/account reconstruction",
+        "passed": true,
+        "sessions": 74
+      },
+      "candidate_2": {
+        "fills": 17,
+        "max_cash_nav_error": 0.0,
+        "method": "independent raw-price/account reconstruction",
+        "passed": true,
+        "sessions": 74
+      }
+    }
+  },
+  "challenge": {
+    "boundary": "2026-08-19",
+    "diagnostics": {
+      "annual_instability": true,
+      "cost_attribution": true,
+      "exposures": true,
+      "paired_bootstrap": true
+    },
+    "future_perturbation": true,
+    "independent_ledger": {
+      "fills": 15,
+      "max_cash_nav_error": 0.0,
+      "method": "independent raw-price/account reconstruction",
+      "passed": true,
+      "sessions": 74
+    },
+    "limits": "Empirical invariance and container isolation do not prove arbitrary Python causality.",
+    "passed": true,
+    "prefix_invariance": true,
+    "result": "c0cbded0ade8550b7930cb154112c9a552cc33805325ee1b96be1dcfbd7ccf57"
+  },
+  "decision": {
+    "challenge": "c59c5dcd52d2053a8337e59801e8c31ffcf97fb48a5d580e66f7a93d5be476a8",
+    "data_qualified": false,
+    "gates": {
+      "double_transaction_and_borrow_costs": true,
+      "drawdown": true,
+      "minimum_sharpe_gain": true,
+      "positive_uncertainty_lower_bound": true,
+      "sufficient_blocks": true,
+      "verified_accounting_causality": true
+    },
+    "live_capital_eligible": false,
+    "paper_eligible": false,
+    "practical_passed": true,
+    "reason": "Fixed preregistered gates; no outcome-driven changes. Rejection is a retained research output.",
+    "result": "c0cbded0ade8550b7930cb154112c9a552cc33805325ee1b96be1dcfbd7ccf57",
+    "status": "revise_data_qualification"
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "status": "passed",
+  "checks": {
+    "all_240_unique_paired_episodes": true,
+    "immutable_episode_receipts_match_export": true,
+    "answers_independently_reconstructed": true,
+    "strict_grades_match_reconstruction": true,
+    "unchanged_improvement_thresholds": true,
+    "all_conditions_same_explicit_contract": true,
+    "no_original_prompt_reuse": true,
+    "original_result_control_preserved": true,
+    "frozen_evaluation_sources_unchanged": true,
+    "model_prices_config_unchanged": true,
+    "preregistered_before_first_result": true,
+    "statistics_gates_independently_match": true,
+    "context_byte_bounds": true,
+    "same_underlying_evidence_comparator": true,
+    "memory_exact_facts_and_original_scope": true,
+    "no_memory_learning_during_campaign": true,
+    "protected_original_modules_unchanged": true,
+    "all_181_legacy_files_unchanged": true,
+    "prior_research_outputs_unchanged": true,
+    "frozen_import_and_seven_tables_unchanged": true,
+    "original_raw_snapshot_unchanged": true,
+    "original_phase_and_aggregate_caps": true,
+    "genuine_call_usage_receipts": true,
+    "no_releases_or_order_intents": true
+  },
+  "passed": 24,
+  "total": 24,
+  "plan": "dcf4e8a36449bbb58f5d3fc32dcb8dd85b6941bfc08e3be6a643d8f062728389",
+  "evaluation": "9444d4dd151b844169b1d76a5dd74cc9b55c775fc7fa03a4ccd275a44967f29a",
+  "episodes": 240,
+  "rates": {
+    "no_learning": 0.6125,
+    "raw_logs": 0.5125,
+    "verified_memory": 0.3875
+  },
+  "gates": {
+    "authentic_model": true,
+    "gain_vs_no_learning": false,
+    "gain_vs_raw_logs": false,
+    "positive_paired_95_lower": false,
+    "zero_hard_errors": false
+  },
+  "learning_demonstrated": false,
+  "family_correct_out_of_10": {
+    "controlled_experiments": {
+      "no_learning": 10,
+      "raw_logs": 2,
+      "verified_memory": 5
+    },
+    "corporate_actions": {
+      "no_learning": 4,
+      "raw_logs": 1,
+      "verified_memory": 0
+    },
+    "cost_attribution": {
+      "no_learning": 10,
+      "raw_logs": 8,
+      "verified_memory": 2
+    },
+    "decisions": {
+      "no_learning": 4,
+      "raw_logs": 6,
+      "verified_memory": 6
+    },
+    "execution": {
+      "no_learning": 8,
+      "raw_logs": 8,
+      "verified_memory": 8
+    },
+    "exposures": {
+      "no_learning": 8,
+      "raw_logs": 10,
+      "verified_memory": 10
+    },
+    "features": {
+      "no_learning": 0,
+      "raw_logs": 0,
+      "verified_memory": 0
+    },
+    "timing": {
+      "no_learning": 5,
+      "raw_logs": 6,
+      "verified_memory": 0
+    }
+  },
+  "budget_phases": [
+    {
+      "campaign": "v1-benchmark",
+      "calls": 480,
+      "used": 0.7050725
+    },
+    {
+      "campaign": "v1-research-demo",
+      "calls": 15,
+      "used": 0.07109625
+    },
+    {
+      "campaign": "v1-smoke",
+      "calls": 2,
+      "used": 0.00053625
+    }
+  ],
+  "total_configured_price_estimate": 0.776705,
+  "scope": "Engineering audit does not override failed learning, economic, qualification or broker gates; task scenarios are synthetic.",
+  "paper_eligible": false
+}

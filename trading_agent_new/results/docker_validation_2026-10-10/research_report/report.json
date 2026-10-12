@@ -1,0 +1,243 @@
+{
+  "run": {
+    "id": "67e97b7dbedc417da5c383936ca404e9",
+    "goal": "Validate the actual isolated Python strategy interface, six controlled trials, causal challenges and evidence-backed learning on synthetic inputs.",
+    "state": "finished",
+    "spec": "310b9f25e5b6b02afb5a8e84aa1209e4c5caf7f064299531aa982e7852ed2769",
+    "strategy": "42b4c6c882b9dc78fea6e304abc6603155ec62c4267e8e7d06ba2fa7b8b1ba4a",
+    "result": "68214fe4a030b631fe99168a84c4c2fd5e3fd042be067e13c4dec939df83e1f7",
+    "challenge": "0d3816bcf8dded863dfca61b5c047058e64d39703a7f188787338b12c85bfd88",
+    "decision": "f276e8b2cfb3d90b3aeab17ba0d6da60cd385ec24e8bc0ca9c49d1f0df2b0f95",
+    "created": "2026-10-10T06:16:22.388467+00:00"
+  },
+  "spec": {
+    "allow_short": true,
+    "baseline": "equal_weight",
+    "block_length": 21,
+    "bootstrap_samples": 2000,
+    "buffer": 0.0,
+    "commission_per_share": 0.005,
+    "dataset_id": "890557343d32e1bb5f299b35c8d4caa564447dc7940785b907c29e0c8a5155d7",
+    "decision_delay_minutes": 30,
+    "end": "2026-10-08",
+    "hypothesis": "Engineering test: a causal capped daily trend rule versus equal weight, with frozen transaction/borrow controls.",
+    "limits": {
+      "capital": 100000.0,
+      "cash_buffer": 0.05,
+      "daily_loss": 0.02,
+      "drawdown": 0.1,
+      "gross": 1.0,
+      "participation": 0.001,
+      "position": 0.25,
+      "short_collateral": 1.5
+    },
+    "lookback": 20,
+    "maximum_drawdown_deterioration": 0.02,
+    "minimum_commission": 1.0,
+    "minimum_sharpe_gain": 0.1,
+    "prospective": false,
+    "seed": 20261009,
+    "sources": [],
+    "start": "2026-06-29",
+    "transaction_bps": 5.0
+  },
+  "strategy": {
+    "api_version": "1",
+    "buffer": 0.0,
+    "code": "\"\"\"A simple generated-strategy API example. No investment-performance claim.\"\"\"\n\n\ndef target_weights(context, state):\n    weights = {}\n    count = len(context[\"universe\"])\n    cap = min(context[\"limits\"][\"position\"],0.95/max(1,count))\n    for security in context[\"universe\"]:\n        asset = security[\"asset_id\"]\n        history = context[\"history\"][asset]\n        total = 1.0\n        for previous,current in zip(history,history[1:]):\n            total *= (current[\"close\"]+current[\"dividend\"])*current[\"split\"]/previous[\"close\"]\n        weights[asset] = cap if total>1 else 0.0\n    return {\"weights\":weights,\"state\":{}}\n",
+    "kind": "python",
+    "lookback": 20,
+    "name": "causal_api_example",
+    "target_shares": 0
+  },
+  "result": {
+    "alpha_claim": false,
+    "comparison": {
+      "annual_sharpe_gains": {
+        "2026": 9.331312248102236
+      },
+      "benchmark_beta": 0.11416559582585158,
+      "block_length": 21,
+      "bootstrap_samples": 2000,
+      "confirmatory_alpha": false,
+      "lower_95_one_sided": 5.629758157991673,
+      "retrospective_selection": true,
+      "seed": 20261009,
+      "sharpe_gain": 9.331312248102236,
+      "sufficient_blocks": true,
+      "upper_95_one_sided": 12.640402063087649
+    },
+    "dataset_id": "890557343d32e1bb5f299b35c8d4caa564447dc7940785b907c29e0c8a5155d7",
+    "gross_net_gain_difference": -0.21782524507132806,
+    "ledgers": {
+      "baseline_0": "9f31519764bcaccb76e2bf5b24b9c14c4073aa38da171e7a7e53410b8d69c5e5",
+      "baseline_1": "67d357d621ebc5e7116f53f4fd8fec127c72bf4b6fe68027d7d614a73369a5dc",
+      "baseline_2": "1fc55f51ef365ca66dfa5bc84408d82e3a3f19d2d12de3c2550201e25729ea86",
+      "candidate_0": "7e2affdd594d290422af2901c804cc3184ac2820f4aaa6cf1da270d5c2b3f238",
+      "candidate_1": "607bf7803c9a0e42431119e88f548ea53aaceaabf2e03b40c44186c15a1a504b",
+      "candidate_2": "ae8b5c5c80c3ecc14ef774c57a9c19005c02dee56a75f1b34be8b93a9b3068e6"
+    },
+    "metrics": {
+      "baseline_0": {
+        "annualized_turnover": 4.232107428458377,
+        "borrow_cost": 0.0,
+        "excess_sharpe": -1.327239848047527,
+        "max_drawdown": 0.05986609156334732,
+        "mean_gross": 0.8148452713867649,
+        "net_return": -0.02928823191358343,
+        "orders_filled": 164,
+        "sessions": 74,
+        "transaction_cost": 0.0
+      },
+      "baseline_1": {
+        "annualized_turnover": 4.259160238469374,
+        "borrow_cost": 0.0,
+        "excess_sharpe": -1.4092572366476916,
+        "max_drawdown": 0.05999634057800918,
+        "mean_gross": 0.8148049159208639,
+        "net_return": -0.031408637183669375,
+        "orders_filled": 167,
+        "sessions": 74,
+        "transaction_cost": 230.70098783856153
+      },
+      "baseline_2": {
+        "annualized_turnover": 4.20263607871897,
+        "borrow_cost": 0.0,
+        "excess_sharpe": -1.480683941526522,
+        "max_drawdown": 0.060112483149100226,
+        "mean_gross": 0.814691231288455,
+        "net_return": -0.03323394088160303,
+        "orders_filled": 154,
+        "sessions": 74,
+        "transaction_cost": 433.57257043806106
+      },
+      "candidate_0": {
+        "annualized_turnover": 12.350058792147475,
+        "borrow_cost": 0.0,
+        "excess_sharpe": 8.221897645126036,
+        "max_drawdown": 0.0061673383574838425,
+        "mean_gross": 0.5888065775223668,
+        "net_return": 0.0754304377941839,
+        "orders_filled": 128,
+        "sessions": 74,
+        "transaction_cost": 0.0
+      },
+      "candidate_1": {
+        "annualized_turnover": 12.341831462551228,
+        "borrow_cost": 0.0,
+        "excess_sharpe": 7.922055011454545,
+        "max_drawdown": 0.006316104492044228,
+        "mean_gross": 0.5887413759823036,
+        "net_return": 0.07211751554483548,
+        "orders_filled": 124,
+        "sessions": 74,
+        "transaction_cost": 318.6578289896706
+      },
+      "candidate_2": {
+        "annualized_turnover": 12.338239307527438,
+        "borrow_cost": 0.0,
+        "excess_sharpe": 7.610283496101278,
+        "max_drawdown": 0.0065367884999477655,
+        "mean_gross": 0.5887108946743965,
+        "net_return": 0.06885312477084571,
+        "orders_filled": 123,
+        "sessions": 74,
+        "transaction_cost": 634.4973598115946
+      }
+    },
+    "no_cost_sharpe_gain": 9.549137493173564,
+    "observations": "Historical selection is exploratory; paper eligibility is separate.",
+    "qualification": {
+      "qualified": false,
+      "quality": "synthetic",
+      "receipt": null
+    },
+    "spec": "310b9f25e5b6b02afb5a8e84aa1209e4c5caf7f064299531aa982e7852ed2769",
+    "strategy": "42b4c6c882b9dc78fea6e304abc6603155ec62c4267e8e7d06ba2fa7b8b1ba4a",
+    "stress_sharpe_gain": 9.0909674376278,
+    "trial_register": "c64d9c1b5e4c2b181f8300f40ab33c454b318c4a53919136ce2987d2cf8f8acf",
+    "verification": {
+      "baseline_0": {
+        "fills": 169,
+        "max_cash_nav_error": 0.0,
+        "method": "independent raw-price/account reconstruction",
+        "passed": true,
+        "sessions": 74
+      },
+      "baseline_1": {
+        "fills": 178,
+        "max_cash_nav_error": 0.0,
+        "method": "independent raw-price/account reconstruction",
+        "passed": true,
+        "sessions": 74
+      },
+      "baseline_2": {
+        "fills": 169,
+        "max_cash_nav_error": 0.0,
+        "method": "independent raw-price/account reconstruction",
+        "passed": true,
+        "sessions": 74
+      },
+      "candidate_0": {
+        "fills": 129,
+        "max_cash_nav_error": 0.0,
+        "method": "independent raw-price/account reconstruction",
+        "passed": true,
+        "sessions": 74
+      },
+      "candidate_1": {
+        "fills": 124,
+        "max_cash_nav_error": 0.0,
+        "method": "independent raw-price/account reconstruction",
+        "passed": true,
+        "sessions": 74
+      },
+      "candidate_2": {
+        "fills": 126,
+        "max_cash_nav_error": 0.0,
+        "method": "independent raw-price/account reconstruction",
+        "passed": true,
+        "sessions": 74
+      }
+    }
+  },
+  "challenge": {
+    "boundary": "2026-08-19",
+    "diagnostics": {
+      "annual_instability": true,
+      "cost_attribution": true,
+      "exposures": true,
+      "paired_bootstrap": true
+    },
+    "future_perturbation": true,
+    "independent_ledger": {
+      "fills": 124,
+      "max_cash_nav_error": 0.0,
+      "method": "independent raw-price/account reconstruction",
+      "passed": true,
+      "sessions": 74
+    },
+    "limits": "Empirical invariance and container isolation do not prove arbitrary Python causality.",
+    "passed": true,
+    "prefix_invariance": true,
+    "result": "68214fe4a030b631fe99168a84c4c2fd5e3fd042be067e13c4dec939df83e1f7"
+  },
+  "decision": {
+    "challenge": "0d3816bcf8dded863dfca61b5c047058e64d39703a7f188787338b12c85bfd88",
+    "data_qualified": false,
+    "gates": {
+      "double_transaction_and_borrow_costs": true,
+      "drawdown": true,
+      "minimum_sharpe_gain": true,
+      "positive_uncertainty_lower_bound": true,
+      "sufficient_blocks": true,
+      "verified_accounting_causality": true
+    },
+    "live_capital_eligible": false,
+    "paper_eligible": false,
+    "practical_passed": true,
+    "reason": "Fixed preregistered gates; no outcome-driven changes. Rejection is a retained research output.",
+    "result": "68214fe4a030b631fe99168a84c4c2fd5e3fd042be067e13c4dec939df83e1f7",
+    "status": "revise_data_qualification"
+  }
+}

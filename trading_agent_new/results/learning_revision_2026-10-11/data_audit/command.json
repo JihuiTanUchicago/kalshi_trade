@@ -1,0 +1,17 @@
+{
+  "quality": "proxy",
+  "purpose": "Current-vintage diagnostic of one stress month; no qualification or strategy changes",
+  "original_import_unchanged": true,
+  "orders_submitted": 0,
+  "status": "complete",
+  "matched_symbol_sessions": 69,
+  "missing_listing_close": [],
+  "auction_vs_independent_over_5bp": 0,
+  "bar_vs_independent_over_5bp": 25,
+  "bar_vs_auction_over_5bp": 25,
+  "listing_exchange_mapping_is_operator_assumption": true,
+  "broader_176_disagreements_resolved": false,
+  "historical_original_availability_established": false,
+  "commercial_rights_reviewed": false,
+  "completed_at": "2026-10-11T02:49:27.760202+00:00"
+}

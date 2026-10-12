@@ -1,0 +1,23 @@
+{
+  "id": "ef2b4bb6-00eb-494a-ba4d-aa40dd9a701c",
+  "class": "us_equity",
+  "exchange": "ARCA",
+  "symbol": "IWM",
+  "name": "iShares Russell 2000 ETF",
+  "status": "active",
+  "tradable": true,
+  "marginable": true,
+  "maintenance_margin_requirement": 30,
+  "margin_requirement_long": "30",
+  "margin_requirement_short": "30",
+  "shortable": true,
+  "easy_to_borrow": true,
+  "borrow_status": "easy_to_borrow",
+  "fractionable": true,
+  "attributes": [
+    "fractional_eh_enabled",
+    "has_options",
+    "options_late_close",
+    "overnight_tradable"
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "created_at": "2026-10-10T15:10:49.290706+00:00",
+  "evidence_reference_checks_passed": true,
+  "learning_improvement_measured": false,
+  "model": "grok-4.20-0309-non-reasoning",
+  "previous_citation_only_proposal": "b4a6d285dac99461b1c17f7a0e3d1966cd2059e5f955fe0fbbbb16657f00586e",
+  "proposal": {
+    "baseline": "equal_weight",
+    "evidence_hashes": [
+      "87bd4542c0ce8211e24f2aaa6e77fafea7f76d5081d24ecf0ece1bac895ff449"
+    ],
+    "experiment": "volatility-scaled ETF allocation using 20-session trailing volatility, a fixed 10% annualized volatility target, and capped unleveraged next-open positions on SPY, IWM and QQQ",
+    "hypothesis": "A volatility-scaled version of the equal-weight ETF allocation using 20-session trailing volatility, a fixed 10% annualized volatility target, and capped unleveraged next-open positions improves excess Sharpe by at least 0.10 versus the same equal-weight ETF allocation, with positive paired uncertainty lower bound, no more than two percentage points worse drawdown, and positive improvement under doubled costs.",
+    "paper_eligible": false,
+    "rejection_criteria": [
+      "Sharpe ratio gain below 0.10",
+      "Paired uncertainty lower bound is non-positive",
+      "Maximum drawdown more than 2 percentage points worse than baseline",
+      "Improvement does not hold under doubled transaction costs"
+    ],
+    "research_spec": {
+      "allow_short": false,
+      "baseline": "equal_weight",
+      "block_length": 21,
+      "bootstrap_samples": 2000,
+      "buffer": 0.0,
+      "commission_per_share": 0.005,
+      "dataset_id": "fe82dd1197dbcc5744028632f6368f1d1aa6243f8abda370b630588d5d3c487b",
+      "decision_delay_minutes": 30,
+      "end": "2026-10-09",
+      "hypothesis": "A volatility-scaled version of the equal-weight ETF allocation using 20-session trailing volatility, a fixed 10% annualized volatility target, and capped unleveraged next-open positions improves excess Sharpe by at least 0.10 versus the same equal-weight ETF allocation, with positive paired uncertainty lower bound, no more than two percentage points worse drawdown, and positive improvement under doubled costs.",
+      "limits": {
+        "capital": 100000.0,
+        "cash_buffer": 0.05,
+        "daily_loss": 0.02,
+        "drawdown": 0.1,
+        "gross": 1.0,
+        "participation": 0.001,
+        "position": 0.25,
+        "short_collateral": 1.5
+      },
+      "lookback": 20,
+      "maximum_drawdown_deterioration": 0.02,
+      "minimum_commission": 1.0,
+      "minimum_sharpe_gain": 0.1,
+      "prospective": false,
+      "seed": 20261009,
+      "sources": [
+        "fc24655dcdb8d727ff4dd9a0b7048998baaf6197d83b008e6b8c3b6992b0a73f"
+      ],
+      "start": "2016-04-05",
+      "transaction_bps": 5.0
+    }
+  },
+  "protected_specification_checks_passed": true,
+  "retrieved_evidence": [
+    "87bd4542c0ce8211e24f2aaa6e77fafea7f76d5081d24ecf0ece1bac895ff449"
+  ],
+  "run": "ff68fae9bfcf4801807b1477e197742a",
+  "scope": "Research proposal transfer; benchmark must measure any performance improvement",
+  "task_is_distinct": true,
+  "validation_version": 2
+}

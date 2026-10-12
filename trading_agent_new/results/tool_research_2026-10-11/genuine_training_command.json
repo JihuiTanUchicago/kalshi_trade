@@ -1,0 +1,86 @@
+{
+  "receipt": "ef45339be33f7db3bc833f95c448a1279ee91eb6c9890d89c46902874aac75a6",
+  "alpha_claim": false,
+  "authentic_model": true,
+  "cases": [
+    {
+      "case": "timing-training",
+      "cost": 0.009382500000000002,
+      "error": "Analytical task exhausted its bounded calls or repair allowance",
+      "passed": false,
+      "result": null,
+      "session": "train:88aebbcb629f46e3704560d969a4a6898c8331552ac34a09c0f8794a0ab3d0da"
+    },
+    {
+      "case": "features-training",
+      "cost": 0.00566875,
+      "error": "Analytical task exhausted its bounded calls or repair allowance",
+      "passed": false,
+      "result": null,
+      "session": "train:080d70aa7ca5f18622381f4f3e2c74477016d1b3d4319982e6e3c9d2262b574c"
+    },
+    {
+      "case": "corporate_actions-training",
+      "cost": 0.006441249999999996,
+      "error": "Analytical task exhausted its bounded calls or repair allowance",
+      "passed": false,
+      "result": null,
+      "session": "train:5eb9eed2db33ceaae18e54ebd2b58c3c045df9b8abdc26e778f3b5d95de48906"
+    },
+    {
+      "case": "controlled_experiments-training",
+      "cost": 0.004635,
+      "error": "Analytical task exhausted its bounded calls or repair allowance",
+      "passed": false,
+      "result": null,
+      "session": "train:9d8805f0badc3f791762477bd6875214cf4ee073d2f1af77f0a9fb3b8cb4b592"
+    },
+    {
+      "case": "cost_attribution-training",
+      "cost": 0.0048137500000000055,
+      "error": "Analytical task exhausted its bounded calls or repair allowance",
+      "passed": false,
+      "result": null,
+      "session": "train:b7d918d35ff3c7d7bd871c203c948193639daf21e93dc53e1339570dd8d55243"
+    },
+    {
+      "case": "exposures-training",
+      "cost": 0.005903749999999999,
+      "error": "Analytical task exhausted its bounded calls or repair allowance",
+      "passed": false,
+      "result": null,
+      "session": "train:38881e6c466258609999ff481ab682b6302f8a09e09e18670707945547bd0f99"
+    },
+    {
+      "case": "decisions-training",
+      "cost": 0.002967499999999998,
+      "error": "Analytical task exhausted its bounded calls or repair allowance",
+      "passed": false,
+      "result": null,
+      "session": "train:fe281b213d6f851dd899ea1c53fd79d35799dce8d0cc1a5e6e4672a1c87f94fe"
+    },
+    {
+      "case": "execution-training",
+      "cost": 0.005816249999999995,
+      "error": "Analytical task exhausted its bounded calls or repair allowance",
+      "passed": false,
+      "result": null,
+      "session": "train:d2c6a30ca82ec907b80be458c515e57e94107b0c26f20401428aa190c8d99701"
+    },
+    {
+      "case": "features-proxy-training",
+      "cost": 0.007641250000000002,
+      "error": "Analytical task exhausted its bounded calls or repair allowance",
+      "passed": false,
+      "result": null,
+      "session": "train:a723e436eecf6e03315d0554985e254fa52c0dd2964e49ff11a5b22e698ce7e0"
+    }
+  ],
+  "completed_at": "2026-10-11T03:25:55.958475+00:00",
+  "cost": 0.05327,
+  "memory": [],
+  "passed": 0,
+  "plan": "1fbd843c3ece191e91acf1201123b6ef97427a64cea73e1a85a4c0d17b68a33b",
+  "scope": "Tool procedures from declared practice; no evaluated answers used as memory. Proxy/synthetic qualification preserved.",
+  "tasks": 9
+}

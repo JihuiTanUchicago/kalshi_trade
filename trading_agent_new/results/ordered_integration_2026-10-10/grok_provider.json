@@ -1,0 +1,56 @@
+{
+  "selected_provider": "xAI Grok",
+  "adapter": "generic chat_completions",
+  "model_config": {
+    "adapter": "chat_completions",
+    "endpoint": "https://api.x.ai/v1/chat/completions",
+    "model": "grok-4.20-0309-non-reasoning",
+    "api_key_env": "XAI_API_KEY",
+    "input_per_million": 1.25,
+    "output_per_million": 2.5,
+    "token_limit_field": "max_tokens",
+    "supports_temperature": false
+  },
+  "private_credentials": {
+    "file": ".env",
+    "mode": "0600",
+    "contents_logged": false,
+    "redundant_empty_file_removed": true
+  },
+  "official_sources_checked_on": "2026-10-10",
+  "sources": [
+    "https://docs.x.ai/developers/models/grok-4.20-0309-non-reasoning",
+    "https://docs.x.ai/developers/rest-api-reference/inference",
+    "https://docs.x.ai/developers/pricing"
+  ],
+  "genuine_smoke_receipts": [
+    {
+      "adapter": "chat_completions",
+      "case": "json",
+      "configuration": "1e167769e692b35065206bd00d9bd5efd3dceec0987026b020a6766f6513a1f9",
+      "created_at": "2026-10-10T14:59:32.842632+00:00",
+      "input_tokens": 201,
+      "model": "grok-4.20-0309-non-reasoning",
+      "output_tokens": 6,
+      "passed": true,
+      "real_request": true,
+      "request_id": "cf724f04-2e50-92b6-9e3f-572168dd50c7",
+      "served_model": "grok-4.20-0309-non-reasoning"
+    },
+    {
+      "adapter": "chat_completions",
+      "case": "workflow",
+      "configuration": "1e167769e692b35065206bd00d9bd5efd3dceec0987026b020a6766f6513a1f9",
+      "created_at": "2026-10-10T15:00:02.584032+00:00",
+      "input_tokens": 202,
+      "model": "grok-4.20-0309-non-reasoning",
+      "output_tokens": 7,
+      "passed": true,
+      "real_request": true,
+      "request_id": "fd6d91da-17c5-9b0d-a36f-1749617215ec",
+      "served_model": "grok-4.20-0309-non-reasoning"
+    }
+  ],
+  "native_anthropic_genuine_acceptance": "pending",
+  "scope": "Provider-neutral harness; foundation-model weights unchanged. No subscription or account changes."
+}

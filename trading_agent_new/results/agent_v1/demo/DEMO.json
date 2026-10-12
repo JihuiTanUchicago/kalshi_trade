@@ -1,0 +1,15 @@
+{
+  "mode": "scripted engineering demonstration",
+  "run": "593ff84e8daf4c28bfdd3396dac8686b",
+  "report": "/Users/jonathanzhang/Desktop/Polygon/results/agent_v1/demo/research/REPORT.md",
+  "verified_memory_records": 1,
+  "retrieved_evidence": [
+    "d79f361855797eb53bd9eb7f023ea91e85b0c759c2a75d58904ed65618b09d89"
+  ],
+  "new_task": "Determine whether a new strategy's net improvement comes from modeled trading costs or signal quality.",
+  "memory_procedure_transferred": true,
+  "paid_model_calls": 0,
+  "broker_orders": 0,
+  "learning_improvement_measured": false,
+  "alpha_evidence": false
+}

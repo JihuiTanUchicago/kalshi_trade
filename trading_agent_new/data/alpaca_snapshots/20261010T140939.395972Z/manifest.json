@@ -1,0 +1,47 @@
+{
+  "status": "downloaded",
+  "provider": "Alpaca",
+  "quality": "proxy",
+  "endpoint": "https://data.alpaca.markets/v2/stocks/bars",
+  "feed": "sip",
+  "adjustment": "raw",
+  "timeframe": "1Day",
+  "symbols": [
+    "SPY",
+    "QQQ",
+    "IWM"
+  ],
+  "start": "2016-01-01T00:00:00-05:00",
+  "end": "2026-10-09T23:59:59.999999-04:00",
+  "symbol_mapping_asof": "2026-10-10",
+  "retrieved_at": "2026-10-10T14:09:39.395972+00:00",
+  "availability_basis": "retrieval_time_only",
+  "agent_import_ready": false,
+  "commercial_rights_reviewed": false,
+  "provider_payload": "SDK-combined bar objects; original HTTP envelopes not retained",
+  "dependencies": {
+    "alpaca-py": "0.44.0",
+    "python-dotenv": "1.2.4"
+  },
+  "coverage": {
+    "SPY": {
+      "first_session": "2016-01-04",
+      "last_session": "2026-10-09",
+      "rows": 2708
+    },
+    "QQQ": {
+      "first_session": "2016-01-04",
+      "last_session": "2026-10-09",
+      "rows": 2708
+    },
+    "IWM": {
+      "first_session": "2016-01-04",
+      "last_session": "2026-10-09",
+      "rows": 2708
+    }
+  },
+  "files": {
+    "provider_bars.json": "3121f0b96f1ec4c62028e65154fff3ff83162fbb76944d13c09081a99ca404ea",
+    "daily_raw.csv": "788ecd9d85e0f224874143ba6613770b0d891f349f04ff36de5298514225ac2a"
+  }
+}

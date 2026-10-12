@@ -1,0 +1,94 @@
+{
+  "receipt": "e1fdddc92d2b22978279ba9efb7ecd7212a2c2deaa374b97549a79d1c75be981",
+  "alpha_claim": false,
+  "authentic_model": true,
+  "cases": [
+    {
+      "case": "timing-training",
+      "cost": 0.0039037499999999975,
+      "error": null,
+      "passed": true,
+      "result": "630335dfc08ea3cbf67b60d3bca4ef7a357eed240786aa6c7d935a53c902d4a7",
+      "session": "train:a869a2587864531f07c17f416eb352b4fcf2aebad3ded20094dceb3c1b4435e1"
+    },
+    {
+      "case": "features-training",
+      "cost": 0.006241250000000004,
+      "error": null,
+      "passed": true,
+      "result": "3c3506b1557b2b071e57165609b3a8ea444adbc4892a7f880513447abc9f05ce",
+      "session": "train:5c1df695f9a06ea5560a371db7ab4ccbc538b6624c29ae7f00a30cdd4494a357"
+    },
+    {
+      "case": "corporate_actions-training",
+      "cost": 0.0033962499999999896,
+      "error": null,
+      "passed": true,
+      "result": "7cc0f2615dc2702734cf6fc310ec973eb6aafa4e1def95a9dc091ac71c19c074",
+      "session": "train:7264def819aa3c4713d398f7be37cebd560b9868e5044747b20bc888565a3de0"
+    },
+    {
+      "case": "controlled_experiments-training",
+      "cost": 0.003337500000000021,
+      "error": null,
+      "passed": true,
+      "result": "9c8b1eb6f4f882d521433be90fa7aa690ab736c2b1d78252fa5e4abec3061a43",
+      "session": "train:1141dcf1340ba588892bfeaaecd4411719a269a83f6b4d0cfd211f8bfb8b6696"
+    },
+    {
+      "case": "cost_attribution-training",
+      "cost": 0.0034687499999999927,
+      "error": null,
+      "passed": true,
+      "result": "037e498830fda6a7d2a4b4b230c7564c208f20a6a0385357d1b2e6d01ae1cab5",
+      "session": "train:2a83b3406aac31fb39c975f1b0ff1d087a554cf2d920f9d830c228353096be25"
+    },
+    {
+      "case": "exposures-training",
+      "cost": 0.003145000000000009,
+      "error": null,
+      "passed": true,
+      "result": "c342bf2ede43389c0186ab5d64abb9a83c5bf38109fda24115088582b7c36c59",
+      "session": "train:f409f0c98d2501bef79150b02dc40a0c54f12775ed7a68b6f12d8a546ab7b676"
+    },
+    {
+      "case": "decisions-training",
+      "cost": 0.004587499999999994,
+      "error": "Analytical task exhausted its bounded calls or repair allowance",
+      "passed": false,
+      "result": null,
+      "session": "train:ae6cc0df05bf3057e10fdbe9ed209c238a9973eabdefa06cffd0ae03d8c057d2"
+    },
+    {
+      "case": "execution-training",
+      "cost": 0.00643249999999998,
+      "error": "Analytical task exhausted its bounded calls or repair allowance",
+      "passed": false,
+      "result": null,
+      "session": "train:64ddcc24690a56250838908e41097d158f93bf59944577685f858314116c465b"
+    },
+    {
+      "case": "features-proxy-training",
+      "cost": 0.008871250000000025,
+      "error": null,
+      "passed": true,
+      "result": "8148ca1d7c5879fc7516c24547eb2325c07e14be0775271f7acccfa246944263",
+      "session": "train:953a5e6e926bcc891541a82e140fa2055525d7ad13ebf05af5a1c89e8c74a128"
+    }
+  ],
+  "completed_at": "2026-10-11T03:28:19.763774+00:00",
+  "cost": 0.04338375000000001,
+  "memory": [
+    "fcf31ff6e01d8e550fdab6881fe08e7412c52a81dee7838e5957ac8758a0442a",
+    "12e40118f9dcb3ade4c7cb23a4da83056fb1b81004873c5bfc8b9c38d022699e",
+    "7ab328efc2894330928fdeaf038f4e8f55318415b41d2d9b589df0471470a709",
+    "efdd579d56fac728fc0738de07345cd12654447a44761803429f076a269c5e09",
+    "db95dbd62723b5cdb9704d52fdce10f4e074102d3f637710cb3543c5dfd8021e",
+    "6da9a558fa8551231fc4a0bc32e5522deaebc1382613faabb87c7a2c7fd056fa",
+    "e4a3c4d738be491d61ab40bdc86eaefa378f6c13e68e179d462366587f8eddb8"
+  ],
+  "passed": 7,
+  "plan": "f7cfbe927b04104751dfb07fe34de18b948cfa64a8c1d0eb41ed6285ee324ad8",
+  "scope": "Tool procedures from declared practice; no evaluated answers used as memory. Proxy/synthetic qualification preserved.",
+  "tasks": 9
+}
