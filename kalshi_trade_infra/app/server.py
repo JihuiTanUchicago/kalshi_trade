@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
-from app import agent, auth, backtest, engine, kalshi_account
+from app import agent, auth, backtest, engine, kalshi_account, notify
 from app import repository as repo
 from app import spec as specmod
 from app.markets import MARKETS
@@ -40,6 +40,7 @@ MAX_RESEARCH_PER_DAY = 12
 MAX_CHAT_PER_HOUR = 40
 MAX_ACTIVE_DEPLOYMENTS = 10
 MAX_PAPER_BALANCE = 1_000_000.0
+MAX_WAITLIST_PER_MINUTE = 10
 SPA_ROUTES = re.compile(r"^/(?:|dashboard|research(?:/\d+)?|strategies(?:/\d+)?|deploy|funds|signin)$")
 
 CSP = (
@@ -477,6 +478,20 @@ def delete_kalshi_key(ctx: Ctx):
     return {"ok": True}
 
 
+def waitlist(ctx: Ctx):
+    email = str(ctx.body.get("email") or "").strip().lower()
+    note = str(ctx.body.get("note") or "").strip()[:500]
+    if not repo.EMAIL_RE.match(email) or len(email) > 320:
+        raise ApiError(400, "Enter a valid email address.")
+    cur = ctx.cur
+    if repo.recent_waitlist_from(cur, "", repo.now_utc() - timedelta(minutes=1)) >= MAX_WAITLIST_PER_MINUTE:
+        raise ApiError(429, "We're getting a lot of requests right now. Try again in a minute.")
+    is_new = repo.add_waitlist(cur, email, note or None)
+    if is_new:
+        notify.waitlist_request(email, note or None, repo.count_waitlist(cur))
+    return {"ok": True}
+
+
 # -- routing -----------------------------------------------------------------------
 
 Route = Tuple[str, "re.Pattern[str]", Callable[[Ctx], Any], bool]
@@ -487,6 +502,7 @@ ROUTES: List[Route] = [
         ("GET", "/auth/google/callback", google_callback, False),
         ("GET", "/auth/dev", dev_login, False),
         ("POST", "/api/logout", logout, False),
+        ("POST", "/api/waitlist", waitlist, False),
         ("GET", "/api/me", me, True),
         ("GET", "/api/dashboard", dashboard, True),
         ("GET", "/api/runs", list_runs, True),

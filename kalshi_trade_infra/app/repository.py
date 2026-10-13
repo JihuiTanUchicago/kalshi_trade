@@ -6,6 +6,7 @@ Datetimes are stored as naive UTC, like the rest of this database.
 from __future__ import annotations
 
 import json
+import re
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterator, List, Optional
@@ -628,3 +629,27 @@ def active_run_counts(cur, user_id: int) -> Dict[str, int]:
         else:
             out["chat_active"] += int(r["n"])
     return out
+
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def add_waitlist(cur, email: str, note: Optional[str]) -> bool:
+    """Record a waitlist request. Returns True if this is a new email."""
+    cur.execute(
+        """INSERT INTO app_waitlist (email, note, status, created_at) VALUES (%s,%s,'requested',%s)
+           ON DUPLICATE KEY UPDATE note=COALESCE(VALUES(note), note)""",
+        (email[:320], (note or None) and note[:500], now_utc()),
+    )
+    return cur.rowcount == 1  # 1 = inserted, 2 = updated an existing row
+
+
+def count_waitlist(cur) -> int:
+    cur.execute("SELECT COUNT(*) AS n FROM app_waitlist")
+    return int(cur.fetchone()["n"])
+
+
+def recent_waitlist_from(cur, ip_bucket: str, since: datetime) -> int:
+    # No per-IP column; rate-limit waitlist globally by recent inserts instead.
+    cur.execute("SELECT COUNT(*) AS n FROM app_waitlist WHERE created_at >= %s", (since,))
+    return int(cur.fetchone()["n"])

@@ -23,6 +23,7 @@
     send: I('<path d="M4 12 20 4l-6 16-3-7z"/>'),
     plus: I('<path d="M12 5v14M5 12h14"/>'),
     ext: I('<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>'),
+    cube: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7z" fill="#111"/><path d="m12 2 9 5-9 5-9-5z" fill="#F05A28"/><path d="M12 12v10" stroke="#fff" stroke-width="1"/></svg>',
     google: '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>',
   };
 
@@ -122,32 +123,28 @@
   // ---------- shell ----------
   const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/deploy', 'Deploy', 'deploy'], ['/funds', 'Funds', 'funds']];
   function shell(active, board, main) {
+    document.body.classList.remove('landing-body');
     const u = S.me.user;
-    const initial = esc((u.name || u.email || '?').trim()[0].toUpperCase());
-    const nav = NAV.map(([href, label]) => `<a href="${href}" ${active === href ? 'aria-current="page"' : ''}>${label}</a>`).join('');
-    const tabs = NAV.map(([href, label, icon]) => `<a href="${href}" ${active === href ? 'aria-current="page"' : ''}>${ICON[icon]}<span>${label}</span></a>`).join('');
+    const here = (NAV.find(([href]) => href === active) || ['', ''])[1];
+    const nav = NAV.map(([href, label]) => `<a class="svc-link" href="${href}" ${active === href ? 'aria-current="page"' : ''}>${label}</a>`).join('');
     root.innerHTML = `
-      <header class="board">
-        <div class="board-inner">
-          <div class="masthead">
-            <a class="wordmark" href="/">${ICON.mark}Recursive</a>
-            <nav class="nav" aria-label="Sections">${nav}</nav>
-            <div class="account">
-              ${u.picture ? `<img src="${esc(u.picture)}" alt="" referrerpolicy="no-referrer">` : `<span class="avatar" aria-hidden="true">${initial}</span>`}
-              <button class="linkish signout" data-action="signout">Sign out</button>
-            </div>
-          </div>
-          <div id="boardbody">${board}</div>
-        </div>
-      </header>
-      <main id="main" tabindex="-1">${main}</main>
-      <nav class="tabbar" aria-label="Sections">${tabs}</nav>`;
+      <header class="masthead"><div class="masthead-in">
+        <p class="wordmark"><a href="/">Recursive</a>${here ? `<span class="sep">/</span><span class="svc">${here}</span>` : ''}</p>
+        <span class="asof">${esc(u.name || u.email)}<span class="sep">\u00b7</span><button class="linkish" data-action="signout">Sign out</button></span>
+      </div></header>
+      <nav class="services" aria-label="Sections"><div class="services-in">${nav}</div></nav>
+      <div class="wrap">
+        <div id="boardbody">${board}</div>
+        <main id="main" tabindex="-1">${main}</main>
+      </div>`;
     root.querySelector('[data-action="signout"]').onclick = async () => { await api('/api/logout', {}).catch(() => {}); S.me = null; go('/signin'); };
   }
-  const boardTitle = (title, sub = '') => `<div class="board-title"><h1>${esc(title)}</h1>${sub ? `<p>${sub}</p>` : ''}</div>`;
+  const boardTitle = (title, sub = '') => `<div class="board-title"><h1 class="page">${esc(title)}</h1>${sub ? `<p class="deck">${sub}</p>` : ''}</div>`;
+  // One measured cell. Money direction rides a tint field behind the figure
+  // (opts.v), never a colour on the digits and never the reserved signal red.
   const fig = (label, value, opts = {}) =>
-    `<div class="fig ${opts.cls || ''}"><dt>${label}</dt><dd>${value}</dd>${opts.small ? `<small>${opts.small}</small>` : ''}</div>`;
-  const dirTag = (v) => (v > 0 ? `<span class="dir">${ICON.up}UP</span>` : v < 0 ? `<span class="dir">${ICON.down}DOWN</span>` : '');
+    `<div class="m ${opts.cls || ''}"><dt class="lab">${label}</dt><dd><span class="fig ${opts.v > 0 ? 'tint pos' : opts.v < 0 ? 'tint neg' : ''}">${value}</span></dd>${opts.small ? `<div class="sub-fig">${opts.small}</div>` : ''}</div>`;
+  const dirTag = () => '';
   const notice = (msg, kind = '') => `<div class="notice ${kind}" role="${kind === 'bad' ? 'alert' : 'status'}">${kind === 'good' ? ICON.check : ICON.warn}<span>${esc(msg)}</span></div>`;
   const loading = (h = 160) => `<div class="skeleton" style="height:${h}px" aria-label="Loading"></div>`;
 
@@ -186,7 +183,7 @@
     const y = (v) => H - 3 - ((v - reg.lo) / (reg.hi - reg.lo)) * (H - 6);
     const pts = curve.map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
     const last = curve[curve.length - 1][1];
-    const color = last >= 0 ? 'var(--gain)' : 'var(--loss)';
+    const color = 'var(--ink)';
     return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(label)}: ${usd(last, true)}">
       <line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" stroke="var(--rule-2)" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/>
       <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.8" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>`;
@@ -206,7 +203,7 @@
     const ticks = [lo, (lo + hi) / 2, hi].map((v) => `<text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${usd(v)}</text>`).join('');
     const day = (t) => new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cumulative profit and loss over the backtest; ends at ${usd(vals[vals.length - 1], true)}">
-      ${cx ? `<rect x="${cx}" y="${T}" width="${W - R - cx}" height="${H - T - B}" fill="var(--slip-2)"/>
+      ${cx ? `<rect x="${cx}" y="${T}" width="${W - R - cx}" height="${H - T - B}" fill="var(--stock-raised)"/>
               <line x1="${cx}" x2="${cx}" y1="${T}" y2="${H - B}" stroke="var(--ink-3)" stroke-dasharray="4 4"/>
               <text x="${cx + 8}" y="${T - 10}" style="fill:var(--ink-2)">UNSEEN BY THE AGENT →</text>` : ''}
       <line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="var(--rule-2)"/>
@@ -216,46 +213,56 @@
     </svg>`;
   }
 
-  // ---------- slips ----------
-  const STAMP = { passed: 'Passed', failed: 'Void', rejected: 'Rejected', running: 'Running', paused: 'Paused', stopped: 'Stopped' };
+  // ---------- timetable rows ----------
+  // State is a word in a mark, never colour alone. Signal red appears only on
+  // states that need the user: a paused deployment and live money.
+  const MARK = {
+    passed: ['on', 'Passed'], failed: ['', 'Void'], rejected: ['quiet', 'Rejected'], queued: ['quiet', 'Testing'],
+    paused: ['armed', 'Paused'], stopped: ['quiet', 'Stopped'],
+  };
+  const mark = (key, live) => {
+    if (key === 'running') return live ? '<span class="mk live">Live</span>' : '<span class="mk">Paper</span>';
+    const [cls, label] = MARK[key] || ['', key];
+    return `<span class="mk ${cls}">${esc(label)}</span>`;
+  };
+  const money = (v) => `<span class="${tone(v)}">${usd(v, true)}</span>`;
+  const STRAT_HEAD = '<thead><tr><th>Strategy</th><th>Market</th><th class="num">Unseen P&amp;L</th><th class="num">Trades</th><th class="num">Win</th><th>Tried</th><th>Status</th></tr></thead>';
+  const strategyTable = (rows) => `<div class="sheet"><table class="stack t-strat">${STRAT_HEAD}<tbody>${rows}</tbody></table></div>`;
   function strategySlip(s, reg, opts = {}) {
     const oos = s.out_of_sample, ins = s.in_sample || {};
-    const headline = oos ? oos.pnl : ins.pnl;
-    const figs = oos
-      ? [['Unseen P&L', `<span class="${tone(oos.pnl)}">${usd(oos.pnl, true)}</span>`], ['Trades', oos.trades], ['Win rate', pct(oos.win_rate, false)]]
-      : [['Tested P&L', `<span class="${tone(ins.pnl)}">${usd(ins.pnl, true)}</span>`], ['Trades', ins.trades == null ? '—' : ins.trades], ['Win rate', pct(ins.win_rate, false)]];
-    const tried = s.hypotheses_tried ? `1 of ${s.hypotheses_tried} tried` : s.parent_id ? 'Agent adjustment' : '';
-    return `<a class="slip ${opts.cls || ''}" href="/strategies/${s.id}" aria-label="${esc(s.title)}, ${STAMP[s.status] || s.status}">
-      <span class="stamp ${s.status} ${opts.land ? 'land' : ''}">${STAMP[s.status] || esc(s.status)}</span>
-      <h3>${esc(s.title)}</h3>
-      <p class="thesis">${esc(s.thesis)}</p>
-      <dl class="slip-figs">${figs.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
-      ${s.equity ? spark(s.equity, reg, 'Backtest equity') : ''}
-      <div class="slip-foot"><span>${esc(marketShort(s.market))} · ${esc(dirLabel(s.direction))}${tried ? ' · <span class="tried">' + esc(tried) + '</span>' : ''}</span><span class="serial">${serial(s.id)}</span></div>
-    </a>`;
+    const m = oos || ins;
+    const tried = s.hypotheses_tried ? `1 of ${s.hypotheses_tried}` : s.parent_id ? 'Adjustment' : '\u2014';
+    const name = opts.nolink ? esc(s.title) : `<a href="/strategies/${s.id}">${esc(s.title)}</a>`;
+    return `<tr class="${opts.land ? 'washed' : ''}">
+      <td class="name" data-lab="">${name}<div class="sub-fig cellwrap">${esc(s.thesis)}</div></td>
+      <td data-lab="Market"><span class="tick">${esc(marketShort(s.market))} \u00b7 ${esc(dirLabel(s.direction))}</span></td>
+      <td class="num" data-lab="${oos ? 'Unseen P&amp;L' : 'Tested P&amp;L'}">${m.pnl == null ? '\u2014' : money(m.pnl)}${oos ? '' : '<div class="sub-fig">tested only</div>'}</td>
+      <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
+      <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>
+      <td data-lab="Tried">${esc(tried)}</td>
+      <td class="act" data-lab="">${mark(s.status)}</td>
+    </tr>`;
   }
+  const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Market</th><th>Status</th><th class="num">Realized</th><th class="num">Trades</th><th class="num">Backtest unseen</th><th>Since</th>${controls ? '<th></th>' : ''}</tr></thead>`;
+  const deploymentTable = (rows, controls) => `<div class="sheet"><table class="stack t-dep">${DEP_HEAD(controls)}<tbody>${rows}</tbody></table></div>`;
   function deploymentSlip(d, reg, controls) {
     const exp = d.backtest && d.backtest.out_of_sample;
     const live = d.mode === 'live';
-    const actions = controls ? `<div class="slip-actions">
-        ${d.status === 'running' ? `<button class="btn ghost small" data-dep="${d.id}" data-act="pause">Pause</button>` : ''}
-        ${d.status === 'paused' ? `<button class="btn small" data-dep="${d.id}" data-act="resume">Resume</button>` : ''}
-        <button class="btn danger small" data-dep="${d.id}" data-act="stop">Stop</button>
-        <a class="btn ghost small" href="/strategies/${d.strategy_id}">Homework</a>
-      </div>` : '';
-    return `<article class="slip ${live ? 'live' : ''}" aria-label="${esc(d.title)}">
-      <span class="stamp ${d.status === 'running' ? (live ? 'live' : 'paper') : d.status}">${d.status === 'running' ? (live ? 'Live' : 'Paper') : STAMP[d.status]}</span>
-      <h3>${esc(d.title)}</h3>
-      ${d.status !== 'running' && d.status_reason ? `<p class="thesis">${esc(d.status_reason)}</p>` : ''}
-      <dl class="slip-figs">
-        <div><dt>Realized</dt><dd class="${tone(d.realized_pnl)}">${usd(d.realized_pnl, true)}</dd></div>
-        <div><dt>Trades</dt><dd>${d.closed_trades}${d.open_positions ? ` <small class="hint">+${d.open_positions} open</small>` : ''}</dd></div>
-        <div><dt>Backtest</dt><dd>${exp ? usd(exp.pnl, true) : '—'}</dd></div>
-      </dl>
-      ${d.curve && d.curve.length > 1 ? spark(d.curve, reg, 'Realized profit and loss') : `<p class="spark-empty">No closed trades yet. The first one draws here.</p>`}
-      <div class="slip-foot"><span>${esc(marketShort(d.market))} · ${live ? 'Live money' : 'Paper'} · $${esc(d.stake)} a trade, up to ${esc(d.max_positions)} open</span><span class="serial">${serial(d.id)}</span></div>
+    const actions = controls ? `<td class="act" data-lab="">
+        ${d.status === 'running' ? `<button class="btn sm" data-dep="${d.id}" data-act="pause">Pause</button>` : ''}
+        ${d.status === 'paused' ? `<button class="btn sm" data-dep="${d.id}" data-act="resume">Resume</button>` : ''}
+        <button class="btn sm danger" data-dep="${d.id}" data-act="stop">Stop</button></td>` : '';
+    return `<tr class="${live ? 'live-row' : ''}">
+      <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
+        <div class="sub-fig">$${esc(d.stake)} a trade, up to ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' \u00b7 ' + esc(d.status_reason) : ''}</div></td>
+      <td data-lab="Market"><span class="tick">${esc(marketShort(d.market))}</span></td>
+      <td data-lab="Status">${mark(d.status, live)}</td>
+      <td class="num" data-lab="Realized">${money(d.realized_pnl)}${d.curve && d.curve.length > 1 ? spark(d.curve, reg, 'Realized profit and loss') : ''}</td>
+      <td class="num" data-lab="Trades">${d.closed_trades}${d.open_positions ? `<div class="sub-fig">+${d.open_positions} open</div>` : ''}</td>
+      <td class="num" data-lab="Backtest unseen">${exp ? usd(exp.pnl, true) : '\u2014'}</td>
+      <td data-lab="Since">${when(d.created_at)}</td>
       ${actions}
-    </article>`;
+    </tr>`;
   }
   function bindDeploymentActions(scope, after) {
     scope.querySelectorAll('[data-dep]').forEach((btn) => {
@@ -274,66 +281,104 @@
     host.prepend(el.firstChild);
   }
 
-  // ---------- sign in ----------
+  // ---------- landing (pre-login) ----------
   async function viewSignin() {
     if (!S.me) { try { S.me = await api('/api/me'); } catch (e) { /* signed out: stay here */ } }
     if (S.me) return go('/', true);
     const err = new URLSearchParams(location.search).get('error');
-    const msg = { cancelled: 'Sign-in was cancelled.', expired: 'That sign-in link expired. Try again.', google: "Google couldn't confirm your account. Try again." }[err];
-    const example = {
-      id: 42, market: 'btc_daily', direction: 'volatility', title: 'Fade overpriced tails into the close', status: 'passed', hypotheses_tried: 7,
-      thesis: 'Late in the day, strikes far from the price still trade as if Bitcoin could jump 4%. Realized volatility says it rarely does, so the agent sells that fear.',
-      out_of_sample: { pnl: 38.2, trades: 23, win_rate: 0.74 }, created_at: new Date().toISOString(),
-      equity: [[0, 0], [1, 6], [2, 4], [3, 15], [4, 12], [5, 24], [6, 31], [7, 29], [8, 38]],
+    const msg = { cancelled: 'Sign-in was cancelled.', expired: 'That sign-in link expired. Try again.', google: "Google couldn't confirm your account. We may not have added you to the waitlist yet." }[err];
+    document.body.classList.add('landing-body');
+    root.innerHTML = `
+      <div class="landing">
+        <header class="lnav">
+          <a class="lbrand" href="/">${ICON.cube}<span>Recursive</span></a>
+          <div class="lnav-actions">
+            <a class="pill" href="/auth/google" data-native>Sign in</a>
+            <button class="pill solid" data-action="waitlist-top">Join waitlist</button>
+          </div>
+        </header>
+        <main id="main" class="lhero">
+          <h1>Intelligence at your fingertips.</h1>
+          <p class="lsub">Tell an agent what to trade. It researches the market, tests every idea on data it never saw, and only the strategies that pass can trade for you.</p>
+          ${msg ? `<div class="lnotice">${esc(msg)}</div>` : ''}
+          <div class="lcta" id="lcta">
+            <a class="pill solid lg" href="/auth/google" data-native>${ICON.google}Continue with Google</a>
+            <button class="pill lg" data-action="waitlist-open">Join waitlist</button>
+          </div>
+          <p class="lfine">Access is invite-only right now. Join the waitlist and we'll email you when a spot opens. You'll start with $1,000 of paper money; live trading is optional and runs in your own Kalshi account.</p>
+          <div class="lpreview" aria-hidden="true">
+            <div class="lwin">
+              <div class="lwin-bar"><i></i><i></i><i></i></div>
+              <div class="lwin-body">
+                <div class="lline done">${ICON.cube}<span>Researching BTC volatility mispricing before the 5pm close</span></div>
+                <div class="lline done">${ICON.check}<span>Backtested 7 hypotheses on data the agent never saw</span></div>
+                <div class="lline running"><span class="lspin"></span><span>Passed 2 of 7 &middot; recording results</span></div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>`;
+    const openWaitlist = () => {
+      const cta = root.querySelector('#lcta');
+      if (root.querySelector('#wlform')) { root.querySelector('#wlemail').focus(); return; }
+      const box = document.createElement('div');
+      box.className = 'wlbox';
+      box.innerHTML = `
+        <form id="wlform">
+          <label class="vh" for="wlemail">Your email</label>
+          <input id="wlemail" class="linput" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" required>
+          <button class="pill solid" type="submit">Request access</button>
+        </form>
+        <p class="wlhint" id="wlhint">We'll email you when a spot opens. We never share your address.</p>`;
+      cta.insertAdjacentElement('afterend', box);
+      const form = box.querySelector('#wlform');
+      root.querySelector('#wlemail').focus();
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const email = root.querySelector('#wlemail').value.trim();
+        await busy(form.querySelector('button'), async () => {
+          try {
+            await api('/api/waitlist', { email });
+            box.innerHTML = `<p class="wlok">${ICON.check}Thanks \u2014 you're on the list. We'll email ${esc(email)} when a spot opens.</p>`;
+          } catch (err) { root.querySelector('#wlhint').className = 'wlhint bad'; root.querySelector('#wlhint').textContent = err.message; }
+        });
+      };
     };
-    const failed = { ...example, id: 41, title: 'Chase five-minute breakouts', status: 'failed', direction: 'momentum',
-      thesis: 'Bet that sharp five-minute moves keep going until settlement.', out_of_sample: { pnl: -21.4, trades: 31, win_rate: 0.39 },
-      equity: [[0, 0], [1, 4], [2, -3], [3, -8], [4, -6], [5, -15], [6, -21]] };
-    const reg = registry([example.equity, failed.equity]);
-    root.innerHTML = `<main id="main" class="signin">
-      <section class="pitch">
-        <span class="wordmark">${ICON.mark}Recursive</span>
-        <h1>Agents find the edge. <em>You decide</em> what trades.</h1>
-        <p>Tell an agent what to look for in Kalshi's Bitcoin markets. It writes hypotheses, tests every one on data it never saw, and only the ones that pass can trade.</p>
-        ${msg ? notice(msg, 'bad') : ''}
-        <a class="gbtn" href="/auth/google" data-native>${ICON.google}Continue with Google</a>
-        <p class="fine">You start with $1,000 of paper money. Live trading is optional and runs in your own Kalshi account. We never hold your funds.</p>
-      </section>
-      <section class="counter-side" aria-label="Example slips">
-        <span class="example">Example slips, not real results</span>
-        <div class="slips">${strategySlip(example, reg)}${strategySlip(failed, reg)}</div>
-      </section>
-    </main>`;
-    root.querySelectorAll('.counter-side a').forEach((a) => { a.removeAttribute('href'); a.setAttribute('role', 'img'); });
+    root.querySelector('[data-action="waitlist-open"]').onclick = openWaitlist;
+    root.querySelector('[data-action="waitlist-top"]').onclick = () => { openWaitlist(); root.querySelector('#wlemail').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
   }
 
   // ---------- dashboard ----------
   async function viewDashboard() {
-    shell('/', `<div class="figures" style="--cols:5">${'<div class="fig"><dt>&nbsp;</dt><dd>&nbsp;</dd></div>'.repeat(5)}</div><div class="board-pad"></div>`, loading(320));
+    shell('/', loading(120), loading(320));
     const load = async () => {
       const d = await api('/api/dashboard');
       const p = d.paper;
       const hasLive = d.deployments.some((x) => x.mode === 'live' && x.status !== 'stopped');
       const stale = d.freshness.btc == null || d.freshness.btc > 2700;
       const agentsBusy = d.agents.research_running + d.agents.research_queued;
+      const running = d.deployments.filter((x) => x.status === 'running').length;
+      const paused = d.deployments.filter((x) => x.status === 'paused').length;
+      const needs = stale || paused > 0;
+      const said = [
+        hasLive ? `Live money on: ${usd(d.live.realized_pnl, true)} realized` : 'Paper money only',
+        running ? `${running} strateg${running > 1 ? 'ies' : 'y'} running` : 'Nothing deployed',
+        paused ? `<em>${paused} paused, needs you</em>` : '',
+        agentsBusy ? `${agentsBusy} agent${agentsBusy > 1 ? 's' : ''} researching` : '',
+        stale ? `<em>Backtest history stale ${age(d.freshness.btc)}</em>` : '',
+      ].filter(Boolean).join('<span class="sep">/</span>');
       const board = `
-        <dl class="figures" style="--cols:5">
-          ${fig('Paper account value', usd(p.equity), { cls: 'lead', small: `${usd(p.cash)} cash · ${usd(p.open_at_cost)} in open positions at cost` })}
-          ${fig(`Today ${dirTag(p.today_pnl)}`, usd(p.today_pnl, true))}
-          ${fig(`All time ${dirTag(p.total_pnl)}`, usd(p.total_pnl, true))}
-          ${fig('Return', pct(p.roi), { small: `on ${usd(p.deposited)} put in`, cls: 'hide-sm' })}
-          ${fig('Open positions', d.open_positions.length, { cls: 'hide-sm' })}
-        </dl>
-        <div class="board-foot">
-          <div class="status"><span class="note">${agentsBusy ? `<span class="pulse" style="display:inline-block;margin-right:8px"></span>${agentsBusy} agent${agentsBusy > 1 ? 's' : ''} researching` : 'No agents researching right now'}
-            · ${stale ? `<b style="color:var(--amber)">Backtest history stale (${age(d.freshness.btc)})</b>` : `History updated ${age(d.freshness.btc)} ago`}</span>
-            ${hasLive ? `<span class="plate live"><i></i>Live: ${usd(d.live.realized_pnl, true)}</span>` : '<span class="plate paper">Paper money</span>'}</div>
-          <a class="btn ticket" href="/research">${ICON.plus}Dispatch an agent</a>
-        </div>`;
+        <div class="statusline ${needs ? 'needs' : ''}"><p class="said">${said}</p><a class="btn primary" href="/research">Dispatch an agent</a></div>
+        <dl class="figures measure">
+          ${fig('Paper account value', usd(p.equity), { small: `${usd(p.cash)} cash \u00b7 ${usd(p.open_at_cost)} open at cost` })}
+          ${fig('Today', usd(p.today_pnl, true), { v: p.today_pnl })}
+          ${fig('All time', usd(p.total_pnl, true), { v: p.total_pnl, small: `${pct(p.roi)} on ${usd(p.deposited)} put in` })}
+          ${fig('Open positions', d.open_positions.length, { small: stale ? '' : `history ${age(d.freshness.btc)} old` })}
+        </dl>`;
       const reg = registry(d.deployments.map((x) => x.curve));
       const deps = d.deployments.length
-        ? `<div class="slot-bar" aria-hidden="true"></div><div class="slips">${d.deployments.map((x) => deploymentSlip(x, reg, false)).join('')}</div>`
-        : `<div class="empty"><h3>Nothing on the board yet</h3><p>Agents print strategies as slips. The ones that pass their backtest gates can be posted here, on paper first.</p><a class="btn" href="/research">Dispatch your first agent</a></div>`;
+        ? deploymentTable(d.deployments.map((x) => deploymentSlip(x, reg, false)).join(''), false)
+        : `<div class="empty"><h3>Nothing deployed yet</h3><p>Agents research strategies and test each one on data they never saw. The ones that pass every gate can be deployed here, on paper first.</p><a class="btn" href="/research">Dispatch your first agent</a></div>`;
       const days = d.paper.daily.slice(-30);
       const maxAbs = Math.max(1, ...days.map((x) => Math.abs(+x.pnl)));
       const bars = days.length
@@ -341,12 +386,12 @@
         : '<p class="hint">Daily results appear once your strategies close trades.</p>';
       const stubs = (rows, closed) => rows.length
         ? rows.map((r) => `<div class="stub"><b>${esc(r.side.toUpperCase())} ${esc(r.qty)} × ${cents(+r.entry_price)}</b>
-            <span class="${closed ? tone(+r.pnl) : ''}">${closed ? usd(r.pnl, true) : usd(r.qty * r.entry_price)}</span>
+            <span>${closed ? money(+r.pnl) : usd(r.qty * r.entry_price)}</span>
             <small>${esc(r.title)} · <span class="tick">${esc(r.ticker)}</span> · ${r.mode === 'live' ? 'LIVE' : 'paper'} · ${when(closed ? r.closed_at : r.opened_at)}</small></div>`).join('')
         : `<p class="hint">${closed ? 'No settled trades yet.' : 'No open positions.'}</p>`;
       const main = `<div class="dash">
           <div>
-            <section class="section"><div class="section-head"><h2>On the board</h2>${d.deployments.some((x) => x.curve && x.curve.length > 1) ? '<p>Same dollar scale on every slip</p>' : ''}</div>${deps}</section>
+            <section class="sect"><div class="sect-head"><h2>Deployed</h2>${d.deployments.some((x) => x.curve && x.curve.length > 1) ? '<span class="sect-note">Sparklines share one dollar scale</span>' : ''}</div>${deps}</section>
           </div>
           <aside>
             <section class="panel"><h3>Daily P&amp;L</h3>${bars}</section>
@@ -364,8 +409,8 @@
   // ---------- research ----------
   async function viewResearch() {
     const me = S.me;
-    shell('/research', boardTitle('Research hub', 'Dispatch an agent toward a kind of edge. It proposes hypotheses, tests them, and prints a slip for each one.') +
-      '<dl class="figures" id="rfigs" style="--cols:4"></dl><div class="board-pad"></div>', `
+    shell('/research', boardTitle('Research hub', 'Dispatch an agent toward a kind of edge. It proposes hypotheses, tests each one, and records the result.') +
+      '<dl class="figures measure" id="rfigs" style="margin-top:14px"></dl>', `
       <div class="detail">
         <section>
           <div class="section-head"><h2>Agents</h2><p id="rcount"></p></div>
@@ -409,7 +454,7 @@
         fig('Hypotheses tested', tried) + fig('Passed every gate', passed, { small: tried ? `${pct(passed / tried, false)} pass rate` : '' });
       root.querySelector('#rcount').textContent = d.runs.length ? `${d.runs.length} run${d.runs.length > 1 ? 's' : ''}` : '';
       root.querySelector('#runs').innerHTML = d.runs.length ? d.runs.map(runRow).join('')
-        : `<div class="empty"><h3>No agents dispatched yet</h3><p>Pick a market and a kind of edge on the right. Your agent will draft about seven hypotheses, test each one on history, and stamp each slip PASSED or VOID.</p></div>`;
+        : `<div class="empty"><h3>No agents dispatched yet</h3><p>Pick a market and a kind of edge on the right. Your agent will draft about seven hypotheses, test each one on history, and mark each one Passed or Void.</p></div>`;
     };
     await load();
     poll(load, 5000);
@@ -427,11 +472,11 @@
   }
 
   async function viewRun(id) {
-    shell('/research', '<div id="runboard">' + boardTitle('Research run') + '</div><dl class="figures" id="runfigs" style="--cols:4"></dl><div class="board-pad"></div>', `
+    shell('/research', '<div id="runboard">' + boardTitle('Research run') + '</div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl>', `
       <div class="printer">
         <section><div class="section-head"><h2>Agent log</h2><span id="runact"></span></div><div id="flash"></div><ol class="log" id="log" aria-live="polite"></ol></section>
-        <section><div class="section-head"><h2>Slips</h2><p>Out of the printer, newest first</p></div>
-          <div class="slot" aria-hidden="true"></div><div class="feed" id="feed"></div></section>
+        <section><div class="section-head"><h2>Hypotheses</h2><p>Newest first</p></div>
+          <div id="feed">${strategyTable('')}</div></section>
       </div>`);
     let after = 0, shownStrategies = false;
     const hyp = [];
@@ -460,11 +505,7 @@
         if (ev.kind === 'hypothesis' && !shownStrategies) {
           const s = { id: hyp.length + 1, market: r.market, direction: r.direction, title: ev.message, thesis: ev.data.thesis, status: 'queued', in_sample: ev.data.in_sample, created_at: ev.created_at };
           hyp.push(s);
-          const el = document.createElement('div');
-          el.innerHTML = strategySlip(s, null).replace('<a ', '<div ').replace(/<\/a>$/, '</div>').replace(/href="[^"]*"/, '');
-          const slip = el.firstChild;
-          slip.querySelector('.stamp').textContent = 'Testing';
-          feed.prepend(slip);
+          feed.querySelector('tbody').insertAdjacentHTML('afterbegin', strategySlip(s, null, { nolink: true, land: true }));
         }
       });
       if (r.status === 'succeeded' && !shownStrategies) {
@@ -472,7 +513,7 @@
         const reg = registry(d.strategies.map((s) => s.equity));
         const order = { passed: 0, failed: 1, rejected: 2 };
         const sorted = d.strategies.slice().sort((a, b) => order[a.status] - order[b.status]);
-        feed.innerHTML = sorted.map((s) => strategySlip(s, reg, { land: true })).join('');
+        feed.innerHTML = strategyTable(sorted.map((s) => strategySlip(s, reg, { land: true })).join(''));
       }
       if (!active) clearTimers();
     };
@@ -485,8 +526,8 @@
   async function viewStrategies() {
     const q = new URLSearchParams(location.search);
     const f = { status: q.get('status') || 'passed', direction: q.get('direction') || '', market: q.get('market') || '' };
-    shell('/strategies', boardTitle('Strategies', 'Every slip your agents printed. Passed slips can be deployed; void ones stay here so you can see what didn’t work.') +
-      '<dl class="figures" id="sfigs" style="--cols:4"></dl><div class="board-pad"></div>', `
+    shell('/strategies', boardTitle('Strategies', 'Every strategy your agents researched. Passed ones can be deployed; void ones stay here so you can see what didn’t work.') +
+      '<dl class="figures measure" id="sfigs" style="margin-top:14px"></dl>', `
       <div class="section-head">
         <div class="chips" role="group" aria-label="Status">${[['passed', 'Passed'], ['failed', 'Void'], ['rejected', 'Rejected'], ['', 'All']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}" aria-pressed="${f.status === v}">${l}</button>`).join('')}</div>
         <div class="chips" role="group" aria-label="Market">${[['', 'Both markets'], ...S.me.markets.map((m) => [m.key, marketShort(m.key)])].map(([v, l]) => `<button class="chip" data-f="market" data-v="${v}" aria-pressed="${f.market === v}">${esc(l)}</button>`).join('')}</div>
@@ -506,16 +547,16 @@
     root.querySelector('#sfigs').innerHTML = fig('Passed', count('passed')) + fig('Void on unseen data', count('failed')) + fig('Rejected in testing', count('rejected')) +
       fig('Pass rate', all.strategies.length ? pct(count('passed') / all.strategies.length, false) : '—');
     const reg = registry(d.strategies.map((s) => s.equity));
-    root.querySelector('#slips').innerHTML = d.strategies.length ? `<div class="slips">${d.strategies.map((s) => strategySlip(s, reg)).join('')}</div>`
+    root.querySelector('#slips').innerHTML = d.strategies.length ? strategyTable(d.strategies.map((s) => strategySlip(s, reg)).join(''))
       : `<div class="empty"><h3>No slips match</h3><p>${all.strategies.length ? 'Try another filter.' : 'Dispatch an agent from the Research hub and its slips will land here.'}</p>${all.strategies.length ? '' : '<a class="btn" href="/research">Go to Research</a>'}</div>`;
   }
 
   async function viewStrategy(id) {
-    shell('/strategies', boardTitle('Strategy') + '<dl class="figures" id="figs" style="--cols:4"></dl><div class="board-pad"></div>', loading(420));
+    shell('/strategies', boardTitle('Strategy') + '<dl class="figures measure" id="figs" style="margin-top:14px"></dl>', loading(420));
     const s = await api('/api/strategies/' + id);
     const ins = s.in_sample || {}, oos = s.out_of_sample;
-    const figsFor = (r) => fig('Unseen-data P&L', r.out_of_sample ? usd(r.out_of_sample.pnl, true) : '—', { cls: 'lead', small: r.out_of_sample ? `${r.out_of_sample.trades} trades the agent never saw` : 'Rejected before the unseen test' }) +
-      fig('In-sample P&L', usd(r.in_sample.pnl, true), { small: `${r.in_sample.trades} trades` }) +
+    const figsFor = (r) => fig('Unseen-data P&L', r.out_of_sample ? usd(r.out_of_sample.pnl, true) : '—', { v: r.out_of_sample && r.out_of_sample.pnl, small: r.out_of_sample ? `${r.out_of_sample.trades} trades the agent never saw` : 'Rejected before the unseen test' }) +
+      fig('In-sample P&L', usd(r.in_sample.pnl, true), { v: r.in_sample.pnl, small: `${r.in_sample.trades} trades` }) +
       fig('Return on capital', r.out_of_sample ? pct(r.out_of_sample.roi) : '—', { small: `$${fmt0.format(r.capital || 0)} at risk at most` }) +
       fig('Tried to find it', s.hypotheses_tried ? `1 of ${s.hypotheses_tried}` : '—', { small: 'More tries means weaker evidence' });
     root.querySelector('.board-title').outerHTML = boardTitle(serial(s.id) + ' · ' + marketShort(s.market), esc(dirLabel(s.direction)));
@@ -538,8 +579,8 @@
       <div id="flash"></div>
       <div class="detail">
         <div>
-          <article class="slip sheet">
-            <span class="stamp big ${s.status}">${STAMP[s.status]}</span>
+          <article class="sheet-doc">
+            <p class="doc-mark">${mark(s.status)}</p>
             <h2>${esc(s.title)}</h2>
             <p class="thesis">${esc(s.thesis)}</p>
             <h3 class="sheet-h">The rule, in plain words</h3>
@@ -556,7 +597,7 @@
         <aside>
           <section class="panel"><h3>Deploy</h3>
             ${canDeploy ? `<div style="display:grid;gap:10px">
-                <button class="btn" id="dep-paper">Post to the board on paper</button>
+                <button class="btn" id="dep-paper">Deploy on paper</button>
                 <button class="btn ghost" id="dep-live" ${liveWhy ? 'aria-disabled="true"' : ''}>Deploy with live money</button>
                 ${liveWhy ? `<p class="hint">${esc(liveWhy)}</p>` : ''}
                 <form id="live-confirm" hidden style="display:grid;gap:8px">
@@ -623,7 +664,7 @@
   async function viewDeploy() {
     const u = S.me.user;
     shell('/deploy', boardTitle('Deploy', 'Your strategies trading now. Talk to the agent to adjust them.') +
-      '<dl class="figures" id="dfigs" style="--cols:4"></dl><div class="board-pad"></div>', `
+      '<dl class="figures measure" id="dfigs" style="margin-top:14px"></dl>', `
       <div class="seg" role="group" aria-label="View"><button aria-pressed="true" data-view="board">Board</button><button aria-pressed="false" data-view="chat">Agent chat</button></div>
       <div class="deploy" data-view="board" id="deploy">
         <div class="deploy-board"><div id="flash"></div><div id="deps">${loading(260)}</div>
@@ -671,15 +712,15 @@
       const realized = d.deployments.reduce((a, x) => a + x.realized_pnl, 0);
       const live = d.deployments.filter((x) => x.mode === 'live' && x.status === 'running');
       root.querySelector('#dfigs').innerHTML = fig('Running', running.length, { small: `${d.deployments.length - running.length} paused` }) +
-        fig(`Realized ${dirTag(realized)}`, usd(realized, true), { small: 'all deployments, paper and live' }) +
+        fig('Realized', usd(realized, true), { v: realized, small: 'all deployments, paper and live' }) +
         fig('Open positions', d.open_positions.length) +
-        fig('Money', live.length ? '<span class="plate live"><i></i>Live</span>' : '<span class="plate paper">Paper</span>', { small: live.length ? `${live.length} on live money` : 'nothing on live money' });
+        fig('Money', live.length ? '<span class="mk live">Live</span>' : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : 'nothing on live money' });
       const reg = registry(d.deployments.map((x) => x.curve));
-      root.querySelector('#deps').innerHTML = d.deployments.length ? `<div class="slot-bar" aria-hidden="true"></div><div class="slips">${d.deployments.map((x) => deploymentSlip(x, reg, true)).join('')}</div>`
+      root.querySelector('#deps').innerHTML = d.deployments.length ? deploymentTable(d.deployments.map((x) => deploymentSlip(x, reg, true)).join(''), true)
         : `<div class="empty"><h3>Nothing deployed</h3><p>Open a passed strategy and post it to the board. Paper first: it trades the live market with paper money.</p><a class="btn" href="/strategies">See passed strategies</a></div>`;
       bindDeploymentActions(root.querySelector('#deps'), loadBoard);
       root.querySelector('#openpos').innerHTML = d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost</th><th class="num">Settles</th></tr></thead><tbody>
-        ${d.open_positions.map((p) => `<tr><td>${esc(p.title)} ${p.mode === 'live' ? '<span class="stamp live" style="position:static;display:inline-block;transform:none;font-size:11px;padding:3px 5px">Live</span>' : ''}</td><td class="tick">${esc(p.ticker)}</td><td>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num">${clock(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
+        ${d.open_positions.map((p) => `<tr><td>${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : ''}</td><td class="tick">${esc(p.ticker)}</td><td>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num">${clock(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
         : '<p class="hint">No open positions.</p>';
     };
     let lastId = 0;
@@ -731,7 +772,7 @@
 
   // ---------- funds ----------
   async function viewFunds() {
-    shell('/funds', boardTitle('Funds') + '<dl class="figures" id="ffigs" style="--cols:3"></dl><div class="board-pad"></div>', loading(300));
+    shell('/funds', boardTitle('Funds') + '<dl class="figures measure" id="ffigs" style="margin-top:14px"></dl>', loading(300));
     const load = async () => {
       const d = await api('/api/funds');
       const k = d.kalshi;

@@ -198,6 +198,16 @@ DDL = [
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     """
+    CREATE TABLE IF NOT EXISTS app_waitlist (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      email VARCHAR(320) NOT NULL UNIQUE,
+      note VARCHAR(500) NULL,
+      status VARCHAR(16) NOT NULL DEFAULT 'requested',
+      created_at DATETIME NOT NULL,
+      INDEX idx_waitlist_created (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
     CREATE TABLE IF NOT EXISTS app_proposals (
       id BIGINT AUTO_INCREMENT PRIMARY KEY,
       user_id BIGINT NOT NULL,
