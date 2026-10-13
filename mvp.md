@@ -44,6 +44,23 @@ strategies and their model parameters.
 - Charging a small percentage fee on user transactions and credit purchases
     - Try this revenue model first to see if it makes sense
 
+## UI
+- Dashboard: A webpage with UI that allows user to login and see their profile and dashboard
+    - Include cash balance, portfolio, perfomrance/roi, etc. whatever necessary.
+    - Like a stock trading main page/dashboard
+- Strategy: I want to bring research + strategies into one page, each is indicated by a status sign 
+    - Each "Agent Sessions" instance is displayed as a card
+    - Tab shows "Agent Sessions". 3 states:
+        - Researching
+        - Finalized strategy pending review
+        - Deployed
+    - Clicking into each "Agent Session", it shows 
+        - backtesting performance and `if-scenario` out of sample performance
+        - the underlying strategy thesis
+- Position: shows all the user's open positions, as well as the deployed strategies
+    - Keep the current "Deploy" tab, and clean the UI as well as show positions (integrating positions with deployments)
+- Community: keep as is, I like the idea of social trading
+- Account: links to the users account details, fundings, and other connected accounts
 
 ## THOUGHTS
 ### Must-have Features
@@ -80,10 +97,14 @@ for trading firms/teams that only focus on agent-driven strategies.
     - We build data collection automation pipeline. And we enable users who need
 those data to collect and help us grow our datasets.
     - Our underlying execution service is not open sourced. Any edge we can win here?
+    - (Jonathan supp): agent runtime, platform, data, trading execution and potentially 
+    even prime services (leverage, borrowing, currency conversion, etc.)
     - We can post-train models using our in-house data for:
         - A jev like model that replaces traditional ML and only output "buy"/"sell"...?
             - TBH I don't even know what this means
-    - 
+            - (Jonathan supp): this makes sense and we can make it into a classifier-type model like Jev.
+              The model outputs buy/sell/hold, with confidence level like what Jev does. Agree this is a
+              great direction that we can go post-traction (and when we have the compute for post-train) 
 
 ## Traction
 - Sell product EARLY. How to ask friends/strangers to try out product
@@ -103,11 +124,16 @@ whether making them willing to pay?
                 we are cashing out the user's credit by using the user's credit and fulfills
                 someone else's totally irrelevant requests.
                     - Bad, for rate limiting reasons, and bloating a user's bill
+                    - (jonathan supp): feels a bit tricky and dangerous 
         - Option D: charge them for premium execution service
             - This can also let us make our product open source.
+        - Option E: our own prop trading house run by our own TAU agents
+    - (jonathan supp): Option A is the most optimal one at this stage imo
 
 ## Frictions found along the way.
 - API keys are the bottleneck, not coding. A frictionless api-key-dependent development solution?
+    - (jonathan supp) Agree. I cannot test what has been deployed at the moment because the API key is not available my end
 - Codes become harder and harder to read with fast development. Maybe a visualization layer on top, so that users only
 need to read code when they want to?
+    - (jonathan supp) Yes my take is frontend should be as distraction-free as possible with only the necessary information presented
 - User testing. Agent as a simulated user to test front end UIs.
