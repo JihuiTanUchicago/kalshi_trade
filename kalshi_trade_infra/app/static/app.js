@@ -35,6 +35,8 @@
     gate: I('<path d="M5 21V8l7-4 7 4v13M9 21v-6h6v6"/>'),
     paper2: I('<path d="M6 2h9l3 3v17H6z"/><path d="M15 2v3h3M9 12h6M9 16h6"/>'),
     key: I('<circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2M16 7l2 2"/>'),
+    mail: I('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>'),
+    at: I('<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>'),
     google: '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>',
   };
 
@@ -343,23 +345,31 @@
           </div>
         </section>
         <main id="main">
-          <div class="section-band">
-            <h2>From a sentence to a tested strategy.</h2>
-            <p class="sband-sub">No spreadsheets, no code. You bring the idea; the agent does the research and the proof.</p>
-            <div class="steps3">
-              <div class="step3"><div class="n">1</div><h3>Describe an idea</h3><p>“Sell overpriced tails before the 5pm close.” A sentence is enough to start a research session.</p></div>
-              <div class="step3"><div class="n">2</div><h3>The agent proves it</h3><p>It writes several strategies and backtests each on data it never saw — fees included — stamping each Passed or Void.</p></div>
-              <div class="step3"><div class="n">3</div><h3>You deploy what passed</h3><p>Post a winner to paper or live, watch it trade, and steer it by chatting with the agent.</p></div>
+          <div class="scenes">
+            <div class="scene" data-scene="strat">
+              <div class="scene-copy">
+                <span class="eyebrow">${ICON.strategies}See the homework</span>
+                <h2>Open any strategy and see its proof.</h2>
+                <p>The thesis in plain words, the equity curve, the result on data the agent never saw, and every gate it had to clear. Nothing is a black box.</p>
+              </div>
+              <div class="demo"><div class="demo-bar"><i></i><i></i><i></i><span class="demo-url">tau · strategy</span></div><div class="demo-body"></div></div>
             </div>
-          </div>
-          <div class="section-band">
-            <h2>Everything the research desk gives you.</h2>
-            <p class="sband-sub">Built for one job: finding an edge you can trust, and trading it without hand-holding.</p>
-            <div class="fgrid">${FEATURES.map(([ic, t, d]) => `<div class="fcard"><div class="ic">${ICON[ic]}</div><h3>${esc(t)}</h3><p>${esc(d)}</p></div>`).join('')}</div>
-          </div>
-          <div class="section-band">
-            <h2>Questions.</h2>
-            <div class="faq">${FAQ.map(([q, a]) => `<details><summary>${esc(q)}</summary><div class="a">${esc(a)}</div></details>`).join('')}</div>
+            <div class="scene rev" data-scene="deploy">
+              <div class="scene-copy">
+                <span class="eyebrow">${ICON.deploy}Deploy &amp; monitor</span>
+                <h2>Go live, and watch every trade.</h2>
+                <p>Flip a passed strategy from paper to live in your own Kalshi account. Positions and P&amp;L stream in as it trades — and a loss guard pauses it automatically if it goes wrong.</p>
+              </div>
+              <div class="demo"><div class="demo-bar"><i></i><i></i><i></i><span class="demo-url">tau · deploy</span></div><div class="demo-body"></div></div>
+            </div>
+            <div class="scene" data-scene="agent">
+              <div class="scene-copy">
+                <span class="eyebrow">${ICON.spark2}RSI agent mode</span>
+                <h2>Or let the agent run the whole desk.</h2>
+                <p>Turn on autopilot and the agent researches, backtests, and deploys on its own — a loop that keeps hunting for edge. Every move is written down, and it never touches live money without you.</p>
+              </div>
+              <div class="demo"><div class="demo-bar"><i></i><i></i><i></i><span class="demo-url">tau · autopilot</span></div><div class="demo-body"></div></div>
+            </div>
           </div>
           <footer class="lfoot">
             <a class="lbrand" href="/">${ICON.mark}<span>Tau</span></a>
@@ -368,35 +378,47 @@
         </main>
       </div>`;
     startDemo();
+    setupScenes();
     root.querySelector('#demo-replay').onclick = startDemo;
+    const dlg = document.createElement('dialog');
+    dlg.className = 'wl-modal';
+    dlg.innerHTML = `
+      <form method="dialog" class="wl-inner" id="wlform">
+        <button class="wl-x" type="button" data-close aria-label="Close">${ICON.cross}</button>
+        <h2>Join the waitlist</h2>
+        <p class="wl-sub">We're opening access to Tau in batches. Leave your email to get an invitation.</p>
+        <label class="field"><span>Email</span>
+          <span class="wl-ifield">${ICON.mail}<input id="wlemail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" required></span></label>
+        <p class="wl-note">We'll email you when your spot is ready. We never share your address.</p>
+        <label class="field"><span>Twitter handle <small>(optional)</small></span>
+          <span class="wl-ifield">${ICON.at}<input id="wlhandle" type="text" autocomplete="off" placeholder="yourhandle"></span></label>
+        <div id="wlhint"></div>
+        <button class="pill solid wl-submit" type="submit">Join waitlist</button>
+      </form>`;
+    root.querySelector('.landing').appendChild(dlg);
     const openWaitlist = () => {
-      const cta = root.querySelector('#lcta');
-      if (root.querySelector('#wlform')) { root.querySelector('#wlemail').focus(); return; }
-      const box = document.createElement('div');
-      box.className = 'wlbox';
-      box.innerHTML = `
-        <form id="wlform">
-          <label class="vh" for="wlemail">Your email</label>
-          <input id="wlemail" class="linput" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" required>
-          <button class="pill solid" type="submit">Request access</button>
-        </form>
-        <p class="wlhint" id="wlhint">We'll email you when a spot opens. We never share your address.</p>`;
-      cta.insertAdjacentElement('afterend', box);
-      const form = box.querySelector('#wlform');
-      root.querySelector('#wlemail').focus();
-      form.onsubmit = async (e) => {
-        e.preventDefault();
-        const email = root.querySelector('#wlemail').value.trim();
-        await busy(form.querySelector('button'), async () => {
-          try {
-            await api('/api/waitlist', { email });
-            box.innerHTML = `<p class="wlok">${ICON.check}Thanks \u2014 you're on the list. We'll email ${esc(email)} when a spot opens.</p>`;
-          } catch (err) { root.querySelector('#wlhint').className = 'wlhint bad'; root.querySelector('#wlhint').textContent = err.message; }
-        });
-      };
+      const hint = dlg.querySelector('#wlhint'); hint.innerHTML = '';
+      if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
+      setTimeout(() => dlg.querySelector('#wlemail').focus(), 50);
     };
-    root.querySelector('[data-action="waitlist-open"]').onclick = openWaitlist;
-    root.querySelectorAll('[data-action="waitlist-top"]').forEach((b) => (b.onclick = () => { openWaitlist(); root.querySelector('#wlemail').scrollIntoView({ behavior: 'smooth', block: 'center' }); }));
+    const close = () => { dlg.open && (dlg.close ? dlg.close() : dlg.removeAttribute('open')); };
+    dlg.querySelector('[data-close]').onclick = close;
+    dlg.addEventListener('click', (e) => { if (e.target === dlg) close(); });  // backdrop click
+    dlg.querySelector('#wlform').onsubmit = async (e) => {
+      e.preventDefault();
+      const email = dlg.querySelector('#wlemail').value.trim();
+      const note = dlg.querySelector('#wlhandle').value.trim();
+      await busy(dlg.querySelector('.wl-submit'), async () => {
+        try {
+          await api('/api/waitlist', { email, note: note ? ('Twitter: ' + note) : '' });
+          dlg.querySelector('.wl-inner').innerHTML = `<button class="wl-x" type="button" data-close aria-label="Close">${ICON.cross}</button>
+            <div class="wl-done">${ICON.check}<h2>You're on the list</h2><p>We'll email <b>${esc(email)}</b> when your spot is ready.</p>
+            <button class="pill solid" type="button" data-close>Done</button></div>`;
+          dlg.querySelectorAll('[data-close]').forEach((b) => (b.onclick = close));
+        } catch (err) { dlg.querySelector('#wlhint').innerHTML = `<p class="wlhint bad">${esc(err.message)}</p>`; }
+      });
+    };
+    root.querySelectorAll('[data-action="waitlist-open"],[data-action="waitlist-top"]').forEach((b) => (b.onclick = openWaitlist));
   }
 
   // The hero demo: an idea is typed, the agent discovers strategies, each is stamped.
@@ -445,6 +467,85 @@
       });
     };
     if (reduce) { bubble.textContent = DEMO_IDEA_TEXT; research(); } else type(0);
+  }
+
+  // Scroll-triggered product-moment animations on the landing.
+  let sceneObs = null, sceneTimers = [];
+  const sAt = (ms, fn) => sceneTimers.push(setTimeout(fn, ms));
+  const SCENE = {
+    strat(body) {
+      body.innerHTML = `<div class="sc-strat">
+        <div class="head"><b>Fade the far tails</b><span class="mk on">Passed</span></div>
+        <div class="sc-curve"><svg viewBox="0 0 100 40" preserveAspectRatio="none">
+          <rect class="seen" x="60" y="0" width="40" height="40"></rect>
+          <line class="cut" x1="60" y1="0" x2="60" y2="40"></line>
+          <polyline class="ln" pathLength="100" points="0,35 12,31 22,33 32,24 42,27 54,18 60,19 70,11 80,15 90,6 100,4"></polyline>
+        </svg></div>
+        <div class="sc-split"><div><span>Tested (in-sample)</span><b class="gain">+$31.02</b></div><div><span>Never seen</span><b class="gain">+$6.50</b></div></div>
+        <div class="sc-gates">
+          <div>${ICON.check}Makes money on unseen data</div>
+          <div>${ICON.check}Enough unseen trades to judge</div>
+          <div>${ICON.check}Wins outweigh losses after fees</div>
+        </div></div>`;
+      const gates = body.querySelectorAll('.sc-gates div');
+      gates.forEach((g, i) => sAt(900 + i * 320, () => g.classList.add('in')));
+    },
+    deploy(body) {
+      body.innerHTML = `<div class="sc-dep">
+        <div class="row"><b>Fade the far tails</b><span class="sc-flip" id="sc-flip">Paper</span></div>
+        <div class="sc-pos" id="sc-pos"></div>
+        <div class="sc-pnl"><span>Realized today</span><b id="sc-pnl">+$0.00</b></div>
+      </div>`;
+      const pos = body.querySelector('#sc-pos'), flip = body.querySelector('#sc-flip'), pnlEl = body.querySelector('#sc-pnl');
+      sAt(700, () => { flip.classList.add('live'); flip.textContent = 'Live'; });
+      const rows = [['YES ×12 @ 58¢', 3.2], ['YES ×9 @ 61¢', 1.8], ['NO ×14 @ 40¢', -0.9], ['YES ×11 @ 55¢', 2.3]];
+      let pnl = 0;
+      rows.forEach((r, i) => sAt(1300 + i * 620, () => {
+        const el = document.createElement('div'); el.className = 'p in';
+        el.innerHTML = `<b>${r[0]}</b><b class="${r[1] >= 0 ? 'gain' : 'loss'}">${r[1] >= 0 ? '+' : '−'}$${Math.abs(r[1]).toFixed(2)}</b><small>settled · paper → live</small>`;
+        pos.appendChild(el);
+        pnl += r[1]; pnlEl.textContent = (pnl >= 0 ? '+' : '−') + '$' + Math.abs(pnl).toFixed(2);
+        pnlEl.className = pnl >= 0 ? 'gain' : 'loss';
+      }));
+    },
+    agent(body) {
+      body.innerHTML = `<div class="sc-ap">
+        <div class="toggle" id="sc-ap"><div><b>RSI agent mode — autopilot</b><small>Research, backtest, and deploy on its own</small></div><div class="sw"></div></div>
+        <div class="sc-loop" id="sc-loop"></div>
+      </div>`;
+      const loop = body.querySelector('#sc-loop');
+      sAt(600, () => body.querySelector('#sc-ap').classList.add('on'));
+      const steps = [
+        ['spin', 'Researching momentum into the close…'],
+        ['check', "Found <b>Lean into the move</b> — passed every gate"],
+        ['dot', 'Deployed on paper · watching it trade'],
+        ['spin', 'Researching mean reversion…'],
+        ['check', "Found <b>Fade the overreaction</b> — passed"],
+        ['dot', 'Autopilot running · 2 strategies live on paper'],
+      ];
+      let shown = [];
+      steps.forEach((st, i) => sAt(1200 + i * 820, () => {
+        shown.forEach((e) => { const s = e.querySelector('.spinwrap'); if (s) s.remove(); });
+        const el = document.createElement('div'); el.className = 'l in' + (st[0] === 'spin' ? ' spin' : '');
+        const lead = st[0] === 'check' ? ICON.check : '<span class="dot"></span>';
+        el.innerHTML = lead + '<span>' + st[1] + '</span>';
+        loop.appendChild(el); shown.push(el);
+      }));
+    },
+  };
+  function setupScenes() {
+    sceneTimers.forEach(clearTimeout); sceneTimers = [];
+    if (sceneObs) sceneObs.disconnect();
+    const scenes = root.querySelectorAll('.scene[data-scene]');
+    if (!('IntersectionObserver' in window)) { scenes.forEach((s) => SCENE[s.dataset.scene](s.querySelector('.demo-body'))); return; }
+    const played = new WeakSet();
+    sceneObs = new IntersectionObserver((entries) => {
+      entries.forEach((en) => {
+        if (en.isIntersecting && !played.has(en.target)) { played.add(en.target); SCENE[en.target.dataset.scene](en.target.querySelector('.demo-body')); }
+        else if (!en.isIntersecting) played.delete(en.target);  // replay when scrolled back
+      });
+    }, { threshold: 0.45 });
+    scenes.forEach((s) => sceneObs.observe(s));
   }
 
   // ---------- dashboard ----------
