@@ -1,5 +1,37 @@
 # PLAN
 
+## Tau rebrand + unified UI + Community + idea-first (2026-10-13, deployed)
+
+The product is now **Tau** (user-facing rename; internal infra names — systemd services
+`recursive-*`, SNS `recursive-waitlist`, env vars, the `X-Recursive` CSRF header — kept to avoid
+re-provisioning). Deployed to the box and live at https://d1gfpzcosqrjya.cloudfront.net.
+
+- **One clean design system** (white ground, Rubik, soft rounded cards, pill buttons, one warm
+  accent `#F05A28`, green/red for money) for BOTH the landing and the authed app. Kursbuch is gone
+  from the product app; the operator console keeps Kursbuch and was untouched.
+- **Idea-first research.** No pre-set directions. The dispatch form is a free-text idea; a run is a
+  "session" that spawns several strategies. `create_run` now requires an idea (>= 8 chars), direction
+  optional; `agent._research_prompt` centers the idea. Strategies page dropped the direction chips.
+- **Expanded landing**: hero with a replayable agent-discovers-strategies animation (`startDemo`),
+  how-it-works, feature grid, FAQ, footer.
+- **Community tab** (new): Twitter/Kalshi-style feed. Tables `app_posts` / `app_post_likes` /
+  `app_post_comments`; endpoints `GET/POST /api/community`, `POST /api/community/{id}/like`,
+  `GET/POST /api/community/{id}/comments`. Snapshots (strategy / deployment / pnl) are built
+  server-side from the poster's OWN data in `_post_snapshot`. Rate-limited.
+- **Demo on every account**: `repo.seed_demo_session` pre-populates a research session with the idea
+  "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances" plus two
+  coin-flip strategies and an agent log, so the end-to-end flow is visible on first login. Seeded for
+  all existing users on deploy; runs for new users at account creation.
+- **Owner Kalshi key connected.** The production key (`/opt/kalshi/.env` PROD_KEYID + prod_key.txt)
+  was encrypted into app user 1 (tjhprivate0416@gmail.com) server-side via `app.kalshi_account`
+  (never through chat). Verified against Kalshi (cash ~$56.58). **Live trading stays OFF**
+  (`APP_LIVE_TRADING_ENABLED` unset); enabling real orders needs separate authorization AND the
+  Kalshi geolocation attestation. Note: the house `kalshi-live-engine` shares that same key/account.
+- Tests: 131 passing (create_run tests updated for idea-first).
+- **DESIGN.md is stale again.** The documenter pass earlier described the Catalyst-landing +
+  Kursbuch-app split; the design has since unified to Tau. Re-run the documenter once the look
+  settles. The reverse-skill install request remains declined (offensive-security toolkit).
+
 ## UI revamp + waitlist (2026-10-13)
 
 Owner rejected the "Tote Slip" look. Current UI:
