@@ -629,7 +629,7 @@ ROUTES: List[Route] = [
 
 def _static_versions() -> Dict[str, str]:
     out = {}
-    for name in ("app.css", "app.js"):
+    for name in ("app.css", "app.js", "icon.svg"):
         p = STATIC_DIR / name
         out[name] = hashlib.sha256(p.read_bytes()).hexdigest()[:10] if p.exists() else "0"
     return out
@@ -674,7 +674,9 @@ class Handler(BaseHTTPRequestHandler):
         if SPA_ROUTES.match(path):
             versions = _static_versions()
             html = (STATIC_DIR / "index.html").read_text("utf-8")
-            html = html.replace("{{css_v}}", versions["app.css"]).replace("{{js_v}}", versions["app.js"])
+            html = (html.replace("{{css_v}}", versions["app.css"])
+                    .replace("{{js_v}}", versions["app.js"])
+                    .replace("{{icon_v}}", versions["icon.svg"]))
             body = html.encode("utf-8")
             self._headers(200, "text/html; charset=utf-8", len(body), [("Cache-Control", "no-cache")])
             self.wfile.write(body)
