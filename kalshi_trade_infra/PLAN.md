@@ -42,13 +42,27 @@ rarely find a passing slip will not feel lovable. Highest-leverage next steps:
 3. Longer history via Kalshi's `/historical` endpoints (live API covers settled markets back
    to 2026-08-12 only).
 
-Deploy checklist (owner actions marked *):
-1. `python -m app.schema` on the box; install `scripts/systemd/recursive-*.service`.
-2. * Google Cloud OAuth client + redirect URI; * `ANTHROPIC_API_KEY`; generate `APP_SECRET_KEY`;
-   all in `/opt/kalshi/.env.app` (600).
-3. * CloudFront behaviour for the app host: forward cookies, allow POST.
-4. Start `recursive-history` first and let the backfill finish (~20 min) before inviting users.
-5. `APP_LIVE_TRADING_ENABLED` stays unset until separately authorised (AGENTS.md).
+**Deployed 2026-10-13 05:05 UTC** (box `i-077d6f7873e7836ba`; no house service restarted).
+- URL: **https://d1gfpzcosqrjya.cloudfront.net** - its own CloudFront distribution `EEQ00Y93RTB1K`
+  (CachingDisabled + AllViewer: cookies, POST, query strings forwarded; HTTP->HTTPS). The operator
+  dashboard distribution `E3W0CV5JMD953I` was not touched.
+- Origin port 8090 is reachable only from CloudFront, via a separate security group
+  `sg-0eb5783d005711504` (`recursive-web-sg`). A second prefix-list rule cannot go into the old
+  group: each CloudFront prefix-list rule counts ~55 against the 60-rule limit.
+- `recursive-{web,agents,engine,history}` run under systemd with `MemoryMax` (400/400/250/250M) and
+  `Nice=5`. The box has 1.8GB and the house live engine alone uses ~690MB, so a 1GB `/swapfile` was
+  added and agents run 2 threads. If memory gets tight, it is the app that gets killed, not the house.
+- `/opt/kalshi/.env.app` (root, 600): `APP_SECRET_KEY` generated on the box (never left it),
+  `APP_HOST=0.0.0.0`, `APP_PORT=8090`, `APP_AGENT_CONCURRENCY=2`, `APP_GOOGLE_REDIRECT_URI`.
+- Secrets hand-off: the owner puts SecureString parameters `/recursive/GOOGLE_CLIENT_ID`,
+  `/recursive/GOOGLE_CLIENT_SECRET` and `/recursive/ANTHROPIC_API_KEY` in Parameter Store; then
+  `/opt/kalshi/load_app_secrets.sh` (repo: `scripts/load_app_secrets.sh`) writes them into
+  `.env.app` and restarts web + agents. The role `kalshi-collector-ec2-role` has inline policy
+  `RecursiveReadAppSecrets` (`ssm:GetParameter` on `parameter/recursive/*` only).
+- Backups of the two overwritten pipeline files are in `/opt/kalshi/bak.20261013_050545/`. Both
+  matched the repo byte for byte before the change.
+- Still open: * Google OAuth client and Anthropic key (above). `APP_LIVE_TRADING_ENABLED` stays unset
+  until separately authorised. HEAD requests return 501 (no sign-in flow uses HEAD).
 
 Deferred (v0.2 or later): charging, mark-to-market of open paper positions (shown at cost
 today), partial-fill handling on live exits, NO-side live orders, email notifications.
