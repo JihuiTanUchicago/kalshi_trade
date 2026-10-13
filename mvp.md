@@ -44,3 +44,70 @@ strategies and their model parameters.
 - Charging a small percentage fee on user transactions and credit purchases
     - Try this revenue model first to see if it makes sense
 
+
+## THOUGHTS
+### Must-have Features
+- Our simulations do not consider the fact that Kalshi has a dev environment for testing
+    - Maybe we should use that for an enhanced dev testing environment
+### Interesting Features
+- Make agent pipeline that allows the user to collect data itself
+    - Maybe once collected, it can be shared across all users
+    - Maybe we can charge also by storage cost? (i.e. how many data they use/subscribe to)
+- Social/Interactive Elements
+    - Maybe people can see their friends' holdings
+    - Maybe people can sell others their alpha with a margin
+    - Allow people to start a "Hedge Fund" on the platform where other people can put money in
+- Agent generated UI for assited manual trading
+    - UI is also a big part of trading business!
+- Notification when RSI found something new.
+- A "simulation lab" for agent-driven trading strategies. Adding super detailed features
+for trading firms/teams that only focus on agent-driven strategies.
+    - Specify number of swarms + number of agents in swarm
+    - Specify direction/asset class
+    - Specify how to cross contaminate
+    - Specify competitions/rl rewards, etc.
+    - Specify data
+- Integrate with a person's paycheck.
+    - A percentage of the paycheck will contribute to investment on this platform
+        - Lean towards the "AI-native Hedge Fund" narrative. This sounds like we will
+        want to manage the money for our customers
+- A credit/debit card for customers to easily use their money deposited on our platform.
+    - Automatically sell some positions to cover their expenses.
+- Centralized dashboard to control what features we should enable, and to what user
+
+### Open Souce?
+- Software is cheap. We could probably open source our code. Our moats:
+    - We build data collection automation pipeline. And we enable users who need
+those data to collect and help us grow our datasets.
+    - Our underlying execution service is not open sourced. Any edge we can win here?
+    - We can post-train models using our in-house data for:
+        - A jev like model that replaces traditional ML and only output "buy"/"sell"...?
+            - TBH I don't even know what this means
+    - 
+
+## Traction
+- Sell product EARLY. How to ask friends/strangers to try out product
+whether making them willing to pay?
+    - Maybe not subscription. Also subscription doesn't make sense because
+    this won't generate a lot of revenue in the long run.
+        - Option A: charge them when they deploy a strategy after backtesting
+            - A small percentage cut of their profit
+            - Or a fixed price "deployment to production" price
+        - Option B: charge them when they need additional data
+        - Option C: charge them when they need credits to fund their agents
+            - e.g. a margin on top of their API credits
+            - a quick thought but might be over-doing:
+                - They plug in their exising API key, though we can't just tell OpenAI
+                to give us some margins. What we can do, is that when user uses the API,
+                we add a little embedding that routes someone else's request, so that
+                we are cashing out the user's credit by using the user's credit and fulfills
+                someone else's totally irrelevant requests.
+                    - Bad, for rate limiting reasons, and bloating a user's bill
+        - Option D: charge them for premium execution service
+            - This can also let us make our product open source.
+
+## Frictions found along the way.
+- API keys are the bottleneck, not coding. A frictionless api-key-dependent development solution?
+- Codes become harder and harder to read with fast development. Maybe a visualization layer on top, so that users only
+need to read code when they want to?
+- User testing. Agent as a simulated user to test front end UIs.

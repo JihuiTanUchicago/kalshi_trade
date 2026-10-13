@@ -1,5 +1,25 @@
 # PLAN
 
+## UI revamp + waitlist (2026-10-13)
+
+Owner rejected the "Tote Slip" look. Current UI:
+- **Pre-login landing** copies catalyst.app's clean style: Rubik, white ground, pill
+  buttons, a product-preview browser mock. Has **Join waitlist** -> `POST /api/waitlist`
+  (unauthenticated, rate-limited), which records the email in `app_waitlist` and notifies
+  the owner via SNS topic `recursive-waitlist` (ARN in `.env.app` as
+  `RECURSIVE_WAITLIST_TOPIC_ARN`; subscription for tjhprivate016@gmail.com is **pending
+  confirmation** until that address clicks the AWS confirm link). `app/notify.py` publishes
+  via the instance role (policy `RecursiveWaitlistPublish`).
+- **Authed app** reverted to the Kursbuch timetable world shared with the operator console
+  (ink on stock, hairline rules, measured rows, tables not cards, one reserved signal red;
+  money direction rides a pos/neg tint behind the figure). All five tabs reworked in
+  `app/static/app.js` + `app.css`.
+- **Known stale:** DESIGN.md / `.impeccable/design.json` still describe the Tote Slip world
+  and don't cover the landing. Run the impeccable documenter when the look is settled.
+- Deployed 2026-10-13 to the box (web/agents/engine restarted; schema migrated for
+  `app_waitlist`). Reverse-engineering "reverse-skill" from GitHub was **declined** (offensive
+  security toolkit, unrelated to this project).
+
 ## Recursive v0.1 - customer product (built 2026-10-12, not yet deployed)
 
 `mvp.md` v0.1 is implemented as a new package `app/` (details and diagrams: `app/README.md`;
