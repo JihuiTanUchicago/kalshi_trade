@@ -62,6 +62,7 @@ def upsert_google_user(cur, sub: str, email: str, name: Optional[str], picture: 
     )
     user_id = cur.lastrowid
     add_ledger(cur, user_id, "deposit", STARTING_PAPER_BALANCE, "Starting paper balance")
+    seed_demo_session(cur, user_id)
     return get_user(cur, user_id)
 
 
@@ -652,4 +653,146 @@ def count_waitlist(cur) -> int:
 def recent_waitlist_from(cur, ip_bucket: str, since: datetime) -> int:
     # No per-IP column; rate-limit waitlist globally by recent inserts instead.
     cur.execute("SELECT COUNT(*) AS n FROM app_waitlist WHERE created_at >= %s", (since,))
+    return int(cur.fetchone()["n"])
+
+
+DEMO_IDEA = "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances"
+
+
+def seed_demo_session(cur, user_id: int) -> None:
+    """A complete, pre-populated demo on every account so the end-to-end flow is
+    visible without doing anything: the idea the user would type, the session it
+    becomes, the agent log, and the strategies it discovers. The star is a
+    coin-flip 'random walk' with no edge. Idempotent per user."""
+    import random
+
+    cur.execute("SELECT 1 FROM app_agent_runs WHERE user_id=%s AND kind='research' AND prompt=%s", (user_id, DEMO_IDEA))
+    if cur.fetchone():
+        return
+    now = now_utc()
+    started = now - timedelta(minutes=3)
+    cur.execute(
+        """INSERT INTO app_agent_runs (user_id, kind, market, direction, prompt, status, hypotheses_tried,
+             strategies_passed, created_at, started_at, heartbeat_at, finished_at)
+           VALUES (%s,'research','btc15m','random_walk',%s,'succeeded',2,0,%s,%s,%s,%s)""",
+        (user_id, DEMO_IDEA, started, started, now, now),
+    )
+    run_id = cur.lastrowid
+
+    def event(kind, message, data=None, at=None):
+        cur.execute(
+            "INSERT INTO app_agent_events (run_id, kind, message, data_json, created_at) VALUES (%s,%s,%s,%s,%s)",
+            (run_id, kind, message, _json(data), at or now),
+        )
+
+    rng = random.Random(user_id * 2654435761 & 0xFFFFFFFF)
+
+    def walk(p_up):
+        steps, cum, curve, wins = 120, 0.0, [], 0
+        base = int((now - timedelta(minutes=steps * 15)).timestamp())
+        for i in range(steps):
+            step = 0.01 if rng.random() < p_up else -0.01
+            cum += step
+            wins += step > 0
+            curve.append([base + i * 900, round(cum, 4)])
+        pnl = round(cum, 2)
+        m = {"trades": steps, "win_rate": round(wins / steps, 3), "pnl": pnl, "fees": round(steps * 0.01, 2),
+             "roi": round(pnl / 10.0, 4), "profit_factor": 1.0, "max_drawdown": round(abs(min(c[1] for c in curve)), 2),
+             "sharpe": None, "avg_edge": 0.0, "days": round(steps * 900 / 86400, 1), "trades_per_day": None}
+        return m, curve
+
+    event("step", "Loaded 30 days of Bitcoin 15-minute history: 16,800 decision points.", at=started)
+    event("step", "Read the idea: a coin flip with no information. Testing it honestly anyway.", at=started)
+    cands = [("Todd's random walk", 0.50,
+              "Each step is +1¢ or −1¢ with equal odds — a pure coin flip with no information. "
+              "Tested faithfully to show what no edge looks like."),
+             ("Todd's random walk, biased coin", 0.52,
+              "The same walk, but nudged to land heads 52% of the time to see how thin an edge the fee wall still eats.")]
+    for i, (title, p_up, thesis) in enumerate(cands):
+        m, curve = walk(p_up)
+        event("hypothesis", title, {"thesis": thesis, "in_sample": m, "round": 1}, at=started)
+        result = {"capital": 10.0, "demo": True,
+                  "dataset": {"start": "2026-09-13T00:00Z", "end": now.strftime("%Y-%m-%dT%H:%MZ"),
+                              "out_of_sample_from": datetime.fromtimestamp(curve[60][0], tz=timezone.utc).strftime("%Y-%m-%dT%H:%MZ")},
+                  "in_sample": dict(m), "out_of_sample": dict(m), "equity": curve,
+                  "gates": [{"name": "Makes money on unseen data", "value": m["pnl"], "threshold": "> $0", "ok": m["pnl"] > 0},
+                            {"name": "Has a real edge, not a coin flip", "value": "coin flip", "threshold": "an actual signal", "ok": False}],
+                  "passed": False, "recent_trades": []}
+        insert_strategy(cur, user_id, run_id, None, "btc15m", "random_walk", title, thesis,
+                        json.loads(json.dumps(_demo_spec())), "rejected", result)
+        event("verdict", "VOID — %s: no edge, so nothing to deploy." % title,
+              {"title": title, "status": "rejected"}, at=now)
+    event("done", "0 of 2 hypotheses passed. Random really does wander nowhere — now describe a real idea.",
+          {"passed": 0, "tried": 2}, at=now)
+
+
+def _demo_spec():
+    from app import spec as _spec
+    return _spec.DEFAULT_SPEC
+
+
+# -- community -------------------------------------------------------------------
+
+
+def create_post(cur, user_id: int, body: str, kind: str, snapshot: Optional[Dict]) -> int:
+    cur.execute(
+        "INSERT INTO app_posts (user_id, body, kind, snapshot_json, created_at) VALUES (%s,%s,%s,%s,%s)",
+        (user_id, body[:2000], kind, _json(snapshot), now_utc()),
+    )
+    return cur.lastrowid
+
+
+def list_posts(cur, viewer_id: int, before_id: int = 0, limit: int = 30) -> List[Dict]:
+    cur.execute(
+        """SELECT p.id, p.body, p.kind, p.snapshot_json, p.likes_count, p.comments_count, p.created_at,
+                  u.name, u.picture_url, (p.user_id = %s) AS mine,
+                  EXISTS(SELECT 1 FROM app_post_likes l WHERE l.post_id=p.id AND l.user_id=%s) AS liked
+           FROM app_posts p JOIN app_users u ON u.id=p.user_id
+           WHERE (%s = 0 OR p.id < %s) ORDER BY p.id DESC LIMIT %s""",
+        (viewer_id, viewer_id, before_id, before_id, limit),
+    )
+    rows = cur.fetchall()
+    for r in rows:
+        r["snapshot"] = _loads(r.pop("snapshot_json"))
+        r["mine"] = bool(r["mine"]); r["liked"] = bool(r["liked"])
+    return rows
+
+
+def toggle_like(cur, post_id: int, user_id: int) -> bool:
+    """Returns True if now liked, False if unliked. Keeps likes_count in sync."""
+    cur.execute("DELETE FROM app_post_likes WHERE post_id=%s AND user_id=%s", (post_id, user_id))
+    if cur.rowcount:
+        cur.execute("UPDATE app_posts SET likes_count=GREATEST(likes_count-1,0) WHERE id=%s", (post_id,))
+        return False
+    cur.execute("INSERT INTO app_post_likes (post_id, user_id, created_at) VALUES (%s,%s,%s)", (post_id, user_id, now_utc()))
+    cur.execute("UPDATE app_posts SET likes_count=likes_count+1 WHERE id=%s", (post_id,))
+    return True
+
+
+def post_exists(cur, post_id: int) -> bool:
+    cur.execute("SELECT 1 FROM app_posts WHERE id=%s", (post_id,))
+    return cur.fetchone() is not None
+
+
+def add_comment(cur, post_id: int, user_id: int, body: str) -> int:
+    cur.execute(
+        "INSERT INTO app_post_comments (post_id, user_id, body, created_at) VALUES (%s,%s,%s,%s)",
+        (post_id, user_id, body[:1000], now_utc()),
+    )
+    cur.execute("UPDATE app_posts SET comments_count=comments_count+1 WHERE id=%s", (post_id,))
+    return cur.lastrowid
+
+
+def list_comments(cur, post_id: int, limit: int = 100) -> List[Dict]:
+    cur.execute(
+        """SELECT c.id, c.body, c.created_at, u.name, u.picture_url
+           FROM app_post_comments c JOIN app_users u ON u.id=c.user_id
+           WHERE c.post_id=%s ORDER BY c.id LIMIT %s""",
+        (post_id, limit),
+    )
+    return cur.fetchall()
+
+
+def recent_posts_count(cur, user_id: int, since: datetime) -> int:
+    cur.execute("SELECT COUNT(*) AS n FROM app_posts WHERE user_id=%s AND created_at >= %s", (user_id, since))
     return int(cur.fetchone()["n"])

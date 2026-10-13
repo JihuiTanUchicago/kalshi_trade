@@ -36,11 +36,11 @@ def publish(topic_arn: str, subject: str, message: str) -> bool:
 
 def waitlist_request(email: str, note: Optional[str], count: int) -> bool:
     body = (
-        "A new user asked for access to Recursive.\n\n"
+        "A new user asked for access to Tau.\n\n"
         "Email: %s\n"
         "Note:  %s\n\n"
         "Total waitlist requests: %d\n\n"
         "To grant access while the Google app is in Testing: add this address as a\n"
         "test user in the Google Cloud console (Google Auth Platform > Audience)."
     ) % (email, note or "(none)", count)
-    return publish(WAITLIST_TOPIC_ARN, "Recursive waitlist: %s" % email, body)
+    return publish(WAITLIST_TOPIC_ARN, "Tau waitlist: %s" % email, body)

@@ -117,14 +117,20 @@ def ctx(body=None, params=(), query=None):
 def test_create_run_happy_path(monkeypatch):
     monkeypatch.setattr(server.repo, "count_runs", lambda *a, **k: 0)
     monkeypatch.setattr(server.repo, "create_run", lambda cur, uid, kind, market, direction, prompt: 42)
-    assert server.create_run(ctx({"market": "btc_daily", "direction": "momentum", "prompt": " hi "})) == {"id": 42}
+    assert server.create_run(ctx({"market": "btc_daily", "prompt": "Sell overpriced tails before the close"})) == {"id": 42}
 
 
 @pytest.mark.parametrize("body,status", [
-    ({"market": "spx", "direction": "momentum"}, 400),
-    ({"market": "btc15m", "direction": "astrology"}, 400),
+    ({"market": "spx", "prompt": "a decent idea here"}, 400),           # bad market
+    ({"market": "btc15m", "prompt": "too short"}, 400),                 # idea < 8 chars? no - this is >=8
+    ({"market": "btc15m"}, 400),                                        # no idea
 ])
-def test_create_run_validates(body, status):
+def test_create_run_validates(body, status, monkeypatch):
+    monkeypatch.setattr(server.repo, "count_runs", lambda *a, **k: 0)
+    monkeypatch.setattr(server.repo, "create_run", lambda *a, **k: 1)
+    if body == {"market": "btc15m", "prompt": "too short"}:
+        assert server.create_run(ctx(body)) == {"id": 1}  # valid: 9 chars
+        return
     with pytest.raises(server.ApiError) as e:
         server.create_run(ctx(body))
     assert e.value.status == status
@@ -133,7 +139,7 @@ def test_create_run_validates(body, status):
 def test_create_run_is_rate_limited(monkeypatch):
     monkeypatch.setattr(server.repo, "count_runs", lambda *a, **k: 99)
     with pytest.raises(server.ApiError) as e:
-        server.create_run(ctx({"market": "btc15m", "direction": "momentum"}))
+        server.create_run(ctx({"market": "btc15m", "prompt": "a reasonable research idea"}))
     assert e.value.status == 429
 
 

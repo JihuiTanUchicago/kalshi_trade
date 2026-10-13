@@ -41,7 +41,7 @@ MAX_CHAT_PER_HOUR = 40
 MAX_ACTIVE_DEPLOYMENTS = 10
 MAX_PAPER_BALANCE = 1_000_000.0
 MAX_WAITLIST_PER_MINUTE = 10
-SPA_ROUTES = re.compile(r"^/(?:|dashboard|research(?:/\d+)?|strategies(?:/\d+)?|deploy|funds|signin)$")
+SPA_ROUTES = re.compile(r"^/(?:|dashboard|research(?:/\d+)?|strategies(?:/\d+)?|deploy|community|funds|signin)$")
 
 CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; "
@@ -244,18 +244,21 @@ def get_run(ctx: Ctx):
 
 def create_run(ctx: Ctx):
     market = ctx.body.get("market")
-    direction = ctx.body.get("direction")
-    prompt = str(ctx.body.get("prompt") or "").strip()[:1000]
+    idea = str(ctx.body.get("prompt") or "").strip()[:1000]
+    # Optional angle tag; the idea itself is what drives the research now.
+    direction = ctx.body.get("direction") or None
     if market not in MARKETS:
         raise ApiError(400, "Pick a market.")
-    if direction not in agent.DIRECTIONS:
-        raise ApiError(400, "Pick a research direction.")
+    if not idea or len(idea) < 8:
+        raise ApiError(400, "Describe your idea in a sentence or two first.")
+    if direction is not None and direction not in agent.DIRECTIONS:
+        direction = None
     cur = ctx.cur
     if repo.count_runs(cur, ctx.uid, "research", active_only=True) >= MAX_ACTIVE_RESEARCH:
         raise ApiError(429, "You already have %d agents researching. Wait for one to finish." % MAX_ACTIVE_RESEARCH)
     if repo.count_runs(cur, ctx.uid, "research", since=repo.now_utc() - timedelta(days=1)) >= MAX_RESEARCH_PER_DAY:
         raise ApiError(429, "Daily research limit reached (%d). It resets over the next 24 hours." % MAX_RESEARCH_PER_DAY)
-    run_id = repo.create_run(cur, ctx.uid, "research", market, direction, prompt or None)
+    run_id = repo.create_run(cur, ctx.uid, "research", market, direction, idea)
     return {"id": run_id}
 
 
@@ -492,6 +495,98 @@ def waitlist(ctx: Ctx):
     return {"ok": True}
 
 
+# -- community -------------------------------------------------------------------
+
+MAX_POSTS_PER_HOUR = 30
+
+
+def _post_snapshot(cur, user_id: int, kind: str, ref_id: int) -> Optional[Dict]:
+    """Build a self-contained, denormalized snapshot from the user's OWN strategy
+    or deployment, so a post never exposes another user's data or a live spec."""
+    if kind == "strategy":
+        strat = repo.get_strategy(cur, user_id, ref_id)
+        if strat is None:
+            raise ApiError(404, "That strategy isn't yours or doesn't exist.")
+        oos = (strat.get("result") or {}).get("out_of_sample") or {}
+        return {"kind": "strategy", "id": strat["id"], "title": strat["title"], "market": strat["market"],
+                "status": strat["status"], "pnl": oos.get("pnl"), "trades": oos.get("trades"), "win_rate": oos.get("win_rate")}
+    if kind == "deployment":
+        dep = repo.get_deployment(cur, user_id, ref_id)
+        if dep is None:
+            raise ApiError(404, "That deployment isn't yours or doesn't exist.")
+        return {"kind": "deployment", "id": dep["id"], "title": dep["title"], "market": dep["market"],
+                "mode": dep["mode"], "realized_pnl": round(float(dep["realized_pnl"]), 2), "closed_trades": dep["closed_trades"]}
+    if kind == "pnl":
+        paper = repo.realized_pnl(cur, user_id, "paper")
+        live = repo.realized_pnl(cur, user_id, "live")
+        return {"kind": "pnl", "paper_pnl": round(paper, 2), "live_pnl": round(live, 2)}
+    return None
+
+
+def _post_out(p: Dict) -> Dict:
+    return {
+        "id": p["id"], "body": p["body"], "kind": p["kind"], "snapshot": p.get("snapshot"),
+        "likes": p["likes_count"], "comments": p["comments_count"], "created_at": p["created_at"],
+        "author": p.get("name") or "Trader", "picture": p.get("picture_url"),
+        "mine": p.get("mine", False), "liked": p.get("liked", False),
+    }
+
+
+def community(ctx: Ctx):
+    before = int(ctx.query.get("before") or 0)
+    return {"posts": [_post_out(p) for p in repo.list_posts(ctx.cur, ctx.uid, before)]}
+
+
+def create_community_post(ctx: Ctx):
+    body = str(ctx.body.get("body") or "").strip()
+    kind = ctx.body.get("kind") or "note"
+    if kind not in ("note", "strategy", "deployment", "pnl"):
+        raise ApiError(400, "Unknown post type.")
+    if not body and kind == "note":
+        raise ApiError(400, "Write something first.")
+    if len(body) > 2000:
+        raise ApiError(400, "Keep posts under 2,000 characters.")
+    cur = ctx.cur
+    if repo.recent_posts_count(cur, ctx.uid, repo.now_utc() - timedelta(hours=1)) >= MAX_POSTS_PER_HOUR:
+        raise ApiError(429, "You've posted a lot this hour. Give it a minute.")
+    snapshot = _post_snapshot(cur, ctx.uid, kind, int(ctx.body.get("ref_id") or 0)) if kind != "note" else None
+    pid = repo.create_post(cur, ctx.uid, body or _default_share_text(kind, snapshot), kind, snapshot)
+    return {"id": pid}
+
+
+def _default_share_text(kind: str, snap: Optional[Dict]) -> str:
+    if kind == "pnl" and snap:
+        return "Sharing my results so far."
+    if snap:
+        return "Sharing a %s." % kind
+    return ""
+
+
+def like_post(ctx: Ctx):
+    pid = _int_param(ctx)
+    if not repo.post_exists(ctx.cur, pid):
+        raise ApiError(404, "No such post.")
+    return {"liked": repo.toggle_like(ctx.cur, pid, ctx.uid)}
+
+
+def post_comments(ctx: Ctx):
+    pid = _int_param(ctx)
+    return {"comments": [{"body": c["body"], "author": c["name"] or "Trader", "picture": c["picture_url"], "created_at": c["created_at"]} for c in repo.list_comments(ctx.cur, pid)]}
+
+
+def create_comment(ctx: Ctx):
+    pid = _int_param(ctx)
+    body = str(ctx.body.get("body") or "").strip()
+    if not body:
+        raise ApiError(400, "Write a comment first.")
+    if len(body) > 1000:
+        raise ApiError(400, "Keep comments under 1,000 characters.")
+    if not repo.post_exists(ctx.cur, pid):
+        raise ApiError(404, "No such post.")
+    repo.add_comment(ctx.cur, pid, ctx.uid, body)
+    return {"ok": True}
+
+
 # -- routing -----------------------------------------------------------------------
 
 Route = Tuple[str, "re.Pattern[str]", Callable[[Ctx], Any], bool]
@@ -519,6 +614,11 @@ ROUTES: List[Route] = [
         ("POST", "/api/chat", post_chat, True),
         ("POST", r"/api/proposals/(\d+)/(approve|reject)", decide_proposal, True),
         ("POST", "/api/settings", settings, True),
+        ("GET", "/api/community", community, True),
+        ("POST", "/api/community", create_community_post, True),
+        ("POST", r"/api/community/(\d+)/like", like_post, True),
+        ("GET", r"/api/community/(\d+)/comments", post_comments, True),
+        ("POST", r"/api/community/(\d+)/comments", create_comment, True),
         ("GET", "/api/funds", funds, True),
         ("POST", "/api/funds/paper", paper_transfer, True),
         ("POST", "/api/kalshi-key", save_kalshi_key, True),
@@ -536,7 +636,7 @@ def _static_versions() -> Dict[str, str]:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "Recursive"
+    server_version = "Tau"
     sys_version = ""
 
     def log_message(self, fmt, *args):  # one line per request, no query strings (they can carry OAuth codes)
@@ -662,7 +762,7 @@ def main() -> None:
         raise SystemExit("APP_DEV_LOGIN=1 is only allowed when bound to localhost.")
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     server.daemon_threads = True
-    print("Recursive on http://%s:%d" % (HOST, PORT), flush=True)
+    print("Tau on http://%s:%d" % (HOST, PORT), flush=True)
     server.serve_forever()
 
 

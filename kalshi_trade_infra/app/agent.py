@@ -63,7 +63,7 @@ many fragile ones; each hypothesis must have a mechanism a sceptical PM would ac
 Write theses in plain English a non-quant can follow (2-4 sentences, no jargon without a gloss).
 Reply with ONE JSON object only."""
 
-COPILOT_SYSTEM = """You are the trading co-pilot inside Recursive. You watch the user's deployed
+COPILOT_SYSTEM = """You are the trading co-pilot inside Tau. You watch the user's deployed
 Kalshi Bitcoin strategies and talk with them in plain, brief English (no jargon without a gloss).
 You can act through structured actions; the host re-backtests every adjustment and applies it
 only if it still passes the deployment gates. Be honest about uncertainty and small samples:
@@ -134,9 +134,15 @@ def _memory_block(memory: List[Dict]) -> str:
 
 
 def _research_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], count: int) -> str:
-    direction = DIRECTIONS.get(run["direction"] or "open", DIRECTIONS["open"])
-    return """Research direction: {label} - {brief}
-User's note: {note}
+    idea = (run.get("prompt") or "").strip() or "Find any durable, fee-surviving edge you can justify."
+    lens = ""
+    if run.get("direction") and run["direction"] in DIRECTIONS:
+        d = DIRECTIONS[run["direction"]]
+        lens = "\nOptional lens to consider: %s - %s" % (d["label"], d["brief"])
+    return """The user's idea: {idea}{lens}
+
+Turn this idea into concrete, testable trading strategies. Stay faithful to what the
+user asked for; if the idea is vague, pick the most promising precise reading and say so.
 
 Market: {market_label} (spec market "{market}").
 In-sample data you can test on: {summary}
@@ -146,11 +152,10 @@ In-sample data you can test on: {summary}
 What this user's earlier research found (learn from it; do not repeat failures):
 {memory}
 
-Propose {count} distinct hypotheses for this direction. Reply:
+Propose {count} distinct hypotheses for this idea. Reply:
 {{"hypotheses": [{{"title": "...", "thesis": "...", "spec": {{...}}}}]}}""".format(
-        label=direction["label"],
-        brief=direction["brief"],
-        note=(run.get("prompt") or "none").strip()[:1000],
+        idea=idea[:1000],
+        lens=lens,
         market_label=MARKETS[run["market"]].label,
         market=run["market"],
         summary=json.dumps(_in_sample_summary(ds)),
@@ -243,7 +248,7 @@ def run_research(
                 result = {"capital": t["capital"], "dataset": s, "in_sample": t["in_sample"]}
                 status = "rejected"
             t["strategy_id"] = repo.insert_strategy(
-                cur, user_id, run_id, None, market, run["direction"] or "open", t["title"], t["thesis"], t["spec"],
+                cur, user_id, run_id, None, market, run["direction"] or "custom", t["title"], t["thesis"], t["spec"],
                 status, result,
             )
         log("done", "%d of %d hypotheses passed every gate." % (passed, len(tried)), {"passed": passed, "tried": len(tried)})

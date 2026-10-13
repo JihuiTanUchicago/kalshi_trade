@@ -198,6 +198,39 @@ DDL = [
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     """
+    CREATE TABLE IF NOT EXISTS app_posts (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      body TEXT NOT NULL,
+      kind VARCHAR(16) NOT NULL DEFAULT 'note',
+      snapshot_json JSON NULL,
+      likes_count INT NOT NULL DEFAULT 0,
+      comments_count INT NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL,
+      INDEX idx_posts_created (created_at),
+      INDEX idx_posts_user (user_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS app_post_likes (
+      post_id BIGINT NOT NULL,
+      user_id BIGINT NOT NULL,
+      created_at DATETIME NOT NULL,
+      PRIMARY KEY (post_id, user_id),
+      INDEX idx_likes_user (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS app_post_comments (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      post_id BIGINT NOT NULL,
+      user_id BIGINT NOT NULL,
+      body TEXT NOT NULL,
+      created_at DATETIME NOT NULL,
+      INDEX idx_comments_post (post_id, id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
     CREATE TABLE IF NOT EXISTS app_waitlist (
       id BIGINT AUTO_INCREMENT PRIMARY KEY,
       email VARCHAR(320) NOT NULL UNIQUE,

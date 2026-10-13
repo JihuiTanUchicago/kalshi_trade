@@ -1,4 +1,4 @@
-/* Recursive client. Vanilla JS, no build step.
+/* Tau client. Vanilla JS, no build step.
    Every string that came from a user, an agent or the market goes through esc(). */
 (() => {
   'use strict';
@@ -6,10 +6,13 @@
   const root = document.getElementById('app');
   const S = { me: null, timers: [], gen: 0 };
 
+  // ---------- brand mark ----------
+  const TAU_MARK = '<svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" fill="#15161A"/><path d="M18 24h28M32 24v22" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/><circle cx="32" cy="48" r="3.5" fill="#F05A28"/></svg>';
+
   // ---------- icons (one stroke, one weight) ----------
   const I = (d, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${d}</svg>`;
   const ICON = {
-    mark: '<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M18 46V18h15a9 9 0 0 1 0 18H18m14 0 12 10" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    mark: TAU_MARK,
     dashboard: I('<rect x="3" y="4" width="18" height="7" rx="1"/><path d="M3 15h7v5H3zM14 15h7v5h-7z"/>'),
     research: I('<circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 6 6M8 10.5h5M10.5 8v5"/>'),
     strategies: I('<path d="M5 3h14v18l-2.3-1.6L14.3 21 12 19.4 9.7 21l-2.4-1.6L5 21z"/><path d="M9 8h6M9 12h6"/>'),
@@ -23,7 +26,15 @@
     send: I('<path d="M4 12 20 4l-6 16-3-7z"/>'),
     plus: I('<path d="M12 5v14M5 12h14"/>'),
     ext: I('<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>'),
-    cube: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7z" fill="#111"/><path d="m12 2 9 5-9 5-9-5z" fill="#F05A28"/><path d="M12 12v10" stroke="#fff" stroke-width="1"/></svg>',
+    cube: TAU_MARK,
+    heart: I('<path d="M12 20s-7-4.35-9.5-8.5C.5 7.5 3 4.5 6.2 4.5c2 0 3.2 1.2 3.8 2.3.6-1.1 1.8-2.3 3.8-2.3 3.2 0 5.7 3 3.7 7C19 15.65 12 20 12 20z"/>'),
+    comment: I('<path d="M21 12a8 8 0 0 1-11.5 7.2L3 21l1.8-6.5A8 8 0 1 1 21 12z"/>'),
+    share: I('<path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v13"/>'),
+    community: I('<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0M17 11a3 3 0 1 0-2-5.2M16.5 20a6 6 0 0 0-1.6-4"/>'),
+    spark2: I('<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>'),
+    gate: I('<path d="M5 21V8l7-4 7 4v13M9 21v-6h6v6"/>'),
+    paper2: I('<path d="M6 2h9l3 3v17H6z"/><path d="M15 2v3h3M9 12h6M9 16h6"/>'),
+    key: I('<circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2M16 7l2 2"/>'),
     google: '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>',
   };
 
@@ -55,7 +66,8 @@
   const age = (sec) => (sec == null ? 'never' : sec < 90 ? sec + 's' : sec < 5400 ? Math.round(sec / 60) + 'm' : sec < 172800 ? Math.round(sec / 3600) + 'h' : Math.round(sec / 86400) + 'd');
   const marketLabel = (k) => ((S.me && S.me.markets.find((m) => m.key === k)) || { label: k }).label;
   const marketShort = (k) => (k === 'btc15m' ? 'BTC 15-min' : k === 'btc_daily' ? 'BTC 5pm' : k);
-  const dirLabel = (k) => ((S.me && S.me.directions.find((d) => d.key === k)) || { label: k }).label;
+  const dirLabel = (k) => { if (!k) return 'Session'; const d = S.me && S.me.directions.find((x) => x.key === k); return d ? d.label : String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()); };
+  const sessionTitle = (r) => (r.prompt && r.prompt.trim()) ? r.prompt.trim() : (dirLabel(r.direction) + ' \u00b7 ' + marketShort(r.market));
 
   // ---------- API ----------
   class ApiError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
@@ -68,7 +80,7 @@
       opts.body = JSON.stringify(body);
     }
     let res;
-    try { res = await fetch(path, opts); } catch (e) { throw new ApiError(0, "Can't reach Recursive. Check your connection."); }
+    try { res = await fetch(path, opts); } catch (e) { throw new ApiError(0, "Can't reach Tau. Check your connection."); }
     let data = {};
     try { data = await res.json(); } catch (e) { /* non-JSON error page */ }
     if (res.status === 401 && path !== '/api/me') { go('/signin'); throw new ApiError(401, 'Please sign in.'); }
@@ -85,6 +97,7 @@
     [/^\/strategies$/, viewStrategies],
     [/^\/strategies\/(\d+)$/, viewStrategy],
     [/^\/deploy$/, viewDeploy],
+    [/^\/community$/, viewCommunity],
     [/^\/funds$/, viewFunds],
   ];
   function go(path, replace) {
@@ -121,7 +134,7 @@
   }
 
   // ---------- shell ----------
-  const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/deploy', 'Deploy', 'deploy'], ['/funds', 'Funds', 'funds']];
+  const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/deploy', 'Deploy', 'deploy'], ['/community', 'Community', 'community'], ['/funds', 'Funds', 'funds']];
   function shell(active, board, main) {
     document.body.classList.remove('landing-body');
     const u = S.me.user;
@@ -129,7 +142,7 @@
     const nav = NAV.map(([href, label]) => `<a class="svc-link" href="${href}" ${active === href ? 'aria-current="page"' : ''}>${label}</a>`).join('');
     root.innerHTML = `
       <header class="masthead"><div class="masthead-in">
-        <p class="wordmark"><a href="/">Recursive</a>${here ? `<span class="sep">/</span><span class="svc">${here}</span>` : ''}</p>
+        <p class="wordmark"><a href="/">${ICON.mark}<span>Tau</span></a></p>
         <span class="asof">${esc(u.name || u.email)}<span class="sep">\u00b7</span><button class="linkish" data-action="signout">Sign out</button></span>
       </div></header>
       <nav class="services" aria-label="Sections"><div class="services-in">${nav}</div></nav>
@@ -282,6 +295,21 @@
   }
 
   // ---------- landing (pre-login) ----------
+  const FEATURES = [
+    ['spark2', 'Idea to strategies', 'Describe an idea in a sentence. An agent turns it into several concrete, testable strategies.'],
+    ['gate', 'Honest backtest gate', 'Every strategy is tested on data the agent never saw. Only ones that beat fees out of sample can trade.'],
+    ['paper2', 'Paper money first', 'Start with $1,000 of practice money. Watch a strategy work on the live market before risking a cent.'],
+    ['research', 'Shows its homework', 'Each strategy carries its thesis, its seen vs. unseen results, and how many ideas were tried to find it.'],
+    ['comment', 'An agent co-pilot', 'Chat to adjust a live strategy. Every change is re-backtested before it is suggested, or applied on autopilot.'],
+    ['key', 'Your own account', 'Live trading runs in your own Kalshi account with your own key. We never hold your funds.'],
+  ];
+  const FAQ = [
+    ['What is Tau?', 'Tau is a self-improving research desk for Kalshi’s Bitcoin markets. You describe an idea; an agent researches it, writes concrete strategies, backtests each one on data it never saw, and lets you deploy the ones that pass — on paper first, then live in your own account.'],
+    ['What markets does it cover?', 'Right now, Kalshi’s Bitcoin markets: the 15-minute contracts and the daily close at 5pm EDT. More markets will follow.'],
+    ['How much does it cost?', 'Tau is free during this research preview.'],
+    ['How do deposits and withdrawals work?', 'Paper money is simulated and free to add or remove. Live trading uses your own Kalshi account — you fund and withdraw at Kalshi, and Tau only places the trades for strategies you deploy. We never hold your money.'],
+    ['How safe is this?', 'Paper trading risks nothing. Live trading is off by default and takes a deliberate, confirmed step; strategies have hard loss guards that pause them automatically, and your Kalshi key is encrypted and never shared.'],
+  ];
   async function viewSignin() {
     if (!S.me) { try { S.me = await api('/api/me'); } catch (e) { /* signed out: stay here */ } }
     if (S.me) return go('/', true);
@@ -291,33 +319,56 @@
     root.innerHTML = `
       <div class="landing">
         <header class="lnav">
-          <a class="lbrand" href="/">${ICON.cube}<span>Recursive</span></a>
+          <a class="lbrand" href="/">${ICON.mark}<span>Tau</span></a>
           <div class="lnav-actions">
             <a class="pill" href="/auth/google" data-native>Sign in</a>
             <button class="pill solid" data-action="waitlist-top">Join waitlist</button>
           </div>
         </header>
-        <main id="main" class="lhero">
-          <h1>Intelligence at your fingertips.</h1>
-          <p class="lsub">Tell an agent what to trade. It researches the market, tests every idea on data it never saw, and only the strategies that pass can trade for you.</p>
-          ${msg ? `<div class="lnotice">${esc(msg)}</div>` : ''}
-          <div class="lcta" id="lcta">
-            <a class="pill solid lg" href="/auth/google" data-native>${ICON.google}Continue with Google</a>
-            <button class="pill lg" data-action="waitlist-open">Join waitlist</button>
+        <section class="lhero">
+          <div class="lhero-copy">
+            <h1>Turn an idea into a strategy that trades for you.</h1>
+            <p class="lsub">Describe what you want to trade. An agent researches it, tests every idea on data it never saw, and only the strategies that pass can trade.</p>
+            ${msg ? `<div class="lnotice">${esc(msg)}</div>` : ''}
+            <div class="lcta" id="lcta">
+              <a class="pill solid lg" href="/auth/google" data-native>${ICON.google}Continue with Google</a>
+              <button class="pill lg" data-action="waitlist-open">Join waitlist</button>
+            </div>
+            <p class="lfine">Access is invite-only right now. Join the waitlist and we'll email you when a spot opens. You'll start with $1,000 of paper money; live trading is optional and runs in your own Kalshi account.</p>
           </div>
-          <p class="lfine">Access is invite-only right now. Join the waitlist and we'll email you when a spot opens. You'll start with $1,000 of paper money; live trading is optional and runs in your own Kalshi account.</p>
-          <div class="lpreview" aria-hidden="true">
-            <div class="lwin">
-              <div class="lwin-bar"><i></i><i></i><i></i></div>
-              <div class="lwin-body">
-                <div class="lline done">${ICON.cube}<span>Researching BTC volatility mispricing before the 5pm close</span></div>
-                <div class="lline done">${ICON.check}<span>Backtested 7 hypotheses on data the agent never saw</span></div>
-                <div class="lline running"><span class="lspin"></span><span>Passed 2 of 7 &middot; recording results</span></div>
-              </div>
+          <div class="demo" id="demo" aria-hidden="true">
+            <div class="demo-bar"><i></i><i></i><i></i><span class="demo-url">tau · research</span>
+              <button class="replay" id="demo-replay" type="button">${ICON.plus}<span>Replay</span></button></div>
+            <div class="demo-body" id="demo-body"></div>
+          </div>
+        </section>
+        <main id="main">
+          <div class="section-band">
+            <h2>From a sentence to a tested strategy.</h2>
+            <p class="sband-sub">No spreadsheets, no code. You bring the idea; the agent does the research and the proof.</p>
+            <div class="steps3">
+              <div class="step3"><div class="n">1</div><h3>Describe an idea</h3><p>“Sell overpriced tails before the 5pm close.” A sentence is enough to start a research session.</p></div>
+              <div class="step3"><div class="n">2</div><h3>The agent proves it</h3><p>It writes several strategies and backtests each on data it never saw — fees included — stamping each Passed or Void.</p></div>
+              <div class="step3"><div class="n">3</div><h3>You deploy what passed</h3><p>Post a winner to paper or live, watch it trade, and steer it by chatting with the agent.</p></div>
             </div>
           </div>
+          <div class="section-band">
+            <h2>Everything the research desk gives you.</h2>
+            <p class="sband-sub">Built for one job: finding an edge you can trust, and trading it without hand-holding.</p>
+            <div class="fgrid">${FEATURES.map(([ic, t, d]) => `<div class="fcard"><div class="ic">${ICON[ic]}</div><h3>${esc(t)}</h3><p>${esc(d)}</p></div>`).join('')}</div>
+          </div>
+          <div class="section-band">
+            <h2>Questions.</h2>
+            <div class="faq">${FAQ.map(([q, a]) => `<details><summary>${esc(q)}</summary><div class="a">${esc(a)}</div></details>`).join('')}</div>
+          </div>
+          <footer class="lfoot">
+            <a class="lbrand" href="/">${ICON.mark}<span>Tau</span></a>
+            <div class="lfoot-links"><button class="linkish" data-action="waitlist-top">Join waitlist</button><span>Research preview</span><span>© 2026 Tau</span></div>
+          </footer>
         </main>
       </div>`;
+    startDemo();
+    root.querySelector('#demo-replay').onclick = startDemo;
     const openWaitlist = () => {
       const cta = root.querySelector('#lcta');
       if (root.querySelector('#wlform')) { root.querySelector('#wlemail').focus(); return; }
@@ -345,7 +396,55 @@
       };
     };
     root.querySelector('[data-action="waitlist-open"]').onclick = openWaitlist;
-    root.querySelector('[data-action="waitlist-top"]').onclick = () => { openWaitlist(); root.querySelector('#wlemail').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+    root.querySelectorAll('[data-action="waitlist-top"]').forEach((b) => (b.onclick = () => { openWaitlist(); root.querySelector('#wlemail').scrollIntoView({ behavior: 'smooth', block: 'center' }); }));
+  }
+
+  // The hero demo: an idea is typed, the agent discovers strategies, each is stamped.
+  const DEMO_IDEA_TEXT = 'Sell overpriced tails in the last hour before the 5pm close';
+  const DEMO_STRATS = [
+    ['Fade the far tails', 'volatility · fees in', 'pass', '+$38 unseen'],
+    ['Sell only when calm', 'vol filter', 'pass', '+$21 unseen'],
+    ['Press every strike', 'no filter', 'void', '−$44 unseen'],
+    ['Chase the move', 'momentum', 'void', '−$12 unseen'],
+  ];
+  let demoTimers = [];
+  function startDemo() {
+    const body = root.querySelector('#demo-body');
+    if (!body) return;
+    demoTimers.forEach(clearTimeout); demoTimers = [];
+    const at = (ms, fn) => demoTimers.push(setTimeout(fn, ms));
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    body.innerHTML = `
+      <div class="demo-prompt"><span class="you">J</span><div class="demo-bubble" id="demo-bubble"><span class="caret"></span></div></div>
+      <div class="demo-status" id="demo-status"></div>
+      <div class="demo-cards" id="demo-cards"></div>`;
+    const bubble = body.querySelector('#demo-bubble');
+    const status = body.querySelector('#demo-status');
+    const cards = body.querySelector('#demo-cards');
+    const type = (i) => {
+      if (i <= DEMO_IDEA_TEXT.length) {
+        bubble.innerHTML = esc(DEMO_IDEA_TEXT.slice(0, i)) + '<span class="caret"></span>';
+        at(reduce ? 0 : 34, () => type(i + 1));
+      } else {
+        bubble.textContent = DEMO_IDEA_TEXT;
+        research();
+      }
+    };
+    const research = () => {
+      status.innerHTML = `<span class="dspin"></span>Agent researching the idea…`;
+      at(1100, () => { status.innerHTML = `<span class="dspin"></span>Writing strategies and backtesting on unseen data…`; });
+      DEMO_STRATS.forEach((d, k) => at(1900 + k * 560, () => {
+        const [t, meta, mk, pnl] = d;
+        const el = document.createElement('div');
+        el.className = 'dcard'; el.style.animationDelay = '0ms';
+        el.innerHTML = `<b>${esc(t)}</b><span class="dmk ${mk === 'pass' ? 'pass' : 'void'}">${mk === 'pass' ? 'Passed' : 'Void'}</span><span class="dmeta">${esc(meta)} · ${esc(pnl)}</span>`;
+        cards.appendChild(el);
+      }));
+      at(1900 + DEMO_STRATS.length * 560 + 300, () => {
+        status.innerHTML = `${ICON.check}2 of 4 passed every gate — ready to deploy on paper.`;
+      });
+    };
+    if (reduce) { bubble.textContent = DEMO_IDEA_TEXT; research(); } else type(0);
   }
 
   // ---------- dashboard ----------
@@ -368,7 +467,7 @@
         stale ? `<em>Backtest history stale ${age(d.freshness.btc)}</em>` : '',
       ].filter(Boolean).join('<span class="sep">/</span>');
       const board = `
-        <div class="statusline ${needs ? 'needs' : ''}"><p class="said">${said}</p><a class="btn primary" href="/research">Dispatch an agent</a></div>
+        <div class="statusline ${needs ? 'needs' : ''}"><p class="said">${said}</p><a class="btn primary" href="/research">New research</a></div>
         <dl class="figures measure">
           ${fig('Paper account value', usd(p.equity), { small: `${usd(p.cash)} cash \u00b7 ${usd(p.open_at_cost)} open at cost` })}
           ${fig('Today', usd(p.today_pnl, true), { v: p.today_pnl })}
@@ -409,31 +508,26 @@
   // ---------- research ----------
   async function viewResearch() {
     const me = S.me;
-    shell('/research', boardTitle('Research hub', 'Dispatch an agent toward a kind of edge. It proposes hypotheses, tests each one, and records the result.') +
+    const EXAMPLES = ["Sell overpriced tails in the last hour before the 5pm close", "Lean with Bitcoin's momentum into settlement when volatility is low", "Buy cheap longshots under 15\u00a2 when the model says they're underpriced", "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances"];
+    shell('/research', boardTitle('Research', 'Describe an idea. An agent turns it into a research session \u2014 several concrete strategies it backtests on data it never saw, and only the ones that pass can trade.') +
       '<dl class="figures measure" id="rfigs" style="margin-top:14px"></dl>', `
-      <div class="detail">
-        <section>
-          <div class="section-head"><h2>Agents</h2><p id="rcount"></p></div>
-          <div id="flash"></div>
-          <div class="runs" id="runs">${loading(70)}${loading(70)}</div>
-        </section>
-        <aside>
-          <form class="panel dispatch" id="dispatch">
-            <h3>Dispatch an agent</h3>
-            <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="label" style="margin-bottom:6px">Market</legend>
-              <div class="choice">${me.markets.map((m, i) => `<label><input type="radio" name="market" value="${m.key}" ${i === 0 ? 'checked' : ''}><span class="opt"><b>${esc(marketShort(m.key))}</b><small>${esc(m.label)}</small></span></label>`).join('')}</div>
-            </fieldset>
-            <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="label" style="margin-bottom:6px">Look for</legend>
-              <div class="choice" style="display:grid;gap:8px">${me.directions.map((d, i) => `<label><input type="radio" name="direction" value="${d.key}" ${i === 0 ? 'checked' : ''}><span class="opt"><b>${esc(d.label)}</b><small>${esc(d.brief)}</small></span></label>`).join('')}</div>
-            </fieldset>
-            <label class="field"><span>Anything specific? <small class="hint" style="text-transform:none;letter-spacing:0">(optional)</small></span>
-              <textarea class="input" name="prompt" maxlength="1000" placeholder="e.g. Only trade in the last hour before 5pm, and keep risk small."></textarea></label>
-            <div id="dflash"></div>
-            <button class="btn" type="submit">Dispatch agent</button>
-            <p class="hint">A run takes a few minutes. You can leave this page; it keeps going.</p>
-          </form>
-        </aside>
-      </div>`);
+      <form class="panel dispatch" id="dispatch">
+        <h3>Start a research session</h3>
+        <label class="field"><span>Describe your idea</span>
+          <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="e.g. Sell overpriced tails in the last hour before the 5pm close"></textarea></label>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;justify-content:space-between">
+          <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="label" style="margin-bottom:6px">Market</legend>
+            <div class="choice">${me.markets.map((m, i) => `<label><input type="radio" name="market" value="${m.key}" ${i === 0 ? 'checked' : ''}><span class="opt"><b>${esc(marketShort(m.key))}</b></span></label>`).join('')}</div>
+          </fieldset>
+          <button class="btn primary" type="submit">${ICON.spark2}Start session</button>
+        </div>
+        <div class="chips" aria-label="Example ideas">${EXAMPLES.map((x) => `<button type="button" class="chip" data-ex="${esc(x)}">${esc(x.length > 46 ? x.slice(0, 44) + '\u2026' : x)}</button>`).join('')}</div>
+        <div id="dflash"></div>
+        <p class="hint">A session takes a few minutes and keeps running if you leave this page.</p>
+      </form>
+      <section class="sect"><div class="sect-head"><h2>Your sessions</h2><p id="rcount"></p></div>
+        <div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div></section>`);
+    root.querySelectorAll('[data-ex]').forEach((b) => { b.onclick = () => { const t = root.querySelector('textarea[name=prompt]'); t.value = b.dataset.ex; t.focus(); }; });
     const form = root.querySelector('#dispatch');
     form.onsubmit = async (e) => {
       e.preventDefault();
@@ -441,7 +535,7 @@
       const btn = form.querySelector('button[type=submit]');
       await busy(btn, async () => {
         try {
-          const r = await api('/api/runs', { market: fd.get('market'), direction: fd.get('direction'), prompt: fd.get('prompt') });
+          const r = await api('/api/runs', { market: fd.get('market'), prompt: fd.get('prompt') });
           go('/research/' + r.id);
         } catch (err) { flash('#dflash', err.message, 'bad'); }
       });
@@ -454,7 +548,7 @@
         fig('Hypotheses tested', tried) + fig('Passed every gate', passed, { small: tried ? `${pct(passed / tried, false)} pass rate` : '' });
       root.querySelector('#rcount').textContent = d.runs.length ? `${d.runs.length} run${d.runs.length > 1 ? 's' : ''}` : '';
       root.querySelector('#runs').innerHTML = d.runs.length ? d.runs.map(runRow).join('')
-        : `<div class="empty"><h3>No agents dispatched yet</h3><p>Pick a market and a kind of edge on the right. Your agent will draft about seven hypotheses, test each one on history, and mark each one Passed or Void.</p></div>`;
+        : `<div class="empty"><h3>No sessions yet</h3><p>Describe an idea above. The agent will turn it into several strategies, test each one on data it never saw, and mark each Passed or Void.</p></div>`;
     };
     await load();
     poll(load, 5000);
@@ -466,9 +560,9 @@
       : r.status === 'succeeded' ? `<span class="${r.strategies_passed ? 'gain' : ''}">${r.strategies_passed} of ${r.hypotheses_tried} passed</span>`
       : r.status === 'cancelled' ? 'Cancelled' : '<span class="loss">Failed</span>';
     return `<a class="run-row" href="/research/${r.id}">
-      <span class="when hint">${when(r.created_at)}</span>
-      <span class="what"><b>${esc(dirLabel(r.direction))} · ${esc(marketShort(r.market))}</b><small>${esc(r.prompt || (active ? 'Working on it…' : r.error || ''))}</small></span>
-      <span class="state">${state}</span></a>`;
+      <span class="what"><b>${esc(sessionTitle(r))}</b><small>${esc(marketShort(r.market))}${r.error ? ' \u00b7 ' + esc(r.error) : ''}</small></span>
+      <span class="state">${state}</span>
+      <span class="when">${when(r.created_at)}</span></a>`;
   }
 
   async function viewRun(id) {
@@ -484,7 +578,7 @@
       const d = await api(`/api/runs/${id}?after=${after}`);
       const r = d.run;
       const active = r.status === 'running' || r.status === 'queued';
-      root.querySelector('#runboard').innerHTML = boardTitle(`${dirLabel(r.direction)} · ${marketShort(r.market)}`, esc(r.prompt || DIR_BRIEF(r.direction)));
+      root.querySelector('#runboard').innerHTML = boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7 ${dirLabel(r.direction)}`);
       const started = r.started_at ? Date.parse(r.started_at) : null;
       const end = r.finished_at ? Date.parse(r.finished_at) : Date.now();
       root.querySelector('#runfigs').innerHTML =
@@ -525,15 +619,14 @@
   // ---------- strategies ----------
   async function viewStrategies() {
     const q = new URLSearchParams(location.search);
-    const f = { status: q.get('status') || 'passed', direction: q.get('direction') || '', market: q.get('market') || '' };
+    const f = { status: q.get('status') || 'passed', market: q.get('market') || '' };
     shell('/strategies', boardTitle('Strategies', 'Every strategy your agents researched. Passed ones can be deployed; void ones stay here so you can see what didn’t work.') +
       '<dl class="figures measure" id="sfigs" style="margin-top:14px"></dl>', `
       <div class="section-head">
         <div class="chips" role="group" aria-label="Status">${[['passed', 'Passed'], ['failed', 'Void'], ['rejected', 'Rejected'], ['', 'All']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}" aria-pressed="${f.status === v}">${l}</button>`).join('')}</div>
         <div class="chips" role="group" aria-label="Market">${[['', 'Both markets'], ...S.me.markets.map((m) => [m.key, marketShort(m.key)])].map(([v, l]) => `<button class="chip" data-f="market" data-v="${v}" aria-pressed="${f.market === v}">${esc(l)}</button>`).join('')}</div>
       </div>
-      <div class="chips" role="group" aria-label="Direction" style="margin-bottom:20px">${[['', 'Every direction'], ...S.me.directions.map((d) => [d.key, d.label])].map(([v, l]) => `<button class="chip" data-f="direction" data-v="${v}" aria-pressed="${f.direction === v}">${esc(l)}</button>`).join('')}</div>
-      <div id="slips">${loading(240)}</div>`);
+      <div id="slips" style="margin-top:16px">${loading(240)}</div>`);
     root.querySelectorAll('[data-f]').forEach((b) => {
       b.onclick = () => {
         f[b.dataset.f] = b.dataset.v;
@@ -548,7 +641,7 @@
       fig('Pass rate', all.strategies.length ? pct(count('passed') / all.strategies.length, false) : '—');
     const reg = registry(d.strategies.map((s) => s.equity));
     root.querySelector('#slips').innerHTML = d.strategies.length ? strategyTable(d.strategies.map((s) => strategySlip(s, reg)).join(''))
-      : `<div class="empty"><h3>No slips match</h3><p>${all.strategies.length ? 'Try another filter.' : 'Dispatch an agent from the Research hub and its slips will land here.'}</p>${all.strategies.length ? '' : '<a class="btn" href="/research">Go to Research</a>'}</div>`;
+      : `<div class="empty"><h3>Nothing here yet</h3><p>${all.strategies.length ? 'Try another filter.' : 'Start a research session and the strategies it finds will land here.'}</p>${all.strategies.length ? '' : '<a class="btn" href="/research">Go to Research</a>'}</div>`;
   }
 
   async function viewStrategy(id) {
@@ -726,7 +819,7 @@
     let lastId = 0;
     const msgs = root.querySelector('#messages');
     const renderMsg = (m) => {
-      const who = m.role === 'user' ? 'You' : m.role === 'agent' ? 'Agent' : 'Recursive';
+      const who = m.role === 'user' ? 'You' : m.role === 'agent' ? 'Agent' : 'Tau';
       const prop = m.proposal_id ? `<div class="proposal" data-prop="${m.proposal_id}">${m.proposal_status === 'pending'
         ? `<button class="btn small" data-decide="approve">Approve</button><button class="btn ghost small" data-decide="reject">Decline</button>`
         : `<span class="state ${m.proposal_status === 'applied' ? 'gain' : ''}">${m.proposal_status === 'applied' ? 'Applied' : 'Declined'}</span>`}</div>` : '';
@@ -778,7 +871,7 @@
       const k = d.kalshi;
       root.querySelector('#ffigs').innerHTML = fig('Paper cash', usd(d.paper.cash), { cls: 'lead', small: 'Practice money for paper trading' }) +
         fig('Kalshi cash', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { small: k.connected ? `Key ${esc(k.key_id)}` : 'Needed only for live trading' }) +
-        fig('Money held by Recursive', '$0.00', { small: 'Live funds stay in your Kalshi account' });
+        fig('Money held by Tau', '$0.00', { small: 'Live funds stay in your Kalshi account' });
       root.querySelector('main').innerHTML = `<div id="flash"></div><div class="funds">
         <section class="panel">
           <h3>Paper account</h3>
@@ -798,7 +891,7 @@
           <h3>Kalshi account (live money)</h3>
           ${k.connected ? `
             <dl class="kv"><dt>API key</dt><dd>${esc(k.key_id)}</dd><dt>Cash at Kalshi</dt><dd>${k.balance == null ? 'Couldn’t read it just now' : usd(k.balance)}</dd></dl>
-            <p class="lede" style="margin-bottom:14px">Deposits and withdrawals happen at Kalshi, in your own account. Recursive only places trades for strategies you deploy live.</p>
+            <p class="lede" style="margin-bottom:14px">Deposits and withdrawals happen at Kalshi, in your own account. Tau only places trades for strategies you deploy live.</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <a class="btn" href="${esc(k.funding_url)}" target="_blank" rel="noopener">Deposit or withdraw at Kalshi ${ICON.ext}</a>
               <button class="btn danger" id="disconnect">Disconnect</button>
@@ -836,6 +929,115 @@
     };
     await load();
   }
+
+  // ---------- community ----------
+  function postSnapshot(snap) {
+    if (!snap) return '';
+    if (snap.kind === 'pnl') {
+      return `<div class="snap"><div class="snap-row"><span>Paper P&amp;L</span><b class="${tone(snap.paper_pnl)}">${usd(snap.paper_pnl, true)}</b></div>
+        <div class="snap-row"><span>Live P&amp;L</span><b class="${tone(snap.live_pnl)}">${usd(snap.live_pnl, true)}</b></div></div>`;
+    }
+    if (snap.kind === 'strategy') {
+      return `<a class="snap" href="/strategies/${snap.id}"><div class="snap-head"><b>${esc(snap.title)}</b>${mark(snap.status)}</div>
+        <div class="snap-meta">${esc(marketShort(snap.market))} · unseen ${snap.pnl == null ? '—' : usd(snap.pnl, true)}${snap.trades != null ? ' · ' + snap.trades + ' trades' : ''}${snap.win_rate != null ? ' · ' + pct(snap.win_rate, false) + ' win' : ''}</div></a>`;
+    }
+    if (snap.kind === 'deployment') {
+      return `<div class="snap"><div class="snap-head"><b>${esc(snap.title)}</b>${mark(snap.mode === 'live' ? 'running' : 'running', snap.mode === 'live')}</div>
+        <div class="snap-meta">${esc(marketShort(snap.market))} · ${snap.mode === 'live' ? 'live' : 'paper'} · realized ${usd(snap.realized_pnl, true)} · ${snap.closed_trades} trades</div></div>`;
+    }
+    return '';
+  }
+  function avatar(pic, name) {
+    const initial = esc((name || '?').trim()[0].toUpperCase());
+    return pic ? `<img class="pfp" src="${esc(pic)}" alt="" referrerpolicy="no-referrer">` : `<span class="pfp ph" aria-hidden="true">${initial}</span>`;
+  }
+  function postCard(p) {
+    return `<article class="post" data-id="${p.id}">
+      <div class="post-head">${avatar(p.picture, p.author)}<div><b>${esc(p.author)}</b><span class="when">${when(p.created_at)}</span></div></div>
+      ${p.body ? `<p class="post-body">${esc(p.body)}</p>` : ''}
+      ${postSnapshot(p.snapshot)}
+      <div class="post-actions">
+        <button class="pact like ${p.liked ? 'on' : ''}" data-act="like" aria-pressed="${p.liked}">${ICON.heart}<span class="c">${p.likes || ''}</span></button>
+        <button class="pact" data-act="comments">${ICON.comment}<span class="c">${p.comments || ''}</span></button>
+      </div>
+      <div class="comments" hidden></div>
+    </article>`;
+  }
+  async function viewCommunity() {
+    shell('/community', boardTitle('Community', 'Share a strategy, an idea, or how your money is doing. Like and reply to other traders.'), `
+      <div class="feedwrap">
+        <form class="panel composer-post" id="composer-post">
+          <textarea class="input" id="post-body" maxlength="2000" rows="2" placeholder="Share an idea, a strategy, or how it's going…"></textarea>
+          <div class="post-tools">
+            <label class="field" style="min-width:0;flex:1"><span class="vh">Attach a strategy</span>
+              <select id="post-strat"><option value="">Attach a strategy… (optional)</option></select></label>
+            <button class="btn sm" type="button" data-share="pnl">${ICON.up}Share my P&amp;L</button>
+            <button class="btn primary sm" type="submit">Post</button>
+          </div>
+          <div id="post-flash"></div>
+        </form>
+        <div id="feed">${loading(120)}${loading(120)}</div>
+      </div>`);
+    // populate strategy picker with the user's own strategies
+    api('/api/strategies').then((d) => {
+      const sel = root.querySelector('#post-strat');
+      d.strategies.filter((s) => s.status !== 'rejected' || s.title).slice(0, 50).forEach((s) => {
+        const o = document.createElement('option'); o.value = s.id; o.textContent = `${s.title} (${STATUS_WORD[s.status] || s.status})`; sel.appendChild(o);
+      });
+    }).catch(() => {});
+    const form = root.querySelector('#composer-post');
+    const submit = async (kind, ref_id) => {
+      const body = root.querySelector('#post-body').value.trim();
+      const btn = form.querySelector('[type=submit]');
+      await busy(btn, async () => {
+        try {
+          await api('/api/community', { body, kind, ref_id });
+          root.querySelector('#post-body').value = ''; root.querySelector('#post-strat').value = '';
+          await load();
+        } catch (e) { flash('#post-flash', e.message, 'bad'); }
+      });
+    };
+    form.onsubmit = (e) => { e.preventDefault(); const ref = root.querySelector('#post-strat').value; submit(ref ? 'strategy' : 'note', ref || undefined); };
+    form.querySelector('[data-share="pnl"]').onclick = () => submit('pnl');
+    const feed = root.querySelector('#feed');
+    feed.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.pact'); if (!btn) return;
+      const art = btn.closest('.post'); const pid = art.dataset.id;
+      if (btn.dataset.act === 'like') {
+        try {
+          const r = await api(`/api/community/${pid}/like`, {});
+          btn.classList.toggle('on', r.liked); btn.setAttribute('aria-pressed', r.liked);
+          const c = btn.querySelector('.c'); const n = (parseInt(c.textContent || '0', 10) || 0) + (r.liked ? 1 : -1);
+          c.textContent = n > 0 ? n : '';
+        } catch (err) { alert0(err.message); }
+      } else {
+        const box = art.querySelector('.comments');
+        if (!box.hidden) { box.hidden = true; return; }
+        box.hidden = false; box.innerHTML = loading(40);
+        const d = await api(`/api/community/${pid}/comments`).catch(() => ({ comments: [] }));
+        box.innerHTML = `${d.comments.map((c) => `<div class="cmt">${avatar(c.picture, c.author)}<div><b>${esc(c.author)}</b> <span class="when">${when(c.created_at)}</span><p>${esc(c.body)}</p></div></div>`).join('')}
+          <form class="cmt-form"><input class="input" maxlength="1000" placeholder="Write a reply…" required><button class="btn sm" type="submit">Reply</button></form>`;
+        box.querySelector('.cmt-form').onsubmit = async (ev) => {
+          ev.preventDefault();
+          const inp = box.querySelector('input'); const body = inp.value.trim(); if (!body) return;
+          await busy(box.querySelector('button'), async () => {
+            try { await api(`/api/community/${pid}/comments`, { body }); inp.value = '';
+              const cc = art.querySelector('[data-act="comments"] .c'); cc.textContent = (parseInt(cc.textContent || '0', 10) || 0) + 1;
+              box.hidden = true; box.innerHTML = '';
+            } catch (err) { alert0(err.message); }
+          });
+        };
+      }
+    });
+    const load = async () => {
+      const d = await api('/api/community');
+      feed.innerHTML = d.posts.length ? d.posts.map(postCard).join('')
+        : `<div class="empty"><h3>No posts yet</h3><p>Be the first. Share a strategy an agent found, drop an idea worth researching, or post how your paper book is doing.</p></div>`;
+    };
+    await load();
+    poll(load, 20000);
+  }
+  const STATUS_WORD = { passed: 'passed', failed: 'void', rejected: 'rejected' };
 
   render();
 })();

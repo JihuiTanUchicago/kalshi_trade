@@ -1,1083 +1,965 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-13T04:57:09+00:00",
+  "generatedAt": "2026-10-13T06:00:20+00:00",
   "title": "Design System: Recursive",
+  "worlds": [
+    {
+      "id": "landing",
+      "name": "The Calm Product Page",
+      "surface": "app/static (pre-login, viewSignin), body.landing-body / .landing scope",
+      "role": "primary"
+    },
+    {
+      "id": "app",
+      "name": "Kursbuch (authed app)",
+      "surface": "app/static (authed SPA), default body scope",
+      "role": "primary"
+    },
+    {
+      "id": "console",
+      "name": "Kursbuch (operator console)",
+      "surface": "data_pipeline/dashboard_server.py",
+      "role": "secondary"
+    }
+  ],
   "extensions": {
     "colorMeta": {
-      "board": {
-        "role": "primary",
-        "displayName": "Tote Green",
-        "canonical": "#0F3A2C",
+      "l-bg": {
+        "world": "landing",
+        "role": "landing",
+        "displayName": "Landing Ground",
+        "canonical": "#FBFBFA",
         "tonalRamp": [
-          "#001207",
-          "#002C1F",
-          "#1F493A",
-          "#3E6858",
-          "#5E8877",
-          "#7EAA98",
-          "#A3D0BD",
-          "#CDFBE7"
+          "#0E0E0C",
+          "#2C2C26",
+          "#535346",
+          "#7C7C64",
+          "#9F9F89",
+          "#BEBEB1",
+          "#D9D9D3",
+          "#F3F3F1"
         ]
       },
-      "board-deep": {
-        "role": "primary",
-        "displayName": "Board Deep",
-        "canonical": "#0A2A20",
+      "l-ink": {
+        "world": "landing",
+        "role": "landing",
+        "displayName": "Landing Ink",
+        "canonical": "#15161A",
         "tonalRamp": [
-          "#001008",
-          "#0B2A20",
-          "#28473C",
-          "#466659",
-          "#658679",
-          "#85A79A",
-          "#AACDBF",
-          "#D4F8EA"
+          "#0C0C0E",
+          "#26272C",
+          "#464853",
+          "#65697B",
+          "#898E9E",
+          "#B2B4BE",
+          "#D3D4D9",
+          "#F1F2F3"
         ]
       },
-      "board-seam": {
-        "role": "primary",
-        "displayName": "Board Seam",
-        "canonical": "#072118",
+      "l-ink-2": {
+        "world": "landing",
+        "role": "landing",
+        "displayName": "Landing Ink 2",
+        "canonical": "#5B5F66",
         "tonalRamp": [
-          "#001008",
-          "#102A20",
-          "#2C463C",
-          "#4A6559",
-          "#698579",
-          "#89A69A",
-          "#AECCBF",
-          "#D8F7E9"
+          "#0C0D0D",
+          "#27282A",
+          "#494C50",
+          "#6A6F76",
+          "#8E929A",
+          "#B4B7BB",
+          "#D5D6D8",
+          "#F2F2F3"
         ]
       },
-      "board-rule": {
-        "role": "primary",
-        "displayName": "Board Rule",
-        "canonical": "#1D4E3D",
+      "l-ink-3": {
+        "world": "landing",
+        "role": "landing",
+        "displayName": "Landing Ink 3",
+        "canonical": "#8A8E95",
         "tonalRamp": [
-          "#001206",
-          "#002D1E",
-          "#184A39",
-          "#396957",
-          "#588976",
-          "#79AB97",
-          "#9ED1BC",
-          "#C8FCE6"
+          "#0C0D0D",
+          "#27282A",
+          "#494C50",
+          "#6B6F75",
+          "#8F9399",
+          "#B5B7BA",
+          "#D5D6D8",
+          "#F2F2F3"
         ]
       },
-      "board-label": {
-        "role": "primary",
-        "displayName": "Board Label",
-        "canonical": "#A9C7B8",
+      "l-line": {
+        "world": "landing",
+        "role": "landing",
+        "displayName": "Landing Line",
+        "canonical": "#E7E6E2",
         "tonalRamp": [
-          "#001007",
-          "#102A1F",
-          "#2C463A",
-          "#4A6558",
-          "#698577",
-          "#89A698",
-          "#AECCBD",
-          "#D8F7E8"
+          "#0D0D0C",
+          "#2B2A26",
+          "#525047",
+          "#7A7666",
+          "#9D9A8B",
+          "#BDBBB2",
+          "#D9D8D4",
+          "#F3F3F2"
         ]
       },
-      "board-text": {
-        "role": "primary",
-        "displayName": "Board Text",
-        "canonical": "#E8F1EC",
+      "l-accent": {
+        "world": "landing",
+        "role": "landing",
+        "displayName": "Landing Accent",
+        "canonical": "#F05A28",
         "tonalRamp": [
-          "#070D0A",
-          "#1F2622",
-          "#3B423E",
-          "#58605C",
-          "#777F7B",
-          "#98A19C",
-          "#BEC7C2",
-          "#E8F1EC"
+          "#130906",
+          "#411C10",
+          "#833116",
+          "#CC4214",
+          "#EA693D",
+          "#E99F86",
+          "#EFCABE",
+          "#F9EFEC"
         ]
       },
-      "amber": {
-        "role": "secondary",
-        "displayName": "Tote Amber",
-        "canonical": "#FFB31A",
+      "stock": {
+        "world": "app",
+        "role": "app",
+        "displayName": "Paper Stock",
+        "canonical": "#E9EBE5",
         "tonalRamp": [
-          "#230000",
-          "#421500",
-          "#6D2900",
-          "#904A00",
-          "#B36B00",
-          "#D78D00",
-          "#FFB41B",
-          "#FFE48F"
+          "#0D0E0C",
+          "#2A2C25",
+          "#4F5544",
+          "#757E62",
+          "#98A187",
+          "#BABFB0",
+          "#D7DAD3",
+          "#F3F3F1"
         ]
       },
-      "amber-soft": {
-        "role": "secondary",
-        "displayName": "Amber Soft",
-        "canonical": "#FFE2A6",
+      "stock-live": {
+        "world": "app",
+        "role": "app",
+        "displayName": "Live Stock",
+        "canonical": "#EFE4E7",
         "tonalRamp": [
-          "#1A0500",
-          "#361F00",
-          "#543B00",
-          "#73591E",
-          "#947940",
-          "#B69B61",
-          "#DDC186",
-          "#FFEBAF"
+          "#0F0B0C",
+          "#302226",
+          "#5D3C45",
+          "#8B5564",
+          "#AD7A88",
+          "#C6A9B1",
+          "#DDCFD3",
+          "#F4F0F1"
         ]
       },
-      "counter": {
-        "role": "neutral",
-        "displayName": "Counter",
-        "canonical": "#E2E5DF",
+      "stock-sunk": {
+        "world": "app",
+        "role": "app",
+        "displayName": "Sunk Stock",
+        "canonical": "#DFE2DA",
         "tonalRamp": [
-          "#0A0C08",
-          "#232520",
-          "#3E413C",
-          "#5C5F59",
-          "#7C7E79",
-          "#9D9F9A",
-          "#C2C5BF",
-          "#EDF0EA"
+          "#0D0E0C",
+          "#2A2C25",
+          "#4E5445",
+          "#737D63",
+          "#97A088",
+          "#B9BFB1",
+          "#D7DAD3",
+          "#F2F3F1"
         ]
       },
-      "counter-2": {
-        "role": "neutral",
-        "displayName": "Counter 2",
-        "canonical": "#D6DAD2",
+      "stock-raised": {
+        "world": "app",
+        "role": "app",
+        "displayName": "Raised Stock",
+        "canonical": "#F1F3ED",
         "tonalRamp": [
-          "#0A0C07",
-          "#22251F",
-          "#3E413B",
-          "#5C5F58",
-          "#7B7F77",
-          "#9CA098",
-          "#C2C6BE",
-          "#ECF0E8"
-        ]
-      },
-      "slip": {
-        "role": "neutral",
-        "displayName": "Thermal Slip",
-        "canonical": "#F6F7F4",
-        "tonalRamp": [
-          "#0B0B0A",
-          "#242422",
-          "#3F403E",
-          "#5D5E5B",
-          "#7D7E7B",
-          "#9E9F9C",
-          "#C3C4C2",
-          "#EEEFEC"
-        ]
-      },
-      "slip-2": {
-        "role": "neutral",
-        "displayName": "Slip 2",
-        "canonical": "#ECEEE9",
-        "tonalRamp": [
-          "#0A0C09",
-          "#232521",
-          "#3F403C",
-          "#5D5E5A",
-          "#7C7E79",
-          "#9D9F9A",
-          "#C3C5C0",
-          "#EDEFEA"
-        ]
-      },
-      "field": {
-        "role": "neutral",
-        "displayName": "Field White",
-        "canonical": "#FFFFFF",
-        "tonalRamp": [
-          "#0B0B0B",
-          "#242424",
-          "#404040",
-          "#5D5D5D",
-          "#7D7D7D",
-          "#9E9E9E",
-          "#C4C4C4",
-          "#EEEEEE"
+          "#0D0E0B",
+          "#2B2E23",
+          "#515940",
+          "#77855B",
+          "#9BA880",
+          "#BBC3AC",
+          "#D8DCD1",
+          "#F3F4F1"
         ]
       },
       "ink": {
-        "role": "neutral",
+        "world": "app",
+        "role": "app",
         "displayName": "Ink",
-        "canonical": "#23262B",
+        "canonical": "#191B16",
         "tonalRamp": [
-          "#090B10",
-          "#212429",
-          "#3D4045",
-          "#5A5E64",
-          "#7A7D84",
-          "#9B9FA5",
-          "#C0C4CB",
-          "#EBEFF6"
+          "#0D0E0C",
+          "#292C26",
+          "#4E5346",
+          "#727B65",
+          "#969E8A",
+          "#B9BDB2",
+          "#D7D9D3",
+          "#F2F3F1"
         ]
       },
       "ink-2": {
-        "role": "neutral",
+        "world": "app",
+        "role": "app",
         "displayName": "Ink 2",
-        "canonical": "#474C54",
+        "canonical": "#444841",
         "tonalRamp": [
-          "#080B11",
-          "#20242B",
-          "#3B4048",
-          "#595E66",
-          "#787E86",
-          "#999FA8",
-          "#BFC4CE",
-          "#E9EFF9"
+          "#0D0D0C",
+          "#292A27",
+          "#4C5049",
+          "#6F766B",
+          "#93998F",
+          "#B7BBB5",
+          "#D6D8D5",
+          "#F2F3F2"
         ]
       },
       "ink-3": {
-        "role": "neutral",
+        "world": "app",
+        "role": "app",
         "displayName": "Ink 3",
-        "canonical": "#62676F",
+        "canonical": "#5F645D",
         "tonalRamp": [
-          "#080B11",
-          "#20242B",
-          "#3B4047",
-          "#595E66",
-          "#787E86",
-          "#999FA7",
-          "#BFC4CD",
-          "#E9EFF8"
+          "#0D0D0C",
+          "#282A28",
+          "#4C4F4A",
+          "#6F746C",
+          "#929890",
+          "#B7BAB6",
+          "#D6D7D5",
+          "#F2F3F2"
         ]
       },
       "rule": {
-        "role": "neutral",
+        "world": "app",
+        "role": "app",
         "displayName": "Rule",
-        "canonical": "#D5D8D1",
+        "canonical": "#C9CDC2",
         "tonalRamp": [
-          "#0A0C08",
-          "#232520",
-          "#3E413B",
-          "#5C5F59",
-          "#7C7E78",
-          "#9DA099",
-          "#C2C5BE",
-          "#EDF0E9"
+          "#0D0E0C",
+          "#2A2C26",
+          "#4E5346",
+          "#737B66",
+          "#979E8A",
+          "#B9BDB2",
+          "#D7D9D3",
+          "#F2F3F1"
         ]
       },
       "rule-2": {
-        "role": "neutral",
+        "world": "app",
+        "role": "app",
         "displayName": "Rule 2",
-        "canonical": "#BEC2BA",
+        "canonical": "#B1B6AA",
         "tonalRamp": [
-          "#0A0C07",
-          "#22251F",
-          "#3E413A",
-          "#5B5F58",
-          "#7B7F77",
-          "#9CA098",
-          "#C2C6BE",
-          "#ECF0E8"
+          "#0D0D0C",
+          "#292B27",
+          "#4D5148",
+          "#727868",
+          "#959B8C",
+          "#B8BCB3",
+          "#D7D8D4",
+          "#F2F3F2"
         ]
       },
-      "pass": {
-        "role": "tertiary",
-        "displayName": "Pass Green",
-        "canonical": "#1F7A4D",
+      "signal": {
+        "world": "app",
+        "role": "app",
+        "displayName": "Signal Red",
+        "canonical": "#C8102E",
         "tonalRamp": [
-          "#001500",
-          "#00320A",
-          "#005026",
-          "#0D6F43",
-          "#3A9162",
-          "#5EB382",
-          "#85DAA7",
-          "#AFFFD1"
+          "#130608",
+          "#411119",
+          "#821728",
+          "#CB1633",
+          "#E93F5B",
+          "#E88797",
+          "#EEBEC6",
+          "#F9ECEE"
         ]
       },
-      "void": {
-        "role": "tertiary",
-        "displayName": "Void Red",
-        "canonical": "#C23B4E",
+      "signal-wash": {
+        "world": "app",
+        "role": "app",
+        "displayName": "Signal Wash",
+        "canonical": "#F8E4E6",
         "tonalRamp": [
-          "#2D0000",
-          "#4F000D",
-          "#82001D",
-          "#A81F3A",
-          "#CE4758",
-          "#F66B78",
-          "#FF919C",
-          "#FFCDD2"
+          "#110809",
+          "#39181B",
+          "#71282F",
+          "#AF323E",
+          "#CE5965",
+          "#D9969D",
+          "#E7C6C9",
+          "#F7EEEF"
         ]
       },
-      "live": {
-        "role": "tertiary",
-        "displayName": "Live Amber Ink",
-        "canonical": "#8A5600",
+      "pos": {
+        "world": "app",
+        "role": "app",
+        "displayName": "Positive Tint",
+        "canonical": "#D9E7D6",
         "tonalRamp": [
-          "#260000",
-          "#461000",
-          "#672E00",
-          "#894D00",
-          "#AC6E0A",
-          "#D08F3C",
-          "#F8B564",
-          "#FFE093"
+          "#0B0F0B",
+          "#243021",
+          "#425D3C",
+          "#5E8C54",
+          "#83AE7A",
+          "#AEC7A9",
+          "#D1DECF",
+          "#F1F4F0"
         ]
       },
-      "gain": {
-        "role": "tertiary",
-        "displayName": "Gain",
-        "canonical": "#1F7A4D",
+      "neg": {
+        "world": "app",
+        "role": "app",
+        "displayName": "Negative Tint",
+        "canonical": "#F0DEDC",
         "tonalRamp": [
-          "#001500",
-          "#00320A",
-          "#005026",
-          "#0D6F43",
-          "#3A9162",
-          "#5EB382",
-          "#85DAA7",
-          "#AFFFD1"
-        ]
-      },
-      "loss": {
-        "role": "tertiary",
-        "displayName": "Loss",
-        "canonical": "#B3283E",
-        "tonalRamp": [
-          "#2D0000",
-          "#4F000C",
-          "#840019",
-          "#A91D37",
-          "#D04555",
-          "#F76975",
-          "#FF9099",
-          "#FFCED0"
-        ]
-      },
-      "gain-wash": {
-        "role": "tertiary",
-        "displayName": "Gain Wash",
-        "canonical": "#E3F0E8",
-        "tonalRamp": [
-          "#050D09",
-          "#1D2721",
-          "#38433C",
-          "#56615A",
-          "#758179",
-          "#96A29A",
-          "#BBC8C0",
-          "#E5F2EA"
-        ]
-      },
-      "loss-wash": {
-        "role": "tertiary",
-        "displayName": "Loss Wash",
-        "canonical": "#F7E3E6",
-        "tonalRamp": [
-          "#130709",
-          "#2E2022",
-          "#4B3B3E",
-          "#69595B",
-          "#8A787B",
-          "#AC999C",
-          "#D2BEC1",
-          "#FDE9EC"
+          "#100A0A",
+          "#34201D",
+          "#663833",
+          "#9B4E46",
+          "#BC746C",
+          "#CFA5A1",
+          "#E2CDCB",
+          "#F5F0EF"
         ]
       },
       "kursbuch-stock": {
-        "role": "secondary",
-        "displayName": "Kursbuch Stock",
+        "world": "console",
+        "role": "console",
+        "displayName": "Paper Stock",
         "canonical": "#E9EBE5",
         "tonalRamp": [
-          "#0B0C08",
-          "#232520",
-          "#3F403C",
-          "#5D5E59",
-          "#7C7E79",
-          "#9D9F9A",
-          "#C3C5BF",
-          "#EDEFE9"
+          "#0D0E0C",
+          "#2A2C25",
+          "#4F5544",
+          "#757E62",
+          "#98A187",
+          "#BABFB0",
+          "#D7DAD3",
+          "#F3F3F1"
         ]
       },
       "kursbuch-stock-live": {
-        "role": "secondary",
-        "displayName": "Kursbuch Stock Live",
+        "world": "console",
+        "role": "console",
+        "displayName": "Live Stock",
         "canonical": "#EFE4E7",
         "tonalRamp": [
-          "#10090B",
-          "#292224",
-          "#463D3F",
-          "#645B5D",
-          "#847A7D",
-          "#A69B9E",
-          "#CBC1C4",
-          "#F6EBEE"
+          "#0F0B0C",
+          "#302226",
+          "#5D3C45",
+          "#8B5564",
+          "#AD7A88",
+          "#C6A9B1",
+          "#DDCFD3",
+          "#F4F0F1"
         ]
       },
       "kursbuch-stock-sunk": {
-        "role": "secondary",
-        "displayName": "Kursbuch Stock Sunk",
+        "world": "console",
+        "role": "console",
+        "displayName": "Sunk Stock",
         "canonical": "#DFE2DA",
         "tonalRamp": [
-          "#0A0C07",
-          "#23251F",
-          "#3E413A",
-          "#5C5F58",
-          "#7C7E77",
-          "#9DA098",
-          "#C2C5BE",
-          "#EDF0E8"
+          "#0D0E0C",
+          "#2A2C25",
+          "#4E5445",
+          "#737D63",
+          "#97A088",
+          "#B9BFB1",
+          "#D7DAD3",
+          "#F2F3F1"
         ]
       },
       "kursbuch-stock-raised": {
-        "role": "secondary",
-        "displayName": "Kursbuch Stock Raised",
+        "world": "console",
+        "role": "console",
+        "displayName": "Raised Stock",
         "canonical": "#F1F3ED",
         "tonalRamp": [
-          "#0B0C08",
-          "#232520",
-          "#3F403C",
-          "#5D5E59",
-          "#7C7E79",
-          "#9D9F9A",
-          "#C3C5BF",
-          "#EDEFE9"
+          "#0D0E0B",
+          "#2B2E23",
+          "#515940",
+          "#77855B",
+          "#9BA880",
+          "#BBC3AC",
+          "#D8DCD1",
+          "#F3F4F1"
         ]
       },
       "kursbuch-ink": {
-        "role": "neutral",
-        "displayName": "Kursbuch Ink",
+        "world": "console",
+        "role": "console",
+        "displayName": "Ink",
         "canonical": "#191B16",
         "tonalRamp": [
-          "#0A0C08",
-          "#232520",
-          "#3E413B",
-          "#5C5F59",
-          "#7C7E78",
-          "#9DA099",
-          "#C2C5BE",
-          "#EDF0E9"
+          "#0D0E0C",
+          "#292C26",
+          "#4E5346",
+          "#727B65",
+          "#969E8A",
+          "#B9BDB2",
+          "#D7D9D3",
+          "#F2F3F1"
         ]
       },
       "kursbuch-ink-2": {
-        "role": "neutral",
-        "displayName": "Kursbuch Ink 2",
+        "world": "console",
+        "role": "console",
+        "displayName": "Ink 2",
         "canonical": "#444841",
         "tonalRamp": [
-          "#090C07",
-          "#22251F",
-          "#3D413A",
-          "#5B5F58",
-          "#7A7F77",
-          "#9BA098",
-          "#C1C6BE",
-          "#EBF0E8"
+          "#0D0D0C",
+          "#292A27",
+          "#4C5049",
+          "#6F766B",
+          "#93998F",
+          "#B7BBB5",
+          "#D6D8D5",
+          "#F2F3F2"
         ]
       },
       "kursbuch-ink-3": {
-        "role": "neutral",
-        "displayName": "Kursbuch Ink 3",
+        "world": "console",
+        "role": "console",
+        "displayName": "Ink 3",
         "canonical": "#5F645D",
         "tonalRamp": [
-          "#090C07",
-          "#212520",
-          "#3D413B",
-          "#5A5F58",
-          "#7A7F78",
-          "#9BA099",
-          "#C0C6BE",
-          "#EBF1E8"
+          "#0D0D0C",
+          "#282A28",
+          "#4C4F4A",
+          "#6F746C",
+          "#929890",
+          "#B7BAB6",
+          "#D6D7D5",
+          "#F2F3F2"
         ]
       },
       "kursbuch-rule": {
-        "role": "neutral",
-        "displayName": "Kursbuch Rule",
+        "world": "console",
+        "role": "console",
+        "displayName": "Rule",
         "canonical": "#C9CDC2",
         "tonalRamp": [
-          "#0A0C06",
-          "#22251D",
-          "#3E4138",
-          "#5C5F56",
-          "#7B7F75",
-          "#9CA096",
-          "#C2C6BB",
-          "#ECF0E5"
+          "#0D0E0C",
+          "#2A2C26",
+          "#4E5346",
+          "#737B66",
+          "#979E8A",
+          "#B9BDB2",
+          "#D7D9D3",
+          "#F2F3F1"
         ]
       },
       "kursbuch-rule-2": {
-        "role": "neutral",
-        "displayName": "Kursbuch Rule 2",
+        "world": "console",
+        "role": "console",
+        "displayName": "Rule 2",
         "canonical": "#B1B6AA",
         "tonalRamp": [
-          "#090C05",
-          "#22261C",
-          "#3D4237",
-          "#5B6055",
-          "#7B7F74",
-          "#9CA195",
-          "#C1C6BA",
-          "#EBF1E4"
+          "#0D0D0C",
+          "#292B27",
+          "#4D5148",
+          "#727868",
+          "#959B8C",
+          "#B8BCB3",
+          "#D7D8D4",
+          "#F2F3F2"
         ]
       },
       "kursbuch-signal": {
-        "role": "primary",
-        "displayName": "Kursbuch Signal",
+        "world": "console",
+        "role": "console",
+        "displayName": "Signal Red",
         "canonical": "#C8102E",
         "tonalRamp": [
-          "#2D0000",
-          "#4F0005",
-          "#8F0000",
-          "#B6001F",
-          "#DE3040",
-          "#FF5A60",
-          "#FF8384",
-          "#FFCECA"
+          "#130608",
+          "#411119",
+          "#821728",
+          "#CB1633",
+          "#E93F5B",
+          "#E88797",
+          "#EEBEC6",
+          "#F9ECEE"
         ]
       },
       "kursbuch-signal-wash": {
-        "role": "primary",
-        "displayName": "Kursbuch Signal Wash",
+        "world": "console",
+        "role": "console",
+        "displayName": "Signal Wash",
         "canonical": "#F8E4E6",
         "tonalRamp": [
-          "#130709",
-          "#2E2021",
-          "#4B3B3D",
-          "#69595B",
-          "#8A787A",
-          "#AC999B",
-          "#D2BFC1",
-          "#FDE9EB"
+          "#110809",
+          "#39181B",
+          "#71282F",
+          "#AF323E",
+          "#CE5965",
+          "#D9969D",
+          "#E7C6C9",
+          "#F7EEEF"
         ]
       },
       "kursbuch-signal-ink": {
-        "role": "primary",
-        "displayName": "Kursbuch Signal Ink",
+        "world": "console",
+        "role": "console",
+        "displayName": "Signal Ink",
         "canonical": "#FDF2F3",
         "tonalRamp": [
-          "#10090A",
-          "#292223",
-          "#463D3E",
-          "#645B5C",
-          "#847A7B",
-          "#A69B9C",
-          "#CCC1C2",
-          "#F6EBEC"
+          "#120708",
+          "#3E1418",
+          "#7B1E27",
+          "#BE2231",
+          "#DD4B58",
+          "#E28E95",
+          "#EBC1C5",
+          "#F8EDEE"
         ]
       },
       "kursbuch-pos": {
-        "role": "tertiary",
-        "displayName": "Kursbuch Pos",
+        "world": "console",
+        "role": "console",
+        "displayName": "Positive Tint",
         "canonical": "#D9E7D6",
         "tonalRamp": [
-          "#050E04",
-          "#1D271B",
-          "#384336",
-          "#566253",
-          "#758272",
-          "#96A393",
-          "#BBC9B8",
-          "#E5F3E2"
+          "#0B0F0B",
+          "#243021",
+          "#425D3C",
+          "#5E8C54",
+          "#83AE7A",
+          "#AEC7A9",
+          "#D1DECF",
+          "#F1F4F0"
         ]
       },
       "kursbuch-neg": {
-        "role": "tertiary",
-        "displayName": "Kursbuch Neg",
+        "world": "console",
+        "role": "console",
+        "displayName": "Negative Tint",
         "canonical": "#F0DEDC",
         "tonalRamp": [
-          "#130807",
-          "#2D201F",
-          "#4A3C3A",
-          "#695958",
-          "#897977",
-          "#AB9A98",
-          "#D1BFBD",
-          "#FCEAE8"
+          "#100A0A",
+          "#34201D",
+          "#663833",
+          "#9B4E46",
+          "#BC746C",
+          "#CFA5A1",
+          "#E2CDCB",
+          "#F5F0EF"
         ]
       },
       "kursbuch-trace-ink": {
-        "role": "tertiary",
-        "displayName": "Kursbuch Trace Ink",
+        "world": "console",
+        "role": "console",
+        "displayName": "Trace Ink",
         "canonical": "#191B16",
         "tonalRamp": [
-          "#0A0C08",
-          "#232520",
-          "#3E413B",
-          "#5C5F59",
-          "#7C7E78",
-          "#9DA099",
-          "#C2C5BE",
-          "#EDF0E9"
+          "#0D0E0C",
+          "#292C26",
+          "#4E5346",
+          "#727B65",
+          "#969E8A",
+          "#B9BDB2",
+          "#D7D9D3",
+          "#F2F3F1"
         ]
       },
       "kursbuch-trace-umber": {
-        "role": "tertiary",
-        "displayName": "Kursbuch Trace Umber",
+        "world": "console",
+        "role": "console",
+        "displayName": "Trace Umber",
         "canonical": "#7A5C2E",
         "tonalRamp": [
-          "#1B0400",
-          "#381D00",
-          "#563906",
-          "#755829",
-          "#977749",
-          "#B9996A",
-          "#E0BE8E",
-          "#FFE9B7"
+          "#100D09",
+          "#362B1C",
+          "#695230",
+          "#A07A40",
+          "#C19D67",
+          "#D2BD9E",
+          "#E3D9C9",
+          "#F6F3EF"
         ]
       },
       "kursbuch-trace-slate": {
-        "role": "tertiary",
-        "displayName": "Kursbuch Trace Slate",
+        "world": "console",
+        "role": "console",
+        "displayName": "Trace Slate",
         "canonical": "#31566F",
         "tonalRamp": [
-          "#000C21",
-          "#00273D",
-          "#1F445C",
-          "#3D627C",
-          "#5C829D",
-          "#7DA4C0",
-          "#A2CAE7",
-          "#CBF5FF"
+          "#0A0D10",
+          "#1E2B34",
+          "#345165",
+          "#477899",
+          "#6D9BBA",
+          "#A1BCCE",
+          "#CBD8E1",
+          "#EFF3F5"
         ]
       },
       "kursbuch-trace-olive": {
-        "role": "tertiary",
-        "displayName": "Kursbuch Trace Olive",
+        "world": "console",
+        "role": "console",
+        "displayName": "Trace Olive",
         "canonical": "#55693F",
         "tonalRamp": [
-          "#031000",
-          "#192A01",
-          "#34471E",
-          "#51653B",
-          "#70855A",
-          "#91A77A",
-          "#B6CD9F",
-          "#E0F8C8"
+          "#0D0F0B",
+          "#293022",
+          "#4D5C3D",
+          "#718B56",
+          "#95AD7B",
+          "#B8C6A9",
+          "#D7DDCF",
+          "#F2F4F0"
         ]
       },
       "kursbuch-trace-plum": {
-        "role": "tertiary",
-        "displayName": "Kursbuch Trace Plum",
+        "world": "console",
+        "role": "console",
+        "displayName": "Trace Plum",
         "canonical": "#6B4257",
         "tonalRamp": [
-          "#1C0010",
-          "#3A1529",
-          "#583146",
-          "#794F64",
-          "#9A6E84",
-          "#BD8FA5",
-          "#E5B4CB",
-          "#FFDEF6"
+          "#0F0B0D",
+          "#302229",
+          "#5B3E4D",
+          "#895771",
+          "#AB7C94",
+          "#C5AAB8",
+          "#DDCFD6",
+          "#F4F0F2"
         ]
       }
     },
     "typographyMeta": {
-      "display": {
-        "displayName": "Display",
-        "purpose": "Sign-in headline only."
+      "l-wordmark": {
+        "world": "landing",
+        "displayName": "Landing Wordmark",
+        "purpose": "Rubik 600 20px brand lockup beside the cube."
       },
-      "board-figure-lead": {
-        "displayName": "Board Figure Lead",
-        "purpose": "The one leading amber figure on a board."
+      "l-hero": {
+        "world": "landing",
+        "displayName": "Hero",
+        "purpose": "The one sign-in headline, Rubik 600 clamp(38-68px), -.03em, max 14ch."
       },
-      "board-figure": {
-        "displayName": "Board Figure",
-        "purpose": "Other amber board cells."
+      "l-sub": {
+        "world": "landing",
+        "displayName": "Hero Sub",
+        "purpose": "Rubik 400 clamp(17-21px)/1.5 deck under the hero, max 46ch, ink-2."
       },
-      "board-title": {
-        "displayName": "Board Title",
-        "purpose": "Sub-page title on the board."
+      "l-pill": {
+        "world": "landing",
+        "displayName": "Pill",
+        "purpose": "Rubik 500 15px button label (16px on .lg)."
       },
-      "sheet-title": {
-        "displayName": "Sheet Title",
-        "purpose": "Strategy name on its detail slip."
+      "l-line-item": {
+        "world": "landing",
+        "displayName": "Preview Line",
+        "purpose": "Rubik clamp(16-22px) rows inside the browser-mock preview."
+      },
+      "l-fine": {
+        "world": "landing",
+        "displayName": "Fine Print",
+        "purpose": "Rubik 14px/1.6 ink-3 legal/invite copy, max 60ch."
+      },
+      "page-title": {
+        "world": "app",
+        "displayName": "Page Title",
+        "purpose": "h1.page, Archivo 600 clamp(23-30px), -.02em. One per page, sentence case."
+      },
+      "said": {
+        "world": "app",
+        "displayName": "Status Line",
+        "purpose": "Archivo Narrow 600 clamp(15-19px)/1.35, the one dominant answer under the title."
+      },
+      "fig": {
+        "world": "app",
+        "displayName": "Figure",
+        "purpose": "Archivo 600 clamp(21-27px), -.015em, tabular. .sm is 17px. Measured numbers."
       },
       "section-head": {
+        "world": "app",
         "displayName": "Section Head",
-        "purpose": "Section names on the counter."
-      },
-      "panel-head": {
-        "displayName": "Panel Head",
-        "purpose": "Panel and chat titles."
-      },
-      "slip-title": {
-        "displayName": "Slip Title",
-        "purpose": "Strategy name on a slip."
-      },
-      "slip-figure": {
-        "displayName": "Slip Figure",
-        "purpose": "Figures in a slip's figure row and dial outputs."
+        "purpose": "Archivo Narrow 600 13px .13em uppercase over a 2px ink rule."
       },
       "body": {
+        "world": "app",
         "displayName": "Body",
-        "purpose": "Sentences, theses, notes, chat."
+        "purpose": "Archivo 400 14px/1.45. Page default; prose capped 70-72ch."
       },
-      "button": {
-        "displayName": "Button",
-        "purpose": "Command labels."
+      "table": {
+        "world": "app",
+        "displayName": "Table",
+        "purpose": "Archivo 13px rows; column heads Archivo Narrow 600 12px .02em."
       },
-      "nav": {
-        "displayName": "Nav",
-        "purpose": "Masthead navigation."
+      "lab": {
+        "world": "app",
+        "displayName": "Micro-label",
+        "purpose": "Archivo Narrow 11px .11em uppercase above every figure and field."
       },
-      "label": {
-        "displayName": "Label",
-        "purpose": "Board labels, slip meta, serials, column heads."
-      },
-      "stamp": {
-        "displayName": "Stamp",
-        "purpose": "Rubber-stamp state words."
+      "mark": {
+        "world": "app",
+        "displayName": "Mark / Button / Chip",
+        "purpose": "Archivo Narrow 600 11-11.5px .08-.1em uppercase."
       },
       "wordmark": {
+        "world": "app",
         "displayName": "Wordmark",
-        "purpose": "Recursive wordmark."
+        "purpose": "Archivo Narrow 600 13px .16em uppercase RECURSIVE / <service>."
       }
     },
     "shadows": [
       {
-        "name": "slip-rest",
-        "value": "0 1px 1px rgba(20,30,25,.08), 0 10px 24px -14px rgba(20,30,25,.35)",
-        "purpose": "Slips, panels, run rows, chat, plain notices on the counter."
+        "name": "landing-pill",
+        "value": "0 1px 2px rgba(20,22,26,.04)",
+        "world": "landing",
+        "purpose": "Resting pill button lift on the white ground."
       },
       {
-        "name": "slip-lifted",
-        "value": "0 1px 1px rgba(20,30,25,.08), 0 16px 30px -16px rgba(20,30,25,.45)",
-        "purpose": "Hovered linked slip or run row."
+        "name": "landing-pill-hover",
+        "value": "0 4px 14px rgba(20,22,26,.10)",
+        "world": "landing",
+        "purpose": "Pill on hover, paired with translateY(-1px)."
       },
       {
-        "name": "button-hover",
-        "value": "0 6px 16px -8px rgba(0,0,0,.45)",
-        "purpose": "Standard buttons on hover."
+        "name": "landing-window",
+        "value": "0 30px 60px -30px rgba(30,30,40,.4), 0 2px 6px rgba(30,30,40,.08)",
+        "world": "landing",
+        "purpose": "The product-preview browser mock floating over the textured panel."
       },
       {
-        "name": "board-cell-inset",
-        "value": "inset 0 1px 0 rgba(0,0,0,.35)",
-        "purpose": "Recessed figure cells on the board."
+        "name": "landing-input-focus",
+        "value": "0 0 0 3px rgba(21,22,26,.08)",
+        "world": "landing",
+        "purpose": "Waitlist email focus halo."
       },
       {
-        "name": "slot",
-        "value": "inset 0 3px 4px rgba(0,0,0,.6)",
-        "purpose": "The printer slot slips feed out of."
-      },
-      {
-        "name": "input-focus",
-        "value": "0 0 0 3px #FFE2A6",
-        "purpose": "Amber-soft focus halo on inputs."
+        "name": "app-none",
+        "value": "none",
+        "world": "app",
+        "purpose": "The app world carries no shadow, gradient, glass or blur. Depth is rule weight plus four stock tints."
       }
     ],
     "motion": [
       {
-        "name": "ease-out",
+        "name": "ease",
         "value": "cubic-bezier(.16, 1, .3, 1)",
-        "purpose": "Default easing for slips, buttons, print-in."
+        "world": "both",
+        "purpose": "Shared easing token --ease for pills, buttons, switch, wash."
       },
       {
-        "name": "print",
-        "value": "0.9s ease-out; translateY(-40px) + clip-path inset reveal",
-        "purpose": "Hypothesis slip feeding out of the board slot."
+        "name": "lspin",
+        "value": "1s linear infinite (360deg)",
+        "world": "landing",
+        "purpose": "The live-spinner ring in the preview; its top edge is the one accent stroke."
       },
       {
-        "name": "land",
-        "value": "0.32s cubic-bezier(.3, 1.6, .5, 1); rotate(-16deg) scale(1.9) to rotate(-7deg) scale(1)",
-        "purpose": "A verdict stamp landing on a slip."
+        "name": "pill-hover",
+        "value": "transform .12s / box-shadow .15s",
+        "world": "landing",
+        "purpose": "Pill lift on hover/active."
       },
       {
-        "name": "blink",
-        "value": "1.6s steps(2, start) infinite",
-        "purpose": "The lamp on a LIVE plate."
+        "name": "wash",
+        "value": ".5s ease; background rule-2 fading to transparent",
+        "world": "app",
+        "purpose": "Fired on a figure whose value just changed (.washed)."
       },
       {
         "name": "pulse",
-        "value": "1.6s ease-out infinite, 0 to 10px ring",
-        "purpose": "Active research run dot."
+        "value": "1.6s ease infinite, opacity 1 -> .25 -> 1",
+        "world": "app",
+        "purpose": "The live-money dot on an active run row (signal red)."
       },
       {
-        "name": "state",
-        "value": "120-200ms",
-        "purpose": "Hover, border and colour transitions."
+        "name": "dot",
+        "value": "1s ease-in-out infinite, 3 staggered 5px dots",
+        "world": "app",
+        "purpose": "Agent typing indicator in the Deploy chat."
+      },
+      {
+        "name": "shimmer",
+        "value": "1.4s linear infinite background sweep",
+        "world": "app",
+        "purpose": "Skeleton loading placeholder."
+      },
+      {
+        "name": "btn",
+        "value": "background/colour .16s ease",
+        "world": "app",
+        "purpose": "The only button transition; hover fills ink, active translateY(1px)."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "all animation/transition -> .001ms",
+        "world": "both",
+        "purpose": "Global prefers-reduced-motion collapse."
       }
     ],
     "breakpoints": [
       {
+        "name": "landing-maxw",
+        "value": "1120px",
+        "world": "landing",
+        "purpose": "Landing column cap."
+      },
+      {
+        "name": "app-maxw",
+        "value": "1600px",
+        "world": "app",
+        "purpose": "App shell column cap."
+      },
+      {
         "name": "stack-columns",
-        "value": "1180px"
+        "value": "1080px",
+        "world": "both",
+        "purpose": "Two-column app grids (dash/detail/deploy/printer/funds/split) collapse to one; chat goes static 72vh."
       },
       {
         "name": "phone",
-        "value": "760px"
+        "value": "760px",
+        "world": "both",
+        "purpose": "Measure -> 2 cols, tables .stack restack with data-lab, sheet bleeds to device width, doc-mark static; landing nav/hero/pills tighten."
       }
     ],
     "secondaryWorld": {
-      "name": "Kursbuch",
-      "scope": "data_pipeline/dashboard_server.py (operator console)",
+      "name": "Kursbuch (Operator console)",
+      "scope": "data_pipeline/dashboard_server.py (CSS/JS embedded in Python string literals)",
       "tokenPrefix": "kursbuch-",
       "northStar": "The Station Timetable",
-      "overview": "This is a departures board for money, not a trading terminal. Everything is printed on a warm grey stock, ruled with hairlines, and read top to bottom in a single column of sections. Figures sit on a rule; they never sit in a card. The page has no shadow, no gradient, no glass, no blur, and no rounded panel: the only radius in the system is a 3px hairline nick on small inset objects. Depth is a printing problem, solved by rule weight and by two stock tints, never by lifting anything off the page.\n\nThe world deliberately refuses the terminal look that trading software defaults to. **There is no monospace anywhere in the build** — not in tables, not in chart axes, not in identifiers. Alignment of figures is bought with `font-variant-numeric: tabular-nums lining-nums` set on `body` and reasserted on every numeric cell, which is what a timetable actually does. Typography is one family in two cuts (Archivo and Archivo Narrow) at two weights (400 and 600). The narrow cut carries every label, head, chip, tab and status line; the normal cut carries sentences and figures.\n\nThe page is built to be read by one operator at a glance, so the system spends its scarcity budget on a single reserved red. Money direction is never told in that red; it rides a desaturated tint field behind the figure instead. The whole surface is served as plain CSS and vanilla JS embedded in Python string literals — there is no build step, no framework, no icon package, and no runtime dependency beyond one Google Fonts import.",
-      "keyCharacteristics": [
-        "Ruled rows on stock; no cards, no shadows, no gradients, no glass.",
-        "One reserved signal red, spent only on attention and on the live-money boundary.",
-        "Two stocks — grey newsprint for paper, rose-tinted for real money.",
-        "Archivo + Archivo Narrow, two weights, tabular lining figures everywhere.",
-        "No monospace, anywhere, ever.",
-        "One authored motion: a 180ms wash on a figure whose value just changed."
-      ],
-      "rules": [
-        {
-          "name": "The Reserved Signal Rule",
-          "body": "`{colors.kursbuch-signal}` means \"this needs you\" or \"this is real money.\" It is spent on: the attention state of the status line, the stale rule and note, the armed/halt marks, the danger button, the notice box, the caret, the live masthead and live active-tab underline, and the LIVE cutoff marker on a chart. Adding a sixth use dilutes the other five.",
-          "section": "colors"
-        },
-        {
-          "name": "The Money-Rides-a-Field Rule",
-          "body": "Profit and loss direction is told by a tint field behind the figure (`{colors.kursbuch-pos}` / `{colors.kursbuch-neg}`) with the figure kept in ink — never by colouring the figure, and never by the reserved red. A losing number is not an alarm; it is a number.",
-          "section": "colors"
-        },
-        {
-          "name": "The Two Stocks Rule",
-          "body": "Paper trading and pipeline sit on `{colors.kursbuch-stock}`. Real money sits on `{colors.kursbuch-stock-live}` via `body.live-service`, which also swaps the masthead's bottom rule and the active tab's underline to `{colors.kursbuch-signal}`. The two surfaces must never be confusable at a glance.",
-          "section": "colors"
-        },
-        {
-          "name": "The State-Not-By-Colour Rule",
-          "body": "Every state that carries colour also carries a word or a shape: the stale rule goes dashed and the figures get struck through, the marks read OFF / ON / ARMED / HALT, the status line swaps a check glyph for a triangle. Remove all colour and the page still reports correctly.",
-          "section": "colors"
-        },
-        {
-          "name": "The No-Monospace Rule",
-          "body": "No monospace font is permitted anywhere, including chart axis labels (`11px \"Archivo Narrow\"`) and code-like identifiers. Numeric alignment comes from tabular lining figures, not from a fixed-pitch face. The terminal look is the rut this world was built to leave.",
-          "section": "typography"
-        },
-        {
-          "name": "The Short-Caps Rule",
-          "body": "Uppercase is reserved for short labels: section heads, micro-labels, column-free field labels, chips, tabs, marks, buttons, the wordmark, and the stale mark. Anything that reads as a sentence — decks, legends, notes, empty-state copy, status-line text, notice bodies — is sentence case. The rule was tuned against the build: snake_case model names in tables are left lowercase on purpose, because upper-casing a 29-character identifier costs legibility and buys nothing.",
-          "section": "typography"
-        },
-        {
-          "name": "The Two-Weights Rule",
-          "body": "400 and 600 only. There is no 300, 500 or 700 anywhere in the system; emphasis is bought with the narrow cut, letterspacing, and case instead.",
-          "section": "typography"
-        },
-        {
-          "name": "The One Dominant Answer Rule",
-          "body": "Each page opens with exactly one status line stating what the system is doing right now; every section below is supporting evidence. On a phone that line owns the first viewport.",
-          "section": "layout"
-        },
-        {
-          "name": "The Flush-Edge Rule",
-          "body": "The leftmost column of any measure grid or table drops its padding and its rule so figures align to the same vertical as the page title. Nothing is indented into a box.",
-          "section": "layout"
-        },
-        {
-          "name": "The Printed-Depth Rule",
-          "body": "If something needs to separate, rule it or tint it. Never lift it. A shadow, gradient, or glass panel anywhere in this world is a defect.",
-          "section": "elevation"
-        },
-        {
-          "name": "The Hairline-Nick Rule",
-          "body": "3px radius on inset objects, 0 everywhere else. There is no medium or large radius step, and adding one would break the printed register.",
-          "section": "shapes"
-        },
-        {
-          "name": "The Drawn-Icon Rule",
-          "body": "Icons are inline SVG strokes at 1.6 drawn to match the type's weight, using `currentColor`. No icon font, no glyph package, no emoji.",
-          "section": "shapes"
-        }
-      ],
-      "dos": [
-        "**Do** separate with a rule or a stock tint. The rule scale is 2px ink / 2px signal / 1px `rule-2` / 1px `rule`; the tint scale is `stock-sunk` → `stock` → `stock-raised`.",
-        "**Do** put every new figure block on a `.measure` grid and every new dataset in a `.sect` with a `.sect-head` and a live `.sect-note`, so its freshness is always on the page.",
-        "**Do** tell money direction with a `.fig.tint.pos` / `.fig.tint.neg` field behind an ink figure.",
-        "**Do** keep `font-variant-numeric: tabular-nums lining-nums` on anything numeric.",
-        "**Do** reserve uppercase for short labels and write every sentence in sentence case, including empty-state copy, notes, and legends.",
-        "**Do** give every new table a `.stack` class and `data-lab` on each `td` so it restacks into labelled rows under 640px.",
-        "**Do** pin column widths on any new table via a `colgroup` and a `.t-*` width class.",
-        "**Do** pair colour with a word or a shape for every state.",
-        "**Do** draw icons inline as 1.6-stroke SVG with `currentColor`.",
-        "**Do** honour `prefers-reduced-motion`; the global reduce block collapses all animation and transition to 0.001ms."
-      ],
-      "donts": [
-        "**Don't** add a shadow, gradient, glass/backdrop-filter, or a card. Containers are sections and plates only.",
-        "**Don't** use a monospace font anywhere, for any reason, including identifiers and chart axes.",
-        "**Don't** spend `{colors.kursbuch-signal}` on anything but attention or the live-money boundary. Never on a losing number, a heading, a link, or decoration.",
-        "**Don't** colour a P&L figure itself; the field behind it carries direction.",
-        "**Don't** introduce a third font family, a third weight, or a radius other than 3px.",
-        "**Don't** uppercase a sentence, a model identifier, or anything longer than a few words.",
-        "**Don't** add a second animation. `.washed` (180ms, `cubic-bezier(.16,1,.3,1)`, `{colors.kursbuch-rule-2}` fading to transparent, fired only when a figure's value actually changed) is the system's one authored moment; transitions are limited to the 160ms button colour change.",
-        "**Don't** add a build step, a framework, an icon package, or a runtime dependency. The surface is plain CSS and vanilla JS inside Python string literals.",
-        "**Don't** let the live surface and the paper surfaces converge. `body.live-service` must keep its own stock, its red head rule, and its red active tab."
-      ],
-      "motion": [
-        {
-          "name": "washed",
-          "value": "180ms cubic-bezier(.16,1,.3,1)",
-          "purpose": "Wash on a figure whose value just changed."
-        },
-        {
-          "name": "button",
-          "value": "160ms",
-          "purpose": "Button colour change."
-        }
-      ],
-      "breakpoints": [
-        {
-          "name": "stack",
-          "value": "640px"
-        },
-        {
-          "name": "measure-2col",
-          "value": "860px"
-        },
-        {
-          "name": "plates-2col",
-          "value": "1500px"
-        },
-        {
-          "name": "plates-3col",
-          "value": "2200px"
-        }
-      ]
+      "overview": "The owner's private control room for the house BTC 15-minute pipeline. Same timetable world the authed customer app now shares in spirit: ink on warm grey stock, hairline rules, no shadow/gradient/glass/card, tabular lining figures, Archivo + Archivo Narrow at two weights, one reserved signal red, and two stocks (grey paper vs rose live). Recorded before Recursive existed and still live; the full record is kept intact in DESIGN.md's final section. The customer App world above is this world's rules carried onto the product, so cross-reference rather than duplicate.",
+      "relationToApp": "The authed App world and this console are the same visual system (identical token values, same Archivo/Narrow type, same signal-red discipline). They differ only in container licence: the console forbids any filled card (sections + one plate), while the App world permits bordered, unshadowed filled panels (.panel, .sheet-doc, .chat, .split) because the customer surface needs grouped explanation. No shadow rule still holds in both."
     }
   },
   "components": [
     {
-      "name": "Primary Button",
-      "kind": "button",
-      "refersTo": "button-primary",
-      "description": "Ink command button for the main action on a panel or form.",
-      "html": "<button class=\"ds-btn\">Dispatch agent</button>",
-      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border:1.5px solid var(--ink,#23262B);border-radius:3px;background:var(--ink,#23262B);color:var(--slip,#F6F7F4);cursor:pointer;font:700 15px/1 \"Barlow Condensed\",\"Barlow\",sans-serif;letter-spacing:.1em;text-transform:uppercase;transition:transform .12s cubic-bezier(.16,1,.3,1),box-shadow .15s}.ds-btn:hover{box-shadow:0 6px 16px -8px rgba(0,0,0,.45)}.ds-btn:active{transform:translateY(1px)}.ds-btn:focus-visible{outline:2px solid var(--ink,#23262B);outline-offset:2px}"
+      "world": "landing",
+      "name": "pill",
+      "note": "Rounded 999px button; white fill + l-line border + 1px/2px shadow, or .solid = l-ink fill white text. .lg bumps padding/size. One accent-free surface."
     },
     {
-      "name": "Ghost Button",
-      "kind": "button",
-      "refersTo": "button-ghost",
-      "description": "Secondary action; transparent with a rule-2 border.",
-      "html": "<button class=\"ds-btn-ghost\">Back</button>",
-      "css": ".ds-btn-ghost{display:inline-flex;align-items:center;min-height:44px;padding:0 18px;border:1.5px solid var(--rule-2,#BEC2BA);border-radius:3px;background:transparent;color:var(--ink,#23262B);cursor:pointer;font:700 15px/1 \"Barlow Condensed\",\"Barlow\",sans-serif;letter-spacing:.1em;text-transform:uppercase;transition:border-color .15s,box-shadow .15s}.ds-btn-ghost:hover{border-color:var(--ink,#23262B);box-shadow:0 6px 16px -8px rgba(0,0,0,.45)}.ds-btn-ghost:focus-visible{outline:2px solid var(--ink,#23262B);outline-offset:2px}"
+      "world": "landing",
+      "name": "lpreview/lwin",
+      "note": "Browser-mock product preview: 18px-radius textured gradient panel (dot-screen multiply overlay) holding a 12px-radius white window with traffic-light dots and three result lines; accent only in cube + lspin."
     },
     {
-      "name": "Ticket Button",
-      "kind": "button",
-      "refersTo": "button-ticket",
-      "description": "The one notched amber call to action hanging off the board's lower edge.",
-      "html": "<div class=\"ds-board-strip\"><button class=\"ds-ticket\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"><path d=\"M12 5v14M5 12h14\"/></svg>Dispatch an agent</button></div>",
-      "css": ".ds-board-strip{background:var(--board,#0F3A2C);padding:16px}.ds-ticket{display:inline-flex;align-items:center;gap:8px;min-height:52px;padding:0 26px 0 22px;border:1.5px solid var(--amber,#FFB31A);border-radius:3px;background:var(--amber,#FFB31A);color:var(--board,#0F3A2C);cursor:pointer;font:700 17px/1 \"Barlow Condensed\",\"Barlow\",sans-serif;letter-spacing:.1em;text-transform:uppercase;-webkit-mask:radial-gradient(circle 6px at 0 50%,transparent 5.5px,#000 6px) left/51% 100% no-repeat,radial-gradient(circle 6px at 100% 50%,transparent 5.5px,#000 6px) right/51% 100% no-repeat;mask:radial-gradient(circle 6px at 0 50%,transparent 5.5px,#000 6px) left/51% 100% no-repeat,radial-gradient(circle 6px at 100% 50%,transparent 5.5px,#000 6px) right/51% 100% no-repeat}.ds-ticket:hover{filter:brightness(1.05)}.ds-ticket:active{transform:translateY(1px)}.ds-ticket:focus-visible{outline:2px solid var(--amber,#FFB31A);outline-offset:2px}"
+      "world": "landing",
+      "name": "wlbox",
+      "note": "Inline waitlist form: pill-radius email input (#fff, l-line border, focus l-ink + 3px halo) beside a solid pill submit; wlhint/wlok status text."
     },
     {
-      "name": "Text Input",
-      "kind": "input",
-      "refersTo": "input",
-      "description": "Field-white input under a condensed uppercase label; amber-soft focus halo.",
-      "html": "<label class=\"ds-field\"><span>Anything specific?</span><input class=\"ds-input\" placeholder=\"e.g. Only trade in the last hour\"></label>",
-      "css": ".ds-field{display:grid;gap:6px}.ds-field>span{font:600 13px/1.2 \"Barlow Condensed\",\"Barlow\",sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2,#474C54)}.ds-input{width:100%;min-height:44px;padding:10px 12px;background:#fff;border:1.5px solid var(--rule-2,#BEC2BA);border-radius:3px;font:400 16px/1.5 \"Barlow\",sans-serif;color:var(--ink,#23262B);transition:border-color .15s,box-shadow .15s}.ds-input:hover{border-color:var(--ink-3,#62676F)}.ds-input:focus{outline:none;border-color:var(--ink,#23262B);box-shadow:0 0 0 3px var(--amber-soft,#FFE2A6)}"
+      "world": "landing",
+      "name": "lnotice",
+      "note": "One-off warm error banner (#FDECE8 / #8a2a12 / #F3C9BB, 10px radius) for sign-in errors. Un-tokenized; off the l-* palette."
     },
     {
-      "name": "Board Nav",
-      "kind": "nav",
-      "refersTo": "nav-link",
-      "description": "Condensed uppercase nav on the green board; current item amber with a 3px bar.",
-      "html": "<nav class=\"ds-nav\"><a href=\"#\" aria-current=\"page\">Dashboard</a><a href=\"#\">Research</a><a href=\"#\">Strategies</a><a href=\"#\">Deploy</a></nav>",
-      "css": ".ds-nav{display:flex;gap:2px;height:60px;background:var(--board,#0F3A2C);padding:0 16px}.ds-nav a{display:flex;align-items:center;padding:0 14px;position:relative;font:600 15px/1 \"Barlow Condensed\",\"Barlow\",sans-serif;letter-spacing:.1em;text-transform:uppercase;color:var(--board-label,#A9C7B8);text-decoration:none;transition:color .15s}.ds-nav a:hover{color:var(--board-text,#E8F1EC)}.ds-nav a[aria-current=page]{color:var(--amber,#FFB31A)}.ds-nav a[aria-current=page]::after{content:\"\";position:absolute;left:14px;right:14px;bottom:0;height:3px;background:var(--amber,#FFB31A)}.ds-nav a:focus-visible{outline:2px solid var(--amber,#FFB31A);outline-offset:2px}"
+      "world": "app",
+      "name": "statusline",
+      "note": "The one dominant answer: Narrow 600 clamp sentence over a 1px rule; .needs turns em segments signal red."
     },
     {
-      "name": "Filter Chip",
-      "kind": "chip",
-      "refersTo": "chip",
-      "description": "Pill toggle; pressed fills ink.",
-      "html": "<div style=\"display:flex;gap:6px\"><button class=\"ds-chip\" aria-pressed=\"true\">Passed</button><button class=\"ds-chip\" aria-pressed=\"false\">Void</button></div>",
-      "css": ".ds-chip{border:1.5px solid var(--rule-2,#BEC2BA);background:transparent;border-radius:99px;padding:6px 12px;min-height:34px;font:600 13px/1 \"Barlow Condensed\",\"Barlow\",sans-serif;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;color:var(--ink-2,#474C54)}.ds-chip:hover{border-color:var(--ink-3,#62676F);color:var(--ink,#23262B)}.ds-chip[aria-pressed=true]{background:var(--ink,#23262B);border-color:var(--ink,#23262B);color:var(--slip,#F6F7F4)}.ds-chip:focus-visible{outline:2px solid var(--ink,#23262B);outline-offset:2px}"
+      "world": "app",
+      "name": "measure",
+      "note": "Auto-fit grid of figure cells (minmax 160-320px) split by 1px left rules, flush-left first cell; .fig.tint.pos/.neg field behind an ink figure carries P&L direction."
     },
     {
-      "name": "Strategy Slip",
-      "kind": "card",
-      "refersTo": "slip",
-      "description": "Perforated thermal slip with meta, title, dashed figure row, serial and a rubber stamp.",
-      "html": "<div style=\"background:var(--counter,#E2E5DF);padding:20px\"><a class=\"ds-slip\" href=\"#\"><span class=\"ds-stamp\">Passed</span><div class=\"ds-meta\">BTC 5pm</div><h3>Sell the overpriced fear</h3><dl class=\"ds-figs\"><div><dt>Realized</dt><dd>$0.00</dd></div><div><dt>Trades</dt><dd>0</dd></div><div><dt>Backtest</dt><dd style=\"color:var(--gain,#1F7A4D)\">+$6.50</dd></div></dl><div class=\"ds-foot\"><span>Paper · $10 a trade</span><b>No. 00011</b></div></a></div>",
-      "css": ".ds-slip{position:relative;display:block;max-width:420px;background:var(--slip,#F6F7F4);padding:18px 18px 16px;color:var(--ink,#23262B);text-decoration:none;font:400 15px/1.5 \"Barlow\",sans-serif;font-variant-numeric:tabular-nums lining-nums;box-shadow:0 1px 1px rgba(20,30,25,.08),0 10px 24px -14px rgba(20,30,25,.35);-webkit-mask:radial-gradient(circle 3.5px at 6px 0,transparent 3px,#000 3.6px) top left/12px 51% repeat-x,radial-gradient(circle 3.5px at 6px 100%,transparent 3px,#000 3.6px) bottom left/12px 51% repeat-x;mask:radial-gradient(circle 3.5px at 6px 0,transparent 3px,#000 3.6px) top left/12px 51% repeat-x,radial-gradient(circle 3.5px at 6px 100%,transparent 3px,#000 3.6px) bottom left/12px 51% repeat-x;transition:transform .2s cubic-bezier(.16,1,.3,1),box-shadow .2s}.ds-slip:hover{transform:translateY(-2px);box-shadow:0 1px 1px rgba(20,30,25,.08),0 16px 30px -16px rgba(20,30,25,.45)}.ds-slip:focus-visible{outline:2px solid var(--ink,#23262B);outline-offset:2px}.ds-meta,.ds-figs dt,.ds-foot b{font:600 12px/1 \"Barlow Condensed\",\"Barlow\",sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3,#62676F)}.ds-slip h3{font:600 18px/1.25 \"Barlow\",sans-serif;margin:4px 0 6px;padding-right:104px}.ds-figs{display:grid;grid-template-columns:repeat(3,1fr);margin:14px 0 0;border-top:1px dashed var(--rule-2,#BEC2BA)}.ds-figs div{padding-top:10px}.ds-figs dd{margin:4px 0 0;font:600 20px/1.1 \"Barlow Condensed\",\"Barlow\",sans-serif}.ds-foot{display:flex;justify-content:space-between;margin-top:12px;font-size:13px;color:var(--ink-3,#62676F)}.ds-foot b{color:var(--ink-2,#474C54)}.ds-stamp{position:absolute;top:14px;right:14px;transform:rotate(-7deg);font:700 14px/1 \"Barlow Condensed\",\"Barlow\",sans-serif;letter-spacing:.18em;text-transform:uppercase;padding:6px 8px 5px 10px;border:2px solid currentColor;border-radius:3px;color:var(--pass,#1F7A4D);mix-blend-mode:multiply;opacity:.9}"
+      "world": "app",
+      "name": "section / sect-head",
+      "note": "Unfilled region opened by a Narrow 600 head + note over a 2px ink rule."
     },
     {
-      "name": "Service Plate",
-      "kind": "custom",
-      "refersTo": "plate-live",
-      "description": "Which money the board shows: PAPER outline or LIVE amber fill with a blinking lamp.",
-      "html": "<div class=\"ds-plates\"><span class=\"ds-plate\">Paper money</span><span class=\"ds-plate ds-live\"><i></i>Live</span></div>",
-      "css": ".ds-plates{display:flex;gap:12px;background:var(--board,#0F3A2C);padding:16px}.ds-plate{display:inline-flex;align-items:center;gap:8px;padding:6px 10px 5px;font:700 13px/1 \"Barlow Condensed\",\"Barlow\",sans-serif;letter-spacing:.16em;text-transform:uppercase;border:1.5px solid currentColor;border-radius:2px;color:var(--board-label,#A9C7B8)}.ds-live{color:var(--board,#0F3A2C);background:var(--amber,#FFB31A);border-color:var(--amber,#FFB31A)}.ds-plate i{width:7px;height:7px;border-radius:50%;background:currentColor;animation:ds-blink 1.6s steps(2,start) infinite}@keyframes ds-blink{to{visibility:hidden}}"
+      "world": "app",
+      "name": "table",
+      "note": "Hairline-ruled rows, Narrow column heads over a rule-2 divider, right-aligned tabular .num cells; .stack + data-lab restacks under 760px; tr.live-row name turns signal."
     },
     {
-      "name": "Board Figures",
-      "kind": "custom",
-      "refersTo": "board-cell",
-      "description": "Recessed board cells: condensed label over amber figure, lead cell larger.",
-      "html": "<dl class=\"ds-figures\"><div class=\"ds-fig ds-lead\"><dt>Paper account value</dt><dd>$1,000.00</dd></div><div class=\"ds-fig\"><dt>Today</dt><dd>$0.00</dd></div><div class=\"ds-fig\"><dt>Return</dt><dd>0.0%</dd></div></dl>",
-      "css": ".ds-figures{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:1px;background:#072118;border:1px solid #072118;margin:0;font-variant-numeric:tabular-nums lining-nums}.ds-fig{background:var(--board-deep,#0A2A20);padding:12px 16px 14px;box-shadow:inset 0 1px 0 rgba(0,0,0,.35)}.ds-fig dt{font:600 12px/1.2 \"Barlow Condensed\",\"Barlow\",sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--board-label,#A9C7B8)}.ds-fig dd{margin:6px 0 0;font:600 34px/1 \"Barlow Condensed\",\"Barlow\",sans-serif;color:var(--amber,#FFB31A)}.ds-lead dd{font-size:56px}"
+      "world": "app",
+      "name": "mark",
+      "note": "State pill (Narrow 600 11px, 3px nick): default outline (PAPER/OFF), .on solid ink, .armed signal text on wash, .live solid signal, .quiet ink-3."
+    },
+    {
+      "world": "app",
+      "name": "panel / sheet-doc",
+      "note": "Bordered (1px rule) filled (stock-raised) rectangles, no shadow, no radius beyond the nick. sheet-doc is the strategy sheet with an absolute PASSED mark, rule list, chart, split and gates."
+    },
+    {
+      "world": "app",
+      "name": "gates / split / dials",
+      "note": "Gates: check(ink)/cross(signal) pass list. Split: in-sample vs out-of-sample two-col, second half stock-shaded. Dials: native range (ink accent-color) with 18px output, re-runs the sheet."
+    },
+    {
+      "world": "app",
+      "name": "chat / autopilot",
+      "note": "Bordered sticky panel; ink user bubbles right, stock agent bubbles left, dashed system/proposal boxes; autopilot bar borders signal when on; 3-dot typing."
+    },
+    {
+      "world": "app",
+      "name": "buttons / inputs / chips / switch",
+      "note": "Btn: Narrow 600 uppercase, 1px ink border, hover fills ink; .danger/.armed signal. Inputs stock-raised, focus ink border + stock bg, signal caret. Chips pill filters. Switch 42x24 pill, signal when on."
+    },
+    {
+      "world": "console",
+      "name": "(see secondaryWorld + DESIGN.md Kursbuch section)",
+      "note": "statusline, as-of rule, marks, plate, charts with five trace colours + dash patterns, two stocks. Full record preserved."
     }
   ],
   "narrative": {
-    "northStar": "The Tote Slip",
-    "overview": "Every strategy is a printed slip: numbered, staked and stamped, hanging under a live tote board. Every screen opens with a tote board, a full-width field of racetrack green (`{colors.board}`) covered in a faint lamp grid. The money figures on it are amber, set in large condensed numerals. Below the board is the counter (`{colors.counter}`), a cool grey surface. Strategies sit on it as thermal-white slips with perforated tear-off edges, a serial number (`No. 00012`), and a rubber-stamp mark that carries their state. The world rejects both the dark neon trading terminal and the white brokerage card grid. The page is a betting window, not a terminal.\n\nDensity is set for a retail trader who reads money first. Each screen has one dominant field, the board, so its figures always read first. Slips sit at registered scale in an auto-fill grid and share one sparkline axis, so you compare them by eye rather than by reading. Barlow and Barlow Condensed carry every word and number. The condensed cut, uppercase and letterspaced, is the voice of the board: figures, labels, buttons, stamps and nav. Normal Barlow is the voice of sentences: slip titles, theses, notes and chat.\n\nThe world has three pieces of authored motion. A research slip feeds down out of the board's slot as the agent prints it. A stamp then lands on it with a slight overshoot. The lamp on a LIVE plate blinks. Everything else is a short state transition, and `prefers-reduced-motion` collapses all of it.",
-    "keyCharacteristics": [
-      "A green tote board owns the top band of every screen; amber figures appear only on it.",
-      "Strategies are thermal slips with perforated edges, a serial and a rotated rubber stamp.",
-      "State is a stamped word (PASSED, VOID, PAPER, LIVE), never colour alone.",
-      "Paper money and live money are told apart by a service plate on the board: an outline for PAPER, a solid amber fill with a blinking lamp for LIVE.",
-      "One family: Barlow for sentences, Barlow Condensed for figures and labels. No monospace labels.",
-      "Paper depth: one soft slip shadow on the counter; the board itself stays flat."
-    ],
-    "rules": [
-      {
-        "name": "The Amber-Lives-on-Green Rule",
-        "body": "`{colors.amber}` appears as text only on the green board or the green tab bar. On the counter and on slips, amber appears only as a solid fill (the ticket button, the live slip band, the LIVE plate). A live mark printed on white stock uses `{colors.live}`.",
-        "section": "colors"
-      },
-      {
-        "name": "The One Green Field Rule",
-        "body": "Each screen gets exactly one band of `{colors.board}`, at the top. The counter is never tinted green, and no second board appears further down the page.",
-        "section": "colors"
-      },
-      {
-        "name": "The Two-Widths Rule",
-        "body": "Labels, figures and commands are set in Condensed uppercase. Sentences are set in Barlow in sentence case. A sentence is never uppercased, and a figure is never set in the normal width.",
-        "section": "typography"
-      },
-      {
-        "name": "The No-Monospace-Labels Rule",
-        "body": "Tickers, serials, timestamps and chart axes are set in Barlow or Barlow Condensed, and tabular figures handle the alignment. The one place a fixed-pitch face appears is the collapsed \"Exact spec\" block of raw machine JSON, which is a code view rather than a label.",
-        "section": "typography"
-      },
-      {
-        "name": "The Board-First Rule",
-        "body": "Every authenticated screen opens with the board, and the board opens with money or the page's own measured result. The counter starts below it, and nothing comes before the board.",
-        "section": "layout"
-      },
-      {
-        "name": "The Registered-Scale Rule",
-        "body": "Slips in a grid share one size and one sparkline axis, so heights and lines can be compared without reading the numbers.",
-        "section": "layout"
-      },
-      {
-        "name": "The Paper-on-a-Counter Rule",
-        "body": "Things on the counter rest on it with the soft slip shadow. Things on the board are recessed into it. Nothing on the board floats.",
-        "section": "elevation"
-      },
-      {
-        "name": "The Perforation Rule",
-        "body": "Only a slip, meaning a strategy, hypothesis or deployment, gets perforated edges. Panels and rows are ordinary stock with a 3px corner. If an object is not a strategy, do not tear it.",
-        "section": "shapes"
-      }
-    ],
-    "dos": [
-      "**Do** open every authenticated screen with the green board and put money or the page's measured result in its lead cell.",
-      "**Do** keep amber text on green only. On white stock, mark live money with `{colors.live}`, the amber top band, or a filled amber plate.",
-      "**Do** carry every strategy state as a stamped word. Pair colour with PASSED, VOID, PAPER or LIVE so the state survives in greyscale.",
-      "**Do** show the service plate (PAPER outline or LIVE amber fill) on any board that displays money.",
-      "**Do** set figures, labels and commands in Barlow Condensed uppercase, and sentences in Barlow sentence case. Keep `tabular-nums lining-nums` on.",
-      "**Do** give every new strategy-like object the slip anatomy: serial, title, plain thesis, dashed figure row, stamp.",
-      "**Do** use the slip-rest shadow for things that sit on the counter, and recess anything placed on the board.",
-      "**Do** keep tap targets at least 44px tall, and keep input text at 16px.",
-      "**Do** honour `prefers-reduced-motion`; the global block collapses every animation and transition."
-    ],
-    "donts": [
-      "**Don't** build the dark neon trading terminal or the white brokerage card grid. The counter is cool grey, slips are thermal white, and the only dark field is the green board.",
-      "**Don't** use a monospace face for labels, tickers, serials or axes.",
-      "**Don't** perforate panels, rows or forms. Tear edges belong to slips.",
-      "**Don't** add a second board band, a second ticket button, or amber text on the counter.",
-      "**Don't** let paper and live converge. LIVE is always the filled amber plate, stamp or band. PAPER is always the outline or grey stamp.",
-      "**Don't** add a third type family or an icon font. Icons are inline 1.8-stroke SVG in `currentColor`.",
-      "**Don't** add a build step or framework. The surface is vanilla HTML, CSS and JS served from `app/static/`."
-    ]
+    "landing": {
+      "northStar": "The Calm Product Page",
+      "overview": "The pre-login Persuade surface, copied in spirit from catalyst.app: a near-white ground (l-bg #FBFBFA), near-black Rubik ink (l-ink #15161A), one warm accent (l-accent #F05A28) spent only on the logo cube's lit face and the preview's live-spinner, rounded pill buttons, and a single product-preview browser mock on a soft textured gradient panel. Calm, roomy, rounded; the opposite of the dense timetable behind the login.",
+      "keyCharacteristics": [
+        "Rubik throughout, 400-700.",
+        "Pills at 999px radius; the only accent-carrying marks are the cube and the spinner.",
+        "One hero, one deck, one CTA pair, one preview panel.",
+        "Warm textured gradient panel + floating white window with traffic-light chrome.",
+        "No tables, no hairline rules, no signal red; this world never shows money state."
+      ],
+      "rules": [
+        "Accent is reserved: l-accent appears only in the cube's lit face and the live-spinner, never as a button fill or body colour.",
+        "One warm orange, not the app's signal red: the landing never uses --signal (#C8102E)."
+      ],
+      "dos": [
+        "Keep the ground white and the ink near-black; let whitespace carry the calm.",
+        "Use pills (solid for primary, outline for secondary) at full 999px radius.",
+        "Confine the accent to the logo and the spinner."
+      ],
+      "donts": [
+        "Do not bring hairline rules, stock tints, tables or signal red onto the landing.",
+        "Do not spend the accent on a button fill or large field.",
+        "Do not uppercase the Rubik sentences."
+      ]
+    },
+    "app": {
+      "northStar": "Kursbuch (The Station Timetable), carried onto the product",
+      "overview": "The authed customer SPA is the operator console's timetable world applied to a retail trader: ink on warm grey stock (#E9EBE5), hairline rules, 2px ink section rules, tabular lining Archivo figures, dense tables over cards, a measure grid for figure rows, a single status line stating what the system is doing now, and ONE reserved signal red (#C8102E) spent only where the operator must act - stale data, paused/stopped deployments, armed/live money, the caret. P&L direction rides a desaturated tint field (pos/neg) behind an ink figure, never a coloured number. No shadow, gradient, glass or blur exists; depth is rule weight plus four stock tints. The live surface swaps to a rose stock. It differs from the console only in permitting bordered, unshadowed filled panels for grouped explanation the customer needs.",
+      "keyCharacteristics": [
+        "Archivo + Archivo Narrow, weights 400/600, tabular lining figures everywhere.",
+        "One reserved signal red for attention and the live-money boundary; direction told by a tint field, not colour.",
+        "Every screen opens with a status line; sections carry freshness; stale is a visible struck-through state.",
+        "Dense ruled tables and a measure grid, not cards.",
+        "No shadow anywhere; the one monospace is the collapsed raw-spec JSON block."
+      ],
+      "rules": [
+        "Reserved signal: --signal only on attention/live-money (stale, needs, armed, live, danger/stop, caret, live-row). Never a losing number, heading or decoration.",
+        "Money rides a field: .fig.tint.pos/.neg behind an ink figure; the figure itself never takes colour (.gain/.loss both resolve to ink).",
+        "State never by colour alone: PAPER/PASSED/LIVE/PAUSED words and shapes survive greyscale.",
+        "Printed depth: rule it or tint it, never lift it - no shadow in the app world."
+      ],
+      "dos": [
+        "Open every page with a status line; put the measured result first.",
+        "Tell P&L direction with a pos/neg tint field behind an ink figure.",
+        "Keep tabular-nums lining-nums on anything numeric.",
+        "Give every table .stack + data-lab so it restacks under 760px.",
+        "Reserve uppercase for short Narrow labels; write sentences in sentence case."
+      ],
+      "donts": [
+        "Do not add a shadow, gradient, glass or a coloured P&L number.",
+        "Do not spend signal red on anything but attention or the live-money boundary.",
+        "Do not add a third family, a third weight, or a radius beyond the 3px nick (pills excepted for chip/switch).",
+        "Do not let paper and live stocks converge; live is the rose stock plus signal masthead/tab."
+      ]
+    }
   }
 }
