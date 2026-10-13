@@ -1,0 +1,228 @@
+"""Tables for the Recursive customer app. Additive and idempotent, like
+data_pipeline/init_schema.py: `python -m app.schema`.
+
+Money is DECIMAL, never FLOAT. Every paper-cash movement is a row in
+app_ledger and the balance is their sum, so a balance can always be explained
+line by line and two writers cannot lose an update to each other.
+"""
+from data_pipeline import init_schema
+from data_pipeline.common import get_db_conn
+
+DDL = [
+    # -- market history (written by app.market_history; Kalshi candles go in
+    # the pipeline's existing market_candles table) ---------------------------
+    """
+    CREATE TABLE IF NOT EXISTS hist_markets (
+      ticker VARCHAR(128) PRIMARY KEY,
+      series_ticker VARCHAR(32) NOT NULL,
+      event_ticker VARCHAR(128) NOT NULL,
+      strike DECIMAL(18,4) NOT NULL,
+      open_time DATETIME NOT NULL,
+      close_time DATETIME NOT NULL,
+      result VARCHAR(8) NULL,
+      expiration_value DECIMAL(18,4) NULL,
+      candles_done TINYINT(1) NOT NULL DEFAULT 0,
+      INDEX idx_hist_series_close (series_ticker, close_time)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS btc_candles_1m (
+      start_ts BIGINT PRIMARY KEY,
+      open DECIMAL(18,4) NOT NULL,
+      high DECIMAL(18,4) NOT NULL,
+      low DECIMAL(18,4) NOT NULL,
+      close DECIMAL(18,4) NOT NULL,
+      volume DECIMAL(22,8) NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    # -- identity -------------------------------------------------------------
+    """
+    CREATE TABLE IF NOT EXISTS app_users (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      google_sub VARCHAR(64) NOT NULL UNIQUE,
+      email VARCHAR(320) NOT NULL,
+      name VARCHAR(200) NULL,
+      picture_url VARCHAR(1000) NULL,
+      autopilot TINYINT(1) NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL,
+      last_login_at DATETIME NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS app_sessions (
+      token_hash CHAR(64) PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      created_at DATETIME NOT NULL,
+      expires_at DATETIME NOT NULL,
+      INDEX idx_sessions_user (user_id),
+      INDEX idx_sessions_expiry (expires_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS app_oauth_states (
+      state CHAR(43) PRIMARY KEY,
+      nonce CHAR(43) NOT NULL,
+      code_verifier CHAR(64) NOT NULL,
+      created_at DATETIME NOT NULL,
+      INDEX idx_oauth_created (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS app_kalshi_keys (
+      user_id BIGINT PRIMARY KEY,
+      key_id VARCHAR(128) NOT NULL,
+      private_key_enc BLOB NOT NULL,
+      created_at DATETIME NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    # -- money ----------------------------------------------------------------
+    """
+    CREATE TABLE IF NOT EXISTS app_ledger (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      kind VARCHAR(24) NOT NULL,
+      amount DECIMAL(14,4) NOT NULL,
+      position_id BIGINT NULL,
+      memo VARCHAR(255) NULL,
+      created_at DATETIME NOT NULL,
+      INDEX idx_ledger_user_time (user_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    # -- agents ---------------------------------------------------------------
+    # One queue for every kind of agent work (research, chat, review) so there
+    # is one claim path and one place to see what is stuck.
+    """
+    CREATE TABLE IF NOT EXISTS app_agent_runs (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      kind VARCHAR(16) NOT NULL,
+      market VARCHAR(16) NULL,
+      direction VARCHAR(48) NULL,
+      prompt TEXT NULL,
+      deployment_id BIGINT NULL,
+      status VARCHAR(16) NOT NULL,
+      worker_id VARCHAR(64) NULL,
+      hypotheses_tried INT NOT NULL DEFAULT 0,
+      strategies_passed INT NOT NULL DEFAULT 0,
+      input_tokens INT NOT NULL DEFAULT 0,
+      output_tokens INT NOT NULL DEFAULT 0,
+      error TEXT NULL,
+      created_at DATETIME NOT NULL,
+      started_at DATETIME NULL,
+      heartbeat_at DATETIME NULL,
+      finished_at DATETIME NULL,
+      INDEX idx_runs_status (status, created_at),
+      INDEX idx_runs_user (user_id, kind, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS app_agent_events (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      run_id BIGINT NOT NULL,
+      kind VARCHAR(16) NOT NULL,
+      message TEXT NOT NULL,
+      data_json JSON NULL,
+      created_at DATETIME NOT NULL,
+      INDEX idx_events_run (run_id, id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS app_strategies (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      run_id BIGINT NULL,
+      parent_id BIGINT NULL,
+      market VARCHAR(16) NOT NULL,
+      direction VARCHAR(48) NOT NULL,
+      title VARCHAR(200) NOT NULL,
+      thesis TEXT NOT NULL,
+      spec_json JSON NOT NULL,
+      status VARCHAR(16) NOT NULL,
+      result_json JSON NULL,
+      created_at DATETIME NOT NULL,
+      INDEX idx_strat_user (user_id, status, created_at),
+      INDEX idx_strat_run (run_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    # -- trading --------------------------------------------------------------
+    """
+    CREATE TABLE IF NOT EXISTS app_deployments (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      strategy_id BIGINT NOT NULL,
+      market VARCHAR(16) NOT NULL,
+      mode VARCHAR(8) NOT NULL,
+      status VARCHAR(12) NOT NULL,
+      status_reason VARCHAR(255) NULL,
+      last_decision_ts BIGINT NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL,
+      INDEX idx_dep_status (status, market),
+      INDEX idx_dep_user (user_id, status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS app_positions (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      deployment_id BIGINT NOT NULL,
+      user_id BIGINT NOT NULL,
+      mode VARCHAR(8) NOT NULL,
+      ticker VARCHAR(128) NOT NULL,
+      side VARCHAR(4) NOT NULL,
+      qty INT NOT NULL,
+      entry_price DECIMAL(10,4) NOT NULL,
+      entry_fee DECIMAL(10,4) NOT NULL,
+      market_close_time DATETIME NOT NULL,
+      opened_at DATETIME NOT NULL,
+      status VARCHAR(8) NOT NULL,
+      exit_price DECIMAL(10,4) NULL,
+      exit_fee DECIMAL(10,4) NULL,
+      pnl DECIMAL(14,4) NULL,
+      close_reason VARCHAR(32) NULL,
+      closed_at DATETIME NULL,
+      order_ref VARCHAR(128) NULL,
+      INDEX idx_pos_dep (deployment_id, status),
+      INDEX idx_pos_user (user_id, status, closed_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    # -- conversation ---------------------------------------------------------
+    """
+    CREATE TABLE IF NOT EXISTS app_chat_messages (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      role VARCHAR(8) NOT NULL,
+      content TEXT NOT NULL,
+      proposal_id BIGINT NULL,
+      created_at DATETIME NOT NULL,
+      INDEX idx_chat_user (user_id, id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS app_proposals (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      kind VARCHAR(12) NOT NULL,
+      deployment_id BIGINT NULL,
+      strategy_id BIGINT NULL,
+      reason TEXT NOT NULL,
+      status VARCHAR(12) NOT NULL,
+      created_at DATETIME NOT NULL,
+      decided_at DATETIME NULL,
+      INDEX idx_prop_user (user_id, status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+]
+
+
+def main() -> None:
+    init_schema.main()  # market_candles and the shared pipeline tables
+    conn = get_db_conn()
+    with conn.cursor() as cur:
+        for stmt in DDL:
+            cur.execute(stmt)
+    conn.close()
+    print("App schema initialized.")
+
+
+if __name__ == "__main__":
+    main()

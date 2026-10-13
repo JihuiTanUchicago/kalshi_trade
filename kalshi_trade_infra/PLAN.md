@@ -1,5 +1,58 @@
 # PLAN
 
+## Recursive v0.1 - customer product (built 2026-10-12, not yet deployed)
+
+`mvp.md` v0.1 is implemented as a new package `app/` (details and diagrams: `app/README.md`;
+product truth: `PRODUCT.md`; design contract: `.impeccable/surfaces/app-static-index-html.md`).
+
+Owner decisions this session: paper money by default, live only through the user's **own**
+Kalshi API key (we never hold funds - CFTC); **both** markets (KXBTC15M and the KXBTCD 5pm
+ladder); agents emit a **thesis + parameterized spec**, never code; new consumer visual world
+"The Tote Slip"; product name **Recursive**; Google-only sign-in.
+
+What exists:
+- `app/markets.py` + `app/spec.py`: one feature snapshot and one rule, shared by backtest and
+  engine. `app/backtest.py`: real Kalshi candles + results, taker fees, 70/30 time split, 5
+  gates, what-if (fees/slippage/stake). `app/market_history.py`: resumable backfill of Kalshi
+  settled markets/candles + Coinbase 1m candles (new tables `hist_markets`, `btc_candles_1m`;
+  reuses `market_candles`).
+- `app/agent.py`: 2-round research loop on in-sample only, OOS revealed only for frozen
+  finalists, per-user memory; co-pilot chat/review with actions re-backtested; autopilot
+  guardrails. `app/llm.py`: Claude over HTTPS with one JSON repair round.
+- `app/engine.py`: per-slot decisions for every user, paper fills at the live book capped by
+  size, live via `MarketableLimitKernel` with the user's key (gated by
+  `APP_LIVE_TRADING_ENABLED`, off), settlement on Kalshi results, loss guard, daily reviews.
+- `app/server.py` + `app/static/`: Google OIDC/PKCE, hashed sessions, CSRF header, rate
+  limits, JSON API, SPA (Dashboard, Research hub + live run "printer", Strategies, Strategy
+  homework + what-if, Deploy board + agent chat + autopilot, Funds: paper ledger + Kalshi key).
+- `data_pipeline/common.py` / `live_trading_engine.place_limit_order` gained an optional
+  `credentials` argument (default = house key, so existing callers are unchanged).
+- Tests: 53 new (`tests/test_app_*.py`); the money path runs against real MySQL with
+  `APP_TEST_MYSQL=1`. Full suite: 130 passed. Found and fixed on the way: `10 // 0.4 == 24.0`
+  under-sized every order by one contract.
+
+**Business finding - read before launch.** On ~13 days (15m) and ~24 days (daily) of real
+history, a grid of ~400 specs per market found **zero** that pass the fee-inclusive
+out-of-sample gates; the GBM fair value is slightly *worse* calibrated than the Kalshi mid
+(log loss 0.403 vs 0.384 at 3-8 min). The gate is doing its job, but a product where agents
+rarely find a passing slip will not feel lovable. Highest-leverage next steps:
+1. Maker (resting) orders: Kalshi's maker fee is 1/4 of taker; most rejected specs die on fees.
+2. Richer building blocks: order-book imbalance and trade flow (already in `model_features_1m`
+   for 15m), BRTI-vs-Coinbase basis, cross-strike ladder shape for the daily market.
+3. Longer history via Kalshi's `/historical` endpoints (live API covers settled markets back
+   to 2026-08-12 only).
+
+Deploy checklist (owner actions marked *):
+1. `python -m app.schema` on the box; install `scripts/systemd/recursive-*.service`.
+2. * Google Cloud OAuth client + redirect URI; * `ANTHROPIC_API_KEY`; generate `APP_SECRET_KEY`;
+   all in `/opt/kalshi/.env.app` (600).
+3. * CloudFront behaviour for the app host: forward cookies, allow POST.
+4. Start `recursive-history` first and let the backfill finish (~20 min) before inviting users.
+5. `APP_LIVE_TRADING_ENABLED` stays unset until separately authorised (AGENTS.md).
+
+Deferred (v0.2 or later): charging, mark-to-market of open paper positions (shown at cost
+today), partial-fill handling on live exits, NO-side live orders, email notifications.
+
 ## Current Codebase Knowledge
 
 - `data_pipeline/` is the real system: ingestion (`forward_collector`, `coinbase_collector`, `feature_1m_collector`), feature building (`model_features_1m_builder`), simulated trading (`simulated_trading_engine`, `sim_portfolio_20s_updater`, `sim_repository`, `sim_config`), live trading (`live_trading_engine`, `live_portfolio_20s_updater`, `architecture/{contracts,risk_engine,execution_kernel}.py`), and the dashboard (`dashboard_server.py`).

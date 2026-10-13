@@ -1,0 +1,324 @@
+"""The strategy language agents write in, and the one rule that executes it.
+
+An agent never writes code. It writes a spec: a fair-value model with a few
+parameters, entry conditions, exits and sizing. `validate` is the trust
+boundary (the spec comes from an LLM), and `entries` / `exit_signal` are the
+only decision logic - the backtester and the live engine both call them, so a
+deployed strategy trades exactly the rule that passed its backtest.
+
+Fair value is a drifted GBM digital:
+
+    P(YES) = Phi( (ln(S/K) + mu*T) / (sigma*sqrt(T)) )
+    sigma  = vol_scale * realised 1m vol over vol_window minutes
+    mu     = drift_beta * (BTC return over drift_window minutes) / drift_window
+
+drift_beta = 0 is the house `binary_theory` model; > 0 bets on momentum,
+< 0 on mean reversion; vol_scale != 1 bets the market mis-prices volatility.
+Filters on any FEATURES entry express regimes (time of day, vol, spread...).
+"""
+from __future__ import annotations
+
+import copy
+import math
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
+
+from app.markets import FEATURES, MARKETS, Snapshot
+
+OPS = (">", ">=", "<", "<=")
+MAX_FILTERS = 4
+
+# (min, max) for every numeric field; None-able fields are listed separately.
+RANGES: Dict[str, Tuple[float, float]] = {
+    "model.vol_scale": (0.3, 3.0),
+    "model.drift_beta": (-3.0, 3.0),
+    "entry.min_edge": (0.0, 0.5),
+    "entry.min_price": (0.01, 0.99),
+    "entry.max_price": (0.01, 0.99),
+    "entry.min_tte_min": (0.0, 1500.0),
+    "entry.max_tte_min": (1.0, 1500.0),
+    "entry.max_spread": (0.01, 0.5),
+    "exit.take_profit": (0.01, 0.99),
+    "exit.stop_loss": (0.01, 0.99),
+    "exit.min_edge_to_hold": (-0.5, 0.5),
+    "sizing.stake": (1.0, 500.0),
+    "sizing.max_positions": (1, 10),
+}
+CHOICES: Dict[str, Tuple] = {
+    "side": ("yes", "no", "either"),
+    "model.vol_window": (15, 60),
+    "model.drift_window": (0, 5, 15, 60),
+}
+NULLABLE = {"exit.take_profit", "exit.stop_loss", "exit.min_edge_to_hold"}
+
+DEFAULT_SPEC: Dict[str, Any] = {
+    "market": "btc15m",
+    "side": "either",
+    "model": {"vol_window": 60, "vol_scale": 1.0, "drift_window": 0, "drift_beta": 0.0},
+    "entry": {
+        "min_edge": 0.05,
+        "min_price": 0.05,
+        "max_price": 0.95,
+        "min_tte_min": 1.0,
+        "max_tte_min": 1500.0,
+        "max_spread": 0.05,
+        "filters": [],
+    },
+    "exit": {"take_profit": None, "stop_loss": None, "min_edge_to_hold": None},
+    "sizing": {"stake": 10.0, "max_positions": 1},
+}
+
+SPEC_GUIDE = """A strategy spec is a JSON object:
+{
+  "market": "btc15m" | "btc_daily",
+  "side": "yes" | "no" | "either",            // which leg it may buy
+  "model": {                                   // fair value = drifted GBM digital
+    "vol_window": 15 | 60,                     // minutes of 1m returns for realised vol
+    "vol_scale": 0.3..3.0,                     // 1.0 = trust realised vol
+    "drift_window": 0 | 5 | 15 | 60,           // 0 = no drift
+    "drift_beta": -3.0..3.0                    // >0 momentum, <0 mean reversion
+  },
+  "entry": {
+    "min_edge": 0..0.5,                        // fair prob minus price paid, in dollars
+    "min_price": 0.01..0.99, "max_price": 0.01..0.99,   // price paid per contract
+    "min_tte_min": 0..1500, "max_tte_min": 1..1500,     // minutes to settlement
+    "max_spread": 0.01..0.5,
+    "filters": [ {"feature": <name>, "op": ">"|">="|"<"|"<=", "value": <number>} ]  // up to 4, all must hold
+  },
+  "exit": {                                    // all null = hold to settlement
+    "take_profit": null | 0.01..0.99,          // sell when price gained this much
+    "stop_loss": null | 0.01..0.99,            // sell when price lost this much
+    "min_edge_to_hold": null | -0.5..0.5       // sell when fair - sell price falls below this
+  },
+  "sizing": {"stake": 1..500, "max_positions": 1..10}  // dollars per trade, concurrent positions
+}
+Features for filters: """ + "; ".join("%s = %s" % kv for kv in FEATURES.items())
+
+
+class SpecError(ValueError):
+    pass
+
+
+def _get(spec: Dict, path: str):
+    node = spec
+    for part in path.split("."):
+        node = node[part]
+    return node
+
+
+def _set(spec: Dict, path: str, value) -> None:
+    parts = path.split(".")
+    node = spec
+    for part in parts[:-1]:
+        node = node[part]
+    node[parts[-1]] = value
+
+
+def _merge_known(base: Dict, raw: Dict, prefix: str, errors: List[str]) -> None:
+    for key, value in raw.items():
+        path = prefix + key
+        if key not in base:
+            errors.append("unknown field %s" % path)
+        elif isinstance(base[key], dict):
+            if not isinstance(value, dict):
+                errors.append("%s must be an object" % path)
+            else:
+                _merge_known(base[key], value, path + ".", errors)
+        else:
+            base[key] = value
+
+
+def validate(raw: Any) -> Dict[str, Any]:
+    """Return a complete, normalised spec or raise SpecError listing every problem.
+
+    Missing fields take defaults; unknown fields, wrong types and out-of-range
+    values are errors, never silently clamped - the agent should learn its
+    spec was wrong, not have it quietly changed into a different strategy.
+    """
+    if not isinstance(raw, dict):
+        raise SpecError("spec must be a JSON object")
+    spec = copy.deepcopy(DEFAULT_SPEC)
+    errors: List[str] = []
+    _merge_known(spec, raw, "", errors)
+
+    if spec["market"] not in MARKETS:
+        errors.append("market must be one of %s" % ", ".join(MARKETS))
+    for path, choices in CHOICES.items():
+        if _get(spec, path) not in choices:
+            errors.append("%s must be one of %s" % (path, list(choices)))
+    for path, (lo, hi) in RANGES.items():
+        value = _get(spec, path)
+        if value is None and path in NULLABLE:
+            continue
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            errors.append("%s must be a number" % path)
+            continue
+        if not lo <= value <= hi:
+            errors.append("%s=%s is outside %s..%s" % (path, value, lo, hi))
+            continue
+        _set(spec, path, int(value) if path == "sizing.max_positions" else float(value))
+
+    entry = spec["entry"]
+    if not errors:
+        if entry["min_price"] > entry["max_price"]:
+            errors.append("entry.min_price must be <= entry.max_price")
+        if entry["min_tte_min"] >= entry["max_tte_min"]:
+            errors.append("entry.min_tte_min must be < entry.max_tte_min")
+    filters = entry["filters"]
+    if not isinstance(filters, list) or len(filters) > MAX_FILTERS:
+        errors.append("entry.filters must be a list of at most %d filters" % MAX_FILTERS)
+    else:
+        clean = []
+        for i, flt in enumerate(filters):
+            if not isinstance(flt, dict) or set(flt) != {"feature", "op", "value"}:
+                errors.append("entry.filters[%d] must have exactly feature, op, value" % i)
+                continue
+            if flt["feature"] not in FEATURES:
+                errors.append("entry.filters[%d].feature %r is not a known feature" % (i, flt["feature"]))
+            if flt["op"] not in OPS:
+                errors.append("entry.filters[%d].op must be one of %s" % (i, list(OPS)))
+            v = flt["value"]
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+                errors.append("entry.filters[%d].value must be a number" % i)
+            else:
+                clean.append({"feature": flt["feature"], "op": flt["op"], "value": float(v)})
+        entry["filters"] = clean
+    if errors:
+        raise SpecError("; ".join(errors))
+    return spec
+
+
+# -- the rule ---------------------------------------------------------------
+
+
+def _phi(x: float) -> float:
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def fair_yes(spec: Dict, f: Dict[str, float]) -> Optional[float]:
+    m = spec["model"]
+    sigma = m["vol_scale"] * f["vol_%dm" % m["vol_window"]]
+    t = f["tte_min"]
+    mu = 0.0
+    if m["drift_window"]:
+        mu = m["drift_beta"] * f["ret_%dm" % m["drift_window"]] / m["drift_window"]
+    sigma_t = sigma * math.sqrt(t)
+    x = f["moneyness"] + mu * t
+    if sigma_t <= 1e-12:
+        return 1.0 if x > 0 else 0.0 if x < 0 else 0.5
+    return _phi(x / sigma_t)
+
+
+def _passes(flt: Dict, f: Dict[str, float]) -> bool:
+    v = f.get(flt["feature"])
+    if v is None:
+        return False
+    op, ref = flt["op"], flt["value"]
+    return v > ref if op == ">" else v >= ref if op == ">=" else v < ref if op == "<" else v <= ref
+
+
+@dataclass(frozen=True)
+class Entry:
+    snapshot: Snapshot
+    side: str  # "yes" | "no"
+    price: float  # what one contract costs
+    fair: float  # fair value of that side
+    edge: float
+
+
+def side_prices(snap: Snapshot) -> Dict[str, Tuple[float, float]]:
+    """side -> (buy price, sell price). NO is the mirror of the YES book."""
+    return {
+        "yes": (snap.yes_ask, snap.yes_bid),
+        "no": (1.0 - snap.yes_bid, 1.0 - snap.yes_ask),
+    }
+
+
+def entries(spec: Dict, snaps: List[Snapshot]) -> List[Entry]:
+    """Every contract the rule would buy now, best edge first."""
+    e = spec["entry"]
+    sides = ("yes", "no") if spec["side"] == "either" else (spec["side"],)
+    out: List[Entry] = []
+    for snap in snaps:
+        f = snap.features
+        if not e["min_tte_min"] <= f["tte_min"] <= e["max_tte_min"]:
+            continue
+        if f["spread"] > e["max_spread"]:
+            continue
+        if not all(_passes(flt, f) for flt in e["filters"]):
+            continue
+        p_yes = fair_yes(spec, f)
+        if p_yes is None:
+            continue
+        prices = side_prices(snap)
+        best = None
+        for side in sides:
+            price = prices[side][0]
+            if price <= 0 or price >= 1 or not e["min_price"] <= price <= e["max_price"]:
+                continue
+            fair = p_yes if side == "yes" else 1.0 - p_yes
+            edge = fair - price
+            if edge >= e["min_edge"] and (best is None or edge > best.edge):
+                best = Entry(snap, side, price, fair, edge)
+        if best is not None:
+            out.append(best)
+    out.sort(key=lambda x: x.edge, reverse=True)
+    return out
+
+
+def exit_signal(spec: Dict, side: str, entry_price: float, snap: Snapshot) -> Optional[Tuple[str, float]]:
+    """(reason, sell price) if the rule says sell now, else None (hold)."""
+    x = spec["exit"]
+    sell = side_prices(snap)[side][1]
+    if sell <= 0:
+        return None  # nobody to sell to; holding to settlement is the only option
+    gain = sell - entry_price
+    if x["take_profit"] is not None and gain >= x["take_profit"]:
+        return "take_profit", sell
+    if x["stop_loss"] is not None and -gain >= x["stop_loss"]:
+        return "stop_loss", sell
+    if x["min_edge_to_hold"] is not None:
+        p_yes = fair_yes(spec, snap.features)
+        if p_yes is not None:
+            fair = p_yes if side == "yes" else 1.0 - p_yes
+            if fair - sell < x["min_edge_to_hold"]:
+                return "edge_gone", sell
+    return None
+
+
+def contracts_for(stake: float, price: float) -> int:
+    # Not `stake // price`: in binary floating point 10 // 0.4 == 24.0.
+    return int(math.floor(stake / price + 1e-9)) if price > 0 else 0
+
+
+def describe(spec: Dict) -> List[str]:
+    """Plain-language reading of a spec, for people who do not read JSON."""
+    m, e, x, s = spec["model"], spec["entry"], spec["exit"], spec["sizing"]
+    side = {"yes": "YES contracts", "no": "NO contracts", "either": "YES or NO (whichever has more edge)"}[spec["side"]]
+    lines = ["Buys %s when its fair value beats the price by at least %d¢." % (side, round(e["min_edge"] * 100))]
+    view = "Fair value uses %d-minute realised volatility" % m["vol_window"]
+    if abs(m["vol_scale"] - 1.0) > 1e-9:
+        view += " scaled ×%.2f" % m["vol_scale"]
+    if m["drift_window"] and m["drift_beta"]:
+        view += ", leaning %s the last %d minutes (β %.2f)" % (
+            "with" if m["drift_beta"] > 0 else "against",
+            m["drift_window"],
+            m["drift_beta"],
+        )
+    lines.append(view + ".")
+    lines.append(
+        "Pays %d¢–%d¢ per contract, %g–%g minutes before settlement, spread at most %d¢."
+        % (round(e["min_price"] * 100), round(e["max_price"] * 100), e["min_tte_min"], e["max_tte_min"], round(e["max_spread"] * 100))
+    )
+    for flt in e["filters"]:
+        lines.append("Only when %s %s %g." % (flt["feature"], flt["op"], flt["value"]))
+    exits = []
+    if x["take_profit"] is not None:
+        exits.append("takes profit at +%d¢" % round(x["take_profit"] * 100))
+    if x["stop_loss"] is not None:
+        exits.append("stops out at −%d¢" % round(x["stop_loss"] * 100))
+    if x["min_edge_to_hold"] is not None:
+        exits.append("sells when its edge drops below %d¢" % round(x["min_edge_to_hold"] * 100))
+    lines.append(("Exits: " + ", ".join(exits) + "; otherwise holds to settlement.") if exits else "Holds every position to settlement.")
+    lines.append("Stakes $%g per trade, at most %d open at once." % (s["stake"], s["max_positions"]))
+    return lines

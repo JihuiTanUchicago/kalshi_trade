@@ -244,7 +244,9 @@ ORDER_MAX_ATTEMPTS = int(os.getenv("KALSHI_ORDER_MAX_ATTEMPTS", "3"))
 MAX_QUOTE_AGE_SECONDS = float(os.getenv("KALSHI_MAX_QUOTE_AGE_SECONDS", "2.0"))
 
 
-def place_limit_order(ticker: str, action: str, side: str, qty: int, price_dollars: float) -> Dict:
+def place_limit_order(
+    ticker: str, action: str, side: str, qty: int, price_dollars: float, credentials=None
+) -> Dict:
     """Submit one limit order. `action` is buy/sell and `side` is the leg
     ("yes"); v2 folds both into bid/ask on the YES leg, so buying YES is a bid
     and selling a YES position is an ask."""
@@ -266,7 +268,7 @@ def place_limit_order(ticker: str, action: str, side: str, qty: int, price_dolla
         "self_trade_prevention_type": "taker_at_cross",
         "client_order_id": client_order_id,
     }
-    resp = api_post_auth(ORDER_PATH, body)
+    resp = api_post_auth(ORDER_PATH, body, credentials=credentials)
     return {"client_order_id": client_order_id, "body": body, "resp": resp}
 
 

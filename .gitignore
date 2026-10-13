@@ -7,5 +7,5 @@ venv/
 *.pyc
 # Impeccable session artifacts: the durable record is the surface brief and
 # design.json; review captures and question logs belong to one run.
-.impeccable/review/
-.impeccable/questions/
+**/.impeccable/review/
+**/.impeccable/questions/

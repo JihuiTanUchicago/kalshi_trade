@@ -6,99 +6,102 @@
 
 web
 
+## Stack
+
+Existing codebase answers it: Python 3.9-compatible stdlib HTTP server, MySQL (RDS), vanilla
+HTML/CSS/JS with no build step. The customer app (`app/`) serves real static files
+(`app/static/`) rather than HTML embedded in Python strings; the operator console keeps its
+single-file form.
+
 ## Users
 
-One user: the owner/operator, who also wrote the system. No second audience — not teammates,
-not graders, not recruiters. The dashboard is a private instrument, so density, shorthand, and
-domain vocabulary (brier, logloss, edge, taker fee, drawdown) need no explanation and no
-onboarding. Nothing on it is being sold or demonstrated to anyone.
+Primary: **retail traders who want an edge on Bitcoin prediction markets without writing
+code** - people like Jonathan in `mvp.md`. They know what a BTC price is and what a yes/no
+contract pays; they do not know what a brier score is. They sign in with Google, tell an agent
+what they want to trade, and judge the result by money, not by model diagnostics. They check
+in on a phone between other things and sit down at a laptop to review and deploy.
 
-Confirmed situation: he opens it most often to **watch real money move** — a live position is
-open or about to be, and he wants entry, mark, unrealized, and risk state without hunting for
-them. Evaluating paper strategies and checking pipeline health are real but secondary jobs.
-
-He opens it on desktop/ultrawide (3440px), laptop, and phone. All three are first-class.
+Secondary: the owner/operator, who keeps the private Kursbuch control room
+(`data_pipeline/dashboard_server.py`) for supervising the house pipeline. That surface keeps
+its own audience and rules (see "Operator console" below).
 
 ## Product Purpose
 
-Operate and supervise an automated Kalshi BTC 15-minute prediction-market trading system:
-watch live execution, judge whether a paper strategy has earned real money, and confirm the
-ingestion pipeline is actually alive. Success is that the operator can tell, in seconds and
-without doubt, what the system is doing right now and whether to intervene.
+**Recursive** is a self-improving alpha-discovery loop for Kalshi's Bitcoin markets: an
+agent proposes trading hypotheses, validates them in a backtest it cannot cheat (it never sees
+the out-of-sample period while iterating), and only strategies that pass are deployable. The
+user decides what to deploy, watches it trade, and talks to the agent to adjust it - or lets
+the agent adjust it on autopilot, with every thought written to the chat.
+
+Success: a user goes from "I want to trade bitcoin" to a deployed, backtest-passed strategy
+in one sitting, understands why it should work, and can tell at a glance whether it is.
 
 ## Positioning
 
-Not a product. A single-operator control room for one specific pipeline, whose value is that
-every number on it is traceable to this system's own database rather than to a vendor's
-summary. Its edge over any off-the-shelf trading dashboard is that it shows the operator's own
-models, own paper books, own fee-adjusted verdicts, and own kill switches.
+Not a signals newsletter and not a no-code bot builder. The agent does the research, and the
+product shows its homework: the thesis in plain language, the in-sample result it iterated on,
+the out-of-sample result it never saw, and how many hypotheses were tried to find it. A
+strategy that fails its gate is shown as failed, not hidden.
 
 ## Operating Context
 
-- Deployed on one EC2 instance behind CloudFront, served by a Python stdlib HTTP server
-  (`data_pipeline/dashboard_server.py`), backed by RDS MySQL. Basic auth on every route; live
-  execution controls sit behind a second password gate.
-- Three surfaces today: Data Pipeline (ingestion health), Simulated Trading (five paper books,
-  each starting at $100), Live Trading (real Kalshi account, per-strategy on/off switches,
-  risk caps, open positions, orders).
-- Background writers run as separate processes on a 20s/1m cadence. They can and do die
-  independently of the dashboard; during this session two had been dead for 13 days while the
-  UI kept rendering their last values as if current. Staleness is a first-class product fact,
-  not an edge case.
-- Live trading is currently off (`live_enabled=false` for every strategy). Turning it on is a
-  deliberate, guarded act.
+- Markets in v0.1: Kalshi **BTC 15-minute** (`KXBTC15M`) and **BTC daily close at 5pm EDT**
+  (`KXBTCD`, the 5pm event's strike ladder).
+- Money: every user starts with a **paper account** (simulated deposits/withdrawals). Live
+  trading happens only in the user's **own Kalshi account** via an API key they connect; we
+  never hold customer funds (that would need CFTC registration). The Funds page shows the real
+  Kalshi balance and sends the user to Kalshi to move money.
+- Sign-in is Google only.
+- Agents run in a background worker; research takes minutes, so progress must be visible
+  and survive the user closing the tab.
 
 ## Capabilities and Constraints
 
-- **No build step, no framework, no bundler.** The entire UI is HTML/CSS/JS embedded in Python
-  strings in one file and served by `BaseHTTPRequestHandler`. Any design must ship as plain
-  CSS and vanilla JS inside that file. This is a hard constraint, not a preference.
-- Charts are hand-rolled on `<canvas>` with fixed pixel widths today.
-- Data arrives from three JSON endpoints (`/sim_metrics`, `/live_metrics`, `/health`) polled on
-  a 10s interval, plus server-rendered pages for table browsing.
-- Server-side metrics responses are cached 25s; CloudFront caches nothing (all TTLs 0).
-- Real money: `live_trading_engine.py` places real orders when a strategy's `live_enabled` is
-  true. Any control that could flip that must be unmistakable and deliberate.
-- Terminology in use: in-sample / out-of-sample split at a "live cutoff"; edge = model
-  probability minus ask; paper books are independent $100 accounts, not one portfolio.
+- Agents produce a **thesis + parameterized strategy spec**, never code. Our backtester and
+  our engines run the spec, so backtest and deployment evaluate the identical rule.
+- Deployment requires a passed backtest; so does every agent-proposed adjustment.
+- Autopilot ("dangerously skip permission") lets the agent apply adjustments and deploy to
+  paper on its own, inside guardrails: it can never move a strategy to live money and never
+  raise a risk cap.
+- Live trading for app users is gated by a server-wide switch that is **off** until the owner
+  explicitly authorizes it; live strategies are YES-side only in v0.1.
+- Charging (fees on transactions / credit purchases) is v0.2 and out of scope.
 
 ## Brand Commitments
 
-None. No logo, no name beyond "Kalshi Trade", no external identity to honor. The operator is
-free to choose any visual direction.
+- Name: **Recursive** (chosen by the owner, 2026-10-12). Never use "Kalshi" as or inside the
+  product's name or mark; Kalshi is named only as the venue.
 
 ## Evidence on Hand
 
-All real, all from this system's own database — nothing needs to be invented or mocked:
-
-- Five paper strategies with live records: `binary_theory_edge` (+$515.92, 377 trades, 74% win),
-  `random_forest_high_conviction` (+$453.33, 437, 74%), `random_forest` (−$265.85, 7246, 53%),
-  `logistic` (−$677.99, 8944, 46%), `naive_logistic_baseline` (−$719.46, 8394, 46%).
-- Real Kalshi account cash (~$90.26) and a live record of 2 closed trades, −$1.82.
-- Per-model prediction quality (brier, logloss), calibration buckets, execution slippage,
-  equity/drawdown time series, open positions, orders, and a model-research run history.
-- Fee-adjusted verdicts already computed per strategy (net of Kalshi taker fees).
-
-Three of five paper strategies are deeply negative and auto-paused after a 6-month unattended
-run. That failure is part of the honest record and must stay visible, not be styled away.
+- Real Kalshi settled markets, candlesticks and results for both series, and Coinbase BTC
+  candles, pulled by `app/market_history.py` - all backtests run on these, nothing invented.
+- The house pipeline's paper record (see Operator console) proves most naive strategies lose
+  after fees: three of five went deeply negative. That is why the gate exists.
+- No customers, testimonials, or performance claims exist yet. Do not fabricate any.
 
 ## Product Principles
 
-1. **Answer "what is happening right now" before anything else.** Live execution is the front
-   page; paper results are the archive behind it.
-2. **Stale is a state, not a silence.** Any number whose writer has stopped must say so itself.
-   A frozen value rendered as if current is the system's worst failure mode and has already
-   happened twice.
-3. **Real money looks different from paper money.** The live surface must never be mistakable
-   for the simulator, at a glance, on any device.
-4. **Density is a feature, not a cost.** One expert user, no explaining, no hand-holding — but
-   density earned through hierarchy, not achieved by dumping every panel at equal weight.
-5. **Every number is traceable.** Two panels showing the same quantity must agree, and where a
-   figure is derived, the derivation stays inspectable.
+1. **Show the homework.** Every strategy carries its thesis, its in-sample and out-of-sample
+   result, and the number of hypotheses tried. Failed strategies stay visible.
+2. **Paper is the default, live is a deliberate act.** Real money must look different and
+   require an explicit, informed step - never a toggle that is easy to hit by accident.
+3. **Stale is a state, not a silence.** A number whose source has stopped says so.
+4. **Plain language first, numbers second.** Say what is happening in a sentence a
+   non-quant understands, then show the figure that proves it.
+5. **The agent explains itself.** Nothing the agent does - research, adjustment, deployment -
+   happens without a readable reason in the chat or the run log.
 
 ## Accessibility & Inclusion
 
-No externally imposed standard. Self-imposed floor, because the operator reads this on a phone
-in bright light and on a 3440px monitor at a distance: text contrast must hold at small sizes,
-state must never be carried by color alone (paused/active/stale each need a shape or a word),
-and every control must be reachable and legible at 400px width.
+WCAG 2.2 AA as the floor: phone in daylight and laptop are both first-class, state is never
+carried by color alone (gain/loss, paper/live, passed/failed each carry a word or shape), every
+control is reachable by keyboard and at 360px width, and motion respects
+`prefers-reduced-motion`.
+
+## Operator console (secondary surface)
+
+`data_pipeline/dashboard_server.py` stays the owner's private Kursbuch control room for the house
+15-minute pipeline: one expert user, density over explanation, basic auth plus a live-password
+gate, live execution as its front page. Its design record is DESIGN.md's Kursbuch world and
+`.impeccable/surfaces/data-pipeline-dashboard-server-py.md`; it is not the customer product.

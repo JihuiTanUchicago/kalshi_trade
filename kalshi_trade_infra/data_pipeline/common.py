@@ -2,7 +2,7 @@ import os
 import time
 import base64
 from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import pymysql
 import requests
@@ -89,13 +89,22 @@ def _get_private_key():
     return _KALSHI_PRIVATE_KEY
 
 
-def kalshi_auth_headers(method: str, path: str) -> Dict[str, str]:
-    if not KALSHI_KEY_ID:
-        raise RuntimeError("Missing Kalshi key id for authenticated endpoints")
+# (key_id, loaded private key). None means the house account from the env -
+# the customer app passes each user's own key so their orders and balance
+# never touch the house account.
+KalshiCredentials = Tuple[str, Any]
+
+
+def kalshi_auth_headers(method: str, path: str, credentials: Optional[KalshiCredentials] = None) -> Dict[str, str]:
+    if credentials is None:
+        if not KALSHI_KEY_ID:
+            raise RuntimeError("Missing Kalshi key id for authenticated endpoints")
+        key_id, pk = KALSHI_KEY_ID, _get_private_key()
+    else:
+        key_id, pk = credentials
     ts = str(int(time.time() * 1000))
     signing_path = path.split("?", 1)[0]
     msg = ts + method.upper() + signing_path
-    pk = _get_private_key()
     sig = base64.b64encode(
         pk.sign(
             msg.encode("utf-8"),
@@ -105,31 +114,38 @@ def kalshi_auth_headers(method: str, path: str) -> Dict[str, str]:
     ).decode("utf-8")
     return {
         "Content-Type": "application/json",
-        "KALSHI-ACCESS-KEY": KALSHI_KEY_ID,
+        "KALSHI-ACCESS-KEY": key_id,
         "KALSHI-ACCESS-SIGNATURE": sig,
         "KALSHI-ACCESS-TIMESTAMP": ts,
     }
 
 
-def api_post_auth(path: str, body: Dict[str, Any], timeout: int = 20) -> Dict[str, Any]:
+def api_post_auth(
+    path: str, body: Dict[str, Any], timeout: int = 20, credentials: Optional[KalshiCredentials] = None
+) -> Dict[str, Any]:
     url = f"{KALSHI_API_HOST}{path}"
-    headers = kalshi_auth_headers("POST", path)
+    headers = kalshi_auth_headers("POST", path, credentials)
     resp = requests.post(url, json=body, headers=headers, timeout=timeout)
     if resp.status_code >= 400:
         raise RuntimeError(f"POST {url} failed {resp.status_code}: {resp.text[:400]}")
     return resp.json()
 
 
-def api_get_auth(path: str, params: Optional[Dict[str, Any]] = None, timeout: int = 20) -> Dict[str, Any]:
+def api_get_auth(
+    path: str,
+    params: Optional[Dict[str, Any]] = None,
+    timeout: int = 20,
+    credentials: Optional[KalshiCredentials] = None,
+) -> Dict[str, Any]:
     url = f"{KALSHI_API_HOST}{path}"
-    headers = kalshi_auth_headers("GET", path)
+    headers = kalshi_auth_headers("GET", path, credentials)
     resp = requests.get(url, params=params, headers=headers, timeout=timeout)
     if resp.status_code >= 400:
         raise RuntimeError(f"GET {url} failed {resp.status_code}: {resp.text[:400]}")
     return resp.json()
 
 
-def get_kalshi_cash_balance_dollars() -> Optional[float]:
+def get_kalshi_cash_balance_dollars(credentials: Optional[KalshiCredentials] = None) -> Optional[float]:
     """
     Best-effort account cash balance fetch for live equity marking.
     Returns None when auth/endpoint fields are unavailable.
@@ -151,7 +167,7 @@ def get_kalshi_cash_balance_dollars() -> Optional[float]:
     generic_fields = {"available_cash", "cash", "balance", "available_balance"}
     for path in candidates:
         try:
-            data = api_get_auth(path)
+            data = api_get_auth(path, credentials=credentials)
         except Exception:
             continue
         objs = []

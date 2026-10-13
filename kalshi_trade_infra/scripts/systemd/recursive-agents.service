@@ -1,0 +1,20 @@
+[Unit]
+Description=Recursive agent worker (research, chat, reviews)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/kalshi
+# Secrets live in /opt/kalshi/.env.app (root:root, 600): GOOGLE_CLIENT_ID/SECRET,
+# APP_GOOGLE_REDIRECT_URI, APP_SECRET_KEY, ANTHROPIC_API_KEY. Never in this unit.
+ExecStart=/bin/bash -c 'set -a; . /opt/kalshi/.env.aws; . /opt/kalshi/.env.app; set +a; unset AWS_PROFILE; exec /opt/kalshi/.venv/bin/python -u -m app.worker agents >> /opt/kalshi/logs/recursive_agents.log 2>&1'
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=10
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
