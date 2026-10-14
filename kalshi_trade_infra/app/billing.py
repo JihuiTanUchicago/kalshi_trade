@@ -29,6 +29,10 @@ STRIPE_API = "https://api.stripe.com/v1"
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+# A Stripe payment-method configuration (child of the account default) with Link
+# disabled and card + Apple Pay + Google Pay enabled, so the Payment Element stays
+# compact. Set via Parameter Store; falls back to card-only when unset.
+STRIPE_PAYMENT_CONFIG = os.getenv("STRIPE_PAYMENT_CONFIG", "")
 
 FREE_BONUS = Decimal(os.getenv("TAU_FREE_CREDITS", "100"))
 TOPUP_FEE = Decimal(os.getenv("TAU_TOPUP_FEE", "0.055"))  # 5.5% on credit purchases
@@ -133,9 +137,12 @@ def create_setup_intent(customer_id: str) -> Dict:
     # Card only. Apple Pay / Google Pay still surface on top of the card method
     # (once the domain is registered + the browser supports them); this keeps the
     # Payment Element from listing every account-enabled method (BLIK, Pix, …).
-    si = _stripe("POST", "/setup_intents", {
-        "customer": customer_id, "payment_method_types": ["card"], "usage": "off_session",
-    })
+    params = {"customer": customer_id, "usage": "off_session"}
+    if STRIPE_PAYMENT_CONFIG:
+        params["payment_method_configuration"] = STRIPE_PAYMENT_CONFIG  # card + wallets, no Link
+    else:
+        params["payment_method_types"] = ["card"]
+    si = _stripe("POST", "/setup_intents", params)
     return {"client_secret": si["client_secret"]}
 
 

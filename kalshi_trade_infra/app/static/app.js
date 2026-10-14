@@ -254,7 +254,8 @@
       const sp = Stripe(state.publishable_key);
       const si = await api('/api/billing/setup-intent', {});
       const elements = sp.elements({ clientSecret: si.client_secret, appearance: { theme: 'flat', variables: { fontFamily: 'Archivo, sans-serif', colorPrimary: '#191B16', borderRadius: '10px' } } });
-      const pe = elements.create('payment', { layout: 'tabs', wallets: { applePay: 'auto', googlePay: 'auto' } });
+      // Trim the form: no billing address (not needed to save a card), wallets on.
+      const pe = elements.create('payment', { layout: 'tabs', wallets: { applePay: 'auto', googlePay: 'auto' }, fields: { billingDetails: { address: 'never' } } });
       dlg.querySelector('#pay-el').innerHTML = '';
       pe.mount('#pay-el');
       dlg.querySelector('#payform').onsubmit = (e) => {

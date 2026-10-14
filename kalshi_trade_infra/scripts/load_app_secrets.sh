@@ -16,7 +16,7 @@ unset AWS_PROFILE  # .env.aws sets it; on the box we must use the instance role
 
 touch "$ENV_FILE" && chmod 600 "$ENV_FILE"
 for name in GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET ANTHROPIC_API_KEY \
-            STRIPE_SECRET_KEY STRIPE_PUBLISHABLE_KEY STRIPE_WEBHOOK_SECRET; do
+            STRIPE_SECRET_KEY STRIPE_PUBLISHABLE_KEY STRIPE_WEBHOOK_SECRET STRIPE_PAYMENT_CONFIG; do
   if value=$(aws ssm get-parameter --region us-east-1 --name "/recursive/$name" --with-decryption \
                --query Parameter.Value --output text 2>/dev/null); then
     grep -v "^export $name=" "$ENV_FILE" > "$ENV_FILE.tmp" || true

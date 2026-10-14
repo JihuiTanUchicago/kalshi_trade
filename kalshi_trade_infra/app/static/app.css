@@ -649,8 +649,9 @@ body.landing-body { background: #FBFBFA; }
 .pay-dot { width: 22px; height: 3px; border-radius: 2px; background: rgba(241,243,237,.25); transition: background .35s; }
 .pay-dot.on { background: #F1F3ED; }
 .pay-right { flex: .96 1 0; min-width: 0; min-height: 0; overflow-y: auto; }
-/* Keep the pay button in view no matter how tall the Stripe form grows. */
-.pay-foot { position: sticky; bottom: 0; display: grid; gap: 6px; background: var(--surface); padding: 12px 0 2px; margin-top: 2px; border-top: 1px solid var(--line); }
+/* Pay button sits right after the (now-compact) card form. The panel still
+   scrolls if a form ever grows taller than the modal. */
+.pay-foot { display: grid; gap: 6px; padding: 12px 0 2px; margin-top: 4px; }
 .pay-el { min-height: 44px; margin: 2px 0; }
 .wl-err { color: var(--down); font-size: 13.5px; text-align: center; margin: 0; }
 .pay-signout { display: block; margin: 2px auto 0; background: none; border: 0; color: var(--ink-3); font-size: 13px; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
