@@ -62,6 +62,11 @@ def upsert_google_user(cur, sub: str, email: str, name: Optional[str], picture: 
     )
     user_id = cur.lastrowid
     add_ledger(cur, user_id, "deposit", STARTING_PAPER_BALANCE, "Starting paper balance")
+    try:
+        from app import billing
+        add_credit(cur, user_id, "bonus", billing.FREE_BONUS, "Welcome credits")
+    except Exception as _e:
+        print("[repo] welcome-credit grant failed: %r" % _e, flush=True)
     seed_demo_session(cur, user_id)
     return get_user(cur, user_id)
 
@@ -734,17 +739,39 @@ def _demo_spec():
 # -- community -------------------------------------------------------------------
 
 
-def create_post(cur, user_id: int, body: str, kind: str, snapshot: Optional[Dict]) -> int:
+def store_image(cur, user_id: int, content_type: str, data: bytes) -> int:
     cur.execute(
-        "INSERT INTO app_posts (user_id, body, kind, snapshot_json, created_at) VALUES (%s,%s,%s,%s,%s)",
-        (user_id, body[:2000], kind, _json(snapshot), now_utc()),
+        "INSERT INTO app_images (user_id, content_type, data, created_at) VALUES (%s,%s,%s,%s)",
+        (user_id, content_type, data, now_utc()),
     )
     return cur.lastrowid
 
 
+def get_image(cur, image_id: int) -> Optional[Dict]:
+    cur.execute("SELECT content_type, data FROM app_images WHERE id=%s", (image_id,))
+    return cur.fetchone()
+
+
+def create_post(cur, user_id: int, body: str, kind: str, snapshot: Optional[Dict], image_id: Optional[int] = None) -> int:
+    cur.execute(
+        "INSERT INTO app_posts (user_id, body, kind, snapshot_json, image_id, created_at) VALUES (%s,%s,%s,%s,%s,%s)",
+        (user_id, body[:2000], kind, _json(snapshot), image_id, now_utc()),
+    )
+    return cur.lastrowid
+
+
+def edit_post(cur, post_id: int, user_id: int, body: str) -> bool:
+    """Edit own post body, stamping edited_at. Returns False if not the owner."""
+    cur.execute(
+        "UPDATE app_posts SET body=%s, edited_at=%s WHERE id=%s AND user_id=%s",
+        (body[:2000], now_utc(), post_id, user_id),
+    )
+    return cur.rowcount == 1
+
+
 def list_posts(cur, viewer_id: int, before_id: int = 0, limit: int = 30) -> List[Dict]:
     cur.execute(
-        """SELECT p.id, p.body, p.kind, p.snapshot_json, p.likes_count, p.comments_count, p.created_at,
+        """SELECT p.id, p.body, p.kind, p.snapshot_json, p.image_id, p.edited_at, p.likes_count, p.comments_count, p.created_at,
                   u.name, u.picture_url, (p.user_id = %s) AS mine,
                   EXISTS(SELECT 1 FROM app_post_likes l WHERE l.post_id=p.id AND l.user_id=%s) AS liked
            FROM app_posts p JOIN app_users u ON u.id=p.user_id
@@ -796,3 +823,73 @@ def list_comments(cur, post_id: int, limit: int = 100) -> List[Dict]:
 def recent_posts_count(cur, user_id: int, since: datetime) -> int:
     cur.execute("SELECT COUNT(*) AS n FROM app_posts WHERE user_id=%s AND created_at >= %s", (user_id, since))
     return int(cur.fetchone()["n"])
+
+
+# -- credits & billing -----------------------------------------------------------
+
+
+def credit_balance(cur, user_id: int) -> float:
+    cur.execute("SELECT COALESCE(SUM(amount_usd),0) AS b FROM app_credit_ledger WHERE user_id=%s", (user_id,))
+    return float(cur.fetchone()["b"])
+
+
+def add_credit(cur, user_id: int, kind: str, amount_usd, memo: str,
+               stripe_ref: Optional[str] = None, run_id: Optional[int] = None) -> bool:
+    """Append a credit ledger row. Returns False if a row with this stripe_ref
+    already exists (idempotent replay), True if inserted."""
+    try:
+        cur.execute(
+            """INSERT INTO app_credit_ledger (user_id, kind, amount_usd, memo, stripe_ref, run_id, created_at)
+               VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+            (user_id, kind, str(amount_usd), (memo or "")[:255], stripe_ref, run_id, now_utc()),
+        )
+        return True
+    except Exception as e:  # duplicate stripe_ref -> already credited
+        if "uq_credit_stripe" in str(e) or "Duplicate" in str(e):
+            return False
+        raise
+
+
+def credit_rows(cur, user_id: int, limit: int = 50) -> List[Dict]:
+    cur.execute(
+        "SELECT kind, amount_usd, memo, created_at FROM app_credit_ledger WHERE user_id=%s ORDER BY id DESC LIMIT %s",
+        (user_id, limit),
+    )
+    return cur.fetchall()
+
+
+def credit_spent_total(cur, user_id: int) -> float:
+    cur.execute(
+        "SELECT COALESCE(-SUM(amount_usd),0) AS s FROM app_credit_ledger WHERE user_id=%s AND kind='usage'",
+        (user_id,),
+    )
+    return float(cur.fetchone()["s"])
+
+
+def get_stripe_customer(cur, user_id: int) -> Optional[Dict]:
+    cur.execute(
+        "SELECT user_id, stripe_customer_id, default_pm_id, auto_reload FROM app_stripe_customers WHERE user_id=%s",
+        (user_id,),
+    )
+    return cur.fetchone()
+
+
+def save_stripe_customer(cur, user_id: int, customer_id: str) -> None:
+    cur.execute(
+        """INSERT INTO app_stripe_customers (user_id, stripe_customer_id, created_at) VALUES (%s,%s,%s)
+           ON DUPLICATE KEY UPDATE stripe_customer_id=VALUES(stripe_customer_id)""",
+        (user_id, customer_id, now_utc()),
+    )
+
+
+def set_default_pm(cur, user_id: int, pm_id: Optional[str]) -> None:
+    cur.execute("UPDATE app_stripe_customers SET default_pm_id=%s WHERE user_id=%s", (pm_id, user_id))
+
+
+def set_auto_reload(cur, user_id: int, on: bool) -> None:
+    cur.execute("UPDATE app_stripe_customers SET auto_reload=%s WHERE user_id=%s", (1 if on else 0, user_id))
+
+
+def user_by_email(cur, email: str) -> Optional[Dict]:
+    cur.execute("SELECT id, email, name FROM app_users WHERE email=%s", (email,))
+    return cur.fetchone()

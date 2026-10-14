@@ -48,6 +48,11 @@ class Usage:
 ModelFn = Callable[[str, List[Dict[str, str]]], "tuple[str, Dict]"]
 
 
+def current_model() -> str:
+    """The model id actually in use, for usage pricing."""
+    return BEDROCK_MODEL if LLM_PROVIDER == "bedrock" else MODEL
+
+
 def claude(system: str, messages: List[Dict[str, str]]) -> "tuple[str, Dict]":
     """Route to Bedrock or the Anthropic API based on APP_LLM_PROVIDER."""
     return _bedrock(system, messages) if LLM_PROVIDER == "bedrock" else _anthropic_direct(system, messages)

@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
-from app import agent, auth, backtest, engine, kalshi_account, notify
+from app import agent, auth, backtest, billing, engine, kalshi_account, notify
 from app import repository as repo
 from app import spec as specmod
 from app.markets import MARKETS
@@ -33,7 +33,7 @@ HOST = os.getenv("APP_HOST", "127.0.0.1")
 DEV_LOGIN = os.getenv("APP_DEV_LOGIN") == "1"
 SECURE_COOKIES = os.getenv("APP_INSECURE_COOKIES") != "1"
 STATIC_DIR = Path(__file__).parent / "static"
-MAX_BODY = 64 * 1024
+MAX_BODY = 8 * 1024 * 1024  # allows a base64 image in a community post
 
 MAX_ACTIVE_RESEARCH = 2
 MAX_RESEARCH_PER_DAY = 12
@@ -41,12 +41,14 @@ MAX_CHAT_PER_HOUR = 40
 MAX_ACTIVE_DEPLOYMENTS = 10
 MAX_PAPER_BALANCE = 1_000_000.0
 MAX_WAITLIST_PER_MINUTE = 10
-SPA_ROUTES = re.compile(r"^/(?:|dashboard|research(?:/\d+)?|strategies(?:/\d+)?|deploy|community|funds|signin)$")
+ADMIN_EMAIL = os.getenv("TAU_ADMIN_EMAIL", "tjhprivate0416@gmail.com")
+SPA_ROUTES = re.compile(r"^/(?:|dashboard|research(?:/\d+)?|strategies(?:/\d+)?|deploy|community|billing|admin|funds|signin)$")
 
 CSP = (
-    "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; "
-    "font-src https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com; "
-    "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+    "default-src 'self'; script-src 'self' https://js.stripe.com; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; "
+    "font-src https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com https://*.stripe.com; "
+    "connect-src 'self' https://api.stripe.com; frame-src https://js.stripe.com https://hooks.stripe.com; "
+    "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 )
 
 
@@ -166,6 +168,9 @@ def me(ctx: Ctx):
         },
         "kalshi_connected": repo.get_kalshi_key(ctx.cur, ctx.uid) is not None,
         "live_trading_available": engine.LIVE_TRADING_ENABLED,
+        "is_admin": (ctx.user["email"] or "").lower() == ADMIN_EMAIL.lower(),
+        "billing_enabled": billing.configured(),
+        "credit_balance": round(repo.credit_balance(ctx.cur, ctx.uid), 4),
         "markets": [{"key": m.key, "label": m.label} for m in MARKETS.values()],
         "directions": [{"key": k, **v} for k, v in agent.DIRECTIONS.items()],
     }
@@ -254,6 +259,8 @@ def create_run(ctx: Ctx):
     if direction is not None and direction not in agent.DIRECTIONS:
         direction = None
     cur = ctx.cur
+    if billing.configured() and repo.credit_balance(cur, ctx.uid) <= 0:
+        raise ApiError(402, "You're out of credits. Add credits on the Billing tab to keep researching.")
     if repo.count_runs(cur, ctx.uid, "research", active_only=True) >= MAX_ACTIVE_RESEARCH:
         raise ApiError(429, "You already have %d agents researching. Wait for one to finish." % MAX_ACTIVE_RESEARCH)
     if repo.count_runs(cur, ctx.uid, "research", since=repo.now_utc() - timedelta(days=1)) >= MAX_RESEARCH_PER_DAY:
@@ -389,6 +396,8 @@ def post_chat(ctx: Ctx):
     if len(content) > 2000:
         raise ApiError(400, "Keep messages under 2,000 characters.")
     cur = ctx.cur
+    if billing.configured() and repo.credit_balance(cur, ctx.uid) <= 0:
+        raise ApiError(402, "You're out of credits. Add credits on the Billing tab to keep chatting with the agent.")
     if repo.count_runs(cur, ctx.uid, "chat", since=repo.now_utc() - timedelta(hours=1)) >= MAX_CHAT_PER_HOUR:
         raise ApiError(429, "That's a lot of messages this hour. Give the agent a minute.")
     msg_id = repo.add_chat(cur, ctx.uid, "user", content)
@@ -529,6 +538,8 @@ def _post_out(p: Dict) -> Dict:
         "likes": p["likes_count"], "comments": p["comments_count"], "created_at": p["created_at"],
         "author": p.get("name") or "Trader", "picture": p.get("picture_url"),
         "mine": p.get("mine", False), "liked": p.get("liked", False),
+        "image": ("/api/community/image/%d" % p["image_id"]) if p.get("image_id") else None,
+        "edited": bool(p.get("edited_at")),
     }
 
 
@@ -537,21 +548,66 @@ def community(ctx: Ctx):
     return {"posts": [_post_out(p) for p in repo.list_posts(ctx.cur, ctx.uid, before)]}
 
 
+IMAGE_MAGIC = {b"\x89PNG": "image/png", b"\xff\xd8\xff": "image/jpeg", b"GIF8": "image/gif"}
+MAX_IMAGE_BYTES = 3 * 1024 * 1024
+
+
+def _decode_image(data_url: str):
+    import base64 as _b64
+    if "," in data_url:
+        data_url = data_url.split(",", 1)[1]
+    try:
+        raw = _b64.b64decode(data_url, validate=True)
+    except Exception:
+        raise ApiError(400, "That image couldn't be read.")
+    if len(raw) > MAX_IMAGE_BYTES:
+        raise ApiError(413, "Images must be under 3 MB.")
+    ctype = next((t for magic, t in IMAGE_MAGIC.items() if raw.startswith(magic)), None)
+    if raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
+        ctype = "image/webp"
+    if not ctype:
+        raise ApiError(400, "Only PNG, JPEG, WebP, or GIF images are allowed.")
+    return ctype, raw
+
+
 def create_community_post(ctx: Ctx):
     body = str(ctx.body.get("body") or "").strip()
     kind = ctx.body.get("kind") or "note"
+    image = ctx.body.get("image")
     if kind not in ("note", "strategy", "deployment", "pnl"):
         raise ApiError(400, "Unknown post type.")
-    if not body and kind == "note":
-        raise ApiError(400, "Write something first.")
+    if not body and kind == "note" and not image:
+        raise ApiError(400, "Write something or attach a photo first.")
     if len(body) > 2000:
         raise ApiError(400, "Keep posts under 2,000 characters.")
     cur = ctx.cur
     if repo.recent_posts_count(cur, ctx.uid, repo.now_utc() - timedelta(hours=1)) >= MAX_POSTS_PER_HOUR:
         raise ApiError(429, "You've posted a lot this hour. Give it a minute.")
+    image_id = None
+    if image:
+        ctype, raw = _decode_image(str(image))
+        image_id = repo.store_image(cur, ctx.uid, ctype, raw)
     snapshot = _post_snapshot(cur, ctx.uid, kind, int(ctx.body.get("ref_id") or 0)) if kind != "note" else None
-    pid = repo.create_post(cur, ctx.uid, body or _default_share_text(kind, snapshot), kind, snapshot)
+    pid = repo.create_post(cur, ctx.uid, body or _default_share_text(kind, snapshot), kind, snapshot, image_id)
     return {"id": pid}
+
+
+def edit_community_post(ctx: Ctx):
+    body = str(ctx.body.get("body") or "").strip()
+    if not body:
+        raise ApiError(400, "A post can't be empty.")
+    if len(body) > 2000:
+        raise ApiError(400, "Keep posts under 2,000 characters.")
+    if not repo.edit_post(ctx.cur, _int_param(ctx), ctx.uid, body):
+        raise ApiError(403, "You can only edit your own posts.")
+    return {"ok": True}
+
+
+def community_image(ctx: Ctx):
+    img = repo.get_image(ctx.cur, _int_param(ctx))
+    if not img:
+        raise ApiError(404, "Image not found.")
+    return ("image", img["content_type"], bytes(img["data"]))
 
 
 def _default_share_text(kind: str, snap: Optional[Dict]) -> str:
@@ -587,6 +643,156 @@ def create_comment(ctx: Ctx):
     return {"ok": True}
 
 
+# -- billing ---------------------------------------------------------------------
+
+
+def _customer_id(ctx: Ctx) -> str:
+    cust = repo.get_stripe_customer(ctx.cur, ctx.uid)
+    cid = billing.get_or_create_customer(ctx.user, cust["stripe_customer_id"] if cust else None)
+    if not cust:
+        repo.save_stripe_customer(ctx.cur, ctx.uid, cid)
+    return cid
+
+
+def billing_state(ctx: Ctx):
+    cur = ctx.cur
+    cust = repo.get_stripe_customer(cur, ctx.uid)
+    cards, default_pm, auto_reload = [], None, True
+    if cust and billing.configured():
+        try:
+            cards = billing.list_cards(cust["stripe_customer_id"])
+        except billing.StripeError:
+            cards = []
+        default_pm = cust.get("default_pm_id")
+        auto_reload = bool(cust.get("auto_reload"))
+    return {
+        "configured": billing.configured(),
+        "publishable_key": billing.STRIPE_PUBLISHABLE_KEY,
+        "balance": round(repo.credit_balance(cur, ctx.uid), 4),
+        "spent": round(repo.credit_spent_total(cur, ctx.uid), 4),
+        "free_bonus": float(billing.FREE_BONUS),
+        "topup_fee_pct": float(billing.TOPUP_FEE) * 100,
+        "autoreload_threshold": float(billing.AUTORELOAD_THRESHOLD),
+        "autoreload_amount": float(billing.AUTORELOAD_AMOUNT),
+        "min_topup": float(billing.MIN_TOPUP), "max_topup": float(billing.MAX_TOPUP),
+        "cards": cards, "default_pm": default_pm, "auto_reload": auto_reload,
+        "ledger": [{"kind": r["kind"], "amount": float(r["amount_usd"]), "memo": r["memo"], "created_at": r["created_at"]}
+                   for r in repo.credit_rows(cur, ctx.uid)],
+    }
+
+
+def billing_setup_intent(ctx: Ctx):
+    if not billing.configured():
+        raise ApiError(503, "Payments aren't enabled yet.")
+    try:
+        return billing.create_setup_intent(_customer_id(ctx))
+    except billing.StripeError as e:
+        raise ApiError(502, str(e))
+
+
+def billing_card_added(ctx: Ctx):
+    pm = str(ctx.body.get("payment_method_id") or "")
+    if not pm.startswith("pm_"):
+        raise ApiError(400, "No card to save.")
+    cust = repo.get_stripe_customer(ctx.cur, ctx.uid)
+    cid = cust["stripe_customer_id"] if cust else _customer_id(ctx)
+    try:
+        billing.set_default_card(cid, pm)
+    except billing.StripeError as e:
+        raise ApiError(502, str(e))
+    repo.set_default_pm(ctx.cur, ctx.uid, pm)
+    return {"ok": True}
+
+
+def billing_topup(ctx: Ctx):
+    if not billing.configured():
+        raise ApiError(503, "Payments aren't enabled yet.")
+    amount = _num(ctx.body, "amount", float(billing.MIN_TOPUP), float(billing.MAX_TOPUP))
+    cust = repo.get_stripe_customer(ctx.cur, ctx.uid)
+    if not cust or not cust.get("default_pm_id"):
+        raise ApiError(409, "Add a card first.")
+    from decimal import Decimal as _D
+    credits = _D(str(amount))
+    idem = "topup-%s-%d" % (ctx.uid, int(repo.now_utc().timestamp()))
+    try:
+        pi = billing.charge(cust["stripe_customer_id"], cust["default_pm_id"],
+                            billing.topup_charge_cents(credits), off_session=False, idem=idem,
+                            metadata={"user_id": ctx.uid, "credits": str(credits), "purpose": "topup"})
+    except billing.StripeError as e:
+        raise ApiError(402, str(e))
+    if pi["status"] != "succeeded":
+        raise ApiError(402, "The card didn't complete the charge (status: %s)." % pi["status"])
+    with repo.transaction(ctx.conn) as tx:
+        repo.add_credit(tx, ctx.uid, "topup", credits, "Added $%s credits" % credits, stripe_ref=pi["id"])
+    return {"ok": True, "balance": round(repo.credit_balance(ctx.cur, ctx.uid), 4)}
+
+
+def billing_autoreload(ctx: Ctx):
+    on = ctx.body.get("on") is True
+    if on and not (repo.get_stripe_customer(ctx.cur, ctx.uid) or {}).get("default_pm_id"):
+        raise ApiError(409, "Add a card before turning on auto-reload.")
+    repo.set_auto_reload(ctx.cur, ctx.uid, on)
+    return {"ok": True}
+
+
+def billing_remove_card(ctx: Ctx):
+    pm = str(ctx.body.get("payment_method_id") or "")
+    cust = repo.get_stripe_customer(ctx.cur, ctx.uid)
+    if not cust:
+        raise ApiError(404, "No card on file.")
+    try:
+        cards = billing.list_cards(cust["stripe_customer_id"])
+    except billing.StripeError as e:
+        raise ApiError(502, str(e))
+    if len(cards) <= 1:
+        raise ApiError(409, "You can't remove your only card. Add another first.")
+    if not any(c["id"] == pm for c in cards):
+        raise ApiError(404, "That card isn't on file.")
+    try:
+        billing.detach_card(pm)
+    except billing.StripeError as e:
+        raise ApiError(502, str(e))
+    if cust.get("default_pm_id") == pm:
+        other = next(c["id"] for c in cards if c["id"] != pm)
+        billing.set_default_card(cust["stripe_customer_id"], other)
+        repo.set_default_pm(ctx.cur, ctx.uid, other)
+    return {"ok": True}
+
+
+# -- admin -----------------------------------------------------------------------
+
+
+def _require_admin(ctx: Ctx) -> None:
+    if (ctx.user["email"] or "").lower() != ADMIN_EMAIL.lower():
+        raise ApiError(403, "Admins only.")
+
+
+def admin_overview(ctx: Ctx):
+    _require_admin(ctx)
+    cur = ctx.cur
+    cur.execute("""SELECT u.id, u.email, u.name, u.created_at,
+                     COALESCE((SELECT SUM(amount_usd) FROM app_credit_ledger l WHERE l.user_id=u.id),0) AS balance
+                   FROM app_users u ORDER BY u.id DESC LIMIT 100""")
+    users = [{"id": r["id"], "email": r["email"], "name": r["name"], "created_at": r["created_at"],
+              "balance": round(float(r["balance"]), 2)} for r in cur.fetchall()]
+    cur.execute("SELECT email, note, created_at FROM app_waitlist ORDER BY id DESC LIMIT 100")
+    waitlist = cur.fetchall()
+    return {"users": users, "waitlist": waitlist}
+
+
+def admin_grant(ctx: Ctx):
+    _require_admin(ctx)
+    email = str(ctx.body.get("email") or "").strip().lower()
+    amount = _num(ctx.body, "amount", -100000, 100000)
+    target = repo.user_by_email(ctx.cur, email)
+    if not target:
+        raise ApiError(404, "No Tau user with that email (they must sign in first).")
+    from decimal import Decimal as _D
+    repo.add_credit(ctx.cur, target["id"], "admin_grant", _D(str(amount)),
+                    "Admin grant by %s" % ctx.user["email"])
+    return {"ok": True, "email": email, "balance": round(repo.credit_balance(ctx.cur, target["id"]), 2)}
+
+
 # -- routing -----------------------------------------------------------------------
 
 Route = Tuple[str, "re.Pattern[str]", Callable[[Ctx], Any], bool]
@@ -617,8 +823,18 @@ ROUTES: List[Route] = [
         ("GET", "/api/community", community, True),
         ("POST", "/api/community", create_community_post, True),
         ("POST", r"/api/community/(\d+)/like", like_post, True),
+        ("POST", r"/api/community/(\d+)/edit", edit_community_post, True),
+        ("GET", r"/api/community/image/(\d+)", community_image, True),
         ("GET", r"/api/community/(\d+)/comments", post_comments, True),
         ("POST", r"/api/community/(\d+)/comments", create_comment, True),
+        ("GET", "/api/billing", billing_state, True),
+        ("POST", "/api/billing/setup-intent", billing_setup_intent, True),
+        ("POST", "/api/billing/card-added", billing_card_added, True),
+        ("POST", "/api/billing/topup", billing_topup, True),
+        ("POST", "/api/billing/auto-reload", billing_autoreload, True),
+        ("POST", "/api/billing/remove-card", billing_remove_card, True),
+        ("GET", "/api/admin", admin_overview, True),
+        ("POST", "/api/admin/grant", admin_grant, True),
         ("GET", "/api/funds", funds, True),
         ("POST", "/api/funds/paper", paper_transfer, True),
         ("POST", "/api/kalshi-key", save_kalshi_key, True),
@@ -695,6 +911,33 @@ class Handler(BaseHTTPRequestHandler):
                       [("Cache-Control", "public, max-age=31536000, immutable")])
         self.wfile.write(body)
 
+    def _stripe_webhook(self) -> None:
+        length = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(length) if length else b""
+        sig = self.headers.get("Stripe-Signature", "")
+        try:
+            event = billing.verify_webhook(raw, sig)
+        except billing.StripeError as e:
+            return self._send_json(400, {"error": str(e)}, [])
+        try:
+            if event.get("type") == "payment_intent.succeeded":
+                pi = event["data"]["object"]
+                md = pi.get("metadata") or {}
+                uid = int(md.get("user_id") or 0)
+                credits = md.get("credits")
+                if uid and credits and md.get("purpose") in ("topup", "autoreload"):
+                    conn = get_db_conn()
+                    try:
+                        with repo.transaction(conn) as cur:
+                            added = repo.add_credit(cur, uid, md["purpose"], credits,
+                                                    "Stripe %s" % md["purpose"], stripe_ref=pi["id"])
+                        print("[stripe] credited %s to user %s (new=%s, pi=%s)" % (credits, uid, added, pi["id"]), flush=True)
+                    finally:
+                        conn.close()
+        except Exception:
+            traceback.print_exc()
+        return self._send_json(200, {"received": True}, [])
+
     def do_GET(self):
         self._dispatch("GET")
 
@@ -706,6 +949,8 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         if path == "/healthz":
             return self._send_json(200, {"ok": True}, [])
+        if path == "/api/stripe/webhook" and method == "POST":
+            return self._stripe_webhook()
         route = next(((fn, m.groups(), needs) for meth, m_, fn, needs in ROUTES
                       if meth == method for m in [m_.match(path)] if m), None)
         if route is None:
@@ -737,6 +982,11 @@ class Handler(BaseHTTPRequestHandler):
             query = {k: v[0] for k, v in parse_qs(parsed.query).items()}
             ctx = Ctx(conn, user, params, query, body, self)
             result = fn(ctx)
+            if isinstance(result, tuple) and result and result[0] == "image":
+                _, ctype, data = result
+                self._headers(200, ctype, len(data), [("Cache-Control", "public, max-age=31536000, immutable")])
+                self.wfile.write(data)
+                return
             if isinstance(result, tuple) and result[0] == "redirect":
                 self.send_response(302)
                 self.send_header("Location", result[1])

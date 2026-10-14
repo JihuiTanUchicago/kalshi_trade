@@ -198,6 +198,40 @@ DDL = [
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     """
+    CREATE TABLE IF NOT EXISTS app_credit_ledger (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      kind VARCHAR(16) NOT NULL,
+      amount_usd DECIMAL(14,6) NOT NULL,
+      memo VARCHAR(255) NULL,
+      stripe_ref VARCHAR(128) NULL,
+      run_id BIGINT NULL,
+      created_at DATETIME NOT NULL,
+      INDEX idx_credit_user (user_id, id),
+      UNIQUE KEY uq_credit_stripe (stripe_ref)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS app_stripe_customers (
+      user_id BIGINT PRIMARY KEY,
+      stripe_customer_id VARCHAR(128) NOT NULL,
+      default_pm_id VARCHAR(128) NULL,
+      auto_reload TINYINT(1) NOT NULL DEFAULT 1,
+      created_at DATETIME NOT NULL,
+      UNIQUE KEY uq_stripe_customer (stripe_customer_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS app_images (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      content_type VARCHAR(32) NOT NULL,
+      data MEDIUMBLOB NOT NULL,
+      created_at DATETIME NOT NULL,
+      INDEX idx_images_user (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
     CREATE TABLE IF NOT EXISTS app_posts (
       id BIGINT AUTO_INCREMENT PRIMARY KEY,
       user_id BIGINT NOT NULL,
@@ -257,12 +291,23 @@ DDL = [
 ]
 
 
+def _add_column_if_missing(cur, table: str, column: str, ddl: str) -> None:
+    cur.execute(
+        "SELECT COUNT(*) AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s AND COLUMN_NAME=%s",
+        (table, column),
+    )
+    if cur.fetchone()["c"] == 0:
+        cur.execute(ddl)
+
+
 def main() -> None:
     init_schema.main()  # market_candles and the shared pipeline tables
     conn = get_db_conn()
     with conn.cursor() as cur:
         for stmt in DDL:
             cur.execute(stmt)
+        _add_column_if_missing(cur, "app_posts", "image_id", "ALTER TABLE app_posts ADD COLUMN image_id BIGINT NULL AFTER snapshot_json")
+        _add_column_if_missing(cur, "app_posts", "edited_at", "ALTER TABLE app_posts ADD COLUMN edited_at DATETIME NULL")
     conn.close()
     print("App schema initialized.")
 
