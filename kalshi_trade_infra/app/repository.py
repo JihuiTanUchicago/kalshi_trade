@@ -388,7 +388,7 @@ def get_strategy(cur, user_id: int, strategy_id: int) -> Optional[Dict]:
     return _strategy_row(row) if row else None
 
 
-def strategy_memory(cur, user_id: int, market: str, limit: int = 15) -> List[Dict]:
+def strategy_memory(cur, user_id: int, market: str, limit: int = 40) -> List[Dict]:
     """What this user's agents already tried on this market, newest first."""
     cur.execute(
         """SELECT title, direction, spec_json, status, result_json FROM app_strategies

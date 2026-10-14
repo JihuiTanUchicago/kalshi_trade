@@ -125,12 +125,13 @@ def _memory_block(memory: List[Dict]) -> str:
         res = s.get("result") or {}
         ins = res.get("in_sample") or {}
         oos = res.get("out_of_sample") or {}
+        # Compact (no spec) so we can show many prior results without bloating context —
+        # enough for the agent to know what's been tried and not repeat it.
         lines.append(
-            "- [%s] %s (%s): in-sample pnl $%s over %s trades%s; spec=%s"
+            "- [%s] %s: in-sample $%s/%s trades%s"
             % (
-                s["status"], s["title"], s["direction"], ins.get("pnl"), ins.get("trades"),
-                ("; unseen-data pnl $%s" % oos.get("pnl")) if oos else "",
-                json.dumps(s["spec"], separators=(",", ":")),
+                s["status"], s["title"], ins.get("pnl"), ins.get("trades"),
+                ("; unseen $%s" % oos.get("pnl")) if oos else "",
             )
         )
     return "\n".join(lines)
@@ -231,11 +232,17 @@ def _round_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], want: int
     base = _research_prompt(run, ds, memory, want)
     if not chunk:
         return base
-    table = "\n".join(
+    # Digest, not a dump: full detail for the best few to refine, bare titles for the rest so the
+    # agent stays aware of what it tried (and doesn't repeat) without the prompt growing unbounded.
+    ranked = sorted(chunk, key=lambda t: backtest.score(t["in_sample"]), reverse=True)
+    detail = "\n".join(
         "- %s: %s; spec=%s" % (t["title"], _metrics_line(t["in_sample"]), json.dumps(t["spec"], separators=(",", ":")))
-        for t in chunk
+        for t in ranked[:12]
     )
-    return (base + "\n\nResults so far this session (in-sample only; out-of-sample is held back):\n" + table
+    extra = ""
+    if len(ranked) > 12:
+        extra = "\nAlso already tested (do not repeat): " + "; ".join(t["title"] for t in ranked[12:])
+    return (base + "\n\nResults so far this session (in-sample only; out-of-sample is held back):\n" + detail + extra
             + "\n\nPropose %d NEW, distinct hypotheses: refine what worked, drop what did not, "
               "and explain the change in each thesis." % want)
 

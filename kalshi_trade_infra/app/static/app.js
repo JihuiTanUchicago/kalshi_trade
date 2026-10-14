@@ -856,7 +856,7 @@
         <section><div class="section-head"><h2>Hypotheses</h2><p>Best unseen P&L first</p></div>
           <div id="feed">${strategyTable('')}</div></section>
       </div>`);
-    let after = 0, tried = 0;
+    let after = 0, tried = 0, lastFeedSig = '';
     const load = async () => {
       const d = await api(`/api/runs/${id}?after=${after}`);
       const r = d.run;
@@ -898,10 +898,15 @@
       const shownPnl = (s) => { const m = (s.out_of_sample && s.out_of_sample.pnl != null) ? s.out_of_sample : (s.in_sample || {}); return m.pnl != null ? +m.pnl : -Infinity; };
       const tier = (s) => (s.status === 'passed' ? 0 : s.status === 'failed' ? 1 : 2);
       const sorted = (d.strategies || []).slice().sort((a, b) => (tier(a) - tier(b)) || (shownPnl(b) - shownPnl(a)));
-      const reg = registry(sorted.map((s) => s.equity));
-      feed.innerHTML = sorted.length
-        ? strategyTable(sorted.map((s) => strategySlip(s, reg, { land: true })).join(''))
-        : `<div class="empty"><h3>${active ? 'Testing' : 'No results'}</h3><p>${active ? 'Strategies appear here as each batch clears the unseen-data gate — best unseen P&L on top.' : 'This run produced no strategies.'}</p></div>`;
+      // Only re-render when the set actually changed — re-writing innerHTML every poll makes it blink.
+      const sig = sorted.map((s) => `${s.id}:${s.status}:${shownPnl(s)}`).join('|') + '#' + (active ? 1 : 0);
+      if (sig !== lastFeedSig) {
+        lastFeedSig = sig;
+        const reg = registry(sorted.map((s) => s.equity));
+        feed.innerHTML = sorted.length
+          ? strategyTable(sorted.map((s) => strategySlip(s, reg, { land: true })).join(''))
+          : `<div class="empty"><h3>${active ? 'Testing' : 'No results'}</h3><p>${active ? 'Strategies appear here as each batch clears the unseen-data gate — best unseen P&L on top.' : 'This run produced no strategies.'}</p></div>`;
+      }
       if (!active) clearTimers();
     };
     await load();
@@ -1454,6 +1459,8 @@
         fig('Open interest', num(Math.round(+d.open_interest || 0))) + fig('Closes', closes) + '</dl>', `
       <section class="sect"><div class="sect-head"><h2>Price history</h2><p>Yes price · Kalshi ${gran} candles</p></div>
         <div class="pchart-wrap">${priceChart(d.points)}</div></section>
+      <section class="sect"><div class="sect-head"><h2>Raw data</h2><p>${num(d.points.length)} ${gran} points · newest first</p></div>
+        ${d.points.length ? `<div class="sheet"><table><thead><tr><th>Time (UTC)</th><th class="num">Yes price</th><th class="num">Volume</th></tr></thead><tbody>${d.points.slice(-400).reverse().map((p) => `<tr><td class="tick">${new Date(p.t * 1000).toLocaleString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</td><td class="num">${cents(p.yes)}</td><td class="num">${num(Math.round(p.vol || 0))}</td></tr>`).join('')}</tbody></table></div>${d.points.length > 400 ? `<p class="hint" style="margin-top:8px">Showing the most recent 400 of ${num(d.points.length)} points.</p>` : ''}` : '<div class="empty"><p>No candles recorded yet.</p></div>'}</section>
       <div class="xpage"><a class="btn sm" href="/explore">← Back to Explore</a>
         <a class="btn sm" href="https://kalshi.com/markets/${encodeURIComponent((d.series || '').toLowerCase())}" target="_blank" rel="noopener">View on Kalshi ↗</a></div>`);
   }
