@@ -1,0 +1,7 @@
+[Unit]
+Description=Run the Tau catalog refresh every 30 minutes
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=30min
+[Install]
+WantedBy=timers.target
