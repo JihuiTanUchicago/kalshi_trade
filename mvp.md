@@ -49,6 +49,9 @@ strategies and their model parameters.
 ### Must-have Features
 - Our simulations do not consider the fact that Kalshi has a dev environment for testing
     - Maybe we should use that for an enhanced dev testing environment
+- We should adapt OpenRouter's revenue model for early adoptions; easiest way to persuade
+and justify our services.
+
 ### Interesting Features
 - Make agent pipeline that allows the user to collect data itself
     - Maybe once collected, it can be shared across all users
