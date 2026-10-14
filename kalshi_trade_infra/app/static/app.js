@@ -1570,7 +1570,7 @@
   // A curated signal-flow graph of the real architecture (the design is stable,
   // so the topology is hand-laid for legibility); live telemetry is overlaid so
   // the map shows what the running codebase is doing right now.
-  const SYS_H = 54, SYS_DBH = 104;
+  const SYS_H = 66, SYS_DBH = 110;
   const SYS_NODES = [
     { id: 'kalshi', x: 40, y: 40, w: 150, label: 'Kalshi API', sub: 'markets + order book', ext: 1 },
     { id: 'coinbase', x: 40, y: 150, w: 150, label: 'Coinbase', sub: 'BTC spot price', ext: 1 },
@@ -1622,9 +1622,9 @@
       const h = n.big ? SYS_DBH : SYS_H;
       return `<g class="sys-node ${n.ext ? 'ext' : ''}" data-id="${n.id}" transform="translate(${n.x},${n.y})" tabindex="0" role="button" aria-label="${esc(n.label)}">
         <rect width="${n.w}" height="${h}" rx="${n.ext ? 9 : 3}"></rect>
-        <text class="t" x="12" y="21">${esc(n.label)}</text>
-        <text class="s" x="12" y="37">${esc(n.sub)}</text>
-        <text class="m" x="12" y="${h - 9}" data-m="${n.id}"></text>
+        <text class="t" x="12" y="23">${esc(n.label)}</text>
+        <text class="s" x="12" y="41">${esc(n.sub)}</text>
+        <text class="m" x="12" y="${h - 12}" data-m="${n.id}"></text>
         <circle class="pulse" cx="${n.w - 13}" cy="15" r="4"></circle>
       </g>`;
     }).join('');
