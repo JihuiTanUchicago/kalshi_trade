@@ -259,7 +259,7 @@
       const si = await api('/api/billing/setup-intent', {});
       const elements = sp.elements({ clientSecret: si.client_secret, appearance: { theme: 'flat', variables: { fontFamily: 'Archivo, sans-serif', colorPrimary: '#191B16', borderRadius: '10px' } } });
       // Trim the form: no billing address (not needed to save a card), wallets on.
-      const pe = elements.create('payment', { layout: 'tabs', wallets: { applePay: 'auto', googlePay: 'auto' }, fields: { billingDetails: { address: 'never' } } });
+      const pe = elements.create('payment', { layout: 'tabs', wallets: { applePay: 'auto', googlePay: 'auto' }, fields: { billingDetails: { address: { country: 'never', postalCode: 'auto', line1: 'never', line2: 'never', city: 'never', state: 'never' } } } });
       dlg.querySelector('#pay-el').innerHTML = '';
       pe.mount('#pay-el');
       dlg.querySelector('#payform').onsubmit = (e) => {
@@ -1500,7 +1500,7 @@
         const sp = Stripe(d.publishable_key);
         const si = await api('/api/billing/setup-intent', {});
         const elements = sp.elements({ clientSecret: si.client_secret, appearance: { theme: 'flat', variables: { fontFamily: 'Archivo, sans-serif', colorPrimary: '#191B16', borderRadius: '10px' } } });
-        const pe = elements.create('payment', { layout: 'tabs', wallets: { applePay: 'auto', googlePay: 'auto' }, fields: { billingDetails: { address: 'never' } } });
+        const pe = elements.create('payment', { layout: 'tabs', wallets: { applePay: 'auto', googlePay: 'auto' }, fields: { billingDetails: { address: { country: 'never', postalCode: 'auto', line1: 'never', line2: 'never', city: 'never', state: 'never' } } } });
         pe.mount('#card-el');
         root.querySelector('#save-card').onclick = (e) => busy(e.currentTarget, async () => {
           flash('#card-flash', '', '');
