@@ -33,7 +33,9 @@ Run:  python -m data_pipeline.snapshot_collector            # one snapshot now
 """
 from __future__ import annotations
 
+import gzip
 import io
+import json
 import os
 import sys
 import threading
@@ -94,6 +96,7 @@ def _row(m: Dict, series: Optional[str], minute_iso: str) -> Dict:
         "ticker": m.get("ticker"),
         "event_ticker": m.get("event_ticker"),
         "series_ticker": series,
+        "title": m.get("title") or m.get("yes_sub_title") or "",
         "yes_bid": m.get("yes_bid_dollars"),
         "yes_ask": m.get("yes_ask_dollars"),
         "no_bid": m.get("no_bid_dollars"),
@@ -140,6 +143,42 @@ def _write_parquet(rows: List[Dict], minute: datetime) -> str:
     return key
 
 
+EXPLORE_KEY = os.getenv("DATALAKE_EXPLORE_KEY", "explore/latest.json.gz")
+EXPLORE_TOP = int(os.getenv("EXPLORE_TOP", "3000"))  # hottest N markets surfaced to the Explore tab
+
+
+def _fnum(x) -> float:
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _write_explore_feed(rows: List[Dict], minute: datetime) -> None:
+    """Compact, gzipped feed of the hottest markets for the user-facing Explore tab.
+    One small object the web app reads + caches, so no lake-query or extra deps on the web box."""
+    import boto3
+    global _s3
+    if _s3 is None:
+        _s3 = boto3.client("s3")
+    ranked = sorted(rows, key=lambda r: _fnum(r.get("volume_24h")), reverse=True)[:EXPLORE_TOP]
+    feed = {
+        "at": minute.isoformat(),
+        "total": len(rows),
+        "shown": len(ranked),
+        "markets": [
+            {"t": r["ticker"], "s": r["series_ticker"], "ev": r.get("event_ticker"),
+             "ti": r.get("title") or "", "last": r.get("last"), "bid": r.get("yes_bid"),
+             "ask": r.get("yes_ask"), "v24": r.get("volume_24h"), "oi": r.get("open_interest"),
+             "st": r.get("status")}
+            for r in ranked
+        ],
+    }
+    body = gzip.compress(json.dumps(feed, separators=(",", ":")).encode())
+    _s3.put_object(Bucket=BUCKET, Key=EXPLORE_KEY, Body=body,
+                   ContentType="application/json", ContentEncoding="gzip")
+
+
 def snapshot_once() -> Dict[str, object]:
     # One timestamp for the whole cross-section: set once, stamped on every row, so
     # all contracts share an aligned snapshot_minute_utc (what cross-contract joins need).
@@ -166,6 +205,10 @@ def snapshot_once() -> Dict[str, object]:
         print("[snapshot] %s -> 0 markets across %d series" % (minute_iso, len(series)), flush=True)
         return {"markets": 0, "series": len(series), "key": None}
     key = _write_parquet(rows, minute)
+    try:
+        _write_explore_feed(rows, minute)  # best-effort; a feed failure must not drop the snapshot
+    except Exception as e:
+        print("[snapshot] explore feed failed: %r" % e, flush=True)
     print("[snapshot] %s -> %d markets / %d series -> s3://%s/%s"
           % (minute_iso, len(rows), len(series), BUCKET, key), flush=True)
     return {"markets": len(rows), "series": len(series), "key": key}
