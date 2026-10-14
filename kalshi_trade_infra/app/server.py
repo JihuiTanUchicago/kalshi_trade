@@ -241,7 +241,9 @@ def get_run(ctx: Ctx):
     if run is None or run["kind"] != "research":
         raise ApiError(404, "No such research run.")
     after = int(ctx.query.get("after") or 0)
-    strategies = repo.list_strategies(ctx.cur, ctx.uid) if run["status"] == "succeeded" else []
+    # This run's gated strategies, live — so the Hypotheses table fills as each chunk clears
+    # the gate (a run_forever run never reaches "succeeded", so we can't wait for it).
+    strategies = repo.list_strategies(ctx.cur, ctx.uid, run_id=run["id"])
     return {
         "run": run,
         "events": repo.run_events(ctx.cur, run["id"], after),

@@ -359,14 +359,14 @@ def _strategy_row(r: Dict) -> Dict:
 
 def list_strategies(
     cur, user_id: int, direction: Optional[str] = None, status: Optional[str] = None, market: Optional[str] = None,
-    limit: int = 200,
+    run_id: Optional[int] = None, limit: int = 500,
 ) -> List[Dict]:
     sql = """SELECT s.id, s.run_id, s.parent_id, s.market, s.direction, s.title, s.thesis, s.spec_json, s.status,
                     s.result_json, s.created_at, r.hypotheses_tried
              FROM app_strategies s LEFT JOIN app_agent_runs r ON r.id=s.run_id
              WHERE s.user_id=%s"""
     params: List[Any] = [user_id]
-    for col, val in (("s.direction", direction), ("s.status", status), ("s.market", market)):
+    for col, val in (("s.direction", direction), ("s.status", status), ("s.market", market), ("s.run_id", run_id)):
         if val:
             sql += " AND %s=%%s" % col
             params.append(val)
