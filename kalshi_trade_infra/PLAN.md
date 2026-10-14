@@ -1,5 +1,62 @@
 # PLAN
 
+## ARCHITECTURE PLAN — all-markets collector + cross-contract trading (proposed 2026-10-13, NOT built)
+
+**Goal:** collect *every* open Kalshi market at per-minute resolution, handle renewing
+contracts correctly, let users find markets by a stable **name** (not a ticker), and let a
+strategy trade **several order books at once**.
+
+### The core idea: Series (logical contract) vs Market (renewing instance)
+Kalshi tickers renew: `KXBTC15M-26OCT1401...` is one 15-minute window; a new ticker opens every
+15 minutes. The stable thing is the **series** (`KXBTC15M` = "BTC 15-min"). So:
+- **series** = the logical "contract" a user searches/selects and a strategy targets.
+- **market instance** = a concrete, settling ticker under a series (comes and goes).
+- A strategy says "trade series X (and Y)"; the engine always trades the *currently-open*
+  instance(s) of those series — rolling is automatic.
+
+```
+ Kalshi /series /events /markets
+         │  discover + roll
+         ▼
+ ┌──────────────┐   per-minute, synchronized (one snapshot_minute_utc for all)
+ │  series       │   ┌───────────────────────────┐
+ │  catalog      │──▶│ snapshot every OPEN market │──▶ market_snapshots_1m
+ │ (searchable)  │   │ (yes/no bid+ask, last, vol,│    (partition by day+series)
+ └──────────────┘   │  open_interest)            │
+         │           └───────────────────────────┘
+         ▼
+  Research: search by series name → pick 1..N series (cross-contract)
+         ▼
+  Backtest.Dataset(series=[...]) → multi-book spec → sim/live engines trade all books
+```
+
+### Data model (new)
+- `kalshi_series(series_ticker PK, title, category, status, updated_at)` — the searchable catalog.
+- `kalshi_markets(ticker PK, series_ticker, open_time, close_time, strike, status)` — instances.
+- `market_snapshots_1m(snapshot_minute_utc, ticker, series_ticker, yes_bid, yes_ask, last,
+  volume, open_interest, …)` — the per-minute time-series; **synchronized** (every open market
+  shares the same `snapshot_minute_utc` each tick, so cross-sectional/cross-contract analysis works).
+
+### Storage decision (needs your call)
+Per the earlier math, per-minute × all markets is cheap on columnar/compressed storage and dear
+on RDS rows (~1.7 KB/row): **$1000/mo ≈ 9.5k markets·yr on RDS vs ~40 TB on S3/Parquet.**
+- **Option A (RDS-only, v1):** simplest, reuses the stack; fine for thousands of markets; migrate later.
+- **Option B (S3 + Parquet, partitioned by day/series):** scales to the whole exchange for years;
+  RDS keeps only the catalog + hot recent data. More plumbing up front.
+
+### Build phases
+1. **Catalog + roll:** ingest all series/markets metadata; detect settle→reopen. Search UX on Research.
+2. **Snapshot collector:** per-minute synchronized snapshot of every open market → snapshots table/lake.
+3. **Backtest over any series:** `Dataset` takes a series (not the hard-coded 2); Research runs it.
+4. **Cross-contract:** spec gains a `series: [...]` list; backtester + sim/live engines trade N books.
+
+### What changes in the app
+- Research page: the 2-market radio → a **search box over series** (autocomplete, multi-select).
+- `backtest.Dataset` / `spec`: single-market → list-of-series.
+- Engines (`app/worker.py`, live engine): iterate the selected series' open instances.
+- Strategy "market" field becomes a set; UI shows which books a strategy spans.
+
+
 ## Mandatory card gate + payment modal, wallets, notifications, UI polish (2026-10-13, deployed)
 
 Stripe is now **LIVE in test mode** on the box (keys in Parameter Store, loaded via
