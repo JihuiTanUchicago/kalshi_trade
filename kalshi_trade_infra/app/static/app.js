@@ -863,8 +863,10 @@
           inner = 'Tested <b>' + esc(ev.message) + '</b>';
         } else if (ev.kind === 'verdict') {
           const st = ev.data && ev.data.status;
-          const tag = st === 'passed' ? '<b class="verdict pass">PASSED</b>' : '<b class="verdict void">VOID</b>';
-          inner = tag + ' ' + esc(ev.message.replace(/^(PASSED|VOID|FAILED)\s*[-–]\s*/, ''));
+          const tag = st === 'passed' ? '<b class="verdict pass">PASSED</b>'
+            : st === 'rejected' ? '<b class="verdict rej">REJECTED</b>'
+            : '<b class="verdict void">VOID</b>';
+          inner = tag + ' ' + esc(ev.message.replace(/^(PASSED|VOID|FAILED|REJECTED)\s*[-–]\s*/, ''));
         } else {
           inner = esc(ev.message);
         }
@@ -879,10 +881,14 @@
       if (r.status === 'succeeded' && !shownStrategies) {
         shownStrategies = true;
         const reg = registry(d.strategies.map((s) => s.equity));
-        // Profitable-on-unseen-data first; rejected (never OOS-tested) sink to the bottom.
-        const oosPnl = (s) => (s.out_of_sample && s.out_of_sample.pnl != null) ? s.out_of_sample.pnl : -Infinity;
-        const tier = (s) => (s.status === 'rejected' ? 1 : 0);
-        const sorted = d.strategies.slice().sort((a, b) => (tier(a) - tier(b)) || (oosPnl(b) - oosPnl(a)));
+        // Sort by the P&L shown in the table (unseen if tested, else in-sample),
+        // most profitable first; deployable (passed) above void above rejected.
+        const shownPnl = (s) => {
+          const m = (s.out_of_sample && s.out_of_sample.pnl != null) ? s.out_of_sample : (s.in_sample || {});
+          return m.pnl != null ? +m.pnl : -Infinity;
+        };
+        const tier = (s) => (s.status === 'passed' ? 0 : s.status === 'failed' ? 1 : 2);
+        const sorted = d.strategies.slice().sort((a, b) => (tier(a) - tier(b)) || (shownPnl(b) - shownPnl(a)));
         feed.innerHTML = strategyTable(sorted.map((s) => strategySlip(s, reg, { land: true })).join(''));
       }
       if (!active) clearTimers();

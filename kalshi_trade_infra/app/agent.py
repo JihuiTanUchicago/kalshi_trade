@@ -253,6 +253,10 @@ def run_research(
             else:
                 result = {"capital": t["capital"], "dataset": s, "in_sample": t["in_sample"]}
                 status = "rejected"
+                ins = t["in_sample"] or {}
+                log("verdict", "REJECTED - %s: not a finalist, so never tested on unseen data "
+                    "(in-sample pnl $%s over %s trades)." % (t["title"], ins.get("pnl"), ins.get("trades")),
+                    {"title": t["title"], "status": "rejected"})
             t["strategy_id"] = repo.insert_strategy(
                 cur, user_id, run_id, None, market, run["direction"] or "custom", t["title"], t["thesis"], t["spec"],
                 status, result,
