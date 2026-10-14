@@ -15,8 +15,8 @@ import os
 from typing import Optional
 
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
-FROM_EMAIL = os.getenv("TAU_FROM_EMAIL", "tjhprivate016@gmail.com")
-OPERATOR_EMAIL = os.getenv("TAU_OPERATOR_EMAIL", "tjhprivate016@gmail.com")
+FROM_EMAIL = os.getenv("TAU_FROM_EMAIL", "tjhprivate0416@gmail.com")
+OPERATOR_EMAIL = os.getenv("TAU_OPERATOR_EMAIL", "tjhprivate0416@gmail.com")
 
 
 def _send(to: str, subject: str, body: str, reply_to: Optional[str] = None) -> bool:

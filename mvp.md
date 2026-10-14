@@ -116,3 +116,4 @@ need to read code when they want to?
 - User testing. Agent as a simulated user to test front end UIs.
 - computer agent to help me do things that previously I needed to manually do.
 - New UI/interface, but agent has old knowledge -- there should be a product that
+ensure agent-friendly user interface so that knowledge doesn't drift
