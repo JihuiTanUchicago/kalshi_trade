@@ -1,4 +1,4 @@
-"""Recursive's web server: the single-page app plus its JSON API.
+"""Tau's web server: the single-page app plus its JSON API.
 
     python -m app.server            # APP_PORT (default 8090)
 

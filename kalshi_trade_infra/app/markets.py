@@ -1,4 +1,4 @@
-"""The two markets Recursive trades, and the one feature snapshot both the
+"""The two markets Tau trades, and the one feature snapshot both the
 backtester and the live engine read.
 
 Backtest and deployment must evaluate the identical rule on identical inputs,

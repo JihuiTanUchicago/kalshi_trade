@@ -51,6 +51,7 @@ strategies and their model parameters.
     - Maybe we should use that for an enhanced dev testing environment
 - We should adapt OpenRouter's revenue model for early adoptions; easiest way to persuade
 and justify our services.
+- No major data vendor for prediction markets yet. We can be the databento for prediction market
 
 ### Interesting Features
 - Make agent pipeline that allows the user to collect data itself

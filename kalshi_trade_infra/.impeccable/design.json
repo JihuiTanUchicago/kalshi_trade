@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "generatedAt": "2026-10-13T20:30:00+00:00",
-  "title": "Design System: Recursive",
+  "title": "Design System: Tau",
   "worlds": [
     {
       "id": "landing",
@@ -853,7 +853,7 @@
       "scope": "data_pipeline/dashboard_server.py (CSS/JS embedded in Python string literals)",
       "tokenPrefix": "kursbuch-",
       "northStar": "The Station Timetable",
-      "overview": "The owner's private control room for the house BTC 15-minute pipeline. Same timetable world the authed customer app now shares in spirit: ink on warm grey stock, hairline rules, no shadow/gradient/glass/card, tabular lining figures, Archivo + Archivo Narrow at two weights, one reserved signal red, and two stocks (grey paper vs rose live). Recorded before Recursive existed and still live; the full record is kept intact in DESIGN.md's final section. The customer App world above is this world's rules carried onto the product, so cross-reference rather than duplicate.",
+      "overview": "The owner's private control room for the house BTC 15-minute pipeline. Same timetable world the authed customer app now shares in spirit: ink on warm grey stock, hairline rules, no shadow/gradient/glass/card, tabular lining figures, Archivo + Archivo Narrow at two weights, one reserved signal red, and two stocks (grey paper vs rose live). Recorded before Tau existed and still live; the full record is kept intact in DESIGN.md's final section. The customer App world above is this world's rules carried onto the product, so cross-reference rather than duplicate.",
       "relationToApp": "The authed App world and this console are the same visual system (identical token values, same Archivo/Narrow type, same signal-red discipline). They differ only in container licence: the console forbids any filled card (sections + one plate), while the App world permits bordered, unshadowed filled panels (.panel, .sheet-doc, .chat, .split) because the customer surface needs grouped explanation. No shadow rule still holds in both."
     }
   },

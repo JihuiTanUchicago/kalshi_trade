@@ -1,4 +1,4 @@
-# Recursive (v0.1)
+# Tau (v0.1)
 
 The customer product: Google sign-in, agents that research Kalshi Bitcoin markets, a
 backtest gate the agent cannot game, paper-first deployment, and a co-pilot chat.

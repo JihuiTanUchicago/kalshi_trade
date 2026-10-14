@@ -5,7 +5,7 @@ primary_target: "app/static/index.html"
 related_targets: ["app/static/app.css","app/static/app.js"]
 ---
 
-# Recursive customer app
+# Tau customer app
 
 Scope: the whole customer web app (`app/static/`): sign-in, Dashboard, Research hub, Strategies,
 Strategy detail (thesis, backtest, what-if), Deploy (live board + agent chat), Funds.

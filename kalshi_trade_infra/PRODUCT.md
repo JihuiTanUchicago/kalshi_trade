@@ -27,7 +27,7 @@ its own audience and rules (see "Operator console" below).
 
 ## Product Purpose
 
-**Recursive** is a self-improving alpha-discovery loop for Kalshi's Bitcoin markets: an
+**Tau** is a self-improving alpha-discovery loop for Kalshi's Bitcoin markets: an
 agent proposes trading hypotheses, validates them in a backtest it cannot cheat (it never sees
 the out-of-sample period while iterating), and only strategies that pass are deployable. The
 user decides what to deploy, watches it trade, and talks to the agent to adjust it - or lets
@@ -69,7 +69,7 @@ strategy that fails its gate is shown as failed, not hidden.
 
 ## Brand Commitments
 
-- Name: **Recursive** (chosen by the owner, 2026-10-12). Never use "Kalshi" as or inside the
+- Name: **Tau** (chosen by the owner, 2026-10-12). Never use "Kalshi" as or inside the
   product's name or mark; Kalshi is named only as the venue.
 
 ## Evidence on Hand

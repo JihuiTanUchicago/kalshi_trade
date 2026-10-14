@@ -218,8 +218,10 @@
           <p class="wl-sub">Tau meters the agent by the token. Add a card now, and we'll give you $${S.me.free_bonus} in credits — free.</p>
           <div id="pay-el" class="pay-el">${loading(120)}</div>
           <div id="pay-hint"></div>
-          <button class="pill solid wl-submit" type="submit" id="pay-submit">Save payment method</button>
-          <button class="pay-signout linkish" type="button" data-signout>Sign out instead</button>
+          <div class="pay-foot">
+            <button class="pill solid wl-submit" type="submit" id="pay-submit">Save payment method</button>
+            <button class="pay-signout linkish" type="button" data-signout>Sign out instead</button>
+          </div>
         </form>
       </div>`;
     document.body.appendChild(dlg);
@@ -252,7 +254,7 @@
       const sp = Stripe(state.publishable_key);
       const si = await api('/api/billing/setup-intent', {});
       const elements = sp.elements({ clientSecret: si.client_secret, appearance: { theme: 'flat', variables: { fontFamily: 'Archivo, sans-serif', colorPrimary: '#191B16', borderRadius: '10px' } } });
-      const pe = elements.create('payment', { layout: 'tabs' });
+      const pe = elements.create('payment', { layout: 'tabs', wallets: { applePay: 'auto', googlePay: 'auto' } });
       dlg.querySelector('#pay-el').innerHTML = '';
       pe.mount('#pay-el');
       dlg.querySelector('#payform').onsubmit = (e) => {

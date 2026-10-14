@@ -1,4 +1,4 @@
-"""Tables for the Recursive customer app. Additive and idempotent, like
+"""Tables for the Tau customer app. Additive and idempotent, like
 data_pipeline/init_schema.py: `python -m app.schema`.
 
 Money is DECIMAL, never FLOAT. Every paper-cash movement is a row in

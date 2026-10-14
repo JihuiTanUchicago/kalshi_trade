@@ -1,5 +1,5 @@
 ---
-name: Recursive
+name: Tau
 description: >
   Two shipped worlds. The pre-login landing is a calm, white, rounded product page in Rubik
   with one warm accent. The authed app is Kursbuch — a Swiss station-timetable for money: ink
@@ -271,9 +271,9 @@ components:
     textColor: "#F1F3ED"
 ---
 
-# Design System: Recursive
+# Design System: Tau
 
-Recursive ships **two visual worlds in one static app** (`app/static/index.html`, `app.css`,
+Tau ships **two visual worlds in one static app** (`app/static/index.html`, `app.css`,
 `app.js`, served by `app/server.py`), plus a third surface that is the owner's private console.
 
 1. **The Landing** — the pre-login Persuade surface (`body.landing-body` / `.landing`, rendered
@@ -921,10 +921,12 @@ here:
 - **App `.gain` / `.loss` resolve to ink by design** — this is correct (money rides a field), noted
   only so it is not mistaken for a missing colour.
 
-- **Shipped name is "Tau", the record says "Recursive".** The build wordmark, logo (`TAU_MARK`),
-  and all UI copy read **Tau**; `name: Recursive` in the frontmatter, the `.impeccable/` title, and
-  the `X-Recursive` request header are the retained internal codename. Recorded as a naming
-  divergence, not reconciled here. The old landing "cube" mark is also gone: `cube` now resolves to
+- **Product name is "Tau" everywhere user-facing and in this record.** Wordmark, logo (`TAU_MARK`),
+  UI copy, `name: Tau` frontmatter, and the `.impeccable/` title all read **Tau**. Only deployed
+  infrastructure keeps the old **Recursive** codename on purpose — the `X-Recursive` CSRF header,
+  the `recursive-*` systemd units, the `/recursive/*` SSM parameters, and the `Recursive*` IAM
+  policy names — because renaming live identifiers is a migration, not a doc edit. The old landing
+  "cube" mark is also gone: `cube` now resolves to
   `TAU_MARK` (a 15px-radius `#15161A` tile with a stroked T and an `#F05A28` dot), so the Landing
   Shapes "cube" description is stale.
 - **`.glossary-pop` carries a drop shadow** (`0 12px 26px -14px rgba(25,27,22,.42)`), as does the
