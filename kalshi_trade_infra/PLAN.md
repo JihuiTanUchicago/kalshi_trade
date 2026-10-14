@@ -1,5 +1,26 @@
 # PLAN
 
+## Email (SES) + Bedrock LLM (2026-10-13)
+
+**Waitlist email** moved from SNS to **SES** (`app/notify.py`). SNS only reached a *confirmed*
+operator subscription (it was stuck PendingConfirmation = zero emails) and can never email the
+signup. SES now emails BOTH: a confirmation to the signer and a notification to the operator
+(reply-to the applicant). From/To default to `tjhprivate016@gmail.com` (env `TAU_FROM_EMAIL` /
+`TAU_OPERATOR_EMAIL`). Role has `TauSesSend` (ses:SendEmail). **Pending user action:** click the
+SES verification email sent to tjhprivate016@gmail.com (operator mail works after that). SES is in
+**sandbox** (Max24HourSend 200); production access was requested via `sesv2 put-account-details`
+so signup confirmations to arbitrary addresses deliver once AWS approves (~24h). Until then only the
+verified operator address receives mail.
+
+**Agent LLM via Bedrock.** `app/llm.py` gained a Bedrock backend: `APP_LLM_PROVIDER=bedrock` (set in
+`.env.app`) routes Claude calls through Amazon Bedrock via the instance role (AWS credits, no
+Anthropic key). `APP_BEDROCK_MODEL` default `anthropic.claude-sonnet-5-5`. Role has `TauBedrockInvoke`
+(bedrock:InvokeModel). End-to-end verified except **model access**: an on-box invoke returns
+`AccessDeniedException` until Claude model access is enabled in the Bedrock console (us-east-1 >
+Model access > Anthropic). After that, agents run on Bedrock; the `ANTHROPIC_API_KEY` path is no
+longer needed. If the id needs the inference-profile form, switch `APP_BEDROCK_MODEL` to
+`us.anthropic.claude-sonnet-5-5`.
+
 ## Tau rebrand + unified UI + Community + idea-first (2026-10-13, deployed)
 
 The product is now **Tau** (user-facing rename; internal infra names — systemd services
