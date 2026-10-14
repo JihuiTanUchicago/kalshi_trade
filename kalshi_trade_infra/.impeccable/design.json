@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-13T06:00:20+00:00",
+  "generatedAt": "2026-10-13T20:30:00+00:00",
   "title": "Design System: Recursive",
   "worlds": [
     {
@@ -740,6 +740,18 @@
         "value": "none",
         "world": "app",
         "purpose": "The app world carries no shadow, gradient, glass or blur. Depth is rule weight plus four stock tints."
+      },
+      {
+        "name": "glossary-pop",
+        "value": "0 12px 26px -14px rgba(25,27,22,.42)",
+        "world": "app",
+        "purpose": "Top-layer glossary popover. Divergence from the App no-shadow rule; overlay-only, not promoted into the depth system."
+      },
+      {
+        "name": "pay-window",
+        "value": "0 22px 48px -24px rgba(0,0,0,.55)",
+        "world": "landing",
+        "purpose": "Faux app-window inside the payment modal's ink showcase panel."
       }
     ],
     "motion": [
@@ -796,6 +808,18 @@
         "value": "all animation/transition -> .001ms",
         "world": "both",
         "purpose": "Global prefers-reduced-motion collapse."
+      },
+      {
+        "name": "glopop",
+        "value": ".14s cubic-bezier(.16,1,.3,1) (opacity + 3px rise)",
+        "world": "app",
+        "purpose": "Glossary popover entrance; suppressed under reduced-motion."
+      },
+      {
+        "name": "payfade",
+        "value": ".5s cubic-bezier(.16,1,.3,1) (opacity + 14px slide)",
+        "world": "landing",
+        "purpose": "Payment-modal showcase-reel scene transition."
       }
     ],
     "breakpoints": [
@@ -900,6 +924,36 @@
       "note": "Btn: Narrow 600 uppercase, 1px ink border, hover fills ink; .danger/.armed signal. Inputs stock-raised, focus ink border + stock bg, signal caret. Chips pill filters. Switch 42x24 pill, signal when on."
     },
     {
+      "world": "landing",
+      "name": "pay-modal / pay-split / pay-show / pay-right",
+      "note": "Mandatory card gate: blocking <dialog> on .wl-modal light tokens (white #FFFFFF, Rubik, 18px radius, 45% ink backdrop), widened to 940px and capped at calc(100vh-24px). 1.04fr/.96fr split: left .pay-show is an ink (l-ink #15161A) showcase panel cycling the landing SCENE builders every 5.4s in a faux app-window (.pay-stage-wrap, 12px radius, drop shadow) with .pay-cap caption + .pay-dots progress bars; right .pay-right scrolls the Stripe Payment Element (.pay-el) + .pay-signout. Esc suppressed. Carousel off under reduced-motion; .pay-show hidden <=760px (modal -> 460px)."
+    },
+    {
+      "world": "app",
+      "name": "info / glossary-pop",
+      "note": "Jargon explainer. .info = 14x14 bare button with 1.8-stroke ICON.info, rule-2 at rest, ink on hover/focus. One body-level .glossary-pop (position:fixed, max 268px, stock-raised fill, 1px ink border, uppercase Narrow 11px term over sentence-case 12.5px ink-2 body) serves all markers so it never clips in tables. Hover/focus/tap; Esc/scroll/resize/outside-click dismiss; .14s glopop honors reduced-motion. Carries a drop shadow (divergence, see Defects)."
+    },
+    {
+      "world": "app",
+      "name": "runs / run-card",
+      "note": "Research index as a card grid (.runs auto-fill minmax(290px,1fr)) -- the one place the App world uses cards. Each .run-card is a 1px rule rectangle on stock-raised with a 3px outcome-coloured left border: .ok green #1A7F4B (off-palette), .void rule-2, .fail signal, .live ink. 3-line-clamped title, Narrow meta/when, hover lifts to ink-3 + translateY(-1px)."
+    },
+    {
+      "world": "app",
+      "name": "working",
+      "note": "In-process spinner beside Researching/Waiting: 0.7em ring, 2px rule-2 track with a signal leading edge, lspin .8s (2.4s under reduced-motion); 16px inside a figure cell. Signal on a loading edge is a mild widening of the Reserved Signal Rule (see Defects)."
+    },
+    {
+      "world": "app",
+      "name": "log .verdict",
+      "note": "Agent-log result tags: .verdict.pass green #0E5C33 on #DCEFE3; .verdict.void #8A1021 on signal-wash. Narrow 11.5px .06em, 3px nick; li.verdict row gets a stock-raised->transparent wash. Pass-green pair is off-palette (see Defects)."
+    },
+    {
+      "world": "app",
+      "name": "seg",
+      "note": "One-of-two pill toggle, display:none on desktop, inline-flex only <=1080px; Deploy board/chat switch (.deploy[data-view]). Full pill track, 1px rule-2 border, Narrow 600 12px uppercase buttons; aria-pressed='true' fills ink with stock-raised text."
+    },
+    {
       "world": "console",
       "name": "(see secondaryWorld + DESIGN.md Kursbuch section)",
       "note": "statusline, as-of rule, marks, plate, charts with five trace colours + dash patterns, two stocks. Full record preserved."
@@ -952,7 +1006,8 @@
         "Tell P&L direction with a pos/neg tint field behind an ink figure.",
         "Keep tabular-nums lining-nums on anything numeric.",
         "Give every table .stack + data-lab so it restacks under 760px.",
-        "Reserve uppercase for short Narrow labels; write sentences in sentence case."
+        "Reserve uppercase for short Narrow labels; write sentences in sentence case.",
+        "Explain agent jargon inline with a drawn .info marker and the shared .glossary-pop; keep each definition plain-language first."
       ],
       "donts": [
         "Do not add a shadow, gradient, glass or a coloured P&L number.",
