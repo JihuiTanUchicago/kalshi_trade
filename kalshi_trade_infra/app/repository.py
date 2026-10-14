@@ -220,6 +220,11 @@ def create_run(
     return cur.lastrowid
 
 
+def set_run_market(cur, run_id: int, market: str) -> None:
+    """Record the market the agent chose for a run that was created without one."""
+    cur.execute("UPDATE app_agent_runs SET market=%s WHERE id=%s", (market, run_id))
+
+
 def count_runs(cur, user_id: int, kind: str, since: Optional[datetime] = None, active_only: bool = False) -> int:
     sql = "SELECT COUNT(*) AS n FROM app_agent_runs WHERE user_id=%s AND kind=%s"
     params: List[Any] = [user_id, kind]

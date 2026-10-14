@@ -150,6 +150,26 @@ def _brief() -> str:
         return ""
 
 
+def _pick_market(run: Dict, model: ModelFn, usage: Usage, log) -> str:
+    """When the user didn't pin a market, let the agent choose the one whose contracts best
+    fit the idea (guided by the brief). One cheap call before the research loop."""
+    idea = (run.get("prompt") or "").strip() or "any durable, fee-surviving edge"
+    opts = "\n".join("- %s: %s" % (k, m.label) for k, m in MARKETS.items())
+    msg = ("%s\n\nIdea: %s\nMarkets you can research:\n%s\n"
+           "Pick the ONE market whose contracts best fit this idea. Reply exactly:\n"
+           '{"market": "<key>", "why": "<one sentence>"}' % (_brief(), idea[:400], opts))
+
+    def check(obj: Dict) -> Dict:
+        k = obj.get("market")
+        if k not in MARKETS:
+            raise ValueError("market must be one of: " + ", ".join(MARKETS))
+        return {"market": k, "why": str(obj.get("why") or "")[:200]}
+
+    r = ask_json(model, RESEARCH_SYSTEM, [{"role": "user", "content": msg}], check, usage)
+    log("step", "Chose to research %s. %s" % (MARKETS[r["market"]].label, r["why"]))
+    return r["market"]
+
+
 def _plan_lookback(run: Dict, market: str, model: ModelFn, usage: Usage, log) -> int:
     """Let the agent choose how much history to backtest on, guided by the brief and its thesis,
     clamped to what we actually have. One cheap call before the heavy research loop."""
@@ -329,6 +349,11 @@ def run_research(
             raise Cancelled()
 
     try:
+        if not market:  # user left it to the agent — it picks the market from the idea first
+            checkpoint()
+            market = _pick_market(run, model, usage, log)
+            run = {**run, "market": market}
+            repo.set_run_market(cur, run_id, market)
         ds = dataset_fn(market)  # full available window first — confirms data before any model spend
         if len(ds.frames) < MIN_FRAMES:
             raise LLMError("Not enough market history collected yet for %s." % MARKETS[market].label)
@@ -349,7 +374,7 @@ def run_research(
             % ("hypotheses until you stop it" if forever else "up to %d hypotheses" % budget,
                " I'll keep going until you stop me." if forever else ""))
 
-        total_passed = 0
+        total_passed, tot_in, tot_out = 0, 0, 0
         while True:
             checkpoint()
             # Reload memory each chunk so a run_forever loop learns from the strategies it
@@ -357,6 +382,13 @@ def run_research(
             memory = repo.strategy_memory(cur, user_id, market)
             n, passed = _explore_and_gate(cur, run, ds, memory, model, usage, log, checkpoint, budget, tried)
             total_passed += passed
+            # Meter per chunk: a run_forever session may never "finish", so bill as it goes
+            # (and reset the counter) instead of only at the end — otherwise its tokens are free.
+            tot_in += usage.input_tokens
+            tot_out += usage.output_tokens
+            _bill(conn, user_id, usage, run_id)
+            usage.input_tokens = usage.output_tokens = 0
+            conn.commit()
             if n == 0 or not forever or len(tried) >= FOREVER_CAP:
                 break
             log("step", "Still running - %d tested so far, %d passed. Exploring more (stop anytime)."
@@ -364,9 +396,9 @@ def run_research(
 
         log("done", "%d of %d hypotheses passed every gate." % (total_passed, len(tried)),
             {"passed": total_passed, "tried": len(tried)})
-        repo.finish_run(cur, run_id, "succeeded", None, len(tried), total_passed, usage.input_tokens, usage.output_tokens)
-        _bill(conn, user_id, usage, run_id)
+        repo.finish_run(cur, run_id, "succeeded", None, len(tried), total_passed, tot_in, tot_out)
     except Cancelled:
+        _bill(conn, user_id, usage, run_id)  # charge whatever was spent before the stop
         log("step", "Cancelled.")
     except Exception as e:  # the run fails visibly; the worker keeps going
         msg = str(e) if isinstance(e, LLMError) else "Unexpected error: %s" % e

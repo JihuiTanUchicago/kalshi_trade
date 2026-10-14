@@ -143,32 +143,27 @@ def test_create_run_is_rate_limited(monkeypatch):
     assert e.value.status == 429
 
 
-def test_deploy_rules_void_paper_only_passed_for_live(monkeypatch):
+def test_deploy_any_status_on_paper_live_gated_globally(monkeypatch):
     strat = {"id": 5, "status": "rejected", "market": "btc15m", "title": "T", "spec": {"side": "yes"}}
     monkeypatch.setattr(server.repo, "get_strategy", lambda cur, uid, sid: dict(strat))
     monkeypatch.setattr(server.repo, "list_deployments", lambda *a, **k: [])
     monkeypatch.setattr(server.repo, "create_deployment", lambda cur, uid, sid, market, mode: 11)
     monkeypatch.setattr(server.repo, "add_chat", lambda *a, **k: 1)
-    # rejected: never tested on unseen data -> can't deploy at all
-    with pytest.raises(server.ApiError, match="unseen data"):
-        server.create_deployment(ctx({"strategy_id": 5, "mode": "paper"}))
-    # void (failed): the user may run it on paper
-    strat["status"] = "failed"
-    assert server.create_deployment(ctx({"strategy_id": 5, "mode": "paper"})) == {"id": 11}
-    # but a void strategy can't trade live money
-    monkeypatch.setattr(server.engine, "LIVE_TRADING_ENABLED", True)
-    monkeypatch.setattr(server.repo, "get_kalshi_key", lambda cur, uid: {"key_id": "k"})
-    with pytest.raises(server.ApiError, match="passed the unseen-data gate"):
-        server.create_deployment(ctx({"strategy_id": 5, "mode": "live", "confirm": "LIVE"}))
-    # passed: live gate (off -> not open; on -> needs typed confirmation)
-    strat["status"] = "passed"
+    # any backtested status deploys on paper — the user decides
+    for st in ("rejected", "failed", "passed"):
+        strat["status"] = st
+        assert server.create_deployment(ctx({"strategy_id": 5, "mode": "paper"})) == {"id": 11}
+    # live is gated by the global switch + confirmation, not by status
     monkeypatch.setattr(server.engine, "LIVE_TRADING_ENABLED", False)
     with pytest.raises(server.ApiError, match="isn't open"):
         server.create_deployment(ctx({"strategy_id": 5, "mode": "live", "confirm": "LIVE"}))
     monkeypatch.setattr(server.engine, "LIVE_TRADING_ENABLED", True)
+    monkeypatch.setattr(server.repo, "get_kalshi_key", lambda cur, uid: {"key_id": "k"})
     with pytest.raises(server.ApiError, match="Type LIVE"):
         server.create_deployment(ctx({"strategy_id": 5, "mode": "live", "confirm": "live"}))
-    assert server.create_deployment(ctx({"strategy_id": 5, "mode": "paper"})) == {"id": 11}
+    # a void strategy CAN go live once the user confirms (global switch on)
+    strat["status"] = "failed"
+    assert server.create_deployment(ctx({"strategy_id": 5, "mode": "live", "confirm": "LIVE"})) == {"id": 11}
 
 
 def test_reply_emails_the_author_but_not_yourself(monkeypatch):

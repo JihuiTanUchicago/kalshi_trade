@@ -116,7 +116,7 @@
   const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
   const age = (sec) => (sec == null ? 'never' : sec < 90 ? sec + 's' : sec < 5400 ? Math.round(sec / 60) + 'm' : sec < 172800 ? Math.round(sec / 3600) + 'h' : Math.round(sec / 86400) + 'd');
   const marketLabel = (k) => ((S.me && S.me.markets.find((m) => m.key === k)) || { label: k }).label;
-  const marketShort = (k) => (k === 'btc15m' ? 'BTC 15-min' : k === 'btc_daily' ? 'BTC 5pm' : k);
+  const marketShort = (k) => (!k ? 'Agent’s choice' : k === 'btc15m' ? 'BTC 15-min' : k === 'btc_daily' ? 'BTC 5pm' : k);
   const dirLabel = (k) => { if (!k) return 'Session'; const d = S.me && S.me.directions.find((x) => x.key === k); return d ? d.label : String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()); };
   const sessionTitle = (r) => (r.prompt && r.prompt.trim()) ? r.prompt.trim() : (dirLabel(r.direction) + ' \u00b7 ' + marketShort(r.market));
 
@@ -790,7 +790,7 @@
         </div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;justify-content:space-between">
           <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="label" style="margin-bottom:6px">Market</legend>
-            <div class="choice">${me.markets.map((m, i) => `<label><input type="radio" name="market" value="${m.key}" ${i === 0 ? 'checked' : ''}><span class="opt"><b>${esc(marketShort(m.key))}</b></span></label>`).join('')}</div>
+            <div class="choice"><label><input type="radio" name="market" value="" checked><span class="opt"><b>Agent's choice</b></span></label>${me.markets.map((m) => `<label><input type="radio" name="market" value="${m.key}"><span class="opt"><b>${esc(marketShort(m.key))}</b></span></label>`).join('')}</div>
           </fieldset>
           <button class="btn primary" type="submit" ${me.needs_card ? 'aria-disabled="true"' : ''}>${ICON.spark2}Start session</button>
         </div>
@@ -898,13 +898,14 @@
       const shownPnl = (s) => { const m = (s.out_of_sample && s.out_of_sample.pnl != null) ? s.out_of_sample : (s.in_sample || {}); return m.pnl != null ? +m.pnl : -Infinity; };
       const tier = (s) => (s.status === 'passed' ? 0 : s.status === 'failed' ? 1 : 2);
       const sorted = (d.strategies || []).slice().sort((a, b) => (tier(a) - tier(b)) || (shownPnl(b) - shownPnl(a)));
+      const top = sorted.slice(0, 50);  // cap render — a run_forever session can produce hundreds
       // Only re-render when the set actually changed — re-writing innerHTML every poll makes it blink.
-      const sig = sorted.map((s) => `${s.id}:${s.status}:${shownPnl(s)}`).join('|') + '#' + (active ? 1 : 0);
+      const sig = top.map((s) => `${s.id}:${s.status}:${shownPnl(s)}`).join('|') + '#' + (active ? 1 : 0) + '#' + sorted.length;
       if (sig !== lastFeedSig) {
         lastFeedSig = sig;
-        const reg = registry(sorted.map((s) => s.equity));
-        feed.innerHTML = sorted.length
-          ? strategyTable(sorted.map((s) => strategySlip(s, reg, { land: true })).join(''))
+        const reg = registry(top.map((s) => s.equity));
+        feed.innerHTML = top.length
+          ? strategyTable(top.map((s) => strategySlip(s, reg, { land: true })).join('')) + (sorted.length > 50 ? `<p class="hint" style="margin-top:12px">Showing the top 50 of ${num(sorted.length)} by unseen P&L. See all on the <a href="/strategies">Strategies</a> page.</p>` : '')
           : `<div class="empty"><h3>${active ? 'Testing' : 'No results'}</h3><p>${active ? 'Strategies appear here as each batch clears the unseen-data gate — best unseen P&L on top.' : 'This run produced no strategies.'}</p></div>`;
       }
       if (!active) clearTimers();
@@ -939,9 +940,22 @@
       fig('Pass rate', all.strategies.length ? pct(count('passed') / all.strategies.length, false) : '—');
     const CLABEL = { passed: 'Passed', failed: 'Void', rejected: 'Rejected' };
     root.querySelectorAll('[data-f="status"]').forEach((b) => { const v = b.dataset.v; b.textContent = v ? `${CLABEL[v]} (${count(v)})` : `All (${all.strategies.length})`; });
-    const reg = registry(d.strategies.map((s) => s.equity));
-    root.querySelector('#slips').innerHTML = d.strategies.length ? strategyTable(d.strategies.map((s) => strategySlip(s, reg)).join(''))
-      : `<div class="empty"><h3>Nothing here yet</h3><p>${all.strategies.length ? 'Try another filter.' : 'Start a research session and the strategies it finds will land here.'}</p>${all.strategies.length ? '' : '<a class="btn" href="/research">Go to Research</a>'}</div>`;
+    // Paginate at 50/page — a run_forever session can produce hundreds, and rendering every
+    // row with its sparkline at once bogs the page down.
+    const list = d.strategies, PER = 50, slipsEl = root.querySelector('#slips');
+    let sp = 0;
+    const renderSlips = () => {
+      if (!list.length) {
+        slipsEl.innerHTML = `<div class="empty"><h3>Nothing here yet</h3><p>${all.strategies.length ? 'Try another filter.' : 'Start a research session and the strategies it finds will land here.'}</p>${all.strategies.length ? '' : '<a class="btn" href="/research">Go to Research</a>'}</div>`;
+        return;
+      }
+      const pages = Math.ceil(list.length / PER), page = list.slice(sp * PER, (sp + 1) * PER);
+      const reg = registry(page.map((s) => s.equity));
+      slipsEl.innerHTML = strategyTable(page.map((s) => strategySlip(s, reg)).join(''))
+        + (pages > 1 ? `<div class="xpage">${sp > 0 ? `<button class="btn sm" data-sp="${sp - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${sp + 1} of ${num(pages)} · ${num(list.length)} strategies</span>${sp + 1 < pages ? `<button class="btn sm" data-sp="${sp + 1}">Next →</button>` : '<span></span>'}</div>` : '');
+      slipsEl.querySelectorAll('[data-sp]').forEach((b) => b.onclick = () => { sp = +b.dataset.sp; renderSlips(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    };
+    renderSlips();
   }
 
   async function viewStrategy(id) {
@@ -954,8 +968,16 @@
       fig('Tried to find it', s.hypotheses_tried ? `1 of ${s.hypotheses_tried}` : '—', { small: 'More tries means weaker evidence' });
     root.querySelector('.board-title').outerHTML = boardTitle(serial(s.id) + ' · ' + marketShort(s.market), esc(dirLabel(s.direction)));
     root.querySelector('#figs').innerHTML = figsFor(s);
-    const canDeploy = s.status === 'passed' || s.status === 'failed';
-    const liveWhy = s.status !== 'passed' ? 'Void strategies can run on paper only.' : !S.me.live_trading_available ? 'Live trading isn’t open yet.' : !S.me.kalshi_connected ? 'Connect Kalshi on the Funds page first.' : s.side !== 'yes' ? 'Live supports YES-only strategies for now.' : '';
+    const canDeploy = ['passed', 'failed', 'rejected'].includes(s.status);  // the user decides; status is a warning, not a block
+    // Why a strategy was rejected (never reached the unseen-data gate) — stated honestly: a
+    // profitable idea with too few trades is rejected on sample size, not for "losing money".
+    const rejectReason = (st) => {
+      const i = st.in_sample || {};
+      if (i.trades != null && i.trades < 5) return `it made ${usd(i.pnl, true)} in testing, but over just ${i.trades} trade${i.trades === 1 ? '' : 's'} — a finalist needs at least 5, too few to trust.`;
+      if (i.pnl != null && +i.pnl <= 0) return `it lost money in testing (${usd(i.pnl, true)}).`;
+      return 'it ranked below the handful of finalists we tested on unseen data.';
+    };
+    const liveWhy = !S.me.live_trading_available ? 'Live trading isn’t open yet.' : !S.me.kalshi_connected ? 'Connect Kalshi on the Funds page first.' : s.side !== 'yes' ? 'Live supports YES-only strategies for now.' : '';
     const metricRows = (m) => m ? `<dl>
         <dt>P&amp;L after fees</dt><dd class="${tone(m.pnl)}">${usd(m.pnl, true)}</dd>
         <dt>Trades</dt><dd>${m.trades}${m.trades_per_day != null ? ` <small class="hint">(${m.trades_per_day}/day)</small>` : ''}</dd>
@@ -963,7 +985,7 @@
         <dt>Fees paid</dt><dd>${usd(m.fees)}</dd>
         <dt>Profit factor</dt><dd>${m.profit_factor == null ? '—' : m.profit_factor}</dd>
         <dt>Worst drawdown</dt><dd>${usd(m.max_drawdown)}</dd>
-        <dt>Sharpe (daily)</dt><dd>${m.sharpe == null ? '—' : m.sharpe}</dd></dl>` : '<p class="hint">Not run: it lost money in testing, so it never got to see unseen data.</p>';
+        <dt>Sharpe (daily)</dt><dd>${m.sharpe == null ? '—' : m.sharpe}</dd></dl>` : `<p class="hint">Not tested on unseen data — ${rejectReason(s)}</p>`;
     const gatesHtml = (gs) => gs ? `<ul class="gates">${gs.map((g) => `<li class="${g.ok ? 'ok' : 'no'}">${g.ok ? ICON.check : ICON.cross}<span>${esc(g.name)}<small>needs ${esc(g.threshold)}</small></span><span class="v">${typeof g.value === 'number' && /\$|drawdown|money/i.test(g.name + g.threshold) ? usd(g.value) : esc(g.value == null ? '—' : g.value)}</span></li>`).join('')}</ul>` : '<p class="hint">Gates only run for finalists that made money in testing.</p>';
     const trades = (s.recent_trades || []).length ? `<table class="table stack"><thead><tr><th>Opened</th><th>Contract</th><th>Side</th><th class="num">Entry</th><th class="num">Exit</th><th class="num">P&amp;L</th></tr></thead><tbody>
         ${s.recent_trades.map((t) => `<tr><td>${esc(new Date(t.opened.replace('Z', ':00Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}</td><td class="tick">${esc(t.ticker)}</td><td>${esc(t.side.toUpperCase())} ×${t.qty}</td><td class="num">${cents(t.entry)}</td><td class="num">${cents(t.exit)} <small class="hint">${esc(t.reason)}</small></td><td class="num ${tone(t.pnl)}">${usd(t.pnl, true)}</td></tr>`).join('')}
@@ -990,7 +1012,7 @@
         <aside>
           <section class="panel"><h3>Deploy</h3>
             ${canDeploy ? `<div style="display:grid;gap:10px">
-                ${s.status === 'failed' ? '<p class="hint">Void: it failed the unseen-data gate. You can still run it on paper to watch how it behaves — but it didn’t clear the bar, so paper only.</p>' : ''}
+                ${s.status !== 'passed' ? `<div class="notice bad">${ICON.warn}<span>${s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${rejectReason(s)}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
                 <button class="btn" id="dep-paper">Deploy on paper</button>
                 <button class="btn ghost" id="dep-live" ${liveWhy ? 'aria-disabled="true"' : ''}>Deploy with live money</button>
                 ${liveWhy ? `<p class="hint">${esc(liveWhy)}</p>` : ''}
@@ -1000,7 +1022,7 @@
                   <button class="btn" type="submit">Confirm live deployment</button>
                 </form>
                 <div id="depflash"></div>
-              </div>` : `<p class="hint">${s.status === 'failed' ? 'Void: it failed at least one gate on data the agent never saw, so it can’t be deployed.' : 'Rejected: it lost money in testing and was never a finalist.'}</p>`}
+              </div>` : '<p class="hint">This strategy isn’t ready to deploy yet.</p>'}
             ${s.deployments.length ? `<p class="hint" style="margin-top:12px">Already deployed: ${s.deployments.map((d) => `#${d.id} (${esc(d.mode)}, ${esc(d.status)})`).join(', ')}. <a href="/deploy">Open the board</a></p>` : ''}
           </section>
           <section class="panel"><h3>Gates</h3><div id="gates">${gatesHtml(s.gates)}</div></section>
@@ -1454,16 +1476,37 @@
     const label = mktLabel({ ti: d.title, su: d.sub, t: d.ticker });
     const closes = d.close_time ? new Date(d.close_time).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
     const gran = d.period_min >= 1440 ? 'daily' : d.period_min >= 60 ? 'hourly' : 'per-minute';
+    const fmtT = (t) => new Date(t * 1000).toLocaleString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     shell('/explore', boardTitle(label, `${d.series} · ${d.status || 'market'} · ${d.ticker}`) +
       '<dl class="figures measure" style="margin-top:14px">' +
         fig('Yes price', mid == null ? '—' : cents(mid)) + fig('24h volume', num(Math.round(+d.volume_24h || 0))) +
         fig('Open interest', num(Math.round(+d.open_interest || 0))) + fig('Closes', closes) + '</dl>', `
       <section class="sect"><div class="sect-head"><h2>Price history</h2><p>Yes price · Kalshi ${gran} candles</p></div>
         <div class="pchart-wrap">${priceChart(d.points)}</div></section>
-      <section class="sect"><div class="sect-head"><h2>Raw data</h2><p>${num(d.points.length)} ${gran} points · newest first</p></div>
-        ${d.points.length ? `<div class="sheet"><table><thead><tr><th>Time (UTC)</th><th class="num">Yes price</th><th class="num">Volume</th></tr></thead><tbody>${d.points.slice(-400).reverse().map((p) => `<tr><td class="tick">${new Date(p.t * 1000).toLocaleString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</td><td class="num">${cents(p.yes)}</td><td class="num">${num(Math.round(p.vol || 0))}</td></tr>`).join('')}</tbody></table></div>${d.points.length > 400 ? `<p class="hint" style="margin-top:8px">Showing the most recent 400 of ${num(d.points.length)} points.</p>` : ''}` : '<div class="empty"><p>No candles recorded yet.</p></div>'}</section>
+      <section class="sect"><div class="sect-head"><h2>Raw data</h2><p>${num(d.points.length)} ${gran} points${d.points.length ? ' · newest first' : ''}</p></div>
+        <div id="rawsect"></div></section>
       <div class="xpage"><a class="btn sm" href="/explore">← Back to Explore</a>
-        <a class="btn sm" href="https://kalshi.com/markets/${encodeURIComponent((d.series || '').toLowerCase())}" target="_blank" rel="noopener">View on Kalshi ↗</a></div>`);
+        <span><button class="btn sm" id="dl-csv" ${d.points.length ? '' : 'disabled'}>Download CSV</button>
+        <a class="btn sm" href="https://kalshi.com/markets/${encodeURIComponent((d.series || '').toLowerCase())}" target="_blank" rel="noopener" style="margin-left:8px">View on Kalshi ↗</a></span></div>`);
+    const pts = d.points.slice().reverse();  // newest first
+    const PER = 100; let pg = 0;
+    const rawEl = root.querySelector('#rawsect');
+    const renderRaw = () => {
+      if (!pts.length) { rawEl.innerHTML = '<div class="empty"><p>No candles recorded for this market yet.</p></div>'; return; }
+      const pages = Math.max(1, Math.ceil(pts.length / PER));
+      const rows = pts.slice(pg * PER, (pg + 1) * PER).map((p) => `<tr><td class="tick">${fmtT(p.t)}</td><td class="num">${cents(p.yes)}</td><td class="num">${num(Math.round(p.vol || 0))}</td></tr>`).join('');
+      rawEl.innerHTML = `<div class="sheet"><table><thead><tr><th>Time (UTC)</th><th class="num">Yes price</th><th class="num">Volume</th></tr></thead><tbody>${rows}</tbody></table></div>
+        <div class="xpage">${pg > 0 ? `<button class="btn sm" data-rp="${pg - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${pg + 1} of ${num(pages)} · ${num(pts.length)} points</span>${pg + 1 < pages ? `<button class="btn sm" data-rp="${pg + 1}">Next →</button>` : '<span></span>'}</div>`;
+      rawEl.querySelectorAll('[data-rp]').forEach((b) => b.onclick = () => { pg = +b.dataset.rp; renderRaw(); window.scrollTo({ top: rawEl.offsetTop - 80, behavior: 'smooth' }); });
+    };
+    renderRaw();
+    const dl = root.querySelector('#dl-csv');
+    if (dl) dl.onclick = () => {
+      const csv = 'time_utc,unix_ts,yes_price,volume\n' + d.points.map((p) => `${new Date(p.t * 1000).toISOString()},${p.t},${p.yes},${Math.round(p.vol || 0)}`).join('\n');
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      const a = document.createElement('a'); a.href = url; a.download = `${d.ticker}.csv`; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
   }
 
   async function viewExplore() {

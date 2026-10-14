@@ -28,6 +28,9 @@ class Conn:
     def cursor(self):
         return None
 
+    def commit(self):
+        pass
+
 
 RUN = {"id": 1, "user_id": 7, "market": "btc15m", "direction": "volatility", "prompt": None}
 WINNER = {"side": "yes", "entry": {"min_edge": 0.1}}
@@ -46,6 +49,10 @@ def scripted(replies):
 
 def plan(days=30):
     return '```json\n%s\n```' % json.dumps({"lookback_days": days, "why": "fits the thesis"})
+
+
+def pick(m="btc15m"):
+    return '```json\n%s\n```' % json.dumps({"market": m, "why": "fits the idea"})
 
 
 def hyps(*specs):
@@ -179,3 +186,14 @@ def test_plan_lookback_clamps_to_available_history():
     model, _ = scripted([big])
     days = agent._plan_lookback({"market": "btc15m", "prompt": "x"}, "btc15m", model, Usage(), lambda *a, **k: None)
     assert days == MARKETS["btc15m"].history_days      # never asks for more history than exists
+
+
+def test_agent_picks_market_when_unspecified(monkeypatch):
+    store = Store(monkeypatch)
+    picked = []
+    monkeypatch.setattr(agent.repo, "set_run_market", lambda cur, rid, mk: picked.append(mk))
+    model, prompts = scripted([pick("btc15m"), plan(), hyps(WINNER, LOSER), hyps(WINNER)])
+    run = {"id": 1, "user_id": 7, "market": None, "direction": None, "prompt": "trade something", "max_hypotheses": 3}
+    agent.run_research(Conn(), run, model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    assert store.finished[0] == "succeeded"
+    assert picked == ["btc15m"]                 # the agent chose the market and it was persisted

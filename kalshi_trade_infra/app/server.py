@@ -271,12 +271,12 @@ def _require_billing_ready(ctx: Ctx, gerund: str) -> None:
 
 
 def create_run(ctx: Ctx):
-    market = ctx.body.get("market")
+    market = ctx.body.get("market") or None  # None = let the agent choose the market
     idea = str(ctx.body.get("prompt") or "").strip()[:1000]
     # Optional angle tag; the idea itself is what drives the research now.
     direction = ctx.body.get("direction") or None
-    if market not in MARKETS:
-        raise ApiError(400, "Pick a market.")
+    if market is not None and market not in MARKETS:
+        raise ApiError(400, "Pick a market Tau can research, or let the agent choose.")
     if not idea or len(idea) < 8:
         raise ApiError(400, "Describe your idea in a sentence or two first.")
     if direction is not None and direction not in agent.DIRECTIONS:
@@ -377,8 +377,8 @@ def create_deployment(ctx: Ctx):
     mode = ctx.body.get("mode")
     if s is None:
         raise ApiError(404, "No such strategy.")
-    if s["status"] not in ("passed", "failed"):
-        raise ApiError(409, "This strategy was never tested on unseen data, so it can't be deployed.")
+    if s["status"] not in ("passed", "failed", "rejected"):
+        raise ApiError(409, "This strategy isn't ready to deploy.")
     mkt = MARKETS.get(s["market"])
     if mkt is not None and not mkt.deployable:
         raise ApiError(409, "%s is research-only for now — you can backtest it, but live/paper "
@@ -386,8 +386,8 @@ def create_deployment(ctx: Ctx):
     if mode not in ("paper", "live"):
         raise ApiError(400, "Choose paper or live.")
     if mode == "live":
-        if s["status"] != "passed":
-            raise ApiError(409, "Only strategies that passed the unseen-data gate can trade live money. You can run a void one on paper.")
+        # Any backtested strategy may go live if the user chooses; the global live switch,
+        # the Kalshi-key requirement and the typed confirmation are the real guardrails.
         if not engine.LIVE_TRADING_ENABLED:
             raise ApiError(409, "Live trading isn't open yet. Deploy on paper for now.")
         if repo.get_kalshi_key(cur, ctx.uid) is None:
@@ -1023,7 +1023,9 @@ def explore_market(ctx: Ctx):
         start = open_ts or (now - 30 * 86400)
         end = min(close_ts or now, now)
         span = max(1, end - start)
-        period = 1 if span <= 6 * 3600 else (60 if span <= 60 * 86400 else 1440)  # minutes
+        # Prefer minute resolution; fall back to coarser only when the span would blow past
+        # Kalshi's per-request candle cap (minute for <=2 days, hourly to ~2 months, else daily).
+        period = 1 if span <= 2 * 86400 else (60 if span <= 60 * 86400 else 1440)  # minutes
         cs = api_get("/series/%s/markets/%s/candlesticks" % (series, ticker),
                      {"start_ts": start, "end_ts": end, "period_interval": period}).get("candlesticks") or []
     except Exception as e:
