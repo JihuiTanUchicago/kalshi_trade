@@ -221,7 +221,7 @@ h1.page { font-size: clamp(23px, 3vw, 30px); font-weight: 600; letter-spacing: -
 .sect-head h2, .section-head h2 { margin: 0; font-family: var(--f-nar); font-size: 13px; font-weight: 600; letter-spacing: .13em; text-transform: uppercase; }
 .section-head p, .sect-note { font-family: var(--f-nar); font-size: 12px; letter-spacing: .02em; color: var(--ink-3); margin: 0; }
 /* Filter toolbars hold ~30px pills, not a text baseline — give the rule room. */
-.section-head.filters { align-items: center; padding-bottom: 14px; }
+.section-head.filters { align-items: center; padding-bottom: 22px; }
 
 /* ===================== TABLES / MARKS ===================== */
 
