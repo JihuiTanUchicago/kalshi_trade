@@ -649,7 +649,7 @@ def like_post(ctx: Ctx):
 
 # A fixed emoji palette — reactions are restricted to these so stored values stay
 # small and safe (no arbitrary input).
-REACTION_EMOJI = ["👍", "❤️", "🔥", "🚀", "😂", "🎉", "💯", "👀", "🤔", "😮",
+REACTION_EMOJI = ["tau", "👍", "❤️", "🔥", "🚀", "😂", "🎉", "💯", "👀", "🤔", "😮",
                   "😢", "🙌", "🧠", "📈", "📉", "💸", "✅", "❌", "🐂", "🐻"]
 
 

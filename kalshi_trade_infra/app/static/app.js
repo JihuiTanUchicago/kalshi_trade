@@ -1242,27 +1242,28 @@
       <div class="post-main"><p class="post-body">${esc(p.body)}</p>
       ${p.image ? `<a class="post-img" href="${esc(p.image)}" target="_blank" rel="noopener"><img src="${esc(p.image)}" alt="" loading="lazy"></a>` : ''}
       ${postSnapshot(p.snapshot)}</div>
-      ${reactionBar(p)}
       <div class="post-actions">
-        <button class="pact like ${p.liked ? 'on' : ''}" data-act="like" aria-pressed="${p.liked}">${ICON.heart}<span class="c">${p.likes || ''}</span></button>
+        ${reactionBar(p)}
         <button class="pact" data-act="comments">${ICON.comment}<span class="c">${p.comments || ''}</span></button>
         ${p.mine ? `<button class="pact" data-act="edit">${ICON.pencil}<span>Edit</span></button>` : ''}
       </div>
       <div class="comments" hidden></div>
     </article>`;
   }
-  // Emoji reactions — a fixed palette (matches the server whitelist).
-  const REACTIONS = ['👍', '❤️', '🔥', '🚀', '😂', '🎉', '💯', '👀', '🤔', '😮', '😢', '🙌', '🧠', '📈', '📉', '💸', '✅', '❌', '🐂', '🐻'];
+  // Emoji reactions — a fixed palette (matches the server whitelist). 'tau' is a
+  // custom reaction: the Tau mark, animated (a shaking "T" = excitement).
+  const REACTIONS = ['tau', '👍', '❤️', '🔥', '🚀', '😂', '🎉', '💯', '👀', '🤔', '😮', '😢', '🙌', '🧠', '📈', '📉', '💸', '✅', '❌', '🐂', '🐻'];
+  const emojiHtml = (e) => e === 'tau' ? `<span class="tau-emoji">${ICON.mark}</span>` : esc(e);
   function reactionBar(p) {
-    const chips = (p.reactions || []).map((rx) => `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${rx.emoji}">${rx.emoji}<span class="n">${rx.count}</span></button>`).join('');
-    return `<div class="reactions">${chips}<button class="rx add" data-react-add aria-label="Add a reaction">${ICON.react}</button></div>`;
+    const chips = (p.reactions || []).map((rx) => `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}">${emojiHtml(rx.emoji)}<span class="n">${rx.count}</span></button>`).join('');
+    return `<span class="reactions">${chips}<button class="rx add" data-react-add aria-label="Add a reaction">${ICON.react}<i class="plus">+</i></button></span>`;
   }
   let emojiPop = null;
   function openEmojiPicker(anchor, onPick) {
     if (emojiPop) emojiPop.remove();
     const pop = document.createElement('div');
     pop.className = 'emoji-pop';
-    pop.innerHTML = REACTIONS.map((e) => `<button type="button" class="ep" data-e="${e}">${e}</button>`).join('');
+    pop.innerHTML = REACTIONS.map((e) => `<button type="button" class="ep" data-e="${esc(e)}" title="${e === 'tau' ? 'Tau' : ''}">${emojiHtml(e)}</button>`).join('');
     document.body.appendChild(pop); emojiPop = pop;
     const r = anchor.getBoundingClientRect(), gut = 10;
     pop.style.left = Math.min(Math.max(gut, r.left), innerWidth - pop.offsetWidth - gut) + 'px';
@@ -1328,8 +1329,8 @@
     const feed = root.querySelector('#feed');
     const renderReactions = (art, list) => {
       const bar = art.querySelector('.reactions');
-      bar.innerHTML = (list || []).map((rx) => `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${rx.emoji}">${rx.emoji}<span class="n">${rx.count}</span></button>`).join('')
-        + `<button class="rx add" data-react-add aria-label="Add a reaction">${ICON.react}</button>`;
+      bar.innerHTML = (list || []).map((rx) => `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}">${emojiHtml(rx.emoji)}<span class="n">${rx.count}</span></button>`).join('')
+        + `<button class="rx add" data-react-add aria-label="Add a reaction">${ICON.react}<i class="plus">+</i></button>`;
     };
     const react = async (pid, art, emoji) => {
       try { const r = await api(`/api/community/${pid}/react`, { emoji }); renderReactions(art, r.reactions); }
