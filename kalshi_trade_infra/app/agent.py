@@ -388,6 +388,7 @@ def run_research(
             tot_out += usage.output_tokens
             _bill(conn, user_id, usage, run_id)
             usage.input_tokens = usage.output_tokens = 0
+            repo.update_run_progress(cur, run_id, len(tried), total_passed)  # keep counts live
             conn.commit()
             if n == 0 or not forever or len(tried) >= FOREVER_CAP:
                 break

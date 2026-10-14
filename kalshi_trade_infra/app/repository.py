@@ -225,6 +225,16 @@ def set_run_market(cur, run_id: int, market: str) -> None:
     cur.execute("UPDATE app_agent_runs SET market=%s WHERE id=%s", (market, run_id))
 
 
+def update_run_progress(cur, run_id: int, tried: int, passed: int) -> None:
+    """Keep hypotheses_tried/strategies_passed current as a run_forever session runs, so the
+    counts are right even for a run that's still going or gets cancelled (finish_run only fires
+    on a clean end, and only while status='running')."""
+    cur.execute(
+        "UPDATE app_agent_runs SET hypotheses_tried=%s, strategies_passed=%s WHERE id=%s",
+        (tried, passed, run_id),
+    )
+
+
 def count_runs(cur, user_id: int, kind: str, since: Optional[datetime] = None, active_only: bool = False) -> int:
     sql = "SELECT COUNT(*) AS n FROM app_agent_runs WHERE user_id=%s AND kind=%s"
     params: List[Any] = [user_id, kind]
