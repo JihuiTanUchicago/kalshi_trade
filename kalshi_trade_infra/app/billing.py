@@ -130,12 +130,11 @@ def get_or_create_customer(user: Dict, existing_id: Optional[str]) -> str:
 
 
 def create_setup_intent(customer_id: str) -> Dict:
-    # automatic_payment_methods lets the Payment Element offer Apple Pay / Google
-    # Pay alongside card; allow_redirects=never keeps it to no-redirect methods so
-    # confirmSetup needs no return_url.
+    # Card only. Apple Pay / Google Pay still surface on top of the card method
+    # (once the domain is registered + the browser supports them); this keeps the
+    # Payment Element from listing every account-enabled method (BLIK, Pix, …).
     si = _stripe("POST", "/setup_intents", {
-        "customer": customer_id, "usage": "off_session",
-        "automatic_payment_methods": {"enabled": "true", "allow_redirects": "never"},
+        "customer": customer_id, "payment_method_types": ["card"], "usage": "off_session",
     })
     return {"client_secret": si["client_secret"]}
 

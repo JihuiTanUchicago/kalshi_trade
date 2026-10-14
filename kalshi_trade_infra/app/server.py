@@ -929,6 +929,13 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _send_static(self, path: str) -> None:
+        if path == "/.well-known/apple-developer-merchantid-domain-association":
+            f = STATIC_DIR / "apple-developer-merchantid-domain-association"
+            if f.is_file():
+                body = f.read_bytes()
+                self._headers(200, "text/plain", len(body), [("Cache-Control", "public, max-age=86400")])
+                self.wfile.write(body)
+                return
         if SPA_ROUTES.match(path):
             versions = _static_versions()
             html = (STATIC_DIR / "index.html").read_text("utf-8")

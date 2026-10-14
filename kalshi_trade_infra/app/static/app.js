@@ -215,7 +215,7 @@
         </aside>
         <form class="wl-inner pay-right" id="payform">
           <h2>Add a payment method</h2>
-          <p class="wl-sub">Tau meters the agent by the token. Add a card to unlock your $${S.me.free_bonus} in free credits — you won't be charged until they run out.</p>
+          <p class="wl-sub">Tau meters the agent by the token. Add a card now, and we'll give you $${S.me.free_bonus} in credits — free.</p>
           <div id="pay-el" class="pay-el">${loading(120)}</div>
           <div id="pay-hint"></div>
           <button class="pill solid wl-submit" type="submit" id="pay-submit">Save payment method</button>

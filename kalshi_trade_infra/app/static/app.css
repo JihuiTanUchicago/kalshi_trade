@@ -628,9 +628,9 @@ body.landing-body { background: #FBFBFA; }
 .wl-done p { color: var(--ink-2); font-size: 15px; }
 .wl-done .pill { margin-top: 8px; }
 /* Payment registration modal — two panels: a showcase reel + the Stripe form. */
-.pay-modal { max-width: 940px; overflow: hidden; max-height: calc(100vh - 32px); }
-.pay-split { display: grid; grid-template-columns: 1.04fr .96fr; align-items: stretch; }
-.pay-show { background: var(--ink); color: #F1F3ED; padding: 26px 26px 22px; display: flex; flex-direction: column; gap: 16px; overflow: hidden; }
+.pay-modal { max-width: 940px; overflow: hidden; max-height: calc(100vh - 24px); }
+.pay-split { display: grid; grid-template-columns: 1.04fr .96fr; align-items: stretch; max-height: calc(100vh - 24px); }
+.pay-show { background: var(--ink); color: #F1F3ED; padding: 26px 26px 22px; display: flex; flex-direction: column; gap: 16px; overflow: hidden; min-height: 0; }
 .pay-show-top { display: flex; align-items: center; gap: 9px; font-family: var(--f-nar); letter-spacing: .16em; text-transform: uppercase; font-size: 12px; font-weight: 600; }
 .pay-show-top svg { width: 22px; height: 22px; }
 .pay-stage-wrap { flex: 1; min-height: 320px; display: flex; flex-direction: column; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 22px 48px -24px rgba(0,0,0,.55); }
@@ -646,7 +646,7 @@ body.landing-body { background: #FBFBFA; }
 .pay-dots { display: flex; gap: 7px; }
 .pay-dot { width: 22px; height: 3px; border-radius: 2px; background: rgba(241,243,237,.25); transition: background .35s; }
 .pay-dot.on { background: #F1F3ED; }
-.pay-right { overflow-y: auto; }
+.pay-right { overflow-y: auto; min-height: 0; max-height: calc(100vh - 24px); }
 .pay-el { min-height: 44px; margin: 2px 0; }
 .wl-err { color: var(--down); font-size: 13.5px; text-align: center; margin: 0; }
 .pay-signout { display: block; margin: 2px auto 0; background: none; border: 0; color: var(--ink-3); font-size: 13px; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
