@@ -270,7 +270,7 @@
           try {
             // return_url is required because the config allows redirect methods; with
             // redirect:'if_required' a card never actually redirects, so we stay on-page.
-            r = await sp.confirmSetup({ elements, redirect: 'if_required', confirmParams: { return_url: location.origin + '/billing' } });
+            r = await sp.confirmSetup({ elements, redirect: 'if_required', confirmParams: { return_url: location.origin + '/billing', payment_method_data: { billing_details: { address: { country: 'US' } } } } });
           } catch (err) { hint.innerHTML = `<p class="wl-err">${esc(err.message || 'Could not save the card.')}</p>`; return; }
           if (r.error) { hint.innerHTML = `<p class="wl-err">${esc(r.error.message)}</p>`; return; }
           try { await api('/api/billing/card-added', { payment_method_id: r.setupIntent.payment_method }); } catch (err) { hint.innerHTML = `<p class="wl-err">${esc(err.message)}</p>`; return; }
@@ -1505,7 +1505,7 @@
         root.querySelector('#save-card').onclick = (e) => busy(e.currentTarget, async () => {
           flash('#card-flash', '', '');
           let r;
-          try { r = await sp.confirmSetup({ elements, redirect: 'if_required', confirmParams: { return_url: location.origin + '/billing' } }); }
+          try { r = await sp.confirmSetup({ elements, redirect: 'if_required', confirmParams: { return_url: location.origin + '/billing', payment_method_data: { billing_details: { address: { country: 'US' } } } } }); }
           catch (err) { flash('#card-flash', err.message || 'Could not save the card.', 'bad'); return; }
           if (r.error) { flash('#card-flash', r.error.message, 'bad'); return; }
           try { await api('/api/billing/card-added', { payment_method_id: r.setupIntent.payment_method }); }

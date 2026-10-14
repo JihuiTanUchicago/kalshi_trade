@@ -23,34 +23,30 @@ strategies. Agent will also continous assess the market and dynamically adjust
 strategies and their model parameters.
 
 ## Requirements
-- Market limited to: Kalshi BTC price today at 5pm EDT
-- Data Pipeline: Existing database and optionally more if needed.
-- A webpage with UI that allows user to login and see their profile and dashboard
-    - Include cash balance, portfolio, perfomrance/roi, etc. whatever necessary.
-    - Like a stock trading main page/dashboard
-- A trading hub where user can dispatch agents to investigate different directions of alpha
-    - Like a dashboard to monitor how many agents are running research, and in what direction.
-- A tab that can review all agent generated strategies, or filter by alpha direction.
-    - + A tab where user can review backtesting performance and `if-scenario` out of sample performance.
-- A tab where user can review the underlying strategy thesis.
-- A tab where user can choose which strategies to deploy and monitor trading statuses in real-time.
-    - Under the same tab, a chat window on the side where user can communite with agent to make changes
-    - And angent through the same chat window provide suggestions to adjust model prameters or strategies
-    - If `dangerously-skip-permission` is turned on, agent will handle model adjustment/strategy deployment
-    automatically, but its thought will be output in the chat window.
-- A page/tab to deposit/withdraw money
+- **[Done]** Market: Kalshi BTC 5pm EDT — also added BTC 15-min.
+- **[Done]** Data Pipeline: existing RDS DB reused (per-minute all-markets collector still TODO).
+- TODO: Polymarket data collection + API + real & simulation trading pipeline (second venue).
+- **[Done]** Google login + dashboard (cash balance, portfolio, ROI, open positions).
+- **[Done]** Research hub: dispatch agents, live count of running/queued research.
+- **[Done]** Strategies tab: all strategies, filter by Passed/Void/Rejected + market.
+    - **[Done]** Each strategy shows in-sample vs out-of-sample (unseen) performance.
+- **[Done]** Strategy thesis shown on each strategy (dossier).
+- **[Done]** Deploy tab: pick strategies, monitor live; agent chat on the side.
+    - **[Done]** Autopilot (dangerously-skip-permission) adjusts/deploys on paper, thoughts in chat.
+- **[Done]** Funds tab to deposit/withdraw (paper now; live via user's own Kalshi key).
 
 ## How do we charge customers? (v0.2)
-- Charging a small percentage fee on user transactions and credit purchases
-    - Try this revenue model first to see if it makes sense
+- **[Done]** OpenRouter-style credits: $100 free, per-token billing, 5.5% top-up fee, Stripe.
+    - Live in Stripe **test mode** only; flip to live keys to charge real cards.
+    - **[Done]** Save-card works (Payment Element hides address → country `US` passed at `confirmSetup`, in both the gate modal and the Billing page).
 
 
 ## THOUGHTS
 ### Must-have Features
 - Our simulations do not consider the fact that Kalshi has a dev environment for testing
     - Maybe we should use that for an enhanced dev testing environment
-- We should adapt OpenRouter's revenue model for early adoptions; easiest way to persuade
-and justify our services.
+    - TODO: strategy curve shows 2 lines — our standard sim + Kalshi-dev out-of-sample execution.
+- **[Done]** Adapted OpenRouter's revenue model (credits + per-token billing + top-up fee).
 - No major data vendor for prediction markets yet. We can be the databento for prediction market
 
 ### Interesting Features
@@ -58,8 +54,9 @@ and justify our services.
     - Maybe once collected, it can be shared across all users
     - Maybe we can charge also by storage cost? (i.e. how many data they use/subscribe to)
 - Social/Interactive Elements
-    - Maybe people can see their friends' holdings
-    - Maybe people can sell others their alpha with a margin
+    - **[Done]** Community tab: share ideas/strategies/PnL, like, comment, photos, edit own posts.
+    - **[Done]** Email to a post's author when someone replies (SES sandbox: verified addresses only).
+    - TODO: emoji reactions (Slack/Mattermost style); friends' holdings; sell alpha with a margin.
     - Allow people to start a "Hedge Fund" on the platform where other people can put money in
 - Agent generated UI for assited manual trading
     - UI is also a big part of trading business!
@@ -78,6 +75,7 @@ for trading firms/teams that only focus on agent-driven strategies.
 - A credit/debit card for customers to easily use their money deposited on our platform.
     - Automatically sell some positions to cover their expenses.
 - Centralized dashboard to control what features we should enable, and to what user
+    - **[Done]** Admin tab (operator only): grant credits, see users/waitlist; masthead admin-mode toggle.
 
 ### Open Souce?
 - Software is cheap. We could probably open source our code. Our moats:
@@ -112,8 +110,8 @@ whether making them willing to pay?
 
 ## Frictions found along the way.
 - API keys are the bottleneck, not coding. A frictionless api-key-dependent development solution?
-- Codes become harder and harder to read with fast development. Maybe a visualization layer on top, so that users only
-need to read code when they want to?
+- **[Done]** Visualization layer: admin System tab — live signal-flow map of the codebase.
+- Codes become harder and harder to read with fast development. (Visualization layer shipped, above.)
 - User testing. Agent as a simulated user to test front end UIs.
 - computer agent to help me do things that previously I needed to manually do.
 - New UI/interface, but agent has old knowledge -- there should be a product that
