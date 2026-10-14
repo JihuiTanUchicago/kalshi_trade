@@ -44,6 +44,22 @@ def _loads(value):
 # -- users & sessions ----------------------------------------------------------
 
 
+def ensure_welcome_bonus(cur, user_id: int) -> bool:
+    """Grant the one-time welcome bonus if this user never received it.
+
+    Idempotent and self-healing: the kind='bonus' check skips anyone who already
+    has it (including backfilled rows), and the per-user stripe_ref makes concurrent
+    logins race-safe via the uq_credit_stripe unique key. Called on EVERY login, so a
+    grant that silently failed at signup (or predates the feature) is repaired for free.
+    """
+    from app import billing
+    cur.execute("SELECT 1 FROM app_credit_ledger WHERE user_id=%s AND kind='bonus' LIMIT 1", (user_id,))
+    if cur.fetchone():
+        return False
+    return add_credit(cur, user_id, "bonus", billing.FREE_BONUS, "Welcome credits",
+                      stripe_ref="welcome-%d" % user_id)
+
+
 def upsert_google_user(cur, sub: str, email: str, name: Optional[str], picture: Optional[str]) -> Dict:
     """Create on first sign-in (with the starting paper balance), refresh profile after."""
     now = now_utc()
@@ -54,6 +70,7 @@ def upsert_google_user(cur, sub: str, email: str, name: Optional[str], picture: 
             "UPDATE app_users SET email=%s, name=%s, picture_url=%s, last_login_at=%s WHERE id=%s",
             (email, name, picture, now, row["id"]),
         )
+        ensure_welcome_bonus(cur, row["id"])  # self-heal a missed grant on return
         return get_user(cur, row["id"])
     cur.execute(
         """INSERT INTO app_users (google_sub, email, name, picture_url, created_at, last_login_at)
@@ -65,11 +82,7 @@ def upsert_google_user(cur, sub: str, email: str, name: Optional[str], picture: 
     if email:
         cur.execute("DELETE FROM app_waitlist WHERE email=%s", (email,))
     add_ledger(cur, user_id, "deposit", STARTING_PAPER_BALANCE, "Starting paper balance")
-    try:
-        from app import billing
-        add_credit(cur, user_id, "bonus", billing.FREE_BONUS, "Welcome credits")
-    except Exception as _e:
-        print("[repo] welcome-credit grant failed: %r" % _e, flush=True)
+    ensure_welcome_bonus(cur, user_id)
     seed_demo_session(cur, user_id)
     return get_user(cur, user_id)
 
