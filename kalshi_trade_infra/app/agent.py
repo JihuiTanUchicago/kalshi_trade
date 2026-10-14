@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 from typing import Callable, Dict, List, Optional, Tuple
 
 from app import backtest, billing
@@ -135,13 +136,51 @@ def _memory_block(memory: List[Dict]) -> str:
     return "\n".join(lines)
 
 
+_BRIEF_PATH = os.path.join(os.path.dirname(__file__), "research_brief.md")
+
+
+def _brief() -> str:
+    """The operator-editable research constitution (app/research_brief.md), read fresh each run
+    so edits take effect without a deploy. Empty string if it's missing."""
+    try:
+        with open(_BRIEF_PATH) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def _plan_lookback(run: Dict, market: str, model: ModelFn, usage: Usage, log) -> int:
+    """Let the agent choose how much history to backtest on, guided by the brief and its thesis,
+    clamped to what we actually have. One cheap call before the heavy research loop."""
+    m = MARKETS[market]
+    maxd = m.history_days
+    idea = (run.get("prompt") or "").strip() or "any durable, fee-surviving edge"
+    msg = ("%s\n\nIdea: %s\nMarket: %s. Up to %d days of history are available to backtest on.\n"
+           "Pick how many days the backtest should replay for THIS idea. Reply exactly:\n"
+           '{"lookback_days": <integer 5..%d>, "why": "<one sentence>"}'
+           % (_brief(), idea[:400], m.label, maxd, maxd))
+
+    def check(obj: Dict) -> Dict:
+        d = obj.get("lookback_days")
+        if not isinstance(d, (int, float)):
+            raise ValueError("reply needs an integer lookback_days")
+        return {"days": max(5, min(int(d), maxd)), "why": str(obj.get("why") or "")[:200]}
+
+    r = ask_json(model, RESEARCH_SYSTEM, [{"role": "user", "content": msg}], check, usage)
+    log("step", "Chose a %d-day backtest window for this idea. %s" % (r["days"], r["why"]))
+    return r["days"]
+
+
 def _research_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], count: int) -> str:
     idea = (run.get("prompt") or "").strip() or "Find any durable, fee-surviving edge you can justify."
+    brief = _brief()
     lens = ""
     if run.get("direction") and run["direction"] in DIRECTIONS:
         d = DIRECTIONS[run["direction"]]
         lens = "\nOptional lens to consider: %s - %s" % (d["label"], d["brief"])
-    return """The user's idea: {idea}{lens}
+    return """{brief}
+
+The user's idea: {idea}{lens}
 
 Turn this idea into concrete, testable trading strategies. Stay faithful to what the
 user asked for; if the idea is vague, pick the most promising precise reading and say so.
@@ -156,6 +195,7 @@ What this user's earlier research found (learn from it; do not repeat failures):
 
 Propose {count} distinct hypotheses for this idea. Reply:
 {{"hypotheses": [{{"title": "...", "thesis": "...", "spec": {{...}}}}]}}""".format(
+        brief=brief,
         idea=idea[:1000],
         lens=lens,
         market_label=MARKETS[run["market"]].label,
@@ -282,9 +322,17 @@ def run_research(
             raise Cancelled()
 
     try:
-        ds = dataset_fn(market)
+        ds = dataset_fn(market)  # full available window first — confirms data before any model spend
         if len(ds.frames) < MIN_FRAMES:
             raise LLMError("Not enough market history collected yet for %s." % MARKETS[market].label)
+        # The agent picks the window that fits its thesis; re-load the narrower slice if it
+        # chose less, and keep the fuller one if the slice is too thin to be worth it.
+        checkpoint()  # a cancel must stop before we spend a model call on planning
+        lookback = _plan_lookback(run, market, model, usage, log)
+        if lookback < MARKETS[market].history_days:
+            narrowed = dataset_fn(market, lookback)
+            if len(narrowed.frames) >= MIN_FRAMES:
+                ds = narrowed
         s = ds.summary()
         log("step", "Loaded %s of %s history: %s decision points over %s contracts."
             % (_span_words(ds), MARKETS[market].label, s["decision_points"], s["contracts"]), s)

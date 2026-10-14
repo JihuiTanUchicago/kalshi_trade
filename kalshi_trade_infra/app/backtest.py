@@ -331,28 +331,30 @@ _cache: Dict[str, Tuple[float, Dataset]] = {}
 _cache_lock = threading.Lock()
 
 
-def load_dataset(market_key: str, loader: Callable[[Market], Dataset]) -> Dataset:
+def load_dataset(market_key: str, loader: Callable[..., Dataset], history_days: Optional[int] = None) -> Dataset:
     """Process-local cache: history only grows every 10 minutes, and every
-    backtest of a market in a process reuses the same frames.
+    backtest of a market+window in a process reuses the same frames.
     # ponytail: one copy per process (~40MB per market); move to a shared
     # cache if the worker count grows past a handful."""
     market = MARKETS[market_key]
+    days = history_days or market.history_days
+    ckey = "%s:%d" % (market_key, days)
     with _cache_lock:
-        hit = _cache.get(market_key)
+        hit = _cache.get(ckey)
         if hit and time.time() - hit[0] < DATASET_TTL_SECONDS:
             return hit[1]
-    ds = loader(market)
+    ds = loader(market, days)
     with _cache_lock:
-        _cache[market_key] = (time.time(), ds)
+        _cache[ckey] = (time.time(), ds)
     return ds
 
 
-def load_from_db(market: Market) -> Dataset:
+def load_from_db(market: Market, history_days: Optional[int] = None) -> Dataset:
     """The production loader for load_dataset()."""
     from app import repository as repo
     from data_pipeline.common import get_db_conn
 
-    since = repo.now_utc() - timedelta(days=market.history_days)
+    since = repo.now_utc() - timedelta(days=history_days or market.history_days)
     conn = get_db_conn()
     try:
         with conn.cursor() as cur:
@@ -362,5 +364,5 @@ def load_from_db(market: Market) -> Dataset:
     return build_dataset(market, h["markets"], h["candles"], h["btc"])
 
 
-def dataset(market_key: str) -> Dataset:
-    return load_dataset(market_key, load_from_db)
+def dataset(market_key: str, history_days: Optional[int] = None) -> Dataset:
+    return load_dataset(market_key, load_from_db, history_days)

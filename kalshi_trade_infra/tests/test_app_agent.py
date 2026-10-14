@@ -44,6 +44,10 @@ def scripted(replies):
     return model, prompts
 
 
+def plan(days=30):
+    return '```json\n%s\n```' % json.dumps({"lookback_days": days, "why": "fits the thesis"})
+
+
 def hyps(*specs):
     return "```json\n%s\n```" % json.dumps({"hypotheses": [
         {"title": "H%d" % i, "thesis": "Because %d." % i, "spec": s} for i, s in enumerate(specs)]})
@@ -51,8 +55,8 @@ def hyps(*specs):
 
 def test_research_loop_saves_everything_and_hides_out_of_sample(monkeypatch):
     store = Store(monkeypatch)
-    model, prompts = scripted([hyps(WINNER, LOSER), hyps(WINNER)])
-    agent.run_research(Conn(), {**RUN, "max_hypotheses": 3}, model=model, dataset_fn=lambda m: _dataset(n_contracts=60))
+    model, prompts = scripted([plan(), hyps(WINNER, LOSER), hyps(WINNER)])
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 3}, model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
     status, error, tried, passed = store.finished
     assert status == "succeeded" and tried == 3 and passed >= 1
     assert len(store.strategies) == 3
@@ -69,16 +73,16 @@ def test_research_loop_saves_everything_and_hides_out_of_sample(monkeypatch):
 def test_invalid_spec_gets_one_repair(monkeypatch):
     store = Store(monkeypatch)
     bad = hyps({"entry": {"min_edge": 7}})
-    model, prompts = scripted([bad, hyps(WINNER), hyps(WINNER)])
-    agent.run_research(Conn(), {**RUN, "max_hypotheses": 2}, model=model, dataset_fn=lambda m: _dataset(n_contracts=60))
+    model, prompts = scripted([plan(), bad, hyps(WINNER), hyps(WINNER)])
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 2}, model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
     assert store.finished[0] == "succeeded"
-    assert "rejected" in prompts[1] and "min_edge=7" in prompts[1]
+    assert "rejected" in prompts[2] and "min_edge=7" in prompts[2]
 
 
 def test_unrepairable_reply_fails_the_run_visibly(monkeypatch):
     store = Store(monkeypatch)
-    model, _ = scripted(["no json here", "still none"])
-    agent.run_research(Conn(), RUN, model=model, dataset_fn=lambda m: _dataset(n_contracts=60))
+    model, _ = scripted([plan(), "no json here", "still none"])
+    agent.run_research(Conn(), RUN, model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
     assert store.finished[0] == "failed"
     assert store.events[-1][0] == "error"
 
@@ -86,14 +90,14 @@ def test_unrepairable_reply_fails_the_run_visibly(monkeypatch):
 def test_too_little_history_fails_before_spending_on_the_model(monkeypatch):
     store = Store(monkeypatch)
     model, prompts = scripted([])
-    agent.run_research(Conn(), RUN, model=model, dataset_fn=lambda m: _dataset(n_contracts=2))
+    agent.run_research(Conn(), RUN, model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=2))
     assert store.finished[0] == "failed" and prompts == []
 
 
 def test_cancel_stops_the_run(monkeypatch):
     store = Store(monkeypatch, status="cancelled")
-    model, prompts = scripted([hyps(WINNER)])
-    agent.run_research(Conn(), RUN, model=model, dataset_fn=lambda m: _dataset(n_contracts=60))
+    model, prompts = scripted([plan(), hyps(WINNER)])
+    agent.run_research(Conn(), RUN, model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
     assert store.finished is None and store.strategies == []
 
 
@@ -139,14 +143,15 @@ def test_llm_error_type():
 def test_budget_is_honored_and_the_agent_iterates(monkeypatch):
     store = Store(monkeypatch)
     # budget 10, BATCH 4 -> refining rounds of 4, 4, 2 (not a fixed two-shot)
-    model, prompts = scripted([hyps(WINNER, LOSER, WINNER, LOSER),
+    model, prompts = scripted([plan(),
+                               hyps(WINNER, LOSER, WINNER, LOSER),
                                hyps(WINNER, LOSER, WINNER, LOSER),
                                hyps(WINNER, LOSER)])
-    agent.run_research(Conn(), {**RUN, "max_hypotheses": 10}, model=model, dataset_fn=lambda m: _dataset(n_contracts=60))
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 10}, model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
     status, error, tried, passed = store.finished
     assert status == "succeeded" and tried == 10            # the 10-hypothesis budget was honored
-    assert len(prompts) == 3                                # it iterated 3 refining rounds
-    assert "Results so far" in prompts[1]                   # later rounds learn from prior in-sample results
+    assert len(prompts) == 4                                # 1 window-plan call + 3 refining rounds
+    assert "Results so far" in prompts[2]                   # later rounds learn from prior in-sample results
 
 
 def test_run_forever_runs_many_chunks_until_cancelled(monkeypatch):
@@ -158,9 +163,19 @@ def test_run_forever_runs_many_chunks_until_cancelled(monkeypatch):
         return "running" if beats["n"] < 10 else "cancelled"
 
     monkeypatch.setattr(agent.repo, "heartbeat", hb)
-    model, _ = scripted([hyps(WINNER, LOSER)] * 30)
+    model, _ = scripted([plan()] + [hyps(WINNER, LOSER)] * 30)
     agent.run_research(Conn(), {**RUN, "max_hypotheses": 2, "run_forever": True},
-                       model=model, dataset_fn=lambda m: _dataset(n_contracts=60))
+                       model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
     assert store.finished is None                            # cancelled mid-run, not "succeeded"
     assert any(k == "step" and "Cancelled" in m for (k, m, d) in store.events)
     assert len(store.strategies) >= 2                        # it had completed at least one chunk first
+
+
+def test_plan_lookback_clamps_to_available_history():
+    from app import agent
+    from app.llm import Usage
+    from app.markets import MARKETS
+    big = "```json\n%s\n```" % json.dumps({"lookback_days": 9999, "why": "lots"})
+    model, _ = scripted([big])
+    days = agent._plan_lookback({"market": "btc15m", "prompt": "x"}, "btc15m", model, Usage(), lambda *a, **k: None)
+    assert days == MARKETS["btc15m"].history_days      # never asks for more history than exists
