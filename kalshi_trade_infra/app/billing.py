@@ -160,6 +160,8 @@ def charge(customer_id: str, pm_id: str, amount_cents: int, off_session: bool, i
     pi = _stripe("POST", "/payment_intents", {
         "amount": amount_cents, "currency": "usd", "customer": customer_id, "payment_method": pm_id,
         "confirm": "true", "off_session": "true" if off_session else "false",
+        # Card-only, no redirect methods -> no return_url needed for off-session charges.
+        "automatic_payment_methods": {"enabled": "true", "allow_redirects": "never"},
         "description": "Tau credits", "metadata": metadata or {},
     }, idempotency_key=idem)
     return {"id": pi["id"], "status": pi["status"]}
