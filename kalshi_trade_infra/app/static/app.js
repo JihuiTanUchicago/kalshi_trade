@@ -786,7 +786,7 @@
         <div class="dispatch-tune" style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;margin-top:2px">
           <label class="field" style="margin:0"><span>Strategies to test</span>
             <input class="input" type="number" name="max_hypotheses" id="maxhyp" min="1" max="50" value="10" style="width:92px"></label>
-          <label class="switch" style="margin-top:18px"><input type="checkbox" name="run_forever" id="runforever"><span>Let it run until I stop it</span></label>
+          <label class="switch" style="margin-top:18px"><input type="checkbox" name="run_forever" id="runforever" checked><span>Let it run until I stop it</span></label>
         </div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;justify-content:space-between">
           <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="label" style="margin-bottom:6px">Market</legend>
@@ -803,7 +803,10 @@
     root.querySelectorAll('[data-ex]').forEach((b) => { b.onclick = () => { const t = root.querySelector('textarea[name=prompt]'); t.value = b.dataset.ex; t.focus(); }; });
     const form = root.querySelector('#dispatch');
     const rf = form.querySelector('#runforever'), mh = form.querySelector('#maxhyp');
-    if (rf && mh) rf.addEventListener('change', () => { mh.disabled = rf.checked; mh.style.opacity = rf.checked ? '.4' : ''; });
+    if (rf && mh) {
+      const syncRf = () => { mh.disabled = rf.checked; mh.style.opacity = rf.checked ? '.4' : ''; };
+      rf.addEventListener('change', syncRf); syncRf();  // default on -> depth dimmed
+    }
     form.onsubmit = async (e) => {
       e.preventDefault();
       if (me.needs_card) { flash('#dflash', 'Add a payment method on the Billing tab first.', 'bad'); go('/billing'); return; }
