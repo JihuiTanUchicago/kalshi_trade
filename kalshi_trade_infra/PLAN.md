@@ -1,10 +1,35 @@
 # PLAN
 
-## ARCHITECTURE PLAN — all-markets collector + cross-contract trading (proposed 2026-10-13, NOT built)
+## ARCHITECTURE PLAN — all-markets collector + cross-contract trading (proposed 2026-10-13)
 
 **Goal:** collect *every* open Kalshi market at per-minute resolution, handle renewing
 contracts correctly, let users find markets by a stable **name** (not a ticker), and let a
 strategy trade **several order books at once**.
+
+### STATUS (2026-10-14) — Phase 2 snapshot collector SHIPPED (`data_pipeline/snapshot_collector.py`)
+Running on the collector box as `tau-snapshot.service` (per-minute, aligned to :00).
+Key empirical findings that shaped the design:
+- **The parlay flood:** raw `/markets?status=open` is ~99.9% ONE combinatorial series
+  (`KXMVECROSSCATEGORY`, 386k+ markets, mostly zero-liquidity). A blind market scan caps out
+  (400k+) and NEVER reaches the real markets. So enumeration must use `/series` (15,020 series)
+  and `/events?with_nested_markets` (14,023 open events / 132,270 real markets / 4,574 series,
+  zero parlay) — NOT a market scan. (This is also why the Phase-1 catalog only found ~11 series;
+  `catalog_collector.py` still uses the flood scan and needs the same `/events` fix — TODO.)
+- **Fixed membership for research integrity:** a dynamic "hot" filter makes a market appear only
+  while hot → ragged, selection-biased panels. So we snapshot a FROZEN set of SERIES
+  (`data_pipeline/snapshot_series.txt`, committed/auditable), built by
+  `scripts/build_snapshot_series.py` = all *active* Crypto series + top-20 real series by open
+  markets. Currently **98 series ≈ 41,467 markets/snapshot**. Expand `TOP_REAL` toward all markets.
+- **Quotes vs enumeration:** `/events` nested markets carry NO quotes; quotes come from
+  `/markets?series_ticker=X`. So: enumerate via `/events`, snapshot via per-series `/markets`.
+- **Throughput:** unauthenticated `/markets` rate-limits ~5 rps (429s above). The collector box
+  has NO Kalshi key, so auth (higher limit) isn't available there. Solution: prune empty series
+  (0 data lost) + a global token-bucket (`SNAPSHOT_RPS=5`) across `SNAPSHOT_WORKERS=6` threads +
+  per-series error isolation. Full 41k-market snapshot in **~34s (<60s)**, no 429.
+- **Alignment:** one `snapshot_minute_utc` set once per scan, stamped on every row → all contracts
+  share an aligned timestamp (cross-contract joins work); parallel fetch keeps the real window ~30s.
+- **Storage:** S3 + Parquet (Snappy), `s3://kalshi-trade-datalake-.../snapshots_1m/dt=.../minute=.../part.parquet`.
+Next: Phase 3 (backtest over any series) + the Hot-Markets sidebar (reads these snapshots).
 
 ### The core idea: Series (logical contract) vs Market (renewing instance)
 Kalshi tickers renew: `KXBTC15M-26OCT1401...` is one 15-minute window; a new ticker opens every

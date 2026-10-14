@@ -1,0 +1,20 @@
+[Unit]
+Description=Tau per-minute market snapshots -> S3/Parquet (Phase 2). Runs on the COLLECTOR box.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/kalshi
+# Firehose: one aligned cross-section a minute. Resource-capped so it never
+# starves ingestion/serving on the shared box (same discipline as tau-catalog).
+Nice=15
+IOSchedulingClass=idle
+CPUQuota=40%
+MemoryMax=500M
+ExecStart=/bin/bash -c 'set -a; . /opt/kalshi/.env.aws; . /opt/kalshi/.env.app; set +a; unset AWS_PROFILE; exec /opt/kalshi/.venv/bin/python -u -m data_pipeline.snapshot_collector --loop'
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
