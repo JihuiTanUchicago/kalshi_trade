@@ -267,6 +267,16 @@ DDL = [
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     """
+    CREATE TABLE IF NOT EXISTS app_post_reactions (
+      post_id BIGINT NOT NULL,
+      user_id BIGINT NOT NULL,
+      emoji VARCHAR(16) NOT NULL,
+      created_at DATETIME NOT NULL,
+      PRIMARY KEY (post_id, user_id, emoji),
+      INDEX idx_reactions_post (post_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
     CREATE TABLE IF NOT EXISTS app_waitlist (
       id BIGINT AUTO_INCREMENT PRIMARY KEY,
       email VARCHAR(320) NOT NULL UNIQUE,

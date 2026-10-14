@@ -559,6 +559,7 @@ def _post_out(p: Dict) -> Dict:
         "likes": p["likes_count"], "comments": p["comments_count"], "created_at": p["created_at"],
         "author": p.get("name") or "Trader", "picture": p.get("picture_url"),
         "mine": p.get("mine", False), "liked": p.get("liked", False),
+        "reactions": p.get("reactions", []),
         "image": ("/api/community/image/%d" % p["image_id"]) if p.get("image_id") else None,
         "edited": bool(p.get("edited_at")),
     }
@@ -644,6 +645,23 @@ def like_post(ctx: Ctx):
     if not repo.post_exists(ctx.cur, pid):
         raise ApiError(404, "No such post.")
     return {"liked": repo.toggle_like(ctx.cur, pid, ctx.uid)}
+
+
+# A fixed emoji palette — reactions are restricted to these so stored values stay
+# small and safe (no arbitrary input).
+REACTION_EMOJI = ["👍", "❤️", "🔥", "🚀", "😂", "🎉", "💯", "👀", "🤔", "😮",
+                  "😢", "🙌", "🧠", "📈", "📉", "💸", "✅", "❌", "🐂", "🐻"]
+
+
+def react_post(ctx: Ctx):
+    pid = _int_param(ctx)
+    emoji = str(ctx.body.get("emoji") or "")
+    if emoji not in REACTION_EMOJI:
+        raise ApiError(400, "Unsupported reaction.")
+    if not repo.post_exists(ctx.cur, pid):
+        raise ApiError(404, "No such post.")
+    repo.toggle_reaction(ctx.cur, pid, ctx.uid, emoji)
+    return {"reactions": repo.reactions_for(ctx.cur, [pid], ctx.uid).get(pid, [])}
 
 
 def post_comments(ctx: Ctx):
@@ -924,6 +942,7 @@ ROUTES: List[Route] = [
         ("GET", "/api/community", community, True),
         ("POST", "/api/community", create_community_post, True),
         ("POST", r"/api/community/(\d+)/like", like_post, True),
+        ("POST", r"/api/community/(\d+)/react", react_post, True),
         ("POST", r"/api/community/(\d+)/edit", edit_community_post, True),
         ("GET", r"/api/community/image/(\d+)", community_image, True),
         ("GET", r"/api/community/(\d+)/comments", post_comments, True),

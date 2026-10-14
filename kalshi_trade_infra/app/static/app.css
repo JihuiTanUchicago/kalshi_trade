@@ -733,6 +733,19 @@ a.snap:hover { border-color: var(--ink-3); }
 .snap-meta { color: var(--ink-3); font-size: 12.5px; margin-top: 4px; }
 .snap-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 13.5px; }
 .snap-row span { color: var(--ink-3); }
+/* Emoji reactions */
+.reactions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.rx { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; min-height: 28px; border: 1px solid var(--rule-2); border-radius: 999px; background: var(--stock-raised); cursor: pointer; font-size: 14px; line-height: 1; transition: border-color .12s, background .12s; }
+.rx .n { font-family: var(--f-nar); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.rx:hover { border-color: var(--ink-3); }
+.rx.on { background: var(--signal-wash); border-color: var(--signal); }
+.rx.on .n { color: var(--signal); }
+.rx.add { color: var(--ink-3); padding: 2px 8px; }
+.rx.add svg { width: 17px; height: 17px; }
+.rx.add:hover { color: var(--ink); }
+.emoji-pop { position: fixed; z-index: 130; display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; max-width: 232px; padding: 7px; background: var(--stock-raised); border: 1px solid var(--ink); box-shadow: 0 12px 26px -14px rgba(25,27,22,.42); animation: glopop .12s var(--ease); }
+.ep { font-size: 20px; line-height: 1; padding: 6px; border: 0; background: none; border-radius: 4px; cursor: pointer; }
+.ep:hover { background: var(--stock-sunk); }
 .post-actions { display: flex; gap: 4px; margin-top: 12px; }
 .pact { display: inline-flex; align-items: center; gap: 7px; background: none; border: 0; padding: 6px 10px; cursor: pointer; color: var(--ink-3); font-family: var(--f-nar); font-size: 12.5px; letter-spacing: .04em; }
 .pact:hover { color: var(--ink); background: var(--stock-raised); }

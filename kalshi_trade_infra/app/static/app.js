@@ -42,6 +42,7 @@
     credits: I('<circle cx="12" cy="12" r="9"/><path d="M14.5 9.5a3 3 0 1 0 0 5M12 7v10"/>'),
     admin: I('<path d="M12 2 4 5v6c0 5 3.5 8 8 11 4.5-3 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/>'),
     info: I('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.7v.3"/>'),
+    react: I('<circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4 4 0 0 0 7 0"/><path d="M9 9.5v.01M15 9.5v.01"/>'),
     at: I('<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>'),
     google: '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>',
   };
@@ -1241,6 +1242,7 @@
       <div class="post-main"><p class="post-body">${esc(p.body)}</p>
       ${p.image ? `<a class="post-img" href="${esc(p.image)}" target="_blank" rel="noopener"><img src="${esc(p.image)}" alt="" loading="lazy"></a>` : ''}
       ${postSnapshot(p.snapshot)}</div>
+      ${reactionBar(p)}
       <div class="post-actions">
         <button class="pact like ${p.liked ? 'on' : ''}" data-act="like" aria-pressed="${p.liked}">${ICON.heart}<span class="c">${p.likes || ''}</span></button>
         <button class="pact" data-act="comments">${ICON.comment}<span class="c">${p.comments || ''}</span></button>
@@ -1248,6 +1250,28 @@
       </div>
       <div class="comments" hidden></div>
     </article>`;
+  }
+  // Emoji reactions — a fixed palette (matches the server whitelist).
+  const REACTIONS = ['👍', '❤️', '🔥', '🚀', '😂', '🎉', '💯', '👀', '🤔', '😮', '😢', '🙌', '🧠', '📈', '📉', '💸', '✅', '❌', '🐂', '🐻'];
+  function reactionBar(p) {
+    const chips = (p.reactions || []).map((rx) => `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${rx.emoji}">${rx.emoji}<span class="n">${rx.count}</span></button>`).join('');
+    return `<div class="reactions">${chips}<button class="rx add" data-react-add aria-label="Add a reaction">${ICON.react}</button></div>`;
+  }
+  let emojiPop = null;
+  function openEmojiPicker(anchor, onPick) {
+    if (emojiPop) emojiPop.remove();
+    const pop = document.createElement('div');
+    pop.className = 'emoji-pop';
+    pop.innerHTML = REACTIONS.map((e) => `<button type="button" class="ep" data-e="${e}">${e}</button>`).join('');
+    document.body.appendChild(pop); emojiPop = pop;
+    const r = anchor.getBoundingClientRect(), gut = 10;
+    pop.style.left = Math.min(Math.max(gut, r.left), innerWidth - pop.offsetWidth - gut) + 'px';
+    pop.style.top = (r.top - pop.offsetHeight - 6 < gut ? r.bottom + 6 : r.top - pop.offsetHeight - 6) + 'px';
+    const close = () => { if (emojiPop) { emojiPop.remove(); emojiPop = null; } document.removeEventListener('click', outside, true); document.removeEventListener('keydown', onEsc); };
+    const outside = (e) => { if (!pop.contains(e.target) && !anchor.contains(e.target)) close(); };
+    const onEsc = (e) => { if (e.key === 'Escape') close(); };
+    pop.addEventListener('click', (e) => { const b = e.target.closest('.ep'); if (b) { onPick(b.dataset.e); close(); } });
+    setTimeout(() => { document.addEventListener('click', outside, true); document.addEventListener('keydown', onEsc); }, 0);
   }
   async function viewCommunity() {
     shell('/community', boardTitle('Community', 'Share a strategy, an idea, or how your money is doing. Like and reply to other traders.'), `
@@ -1302,7 +1326,23 @@
     form.onsubmit = (e) => { e.preventDefault(); const ref = root.querySelector('#post-strat').value; submit(ref ? 'strategy' : 'note', ref || undefined); };
     form.querySelector('[data-share="pnl"]').onclick = () => submit('pnl');
     const feed = root.querySelector('#feed');
+    const renderReactions = (art, list) => {
+      const bar = art.querySelector('.reactions');
+      bar.innerHTML = (list || []).map((rx) => `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${rx.emoji}">${rx.emoji}<span class="n">${rx.count}</span></button>`).join('')
+        + `<button class="rx add" data-react-add aria-label="Add a reaction">${ICON.react}</button>`;
+    };
+    const react = async (pid, art, emoji) => {
+      try { const r = await api(`/api/community/${pid}/react`, { emoji }); renderReactions(art, r.reactions); }
+      catch (err) { alert0(err.message); }
+    };
     feed.addEventListener('click', async (e) => {
+      const rx = e.target.closest('.rx');
+      if (rx) {
+        const art = rx.closest('.post'); const pid = art.dataset.id;
+        if (rx.dataset.reactAdd !== undefined) { openEmojiPicker(rx, (emoji) => react(pid, art, emoji)); }
+        else if (rx.dataset.emoji) { react(pid, art, rx.dataset.emoji); }
+        return;
+      }
       const btn = e.target.closest('.pact'); if (!btn) return;
       const art = btn.closest('.post'); const pid = art.dataset.id;
       if (btn.dataset.act === 'like') {

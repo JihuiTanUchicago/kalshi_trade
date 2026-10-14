@@ -792,7 +792,37 @@ def list_posts(cur, viewer_id: int, before_id: int = 0, limit: int = 30) -> List
     for r in rows:
         r["snapshot"] = _loads(r.pop("snapshot_json"))
         r["mine"] = bool(r["mine"]); r["liked"] = bool(r["liked"])
+    by_post = reactions_for(cur, [r["id"] for r in rows], viewer_id)
+    for r in rows:
+        r["reactions"] = by_post.get(r["id"], [])
     return rows
+
+
+def reactions_for(cur, post_ids: List[int], viewer_id: int) -> Dict[int, List[Dict]]:
+    """Per-post emoji counts (+ whether the viewer added each), most-used first."""
+    if not post_ids:
+        return {}
+    marks = ",".join(["%s"] * len(post_ids))
+    cur.execute(
+        "SELECT post_id, emoji, COUNT(*) AS n, MAX(user_id=%s) AS mine "
+        "FROM app_post_reactions WHERE post_id IN (%s) GROUP BY post_id, emoji "
+        "ORDER BY n DESC, emoji" % ("%s", marks),
+        tuple([viewer_id] + list(post_ids)),
+    )
+    out: Dict[int, List[Dict]] = {}
+    for r in cur.fetchall():
+        out.setdefault(r["post_id"], []).append({"emoji": r["emoji"], "count": int(r["n"]), "mine": bool(r["mine"])})
+    return out
+
+
+def toggle_reaction(cur, post_id: int, user_id: int, emoji: str) -> bool:
+    """Add/remove one emoji reaction. Returns True if now reacted."""
+    cur.execute("DELETE FROM app_post_reactions WHERE post_id=%s AND user_id=%s AND emoji=%s", (post_id, user_id, emoji))
+    if cur.rowcount:
+        return False
+    cur.execute("INSERT INTO app_post_reactions (post_id, user_id, emoji, created_at) VALUES (%s,%s,%s,%s)",
+                (post_id, user_id, emoji, now_utc()))
+    return True
 
 
 def toggle_like(cur, post_id: int, user_id: int) -> bool:
