@@ -1,5 +1,39 @@
 # PLAN
 
+## Billing / credits (Stripe), admin, community photos+edit (2026-10-14)
+
+**Bedrock agent confirmed working**: a real research session ran on `us.anthropic.claude-sonnet-4-5`
+via the instance role (AWS credits), producing Claude-written strategies and metering tokens.
+
+**Credits/billing (`app/billing.py`, OpenRouter-style, LIVE Stripe)**. Credits are real USD, separate
+from the paper balance; new users get `TAU_FREE_CREDITS` ($100). Agent usage (research+chat) is
+metered per token at Anthropic list price (`billing.PRICES`) and deducted from credits after each run
+(`agent._bill` -> `billing.charge_usage`). Top-up charges the card for credits + 5.5% fee
+(`TAU_TOPUP_FEE`); auto-reload $20 at $5 off-session. Dependency-free Stripe client over HTTPS (no SDK
+on py3.9); idempotent via PaymentIntent keys + unique `stripe_ref`; signed webhook at
+`/api/stripe/webhook`. Research/chat are gated on balance>0 only once `billing.configured()`.
+Role has `TauBedrockInvoke`, `TauSesSend` already; billing needs no AWS perms.
+
+**Pending user action to ACTIVATE billing** (it's dormant until keys are set; deploy is safe):
+put three values in Parameter Store (SecureString) then run `/opt/kalshi/load_app_secrets.sh`:
+`/recursive/STRIPE_SECRET_KEY` (sk_live_), `/recursive/STRIPE_PUBLISHABLE_KEY` (pk_live_),
+`/recursive/STRIPE_WEBHOOK_SECRET` (whsec_, from a webhook on
+`https://d1gfpzcosqrjya.cloudfront.net/api/stripe/webhook` subscribed to `payment_intent.succeeded`).
+CSP already allows js.stripe.com / api.stripe.com / frame-src js.stripe.com.
+
+**Admin tab** (operator = `TAU_ADMIN_EMAIL`, default tjhprivate0416@gmail.com): grant credits to any
+email, list users+balances and the waitlist. `/api/admin`, `/api/admin/grant`.
+
+**Community**: attach a photo (stored in `app_images` MEDIUMBLOB, served `/api/community/image/<id>`,
+<=3MB, png/jpeg/webp/gif), and edit your own posts (`edited_at` -> shows "edited"). Strategy filter
+chips show counts (e.g. "Void (3)"). New tables: app_credit_ledger, app_stripe_customers, app_images;
+app_posts gained image_id + edited_at. `MAX_BODY` raised to 8MB for base64 image posts.
+
+**Email status**: SES verified for tjhprivate0416; operator waitlist emails send (check spam -- gmail
+From deliverability is weak). SES production DENIED, so signup confirmations to arbitrary addresses
+need a provider (Resend) -- still pending the user's call. notify defaults to tjhprivate0416@gmail.com.
+
+Tests: 136 pass (added tests/test_app_billing.py for usage pricing, top-up fee, webhook signature).
 ## Email (SES) + Bedrock LLM (2026-10-13)
 
 **Waitlist email** moved from SNS to **SES** (`app/notify.py`). SNS only reached a *confirmed*
