@@ -1,0 +1,38 @@
+{
+  "base": "e40d060a8b2fb0d159e030834e829e105d4cdc17",
+  "checks": [
+    {
+      "name": "Navigation retains Explore and public System, removes the independent Strategies item",
+      "passed": false,
+      "error": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n+ actual - expected\n\n  [\n+   'DASHBOARD',\n+   'RESEARCH',\n+   'EXPLORE',\n+   'POSITION',\n+   'COMMUNITY',\n+   'ACCOUNT',\n+   'BILLING',\n+   'SYSTEM'\n-   'Dashboard',\n-   'Research',\n-   'Explore',\n-   'Position',\n-   'Community',\n-   'Account',\n-   'Billing',\n-   'System'\n  ]\n"
+    },
+    {
+      "name": "Missing scoped backend preserves a draft and disables sending",
+      "passed": true
+    },
+    {
+      "name": "Research strategies and full evidence render in separate desktop panes",
+      "passed": false,
+      "error": "AssertionError [ERR_ASSERTION]: Unseen-data P&L"
+    },
+    {
+      "name": "Opened artifacts deduplicate, keep their IDs and support keyboard selection",
+      "passed": true
+    },
+    {
+      "name": "Per-session drafts and artifact tabs survive SPA navigation",
+      "passed": false,
+      "error": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n+ actual - expected\n\n+ ''\n- 'Keep the saved stake fixed'\n"
+    },
+    {
+      "name": "Each rendered message keeps its source target while compact badges avoid repetition",
+      "passed": false,
+      "error": "AssertionError [ERR_ASSERTION]: Values have same structure but are not reference-equal:\n\n[\n  '1',\n  '1',\n  '1',\n  '1'\n]\n"
+    },
+    {
+      "name": "The legacy strategy library defaults to All and retains 50-row pagination",
+      "passed": false,
+      "error": "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:\n\n  uiAssert.ok((await prTab.playwright.getByRole('main').innerText()).includes('Page 2 of 2'))\n"
+    }
+  ]
+}

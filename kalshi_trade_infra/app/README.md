@@ -10,7 +10,7 @@ is unchanged and separate.
 ```mermaid
 flowchart LR
   subgraph Browser
-    SPA["app/static (vanilla SPA)<br/>Dashboard · Research · Strategies · Deploy · Funds"]
+    SPA["app/static (vanilla SPA)<br/>Dashboard · Research · Explore · Position · Community · Account · Billing · System"]
   end
   SPA -- "JSON + X-Recursive header" --> WEB["app.server<br/>stdlib HTTP, sessions, rate limits"]
   WEB -- "Google OIDC + PKCE" --> G[(Google)]
@@ -29,6 +29,80 @@ flowchart LR
 Every process is stateless apart from MySQL, so each scales by running more copies:
 agent runs are claimed with `SELECT … FOR UPDATE SKIP LOCKED`, engine decisions with a
 per-deployment, per-slot claim (`claim_decision`), and every money write is idempotent.
+
+## Research conversations and strategy artifacts
+
+Research owns research sessions
+and their generated strategies. `/research` retains the original idea/market form
+and run history, with **Browse all strategies** for the existing library/filters.
+
+`/research/{id}` shows a session conversation on the **left** and opened strategy
+artifacts in tabs on the **right**. The conversation includes the original idea,
+agent activity and every available candidate status, including void/rejected
+results. Open, switch or close tabs; keyboard arrows/Home/End also select them.
+At <=800px, Conversation/Strategies buttons switch panes; opening a strategy
+selects its pane and closing the last tab returns to conversation.
+
+Each artifact retains the full restored strategy sheet: P&L, trades, return,
+capital/tries, thesis, rules, equity curve, sample/unseen metrics, dataset dates,
+latest trades, exact spec, gates and what-if controls. Tabs keep independent
+scenario/reading state, and late responses cannot replace a different selection.
+Scenarios are labelled separately; deployment uses the original saved rule/verdict.
+The shared paper/live deployment component is also available under **Ready to
+deploy** in Position. Existing deployments, Pause/Stop, positions, account-wide
+chat/autopilot, Account, Billing, Community and Admin/System remain.
+
+There is no independent Strategies navigation item. Old `/strategies` links open
+the filtered library under Research; `/strategies/{id}` resolves to its research
+workspace and opens the artifact. Adjustments follow available ancestors;
+standalone/missing-ancestor artifacts retain their own review workspace. Owner-
+scoped backend reads remain. The upstream 50-run/500-strategy read windows and 50-row library pagination are retained;
+older adjustment-history pagination is future work.
+
+**UI plus backend connection contract:** `session-chat.js` uses only the proposed
+session-scoped endpoints in [SESSION_CHAT_API.md](SESSION_CHAT_API.md). The backend
+still lacks those routes; the real handler shows Not connected, retains drafts
+and disables sends/actions. Session drafts/open tabs survive SPA navigation in
+this page instance, are isolated by user/session and are cleared on sign-out.
+A browser reload resets that temporary state. Position's existing `/api/chat`
+remains account-wide and is never a session fallback. Revision backtest/comparison
+and manual approval controls retain their existing capability gates.
+
+Verification from `kalshi_trade_infra/`:
+
+```bash
+node --check app/static/app.js
+node --test tests/test_app_sessions.mjs tests/test_session_chat.mjs tests/test_research_artifacts.mjs
+APP_TEST_MYSQL=0 AWS_EC2_METADATA_DISABLED=true .venv/bin/python -m pytest tests/ -q
+```
+
+Rebased verification: 157 Python tests passed (7 opt-in MySQL skips), 29 Node tests passed, plus 24 browser and 14 HTTP checks.
+Explore, Hot Markets, public System, research depth/run-forever/automatic market choice,
+credit confirmations and upstream deployment warnings remain available. The obsolete
+System page admin redirect is removed to match its public, owner-scoped backend API. The artifact
+controls follow the current backend policy for passed/void/rejected saved candidates;
+Position highlights passed candidates. Existing research-only market and live guards remain.
+
+Current evidence: [workspace handoff](../results/frontend_pr_2026-10-15/HANDOFF.md).
+Local editing preview data/replies are synthetic; actions are disabled. Verification
+also uses actual GET handlers plus explicitly enabled synthetic send/scenario
+fixtures; no database, model, payment or trading operation is performed.
+
+## Approved copy/control cleanup (October 15, 2026)
+
+C1–C11 and B1–B2 are applied to the Research workspace and Position. One session
+status/count, compact grouped message targets and accessible composer labels
+replace repeated headings/instructions. Artifact direction, strategy IDs/titles,
+evidence, scenarios and financial gates remain. Position retains each strategy's
+stake and distinct paper/live controls, with one platform-wide live notice and
+strategy-specific restrictions when applicable. Duplicate workspace/empty-state
+navigation is removed; existing sections/library filters remain.
+
+The editing fixture is labelled **Sample conversation**, with one current revision
+card and its proposal/backtest stages still in the chronological messages. Only
+synthetic demo invitations/history links changed; real message records and
+backend routes are untouched. The real scoped API remains unimplemented and shows
+Not connected. Evidence: [cleanup handoff](../results/frontend_pr_2026-10-15/HANDOFF.md).
 
 ## The research loop (why it's "recursive")
 

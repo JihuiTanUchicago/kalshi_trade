@@ -1,0 +1,17 @@
+{
+  "shared_checkout_head": "99a53996882cf7456403f0ed298e82f643bd6921",
+  "shared_checkout_branch": "main",
+  "non_evidence_files_checked": 291,
+  "changed_owned_records": [
+    "kalshi_trade_infra/PLAN.md"
+  ],
+  "unexpected_changes": [],
+  "preserved": [
+    "mvp.md",
+    "trading_agent_new",
+    "original Polygon",
+    "running 8090 preview",
+    "independent frontend prototype"
+  ],
+  "upstream_base": "e40d060a8b2fb0d159e030834e829e105d4cdc17"
+}

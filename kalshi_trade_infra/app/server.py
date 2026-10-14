@@ -391,7 +391,7 @@ def create_deployment(ctx: Ctx):
         if not engine.LIVE_TRADING_ENABLED:
             raise ApiError(409, "Live trading isn't open yet. Deploy on paper for now.")
         if repo.get_kalshi_key(cur, ctx.uid) is None:
-            raise ApiError(409, "Connect your Kalshi account on the Funds page first.")
+            raise ApiError(409, "Connect your Kalshi account on the Account page first.")
         if s["spec"]["side"] != "yes":
             raise ApiError(409, "Live trading supports YES-only strategies in this version.")
         if ctx.body.get("confirm") != "LIVE":
@@ -1103,7 +1103,7 @@ ROUTES: List[Route] = [
 
 def _static_versions() -> Dict[str, str]:
     out = {}
-    for name in ("app.css", "app.js", "icon.svg"):
+    for name in ("app.css", "app.js", "session-data.js", "session-chat.js", "research-artifacts.js", "icon.svg"):
         p = STATIC_DIR / name
         out[name] = hashlib.sha256(p.read_bytes()).hexdigest()[:10] if p.exists() else "0"
     return out
@@ -1157,6 +1157,9 @@ class Handler(BaseHTTPRequestHandler):
             html = (STATIC_DIR / "index.html").read_text("utf-8")
             html = (html.replace("{{css_v}}", versions["app.css"])
                     .replace("{{js_v}}", versions["app.js"])
+                    .replace("{{session_v}}", versions["session-data.js"])
+                    .replace("{{chat_v}}", versions["session-chat.js"])
+                    .replace("{{artifacts_v}}", versions["research-artifacts.js"])
                     .replace("{{icon_v}}", versions["icon.svg"]))
             body = html.encode("utf-8")
             self._headers(200, "text/html; charset=utf-8", len(body), [("Cache-Control", "no-cache")])

@@ -1,0 +1,74 @@
+[
+  {
+    "path": "kalshi_trade_infra/.impeccable/surfaces/app-static-index-html.md",
+    "sha256": "d87fab3cbce7ef495fcc8f3429be7a745a73229b04f155ee56d74030d4bf3c23"
+  },
+  {
+    "path": "kalshi_trade_infra/DESIGN.md",
+    "sha256": "267fbd1c2d0730872ce6c6669299dc0d8ad301623ade5d8320d7262c1cb95377"
+  },
+  {
+    "path": "kalshi_trade_infra/PLAN.md",
+    "sha256": "764f809009796ec670c9728984cb6cdc91b6d7433c9fb02c5dc9b7c3b0fcd5f8"
+  },
+  {
+    "path": "kalshi_trade_infra/PRODUCT.md",
+    "sha256": "e1122d4fdd0ee883bf1aa3257916c5909effadfd223c9958f6a5e270afd437eb"
+  },
+  {
+    "path": "kalshi_trade_infra/app/README.md",
+    "sha256": "8e7f690aa8fc2edc89813b9fff518ecbdf90c2b14ddb936eab1159d3d618bd28"
+  },
+  {
+    "path": "kalshi_trade_infra/app/SESSION_CHAT_API.md",
+    "sha256": "9f85d617708d5238e6d095b5d857ad20b7ad50cbf25a436678ade32bd16efe0a"
+  },
+  {
+    "path": "kalshi_trade_infra/app/server.py",
+    "sha256": "aabcadba9dd38792efcd3d3e0d6ad8c29035b6367a9db05591b673b9abedf2f0"
+  },
+  {
+    "path": "kalshi_trade_infra/app/static/app.css",
+    "sha256": "ee2f74aa5e78ad53d1e31c81b77b8023924e709f009552d0b79bf0f3fe6f4bab"
+  },
+  {
+    "path": "kalshi_trade_infra/app/static/app.js",
+    "sha256": "d5c2eb2aff1d10458882e9f0aeaf3ee49056dfe89b6469ecec912bb4914dada6"
+  },
+  {
+    "path": "kalshi_trade_infra/app/static/index.html",
+    "sha256": "18673826c17016815ef194196e864b8eb2c8d36da121b81c3693bd810e155aef"
+  },
+  {
+    "path": "kalshi_trade_infra/app/static/research-artifacts.js",
+    "sha256": "dca06621ac296b9045c2814cc965cc52c13ed1303edbb95900227917c1080a72"
+  },
+  {
+    "path": "kalshi_trade_infra/app/static/session-chat.js",
+    "sha256": "02d2cc0b5528fbd179e639a11db0bce22bd18252b923bfa2834def837af49a68"
+  },
+  {
+    "path": "kalshi_trade_infra/app/static/session-data.js",
+    "sha256": "41857b1def764a7f223da881d7430002f3ae06476b1da03f777413d057fed871"
+  },
+  {
+    "path": "kalshi_trade_infra/tests/test_app_auth_and_api.py",
+    "sha256": "6c4d03582b7732c682c48560f451db1c1174872942bbb6ce6e4294dbcd7cab4d"
+  },
+  {
+    "path": "kalshi_trade_infra/tests/test_app_frontend_contract.py",
+    "sha256": "6390095d991184bb69dd34843c16f65734061aa5f7b4b5ede16a6404e3a709ab"
+  },
+  {
+    "path": "kalshi_trade_infra/tests/test_app_sessions.mjs",
+    "sha256": "42c6c1407b4f1da6bbc3bb95a6e099417bcd165be5a2686723898a13f0a038f8"
+  },
+  {
+    "path": "kalshi_trade_infra/tests/test_research_artifacts.mjs",
+    "sha256": "30253d8a051089b10e0cbd5a517ee2abee7d4d73f8611257187482c5ec135252"
+  },
+  {
+    "path": "kalshi_trade_infra/tests/test_session_chat.mjs",
+    "sha256": "a6007ccbac8601ed156f585e76ebceaa4f1672f2f1e48c4d7f5081ec21cea4c3"
+  }
+]

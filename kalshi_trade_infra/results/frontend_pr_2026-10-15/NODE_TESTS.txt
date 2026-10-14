@@ -1,0 +1,184 @@
+TAP version 13
+# Subtest: one session contains its passed and failed candidates
+ok 1 - one session contains its passed and failed candidates
+  ---
+  duration_ms: 0.976917
+  type: 'test'
+  ...
+# Subtest: queued and running research do not claim finalized results
+ok 2 - queued and running research do not claim finalized results
+  ---
+  duration_ms: 0.080875
+  type: 'test'
+  ...
+# Subtest: review opens the strongest passed unseen result before failed or untested candidates
+ok 3 - review opens the strongest passed unseen result before failed or untested candidates
+  ---
+  duration_ms: 0.650791
+  type: 'test'
+  ...
+# Subtest: failed, cancelled and zero-passing sessions remain in history
+ok 4 - failed, cancelled and zero-passing sessions remain in history
+  ---
+  duration_ms: 0.202834
+  type: 'test'
+  ...
+# Subtest: partial deployment counts candidates rather than deployment instances
+ok 5 - partial deployment counts candidates rather than deployment instances
+  ---
+  duration_ms: 0.093583
+  type: 'test'
+  ...
+# Subtest: an active deployment stays visible even when its session failed
+ok 6 - an active deployment stays visible even when its session failed
+  ---
+  duration_ms: 0.057333
+  type: 'test'
+  ...
+# Subtest: adjustments are grouped with the originating research session
+ok 7 - adjustments are grouped with the originating research session
+  ---
+  duration_ms: 0.064625
+  type: 'test'
+  ...
+# Subtest: older sessions missing from the run list retain their strategies
+ok 8 - older sessions missing from the run list retain their strategies
+  ---
+  duration_ms: 0.141291
+  type: 'test'
+  ...
+# Subtest: the run summary prevents truncated candidate windows from claiming no strategy passed
+ok 9 - the run summary prevents truncated candidate windows from claiming no strategy passed
+  ---
+  duration_ms: 0.333625
+  type: 'test'
+  ...
+# Subtest: standalone adjustments retain a strategy deep link
+ok 10 - standalone adjustments retain a strategy deep link
+  ---
+  duration_ms: 0.371709
+  type: 'test'
+  ...
+# Subtest: broken parent cycles do not hang or lose candidates
+ok 11 - broken parent cycles do not hang or lose candidates
+  ---
+  duration_ms: 0.15275
+  type: 'test'
+  ...
+# Subtest: empty accounts and non-finite metrics have no fabricated P&L
+ok 12 - empty accounts and non-finite metrics have no fabricated P&L
+  ---
+  duration_ms: 0.065
+  type: 'test'
+  ...
+# Subtest: opening existing and failed artifacts keeps one tab per source ID
+ok 13 - opening existing and failed artifacts keeps one tab per source ID
+  ---
+  duration_ms: 1.421292
+  type: 'test'
+  ...
+# Subtest: switching tabs retains the other artifact and its scenario
+ok 14 - switching tabs retains the other artifact and its scenario
+  ---
+  duration_ms: 0.08325
+  type: 'test'
+  ...
+# Subtest: closing the selected middle tab selects its right neighbor
+ok 15 - closing the selected middle tab selects its right neighbor
+  ---
+  duration_ms: 0.089542
+  type: 'test'
+  ...
+# Subtest: closing an inactive tab keeps selection; closing the last clears it
+ok 16 - closing an inactive tab keeps selection; closing the last clears it
+  ---
+  duration_ms: 0.066
+  type: 'test'
+  ...
+# Subtest: research workspaces have independent open artifacts
+ok 17 - research workspaces have independent open artifacts
+  ---
+  duration_ms: 0.098625
+  type: 'test'
+  ...
+# Subtest: invalid source IDs and unopened selections fail without changing state
+ok 18 - invalid source IDs and unopened selections fail without changing state
+  ---
+  duration_ms: 0.209625
+  type: 'test'
+  ...
+# Subtest: compact message targets identify each context change without altering source records
+ok 19 - compact message targets identify each context change without altering source records
+  ---
+  duration_ms: 1.376625
+  type: 'test'
+  ...
+# Subtest: reads use a scoped endpoint and the existing after cursor convention
+ok 20 - reads use a scoped endpoint and the existing after cursor convention
+  ---
+  duration_ms: 0.16725
+  type: 'test'
+  ...
+# Subtest: an orphan strategy family has its own connection key
+ok 21 - an orphan strategy family has its own connection key
+  ---
+  duration_ms: 0.092958
+  type: 'test'
+  ...
+# Subtest: outgoing messages retain captured candidate identity and an idempotency key
+ok 22 - outgoing messages retain captured candidate identity and an idempotency key
+  ---
+  duration_ms: 0.089541
+  type: 'test'
+  ...
+# Subtest: invalid scope, cursors, message bodies and actions cannot reach the transport
+ok 23 - invalid scope, cursors, message bodies and actions cannot reach the transport
+  ---
+  duration_ms: 0.245541
+  type: 'test'
+  ...
+# Subtest: proposal actions remain inside the conversation scope
+ok 24 - proposal actions remain inside the conversation scope
+  ---
+  duration_ms: 0.078834
+  type: 'test'
+  ...
+# Subtest: incremental messages deduplicate IDs and never move the cursor backwards
+ok 25 - incremental messages deduplicate IDs and never move the cursor backwards
+  ---
+  duration_ms: 0.335583
+  type: 'test'
+  ...
+# Subtest: proposal changes update even when no new message arrives
+ok 26 - proposal changes update even when no new message arrives
+  ---
+  duration_ms: 0.08625
+  type: 'test'
+  ...
+# Subtest: foreign or malformed responses do not partially overwrite cached conversation
+ok 27 - foreign or malformed responses do not partially overwrite cached conversation
+  ---
+  duration_ms: 0.404125
+  type: 'test'
+  ...
+# Subtest: scopes have independent drafts and conversation state
+ok 28 - scopes have independent drafts and conversation state
+  ---
+  duration_ms: 0.414208
+  type: 'test'
+  ...
+# Subtest: only a current passed revision with real gate evidence can be approved
+ok 29 - only a current passed revision with real gate evidence can be approved
+  ---
+  duration_ms: 0.153292
+  type: 'test'
+  ...
+1..29
+# tests 29
+# suites 0
+# pass 29
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 88.721583

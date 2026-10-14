@@ -1,0 +1,101 @@
+{
+  "base": "e40d060a8b2fb0d159e030834e829e105d4cdc17",
+  "checks": [
+    {
+      "name": "Navigation preserves Explore and public System and removes independent Strategies",
+      "passed": true
+    },
+    {
+      "name": "Missing scoped chat retains draft and disables sending",
+      "passed": true
+    },
+    {
+      "name": "Full saved evidence remains in the right pane beside conversation",
+      "passed": true
+    },
+    {
+      "name": "Tabs deduplicate IDs and retain keyboard selection",
+      "passed": true
+    },
+    {
+      "name": "Void artifacts retain upstream deployment actions, risk warning and disabled live guard",
+      "passed": true
+    },
+    {
+      "name": "Research retains upstream depth, run-forever and automatic market controls",
+      "passed": true
+    },
+    {
+      "name": "SPA navigation preserves a session draft and its two artifact tabs",
+      "passed": true
+    },
+    {
+      "name": "Rejected artifacts render honest sample-based reasons without removing upstream deployment choices",
+      "passed": true
+    },
+    {
+      "name": "Failed what-if retains saved evidence and saved-rule deployment notice",
+      "passed": true
+    },
+    {
+      "name": "What-if failure is shown as an explicit error",
+      "passed": true
+    },
+    {
+      "name": "Synthetic session is honestly labelled and uses one current proposal card",
+      "passed": true
+    },
+    {
+      "name": "Desktop revision comparison owns one set of manual decision controls",
+      "passed": true
+    },
+    {
+      "name": "Position preserves its original board/chat and uses compact deployment cards",
+      "passed": true
+    },
+    {
+      "name": "Library pagination switches to the second page",
+      "passed": true
+    },
+    {
+      "name": "Explore and Hot Markets remain connected to their synthetic GET feed",
+      "passed": true
+    },
+    {
+      "name": "Explore market detail preserves strike identity, minute data, pagination and CSV control",
+      "passed": true
+    },
+    {
+      "name": "Authenticated users can open System, with activity scoped by the backend and no Admin navigation",
+      "passed": true
+    },
+    {
+      "name": "Message source targets are retained while one compact group badge is shown",
+      "passed": true
+    },
+    {
+      "name": "360px conversation fits without horizontal overflow and retains an accessible composer",
+      "passed": true
+    },
+    {
+      "name": "360px artifact pane fits and retains full strategy controls",
+      "passed": true
+    },
+    {
+      "name": "760px workspace fits without horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "Phone composer is reachable through normal UI scrolling",
+      "passed": true
+    },
+    {
+      "name": "Closing the final mobile artifact restores the conversation pane",
+      "passed": true
+    },
+    {
+      "name": "All-status strategy library preserves 50-row pages and Next navigation",
+      "passed": true
+    }
+  ]
+}

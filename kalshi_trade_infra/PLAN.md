@@ -1,5 +1,13 @@
 # PLAN
 
+## Research workspace frontend PR — October 15, 2026, Asia/Shanghai
+
+Implemented and offline verified; ready for GitHub review, not deployed. Research sessions now present conversation/activity/all-status candidates on the left and closable strategy artifact tabs with full saved evidence on the right. Preserve legacy strategy links and the filtered/paginated library within Research. Position adds passed candidates using the shared deployment controls; Account/Position labels and approved redundant-copy/control cuts are included. Scoped chat is an active connection contract; its backend endpoints remain unimplemented, drafts are retained and writes disabled while disconnected.
+
+Rebased onto upstream e40d060 (18 commits since the editing preview's 99a5399 base), preserving Explore/Hot Markets, public scoped System, research depth/run-forever/automatic market choice, pagination, credit confirmations and the latest deployment policy/warnings. Server changes relative to upstream are limited to asset versioning and the Account label in an error. Repository, workers, schema and execution guards are unchanged. Verification: 157 Python passed / 7 opt-in MySQL skips; 29 Node passed; 24 browser and 14 HTTP checks passed with synthetic data and providers/financial writes disabled. Desktop/360/760px screenshots inspected, viewport restored and temporary 8096 server/tab stopped. The obsolete System frontend admin redirect is removed; authenticated access and backend owner scoping remain. An obsolete authorization assertion and corrected browser probes are documented in the handoff; final checks pass.
+
+Own only this frontend branch, runtime helpers/tests, final contracts and compact publication evidence. Exclude user mvp.md/its existing PR, Polygon feed work, private configuration, historical source backups and the independent design prototype; shared main and the 8090 editing preview are preserved. Canonical [publication handoff](results/frontend_pr_2026-10-15/HANDOFF.md). Next: review this branch, then connect the scoped backend contract and verify authenticated non-production acceptance. No merge, deployment, migration, paid/provider/model or trading operation.
+
 ## ARCHITECTURE PLAN — all-markets collector + cross-contract trading (proposed 2026-10-13)
 
 **Goal:** collect *every* open Kalshi market at per-minute resolution, handle renewing

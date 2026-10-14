@@ -1,0 +1,61 @@
+{
+  "checks": [
+    {
+      "name": "Completed run candidates retain owner/run identity",
+      "passed": true
+    },
+    {
+      "name": "Current market catalogue includes six research targets",
+      "passed": true
+    },
+    {
+      "name": "Live trading remains disabled in the verification harness",
+      "passed": true
+    },
+    {
+      "name": "Passed strategy read remains separately filterable for Position",
+      "passed": true
+    },
+    {
+      "name": "Public System omits the user-count field for normal users",
+      "passed": true
+    },
+    {
+      "name": "Explore uses the synthetic feed with a distinct strike label",
+      "passed": true
+    },
+    {
+      "name": "Hot Markets retains its sample price trace",
+      "passed": true
+    },
+    {
+      "name": "Market detail retains minute resolution and 121 raw data points",
+      "passed": true
+    },
+    {
+      "name": "Actual scoped chat route is absent",
+      "passed": true
+    },
+    {
+      "name": "Served app.js matches the exact tested branch",
+      "passed": true
+    },
+    {
+      "name": "Served app.css matches the exact tested branch",
+      "passed": true
+    },
+    {
+      "name": "Served session-data.js matches the exact tested branch",
+      "passed": true
+    },
+    {
+      "name": "Served session-chat.js matches the exact tested branch",
+      "passed": true
+    },
+    {
+      "name": "Served research-artifacts.js matches the exact tested branch",
+      "passed": true
+    }
+  ],
+  "data": "synthetic; actual GET handlers; no providers"
+}

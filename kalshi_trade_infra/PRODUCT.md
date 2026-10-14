@@ -49,7 +49,7 @@ strategy that fails its gate is shown as failed, not hidden.
   (`KXBTCD`, the 5pm event's strike ladder).
 - Money: every user starts with a **paper account** (simulated deposits/withdrawals). Live
   trading happens only in the user's **own Kalshi account** via an API key they connect; we
-  never hold customer funds (that would need CFTC registration). The Funds page shows the real
+  never hold customer funds (that would need CFTC registration). The Account page shows the real
   Kalshi balance and sends the user to Kalshi to move money.
 - Sign-in is Google only.
 - Agents run in a background worker; research takes minutes, so progress must be visible
@@ -57,15 +57,37 @@ strategy that fails its gate is shown as failed, not hidden.
 
 ## Capabilities and Constraints
 
+- Navigation: Dashboard, Research, Explore, Position, Community, Account, Billing and System
+  (with Admin available to the operator).
+  The requested separate-page restoration was completed before this transformation.
+  Research sessions now hold conversation on the left and generated strategy
+  artifacts in tabs on the right. Every candidate status remains inspectable;
+  existing library/filter access and old strategy URLs remain available in Research.
+- Strategy artifacts preserve all saved evidence, exact rules/spec, equity curve,
+  sample/unseen metrics, trades, gates and evaluator-backed what-if scenarios.
+  Scenarios do not change the deployable saved rule. Paper/live controls are shared
+  with Position's eligible-strategy list; existing financial gates remain.
+- Session conversation uses the [scoped backend contract](app/SESSION_CHAT_API.md),
+  whose routes/persistence/worker behavior remain unimplemented. Unavailable routes
+  retain drafts and disable writes; Position keeps its account-wide chat/autopilot.
+  Artifact tabs and drafts are temporary per-user/session frontend state, cleared
+  on sign-out or browser reload. [Workspace evidence](results/frontend_pr_2026-10-15/HANDOFF.md).
 - Agents produce a **thesis + parameterized strategy spec**, never code. Our backtester and
   our engines run the spec, so backtest and deployment evaluate the identical rule.
-- Deployment requires a passed backtest; so does every agent-proposed adjustment.
+- Position highlights passed candidates. Artifact deployment follows the current
+  upstream policy: users may explicitly deploy saved passed/void/rejected candidates,
+  with risk warnings for unvalidated results and the existing market/live guards.
+  Session-chat revision approval still requires a passed backtest.
 - Autopilot ("dangerously skip permission") lets the agent apply adjustments and deploy to
   paper on its own, inside guardrails: it can never move a strategy to live money and never
   raise a risk cap.
 - Live trading for app users is gated by a server-wide switch that is **off** until the owner
   explicitly authorizes it; live strategies are YES-side only in v0.1.
-- Charging (fees on transactions / credit purchases) is v0.2 and out of scope.
+- Upstream credits/Billing and the card-on-file gate are included in the current
+  code. The Research form respects `needs_card` and the global payment
+  dialog; metered agent work still uses the backend's credit/card checks. Local
+  preview has payments disabled. Actual account/payment acceptance remains a
+  configured-backend gate, separate from this frontend compatibility check.
 
 ## Brand Commitments
 

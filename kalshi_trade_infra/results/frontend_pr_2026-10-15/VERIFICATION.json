@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-10-15T01:39:19.172022+08:00",
+  "status": "implemented and offline/browser verified; ready for review; not deployed",
+  "base": "e40d060a8b2fb0d159e030834e829e105d4cdc17",
+  "branch": "codex/research-artifact-workspace",
+  "python": {
+    "passed": 157,
+    "skipped": 7,
+    "skips": "opt-in MySQL",
+    "log": "PYTEST.txt"
+  },
+  "node": {
+    "passed": 29,
+    "log": "NODE_TESTS.txt"
+  },
+  "browser": {
+    "passed": 24,
+    "widths": [
+      360,
+      760,
+      1280
+    ],
+    "receipt": "BROWSER_CHECKS.json"
+  },
+  "http": {
+    "passed": 14,
+    "receipt": "HTTP_CHECKS.json"
+  },
+  "data": "synthetic; actual GET handlers; providers/financial writes disabled",
+  "preservation": "PRESERVATION.json",
+  "remaining_gates": [
+    "Session-scoped backend endpoints and persistence are unimplemented.",
+    "Authenticated non-production MySQL/account/provider acceptance and deployment are pending."
+  ],
+  "initial_verification": "One obsolete System-is-admin-only assertion failed after upstream made System public; updated to cover actual admin authorization and scoped public activity. Final suite passes.",
+  "compatibility_fix": "Remove obsolete System frontend admin redirect; authenticated route and backend activity ownership remain.",
+  "temporary_preview_stopped": true,
+  "viewport_restored": true
+}

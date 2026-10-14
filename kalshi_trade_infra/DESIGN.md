@@ -271,6 +271,54 @@ components:
     textColor: "#F1F3ED"
 ---
 
+## Approved workspace copy/control cuts — October 15, 2026
+
+User approved review cuts C1–C11/B1–B2. Keep a single session status and clickable
+strategy count; remove the duplicate conversation/composer/serial headings and
+workspace backlink. Message groups use compact strategy badges, retaining target
+IDs on every message for accessible provenance. Research has one concise purpose
+line and a concrete example; progress/background-work hints remain.
+
+Position cards keep unique strategy titles/stakes and separate paper/live actions,
+without per-card Deploy headings or unrelated what-if instructions. A platform-wide
+live-disabled notice appears once; strategy-specific restrictions remain on their
+cards. The empty board uses the Ready-to-deploy library link. Artifact saved-rule
+warnings, sample/unseen evidence, exact spec, gates and original actions remain.
+
+Label synthetic chat **Sample conversation**. Consolidate the duplicate demo
+revision into one current card, preserving chronological proposal/backtest stages.
+Source messages and distinct real proposals are not filtered or merged. The cleanup changes presentation only. Upstream backend authorization and
+financial behavior remain unchanged. Canonical
+[cleanup handoff](results/frontend_pr_2026-10-15/HANDOFF.md).
+
+
+## Current Research workspace — October 15, 2026, Asia/Shanghai
+
+Started October 14, **after the separate Research/Strategies restoration was
+completed**. The user treats research sessions as conversations and strategies as
+generated artifacts. The active session now has chat/activity/all-status artifact
+links on the left, opened artifact tabs and full restored strategy sheets on the
+right. Open/switch/close and arrow/Home/End navigation keep artifact identity,
+scenario state and reading position. <=800px switches Conversation/Strategies
+panes; closing the last artifact restores conversation focus.
+
+Remove only independent Strategies navigation. Preserve old URLs and library
+filters through Research, including standalone/adjustment review. Retain every
+strategy metric, thesis/rule/spec, chart, saved/scenario distinction, gate and
+paper/live control. Position adds eligible strategies using the same deployment
+component; its existing deployment/positions/account-wide chat/autopilot stay.
+Explore, Hot Markets, public System and upstream research controls are retained.
+Account, Billing, Community, Admin/System and unrelated cleanup are preserved.
+
+Reuse the session conversation controller/contract: immutable targets, independent
+drafts, revision comparison/manual approval and disconnected/error recovery.
+Actual scoped backend routes remain unimplemented; the real API disables sends
+and retains drafts. Editing preview conversations/results are synthetic. Canonical
+[workspace handoff](results/frontend_pr_2026-10-15/HANDOFF.md).
+This direction governs the active Research workspace.
+
+
+
 # Design System: Tau
 
 Tau ships **two visual worlds in one static app** (`app/static/index.html`, `app.css`,
