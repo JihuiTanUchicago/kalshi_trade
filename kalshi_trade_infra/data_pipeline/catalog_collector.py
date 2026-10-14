@@ -9,6 +9,7 @@ Run:  python -m data_pipeline.catalog_collector            # one full refresh
 """
 from __future__ import annotations
 
+import os
 import sys
 import time
 from typing import Dict, List, Optional
