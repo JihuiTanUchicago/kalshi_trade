@@ -41,9 +41,50 @@
     card: I('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>'),
     credits: I('<circle cx="12" cy="12" r="9"/><path d="M14.5 9.5a3 3 0 1 0 0 5M12 7v10"/>'),
     admin: I('<path d="M12 2 4 5v6c0 5 3.5 8 8 11 4.5-3 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/>'),
+    info: I('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.7v.3"/>'),
     at: I('<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>'),
     google: '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>',
   };
+
+  // ---------- glossary (info bubbles) ----------
+  // Plain-language definitions for the jargon the agent produces. Keep each to a
+  // sentence or two; "plain language first, numbers second".
+  const GLOSSARY = {
+    passed: ['Passed', 'Cleared every gate on data the agent never saw while searching. Only passed strategies can be deployed.'],
+    void: ['Void', 'The strategy was good enough in-sample to be tested on unseen data — but it failed at least one gate there. A real candidate that didn’t hold up.'],
+    rejected: ['Rejected', 'Cut during the in-sample search, before the unseen-data test ever ran. The agent didn’t spend an out-of-sample test on it.'],
+    unseen: ['Unseen data', 'A held-out slice of history the agent never looks at while searching, so the result can’t be curve-fit. This is the P&L that counts.'],
+    insample: ['In-sample', 'The history the agent iterates on. Strong in-sample numbers are easy to overfit, so they only shortlist a strategy — they never pass it.'],
+    gate: ['Gates', 'The pass/fail checks a strategy must clear on unseen data: it makes money, trades often enough to judge, and its wins outweigh losses after fees.'],
+  };
+  // One drawn marker; a single top-layer popover serves them all (no clipping in tables).
+  const glo = (key) => `<button type="button" class="info" data-glo="${key}" aria-label="What does “${GLOSSARY[key][0]}” mean?">${ICON.info}</button>`;
+  function setupGlossary() {
+    const pop = document.createElement('div');
+    pop.className = 'glossary-pop'; pop.setAttribute('role', 'tooltip'); pop.id = 'glossary-pop'; pop.hidden = true;
+    document.body.appendChild(pop);
+    let current = null;
+    const place = (mark) => {
+      const r = mark.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight, gut = 12;
+      let left = Math.min(Math.max(gut, r.left + r.width / 2 - pw / 2), innerWidth - pw - gut);
+      let top = r.top - ph - 8;
+      pop.classList.toggle('below', top < gut);
+      if (top < gut) top = r.bottom + 8;
+      pop.style.left = left + 'px'; pop.style.top = top + 'px';
+    };
+    const show = (mark) => {
+      const g = GLOSSARY[mark.dataset.glo]; if (!g) return;
+      current = mark; pop.innerHTML = `<b>${esc(g[0])}</b><span>${g[1]}</span>`;
+      pop.hidden = false; mark.setAttribute('aria-describedby', 'glossary-pop'); place(mark);
+    };
+    const hide = () => { if (!current) return; current.removeAttribute('aria-describedby'); current = null; pop.hidden = true; };
+    document.addEventListener('pointerover', (e) => { const m = e.target.closest('.info'); if (m) show(m); });
+    document.addEventListener('pointerout', (e) => { const m = e.target.closest('.info'); if (m && m === current && !(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('.info') === m)) hide(); });
+    document.addEventListener('focusin', (e) => { const m = e.target.closest && e.target.closest('.info'); if (m) show(m); else if (current && !e.target.closest('.glossary-pop')) hide(); });
+    document.addEventListener('click', (e) => { const m = e.target.closest('.info'); if (m) { e.preventDefault(); (current === m) ? hide() : show(m); } else hide(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
+    addEventListener('scroll', hide, true); addEventListener('resize', hide);
+  }
 
   // ---------- formatting ----------
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -336,7 +377,7 @@
     return `<span class="mk ${cls}">${esc(label)}</span>`;
   };
   const money = (v) => `<span class="${tone(v)}">${usd(v, true)}</span>`;
-  const STRAT_HEAD = '<thead><tr><th>Strategy</th><th>Market</th><th class="num">Unseen P&amp;L</th><th class="num">Trades</th><th class="num">Win</th><th>Tried</th><th>Status</th></tr></thead>';
+  const STRAT_HEAD = '<thead><tr><th>Strategy</th><th>Market</th><th class="num">Unseen P&amp;L' + glo('unseen') + '</th><th class="num">Trades</th><th class="num">Win</th><th>Tried</th><th>Status</th></tr></thead>';
   const strategyTable = (rows) => `<div class="sheet"><table class="stack t-strat">${STRAT_HEAD}<tbody>${rows}</tbody></table></div>`;
   function strategySlip(s, reg, opts = {}) {
     const oos = s.out_of_sample, ins = s.in_sample || {};
@@ -743,7 +784,7 @@
       const tried = d.runs.reduce((a, r) => a + (r.hypotheses_tried || 0), 0);
       const passed = d.runs.reduce((a, r) => a + (r.strategies_passed || 0), 0);
       root.querySelector('#rfigs').innerHTML = fig('Researching now', d.counts.research_running) + fig('Waiting', d.counts.research_queued) +
-        fig('Hypotheses tested', tried) + fig('Passed every gate', passed, { small: tried ? `${pct(passed / tried, false)} pass rate` : '' });
+        fig('Hypotheses tested', tried) + fig('Passed every gate' + glo('gate'), passed, { small: tried ? `${pct(passed / tried, false)} pass rate` : '' });
       root.querySelector('#rcount').textContent = d.runs.length ? `${d.runs.length} run${d.runs.length > 1 ? 's' : ''}` : '';
       root.querySelector('#runs').innerHTML = d.runs.length ? d.runs.map(runRow).join('')
         : `<div class="empty"><h3>No sessions yet</h3><p>Describe an idea above. The agent will turn it into several strategies, test each one on data it never saw, and mark each Passed or Void.</p></div>`;
@@ -848,7 +889,7 @@
     });
     const [all, d] = await Promise.all([api('/api/strategies'), api('/api/strategies?' + new URLSearchParams(f))]);
     const count = (st) => all.strategies.filter((s) => s.status === st).length;
-    root.querySelector('#sfigs').innerHTML = fig('Passed', count('passed')) + fig('Void on unseen data', count('failed')) + fig('Rejected in testing', count('rejected')) +
+    root.querySelector('#sfigs').innerHTML = fig('Passed' + glo('passed'), count('passed')) + fig('Void on unseen data' + glo('void'), count('failed')) + fig('Rejected in testing' + glo('rejected'), count('rejected')) +
       fig('Pass rate', all.strategies.length ? pct(count('passed') / all.strategies.length, false) : '—');
     const CLABEL = { passed: 'Passed', failed: 'Void', rejected: 'Rejected' };
     root.querySelectorAll('[data-f="status"]').forEach((b) => { const v = b.dataset.v; b.textContent = v ? `${CLABEL[v]} (${count(v)})` : `All (${all.strategies.length})`; });
@@ -1442,5 +1483,6 @@
     await load();
   }
 
+  setupGlossary();
   render();
 })();

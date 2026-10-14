@@ -71,6 +71,9 @@ self-reply guard. Best-effort; SES sandbox only delivers to verified addresses u
   reachable without scrolling past the board.
 - Research: funny placeholder ("Bro idk just give me a trading strategy frfr…"); replaced the four
   cryptic truncated example chips with one readable "Try the demo — Todd's random walk" chip.
+- **Glossary info bubbles** (`GLOSSARY`, `glo(key)`, `setupGlossary`): a drawn "i" marker next to
+  jargon (Passed / Void / Rejected / Unseen data / Gates) opens one shared top-layer definition
+  popover (no clipping in tables), on hover, keyboard focus, and tap (Esc/outside-click dismiss).
 
 ### Access model decision (chosen, NOT yet built)
 Google has **no public API** to add OAuth test users. Decision: **publish the OAuth consent screen**

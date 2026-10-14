@@ -64,6 +64,18 @@ p { margin: 0; }
 .gain { color: var(--ink); }
 .loss { color: var(--ink); }
 .hint { font-size: 12.5px; color: var(--ink-3); }
+/* Glossary info bubble — a drawn marker + one top-layer definition popover. */
+.info { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin: 0 0 0 5px; padding: 0; border: 0; background: none; color: var(--rule-2); cursor: help; vertical-align: -2px; -webkit-tap-highlight-color: transparent; }
+.info:hover, .info:focus-visible { color: var(--ink); }
+.info:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 50%; }
+.info svg { width: 14px; height: 14px; display: block; }
+th .info { vertical-align: 0; }
+.glossary-pop { position: fixed; z-index: 120; max-width: 268px; background: var(--stock-raised); border: 1px solid var(--ink); padding: 11px 13px 12px; box-shadow: 0 12px 26px -14px rgba(25, 27, 22, .42); animation: glopop .14s var(--ease); }
+.glossary-pop[hidden] { display: none; }
+.glossary-pop b { display: block; font-family: var(--f-nar); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink); margin-bottom: 4px; }
+.glossary-pop span { display: block; font-size: 12.5px; line-height: 1.5; color: var(--ink-2); text-transform: none; letter-spacing: 0; font-weight: 400; }
+@keyframes glopop { from { opacity: 0; transform: translateY(3px); } }
+@media (prefers-reduced-motion: reduce) { .glossary-pop { animation: none; } }
 .tick { font-family: var(--f-nar); letter-spacing: .02em; color: var(--ink-2); }
 
 /* ===================== LANDING ===================== */
