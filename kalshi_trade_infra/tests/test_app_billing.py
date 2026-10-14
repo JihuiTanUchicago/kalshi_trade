@@ -53,3 +53,25 @@ def test_stripe_form_flatten():
     out = []
     billing._flatten("metadata", {"user_id": 7, "credits": "20"}, out)
     assert ("metadata[user_id]", "7") in out and ("metadata[credits]", "20") in out
+
+
+def test_get_or_create_customer_reuses_valid_id(monkeypatch):
+    calls = []
+    def fake(method, path, params=None, idempotency_key=None):
+        calls.append((method, path))
+        return {"id": path.rsplit("/", 1)[-1]}  # GET returns the existing customer
+    monkeypatch.setattr(billing, "_stripe", fake)
+    cid = billing.get_or_create_customer({"id": 1, "email": "a@b.co"}, "cus_live123")
+    assert cid == "cus_live123"
+    assert calls == [("GET", "/customers/cus_live123")]  # validated, not re-created
+
+
+def test_get_or_create_customer_recreates_stale_id(monkeypatch):
+    # GET on the stale (e.g. test-mode) id 404s; POST makes a fresh one.
+    def fake(method, path, params=None, idempotency_key=None):
+        if method == "GET":
+            raise billing.StripeError("No such customer: 'cus_test_old'")
+        return {"id": "cus_live_new"}
+    monkeypatch.setattr(billing, "_stripe", fake)
+    cid = billing.get_or_create_customer({"id": 1, "email": "a@b.co"}, "cus_test_old")
+    assert cid == "cus_live_new"
