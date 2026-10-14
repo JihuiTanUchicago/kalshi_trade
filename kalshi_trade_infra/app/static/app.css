@@ -779,6 +779,14 @@ a.snap:hover { border-color: var(--ink-3); }
 /* ===================== BILLING + COMMUNITY EXTRAS (Kursbuch) ===================== */
 
 .card-el { min-height: 44px; }
+/* Auto-reload: collapsed by default, expand to edit amount/threshold */
+.autorel-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
+.autorel-edit { display: inline-flex; align-items: center; gap: 3px; background: none; border: 0; padding: 4px 2px; cursor: pointer; font-family: var(--f-nar); font-size: 12px; letter-spacing: .04em; color: var(--ink-3); }
+.autorel-edit:hover { color: var(--ink); }
+.autorel-edit .chev { display: inline-flex; }
+.autorel-edit .chev svg { width: 15px; height: 15px; transition: transform .15s; }
+.autorel-edit[aria-expanded="true"] .chev svg { transform: rotate(180deg); }
+.autorel-config { margin-top: 10px; }
 #topup-note { line-height: 1.5; }
 
 .post-main { display: block; }
