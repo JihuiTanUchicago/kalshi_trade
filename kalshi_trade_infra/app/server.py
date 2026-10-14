@@ -368,6 +368,10 @@ def create_deployment(ctx: Ctx):
         raise ApiError(404, "No such strategy.")
     if s["status"] != "passed":
         raise ApiError(409, "Only strategies that passed every backtest gate can be deployed.")
+    mkt = MARKETS.get(s["market"])
+    if mkt is not None and not mkt.deployable:
+        raise ApiError(409, "%s is research-only for now — you can backtest it, but live/paper "
+                            "deployment isn't open for it yet." % mkt.label)
     if mode not in ("paper", "live"):
         raise ApiError(400, "Choose paper or live.")
     if mode == "live":
@@ -895,7 +899,7 @@ def admin_system(ctx: Ctx):
         "bedrock":   {"kind": "ext"},
         "stripe":    {"kind": "ext"},
         "forward":   {"age": age.get("forward_collector_last_snapshot"), "rows": approx_rows("forward_quotes"), "unit": "quote rows"},
-        "cb_coll":   {"age": age.get("coinbase_collector_last_snapshot"), "rows": approx_rows("btc_candles_1m"), "unit": "1m candles"},
+        "cb_coll":   {"age": age.get("coinbase_collector_last_snapshot"), "rows": approx_rows("spot_candles_1m"), "unit": "1m candles"},
         "features":  {"age": age.get("model_features_1m_last_snapshot"), "rows": approx_rows("model_features_1m"), "unit": "feature rows"},
         "db":        {"rows": approx_rows("forward_quotes") + approx_rows("market_candles"), "size_mb": scalar("SELECT ROUND(SUM(data_length+index_length)/1048576) m FROM information_schema.tables WHERE table_schema=DATABASE()")},
         "web":       {"up": True, "users": scalar("SELECT COUNT(*) c FROM app_users")},

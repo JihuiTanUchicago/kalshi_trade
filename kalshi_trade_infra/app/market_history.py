@@ -26,7 +26,7 @@ import requests
 from app.markets import MARKETS, Market
 from data_pipeline.common import api_get, get_db_conn, parse_iso_to_dt, utc_now
 
-COINBASE_CANDLES_URL = "https://api.exchange.coinbase.com/products/BTC-USD/candles"
+COINBASE_CANDLES_URL = "https://api.exchange.coinbase.com/products/%s/candles"  # %s = product, e.g. BTC-USD
 COINBASE_MAX_CANDLES = 300
 # Daily-ladder strikes this far from BTC at the event's open are never
 # tradable (they sit at 0c/100c all day), so their candles are not fetched.
@@ -42,8 +42,9 @@ def _naive_utc(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 
-def sync_btc_candles(cur, start_ts: int, end_ts: int) -> int:
-    """Coinbase one-minute candles in [start_ts, end_ts). Returns rows written."""
+def sync_spot_candles(cur, symbol: str, start_ts: int, end_ts: int) -> int:
+    """Coinbase one-minute candles for `symbol` (e.g. BTC-USD) in [start_ts, end_ts).
+    Returns rows written into spot_candles_1m."""
     written = 0
     t = start_ts - (start_ts % 60)
     while t < end_ts:
@@ -55,7 +56,7 @@ def sync_btc_candles(cur, start_ts: int, end_ts: int) -> int:
         }
         resp = None
         for attempt in range(6):
-            resp = requests.get(COINBASE_CANDLES_URL, params=params, timeout=20)
+            resp = requests.get(COINBASE_CANDLES_URL % symbol, params=params, timeout=20)
             if resp.status_code != 429:
                 break
             time.sleep(1.0 + attempt)
@@ -63,15 +64,15 @@ def sync_btc_candles(cur, start_ts: int, end_ts: int) -> int:
             raise RuntimeError("Coinbase candles failed %s: %s" % (getattr(resp, "status_code", "?"), resp.text[:200] if resp else ""))
         # [time, low, high, open, close, volume]
         rows = [
-            (int(r[0]), r[3], r[2], r[1], r[4], r[5])
+            (symbol, int(r[0]), r[3], r[2], r[1], r[4], r[5])
             for r in resp.json()
             if t <= int(r[0]) < chunk_end
         ]
         if rows:
             cur.executemany(
                 """
-                INSERT INTO btc_candles_1m (start_ts, open, high, low, close, volume)
-                VALUES (%s,%s,%s,%s,%s,%s)
+                INSERT INTO spot_candles_1m (symbol, start_ts, open, high, low, close, volume)
+                VALUES (%s,%s,%s,%s,%s,%s,%s)
                 ON DUPLICATE KEY UPDATE open=VALUES(open), high=VALUES(high), low=VALUES(low),
                   close=VALUES(close), volume=VALUES(volume)
                 """,
@@ -135,10 +136,11 @@ def sync_settled_markets(cur, market: Market, min_close: datetime) -> int:
         time.sleep(KALSHI_PAUSE_SECONDS)
 
 
-def _btc_close_at(cur, ts: int) -> Optional[float]:
+def _spot_close_at(cur, symbol: str, ts: int) -> Optional[float]:
     cur.execute(
-        "SELECT close FROM btc_candles_1m WHERE start_ts <= %s AND start_ts > %s ORDER BY start_ts DESC LIMIT 1",
-        (ts, ts - 600),
+        "SELECT close FROM spot_candles_1m WHERE symbol=%s AND start_ts <= %s AND start_ts > %s "
+        "ORDER BY start_ts DESC LIMIT 1",
+        (symbol, ts, ts - 600),
     )
     row = cur.fetchone()
     return float(row["close"]) if row else None
@@ -166,9 +168,9 @@ def sync_market_candles(cur, market: Market, limit: int = 2000) -> int:
         open_ts = int(m["open_time"].replace(tzinfo=timezone.utc).timestamp())
         close_ts = int(m["close_time"].replace(tzinfo=timezone.utc).timestamp())
         if market.close_hour_et is not None:
-            spot = _btc_close_at(cur, open_ts)
+            spot = _spot_close_at(cur, market.underlying, open_ts)
             if spot is None:
-                continue  # BTC history not there yet; try again next pass
+                continue  # underlying spot history not there yet; try again next pass
             if abs(float(m["strike"]) / spot - 1.0) > LADDER_BAND:
                 cur.execute("UPDATE hist_markets SET candles_done=2 WHERE ticker=%s", (m["ticker"],))
                 continue
@@ -219,11 +221,18 @@ def sync_market_candles(cur, market: Market, limit: int = 2000) -> int:
 
 def refresh(cur) -> Dict[str, int]:
     now = utc_now()
-    longest = max(m.history_days for m in MARKETS.values())
-    cur.execute("SELECT MAX(start_ts) AS t FROM btc_candles_1m")
-    last = (cur.fetchone() or {}).get("t")
-    btc_start = int(last) + 60 if last else int((now - timedelta(days=longest + 1)).timestamp())
-    stats = {"btc": sync_btc_candles(cur, btc_start, int(now.timestamp()) - 60)}
+    end_ts = int(now.timestamp()) - 60
+    stats: Dict[str, int] = {}
+    # One spot-candle series per distinct underlying in MARKETS (BTC-USD, ETH-USD, …),
+    # each backfilled over the longest history_days of the markets that use it.
+    by_symbol: Dict[str, int] = {}
+    for m in MARKETS.values():
+        by_symbol[m.underlying] = max(by_symbol.get(m.underlying, 0), m.history_days)
+    for symbol, history_days in by_symbol.items():
+        cur.execute("SELECT MAX(start_ts) AS t FROM spot_candles_1m WHERE symbol=%s", (symbol,))
+        last = (cur.fetchone() or {}).get("t")
+        start = int(last) + 60 if last else int((now - timedelta(days=history_days + 1)).timestamp())
+        stats["spot_" + symbol] = sync_spot_candles(cur, symbol, start, end_ts)
     for market in MARKETS.values():
         cur.execute("SELECT MAX(close_time) AS t FROM hist_markets WHERE series_ticker=%s", (market.series,))
         last_close = (cur.fetchone() or {}).get("t")

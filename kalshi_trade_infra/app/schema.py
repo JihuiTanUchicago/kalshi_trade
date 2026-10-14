@@ -35,6 +35,21 @@ DDL = [
       volume DECIMAL(22,8) NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
+    # Generalized underlying-spot candles keyed by Coinbase product (BTC-USD, ETH-USD, …),
+    # so the backtester can price any crypto series off its own underlying. Supersedes
+    # btc_candles_1m (BTC rows migrated in by init_schema); readers filter by `symbol`.
+    """
+    CREATE TABLE IF NOT EXISTS spot_candles_1m (
+      symbol VARCHAR(16) NOT NULL,
+      start_ts BIGINT NOT NULL,
+      open DECIMAL(18,4) NOT NULL,
+      high DECIMAL(18,4) NOT NULL,
+      low DECIMAL(18,4) NOT NULL,
+      close DECIMAL(18,4) NOT NULL,
+      volume DECIMAL(22,8) NOT NULL,
+      PRIMARY KEY (symbol, start_ts)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
     # -- identity -------------------------------------------------------------
     """
     CREATE TABLE IF NOT EXISTS app_users (
@@ -324,6 +339,12 @@ def main() -> None:
         _add_column_if_missing(cur, "app_posts", "edited_at", "ALTER TABLE app_posts ADD COLUMN edited_at DATETIME NULL")
         _add_column_if_missing(cur, "app_stripe_customers", "reload_amount", "ALTER TABLE app_stripe_customers ADD COLUMN reload_amount DECIMAL(10,2) NOT NULL DEFAULT 20.00")
         _add_column_if_missing(cur, "app_stripe_customers", "reload_threshold", "ALTER TABLE app_stripe_customers ADD COLUMN reload_threshold DECIMAL(10,2) NOT NULL DEFAULT 5.00")
+        # One-time migration: seed spot_candles_1m with existing BTC history so the
+        # generalized backtester has BTC's full price path. Idempotent (INSERT IGNORE on PK).
+        cur.execute(
+            """INSERT IGNORE INTO spot_candles_1m (symbol, start_ts, open, high, low, close, volume)
+               SELECT 'BTC-USD', start_ts, open, high, low, close, volume FROM btc_candles_1m"""
+        )
     conn.close()
     print("App schema initialized.")
 

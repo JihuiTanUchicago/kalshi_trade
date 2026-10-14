@@ -356,7 +356,7 @@ def load_from_db(market: Market) -> Dataset:
     conn = get_db_conn()
     try:
         with conn.cursor() as cur:
-            h = repo.load_history(cur, market.series, market.candle_minutes, since)
+            h = repo.load_history(cur, market.series, market.candle_minutes, since, market.underlying)
     finally:
         conn.close()
     return build_dataset(market, h["markets"], h["candles"], h["btc"])

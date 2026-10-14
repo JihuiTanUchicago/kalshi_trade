@@ -598,7 +598,8 @@ def decide_proposal(cur, proposal_id: int, status: str) -> bool:
 # -- dataset ---------------------------------------------------------------------
 
 
-def load_history(cur, series: str, candle_minutes: int, since: datetime) -> Dict[str, List]:
+def load_history(cur, series: str, candle_minutes: int, since: datetime,
+                 underlying: str = "BTC-USD") -> Dict[str, List]:
     cur.execute(
         """SELECT ticker, strike, close_time, result FROM hist_markets
            WHERE series_ticker=%s AND close_time >= %s AND candles_done=1""",
@@ -614,14 +615,18 @@ def load_history(cur, series: str, candle_minutes: int, since: datetime) -> Dict
     )
     candles = cur.fetchall()
     start_ts = int(since.replace(tzinfo=timezone.utc).timestamp()) - 2 * 86400
-    cur.execute("SELECT start_ts, close FROM btc_candles_1m WHERE start_ts >= %s ORDER BY start_ts", (start_ts,))
+    # The underlying price path for THIS market's series (BTC-USD, ETH-USD, …).
+    cur.execute(
+        "SELECT start_ts, close FROM spot_candles_1m WHERE symbol=%s AND start_ts >= %s ORDER BY start_ts",
+        (underlying, start_ts),
+    )
     btc = [(int(r["start_ts"]), float(r["close"])) for r in cur.fetchall()]
     return {"markets": markets, "candles": candles, "btc": btc}
 
 
 def history_freshness(cur) -> Dict[str, Optional[int]]:
-    """Unix seconds of the newest BTC candle and newest settled market per series."""
-    cur.execute("SELECT MAX(start_ts) AS t FROM btc_candles_1m")
+    """Unix seconds of the newest BTC spot candle and newest settled market per series."""
+    cur.execute("SELECT MAX(start_ts) AS t FROM spot_candles_1m WHERE symbol='BTC-USD'")
     out = {"btc": (cur.fetchone() or {}).get("t")}
     cur.execute("SELECT series_ticker, MAX(close_time) AS t FROM hist_markets WHERE candles_done=1 GROUP BY series_ticker")
     for r in cur.fetchall():

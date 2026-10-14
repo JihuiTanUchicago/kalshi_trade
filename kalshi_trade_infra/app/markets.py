@@ -34,6 +34,12 @@ class Market:
     candle_minutes: int
     history_days: int
     close_hour_et: Optional[int] = None  # daily ladder: only the 5pm EDT event
+    # Coinbase spot product that prices this market's contracts (strike vs spot).
+    underlying: str = "BTC-USD"
+    # True only for markets with a live feed + execution path, i.e. tradeable now.
+    # Research can BACKTEST any market; the deploy engine ticks only deployable ones,
+    # so adding a research-only crypto here never starts paper/live trading on it.
+    deployable: bool = False
 
     @property
     def decision_seconds(self) -> int:
@@ -47,10 +53,21 @@ class Market:
 
 
 MARKETS: Dict[str, Market] = {
-    "btc15m": Market("btc15m", "KXBTC15M", "Bitcoin 15-minute", candle_minutes=1, history_days=30),
-    "btc_daily": Market(
-        "btc_daily", "KXBTCD", "Bitcoin daily close, 5pm EDT", candle_minutes=60, history_days=60, close_hour_et=17
-    ),
+    # Deployable: live feed + execution path exist, so the engine trades these.
+    "btc15m": Market("btc15m", "KXBTC15M", "Bitcoin 15-minute", candle_minutes=1, history_days=30,
+                     underlying="BTC-USD", deployable=True),
+    "btc_daily": Market("btc_daily", "KXBTCD", "Bitcoin daily close, 5pm EDT", candle_minutes=60,
+                        history_days=60, close_hour_et=17, underlying="BTC-USD", deployable=True),
+    # Research-only (deployable=False): same strike-ladder + spot-price model as BTC, so the
+    # backtester runs on them, but they have no live feed/execution yet so the engine skips them.
+    "eth15m": Market("eth15m", "KXETH15M", "Ethereum 15-minute", candle_minutes=1, history_days=30,
+                     underlying="ETH-USD"),
+    "eth_daily": Market("eth_daily", "KXETHD", "Ethereum daily close, 5pm EDT", candle_minutes=60,
+                        history_days=60, close_hour_et=17, underlying="ETH-USD"),
+    "sol_daily": Market("sol_daily", "KXSOLD", "Solana daily close, 5pm EDT", candle_minutes=60,
+                        history_days=60, close_hour_et=17, underlying="SOL-USD"),
+    "xrp_daily": Market("xrp_daily", "KXXRPD", "XRP daily close, 5pm EDT", candle_minutes=60,
+                        history_days=60, close_hour_et=17, underlying="XRP-USD"),
 }
 
 # A BTC price older than this cannot price a contract: no snapshot, no trade.

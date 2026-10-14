@@ -29,7 +29,19 @@ Key empirical findings that shaped the design:
 - **Alignment:** one `snapshot_minute_utc` set once per scan, stamped on every row → all contracts
   share an aligned timestamp (cross-contract joins work); parallel fetch keeps the real window ~30s.
 - **Storage:** S3 + Parquet (Snappy), `s3://kalshi-trade-datalake-.../snapshots_1m/dt=.../minute=.../part.parquet`.
-Next: Phase 3 (backtest over any series) + the Hot-Markets sidebar (reads these snapshots).
+### STATUS (2026-10-14) — Phase 3 crypto backtest SHIPPED (research-only)
+The backtester now runs on any strike-ladder crypto series, not just BTC:
+- `Market` gained `underlying` (Coinbase product) + `deployable`. `MARKETS` now has BTC
+  (deployable) + ETH/SOL/XRP 15m/daily (deployable=False). Research + backtest use all;
+  the deploy engine (`engine.py`) ticks only `deployable`, and `create_deployment` blocks
+  non-deployable — so research-only coins can be backtested but never trade.
+- Price source generalized: `btc_candles_1m` -> `spot_candles_1m(symbol, start_ts, …)`;
+  `market_history.sync_spot_candles(symbol)` collects per underlying (BTC/ETH/SOL/XRP spot
+  backfilled ~87k 1m candles each); `load_history(..., underlying)` reads the right symbol.
+  BTC history migrated into the new table by `app.schema`.
+- Remaining before ETH/SOL/XRP backtests are rich: settled-contract history (`hist_markets`)
+  + quote candles (`market_candles`) accrue via the `recursive-history` loop per series.
+Next: Phase 4 (cross-contract) + the Hot-Markets sidebar + user-facing Explore tab.
 
 ### The core idea: Series (logical contract) vs Market (renewing instance)
 Kalshi tickers renew: `KXBTC15M-26OCT1401...` is one 15-minute window; a new ticker opens every

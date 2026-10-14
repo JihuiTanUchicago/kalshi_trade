@@ -318,6 +318,8 @@ def run_forever() -> None:
             try:
                 while True:
                     for market in MARKETS.values():
+                        if not market.deployable:
+                            continue  # research-only markets never enter the trading loop
                         stats = tick_market(conn, market, sources)
                         if stats.get("decided") or stats.get("settled"):
                             print("[engine] %s %s" % (market.key, stats), flush=True)
