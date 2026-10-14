@@ -1,5 +1,144 @@
 # PLAN
 
+## Mandatory card gate + payment modal, wallets, notifications, UI polish (2026-10-13, deployed)
+
+Stripe is now **LIVE in test mode** on the box (keys in Parameter Store, loaded via
+`load_app_secrets.sh`). Everything below is deployed to `d1gfpzcosqrjya.cloudfront.net`.
+
+### Card-on-file is now mandatory (the headline change)
+A signed-in user with **no default card** cannot use the agent, regardless of their free credits.
+- Server gate: `server._needs_card(ctx)` = `billing.configured() and no default_pm_id`.
+  `server._require_billing_ready(ctx, gerund)` raises 402 from **both** `create_run` and `post_chat`
+  (one shared helper — DRY). `me()` now returns `needs_card` + `free_bonus`.
+- Client gate: `app.js paymentGate()` runs at the end of **every** `render()`. If `S.me.needs_card`,
+  it opens a **global blocking `<dialog>`** (Esc/backdrop can't dismiss; only "Sign out instead"
+  escapes). On a successful card save it refreshes `/api/me` and re-renders — the app unlocks.
+
+### Payment modal — two-panel, Stripe Payment Element (card + Apple/Google Pay)
+Reuses the `.wl-modal` dialog (same Catalyst-style look as the waitlist modal), widened to 940px:
+```
+ ┌─────────────────────────────┬───────────────────────────┐
+ │  .pay-show (ink, animated)   │  .pay-right (Stripe form)  │
+ │  ┌───────────────────────┐   │  Add a payment method     │
+ │  │ faux app window        │   │  <subtitle: $100 free…>   │
+ │  │  [auto-rotating SCENE] │   │  ┌─────────────────────┐  │
+ │  │  strat→deploy→agent    │   │  │ Payment Element     │  │
+ │  └───────────────────────┘   │  │ card·ApplePay·GPay  │  │
+ │  caption + carousel dots     │  └─────────────────────┘  │
+ │                              │  [ Save payment method ]  │
+ │                              │  Sign out instead         │
+ └─────────────────────────────┴───────────────────────────┘
+```
+- Left panel cycles the landing `SCENE.strat/deploy/agent` builders every 5.4s (`PAY_SHOW`,
+  `closePay()` clears `payCarousel` + `sceneTimers`). Honors `prefers-reduced-motion`.
+- Right panel: `create_setup_intent` now uses `automatic_payment_methods{enabled, allow_redirects:never}`
+  so the **Payment Element** offers Apple Pay / Google Pay beside card with no return_url.
+  `confirmSetup({elements, redirect:'if_required'})` → `/api/billing/card-added` sets it default.
+- **Apple Pay caveat**: Payment Element shows card + Google Pay out of the box; **Apple Pay needs the
+  CloudFront domain registered with Stripe + the `/.well-known/apple-developer-merchantid-domain-association`
+  file hosted** — NOT yet done (follow-up).
+- CSP widened: `script-src +pay.google.com`, `connect-src +https://*.stripe.com`,
+  `frame-src +https://*.stripe.com +pay.google.com`.
+
+### Charge bug fixed
+`billing.charge()` PaymentIntent now sends `automatic_payment_methods{enabled,allow_redirects:never}` —
+off-session top-ups/auto-reloads succeed without a return_url (was erroring in test).
+
+### Per-user auto-reload amounts
+`app_stripe_customers` gained `reload_amount` (min/default $20) + `reload_threshold` (min/default $5),
+editable on Billing ("Reload $X when balance drops to $Y"). `billing.auto_reload` reads them and
+clamps to the floors; `repo.set_auto_reload(on, amount, threshold)`.
+
+### Reply email notifications
+Commenting on a community post emails the author (`notify.comment_notice`, `repo.post_author`), with a
+self-reply guard. Best-effort; SES sandbox only delivers to verified addresses until prod access lands.
+
+### Accounts hygiene
+- Waitlist and users are **mutually exclusive**: first sign-in deletes the matching `app_waitlist` row
+  (`repo.upsert_google_user`), and `admin_overview` hides waitlist emails that already have accounts.
+  Backfilled on the box; 2 stale rows removed.
+- Identity is keyed on `google_sub`, so real Google logins can't duplicate. Two `stripetest@example.com`
+  rows were my self-test pollution (random subs, shared fake email) — deleted on the box.
+
+### UI polish
+- "Your sessions" is now a **responsive card grid** (`.runs`→`.run-card`, color left-border by outcome)
+  instead of 1-per-row; fixed the old one-word-per-line wrap (title was in a 90px grid column).
+- Live **spinner** next to "Researching"/"Waiting" (`.working`) in the run view + sessions.
+- Agent log **highlights verdicts** (PASSED green / VOID red badges); run feed **sorts unseen-P&L
+  profitable-first** (rejected sink to the bottom).
+- Strategies filter toolbar got breathing room under its rule (`.section-head.filters`).
+- Deploy page: the Board/Agent-chat **segmented toggle** now shows ≤1080px so the chat composer is
+  reachable without scrolling past the board.
+- Research: funny placeholder ("Bro idk just give me a trading strategy frfr…"); replaced the four
+  cryptic truncated example chips with one readable "Try the demo — Todd's random walk" chip.
+- **Glossary info bubbles** (`GLOSSARY`, `glo(key)`, `setupGlossary`): a drawn "i" marker next to
+  jargon (Passed / Void / Rejected / Unseen data / Gates) opens one shared top-layer definition
+  popover (no clipping in tables), on hover, keyboard focus, and tap (Esc/outside-click dismiss).
+
+### Access model decision (chosen, NOT yet built)
+Google has **no public API** to add OAuth test users. Decision: **publish the OAuth consent screen**
+(email/profile/openid need no Google verification → unlimited users), then gate access **in-app** via an
+admin allowlist (Admin "Approve" moves an email off the waitlist and permits login). TODO: build the
+allowlist + login check; until then access stays via Google test-users.
+
+Tests: `tests/test_app_auth_and_api.py` gained a reply-notification test (email author, not self).
+All app tests green.
+
+## Billing / credits (Stripe), admin, community photos+edit (2026-10-14)
+
+**Bedrock agent confirmed working**: a real research session ran on `us.anthropic.claude-sonnet-4-5`
+via the instance role (AWS credits), producing Claude-written strategies and metering tokens.
+
+**Credits/billing (`app/billing.py`, OpenRouter-style, LIVE Stripe)**. Credits are real USD, separate
+from the paper balance; new users get `TAU_FREE_CREDITS` ($100). Agent usage (research+chat) is
+metered per token at Anthropic list price (`billing.PRICES`) and deducted from credits after each run
+(`agent._bill` -> `billing.charge_usage`). Top-up charges the card for credits + 5.5% fee
+(`TAU_TOPUP_FEE`); auto-reload $20 at $5 off-session. Dependency-free Stripe client over HTTPS (no SDK
+on py3.9); idempotent via PaymentIntent keys + unique `stripe_ref`; signed webhook at
+`/api/stripe/webhook`. Research/chat are gated on balance>0 only once `billing.configured()`.
+Role has `TauBedrockInvoke`, `TauSesSend` already; billing needs no AWS perms.
+
+**Pending user action to ACTIVATE billing** (it's dormant until keys are set; deploy is safe):
+put three values in Parameter Store (SecureString) then run `/opt/kalshi/load_app_secrets.sh`:
+`/recursive/STRIPE_SECRET_KEY` (sk_live_), `/recursive/STRIPE_PUBLISHABLE_KEY` (pk_live_),
+`/recursive/STRIPE_WEBHOOK_SECRET` (whsec_, from a webhook on
+`https://d1gfpzcosqrjya.cloudfront.net/api/stripe/webhook` subscribed to `payment_intent.succeeded`).
+CSP already allows js.stripe.com / api.stripe.com / frame-src js.stripe.com.
+
+**Admin tab** (operator = `TAU_ADMIN_EMAIL`, default tjhprivate0416@gmail.com): grant credits to any
+email, list users+balances and the waitlist. `/api/admin`, `/api/admin/grant`.
+
+**Community**: attach a photo (stored in `app_images` MEDIUMBLOB, served `/api/community/image/<id>`,
+<=3MB, png/jpeg/webp/gif), and edit your own posts (`edited_at` -> shows "edited"). Strategy filter
+chips show counts (e.g. "Void (3)"). New tables: app_credit_ledger, app_stripe_customers, app_images;
+app_posts gained image_id + edited_at. `MAX_BODY` raised to 8MB for base64 image posts.
+
+**Email status**: SES verified for tjhprivate0416; operator waitlist emails send (check spam -- gmail
+From deliverability is weak). SES production DENIED, so signup confirmations to arbitrary addresses
+need a provider (Resend) -- still pending the user's call. notify defaults to tjhprivate0416@gmail.com.
+
+Tests: 136 pass (added tests/test_app_billing.py for usage pricing, top-up fee, webhook signature).
+## Email (SES) + Bedrock LLM (2026-10-13)
+
+**Waitlist email** moved from SNS to **SES** (`app/notify.py`). SNS only reached a *confirmed*
+operator subscription (it was stuck PendingConfirmation = zero emails) and can never email the
+signup. SES now emails BOTH: a confirmation to the signer and a notification to the operator
+(reply-to the applicant). From/To default to `tjhprivate016@gmail.com` (env `TAU_FROM_EMAIL` /
+`TAU_OPERATOR_EMAIL`). Role has `TauSesSend` (ses:SendEmail). **Pending user action:** click the
+SES verification email sent to tjhprivate016@gmail.com (operator mail works after that). SES is in
+**sandbox** (Max24HourSend 200); production access was requested via `sesv2 put-account-details`
+so signup confirmations to arbitrary addresses deliver once AWS approves (~24h). Until then only the
+verified operator address receives mail.
+
+**Agent LLM via Bedrock.** `app/llm.py` gained a Bedrock backend: `APP_LLM_PROVIDER=bedrock` (set in
+`.env.app`) routes Claude calls through Amazon Bedrock via the instance role (AWS credits, no
+Anthropic key). `APP_BEDROCK_MODEL` default `anthropic.claude-sonnet-5-5`. Role has `TauBedrockInvoke`
+(bedrock:InvokeModel). End-to-end verified except **model access**: an on-box invoke returns
+`AccessDeniedException` until Claude model access is enabled in the Bedrock console (us-east-1 >
+Model access > Anthropic). After that, agents run on Bedrock; the `ANTHROPIC_API_KEY` path is no
+longer needed. If the id needs the inference-profile form, switch `APP_BEDROCK_MODEL` to
+`us.anthropic.claude-sonnet-5-5`.
+
 ## Tau rebrand + unified UI + Community + idea-first (2026-10-13, deployed)
 
 The product is now **Tau** (user-facing rename; internal infra names — systemd services

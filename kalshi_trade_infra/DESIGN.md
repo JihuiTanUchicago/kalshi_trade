@@ -225,6 +225,50 @@ components:
     backgroundColor: "{colors.app.stock}"
     textColor: "{colors.app.ink}"
     border: "1px {colors.app.rule}"
+  glossary-pop:
+    backgroundColor: "{colors.app.stock-raised}"
+    textColor: "{colors.app.ink}"
+    typography: "{typography.app.body}"
+    rounded: "0px"
+    padding: "11px 13px 12px"
+    border: "1px {colors.app.ink}"
+  info:
+    backgroundColor: "transparent"
+    textColor: "{colors.app.rule-2}"
+    size: "14px"
+  run-card:
+    backgroundColor: "{colors.app.stock-raised}"
+    textColor: "{colors.app.ink}"
+    rounded: "0px"
+    padding: "16px 16px 14px"
+    border: "1px {colors.app.rule}"
+  verdict-pass:
+    backgroundColor: "#DCEFE3"
+    textColor: "#0E5C33"
+    typography: "{typography.app.mark}"
+    rounded: "{rounded.app-nick}"
+    padding: "1px 6px"
+  verdict-void:
+    backgroundColor: "{colors.app.signal-wash}"
+    textColor: "#8A1021"
+  seg:
+    backgroundColor: "transparent"
+    textColor: "{colors.app.ink-2}"
+    typography: "{typography.app.mark}"
+    rounded: "{rounded.pill}"
+    padding: "8px 20px"
+    border: "1px {colors.app.rule-2}"
+  seg-on:
+    backgroundColor: "{colors.app.ink}"
+    textColor: "{colors.app.stock-raised}"
+  pay-modal:
+    backgroundColor: "#FFFFFF"
+    textColor: "{colors.landing.l-ink}"
+    rounded: "{rounded.landing-panel}"
+    width: "940px"
+  pay-show:
+    backgroundColor: "{colors.landing.l-ink}"
+    textColor: "#F1F3ED"
 ---
 
 # Design System: Recursive
@@ -340,6 +384,17 @@ the full-colour **Google "G"**. Preview rows reuse the app's 1.8-stroke `check` 
   check line, running spinner line). Decorative, `aria-hidden`.
 - **Waitlist** (`.wlbox`) — inline form: pill-radius email input (`#fff`, `l-line` border; focus
   → `l-ink` border + 3px halo) beside a solid pill submit, with `.wlhint` / `.wlok` status.
+- **Payment modal** (`.pay-modal` / `.pay-split` / `.pay-show` / `.pay-right`) — the mandatory
+  card gate shown over the app to a signed-in user with no card on file (`S.me.needs_card`). A
+  blocking `<dialog>` built on the clean-world `.wl-modal` light tokens (white `#FFFFFF` ground,
+  Rubik, `{rounded.landing-panel}` 18px radius, `wl-modal::backdrop` 45% ink blur), widened to
+  `940px` and capped at `calc(100vh - 24px)`. A `1.04fr / .96fr` split: left `.pay-show` is an
+  ink showcase panel (`{colors.landing.l-ink}` ground, `#F1F3ED` text) holding a faux white
+  app-window (`.pay-stage-wrap`, 12px radius, soft drop shadow) that auto-rotates the three
+  landing SCENE builders every 5.4s with a `.pay-cap` caption and `.pay-dots` progress bars; right
+  `.pay-right` scrolls and holds the Stripe Payment Element (`.pay-el`, card + Apple/Google Pay)
+  and a `.pay-signout` escape. Esc is suppressed (`cancel` prevented). Carousel is suppressed
+  under `prefers-reduced-motion`; `.pay-show` is hidden ≤760px (modal narrows to `460px`).
 
 ## Do's and Don'ts
 
@@ -461,9 +516,12 @@ Two-column pages set a fixed rail beside the main column: Dashboard `360px`, Str
 **The Flush-Edge Rule.** The leftmost measure/table cell drops its padding and rule so figures
 align to the page title's vertical.
 
+A section head that carries a filter toolbar instead of a text baseline uses `.section-head.filters`:
+it centres its contents and widens the bottom padding to `14px` so the 30px chips clear the 2px rule.
+
 **Breakpoints**
 - **≤ 1080px:** `.dash / .detail / .deploy / .printer / .funds / .split` collapse to one column;
-  the chat goes static at `72vh`.
+  the chat goes static at `72vh`, and the Deploy page reveals its `.seg` board/chat toggle.
 - **≤ 760px:** `.measure` drops to two columns (rule on even cells only); `.sheet` bleeds to the
   device width by negative-gutter margins; `.stack` tables restack into labelled rows printing
   `data-lab` on the left; `.doc-mark` goes static; landing nav/hero/pills tighten.
@@ -562,6 +620,46 @@ a rule border left; `.msg.system` dashed full-width. The `.autopilot` bar border
 ### Research Printer
 `.printer` sets a `340px` dispatch form beside a `.log` feed (52px Narrow time column, hairline
 rows, `.error` rows in signal).
+
+### Glossary bubbles (signature)
+A drawn info marker plus one shared top-layer popover explains the agent's jargon
+(Passed / Void / Rejected / unseen data / in-sample / gates) inline. `.info` is a 14×14 bare
+button carrying the 1.8-stroke `ICON.info` ("i" in a circle), `{colors.app.rule-2}` at rest and
+`{colors.app.ink}` on hover/focus; it sits beside a term, `cursor: help`. One body-level
+`.glossary-pop` serves them all (so it never clips inside a table): `position: fixed`, max 268px,
+`{colors.app.stock-raised}` fill, 1px `{colors.app.ink}` border, with an uppercase Narrow 11px
+`b` term over a sentence-case 12.5px/1.5 `{colors.app.ink-2}` body. Shown on hover, focus, and
+tap; dismissed on Esc, scroll, resize, or outside click; a `.14s` `glopop` rise honors
+`prefers-reduced-motion`. *(Carries a drop shadow — see Defects.)*
+
+### Session cards (`.runs` / `.run-card`)
+The research index is a responsive card grid (`.runs`, auto-fill `minmax(290px, 1fr)`, 14px gap)
+rather than a table — the one place the App world uses cards. Each `.run-card` is a hairline
+`1px {colors.app.rule}` rectangle on `{colors.app.stock-raised}` with a **3px outcome-coloured
+left border**: `.ok` green (#1A7F4B), `.void` `{colors.app.rule-2}`, `.fail`
+`{colors.app.signal}`, `.live` `{colors.app.ink}`. A 3-line-clamped `.run-title`, a Narrow
+`.run-meta`, and a `.run-foot` (`.run-state` + Narrow `.run-when`). Hover lifts the border to
+`{colors.app.ink-3}` and nudges `translateY(-1px)`. *(The success-green is off-palette — see
+Defects.)*
+
+### Working spinner (`.working`)
+An in-process indicator beside "Researching" / "Waiting": a `0.7em` ring, `2px`
+`{colors.app.rule-2}` track with a `{colors.app.signal}` leading edge, spinning `lspin` at `.8s`
+(slowed to `2.4s` under `prefers-reduced-motion`). Scales to 16px inside a `.m dd` figure cell.
+*(Signal red on a loading edge is a mild widening of the Reserved Signal Rule — see Defects.)*
+
+### Verdict badges (`.log .verdict`)
+Inline agent-log tags marking a hypothesis's result: `.verdict.pass` is green text #0E5C33 on
+#DCEFE3; `.verdict.void` is #8A1021 on `{colors.app.signal-wash}`. Narrow, 11.5px, 0.06em, 3px
+nick; the `li.verdict` row gets a faint `stock-raised → transparent` wash. *(The pass-green pair
+is off-palette — see Defects.)*
+
+### Segmented toggle (`.seg`)
+A one-of-two pill switch, `display: none` on desktop and revealed `inline-flex` only ≤1080px, used
+on the Deploy page to swap between the board and the agent chat (`.deploy[data-view]`) so the
+composer is reachable without scrolling the whole board. Full `{rounded.pill}` track, 1px
+`{colors.app.rule-2}` border, Narrow 600 12px uppercase buttons; the `aria-pressed="true"` button
+fills `{colors.app.ink}` with `{colors.app.stock-raised}` text.
 
 ## Motion
 
@@ -822,6 +920,32 @@ here:
   divergence inside the logo SVG; not a palette rule.
 - **App `.gain` / `.loss` resolve to ink by design** — this is correct (money rides a field), noted
   only so it is not mistaken for a missing colour.
+
+- **Shipped name is "Tau", the record says "Recursive".** The build wordmark, logo (`TAU_MARK`),
+  and all UI copy read **Tau**; `name: Recursive` in the frontmatter, the `.impeccable/` title, and
+  the `X-Recursive` request header are the retained internal codename. Recorded as a naming
+  divergence, not reconciled here. The old landing "cube" mark is also gone: `cube` now resolves to
+  `TAU_MARK` (a 15px-radius `#15161A` tile with a stroked T and an `#F05A28` dot), so the Landing
+  Shapes "cube" description is stale.
+- **`.glossary-pop` carries a drop shadow** (`0 12px 26px -14px rgba(25,27,22,.42)`), as does the
+  payment modal's faux app-window (`.pay-stage-wrap`). The App (Kursbuch) world's Printed-Depth
+  Rule forbids shadows; these top-layer/overlay surfaces carry one anyway. Recorded as a
+  divergence, not promoted into the depth system — ruled/tinted surfaces stay flat.
+- **`.working` spends signal red on a loading edge.** The in-process spinner's leading edge is
+  `{colors.app.signal}`, not ink. This widens the Reserved Signal Rule (attention / live money)
+  to a progress indicator. Carried as shipped; not canonized as a new signal use.
+- **Off-palette success greens.** `.run-card.ok` (#1A7F4B), `.log .verdict.pass` (#0E5C33 on
+  #DCEFE3) introduce a green that is not a Kursbuch token and sits outside the world's "no
+  green-for-good; money rides a field" discipline. They are legible and reused, so recorded in the
+  frontmatter as literal component values, but they are **not** a palette token — future surfaces
+  should not treat green-for-good as a system colour without a decision.
+- **Landing scene eyebrows (kickers).** The redesigned landing ships three accent-wash pill
+  eyebrows (`.scene-copy .eyebrow`: "See the homework", "Deploy & monitor", "RSI agent mode"). An
+  eyebrow/kicker is a craft-floor refusal; it is recorded here as a defect the build carries and is
+  **not** written into the Landing world as a reusable label style. The broader landing redesign
+  (`.lhero` two-column grid, `.demo`, `.scenes`, `.section-band`, `.steps3`, `.fgrid`, `.faq`,
+  `.lfoot`, `.wl-modal`) is pre-existing drift from this record's single-column Landing world and
+  was left unrepaired this pass.
 
 Both app-world surfaces (World 2 and World 3) share identical token values; they are documented
 separately only because they are reached by different scopes and differ in container licence. No

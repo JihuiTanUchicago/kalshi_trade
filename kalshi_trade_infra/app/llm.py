@@ -21,6 +21,14 @@ MODEL = os.getenv("APP_AGENT_MODEL", "claude-sonnet-5-5")
 MAX_TOKENS = int(os.getenv("APP_AGENT_MAX_TOKENS", "6000"))
 TIMEOUT_SECONDS = 180
 
+# "bedrock" bills Claude through AWS (uses AWS credits, no Anthropic key, auth
+# via the instance role); anything else uses the Anthropic API directly.
+LLM_PROVIDER = os.getenv("APP_LLM_PROVIDER", "anthropic").lower()
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+# A Bedrock model id or cross-region inference-profile id. Must be enabled in
+# the account's Bedrock "Model access" for AWS_REGION.
+BEDROCK_MODEL = os.getenv("APP_BEDROCK_MODEL", "us.anthropic.claude-sonnet-4-5-20250929-v1:0")
+
 
 class LLMError(RuntimeError):
     pass
@@ -40,7 +48,43 @@ class Usage:
 ModelFn = Callable[[str, List[Dict[str, str]]], "tuple[str, Dict]"]
 
 
+def current_model() -> str:
+    """The model id actually in use, for usage pricing."""
+    return BEDROCK_MODEL if LLM_PROVIDER == "bedrock" else MODEL
+
+
 def claude(system: str, messages: List[Dict[str, str]]) -> "tuple[str, Dict]":
+    """Route to Bedrock or the Anthropic API based on APP_LLM_PROVIDER."""
+    return _bedrock(system, messages) if LLM_PROVIDER == "bedrock" else _anthropic_direct(system, messages)
+
+
+def _bedrock(system: str, messages: List[Dict[str, str]]) -> "tuple[str, Dict]":
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+    except ImportError:
+        raise LLMError("boto3 is required for Bedrock but is not installed.")
+    body = {"anthropic_version": "bedrock-2023-05-31", "max_tokens": MAX_TOKENS, "system": system, "messages": messages}
+    client = boto3.client("bedrock-runtime", region_name=AWS_REGION)
+    for attempt in range(4):
+        try:
+            resp = client.invoke_model(modelId=BEDROCK_MODEL, body=json.dumps(body))
+        except ClientError as e:
+            code = e.response.get("Error", {}).get("Code", "")
+            if code in ("ThrottlingException", "ModelTimeoutException", "ServiceUnavailableException") and attempt < 3:
+                time.sleep(2 ** (attempt + 1))
+                continue
+            raise LLMError("Bedrock call failed (%s). Model '%s' may need access enabled in the Bedrock console for %s."
+                           % (code or e, BEDROCK_MODEL, AWS_REGION))
+        except Exception as e:
+            raise LLMError("Bedrock call failed: %s" % e)
+        data = json.loads(resp["body"].read())
+        text = "".join(b.get("text", "") for b in data.get("content") or [] if b.get("type") == "text")
+        return text, data.get("usage") or {}
+    raise LLMError("Bedrock call failed after retries.")
+
+
+def _anthropic_direct(system: str, messages: List[Dict[str, str]]) -> "tuple[str, Dict]":
     key = os.getenv("ANTHROPIC_API_KEY")
     if not key:
         raise LLMError("ANTHROPIC_API_KEY is not set on the worker.")

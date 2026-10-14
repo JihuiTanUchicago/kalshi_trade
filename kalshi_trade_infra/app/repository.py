@@ -61,7 +61,15 @@ def upsert_google_user(cur, sub: str, email: str, name: Optional[str], picture: 
         (sub, email, name, picture, now, now),
     )
     user_id = cur.lastrowid
+    # Once they're in, they're off the waitlist — the two lists are exclusive.
+    if email:
+        cur.execute("DELETE FROM app_waitlist WHERE email=%s", (email,))
     add_ledger(cur, user_id, "deposit", STARTING_PAPER_BALANCE, "Starting paper balance")
+    try:
+        from app import billing
+        add_credit(cur, user_id, "bonus", billing.FREE_BONUS, "Welcome credits")
+    except Exception as _e:
+        print("[repo] welcome-credit grant failed: %r" % _e, flush=True)
     seed_demo_session(cur, user_id)
     return get_user(cur, user_id)
 
@@ -188,11 +196,13 @@ RUN_ACTIVE = ("queued", "running")
 def create_run(
     cur, user_id: int, kind: str, market: Optional[str] = None, direction: Optional[str] = None,
     prompt: Optional[str] = None, deployment_id: Optional[int] = None,
+    max_hypotheses: Optional[int] = None, run_forever: bool = False,
 ) -> int:
     cur.execute(
-        """INSERT INTO app_agent_runs (user_id, kind, market, direction, prompt, deployment_id, status, created_at)
-           VALUES (%s,%s,%s,%s,%s,%s,'queued',%s)""",
-        (user_id, kind, market, direction, prompt, deployment_id, now_utc()),
+        """INSERT INTO app_agent_runs (user_id, kind, market, direction, prompt, deployment_id, status,
+             max_hypotheses, run_forever, created_at)
+           VALUES (%s,%s,%s,%s,%s,%s,'queued',%s,%s,%s)""",
+        (user_id, kind, market, direction, prompt, deployment_id, max_hypotheses, 1 if run_forever else 0, now_utc()),
     )
     return cur.lastrowid
 
@@ -288,11 +298,16 @@ def list_runs(cur, user_id: int, limit: int = 50) -> List[Dict]:
 def get_run(cur, user_id: int, run_id: int) -> Optional[Dict]:
     cur.execute(
         """SELECT id, kind, market, direction, prompt, status, hypotheses_tried, strategies_passed, error,
-                  created_at, started_at, finished_at
+                  max_hypotheses, run_forever, created_at, started_at, finished_at
            FROM app_agent_runs WHERE id=%s AND user_id=%s""",
         (run_id, user_id),
     )
     return cur.fetchone()
+
+
+def set_run_counts(cur, run_id: int, tried: int, passed: int) -> None:
+    cur.execute("UPDATE app_agent_runs SET hypotheses_tried=%s, strategies_passed=%s WHERE id=%s",
+                (tried, passed, run_id))
 
 
 def run_events(cur, run_id: int, after_id: int = 0) -> List[Dict]:
@@ -734,17 +749,39 @@ def _demo_spec():
 # -- community -------------------------------------------------------------------
 
 
-def create_post(cur, user_id: int, body: str, kind: str, snapshot: Optional[Dict]) -> int:
+def store_image(cur, user_id: int, content_type: str, data: bytes) -> int:
     cur.execute(
-        "INSERT INTO app_posts (user_id, body, kind, snapshot_json, created_at) VALUES (%s,%s,%s,%s,%s)",
-        (user_id, body[:2000], kind, _json(snapshot), now_utc()),
+        "INSERT INTO app_images (user_id, content_type, data, created_at) VALUES (%s,%s,%s,%s)",
+        (user_id, content_type, data, now_utc()),
     )
     return cur.lastrowid
 
 
+def get_image(cur, image_id: int) -> Optional[Dict]:
+    cur.execute("SELECT content_type, data FROM app_images WHERE id=%s", (image_id,))
+    return cur.fetchone()
+
+
+def create_post(cur, user_id: int, body: str, kind: str, snapshot: Optional[Dict], image_id: Optional[int] = None) -> int:
+    cur.execute(
+        "INSERT INTO app_posts (user_id, body, kind, snapshot_json, image_id, created_at) VALUES (%s,%s,%s,%s,%s,%s)",
+        (user_id, body[:2000], kind, _json(snapshot), image_id, now_utc()),
+    )
+    return cur.lastrowid
+
+
+def edit_post(cur, post_id: int, user_id: int, body: str) -> bool:
+    """Edit own post body, stamping edited_at. Returns False if not the owner."""
+    cur.execute(
+        "UPDATE app_posts SET body=%s, edited_at=%s WHERE id=%s AND user_id=%s",
+        (body[:2000], now_utc(), post_id, user_id),
+    )
+    return cur.rowcount == 1
+
+
 def list_posts(cur, viewer_id: int, before_id: int = 0, limit: int = 30) -> List[Dict]:
     cur.execute(
-        """SELECT p.id, p.body, p.kind, p.snapshot_json, p.likes_count, p.comments_count, p.created_at,
+        """SELECT p.id, p.body, p.kind, p.snapshot_json, p.image_id, p.edited_at, p.likes_count, p.comments_count, p.created_at,
                   u.name, u.picture_url, (p.user_id = %s) AS mine,
                   EXISTS(SELECT 1 FROM app_post_likes l WHERE l.post_id=p.id AND l.user_id=%s) AS liked
            FROM app_posts p JOIN app_users u ON u.id=p.user_id
@@ -774,6 +811,17 @@ def post_exists(cur, post_id: int) -> bool:
     return cur.fetchone() is not None
 
 
+def post_author(cur, post_id: int) -> Optional[Dict]:
+    """The post's author (user_id, email, name) plus a short body preview, for
+    reply notifications."""
+    cur.execute(
+        """SELECT p.user_id, u.email, u.name, LEFT(p.body, 140) AS preview
+           FROM app_posts p JOIN app_users u ON u.id=p.user_id WHERE p.id=%s""",
+        (post_id,),
+    )
+    return cur.fetchone()
+
+
 def add_comment(cur, post_id: int, user_id: int, body: str) -> int:
     cur.execute(
         "INSERT INTO app_post_comments (post_id, user_id, body, created_at) VALUES (%s,%s,%s,%s)",
@@ -796,3 +844,80 @@ def list_comments(cur, post_id: int, limit: int = 100) -> List[Dict]:
 def recent_posts_count(cur, user_id: int, since: datetime) -> int:
     cur.execute("SELECT COUNT(*) AS n FROM app_posts WHERE user_id=%s AND created_at >= %s", (user_id, since))
     return int(cur.fetchone()["n"])
+
+
+# -- credits & billing -----------------------------------------------------------
+
+
+def credit_balance(cur, user_id: int) -> float:
+    cur.execute("SELECT COALESCE(SUM(amount_usd),0) AS b FROM app_credit_ledger WHERE user_id=%s", (user_id,))
+    return float(cur.fetchone()["b"])
+
+
+def add_credit(cur, user_id: int, kind: str, amount_usd, memo: str,
+               stripe_ref: Optional[str] = None, run_id: Optional[int] = None) -> bool:
+    """Append a credit ledger row. Returns False if a row with this stripe_ref
+    already exists (idempotent replay), True if inserted."""
+    try:
+        cur.execute(
+            """INSERT INTO app_credit_ledger (user_id, kind, amount_usd, memo, stripe_ref, run_id, created_at)
+               VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+            (user_id, kind, str(amount_usd), (memo or "")[:255], stripe_ref, run_id, now_utc()),
+        )
+        return True
+    except Exception as e:  # duplicate stripe_ref -> already credited
+        if "uq_credit_stripe" in str(e) or "Duplicate" in str(e):
+            return False
+        raise
+
+
+def credit_rows(cur, user_id: int, limit: int = 50) -> List[Dict]:
+    cur.execute(
+        "SELECT kind, amount_usd, memo, created_at FROM app_credit_ledger WHERE user_id=%s ORDER BY id DESC LIMIT %s",
+        (user_id, limit),
+    )
+    return cur.fetchall()
+
+
+def credit_spent_total(cur, user_id: int) -> float:
+    cur.execute(
+        "SELECT COALESCE(-SUM(amount_usd),0) AS s FROM app_credit_ledger WHERE user_id=%s AND kind='usage'",
+        (user_id,),
+    )
+    return float(cur.fetchone()["s"])
+
+
+def get_stripe_customer(cur, user_id: int) -> Optional[Dict]:
+    cur.execute(
+        "SELECT user_id, stripe_customer_id, default_pm_id, auto_reload, reload_amount, reload_threshold "
+        "FROM app_stripe_customers WHERE user_id=%s",
+        (user_id,),
+    )
+    return cur.fetchone()
+
+
+def save_stripe_customer(cur, user_id: int, customer_id: str) -> None:
+    cur.execute(
+        """INSERT INTO app_stripe_customers (user_id, stripe_customer_id, created_at) VALUES (%s,%s,%s)
+           ON DUPLICATE KEY UPDATE stripe_customer_id=VALUES(stripe_customer_id)""",
+        (user_id, customer_id, now_utc()),
+    )
+
+
+def set_default_pm(cur, user_id: int, pm_id: Optional[str]) -> None:
+    cur.execute("UPDATE app_stripe_customers SET default_pm_id=%s WHERE user_id=%s", (pm_id, user_id))
+
+
+def set_auto_reload(cur, user_id: int, on: bool, amount=None, threshold=None) -> None:
+    sets, params = ["auto_reload=%s"], [1 if on else 0]
+    if amount is not None:
+        sets.append("reload_amount=%s"); params.append(str(amount))
+    if threshold is not None:
+        sets.append("reload_threshold=%s"); params.append(str(threshold))
+    params.append(user_id)
+    cur.execute("UPDATE app_stripe_customers SET %s WHERE user_id=%%s" % ", ".join(sets), tuple(params))
+
+
+def user_by_email(cur, email: str) -> Optional[Dict]:
+    cur.execute("SELECT id, email, name FROM app_users WHERE email=%s", (email,))
+    return cur.fetchone()

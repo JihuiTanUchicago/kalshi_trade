@@ -36,9 +36,55 @@
     paper2: I('<path d="M6 2h9l3 3v17H6z"/><path d="M15 2v3h3M9 12h6M9 16h6"/>'),
     key: I('<circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2M16 7l2 2"/>'),
     mail: I('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>'),
+    pencil: I('<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
+    image: I('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5L5 21"/>'),
+    card: I('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>'),
+    credits: I('<circle cx="12" cy="12" r="9"/><path d="M14.5 9.5a3 3 0 1 0 0 5M12 7v10"/>'),
+    admin: I('<path d="M12 2 4 5v6c0 5 3.5 8 8 11 4.5-3 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/>'),
+    info: I('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.7v.3"/>'),
     at: I('<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>'),
     google: '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>',
   };
+
+  // ---------- glossary (info bubbles) ----------
+  // Plain-language definitions for the jargon the agent produces. Keep each to a
+  // sentence or two; "plain language first, numbers second".
+  const GLOSSARY = {
+    passed: ['Passed', 'Cleared every gate on data the agent never saw while searching. Only passed strategies can be deployed.'],
+    void: ['Void', 'The strategy was good enough in-sample to be tested on unseen data — but it failed at least one gate there. A real candidate that didn’t hold up.'],
+    rejected: ['Rejected', 'Cut during the in-sample search, before the unseen-data test ever ran. The agent didn’t spend an out-of-sample test on it.'],
+    unseen: ['Unseen data', 'A held-out slice of history the agent never looks at while searching, so the result can’t be curve-fit. This is the P&L that counts.'],
+    insample: ['In-sample', 'The history the agent iterates on. Strong in-sample numbers are easy to overfit, so they only shortlist a strategy — they never pass it.'],
+    gate: ['Gates', 'The pass/fail checks a strategy must clear on unseen data: it makes money, trades often enough to judge, and its wins outweigh losses after fees.'],
+  };
+  // One drawn marker; a single top-layer popover serves them all (no clipping in tables).
+  const glo = (key) => `<button type="button" class="info" data-glo="${key}" aria-label="What does “${GLOSSARY[key][0]}” mean?">${ICON.info}</button>`;
+  function setupGlossary() {
+    const pop = document.createElement('div');
+    pop.className = 'glossary-pop'; pop.setAttribute('role', 'tooltip'); pop.id = 'glossary-pop'; pop.hidden = true;
+    document.body.appendChild(pop);
+    let current = null;
+    const place = (mark) => {
+      const r = mark.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight, gut = 12;
+      let left = Math.min(Math.max(gut, r.left + r.width / 2 - pw / 2), innerWidth - pw - gut);
+      let top = r.top - ph - 8;
+      pop.classList.toggle('below', top < gut);
+      if (top < gut) top = r.bottom + 8;
+      pop.style.left = left + 'px'; pop.style.top = top + 'px';
+    };
+    const show = (mark) => {
+      const g = GLOSSARY[mark.dataset.glo]; if (!g) return;
+      current = mark; pop.innerHTML = `<b>${esc(g[0])}</b><span>${g[1]}</span>`;
+      pop.hidden = false; mark.setAttribute('aria-describedby', 'glossary-pop'); place(mark);
+    };
+    const hide = () => { if (!current) return; current.removeAttribute('aria-describedby'); current = null; pop.hidden = true; };
+    document.addEventListener('pointerover', (e) => { const m = e.target.closest('.info'); if (m) show(m); });
+    document.addEventListener('pointerout', (e) => { const m = e.target.closest('.info'); if (m && m === current && !(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('.info') === m)) hide(); });
+    document.addEventListener('focusin', (e) => { const m = e.target.closest && e.target.closest('.info'); if (m) show(m); else if (current && !e.target.closest('.glossary-pop')) hide(); });
+    document.addEventListener('click', (e) => { const m = e.target.closest('.info'); if (m) { e.preventDefault(); (current === m) ? hide() : show(m); } else hide(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
+    addEventListener('scroll', hide, true); addEventListener('resize', hide);
+  }
 
   // ---------- formatting ----------
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -100,6 +146,8 @@
     [/^\/strategies\/(\d+)$/, viewStrategy],
     [/^\/deploy$/, viewDeploy],
     [/^\/community$/, viewCommunity],
+    [/^\/billing$/, viewBilling],
+    [/^\/admin$/, viewAdmin],
     [/^\/funds$/, viewFunds],
   ];
   function go(path, replace) {
@@ -133,15 +181,103 @@
     root.setAttribute('aria-busy', 'true');
     try { await match[1](...match[0].slice(1)); } catch (e) { if (e.status !== 401) shell('', boardTitle('Something went wrong'), notice(e.message, 'bad')); }
     root.setAttribute('aria-busy', 'false');
+    paymentGate().catch(() => {});
+  }
+
+  // Global blocking modal: a signed-in user with no card on file can't use Tau
+  // until they add one (the agent is metered per token). Same look as the
+  // waitlist modal, but with Stripe's Payment Element (card + Apple/Google Pay).
+  let payModal = null, payCarousel = null;
+  // The showcase reel on the modal's left — reuses the landing scene builders.
+  const PAY_SHOW = [
+    ['strat', 'Research, not guesswork', 'Every idea is backtested on data it never saw. Only strategies that clear every gate can trade.'],
+    ['deploy', 'Deploy and watch it work', 'Paper money first, then your own Kalshi key. Every fill settles in real time.'],
+    ['agent', 'Or let it run on autopilot', 'RSI mode researches, backtests, and deploys on its own — and never touches live money without you.'],
+  ];
+  function closePay() {
+    if (payCarousel) { clearInterval(payCarousel); payCarousel = null; }
+    sceneTimers.forEach(clearTimeout); sceneTimers = [];
+    if (payModal) { payModal.remove(); payModal = null; }
+  }
+  async function paymentGate() {
+    if (!S.me || location.pathname === '/signin' || !S.me.needs_card) { closePay(); return; }
+    if (payModal) return;  // already up
+    const dlg = document.createElement('dialog');
+    payModal = dlg;
+    dlg.className = 'wl-modal pay-modal';
+    dlg.innerHTML = `
+      <div class="pay-split">
+        <aside class="pay-show" aria-hidden="true">
+          <div class="pay-show-top">${ICON.mark}<span>Tau</span></div>
+          <div class="pay-stage-wrap"><div class="pay-dot-head"><span></span><span></span><span></span></div><div class="pay-stage" id="pay-stage"></div></div>
+          <div class="pay-cap" id="pay-cap"></div>
+          <div class="pay-dots" id="pay-dots"></div>
+        </aside>
+        <form class="wl-inner pay-right" id="payform">
+          <h2>Add a payment method</h2>
+          <p class="wl-sub">Tau meters the agent by the token. Add a card now, and we'll give you $${S.me.free_bonus} in credits — free.</p>
+          <div id="pay-el" class="pay-el">${loading(120)}</div>
+          <div id="pay-hint"></div>
+          <button class="pill solid wl-submit" type="submit" id="pay-submit">Save payment method</button>
+          <button class="pay-signout linkish" type="button" data-signout>Sign out instead</button>
+        </form>
+      </div>`;
+    document.body.appendChild(dlg);
+    if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
+    dlg.addEventListener('cancel', (e) => e.preventDefault());  // Esc can't dismiss
+    dlg.querySelector('[data-signout]').onclick = async () => {
+      await api('/api/logout', {}).catch(() => {}); S.me = null; closePay(); go('/signin');
+    };
+    // Animated showcase reel on the left.
+    const stage = dlg.querySelector('#pay-stage'), cap = dlg.querySelector('#pay-cap'), dots = dlg.querySelector('#pay-dots');
+    dots.innerHTML = PAY_SHOW.map((_, i) => `<span class="pay-dot${i === 0 ? ' on' : ''}"></span>`).join('');
+    let sIdx = -1;
+    const advance = () => {
+      sIdx = (sIdx + 1) % PAY_SHOW.length;
+      const [key, h, p] = PAY_SHOW[sIdx];
+      sceneTimers.forEach(clearTimeout); sceneTimers = [];
+      stage.innerHTML = '<div class="demo-body"></div>';
+      SCENE[key](stage.querySelector('.demo-body'));
+      stage.classList.remove('in'); void stage.offsetWidth; stage.classList.add('in');
+      cap.innerHTML = `<h3>${h}</h3><p>${p}</p>`;
+      dots.querySelectorAll('.pay-dot').forEach((d, i) => d.classList.toggle('on', i === sIdx));
+    };
+    advance();
+    if (!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) payCarousel = setInterval(advance, 5400);
+    const hint = dlg.querySelector('#pay-hint');
+    try {
+      const state = await api('/api/billing');
+      if (!state.configured) { dlg.querySelector('#pay-el').innerHTML = ''; hint.innerHTML = '<p class="wl-err">Payments aren’t enabled on this server yet.</p>'; dlg.querySelector('#pay-submit').setAttribute('aria-disabled', 'true'); return; }
+      const Stripe = await loadStripe();
+      const sp = Stripe(state.publishable_key);
+      const si = await api('/api/billing/setup-intent', {});
+      const elements = sp.elements({ clientSecret: si.client_secret, appearance: { theme: 'flat', variables: { fontFamily: 'Archivo, sans-serif', colorPrimary: '#191B16', borderRadius: '10px' } } });
+      const pe = elements.create('payment', { layout: 'tabs' });
+      dlg.querySelector('#pay-el').innerHTML = '';
+      pe.mount('#pay-el');
+      dlg.querySelector('#payform').onsubmit = (e) => {
+        e.preventDefault();
+        busy(dlg.querySelector('#pay-submit'), async () => {
+          hint.innerHTML = '';
+          const r = await sp.confirmSetup({ elements, redirect: 'if_required' });
+          if (r.error) { hint.innerHTML = `<p class="wl-err">${esc(r.error.message)}</p>`; return; }
+          try { await api('/api/billing/card-added', { payment_method_id: r.setupIntent.payment_method }); } catch (err) { hint.innerHTML = `<p class="wl-err">${esc(err.message)}</p>`; return; }
+          S.me = await api('/api/me');
+          closePay();
+          render();
+        });
+      };
+    } catch (err) { dlg.querySelector('#pay-el').innerHTML = ''; hint.innerHTML = `<p class="wl-err">${esc(err.message)}</p>`; }
   }
 
   // ---------- shell ----------
-  const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/deploy', 'Deploy', 'deploy'], ['/community', 'Community', 'community'], ['/funds', 'Funds', 'funds']];
+  const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/deploy', 'Deploy', 'deploy'], ['/community', 'Community', 'community'], ['/funds', 'Funds', 'funds'], ['/billing', 'Billing', 'credits']];
   function shell(active, board, main) {
     document.body.classList.remove('landing-body');
     const u = S.me.user;
-    const here = (NAV.find(([href]) => href === active) || ['', ''])[1];
-    const nav = NAV.map(([href, label]) => `<a class="svc-link" href="${href}" ${active === href ? 'aria-current="page"' : ''}>${label}</a>`).join('');
+    const here = (NAV.concat([['/admin','Admin']]).find(([href]) => href === active) || ['', ''])[1];
+    const items = NAV.concat(S.me.is_admin ? [['/admin', 'Admin', 'admin']] : []);
+    const nav = items.map(([href, label]) => `<a class="svc-link" href="${href}" ${active === href ? 'aria-current="page"' : ''}>${label}</a>`).join('');
     root.innerHTML = `
       <header class="masthead"><div class="masthead-in">
         <p class="wordmark"><a href="/">${ICON.mark}<span>Tau</span></a></p>
@@ -241,7 +377,7 @@
     return `<span class="mk ${cls}">${esc(label)}</span>`;
   };
   const money = (v) => `<span class="${tone(v)}">${usd(v, true)}</span>`;
-  const STRAT_HEAD = '<thead><tr><th>Strategy</th><th>Market</th><th class="num">Unseen P&amp;L</th><th class="num">Trades</th><th class="num">Win</th><th>Tried</th><th>Status</th></tr></thead>';
+  const STRAT_HEAD = '<thead><tr><th>Strategy</th><th>Market</th><th class="num">Unseen P&amp;L' + glo('unseen') + '</th><th class="num">Trades</th><th class="num">Win</th><th>Tried</th><th>Status</th></tr></thead>';
   const strategyTable = (rows) => `<div class="sheet"><table class="stack t-strat">${STRAT_HEAD}<tbody>${rows}</tbody></table></div>`;
   function strategySlip(s, reg, opts = {}) {
     const oos = s.out_of_sample, ins = s.in_sample || {};
@@ -609,20 +745,21 @@
   // ---------- research ----------
   async function viewResearch() {
     const me = S.me;
-    const EXAMPLES = ["Sell overpriced tails in the last hour before the 5pm close", "Lean with Bitcoin's momentum into settlement when volatility is low", "Buy cheap longshots under 15\u00a2 when the model says they're underpriced", "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances"];
+    const DEMO_PROMPT = "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances";
     shell('/research', boardTitle('Research', 'Describe an idea. An agent turns it into a research session \u2014 several concrete strategies it backtests on data it never saw, and only the ones that pass can trade.') +
       '<dl class="figures measure" id="rfigs" style="margin-top:14px"></dl>', `
       <form class="panel dispatch" id="dispatch">
         <h3>Start a research session</h3>
+        ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
         <label class="field"><span>Describe your idea</span>
-          <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="e.g. Sell overpriced tails in the last hour before the 5pm close"></textarea></label>
+          <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="Bro idk just give me a trading strategy frfr&#10;&#10;…or be specific: &quot;Sell overpriced tails in the last hour before the 5pm close.&quot;"></textarea></label>
         <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;justify-content:space-between">
           <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="label" style="margin-bottom:6px">Market</legend>
             <div class="choice">${me.markets.map((m, i) => `<label><input type="radio" name="market" value="${m.key}" ${i === 0 ? 'checked' : ''}><span class="opt"><b>${esc(marketShort(m.key))}</b></span></label>`).join('')}</div>
           </fieldset>
-          <button class="btn primary" type="submit">${ICON.spark2}Start session</button>
+          <button class="btn primary" type="submit" ${me.needs_card ? 'aria-disabled="true"' : ''}>${ICON.spark2}Start session</button>
         </div>
-        <div class="chips" aria-label="Example ideas">${EXAMPLES.map((x) => `<button type="button" class="chip" data-ex="${esc(x)}">${esc(x.length > 46 ? x.slice(0, 44) + '\u2026' : x)}</button>`).join('')}</div>
+        <div class="chips" aria-label="Try the demo"><button type="button" class="chip ex" data-ex="${esc(DEMO_PROMPT)}">${ICON.spark2}Try the demo \u2014 Todd's random walk</button></div>
         <div id="dflash"></div>
         <p class="hint">A session takes a few minutes and keeps running if you leave this page.</p>
       </form>
@@ -632,6 +769,7 @@
     const form = root.querySelector('#dispatch');
     form.onsubmit = async (e) => {
       e.preventDefault();
+      if (me.needs_card) { flash('#dflash', 'Add a payment method on the Billing tab first.', 'bad'); go('/billing'); return; }
       const fd = new FormData(form);
       const btn = form.querySelector('button[type=submit]');
       await busy(btn, async () => {
@@ -646,7 +784,7 @@
       const tried = d.runs.reduce((a, r) => a + (r.hypotheses_tried || 0), 0);
       const passed = d.runs.reduce((a, r) => a + (r.strategies_passed || 0), 0);
       root.querySelector('#rfigs').innerHTML = fig('Researching now', d.counts.research_running) + fig('Waiting', d.counts.research_queued) +
-        fig('Hypotheses tested', tried) + fig('Passed every gate', passed, { small: tried ? `${pct(passed / tried, false)} pass rate` : '' });
+        fig('Hypotheses tested', tried) + fig('Passed every gate' + glo('gate'), passed, { small: tried ? `${pct(passed / tried, false)} pass rate` : '' });
       root.querySelector('#rcount').textContent = d.runs.length ? `${d.runs.length} run${d.runs.length > 1 ? 's' : ''}` : '';
       root.querySelector('#runs').innerHTML = d.runs.length ? d.runs.map(runRow).join('')
         : `<div class="empty"><h3>No sessions yet</h3><p>Describe an idea above. The agent will turn it into several strategies, test each one on data it never saw, and mark each Passed or Void.</p></div>`;
@@ -655,15 +793,16 @@
     poll(load, 5000);
   }
   function runRow(r) {
-    const active = r.status === 'running' || r.status === 'queued';
-    const state = r.status === 'running' ? '<span class="pulse"></span>Researching'
-      : r.status === 'queued' ? 'Waiting'
+    const state = r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
+      : r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
       : r.status === 'succeeded' ? `<span class="${r.strategies_passed ? 'gain' : ''}">${r.strategies_passed} of ${r.hypotheses_tried} passed</span>`
       : r.status === 'cancelled' ? 'Cancelled' : '<span class="loss">Failed</span>';
-    return `<a class="run-row" href="/research/${r.id}">
-      <span class="what"><b>${esc(sessionTitle(r))}</b><small>${esc(marketShort(r.market))}${r.error ? ' \u00b7 ' + esc(r.error) : ''}</small></span>
-      <span class="state">${state}</span>
-      <span class="when">${when(r.created_at)}</span></a>`;
+    // status band: a thin color rule so passed/void/failed reads at a glance
+    const band = r.status === 'succeeded' ? (r.strategies_passed ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : r.status === 'cancelled' ? 'void' : 'live';
+    return `<a class="run-card ${band}" href="/research/${r.id}">
+      <span class="run-title"><b>${esc(sessionTitle(r))}</b></span>
+      <span class="run-meta">${esc(marketShort(r.market))}${r.error ? ' \u00b7 ' + esc(r.error) : ''}</span>
+      <span class="run-foot"><span class="run-state">${state}</span><span class="run-when">${when(r.created_at)}</span></span></a>`;
   }
 
   async function viewRun(id) {
@@ -683,7 +822,7 @@
       const started = r.started_at ? Date.parse(r.started_at) : null;
       const end = r.finished_at ? Date.parse(r.finished_at) : Date.now();
       root.querySelector('#runfigs').innerHTML =
-        fig('Status', active ? (r.status === 'queued' ? 'Waiting' : 'Researching') : r.status === 'succeeded' ? 'Done' : r.status === 'cancelled' ? 'Cancelled' : 'Failed') +
+        fig('Status', active ? (r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>' : 'Researching<span class="working" aria-label="in process"></span>') : r.status === 'succeeded' ? 'Done' : r.status === 'cancelled' ? 'Cancelled' : 'Failed') +
         fig('Time', started ? Math.max(0, Math.round((end - started) / 60000)) + ' min' : '—') +
         fig('Hypotheses', r.hypotheses_tried || hyp.length) + fig('Passed', active ? '…' : r.strategies_passed);
       root.querySelector('#runact').innerHTML = active ? '<button class="btn danger small" id="cancel">Cancel run</button>' : (r.status === 'succeeded' ? '<a class="btn small" href="/strategies">All strategies</a>' : '');
@@ -695,7 +834,17 @@
         after = Math.max(after, ev.id);
         const li = document.createElement('li');
         li.className = ev.kind;
-        li.innerHTML = `<time>${clock(ev.created_at)}</time><span>${ev.kind === 'hypothesis' ? 'Tested <b>' + esc(ev.message) + '</b>' : esc(ev.message)}</span>`;
+        let inner;
+        if (ev.kind === 'hypothesis') {
+          inner = 'Tested <b>' + esc(ev.message) + '</b>';
+        } else if (ev.kind === 'verdict') {
+          const st = ev.data && ev.data.status;
+          const tag = st === 'passed' ? '<b class="verdict pass">PASSED</b>' : '<b class="verdict void">VOID</b>';
+          inner = tag + ' ' + esc(ev.message.replace(/^(PASSED|VOID|FAILED)\s*[-–]\s*/, ''));
+        } else {
+          inner = esc(ev.message);
+        }
+        li.innerHTML = `<time>${clock(ev.created_at)}</time><span>${inner}</span>`;
         log.appendChild(li);
         if (ev.kind === 'hypothesis' && !shownStrategies) {
           const s = { id: hyp.length + 1, market: r.market, direction: r.direction, title: ev.message, thesis: ev.data.thesis, status: 'queued', in_sample: ev.data.in_sample, created_at: ev.created_at };
@@ -706,8 +855,10 @@
       if (r.status === 'succeeded' && !shownStrategies) {
         shownStrategies = true;
         const reg = registry(d.strategies.map((s) => s.equity));
-        const order = { passed: 0, failed: 1, rejected: 2 };
-        const sorted = d.strategies.slice().sort((a, b) => order[a.status] - order[b.status]);
+        // Profitable-on-unseen-data first; rejected (never OOS-tested) sink to the bottom.
+        const oosPnl = (s) => (s.out_of_sample && s.out_of_sample.pnl != null) ? s.out_of_sample.pnl : -Infinity;
+        const tier = (s) => (s.status === 'rejected' ? 1 : 0);
+        const sorted = d.strategies.slice().sort((a, b) => (tier(a) - tier(b)) || (oosPnl(b) - oosPnl(a)));
         feed.innerHTML = strategyTable(sorted.map((s) => strategySlip(s, reg, { land: true })).join(''));
       }
       if (!active) clearTimers();
@@ -723,7 +874,7 @@
     const f = { status: q.get('status') || 'passed', market: q.get('market') || '' };
     shell('/strategies', boardTitle('Strategies', 'Every strategy your agents researched. Passed ones can be deployed; void ones stay here so you can see what didn’t work.') +
       '<dl class="figures measure" id="sfigs" style="margin-top:14px"></dl>', `
-      <div class="section-head">
+      <div class="section-head filters">
         <div class="chips" role="group" aria-label="Status">${[['passed', 'Passed'], ['failed', 'Void'], ['rejected', 'Rejected'], ['', 'All']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}" aria-pressed="${f.status === v}">${l}</button>`).join('')}</div>
         <div class="chips" role="group" aria-label="Market">${[['', 'Both markets'], ...S.me.markets.map((m) => [m.key, marketShort(m.key)])].map(([v, l]) => `<button class="chip" data-f="market" data-v="${v}" aria-pressed="${f.market === v}">${esc(l)}</button>`).join('')}</div>
       </div>
@@ -738,8 +889,10 @@
     });
     const [all, d] = await Promise.all([api('/api/strategies'), api('/api/strategies?' + new URLSearchParams(f))]);
     const count = (st) => all.strategies.filter((s) => s.status === st).length;
-    root.querySelector('#sfigs').innerHTML = fig('Passed', count('passed')) + fig('Void on unseen data', count('failed')) + fig('Rejected in testing', count('rejected')) +
+    root.querySelector('#sfigs').innerHTML = fig('Passed' + glo('passed'), count('passed')) + fig('Void on unseen data' + glo('void'), count('failed')) + fig('Rejected in testing' + glo('rejected'), count('rejected')) +
       fig('Pass rate', all.strategies.length ? pct(count('passed') / all.strategies.length, false) : '—');
+    const CLABEL = { passed: 'Passed', failed: 'Void', rejected: 'Rejected' };
+    root.querySelectorAll('[data-f="status"]').forEach((b) => { const v = b.dataset.v; b.textContent = v ? `${CLABEL[v]} (${count(v)})` : `All (${all.strategies.length})`; });
     const reg = registry(d.strategies.map((s) => s.equity));
     root.querySelector('#slips').innerHTML = d.strategies.length ? strategyTable(d.strategies.map((s) => strategySlip(s, reg)).join(''))
       : `<div class="empty"><h3>Nothing here yet</h3><p>${all.strategies.length ? 'Try another filter.' : 'Start a research session and the strategies it finds will land here.'}</p>${all.strategies.length ? '' : '<a class="btn" href="/research">Go to Research</a>'}</div>`;
@@ -1054,12 +1207,14 @@
   }
   function postCard(p) {
     return `<article class="post" data-id="${p.id}">
-      <div class="post-head">${avatar(p.picture, p.author)}<div><b>${esc(p.author)}</b><span class="when">${when(p.created_at)}</span></div></div>
-      ${p.body ? `<p class="post-body">${esc(p.body)}</p>` : ''}
-      ${postSnapshot(p.snapshot)}
+      <div class="post-head">${avatar(p.picture, p.author)}<div><b>${esc(p.author)}</b><span class="when">${when(p.created_at)}${p.edited ? ' · edited' : ''}</span></div></div>
+      <div class="post-main"><p class="post-body">${esc(p.body)}</p>
+      ${p.image ? `<a class="post-img" href="${esc(p.image)}" target="_blank" rel="noopener"><img src="${esc(p.image)}" alt="" loading="lazy"></a>` : ''}
+      ${postSnapshot(p.snapshot)}</div>
       <div class="post-actions">
         <button class="pact like ${p.liked ? 'on' : ''}" data-act="like" aria-pressed="${p.liked}">${ICON.heart}<span class="c">${p.likes || ''}</span></button>
         <button class="pact" data-act="comments">${ICON.comment}<span class="c">${p.comments || ''}</span></button>
+        ${p.mine ? `<button class="pact" data-act="edit">${ICON.pencil}<span>Edit</span></button>` : ''}
       </div>
       <div class="comments" hidden></div>
     </article>`;
@@ -1069,7 +1224,10 @@
       <div class="feedwrap">
         <form class="panel composer-post" id="composer-post">
           <textarea class="input" id="post-body" maxlength="2000" rows="2" placeholder="Share an idea, a strategy, or how it's going…"></textarea>
+          <div id="photo-preview" hidden><img id="photo-img" alt="Attached photo preview"><button type="button" class="photo-x" id="photo-remove" aria-label="Remove photo">${ICON.cross}</button></div>
           <div class="post-tools">
+            <button class="btn sm" type="button" id="photo-btn">${ICON.image}Photo</button>
+            <input type="file" id="photo-input" accept="image/png,image/jpeg,image/webp,image/gif" class="vh">
             <label class="field" style="min-width:0;flex:1"><span class="vh">Attach a strategy</span>
               <select id="post-strat"><option value="">Attach a strategy… (optional)</option></select></label>
             <button class="btn sm" type="button" data-share="pnl">${ICON.up}Share my P&amp;L</button>
@@ -1079,6 +1237,18 @@
         </form>
         <div id="feed">${loading(120)}${loading(120)}</div>
       </div>`);
+    // photo attach
+    let pendingImage = null;
+    const photoInput = root.querySelector('#photo-input');
+    root.querySelector('#photo-btn').onclick = () => photoInput.click();
+    photoInput.onchange = () => {
+      const f = photoInput.files[0]; if (!f) return;
+      if (f.size > 3 * 1024 * 1024) { flash('#post-flash', 'Images must be under 3 MB.', 'bad'); photoInput.value = ''; return; }
+      const r = new FileReader();
+      r.onload = () => { pendingImage = r.result; root.querySelector('#photo-img').src = r.result; root.querySelector('#photo-preview').hidden = false; };
+      r.readAsDataURL(f);
+    };
+    root.querySelector('#photo-remove').onclick = () => { pendingImage = null; photoInput.value = ''; root.querySelector('#photo-preview').hidden = true; };
     // populate strategy picker with the user's own strategies
     api('/api/strategies').then((d) => {
       const sel = root.querySelector('#post-strat');
@@ -1092,8 +1262,9 @@
       const btn = form.querySelector('[type=submit]');
       await busy(btn, async () => {
         try {
-          await api('/api/community', { body, kind, ref_id });
+          await api('/api/community', { body, kind, ref_id, image: pendingImage || undefined });
           root.querySelector('#post-body').value = ''; root.querySelector('#post-strat').value = '';
+          pendingImage = null; photoInput.value = ''; root.querySelector('#photo-preview').hidden = true;
           await load();
         } catch (e) { flash('#post-flash', e.message, 'bad'); }
       });
@@ -1111,6 +1282,25 @@
           const c = btn.querySelector('.c'); const n = (parseInt(c.textContent || '0', 10) || 0) + (r.liked ? 1 : -1);
           c.textContent = n > 0 ? n : '';
         } catch (err) { alert0(err.message); }
+      } else if (btn.dataset.act === 'edit') {
+        const main = art.querySelector('.post-main'); const bodyEl = main.querySelector('.post-body');
+        if (main.querySelector('.edit-form')) return;
+        const current = bodyEl.textContent;
+        const ef = document.createElement('form'); ef.className = 'edit-form';
+        ef.innerHTML = `<textarea class="input" maxlength="2000">${esc(current)}</textarea><div class="edit-actions"><button class="btn sm" type="button" data-cancel>Cancel</button><button class="btn primary sm" type="submit">Save</button></div>`;
+        bodyEl.hidden = true; bodyEl.insertAdjacentElement('afterend', ef);
+        const ta = ef.querySelector('textarea'); ta.focus(); ta.setSelectionRange(current.length, current.length);
+        ef.querySelector('[data-cancel]').onclick = () => { ef.remove(); bodyEl.hidden = false; };
+        ef.onsubmit = async (ev) => {
+          ev.preventDefault(); const nb = ta.value.trim(); if (!nb) return;
+          await busy(ef.querySelector('[type=submit]'), async () => {
+            try {
+              await api(`/api/community/${pid}/edit`, { body: nb });
+              bodyEl.textContent = nb; bodyEl.hidden = false; ef.remove();
+              const w = art.querySelector('.post-head .when'); if (w && !/edited/.test(w.textContent)) w.textContent += ' · edited';
+            } catch (err) { alert0(err.message); }
+          });
+        };
       } else {
         const box = art.querySelector('.comments');
         if (!box.hidden) { box.hidden = true; return; }
@@ -1140,5 +1330,159 @@
   }
   const STATUS_WORD = { passed: 'passed', failed: 'void', rejected: 'rejected' };
 
+  // ---------- billing ----------
+  function loadStripe() {
+    return new Promise((res, rej) => {
+      if (window.Stripe) return res(window.Stripe);
+      const sc = document.createElement('script'); sc.src = 'https://js.stripe.com/v3/';
+      sc.onload = () => res(window.Stripe); sc.onerror = () => rej(new Error('Could not load Stripe.'));
+      document.head.appendChild(sc);
+    });
+  }
+  const KIND_LABEL = { bonus: 'Welcome credits', topup: 'Added credits', autoreload: 'Auto-reload', usage: 'Agent usage', admin_grant: 'Admin grant' };
+  async function viewBilling() {
+    shell('/billing', boardTitle('Billing', 'Credits pay for agent research and chat, billed per token at model list price. Paper and live trading themselves are free.') +
+      '<dl class="figures measure" id="bfigs" style="margin-top:14px"></dl>', loading(360));
+    let stripe = null, card = null;
+    const load = async () => {
+      const d = await api('/api/billing');
+      root.querySelector('#bfigs').innerHTML =
+        fig('Credit balance', usd(d.balance), { v: d.balance > 0 ? 1 : (d.balance < 0 ? -1 : 0) }) +
+        fig('Spent on usage', usd(d.spent), { small: 'at model list price' }) +
+        fig('Welcome credit', usd(d.free_bonus), { small: 'one-time, free' });
+      const feeNote = `Credits plus a ${d.topup_fee_pct}% purchase fee.`;
+      const cardLines = d.cards.length
+        ? `<table class="table stack t-dep"><thead><tr><th>Card</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody>${d.cards.map((c) => `<tr>
+            <td class="name" data-lab="Card">${esc((c.brand || 'card').toUpperCase())} •••• ${esc(c.last4 || '')}</td>
+            <td data-lab="Expires">${String(c.exp_month).padStart(2, '0')}/${c.exp_year}</td>
+            <td data-lab="Status">${c.id === d.default_pm ? '<span class="mk on">Default</span>' : '<span class="mk quiet">Backup</span>'}</td>
+            <td class="act" data-lab="">${d.cards.length > 1 ? `<button class="btn sm danger" data-remove="${c.id}">Remove</button>` : '<span class="hint">Only card</span>'}</td></tr>`).join('')}</tbody></table>`
+        : '<p class="hint">No card on file. Add one to buy credits or turn on auto-reload.</p>';
+      const main = !d.configured
+        ? `<div class="notice">${ICON.warn}<span>Payments aren’t enabled on this server yet. You can still use your free credits.</span></div>
+           <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2></div>${ledgerTable(d.ledger)}</section>`
+        : `<div class="detail">
+            <div>
+              <section class="panel"><h3>Payment method</h3><div id="cards">${cardLines}</div>
+                <div id="card-add" style="margin-top:14px">
+                  <div class="field"><span>${d.cards.length ? 'Add another card' : 'Add a card'}</span><div id="card-el" class="card-el"></div></div>
+                  <div id="card-flash"></div>
+                  <button class="btn" id="save-card" style="margin-top:10px">Save card</button>
+                </div>
+                <label class="switch" style="margin-top:16px"><input type="checkbox" id="autoreload" ${d.auto_reload ? 'checked' : ''}><span>Auto-reload</span></label>
+                <p class="autorel-line">Reload <input class="input xs" id="reload-amt" type="number" min="${d.min_reload_amount}" step="1" value="${d.autoreload_amount}"> dollars when my balance drops to <input class="input xs" id="reload-thr" type="number" min="${d.min_reload_threshold}" step="1" value="${d.autoreload_threshold}"> dollars.</p>
+                <p class="hint" id="autorel-flash" style="margin-top:4px">Minimum $${d.min_reload_amount} reload, $${d.min_reload_threshold} trigger.</p>
+              </section>
+              <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2></div>${ledgerTable(d.ledger)}</section>
+            </div>
+            <aside>
+              <section class="panel"><h3>Add credits</h3>
+                <label class="field"><span>Amount (USD)</span><input class="input" id="topup-amt" type="number" min="${d.min_topup}" max="${d.max_topup}" step="1" value="20"></label>
+                <p class="hint" id="topup-note" style="margin-top:8px">${feeNote}</p>
+                <button class="btn primary" id="topup-btn" style="margin-top:12px;width:100%" ${d.cards.length ? '' : 'aria-disabled="true"'}>Buy credits</button>
+                ${d.cards.length ? '' : '<p class="hint" style="margin-top:8px">Add a card first.</p>'}
+                <div id="topup-flash"></div>
+              </section>
+            </aside>
+          </div>`;
+      root.querySelector('main').innerHTML = `<div id="flash"></div>${main}`;
+      if (!d.configured) return;
+      // top-up fee preview
+      const amt = root.querySelector('#topup-amt'), note = root.querySelector('#topup-note');
+      const fee = d.topup_fee_pct / 100;
+      const upd = () => { const v = +amt.value || 0; note.textContent = `You'll pay ${usd(v * (1 + fee))} (${usd(v)} credits + ${d.topup_fee_pct}% fee).`; };
+      amt.oninput = upd; upd();
+      root.querySelector('#topup-btn').onclick = (e) => {
+        if (e.currentTarget.getAttribute('aria-disabled')) { flash('#topup-flash', 'Add a card first.', 'bad'); return; }
+        busy(e.currentTarget, async () => {
+          try { const r = await api('/api/billing/topup', { amount: +amt.value }); flash('#topup-flash', `Added. Balance: ${usd(r.balance)}.`, 'good'); await load(); } catch (err) { flash('#topup-flash', err.message, 'bad'); }
+        });
+      };
+      const arBox = root.querySelector('#autoreload'), arAmt = root.querySelector('#reload-amt'), arThr = root.querySelector('#reload-thr');
+      const saveAutoReload = async () => {
+        const amount = Math.max(d.min_reload_amount, +arAmt.value || d.min_reload_amount);
+        const threshold = Math.max(d.min_reload_threshold, +arThr.value || d.min_reload_threshold);
+        arAmt.value = amount; arThr.value = threshold;
+        try {
+          await api('/api/billing/auto-reload', { on: arBox.checked, amount, threshold });
+          flash('#autorel-flash', arBox.checked ? `On · reloads ${usd(amount)} at ${usd(threshold)}.` : 'Auto-reload off.', 'good');
+        } catch (err) { arBox.checked = !arBox.checked; flash('#autorel-flash', err.message, 'bad'); }
+      };
+      arBox.onchange = saveAutoReload;
+      arAmt.onchange = arThr.onchange = () => { if (arBox.checked) saveAutoReload(); };
+      root.querySelectorAll('[data-remove]').forEach((b) => (b.onclick = () => armed(b, 'Confirm remove', () => busy(b, async () => {
+        try { await api('/api/billing/remove-card', { payment_method_id: b.dataset.remove }); await load(); } catch (err) { alert0(err.message); }
+      }))));
+      // Stripe card element
+      try {
+        const Stripe = await loadStripe();
+        stripe = stripe || Stripe(d.publishable_key);
+        const elements = stripe.elements();
+        card = elements.create('card', { style: { base: { color: '#191B16', fontFamily: 'Archivo, sans-serif', fontSize: '15px', '::placeholder': { color: '#5F645D' } } } });
+        card.mount('#card-el');
+        root.querySelector('#save-card').onclick = (e) => busy(e.currentTarget, async () => {
+          try {
+            const si = await api('/api/billing/setup-intent', {});
+            const r = await stripe.confirmCardSetup(si.client_secret, { payment_method: { card } });
+            if (r.error) { flash('#card-flash', r.error.message, 'bad'); return; }
+            await api('/api/billing/card-added', { payment_method_id: r.setupIntent.payment_method });
+            flash('#card-flash', 'Card saved.', 'good'); await load();
+          } catch (err) { flash('#card-flash', err.message, 'bad'); }
+        });
+      } catch (err) { flash('#card-flash', err.message, 'bad'); }
+    };
+    await load();
+  }
+  function ledgerTable(rows) {
+    if (!rows.length) return '<p class="hint">No credit activity yet.</p>';
+    return `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>When</th><th>Item</th><th class="num">Amount</th></tr></thead><tbody>${rows.map((r) => `<tr>
+      <td class="hint" data-lab="When">${when(r.created_at)}</td>
+      <td class="name" data-lab="Item">${esc(KIND_LABEL[r.kind] || r.kind)}${r.memo && r.kind === 'usage' ? `<div class="sub-fig">${esc(r.memo)}</div>` : ''}</td>
+      <td class="num" data-lab="Amount"><span class="${r.amount >= 0 ? 'gain' : ''}">${usd(r.amount, true)}</span></td></tr>`).join('')}</tbody></table></div>`;
+  }
+
+  // ---------- admin ----------
+  async function viewAdmin() {
+    if (!S.me.is_admin) return go('/', true);
+    shell('/admin', boardTitle('Admin', 'Operator tools: grant credits and see who has signed up or joined the waitlist.'), `
+      <div class="detail">
+        <div>
+          <section class="sect"><div class="sect-head"><h2>Users</h2><span id="ucount" class="sect-note"></span></div><div id="users">${loading(200)}</div></section>
+          <section class="sect"><div class="sect-head"><h2>Waitlist</h2></div><div id="waitlist"></div></section>
+        </div>
+        <aside>
+          <form class="panel" id="grant"><h3>Grant credits</h3>
+            <label class="field"><span>User email</span><input class="input" id="g-email" type="email" placeholder="someone@example.com" required></label>
+            <label class="field" style="margin-top:10px"><span>Amount (USD, can be negative)</span><input class="input" id="g-amt" type="number" step="1" value="25" required></label>
+            <button class="btn primary" type="submit" style="margin-top:12px;width:100%">Grant</button>
+            <div id="g-flash"></div>
+            <p class="hint" style="margin-top:8px">The user must have signed in at least once.</p>
+          </form>
+        </aside>
+      </div>`);
+    const load = async () => {
+      const d = await api('/api/admin');
+      root.querySelector('#ucount').textContent = `${d.users.length} shown`;
+      root.querySelector('#users').innerHTML = `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>Email</th><th>Name</th><th>Joined</th><th class="num">Balance</th></tr></thead><tbody>${d.users.map((u) => `<tr>
+        <td class="name" data-lab="Email">${esc(u.email)}</td><td data-lab="Name">${esc(u.name || '')}</td>
+        <td class="hint" data-lab="Joined">${when(u.created_at)}</td><td class="num" data-lab="Balance">${usd(u.balance)}</td></tr>`).join('')}</tbody></table></div>`;
+      root.querySelector('#waitlist').innerHTML = d.waitlist.length
+        ? `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>Email</th><th>Note</th><th>When</th></tr></thead><tbody>${d.waitlist.map((w) => `<tr>
+          <td class="name" data-lab="Email">${esc(w.email)}</td><td data-lab="Note">${esc(w.note || '')}</td><td class="hint" data-lab="When">${when(w.created_at)}</td></tr>`).join('')}</tbody></table></div>`
+        : '<p class="hint">No waitlist requests.</p>';
+    };
+    root.querySelector('#grant').onsubmit = async (e) => {
+      e.preventDefault();
+      await busy(e.target.querySelector('[type=submit]'), async () => {
+        try {
+          const r = await api('/api/admin/grant', { email: root.querySelector('#g-email').value.trim(), amount: +root.querySelector('#g-amt').value });
+          flash('#g-flash', `Granted. ${esc(r.email)} balance: ${usd(r.balance)}.`, 'good'); await load();
+        } catch (err) { flash('#g-flash', err.message, 'bad'); }
+      });
+    };
+    await load();
+  }
+
+  setupGlossary();
   render();
 })();

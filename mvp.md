@@ -66,6 +66,9 @@ strategies and their model parameters.
 ### Must-have Features
 - Our simulations do not consider the fact that Kalshi has a dev environment for testing
     - Maybe we should use that for an enhanced dev testing environment
+- We should adapt OpenRouter's revenue model for early adoptions; easiest way to persuade
+and justify our services.
+
 ### Interesting Features
 - Make agent pipeline that allows the user to collect data itself
     - Maybe once collected, it can be shared across all users
@@ -137,3 +140,7 @@ whether making them willing to pay?
 need to read code when they want to?
     - (jonathan supp) Yes my take is frontend should be as distraction-free as possible with only the necessary information presented
 - User testing. Agent as a simulated user to test front end UIs.
+- User testing. Agent as a simulated user to test front end UIs.
+- computer agent to help me do things that previously I needed to manually do.
+- New UI/interface, but agent has old knowledge -- there should be a product that
+ensure agent-friendly user interface so that knowledge doesn't drift

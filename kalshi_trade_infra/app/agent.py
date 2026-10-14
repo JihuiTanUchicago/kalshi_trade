@@ -26,10 +26,10 @@ import copy
 import json
 from typing import Callable, Dict, List, Optional, Tuple
 
-from app import backtest
+from app import backtest, billing
 from app import repository as repo
 from app import spec as specmod
-from app.llm import LLMError, ModelFn, Usage, ask_json, claude
+from app.llm import LLMError, ModelFn, Usage, ask_json, claude, current_model
 from app.markets import MARKETS
 
 DIRECTIONS: Dict[str, Dict[str, str]] = {
@@ -177,6 +177,12 @@ class Cancelled(Exception):
     pass
 
 
+def _bill(conn, user_id, usage, run_id):
+    """Meter the tokens this run spent against the user's credits."""
+    if usage.input_tokens or usage.output_tokens:
+        billing.charge_usage(conn, user_id, current_model(), usage.input_tokens, usage.output_tokens, run_id)
+
+
 def run_research(
     conn,
     run: Dict,
@@ -253,12 +259,14 @@ def run_research(
             )
         log("done", "%d of %d hypotheses passed every gate." % (passed, len(tried)), {"passed": passed, "tried": len(tried)})
         repo.finish_run(cur, run_id, "succeeded", None, len(tried), passed, usage.input_tokens, usage.output_tokens)
+        _bill(conn, user_id, usage, run_id)
     except Cancelled:
         log("step", "Cancelled.")
     except Exception as e:  # the run fails visibly; the worker keeps going
         msg = str(e) if isinstance(e, LLMError) else "Unexpected error: %s" % e
         log("error", msg)
         repo.finish_run(cur, run_id, "failed", msg[:2000], len(tried), 0, usage.input_tokens, usage.output_tokens)
+        _bill(conn, user_id, usage, run_id)
         if not isinstance(e, LLMError):
             raise
 
@@ -430,6 +438,7 @@ def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.da
             text, proposal_id = act(cur, user, action, bool(user.get("autopilot")), dataset_fn)
             repo.add_chat(cur, user["id"], "system", text, proposal_id)
         repo.finish_run(cur, run["id"], "succeeded", None, 0, 0, usage.input_tokens, usage.output_tokens)
+        _bill(conn, user["id"], usage, run["id"])
     except Exception as e:
         print("[agents] copilot run %s failed: %r" % (run["id"], e), flush=True)
         repo.add_chat(cur, user["id"], "system",
