@@ -954,8 +954,8 @@
       fig('Tried to find it', s.hypotheses_tried ? `1 of ${s.hypotheses_tried}` : '—', { small: 'More tries means weaker evidence' });
     root.querySelector('.board-title').outerHTML = boardTitle(serial(s.id) + ' · ' + marketShort(s.market), esc(dirLabel(s.direction)));
     root.querySelector('#figs').innerHTML = figsFor(s);
-    const canDeploy = s.status === 'passed';
-    const liveWhy = !S.me.live_trading_available ? 'Live trading isn’t open yet.' : !S.me.kalshi_connected ? 'Connect Kalshi on the Funds page first.' : s.side !== 'yes' ? 'Live supports YES-only strategies for now.' : '';
+    const canDeploy = s.status === 'passed' || s.status === 'failed';
+    const liveWhy = s.status !== 'passed' ? 'Void strategies can run on paper only.' : !S.me.live_trading_available ? 'Live trading isn’t open yet.' : !S.me.kalshi_connected ? 'Connect Kalshi on the Funds page first.' : s.side !== 'yes' ? 'Live supports YES-only strategies for now.' : '';
     const metricRows = (m) => m ? `<dl>
         <dt>P&amp;L after fees</dt><dd class="${tone(m.pnl)}">${usd(m.pnl, true)}</dd>
         <dt>Trades</dt><dd>${m.trades}${m.trades_per_day != null ? ` <small class="hint">(${m.trades_per_day}/day)</small>` : ''}</dd>
@@ -990,6 +990,7 @@
         <aside>
           <section class="panel"><h3>Deploy</h3>
             ${canDeploy ? `<div style="display:grid;gap:10px">
+                ${s.status === 'failed' ? '<p class="hint">Void: it failed the unseen-data gate. You can still run it on paper to watch how it behaves — but it didn’t clear the bar, so paper only.</p>' : ''}
                 <button class="btn" id="dep-paper">Deploy on paper</button>
                 <button class="btn ghost" id="dep-live" ${liveWhy ? 'aria-disabled="true"' : ''}>Deploy with live money</button>
                 ${liveWhy ? `<p class="hint">${esc(liveWhy)}</p>` : ''}

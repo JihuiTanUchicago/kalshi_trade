@@ -377,8 +377,8 @@ def create_deployment(ctx: Ctx):
     mode = ctx.body.get("mode")
     if s is None:
         raise ApiError(404, "No such strategy.")
-    if s["status"] != "passed":
-        raise ApiError(409, "Only strategies that passed every backtest gate can be deployed.")
+    if s["status"] not in ("passed", "failed"):
+        raise ApiError(409, "This strategy was never tested on unseen data, so it can't be deployed.")
     mkt = MARKETS.get(s["market"])
     if mkt is not None and not mkt.deployable:
         raise ApiError(409, "%s is research-only for now — you can backtest it, but live/paper "
@@ -386,6 +386,8 @@ def create_deployment(ctx: Ctx):
     if mode not in ("paper", "live"):
         raise ApiError(400, "Choose paper or live.")
     if mode == "live":
+        if s["status"] != "passed":
+            raise ApiError(409, "Only strategies that passed the unseen-data gate can trade live money. You can run a void one on paper.")
         if not engine.LIVE_TRADING_ENABLED:
             raise ApiError(409, "Live trading isn't open yet. Deploy on paper for now.")
         if repo.get_kalshi_key(cur, ctx.uid) is None:
