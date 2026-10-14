@@ -378,6 +378,18 @@ DDL = [
       INDEX idx_live_portfolio_time (snapshot_time_utc)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
+    """
+    CREATE TABLE IF NOT EXISTS kalshi_series (
+      series_ticker VARCHAR(64) PRIMARY KEY,
+      title VARCHAR(255) NULL,
+      category VARCHAR(64) NULL,
+      open_markets INT NOT NULL DEFAULT 0,
+      total_markets INT NOT NULL DEFAULT 0,
+      updated_at DATETIME NOT NULL,
+      INDEX idx_series_open (open_markets),
+      INDEX idx_series_title (title)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
 ]
 
 
