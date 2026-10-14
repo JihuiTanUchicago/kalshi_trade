@@ -45,9 +45,9 @@ ADMIN_EMAIL = os.getenv("TAU_ADMIN_EMAIL", "tjhprivate0416@gmail.com")
 SPA_ROUTES = re.compile(r"^/(?:|dashboard|research(?:/\d+)?|strategies(?:/\d+)?|deploy|community|billing|admin|funds|signin)$")
 
 CSP = (
-    "default-src 'self'; script-src 'self' https://js.stripe.com; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; "
+    "default-src 'self'; script-src 'self' https://js.stripe.com https://pay.google.com; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; "
     "font-src https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com https://*.stripe.com; "
-    "connect-src 'self' https://api.stripe.com; frame-src https://js.stripe.com https://hooks.stripe.com; "
+    "connect-src 'self' https://api.stripe.com https://*.stripe.com; frame-src https://js.stripe.com https://hooks.stripe.com https://*.stripe.com https://pay.google.com; "
     "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 )
 
@@ -170,6 +170,8 @@ def me(ctx: Ctx):
         "live_trading_available": engine.LIVE_TRADING_ENABLED,
         "is_admin": (ctx.user["email"] or "").lower() == ADMIN_EMAIL.lower(),
         "billing_enabled": billing.configured(),
+        "needs_card": _needs_card(ctx),
+        "free_bonus": float(billing.FREE_BONUS),
         "credit_balance": round(repo.credit_balance(ctx.cur, ctx.uid), 4),
         "markets": [{"key": m.key, "label": m.label} for m in MARKETS.values()],
         "directions": [{"key": k, **v} for k, v in agent.DIRECTIONS.items()],
@@ -247,6 +249,25 @@ def get_run(ctx: Ctx):
     }
 
 
+def _needs_card(ctx: Ctx) -> bool:
+    """True when payments are live but the user has no card on file. Agent usage
+    is metered per token, so we require a card before any run — the free credits
+    unlock the moment one is saved."""
+    if not billing.configured():
+        return False
+    cust = repo.get_stripe_customer(ctx.cur, ctx.uid)
+    return not (cust and cust.get("default_pm_id"))
+
+
+def _require_billing_ready(ctx: Ctx, gerund: str) -> None:
+    if _needs_card(ctx):
+        raise ApiError(402, "Add a payment method on the Billing tab before %s. Your $%d in free credits "
+                            "unlock the moment a card is on file — you won't be charged until they run out."
+                            % (gerund, int(billing.FREE_BONUS)))
+    if billing.configured() and repo.credit_balance(ctx.cur, ctx.uid) <= 0:
+        raise ApiError(402, "You're out of credits. Add credits on the Billing tab to keep %s." % gerund)
+
+
 def create_run(ctx: Ctx):
     market = ctx.body.get("market")
     idea = str(ctx.body.get("prompt") or "").strip()[:1000]
@@ -259,8 +280,7 @@ def create_run(ctx: Ctx):
     if direction is not None and direction not in agent.DIRECTIONS:
         direction = None
     cur = ctx.cur
-    if billing.configured() and repo.credit_balance(cur, ctx.uid) <= 0:
-        raise ApiError(402, "You're out of credits. Add credits on the Billing tab to keep researching.")
+    _require_billing_ready(ctx, "researching")
     if repo.count_runs(cur, ctx.uid, "research", active_only=True) >= MAX_ACTIVE_RESEARCH:
         raise ApiError(429, "You already have %d agents researching. Wait for one to finish." % MAX_ACTIVE_RESEARCH)
     if repo.count_runs(cur, ctx.uid, "research", since=repo.now_utc() - timedelta(days=1)) >= MAX_RESEARCH_PER_DAY:
@@ -396,8 +416,7 @@ def post_chat(ctx: Ctx):
     if len(content) > 2000:
         raise ApiError(400, "Keep messages under 2,000 characters.")
     cur = ctx.cur
-    if billing.configured() and repo.credit_balance(cur, ctx.uid) <= 0:
-        raise ApiError(402, "You're out of credits. Add credits on the Billing tab to keep chatting with the agent.")
+    _require_billing_ready(ctx, "chatting with the agent")
     if repo.count_runs(cur, ctx.uid, "chat", since=repo.now_utc() - timedelta(hours=1)) >= MAX_CHAT_PER_HOUR:
         raise ApiError(429, "That's a lot of messages this hour. Give the agent a minute.")
     msg_id = repo.add_chat(cur, ctx.uid, "user", content)
@@ -637,9 +656,16 @@ def create_comment(ctx: Ctx):
         raise ApiError(400, "Write a comment first.")
     if len(body) > 1000:
         raise ApiError(400, "Keep comments under 1,000 characters.")
-    if not repo.post_exists(ctx.cur, pid):
+    author = repo.post_author(ctx.cur, pid)
+    if not author:
         raise ApiError(404, "No such post.")
     repo.add_comment(ctx.cur, pid, ctx.uid, body)
+    if author["user_id"] != ctx.uid and author.get("email"):  # don't email yourself
+        try:
+            commenter = (repo.get_user(ctx.cur, ctx.uid) or {}).get("name") or "Someone"
+            notify.comment_notice(author["email"], author.get("name"), commenter, author.get("preview") or "", body)
+        except Exception as e:
+            print("[community] reply notice failed for post %s: %r" % (pid, e), flush=True)
     return {"ok": True}
 
 
@@ -658,6 +684,7 @@ def billing_state(ctx: Ctx):
     cur = ctx.cur
     cust = repo.get_stripe_customer(cur, ctx.uid)
     cards, default_pm, auto_reload = [], None, True
+    reload_amount, reload_threshold = float(billing.AUTORELOAD_AMOUNT), float(billing.AUTORELOAD_THRESHOLD)
     if cust and billing.configured():
         try:
             cards = billing.list_cards(cust["stripe_customer_id"])
@@ -665,6 +692,10 @@ def billing_state(ctx: Ctx):
             cards = []
         default_pm = cust.get("default_pm_id")
         auto_reload = bool(cust.get("auto_reload"))
+        if cust.get("reload_amount") is not None:
+            reload_amount = float(cust["reload_amount"])
+        if cust.get("reload_threshold") is not None:
+            reload_threshold = float(cust["reload_threshold"])
     return {
         "configured": billing.configured(),
         "publishable_key": billing.STRIPE_PUBLISHABLE_KEY,
@@ -672,8 +703,10 @@ def billing_state(ctx: Ctx):
         "spent": round(repo.credit_spent_total(cur, ctx.uid), 4),
         "free_bonus": float(billing.FREE_BONUS),
         "topup_fee_pct": float(billing.TOPUP_FEE) * 100,
-        "autoreload_threshold": float(billing.AUTORELOAD_THRESHOLD),
-        "autoreload_amount": float(billing.AUTORELOAD_AMOUNT),
+        "autoreload_threshold": reload_threshold,
+        "autoreload_amount": reload_amount,
+        "min_reload_amount": float(billing.AUTORELOAD_AMOUNT),
+        "min_reload_threshold": float(billing.AUTORELOAD_THRESHOLD),
         "min_topup": float(billing.MIN_TOPUP), "max_topup": float(billing.MAX_TOPUP),
         "cards": cards, "default_pm": default_pm, "auto_reload": auto_reload,
         "ledger": [{"kind": r["kind"], "amount": float(r["amount_usd"]), "memo": r["memo"], "created_at": r["created_at"]}
@@ -731,7 +764,13 @@ def billing_autoreload(ctx: Ctx):
     on = ctx.body.get("on") is True
     if on and not (repo.get_stripe_customer(ctx.cur, ctx.uid) or {}).get("default_pm_id"):
         raise ApiError(409, "Add a card before turning on auto-reload.")
-    repo.set_auto_reload(ctx.cur, ctx.uid, on)
+    from decimal import Decimal as _D
+    amount = threshold = None
+    if ctx.body.get("amount") is not None:
+        amount = _D(str(_num(ctx.body, "amount", float(billing.AUTORELOAD_AMOUNT), float(billing.MAX_TOPUP))))
+    if ctx.body.get("threshold") is not None:
+        threshold = _D(str(_num(ctx.body, "threshold", float(billing.AUTORELOAD_THRESHOLD), float(billing.MAX_TOPUP))))
+    repo.set_auto_reload(ctx.cur, ctx.uid, on, amount=amount, threshold=threshold)
     return {"ok": True}
 
 
@@ -775,7 +814,10 @@ def admin_overview(ctx: Ctx):
                    FROM app_users u ORDER BY u.id DESC LIMIT 100""")
     users = [{"id": r["id"], "email": r["email"], "name": r["name"], "created_at": r["created_at"],
               "balance": round(float(r["balance"]), 2)} for r in cur.fetchall()]
-    cur.execute("SELECT email, note, created_at FROM app_waitlist ORDER BY id DESC LIMIT 100")
+    # Waitlist and users are mutually exclusive: hide anyone who already has an account.
+    cur.execute("""SELECT w.email, w.note, w.created_at FROM app_waitlist w
+                   WHERE NOT EXISTS (SELECT 1 FROM app_users u WHERE u.email=w.email)
+                   ORDER BY w.id DESC LIMIT 100""")
     waitlist = cur.fetchall()
     return {"users": users, "waitlist": waitlist}
 

@@ -61,6 +61,9 @@ def upsert_google_user(cur, sub: str, email: str, name: Optional[str], picture: 
         (sub, email, name, picture, now, now),
     )
     user_id = cur.lastrowid
+    # Once they're in, they're off the waitlist — the two lists are exclusive.
+    if email:
+        cur.execute("DELETE FROM app_waitlist WHERE email=%s", (email,))
     add_ledger(cur, user_id, "deposit", STARTING_PAPER_BALANCE, "Starting paper balance")
     try:
         from app import billing
@@ -193,11 +196,13 @@ RUN_ACTIVE = ("queued", "running")
 def create_run(
     cur, user_id: int, kind: str, market: Optional[str] = None, direction: Optional[str] = None,
     prompt: Optional[str] = None, deployment_id: Optional[int] = None,
+    max_hypotheses: Optional[int] = None, run_forever: bool = False,
 ) -> int:
     cur.execute(
-        """INSERT INTO app_agent_runs (user_id, kind, market, direction, prompt, deployment_id, status, created_at)
-           VALUES (%s,%s,%s,%s,%s,%s,'queued',%s)""",
-        (user_id, kind, market, direction, prompt, deployment_id, now_utc()),
+        """INSERT INTO app_agent_runs (user_id, kind, market, direction, prompt, deployment_id, status,
+             max_hypotheses, run_forever, created_at)
+           VALUES (%s,%s,%s,%s,%s,%s,'queued',%s,%s,%s)""",
+        (user_id, kind, market, direction, prompt, deployment_id, max_hypotheses, 1 if run_forever else 0, now_utc()),
     )
     return cur.lastrowid
 
@@ -293,11 +298,16 @@ def list_runs(cur, user_id: int, limit: int = 50) -> List[Dict]:
 def get_run(cur, user_id: int, run_id: int) -> Optional[Dict]:
     cur.execute(
         """SELECT id, kind, market, direction, prompt, status, hypotheses_tried, strategies_passed, error,
-                  created_at, started_at, finished_at
+                  max_hypotheses, run_forever, created_at, started_at, finished_at
            FROM app_agent_runs WHERE id=%s AND user_id=%s""",
         (run_id, user_id),
     )
     return cur.fetchone()
+
+
+def set_run_counts(cur, run_id: int, tried: int, passed: int) -> None:
+    cur.execute("UPDATE app_agent_runs SET hypotheses_tried=%s, strategies_passed=%s WHERE id=%s",
+                (tried, passed, run_id))
 
 
 def run_events(cur, run_id: int, after_id: int = 0) -> List[Dict]:
@@ -801,6 +811,17 @@ def post_exists(cur, post_id: int) -> bool:
     return cur.fetchone() is not None
 
 
+def post_author(cur, post_id: int) -> Optional[Dict]:
+    """The post's author (user_id, email, name) plus a short body preview, for
+    reply notifications."""
+    cur.execute(
+        """SELECT p.user_id, u.email, u.name, LEFT(p.body, 140) AS preview
+           FROM app_posts p JOIN app_users u ON u.id=p.user_id WHERE p.id=%s""",
+        (post_id,),
+    )
+    return cur.fetchone()
+
+
 def add_comment(cur, post_id: int, user_id: int, body: str) -> int:
     cur.execute(
         "INSERT INTO app_post_comments (post_id, user_id, body, created_at) VALUES (%s,%s,%s,%s)",
@@ -868,7 +889,8 @@ def credit_spent_total(cur, user_id: int) -> float:
 
 def get_stripe_customer(cur, user_id: int) -> Optional[Dict]:
     cur.execute(
-        "SELECT user_id, stripe_customer_id, default_pm_id, auto_reload FROM app_stripe_customers WHERE user_id=%s",
+        "SELECT user_id, stripe_customer_id, default_pm_id, auto_reload, reload_amount, reload_threshold "
+        "FROM app_stripe_customers WHERE user_id=%s",
         (user_id,),
     )
     return cur.fetchone()
@@ -886,8 +908,14 @@ def set_default_pm(cur, user_id: int, pm_id: Optional[str]) -> None:
     cur.execute("UPDATE app_stripe_customers SET default_pm_id=%s WHERE user_id=%s", (pm_id, user_id))
 
 
-def set_auto_reload(cur, user_id: int, on: bool) -> None:
-    cur.execute("UPDATE app_stripe_customers SET auto_reload=%s WHERE user_id=%s", (1 if on else 0, user_id))
+def set_auto_reload(cur, user_id: int, on: bool, amount=None, threshold=None) -> None:
+    sets, params = ["auto_reload=%s"], [1 if on else 0]
+    if amount is not None:
+        sets.append("reload_amount=%s"); params.append(str(amount))
+    if threshold is not None:
+        sets.append("reload_threshold=%s"); params.append(str(threshold))
+    params.append(user_id)
+    cur.execute("UPDATE app_stripe_customers SET %s WHERE user_id=%%s" % ", ".join(sets), tuple(params))
 
 
 def user_by_email(cur, email: str) -> Optional[Dict]:

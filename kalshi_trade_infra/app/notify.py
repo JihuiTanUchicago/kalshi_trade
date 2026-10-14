@@ -66,3 +66,19 @@ def waitlist_request(email: str, note: Optional[str], count: int) -> bool:
     )
     _send(email, "You're on the Tau waitlist", confirm_body)
     return sent_op
+
+
+def comment_notice(to_email: str, author_name: Optional[str], commenter: str,
+                   post_preview: str, comment_body: str) -> bool:
+    """Tell a post's author that someone replied. Best-effort (SES sandbox only
+    delivers to verified addresses until production access lands)."""
+    body = (
+        "Hi %s,\n\n"
+        "%s replied to your post on Tau:\n\n"
+        "  Your post: “%s”\n"
+        "  Their reply: “%s”\n\n"
+        "Open the Community tab to read the full thread and reply back.\n\n"
+        "— Tau\n\n"
+        "(You can turn these off anytime — just let us know.)"
+    ) % (author_name or "there", commenter, (post_preview or "").strip(), comment_body.strip())
+    return _send(to_email, "%s replied to your Tau post" % commenter, body)

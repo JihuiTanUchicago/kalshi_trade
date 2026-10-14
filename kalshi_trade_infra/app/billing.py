@@ -32,8 +32,8 @@ STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 
 FREE_BONUS = Decimal(os.getenv("TAU_FREE_CREDITS", "100"))
 TOPUP_FEE = Decimal(os.getenv("TAU_TOPUP_FEE", "0.055"))  # 5.5% on credit purchases
-AUTORELOAD_THRESHOLD = Decimal("5")
-AUTORELOAD_AMOUNT = Decimal("20")
+AUTORELOAD_THRESHOLD = Decimal("5")   # default + floor for "reload when balance drops to Y"
+AUTORELOAD_AMOUNT = Decimal("20")     # default + floor for "reload X dollars"
 MIN_TOPUP = Decimal("5")
 MAX_TOPUP = Decimal("1000")
 CENT = Decimal("0.01")
@@ -130,8 +130,12 @@ def get_or_create_customer(user: Dict, existing_id: Optional[str]) -> str:
 
 
 def create_setup_intent(customer_id: str) -> Dict:
+    # automatic_payment_methods lets the Payment Element offer Apple Pay / Google
+    # Pay alongside card; allow_redirects=never keeps it to no-redirect methods so
+    # confirmSetup needs no return_url.
     si = _stripe("POST", "/setup_intents", {
-        "customer": customer_id, "payment_method_types": ["card"], "usage": "off_session",
+        "customer": customer_id, "usage": "off_session",
+        "automatic_payment_methods": {"enabled": "true", "allow_redirects": "never"},
     })
     return {"client_secret": si["client_secret"]}
 
@@ -201,34 +205,37 @@ def charge_usage(conn, user_id: int, model: str, input_tokens: int, output_token
     try:
         with repo.transaction(conn) as cur:
             repo.add_credit(cur, user_id, "usage", -cost, "Agent usage · %s" % model, run_id=run_id)
-            balance = Decimal(str(repo.credit_balance(cur, user_id)))
     except Exception as e:
         print("[billing] usage charge failed for user %s: %r" % (user_id, e), flush=True)
         return
-    if balance <= AUTORELOAD_THRESHOLD:
-        try:
-            auto_reload(conn, user_id, trigger="run%s" % (run_id or "x"))
-        except Exception as e:
-            print("[billing] auto-reload failed for user %s: %r" % (user_id, e), flush=True)
+    try:
+        auto_reload(conn, user_id, trigger="run%s" % (run_id or "x"))
+    except Exception as e:
+        print("[billing] auto-reload failed for user %s: %r" % (user_id, e), flush=True)
 
 
 def auto_reload(conn, user_id: int, trigger: str) -> bool:
-    """Charge the saved card off-session to add AUTORELOAD_AMOUNT credits. Returns
-    True if credits were added. Idempotent per trigger."""
+    """If auto-reload is on and the balance has fallen to the user's threshold,
+    charge the saved card off-session to add the user's reload amount. Returns True
+    if credits were added. Idempotent per trigger."""
     from app import repository as repo
 
     cur = conn.cursor()
     cust = repo.get_stripe_customer(cur, user_id)
     if not cust or not cust.get("auto_reload") or not cust.get("default_pm_id") or not configured():
         return False
+    threshold = max(AUTORELOAD_THRESHOLD, Decimal(str(cust.get("reload_threshold") or AUTORELOAD_THRESHOLD)))
+    amount = max(AUTORELOAD_AMOUNT, Decimal(str(cust.get("reload_amount") or AUTORELOAD_AMOUNT)))
+    if Decimal(str(repo.credit_balance(cur, user_id))) > threshold:
+        return False
     idem = "reload-%s-%s" % (user_id, trigger)
-    pi = charge(cust["stripe_customer_id"], cust["default_pm_id"], topup_charge_cents(AUTORELOAD_AMOUNT),
+    pi = charge(cust["stripe_customer_id"], cust["default_pm_id"], topup_charge_cents(amount),
                 off_session=True, idem=idem,
-                metadata={"user_id": user_id, "credits": str(AUTORELOAD_AMOUNT), "purpose": "autoreload"})
+                metadata={"user_id": user_id, "credits": str(amount), "purpose": "autoreload"})
     if pi["status"] != "succeeded":
         print("[billing] auto-reload PI %s status=%s" % (pi["id"], pi["status"]), flush=True)
         return False
     with repo.transaction(conn) as tx:
-        added = repo.add_credit(tx, user_id, "autoreload", AUTORELOAD_AMOUNT,
-                                "Auto-reload $%s" % AUTORELOAD_AMOUNT, stripe_ref=pi["id"])
+        added = repo.add_credit(tx, user_id, "autoreload", amount,
+                                "Auto-reload $%s" % amount, stripe_ref=pi["id"])
     return added

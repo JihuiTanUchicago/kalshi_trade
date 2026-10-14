@@ -162,6 +162,24 @@ def test_only_passed_strategies_deploy_and_live_needs_everything(monkeypatch):
     assert server.create_deployment(ctx({"strategy_id": 5, "mode": "paper"})) == {"id": 11}
 
 
+def test_reply_emails_the_author_but_not_yourself(monkeypatch):
+    sent = []
+    monkeypatch.setattr(server.repo, "add_comment", lambda *a, **k: 1)
+    monkeypatch.setattr(server.repo, "get_user", lambda cur, uid: {"id": uid, "name": "Bob"})
+    monkeypatch.setattr(server.notify, "comment_notice", lambda *a, **k: sent.append(a))
+    # ctx() is user id=1. Author is a different user -> one email.
+    monkeypatch.setattr(server.repo, "post_author",
+                        lambda cur, pid: {"user_id": 2, "email": "alice@example.com", "name": "Alice", "preview": "my post"})
+    server.create_comment(ctx({"body": "nice one"}, params=("7",)))
+    assert len(sent) == 1 and sent[0][0] == "alice@example.com"
+    # Author replying to their own post -> no email.
+    sent.clear()
+    monkeypatch.setattr(server.repo, "post_author",
+                        lambda cur, pid: {"user_id": 1, "email": "me@example.com", "name": "Me", "preview": "x"})
+    server.create_comment(ctx({"body": "self reply"}, params=("7",)))
+    assert sent == []
+
+
 def test_numbers_must_be_numbers():
     with pytest.raises(server.ApiError):
         server._num({"amount": "100"}, "amount", 1, 10)

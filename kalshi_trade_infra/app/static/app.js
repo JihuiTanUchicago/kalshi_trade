@@ -140,6 +140,93 @@
     root.setAttribute('aria-busy', 'true');
     try { await match[1](...match[0].slice(1)); } catch (e) { if (e.status !== 401) shell('', boardTitle('Something went wrong'), notice(e.message, 'bad')); }
     root.setAttribute('aria-busy', 'false');
+    paymentGate().catch(() => {});
+  }
+
+  // Global blocking modal: a signed-in user with no card on file can't use Tau
+  // until they add one (the agent is metered per token). Same look as the
+  // waitlist modal, but with Stripe's Payment Element (card + Apple/Google Pay).
+  let payModal = null, payCarousel = null;
+  // The showcase reel on the modal's left — reuses the landing scene builders.
+  const PAY_SHOW = [
+    ['strat', 'Research, not guesswork', 'Every idea is backtested on data it never saw. Only strategies that clear every gate can trade.'],
+    ['deploy', 'Deploy and watch it work', 'Paper money first, then your own Kalshi key. Every fill settles in real time.'],
+    ['agent', 'Or let it run on autopilot', 'RSI mode researches, backtests, and deploys on its own — and never touches live money without you.'],
+  ];
+  function closePay() {
+    if (payCarousel) { clearInterval(payCarousel); payCarousel = null; }
+    sceneTimers.forEach(clearTimeout); sceneTimers = [];
+    if (payModal) { payModal.remove(); payModal = null; }
+  }
+  async function paymentGate() {
+    if (!S.me || location.pathname === '/signin' || !S.me.needs_card) { closePay(); return; }
+    if (payModal) return;  // already up
+    const dlg = document.createElement('dialog');
+    payModal = dlg;
+    dlg.className = 'wl-modal pay-modal';
+    dlg.innerHTML = `
+      <div class="pay-split">
+        <aside class="pay-show" aria-hidden="true">
+          <div class="pay-show-top">${ICON.mark}<span>Tau</span></div>
+          <div class="pay-stage-wrap"><div class="pay-dot-head"><span></span><span></span><span></span></div><div class="pay-stage" id="pay-stage"></div></div>
+          <div class="pay-cap" id="pay-cap"></div>
+          <div class="pay-dots" id="pay-dots"></div>
+        </aside>
+        <form class="wl-inner pay-right" id="payform">
+          <h2>Add a payment method</h2>
+          <p class="wl-sub">Tau meters the agent by the token. Add a card to unlock your $${S.me.free_bonus} in free credits — you won't be charged until they run out.</p>
+          <div id="pay-el" class="pay-el">${loading(120)}</div>
+          <div id="pay-hint"></div>
+          <button class="pill solid wl-submit" type="submit" id="pay-submit">Save payment method</button>
+          <button class="pay-signout linkish" type="button" data-signout>Sign out instead</button>
+        </form>
+      </div>`;
+    document.body.appendChild(dlg);
+    if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
+    dlg.addEventListener('cancel', (e) => e.preventDefault());  // Esc can't dismiss
+    dlg.querySelector('[data-signout]').onclick = async () => {
+      await api('/api/logout', {}).catch(() => {}); S.me = null; closePay(); go('/signin');
+    };
+    // Animated showcase reel on the left.
+    const stage = dlg.querySelector('#pay-stage'), cap = dlg.querySelector('#pay-cap'), dots = dlg.querySelector('#pay-dots');
+    dots.innerHTML = PAY_SHOW.map((_, i) => `<span class="pay-dot${i === 0 ? ' on' : ''}"></span>`).join('');
+    let sIdx = -1;
+    const advance = () => {
+      sIdx = (sIdx + 1) % PAY_SHOW.length;
+      const [key, h, p] = PAY_SHOW[sIdx];
+      sceneTimers.forEach(clearTimeout); sceneTimers = [];
+      stage.innerHTML = '<div class="demo-body"></div>';
+      SCENE[key](stage.querySelector('.demo-body'));
+      stage.classList.remove('in'); void stage.offsetWidth; stage.classList.add('in');
+      cap.innerHTML = `<h3>${h}</h3><p>${p}</p>`;
+      dots.querySelectorAll('.pay-dot').forEach((d, i) => d.classList.toggle('on', i === sIdx));
+    };
+    advance();
+    if (!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) payCarousel = setInterval(advance, 5400);
+    const hint = dlg.querySelector('#pay-hint');
+    try {
+      const state = await api('/api/billing');
+      if (!state.configured) { dlg.querySelector('#pay-el').innerHTML = ''; hint.innerHTML = '<p class="wl-err">Payments aren’t enabled on this server yet.</p>'; dlg.querySelector('#pay-submit').setAttribute('aria-disabled', 'true'); return; }
+      const Stripe = await loadStripe();
+      const sp = Stripe(state.publishable_key);
+      const si = await api('/api/billing/setup-intent', {});
+      const elements = sp.elements({ clientSecret: si.client_secret, appearance: { theme: 'flat', variables: { fontFamily: 'Archivo, sans-serif', colorPrimary: '#191B16', borderRadius: '10px' } } });
+      const pe = elements.create('payment', { layout: 'tabs' });
+      dlg.querySelector('#pay-el').innerHTML = '';
+      pe.mount('#pay-el');
+      dlg.querySelector('#payform').onsubmit = (e) => {
+        e.preventDefault();
+        busy(dlg.querySelector('#pay-submit'), async () => {
+          hint.innerHTML = '';
+          const r = await sp.confirmSetup({ elements, redirect: 'if_required' });
+          if (r.error) { hint.innerHTML = `<p class="wl-err">${esc(r.error.message)}</p>`; return; }
+          try { await api('/api/billing/card-added', { payment_method_id: r.setupIntent.payment_method }); } catch (err) { hint.innerHTML = `<p class="wl-err">${esc(err.message)}</p>`; return; }
+          S.me = await api('/api/me');
+          closePay();
+          render();
+        });
+      };
+    } catch (err) { dlg.querySelector('#pay-el').innerHTML = ''; hint.innerHTML = `<p class="wl-err">${esc(err.message)}</p>`; }
   }
 
   // ---------- shell ----------
@@ -617,20 +704,21 @@
   // ---------- research ----------
   async function viewResearch() {
     const me = S.me;
-    const EXAMPLES = ["Sell overpriced tails in the last hour before the 5pm close", "Lean with Bitcoin's momentum into settlement when volatility is low", "Buy cheap longshots under 15\u00a2 when the model says they're underpriced", "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances"];
+    const DEMO_PROMPT = "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances";
     shell('/research', boardTitle('Research', 'Describe an idea. An agent turns it into a research session \u2014 several concrete strategies it backtests on data it never saw, and only the ones that pass can trade.') +
       '<dl class="figures measure" id="rfigs" style="margin-top:14px"></dl>', `
       <form class="panel dispatch" id="dispatch">
         <h3>Start a research session</h3>
+        ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
         <label class="field"><span>Describe your idea</span>
-          <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="e.g. Sell overpriced tails in the last hour before the 5pm close"></textarea></label>
+          <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="Bro idk just give me a trading strategy frfr&#10;&#10;…or be specific: &quot;Sell overpriced tails in the last hour before the 5pm close.&quot;"></textarea></label>
         <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;justify-content:space-between">
           <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="label" style="margin-bottom:6px">Market</legend>
             <div class="choice">${me.markets.map((m, i) => `<label><input type="radio" name="market" value="${m.key}" ${i === 0 ? 'checked' : ''}><span class="opt"><b>${esc(marketShort(m.key))}</b></span></label>`).join('')}</div>
           </fieldset>
-          <button class="btn primary" type="submit">${ICON.spark2}Start session</button>
+          <button class="btn primary" type="submit" ${me.needs_card ? 'aria-disabled="true"' : ''}>${ICON.spark2}Start session</button>
         </div>
-        <div class="chips" aria-label="Example ideas">${EXAMPLES.map((x) => `<button type="button" class="chip" data-ex="${esc(x)}">${esc(x.length > 46 ? x.slice(0, 44) + '\u2026' : x)}</button>`).join('')}</div>
+        <div class="chips" aria-label="Try the demo"><button type="button" class="chip ex" data-ex="${esc(DEMO_PROMPT)}">${ICON.spark2}Try the demo \u2014 Todd's random walk</button></div>
         <div id="dflash"></div>
         <p class="hint">A session takes a few minutes and keeps running if you leave this page.</p>
       </form>
@@ -640,6 +728,7 @@
     const form = root.querySelector('#dispatch');
     form.onsubmit = async (e) => {
       e.preventDefault();
+      if (me.needs_card) { flash('#dflash', 'Add a payment method on the Billing tab first.', 'bad'); go('/billing'); return; }
       const fd = new FormData(form);
       const btn = form.querySelector('button[type=submit]');
       await busy(btn, async () => {
@@ -663,15 +752,16 @@
     poll(load, 5000);
   }
   function runRow(r) {
-    const active = r.status === 'running' || r.status === 'queued';
-    const state = r.status === 'running' ? '<span class="pulse"></span>Researching'
-      : r.status === 'queued' ? 'Waiting'
+    const state = r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
+      : r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
       : r.status === 'succeeded' ? `<span class="${r.strategies_passed ? 'gain' : ''}">${r.strategies_passed} of ${r.hypotheses_tried} passed</span>`
       : r.status === 'cancelled' ? 'Cancelled' : '<span class="loss">Failed</span>';
-    return `<a class="run-row" href="/research/${r.id}">
-      <span class="what"><b>${esc(sessionTitle(r))}</b><small>${esc(marketShort(r.market))}${r.error ? ' \u00b7 ' + esc(r.error) : ''}</small></span>
-      <span class="state">${state}</span>
-      <span class="when">${when(r.created_at)}</span></a>`;
+    // status band: a thin color rule so passed/void/failed reads at a glance
+    const band = r.status === 'succeeded' ? (r.strategies_passed ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : r.status === 'cancelled' ? 'void' : 'live';
+    return `<a class="run-card ${band}" href="/research/${r.id}">
+      <span class="run-title"><b>${esc(sessionTitle(r))}</b></span>
+      <span class="run-meta">${esc(marketShort(r.market))}${r.error ? ' \u00b7 ' + esc(r.error) : ''}</span>
+      <span class="run-foot"><span class="run-state">${state}</span><span class="run-when">${when(r.created_at)}</span></span></a>`;
   }
 
   async function viewRun(id) {
@@ -691,7 +781,7 @@
       const started = r.started_at ? Date.parse(r.started_at) : null;
       const end = r.finished_at ? Date.parse(r.finished_at) : Date.now();
       root.querySelector('#runfigs').innerHTML =
-        fig('Status', active ? (r.status === 'queued' ? 'Waiting' : 'Researching') : r.status === 'succeeded' ? 'Done' : r.status === 'cancelled' ? 'Cancelled' : 'Failed') +
+        fig('Status', active ? (r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>' : 'Researching<span class="working" aria-label="in process"></span>') : r.status === 'succeeded' ? 'Done' : r.status === 'cancelled' ? 'Cancelled' : 'Failed') +
         fig('Time', started ? Math.max(0, Math.round((end - started) / 60000)) + ' min' : '—') +
         fig('Hypotheses', r.hypotheses_tried || hyp.length) + fig('Passed', active ? '…' : r.strategies_passed);
       root.querySelector('#runact').innerHTML = active ? '<button class="btn danger small" id="cancel">Cancel run</button>' : (r.status === 'succeeded' ? '<a class="btn small" href="/strategies">All strategies</a>' : '');
@@ -703,7 +793,17 @@
         after = Math.max(after, ev.id);
         const li = document.createElement('li');
         li.className = ev.kind;
-        li.innerHTML = `<time>${clock(ev.created_at)}</time><span>${ev.kind === 'hypothesis' ? 'Tested <b>' + esc(ev.message) + '</b>' : esc(ev.message)}</span>`;
+        let inner;
+        if (ev.kind === 'hypothesis') {
+          inner = 'Tested <b>' + esc(ev.message) + '</b>';
+        } else if (ev.kind === 'verdict') {
+          const st = ev.data && ev.data.status;
+          const tag = st === 'passed' ? '<b class="verdict pass">PASSED</b>' : '<b class="verdict void">VOID</b>';
+          inner = tag + ' ' + esc(ev.message.replace(/^(PASSED|VOID|FAILED)\s*[-–]\s*/, ''));
+        } else {
+          inner = esc(ev.message);
+        }
+        li.innerHTML = `<time>${clock(ev.created_at)}</time><span>${inner}</span>`;
         log.appendChild(li);
         if (ev.kind === 'hypothesis' && !shownStrategies) {
           const s = { id: hyp.length + 1, market: r.market, direction: r.direction, title: ev.message, thesis: ev.data.thesis, status: 'queued', in_sample: ev.data.in_sample, created_at: ev.created_at };
@@ -714,8 +814,10 @@
       if (r.status === 'succeeded' && !shownStrategies) {
         shownStrategies = true;
         const reg = registry(d.strategies.map((s) => s.equity));
-        const order = { passed: 0, failed: 1, rejected: 2 };
-        const sorted = d.strategies.slice().sort((a, b) => order[a.status] - order[b.status]);
+        // Profitable-on-unseen-data first; rejected (never OOS-tested) sink to the bottom.
+        const oosPnl = (s) => (s.out_of_sample && s.out_of_sample.pnl != null) ? s.out_of_sample.pnl : -Infinity;
+        const tier = (s) => (s.status === 'rejected' ? 1 : 0);
+        const sorted = d.strategies.slice().sort((a, b) => (tier(a) - tier(b)) || (oosPnl(b) - oosPnl(a)));
         feed.innerHTML = strategyTable(sorted.map((s) => strategySlip(s, reg, { land: true })).join(''));
       }
       if (!active) clearTimers();
@@ -731,7 +833,7 @@
     const f = { status: q.get('status') || 'passed', market: q.get('market') || '' };
     shell('/strategies', boardTitle('Strategies', 'Every strategy your agents researched. Passed ones can be deployed; void ones stay here so you can see what didn’t work.') +
       '<dl class="figures measure" id="sfigs" style="margin-top:14px"></dl>', `
-      <div class="section-head">
+      <div class="section-head filters">
         <div class="chips" role="group" aria-label="Status">${[['passed', 'Passed'], ['failed', 'Void'], ['rejected', 'Rejected'], ['', 'All']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}" aria-pressed="${f.status === v}">${l}</button>`).join('')}</div>
         <div class="chips" role="group" aria-label="Market">${[['', 'Both markets'], ...S.me.markets.map((m) => [m.key, marketShort(m.key)])].map(([v, l]) => `<button class="chip" data-f="market" data-v="${v}" aria-pressed="${f.market === v}">${esc(l)}</button>`).join('')}</div>
       </div>
@@ -1226,7 +1328,9 @@
                   <div id="card-flash"></div>
                   <button class="btn" id="save-card" style="margin-top:10px">Save card</button>
                 </div>
-                <label class="switch" style="margin-top:16px"><input type="checkbox" id="autoreload" ${d.auto_reload ? 'checked' : ''}><span>Auto-reload $${d.autoreload_amount} when my balance drops to $${d.autoreload_threshold}</span></label>
+                <label class="switch" style="margin-top:16px"><input type="checkbox" id="autoreload" ${d.auto_reload ? 'checked' : ''}><span>Auto-reload</span></label>
+                <p class="autorel-line">Reload <input class="input xs" id="reload-amt" type="number" min="${d.min_reload_amount}" step="1" value="${d.autoreload_amount}"> dollars when my balance drops to <input class="input xs" id="reload-thr" type="number" min="${d.min_reload_threshold}" step="1" value="${d.autoreload_threshold}"> dollars.</p>
+                <p class="hint" id="autorel-flash" style="margin-top:4px">Minimum $${d.min_reload_amount} reload, $${d.min_reload_threshold} trigger.</p>
               </section>
               <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2></div>${ledgerTable(d.ledger)}</section>
             </div>
@@ -1253,9 +1357,18 @@
           try { const r = await api('/api/billing/topup', { amount: +amt.value }); flash('#topup-flash', `Added. Balance: ${usd(r.balance)}.`, 'good'); await load(); } catch (err) { flash('#topup-flash', err.message, 'bad'); }
         });
       };
-      root.querySelector('#autoreload').onchange = async (e) => {
-        try { await api('/api/billing/auto-reload', { on: e.target.checked }); } catch (err) { e.target.checked = !e.target.checked; alert0(err.message); }
+      const arBox = root.querySelector('#autoreload'), arAmt = root.querySelector('#reload-amt'), arThr = root.querySelector('#reload-thr');
+      const saveAutoReload = async () => {
+        const amount = Math.max(d.min_reload_amount, +arAmt.value || d.min_reload_amount);
+        const threshold = Math.max(d.min_reload_threshold, +arThr.value || d.min_reload_threshold);
+        arAmt.value = amount; arThr.value = threshold;
+        try {
+          await api('/api/billing/auto-reload', { on: arBox.checked, amount, threshold });
+          flash('#autorel-flash', arBox.checked ? `On · reloads ${usd(amount)} at ${usd(threshold)}.` : 'Auto-reload off.', 'good');
+        } catch (err) { arBox.checked = !arBox.checked; flash('#autorel-flash', err.message, 'bad'); }
       };
+      arBox.onchange = saveAutoReload;
+      arAmt.onchange = arThr.onchange = () => { if (arBox.checked) saveAutoReload(); };
       root.querySelectorAll('[data-remove]').forEach((b) => (b.onclick = () => armed(b, 'Confirm remove', () => busy(b, async () => {
         try { await api('/api/billing/remove-card', { payment_method_id: b.dataset.remove }); await load(); } catch (err) { alert0(err.message); }
       }))));

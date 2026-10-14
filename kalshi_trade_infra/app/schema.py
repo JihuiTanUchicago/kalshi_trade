@@ -217,6 +217,8 @@ DDL = [
       stripe_customer_id VARCHAR(128) NOT NULL,
       default_pm_id VARCHAR(128) NULL,
       auto_reload TINYINT(1) NOT NULL DEFAULT 1,
+      reload_amount DECIMAL(10,2) NOT NULL DEFAULT 20.00,
+      reload_threshold DECIMAL(10,2) NOT NULL DEFAULT 5.00,
       created_at DATETIME NOT NULL,
       UNIQUE KEY uq_stripe_customer (stripe_customer_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
@@ -307,7 +309,11 @@ def main() -> None:
         for stmt in DDL:
             cur.execute(stmt)
         _add_column_if_missing(cur, "app_posts", "image_id", "ALTER TABLE app_posts ADD COLUMN image_id BIGINT NULL AFTER snapshot_json")
+        _add_column_if_missing(cur, "app_agent_runs", "max_hypotheses", "ALTER TABLE app_agent_runs ADD COLUMN max_hypotheses INT NULL")
+        _add_column_if_missing(cur, "app_agent_runs", "run_forever", "ALTER TABLE app_agent_runs ADD COLUMN run_forever TINYINT(1) NOT NULL DEFAULT 0")
         _add_column_if_missing(cur, "app_posts", "edited_at", "ALTER TABLE app_posts ADD COLUMN edited_at DATETIME NULL")
+        _add_column_if_missing(cur, "app_stripe_customers", "reload_amount", "ALTER TABLE app_stripe_customers ADD COLUMN reload_amount DECIMAL(10,2) NOT NULL DEFAULT 20.00")
+        _add_column_if_missing(cur, "app_stripe_customers", "reload_threshold", "ALTER TABLE app_stripe_customers ADD COLUMN reload_threshold DECIMAL(10,2) NOT NULL DEFAULT 5.00")
     conn.close()
     print("App schema initialized.")
 

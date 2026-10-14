@@ -1,5 +1,86 @@
 # PLAN
 
+## Mandatory card gate + payment modal, wallets, notifications, UI polish (2026-10-13, deployed)
+
+Stripe is now **LIVE in test mode** on the box (keys in Parameter Store, loaded via
+`load_app_secrets.sh`). Everything below is deployed to `d1gfpzcosqrjya.cloudfront.net`.
+
+### Card-on-file is now mandatory (the headline change)
+A signed-in user with **no default card** cannot use the agent, regardless of their free credits.
+- Server gate: `server._needs_card(ctx)` = `billing.configured() and no default_pm_id`.
+  `server._require_billing_ready(ctx, gerund)` raises 402 from **both** `create_run` and `post_chat`
+  (one shared helper — DRY). `me()` now returns `needs_card` + `free_bonus`.
+- Client gate: `app.js paymentGate()` runs at the end of **every** `render()`. If `S.me.needs_card`,
+  it opens a **global blocking `<dialog>`** (Esc/backdrop can't dismiss; only "Sign out instead"
+  escapes). On a successful card save it refreshes `/api/me` and re-renders — the app unlocks.
+
+### Payment modal — two-panel, Stripe Payment Element (card + Apple/Google Pay)
+Reuses the `.wl-modal` dialog (same Catalyst-style look as the waitlist modal), widened to 940px:
+```
+ ┌─────────────────────────────┬───────────────────────────┐
+ │  .pay-show (ink, animated)   │  .pay-right (Stripe form)  │
+ │  ┌───────────────────────┐   │  Add a payment method     │
+ │  │ faux app window        │   │  <subtitle: $100 free…>   │
+ │  │  [auto-rotating SCENE] │   │  ┌─────────────────────┐  │
+ │  │  strat→deploy→agent    │   │  │ Payment Element     │  │
+ │  └───────────────────────┘   │  │ card·ApplePay·GPay  │  │
+ │  caption + carousel dots     │  └─────────────────────┘  │
+ │                              │  [ Save payment method ]  │
+ │                              │  Sign out instead         │
+ └─────────────────────────────┴───────────────────────────┘
+```
+- Left panel cycles the landing `SCENE.strat/deploy/agent` builders every 5.4s (`PAY_SHOW`,
+  `closePay()` clears `payCarousel` + `sceneTimers`). Honors `prefers-reduced-motion`.
+- Right panel: `create_setup_intent` now uses `automatic_payment_methods{enabled, allow_redirects:never}`
+  so the **Payment Element** offers Apple Pay / Google Pay beside card with no return_url.
+  `confirmSetup({elements, redirect:'if_required'})` → `/api/billing/card-added` sets it default.
+- **Apple Pay caveat**: Payment Element shows card + Google Pay out of the box; **Apple Pay needs the
+  CloudFront domain registered with Stripe + the `/.well-known/apple-developer-merchantid-domain-association`
+  file hosted** — NOT yet done (follow-up).
+- CSP widened: `script-src +pay.google.com`, `connect-src +https://*.stripe.com`,
+  `frame-src +https://*.stripe.com +pay.google.com`.
+
+### Charge bug fixed
+`billing.charge()` PaymentIntent now sends `automatic_payment_methods{enabled,allow_redirects:never}` —
+off-session top-ups/auto-reloads succeed without a return_url (was erroring in test).
+
+### Per-user auto-reload amounts
+`app_stripe_customers` gained `reload_amount` (min/default $20) + `reload_threshold` (min/default $5),
+editable on Billing ("Reload $X when balance drops to $Y"). `billing.auto_reload` reads them and
+clamps to the floors; `repo.set_auto_reload(on, amount, threshold)`.
+
+### Reply email notifications
+Commenting on a community post emails the author (`notify.comment_notice`, `repo.post_author`), with a
+self-reply guard. Best-effort; SES sandbox only delivers to verified addresses until prod access lands.
+
+### Accounts hygiene
+- Waitlist and users are **mutually exclusive**: first sign-in deletes the matching `app_waitlist` row
+  (`repo.upsert_google_user`), and `admin_overview` hides waitlist emails that already have accounts.
+  Backfilled on the box; 2 stale rows removed.
+- Identity is keyed on `google_sub`, so real Google logins can't duplicate. Two `stripetest@example.com`
+  rows were my self-test pollution (random subs, shared fake email) — deleted on the box.
+
+### UI polish
+- "Your sessions" is now a **responsive card grid** (`.runs`→`.run-card`, color left-border by outcome)
+  instead of 1-per-row; fixed the old one-word-per-line wrap (title was in a 90px grid column).
+- Live **spinner** next to "Researching"/"Waiting" (`.working`) in the run view + sessions.
+- Agent log **highlights verdicts** (PASSED green / VOID red badges); run feed **sorts unseen-P&L
+  profitable-first** (rejected sink to the bottom).
+- Strategies filter toolbar got breathing room under its rule (`.section-head.filters`).
+- Deploy page: the Board/Agent-chat **segmented toggle** now shows ≤1080px so the chat composer is
+  reachable without scrolling past the board.
+- Research: funny placeholder ("Bro idk just give me a trading strategy frfr…"); replaced the four
+  cryptic truncated example chips with one readable "Try the demo — Todd's random walk" chip.
+
+### Access model decision (chosen, NOT yet built)
+Google has **no public API** to add OAuth test users. Decision: **publish the OAuth consent screen**
+(email/profile/openid need no Google verification → unlimited users), then gate access **in-app** via an
+admin allowlist (Admin "Approve" moves an email off the waitlist and permits login). TODO: build the
+allowlist + login check; until then access stays via Google test-users.
+
+Tests: `tests/test_app_auth_and_api.py` gained a reply-notification test (email author, not self).
+All app tests green.
+
 ## Billing / credits (Stripe), admin, community photos+edit (2026-10-14)
 
 **Bedrock agent confirmed working**: a real research session ran on `us.anthropic.claude-sonnet-4-5`
