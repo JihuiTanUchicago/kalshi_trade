@@ -890,7 +890,8 @@ def admin_system(ctx: Ctx):
             return None
 
     nodes = {
-        "kalshi":    {"kind": "ext"},
+        "kalshi":    {"kind": "ext", "series": safe_scalar("SELECT COUNT(DISTINCT series_ticker) c FROM hist_markets"),
+                      "markets": safe_scalar("SELECT COUNT(*) c FROM hist_markets")},
         "coinbase":  {"kind": "ext"},
         "bedrock":   {"kind": "ext"},
         "stripe":    {"kind": "ext"},

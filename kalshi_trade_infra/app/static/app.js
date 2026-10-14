@@ -1638,7 +1638,10 @@
     function metricText(id, L) {
       if (!L) return '';
       const n = sysNode(id);
-      if (n && n.ext) return 'connected';
+      if (n && n.ext) {
+        if (id === 'kalshi' && L.markets) return `${num(L.markets)} markets · ${L.series} series`;
+        return 'connected';
+      }
       if (id === 'db') return `${num(L.size_mb)} MB · ${num(L.rows)} market rows`;
       if (id === 'web') return `${num(L.users)} users · serving`;
       if (id === 'agents') return `${L.running} running · ${L.queued} queued · ${num(L.done)} done`;
