@@ -294,7 +294,7 @@
     const items = NAV.concat(adminViewOn() ? [['/admin', 'Admin', 'admin'], ['/system', 'System', 'system']] : []);
     const nav = items.map(([href, label]) => `<a class="svc-link" href="${href}" ${active === href ? 'aria-current="page"' : ''}>${label}</a>`).join('');
     const adminToggle = isAdmin()
-      ? `<button class="admin-switch ${adminViewOn() ? 'on' : ''}" data-action="admintoggle" role="switch" aria-checked="${adminViewOn()}" title="${adminViewOn() ? 'Admin mode on \u2014 click to view as a user' : 'Admin mode off \u2014 click to show admin'}"><span class="dot"></span>Admin</button><span class="sep">\u00b7</span>`
+      ? `<button class="admin-toggle" data-action="admintoggle" role="switch" aria-checked="${adminViewOn()}" title="${adminViewOn() ? 'Admin mode on \u2014 click to view as a user' : 'Admin mode off \u2014 click to show admin'}"><span class="admin-track"><span class="admin-knob"></span></span>Admin</button><span class="sep">\u00b7</span>`
       : '';
     root.innerHTML = `
       <header class="masthead"><div class="masthead-in">
