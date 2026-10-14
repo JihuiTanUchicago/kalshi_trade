@@ -1483,21 +1483,24 @@
       root.querySelectorAll('[data-remove]').forEach((b) => (b.onclick = () => armed(b, 'Confirm remove', () => busy(b, async () => {
         try { await api('/api/billing/remove-card', { payment_method_id: b.dataset.remove }); await load(); } catch (err) { alert0(err.message); }
       }))));
-      // Stripe card element
+      // Stripe Payment Element (card + Apple Pay / Google Pay, Link off) — same
+      // flow as the sign-in modal, so saving actually works with the config SI.
       try {
         const Stripe = await loadStripe();
-        stripe = stripe || Stripe(d.publishable_key);
-        const elements = stripe.elements();
-        card = elements.create('card', { style: { base: { color: '#191B16', fontFamily: 'Archivo, sans-serif', fontSize: '15px', '::placeholder': { color: '#5F645D' } } } });
-        card.mount('#card-el');
+        const sp = Stripe(d.publishable_key);
+        const si = await api('/api/billing/setup-intent', {});
+        const elements = sp.elements({ clientSecret: si.client_secret, appearance: { theme: 'flat', variables: { fontFamily: 'Archivo, sans-serif', colorPrimary: '#191B16', borderRadius: '10px' } } });
+        const pe = elements.create('payment', { layout: 'tabs', wallets: { applePay: 'auto', googlePay: 'auto' }, fields: { billingDetails: { address: 'never' } } });
+        pe.mount('#card-el');
         root.querySelector('#save-card').onclick = (e) => busy(e.currentTarget, async () => {
-          try {
-            const si = await api('/api/billing/setup-intent', {});
-            const r = await stripe.confirmCardSetup(si.client_secret, { payment_method: { card } });
-            if (r.error) { flash('#card-flash', r.error.message, 'bad'); return; }
-            await api('/api/billing/card-added', { payment_method_id: r.setupIntent.payment_method });
-            flash('#card-flash', 'Card saved.', 'good'); await load();
-          } catch (err) { flash('#card-flash', err.message, 'bad'); }
+          flash('#card-flash', '', '');
+          let r;
+          try { r = await sp.confirmSetup({ elements, redirect: 'if_required', confirmParams: { return_url: location.origin + '/billing' } }); }
+          catch (err) { flash('#card-flash', err.message || 'Could not save the card.', 'bad'); return; }
+          if (r.error) { flash('#card-flash', r.error.message, 'bad'); return; }
+          try { await api('/api/billing/card-added', { payment_method_id: r.setupIntent.payment_method }); }
+          catch (err) { flash('#card-flash', err.message, 'bad'); return; }
+          flash('#card-flash', 'Card saved.', 'good'); await load();
         });
       } catch (err) { flash('#card-flash', err.message, 'bad'); }
     };

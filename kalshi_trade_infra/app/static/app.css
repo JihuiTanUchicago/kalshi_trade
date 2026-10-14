@@ -772,9 +772,7 @@ a.snap:hover { border-color: var(--ink-3); }
 
 /* ===================== BILLING + COMMUNITY EXTRAS (Kursbuch) ===================== */
 
-.card-el { border: 1px solid var(--rule-2); background: var(--stock-raised); border-radius: var(--radius); padding: 11px 12px; }
-.card-el.StripeElement--focus { border-color: var(--ink); background: var(--stock); }
-.card-el.StripeElement--invalid { border-color: var(--signal); }
+.card-el { min-height: 44px; }
 #topup-note { line-height: 1.5; }
 
 .post-main { display: block; }
