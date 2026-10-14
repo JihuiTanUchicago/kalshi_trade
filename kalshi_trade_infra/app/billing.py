@@ -126,7 +126,12 @@ def _stripe(method: str, path: str, params: Optional[Dict] = None, idempotency_k
 
 def get_or_create_customer(user: Dict, existing_id: Optional[str]) -> str:
     if existing_id:
-        return existing_id
+        try:
+            cust = _stripe("GET", "/customers/" + existing_id)
+            if not cust.get("deleted"):
+                return existing_id
+        except StripeError:
+            pass  # stale id (e.g. test->live mode switch, or deleted) -> make a fresh one
     cust = _stripe("POST", "/customers", {
         "email": user["email"], "name": user.get("name") or "", "metadata": {"user_id": user["id"]},
     }, idempotency_key="cust-%s" % user["id"])

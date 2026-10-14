@@ -929,7 +929,7 @@ def get_stripe_customer(cur, user_id: int) -> Optional[Dict]:
 def save_stripe_customer(cur, user_id: int, customer_id: str) -> None:
     cur.execute(
         """INSERT INTO app_stripe_customers (user_id, stripe_customer_id, created_at) VALUES (%s,%s,%s)
-           ON DUPLICATE KEY UPDATE stripe_customer_id=VALUES(stripe_customer_id)""",
+           ON DUPLICATE KEY UPDATE stripe_customer_id=VALUES(stripe_customer_id), default_pm_id=NULL""",
         (user_id, customer_id, now_utc()),
     )
 

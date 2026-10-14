@@ -692,8 +692,9 @@ def create_comment(ctx: Ctx):
 
 def _customer_id(ctx: Ctx) -> str:
     cust = repo.get_stripe_customer(ctx.cur, ctx.uid)
-    cid = billing.get_or_create_customer(ctx.user, cust["stripe_customer_id"] if cust else None)
-    if not cust:
+    existing = cust["stripe_customer_id"] if cust else None
+    cid = billing.get_or_create_customer(ctx.user, existing)
+    if cid != existing:  # new or re-created (stale id) -> persist, drop stale default card
         repo.save_stripe_customer(ctx.cur, ctx.uid, cid)
     return cid
 
