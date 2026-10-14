@@ -891,7 +891,7 @@
           inner = esc(ev.message);
         }
         li.innerHTML = `<time>${clock(ev.created_at)}</time><span>${inner}</span>`;
-        log.appendChild(li);
+        log.prepend(li);  // newest on top (each new poll batch, ascending ids, lands above older)
         if (ev.kind === 'hypothesis' && !shownStrategies) {
           const s = { id: hyp.length + 1, market: r.market, direction: r.direction, title: ev.message, thesis: ev.data.thesis, status: 'queued', in_sample: ev.data.in_sample, created_at: ev.created_at };
           hyp.push(s);
