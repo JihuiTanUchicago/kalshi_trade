@@ -111,6 +111,7 @@
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   };
   const clock = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
   const age = (sec) => (sec == null ? 'never' : sec < 90 ? sec + 's' : sec < 5400 ? Math.round(sec / 60) + 'm' : sec < 172800 ? Math.round(sec / 3600) + 'h' : Math.round(sec / 86400) + 'd');
   const marketLabel = (k) => ((S.me && S.me.markets.find((m) => m.key === k)) || { label: k }).label;
   const marketShort = (k) => (k === 'btc15m' ? 'BTC 15-min' : k === 'btc_daily' ? 'BTC 5pm' : k);
@@ -148,6 +149,7 @@
     [/^\/community$/, viewCommunity],
     [/^\/billing$/, viewBilling],
     [/^\/admin$/, viewAdmin],
+    [/^\/system$/, viewSystem],
     [/^\/funds$/, viewFunds],
   ];
   function go(path, replace) {
@@ -262,7 +264,12 @@
         e.preventDefault();
         busy(dlg.querySelector('#pay-submit'), async () => {
           hint.innerHTML = '';
-          const r = await sp.confirmSetup({ elements, redirect: 'if_required' });
+          let r;
+          try {
+            // return_url is required because the config allows redirect methods; with
+            // redirect:'if_required' a card never actually redirects, so we stay on-page.
+            r = await sp.confirmSetup({ elements, redirect: 'if_required', confirmParams: { return_url: location.origin + '/billing' } });
+          } catch (err) { hint.innerHTML = `<p class="wl-err">${esc(err.message || 'Could not save the card.')}</p>`; return; }
           if (r.error) { hint.innerHTML = `<p class="wl-err">${esc(r.error.message)}</p>`; return; }
           try { await api('/api/billing/card-added', { payment_method_id: r.setupIntent.payment_method }); } catch (err) { hint.innerHTML = `<p class="wl-err">${esc(err.message)}</p>`; return; }
           S.me = await api('/api/me');
@@ -284,7 +291,7 @@
     document.body.classList.remove('landing-body');
     const u = S.me.user;
     const here = (NAV.concat([['/admin','Admin']]).find(([href]) => href === active) || ['', ''])[1];
-    const items = NAV.concat(adminViewOn() ? [['/admin', 'Admin', 'admin']] : []);
+    const items = NAV.concat(adminViewOn() ? [['/admin', 'Admin', 'admin'], ['/system', 'System', 'system']] : []);
     const nav = items.map(([href, label]) => `<a class="svc-link" href="${href}" ${active === href ? 'aria-current="page"' : ''}>${label}</a>`).join('');
     const adminToggle = isAdmin()
       ? `<button class="admin-switch ${adminViewOn() ? 'on' : ''}" data-action="admintoggle" role="switch" aria-checked="${adminViewOn()}" title="${adminViewOn() ? 'Admin mode on \u2014 click to view as a user' : 'Admin mode off \u2014 click to show admin'}"><span class="dot"></span>Admin</button><span class="sep">\u00b7</span>`
@@ -1498,6 +1505,125 @@
       });
     };
     await load();
+  }
+
+  // ---------- system map ----------
+  // A curated signal-flow graph of the real architecture (the design is stable,
+  // so the topology is hand-laid for legibility); live telemetry is overlaid so
+  // the map shows what the running codebase is doing right now.
+  const SYS_H = 54, SYS_DBH = 104;
+  const SYS_NODES = [
+    { id: 'kalshi', x: 40, y: 40, w: 128, label: 'Kalshi API', sub: 'markets + order book', ext: 1 },
+    { id: 'coinbase', x: 40, y: 150, w: 128, label: 'Coinbase', sub: 'BTC spot price', ext: 1 },
+    { id: 'bedrock', x: 40, y: 330, w: 128, label: 'Claude · Bedrock', sub: 'the research agent', ext: 1 },
+    { id: 'stripe', x: 40, y: 460, w: 128, label: 'Stripe', sub: 'cards + credits', ext: 1 },
+    { id: 'forward', x: 250, y: 30, w: 158, label: 'Forward collector', sub: 'Kalshi book → DB' },
+    { id: 'cb_coll', x: 250, y: 150, w: 158, label: 'Coinbase collector', sub: '1-minute candles' },
+    { id: 'features', x: 250, y: 270, w: 158, label: 'Feature builder', sub: 'per-minute features' },
+    { id: 'web', x: 250, y: 455, w: 158, label: 'Web server', sub: 'app.server · SPA + API' },
+    { id: 'db', x: 490, y: 205, w: 150, label: 'Database', sub: 'RDS MySQL', big: 1 },
+    { id: 'agents', x: 720, y: 40, w: 158, label: 'Research agents', sub: 'app.worker · hypotheses' },
+    { id: 'backtest', x: 720, y: 160, w: 158, label: 'Backtester', sub: 'honest, out-of-sample' },
+    { id: 'sim_engine', x: 720, y: 300, w: 158, label: 'Paper engine', sub: 'simulated fills' },
+    { id: 'live_engine', x: 720, y: 460, w: 158, label: 'Live engine', sub: 'real Kalshi orders' },
+  ];
+  const SYS_EDGES = [
+    ['kalshi', 'forward'], ['coinbase', 'cb_coll'], ['forward', 'db'], ['cb_coll', 'db'],
+    ['forward', 'features'], ['features', 'db'], ['bedrock', 'agents'], ['db', 'agents'],
+    ['agents', 'backtest'], ['backtest', 'db'], ['db', 'sim_engine'], ['db', 'live_engine'],
+    ['kalshi', 'live_engine'], ['stripe', 'web'], ['web', 'db'], ['db', 'web'],
+  ];
+  const SYS_DESC = {
+    kalshi: 'Kalshi’s REST + websocket feed — the markets, their order books, and settled results. The source of truth we trade against.',
+    coinbase: 'Coinbase BTC spot candles — the underlying price the 15-minute and 5pm markets settle on.',
+    bedrock: 'Claude on Amazon Bedrock. The agent that reads an idea, writes strategy specs, and judges backtests. Metered per token.',
+    stripe: 'Card vaulting + credit charges. Agent usage is billed per token against prepaid credits.',
+    forward: 'data_pipeline/forward_collector.py — snapshots every live Kalshi market’s book on a tick, into forward_quotes / market_candles / markets.',
+    cb_coll: 'data_pipeline/coinbase_collector.py — pulls 1-minute BTC candles into btc_candles_1m.',
+    features: 'feature_1m_collector.py — builds the per-minute model features both the sim and live paths read.',
+    web: 'app/server.py — the stdlib HTTP server: the SPA, the JSON API, Google sign-in, sessions, billing, and the admin surfaces.',
+    db: 'Amazon RDS MySQL. Every collector writes here and every engine + the app reads here. One source of truth.',
+    agents: 'app/worker.py (agents) — claims research/chat runs and drives Claude through the research loop, writing strategies + a live event log.',
+    backtest: 'app/backtest.py — runs each hypothesis on data it never saw and applies the deployment gates. Same spec the engines run.',
+    sim_engine: 'app/worker.py (engine) on paper money — prices from the live book, books fills, tracks P&L without real orders.',
+    live_engine: 'live_trading_engine.py — places real orders in a user’s own Kalshi account. Gated off until explicitly authorised.',
+  };
+  const sysNode = (id) => SYS_NODES.find((n) => n.id === id);
+  function sysEdgePath(a, b) {
+    const na = sysNode(a), nb = sysNode(b);
+    const ha = na.big ? SYS_DBH : na.ext ? SYS_H : SYS_H, hb = nb.big ? SYS_DBH : SYS_H;
+    const x1 = na.x + na.w, y1 = na.y + ha / 2, x2 = nb.x, y2 = nb.y + hb / 2;
+    const dx = Math.max(40, (x2 - x1) * 0.5);
+    return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
+  }
+  async function viewSystem() {
+    if (!adminViewOn()) return go('/', true);
+    const edges = SYS_EDGES.map(([a, b], i) => `<path class="sys-edge" data-e="${a}" id="se${i}" d="${sysEdgePath(a, b)}" />`).join('');
+    const nodes = SYS_NODES.map((n) => {
+      const h = n.big ? SYS_DBH : SYS_H;
+      return `<g class="sys-node ${n.ext ? 'ext' : ''}" data-id="${n.id}" transform="translate(${n.x},${n.y})" tabindex="0" role="button" aria-label="${esc(n.label)}">
+        <rect width="${n.w}" height="${h}" rx="${n.ext ? h / 2 : 3}"></rect>
+        <text class="t" x="12" y="21">${esc(n.label)}</text>
+        <text class="s" x="12" y="37">${esc(n.sub)}</text>
+        <text class="m" x="12" y="${h - 9}" data-m="${n.id}"></text>
+        <circle class="pulse" cx="${n.w - 13}" cy="15" r="4"></circle>
+      </g>`;
+    }).join('');
+    shell('/system', boardTitle('System', 'A live map of the pipeline — every box is a real part of the codebase, every line is data flowing. It refreshes on its own so you can see what’s running.'),
+      `<div class="sysmap">
+         <div class="sys-wrap"><svg viewBox="0 0 900 540" preserveAspectRatio="xMidYMid meet" id="syssvg" aria-label="System map">${edges}${nodes}</svg></div>
+         <aside class="sys-side">
+           <section class="panel" id="sys-detail"><h3>Pick a box</h3><p class="hint">Click any part of the system to see what it does and what it’s doing right now.</p></section>
+           <section class="sect" style="margin-top:16px"><div class="sect-head"><h2>Live activity</h2><span class="sys-live" id="sys-stamp"></span></div><ol class="log sys-feed" id="sys-feed"></ol></section>
+         </aside>
+       </div>`);
+    const svg = root.querySelector('#syssvg');
+    const detail = root.querySelector('#sys-detail');
+    const showDetail = (id) => {
+      const n = sysNode(id), L = S.sysLive && S.sysLive[id];
+      detail.innerHTML = `<h3>${esc(n.label)}</h3><p class="sys-metric" id="sys-dm">${metricText(id, L) || ''}</p><p class="hint" style="margin-top:8px">${esc(SYS_DESC[id] || '')}</p>`;
+    };
+    svg.querySelectorAll('.sys-node').forEach((g) => {
+      const act = () => { svg.querySelectorAll('.sys-node.sel').forEach((x) => x.classList.remove('sel')); g.classList.add('sel'); showDetail(g.dataset.id); };
+      g.addEventListener('click', act);
+      g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });
+    });
+    const fresh = (age) => age == null ? 'down' : age < 75 ? 'live' : age < 300 ? 'warn' : 'down';
+    function metricText(id, L) {
+      if (!L) return '';
+      if (id === 'db') return `${num(L.size_mb)} MB · ${num(L.rows)} market rows`;
+      if (id === 'web') return `${num(L.users)} users · serving`;
+      if (id === 'agents') return `${L.running} running · ${L.queued} queued · ${num(L.done)} done`;
+      if (id === 'backtest') return `${num(L.strategies)} strategies tested`;
+      if (L.ext) return 'connected';
+      const a = L.age == null ? '—' : L.age < 90 ? `${L.age}s ago` : L.age < 5400 ? `${Math.round(L.age / 60)}m ago` : 'stale';
+      if (id === 'forward') return `${num(L.rows)} ${L.unit} · ${a}`;
+      if (id === 'cb_coll' || id === 'features') return `${num(L.rows)} ${L.unit} · ${a}`;
+      if (id === 'sim_engine') return `${num(L.trades)} fills · ${a}`;
+      if (id === 'live_engine') return `${L.deployments} live · ${a}`;
+      return a;
+    }
+    const load = async () => {
+      let d; try { d = await api('/api/admin/system'); } catch (e) { return; }
+      S.sysLive = d.nodes;
+      SYS_NODES.forEach((n) => {
+        const L = d.nodes[n.id]; const g = svg.querySelector(`.sys-node[data-id="${n.id}"]`);
+        const mt = svg.querySelector(`[data-m="${n.id}"]`); if (mt) mt.textContent = metricText(n.id, L);
+        const st = n.ext ? 'live' : (L && 'age' in L) ? fresh(L.age) : (n.id === 'web' || n.id === 'db') ? 'live' : 'idle';
+        g.setAttribute('data-st', st);
+      });
+      // light up edges whose source is live
+      svg.querySelectorAll('.sys-edge').forEach((p) => {
+        const src = svg.querySelector(`.sys-node[data-id="${p.dataset.e}"]`);
+        p.classList.toggle('active', !!src && (src.getAttribute('data-st') === 'live'));
+      });
+      const sel = svg.querySelector('.sys-node.sel'); if (sel) showDetail(sel.dataset.id);
+      root.querySelector('#sys-stamp').textContent = 'updated ' + clock(d.now);
+      const feed = root.querySelector('#sys-feed');
+      feed.innerHTML = d.events.length ? d.events.map((e) => `<li class="${e.kind === 'error' ? 'error' : ''}"><time>${clock(e.created_at)}</time><span>${e.kind === 'verdict' ? esc(e.message.replace(/^(PASSED|VOID|FAILED)\s*[-–]\s*/, '')) : esc(e.message)}</span></li>`).join('') : '<li><span class="hint">Quiet right now.</span></li>';
+    };
+    await load();
+    poll(load, 4000);
   }
 
   setupGlossary();

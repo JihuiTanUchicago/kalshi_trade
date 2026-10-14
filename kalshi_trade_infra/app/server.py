@@ -42,7 +42,7 @@ MAX_ACTIVE_DEPLOYMENTS = 10
 MAX_PAPER_BALANCE = 1_000_000.0
 MAX_WAITLIST_PER_MINUTE = 10
 ADMIN_EMAIL = os.getenv("TAU_ADMIN_EMAIL", "tjhprivate0416@gmail.com")
-SPA_ROUTES = re.compile(r"^/(?:|dashboard|research(?:/\d+)?|strategies(?:/\d+)?|deploy|community|billing|admin|funds|signin)$")
+SPA_ROUTES = re.compile(r"^/(?:|dashboard|research(?:/\d+)?|strategies(?:/\d+)?|deploy|community|billing|admin|system|funds|signin)$")
 
 CSP = (
     "default-src 'self'; script-src 'self' https://js.stripe.com https://pay.google.com; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; "
@@ -255,6 +255,8 @@ def _needs_card(ctx: Ctx) -> bool:
     unlock the moment one is saved."""
     if not billing.configured():
         return False
+    if (ctx.user["email"] or "").lower() == ADMIN_EMAIL.lower():
+        return False  # the operator runs on the house; never gated
     cust = repo.get_stripe_customer(ctx.cur, ctx.uid)
     return not (cust and cust.get("default_pm_id"))
 
@@ -835,6 +837,63 @@ def admin_grant(ctx: Ctx):
     return {"ok": True, "email": email, "balance": round(repo.credit_balance(ctx.cur, target["id"]), 2)}
 
 
+def admin_system(ctx: Ctx):
+    """Live telemetry for the system map: per-node freshness + volume, so the
+    graph shows what the running codebase is actually doing right now."""
+    _require_admin(ctx)
+    cur = ctx.cur
+
+    # Heartbeats: each collector/engine writes collector_state on every tick.
+    cur.execute("SELECT state_key, updated_at_utc FROM collector_state")
+    now = repo.now_utc().replace(tzinfo=None)
+    age = {}
+    for r in cur.fetchall():
+        if r["updated_at_utc"]:
+            age[r["state_key"]] = max(0, int((now - r["updated_at_utc"]).total_seconds()))
+
+    def approx_rows(table):
+        cur.execute("SELECT table_rows AS n FROM information_schema.tables "
+                    "WHERE table_schema=DATABASE() AND table_name=%s", (table,))
+        r = cur.fetchone()
+        return int(r["n"]) if r and r["n"] is not None else 0
+
+    def scalar(q, *a):
+        cur.execute(q, a); r = cur.fetchone()
+        return (list(r.values())[0] if r else 0) or 0
+
+    cur.execute("SELECT status, COUNT(*) c FROM app_agent_runs GROUP BY status")
+    runs = {r["status"]: r["c"] for r in cur.fetchall()}
+
+    def safe_scalar(q, *a):
+        try:
+            cur.execute(q, a); r = cur.fetchone()
+            return (list(r.values())[0] if r else 0) or 0
+        except Exception:
+            return None
+
+    nodes = {
+        "kalshi":    {"kind": "ext"},
+        "coinbase":  {"kind": "ext"},
+        "bedrock":   {"kind": "ext"},
+        "stripe":    {"kind": "ext"},
+        "forward":   {"age": age.get("forward_collector_last_snapshot"), "rows": approx_rows("forward_quotes"), "unit": "quote rows"},
+        "cb_coll":   {"age": age.get("coinbase_collector_last_snapshot"), "rows": approx_rows("btc_candles_1m"), "unit": "1m candles"},
+        "features":  {"age": age.get("model_features_1m_last_snapshot"), "rows": approx_rows("model_features_1m"), "unit": "feature rows"},
+        "db":        {"rows": approx_rows("forward_quotes") + approx_rows("market_candles"), "size_mb": scalar("SELECT ROUND(SUM(data_length+index_length)/1048576) m FROM information_schema.tables WHERE table_schema=DATABASE()")},
+        "web":       {"up": True, "users": scalar("SELECT COUNT(*) c FROM app_users")},
+        "agents":    {"running": runs.get("running", 0), "queued": runs.get("queued", 0), "done": runs.get("succeeded", 0) + runs.get("failed", 0)},
+        "backtest":  {"strategies": scalar("SELECT COUNT(*) c FROM app_strategies")},
+        "sim_engine":  {"age": age.get("sim_trading_last_snapshot"), "trades": safe_scalar("SELECT COUNT(*) c FROM sim_trades")},
+        "live_engine": {"age": age.get("live_trading_last_snapshot"), "deployments": scalar("SELECT COUNT(*) c FROM app_deployments WHERE status='running'")},
+    }
+    # Recent activity feed (agent events across the fleet).
+    cur.execute("""SELECT e.kind, e.message, e.created_at, r.user_id
+                   FROM app_agent_events e JOIN app_agent_runs r ON r.id=e.run_id
+                   ORDER BY e.id DESC LIMIT 14""")
+    events = [{"kind": r["kind"], "message": (r["message"] or "")[:120], "created_at": r["created_at"]} for r in cur.fetchall()]
+    return {"now": now.isoformat() + "Z", "nodes": nodes, "events": events}
+
+
 # -- routing -----------------------------------------------------------------------
 
 Route = Tuple[str, "re.Pattern[str]", Callable[[Ctx], Any], bool]
@@ -876,6 +935,7 @@ ROUTES: List[Route] = [
         ("POST", "/api/billing/auto-reload", billing_autoreload, True),
         ("POST", "/api/billing/remove-card", billing_remove_card, True),
         ("GET", "/api/admin", admin_overview, True),
+        ("GET", "/api/admin/system", admin_system, True),
         ("POST", "/api/admin/grant", admin_grant, True),
         ("GET", "/api/funds", funds, True),
         ("POST", "/api/funds/paper", paper_transfer, True),

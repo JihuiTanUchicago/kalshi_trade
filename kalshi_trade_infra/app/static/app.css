@@ -64,6 +64,37 @@ p { margin: 0; }
 .gain { color: var(--ink); }
 .loss { color: var(--ink); }
 .hint { font-size: 12.5px; color: var(--ink-3); }
+/* System map — a live signal-flow graph of the codebase (admin only). */
+.sysmap { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; align-items: start; margin-top: 12px; }
+.sys-wrap { border: 1px solid var(--rule); background: var(--stock-raised); padding: 8px; }
+.sys-wrap svg { width: 100%; height: auto; display: block; }
+.sys-edge { fill: none; stroke: var(--rule-2); stroke-width: 1.4; }
+.sys-edge.active { stroke: var(--ink-2); stroke-width: 1.6; stroke-dasharray: 3 5; animation: sysflow .7s linear infinite; }
+@keyframes sysflow { to { stroke-dashoffset: -8; } }
+@media (prefers-reduced-motion: reduce) { .sys-edge.active { animation: none; } }
+.sys-node { cursor: pointer; }
+.sys-node rect { fill: var(--stock); stroke: var(--rule-2); stroke-width: 1; transition: stroke .12s; }
+.sys-node.ext rect { fill: var(--ink); stroke: var(--ink); }
+.sys-node:hover rect { stroke: var(--ink-3); }
+.sys-node.sel rect { stroke: var(--ink); stroke-width: 2; }
+.sys-node text { font-family: var(--f-nar); }
+.sys-node .t { font-size: 12px; font-weight: 600; letter-spacing: .04em; fill: var(--ink); }
+.sys-node .s { font-size: 10.5px; fill: var(--ink-3); }
+.sys-node .m { font-size: 10.5px; fill: var(--ink-2); font-variant-numeric: tabular-nums; }
+.sys-node.ext .t { fill: #F1F3ED; }
+.sys-node.ext .s, .sys-node.ext .m { fill: #AFB4AC; }
+.sys-node .pulse { fill: var(--rule-2); }
+.sys-node[data-st="live"] .pulse { fill: #1A7F4B; animation: syspulse 1.6s var(--ease) infinite; }
+.sys-node[data-st="warn"] .pulse { fill: #9A6B00; }
+.sys-node[data-st="down"] .pulse { fill: var(--signal); }
+.sys-node.ext .pulse { fill: #1A7F4B; }
+@keyframes syspulse { 50% { opacity: .3; } }
+.sys-side .panel h3 { margin-bottom: 6px; }
+.sys-metric { font-family: var(--f-nar); font-variant-numeric: tabular-nums; font-size: 13.5px; color: var(--ink); letter-spacing: .02em; }
+.sys-live { font-family: var(--f-nar); font-size: 11.5px; color: var(--ink-3); text-transform: none; letter-spacing: .02em; }
+.sys-feed { max-height: 320px; overflow-y: auto; }
+.sys-feed li { font-size: 12.5px; }
+@media (max-width: 1080px) { .sysmap { grid-template-columns: minmax(0, 1fr); } }
 /* Glossary info bubble — a drawn marker + one top-layer definition popover. */
 .info { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin: 0 0 0 5px; padding: 0; border: 0; background: none; color: var(--rule-2); cursor: help; vertical-align: -2px; -webkit-tap-highlight-color: transparent; }
 .info:hover, .info:focus-visible { color: var(--ink); }
