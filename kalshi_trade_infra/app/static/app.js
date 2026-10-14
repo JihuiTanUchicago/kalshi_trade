@@ -275,16 +275,24 @@
 
   // ---------- shell ----------
   const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/deploy', 'Deploy', 'deploy'], ['/community', 'Community', 'community'], ['/funds', 'Funds', 'funds'], ['/billing', 'Billing', 'credits']];
+  // The operator can flip into a plain-user view. Only their own account is an
+  // admin at all (server decides); the toggle just hides the admin surface so
+  // they can see what a normal user sees. Default: admin view on.
+  const isAdmin = () => !!(S.me && S.me.is_admin);
+  const adminViewOn = () => isAdmin() && localStorage.getItem('tau_admin_off') !== '1';
   function shell(active, board, main) {
     document.body.classList.remove('landing-body');
     const u = S.me.user;
     const here = (NAV.concat([['/admin','Admin']]).find(([href]) => href === active) || ['', ''])[1];
-    const items = NAV.concat(S.me.is_admin ? [['/admin', 'Admin', 'admin']] : []);
+    const items = NAV.concat(adminViewOn() ? [['/admin', 'Admin', 'admin']] : []);
     const nav = items.map(([href, label]) => `<a class="svc-link" href="${href}" ${active === href ? 'aria-current="page"' : ''}>${label}</a>`).join('');
+    const adminToggle = isAdmin()
+      ? `<button class="admin-switch ${adminViewOn() ? 'on' : ''}" data-action="admintoggle" role="switch" aria-checked="${adminViewOn()}" title="${adminViewOn() ? 'Admin mode on \u2014 click to view as a user' : 'Admin mode off \u2014 click to show admin'}"><span class="dot"></span>Admin</button><span class="sep">\u00b7</span>`
+      : '';
     root.innerHTML = `
       <header class="masthead"><div class="masthead-in">
         <p class="wordmark"><a href="/">${ICON.mark}<span>Tau</span></a></p>
-        <span class="asof">${esc(u.name || u.email)}<span class="sep">\u00b7</span><button class="linkish" data-action="signout">Sign out</button></span>
+        <span class="asof">${adminToggle}${esc(u.name || u.email)}<span class="sep">\u00b7</span><button class="linkish" data-action="signout">Sign out</button></span>
       </div></header>
       <nav class="services" aria-label="Sections"><div class="services-in">${nav}</div></nav>
       <div class="wrap">
@@ -292,6 +300,12 @@
         <main id="main" tabindex="-1">${main}</main>
       </div>`;
     root.querySelector('[data-action="signout"]').onclick = async () => { await api('/api/logout', {}).catch(() => {}); S.me = null; go('/signin'); };
+    const at = root.querySelector('[data-action="admintoggle"]');
+    if (at) at.onclick = () => {
+      const turningOff = adminViewOn();
+      localStorage.setItem('tau_admin_off', turningOff ? '1' : '0');
+      if (turningOff && location.pathname === '/admin') go('/', true); else render();
+    };
   }
   const boardTitle = (title, sub = '') => `<div class="board-title"><h1 class="page">${esc(title)}</h1>${sub ? `<p class="deck">${sub}</p>` : ''}</div>`;
   // One measured cell. Money direction rides a tint field behind the figure
@@ -1446,7 +1460,7 @@
 
   // ---------- admin ----------
   async function viewAdmin() {
-    if (!S.me.is_admin) return go('/', true);
+    if (!adminViewOn()) return go('/', true);
     shell('/admin', boardTitle('Admin', 'Operator tools: grant credits and see who has signed up or joined the waitlist.'), `
       <div class="detail">
         <div>

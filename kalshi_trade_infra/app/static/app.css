@@ -144,6 +144,13 @@ th .info { vertical-align: 0; }
 .asof { font-family: var(--f-nar); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
 .linkish { background: none; border: 0; padding: 0; cursor: pointer; color: var(--ink-3); font: inherit; text-decoration: underline; text-decoration-color: var(--rule-2); }
 .linkish:hover { color: var(--ink); }
+/* Operator-only admin-mode toggle in the masthead */
+.admin-switch { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-family: var(--f-nar); letter-spacing: .08em; text-transform: uppercase; cursor: pointer; background: transparent; border: 1px solid var(--rule-2); border-radius: 999px; padding: 2px 9px 2px 7px; color: var(--ink-3); }
+.admin-switch .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--rule-2); transition: background .15s; }
+.admin-switch:hover { border-color: var(--ink-3); color: var(--ink); }
+.admin-switch.on { background: var(--ink); border-color: var(--ink); color: var(--stock-raised); }
+.admin-switch.on .dot { background: var(--signal); }
+.asof .sep { color: var(--rule-2); margin: 0 .5em; }
 
 .services { border-bottom: 1px solid var(--rule); }
 .services-in { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--gut); display: flex; gap: 0; flex-wrap: wrap; }
