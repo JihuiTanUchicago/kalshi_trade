@@ -96,7 +96,10 @@ def _row(m: Dict, series: Optional[str], minute_iso: str) -> Dict:
         "ticker": m.get("ticker"),
         "event_ticker": m.get("event_ticker"),
         "series_ticker": series,
-        "title": m.get("title") or m.get("yes_sub_title") or "",
+        "title": m.get("title") or "",
+        # The per-market distinguisher within an event (e.g. "$92,300 or above"); without it
+        # every strike of one event shows an identical title.
+        "sub": m.get("yes_sub_title") or m.get("subtitle") or "",
         "yes_bid": m.get("yes_bid_dollars"),
         "yes_ask": m.get("yes_ask_dollars"),
         "no_bid": m.get("no_bid_dollars"),
@@ -188,7 +191,7 @@ def _write_explore_feed(rows: List[Dict], minute: datetime) -> None:
     markets = []
     for i, r in enumerate(ranked):
         m = {"t": r["ticker"], "s": r["series_ticker"], "ev": r.get("event_ticker"),
-             "ti": r.get("title") or "", "last": r.get("last"), "bid": r.get("yes_bid"),
+             "ti": r.get("title") or "", "su": r.get("sub") or "", "last": r.get("last"), "bid": r.get("yes_bid"),
              "ask": r.get("yes_ask"), "v24": r.get("volume_24h"), "oi": r.get("open_interest"),
              "st": r.get("status")}
         if i < HOT_TOP and _hist.get(r["ticker"]):

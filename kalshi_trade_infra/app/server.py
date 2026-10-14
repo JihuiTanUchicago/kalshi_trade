@@ -869,8 +869,10 @@ def admin_grant(ctx: Ctx):
 
 def admin_system(ctx: Ctx):
     """Live telemetry for the system map: per-node freshness + volume, so the
-    graph shows what the running codebase is actually doing right now."""
-    _require_admin(ctx)
+    graph shows what the running codebase is actually doing right now. Open to every
+    signed-in user (it's the product's 'show the homework' proof the pipeline is real);
+    fleet-wide specifics stay admin-only below."""
+    is_admin = (ctx.user["email"] or "").lower() == ADMIN_EMAIL.lower()
     cur = ctx.cur
 
     # Heartbeats: each collector/engine writes collector_state on every tick.
@@ -911,16 +913,21 @@ def admin_system(ctx: Ctx):
         "cb_coll":   {"age": age.get("coinbase_collector_last_snapshot"), "rows": approx_rows("spot_candles_1m"), "unit": "1m candles"},
         "features":  {"age": age.get("model_features_1m_last_snapshot"), "rows": approx_rows("model_features_1m"), "unit": "feature rows"},
         "db":        {"rows": approx_rows("forward_quotes") + approx_rows("market_candles"), "size_mb": scalar("SELECT ROUND(SUM(data_length+index_length)/1048576) m FROM information_schema.tables WHERE table_schema=DATABASE()")},
-        "web":       {"up": True, "users": scalar("SELECT COUNT(*) c FROM app_users")},
+        "web":       {"up": True, **({"users": scalar("SELECT COUNT(*) c FROM app_users")} if is_admin else {})},
         "agents":    {"running": runs.get("running", 0), "queued": runs.get("queued", 0), "done": runs.get("succeeded", 0) + runs.get("failed", 0)},
         "backtest":  {"strategies": scalar("SELECT COUNT(*) c FROM app_strategies")},
         "sim_engine":  {"age": age.get("sim_trading_last_snapshot"), "trades": safe_scalar("SELECT COUNT(*) c FROM sim_trades")},
         "live_engine": {"age": age.get("live_trading_last_snapshot"), "deployments": scalar("SELECT COUNT(*) c FROM app_deployments WHERE status='running'")},
     }
-    # Recent activity feed (agent events across the fleet).
-    cur.execute("""SELECT e.kind, e.message, e.created_at, r.user_id
-                   FROM app_agent_events e JOIN app_agent_runs r ON r.id=e.run_id
-                   ORDER BY e.id DESC LIMIT 14""")
+    # Recent activity feed: fleet-wide for the operator, but a normal user only ever
+    # sees their OWN agent events — never another user's private strategy names.
+    if is_admin:
+        cur.execute("""SELECT e.kind, e.message, e.created_at FROM app_agent_events e
+                       ORDER BY e.id DESC LIMIT 14""")
+    else:
+        cur.execute("""SELECT e.kind, e.message, e.created_at
+                       FROM app_agent_events e JOIN app_agent_runs r ON r.id=e.run_id
+                       WHERE r.user_id=%s ORDER BY e.id DESC LIMIT 14""", (ctx.uid,))
     events = [{"kind": r["kind"], "message": (r["message"] or "")[:120], "created_at": r["created_at"]} for r in cur.fetchall()]
     return {"now": now.isoformat() + "Z", "nodes": nodes, "events": events}
 

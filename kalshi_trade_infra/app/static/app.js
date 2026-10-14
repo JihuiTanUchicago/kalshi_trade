@@ -293,8 +293,8 @@
   function shell(active, board, main) {
     document.body.classList.remove('landing-body');
     const u = S.me.user;
-    const here = (NAV.concat([['/admin','Admin']]).find(([href]) => href === active) || ['', ''])[1];
-    const items = NAV.concat(adminViewOn() ? [['/admin', 'Admin', 'admin'], ['/system', 'System', 'system']] : []);
+    const here = (NAV.concat([['/admin', 'Admin'], ['/system', 'System']]).find(([href]) => href === active) || ['', ''])[1];
+    const items = NAV.concat(adminViewOn() ? [['/admin', 'Admin', 'admin']] : []).concat([['/system', 'System', 'system']]);
     const nav = items.map(([href, label]) => `<a class="svc-link" href="${href}" ${active === href ? 'aria-current="page"' : ''}>${label}</a>`).join('');
     const adminToggle = isAdmin()
       ? `<button class="admin-toggle" data-action="admintoggle" role="switch" aria-checked="${adminViewOn()}" title="${adminViewOn() ? 'Admin mode on \u2014 click to view as a user' : 'Admin mode off \u2014 click to show admin'}"><span class="admin-track"><span class="admin-knob"></span></span>Admin</button><span class="sep">\u00b7</span>`
@@ -1428,6 +1428,9 @@
   }
   // -- Explore + Hot Markets --------------------------------------------------
   const midOf = (m) => { const b = +m.bid, a = +m.ask; if (b > 0 && a > 0) return (b + a) / 2; const l = +m.last; return l > 0 ? l : null; };
+  // Many markets share one event title (every strike of "Bitcoin price on Oct 14?"), so the
+  // strike sub-title is what tells them apart.
+  const mktLabel = (m) => { const t = (m.ti || '').trim(), s = (m.su || '').trim(); return s && s !== t ? (t ? `${t} · ${s}` : s) : (t || m.t); };
   const kalshiUrl = (m) => `https://kalshi.com/markets/${encodeURIComponent((m.s || '').toLowerCase())}`;
   const kfmt = (n) => { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n)); };
   const sinceMin = (iso) => { if (!iso) return '—'; const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000); return s < 90 ? 'just now' : Math.round(s / 60) + 'm ago'; };
@@ -1451,7 +1454,7 @@
       if (!d.markets.length) { body.innerHTML = `<div class="empty"><h3>No markets match “${esc(f.q)}”</h3><p>Try a broader search, or clear it to see the hottest markets.</p></div>`; return; }
       const rows = d.markets.map((m) => {
         const mid = midOf(m);
-        return `<tr><td class="name"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener">${esc(m.ti || m.t)}</a>${m.s ? ` <span class="mk quiet">${esc(m.s)}</span>` : ''}</td>
+        return `<tr><td class="name"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener">${esc(mktLabel(m))}</a>${m.s ? ` <span class="mk quiet">${esc(m.s)}</span>` : ''}</td>
           <td class="num">${mid == null ? '—' : cents(mid)}</td><td class="num">${num(Math.round(+m.v24 || 0))}</td><td class="num">${num(Math.round(+m.oi || 0))}</td>
           <td class="num xlink"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`;
       }).join('');
@@ -1479,7 +1482,7 @@
     const mid = midOf(m), h = m.h || [], delta = h.length >= 2 ? h[h.length - 1] - h[0] : 0;
     const dCents = Math.round(delta * 100), dir = dCents > 0 ? 'pos' : dCents < 0 ? 'neg' : '';
     return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener">
-      <span class="hot-title">${esc(m.ti || m.t)}</span>
+      <span class="hot-title">${esc(mktLabel(m))}</span>
       <span class="hot-mid">${hotChart(h)}<span class="hot-price"><b class="fig">${mid == null ? '—' : cents(mid)}</b>${dCents ? `<span class="hot-delta ${dir}">${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢</span>` : ''}</span></span>
       <span class="hot-foot"><span class="mk quiet">${esc(m.s || '')}</span><span class="hot-vol">${kfmt(m.v24)} vol · 24h</span>${ICON.ext}</span></a>`;
   }
@@ -1765,7 +1768,7 @@
         return 'connected';
       }
       if (id === 'db') return `${num(L.size_mb)} MB · ${num(L.rows)} market rows`;
-      if (id === 'web') return `${num(L.users)} users · serving`;
+      if (id === 'web') return L.users != null ? `${num(L.users)} users · serving` : 'online · serving';
       if (id === 'agents') return `${L.running} running · ${L.queued} queued · ${num(L.done)} done`;
       if (id === 'backtest') return `${num(L.strategies)} strategies tested`;
       if (L.ext) return 'connected';
