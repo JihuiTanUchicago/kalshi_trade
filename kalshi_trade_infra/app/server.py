@@ -255,8 +255,6 @@ def _needs_card(ctx: Ctx) -> bool:
     unlock the moment one is saved."""
     if not billing.configured():
         return False
-    if (ctx.user["email"] or "").lower() == ADMIN_EMAIL.lower():
-        return False  # the operator runs on the house; never gated
     cust = repo.get_stripe_customer(ctx.cur, ctx.uid)
     return not (cust and cust.get("default_pm_id"))
 
