@@ -42,7 +42,7 @@ MAX_ACTIVE_DEPLOYMENTS = 10
 MAX_PAPER_BALANCE = 1_000_000.0
 MAX_WAITLIST_PER_MINUTE = 10
 ADMIN_EMAIL = os.getenv("TAU_ADMIN_EMAIL", "tjhprivate0416@gmail.com")
-SPA_ROUTES = re.compile(r"^/(?:|dashboard|research(?:/\d+)?|strategies(?:/\d+)?|deploy|community|billing|admin|system|funds|signin)$")
+SPA_ROUTES = re.compile(r"^/(?:|dashboard|research(?:/\d+)?|strategies(?:/\d+)?|deploy|community|billing|admin|system|funds|explore|signin)$")
 
 CSP = (
     "default-src 'self'; script-src 'self' https://js.stripe.com https://pay.google.com; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; "
@@ -928,6 +928,65 @@ def admin_system(ctx: Ctx):
 # -- routing -----------------------------------------------------------------------
 
 Route = Tuple[str, "re.Pattern[str]", Callable[[Ctx], Any], bool]
+# -- explore (market browser + hot-markets sidebar) ------------------------------
+# The collector writes a small gzipped feed of the hottest collected markets to S3; the
+# web app reads + caches it, so browsing ~41k markets never touches the data lake per request.
+_EXPLORE_CACHE: Dict[str, Any] = {"at": 0.0, "data": None}
+_EXPLORE_BUCKET = os.getenv("DATALAKE_BUCKET", "kalshi-trade-datalake-568386354218-us-east-1")
+_EXPLORE_KEY = os.getenv("DATALAKE_EXPLORE_KEY", "explore/latest.json.gz")
+_EXPLORE_SORTS = ("v24", "oi", "last")
+
+
+def _explore_feed() -> Dict:
+    import time as _time
+    now = _time.time()
+    if _EXPLORE_CACHE["data"] is not None and now - _EXPLORE_CACHE["at"] < 45:
+        return _EXPLORE_CACHE["data"]
+    try:
+        import gzip as _gzip
+        import boto3
+        raw = boto3.client("s3").get_object(Bucket=_EXPLORE_BUCKET, Key=_EXPLORE_KEY)["Body"].read()
+        data = json.loads(_gzip.decompress(raw))
+    except Exception:  # feed not written yet, or S3 unreachable -> empty, not an error
+        data = {"at": None, "total": 0, "shown": 0, "markets": []}
+    _EXPLORE_CACHE.update(at=now, data=data)
+    return data
+
+
+def _efloat(x) -> float:
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def explore_list(ctx: Ctx):
+    data = _explore_feed()
+    q = (ctx.query.get("q") or "").strip().lower()
+    sort = ctx.query.get("sort") if ctx.query.get("sort") in _EXPLORE_SORTS else "v24"
+    try:
+        page = max(0, int(ctx.query.get("page") or 0))
+    except ValueError:
+        page = 0
+    per = 40
+    markets = data.get("markets") or []
+    if q:
+        markets = [m for m in markets
+                   if q in ((m.get("ti") or "") + " " + (m.get("t") or "") + " " + (m.get("s") or "")).lower()]
+    markets = sorted(markets, key=lambda m: _efloat(m.get(sort)), reverse=True)
+    matched = len(markets)
+    return {"at": data.get("at"), "total": data.get("total"), "shown": data.get("shown"),
+            "matched": matched, "page": page, "per": per, "sort": sort,
+            "markets": [{k: v for k, v in m.items() if k != "h"} for m in markets[page * per:(page + 1) * per]]}
+
+
+def explore_hot(ctx: Ctx):
+    """Top markets that carry a price trace, for the Hot Markets sidebar."""
+    data = _explore_feed()
+    hot = [m for m in (data.get("markets") or []) if m.get("h")][:16]
+    return {"at": data.get("at"), "markets": hot}
+
+
 ROUTES: List[Route] = [
     (m, re.compile("^%s$" % p), fn, needs_user)
     for m, p, fn, needs_user in [
@@ -938,6 +997,8 @@ ROUTES: List[Route] = [
         ("POST", "/api/waitlist", waitlist, False),
         ("GET", "/api/me", me, True),
         ("GET", "/api/dashboard", dashboard, True),
+        ("GET", "/api/explore", explore_list, True),
+        ("GET", "/api/explore/hot", explore_hot, True),
         ("GET", "/api/runs", list_runs, True),
         ("POST", "/api/runs", create_run, True),
         ("GET", r"/api/runs/(\d+)", get_run, True),

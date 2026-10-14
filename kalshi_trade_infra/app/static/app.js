@@ -149,6 +149,7 @@
     [/^\/strategies\/(\d+)$/, viewStrategy],
     [/^\/deploy$/, viewDeploy],
     [/^\/community$/, viewCommunity],
+    [/^\/explore$/, viewExplore],
     [/^\/billing$/, viewBilling],
     [/^\/admin$/, viewAdmin],
     [/^\/system$/, viewSystem],
@@ -283,7 +284,7 @@
   }
 
   // ---------- shell ----------
-  const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/deploy', 'Deploy', 'deploy'], ['/community', 'Community', 'community'], ['/funds', 'Funds', 'funds'], ['/billing', 'Billing', 'credits']];
+  const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/explore', 'Explore', 'explore'], ['/deploy', 'Deploy', 'deploy'], ['/community', 'Community', 'community'], ['/funds', 'Funds', 'funds'], ['/billing', 'Billing', 'credits']];
   // The operator can flip into a plain-user view. Only their own account is an
   // admin at all (server decides); the toggle just hides the admin surface so
   // they can see what a normal user sees. Default: admin view on.
@@ -315,6 +316,7 @@
       localStorage.setItem('tau_admin_off', turningOff ? '1' : '0');
       if (turningOff && location.pathname === '/admin') go('/', true); else render();
     };
+    mountHotRail();
   }
   const boardTitle = (title, sub = '') => `<div class="board-title"><h1 class="page">${esc(title)}</h1>${sub ? `<p class="deck">${sub}</p>` : ''}</div>`;
   // One measured cell. Money direction rides a tint field behind the figure
@@ -475,6 +477,8 @@
     ['How safe is this?', 'Paper trading risks nothing. Live trading is off by default and takes a deliberate, confirmed step; strategies have hard loss guards that pause them automatically, and your Kalshi key is encrypted and never shared.'],
   ];
   async function viewSignin() {
+    const hr = document.getElementById('hotrail'); if (hr) hr.remove();
+    document.body.classList.remove('hot-open');
     if (!S.me) { try { S.me = await api('/api/me'); } catch (e) { /* signed out: stay here */ } }
     if (S.me) return go('/', true);
     const err = new URLSearchParams(location.search).get('error');
@@ -1422,6 +1426,95 @@
       document.head.appendChild(sc);
     });
   }
+  // -- Explore + Hot Markets --------------------------------------------------
+  const midOf = (m) => { const b = +m.bid, a = +m.ask; if (b > 0 && a > 0) return (b + a) / 2; const l = +m.last; return l > 0 ? l : null; };
+  const kalshiUrl = (m) => `https://kalshi.com/markets/${encodeURIComponent((m.s || '').toLowerCase())}`;
+  const kfmt = (n) => { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n)); };
+  const sinceMin = (iso) => { if (!iso) return '—'; const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000); return s < 90 ? 'just now' : Math.round(s / 60) + 'm ago'; };
+
+  async function viewExplore() {
+    const q = new URLSearchParams(location.search);
+    const f = { q: q.get('q') || '', sort: ['v24', 'oi', 'last'].includes(q.get('sort')) ? q.get('sort') : 'v24', page: Math.max(0, +(q.get('page') || 0)) };
+    shell('/explore', boardTitle('Explore', 'Every market Tau is tracking right now — the live book across crypto, politics, sports, weather and more, hottest first. Prices refresh each minute.') +
+      '<dl class="figures measure" id="xfigs" style="margin-top:14px"></dl>', `
+      <div class="section-head filters">
+        <label class="field xsearch" style="margin:0"><span class="vh">Search markets</span>
+          <input class="input" id="xq" type="search" placeholder="Search markets, series, tickers…" value="${esc(f.q)}" autocomplete="off"></label>
+        <div class="chips" role="group" aria-label="Sort by">${[['v24', 'Hottest'], ['oi', 'Open interest'], ['last', 'Price']].map(([v, l]) => `<button class="chip" data-sort="${v}" aria-pressed="${f.sort === v}">${l}</button>`).join('')}</div>
+      </div>
+      <div id="xbody" style="margin-top:16px">${loading(240)}</div>`);
+    const body = root.querySelector('#xbody'), figs = root.querySelector('#xfigs');
+    const sync = () => history.replaceState(null, '', '/explore?' + new URLSearchParams({ q: f.q, sort: f.sort, page: String(f.page) }));
+    const load = async () => {
+      const d = await api('/api/explore?' + new URLSearchParams({ q: f.q, sort: f.sort, page: String(f.page) }));
+      figs.innerHTML = fig('Markets tracked', num(d.total)) + fig('Live now', num(d.shown)) + fig('Matching', num(d.matched)) + fig('Updated', sinceMin(d.at));
+      if (!d.markets.length) { body.innerHTML = `<div class="empty"><h3>No markets match “${esc(f.q)}”</h3><p>Try a broader search, or clear it to see the hottest markets.</p></div>`; return; }
+      const rows = d.markets.map((m) => {
+        const mid = midOf(m);
+        return `<tr><td class="name"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener">${esc(m.ti || m.t)}</a>${m.s ? ` <span class="mk quiet">${esc(m.s)}</span>` : ''}</td>
+          <td class="num">${mid == null ? '—' : cents(mid)}</td><td class="num">${num(Math.round(+m.v24 || 0))}</td><td class="num">${num(Math.round(+m.oi || 0))}</td>
+          <td class="num xlink"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`;
+      }).join('');
+      const pages = Math.max(1, Math.ceil(d.matched / d.per));
+      body.innerHTML = `<div class="sheet"><table><thead><tr><th>Market</th><th class="num">Yes price</th><th class="num">24h volume</th><th class="num">Open int.</th><th class="num" aria-label="Link"></th></tr></thead><tbody>${rows}</tbody></table></div>
+        ${pages > 1 ? `<div class="xpage">${f.page > 0 ? `<button class="btn sm" data-pg="${f.page - 1}">${ICON.up ? '' : ''}← Prev</button>` : '<span></span>'}<span class="lab">Page ${f.page + 1} of ${num(pages)}</span>${f.page + 1 < pages ? `<button class="btn sm" data-pg="${f.page + 1}">Next →</button>` : '<span></span>'}</div>` : ''}`;
+      body.querySelectorAll('[data-pg]').forEach((b) => b.onclick = () => { f.page = +b.dataset.pg; sync(); window.scrollTo({ top: 0, behavior: 'smooth' }); load(); });
+    };
+    let t; root.querySelector('#xq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { f.q = e.target.value.trim(); f.page = 0; sync(); load(); }, 220); });
+    root.querySelectorAll('[data-sort]').forEach((b) => b.onclick = () => { f.sort = b.dataset.sort; f.page = 0; root.querySelectorAll('[data-sort]').forEach((o) => o.setAttribute('aria-pressed', o === b)); sync(); load(); });
+    await load();
+  }
+
+  // Hot Markets left rail: persistent (open/closed survives page switches), refreshes each minute.
+  const hotOpen = () => localStorage.getItem('tau_hotrail') !== '0';
+  let hotLoop = false;
+  function hotChart(h) {
+    if (!h || h.length < 2) return '<div class="hot-chart none"></div>';
+    const W = 104, H = 30, p = 3, lo = Math.min(...h), hi = Math.max(...h), rng = hi - lo || 1;
+    const pts = h.map((v, i) => `${(i / (h.length - 1) * (W - p * 2) + p).toFixed(1)},${(H - p - (v - lo) / rng * (H - p * 2)).toFixed(1)}`);
+    const [ex, ey] = pts[pts.length - 1].split(',');
+    return `<svg class="hot-chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"><polyline points="${pts.join(' ')}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${ex}" cy="${ey}" r="1.9" fill="currentColor"/></svg>`;
+  }
+  function hotRowHtml(m) {
+    const mid = midOf(m), h = m.h || [], delta = h.length >= 2 ? h[h.length - 1] - h[0] : 0;
+    const dCents = Math.round(delta * 100), dir = dCents > 0 ? 'pos' : dCents < 0 ? 'neg' : '';
+    return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener">
+      <span class="hot-title">${esc(m.ti || m.t)}</span>
+      <span class="hot-mid">${hotChart(h)}<span class="hot-price"><b class="fig">${mid == null ? '—' : cents(mid)}</b>${dCents ? `<span class="hot-delta ${dir}">${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢</span>` : ''}</span></span>
+      <span class="hot-foot"><span class="mk quiet">${esc(m.s || '')}</span><span class="hot-vol">${kfmt(m.v24)} vol · 24h</span>${ICON.ext}</span></a>`;
+  }
+  function renderHotRail() {
+    const rail = document.getElementById('hotrail'); if (!rail) return;
+    const open = hotOpen();
+    const d = S.hot;
+    const rows = d && d.markets && d.markets.length ? d.markets.map(hotRowHtml).join('')
+      : `<div class="hot-empty">${d ? 'Warming up — the live book fills in a minute.' : loading(120)}</div>`;
+    rail.innerHTML = `<button class="hot-tab" data-hot="toggle" aria-expanded="${open}" aria-label="${open ? 'Collapse hot markets' : 'Expand hot markets'}"><span class="hot-tab-label">Hot markets</span><span class="hot-chev">${open ? '‹' : '›'}</span></button>
+      <div class="hot-panel">
+        <div class="hot-head"><div><span class="hot-kicker">Hot markets</span><span class="hot-now"><span class="hot-dot"></span>Right now</span></div><button class="hot-x" data-hot="toggle" aria-label="Collapse">‹</button></div>
+        <div class="hot-list">${rows}</div>
+        <div class="hot-ft">${d && d.at ? 'Updated ' + sinceMin(d.at) : ''} · <a href="/explore">See all markets →</a></div>
+      </div>`;
+    rail.querySelectorAll('[data-hot="toggle"]').forEach((b) => b.onclick = (e) => {
+      if (e.currentTarget.classList.contains('hot-tab') && open) return; // the spine only expands
+      const next = !hotOpen(); localStorage.setItem('tau_hotrail', next ? '1' : '0');
+      document.body.classList.toggle('hot-open', next); renderHotRail();
+    });
+    rail.querySelector('.hot-ft a') && (rail.querySelector('.hot-ft a').onclick = (e) => { e.preventDefault(); go('/explore'); });
+  }
+  async function refreshHot() {
+    try { S.hot = await api('/api/explore/hot'); renderHotRail(); } catch (e) {}
+  }
+  function mountHotRail() {
+    if (!S.me || !S.me.user) return;
+    document.body.classList.toggle('hot-open', hotOpen());
+    if (!document.getElementById('hotrail')) { const a = document.createElement('aside'); a.className = 'hotrail'; a.id = 'hotrail'; document.body.appendChild(a); }
+    renderHotRail();
+    const stale = !S.hot || !S.hotAt || Date.now() - S.hotAt > 55000;
+    if (stale) refreshHot().then(() => { S.hotAt = Date.now(); });
+    if (!hotLoop) { hotLoop = true; setInterval(() => { if (document.getElementById('hotrail')) refreshHot().then(() => { S.hotAt = Date.now(); }); }, 60000); }
+  }
+
   const KIND_LABEL = { bonus: 'Welcome credits', topup: 'Added credits', autoreload: 'Auto-reload', usage: 'Agent usage', admin_grant: 'Admin grant' };
   async function viewBilling() {
     shell('/billing', boardTitle('Billing', 'Credits pay for agent research and chat, billed per token at model list price. Paper and live trading themselves are free.') +
@@ -1483,7 +1576,12 @@
       root.querySelector('#topup-btn').onclick = (e) => {
         if (e.currentTarget.getAttribute('aria-disabled')) { flash('#topup-flash', 'Add a card first.', 'bad'); return; }
         busy(e.currentTarget, async () => {
-          try { const r = await api('/api/billing/topup', { amount: +amt.value }); flash('#topup-flash', `Added. Balance: ${usd(r.balance)}.`, 'good'); await load(); } catch (err) { flash('#topup-flash', err.message, 'bad'); }
+          const credits = +amt.value;
+          try {
+            const r = await api('/api/billing/topup', { amount: credits });
+            await load();  // refresh balance + ledger, then confirm into the fresh panel
+            flash('#topup-flash', `Added ${usd(credits)} in credits. You paid ${usd(credits * (1 + fee))} — ${usd(credits)} plus the ${d.topup_fee_pct}% fee. New balance is ${usd(r.balance)}.`, 'good');
+          } catch (err) { flash('#topup-flash', err.message, 'bad'); }
         });
       };
       const arBox = root.querySelector('#autoreload'), arAmt = root.querySelector('#reload-amt'), arThr = root.querySelector('#reload-thr');

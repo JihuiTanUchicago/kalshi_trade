@@ -144,7 +144,10 @@ def _write_parquet(rows: List[Dict], minute: datetime) -> str:
 
 
 EXPLORE_KEY = os.getenv("DATALAKE_EXPLORE_KEY", "explore/latest.json.gz")
-EXPLORE_TOP = int(os.getenv("EXPLORE_TOP", "3000"))  # hottest N markets surfaced to the Explore tab
+EXPLORE_TOP = int(os.getenv("EXPLORE_TOP", "3000"))   # hottest N markets surfaced to the Explore tab
+HOT_TOP = int(os.getenv("EXPLORE_HOT_TOP", "40"))     # hottest N carry a price trace for the sidebar charts
+HOT_HIST = int(os.getenv("EXPLORE_HOT_HIST", "45"))   # minutes of rolling mid-price kept per hot market
+_hist: Dict[str, List[float]] = {}  # ticker -> rolling yes-mid ($), in-memory; a "right now" sidebar
 
 
 def _fnum(x) -> float:
@@ -154,26 +157,44 @@ def _fnum(x) -> float:
         return 0.0
 
 
+def _mid(r: Dict) -> Optional[float]:
+    bid, ask = _fnum(r.get("yes_bid")), _fnum(r.get("yes_ask"))
+    if bid > 0 and ask > 0:
+        return round((bid + ask) / 2.0, 4)
+    last = _fnum(r.get("last"))
+    return round(last, 4) if last > 0 else None
+
+
 def _write_explore_feed(rows: List[Dict], minute: datetime) -> None:
-    """Compact, gzipped feed of the hottest markets for the user-facing Explore tab.
-    One small object the web app reads + caches, so no lake-query or extra deps on the web box."""
+    """Compact, gzipped feed of the hottest markets for the user-facing Explore tab + Hot Markets
+    sidebar. One small object the web app reads + caches, so no lake-query or extra deps on the web
+    box. The top HOT_TOP markets carry a rolling price trace so the sidebar can draw a real chart."""
     import boto3
     global _s3
     if _s3 is None:
         _s3 = boto3.client("s3")
     ranked = sorted(rows, key=lambda r: _fnum(r.get("volume_24h")), reverse=True)[:EXPLORE_TOP]
-    feed = {
-        "at": minute.isoformat(),
-        "total": len(rows),
-        "shown": len(ranked),
-        "markets": [
-            {"t": r["ticker"], "s": r["series_ticker"], "ev": r.get("event_ticker"),
+    # Roll the mid-price history for the current hot set; forget anything that fell out.
+    hot_tickers = {r["ticker"] for r in ranked[:HOT_TOP]}
+    for ticker in list(_hist):
+        if ticker not in hot_tickers:
+            del _hist[ticker]
+    for r in ranked[:HOT_TOP]:
+        m = _mid(r)
+        if m is not None:
+            buf = _hist.setdefault(r["ticker"], [])
+            buf.append(m)
+            del buf[:-HOT_HIST]
+    markets = []
+    for i, r in enumerate(ranked):
+        m = {"t": r["ticker"], "s": r["series_ticker"], "ev": r.get("event_ticker"),
              "ti": r.get("title") or "", "last": r.get("last"), "bid": r.get("yes_bid"),
              "ask": r.get("yes_ask"), "v24": r.get("volume_24h"), "oi": r.get("open_interest"),
              "st": r.get("status")}
-            for r in ranked
-        ],
-    }
+        if i < HOT_TOP and _hist.get(r["ticker"]):
+            m["h"] = _hist[r["ticker"]]
+        markets.append(m)
+    feed = {"at": minute.isoformat(), "total": len(rows), "shown": len(ranked), "markets": markets}
     body = gzip.compress(json.dumps(feed, separators=(",", ":")).encode())
     _s3.put_object(Bucket=BUCKET, Key=EXPLORE_KEY, Body=body,
                    ContentType="application/json", ContentEncoding="gzip")
