@@ -779,6 +779,11 @@
         ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
         <label class="field"><span>Describe your idea</span>
           <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="Bro idk just give me a trading strategy frfr&#10;&#10;…or be specific: &quot;Sell overpriced tails in the last hour before the 5pm close.&quot;"></textarea></label>
+        <div class="dispatch-tune" style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;margin-top:2px">
+          <label class="field" style="margin:0"><span>Strategies to test</span>
+            <input class="input" type="number" name="max_hypotheses" id="maxhyp" min="1" max="50" value="10" style="width:92px"></label>
+          <label class="switch" style="margin-top:18px"><input type="checkbox" name="run_forever" id="runforever"><span>Let it run until I stop it</span></label>
+        </div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;justify-content:space-between">
           <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="label" style="margin-bottom:6px">Market</legend>
             <div class="choice">${me.markets.map((m, i) => `<label><input type="radio" name="market" value="${m.key}" ${i === 0 ? 'checked' : ''}><span class="opt"><b>${esc(marketShort(m.key))}</b></span></label>`).join('')}</div>
@@ -793,6 +798,8 @@
         <div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div></section>`);
     root.querySelectorAll('[data-ex]').forEach((b) => { b.onclick = () => { const t = root.querySelector('textarea[name=prompt]'); t.value = b.dataset.ex; t.focus(); }; });
     const form = root.querySelector('#dispatch');
+    const rf = form.querySelector('#runforever'), mh = form.querySelector('#maxhyp');
+    if (rf && mh) rf.addEventListener('change', () => { mh.disabled = rf.checked; mh.style.opacity = rf.checked ? '.4' : ''; });
     form.onsubmit = async (e) => {
       e.preventDefault();
       if (me.needs_card) { flash('#dflash', 'Add a payment method on the Billing tab first.', 'bad'); go('/billing'); return; }
@@ -800,7 +807,11 @@
       const btn = form.querySelector('button[type=submit]');
       await busy(btn, async () => {
         try {
-          const r = await api('/api/runs', { market: fd.get('market'), prompt: fd.get('prompt') });
+          const r = await api('/api/runs', {
+            market: fd.get('market'), prompt: fd.get('prompt'),
+            max_hypotheses: Number(fd.get('max_hypotheses')) || undefined,
+            run_forever: fd.get('run_forever') === 'on',
+          });
           go('/research/' + r.id);
         } catch (err) { flash('#dflash', err.message, 'bad'); }
       });

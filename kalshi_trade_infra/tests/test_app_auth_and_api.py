@@ -116,7 +116,7 @@ def ctx(body=None, params=(), query=None):
 
 def test_create_run_happy_path(monkeypatch):
     monkeypatch.setattr(server.repo, "count_runs", lambda *a, **k: 0)
-    monkeypatch.setattr(server.repo, "create_run", lambda cur, uid, kind, market, direction, prompt: 42)
+    monkeypatch.setattr(server.repo, "create_run", lambda cur, uid, kind, market, direction, prompt, **kw: 42)
     assert server.create_run(ctx({"market": "btc_daily", "prompt": "Sell overpriced tails before the close"})) == {"id": 42}
 
 

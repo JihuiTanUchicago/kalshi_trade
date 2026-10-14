@@ -48,9 +48,11 @@ DIRECTIONS: Dict[str, Dict[str, str]] = {
     "open": {"label": "Agent's choice", "brief": "Pick the most promising angle yourself and say why."},
 }
 
-ROUND1_COUNT = 4
-ROUND2_COUNT = 3
-FINALISTS = 3
+BATCH = 4                 # hypotheses proposed per round; small so each round can LEARN from the last
+DEFAULT_HYPOTHESES = 8    # when the user doesn't set a budget
+MAX_BUDGET = 50           # hard ceiling a user can request for one run
+FINALISTS = 3             # per chunk, only the best few are gated on unseen data (multiple-testing discipline)
+FOREVER_CAP = 300         # safety ceiling for run_forever; credits exhausting also stops it
 MAX_ACTIONS = 3
 MIN_FRAMES = 200
 
@@ -183,6 +185,84 @@ def _bill(conn, user_id, usage, run_id):
         billing.charge_usage(conn, user_id, current_model(), usage.input_tokens, usage.output_tokens, run_id)
 
 
+def _round_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], want: int, chunk: List[Dict]) -> str:
+    """Round 1 asks fresh; later rounds show the agent its own in-sample results so it
+    refines — the loop is a conversation with the data, not a fixed two-shot."""
+    base = _research_prompt(run, ds, memory, want)
+    if not chunk:
+        return base
+    table = "\n".join(
+        "- %s: %s; spec=%s" % (t["title"], _metrics_line(t["in_sample"]), json.dumps(t["spec"], separators=(",", ":")))
+        for t in chunk
+    )
+    return (base + "\n\nResults so far this session (in-sample only; out-of-sample is held back):\n" + table
+            + "\n\nPropose %d NEW, distinct hypotheses: refine what worked, drop what did not, "
+              "and explain the change in each thesis." % want)
+
+
+def _finalists(chunk: List[Dict]) -> List[Dict]:
+    """The few best in-sample hypotheses that earn an unseen-data test. Kept small on
+    purpose: testing every idea out-of-sample is multiple-testing and manufactures false edges."""
+    ranked = sorted(chunk, key=lambda t: backtest.score(t["in_sample"]), reverse=True)
+    n = min(max(FINALISTS, len(chunk) // 10), 8)
+    return [t for t in ranked[:n] if t["in_sample"]["pnl"] > 0 and t["in_sample"]["trades"] >= 5]
+
+
+def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, chunk: List[Dict], log) -> int:
+    """Freeze the finalists, test ONLY them on unseen data, and persist every hypothesis
+    (finalists with their out-of-sample verdict, the rest as rejected). Returns passers."""
+    user_id, run_id, market = run["user_id"], run["id"], run["market"]
+    s = ds.summary()
+    finalists = _finalists(chunk)
+    log("step", "Froze %d finalist%s. Now testing on data the agent never saw."
+        % (len(finalists), "" if len(finalists) == 1 else "s"))
+    passed = 0
+    for t in chunk:
+        if t in finalists:
+            result = backtest.evaluate(t["spec"], ds)
+            status = "passed" if result["passed"] else "failed"
+            passed += status == "passed"
+            verdict = "PASSED" if status == "passed" else "VOID"
+            log("verdict", "%s - %s: unseen-data pnl $%s over %s trades."
+                % (verdict, t["title"], result["out_of_sample"]["pnl"], result["out_of_sample"]["trades"]),
+                {"title": t["title"], "status": status, "gates": result["gates"]})
+        else:
+            result = {"capital": t["capital"], "dataset": s, "in_sample": t["in_sample"]}
+            status = "rejected"
+            ins = t["in_sample"] or {}
+            log("verdict", "REJECTED - %s: not a finalist, so never tested on unseen data "
+                "(in-sample pnl $%s over %s trades)." % (t["title"], ins.get("pnl"), ins.get("trades")),
+                {"title": t["title"], "status": "rejected"})
+        t["strategy_id"] = repo.insert_strategy(
+            cur, user_id, run_id, None, market, run["direction"] or "custom", t["title"], t["thesis"], t["spec"],
+            status, result,
+        )
+    return passed
+
+
+def _explore_and_gate(cur, run, ds, memory, model, usage, log, checkpoint, budget, tried) -> Tuple[int, int]:
+    """Explore up to `budget` NEW hypotheses in-sample (small refining rounds), then gate
+    the finalists. Appends to the shared `tried` so progress survives a cancel/error."""
+    market = run["market"]
+    chunk: List[Dict] = []
+    round_no = 0
+    while len(chunk) < budget:
+        checkpoint()
+        round_no += 1
+        want = min(BATCH, budget - len(chunk))
+        batch = ask_json(model, RESEARCH_SYSTEM,
+                         [{"role": "user", "content": _round_prompt(run, ds, memory, want, chunk)}],
+                         _hypotheses_check(market, want), usage)
+        if not batch:
+            break  # agent is out of fresh ideas this chunk
+        for h in batch:
+            checkpoint()
+            t = _test_in_sample(h, ds, log, round_no)
+            chunk.append(t)
+            tried.append(t)
+    return len(chunk), _gate_and_save(cur, run, ds, chunk, log)
+
+
 def run_research(
     conn,
     run: Dict,
@@ -208,61 +288,28 @@ def run_research(
         s = ds.summary()
         log("step", "Loaded %s of %s history: %s decision points over %s contracts."
             % (_span_words(ds), MARKETS[market].label, s["decision_points"], s["contracts"]), s)
-        memory = repo.strategy_memory(cur, user_id, market)
-        if memory:
-            log("step", "Read %d earlier results from your past research." % len(memory))
+        budget = max(1, min(int(run.get("max_hypotheses") or DEFAULT_HYPOTHESES), MAX_BUDGET))
+        forever = bool(run.get("run_forever"))
+        log("step", "Plan: explore %s, refining each round on the in-sample results, then gate the best on data never seen.%s"
+            % ("hypotheses until you stop it" if forever else "up to %d hypotheses" % budget,
+               " I'll keep going until you stop me." if forever else ""))
 
-        log("step", "Drafting hypotheses.")
-        first = ask_json(model, RESEARCH_SYSTEM, [{"role": "user", "content": _research_prompt(run, ds, memory, ROUND1_COUNT)}],
-                         _hypotheses_check(market, ROUND1_COUNT), usage)
-        for h in first:
+        total_passed = 0
+        while True:
             checkpoint()
-            tried.append(_test_in_sample(h, ds, log, round_no=1))
+            # Reload memory each chunk so a run_forever loop learns from the strategies it
+            # just saved, instead of re-proposing the same ideas.
+            memory = repo.strategy_memory(cur, user_id, market)
+            n, passed = _explore_and_gate(cur, run, ds, memory, model, usage, log, checkpoint, budget, tried)
+            total_passed += passed
+            if n == 0 or not forever or len(tried) >= FOREVER_CAP:
+                break
+            log("step", "Still running - %d tested so far, %d passed. Exploring more (stop anytime)."
+                % (len(tried), total_passed))
 
-        checkpoint()
-        log("step", "Refining on what the in-sample results showed.")
-        table = "\n".join("- %s: %s; spec=%s" % (t["title"], _metrics_line(t["in_sample"]),
-                                                 json.dumps(t["spec"], separators=(",", ":"))) for t in tried)
-        refine = (
-            _research_prompt(run, ds, memory, ROUND2_COUNT)
-            + "\n\nRound 1 in-sample results (out-of-sample is held back):\n" + table
-            + "\n\nPropose %d new hypotheses: refine what worked, drop what did not, and explain the change in each thesis."
-            % ROUND2_COUNT
-        )
-        second = ask_json(model, RESEARCH_SYSTEM, [{"role": "user", "content": refine}],
-                          _hypotheses_check(market, ROUND2_COUNT), usage)
-        for h in second:
-            checkpoint()
-            tried.append(_test_in_sample(h, ds, log, round_no=2))
-
-        checkpoint()
-        ranked = sorted(tried, key=lambda t: backtest.score(t["in_sample"]), reverse=True)
-        finalists = [t for t in ranked[:FINALISTS] if t["in_sample"]["pnl"] > 0 and t["in_sample"]["trades"] >= 5]
-        log("step", "Froze %d finalist%s. Now testing on data the agent never saw."
-            % (len(finalists), "" if len(finalists) == 1 else "s"))
-        passed = 0
-        for t in tried:
-            if t in finalists:
-                result = backtest.evaluate(t["spec"], ds)
-                status = "passed" if result["passed"] else "failed"
-                passed += status == "passed"
-                verdict = "PASSED" if status == "passed" else "VOID"
-                log("verdict", "%s - %s: unseen-data pnl $%s over %s trades."
-                    % (verdict, t["title"], result["out_of_sample"]["pnl"], result["out_of_sample"]["trades"]),
-                    {"title": t["title"], "status": status, "gates": result["gates"]})
-            else:
-                result = {"capital": t["capital"], "dataset": s, "in_sample": t["in_sample"]}
-                status = "rejected"
-                ins = t["in_sample"] or {}
-                log("verdict", "REJECTED - %s: not a finalist, so never tested on unseen data "
-                    "(in-sample pnl $%s over %s trades)." % (t["title"], ins.get("pnl"), ins.get("trades")),
-                    {"title": t["title"], "status": "rejected"})
-            t["strategy_id"] = repo.insert_strategy(
-                cur, user_id, run_id, None, market, run["direction"] or "custom", t["title"], t["thesis"], t["spec"],
-                status, result,
-            )
-        log("done", "%d of %d hypotheses passed every gate." % (passed, len(tried)), {"passed": passed, "tried": len(tried)})
-        repo.finish_run(cur, run_id, "succeeded", None, len(tried), passed, usage.input_tokens, usage.output_tokens)
+        log("done", "%d of %d hypotheses passed every gate." % (total_passed, len(tried)),
+            {"passed": total_passed, "tried": len(tried)})
+        repo.finish_run(cur, run_id, "succeeded", None, len(tried), total_passed, usage.input_tokens, usage.output_tokens)
         _bill(conn, user_id, usage, run_id)
     except Cancelled:
         log("step", "Cancelled.")

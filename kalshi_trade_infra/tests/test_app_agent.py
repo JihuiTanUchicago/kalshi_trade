@@ -52,7 +52,7 @@ def hyps(*specs):
 def test_research_loop_saves_everything_and_hides_out_of_sample(monkeypatch):
     store = Store(monkeypatch)
     model, prompts = scripted([hyps(WINNER, LOSER), hyps(WINNER)])
-    agent.run_research(Conn(), RUN, model=model, dataset_fn=lambda m: _dataset(n_contracts=60))
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 3}, model=model, dataset_fn=lambda m: _dataset(n_contracts=60))
     status, error, tried, passed = store.finished
     assert status == "succeeded" and tried == 3 and passed >= 1
     assert len(store.strategies) == 3
@@ -70,7 +70,7 @@ def test_invalid_spec_gets_one_repair(monkeypatch):
     store = Store(monkeypatch)
     bad = hyps({"entry": {"min_edge": 7}})
     model, prompts = scripted([bad, hyps(WINNER), hyps(WINNER)])
-    agent.run_research(Conn(), RUN, model=model, dataset_fn=lambda m: _dataset(n_contracts=60))
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 2}, model=model, dataset_fn=lambda m: _dataset(n_contracts=60))
     assert store.finished[0] == "succeeded"
     assert "rejected" in prompts[1] and "min_edge=7" in prompts[1]
 
@@ -134,3 +134,33 @@ def test_adjustment_that_fails_the_gates_is_not_proposed(monkeypatch):
 
 def test_llm_error_type():
     assert issubclass(LLMError, RuntimeError)
+
+
+def test_budget_is_honored_and_the_agent_iterates(monkeypatch):
+    store = Store(monkeypatch)
+    # budget 10, BATCH 4 -> refining rounds of 4, 4, 2 (not a fixed two-shot)
+    model, prompts = scripted([hyps(WINNER, LOSER, WINNER, LOSER),
+                               hyps(WINNER, LOSER, WINNER, LOSER),
+                               hyps(WINNER, LOSER)])
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 10}, model=model, dataset_fn=lambda m: _dataset(n_contracts=60))
+    status, error, tried, passed = store.finished
+    assert status == "succeeded" and tried == 10            # the 10-hypothesis budget was honored
+    assert len(prompts) == 3                                # it iterated 3 refining rounds
+    assert "Results so far" in prompts[1]                   # later rounds learn from prior in-sample results
+
+
+def test_run_forever_runs_many_chunks_until_cancelled(monkeypatch):
+    store = Store(monkeypatch)
+    beats = {"n": 0}
+
+    def hb(cur, run_id):
+        beats["n"] += 1
+        return "running" if beats["n"] < 10 else "cancelled"
+
+    monkeypatch.setattr(agent.repo, "heartbeat", hb)
+    model, _ = scripted([hyps(WINNER, LOSER)] * 30)
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 2, "run_forever": True},
+                       model=model, dataset_fn=lambda m: _dataset(n_contracts=60))
+    assert store.finished is None                            # cancelled mid-run, not "succeeded"
+    assert any(k == "step" and "Cancelled" in m for (k, m, d) in store.events)
+    assert len(store.strategies) >= 2                        # it had completed at least one chunk first

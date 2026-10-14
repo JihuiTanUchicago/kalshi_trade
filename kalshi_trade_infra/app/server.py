@@ -279,13 +279,22 @@ def create_run(ctx: Ctx):
         raise ApiError(400, "Describe your idea in a sentence or two first.")
     if direction is not None and direction not in agent.DIRECTIONS:
         direction = None
+    # How hard to search: the agent tests up to `max_hypotheses` (clamped 1..MAX_BUDGET),
+    # or keeps going until stopped when `run_forever` is set.
+    try:
+        max_hyp = int(ctx.body.get("max_hypotheses") or agent.DEFAULT_HYPOTHESES)
+    except (TypeError, ValueError):
+        max_hyp = agent.DEFAULT_HYPOTHESES
+    max_hyp = max(1, min(max_hyp, agent.MAX_BUDGET))
+    run_forever = bool(ctx.body.get("run_forever"))
     cur = ctx.cur
     _require_billing_ready(ctx, "researching")
     if repo.count_runs(cur, ctx.uid, "research", active_only=True) >= MAX_ACTIVE_RESEARCH:
         raise ApiError(429, "You already have %d agents researching. Wait for one to finish." % MAX_ACTIVE_RESEARCH)
     if repo.count_runs(cur, ctx.uid, "research", since=repo.now_utc() - timedelta(days=1)) >= MAX_RESEARCH_PER_DAY:
         raise ApiError(429, "Daily research limit reached (%d). It resets over the next 24 hours." % MAX_RESEARCH_PER_DAY)
-    run_id = repo.create_run(cur, ctx.uid, "research", market, direction, idea)
+    run_id = repo.create_run(cur, ctx.uid, "research", market, direction, idea,
+                             max_hypotheses=max_hyp, run_forever=run_forever)
     return {"id": run_id}
 
 
