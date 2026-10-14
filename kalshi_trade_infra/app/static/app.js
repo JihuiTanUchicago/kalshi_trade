@@ -294,7 +294,7 @@
     document.body.classList.remove('landing-body');
     const u = S.me.user;
     const here = (NAV.concat([['/admin', 'Admin'], ['/system', 'System']]).find(([href]) => href === active) || ['', ''])[1];
-    const items = NAV.concat(adminViewOn() ? [['/admin', 'Admin', 'admin']] : []).concat([['/system', 'System', 'system']]);
+    const items = NAV.concat([['/system', 'System', 'system']]).concat(adminViewOn() ? [['/admin', 'Admin', 'admin']] : []);
     const nav = items.map(([href, label]) => `<a class="svc-link" href="${href}" ${active === href ? 'aria-current="page"' : ''}>${label}</a>`).join('');
     const adminToggle = isAdmin()
       ? `<button class="admin-toggle" data-action="admintoggle" role="switch" aria-checked="${adminViewOn()}" title="${adminViewOn() ? 'Admin mode on \u2014 click to view as a user' : 'Admin mode off \u2014 click to show admin'}"><span class="admin-track"><span class="admin-knob"></span></span>Admin</button><span class="sep">\u00b7</span>`
@@ -1435,8 +1435,38 @@
   const kfmt = (n) => { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n)); };
   const sinceMin = (iso) => { if (!iso) return '—'; const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000); return s < 90 ? 'just now' : Math.round(s / 60) + 'm ago'; };
 
+  function priceChart(points) {
+    if (!points || points.length < 2) return '<div class="empty"><h3>Not enough history yet</h3><p>This market is new or thinly traded — its price curve fills in as it trades.</p></div>';
+    const W = 760, H = 260, pl = 44, pr = 14, pt = 14, pb = 26, iw = W - pl - pr, ih = H - pt - pb;
+    const ts = points.map((p) => p.t), t0 = Math.min(...ts), t1 = Math.max(...ts), tr = (t1 - t0) || 1;
+    const x = (t) => pl + (t - t0) / tr * iw, y = (v) => pt + (1 - v) * ih;
+    const grid = [0, .25, .5, .75, 1].map((v) => `<line x1="${pl}" y1="${y(v).toFixed(1)}" x2="${W - pr}" y2="${y(v).toFixed(1)}" class="pc-grid"/><text x="${pl - 8}" y="${(y(v) + 3).toFixed(1)}" class="pc-ylab">${Math.round(v * 100)}¢</text>`).join('');
+    const line = points.map((p) => `${x(p.t).toFixed(1)},${y(p.yes).toFixed(1)}`).join(' ');
+    const fmt = (t) => { const d = new Date(t * 1000); return `${d.getMonth() + 1}/${d.getDate()}`; };
+    return `<svg class="pchart" viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Yes price history">${grid}<polyline points="${line}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><text x="${pl}" y="${H - 6}" class="pc-xlab">${fmt(t0)}</text><text x="${W - pr}" y="${H - 6}" class="pc-xlab" text-anchor="end">${fmt(t1)}</text></svg>`;
+  }
+  async function viewMarketDetail(ticker) {
+    shell('/explore', boardTitle('Market'), loading(300));
+    let d;
+    try { d = await api('/api/explore/market?ticker=' + encodeURIComponent(ticker)); }
+    catch (e) { root.querySelector('main').innerHTML = notice(e.message, 'bad') + `<p style="margin-top:12px"><a class="btn sm" href="/explore">← Back to Explore</a></p>`; return; }
+    const mid = midOf({ bid: d.yes_bid, ask: d.yes_ask, last: d.last });
+    const label = mktLabel({ ti: d.title, su: d.sub, t: d.ticker });
+    const closes = d.close_time ? new Date(d.close_time).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+    const gran = d.period_min >= 1440 ? 'daily' : d.period_min >= 60 ? 'hourly' : 'per-minute';
+    shell('/explore', boardTitle(label, `${d.series} · ${d.status || 'market'} · ${d.ticker}`) +
+      '<dl class="figures measure" style="margin-top:14px">' +
+        fig('Yes price', mid == null ? '—' : cents(mid)) + fig('24h volume', num(Math.round(+d.volume_24h || 0))) +
+        fig('Open interest', num(Math.round(+d.open_interest || 0))) + fig('Closes', closes) + '</dl>', `
+      <section class="sect"><div class="sect-head"><h2>Price history</h2><p>Yes price · Kalshi ${gran} candles</p></div>
+        <div class="pchart-wrap">${priceChart(d.points)}</div></section>
+      <div class="xpage"><a class="btn sm" href="/explore">← Back to Explore</a>
+        <a class="btn sm" href="https://kalshi.com/markets/${encodeURIComponent((d.series || '').toLowerCase())}" target="_blank" rel="noopener">View on Kalshi ↗</a></div>`);
+  }
+
   async function viewExplore() {
     const q = new URLSearchParams(location.search);
+    if (q.get('m')) return viewMarketDetail(q.get('m'));
     const f = { q: q.get('q') || '', sort: ['v24', 'oi', 'last'].includes(q.get('sort')) ? q.get('sort') : 'v24', page: Math.max(0, +(q.get('page') || 0)) };
     shell('/explore', boardTitle('Explore', 'Every market Tau is tracking right now — the live book across crypto, politics, sports, weather and more, hottest first. Prices refresh each minute.') +
       '<dl class="figures measure" id="xfigs" style="margin-top:14px"></dl>', `
@@ -1454,7 +1484,7 @@
       if (!d.markets.length) { body.innerHTML = `<div class="empty"><h3>No markets match “${esc(f.q)}”</h3><p>Try a broader search, or clear it to see the hottest markets.</p></div>`; return; }
       const rows = d.markets.map((m) => {
         const mid = midOf(m);
-        return `<tr><td class="name"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener">${esc(mktLabel(m))}</a>${m.s ? ` <span class="mk quiet">${esc(m.s)}</span>` : ''}</td>
+        return `<tr><td class="name"><a href="/explore?m=${encodeURIComponent(m.t)}">${esc(mktLabel(m))}</a>${m.s ? ` <span class="mk quiet">${esc(m.s)}</span>` : ''}</td>
           <td class="num">${mid == null ? '—' : cents(mid)}</td><td class="num">${num(Math.round(+m.v24 || 0))}</td><td class="num">${num(Math.round(+m.oi || 0))}</td>
           <td class="num xlink"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`;
       }).join('');

@@ -994,6 +994,55 @@ def explore_hot(ctx: Ctx):
     return {"at": data.get("at"), "markets": hot}
 
 
+def _cnum(x) -> Optional[float]:
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return None
+
+
+def explore_market(ctx: Ctx):
+    """One market's dataset for the Explore detail view: its metadata plus the price
+    history Kalshi has for it (the same candlesticks the backtester trains on). Fetched
+    on demand from Kalshi's public API — no lake query, no new storage."""
+    from data_pipeline.common import api_get, parse_iso_to_dt
+    import time as _time
+    ticker = (ctx.query.get("ticker") or "").strip()
+    if not ticker:
+        raise ApiError(400, "No market given.")
+    series = ticker.split("-", 1)[0]
+    try:
+        m = (api_get("/markets/%s" % ticker) or {}).get("market") or {}
+        open_ts = int(parse_iso_to_dt(m.get("open_time")).timestamp()) if m.get("open_time") else None
+        close_ts = int(parse_iso_to_dt(m.get("close_time")).timestamp()) if m.get("close_time") else None
+        now = int(_time.time())
+        start = open_ts or (now - 30 * 86400)
+        end = min(close_ts or now, now)
+        span = max(1, end - start)
+        period = 1 if span <= 6 * 3600 else (60 if span <= 60 * 86400 else 1440)  # minutes
+        cs = api_get("/series/%s/markets/%s/candlesticks" % (series, ticker),
+                     {"start_ts": start, "end_ts": end, "period_interval": period}).get("candlesticks") or []
+    except Exception as e:
+        raise ApiError(502, "Couldn't load this market's history: %s" % e)
+    points = []
+    for c in cs:
+        price = (c.get("price") or {})
+        yb, ya = (c.get("yes_bid") or {}), (c.get("yes_ask") or {})
+        yes = _cnum(price.get("close_dollars"))
+        if yes is None:
+            b, a = _cnum(yb.get("close_dollars")), _cnum(ya.get("close_dollars"))
+            yes = (b + a) / 2 if b is not None and a is not None else None
+        if yes is not None:
+            points.append({"t": int(c["end_period_ts"]), "yes": round(yes, 4), "vol": _cnum(c.get("volume_fp")) or 0})
+    return {
+        "ticker": ticker, "series": series,
+        "title": m.get("title") or ticker, "sub": m.get("yes_sub_title") or m.get("subtitle") or "",
+        "yes_bid": m.get("yes_bid_dollars"), "yes_ask": m.get("yes_ask_dollars"), "last": m.get("last_price_dollars"),
+        "volume_24h": m.get("volume_24h_fp"), "open_interest": m.get("open_interest_fp"),
+        "status": m.get("status"), "close_time": m.get("close_time"), "period_min": period, "points": points,
+    }
+
+
 ROUTES: List[Route] = [
     (m, re.compile("^%s$" % p), fn, needs_user)
     for m, p, fn, needs_user in [
@@ -1006,6 +1055,7 @@ ROUTES: List[Route] = [
         ("GET", "/api/dashboard", dashboard, True),
         ("GET", "/api/explore", explore_list, True),
         ("GET", "/api/explore/hot", explore_hot, True),
+        ("GET", "/api/explore/market", explore_market, True),
         ("GET", "/api/runs", list_runs, True),
         ("POST", "/api/runs", create_run, True),
         ("GET", r"/api/runs/(\d+)", get_run, True),
