@@ -1513,10 +1513,10 @@
   // the map shows what the running codebase is doing right now.
   const SYS_H = 54, SYS_DBH = 104;
   const SYS_NODES = [
-    { id: 'kalshi', x: 40, y: 40, w: 128, label: 'Kalshi API', sub: 'markets + order book', ext: 1 },
-    { id: 'coinbase', x: 40, y: 150, w: 128, label: 'Coinbase', sub: 'BTC spot price', ext: 1 },
-    { id: 'bedrock', x: 40, y: 330, w: 128, label: 'Claude · Bedrock', sub: 'the research agent', ext: 1 },
-    { id: 'stripe', x: 40, y: 460, w: 128, label: 'Stripe', sub: 'cards + credits', ext: 1 },
+    { id: 'kalshi', x: 40, y: 40, w: 150, label: 'Kalshi API', sub: 'markets + order book', ext: 1 },
+    { id: 'coinbase', x: 40, y: 150, w: 150, label: 'Coinbase', sub: 'BTC spot price', ext: 1 },
+    { id: 'bedrock', x: 40, y: 330, w: 150, label: 'Claude · Bedrock', sub: 'the research agent', ext: 1 },
+    { id: 'stripe', x: 40, y: 460, w: 150, label: 'Stripe', sub: 'cards + credits', ext: 1 },
     { id: 'forward', x: 250, y: 30, w: 158, label: 'Forward collector', sub: 'Kalshi book → DB' },
     { id: 'cb_coll', x: 250, y: 150, w: 158, label: 'Coinbase collector', sub: '1-minute candles' },
     { id: 'features', x: 250, y: 270, w: 158, label: 'Feature builder', sub: 'per-minute features' },
@@ -1562,7 +1562,7 @@
     const nodes = SYS_NODES.map((n) => {
       const h = n.big ? SYS_DBH : SYS_H;
       return `<g class="sys-node ${n.ext ? 'ext' : ''}" data-id="${n.id}" transform="translate(${n.x},${n.y})" tabindex="0" role="button" aria-label="${esc(n.label)}">
-        <rect width="${n.w}" height="${h}" rx="${n.ext ? h / 2 : 3}"></rect>
+        <rect width="${n.w}" height="${h}" rx="${n.ext ? 9 : 3}"></rect>
         <text class="t" x="12" y="21">${esc(n.label)}</text>
         <text class="s" x="12" y="37">${esc(n.sub)}</text>
         <text class="m" x="12" y="${h - 9}" data-m="${n.id}"></text>
@@ -1591,6 +1591,8 @@
     const fresh = (age) => age == null ? 'down' : age < 75 ? 'live' : age < 300 ? 'warn' : 'down';
     function metricText(id, L) {
       if (!L) return '';
+      const n = sysNode(id);
+      if (n && n.ext) return 'connected';
       if (id === 'db') return `${num(L.size_mb)} MB · ${num(L.rows)} market rows`;
       if (id === 'web') return `${num(L.users)} users · serving`;
       if (id === 'agents') return `${L.running} running · ${L.queued} queued · ${num(L.done)} done`;

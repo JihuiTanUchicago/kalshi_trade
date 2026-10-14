@@ -167,12 +167,12 @@ th .info { vertical-align: 0; }
 /* ===================== APP SHELL (Kursbuch) ===================== */
 
 .masthead { border-bottom: 2px solid var(--ink); background: var(--stock); }
-.masthead-in { max-width: var(--maxw); margin: 0 auto; padding: 14px var(--gut) 10px; display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.masthead-in { max-width: var(--maxw); margin: 0 auto; padding: 12px var(--gut); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .wordmark { font-family: var(--f-nar); font-weight: 600; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; margin: 0; }
 .wordmark a { text-decoration: none; }
 .wordmark .sep { color: var(--rule-2); margin: 0 .5em; }
 .wordmark .svc { color: var(--ink-3); }
-.asof { font-family: var(--f-nar); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+.asof { display: inline-flex; align-items: center; font-family: var(--f-nar); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
 .linkish { background: none; border: 0; padding: 0; cursor: pointer; color: var(--ink-3); font: inherit; text-decoration: underline; text-decoration-color: var(--rule-2); }
 .linkish:hover { color: var(--ink); }
 /* Operator-only admin-mode toggle in the masthead — a real switch, like .switch */
