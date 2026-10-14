@@ -114,3 +114,5 @@ whether making them willing to pay?
 - Codes become harder and harder to read with fast development. Maybe a visualization layer on top, so that users only
 need to read code when they want to?
 - User testing. Agent as a simulated user to test front end UIs.
+- computer agent to help me do things that previously I needed to manually do.
+- New UI/interface, but agent has old knowledge -- there should be a product that

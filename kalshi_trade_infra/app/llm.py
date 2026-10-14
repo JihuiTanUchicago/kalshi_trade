@@ -27,7 +27,7 @@ LLM_PROVIDER = os.getenv("APP_LLM_PROVIDER", "anthropic").lower()
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 # A Bedrock model id or cross-region inference-profile id. Must be enabled in
 # the account's Bedrock "Model access" for AWS_REGION.
-BEDROCK_MODEL = os.getenv("APP_BEDROCK_MODEL", "anthropic.claude-sonnet-5-5")
+BEDROCK_MODEL = os.getenv("APP_BEDROCK_MODEL", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
 
 
 class LLMError(RuntimeError):
