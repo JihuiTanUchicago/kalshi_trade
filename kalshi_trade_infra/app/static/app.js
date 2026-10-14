@@ -853,11 +853,10 @@
     shell('/research', '<div id="runboard">' + boardTitle('Research run') + '</div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl>', `
       <div class="printer">
         <section><div class="section-head"><h2>Agent log</h2><span id="runact"></span></div><div id="flash"></div><ol class="log" id="log" aria-live="polite"></ol></section>
-        <section><div class="section-head"><h2>Hypotheses</h2><p>Newest first</p></div>
+        <section><div class="section-head"><h2>Hypotheses</h2><p>Best unseen P&L first</p></div>
           <div id="feed">${strategyTable('')}</div></section>
       </div>`);
-    let after = 0, shownStrategies = false;
-    const hyp = [];
+    let after = 0, tried = 0;
     const load = async () => {
       const d = await api(`/api/runs/${id}?after=${after}`);
       const r = d.run;
@@ -868,7 +867,7 @@
       root.querySelector('#runfigs').innerHTML =
         fig('Status', active ? (r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>' : 'Researching<span class="working" aria-label="in process"></span>') : r.status === 'succeeded' ? 'Done' : r.status === 'cancelled' ? 'Cancelled' : 'Failed') +
         fig('Time', started ? Math.max(0, Math.round((end - started) / 60000)) + ' min' : '—') +
-        fig('Hypotheses', r.hypotheses_tried || hyp.length) + fig('Passed', active ? '…' : r.strategies_passed);
+        fig('Hypotheses', r.hypotheses_tried || tried) + fig('Passed', active ? '…' : r.strategies_passed);
       root.querySelector('#runact').innerHTML = active ? '<button class="btn danger small" id="cancel">Cancel run</button>' : (r.status === 'succeeded' ? '<a class="btn small" href="/strategies">All strategies</a>' : '');
       const cancel = root.querySelector('#cancel');
       if (cancel) cancel.onclick = () => armed(cancel, 'Confirm cancel', () => busy(cancel, async () => { await api(`/api/runs/${id}/cancel`, {}).catch((e) => alert0(e.message)); await load(); }));
@@ -892,25 +891,17 @@
         }
         li.innerHTML = `<time>${clock(ev.created_at)}</time><span>${inner}</span>`;
         log.prepend(li);  // newest on top (each new poll batch, ascending ids, lands above older)
-        if (ev.kind === 'hypothesis' && !shownStrategies) {
-          const s = { id: hyp.length + 1, market: r.market, direction: r.direction, title: ev.message, thesis: ev.data.thesis, status: 'queued', in_sample: ev.data.in_sample, created_at: ev.created_at };
-          hyp.push(s);
-          feed.querySelector('tbody').insertAdjacentHTML('afterbegin', strategySlip(s, null, { nolink: true, land: true }));
-        }
+        if (ev.kind === 'hypothesis') tried++;
       });
-      if (r.status === 'succeeded' && !shownStrategies) {
-        shownStrategies = true;
-        const reg = registry(d.strategies.map((s) => s.equity));
-        // Sort by the P&L shown in the table (unseen if tested, else in-sample),
-        // most profitable first; deployable (passed) above void above rejected.
-        const shownPnl = (s) => {
-          const m = (s.out_of_sample && s.out_of_sample.pnl != null) ? s.out_of_sample : (s.in_sample || {});
-          return m.pnl != null ? +m.pnl : -Infinity;
-        };
-        const tier = (s) => (s.status === 'passed' ? 0 : s.status === 'failed' ? 1 : 2);
-        const sorted = d.strategies.slice().sort((a, b) => (tier(a) - tier(b)) || (shownPnl(b) - shownPnl(a)));
-        feed.innerHTML = strategyTable(sorted.map((s) => strategySlip(s, reg, { land: true })).join(''));
-      }
+      // Always show gated strategies sorted by unseen P&L (highest first); deployable above
+      // void above rejected. Re-sorts live each poll as a research chunk clears the gate.
+      const shownPnl = (s) => { const m = (s.out_of_sample && s.out_of_sample.pnl != null) ? s.out_of_sample : (s.in_sample || {}); return m.pnl != null ? +m.pnl : -Infinity; };
+      const tier = (s) => (s.status === 'passed' ? 0 : s.status === 'failed' ? 1 : 2);
+      const sorted = (d.strategies || []).slice().sort((a, b) => (tier(a) - tier(b)) || (shownPnl(b) - shownPnl(a)));
+      const reg = registry(sorted.map((s) => s.equity));
+      feed.innerHTML = sorted.length
+        ? strategyTable(sorted.map((s) => strategySlip(s, reg, { land: true })).join(''))
+        : `<div class="empty"><h3>${active ? 'Testing' : 'No results'}</h3><p>${active ? 'Strategies appear here as each batch clears the unseen-data gate — best unseen P&L on top.' : 'This run produced no strategies.'}</p></div>`;
       if (!active) clearTimers();
     };
     await load();
