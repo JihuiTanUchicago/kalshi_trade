@@ -95,6 +95,17 @@ p { margin: 0; }
 .sys-feed { max-height: 320px; overflow-y: auto; }
 .sys-feed li { font-size: 12.5px; }
 @media (max-width: 1080px) { .sysmap { grid-template-columns: minmax(0, 1fr); } }
+/* System map code drill-down (component → module → function + call graph). */
+.sys-crumb { font-family: var(--f-nar); font-size: 11.5px; letter-spacing: .04em; color: var(--ink-3); margin-bottom: 10px; }
+.sys-crumb a { color: var(--ink-2); }
+.sys-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.sys-list li { padding: 6px 0; border-top: 1px solid var(--rule); font-size: 13px; }
+.sys-list li:first-child { border-top: none; }
+.sys-list code { font-family: var(--f-mono, ui-monospace, monospace); font-size: 12px; }
+.sys-list .sys-dim, .sys-dim { color: var(--ink-3); font-size: 11px; }
+.sys-cls > code { font-weight: 600; }
+.sys-src { max-height: 360px; overflow: auto; background: var(--stock); border: 1px solid var(--rule); padding: 10px 12px; margin-top: 8px; }
+.sys-src code { font-family: var(--f-mono, ui-monospace, monospace); font-size: 12px; line-height: 1.5; white-space: pre; color: var(--ink); }
 /* Glossary info bubble — a drawn marker + one top-layer definition popover. */
 .info { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin: 0 0 0 5px; padding: 0; border: 0; background: none; color: var(--rule-2); cursor: help; vertical-align: -2px; -webkit-tap-highlight-color: transparent; }
 .info:hover, .info:focus-visible { color: var(--ink); }
@@ -284,6 +295,10 @@ input, select, textarea, button { font-family: inherit; font-size: 13px; color: 
 textarea.input { min-height: 84px; resize: vertical; line-height: 1.45; }
 .input:hover, select:hover { border-color: var(--ink-3); }
 .input:focus, select:focus, input:focus { border-color: var(--ink); outline: none; background: var(--stock); }
+/* Research model picker: flat ink caret, no native chrome, to match the Kursbuch form controls. */
+select#rmodel { appearance: none; -webkit-appearance: none; padding-right: 28px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23191B16' stroke-width='1.3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center; }
 .field { display: flex; flex-direction: column; gap: 4px; min-width: 104px; }
 .field > span, .label { font-family: var(--f-nar); font-size: 11px; letter-spacing: .11em; text-transform: uppercase; color: var(--ink-3); }
 .error-text { color: var(--signal); font-size: 13px; }

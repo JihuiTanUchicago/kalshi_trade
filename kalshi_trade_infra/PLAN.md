@@ -17,6 +17,28 @@ All now hold a constant size so the page never reflows mid-animation:
   bottom and older ones scroll up under the fade — reads as a live feed, no growth. `scroll-behavior`
   drops to `auto` under `prefers-reduced-motion`.
 
+## System map zoom-in (2026-10-15) — SHIPPED
+Drill from a System-map box into the real code behind it, three levels deep:
+**component → module → function** (source + call graph).
+- **`app/code_map.py` (new):** read-only static analysis with stdlib `ast`, no new deps, no DB.
+  `COMPONENTS` maps each non-external system-map node id → its source files (`app/*`,
+  `data_pipeline/*`). `resolve_module()` is the security boundary — it `Path.resolve()`s the
+  request-supplied path and rejects anything not a `.py` file inside `app/` or `data_pipeline/`
+  (traversal, absolute paths, symlink escapes all collapse and fail before any read).
+  `component_modules()` / `module_symbols()` / `function_detail()` serve the three levels.
+  The call graph is **name-based** (a `foo()` call links to every def named `foo` across the
+  mapped files) and cached once per process — plenty for "who touches this" navigation.
+- **`GET /api/system/code` (new route, `system_code` handler in `app/server.py`):** auth-required,
+  open to any signed-in user like `admin_system` (it's the "show the homework" proof). Query:
+  `?component=<id>` → modules; `?module=<path>` → functions+classes; `?module=<path>&func=<qual>`
+  → source + callers/callees. `CodeMapError` → `ApiError(404)`.
+- **SPA (`viewSystem` in `app/static/app.js`):** the detail panel gains an "Open the code ›" button
+  on non-external nodes; drill-down renders modules → functions → function source with clickable
+  callers/callees (jump across modules). A `codeState` flag stops the 4s telemetry poll from
+  clobbering the open drill-down. CSS under `.sys-crumb/.sys-list/.sys-src` in `app/static/app.css`.
+- **Tests:** `tests/test_code_map.py` — AST extraction at all 3 levels + path-whitelist rejection
+  (traversal / out-of-repo / non-`.py`). 15 cases, suite green (166 passed, 7 skipped).
+
 ## UI tweaks (2026-10-15) — SHIPPED
 - **Billing moved into a profile dropdown.** Removed `Billing` from the top nav; clicking the
   user's name in the masthead now opens a small Kursbuch menu (`.profile-menu`) with Billing +
@@ -1278,3 +1300,18 @@ multi-month milestone.
 - `live_trading_engine.py` and `live_portfolio_20s_updater.py` got the same reconnect fix as their sim counterparts (explicitly approved) - this only affects DB reconnection behavior, no change to trading/risk logic.
 - The leaked `client_api` password (`kalshimakesmepoor`, hardcoded in `client_api/client.py` and `client_api/README.md`) was intentionally left as-is per explicit instruction - not rotated.
 - `venv/` was untracked from git (was previously committed - 7500+ files); `.gitignore` updated. Files remain on disk, only git tracking changed.
+
+## Sim-vs-real equity curve (Kalshi dev replay)
+
+- `app/kalshi_dev.py`: READ-ONLY replay of a strategy's out-of-sample window against the
+  Kalshi DEMO environment (`KALSHI_DEV_API_BASE`, e.g. `https://demo-api.kalshi.co/trade-api/v2`).
+  Pulls public per-contract candlesticks (unauthenticated GET), rebuilds the OOS snapshots off the
+  real demo order-book bid/ask while reusing the real BTC spot features, then re-scores with the
+  backtester's own `simulate`/`metrics`/fee model so the realized curve is directly comparable to
+  the simulated one. Never authenticates, never POSTs, never places an order.
+- Endpoint `GET /api/strategies/{id}/dev-curve` (`strategy_dev_curve`) returns `{dev_curve, dev_metrics,
+  contracts, capped}`; degrades to `{dev_curve: null, reason}` when demo isn't configured/reachable.
+  Cached per strategy id (10 min). Capped to the first `KALSHI_DEV_MAX_CONTRACTS` (default 60) OOS
+  contracts to bound API calls (ceiling noted in-file; raise/parallelise/persist for the full window).
+- `app/static/app.js`: `equityChart` takes an optional `devCurve` (dashed accent line + legend); the
+  strategy detail view fetches the dev-curve after load and redraws the chart with both lines.

@@ -11,7 +11,7 @@ import os
 import re
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 import requests
 
@@ -53,34 +53,42 @@ def current_model() -> str:
     return BEDROCK_MODEL if LLM_PROVIDER == "bedrock" else MODEL
 
 
-def claude(system: str, messages: List[Dict[str, str]]) -> "tuple[str, Dict]":
-    """Route to Bedrock or the Anthropic API based on APP_LLM_PROVIDER."""
-    return _bedrock(system, messages) if LLM_PROVIDER == "bedrock" else _anthropic_direct(system, messages)
+def claude(system: str, messages: List[Dict[str, str]], model: "Optional[str]" = None) -> "tuple[str, Dict]":
+    """Route to Bedrock or the Anthropic API based on APP_LLM_PROVIDER. `model` is
+    the invokable Bedrock modelId the user chose (defaults to BEDROCK_MODEL)."""
+    return _bedrock(system, messages, model) if LLM_PROVIDER == "bedrock" else _anthropic_direct(system, messages)
 
 
-def _bedrock(system: str, messages: List[Dict[str, str]]) -> "tuple[str, Dict]":
+def _bedrock(system: str, messages: List[Dict[str, str]], model: "Optional[str]" = None) -> "tuple[str, Dict]":
+    """One code path for every provider on Bedrock via the Converse API, which is
+    unified across Claude/Nova/Llama/… and returns text + token usage the same way."""
     try:
         import boto3
         from botocore.exceptions import ClientError
     except ImportError:
         raise LLMError("boto3 is required for Bedrock but is not installed.")
-    body = {"anthropic_version": "bedrock-2023-05-31", "max_tokens": MAX_TOKENS, "system": system, "messages": messages}
+    model_id = model or BEDROCK_MODEL
+    conv = [{"role": m["role"], "content": [{"text": m["content"]}]} for m in messages]
+    kwargs: Dict[str, Any] = {"modelId": model_id, "messages": conv, "inferenceConfig": {"maxTokens": MAX_TOKENS}}
+    if system:
+        kwargs["system"] = [{"text": system}]
     client = boto3.client("bedrock-runtime", region_name=AWS_REGION)
     for attempt in range(4):
         try:
-            resp = client.invoke_model(modelId=BEDROCK_MODEL, body=json.dumps(body))
+            resp = client.converse(**kwargs)
         except ClientError as e:
             code = e.response.get("Error", {}).get("Code", "")
             if code in ("ThrottlingException", "ModelTimeoutException", "ServiceUnavailableException") and attempt < 3:
                 time.sleep(2 ** (attempt + 1))
                 continue
             raise LLMError("Bedrock call failed (%s). Model '%s' may need access enabled in the Bedrock console for %s."
-                           % (code or e, BEDROCK_MODEL, AWS_REGION))
+                           % (code or e, model_id, AWS_REGION))
         except Exception as e:
             raise LLMError("Bedrock call failed: %s" % e)
-        data = json.loads(resp["body"].read())
-        text = "".join(b.get("text", "") for b in data.get("content") or [] if b.get("type") == "text")
-        return text, data.get("usage") or {}
+        msg = (resp.get("output") or {}).get("message") or {}
+        text = "".join(b.get("text", "") for b in msg.get("content") or [] if "text" in b)
+        u = resp.get("usage") or {}
+        return text, {"input_tokens": u.get("inputTokens") or 0, "output_tokens": u.get("outputTokens") or 0}
     raise LLMError("Bedrock call failed after retries.")
 
 

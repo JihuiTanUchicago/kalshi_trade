@@ -28,6 +28,7 @@ import os
 from typing import Callable, Dict, List, Optional, Tuple
 
 from app import backtest, billing
+from app import models_catalog as catalog
 from app import repository as repo
 from app import spec as specmod
 from app.llm import LLMError, ModelFn, Usage, ask_json, claude, current_model
@@ -239,10 +240,11 @@ class Cancelled(Exception):
     pass
 
 
-def _bill(conn, user_id, usage, run_id):
-    """Meter the tokens this run spent against the user's credits."""
+def _bill(conn, user_id, usage, run_id, model=None):
+    """Meter the tokens this run spent against the user's credits, at the price of
+    the model that actually ran (`model` is its invokable modelId)."""
     if usage.input_tokens or usage.output_tokens:
-        billing.charge_usage(conn, user_id, current_model(), usage.input_tokens, usage.output_tokens, run_id)
+        billing.charge_usage(conn, user_id, model or current_model(), usage.input_tokens, usage.output_tokens, run_id)
 
 
 def _round_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], want: int, chunk: List[Dict]) -> str:
@@ -332,13 +334,18 @@ def _explore_and_gate(cur, run, ds, memory, model, usage, log, checkpoint, budge
 def run_research(
     conn,
     run: Dict,
-    model: ModelFn = claude,
+    model: Optional[ModelFn] = None,
     dataset_fn: Callable[[str], backtest.Dataset] = backtest.dataset,
 ) -> None:
     cur = conn.cursor()
     usage = Usage()
     tried: List[Dict] = []
     run_id, user_id, market = run["id"], run["user_id"], run["market"]
+    # The user's chosen model (NULL = default Sonnet) drives every LLM call this
+    # run makes and the price it's billed at. Tests pass their own `model`.
+    choice = catalog.resolve(run.get("model"))
+    if model is None:
+        model = lambda system, messages: claude(system, messages, choice.model_id)  # noqa: E731
 
     def log(kind: str, message: str, data: Optional[Dict] = None) -> None:
         repo.add_event(cur, run_id, kind, message, data)
@@ -385,7 +392,7 @@ def run_research(
             # (and reset the counter) instead of only at the end — otherwise its tokens are free.
             tot_in += usage.input_tokens
             tot_out += usage.output_tokens
-            _bill(conn, user_id, usage, run_id)
+            _bill(conn, user_id, usage, run_id, choice.model_id)
             usage.input_tokens = usage.output_tokens = 0
             repo.update_run_progress(cur, run_id, len(tried), total_passed)  # keep counts live
             conn.commit()
@@ -404,13 +411,13 @@ def run_research(
             {"passed": total_passed, "tried": len(tried)})
         repo.finish_run(cur, run_id, "succeeded", None, len(tried), total_passed, tot_in, tot_out)
     except Cancelled:
-        _bill(conn, user_id, usage, run_id)  # charge whatever was spent before the stop
+        _bill(conn, user_id, usage, run_id, choice.model_id)  # charge whatever was spent before the stop
         log("step", "Cancelled.")
     except Exception as e:  # the run fails visibly; the worker keeps going
         msg = str(e) if isinstance(e, LLMError) else "Unexpected error: %s" % e
         log("error", msg)
         repo.finish_run(cur, run_id, "failed", msg[:2000], len(tried), 0, usage.input_tokens, usage.output_tokens)
-        _bill(conn, user_id, usage, run_id)
+        _bill(conn, user_id, usage, run_id, choice.model_id)
         if not isinstance(e, LLMError):
             raise
 

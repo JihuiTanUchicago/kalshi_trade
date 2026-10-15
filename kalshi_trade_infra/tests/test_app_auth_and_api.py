@@ -166,6 +166,75 @@ def test_deploy_any_status_on_paper_live_gated_globally(monkeypatch):
     assert server.create_deployment(ctx({"strategy_id": 5, "mode": "live", "confirm": "LIVE"})) == {"id": 11}
 
 
+# -- Strategies listing: pagination + true COUNT(*) figures --------------------------
+
+
+class StratCur:
+    """Captures the last SQL/params and replays canned GROUP BY rows."""
+
+    def __init__(self, group_rows=()):
+        self.group_rows = list(group_rows)
+        self.sql = None
+        self.params = None
+
+    def execute(self, sql, params=()):
+        self.sql = " ".join(sql.split())
+        self.params = list(params)
+
+    def fetchall(self):
+        return self.group_rows if "GROUP BY" in (self.sql or "") else []
+
+
+def test_count_strategies_uses_count_star_grouped():
+    cur = StratCur([{"status": "passed", "n": 600}, {"status": "failed", "n": 500}, {"status": "rejected", "n": 133}])
+    counts = server.repo.count_strategies(cur, 1)
+    assert "COUNT(*)" in cur.sql and "GROUP BY s.status" in cur.sql
+    assert counts == {"passed": 600, "failed": 500, "rejected": 133, "total": 1233}
+
+
+def test_list_strategies_applies_limit_and_offset():
+    cur = StratCur()
+    server.repo.list_strategies(cur, 1, limit=50, offset=100)
+    assert "LIMIT %s OFFSET %s" in cur.sql and cur.params[-2:] == [50, 100]
+
+
+def test_strategies_figures_come_from_count_not_the_page(monkeypatch):
+    # Counts far exceed the 50-row page, proving the figures aren't len(page).
+    monkeypatch.setattr(server.repo, "count_strategies",
+                        lambda cur, uid, d, m: {"passed": 600, "failed": 400, "rejected": 233, "total": 1233})
+    monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [{"id": i} for i in range(50)])
+    monkeypatch.setattr(server, "_strategy_card", lambda s: s)
+    out = server.list_strategies(ctx(query={}))
+    assert out["counts"]["total"] == 1233 and len(out["strategies"]) == 50
+    assert out["matched"] == 1233 and out["pages"] == 25 and out["page"] == 0
+    # A status filter narrows "matched" to that status's true count.
+    out = server.list_strategies(ctx(query={"status": "passed"}))
+    assert out["matched"] == 600 and out["pages"] == 12
+
+
+def test_strategies_page_param_maps_to_offset(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: {"passed": 10, "total": 120})
+
+    def fake_list(cur, uid, direction=None, status=None, market=None, run_id=None, limit=500, offset=0):
+        seen.update(limit=limit, offset=offset)
+        return []
+
+    monkeypatch.setattr(server.repo, "list_strategies", fake_list)
+    monkeypatch.setattr(server, "_strategy_card", lambda s: s)
+    out = server.list_strategies(ctx(query={"page": "2"}))
+    assert seen == {"limit": 50, "offset": 100}
+    assert out["page"] == 2 and out["per"] == 50 and out["pages"] == 3
+
+
+def test_strategies_bad_page_defaults_to_zero(monkeypatch):
+    monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: {"total": 0})
+    monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [])
+    monkeypatch.setattr(server, "_strategy_card", lambda s: s)
+    out = server.list_strategies(ctx(query={"page": "not-a-number"}))
+    assert out["page"] == 0 and out["matched"] == 0 and out["pages"] == 0 and out["strategies"] == []
+
+
 def test_reply_emails_the_author_but_not_yourself(monkeypatch):
     sent = []
     monkeypatch.setattr(server.repo, "add_comment", lambda *a, **k: 1)
