@@ -59,6 +59,9 @@ MODELS: Dict[str, ModelChoice] = {
                     "us.meta.llama3-3-70b-instruct-v1:0", Decimal("0.72"), Decimal("0.72")),
         ModelChoice("llama-4-maverick", "Llama 4 Maverick", "Meta",
                     "us.meta.llama4-maverick-17b-instruct-v1:0", Decimal("0.24"), Decimal("0.97")),
+        # -- Writer (Bedrock agreement rate card, 2026-10-15) ----------------
+        ModelChoice("palmyra-x5", "Writer Palmyra X5", "Writer",
+                    "us.writer.palmyra-x5-v1:0", Decimal("0.6"), Decimal("6")),
     ]
 }
 
