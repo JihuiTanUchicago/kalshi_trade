@@ -1429,12 +1429,19 @@
         };
       }
     });
-    const load = async () => {
+    let lastFeed = '';
+    const load = async (force) => {
+      // Never wipe a reply the user is writing: skip the refresh while a reply box is open
+      // or anything in the feed is focused (unless this is the first/explicit render).
+      if (!force && (feed.querySelector('.cmt-form') || feed.contains(document.activeElement))) return;
       const d = await api('/api/community');
-      feed.innerHTML = d.posts.length ? d.posts.map(postCard).join('')
+      const html = d.posts.length ? d.posts.map(postCard).join('')
         : `<div class="empty"><h3>No posts yet</h3><p>Be the first. Share a strategy an agent found, drop an idea worth researching, or post how your paper book is doing.</p></div>`;
+      if (html === lastFeed) return;  // nothing changed — don't re-render (avoids flicker)
+      lastFeed = html;
+      feed.innerHTML = html;
     };
-    await load();
+    await load(true);
     poll(load, 20000);
   }
   const STATUS_WORD = { passed: 'passed', failed: 'void', rejected: 'rejected' };
