@@ -1,5 +1,18 @@
 # PLAN
 
+## Landing demo animations — no-reflow (2026-10-15) — SHIPPED
+Three animated demo containers used to **expand** as rows/cards arrived (reported as annoying).
+All now hold a constant size so the page never reflows mid-animation:
+- **Hero research panel** (`#demo-body`, `startDemo()`): cards are built up front (hidden,
+  reserving their space); on mount we measure the fully-rendered state (full typed idea + the
+  taller of the two status lines + all cards) and lock `body`/`#demo-status` `min-height` to it,
+  so neither the typing bubble wrapping to a 2nd line nor the status text swapping grows the box.
+  Verified: body height constant at 455px across the whole 0–6.4s timeline.
+- **Deploy fills** (`#sc-pos`) and **autopilot log** (`#sc-loop`): fixed-height windows
+  (`align-content:end` + `overflow:hidden` + a top fade `mask-image`); new rows append at the
+  bottom and older ones scroll up under the fade — reads as a live feed, no growth. `scroll-behavior`
+  drops to `auto` under `prefers-reduced-motion`.
+
 ## UI tweaks (2026-10-15) — SHIPPED
 - **Billing moved into a profile dropdown.** Removed `Billing` from the top nav; clicking the
   user's name in the masthead now opens a small Kursbuch menu (`.profile-menu`) with Billing +

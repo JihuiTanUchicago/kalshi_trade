@@ -625,6 +625,29 @@
     const bubble = body.querySelector('#demo-bubble');
     const status = body.querySelector('#demo-status');
     const cards = body.querySelector('#demo-cards');
+    // Build every card now (hidden) so the window holds its full height from the
+    // first frame and never resizes as the research "arrives".
+    const cardEls = DEMO_STRATS.map((d) => {
+      const [t, meta, mk, pnl] = d;
+      const el = document.createElement('div');
+      el.className = 'dcard';
+      el.innerHTML = `<b>${esc(t)}</b><span class="dmk ${mk === 'pass' ? 'pass' : 'void'}">${mk === 'pass' ? 'Passed' : 'Void'}</span><span class="dmeta">${esc(meta)} · ${esc(pnl)}</span>`;
+      cards.appendChild(el);
+      return el;
+    });
+    // Lock the window (and the status row) to their final height, measured from the
+    // fully-rendered state, so neither the typing bubble wrapping to a second line nor
+    // the status text changing ever grows the box mid-animation.
+    body.style.minHeight = ''; status.style.minHeight = '';
+    bubble.textContent = DEMO_IDEA_TEXT;
+    let stMax = 0, bodyMax = 0;
+    for (const s of [`<span class="dspin"></span>Writing strategies and backtesting on unseen data…`, `${ICON.check}2 of 4 passed every gate — ready to deploy on paper.`]) {
+      status.innerHTML = s; stMax = Math.max(stMax, status.offsetHeight); bodyMax = Math.max(bodyMax, body.offsetHeight);
+    }
+    status.style.minHeight = stMax + 'px';
+    body.style.minHeight = bodyMax + 'px';
+    bubble.innerHTML = '<span class="caret"></span>';
+    status.innerHTML = '';
     const type = (i) => {
       if (i <= DEMO_IDEA_TEXT.length) {
         bubble.innerHTML = esc(DEMO_IDEA_TEXT.slice(0, i)) + '<span class="caret"></span>';
@@ -637,13 +660,8 @@
     const research = () => {
       status.innerHTML = `<span class="dspin"></span>Agent researching the idea…`;
       at(1100, () => { status.innerHTML = `<span class="dspin"></span>Writing strategies and backtesting on unseen data…`; });
-      DEMO_STRATS.forEach((d, k) => at(1900 + k * 560, () => {
-        const [t, meta, mk, pnl] = d;
-        const el = document.createElement('div');
-        el.className = 'dcard'; el.style.animationDelay = '0ms';
-        el.innerHTML = `<b>${esc(t)}</b><span class="dmk ${mk === 'pass' ? 'pass' : 'void'}">${mk === 'pass' ? 'Passed' : 'Void'}</span><span class="dmeta">${esc(meta)} · ${esc(pnl)}</span>`;
-        cards.appendChild(el);
-      }));
+      // Reveal the pre-built cards one at a time; the box is already full height.
+      cardEls.forEach((el, k) => reduce ? el.classList.add('in') : at(1900 + k * 560, () => el.classList.add('in')));
       at(1900 + DEMO_STRATS.length * 560 + 300, () => {
         status.innerHTML = `${ICON.check}2 of 4 passed every gate — ready to deploy on paper.`;
       });
@@ -685,7 +703,7 @@
       rows.forEach((r, i) => sAt(1300 + i * 620, () => {
         const el = document.createElement('div'); el.className = 'p in';
         el.innerHTML = `<b>${r[0]}</b><b class="${r[1] >= 0 ? 'gain' : 'loss'}">${r[1] >= 0 ? '+' : '−'}$${Math.abs(r[1]).toFixed(2)}</b><small>settled · paper → live</small>`;
-        pos.appendChild(el);
+        pos.appendChild(el); pos.scrollTop = pos.scrollHeight;
         pnl += r[1]; pnlEl.textContent = (pnl >= 0 ? '+' : '−') + '$' + Math.abs(pnl).toFixed(2);
         pnlEl.className = pnl >= 0 ? 'gain' : 'loss';
       }));
@@ -711,7 +729,7 @@
         const el = document.createElement('div'); el.className = 'l in' + (st[0] === 'spin' ? ' spin' : '');
         const lead = st[0] === 'check' ? ICON.check : '<span class="dot"></span>';
         el.innerHTML = lead + '<span>' + st[1] + '</span>';
-        loop.appendChild(el); shown.push(el);
+        loop.appendChild(el); shown.push(el); loop.scrollTop = loop.scrollHeight;
       }));
     },
   };

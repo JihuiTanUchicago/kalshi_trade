@@ -543,7 +543,10 @@ body.landing-body { background: #FBFBFA; }
 .demo-status .dspin { width: 17px; height: 17px; border-radius: 50%; border: 2.4px solid var(--line); border-top-color: var(--accent); animation: spin 1s linear infinite; flex: none; }
 .demo-status svg { width: 18px; height: 18px; color: var(--accent); flex: none; }
 .demo-cards { display: grid; gap: 10px; }
-.dcard { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; padding: 13px 15px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); opacity: 0; transform: translateY(8px); animation: rise .45s var(--ease) forwards; }
+/* Cards are all rendered up front (reserving the window's full height so it never
+   grows mid-animation); each reveals when it gets .in. */
+.dcard { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; padding: 13px 15px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); opacity: 0; transform: translateY(8px); }
+.dcard.in { animation: rise .45s var(--ease) forwards; }
 .dcard b { font-size: 14.5px; font-weight: 600; }
 .dcard .dmeta { grid-column: 1; color: var(--ink-3); font-size: 12.5px; }
 .dcard .dmk { font-size: 11.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px; }
@@ -619,7 +622,11 @@ body.landing-body { background: #FBFBFA; }
 .sc-dep .row b { font-weight: 600; }
 .sc-flip { font-size: 11.5px; font-weight: 600; padding: 3px 11px; border-radius: 999px; transition: background .4s, color .4s; background: var(--surface-2); color: var(--ink-3); }
 .sc-flip.live { background: var(--accent); color: #fff; }
-.sc-pos { display: grid; gap: 8px; }
+/* Fixed-height live window: rows anchor to the bottom and scroll up under a top
+   fade as the list outgrows the box, so the demo never reflows the page. */
+.sc-pos { display: grid; gap: 8px; align-content: end; height: 132px; overflow: hidden; scroll-behavior: smooth;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 22px);
+          mask-image: linear-gradient(to bottom, transparent, #000 22px); }
 .sc-pos .p { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 11px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); font-size: 13.5px; opacity: 0; transform: translateY(8px); }
 .sc-pos .p.in { animation: rise .4s var(--ease) forwards; }
 .sc-pos .p small { grid-column: 1; color: var(--ink-3); font-size: 12px; }
@@ -637,7 +644,9 @@ body.landing-body { background: #FBFBFA; }
 .sc-ap .sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform .3s var(--ease); }
 .sc-ap .toggle.on .sw { background: var(--accent); }
 .sc-ap .toggle.on .sw::after { transform: translateX(18px); }
-.sc-loop { display: grid; gap: 8px; }
+.sc-loop { display: grid; gap: 8px; align-content: end; height: 104px; overflow: hidden; scroll-behavior: smooth;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 22px);
+          mask-image: linear-gradient(to bottom, transparent, #000 22px); }
 .sc-loop .l { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--ink-2); opacity: 0; transform: translateY(6px); }
 .sc-loop .l.in { animation: rise .4s var(--ease) forwards; }
 .sc-loop .l .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
@@ -651,7 +660,8 @@ body.landing-body { background: #FBFBFA; }
 }
 @media (prefers-reduced-motion: reduce) {
   .sc-curve .ln { stroke-dashoffset: 0; animation: none; }
-  .sc-strat .head, .sc-curve, .sc-split, .sc-gates div, .sc-pos .p, .sc-loop .l, .sc-curve .seen { opacity: 1; transform: none; animation: none; }
+  .sc-strat .head, .sc-curve, .sc-split, .sc-gates div, .sc-pos .p, .sc-loop .l, .sc-curve .seen, .dcard, .dcard.in { opacity: 1; transform: none; animation: none; }
+  .sc-pos, .sc-loop { scroll-behavior: auto; }
 }
 
 /* ===================== WAITLIST MODAL ===================== */
