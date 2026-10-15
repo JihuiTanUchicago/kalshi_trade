@@ -1,0 +1,57 @@
+{
+  "base": "e40d060a8b2fb0d159e030834e829e105d4cdc17",
+  "branch": "codex/meridian-frontend-redesign",
+  "runtime_and_tests": {
+    "app/server.py": "971fa4202f4f6c1a91aa71c24bfe8d2966820357d9def1d85d94f80bcf5f31ab",
+    "app/static/app.css": "02710a9300429be191fb52d1e525abc9b8be164c95d342d1b877bfb3e423ef8a",
+    "app/static/app.js": "f89090ff0526ad0bfc3404e1233bce6c27e52e8a8ade3da786f2cf2e39c9fb0b",
+    "app/static/index.html": "098715d81d39ce2addaf994fde23465b7924002ce279234526eb4e0aa6f508bd",
+    "app/static/research-artifacts.js": "dca06621ac296b9045c2814cc965cc52c13ed1303edbb95900227917c1080a72",
+    "app/static/session-chat.js": "02d2cc0b5528fbd179e639a11db0bce22bd18252b923bfa2834def837af49a68",
+    "app/static/session-data.js": "41857b1def764a7f223da881d7430002f3ae06476b1da03f777413d057fed871",
+    "app/static/dm-sans-latin-9fea608a94.woff2": "9fea608a947e67020c33cad9a6fe3d60c54119dfb8cff87768a8117a15ed7543",
+    "app/static/DM-Sans-OFL.txt": "7ec15e79c59bc14b86436a17e5eb7926b46cbcaeb08e1a7e6c110b415e6eb2a2",
+    "tests/test_app_auth_and_api.py": "6c4d03582b7732c682c48560f451db1c1174872942bbb6ce6e4294dbcd7cab4d",
+    "tests/test_app_frontend_contract.py": "6390095d991184bb69dd34843c16f65734061aa5f7b4b5ede16a6404e3a709ab",
+    "tests/test_app_sessions.mjs": "42c6c1407b4f1da6bbc3bb95a6e099417bcd165be5a2686723898a13f0a038f8",
+    "tests/test_research_artifacts.mjs": "30253d8a051089b10e0cbd5a517ee2abee7d4d73f8611257187482c5ec135252",
+    "tests/test_session_chat.mjs": "a6007ccbac8601ed156f585e76ebceaa4f1672f2f1e48c4d7f5081ec21cea4c3",
+    "tests/test_app_static_assets.py": "8d847d4c7a9b7504f3f6c7398d0955c175deb049c223fc789e55f41bd2cc2d3f"
+  },
+  "runtime_matches_shared_source": true,
+  "publication_documentation": "Current contracts and upstream operator/backend documentation; local-only iteration archives excluded.",
+  "owned_paths": [
+    "app/server.py",
+    "app/static/app.css",
+    "app/static/app.js",
+    "app/static/index.html",
+    "app/static/research-artifacts.js",
+    "app/static/session-chat.js",
+    "app/static/session-data.js",
+    "app/static/dm-sans-latin-9fea608a94.woff2",
+    "app/static/DM-Sans-OFL.txt",
+    "tests/test_app_auth_and_api.py",
+    "tests/test_app_frontend_contract.py",
+    "tests/test_app_sessions.mjs",
+    "tests/test_research_artifacts.mjs",
+    "tests/test_session_chat.mjs",
+    "tests/test_app_static_assets.py",
+    "app/SESSION_CHAT_API.md",
+    "app/README.md",
+    "PRODUCT.md",
+    "DESIGN.md",
+    ".impeccable/surfaces/app-static-index-html.md",
+    "PLAN.md"
+  ],
+  "excluded": [
+    "mvp.md",
+    "requested_queue.md",
+    "trading_agent_new/",
+    "data_pipeline/",
+    "credentials/",
+    "prototype gallery and iteration archives"
+  ],
+  "source_copy_exception": {
+    "app/static/DM-Sans-OFL.txt": "Only CRLF line endings and trailing spaces normalized for publication; complete license words unchanged. The font, executable app and test bytes match the shared frontend."
+  }
+}

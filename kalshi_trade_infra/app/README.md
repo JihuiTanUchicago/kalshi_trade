@@ -5,12 +5,55 @@ backtest gate the agent cannot game, paper-first deployment, and a co-pilot chat
 Product truth is in `../PRODUCT.md`; the operator console (`data_pipeline/dashboard_server.py`)
 is unchanged and separate.
 
+## Compact Meridian frontend
+
+The customer app uses neutral Catalyst-inspired surfaces, charcoal navigation,
+local DM Sans, Georgia research titles and tighter rows, panels and conversation
+spacing. Overview pairs actual recent research sessions with paper balances,
+positions, settlements and deployments. Its measured chart sums closed daily P&L
+for the displayed period, preserves loss days and exposes the daily values; it is
+not labelled account equity. Optional research-read failures preserve the account
+view, and late responses cannot replace another page. Hot Markets is available
+from one header control with its persistent drawer and closing focus retained.
+
+Research owns the original idea/market/depth/run-forever form and session history.
+`/research/{id}` keeps conversation on the left and full strategy artifacts in
+closable tabs on the right. Old strategy URLs and the filtered library remain in
+Research; Position keeps shared deployment controls, ongoing positions and
+account-wide chat/autopilot. All candidate statuses, rules/spec, saved evidence,
+trades, gates and scenarios remain. Scenarios never replace the deployable saved
+rule. Mobile switches Conversation/Strategies; tabs/drafts survive SPA navigation,
+are user/session-scoped, and clear on sign-out or reload.
+
+Session chat uses [the scoped API contract](SESSION_CHAT_API.md). Those backend
+routes remain unimplemented: missing routes show Not connected, retain drafts and
+disable writes. Position's account-wide chat is never used as a fallback.
+Explore/Hot Markets, System, Community, Billing and all auth/payment/live gates remain.
+
+Fonts are bundled with [their SIL license](static/DM-Sans-OFL.txt), content-hashed,
+and served through the restricted WOFF2 static path. No font CDN is required.
+Body text remains 13–14px; coarse-pointer controls keep 44px targets.
+
+Verification (from this directory's parent):
+
+```bash
+node --check app/static/app.js
+node --test tests/test_app_sessions.mjs tests/test_session_chat.mjs tests/test_research_artifacts.mjs
+APP_TEST_MYSQL=0 AWS_EC2_METADATA_DISABLED=true python -m pytest tests/ -q
+```
+
+The review includes a read-only synthetic preview and responsive browser checks.
+See [the handoff](../results/meridian_frontend_pr_2026-10-15/HANDOFF.md).
+The independent design critic's latest score is 7/10; the 9/10 visual target and
+configured non-production backend/provider acceptance remain open. This is a review
+candidate, not a production deployment.
+
 ## Architecture
 
 ```mermaid
 flowchart LR
   subgraph Browser
-    SPA["app/static (vanilla SPA)<br/>Dashboard · Research · Strategies · Deploy · Funds"]
+    SPA["app/static (vanilla SPA)<br/>Dashboard · Research · Position · Community · Account · Billing"]
   end
   SPA -- "JSON + X-Recursive header" --> WEB["app.server<br/>stdlib HTTP, sessions, rate limits"]
   WEB -- "Google OIDC + PKCE" --> G[(Google)]

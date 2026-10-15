@@ -1,5 +1,23 @@
 # PLAN
 
+## Compact Meridian customer frontend — October 15, 2026
+
+Review candidate on `codex/meridian-frontend-redesign`, based on e40d060. Research
+conversations and full strategy artifact tabs are integrated with the selected
+compact Meridian/Catalyst presentation. Overview uses existing session/account
+reads, accurate period-based closed P&L, isolated errors and stale-response guards.
+All original evidence, scenarios, financial/auth gates, Explore and other account
+screens remain. Scoped session backend endpoints remain unimplemented; missing
+routes retain drafts and disable actions. No workers/schema/execution changes.
+
+Source is copied from the verified local frontend; unrelated MVP/Polygon work and
+the prototype gallery are excluded. Local verification: 163 Python passed with 7
+opt-in MySQL skips, 29 Node and 183 responsive browser checks across five widths.
+The isolated publication checkout is reverified before submission. Latest fresh
+independent visual critic: 7/10; the 9/10 target remains open. No merge/deployment.
+[Handoff and reproducible evidence](results/meridian_frontend_pr_2026-10-15/HANDOFF.md).
+
+
 ## ARCHITECTURE PLAN — all-markets collector + cross-contract trading (proposed 2026-10-13)
 
 **Goal:** collect *every* open Kalshi market at per-minute resolution, handle renewing

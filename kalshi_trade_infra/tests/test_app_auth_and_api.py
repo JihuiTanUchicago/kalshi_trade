@@ -205,3 +205,53 @@ def test_spa_routes():
     for path in ("/", "/research/12", "/strategies", "/strategies/3", "/deploy", "/funds", "/signin"):
         assert server.SPA_ROUTES.match(path)
     assert not server.SPA_ROUTES.match("/static/../etc/passwd")
+
+
+@pytest.mark.parametrize("status", ["queued", "running", "succeeded", "failed", "cancelled"])
+def test_completed_session_reads_its_own_candidates(monkeypatch, status):
+    calls = []
+    monkeypatch.setattr(server.repo, "get_run", lambda cur, uid, rid: {
+        "id": rid, "kind": "research", "status": status,
+    })
+    monkeypatch.setattr(server.repo, "list_strategies", lambda cur, uid, **query: calls.append((uid, query)) or [])
+    monkeypatch.setattr(server.repo, "run_events", lambda *args: [])
+    result = server.get_run(ctx(params=("7",)))
+    assert result["strategies"] == []
+    assert calls == [(1, {"run_id": 7})]
+
+
+def test_unknown_session_does_not_read_other_candidates(monkeypatch):
+    monkeypatch.setattr(server.repo, "get_run", lambda *args: None)
+    monkeypatch.setattr(server.repo, "list_strategies", lambda *args, **kwargs: pytest.fail("unexpected candidate read"))
+    with pytest.raises(server.ApiError) as error:
+        server.get_run(ctx(params=("7",)))
+    assert error.value.status == 404
+
+
+def test_strategy_query_keeps_owner_and_session_filters():
+    class ReadCursor(FakeCur):
+        def execute(self, sql, params):
+            self.sql, self.params = sql, params
+
+        def fetchall(self):
+            return []
+
+    cur = ReadCursor()
+    assert server.repo.list_strategies(cur, 9, run_id=7) == []
+    assert "s.user_id=%s" in cur.sql and "s.run_id=%s" in cur.sql
+    assert cur.params == [9, 7, 500]
+
+
+def test_frontend_entrypoint_renders_current_assets_without_template_tokens():
+    import io
+
+    handler = object.__new__(server.Handler)
+    handler.wfile = io.BytesIO()
+    handler._headers = lambda *args: None
+    handler._send_static("/strategies")
+    html = handler.wfile.getvalue().decode()
+    assert "{{" not in html
+    assert "/static/app.css?v=" in html
+    assert "/static/app.js?v=" in html
+    assert html.index("/static/session-data.js?v=") < html.index("/static/session-chat.js?v=")
+    assert html.index("/static/session-chat.js?v=") < html.index("/static/research-artifacts.js?v=") < html.index("/static/app.js?v=")

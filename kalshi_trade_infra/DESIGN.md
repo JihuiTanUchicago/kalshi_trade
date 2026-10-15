@@ -1,32 +1,31 @@
 ---
 name: Tau
 description: >
-  Two shipped worlds. The pre-login landing is a calm, white, rounded product page in Rubik
-  with one warm accent. The authed app is Kursbuch — a Swiss station-timetable for money: ink
-  on warm grey stock, hairline rules, Archivo figures, and one reserved signal red. The
-  operator console (dashboard_server.py) is the same Kursbuch world as a secondary surface.
+  Meridian is the customer app: Catalyst-inspired neutral surfaces, charcoal navigation,
+  local DM Sans, editorial serif research titles and compact financial evidence. The
+  operator console retains its independent Kursbuch palette and typography.
 colors:
   landing:
-    l-bg: "#FBFBFA"
-    l-ink: "#15161A"
-    l-ink-2: "#5B5F66"
-    l-ink-3: "#8A8E95"
-    l-line: "#E7E6E2"
-    l-accent: "#F05A28"
+    l-bg: "#FCFCFC"
+    l-ink: "#141414"
+    l-ink-2: "#3B3B3B"
+    l-ink-3: "#616161"
+    l-line: "#DBDBDB"
+    l-accent: "#141414"
   app:
-    stock: "#E9EBE5"
-    stock-live: "#EFE4E7"
-    stock-sunk: "#DFE2DA"
-    stock-raised: "#F1F3ED"
-    ink: "#191B16"
-    ink-2: "#444841"
-    ink-3: "#5F645D"
-    rule: "#C9CDC2"
-    rule-2: "#B1B6AA"
-    signal: "#C8102E"
-    signal-wash: "#F8E4E6"
-    pos: "#D9E7D6"
-    neg: "#F0DEDC"
+    stock: "#FCFCFC"
+    stock-live: "#FFF4F4"
+    stock-sunk: "#F0F0F0"
+    stock-raised: "#FAFAFA"
+    ink: "#141414"
+    ink-2: "#3B3B3B"
+    ink-3: "#616161"
+    rule: "#DBDBDB"
+    rule-2: "#BEBEBE"
+    signal: "#C62E42"
+    signal-wash: "#FFF0F1"
+    pos: "#EFF3E8"
+    neg: "#FCECEE"
   console:
     kursbuch-stock: "#E9EBE5"
     kursbuch-stock-live: "#EFE4E7"
@@ -50,84 +49,84 @@ colors:
 typography:
   landing:
     l-hero:
-      fontFamily: "Rubik, ui-sans-serif, system-ui, sans-serif"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
       fontSize: "clamp(38px, 6.4vw, 68px)"
       fontWeight: 600
       lineHeight: 1.04
       letterSpacing: "-0.03em"
     l-sub:
-      fontFamily: "Rubik, ui-sans-serif, system-ui, sans-serif"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
       fontSize: "clamp(17px, 2.1vw, 21px)"
       fontWeight: 400
       lineHeight: 1.5
     l-wordmark:
-      fontFamily: "Rubik, ui-sans-serif, system-ui, sans-serif"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
       fontSize: "20px"
       fontWeight: 600
       letterSpacing: "-0.01em"
     l-pill:
-      fontFamily: "Rubik, ui-sans-serif, system-ui, sans-serif"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
       fontSize: "15px"
       fontWeight: 500
       lineHeight: 1
     l-line-item:
-      fontFamily: "Rubik, ui-sans-serif, system-ui, sans-serif"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
       fontSize: "clamp(16px, 2.3vw, 22px)"
       fontWeight: 400
     l-fine:
-      fontFamily: "Rubik, ui-sans-serif, system-ui, sans-serif"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
       fontSize: "14px"
       fontWeight: 400
       lineHeight: 1.6
   app:
     page-title:
-      fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
-      fontSize: "clamp(23px, 3vw, 30px)"
-      fontWeight: 600
-      letterSpacing: "-0.02em"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
+      fontSize: "clamp(23px, 2.5vw, 28px)"
+      fontWeight: 500
+      letterSpacing: "-0.04em"
     said:
-      fontFamily: "Archivo Narrow, Archivo, sans-serif"
-      fontSize: "clamp(15px, 2vw, 19px)"
-      fontWeight: 600
-      lineHeight: 1.35
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
+      fontSize: "13px"
+      fontWeight: 400
+      lineHeight: 1.4
     fig:
-      fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
-      fontSize: "clamp(21px, 2.6vw, 27px)"
-      fontWeight: 600
-      letterSpacing: "-0.015em"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
+      fontSize: "clamp(22px, 2.5vw, 30px)"
+      fontWeight: 500
+      letterSpacing: "-0.04em"
       lineHeight: 1.1
       fontFeature: "tabular-nums lining-nums"
     section-head:
-      fontFamily: "Archivo Narrow, Archivo, sans-serif"
-      fontSize: "13px"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
+      fontSize: "14px"
       fontWeight: 600
-      letterSpacing: "0.13em"
+      letterSpacing: "-0.015em"
     body:
-      fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
       fontSize: "14px"
       fontWeight: 400
-      lineHeight: 1.45
+      lineHeight: 1.4
       fontFeature: "tabular-nums lining-nums"
     table:
-      fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
       fontSize: "13px"
       fontWeight: 400
       fontFeature: "tabular-nums lining-nums"
     lab:
-      fontFamily: "Archivo Narrow, Archivo, sans-serif"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
       fontSize: "11px"
       fontWeight: 400
-      letterSpacing: "0.11em"
+      letterSpacing: "0.02em"
     mark:
-      fontFamily: "Archivo Narrow, Archivo, sans-serif"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
       fontSize: "11px"
       fontWeight: 600
       letterSpacing: "0.09em"
     wordmark:
-      fontFamily: "Archivo Narrow, Archivo, sans-serif"
-      fontSize: "13px"
-      fontWeight: 600
-      letterSpacing: "0.16em"
+      fontFamily: "Georgia, serif"
+      fontSize: "26px"
+      fontWeight: 400
+      letterSpacing: "-0.06em"
 rounded:
   app-nick: "3px"
   pill: "999px"
@@ -139,11 +138,11 @@ spacing:
   landing-maxw: "1120px"
   landing-gutter: "clamp(20px, 5vw, 40px)"
   app-maxw: "1600px"
-  app-gutter: "clamp(14px, 2.2vw, 28px)"
-  app-foot: "72px"
-  app-section: "32px"
-  cell: "15px 18px 14px"
-  measure-min: "160px"
+  app-gutter: "clamp(12px, 1.6vw, 24px)"
+  app-foot: "32px"
+  app-section: "20px"
+  cell: "12px 16px"
+  measure-min: "0px; four equal columns, two on phone"
 components:
   pill:
     backgroundColor: "#FFFFFF"
@@ -166,7 +165,7 @@ components:
     textColor: "{colors.app.ink}"
     typography: "{typography.app.mark}"
     rounded: "{rounded.app-nick}"
-    padding: "7px 14px 6px"
+    padding: "7px 11px"
     border: "1px {colors.app.ink}"
   btn-primary:
     backgroundColor: "{colors.app.ink}"
@@ -205,13 +204,13 @@ components:
     backgroundColor: "{colors.app.stock-raised}"
     textColor: "{colors.app.ink}"
     rounded: "0px"
-    padding: "16px"
+    padding: "12px"
     border: "1px {colors.app.rule}"
   sheet-doc:
     backgroundColor: "{colors.app.stock-raised}"
     textColor: "{colors.app.ink}"
     rounded: "0px"
-    padding: "24px"
+    padding: "16px"
     border: "1px {colors.app.rule}"
   chat:
     backgroundColor: "{colors.app.stock-raised}"
@@ -240,7 +239,7 @@ components:
     backgroundColor: "{colors.app.stock-raised}"
     textColor: "{colors.app.ink}"
     rounded: "0px"
-    padding: "16px 16px 14px"
+    padding: "12px 0"
     border: "1px {colors.app.rule}"
   verdict-pass:
     backgroundColor: "#DCEFE3"
@@ -270,6 +269,39 @@ components:
     backgroundColor: "{colors.landing.l-ink}"
     textColor: "#F1F3ED"
 ---
+
+## Current customer direction: compact Meridian
+
+The customer app uses #FCFCFC/#FAFAFA/#F0F0F0 surfaces, #141414 ink/navigation,
+#DBDBDB dividers, #4B6525 gains and retained #C62E42 loss/live warnings. Local
+DM Sans carries interface/data; Georgia carries research titles and the Tau
+wordmark. This supersedes older customer-app visual directions below. The operator
+console retains its independent Kursbuch theme.
+
+Overview pairs recent research with the existing paper account/position data.
+Cumulative closed P&L is derived only from the displayed daily period, with daily
+values available. The performance SVG measures its container and redraws when the
+market drawer changes width. It is never labelled account equity. Original saved
+strategy metrics/gates/spec/scenarios and explicit paper/live meanings remain.
+
+Use compact header navigation, 18px one-line Overview titles with full accessible
+prompt text, fixed metadata columns, 12px panels, 20px section spacing, 18.2px
+conversation line-height and 12px message intervals. The Overview plot is 176px;
+strategy plots remain 236px. Coarse-pointer controls retain 44px targets. Research
+conversation and artifact panes preserve all original controls, keyboard/focus,
+independent draft/tab/scenario state and mobile pane selection. Group repeated
+speaker/context/minute metadata visually without rewriting source records.
+
+Hot Markets has one header trigger and the existing persistent drawer. Closing
+returns focus to its trigger. The source and data contracts remain vanilla JS;
+no mock business state or prototype gallery enters the application.
+
+[Verification and remaining acceptance gates](results/meridian_frontend_pr_2026-10-15/HANDOFF.md).
+Latest independent critic: 7/10, below the requested 9/10 design target.
+
+The following historical customer directions remain for context. Current tokens
+above and the Meridian direction take precedence; operator guidance is unchanged.
+
 
 # Design System: Tau
 

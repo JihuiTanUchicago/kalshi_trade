@@ -1,0 +1,4198 @@
+{
+  "/api/me": {
+    "user": {
+      "id": 1,
+      "name": "Preview user",
+      "email": "preview@example.invalid",
+      "picture": null,
+      "autopilot": false
+    },
+    "kalshi_connected": false,
+    "live_trading_available": false,
+    "markets": [
+      {
+        "key": "btc15m",
+        "label": "Bitcoin 15-minute"
+      },
+      {
+        "key": "btc_daily",
+        "label": "Bitcoin daily close, 5pm EDT"
+      },
+      {
+        "key": "eth15m",
+        "label": "Ethereum 15-minute"
+      },
+      {
+        "key": "eth_daily",
+        "label": "Ethereum daily close, 5pm EDT"
+      },
+      {
+        "key": "sol_daily",
+        "label": "Solana daily close, 5pm EDT"
+      },
+      {
+        "key": "xrp_daily",
+        "label": "XRP daily close, 5pm EDT"
+      }
+    ],
+    "directions": [
+      {
+        "key": "momentum",
+        "label": "Momentum",
+        "brief": "Do recent BTC moves keep going into settlement?"
+      },
+      {
+        "key": "longshots",
+        "label": "Favorites & longshots",
+        "brief": "Are cheap contracts systematically mispriced?"
+      },
+      {
+        "key": "random_walk",
+        "label": "Random walk",
+        "brief": "A coin-flip example with no trading edge."
+      }
+    ],
+    "billing_enabled": false,
+    "is_admin": false,
+    "needs_card": false,
+    "free_bonus": 100.0,
+    "credit_balance": 98.4
+  },
+  "/api/dashboard": {
+    "paper": {
+      "cash": 1017.84,
+      "open_at_cost": 6.96,
+      "equity": 1024.8,
+      "deposited": 1000,
+      "total_pnl": 24.8,
+      "roi": 0.0248,
+      "today_pnl": 8.2,
+      "daily": [
+        {
+          "d": "2026-10-07",
+          "pnl": 3.2
+        },
+        {
+          "d": "2026-10-08",
+          "pnl": -2.4
+        },
+        {
+          "d": "2026-10-09",
+          "pnl": 5.6
+        },
+        {
+          "d": "2026-10-10",
+          "pnl": 1.8
+        },
+        {
+          "d": "2026-10-11",
+          "pnl": -0.8
+        },
+        {
+          "d": "2026-10-12",
+          "pnl": 9.2
+        },
+        {
+          "d": "2026-10-13",
+          "pnl": 8.2
+        }
+      ]
+    },
+    "live": {
+      "realized_pnl": 0,
+      "today_pnl": 0
+    },
+    "open_positions": [
+      {
+        "id": 1,
+        "title": "Sample momentum into settlement",
+        "ticker": "KXBTC15M-SAMPLE-A",
+        "side": "yes",
+        "qty": 12,
+        "entry_price": 0.58,
+        "entry_fee": 0.2,
+        "mode": "paper",
+        "opened_at": "2026-10-13T14:29:46Z",
+        "market_close_time": "2026-10-13T14:44:46Z"
+      }
+    ],
+    "recent_closed": [
+      {
+        "id": 2,
+        "title": "Sample momentum into settlement",
+        "ticker": "KXBTC15M-SAMPLE-B",
+        "side": "yes",
+        "qty": 10,
+        "entry_price": 0.54,
+        "entry_fee": 0.18,
+        "mode": "paper",
+        "opened_at": "2026-10-13T14:04:46Z",
+        "closed_at": "2026-10-13T14:19:46Z",
+        "pnl": 4.4
+      }
+    ],
+    "deployments": [
+      {
+        "id": 1,
+        "strategy_id": 4,
+        "title": "Sample: lean into quiet momentum",
+        "direction": "momentum",
+        "market": "btc15m",
+        "mode": "paper",
+        "status": "running",
+        "status_reason": null,
+        "realized_pnl": 24.8,
+        "closed_trades": 18,
+        "wins": 11,
+        "open_positions": 1,
+        "created_at": "2026-10-12T14:34:46Z",
+        "curve": [
+          [
+            1791884086,
+            0
+          ],
+          [
+            1791887686,
+            4.2
+          ],
+          [
+            1791891286,
+            3.1
+          ],
+          [
+            1791894886,
+            12.6
+          ],
+          [
+            1791898486,
+            18.4
+          ],
+          [
+            1791902086,
+            24.8
+          ]
+        ],
+        "stake": 10,
+        "max_positions": 2,
+        "backtest": {
+          "out_of_sample": {
+            "pnl": 38.2,
+            "trades": 46,
+            "win_rate": 0.59,
+            "fees": 12.4,
+            "roi": 0.382,
+            "profit_factor": 1.24,
+            "max_drawdown": 14.2,
+            "sharpe": 0.8,
+            "trades_per_day": 4.6
+          },
+          "capital": 100
+        }
+      }
+    ],
+    "agents": {
+      "research_running": 1,
+      "research_queued": 0
+    },
+    "freshness": {
+      "btc": 40
+    }
+  },
+  "/api/runs": {
+    "runs": [
+      {
+        "id": 1,
+        "kind": "research",
+        "market": "btc_daily",
+        "direction": "momentum",
+        "prompt": "Sample session: fade overpriced tails near the 5pm close",
+        "status": "succeeded",
+        "hypotheses_tried": 4,
+        "strategies_passed": 2,
+        "created_at": "2026-10-14T02:49:25+00:00",
+        "started_at": "2026-10-13T13:32:46Z",
+        "finished_at": "2026-10-14T02:51:25+00:00",
+        "error": null
+      },
+      {
+        "id": 2,
+        "kind": "research",
+        "market": "btc15m",
+        "direction": "random_walk",
+        "prompt": "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances",
+        "status": "succeeded",
+        "hypotheses_tried": 1,
+        "strategies_passed": 0,
+        "created_at": "2026-10-13T11:34:46Z",
+        "started_at": "2026-10-13T11:34:46Z",
+        "finished_at": "2026-10-13T11:36:46Z",
+        "error": null
+      },
+      {
+        "id": 3,
+        "kind": "research",
+        "market": "btc15m",
+        "direction": "momentum",
+        "prompt": "Sample session: lean into quiet momentum",
+        "status": "succeeded",
+        "hypotheses_tried": 2,
+        "strategies_passed": 2,
+        "created_at": "2026-10-14T02:19:25+00:00",
+        "started_at": "2026-10-13T13:32:46Z",
+        "finished_at": "2026-10-14T02:21:25+00:00",
+        "error": null
+      },
+      {
+        "id": 4,
+        "kind": "research",
+        "market": "btc15m",
+        "direction": "momentum",
+        "prompt": "Sample session: does momentum persist into settlement?",
+        "status": "running",
+        "hypotheses_tried": 0,
+        "strategies_passed": 0,
+        "created_at": "2026-10-14T03:46:25+00:00",
+        "started_at": "2026-10-14T03:46:25+00:00",
+        "finished_at": null,
+        "error": null
+      }
+    ],
+    "counts": {
+      "research_running": 1,
+      "research_queued": 0
+    }
+  },
+  "/api/strategies": {
+    "strategies": [
+      {
+        "id": 1,
+        "run_id": 1,
+        "parent_id": null,
+        "market": "btc_daily",
+        "direction": "momentum",
+        "title": "Sample: fade overpriced tails",
+        "thesis": "Synthetic UI sample: test tail mispricing near the daily close.",
+        "status": "passed",
+        "created_at": "2026-10-13T13:34:46Z",
+        "hypotheses_tried": 2,
+        "in_sample": {
+          "pnl": 61.120000000000005,
+          "trades": 108,
+          "win_rate": 0.59,
+          "fees": 12.4,
+          "roi": 0.6112,
+          "profit_factor": 1.24,
+          "max_drawdown": 14.2,
+          "sharpe": 0.8,
+          "trades_per_day": 4.6
+        },
+        "out_of_sample": {
+          "pnl": 38.2,
+          "trades": 46,
+          "win_rate": 0.59,
+          "fees": 12.4,
+          "roi": 0.382,
+          "profit_factor": 1.24,
+          "max_drawdown": 14.2,
+          "sharpe": 0.8,
+          "trades_per_day": 4.6
+        },
+        "equity": [
+          [
+            1791038086,
+            0.0
+          ],
+          [
+            1791124486,
+            5.44
+          ],
+          [
+            1791210886,
+            8.49
+          ],
+          [
+            1791297286,
+            12.73
+          ],
+          [
+            1791383686,
+            18.18
+          ],
+          [
+            1791470086,
+            21.22
+          ],
+          [
+            1791556486,
+            25.47
+          ],
+          [
+            1791642886,
+            30.91
+          ],
+          [
+            1791729286,
+            33.96
+          ],
+          [
+            1791815686,
+            38.2
+          ]
+        ],
+        "capital": 100,
+        "stake": 10,
+        "side": "yes",
+        "spec": {
+          "version": 1,
+          "market": "btc_daily",
+          "side": "yes",
+          "entry": {
+            "all": [
+              {
+                "feature": "ret_5m",
+                "op": ">",
+                "value": 0.001
+              }
+            ]
+          },
+          "exit": {
+            "take_profit_cents": 8,
+            "stop_loss_cents": 6
+          },
+          "sizing": {
+            "stake": 10,
+            "max_positions": 2
+          }
+        },
+        "rules": [
+          "Sample only: enter when the five-minute BTC return exceeds 0.1%.",
+          "Use $10 of paper capital per trade, with at most two positions open.",
+          "Exit at the sample profit or loss threshold, or at settlement."
+        ],
+        "gates": [
+          {
+            "name": "Makes money on unseen data",
+            "value": 38.2,
+            "threshold": "> $0",
+            "ok": true
+          },
+          {
+            "name": "Enough unseen trades",
+            "value": 46,
+            "threshold": ">= 30 trades",
+            "ok": true
+          }
+        ],
+        "dataset": {
+          "start": "2026-10-03T14:34:46Z",
+          "end": "2026-10-13T14:34:46Z",
+          "out_of_sample_from": "2026-10-10T14:34:46Z"
+        },
+        "recent_trades": [],
+        "deployments": []
+      },
+      {
+        "id": 2,
+        "run_id": 1,
+        "parent_id": null,
+        "market": "btc_daily",
+        "direction": "longshots",
+        "title": "Sample longshot hypothesis",
+        "thesis": "Synthetic example for UI editing; these results are not a real backtest.",
+        "status": "failed",
+        "created_at": "2026-10-13T13:34:46Z",
+        "hypotheses_tried": 2,
+        "in_sample": {
+          "pnl": -23.36,
+          "trades": 108,
+          "win_rate": 0.41,
+          "fees": 12.4,
+          "roi": -0.2336,
+          "profit_factor": 0.78,
+          "max_drawdown": 14.2,
+          "sharpe": -0.5,
+          "trades_per_day": 4.6
+        },
+        "out_of_sample": {
+          "pnl": -14.6,
+          "trades": 46,
+          "win_rate": 0.41,
+          "fees": 12.4,
+          "roi": -0.146,
+          "profit_factor": 0.78,
+          "max_drawdown": 14.2,
+          "sharpe": -0.5,
+          "trades_per_day": 4.6
+        },
+        "equity": [
+          [
+            1791038086,
+            0.0
+          ],
+          [
+            1791124486,
+            -0.42
+          ],
+          [
+            1791210886,
+            -3.24
+          ],
+          [
+            1791297286,
+            -4.87
+          ],
+          [
+            1791383686,
+            -5.29
+          ],
+          [
+            1791470086,
+            -8.11
+          ],
+          [
+            1791556486,
+            -9.73
+          ],
+          [
+            1791642886,
+            -10.16
+          ],
+          [
+            1791729286,
+            -12.98
+          ],
+          [
+            1791815686,
+            -14.6
+          ]
+        ],
+        "capital": 100,
+        "stake": 10,
+        "side": "yes",
+        "spec": {
+          "version": 1,
+          "market": "btc15m",
+          "side": "yes",
+          "entry": {
+            "all": [
+              {
+                "feature": "ret_5m",
+                "op": ">",
+                "value": 0.001
+              }
+            ]
+          },
+          "exit": {
+            "take_profit_cents": 8,
+            "stop_loss_cents": 6
+          },
+          "sizing": {
+            "stake": 10,
+            "max_positions": 2
+          }
+        },
+        "rules": [
+          "Sample only: enter when the five-minute BTC return exceeds 0.1%.",
+          "Use $10 of paper capital per trade, with at most two positions open.",
+          "Exit at the sample profit or loss threshold, or at settlement."
+        ],
+        "gates": [
+          {
+            "name": "Makes money on unseen data",
+            "value": -14.6,
+            "threshold": "> $0",
+            "ok": false
+          },
+          {
+            "name": "Enough unseen trades",
+            "value": 46,
+            "threshold": ">= 30 trades",
+            "ok": true
+          }
+        ],
+        "dataset": {
+          "start": "2026-10-03T14:34:46Z",
+          "end": "2026-10-13T14:34:46Z",
+          "out_of_sample_from": "2026-10-10T14:34:46Z"
+        },
+        "recent_trades": [],
+        "deployments": []
+      },
+      {
+        "id": 3,
+        "run_id": 2,
+        "parent_id": null,
+        "market": "btc15m",
+        "direction": "random_walk",
+        "title": "Todd's random walk (sample)",
+        "thesis": "A coin flip with no information. This sample shows a rejected hypothesis.",
+        "status": "rejected",
+        "created_at": "2026-10-13T13:34:46Z",
+        "hypotheses_tried": 1,
+        "in_sample": {
+          "pnl": -0.256,
+          "trades": 108,
+          "win_rate": 0.5,
+          "fees": 12.4,
+          "roi": -0.0026,
+          "profit_factor": 0.78,
+          "max_drawdown": 14.2,
+          "sharpe": -0.5,
+          "trades_per_day": 4.6
+        },
+        "out_of_sample": null,
+        "equity": [
+          [
+            1791038086,
+            0.0
+          ],
+          [
+            1791124486,
+            1.18
+          ],
+          [
+            1791210886,
+            -0.04
+          ],
+          [
+            1791297286,
+            -0.05
+          ],
+          [
+            1791383686,
+            1.13
+          ],
+          [
+            1791470086,
+            -0.09
+          ],
+          [
+            1791556486,
+            -0.11
+          ],
+          [
+            1791642886,
+            1.08
+          ],
+          [
+            1791729286,
+            -0.14
+          ],
+          [
+            1791815686,
+            -0.16
+          ]
+        ],
+        "capital": 100,
+        "stake": 10,
+        "side": "yes",
+        "spec": {
+          "version": 1,
+          "market": "btc15m",
+          "side": "yes",
+          "entry": {
+            "all": [
+              {
+                "feature": "ret_5m",
+                "op": ">",
+                "value": 0.001
+              }
+            ]
+          },
+          "exit": {
+            "take_profit_cents": 8,
+            "stop_loss_cents": 6
+          },
+          "sizing": {
+            "stake": 10,
+            "max_positions": 2
+          }
+        },
+        "rules": [
+          "Sample only: enter when the five-minute BTC return exceeds 0.1%.",
+          "Use $10 of paper capital per trade, with at most two positions open.",
+          "Exit at the sample profit or loss threshold, or at settlement."
+        ],
+        "gates": [
+          {
+            "name": "Makes money on unseen data",
+            "value": -0.16,
+            "threshold": "> $0",
+            "ok": false
+          },
+          {
+            "name": "Enough unseen trades",
+            "value": 46,
+            "threshold": ">= 30 trades",
+            "ok": true
+          }
+        ],
+        "dataset": {
+          "start": "2026-10-03T14:34:46Z",
+          "end": "2026-10-13T14:34:46Z",
+          "out_of_sample_from": "2026-10-10T14:34:46Z"
+        },
+        "recent_trades": [],
+        "deployments": []
+      },
+      {
+        "id": 4,
+        "run_id": 3,
+        "parent_id": null,
+        "market": "btc15m",
+        "direction": "momentum",
+        "title": "Sample: lean into quiet momentum",
+        "thesis": "Synthetic UI sample: test tail mispricing near the daily close.",
+        "status": "passed",
+        "created_at": "2026-10-13T13:34:46Z",
+        "hypotheses_tried": 2,
+        "in_sample": {
+          "pnl": 61.120000000000005,
+          "trades": 108,
+          "win_rate": 0.59,
+          "fees": 12.4,
+          "roi": 0.6112,
+          "profit_factor": 1.24,
+          "max_drawdown": 14.2,
+          "sharpe": 0.8,
+          "trades_per_day": 4.6
+        },
+        "out_of_sample": {
+          "pnl": 29.4,
+          "trades": 46,
+          "win_rate": 0.59,
+          "fees": 12.4,
+          "roi": 0.382,
+          "profit_factor": 1.24,
+          "max_drawdown": 14.2,
+          "sharpe": 0.8,
+          "trades_per_day": 4.6
+        },
+        "equity": [
+          [
+            1791038086,
+            0.0
+          ],
+          [
+            1791124486,
+            5.44
+          ],
+          [
+            1791210886,
+            8.49
+          ],
+          [
+            1791297286,
+            12.73
+          ],
+          [
+            1791383686,
+            18.18
+          ],
+          [
+            1791470086,
+            21.22
+          ],
+          [
+            1791556486,
+            25.47
+          ],
+          [
+            1791642886,
+            30.91
+          ],
+          [
+            1791729286,
+            33.96
+          ],
+          [
+            1791815686,
+            38.2
+          ]
+        ],
+        "capital": 100,
+        "stake": 10,
+        "side": "yes",
+        "spec": {
+          "version": 1,
+          "market": "btc_daily",
+          "side": "yes",
+          "entry": {
+            "all": [
+              {
+                "feature": "ret_5m",
+                "op": ">",
+                "value": 0.001
+              }
+            ]
+          },
+          "exit": {
+            "take_profit_cents": 8,
+            "stop_loss_cents": 6
+          },
+          "sizing": {
+            "stake": 10,
+            "max_positions": 2
+          }
+        },
+        "rules": [
+          "Sample only: enter when the five-minute BTC return exceeds 0.1%.",
+          "Use $10 of paper capital per trade, with at most two positions open.",
+          "Exit at the sample profit or loss threshold, or at settlement."
+        ],
+        "gates": [
+          {
+            "name": "Makes money on unseen data",
+            "value": 38.2,
+            "threshold": "> $0",
+            "ok": true
+          },
+          {
+            "name": "Enough unseen trades",
+            "value": 46,
+            "threshold": ">= 30 trades",
+            "ok": true
+          }
+        ],
+        "dataset": {
+          "start": "2026-10-03T14:34:46Z",
+          "end": "2026-10-13T14:34:46Z",
+          "out_of_sample_from": "2026-10-10T14:34:46Z"
+        },
+        "recent_trades": [],
+        "deployments": []
+      },
+      {
+        "id": 5,
+        "run_id": 3,
+        "parent_id": null,
+        "market": "btc15m",
+        "direction": "momentum",
+        "title": "Sample: selective calm-market entry",
+        "thesis": "Synthetic UI sample: test tail mispricing near the daily close.",
+        "status": "passed",
+        "created_at": "2026-10-13T13:34:46Z",
+        "hypotheses_tried": 2,
+        "in_sample": {
+          "pnl": 61.120000000000005,
+          "trades": 108,
+          "win_rate": 0.59,
+          "fees": 12.4,
+          "roi": 0.6112,
+          "profit_factor": 1.24,
+          "max_drawdown": 14.2,
+          "sharpe": 0.8,
+          "trades_per_day": 4.6
+        },
+        "out_of_sample": {
+          "pnl": 18.1,
+          "trades": 46,
+          "win_rate": 0.59,
+          "fees": 12.4,
+          "roi": 0.382,
+          "profit_factor": 1.24,
+          "max_drawdown": 14.2,
+          "sharpe": 0.8,
+          "trades_per_day": 4.6
+        },
+        "equity": [
+          [
+            1791038086,
+            0.0
+          ],
+          [
+            1791124486,
+            5.44
+          ],
+          [
+            1791210886,
+            8.49
+          ],
+          [
+            1791297286,
+            12.73
+          ],
+          [
+            1791383686,
+            18.18
+          ],
+          [
+            1791470086,
+            21.22
+          ],
+          [
+            1791556486,
+            25.47
+          ],
+          [
+            1791642886,
+            30.91
+          ],
+          [
+            1791729286,
+            33.96
+          ],
+          [
+            1791815686,
+            38.2
+          ]
+        ],
+        "capital": 100,
+        "stake": 10,
+        "side": "yes",
+        "spec": {
+          "version": 1,
+          "market": "btc_daily",
+          "side": "yes",
+          "entry": {
+            "all": [
+              {
+                "feature": "ret_5m",
+                "op": ">",
+                "value": 0.001
+              }
+            ]
+          },
+          "exit": {
+            "take_profit_cents": 8,
+            "stop_loss_cents": 6
+          },
+          "sizing": {
+            "stake": 10,
+            "max_positions": 2
+          }
+        },
+        "rules": [
+          "Sample only: enter when the five-minute BTC return exceeds 0.1%.",
+          "Use $10 of paper capital per trade, with at most two positions open.",
+          "Exit at the sample profit or loss threshold, or at settlement."
+        ],
+        "gates": [
+          {
+            "name": "Makes money on unseen data",
+            "value": 38.2,
+            "threshold": "> $0",
+            "ok": true
+          },
+          {
+            "name": "Enough unseen trades",
+            "value": 46,
+            "threshold": ">= 30 trades",
+            "ok": true
+          }
+        ],
+        "dataset": {
+          "start": "2026-10-03T14:34:46Z",
+          "end": "2026-10-13T14:34:46Z",
+          "out_of_sample_from": "2026-10-10T14:34:46Z"
+        },
+        "recent_trades": [],
+        "deployments": []
+      },
+      {
+        "id": 6,
+        "run_id": 1,
+        "parent_id": null,
+        "market": "btc_daily",
+        "direction": "momentum",
+        "title": "Sample: sell only when calm",
+        "thesis": "Synthetic UI sample: test tail mispricing near the daily close.",
+        "status": "passed",
+        "created_at": "2026-10-13T13:34:46Z",
+        "hypotheses_tried": 2,
+        "in_sample": {
+          "pnl": 61.120000000000005,
+          "trades": 108,
+          "win_rate": 0.59,
+          "fees": 12.4,
+          "roi": 0.6112,
+          "profit_factor": 1.24,
+          "max_drawdown": 14.2,
+          "sharpe": 0.8,
+          "trades_per_day": 4.6
+        },
+        "out_of_sample": {
+          "pnl": 21.1,
+          "trades": 46,
+          "win_rate": 0.59,
+          "fees": 12.4,
+          "roi": 0.382,
+          "profit_factor": 1.24,
+          "max_drawdown": 14.2,
+          "sharpe": 0.8,
+          "trades_per_day": 4.6
+        },
+        "equity": [
+          [
+            1791038086,
+            0.0
+          ],
+          [
+            1791124486,
+            5.44
+          ],
+          [
+            1791210886,
+            8.49
+          ],
+          [
+            1791297286,
+            12.73
+          ],
+          [
+            1791383686,
+            18.18
+          ],
+          [
+            1791470086,
+            21.22
+          ],
+          [
+            1791556486,
+            25.47
+          ],
+          [
+            1791642886,
+            30.91
+          ],
+          [
+            1791729286,
+            33.96
+          ],
+          [
+            1791815686,
+            38.2
+          ]
+        ],
+        "capital": 100,
+        "stake": 10,
+        "side": "yes",
+        "spec": {
+          "version": 1,
+          "market": "btc_daily",
+          "side": "yes",
+          "entry": {
+            "all": [
+              {
+                "feature": "ret_5m",
+                "op": ">",
+                "value": 0.001
+              }
+            ]
+          },
+          "exit": {
+            "take_profit_cents": 8,
+            "stop_loss_cents": 6
+          },
+          "sizing": {
+            "stake": 10,
+            "max_positions": 2
+          }
+        },
+        "rules": [
+          "Sample only: enter when the five-minute BTC return exceeds 0.1%.",
+          "Use $10 of paper capital per trade, with at most two positions open.",
+          "Exit at the sample profit or loss threshold, or at settlement."
+        ],
+        "gates": [
+          {
+            "name": "Makes money on unseen data",
+            "value": 38.2,
+            "threshold": "> $0",
+            "ok": true
+          },
+          {
+            "name": "Enough unseen trades",
+            "value": 46,
+            "threshold": ">= 30 trades",
+            "ok": true
+          }
+        ],
+        "dataset": {
+          "start": "2026-10-03T14:34:46Z",
+          "end": "2026-10-13T14:34:46Z",
+          "out_of_sample_from": "2026-10-10T14:34:46Z"
+        },
+        "recent_trades": [],
+        "deployments": []
+      },
+      {
+        "id": 7,
+        "run_id": 1,
+        "parent_id": null,
+        "market": "btc_daily",
+        "direction": "momentum",
+        "title": "Sample: chase every move",
+        "thesis": "Synthetic UI sample: test tail mispricing near the daily close.",
+        "status": "failed",
+        "created_at": "2026-10-13T13:34:46Z",
+        "hypotheses_tried": 2,
+        "in_sample": {
+          "pnl": 61.120000000000005,
+          "trades": 108,
+          "win_rate": 0.59,
+          "fees": 12.4,
+          "roi": 0.6112,
+          "profit_factor": 1.24,
+          "max_drawdown": 14.2,
+          "sharpe": 0.8,
+          "trades_per_day": 4.6
+        },
+        "out_of_sample": {
+          "pnl": -12.4,
+          "trades": 46,
+          "win_rate": 0.59,
+          "fees": 12.4,
+          "roi": 0.382,
+          "profit_factor": 1.24,
+          "max_drawdown": 14.2,
+          "sharpe": 0.8,
+          "trades_per_day": 4.6
+        },
+        "equity": [
+          [
+            1791038086,
+            0.0
+          ],
+          [
+            1791124486,
+            5.44
+          ],
+          [
+            1791210886,
+            8.49
+          ],
+          [
+            1791297286,
+            12.73
+          ],
+          [
+            1791383686,
+            18.18
+          ],
+          [
+            1791470086,
+            21.22
+          ],
+          [
+            1791556486,
+            25.47
+          ],
+          [
+            1791642886,
+            30.91
+          ],
+          [
+            1791729286,
+            33.96
+          ],
+          [
+            1791815686,
+            38.2
+          ]
+        ],
+        "capital": 100,
+        "stake": 10,
+        "side": "yes",
+        "spec": {
+          "version": 1,
+          "market": "btc_daily",
+          "side": "yes",
+          "entry": {
+            "all": [
+              {
+                "feature": "ret_5m",
+                "op": ">",
+                "value": 0.001
+              }
+            ]
+          },
+          "exit": {
+            "take_profit_cents": 8,
+            "stop_loss_cents": 6
+          },
+          "sizing": {
+            "stake": 10,
+            "max_positions": 2
+          }
+        },
+        "rules": [
+          "Sample only: enter when the five-minute BTC return exceeds 0.1%.",
+          "Use $10 of paper capital per trade, with at most two positions open.",
+          "Exit at the sample profit or loss threshold, or at settlement."
+        ],
+        "gates": [
+          {
+            "name": "Makes money on unseen data",
+            "value": 38.2,
+            "threshold": "> $0",
+            "ok": true
+          },
+          {
+            "name": "Enough unseen trades",
+            "value": 46,
+            "threshold": ">= 30 trades",
+            "ok": true
+          }
+        ],
+        "dataset": {
+          "start": "2026-10-03T14:34:46Z",
+          "end": "2026-10-13T14:34:46Z",
+          "out_of_sample_from": "2026-10-10T14:34:46Z"
+        },
+        "recent_trades": [],
+        "deployments": []
+      }
+    ]
+  },
+  "/api/deployments": {
+    "deployments": [
+      {
+        "id": 1,
+        "strategy_id": 4,
+        "title": "Sample: lean into quiet momentum",
+        "direction": "momentum",
+        "market": "btc15m",
+        "mode": "paper",
+        "status": "running",
+        "status_reason": null,
+        "realized_pnl": 24.8,
+        "closed_trades": 18,
+        "wins": 11,
+        "open_positions": 1,
+        "created_at": "2026-10-12T14:34:46Z",
+        "curve": [
+          [
+            1791884086,
+            0
+          ],
+          [
+            1791887686,
+            4.2
+          ],
+          [
+            1791891286,
+            3.1
+          ],
+          [
+            1791894886,
+            12.6
+          ],
+          [
+            1791898486,
+            18.4
+          ],
+          [
+            1791902086,
+            24.8
+          ]
+        ],
+        "stake": 10,
+        "max_positions": 2,
+        "backtest": {
+          "out_of_sample": {
+            "pnl": 38.2,
+            "trades": 46,
+            "win_rate": 0.59,
+            "fees": 12.4,
+            "roi": 0.382,
+            "profit_factor": 1.24,
+            "max_drawdown": 14.2,
+            "sharpe": 0.8,
+            "trades_per_day": 4.6
+          },
+          "capital": 100
+        }
+      }
+    ],
+    "open_positions": [
+      {
+        "id": 1,
+        "title": "Sample momentum into settlement",
+        "ticker": "KXBTC15M-SAMPLE-A",
+        "side": "yes",
+        "qty": 12,
+        "entry_price": 0.58,
+        "entry_fee": 0.2,
+        "mode": "paper",
+        "opened_at": "2026-10-13T14:29:46Z",
+        "market_close_time": "2026-10-13T14:44:46Z"
+      }
+    ],
+    "recent_closed": [
+      {
+        "id": 2,
+        "title": "Sample momentum into settlement",
+        "ticker": "KXBTC15M-SAMPLE-B",
+        "side": "yes",
+        "qty": 10,
+        "entry_price": 0.54,
+        "entry_fee": 0.18,
+        "mode": "paper",
+        "opened_at": "2026-10-13T14:04:46Z",
+        "closed_at": "2026-10-13T14:19:46Z",
+        "pnl": 4.4
+      }
+    ]
+  },
+  "/api/chat": {
+    "messages": [
+      {
+        "id": 1,
+        "role": "user",
+        "content": "How is the sample momentum strategy doing?",
+        "created_at": "2026-10-13T14:24:46Z",
+        "proposal_id": null
+      },
+      {
+        "id": 2,
+        "role": "agent",
+        "content": "This is a UI preview with synthetic results. No agent is running and no trades are being placed.",
+        "created_at": "2026-10-13T14:25:46Z",
+        "proposal_id": null
+      }
+    ],
+    "agent_busy": false
+  },
+  "/api/funds": {
+    "paper": {
+      "cash": 1017.84,
+      "ledger": [
+        {
+          "id": 1,
+          "kind": "deposit",
+          "memo": "Sample starting paper balance",
+          "amount": 1000,
+          "created_at": "2026-10-12T14:34:46Z"
+        },
+        {
+          "id": 2,
+          "kind": "pnl",
+          "memo": "Sample paper results",
+          "amount": 24.8,
+          "created_at": "2026-10-13T14:19:46Z"
+        },
+        {
+          "id": 3,
+          "kind": "entry",
+          "memo": "Sample position cost",
+          "amount": -6.96,
+          "created_at": "2026-10-13T14:29:46Z"
+        }
+      ]
+    },
+    "kalshi": {
+      "connected": false
+    }
+  },
+  "/api/community": {
+    "posts": [
+      {
+        "id": 1,
+        "author": "Sample trader",
+        "picture": null,
+        "body": "A sample post to explore how a strategy appears in the community feed.",
+        "created_at": "2026-10-13T14:09:46Z",
+        "liked": false,
+        "likes": 4,
+        "comments": 1,
+        "snapshot": {
+          "kind": "strategy",
+          "id": 1,
+          "title": "Sample momentum into settlement",
+          "status": "passed",
+          "market": "btc15m",
+          "pnl": 38.2,
+          "trades": 46,
+          "win_rate": 0.59
+        },
+        "reactions": [
+          {
+            "emoji": "\ud83d\udd25",
+            "count": 2,
+            "mine": false
+          }
+        ],
+        "image": null,
+        "edited": false
+      },
+      {
+        "id": 2,
+        "author": "Preview user",
+        "picture": null,
+        "body": "UI sample only \u2014 this is not an account performance report.",
+        "created_at": "2026-10-13T13:49:46Z",
+        "liked": false,
+        "likes": 2,
+        "comments": 0,
+        "snapshot": {
+          "kind": "pnl",
+          "paper_pnl": 24.8,
+          "live_pnl": 0
+        },
+        "reactions": [
+          {
+            "emoji": "\ud83d\udd25",
+            "count": 2,
+            "mine": false
+          }
+        ],
+        "image": null,
+        "edited": false
+      }
+    ]
+  },
+  "/api/community/1/comments": {
+    "comments": [
+      {
+        "id": 1,
+        "author": "Preview user",
+        "picture": null,
+        "body": "Sample reply for layout review.",
+        "created_at": "2026-10-13T14:14:46Z"
+      }
+    ]
+  },
+  "/api/community/2/comments": {
+    "comments": []
+  },
+  "/api/strategies/1": {
+    "id": 1,
+    "run_id": 1,
+    "parent_id": null,
+    "market": "btc_daily",
+    "direction": "momentum",
+    "title": "Sample: fade overpriced tails",
+    "thesis": "Synthetic UI sample: test tail mispricing near the daily close.",
+    "status": "passed",
+    "created_at": "2026-10-13T13:34:46Z",
+    "hypotheses_tried": 2,
+    "in_sample": {
+      "pnl": 61.120000000000005,
+      "trades": 108,
+      "win_rate": 0.59,
+      "fees": 12.4,
+      "roi": 0.6112,
+      "profit_factor": 1.24,
+      "max_drawdown": 14.2,
+      "sharpe": 0.8,
+      "trades_per_day": 4.6
+    },
+    "out_of_sample": {
+      "pnl": 38.2,
+      "trades": 46,
+      "win_rate": 0.59,
+      "fees": 12.4,
+      "roi": 0.382,
+      "profit_factor": 1.24,
+      "max_drawdown": 14.2,
+      "sharpe": 0.8,
+      "trades_per_day": 4.6
+    },
+    "equity": [
+      [
+        1791038086,
+        0.0
+      ],
+      [
+        1791124486,
+        14.14
+      ],
+      [
+        1791210886,
+        22.07
+      ],
+      [
+        1791297286,
+        33.1
+      ],
+      [
+        1791383686,
+        47.27
+      ],
+      [
+        1791470086,
+        55.17
+      ],
+      [
+        1791556486,
+        66.22
+      ],
+      [
+        1791642886,
+        80.37
+      ],
+      [
+        1791729286,
+        88.3
+      ],
+      [
+        1791815686,
+        99.32
+      ]
+    ],
+    "capital": 100,
+    "stake": 10,
+    "side": "yes",
+    "spec": {
+      "version": 1,
+      "market": "btc_daily",
+      "side": "yes",
+      "entry": {
+        "all": [
+          {
+            "feature": "ret_5m",
+            "op": ">",
+            "value": 0.001
+          }
+        ]
+      },
+      "exit": {
+        "take_profit_cents": 8,
+        "stop_loss_cents": 6
+      },
+      "sizing": {
+        "stake": 10,
+        "max_positions": 2
+      }
+    },
+    "rules": [
+      "Sample only: enter when the five-minute BTC return exceeds 0.1%.",
+      "Use $10 of paper capital per trade, with at most two positions open.",
+      "Exit at the sample profit or loss threshold, or at settlement."
+    ],
+    "gates": [
+      {
+        "name": "Makes money on unseen data",
+        "value": 38.2,
+        "threshold": "> $0",
+        "ok": true
+      },
+      {
+        "name": "Enough unseen trades",
+        "value": 46,
+        "threshold": ">= 10 trades",
+        "ok": true
+      }
+    ],
+    "dataset": {
+      "start": "2026-10-03T14:34:46Z",
+      "end": "2026-10-13T14:34:46Z",
+      "out_of_sample_from": "2026-10-10T14:34:46Z"
+    },
+    "recent_trades": [],
+    "deployments": []
+  },
+  "/api/strategies/2": {
+    "id": 2,
+    "run_id": 1,
+    "parent_id": null,
+    "market": "btc_daily",
+    "direction": "longshots",
+    "title": "Sample longshot hypothesis",
+    "thesis": "Synthetic example for UI editing; these results are not a real backtest.",
+    "status": "failed",
+    "created_at": "2026-10-13T13:34:46Z",
+    "hypotheses_tried": 2,
+    "in_sample": {
+      "pnl": -23.36,
+      "trades": 108,
+      "win_rate": 0.41,
+      "fees": 12.4,
+      "roi": -0.2336,
+      "profit_factor": 0.78,
+      "max_drawdown": 14.2,
+      "sharpe": -0.5,
+      "trades_per_day": 4.6
+    },
+    "out_of_sample": {
+      "pnl": -14.6,
+      "trades": 46,
+      "win_rate": 0.41,
+      "fees": 12.4,
+      "roi": -0.146,
+      "profit_factor": 0.78,
+      "max_drawdown": 14.2,
+      "sharpe": -0.5,
+      "trades_per_day": 4.6
+    },
+    "equity": [
+      [
+        1791038086,
+        0.0
+      ],
+      [
+        1791124486,
+        -1.09
+      ],
+      [
+        1791210886,
+        -8.42
+      ],
+      [
+        1791297286,
+        -12.66
+      ],
+      [
+        1791383686,
+        -13.75
+      ],
+      [
+        1791470086,
+        -21.09
+      ],
+      [
+        1791556486,
+        -25.3
+      ],
+      [
+        1791642886,
+        -26.42
+      ],
+      [
+        1791729286,
+        -33.75
+      ],
+      [
+        1791815686,
+        -37.96
+      ]
+    ],
+    "capital": 100,
+    "stake": 10,
+    "side": "yes",
+    "spec": {
+      "version": 1,
+      "market": "btc15m",
+      "side": "yes",
+      "entry": {
+        "all": [
+          {
+            "feature": "ret_5m",
+            "op": ">",
+            "value": 0.001
+          }
+        ]
+      },
+      "exit": {
+        "take_profit_cents": 8,
+        "stop_loss_cents": 6
+      },
+      "sizing": {
+        "stake": 10,
+        "max_positions": 2
+      }
+    },
+    "rules": [
+      "Sample only: enter when the five-minute BTC return exceeds 0.1%.",
+      "Use $10 of paper capital per trade, with at most two positions open.",
+      "Exit at the sample profit or loss threshold, or at settlement."
+    ],
+    "gates": [
+      {
+        "name": "Makes money on unseen data",
+        "value": -14.6,
+        "threshold": "> $0",
+        "ok": false
+      },
+      {
+        "name": "Enough unseen trades",
+        "value": 46,
+        "threshold": ">= 10 trades",
+        "ok": true
+      }
+    ],
+    "dataset": {
+      "start": "2026-10-03T14:34:46Z",
+      "end": "2026-10-13T14:34:46Z",
+      "out_of_sample_from": "2026-10-10T14:34:46Z"
+    },
+    "recent_trades": [],
+    "deployments": []
+  },
+  "/api/strategies/3": {
+    "id": 3,
+    "run_id": 2,
+    "parent_id": null,
+    "market": "btc15m",
+    "direction": "random_walk",
+    "title": "Todd's random walk (sample)",
+    "thesis": "A coin flip with no information. This sample shows a rejected hypothesis.",
+    "status": "rejected",
+    "created_at": "2026-10-13T13:34:46Z",
+    "hypotheses_tried": 1,
+    "in_sample": {
+      "pnl": -0.256,
+      "trades": 108,
+      "win_rate": 0.5,
+      "fees": 12.4,
+      "roi": -0.0026,
+      "profit_factor": 0.78,
+      "max_drawdown": 14.2,
+      "sharpe": -0.5,
+      "trades_per_day": 4.6
+    },
+    "out_of_sample": null,
+    "equity": [
+      [
+        1791038086,
+        0.0
+      ],
+      [
+        1791124486,
+        1.18
+      ],
+      [
+        1791210886,
+        -0.04
+      ],
+      [
+        1791297286,
+        -0.05
+      ],
+      [
+        1791383686,
+        1.13
+      ],
+      [
+        1791470086,
+        -0.09
+      ],
+      [
+        1791556486,
+        -0.11
+      ],
+      [
+        1791642886,
+        1.08
+      ],
+      [
+        1791729286,
+        -0.14
+      ],
+      [
+        1791815686,
+        -0.16
+      ]
+    ],
+    "capital": 100,
+    "stake": 10,
+    "side": "yes",
+    "spec": {
+      "version": 1,
+      "market": "btc15m",
+      "side": "yes",
+      "entry": {
+        "all": [
+          {
+            "feature": "ret_5m",
+            "op": ">",
+            "value": 0.001
+          }
+        ]
+      },
+      "exit": {
+        "take_profit_cents": 8,
+        "stop_loss_cents": 6
+      },
+      "sizing": {
+        "stake": 10,
+        "max_positions": 2
+      }
+    },
+    "rules": [
+      "Sample only: enter when the five-minute BTC return exceeds 0.1%.",
+      "Use $10 of paper capital per trade, with at most two positions open.",
+      "Exit at the sample profit or loss threshold, or at settlement."
+    ],
+    "gates": [
+      {
+        "name": "Makes money on unseen data",
+        "value": -0.16,
+        "threshold": "> $0",
+        "ok": false
+      },
+      {
+        "name": "Enough unseen trades",
+        "value": 46,
+        "threshold": ">= 30 trades",
+        "ok": true
+      }
+    ],
+    "dataset": {
+      "start": "2026-10-03T14:34:46Z",
+      "end": "2026-10-13T14:34:46Z",
+      "out_of_sample_from": "2026-10-10T14:34:46Z"
+    },
+    "recent_trades": [],
+    "deployments": []
+  },
+  "/api/runs/1": {
+    "run": {
+      "id": 1,
+      "kind": "research",
+      "market": "btc_daily",
+      "direction": "momentum",
+      "prompt": "Sample session: fade overpriced tails near the 5pm close",
+      "status": "succeeded",
+      "hypotheses_tried": 4,
+      "strategies_passed": 2,
+      "created_at": "2026-10-14T02:49:25+00:00",
+      "started_at": "2026-10-13T13:32:46Z",
+      "finished_at": "2026-10-14T02:51:25+00:00",
+      "error": null
+    },
+    "events": [
+      {
+        "id": 1,
+        "kind": "step",
+        "message": "Synthetic sample: checked the idea and history coverage.",
+        "data": {},
+        "created_at": "2026-10-14T03:46:25+00:00"
+      },
+      {
+        "id": 2,
+        "kind": "done",
+        "message": "Synthetic sample session completed.",
+        "data": {},
+        "created_at": "2026-10-14T03:48:25+00:00"
+      }
+    ],
+    "strategies": [
+      {
+        "id": 1,
+        "run_id": 1,
+        "parent_id": null,
+        "market": "btc_daily",
+        "direction": "momentum",
+        "title": "Sample: fade overpriced tails",
+        "thesis": "Synthetic UI sample: test tail mispricing near the daily close.",
+        "status": "passed",
+        "created_at": "2026-10-13T13:34:46Z",
+        "hypotheses_tried": 2,
+        "in_sample": {
+          "pnl": 61.120000000000005,
+          "trades": 108,
+          "win_rate": 0.59,
+          "fees": 12.4,
+          "roi": 0.6112,
+          "profit_factor": 1.24,
+          "max_drawdown": 14.2,
+          "sharpe": 0.8,
+          "trades_per_day": 4.6
+        },
+        "out_of_sample": {
+          "pnl": 38.2,
+          "trades": 46,
+          "win_rate": 0.59,
+          "fees": 12.4,
+          "roi": 0.382,
+          "profit_factor": 1.24,
+          "max_drawdown": 14.2,
+          "sharpe": 0.8,
+          "trades_per_day": 4.6
+        },
+        "equity": [
+          [
+            1791038086,
+            0.0
+          ],
+          [
+            1791124486,
+            5.44
+          ],
+          [
+            1791210886,
+            8.49
+          ],
+          [
+            1791297286,
+            12.73
+          ],
+          [
+            1791383686,
+            18.18
+          ],
+          [
+            1791470086,
+            21.22
+          ],
+          [
+            1791556486,
+            25.47
+          ],
+          [
+            1791642886,
+            30.91
+          ],
+          [
+            1791729286,
+            33.96
+          ],
+          [
+            1791815686,
+            38.2
+          ]
+        ],
+        "capital": 100,
+        "stake": 10,
+        "side": "yes",
+        "spec": {
+          "version": 1,
+          "market": "btc_daily",
+          "side": "yes",
+          "entry": {
+            "all": [
+              {
+                "feature": "ret_5m",
+                "op": ">",
+                "value": 0.001
+              }
+            ]
+          },
+          "exit": {
+            "take_profit_cents": 8,
+            "stop_loss_cents": 6
+          },
+          "sizing": {
+            "stake": 10,
+            "max_positions": 2
+          }
+        },
+        "rules": [
+          "Sample only: enter when the five-minute BTC return exceeds 0.1%.",
+          "Use $10 of paper capital per trade, with at most two positions open.",
+          "Exit at the sample profit or loss threshold, or at settlement."
+        ],
+        "gates": [
+          {
+            "name": "Makes money on unseen data",
+            "value": 38.2,
+            "threshold": "> $0",
+            "ok": true
+          },
+          {
+            "name": "Enough unseen trades",
+            "value": 46,
+            "threshold": ">= 30 trades",
+            "ok": true
+          }
+        ],
+        "dataset": {
+          "start": "2026-10-03T14:34:46Z",
+          "end": "2026-10-13T14:34:46Z",
+          "out_of_sample_from": "2026-10-10T14:34:46Z"
+        },
+        "recent_trades": [],
+        "deployments": []
+      },
+      {
+        "id": 2,
+        "run_id": 1,
+        "parent_id": null,
+        "market": "btc_daily",
+        "direction": "longshots",
+        "title": "Sample longshot hypothesis",
+        "thesis": "Synthetic example for UI editing; these results are not a real backtest.",
+        "status": "failed",
+        "created_at": "2026-10-13T13:34:46Z",
+        "hypotheses_tried": 2,
+        "in_sample": {
+          "pnl": -23.36,
+          "trades": 108,
+          "win_rate": 0.41,
+          "fees": 12.4,
+          "roi": -0.2336,
+          "profit_factor": 0.78,
+          "max_drawdown": 14.2,
+          "sharpe": -0.5,
+          "trades_per_day": 4.6
+        },
+        "out_of_sample": {
+          "pnl": -14.6,
+          "trades": 46,
+          "win_rate": 0.41,
+          "fees": 12.4,
+          "roi": -0.146,
+          "profit_factor": 0.78,
+          "max_drawdown": 14.2,
+          "sharpe": -0.5,
+          "trades_per_day": 4.6
+        },
+        "equity": [
+          [
+            1791038086,
+            0.0
+          ],
+          [
+            1791124486,
+            -0.42
+          ],
+          [
+            1791210886,
+            -3.24
+          ],
+          [
+            1791297286,
+            -4.87
+          ],
+          [
+            1791383686,
+            -5.29
+          ],
+          [
+            1791470086,
+            -8.11
+          ],
+          [
+            1791556486,
+            -9.73
+          ],
+          [
+            1791642886,
+            -10.16
+          ],
+          [
+            1791729286,
+            -12.98
+          ],
+          [
+            1791815686,
+            -14.6
+          ]
+        ],
+        "capital": 100,
+        "stake": 10,
+        "side": "yes",
+        "spec": {
+          "version": 1,
+          "market": "btc15m",
+          "side": "yes",
+          "entry": {
+            "all": [
+              {
+                "feature": "ret_5m",
+                "op": ">",
+                "value": 0.001
+              }
+            ]
+          },
+          "exit": {
+            "take_profit_cents": 8,
+            "stop_loss_cents": 6
+          },
+          "sizing": {
+            "stake": 10,
+            "max_positions": 2
+          }
+        },
+        "rules": [
+          "Sample only: enter when the five-minute BTC return exceeds 0.1%.",
+          "Use $10 of paper capital per trade, with at most two positions open.",
+          "Exit at the sample profit or loss threshold, or at settlement."
+        ],
+        "gates": [
+          {
+            "name": "Makes money on unseen data",
+            "value": -14.6,
+            "threshold": "> $0",
+            "ok": false
+          },
+          {
+            "name": "Enough unseen trades",
+            "value": 46,
+            "threshold": ">= 30 trades",
+            "ok": true
+          }
+        ],
+        "dataset": {
+          "start": "2026-10-03T14:34:46Z",
+          "end": "2026-10-13T14:34:46Z",
+          "out_of_sample_from": "2026-10-10T14:34:46Z"
+        },
+        "recent_trades": [],
+        "deployments": []
+      },
+      {
+        "id": 6,
+        "run_id": 1,
+        "parent_id": null,
+        "market": "btc_daily",
+        "direction": "momentum",
+        "title": "Sample: sell only when calm",
+        "thesis": "Synthetic UI sample: test tail mispricing near the daily close.",
+        "status": "passed",
+        "created_at": "2026-10-13T13:34:46Z",
+        "hypotheses_tried": 2,
+        "in_sample": {
+          "pnl": 61.120000000000005,
+          "trades": 108,
+          "win_rate": 0.59,
+          "fees": 12.4,
+          "roi": 0.6112,
+          "profit_factor": 1.24,
+          "max_drawdown": 14.2,
+          "sharpe": 0.8,
+          "trades_per_day": 4.6
+        },
+        "out_of_sample": {
+          "pnl": 21.1,
+          "trades": 46,
+          "win_rate": 0.59,
+          "fees": 12.4,
+          "roi": 0.382,
+          "profit_factor": 1.24,
+          "max_drawdown": 14.2,
+          "sharpe": 0.8,
+          "trades_per_day": 4.6
+        },
+        "equity": [
+          [
+            1791038086,
+            0.0
+          ],
+          [
+            1791124486,
+            5.44
+          ],
+          [
+            1791210886,
+            8.49
+          ],
+          [
+            1791297286,
+            12.73
+          ],
+          [
+            1791383686,
+            18.18
+          ],
+          [
+            1791470086,
+            21.22
+          ],
+          [
+            1791556486,
+            25.47
+          ],
+          [
+            1791642886,
+            30.91
+          ],
+          [
+            1791729286,
+            33.96
+          ],
+          [
+            1791815686,
+            38.2
+          ]
+        ],
+        "capital": 100,
+        "stake": 10,
+        "side": "yes",
+        "spec": {
+          "version": 1,
+          "market": "btc_daily",
+          "side": "yes",
+          "entry": {
+            "all": [
+              {
+                "feature": "ret_5m",
+                "op": ">",
+                "value": 0.001
+              }
+            ]
+          },
+          "exit": {
+            "take_profit_cents": 8,
+            "stop_loss_cents": 6
+          },
+          "sizing": {
+            "stake": 10,
+            "max_positions": 2
+          }
+        },
+        "rules": [
+          "Sample only: enter when the five-minute BTC return exceeds 0.1%.",
+          "Use $10 of paper capital per trade, with at most two positions open.",
+          "Exit at the sample profit or loss threshold, or at settlement."
+        ],
+        "gates": [
+          {
+            "name": "Makes money on unseen data",
+            "value": 38.2,
+            "threshold": "> $0",
+            "ok": true
+          },
+          {
+            "name": "Enough unseen trades",
+            "value": 46,
+            "threshold": ">= 30 trades",
+            "ok": true
+          }
+        ],
+        "dataset": {
+          "start": "2026-10-03T14:34:46Z",
+          "end": "2026-10-13T14:34:46Z",
+          "out_of_sample_from": "2026-10-10T14:34:46Z"
+        },
+        "recent_trades": [],
+        "deployments": []
+      },
+      {
+        "id": 7,
+        "run_id": 1,
+        "parent_id": null,
+        "market": "btc_daily",
+        "direction": "momentum",
+        "title": "Sample: chase every move",
+        "thesis": "Synthetic UI sample: test tail mispricing near the daily close.",
+        "status": "failed",
+        "created_at": "2026-10-13T13:34:46Z",
+        "hypotheses_tried": 2,
+        "in_sample": {
+          "pnl": 61.120000000000005,
+          "trades": 108,
+          "win_rate": 0.59,
+          "fees": 12.4,
+          "roi": 0.6112,
+          "profit_factor": 1.24,
+          "max_drawdown": 14.2,
+          "sharpe": 0.8,
+          "trades_per_day": 4.6
+        },
+        "out_of_sample": {
+          "pnl": -12.4,
+          "trades": 46,
+          "win_rate": 0.59,
+          "fees": 12.4,
+          "roi": 0.382,
+          "profit_factor": 1.24,
+          "max_drawdown": 14.2,
+          "sharpe": 0.8,
+          "trades_per_day": 4.6
+        },
+        "equity": [
+          [
+            1791038086,
+            0.0
+          ],
+          [
+            1791124486,
+            5.44
+          ],
+          [
+            1791210886,
+            8.49
+          ],
+          [
+            1791297286,
+            12.73
+          ],
+          [
+            1791383686,
+            18.18
+          ],
+          [
+            1791470086,
+            21.22
+          ],
+          [
+            1791556486,
+            25.47
+          ],
+          [
+            1791642886,
+            30.91
+          ],
+          [
+            1791729286,
+            33.96
+          ],
+          [
+            1791815686,
+            38.2
+          ]
+        ],
+        "capital": 100,
+        "stake": 10,
+        "side": "yes",
+        "spec": {
+          "version": 1,
+          "market": "btc_daily",
+          "side": "yes",
+          "entry": {
+            "all": [
+              {
+                "feature": "ret_5m",
+                "op": ">",
+                "value": 0.001
+              }
+            ]
+          },
+          "exit": {
+            "take_profit_cents": 8,
+            "stop_loss_cents": 6
+          },
+          "sizing": {
+            "stake": 10,
+            "max_positions": 2
+          }
+        },
+        "rules": [
+          "Sample only: enter when the five-minute BTC return exceeds 0.1%.",
+          "Use $10 of paper capital per trade, with at most two positions open.",
+          "Exit at the sample profit or loss threshold, or at settlement."
+        ],
+        "gates": [
+          {
+            "name": "Makes money on unseen data",
+            "value": 38.2,
+            "threshold": "> $0",
+            "ok": true
+          },
+          {
+            "name": "Enough unseen trades",
+            "value": 46,
+            "threshold": ">= 30 trades",
+            "ok": true
+          }
+        ],
+        "dataset": {
+          "start": "2026-10-03T14:34:46Z",
+          "end": "2026-10-13T14:34:46Z",
+          "out_of_sample_from": "2026-10-10T14:34:46Z"
+        },
+        "recent_trades": [],
+        "deployments": []
+      }
+    ]
+  },
+  "/api/runs/2": {
+    "run": {
+      "id": 2,
+      "kind": "research",
+      "market": "btc15m",
+      "direction": "random_walk",
+      "prompt": "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances",
+      "status": "succeeded",
+      "hypotheses_tried": 1,
+      "strategies_passed": 0,
+      "created_at": "2026-10-13T11:34:46Z",
+      "started_at": "2026-10-13T11:34:46Z",
+      "finished_at": "2026-10-13T11:36:46Z",
+      "error": null
+    },
+    "events": [
+      {
+        "id": 1,
+        "kind": "step",
+        "message": "Synthetic sample: checked the idea and history coverage.",
+        "data": {},
+        "created_at": "2026-10-14T03:46:25+00:00"
+      },
+      {
+        "id": 2,
+        "kind": "done",
+        "message": "Synthetic sample session completed.",
+        "data": {},
+        "created_at": "2026-10-14T03:48:25+00:00"
+      }
+    ],
+    "strategies": [
+      {
+        "id": 3,
+        "run_id": 2,
+        "parent_id": null,
+        "market": "btc15m",
+        "direction": "random_walk",
+        "title": "Todd's random walk (sample)",
+        "thesis": "A coin flip with no information. This sample shows a rejected hypothesis.",
+        "status": "rejected",
+        "created_at": "2026-10-13T13:34:46Z",
+        "hypotheses_tried": 1,
+        "in_sample": {
+          "pnl": -0.256,
+          "trades": 108,
+          "win_rate": 0.5,
+          "fees": 12.4,
+          "roi": -0.0026,
+          "profit_factor": 0.78,
+          "max_drawdown": 14.2,
+          "sharpe": -0.5,
+          "trades_per_day": 4.6
+        },
+        "out_of_sample": null,
+        "equity": [
+          [
+            1791038086,
+            0.0
+          ],
+          [
+            1791124486,
+            1.18
+          ],
+          [
+            1791210886,
+            -0.04
+          ],
+          [
+            1791297286,
+            -0.05
+          ],
+          [
+            1791383686,
+            1.13
+          ],
+          [
+            1791470086,
+            -0.09
+          ],
+          [
+            1791556486,
+            -0.11
+          ],
+          [
+            1791642886,
+            1.08
+          ],
+          [
+            1791729286,
+            -0.14
+          ],
+          [
+            1791815686,
+            -0.16
+          ]
+        ],
+        "capital": 100,
+        "stake": 10,
+        "side": "yes",
+        "spec": {
+          "version": 1,
+          "market": "btc15m",
+          "side": "yes",
+          "entry": {
+            "all": [
+              {
+                "feature": "ret_5m",
+                "op": ">",
+                "value": 0.001
+              }
+            ]
+          },
+          "exit": {
+            "take_profit_cents": 8,
+            "stop_loss_cents": 6
+          },
+          "sizing": {
+            "stake": 10,
+            "max_positions": 2
+          }
+        },
+        "rules": [
+          "Sample only: enter when the five-minute BTC return exceeds 0.1%.",
+          "Use $10 of paper capital per trade, with at most two positions open.",
+          "Exit at the sample profit or loss threshold, or at settlement."
+        ],
+        "gates": [
+          {
+            "name": "Makes money on unseen data",
+            "value": -0.16,
+            "threshold": "> $0",
+            "ok": false
+          },
+          {
+            "name": "Enough unseen trades",
+            "value": 46,
+            "threshold": ">= 30 trades",
+            "ok": true
+          }
+        ],
+        "dataset": {
+          "start": "2026-10-03T14:34:46Z",
+          "end": "2026-10-13T14:34:46Z",
+          "out_of_sample_from": "2026-10-10T14:34:46Z"
+        },
+        "recent_trades": [],
+        "deployments": []
+      }
+    ]
+  },
+  "/api/strategies/4": {
+    "id": 4,
+    "run_id": 3,
+    "parent_id": null,
+    "market": "btc15m",
+    "direction": "momentum",
+    "title": "Sample: lean into quiet momentum",
+    "thesis": "Synthetic UI sample: test tail mispricing near the daily close.",
+    "status": "passed",
+    "created_at": "2026-10-13T13:34:46Z",
+    "hypotheses_tried": 2,
+    "in_sample": {
+      "pnl": 61.120000000000005,
+      "trades": 108,
+      "win_rate": 0.59,
+      "fees": 12.4,
+      "roi": 0.6112,
+      "profit_factor": 1.24,
+      "max_drawdown": 14.2,
+      "sharpe": 0.8,
+      "trades_per_day": 4.6
+    },
+    "out_of_sample": {
+      "pnl": 29.4,
+      "trades": 46,
+      "win_rate": 0.59,
+      "fees": 12.4,
+      "roi": 0.294,
+      "profit_factor": 1.24,
+      "max_drawdown": 14.2,
+      "sharpe": 0.8,
+      "trades_per_day": 4.6
+    },
+    "equity": [
+      [
+        1791038086,
+        0.0
+      ],
+      [
+        1791124486,
+        12.89
+      ],
+      [
+        1791210886,
+        20.12
+      ],
+      [
+        1791297286,
+        30.17
+      ],
+      [
+        1791383686,
+        43.08
+      ],
+      [
+        1791470086,
+        50.28
+      ],
+      [
+        1791556486,
+        60.35
+      ],
+      [
+        1791642886,
+        73.25
+      ],
+      [
+        1791729286,
+        80.47
+      ],
+      [
+        1791815686,
+        90.52
+      ]
+    ],
+    "capital": 100,
+    "stake": 10,
+    "side": "yes",
+    "spec": {
+      "version": 1,
+      "market": "btc_daily",
+      "side": "yes",
+      "entry": {
+        "all": [
+          {
+            "feature": "ret_5m",
+            "op": ">",
+            "value": 0.001
+          }
+        ]
+      },
+      "exit": {
+        "take_profit_cents": 8,
+        "stop_loss_cents": 6
+      },
+      "sizing": {
+        "stake": 10,
+        "max_positions": 2
+      }
+    },
+    "rules": [
+      "Sample only: enter when the five-minute BTC return exceeds 0.1%.",
+      "Use $10 of paper capital per trade, with at most two positions open.",
+      "Exit at the sample profit or loss threshold, or at settlement."
+    ],
+    "gates": [
+      {
+        "name": "Makes money on unseen data",
+        "value": 29.4,
+        "threshold": "> $0",
+        "ok": true
+      },
+      {
+        "name": "Enough unseen trades",
+        "value": 46,
+        "threshold": ">= 10 trades",
+        "ok": true
+      }
+    ],
+    "dataset": {
+      "start": "2026-10-03T14:34:46Z",
+      "end": "2026-10-13T14:34:46Z",
+      "out_of_sample_from": "2026-10-10T14:34:46Z"
+    },
+    "recent_trades": [],
+    "deployments": [
+      {
+        "id": 1,
+        "strategy_id": 4,
+        "title": "Sample: lean into quiet momentum",
+        "direction": "momentum",
+        "market": "btc15m",
+        "mode": "paper",
+        "status": "running",
+        "status_reason": null,
+        "realized_pnl": 24.8,
+        "closed_trades": 18,
+        "wins": 11,
+        "open_positions": 1,
+        "created_at": "2026-10-12T14:34:46Z",
+        "curve": [
+          [
+            1791884086,
+            0
+          ],
+          [
+            1791887686,
+            4.2
+          ],
+          [
+            1791891286,
+            3.1
+          ],
+          [
+            1791894886,
+            12.6
+          ],
+          [
+            1791898486,
+            18.4
+          ],
+          [
+            1791902086,
+            24.8
+          ]
+        ],
+        "stake": 10,
+        "max_positions": 2,
+        "backtest": {
+          "out_of_sample": {
+            "pnl": 38.2,
+            "trades": 46,
+            "win_rate": 0.59,
+            "fees": 12.4,
+            "roi": 0.382,
+            "profit_factor": 1.24,
+            "max_drawdown": 14.2,
+            "sharpe": 0.8,
+            "trades_per_day": 4.6
+          },
+          "capital": 100
+        }
+      }
+    ]
+  },
+  "/api/strategies/5": {
+    "id": 5,
+    "run_id": 3,
+    "parent_id": null,
+    "market": "btc15m",
+    "direction": "momentum",
+    "title": "Sample: selective calm-market entry",
+    "thesis": "Synthetic UI sample: test tail mispricing near the daily close.",
+    "status": "passed",
+    "created_at": "2026-10-13T13:34:46Z",
+    "hypotheses_tried": 2,
+    "in_sample": {
+      "pnl": 61.120000000000005,
+      "trades": 108,
+      "win_rate": 0.59,
+      "fees": 12.4,
+      "roi": 0.6112,
+      "profit_factor": 1.24,
+      "max_drawdown": 14.2,
+      "sharpe": 0.8,
+      "trades_per_day": 4.6
+    },
+    "out_of_sample": {
+      "pnl": 18.1,
+      "trades": 46,
+      "win_rate": 0.59,
+      "fees": 12.4,
+      "roi": 0.181,
+      "profit_factor": 1.24,
+      "max_drawdown": 14.2,
+      "sharpe": 0.8,
+      "trades_per_day": 4.6
+    },
+    "equity": [
+      [
+        1791038086,
+        0.0
+      ],
+      [
+        1791124486,
+        11.28
+      ],
+      [
+        1791210886,
+        17.61
+      ],
+      [
+        1791297286,
+        26.4
+      ],
+      [
+        1791383686,
+        37.7
+      ],
+      [
+        1791470086,
+        44.01
+      ],
+      [
+        1791556486,
+        52.82
+      ],
+      [
+        1791642886,
+        64.1
+      ],
+      [
+        1791729286,
+        70.43
+      ],
+      [
+        1791815686,
+        79.22
+      ]
+    ],
+    "capital": 100,
+    "stake": 10,
+    "side": "yes",
+    "spec": {
+      "version": 1,
+      "market": "btc_daily",
+      "side": "yes",
+      "entry": {
+        "all": [
+          {
+            "feature": "ret_5m",
+            "op": ">",
+            "value": 0.001
+          }
+        ]
+      },
+      "exit": {
+        "take_profit_cents": 8,
+        "stop_loss_cents": 6
+      },
+      "sizing": {
+        "stake": 10,
+        "max_positions": 2
+      }
+    },
+    "rules": [
+      "Sample only: enter when the five-minute BTC return exceeds 0.1%.",
+      "Use $10 of paper capital per trade, with at most two positions open.",
+      "Exit at the sample profit or loss threshold, or at settlement."
+    ],
+    "gates": [
+      {
+        "name": "Makes money on unseen data",
+        "value": 18.1,
+        "threshold": "> $0",
+        "ok": true
+      },
+      {
+        "name": "Enough unseen trades",
+        "value": 46,
+        "threshold": ">= 10 trades",
+        "ok": true
+      }
+    ],
+    "dataset": {
+      "start": "2026-10-03T14:34:46Z",
+      "end": "2026-10-13T14:34:46Z",
+      "out_of_sample_from": "2026-10-10T14:34:46Z"
+    },
+    "recent_trades": [],
+    "deployments": []
+  },
+  "/api/strategies/6": {
+    "id": 6,
+    "run_id": 1,
+    "parent_id": null,
+    "market": "btc_daily",
+    "direction": "momentum",
+    "title": "Sample: sell only when calm",
+    "thesis": "Synthetic UI sample: test tail mispricing near the daily close.",
+    "status": "passed",
+    "created_at": "2026-10-13T13:34:46Z",
+    "hypotheses_tried": 2,
+    "in_sample": {
+      "pnl": 61.120000000000005,
+      "trades": 108,
+      "win_rate": 0.59,
+      "fees": 12.4,
+      "roi": 0.6112,
+      "profit_factor": 1.24,
+      "max_drawdown": 14.2,
+      "sharpe": 0.8,
+      "trades_per_day": 4.6
+    },
+    "out_of_sample": {
+      "pnl": 21.1,
+      "trades": 46,
+      "win_rate": 0.59,
+      "fees": 12.4,
+      "roi": 0.211,
+      "profit_factor": 1.24,
+      "max_drawdown": 14.2,
+      "sharpe": 0.8,
+      "trades_per_day": 4.6
+    },
+    "equity": [
+      [
+        1791038086,
+        0.0
+      ],
+      [
+        1791124486,
+        11.71
+      ],
+      [
+        1791210886,
+        18.27
+      ],
+      [
+        1791297286,
+        27.4
+      ],
+      [
+        1791383686,
+        39.13
+      ],
+      [
+        1791470086,
+        45.67
+      ],
+      [
+        1791556486,
+        54.82
+      ],
+      [
+        1791642886,
+        66.53
+      ],
+      [
+        1791729286,
+        73.09
+      ],
+      [
+        1791815686,
+        82.22
+      ]
+    ],
+    "capital": 100,
+    "stake": 10,
+    "side": "yes",
+    "spec": {
+      "version": 1,
+      "market": "btc_daily",
+      "side": "yes",
+      "entry": {
+        "all": [
+          {
+            "feature": "ret_5m",
+            "op": ">",
+            "value": 0.001
+          }
+        ]
+      },
+      "exit": {
+        "take_profit_cents": 8,
+        "stop_loss_cents": 6
+      },
+      "sizing": {
+        "stake": 10,
+        "max_positions": 2
+      }
+    },
+    "rules": [
+      "Sample only: enter when the five-minute BTC return exceeds 0.1%.",
+      "Use $10 of paper capital per trade, with at most two positions open.",
+      "Exit at the sample profit or loss threshold, or at settlement."
+    ],
+    "gates": [
+      {
+        "name": "Makes money on unseen data",
+        "value": 21.1,
+        "threshold": "> $0",
+        "ok": true
+      },
+      {
+        "name": "Enough unseen trades",
+        "value": 46,
+        "threshold": ">= 10 trades",
+        "ok": true
+      }
+    ],
+    "dataset": {
+      "start": "2026-10-03T14:34:46Z",
+      "end": "2026-10-13T14:34:46Z",
+      "out_of_sample_from": "2026-10-10T14:34:46Z"
+    },
+    "recent_trades": [],
+    "deployments": []
+  },
+  "/api/strategies/7": {
+    "id": 7,
+    "run_id": 1,
+    "parent_id": null,
+    "market": "btc_daily",
+    "direction": "momentum",
+    "title": "Sample: chase every move",
+    "thesis": "Synthetic UI sample: test tail mispricing near the daily close.",
+    "status": "failed",
+    "created_at": "2026-10-13T13:34:46Z",
+    "hypotheses_tried": 2,
+    "in_sample": {
+      "pnl": 61.120000000000005,
+      "trades": 108,
+      "win_rate": 0.59,
+      "fees": 12.4,
+      "roi": 0.6112,
+      "profit_factor": 1.24,
+      "max_drawdown": 14.2,
+      "sharpe": 0.8,
+      "trades_per_day": 4.6
+    },
+    "out_of_sample": {
+      "pnl": -12.4,
+      "trades": 46,
+      "win_rate": 0.59,
+      "fees": 12.4,
+      "roi": -0.124,
+      "profit_factor": 1.24,
+      "max_drawdown": 14.2,
+      "sharpe": 0.8,
+      "trades_per_day": 4.6
+    },
+    "equity": [
+      [
+        1791038086,
+        0.0
+      ],
+      [
+        1791124486,
+        6.94
+      ],
+      [
+        1791210886,
+        10.83
+      ],
+      [
+        1791297286,
+        16.24
+      ],
+      [
+        1791383686,
+        23.19
+      ],
+      [
+        1791470086,
+        27.06
+      ],
+      [
+        1791556486,
+        32.48
+      ],
+      [
+        1791642886,
+        39.42
+      ],
+      [
+        1791729286,
+        43.31
+      ],
+      [
+        1791815686,
+        48.72
+      ]
+    ],
+    "capital": 100,
+    "stake": 10,
+    "side": "yes",
+    "spec": {
+      "version": 1,
+      "market": "btc_daily",
+      "side": "yes",
+      "entry": {
+        "all": [
+          {
+            "feature": "ret_5m",
+            "op": ">",
+            "value": 0.001
+          }
+        ]
+      },
+      "exit": {
+        "take_profit_cents": 8,
+        "stop_loss_cents": 6
+      },
+      "sizing": {
+        "stake": 10,
+        "max_positions": 2
+      }
+    },
+    "rules": [
+      "Sample only: enter when the five-minute BTC return exceeds 0.1%.",
+      "Use $10 of paper capital per trade, with at most two positions open.",
+      "Exit at the sample profit or loss threshold, or at settlement."
+    ],
+    "gates": [
+      {
+        "name": "Makes money on unseen data",
+        "value": -12.4,
+        "threshold": "> $0",
+        "ok": false
+      },
+      {
+        "name": "Enough unseen trades",
+        "value": 46,
+        "threshold": ">= 10 trades",
+        "ok": true
+      }
+    ],
+    "dataset": {
+      "start": "2026-10-03T14:34:46Z",
+      "end": "2026-10-13T14:34:46Z",
+      "out_of_sample_from": "2026-10-10T14:34:46Z"
+    },
+    "recent_trades": [],
+    "deployments": []
+  },
+  "/api/runs/3": {
+    "run": {
+      "id": 3,
+      "kind": "research",
+      "market": "btc15m",
+      "direction": "momentum",
+      "prompt": "Sample session: lean into quiet momentum",
+      "status": "succeeded",
+      "hypotheses_tried": 2,
+      "strategies_passed": 2,
+      "created_at": "2026-10-14T02:19:25+00:00",
+      "started_at": "2026-10-13T13:32:46Z",
+      "finished_at": "2026-10-14T02:21:25+00:00",
+      "error": null
+    },
+    "events": [
+      {
+        "id": 1,
+        "kind": "step",
+        "message": "Synthetic sample: checked the idea and history coverage.",
+        "data": {},
+        "created_at": "2026-10-14T03:46:25+00:00"
+      },
+      {
+        "id": 2,
+        "kind": "done",
+        "message": "Synthetic sample session completed.",
+        "data": {},
+        "created_at": "2026-10-14T03:48:25+00:00"
+      }
+    ],
+    "strategies": [
+      {
+        "id": 4,
+        "run_id": 3,
+        "parent_id": null,
+        "market": "btc15m",
+        "direction": "momentum",
+        "title": "Sample: lean into quiet momentum",
+        "thesis": "Synthetic UI sample: test tail mispricing near the daily close.",
+        "status": "passed",
+        "created_at": "2026-10-13T13:34:46Z",
+        "hypotheses_tried": 2,
+        "in_sample": {
+          "pnl": 61.120000000000005,
+          "trades": 108,
+          "win_rate": 0.59,
+          "fees": 12.4,
+          "roi": 0.6112,
+          "profit_factor": 1.24,
+          "max_drawdown": 14.2,
+          "sharpe": 0.8,
+          "trades_per_day": 4.6
+        },
+        "out_of_sample": {
+          "pnl": 29.4,
+          "trades": 46,
+          "win_rate": 0.59,
+          "fees": 12.4,
+          "roi": 0.382,
+          "profit_factor": 1.24,
+          "max_drawdown": 14.2,
+          "sharpe": 0.8,
+          "trades_per_day": 4.6
+        },
+        "equity": [
+          [
+            1791038086,
+            0.0
+          ],
+          [
+            1791124486,
+            5.44
+          ],
+          [
+            1791210886,
+            8.49
+          ],
+          [
+            1791297286,
+            12.73
+          ],
+          [
+            1791383686,
+            18.18
+          ],
+          [
+            1791470086,
+            21.22
+          ],
+          [
+            1791556486,
+            25.47
+          ],
+          [
+            1791642886,
+            30.91
+          ],
+          [
+            1791729286,
+            33.96
+          ],
+          [
+            1791815686,
+            38.2
+          ]
+        ],
+        "capital": 100,
+        "stake": 10,
+        "side": "yes",
+        "spec": {
+          "version": 1,
+          "market": "btc_daily",
+          "side": "yes",
+          "entry": {
+            "all": [
+              {
+                "feature": "ret_5m",
+                "op": ">",
+                "value": 0.001
+              }
+            ]
+          },
+          "exit": {
+            "take_profit_cents": 8,
+            "stop_loss_cents": 6
+          },
+          "sizing": {
+            "stake": 10,
+            "max_positions": 2
+          }
+        },
+        "rules": [
+          "Sample only: enter when the five-minute BTC return exceeds 0.1%.",
+          "Use $10 of paper capital per trade, with at most two positions open.",
+          "Exit at the sample profit or loss threshold, or at settlement."
+        ],
+        "gates": [
+          {
+            "name": "Makes money on unseen data",
+            "value": 38.2,
+            "threshold": "> $0",
+            "ok": true
+          },
+          {
+            "name": "Enough unseen trades",
+            "value": 46,
+            "threshold": ">= 30 trades",
+            "ok": true
+          }
+        ],
+        "dataset": {
+          "start": "2026-10-03T14:34:46Z",
+          "end": "2026-10-13T14:34:46Z",
+          "out_of_sample_from": "2026-10-10T14:34:46Z"
+        },
+        "recent_trades": [],
+        "deployments": []
+      },
+      {
+        "id": 5,
+        "run_id": 3,
+        "parent_id": null,
+        "market": "btc15m",
+        "direction": "momentum",
+        "title": "Sample: selective calm-market entry",
+        "thesis": "Synthetic UI sample: test tail mispricing near the daily close.",
+        "status": "passed",
+        "created_at": "2026-10-13T13:34:46Z",
+        "hypotheses_tried": 2,
+        "in_sample": {
+          "pnl": 61.120000000000005,
+          "trades": 108,
+          "win_rate": 0.59,
+          "fees": 12.4,
+          "roi": 0.6112,
+          "profit_factor": 1.24,
+          "max_drawdown": 14.2,
+          "sharpe": 0.8,
+          "trades_per_day": 4.6
+        },
+        "out_of_sample": {
+          "pnl": 18.1,
+          "trades": 46,
+          "win_rate": 0.59,
+          "fees": 12.4,
+          "roi": 0.382,
+          "profit_factor": 1.24,
+          "max_drawdown": 14.2,
+          "sharpe": 0.8,
+          "trades_per_day": 4.6
+        },
+        "equity": [
+          [
+            1791038086,
+            0.0
+          ],
+          [
+            1791124486,
+            5.44
+          ],
+          [
+            1791210886,
+            8.49
+          ],
+          [
+            1791297286,
+            12.73
+          ],
+          [
+            1791383686,
+            18.18
+          ],
+          [
+            1791470086,
+            21.22
+          ],
+          [
+            1791556486,
+            25.47
+          ],
+          [
+            1791642886,
+            30.91
+          ],
+          [
+            1791729286,
+            33.96
+          ],
+          [
+            1791815686,
+            38.2
+          ]
+        ],
+        "capital": 100,
+        "stake": 10,
+        "side": "yes",
+        "spec": {
+          "version": 1,
+          "market": "btc_daily",
+          "side": "yes",
+          "entry": {
+            "all": [
+              {
+                "feature": "ret_5m",
+                "op": ">",
+                "value": 0.001
+              }
+            ]
+          },
+          "exit": {
+            "take_profit_cents": 8,
+            "stop_loss_cents": 6
+          },
+          "sizing": {
+            "stake": 10,
+            "max_positions": 2
+          }
+        },
+        "rules": [
+          "Sample only: enter when the five-minute BTC return exceeds 0.1%.",
+          "Use $10 of paper capital per trade, with at most two positions open.",
+          "Exit at the sample profit or loss threshold, or at settlement."
+        ],
+        "gates": [
+          {
+            "name": "Makes money on unseen data",
+            "value": 38.2,
+            "threshold": "> $0",
+            "ok": true
+          },
+          {
+            "name": "Enough unseen trades",
+            "value": 46,
+            "threshold": ">= 30 trades",
+            "ok": true
+          }
+        ],
+        "dataset": {
+          "start": "2026-10-03T14:34:46Z",
+          "end": "2026-10-13T14:34:46Z",
+          "out_of_sample_from": "2026-10-10T14:34:46Z"
+        },
+        "recent_trades": [],
+        "deployments": []
+      }
+    ]
+  },
+  "/api/runs/4": {
+    "run": {
+      "id": 4,
+      "kind": "research",
+      "market": "btc15m",
+      "direction": "momentum",
+      "prompt": "Sample session: does momentum persist into settlement?",
+      "status": "running",
+      "hypotheses_tried": 0,
+      "strategies_passed": 0,
+      "created_at": "2026-10-14T03:46:25+00:00",
+      "started_at": "2026-10-14T03:46:25+00:00",
+      "finished_at": null,
+      "error": null
+    },
+    "events": [
+      {
+        "id": 1,
+        "kind": "step",
+        "message": "Synthetic sample: checked the idea and history coverage.",
+        "data": {},
+        "created_at": "2026-10-14T03:46:25+00:00"
+      },
+      {
+        "id": 2,
+        "kind": "step",
+        "message": "Synthetic sample: testing candidates.",
+        "data": {},
+        "created_at": "2026-10-14T03:48:25+00:00"
+      }
+    ],
+    "strategies": []
+  },
+  "/api/sessions/run/1/chat": {
+    "session_key": "run:1",
+    "messages": [
+      {
+        "id": 1,
+        "role": "agent",
+        "content": "Two candidates passed the unseen-data gates. The leading saved candidate earned $38.20 after fees.",
+        "strategy_id": 1,
+        "proposal_id": null,
+        "created_at": "2026-10-14T06:20:00Z"
+      },
+      {
+        "id": 2,
+        "role": "user",
+        "content": "Can we reduce weak entries without raising the stake?",
+        "strategy_id": 1,
+        "proposal_id": null,
+        "created_at": "2026-10-14T06:20:00Z"
+      },
+      {
+        "id": 3,
+        "role": "agent",
+        "content": "Initial revision proposed: raise minimum entry edge from 6% to 8%, keeping stake at $10 per trade. Awaiting backtest.",
+        "strategy_id": 1,
+        "proposal_id": null,
+        "created_at": "2026-10-14T06:20:00Z"
+      },
+      {
+        "id": 4,
+        "role": "agent",
+        "content": "The test used fewer trades and had a lower drawdown, but lower P&L.",
+        "strategy_id": 1,
+        "proposal_id": 102,
+        "created_at": "2026-10-14T06:20:00Z"
+      }
+    ],
+    "proposals": [
+      {
+        "id": 102,
+        "kind": "revise",
+        "status": "pending",
+        "base_strategy_id": 1,
+        "reason": "Require a stronger signal to reduce weak entries. Keep stake at $10 per trade.",
+        "diff": [
+          {
+            "label": "Minimum entry edge",
+            "before": "6%",
+            "after": "8%"
+          },
+          {
+            "label": "Stake per trade",
+            "before": "$10",
+            "after": "$10"
+          }
+        ],
+        "backtest_status": "passed",
+        "result": {
+          "passed": true,
+          "out_of_sample": {
+            "pnl": 32.4,
+            "trades": 32,
+            "max_drawdown": 9.6
+          },
+          "gates": [
+            {
+              "name": "Positive unseen P&L",
+              "ok": true,
+              "value": 32.4,
+              "threshold": "> $0"
+            },
+            {
+              "name": "Unseen drawdown",
+              "ok": true,
+              "value": 9.6,
+              "threshold": "< $25"
+            }
+          ]
+        }
+      }
+    ],
+    "capabilities": {
+      "send": false,
+      "backtest": false,
+      "queue": false,
+      "approve": false,
+      "reject": false
+    },
+    "agent_busy": false,
+    "has_more": false,
+    "preview": true
+  },
+  "/api/sessions/run/3/chat": {
+    "session_key": "run:3",
+    "messages": [
+      {
+        "id": 10,
+        "role": "agent",
+        "content": "The proposed paper adjustment failed its unseen-data test. Keep the original strategy while considering another trial.",
+        "strategy_id": 4,
+        "proposal_id": 103,
+        "created_at": "2026-10-14T06:20:00Z"
+      }
+    ],
+    "proposals": [
+      {
+        "id": 103,
+        "kind": "adjust",
+        "status": "pending",
+        "base_strategy_id": 4,
+        "reason": "Require a stronger signal to reduce weak entries. Keep stake at $10 per trade.",
+        "diff": [
+          {
+            "label": "Minimum entry edge",
+            "before": "6%",
+            "after": "8%"
+          },
+          {
+            "label": "Stake per trade",
+            "before": "$10",
+            "after": "$10"
+          }
+        ],
+        "backtest_status": "failed",
+        "result": {
+          "passed": false,
+          "out_of_sample": {
+            "pnl": -6.1,
+            "trades": 19,
+            "max_drawdown": 28.4
+          },
+          "gates": [
+            {
+              "name": "Positive unseen P&L",
+              "ok": false,
+              "value": -6.1,
+              "threshold": "> $0"
+            }
+          ]
+        },
+        "mode": "paper",
+        "deployment_id": 1
+      }
+    ],
+    "capabilities": {
+      "send": false,
+      "backtest": false,
+      "queue": false,
+      "approve": false,
+      "reject": false
+    },
+    "agent_busy": false,
+    "has_more": false,
+    "preview": true
+  },
+  "/api/sessions/run/4/chat": {
+    "session_key": "run:4",
+    "messages": [
+      {
+        "id": 20,
+        "role": "agent",
+        "content": "I am testing the current hypothesis. You can suggest the next test while research continues.",
+        "strategy_id": null,
+        "proposal_id": 104,
+        "created_at": "2026-10-14T06:20:00Z"
+      }
+    ],
+    "proposals": [
+      {
+        "id": 104,
+        "kind": "trial",
+        "status": "pending",
+        "base_strategy_id": null,
+        "reason": "Test a higher entry edge after the current hypothesis finishes.",
+        "diff": [
+          {
+            "label": "Next minimum edge",
+            "before": "6%",
+            "after": "8%"
+          }
+        ],
+        "backtest_status": "not_run"
+      }
+    ],
+    "capabilities": {
+      "send": false,
+      "backtest": false,
+      "queue": false,
+      "approve": false,
+      "reject": false
+    },
+    "agent_busy": true,
+    "has_more": false,
+    "preview": true
+  },
+  "/api/billing": {
+    "configured": false,
+    "publishable_key": "",
+    "balance": 98.4,
+    "spent": 1.6,
+    "free_bonus": 100.0,
+    "topup_fee_pct": 5.5,
+    "autoreload_threshold": 5.0,
+    "autoreload_amount": 20.0,
+    "min_reload_amount": 20.0,
+    "min_reload_threshold": 5.0,
+    "min_topup": 5.0,
+    "max_topup": 1000.0,
+    "cards": [],
+    "default_pm": null,
+    "auto_reload": true,
+    "ledger": [
+      {
+        "kind": "bonus",
+        "amount": 100.0,
+        "memo": "Synthetic welcome credit",
+        "created_at": "2026-10-14T06:00:00Z"
+      }
+    ]
+  },
+  "/api/explore": {
+    "at": "2026-10-15T00:00:00Z",
+    "total": 1,
+    "shown": 1,
+    "matched": 1,
+    "page": 0,
+    "per": 40,
+    "sort": "v24",
+    "markets": [
+      {
+        "t": "KXBTC15M-SAMPLE",
+        "s": "KXBTC15M",
+        "ti": "Synthetic Bitcoin market",
+        "su": "$92,300 or above",
+        "yb": 0.47,
+        "ya": 0.49,
+        "last": 0.48,
+        "v24": 1234,
+        "oi": 123
+      }
+    ]
+  },
+  "/api/explore/hot": {
+    "at": "2026-10-15T00:00:00Z",
+    "markets": [
+      {
+        "t": "KXBTC15M-SAMPLE",
+        "s": "KXBTC15M",
+        "ti": "Synthetic Bitcoin market",
+        "su": "$92,300 or above",
+        "yb": 0.47,
+        "ya": 0.49,
+        "last": 0.48,
+        "v24": 1234,
+        "oi": 123,
+        "h": [
+          [
+            1792022400,
+            0.47
+          ],
+          [
+            1792022460,
+            0.48
+          ]
+        ]
+      }
+    ]
+  },
+  "/api/explore/market": {
+    "ticker": "KXBTC15M-SAMPLE",
+    "series": "KXBTC15M",
+    "title": "Synthetic Bitcoin market",
+    "sub": "$92,300 or above",
+    "yes_bid": "0.47",
+    "yes_ask": "0.49",
+    "last": "0.48",
+    "volume_24h": "1234",
+    "open_interest": "123",
+    "status": "open",
+    "close_time": "2026-10-15T00:00:00Z",
+    "period_min": 1,
+    "points": [
+      {
+        "t": 1791936000,
+        "yes": 0.47,
+        "vol": 5.0
+      },
+      {
+        "t": 1791936060,
+        "yes": 0.4701,
+        "vol": 5.0
+      },
+      {
+        "t": 1791936120,
+        "yes": 0.4702,
+        "vol": 5.0
+      },
+      {
+        "t": 1791936180,
+        "yes": 0.4703,
+        "vol": 5.0
+      },
+      {
+        "t": 1791936240,
+        "yes": 0.4704,
+        "vol": 5.0
+      },
+      {
+        "t": 1791936300,
+        "yes": 0.4705,
+        "vol": 5.0
+      },
+      {
+        "t": 1791936360,
+        "yes": 0.4706,
+        "vol": 5.0
+      },
+      {
+        "t": 1791936420,
+        "yes": 0.4707,
+        "vol": 5.0
+      },
+      {
+        "t": 1791936480,
+        "yes": 0.4708,
+        "vol": 5.0
+      },
+      {
+        "t": 1791936540,
+        "yes": 0.4709,
+        "vol": 5.0
+      },
+      {
+        "t": 1791936600,
+        "yes": 0.471,
+        "vol": 5.0
+      },
+      {
+        "t": 1791936660,
+        "yes": 0.4711,
+        "vol": 5.0
+      },
+      {
+        "t": 1791936720,
+        "yes": 0.4712,
+        "vol": 5.0
+      },
+      {
+        "t": 1791936780,
+        "yes": 0.4713,
+        "vol": 5.0
+      },
+      {
+        "t": 1791936840,
+        "yes": 0.4714,
+        "vol": 5.0
+      },
+      {
+        "t": 1791936900,
+        "yes": 0.4715,
+        "vol": 5.0
+      },
+      {
+        "t": 1791936960,
+        "yes": 0.4716,
+        "vol": 5.0
+      },
+      {
+        "t": 1791937020,
+        "yes": 0.4717,
+        "vol": 5.0
+      },
+      {
+        "t": 1791937080,
+        "yes": 0.4718,
+        "vol": 5.0
+      },
+      {
+        "t": 1791937140,
+        "yes": 0.4719,
+        "vol": 5.0
+      },
+      {
+        "t": 1791937200,
+        "yes": 0.472,
+        "vol": 5.0
+      },
+      {
+        "t": 1791937260,
+        "yes": 0.4721,
+        "vol": 5.0
+      },
+      {
+        "t": 1791937320,
+        "yes": 0.4722,
+        "vol": 5.0
+      },
+      {
+        "t": 1791937380,
+        "yes": 0.4723,
+        "vol": 5.0
+      },
+      {
+        "t": 1791937440,
+        "yes": 0.4724,
+        "vol": 5.0
+      },
+      {
+        "t": 1791937500,
+        "yes": 0.4725,
+        "vol": 5.0
+      },
+      {
+        "t": 1791937560,
+        "yes": 0.4726,
+        "vol": 5.0
+      },
+      {
+        "t": 1791937620,
+        "yes": 0.4727,
+        "vol": 5.0
+      },
+      {
+        "t": 1791937680,
+        "yes": 0.4728,
+        "vol": 5.0
+      },
+      {
+        "t": 1791937740,
+        "yes": 0.4729,
+        "vol": 5.0
+      },
+      {
+        "t": 1791937800,
+        "yes": 0.473,
+        "vol": 5.0
+      },
+      {
+        "t": 1791937860,
+        "yes": 0.4731,
+        "vol": 5.0
+      },
+      {
+        "t": 1791937920,
+        "yes": 0.4732,
+        "vol": 5.0
+      },
+      {
+        "t": 1791937980,
+        "yes": 0.4733,
+        "vol": 5.0
+      },
+      {
+        "t": 1791938040,
+        "yes": 0.4734,
+        "vol": 5.0
+      },
+      {
+        "t": 1791938100,
+        "yes": 0.4735,
+        "vol": 5.0
+      },
+      {
+        "t": 1791938160,
+        "yes": 0.4736,
+        "vol": 5.0
+      },
+      {
+        "t": 1791938220,
+        "yes": 0.4737,
+        "vol": 5.0
+      },
+      {
+        "t": 1791938280,
+        "yes": 0.4738,
+        "vol": 5.0
+      },
+      {
+        "t": 1791938340,
+        "yes": 0.4739,
+        "vol": 5.0
+      },
+      {
+        "t": 1791938400,
+        "yes": 0.474,
+        "vol": 5.0
+      },
+      {
+        "t": 1791938460,
+        "yes": 0.4741,
+        "vol": 5.0
+      },
+      {
+        "t": 1791938520,
+        "yes": 0.4742,
+        "vol": 5.0
+      },
+      {
+        "t": 1791938580,
+        "yes": 0.4743,
+        "vol": 5.0
+      },
+      {
+        "t": 1791938640,
+        "yes": 0.4744,
+        "vol": 5.0
+      },
+      {
+        "t": 1791938700,
+        "yes": 0.4745,
+        "vol": 5.0
+      },
+      {
+        "t": 1791938760,
+        "yes": 0.4746,
+        "vol": 5.0
+      },
+      {
+        "t": 1791938820,
+        "yes": 0.4747,
+        "vol": 5.0
+      },
+      {
+        "t": 1791938880,
+        "yes": 0.4748,
+        "vol": 5.0
+      },
+      {
+        "t": 1791938940,
+        "yes": 0.4749,
+        "vol": 5.0
+      },
+      {
+        "t": 1791939000,
+        "yes": 0.475,
+        "vol": 5.0
+      },
+      {
+        "t": 1791939060,
+        "yes": 0.4751,
+        "vol": 5.0
+      },
+      {
+        "t": 1791939120,
+        "yes": 0.4752,
+        "vol": 5.0
+      },
+      {
+        "t": 1791939180,
+        "yes": 0.4753,
+        "vol": 5.0
+      },
+      {
+        "t": 1791939240,
+        "yes": 0.4754,
+        "vol": 5.0
+      },
+      {
+        "t": 1791939300,
+        "yes": 0.4755,
+        "vol": 5.0
+      },
+      {
+        "t": 1791939360,
+        "yes": 0.4756,
+        "vol": 5.0
+      },
+      {
+        "t": 1791939420,
+        "yes": 0.4757,
+        "vol": 5.0
+      },
+      {
+        "t": 1791939480,
+        "yes": 0.4758,
+        "vol": 5.0
+      },
+      {
+        "t": 1791939540,
+        "yes": 0.4759,
+        "vol": 5.0
+      },
+      {
+        "t": 1791939600,
+        "yes": 0.476,
+        "vol": 5.0
+      },
+      {
+        "t": 1791939660,
+        "yes": 0.4761,
+        "vol": 5.0
+      },
+      {
+        "t": 1791939720,
+        "yes": 0.4762,
+        "vol": 5.0
+      },
+      {
+        "t": 1791939780,
+        "yes": 0.4763,
+        "vol": 5.0
+      },
+      {
+        "t": 1791939840,
+        "yes": 0.4764,
+        "vol": 5.0
+      },
+      {
+        "t": 1791939900,
+        "yes": 0.4765,
+        "vol": 5.0
+      },
+      {
+        "t": 1791939960,
+        "yes": 0.4766,
+        "vol": 5.0
+      },
+      {
+        "t": 1791940020,
+        "yes": 0.4767,
+        "vol": 5.0
+      },
+      {
+        "t": 1791940080,
+        "yes": 0.4768,
+        "vol": 5.0
+      },
+      {
+        "t": 1791940140,
+        "yes": 0.4769,
+        "vol": 5.0
+      },
+      {
+        "t": 1791940200,
+        "yes": 0.477,
+        "vol": 5.0
+      },
+      {
+        "t": 1791940260,
+        "yes": 0.4771,
+        "vol": 5.0
+      },
+      {
+        "t": 1791940320,
+        "yes": 0.4772,
+        "vol": 5.0
+      },
+      {
+        "t": 1791940380,
+        "yes": 0.4773,
+        "vol": 5.0
+      },
+      {
+        "t": 1791940440,
+        "yes": 0.4774,
+        "vol": 5.0
+      },
+      {
+        "t": 1791940500,
+        "yes": 0.4775,
+        "vol": 5.0
+      },
+      {
+        "t": 1791940560,
+        "yes": 0.4776,
+        "vol": 5.0
+      },
+      {
+        "t": 1791940620,
+        "yes": 0.4777,
+        "vol": 5.0
+      },
+      {
+        "t": 1791940680,
+        "yes": 0.4778,
+        "vol": 5.0
+      },
+      {
+        "t": 1791940740,
+        "yes": 0.4779,
+        "vol": 5.0
+      },
+      {
+        "t": 1791940800,
+        "yes": 0.478,
+        "vol": 5.0
+      },
+      {
+        "t": 1791940860,
+        "yes": 0.4781,
+        "vol": 5.0
+      },
+      {
+        "t": 1791940920,
+        "yes": 0.4782,
+        "vol": 5.0
+      },
+      {
+        "t": 1791940980,
+        "yes": 0.4783,
+        "vol": 5.0
+      },
+      {
+        "t": 1791941040,
+        "yes": 0.4784,
+        "vol": 5.0
+      },
+      {
+        "t": 1791941100,
+        "yes": 0.4785,
+        "vol": 5.0
+      },
+      {
+        "t": 1791941160,
+        "yes": 0.4786,
+        "vol": 5.0
+      },
+      {
+        "t": 1791941220,
+        "yes": 0.4787,
+        "vol": 5.0
+      },
+      {
+        "t": 1791941280,
+        "yes": 0.4788,
+        "vol": 5.0
+      },
+      {
+        "t": 1791941340,
+        "yes": 0.4789,
+        "vol": 5.0
+      },
+      {
+        "t": 1791941400,
+        "yes": 0.479,
+        "vol": 5.0
+      },
+      {
+        "t": 1791941460,
+        "yes": 0.4791,
+        "vol": 5.0
+      },
+      {
+        "t": 1791941520,
+        "yes": 0.4792,
+        "vol": 5.0
+      },
+      {
+        "t": 1791941580,
+        "yes": 0.4793,
+        "vol": 5.0
+      },
+      {
+        "t": 1791941640,
+        "yes": 0.4794,
+        "vol": 5.0
+      },
+      {
+        "t": 1791941700,
+        "yes": 0.4795,
+        "vol": 5.0
+      },
+      {
+        "t": 1791941760,
+        "yes": 0.4796,
+        "vol": 5.0
+      },
+      {
+        "t": 1791941820,
+        "yes": 0.4797,
+        "vol": 5.0
+      },
+      {
+        "t": 1791941880,
+        "yes": 0.4798,
+        "vol": 5.0
+      },
+      {
+        "t": 1791941940,
+        "yes": 0.4799,
+        "vol": 5.0
+      },
+      {
+        "t": 1791942000,
+        "yes": 0.48,
+        "vol": 5.0
+      },
+      {
+        "t": 1791942060,
+        "yes": 0.4801,
+        "vol": 5.0
+      },
+      {
+        "t": 1791942120,
+        "yes": 0.4802,
+        "vol": 5.0
+      },
+      {
+        "t": 1791942180,
+        "yes": 0.4803,
+        "vol": 5.0
+      },
+      {
+        "t": 1791942240,
+        "yes": 0.4804,
+        "vol": 5.0
+      },
+      {
+        "t": 1791942300,
+        "yes": 0.4805,
+        "vol": 5.0
+      },
+      {
+        "t": 1791942360,
+        "yes": 0.4806,
+        "vol": 5.0
+      },
+      {
+        "t": 1791942420,
+        "yes": 0.4807,
+        "vol": 5.0
+      },
+      {
+        "t": 1791942480,
+        "yes": 0.4808,
+        "vol": 5.0
+      },
+      {
+        "t": 1791942540,
+        "yes": 0.4809,
+        "vol": 5.0
+      },
+      {
+        "t": 1791942600,
+        "yes": 0.481,
+        "vol": 5.0
+      },
+      {
+        "t": 1791942660,
+        "yes": 0.4811,
+        "vol": 5.0
+      },
+      {
+        "t": 1791942720,
+        "yes": 0.4812,
+        "vol": 5.0
+      },
+      {
+        "t": 1791942780,
+        "yes": 0.4813,
+        "vol": 5.0
+      },
+      {
+        "t": 1791942840,
+        "yes": 0.4814,
+        "vol": 5.0
+      },
+      {
+        "t": 1791942900,
+        "yes": 0.4815,
+        "vol": 5.0
+      },
+      {
+        "t": 1791942960,
+        "yes": 0.4816,
+        "vol": 5.0
+      },
+      {
+        "t": 1791943020,
+        "yes": 0.4817,
+        "vol": 5.0
+      },
+      {
+        "t": 1791943080,
+        "yes": 0.4818,
+        "vol": 5.0
+      },
+      {
+        "t": 1791943140,
+        "yes": 0.4819,
+        "vol": 5.0
+      },
+      {
+        "t": 1791943200,
+        "yes": 0.482,
+        "vol": 5.0
+      }
+    ]
+  }
+}

@@ -1,0 +1,1147 @@
+{
+  "timestamp": "2026-10-15T04:09:04.348Z",
+  "fixture": "Read-only synthetic editing preview; no provider, financial or account writes.",
+  "sourceHashes": {
+    "app.css": "02710a9300429be191fb52d1e525abc9b8be164c95d342d1b877bfb3e423ef8a",
+    "app.js": "f89090ff0526ad0bfc3404e1233bce6c27e52e8a8ade3da786f2cf2e39c9fb0b",
+    "index.html": "098715d81d39ce2addaf994fde23465b7924002ce279234526eb4e0aa6f508bd"
+  },
+  "checks": [
+    {
+      "name": "dashboard fits at 360px",
+      "pass": true,
+      "detail": {
+        "width": 360,
+        "document": 360,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "dashboard keeps shell and local font at 360px",
+      "pass": true
+    },
+    {
+      "name": "overview uses real session links and portfolio at 360px",
+      "pass": true
+    },
+    {
+      "name": "deployment trend has a dedicated column at 360px",
+      "pass": true
+    },
+    {
+      "name": "period P&L preserves loss days and correct endpoint at 360px",
+      "pass": true
+    },
+    {
+      "name": "underlying daily results remain available at 360px",
+      "pass": true
+    },
+    {
+      "name": "expanded markets fit at 360px",
+      "pass": true
+    },
+    {
+      "name": "drawer close restores focus and measured chart at 360px",
+      "pass": true
+    },
+    {
+      "name": "research fits at 360px",
+      "pass": true,
+      "detail": {
+        "width": 360,
+        "document": 360,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "research keeps shell and local font at 360px",
+      "pass": true
+    },
+    {
+      "name": "all six markets plus automatic choice retained at 360px",
+      "pass": true
+    },
+    {
+      "name": "run forever keeps depth disabled at 360px",
+      "pass": true
+    },
+    {
+      "name": "depth becomes editable at 360px",
+      "pass": true
+    },
+    {
+      "name": "workspace fits at 360px",
+      "pass": true,
+      "detail": {
+        "width": 360,
+        "document": 360,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "workspace keeps shell and local font at 360px",
+      "pass": true
+    },
+    {
+      "name": "library fits at 360px",
+      "pass": true,
+      "detail": {
+        "width": 360,
+        "document": 360,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "library keeps shell and local font at 360px",
+      "pass": true
+    },
+    {
+      "name": "position fits at 360px",
+      "pass": true,
+      "detail": {
+        "width": 360,
+        "document": 360,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "position keeps shell and local font at 360px",
+      "pass": true
+    },
+    {
+      "name": "explore fits at 360px",
+      "pass": true,
+      "detail": {
+        "width": 360,
+        "document": 360,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "explore keeps shell and local font at 360px",
+      "pass": true
+    },
+    {
+      "name": "community fits at 360px",
+      "pass": true,
+      "detail": {
+        "width": 360,
+        "document": 360,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "community keeps shell and local font at 360px",
+      "pass": true
+    },
+    {
+      "name": "account fits at 360px",
+      "pass": true,
+      "detail": {
+        "width": 360,
+        "document": 360,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "account keeps shell and local font at 360px",
+      "pass": true
+    },
+    {
+      "name": "billing fits at 360px",
+      "pass": true,
+      "detail": {
+        "width": 360,
+        "document": 360,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "billing keeps shell and local font at 360px",
+      "pass": true
+    },
+    {
+      "name": "selected navigation is visible at 360px",
+      "pass": true
+    },
+    {
+      "name": "system fits at 360px",
+      "pass": true,
+      "detail": {
+        "width": 360,
+        "document": 360,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "system keeps shell and local font at 360px",
+      "pass": true
+    },
+    {
+      "name": "opening second artifact retains both tabs at 360px",
+      "pass": true
+    },
+    {
+      "name": "saved artifact keeps all evidence and gates at 360px",
+      "pass": true
+    },
+    {
+      "name": "draft survives artifact switches at 360px",
+      "pass": true
+    },
+    {
+      "name": "tabs survive SPA navigation at 360px",
+      "pass": true
+    },
+    {
+      "name": "draft survives SPA navigation at 360px",
+      "pass": true
+    },
+    {
+      "name": "last-tab close returns to usable conversation at 360px",
+      "pass": true
+    },
+    {
+      "name": "dashboard fits at 760px",
+      "pass": true,
+      "detail": {
+        "width": 760,
+        "document": 760,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "dashboard keeps shell and local font at 760px",
+      "pass": true
+    },
+    {
+      "name": "overview uses real session links and portfolio at 760px",
+      "pass": true
+    },
+    {
+      "name": "deployment trend has a dedicated column at 760px",
+      "pass": true
+    },
+    {
+      "name": "period P&L preserves loss days and correct endpoint at 760px",
+      "pass": true
+    },
+    {
+      "name": "underlying daily results remain available at 760px",
+      "pass": true
+    },
+    {
+      "name": "expanded markets fit at 760px",
+      "pass": true
+    },
+    {
+      "name": "drawer close restores focus and measured chart at 760px",
+      "pass": true
+    },
+    {
+      "name": "research fits at 760px",
+      "pass": true,
+      "detail": {
+        "width": 760,
+        "document": 760,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "research keeps shell and local font at 760px",
+      "pass": true
+    },
+    {
+      "name": "all six markets plus automatic choice retained at 760px",
+      "pass": true
+    },
+    {
+      "name": "run forever keeps depth disabled at 760px",
+      "pass": true
+    },
+    {
+      "name": "depth becomes editable at 760px",
+      "pass": true
+    },
+    {
+      "name": "workspace fits at 760px",
+      "pass": true,
+      "detail": {
+        "width": 760,
+        "document": 760,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "workspace keeps shell and local font at 760px",
+      "pass": true
+    },
+    {
+      "name": "library fits at 760px",
+      "pass": true,
+      "detail": {
+        "width": 760,
+        "document": 760,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "library keeps shell and local font at 760px",
+      "pass": true
+    },
+    {
+      "name": "position fits at 760px",
+      "pass": true,
+      "detail": {
+        "width": 760,
+        "document": 760,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "position keeps shell and local font at 760px",
+      "pass": true
+    },
+    {
+      "name": "explore fits at 760px",
+      "pass": true,
+      "detail": {
+        "width": 760,
+        "document": 760,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "explore keeps shell and local font at 760px",
+      "pass": true
+    },
+    {
+      "name": "community fits at 760px",
+      "pass": true,
+      "detail": {
+        "width": 760,
+        "document": 760,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "community keeps shell and local font at 760px",
+      "pass": true
+    },
+    {
+      "name": "account fits at 760px",
+      "pass": true,
+      "detail": {
+        "width": 760,
+        "document": 760,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "account keeps shell and local font at 760px",
+      "pass": true
+    },
+    {
+      "name": "billing fits at 760px",
+      "pass": true,
+      "detail": {
+        "width": 760,
+        "document": 760,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "billing keeps shell and local font at 760px",
+      "pass": true
+    },
+    {
+      "name": "selected navigation is visible at 760px",
+      "pass": true
+    },
+    {
+      "name": "system fits at 760px",
+      "pass": true,
+      "detail": {
+        "width": 760,
+        "document": 760,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "system keeps shell and local font at 760px",
+      "pass": true
+    },
+    {
+      "name": "opening second artifact retains both tabs at 760px",
+      "pass": true
+    },
+    {
+      "name": "saved artifact keeps all evidence and gates at 760px",
+      "pass": true
+    },
+    {
+      "name": "draft survives artifact switches at 760px",
+      "pass": true
+    },
+    {
+      "name": "tabs survive SPA navigation at 760px",
+      "pass": true
+    },
+    {
+      "name": "draft survives SPA navigation at 760px",
+      "pass": true
+    },
+    {
+      "name": "last-tab close returns to usable conversation at 760px",
+      "pass": true
+    },
+    {
+      "name": "dashboard fits at 1024px",
+      "pass": true,
+      "detail": {
+        "width": 1024,
+        "document": 1024,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "dashboard keeps shell and local font at 1024px",
+      "pass": true
+    },
+    {
+      "name": "overview uses real session links and portfolio at 1024px",
+      "pass": true
+    },
+    {
+      "name": "deployment trend has a dedicated column at 1024px",
+      "pass": true
+    },
+    {
+      "name": "period P&L preserves loss days and correct endpoint at 1024px",
+      "pass": true
+    },
+    {
+      "name": "underlying daily results remain available at 1024px",
+      "pass": true
+    },
+    {
+      "name": "expanded markets fit at 1024px",
+      "pass": true
+    },
+    {
+      "name": "drawer close restores focus and measured chart at 1024px",
+      "pass": true
+    },
+    {
+      "name": "research fits at 1024px",
+      "pass": true,
+      "detail": {
+        "width": 1024,
+        "document": 1024,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "research keeps shell and local font at 1024px",
+      "pass": true
+    },
+    {
+      "name": "all six markets plus automatic choice retained at 1024px",
+      "pass": true
+    },
+    {
+      "name": "run forever keeps depth disabled at 1024px",
+      "pass": true
+    },
+    {
+      "name": "depth becomes editable at 1024px",
+      "pass": true
+    },
+    {
+      "name": "workspace fits at 1024px",
+      "pass": true,
+      "detail": {
+        "width": 1024,
+        "document": 1024,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "workspace keeps shell and local font at 1024px",
+      "pass": true
+    },
+    {
+      "name": "library fits at 1024px",
+      "pass": true,
+      "detail": {
+        "width": 1024,
+        "document": 1024,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "library keeps shell and local font at 1024px",
+      "pass": true
+    },
+    {
+      "name": "position fits at 1024px",
+      "pass": true,
+      "detail": {
+        "width": 1024,
+        "document": 1024,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "position keeps shell and local font at 1024px",
+      "pass": true
+    },
+    {
+      "name": "explore fits at 1024px",
+      "pass": true,
+      "detail": {
+        "width": 1024,
+        "document": 1024,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "explore keeps shell and local font at 1024px",
+      "pass": true
+    },
+    {
+      "name": "community fits at 1024px",
+      "pass": true,
+      "detail": {
+        "width": 1024,
+        "document": 1024,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "community keeps shell and local font at 1024px",
+      "pass": true
+    },
+    {
+      "name": "account fits at 1024px",
+      "pass": true,
+      "detail": {
+        "width": 1024,
+        "document": 1024,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "account keeps shell and local font at 1024px",
+      "pass": true
+    },
+    {
+      "name": "billing fits at 1024px",
+      "pass": true,
+      "detail": {
+        "width": 1024,
+        "document": 1024,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "billing keeps shell and local font at 1024px",
+      "pass": true
+    },
+    {
+      "name": "selected navigation is visible at 1024px",
+      "pass": true
+    },
+    {
+      "name": "system fits at 1024px",
+      "pass": true,
+      "detail": {
+        "width": 1024,
+        "document": 1024,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "system keeps shell and local font at 1024px",
+      "pass": true
+    },
+    {
+      "name": "opening second artifact retains both tabs at 1024px",
+      "pass": true
+    },
+    {
+      "name": "saved artifact keeps all evidence and gates at 1024px",
+      "pass": true
+    },
+    {
+      "name": "draft survives artifact switches at 1024px",
+      "pass": true
+    },
+    {
+      "name": "tabs survive SPA navigation at 1024px",
+      "pass": true
+    },
+    {
+      "name": "draft survives SPA navigation at 1024px",
+      "pass": true
+    },
+    {
+      "name": "last-tab close returns to usable conversation at 1024px",
+      "pass": true
+    },
+    {
+      "name": "dashboard fits at 1280px",
+      "pass": true,
+      "detail": {
+        "width": 1280,
+        "document": 1280,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "dashboard keeps shell and local font at 1280px",
+      "pass": true
+    },
+    {
+      "name": "overview uses real session links and portfolio at 1280px",
+      "pass": true
+    },
+    {
+      "name": "deployment trend has a dedicated column at 1280px",
+      "pass": true
+    },
+    {
+      "name": "period P&L preserves loss days and correct endpoint at 1280px",
+      "pass": true
+    },
+    {
+      "name": "underlying daily results remain available at 1280px",
+      "pass": true
+    },
+    {
+      "name": "expanded markets fit at 1280px",
+      "pass": true
+    },
+    {
+      "name": "drawer close restores focus and measured chart at 1280px",
+      "pass": true
+    },
+    {
+      "name": "research fits at 1280px",
+      "pass": true,
+      "detail": {
+        "width": 1280,
+        "document": 1280,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "research keeps shell and local font at 1280px",
+      "pass": true
+    },
+    {
+      "name": "all six markets plus automatic choice retained at 1280px",
+      "pass": true
+    },
+    {
+      "name": "run forever keeps depth disabled at 1280px",
+      "pass": true
+    },
+    {
+      "name": "depth becomes editable at 1280px",
+      "pass": true
+    },
+    {
+      "name": "workspace fits at 1280px",
+      "pass": true,
+      "detail": {
+        "width": 1280,
+        "document": 1280,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "workspace keeps shell and local font at 1280px",
+      "pass": true
+    },
+    {
+      "name": "library fits at 1280px",
+      "pass": true,
+      "detail": {
+        "width": 1280,
+        "document": 1280,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "library keeps shell and local font at 1280px",
+      "pass": true
+    },
+    {
+      "name": "position fits at 1280px",
+      "pass": true,
+      "detail": {
+        "width": 1280,
+        "document": 1280,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "position keeps shell and local font at 1280px",
+      "pass": true
+    },
+    {
+      "name": "explore fits at 1280px",
+      "pass": true,
+      "detail": {
+        "width": 1280,
+        "document": 1280,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "explore keeps shell and local font at 1280px",
+      "pass": true
+    },
+    {
+      "name": "community fits at 1280px",
+      "pass": true,
+      "detail": {
+        "width": 1280,
+        "document": 1280,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "community keeps shell and local font at 1280px",
+      "pass": true
+    },
+    {
+      "name": "account fits at 1280px",
+      "pass": true,
+      "detail": {
+        "width": 1280,
+        "document": 1280,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "account keeps shell and local font at 1280px",
+      "pass": true
+    },
+    {
+      "name": "billing fits at 1280px",
+      "pass": true,
+      "detail": {
+        "width": 1280,
+        "document": 1280,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "billing keeps shell and local font at 1280px",
+      "pass": true
+    },
+    {
+      "name": "system fits at 1280px",
+      "pass": true,
+      "detail": {
+        "width": 1280,
+        "document": 1280,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "system keeps shell and local font at 1280px",
+      "pass": true
+    },
+    {
+      "name": "opening second artifact retains both tabs at 1280px",
+      "pass": true
+    },
+    {
+      "name": "saved artifact keeps all evidence and gates at 1280px",
+      "pass": true
+    },
+    {
+      "name": "draft survives artifact switches at 1280px",
+      "pass": true
+    },
+    {
+      "name": "tabs survive SPA navigation at 1280px",
+      "pass": true
+    },
+    {
+      "name": "draft survives SPA navigation at 1280px",
+      "pass": true
+    },
+    {
+      "name": "last-tab close returns to usable conversation at 1280px",
+      "pass": true
+    },
+    {
+      "name": "dashboard fits at 1440px",
+      "pass": true,
+      "detail": {
+        "width": 1440,
+        "document": 1440,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "dashboard keeps shell and local font at 1440px",
+      "pass": true
+    },
+    {
+      "name": "overview uses real session links and portfolio at 1440px",
+      "pass": true
+    },
+    {
+      "name": "deployment trend has a dedicated column at 1440px",
+      "pass": true
+    },
+    {
+      "name": "period P&L preserves loss days and correct endpoint at 1440px",
+      "pass": true
+    },
+    {
+      "name": "underlying daily results remain available at 1440px",
+      "pass": true
+    },
+    {
+      "name": "expanded markets fit at 1440px",
+      "pass": true
+    },
+    {
+      "name": "drawer close restores focus and measured chart at 1440px",
+      "pass": true
+    },
+    {
+      "name": "research fits at 1440px",
+      "pass": true,
+      "detail": {
+        "width": 1440,
+        "document": 1440,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "research keeps shell and local font at 1440px",
+      "pass": true
+    },
+    {
+      "name": "all six markets plus automatic choice retained at 1440px",
+      "pass": true
+    },
+    {
+      "name": "run forever keeps depth disabled at 1440px",
+      "pass": true
+    },
+    {
+      "name": "depth becomes editable at 1440px",
+      "pass": true
+    },
+    {
+      "name": "workspace fits at 1440px",
+      "pass": true,
+      "detail": {
+        "width": 1440,
+        "document": 1440,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "workspace keeps shell and local font at 1440px",
+      "pass": true
+    },
+    {
+      "name": "library fits at 1440px",
+      "pass": true,
+      "detail": {
+        "width": 1440,
+        "document": 1440,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "library keeps shell and local font at 1440px",
+      "pass": true
+    },
+    {
+      "name": "position fits at 1440px",
+      "pass": true,
+      "detail": {
+        "width": 1440,
+        "document": 1440,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "position keeps shell and local font at 1440px",
+      "pass": true
+    },
+    {
+      "name": "explore fits at 1440px",
+      "pass": true,
+      "detail": {
+        "width": 1440,
+        "document": 1440,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "explore keeps shell and local font at 1440px",
+      "pass": true
+    },
+    {
+      "name": "community fits at 1440px",
+      "pass": true,
+      "detail": {
+        "width": 1440,
+        "document": 1440,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "community keeps shell and local font at 1440px",
+      "pass": true
+    },
+    {
+      "name": "account fits at 1440px",
+      "pass": true,
+      "detail": {
+        "width": 1440,
+        "document": 1440,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "account keeps shell and local font at 1440px",
+      "pass": true
+    },
+    {
+      "name": "billing fits at 1440px",
+      "pass": true,
+      "detail": {
+        "width": 1440,
+        "document": 1440,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "billing keeps shell and local font at 1440px",
+      "pass": true
+    },
+    {
+      "name": "system fits at 1440px",
+      "pass": true,
+      "detail": {
+        "width": 1440,
+        "document": 1440,
+        "bg": "rgb(252, 252, 252)",
+        "font": "\"DM Sans\", ui-sans-serif, system-ui, sans-serif",
+        "failed": false,
+        "nav": 8
+      }
+    },
+    {
+      "name": "system keeps shell and local font at 1440px",
+      "pass": true
+    },
+    {
+      "name": "opening second artifact retains both tabs at 1440px",
+      "pass": true
+    },
+    {
+      "name": "saved artifact keeps all evidence and gates at 1440px",
+      "pass": true
+    },
+    {
+      "name": "draft survives artifact switches at 1440px",
+      "pass": true
+    },
+    {
+      "name": "tabs survive SPA navigation at 1440px",
+      "pass": true
+    },
+    {
+      "name": "draft survives SPA navigation at 1440px",
+      "pass": true
+    },
+    {
+      "name": "last-tab close returns to usable conversation at 1440px",
+      "pass": true
+    },
+    {
+      "name": "optional research read failure preserves portfolio and deployments",
+      "pass": true
+    },
+    {
+      "name": "empty research uses a calm state without an extra action",
+      "pass": true
+    },
+    {
+      "name": "late dashboard response cannot replace a different page",
+      "pass": true
+    },
+    {
+      "name": "no browser runtime errors",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "all assets and data remain local",
+      "pass": true,
+      "detail": []
+    }
+  ],
+  "passed": 183,
+  "failed": []
+}

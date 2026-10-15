@@ -1,0 +1,42 @@
+{
+  "timestamp": "2026-10-15T04:10:46.795720+00:00",
+  "base": "e40d060a8b2fb0d159e030834e829e105d4cdc17",
+  "branch": "codex/meridian-frontend-redesign",
+  "status": "isolated review candidate verified; not merged or deployed",
+  "python": {
+    "passed": 163,
+    "skipped": 7,
+    "skips": "opt-in MySQL",
+    "log": "PYTEST.txt"
+  },
+  "node": {
+    "passed": 29,
+    "log": "NODE_TESTS.txt"
+  },
+  "browser": {
+    "passed": 183,
+    "widths": [
+      360,
+      760,
+      1024,
+      1280,
+      1440
+    ],
+    "data": "synthetic read-only fixture preview; application providers and financial writes disabled",
+    "receipt": "BROWSER_CHECKS.json"
+  },
+  "runtime_matches_local_source": true,
+  "source_manifest": "SOURCE_MANIFEST.json",
+  "visual_review": {
+    "latest_score": 7.0,
+    "target": 9,
+    "target_met": false,
+    "model": "gpt-6.1-sol",
+    "protocol": "Fresh context; screenshot only; same fixed prompt each review; target excluded from prompt."
+  },
+  "remaining_gates": [
+    "Scoped session chat backend endpoints/persistence/worker context remain unimplemented.",
+    "Authenticated non-production MySQL/account/provider acceptance remains pending.",
+    "Earlier studio-quality visual target remains unmet."
+  ]
+}

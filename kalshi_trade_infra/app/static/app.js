@@ -4,7 +4,7 @@
   'use strict';
 
   const root = document.getElementById('app');
-  const S = { me: null, timers: [], gen: 0 };
+  const S = { me: null, timers: [], gen: 0, resize: null, chatDispose: null, artifactDispose: null };
 
   // ---------- brand mark ----------
   const TAU_MARK = '<svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" fill="#15161A"/><path d="M18 24h28M32 24v22" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/><circle cx="32" cy="48" r="3.5" fill="#F05A28"/></svg>';
@@ -116,7 +116,7 @@
   const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
   const age = (sec) => (sec == null ? 'never' : sec < 90 ? sec + 's' : sec < 5400 ? Math.round(sec / 60) + 'm' : sec < 172800 ? Math.round(sec / 3600) + 'h' : Math.round(sec / 86400) + 'd');
   const marketLabel = (k) => ((S.me && S.me.markets.find((m) => m.key === k)) || { label: k }).label;
-  const marketShort = (k) => (!k ? 'Agent’s choice' : k === 'btc15m' ? 'BTC 15-min' : k === 'btc_daily' ? 'BTC 5pm' : k);
+  const marketShort = (k) => (!k ? 'Agent’s choice' : ({btc15m: 'BTC 15-min', btc_daily: 'BTC 5pm', eth15m: 'ETH 15-min', eth_daily: 'ETH daily', sol_daily: 'SOL daily', xrp_daily: 'XRP daily'}[k] || k));
   const dirLabel = (k) => { if (!k) return 'Session'; const d = S.me && S.me.directions.find((x) => x.key === k); return d ? d.label : String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()); };
   const sessionTitle = (r) => (r.prompt && r.prompt.trim()) ? r.prompt.trim() : (dirLabel(r.direction) + ' \u00b7 ' + marketShort(r.market));
 
@@ -167,15 +167,27 @@
     go(a.getAttribute('href'));
   });
 
-  function clearTimers() { S.timers.forEach(clearInterval); S.timers = []; }
+  window.addEventListener('resize', () => { if (S.resize) S.resize(); });
+  if ('ResizeObserver' in window) {
+    let contentWidth = 0;
+    const chartLayout = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width === contentWidth) return;
+      contentWidth = entry.contentRect.width;
+      if (S.resize) S.resize();
+    });
+    chartLayout.observe(root);
+  }
+  function clearTimers() { S.timers.forEach(clearInterval); S.timers = []; S.resize = null; if (S.chatDispose) S.chatDispose(); S.chatDispose = null; if (S.artifactDispose) S.artifactDispose(); S.artifactDispose = null; }
   function poll(fn, ms) {
     const gen = S.gen;
     const id = setInterval(() => { if (!document.hidden && gen === S.gen) fn().catch(() => {}); }, ms);
     S.timers.push(id);
+    return id;
   }
   async function render() {
     clearTimers();
     S.gen++;
+    const gen = S.gen;
     window.scrollTo(0, 0);
     const path = location.pathname;
     const match = routes.map(([re, fn]) => [path.match(re), fn]).find(([m]) => m);
@@ -184,9 +196,8 @@
     }
     if (!match) return go('/', true);
     root.setAttribute('aria-busy', 'true');
-    try { await match[1](...match[0].slice(1)); } catch (e) { if (e.status !== 401) shell('', boardTitle('Something went wrong'), notice(e.message, 'bad')); }
-    root.setAttribute('aria-busy', 'false');
-    paymentGate().catch(() => {});
+    try { await match[1](...match[0].slice(1)); } catch (e) { if (gen === S.gen && e.status !== 401) shell('', boardTitle('Something went wrong'), notice(e.message, 'bad')); }
+    if (gen === S.gen) { root.setAttribute('aria-busy', 'false'); paymentGate().catch(() => {}); }
   }
 
   // Global blocking modal: a signed-in user with no card on file can't use Tau
@@ -233,7 +244,7 @@
     if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
     dlg.addEventListener('cancel', (e) => e.preventDefault());  // Esc can't dismiss
     dlg.querySelector('[data-signout]').onclick = async () => {
-      await api('/api/logout', {}).catch(() => {}); S.me = null; closePay(); go('/signin');
+      await api('/api/logout', {}).catch(() => {}); S.me = null; sessionChats.clear(); researchWorkspaces.clear(); closePay(); go('/signin');
     };
     // Animated showcase reel on the left.
     const stage = dlg.querySelector('#pay-stage'), cap = dlg.querySelector('#pay-cap'), dots = dlg.querySelector('#pay-dots');
@@ -284,14 +295,14 @@
   }
 
   // ---------- shell ----------
-  const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/explore', 'Explore', 'explore'], ['/deploy', 'Deploy', 'deploy'], ['/community', 'Community', 'community'], ['/funds', 'Funds', 'funds'], ['/billing', 'Billing', 'credits']];
+  const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/explore', 'Explore', 'explore'], ['/deploy', 'Position', 'deploy'], ['/community', 'Community', 'community'], ['/funds', 'Account', 'funds'], ['/billing', 'Billing', 'credits']];
   // The operator can flip into a plain-user view. Only their own account is an
   // admin at all (server decides); the toggle just hides the admin surface so
   // they can see what a normal user sees. Default: admin view on.
   const isAdmin = () => !!(S.me && S.me.is_admin);
   const adminViewOn = () => isAdmin() && localStorage.getItem('tau_admin_off') !== '1';
   function shell(active, board, main) {
-    document.body.classList.remove('landing-body');
+    document.body.classList.remove('landing-body', 'research-workspace-page');
     const u = S.me.user;
     const here = (NAV.concat([['/admin', 'Admin'], ['/system', 'System']]).find(([href]) => href === active) || ['', ''])[1];
     const items = NAV.concat([['/system', 'System', 'system']]).concat(adminViewOn() ? [['/admin', 'Admin', 'admin']] : []);
@@ -300,16 +311,17 @@
       ? `<button class="admin-toggle" data-action="admintoggle" role="switch" aria-checked="${adminViewOn()}" title="${adminViewOn() ? 'Admin mode on \u2014 click to view as a user' : 'Admin mode off \u2014 click to show admin'}"><span class="admin-track"><span class="admin-knob"></span></span>Admin</button><span class="sep">\u00b7</span>`
       : '';
     root.innerHTML = `
-      <header class="masthead"><div class="masthead-in">
+      <header class="masthead app-header"><div class="masthead-in">
         <p class="wordmark"><a href="/">${ICON.mark}<span>Tau</span></a></p>
+        <nav class="services" aria-label="Sections"><div class="services-in">${nav}</div></nav>
+        <button class="hot-trigger" data-hot-header aria-controls="hotrail" aria-expanded="false" aria-label="Expand hot markets"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1 11 5 7l3 2 6-6M10 3h4v4"/></svg><span>Hot markets</span></button>
         <span class="asof">${adminToggle}${esc(u.name || u.email)}<span class="sep">\u00b7</span><button class="linkish" data-action="signout">Sign out</button></span>
       </div></header>
-      <nav class="services" aria-label="Sections"><div class="services-in">${nav}</div></nav>
       <div class="wrap">
         <div id="boardbody">${board}</div>
         <main id="main" tabindex="-1">${main}</main>
       </div>`;
-    root.querySelector('[data-action="signout"]').onclick = async () => { await api('/api/logout', {}).catch(() => {}); S.me = null; go('/signin'); };
+    root.querySelector('[data-action="signout"]').onclick = async () => { await api('/api/logout', {}).catch(() => {}); S.me = null; sessionChats.clear(); researchWorkspaces.clear(); go('/signin'); };
     const at = root.querySelector('[data-action="admintoggle"]');
     if (at) at.onclick = () => {
       const turningOff = adminViewOn();
@@ -317,6 +329,7 @@
       if (turningOff && location.pathname === '/admin') go('/', true); else render();
     };
     mountHotRail();
+    root.querySelector('.svc-link[aria-current="page"]')?.scrollIntoView({block: 'nearest', inline: 'nearest'});
   }
   const boardTitle = (title, sub = '') => `<div class="board-title"><h1 class="page">${esc(title)}</h1>${sub ? `<p class="deck">${sub}</p>` : ''}</div>`;
   // One measured cell. Money direction rides a tint field behind the figure
@@ -367,8 +380,8 @@
       <line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" stroke="var(--rule-2)" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/>
       <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.8" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>`;
   }
-  function equityChart(curve, cutoffIso) {
-    const W = 760, H = 236, L = 52, R = 10, T = 30, B = 26;
+  function equityChart(curve, cutoffIso, width = 760, label = 'Cumulative profit and loss over the backtest', options = {}) {
+    const W = Math.max(240, width), H = options.height || 236, L = 52, R = 10, T = 40, B = 26;
     if (!curve || curve.length < 2) return `<div class="empty"><p>Not enough trades to draw an equity curve.</p></div>`;
     const t0 = curve[0][0], t1 = curve[curve.length - 1][0];
     const vals = curve.map((p) => p[1]);
@@ -380,15 +393,26 @@
     const cx = cut && cut > t0 && cut < t1 ? x(cut) : null;
     const pts = curve.map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
     const ticks = [lo, (lo + hi) / 2, hi].map((v) => `<text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${usd(v)}</text>`).join('');
+    const grid = [(lo + hi) / 2, hi].filter(v => v !== 0).map(v => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--rule)" stroke-width=".7"/>`).join('');
+    const last = curve[curve.length - 1];
     const day = (t) => new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cumulative profit and loss over the backtest; ends at ${usd(vals[vals.length - 1], true)}">
-      ${cx ? `<rect x="${cx}" y="${T}" width="${W - R - cx}" height="${H - T - B}" fill="var(--stock-raised)"/>
-              <line x1="${cx}" x2="${cx}" y1="${T}" y2="${H - B}" stroke="var(--ink-3)" stroke-dasharray="4 4"/>
-              <text x="${cx + 8}" y="${T - 10}" style="fill:var(--ink-2)">UNSEEN BY THE AGENT →</text>` : ''}
+    const tickCount = options.showDates ? Math.min(curve.length, Math.max(2, Math.floor((W - L - R) / 70))) : 2;
+    const dates = Array.from({length: tickCount}, (_, index) => {
+      const point = curve[Math.round(index * (curve.length - 1) / (tickCount - 1))];
+      return `<line x1="${x(point[0])}" x2="${x(point[0])}" y1="${H - B}" y2="${H - B + 4}" stroke="var(--rule-2)"/><text x="${x(point[0])}" y="${H - 6}" text-anchor="${index === 0 ? 'start' : index === tickCount - 1 ? 'end' : 'middle'}">${day(point[0])}</text>`;
+    }).join('');
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}; ends at ${usd(vals[vals.length - 1], true)}">
+      ${cx ? `<rect x="${cx}" y="${T}" width="${W - R - cx}" height="${H - T - B}" fill="var(--pos)" fill-opacity=".65"/>
+              <line x1="${cx}" x2="${cx}" y1="${T}" y2="${H - B}" stroke="var(--rule-2)" stroke-dasharray="3 4"/>
+              <text x="${L}" y="17">In sample</text><text x="${W - R}" y="17" text-anchor="end">Unseen · from ${day(cut)}</text>` : ''}
+      ${grid}
       <line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="var(--rule-2)"/>
       ${ticks}
-      <text x="${L}" y="${H - 6}">${day(t0)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${day(t1)}</text>
-      <polyline points="${pts}" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>
+      ${dates}
+      <polyline points="${pts}" fill="none" stroke="var(--ink)" stroke-width="2.2" stroke-linejoin="round"/>
+      ${options.showDates ? curve.map(([t,v]) => `<circle cx="${x(t)}" cy="${y(v)}" r="2" fill="var(--ink)"><title>${day(t)}: ${usd(v,true)}</title></circle>`).join('') : ''}
+      <circle cx="${x(last[0])}" cy="${y(last[1])}" r="3" fill="var(--ink)"/>
+      <text class="chart-endpoint" x="${W - R - 8}" y="${Math.max(30, y(last[1]) - 8)}" text-anchor="end">${usd(last[1], true)}</text>
     </svg>`;
   }
 
@@ -422,11 +446,12 @@
       <td class="act" data-lab="">${mark(s.status)}</td>
     </tr>`;
   }
-  const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Market</th><th>Status</th><th class="num">Realized</th><th class="num">Trades</th><th class="num">Backtest unseen</th><th>Since</th>${controls ? '<th></th>' : ''}</tr></thead>`;
-  const deploymentTable = (rows, controls) => `<div class="sheet"><table class="stack t-dep">${DEP_HEAD(controls)}<tbody>${rows}</tbody></table></div>`;
-  function deploymentSlip(d, reg, controls) {
+  const DEP_HEAD = (controls, trendColumn) => `<thead><tr><th>Strategy</th><th>Market</th><th>Status</th><th class="num">Realized</th>${trendColumn ? '<th class="dep-trend">Trend</th>' : ''}<th class="num">Trades</th><th class="num">Backtest unseen</th><th>Since</th>${controls ? '<th></th>' : ''}</tr></thead>`;
+  const deploymentTable = (rows, controls, trendColumn = false) => `<div class="sheet"><table class="stack t-dep">${DEP_HEAD(controls, trendColumn)}<tbody>${rows}</tbody></table></div>`;
+  function deploymentSlip(d, reg, controls, trendColumn = false) {
     const exp = d.backtest && d.backtest.out_of_sample;
     const live = d.mode === 'live';
+    const trend = d.curve && d.curve.length > 1 ? spark(d.curve, reg, 'Realized profit and loss') : '';
     const actions = controls ? `<td class="act" data-lab="">
         ${d.status === 'running' ? `<button class="btn sm" data-dep="${d.id}" data-act="pause">Pause</button>` : ''}
         ${d.status === 'paused' ? `<button class="btn sm" data-dep="${d.id}" data-act="resume">Resume</button>` : ''}
@@ -436,7 +461,8 @@
         <div class="sub-fig">$${esc(d.stake)} a trade, up to ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' \u00b7 ' + esc(d.status_reason) : ''}</div></td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(d.market))}</span></td>
       <td data-lab="Status">${mark(d.status, live)}</td>
-      <td class="num" data-lab="Realized">${money(d.realized_pnl)}${d.curve && d.curve.length > 1 ? spark(d.curve, reg, 'Realized profit and loss') : ''}</td>
+      <td class="num" data-lab="Realized">${money(d.realized_pnl)}${trendColumn ? '' : trend}</td>
+      ${trendColumn ? `<td class="dep-trend" data-lab="Trend">${trend}</td>` : ''}
       <td class="num" data-lab="Trades">${d.closed_trades}${d.open_positions ? `<div class="sub-fig">+${d.open_positions} open</div>` : ''}</td>
       <td class="num" data-lab="Backtest unseen">${exp ? usd(exp.pnl, true) : '\u2014'}</td>
       <td data-lab="Since">${when(d.created_at)}</td>
@@ -490,7 +516,6 @@
           <a class="lbrand" href="/">${ICON.mark}<span>Tau</span></a>
           <div class="lnav-actions">
             <a class="pill" href="/auth/google" data-native>Sign in</a>
-            <button class="pill solid" data-action="waitlist-top">Join waitlist</button>
           </div>
         </header>
         <section class="lhero">
@@ -499,8 +524,7 @@
             <p class="lsub">Describe what you want to trade. An agent researches it, tests every idea on data it never saw, and only the strategies that pass can trade.</p>
             ${msg ? `<div class="lnotice">${esc(msg)}</div>` : ''}
             <div class="lcta" id="lcta">
-              <a class="pill solid lg" href="/auth/google" data-native>${ICON.google}Continue with Google</a>
-              <button class="pill lg" data-action="waitlist-open">Join waitlist</button>
+              <button class="pill solid lg" data-action="waitlist-open">Join waitlist</button>
             </div>
             <p class="lfine">Access is invite-only right now. Join the waitlist and we'll email you when a spot opens. You'll start with $1,000 of paper money; live trading is optional and runs in your own Kalshi account.</p>
           </div>
@@ -717,8 +741,13 @@
   // ---------- dashboard ----------
   async function viewDashboard() {
     shell('/', loading(120), loading(320));
+    const gen = S.gen;
     const load = async () => {
-      const d = await api('/api/dashboard');
+      const [d, recent] = await Promise.all([
+        api('/api/dashboard'),
+        api('/api/runs').then(data => ({ data })).catch(error => ({ error: error.message })),
+      ]);
+      if (gen !== S.gen) return;
       const p = d.paper;
       const hasLive = d.deployments.some((x) => x.mode === 'live' && x.status !== 'stopped');
       const stale = d.freshness.btc == null || d.freshness.btc > 2700;
@@ -734,39 +763,54 @@
         stale ? `<em>Backtest history stale ${age(d.freshness.btc)}</em>` : '',
       ].filter(Boolean).join('<span class="sep">/</span>');
       const board = `
-        <div class="statusline ${needs ? 'needs' : ''}"><p class="said">${said}</p><a class="btn primary" href="/research">New research</a></div>
-        <dl class="figures measure">
-          ${fig('Paper account value', usd(p.equity), { small: `${usd(p.cash)} cash \u00b7 ${usd(p.open_at_cost)} open at cost` })}
-          ${fig('Today', usd(p.today_pnl, true), { v: p.today_pnl })}
-          ${fig('All time', usd(p.total_pnl, true), { v: p.total_pnl, small: `${pct(p.roi)} on ${usd(p.deposited)} put in` })}
-          ${fig('Open positions', d.open_positions.length, { small: stale ? '' : `history ${age(d.freshness.btc)} old` })}
-        </dl>`;
+        <div class="statusline dashboard-status ${needs ? 'needs' : ''}"><div><h1 class="page">Overview</h1><p class="said">${said}</p></div>${d.deployments.length ? '<a class="btn primary" href="/research">New research</a>' : ''}</div>`;
       const reg = registry(d.deployments.map((x) => x.curve));
       const deps = d.deployments.length
-        ? deploymentTable(d.deployments.map((x) => deploymentSlip(x, reg, false)).join(''), false)
+        ? deploymentTable(d.deployments.map((x) => deploymentSlip(x, reg, false, true)).join(''), false, true)
         : `<div class="empty"><h3>Nothing deployed yet</h3><p>Agents research strategies and test each one on data they never saw. The ones that pass every gate can be deployed here, on paper first.</p><a class="btn" href="/research">Dispatch your first agent</a></div>`;
       const days = d.paper.daily.slice(-30);
       const maxAbs = Math.max(1, ...days.map((x) => Math.abs(+x.pnl)));
       const bars = days.length
-        ? `<div class="bars-wrap"><div class="bars" role="img" aria-label="Daily profit and loss, last ${days.length} days">${days.map((x) => `<span class="${+x.pnl >= 0 ? 'up' : 'down'}" style="height:${Math.max(2, (Math.abs(+x.pnl) / maxAbs) * 36)}px" title="${esc(x.d)}: ${usd(x.pnl, true)}"></span>`).join('')}</div></div>`
+        ? `<svg class="daily-chart" viewBox="0 0 320 130" role="img" aria-label="Daily profit and loss, last ${days.length} days"><line x1="0" x2="320" y1="72" y2="72" stroke="var(--rule-2)"/>
+          ${days.map((x, index) => { const h = Math.abs(+x.pnl) / maxAbs * 48, step = 300 / days.length; return `<rect x="${index * step + 4}" y="${+x.pnl >= 0 ? 72 - h : 72}" width="${Math.max(1, step - 5)}" height="${Math.max(.6, h)}" fill="${+x.pnl >= 0 ? '#4B6525' : 'var(--signal)'}"><title>${esc(x.d)}: ${usd(x.pnl, true)}</title></rect>`; }).join('')}
+          <text x="320" y="68" text-anchor="end">$0</text><text x="0" y="126">${esc(days[0].d)}</text><text x="320" y="126" text-anchor="end">${esc(days[days.length - 1].d)}</text></svg>`
         : '<p class="hint">Daily results appear once your strategies close trades.</p>';
+      let periodPnl = 0;
+      const periodCurve = days.map(day => [Date.parse(day.d + 'T12:00:00Z') / 1000, periodPnl += +day.pnl]);
+      const performance = days.length > 1 ? equityChart(periodCurve, null) : bars;
       const stubs = (rows, closed) => rows.length
         ? rows.map((r) => `<div class="stub"><b>${esc(r.side.toUpperCase())} ${esc(r.qty)} × ${cents(+r.entry_price)}</b>
             <span>${closed ? money(+r.pnl) : usd(r.qty * r.entry_price)}</span>
             <small>${esc(r.title)} · <span class="tick">${esc(r.ticker)}</span> · ${r.mode === 'live' ? 'LIVE' : 'paper'} · ${when(closed ? r.closed_at : r.opened_at)}</small></div>`).join('')
         : `<p class="hint">${closed ? 'No settled trades yet.' : 'No open positions.'}</p>`;
-      const main = `<div class="dash">
+      const sessions = recent.data?.runs.slice(0, 6) || [];
+      const research = recent.error ? `<p class="hint">${esc(recent.error)}</p>` : sessions.length ? `<div class="runs overview-sessions">${sessions.map(runRow).join('')}</div>` : '<p class="hint overview-empty">Your research sessions will appear here.</p>';
+      const main = `<div class="dash dash-overview">
           <div>
+            <section class="sect"><div class="sect-head"><h2>Recent research</h2>${sessions.length ? `<span class="sect-note">${sessions.length} recent sessions</span>` : ''}</div>${research}</section>
+            <section class="sect overview-performance"><div class="sect-head"><h2>Paper performance</h2><span class="sect-note">Cumulative closed P&amp;L · ${days.length} day${days.length === 1 ? '' : 's'}</span></div><div id="overview-performance-chart">${performance}</div>
+              ${days.length ? `<details class="daily-results"><summary>Daily results</summary><table><thead><tr><th>Date</th><th class="num">Closed P&amp;L</th></tr></thead><tbody>${days.map(day => `<tr><td>${esc(day.d)}</td><td class="num">${money(+day.pnl)}</td></tr>`).join('')}</tbody></table></details>` : ''}
+            </section>
             <section class="sect"><div class="sect-head"><h2>Deployed</h2>${d.deployments.some((x) => x.curve && x.curve.length > 1) ? '<span class="sect-note">Sparklines share one dollar scale</span>' : ''}</div>${deps}</section>
           </div>
-          <aside>
-            <section class="panel"><h3>Daily P&amp;L</h3>${bars}</section>
-            <section class="panel"><h3>Open positions</h3>${stubs(d.open_positions, false)}</section>
-            <section class="panel"><h3>Settled lately</h3>${stubs(d.recent_closed, true)}</section>
+          <aside class="overview-portfolio">
+            <section class="portfolio-overview"><header><h2>Paper portfolio</h2><span class="lab">USD</span></header>
+              <dl class="portfolio-value"><dt class="vh">Paper account value</dt><dd>${usd(p.equity)}</dd></dl>
+              <p class="hint">${usd(p.cash)} cash · ${usd(p.open_at_cost)} open at cost</p>
+              <dl class="portfolio-metrics"><div><dt>Today</dt><dd>${money(p.today_pnl)}</dd></div><div><dt>All time</dt><dd>${money(p.total_pnl)}</dd></div></dl>
+              <p class="hint">${pct(p.roi)} on ${usd(p.deposited)} put in</p>
+            </section>
+            <section class="portfolio-ledger"><h3>Open positions <span>${d.open_positions.length}</span></h3>${stubs(d.open_positions, false)}${stale ? '' : `<p class="hint freshness">History ${age(d.freshness.btc)} old</p>`}</section>
+            <section class="portfolio-ledger"><h3>Settled lately</h3>${stubs(d.recent_closed, true)}</section>
           </aside>
         </div>`;
       root.querySelector('#boardbody').innerHTML = board;
       root.querySelector('main').innerHTML = main;
+      const chart = root.querySelector('#overview-performance-chart');
+      S.resize = () => {
+        if (gen === S.gen && chart.isConnected && days.length > 1) chart.innerHTML = equityChart(periodCurve, null, chart.clientWidth, `Cumulative realized paper profit and loss over the last ${days.length} days`, {height: 176, showDates: true});
+      };
+      S.resize();
     };
     await load();
     poll(load, 15000);
@@ -774,15 +818,16 @@
 
   // ---------- research ----------
   async function viewResearch() {
-    const me = S.me;
+    if (new URLSearchParams(location.search).get('artifacts') === '1') return viewStrategyLibrary();
+    const gen = S.gen, me = S.me;
     const DEMO_PROMPT = "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances";
-    shell('/research', boardTitle('Research', 'Describe an idea. An agent turns it into a research session \u2014 several concrete strategies it backtests on data it never saw, and only the ones that pass can trade.') +
+    shell('/research', boardTitle('Research', 'Test a market hypothesis.') +
       '<dl class="figures measure" id="rfigs" style="margin-top:14px"></dl>', `
       <form class="panel dispatch" id="dispatch">
         <h3>Start a research session</h3>
         ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
         <label class="field"><span>Describe your idea</span>
-          <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="Bro idk just give me a trading strategy frfr&#10;&#10;…or be specific: &quot;Sell overpriced tails in the last hour before the 5pm close.&quot;"></textarea></label>
+          <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="e.g. Test whether momentum persists in the final minutes before settlement."></textarea></label>
         <div class="dispatch-tune" style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;margin-top:2px">
           <label class="field" style="margin:0"><span>Strategies to test</span>
             <input class="input" type="number" name="max_hypotheses" id="maxhyp" min="1" max="50" value="10" style="width:92px"></label>
@@ -798,7 +843,7 @@
         <div id="dflash"></div>
         <p class="hint">A session takes a few minutes and keeps running if you leave this page.</p>
       </form>
-      <section class="sect"><div class="sect-head"><h2>Your sessions</h2><p id="rcount"></p></div>
+      <section class="sect"><div class="sect-head"><h2>Your sessions</h2><p id="rcount"></p><a class="btn small" href="/research?artifacts=1&status=">Browse all strategies</a></div>
         <div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div></section>`);
     root.querySelectorAll('[data-ex]').forEach((b) => { b.onclick = () => { const t = root.querySelector('textarea[name=prompt]'); t.value = b.dataset.ex; t.focus(); }; });
     const form = root.querySelector('#dispatch');
@@ -819,12 +864,13 @@
             max_hypotheses: Number(fd.get('max_hypotheses')) || undefined,
             run_forever: fd.get('run_forever') === 'on',
           });
-          go('/research/' + r.id);
-        } catch (err) { flash('#dflash', err.message, 'bad'); }
+          if (gen === S.gen) go('/research/' + r.id);
+        } catch (err) { if (gen === S.gen && err.status !== 401) flash('#dflash', err.message, 'bad'); }
       });
     };
     const load = async () => {
       const d = await api('/api/runs');
+      if (gen !== S.gen) return;
       const tried = d.runs.reduce((a, r) => a + (r.hypotheses_tried || 0), 0);
       const passed = d.runs.reduce((a, r) => a + (r.strategies_passed || 0), 0);
       root.querySelector('#rfigs').innerHTML = fig('Researching now', d.counts.research_running) + fig('Waiting', d.counts.research_queued) +
@@ -834,7 +880,7 @@
         : `<div class="empty"><h3>No sessions yet</h3><p>Describe an idea above. The agent will turn it into several strategies, test each one on data it never saw, and mark each Passed or Void.</p></div>`;
     };
     await load();
-    poll(load, 5000);
+    if (gen === S.gen) poll(load, 5000);
   }
   function runRow(r) {
     const state = r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
@@ -849,81 +895,346 @@
       <span class="run-foot"><span class="run-state">${state}</span><span class="run-when">${when(r.created_at)}</span></span></a>`;
   }
 
-  async function viewRun(id) {
-    shell('/research', '<div id="runboard">' + boardTitle('Research run') + '</div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl>', `
-      <div class="printer">
-        <section><div class="section-head"><h2>Agent log</h2><span id="runact"></span></div><div id="flash"></div><ol class="log" id="log" aria-live="polite"></ol></section>
-        <section><div class="section-head"><h2>Hypotheses</h2><p>Best unseen P&L first</p></div>
-          <div id="feed">${strategyTable('')}</div></section>
-      </div>`);
-    let after = 0, tried = 0, lastFeedSig = '';
-    const load = async () => {
-      const d = await api(`/api/runs/${id}?after=${after}`);
-      const r = d.run;
-      const active = r.status === 'running' || r.status === 'queued';
-      root.querySelector('#runboard').innerHTML = boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7 ${dirLabel(r.direction)}`);
-      const started = r.started_at ? Date.parse(r.started_at) : null;
-      const end = r.finished_at ? Date.parse(r.finished_at) : Date.now();
-      root.querySelector('#runfigs').innerHTML =
-        fig('Status', active ? (r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>' : 'Researching<span class="working" aria-label="in process"></span>') : r.status === 'succeeded' ? 'Done' : r.status === 'cancelled' ? 'Cancelled' : 'Failed') +
-        fig('Time', started ? Math.max(0, Math.round((end - started) / 60000)) + ' min' : '—') +
-        fig('Hypotheses', r.hypotheses_tried || tried) + fig('Passed', active ? '…' : r.strategies_passed);
-      root.querySelector('#runact').innerHTML = active ? '<button class="btn danger small" id="cancel">Cancel run</button>' : (r.status === 'succeeded' ? '<a class="btn small" href="/strategies">All strategies</a>' : '');
-      const cancel = root.querySelector('#cancel');
-      if (cancel) cancel.onclick = () => armed(cancel, 'Confirm cancel', () => busy(cancel, async () => { await api(`/api/runs/${id}/cancel`, {}).catch((e) => alert0(e.message)); await load(); }));
-      const log = root.querySelector('#log');
-      const feed = root.querySelector('#feed');
-      d.events.forEach((ev) => {
-        after = Math.max(after, ev.id);
-        const li = document.createElement('li');
-        li.className = ev.kind;
-        let inner;
-        if (ev.kind === 'hypothesis') {
-          inner = 'Tested <b>' + esc(ev.message) + '</b>';
-        } else if (ev.kind === 'verdict') {
-          const st = ev.data && ev.data.status;
-          const tag = st === 'passed' ? '<b class="verdict pass">PASSED</b>'
-            : st === 'rejected' ? '<b class="verdict rej">REJECTED</b>'
-            : '<b class="verdict void">VOID</b>';
-          inner = tag + ' ' + esc(ev.message.replace(/^(PASSED|VOID|FAILED|REJECTED)\s*[-–]\s*/, ''));
-        } else {
-          inner = esc(ev.message);
-        }
-        li.innerHTML = `<time>${clock(ev.created_at)}</time><span>${inner}</span>`;
-        log.prepend(li);  // newest on top (each new poll batch, ascending ids, lands above older)
-        if (ev.kind === 'hypothesis') tried++;
-      });
-      // Always show gated strategies sorted by unseen P&L (highest first); deployable above
-      // void above rejected. Re-sorts live each poll as a research chunk clears the gate.
-      const shownPnl = (s) => { const m = (s.out_of_sample && s.out_of_sample.pnl != null) ? s.out_of_sample : (s.in_sample || {}); return m.pnl != null ? +m.pnl : -Infinity; };
-      const tier = (s) => (s.status === 'passed' ? 0 : s.status === 'failed' ? 1 : 2);
-      const sorted = (d.strategies || []).slice().sort((a, b) => (tier(a) - tier(b)) || (shownPnl(b) - shownPnl(a)));
-      const top = sorted.slice(0, 50);  // cap render — a run_forever session can produce hundreds
-      // Only re-render when the set actually changed — re-writing innerHTML every poll makes it blink.
-      const sig = top.map((s) => `${s.id}:${s.status}:${shownPnl(s)}`).join('|') + '#' + (active ? 1 : 0) + '#' + sorted.length;
-      if (sig !== lastFeedSig) {
-        lastFeedSig = sig;
-        const reg = registry(top.map((s) => s.equity));
-        feed.innerHTML = top.length
-          ? strategyTable(top.map((s) => strategySlip(s, reg, { land: true })).join('')) + (sorted.length > 50 ? `<p class="hint" style="margin-top:12px">Showing the top 50 of ${num(sorted.length)} by unseen P&L. See all on the <a href="/strategies">Strategies</a> page.</p>` : '')
-          : `<div class="empty"><h3>${active ? 'Testing' : 'No results'}</h3><p>${active ? 'Strategies appear here as each batch clears the unseen-data gate — best unseen P&L on top.' : 'This run produced no strategies.'}</p></div>`;
-      }
-      if (!active) clearTimers();
+  // ---------- session conversation (backend contract in SESSION_CHAT_API.md) ----------
+  const sessionChats = new Map();
+  const sessionCandidatePath = (session, id) => session.run_id != null ? `/research/${session.run_id}?strategy=${id}` : `/strategies/${id}`;
+  function mountSessionChat(session, selected = null, workspace = null) {
+    if (S.chatDispose) S.chatDispose();
+    const gen = S.gen, host = root.querySelector('#session-chat-host');
+    const key = `${S.me.user.id}:${session.key}`;
+    if (!sessionChats.has(key)) sessionChats.set(key, newSessionChatState());
+    // shortcut: drafts/history live in this page instance; server persistence belongs to backend integration.
+    const state = sessionChats.get(key), client = sessionChatApi(api, session.key);
+    let pollId;
+    let disposed = false, fetching = false, connected = false, caps = {}, agentBusy = false;
+    let connection = 'Connecting…', connectionError = '', lastTimeline = '', lastReview = '';
+    const current = () => !disposed && gen === S.gen && host.isConnected;
+    const target = id => id == null ? 'Research context' : `${session.candidates.find(c => c.id === id)?.title || 'Candidate'} · #${id}`;
+    host.innerHTML = `<section class="session-chat" aria-label="Session conversation"><header><div><button class="linkish" data-artifact-jump>${session.candidates.length} strategies</button></div><span class="chat-connection" role="status"></span></header>
+      <div class="chat-error" role="status"></div><div class="session-transcript" tabindex="0" aria-label="Conversation history"></div>
+      <p class="chat-agent-status" role="status"></p><form class="session-chat-form"><label class="vh" for="session-chat-message">Message the agent</label>
+        <p class="chat-context"></p><textarea class="input" id="session-chat-message" maxlength="2000" rows="3" placeholder="Message the agent…"></textarea>
+        <div class="chat-send-row"><span class="hint">Enter to send · Shift + Enter for a new line</span><button class="btn primary" type="submit">${ICON.send} Send</button></div></form></section>`;
+    const transcript = host.querySelector('.session-transcript'), form = host.querySelector('form'), input = host.querySelector('textarea');
+    input.value = state.draft;
+    host.querySelector('[data-artifact-jump]').onclick = () => transcript.querySelector('.research-artifact-list')?.scrollIntoView({block: 'start', behavior: 'smooth'});
+    host.querySelector('.chat-context').textContent = selected ? `About ${target(selected.id)}` : 'About this research session';
+    transcript.onscroll = () => {
+      if (!transcript.clientHeight) return;
+      state.scrollTop = transcript.scrollTop;
+      state.following = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 80;
     };
-    await load();
-    poll(load, 2000);
+    const revealTranscript = () => {
+      if (!current()) return;
+      draw();
+      if (transcript.clientHeight) transcript.scrollTop = state.following ? transcript.scrollHeight : state.scrollTop;
+    };
+    const conversationButton = root.querySelector('[data-session-view="conversation"]');
+    conversationButton.addEventListener('click', revealTranscript);
+    window.addEventListener('resize', revealTranscript);
+    S.chatDispose = () => {
+      disposed = true;
+      clearInterval(pollId);
+      S.timers = S.timers.filter(id => id !== pollId);
+      if (transcript.clientHeight) state.scrollTop = transcript.scrollTop;
+      conversationButton.removeEventListener('click', revealTranscript);
+      window.removeEventListener('resize', revealTranscript);
+    };
+    const pending = p => state.actions.has(p.id);
+    const phase = () => root.querySelector('.session-workspace')?.dataset.sessionPhase;
+    const canApprove = p => connected && caps.approve === true && !pending(p) && sessionRevisionPassed(p) &&
+      (p.kind === 'revise' || (p.kind === 'adjust' && p.mode === 'paper'));
+    const comparisonVisible = p => state.reviewId === p.id && p.base_strategy_id === selected?.id &&
+      !window.matchMedia('(max-width: 800px)').matches;
+    const diffHtml = p => `<dl class="chat-diff">${(p.diff || []).filter(d => d.before !== d.after).map(d => `<dt>${esc(d.label)}</dt><dd><span>${esc(d.before)}</span> → <b>${esc(d.after)}</b></dd>`).join('')}</dl>`;
+    const proposalHtml = p => {
+      const buttons = [], enabled = connected && !pending(p), isRevision = ['revise', 'adjust'].includes(p.kind);
+      if (p.status === 'pending') {
+        if (isRevision && ['not_run', 'failed'].includes(p.backtest_status)) buttons.push(`<button class="btn" data-chat-action="backtest" data-proposal="${p.id}" ${enabled && caps.backtest === true ? '' : 'disabled'}>${pending(p) ? 'Working…' : 'Backtest revision'}</button>`);
+        if (isRevision && sessionRevisionPassed(p) && !comparisonVisible(p)) buttons.push(`<button class="btn" data-chat-action="review" data-proposal="${p.id}">Review comparison</button>`);
+        if (p.kind === 'trial') buttons.push(`<button class="btn" data-chat-action="queue" data-proposal="${p.id}" ${enabled && caps.queue === true && phase() === 'researching' ? '' : 'disabled'}>Queue next trial</button>`);
+        if (!comparisonVisible(p)) buttons.push(`<button class="linkish" data-chat-action="reject" data-proposal="${p.id}" ${enabled && caps.reject === true ? '' : 'disabled'}>Keep original</button>`);
+      }
+      const status = p.status === 'applied' ? (p.kind === 'revise' ? 'Saved as a new candidate' : p.kind === 'trial' ? 'Trial queued' : 'Paper adjustment applied') : p.status === 'rejected' ? 'Original kept' : p.backtest_status === 'running' ? 'Backtesting revision…' : p.backtest_status === 'failed' ? 'Revision failed its backtest' : sessionRevisionPassed(p) ? 'Backtest passed · review before saving' : 'Suggestion · awaiting your decision';
+      return `<article class="chat-proposal" aria-label="Agent suggestion #${p.id}"><p class="chat-target">${esc(target(p.base_strategy_id))}</p><h3>${p.kind === 'trial' ? 'Try next' : 'Suggested revision'}</h3><p>${esc(p.reason)}</p>${diffHtml(p)}<p class="chat-proposal-status">${esc(status)}</p>${p.kind === 'adjust' && p.mode !== 'paper' ? '<p class="hint">Review live adjustments in Position.</p>' : ''}<div class="chat-proposal-actions">${buttons.join('')}</div></article>`;
+    };
+    const reviewMetric = m => `<dl><dt>Unseen P&amp;L · after fees</dt><dd>${usd(m?.pnl, true)}</dd><dt>Unseen trades</dt><dd>${esc(m?.trades ?? '—')}</dd><dt>Worst drawdown</dt><dd>${usd(m?.max_drawdown)}</dd></dl>`;
+    const drawReview = () => {
+      const review = root.querySelector('#session-revision-review');
+      if (!review) return;
+      const p = state.proposals.get(state.reviewId);
+      const html = p && p.base_strategy_id === selected?.id ? `<section class="panel revision-review" aria-label="Revision comparison" tabindex="-1"><div class="section-head"><h2>Review the revision</h2><button class="linkish" data-close-review>Close</button></div><p class="hint">${esc(target(p.base_strategy_id))} · suggestion #${p.id}. The original candidate is retained.</p>${diffHtml(p)}
+        <div class="split"><div><h4>Original · saved backtest</h4>${reviewMetric(selected.out_of_sample)}</div><div><h4>Proposed · revision backtest</h4>${reviewMetric(p.result?.out_of_sample)}</div></div>
+        <ul class="revision-gates">${(p.result?.gates || []).map(g => `<li>${g.ok ? ICON.check : ICON.cross}${esc(g.name)} · ${esc(g.value ?? '—')} / ${esc(g.threshold ?? '—')}</li>`).join('')}</ul>
+        <div class="revision-actions"><button class="btn primary" data-chat-action="approve" data-proposal="${p.id}" ${canApprove(p) ? '' : 'disabled'}>${p.kind === 'adjust' ? 'Apply paper adjustment' : 'Save as new candidate'}</button><button class="btn" data-chat-action="reject" data-proposal="${p.id}" ${connected && caps.reject === true && p.status === 'pending' && !pending(p) ? '' : 'disabled'}>Keep original</button></div><p class="hint">${sessionRevisionPassed(p) ? 'Saving uses the tested revision. What-if controls do not change this comparison.' : 'This revision is not eligible to save.'}</p></section>` : '';
+      if (html !== lastReview) { review.innerHTML = html; lastReview = html; }
+    };
+    const draw = () => {
+      if (!current()) return;
+      if (input.value !== state.draft) input.value = state.draft;
+      host.querySelector('.chat-connection').textContent = connection;
+      host.querySelector('[data-artifact-jump]').textContent = `${session.candidates.length} strategies`;
+      const error = connectionError || state.error;
+      host.querySelector('.chat-error').innerHTML = error ? `<p>${esc(error)}</p>${connectionError ? '<button class="linkish" data-chat-retry>Retry connection</button>' : ''}` : '';
+      host.querySelector('[data-chat-retry]')?.addEventListener('click', load);
+      host.querySelector('.chat-agent-status').textContent = agentBusy ? 'Agent is working · you can leave a message' : '';
+      form.querySelector('button').disabled = !connected || caps.send !== true || state.sending || !state.draft.trim();
+      form.querySelector('button').innerHTML = `${ICON.send} ${state.sending ? 'Sending…' : 'Send'}`;
+      const used = new Set(), messages = [...state.messages.values()].sort((a,b) => a.id - b.id);
+      let html = researchConversationHtml(session, workspace) + messages.map((m, index) => {
+        const proposal = !used.has(m.proposal_id) && state.proposals.get(m.proposal_id);
+        if (proposal) used.add(proposal.id);
+        const context = m.strategy_id == null ? 'Research context' : 'Strategy #' + m.strategy_id;
+        const previous = messages[index - 1];
+        const continued = previous && previous.role === m.role && !sessionTargetChanged(messages, index) && m.created_at && previous.created_at && clock(m.created_at) === clock(previous.created_at);
+        return `<article class="session-message ${m.role}${continued ? ' continuation' : ''}" data-strategy-target="${m.strategy_id ?? ''}" aria-label="${esc(m.role + ' · ' + context)}"><div class="chat-message-meta"><b>${m.role === 'user' ? 'You' : m.role === 'agent' ? 'Agent' : 'Session'}</b><time datetime="${esc(m.created_at || '')}">${m.created_at ? esc(clock(m.created_at)) : ''}</time></div>${sessionTargetChanged(messages, index) ? `<p class="chat-target">${esc(context)}</p>` : ''}<p class="chat-message-content">${esc(m.content)}</p></article>${proposal ? proposalHtml(proposal) : ''}`;
+      }).join('');
+      html += [...state.proposals.values()].filter(p => !used.has(p.id)).map(proposalHtml).join('');
+      if (html !== lastTimeline) {
+        const focused = transcript.querySelector('button:focus');
+        const focusAction = focused && [focused.dataset.chatAction, focused.dataset.proposal];
+        state.activityOpen = transcript.querySelector('[data-research-activity]')?.open ?? state.activityOpen;
+        transcript.innerHTML = html; lastTimeline = html;
+        const activity = transcript.querySelector('[data-research-activity]');
+        if (activity) activity.open = !!state.activityOpen;
+        transcript.scrollTop = state.following ? transcript.scrollHeight : state.scrollTop;
+        if (focusAction) transcript.querySelector(`[data-chat-action="${focusAction[0]}"][data-proposal="${focusAction[1]}"]`)?.focus({preventScroll:true});
+      }
+      drawReview();
+    };
+    const load = async () => {
+      if (fetching || !current()) return;
+      fetching = true;
+      try {
+        let data;
+        do {
+          const before = state.after;
+          data = await client.read(before);
+          if (!current()) return;
+          mergeSessionChat(state, data, session.key);
+          if (data.has_more && state.after <= before) throw new Error('The conversation cursor did not advance.');
+        } while (data.has_more);
+        caps = data.capabilities || {}; agentBusy = data.agent_busy === true;
+        connected = true; connection = data.preview === true ? 'Sample conversation' : 'Connected'; connectionError = '';
+      } catch (e) {
+        if (!current() || e.status === 401) return;
+        connected = false; connection = [404,501].includes(e.status) ? 'Not connected' : 'Connection interrupted';
+        connectionError = [404,501].includes(e.status) ? 'Session conversation isn’t connected yet. Your draft stays here.' : e.message;
+      } finally { fetching = false; draw(); }
+    };
+    input.oninput = () => { state.draft = input.value; state.draftVersion++; draw(); };
+    input.onkeydown = e => {
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }
+    };
+    form.onsubmit = async e => {
+      e.preventDefault();
+      if (!connected || caps.send !== true || state.sending || !state.draft.trim()) return;
+      const content = state.draft, version = state.draftVersion, strategyId = selected?.id ?? null;
+      if (!state.pendingMessage || state.pendingMessage.content !== content || state.pendingMessage.strategyId !== strategyId) state.pendingMessage = { content, strategyId, id: crypto.randomUUID() };
+      const identity = state.pendingMessage.id;
+      state.sending = true; state.error = ''; draw();
+      try {
+        const result = await client.send(content, strategyId, identity);
+        if (result.session_key !== session.key) throw new Error('The message acknowledgement does not match this session.');
+        if (state.draftVersion === version && state.draft === content) { state.draft = ''; if (current()) input.value = ''; }
+        if (state.pendingMessage?.id === identity) state.pendingMessage = null;
+        state.error = '';
+        if (current()) await load();
+      } catch (err) { if (err.status !== 401) state.error = err.message; }
+      finally { state.sending = false; draw(); }
+    };
+    const handleAction = async e => {
+      const button = e.target.closest('[data-chat-action]');
+      if (!button || button.disabled || !current()) return;
+      const p = state.proposals.get(Number(button.dataset.proposal)), action = button.dataset.chatAction;
+      if (!p || p.status !== 'pending') return;
+      if (action === 'review') {
+        if (!sessionRevisionPassed(p)) return;
+        state.reviewId = p.id;
+        if (p.base_strategy_id !== selected?.id) return go(sessionCandidatePath(session, p.base_strategy_id));
+        root.querySelector('[data-session-view="evidence"]').click(); draw();
+        root.querySelector('.revision-review').focus({preventScroll:true});
+        root.querySelector('#session-revision-review').scrollIntoView({behavior:'smooth',block:'start'});
+        return;
+      }
+      if (!connected || caps[action] !== true || pending(p)) return;
+      if (action === 'approve' && (!canApprove(p) || state.reviewId !== p.id || selected?.id !== p.base_strategy_id)) return;
+      if (action === 'queue' && (p.kind !== 'trial' || phase() !== 'researching')) return;
+      if (action === 'backtest' && (!['revise','adjust'].includes(p.kind) || !['not_run','failed'].includes(p.backtest_status))) return;
+      state.actions.add(p.id); state.error = ''; draw();
+      try {
+        const result = await client.action(p.id, action);
+        if (result.session_key !== session.key) throw new Error('The suggestion acknowledgement does not match this session.');
+        if (current()) {
+          await load();
+          if (action === 'approve' && Number.isSafeInteger(result.strategy_id) && result.strategy_id > 0) go(sessionCandidatePath(session, result.strategy_id));
+        }
+      } catch (err) { if (err.status !== 401) state.error = err.message; }
+      finally { state.actions.delete(p.id); draw(); }
+    };
+    host.onclick = e => {
+      const artifact = e.target.closest('[data-open-artifact]');
+      if (artifact && workspace) { workspace.open(Number(artifact.dataset.openArtifact)); return; }
+      handleAction(e);
+    };
+    const review = root.querySelector('#session-revision-review');
+    if (review) review.onclick = e => {
+      if (e.target.closest('[data-close-review]')) {
+        const id = state.reviewId;
+        state.reviewId = null; draw();
+        const trigger = host.querySelector(`[data-chat-action="review"][data-proposal="${id}"]`);
+        const focusTarget = trigger?.getClientRects().length ? trigger : root.querySelector('[data-session-view="evidence"]');
+        focusTarget?.focus({preventScroll:true});
+      } else handleAction(e);
+    };
+    draw(); load(); pollId = poll(load, 3000);
   }
-  const DIR_BRIEF = (k) => ((S.me.directions.find((d) => d.key === k)) || { brief: '' }).brief;
 
-  // ---------- strategies ----------
-  async function viewStrategies() {
+  const RESEARCH_STATE = { queued: 'Waiting for agent', running: 'Researching', succeeded: 'Research complete', failed: 'Research failed', cancelled: 'Cancelled' };
+  const researchWorkspaces = new Map();
+  function researchConversationHtml(session, workspace) {
+    const run = session.run, events = session.events || [];
+    return `${run?.prompt ? `<article class="session-message user"><div class="chat-message-meta"><b>You</b><time>${clock(run.created_at)}</time></div><p class="chat-message-content">${esc(run.prompt)}</p></article>` : ''}
+      <article class="session-message agent research-output"><div class="chat-message-meta"><b>Research agent</b></div>
+        ${events.length ? `${['succeeded','cancelled'].includes(run?.status) ? '' : `<p class="chat-message-content">${esc(events[events.length - 1].message)}</p>`}<details data-research-activity><summary>Agent activity · ${events.length}</summary><ol class="log">${events.map(e => `<li class="${esc(e.kind)}"><time>${clock(e.created_at)}</time><span>${esc(e.message)}</span></li>`).join('')}</ol></details>` : ''}
+        ${run?.error ? notice(run.error, 'bad') : ''}
+        <div class="research-artifact-list" aria-label="Strategies from this research">${session.candidates.map(s => `<button class="research-artifact-link" data-open-artifact="${s.id}" aria-label="Open strategy #${s.id}: ${esc(s.title)}" aria-pressed="${workspace?.selectedId === s.id}"><span><b>${esc(s.title)}</b><small>#${s.id} · ${s.out_of_sample ? 'Unseen ' + usd(s.out_of_sample.pnl, true) : 'In-sample ' + usd(s.in_sample?.pnl, true)}</small></span>${mark(s.status)}<span aria-hidden="true">↗</span></button>`).join('') || `<p class="hint">${['running','queued'].includes(run?.status) ? 'Strategies appear here as research produces them.' : 'No strategies were finalized in this session.'}</p>`}</div>
+      </article>`;
+  }
+
+  async function viewRun(id) { return viewResearchWorkspace({ runId: Number(id) }); }
+  async function viewStrategy(id) {
+    const gen = S.gen, strategy = await api('/api/strategies/' + id);
+    if (gen !== S.gen) return;
+    let ancestor = strategy, missingRoot = null;
+    const visited = new Set();
+    while (ancestor.run_id == null && ancestor.parent_id != null && !visited.has(ancestor.id)) {
+      visited.add(ancestor.id);
+      try { ancestor = await api('/api/strategies/' + ancestor.parent_id); }
+      catch (error) { if (error.status === 404) { missingRoot = ancestor.parent_id; break; } throw error; }
+      if (gen !== S.gen) return;
+    }
+    if (ancestor.run_id != null) return go(`/research/${ancestor.run_id}?strategy=${strategy.id}`, true);
+    return viewResearchWorkspace({ strategy, rootId: missingRoot ?? (visited.has(ancestor.id) ? Math.min(ancestor.id, ...visited) : ancestor.id) });
+  }
+
+  async function viewResearchWorkspace({ runId = null, strategy = null, rootId = null }) {
+    const gen = S.gen, key = runId != null ? 'run:' + runId : 'strategy:' + rootId;
+    const userKey = `${S.me.user.id}:${key}`;
+    // shortcut: open tabs and drafts survive navigation in this page instance; add server persistence with scoped chat.
+    if (!researchWorkspaces.has(userKey)) researchWorkspaces.set(userKey, newResearchArtifacts());
+    const workspace = researchWorkspaces.get(userKey);
+    let session = { key, run_id: runId, run: null, candidates: strategy ? [strategy] : [], events: [], phase: 'review' };
+    let after = 0, fetching = false, fetchError = '', actionError = '', artifactRequest = 0;
+    const path = runId != null ? '/research/' + runId : '/strategies/' + (strategy?.id || rootId);
+    shell('/research', `<div class="research-workspace-heading">${boardTitle(runId != null ? 'Research session #' + runId : 'Strategy review')}<span id="research-run-state"></span><span id="research-run-action"></span></div>`, `
+      <div class="session-view-tabs" aria-label="Research workspace"><button class="btn" data-session-view="conversation" aria-pressed="true">Conversation</button><button class="btn" data-session-view="evidence" aria-pressed="false">Strategies <span id="open-artifact-count"></span></button></div>
+      <div class="session-workspace research-workspace" data-view="conversation" data-session-phase="review">
+        <aside class="research-conversation-column"><div id="research-run-flash" role="status"></div><div id="session-chat-host"></div></aside>
+        <section class="research-artifacts-column" aria-label="Strategy artifacts"><div id="artifact-tabs" role="tablist" aria-label="Open strategies"></div><div id="artifact-panel" role="tabpanel" tabindex="0"></div></section>
+      </div>`);
+    document.body.classList.add('research-workspace-page');
+    const panel = root.querySelector('#artifact-panel'), tabs = root.querySelector('#artifact-tabs');
+    const setPane = value => {
+      root.querySelector('.session-workspace').dataset.view = value;
+      root.querySelectorAll('[data-session-view]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.sessionView === value)));
+      if (S.resize) S.resize();
+    };
+    root.querySelectorAll('[data-session-view]').forEach(b => { b.onclick = () => setPane(b.dataset.sessionView); });
+    const syncUrl = () => { const q = new URLSearchParams(location.search); if (workspace.selectedId == null) q.delete('strategy'); else q.set('strategy', workspace.selectedId); history.replaceState(null, '', path + (q.size ? '?' + q : '')); };
+    const drawTabs = () => {
+      tabs.innerHTML = workspace.openIds.map(id => { const s = workspace.entries.get(id).strategy; return `<div class="artifact-tab"><button role="tab" id="artifact-tab-${id}" data-select-artifact="${id}" aria-selected="${workspace.selectedId === id}" aria-controls="artifact-panel" tabindex="${workspace.selectedId === id ? 0 : -1}" title="${esc(s.title)}"><span>#${id} · ${esc(s.title)}</span></button><button class="artifact-close" data-close-artifact="${id}" aria-label="Close strategy #${id}">×</button></div>`; }).join('');
+      root.querySelector('#open-artifact-count').textContent = workspace.openIds.length ? String(workspace.openIds.length) : '';
+      if (workspace.selectedId != null) panel.setAttribute('aria-labelledby', 'artifact-tab-' + workspace.selectedId); else panel.removeAttribute('aria-labelledby');
+    };
+    const drawSelected = async () => {
+      const mine = ++artifactRequest, id = workspace.selectedId;
+      const previous = workspace.entries.get(Number(panel.dataset.artifactId));
+      if (previous) previous.scrollTop = panel.scrollTop;
+      panel.dataset.artifactId = id == null ? '' : String(id);
+      if (S.artifactDispose) S.artifactDispose(); S.artifactDispose = null; S.resize = null;
+      drawTabs(); syncUrl();
+      if (id == null) {
+        panel.innerHTML = '<div class="artifact-empty"><span aria-hidden="true">◇</span><h2>Strategy artifacts</h2><p>Open a strategy from the conversation to review its results here.</p></div>';
+        mountSessionChat(session, null, workspace); return;
+      }
+      const entry = workspace.entries.get(id);
+      panel.innerHTML = loading(350);
+      mountSessionChat(session, entry.detail || entry.strategy, workspace);
+      try {
+        if (!entry.detail) entry.detail = await api('/api/strategies/' + id);
+        if (gen !== S.gen || mine !== artifactRequest || workspace.selectedId !== id) return;
+        if (entry.detail.id !== id) throw new Error('The strategy response does not match this artifact.');
+        renderStrategyArtifact(entry.detail, panel, workspace, entry);
+        panel.scrollTop = entry.scrollTop || 0;
+        mountSessionChat(session, entry.detail, workspace);
+      } catch (error) {
+        if (gen === S.gen && mine === artifactRequest && error.status !== 401) { panel.innerHTML = notice(error.message, 'bad') + '<button class="btn" data-artifact-retry>Retry strategy</button>'; panel.querySelector('[data-artifact-retry]').onclick = drawSelected; mountSessionChat(session, entry.strategy, workspace); }
+      }
+    };
+    workspace.open = async id => {
+      let s = session.candidates.find(c => c.id === id) || workspace.entries.get(id)?.strategy;
+      if (!s) {
+        try { s = await api('/api/strategies/' + id); }
+        catch (error) { if (gen === S.gen && error.status !== 401) root.querySelector('#research-run-flash').innerHTML = notice(error.message, 'bad'); return; }
+        if (gen !== S.gen) return;
+        const belongs = agentSessions([], [s, ...session.candidates], []).find(f => f.candidates.some(c => c.id === s.id));
+        if (belongs?.key !== key) { root.querySelector('#research-run-flash').innerHTML = notice('This strategy belongs to a different research session.', 'bad'); return; }
+        session.candidates.push(s);
+      }
+      openResearchArtifact(workspace, s); setPane('evidence'); await drawSelected();
+    };
+    tabs.onclick = async e => {
+      const close = e.target.closest('[data-close-artifact]'), select = e.target.closest('[data-select-artifact]');
+      if (close) { const id = Number(close.dataset.closeArtifact); closeResearchArtifact(workspace, id); if (workspace.selectedId == null) setPane('conversation'); await drawSelected(); (tabs.querySelector('[aria-selected="true"]') || root.querySelector(`[data-open-artifact="${id}"]`))?.focus({preventScroll:true}); }
+      else if (select) { selectResearchArtifact(workspace, Number(select.dataset.selectArtifact)); await drawSelected(); tabs.querySelector('[aria-selected="true"]')?.focus({preventScroll:true}); }
+    };
+    tabs.onkeydown = async e => {
+      if (!e.target.matches('[role="tab"]') || !['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) return;
+      e.preventDefault(); const ids = workspace.openIds, i = ids.indexOf(workspace.selectedId);
+      const next = e.key === 'Home' ? 0 : e.key === 'End' ? ids.length - 1 : (i + (e.key === 'ArrowLeft' ? -1 : 1) + ids.length) % ids.length;
+      selectResearchArtifact(workspace, ids[next]); await drawSelected(); tabs.querySelector('[aria-selected="true"]')?.focus({preventScroll:true});
+    };
+    const load = async () => {
+      if (fetching || gen !== S.gen) return; fetching = true;
+      try {
+        const [data, rows, deps] = await Promise.all([runId != null ? api(`/api/runs/${runId}?after=${after}`) : Promise.resolve(null), api('/api/strategies'), api('/api/deployments')]);
+        if (gen !== S.gen) return;
+        // shortcut: keep the existing list window; add pagination for older adjustment history.
+        const candidates = [...new Map([...(data?.strategies || []), ...rows.strategies, ...(strategy ? [strategy] : [])].map(s => [s.id, s])).values()];
+        const family = agentSessions(data ? [data.run] : [], candidates, deps.deployments).find(f => f.key === key);
+        const events = [...session.events]; for (const event of data?.events || []) { if (event.id > after) events.push(event); after = Math.max(after, event.id); }
+        Object.assign(session, family || {}, { events });
+        root.querySelector('.session-workspace').dataset.sessionPhase = session.phase;
+        root.querySelector('#research-run-state').innerHTML = `${esc(marketShort(session.market || strategy?.market))} · ${esc(RESEARCH_STATE[session.run?.status] || 'Strategy review')}`;
+        const action = root.querySelector('#research-run-action');
+        const active = ['queued','running'].includes(session.run?.status);
+        if (active && !action.querySelector('button')) { action.innerHTML = '<button class="btn danger small">Cancel research</button>'; const button = action.querySelector('button'); button.onclick = () => armed(button, 'Confirm cancel', () => { button.textContent = 'Cancel research'; return busy(button, async () => { try { await api(`/api/runs/${runId}/cancel`, {}); if (gen === S.gen) { actionError = ''; await load(); } } catch (error) { if (gen === S.gen && error.status !== 401) { actionError = error.message; root.querySelector('#research-run-flash').innerHTML = notice(actionError, 'bad'); } } }); }); }
+        if (!active) action.innerHTML = '';
+        fetchError = '';
+        root.querySelector('#research-run-flash').innerHTML = actionError ? notice(actionError, 'bad') : '';
+        for (const [id, entry] of workspace.entries) if (entry.detail) entry.detail.deployments = deps.deployments.filter(d => d.strategy_id === id);
+        const selected = workspace.entries.get(workspace.selectedId)?.detail;
+        if (!S.chatDispose) mountSessionChat(session, selected, workspace);
+      } catch (error) { if (gen === S.gen && error.status !== 401) { fetchError = error.message; root.querySelector('#research-run-flash').innerHTML = notice(fetchError, 'bad'); } }
+      finally { fetching = false; }
+    };
+    await load(); if (gen !== S.gen) return;
+    const requested = Number(new URLSearchParams(location.search).get('strategy')) || strategy?.id;
+    if (requested) await workspace.open(requested); else await drawSelected();
+    if (gen === S.gen) poll(load, 5000);
+  }
+
+  function viewStrategies() { const q = new URLSearchParams(location.search); q.set('artifacts', '1'); return go('/research?' + q, true); }
+  async function viewStrategyLibrary() {
+    const gen = S.gen;
     const q = new URLSearchParams(location.search);
     const f = { status: q.has('status') ? q.get('status') : '', market: q.get('market') || '' };
-    shell('/strategies', boardTitle('Strategies', 'Every strategy your agents researched. Passed ones can be deployed; void ones stay here so you can see what didn’t work.') +
+    shell('/research', boardTitle('Research · strategy library', 'Every strategy your agents researched.') +
       '<dl class="figures measure" id="sfigs" style="margin-top:14px"></dl>', `
       <div class="section-head filters">
         <div class="chips" role="group" aria-label="Status">${[['', 'All'], ['passed', 'Passed'], ['failed', 'Void'], ['rejected', 'Rejected']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}" aria-pressed="${f.status === v}">${l}</button>`).join('')}</div>
-        <div class="chips" role="group" aria-label="Market">${[['', 'Both markets'], ...S.me.markets.map((m) => [m.key, marketShort(m.key)])].map(([v, l]) => `<button class="chip" data-f="market" data-v="${v}" aria-pressed="${f.market === v}">${esc(l)}</button>`).join('')}</div>
+        <div class="chips" role="group" aria-label="Market">${[['', 'All markets'], ...S.me.markets.map((m) => [m.key, marketShort(m.key)])].map(([v, l]) => `<button class="chip" data-f="market" data-v="${v}" aria-pressed="${f.market === v}">${esc(l)}</button>`).join('')}</div>
       </div>
       <div id="slips" style="margin-top:16px">${loading(240)}</div>`);
     root.querySelectorAll('[data-f]').forEach((b) => {
@@ -931,10 +1242,11 @@
         f[b.dataset.f] = b.dataset.v;
         const p = new URLSearchParams(Object.entries(f).filter(([, v]) => v !== '' || false));
         if (!f.status) p.set('status', '');
-        go('/strategies?' + p.toString(), true);
+        go('/research?artifacts=1&' + p.toString(), true);
       };
     });
     const [all, d] = await Promise.all([api('/api/strategies'), api('/api/strategies?' + new URLSearchParams(f))]);
+    if (gen !== S.gen) return;
     const count = (st) => all.strategies.filter((s) => s.status === st).length;
     root.querySelector('#sfigs').innerHTML = fig('Passed' + glo('passed'), count('passed')) + fig('Void on unseen data' + glo('void'), count('failed')) + fig('Rejected in testing' + glo('rejected'), count('rejected')) +
       fig('Pass rate', all.strategies.length ? pct(count('passed') / all.strategies.length, false) : '—');
@@ -958,26 +1270,59 @@
     renderSlips();
   }
 
-  async function viewStrategy(id) {
-    shell('/strategies', boardTitle('Strategy') + '<dl class="figures measure" id="figs" style="margin-top:14px"></dl>', loading(420));
-    const s = await api('/api/strategies/' + id);
-    const ins = s.in_sample || {}, oos = s.out_of_sample;
+  function rejectReason(s) {
+    const sample = s.in_sample || {};
+    if (sample.trades != null && sample.trades < 5) return `it made ${usd(sample.pnl, true)} in testing, but over just ${sample.trades} trade${sample.trades === 1 ? '' : 's'} — a finalist needs at least 5, too few to trust.`;
+    if (sample.pnl != null && +sample.pnl <= 0) return `it lost money in testing (${usd(sample.pnl, true)}).`;
+    return 'it ranked below the handful of finalists we tested on unseen data.';
+  }
+
+  function strategyDeploymentHtml(s, position = false) {
+    const canDeploy = ['passed', 'failed', 'rejected'].includes(s.status);
+    const liveWhy = !S.me.live_trading_available ? 'Live trading isn’t open yet.' : !S.me.kalshi_connected ? 'Connect Kalshi on the Account page first.' : s.side !== 'yes' ? 'Live supports YES-only strategies for now.' : '';
+    return `<section class="panel" data-strategy-deployment aria-label="Deploy strategy #${s.id}">${position ? '' : '<h3>Deploy</h3>'}
+            ${canDeploy ? `<div style="display:grid;gap:10px">
+                ${s.status !== 'passed' ? `<div class="notice bad">${ICON.warn}<span>${s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${esc(rejectReason(s))}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
+                <button class="btn" data-dep-paper>Deploy on paper</button>
+                <button class="btn ghost" data-dep-live ${liveWhy ? 'aria-disabled="true"' : ''}>Deploy with live money</button>
+                ${liveWhy && (!position || S.me.live_trading_available) ? `<p class="hint">${esc(liveWhy)}</p>` : ''}
+                <form data-live-confirm hidden style="display:grid;gap:8px">
+                  <p class="hint">This trades real money in your Kalshi account. Type <b>LIVE</b> to confirm.</p>
+                  <input class="input" name="confirm" autocomplete="off" aria-label="Type LIVE to confirm">
+                  <button class="btn" type="submit">Confirm live deployment</button>
+                </form>
+                <div data-depflash></div>
+              </div>` : '<p class="hint">This strategy isn’t ready to deploy yet.</p>'}
+            <p class="hint" style="margin-top:12px">${position ? `Saved stake: $${esc(s.stake)} per trade.` : `Deployment uses the saved rule: $${esc(s.stake)} per trade. What-if scenarios do not change it.`}</p>
+            ${(s.deployments || []).length ? `<p class="hint" style="margin-top:12px">Already deployed: ${(s.deployments || []).map((d) => `#${d.id} (${esc(d.mode)}, ${esc(d.status)})`).join(', ')}. <a href="/deploy">Open Position</a></p>` : ''}
+          </section>`;
+  }
+  function bindStrategyDeployment(host, s, gen, isCurrent = () => gen === S.gen && host.isConnected) {
+    const paper = host.querySelector('[data-dep-paper]'), live = host.querySelector('[data-dep-live]');
+    const feedback = host.querySelector('[data-depflash]');
+    const deploy = async (mode, confirm) => {
+      try { await api('/api/deployments', { strategy_id: s.id, mode, ...(confirm == null ? {} : { confirm }) }); if (isCurrent()) go('/deploy'); }
+      catch (error) { if (isCurrent() && feedback && error.status !== 401) feedback.innerHTML = notice(error.message, 'bad'); }
+    };
+    if (paper) paper.onclick = () => busy(paper, () => deploy('paper'));
+    const form = host.querySelector('[data-live-confirm]');
+    if (live) live.onclick = () => { if (live.getAttribute('aria-disabled') !== 'true') form.hidden = false; };
+    if (form) form.onsubmit = e => { e.preventDefault(); busy(form.querySelector('button'), () => deploy('live', form.confirm.value.trim())); };
+  }
+
+  function renderStrategyArtifact(s, host, workspace, entry) {
+    const gen = S.gen, root = host;
+    const isCurrent = () => gen === S.gen && workspace.selectedId === s.id && root.isConnected;
+    const scenario = entry.scenario ||= { fee: 1, slip: 0, stake: s.stake, result: null, error: '', seq: 0 };
+    const display = scenario.result || s;
+    const baseline = scenario.fee === 1 && scenario.slip === 0 && scenario.stake === s.stake;
+    root.innerHTML = `<p class="hint artifact-direction">${esc(dirLabel(s.direction))}</p><dl class="figures measure artifact-figures" id="figs"></dl><div id="session-revision-review"></div>`;
+    const ins = display.in_sample || {}, oos = display.out_of_sample;
     const figsFor = (r) => fig('Unseen-data P&L', r.out_of_sample ? usd(r.out_of_sample.pnl, true) : '—', { v: r.out_of_sample && r.out_of_sample.pnl, small: r.out_of_sample ? `${r.out_of_sample.trades} trades the agent never saw` : 'Rejected before the unseen test' }) +
       fig('In-sample P&L', usd(r.in_sample.pnl, true), { v: r.in_sample.pnl, small: `${r.in_sample.trades} trades` }) +
       fig('Return on capital', r.out_of_sample ? pct(r.out_of_sample.roi) : '—', { small: `$${fmt0.format(r.capital || 0)} at risk at most` }) +
       fig('Tried to find it', s.hypotheses_tried ? `1 of ${s.hypotheses_tried}` : '—', { small: 'More tries means weaker evidence' });
-    root.querySelector('.board-title').outerHTML = boardTitle(serial(s.id) + ' · ' + marketShort(s.market), esc(dirLabel(s.direction)));
-    root.querySelector('#figs').innerHTML = figsFor(s);
-    const canDeploy = ['passed', 'failed', 'rejected'].includes(s.status);  // the user decides; status is a warning, not a block
-    // Why a strategy was rejected (never reached the unseen-data gate) — stated honestly: a
-    // profitable idea with too few trades is rejected on sample size, not for "losing money".
-    const rejectReason = (st) => {
-      const i = st.in_sample || {};
-      if (i.trades != null && i.trades < 5) return `it made ${usd(i.pnl, true)} in testing, but over just ${i.trades} trade${i.trades === 1 ? '' : 's'} — a finalist needs at least 5, too few to trust.`;
-      if (i.pnl != null && +i.pnl <= 0) return `it lost money in testing (${usd(i.pnl, true)}).`;
-      return 'it ranked below the handful of finalists we tested on unseen data.';
-    };
-    const liveWhy = !S.me.live_trading_available ? 'Live trading isn’t open yet.' : !S.me.kalshi_connected ? 'Connect Kalshi on the Funds page first.' : s.side !== 'yes' ? 'Live supports YES-only strategies for now.' : '';
+    root.querySelector('#figs').innerHTML = figsFor(display);
     const metricRows = (m) => m ? `<dl>
         <dt>P&amp;L after fees</dt><dd class="${tone(m.pnl)}">${usd(m.pnl, true)}</dd>
         <dt>Trades</dt><dd>${m.trades}${m.trades_per_day != null ? ` <small class="hint">(${m.trades_per_day}/day)</small>` : ''}</dd>
@@ -990,7 +1335,7 @@
     const trades = (s.recent_trades || []).length ? `<table class="table stack"><thead><tr><th>Opened</th><th>Contract</th><th>Side</th><th class="num">Entry</th><th class="num">Exit</th><th class="num">P&amp;L</th></tr></thead><tbody>
         ${s.recent_trades.map((t) => `<tr><td>${esc(new Date(t.opened.replace('Z', ':00Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}</td><td class="tick">${esc(t.ticker)}</td><td>${esc(t.side.toUpperCase())} ×${t.qty}</td><td class="num">${cents(t.entry)}</td><td class="num">${cents(t.exit)} <small class="hint">${esc(t.reason)}</small></td><td class="num ${tone(t.pnl)}">${usd(t.pnl, true)}</td></tr>`).join('')}
       </tbody></table>` : '<p class="hint">No unseen-data trades to show.</p>';
-    root.querySelector('main').innerHTML = `
+    root.innerHTML += `
       <div id="flash"></div>
       <div class="detail">
         <div>
@@ -1000,8 +1345,9 @@
             <p class="thesis">${esc(s.thesis)}</p>
             <h3 class="sheet-h">The rule, in plain words</h3>
             <ul class="rules">${s.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
+            <p class="hint" id="result-context">${scenario.result && !baseline ? 'What-if scenario' : 'Saved backtest'}</p>
             <div id="sheet-results">
-              ${s.equity ? equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from) : ''}
+              ${display.equity ? equityChart(display.equity, s.dataset && s.dataset.out_of_sample_from) : ''}
               <div class="split"><div><h4>Tested on (in-sample)</h4>${metricRows(ins)}</div><div><h4>Never seen (out-of-sample)</h4>${metricRows(oos)}</div></div>
             </div>
             ${s.dataset ? `<p class="hint" style="margin-top:12px">${esc(marketLabel(s.market))}. History: ${esc(s.dataset.start.slice(0, 10))} to ${esc(s.dataset.end.slice(0, 10))}. The agent only saw data before ${esc((s.dataset.out_of_sample_from || '').slice(0, 10))}. Every fill pays the ask or bid plus Kalshi's taker fee.</p>` : ''}
@@ -1010,81 +1356,82 @@
           </article>
         </div>
         <aside>
-          <section class="panel"><h3>Deploy</h3>
-            ${canDeploy ? `<div style="display:grid;gap:10px">
-                ${s.status !== 'passed' ? `<div class="notice bad">${ICON.warn}<span>${s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${rejectReason(s)}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
-                <button class="btn" id="dep-paper">Deploy on paper</button>
-                <button class="btn ghost" id="dep-live" ${liveWhy ? 'aria-disabled="true"' : ''}>Deploy with live money</button>
-                ${liveWhy ? `<p class="hint">${esc(liveWhy)}</p>` : ''}
-                <form id="live-confirm" hidden style="display:grid;gap:8px">
-                  <p class="hint">This trades real money in your Kalshi account. Type <b>LIVE</b> to confirm.</p>
-                  <input class="input" name="confirm" autocomplete="off" aria-label="Type LIVE to confirm">
-                  <button class="btn" type="submit">Confirm live deployment</button>
-                </form>
-                <div id="depflash"></div>
-              </div>` : '<p class="hint">This strategy isn’t ready to deploy yet.</p>'}
-            ${s.deployments.length ? `<p class="hint" style="margin-top:12px">Already deployed: ${s.deployments.map((d) => `#${d.id} (${esc(d.mode)}, ${esc(d.status)})`).join(', ')}. <a href="/deploy">Open the board</a></p>` : ''}
-          </section>
-          <section class="panel"><h3>Gates</h3><div id="gates">${gatesHtml(s.gates)}</div></section>
+          ${strategyDeploymentHtml(s)}
+          <section class="panel"><h3 id="gates-title">${scenario.result && !baseline ? 'Scenario gates' : 'Saved backtest gates'}</h3><div id="gates">${gatesHtml(display.gates)}</div></section>
           ${s.status !== 'rejected' ? `<section class="panel" id="whatif"><h3>What if…</h3>
-            <p class="hint" style="margin-bottom:6px">Move a dial and the whole sheet re-runs.</p>
-            <div class="dial"><div class="top"><label class="label" for="wf">Fees</label><output id="wfo">1.0×</output></div><input type="range" id="wf" min="0" max="3" step="0.25" value="1"></div>
-            <div class="dial"><div class="top"><label class="label" for="ws">Slippage per fill</label><output id="wso">0¢</output></div><input type="range" id="ws" min="0" max="5" step="1" value="0"></div>
-            <div class="dial"><div class="top"><label class="label" for="wk">Stake per trade</label><output id="wko">$${esc(s.stake)}</output></div><input type="range" id="wk" min="1" max="200" step="1" value="${Math.min(200, s.stake)}"></div>
-            <div id="wflash" aria-live="polite"></div>
+            <div class="dial"><div class="top"><label class="label" for="wf">Fees</label><output id="wfo">${scenario.fee}×</output></div><input type="range" id="wf" min="0" max="3" step="0.25" value="${scenario.fee}"></div>
+            <div class="dial"><div class="top"><label class="label" for="ws">Slippage per fill</label><output id="wso">${scenario.slip}¢</output></div><input type="range" id="ws" min="0" max="5" step="1" value="${scenario.slip}"></div>
+            <div class="dial"><div class="top"><label class="label" for="wk">Stake per trade</label><output id="wko">$${esc(scenario.stake)}</output></div><input type="range" id="wk" min="1" max="${Math.max(200, s.stake)}" step="1" value="${scenario.stake}"></div>
+            <div id="wflash" aria-live="polite">${scenario.error ? notice(scenario.error, 'bad') : scenario.result && !baseline ? notice(scenario.result.passed ? 'Still passes every gate under these conditions.' : 'Would fail at least one gate under these conditions.', scenario.result.passed ? 'good' : 'bad') : ''}</div>
           </section>` : ''}
         </aside>
       </div>`;
-    const depPaper = root.querySelector('#dep-paper');
-    if (depPaper) depPaper.onclick = () => busy(depPaper, async () => {
-      try { await api('/api/deployments', { strategy_id: s.id, mode: 'paper' }); go('/deploy'); } catch (e) { flash('#depflash', e.message, 'bad'); }
-    });
-    const depLive = root.querySelector('#dep-live');
-    if (depLive) depLive.onclick = () => { if (!liveWhy) root.querySelector('#live-confirm').hidden = false; };
-    const lc = root.querySelector('#live-confirm');
-    if (lc) lc.onsubmit = (e) => {
-      e.preventDefault();
-      busy(lc.querySelector('button'), async () => {
-        try { await api('/api/deployments', { strategy_id: s.id, mode: 'live', confirm: lc.confirm.value.trim() }); go('/deploy'); } catch (err) { flash('#depflash', err.message, 'bad'); }
-      });
+    bindStrategyDeployment(root.querySelector('[data-strategy-deployment]'), s, gen, isCurrent);
+    let curve = display.equity;
+    S.resize = () => {
+      if (!isCurrent()) return;
+      const sheet = root.querySelector('#sheet-results');
+      const chart = sheet?.querySelector('.chart');
+      if (chart) chart.outerHTML = equityChart(curve, s.dataset?.out_of_sample_from, sheet.clientWidth);
     };
+    S.resize();
     const wi = root.querySelector('#whatif');
     if (wi) {
-      let t = null, seq = 0;
+      let t = null;
+      S.artifactDispose = () => clearTimeout(t);
       const update = () => {
         const fee = +wi.querySelector('#wf').value, slip = +wi.querySelector('#ws').value, stake = +wi.querySelector('#wk').value;
         wi.querySelector('#wfo').textContent = fee.toFixed(2).replace(/0$/, '') + '×';
         wi.querySelector('#wso').textContent = slip + '¢';
         wi.querySelector('#wko').textContent = '$' + stake;
         clearTimeout(t);
+        scenario.fee = fee; scenario.slip = slip; scenario.stake = stake; scenario.error = '';
+        const mine = ++scenario.seq;
+        scenario.result = null;
+        curve = s.equity;
+        root.querySelector('#sheet-results').innerHTML = equityChart(curve, s.dataset?.out_of_sample_from, root.querySelector('#sheet-results').clientWidth) + `<div class="split"><div><h4>Tested on (in-sample)</h4>${metricRows(s.in_sample)}</div><div><h4>Never seen (out-of-sample)</h4>${metricRows(s.out_of_sample)}</div></div>`;
+        root.querySelector('#result-context').textContent = 'Updating scenario…';
+        root.querySelector('#gates-title').textContent = 'Saved backtest gates';
+        root.querySelector('#gates').innerHTML = gatesHtml(s.gates);
+        root.querySelector('#figs').innerHTML = figsFor(s);
+        wi.querySelector('#wflash').innerHTML = '';
         t = setTimeout(async () => {
-          const mine = ++seq;
+          if (!isCurrent()) return;
           root.querySelector('#sheet-results').style.opacity = '.55';
           try {
             const r = await api(`/api/strategies/${s.id}/whatif`, { fee_multiplier: fee, slippage_cents: slip, stake });
-            if (mine !== seq) return;
-            root.querySelector('#sheet-results').innerHTML = equityChart(r.equity, s.dataset && s.dataset.out_of_sample_from) +
+            if (mine !== scenario.seq || gen !== S.gen || !workspace.entries.has(s.id)) return;
+            scenario.result = r;
+            if (!isCurrent()) return;
+            curve = r.equity;
+            root.querySelector('#sheet-results').innerHTML = equityChart(curve, s.dataset?.out_of_sample_from, root.querySelector('#sheet-results').clientWidth) +
               `<div class="split"><div><h4>Tested on (in-sample)</h4>${metricRows(r.in_sample)}</div><div><h4>Never seen (out-of-sample)</h4>${metricRows(r.out_of_sample)}</div></div>`;
+            const baseline = fee === 1 && slip === 0 && stake === s.stake;
+            root.querySelector('#result-context').textContent = baseline ? 'Saved backtest' : 'What-if scenario';
+            root.querySelector('#gates-title').textContent = baseline ? 'Saved backtest gates' : 'Scenario gates';
             root.querySelector('#gates').innerHTML = gatesHtml(r.gates);
             root.querySelector('#figs').innerHTML = figsFor({ ...r });
             wi.querySelector('#wflash').innerHTML = (fee === 1 && slip === 0 && stake === s.stake) ? '' : notice(r.passed ? 'Still passes every gate under these conditions.' : 'Would fail at least one gate under these conditions.', r.passed ? 'good' : 'bad');
-          } catch (e) { wi.querySelector('#wflash').innerHTML = notice(e.message, 'bad'); }
-          root.querySelector('#sheet-results').style.opacity = '';
+          } catch (e) { if (gen === S.gen && mine === scenario.seq && e.status !== 401) { scenario.error = e.message; if (isCurrent()) { wi.querySelector('#wflash').innerHTML = notice(e.message, 'bad'); root.querySelector('#result-context').textContent = 'Saved backtest'; } } }
+          if (isCurrent() && mine === scenario.seq) root.querySelector('#sheet-results').style.opacity = '';
         }, 250);
+        S.timers.push(t);
       };
       wi.querySelectorAll('input[type=range]').forEach((r) => (r.oninput = update));
+      if (!baseline && !scenario.result && !scenario.error) update();
     }
   }
 
   // ---------- deploy + chat ----------
   async function viewDeploy() {
-    const u = S.me.user;
-    shell('/deploy', boardTitle('Deploy', 'Your strategies trading now. Talk to the agent to adjust them.') +
+    const gen = S.gen, u = S.me.user;
+    shell('/deploy', boardTitle('Position') +
       '<dl class="figures measure" id="dfigs" style="margin-top:14px"></dl>', `
       <div class="seg" role="group" aria-label="View"><button aria-pressed="true" data-view="board">Board</button><button aria-pressed="false" data-view="chat">Agent chat</button></div>
       <div class="deploy" data-view="board" id="deploy">
         <div class="deploy-board"><div id="flash"></div><div id="deps">${loading(260)}</div>
           <section class="section"><div class="section-head"><h2>Open positions</h2></div><div id="openpos"></div></section>
+          <section class="section"><div class="section-head"><h2>Ready to deploy</h2><a class="linkish" href="/research?artifacts=1&status=passed">Browse passed strategies</a></div>${!S.me.live_trading_available ? '<p class="hint position-live-notice" role="status">Live trading isn’t open yet.</p>' : ''}<div id="ready-strategies">${loading(120)}</div></section>
         </div>
         <section class="chat" aria-label="Agent chat">
           <div class="chat-head">
@@ -1124,6 +1471,7 @@
     };
     const loadBoard = async () => {
       const d = await api('/api/deployments');
+      if (gen !== S.gen) return;
       const running = d.deployments.filter((x) => x.status === 'running');
       const realized = d.deployments.reduce((a, x) => a + x.realized_pnl, 0);
       const live = d.deployments.filter((x) => x.mode === 'live' && x.status === 'running');
@@ -1133,11 +1481,27 @@
         fig('Money', live.length ? '<span class="mk live">Live</span>' : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : 'nothing on live money' });
       const reg = registry(d.deployments.map((x) => x.curve));
       root.querySelector('#deps').innerHTML = d.deployments.length ? deploymentTable(d.deployments.map((x) => deploymentSlip(x, reg, true)).join(''), true)
-        : `<div class="empty"><h3>Nothing deployed</h3><p>Open a passed strategy and post it to the board. Paper first: it trades the live market with paper money.</p><a class="btn" href="/strategies">See passed strategies</a></div>`;
+        : `<div class="empty"><h3>Nothing deployed</h3><p>Open a passed strategy and post it to the board. Paper first: it trades the live market with paper money.</p></div>`;
       bindDeploymentActions(root.querySelector('#deps'), loadBoard);
       root.querySelector('#openpos').innerHTML = d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost</th><th class="num">Settles</th></tr></thead><tbody>
         ${d.open_positions.map((p) => `<tr><td>${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : ''}</td><td class="tick">${esc(p.ticker)}</td><td>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num">${clock(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
         : '<p class="hint">No open positions.</p>';
+    };
+    let readySignature = '', readyFetching = false;
+    const loadReady = async () => {
+      if (readyFetching || gen !== S.gen) return; readyFetching = true;
+      const host = root.querySelector('#ready-strategies');
+      try {
+        const data = await api('/api/strategies?status=passed');
+        if (gen !== S.gen) return;
+        const rows = data.strategies.filter(s => s.status === 'passed');
+        const signature = JSON.stringify(rows);
+        if (signature === readySignature) return;
+        readySignature = signature;
+        host.innerHTML = rows.length ? '<div class="ready-strategy-grid">' + rows.map(s => `<article class="ready-strategy" data-ready-strategy="${s.id}"><header><a href="/strategies/${s.id}">${esc(s.title)}</a>${mark(s.status)}</header><p>${esc(marketShort(s.market))} · Unseen P&amp;L ${usd(s.out_of_sample?.pnl, true)}</p>${strategyDeploymentHtml(s, true)}</article>`).join('') + '</div>' : '<p class="hint">No strategies have passed yet. Start a session in Research.</p>';
+        rows.forEach(s => bindStrategyDeployment(host.querySelector(`[data-ready-strategy="${s.id}"] [data-strategy-deployment]`), s, gen));
+      } catch (error) { if (gen === S.gen && error.status !== 401) { readySignature = ''; host.innerHTML = notice(error.message, 'bad'); } }
+      finally { readyFetching = false; }
     };
     let lastId = 0;
     const msgs = root.querySelector('#messages');
@@ -1180,21 +1544,21 @@
         try { await api('/api/chat', { content }); ta.value = ''; ta.style.height = ''; await loadChat(); } catch (err) { alert0(err.message); }
       });
     };
-    await Promise.all([loadBoard(), loadChat(true)]);
+    await Promise.all([loadBoard(), loadChat(true), loadReady()]);
     poll(loadBoard, 10000);
+    poll(loadReady, 10000);
     poll(() => loadChat(), 3000);
   }
   const confirmAutopilot = { armed: false };
 
   // ---------- funds ----------
   async function viewFunds() {
-    shell('/funds', boardTitle('Funds') + '<dl class="figures measure" id="ffigs" style="margin-top:14px"></dl>', loading(300));
+    shell('/funds', boardTitle('Account') + '<dl class="figures measure" id="ffigs" style="margin-top:14px"></dl>', loading(300));
     const load = async () => {
       const d = await api('/api/funds');
       const k = d.kalshi;
       root.querySelector('#ffigs').innerHTML = fig('Paper cash', usd(d.paper.cash), { cls: 'lead', small: 'Practice money for paper trading' }) +
-        fig('Kalshi cash', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { small: k.connected ? `Key ${esc(k.key_id)}` : 'Needed only for live trading' }) +
-        fig('Money held by Tau', '$0.00', { small: 'Live funds stay in your Kalshi account' });
+        fig('Kalshi cash', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { small: k.connected ? `Key ${esc(k.key_id)}` : 'Needed only for live trading' });
       root.querySelector('main').innerHTML = `<div id="flash"></div><div class="funds">
         <section class="panel">
           <h3>Paper account</h3>
@@ -1313,7 +1677,7 @@
     setTimeout(() => { document.addEventListener('click', outside, true); document.addEventListener('keydown', onEsc); }, 0);
   }
   async function viewCommunity() {
-    shell('/community', boardTitle('Community', 'Share a strategy, an idea, or how your money is doing. Like and reply to other traders.'), `
+    shell('/community', boardTitle('Community'), `
       <div class="feedwrap">
         <form class="panel composer-post" id="composer-post">
           <textarea class="input" id="post-body" maxlength="2000" rows="2" placeholder="Share an idea, a strategy, or how it's going…"></textarea>
@@ -1545,6 +1909,13 @@
 
   // Hot Markets left rail: persistent (open/closed survives page switches), refreshes each minute.
   const hotOpen = () => localStorage.getItem('tau_hotrail') !== '0';
+  function toggleHotRail() {
+    const next = !hotOpen();
+    localStorage.setItem('tau_hotrail', next ? '1' : '0');
+    document.body.classList.toggle('hot-open', next);
+    renderHotRail();
+    if (!next) root.querySelector('[data-hot-header]')?.focus({preventScroll: true});
+  }
   let hotLoop = false;
   function hotChart(h) {
     if (!h || h.length < 2) return '<div class="hot-chart none"></div>';
@@ -1567,17 +1938,18 @@
     const d = S.hot;
     const rows = d && d.markets && d.markets.length ? d.markets.map(hotRowHtml).join('')
       : `<div class="hot-empty">${d ? 'Warming up — the live book fills in a minute.' : loading(120)}</div>`;
-    rail.innerHTML = `<button class="hot-tab" data-hot="toggle" aria-expanded="${open}" aria-label="${open ? 'Collapse hot markets' : 'Expand hot markets'}"><span class="hot-tab-label">Hot markets</span><span class="hot-chev">${open ? '‹' : '›'}</span></button>
-      <div class="hot-panel">
+    const trigger = root.querySelector('[data-hot-header]');
+    if (trigger) {
+      trigger.setAttribute('aria-expanded', String(open));
+      trigger.setAttribute('aria-label', open ? 'Collapse hot markets' : 'Expand hot markets');
+      trigger.onclick = toggleHotRail;
+    }
+    rail.innerHTML = `<div class="hot-panel">
         <div class="hot-head"><div><span class="hot-kicker">Hot markets</span><span class="hot-now"><span class="hot-dot"></span>Right now</span></div><button class="hot-x" data-hot="toggle" aria-label="Collapse">‹</button></div>
         <div class="hot-list">${rows}</div>
         <div class="hot-ft">${d && d.at ? 'Updated ' + sinceMin(d.at) : ''} · <a href="/explore">See all markets →</a></div>
       </div>`;
-    rail.querySelectorAll('[data-hot="toggle"]').forEach((b) => b.onclick = (e) => {
-      if (e.currentTarget.classList.contains('hot-tab') && open) return; // the spine only expands
-      const next = !hotOpen(); localStorage.setItem('tau_hotrail', next ? '1' : '0');
-      document.body.classList.toggle('hot-open', next); renderHotRail();
-    });
+    rail.querySelectorAll('[data-hot="toggle"]').forEach(b => { b.onclick = toggleHotRail; });
     rail.querySelector('.hot-ft a') && (rail.querySelector('.hot-ft a').onclick = (e) => { e.preventDefault(); go('/explore'); });
   }
   async function refreshHot() {
@@ -1803,7 +2175,6 @@
     return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
   }
   async function viewSystem() {
-    if (!adminViewOn()) return go('/', true);
     const edges = SYS_EDGES.map(([a, b], i) => `<path class="sys-edge" data-e="${a}" id="se${i}" d="${sysEdgePath(a, b)}" />`).join('');
     const nodes = SYS_NODES.map((n) => {
       const h = n.big ? SYS_DBH : SYS_H;
