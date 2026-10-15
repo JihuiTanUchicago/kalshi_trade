@@ -1,5 +1,17 @@
 # PLAN
 
+## UI tweaks (2026-10-15) — SHIPPED
+- **Billing moved into a profile dropdown.** Removed `Billing` from the top nav; clicking the
+  user's name in the masthead now opens a small Kursbuch menu (`.profile-menu`) with Billing +
+  Sign out. (`app/static/app.js` `shell()`, `app/static/app.css` `.profile*`.)
+- **System page fixed for non-admins.** `viewSystem()` had a leftover `if (!adminViewOn()) go('/')`
+  guard that bounced every normal user home — the System tab was visible but dead for them. Removed;
+  the `/api/admin/system` route was already public (admin-only fields gated inside it).
+- **Payment showcase dots are now clickable.** The reel under the "Add a payment method" art
+  auto-advanced only; dots are real `<button>`s that jump to a picture and reset the timer
+  (`paymentGate()` `show(i)`/`restart()`). Dropped `aria-hidden` on the reel so the controls aren't
+  focusable-inside-hidden.
+
 ## ARCHITECTURE PLAN — all-markets collector + cross-contract trading (proposed 2026-10-13)
 
 **Goal:** collect *every* open Kalshi market at per-minute resolution, handle renewing

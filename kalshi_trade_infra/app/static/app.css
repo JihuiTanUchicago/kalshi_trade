@@ -185,6 +185,18 @@ th .info { vertical-align: 0; }
 .admin-toggle[aria-checked="true"] .admin-knob { transform: translateX(13px); }
 .admin-toggle:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 4px; }
 .asof .sep { color: var(--rule-2); margin: 0 .5em; }
+/* Profile dropdown in the masthead — Billing + Sign out under the user's name */
+.profile { position: relative; display: inline-flex; }
+.profile-trig { display: inline-flex; align-items: center; gap: 5px; font: inherit; color: var(--ink-3); background: none; border: 0; padding: 0; cursor: pointer; }
+.profile-trig:hover, .profile-trig[aria-expanded="true"] { color: var(--ink); }
+.profile-trig .caret { transition: transform .18s var(--ease); }
+.profile-trig[aria-expanded="true"] .caret { transform: rotate(180deg); }
+.profile-trig:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 4px; }
+.profile-menu { position: absolute; top: calc(100% + 7px); right: 0; z-index: 40; display: flex; flex-direction: column; min-width: 148px; background: var(--stock-raised); border: 1px solid var(--rule-2); border-radius: 3px; padding: 4px; }
+.profile-menu[hidden] { display: none; }
+.profile-menu a, .profile-item { display: block; width: 100%; text-align: left; font: inherit; font-family: var(--f-nar); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); background: none; border: 0; padding: 7px 9px; cursor: pointer; text-decoration: none; }
+.profile-menu a:hover, .profile-item:hover { background: var(--stock-sunk); color: var(--ink); }
+.profile-menu a + .profile-item { border-top: 1px solid var(--rule); margin-top: 2px; padding-top: 9px; }
 
 .services { border-bottom: 1px solid var(--rule); }
 .services-in { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--gut); display: flex; gap: 0; flex-wrap: wrap; }
@@ -688,8 +700,10 @@ body.landing-body { background: #FBFBFA; }
 .pay-cap h3 { font-size: 18px; font-weight: 600; letter-spacing: -.01em; }
 .pay-cap p { font-size: 13.5px; color: rgba(241,243,237,.72); line-height: 1.5; margin-top: 5px; }
 .pay-dots { display: flex; gap: 7px; }
-.pay-dot { width: 22px; height: 3px; border-radius: 2px; background: rgba(241,243,237,.25); transition: background .35s; }
+.pay-dot { width: 22px; height: 3px; border: 0; padding: 0; border-radius: 2px; background: rgba(241,243,237,.25); transition: background .35s; cursor: pointer; }
+.pay-dot:hover { background: rgba(241,243,237,.6); }
 .pay-dot.on { background: #F1F3ED; }
+.pay-dot:focus-visible { outline: 2px solid #F1F3ED; outline-offset: 3px; }
 .pay-right { flex: .96 1 0; min-width: 0; min-height: 0; overflow-y: auto; }
 /* Pay button sits right after the (now-compact) card form. The panel still
    scrolls if a form ever grows taller than the modal. */

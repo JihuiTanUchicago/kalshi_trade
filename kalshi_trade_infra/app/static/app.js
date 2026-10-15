@@ -212,7 +212,7 @@
     dlg.className = 'wl-modal pay-modal';
     dlg.innerHTML = `
       <div class="pay-split">
-        <aside class="pay-show" aria-hidden="true">
+        <aside class="pay-show">
           <div class="pay-show-top">${ICON.mark}<span>Tau</span></div>
           <div class="pay-stage-wrap"><div class="pay-dot-head"><span></span><span></span><span></span></div><div class="pay-stage" id="pay-stage"></div></div>
           <div class="pay-cap" id="pay-cap"></div>
@@ -237,20 +237,25 @@
     };
     // Animated showcase reel on the left.
     const stage = dlg.querySelector('#pay-stage'), cap = dlg.querySelector('#pay-cap'), dots = dlg.querySelector('#pay-dots');
-    dots.innerHTML = PAY_SHOW.map((_, i) => `<span class="pay-dot${i === 0 ? ' on' : ''}"></span>`).join('');
+    dots.innerHTML = PAY_SHOW.map((_, i) => `<button type="button" class="pay-dot${i === 0 ? ' on' : ''}"></button>`).join('');
     let sIdx = -1;
-    const advance = () => {
-      sIdx = (sIdx + 1) % PAY_SHOW.length;
+    const show = (i) => {
+      sIdx = (i + PAY_SHOW.length) % PAY_SHOW.length;
       const [key, h, p] = PAY_SHOW[sIdx];
       sceneTimers.forEach(clearTimeout); sceneTimers = [];
       stage.innerHTML = '<div class="demo-body"></div>';
       SCENE[key](stage.querySelector('.demo-body'));
       stage.classList.remove('in'); void stage.offsetWidth; stage.classList.add('in');
       cap.innerHTML = `<h3>${h}</h3><p>${p}</p>`;
-      dots.querySelectorAll('.pay-dot').forEach((d, i) => d.classList.toggle('on', i === sIdx));
+      dots.querySelectorAll('.pay-dot').forEach((d, j) => d.classList.toggle('on', j === sIdx));
     };
+    const advance = () => show(sIdx + 1);
+    const autoPlay = !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    const restart = () => { if (autoPlay) { clearInterval(payCarousel); payCarousel = setInterval(advance, 5400); } };
+    // Clicking a dot jumps to that picture and resets the auto-advance timer.
+    dots.querySelectorAll('.pay-dot').forEach((d, i) => { d.setAttribute('aria-label', `Show example ${i + 1}`); d.onclick = () => { show(i); restart(); }; });
     advance();
-    if (!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) payCarousel = setInterval(advance, 5400);
+    restart();
     const hint = dlg.querySelector('#pay-hint');
     try {
       const state = await api('/api/billing');
@@ -284,7 +289,7 @@
   }
 
   // ---------- shell ----------
-  const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/explore', 'Explore', 'explore'], ['/deploy', 'Deploy', 'deploy'], ['/community', 'Community', 'community'], ['/funds', 'Funds', 'funds'], ['/billing', 'Billing', 'credits']];
+  const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/explore', 'Explore', 'explore'], ['/deploy', 'Deploy', 'deploy'], ['/community', 'Community', 'community'], ['/funds', 'Funds', 'funds']];
   // The operator can flip into a plain-user view. Only their own account is an
   // admin at all (server decides); the toggle just hides the admin surface so
   // they can see what a normal user sees. Default: admin view on.
@@ -302,14 +307,25 @@
     root.innerHTML = `
       <header class="masthead"><div class="masthead-in">
         <p class="wordmark"><a href="/">${ICON.mark}<span>Tau</span></a></p>
-        <span class="asof">${adminToggle}${esc(u.name || u.email)}<span class="sep">\u00b7</span><button class="linkish" data-action="signout">Sign out</button></span>
+        <span class="asof">${adminToggle}<span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false">${esc(u.name || u.email)}<svg class="caret" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/billing">Billing</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
       </div></header>
       <nav class="services" aria-label="Sections"><div class="services-in">${nav}</div></nav>
       <div class="wrap">
         <div id="boardbody">${board}</div>
         <main id="main" tabindex="-1">${main}</main>
       </div>`;
-    root.querySelector('[data-action="signout"]').onclick = async () => { await api('/api/logout', {}).catch(() => {}); S.me = null; go('/signin'); };
+    root.querySelectorAll('[data-action="signout"]').forEach((b) => (b.onclick = async () => { await api('/api/logout', {}).catch(() => {}); S.me = null; go('/signin'); }));
+    const prof = root.querySelector('.profile');
+    if (prof) {
+      const trig = prof.querySelector('.profile-trig'), menu = prof.querySelector('.profile-menu');
+      const close = () => { menu.hidden = true; trig.setAttribute('aria-expanded', 'false'); document.removeEventListener('click', onDoc, true); };
+      const onDoc = (e) => { if (!prof.contains(e.target)) close(); };
+      trig.onclick = (e) => {
+        e.stopPropagation();
+        if (menu.hidden) { menu.hidden = false; trig.setAttribute('aria-expanded', 'true'); document.addEventListener('click', onDoc, true); }
+        else close();
+      };
+    }
     const at = root.querySelector('[data-action="admintoggle"]');
     if (at) at.onclick = () => {
       const turningOff = adminViewOn();
@@ -1810,7 +1826,6 @@
     return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
   }
   async function viewSystem() {
-    if (!adminViewOn()) return go('/', true);
     const edges = SYS_EDGES.map(([a, b], i) => `<path class="sys-edge" data-e="${a}" id="se${i}" d="${sysEdgePath(a, b)}" />`).join('');
     const nodes = SYS_NODES.map((n) => {
       const h = n.big ? SYS_DBH : SYS_H;
