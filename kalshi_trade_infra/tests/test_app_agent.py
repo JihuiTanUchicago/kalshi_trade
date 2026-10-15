@@ -20,6 +20,7 @@ class Store:
         monkeypatch.setattr(r, "finish_run", lambda cur, run_id, status, error=None, tried=0, passed=0, *a: setattr(self, "finished", (status, error, tried, passed)))
         monkeypatch.setattr(r, "update_run_progress", lambda *a, **k: None)
         monkeypatch.setattr(r, "set_run_market", lambda *a, **k: None)
+        monkeypatch.setattr(r, "credit_balance", lambda *a, **k: 100.0)
 
     def _insert(self, cur, uid, run_id, parent, market, direction, title, thesis, spec, status, result):
         self.strategies.append({"title": title, "status": status, "result": result, "spec": spec})

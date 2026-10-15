@@ -53,7 +53,6 @@ BATCH = 4                 # hypotheses proposed per round; small so each round c
 DEFAULT_HYPOTHESES = 8    # when the user doesn't set a budget
 MAX_BUDGET = 50           # hard ceiling a user can request for one run
 FINALISTS = 3             # per chunk, only the best few are gated on unseen data (multiple-testing discipline)
-FOREVER_CAP = 300         # safety ceiling for run_forever; credits exhausting also stops it
 MAX_ACTIONS = 3
 MIN_FRAMES = 200
 
@@ -390,7 +389,13 @@ def run_research(
             usage.input_tokens = usage.output_tokens = 0
             repo.update_run_progress(cur, run_id, len(tried), total_passed)  # keep counts live
             conn.commit()
-            if n == 0 or not forever or len(tried) >= FOREVER_CAP:
+            if n == 0 or not forever:
+                break
+            # True no-stop: a run_forever session runs until the user cancels — the only automatic
+            # stop is running out of money (auto-reload, if on, already ran inside the billing above).
+            if repo.credit_balance(cur, user_id) <= 0:
+                log("step", "Paused — out of credits. Add more (or turn on auto-reload) and start a new "
+                            "session to keep researching.")
                 break
             log("step", "Still running - %d tested so far, %d passed. Exploring more (stop anytime)."
                 % (len(tried), total_passed))
