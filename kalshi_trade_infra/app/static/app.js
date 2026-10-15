@@ -604,7 +604,7 @@
   }
 
   // The hero demo: an idea is typed, the agent discovers strategies, each is stamped.
-  const DEMO_IDEA_TEXT = 'Sell overpriced tails in the last hour before the 5pm close';
+  const DEMO_IDEA_TEXT = 'Sell overpriced tails in last hour before 5pm close';
   const DEMO_STRATS = [
     ['Fade the far tails', 'volatility · fees in', 'pass', '+$38 unseen'],
     ['Sell only when calm', 'vol filter', 'pass', '+$21 unseen'],
@@ -618,12 +618,16 @@
     demoTimers.forEach(clearTimeout); demoTimers = [];
     const at = (ms, fn) => demoTimers.push(setTimeout(fn, ms));
     const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // The bubble and status each carry a hidden "ghost" holding their final/longest
+    // content, so the box reserves that full height from the first frame and the live
+    // text (typed / swapped in) can never grow the container. The ghost reflows with
+    // the real font, so there is no measurement to get wrong.
     body.innerHTML = `
-      <div class="demo-prompt"><span class="you">J</span><div class="demo-bubble" id="demo-bubble"><span class="caret"></span></div></div>
-      <div class="demo-status" id="demo-status"></div>
+      <div class="demo-prompt"><span class="you">J</span><div class="demo-bubble" id="demo-bubble"><span class="ghost" aria-hidden="true">${esc(DEMO_IDEA_TEXT)}</span><span class="live" id="demo-live"><span class="caret"></span></span></div></div>
+      <div class="demo-status" id="demo-status"><span class="ghost" aria-hidden="true">${ICON.check}2 of 4 passed every gate — ready to deploy on paper.</span><span class="live" id="demo-stlive"></span></div>
       <div class="demo-cards" id="demo-cards"></div>`;
-    const bubble = body.querySelector('#demo-bubble');
-    const status = body.querySelector('#demo-status');
+    const live = body.querySelector('#demo-live');
+    const status = body.querySelector('#demo-stlive');
     const cards = body.querySelector('#demo-cards');
     // Build every card now (hidden) so the window holds its full height from the
     // first frame and never resizes as the research "arrives".
@@ -635,25 +639,12 @@
       cards.appendChild(el);
       return el;
     });
-    // Lock the window (and the status row) to their final height, measured from the
-    // fully-rendered state, so neither the typing bubble wrapping to a second line nor
-    // the status text changing ever grows the box mid-animation.
-    body.style.minHeight = ''; status.style.minHeight = '';
-    bubble.textContent = DEMO_IDEA_TEXT;
-    let stMax = 0, bodyMax = 0;
-    for (const s of [`<span class="dspin"></span>Writing strategies and backtesting on unseen data…`, `${ICON.check}2 of 4 passed every gate — ready to deploy on paper.`]) {
-      status.innerHTML = s; stMax = Math.max(stMax, status.offsetHeight); bodyMax = Math.max(bodyMax, body.offsetHeight);
-    }
-    status.style.minHeight = stMax + 'px';
-    body.style.minHeight = bodyMax + 'px';
-    bubble.innerHTML = '<span class="caret"></span>';
-    status.innerHTML = '';
     const type = (i) => {
       if (i <= DEMO_IDEA_TEXT.length) {
-        bubble.innerHTML = esc(DEMO_IDEA_TEXT.slice(0, i)) + '<span class="caret"></span>';
+        live.innerHTML = esc(DEMO_IDEA_TEXT.slice(0, i)) + '<span class="caret"></span>';
         at(reduce ? 0 : 34, () => type(i + 1));
       } else {
-        bubble.textContent = DEMO_IDEA_TEXT;
+        live.textContent = DEMO_IDEA_TEXT;
         research();
       }
     };
@@ -666,7 +657,7 @@
         status.innerHTML = `${ICON.check}2 of 4 passed every gate — ready to deploy on paper.`;
       });
     };
-    if (reduce) { bubble.textContent = DEMO_IDEA_TEXT; research(); } else type(0);
+    if (reduce) { live.textContent = DEMO_IDEA_TEXT; research(); } else type(0);
   }
 
   // Scroll-triggered product-moment animations on the landing.

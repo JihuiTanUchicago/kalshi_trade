@@ -3,11 +3,15 @@
 ## Landing demo animations — no-reflow (2026-10-15) — SHIPPED
 Three animated demo containers used to **expand** as rows/cards arrived (reported as annoying).
 All now hold a constant size so the page never reflows mid-animation:
-- **Hero research panel** (`#demo-body`, `startDemo()`): cards are built up front (hidden,
-  reserving their space); on mount we measure the fully-rendered state (full typed idea + the
-  taller of the two status lines + all cards) and lock `body`/`#demo-status` `min-height` to it,
-  so neither the typing bubble wrapping to a 2nd line nor the status text swapping grows the box.
-  Verified: body height constant at 455px across the whole 0–6.4s timeline.
+- **Hero research panel** (`#demo-body`, `startDemo()`): every variable-height region reserves
+  its full size *structurally* — no fragile measurement (an earlier measure-and-lock approach
+  broke because it ran before the Rubik web-font loaded, so the real 2-line bubble overflowed it).
+  Cards are pre-built hidden; the typing bubble and the status line each carry a `visibility:hidden`
+  **ghost** holding their final/longest text, grid-stacked under a `.live` span that receives the
+  typed/swapped text. The ghost reflows with the real font, so the box holds full height from frame
+  one and the live text can never grow it. Verified by injection: bubble height constant (65.5px
+  @420px) from empty → partial → full text. Demo idea copy also shortened to one desktop line:
+  "Sell overpriced tails in last hour before 5pm close".
 - **Deploy fills** (`#sc-pos`) and **autopilot log** (`#sc-loop`): fixed-height windows
   (`align-content:end` + `overflow:hidden` + a top fade `mask-image`); new rows append at the
   bottom and older ones scroll up under the fade — reads as a live feed, no growth. `scroll-behavior`

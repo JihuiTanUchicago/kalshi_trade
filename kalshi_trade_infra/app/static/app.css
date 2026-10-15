@@ -536,10 +536,16 @@ body.landing-body { background: #FBFBFA; }
 .demo-body { padding: 20px; min-height: 340px; display: flex; flex-direction: column; gap: 14px; }
 .demo-prompt { display: flex; gap: 10px; align-items: flex-start; }
 .demo-prompt .you { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--ink); color: #fff; display: grid; place-items: center; font-size: 13px; font-weight: 600; }
-.demo-bubble { background: var(--surface-2); border-radius: 12px; border-top-left-radius: 4px; padding: 11px 14px; font-size: 15px; line-height: 1.45; min-height: 20px; }
+.demo-bubble { background: var(--surface-2); border-radius: 12px; border-top-left-radius: 4px; padding: 11px 14px; font-size: 15px; line-height: 1.45; min-height: 20px; display: grid; }
+/* Ghost (hidden, holds final text) and live text share one grid cell, so the bubble
+   is always sized to the full idea and the typed text can never grow it. */
+.demo-bubble .ghost, .demo-bubble .live { grid-area: 1 / 1; }
+.demo-bubble .ghost { visibility: hidden; }
 .demo-bubble .caret { display: inline-block; width: 2px; height: 1.05em; background: var(--accent); vertical-align: -2px; margin-left: 1px; animation: caret 1s steps(1) infinite; }
 @keyframes caret { 50% { opacity: 0; } }
-.demo-status { display: flex; align-items: center; gap: 10px; font-size: 14.5px; color: var(--ink-2); min-height: 22px; }
+.demo-status { display: grid; font-size: 14.5px; color: var(--ink-2); min-height: 22px; }
+.demo-status .ghost, .demo-status .live { grid-area: 1 / 1; display: flex; align-items: center; gap: 10px; }
+.demo-status .ghost { visibility: hidden; }
 .demo-status .dspin { width: 17px; height: 17px; border-radius: 50%; border: 2.4px solid var(--line); border-top-color: var(--accent); animation: spin 1s linear infinite; flex: none; }
 .demo-status svg { width: 18px; height: 18px; color: var(--accent); flex: none; }
 .demo-cards { display: grid; gap: 10px; }
