@@ -209,13 +209,14 @@ RUN_ACTIVE = ("queued", "running")
 def create_run(
     cur, user_id: int, kind: str, market: Optional[str] = None, direction: Optional[str] = None,
     prompt: Optional[str] = None, deployment_id: Optional[int] = None,
-    max_hypotheses: Optional[int] = None, run_forever: bool = False,
+    max_hypotheses: Optional[int] = None, run_forever: bool = False, model: Optional[str] = None,
 ) -> int:
     cur.execute(
         """INSERT INTO app_agent_runs (user_id, kind, market, direction, prompt, deployment_id, status,
-             max_hypotheses, run_forever, created_at)
-           VALUES (%s,%s,%s,%s,%s,%s,'queued',%s,%s,%s)""",
-        (user_id, kind, market, direction, prompt, deployment_id, max_hypotheses, 1 if run_forever else 0, now_utc()),
+             max_hypotheses, run_forever, model, created_at)
+           VALUES (%s,%s,%s,%s,%s,%s,'queued',%s,%s,%s,%s)""",
+        (user_id, kind, market, direction, prompt, deployment_id, max_hypotheses, 1 if run_forever else 0,
+         model, now_utc()),
     )
     return cur.lastrowid
 
@@ -326,7 +327,7 @@ def list_runs(cur, user_id: int, limit: int = 50) -> List[Dict]:
 def get_run(cur, user_id: int, run_id: int) -> Optional[Dict]:
     cur.execute(
         """SELECT id, kind, market, direction, prompt, status, hypotheses_tried, strategies_passed, error,
-                  max_hypotheses, run_forever, created_at, started_at, finished_at
+                  max_hypotheses, run_forever, model, created_at, started_at, finished_at
            FROM app_agent_runs WHERE id=%s AND user_id=%s""",
         (run_id, user_id),
     )
@@ -374,7 +375,7 @@ def _strategy_row(r: Dict) -> Dict:
 
 def list_strategies(
     cur, user_id: int, direction: Optional[str] = None, status: Optional[str] = None, market: Optional[str] = None,
-    run_id: Optional[int] = None, limit: int = 500,
+    run_id: Optional[int] = None, limit: int = 500, offset: int = 0,
 ) -> List[Dict]:
     sql = """SELECT s.id, s.run_id, s.parent_id, s.market, s.direction, s.title, s.thesis, s.spec_json, s.status,
                     s.result_json, s.created_at, r.hypotheses_tried
@@ -385,10 +386,29 @@ def list_strategies(
         if val:
             sql += " AND %s=%%s" % col
             params.append(val)
-    sql += " ORDER BY s.id DESC LIMIT %s"
-    params.append(limit)
+    sql += " ORDER BY s.id DESC LIMIT %s OFFSET %s"
+    params.extend((limit, offset))
     cur.execute(sql, params)
     return [_strategy_row(r) for r in cur.fetchall()]
+
+
+def count_strategies(
+    cur, user_id: int, direction: Optional[str] = None, market: Optional[str] = None,
+) -> Dict[str, int]:
+    """Status histogram for the user's strategies via COUNT(*), so the headline figures
+    reflect the true total rather than a capped page. Keys are the status values plus
+    "total" (their sum). Optionally narrowed by direction/market, matching list_strategies."""
+    sql = "SELECT s.status, COUNT(*) AS n FROM app_strategies s WHERE s.user_id=%s"
+    params: List[Any] = [user_id]
+    for col, val in (("s.direction", direction), ("s.market", market)):
+        if val:
+            sql += " AND %s=%%s" % col
+            params.append(val)
+    sql += " GROUP BY s.status"
+    cur.execute(sql, params)
+    counts: Dict[str, int] = {r["status"]: int(r["n"]) for r in cur.fetchall()}
+    counts["total"] = sum(counts.values())
+    return counts
 
 
 def get_strategy(cur, user_id: int, strategy_id: int) -> Optional[Dict]:

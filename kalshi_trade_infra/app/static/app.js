@@ -383,28 +383,39 @@
       <line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" stroke="var(--rule-2)" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/>
       <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.8" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>`;
   }
-  function equityChart(curve, cutoffIso) {
+  // devCurve (optional): a second, realized series replayed read-only against
+  // the Kalshi demo environment. Drawn dashed in the accent colour with a legend
+  // so "Simulated" and "Kalshi dev" read apart. Omitting it keeps the old chart.
+  function equityChart(curve, cutoffIso, devCurve) {
     const W = 760, H = 236, L = 52, R = 10, T = 30, B = 26;
     if (!curve || curve.length < 2) return `<div class="empty"><p>Not enough trades to draw an equity curve.</p></div>`;
-    const t0 = curve[0][0], t1 = curve[curve.length - 1][0];
-    const vals = curve.map((p) => p[1]);
+    const dev = devCurve && devCurve.length > 1 ? devCurve : null;
+    const all = dev ? curve.concat(dev) : curve;
+    const t0 = Math.min(...all.map((p) => p[0])), t1 = Math.max(...all.map((p) => p[0]));
+    const vals = all.map((p) => p[1]);
     let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
     if (hi - lo < 1) { hi += 0.5; lo -= 0.5; }
     const x = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R);
     const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
     const cut = cutoffIso ? Date.parse(cutoffIso) / 1000 : null;
     const cx = cut && cut > t0 && cut < t1 ? x(cut) : null;
-    const pts = curve.map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    const line = (c) => c.map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
     const ticks = [lo, (lo + hi) / 2, hi].map((v) => `<text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${usd(v)}</text>`).join('');
     const day = (t) => new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cumulative profit and loss over the backtest; ends at ${usd(vals[vals.length - 1], true)}">
+    const legend = dev ? `<g transform="translate(${L},${T - 12})">
+        <line x1="0" x2="16" y1="0" y2="0" stroke="var(--ink)" stroke-width="2"/><text x="20" y="4" style="fill:var(--ink-2)">Simulated</text>
+        <line x1="92" x2="108" y1="0" y2="0" stroke="var(--l-accent, #F05A28)" stroke-width="2" stroke-dasharray="5 4"/><text x="112" y="4" style="fill:var(--ink-2)">Kalshi dev (real)</text>
+      </g>` : '';
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cumulative profit and loss over the backtest${dev ? ', with a realized Kalshi demo-environment curve' : ''}; ends at ${usd(vals[vals.length - 1], true)}">
       ${cx ? `<rect x="${cx}" y="${T}" width="${W - R - cx}" height="${H - T - B}" fill="var(--stock-raised)"/>
               <line x1="${cx}" x2="${cx}" y1="${T}" y2="${H - B}" stroke="var(--ink-3)" stroke-dasharray="4 4"/>
               <text x="${cx + 8}" y="${T - 10}" style="fill:var(--ink-2)">UNSEEN BY THE AGENT →</text>` : ''}
       <line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="var(--rule-2)"/>
       ${ticks}
       <text x="${L}" y="${H - 6}">${day(t0)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${day(t1)}</text>
-      <polyline points="${pts}" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>
+      <polyline points="${line(curve)}" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>
+      ${dev ? `<polyline points="${line(dev)}" fill="none" stroke="var(--l-accent, #F05A28)" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>` : ''}
+      ${legend}
     </svg>`;
   }
 
@@ -792,6 +803,8 @@
   async function viewResearch() {
     const me = S.me;
     const DEMO_PROMPT = "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances";
+    const mdl = await api('/api/models').catch(() => ({ models: [], default: '' }));
+    const modelOpts = (mdl.models || []).map((m) => `<option value="${esc(m.key)}"${m.key === mdl.default ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
     shell('/research', boardTitle('Research', 'Describe an idea. An agent turns it into a research session \u2014 several concrete strategies it backtests on data it never saw, and only the ones that pass can trade.') +
       '<dl class="figures measure" id="rfigs" style="margin-top:14px"></dl>', `
       <form class="panel dispatch" id="dispatch">
@@ -800,6 +813,8 @@
         <label class="field"><span>Describe your idea</span>
           <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="Bro idk just give me a trading strategy frfr&#10;&#10;…or be specific: &quot;Sell overpriced tails in the last hour before the 5pm close.&quot;"></textarea></label>
         <div class="dispatch-tune" style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;margin-top:2px">
+          ${modelOpts ? `<label class="field" style="margin:0"><span>Model</span>
+            <select class="input" name="model" id="rmodel" style="width:184px">${modelOpts}</select></label>` : ''}
           <label class="field" style="margin:0"><span>Strategies to test</span>
             <input class="input" type="number" name="max_hypotheses" id="maxhyp" min="1" max="50" value="10" style="width:92px"></label>
           <label class="switch" style="margin-top:18px"><input type="checkbox" name="run_forever" id="runforever" checked><span>Let it run until I stop it</span></label>
@@ -834,6 +849,7 @@
             market: fd.get('market'), prompt: fd.get('prompt'),
             max_hypotheses: Number(fd.get('max_hypotheses')) || undefined,
             run_forever: fd.get('run_forever') === 'on',
+            model: fd.get('model') || undefined,
           });
           go('/research/' + r.id);
         } catch (err) { flash('#dflash', err.message, 'bad'); }
@@ -950,28 +966,30 @@
         go('/strategies?' + p.toString(), true);
       };
     });
-    const [all, d] = await Promise.all([api('/api/strategies'), api('/api/strategies?' + new URLSearchParams(f))]);
-    const count = (st) => all.strategies.filter((s) => s.status === st).length;
-    root.querySelector('#sfigs').innerHTML = fig('Passed' + glo('passed'), count('passed')) + fig('Void on unseen data' + glo('void'), count('failed')) + fig('Rejected in testing' + glo('rejected'), count('rejected')) +
-      fig('Pass rate', all.strategies.length ? pct(count('passed') / all.strategies.length, false) : '—');
+    // Paginate server-side at 50/page — a run_forever session can produce far more than the old
+    // 500-row cap, and the figures/chip counts come from a real COUNT(*), not the fetched page.
     const CLABEL = { passed: 'Passed', failed: 'Void', rejected: 'Rejected' };
-    root.querySelectorAll('[data-f="status"]').forEach((b) => { const v = b.dataset.v; b.textContent = v ? `${CLABEL[v]} (${count(v)})` : `All (${all.strategies.length})`; });
-    // Paginate at 50/page — a run_forever session can produce hundreds, and rendering every
-    // row with its sparkline at once bogs the page down.
-    const list = d.strategies, PER = 50, slipsEl = root.querySelector('#slips');
+    const slipsEl = root.querySelector('#slips');
     let sp = 0;
-    const renderSlips = () => {
-      if (!list.length) {
-        slipsEl.innerHTML = `<div class="empty"><h3>Nothing here yet</h3><p>${all.strategies.length ? 'Try another filter.' : 'Start a research session and the strategies it finds will land here.'}</p>${all.strategies.length ? '' : '<a class="btn" href="/research">Go to Research</a>'}</div>`;
+    const load = async () => {
+      slipsEl.innerHTML = loading(240);
+      const p = new URLSearchParams(Object.entries(f).filter(([, v]) => v !== ''));
+      p.set('page', sp);
+      const d = await api('/api/strategies?' + p.toString());
+      const counts = d.counts || {}, total = counts.total || 0, c = (st) => counts[st] || 0;
+      root.querySelector('#sfigs').innerHTML = fig('Passed' + glo('passed'), c('passed')) + fig('Void on unseen data' + glo('void'), c('failed')) + fig('Rejected in testing' + glo('rejected'), c('rejected')) +
+        fig('Pass rate', total ? pct(c('passed') / total, false) : '—');
+      root.querySelectorAll('[data-f="status"]').forEach((b) => { const v = b.dataset.v; b.textContent = v ? `${CLABEL[v]} (${c(v)})` : `All (${total})`; });
+      if (!d.matched) {
+        slipsEl.innerHTML = `<div class="empty"><h3>Nothing here yet</h3><p>${total ? 'Try another filter.' : 'Start a research session and the strategies it finds will land here.'}</p>${total ? '' : '<a class="btn" href="/research">Go to Research</a>'}</div>`;
         return;
       }
-      const pages = Math.ceil(list.length / PER), page = list.slice(sp * PER, (sp + 1) * PER);
-      const reg = registry(page.map((s) => s.equity));
-      slipsEl.innerHTML = strategyTable(page.map((s) => strategySlip(s, reg)).join(''))
-        + (pages > 1 ? `<div class="xpage">${sp > 0 ? `<button class="btn sm" data-sp="${sp - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${sp + 1} of ${num(pages)} · ${num(list.length)} strategies</span>${sp + 1 < pages ? `<button class="btn sm" data-sp="${sp + 1}">Next →</button>` : '<span></span>'}</div>` : '');
-      slipsEl.querySelectorAll('[data-sp]').forEach((b) => b.onclick = () => { sp = +b.dataset.sp; renderSlips(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+      const list = d.strategies, reg = registry(list.map((s) => s.equity));
+      slipsEl.innerHTML = strategyTable(list.map((s) => strategySlip(s, reg)).join(''))
+        + (d.pages > 1 ? `<div class="xpage">${sp > 0 ? `<button class="btn sm" data-sp="${sp - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${sp + 1} of ${num(d.pages)} · ${num(d.matched)} strategies</span>${sp + 1 < d.pages ? `<button class="btn sm" data-sp="${sp + 1}">Next →</button>` : '<span></span>'}</div>` : '');
+      slipsEl.querySelectorAll('[data-sp]').forEach((b) => b.onclick = () => { sp = +b.dataset.sp; load(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
     };
-    renderSlips();
+    load();
   }
 
   async function viewStrategy(id) {
@@ -1017,7 +1035,7 @@
             <h3 class="sheet-h">The rule, in plain words</h3>
             <ul class="rules">${s.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
             <div id="sheet-results">
-              ${s.equity ? equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from) : ''}
+              <div id="equity-wrap">${s.equity ? equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from) : ''}</div>
               <div class="split"><div><h4>Tested on (in-sample)</h4>${metricRows(ins)}</div><div><h4>Never seen (out-of-sample)</h4>${metricRows(oos)}</div></div>
             </div>
             ${s.dataset ? `<p class="hint" style="margin-top:12px">${esc(marketLabel(s.market))}. History: ${esc(s.dataset.start.slice(0, 10))} to ${esc(s.dataset.end.slice(0, 10))}. The agent only saw data before ${esc((s.dataset.out_of_sample_from || '').slice(0, 10))}. Every fill pays the ask or bid plus Kalshi's taker fee.</p>` : ''}
@@ -1051,6 +1069,19 @@
           </section>` : ''}
         </aside>
       </div>`;
+    // Second equity line: the strategy's unseen window replayed read-only against
+    // the Kalshi demo environment. Fetched after the page so a slow/absent demo
+    // never blocks the view; absent -> the chart simply stays sim-only.
+    if (s.equity && oos) (async () => {
+      try {
+        const r = await api('/api/strategies/' + s.id + '/dev-curve');
+        const wrap = root.querySelector('#equity-wrap');
+        if (wrap && r && r.dev_curve && r.dev_curve.length > 1) {
+          wrap.innerHTML = equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from, r.dev_curve)
+            + `<p class="hint" style="margin-top:6px">Dashed line: the unseen window replayed read-only against Kalshi's demo environment${r.capped ? ` (first ${r.contracts} contracts)` : ''} — real demo order-book prices, scored with the same fees. No orders are placed.</p>`;
+        }
+      } catch (e) { /* demo replay is best-effort; leave the sim-only chart */ }
+    })();
     const depPaper = root.querySelector('#dep-paper');
     if (depPaper) depPaper.onclick = () => busy(depPaper, async () => {
       try { await api('/api/deployments', { strategy_id: s.id, mode: 'paper' }); go('/deploy'); } catch (e) { flash('#depflash', e.message, 'bad'); }
@@ -1847,10 +1878,66 @@
        </div>`);
     const svg = root.querySelector('#syssvg');
     const detail = root.querySelector('#sys-detail');
+    // Drill-down: component -> module -> function. `codeState` holds where we
+    // are; while it's set, the 4s poll must not stomp the panel with showDetail.
+    let codeState = null;  // null = component overview; else {id, module?}
     const showDetail = (id) => {
+      codeState = null;
       const n = sysNode(id), L = S.sysLive && S.sysLive[id];
-      detail.innerHTML = `<h3>${esc(n.label)}</h3><p class="sys-metric" id="sys-dm">${metricText(id, L) || ''}</p><p class="hint" style="margin-top:8px">${esc(SYS_DESC[id] || '')}</p>`;
+      const open = n.ext ? '' : `<p style="margin-top:12px"><button class="btn sm" data-code-open="${esc(id)}">Open the code ›</button></p>`;
+      detail.innerHTML = `<h3>${esc(n.label)}</h3><p class="sys-metric" id="sys-dm">${metricText(id, L) || ''}</p><p class="hint" style="margin-top:8px">${esc(SYS_DESC[id] || '')}</p>${open}`;
     };
+    const modName = (p) => p.split('/').pop();
+    const crumbs = (parts) => `<nav class="sys-crumb">${parts.map((p, i) =>
+      i === parts.length - 1 ? `<span>${esc(p.t)}</span>` : `<a href="#" ${p.a}>${esc(p.t)}</a> ›`).join(' ')}</nav>`;
+    const codePanel = async (q, render) => {
+      detail.innerHTML = '<p class="hint">Loading…</p>';
+      let d; try { d = await api('/api/system/code?' + q); } catch (e) { detail.innerHTML = `<p class="hint">${esc(e.message)}</p>`; return null; }
+      detail.innerHTML = render(d);
+      return d;
+    };
+    const openModules = (id) => {
+      codeState = { id };
+      const label = (sysNode(id) || {}).label || id;
+      return codePanel('component=' + encodeURIComponent(id), (d) =>
+        crumbs([{ t: label, a: `data-detail="${esc(id)}"` }, { t: 'modules' }]) +
+        `<h3>Modules</h3><ul class="sys-list">${d.modules.map((m) =>
+          `<li><a href="#" data-mod="${esc(m.path)}">${esc(m.name)}</a> <span class="sys-dim">${m.symbols} defs · ${m.lines} lines</span>${m.doc ? `<div class="hint">${esc(m.doc)}</div>` : ''}</li>`).join('')}</ul>`);
+    };
+    const openModule = (id, mod) => {
+      codeState = { id, module: mod };
+      const label = (sysNode(id) || {}).label || id;
+      return codePanel('module=' + encodeURIComponent(mod), (d) => {
+        const fn = (f) => `<li><a href="#" data-fn="${esc(f.qual)}" data-fnmod="${esc(mod)}"><code>${esc(f.signature)}</code></a>${f.doc ? `<div class="hint">${esc(f.doc)}</div>` : ''}</li>`;
+        const cls = d.classes.map((c) => `<li class="sys-cls"><code>class ${esc(c.name)}</code>${c.doc ? `<div class="hint">${esc(c.doc)}</div>` : ''}<ul class="sys-list">${c.methods.map(fn).join('')}</ul></li>`).join('');
+        return crumbs([{ t: label, a: `data-detail="${esc(id)}"` }, { t: 'modules', a: `data-code-open="${esc(id)}"` }, { t: modName(mod) }]) +
+          `<h3>${esc(modName(mod))}</h3>` +
+          (d.functions.length ? `<ul class="sys-list">${d.functions.map(fn).join('')}</ul>` : '') +
+          (cls ? `<ul class="sys-list">${cls}</ul>` : '') +
+          (d.functions.length || cls ? '' : '<p class="hint">No top-level functions or classes.</p>');
+      });
+    };
+    const openFunction = (id, mod, qual) => {
+      codeState = { id, module: mod };
+      const label = (sysNode(id) || {}).label || id;
+      const refs = (list) => list.length ? `<ul class="sys-list">${list.map((r) =>
+        `<li><a href="#" data-fn="${esc(r.qual)}" data-fnmod="${esc(r.module)}">${esc(r.qual)}</a> <span class="sys-dim">${esc(modName(r.module))}</span></li>`).join('')}</ul>` : '<p class="hint">None found in the mapped source.</p>';
+      return codePanel('module=' + encodeURIComponent(mod) + '&func=' + encodeURIComponent(qual), (d) =>
+        crumbs([{ t: label, a: `data-detail="${esc(id)}"` }, { t: 'modules', a: `data-code-open="${esc(id)}"` }, { t: modName(mod), a: `data-mod="${esc(mod)}"` }, { t: d.name }]) +
+        `<h3><code>${esc(d.qual)}</code></h3><p class="hint">${esc(modName(mod))} · line ${d.lineno}</p>` +
+        `<pre class="sys-src"><code>${esc(d.source)}</code></pre>` +
+        `<h3 style="margin-top:14px">Calls (callees)</h3>${refs(d.callees)}` +
+        `<h3 style="margin-top:14px">Called by (callers)</h3>${refs(d.callers)}`);
+    };
+    detail.addEventListener('click', (e) => {
+      const a = e.target.closest('[data-code-open],[data-mod],[data-fn],[data-detail]');
+      if (!a || !detail.contains(a)) return;
+      e.preventDefault();
+      if (a.dataset.detail != null) showDetail(a.dataset.detail);
+      else if (a.dataset.codeOpen != null) openModules(a.dataset.codeOpen);
+      else if (a.dataset.fn != null) openFunction((codeState && codeState.id), a.dataset.fnmod, a.dataset.fn);
+      else if (a.dataset.mod != null) openModule((codeState && codeState.id), a.dataset.mod);
+    });
     svg.querySelectorAll('.sys-node').forEach((g) => {
       const act = () => { svg.querySelectorAll('.sys-node.sel').forEach((x) => x.classList.remove('sel')); g.classList.add('sel'); showDetail(g.dataset.id); };
       g.addEventListener('click', act);
@@ -1890,7 +1977,7 @@
         const src = svg.querySelector(`.sys-node[data-id="${p.dataset.e}"]`);
         p.classList.toggle('active', !!src && (src.getAttribute('data-st') === 'live'));
       });
-      const sel = svg.querySelector('.sys-node.sel'); if (sel) showDetail(sel.dataset.id);
+      const sel = svg.querySelector('.sys-node.sel'); if (sel && !codeState) showDetail(sel.dataset.id);
       root.querySelector('#sys-stamp').textContent = 'updated ' + clock(d.now);
       const feed = root.querySelector('#sys-feed');
       feed.innerHTML = d.events.length ? d.events.map((e) => `<li class="${e.kind === 'error' ? 'error' : ''}"><time>${clock(e.created_at)}</time><span>${e.kind === 'verdict' ? esc(e.message.replace(/^(PASSED|VOID|FAILED)\s*[-–]\s*/, '')) : esc(e.message)}</span></li>`).join('') : '<li><span class="hint">Quiet right now.</span></li>';

@@ -23,6 +23,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
 from app import agent, auth, backtest, billing, engine, kalshi_account, notify
+from app import kalshi_dev
+from app import models_catalog as catalog
 from app import repository as repo
 from app import spec as specmod
 from app.markets import MARKETS
@@ -232,6 +234,11 @@ def _deployment_out(d: Dict, curve: List) -> Dict:
     }
 
 
+def models(ctx: Ctx):
+    """The models a user can pick to run their research, for the dropdown."""
+    return {"models": catalog.catalog_json(), "default": catalog.DEFAULT_KEY}
+
+
 def list_runs(ctx: Ctx):
     return {"runs": repo.list_runs(ctx.cur, ctx.uid), "counts": repo.active_run_counts(ctx.cur, ctx.uid)}
 
@@ -275,6 +282,11 @@ def create_run(ctx: Ctx):
     idea = str(ctx.body.get("prompt") or "").strip()[:1000]
     # Optional angle tag; the idea itself is what drives the research now.
     direction = ctx.body.get("direction") or None
+    # Which LLM runs this research; None = the server's default model. Validated
+    # against the registry so billing only ever meters a model with a known price.
+    model = ctx.body.get("model") or None
+    if model is not None and model not in catalog.MODELS:
+        raise ApiError(400, "Pick a model from the list, or leave it on the default.")
     if market is not None and market not in MARKETS:
         raise ApiError(400, "Pick a market Tau can research, or let the agent choose.")
     if not idea or len(idea) < 8:
@@ -296,7 +308,7 @@ def create_run(ctx: Ctx):
     if repo.count_runs(cur, ctx.uid, "research", since=repo.now_utc() - timedelta(days=1)) >= MAX_RESEARCH_PER_DAY:
         raise ApiError(429, "Daily research limit reached (%d). It resets over the next 24 hours." % MAX_RESEARCH_PER_DAY)
     run_id = repo.create_run(cur, ctx.uid, "research", market, direction, idea,
-                             max_hypotheses=max_hyp, run_forever=run_forever)
+                             max_hypotheses=max_hyp, run_forever=run_forever, model=model)
     return {"id": run_id}
 
 
@@ -320,8 +332,17 @@ def _strategy_card(s: Dict) -> Dict:
 
 def list_strategies(ctx: Ctx):
     q = ctx.query
-    rows = repo.list_strategies(ctx.cur, ctx.uid, q.get("direction") or None, q.get("status") or None, q.get("market") or None)
-    return {"strategies": [_strategy_card(s) for s in rows]}
+    direction, status, market = q.get("direction") or None, q.get("status") or None, q.get("market") or None
+    try:
+        page = max(0, int(q.get("page") or 0))
+    except ValueError:
+        page = 0
+    per = 50
+    counts = repo.count_strategies(ctx.cur, ctx.uid, direction, market)  # true per-status totals, not a capped page
+    matched = counts.get(status, 0) if status else counts["total"]
+    rows = repo.list_strategies(ctx.cur, ctx.uid, direction, status, market, limit=per, offset=page * per)
+    return {"strategies": [_strategy_card(s) for s in rows], "counts": counts,
+            "matched": matched, "page": page, "per": per, "pages": (matched + per - 1) // per}
 
 
 def _owned_strategy(ctx: Ctx) -> Dict:
@@ -357,6 +378,20 @@ def what_if(ctx: Ctx):
     except Exception:
         raise ApiError(503, "Backtest data is not available right now.")
     return {k: res[k] for k in ("in_sample", "out_of_sample", "equity", "gates", "passed", "capital")}
+
+
+def strategy_dev_curve(ctx: Ctx):
+    """Realized out-of-sample curve replayed READ-ONLY against the Kalshi DEMO
+    (dev) environment, for the sim-vs-real second line on the equity chart.
+    Degrades to {"dev_curve": None} (no second line) when dev replay is
+    unconfigured or the demo host/data is unavailable - it never errors the page."""
+    s = _owned_strategy(ctx)
+    if not (s.get("result") or {}).get("out_of_sample"):
+        return {"dev_curve": None, "reason": "This hypothesis has no out-of-sample backtest to replay."}
+    out = kalshi_dev.dev_curve_for_strategy(s["id"], s["spec"], s["market"])
+    if out is None:
+        return {"dev_curve": None, "reason": kalshi_dev.unavailable_reason()}
+    return out
 
 
 # -- deployments ---------------------------------------------------------------
@@ -936,6 +971,26 @@ def admin_system(ctx: Ctx):
     return {"now": now.isoformat() + "Z", "nodes": nodes, "events": events}
 
 
+def system_code(ctx: Ctx):
+    """System-map drill-down: component -> module -> function source + call graph.
+
+    Read-only static analysis of this repo's own source (app/ + data_pipeline/),
+    the 'show the homework' proof the pipeline is real - so, like admin_system,
+    it's open to any signed-in user. The module path is whitelisted in code_map
+    so a request can never read outside the repo."""
+    from app import code_map
+    try:
+        module = (ctx.query.get("module") or "").strip()
+        func = (ctx.query.get("func") or "").strip()
+        if func:
+            return code_map.function_detail(module, func)
+        if module:
+            return code_map.module_symbols(module)
+        return code_map.component_modules((ctx.query.get("component") or "").strip())
+    except code_map.CodeMapError as e:
+        raise ApiError(404, str(e))
+
+
 # -- routing -----------------------------------------------------------------------
 
 Route = Tuple[str, "re.Pattern[str]", Callable[[Ctx], Any], bool]
@@ -1062,6 +1117,7 @@ ROUTES: List[Route] = [
         ("GET", "/api/explore", explore_list, True),
         ("GET", "/api/explore/hot", explore_hot, True),
         ("GET", "/api/explore/market", explore_market, True),
+        ("GET", "/api/models", models, True),
         ("GET", "/api/runs", list_runs, True),
         ("POST", "/api/runs", create_run, True),
         ("GET", r"/api/runs/(\d+)", get_run, True),
@@ -1092,11 +1148,13 @@ ROUTES: List[Route] = [
         ("POST", "/api/billing/remove-card", billing_remove_card, True),
         ("GET", "/api/admin", admin_overview, True),
         ("GET", "/api/admin/system", admin_system, True),
+        ("GET", "/api/system/code", system_code, True),
         ("POST", "/api/admin/grant", admin_grant, True),
         ("GET", "/api/funds", funds, True),
         ("POST", "/api/funds/paper", paper_transfer, True),
         ("POST", "/api/kalshi-key", save_kalshi_key, True),
         ("POST", "/api/kalshi-key/delete", delete_kalshi_key, True),
+        ("GET", r"/api/strategies/(\d+)/dev-curve", strategy_dev_curve, True),
     ]
 ]
 
