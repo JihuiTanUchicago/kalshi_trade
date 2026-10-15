@@ -34,6 +34,8 @@ strategies and their model parameters.
 - **[Done]** Deploy tab: pick strategies, monitor live; agent chat on the side.
     - **[Done]** Autopilot (dangerously-skip-permission) adjusts/deploys on paper, thoughts in chat.
 - **[Done]** Funds tab to deposit/withdraw (paper now; live via user's own Kalshi key).
+- Need company domain and emails for startup credits offer
+- API/CLI usage of Tau
 
 ## How do we charge customers? (v0.2)
 - **[Done]** OpenRouter-style credits: $100 free, per-token billing, 5.5% top-up fee, Stripe.
@@ -43,9 +45,10 @@ strategies and their model parameters.
 
 ## THOUGHTS
 ### Must-have Features
-- Our simulations do not consider the fact that Kalshi has a dev environment for testing
-    - Maybe we should use that for an enhanced dev testing environment
-    - TODO: strategy curve shows 2 lines — our standard sim + Kalshi-dev out-of-sample execution.
+- **[Done]** Our simulations do not consider the fact that Kalshi has a dev environment for testing
+    - Strategy curve shows 2 lines — our standard sim + Kalshi-dev out-of-sample execution
+      (code shipped; set `KALSHI_DEV_API_BASE` on the box to draw the real-dev line).
+- **[Done]** Let users choose the model (Claude / Nova / Llama) their research runs on, billed at each model's exact price.
 - **[Done]** Adapted OpenRouter's revenue model (credits + per-token billing + top-up fee).
 - No major data vendor for prediction markets yet. We can be the databento for prediction market
 
