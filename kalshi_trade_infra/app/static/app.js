@@ -114,9 +114,14 @@
   };
   const clock = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
+  // Compact count for tight spaces (system-map node metrics): 1.1M, 352k, 940.
+  const compact = (n) => (n == null ? '—' : n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : n >= 1e4 ? Math.round(n / 1e3) + 'k' : num(n));
   const age = (sec) => (sec == null ? 'never' : sec < 90 ? sec + 's' : sec < 5400 ? Math.round(sec / 60) + 'm' : sec < 172800 ? Math.round(sec / 3600) + 'h' : Math.round(sec / 86400) + 'd');
   const marketLabel = (k) => ((S.me && S.me.markets.find((m) => m.key === k)) || { label: k }).label;
-  const marketShort = (k) => (!k ? 'Agent’s choice' : k === 'btc15m' ? 'BTC 15-min' : k === 'btc_daily' ? 'BTC 5pm' : k);
+  // Short, consistent chip labels for every market; unknown keys fall back to the
+  // server's full label, never the raw key (keeps the market chips uniform).
+  const MKT_SHORT = { btc15m: 'BTC 15-min', btc_daily: 'BTC 5pm', eth15m: 'ETH 15-min', eth_daily: 'ETH 5pm', sol_daily: 'SOL 5pm', xrp_daily: 'XRP 5pm' };
+  const marketShort = (k) => (!k ? 'Agent’s choice' : MKT_SHORT[k] || marketLabel(k));
   const dirLabel = (k) => { if (!k) return 'Session'; const d = S.me && S.me.directions.find((x) => x.key === k); return d ? d.label : String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()); };
   const sessionTitle = (r) => (r.prompt && r.prompt.trim()) ? r.prompt.trim() : (dirLabel(r.direction) + ' \u00b7 ' + marketShort(r.market));
 
@@ -1873,7 +1878,7 @@
         if (id === 'kalshi' && L.markets) return `${num(L.markets)} markets · ${L.series} series`;
         return 'connected';
       }
-      if (id === 'db') return `${num(L.size_mb)} MB · ${num(L.rows)} market rows`;
+      if (id === 'db') return `${L.size_mb >= 1024 ? (L.size_mb / 1024).toFixed(0) + ' GB' : num(L.size_mb) + ' MB'} · ${compact(L.rows)} rows`;
       if (id === 'web') return L.users != null ? `${num(L.users)} users · serving` : 'online · serving';
       if (id === 'agents') return `${L.running} running · ${L.queued} queued · ${num(L.done)} done`;
       if (id === 'backtest') return `${num(L.strategies)} strategies tested`;
