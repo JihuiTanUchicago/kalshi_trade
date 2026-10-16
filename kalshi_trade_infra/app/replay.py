@@ -9,20 +9,33 @@ online policy evaluation into cheap offline reading.
 
 A replay reveals recorded nodes in order as the policy sizes each round
 (`next_batch`), lets the policy pick finalists, and scores the trajectory with
-the Dream-RSI objective
+the objective
 
-    V = best_quality  -  b1 * generations  +  b2 * parallelism
+    V = best_quality  -  b1 * generations  -  b3 * finalists
 
 where best_quality is the best out-of-sample P&L among finalists the policy
 selected that were *actually tested* in the record (we can only credit outcomes
-we have), generations is how many nodes it revealed (cost), and parallelism is
-the average batch width (rewards batching useful work over sequential nibbling).
+we have), generations is how many nodes it revealed (compute cost), and finalists
+is how many hypotheses it sent to the unseen-data gate — a multiple-testing
+penalty, because every extra out-of-sample test is another chance to crown a
+fluke (the research brief's "the best of fifty is weaker evidence than the only
+one"). Both penalties reward things the replay can actually measure the
+consequences of; a batch-width *bonus* was removed because the recorded outcomes
+do not depend on batch size, so rewarding wide batches only invited gaming.
+
+Crucially, a single pass scores one FIXED node order, and the order of a past run
+does not recur: a policy that "stops early" scores well only when that recording
+happened to surface the winner early, which will not generalize to the user's
+NEXT run. So the dreaming loop scores policies with `replay_generalization`, the
+mean V over many shuffled orderings — which rewards policies robust to *where*
+the winner lands, not ones that memorized this recording.
 
 This module is pure and side-effect-free: it reads a tree of `Node`s and an
 `ExplorationPolicy`, and never touches the LLM, backtester, DB, or network.
 """
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from typing import List
 
@@ -30,11 +43,12 @@ from app import backtest
 from app import repository as repo
 from app.exploration import ExplorationPolicy, PolicyState
 
-# Objective coefficients. Tunable; defaults keep cost/parallelism small relative
-# to a dollar of out-of-sample P&L so that *finding a better strategy* dominates,
-# with ties broken toward fewer generations and more batching.
-DEFAULT_COST = 0.10          # b1: penalty per hypothesis generated
-DEFAULT_PARALLELISM = 0.10   # b2: bonus per unit of average batch width
+# Objective coefficients. Tunable; defaults keep both penalties small relative to
+# a dollar of out-of-sample P&L so that *finding a better strategy* dominates,
+# with ties broken toward fewer generations and fewer out-of-sample tests.
+DEFAULT_COST = 0.10          # b1: penalty per hypothesis generated (compute)
+DEFAULT_FINALIST_PENALTY = 0.10   # b3: penalty per finalist gated (multiple-testing discipline)
+GENERALIZATION_TRIALS = 32   # orderings averaged when scoring a policy for generalization
 
 
 @dataclass(frozen=True)
@@ -52,8 +66,9 @@ class ReplayResult:
     value: float            # V — the objective
     generations: int        # hypotheses revealed (cost)
     rounds: int             # exploration rounds taken
-    parallelism: float      # average batch width
+    parallelism: float      # average batch width (reported for insight; not in V)
     best_quality: float     # best OOS P&L among selected, tested finalists
+    finalists: int          # hypotheses sent to the unseen-data gate (multiple-testing cost)
     passed: int             # selected finalists that passed
 
 
@@ -71,20 +86,25 @@ def build_tree(cur, user_id: int, market: str, limit: int = 500) -> List[Node]:
 
 
 def replay(policy: ExplorationPolicy, tree: List[Node], budget: int,
-           b1: float = DEFAULT_COST, b2: float = DEFAULT_PARALLELISM) -> ReplayResult:
-    """Replay `policy` over the recorded `tree` and score its trajectory.
+           b1: float = DEFAULT_COST, b3: float = DEFAULT_FINALIST_PENALTY) -> ReplayResult:
+    """Replay `policy` over the recorded `tree` (one fixed order) and score it.
 
     The policy sizes each round; the replay reveals that many recorded nodes in
     order (a policy cannot generate outcomes beyond what was recorded — revealing
     stops when the tree is exhausted). The policy then selects finalists from the
-    revealed nodes, and we tally the Dream-RSI objective. No LLM/backtest runs."""
+    revealed nodes, and we tally the objective. No LLM/backtest runs.
+
+    This is a single ordering; `replay_generalization` averages it over many
+    orderings, which is what the dreaming loop scores on (see module docstring).
+    `next_batch` is given only {proposed, budget, round} — the same state the live
+    harness provides (`agent._explore_and_gate`), so a scored policy behaves in a
+    real run exactly as it was scored (no train/serve skew)."""
     revealed: List[Node] = []
     batch_sizes: List[int] = []
     round_no = 0
     while True:
         round_no += 1
-        state = PolicyState(proposed=len(revealed), budget=budget, round=round_no,
-                            history=tuple({"score": n.score, "in_sample": n.in_sample} for n in revealed))
+        state = PolicyState(proposed=len(revealed), budget=budget, round=round_no)
         want = policy.next_batch(state).width
         if want <= 0:
             break                                   # policy stopped
@@ -102,9 +122,35 @@ def replay(policy: ExplorationPolicy, tree: List[Node], budget: int,
     best_quality = max((n.oos_pnl for n in tested_finalists), default=0.0)
     generations = len(revealed)
     parallelism = (sum(batch_sizes) / len(batch_sizes)) if batch_sizes else 0.0
-    value = best_quality - b1 * generations + b2 * parallelism
+    value = best_quality - b1 * generations - b3 * len(finalists)
     return ReplayResult(
         value=value, generations=generations, rounds=len(batch_sizes),
         parallelism=parallelism, best_quality=best_quality,
-        passed=sum(1 for n in finalists if n.passed),
+        finalists=len(finalists), passed=sum(1 for n in finalists if n.passed),
     )
+
+
+def replay_generalization(policy: ExplorationPolicy, tree: List[Node], budget: int,
+                          trials: int = GENERALIZATION_TRIALS, seed: int = 0,
+                          b1: float = DEFAULT_COST,
+                          b3: float = DEFAULT_FINALIST_PENALTY) -> float:
+    """Mean V of `policy` over `trials` orderings of `tree` (the recorded order
+    plus seeded shuffles). The recorded order of a past run will not recur, so a
+    policy that only exploits *that* order (e.g. stopping early because this
+    recording's winner happened to appear early) scores well on a single replay
+    but poorly here — its best_quality collapses on the orderings where the winner
+    lands late. Averaging therefore rewards policies robust to where the winner
+    falls, i.e. ones that improve the user's FUTURE research, not just the replay
+    number. Deterministic given `seed`."""
+    rnd = random.Random(seed)
+    total = 0.0
+    for i in range(max(1, trials)):
+        order = tree if i == 0 else _shuffled(tree, rnd)
+        total += replay(policy, order, budget, b1=b1, b3=b3).value
+    return total / max(1, trials)
+
+
+def _shuffled(tree: List[Node], rnd: random.Random) -> List[Node]:
+    out = list(tree)
+    rnd.shuffle(out)
+    return out

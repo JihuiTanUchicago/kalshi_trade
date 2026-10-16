@@ -17,7 +17,7 @@ is a refactor with no behavior change.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 # The fixed knobs the pipeline has always used; now owned by the default policy.
 BATCH = 4          # hypotheses proposed per round (small, so each round learns from the last)
@@ -31,7 +31,6 @@ class PolicyState:
     proposed: int                    # hypotheses proposed so far in the current chunk
     budget: int                      # max hypotheses for this chunk
     round: int                       # 1-based round index within the chunk
-    history: Tuple[Dict, ...] = ()   # prior hypotheses this run (title + metrics), for future policies
 
 
 @dataclass(frozen=True)

@@ -23,7 +23,7 @@ from app.exploration import DefaultPolicy
 from app.llm import Usage, ask_json
 
 MIN_TREE = 12          # need some history before evolving is meaningful
-N_CANDIDATES = 3       # revised policies to dream up per round
+N_CANDIDATES = 5       # revised policies to dream up per round (cheap; more shots, better hit rate)
 _EPS = 1e-6
 
 # The policy the agent starts from / improves on, shown to it verbatim.
@@ -50,15 +50,29 @@ DREAM_SYSTEM = (
     "else — no imports, no I/O, no dunder (__...__) names or attributes, only basic builtins "
     "(min, max, sorted, sum, len, range, list, dict, abs, round, enumerate, zip, any, all).\n"
     "  next_batch(state) -> int: how many NEW hypotheses to propose this round (0 = stop). "
-    "state has keys: proposed (int, how many proposed so far this run), budget (int, max this run), "
-    "round (int, 1-based).\n"
+    "state has keys: proposed (int, proposed so far this run), budget (int, max this run), "
+    "round (int, 1-based). That is ALL next_batch can see — it CANNOT see any hypothesis's score "
+    "or outcome, so it cannot know whether a good strategy has appeared yet.\n"
     "  select_finalists(candidates, state) -> list: the subset of this run's candidates to test on "
-    "UNSEEN data (keep it small — testing everything out-of-sample manufactures false edges). Each "
-    "candidate is a dict with keys score (float, in-sample rank) and in_sample ({pnl, trades}). Return "
-    "a sublist of `candidates` (the same dict objects).\n"
-    "You are scored by replaying your policy over the user's recorded history with the objective "
-    "V = best_unseen_pnl - 0.1*hypotheses_generated + 0.1*avg_batch_width: reach the best strategies "
-    "with FEWER generations and sensible batching. Return improved, correct, safe policies."
+    "UNSEEN data. Each candidate is a dict with keys score (float, in-sample rank, higher=better) "
+    "and in_sample ({pnl, trades}). Return a sublist of `candidates` (the same dict objects).\n"
+    "\nHOW YOU ARE SCORED. We replay your policy over the user's recorded history MANY times, each "
+    "time in a DIFFERENT random order, and AVERAGE the objective\n"
+    "  V = best_unseen_pnl - 0.1*hypotheses_generated - 0.1*finalists_tested.\n"
+    "best_unseen_pnl is the best out-of-sample P&L among the finalists you selected that were "
+    "actually gated. Two consequences you MUST reason from:\n"
+    "  1. STOPPING EARLY DOES NOT HELP. Because the order is reshuffled every time, a strong strategy "
+    "is equally likely to appear last as first, and next_batch is blind to outcomes. Cutting "
+    "generations short mostly throws away the winner (a few dollars of compute saved against hundreds "
+    "or thousands of lost P&L). Reveal the budget; do not gamble on winners being early.\n"
+    "  2. THE REAL LEVER IS select_finalists — PRECISION vs RECALL. Select too few and you miss the "
+    "out-of-sample winner (zero credit). Select too many and you pay 0.1 each AND, in real research, "
+    "you manufacture false edges (the best of fifty tests is weak evidence). The default ranks by "
+    "in-sample score and tests the top ~8; that MISSES winners when in-sample rank predicts "
+    "out-of-sample poorly. Improve WHICH candidates earn a test: condition on in_sample pnl and "
+    "trades (e.g. require enough trades for the P&L to be trustworthy, prefer sturdier edges), widen "
+    "or tighten the set thoughtfully — catch the real winner with as FEW finalists as possible.\n"
+    "Return improved, correct, safe policies."
 )
 
 
@@ -72,13 +86,20 @@ def _check(reply: Dict) -> List[str]:
     return out
 
 
-def _tree_summary(tree: List[replay.Node], base: replay.ReplayResult) -> str:
+def _tree_summary(tree: List[replay.Node], base: replay.ReplayResult, base_v: float) -> str:
     tested = sum(1 for n in tree if n.tested)
     passed = sum(1 for n in tree if n.passed)
     best = max((n.oos_pnl for n in tree if n.tested), default=0.0)
-    return ("History: %d hypotheses recorded, %d gated on unseen data, %d passed; best unseen P&L $%.2f. "
-            "Your current policy replays to V=%.3f using %d generations (avg batch %.1f over %d rounds)."
-            % (len(tree), tested, passed, best, base.value, base.generations, base.parallelism, base.rounds))
+    # The selection gap: did the current policy's finalists actually catch the best
+    # out-of-sample strategy this history holds? If not, better selection is the win.
+    gap = ("It CAUGHT that best strategy (best achievable)."
+           if base.best_quality >= best - 1e-6 else
+           "It MISSED it — its finalists' best unseen P&L is only $%.2f, so a better "
+           "selection rule is the clear improvement." % base.best_quality)
+    return ("History: %d hypotheses recorded, %d gated on unseen data, %d passed; the best unseen P&L "
+            "anywhere in this history is $%.2f. Your current policy selects %d finalists and scores "
+            "mean V=%.3f across orderings (one ordering: %d generations over %d rounds). %s"
+            % (len(tree), tested, passed, best, base.finalists, base_v, base.generations, base.rounds, gap))
 
 
 def evolve_policy(conn, user_id: int, market: str, model: Callable, usage: Usage,
@@ -94,12 +115,13 @@ def evolve_policy(conn, user_id: int, market: str, model: Callable, usage: Usage
     row = repo.get_policy(cur, user_id)
     current_code = row["code"] if row else DEFAULT_POLICY_SRC
     current = sandbox.safe_policy(current_code)  # safe: falls back to default if somehow invalid
-    base = replay.replay(current, tree, budget)
-    best_code, best_v = (row["code"] if row else None), base.value
+    base = replay.replay(current, tree, budget)          # one ordering, for the human-readable summary
+    base_v = replay.replay_generalization(current, tree, budget)  # the score we actually gate on
+    best_code, best_v = (row["code"] if row else None), base_v
 
     prompt = ("Current exploration policy:\n```python\n%s\n```\n%s\n\nPropose %d improved policies that "
-              "score higher on replay. Reply JSON: {\"policies\": [\"<full python>\", ...]}."
-              % (current_code, _tree_summary(tree, base), n))
+              "score higher. Reply JSON: {\"policies\": [\"<full python>\", ...]}."
+              % (current_code, _tree_summary(tree, base, base_v), n))
     try:
         candidates = ask_json(model, DREAM_SYSTEM, [{"role": "user", "content": prompt}], _check, usage)
     except Exception as e:
@@ -112,24 +134,31 @@ def evolve_policy(conn, user_id: int, market: str, model: Callable, usage: Usage
         except sandbox.PolicyError:
             continue
         try:
-            r = replay.replay(cand, tree, budget)
+            # A research policy must actually research: propose hypotheses AND gate some.
+            # Without this, the penalties make a do-nothing policy (V=0) look like an
+            # "improvement" over a current one whose selected finalists lose money
+            # out-of-sample (V<0) — adopting it would halt the user's research.
+            probe = replay.replay(cand, tree, budget)
+            if probe.generations <= 0 or probe.finalists <= 0:
+                continue
+            v = replay.replay_generalization(cand, tree, budget)
         except Exception:
             continue
-        if r.value > best_v + _EPS:
-            best_code, best_v = code, r.value
+        if v > best_v + _EPS:
+            best_code, best_v = code, v
 
     improved = best_code is not None and best_code != (row["code"] if row else None)
     if improved:
         repo.set_policy(cur, user_id, best_code, best_v)
         log("step", "Research policy evolved: dreamed over %d hypotheses, tried %d candidate policies, "
-                    "replay score %.3f → %.3f. Future runs explore smarter."
-            % (len(tree), len(candidates), base.value, best_v))
+                    "generalization score %.3f → %.3f. Future runs explore smarter."
+            % (len(tree), len(candidates), base_v, best_v))
     else:
         # Always leave a trace so the self-improvement loop is observable, even when the
         # strong default/current policy already wins (monotonic: we only adopt a better one).
-        log("step", "Dreaming: tested %d candidate policies over %d hypotheses; best replay score %.3f "
-                    "vs current %.3f — kept your current policy (none beat it yet)."
-            % (len(candidates), len(tree), best_v, base.value))
+        log("step", "Dreaming: tested %d candidate policies over %d hypotheses; best generalization score "
+                    "%.3f vs current %.3f — kept your current policy (none beat it yet)."
+            % (len(candidates), len(tree), best_v, base_v))
     return improved
 
 

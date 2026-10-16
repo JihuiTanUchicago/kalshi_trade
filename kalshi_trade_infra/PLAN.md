@@ -1343,3 +1343,93 @@ current logic; discovery-tree schema: parent_id + per-user linkage; no behavior 
 P2 replay simulator + objective (read-only, tested) -> P3 sandbox (restricted subprocess +
 AST validation + resource limits + loader/fallback) -> P4 dreaming loop (policy-dev agent +
 per-user policy storage + deploy-best; billed as research).
+
+## Tau-RSI: fixing "0 policies evolved" — GENERALIZATION OBJECTIVE (2026-10-15)
+**Symptom:** 0 policies evolved across 6 users / 3 runs despite apparent headroom.
+
+**Root-cause diagnosis (evidence from real trees users 7/1/2, market btc15m, pulled via SSM):**
+1. **The old objective rewarded OVERFITTING the recorded node order, not better research.**
+   A single fixed-order replay with a `-b1*generations` term made "stop early" look great
+   *only when that recording's winner happened to appear early* — which does not recur next run.
+   Proof: a stop-just-after-the-winner policy beats the default on the fixed order for every
+   user (user 2: V 194.2->224.6) but **collapses** when V is averaged over shuffled orders
+   (user 2: mean 194.2 -> -40.8; user 7 winner is actually at idx **462/500**, so stopping early
+   there throws the winner away). The paper's premise ("winner appears early") is empirically
+   false on our trees.
+2. **The policy's only real lever is finalist SELECTION, not batch width / stopping.** With OOS
+   P&L in the hundreds–thousands and b1=0.1, reaching the winner dwarfs any compute saving, so
+   the generalization-optimal `next_batch` is just "reveal the budget" — stopping is a dead lever.
+   The live winner for user 1 was a *selection* fix: the default ranks by in-sample score and
+   tests the top ~8, which **MISSES** user 1's real OOS winner (+$282, idx 15) and instead gates
+   money-losers (default mean V = **-71**). Testing every profitable/sturdy candidate catches it
+   (mean V **+232**), order-invariant.
+3. **The old objective had no multiple-testing penalty and an ungrounded parallelism bonus.**
+   "Select everything" maximized best_quality for free (manufacturing false edges — the exact
+   thing research_brief.md warns against); the `+b2*parallelism` term rewarded wide batches whose
+   effect the replay cannot even measure (recorded outcomes don't depend on batch size) = a free
+   gaming vector.
+4. **Why the LLM found nothing:** the prompt exposed only {proposed,budget,round} and told the LLM
+   stopping/batching was the lever, so it kept proposing early-stops that backfire on real trees,
+   while the one reliable win (looser selection) was explicitly discouraged ("keep it small").
+   Real Sonnet-4.5 run (old prompt): user 7 = 0/3 beat base, user 1 = 1/3 (and that one games the
+   missing penalty). Non-deterministic + N_CANDIDATES=3 = ~0 adoptions.
+
+**Fix (minimal, preserves pure-function + sandbox invariants):**
+- `replay.replay_generalization(policy, tree, budget)` = **mean V over 32 orderings** (recorded +
+  seeded shuffles). This is what `dreaming` scores base and candidates on. Order-overfitting is
+  now self-defeating; the default (reveals all -> order-invariant) is the robust baseline.
+- New objective `V = best_quality - 0.1*generations - 0.1*finalists`: dropped the parallelism
+  bonus (ungrounded/gameable), added a **multiple-testing penalty** per gated finalist (grounds
+  the brief's "best of fifty is weak evidence"), so selection is a real precision/recall tradeoff
+  and "select all" can't game it.
+- `next_batch` now sees only {proposed,budget,round} in replay too (was fed `history` the live
+  harness never provides) — removed train/serve skew; dropped the vestigial `PolicyState.history`.
+- `DREAM_SYSTEM`/prompt rewritten: tells the LLM it's scored on the AVERAGE over reshuffled orders
+  (stopping early can't help), names **selection** as the lever (catch the OOS winner with as FEW
+  finalists as possible), and surfaces the selection-gap signal (did the current policy catch the
+  best strategy the history holds?). N_CANDIDATES 3->5.
+- Guard: a candidate must actually explore+gate (`generations>0 and finalists>0`), so the new
+  penalties can't make a do-nothing policy (V=0) "beat" a default that selects OOS losers (V<0).
+
+**Signal flow (dreaming loop, after fix):**
+```
+recorded discovery tree (app_strategies, per user+market)
+        │  build_tree()
+        ▼
+  ┌───────────────────────────── evolve_policy ─────────────────────────────┐
+  │ current policy ──► replay_generalization (mean V over 32 shuffled orders)│  = base_v
+  │                                                                          │
+  │ policy-dev LLM (DREAM_SYSTEM + tree summary + selection-gap signal)      │
+  │        │ N_CANDIDATES=5 pure-Python policies                            │
+  │        ▼                                                                 │
+  │   sandbox.load_policy (AST gate + restricted builtins + timeout)         │
+  │        │ for each safe candidate                                         │
+  │        ▼                                                                 │
+  │   explore+gate guard ──► replay_generalization  ─► v                     │
+  │                                                                          │
+  │   keep best v (> base_v + eps)   ── monotonic: current always competes   │
+  └──────────────────────────────────────────────────────────────────────────┘
+        │  set_policy() only if a candidate genuinely generalizes
+        ▼
+  next run uses the evolved policy (agent.run_research -> current_policy)
+```
+
+**Before/after (real trees; default -> best adopted, generalization mean V):**
+| user | default V | overfit stop-early (old would chase) | evolved (selection) | outcome |
+|------|-----------|--------------------------------------|---------------------|---------|
+| 7 (winner idx 462) | 4092.79 | fixed 4096.4 but **gen 4035.7 (rejected)** | 4093.3 (finalists 8->3, same winner) | tiny real win; overfit refused |
+| 1 (winner idx 15)  | **-71.24** (gates OOS losers) | — | **+231.92** (catches the +$282 winner) | big real win, order-invariant |
+| 2 (winner idx 13)  | 193.00 | fixed 224.6 but **gen -40.8 (rejected)** | none > default | default kept (already optimal); overfit refused |
+
+Real Sonnet-4.5 with the new prompt: user 1 = **3/5 candidates reach +231.9** (all via selection,
+no early-stop attempts); user 7 = 2/5 find the small tighter-selection win; overfit rejected. The
+loop now improves real research where headroom exists and honestly adopts nothing where it doesn't.
+
+**Deliberately NOT done (ponytail):**
+- *Evolving proposal/directional guidance* (the biggest lever on research quality): the replay
+  simulator replays FIXED recorded proposals — it cannot score what *different* guidance would
+  propose, so making guidance evolvable would be optimizing a knob the simulator can't evaluate.
+  Needs a different evaluator (e.g. held-out live runs), out of scope for a replay-validated loop.
+- *Throttle*: dreaming is ~1k in / ~1.3k out tokens (~$0.02) per eligible run and is monotonic
+  (never harmful), so a throttle is low-value. If wanted: persist the tree size at last dream and
+  skip when it hasn't grown by N new gated nodes (needs a schema column; deferred).

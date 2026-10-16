@@ -30,11 +30,7 @@ if anyone shares a strategy. A strategy shared to you will have a small flag/UI 
 this strategy is shared by the sender. Use /impeccable /ponytail skills to guide this feature. You
 can deploy shared strategy just like yours. Shared strategy is not revocable.
 
-- Support markdown format in community posts/comments.
-- Add more meme-related emojis. Like goat, etc.
-- Add some spaces/paddings between the "make a post" box and the "All Posts"/"My Posts" filter. Or even better, can we
-put the "make a post" box (where you write something and post fixed on the bottom of the page so that community posts
-can render more UI-friendly. Right now the comment box is on top of the most recent post which might not be ideal.
+- Move the "make a post" composer to a fixed bar at the bottom of the community page (right now it sits on top of the most recent post). /impeccable — bigger layout change still open; spacing already added.
 - As comment section grows longer, consider scalability. We should add search bar, useful filters, and 
 - All-markets collector + cross-contract — BUILDING. Phase 1 catalog shipped. Ingestion split onto a dedicated collector box (`i-0bd0683cc7e86243d`) + S3 data-lake. Next: per-minute S3/Parquet snapshots (Phase 2), backtest-over-any-series (3), cross-contract (4).
 - Track unrealized (mark-to-market) P&L for deployed strategies — the Holdings panel ships cost + positions; still needs current-quote wiring for live unrealized.
@@ -42,7 +38,6 @@ can render more UI-friendly. Right now the comment box is on top of the most rec
 - Select-all / multi-select for deployment.
 - Email all users on any new community update (needs unsubscribe + rate discipline).
 - Kalshi dev-env 2nd curve needs `KALSHI_DEV_API_BASE` set on the box (one line until then).
-- Tau-RSI tuning: the dreaming loop is live but hasn't evolved a policy yet (strong default baseline). A subagent is diagnosing + improving it from first principles (does it improve real future research, or just overfit the recorded tree?).
 
 ### Blocked on you / AWS
 - Model selection: Claude 5.5 / OpenAI GPT-6.x / Grok are AWS-access-gated (agreements accepted + availability AUTHORIZED, but invoke denies even from full-admin). Request in Bedrock console → Model access (us-east-1) or AWS Sales. Prices locked: Sonnet5.5 $2/$10, Opus5.5 $4/$20, Haiku5.5 $0.1/$0.5, GPT-6.1 Sol $2.2/$10, GPT-6 Sol $2/$10, GPT-5.6 Sol $8.8/$33.
@@ -54,6 +49,9 @@ can render more UI-friendly. Right now the comment box is on top of the most rec
 
 ## Done
 ### 2026-10-15
+- **Tau-RSI dreaming now improves real research, not the recording.** Root cause of 0 policies evolving: the objective rewarded overfitting the recorded node order (stop-early only wins when that one recording's winner was early; on real trees user 7's winner is at idx 462/500), with no multiple-testing penalty, and the prompt pointed the LLM at the dead lever (batch width) instead of the real one (finalist selection). Fixes: score on `replay_generalization` (mean V over 32 shuffled orderings), `V = quality − 0.1·gen − 0.1·finalists` (drop parallelism bonus, add multiple-testing penalty), prompt rewritten around selection, guard that an adopted policy must actually explore+gate. Real Sonnet-4.5: user 1 goes from gating OOS losers (mean V −71) to catching the real +$282 winner (+232, order-invariant); overfit stop-early now rejected.
+- **Markdown in community posts/comments** — safe `mdLite` subset (bold/italic/`code`/links/line-breaks), HTML-escaped first and http(s)-only links so there's no XSS surface. Inline-code + link styling added.
+- **Meme emoji reactions** (goat/ape/whale/diamond/clown/skull/salute/moon) + spacing between the composer and the feed filter.
 - Web-box engine **watchdog** for `recursive-engine` (added a per-tick heartbeat `recursive_engine_last_tick` + `tau-watchdog.timer` on the web box; restarts a silently-stalled engine — critical with live orders on).
 - **Live/real trading ENABLED for all users** (`APP_LIVE_TRADING_ENABLED=1`), with **market-order-like entries** (cross the touch, IOC, 10c slippage tolerance; `KALSHI_*` env-tunable). Safeguards: YES-only, per-user Kalshi key, typed-LIVE confirm, risk caps + loss guard. Reversible via the flag.
 - **Tau-RSI (P1–P4) shipped + live** (Dream-RSI adapted): pure-fn `ExplorationPolicy`+`DefaultPolicy`; replay simulator + objective `V=quality−β₁·gen+β₂·parallelism`; sandbox for LLM-authored policy code; dreaming loop (per-user self-evolving policy, monotonic). `app/{exploration,replay,sandbox,dreaming}.py` + `app_policies`; dreaming attempts now logged. 195+ tests.
