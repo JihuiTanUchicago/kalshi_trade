@@ -38,7 +38,7 @@ put the "make a post" box (where you write something and post fixed on the botto
 can render more UI-friendly. Right now the comment box is on top of the most recent post which might not be ideal.
 - As comment section grows longer, consider scalability. We should add search bar, useful filters, and 
 - All-markets collector + cross-contract — BUILDING. Phase 1 catalog shipped. Ingestion split onto a dedicated collector box (`i-0bd0683cc7e86243d`) + S3 data-lake. Next: per-minute S3/Parquet snapshots (Phase 2), backtest-over-any-series (3), cross-contract (4).
-- Real/live deploy is broken — can't trade real money yet. Fix the live pipeline; **enabling the global live gate places real orders and needs explicit, separate owner sign-off.**
+- **[Done 2026-10-15]** Live/real trading ENABLED for all users (APP_LIVE_TRADING_ENABLED=1). Safeguards: YES-only, per-user Kalshi key, typed-LIVE confirm, risk caps (max_concurrent/max_notional) + loss guard. Reversible: set the flag to 0 + restart recursive-engine/web.
 - Track unrealized P&L for deployed strategies (paper/real).
 - Markets still show only a few — widen the live market universe.
 - Select-all / multi-select for deployment.
