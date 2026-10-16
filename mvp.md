@@ -56,10 +56,8 @@ can render more UI-friendly. Right now the comment box is on top of the most rec
 ### Build (queued)
 - All-markets collector + cross-contract — BUILDING. Phase 1 catalog shipped. Ingestion split onto a dedicated collector box (`i-0bd0683cc7e86243d`) + S3 data-lake. Next: per-minute S3/Parquet snapshots (Phase 2), backtest-over-any-series (3), cross-contract (4).
 - Real/live deploy is broken — can't trade real money yet. Fix the live pipeline; **enabling the global live gate places real orders and needs explicit, separate owner sign-off.**
-- Remove/undeploy a deployed strategy, and delete a strategy from inventory (no delete today).
 - Track unrealized P&L for deployed strategies (paper/real).
 - Strategy detail: show current open positions / holdings for a deployed strategy (/impeccable).
-- Hyperlink each strategy to the actual Kalshi market it trades.
 - Markets still show only a few — widen the live market universe.
 - "Tries to find it": clarify what research actually does and verify it genuinely iterates.
 - Passed strategies don't show under their research session.
@@ -80,6 +78,10 @@ can render more UI-friendly. Right now the comment box is on top of the most rec
 - Polymarket as a 2nd venue: data + API + real & simulation trading.
 
 ### Shipped 2026-10-15
+- Delete a strategy (blocked while deployed); strategy detail links to its Kalshi market.
+- Invite-only sign-in gate (waitlist approval) + admin Approve/Remove; waitlist no longer shows people who have accounts.
+- Repositioned as **RSI for Trading** (recursively self-improving, venue-agnostic) in LICENSE/NOTICE/README.
+- **Tau-RSI shipped** (P1–P4): self-evolving per-user exploration policy (Dream-RSI adapted) live in research.
 - Deploy cap 10→100; finite research-budget cap 50→1000.
 - Default $5 stake / $100 capital sim book (agent may override for dynamic sizing).
 - Community "My posts" filter.
