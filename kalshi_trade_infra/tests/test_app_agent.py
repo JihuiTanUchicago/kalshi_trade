@@ -21,6 +21,10 @@ class Store:
         monkeypatch.setattr(r, "update_run_progress", lambda *a, **k: None)
         monkeypatch.setattr(r, "set_run_market", lambda *a, **k: None)
         monkeypatch.setattr(r, "credit_balance", lambda *a, **k: 100.0)
+        # Tau-RSI: no stored policy (use the default), and no discovery history to
+        # dream over, so the self-evolution step is a clean no-op in these tests.
+        monkeypatch.setattr(r, "get_policy", lambda *a, **k: None)
+        monkeypatch.setattr(r, "strategy_records", lambda *a, **k: [])
 
     def _insert(self, cur, uid, run_id, parent, market, direction, title, thesis, spec, status, result):
         self.strategies.append({"title": title, "status": status, "result": result, "spec": spec})

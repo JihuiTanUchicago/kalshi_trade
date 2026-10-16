@@ -28,6 +28,7 @@ import os
 from typing import Callable, Dict, List, Optional, Tuple
 
 from app import backtest, billing
+from app import dreaming
 from app import exploration
 from app import models_catalog as catalog
 from app import repository as repo
@@ -346,10 +347,9 @@ def run_research(
     choice = catalog.resolve(run.get("model"))
     if model is None:
         model = lambda system, messages: claude(system, messages, choice.model_id)  # noqa: E731
-    # Tau-RSI P1: the exploration policy (how to allocate search) is now an explicit,
-    # swappable object. For now it's the default fixed behavior; later it becomes a
-    # per-user, self-evolving policy. No behavior change yet.
-    policy = exploration.DefaultPolicy()
+    # Tau-RSI: use the user's self-evolved exploration policy (sandboxed), or the
+    # default if they have none yet. A new run then dreams up a better one (below).
+    policy = dreaming.current_policy(cur, user_id)
 
     def log(kind: str, message: str, data: Optional[Dict] = None) -> None:
         repo.add_event(cur, run_id, kind, message, data)
@@ -410,6 +410,19 @@ def run_research(
                 break
             log("step", "Still running - %d tested so far, %d passed. Exploring more (stop anytime)."
                 % (len(tried), total_passed))
+
+        # Dreaming: learn a better exploration policy from the user's accumulated
+        # history, validated on the replay simulator (no new backtests). Bill its
+        # tokens; never let a dreaming hiccup fail the run.
+        try:
+            if dreaming.evolve_policy(conn, user_id, market, model, usage, log):
+                tot_in += usage.input_tokens
+                tot_out += usage.output_tokens
+                _bill(conn, user_id, usage, run_id, choice.model_id)
+                usage.input_tokens = usage.output_tokens = 0
+                conn.commit()
+        except Exception as e:  # dreaming is best-effort; the run still succeeds
+            log("step", "Policy-evolution step skipped (%s)." % e)
 
         log("done", "%d of %d hypotheses passed every gate." % (total_passed, len(tried)),
             {"passed": total_passed, "tried": len(tried)})

@@ -315,6 +315,16 @@ DDL = [
       INDEX idx_prop_user (user_id, status)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
+    # Tau-RSI P4: each user's current (self-evolved) exploration policy code, with
+    # the replay score it earned. One row per user; absent = the DefaultPolicy.
+    """
+    CREATE TABLE IF NOT EXISTS app_policies (
+      user_id BIGINT PRIMARY KEY,
+      code MEDIUMTEXT NOT NULL,
+      score DOUBLE NOT NULL,
+      updated_at DATETIME NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
 ]
 
 
