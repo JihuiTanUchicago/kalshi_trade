@@ -42,7 +42,7 @@ RANGES: Dict[str, Tuple[float, float]] = {
     "exit.stop_loss": (0.01, 0.99),
     "exit.min_edge_to_hold": (-0.5, 0.5),
     "sizing.stake": (1.0, 500.0),
-    "sizing.max_positions": (1, 10),
+    "sizing.max_positions": (1, 50),
 }
 CHOICES: Dict[str, Tuple] = {
     "side": ("yes", "no", "either"),
@@ -65,7 +65,10 @@ DEFAULT_SPEC: Dict[str, Any] = {
         "filters": [],
     },
     "exit": {"take_profit": None, "stop_loss": None, "min_edge_to_hold": None},
-    "sizing": {"stake": 10.0, "max_positions": 1},
+    # Default book: $5 per trade, $100 of capital (20 positions x $5). The agent may
+    # size differently (dynamic stake / fewer or more positions) when it has a reason;
+    # absent that, every sim runs this standard $5/$100 book.
+    "sizing": {"stake": 5.0, "max_positions": 20},
 }
 
 SPEC_GUIDE = """A strategy spec is a JSON object:
@@ -90,7 +93,7 @@ SPEC_GUIDE = """A strategy spec is a JSON object:
     "stop_loss": null | 0.01..0.99,            // sell when price lost this much
     "min_edge_to_hold": null | -0.5..0.5       // sell when fair - sell price falls below this
   },
-  "sizing": {"stake": 1..500, "max_positions": 1..10}  // dollars per trade, concurrent positions
+  "sizing": {"stake": 1..500, "max_positions": 1..50}  // $/trade & concurrent positions; DEFAULT $5 x 20 = $100 book. Only change for a real sizing reason.
 }
 Features for filters: """ + "; ".join("%s = %s" % kv for kv in FEATURES.items())
 

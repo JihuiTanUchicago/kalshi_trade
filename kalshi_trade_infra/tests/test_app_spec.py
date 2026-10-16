@@ -11,7 +11,7 @@ from data_pipeline.binary_theory import theoretical_p_yes
 def test_defaults_fill_missing_fields():
     s = specmod.validate({"market": "btc_daily"})
     assert s["market"] == "btc_daily"
-    assert s["sizing"]["max_positions"] == 1
+    assert s["sizing"]["max_positions"] == 20 and s["sizing"]["stake"] == 5.0  # default $5 x 20 = $100 book
     assert s["exit"]["take_profit"] is None
 
 

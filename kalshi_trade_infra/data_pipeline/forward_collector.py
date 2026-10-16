@@ -353,6 +353,17 @@ def loop_forever() -> None:
             sleep_s = max(0.0, (tick - utc_now()).total_seconds())
             time.sleep(sleep_s)
 
+            # Heartbeat EVERY tick, before any market work. Freshness then reflects
+            # "the loop is alive," not "a 15-minute event happens to be open" - so a
+            # quiet gap between events no longer looks STALE. The richer snapshot
+            # write below refreshes state_value when there IS an active event.
+            cur.execute(
+                """INSERT INTO collector_state (state_key,state_value,updated_at_utc)
+                   VALUES ('forward_collector_last_snapshot',%s,%s)
+                   ON DUPLICATE KEY UPDATE updated_at_utc=VALUES(updated_at_utc)""",
+                (json.dumps({"heartbeat_tick": tick.isoformat()}), utc_now().replace(tzinfo=None)),
+            )
+
             try:
                 markets = fetch_active_kxbtc15m_markets()
             except Exception as e:

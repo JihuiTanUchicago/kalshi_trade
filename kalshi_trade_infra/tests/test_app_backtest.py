@@ -25,7 +25,7 @@ def _dataset(n_contracts=40, minutes=15, result="yes", ask=0.40, bid=0.38, spot_
 
 def test_buys_at_the_ask_pays_fees_and_settles_on_result():
     ds = _dataset()
-    s = specmod.validate({"side": "yes", "entry": {"min_edge": 0.1, "max_spread": 0.05}})
+    s = specmod.validate({"side": "yes", "entry": {"min_edge": 0.1, "max_spread": 0.05}, "sizing": {"stake": 10.0, "max_positions": 1}})
     trades = backtest.simulate(s, ds, ds.start_ts, ds.end_ts + 1)
     assert len(trades) == 40  # one position per contract, max_positions=1
     t = trades[0]
@@ -74,7 +74,7 @@ def test_take_profit_exits_at_the_bid_with_a_second_fee():
         for i, sn in enumerate(snaps):
             if (ts - T0) % 900 == 120:
                 snaps[i] = sn.__class__(sn.contract, ts, 0.70, 0.72, dict(sn.features, yes_bid=0.70, yes_ask=0.72))
-    s = specmod.validate({"side": "yes", "entry": {"min_edge": 0.1, "max_spread": 0.05}, "exit": {"take_profit": 0.2}})
+    s = specmod.validate({"side": "yes", "entry": {"min_edge": 0.1, "max_spread": 0.05}, "exit": {"take_profit": 0.2}, "sizing": {"stake": 10.0, "max_positions": 1}})
     t = backtest.simulate(s, ds, ds.start_ts, ds.end_ts + 1)[0]
     assert t.reason == "take_profit" and t.exit_price == 0.70
     assert t.fees > 0.42  # entry fee + exit fee
