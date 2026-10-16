@@ -1,0 +1,180 @@
+{
+  "checks": [
+    {
+      "name": "Dashboard title has no subtitle or divider",
+      "pass": true,
+      "actual": "Overview\nNEW RESEARCH"
+    },
+    {
+      "name": "Portfolio and positions lead the dashboard",
+      "pass": true,
+      "actual": null
+    },
+    {
+      "name": "Portfolio, performance and research remain visible",
+      "pass": false,
+      "actual": null,
+      "superseded_by": "Portfolio, performance and research remain visible (case-insensitive labels)"
+    },
+    {
+      "name": "Portfolio, performance and research remain visible (case-insensitive labels)",
+      "pass": true,
+      "actual": null
+    },
+    {
+      "name": "Hot Markets reserves width below the shared header",
+      "pass": true,
+      "actual": null
+    },
+    {
+      "name": "No Hot Markets toggle or document overflow",
+      "pass": true,
+      "actual": null
+    },
+    {
+      "name": "Existing main Strategies is retained",
+      "pass": true,
+      "actual": null
+    },
+    {
+      "name": "Research intro removed and model selection retained",
+      "pass": true,
+      "actual": {
+        "description": false,
+        "markets": 7,
+        "model": "Sample model",
+        "runForever": true
+      }
+    },
+    {
+      "name": "Research depth and market choices retained",
+      "pass": true,
+      "actual": null
+    },
+    {
+      "name": "Account and all three Settings sections retained",
+      "pass": true,
+      "actual": {
+        "connect": true,
+        "heading": "Settings",
+        "overflow": false,
+        "sections": [
+          "Account",
+          "Billing",
+          "System"
+        ]
+      }
+    },
+    {
+      "name": "Billing existing unavailable-state and credit ledger retained",
+      "pass": true,
+      "actual": null
+    },
+    {
+      "name": "System keeps code browser and reports read failures",
+      "pass": true,
+      "actual": null
+    },
+    {
+      "name": "Current-main System code entrypoint remains usable",
+      "pass": true,
+      "actual": null
+    },
+    {
+      "name": "Current-main Community filter retained",
+      "pass": true,
+      "actual": null
+    },
+    {
+      "name": "Original strategy library remains available",
+      "pass": true,
+      "actual": null
+    },
+    {
+      "name": "Legacy Funds deep link opens Settings Account",
+      "pass": true,
+      "actual": null
+    }
+  ],
+  "dashboard": {
+    "body": "Paper portfolio\nUSD\nPaper account value\n$1,024.80\n\n$1,017.84 cash · $6.96 open at cost\n\nToday\n+$8.20\nAll time\n+$24.80\n\n+2.5% on $1,000.00 put in\n\nOpen positions\n1\nYES 12 × 58¢\n$6.96\nSample momentum into settlement · KXBTC15M-SAMPLE-A · paper · Oct 13\n\nHistory 40s old\n\nPAPER PERFORMANCE\nCumulative closed P&L · 7 days\n$0.00\n$12.40\n$24.80\nOct 7\nOct 13\nDaily results\nRECENT RESEARCH\n4 recent sessions\nSample session: fade overpriced tails near the 5pm close\nBTC 5pm\n2 OF 4 PASSED\nOct 14\nGenerate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances\nBTC 15-min\n0 OF 1 PASSED\nOct 13\nSample session: lean into quiet momentum\nBTC 15-min\n2 OF 2 PASSED\nOct 14\nSample session: does momentum persist into settlement?\nBTC 15-min\nRESEARCHING\nOct 14\nDEPLOYED\nSparklines share one dollar scale\nStrategy\tMarket\tStatus\tRealized\tTrades\tBacktest unseen\tSince\nSample: lean into quiet momentum\n$10 a trade, up to 2 open\n\tBTC 15-min\tPAPER\t+$24.80\n\t18\n+1 open\n\t+$38.20\tOct 12\nSettled lately\nYES 10 × 54¢\n+$4.40\nSample momentum into settlement · KXBTC15M-SAMPLE-B · paper · Oct 13",
+    "border": "0px",
+    "hasSubtitle": false,
+    "header": {
+      "bottom": 109.84375,
+      "width": 1280,
+      "x": 0,
+      "y": 31
+    },
+    "heading": "Overview\nNEW RESEARCH",
+    "hotButtons": 0,
+    "main": {
+      "width": 974,
+      "x": 306,
+      "y": 109.84375
+    },
+    "nav": [
+      "Dashboard",
+      "Research",
+      "Strategies",
+      "Explore",
+      "Position",
+      "Community",
+      "Settings"
+    ],
+    "overflow": false,
+    "rail": {
+      "right": 306,
+      "width": 306,
+      "x": 0,
+      "y": 109.84375
+    },
+    "sections": [
+      {
+        "name": "overview-account-row",
+        "y": 178.0390625
+      },
+      {
+        "name": "portfolio-overview",
+        "y": 178.0390625
+      },
+      {
+        "name": "portfolio-ledger overview-open-positions",
+        "y": 178.0390625
+      },
+      {
+        "name": "sect overview-performance",
+        "y": 394.9765625
+      },
+      {
+        "name": "sect overview-research",
+        "y": 782.28125
+      },
+      {
+        "name": "sect overview-deployed",
+        "y": 1112.125
+      },
+      {
+        "name": "portfolio-ledger overview-settled",
+        "y": 1256.265625
+      }
+    ]
+  },
+  "research": {
+    "description": false,
+    "markets": 7,
+    "model": "Sample model",
+    "runForever": true
+  },
+  "account": {
+    "connect": true,
+    "heading": "Settings",
+    "overflow": false,
+    "sections": [
+      "Account",
+      "Billing",
+      "System"
+    ]
+  },
+  "environment": "Read-only synthetic preview at1280px; providers and writes disabled"
+}

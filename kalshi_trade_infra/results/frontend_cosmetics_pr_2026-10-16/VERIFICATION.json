@@ -1,0 +1,58 @@
+{
+  "timestamp": "2026-10-16T10:56:54.378385+08:00",
+  "base": "a46e1b818cdff6dce849cc588591652b7e431459",
+  "javascript_syntax": "node --check app/static/app.js: passed",
+  "python": {
+    "command": "APP_TEST_MYSQL=0 AWS_EC2_METADATA_DISABLED=true python -m pytest tests/ -q",
+    "passed": 177,
+    "skipped": 7,
+    "skip_reason": "Opt-in MySQL acceptance disabled"
+  },
+  "browser": {
+    "passed": 15,
+    "width": 1280,
+    "environment": "Read-only synthetic fixtures; no provider calls or writes",
+    "runtime_errors": 0,
+    "diagnostic": "One label-case assertion corrected for existing uppercase CSS"
+  },
+  "static_handler": {
+    "valid_settings_routes": 4,
+    "invalid_settings_routes": 2,
+    "passed": 6
+  },
+  "diff_review": {
+    "api_calls_removed": [],
+    "api_calls_added": [
+      "/api/runs"
+    ],
+    "server_diff": "Only SPA_ROUTES settings allowlist; all API/auth/billing/execution handlers identical to current main.",
+    "changed_tracked_paths": [
+      "kalshi_trade_infra/app/server.py",
+      "kalshi_trade_infra/app/static/app.css",
+      "kalshi_trade_infra/app/static/app.js",
+      "kalshi_trade_infra/tests/test_app_auth_and_api.py"
+    ],
+    "preserved_latest_features": [
+      "model picker and model submission",
+      "Kalshi demo curve third chart argument",
+      "System source browser",
+      "profile menu",
+      "Community filters and reply preservation",
+      "independent strategy pages"
+    ]
+  },
+  "diagnostics": [
+    "Git transport stalled; exact current-main objects imported and hash-verified using GitHub REST.",
+    "Three-way presentation port required explicit conflict resolution to retain new main features.",
+    "Existing preview expected excluded chat modules; isolated adapter corrected without adding them to product.",
+    "An adapter indentation error was corrected before use.",
+    "8097 browser error page prevented reuse; successful read-only verification used8098.",
+    "Main was replaced again during publication. Rebased onto a46e1b8; all cosmetic source files were unchanged upstream, and the new backend/exploration tests were rerun."
+  ],
+  "limits": [
+    "No authenticated provider/MySQL or financial acceptance; no production deployment.",
+    "Earlier unmerged session chat/artifact redesign excluded; main independent Strategies and Research remain.",
+    "No phone viewport browser run for this PR."
+  ],
+  "initial_base": "5abb216561115f287cdd1def61ae3fb6c9db46c1"
+}

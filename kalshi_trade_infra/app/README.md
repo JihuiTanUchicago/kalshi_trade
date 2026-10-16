@@ -5,6 +5,15 @@ backtest gate the agent cannot game, paper-first deployment, and a co-pilot chat
 Product truth is in `../PRODUCT.md`; the operator console (`data_pipeline/dashboard_server.py`)
 is unchanged and separate.
 
+## Frontend presentation
+
+Account, Billing and System are grouped under Settings; the legacy URLs remain.
+Dashboard shows portfolio/open positions first, followed by performance and recent
+research. Hot Markets stays below the shared header without visibility toggles.
+Repeated descriptions and the Overview divider are removed. Current Research,
+Strategies, model selection, demo curves, code browser and account controls remain.
+[Review scope and verification](../results/frontend_cosmetics_pr_2026-10-16/HANDOFF.md).
+
 ## Architecture
 
 ```mermaid

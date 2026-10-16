@@ -52,12 +52,12 @@
   // Plain-language definitions for the jargon the agent produces. Keep each to a
   // sentence or two; "plain language first, numbers second".
   const GLOSSARY = {
-    passed: ['Passed', 'Cleared every gate on data the agent never saw while searching. Only passed strategies can be deployed.'],
-    void: ['Void', 'The strategy was good enough in-sample to be tested on unseen data — but it failed at least one gate there. A real candidate that didn’t hold up.'],
-    rejected: ['Rejected', 'Cut during the in-sample search, before the unseen-data test ever ran. The agent didn’t spend an out-of-sample test on it.'],
-    unseen: ['Unseen data', 'A held-out slice of history the agent never looks at while searching, so the result can’t be curve-fit. This is the P&L that counts.'],
-    insample: ['In-sample', 'The history the agent iterates on. Strong in-sample numbers are easy to overfit, so they only shortlist a strategy — they never pass it.'],
-    gate: ['Gates', 'The pass/fail checks a strategy must clear on unseen data: it makes money, trades often enough to judge, and its wins outweigh losses after fees.'],
+    passed: ['Passed', 'Cleared every validation gate on unseen data.'],
+    void: ['Void', 'Failed at least one validation gate on unseen data.'],
+    rejected: ['Rejected', 'Not selected for testing on unseen data.'],
+    unseen: ['Unseen data', 'History held out of the agent’s search to validate its strategy.'],
+    insample: ['In-sample', 'History used to develop and shortlist strategies.'],
+    gate: ['Gates', 'Pass/fail checks on unseen profit, trade count, profit factor and drawdown.'],
   };
   // One drawn marker; a single top-layer popover serves them all (no clipping in tables).
   const glo = (key) => `<button type="button" class="info" data-glo="${key}" aria-label="What does “${GLOSSARY[key][0]}” mean?">${ICON.info}</button>`;
@@ -155,10 +155,11 @@
     [/^\/deploy$/, viewDeploy],
     [/^\/community$/, viewCommunity],
     [/^\/explore$/, viewExplore],
-    [/^\/billing$/, viewBilling],
+    [/^\/settings(?:\/(account|billing|system))?$/, viewSettings],
+    [/^\/billing$/, () => go('/settings/billing', true)],
     [/^\/admin$/, viewAdmin],
-    [/^\/system$/, viewSystem],
-    [/^\/funds$/, viewFunds],
+    [/^\/system$/, () => go('/settings/system', true)],
+    [/^\/funds$/, () => go('/settings/account', true)],
   ];
   function go(path, replace) {
     if (replace) history.replaceState(null, '', path); else history.pushState(null, '', path);
@@ -172,6 +173,12 @@
     go(a.getAttribute('href'));
   });
 
+  function fitHotPanel() {
+    const layout = root.querySelector('.app-layout');
+    if (layout) layout.style.setProperty('--hot-height', Math.max(180, innerHeight - Math.max(0, layout.getBoundingClientRect().top)) + 'px');
+  }
+  window.addEventListener('resize', fitHotPanel);
+  window.addEventListener('scroll', fitHotPanel, {passive: true});
   function clearTimers() { S.timers.forEach(clearInterval); S.timers = []; }
   function poll(fn, ms) {
     const gen = S.gen;
@@ -200,9 +207,9 @@
   let payModal = null, payCarousel = null;
   // The showcase reel on the modal's left — reuses the landing scene builders.
   const PAY_SHOW = [
-    ['strat', 'Research, not guesswork', 'Every idea is backtested on data it never saw. Only strategies that clear every gate can trade.'],
-    ['deploy', 'Deploy and watch it work', 'Paper money first, then your own Kalshi key. Every fill settles in real time.'],
-    ['agent', 'Or let it run on autopilot', 'RSI mode researches, backtests, and deploys on its own — and never touches live money without you.'],
+    ['strat', 'Research'],
+    ['deploy', 'Deploy'],
+    ['agent', 'Autopilot'],
   ];
   function closePay() {
     if (payCarousel) { clearInterval(payCarousel); payCarousel = null; }
@@ -225,7 +232,7 @@
         </aside>
         <form class="wl-inner pay-right" id="payform">
           <h2>Add a payment method</h2>
-          <p class="wl-sub">Tau meters the agent by the token. Add a card now, and we'll give you $${S.me.free_bonus} in credits — free.</p>
+          <p class="wl-sub">Research and chat use credits billed per token. Add a payment method to unlock $${S.me.free_bonus} in free credits.</p>
           <div id="pay-el" class="pay-el">${loading(120)}</div>
           <div id="pay-hint"></div>
           <div class="pay-foot">
@@ -246,12 +253,12 @@
     let sIdx = -1;
     const show = (i) => {
       sIdx = (i + PAY_SHOW.length) % PAY_SHOW.length;
-      const [key, h, p] = PAY_SHOW[sIdx];
+      const [key, h] = PAY_SHOW[sIdx];
       sceneTimers.forEach(clearTimeout); sceneTimers = [];
       stage.innerHTML = '<div class="demo-body"></div>';
       SCENE[key](stage.querySelector('.demo-body'));
       stage.classList.remove('in'); void stage.offsetWidth; stage.classList.add('in');
-      cap.innerHTML = `<h3>${h}</h3><p>${p}</p>`;
+      cap.innerHTML = `<h3>${h}</h3>`;
       dots.querySelectorAll('.pay-dot').forEach((d, j) => d.classList.toggle('on', j === sIdx));
     };
     const advance = () => show(sIdx + 1);
@@ -281,7 +288,7 @@
           try {
             // return_url is required because the config allows redirect methods; with
             // redirect:'if_required' a card never actually redirects, so we stay on-page.
-            r = await sp.confirmSetup({ elements, redirect: 'if_required', confirmParams: { return_url: location.origin + '/billing', payment_method_data: { billing_details: { address: { country: 'US' } } } } });
+            r = await sp.confirmSetup({ elements, redirect: 'if_required', confirmParams: { return_url: location.origin + '/settings/billing', payment_method_data: { billing_details: { address: { country: 'US' } } } } });
           } catch (err) { hint.innerHTML = `<p class="wl-err">${esc(err.message || 'Could not save the card.')}</p>`; return; }
           if (r.error) { hint.innerHTML = `<p class="wl-err">${esc(r.error.message)}</p>`; return; }
           try { await api('/api/billing/card-added', { payment_method_id: r.setupIntent.payment_method }); } catch (err) { hint.innerHTML = `<p class="wl-err">${esc(err.message)}</p>`; return; }
@@ -294,7 +301,7 @@
   }
 
   // ---------- shell ----------
-  const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/explore', 'Explore', 'explore'], ['/deploy', 'Deploy', 'deploy'], ['/community', 'Community', 'community'], ['/funds', 'Funds', 'funds']];
+  const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/explore', 'Explore', 'explore'], ['/deploy', 'Position', 'deploy'], ['/community', 'Community', 'community'], ['/settings', 'Settings', 'funds']];
   // The operator can flip into a plain-user view. Only their own account is an
   // admin at all (server decides); the toggle just hides the admin surface so
   // they can see what a normal user sees. Default: admin view on.
@@ -303,21 +310,22 @@
   function shell(active, board, main) {
     document.body.classList.remove('landing-body');
     const u = S.me.user;
-    const here = (NAV.concat([['/admin', 'Admin'], ['/system', 'System']]).find(([href]) => href === active) || ['', ''])[1];
-    const items = NAV.concat([['/system', 'System', 'system']]).concat(adminViewOn() ? [['/admin', 'Admin', 'admin']] : []);
-    const nav = items.map(([href, label]) => `<a class="svc-link" href="${href}" ${active === href ? 'aria-current="page"' : ''}>${label}</a>`).join('');
+    const nav = NAV.map(([href, label]) => `<a class="svc-link" href="${href}" ${active === href ? 'aria-current="page"' : ''}>${label}</a>`).join('');
     const adminToggle = isAdmin()
       ? `<button class="admin-toggle" data-action="admintoggle" role="switch" aria-checked="${adminViewOn()}" title="${adminViewOn() ? 'Admin mode on \u2014 click to view as a user' : 'Admin mode off \u2014 click to show admin'}"><span class="admin-track"><span class="admin-knob"></span></span>Admin</button><span class="sep">\u00b7</span>`
       : '';
     root.innerHTML = `
-      <header class="masthead"><div class="masthead-in">
+      <header class="masthead app-header"><div class="masthead-in">
         <p class="wordmark"><a href="/">${ICON.mark}<span>Tau</span></a></p>
-        <span class="asof">${adminToggle}<span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false">${esc(u.name || u.email)}<svg class="caret" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/billing">Billing</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
+        <nav class="services" aria-label="Sections"><div class="services-in">${nav}</div></nav>
+        <span class="asof">${adminToggle}<span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false">${esc(u.name || u.email)}<svg class="caret" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/settings/billing">Billing</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
       </div></header>
-      <nav class="services" aria-label="Sections"><div class="services-in">${nav}</div></nav>
-      <div class="wrap">
-        <div id="boardbody">${board}</div>
-        <main id="main" tabindex="-1">${main}</main>
+      <div class="app-layout">
+        <aside class="hotrail" id="hotrail" aria-label="Hot markets"></aside>
+        <div class="wrap">
+          <div id="boardbody">${board}</div>
+          <main id="main" tabindex="-1">${main}</main>
+        </div>
       </div>`;
     root.querySelectorAll('[data-action="signout"]').forEach((b) => (b.onclick = async () => { await api('/api/logout', {}).catch(() => {}); S.me = null; go('/signin'); }));
     const prof = root.querySelector('.profile');
@@ -340,6 +348,20 @@
     mountHotRail();
   }
   const boardTitle = (title, sub = '') => `<div class="board-title"><h1 class="page">${esc(title)}</h1>${sub ? `<p class="deck">${sub}</p>` : ''}</div>`;
+  const SETTINGS = [['account', 'Account'], ['billing', 'Billing'], ['system', 'System']];
+  function settingsShell(section, board, main) {
+    const nav = SETTINGS.map(([key, label]) => `<a href="/settings/${key}" ${key === section ? 'aria-current="page"' : ''}>${label}</a>`).join('');
+    shell('/settings', boardTitle('Settings') + `<nav class="settings-sections" aria-label="Settings sections">${nav}</nav>` + board, main);
+    const wrap = root.querySelector('.wrap');
+    wrap.classList.add('settings-page');
+    wrap.dataset.settingsSection = section;
+    root.querySelector('main').setAttribute('aria-label', SETTINGS.find(([key]) => key === section)[1]);
+  }
+  async function viewSettings(section = 'account') {
+    const gen = S.gen;
+    try { await ({ account: viewFunds, billing: viewBilling, system: viewSystem })[section](); }
+    catch (err) { if (gen === S.gen && err.status !== 401) settingsShell(section, '', notice(err.message, 'bad')); }
+  }
   // One measured cell. Money direction rides a tint field behind the figure
   // (opts.v), never a colour on the digits and never the reserved signal red.
   const fig = (label, value, opts = {}) =>
@@ -391,7 +413,7 @@
   // devCurve (optional): a second, realized series replayed read-only against
   // the Kalshi demo environment. Drawn dashed in the accent colour with a legend
   // so "Simulated" and "Kalshi dev" read apart. Omitting it keeps the old chart.
-  function equityChart(curve, cutoffIso, devCurve) {
+  function equityChart(curve, cutoffIso, devCurve, label = 'Cumulative profit and loss over the backtest') {
     const W = 760, H = 236, L = 52, R = 10, T = 30, B = 26;
     if (!curve || curve.length < 2) return `<div class="empty"><p>Not enough trades to draw an equity curve.</p></div>`;
     const dev = devCurve && devCurve.length > 1 ? devCurve : null;
@@ -411,7 +433,7 @@
         <line x1="0" x2="16" y1="0" y2="0" stroke="var(--ink)" stroke-width="2"/><text x="20" y="4" style="fill:var(--ink-2)">Simulated</text>
         <line x1="92" x2="108" y1="0" y2="0" stroke="var(--l-accent, #F05A28)" stroke-width="2" stroke-dasharray="5 4"/><text x="112" y="4" style="fill:var(--ink-2)">Kalshi dev (real)</text>
       </g>` : '';
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cumulative profit and loss over the backtest${dev ? ', with a realized Kalshi demo-environment curve' : ''}; ends at ${usd(vals[vals.length - 1], true)}">
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}${dev ? ', with a realized Kalshi demo-environment curve' : ''}; ends at ${usd(vals[vals.length - 1], true)}">
       ${cx ? `<rect x="${cx}" y="${T}" width="${W - R - cx}" height="${H - T - B}" fill="var(--stock-raised)"/>
               <line x1="${cx}" x2="${cx}" y1="${T}" y2="${H - B}" stroke="var(--ink-3)" stroke-dasharray="4 4"/>
               <text x="${cx + 8}" y="${T - 10}" style="fill:var(--ink-2)">UNSEEN BY THE AGENT →</text>` : ''}
@@ -758,53 +780,55 @@
   // ---------- dashboard ----------
   async function viewDashboard() {
     shell('/', loading(120), loading(320));
+    const gen = S.gen;
     const load = async () => {
-      const d = await api('/api/dashboard');
+      const [d, recent] = await Promise.all([
+        api('/api/dashboard'),
+        api('/api/runs').then(data => ({ data })).catch(error => ({ error: error.message })),
+      ]);
+      if (gen !== S.gen) return;
       const p = d.paper;
       const hasLive = d.deployments.some((x) => x.mode === 'live' && x.status !== 'stopped');
       const stale = d.freshness.btc == null || d.freshness.btc > 2700;
-      const agentsBusy = d.agents.research_running + d.agents.research_queued;
-      const running = d.deployments.filter((x) => x.status === 'running').length;
-      const paused = d.deployments.filter((x) => x.status === 'paused').length;
-      const needs = stale || paused > 0;
-      const said = [
-        hasLive ? `Live money on: ${usd(d.live.realized_pnl, true)} realized` : 'Paper money only',
-        running ? `${running} strateg${running > 1 ? 'ies' : 'y'} running` : 'Nothing deployed',
-        paused ? `<em>${paused} paused, needs you</em>` : '',
-        agentsBusy ? `${agentsBusy} agent${agentsBusy > 1 ? 's' : ''} researching` : '',
-        stale ? `<em>Backtest history stale ${age(d.freshness.btc)}</em>` : '',
-      ].filter(Boolean).join('<span class="sep">/</span>');
       const board = `
-        <div class="statusline ${needs ? 'needs' : ''}"><p class="said">${said}</p><a class="btn primary" href="/research">New research</a></div>
-        <dl class="figures measure">
-          ${fig('Paper account value', usd(p.equity), { small: `${usd(p.cash)} cash \u00b7 ${usd(p.open_at_cost)} open at cost` })}
-          ${fig('Today', usd(p.today_pnl, true), { v: p.today_pnl })}
-          ${fig('All time', usd(p.total_pnl, true), { v: p.total_pnl, small: `${pct(p.roi)} on ${usd(p.deposited)} put in` })}
-          ${fig('Open positions', d.open_positions.length, { small: stale ? '' : `history ${age(d.freshness.btc)} old` })}
-        </dl>`;
+        <div class="board-title dashboard-heading"><h1 class="page">Overview</h1>${d.deployments.length ? '<a class="btn primary" href="/research">New research</a>' : ''}</div>`;
       const reg = registry(d.deployments.map((x) => x.curve));
       const deps = d.deployments.length
         ? deploymentTable(d.deployments.map((x) => deploymentSlip(x, reg, false)).join(''), false)
-        : `<div class="empty"><h3>Nothing deployed yet</h3><p>Agents research strategies and test each one on data they never saw. The ones that pass every gate can be deployed here, on paper first.</p><a class="btn" href="/research">Dispatch your first agent</a></div>`;
+        : `<div class="empty"><h3>Nothing deployed yet</h3><a class="btn" href="/research">New research</a></div>`;
       const days = d.paper.daily.slice(-30);
       const maxAbs = Math.max(1, ...days.map((x) => Math.abs(+x.pnl)));
       const bars = days.length
-        ? `<div class="bars-wrap"><div class="bars" role="img" aria-label="Daily profit and loss, last ${days.length} days">${days.map((x) => `<span class="${+x.pnl >= 0 ? 'up' : 'down'}" style="height:${Math.max(2, (Math.abs(+x.pnl) / maxAbs) * 36)}px" title="${esc(x.d)}: ${usd(x.pnl, true)}"></span>`).join('')}</div></div>`
-        : '<p class="hint">Daily results appear once your strategies close trades.</p>';
+        ? `<svg class="daily-chart" viewBox="0 0 320 130" role="img" aria-label="Daily profit and loss, last ${days.length} days"><line x1="0" x2="320" y1="72" y2="72" stroke="var(--rule-2)"/>
+          ${days.map((x, index) => { const h = Math.abs(+x.pnl) / maxAbs * 48, step = 300 / days.length; return `<rect x="${index * step + 4}" y="${+x.pnl >= 0 ? 72 - h : 72}" width="${Math.max(1, step - 5)}" height="${Math.max(.6, h)}" fill="${+x.pnl >= 0 ? '#4B6525' : 'var(--signal)'}"><title>${esc(x.d)}: ${usd(x.pnl, true)}</title></rect>`; }).join('')}
+          <text x="320" y="68" text-anchor="end">$0</text><text x="0" y="126">${esc(days[0].d)}</text><text x="320" y="126" text-anchor="end">${esc(days[days.length - 1].d)}</text></svg>`
+        : '<p class="hint">No closed trades yet.</p>';
+      let periodPnl = 0;
+      const periodCurve = days.map(day => [Date.parse(day.d + 'T12:00:00Z') / 1000, periodPnl += +day.pnl]);
+      const performance = days.length > 1 ? equityChart(periodCurve, null, null, `Cumulative closed paper profit and loss over the last ${days.length} days`) : bars;
       const stubs = (rows, closed) => rows.length
         ? rows.map((r) => `<div class="stub"><b>${esc(r.side.toUpperCase())} ${esc(r.qty)} × ${cents(+r.entry_price)}</b>
             <span>${closed ? money(+r.pnl) : usd(r.qty * r.entry_price)}</span>
             <small>${esc(r.title)} · <span class="tick">${esc(r.ticker)}</span> · ${r.mode === 'live' ? 'LIVE' : 'paper'} · ${when(closed ? r.closed_at : r.opened_at)}</small></div>`).join('')
         : `<p class="hint">${closed ? 'No settled trades yet.' : 'No open positions.'}</p>`;
-      const main = `<div class="dash">
-          <div>
-            <section class="sect"><div class="sect-head"><h2>Deployed</h2>${d.deployments.some((x) => x.curve && x.curve.length > 1) ? '<span class="sect-note">Sparklines share one dollar scale</span>' : ''}</div>${deps}</section>
+      const sessions = recent.data?.runs.slice(0, 6) || [];
+      const research = recent.error ? `<p class="hint">${esc(recent.error)}</p>` : sessions.length ? `<div class="runs overview-sessions">${sessions.map(runRow).join('')}</div>` : '<p class="hint overview-empty">No research sessions yet.</p>';
+      const main = `<div class="dash dash-overview">
+          <div class="overview-account-row">
+            <section class="portfolio-overview"><header><h2>Paper portfolio</h2><span class="lab">USD</span></header>
+              <dl class="portfolio-value"><dt class="vh">Paper account value</dt><dd>${usd(p.equity)}</dd></dl>
+              <p class="hint">${usd(p.cash)} cash · ${usd(p.open_at_cost)} open at cost</p>
+              <dl class="portfolio-metrics"><div><dt>Today</dt><dd>${money(p.today_pnl)}</dd></div><div><dt>All time</dt><dd>${money(p.total_pnl)}</dd></div></dl>
+              <p class="hint">${pct(p.roi)} on ${usd(p.deposited)} put in</p>
+            </section>
+            <section class="portfolio-ledger overview-open-positions"><h3>Open positions <span>${d.open_positions.length}</span></h3>${stubs(d.open_positions, false)}${hasLive ? `<p class="hint">Live realized P&amp;L ${usd(d.live.realized_pnl, true)}</p>` : ''}<p class="hint freshness">${stale ? `<span class="loss">Backtest history stale ${age(d.freshness.btc)}</span>` : `History ${age(d.freshness.btc)} old`}</p></section>
           </div>
-          <aside>
-            <section class="panel"><h3>Daily P&amp;L</h3>${bars}</section>
-            <section class="panel"><h3>Open positions</h3>${stubs(d.open_positions, false)}</section>
-            <section class="panel"><h3>Settled lately</h3>${stubs(d.recent_closed, true)}</section>
-          </aside>
+          <section class="sect overview-performance"><div class="sect-head"><h2>Paper performance</h2><span class="sect-note">Cumulative closed P&amp;L · ${days.length} day${days.length === 1 ? '' : 's'}</span></div><div id="overview-performance-chart">${performance}</div>
+            ${days.length ? `<details class="daily-results"><summary>Daily results</summary><table><thead><tr><th>Date</th><th class="num">Closed P&amp;L</th></tr></thead><tbody>${days.map(day => `<tr><td>${esc(day.d)}</td><td class="num">${money(+day.pnl)}</td></tr>`).join('')}</tbody></table></details>` : ''}
+          </section>
+          <section class="sect overview-research"><div class="sect-head"><h2>Recent research</h2>${sessions.length ? `<span class="sect-note">${sessions.length} recent sessions</span>` : ''}</div>${research}</section>
+          <section class="sect overview-deployed"><div class="sect-head"><h2>Deployed</h2>${d.deployments.some((x) => x.curve && x.curve.length > 1) ? '<span class="sect-note">Sparklines share one dollar scale</span>' : ''}</div>${deps}</section>
+          <section class="portfolio-ledger overview-settled"><h3>Settled lately</h3>${stubs(d.recent_closed, true)}</section>
         </div>`;
       root.querySelector('#boardbody').innerHTML = board;
       root.querySelector('main').innerHTML = main;
@@ -819,11 +843,11 @@
     const DEMO_PROMPT = "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances";
     const mdl = await api('/api/models').catch(() => ({ models: [], default: '' }));
     const modelOpts = (mdl.models || []).map((m) => `<option value="${esc(m.key)}"${m.key === mdl.default ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
-    shell('/research', boardTitle('Research', 'Describe an idea. An agent turns it into a research session \u2014 several concrete strategies it backtests on data it never saw, and only the ones that pass can trade.') +
+    shell('/research', boardTitle('Research') +
       '<dl class="figures measure" id="rfigs" style="margin-top:14px"></dl>', `
       <form class="panel dispatch" id="dispatch">
         <h3>Start a research session</h3>
-        ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
+        ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a card to unlock $${me.free_bonus} in free credits. You won’t be charged until they run out. <a href="/settings/billing">Add a card →</a></span></div>` : ''}
         <label class="field"><span>Describe your idea</span>
           <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="Bro idk just give me a trading strategy frfr&#10;&#10;…or be specific: &quot;Sell overpriced tails in the last hour before the 5pm close.&quot;"></textarea></label>
         <div class="dispatch-tune" style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;margin-top:2px">
@@ -841,7 +865,6 @@
         </div>
         <div class="chips" aria-label="Try the demo"><button type="button" class="chip ex" data-ex="${esc(DEMO_PROMPT)}">${ICON.spark2}Try the demo \u2014 Todd's random walk</button></div>
         <div id="dflash"></div>
-        <p class="hint">A session takes a few minutes and keeps running if you leave this page.</p>
       </form>
       <section class="sect"><div class="sect-head"><h2>Your sessions</h2><p id="rcount"></p></div>
         <div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div></section>`);
@@ -854,7 +877,7 @@
     }
     form.onsubmit = async (e) => {
       e.preventDefault();
-      if (me.needs_card) { flash('#dflash', 'Add a payment method on the Billing tab first.', 'bad'); go('/billing'); return; }
+      if (me.needs_card) { flash('#dflash', 'Add a payment method in Settings → Billing.', 'bad'); go('/settings/billing'); return; }
       const fd = new FormData(form);
       const btn = form.querySelector('button[type=submit]');
       await busy(btn, async () => {
@@ -875,9 +898,9 @@
       const passed = d.runs.reduce((a, r) => a + (r.strategies_passed || 0), 0);
       root.querySelector('#rfigs').innerHTML = fig('Researching now', d.counts.research_running) + fig('Waiting', d.counts.research_queued) +
         fig('Hypotheses tested', tried) + fig('Passed every gate' + glo('gate'), passed, { small: tried ? `${pct(passed / tried, false)} pass rate` : '' });
-      root.querySelector('#rcount').textContent = d.runs.length ? `${d.runs.length} run${d.runs.length > 1 ? 's' : ''}` : '';
+      root.querySelector('#rcount').textContent = d.runs.length ? `${d.runs.length} session${d.runs.length > 1 ? 's' : ''}` : '';
       root.querySelector('#runs').innerHTML = d.runs.length ? d.runs.map(runRow).join('')
-        : `<div class="empty"><h3>No sessions yet</h3><p>Describe an idea above. The agent will turn it into several strategies, test each one on data it never saw, and mark each Passed or Void.</p></div>`;
+        : `<div class="empty"><h3>No sessions yet</h3></div>`;
     };
     await load();
     poll(load, 5000);
@@ -965,7 +988,7 @@
   async function viewStrategies() {
     const q = new URLSearchParams(location.search);
     const f = { status: q.has('status') ? q.get('status') : '', market: q.get('market') || '' };
-    shell('/strategies', boardTitle('Strategies', 'Every strategy your agents researched. Passed ones can be deployed; void ones stay here so you can see what didn’t work.') +
+    shell('/strategies', boardTitle('Strategies') +
       '<dl class="figures measure" id="sfigs" style="margin-top:14px"></dl>', `
       <div class="section-head filters">
         <div class="chips" role="group" aria-label="Status">${[['', 'All'], ['passed', 'Passed'], ['failed', 'Void'], ['rejected', 'Rejected']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}" aria-pressed="${f.status === v}">${l}</button>`).join('')}</div>
@@ -995,7 +1018,7 @@
         fig('Pass rate', total ? pct(c('passed') / total, false) : '—');
       root.querySelectorAll('[data-f="status"]').forEach((b) => { const v = b.dataset.v; b.textContent = v ? `${CLABEL[v]} (${c(v)})` : `All (${total})`; });
       if (!d.matched) {
-        slipsEl.innerHTML = `<div class="empty"><h3>Nothing here yet</h3><p>${total ? 'Try another filter.' : 'Start a research session and the strategies it finds will land here.'}</p>${total ? '' : '<a class="btn" href="/research">Go to Research</a>'}</div>`;
+        slipsEl.innerHTML = `<div class="empty"><h3>No strategies found</h3>${total ? '' : '<a class="btn" href="/research">Go to Research</a>'}</div>`;
         return;
       }
       const list = d.strategies, reg = registry(list.map((s) => s.equity));
@@ -1046,7 +1069,7 @@
             <p class="doc-mark">${mark(s.status)}</p>
             <h2>${esc(s.title)}</h2>
             <p class="thesis">${esc(s.thesis)}</p>
-            <h3 class="sheet-h">The rule, in plain words</h3>
+            <h3 class="sheet-h">Trading rules</h3>
             <ul class="rules">${s.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
             <div id="sheet-results">
               <div id="equity-wrap">${s.equity ? equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from) : ''}</div>
@@ -1151,7 +1174,7 @@
           <div class="chat-head">
             <div class="t"><h2>Agent</h2><span class="hint" id="agentstate"></span></div>
             <div class="autopilot ${u.autopilot ? 'on' : ''}" id="ap">
-              <span><b>Autopilot</b>${u.autopilot ? 'The agent adjusts and deploys paper strategies without asking. It can always pause; it never touches live money.' : 'Off. The agent proposes changes and you approve them.'}</span>
+              <span><b>Autopilot</b>${u.autopilot ? 'Automatically adjusts and deploys paper strategies; can pause trading. Live money stays manual.' : 'Off. Changes require your approval.'}</span>
               <label class="switch"><span class="vh">Autopilot</span><input type="checkbox" id="apswitch" ${u.autopilot ? 'checked' : ''}></label>
             </div>
           </div>
@@ -1171,7 +1194,7 @@
     const sw = root.querySelector('#apswitch');
     sw.onchange = async () => {
       const on = sw.checked;
-      if (on && !confirmAutopilot.armed) { sw.checked = false; confirmAutopilot.armed = true; root.querySelector('#ap span').innerHTML = '<b>Turn on autopilot?</b>Flip again to confirm. The agent will act on paper strategies without asking you first.'; setTimeout(() => (confirmAutopilot.armed = false), 6000); return; }
+      if (on && !confirmAutopilot.armed) { sw.checked = false; confirmAutopilot.armed = true; root.querySelector('#ap span').innerHTML = '<b>Turn on autopilot?</b>Switch on again to allow automatic paper adjustments and deployments.'; setTimeout(() => (confirmAutopilot.armed = false), 6000); return; }
       confirmAutopilot.armed = false;
       try { await api('/api/settings', { autopilot: on }); S.me.user.autopilot = on; } catch (e) { sw.checked = !on; alert0(e.message); }
       viewDeployRefreshAP();
@@ -1181,7 +1204,7 @@
       const ap = root.querySelector('#ap');
       const on = S.me.user.autopilot;
       ap.classList.toggle('on', on);
-      ap.querySelector('span').innerHTML = on ? '<b>Autopilot</b>The agent adjusts and deploys paper strategies without asking. It can always pause; it never touches live money.' : '<b>Autopilot</b>Off. The agent proposes changes and you approve them.';
+      ap.querySelector('span').innerHTML = on ? '<b>Autopilot</b>Automatically adjusts and deploys paper strategies; can pause trading. Live money stays manual.' : '<b>Autopilot</b>Off. Changes require your approval.';
     };
     const loadBoard = async () => {
       const d = await api('/api/deployments');
@@ -1194,7 +1217,7 @@
         fig('Money', live.length ? '<span class="mk live">Live</span>' : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : 'nothing on live money' });
       const reg = registry(d.deployments.map((x) => x.curve));
       root.querySelector('#deps').innerHTML = d.deployments.length ? deploymentTable(d.deployments.map((x) => deploymentSlip(x, reg, true)).join(''), true)
-        : `<div class="empty"><h3>Nothing deployed</h3><p>Open a passed strategy and post it to the board. Paper first: it trades the live market with paper money.</p><a class="btn" href="/strategies">See passed strategies</a></div>`;
+        : `<div class="empty"><h3>Nothing deployed</h3><a class="btn" href="/strategies">See passed strategies</a></div>`;
       bindDeploymentActions(root.querySelector('#deps'), loadBoard);
       root.querySelector('#openpos').innerHTML = d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost</th><th class="num">Settles</th></tr></thead><tbody>
         ${d.open_positions.map((p) => `<tr><td>${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : ''}</td><td class="tick">${esc(p.ticker)}</td><td>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num">${clock(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
@@ -1215,7 +1238,7 @@
       if (full) msgs.innerHTML = '';
       msgs.querySelector('.typing') && msgs.querySelector('.typing').remove();
       d.messages.forEach((m) => { lastId = Math.max(lastId, m.id); msgs.insertAdjacentHTML('beforeend', renderMsg(m)); });
-      if (!msgs.children.length) msgs.innerHTML = `<div class="msg system">Ask anything about your deployments: "How is the volatility strategy doing?" or "Make it more selective." The agent backtests every change before suggesting it.</div>`;
+      if (!msgs.children.length) msgs.innerHTML = `<div class="msg system">No messages yet.</div>`;
       if (d.agent_busy) msgs.insertAdjacentHTML('beforeend', '<div class="typing" aria-label="Agent is thinking"><i></i><i></i><i></i></div>');
       root.querySelector('#agentstate').textContent = d.agent_busy ? 'thinking…' : '';
       if (nearBottom || full) msgs.scrollTop = msgs.scrollHeight;
@@ -1249,17 +1272,18 @@
 
   // ---------- funds ----------
   async function viewFunds() {
-    shell('/funds', boardTitle('Funds') + '<dl class="figures measure" id="ffigs" style="margin-top:14px"></dl>', loading(300));
+    const gen = S.gen;
+    settingsShell('account', '<dl class="figures measure" id="ffigs"></dl>', loading(300));
     const load = async () => {
       const d = await api('/api/funds');
+      if (gen !== S.gen) return;
       const k = d.kalshi;
-      root.querySelector('#ffigs').innerHTML = fig('Paper cash', usd(d.paper.cash), { cls: 'lead', small: 'Practice money for paper trading' }) +
-        fig('Kalshi cash', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { small: k.connected ? `Key ${esc(k.key_id)}` : 'Needed only for live trading' }) +
-        fig('Money held by Tau', '$0.00', { small: 'Live funds stay in your Kalshi account' });
+      root.querySelector('#ffigs').innerHTML = fig('Paper cash', usd(d.paper.cash), { cls: 'lead' }) +
+        fig('Kalshi cash', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected');
       root.querySelector('main').innerHTML = `<div id="flash"></div><div class="funds">
         <section class="panel">
           <h3>Paper account</h3>
-          <p class="lede" style="margin-bottom:14px">Add or take out practice money. Paper strategies trade the real market with it, so results are realistic, but nothing real is at stake.</p>
+          <p class="hint" style="margin-bottom:14px">Simulated funds.</p>
           <form id="paper" class="amount">
             <label class="field"><span>Amount</span><input class="input" name="amount" type="number" min="1" max="100000" step="0.01" inputmode="decimal" required placeholder="500"></label>
             <button class="btn" data-kind="deposit" type="submit">Add</button>
@@ -1267,7 +1291,7 @@
           </form>
           <div id="pflash" style="margin-top:10px"></div>
           <h3 style="margin-top:24px">History</h3>
-          <table class="table stack"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody>
+          <table class="table settings-history"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody>
             ${d.paper.ledger.map((r) => `<tr><td class="hint lead-cell">${when(r.created_at)}</td><td>${esc(r.memo || r.kind)}</td><td class="num ${tone(+r.amount)}">${usd(r.amount, true)}</td></tr>`).join('')}
           </tbody></table>
         </section>
@@ -1275,18 +1299,17 @@
           <h3>Kalshi account (live money)</h3>
           ${k.connected ? `
             <dl class="kv"><dt>API key</dt><dd>${esc(k.key_id)}</dd><dt>Cash at Kalshi</dt><dd>${k.balance == null ? 'Couldn’t read it just now' : usd(k.balance)}</dd></dl>
-            <p class="lede" style="margin-bottom:14px">Deposits and withdrawals happen at Kalshi, in your own account. Tau only places trades for strategies you deploy live.</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <a class="btn" href="${esc(k.funding_url)}" target="_blank" rel="noopener">Deposit or withdraw at Kalshi ${ICON.ext}</a>
+              <a class="btn" href="${esc(k.funding_url)}" target="_blank" rel="noopener">Manage funds at Kalshi ${ICON.ext}</a>
               <button class="btn danger" id="disconnect">Disconnect</button>
             </div>` : `
-            <p class="lede" style="margin-bottom:12px">Live trading runs in your own Kalshi account, so we never hold your money. Connect an API key to enable it.</p>
-            <ol class="steps"><li>On Kalshi, open Account → API keys and create a key.</li><li>Copy the key ID and download the private key file.</li><li>Paste both below. We encrypt the private key and check it with Kalshi before saving.</li></ol>
+            <details class="settings-connect"><summary class="btn primary">Connect Kalshi</summary>
+            <ol class="steps"><li>In Kalshi, open Account → API keys and create a key.</li><li>Copy the key ID and download the private key.</li><li>Paste both below. The key is verified and encrypted before saving.</li></ol>
             <form id="kalshi" style="display:grid;gap:12px">
               <label class="field"><span>Key ID</span><input class="input" name="key_id" autocomplete="off" spellcheck="false" required></label>
               <label class="field"><span>Private key</span><textarea class="input" name="private_key" spellcheck="false" required placeholder="-----BEGIN RSA PRIVATE KEY-----"></textarea></label>
               <button class="btn" type="submit">Verify and connect</button>
-            </form>`}
+            </form></details>`}
           <div id="kflash" style="margin-top:10px"></div>
         </section></div>`;
       const pf = root.querySelector('#paper');
@@ -1296,19 +1319,19 @@
         e.preventDefault();
         const btn = pf.querySelector(`[data-kind="${kind}"]`);
         await busy(btn, async () => {
-          try { await api('/api/funds/paper', { kind, amount: +pf.amount.value }); await load(); flash('#pflash', kind === 'deposit' ? 'Added to your paper account.' : 'Withdrawn from your paper account.', 'good'); } catch (err) { flash('#pflash', err.message, 'bad'); }
+          try { await api('/api/funds/paper', { kind, amount: +pf.amount.value }); if (gen !== S.gen) return; await load(); if (gen === S.gen) flash('#pflash', kind === 'deposit' ? 'Added to your paper account.' : 'Withdrawn from your paper account.', 'good'); } catch (err) { if (gen === S.gen) flash('#pflash', err.message, 'bad'); }
         });
       };
       const kf = root.querySelector('#kalshi');
       if (kf) kf.onsubmit = async (e) => {
         e.preventDefault();
         await busy(kf.querySelector('button'), async () => {
-          try { await api('/api/kalshi-key', { key_id: kf.key_id.value, private_key: kf.private_key.value }); S.me.kalshi_connected = true; await load(); flash('#kflash', 'Connected. Kalshi confirmed the key.', 'good'); } catch (err) { flash('#kflash', err.message, 'bad'); }
+          try { await api('/api/kalshi-key', { key_id: kf.key_id.value, private_key: kf.private_key.value }); if (gen !== S.gen) return; S.me.kalshi_connected = true; await load(); flash('#kflash', 'Kalshi account connected.', 'good'); } catch (err) { if (gen === S.gen) flash('#kflash', err.message, 'bad'); }
         });
       };
       const dc = root.querySelector('#disconnect');
       if (dc) dc.onclick = () => armed(dc, 'Confirm disconnect', () => busy(dc, async () => {
-        try { await api('/api/kalshi-key/delete', {}); S.me.kalshi_connected = false; await load(); } catch (err) { flash('#kflash', err.message, 'bad'); }
+        try { await api('/api/kalshi-key/delete', {}); if (gen !== S.gen) return; S.me.kalshi_connected = false; await load(); } catch (err) { if (gen === S.gen) flash('#kflash', err.message, 'bad'); }
       }));
     };
     await load();
@@ -1498,7 +1521,7 @@
       if (!force && (feed.querySelector('.cmt-form') || feed.contains(document.activeElement))) return;
       const d = await api('/api/community' + (mineOnly ? '?mine=1' : ''));
       const html = d.posts.length ? d.posts.map(postCard).join('')
-        : `<div class="empty"><h3>${mineOnly ? 'You haven’t posted yet' : 'No posts yet'}</h3><p>${mineOnly ? 'Share a strategy an agent found or how your book is doing — it’ll show up here.' : 'Be the first. Share a strategy an agent found, drop an idea worth researching, or post how your paper book is doing.'}</p></div>`;
+        : `<div class="empty"><h3>${mineOnly ? 'You haven’t posted yet' : 'No posts yet'}</h3></div>`;
       if (html === lastFeed) return;  // nothing changed — don't re-render (avoids flicker)
       lastFeed = html;
       feed.innerHTML = html;
@@ -1534,7 +1557,7 @@
   const sinceMin = (iso) => { if (!iso) return '—'; const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000); return s < 90 ? 'just now' : Math.round(s / 60) + 'm ago'; };
 
   function priceChart(points) {
-    if (!points || points.length < 2) return '<div class="empty"><h3>Not enough history yet</h3><p>This market is new or thinly traded — its price curve fills in as it trades.</p></div>';
+    if (!points || points.length < 2) return '<div class="empty"><h3>Not enough price history</h3></div>';
     const W = 760, H = 260, pl = 44, pr = 14, pt = 14, pb = 26, iw = W - pl - pr, ih = H - pt - pb;
     const ts = points.map((p) => p.t), t0 = Math.min(...ts), t1 = Math.max(...ts), tr = (t1 - t0) || 1;
     const x = (t) => pl + (t - t0) / tr * iw, y = (v) => pt + (1 - v) * ih;
@@ -1589,7 +1612,7 @@
     const q = new URLSearchParams(location.search);
     if (q.get('m')) return viewMarketDetail(q.get('m'));
     const f = { q: q.get('q') || '', sort: ['v24', 'oi', 'last'].includes(q.get('sort')) ? q.get('sort') : 'v24', page: Math.max(0, +(q.get('page') || 0)) };
-    shell('/explore', boardTitle('Explore', 'Every market Tau is tracking right now — the live book across crypto, politics, sports, weather and more, hottest first. Prices refresh each minute.') +
+    shell('/explore', boardTitle('Explore') +
       '<dl class="figures measure" id="xfigs" style="margin-top:14px"></dl>', `
       <div class="section-head filters">
         <label class="field xsearch" style="margin:0"><span class="vh">Search markets</span>
@@ -1602,7 +1625,7 @@
     const load = async () => {
       const d = await api('/api/explore?' + new URLSearchParams({ q: f.q, sort: f.sort, page: String(f.page) }));
       figs.innerHTML = fig('Markets tracked', num(d.total)) + fig('Live now', num(d.shown)) + fig('Matching', num(d.matched)) + fig('Updated', sinceMin(d.at));
-      if (!d.markets.length) { body.innerHTML = `<div class="empty"><h3>No markets match “${esc(f.q)}”</h3><p>Try a broader search, or clear it to see the hottest markets.</p></div>`; return; }
+      if (!d.markets.length) { body.innerHTML = `<div class="empty"><h3>No markets match “${esc(f.q)}”</h3></div>`; return; }
       const rows = d.markets.map((m) => {
         const mid = midOf(m);
         return `<tr><td class="name"><a href="/explore?m=${encodeURIComponent(m.t)}">${esc(mktLabel(m))}</a>${m.s ? ` <span class="mk quiet">${esc(m.s)}</span>` : ''}</td>
@@ -1619,8 +1642,7 @@
     await load();
   }
 
-  // Hot Markets left rail: persistent (open/closed survives page switches), refreshes each minute.
-  const hotOpen = () => localStorage.getItem('tau_hotrail') !== '0';
+  // Hot Markets stays open on authenticated pages and refreshes each minute.
   let hotLoop = false;
   function hotChart(h) {
     if (!h || h.length < 2) return '<div class="hot-chart none"></div>';
@@ -1639,21 +1661,14 @@
   }
   function renderHotRail() {
     const rail = document.getElementById('hotrail'); if (!rail) return;
-    const open = hotOpen();
     const d = S.hot;
     const rows = d && d.markets && d.markets.length ? d.markets.map(hotRowHtml).join('')
-      : `<div class="hot-empty">${d ? 'Warming up — the live book fills in a minute.' : loading(120)}</div>`;
-    rail.innerHTML = `<button class="hot-tab" data-hot="toggle" aria-expanded="${open}" aria-label="${open ? 'Collapse hot markets' : 'Expand hot markets'}"><span class="hot-tab-label">Hot markets</span><span class="hot-chev">${open ? '‹' : '›'}</span></button>
-      <div class="hot-panel">
-        <div class="hot-head"><div><span class="hot-kicker">Hot markets</span><span class="hot-now"><span class="hot-dot"></span>Right now</span></div><button class="hot-x" data-hot="toggle" aria-label="Collapse">‹</button></div>
+      : `<div class="hot-empty">${d ? 'No markets yet.' : loading(120)}</div>`;
+    rail.innerHTML = `<div class="hot-panel">
+        <div class="hot-head"><span class="hot-kicker">Hot markets</span></div>
         <div class="hot-list">${rows}</div>
         <div class="hot-ft">${d && d.at ? 'Updated ' + sinceMin(d.at) : ''} · <a href="/explore">See all markets →</a></div>
       </div>`;
-    rail.querySelectorAll('[data-hot="toggle"]').forEach((b) => b.onclick = (e) => {
-      if (e.currentTarget.classList.contains('hot-tab') && open) return; // the spine only expands
-      const next = !hotOpen(); localStorage.setItem('tau_hotrail', next ? '1' : '0');
-      document.body.classList.toggle('hot-open', next); renderHotRail();
-    });
     rail.querySelector('.hot-ft a') && (rail.querySelector('.hot-ft a').onclick = (e) => { e.preventDefault(); go('/explore'); });
   }
   async function refreshHot() {
@@ -1661,9 +1676,9 @@
   }
   function mountHotRail() {
     if (!S.me || !S.me.user) return;
-    document.body.classList.toggle('hot-open', hotOpen());
-    if (!document.getElementById('hotrail')) { const a = document.createElement('aside'); a.className = 'hotrail'; a.id = 'hotrail'; document.body.appendChild(a); }
+    document.body.classList.add('hot-open');
     renderHotRail();
+    fitHotPanel();
     const stale = !S.hot || !S.hotAt || Date.now() - S.hotAt > 55000;
     if (stale) refreshHot().then(() => { S.hotAt = Date.now(); });
     if (!hotLoop) { hotLoop = true; setInterval(() => { if (document.getElementById('hotrail')) refreshHot().then(() => { S.hotAt = Date.now(); }); }, 60000); }
@@ -1671,15 +1686,15 @@
 
   const KIND_LABEL = { bonus: 'Welcome credits', topup: 'Added credits', autoreload: 'Auto-reload', usage: 'Agent usage', admin_grant: 'Admin grant' };
   async function viewBilling() {
-    shell('/billing', boardTitle('Billing', 'Credits pay for agent research and chat, billed per token at model list price. Paper and live trading themselves are free.') +
-      '<dl class="figures measure" id="bfigs" style="margin-top:14px"></dl>', loading(360));
-    let stripe = null, card = null;
+    const gen = S.gen;
+    settingsShell('billing', '<dl class="figures measure" id="bfigs"></dl>', loading(360));
     const load = async () => {
       const d = await api('/api/billing');
+      if (gen !== S.gen) return;
       root.querySelector('#bfigs').innerHTML =
         fig('Credit balance', usd(d.balance), { v: d.balance > 0 ? 1 : (d.balance < 0 ? -1 : 0) }) +
-        fig('Spent on usage', usd(d.spent), { small: 'at model list price' }) +
-        fig('Welcome credit', usd(d.free_bonus), { small: 'one-time, free' });
+        fig('Spent on usage', usd(d.spent)) +
+        fig('Welcome credit', usd(d.free_bonus));
       const feeNote = `Credits plus a ${d.topup_fee_pct}% purchase fee.`;
       const cardLines = d.cards.length
         ? `<table class="table stack t-dep"><thead><tr><th>Card</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody>${d.cards.map((c) => `<tr>
@@ -1687,9 +1702,9 @@
             <td data-lab="Expires">${String(c.exp_month).padStart(2, '0')}/${c.exp_year}</td>
             <td data-lab="Status">${c.id === d.default_pm ? '<span class="mk on">Default</span>' : '<span class="mk quiet">Backup</span>'}</td>
             <td class="act" data-lab="">${d.cards.length > 1 ? `<button class="btn sm danger" data-remove="${c.id}">Remove</button>` : '<span class="hint">Only card</span>'}</td></tr>`).join('')}</tbody></table>`
-        : '<p class="hint">No card on file. Add one to buy credits or turn on auto-reload.</p>';
+        : '<p class="hint">No card on file.</p>';
       const main = !d.configured
-        ? `<div class="notice">${ICON.warn}<span>Payments aren’t enabled on this server yet. You can still use your free credits.</span></div>
+        ? `<div class="notice">${ICON.warn}<span>Payments unavailable. Existing credits remain usable.</span></div>
            <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2></div>${ledgerTable(d.ledger)}</section>`
         : `<div class="detail">
             <div>
@@ -1704,7 +1719,10 @@
                   <button type="button" class="autorel-edit" id="autorel-edit" aria-expanded="false" aria-controls="autorel-config"><span id="autorel-sum">Reload $${d.autoreload_amount} at $${d.autoreload_threshold}</span><span class="chev">${ICON.chev}</span></button>
                 </div>
                 <div class="autorel-config" id="autorel-config" hidden>
-                  <p class="autorel-line">Reload <input class="input xs" id="reload-amt" type="number" min="${d.min_reload_amount}" step="1" value="${d.autoreload_amount}"> dollars when my balance drops to <input class="input xs" id="reload-thr" type="number" min="${d.min_reload_threshold}" step="1" value="${d.autoreload_threshold}"> dollars.</p>
+                  <div class="settings-reload-fields">
+                    <label class="field"><span>Reload (USD)</span><input class="input" id="reload-amt" type="number" min="${d.min_reload_amount}" step="1" value="${d.autoreload_amount}"></label>
+                    <label class="field"><span>When below (USD)</span><input class="input" id="reload-thr" type="number" min="${d.min_reload_threshold}" step="1" value="${d.autoreload_threshold}"></label>
+                  </div>
                   <p class="hint" id="autorel-flash" style="margin-top:4px">Minimum $${d.min_reload_amount} reload, $${d.min_reload_threshold} trigger.</p>
                 </div>
               </section>
@@ -1716,6 +1734,7 @@
                 <p class="hint" id="topup-note" style="margin-top:8px">${feeNote}</p>
                 <button class="btn primary" id="topup-btn" style="margin-top:12px;width:100%" ${d.cards.length ? '' : 'aria-disabled="true"'}>Buy credits</button>
                 ${d.cards.length ? '' : '<p class="hint" style="margin-top:8px">Add a card first.</p>'}
+                <p class="hint" style="margin-top:12px">Research and chat are billed per token at model list price. Trading is free.</p>
                 <div id="topup-flash"></div>
               </section>
             </aside>
@@ -1733,9 +1752,10 @@
           const credits = +amt.value;
           try {
             const r = await api('/api/billing/topup', { amount: credits });
+            if (gen !== S.gen) return;
             await load();  // refresh balance + ledger, then confirm into the fresh panel
-            flash('#topup-flash', `Added ${usd(credits)} in credits. You paid ${usd(credits * (1 + fee))} — ${usd(credits)} plus the ${d.topup_fee_pct}% fee. New balance is ${usd(r.balance)}.`, 'good');
-          } catch (err) { flash('#topup-flash', err.message, 'bad'); }
+            if (gen === S.gen) flash('#topup-flash', `Added ${usd(credits)} credits. Paid ${usd(credits * (1 + fee))}, including ${d.topup_fee_pct}% fee. Balance: ${usd(r.balance)}.`, 'good');
+          } catch (err) { if (gen === S.gen) flash('#topup-flash', err.message, 'bad'); }
         });
       };
       const arBox = root.querySelector('#autoreload'), arAmt = root.querySelector('#reload-amt'), arThr = root.querySelector('#reload-thr');
@@ -1748,34 +1768,38 @@
         arSum.textContent = `Reload $${amount} at $${threshold}`;
         try {
           await api('/api/billing/auto-reload', { on: arBox.checked, amount, threshold });
-          flash('#autorel-flash', arBox.checked ? `On · reloads ${usd(amount)} at ${usd(threshold)}.` : 'Auto-reload off.', 'good');
-        } catch (err) { arBox.checked = !arBox.checked; flash('#autorel-flash', err.message, 'bad'); }
+          if (gen === S.gen) flash('#autorel-flash', arBox.checked ? `On · reloads ${usd(amount)} at ${usd(threshold)}.` : 'Auto-reload off.', 'good');
+        } catch (err) { arBox.checked = !arBox.checked; if (gen === S.gen) flash('#autorel-flash', err.message, 'bad'); }
       };
       arBox.onchange = saveAutoReload;
       arAmt.onchange = arThr.onchange = () => { if (arBox.checked) saveAutoReload(); };
       root.querySelectorAll('[data-remove]').forEach((b) => (b.onclick = () => armed(b, 'Confirm remove', () => busy(b, async () => {
-        try { await api('/api/billing/remove-card', { payment_method_id: b.dataset.remove }); await load(); } catch (err) { alert0(err.message); }
+        try { await api('/api/billing/remove-card', { payment_method_id: b.dataset.remove }); if (gen === S.gen) await load(); } catch (err) { if (gen === S.gen) alert0(err.message); }
       }))));
       // Stripe Payment Element (card + Apple Pay / Google Pay, Link off) — same
       // flow as the sign-in modal, so saving actually works with the config SI.
       try {
         const Stripe = await loadStripe();
+        if (gen !== S.gen) return;
         const sp = Stripe(d.publishable_key);
         const si = await api('/api/billing/setup-intent', {});
+        if (gen !== S.gen) return;
         const elements = sp.elements({ clientSecret: si.client_secret, appearance: { theme: 'flat', variables: { fontFamily: 'Archivo, sans-serif', colorPrimary: '#191B16', borderRadius: '10px' } } });
         const pe = elements.create('payment', { layout: 'tabs', wallets: { applePay: 'auto', googlePay: 'auto' }, fields: { billingDetails: { address: { country: 'never' } } } });
         pe.mount('#card-el');
         root.querySelector('#save-card').onclick = (e) => busy(e.currentTarget, async () => {
           flash('#card-flash', '', '');
           let r;
-          try { r = await sp.confirmSetup({ elements, redirect: 'if_required', confirmParams: { return_url: location.origin + '/billing', payment_method_data: { billing_details: { address: { country: 'US' } } } } }); }
-          catch (err) { flash('#card-flash', err.message || 'Could not save the card.', 'bad'); return; }
+          try { r = await sp.confirmSetup({ elements, redirect: 'if_required', confirmParams: { return_url: location.origin + '/settings/billing', payment_method_data: { billing_details: { address: { country: 'US' } } } } }); }
+          catch (err) { if (gen === S.gen) flash('#card-flash', err.message || 'Could not save the card.', 'bad'); return; }
+          if (gen !== S.gen) return;
           if (r.error) { flash('#card-flash', r.error.message, 'bad'); return; }
           try { await api('/api/billing/card-added', { payment_method_id: r.setupIntent.payment_method }); }
-          catch (err) { flash('#card-flash', err.message, 'bad'); return; }
+          catch (err) { if (gen === S.gen) flash('#card-flash', err.message, 'bad'); return; }
+          if (gen !== S.gen) return;
           flash('#card-flash', 'Card saved.', 'good'); await load();
         });
-      } catch (err) { flash('#card-flash', err.message, 'bad'); }
+      } catch (err) { if (gen === S.gen) flash('#card-flash', err.message, 'bad'); }
     };
     await load();
   }
@@ -1790,7 +1814,12 @@
   // ---------- admin ----------
   async function viewAdmin() {
     if (!adminViewOn()) return go('/', true);
-    shell('/admin', boardTitle('Admin', 'Operator tools: grant credits and see who has signed up or joined the waitlist.'), `
+    go('/settings/system?operator=1', true);
+  }
+  async function mountOperatorTools(root) {
+    if (!adminViewOn()) return false;
+    const gen = S.gen;
+    root.innerHTML = `
       <div class="detail">
         <div>
           <section class="sect"><div class="sect-head"><h2>Users</h2><span id="ucount" class="sect-note"></span></div><div id="users">${loading(200)}</div></section>
@@ -1805,9 +1834,10 @@
             <p class="hint" style="margin-top:8px">The user must have signed in at least once.</p>
           </form>
         </aside>
-      </div>`);
+      </div>`;
     const load = async () => {
       const d = await api('/api/admin');
+      if (gen !== S.gen) return;
       root.querySelector('#ucount').textContent = `${d.users.length} shown`;
       root.querySelector('#users').innerHTML = `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>Email</th><th>Name</th><th>Joined</th><th class="num">Balance</th></tr></thead><tbody>${d.users.map((u) => `<tr>
         <td class="name" data-lab="Email">${esc(u.email)}</td><td data-lab="Name">${esc(u.name || '')}</td>
@@ -1822,11 +1852,13 @@
       await busy(e.target.querySelector('[type=submit]'), async () => {
         try {
           const r = await api('/api/admin/grant', { email: root.querySelector('#g-email').value.trim(), amount: +root.querySelector('#g-amt').value });
-          flash('#g-flash', `Granted. ${esc(r.email)} balance: ${usd(r.balance)}.`, 'good'); await load();
-        } catch (err) { flash('#g-flash', err.message, 'bad'); }
+          if (gen !== S.gen) return;
+          flash(root.querySelector('#g-flash'), `Granted. ${r.email} balance: ${usd(r.balance)}.`, 'good'); await load();
+        } catch (err) { if (gen === S.gen) flash(root.querySelector('#g-flash'), err.message, 'bad'); }
       });
     };
-    await load();
+    try { await load(); return true; }
+    catch (err) { if (gen === S.gen) root.innerHTML = notice(err.message, 'bad'); return false; }
   }
 
   // ---------- system map ----------
@@ -1845,7 +1877,7 @@
     { id: 'web', x: 250, y: 455, w: 158, label: 'Web server', sub: 'app.server · SPA + API' },
     { id: 'db', x: 490, y: 205, w: 150, label: 'Database', sub: 'RDS MySQL', big: 1 },
     { id: 'agents', x: 720, y: 40, w: 158, label: 'Research agents', sub: 'app.worker · hypotheses' },
-    { id: 'backtest', x: 720, y: 160, w: 158, label: 'Backtester', sub: 'honest, out-of-sample' },
+    { id: 'backtest', x: 720, y: 160, w: 158, label: 'Backtester', sub: 'out-of-sample tests' },
     { id: 'sim_engine', x: 720, y: 300, w: 158, label: 'Paper engine', sub: 'simulated fills' },
     { id: 'live_engine', x: 720, y: 460, w: 158, label: 'Live engine', sub: 'real Kalshi orders' },
   ];
@@ -1856,19 +1888,19 @@
     ['kalshi', 'live_engine'], ['stripe', 'web'], ['web', 'db'], ['db', 'web'],
   ];
   const SYS_DESC = {
-    kalshi: 'Kalshi’s REST + websocket feed — the markets, their order books, and settled results. The source of truth we trade against.',
-    coinbase: 'Coinbase BTC spot candles — the underlying price the 15-minute and 5pm markets settle on.',
-    bedrock: 'Claude on Amazon Bedrock. The agent that reads an idea, writes strategy specs, and judges backtests. Metered per token.',
-    stripe: 'Card vaulting + credit charges. Agent usage is billed per token against prepaid credits.',
-    forward: 'data_pipeline/forward_collector.py — snapshots every live Kalshi market’s book on a tick, into forward_quotes / market_candles / markets.',
-    cb_coll: 'data_pipeline/coinbase_collector.py — pulls 1-minute BTC candles into btc_candles_1m.',
-    features: 'feature_1m_collector.py — builds the per-minute model features both the sim and live paths read.',
-    web: 'app/server.py — the stdlib HTTP server: the SPA, the JSON API, Google sign-in, sessions, billing, and the admin surfaces.',
-    db: 'Amazon RDS MySQL. Every collector writes here and every engine + the app reads here. One source of truth.',
-    agents: 'app/worker.py (agents) — claims research/chat runs and drives Claude through the research loop, writing strategies + a live event log.',
-    backtest: 'app/backtest.py — runs each hypothesis on data it never saw and applies the deployment gates. Same spec the engines run.',
-    sim_engine: 'app/worker.py (engine) on paper money — prices from the live book, books fills, tracks P&L without real orders.',
-    live_engine: 'live_trading_engine.py — places real orders in a user’s own Kalshi account. Gated off until explicitly authorised.',
+    kalshi: 'Market prices, order books and settlement results.',
+    coinbase: 'BTC spot candles.',
+    bedrock: 'Research model, billed per token.',
+    stripe: 'Stores payment methods and charges for credits.',
+    forward: 'Collects Kalshi quotes, candles and market records.',
+    cb_coll: 'Collects one-minute BTC candles.',
+    features: 'Computes per-minute features for paper and live trading.',
+    web: 'Serves the app, API, sign-in and billing.',
+    db: 'Stores market data, research, trading and account records.',
+    agents: 'Runs research and chat, recording strategies and activity.',
+    backtest: 'Tests strategies on held-out data using the trading engine’s rules.',
+    sim_engine: 'Simulates fills against live prices and tracks paper P&L.',
+    live_engine: 'Places real orders in connected Kalshi accounts with explicit authorization.',
   };
   const sysNode = (id) => SYS_NODES.find((n) => n.id === id);
   function sysEdgePath(a, b) {
@@ -1879,6 +1911,7 @@
     return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
   }
   async function viewSystem() {
+    const gen = S.gen;
     const edges = SYS_EDGES.map(([a, b], i) => `<path class="sys-edge" data-e="${a}" id="se${i}" d="${sysEdgePath(a, b)}" />`).join('');
     const nodes = SYS_NODES.map((n) => {
       const h = n.big ? SYS_DBH : SYS_H;
@@ -1890,14 +1923,23 @@
         <circle class="pulse" cx="${n.w - 13}" cy="15" r="4"></circle>
       </g>`;
     }).join('');
-    shell('/system', boardTitle('System', 'A live map of the pipeline — every box is a real part of the codebase, every line is data flowing. It refreshes on its own so you can see what’s running.'),
-      `<div class="sysmap">
-         <div class="sys-wrap"><svg viewBox="0 0 900 540" preserveAspectRatio="xMidYMid meet" id="syssvg" aria-label="System map">${edges}${nodes}</svg></div>
+    settingsShell('system', '', `<div id="sys-error"></div><div class="sysmap">
+         <div class="sys-wrap" role="region" aria-label="System map" tabindex="0"><svg viewBox="0 0 900 540" preserveAspectRatio="xMidYMid meet" id="syssvg" aria-label="System map">${edges}${nodes}</svg></div>
          <aside class="sys-side">
-           <section class="panel" id="sys-detail"><h3>Pick a box</h3><p class="hint">Click any part of the system to see what it does and what it’s doing right now.</p></section>
+           <section class="panel" id="sys-detail"></section>
            <section class="sect" style="margin-top:16px"><div class="sect-head"><h2>Live activity</h2><span class="sys-live" id="sys-stamp"></span></div><ol class="log sys-feed" id="sys-feed"></ol></section>
          </aside>
-       </div>`);
+       </div>${adminViewOn() ? '<details class="settings-operators" id="operator-tools"><summary>Operator tools <span class="mk quiet">Restricted</span></summary><div id="operator-content"></div></details>' : ''}`);
+    const operators = root.querySelector('#operator-tools');
+    if (operators) {
+      let loaded = false;
+      operators.ontoggle = async () => {
+        if (gen !== S.gen || !operators.open || loaded) return;
+        loaded = true;
+        loaded = await mountOperatorTools(root.querySelector('#operator-content'));
+      };
+      if (new URLSearchParams(location.search).get('operator') === '1') operators.open = true;
+    }
     const svg = root.querySelector('#syssvg');
     const detail = root.querySelector('#sys-detail');
     // Drill-down: component -> module -> function. `codeState` holds where we
@@ -1965,6 +2007,8 @@
       g.addEventListener('click', act);
       g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });
     });
+    svg.querySelector('.sys-node').classList.add('sel');
+    showDetail('kalshi');
     const fresh = (age) => age == null ? 'down' : age < 75 ? 'live' : age < 300 ? 'warn' : 'down';
     function metricText(id, L) {
       if (!L) return '';
@@ -1986,7 +2030,11 @@
       return a;
     }
     const load = async () => {
-      let d; try { d = await api('/api/admin/system'); } catch (e) { return; }
+      let d;
+      try { d = await api('/api/admin/system'); }
+      catch (err) { if (gen === S.gen && err.status !== 401) flash('#sys-error', err.message, 'bad'); return; }
+      if (gen !== S.gen) return;
+      root.querySelector('#sys-error').innerHTML = '';
       S.sysLive = d.nodes;
       SYS_NODES.forEach((n) => {
         const L = d.nodes[n.id]; const g = svg.querySelector(`.sys-node[data-id="${n.id}"]`);
@@ -2005,7 +2053,7 @@
       feed.innerHTML = d.events.length ? d.events.map((e) => `<li class="${e.kind === 'error' ? 'error' : ''}"><time>${clock(e.created_at)}</time><span>${e.kind === 'verdict' ? esc(e.message.replace(/^(PASSED|VOID|FAILED)\s*[-–]\s*/, '')) : esc(e.message)}</span></li>`).join('') : '<li><span class="hint">Quiet right now.</span></li>';
     };
     await load();
-    poll(load, 4000);
+    if (gen === S.gen) poll(load, 4000);
   }
 
   setupGlossary();

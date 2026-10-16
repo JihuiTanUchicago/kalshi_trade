@@ -1,0 +1,32 @@
+[
+  {
+    "path": "/settings",
+    "status": 200,
+    "bytes": 978
+  },
+  {
+    "path": "/settings/account",
+    "status": 200,
+    "bytes": 978
+  },
+  {
+    "path": "/settings/billing",
+    "status": 200,
+    "bytes": 978
+  },
+  {
+    "path": "/settings/system",
+    "status": 200,
+    "bytes": 978
+  },
+  {
+    "path": "/settings/admin",
+    "status": 404,
+    "bytes": 9
+  },
+  {
+    "path": "/settings/../admin",
+    "status": 404,
+    "bytes": 9
+  }
+]
