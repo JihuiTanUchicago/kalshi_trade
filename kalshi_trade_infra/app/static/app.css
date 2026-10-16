@@ -772,6 +772,8 @@ body.landing-body { background: #FBFBFA; }
 .pfp { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex: none; background: var(--stock-sunk); }
 .pfp.ph { display: grid; place-items: center; font-weight: 600; font-size: 14px; color: var(--ink-2); border: 1px solid var(--rule-2); }
 .post-body { font-size: 15px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.post-body code, .cmt p code { font-family: var(--f-mono, ui-monospace, monospace); font-size: .9em; background: var(--paper-2, rgba(0,0,0,.05)); padding: 1px 4px; border-radius: 3px; }
+.post-body a, .cmt p a { color: var(--accent, #1a66c9); text-decoration: underline; text-underline-offset: 2px; }
 .snap { display: block; margin-top: 12px; padding: 12px 14px; border: 1px solid var(--rule); background: var(--stock-raised); text-decoration: none; color: inherit; }
 a.snap:hover { border-color: var(--ink-3); }
 .snap-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }

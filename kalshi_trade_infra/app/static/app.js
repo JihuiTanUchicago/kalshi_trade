@@ -90,6 +90,17 @@
 
   // ---------- formatting ----------
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  // Minimal safe markdown: escape first (so output has no raw HTML), then a tiny subset.
+  // Only http(s) links — never javascript:/data: — so there's no XSS surface.
+  const mdLite = (s) => {
+    let t = esc(s);
+    t = t.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    t = t.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+    t = t.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>');
+    t = t.replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener nofollow">$1</a>');
+    t = t.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noopener nofollow">$2</a>');
+    return t.replace(/\n/g, '<br>');
+  };
   const fmt2 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fmt0 = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
   const usd = (v, signed = false) => {
@@ -1359,7 +1370,7 @@
   function postCard(p) {
     return `<article class="post" data-id="${p.id}">
       <div class="post-head">${avatar(p.picture, p.author)}<div><b>${esc(p.author)}</b><span class="when">${when(p.created_at)}${p.edited ? ' · edited' : ''}</span></div></div>
-      <div class="post-main"><p class="post-body">${esc(p.body)}</p>
+      <div class="post-main"><p class="post-body">${mdLite(p.body)}</p>
       ${p.image ? `<a class="post-img" href="${esc(p.image)}" target="_blank" rel="noopener"><img src="${esc(p.image)}" alt="" loading="lazy"></a>` : ''}
       ${postSnapshot(p.snapshot)}</div>
       <div class="post-actions">
@@ -1498,7 +1509,7 @@
         if (!box.hidden) { box.hidden = true; return; }
         box.hidden = false; box.innerHTML = loading(40);
         const d = await api(`/api/community/${pid}/comments`).catch(() => ({ comments: [] }));
-        box.innerHTML = `${d.comments.map((c) => `<div class="cmt">${avatar(c.picture, c.author)}<div><b>${esc(c.author)}</b> <span class="when">${when(c.created_at)}</span><p>${esc(c.body)}</p></div></div>`).join('')}
+        box.innerHTML = `${d.comments.map((c) => `<div class="cmt">${avatar(c.picture, c.author)}<div><b>${esc(c.author)}</b> <span class="when">${when(c.created_at)}</span><p>${mdLite(c.body)}</p></div></div>`).join('')}
           <form class="cmt-form"><input class="input" maxlength="1000" placeholder="Write a reply…" required><button class="btn sm" type="submit">Reply</button></form>`;
         box.querySelector('.cmt-form').onsubmit = async (ev) => {
           ev.preventDefault();
