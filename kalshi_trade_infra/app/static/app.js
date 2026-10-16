@@ -1836,7 +1836,7 @@
       root.querySelector('#waitlist').innerHTML = d.waitlist.length
         ? `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>Email</th><th>Note</th><th>When</th><th>Status</th><th></th></tr></thead><tbody>${d.waitlist.map((w) => `<tr>
           <td class="name" data-lab="Email">${esc(w.email)}</td><td data-lab="Note">${esc(w.note || '')}</td><td class="hint" data-lab="When">${when(w.created_at)}</td>
-          <td data-lab="Status">${w.status === 'approved' ? '<span class="mk on">Approved</span>' : 'Requested'}</td>
+          <td data-lab="Status">${w.status === 'approved' ? '<span class="mk on">Approved</span> <small class="hint">awaiting their sign-in</small>' : 'Requested'}</td>
           <td class="act" data-lab="">${w.status === 'approved' ? '' : `<button class="btn sm" data-wl="approve" data-email="${esc(w.email)}">Approve</button>`}<button class="btn sm danger" data-wl="remove" data-email="${esc(w.email)}">Remove</button></td></tr>`).join('')}</tbody></table></div>`
         : '<p class="hint">No waitlist requests.</p>';
       root.querySelectorAll('#waitlist [data-wl]').forEach((b) => (b.onclick = async () => {
