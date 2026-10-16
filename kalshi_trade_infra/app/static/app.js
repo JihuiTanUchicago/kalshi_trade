@@ -1506,8 +1506,10 @@
   async function viewCommunity() {
     shell('/community', boardTitle('Community', 'Share a strategy, an idea, or how your money is doing. Like and reply to other traders.'), `
       <div class="feedwrap">
+        <div class="chips feed-filter" role="group" aria-label="Filter posts"><button class="chip" type="button" data-feed="all" aria-pressed="true">All posts</button><button class="chip" type="button" data-feed="mine" aria-pressed="false">My posts</button></div>
+        <div id="feed">${loading(120)}${loading(120)}</div>
         <form class="panel composer-post" id="composer-post">
-          <textarea class="input" id="post-body" maxlength="2000" rows="2" placeholder="Share an idea, a strategy, or how it's going…"></textarea>
+          <textarea class="input" id="post-body" maxlength="2000" rows="1" placeholder="Share an idea, a strategy, or how it's going…"></textarea>
           <div id="photo-preview" hidden><img id="photo-img" alt="Attached photo preview"><button type="button" class="photo-x" id="photo-remove" aria-label="Remove photo">${ICON.cross}</button></div>
           <div class="post-tools">
             <button class="btn sm" type="button" id="photo-btn">${ICON.image}Photo</button>
@@ -1519,9 +1521,11 @@
           </div>
           <div id="post-flash"></div>
         </form>
-        <div class="chips feed-filter" role="group" aria-label="Filter posts"><button class="chip" type="button" data-feed="all" aria-pressed="true">All posts</button><button class="chip" type="button" data-feed="mine" aria-pressed="false">My posts</button></div>
-        <div id="feed">${loading(120)}${loading(120)}</div>
       </div>`);
+    // composer auto-grows with the draft (starts one line, caps at the CSS max-height)
+    const ta = root.querySelector('#post-body');
+    const growTa = () => { ta.style.height = 'auto'; ta.style.height = Math.min(180, ta.scrollHeight) + 'px'; };
+    ta.addEventListener('input', growTa);
     // photo attach
     let pendingImage = null;
     const photoInput = root.querySelector('#photo-input');
@@ -1548,7 +1552,7 @@
       await busy(btn, async () => {
         try {
           await api('/api/community', { body, kind, ref_id, image: pendingImage || undefined });
-          root.querySelector('#post-body').value = ''; root.querySelector('#post-strat').value = '';
+          root.querySelector('#post-body').value = ''; root.querySelector('#post-strat').value = ''; growTa();
           pendingImage = null; photoInput.value = ''; root.querySelector('#photo-preview').hidden = true;
           await load();
         } catch (e) { flash('#post-flash', e.message, 'bad'); }

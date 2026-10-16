@@ -272,7 +272,7 @@ h1.page { font-size: clamp(23px, 3vw, 30px); font-weight: 600; letter-spacing: -
 
 .sheet { overflow-x: auto; overflow-y: visible; }
 .t-strat .pickcol { width: 34px; text-align: center; vertical-align: middle; }
-.bulkbar { position: sticky; bottom: 14px; z-index: 6; display: flex; align-items: center; gap: 12px; margin: 14px 0; padding: 10px 14px; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.1); }
+.bulkbar { position: sticky; bottom: 14px; z-index: 6; display: flex; align-items: center; gap: 12px; margin: 14px 0; padding: 10px 14px; background: var(--stock-raised); border: 1px solid var(--ink); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.14); }
 .bulkbar .lab { font-family: var(--f-nar); color: var(--ink-2); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 /* width:100% constrains the auto layout to the container so long titles wrap
@@ -781,9 +781,12 @@ body.landing-body { background: #FBFBFA; }
 
 /* ===================== COMMUNITY (Kursbuch) ===================== */
 .feedwrap { max-width: 680px; margin: 0 auto; }
-.feedwrap .feed-filter { margin: 18px 2px 10px; }  /* breathing room between the composer and the feed */
-.composer-post { display: grid; gap: 12px; }
-.composer-post textarea { min-height: 58px; }
+.feedwrap .feed-filter { margin: 0 2px 12px; }
+#feed { padding-bottom: 6px; }
+/* Composer pinned to the bottom (chat-style): the feed scrolls above it, it floats
+   over the last post with its own elevation. Sticky, so it drops into flow when the feed is short. */
+.composer-post { display: grid; gap: 10px; position: sticky; bottom: 12px; z-index: 8; margin-top: 14px; background: var(--stock-raised); border: 1px solid var(--ink); box-shadow: 0 10px 30px rgba(0,0,0,.18); }
+.composer-post textarea { min-height: 40px; max-height: 180px; resize: none; }
 .post-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .post-tools select { max-width: 280px; }
 .post-tools .btn { margin-left: auto; }
