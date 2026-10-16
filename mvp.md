@@ -56,7 +56,7 @@ Remove a line once shipped; `[blocked]` = needs a user/AWS action first.
 - Email all users on any new community update (needs unsubscribe + rate discipline).
 - Web-box engine watchdog: extend `tau-watchdog` to `recursive-engine` (confirm it heartbeats when idle first).
 - Kalshi dev-env 2nd curve needs `KALSHI_DEV_API_BASE` set on the box (one line until then).
-- **Tau-RSI (self-evolving research, Dream-RSI-faithful)** — DESIGN in PLAN.md. Decisions: per-user private memory; FULL Dream-RSI (replay simulator + dreaming); evolvable **executable policy code** made safe by keeping the policy a pure decision function (no I/O) run in a sandbox. Phases: P1 foundation (ExplorationPolicy interface + DefaultPolicy + discovery-tree schema) → P2 replay simulator + objective → P3 sandbox → P4 dreaming loop. START: P1.
+- **Tau-RSI (self-evolving research, Dream-RSI-faithful)** — DESIGN in PLAN.md. Decisions: per-user private memory; FULL Dream-RSI (replay simulator + dreaming); evolvable **executable policy code** made safe by keeping the policy a pure decision function (no I/O) run in a sandbox. Phases: **P1 foundation SHIPPED** (app/exploration.py: pure-fn ExplorationPolicy + DefaultPolicy = today's behavior unchanged; app_strategies.parent_id discovery-tree column; 177 tests green) → **P2 NEXT** replay simulator + objective → P3 sandbox → P4 dreaming loop.
 - **Protect `main` from pushes** (owner-only) + **open-source the repo** (BLOCKED on a secret/infra-leak audit before going public — never make public un-audited).
 
 ### Blocked on you / AWS

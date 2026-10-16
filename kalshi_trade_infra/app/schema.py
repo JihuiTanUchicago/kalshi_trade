@@ -338,6 +338,9 @@ def main() -> None:
         _add_column_if_missing(cur, "app_agent_runs", "run_forever", "ALTER TABLE app_agent_runs ADD COLUMN run_forever TINYINT(1) NOT NULL DEFAULT 0")
         # The LLM the user picked for this run (a models_catalog key). NULL = server default (Sonnet).
         _add_column_if_missing(cur, "app_agent_runs", "model", "ALTER TABLE app_agent_runs ADD COLUMN model VARCHAR(48) NULL")
+        # Tau-RSI discovery tree: which prior hypothesis this one built on (NULL = root). Nullable
+        # + unused for now (P1); the replay simulator and self-evolving policy populate it later.
+        _add_column_if_missing(cur, "app_strategies", "parent_id", "ALTER TABLE app_strategies ADD COLUMN parent_id BIGINT NULL")
         _add_column_if_missing(cur, "app_posts", "edited_at", "ALTER TABLE app_posts ADD COLUMN edited_at DATETIME NULL")
         _add_column_if_missing(cur, "app_stripe_customers", "reload_amount", "ALTER TABLE app_stripe_customers ADD COLUMN reload_amount DECIMAL(10,2) NOT NULL DEFAULT 20.00")
         _add_column_if_missing(cur, "app_stripe_customers", "reload_threshold", "ALTER TABLE app_stripe_customers ADD COLUMN reload_threshold DECIMAL(10,2) NOT NULL DEFAULT 5.00")

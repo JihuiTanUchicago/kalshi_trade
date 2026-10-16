@@ -28,6 +28,7 @@ import os
 from typing import Callable, Dict, List, Optional, Tuple
 
 from app import backtest, billing
+from app import exploration
 from app import models_catalog as catalog
 from app import repository as repo
 from app import spec as specmod
@@ -50,10 +51,9 @@ DIRECTIONS: Dict[str, Dict[str, str]] = {
     "open": {"label": "Agent's choice", "brief": "Pick the most promising angle yourself and say why."},
 }
 
-BATCH = 4                 # hypotheses proposed per round; small so each round can LEARN from the last
 DEFAULT_HYPOTHESES = 8    # when the user doesn't set a budget
 MAX_BUDGET = 1000         # hard ceiling a user can request for one finite run (run-forever is uncapped)
-FINALISTS = 3             # per chunk, only the best few are gated on unseen data (multiple-testing discipline)
+# Batch width and finalist selection now live in app/exploration.py (the exploration policy).
 MAX_ACTIONS = 3
 MIN_FRAMES = 200
 
@@ -268,20 +268,15 @@ def _round_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], want: int
               "and explain the change in each thesis." % want)
 
 
-def _finalists(chunk: List[Dict]) -> List[Dict]:
-    """The few best in-sample hypotheses that earn an unseen-data test. Kept small on
-    purpose: testing every idea out-of-sample is multiple-testing and manufactures false edges."""
-    ranked = sorted(chunk, key=lambda t: backtest.score(t["in_sample"]), reverse=True)
-    n = min(max(FINALISTS, len(chunk) // 10), 8)
-    return [t for t in ranked[:n] if t["in_sample"]["pnl"] > 0 and t["in_sample"]["trades"] >= 5]
-
-
-def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, chunk: List[Dict], log) -> int:
+def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, chunk: List[Dict], log,
+                   policy: exploration.ExplorationPolicy) -> int:
     """Freeze the finalists, test ONLY them on unseen data, and persist every hypothesis
-    (finalists with their out-of-sample verdict, the rest as rejected). Returns passers."""
+    (finalists with their out-of-sample verdict, the rest as rejected). Returns passers.
+    The exploration policy chooses the finalists (multiple-testing discipline lives there)."""
     user_id, run_id, market = run["user_id"], run["id"], run["market"]
     s = ds.summary()
-    finalists = _finalists(chunk)
+    state = exploration.PolicyState(proposed=len(chunk), budget=len(chunk), round=0)
+    finalists = policy.select_finalists(chunk, state)
     log("step", "Froze %d finalist%s. Now testing on data the agent never saw."
         % (len(finalists), "" if len(finalists) == 1 else "s"))
     passed = 0
@@ -308,16 +303,20 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, chunk: List[Dict], log)
     return passed
 
 
-def _explore_and_gate(cur, run, ds, memory, model, usage, log, checkpoint, budget, tried) -> Tuple[int, int]:
-    """Explore up to `budget` NEW hypotheses in-sample (small refining rounds), then gate
+def _explore_and_gate(cur, run, ds, memory, model, usage, log, checkpoint, budget, tried,
+                      policy: exploration.ExplorationPolicy) -> Tuple[int, int]:
+    """Explore NEW hypotheses in-sample (small refining rounds the policy sizes), then gate
     the finalists. Appends to the shared `tried` so progress survives a cancel/error."""
     market = run["market"]
     chunk: List[Dict] = []
     round_no = 0
-    while len(chunk) < budget:
+    while True:
         checkpoint()
         round_no += 1
-        want = min(BATCH, budget - len(chunk))
+        state = exploration.PolicyState(proposed=len(chunk), budget=budget, round=round_no)
+        want = policy.next_batch(state).width
+        if want <= 0:
+            break  # policy decided to stop proposing this chunk
         batch = ask_json(model, RESEARCH_SYSTEM,
                          [{"role": "user", "content": _round_prompt(run, ds, memory, want, chunk)}],
                          _hypotheses_check(market, want), usage)
@@ -326,9 +325,10 @@ def _explore_and_gate(cur, run, ds, memory, model, usage, log, checkpoint, budge
         for h in batch:
             checkpoint()
             t = _test_in_sample(h, ds, log, round_no)
+            t["score"] = backtest.score(t["in_sample"])  # attach once, so the policy needs no backtester
             chunk.append(t)
             tried.append(t)
-    return len(chunk), _gate_and_save(cur, run, ds, chunk, log)
+    return len(chunk), _gate_and_save(cur, run, ds, chunk, log, policy)
 
 
 def run_research(
@@ -346,6 +346,10 @@ def run_research(
     choice = catalog.resolve(run.get("model"))
     if model is None:
         model = lambda system, messages: claude(system, messages, choice.model_id)  # noqa: E731
+    # Tau-RSI P1: the exploration policy (how to allocate search) is now an explicit,
+    # swappable object. For now it's the default fixed behavior; later it becomes a
+    # per-user, self-evolving policy. No behavior change yet.
+    policy = exploration.DefaultPolicy()
 
     def log(kind: str, message: str, data: Optional[Dict] = None) -> None:
         repo.add_event(cur, run_id, kind, message, data)
@@ -386,7 +390,7 @@ def run_research(
             # Reload memory each chunk so a run_forever loop learns from the strategies it
             # just saved, instead of re-proposing the same ideas.
             memory = repo.strategy_memory(cur, user_id, market)
-            n, passed = _explore_and_gate(cur, run, ds, memory, model, usage, log, checkpoint, budget, tried)
+            n, passed = _explore_and_gate(cur, run, ds, memory, model, usage, log, checkpoint, budget, tried, policy)
             total_passed += passed
             # Meter per chunk: a run_forever session may never "finish", so bill as it goes
             # (and reset the counter) instead of only at the end — otherwise its tokens are free.
