@@ -1025,13 +1025,15 @@
             { small: d.rsi && d.rsi.evolved ? `generalization score ${d.rsi.score}` : 'dreams a better search each run' });
       const rsibox = root.querySelector('#rsibox');
       if (rsibox && d.rsi) {
-        rsibox.innerHTML = `<div class="rsi-card"><div class="rsi-head"><b class="rsi-badge">RSI</b> Self-improving research</div>
-          <p>${d.rsi.evolved
-            ? `This agent <b>evolved its own search policy</b> (generalization score ${d.rsi.score}) — it researches smarter than the default.`
-            : `The agent is <b>self-tuning</b>: after each research cycle it dreams up new search strategies and keeps one only if it beats the current policy on your own history (scored over shuffled orderings, so it can't overfit).`}</p>
-          ${d.rsi.last_dream
-            ? `<p class="rsi-last"><b>Last check${d.rsi.last_dream_at ? ' · ' + when(d.rsi.last_dream_at) : ''}:</b> ${esc(d.rsi.last_dream)}</p>`
-            : '<p class="rsi-last">The first result appears at the end of a research cycle.</p>'}</div>`;
+        const delta = (d.rsi.base_score != null && d.rsi.score != null)
+          ? `<span class="rsi-score">${d.rsi.base_score} <span class="rsi-arrow">→</span> ${d.rsi.score}</span>` : '';
+        rsibox.innerHTML = `<div class="rsi-card"><div class="rsi-head"><b class="rsi-badge">RSI</b> Self-improving research ${d.rsi.evolved ? '<span class="rsi-tag">Evolved</span>' : '<span class="rsi-tag quiet">Self-tuning</span>'}</div>
+          ${d.rsi.evolved
+            ? `<p>This agent <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
+               ${d.rsi.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(d.rsi.summary)}</p>` : ''}
+               <p class="rsi-last">Generalization score ${delta}${d.rsi.evolved_at ? ' · adopted ' + when(d.rsi.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
+            : `<p>The agent is <b>self-tuning</b>: after each research cycle it dreams up new search strategies and keeps one only if it beats the current policy on your own history (scored over shuffled orderings, so it can't overfit).</p>
+               ${d.rsi.last_dream ? `<p class="rsi-last"><b>Last check${d.rsi.last_dream_at ? ' · ' + when(d.rsi.last_dream_at) : ''}:</b> ${esc(d.rsi.last_dream)}</p>` : '<p class="rsi-last">The first result appears at the end of a research cycle.</p>'}`}</div>`;
       }
       root.querySelector('#runact').innerHTML = active ? '<button class="btn danger small" id="cancel">Cancel run</button>' : (r.status === 'succeeded' ? '<a class="btn small" href="/strategies">All strategies</a>' : '');
       const cancel = root.querySelector('#cancel');

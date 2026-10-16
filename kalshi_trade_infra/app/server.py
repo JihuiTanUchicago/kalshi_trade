@@ -264,7 +264,10 @@ def get_run(ctx: Ctx):
         "run": run,
         "events": repo.run_events(ctx.cur, run["id"], after),
         "strategies": [_strategy_card(s) for s in strategies if s["run_id"] == run["id"]],
-        "rsi": {"evolved": bool(pol), "score": round(float(pol["score"]), 3) if pol else None,
+        "rsi": {"evolved": bool(pol), "score": round(float(pol["score"]), 2) if pol else None,
+                "base_score": round(pol["base_score"], 2) if (pol and pol.get("base_score") is not None) else None,
+                "summary": pol.get("summary") if pol else None,
+                "evolved_at": pol["updated_at"] if pol else None,
                 "last_dream": dream["message"] if dream else None,
                 "last_dream_at": dream["created_at"] if dream else None},
     }

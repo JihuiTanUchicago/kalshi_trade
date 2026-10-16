@@ -633,9 +633,11 @@ def engine_heartbeat(cur, live_enabled: bool) -> None:
 
 def get_policy(cur, user_id: int) -> Optional[Dict]:
     """The user's current self-evolved exploration policy, or None (= DefaultPolicy)."""
-    cur.execute("SELECT code, score, updated_at FROM app_policies WHERE user_id=%s", (user_id,))
+    cur.execute("SELECT code, score, summary, base_score, updated_at FROM app_policies WHERE user_id=%s", (user_id,))
     r = cur.fetchone()
-    return {"code": r["code"], "score": float(r["score"]), "updated_at": r["updated_at"]} if r else None
+    return {"code": r["code"], "score": float(r["score"]), "summary": r.get("summary"),
+            "base_score": (float(r["base_score"]) if r.get("base_score") is not None else None),
+            "updated_at": r["updated_at"]} if r else None
 
 
 def latest_dream_event(cur, user_id: int) -> Optional[Dict]:
@@ -651,12 +653,17 @@ def latest_dream_event(cur, user_id: int) -> Optional[Dict]:
     return cur.fetchone()
 
 
-def set_policy(cur, user_id: int, code: str, score: float) -> None:
-    """Store (upsert) the user's current exploration policy and its replay score."""
+def set_policy(cur, user_id: int, code: str, score: float,
+               summary: Optional[str] = None, base_score: Optional[float] = None) -> None:
+    """Store (upsert) the user's current exploration policy, its replay score, a plain-English
+    description of what it changed, and the score it beat."""
     cur.execute(
-        """INSERT INTO app_policies (user_id, code, score, updated_at) VALUES (%s,%s,%s,%s)
-           ON DUPLICATE KEY UPDATE code=VALUES(code), score=VALUES(score), updated_at=VALUES(updated_at)""",
-        (user_id, code, float(score), now_utc()),
+        """INSERT INTO app_policies (user_id, code, score, summary, base_score, updated_at)
+           VALUES (%s,%s,%s,%s,%s,%s)
+           ON DUPLICATE KEY UPDATE code=VALUES(code), score=VALUES(score),
+             summary=VALUES(summary), base_score=VALUES(base_score), updated_at=VALUES(updated_at)""",
+        (user_id, code, float(score), (summary or "")[:400] or None,
+         (float(base_score) if base_score is not None else None), now_utc()),
     )
 
 

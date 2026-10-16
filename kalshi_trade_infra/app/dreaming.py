@@ -72,15 +72,23 @@ DREAM_SYSTEM = (
     "out-of-sample poorly. Improve WHICH candidates earn a test: condition on in_sample pnl and "
     "trades (e.g. require enough trades for the P&L to be trustworthy, prefer sturdier edges), widen "
     "or tighten the set thoughtfully — catch the real winner with as FEW finalists as possible.\n"
-    "Return improved, correct, safe policies."
+    "Return improved, correct, safe policies — each with a one-line plain-English `change` that "
+    "a non-coder can read, saying WHAT you altered and WHY (e.g. 'Require >=7 trades before testing "
+    "a finalist, so a lucky 2-trade spike can't earn a slot')."
 )
 
 
-def _check(reply: Dict) -> List[str]:
+def _check(reply: Dict) -> List[Dict]:
     pols = reply.get("policies")
     if not isinstance(pols, list) or not pols:
         raise ValueError("expected a non-empty 'policies' list")
-    out = [p for p in pols if isinstance(p, str) and p.strip()][:N_CANDIDATES]
+    out: List[Dict] = []
+    for p in pols:
+        if isinstance(p, str) and p.strip():
+            out.append({"code": p, "change": ""})
+        elif isinstance(p, dict) and isinstance(p.get("code"), str) and p["code"].strip():
+            out.append({"code": p["code"], "change": str(p.get("change") or "")[:300]})
+    out = out[:N_CANDIDATES]
     if not out:
         raise ValueError("no usable policy code")
     return out
@@ -120,7 +128,7 @@ def evolve_policy(conn, user_id: int, market: str, model: Callable, usage: Usage
     best_code, best_v = (row["code"] if row else None), base_v
 
     prompt = ("Current exploration policy:\n```python\n%s\n```\n%s\n\nPropose %d improved policies that "
-              "score higher. Reply JSON: {\"policies\": [\"<full python>\", ...]}."
+              "score higher. Reply JSON: {\"policies\": [{\"code\": \"<full python>\", \"change\": \"<one line>\"}, ...]}."
               % (current_code, _tree_summary(tree, base, base_v), n))
     try:
         candidates = ask_json(model, DREAM_SYSTEM, [{"role": "user", "content": prompt}], _check, usage)
@@ -128,7 +136,9 @@ def evolve_policy(conn, user_id: int, market: str, model: Callable, usage: Usage
         log("step", "Dreaming skipped: %s" % e)
         return False
 
-    for code in candidates:
+    best_change = ""
+    for cand_obj in candidates:
+        code = cand_obj["code"]
         try:
             cand = sandbox.load_policy(code)
         except sandbox.PolicyError:
@@ -145,14 +155,14 @@ def evolve_policy(conn, user_id: int, market: str, model: Callable, usage: Usage
         except Exception:
             continue
         if v > best_v + _EPS:
-            best_code, best_v = code, v
+            best_code, best_v, best_change = code, v, cand_obj["change"]
 
     improved = best_code is not None and best_code != (row["code"] if row else None)
     if improved:
-        repo.set_policy(cur, user_id, best_code, best_v)
+        repo.set_policy(cur, user_id, best_code, best_v, summary=best_change, base_score=base_v)
         log("step", "Research policy evolved: dreamed over %d hypotheses, tried %d candidate policies, "
-                    "generalization score %.3f → %.3f. Future runs explore smarter."
-            % (len(tree), len(candidates), base_v, best_v))
+                    "generalization score %.3f → %.3f. %sFuture runs explore smarter."
+            % (len(tree), len(candidates), base_v, best_v, (best_change + " " if best_change else "")))
     else:
         # Always leave a trace so the self-improvement loop is observable, even when the
         # strong default/current policy already wins (monotonic: we only adopt a better one).

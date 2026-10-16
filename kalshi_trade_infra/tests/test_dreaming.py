@@ -53,7 +53,7 @@ def _patch(monkeypatch, tree, candidates, saved):
     monkeypatch.setattr(dreaming.replay, "build_tree", lambda *a, **k: tree)
     monkeypatch.setattr(dreaming.repo, "get_policy", lambda *a, **k: None)
     monkeypatch.setattr(dreaming.repo, "set_policy",
-                        lambda cur, uid, code, score: saved.update(code=code, score=score))
+                        lambda cur, uid, code, score, summary=None, base_score=None: saved.update(code=code, score=score, summary=summary))
     monkeypatch.setattr(dreaming, "ask_json",
                         lambda model, sysmsg, msgs, check, usage: check({"policies": candidates}))
 

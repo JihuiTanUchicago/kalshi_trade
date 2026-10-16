@@ -386,6 +386,10 @@ def main() -> None:
         _add_column_if_missing(cur, "app_users", "last_community_email_at", "ALTER TABLE app_users ADD COLUMN last_community_email_at DATETIME NULL")
         # Unique @-handle for community mentions. Nullable; uniqueness enforced in assign_username.
         _add_column_if_missing(cur, "app_users", "username", "ALTER TABLE app_users ADD COLUMN username VARCHAR(32) NULL")
+        # Human-readable description of what an evolved policy changed + the score it beat,
+        # so the research page can explain the self-improvement in plain English.
+        _add_column_if_missing(cur, "app_policies", "summary", "ALTER TABLE app_policies ADD COLUMN summary VARCHAR(400) NULL")
+        _add_column_if_missing(cur, "app_policies", "base_score", "ALTER TABLE app_policies ADD COLUMN base_score DOUBLE NULL")
         # Backfill any user still missing a handle (idempotent: only touches NULLs).
         from app import repository as _repo
         cur.execute("SELECT id, email, name FROM app_users WHERE username IS NULL OR username=''")
