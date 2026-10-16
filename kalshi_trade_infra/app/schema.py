@@ -380,6 +380,10 @@ def main() -> None:
         # theirs to deploy and is not revocable). These columns mark the copy's origin.
         _add_column_if_missing(cur, "app_strategies", "shared_from_user_id", "ALTER TABLE app_strategies ADD COLUMN shared_from_user_id BIGINT NULL")
         _add_column_if_missing(cur, "app_strategies", "shared_src_id", "ALTER TABLE app_strategies ADD COLUMN shared_src_id BIGINT NULL")
+        # Community email digest: opt-out flag + a per-recipient cooldown timestamp so a flurry of
+        # posts can't flood anyone. (Delivery itself waits on SES production access.)
+        _add_column_if_missing(cur, "app_users", "email_opt_out", "ALTER TABLE app_users ADD COLUMN email_opt_out TINYINT(1) NOT NULL DEFAULT 0")
+        _add_column_if_missing(cur, "app_users", "last_community_email_at", "ALTER TABLE app_users ADD COLUMN last_community_email_at DATETIME NULL")
         # One-time migration: seed spot_candles_1m with existing BTC history so the
         # generalized backtester has BTC's full price path. Idempotent (INSERT IGNORE on PK).
         cur.execute(

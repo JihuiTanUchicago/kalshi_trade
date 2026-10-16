@@ -839,6 +839,10 @@ a.snap:hover { border-color: var(--ink-3); }
 .cmt .pfp { width: 28px; height: 28px; font-size: 12px; }
 .cmt b { font-weight: 600; font-size: 13.5px; }
 .cmt p { font-size: 13.5px; line-height: 1.45; margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cmt-search { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.cmt-search input { flex: 1; }
+.cmt-count { font-family: var(--f-nar); font-size: 11px; letter-spacing: .04em; color: var(--ink-3); white-space: nowrap; }
+.cmt-list { display: grid; gap: 12px; }
 .cmt-form { display: flex; gap: 8px; }
 .cmt-form .input { min-height: 38px; }
 @media (max-width: 680px) { .post-tools .btn { margin-left: 0; } }

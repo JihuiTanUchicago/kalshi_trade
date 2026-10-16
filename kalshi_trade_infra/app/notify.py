@@ -11,12 +11,32 @@ with no code change.
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import os
 from typing import Optional
 
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 FROM_EMAIL = os.getenv("TAU_FROM_EMAIL", "tjhprivate0416@gmail.com")
 OPERATOR_EMAIL = os.getenv("TAU_OPERATOR_EMAIL", "tjhprivate0416@gmail.com")
+PUBLIC_URL = os.getenv("TAU_PUBLIC_URL", "https://d1gfpzcosqrjya.cloudfront.net").rstrip("/")
+
+
+def _link_secret() -> bytes:
+    # Reuse a stable server-side secret so unsubscribe links survive restarts without a new env var.
+    return (os.getenv("TAU_LINK_SECRET") or os.getenv("GOOGLE_CLIENT_SECRET") or "tau-dev-secret").encode()
+
+
+def unsubscribe_token(user_id: int) -> str:
+    return hmac.new(_link_secret(), b"unsub:%d" % user_id, hashlib.sha256).hexdigest()[:20]
+
+
+def unsubscribe_token_valid(user_id: int, token: str) -> bool:
+    return hmac.compare_digest(unsubscribe_token(user_id), token or "")
+
+
+def unsubscribe_url(user_id: int) -> str:
+    return "%s/unsubscribe?u=%d&t=%s" % (PUBLIC_URL, user_id, unsubscribe_token(user_id))
 
 
 def _send(to: str, subject: str, body: str, reply_to: Optional[str] = None) -> bool:
@@ -82,3 +102,18 @@ def comment_notice(to_email: str, author_name: Optional[str], commenter: str,
         "(You can turn these off anytime — just let us know.)"
     ) % (author_name or "there", commenter, (post_preview or "").strip(), comment_body.strip())
     return _send(to_email, "%s replied to your Tau post" % commenter, body)
+
+
+def community_post_notice(to_email: str, name: Optional[str], author: str,
+                          preview: str, unsub_url: str) -> bool:
+    """Tell a user a new post landed in the community. Best-effort; respects the
+    per-recipient cooldown and opt-out enforced by the caller."""
+    body = (
+        "Hi %s,\n\n"
+        "%s just posted in the Tau community:\n\n"
+        "  “%s”\n\n"
+        "Open the Community tab to read it and join in.\n\n"
+        "— Tau\n\n"
+        "Don't want these? Unsubscribe: %s"
+    ) % (name or "there", author, (preview or "").strip()[:280], unsub_url)
+    return _send(to_email, "New in the Tau community", body)

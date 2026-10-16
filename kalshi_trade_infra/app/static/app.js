@@ -1611,8 +1611,23 @@
         if (!box.hidden) { box.hidden = true; return; }
         box.hidden = false; box.innerHTML = loading(40);
         const d = await api(`/api/community/${pid}/comments`).catch(() => ({ comments: [] }));
-        box.innerHTML = `${d.comments.map((c) => `<div class="cmt">${avatar(c.picture, c.author)}<div><b>${esc(c.author)}</b> <span class="when">${when(c.created_at)}</span><p>${mdLite(c.body)}</p></div></div>`).join('')}
+        const many = d.comments.length > 6;  // only show the search bar once a thread gets long
+        box.innerHTML = `${many ? '<div class="cmt-search"><input class="input" type="search" placeholder="Search replies…" aria-label="Search replies"><span class="cmt-count"></span></div>' : ''}
+          <div class="cmt-list">${d.comments.map((c) => `<div class="cmt">${avatar(c.picture, c.author)}<div><b>${esc(c.author)}</b> <span class="when">${when(c.created_at)}</span><p>${mdLite(c.body)}</p></div></div>`).join('')}</div>
           <form class="cmt-form"><input class="input" maxlength="1000" placeholder="Write a reply…" required><button class="btn sm" type="submit">Reply</button></form>`;
+        const cmtSearch = box.querySelector('.cmt-search input');
+        if (cmtSearch) {
+          // Client-side filter over the loaded replies. ponytail: server-side search if a
+          // single thread ever exceeds the 100-comment fetch cap.
+          const count = box.querySelector('.cmt-count');
+          const items = Array.from(box.querySelectorAll('.cmt-list .cmt'));
+          cmtSearch.oninput = () => {
+            const q = cmtSearch.value.trim().toLowerCase();
+            let shown = 0;
+            items.forEach((el) => { const hit = !q || el.textContent.toLowerCase().includes(q); el.hidden = !hit; if (hit) shown++; });
+            count.textContent = q ? `${shown} of ${items.length}` : '';
+          };
+        }
         box.querySelector('.cmt-form').onsubmit = async (ev) => {
           ev.preventDefault();
           const inp = box.querySelector('input'); const body = inp.value.trim(); if (!body) return;

@@ -485,6 +485,32 @@ def share_strategy(cur, src_id: int, from_uid: int, to_uid: int) -> Optional[int
     return cur.lastrowid
 
 
+def community_email_recipients(cur, exclude_uid: int, cooldown_hours: int = 4) -> List[Dict]:
+    """Users to email about new community activity: opted-in, with an email, not the author,
+    and not emailed within the cooldown (so a burst of posts can't flood anyone)."""
+    cutoff = now_utc() - timedelta(hours=cooldown_hours)
+    cur.execute(
+        """SELECT id, email, name FROM app_users
+           WHERE id<>%s AND email IS NOT NULL AND email<>'' AND COALESCE(email_opt_out,0)=0
+                 AND (last_community_email_at IS NULL OR last_community_email_at < %s)""",
+        (exclude_uid, cutoff),
+    )
+    return cur.fetchall()
+
+
+def mark_community_emailed(cur, user_ids: List[int]) -> None:
+    if not user_ids:
+        return
+    placeholders = ",".join(["%s"] * len(user_ids))
+    cur.execute("UPDATE app_users SET last_community_email_at=%s WHERE id IN (%s)" % ("%s", placeholders),
+                [now_utc()] + list(user_ids))
+
+
+def set_email_opt_out(cur, user_id: int, opt_out: bool) -> bool:
+    cur.execute("UPDATE app_users SET email_opt_out=%s WHERE id=%s", (1 if opt_out else 0, user_id))
+    return cur.rowcount == 1
+
+
 def add_notification(cur, user_id: int, kind: str, body: str, link: Optional[str] = None) -> int:
     cur.execute(
         "INSERT INTO app_notifications (user_id, kind, body, link, created_at) VALUES (%s,%s,%s,%s,%s)",

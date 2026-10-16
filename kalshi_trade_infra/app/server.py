@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+import threading
 import traceback
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -429,6 +430,22 @@ def mark_notifications_read(ctx: Ctx):
     return {"ok": True}
 
 
+def unsubscribe(ctx: Ctx):
+    """Public one-click unsubscribe from community emails (HMAC-signed link, no login needed)."""
+    try:
+        uid = int(ctx.query.get("u") or 0)
+    except ValueError:
+        uid = 0
+    ok = bool(uid) and notify.unsubscribe_token_valid(uid, ctx.query.get("t") or "") and repo.set_email_opt_out(ctx.cur, uid, True)
+    msg = ("You're unsubscribed from Tau community emails." if ok
+           else "This unsubscribe link isn't valid. If you keep getting emails, reply to one and we'll remove you.")
+    page = ("<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+            "<title>Tau</title><body style='font-family:system-ui,-apple-system,sans-serif;max-width:520px;margin:12vh auto;padding:0 20px;color:#191B16'>"
+            "<h1 style='font-size:20px;letter-spacing:.02em'>Tau</h1><p style='font-size:15px;line-height:1.55'>%s</p>"
+            "<p style='font-size:13px;margin-top:20px'><a href='/' style='color:#1a66c9'>Back to Tau</a></p></body>") % msg
+    return ("html", page)
+
+
 def get_strategy(ctx: Ctx):
     s = _owned_strategy(ctx)
     out = _strategy_card(s)
@@ -745,7 +762,25 @@ def create_community_post(ctx: Ctx):
         image_id = repo.store_image(cur, ctx.uid, ctype, raw)
     snapshot = _post_snapshot(cur, ctx.uid, kind, int(ctx.body.get("ref_id") or 0)) if kind != "note" else None
     pid = repo.create_post(cur, ctx.uid, body or _default_share_text(kind, snapshot), kind, snapshot, image_id)
+    author = (repo.get_user(cur, ctx.uid) or {}).get("name") or "A trader"
+    _email_community_post_async(ctx.uid, author, body or _default_share_text(kind, snapshot))
     return {"id": pid}
+
+
+def _email_community_post_async(author_uid: int, author: str, preview: str) -> None:
+    """Email opted-in users about a new post, off the request thread so posting stays snappy.
+    Cooldown + opt-out are enforced per recipient; SES sandbox silently no-ops unverified sends."""
+    def run():
+        try:
+            conn = get_db_conn()
+            cur = conn.cursor()
+            recipients = repo.community_email_recipients(cur, author_uid)
+            for r in recipients:
+                notify.community_post_notice(r["email"], r.get("name"), author, preview, notify.unsubscribe_url(r["id"]))
+            repo.mark_community_emailed(cur, [r["id"] for r in recipients])  # cooldown applies even to sandbox-skipped
+        except Exception as e:
+            print("[community] post email dispatch failed: %r" % e, flush=True)
+    threading.Thread(target=run, daemon=True).start()
 
 
 def edit_community_post(ctx: Ctx):
@@ -1236,6 +1271,7 @@ ROUTES: List[Route] = [
         ("POST", r"/api/strategies/(\d+)/share", share_strategy, True),
         ("GET", "/api/notifications", notifications, True),
         ("POST", "/api/notifications/read", mark_notifications_read, True),
+        ("GET", "/unsubscribe", unsubscribe, False),
         ("GET", "/api/deployments", list_deployments, True),
         ("POST", "/api/deployments", create_deployment, True),
         ("POST", r"/api/deployments/(\d+)/(pause|resume|stop)", deployment_action, True),
@@ -1422,6 +1458,11 @@ class Handler(BaseHTTPRequestHandler):
                 _, ctype, data = result
                 self._headers(200, ctype, len(data), [("Cache-Control", "public, max-age=31536000, immutable")])
                 self.wfile.write(data)
+                return
+            if isinstance(result, tuple) and result[0] == "html":
+                body = result[1].encode("utf-8")
+                self._headers(200, "text/html; charset=utf-8", len(body), [("Cache-Control", "no-store")])
+                self.wfile.write(body)
                 return
             if isinstance(result, tuple) and result[0] == "redirect":
                 self.send_response(302)

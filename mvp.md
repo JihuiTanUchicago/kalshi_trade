@@ -24,13 +24,11 @@ A self-improving alpha discovery pipeline, from ideation, to similation, and fin
 ## TODO / Working Queue
 Single source of truth for OPEN work. `[blocked]` = needs a user/AWS action first. Completed items move to **## Done** below.
 
-- As comment section grows longer, consider scalability. We should add search bar, useful filters, and 
-- All-markets collector + cross-contract — BUILDING. Phase 1 catalog shipped. Ingestion split onto a dedicated collector box (`i-0bd0683cc7e86243d`) + S3 data-lake. Next: per-minute S3/Parquet snapshots (Phase 2), backtest-over-any-series (3), cross-contract (4).
-- Markets still show only a few — widen the live market universe.
-- Email all users on any new community update (needs unsubscribe + rate discipline).
-- Kalshi dev-env 2nd curve needs `KALSHI_DEV_API_BASE` set on the box (one line until then).
+- All-markets collector + cross-contract — BUILDING (DELAYED per owner). Phase 1 catalog shipped. Ingestion split onto a dedicated collector box (`i-0bd0683cc7e86243d`) + S3 data-lake. Next: per-minute S3/Parquet snapshots (Phase 2), backtest-over-any-series (3), cross-contract (4).
+- Markets still show only a few — widen the live market universe (DELAYED per owner).
 
 ### Blocked on you / AWS
+- **Email-all community digest is BUILT but won't deliver until SES production access.** Code is live (opt-out column + HMAC unsubscribe link + per-recipient 4h cooldown; fires in a background thread on each new post). SES is in sandbox, so it only delivers to *verified* addresses right now — request SES production access (SES console → Account dashboard → Request production access) and it starts delivering to everyone with zero code change.
 - Model selection: Claude 5.5 / OpenAI GPT-6.x / Grok are AWS-access-gated (agreements accepted + availability AUTHORIZED, but invoke denies even from full-admin). Request in Bedrock console → Model access (us-east-1) or AWS Sales. Prices locked: Sonnet5.5 $2/$10, Opus5.5 $4/$20, Haiku5.5 $0.1/$0.5, GPT-6.1 Sol $2.2/$10, GPT-6 Sol $2/$10, GPT-5.6 Sol $8.8/$33.
 - DeepSeek R1 returns reasoning-only output via Converse — needs reasoningContent handling before it's safe to offer.
 
@@ -40,6 +38,8 @@ Single source of truth for OPEN work. `[blocked]` = needs a user/AWS action firs
 
 ## Done
 ### 2026-10-15
+- **Comment search** on long threads — once a post has >6 replies, a search box filters them live (client-side over the loaded set, with an "N of M" count). ponytail: server-side search if a thread ever tops the 100-comment fetch cap.
+- **Email-all on new community posts** (code shipped; delivery gated on SES prod — see Blocked) — background-thread dispatch to opted-in users on each new post, per-recipient 4h cooldown so a burst can't flood, one-click HMAC-signed **unsubscribe** link (`/unsubscribe`) + `email_opt_out` column. The in-app notification bell already covers community activity without email.
 - **Community composer pinned to the bottom** (chat-style): the feed + filter chips scroll above a sticky composer bar with its own elevation; textarea auto-grows from one line. Fixed a token bug where `var(--surface)` (undefined at `:root`) made the bar transparent — now uses `--stock-raised` (opaque).
 - **[ops] Found + fixed a deploy-targeting bug:** all deploys this session had been going to `i-0bd0683cc7e86243d` (tau-collector), but the CloudFront origin / real web box is `i-077d6f7873e7836ba` (kalshi-collector). Nothing reached users until caught. Also: must invalidate CloudFront `/*` (the HTML carries the `?v=` asset hash), not just the asset paths. Recorded in memory. Redeployed everything to the correct box; verified live.
 - **Strategy sharing + notifications.** Share any strategy with a friend by the email they sign in with (strategy Share panel → `POST /api/strategies/:id/share`). It's **copied** into their inventory (so it's theirs to deploy like any other, and can't be revoked); idempotent — re-sharing the same one won't duplicate. A **notification bell** sits by the profile (top-right) with an unread dot + dropdown; it fires on a share to you and on a comment on your post. Shared strategies carry a **"Shared by X"** flag in the list and on the detail page. New: `app_notifications` table, `shared_from_user_id`/`shared_src_id` on `app_strategies`. Verified end-to-end on the real DB (copy origin, idempotent dedup, unread count).

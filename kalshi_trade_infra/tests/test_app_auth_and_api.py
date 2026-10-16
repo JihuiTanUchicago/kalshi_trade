@@ -367,6 +367,25 @@ def test_notifications_endpoint_shape(monkeypatch):
     assert out["unread"] == 1 and out["items"][0]["read"] is False and out["items"][0]["link"] == "/strategies/9"
 
 
+def test_unsubscribe_token_is_bound_to_user():
+    from app import notify
+    t = notify.unsubscribe_token(42)
+    assert notify.unsubscribe_token_valid(42, t)
+    assert not notify.unsubscribe_token_valid(42, "bad")
+    assert not notify.unsubscribe_token_valid(43, t)  # a token for one user can't unsubscribe another
+
+
+def test_unsubscribe_endpoint_opts_out_on_valid_token(monkeypatch):
+    from app import notify
+    flips = {}
+    monkeypatch.setattr(server.repo, "set_email_opt_out", lambda cur, uid, val: (flips.__setitem__(uid, val), True)[1])
+    kind, html = server.unsubscribe(ctx(query={"u": "7", "t": notify.unsubscribe_token(7)}))
+    assert kind == "html" and "unsubscribed" in html and flips == {7: True}
+    flips.clear()
+    kind, html = server.unsubscribe(ctx(query={"u": "7", "t": "forged"}))
+    assert "isn't valid" in html and not flips  # forged token changes nothing
+
+
 def test_numbers_must_be_numbers():
     with pytest.raises(server.ApiError):
         server._num({"amount": "100"}, "amount", 1, 10)
