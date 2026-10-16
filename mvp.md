@@ -33,7 +33,6 @@ can deploy shared strategy just like yours. Shared strategy is not revocable.
 - Move the "make a post" composer to a fixed bar at the bottom of the community page (right now it sits on top of the most recent post). /impeccable — bigger layout change still open; spacing already added.
 - As comment section grows longer, consider scalability. We should add search bar, useful filters, and 
 - All-markets collector + cross-contract — BUILDING. Phase 1 catalog shipped. Ingestion split onto a dedicated collector box (`i-0bd0683cc7e86243d`) + S3 data-lake. Next: per-minute S3/Parquet snapshots (Phase 2), backtest-over-any-series (3), cross-contract (4).
-- Track unrealized (mark-to-market) P&L for deployed strategies — the Holdings panel ships cost + positions; still needs current-quote wiring for live unrealized.
 - Markets still show only a few — widen the live market universe.
 - Email all users on any new community update (needs unsubscribe + rate discipline).
 - Kalshi dev-env 2nd curve needs `KALSHI_DEV_API_BASE` set on the box (one line until then).
@@ -48,6 +47,7 @@ can deploy shared strategy just like yours. Shared strategy is not revocable.
 
 ## Done
 ### 2026-10-15
+- **Live unrealized (mark-to-market) P&L.** The engine stamps each open position's current YES bid (`mark_price`/`mark_ts` on `app_positions`) every decision tick — reusing the book it already fetches, so zero extra API calls. The web shows unrealized P&L in the strategy Holdings panel, the Deploy-board Open positions table, and the dashboard open-position cards (value by side; NO estimated as 1−bid, labeled "est."). Updates at decision cadence; "—" until the first mark. Verified end-to-end on the real DB.
 - **Strategies list: Deployed/Live badge + search + Deployed-only filter.** Each row now shows a "Deployed" (or red "Live") pill when it has an active deployment (server-side `active_deps`/`live_deps` via correlated subqueries). Added a search box (`q`, matches title/thesis) and a "Deployed" toggle chip; both narrow the list AND the headline counts server-side (shared `_strategy_filter_sql`). Cross-page sort-by-P&L deferred (P&L lives in result JSON).
 - **[ops] Deploys must ship the whole `app/` package.** Hit a prod outage: the box was missing `kalshi_dev/code_map/models_catalog/sandbox` because earlier deploys were file-by-file and never shipped them, so deploying a newer `server.py` (which imports `kalshi_dev`) crash-looped `recursive-web`. Fixed by deploying the full `app/` tar; box is now aligned to HEAD. Always tar `app` (not individual files).
 - **Dashboard Deployed table no longer scrolls sideways** — `width:100%` on the strategy/deployment tables so long titles wrap instead of widening past the viewport; insanely long names break with `overflow-wrap`. Removed the empty/unhelpful Daily P&L bar chart (and its dead CSS).

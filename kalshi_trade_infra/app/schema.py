@@ -358,6 +358,10 @@ def main() -> None:
         _add_column_if_missing(cur, "app_posts", "edited_at", "ALTER TABLE app_posts ADD COLUMN edited_at DATETIME NULL")
         _add_column_if_missing(cur, "app_stripe_customers", "reload_amount", "ALTER TABLE app_stripe_customers ADD COLUMN reload_amount DECIMAL(10,2) NOT NULL DEFAULT 20.00")
         _add_column_if_missing(cur, "app_stripe_customers", "reload_threshold", "ALTER TABLE app_stripe_customers ADD COLUMN reload_threshold DECIMAL(10,2) NOT NULL DEFAULT 5.00")
+        # Live mark-to-market: the engine stamps the current YES bid on open positions each
+        # decision tick (reusing the book it already fetches) so the web can show unrealized P&L.
+        _add_column_if_missing(cur, "app_positions", "mark_price", "ALTER TABLE app_positions ADD COLUMN mark_price DECIMAL(10,4) NULL")
+        _add_column_if_missing(cur, "app_positions", "mark_ts", "ALTER TABLE app_positions ADD COLUMN mark_ts DATETIME NULL")
         # One-time migration: seed spot_candles_1m with existing BTC history so the
         # generalized backtester has BTC's full price path. Idempotent (INSERT IGNORE on PK).
         cur.execute(

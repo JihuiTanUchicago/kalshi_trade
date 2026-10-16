@@ -807,7 +807,7 @@
         : `<div class="empty"><h3>Nothing deployed yet</h3><p>Agents research strategies and test each one on data they never saw. The ones that pass every gate can be deployed here, on paper first.</p><a class="btn" href="/research">Dispatch your first agent</a></div>`;
       const stubs = (rows, closed) => rows.length
         ? rows.map((r) => `<div class="stub"><b>${esc(r.side.toUpperCase())} ${esc(r.qty)} × ${cents(+r.entry_price)}</b>
-            <span>${closed ? money(+r.pnl) : usd(r.qty * r.entry_price)}</span>
+            <span>${closed ? money(+r.pnl) : (r.unrealized != null ? money(r.unrealized) : usd(r.qty * r.entry_price))}</span>
             <small>${esc(r.title)} · <span class="tick">${esc(r.ticker)}</span> · ${r.mode === 'live' ? 'LIVE' : 'paper'} · ${when(closed ? r.closed_at : r.opened_at)}</small></div>`).join('')
         : `<p class="hint">${closed ? 'No settled trades yet.' : 'No open positions.'}</p>`;
       const main = `<div class="dash">
@@ -1112,11 +1112,15 @@
           </article>
         </div>
         <aside>
-          ${s.holdings && s.holdings.length ? `<section class="panel"><h3>Holding right now</h3>
-            <div class="sheet"><table class="table stack t-dep"><thead><tr><th>Contract</th><th>Position</th><th class="num">Cost</th><th class="num">Settles</th></tr></thead><tbody>
-            ${s.holdings.map((p) => `<tr><td class="tick" data-lab="Contract">${esc(p.ticker)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : ''}</td><td data-lab="Position">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(p.entry_price)}</td><td class="num" data-lab="Cost">${usd(p.cost)}</td><td class="num" data-lab="Settles">${clock(p.market_close_time)}</td></tr>`).join('')}
+          ${s.holdings && s.holdings.length ? (() => {
+            const marked = s.holdings.filter((p) => p.unrealized != null);
+            const unreal = marked.reduce((a, p) => a + p.unrealized, 0);
+            return `<section class="panel"><h3>Holding right now</h3>
+            <div class="sheet"><table class="table stack t-dep"><thead><tr><th>Contract</th><th>Position</th><th class="num">Cost</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
+            ${s.holdings.map((p) => `<tr><td class="tick" data-lab="Contract">${esc(p.ticker)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : ''}</td><td data-lab="Position">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(p.entry_price)}</td><td class="num" data-lab="Cost">${usd(p.cost)}</td><td class="num" data-lab="Unreal.">${p.unrealized == null ? '<span class="sub-fig">—</span>' : money(p.unrealized)}</td><td class="num" data-lab="Settles">${clock(p.market_close_time)}</td></tr>`).join('')}
             </tbody></table></div>
-            <p class="hint" style="margin-top:8px">${s.holdings.length} open position${s.holdings.length === 1 ? '' : 's'} at cost ${usd(s.holdings.reduce((a, p) => a + p.cost, 0))}. Live mark-to-market P&L is coming soon.</p></section>` : ''}
+            <p class="hint" style="margin-top:8px">${s.holdings.length} open position${s.holdings.length === 1 ? '' : 's'} at cost ${usd(s.holdings.reduce((a, p) => a + p.cost, 0))}${marked.length ? ` · unrealized ${money(unreal)} (est., mark-to-market on the current bid)` : ' · awaiting first mark'}.</p></section>`;
+          })() : ''}
           <section class="panel"><h3>Deploy</h3>
             ${canDeploy ? `<div style="display:grid;gap:10px">
                 ${s.status !== 'passed' ? `<div class="notice bad">${ICON.warn}<span>${s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${rejectReason(s)}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
@@ -1274,8 +1278,8 @@
       root.querySelector('#deps').innerHTML = d.deployments.length ? deploymentTable(d.deployments.map((x) => deploymentSlip(x, reg, true)).join(''), true)
         : `<div class="empty"><h3>Nothing deployed</h3><p>Open a passed strategy and post it to the board. Paper first: it trades the live market with paper money.</p><a class="btn" href="/strategies">See passed strategies</a></div>`;
       bindDeploymentActions(root.querySelector('#deps'), loadBoard);
-      root.querySelector('#openpos').innerHTML = d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost</th><th class="num">Settles</th></tr></thead><tbody>
-        ${d.open_positions.map((p) => `<tr><td>${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : ''}</td><td class="tick">${esc(p.ticker)}</td><td>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num">${clock(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
+      root.querySelector('#openpos').innerHTML = d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
+        ${d.open_positions.map((p) => `<tr><td>${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : ''}</td><td class="tick">${esc(p.ticker)}</td><td>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num">${p.unrealized == null ? '<span class="sub-fig">—</span>' : money(p.unrealized)}</td><td class="num">${clock(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
         : '<p class="hint">No open positions.</p>';
     };
     let lastId = 0;

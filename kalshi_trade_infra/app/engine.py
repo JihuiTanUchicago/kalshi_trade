@@ -261,6 +261,14 @@ def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] 
     feats = None if late else sources.btc().features_at(now_ts)
     snaps = [s for s in (snapshot(feats, q.contract, now_ts, q.yes_bid, q.yes_ask) for q in quotes) if s is not None]
     sizes = {q.contract.ticker: q.yes_ask_size for q in quotes}
+    # Mark open positions to the current YES bid (the price they could be liquidated at)
+    # using the book we just fetched — so the web shows live unrealized P&L. Best-effort:
+    # a mark failure must never block the trading decision.
+    try:
+        stats["marked"] = repo.update_marks(
+            cur, market.key, {q.contract.ticker: q.yes_bid for q in quotes if q.yes_bid is not None}, now)
+    except Exception:
+        pass
     stats["decided"] = 0
     for dep in due:
         if not repo.claim_decision(cur, dep["id"], slot):

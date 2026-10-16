@@ -213,7 +213,7 @@ def dashboard(ctx: Ctx):
             "realized_pnl": round(repo.realized_pnl(cur, ctx.uid, "live"), 2),
             "today_pnl": round(repo.realized_pnl(cur, ctx.uid, "live", _start_of_day_utc()), 2),
         },
-        "open_positions": open_pos,
+        "open_positions": _with_marks(open_pos),
         "recent_closed": repo.user_positions(cur, ctx.uid, "closed", 12),
         "deployments": [_deployment_out(d, curves.get(d["id"], [])) for d in deps],
         "agents": repo.active_run_counts(cur, ctx.uid),
@@ -336,6 +336,28 @@ def _strategy_card(s: Dict) -> Dict:
     }
 
 
+def _mark_fields(p: Dict) -> Dict:
+    """Live mark-to-market for one open position from the engine-stamped mark_price
+    (the current YES bid). None until the engine's first mark after entry."""
+    qty = int(p["qty"])
+    cost = qty * float(p["entry_price"]) + float(p.get("entry_fee") or 0)
+    mark = p.get("mark_price")
+    if mark is None:
+        return {"mark": None, "value": None, "unrealized": None, "mark_ts": None}
+    mark = float(mark)
+    # mark is the YES bid. A YES contract liquidates ~yes_bid; a NO contract ~1-yes_ask, which we
+    # don't store — estimate NO as 1-yes_bid (slightly high). Live is YES-only; NO only shows in
+    # paper/sim, where the estimate is fine (UI labels it "est.").
+    value = round(qty * (mark if p["side"] == "yes" else 1.0 - mark), 2)
+    return {"mark": mark, "value": value, "unrealized": round(value - cost, 2), "mark_ts": p.get("mark_ts")}
+
+
+def _with_marks(rows: List[Dict]) -> List[Dict]:
+    for p in rows:
+        p.update(_mark_fields(p))
+    return rows
+
+
 def list_strategies(ctx: Ctx):
     q = ctx.query
     direction, status, market = q.get("direction") or None, q.get("status") or None, q.get("market") or None
@@ -382,7 +404,7 @@ def get_strategy(ctx: Ctx):
             "ticker": p["ticker"], "side": p["side"], "qty": int(p["qty"]), "mode": p["mode"],
             "entry_price": float(p["entry_price"]),
             "cost": round(int(p["qty"]) * float(p["entry_price"]) + float(p["entry_fee"] or 0), 2),
-            "market_close_time": p["market_close_time"],
+            "market_close_time": p["market_close_time"], **_mark_fields(p),
         } for p in repo.positions_for_strategy(ctx.cur, ctx.uid, s["id"], "open")],
     )
     return out
@@ -425,7 +447,7 @@ def list_deployments(ctx: Ctx):
     curves = repo.deployment_curves(ctx.cur, ctx.uid)
     return {
         "deployments": [_deployment_out(d, curves.get(d["id"], [])) for d in repo.list_deployments(ctx.cur, ctx.uid)],
-        "open_positions": repo.user_positions(ctx.cur, ctx.uid, "open"),
+        "open_positions": _with_marks(repo.user_positions(ctx.cur, ctx.uid, "open")),
         "recent_closed": repo.user_positions(ctx.cur, ctx.uid, "closed", 20),
     }
 

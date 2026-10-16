@@ -626,6 +626,27 @@ def open_positions(cur, deployment_id: int) -> List[Dict]:
     return cur.fetchall()
 
 
+def update_marks(cur, market: str, marks: Dict[str, float], now: datetime) -> int:
+    """Stamp the current YES bid on every open position whose ticker is in `marks`.
+    Called from the engine tick, which already holds the live book — no extra API calls.
+    `market` scopes the update so one market's tick can't touch another's rows."""
+    if not marks:
+        return 0
+    ts = now.astimezone(timezone.utc).replace(tzinfo=None) if now.tzinfo else now
+    n = 0
+    for ticker, mark in marks.items():
+        if mark is None:
+            continue
+        cur.execute(
+            """UPDATE app_positions p JOIN app_deployments d ON d.id=p.deployment_id
+               SET p.mark_price=%s, p.mark_ts=%s
+               WHERE p.status='open' AND p.ticker=%s AND d.market=%s""",
+            (round(float(mark), 4), ts, ticker, market),
+        )
+        n += cur.rowcount
+    return n
+
+
 def user_positions(cur, user_id: int, status: str = "open", limit: int = 100) -> List[Dict]:
     cur.execute(
         """SELECT p.*, s.title FROM app_positions p

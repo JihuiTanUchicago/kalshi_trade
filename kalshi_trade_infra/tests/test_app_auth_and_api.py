@@ -242,6 +242,18 @@ def test_strategies_search_and_deployed_thread_to_repo(monkeypatch):
     assert seen["lq"] is None and seen["ldep"] is False
 
 
+def test_mark_fields_unrealized_pnl():
+    # YES: bought 10 @ 0.40 (cost 4.00 + 0.05 fee), now bid 0.55 -> value 5.50, unreal +1.45.
+    y = server._mark_fields({"qty": 10, "side": "yes", "entry_price": 0.40, "entry_fee": 0.05, "mark_price": 0.55})
+    assert y["value"] == 5.50 and y["unrealized"] == 1.45
+    # NO: value estimated as 1-bid. Bought 10 @ 0.30 (cost 3.00), bid 0.55 -> NO value 4.50, unreal +1.50.
+    n = server._mark_fields({"qty": 10, "side": "no", "entry_price": 0.30, "entry_fee": 0.0, "mark_price": 0.55})
+    assert n["value"] == 4.50 and n["unrealized"] == 1.50
+    # Not yet marked -> all None (UI shows a dash, never a wrong number).
+    u = server._mark_fields({"qty": 10, "side": "yes", "entry_price": 0.40, "entry_fee": 0.0, "mark_price": None})
+    assert u["unrealized"] is None and u["value"] is None
+
+
 def test_strategies_bad_page_defaults_to_zero(monkeypatch):
     monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: {"total": 0})
     monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [])
