@@ -1,0 +1,20 @@
+[Unit]
+Description=Per-minute model feature builder
+After=network-online.target
+Wants=network-online.target
+# A crash loop must not silently hammer the exchange (StartLimit* belong in [Unit]).
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/kalshi
+# Env files use "export VAR=...", sourced by a shell (EnvironmentFile can't parse them).
+ExecStart=/bin/bash -c 'set -a; . /opt/kalshi/.env.aws; [ -f /opt/kalshi/.env ] && . /opt/kalshi/.env; set +a; exec /opt/kalshi/.venv/bin/python -u -m data_pipeline.model_features_1m_builder >> /opt/kalshi/logs/kalshi-feature-builder.log 2>&1'
+Restart=always
+RestartSec=10
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

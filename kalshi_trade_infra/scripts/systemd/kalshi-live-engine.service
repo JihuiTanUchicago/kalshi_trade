@@ -1,0 +1,21 @@
+[Unit]
+Description=Kalshi live trading engine
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/kalshi
+# The env files use "export VAR=...", which EnvironmentFile cannot parse, so
+# they are sourced by a shell - the same pattern kalshi-dashboard.service uses.
+ExecStart=/bin/bash -c 'set -a; . /opt/kalshi/.env.aws; [ -f /opt/kalshi/.env ] && . /opt/kalshi/.env; set +a; exec /opt/kalshi/.venv/bin/python -u -m data_pipeline.live_trading_engine >> /opt/kalshi/live_trading_engine.log 2>&1'
+Restart=always
+RestartSec=10
+# A crash loop must not silently hammer the exchange.
+StartLimitIntervalSec=300
+StartLimitBurst=10
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,27 @@
+Tau — AI trading-research pipeline for Kalshi markets
+Copyright (c) 2026 Jihui Tan
+
+Licensed under the Business Source License 1.1 (see LICENSE). Not an
+OSI-approved open-source license until the Change Date, after which it
+converts to the Apache License, Version 2.0.
+
+-----------------------------------------------------------------------------
+Third-party attributions
+-----------------------------------------------------------------------------
+
+This project's self-evolving research component ("Tau-RSI") adapts the method
+described in:
+
+  Dream-RSI: Recursive Self-Improvement through Evolving Worlds
+  Tong Zheng et al. (Google, University of Maryland), 2026.
+  arXiv:2609.14858 — https://github.com/zhengkid/Dream-RSI
+
+Tau-RSI reimplements the Dream-RSI loop (online exploration -> replay
+simulator -> dreaming-based policy improvement) for binary-options trading
+research; it is an independent adaptation of the published method, not a fork
+of the original code. If any code is incorporated from that repository,
+consult and comply with its upstream license.
+
+Portions of the research-agent design were influenced by open research-agent
+workflows (e.g. karpathy/autoresearch). Where upstream code is reused, its
+copyright and license are reproduced alongside it.

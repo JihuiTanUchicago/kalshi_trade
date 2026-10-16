@@ -1,0 +1,23 @@
+*.env*
+credentials
+*__pycache__
+venv/
+.venv/
+.pytest_cache/
+*.pyc
+# Impeccable session artifacts: the durable record is the surface brief and
+# design.json; review captures and question logs belong to one run.
+**/.impeccable/review/
+**/.impeccable/questions/
+
+# local-only redaction values for publish_public.sh
+scrub_secrets.env
+scripts/scrub_secrets.env
+
+# allow the no-secrets template
+!.env.example
+!**/.env.example
+
+# auto-publish hook log
+.publish.log
+.publish.lock
