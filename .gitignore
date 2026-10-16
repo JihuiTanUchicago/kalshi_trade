@@ -9,3 +9,7 @@ venv/
 # design.json; review captures and question logs belong to one run.
 **/.impeccable/review/
 **/.impeccable/questions/
+
+# local-only redaction values for publish_public.sh
+scrub_secrets.env
+scripts/scrub_secrets.env

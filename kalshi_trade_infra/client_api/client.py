@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional
 
@@ -68,8 +69,8 @@ class KalshiDataClient:
     """
 
     base_url: str
-    username: str = "todd"
-    password: str = "kalshimakesmepoor"
+    username: str = os.getenv("DASHBOARD_USER", "admin")
+    password: str = os.getenv("DASHBOARD_PASSWORD", "")
     timeout_seconds: int = 30
     chunk_size: int = 5000
 
