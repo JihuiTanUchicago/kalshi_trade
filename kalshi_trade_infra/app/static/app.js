@@ -313,6 +313,33 @@
   // they can see what a normal user sees. Default: admin view on.
   const isAdmin = () => !!(S.me && S.me.is_admin);
   const adminViewOn = () => isAdmin() && localStorage.getItem('tau_admin_off') !== '1';
+  async function wireBell() {
+    const wrap = root.querySelector('.bell-wrap');
+    if (!wrap) return;
+    const trig = wrap.querySelector('.bell-trig'), menu = wrap.querySelector('.bell-menu');
+    const dot = wrap.querySelector('.bell-dot'), list = wrap.querySelector('#bell-list');
+    const close = () => { menu.hidden = true; trig.setAttribute('aria-expanded', 'false'); document.removeEventListener('click', onDoc, true); };
+    const onDoc = (e) => { if (!wrap.contains(e.target)) close(); };
+    const paint = (d) => {
+      dot.hidden = !d.unread;
+      list.innerHTML = d.items.length
+        ? d.items.map((n) => `<a class="notif ${n.read ? '' : 'unread'}" href="${n.link || '#'}">${esc(n.body)}<time>${when(n.created_at)}</time></a>`).join('')
+        : '<p class="bell-empty">No notifications yet.</p>';
+    };
+    let data = { unread: 0, items: [] };
+    try { data = await api('/api/notifications'); paint(data); } catch (e) { return; }  // bell is best-effort
+    trig.onclick = async (e) => {
+      e.stopPropagation();
+      if (!menu.hidden) { close(); return; }
+      menu.hidden = false; trig.setAttribute('aria-expanded', 'true'); document.addEventListener('click', onDoc, true);
+      if (data.unread) {
+        data.unread = 0; dot.hidden = true;
+        list.querySelectorAll('.notif.unread').forEach((n) => n.classList.remove('unread'));
+        api('/api/notifications/read', {}).catch(() => {});
+      }
+    };
+  }
+
   function shell(active, board, main) {
     document.body.classList.remove('landing-body');
     const u = S.me.user;
@@ -325,7 +352,7 @@
     root.innerHTML = `
       <header class="masthead"><div class="masthead-in">
         <p class="wordmark"><a href="/">${ICON.mark}<span>Tau</span></a></p>
-        <span class="asof">${adminToggle}<span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false">${esc(u.name || u.email)}<svg class="caret" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/billing">Billing</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
+        <span class="asof">${adminToggle}<span class="bell-wrap"><button class="bell-trig" data-action="bell" aria-haspopup="true" aria-expanded="false" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bell-dot" hidden></span></button><span class="bell-menu" hidden><div class="bell-head"><b>Notifications</b></div><div class="bell-list" id="bell-list"></div></span></span><span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false">${esc(u.name || u.email)}<svg class="caret" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/billing">Billing</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
       </div></header>
       <nav class="services" aria-label="Sections"><div class="services-in">${nav}</div></nav>
       <div class="wrap">
@@ -344,6 +371,7 @@
         else close();
       };
     }
+    wireBell();
     const at = root.querySelector('[data-action="admintoggle"]');
     if (at) at.onclick = () => {
       const turningOff = adminViewOn();
@@ -461,7 +489,7 @@
       ? `<td class="pickcol" data-lab="Deploy"><input type="checkbox" class="pick" data-id="${s.id}" aria-label="Select for deployment"></td>`
       : '<td class="pickcol" data-lab=""></td>') : '';
     return `<tr class="${opts.land ? 'washed' : ''}">${pickCell}
-      <td class="name" data-lab="">${name}<div class="sub-fig cellwrap">${esc(s.thesis)}</div></td>
+      <td class="name" data-lab="">${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}<div class="sub-fig cellwrap">${esc(s.thesis)}</div></td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(s.market))} \u00b7 ${esc(dirLabel(s.direction))}</span></td>
       <td class="num" data-lab="${oos ? 'Unseen P&amp;L' : 'Tested P&amp;L'}">${m.pnl == null ? '\u2014' : money(m.pnl)}${oos ? '' : '<div class="sub-fig">tested only</div>'}</td>
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
@@ -1097,7 +1125,7 @@
       <div class="detail">
         <div>
           <article class="sheet-doc">
-            <p class="doc-mark">${mark(s.status)}</p>
+            <p class="doc-mark">${mark(s.status)}${s.shared_from ? ` <span class="mk shared">${ICON.share}Shared by ${esc(s.shared_from)}</span>` : ''}</p>
             <h2>${esc(s.title)}</h2>
             <p class="thesis">${esc(s.thesis)}</p>
             <h3 class="sheet-h">The rule, in plain words</h3>
@@ -1144,6 +1172,13 @@
               <button class="btn sm danger" id="del-strat" ${activeDeps.length ? 'aria-disabled="true"' : ''}>Delete strategy</button>
             </div><div id="delflash"></div>
           </section>
+          <section class="panel"><h3>Share</h3>
+            <p class="hint" style="margin-bottom:8px">Send a copy to a friend by the email they sign in with. They can deploy it like their own — sharing can't be undone.</p>
+            <form id="share-form" style="display:grid;gap:8px">
+              <input class="input" id="share-email" type="email" autocomplete="off" placeholder="friend@email.com" aria-label="Friend's email">
+              <button class="btn sm" type="submit">Share strategy</button>
+            </form><div id="shareflash"></div>
+          </section>
           <section class="panel"><h3>Gates</h3><div id="gates">${gatesHtml(s.gates)}</div></section>
           ${s.status !== 'rejected' ? `<section class="panel" id="whatif"><h3>What if…</h3>
             <p class="hint" style="margin-bottom:6px">Move a dial and the whole sheet re-runs.</p>
@@ -1181,6 +1216,19 @@
       armed(delStrat, 'Confirm delete', () => busy(delStrat, async () => {
         try { await api(`/api/strategies/${s.id}/delete`, {}); go('/strategies'); } catch (e) { flash('#delflash', e.message, 'bad'); }
       }));
+    };
+    const shareForm = root.querySelector('#share-form');
+    if (shareForm) shareForm.onsubmit = (e) => {
+      e.preventDefault();
+      const email = root.querySelector('#share-email').value.trim();
+      if (!email) { flash('#shareflash', 'Enter an email first.', 'bad'); return; }
+      busy(shareForm.querySelector('button'), async () => {
+        try {
+          const r = await api(`/api/strategies/${s.id}/share`, { email });
+          root.querySelector('#share-email').value = '';
+          flash('#shareflash', r.already ? 'They already have this strategy.' : 'Shared — they’ll see it in their inventory.', 'good');
+        } catch (err) { flash('#shareflash', err.message, 'bad'); }
+      });
     };
     const depLive = root.querySelector('#dep-live');
     if (depLive) depLive.onclick = () => { if (!liveWhy) root.querySelector('#live-confirm').hidden = false; };

@@ -197,6 +197,25 @@ th .info { vertical-align: 0; }
 .admin-toggle:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 4px; }
 .asof .sep { color: var(--rule-2); margin: 0 .5em; }
 /* Profile dropdown in the masthead — Billing + Sign out under the user's name */
+.bell-wrap { position: relative; display: inline-flex; margin-right: 12px; }
+.bell-trig { position: relative; display: inline-flex; align-items: center; color: var(--ink-3); background: none; border: 0; padding: 0; cursor: pointer; }
+.bell-trig:hover, .bell-trig[aria-expanded="true"] { color: var(--ink); }
+.bell-trig:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 4px; }
+.bell-dot { position: absolute; top: -2px; right: -2px; width: 7px; height: 7px; border-radius: 50%; background: var(--signal); border: 1.5px solid var(--stock-raised, #fff); }
+.bell-dot[hidden] { display: none; }
+.bell-menu { position: absolute; top: calc(100% + 7px); right: 0; z-index: 40; width: 300px; max-width: 80vw; background: var(--stock-raised); border: 1px solid var(--rule-2); border-radius: 3px; padding: 4px; max-height: 60vh; overflow-y: auto; }
+.bell-menu[hidden] { display: none; }
+.bell-head { padding: 7px 9px 5px; font-family: var(--f-nar); font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); border-bottom: 1px solid var(--rule); }
+.bell-list .notif { display: block; padding: 9px; font-size: 13px; line-height: 1.4; color: var(--ink-2); text-decoration: none; border-bottom: 1px solid var(--rule); text-transform: none; letter-spacing: normal; }
+.bell-list .notif:last-child { border-bottom: 0; }
+.bell-list .notif:hover { background: var(--stock-sunk); color: var(--ink); }
+.bell-list .notif.unread { background: var(--signal-wash); }
+.bell-list .notif time { display: block; margin-top: 3px; font-size: 11px; color: var(--ink-3); }
+.bell-empty { padding: 14px 9px; font-size: 12.5px; color: var(--ink-3); }
+.mk.shared { display: inline-flex; align-items: center; gap: 4px; border-color: var(--rule-2); color: var(--ink-2); text-transform: none; letter-spacing: normal; }
+.mk.shared svg { width: 12px; height: 12px; }
+.shared-flag { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; font-family: var(--f-nar); font-size: 11px; color: var(--ink-3); vertical-align: middle; }
+.shared-flag svg { width: 11px; height: 11px; }
 .profile { position: relative; display: inline-flex; }
 .profile-trig { display: inline-flex; align-items: center; gap: 5px; font: inherit; color: var(--ink-3); background: none; border: 0; padding: 0; cursor: pointer; }
 .profile-trig:hover, .profile-trig[aria-expanded="true"] { color: var(--ink); }

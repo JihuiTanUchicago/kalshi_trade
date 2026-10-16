@@ -325,6 +325,20 @@ DDL = [
       updated_at DATETIME NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
+    # In-app notifications (the bell by the profile): a strategy shared to you, a comment on
+    # your post, etc. `link` is the in-app path to open; `read_at` NULL = unread.
+    """
+    CREATE TABLE IF NOT EXISTS app_notifications (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      kind VARCHAR(16) NOT NULL,
+      body VARCHAR(400) NOT NULL,
+      link VARCHAR(200) NULL,
+      created_at DATETIME NOT NULL,
+      read_at DATETIME NULL,
+      INDEX idx_notif_user (user_id, read_at, id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
 ]
 
 
@@ -362,6 +376,10 @@ def main() -> None:
         # decision tick (reusing the book it already fetches) so the web can show unrealized P&L.
         _add_column_if_missing(cur, "app_positions", "mark_price", "ALTER TABLE app_positions ADD COLUMN mark_price DECIMAL(10,4) NULL")
         _add_column_if_missing(cur, "app_positions", "mark_ts", "ALTER TABLE app_positions ADD COLUMN mark_ts DATETIME NULL")
+        # Strategy sharing: a shared strategy is COPIED into the recipient's inventory (so it is
+        # theirs to deploy and is not revocable). These columns mark the copy's origin.
+        _add_column_if_missing(cur, "app_strategies", "shared_from_user_id", "ALTER TABLE app_strategies ADD COLUMN shared_from_user_id BIGINT NULL")
+        _add_column_if_missing(cur, "app_strategies", "shared_src_id", "ALTER TABLE app_strategies ADD COLUMN shared_src_id BIGINT NULL")
         # One-time migration: seed spot_candles_1m with existing BTC history so the
         # generalized backtester has BTC's full price path. Idempotent (INSERT IGNORE on PK).
         cur.execute(

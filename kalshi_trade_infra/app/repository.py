@@ -423,10 +423,11 @@ def list_strategies(
 ) -> List[Dict]:
     where, fparams = _strategy_filter_sql(direction, status, market, run_id, q, deployed)
     sql = ("""SELECT s.id, s.run_id, s.parent_id, s.market, s.direction, s.title, s.thesis, s.spec_json, s.status,
-                    s.result_json, s.created_at, r.hypotheses_tried,
+                    s.result_json, s.created_at, r.hypotheses_tried, s.shared_from_user_id, su.name AS shared_from_name,
                     (SELECT COUNT(*) FROM app_deployments d WHERE d.strategy_id=s.id AND d.status<>'stopped') AS active_deps,
                     (SELECT COUNT(*) FROM app_deployments d WHERE d.strategy_id=s.id AND d.status<>'stopped' AND d.mode='live') AS live_deps
-             FROM app_strategies s LEFT JOIN app_agent_runs r ON r.id=s.run_id""" + where)
+             FROM app_strategies s LEFT JOIN app_agent_runs r ON r.id=s.run_id
+                  LEFT JOIN app_users su ON su.id=s.shared_from_user_id""" + where)
     params: List[Any] = [user_id] + fparams
     # Non-rejected (passed/void) first, then newest: in a big run the passed finalists are
     # found early (oldest ids), so a plain id-DESC fetch past the limit would drop them.
@@ -459,11 +460,63 @@ def delete_strategy(cur, user_id: int, strategy_id: int) -> bool:
     return cur.rowcount > 0
 
 
+def share_strategy(cur, src_id: int, from_uid: int, to_uid: int) -> Optional[int]:
+    """Copy strategy `src_id` (owned by `from_uid`) into `to_uid`'s inventory so it is theirs
+    to deploy and cannot be revoked. Returns the new strategy id, or None if the source doesn't
+    exist / isn't the sender's, or the recipient already has this exact share."""
+    cur.execute(
+        "SELECT market, direction, title, thesis, spec_json, status, result_json FROM app_strategies WHERE id=%s AND user_id=%s",
+        (src_id, from_uid),
+    )
+    src = cur.fetchone()
+    if not src:
+        return None
+    cur.execute("SELECT id FROM app_strategies WHERE user_id=%s AND shared_src_id=%s", (to_uid, src_id))
+    if cur.fetchone():
+        return None  # already shared to this user — idempotent, no duplicate copy
+    cur.execute(
+        """INSERT INTO app_strategies
+             (user_id, run_id, parent_id, market, direction, title, thesis, spec_json, status, result_json,
+              created_at, shared_from_user_id, shared_src_id)
+           VALUES (%s,NULL,NULL,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+        (to_uid, src["market"], src["direction"], src["title"], src["thesis"], src["spec_json"],
+         src["status"], src["result_json"], now_utc(), from_uid, src_id),
+    )
+    return cur.lastrowid
+
+
+def add_notification(cur, user_id: int, kind: str, body: str, link: Optional[str] = None) -> int:
+    cur.execute(
+        "INSERT INTO app_notifications (user_id, kind, body, link, created_at) VALUES (%s,%s,%s,%s,%s)",
+        (user_id, kind, body[:400], link, now_utc()),
+    )
+    return cur.lastrowid
+
+
+def list_notifications(cur, user_id: int, limit: int = 20) -> List[Dict]:
+    cur.execute(
+        "SELECT id, kind, body, link, created_at, read_at FROM app_notifications WHERE user_id=%s ORDER BY id DESC LIMIT %s",
+        (user_id, limit),
+    )
+    return cur.fetchall()
+
+
+def count_unread_notifications(cur, user_id: int) -> int:
+    cur.execute("SELECT COUNT(*) AS c FROM app_notifications WHERE user_id=%s AND read_at IS NULL", (user_id,))
+    return int(cur.fetchone()["c"])
+
+
+def mark_notifications_read(cur, user_id: int) -> int:
+    cur.execute("UPDATE app_notifications SET read_at=%s WHERE user_id=%s AND read_at IS NULL", (now_utc(), user_id))
+    return cur.rowcount
+
+
 def get_strategy(cur, user_id: int, strategy_id: int) -> Optional[Dict]:
     cur.execute(
         """SELECT s.id, s.run_id, s.parent_id, s.market, s.direction, s.title, s.thesis, s.spec_json, s.status,
-                  s.result_json, s.created_at, r.hypotheses_tried
+                  s.result_json, s.created_at, r.hypotheses_tried, s.shared_from_user_id, su.name AS shared_from_name
            FROM app_strategies s LEFT JOIN app_agent_runs r ON r.id=s.run_id
+                LEFT JOIN app_users su ON su.id=s.shared_from_user_id
            WHERE s.id=%s AND s.user_id=%s""",
         (strategy_id, user_id),
     )

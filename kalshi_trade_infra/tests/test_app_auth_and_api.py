@@ -325,6 +325,48 @@ def test_delete_strategy_blocks_when_deployed(monkeypatch):
     assert server.delete_strategy(ctx({})) == {"ok": True}
 
 
+def test_share_strategy_copies_and_notifies(monkeypatch):
+    calls = {}
+    monkeypatch.setattr(server, "_owned_strategy", lambda c: {"id": 5, "title": "Tail fade"})
+    monkeypatch.setattr(server.repo, "user_by_email", lambda cur, e: {"id": 2, "name": "Bob", "email": e})
+    monkeypatch.setattr(server.repo, "share_strategy", lambda cur, src, frm, to: (calls.__setitem__("share", (src, frm, to)), 99)[1])
+    monkeypatch.setattr(server.repo, "get_user", lambda cur, uid: {"name": "Alice"})
+    monkeypatch.setattr(server.repo, "add_notification", lambda cur, uid, kind, body, link: calls.setdefault("notif", (uid, kind, link)))
+    out = server.share_strategy(ctx({"email": "Bob@X.com"}))
+    assert out["ok"] and calls["share"] == (5, 1, 2)  # src 5, from uid 1, to uid 2
+    assert calls["notif"] == (2, "share", "/strategies/99")
+
+
+def test_share_strategy_rejects_unknown_self_and_bad_email(monkeypatch):
+    monkeypatch.setattr(server, "_owned_strategy", lambda c: {"id": 5, "title": "X"})
+    with pytest.raises(server.ApiError, match="email your friend"):
+        server.share_strategy(ctx({"email": "notanemail"}))
+    monkeypatch.setattr(server.repo, "user_by_email", lambda cur, e: None)
+    with pytest.raises(server.ApiError, match="No Tau account"):
+        server.share_strategy(ctx({"email": "ghost@x.com"}))
+    monkeypatch.setattr(server.repo, "user_by_email", lambda cur, e: {"id": 1, "name": "Me"})  # uid 1 == self
+    with pytest.raises(server.ApiError, match="your own account"):
+        server.share_strategy(ctx({"email": "me@x.com"}))
+
+
+def test_share_strategy_idempotent(monkeypatch):
+    notified = []
+    monkeypatch.setattr(server, "_owned_strategy", lambda c: {"id": 5, "title": "X"})
+    monkeypatch.setattr(server.repo, "user_by_email", lambda cur, e: {"id": 2, "name": "Bob"})
+    monkeypatch.setattr(server.repo, "share_strategy", lambda *a: None)  # recipient already has it
+    monkeypatch.setattr(server.repo, "add_notification", lambda *a, **k: notified.append(1))
+    out = server.share_strategy(ctx({"email": "bob@x.com"}))
+    assert out.get("already") and not notified  # no duplicate copy or notification
+
+
+def test_notifications_endpoint_shape(monkeypatch):
+    monkeypatch.setattr(server.repo, "list_notifications", lambda cur, uid, **k: [
+        {"id": 3, "kind": "share", "body": "X shared Y", "link": "/strategies/9", "created_at": "t", "read_at": None}])
+    monkeypatch.setattr(server.repo, "count_unread_notifications", lambda cur, uid: 1)
+    out = server.notifications(ctx())
+    assert out["unread"] == 1 and out["items"][0]["read"] is False and out["items"][0]["link"] == "/strategies/9"
+
+
 def test_numbers_must_be_numbers():
     with pytest.raises(server.ApiError):
         server._num({"amount": "100"}, "amount", 1, 10)

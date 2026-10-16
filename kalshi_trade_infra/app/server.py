@@ -333,6 +333,7 @@ def _strategy_card(s: Dict) -> Dict:
         "equity": res.get("equity"), "capital": res.get("capital"),
         "stake": s["spec"]["sizing"]["stake"], "side": s["spec"]["side"],
         "deployed": bool(s.get("active_deps")), "deploy_live": bool(s.get("live_deps")),
+        "shared_from": s.get("shared_from_name") if s.get("shared_from_user_id") else None,
     }
 
 
@@ -389,6 +390,42 @@ def delete_strategy(ctx: Ctx):
     if any(d["strategy_id"] == s["id"] for d in repo.list_deployments(ctx.cur, ctx.uid, include_stopped=False)):
         raise ApiError(409, "Stop this strategy's deployment before deleting it.")
     repo.delete_strategy(ctx.cur, ctx.uid, s["id"])
+    return {"ok": True}
+
+
+def share_strategy(ctx: Ctx):
+    """Share a strategy with another Tau user by email. Copies it into their inventory
+    (not revocable) and notifies them. The recipient must already have an account."""
+    s = _owned_strategy(ctx)
+    email = str(ctx.body.get("email") or "").strip().lower()
+    if not email or "@" not in email:
+        raise ApiError(400, "Enter the email your friend signs in with.")
+    recipient = repo.user_by_email(ctx.cur, email)
+    if not recipient:
+        raise ApiError(404, "No Tau account uses that email yet — they need to sign in first.")
+    if recipient["id"] == ctx.uid:
+        raise ApiError(400, "That's your own account.")
+    new_id = repo.share_strategy(ctx.cur, s["id"], ctx.uid, recipient["id"])
+    if new_id is None:
+        return {"ok": True, "already": True}  # idempotent: they already have this one
+    sender = (repo.get_user(ctx.cur, ctx.uid) or {}).get("name") or "A friend"
+    repo.add_notification(ctx.cur, recipient["id"], "share",
+                          "%s shared the strategy “%s” with you." % (sender, s["title"]),
+                          "/strategies/%d" % new_id)
+    return {"ok": True}
+
+
+def notifications(ctx: Ctx):
+    rows = repo.list_notifications(ctx.cur, ctx.uid)
+    return {
+        "unread": repo.count_unread_notifications(ctx.cur, ctx.uid),
+        "items": [{"id": r["id"], "kind": r["kind"], "body": r["body"], "link": r["link"],
+                   "created_at": r["created_at"], "read": r["read_at"] is not None} for r in rows],
+    }
+
+
+def mark_notifications_read(ctx: Ctx):
+    repo.mark_notifications_read(ctx.cur, ctx.uid)
     return {"ok": True}
 
 
@@ -778,6 +815,13 @@ def create_comment(ctx: Ctx):
     if not author:
         raise ApiError(404, "No such post.")
     repo.add_comment(ctx.cur, pid, ctx.uid, body)
+    if author["user_id"] != ctx.uid:  # don't notify yourself
+        commenter = (repo.get_user(ctx.cur, ctx.uid) or {}).get("name") or "Someone"
+        try:
+            repo.add_notification(ctx.cur, author["user_id"], "comment",
+                                  "%s commented on your post." % commenter, "/community")
+        except Exception as e:
+            print("[community] in-app notice failed for post %s: %r" % (pid, e), flush=True)
     if author["user_id"] != ctx.uid and author.get("email"):  # don't email yourself
         try:
             commenter = (repo.get_user(ctx.cur, ctx.uid) or {}).get("name") or "Someone"
@@ -1189,6 +1233,9 @@ ROUTES: List[Route] = [
         ("GET", "/api/strategies", list_strategies, True),
         ("GET", r"/api/strategies/(\d+)", get_strategy, True),
         ("POST", r"/api/strategies/(\d+)/whatif", what_if, True),
+        ("POST", r"/api/strategies/(\d+)/share", share_strategy, True),
+        ("GET", "/api/notifications", notifications, True),
+        ("POST", "/api/notifications/read", mark_notifications_read, True),
         ("GET", "/api/deployments", list_deployments, True),
         ("POST", "/api/deployments", create_deployment, True),
         ("POST", r"/api/deployments/(\d+)/(pause|resume|stop)", deployment_action, True),

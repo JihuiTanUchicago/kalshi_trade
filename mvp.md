@@ -24,12 +24,6 @@ A self-improving alpha discovery pipeline, from ideation, to similation, and fin
 ## TODO / Working Queue
 Single source of truth for OPEN work. `[blocked]` = needs a user/AWS action first. Completed items move to **## Done** below.
 
-- A sharing mechanism when you can share strategies with your friends. We can have a notification
-UI next to our profile on the top right so anyone will see notifications on community messages or
-if anyone shares a strategy. A strategy shared to you will have a small flag/UI icon that marks that
-this strategy is shared by the sender. Use /impeccable /ponytail skills to guide this feature. You
-can deploy shared strategy just like yours. Shared strategy is not revocable.
-
 - Move the "make a post" composer to a fixed bar at the bottom of the community page (right now it sits on top of the most recent post). /impeccable — bigger layout change still open; spacing already added.
 - As comment section grows longer, consider scalability. We should add search bar, useful filters, and 
 - All-markets collector + cross-contract — BUILDING. Phase 1 catalog shipped. Ingestion split onto a dedicated collector box (`i-0bd0683cc7e86243d`) + S3 data-lake. Next: per-minute S3/Parquet snapshots (Phase 2), backtest-over-any-series (3), cross-contract (4).
@@ -47,6 +41,7 @@ can deploy shared strategy just like yours. Shared strategy is not revocable.
 
 ## Done
 ### 2026-10-15
+- **Strategy sharing + notifications.** Share any strategy with a friend by the email they sign in with (strategy Share panel → `POST /api/strategies/:id/share`). It's **copied** into their inventory (so it's theirs to deploy like any other, and can't be revoked); idempotent — re-sharing the same one won't duplicate. A **notification bell** sits by the profile (top-right) with an unread dot + dropdown; it fires on a share to you and on a comment on your post. Shared strategies carry a **"Shared by X"** flag in the list and on the detail page. New: `app_notifications` table, `shared_from_user_id`/`shared_src_id` on `app_strategies`. Verified end-to-end on the real DB (copy origin, idempotent dedup, unread count).
 - **Live unrealized (mark-to-market) P&L.** The engine stamps each open position's current YES bid (`mark_price`/`mark_ts` on `app_positions`) every decision tick — reusing the book it already fetches, so zero extra API calls. The web shows unrealized P&L in the strategy Holdings panel, the Deploy-board Open positions table, and the dashboard open-position cards (value by side; NO estimated as 1−bid, labeled "est."). Updates at decision cadence; "—" until the first mark. Verified end-to-end on the real DB.
 - **Strategies list: Deployed/Live badge + search + Deployed-only filter.** Each row now shows a "Deployed" (or red "Live") pill when it has an active deployment (server-side `active_deps`/`live_deps` via correlated subqueries). Added a search box (`q`, matches title/thesis) and a "Deployed" toggle chip; both narrow the list AND the headline counts server-side (shared `_strategy_filter_sql`). Cross-page sort-by-P&L deferred (P&L lives in result JSON).
 - **[ops] Deploys must ship the whole `app/` package.** Hit a prod outage: the box was missing `kalshi_dev/code_map/models_catalog/sandbox` because earlier deploys were file-by-file and never shipped them, so deploying a newer `server.py` (which imports `kalshi_dev`) crash-looped `recursive-web`. Fixed by deploying the full `app/` tar; box is now aligned to HEAD. Always tar `app` (not individual files).
