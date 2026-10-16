@@ -21,3 +21,7 @@ scripts/scrub_secrets.env
 # auto-publish hook log
 .publish.log
 .publish.lock
+
+# local session/worktree artifacts
+.claude/
+OPEN_SOURCE_AUDIT.md
