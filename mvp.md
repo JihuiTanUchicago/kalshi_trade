@@ -41,6 +41,11 @@ strategies and their model parameters.
 Single source of truth for open work (merged in from the old `requested_queue.md`, 2026-10-15).
 Remove a line once shipped; `[blocked]` = needs a user/AWS action first.
 
+- A sharing mechanism when you can share strategies with your friends. We can have a notification
+UI next to our profile on the top right so anyone will see notifications on community messages or
+if anyone shares a strategy. A strategy shared to you will have a small flag/UI icon that marks that
+this strategy is shared by the sender.
+
 ### Build (queued)
 - All-markets collector + cross-contract — BUILDING. Phase 1 catalog shipped. Ingestion split onto a dedicated collector box (`i-0bd0683cc7e86243d`) + S3 data-lake. Next: per-minute S3/Parquet snapshots (Phase 2), backtest-over-any-series (3), cross-contract (4).
 - Real/live deploy is broken — can't trade real money yet. Fix the live pipeline; **enabling the global live gate places real orders and needs explicit, separate owner sign-off.**
