@@ -249,6 +249,9 @@ h1.page { font-size: clamp(23px, 3vw, 30px); font-weight: 600; letter-spacing: -
 /* ===================== TABLES / MARKS ===================== */
 
 .sheet { overflow-x: auto; overflow-y: visible; }
+.t-strat .pickcol { width: 34px; text-align: center; vertical-align: middle; }
+.bulkbar { position: sticky; bottom: 14px; z-index: 6; display: flex; align-items: center; gap: 12px; margin: 14px 0; padding: 10px 14px; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.1); }
+.bulkbar .lab { font-family: var(--f-nar); color: var(--ink-2); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .t-strat, .t-dep { table-layout: auto; min-width: 760px; }
 th, td { padding: 10px 12px 9px; text-align: left; vertical-align: baseline; border-bottom: 1px solid var(--rule); white-space: nowrap; }

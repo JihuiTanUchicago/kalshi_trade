@@ -450,14 +450,17 @@
     return `<span class="mk ${cls}">${esc(label)}</span>`;
   };
   const money = (v) => `<span class="${tone(v)}">${usd(v, true)}</span>`;
-  const STRAT_HEAD = '<thead><tr><th>Strategy</th><th>Market</th><th class="num">Unseen P&amp;L' + glo('unseen') + '</th><th class="num">Trades</th><th class="num">Win</th><th>Tried</th><th>Status</th></tr></thead>';
-  const strategyTable = (rows) => `<div class="sheet"><table class="stack t-strat">${STRAT_HEAD}<tbody>${rows}</tbody></table></div>`;
+  const STRAT_HEAD = (pick) => `<thead><tr>${pick ? '<th class="pickcol"><input type="checkbox" id="pick-all" aria-label="Select all deployable"></th>' : ''}<th>Strategy</th><th>Market</th><th class="num">Unseen P&amp;L${glo('unseen')}</th><th class="num">Trades</th><th class="num">Win</th><th>Tried</th><th>Status</th></tr></thead>`;
+  const strategyTable = (rows, pick) => `<div class="sheet"><table class="stack t-strat">${STRAT_HEAD(pick)}<tbody>${rows}</tbody></table></div>`;
   function strategySlip(s, reg, opts = {}) {
     const oos = s.out_of_sample, ins = s.in_sample || {};
     const m = oos || ins;
     const tried = s.hypotheses_tried ? `1 of ${s.hypotheses_tried}` : s.parent_id ? 'Adjustment' : '\u2014';
     const name = opts.nolink ? esc(s.title) : `<a href="/strategies/${s.id}">${esc(s.title)}</a>`;
-    return `<tr class="${opts.land ? 'washed' : ''}">
+    const pickCell = opts.pick ? (s.status === 'passed'
+      ? `<td class="pickcol" data-lab="Deploy"><input type="checkbox" class="pick" data-id="${s.id}" aria-label="Select for deployment"></td>`
+      : '<td class="pickcol" data-lab=""></td>') : '';
+    return `<tr class="${opts.land ? 'washed' : ''}">${pickCell}
       <td class="name" data-lab="">${name}<div class="sub-fig cellwrap">${esc(s.thesis)}</div></td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(s.market))} \u00b7 ${esc(dirLabel(s.direction))}</span></td>
       <td class="num" data-lab="${oos ? 'Unseen P&amp;L' : 'Tested P&amp;L'}">${m.pnl == null ? '\u2014' : money(m.pnl)}${oos ? '' : '<div class="sub-fig">tested only</div>'}</td>
@@ -987,6 +990,7 @@
         <div class="chips" role="group" aria-label="Status">${[['', 'All'], ['passed', 'Passed'], ['failed', 'Void'], ['rejected', 'Rejected']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}" aria-pressed="${f.status === v}">${l}</button>`).join('')}</div>
         <div class="chips" role="group" aria-label="Market">${[['', 'Both markets'], ...S.me.markets.map((m) => [m.key, marketShort(m.key)])].map(([v, l]) => `<button class="chip" data-f="market" data-v="${v}" aria-pressed="${f.market === v}">${esc(l)}</button>`).join('')}</div>
       </div>
+      <div id="bulkbar" class="bulkbar" hidden></div>
       <div id="slips" style="margin-top:16px">${loading(240)}</div>`);
     root.querySelectorAll('[data-f]').forEach((b) => {
       b.onclick = () => {
@@ -1015,9 +1019,42 @@
         return;
       }
       const list = d.strategies, reg = registry(list.map((s) => s.equity));
-      slipsEl.innerHTML = strategyTable(list.map((s) => strategySlip(s, reg)).join(''))
+      const anyPassed = list.some((s) => s.status === 'passed');
+      slipsEl.innerHTML = strategyTable(list.map((s) => strategySlip(s, reg, { pick: anyPassed })).join(''), anyPassed)
         + (d.pages > 1 ? `<div class="xpage">${sp > 0 ? `<button class="btn sm" data-sp="${sp - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${sp + 1} of ${num(d.pages)} · ${num(d.matched)} strategies</span>${sp + 1 < d.pages ? `<button class="btn sm" data-sp="${sp + 1}">Next →</button>` : '<span></span>'}</div>` : '');
       slipsEl.querySelectorAll('[data-sp]').forEach((b) => b.onclick = () => { sp = +b.dataset.sp; load(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+      wireBulk();
+    };
+    // Multi-select deploy (paper only; live stays per-strategy behind the typed-LIVE gate).
+    // Selection is per page — ponytail: cross-page selection is YAGNI for a 50-row page.
+    const bar = root.querySelector('#bulkbar');
+    const picks = () => Array.from(slipsEl.querySelectorAll('.pick'));
+    const selected = () => picks().filter((c) => c.checked).map((c) => +c.dataset.id);
+    const bulkDeploy = async () => {
+      const ids = selected();
+      if (!ids.length) return;
+      let ok = 0; const errs = [];
+      for (const id of ids) {
+        try { await api('/api/deployments', { strategy_id: id, mode: 'paper' }); ok++; } catch (e) { errs.push(e.message); }
+      }
+      if (ok && !errs.length) { go('/deploy'); return; }
+      flash('#bulkflash', `${ok} deployed${errs.length ? ` · ${errs.length} failed: ${esc(errs[0])}` : ''}`, errs.length ? 'bad' : 'good');
+      if (ok) load();
+    };
+    const syncBar = () => {
+      const pickAll = root.querySelector('#pick-all');
+      const n = selected().length;
+      if (!n) { bar.hidden = true; bar.innerHTML = ''; return; }
+      bar.hidden = false;
+      bar.innerHTML = `<span class="lab">${n} selected</span><button class="btn sm" id="bulk-dep">Deploy ${n} on paper</button><button class="btn sm ghost" id="bulk-clear">Clear</button><span id="bulkflash"></span>`;
+      root.querySelector('#bulk-dep').onclick = (e) => busy(e.target, bulkDeploy);
+      root.querySelector('#bulk-clear').onclick = () => { picks().forEach((c) => c.checked = false); if (pickAll) pickAll.checked = false; syncBar(); };
+    };
+    const wireBulk = () => {
+      const pickAll = root.querySelector('#pick-all');
+      if (pickAll) pickAll.onclick = () => { picks().forEach((c) => c.checked = pickAll.checked); syncBar(); };
+      picks().forEach((c) => c.onchange = () => { if (pickAll && !c.checked) pickAll.checked = false; syncBar(); });
+      syncBar();
     };
     load();
   }
@@ -1054,6 +1091,7 @@
     const trades = (s.recent_trades || []).length ? `<table class="table stack"><thead><tr><th>Opened</th><th>Contract</th><th>Side</th><th class="num">Entry</th><th class="num">Exit</th><th class="num">P&amp;L</th></tr></thead><tbody>
         ${s.recent_trades.map((t) => `<tr><td>${esc(new Date(t.opened.replace('Z', ':00Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}</td><td class="tick">${esc(t.ticker)}</td><td>${esc(t.side.toUpperCase())} ×${t.qty}</td><td class="num">${cents(t.entry)}</td><td class="num">${cents(t.exit)} <small class="hint">${esc(t.reason)}</small></td><td class="num ${tone(t.pnl)}">${usd(t.pnl, true)}</td></tr>`).join('')}
       </tbody></table>` : '<p class="hint">No unseen-data trades to show.</p>';
+    const activeDeps = s.deployments.filter((d) => d.status !== 'stopped');  // must be stopped before delete
     const kUrl = marketKalshiUrl(s.market);
     const mktLink = kUrl ? `<a href="${kUrl}" target="_blank" rel="noopener">${esc(marketLabel(s.market))} ↗</a>` : esc(marketLabel(s.market));
     root.querySelector('main').innerHTML = `
@@ -1098,8 +1136,11 @@
             ${kUrl ? `<p class="hint" style="margin-top:12px"><a href="${kUrl}" target="_blank" rel="noopener">Open ${esc(marketShort(s.market))} on Kalshi ↗</a></p>` : ''}
           </section>
           <section class="panel"><h3>Remove</h3>
-            <p class="hint" style="margin-bottom:8px">Delete this strategy from your inventory. ${s.deployments.some((d) => d.status !== 'stopped') ? 'Stop its deployment first.' : 'This can’t be undone.'}</p>
-            <button class="btn sm danger" id="del-strat">Delete strategy</button><div id="delflash"></div>
+            <p class="hint" style="margin-bottom:8px">Delete this strategy from your inventory. ${activeDeps.length ? 'Stop its deployment first — you can do it right here.' : 'This can’t be undone.'}</p>
+            <div style="display:grid;gap:8px">
+              ${activeDeps.length ? `<button class="btn sm danger" id="stop-dep">Stop deployment${activeDeps.length > 1 ? 's' : ''} (${activeDeps.map((d) => '#' + d.id).join(', ')})</button>` : ''}
+              <button class="btn sm danger" id="del-strat" ${activeDeps.length ? 'aria-disabled="true"' : ''}>Delete strategy</button>
+            </div><div id="delflash"></div>
           </section>
           <section class="panel"><h3>Gates</h3><div id="gates">${gatesHtml(s.gates)}</div></section>
           ${s.status !== 'rejected' ? `<section class="panel" id="whatif"><h3>What if…</h3>
@@ -1128,10 +1169,17 @@
     if (depPaper) depPaper.onclick = () => busy(depPaper, async () => {
       try { await api('/api/deployments', { strategy_id: s.id, mode: 'paper' }); go('/deploy'); } catch (e) { flash('#depflash', e.message, 'bad'); }
     });
-    const delStrat = root.querySelector('#del-strat');
-    if (delStrat) delStrat.onclick = () => armed(delStrat, 'Confirm delete', () => busy(delStrat, async () => {
-      try { await api(`/api/strategies/${s.id}/delete`, {}); go('/strategies'); } catch (e) { flash('#delflash', e.message, 'bad'); }
+    const stopDep = root.querySelector('#stop-dep');
+    if (stopDep) stopDep.onclick = () => armed(stopDep, 'Confirm stop', () => busy(stopDep, async () => {
+      try { for (const d of activeDeps) await api(`/api/deployments/${d.id}/stop`, {}); viewStrategy(s.id); } catch (e) { flash('#delflash', e.message, 'bad'); }
     }));
+    const delStrat = root.querySelector('#del-strat');
+    if (delStrat) delStrat.onclick = () => {
+      if (activeDeps.length) { flash('#delflash', 'Stop its deployment first (button above).', 'bad'); return; }
+      armed(delStrat, 'Confirm delete', () => busy(delStrat, async () => {
+        try { await api(`/api/strategies/${s.id}/delete`, {}); go('/strategies'); } catch (e) { flash('#delflash', e.message, 'bad'); }
+      }));
+    };
     const depLive = root.querySelector('#dep-live');
     if (depLive) depLive.onclick = () => { if (!liveWhy) root.querySelector('#live-confirm').hidden = false; };
     const lc = root.querySelector('#live-confirm');
