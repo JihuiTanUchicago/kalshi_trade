@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
-from app import agent, auth, backtest, billing, engine, kalshi_account, notify
+from app import agent, auth, backtest, billing, devlog, engine, kalshi_account, notify
 from app import kalshi_dev
 from app import models_catalog as catalog
 from app import repository as repo
@@ -45,7 +45,7 @@ MAX_ACTIVE_DEPLOYMENTS = 100
 MAX_PAPER_BALANCE = 1_000_000.0
 MAX_WAITLIST_PER_MINUTE = 10
 ADMIN_EMAIL = os.getenv("TAU_ADMIN_EMAIL", "tjhprivate0416@gmail.com")
-SPA_ROUTES = re.compile(r"^/(?:|dashboard|research(?:/\d+)?|strategies(?:/\d+)?|deploy|community|billing|admin|system|funds|explore|signin)$")
+SPA_ROUTES = re.compile(r"^/(?:|dashboard|research(?:/\d+)?|strategies(?:/\d+)?|deploy|community|billing|admin|system|funds|explore|devlog|signin)$")
 
 CSP = (
     "default-src 'self'; script-src 'self' https://js.stripe.com https://pay.google.com; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; "
@@ -912,6 +912,27 @@ def billing_state(ctx: Ctx):
     }
 
 
+def billing_receipt(ctx: Ctx):
+    """Full Credits & Usage history as a downloadable CSV receipt."""
+    import csv
+    import io
+    cur = ctx.cur
+    user = repo.get_user(cur, ctx.uid) or {}
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Tau - Credits & Usage receipt"])
+    w.writerow(["Account", user.get("email", "")])
+    w.writerow(["Generated (UTC)", repo.now_utc().replace(microsecond=0).isoformat()])
+    w.writerow(["Current balance (USD)", "%.4f" % repo.credit_balance(cur, ctx.uid)])
+    w.writerow(["Total spent (USD)", "%.4f" % repo.credit_spent_total(cur, ctx.uid)])
+    w.writerow([])
+    w.writerow(["Date (UTC)", "Type", "Amount (USD)", "Memo"])
+    for r in repo.credit_rows(cur, ctx.uid, 100000):  # full history, newest first
+        w.writerow([r["created_at"], r["kind"], "%.4f" % float(r["amount_usd"]), r["memo"] or ""])
+    fname = "tau-credits-%s.csv" % repo.now_utc().strftime("%Y%m%d")
+    return ("download", fname, "text/csv; charset=utf-8", buf.getvalue())
+
+
 def billing_setup_intent(ctx: Ctx):
     if not billing.configured():
         raise ApiError(503, "Payments aren't enabled yet.")
@@ -1272,6 +1293,7 @@ ROUTES: List[Route] = [
         ("GET", "/api/notifications", notifications, True),
         ("POST", "/api/notifications/read", mark_notifications_read, True),
         ("GET", "/unsubscribe", unsubscribe, False),
+        ("GET", "/api/devlog", lambda ctx: devlog.as_json(), True),
         ("GET", "/api/deployments", list_deployments, True),
         ("POST", "/api/deployments", create_deployment, True),
         ("POST", r"/api/deployments/(\d+)/(pause|resume|stop)", deployment_action, True),
@@ -1288,6 +1310,7 @@ ROUTES: List[Route] = [
         ("GET", r"/api/community/(\d+)/comments", post_comments, True),
         ("POST", r"/api/community/(\d+)/comments", create_comment, True),
         ("GET", "/api/billing", billing_state, True),
+        ("GET", "/api/billing/receipt", billing_receipt, True),
         ("POST", "/api/billing/setup-intent", billing_setup_intent, True),
         ("POST", "/api/billing/card-added", billing_card_added, True),
         ("POST", "/api/billing/topup", billing_topup, True),
@@ -1458,6 +1481,13 @@ class Handler(BaseHTTPRequestHandler):
                 _, ctype, data = result
                 self._headers(200, ctype, len(data), [("Cache-Control", "public, max-age=31536000, immutable")])
                 self.wfile.write(data)
+                return
+            if isinstance(result, tuple) and result[0] == "download":
+                _, fname, ctype, data = result
+                body = data.encode("utf-8") if isinstance(data, str) else data
+                self._headers(200, ctype, len(body),
+                              [("Content-Disposition", 'attachment; filename="%s"' % fname), ("Cache-Control", "no-store")])
+                self.wfile.write(body)
                 return
             if isinstance(result, tuple) and result[0] == "html":
                 body = result[1].encode("utf-8")

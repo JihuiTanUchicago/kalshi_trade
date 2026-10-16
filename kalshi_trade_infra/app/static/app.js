@@ -179,6 +179,7 @@
     [/^\/admin$/, viewAdmin],
     [/^\/system$/, viewSystem],
     [/^\/funds$/, viewFunds],
+    [/^\/devlog$/, viewDevLog],
   ];
   function go(path, replace) {
     if (replace) history.replaceState(null, '', path); else history.pushState(null, '', path);
@@ -314,7 +315,7 @@
   }
 
   // ---------- shell ----------
-  const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/explore', 'Explore', 'explore'], ['/deploy', 'Deploy', 'deploy'], ['/community', 'Community', 'community'], ['/funds', 'Funds', 'funds']];
+  const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/explore', 'Explore', 'explore'], ['/deploy', 'Deploy', 'deploy'], ['/community', 'Community', 'community'], ['/funds', 'Funds', 'funds'], ['/devlog', 'Dev Logs', 'devlog']];
   // The operator can flip into a plain-user view. Only their own account is an
   // admin at all (server decides); the toggle just hides the admin surface so
   // they can see what a normal user sees. Default: admin view on.
@@ -388,6 +389,18 @@
     mountHotRail();
   }
   const boardTitle = (title, sub = '') => `<div class="board-title"><h1 class="page">${esc(title)}</h1>${sub ? `<p class="deck">${sub}</p>` : ''}</div>`;
+  async function viewDevLog() {
+    shell('/devlog', boardTitle('Dev Logs', 'What we’ve shipped, and what’s next. Updated as we build.'), loading(260));
+    let d;
+    try { d = await api('/api/devlog'); } catch (e) { root.querySelector('main').innerHTML = notice(e.message, 'bad'); return; }
+    const planned = (d.planned || []).map((p) => `<li class="dl-item planned"><span class="dl-dot" aria-hidden="true"></span><span class="dl-what">${esc(p)}</span></li>`).join('');
+    const shipped = (d.shipped || []).map((s) => `<li class="dl-item"><span class="dl-date">${esc(s.date)}</span><span class="dl-what">${esc(s.title)}</span></li>`).join('');
+    root.querySelector('main').innerHTML = `
+      <section class="sect"><div class="sect-head"><h2>Shipping next</h2><p>Most-wanted first</p></div>
+        <ul class="dl-list">${planned || '<li class="hint">Nothing queued.</li>'}</ul></section>
+      <section class="sect"><div class="sect-head"><h2>Shipped</h2><p>${(d.shipped || []).length} updates</p></div>
+        <ul class="dl-list">${shipped}</ul></section>`;
+  }
   // One measured cell. Money direction rides a tint field behind the figure
   // (opts.v), never a colour on the digits and never the reserved signal red.
   const fig = (label, value, opts = {}) =>
@@ -1652,8 +1665,9 @@
         applyView();
         box.querySelector('.cmt-form').onsubmit = async (ev) => {
           ev.preventDefault();
-          const inp = box.querySelector('input'); const body = inp.value.trim(); if (!body) return;
-          await busy(box.querySelector('button'), async () => {
+          const form = ev.currentTarget;  // scope to the form — the search box is also an <input> in this box
+          const inp = form.querySelector('input'); const body = inp.value.trim(); if (!body) return;
+          await busy(form.querySelector('button'), async () => {
             try { await api(`/api/community/${pid}/comments`, { body }); inp.value = '';
               const cc = art.querySelector('[data-act="comments"] .c'); cc.textContent = (parseInt(cc.textContent || '0', 10) || 0) + 1;
               box.hidden = true; box.innerHTML = '';
@@ -1861,7 +1875,7 @@
         : '<p class="hint">No card on file. Add one to buy credits or turn on auto-reload.</p>';
       const main = !d.configured
         ? `<div class="notice">${ICON.warn}<span>Payments aren’t enabled on this server yet. You can still use your free credits.</span></div>
-           <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2></div>${ledgerTable(d.ledger)}</section>`
+           <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt</a></div>${ledgerTable(d.ledger)}</section>`
         : `<div class="detail">
             <div>
               <section class="panel"><h3>Payment method</h3><div id="cards">${cardLines}</div>
@@ -1879,7 +1893,7 @@
                   <p class="hint" id="autorel-flash" style="margin-top:4px">Minimum $${d.min_reload_amount} reload, $${d.min_reload_threshold} trigger.</p>
                 </div>
               </section>
-              <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2></div>${ledgerTable(d.ledger)}</section>
+              <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt</a></div>${ledgerTable(d.ledger)}</section>
             </div>
             <aside>
               <section class="panel"><h3>Add credits</h3>

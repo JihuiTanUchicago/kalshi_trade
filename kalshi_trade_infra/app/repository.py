@@ -1070,7 +1070,7 @@ def reactions_for(cur, post_ids: List[int], viewer_id: int) -> Dict[int, List[Di
     # SEPARATOR is the unit-separator char (never in a name); SUBSTRING_INDEX caps the list.
     cur.execute(
         "SELECT r.post_id, r.emoji, COUNT(*) AS n, MAX(r.user_id=%s) AS mine, "
-        "SUBSTRING_INDEX(GROUP_CONCAT(u.name ORDER BY r.id SEPARATOR 0x1f), 0x1f, 8) AS names "
+        "SUBSTRING_INDEX(GROUP_CONCAT(u.name ORDER BY r.created_at SEPARATOR 0x1f), 0x1f, 8) AS names "
         "FROM app_post_reactions r JOIN app_users u ON u.id=r.user_id "
         "WHERE r.post_id IN (%s) GROUP BY r.post_id, r.emoji "
         "ORDER BY n DESC, r.emoji" % ("%s", marks),

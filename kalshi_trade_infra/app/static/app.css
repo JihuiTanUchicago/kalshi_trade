@@ -843,6 +843,14 @@ a.snap:hover { border-color: var(--ink-3); }
 .cmt-search input { flex: 1; }
 .cmt-count { font-family: var(--f-nar); font-size: 11px; letter-spacing: .04em; color: var(--ink-3); white-space: nowrap; }
 .cmt-list { display: grid; gap: 12px; }
+.cmt-more { margin: 2px 0 2px; }
+.dl-list { list-style: none; margin: 10px 0 0; padding: 0; }
+.dl-item { display: flex; gap: 14px; align-items: baseline; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+.dl-item:last-child { border-bottom: 0; }
+.dl-date { flex: none; width: 92px; font-family: var(--f-nar); font-size: 12px; letter-spacing: .03em; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.dl-what { font-size: 14.5px; line-height: 1.45; color: var(--ink); }
+.dl-item.planned .dl-what { color: var(--ink-2); }
+.dl-dot { flex: none; width: 7px; height: 7px; margin-top: 6px; border-radius: 50%; background: var(--signal); }
 .cmt-form { display: flex; gap: 8px; }
 .cmt-form .input { min-height: 38px; }
 @media (max-width: 680px) { .post-tools .btn { margin-left: 0; } }
