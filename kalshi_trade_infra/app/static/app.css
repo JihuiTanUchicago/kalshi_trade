@@ -253,7 +253,10 @@ h1.page { font-size: clamp(23px, 3vw, 30px); font-weight: 600; letter-spacing: -
 .bulkbar { position: sticky; bottom: 14px; z-index: 6; display: flex; align-items: center; gap: 12px; margin: 14px 0; padding: 10px 14px; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.1); }
 .bulkbar .lab { font-family: var(--f-nar); color: var(--ink-2); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.t-strat, .t-dep { table-layout: auto; min-width: 760px; }
+/* width:100% constrains the auto layout to the container so long titles wrap
+   instead of widening the table past the viewport (no horizontal scroll). */
+.t-strat, .t-dep { table-layout: auto; width: 100%; min-width: 620px; }
+.t-strat td.name, .t-dep td.name { overflow-wrap: anywhere; }
 th, td { padding: 10px 12px 9px; text-align: left; vertical-align: baseline; border-bottom: 1px solid var(--rule); white-space: nowrap; }
 th { font-family: var(--f-nar); font-size: 12px; letter-spacing: .02em; color: var(--ink-3); font-weight: 600; border-bottom: 1px solid var(--rule-2); }
 td:first-child, th:first-child { padding-left: 0; }
@@ -349,11 +352,6 @@ select#rmodel { appearance: none; -webkit-appearance: none; padding-right: 28px;
 .figures.measure { margin: 0; }
 
 .dash { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 28px; align-items: start; margin-top: 8px; }
-.bars-wrap { padding: 6px 0; }
-.bars { display: flex; align-items: center; gap: 3px; height: 56px; }
-.bars span { flex: 1; min-width: 2px; }
-.bars span.up { background: var(--ink); align-self: flex-end; }
-.bars span.down { background: var(--rule-2); align-self: flex-start; }
 .stub { display: grid; grid-template-columns: 1fr auto; gap: 1px 12px; padding: 9px 0; border-bottom: 1px solid var(--rule); font-size: 13px; }
 .stub:last-child { border-bottom: 0; }
 .stub small { color: var(--ink-3); font-size: 12px; grid-column: 1 / -1; }

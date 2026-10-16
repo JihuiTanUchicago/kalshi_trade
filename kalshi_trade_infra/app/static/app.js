@@ -805,11 +805,6 @@
       const deps = d.deployments.length
         ? deploymentTable(d.deployments.map((x) => deploymentSlip(x, reg, false)).join(''), false)
         : `<div class="empty"><h3>Nothing deployed yet</h3><p>Agents research strategies and test each one on data they never saw. The ones that pass every gate can be deployed here, on paper first.</p><a class="btn" href="/research">Dispatch your first agent</a></div>`;
-      const days = d.paper.daily.slice(-30);
-      const maxAbs = Math.max(1, ...days.map((x) => Math.abs(+x.pnl)));
-      const bars = days.length
-        ? `<div class="bars-wrap"><div class="bars" role="img" aria-label="Daily profit and loss, last ${days.length} days">${days.map((x) => `<span class="${+x.pnl >= 0 ? 'up' : 'down'}" style="height:${Math.max(2, (Math.abs(+x.pnl) / maxAbs) * 36)}px" title="${esc(x.d)}: ${usd(x.pnl, true)}"></span>`).join('')}</div></div>`
-        : '<p class="hint">Daily results appear once your strategies close trades.</p>';
       const stubs = (rows, closed) => rows.length
         ? rows.map((r) => `<div class="stub"><b>${esc(r.side.toUpperCase())} ${esc(r.qty)} × ${cents(+r.entry_price)}</b>
             <span>${closed ? money(+r.pnl) : usd(r.qty * r.entry_price)}</span>
@@ -820,7 +815,6 @@
             <section class="sect"><div class="sect-head"><h2>Deployed</h2>${d.deployments.some((x) => x.curve && x.curve.length > 1) ? '<span class="sect-note">Sparklines share one dollar scale</span>' : ''}</div>${deps}</section>
           </div>
           <aside>
-            <section class="panel"><h3>Daily P&amp;L</h3>${bars}</section>
             <section class="panel"><h3>Open positions</h3>${stubs(d.open_positions, false)}</section>
             <section class="panel"><h3>Settled lately</h3>${stubs(d.recent_closed, true)}</section>
           </aside>
