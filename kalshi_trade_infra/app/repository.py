@@ -482,6 +482,18 @@ def strategy_records(cur, user_id: int, market: str, limit: int = 500) -> List[D
     return out
 
 
+def engine_heartbeat(cur, live_enabled: bool) -> None:
+    """Per-tick liveness marker for the deployment engine, so a stalled-but-not-crashed
+    engine (which `Restart=always` can't catch) is detectable by the watchdog. Critical
+    with live orders on."""
+    cur.execute(
+        """INSERT INTO collector_state (state_key,state_value,updated_at_utc)
+           VALUES ('recursive_engine_last_tick',%s,%s)
+           ON DUPLICATE KEY UPDATE state_value=VALUES(state_value), updated_at_utc=VALUES(updated_at_utc)""",
+        ('{"live": %s}' % ("true" if live_enabled else "false"), now_utc()),
+    )
+
+
 def get_policy(cur, user_id: int) -> Optional[Dict]:
     """The user's current self-evolved exploration policy, or None (= DefaultPolicy)."""
     cur.execute("SELECT code, score FROM app_policies WHERE user_id=%s", (user_id,))

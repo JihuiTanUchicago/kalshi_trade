@@ -337,6 +337,10 @@ def run_forever() -> None:
                     if time.time() - last_review > 600:
                         schedule_reviews(conn.cursor())
                         last_review = time.time()
+                    try:
+                        repo.engine_heartbeat(conn.cursor(), LIVE_TRADING_ENABLED)
+                    except Exception:
+                        pass  # a heartbeat write must never stop the trading loop
                     time.sleep(TICK_SECONDS)
             finally:
                 conn.close()

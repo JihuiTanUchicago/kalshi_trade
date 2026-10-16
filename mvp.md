@@ -41,7 +41,6 @@ can render more UI-friendly. Right now the comment box is on top of the most rec
 - Markets still show only a few — widen the live market universe.
 - Select-all / multi-select for deployment.
 - Email all users on any new community update (needs unsubscribe + rate discipline).
-- Web-box engine watchdog: extend `tau-watchdog` to `recursive-engine` (confirm it heartbeats when idle first).
 - Kalshi dev-env 2nd curve needs `KALSHI_DEV_API_BASE` set on the box (one line until then).
 - Tau-RSI tuning: the dreaming loop is live but hasn't evolved a policy yet (strong default baseline). A subagent is diagnosing + improving it from first principles (does it improve real future research, or just overfit the recorded tree?).
 
@@ -55,6 +54,7 @@ can render more UI-friendly. Right now the comment box is on top of the most rec
 
 ## Done
 ### 2026-10-15
+- Web-box engine **watchdog** for `recursive-engine` (added a per-tick heartbeat `recursive_engine_last_tick` + `tau-watchdog.timer` on the web box; restarts a silently-stalled engine — critical with live orders on).
 - **Live/real trading ENABLED for all users** (`APP_LIVE_TRADING_ENABLED=1`), with **market-order-like entries** (cross the touch, IOC, 10c slippage tolerance; `KALSHI_*` env-tunable). Safeguards: YES-only, per-user Kalshi key, typed-LIVE confirm, risk caps + loss guard. Reversible via the flag.
 - **Tau-RSI (P1–P4) shipped + live** (Dream-RSI adapted): pure-fn `ExplorationPolicy`+`DefaultPolicy`; replay simulator + objective `V=quality−β₁·gen+β₂·parallelism`; sandbox for LLM-authored policy code; dreaming loop (per-user self-evolving policy, monotonic). `app/{exploration,replay,sandbox,dreaming}.py` + `app_policies`; dreaming attempts now logged. 195+ tests.
 - **Open-sourced the repo** (BSL-1.1 → Apache-2.0 at the change date; NOTICE w/ Dream-RSI attribution; public README + `.env.example`); branch protection on `main`; auto-push on commit. Repositioned as **RSI for Trading** (venue-agnostic).
