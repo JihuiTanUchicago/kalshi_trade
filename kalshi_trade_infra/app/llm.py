@@ -86,7 +86,13 @@ def _bedrock(system: str, messages: List[Dict[str, str]], model: "Optional[str]"
         except Exception as e:
             raise LLMError("Bedrock call failed: %s" % e)
         msg = (resp.get("output") or {}).get("message") or {}
-        text = "".join(b.get("text", "") for b in msg.get("content") or [] if "text" in b)
+        content = msg.get("content") or []
+        text = "".join(b.get("text", "") for b in content if "text" in b)
+        if not text.strip():
+            # Reasoning models (e.g. DeepSeek R1) can emit only reasoningContent blocks; the
+            # answer — and the JSON extract_json looks for — lives in the reasoning text.
+            text = "".join((b.get("reasoningContent", {}).get("reasoningText", {}) or {}).get("text", "")
+                           for b in content if "reasoningContent" in b)
         u = resp.get("usage") or {}
         return text, {"input_tokens": u.get("inputTokens") or 0, "output_tokens": u.get("outputTokens") or 0}
     raise LLMError("Bedrock call failed after retries.")

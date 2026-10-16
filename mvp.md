@@ -30,7 +30,6 @@ Single source of truth for OPEN work. `[blocked]` = needs a user/AWS action firs
 ### Blocked on you / AWS
 - **Email-all community digest is BUILT but won't deliver until SES production access.** Code is live (opt-out column + HMAC unsubscribe link + per-recipient 4h cooldown; fires in a background thread on each new post). SES is in sandbox, so it only delivers to *verified* addresses right now — request SES production access (SES console → Account dashboard → Request production access) and it starts delivering to everyone with zero code change.
 - Model selection: Claude 5.5 / OpenAI GPT-6.x / Grok are AWS-access-gated (agreements accepted + availability AUTHORIZED, but invoke denies even from full-admin). Request in Bedrock console → Model access (us-east-1) or AWS Sales. Prices locked: Sonnet5.5 $2/$10, Opus5.5 $4/$20, Haiku5.5 $0.1/$0.5, GPT-6.1 Sol $2.2/$10, GPT-6 Sol $2/$10, GPT-5.6 Sol $8.8/$33.
-- DeepSeek R1 returns reasoning-only output via Converse — needs reasoningContent handling before it's safe to offer.
 
 ### Deferred to v0.3
 - Agent internet access / web search (Google/Tavily/Brave).
@@ -38,6 +37,7 @@ Single source of truth for OPEN work. `[blocked]` = needs a user/AWS action firs
 
 ## Done
 ### 2026-10-15
+- **DeepSeek R1 model support.** `llm._bedrock` now falls back to the `reasoningContent` block when a model emits no plain text (reasoning models put the answer there), so `extract_json` still works. Added DeepSeek R1 (`us.deepseek.r1-v1:0`) to the catalog at the verified Bedrock price ($1.35/M in, $5.40/M out). Verified live on the box: a real call returns usable JSON. Accessible via the US inference profile (not access-gated, unlike Claude 5.5/GPT/Grok).
 - **Comment search** on long threads — once a post has >6 replies, a search box filters them live (client-side over the loaded set, with an "N of M" count). ponytail: server-side search if a thread ever tops the 100-comment fetch cap.
 - **Email-all on new community posts** (code shipped; delivery gated on SES prod — see Blocked) — background-thread dispatch to opted-in users on each new post, per-recipient 4h cooldown so a burst can't flood, one-click HMAC-signed **unsubscribe** link (`/unsubscribe`) + `email_opt_out` column. The in-app notification bell already covers community activity without email.
 - **Community composer pinned to the bottom** (chat-style): the feed + filter chips scroll above a sticky composer bar with its own elevation; textarea auto-grows from one line. Fixed a token bug where `var(--surface)` (undefined at `:root`) made the bar transparent — now uses `--stock-raised` (opaque).

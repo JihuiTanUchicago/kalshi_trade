@@ -62,6 +62,10 @@ MODELS: Dict[str, ModelChoice] = {
         # -- Writer (Bedrock agreement rate card, 2026-10-15) ----------------
         ModelChoice("palmyra-x5", "Writer Palmyra X5", "Writer",
                     "us.writer.palmyra-x5-v1:0", Decimal("0.6"), Decimal("6")),
+        # -- DeepSeek (Bedrock US inference profile, 2026-10-15) --------------
+        # Reasoning model: Converse returns only reasoningContent; llm._bedrock falls back to it.
+        ModelChoice("deepseek-r1", "DeepSeek R1", "DeepSeek",
+                    "us.deepseek.r1-v1:0", Decimal("1.35"), Decimal("5.4")),
     ]
 }
 
