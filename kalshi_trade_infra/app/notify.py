@@ -117,3 +117,15 @@ def community_post_notice(to_email: str, name: Optional[str], author: str,
         "Don't want these? Unsubscribe: %s"
     ) % (name or "there", author, (preview or "").strip()[:280], unsub_url)
     return _send(to_email, "New in the Tau community", body)
+
+
+def mention_notice(to_email: str, name: Optional[str], author: str, body: str) -> bool:
+    """Tell a user they were @-mentioned in the community. Best-effort."""
+    text = (
+        "Hi %s,\n\n"
+        "%s mentioned you in the Tau community:\n\n"
+        "  “%s”\n\n"
+        "Open the Community tab to reply.\n\n"
+        "— Tau"
+    ) % (name or "there", author, (body or "").strip()[:280])
+    return _send(to_email, "%s mentioned you on Tau" % author, text)

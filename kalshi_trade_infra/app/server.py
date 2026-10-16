@@ -172,6 +172,7 @@ def me(ctx: Ctx):
     return {
         "user": {
             "id": ctx.user["id"], "email": ctx.user["email"], "name": ctx.user["name"],
+            "username": ctx.user.get("username"),
             "picture": ctx.user["picture_url"], "autopilot": bool(ctx.user["autopilot"]),
         },
         "kalshi_connected": repo.get_kalshi_key(ctx.cur, ctx.uid) is not None,
@@ -707,7 +708,7 @@ def _post_out(p: Dict) -> Dict:
     return {
         "id": p["id"], "body": p["body"], "kind": p["kind"], "snapshot": p.get("snapshot"),
         "likes": p["likes_count"], "comments": p["comments_count"], "created_at": p["created_at"],
-        "author": p.get("name") or "Trader", "picture": p.get("picture_url"),
+        "author": p.get("name") or "Trader", "username": p.get("username"), "picture": p.get("picture_url"),
         "mine": p.get("mine", False), "liked": p.get("liked", False),
         "reactions": p.get("reactions", []),
         "image": ("/api/community/image/%d" % p["image_id"]) if p.get("image_id") else None,
@@ -743,6 +744,30 @@ def _decode_image(data_url: str):
     return ctype, raw
 
 
+def _notify_mentions(cur, author_uid: int, author_name: str, body: str, link: str) -> None:
+    """Notify every @-mentioned user (in-app + email), skipping the author. Best-effort."""
+    handles = {h.lower() for h in repo.MENTION_RE.findall(body or "")}
+    if not handles:
+        return
+    for u in repo.users_by_usernames(cur, list(handles)):
+        if u["id"] == author_uid:
+            continue
+        try:
+            repo.add_notification(cur, u["id"], "mention", "%s mentioned you." % author_name, link)
+        except Exception as e:
+            print("[mention] in-app notice failed: %r" % e, flush=True)
+        if u.get("email"):
+            try:
+                notify.mention_notice(u["email"], u.get("name"), author_name, body)
+            except Exception as e:
+                print("[mention] email failed: %r" % e, flush=True)
+
+
+def mention_candidates(ctx: Ctx):
+    q = (ctx.query.get("q") or "").strip()[:32]
+    return {"users": [{"username": u["username"], "name": u["name"]} for u in repo.mention_candidates(ctx.cur, q)]}
+
+
 def create_community_post(ctx: Ctx):
     body = str(ctx.body.get("body") or "").strip()
     kind = ctx.body.get("kind") or "note"
@@ -763,6 +788,7 @@ def create_community_post(ctx: Ctx):
     snapshot = _post_snapshot(cur, ctx.uid, kind, int(ctx.body.get("ref_id") or 0)) if kind != "note" else None
     pid = repo.create_post(cur, ctx.uid, body or _default_share_text(kind, snapshot), kind, snapshot, image_id)
     author = (repo.get_user(cur, ctx.uid) or {}).get("name") or "A trader"
+    _notify_mentions(cur, ctx.uid, author, body, "/community")
     _email_community_post_async(ctx.uid, author, body or _default_share_text(kind, snapshot))
     return {"id": pid}
 
@@ -836,7 +862,7 @@ def react_post(ctx: Ctx):
 
 def post_comments(ctx: Ctx):
     pid = _int_param(ctx)
-    return {"comments": [{"body": c["body"], "author": c["name"] or "Trader", "picture": c["picture_url"], "created_at": c["created_at"]} for c in repo.list_comments(ctx.cur, pid)]}
+    return {"comments": [{"body": c["body"], "author": c["name"] or "Trader", "username": c.get("username"), "picture": c["picture_url"], "created_at": c["created_at"]} for c in repo.list_comments(ctx.cur, pid)]}
 
 
 def create_comment(ctx: Ctx):
@@ -850,8 +876,9 @@ def create_comment(ctx: Ctx):
     if not author:
         raise ApiError(404, "No such post.")
     repo.add_comment(ctx.cur, pid, ctx.uid, body)
+    commenter = (repo.get_user(ctx.cur, ctx.uid) or {}).get("name") or "Someone"
+    _notify_mentions(ctx.cur, ctx.uid, commenter, body, "/community")
     if author["user_id"] != ctx.uid:  # don't notify yourself
-        commenter = (repo.get_user(ctx.cur, ctx.uid) or {}).get("name") or "Someone"
         try:
             repo.add_notification(ctx.cur, author["user_id"], "comment",
                                   "%s commented on your post." % commenter, "/community")
@@ -1294,6 +1321,7 @@ ROUTES: List[Route] = [
         ("POST", "/api/notifications/read", mark_notifications_read, True),
         ("GET", "/unsubscribe", unsubscribe, False),
         ("GET", "/api/devlog", lambda ctx: devlog.as_json(), True),
+        ("GET", "/api/users/mention", mention_candidates, True),
         ("GET", "/api/deployments", list_deployments, True),
         ("POST", "/api/deployments", create_deployment, True),
         ("POST", r"/api/deployments/(\d+)/(pause|resume|stop)", deployment_action, True),

@@ -106,6 +106,7 @@ def upsert_google_user(cur, sub: str, email: str, name: Optional[str], picture: 
         (sub, email, name, picture, now, now),
     )
     user_id = cur.lastrowid
+    assign_username(cur, user_id, email, name)  # unique @handle for community mentions
     # Once they're in, they're off the waitlist — the two lists are exclusive.
     if email:
         cur.execute("DELETE FROM app_waitlist WHERE LOWER(TRIM(email))=LOWER(TRIM(%s))", (email,))
@@ -115,9 +116,54 @@ def upsert_google_user(cur, sub: str, email: str, name: Optional[str], picture: 
     return get_user(cur, user_id)
 
 
+_USERNAME_RE = re.compile(r"[^a-z0-9]")
+MENTION_RE = re.compile(r"(?<![\w@])@([a-z0-9_]{2,32})")  # @handle tokens in a post/comment
+
+
+def _slug_username(base: str) -> str:
+    s = _USERNAME_RE.sub("", (base or "").lower())[:20]
+    return s or "trader"
+
+
+def assign_username(cur, user_id: int, email: Optional[str], name: Optional[str]) -> str:
+    """Give the user a unique @handle derived from their email/name. Idempotent-ish:
+    uniqueness is checked against every other row, so a re-run picks a free handle."""
+    base = _slug_username((email.split("@")[0] if email else "") or name or "trader")
+    candidate, n = base, 1
+    while True:
+        cur.execute("SELECT id FROM app_users WHERE username=%s AND id<>%s", (candidate, user_id))
+        if not cur.fetchone():
+            break
+        n += 1
+        candidate = ("%s%d" % (base, n))[:32]
+    cur.execute("UPDATE app_users SET username=%s WHERE id=%s", (candidate, user_id))
+    return candidate
+
+
+def mention_candidates(cur, q: str, limit: int = 8) -> List[Dict]:
+    """Users whose handle or name matches `q`, for the @-autocomplete."""
+    like = (q or "").lower() + "%"
+    namelike = "%" + (q or "").lower() + "%"
+    cur.execute(
+        """SELECT username, name FROM app_users
+           WHERE username IS NOT NULL AND (LOWER(username) LIKE %s OR LOWER(name) LIKE %s)
+           ORDER BY (LOWER(username) LIKE %s) DESC, username LIMIT %s""",
+        (like, namelike, like, limit),
+    )
+    return cur.fetchall()
+
+
+def users_by_usernames(cur, usernames: List[str]) -> List[Dict]:
+    if not usernames:
+        return []
+    marks = ",".join(["%s"] * len(usernames))
+    cur.execute("SELECT id, username, name, email FROM app_users WHERE username IN (%s)" % marks, tuple(usernames))
+    return cur.fetchall()
+
+
 def get_user(cur, user_id: int) -> Optional[Dict]:
     cur.execute(
-        "SELECT id, email, name, picture_url, autopilot, created_at FROM app_users WHERE id=%s", (user_id,)
+        "SELECT id, email, name, username, picture_url, autopilot, created_at FROM app_users WHERE id=%s", (user_id,)
     )
     return cur.fetchone()
 
@@ -141,7 +187,7 @@ def create_session(cur, user_id: int, token_hash: str, ttl: timedelta) -> None:
 
 def session_user(cur, token_hash: str) -> Optional[Dict]:
     cur.execute(
-        """SELECT u.id, u.email, u.name, u.picture_url, u.autopilot, u.created_at
+        """SELECT u.id, u.email, u.name, u.username, u.picture_url, u.autopilot, u.created_at
            FROM app_sessions s JOIN app_users u ON u.id=s.user_id
            WHERE s.token_hash=%s AND s.expires_at > %s""",
         (token_hash, now_utc()),
@@ -1045,7 +1091,7 @@ def edit_post(cur, post_id: int, user_id: int, body: str) -> bool:
 def list_posts(cur, viewer_id: int, before_id: int = 0, limit: int = 30, mine_only: bool = False) -> List[Dict]:
     cur.execute(
         """SELECT p.id, p.body, p.kind, p.snapshot_json, p.image_id, p.edited_at, p.likes_count, p.comments_count, p.created_at,
-                  u.name, u.picture_url, (p.user_id = %s) AS mine,
+                  u.name, u.username, u.picture_url, (p.user_id = %s) AS mine,
                   EXISTS(SELECT 1 FROM app_post_likes l WHERE l.post_id=p.id AND l.user_id=%s) AS liked
            FROM app_posts p JOIN app_users u ON u.id=p.user_id
            WHERE (%s = 0 OR p.id < %s) AND (%s = 0 OR p.user_id = %s) ORDER BY p.id DESC LIMIT %s""",
@@ -1132,7 +1178,7 @@ def add_comment(cur, post_id: int, user_id: int, body: str) -> int:
 
 def list_comments(cur, post_id: int, limit: int = 100) -> List[Dict]:
     cur.execute(
-        """SELECT c.id, c.body, c.created_at, u.name, u.picture_url
+        """SELECT c.id, c.body, c.created_at, u.name, u.username, u.picture_url
            FROM app_post_comments c JOIN app_users u ON u.id=c.user_id
            WHERE c.post_id=%s ORDER BY c.id LIMIT %s""",
         (post_id, limit),

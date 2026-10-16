@@ -367,6 +367,24 @@ def test_notifications_endpoint_shape(monkeypatch):
     assert out["unread"] == 1 and out["items"][0]["read"] is False and out["items"][0]["link"] == "/strategies/9"
 
 
+def test_slug_and_mention_regex():
+    from app import repository as r
+    assert r._slug_username("Jihui.Tan+x") == "jihuitanx"
+    assert r._slug_username("!!!") == "trader"  # empty slug falls back
+    assert r.MENTION_RE.findall("hi @tanjihui, email foo@bar.com and @a_b2") == ["tanjihui", "a_b2"]
+
+
+def test_notify_mentions_excludes_author(monkeypatch):
+    notes = []
+    monkeypatch.setattr(server.repo, "users_by_usernames", lambda cur, hs: [
+        {"id": 2, "username": "bob", "name": "Bob", "email": "b@x.com"},
+        {"id": 1, "username": "me", "name": "Me", "email": "m@x.com"}])
+    monkeypatch.setattr(server.repo, "add_notification", lambda cur, uid, kind, body, link: notes.append((uid, kind)))
+    monkeypatch.setattr(server.notify, "mention_notice", lambda *a, **k: True)
+    server._notify_mentions(None, 1, "Me", "hey @bob and @me", "/community")
+    assert notes == [(2, "mention")]  # author (uid 1) is not notified about their own mention
+
+
 def test_unsubscribe_token_is_bound_to_user():
     from app import notify
     t = notify.unsubscribe_token(42)

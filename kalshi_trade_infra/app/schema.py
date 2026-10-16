@@ -384,6 +384,13 @@ def main() -> None:
         # posts can't flood anyone. (Delivery itself waits on SES production access.)
         _add_column_if_missing(cur, "app_users", "email_opt_out", "ALTER TABLE app_users ADD COLUMN email_opt_out TINYINT(1) NOT NULL DEFAULT 0")
         _add_column_if_missing(cur, "app_users", "last_community_email_at", "ALTER TABLE app_users ADD COLUMN last_community_email_at DATETIME NULL")
+        # Unique @-handle for community mentions. Nullable; uniqueness enforced in assign_username.
+        _add_column_if_missing(cur, "app_users", "username", "ALTER TABLE app_users ADD COLUMN username VARCHAR(32) NULL")
+        # Backfill any user still missing a handle (idempotent: only touches NULLs).
+        from app import repository as _repo
+        cur.execute("SELECT id, email, name FROM app_users WHERE username IS NULL OR username=''")
+        for u in cur.fetchall():
+            _repo.assign_username(cur, u["id"], u["email"], u["name"])
         # One-time migration: seed spot_candles_1m with existing BTC history so the
         # generalized backtester has BTC's full price path. Idempotent (INSERT IGNORE on PK).
         cur.execute(

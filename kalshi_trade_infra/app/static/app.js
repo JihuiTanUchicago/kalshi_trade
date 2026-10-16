@@ -99,8 +99,55 @@
     t = t.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>');
     t = t.replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener nofollow">$1</a>');
     t = t.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noopener nofollow">$2</a>');
+    // @handle mentions (not inside an email: the lookbehind blocks a word char before @)
+    t = t.replace(/(^|[^\w@])@([a-z0-9_]{2,32})/gi, '$1<span class="mention">@$2</span>');
     return t.replace(/\n/g, '<br>');
   };
+  // "Jihui Tan @tanjihui" — the handle muted next to the display name.
+  const authorLine = (name, uname) => `${esc(name || 'Trader')}${uname ? ` <span class="uhandle">@${esc(uname)}</span>` : ''}`;
+  // Slack-style @-autocomplete on a textarea/input: type @ + letters -> a candidate list,
+  // click or Enter to insert @handle. A popover is positioned under the field (fixed).
+  function attachMention(el) {
+    if (!el || el._mention) return; el._mention = true;
+    let box = null, items = [], active = -1, token = null;
+    const close = () => { if (box) box.remove(); box = null; items = []; active = -1; token = null; };
+    const tokenAtCaret = () => {
+      const text = el.value.slice(0, el.selectionStart);
+      const m = /@([a-z0-9_]*)$/i.exec(text);
+      return m ? { q: m[1], start: el.selectionStart - m[1].length - 1, end: el.selectionStart } : null;
+    };
+    const render = () => {
+      if (!box) { box = document.createElement('div'); box.className = 'mention-pop'; document.body.appendChild(box); }
+      const r = el.getBoundingClientRect();
+      box.style.cssText = `position:fixed;left:${Math.round(r.left)}px;top:${Math.round(r.bottom + 2)}px;width:${Math.round(Math.min(300, Math.max(180, r.width)))}px;z-index:50;`;
+      box.innerHTML = items.map((u, i) => `<button type="button" class="mention-opt ${i === active ? 'on' : ''}" data-u="${esc(u.username)}"><b>@${esc(u.username)}</b>${u.name ? ` <span>${esc(u.name)}</span>` : ''}</button>`).join('');
+      box.querySelectorAll('.mention-opt').forEach((b) => { b.onmousedown = (e) => { e.preventDefault(); pick(b.dataset.u); }; });
+    };
+    const pick = (uname) => {
+      if (!token) return;
+      const before = el.value.slice(0, token.start), after = el.value.slice(token.end);
+      el.value = `${before}@${uname} ${after}`;
+      const caret = before.length + uname.length + 2;
+      el.setSelectionRange(caret, caret); el.focus();
+      close(); el.dispatchEvent(new Event('input'));
+    };
+    el.addEventListener('input', async () => {
+      token = tokenAtCaret();
+      if (!token) return close();
+      try { const d = await api('/api/users/mention?q=' + encodeURIComponent(token.q)); items = d.users || []; }
+      catch (e) { return close(); }
+      if (!items.length) return close();
+      active = 0; render();
+    });
+    el.addEventListener('keydown', (e) => {
+      if (!box || !items.length) return;
+      if (e.key === 'ArrowDown') { active = (active + 1) % items.length; render(); e.preventDefault(); }
+      else if (e.key === 'ArrowUp') { active = (active - 1 + items.length) % items.length; render(); e.preventDefault(); }
+      else if (e.key === 'Enter' && active >= 0) { pick(items[active].username); e.preventDefault(); }
+      else if (e.key === 'Escape') close();
+    });
+    el.addEventListener('blur', () => setTimeout(close, 150));
+  }
   // Hover tooltip for a reaction chip: who reacted, with "and N others" when the list is capped.
   const rxTitle = (rx) => {
     const names = rx.names || [];
@@ -1487,7 +1534,7 @@
   }
   function postCard(p) {
     return `<article class="post" data-id="${p.id}">
-      <div class="post-head">${avatar(p.picture, p.author)}<div><b>${esc(p.author)}</b><span class="when">${when(p.created_at)}${p.edited ? ' · edited' : ''}</span></div></div>
+      <div class="post-head">${avatar(p.picture, p.author)}<div><b>${authorLine(p.author, p.username)}</b><span class="when">${when(p.created_at)}${p.edited ? ' · edited' : ''}</span></div></div>
       <div class="post-main"><p class="post-body">${mdLite(p.body)}</p>
       ${p.image ? `<a class="post-img" href="${esc(p.image)}" target="_blank" rel="noopener"><img src="${esc(p.image)}" alt="" loading="lazy"></a>` : ''}
       ${postSnapshot(p.snapshot)}</div>
@@ -1546,6 +1593,7 @@
     const ta = root.querySelector('#post-body');
     const growTa = () => { ta.style.height = 'auto'; ta.style.height = Math.min(180, ta.scrollHeight) + 'px'; };
     ta.addEventListener('input', growTa);
+    attachMention(ta);  // @-mention autocomplete in the composer
     // photo attach
     let pendingImage = null;
     const photoInput = root.querySelector('#photo-input');
@@ -1635,7 +1683,7 @@
         const PAGE = 10;
         box.innerHTML = `${many ? '<div class="cmt-search"><input class="input" type="search" placeholder="Search replies…" aria-label="Search replies"><span class="cmt-count"></span></div>' : ''}
           ${d.comments.length > PAGE ? '<button type="button" class="btn sm cmt-more"></button>' : ''}
-          <div class="cmt-list">${d.comments.map((c) => `<div class="cmt">${avatar(c.picture, c.author)}<div><b>${esc(c.author)}</b> <span class="when">${when(c.created_at)}</span><p>${mdLite(c.body)}</p></div></div>`).join('')}</div>
+          <div class="cmt-list">${d.comments.map((c) => `<div class="cmt">${avatar(c.picture, c.author)}<div><b>${authorLine(c.author, c.username)}</b> <span class="when">${when(c.created_at)}</span><p>${mdLite(c.body)}</p></div></div>`).join('')}</div>
           <form class="cmt-form"><input class="input" maxlength="1000" placeholder="Write a reply…" required><button class="btn sm" type="submit">Reply</button></form>`;
         // Show the latest 10 (newest stay by the reply box); "Load earlier" reveals older in 10s.
         // Search (when present) filters the whole loaded set. ponytail: client-side over the ≤100
@@ -1663,6 +1711,7 @@
         if (cmtSearch) cmtSearch.oninput = applyView;
         if (moreBtn) moreBtn.onclick = () => { limit += PAGE; applyView(); };
         applyView();
+        attachMention(box.querySelector('.cmt-form input'));  // @-mention in replies
         box.querySelector('.cmt-form').onsubmit = async (ev) => {
           ev.preventDefault();
           const form = ev.currentTarget;  // scope to the form — the search box is also an <input> in this box

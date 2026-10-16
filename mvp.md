@@ -26,7 +26,6 @@ Single source of truth for OPEN work — one flat list. Each item is tagged with
 `[delayed]` = owner chose to hold; `[blocked: …]` = needs a user/AWS action first; `[v0.3]` = next version.
 These are NOT done. Completed items move to **## Done** below.
 
-- **@-mentions in community** (Slack-style): assign unique usernames, display as `Gmail Name (tau_username)`, `@` opens a matching-candidate filter, mentions by username; the mentioned person gets an email + an in-app notification.
 - `[delayed]` All-markets collector + cross-contract. Phase 1 catalog shipped; ingestion split onto a dedicated collector box + S3 data-lake. Next: per-minute S3/Parquet snapshots (Phase 2), backtest-over-any-series (3), cross-contract (4).
 - `[delayed]` Widen the live market universe — surface more of the already-collected Kalshi series in the UI (smaller than the full all-markets build).
 - `[blocked: SES]` Email-all community digest — **code is live** (opt-out + HMAC unsubscribe + 4h per-recipient cooldown; background-thread dispatch on each new post), but SES is in sandbox so it only reaches *verified* addresses. Unblock: SES console → Account dashboard → Request production access (zero code change after).
@@ -37,6 +36,7 @@ These are NOT done. Completed items move to **## Done** below.
 
 ## Done
 ### 2026-10-15
+- **@-mentions in the community (Slack-style).** Every user gets a unique `@handle` (backfilled from their email; assigned on signup), shown as `Name @handle` on posts/comments. Typing `@` in the composer or a reply opens a candidate list (by handle or name, arrow/enter to pick); `@handle` renders highlighted in bodies. The mentioned person gets an in-app notification + an email (emails wait on SES prod, like the rest). New: `app_users.username`, `/api/users/mention`, `MENTION_RE`/`assign_username`. Verified on the real DB (all 10 users backfilled, unique, dedup works).
 - **Dev Logs tab** (public changelog: shipped list with dates + "shipping next"), **Credits & Usage receipt** download (CSV of the full ledger), **reaction-hover reactor names** ("and N others"), **comment lazy-load** (latest 10, "Load N earlier"), **full-width explore chart**, default model → **Claude Opus 4.5**, and **Kalshi-dev 2nd equity line enabled** (demo API is public). Fixed two bugs found in testing: `reactions_for` used a non-existent `r.id` column (broke the whole community feed) and the comment reply form read the search box instead of the reply box.
 - **DeepSeek R1 model support.** `llm._bedrock` now falls back to the `reasoningContent` block when a model emits no plain text (reasoning models put the answer there), so `extract_json` still works. Added DeepSeek R1 (`us.deepseek.r1-v1:0`) to the catalog at the verified Bedrock price ($1.35/M in, $5.40/M out). Verified live on the box: a real call returns usable JSON. Accessible via the US inference profile (not access-gated, unlike Claude 5.5/GPT/Grok).
 - **Comment search** on long threads — once a post has >6 replies, a search box filters them live (client-side over the loaded set, with an "N of M" count). ponytail: server-side search if a thread ever tops the 100-comment fetch cap.

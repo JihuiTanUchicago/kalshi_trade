@@ -851,6 +851,13 @@ a.snap:hover { border-color: var(--ink-3); }
 .dl-what { font-size: 14.5px; line-height: 1.45; color: var(--ink); }
 .dl-item.planned .dl-what { color: var(--ink-2); }
 .dl-dot { flex: none; width: 7px; height: 7px; margin-top: 6px; border-radius: 50%; background: var(--signal); }
+.uhandle { font-weight: 400; font-size: .92em; color: var(--ink-3); font-family: var(--f-nar); letter-spacing: .01em; }
+.mention { color: var(--signal); font-weight: 600; }
+.mention-pop { background: var(--stock-raised); border: 1px solid var(--ink); border-radius: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.16); max-height: 240px; overflow-y: auto; padding: 4px; }
+.mention-opt { display: block; width: 100%; text-align: left; border: 0; background: none; cursor: pointer; padding: 7px 9px; border-radius: 3px; font: inherit; color: var(--ink-2); }
+.mention-opt b { color: var(--ink); font-weight: 600; }
+.mention-opt span { color: var(--ink-3); font-size: .9em; margin-left: 4px; }
+.mention-opt.on, .mention-opt:hover { background: var(--stock-sunk); }
 .cmt-form { display: flex; gap: 8px; }
 .cmt-form .input { min-height: 38px; }
 @media (max-width: 680px) { .post-tools .btn { margin-left: 0; } }
