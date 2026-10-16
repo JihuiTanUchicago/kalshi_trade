@@ -1389,6 +1389,7 @@
           </div>
           <div id="post-flash"></div>
         </form>
+        <div class="chips feed-filter" role="group" aria-label="Filter posts"><button class="chip" type="button" data-feed="all" aria-pressed="true">All posts</button><button class="chip" type="button" data-feed="mine" aria-pressed="false">My posts</button></div>
         <div id="feed">${loading(120)}${loading(120)}</div>
       </div>`);
     // photo attach
@@ -1490,18 +1491,25 @@
         };
       }
     });
-    let lastFeed = '';
+    let lastFeed = '', mineOnly = false;
     const load = async (force) => {
       // Never wipe a reply the user is writing: skip the refresh while a reply box is open
       // or anything in the feed is focused (unless this is the first/explicit render).
       if (!force && (feed.querySelector('.cmt-form') || feed.contains(document.activeElement))) return;
-      const d = await api('/api/community');
+      const d = await api('/api/community' + (mineOnly ? '?mine=1' : ''));
       const html = d.posts.length ? d.posts.map(postCard).join('')
-        : `<div class="empty"><h3>No posts yet</h3><p>Be the first. Share a strategy an agent found, drop an idea worth researching, or post how your paper book is doing.</p></div>`;
+        : `<div class="empty"><h3>${mineOnly ? 'You haven’t posted yet' : 'No posts yet'}</h3><p>${mineOnly ? 'Share a strategy an agent found or how your book is doing — it’ll show up here.' : 'Be the first. Share a strategy an agent found, drop an idea worth researching, or post how your paper book is doing.'}</p></div>`;
       if (html === lastFeed) return;  // nothing changed — don't re-render (avoids flicker)
       lastFeed = html;
       feed.innerHTML = html;
     };
+    root.querySelectorAll('.feed-filter .chip').forEach((c) => (c.onclick = () => {
+      const want = c.dataset.feed === 'mine';
+      if (want === mineOnly) return;
+      mineOnly = want;
+      root.querySelectorAll('.feed-filter .chip').forEach((x) => x.setAttribute('aria-pressed', String((x.dataset.feed === 'mine') === mineOnly)));
+      lastFeed = ''; load(true);
+    }));
     await load(true);
     poll(load, 20000);
   }

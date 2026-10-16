@@ -832,14 +832,14 @@ def edit_post(cur, post_id: int, user_id: int, body: str) -> bool:
     return cur.rowcount == 1
 
 
-def list_posts(cur, viewer_id: int, before_id: int = 0, limit: int = 30) -> List[Dict]:
+def list_posts(cur, viewer_id: int, before_id: int = 0, limit: int = 30, mine_only: bool = False) -> List[Dict]:
     cur.execute(
         """SELECT p.id, p.body, p.kind, p.snapshot_json, p.image_id, p.edited_at, p.likes_count, p.comments_count, p.created_at,
                   u.name, u.picture_url, (p.user_id = %s) AS mine,
                   EXISTS(SELECT 1 FROM app_post_likes l WHERE l.post_id=p.id AND l.user_id=%s) AS liked
            FROM app_posts p JOIN app_users u ON u.id=p.user_id
-           WHERE (%s = 0 OR p.id < %s) ORDER BY p.id DESC LIMIT %s""",
-        (viewer_id, viewer_id, before_id, before_id, limit),
+           WHERE (%s = 0 OR p.id < %s) AND (%s = 0 OR p.user_id = %s) ORDER BY p.id DESC LIMIT %s""",
+        (viewer_id, viewer_id, before_id, before_id, 1 if mine_only else 0, viewer_id, limit),
     )
     rows = cur.fetchall()
     for r in rows:

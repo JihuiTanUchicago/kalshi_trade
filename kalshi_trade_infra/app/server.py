@@ -40,7 +40,7 @@ MAX_BODY = 8 * 1024 * 1024  # allows a base64 image in a community post
 MAX_ACTIVE_RESEARCH = 2
 MAX_RESEARCH_PER_DAY = 12
 MAX_CHAT_PER_HOUR = 40
-MAX_ACTIVE_DEPLOYMENTS = 10
+MAX_ACTIVE_DEPLOYMENTS = 100
 MAX_PAPER_BALANCE = 1_000_000.0
 MAX_WAITLIST_PER_MINUTE = 10
 ADMIN_EMAIL = os.getenv("TAU_ADMIN_EMAIL", "tjhprivate0416@gmail.com")
@@ -617,7 +617,8 @@ def _post_out(p: Dict) -> Dict:
 
 def community(ctx: Ctx):
     before = int(ctx.query.get("before") or 0)
-    return {"posts": [_post_out(p) for p in repo.list_posts(ctx.cur, ctx.uid, before)]}
+    mine_only = str(ctx.query.get("mine") or "") in ("1", "true")
+    return {"posts": [_post_out(p) for p in repo.list_posts(ctx.cur, ctx.uid, before, mine_only=mine_only)]}
 
 
 IMAGE_MAGIC = {b"\x89PNG": "image/png", b"\xff\xd8\xff": "image/jpeg", b"GIF8": "image/gif"}

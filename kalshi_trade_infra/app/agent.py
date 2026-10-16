@@ -52,7 +52,7 @@ DIRECTIONS: Dict[str, Dict[str, str]] = {
 
 BATCH = 4                 # hypotheses proposed per round; small so each round can LEARN from the last
 DEFAULT_HYPOTHESES = 8    # when the user doesn't set a budget
-MAX_BUDGET = 50           # hard ceiling a user can request for one run
+MAX_BUDGET = 1000         # hard ceiling a user can request for one finite run (run-forever is uncapped)
 FINALISTS = 3             # per chunk, only the best few are gated on unseen data (multiple-testing discipline)
 MAX_ACTIONS = 3
 MIN_FRAMES = 200
