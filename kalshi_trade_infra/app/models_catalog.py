@@ -33,9 +33,9 @@ class ModelChoice:
     price_out: Decimal  # USD per 1,000,000 output tokens
 
 
-# The default must stay the current Sonnet (matches llm.BEDROCK_MODEL), so an
-# existing run with no model chosen bills and behaves exactly as before.
-DEFAULT_KEY = "sonnet-4-5"
+# Default research model (matches llm.BEDROCK_MODEL). A run with no model chosen
+# resolves to this for both the call and billing.
+DEFAULT_KEY = "opus-4-5"
 
 MODELS: Dict[str, ModelChoice] = {
     m.key: m

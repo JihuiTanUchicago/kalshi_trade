@@ -1062,19 +1062,25 @@ def list_posts(cur, viewer_id: int, before_id: int = 0, limit: int = 30, mine_on
 
 
 def reactions_for(cur, post_ids: List[int], viewer_id: int) -> Dict[int, List[Dict]]:
-    """Per-post emoji counts (+ whether the viewer added each), most-used first."""
+    """Per-post emoji counts (+ whether the viewer added each, + up to 8 reactor
+    names for the hover tooltip), most-used first."""
     if not post_ids:
         return {}
     marks = ",".join(["%s"] * len(post_ids))
+    # SEPARATOR is the unit-separator char (never in a name); SUBSTRING_INDEX caps the list.
     cur.execute(
-        "SELECT post_id, emoji, COUNT(*) AS n, MAX(user_id=%s) AS mine "
-        "FROM app_post_reactions WHERE post_id IN (%s) GROUP BY post_id, emoji "
-        "ORDER BY n DESC, emoji" % ("%s", marks),
+        "SELECT r.post_id, r.emoji, COUNT(*) AS n, MAX(r.user_id=%s) AS mine, "
+        "SUBSTRING_INDEX(GROUP_CONCAT(u.name ORDER BY r.id SEPARATOR 0x1f), 0x1f, 8) AS names "
+        "FROM app_post_reactions r JOIN app_users u ON u.id=r.user_id "
+        "WHERE r.post_id IN (%s) GROUP BY r.post_id, r.emoji "
+        "ORDER BY n DESC, r.emoji" % ("%s", marks),
         tuple([viewer_id] + list(post_ids)),
     )
     out: Dict[int, List[Dict]] = {}
     for r in cur.fetchall():
-        out.setdefault(r["post_id"], []).append({"emoji": r["emoji"], "count": int(r["n"]), "mine": bool(r["mine"])})
+        names = [n for n in (r.get("names") or "").split("\x1f") if n]
+        out.setdefault(r["post_id"], []).append(
+            {"emoji": r["emoji"], "count": int(r["n"]), "mine": bool(r["mine"]), "names": names})
     return out
 
 

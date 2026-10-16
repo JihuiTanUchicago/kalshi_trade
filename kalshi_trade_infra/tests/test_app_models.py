@@ -33,17 +33,17 @@ def ctx(body):
 # -- registry (single source of truth) ------------------------------------------
 
 
-def test_default_model_is_the_current_sonnet():
-    assert catalog.DEFAULT_KEY == "sonnet-4-5"
-    assert catalog.default().model_id == "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+def test_default_model_is_opus_4_5():
+    assert catalog.DEFAULT_KEY == "opus-4-5"
+    assert catalog.default().model_id == "us.anthropic.claude-opus-4-5-20251101-v1:0"
     cj = catalog.catalog_json()
     assert sum(1 for m in cj if m["default"]) == 1  # exactly one default
-    assert next(m for m in cj if m["default"])["key"] == "sonnet-4-5"
+    assert next(m for m in cj if m["default"])["key"] == "opus-4-5"
 
 
 def test_models_endpoint_returns_the_registry():
     res = server.models(ctx({}))
-    assert res["default"] == "sonnet-4-5"
+    assert res["default"] == "opus-4-5"
     keys = {m["key"] for m in res["models"]}
     assert {"sonnet-4-5", "opus-4-5", "nova-pro", "llama-3-3-70b"} <= keys
 

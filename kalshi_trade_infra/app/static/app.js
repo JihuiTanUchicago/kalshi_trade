@@ -101,6 +101,13 @@
     t = t.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noopener nofollow">$2</a>');
     return t.replace(/\n/g, '<br>');
   };
+  // Hover tooltip for a reaction chip: who reacted, with "and N others" when the list is capped.
+  const rxTitle = (rx) => {
+    const names = rx.names || [];
+    if (!names.length) return '';
+    const extra = (rx.count || 0) - names.length;
+    return extra > 0 ? `${names.join(', ')} and ${extra} other${extra > 1 ? 's' : ''}` : names.join(', ');
+  };
   const fmt2 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fmt0 = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
   const usd = (v, signed = false) => {
@@ -1484,7 +1491,7 @@
   const REACTIONS = ['tau', '👍', '❤️', '🔥', '🚀', '😂', '🎉', '💯', '👀', '🤔', '😮', '😢', '🙌', '🧠', '📈', '📉', '💸', '✅', '❌', '🐂', '🐻', '🐐', '🦍', '🐳', '💎', '🤡', '💀', '🫡', '🌙'];
   const emojiHtml = (e) => e === 'tau' ? `<span class="tau-emoji">${ICON.mark}</span>` : esc(e);
   function reactionBar(p) {
-    const chips = (p.reactions || []).map((rx) => `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}">${emojiHtml(rx.emoji)}<span class="n">${rx.count}</span></button>`).join('');
+    const chips = (p.reactions || []).map((rx) => `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}" title="${esc(rxTitle(rx))}">${emojiHtml(rx.emoji)}<span class="n">${rx.count}</span></button>`).join('');
     return `<span class="reactions">${chips}<button class="rx add" data-react-add aria-label="Add a reaction">${ICON.react}<i class="plus">+</i></button></span>`;
   }
   let emojiPop = null;
@@ -1563,7 +1570,7 @@
     const feed = root.querySelector('#feed');
     const renderReactions = (art, list) => {
       const bar = art.querySelector('.reactions');
-      bar.innerHTML = (list || []).map((rx) => `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}">${emojiHtml(rx.emoji)}<span class="n">${rx.count}</span></button>`).join('')
+      bar.innerHTML = (list || []).map((rx) => `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}" title="${esc(rxTitle(rx))}">${emojiHtml(rx.emoji)}<span class="n">${rx.count}</span></button>`).join('')
         + `<button class="rx add" data-react-add aria-label="Add a reaction">${ICON.react}<i class="plus">+</i></button>`;
     };
     const react = async (pid, art, emoji) => {
@@ -1611,23 +1618,38 @@
         if (!box.hidden) { box.hidden = true; return; }
         box.hidden = false; box.innerHTML = loading(40);
         const d = await api(`/api/community/${pid}/comments`).catch(() => ({ comments: [] }));
-        const many = d.comments.length > 6;  // only show the search bar once a thread gets long
+        const many = d.comments.length > 6;      // search bar once a thread gets long
+        const PAGE = 10;
         box.innerHTML = `${many ? '<div class="cmt-search"><input class="input" type="search" placeholder="Search replies…" aria-label="Search replies"><span class="cmt-count"></span></div>' : ''}
+          ${d.comments.length > PAGE ? '<button type="button" class="btn sm cmt-more"></button>' : ''}
           <div class="cmt-list">${d.comments.map((c) => `<div class="cmt">${avatar(c.picture, c.author)}<div><b>${esc(c.author)}</b> <span class="when">${when(c.created_at)}</span><p>${mdLite(c.body)}</p></div></div>`).join('')}</div>
           <form class="cmt-form"><input class="input" maxlength="1000" placeholder="Write a reply…" required><button class="btn sm" type="submit">Reply</button></form>`;
+        // Show the latest 10 (newest stay by the reply box); "Load earlier" reveals older in 10s.
+        // Search (when present) filters the whole loaded set. ponytail: client-side over the ≤100
+        // fetched — add a server offset if a thread ever tops that cap.
         const cmtSearch = box.querySelector('.cmt-search input');
-        if (cmtSearch) {
-          // Client-side filter over the loaded replies. ponytail: server-side search if a
-          // single thread ever exceeds the 100-comment fetch cap.
-          const count = box.querySelector('.cmt-count');
-          const items = Array.from(box.querySelectorAll('.cmt-list .cmt'));
-          cmtSearch.oninput = () => {
-            const q = cmtSearch.value.trim().toLowerCase();
-            let shown = 0;
-            items.forEach((el) => { const hit = !q || el.textContent.toLowerCase().includes(q); el.hidden = !hit; if (hit) shown++; });
-            count.textContent = q ? `${shown} of ${items.length}` : '';
-          };
-        }
+        const count = box.querySelector('.cmt-count');
+        const moreBtn = box.querySelector('.cmt-more');
+        const items = Array.from(box.querySelectorAll('.cmt-list .cmt'));
+        let limit = PAGE;
+        const applyView = () => {
+          const q = cmtSearch ? cmtSearch.value.trim().toLowerCase() : '';
+          let matched = 0;
+          items.forEach((el, i) => {
+            const hit = !q || el.textContent.toLowerCase().includes(q);
+            el.hidden = !hit || (!q && i < items.length - limit);  // keep the newest `limit`
+            if (hit) matched++;
+          });
+          if (count) count.textContent = q ? `${matched} of ${items.length}` : '';
+          if (moreBtn) {
+            const rest = items.length - limit;
+            moreBtn.hidden = !!q || rest <= 0;
+            moreBtn.textContent = `Load ${Math.min(PAGE, rest)} earlier`;
+          }
+        };
+        if (cmtSearch) cmtSearch.oninput = applyView;
+        if (moreBtn) moreBtn.onclick = () => { limit += PAGE; applyView(); };
+        applyView();
         box.querySelector('.cmt-form').onsubmit = async (ev) => {
           ev.preventDefault();
           const inp = box.querySelector('input'); const body = inp.value.trim(); if (!body) return;
