@@ -1328,6 +1328,7 @@ ROUTES: List[Route] = [
         ("GET", "/api/notifications", notifications, True),
         ("POST", "/api/notifications/read", mark_notifications_read, True),
         ("GET", "/unsubscribe", unsubscribe, False),
+        ("GET", "/api/version", lambda ctx: {"v": _static_versions()["app.js"]}, False),
         ("GET", "/api/devlog", lambda ctx: devlog.as_json(), True),
         ("GET", "/api/users/mention", mention_candidates, True),
         ("GET", "/api/deployments", list_deployments, True),
