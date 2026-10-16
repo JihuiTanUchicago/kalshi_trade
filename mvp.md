@@ -5,22 +5,6 @@ A self-improving alpha discovery pipeline, from ideation, to similation, and fin
 
 [Optional] Side idea: Agent generated UI for trading assistance. 
 
-## User Story
-Jonathan login to the website.
-
-Jonathan wants to trade on bitcoin. Jonathan tells agent his intend to trade on bitcoin.
-Agent will be dispatched and start analyzing available data, including market sentiments,
-price movements, historical data, alternative data, etc.
-
-Agent will then propose hypotheses, which itself will then validate in a backtesting stage.
-Only strategies that pass the backtesting requirements will be available for deployment.
-
-Jonathan will review agent's strategies and choose which to deploy.
-
-Jonathan will continuously monitor the trading dashboards to see how
-his strategies perform in real-time and step in to turn on or off existing
-strategies. Agent will also continous assess the market and dynamically adjust
-strategies and their model parameters.
 
 ## Requirements
 - **[Done]** Market: Kalshi BTC 5pm EDT — also added BTC 15-min.
@@ -53,15 +37,10 @@ can deploy shared strategy just like yours. Shared strategy is not revocable.
 put the "make a post" box (where you write something and post fixed on the bottom of the page so that community posts
 can render more UI-friendly. Right now the comment box is on top of the most recent post which might not be ideal.
 - As comment section grows longer, consider scalability. We should add search bar, useful filters, and 
-### Build (queued)
 - All-markets collector + cross-contract — BUILDING. Phase 1 catalog shipped. Ingestion split onto a dedicated collector box (`i-0bd0683cc7e86243d`) + S3 data-lake. Next: per-minute S3/Parquet snapshots (Phase 2), backtest-over-any-series (3), cross-contract (4).
 - Real/live deploy is broken — can't trade real money yet. Fix the live pipeline; **enabling the global live gate places real orders and needs explicit, separate owner sign-off.**
 - Track unrealized P&L for deployed strategies (paper/real).
-- Strategy detail: show current open positions / holdings for a deployed strategy (/impeccable).
 - Markets still show only a few — widen the live market universe.
-- "Tries to find it": clarify what research actually does and verify it genuinely iterates.
-- Passed strategies don't show under their research session.
-- Community strategy-share snapshot: header counts (Passed/Void/Rejected) disagree with the listed rows (frozen/capped at share time) — recompute from real COUNT.
 - Select-all / multi-select for deployment.
 - Email all users on any new community update (needs unsubscribe + rate discipline).
 - Web-box engine watchdog: extend `tau-watchdog` to `recursive-engine` (confirm it heartbeats when idle first).
@@ -78,6 +57,7 @@ can render more UI-friendly. Right now the comment box is on top of the most rec
 - Polymarket as a 2nd venue: data + API + real & simulation trading.
 
 ### Shipped 2026-10-15
+- Strategy detail shows live **Holdings right now** (open positions); passed strategies always show under their run; clearer 'Hypotheses tested' copy.
 - Delete a strategy (blocked while deployed); strategy detail links to its Kalshi market.
 - Invite-only sign-in gate (waitlist approval) + admin Approve/Remove; waitlist no longer shows people who have accounts.
 - Repositioned as **RSI for Trading** (recursively self-improving, venue-agnostic) in LICENSE/NOTICE/README.

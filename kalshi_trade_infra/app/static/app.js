@@ -1065,6 +1065,11 @@
           </article>
         </div>
         <aside>
+          ${s.holdings && s.holdings.length ? `<section class="panel"><h3>Holding right now</h3>
+            <div class="sheet"><table class="table stack t-dep"><thead><tr><th>Contract</th><th>Position</th><th class="num">Cost</th><th class="num">Settles</th></tr></thead><tbody>
+            ${s.holdings.map((p) => `<tr><td class="tick" data-lab="Contract">${esc(p.ticker)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : ''}</td><td data-lab="Position">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(p.entry_price)}</td><td class="num" data-lab="Cost">${usd(p.cost)}</td><td class="num" data-lab="Settles">${clock(p.market_close_time)}</td></tr>`).join('')}
+            </tbody></table></div>
+            <p class="hint" style="margin-top:8px">${s.holdings.length} open position${s.holdings.length === 1 ? '' : 's'} at cost ${usd(s.holdings.reduce((a, p) => a + p.cost, 0))}. Live mark-to-market P&L is coming soon.</p></section>` : ''}
           <section class="panel"><h3>Deploy</h3>
             ${canDeploy ? `<div style="display:grid;gap:10px">
                 ${s.status !== 'passed' ? `<div class="notice bad">${ICON.warn}<span>${s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${rejectReason(s)}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}

@@ -612,6 +612,17 @@ def user_positions(cur, user_id: int, status: str = "open", limit: int = 100) ->
     return cur.fetchall()
 
 
+def positions_for_strategy(cur, user_id: int, strategy_id: int, status: str = "open") -> List[Dict]:
+    """Open positions a strategy is holding right now, across its deployments."""
+    cur.execute(
+        """SELECT p.*, d.mode FROM app_positions p
+           JOIN app_deployments d ON d.id=p.deployment_id
+           WHERE d.strategy_id=%s AND p.user_id=%s AND p.status=%s ORDER BY p.id DESC""",
+        (strategy_id, user_id, status),
+    )
+    return cur.fetchall()
+
+
 def insert_position(
     cur, deployment_id: int, user_id: int, mode: str, ticker: str, side: str, qty: int, entry_price: float,
     entry_fee: float, market_close_time: datetime, order_ref: Optional[str] = None,

@@ -375,6 +375,12 @@ def get_strategy(ctx: Ctx):
         spec=s["spec"], rules=specmod.describe(s["spec"]), gates=res.get("gates"), dataset=res.get("dataset"),
         recent_trades=res.get("recent_trades"),
         deployments=[_deployment_out(d, []) for d in repo.list_deployments(ctx.cur, ctx.uid) if d["strategy_id"] == s["id"]],
+        holdings=[{
+            "ticker": p["ticker"], "side": p["side"], "qty": int(p["qty"]), "mode": p["mode"],
+            "entry_price": float(p["entry_price"]),
+            "cost": round(int(p["qty"]) * float(p["entry_price"]) + float(p["entry_fee"] or 0), 2),
+            "market_close_time": p["market_close_time"],
+        } for p in repo.positions_for_strategy(ctx.cur, ctx.uid, s["id"], "open")],
     )
     return out
 
