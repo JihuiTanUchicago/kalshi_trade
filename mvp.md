@@ -22,18 +22,17 @@ A self-improving alpha discovery pipeline, from ideation, to similation, and fin
 - API/CLI usage of Tau
 
 ## TODO / Working Queue
-Single source of truth for OPEN work. `[blocked]` = needs a user/AWS action first. Completed items move to **## Done** below.
+Single source of truth for OPEN work — one flat list. Each item is tagged with what it's waiting on:
+`[delayed]` = owner chose to hold; `[blocked: …]` = needs a user/AWS action first; `[v0.3]` = next version.
+These are NOT done. Completed items move to **## Done** below.
 
-- All-markets collector + cross-contract — BUILDING (DELAYED per owner). Phase 1 catalog shipped. Ingestion split onto a dedicated collector box (`i-0bd0683cc7e86243d`) + S3 data-lake. Next: per-minute S3/Parquet snapshots (Phase 2), backtest-over-any-series (3), cross-contract (4).
-- Markets still show only a few — widen the live market universe (DELAYED per owner).
-
-### Blocked on you / AWS
-- **Email-all community digest is BUILT but won't deliver until SES production access.** Code is live (opt-out column + HMAC unsubscribe link + per-recipient 4h cooldown; fires in a background thread on each new post). SES is in sandbox, so it only delivers to *verified* addresses right now — request SES production access (SES console → Account dashboard → Request production access) and it starts delivering to everyone with zero code change.
-- Model selection: Claude 5.5 / OpenAI GPT-6.x / Grok are AWS-access-gated (agreements accepted + availability AUTHORIZED, but invoke denies even from full-admin). Request in Bedrock console → Model access (us-east-1) or AWS Sales. Prices locked: Sonnet5.5 $2/$10, Opus5.5 $4/$20, Haiku5.5 $0.1/$0.5, GPT-6.1 Sol $2.2/$10, GPT-6 Sol $2/$10, GPT-5.6 Sol $8.8/$33.
-
-### Deferred to v0.3
-- Agent internet access / web search (Google/Tavily/Brave).
-- Polymarket as a 2nd venue: data + API + real & simulation trading.
+- `[delayed]` All-markets collector + cross-contract. Phase 1 catalog shipped; ingestion split onto a dedicated collector box + S3 data-lake. Next: per-minute S3/Parquet snapshots (Phase 2), backtest-over-any-series (3), cross-contract (4).
+- `[delayed]` Widen the live market universe — surface more of the already-collected Kalshi series in the UI (smaller than the full all-markets build).
+- `[blocked: SES]` Email-all community digest — **code is live** (opt-out + HMAC unsubscribe + 4h per-recipient cooldown; background-thread dispatch on each new post), but SES is in sandbox so it only reaches *verified* addresses. Unblock: SES console → Account dashboard → Request production access (zero code change after).
+- `[blocked: AWS]` Premium model access — Claude 5.5 / OpenAI GPT-6.x / Grok are AWS account-gated (agreements accepted, but invoke denies even from full-admin). Unblock: Bedrock console → Model access (us-east-1), or AWS Sales. Prices locked: Sonnet5.5 $2/$10, Opus5.5 $4/$20, Haiku5.5 $0.1/$0.5, GPT-6.1 Sol $2.2/$10, GPT-6 Sol $2/$10, GPT-5.6 Sol $8.8/$33.
+- `[blocked: Kalshi]` Kalshi-dev 2nd equity line — code shipped; needs `KALSHI_DEV_API_BASE` + demo credentials set on the box to draw the real dev-env line.
+- `[v0.3]` Agent internet access / web search (Google/Tavily/Brave).
+- `[v0.3]` Polymarket as a 2nd venue: data + API + real & simulation trading.
 
 ## Done
 ### 2026-10-15
