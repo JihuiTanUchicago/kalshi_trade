@@ -22,8 +22,7 @@ A self-improving alpha discovery pipeline, from ideation, to similation, and fin
 - API/CLI usage of Tau
 
 ## TODO / Working Queue
-Single source of truth for open work (merged in from the old `requested_queue.md`, 2026-10-15).
-Remove a line once shipped; `[blocked]` = needs a user/AWS action first.
+Single source of truth for OPEN work. `[blocked]` = needs a user/AWS action first. Completed items move to **## Done** below.
 
 - A sharing mechanism when you can share strategies with your friends. We can have a notification
 UI next to our profile on the top right so anyone will see notifications on community messages or
@@ -38,35 +37,34 @@ put the "make a post" box (where you write something and post fixed on the botto
 can render more UI-friendly. Right now the comment box is on top of the most recent post which might not be ideal.
 - As comment section grows longer, consider scalability. We should add search bar, useful filters, and 
 - All-markets collector + cross-contract — BUILDING. Phase 1 catalog shipped. Ingestion split onto a dedicated collector box (`i-0bd0683cc7e86243d`) + S3 data-lake. Next: per-minute S3/Parquet snapshots (Phase 2), backtest-over-any-series (3), cross-contract (4).
-- **[Done 2026-10-15]** Live/real trading ENABLED for all users (APP_LIVE_TRADING_ENABLED=1). Safeguards: YES-only, per-user Kalshi key, typed-LIVE confirm, risk caps (max_concurrent/max_notional) + loss guard. Reversible: set the flag to 0 + restart recursive-engine/web.
-- Track unrealized P&L for deployed strategies (paper/real).
+- Track unrealized (mark-to-market) P&L for deployed strategies — the Holdings panel ships cost + positions; still needs current-quote wiring for live unrealized.
 - Markets still show only a few — widen the live market universe.
 - Select-all / multi-select for deployment.
 - Email all users on any new community update (needs unsubscribe + rate discipline).
 - Web-box engine watchdog: extend `tau-watchdog` to `recursive-engine` (confirm it heartbeats when idle first).
 - Kalshi dev-env 2nd curve needs `KALSHI_DEV_API_BASE` set on the box (one line until then).
-- **Tau-RSI (self-evolving research, Dream-RSI-faithful)** — DESIGN in PLAN.md. Decisions: per-user private memory; FULL Dream-RSI (replay simulator + dreaming); evolvable **executable policy code** made safe by keeping the policy a pure decision function (no I/O) run in a sandbox. Phases: **P1 foundation SHIPPED** (app/exploration.py: pure-fn ExplorationPolicy + DefaultPolicy = today's behavior unchanged; app_strategies.parent_id discovery-tree column; 177 tests green) → **P2 SHIPPED** (app/replay.py: replay simulator + Dream-RSI objective V=quality−β₁·gen+β₂·parallelism; build_tree from app_strategies; 182 tests) → **P3 SHIPPED** (app/sandbox.py: AST gate + restricted builtins + timeout + default-fallback; 190 tests) → **P4 SHIPPED**. Full Dream-RSI loop LIVE: research uses each user's sandboxed evolved policy; after a run the policy-dev agent dreams revised policies, validated on the replay simulator, best (>= current) stored per-user. app/{exploration,replay,sandbox,dreaming}.py; app_policies table; 195 tests.
-- **Protect `main` from pushes** (owner-only) + **open-source the repo** (BLOCKED on a secret/infra-leak audit before going public — never make public un-audited).
+- Tau-RSI tuning: the dreaming loop is live but hasn't evolved a policy yet (strong default baseline). A subagent is diagnosing + improving it from first principles (does it improve real future research, or just overfit the recorded tree?).
 
 ### Blocked on you / AWS
-- Model selection: Claude 5.5 / OpenAI GPT-6.x / Grok are AWS-access-gated (agreements accepted + availability AUTHORIZED, but invoke denies even from full-admin — a Bedrock account grant AWS hasn't given). Request in Bedrock console → Model access (us-east-1) or AWS Sales. Prices locked: Sonnet5.5 $2/$10, Opus5.5 $4/$20, Haiku5.5 $0.1/$0.5, GPT-6.1 Sol $2.2/$10, GPT-6 Sol $2/$10, GPT-5.6 Sol $8.8/$33.
+- Model selection: Claude 5.5 / OpenAI GPT-6.x / Grok are AWS-access-gated (agreements accepted + availability AUTHORIZED, but invoke denies even from full-admin). Request in Bedrock console → Model access (us-east-1) or AWS Sales. Prices locked: Sonnet5.5 $2/$10, Opus5.5 $4/$20, Haiku5.5 $0.1/$0.5, GPT-6.1 Sol $2.2/$10, GPT-6 Sol $2/$10, GPT-5.6 Sol $8.8/$33.
 - DeepSeek R1 returns reasoning-only output via Converse — needs reasoningContent handling before it's safe to offer.
 
 ### Deferred to v0.3
 - Agent internet access / web search (Google/Tavily/Brave).
 - Polymarket as a 2nd venue: data + API + real & simulation trading.
 
-### Shipped 2026-10-15
-- Strategy detail shows live **Holdings right now** (open positions); passed strategies always show under their run; clearer 'Hypotheses tested' copy.
-- Delete a strategy (blocked while deployed); strategy detail links to its Kalshi market.
-- Invite-only sign-in gate (waitlist approval) + admin Approve/Remove; waitlist no longer shows people who have accounts.
-- Repositioned as **RSI for Trading** (recursively self-improving, venue-agnostic) in LICENSE/NOTICE/README.
-- **Tau-RSI shipped** (P1–P4): self-evolving per-user exploration policy (Dream-RSI adapted) live in research.
-- Deploy cap 10→100; finite research-budget cap 50→1000.
-- Default $5 stake / $100 capital sim book (agent may override for dynamic sizing).
-- Community "My posts" filter.
-- Heartbeat watchdog (silent-stall recovery) + forward_collector per-tick heartbeat (stops false-STALE flapping).
-- Writer Palmyra X5 model added; Billing profile dropdown; System DB-node + market-chip fixes; landing-demo no-reflow.
+## Done
+### 2026-10-15
+- **Live/real trading ENABLED for all users** (`APP_LIVE_TRADING_ENABLED=1`), with **market-order-like entries** (cross the touch, IOC, 10c slippage tolerance; `KALSHI_*` env-tunable). Safeguards: YES-only, per-user Kalshi key, typed-LIVE confirm, risk caps + loss guard. Reversible via the flag.
+- **Tau-RSI (P1–P4) shipped + live** (Dream-RSI adapted): pure-fn `ExplorationPolicy`+`DefaultPolicy`; replay simulator + objective `V=quality−β₁·gen+β₂·parallelism`; sandbox for LLM-authored policy code; dreaming loop (per-user self-evolving policy, monotonic). `app/{exploration,replay,sandbox,dreaming}.py` + `app_policies`; dreaming attempts now logged. 195+ tests.
+- **Open-sourced the repo** (BSL-1.1 → Apache-2.0 at the change date; NOTICE w/ Dream-RSI attribution; public README + `.env.example`); branch protection on `main`; auto-push on commit. Repositioned as **RSI for Trading** (venue-agnostic).
+- Strategy detail: live **Holdings** panel + Kalshi market link; **delete a strategy** (blocked while deployed).
+- **Invite-only sign-in gate** (waitlist approval) + admin Approve/Remove; waitlist excludes account-holders.
+- Passed strategies always show under their run; clearer 'Hypotheses tested' copy.
+- Deploy cap 10→100; research budget cap 50→1000; default $5/$100 sim book.
+- Community "My posts" filter; Billing profile dropdown; System DB-node + market-chip fixes; landing-demo no-reflow.
+- Heartbeat watchdog (silent-stall recovery) + forward_collector per-tick heartbeat (stops false-STALE flapping); Writer Palmyra X5 model added.
+
 
 ## How do we charge customers? (v0.2)
 - **[Done]** OpenRouter-style credits: $100 free, per-token billing, 5.5% top-up fee, Stripe.
