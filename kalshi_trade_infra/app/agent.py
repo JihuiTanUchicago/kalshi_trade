@@ -57,6 +57,7 @@ MAX_BUDGET = 1000         # hard ceiling a user can request for one finite run (
 # Batch width and finalist selection now live in app/exploration.py (the exploration policy).
 MAX_ACTIONS = 3
 MIN_FRAMES = 200
+DREAM_EVERY_CHUNKS = max(1, int(os.getenv("TAU_DREAM_EVERY_CHUNKS", "2")))  # dream every N explore chunks in a forever run
 
 RESEARCH_SYSTEM = """You are a quantitative researcher at a disciplined prediction-market fund.
 You design trading rules for Kalshi Bitcoin binary contracts (pays $1 if BTC settles above the
@@ -384,7 +385,7 @@ def run_research(
             % ("hypotheses until you stop it" if forever else "up to %d hypotheses" % budget,
                " I'll keep going until you stop me." if forever else ""))
 
-        total_passed, tot_in, tot_out = 0, 0, 0
+        total_passed, tot_in, tot_out, chunks = 0, 0, 0, 0
         while True:
             checkpoint()
             # Reload memory each chunk so a run_forever loop learns from the strategies it
@@ -392,6 +393,16 @@ def run_research(
             memory = repo.strategy_memory(cur, user_id, market)
             n, passed = _explore_and_gate(cur, run, ds, memory, model, usage, log, checkpoint, budget, tried, policy)
             total_passed += passed
+            chunks += 1
+            # Tau-RSI: dream periodically DURING a long session (not only at the end), so the
+            # agent self-improves as its history grows — and the evolved policy drives the very
+            # next chunk. Billed with the chunk below; a hiccup never fails the run.
+            if forever and n > 0 and chunks % DREAM_EVERY_CHUNKS == 0:
+                try:
+                    if dreaming.evolve_policy(conn, user_id, market, model, usage, log):
+                        policy = dreaming.current_policy(cur, user_id)  # explore smarter from here on
+                except Exception as e:
+                    log("step", "Dreaming hiccup (kept current policy): %s" % e)
             # Meter per chunk: a run_forever session may never "finish", so bill as it goes
             # (and reset the counter) instead of only at the end — otherwise its tokens are free.
             tot_in += usage.input_tokens

@@ -1006,6 +1006,7 @@
   async function viewRun(id) {
     shell('/research', '<div id="runboard">' + boardTitle('Research run') + '</div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl>', `
       <div class="printer">
+        <div id="rsibox"></div>
         <section><div class="section-head"><h2>Agent log</h2><span id="runact"></span></div><div id="flash"></div><ol class="log" id="log" aria-live="polite"></ol></section>
         <section><div class="section-head"><h2>Hypotheses</h2><p>Best unseen P&L first</p></div>
           <div id="feed">${strategyTable('')}</div></section>
@@ -1024,6 +1025,16 @@
         fig('Hypotheses', r.hypotheses_tried || tried) + fig('Passed', active ? '…' : r.strategies_passed) +
         fig('RSI policy', d.rsi && d.rsi.evolved ? 'Evolved' : 'Self-tuning',
             { small: d.rsi && d.rsi.evolved ? `generalization score ${d.rsi.score}` : 'dreams a better search each run' });
+      const rsibox = root.querySelector('#rsibox');
+      if (rsibox && d.rsi) {
+        rsibox.innerHTML = `<div class="rsi-card"><div class="rsi-head"><b class="rsi-badge">RSI</b> Self-improving research</div>
+          <p>${d.rsi.evolved
+            ? `This agent <b>evolved its own search policy</b> (generalization score ${d.rsi.score}) — it researches smarter than the default.`
+            : `The agent is <b>self-tuning</b>: after each research cycle it dreams up new search strategies and keeps one only if it beats the current policy on your own history (scored over shuffled orderings, so it can't overfit).`}</p>
+          ${d.rsi.last_dream
+            ? `<p class="rsi-last"><b>Last check${d.rsi.last_dream_at ? ' · ' + when(d.rsi.last_dream_at) : ''}:</b> ${esc(d.rsi.last_dream)}</p>`
+            : '<p class="rsi-last">The first result appears at the end of a research cycle.</p>'}</div>`;
+      }
       root.querySelector('#runact').innerHTML = active ? '<button class="btn danger small" id="cancel">Cancel run</button>' : (r.status === 'succeeded' ? '<a class="btn small" href="/strategies">All strategies</a>' : '');
       const cancel = root.querySelector('#cancel');
       if (cancel) cancel.onclick = () => armed(cancel, 'Confirm cancel', () => busy(cancel, async () => { await api(`/api/runs/${id}/cancel`, {}).catch((e) => alert0(e.message)); await load(); }));

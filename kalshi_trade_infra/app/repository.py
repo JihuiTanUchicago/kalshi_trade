@@ -633,9 +633,22 @@ def engine_heartbeat(cur, live_enabled: bool) -> None:
 
 def get_policy(cur, user_id: int) -> Optional[Dict]:
     """The user's current self-evolved exploration policy, or None (= DefaultPolicy)."""
-    cur.execute("SELECT code, score FROM app_policies WHERE user_id=%s", (user_id,))
+    cur.execute("SELECT code, score, updated_at FROM app_policies WHERE user_id=%s", (user_id,))
     r = cur.fetchone()
-    return {"code": r["code"], "score": float(r["score"])} if r else None
+    return {"code": r["code"], "score": float(r["score"]), "updated_at": r["updated_at"]} if r else None
+
+
+def latest_dream_event(cur, user_id: int) -> Optional[Dict]:
+    """The user's most recent dreaming log line, across all their runs, so any run page
+    can show the Tau-RSI loop is active even when the current run hasn't dreamed yet."""
+    cur.execute(
+        """SELECT e.message, e.created_at FROM app_agent_events e
+           JOIN app_agent_runs r ON r.id=e.run_id
+           WHERE r.user_id=%s AND (e.message LIKE 'Dreaming:%%' OR e.message LIKE 'Research policy evolved%%')
+           ORDER BY e.id DESC LIMIT 1""",
+        (user_id,),
+    )
+    return cur.fetchone()
 
 
 def set_policy(cur, user_id: int, code: str, score: float) -> None:
