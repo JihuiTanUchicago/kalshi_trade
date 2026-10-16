@@ -414,7 +414,9 @@ def list_strategies(
         if val:
             sql += " AND %s=%%s" % col
             params.append(val)
-    sql += " ORDER BY s.id DESC LIMIT %s OFFSET %s"
+    # Non-rejected (passed/void) first, then newest: in a big run the passed finalists are
+    # found early (oldest ids), so a plain id-DESC fetch past the limit would drop them.
+    sql += " ORDER BY (s.status='rejected'), s.id DESC LIMIT %s OFFSET %s"
     params.extend((limit, offset))
     cur.execute(sql, params)
     return [_strategy_row(r) for r in cur.fetchall()]
