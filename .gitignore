@@ -17,3 +17,7 @@ scripts/scrub_secrets.env
 # allow the no-secrets template
 !.env.example
 !**/.env.example
+
+# auto-publish hook log
+.publish.log
+.publish.lock
