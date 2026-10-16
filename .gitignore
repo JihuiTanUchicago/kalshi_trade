@@ -13,3 +13,7 @@ venv/
 # local-only redaction values for publish_public.sh
 scrub_secrets.env
 scripts/scrub_secrets.env
+
+# allow the no-secrets template
+!.env.example
+!**/.env.example
