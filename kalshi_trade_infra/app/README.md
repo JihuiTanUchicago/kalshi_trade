@@ -5,6 +5,79 @@ backtest gate the agent cannot game, paper-first deployment, and a co-pilot chat
 Product truth is in `../PRODUCT.md`; the operator console (`data_pipeline/dashboard_server.py`)
 is unchanged and separate.
 
+## Alpaca stock/ETF data for agents — October 16, 2026
+
+`app/alpaca_data.py` reads US stock/ETF snapshots and historical OHLCV bars from
+Alpaca. `app/agent_market_data.py` connects those reads to the actual research and
+copilot worker functions. No new dependency, database table or browser credential
+is required. This is market-data context; the Kalshi strategy language, backtester
+and order engine still evaluate Kalshi contracts. Equity strategy execution is a
+separate integration.
+
+Configure the **agent worker's server environment** using its existing env file or
+secret manager. TAU does not automatically load the standalone Polygon `.env`.
+Use the existing Alpaca key pair as `APCA_API_KEY_ID` and `APCA_API_SECRET_KEY`, then:
+
+```bash
+export TAU_ALPACA_ENABLED=1
+export TAU_ALPACA_FEED=iex
+export TAU_ALPACA_SYMBOLS=SPY,QQQ,IWM,TLT,GLD,USO
+python -m app.alpaca_data status
+python -m app.alpaca_data snapshots SPY AAPL
+python -m app.alpaca_data bars SPY --start 2026-09-01 --end 2026-10-01 --timeframe 1Hour
+python -m app.worker agents
+```
+
+`status` checks configuration only; `snapshots`/`bars` perform real read-only
+requests. Enabling this feature never calls a brokerage/order endpoint.
+`iex` is explicitly **IEX-only**, including its volume and quotes. Set `sip` only
+with matching entitlement; a denied feed returns a visible error and is never
+silently downgraded. Multi-user/commercial data rights remain an operator gate.
+
+The agent receives the configured watchlist automatically. It can request other
+symbols using its existing JSON response channel, for example:
+
+```json
+{"market_data_requests":[{"kind":"bars","symbols":["AAPL","MSFT"],"timeframe":"1Hour","lookback_days":7}]}
+```
+
+The host executes the reads and returns data before the next model response. A
+current-time copilot may request `{"kind":"snapshots","symbols":["SPY"]}`.
+Data requests are exclusive of actions/hypotheses; only the final validated task
+response can propose existing actions. All model calls, including data-request
+rounds, use the existing usage/billing path. Research cancellation is checked
+before additional model/data operations.
+
+- **Research:** raw, completed bars end at the existing training cutoff; lookback
+  is also clamped to the training start. Current snapshots are denied. The data
+  is supplementary context, not a new executable feature or proof that an equity
+  strategy passed a backtest.
+- **Copilot:** latest trades/quotes and bars carry provider, feed and timestamps.
+  Snapshot freshness is recalculated even on cache hits; crossed/one-sided quotes
+  are not usable current quotes. Prices older than 180 seconds are marked stale.
+  Historical copilot reads end at least 20 minutes ago to accommodate Basic-plan
+  history restrictions; snapshots supply current prices.
+- **Bounds:** eight symbols/request, two requests/response, two data rounds/task
+  response, 1–90 lookback days, five pages/10,000 raw bars per historical read.
+  Bars support `1Min`, `5Min`, `15Min`, `1Hour`, `1Day`. Requests use fixed HTTPS
+  data endpoints, three attempts, bounded timeouts/backoff and no redirects.
+- **Evidence:** run events retain the data actually supplied to the agent.
+  Historical context contains full-window statistics plus an explicitly labeled
+  sample of the last 12 completed bars. Per-process caches retain current reads
+  for 60 seconds and historical research reads for 300 seconds, isolated by feed,
+  credentials and query window. A provider failure is reported as unavailable.
+- **Limits:** no streaming collector, persistent equity warehouse, corporate-action
+  tables, historical universe or equity broker/account integration is added.
+  Raw vendor history can include later corrections; the cutoff prevents later
+  intervals from entering the prompt but does not create a certified point-in-time
+  dataset. Feed credentials stay in the server process and out of model context.
+
+Verification on the clean PR branch: **258 Python tests passed, 7 opt-in MySQL tests skipped**. A separate
+read-only local IEX check delivered a real SPY trade/quote snapshot and 44 hourly
+bars to a scripted agent, with the historical sample before the cutoff. Production
+worker activation and live-model acceptance remain pending. See the
+[implementation status](../PLAN.md) for remaining gates.
+
 ## Architecture
 
 ```mermaid
@@ -17,6 +90,7 @@ flowchart LR
   WEB --> DB[(MySQL / RDS)]
   AG["app.worker agents<br/>research · chat · review"] --> DB
   AG -- "Messages API" --> C[(Claude)]
+  AG -- "read-only stock/ETF context" --> AL[(Alpaca Market Data)]
   EN["app.worker engine<br/>paper + live, every slot"] --> DB
   EN -- "live book, results" --> K[(Kalshi REST)]
   EN -- "1m candles" --> CB[(Coinbase)]

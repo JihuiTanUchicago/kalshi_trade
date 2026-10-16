@@ -1,5 +1,28 @@
 # PLAN
 
+## Alpaca market data for agents — October 16, 2026, Asia/Shanghai
+
+Implemented for PR review; disabled by default. Agents previously received only
+Kalshi-specific data summaries. `app/alpaca_data.py` now reads stock/ETF snapshots
+and raw OHLCV history, and `app/agent_market_data.py` supplies watchlist context and
+bounded on-demand reads to the actual research/copilot call sites. Research reads
+stay within its training window; current snapshots are restricted to copilot.
+Feed/time provenance, stale/invalid data, pagination, cache separation, retry and
+request limits are explicit. Data-request model rounds retain usage metering and
+research cancellation checks. Credentials remain server-side; no order/account
+endpoint, equity strategy/backtest, streaming collector, schema or dependency is added.
+
+Verification on the exact PR branch: 258 Python tests passed, 7 opt-in MySQL tests skipped. Provider and agent
+contract tests cover synthetic HTTP/model responses. A separate local read-only
+IEX smoke check supplied a scripted agent with a real SPY trade/quote snapshot and
+44 historical hourly bars, with sampled history before its cutoff. SIP and a real
+production model/worker have not been live accepted. [Setup and limits](app/README.md#alpaca-stocketf-data-for-agents--october-16-2026).
+
+Next gates: secure worker configuration and explicit activation, appropriate data
+entitlements, then production canary acceptance. The checked-in secret loader and
+per-user canary controls require follow-up before a controlled customer rollout.
+No deployment or live trading is enabled by this PR.
+
 ## Landing demo animations — no-reflow (2026-10-15) — SHIPPED
 Three animated demo containers used to **expand** as rows/cards arrived (reported as annoying).
 All now hold a constant size so the page never reflows mid-animation:
