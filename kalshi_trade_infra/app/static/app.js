@@ -1021,7 +1021,9 @@
       root.querySelector('#runfigs').innerHTML =
         fig('Status', active ? (r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>' : 'Researching<span class="working" aria-label="in process"></span>') : r.status === 'succeeded' ? 'Done' : r.status === 'cancelled' ? 'Cancelled' : 'Failed') +
         fig('Time', started ? Math.max(0, Math.round((end - started) / 60000)) + ' min' : '—') +
-        fig('Hypotheses', r.hypotheses_tried || tried) + fig('Passed', active ? '…' : r.strategies_passed);
+        fig('Hypotheses', r.hypotheses_tried || tried) + fig('Passed', active ? '…' : r.strategies_passed) +
+        fig('RSI policy', d.rsi && d.rsi.evolved ? 'Evolved' : 'Self-tuning',
+            { small: d.rsi && d.rsi.evolved ? `generalization score ${d.rsi.score}` : 'dreams a better search each run' });
       root.querySelector('#runact').innerHTML = active ? '<button class="btn danger small" id="cancel">Cancel run</button>' : (r.status === 'succeeded' ? '<a class="btn small" href="/strategies">All strategies</a>' : '');
       const cancel = root.querySelector('#cancel');
       if (cancel) cancel.onclick = () => armed(cancel, 'Confirm cancel', () => busy(cancel, async () => { await api(`/api/runs/${id}/cancel`, {}).catch((e) => alert0(e.message)); await load(); }));
@@ -1040,6 +1042,9 @@
             : st === 'rejected' ? '<b class="verdict rej">REJECTED</b>'
             : '<b class="verdict void">VOID</b>';
           inner = tag + ' ' + esc(ev.message.replace(/^(PASSED|VOID|FAILED|REJECTED)\s*[-–]\s*/, ''));
+        } else if (/^(Dreaming:|Research policy evolved:)/.test(ev.message)) {
+          li.className = 'step rsi-event';  // the self-improvement (Tau-RSI) loop — make it pop
+          inner = `<b class="rsi-badge">RSI</b> ${esc(ev.message)}`;
         } else {
           inner = esc(ev.message);
         }

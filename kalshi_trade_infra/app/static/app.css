@@ -858,6 +858,8 @@ a.snap:hover { border-color: var(--ink-3); }
 .mention-opt b { color: var(--ink); font-weight: 600; }
 .mention-opt span { color: var(--ink-3); font-size: .9em; margin-left: 4px; }
 .mention-opt.on, .mention-opt:hover { background: var(--stock-sunk); }
+.log li.rsi-event { background: var(--signal-wash); border-left: 2px solid var(--signal); padding-left: 8px; }
+.rsi-badge { display: inline-block; font-family: var(--f-nar); font-size: 10px; font-weight: 700; letter-spacing: .1em; color: #FDF2F3; background: var(--signal); padding: 1px 5px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
 .cmt-form { display: flex; gap: 8px; }
 .cmt-form .input { min-height: 38px; }
 @media (max-width: 680px) { .post-tools .btn { margin-left: 0; } }

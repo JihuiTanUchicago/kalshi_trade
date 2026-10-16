@@ -258,10 +258,13 @@ def get_run(ctx: Ctx):
     # This run's gated strategies, live — so the Hypotheses table fills as each chunk clears
     # the gate (a run_forever run never reaches "succeeded", so we can't wait for it).
     strategies = repo.list_strategies(ctx.cur, ctx.uid, run_id=run["id"])
+    pol = repo.get_policy(ctx.cur, ctx.uid)  # the self-evolving exploration policy (Tau-RSI)
     return {
         "run": run,
         "events": repo.run_events(ctx.cur, run["id"], after),
         "strategies": [_strategy_card(s) for s in strategies if s["run_id"] == run["id"]],
+        "rsi": {"evolved": bool(pol), "score": round(float(pol["score"]), 3) if pol else None,
+                "updated_at": (pol["updated_at"] if pol else None)},
     }
 
 
