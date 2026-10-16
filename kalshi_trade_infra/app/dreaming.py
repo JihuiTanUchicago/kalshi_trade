@@ -121,8 +121,15 @@ def evolve_policy(conn, user_id: int, market: str, model: Callable, usage: Usage
     improved = best_code is not None and best_code != (row["code"] if row else None)
     if improved:
         repo.set_policy(cur, user_id, best_code, best_v)
-        log("step", "Research policy evolved: replay score %.3f -> %.3f. Future runs explore smarter."
-            % (base.value, best_v))
+        log("step", "Research policy evolved: dreamed over %d hypotheses, tried %d candidate policies, "
+                    "replay score %.3f → %.3f. Future runs explore smarter."
+            % (len(tree), len(candidates), base.value, best_v))
+    else:
+        # Always leave a trace so the self-improvement loop is observable, even when the
+        # strong default/current policy already wins (monotonic: we only adopt a better one).
+        log("step", "Dreaming: tested %d candidate policies over %d hypotheses; best replay score %.3f "
+                    "vs current %.3f — kept your current policy (none beat it yet)."
+            % (len(candidates), len(tree), best_v, base.value))
     return improved
 
 
