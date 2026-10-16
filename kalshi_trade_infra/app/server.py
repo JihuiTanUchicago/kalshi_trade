@@ -180,7 +180,7 @@ def me(ctx: Ctx):
         "needs_card": _needs_card(ctx),
         "free_bonus": float(billing.FREE_BONUS),
         "credit_balance": round(repo.credit_balance(ctx.cur, ctx.uid), 4),
-        "markets": [{"key": m.key, "label": m.label} for m in MARKETS.values()],
+        "markets": [{"key": m.key, "label": m.label, "series": m.series} for m in MARKETS.values()],
         "directions": [{"key": k, **v} for k, v in agent.DIRECTIONS.items()],
     }
 
@@ -355,6 +355,16 @@ def _owned_strategy(ctx: Ctx) -> Dict:
     if s is None:
         raise ApiError(404, "No such strategy.")
     return s
+
+
+def delete_strategy(ctx: Ctx):
+    """Remove a strategy from the user's inventory. Blocked while it's deployed —
+    stop the deployment first."""
+    s = _owned_strategy(ctx)
+    if any(d["strategy_id"] == s["id"] for d in repo.list_deployments(ctx.cur, ctx.uid, include_stopped=False)):
+        raise ApiError(409, "Stop this strategy's deployment before deleting it.")
+    repo.delete_strategy(ctx.cur, ctx.uid, s["id"])
+    return {"ok": True}
 
 
 def get_strategy(ctx: Ctx):
@@ -1178,6 +1188,7 @@ ROUTES: List[Route] = [
         ("POST", "/api/kalshi-key", save_kalshi_key, True),
         ("POST", "/api/kalshi-key/delete", delete_kalshi_key, True),
         ("GET", r"/api/strategies/(\d+)/dev-curve", strategy_dev_curve, True),
+        ("POST", r"/api/strategies/(\d+)/delete", delete_strategy, True),
     ]
 ]
 

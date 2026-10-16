@@ -122,6 +122,8 @@
   // server's full label, never the raw key (keeps the market chips uniform).
   const MKT_SHORT = { btc15m: 'BTC 15-min', btc_daily: 'BTC 5pm', eth15m: 'ETH 15-min', eth_daily: 'ETH 5pm', sol_daily: 'SOL 5pm', xrp_daily: 'XRP 5pm' };
   const marketShort = (k) => (!k ? 'Agent’s choice' : MKT_SHORT[k] || marketLabel(k));
+  // Link a strategy's market to its Kalshi series page.
+  const marketKalshiUrl = (k) => { const m = (S.me && S.me.markets || []).find((x) => x.key === k); return m && m.series ? `https://kalshi.com/markets/${m.series.toLowerCase()}` : null; };
   const dirLabel = (k) => { if (!k) return 'Session'; const d = S.me && S.me.directions.find((x) => x.key === k); return d ? d.label : String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()); };
   const sessionTitle = (r) => (r.prompt && r.prompt.trim()) ? r.prompt.trim() : (dirLabel(r.direction) + ' \u00b7 ' + marketShort(r.market));
 
@@ -1041,6 +1043,8 @@
     const trades = (s.recent_trades || []).length ? `<table class="table stack"><thead><tr><th>Opened</th><th>Contract</th><th>Side</th><th class="num">Entry</th><th class="num">Exit</th><th class="num">P&amp;L</th></tr></thead><tbody>
         ${s.recent_trades.map((t) => `<tr><td>${esc(new Date(t.opened.replace('Z', ':00Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}</td><td class="tick">${esc(t.ticker)}</td><td>${esc(t.side.toUpperCase())} ×${t.qty}</td><td class="num">${cents(t.entry)}</td><td class="num">${cents(t.exit)} <small class="hint">${esc(t.reason)}</small></td><td class="num ${tone(t.pnl)}">${usd(t.pnl, true)}</td></tr>`).join('')}
       </tbody></table>` : '<p class="hint">No unseen-data trades to show.</p>';
+    const kUrl = marketKalshiUrl(s.market);
+    const mktLink = kUrl ? `<a href="${kUrl}" target="_blank" rel="noopener">${esc(marketLabel(s.market))} ↗</a>` : esc(marketLabel(s.market));
     root.querySelector('main').innerHTML = `
       <div id="flash"></div>
       <div class="detail">
@@ -1055,7 +1059,7 @@
               <div id="equity-wrap">${s.equity ? equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from) : ''}</div>
               <div class="split"><div><h4>Tested on (in-sample)</h4>${metricRows(ins)}</div><div><h4>Never seen (out-of-sample)</h4>${metricRows(oos)}</div></div>
             </div>
-            ${s.dataset ? `<p class="hint" style="margin-top:12px">${esc(marketLabel(s.market))}. History: ${esc(s.dataset.start.slice(0, 10))} to ${esc(s.dataset.end.slice(0, 10))}. The agent only saw data before ${esc((s.dataset.out_of_sample_from || '').slice(0, 10))}. Every fill pays the ask or bid plus Kalshi's taker fee.</p>` : ''}
+            ${s.dataset ? `<p class="hint" style="margin-top:12px">${mktLink}. History: ${esc(s.dataset.start.slice(0, 10))} to ${esc(s.dataset.end.slice(0, 10))}. The agent only saw data before ${esc((s.dataset.out_of_sample_from || '').slice(0, 10))}. Every fill pays the ask or bid plus Kalshi's taker fee.</p>` : ''}
             <h3 class="sheet-h">Latest unseen trades</h3>${trades}
             <details class="raw"><summary>Exact spec</summary><pre>${esc(JSON.stringify(s.spec, null, 2))}</pre></details>
           </article>
@@ -1075,6 +1079,11 @@
                 <div id="depflash"></div>
               </div>` : '<p class="hint">This strategy isn’t ready to deploy yet.</p>'}
             ${s.deployments.length ? `<p class="hint" style="margin-top:12px">Already deployed: ${s.deployments.map((d) => `#${d.id} (${esc(d.mode)}, ${esc(d.status)})`).join(', ')}. <a href="/deploy">Open the board</a></p>` : ''}
+            ${kUrl ? `<p class="hint" style="margin-top:12px"><a href="${kUrl}" target="_blank" rel="noopener">Open ${esc(marketShort(s.market))} on Kalshi ↗</a></p>` : ''}
+          </section>
+          <section class="panel"><h3>Remove</h3>
+            <p class="hint" style="margin-bottom:8px">Delete this strategy from your inventory. ${s.deployments.some((d) => d.status !== 'stopped') ? 'Stop its deployment first.' : 'This can’t be undone.'}</p>
+            <button class="btn sm danger" id="del-strat">Delete strategy</button><div id="delflash"></div>
           </section>
           <section class="panel"><h3>Gates</h3><div id="gates">${gatesHtml(s.gates)}</div></section>
           ${s.status !== 'rejected' ? `<section class="panel" id="whatif"><h3>What if…</h3>
@@ -1103,6 +1112,10 @@
     if (depPaper) depPaper.onclick = () => busy(depPaper, async () => {
       try { await api('/api/deployments', { strategy_id: s.id, mode: 'paper' }); go('/deploy'); } catch (e) { flash('#depflash', e.message, 'bad'); }
     });
+    const delStrat = root.querySelector('#del-strat');
+    if (delStrat) delStrat.onclick = () => armed(delStrat, 'Confirm delete', () => busy(delStrat, async () => {
+      try { await api(`/api/strategies/${s.id}/delete`, {}); go('/strategies'); } catch (e) { flash('#delflash', e.message, 'bad'); }
+    }));
     const depLive = root.querySelector('#dep-live');
     if (depLive) depLive.onclick = () => { if (!liveWhy) root.querySelector('#live-confirm').hidden = false; };
     const lc = root.querySelector('#live-confirm');

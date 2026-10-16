@@ -1,10 +1,14 @@
-# Tau
+# Tau — RSI for Trading
 
-**An AI research-to-live pipeline for short-horizon binary-options trading
-(Kalshi BTC 15-minute & daily markets).** An agent proposes trading
-hypotheses, validates each in a backtest it cannot cheat (it never sees the
-out-of-sample window while iterating), and only strategies that pass the gates
-can be deployed — on paper, or to live money in your own Kalshi account.
+**A recursively self-improving (RSI) research-to-live pipeline for trading.** An
+agent proposes trading hypotheses, validates each in a backtest it cannot cheat
+(it never sees the out-of-sample window while iterating), deploys only strategies
+that pass the gates — and its *exploration policy recursively self-improves* from
+its own accumulated discovery history (Tau-RSI, adapted from Dream-RSI). Built
+first on **Kalshi** prediction markets (BTC 15-minute & daily), but the data,
+backtest, and execution layers are **venue-agnostic by design** (prediction
+markets, and other venues over time). Deploy on paper, or to live money in your
+own venue account.
 
 > **Source-available, not (yet) open source.** Licensed under the Business
 > Source License 1.1 — free for non-production use (evaluation, research,

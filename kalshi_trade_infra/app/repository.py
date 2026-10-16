@@ -439,6 +439,12 @@ def count_strategies(
     return counts
 
 
+def delete_strategy(cur, user_id: int, strategy_id: int) -> bool:
+    """Remove a strategy from the user's inventory. Caller ensures it isn't deployed."""
+    cur.execute("DELETE FROM app_strategies WHERE id=%s AND user_id=%s", (strategy_id, user_id))
+    return cur.rowcount > 0
+
+
 def get_strategy(cur, user_id: int, strategy_id: int) -> Optional[Dict]:
     cur.execute(
         """SELECT s.id, s.run_id, s.parent_id, s.market, s.direction, s.title, s.thesis, s.spec_json, s.status,

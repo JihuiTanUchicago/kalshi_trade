@@ -286,6 +286,18 @@ def test_admin_waitlist_approve_and_errors(monkeypatch):
         server.admin_waitlist(ctx({"email": "x@y.com", "action": "remove"}))
 
 
+def test_delete_strategy_blocks_when_deployed(monkeypatch):
+    monkeypatch.setattr(server, "_owned_strategy", lambda c: {"id": 5, "status": "passed"})
+    monkeypatch.setattr(server.repo, "delete_strategy", lambda cur, uid, sid: True)
+    # deployed -> refused
+    monkeypatch.setattr(server.repo, "list_deployments", lambda cur, uid, include_stopped=False: [{"strategy_id": 5}])
+    with pytest.raises(server.ApiError):
+        server.delete_strategy(ctx({}))
+    # not deployed -> deleted
+    monkeypatch.setattr(server.repo, "list_deployments", lambda cur, uid, include_stopped=False: [])
+    assert server.delete_strategy(ctx({})) == {"ok": True}
+
+
 def test_numbers_must_be_numbers():
     with pytest.raises(server.ApiError):
         server._num({"amount": "100"}, "amount", 1, 10)
