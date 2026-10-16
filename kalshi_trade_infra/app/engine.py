@@ -302,7 +302,18 @@ def live_kernel_factory(conn) -> Callable[[int], object]:
         if row is None:
             return None
         creds = kalshi_account.credentials_from_row(user_id, row)
-        return MarketableLimitKernel(kalshi_account.order_submitter(creds), feed)
+        # Market-order-like entries: cross through the touch and take the current best
+        # ask quickly (IOC), rather than resting a passive limit. The slippage cap keeps
+        # it from paying an absurd price if the book is thin; raise KALSHI_MAX_ENTRY_SLIPPAGE
+        # toward 0.99 for a true "take whatever's there" market order. All tunable by env.
+        return MarketableLimitKernel(
+            kalshi_account.order_submitter(creds), feed,
+            entry_cross_ticks=int(os.getenv("KALSHI_ENTRY_CROSS_TICKS", "2")),
+            exit_cross_ticks=int(os.getenv("KALSHI_EXIT_CROSS_TICKS", "2")),
+            max_entry_slippage=float(os.getenv("KALSHI_MAX_ENTRY_SLIPPAGE", "0.10")),
+            max_attempts=int(os.getenv("KALSHI_ORDER_MAX_ATTEMPTS", "3")),
+            max_quote_age_seconds=float(os.getenv("KALSHI_MAX_QUOTE_AGE_SECONDS", "2.0")),
+        )
 
     return make
 
