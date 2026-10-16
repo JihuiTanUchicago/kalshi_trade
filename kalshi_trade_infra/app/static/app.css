@@ -757,6 +757,7 @@ body.landing-body { background: #FBFBFA; }
 
 /* ===================== COMMUNITY (Kursbuch) ===================== */
 .feedwrap { max-width: 680px; margin: 0 auto; }
+.feedwrap .feed-filter { margin: 18px 2px 10px; }  /* breathing room between the composer and the feed */
 .composer-post { display: grid; gap: 12px; }
 .composer-post textarea { min-height: 58px; }
 .post-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

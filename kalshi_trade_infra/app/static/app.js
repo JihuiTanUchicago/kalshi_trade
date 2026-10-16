@@ -1372,7 +1372,7 @@
   }
   // Emoji reactions — a fixed palette (matches the server whitelist). 'tau' is a
   // custom reaction: the Tau mark, animated (a shaking "T" = excitement).
-  const REACTIONS = ['tau', '👍', '❤️', '🔥', '🚀', '😂', '🎉', '💯', '👀', '🤔', '😮', '😢', '🙌', '🧠', '📈', '📉', '💸', '✅', '❌', '🐂', '🐻'];
+  const REACTIONS = ['tau', '👍', '❤️', '🔥', '🚀', '😂', '🎉', '💯', '👀', '🤔', '😮', '😢', '🙌', '🧠', '📈', '📉', '💸', '✅', '❌', '🐂', '🐻', '🐐', '🦍', '🐳', '💎', '🤡', '💀', '🫡', '🌙'];
   const emojiHtml = (e) => e === 'tau' ? `<span class="tau-emoji">${ICON.mark}</span>` : esc(e);
   function reactionBar(p) {
     const chips = (p.reactions || []).map((rx) => `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}">${emojiHtml(rx.emoji)}<span class="n">${rx.count}</span></button>`).join('');
