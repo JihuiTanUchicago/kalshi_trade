@@ -253,6 +253,39 @@ def test_reply_emails_the_author_but_not_yourself(monkeypatch):
     assert sent == []
 
 
+def test_new_signin_is_blocked_unless_approved(monkeypatch):
+    from app import repository as repo
+    seen = {}
+
+    class Cur:
+        def execute(self, sql, params=()):
+            pass
+        def fetchone(self):
+            return None  # no existing account for this google_sub
+
+    monkeypatch.setattr(repo, "add_waitlist", lambda cur, email, note: seen.update(waitlisted=email) or True)
+    # A brand-new, non-approved sign-in creates NO account and is waitlisted instead.
+    assert repo.upsert_google_user(Cur(), "newsub", "new@x.com", "New", None, allow_new=False) is None
+    assert seen["waitlisted"] == "new@x.com"
+
+
+def test_admin_waitlist_approve_and_errors(monkeypatch):
+    monkeypatch.setattr(server, "_require_admin", lambda ctx: None)
+    calls = {}
+    monkeypatch.setattr(server.repo, "set_waitlist_status", lambda cur, e, s: calls.update(approve=(e, s)) or True)
+    monkeypatch.setattr(server.repo, "remove_waitlist", lambda cur, e: calls.update(remove=e) or True)
+    # happy path: approve
+    assert server.admin_waitlist(ctx({"email": "a@b.com", "action": "approve"}))["ok"] is True
+    assert calls["approve"] == ("a@b.com", "approved")
+    # error path: unknown action
+    with pytest.raises(server.ApiError):
+        server.admin_waitlist(ctx({"email": "a@b.com", "action": "nope"}))
+    # error path: email not on the waitlist
+    monkeypatch.setattr(server.repo, "remove_waitlist", lambda cur, e: False)
+    with pytest.raises(server.ApiError):
+        server.admin_waitlist(ctx({"email": "x@y.com", "action": "remove"}))
+
+
 def test_numbers_must_be_numbers():
     with pytest.raises(server.ApiError):
         server._num({"amount": "100"}, "amount", 1, 10)

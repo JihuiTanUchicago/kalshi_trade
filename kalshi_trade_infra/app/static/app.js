@@ -513,8 +513,11 @@
     document.body.classList.remove('hot-open');
     if (!S.me) { try { S.me = await api('/api/me'); } catch (e) { /* signed out: stay here */ } }
     if (S.me) return go('/', true);
-    const err = new URLSearchParams(location.search).get('error');
-    const msg = { cancelled: 'Sign-in was cancelled.', expired: 'That sign-in link expired. Try again.', google: "Google couldn't confirm your account. We may not have added you to the waitlist yet." }[err];
+    const q = new URLSearchParams(location.search);
+    const err = q.get('error');
+    const msg = q.has('pending')
+      ? "You're on the waitlist — we'll email you the moment you're approved. (Access is invite-only right now.)"
+      : { cancelled: 'Sign-in was cancelled.', expired: 'That sign-in link expired. Try again.', google: "Google couldn't confirm your account. We may not have added you to the waitlist yet." }[err];
     document.body.classList.add('landing-body');
     root.innerHTML = `
       <div class="landing">
@@ -1813,9 +1816,17 @@
         <td class="name" data-lab="Email">${esc(u.email)}</td><td data-lab="Name">${esc(u.name || '')}</td>
         <td class="hint" data-lab="Joined">${when(u.created_at)}</td><td class="num" data-lab="Balance">${usd(u.balance)}</td></tr>`).join('')}</tbody></table></div>`;
       root.querySelector('#waitlist').innerHTML = d.waitlist.length
-        ? `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>Email</th><th>Note</th><th>When</th></tr></thead><tbody>${d.waitlist.map((w) => `<tr>
-          <td class="name" data-lab="Email">${esc(w.email)}</td><td data-lab="Note">${esc(w.note || '')}</td><td class="hint" data-lab="When">${when(w.created_at)}</td></tr>`).join('')}</tbody></table></div>`
+        ? `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>Email</th><th>Note</th><th>When</th><th>Status</th><th></th></tr></thead><tbody>${d.waitlist.map((w) => `<tr>
+          <td class="name" data-lab="Email">${esc(w.email)}</td><td data-lab="Note">${esc(w.note || '')}</td><td class="hint" data-lab="When">${when(w.created_at)}</td>
+          <td data-lab="Status">${w.status === 'approved' ? '<span class="mk on">Approved</span>' : 'Requested'}</td>
+          <td class="act" data-lab="">${w.status === 'approved' ? '' : `<button class="btn sm" data-wl="approve" data-email="${esc(w.email)}">Approve</button>`}<button class="btn sm danger" data-wl="remove" data-email="${esc(w.email)}">Remove</button></td></tr>`).join('')}</tbody></table></div>`
         : '<p class="hint">No waitlist requests.</p>';
+      root.querySelectorAll('#waitlist [data-wl]').forEach((b) => (b.onclick = async () => {
+        await busy(b, async () => {
+          try { await api('/api/admin/waitlist', { email: b.dataset.email, action: b.dataset.wl }); await load(); }
+          catch (err) { alert0(err.message); }
+        });
+      }));
     };
     root.querySelector('#grant').onsubmit = async (e) => {
       e.preventDefault();

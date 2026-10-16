@@ -351,6 +351,10 @@ def main() -> None:
         # Tau-RSI discovery tree: which prior hypothesis this one built on (NULL = root). Nullable
         # + unused for now (P1); the replay simulator and self-evolving policy populate it later.
         _add_column_if_missing(cur, "app_strategies", "parent_id", "ALTER TABLE app_strategies ADD COLUMN parent_id BIGINT NULL")
+        # Waitlist hygiene: drop any waitlist rows for emails that already have an account
+        # (case/space-insensitive), so a signed-up user never lingers on the waitlist display.
+        cur.execute("DELETE w FROM app_waitlist w JOIN app_users u "
+                    "ON LOWER(TRIM(u.email))=LOWER(TRIM(w.email))")
         _add_column_if_missing(cur, "app_posts", "edited_at", "ALTER TABLE app_posts ADD COLUMN edited_at DATETIME NULL")
         _add_column_if_missing(cur, "app_stripe_customers", "reload_amount", "ALTER TABLE app_stripe_customers ADD COLUMN reload_amount DECIMAL(10,2) NOT NULL DEFAULT 20.00")
         _add_column_if_missing(cur, "app_stripe_customers", "reload_threshold", "ALTER TABLE app_stripe_customers ADD COLUMN reload_threshold DECIMAL(10,2) NOT NULL DEFAULT 5.00")

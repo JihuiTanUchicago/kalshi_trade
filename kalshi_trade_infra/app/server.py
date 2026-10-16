@@ -136,7 +136,12 @@ def google_callback(ctx: Ctx):
         ident = auth.exchange_code(ctx.query["code"], state["code_verifier"], state["nonce"])
     except auth.AuthError:
         return ("redirect", "/signin?error=google")
-    user = repo.upsert_google_user(ctx.cur, ident["sub"], ident["email"], ident["name"], ident["picture"])
+    # Invite-only: only the operator or an approved waitlist email gets a new account.
+    email = ident["email"] or ""
+    allow_new = email.lower() == ADMIN_EMAIL.lower() or repo.is_waitlist_approved(ctx.cur, email)
+    user = repo.upsert_google_user(ctx.cur, ident["sub"], email, ident["name"], ident["picture"], allow_new=allow_new)
+    if user is None:
+        return ("redirect", "/signin?pending=1")  # request recorded; awaiting approval
     _start_session(ctx, user["id"])
     return ("redirect", "/")
 
@@ -886,10 +891,12 @@ def admin_overview(ctx: Ctx):
                    FROM app_users u ORDER BY u.id DESC LIMIT 100""")
     users = [{"id": r["id"], "email": r["email"], "name": r["name"], "created_at": r["created_at"],
               "balance": round(float(r["balance"]), 2)} for r in cur.fetchall()]
-    # Waitlist and users are mutually exclusive: hide anyone who already has an account.
-    cur.execute("""SELECT w.email, w.note, w.created_at FROM app_waitlist w
-                   WHERE NOT EXISTS (SELECT 1 FROM app_users u WHERE u.email=w.email)
-                   ORDER BY w.id DESC LIMIT 100""")
+    # Waitlist and users are mutually exclusive: hide anyone who already has an account
+    # (case/space-insensitive — Google emails and typed waitlist emails can differ in case).
+    cur.execute("""SELECT w.email, w.note, w.status, w.created_at FROM app_waitlist w
+                   WHERE NOT EXISTS (SELECT 1 FROM app_users u
+                                     WHERE LOWER(TRIM(u.email))=LOWER(TRIM(w.email)))
+                   ORDER BY (w.status='approved'), w.id DESC LIMIT 200""")
     waitlist = cur.fetchall()
     return {"users": users, "waitlist": waitlist}
 
@@ -905,6 +912,20 @@ def admin_grant(ctx: Ctx):
     repo.add_credit(ctx.cur, target["id"], "admin_grant", _D(str(amount)),
                     "Admin grant by %s" % ctx.user["email"])
     return {"ok": True, "email": email, "balance": round(repo.credit_balance(ctx.cur, target["id"]), 2)}
+
+
+def admin_waitlist(ctx: Ctx):
+    """Approve a waitlist request (so that email can sign in) or remove it."""
+    _require_admin(ctx)
+    email = str(ctx.body.get("email") or "").strip()
+    action = ctx.body.get("action")
+    if not email or action not in ("approve", "remove"):
+        raise ApiError(400, "Pick an email and action (approve or remove).")
+    ok = repo.set_waitlist_status(ctx.cur, email, "approved") if action == "approve" \
+        else repo.remove_waitlist(ctx.cur, email)
+    if not ok:
+        raise ApiError(404, "That email isn't on the waitlist.")
+    return {"ok": True, "email": email, "action": action}
 
 
 def admin_system(ctx: Ctx):
@@ -1151,6 +1172,7 @@ ROUTES: List[Route] = [
         ("GET", "/api/admin/system", admin_system, True),
         ("GET", "/api/system/code", system_code, True),
         ("POST", "/api/admin/grant", admin_grant, True),
+        ("POST", "/api/admin/waitlist", admin_waitlist, True),
         ("GET", "/api/funds", funds, True),
         ("POST", "/api/funds/paper", paper_transfer, True),
         ("POST", "/api/kalshi-key", save_kalshi_key, True),

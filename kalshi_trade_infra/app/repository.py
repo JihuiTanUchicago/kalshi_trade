@@ -60,8 +60,32 @@ def ensure_welcome_bonus(cur, user_id: int) -> bool:
                       stripe_ref="welcome-%d" % user_id)
 
 
-def upsert_google_user(cur, sub: str, email: str, name: Optional[str], picture: Optional[str]) -> Dict:
-    """Create on first sign-in (with the starting paper balance), refresh profile after."""
+def is_waitlist_approved(cur, email: str) -> bool:
+    """True if this email was approved off the waitlist (case/space-insensitive)."""
+    if not email:
+        return False
+    cur.execute(
+        "SELECT 1 FROM app_waitlist WHERE LOWER(TRIM(email))=LOWER(TRIM(%s)) AND status='approved' LIMIT 1",
+        (email,),
+    )
+    return cur.fetchone() is not None
+
+
+def set_waitlist_status(cur, email: str, status: str) -> bool:
+    cur.execute("UPDATE app_waitlist SET status=%s WHERE LOWER(TRIM(email))=LOWER(TRIM(%s))", (status, email))
+    return cur.rowcount > 0
+
+
+def remove_waitlist(cur, email: str) -> bool:
+    cur.execute("DELETE FROM app_waitlist WHERE LOWER(TRIM(email))=LOWER(TRIM(%s))", (email,))
+    return cur.rowcount > 0
+
+
+def upsert_google_user(cur, sub: str, email: str, name: Optional[str], picture: Optional[str],
+                       allow_new: bool = True) -> Optional[Dict]:
+    """Create on first sign-in (with the starting paper balance), refresh profile after.
+    Invite-only: a brand-new account is created only when `allow_new` (admin or an
+    approved waitlist email); otherwise the request is waitlisted and None is returned."""
     now = now_utc()
     cur.execute("SELECT id FROM app_users WHERE google_sub=%s", (sub,))
     row = cur.fetchone()
@@ -72,6 +96,10 @@ def upsert_google_user(cur, sub: str, email: str, name: Optional[str], picture: 
         )
         ensure_welcome_bonus(cur, row["id"])  # self-heal a missed grant on return
         return get_user(cur, row["id"])
+    if not allow_new:
+        if email:
+            add_waitlist(cur, email, None)  # record the access request
+        return None
     cur.execute(
         """INSERT INTO app_users (google_sub, email, name, picture_url, created_at, last_login_at)
            VALUES (%s,%s,%s,%s,%s,%s)""",
@@ -80,7 +108,7 @@ def upsert_google_user(cur, sub: str, email: str, name: Optional[str], picture: 
     user_id = cur.lastrowid
     # Once they're in, they're off the waitlist — the two lists are exclusive.
     if email:
-        cur.execute("DELETE FROM app_waitlist WHERE email=%s", (email,))
+        cur.execute("DELETE FROM app_waitlist WHERE LOWER(TRIM(email))=LOWER(TRIM(%s))", (email,))
     add_ledger(cur, user_id, "deposit", STARTING_PAPER_BALANCE, "Starting paper balance")
     ensure_welcome_bonus(cur, user_id)
     seed_demo_session(cur, user_id)
