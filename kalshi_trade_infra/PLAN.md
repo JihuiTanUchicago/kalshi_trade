@@ -1315,3 +1315,31 @@ multi-month milestone.
   contracts to bound API calls (ceiling noted in-file; raise/parallelise/persist for the full window).
 - `app/static/app.js`: `equityChart` takes an optional `devCurve` (dashed accent line + legend); the
   strategy detail view fetches the dev-curve after load and redraws the chart with both lines.
+
+## Tau-RSI: self-evolving research (Dream-RSI adapted) — DESIGN (2026-10-15)
+Paper: Dream-RSI (arXiv 2609.14858, Google/UMD) — github.com/zhengkid/Dream-RSI.
+Owner chose: per-user private memory; FULL Dream-RSI (replay simulator + dreaming);
+paper-faithful **evolvable executable policy code**; retrieval + self-edited policy.
+
+**Core safety invariant:** the exploration policy is a PURE decision function
+`next_batch(tree, round) -> Batch | STOP` and `should_stop(tree, round)`. It reads the
+discovery tree and returns allocation decisions only; it NEVER touches LLM/backtest/DB/
+network — the harness performs all I/O. So per-user LLM-written policy CODE is sandboxable:
+side-effect-free, run with no network/filesystem, import whitelist (math/statistics), AST
+validation (no dunder/imports), CPU+mem+time limits, and a default-policy fallback on any
+error/timeout.
+
+**Mapping to our pipeline:** discovery agent = hypothesis proposer (LLM) + backtester
+(evaluator); node = one tested hypothesis + its in-sample/OOS/gate outcome (already stored in
+app_strategies); exploration policy = today's hardcoded BATCH=4/FINALISTS 3-8/stopping (to be
+made evolvable); replay simulator = re-traverse the stored per-user tree with objective
+`V = best_score - b1*generations + b2*parallelism` (no new LLM/backtest); dreaming = a
+policy-development LLM revises the policy code, each validated over historical trees via replay,
+best (>= current) deployed. NOTE our backtests are cheap, so the replay trick's payoff is
+smaller than the paper's expensive-kernel setting; the dominant cost here is proposal tokens.
+
+**Phases:** P1 foundation (ExplorationPolicy pure-fn interface + DefaultPolicy extracted from
+current logic; discovery-tree schema: parent_id + per-user linkage; no behavior change) ->
+P2 replay simulator + objective (read-only, tested) -> P3 sandbox (restricted subprocess +
+AST validation + resource limits + loader/fallback) -> P4 dreaming loop (policy-dev agent +
+per-user policy storage + deploy-best; billed as research).

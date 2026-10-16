@@ -56,7 +56,8 @@ Remove a line once shipped; `[blocked]` = needs a user/AWS action first.
 - Email all users on any new community update (needs unsubscribe + rate discipline).
 - Web-box engine watchdog: extend `tau-watchdog` to `recursive-engine` (confirm it heartbeats when idle first).
 - Kalshi dev-env 2nd curve needs `KALSHI_DEV_API_BASE` set on the box (one line until then).
-- **Self-evolving research agent**: per-agent memory that persists across sessions. DECISIONS (2026-10-15): (1) memory is **per-user private**; (2) mechanism is **both** — retrieve the most relevant past hypotheses/lessons into each run's prompt AND let the agent write/revise its own evolving lessons doc after each run (builds on `strategy_memory` + `research_brief.md`). BLOCKED: awaiting the paper link to copy its specific workflow before building.
+- **Tau-RSI (self-evolving research, Dream-RSI-faithful)** — DESIGN in PLAN.md. Decisions: per-user private memory; FULL Dream-RSI (replay simulator + dreaming); evolvable **executable policy code** made safe by keeping the policy a pure decision function (no I/O) run in a sandbox. Phases: P1 foundation (ExplorationPolicy interface + DefaultPolicy + discovery-tree schema) → P2 replay simulator + objective → P3 sandbox → P4 dreaming loop. START: P1.
+- **Protect `main` from pushes** (owner-only) + **open-source the repo** (BLOCKED on a secret/infra-leak audit before going public — never make public un-audited).
 
 ### Blocked on you / AWS
 - Model selection: Claude 5.5 / OpenAI GPT-6.x / Grok are AWS-access-gated (agreements accepted + availability AUTHORIZED, but invoke denies even from full-admin — a Bedrock account grant AWS hasn't given). Request in Bedrock console → Model access (us-east-1) or AWS Sales. Prices locked: Sonnet5.5 $2/$10, Opus5.5 $4/$20, Haiku5.5 $0.1/$0.5, GPT-6.1 Sol $2.2/$10, GPT-6 Sol $2/$10, GPT-5.6 Sol $8.8/$33.
