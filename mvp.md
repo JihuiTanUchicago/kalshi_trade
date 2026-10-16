@@ -37,6 +37,42 @@ strategies and their model parameters.
 - Need company domain and emails for startup credits offer
 - API/CLI usage of Tau
 
+## TODO / Working Queue
+Single source of truth for open work (merged in from the old `requested_queue.md`, 2026-10-15).
+Remove a line once shipped; `[blocked]` = needs a user/AWS action first.
+
+### Build (queued)
+- All-markets collector + cross-contract — BUILDING. Phase 1 catalog shipped. Ingestion split onto a dedicated collector box (`i-0bd0683cc7e86243d`) + S3 data-lake. Next: per-minute S3/Parquet snapshots (Phase 2), backtest-over-any-series (3), cross-contract (4).
+- Real/live deploy is broken — can't trade real money yet. Fix the live pipeline; **enabling the global live gate places real orders and needs explicit, separate owner sign-off.**
+- Remove/undeploy a deployed strategy, and delete a strategy from inventory (no delete today).
+- Track unrealized P&L for deployed strategies (paper/real).
+- Strategy detail: show current open positions / holdings for a deployed strategy (/impeccable).
+- Hyperlink each strategy to the actual Kalshi market it trades.
+- Markets still show only a few — widen the live market universe.
+- "Tries to find it": clarify what research actually does and verify it genuinely iterates.
+- Passed strategies don't show under their research session.
+- Community strategy-share snapshot: header counts (Passed/Void/Rejected) disagree with the listed rows (frozen/capped at share time) — recompute from real COUNT.
+- Select-all / multi-select for deployment.
+- Email all users on any new community update (needs unsubscribe + rate discipline).
+- Web-box engine watchdog: extend `tau-watchdog` to `recursive-engine` (confirm it heartbeats when idle first).
+- Kalshi dev-env 2nd curve needs `KALSHI_DEV_API_BASE` set on the box (one line until then).
+- **Self-evolving research agent**: integrate a paper's workflow + per-agent memory that persists across sessions (DESIGN PENDING — awaiting the paper link + owner design decisions).
+
+### Blocked on you / AWS
+- Model selection: Claude 5.5 / OpenAI GPT-6.x / Grok are AWS-access-gated (agreements accepted + availability AUTHORIZED, but invoke denies even from full-admin — a Bedrock account grant AWS hasn't given). Request in Bedrock console → Model access (us-east-1) or AWS Sales. Prices locked: Sonnet5.5 $2/$10, Opus5.5 $4/$20, Haiku5.5 $0.1/$0.5, GPT-6.1 Sol $2.2/$10, GPT-6 Sol $2/$10, GPT-5.6 Sol $8.8/$33.
+- DeepSeek R1 returns reasoning-only output via Converse — needs reasoningContent handling before it's safe to offer.
+
+### Deferred to v0.3
+- Agent internet access / web search (Google/Tavily/Brave).
+- Polymarket as a 2nd venue: data + API + real & simulation trading.
+
+### Shipped 2026-10-15
+- Deploy cap 10→100; finite research-budget cap 50→1000.
+- Default $5 stake / $100 capital sim book (agent may override for dynamic sizing).
+- Community "My posts" filter.
+- Heartbeat watchdog (silent-stall recovery) + forward_collector per-tick heartbeat (stops false-STALE flapping).
+- Writer Palmyra X5 model added; Billing profile dropdown; System DB-node + market-chip fixes; landing-demo no-reflow.
+
 ## How do we charge customers? (v0.2)
 - **[Done]** OpenRouter-style credits: $100 free, per-token billing, 5.5% top-up fee, Stripe.
     - **[Done]** Flipped to Stripe **live** keys (in Parameter Store → `.env.app`); real cards now save/charge. Test-mode `pmc_` dropped (code falls back to card). NOTE: webhook secret still test — set live `whsec_` before relying on top-up webhooks.

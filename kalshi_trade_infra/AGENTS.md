@@ -81,6 +81,12 @@ These instructions apply to contributors and coding agents working on strategies
 ### PLAN
 - On every turn of response, put your most up to date knowledge about the codebase, architecture design, and action plans in PLAN.md.
 
+### TODO list
+- Always keep the running todo list current. It lives in the **`## TODO / Working Queue`**
+  section of `../mvp.md` (the old `requested_queue.md` was merged into it). Add any new
+  requested-but-unshipped work there, and remove each line the moment it ships. `[blocked]`
+  marks work that needs a user/AWS action first.
+
 ### Engineering Standards
 - Enforce DRY aggressively; flag duplication early.
 - Keep code "engineered enough": avoid both fragile hacks and premature complexity.
