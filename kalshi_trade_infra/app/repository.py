@@ -423,6 +423,29 @@ def get_strategy(cur, user_id: int, strategy_id: int) -> Optional[Dict]:
     return _strategy_row(row) if row else None
 
 
+def strategy_records(cur, user_id: int, market: str, limit: int = 500) -> List[Dict]:
+    """Raw discovery-tree records for one user+market, OLDEST first: each tested
+    hypothesis with its in-sample metrics and (if it was gated) its out-of-sample
+    outcome. Feeds the Tau-RSI replay simulator (app/replay.py)."""
+    cur.execute(
+        """SELECT status, result_json FROM app_strategies
+           WHERE user_id=%s AND market=%s ORDER BY id ASC LIMIT %s""",
+        (user_id, market, limit),
+    )
+    out: List[Dict] = []
+    for r in cur.fetchall():
+        res = _loads(r["result_json"]) or {}
+        ins = res.get("in_sample") or {}
+        oos = res.get("out_of_sample")
+        out.append({
+            "in_sample": {"pnl": ins.get("pnl") or 0, "trades": ins.get("trades") or 0},
+            "tested": oos is not None,
+            "oos_pnl": (oos or {}).get("pnl") or 0.0,
+            "passed": r["status"] == "passed",
+        })
+    return out
+
+
 def strategy_memory(cur, user_id: int, market: str, limit: int = 40) -> List[Dict]:
     """What this user's agents already tried on this market, newest first."""
     cur.execute(

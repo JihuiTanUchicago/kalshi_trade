@@ -44,8 +44,15 @@ Remove a line once shipped; `[blocked]` = needs a user/AWS action first.
 - A sharing mechanism when you can share strategies with your friends. We can have a notification
 UI next to our profile on the top right so anyone will see notifications on community messages or
 if anyone shares a strategy. A strategy shared to you will have a small flag/UI icon that marks that
-this strategy is shared by the sender.
+this strategy is shared by the sender. Use /impeccable /ponytail skills to guide this feature. You
+can deploy shared strategy just like yours. Shared strategy is not revocable.
 
+- Support markdown format in community posts/comments.
+- Add more meme-related emojis. Like goat, etc.
+- Add some spaces/paddings between the "make a post" box and the "All Posts"/"My Posts" filter. Or even better, can we
+put the "make a post" box (where you write something and post fixed on the bottom of the page so that community posts
+can render more UI-friendly. Right now the comment box is on top of the most recent post which might not be ideal.
+- As comment section grows longer, consider scalability. We should add search bar, useful filters, and 
 ### Build (queued)
 - All-markets collector + cross-contract — BUILDING. Phase 1 catalog shipped. Ingestion split onto a dedicated collector box (`i-0bd0683cc7e86243d`) + S3 data-lake. Next: per-minute S3/Parquet snapshots (Phase 2), backtest-over-any-series (3), cross-contract (4).
 - Real/live deploy is broken — can't trade real money yet. Fix the live pipeline; **enabling the global live gate places real orders and needs explicit, separate owner sign-off.**
@@ -61,7 +68,7 @@ this strategy is shared by the sender.
 - Email all users on any new community update (needs unsubscribe + rate discipline).
 - Web-box engine watchdog: extend `tau-watchdog` to `recursive-engine` (confirm it heartbeats when idle first).
 - Kalshi dev-env 2nd curve needs `KALSHI_DEV_API_BASE` set on the box (one line until then).
-- **Tau-RSI (self-evolving research, Dream-RSI-faithful)** — DESIGN in PLAN.md. Decisions: per-user private memory; FULL Dream-RSI (replay simulator + dreaming); evolvable **executable policy code** made safe by keeping the policy a pure decision function (no I/O) run in a sandbox. Phases: **P1 foundation SHIPPED** (app/exploration.py: pure-fn ExplorationPolicy + DefaultPolicy = today's behavior unchanged; app_strategies.parent_id discovery-tree column; 177 tests green) → **P2 NEXT** replay simulator + objective → P3 sandbox → P4 dreaming loop.
+- **Tau-RSI (self-evolving research, Dream-RSI-faithful)** — DESIGN in PLAN.md. Decisions: per-user private memory; FULL Dream-RSI (replay simulator + dreaming); evolvable **executable policy code** made safe by keeping the policy a pure decision function (no I/O) run in a sandbox. Phases: **P1 foundation SHIPPED** (app/exploration.py: pure-fn ExplorationPolicy + DefaultPolicy = today's behavior unchanged; app_strategies.parent_id discovery-tree column; 177 tests green) → **P2 SHIPPED** (app/replay.py: replay simulator + Dream-RSI objective V=quality−β₁·gen+β₂·parallelism; build_tree from app_strategies; 182 tests) → **P3 NEXT** sandbox → P4 dreaming loop.
 - **Protect `main` from pushes** (owner-only) + **open-source the repo** (BLOCKED on a secret/infra-leak audit before going public — never make public un-audited).
 
 ### Blocked on you / AWS
