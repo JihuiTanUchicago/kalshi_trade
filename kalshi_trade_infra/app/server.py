@@ -332,20 +332,23 @@ def _strategy_card(s: Dict) -> Dict:
         "in_sample": res.get("in_sample"), "out_of_sample": res.get("out_of_sample"),
         "equity": res.get("equity"), "capital": res.get("capital"),
         "stake": s["spec"]["sizing"]["stake"], "side": s["spec"]["side"],
+        "deployed": bool(s.get("active_deps")), "deploy_live": bool(s.get("live_deps")),
     }
 
 
 def list_strategies(ctx: Ctx):
     q = ctx.query
     direction, status, market = q.get("direction") or None, q.get("status") or None, q.get("market") or None
+    search = (q.get("q") or "").strip()[:80] or None  # cap: a search box, not a query language
+    deployed = q.get("deployed") in ("1", "true")
     try:
         page = max(0, int(q.get("page") or 0))
     except ValueError:
         page = 0
     per = 50
-    counts = repo.count_strategies(ctx.cur, ctx.uid, direction, market)  # true per-status totals, not a capped page
+    counts = repo.count_strategies(ctx.cur, ctx.uid, direction, market, search, deployed)  # true per-status totals, not a capped page
     matched = counts.get(status, 0) if status else counts["total"]
-    rows = repo.list_strategies(ctx.cur, ctx.uid, direction, status, market, limit=per, offset=page * per)
+    rows = repo.list_strategies(ctx.cur, ctx.uid, direction, status, market, limit=per, offset=page * per, q=search, deployed=deployed)
     return {"strategies": [_strategy_card(s) for s in rows], "counts": counts,
             "matched": matched, "page": page, "per": per, "pages": (matched + per - 1) // per}
 

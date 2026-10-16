@@ -201,7 +201,7 @@ def test_list_strategies_applies_limit_and_offset():
 def test_strategies_figures_come_from_count_not_the_page(monkeypatch):
     # Counts far exceed the 50-row page, proving the figures aren't len(page).
     monkeypatch.setattr(server.repo, "count_strategies",
-                        lambda cur, uid, d, m: {"passed": 600, "failed": 400, "rejected": 233, "total": 1233})
+                        lambda cur, uid, d, m, *a, **k: {"passed": 600, "failed": 400, "rejected": 233, "total": 1233})
     monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [{"id": i} for i in range(50)])
     monkeypatch.setattr(server, "_strategy_card", lambda s: s)
     out = server.list_strategies(ctx(query={}))
@@ -216,7 +216,7 @@ def test_strategies_page_param_maps_to_offset(monkeypatch):
     seen = {}
     monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: {"passed": 10, "total": 120})
 
-    def fake_list(cur, uid, direction=None, status=None, market=None, run_id=None, limit=500, offset=0):
+    def fake_list(cur, uid, direction=None, status=None, market=None, run_id=None, limit=500, offset=0, q=None, deployed=False):
         seen.update(limit=limit, offset=offset)
         return []
 
@@ -225,6 +225,21 @@ def test_strategies_page_param_maps_to_offset(monkeypatch):
     out = server.list_strategies(ctx(query={"page": "2"}))
     assert seen == {"limit": 50, "offset": 100}
     assert out["page"] == 2 and out["per"] == 50 and out["pages"] == 3
+
+
+def test_strategies_search_and_deployed_thread_to_repo(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(server.repo, "count_strategies",
+                        lambda cur, uid, d, m, q=None, deployed=False: seen.update(cq=q, cdep=deployed) or {"total": 0})
+    monkeypatch.setattr(server.repo, "list_strategies",
+                        lambda *a, q=None, deployed=False, **k: seen.update(lq=q, ldep=deployed) or [])
+    monkeypatch.setattr(server, "_strategy_card", lambda s: s)
+    server.list_strategies(ctx(query={"q": "  tails  ", "deployed": "1"}))
+    assert seen["lq"] == "tails" and seen["cq"] == "tails"  # trimmed
+    assert seen["ldep"] is True and seen["cdep"] is True
+    # Absent/false by default.
+    server.list_strategies(ctx(query={}))
+    assert seen["lq"] is None and seen["ldep"] is False
 
 
 def test_strategies_bad_page_defaults_to_zero(monkeypatch):

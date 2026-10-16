@@ -245,6 +245,9 @@ h1.page { font-size: clamp(23px, 3vw, 30px); font-weight: 600; letter-spacing: -
 .section-head p, .sect-note { font-family: var(--f-nar); font-size: 12px; letter-spacing: .02em; color: var(--ink-3); margin: 0; }
 /* Filter toolbars hold ~30px pills, not a text baseline — give the rule room. */
 .section-head.filters { align-items: center; padding-bottom: 22px; }
+.stratfilters { gap: 10px 18px; }
+.stratfilters .searchwrap { flex: 1 1 220px; min-width: 180px; }
+.stratfilters #strat-q { width: 100%; }
 
 /* ===================== TABLES / MARKS ===================== */
 
@@ -275,6 +278,7 @@ tr.live-row td.name a { color: var(--signal); }
 .mk.on { border-color: var(--ink); color: #F1F3ED; background: var(--ink); }
 .mk.armed { border-color: var(--signal); color: var(--signal); background: var(--signal-wash); }
 .mk.live { border-color: var(--signal); color: #FDF2F3; background: var(--signal); }
+.mk.dep { border-color: var(--ink); color: #F1F3ED; background: var(--ink); }
 .mk.quiet { color: var(--ink-3); }
 
 .spark { width: 108px; height: 26px; display: inline-block; vertical-align: middle; margin-left: 10px; }

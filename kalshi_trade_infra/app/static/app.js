@@ -467,7 +467,7 @@
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
       <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>
       <td data-lab="Tried">${esc(tried)}</td>
-      <td class="act" data-lab="">${mark(s.status)}</td>
+      <td class="act" data-lab="">${mark(s.status)}${s.deployed ? ` <span class="mk ${s.deploy_live ? 'live' : 'dep'}">${s.deploy_live ? 'Live' : 'Deployed'}</span>` : ''}</td>
     </tr>`;
   }
   const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Market</th><th>Status</th><th class="num">Realized</th><th class="num">Trades</th><th class="num">Backtest unseen</th><th>Since</th>${controls ? '<th></th>' : ''}</tr></thead>`;
@@ -977,23 +977,27 @@
   // ---------- strategies ----------
   async function viewStrategies() {
     const q = new URLSearchParams(location.search);
-    const f = { status: q.has('status') ? q.get('status') : '', market: q.get('market') || '' };
+    const f = { status: q.has('status') ? q.get('status') : '', market: q.get('market') || '', q: q.get('q') || '', deployed: q.get('deployed') === '1' ? '1' : '' };
     shell('/strategies', boardTitle('Strategies', 'Every strategy your agents researched. Passed ones can be deployed; void ones stay here so you can see what didn’t work.') +
       '<dl class="figures measure" id="sfigs" style="margin-top:14px"></dl>', `
-      <div class="section-head filters">
-        <div class="chips" role="group" aria-label="Status">${[['', 'All'], ['passed', 'Passed'], ['failed', 'Void'], ['rejected', 'Rejected']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}" aria-pressed="${f.status === v}">${l}</button>`).join('')}</div>
+      <div class="section-head filters stratfilters">
+        <div class="chips" role="group" aria-label="Status">${[['', 'All'], ['passed', 'Passed'], ['failed', 'Void'], ['rejected', 'Rejected']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}" aria-pressed="${f.status === v}">${l}</button>`).join('')}
+          <button class="chip" data-toggle="deployed" aria-pressed="${f.deployed === '1'}">Deployed</button></div>
         <div class="chips" role="group" aria-label="Market">${[['', 'Both markets'], ...S.me.markets.map((m) => [m.key, marketShort(m.key)])].map(([v, l]) => `<button class="chip" data-f="market" data-v="${v}" aria-pressed="${f.market === v}">${esc(l)}</button>`).join('')}</div>
+        <div class="searchwrap"><input class="input" id="strat-q" type="search" placeholder="Search name or thesis…" value="${esc(f.q)}" aria-label="Search strategies"></div>
       </div>
       <div id="bulkbar" class="bulkbar" hidden></div>
       <div id="slips" style="margin-top:16px">${loading(240)}</div>`);
-    root.querySelectorAll('[data-f]').forEach((b) => {
-      b.onclick = () => {
-        f[b.dataset.f] = b.dataset.v;
-        const p = new URLSearchParams(Object.entries(f).filter(([, v]) => v !== '' || false));
-        if (!f.status) p.set('status', '');
-        go('/strategies?' + p.toString(), true);
-      };
-    });
+    const applyFilters = () => {
+      const p = new URLSearchParams(Object.entries(f).filter(([, v]) => v !== '' || false));
+      if (!f.status) p.set('status', '');
+      go('/strategies?' + p.toString(), true);
+    };
+    root.querySelectorAll('[data-f]').forEach((b) => { b.onclick = () => { f[b.dataset.f] = b.dataset.v; applyFilters(); }; });
+    const depToggle = root.querySelector('[data-toggle="deployed"]');
+    if (depToggle) depToggle.onclick = () => { f.deployed = f.deployed === '1' ? '' : '1'; applyFilters(); };
+    const sq = root.querySelector('#strat-q');
+    if (sq) sq.onchange = () => { const v = sq.value.trim(); if (v !== f.q) { f.q = v; applyFilters(); } };
     // Paginate server-side at 50/page — a run_forever session can produce far more than the old
     // 500-row cap, and the figures/chip counts come from a real COUNT(*), not the fetched page.
     const CLABEL = { passed: 'Passed', failed: 'Void', rejected: 'Rejected' };

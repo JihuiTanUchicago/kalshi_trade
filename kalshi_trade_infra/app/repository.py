@@ -401,19 +401,33 @@ def _strategy_row(r: Dict) -> Dict:
     return r
 
 
-def list_strategies(
-    cur, user_id: int, direction: Optional[str] = None, status: Optional[str] = None, market: Optional[str] = None,
-    run_id: Optional[int] = None, limit: int = 500, offset: int = 0,
-) -> List[Dict]:
-    sql = """SELECT s.id, s.run_id, s.parent_id, s.market, s.direction, s.title, s.thesis, s.spec_json, s.status,
-                    s.result_json, s.created_at, r.hypotheses_tried
-             FROM app_strategies s LEFT JOIN app_agent_runs r ON r.id=s.run_id
-             WHERE s.user_id=%s"""
-    params: List[Any] = [user_id]
+def _strategy_filter_sql(direction, status, market, run_id, q, deployed) -> tuple:
+    """Shared WHERE clause for list/count so the headline figures and the page agree."""
+    sql, params = " WHERE s.user_id=%s", []  # caller prepends user_id
     for col, val in (("s.direction", direction), ("s.status", status), ("s.market", market), ("s.run_id", run_id)):
         if val:
             sql += " AND %s=%%s" % col
             params.append(val)
+    if q:
+        sql += " AND (s.title LIKE %s OR s.thesis LIKE %s)"
+        like = "%" + q + "%"
+        params.extend((like, like))
+    if deployed:
+        sql += " AND EXISTS (SELECT 1 FROM app_deployments d WHERE d.strategy_id=s.id AND d.status<>'stopped')"
+    return sql, params
+
+
+def list_strategies(
+    cur, user_id: int, direction: Optional[str] = None, status: Optional[str] = None, market: Optional[str] = None,
+    run_id: Optional[int] = None, limit: int = 500, offset: int = 0, q: Optional[str] = None, deployed: bool = False,
+) -> List[Dict]:
+    where, fparams = _strategy_filter_sql(direction, status, market, run_id, q, deployed)
+    sql = ("""SELECT s.id, s.run_id, s.parent_id, s.market, s.direction, s.title, s.thesis, s.spec_json, s.status,
+                    s.result_json, s.created_at, r.hypotheses_tried,
+                    (SELECT COUNT(*) FROM app_deployments d WHERE d.strategy_id=s.id AND d.status<>'stopped') AS active_deps,
+                    (SELECT COUNT(*) FROM app_deployments d WHERE d.strategy_id=s.id AND d.status<>'stopped' AND d.mode='live') AS live_deps
+             FROM app_strategies s LEFT JOIN app_agent_runs r ON r.id=s.run_id""" + where)
+    params: List[Any] = [user_id] + fparams
     # Non-rejected (passed/void) first, then newest: in a big run the passed finalists are
     # found early (oldest ids), so a plain id-DESC fetch past the limit would drop them.
     sql += " ORDER BY (s.status='rejected'), s.id DESC LIMIT %s OFFSET %s"
@@ -424,17 +438,15 @@ def list_strategies(
 
 def count_strategies(
     cur, user_id: int, direction: Optional[str] = None, market: Optional[str] = None,
+    q: Optional[str] = None, deployed: bool = False,
 ) -> Dict[str, int]:
     """Status histogram for the user's strategies via COUNT(*), so the headline figures
     reflect the true total rather than a capped page. Keys are the status values plus
-    "total" (their sum). Optionally narrowed by direction/market, matching list_strategies."""
-    sql = "SELECT s.status, COUNT(*) AS n FROM app_strategies s WHERE s.user_id=%s"
-    params: List[Any] = [user_id]
-    for col, val in (("s.direction", direction), ("s.market", market)):
-        if val:
-            sql += " AND %s=%%s" % col
-            params.append(val)
-    sql += " GROUP BY s.status"
+    "total" (their sum). Narrowed by direction/market/search/deployed, matching list_strategies
+    (status is left open so every status bucket is counted)."""
+    where, fparams = _strategy_filter_sql(direction, None, market, None, q, deployed)
+    sql = "SELECT s.status, COUNT(*) AS n FROM app_strategies s" + where + " GROUP BY s.status"
+    params: List[Any] = [user_id] + fparams
     cur.execute(sql, params)
     counts: Dict[str, int] = {r["status"]: int(r["n"]) for r in cur.fetchall()}
     counts["total"] = sum(counts.values())
