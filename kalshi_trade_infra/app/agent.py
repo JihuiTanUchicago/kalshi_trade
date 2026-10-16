@@ -288,20 +288,23 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, chunk: List[Dict], log,
             status = "passed" if result["passed"] else "failed"
             passed += status == "passed"
             verdict = "PASSED" if status == "passed" else "VOID"
-            log("verdict", "%s - %s: unseen-data pnl $%s over %s trades."
-                % (verdict, t["title"], result["out_of_sample"]["pnl"], result["out_of_sample"]["trades"]),
-                {"title": t["title"], "status": status, "gates": result["gates"]})
+            msg = ("%s - %s: unseen-data pnl $%s over %s trades."
+                   % (verdict, t["title"], result["out_of_sample"]["pnl"], result["out_of_sample"]["trades"]))
+            data = {"title": t["title"], "status": status, "gates": result["gates"]}
         else:
             result = {"capital": t["capital"], "dataset": s, "in_sample": t["in_sample"]}
             status = "rejected"
             ins = t["in_sample"] or {}
-            log("verdict", "REJECTED - %s: not a finalist, so never tested on unseen data "
-                "(in-sample pnl $%s over %s trades)." % (t["title"], ins.get("pnl"), ins.get("trades")),
-                {"title": t["title"], "status": "rejected"})
+            msg = ("REJECTED - %s: not a finalist, so never tested on unseen data "
+                   "(in-sample pnl $%s over %s trades)." % (t["title"], ins.get("pnl"), ins.get("trades")))
+            data = {"title": t["title"], "status": "rejected"}
+        # Insert first so the verdict event can carry the strategy id — the run log links to it.
         t["strategy_id"] = repo.insert_strategy(
             cur, user_id, run_id, None, market, run["direction"] or "custom", t["title"], t["thesis"], t["spec"],
             status, result,
         )
+        data["strategy_id"] = t["strategy_id"]
+        log("verdict", msg, data)
     return passed
 
 

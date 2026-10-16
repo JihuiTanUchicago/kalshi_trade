@@ -1005,13 +1005,11 @@
 
   async function viewRun(id) {
     shell('/research', '<div id="runboard">' + boardTitle('Research run') + '</div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl>', `
-      <div class="printer">
-        <div id="rsibox"></div>
-        <section><div class="section-head"><h2>Agent log</h2><span id="runact"></span></div><div id="flash"></div><ol class="log" id="log" aria-live="polite"></ol></section>
-        <section><div class="section-head"><h2>Hypotheses</h2><p>Best unseen P&L first</p></div>
-          <div id="feed">${strategyTable('')}</div></section>
-      </div>`);
-    let after = 0, tried = 0, lastFeedSig = '';
+      <div id="rsibox"></div>
+      <section><div class="section-head"><h2>Agent log</h2><span id="runact"></span></div><div id="flash"></div>
+        <p class="hint" style="margin:2px 0 10px">Each strategy links to its full result once its outcome is in. See them all on the <a href="/strategies">Strategies</a> page.</p>
+        <ol class="log" id="log" aria-live="polite"></ol></section>`);
+    let after = 0, tried = 0;
     const load = async () => {
       const d = await api(`/api/runs/${id}?after=${after}`);
       const r = d.run;
@@ -1039,7 +1037,6 @@
       const cancel = root.querySelector('#cancel');
       if (cancel) cancel.onclick = () => armed(cancel, 'Confirm cancel', () => busy(cancel, async () => { await api(`/api/runs/${id}/cancel`, {}).catch((e) => alert0(e.message)); await load(); }));
       const log = root.querySelector('#log');
-      const feed = root.querySelector('#feed');
       d.events.forEach((ev) => {
         after = Math.max(after, ev.id);
         const li = document.createElement('li');
@@ -1049,10 +1046,15 @@
           inner = 'Tested <b>' + esc(ev.message) + '</b>';
         } else if (ev.kind === 'verdict') {
           const st = ev.data && ev.data.status;
+          const sid = ev.data && ev.data.strategy_id;
           const tag = st === 'passed' ? '<b class="verdict pass">PASSED</b>'
             : st === 'rejected' ? '<b class="verdict rej">REJECTED</b>'
             : '<b class="verdict void">VOID</b>';
-          inner = tag + ' ' + esc(ev.message.replace(/^(PASSED|VOID|FAILED|REJECTED)\s*[-–]\s*/, ''));
+          const rest = ev.message.replace(/^(PASSED|VOID|FAILED|REJECTED)\s*[-–]\s*/, '');
+          const title = (ev.data && ev.data.title) || rest;
+          const tail = rest.startsWith(title) ? rest.slice(title.length) : '';  // keep the ": …" explanation as text
+          const titleHtml = sid ? `<a href="/strategies/${sid}">${esc(title)}</a>` : `<b>${esc(title)}</b>`;
+          inner = `${tag} ${titleHtml}${esc(tail)}`;
         } else if (/^(Dreaming:|Research policy evolved:)/.test(ev.message)) {
           li.className = 'step rsi-event';  // the self-improvement (Tau-RSI) loop — make it pop
           inner = `<b class="rsi-badge">RSI</b> ${esc(ev.message)}`;
@@ -1063,21 +1065,6 @@
         log.prepend(li);  // newest on top (each new poll batch, ascending ids, lands above older)
         if (ev.kind === 'hypothesis') tried++;
       });
-      // Always show gated strategies sorted by unseen P&L (highest first); deployable above
-      // void above rejected. Re-sorts live each poll as a research chunk clears the gate.
-      const shownPnl = (s) => { const m = (s.out_of_sample && s.out_of_sample.pnl != null) ? s.out_of_sample : (s.in_sample || {}); return m.pnl != null ? +m.pnl : -Infinity; };
-      const tier = (s) => (s.status === 'passed' ? 0 : s.status === 'failed' ? 1 : 2);
-      const sorted = (d.strategies || []).slice().sort((a, b) => (tier(a) - tier(b)) || (shownPnl(b) - shownPnl(a)));
-      const top = sorted.slice(0, 50);  // cap render — a run_forever session can produce hundreds
-      // Only re-render when the set actually changed — re-writing innerHTML every poll makes it blink.
-      const sig = top.map((s) => `${s.id}:${s.status}:${shownPnl(s)}`).join('|') + '#' + (active ? 1 : 0) + '#' + sorted.length;
-      if (sig !== lastFeedSig) {
-        lastFeedSig = sig;
-        const reg = registry(top.map((s) => s.equity));
-        feed.innerHTML = top.length
-          ? strategyTable(top.map((s) => strategySlip(s, reg, { land: true })).join('')) + (sorted.length > 50 ? `<p class="hint" style="margin-top:12px">Showing the top 50 of ${num(sorted.length)} by unseen P&L. See all on the <a href="/strategies">Strategies</a> page.</p>` : '')
-          : `<div class="empty"><h3>${active ? 'Testing' : 'No results'}</h3><p>${active ? 'Strategies appear here as each batch clears the unseen-data gate — best unseen P&L on top.' : 'This run produced no strategies.'}</p></div>`;
-      }
       if (!active) clearTimers();
     };
     await load();
