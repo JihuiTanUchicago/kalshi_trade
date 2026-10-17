@@ -13,6 +13,7 @@ Honesty rules, each closing a way backtests usually flatter themselves:
 """
 from __future__ import annotations
 
+import logging
 import math
 import threading
 import time
@@ -145,14 +146,19 @@ class WhatIf:
 def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optional[WhatIf] = None) -> List[Trade]:
     """Trades for positions OPENED in [start_ts, end_ts). Positions settle on
     Kalshi's result even if that is after end_ts - the result was fixed by the
-    market, not chosen by the backtest. A cross-contract (`cross`) spec routes to
-    simulate_pairs; everything else is the single-contract path, unchanged."""
+    market, not chosen by the backtest.
+
+    A cross-contract (`cross`) spec routes to simulate_pairs. A code strategy (spec has
+    `code`) computes a per-frame target book in the sandbox once; the entry/exit/sizing/
+    fee/settlement mechanics below are then IDENTICAL to a DSL spec. Everything else is the
+    single-contract DSL path, unchanged."""
     if spec.get("cross"):
         return simulate_pairs(spec, ds, start_ts, end_ts, what_if)
     w = what_if or WhatIf()
     slip = w.slippage_cents / 100.0
     stake = w.stake if w.stake is not None else spec["sizing"]["stake"]
     max_pos = spec["sizing"]["max_positions"]
+    book = _code_book(spec, ds, start_ts, end_ts) if specmod.is_code_spec(spec) else None
     open_: List[_Open] = []
     trades: List[Trade] = []
 
@@ -179,7 +185,12 @@ def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optio
         keep = []
         for pos in open_:
             snap = by_ticker.get(pos.ticker)
-            sig = specmod.exit_signal(spec, pos.side, pos.entry_price, snap) if snap else None
+            if not snap:
+                sig = None
+            elif book is not None:
+                sig = _code_exit(book, ts, pos, snap)
+            else:
+                sig = specmod.exit_signal(spec, pos.side, pos.entry_price, snap)
             if sig is None:
                 keep.append(pos)
                 continue
@@ -196,7 +207,8 @@ def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optio
                 break
             continue  # past the window: only manage what is already open
         held = {p.ticker for p in open_}
-        for cand in specmod.entries(spec, snaps):
+        cands = _code_entries(book, ts, snaps) if book is not None else specmod.entries(spec, snaps)
+        for cand in cands:
             if len(open_) >= max_pos:
                 break
             if cand.snapshot.contract.ticker in held:
@@ -327,6 +339,92 @@ def _first_frame(ds: Dataset, start_ts: int) -> int:
         else:
             hi = mid
     return lo
+
+
+# -- arbitrary-quant code strategies -------------------------------------------
+# The sandbox runs the agent's signals(window) ONCE over the in-window frames and returns a
+# target book per frame; the shared simulate() loop then applies sizing/fees/settlement. Any
+# sandbox failure or malformed output yields an empty book -> zero trades (fails the gate
+# honestly) rather than crashing the research run.
+
+
+def _code_book(spec: Dict, ds: Dataset, start_ts: int, end_ts: int) -> Dict[int, Dict[str, Tuple[str, float]]]:
+    """Run the strategy and return {ts: {ticker: (side, score)}} for in-window decision frames.
+    # ponytail: serializes the window to JSON per simulate() call (O(frames x contracts)); fine
+    # for current window sizes, switch to a binary channel if windows grow much larger."""
+    from app import sandbox
+    frames = [(ts, snaps) for ts, snaps in ds.frames if start_ts <= ts < end_ts]
+    window = {"market": spec["market"], "frames": [
+        {"ts": ts, "contracts": [
+            {"ticker": s.contract.ticker, "strike": s.contract.strike,
+             "close_ts": int(s.contract.close_time.timestamp()),
+             "yes_bid": s.yes_bid, "yes_ask": s.yes_ask, "features": s.features}
+            for s in snaps]}
+        for ts, snaps in frames]}
+    try:
+        raw = sandbox.run_strategy_signals(spec["code"], window)
+    except sandbox.SandboxError as e:
+        logging.getLogger(__name__).warning("code strategy sandbox failure: %s", e)
+        return {}
+    return _parse_book(raw, frames)
+
+
+def _parse_book(raw, frames) -> Dict[int, Dict[str, Tuple[str, float]]]:
+    """Validate untrusted sandbox output into a book. Any shape violation -> {} (no trades)."""
+    if not isinstance(raw, list) or len(raw) != len(frames):
+        return {}
+    book: Dict[int, Dict[str, Tuple[str, float]]] = {}
+    for (ts, snaps), picks in zip(frames, raw):
+        tickers = {s.contract.ticker for s in snaps}
+        want: Dict[str, Tuple[str, float]] = {}
+        if not isinstance(picks, list):
+            return {}
+        for p in picks:
+            if not isinstance(p, dict):
+                return {}
+            ticker, side, score = p.get("ticker"), p.get("side"), p.get("score", 0.0)
+            if ticker not in tickers or side not in ("yes", "no"):
+                return {}
+            if isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(score):
+                return {}
+            want.setdefault(ticker, (side, float(score)))  # first listing of a ticker wins
+        book[ts] = want
+    return book
+
+
+def _code_entries(book: Dict[int, Dict[str, Tuple[str, float]]], ts: int, snaps: List[Snapshot]):
+    """The contracts the code wants to OPEN at this frame, best score first, as spec.Entry so the
+    shared loop treats them exactly like DSL entries. fair/edge carry the strategy's own score."""
+    want = book.get(ts)
+    if not want:
+        return []
+    by_ticker = {s.contract.ticker: s for s in snaps}
+    out = []
+    for ticker, (side, score) in want.items():
+        snap = by_ticker.get(ticker)
+        if snap is None:
+            continue
+        price = specmod.side_prices(snap)[side][0]
+        if price <= 0 or price >= 1:
+            continue
+        out.append(specmod.Entry(snap, side, price, price, score))
+    out.sort(key=lambda e: e.edge, reverse=True)
+    return out
+
+
+def _code_exit(book: Dict[int, Dict[str, Tuple[str, float]]], ts: int, pos: _Open, snap: Snapshot):
+    """Exit when the code stops listing this (ticker, side): sell at the bid. Frames past the
+    window are not in the book, so open positions there are simply held to settlement."""
+    want = book.get(ts)
+    if want is None:
+        return None  # not a decision frame we control -> hold
+    tgt = want.get(pos.ticker)
+    if tgt is not None and tgt[0] == pos.side:
+        return None  # still wanted -> hold
+    sell = specmod.side_prices(snap)[pos.side][1]
+    if sell <= 0:
+        return None  # nobody to sell to; hold to settlement
+    return "signal", sell
 
 
 # -- metrics -----------------------------------------------------------------
