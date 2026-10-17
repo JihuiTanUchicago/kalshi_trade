@@ -12,8 +12,6 @@ from typing import Dict, List
 # full markdown explanation (rendered via mdLite); '' for bare one-liners.
 PLANNED: List[tuple] = [
     ('more robust, fast, and intelligent execution service', ''),
-    ('claude code style animation demonstration in a research session', ''),
-    ('Per-bucket cash + funding (live/demo/paper)', ''),
     ('Activate Alpaca stock/ETF agent data after secure worker configuration and entitlement checks, with a production canary before customer rollout', ''),
     ('All-markets collector + cross-contract', ''),
     ('Wire the generator (agent.py) to PROPOSE cross-contract pairs + build merged validation/holdout partitions, then enable cross-contract LIVE execution (engine.py/live gate)', ''),
@@ -23,7 +21,6 @@ PLANNED: List[tuple] = [
     ('Kalshi-dev 2nd equity line', ''),
     ('Agent internet access / web search (Google/Tavily/Brave)', ''),
     ('Polymarket as a 2nd venue: data + API + real & simulation trading', ''),
-    ('Risk-management force-sell layer on drawdown + portfolio caps (lost when a prior background agent exited; needs rebuild)', ''),
     ('NO-side (and side="either") LIVE execution', ''),
     ('NBA / Kalshi sports markets', ''),
     ('Bittensor (TAO) subnet tokens as a new venue', ''),
@@ -33,6 +30,11 @@ PLANNED: List[tuple] = [
 # Shipped, newest first: (YYYY-MM-DD, title, detail). `detail` is the full
 # markdown explanation (what/components/methodology); may be '' for one-liners.
 SHIPPED: List[tuple] = [
+    ('2026-10-17', 'Per-bucket cash + funding', 'Live shows your real Kalshi balance + a deposit link; Demo has an app-controlled balance with a "Reload to $X" button (real sandbox fills, money we set — never touches the real demo balance); Paper has Add/Withdraw/Reset. Dashboard buckets show real balances; Funds page grouped Live → Demo → Paper → History. (Deployed + live.)'),
+    ('2026-10-17', 'Risk-management force-sell + portfolio caps', "auto-closes a deployment's positions when it draws down past a limit (25% default, per-user tunable, `0` disables), reusing the exact tested exit path; per-user open-notional / open-position caps on new entries. Also fixed a real-money bug: a partial exit fill was silently dropped (contracts sold but the DB kept the position open) — partial fills are now booked and the remainder retried. (Deployed + live.)"),
+    ('2026-10-17', 'Research-session live feed + pause/resume + run-stability', "a Claude-Code-style streaming agent log (fixed the swallowed/truncated entries), interrupt-and-continue (Pause/Resume, not just Cancel), and — the big one — research runs now reconnect on a stale DB connection instead of dying, and you're no longer billed for an infra failure. So runs actually complete and the gatekeeper can classify. (Deployed + live.)"),
+    ('2026-10-17', 'Realized demo-book line + slippage fixed, chart anchored', 'the "Kalshi dev (real)" line + per-trade slippage were empty because the replay priced the first-seen OOS contracts (disjoint from what the strategy trades) instead of the strategy\'s traded contracts; fixed, so both populate. The real line is now anchored to the simulated line at its start, so it reads as a real-vs-sim divergence instead of a floating stub. (Deployed + live.)'),
+    ('2026-10-17', 'Dashboard table cleanup', 'removed the Realized mini-sparkline; long strategy names wrap so the Deployed table fits instead of clipping. (Deployed + live.)'),
     ('2026-10-17', 'Engine resilience fix', 'one deployment\'s error (a stale-DB-connection blip, a bad key) in a trading tick no longer tears down the whole engine loop for everyone; a `decide()` exception now skips that deployment\'s tick and retries next slot. (Root-caused from a prod incident where an RDS outage thrash-restarted the engine.) Also: a live deployment paused for a genuinely-missing key now says "add your live Kalshi key" instead of the false "live trading is not enabled." (Deployed + live `cdd69d5`.)'),
     ('2026-10-17', 'Community feed cleanup', 'removed the post hover-highlight and the redundant top-right react/reply toolbar; actions stay bottom-left (reaction pills, add-emoji, reply/N-replies, Edit on own posts); the instant reactor tooltip is kept. (Deployed + live `cdd69d5`.)'),
     ('2026-10-17', 'Sandbox confiner installed on the worker', 'bubblewrap 0.10.0 installed and verified functional on the box, so arbitrary-quant **code strategies** now run in the kernel sandbox instead of being inert (fail-closed by design). (Done on prod.)'),
