@@ -1,0 +1,125 @@
+{
+  "mode": "synthetic UI preview; read-only fixtures, no real backend acceptance",
+  "checks": [
+    {
+      "theme": "tau",
+      "route": "/dashboard",
+      "title": [
+        "Overview",
+        "Paper portfolio",
+        "Paper performance",
+        "Recent research",
+        "Deployed"
+      ],
+      "content_present": true,
+      "no_rendered_error": true
+    },
+    {
+      "theme": "tau",
+      "route": "/research",
+      "title": [
+        "Research",
+        "Your sessions"
+      ],
+      "content_present": true,
+      "no_rendered_error": true
+    },
+    {
+      "theme": "tau",
+      "route": "/research/1",
+      "title": [
+        "Research session #1",
+        "Select a strategy"
+      ],
+      "content_present": true,
+      "no_rendered_error": true
+    },
+    {
+      "theme": "tau",
+      "route": "/strategies",
+      "title": [
+        "Strategy"
+      ],
+      "content_present": true,
+      "no_rendered_error": true
+    },
+    {
+      "theme": "tau",
+      "route": "/strategies/1",
+      "title": [
+        "Research session #1",
+        "Sample: fade overpriced tails"
+      ],
+      "content_present": true,
+      "no_rendered_error": true
+    },
+    {
+      "theme": "tau",
+      "route": "/deploy",
+      "title": [
+        "Position",
+        "Open positions",
+        "Ready to deploy"
+      ],
+      "content_present": true,
+      "no_rendered_error": true
+    },
+    {
+      "theme": "tau",
+      "route": "/funds",
+      "title": [
+        "Settings"
+      ],
+      "content_present": true,
+      "no_rendered_error": true
+    },
+    {
+      "theme": "tau",
+      "route": "/settings",
+      "title": [
+        "Settings"
+      ],
+      "content_present": true,
+      "no_rendered_error": true
+    },
+    {
+      "theme": "tau",
+      "route": "/settings/account",
+      "title": [
+        "Settings"
+      ],
+      "content_present": true,
+      "no_rendered_error": true
+    },
+    {
+      "theme": "tau",
+      "route": "/devlog",
+      "title": [
+        "Dev Logs",
+        "Shipping next",
+        "Shipped"
+      ],
+      "content_present": true,
+      "no_rendered_error": true
+    },
+    {
+      "theme": "meridian",
+      "route": "/dashboard",
+      "title": [
+        "Overview",
+        "Real money LIVE",
+        "Demo SANDBOX",
+        "Paper SIMULATION",
+        "Paper performance",
+        "Recent research",
+        "Deployed"
+      ],
+      "content_present": true,
+      "no_rendered_error": true,
+      "matching_bundle": true
+    }
+  ],
+  "page_errors": [],
+  "api_fixture_failures": [],
+  "passed": true
+}

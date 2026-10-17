@@ -24,6 +24,7 @@ Python 3.12 or newer is required. The core uses the standard library; it can als
 
 ## What is implemented
 
+- Read-only Kalshi KXBTC15M quotes and Coinbase BTC-USD observations through the existing infrastructure, with independent freshness/health and a deduplicated JSON update feed.
 - A resumable workflow and immutable, hashed specifications, code, trial registers, ledgers, verification receipts and decisions.
 - Protected analytical task tools for timing, returns, signed corporate actions, controlled assumptions, costs, exposure, research gates and fill reconciliation. Final values cite independently verified tool receipts; the model chooses actions through explicit current-handle schemas.
 - Configurable chat-completions-compatible and native Anthropic adapters, with durable reservations, bounded repairs, and pricing/model pins. The workflow has no provider SDK dependency.
@@ -38,6 +39,29 @@ Python 3.12 or newer is required. The core uses the standard library; it can als
 - Operator-only one-share paper controls, broker statement attribution, and consistent evidence/database backups.
 
 Architecture, stage criteria and limitations: [AGENT_ARCHITECTURE.md](docs/AGENT_ARCHITECTURE.md), [AGENT_ACCEPTANCE.md](docs/AGENT_ACCEPTANCE.md). Canonical implementation status/handoff: [PROGRESS.md](docs/PROGRESS.md).
+
+## Read Kalshi and Coinbase BTC feeds
+
+The existing collectors publish 20-second observations through the authenticated infrastructure HTTP API. Polygon's reader uses the standard library and preserves the platform's decimal strings. It exposes snapshots and updates for a future horizontal news-broadcast ticker. These observations are separate from the historical research imports and model context.
+
+From `trading_agent_new/`, use Python 3.12 or newer. Configure `DASHBOARD_USER` and `DASHBOARD_PASSWORD` in the private `.env` from the public template, or pass an existing private file with those fields to `--data-env`. The loader reads only those two names, literally; it does not execute the file or load unrelated model keys. The public configuration contains only the service `base_url`.
+
+```bash
+PYTHONPATH=src python3.12 -m quant_agent market-data snapshot \
+  --config config/market_data.example.json --data-env .env
+PYTHONPATH=src python3.12 -m quant_agent market-data watch \
+  --config config/market_data.example.json --data-env .env --iterations 4
+```
+
+An installed `quant-agent` accepts the same arguments. Omit `--data-env` when both credentials are already in the environment. Omit `--iterations` for continuous polling until Ctrl-C. The Python interface is `quant_agent.market_data.MarketDataReader(config, env_file=None)`, with `snapshot()` and `iter_updates(iterations=0)` methods; construction makes no network request.
+
+`snapshot` returns `received_at` and a `feeds` object with `kalshi` and `coinbase`, each containing `updates` and `health`. It selects the newest collected batch for each feed. `watch` emits one JSON object per line: `kind=market_data` carries the original table fields, `source`, stable `update_id`, receipt timestamp and row health; `kind=feed_health` records initial status and subsequent status/reason changes. Raw provider/error documents and HTTP credentials are omitted. The first poll catches up the preceding three minutes; overlapping source row IDs are not emitted twice. Each polled batch is ordered by collection time and row ID, and late rows retain their original time. Kalshi contract rotation retains distinct tickers and update identities.
+
+Health is `ok`, `stale` or `unavailable`. Collection age greater than 60 seconds is stale. Kalshi's cached WebSocket timestamp is checked independently, so a new database row cannot renew an old quote; missing source timestamps remain null with `freshness_basis=collection`. Coinbase's `last_trade_time_utc` is descriptive and does not date its bid/ask snapshot. A collector error or missing quote is explicit, and an older quote is not substituted for the newest failed snapshot.
+
+Polling uses a 20-second period, a fixed three-minute query window and 10-second HTTP timeouts. The reader fully paginates within a 10,000-row window limit and a 4 MiB response limit; oversized/malformed inputs produce unavailable health. It reports transient errors per feed and recovers on later polls. Authentication/configuration HTTP errors stop with sanitized output, and redirects are refused to protect credentials. Remote service URLs require HTTPS; HTTP is allowed for local fixtures. Snapshot exits 0 only when both feeds are healthy, otherwise 2. Watch exits 0 after its requested polls, 2 on terminal failure, or 130 on Ctrl-C; its health records establish whether a feed is current.
+
+The rolling window is an observation feed, not a durable archival replay: outages longer than three minutes may leave gaps, and restarting watch begins a new catch-up. These commands do not open the research store or connect a model/broker. UI rendering, model context, BTC backtesting and trading execution remain separate phases. Integration handoff and verification (local archive: `results/market_data_integration_2026-10-13/HANDOFF.md`) distinguish offline verification from authenticated live acceptance.
 
 ## Run a protected analytical task
 

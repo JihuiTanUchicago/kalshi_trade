@@ -549,6 +549,102 @@ def test_json_encoding_of_db_types():
 
 
 def test_spa_routes():
-    for path in ("/", "/research/12", "/strategies", "/strategies/3", "/deploy", "/funds", "/signin"):
+    for path in ("/", "/research/12", "/strategies", "/strategies/3", "/deploy", "/funds", "/signin",
+                 "/settings", "/settings/account", "/settings/billing", "/settings/system",
+                 "/billing", "/admin", "/system", "/devlog", "/settings/theme"):
         assert server.SPA_ROUTES.match(path)
     assert not server.SPA_ROUTES.match("/static/../etc/passwd")
+
+
+@pytest.mark.parametrize("path", ["/settings/admin", "/settings/../admin", "/settings/account/other", "/settings/theme/other"])
+def test_settings_rejects_unknown_or_nested_sections(path):
+    assert not server.SPA_ROUTES.match(path)
+
+
+@pytest.mark.parametrize("path", ["/settings", "/settings/account", "/settings/billing", "/settings/system", "/settings/theme", "/devlog"])
+def test_settings_deep_links_serve_the_versioned_app_without_a_database(path):
+    import io
+
+    handler = object.__new__(server.Handler)
+    handler.wfile = io.BytesIO()
+    headers = []
+    handler._headers = lambda *args: headers.append(args)
+    handler._send_static(path)
+    assert headers[0][0] == 200
+    assert headers[0][1] == "text/html; charset=utf-8"
+    assert b'/static/app.js?v=' in handler.wfile.getvalue()
+    assert b'{{js_v}}' not in handler.wfile.getvalue()
+
+
+@pytest.mark.parametrize("status", ["queued", "running", "succeeded", "failed", "cancelled"])
+def test_completed_session_reads_its_own_candidates(monkeypatch, status):
+    calls = []
+    monkeypatch.setattr(server.repo, "get_run", lambda cur, uid, rid: {
+        "id": rid, "kind": "research", "status": status,
+    })
+    monkeypatch.setattr(server.repo, "list_strategies", lambda cur, uid, **query: calls.append((uid, query)) or [])
+    monkeypatch.setattr(server.repo, "run_events", lambda *args: [])
+    monkeypatch.setattr(server.repo, "get_policy", lambda *args: None)
+    monkeypatch.setattr(server.repo, "latest_dream_event", lambda *args: None)
+    result = server.get_run(ctx(params=("7",)))
+    assert result["strategies"] == []
+    assert calls == [(1, {"run_id": 7})]
+
+
+def test_unknown_session_does_not_read_other_candidates(monkeypatch):
+    monkeypatch.setattr(server.repo, "get_run", lambda *args: None)
+    monkeypatch.setattr(server.repo, "list_strategies", lambda *args, **kwargs: pytest.fail("unexpected candidate read"))
+    with pytest.raises(server.ApiError) as error:
+        server.get_run(ctx(params=("7",)))
+    assert error.value.status == 404
+
+
+def test_strategy_query_keeps_owner_and_session_filters():
+    class ReadCursor(FakeCur):
+        def execute(self, sql, params):
+            self.sql, self.params = sql, params
+
+        def fetchall(self):
+            return []
+
+    cur = ReadCursor()
+    assert server.repo.list_strategies(cur, 9, run_id=7) == []
+    assert "s.user_id=%s" in cur.sql and "s.run_id=%s" in cur.sql
+    assert cur.params == [9, 7, 500, 0]
+
+
+def test_frontend_entrypoint_renders_current_assets_without_template_tokens():
+    import io
+
+    handler = object.__new__(server.Handler)
+    handler.wfile = io.BytesIO()
+    handler._headers = lambda *args: None
+    handler._send_static("/strategies")
+    html = handler.wfile.getvalue().decode()
+    assert "{{" not in html
+    assert "/static/app.css?v=" in html
+    assert "/static/app.js?v=" in html
+    assert f'data-build="{server._static_versions()["app.js"]}"' in html
+    assert "<script>" not in html
+    assert "'unsafe-inline'" not in server.CSP.split("script-src", 1)[1].split(";", 1)[0]
+    assert html.index("/static/session-data.js?v=") < html.index("/static/session-chat.js?v=")
+    assert html.index("/static/session-chat.js?v=") < html.index("/static/research-artifacts.js?v=") < html.index("/static/boot.js?v=")
+    assert 'id="tau-css"' in html
+    assert 'data-mer-css="/static/app.meridian.css?v=' in html
+    assert 'data-mer-js="/static/app.meridian.js?v=' in html
+
+
+@pytest.mark.parametrize("theme", ["tau", "meridian"])
+def test_theme_selection_updates_only_the_authenticated_user(monkeypatch, theme):
+    calls = []
+    monkeypatch.setattr(server.repo, "set_ui_theme", lambda cur, uid, value: calls.append((uid, value)))
+    assert server.set_ui_theme(ctx(body={"theme": theme})) == {"ok": True, "theme": theme}
+    assert calls == [(1, theme)]
+
+
+@pytest.mark.parametrize("theme", [None, "dark", "../meridian", True])
+def test_invalid_theme_cannot_reach_storage(monkeypatch, theme):
+    monkeypatch.setattr(server.repo, "set_ui_theme", lambda *a: pytest.fail("invalid theme stored"))
+    with pytest.raises(server.ApiError) as error:
+        server.set_ui_theme(ctx(body={"theme": theme}))
+    assert error.value.status == 400

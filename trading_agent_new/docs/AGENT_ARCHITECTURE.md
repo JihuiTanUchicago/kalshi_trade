@@ -39,6 +39,7 @@ Foundation-model weights remain fixed. V1 self-improvement means better performa
 | Interface | Contract |
 |---|---|
 | Model | `generate(ModelRequest) -> ModelResponse(content, input_tokens, output_tokens, metadata)` |
+| BTC market data | `MarketDataReader.snapshot() -> dict`; `iter_updates(iterations=0) -> Iterator[dict]`; original platform fields, explicit timestamps/health and stable source-row identities |
 | Research specification | Hypothesis; exact dataset; preselected risky baseline; scored dates; lookback; decision timing; costs; uncertainty; rejection gates; source hashes; fixed limits |
 | Strategy | `target_weights(context, state) -> {weights: {stable_id: weight}, state: JSON object}` |
 | Evidence | Immutable JSON envelope `{kind,payload}` addressed by SHA-256; hash verified on every read |
@@ -59,6 +60,28 @@ The database uses SQLite with WAL and transactions. General memory search uses F
 October 11 adds a bounded consolidation step after a finished independently challenged episode. The model selects three to six distinct approved procedures and exact paths from a supplied scalar catalog using short source handles. The host copies all values, validates every finding before any memory write, and retains the proposal and immutable reply receipts. One repair is permitted; failure saves no findings. A validated pending proposal resumes without a fresh model call, and completed consolidation is idempotent. The genuine first consolidation saved five findings and 17 exact observations from the rejected proxy study; this strengthens memory coverage without inventing profitable strategies or promoting data quality.
 
 The replacement learning protocol freezes new task scenarios, explicit output schemas/units/enums, the system instruction, source hashes, exact model/pricing configuration and all contexts before calls. All three conditions receive the same task rules. Verified context is selected by task relevance; the raw comparator uses unranked chunks of the same past research artifacts and events, with the same byte cap. The host's answer keys never enter model messages. A full 40-task/three-condition/two-repetition campaign retains the original strict grader and improvement/hard-error thresholds. Semantic diagnostics cannot override acceptance. The original campaign is retired and preserved; absolute scores across the two protocol versions are not a learning comparison. The original first-episode learning control is not overwritten by the replacement result.
+
+## Existing BTC infrastructure connection
+
+```mermaid
+flowchart LR
+    Collectors[Existing Kalshi and Coinbase collectors] --> DB[Existing MySQL observations]
+    DB --> HTTP[Authenticated GET /api/table]
+    HTTP --> Reader[Polygon MarketDataReader]
+    Reader --> Snapshot[Current snapshot JSON]
+    Reader --> Updates[Ordered JSON updates and health transitions]
+    Updates --> UI[Future horizontal broadcast ticker]
+```
+
+The reader lives in the merged Polygon package and uses standard-library HTTP; it does not import the infrastructure's pandas client or trading engine. It reads only `forward_quotes` for KXBTC15M and `coinbase_ticks` for BTC-USD. Configuration is `{base_url:HTTPS_SERVICE_URL}`; named dashboard credentials come from the environment or the existing literal env-file loader. The model loader remains a one-key wrapper over that shared parser. Constructing a reader performs no network access, and feed CLI commands return before research-store construction.
+
+Each poll fixes a three-minute UTC window before paging, using the existing inclusive `/api/table` contract. Window/response bounds prevent an invalid service from creating unbounded reads. Snapshot chooses the newest collected batch; update iteration orders each batch by collection time and source row ID, deduplicates the overlap and emits health transitions without replaying an unchanged row. IDs include the source, preventing collisions across the two tables. Contract tickers remain distinct through rotation. A restart starts a new catch-up; longer outages require a future durable replay mechanism.
+
+Native decimal strings and original table field names are retained. Infrastructure timezone-less collection timestamps have the repository's documented UTC meaning. Kalshi source time uses `ts_ms`, then `ts`, then an aware `time`; see the [official ticker contract](https://docs.kalshi.com/websockets/market-ticker). Coinbase ticker `time` dates the last trade and is exposed as `last_trade_time_utc`, separately from collection time; see the [official ticker contract](https://docs.cdp.coinbase.com/api-reference/exchange-api/rest-api/products/get-product-ticker). REST observations without a source timestamp expose null source time and collection-only freshness. Source/event time is not asserted as historical availability evidence.
+
+Collection age over 60 seconds is stale, with an independent 60-second Kalshi source-age check. Collector failures, missing quotes, nonfinite/out-of-range/crossed values and malformed/future timestamps cannot appear as healthy current data. Transient transport/service errors become independent feed-health records; authentication/configuration failures stop. Credentials, raw error bodies and raw source documents are excluded from output, redirects are refused, and remote URLs require HTTPS.
+
+This is an unqualified observation interface. It is not connected to generated strategy contexts, protected analytical jobs, qualification, memory, paper releases or trading execution. Financial and learning gates retain their existing evidence and results. The future UI consumes `market_data` and `feed_health` records as a horizontal broadcast feed. Canonical handoff (local archive: `../results/market_data_integration_2026-10-13/HANDOFF.md`) records verification and remaining live-access gates.
 
 ## Protected analytical task loop
 

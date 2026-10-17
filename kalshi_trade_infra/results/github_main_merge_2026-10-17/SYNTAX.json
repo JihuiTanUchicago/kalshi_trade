@@ -1,0 +1,75 @@
+[
+  {
+    "command": [
+      "-m",
+      "compileall",
+      "-q",
+      "kalshi_trade_infra/app",
+      "kalshi_trade_infra/data_pipeline"
+    ],
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "command": [
+      "-n",
+      "kalshi_trade_infra/scripts/load_app_secrets.sh"
+    ],
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "command": [
+      "node",
+      "--check",
+      "kalshi_trade_infra/app/static/app.js"
+    ],
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "command": [
+      "node",
+      "--check",
+      "kalshi_trade_infra/app/static/app.meridian.js"
+    ],
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "command": [
+      "node",
+      "--check",
+      "kalshi_trade_infra/app/static/boot.js"
+    ],
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "command": [
+      "node",
+      "--check",
+      "kalshi_trade_infra/app/static/session-data.js"
+    ],
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "command": [
+      "node",
+      "--check",
+      "kalshi_trade_infra/app/static/session-chat.js"
+    ],
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "command": [
+      "node",
+      "--check",
+      "kalshi_trade_infra/app/static/research-artifacts.js"
+    ],
+    "exit_code": 0,
+    "output": ""
+  }
+]

@@ -1,0 +1,101 @@
+{
+  "workstream": "tau-main-integration-20261017",
+  "status": "complete locally; combined source tested on shared main",
+  "main": {
+    "before": "f8ff5e22fb65ca24e9407d8fcc75a9734262a487",
+    "after": "0bd3bcf6ab80fd68d28594b63f11aad091326a19",
+    "upstream_commits": 67,
+    "source_files_reconciled": 58,
+    "new_branch_commit": false,
+    "pushed": false,
+    "deployed": false
+  },
+  "shared_checkout_tests": [
+    {
+      "scope": "kalshi_trade_infra",
+      "command": "TAU_ALPACA_ENABLED=0 TAU_MASSIVE_ENABLED=0 TAU_DATABENTO_ENABLED=0 TAU_EXA_ENABLED=0 TAU_WORLDMONITOR_ENABLED=0 APP_TEST_MYSQL=0 AWS_EC2_METADATA_DISABLED=true .venv/bin/python -m pytest tests/ -q --tb=short",
+      "exit_code": 0,
+      "passed": 849,
+      "skipped": 9,
+      "output": "........................................................................ [  8%]\n........................................................................ [ 16%]\n........................................................................ [ 25%]\n..........................................................ssssssss...... [ 33%]\n........................................................................ [ 41%]\n........................................................................ [ 50%]\n........................................................................ [ 58%]\n........................................................................ [ 67%]\n........................................................................ [ 75%]\n........................................................................ [ 83%]\n.....................................s.................................. [ 92%]\n..................................................................       [100%]\n849 passed, 9 skipped in 6.10s\n"
+    },
+    {
+      "scope": "trading_agent_new",
+      "command": "PYTHONPATH=src ../kalshi_trade_infra/.venv/bin/python -m pytest tests -q --tb=short",
+      "exit_code": 0,
+      "passed": 137,
+      "skipped": 22,
+      "output": "........sssssss........................... [ 45%]\n.....................................................sssssssssssssss.... [ 90%]\n...............                                                          [100%]\n137 passed, 22 skipped in 9.96s\n"
+    },
+    {
+      "scope": "frontend",
+      "command": "node --test tests/test_app_sessions.mjs tests/test_session_chat.mjs tests/test_research_artifacts.mjs tests/test_frontend_merge.mjs",
+      "exit_code": 0,
+      "passed": 39,
+      "skipped": 0
+    }
+  ],
+  "isolated_checkout_tests": {
+    "infra_passed": 849,
+    "infra_skipped": 9,
+    "sibling_passed": 137,
+    "sibling_skipped": 22,
+    "targeted_agent_provider_passed": 198,
+    "upstream_research_billing_compatibility_passed": 80
+  },
+  "browser": {
+    "broad_routes_themes": 11,
+    "broad_evidence": "BROWSER_SMOKE.json",
+    "focused_evidence": "FOCUSED_BROWSER_SMOKE.json",
+    "synthetic": true,
+    "no_real_backend_account_acceptance": true
+  },
+  "syntax": {
+    "python_app_and_data_pipeline": true,
+    "javascript_tau_meridian_boot": true,
+    "secret_loader_shell": true
+  },
+  "history": [
+    {
+      "stage": "first control test collection",
+      "result": "Pending agent.py merge markers prevented collection; superseded after resolution."
+    },
+    {
+      "stage": "control fixtures",
+      "result": "Three frontend readiness fixture failures lacked new get_kalshi_dev_key stub; corrected."
+    },
+    {
+      "stage": "agent provider fixtures",
+      "result": "Three tests lacked a fake heartbeat for the new cancellation path; corrected without weakening production checks."
+    },
+    {
+      "stage": "first browser smoke",
+      "result": "Old preview lacked demo bucket/autopilot fields; initial harness missed rendered error headings. Superseded by strict no-rendered-error + no API-fixture-failure assertions."
+    },
+    {
+      "stage": "second browser smoke",
+      "result": "Missing new dev-curve fixture returned 404; added documented dev_curve:null fixture; final strict 11-route smoke passed."
+    },
+    {
+      "stage": "extra git ref probe",
+      "result": "An independent ls-remote probe timed out; actual fetch succeeded and GitHub API independently confirmed pinned main. No source impact."
+    }
+  ],
+  "preservation": {
+    "backup": "/Users/jonathanzhang/Desktop/Polygon/.runtime/github-export/tau-main-backup-20261017_170009",
+    "files_snapshotted": 3018,
+    "stash": "2efc7a7bec9cb125651fc25eee09ea5cf1cafd09",
+    "private_file_contents_recorded": false,
+    "private_files_unchanged": true,
+    "historical_evidence_retained": true
+  },
+  "limitations": [
+    "World Monitor remains gated/WIP",
+    "Scoped chat backend contract unfinished",
+    "No production worker/model/provider/DB acceptance or deployment performed in this integration",
+    "Referenced Claude slash-command skills unavailable; manual review/devlog sync and runnable tests performed, no exhaustive security audit claimed"
+  ],
+  "completed_at": "2026-10-17T17:14:00.035550+08:00",
+  "preservation_evidence": "PRESERVATION.json",
+  "final_source_files": 58
+}

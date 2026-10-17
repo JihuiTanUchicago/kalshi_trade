@@ -1,8 +1,14 @@
 # Verified-memory research agent: stages and acceptance
 
-Release: **0.1.0 candidate**, updated October 11, 2026, Asia/Shanghai. The implemented workflow is available locally through the CLI. Offline verification, actual Docker validation and a genuine Grok research/memory episode on an exploratory Alpaca import are complete. Qualified-data acceptance, measured-learning acceptance and real broker operation remain separate gates. The canonical status and handoff are in [PROGRESS.md](PROGRESS.md).
+Release: **0.1.0 candidate**, updated October 13, 2026, Asia/Shanghai. The implemented workflow is available locally through the CLI. Offline verification, actual Docker validation and a genuine Grok research/memory episode on an exploratory Alpaca import are complete. Qualified-data acceptance, measured-learning acceptance and real broker operation remain separate gates. The canonical status and handoff are in [PROGRESS.md](PROGRESS.md).
 
 The first architecture improves a fixed foundation model through verified, persistent memory. It discovers hypotheses within a bounded research invocation, freezes a specification, implements a strategy, runs controls, challenges evidence, decides, and retrieves approved lessons for subsequent tasks. A separate worker executes eligible releases in an explicitly identified IBKR paper account. A rejected strategy is a valid research output.
+
+## BTC market-data access
+
+The read-only KXBTC15M/BTC-USD connection is implemented through the existing authenticated HTTP API. It exposes current snapshots and a deduplicated update stream for a future horizontal broadcast ticker, with collection/source timestamps and independent feed health. Twenty-two new local HTTP-fixture checks pass; full discovery passes 144 checks with 15 unchanged Docker checks skipped. These fixtures establish interface behavior, not live platform acceptance. Authenticated four-poll verification remains pending because dashboard credentials are not configured locally. The canonical handoff (local archive: `../results/market_data_integration_2026-10-13/HANDOFF.md`) records evidence and the remaining gate.
+
+This capability runs outside research state/model/broker operations and does not advance historical-data qualification, learning or trading gates. Public API, timing, error and bounded-replay behavior are documented in [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md) and the package README.
 
 ## Stage overview
 

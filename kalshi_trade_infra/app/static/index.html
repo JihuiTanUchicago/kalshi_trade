@@ -3,11 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#FBFBFA">
+<meta name="theme-color" content="#FCFCFC">
 <meta name="color-scheme" content="light">
 <title>Tau</title>
 <meta name="description" content="Describe an idea; an agent researches Kalshi Bitcoin markets, backtests on data it never saw, and only lets you trade what passed.">
 <link rel="icon" href="/static/icon.svg?v={{icon_v}}" type="image/svg+xml">
+<link rel="preload" href="/static/dm-sans-latin-9fea608a94.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap">
@@ -15,11 +16,14 @@
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<div id="app" aria-busy="true"></div>
+<div id="app" data-build="{{js_v}}" aria-busy="true"></div>
 <div id="tau-boot" hidden
   data-tau-js="/static/app.js?v={{js_v}}" data-tau-ver="{{js_v}}"
   data-mer-css="/static/app.meridian.css?v={{meridian_css_v}}"
   data-mer-js="/static/app.meridian.js?v={{meridian_js_v}}" data-mer-ver="{{meridian_js_v}}"></div>
+<script src="/static/session-data.js?v={{session_v}}" defer></script>
+<script src="/static/session-chat.js?v={{chat_v}}" defer></script>
+<script src="/static/research-artifacts.js?v={{artifacts_v}}" defer></script>
 <script src="/static/boot.js?v={{boot_v}}" defer></script>
 </body>
 </html>

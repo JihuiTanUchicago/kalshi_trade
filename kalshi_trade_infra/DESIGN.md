@@ -1,32 +1,31 @@
 ---
 name: Tau
 description: >
-  Two shipped worlds. The pre-login landing is a calm, white, rounded product page in Rubik
-  with one warm accent. The authed app is Kursbuch — a Swiss station-timetable for money: ink
-  on warm grey stock, hairline rules, Archivo figures, and one reserved signal red. The
-  operator console (dashboard_server.py) is the same Kursbuch world as a secondary surface.
+  Meridian is the customer app: Catalyst-inspired neutral surfaces, charcoal navigation,
+  local DM Sans, editorial serif research titles and compact financial evidence. The
+  operator console retains its independent Kursbuch palette and typography.
 colors:
   landing:
-    l-bg: "#FBFBFA"
-    l-ink: "#15161A"
-    l-ink-2: "#5B5F66"
-    l-ink-3: "#8A8E95"
-    l-line: "#E7E6E2"
-    l-accent: "#F05A28"
+    l-bg: "#FCFCFC"
+    l-ink: "#141414"
+    l-ink-2: "#3B3B3B"
+    l-ink-3: "#616161"
+    l-line: "#DBDBDB"
+    l-accent: "#141414"
   app:
-    stock: "#E9EBE5"
-    stock-live: "#EFE4E7"
-    stock-sunk: "#DFE2DA"
-    stock-raised: "#F1F3ED"
-    ink: "#191B16"
-    ink-2: "#444841"
-    ink-3: "#5F645D"
-    rule: "#C9CDC2"
-    rule-2: "#B1B6AA"
-    signal: "#C8102E"
-    signal-wash: "#F8E4E6"
-    pos: "#D9E7D6"
-    neg: "#F0DEDC"
+    stock: "#FCFCFC"
+    stock-live: "#FFF4F4"
+    stock-sunk: "#F0F0F0"
+    stock-raised: "#FAFAFA"
+    ink: "#141414"
+    ink-2: "#3B3B3B"
+    ink-3: "#616161"
+    rule: "#DBDBDB"
+    rule-2: "#BEBEBE"
+    signal: "#C62E42"
+    signal-wash: "#FFF0F1"
+    pos: "#EFF3E8"
+    neg: "#FCECEE"
   console:
     kursbuch-stock: "#E9EBE5"
     kursbuch-stock-live: "#EFE4E7"
@@ -50,84 +49,84 @@ colors:
 typography:
   landing:
     l-hero:
-      fontFamily: "Rubik, ui-sans-serif, system-ui, sans-serif"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
       fontSize: "clamp(38px, 6.4vw, 68px)"
       fontWeight: 600
       lineHeight: 1.04
       letterSpacing: "-0.03em"
     l-sub:
-      fontFamily: "Rubik, ui-sans-serif, system-ui, sans-serif"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
       fontSize: "clamp(17px, 2.1vw, 21px)"
       fontWeight: 400
       lineHeight: 1.5
     l-wordmark:
-      fontFamily: "Rubik, ui-sans-serif, system-ui, sans-serif"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
       fontSize: "20px"
       fontWeight: 600
       letterSpacing: "-0.01em"
     l-pill:
-      fontFamily: "Rubik, ui-sans-serif, system-ui, sans-serif"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
       fontSize: "15px"
       fontWeight: 500
       lineHeight: 1
     l-line-item:
-      fontFamily: "Rubik, ui-sans-serif, system-ui, sans-serif"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
       fontSize: "clamp(16px, 2.3vw, 22px)"
       fontWeight: 400
     l-fine:
-      fontFamily: "Rubik, ui-sans-serif, system-ui, sans-serif"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
       fontSize: "14px"
       fontWeight: 400
       lineHeight: 1.6
   app:
     page-title:
-      fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
-      fontSize: "clamp(23px, 3vw, 30px)"
-      fontWeight: 600
-      letterSpacing: "-0.02em"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
+      fontSize: "clamp(23px, 2.5vw, 28px)"
+      fontWeight: 500
+      letterSpacing: "-0.04em"
     said:
-      fontFamily: "Archivo Narrow, Archivo, sans-serif"
-      fontSize: "clamp(15px, 2vw, 19px)"
-      fontWeight: 600
-      lineHeight: 1.35
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
+      fontSize: "13px"
+      fontWeight: 400
+      lineHeight: 1.4
     fig:
-      fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
-      fontSize: "clamp(21px, 2.6vw, 27px)"
-      fontWeight: 600
-      letterSpacing: "-0.015em"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
+      fontSize: "clamp(22px, 2.5vw, 30px)"
+      fontWeight: 500
+      letterSpacing: "-0.04em"
       lineHeight: 1.1
       fontFeature: "tabular-nums lining-nums"
     section-head:
-      fontFamily: "Archivo Narrow, Archivo, sans-serif"
-      fontSize: "13px"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
+      fontSize: "14px"
       fontWeight: 600
-      letterSpacing: "0.13em"
+      letterSpacing: "-0.015em"
     body:
-      fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
       fontSize: "14px"
       fontWeight: 400
-      lineHeight: 1.45
+      lineHeight: 1.4
       fontFeature: "tabular-nums lining-nums"
     table:
-      fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
       fontSize: "13px"
       fontWeight: 400
       fontFeature: "tabular-nums lining-nums"
     lab:
-      fontFamily: "Archivo Narrow, Archivo, sans-serif"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
       fontSize: "11px"
       fontWeight: 400
-      letterSpacing: "0.11em"
+      letterSpacing: "0.02em"
     mark:
-      fontFamily: "Archivo Narrow, Archivo, sans-serif"
+      fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif"
       fontSize: "11px"
       fontWeight: 600
       letterSpacing: "0.09em"
     wordmark:
-      fontFamily: "Archivo Narrow, Archivo, sans-serif"
-      fontSize: "13px"
-      fontWeight: 600
-      letterSpacing: "0.16em"
+      fontFamily: "Georgia, serif"
+      fontSize: "26px"
+      fontWeight: 400
+      letterSpacing: "-0.06em"
 rounded:
   app-nick: "3px"
   pill: "999px"
@@ -139,11 +138,11 @@ spacing:
   landing-maxw: "1120px"
   landing-gutter: "clamp(20px, 5vw, 40px)"
   app-maxw: "1600px"
-  app-gutter: "clamp(14px, 2.2vw, 28px)"
-  app-foot: "72px"
-  app-section: "32px"
-  cell: "15px 18px 14px"
-  measure-min: "160px"
+  app-gutter: "clamp(12px, 1.6vw, 24px)"
+  app-foot: "32px"
+  app-section: "20px"
+  cell: "12px 16px"
+  measure-min: "0px; four equal columns, two on phone"
 components:
   pill:
     backgroundColor: "#FFFFFF"
@@ -166,7 +165,7 @@ components:
     textColor: "{colors.app.ink}"
     typography: "{typography.app.mark}"
     rounded: "{rounded.app-nick}"
-    padding: "7px 14px 6px"
+    padding: "7px 11px"
     border: "1px {colors.app.ink}"
   btn-primary:
     backgroundColor: "{colors.app.ink}"
@@ -205,13 +204,13 @@ components:
     backgroundColor: "{colors.app.stock-raised}"
     textColor: "{colors.app.ink}"
     rounded: "0px"
-    padding: "16px"
+    padding: "12px"
     border: "1px {colors.app.rule}"
   sheet-doc:
     backgroundColor: "{colors.app.stock-raised}"
     textColor: "{colors.app.ink}"
     rounded: "0px"
-    padding: "24px"
+    padding: "16px"
     border: "1px {colors.app.rule}"
   chat:
     backgroundColor: "{colors.app.stock-raised}"
@@ -240,7 +239,7 @@ components:
     backgroundColor: "{colors.app.stock-raised}"
     textColor: "{colors.app.ink}"
     rounded: "0px"
-    padding: "16px 16px 14px"
+    padding: "12px 0"
     border: "1px {colors.app.rule}"
   verdict-pass:
     backgroundColor: "#DCEFE3"
@@ -271,6 +270,231 @@ components:
     textColor: "#F1F3ED"
 ---
 
+## Overview heading — October 16, 2026, Asia/Shanghai
+
+Use the shared page-title typography and spacing for Overview, without a subtitle
+or bottom rule. Retain New research, the portfolio-first body and compact Hot Markets.
+Live realized P&L/history warnings sit with account details; deployed status stays
+in its rows. Verification (local archive: `results/overview_heading_cleanup_2026-10-16/HANDOFF.md`).
+
+## Compact Hot Markets heading — October 16, 2026, Asia/Shanghai
+
+Match the supplied Position-page screenshot by using its existing natural heading
+height on every page. Dashboard no longer stretches Hot Markets to its Overview
+header. Remove that measurement and CSS minimum height. Both visibility controls
+stay removed; panel width, top navigation, quote rendering, phone flow and all
+other restored page styling remain. This supersedes divider alignment with Overview.
+Verification (local archive: `results/hot_markets_compact_heading_2026-10-16/HANDOFF.md`).
+
+## Hot Markets under the header — October 15, 2026, Asia/Shanghai
+
+One black header spans the viewport. Put the quote panel and page in a shared grid
+row beneath it, with their top edges aligned to the header bottom. The neutral
+one-pixel panel rules join its divider. Above 600px, reserve 248–306px for the rail;
+below that, stack the panel between the header and page. This replaces the earlier
+body-offset placement that pushed the header to the right of the rail.
+
+Keep normal document scrolling. The sticky rail fits the remaining viewport on
+mount, resize and passive scroll; toggling explicitly remeasures the active chart
+because the outer app now retains full width. Keep the chevron-only control,
+accessible labels, quote content/refresh, saved state and existing page features.
+Verified with 282 browser assertions, 29 Node tests and 17 focused Python tests;
+JavaScript syntax passes. GPT-6.1 Sol approved this integration at **9.2/10**.
+Handoff and independent review (local archive: `results/hot_markets_header_2026-10-15/HANDOFF.md`).
+
+## Hot Markets icon toggle — October 15, 2026, Asia/Shanghai
+
+The left header control is an icon-only double chevron: right when closed, left
+when expanded. Preserve its accessible action/state labels and provide the same
+action as a native tooltip. Use a 32px desktop target and retain the 44px coarse
+pointer target. Remove RIGHT NOW, its dot and the text label on the black header;
+keep Hot markets as the quote-panel title. Existing dock/phone flow, close focus,
+quotes, navigation and financial controls remain unchanged.
+GPT-6.1 Sol approved this refinement at **9.3/10**; 57 browser checks pass.
+Verification and independent review (local archive: `results/hot_markets_toggle_2026-10-15/HANDOFF.md`).
+
+## Hot Markets dock — October 15, 2026, Asia/Shanghai
+
+The Hot Markets toggle comes first on the left of the shared header. Above 600px,
+reserve a 248–306px rail beside the entire app, including navigation. Remove the
+old tablet overlay exception. Panel visibility and reserved width change together;
+charts measure the resulting content width. The header navigation can scroll
+within its available space.
+
+At 600px and below, place the bounded-height quote panel above the app in normal
+document flow. Keep full page width and an independently scrolling quote list.
+The existing close control restores trigger focus; quotes, refresh, saved state
+and SPA navigation remain. Existing public-page cleanup removes the app rail.
+
+GPT-6.1 Sol approved this integration at **9.2/10**, with no blockers or feature
+loss. 246 browser assertions, 29 Node tests and 17 focused Python tests pass.
+This scoped review is separate from the earlier overall visual design gate.
+Canonical handoff (local archive: `results/hot_markets_dock_2026-10-15/HANDOFF.md`).
+
+## Copy cleanup — October 15, 2026, Asia/Shanghai
+
+Use headings, controls, results and concise state/error messages. Remove repeated
+page decks, workflow tutorials, marketing claims in payment dialogs and instructions
+that repeat the adjacent action. Shorten System descriptions to their diagnostic
+purpose. Keep labels/accessibility, generated strategy/chat content, financial fees
+and limits, paper/live risk/consent, data provenance and saved/scenario distinctions.
+The removed Passed glossary exclusivity claim contradicted the existing deployment
+controls; those controls and their unvalidated-strategy warnings remain unchanged.
+
+User-required GPT-6.1 Sol review after each revision: baseline **6.3/10**, iteration 1
+**9.1/10**, final iteration **9.2/10**, approved with no harmful deletions. Final source
+was fixed during review. This satisfies the copy-cleanliness gate; the earlier
+overall visual design gate remains separate. Verified with 123 browser assertions,
+29 existing Node tests and 17 focused Python tests. Only associated CSS change is
+right alignment of Send after removing its keyboard tutorial.
+Canonical handoff and review history (local archive: `results/frontend_copy_cleanup_2026-10-15/HANDOFF.md`).
+
+## Dashboard layout — October 15, 2026, Asia/Shanghai
+
+The approved Dashboard order is paper portfolio/open positions, paper performance,
+then recent research. Use two account columns on desktop and stack them at 760px
+and below. Keep the complete deployed table and recently settled trades below
+research. Reuse the existing data, formatters, disclosures, links and measured
+performance plot. The chart continues to represent cumulative closed P&L.
+
+The user explicitly retained the current Hot Markets header trigger and drawer.
+Do not apply the rolling-quote banner from the earlier design preview. Other pages
+and the shared shell retain their current presentation.
+
+Local sample checks: 79 browser assertions across four widths, 29 existing Node
+tests and 17 focused Python tests pass. Optional research-read failure/recovery
+retains the account and chart. Canonical handoff (local archive: `results/dashboard_layout_2026-10-15/HANDOFF.md`).
+
+## Settings consolidation — October 15, 2026, Asia/Shanghai
+
+One Settings main-navigation entry replaces Account, Billing, System and the
+operator-only Admin entry. Horizontal Account/Billing/System section links follow
+the selected preview alternative and remain native, keyboard-accessible links.
+The existing operator-mode switch remains a separate visibility control; restricted
+users/waitlist/grants expand within System. Current access guards and legacy URLs
+remain intact.
+
+Keep one Settings heading. Remove repeated page introductions, balance captions,
+and the system's instructional empty panel; select Kalshi by default. Collapse
+Kalshi connection instructions and operator tools. Keep paper/live distinctions,
+key verification/encryption meaning, card/fee/usage information, validation and
+error states. Auto-reload has two labelled fields. Reuse Meridian spacing and
+unboxed sections; preserve the full system graph with a keyboard-accessible scroll
+region on phones so node labels stay readable. Late requests cannot overwrite a
+different section; operator and telemetry reads fail independently.
+
+Local integration; configured-account/payment and deployment acceptance remain
+separate. Canonical handoff (local archive: `results/settings_integration_2026-10-15/HANDOFF.md`).
+
+## Meridian integration — October 15, 2026, Asia/Shanghai
+
+The latest user direction applies the selected Catalyst-palette Meridian concept to
+local main and explicitly tightens whitespace. This supersedes older customer-app
+Kursbuch/Tote presentation rules below; the operator console remains unchanged.
+
+Use #FCFCFC / #FAFAFA / #F0F0F0 surfaces, #141414 ink, #DBDBDB rules,
+#4B6525 positive evidence and #C62E42 losses/financial warnings. The charcoal
+navigation carries all existing sections. DM Sans is bundled under SIL OFL with
+an immutable content-hashed filename; Georgia supplies research titles.
+No font CDN is needed by the current entrypoint.
+
+Overview joins the existing dashboard data with six recent research sessions at
+most, each represented by one native session link. Paper balances, deposits/ROI,
+position count, live/stale/paused states, deployment rows, shared-scale sparklines,
+open and settled trades remain. Paper performance sums actual closed daily P&L over the displayed period; it
+is labelled cumulative closed P&L, never account equity. Daily values remain
+available in a native disclosure. Zero/one-day data retains the truthful bar/empty
+fallback, with losses below zero. Optional session-read errors cannot
+hide account data. No prototype fixture or fabricated portfolio curve enters the app.
+
+Density: 12px panel padding, 20px sections, 18.2px conversation line-height,
+12px message intervals, 14px evidence inset and 18px between workspace panes
+with a narrower conversation. Overview rows use one-line visual truncation while
+full prompts remain in the native link/accessibility text and session itself.
+Its measured performance plot is 176px high; strategy evidence remains 236px.
+A header Hot Markets trigger replaces the collapsed side rail and preserves
+its persistent drawer, refreshes, accessible expanded state and closing focus. Body
+text remains 13–14px; touch controls retain 44px. Evidence uses one canvas and a
+single divided action rail. All original rules, backtests, scenario semantics,
+gates, paper/live guards, tab/draft state and scoped-chat limitations remain.
+Consecutive messages by the same speaker/context/minute share visible metadata;
+individual source records and machine-readable times remain in the DOM.
+
+Integration evidence and current status (local archive: `results/meridian_main_integration_2026-10-15/ITERATIONS.json`).
+Critic history is unfiltered; no 9/10 result is claimed at this milestone.
+
+
+## Approved workspace copy/control cuts — October 15, 2026
+
+User approved review cuts C1–C11/B1–B2. Keep a single session status and clickable
+strategy count; remove the duplicate conversation/composer/serial headings and
+workspace backlink. Message groups use compact strategy badges, retaining target
+IDs on every message for accessible provenance. Research has one concise purpose
+line and a concrete example; progress/background-work hints remain.
+
+Position cards keep unique strategy titles/stakes and separate paper/live actions,
+without per-card Deploy headings or unrelated what-if instructions. A platform-wide
+live-disabled notice appears once; strategy-specific restrictions remain on their
+cards. The empty board uses the Ready-to-deploy library link. Artifact saved-rule
+warnings, sample/unseen evidence, exact spec, gates and original actions remain.
+
+Label synthetic chat **Sample conversation**. Consolidate the duplicate demo
+revision into one current card, preserving chronological proposal/backtest stages.
+Source messages and distinct real proposals are not filtered or merged. All
+backend, authorization and financial behavior remain unchanged. Canonical
+cleanup handoff (local archive: `results/research_ui_cleanup_2026-10-15/HANDOFF.md`).
+
+
+## Current Research workspace — October 15, 2026, Asia/Shanghai
+
+Local main now includes upstream e40d060 with the compatible Research workspace.
+Retain Explore/Hot Markets, public owner-scoped System, six research markets,
+depth/run-forever/automatic market selection, pagination and upstream deployment
+warnings. The collapsible market drawer can cover narrow-screen content while open;
+its collapse control exposes the workspace. Local sync evidence (local archive: `results/local_main_frontend_sync_2026-10-15/HANDOFF.md`).
+
+Started October 14, **after the separate Research/Strategies restoration was
+completed**. The user treats research sessions as conversations and strategies as
+generated artifacts. The active session now has chat/activity/all-status artifact
+links on the left, opened artifact tabs and full restored strategy sheets on the
+right. Open/switch/close and arrow/Home/End navigation keep artifact identity,
+scenario state and reading position. <=800px switches Conversation/Strategies
+panes; closing the last artifact restores conversation focus.
+
+Full Tau restores Strategy between Research and Explore, with its own
+active-tab identity and the existing filters/URLs. Strategy links still open
+Research artifacts, including standalone/adjustment review. Retain every
+strategy metric, thesis/rule/spec, chart, saved/scenario distinction, gate and
+paper/live control. Position adds eligible strategies using the same deployment
+component; its existing deployment/positions/account-wide chat/autopilot stay.
+Account, Billing, Community, Admin/System and unrelated cleanup are preserved.
+
+Reuse the session conversation controller/contract: immutable targets, independent
+drafts, revision comparison/manual approval and disconnected/error recovery.
+Actual scoped backend routes remain unimplemented; the real API disables sends
+and retains drafts. Editing preview conversations/results are synthetic. Canonical
+workspace handoff (local archive: `results/research_artifact_workspace_2026-10-14/HANDOFF.md`).
+Earlier restoration and session layout sections below are historical references;
+this direction governs the active Research workspace.
+
+
+## Restoration receipt — separate Research and Strategies, October 14, 2026
+
+The user requested restoration of the previous sections while reconsidering the
+design. Active `/research` and `/research/{id}` show the upstream `99a5399` research
+form, history and run activity; `/strategies` and `/strategies/{id}` show the
+candidate list, filters and individual strategy sheet. Newer Billing, Community,
+Admin/System and unrelated landing/Account/Position cleanup remain. Saved backtest
+and scenario labels, responsive charts, route guards and deployment gates remain.
+
+The merged Agent Session and side-conversation approvals below are **historical,
+inactive design references**, superseded for the active UI by this restoration.
+Their exact local source, styling and helpers are preserved for further design
+work; session-scoped backend routes remain unimplemented. The original separate
+Tau typography/layout now applies to Research and Strategies. Canonical
+restoration handoff (local archive: `results/separate_research_strategies_2026-10-14/HANDOFF.md`).
+
+
 # Design System: Tau
 
 Tau ships **two visual worlds in one static app** (`app/static/index.html`, `app.css`,
@@ -293,6 +517,41 @@ The retired **"Tote Slip"** direction (green tote board, amber figures, thermal 
 ---
 
 # World 1 — The Landing (Persuade surface)
+
+## Approved session conversation — October 14, 2026
+
+The user approved Side conversation and scoped implementation to UI plus a backend
+connection contract. The off-white chat panel has a connection label, scrollable
+transcript, candidate context and a stable composer. Drafts survive three-second
+chat polling and two-second research refreshes. Reading older messages keeps the
+scroll position; new arrivals follow when already near the bottom. User text,
+agent text and errors are escaped. Original strategy IDs remain attached to
+suggestions when the shared picker changes.
+
+A warm suggestion card shows parameter diffs. Backtest revision leads to a
+saved-versus-proposed unseen-result comparison on the original candidate; saving
+requires current gate evidence and backend capability. Creating a new candidate
+preserves the original. Paper adjustment targets are explicit; live adjustment approval
+stays outside this session UI. Missing backend, interrupted reads, empty history,
+agent busy, sending and rejected/applied suggestions have text states. Failed
+sends/actions retain the draft and error. No agent reply or backtest is simulated
+inside production frontend code.
+
+Backend session routes are not implemented in this stage. Integration requirements
+are in [SESSION_CHAT_API.md](app/SESSION_CHAT_API.md); actual-asset synthetic HTTP
+and browser evidence is in the session UI handoff (local archive: `results/session_chat_ui_2026-10-14/HANDOFF.md`).
+
+## Upstream compatibility sync — October 14, 2026
+
+The approved Strategy/session conversation layout is retained after pulling
+`99a5399` (40 commits). Billing is added to the shared navigation, while Research
+and Strategies remain combined. Incoming glossary markers, Community reactions,
+photo/edit controls, operator switch, Admin/System pages and payment-dialog styles
+are preserved. The session composer and global modal honor `needs_card`; no
+operator exemption is introduced. Actual-handler synthetic data verifies the
+current read contracts and server card/credit gates. Session-specific chat routes
+remain absent, so actual-backend views show Not connected and keep the draft.
+Canonical compatibility evidence: sync handoff (local archive: `results/github_frontend_sync_2026-10-14/HANDOFF.md`).
 
 ## Overview
 
@@ -408,6 +667,87 @@ the full-colour **Google "G"**. Preview rows reuse the app's 1.8-stroke `check` 
 ---
 
 # World 2 — The App (Kursbuch, authed)
+
+## Approved copy and control cleanup — October 14, 2026
+
+The user approved the frontend review's cuts. Show state once per session card;
+retain actual thesis/error details and queue information. A card is one native
+link with a full-card keyboard focus outline and no duplicate footer button.
+Filter/history counts make the header's repeated count sentence unnecessary.
+
+The landing keeps header Sign in and one primary hero Join waitlist action; the
+footer remains a contextual return action. Chat uses its composer placeholder
+instead of scope/empty-state filler. Revision diffs show changed fields only.
+An open desktop comparison owns its decision buttons, with focus transferred
+into the review and returned on close. Mobile keeps separate pane access and
+chat controls when evidence is hidden. Account summary contains actual balances,
+with custody explained once beside the Kalshi connection.
+
+Costs, verdicts, paper/live distinctions, failure/connection states and the
+saved-rule/scenario explanation remain meaningful content. This is a presentation
+cleanup, not a backend or trading-policy change. Verification and handoff (local archive: `results/frontend_cleanup_2026-10-14/HANDOFF.md`).
+
+## Approved Strategy revision — October 14, 2026
+
+The user approved the Session cards draft based on `mvp.md`'s UI section. This
+revision supersedes the older row/slip and typography rules below **for Strategy
+only**. The shared navigation now reads Dashboard, Strategy, Position, Community,
+Account; existing routes and other screens retain their layouts.
+
+Strategy uses the existing sage stock with Rubik, opaque off-white cards, 12px
+card radii, 8px controls and no shadows. Cards show Researching, Pending review
+or Deployed with words and glyphs, warm review and green deployment washes,
+candidate counts and honest unseen metrics. Completed failures, cancellations
+and no-passing results are folded into inspectable history. Partial deployments
+show remaining review counts.
+
+The card grid has two columns, stacking at 520px. The approved session conversation
+revision moves candidate selection above a shared workspace: thesis, rules,
+backtest and decisions on the left, a 340px conversation panel on the right
+(310px at intermediate widths). At <=800px, Evidence and Conversation buttons
+switch the visible pane. Active research shows activity beside the same composer.
+The chart redraws to the available width and keeps the unseen cutoff visible.
+Saved backtest and What-if scenario are explicit labels; scenarios update the
+sheet and gates using the existing evaluator but never change the deployable
+saved rule. Keyboard focus styles, text state labels and coarse-pointer control
+sizes are retained. Browser geometry at 360px and 760px and desktop screenshots
+were verified with synthetic fixtures; this is not live-account acceptance.
+Canonical evidence: Strategy UI handoff (local archive: `results/strategy_ui_2026-10-14/HANDOFF.md`).
+
+## Approved session conversation — October 14, 2026
+
+The user approved Side conversation and scoped implementation to UI plus a backend
+connection contract. The off-white chat panel has a connection label, scrollable
+transcript, candidate context and a stable composer. Drafts survive three-second
+chat polling and two-second research refreshes. Reading older messages keeps the
+scroll position; new arrivals follow when already near the bottom. User text,
+agent text and errors are escaped. Original strategy IDs remain attached to
+suggestions when the shared picker changes.
+
+A warm suggestion card shows parameter diffs. Backtest revision leads to a
+saved-versus-proposed unseen-result comparison on the original candidate; saving
+requires current gate evidence and backend capability. Creating a new candidate
+preserves the original. Paper adjustment targets are explicit; live adjustment approval
+stays outside this session UI. Missing backend, interrupted reads, empty history,
+agent busy, sending and rejected/applied suggestions have text states. Failed
+sends/actions retain the draft and error. No agent reply or backtest is simulated
+inside production frontend code.
+
+Backend session routes are not implemented in this stage. Integration requirements
+are in [SESSION_CHAT_API.md](app/SESSION_CHAT_API.md); actual-asset synthetic HTTP
+and browser evidence is in the session UI handoff (local archive: `results/session_chat_ui_2026-10-14/HANDOFF.md`).
+
+## Upstream compatibility sync — October 14, 2026
+
+The approved Strategy/session conversation layout is retained after pulling
+`99a5399` (40 commits). Billing is added to the shared navigation, while Research
+and Strategies remain combined. Incoming glossary markers, Community reactions,
+photo/edit controls, operator switch, Admin/System pages and payment-dialog styles
+are preserved. The session composer and global modal honor `needs_card`; no
+operator exemption is introduced. Actual-handler synthetic data verifies the
+current read contracts and server card/credit gates. Session-specific chat routes
+remain absent, so actual-backend views show Not connected and keep the draft.
+Canonical compatibility evidence: sync handoff (local archive: `results/github_frontend_sync_2026-10-14/HANDOFF.md`).
 
 ## Overview
 
