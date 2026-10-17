@@ -1,5 +1,9 @@
 # Broker OAuth: teammate deployment
 
+Source review: [PR #10](https://github.com/JihuiTanUchicago/kalshi_trade/pull/10),
+branch `codex/broker-oauth-20261017` targeting main. The PR is open; production
+deployment remains pending.
+
 The user has assigned production deployment to their teammate. This source is
 locally verified; no production migration, configuration, restart or real broker
 consent has been completed. Local checks: **1,020 Python passed / 9 skipped;

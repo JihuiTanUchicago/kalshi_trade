@@ -6,13 +6,17 @@ Product truth is in `../PRODUCT.md`; the operator console (`data_pipeline/dashbo
 is unchanged and separate.
 
 For the teammate deploying this code, see [API credentials and server injection](DEPLOYMENT_SECRETS.md).
-Alpaca, Massive, Databento and Exa credentials are stored as five encrypted GitHub
+Alpaca, Massive, Databento and Exa market-data/news credentials use five encrypted GitHub
 Actions Secrets; a clone does not contain them. Tau’s ignored private `.env` also
 contains the configured keys. The guide covers explicit runtime injection through
 Actions or AWS, including the existing loader’s Alpaca limitation. No provider or
 production service was activated by the credential sync.
 
 ## Broker account authorization — local implementation
+
+Source is available for review in [PR #10](https://github.com/JihuiTanUchicago/kalshi_trade/pull/10).
+The teammate should follow [the deployment guide](BROKER_OAUTH_DEPLOYMENT.md);
+main merge, production installation and real consent remain pending.
 
 Settings → Account adds Alpaca Connect, Robinhood Trading MCP and approved IBKR
 OAuth1a connections, with session-bound state and encrypted per-user grants.

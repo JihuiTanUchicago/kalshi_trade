@@ -2,8 +2,8 @@
 
 ## Broker OAuth teammate handoff — October 17, 2026, Asia/Shanghai
 
-- **Status:** preparing review-branch publication / teammate-owned deployment (`tau-broker-oauth-teammate-handoff-20261017`). User selected teammate execution; no further desktop AWS/SSH request is pending. Canonical operator guide covers whole-app source, original/private versus GitHub workflow credential access, preserved encryption key, exact two-table migration, web-only restart, Tau invalidation, acceptance and rollback.
-- Publish the locally tested OAuth source and selected small evidence on a review branch/PR; no automatic main merge or deployment. Seven encrypted GitHub secrets already exist. Production/schema/configuration/real consent remain teammate acceptance work. [Operator guide](app/BROKER_OAUTH_DEPLOYMENT.md) · [Publication handoff](results/broker_oauth_2026-10-17/teammate_handoff_2026-10-17/HANDOFF.md).
+- **Status:** published for review / teammate handoff complete (`tau-broker-oauth-teammate-handoff-20261017`). User selected teammate execution; no further desktop AWS/SSH request is pending. Canonical operator guide covers whole-app source, original/private versus GitHub workflow credential access, preserved encryption key, exact two-table migration, web-only restart, Tau invalidation, acceptance and rollback.
+- [PR #10](https://github.com/JihuiTanUchicago/kalshi_trade/pull/10) publishes the locally tested source and selected safe evidence on `codex/broker-oauth-20261017`, targeting main. Initial source commit `473d624`/tree `9c5ee5b` exactly matches the GitHub object; main unchanged. Full pre-publication checks: **1,020 Python passed / 9 skipped; 55 frontend passed**. Handoff review and shell/Python/archive checks pass. No automatic merge, deployment or teammate message. Seven encrypted GitHub secrets already exist. Production/schema/configuration/real consent remain teammate acceptance work. [Operator guide](app/BROKER_OAUTH_DEPLOYMENT.md) · [Publication handoff](results/broker_oauth_2026-10-17/teammate_handoff_2026-10-17/HANDOFF.md).
 
 ## Broker OAuth rollout preparation and encrypted sync — October 17, 2026, Asia/Shanghai
 
