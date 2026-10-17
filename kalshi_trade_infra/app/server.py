@@ -279,7 +279,14 @@ def dashboard(ctx: Ctx):
 def _freshness(cur) -> Dict:
     raw = repo.history_freshness(cur)
     now = int(datetime.now(timezone.utc).timestamp())
-    return {k: (now - int(v) if v else None) for k, v in raw.items()}
+    out = {k: (now - int(v) if v else None) for k, v in raw.items()}
+    # Engine liveness: seconds since the deployment engine's last tick (None = never/dead). A stalled
+    # engine holding real positions is the worst silent failure, so it rides the same payload.
+    try:
+        out["engine"] = repo.engine_last_tick_age_seconds(cur)
+    except Exception:
+        out["engine"] = None
+    return out
 
 
 def _deployment_out(d: Dict, curve: List, unrealized: Optional[float] = None) -> Dict:

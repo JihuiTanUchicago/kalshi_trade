@@ -155,6 +155,8 @@ backstop**, never the only line of defence.
  │  • per-user caps: max_open_positions, max_open_notional (engine.decide)  │
  │  • loss guard: realized loss > 2× backtest worst DD ⇒ pause              │
  │  • drawdown force-sell: peak-to-now DD ≥ user limit ⇒ close + pause      │
+ │  • position stop-loss: any open pos down ≥ stop% of its cost ⇒ close+pause│
+ │  • auto-flatten: paused/stopped deployment with open pos ⇒ close all     │
  │  • live autopilot daily-loss kill switch ⇒ disable live + pause all      │
  │  ┌─ strategy layer (live_trading_engine) ─────────────────────────────┐  │
  │  │  • LiveSettingsRiskEngine: RED state, near-expiry, signal, caps     │  │
@@ -183,6 +185,46 @@ Key coupling invariants:
   exactly as before. The new knobs cannot enable trading; set empty they are a
   no-op, set non-empty they only tighten.
 
+### Risk-control matrix (app engine, `app/engine.py`)
+
+Each portfolio-layer control, what it measures, its threshold/knob, and what it
+does. All run every engine loop, each fully contained (one failure never stops
+the loop or the other deployments). **Every force-close routes through the one
+shared exit path `_close_position_at` → the mode's own kernel/paper sell — a
+force-sell never obtains an order path the normal exit couldn't already use, and
+an exit is never blocked by any risk control.**
+
+| Control (fn) | Scope | Measures | Threshold / knob | Action when breached |
+|---|---|---|---|---|
+| Per-user position cap (`decide`) | user, all deployments | open-position count | `max_open_positions` (dflt 20) | block **new entries** only |
+| Per-user notional cap (`decide`) | user, all deployments | open entry notional $ | `max_open_notional` (dflt $1000) | trim / block **new entries** only |
+| Loss guard (`loss_guard`) | one deployment | cumulative **realized** P&L | `max(2× backtest worst DD, 0.5× capital)` | pause (exits settle normally) |
+| Drawdown force-sell (`force_sell_if_drawn_down`) | one deployment | peak-to-now equity drawdown as **% of capital** | `drawdown_limit_pct` (dflt 25%, 0=off) | **close all + pause** |
+| **Position stop-loss** (`force_sell_if_drawn_down`) | one deployment | worst open position's loss as **% of its own cost** | `position_stop_pct` (dflt 40%, 0=off) | **close all + pause** |
+| **Auto-flatten on pause/stop** (`enforce_flatten_on_pause`) | paused/stopped deployments | any open position exists | always on | **close all** (status stays paused/stopped) |
+| Autopilot daily-loss kill switch (`enforce_autopilot_limits`) | user, live only | today's realized live loss | `autopilot_daily_loss_limit` (dflt $50) | disable live autopilot + pause all live |
+| Settlement (`settle_due`) | all open positions, any status | contract has a Kalshi result | contract expiry | book payout, close position |
+
+Notes:
+
+- **Drawdown vs position-stop — why both.** Drawdown is measured against the
+  *deployment capital* (stake × max_positions), so a small position that craters
+  is a large loss of *its* cost but a tiny fraction of capital and never trips the
+  25% capital guard (the exact reported gap: 6 @ 79¢ → 44¢ is −44% of a $4.74
+  cost but ~2% of a $100 base). The position-stop measures each open position
+  against *its own* cost, side-aware (YES ≈ `yes_bid`, NO ≈ `1−yes_bid`), so it
+  catches that case. Both are checked every tick; whichever fires first wins, and
+  both are named in the pause reason if both breach. **Default 40%**: it would
+  have stopped the reported position, sits mid of a 35–50% band, and on a 79¢
+  entry triggers near 47¢ — a clearly broken position, not BTC-market noise.
+- **Auto-flatten closes, never re-opens.** A paused/stopped deployment is swept
+  until flat; a resumed strategy starts fresh (intended). `stopped` is terminal
+  (`set_deployment_status` won't move off it), but flatten only *closes
+  positions*, so a stopped deployment ends flat while staying stopped. A
+  live/demo deployment with no execution path (gate off / no key) cannot close
+  here — it is logged **loudly** and its positions settle at expiry; exposure is
+  never left silently.
+
 ---
 
 ## 4. Idempotency & latency
@@ -197,6 +239,12 @@ Key coupling invariants:
   whatever was lying around. Lehalle–Mounjid note the value of liquidity
   prediction erodes with latency because there may be no time to cancel/reinsert
   — another reason Tau stays taker-only rather than managing resting quotes.
+- **Engine liveness.** Each loop writes a heartbeat (`repo.engine_heartbeat` →
+  `collector_state['recursive_engine_last_tick']`, the same liveness-row pattern
+  every collector + the `live_alerter` watchdog uses). `repo.engine_last_tick_age_seconds`
+  surfaces its age in the dashboard freshness payload (`freshness.engine`), so a
+  stalled-but-not-crashed engine still holding real positions is *visible*, not
+  silent — the worst failure mode on a money path.
 
 ---
 
