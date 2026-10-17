@@ -1205,14 +1205,14 @@
           <div class="overview-account-row">
             <div class="overview-buckets" style="display:grid;gap:18px">
               <section class="portfolio-overview"><header><h2>Real money <span class="mk live">LIVE</span></h2><span class="lab">Kalshi</span></header>
-                <dl class="portfolio-value"><dt class="vh">At work on the live exchange</dt><dd>${usd(d.live.open_at_cost)}</dd></dl>
+                <dl class="portfolio-value"><dt class="vh">${d.live.connected ? 'Your Kalshi cash' : 'Live account'}</dt><dd>${d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected'}</dd></dl>
                 <dl class="portfolio-metrics"><div><dt>Today</dt><dd>${money(d.live.today_pnl)}</dd></div><div><dt>All time</dt><dd>${money(d.live.realized_pnl)}</dd></div></dl>
-                <p class="hint">${d.live.open_positions} open position${d.live.open_positions === 1 ? '' : 's'}${d.live.open_positions || d.live.running ? '' : ' — real money untouched'}</p>
+                <p class="hint">${d.live.connected ? (d.live.balance == null ? 'Couldn’t read your Kalshi balance just now' : `${usd(d.live.open_at_cost)} at work · ${d.live.open_positions} open position${d.live.open_positions === 1 ? '' : 's'}`) : 'Connect your Kalshi account on the Account page to trade real money'}</p>
               </section>
               <section class="portfolio-overview"><header><h2>Demo <span class="mk dep">SANDBOX</span></h2><span class="lab">demo.kalshi.co</span></header>
-                <dl class="portfolio-value"><dt class="vh">At work on the sandbox</dt><dd>${usd(d.demo.open_at_cost)}</dd></dl>
-                <dl class="portfolio-metrics"><div><dt>Today</dt><dd>${money(d.demo.today_pnl)}</dd></div><div><dt>All time</dt><dd>${money(d.demo.realized_pnl)}</dd></div></dl>
-                <p class="hint">${d.demo.open_positions} open position${d.demo.open_positions === 1 ? '' : 's'}${d.demo.open_positions || d.demo.running ? '' : ' — no demo strategies yet'}</p>
+                <dl class="portfolio-value"><dt class="vh">Demo account value</dt><dd>${usd(d.demo.equity)}</dd></dl>
+                <dl class="portfolio-metrics"><div><dt>Today</dt><dd>${money(d.demo.today_pnl)}</dd></div><div><dt>P&amp;L</dt><dd>${money(d.demo.realized_pnl)}</dd></div></dl>
+                <p class="hint">${usd(d.demo.capital)} capital · ${d.demo.open_positions} open position${d.demo.open_positions === 1 ? '' : 's'}${d.demo.open_positions || d.demo.running ? '' : ' — no demo strategies yet'}</p>
               </section>
               <section class="portfolio-overview"><header><h2>Paper <span class="mk">SIMULATION</span></h2><span class="lab">USD</span></header>
                 <dl class="portfolio-value"><dt class="vh">Paper account value</dt><dd>${usd(p.equity)}</dd></dl>
@@ -1801,31 +1801,21 @@
       if (gen !== S.gen) return;
       const k = d.kalshi;
       const kd = d.kalshi_dev || { connected: false };
-      root.querySelector('#ffigs').innerHTML = fig('Paper cash', usd(d.paper.cash), { cls: 'lead' }) +
-        fig('Kalshi cash', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected');
+      const dm = d.demo || { capital: 0, equity: 0, realized: 0 };
+      root.querySelector('#ffigs').innerHTML = fig('Live money', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead' }) +
+        fig('Demo balance', usd(dm.equity)) +
+        fig('Paper cash', usd(d.paper.cash));
       root.querySelector('main').innerHTML = `<div id="flash"></div><div class="funds">
-        <section class="panel">
-          <h3>Paper account</h3>
-          <p class="hint" style="margin-bottom:14px">Simulated funds.</p>
-          <form id="paper" class="amount">
-            <label class="field"><span>Amount</span><input class="input" name="amount" type="number" min="1" max="100000" step="0.01" inputmode="decimal" required placeholder="500"></label>
-            <button class="btn" data-kind="deposit" type="submit">Add</button>
-            <button class="btn ghost" data-kind="withdraw" type="submit">Withdraw</button>
-          </form>
-          <div id="pflash" style="margin-top:10px"></div>
-          <h3 style="margin-top:24px">History</h3>
-          <table class="table settings-history"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody>
-            ${d.paper.ledger.map((r) => `<tr><td class="hint lead-cell">${when(r.created_at)}</td><td>${esc(r.memo || r.kind)}</td><td class="num ${tone(+r.amount)}">${usd(r.amount, true)}</td></tr>`).join('')}
-          </tbody></table>
-        </section>
         <section class="panel">
           <h3>Kalshi account (live money)</h3>
           ${k.connected ? `
             <dl class="kv"><dt>API key</dt><dd>${esc(k.key_id)}</dd><dt>Cash at Kalshi</dt><dd>${k.balance == null ? 'Couldn’t read it just now' : usd(k.balance)}</dd></dl>
+            <p class="hint" style="margin-bottom:14px">Your real Kalshi balance. We never hold your money — deposits and withdrawals happen at Kalshi.</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <a class="btn" href="${esc(k.funding_url)}" target="_blank" rel="noopener">Manage funds at Kalshi ${ICON.ext}</a>
               <button class="btn danger" id="disconnect">Disconnect</button>
             </div>` : `
+            <p class="hint" style="margin-bottom:12px">Connect your Kalshi key to see your real balance and trade real money. We never hold your funds.</p>
             <details class="settings-connect"><summary class="btn primary">Connect Kalshi</summary>
             <ol class="steps"><li>In Kalshi, open Account → API keys and create a key.</li><li>Copy the key ID and download the private key.</li><li>Paste both below. The key is verified and encrypted before saving.</li></ol>
             <form id="kalshi" style="display:grid;gap:12px">
@@ -1837,6 +1827,14 @@
         </section>
         <section class="panel">
           <h3>Kalshi demo (sandbox) account</h3>
+          <dl class="kv"><dt>Demo balance</dt><dd>${usd(dm.equity)}</dd><dt>Starting capital</dt><dd>${usd(dm.capital)}</dd><dt>P&amp;L since reload</dt><dd class="${tone(dm.realized)}">${usd(dm.realized, true)}</dd></dl>
+          <p class="hint" style="margin-bottom:14px">Real sandbox fills, app-controlled money. Reload to any amount; your real demo-account balance is never touched.</p>
+          <form id="demo" class="amount">
+            <label class="field"><span>Reload to</span><input class="input" name="amount" type="number" min="1" max="100000" step="0.01" inputmode="decimal" required placeholder="1000"></label>
+            <button class="btn" type="submit">Reload demo</button>
+          </form>
+          <div id="dmflash" style="margin-top:10px"></div>
+          <h3 style="margin-top:24px">Demo key</h3>
           ${kd.connected ? `
             <dl class="kv"><dt>Demo key</dt><dd>${esc(kd.key_id)}</dd></dl>
             <button class="btn danger" id="dev-disconnect">Remove demo key</button>` : `
@@ -1848,7 +1846,31 @@
               <button class="btn" type="submit">Verify and connect demo</button>
             </form></details>`}
           <div id="kdflash" style="margin-top:10px"></div>
+        </section>
+        <section class="panel">
+          <h3>Paper account (simulation)</h3>
+          <p class="hint" style="margin-bottom:14px">App-controlled practice money. Add, withdraw, or reset to a fresh starting balance.</p>
+          <form id="paper" class="amount">
+            <label class="field"><span>Amount</span><input class="input" name="amount" type="number" min="1" max="100000" step="0.01" inputmode="decimal" required placeholder="500"></label>
+            <button class="btn" data-kind="deposit" type="submit">Add</button>
+            <button class="btn ghost" data-kind="withdraw" type="submit">Withdraw</button>
+            <button class="btn ghost" data-kind="reset" type="submit">Reset to</button>
+          </form>
+          <div id="pflash" style="margin-top:10px"></div>
+        </section>
+        <section class="panel">
+          <h3>Paper history</h3>
+          <table class="table settings-history"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody>
+            ${d.paper.ledger.map((r) => `<tr><td class="hint lead-cell">${when(r.created_at)}</td><td>${esc(r.memo || r.kind)}</td><td class="num ${tone(+r.amount)}">${usd(r.amount, true)}</td></tr>`).join('')}
+          </tbody></table>
         </section></div>`;
+      const df = root.querySelector('#demo');
+      if (df) df.onsubmit = async (e) => {
+        e.preventDefault();
+        await busy(df.querySelector('button'), async () => {
+          try { await api('/api/funds/demo', { amount: +df.amount.value }); if (gen !== S.gen) return; await load(); if (gen === S.gen) flash('#dmflash', 'Demo account reloaded.', 'good'); } catch (err) { if (gen === S.gen) flash('#dmflash', err.message, 'bad'); }
+        });
+      };
       const pf = root.querySelector('#paper');
       let kind = 'deposit';
       pf.querySelectorAll('button').forEach((b) => (b.onclick = () => (kind = b.dataset.kind)));
@@ -1856,7 +1878,7 @@
         e.preventDefault();
         const btn = pf.querySelector(`[data-kind="${kind}"]`);
         await busy(btn, async () => {
-          try { await api('/api/funds/paper', { kind, amount: +pf.amount.value }); if (gen !== S.gen) return; await load(); if (gen === S.gen) flash('#pflash', kind === 'deposit' ? 'Added to your paper account.' : 'Withdrawn from your paper account.', 'good'); } catch (err) { if (gen === S.gen) flash('#pflash', err.message, 'bad'); }
+          try { await api('/api/funds/paper', { kind, amount: +pf.amount.value }); if (gen !== S.gen) return; await load(); if (gen === S.gen) flash('#pflash', kind === 'deposit' ? 'Added to your paper account.' : kind === 'withdraw' ? 'Withdrawn from your paper account.' : 'Paper account reset.', 'good'); } catch (err) { if (gen === S.gen) flash('#pflash', err.message, 'bad'); }
         });
       };
       const kf = root.querySelector('#kalshi');

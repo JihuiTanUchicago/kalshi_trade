@@ -209,6 +209,20 @@ def _mode_bucket(cur, uid: int, mode: str, open_pos: List[Dict], deps: List[Dict
     }
 
 
+def _live_balance(cur, uid: int) -> Dict:
+    """The user's REAL Kalshi cash (cached, best-effort) + where to deposit. We can't mint
+    real money, so an unconnected key or a failed fetch degrades to a connect/unavailable
+    state. The live key is never logged or echoed — only the resulting balance is surfaced."""
+    key = repo.get_kalshi_key(cur, uid)
+    out = {"connected": key is not None, "balance": None, "funding_url": kalshi_account.KALSHI_FUNDING_URL}
+    if key is not None:
+        try:
+            out["balance"] = kalshi_account.balance_cached(uid, kalshi_account.credentials_from_row(uid, key))
+        except Exception:
+            out["balance"] = None
+    return out
+
+
 def dashboard(ctx: Ctx):
     cur = ctx.cur
     day = _start_of_day_utc()
@@ -217,8 +231,9 @@ def dashboard(ctx: Ctx):
     curves = repo.deployment_curves(cur, ctx.uid)
     balance = repo.paper_balance(cur, ctx.uid)
     deposited = repo.paper_deposits(cur, ctx.uid)
-    # Three mode buckets, each self-contained (real / sandbox / simulation). Paper is also the
-    # only one with a cash ledger, so it carries equity + deposits on top of the shared fields.
+    # Three mode buckets, each self-contained (real / sandbox / simulation). Paper + demo both
+    # carry an app-controlled cash layer on top of the shared fields; live carries the real
+    # Kalshi balance (money we never hold).
     paper = _mode_bucket(cur, ctx.uid, "paper", open_pos, deps, day)
     equity = balance + paper["open_at_cost"]
     paper.update(
@@ -229,10 +244,18 @@ def dashboard(ctx: Ctx):
         roi=round((equity - deposited) / deposited, 4) if deposited > 0 else None,
         daily=repo.daily_pnl(cur, ctx.uid, "paper"),
     )
+    # Demo: real fills applied to the capital WE set. Equity = capital + realized-since-reload,
+    # and the displayed realized P&L is net of the reload baseline (so a reload reads as $X flat).
+    demo = _mode_bucket(cur, ctx.uid, "demo", open_pos, deps, day)
+    de = repo.demo_equity(cur, ctx.uid)
+    demo.update(capital=de["capital"], equity=de["equity"], realized_pnl=de["realized"],
+                total_pnl=de["realized"], roi=de["roi"])
+    live = _mode_bucket(cur, ctx.uid, "live", open_pos, deps, day)
+    live.update(_live_balance(cur, ctx.uid))
     return {
         "paper": paper,
-        "demo": _mode_bucket(cur, ctx.uid, "demo", open_pos, deps, day),
-        "live": _mode_bucket(cur, ctx.uid, "live", open_pos, deps, day),
+        "demo": demo,
+        "live": live,
         "open_positions": _with_marks(open_pos),
         "recent_closed": repo.user_positions(cur, ctx.uid, "closed", 12),
         "deployments": [_deployment_out(d, curves.get(d["id"], [])) for d in deps],
@@ -856,19 +879,17 @@ def autopilot_status(ctx: Ctx):
 def funds(ctx: Ctx):
     cur = ctx.cur
     key = repo.get_kalshi_key(cur, ctx.uid)
-    kalshi = {"connected": key is not None, "funding_url": kalshi_account.KALSHI_FUNDING_URL}
+    kalshi = _live_balance(cur, ctx.uid)
     if key is not None:
         kalshi["key_id"] = key["key_id"][:4] + "…" + key["key_id"][-4:]
-        try:
-            kalshi["balance"] = kalshi_account.balance(kalshi_account.credentials_from_row(ctx.uid, key))
-        except Exception:
-            kalshi["balance"] = None
     dev = repo.get_kalshi_dev_key(cur, ctx.uid)
     kalshi_dev_key = {"connected": dev is not None}
     if dev is not None:
         kalshi_dev_key["key_id"] = dev["key_id"][:4] + "…" + dev["key_id"][-4:]
+    de = repo.demo_equity(cur, ctx.uid)
     return {
         "paper": {"cash": round(repo.paper_balance(cur, ctx.uid), 2), "ledger": repo.ledger_rows(cur, ctx.uid)},
+        "demo": {"capital": de["capital"], "equity": de["equity"], "realized": de["realized"]},
         "kalshi": kalshi,
         "kalshi_dev": kalshi_dev_key,
     }
@@ -876,11 +897,18 @@ def funds(ctx: Ctx):
 
 def paper_transfer(ctx: Ctx):
     kind = ctx.body.get("kind")
-    if kind not in ("deposit", "withdraw"):
-        raise ApiError(400, "Choose deposit or withdraw.")
-    amount = round(_num(ctx.body, "amount", 1, 100000), 2)
+    if kind not in ("deposit", "withdraw", "reset"):
+        raise ApiError(400, "Choose deposit, withdraw or reset.")
+    amount = round(_num(ctx.body, "amount", 1, MAX_PAPER_BALANCE), 2)
     with repo.transaction(ctx.conn) as tx:
         repo.lock_user(tx, ctx.uid)
+        if kind == "reset":
+            # Start fresh at `amount`. Blocked with open paper positions: wiping the ledger would
+            # orphan their already-debited cost and the equity math would double-count.
+            if any(p["mode"] == "paper" for p in repo.user_positions(tx, ctx.uid, "open")):
+                raise ApiError(409, "Close your open paper positions before resetting the account.")
+            repo.reset_paper_account(tx, ctx.uid, amount)
+            return {"ok": True}
         bal = repo.paper_balance(tx, ctx.uid)
         if kind == "withdraw" and amount > bal:
             raise ApiError(409, "You only have $%.2f of paper cash free." % bal)
@@ -889,6 +917,17 @@ def paper_transfer(ctx: Ctx):
         repo.add_ledger(tx, ctx.uid, "deposit" if kind == "deposit" else "withdrawal",
                         amount if kind == "deposit" else -amount,
                         "Paper %s" % ("deposit" if kind == "deposit" else "withdrawal"))
+    return {"ok": True}
+
+
+def demo_reload(ctx: Ctx):
+    """Set the app-controlled demo starting capital. Demo places real sandbox orders but the money
+    is ours, so this never touches the real Kalshi demo-account balance — it just resets the
+    capital that real fills are applied to, and zeroes the displayed demo P&L from here."""
+    amount = round(_num(ctx.body, "amount", 1, MAX_PAPER_BALANCE), 2)
+    with repo.transaction(ctx.conn) as tx:
+        repo.lock_user(tx, ctx.uid)
+        repo.reload_demo(tx, ctx.uid, amount)
     return {"ok": True}
 
 
@@ -1643,6 +1682,7 @@ ROUTES: List[Route] = [
         ("POST", "/api/admin/waitlist", admin_waitlist, True),
         ("GET", "/api/funds", funds, True),
         ("POST", "/api/funds/paper", paper_transfer, True),
+        ("POST", "/api/funds/demo", demo_reload, True),
         ("POST", "/api/kalshi-key", save_kalshi_key, True),
         ("POST", "/api/kalshi-key/delete", delete_kalshi_key, True),
         ("POST", "/api/kalshi-dev-key", save_kalshi_dev_key, True),
