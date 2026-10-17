@@ -234,16 +234,19 @@ def _close_position_at(conn, cur, dep: Dict, pos: Dict, kernel, via_kernel: bool
 
 def cross_deploy_block(spec: Dict, mode: str) -> Optional[str]:
     """Why a cross-contract (relative-value pair) spec may NOT deploy in `mode`, or None if it may.
-    Cross specs deploy on PAPER/DEMO only: multi-leg LIVE execution + its gate is a separate,
-    riskier step, so live is refused here. And a pair that spans >1 market needs a synchronized
-    multi-market live feed the engine doesn't run (the extra legs' markets aren't deployable), so
-    it stays research-only. A single-market pair (cross_strike / calendar) deploys on paper/demo —
-    the engine already ticks that market and its frame carries every strike/settlement leg."""
+
+    A SINGLE-market pair (cross_strike / calendar) deploys on paper, demo AND live: the engine
+    already ticks that one market and its frame carries every strike/settlement leg, and the
+    live/demo entry path is legging-safe — both legs are kept balanced and any naked excess is
+    flattened on the exchange immediately (see `_kernel_buy_pair`).
+
+    A MULTI-market pair still needs a synchronized multi-market live feed the engine does not run
+    (the extra legs' markets aren't ticked together), so it stays research-only — refused for every
+    mode, including paper/demo. (The OTHER live gates — gatekeeper candidate, LIVE switch, Kalshi
+    key, the NO-side-live rollout flag and the typed LIVE confirm — are unchanged and still apply on
+    top of this; this function only decides the single- vs multi-market question.)"""
     if not specmod.is_cross_contract(spec):
         return None
-    if mode == "live":
-        return ("Cross-contract (multi-leg) strategies can't go live yet — multi-leg live "
-                "execution is a separate, riskier step. Run it on paper or demo.")
     markets = specmod.involved_markets(spec)
     if len(markets) > 1:
         return ("This is a cross-market pair (%s) — it needs a synchronized multi-market live "
@@ -375,8 +378,10 @@ def _decide_pairs(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optio
         qty = min(qty, int(room / pair_cost)) if room >= pair_cost else 0
         if qty < 1:
             continue
-        legs = [("yes", lt, cand.long_price, cand.long_snap.contract.close_time),
-                ("no", st, cand.short_price, cand.short_snap.contract.close_time)]
+        # Each leg: (side, ticker, buy_price, own-side SELL price at the bid, close_time). The sell
+        # price is what _kernel_buy_pair unwinds a naked leg at (YES sells ~yes_bid; NO ~1-yes_ask).
+        legs = [("yes", lt, cand.long_price, cand.long_snap.yes_bid, cand.long_snap.contract.close_time),
+                ("no", st, cand.short_price, 1.0 - cand.short_snap.yes_ask, cand.short_snap.contract.close_time)]
         placed = (_kernel_buy_pair(cur, dep, kernel, legs, qty, mode) if via_kernel
                   else _paper_buy_pair(conn, dep, legs, qty))
         if not placed:
@@ -395,7 +400,7 @@ def _paper_buy_pair(conn, dep: Dict, legs, qty: int) -> bool:
     check the combined cost against the paper balance once, then insert both leg positions."""
     items = []
     total = 0.0
-    for side, ticker, price, close in legs:
+    for side, ticker, price, _sell, close in legs:
         fee = taker_fee_dollars(qty, price)
         total += qty * price + fee
         items.append((side, ticker, price, fee, close))
@@ -411,17 +416,72 @@ def _paper_buy_pair(conn, dep: Dict, legs, qty: int) -> bool:
 
 
 def _kernel_buy_pair(cur, dep: Dict, kernel, legs, qty: int, mode: str) -> bool:
-    """Demo (sandbox) pair entry: send each leg through the same MarketableLimitKernel the single-
-    leg path uses and record whatever actually filled. Returns True if any leg filled."""
-    any_filled = False
-    for side, ticker, price, close in legs:
-        rep = _live_trade(cur, dep, kernel, "buy", side, ticker, qty, price)
-        if rep.fill_qty_contracts < 1:
-            continue
-        repo.insert_position(cur, dep["id"], dep["user_id"], mode, ticker, side, rep.fill_qty_contracts,
-                             rep.fill_price_dollars, rep.fee_dollars, close, rep.external_order_id)
-        any_filled = True
-    return any_filled
+    """Legging-safe live/demo pair entry. A relative-value pair must stay balanced (equal YES and NO
+    contracts), but two real kernel orders can't fill atomically — so we keep the legs matched by
+    hand and flatten any naked excess on the exchange immediately, never leaving untracked exposure:
+
+      1. Buy leg 1 (YES) for `qty` -> f1 filled. If f1 < 1, return False (flat, no exposure).
+      2. Buy leg 2 (NO) for f1 -> f2 filled. hedged = min(f1, f2) (the kernel never over-fills, so
+         f2 <= f1 and hedged == f2).
+      3. If leg 1 over-filled (f1 > hedged), SELL the excess YES at the bid to flatten it, and book
+         the round-trip P&L (pro-rated buy fee + sell fee) as a CLOSED row so cash / realized P&L
+         stay exact. The flattened contracts never become a held position.
+      4. If that unwind sell ITSELF under-fills, the still-naked remainder is recorded as a tracked
+         OPEN position (the drawdown force-sell / loss guard will close it) and logged loudly — we
+         never silently drop a naked leg.
+      5. Record the two hedged legs at `hedged` qty with pro-rated fees. Return True iff hedged >= 1.
+
+    Leg 1's actual fill fee is split pro-rata across its hedged / unwound / residual slices; the
+    three sum back to it exactly (the residual takes the remainder, so there is no rounding drift).
+    Every exchange order is sent BEFORE any DB write, so the recorded state is the final, consistent
+    picture (an autocommit connection never persists a half-built pair)."""
+    l_side, l_ticker, l_buy, l_sell, l_close = legs[0]  # long YES leg
+    s_side, s_ticker, s_buy, _s_sell, s_close = legs[1]  # short NO leg
+    uid, dep_id = dep["user_id"], dep["id"]
+
+    rep1 = _live_trade(cur, dep, kernel, "buy", l_side, l_ticker, qty, l_buy)
+    f1 = int(rep1.fill_qty_contracts)
+    if f1 < 1:
+        return False  # leg 1 never filled -> deployment flat, no exposure, nothing to unwind
+
+    rep2 = _live_trade(cur, dep, kernel, "buy", s_side, s_ticker, f1, s_buy)
+    f2 = int(rep2.fill_qty_contracts)
+    hedged = min(f1, f2)
+    excess = f1 - hedged
+
+    unwound = residual = 0
+    sell_rep = None
+    if excess > 0:  # flatten the unhedged leg-1 excess at the bid before recording anything
+        sell_rep = _live_trade(cur, dep, kernel, "sell", l_side, l_ticker, excess, l_sell)
+        unwound = min(int(sell_rep.fill_qty_contracts), excess)  # a kernel never sells more than asked
+        residual = excess - unwound
+
+    # Split leg 1's real buy fee across its three slices so they sum back to it exactly.
+    l_fee_hedged = rep1.fee_dollars * hedged / f1
+    l_fee_unwound = rep1.fee_dollars * unwound / f1
+    l_fee_residual = rep1.fee_dollars - l_fee_hedged - l_fee_unwound
+
+    if hedged >= 1:  # the balanced pair: equal YES and NO, each at `hedged`
+        repo.insert_position(cur, dep_id, uid, mode, l_ticker, l_side, hedged,
+                             rep1.fill_price_dollars, l_fee_hedged, l_close, rep1.external_order_id)
+        repo.insert_position(cur, dep_id, uid, mode, s_ticker, s_side, hedged,
+                             rep2.fill_price_dollars, rep2.fee_dollars, s_close, rep2.external_order_id)
+
+    if unwound >= 1:  # round-trip P&L of the flattened excess — booked, never held
+        pnl = (unwound * (sell_rep.fill_price_dollars - rep1.fill_price_dollars)
+               - l_fee_unwound - sell_rep.fee_dollars)
+        repo.insert_closed_position(cur, dep_id, uid, mode, l_ticker, l_side, unwound,
+                                    rep1.fill_price_dollars, l_fee_unwound, sell_rep.fill_price_dollars,
+                                    sell_rep.fee_dollars, pnl, "pair_unwind", l_close, rep1.external_order_id)
+
+    if residual >= 1:  # unwind sell under-filled: still-naked YES — track it + shout, never drop it
+        print("[engine] CROSS-PAIR LEGGING RISK dep %d: %d naked %s %s after unwind under-filled "
+              "(bought %d, hedged %d, flattened %d) — recorded as a tracked position for the guard to close"
+              % (dep_id, residual, l_side.upper(), l_ticker, f1, hedged, unwound), flush=True)
+        repo.insert_position(cur, dep_id, uid, mode, l_ticker, l_side, residual,
+                             rep1.fill_price_dollars, l_fee_residual, l_close, rep1.external_order_id)
+
+    return hedged >= 1
 
 
 def loss_guard(cur, dep: Dict) -> bool:
