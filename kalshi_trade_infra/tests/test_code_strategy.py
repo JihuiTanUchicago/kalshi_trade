@@ -152,3 +152,12 @@ def test_code_strategy_blocked_from_deployment(monkeypatch, kind):
     monkeypatch.setattr(agent.repo, "get_strategy", lambda cur, uid, sid: strat)
     msg, pid = agent.act(None, {"id": 7}, {"type": kind, "strategy_id": 5}, autopilot=True)
     assert pid is None and "research-only" in msg
+
+
+def test_data_provenance_handles_a_code_spec():
+    # _prereg records provenance for EVERY finalist, so features_used/data_sources_for must not
+    # assume the DSL model/entry fields a code spec ({market, sizing, code}) does not have.
+    spec = _code_spec()
+    feats = specmod.features_used(spec)
+    assert feats == sorted(specmod.FEATURES)  # a code strategy may read any exposed feature
+    assert "model_features_1m" in specmod.data_sources_for(spec)

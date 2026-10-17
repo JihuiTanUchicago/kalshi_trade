@@ -468,6 +468,11 @@ def features_used(spec: Dict) -> List[str]:
     """Every FEATURES key this spec reads: the model's always-on inputs, the vol/drift
     windows it picked, and whatever the entry filters condition on. This is the dataset-
     provenance record - 'any dataset, as long as we track it.'"""
+    if is_code_spec(spec):
+        # A code strategy's signals(window) receives the full per-frame feature dict, so it may
+        # read ANY feature. The honest provenance record is every feature we expose, not the DSL
+        # model/filter fields a code spec does not have.
+        return sorted(FEATURES)
     used = set(_MODEL_FEATURES)
     m = spec["model"]
     used.add("vol_%dm" % m["vol_window"])
@@ -483,7 +488,8 @@ def data_sources_for(spec: Dict) -> List[str]:
     price path always, plus the order-book feature table iff a filter uses a micro
     feature. Recorded alongside features_used so the ledger shows what data was touched."""
     srcs = ["hist_markets", "market_candles", "spot_candles_1m"]
-    if any(flt["feature"] in MICRO_FEATURES for flt in spec["entry"]["filters"]):
+    # A code spec gets the full window (micro features included), so record every source.
+    if is_code_spec(spec) or any(flt["feature"] in MICRO_FEATURES for flt in spec["entry"]["filters"]):
         srcs.append("model_features_1m")
     return srcs
 
