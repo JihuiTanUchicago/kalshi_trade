@@ -33,6 +33,7 @@ from urllib.parse import urlparse
 import requests
 
 from app import repository as repo
+from data_pipeline.architecture.execution_kernel import order_wire_params
 from data_pipeline.common import KalshiCredentials, kalshi_auth_headers
 
 # Kalshi demo base — same default and env var as the read-only app.kalshi_dev
@@ -86,18 +87,19 @@ def demo_place_limit_order(
     """Submit one limit order to the DEMO exchange, signed with the dev key.
 
     Same body/semantics as data_pipeline.live_trading_engine.place_limit_order
-    (YES leg, buy=bid/sell=ask, 1c..99c, IOC), so DummyExecutionKernel parses the
-    returned ``resp`` identically. Reimplemented here rather than reused because
-    the live helper is bound to the production host via common.api_post_auth —
-    isolation, not duplication."""
+    (YES-leg bid/ask wire via order_wire_params, so a NO order is sent as its YES
+    complement; 1c..99c, IOC), so DummyExecutionKernel parses the returned ``resp``
+    identically. Reimplemented here rather than reused because the live helper is
+    bound to the production host via common.api_post_auth — isolation, not
+    duplication. The host guard above is untouched: demo stays sandbox-only."""
     base = _require_demo_host(base_url or KALSHI_DEV_API_BASE)
     creds = _require_creds(credentials)
-    if str(side).lower() != "yes":
-        raise ValueError("only the YES leg is supported, got side=%r" % (side,))
+    if str(side).lower() not in ("yes", "no"):
+        raise ValueError("side must be yes or no, got side=%r" % (side,))
     if str(action).lower() not in ("buy", "sell"):
         raise ValueError("action must be buy or sell, got %r" % (action,))
-    v2_side = "bid" if str(action).lower() == "buy" else "ask"
-    cents = max(1, min(99, int(round(float(price_dollars) * 100))))
+    v2_side, wire_price = order_wire_params(action, side, price_dollars)
+    cents = max(1, min(99, int(round(float(wire_price) * 100))))
     client_order_id = str(uuid.uuid4())
     body = {
         "ticker": ticker,

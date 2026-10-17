@@ -474,7 +474,16 @@ rarely find a passing slip will not feel lovable. Highest-leverage next steps:
   until separately authorised. HEAD requests return 501 (no sign-in flow uses HEAD).
 
 Deferred (v0.2 or later): charging, mark-to-market of open paper positions (shown at cost
-today), partial-fill handling on live exits, NO-side live orders, email notifications.
+today), partial-fill handling on live exits, email notifications.
+
+NO-side live/demo orders: implemented (pending owner review; live still off by default). Because
+the `events/orders` endpoint only speaks the YES leg (`bid`=buy YES, `ask`=sell YES), a NO order is
+sent as its YES complement via `execution_kernel.order_wire_params`: buy NO = sell-YES `ask` at
+`1 - no_price`, sell NO = buy-YES `bid` at `1 - no_price`. The kernel prices from the NO side of the
+book (no_ask = 1−yes_bid, no_bid = 1−yes_ask) and flips the reported YES fill back to the NO cost
+basis (`1 - yes_fill`). `engine._live_trade` threads the real `entry.side`/`pos["side"]`, positions
+insert the real side, and settlement/mark-to-market were already side-generic. The YES-only guards in
+`agent.deploy_live` and `server.create_deployment` are relaxed; every other live gate is unchanged.
 
 ## Current Codebase Knowledge
 

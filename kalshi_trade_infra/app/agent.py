@@ -826,14 +826,14 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         strat = repo.get_strategy(cur, user_id, int(action.get("strategy_id") or 0))
         if strat is None or strat["status"] != "passed":
             return "Only strategies that passed their backtest can go live.", None
-        # Additive gatekeeper gate (§E.5): required ON TOP OF the YES-side, live_autopilot_ok
+        # Additive gatekeeper gate (§E.5): required ON TOP OF the live_autopilot_ok
         # and _proven_on_paper checks below — none of which are removed, reordered or weakened.
+        # Side is no longer gated: live execution now places the correct YES or NO leg (a NO
+        # strategy places a NO order), so any validated side may go live.
         if not _is_deployment_candidate(cur, strat["id"]):
             return ("I can't take %s live — the gatekeeper hasn't cleared it as a deployment "
                     "candidate (holdout forward-validation + diversification), so it stays on "
                     "paper." % strat["title"], None)
-        if (strat["spec"].get("side") or "").lower() != "yes":
-            return "Live supports YES-side strategies only, so I kept %s on paper." % strat["title"], None
         ok, why = live_autopilot_ok(cur, user)
         if not (autopilot and ok):
             # Gate failed: never go live silently — stays on paper (safeguard 2).
@@ -844,11 +844,11 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
             return "I'm keeping %s on paper a while longer — %s." % (strat["title"], pwhy), None
         # Deploy to live WITHIN the user's own caps. create_deployment copies the strategy's spec
         # sizing (stake x max_positions = the book cap); the engine enforces max_positions, per-trade
-        # stake, YES-only, per-user key and the loss guard. Autopilot cannot raise any of these.
+        # stake, per-user key and the loss guard. Autopilot cannot raise any of these.
         cap = float(strat["spec"]["sizing"]["stake"]) * int(strat["spec"]["sizing"]["max_positions"])
         pid = repo.create_proposal(cur, user_id, "deploy", reason, None, strat["id"], "applied")
         repo.create_deployment(cur, user_id, strat["id"], strat["market"], "live")
-        return ("Autopilot deployed %s to LIVE within your $%.0f cap (YES-only, your own Kalshi key, loss guard on)."
+        return ("Autopilot deployed %s to LIVE within your $%.0f cap (your own Kalshi key, loss guard on)."
                 % (strat["title"], cap)), pid
     return "I tried an action I'm not allowed to take (%s)." % kind, None
 
@@ -899,7 +899,7 @@ Actions:
   {"type": "pause",  "deployment_id": N, "reason": "..."}
   {"type": "resume", "deployment_id": N, "reason": "..."}
   {"type": "deploy", "strategy_id": N, "reason": "..."}       (paper)
-  {"type": "deploy_live", "strategy_id": N, "reason": "..."}  (REAL money; only a YES-side strategy that already proved itself on PAPER, and only when the user turned on live autopilot. If live autopilot is off or any safety gate fails it is refused and stays on paper. Never the first step for a new idea: research -> paper -> live.)
+  {"type": "deploy_live", "strategy_id": N, "reason": "..."}  (REAL money; any side (YES or NO) that already proved itself on PAPER, and only when the user turned on live autopilot. If live autopilot is off or any safety gate fails it is refused and stays on paper. Never the first step for a new idea: research -> paper -> live.)
 Use actions only when you have a concrete reason; an empty list is often right.
 """ + specmod.SPEC_GUIDE
 

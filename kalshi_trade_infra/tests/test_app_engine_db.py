@@ -87,6 +87,33 @@ def test_paper_buy_then_settle_balances_to_the_cent(conn, user):
     assert float(cur.fetchone()["pnl"]) == pytest.approx(25 - 10 - 0.42)
 
 
+def test_no_position_settles_on_a_no_result(conn, user):
+    """Settlement pays the NO side: a NO position whose market resolves NO is worth
+    $1/contract. `payout = qty if result == pos["side"]` must be side-generic."""
+    from app import engine
+    from app import repository as repo
+
+    dep = _deployment(conn, user)
+    cur = conn.cursor()
+    pid = repo.insert_position(cur, dep["id"], user["id"], "paper", "NOTEST-" + uuid.uuid4().hex[:8], "no", 10, 0.60,
+                               0.10, datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1))
+    src = engine.Sources(result=lambda t: "no")  # BTC did NOT cross the strike -> NO wins
+    assert engine.settle_due(conn, engine.MARKETS["btc15m"], src, datetime.now(timezone.utc)) >= 1
+    cur.execute("SELECT status, exit_price, pnl FROM app_positions WHERE id=%s", (pid,))
+    row = cur.fetchone()
+    assert row["status"] == "settled" and float(row["exit_price"]) == 1.0
+    # pnl = payout(=qty) - qty*entry - entry_fee = 10 - 10*0.60 - 0.10 = 3.90
+    assert float(row["pnl"]) == pytest.approx(10 - 10 * 0.60 - 0.10)
+
+    # A YES result on the same (NO) position pays nothing.
+    pid2 = repo.insert_position(cur, dep["id"], user["id"], "paper", "NOTEST-" + uuid.uuid4().hex[:8], "no", 10, 0.60,
+                                0.10, datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1))
+    engine.settle_due(conn, engine.MARKETS["btc15m"], engine.Sources(result=lambda t: "yes"), datetime.now(timezone.utc))
+    cur.execute("SELECT exit_price, pnl FROM app_positions WHERE id=%s", (pid2,))
+    row2 = cur.fetchone()
+    assert float(row2["exit_price"]) == 0.0 and float(row2["pnl"]) == pytest.approx(-10 * 0.60 - 0.10)
+
+
 def test_paper_buy_respects_cash_and_book_size(conn, user):
     from app import engine
     from app import repository as repo

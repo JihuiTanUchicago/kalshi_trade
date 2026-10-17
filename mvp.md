@@ -37,6 +37,7 @@ These are NOT done. Completed items move to **## Done** below.
 - `[v0.3]` Polymarket as a 2nd venue: data + API + real & simulation trading.
 - `[in progress]` Risk-management force-sell layer on drawdown + portfolio caps (lost when a prior background agent exited; needs rebuild).
 - `[in progress]` Authenticated dev/demo-env trading — per-user dev key (entered in-app, like the live key) + an isolated demo-exchange execution client, so users can place real TEST orders on Kalshi's sandbox. Foundation shipped (dormant); UI/engine wiring pending.
+- `[review]` NO-side (and side="either") live/demo execution — execution now places the correct leg: a NO order is sent as its YES complement (buy NO = sell-YES ask at 1−no_price), priced from the NO side of the book, filled/settled in NO terms; the YES-only guards in `agent.deploy_live` + `server.create_deployment` are relaxed (every other live gate kept, in order). Implemented in a worktree, tests green; **not deployed, live still off by default** — pending owner review + `/security-review`.
 
 ## Done
 ### 2026-10-16
