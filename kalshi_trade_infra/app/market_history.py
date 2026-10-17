@@ -181,13 +181,23 @@ def sync_market_candles(cur, market: Market, limit: int = 2000) -> int:
             if abs(float(m["strike"]) / spot - 1.0) > LADDER_BAND:
                 cur.execute("UPDATE hist_markets SET candles_done=2 WHERE ticker=%s", (m["ticker"],))
                 continue
-        data = api_get(
-            "/series/%s/markets/%s/candlesticks" % (market.series, m["ticker"]),
-            {"start_ts": open_ts, "end_ts": close_ts, "period_interval": market.candle_minutes},
-        )
+        # Kalshi caps candlesticks at 5000 per request; chunk the window by time, since a market
+        # listed for days at 1-minute candles (e.g. NBA games) blows past the cap in one call.
+        max_candles = 4900
+        span = market.candle_minutes * 60
+        candles = []
+        t = open_ts
+        while t < close_ts:
+            chunk_end = min(t + max_candles * span, close_ts)
+            data = api_get(
+                "/series/%s/markets/%s/candlesticks" % (market.series, m["ticker"]),
+                {"start_ts": t, "end_ts": chunk_end, "period_interval": market.candle_minutes},
+            )
+            candles.extend(data.get("candlesticks") or [])
+            t = chunk_end
         now = _naive_utc(utc_now())
         rows = []
-        for c in data.get("candlesticks") or []:
+        for c in candles:
             bid = c.get("yes_bid") or {}
             ask = c.get("yes_ask") or {}
             price = c.get("price") or {}
