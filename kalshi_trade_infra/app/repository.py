@@ -163,7 +163,7 @@ def users_by_usernames(cur, usernames: List[str]) -> List[Dict]:
 
 def get_user(cur, user_id: int) -> Optional[Dict]:
     cur.execute(
-        "SELECT id, email, name, username, picture_url, autopilot, created_at FROM app_users WHERE id=%s", (user_id,)
+        "SELECT id, email, name, username, picture_url, autopilot, ui_theme, created_at FROM app_users WHERE id=%s", (user_id,)
     )
     return cur.fetchone()
 
@@ -187,7 +187,7 @@ def create_session(cur, user_id: int, token_hash: str, ttl: timedelta) -> None:
 
 def session_user(cur, token_hash: str) -> Optional[Dict]:
     cur.execute(
-        """SELECT u.id, u.email, u.name, u.username, u.picture_url, u.autopilot, u.created_at
+        """SELECT u.id, u.email, u.name, u.username, u.picture_url, u.autopilot, u.ui_theme, u.created_at
            FROM app_sessions s JOIN app_users u ON u.id=s.user_id
            WHERE s.token_hash=%s AND s.expires_at > %s""",
         (token_hash, now_utc()),
@@ -550,6 +550,10 @@ def mark_community_emailed(cur, user_ids: List[int]) -> None:
     placeholders = ",".join(["%s"] * len(user_ids))
     cur.execute("UPDATE app_users SET last_community_email_at=%s WHERE id IN (%s)" % ("%s", placeholders),
                 [now_utc()] + list(user_ids))
+
+
+def set_ui_theme(cur, user_id: int, theme: str) -> None:
+    cur.execute("UPDATE app_users SET ui_theme=%s WHERE id=%s", (theme, user_id))
 
 
 def set_email_opt_out(cur, user_id: int, opt_out: bool) -> bool:

@@ -390,6 +390,8 @@ def main() -> None:
         # so the research page can explain the self-improvement in plain English.
         _add_column_if_missing(cur, "app_policies", "summary", "ALTER TABLE app_policies ADD COLUMN summary VARCHAR(400) NULL")
         _add_column_if_missing(cur, "app_policies", "base_score", "ALTER TABLE app_policies ADD COLUMN base_score DOUBLE NULL")
+        # Which frontend the user picked: 'tau' (default, feature-complete) or 'meridian' (redesign).
+        _add_column_if_missing(cur, "app_users", "ui_theme", "ALTER TABLE app_users ADD COLUMN ui_theme VARCHAR(16) NOT NULL DEFAULT 'tau'")
         # Backfill any user still missing a handle (idempotent: only touches NULLs).
         from app import repository as _repo
         cur.execute("SELECT id, email, name FROM app_users WHERE username IS NULL OR username=''")

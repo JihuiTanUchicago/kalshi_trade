@@ -45,7 +45,7 @@ MAX_ACTIVE_DEPLOYMENTS = 100
 MAX_PAPER_BALANCE = 1_000_000.0
 MAX_WAITLIST_PER_MINUTE = 10
 ADMIN_EMAIL = os.getenv("TAU_ADMIN_EMAIL", "tjhprivate0416@gmail.com")
-SPA_ROUTES = re.compile(r"^/(?:|dashboard|research(?:/\d+)?|strategies(?:/\d+)?|deploy|community|billing|admin|system|funds|explore|devlog|signin)$")
+SPA_ROUTES = re.compile(r"^/(?:|dashboard|research(?:/\d+)?|strategies(?:/\d+)?|deploy|community|billing|admin|system|funds|explore|devlog|settings(?:/(?:account|billing|system|theme))?|signin)$")
 
 CSP = (
     "default-src 'self'; script-src 'self' https://js.stripe.com https://pay.google.com; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; "
@@ -172,7 +172,7 @@ def me(ctx: Ctx):
     return {
         "user": {
             "id": ctx.user["id"], "email": ctx.user["email"], "name": ctx.user["name"],
-            "username": ctx.user.get("username"),
+            "username": ctx.user.get("username"), "ui_theme": ctx.user.get("ui_theme") or "tau",
             "picture": ctx.user["picture_url"], "autopilot": bool(ctx.user["autopilot"]),
         },
         "kalshi_connected": repo.get_kalshi_key(ctx.cur, ctx.uid) is not None,
@@ -437,6 +437,14 @@ def notifications(ctx: Ctx):
 def mark_notifications_read(ctx: Ctx):
     repo.mark_notifications_read(ctx.cur, ctx.uid)
     return {"ok": True}
+
+
+def set_ui_theme(ctx: Ctx):
+    theme = str(ctx.body.get("theme") or "").strip()
+    if theme not in ("tau", "meridian"):
+        raise ApiError(400, "Unknown theme.")
+    repo.set_ui_theme(ctx.cur, ctx.uid, theme)
+    return {"ok": True, "theme": theme}
 
 
 def unsubscribe(ctx: Ctx):
@@ -1327,6 +1335,7 @@ ROUTES: List[Route] = [
         ("POST", r"/api/strategies/(\d+)/share", share_strategy, True),
         ("GET", "/api/notifications", notifications, True),
         ("POST", "/api/notifications/read", mark_notifications_read, True),
+        ("POST", "/api/ui-theme", set_ui_theme, True),
         ("GET", "/unsubscribe", unsubscribe, False),
         ("GET", "/api/version", lambda ctx: {"v": _static_versions()["app.js"]}, False),
         ("GET", "/api/devlog", lambda ctx: devlog.as_json(), True),
@@ -1370,7 +1379,7 @@ ROUTES: List[Route] = [
 
 def _static_versions() -> Dict[str, str]:
     out = {}
-    for name in ("app.css", "app.js", "icon.svg"):
+    for name in ("app.css", "app.js", "icon.svg", "app.meridian.css", "app.meridian.js", "boot.js"):
         p = STATIC_DIR / name
         out[name] = hashlib.sha256(p.read_bytes()).hexdigest()[:10] if p.exists() else "0"
     return out
@@ -1424,7 +1433,10 @@ class Handler(BaseHTTPRequestHandler):
             html = (STATIC_DIR / "index.html").read_text("utf-8")
             html = (html.replace("{{css_v}}", versions["app.css"])
                     .replace("{{js_v}}", versions["app.js"])
-                    .replace("{{icon_v}}", versions["icon.svg"]))
+                    .replace("{{icon_v}}", versions["icon.svg"])
+                    .replace("{{meridian_css_v}}", versions["app.meridian.css"])
+                    .replace("{{meridian_js_v}}", versions["app.meridian.js"])
+                    .replace("{{boot_v}}", versions["boot.js"]))
             body = html.encode("utf-8")
             self._headers(200, "text/html; charset=utf-8", len(body), [("Cache-Control", "no-cache")])
             self.wfile.write(body)

@@ -11,12 +11,15 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="/static/app.css?v={{css_v}}">
+<link rel="stylesheet" href="/static/app.css?v={{css_v}}" id="tau-css">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <div id="app" aria-busy="true"></div>
-<script>window.__BUILD__="{{js_v}}";</script>
-<script src="/static/app.js?v={{js_v}}" defer></script>
+<div id="tau-boot" hidden
+  data-tau-js="/static/app.js?v={{js_v}}" data-tau-ver="{{js_v}}"
+  data-mer-css="/static/app.meridian.css?v={{meridian_css_v}}"
+  data-mer-js="/static/app.meridian.js?v={{meridian_js_v}}" data-mer-ver="{{meridian_js_v}}"></div>
+<script src="/static/boot.js?v={{boot_v}}" defer></script>
 </body>
 </html>

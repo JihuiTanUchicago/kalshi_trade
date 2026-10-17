@@ -227,6 +227,7 @@
     [/^\/system$/, viewSystem],
     [/^\/funds$/, viewFunds],
     [/^\/devlog$/, viewDevLog],
+    [/^\/settings$/, viewSettings],
   ];
   function go(path, replace) {
     if (replace) history.replaceState(null, '', path); else history.pushState(null, '', path);
@@ -273,6 +274,13 @@
     const match = routes.map(([re, fn]) => [path.match(re), fn]).find(([m]) => m);
     if (!S.me && path !== '/signin') {
       try { S.me = await api('/api/me'); } catch (e) { return go('/signin', true); }
+      // Adopt the account's saved theme on a fresh device (server wins), reloading once into it.
+      const server = (S.me.user && S.me.user.ui_theme) || 'tau';
+      let local = 'tau'; try { local = localStorage.getItem('tau_ui') || 'tau'; } catch (e) {}
+      if (server !== local && !sessionStorage.getItem('_themesync')) {
+        try { sessionStorage.setItem('_themesync', '1'); localStorage.setItem('tau_ui', server); } catch (e) {}
+        return location.reload();
+      }
     }
     if (!match) return go('/', true);
     root.setAttribute('aria-busy', 'true');
@@ -426,7 +434,7 @@
     root.innerHTML = `
       <header class="masthead"><div class="masthead-in">
         <p class="wordmark"><a href="/">${ICON.mark}<span>Tau</span></a></p>
-        <span class="asof">${adminToggle}<span class="bell-wrap"><button class="bell-trig" data-action="bell" aria-haspopup="true" aria-expanded="false" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bell-dot" hidden></span></button><span class="bell-menu" hidden><div class="bell-head"><b>Notifications</b></div><div class="bell-list" id="bell-list"></div></span></span><span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false">${esc(u.name || u.email)}<svg class="caret" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/billing">Billing</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
+        <span class="asof">${adminToggle}<span class="bell-wrap"><button class="bell-trig" data-action="bell" aria-haspopup="true" aria-expanded="false" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bell-dot" hidden></span></button><span class="bell-menu" hidden><div class="bell-head"><b>Notifications</b></div><div class="bell-list" id="bell-list"></div></span></span><span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false">${esc(u.name || u.email)}<svg class="caret" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/settings">Settings</a><a href="/billing">Billing</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
       </div></header>
       <nav class="services" aria-label="Sections"><div class="services-in">${nav}</div></nav>
       <div class="wrap">
@@ -466,6 +474,32 @@
         <ul class="dl-list">${planned || '<li class="hint">Nothing queued.</li>'}</ul></section>
       <section class="sect"><div class="sect-head"><h2>Shipped</h2><p>${(d.shipped || []).length} updates</p></div>
         <ul class="dl-list">${shipped}</ul></section>`;
+  }
+  const THEMES = [
+    { key: 'tau', name: 'Tau', desc: 'The full interface — every feature, the station-timetable look.' },
+    { key: 'meridian', name: 'Meridian', desc: 'A lighter redesign of the dashboard, settings and markets.' },
+  ];
+  async function viewSettings() {
+    const current = window.__TAU_UI__ === 'meridian' ? 'meridian' : 'tau';
+    shell('/settings', boardTitle('Settings', 'How Tau looks and works for you.'), `
+      <section class="sect"><div class="section-head"><h2>Theme</h2><p>Changes the whole interface</p></div>
+        <div class="theme-pick" role="radiogroup" aria-label="Theme">
+          ${THEMES.map((t) => `<button type="button" class="theme-opt${t.key === current ? ' on' : ''}" role="radio" aria-checked="${t.key === current}" data-theme="${t.key}">
+              <span class="theme-meta"><b>${esc(t.name)}</b><span>${esc(t.desc)}</span></span>
+              <span class="theme-mark" aria-hidden="true">${ICON.check}</span>
+            </button>`).join('')}
+        </div>
+        <div id="theme-flash" class="hint" style="margin-top:12px">Switching theme reloads Tau. You can switch back here anytime.</div>
+      </section>`);
+    root.querySelectorAll('[data-theme]').forEach((b) => (b.onclick = () => {
+      const key = b.dataset.theme;
+      if (key === current) return;
+      busy(b, async () => {
+        try { localStorage.setItem('tau_ui', key); } catch (e) { /* private mode */ }
+        try { await api('/api/ui-theme', { theme: key }); } catch (e) { /* local still applies */ }
+        location.reload();
+      });
+    }));
   }
   // One measured cell. Money direction rides a tint field behind the figure
   // (opts.v), never a colour on the digits and never the reserved signal red.
