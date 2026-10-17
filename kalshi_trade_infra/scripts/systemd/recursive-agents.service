@@ -8,7 +8,10 @@ Type=simple
 WorkingDirectory=/opt/kalshi
 # Secrets live in /opt/kalshi/.env.app (root:root, 600): GOOGLE_CLIENT_ID/SECRET,
 # APP_GOOGLE_REDIRECT_URI, APP_SECRET_KEY, ANTHROPIC_API_KEY. Never in this unit.
-ExecStart=/bin/bash -c 'set -a; . /opt/kalshi/.env.aws; . /opt/kalshi/.env.app; set +a; unset AWS_PROFILE; exec /opt/kalshi/.venv/bin/python -u -m app.worker agents >> /opt/kalshi/logs/recursive_agents.log 2>&1'
+# Optional protected market-data overlay is loaded last. Missing is compatible
+# with older installations; a present unreadable/invalid file fails the start.
+# Preflight is offline and logs safe metadata; only the agents unit reads this.
+ExecStart=/bin/bash -ec 'set -a; . /opt/kalshi/.env.aws; . /opt/kalshi/.env.app; if [ -e /opt/kalshi/.env.market-data ] || [ -L /opt/kalshi/.env.market-data ]; then . /opt/kalshi/.env.market-data; /opt/kalshi/.venv/bin/python -m app.market_data_config check >> /opt/kalshi/logs/recursive_agents.log 2>&1; fi; set +a; unset AWS_PROFILE; exec /opt/kalshi/.venv/bin/python -u -m app.worker agents >> /opt/kalshi/logs/recursive_agents.log 2>&1'
 Restart=always
 RestartSec=10
 StartLimitIntervalSec=300

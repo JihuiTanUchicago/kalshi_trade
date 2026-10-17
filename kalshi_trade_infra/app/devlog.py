@@ -21,7 +21,7 @@ PLANNED: List[tuple] = [
     ('Kalshi-dev 2nd equity line', ''),
     ('Activate sourced web research with Exa', 'Current web search, publication discovery and archived-page reading are integrated and verified locally, with source references and historical cutoffs. Production worker rollout and end-to-end acceptance remain pending.'),
     ('Expand FX, rates and options research data', 'Massive FX history and daily Treasury/funding data are verified locally. Current FX quotes and option chains need the matching provider permissions before rollout.'),
-    ('Add historical stock and futures research data', 'Databento stock and futures bars are integrated with provenance and historical cutoffs; local SPY and ES retrieval passed. Production worker configuration and data-cost accounting remain pending.'),
+    ('Add historical stock and futures research data', 'Databento stock and futures bars are integrated with provenance and historical cutoffs; local SPY and ES retrieval passed. A configurable primary route and protected production preflight are implemented locally. Production worker acceptance and durable data-cost accounting remain pending; live snapshots, FX, macro and options analytics retain their distinct feeds.'),
     ('Polymarket as a 2nd venue: data + API + real & simulation trading', ''),
     ('NO-side (and side="either") LIVE execution', ''),
     ('Bittensor (TAO) subnet tokens', ''),
