@@ -181,6 +181,13 @@ def set_autopilot_live(cur, user_id: int, on: bool) -> None:
     cur.execute("UPDATE app_users SET autopilot_live=%s WHERE id=%s", (1 if on else 0, user_id))
 
 
+def autopilot_user_ids(cur) -> List[int]:
+    """Every user with the autopilot toggle ON. The scheduler enqueues a periodic 'review' run for
+    each, which is the only thing that makes the co-pilot act on its own (otherwise it runs only on chat)."""
+    cur.execute("SELECT id FROM app_users WHERE autopilot=1")
+    return [(r["id"] if isinstance(r, dict) else r[0]) for r in cur.fetchall()]
+
+
 def autopilot_live_over_limit(cur, day_start) -> List[Dict]:
     """Users with live autopilot ON whose live realized loss since `day_start` has hit their
     daily loss limit. The kill switch / loss guard reads this each engine loop."""

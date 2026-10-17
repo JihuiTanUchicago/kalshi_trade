@@ -1460,7 +1460,13 @@ def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.da
         history = repo.chat_messages(cur, user["id"], limit=20)
         transcript = "\n".join("%s: %s" % (m["role"], m["content"]) for m in history)
         if run["kind"] == "review":
-            task = "Scheduled check-in. Why: %s\nAssess the deployments and tell the user what you see." % run.get("prompt")
+            task = ("Scheduled autopilot review. Why: %s\n"
+                    "You are running on your own now — PROACTIVELY MANAGE the operation within your mandate, don't just describe it. "
+                    "Assess every deployment and open position, then take the actions that improve results: start a research run to "
+                    "explore a promising angle (same RSI pipeline as a manual run), promote a proven strategy (paper, or live within caps "
+                    "when live autopilot is on), tune model/risk/execution parameters, or pause/flatten if risk warrants. If nothing is "
+                    "worth doing right now, say so briefly. Every money/risk value you set is clamped and the loss budget / kill switch / "
+                    "live gate still bound you." % run.get("prompt"))
         else:
             task = "Answer the user's latest message."
         prompt = "%s\n\nRecent conversation:\n%s\n\n%s\n\n%s" % (_copilot_context(cur, user), transcript or "(none)", task, ACTIONS_GUIDE)
