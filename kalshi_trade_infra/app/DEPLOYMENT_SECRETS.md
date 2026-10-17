@@ -14,6 +14,19 @@ verified on October 17, 2026:
 | `EXA_API_KEY` | Current web/publication research and entitled historical Snapshot |
 | `APCA_API_KEY_ID`, `APCA_API_SECRET_KEY` | Alpaca stock/ETF market-data credentials |
 | `DATABENTO_API_KEY` | Entitled historical stock/ETF/futures datasets |
+| `ALPACA_OAUTH_CLIENT_ID`, `ALPACA_OAUTH_CLIENT_SECRET` | Alpaca Connect application; separate from market-data keys |
+
+Broker account OAuth requires separate application registration and credentials;
+the market-data Alpaca pair above cannot configure Alpaca Connect. The Alpaca OAuth
+client pair is present in the ignored local `.env` and is now stored as two
+additional encrypted GitHub Actions Secrets: seven names total. Metadata verifies
+the new pair and unchanged earlier entries; values were sent only through stdin.
+Production injection/deployment is assigned to the teammate; follow the
+[operator guide](BROKER_OAUTH_DEPLOYMENT.md). IBKR
+key files and other broker registration credentials remain unprovisioned. Follow
+[broker authorization setup](BROKER_OAUTH.md) for the confirmed CloudFront origin,
+callback URLs and runtime variables. The existing SSM loader does not inject
+these new OAuth settings.
 
 Manage them in [Settings → Secrets and variables → Actions](https://github.com/JihuiTanUchicago/kalshi_trade/settings/secrets/actions).
 GitHub encrypts these values; collaborators cannot read or download them from the
@@ -38,6 +51,9 @@ env:
   APCA_API_KEY_ID: ${{ secrets.APCA_API_KEY_ID }}
   APCA_API_SECRET_KEY: ${{ secrets.APCA_API_SECRET_KEY }}
   DATABENTO_API_KEY: ${{ secrets.DATABENTO_API_KEY }}
+  ALPACA_OAUTH_CLIENT_ID: ${{ secrets.ALPACA_OAUTH_CLIENT_ID }}
+  ALPACA_OAUTH_CLIENT_SECRET: ${{ secrets.ALPACA_OAUTH_CLIENT_SECRET }}
+  APP_PUBLIC_URL: https://d1gfpzcosqrjya.cloudfront.net
 ```
 
 This fragment only supplies the runner's process environment. The deployment job

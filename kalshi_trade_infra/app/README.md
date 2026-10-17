@@ -12,6 +12,29 @@ contains the configured keys. The guide covers explicit runtime injection throug
 Actions or AWS, including the existing loader’s Alpaca limitation. No provider or
 production service was activated by the credential sync.
 
+## Broker account authorization — local implementation
+
+Settings → Account adds Alpaca Connect, Robinhood Trading MCP and approved IBKR
+OAuth1a connections, with session-bound state and encrypted per-user grants.
+Alpaca defaults to paper/read access; order authorization is an explicit option.
+Existing data keys are separate from OAuth client credentials. Provider app
+registration, real consent, database migration and production acceptance remain
+required. This does not enable Tau trading or invoke broker order tools.
+See [broker setup, API contract and acceptance](BROKER_OAUTH.md).
+
+Latest Alpaca check: OAuth client ID/secret are present in the private local env;
+112 focused offline tests and paper/data authorization URL construction pass.
+The public broker callback and asset return 404, so the new code is not available
+there yet. Local `APP_SECRET_KEY` is absent; production must retain its persistent
+key. Deployment/runtime injection, migration and genuine consent remain pending.
+[Configuration and public-readiness receipts](../results/broker_oauth_2026-10-17/credentials_2026-10-17/HANDOFF.md).
+The Alpaca OAuth pair is now encrypted in GitHub Secrets (seven names total).
+Production deployment is assigned to the teammate. The [operator guide](BROKER_OAUTH_DEPLOYMENT.md)
+provides source, private credential access, the broker-only migration, whole-app
+installation, verification and rollback, with full 1,020 Python / 55 frontend
+checks passing. No production
+service or database has changed. [Rollout handoff](../results/broker_oauth_2026-10-17/production_2026-10-17/HANDOFF.md).
+
 ## Source publication — October 17, 2026
 
 [PR #9](https://github.com/JihuiTanUchicago/kalshi_trade/pull/9) is merged on GitHub
