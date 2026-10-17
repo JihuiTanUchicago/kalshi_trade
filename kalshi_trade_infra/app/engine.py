@@ -176,6 +176,38 @@ def _live_trade(cur, dep: Dict, kernel, action: str, side: str, ticker: str, qty
     return kernel.execute(intent)
 
 
+def _close_position_at(conn, cur, dep: Dict, pos: Dict, kernel, via_kernel: bool, price: float, reason: str) -> bool:
+    """Close one open position at `price` through this deployment's mode (live/demo kernel sell, or
+    paper sell). The single exit path shared by the normal exit signal AND the drawdown force-sell —
+    no force-sell-specific order mechanics. Idempotent via `close_position` (only an open row closes),
+    so a retried tick never double-closes. Returns True only when the position actually closed; a
+    partial live fill books nothing and waits for the next slot."""
+    qty = int(pos["qty"])
+    if via_kernel:
+        rep = _live_trade(cur, dep, kernel, "sell", pos["side"], pos["ticker"], qty, price)
+        filled = int(rep.fill_qty_contracts)
+        if filled <= 0:
+            return False  # nothing filled this slot; retry next slot
+        if filled < qty:
+            # Partial fill: contracts WERE sold on the exchange, so the fill must be recorded, not
+            # dropped. Book the sold slice as realized P&L and shrink the open row to the remainder
+            # (which retries next slot); otherwise settlement double-counts and we re-sell what's gone.
+            # Contained: a booking failure is logged for reconciliation, never crashes the tick.
+            try:
+                filled_entry_fee = float(pos["entry_fee"]) * filled / qty
+                pnl = filled * (rep.fill_price_dollars - float(pos["entry_price"])) - filled_entry_fee - rep.fee_dollars
+                with repo.transaction(conn) as tx:
+                    repo.book_partial_exit(tx, pos, filled, rep.fill_price_dollars, rep.fee_dollars, pnl, reason)
+            except Exception as e:
+                print("[engine] partial-exit booking failed pos %d dep %d filled %d/%d: %r (will reconcile)"
+                      % (pos["id"], dep["id"], filled, qty, e), flush=True)
+            return False  # position not fully closed — remainder stays open
+        pnl = qty * (rep.fill_price_dollars - float(pos["entry_price"])) - float(pos["entry_fee"]) - rep.fee_dollars
+        return repo.close_position(cur, pos["id"], rep.fill_price_dollars, rep.fee_dollars, pnl, reason)
+    _paper_sell(conn, pos, price, reason)
+    return True
+
+
 def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[float]], sources: Sources) -> Dict:
     cur = conn.cursor()
     spec = dep["spec"]
@@ -209,21 +241,23 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
         if sig is None:
             continue
         reason, price = sig
-        if via_kernel:
-            rep = _live_trade(cur, dep, kernel, "sell", pos["side"], pos["ticker"], int(pos["qty"]), price)
-            if rep.fill_qty_contracts < int(pos["qty"]):
-                continue  # ponytail: partial exits wait for the next slot; per-lot positions if this bites
-            pnl = int(pos["qty"]) * (rep.fill_price_dollars - float(pos["entry_price"])) - float(pos["entry_fee"]) - rep.fee_dollars
-            repo.close_position(cur, pos["id"], rep.fill_price_dollars, rep.fee_dollars, pnl, reason)
-        else:
-            _paper_sell(conn, pos, price, reason)
-        out["exits"] += 1
+        if _close_position_at(conn, cur, dep, pos, kernel, via_kernel, price, reason):
+            out["exits"] += 1
 
     held = {p["ticker"] for p in repo.open_positions(cur, dep["id"])}
     slots = spec["sizing"]["max_positions"] - len(held)
+    # Per-user portfolio caps span ALL the user's deployments: block any new entry that would push
+    # the user past their open-position count or open entry-notional cap. Read once, tracked locally
+    # for the entries this call adds (another deployment's concurrent adds are seen next tick).
+    risk = repo.user_risk_config(cur, dep["user_id"])
+    exposure = repo.user_open_exposure(cur, dep["user_id"])
+    open_count = int(exposure["n"])
+    open_notional = float(exposure["notional"])
+    cap_positions = int(risk["max_open_positions"])
+    cap_notional = float(risk["max_open_notional"])
     for entry in specmod.entries(spec, snaps):
-        if slots <= 0:
-            break
+        if slots <= 0 or open_count >= cap_positions:
+            break  # deployment slot cap or user-wide position cap reached
         ticker = entry.snapshot.contract.ticker
         if ticker in held:
             continue
@@ -231,6 +265,12 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
         shown = sizes.get(ticker)
         if shown is not None:
             qty = min(qty, int(shown))  # paper never fills more than the book showed
+        # Trim to the user-wide open-notional cap; never breach it with a new entry.
+        room = cap_notional - open_notional
+        if room >= entry.price:
+            qty = min(qty, int(room / entry.price))
+        else:
+            qty = 0
         if qty < 1:
             continue
         if via_kernel:
@@ -244,6 +284,8 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
             break  # out of paper cash
         held.add(ticker)
         slots -= 1
+        open_count += 1
+        open_notional += qty * entry.price  # requested qty; a short live fill only over-counts (safe for a cap)
         out["entries"] += 1
     loss_guard(cur, dep)
     return out
@@ -266,6 +308,125 @@ def loss_guard(cur, dep: Dict) -> bool:
         repo.create_run(cur, dep["user_id"], "review", dep["market"], None,
                         "Deployment #%d was auto-paused by the loss guard: %s" % (dep["id"], why), dep["id"])
     return True
+
+
+# -- drawdown force-sell ---------------------------------------------------------
+# Conservative fallback if a user's drawdown_limit_pct column is unexpectedly NULL. The real
+# per-user default lives in the schema (25%). A limit of 0 disables the force-sell for a user.
+DRAWDOWN_LIMIT_PCT_DEFAULT = 25.0
+
+
+def _deployment_capital(dep: Dict) -> float:
+    """The deployment's capital base — same definition the loss guard uses."""
+    result = dep.get("result") or {}
+    return float(result.get("capital") or dep["spec"]["sizing"]["stake"] * dep["spec"]["sizing"]["max_positions"])
+
+
+def _liquidation_price(pos: Dict) -> Optional[float]:
+    """The price the position's OWN side could be sold at now, from the engine-stamped YES bid
+    (`mark_price`). YES liquidates ~yes_bid; NO ~1-yes_bid (matches server._mark_fields). None
+    until the first mark after entry — such a position is skipped (priced/retried next tick)."""
+    mark = pos.get("mark_price")
+    if mark is None:
+        return None
+    mark = float(mark)
+    return mark if pos["side"] == "yes" else 1.0 - mark
+
+
+def deployment_drawdown_pct(cur, dep: Dict) -> float:
+    """Current drawdown from the high-water mark, as a percent of capital.
+
+    Equity curve = cumulative realized P&L of closed positions (oldest first), with current
+    unrealized (open positions marked to `mark_price`) as the final point. Drawdown is peak minus
+    current — i.e. how far BELOW its own high the deployment sits RIGHT NOW, not its worst-ever dip
+    (a deployment that dipped and recovered is at its high, drawdown ~0, and must not be closed).
+    """
+    unrealized = 0.0
+    for pos in repo.open_positions(cur, dep["id"]):
+        price = _liquidation_price(pos)
+        if price is None:
+            continue
+        qty = int(pos["qty"])
+        unrealized += qty * price - (qty * float(pos["entry_price"]) + float(pos["entry_fee"]))
+    equity = [0.0]
+    cumulative = 0.0
+    for pnl in repo.deployment_realized_series(cur, dep["id"]):
+        cumulative += pnl
+        equity.append(cumulative)
+    equity.append(cumulative + unrealized)  # equity right now
+    drawdown = max(equity) - equity[-1]     # peak-to-now, >= 0
+    capital = _deployment_capital(dep)
+    return 100.0 * drawdown / capital if capital > 0 else 0.0
+
+
+def _force_close_kernel(dep: Dict, sources: Sources):
+    """The same kernel the normal exit path would use for this mode — reusing the live-gate and
+    demo-key checks exactly, so force-sell never obtains an execution path the engine couldn't
+    already use. None when unavailable (live off / no key): the deployment is still paused and its
+    positions settle at expiry."""
+    mode = dep["mode"]
+    if mode == "live":
+        if LIVE_TRADING_ENABLED and sources.live_kernel:
+            return sources.live_kernel(dep["user_id"])
+        return None
+    if mode == "demo":
+        return sources.demo_kernel(dep["user_id"]) if sources.demo_kernel else None
+    return None
+
+
+def force_sell_if_drawn_down(conn, dep: Dict, sources: Sources) -> bool:
+    """If this deployment's drawdown breaches the user's limit, force-close its open positions via
+    the mode's own exit path and pause it. Returns True if it breached (and was paused). Each
+    per-position close is contained: one failing close is logged and retried next tick, never
+    aborts the rest or the pause."""
+    cur = conn.cursor()
+    risk = repo.user_risk_config(cur, dep["user_id"])
+    limit_pct = DRAWDOWN_LIMIT_PCT_DEFAULT
+    if risk and risk.get("drawdown_limit_pct") is not None:
+        limit_pct = float(risk["drawdown_limit_pct"])
+    if limit_pct <= 0:
+        return False  # force-sell disabled for this user
+    dd_pct = deployment_drawdown_pct(cur, dep)
+    if dd_pct < limit_pct:
+        return False
+    mode = dep["mode"]
+    via_kernel = mode in ("live", "demo")
+    kernel = _force_close_kernel(dep, sources) if via_kernel else None
+    for pos in repo.open_positions(cur, dep["id"]):
+        if via_kernel and kernel is None:
+            break  # no execution path; pause below and let the positions settle at expiry
+        price = _liquidation_price(pos)
+        if price is None:
+            continue  # not yet marked — retry on a later tick
+        try:
+            _close_position_at(conn, cur, dep, pos, kernel, via_kernel, price, "drawdown")
+        except Exception as e:  # one position's close failing must not abort the pause or the others
+            print("[engine] force-close failed pos %d dep %d: %r (retry next tick)"
+                  % (pos["id"], dep["id"], e), flush=True)
+    why = "force-closed: drawdown %.1f%% >= limit %.1f%%" % (dd_pct, limit_pct)
+    if repo.set_deployment_status(cur, dep["user_id"], dep["id"], "paused", why):
+        repo.add_chat(cur, dep["user_id"], "system", "Paused deployment #%d automatically. %s" % (dep["id"], why))
+        repo.create_run(cur, dep["user_id"], "review", dep["market"], None,
+                        "Deployment #%d was force-closed and paused: %s" % (dep["id"], why), dep["id"])
+    return True
+
+
+def enforce_drawdown_limits(conn, sources: Sources) -> int:
+    """Each engine loop: force-sell + pause every running deployment past its user's drawdown limit.
+    One deployment's failure is contained so the sweep (and the engine loop) never crashes."""
+    cur = conn.cursor()
+    paused = 0
+    for market in MARKETS.values():
+        if not market.deployable:
+            continue
+        for dep in repo.running_deployments(cur, market.key):
+            try:
+                if force_sell_if_drawn_down(conn, dep, sources):
+                    paused += 1
+            except Exception as e:
+                print("[engine] drawdown check failed dep %d user %d: %r (skipping)"
+                      % (dep["id"], dep["user_id"], e), flush=True)
+    return paused
 
 
 def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] = None) -> Dict:
@@ -405,6 +566,13 @@ def run_forever() -> None:
                         repo.engine_heartbeat(conn.cursor(), LIVE_TRADING_ENABLED)
                     except Exception:
                         pass  # a heartbeat write must never stop the trading loop
+                    # Risk force-sell: close + pause any deployment past its user's drawdown limit.
+                    # Runs for every mode (paper/demo/live); live only closes when the live gate is on
+                    # (otherwise pause-only). Fully contained so it can never stop the trading loop.
+                    try:
+                        enforce_drawdown_limits(conn, sources)
+                    except Exception as e:
+                        print("[engine] drawdown enforcement failed: %r" % e, flush=True)
                     if LIVE_TRADING_ENABLED:
                         try:
                             enforce_autopilot_limits(conn)
