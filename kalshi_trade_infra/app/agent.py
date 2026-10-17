@@ -213,7 +213,16 @@ operation for the user — not just pausing things — and talk with them in pla
     proved itself on paper and the user has turned on live autopilot.
 You can NEVER flip the live-trading switch, bypass a deploy/live/risk gate, or weaken the loss
 budget — those are fixed. Be honest about uncertainty and small samples: a handful of live trades
-proves little either way. Never promise profit. Reply with ONE JSON object only."""
+proves little either way. Never promise profit. Reply with ONE JSON object only.
+
+Your north star is DURABLE, NET-OF-FEE, STATISTICALLY-VALIDATED profit on REAL money — not a full
+pipeline, not a busy feed, not a strategy that merely passed once. Fees are a hard, state-dependent
+hurdle (worst near 50c); an edge that doesn't clear them net is not an edge. Treat a deployment that
+is bleeding, flat after enough trades, or decaying vs its backtest as a dead end: tune it, or pause
+it and move the capital to a better idea — do not let a loser ride. Be your own harshest skeptic
+about overfitting: the gatekeeper's held-out numbers are the only truth, so never talk yourself into
+an idea the gates didn't clear, and never shade a result to look better than it is. Finding "nothing
+worth trading right now" is a valid, honest outcome."""
 
 
 # -- research ------------------------------------------------------------------
@@ -1491,6 +1500,39 @@ def _copilot_context(cur, user: Dict) -> str:
                      % (s["id"], s["title"], s["market"], oos.get("pnl"), oos.get("trades")))
     if not spare:
         lines.append("- none")
+    # Memory + situational awareness so a review doesn't repeat dead ends, double-launch research,
+    # or spend blind to its budget. Each block is best-effort: a context-read hiccup must never fail
+    # the whole review. ponytail: in tests `cur` is a stub, so these simply omit — no prompt churn.
+    try:
+        runs = repo.list_runs(cur, user["id"], limit=6)
+    except Exception:
+        runs = []
+    if runs:
+        lines += ["", "Recent research lines (don't re-launch one that is still active or just failed on the same idea):"]
+        for r in runs:
+            lines.append("- run #%s on %s [%s]: %s tried, %s passed — \"%s\""
+                         % (r["id"], r["market"], r["status"], r.get("hypotheses_tried") or 0,
+                            r.get("strategies_passed") or 0, (r.get("prompt") or "").strip()[:100]))
+    dead: List[Dict] = []
+    for st in ("failed", "rejected"):
+        try:
+            dead += repo.list_strategies(cur, user["id"], status=st, limit=10)
+        except Exception:
+            pass
+    if dead:
+        lines += ["", "Dead ends already tested and killed for this user — do NOT re-propose the same idea; "
+                      "refine the mechanism or hunt elsewhere:"]
+        for s in dead[:12]:
+            lines.append('- "%s" (%s) — %s' % (s["title"], s["market"], s["status"]))
+    try:
+        paper = repo.paper_balance(cur, user["id"])
+        demo = repo.demo_equity(cur, user["id"]).get("equity")
+        credits = repo.credit_balance(cur, user["id"])
+        lines += ["", "Account & budget: paper cash $%.2f, demo equity $%s, research credits $%.2f left. Real, "
+                      "fee-surviving money is the goal — a validated edge only counts once it holds up on a live book."
+                  % (paper, demo, credits)]
+    except Exception:
+        pass
     deployable = [k for k, m in MARKETS.items() if m.deployable]
     lines += ["", ("Markets you can research AND deploy — you are NOT limited to the one you've been "
                    "trading. If a market has gone quiet (no fills, no edges for days), that is a reason to "
@@ -1552,7 +1594,10 @@ def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.da
                     "gone quiet for days (no fills, no passing edges), that is NOT a reason to wait or 'step aside' — research a DIFFERENT "
                     "market from the list (other coins, sports, weather); a dead regime in one market is not a dead regime everywhere, and "
                     "sitting idle while 18 other markets are open is as passive as forcing a bad trade. If there is genuinely nothing worth "
-                    "doing, say so briefly. Every money/risk value you set is clamped and the loss budget / kill switch / live gate still bound you." % run.get("prompt"))
+                    "doing, say so briefly. Use the context above: don't re-launch a research line that is still active or "
+                    "just failed, and don't re-propose an idea already in the dead-ends list — refine its mechanism or hunt "
+                    "elsewhere. Pull capital out of a deployment that is bleeding or flat-after-enough-trades instead of letting "
+                    "a loser ride. Every money/risk value you set is clamped and the loss budget / kill switch / live gate still bound you." % run.get("prompt"))
         else:
             task = "Answer the user's latest message."
         prompt = "%s\n\nRecent conversation:\n%s\n\n%s\n\n%s" % (_copilot_context(cur, user), transcript or "(none)", task, ACTIONS_GUIDE)
