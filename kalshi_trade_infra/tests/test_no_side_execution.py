@@ -201,8 +201,10 @@ def _no_snapshot():
 def test_decide_live_places_a_no_order_and_books_a_no_position(monkeypatch):
     from app import engine
     from app import spec as specmod
+    from tests.conftest import patch_intent_passthrough
 
     monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", True)
+    patch_intent_passthrough(monkeypatch)  # P0-1 intent log transparent; booking lands on _Cur
     cur = _Cur()
     conn = _Conn(cur)
     kernel = _RecordingKernel()

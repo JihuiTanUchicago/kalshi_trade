@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import Callable, Dict, List, Optional
 
 import requests
@@ -39,6 +41,9 @@ LIVE_TRADING_ENABLED = os.getenv("APP_LIVE_TRADING_ENABLED") == "1"
 # ponytail: temporary; remove once NO-side live is validated on the demo sandbox.
 NO_SIDE_LIVE_ENABLED = os.getenv("APP_NO_SIDE_LIVE_ENABLED") == "1"
 TICK_SECONDS = 15
+# This engine process's identity, for the per-position close claim (P0-3): whichever engine stamps
+# its id on a position owns that force-close, so two engines never both sell it into a short.
+_ENGINE_ID = "engine-%s" % uuid.uuid4()
 # A slot decided this late is skipped instead: the backtest decided at the
 # slot boundary, and a daily decision taken 50 minutes late is a different rule.
 LATE_FRACTION = 0.25
@@ -130,6 +135,10 @@ class Sources:
     result: Callable[[str], Optional[str]] = fetch_result
     live_kernel: Optional[Callable[[int], object]] = None  # user_id -> kernel; None = live disabled
     demo_kernel: Optional[Callable[[int], object]] = None  # user_id -> kernel; None = demo disabled
+    # intent_row -> {'filled':int,'avg_price':float,'fee':float,'order_id':str} or None (undetermined).
+    # Crash-recovery asks this whether a 'sent' intent's order filled; None = can't tell (leave it
+    # 'sent', NEVER re-send). None here = no recovery lookup wired (recovery is a safe no-op).
+    order_lookup: Optional[Callable[[Dict], Optional[Dict]]] = None
 
 
 # -- settlement ------------------------------------------------------------------
@@ -189,15 +198,54 @@ def _paper_sell(conn, pos: Dict, price: float, reason: str) -> None:
                             "Sold %d %s %s @ %.2f (%s)" % (qty, pos["side"].upper(), pos["ticker"], price, reason), pos["id"])
 
 
-def _live_trade(cur, dep: Dict, kernel, action: str, side: str, ticker: str, qty: int, price: float):
+def _live_trade(cur, dep: Dict, kernel, action: str, side: str, ticker: str, qty: int, price: float,
+                client_order_id_base: Optional[str] = None):
     from data_pipeline.architecture.contracts import TradeIntent
 
     # `side` is the real leg (yes|no) and `price` is that side's own price; the
     # kernel reads the correct side of the book and the submitter sends the
     # matching YES-leg wire order. A NO strategy must never place a YES order.
+    # client_order_id_base (the persisted intent id, P0-1) rides on metadata so the kernel can mint
+    # a durable, idempotent client_order_id for every child order without a signature change.
     intent = TradeIntent(action=action, side=side, ticker=ticker, qty_contracts=qty, limit_price_dollars=price,
-                         model_name="app-dep-%d" % dep["id"], now_ts=datetime.now(timezone.utc))
+                         model_name="app-dep-%d" % dep["id"], now_ts=datetime.now(timezone.utc),
+                         metadata={"client_order_id": client_order_id_base} if client_order_id_base else {})
     return kernel.execute(intent)
+
+
+def _log_order_intent(conn, dep: Dict, action: str, side: str, ticker: str, qty: int, price: float,
+                      mode: str, position_id: Optional[int] = None, reason: Optional[str] = None,
+                      market_close_time=None) -> Optional[str]:
+    """Durably record an order intent BEFORE the exchange POST (P0-1) and return its id (== the
+    client_order_id to reuse). Its own committed transaction, so the record survives a crash the
+    instant after the order is placed. Best-effort: returns None if the write fails — an EXIT must
+    never be blocked by it (the caller still flattens; the net reconciler catches an unlogged fill)."""
+    intent_id = str(uuid.uuid4())
+    try:
+        with repo.transaction(conn) as tx:
+            repo.insert_order_intent(tx, intent_id, dep["id"], dep["user_id"], mode, action, side,
+                                     ticker, qty, price, intent_id, position_id, reason, market_close_time)
+        return intent_id
+    except Exception as e:
+        print("[engine] order-intent log failed dep %d %s %s %s: %r (continuing)"
+              % (dep["id"], action, side, ticker, e), flush=True)
+        return None
+
+
+def _book_entry(conn, intent_id: Optional[str], deployment_id: int, user_id: int, mode: str, ticker: str,
+                side: str, rep, market_close_time) -> bool:
+    """Book a filled ENTRY as ONE transaction keyed to its intent (P0-2): claim the intent's single
+    'booked' transition and, only if we won it, insert the position row. The claim makes the live
+    path and crash-recovery race-safe — a fill is booked exactly once, never twice."""
+    with repo.transaction(conn) as tx:
+        if intent_id is not None and not repo.claim_intent_booking(
+            tx, intent_id, getattr(rep, "external_order_id", None), int(rep.fill_qty_contracts), rep.fill_price_dollars,
+            rep.fee_dollars, getattr(rep, "raw_json", None)
+        ):
+            return False  # already booked (recovery/live race) — no double position
+        repo.insert_position(tx, deployment_id, user_id, mode, ticker, side, int(rep.fill_qty_contracts),
+                             rep.fill_price_dollars, rep.fee_dollars, market_close_time, getattr(rep, "external_order_id", None))
+    return True
 
 
 def _close_position_at(conn, cur, dep: Dict, pos: Dict, kernel, via_kernel: bool, price: float, reason: str) -> bool:
@@ -207,29 +255,52 @@ def _close_position_at(conn, cur, dep: Dict, pos: Dict, kernel, via_kernel: bool
     so a retried tick never double-closes. Returns True only when the position actually closed; a
     partial live fill books nothing and waits for the next slot."""
     qty = int(pos["qty"])
-    if via_kernel:
-        rep = _live_trade(cur, dep, kernel, "sell", pos["side"], pos["ticker"], qty, price)
-        filled = int(rep.fill_qty_contracts)
-        if filled <= 0:
-            return False  # nothing filled this slot; retry next slot
-        if filled < qty:
-            # Partial fill: contracts WERE sold on the exchange, so the fill must be recorded, not
-            # dropped. Book the sold slice as realized P&L and shrink the open row to the remainder
-            # (which retries next slot); otherwise settlement double-counts and we re-sell what's gone.
-            # Contained: a booking failure is logged for reconciliation, never crashes the tick.
+    if not via_kernel:
+        _paper_sell(conn, pos, price, reason)
+        return True
+    # Durable order-intent BEFORE the exchange sell (P0-1). Best-effort — an EXIT is NEVER blocked by
+    # the intent log: if the write fails (intent_id is None) we STILL flatten and fall back to the
+    # net reconciler. The intent carries position_id so crash-recovery knows which position to close.
+    intent_id = _log_order_intent(conn, dep, "sell", pos["side"], pos["ticker"], qty, price, dep["mode"],
+                                  position_id=pos["id"], reason=reason)
+    rep = _live_trade(cur, dep, kernel, "sell", pos["side"], pos["ticker"], qty, price,
+                      client_order_id_base=intent_id)
+    filled = int(rep.fill_qty_contracts)
+    if filled <= 0:
+        if intent_id is not None:
             try:
-                filled_entry_fee = float(pos["entry_fee"]) * filled / qty
-                pnl = filled * (rep.fill_price_dollars - float(pos["entry_price"])) - filled_entry_fee - rep.fee_dollars
-                with repo.transaction(conn) as tx:
-                    repo.book_partial_exit(tx, pos, filled, rep.fill_price_dollars, rep.fee_dollars, pnl, reason)
-            except Exception as e:
-                print("[engine] partial-exit booking failed pos %d dep %d filled %d/%d: %r (will reconcile)"
-                      % (pos["id"], dep["id"], filled, qty, e), flush=True)
-            return False  # position not fully closed — remainder stays open
-        pnl = qty * (rep.fill_price_dollars - float(pos["entry_price"])) - float(pos["entry_fee"]) - rep.fee_dollars
-        return repo.close_position(cur, pos["id"], rep.fill_price_dollars, rep.fee_dollars, pnl, reason)
-    _paper_sell(conn, pos, price, reason)
-    return True
+                repo.mark_order_intent(cur, intent_id, "unfilled")
+            except Exception:
+                pass
+        return False  # nothing filled this slot; retry next slot
+    if filled < qty:
+        # Partial fill: contracts WERE sold on the exchange, so the fill must be recorded, not
+        # dropped. Book the sold slice as realized P&L and shrink the open row to the remainder
+        # (which retries next slot); otherwise settlement double-counts and we re-sell what's gone.
+        # Contained: a booking failure is logged for reconciliation, never crashes the tick. The
+        # intent-booking claim + book_partial_exit share ONE transaction (P0-2), keyed to the intent.
+        try:
+            filled_entry_fee = float(pos["entry_fee"]) * filled / qty
+            pnl = filled * (rep.fill_price_dollars - float(pos["entry_price"])) - filled_entry_fee - rep.fee_dollars
+            with repo.transaction(conn) as tx:
+                if intent_id is not None and not repo.claim_intent_booking(
+                    tx, intent_id, getattr(rep, "external_order_id", None), filled, rep.fill_price_dollars, rep.fee_dollars,
+                    getattr(rep, "raw_json", None)
+                ):
+                    return False  # already booked by recovery
+                repo.book_partial_exit(tx, pos, filled, rep.fill_price_dollars, rep.fee_dollars, pnl, reason)
+        except Exception as e:
+            print("[engine] partial-exit booking failed pos %d dep %d filled %d/%d: %r (will reconcile)"
+                  % (pos["id"], dep["id"], filled, qty, e), flush=True)
+        return False  # position not fully closed — remainder stays open
+    pnl = qty * (rep.fill_price_dollars - float(pos["entry_price"])) - float(pos["entry_fee"]) - rep.fee_dollars
+    with repo.transaction(conn) as tx:
+        if intent_id is not None and not repo.claim_intent_booking(
+            tx, intent_id, getattr(rep, "external_order_id", None), filled, rep.fill_price_dollars, rep.fee_dollars,
+            getattr(rep, "raw_json", None)
+        ):
+            return False  # recovery already booked this exit — don't double-close
+        return repo.close_position(tx, pos["id"], rep.fill_price_dollars, rep.fee_dollars, pnl, reason)
 
 
 def cross_deploy_block(spec: Dict, mode: str) -> Optional[str]:
@@ -333,12 +404,24 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
         if qty < 1:
             continue
         if via_kernel:
-            rep = _live_trade(cur, dep, kernel, "buy", entry.side, ticker, qty, entry.price)
-            if rep.fill_qty_contracts < 1:
+            close_time = entry.snapshot.contract.close_time
+            # Durable order-intent BEFORE the real order (P0-1). An entry is NOT sacrosanct: if the
+            # intent write fails we skip it rather than place an untracked order (a missed entry
+            # costs nothing; an untracked live fill is exactly the F1 hole we are closing).
+            intent_id = _log_order_intent(conn, dep, "buy", entry.side, ticker, qty, entry.price, mode,
+                                          market_close_time=close_time)
+            if intent_id is None:
                 continue
-            repo.insert_position(cur, dep["id"], dep["user_id"], mode, ticker, entry.side, rep.fill_qty_contracts,
-                                 rep.fill_price_dollars, rep.fee_dollars, entry.snapshot.contract.close_time,
-                                 rep.external_order_id)
+            rep = _live_trade(cur, dep, kernel, "buy", entry.side, ticker, qty, entry.price,
+                              client_order_id_base=intent_id)
+            if rep.fill_qty_contracts < 1:
+                try:
+                    repo.mark_order_intent(cur, intent_id, "unfilled")
+                except Exception:
+                    pass
+                continue
+            # Fill -> position insert is ONE transaction keyed to the intent (P0-2), booked once.
+            _book_entry(conn, intent_id, dep["id"], dep["user_id"], mode, ticker, entry.side, rep, close_time)
         elif _paper_buy(conn, dep, entry, qty) is None:
             break  # out of paper cash
         held.add(ticker)
@@ -393,7 +476,7 @@ def _decide_pairs(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optio
         # price is what _kernel_buy_pair unwinds a naked leg at (YES sells ~yes_bid; NO ~1-yes_ask).
         legs = [("yes", lt, cand.long_price, cand.long_snap.yes_bid, cand.long_snap.contract.close_time),
                 ("no", st, cand.short_price, 1.0 - cand.short_snap.yes_ask, cand.short_snap.contract.close_time)]
-        placed = (_kernel_buy_pair(cur, dep, kernel, legs, qty, mode) if via_kernel
+        placed = (_kernel_buy_pair(conn, cur, dep, kernel, legs, qty, mode) if via_kernel
                   else _paper_buy_pair(conn, dep, legs, qty))
         if not placed:
             break  # out of paper cash / nothing filled this slot
@@ -426,45 +509,60 @@ def _paper_buy_pair(conn, dep: Dict, legs, qty: int) -> bool:
     return True
 
 
-def _kernel_buy_pair(cur, dep: Dict, kernel, legs, qty: int, mode: str) -> bool:
-    """Legging-safe live/demo pair entry. A relative-value pair must stay balanced (equal YES and NO
-    contracts), but two real kernel orders can't fill atomically — so we keep the legs matched by
-    hand and flatten any naked excess on the exchange immediately, never leaving untracked exposure:
+def _kernel_buy_pair(conn, cur, dep: Dict, kernel, legs, qty: int, mode: str) -> bool:
+    """Legging-safe AND durable live/demo pair entry. A relative-value pair must stay balanced (equal
+    YES and NO contracts), but two real kernel orders can't fill atomically — so we keep the legs
+    matched by hand and flatten any naked excess on the exchange immediately, never leaving untracked
+    exposure. Every exchange order carries a durable intent logged BEFORE the POST (P0), so a crash in
+    the fill->write window is recoverable by client_order_id, and the whole consistent picture is
+    booked in ONE transaction (both-or-neither), each leg claimed exactly once:
 
-      1. Buy leg 1 (YES) for `qty` -> f1 filled. If f1 < 1, return False (flat, no exposure).
+      1. Buy leg 1 (YES) for `qty` -> f1 filled. If f1 < 1, mark its intent unfilled, return False.
       2. Buy leg 2 (NO) for f1 -> f2 filled. hedged = min(f1, f2) (the kernel never over-fills, so
          f2 <= f1 and hedged == f2).
       3. If leg 1 over-filled (f1 > hedged), SELL the excess YES at the bid to flatten it, and book
-         the round-trip P&L (pro-rated buy fee + sell fee) as a CLOSED row so cash / realized P&L
-         stay exact. The flattened contracts never become a held position.
+         the round-trip P&L (pro-rated buy fee + sell fee) as a CLOSED row. Never becomes a position.
       4. If that unwind sell ITSELF under-fills, the still-naked remainder is recorded as a tracked
-         OPEN position (the drawdown force-sell / loss guard will close it) and logged loudly — we
-         never silently drop a naked leg.
-      5. Record the two hedged legs at `hedged` qty with pro-rated fees. Return True iff hedged >= 1.
+         OPEN position (the drawdown force-sell / loss guard will close it) and logged loudly.
+      5. Record hedged legs at `hedged` qty with pro-rated fees, inside the booking transaction.
 
-    Leg 1's actual fill fee is split pro-rata across its hedged / unwound / residual slices; the
-    three sum back to it exactly (the residual takes the remainder, so there is no rounding drift).
-    Every exchange order is sent BEFORE any DB write, so the recorded state is the final, consistent
-    picture (an autocommit connection never persists a half-built pair)."""
+    Leg 1's real buy fee splits pro-rata across its hedged / unwound / residual slices (the residual
+    takes the remainder, so no rounding drift). Each leg's buy intent is claimed once (covering the
+    whole order fill); the booking transaction makes the pair all-or-nothing. A crash mid-entry (before
+    the transaction) is backstopped by recover_sent_intents + the live reconciler. Returns hedged >= 1."""
     l_side, l_ticker, l_buy, l_sell, l_close = legs[0]  # long YES leg
     s_side, s_ticker, s_buy, _s_sell, s_close = legs[1]  # short NO leg
     uid, dep_id = dep["user_id"], dep["id"]
 
-    rep1 = _live_trade(cur, dep, kernel, "buy", l_side, l_ticker, qty, l_buy)
+    # Leg 1 buy: intent BEFORE the POST (never place an untracked order).
+    i1 = _log_order_intent(conn, dep, "buy", l_side, l_ticker, qty, l_buy, mode, market_close_time=l_close)
+    if i1 is None:
+        return False
+    rep1 = _live_trade(cur, dep, kernel, "buy", l_side, l_ticker, qty, l_buy, client_order_id_base=i1)
     f1 = int(rep1.fill_qty_contracts)
     if f1 < 1:
-        return False  # leg 1 never filled -> deployment flat, no exposure, nothing to unwind
+        try:
+            repo.mark_order_intent(cur, i1, "unfilled")  # leg 1 never filled -> flat, nothing to unwind
+        except Exception:
+            pass
+        return False
 
-    rep2 = _live_trade(cur, dep, kernel, "buy", s_side, s_ticker, f1, s_buy)
-    f2 = int(rep2.fill_qty_contracts)
+    # Leg 2 buy for the leg-1 fill: intent BEFORE the POST.
+    i2 = _log_order_intent(conn, dep, "buy", s_side, s_ticker, f1, s_buy, mode, market_close_time=s_close)
+    rep2 = _live_trade(cur, dep, kernel, "buy", s_side, s_ticker, f1, s_buy, client_order_id_base=i2) if i2 else None
+    f2 = int(rep2.fill_qty_contracts) if rep2 is not None else 0
     hedged = min(f1, f2)
     excess = f1 - hedged
 
+    # Flatten the unhedged leg-1 excess at the bid: intent BEFORE the POST.
     unwound = residual = 0
     sell_rep = None
-    if excess > 0:  # flatten the unhedged leg-1 excess at the bid before recording anything
-        sell_rep = _live_trade(cur, dep, kernel, "sell", l_side, l_ticker, excess, l_sell)
-        unwound = min(int(sell_rep.fill_qty_contracts), excess)  # a kernel never sells more than asked
+    i3 = None
+    if excess > 0:
+        i3 = _log_order_intent(conn, dep, "sell", l_side, l_ticker, excess, l_sell, mode, market_close_time=l_close)
+        if i3 is not None:
+            sell_rep = _live_trade(cur, dep, kernel, "sell", l_side, l_ticker, excess, l_sell, client_order_id_base=i3)
+            unwound = min(int(sell_rep.fill_qty_contracts), excess)  # a kernel never sells more than asked
         residual = excess - unwound
 
     # Split leg 1's real buy fee across its three slices so they sum back to it exactly.
@@ -472,26 +570,44 @@ def _kernel_buy_pair(cur, dep: Dict, kernel, legs, qty: int, mode: str) -> bool:
     l_fee_unwound = rep1.fee_dollars * unwound / f1
     l_fee_residual = rep1.fee_dollars - l_fee_hedged - l_fee_unwound
 
-    if hedged >= 1:  # the balanced pair: equal YES and NO, each at `hedged`
-        repo.insert_position(cur, dep_id, uid, mode, l_ticker, l_side, hedged,
-                             rep1.fill_price_dollars, l_fee_hedged, l_close, rep1.external_order_id)
-        repo.insert_position(cur, dep_id, uid, mode, s_ticker, s_side, hedged,
-                             rep2.fill_price_dollars, rep2.fee_dollars, s_close, rep2.external_order_id)
+    # Book the final consistent picture in ONE transaction (both-or-neither), each leg claimed once.
+    with repo.transaction(conn) as tx:
+        # Leg 1: claim once (covers the whole f1 fill), then allocate into hedged / unwound / residual.
+        if repo.claim_intent_booking(tx, i1, getattr(rep1, "external_order_id", None), f1,
+                                     rep1.fill_price_dollars, rep1.fee_dollars, getattr(rep1, "raw_json", None)):
+            if hedged >= 1:
+                repo.insert_position(tx, dep_id, uid, mode, l_ticker, l_side, hedged,
+                                     rep1.fill_price_dollars, l_fee_hedged, l_close, rep1.external_order_id)
+            if unwound >= 1:  # round-trip P&L of the flattened excess — booked, never held
+                pnl = (unwound * (sell_rep.fill_price_dollars - rep1.fill_price_dollars)
+                       - l_fee_unwound - sell_rep.fee_dollars)
+                repo.insert_closed_position(tx, dep_id, uid, mode, l_ticker, l_side, unwound,
+                                            rep1.fill_price_dollars, l_fee_unwound, sell_rep.fill_price_dollars,
+                                            sell_rep.fee_dollars, pnl, "pair_unwind", l_close, rep1.external_order_id)
+            if residual >= 1:  # unwind sell under-filled: still-naked YES — track it + shout
+                print("[engine] CROSS-PAIR LEGGING RISK dep %d: %d naked %s %s after unwind under-filled "
+                      "(bought %d, hedged %d, flattened %d) — recorded as a tracked position for the guard to close"
+                      % (dep_id, residual, l_side.upper(), l_ticker, f1, hedged, unwound), flush=True)
+                repo.insert_position(tx, dep_id, uid, mode, l_ticker, l_side, residual,
+                                     rep1.fill_price_dollars, l_fee_residual, l_close, rep1.external_order_id)
+        # Leg 2: claim once, insert the hedged short leg.
+        if hedged >= 1 and i2 is not None and rep2 is not None:
+            if repo.claim_intent_booking(tx, i2, getattr(rep2, "external_order_id", None), f2,
+                                         rep2.fill_price_dollars, rep2.fee_dollars, getattr(rep2, "raw_json", None)):
+                repo.insert_position(tx, dep_id, uid, mode, s_ticker, s_side, hedged,
+                                     rep2.fill_price_dollars, rep2.fee_dollars, s_close, rep2.external_order_id)
 
-    if unwound >= 1:  # round-trip P&L of the flattened excess — booked, never held
-        pnl = (unwound * (sell_rep.fill_price_dollars - rep1.fill_price_dollars)
-               - l_fee_unwound - sell_rep.fee_dollars)
-        repo.insert_closed_position(cur, dep_id, uid, mode, l_ticker, l_side, unwound,
-                                    rep1.fill_price_dollars, l_fee_unwound, sell_rep.fill_price_dollars,
-                                    sell_rep.fee_dollars, pnl, "pair_unwind", l_close, rep1.external_order_id)
-
-    if residual >= 1:  # unwind sell under-filled: still-naked YES — track it + shout, never drop it
-        print("[engine] CROSS-PAIR LEGGING RISK dep %d: %d naked %s %s after unwind under-filled "
-              "(bought %d, hedged %d, flattened %d) — recorded as a tracked position for the guard to close"
-              % (dep_id, residual, l_side.upper(), l_ticker, f1, hedged, unwound), flush=True)
-        repo.insert_position(cur, dep_id, uid, mode, l_ticker, l_side, residual,
-                             rep1.fill_price_dollars, l_fee_residual, l_close, rep1.external_order_id)
-
+    # Terminal state for intents not booked into a held position (best-effort; recovery-safe).
+    if i2 is not None and hedged < 1:
+        try:
+            repo.mark_order_intent(cur, i2, "unfilled")
+        except Exception:
+            pass
+    if i3 is not None:
+        try:
+            repo.mark_order_intent(cur, i3, "booked" if unwound >= 1 else "unfilled")
+        except Exception:
+            pass
     return hedged >= 1
 
 
@@ -643,6 +759,12 @@ def force_sell_if_drawn_down(conn, dep: Dict, sources: Sources) -> bool:
         price = _liquidation_price(pos)
         if price is None:
             continue  # not yet marked — retry on a later tick
+        # P0-3 (closes F3): this sweep places a REAL sell every loop with no decision-slot claim, so
+        # two engines would each sell the same position into an unintended short. Lease the position
+        # first; only the engine that wins the claim sends the order. Paper places no real order, so
+        # it needs no claim. The claim can only PREVENT a duplicate — it never blocks a legit close.
+        if via_kernel and not repo.claim_position_close(cur, pos["id"], _ENGINE_ID):
+            continue  # another engine is already force-closing this position
         try:
             _close_position_at(conn, cur, dep, pos, kernel, via_kernel, price, close_reason)
         except Exception as e:  # one position's close failing must not abort the pause or the others
@@ -697,6 +819,11 @@ def flatten_deployment(conn, dep: Dict, sources: Sources) -> int:
         price = _liquidation_price(pos)
         if price is None:
             continue  # not yet marked — retry next sweep
+        # P0-3 (closes F3): this sweep places a REAL sell per position with no decision-slot claim, so
+        # two engines would each sell the same position. Lease it first; only the winner sends the
+        # order. Paper places no real order, so it needs no claim. A claim only PREVENTS a duplicate.
+        if via_kernel and not repo.claim_position_close(cur, pos["id"], _ENGINE_ID):
+            continue  # another engine is already flattening this position
         try:
             if _close_position_at(conn, cur, dep, pos, kernel, via_kernel, price, "flatten"):
                 closed += 1
@@ -724,6 +851,134 @@ def enforce_flatten_on_pause(conn, sources: Sources) -> int:
                 print("[engine] flatten sweep failed dep %d user %d: %r (skipping)"
                       % (dep["id"], dep["user_id"], e), flush=True)
     return flattened
+
+
+# -- crash recovery of in-flight orders (EXECUTION_RISK_HARDENING P0-1, closes F1/F2 + the DR gap) --
+
+
+def _match_order_fill(orders: List[Dict], client_order_id: str) -> Optional[Dict]:
+    """Find the order with this client_order_id in an exchange orders list and read its fill, or None
+    if it is ABSENT. Absent is deliberately indeterminate (not 'unfilled'): an IOC order that filled
+    may not appear in a resting-orders view, and wrongly booking it unfilled would drop a real
+    position. Only a POSITIVELY-found order with an explicit fill count is acted on."""
+    def _num(v, d=0.0):
+        try:
+            return float(v) if v is not None else d
+        except (TypeError, ValueError):
+            return d
+    for o in orders or []:
+        if str(o.get("client_order_id")) == str(client_order_id):
+            filled = int(_num(o.get("fill_count")))
+            return {"filled": filled, "avg_price": _num(o.get("average_fill_price")),
+                    "fee": _num(o.get("average_fee_paid")) * filled, "order_id": o.get("order_id")}
+    return None
+
+
+def _make_order_lookup(conn) -> Callable[[Dict], Optional[Dict]]:
+    """Build the recovery lookup: intent_row -> fill-dict|None, asking the exchange (the user's own
+    key, the matching host) whether the intent's order filled, matched by its persisted
+    client_order_id. None on ANY doubt — unknown mode, missing key, network/parse error, or order
+    absent — so recovery NEVER re-sends and never mis-books; those intents stay 'sent' and surface.
+    NOTE: the Kalshi orders-field mapping (fill_count/average_fill_price) is verified on the demo
+    sandbox before it is trusted on live (see EXECUTION_RISK_HARDENING §9); until then absent->None
+    keeps it safe (a no-op + alert), never a wrong booking."""
+    from app import kalshi_account, kalshi_dev_exec
+    from data_pipeline.common import api_get_auth
+
+    def lookup(it: Dict) -> Optional[Dict]:
+        mode, coid = it["mode"], it["client_order_id"]
+        try:
+            if mode == "demo":
+                row = repo.get_kalshi_dev_key(conn.cursor(), it["user_id"])
+                if row is None:
+                    return None
+                creds = kalshi_account.credentials_from_row(it["user_id"], row)
+                orders = (kalshi_dev_exec.demo_orders(creds, ticker=it["ticker"]) or {}).get("orders") or []
+            elif mode == "live" and LIVE_TRADING_ENABLED:
+                row = repo.get_kalshi_key(conn.cursor(), it["user_id"])
+                if row is None:
+                    return None
+                creds = kalshi_account.credentials_from_row(it["user_id"], row)
+                orders = (api_get_auth("/trade-api/v2/portfolio/orders", {"ticker": it["ticker"]},
+                                       credentials=creds) or {}).get("orders") or []
+            else:
+                return None  # live recovery only when the live gate is on; unknown mode -> leave 'sent'
+            return _match_order_fill(orders, coid)
+        except Exception as e:
+            print("[engine] order lookup failed for intent %s: %r (leaving sent)"
+                  % (it.get("intent_id"), e), flush=True)
+            return None
+
+    return lookup
+
+
+def _book_recovered(conn, it: Dict, filled: int, avg_price: float, fee: float, order_id) -> None:
+    """Book a recovered fill EXACTLY ONCE, keyed to the intent (same claim_intent_booking guard the
+    live path uses, so a recovery/live race books once). An entry re-creates the position row; an
+    exit closes (or partial-exits) the intent's own position. Idempotent: a second pass, or a race
+    with the live booker, is a clean no-op."""
+    rep = SimpleNamespace(fill_qty_contracts=filled, fill_price_dollars=avg_price, fee_dollars=fee,
+                          external_order_id=str(order_id) if order_id is not None else None, raw_json=None)
+    if it["action"] == "buy":
+        _book_entry(conn, it["intent_id"], it["deployment_id"], it["user_id"], it["mode"], it["ticker"],
+                    it["side"], rep, it.get("market_close_time"))
+        return
+    # Exit: close the intent's own position. close_position/book_partial_exit are idempotent against
+    # the 'open' guard, and claim_intent_booking ensures the booking happens once.
+    cur = conn.cursor()
+    pos = repo.get_position(cur, it["position_id"]) if it.get("position_id") is not None else None
+    if pos is None or pos["status"] != "open":
+        repo.mark_order_intent(cur, it["intent_id"], "booked", getattr(rep, "external_order_id", None), filled, avg_price, fee)
+        return  # the position is already closed (settled or booked elsewhere) — nothing to re-close
+    qty = int(pos["qty"])
+    reason = it.get("reason") or "recovered"
+    with repo.transaction(conn) as tx:
+        if not repo.claim_intent_booking(tx, it["intent_id"], getattr(rep, "external_order_id", None), filled, avg_price, fee):
+            return
+        if filled >= qty:
+            pnl = qty * (avg_price - float(pos["entry_price"])) - float(pos["entry_fee"]) - fee
+            repo.close_position(tx, pos["id"], avg_price, fee, pnl, reason)
+        else:
+            filled_entry_fee = float(pos["entry_fee"]) * filled / qty
+            pnl = filled * (avg_price - float(pos["entry_price"])) - filled_entry_fee - fee
+            repo.book_partial_exit(tx, pos, filled, avg_price, fee, pnl, reason)
+
+
+def recover_sent_intents(conn, sources: Sources, older_than_seconds: int = 30) -> int:
+    """Deterministic crash recovery (P0-1): for each order-intent left 'sent' (POST issued, outcome
+    unknown — the F1/F2 crash / lost-response window), ask the exchange whether it filled and book it
+    EXACTLY ONCE or mark it unfilled. NEVER re-sends an order; when the outcome can't be determined
+    the intent stays 'sent' (safe) and is surfaced. Fully contained: one intent's failure never
+    aborts the rest or the engine loop. Returns the number of intents resolved this pass."""
+    cur = conn.cursor()
+    lookup = sources.order_lookup
+    if lookup is None:
+        return 0
+    resolved = 0
+    for it in repo.open_sent_intents(cur, older_than_seconds):
+        try:
+            fill = lookup(it)
+        except Exception as e:
+            print("[engine] recovery lookup raised for intent %s: %r (leaving sent)"
+                  % (it.get("intent_id"), e), flush=True)
+            continue
+        if fill is None:
+            print("[engine] UNRECOVERED in-flight order intent %s (%s %s %s x%d) — left 'sent', needs attention"
+                  % (it.get("intent_id"), it.get("mode"), it.get("action"), it.get("ticker"), it.get("qty")),
+                  flush=True)
+            continue  # indeterminate — NEVER re-send
+        try:
+            filled = int(fill.get("filled") or 0)
+            if filled <= 0:
+                repo.mark_order_intent(cur, it["intent_id"], "unfilled")  # IOC that didn't fill is gone
+            else:
+                _book_recovered(conn, it, filled, float(fill.get("avg_price") or 0),
+                                float(fill.get("fee") or 0), fill.get("order_id"))
+            resolved += 1
+        except Exception as e:
+            print("[engine] recovery booking failed for intent %s: %r (leaving sent)"
+                  % (it.get("intent_id"), e), flush=True)
+    return resolved
 
 
 def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] = None) -> Dict:
@@ -981,7 +1236,16 @@ def run_forever() -> None:
             sources = Sources(
                 live_kernel=live_kernel_factory(conn) if LIVE_TRADING_ENABLED else None,
                 demo_kernel=demo_kernel,
+                order_lookup=_make_order_lookup(conn),
             )
+            # Deterministic crash recovery (P0-1): before the loop (so it also runs on every
+            # reconnect / box reboot), reconcile any order-intent left 'sent' by a prior crash
+            # against the exchange and book or discard it exactly once. Contained.
+            last_recover = 0.0
+            try:
+                recover_sent_intents(conn, sources)
+            except Exception as e:
+                print("[engine] boot recovery failed: %r" % e, flush=True)
             try:
                 while True:
                     for market in MARKETS.values():
@@ -1019,6 +1283,14 @@ def run_forever() -> None:
                         enforce_flatten_on_pause(conn, sources)
                     except Exception as e:
                         print("[engine] flatten-on-pause enforcement failed: %r" % e, flush=True)
+                    # Catch in-process orphans too (a swallowed timeout mid-run, not only a crash):
+                    # re-reconcile 'sent' intents every ~5 min. Contained; never re-sends.
+                    if time.time() - last_recover > 300:
+                        try:
+                            recover_sent_intents(conn, sources)
+                        except Exception as e:
+                            print("[engine] periodic recovery failed: %r" % e, flush=True)
+                        last_recover = time.time()
                     if LIVE_TRADING_ENABLED:
                         try:
                             enforce_autopilot_limits(conn)

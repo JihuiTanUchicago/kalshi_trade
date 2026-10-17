@@ -1096,6 +1096,89 @@ def live_book_by_ticker_side(cur, user_id: int) -> List[Dict]:
     return cur.fetchall()
 
 
+def get_position(cur, position_id: int) -> Optional[Dict]:
+    """One position row by id (used by crash-recovery to book/close an intent's own position)."""
+    cur.execute("SELECT * FROM app_positions WHERE id=%s", (position_id,))
+    return cur.fetchone()
+
+
+# -- durable order-intent log (EXECUTION_RISK_HARDENING P0-1) -------------------
+# A row is written and COMMITTED before every real exchange order and updated after, so every
+# order has a durable, idempotent identity. client_order_id == intent_id, reused on any retry.
+
+
+def _naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    if dt is None:
+        return None
+    return dt.astimezone(timezone.utc).replace(tzinfo=None) if dt.tzinfo else dt
+
+
+def insert_order_intent(
+    cur, intent_id: str, deployment_id: int, user_id: int, mode: str, action: str, side: str,
+    ticker: str, qty: int, limit_price: float, client_order_id: str, position_id: Optional[int] = None,
+    reason: Optional[str] = None, market_close_time: Optional[datetime] = None,
+) -> None:
+    """Record an order intent as 'sent' BEFORE the exchange POST. The caller commits this (its own
+    transaction) so the intent is durable even if the process dies the instant after the order is
+    placed — recovery then reconciles it against the exchange."""
+    now = now_utc()
+    cur.execute(
+        """INSERT INTO app_order_intents
+             (intent_id, deployment_id, user_id, position_id, mode, action, side, ticker, qty,
+              limit_price, client_order_id, status, reason, market_close_time, created_at, updated_at)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'sent',%s,%s,%s,%s)""",
+        (intent_id, deployment_id, user_id, position_id, mode, action, side, ticker, int(qty),
+         limit_price, client_order_id, reason, _naive_utc(market_close_time), now, now),
+    )
+
+
+def mark_order_intent(
+    cur, intent_id: str, status: str, external_order_id: Optional[str] = None, fill_qty: Optional[int] = None,
+    fill_price: Optional[float] = None, fee: Optional[float] = None, raw_json: Optional[dict] = None,
+) -> bool:
+    """Update an intent's status/outcome (e.g. 'unfilled', 'error'). Fill fields are only overwritten
+    when provided (COALESCE), so a status-only update keeps whatever was recorded."""
+    cur.execute(
+        """UPDATE app_order_intents
+             SET status=%s, external_order_id=COALESCE(%s,external_order_id), fill_qty=COALESCE(%s,fill_qty),
+                 fill_price=COALESCE(%s,fill_price), fee=COALESCE(%s,fee), raw_json=COALESCE(%s,raw_json),
+                 updated_at=%s
+           WHERE intent_id=%s""",
+        (status, external_order_id, fill_qty, fill_price, fee, _json(raw_json), now_utc(), intent_id),
+    )
+    return cur.rowcount == 1
+
+
+def claim_intent_booking(
+    cur, intent_id: str, external_order_id: Optional[str] = None, fill_qty: Optional[int] = None,
+    fill_price: Optional[float] = None, fee: Optional[float] = None, raw_json: Optional[dict] = None,
+) -> bool:
+    """Atomically transition an intent to 'booked' (recording the fill), only if it is not ALREADY
+    booked. Returns True iff THIS caller won the transition — the single-booking guard that makes the
+    live path and crash-recovery race-safe: whoever books first wins, the loser books nothing. Must
+    run inside the same transaction as the position/ledger write it guards (see repo.transaction)."""
+    cur.execute(
+        """UPDATE app_order_intents
+             SET status='booked', external_order_id=COALESCE(%s,external_order_id), fill_qty=COALESCE(%s,fill_qty),
+                 fill_price=COALESCE(%s,fill_price), fee=COALESCE(%s,fee), raw_json=COALESCE(%s,raw_json),
+                 updated_at=%s
+           WHERE intent_id=%s AND status<>'booked'""",
+        (external_order_id, fill_qty, fill_price, fee, _json(raw_json), now_utc(), intent_id),
+    )
+    return cur.rowcount == 1
+
+
+def open_sent_intents(cur, older_than_seconds: int = 30, limit: int = 200) -> List[Dict]:
+    """Intents still 'sent' (POST issued, outcome unknown) older than a grace window — the
+    unresolved in-flight orders a crash/lost-response can leave (the F1/F2 smoke alarm)."""
+    cutoff = now_utc() - timedelta(seconds=int(older_than_seconds))
+    cur.execute(
+        "SELECT * FROM app_order_intents WHERE status='sent' AND created_at <= %s ORDER BY created_at LIMIT %s",
+        (cutoff, int(limit)),
+    )
+    return cur.fetchall()
+
+
 def open_reconcile_rows(cur, user_id: int) -> List[Dict]:
     cur.execute(
         "SELECT ticker, kind, exchange_qty, book_qty FROM app_position_reconcile "
@@ -1170,6 +1253,20 @@ def reconcile_deployment_id(cur, user_id: int, market: str) -> int:
         (user_id, strategy_id, market, now, now),
     )
     return cur.lastrowid
+
+
+def claim_position_close(cur, position_id: int, claimant: str, lease_seconds: int = 300) -> bool:
+    """Single-actor guard for the order-PLACING risk sweeps (drawdown force-sell): at most one engine
+    may send a real close for a given open position within the lease, so two engines can never both
+    sell it into an unintended short. Mirrors claim_decision. The owner can re-claim its own lease
+    (so a failed close retries next tick); a different engine only after the lease expires."""
+    cutoff = now_utc() - timedelta(seconds=int(lease_seconds))
+    cur.execute(
+        """UPDATE app_positions SET close_claim=%s, close_claim_ts=%s
+           WHERE id=%s AND status='open' AND (close_claim IS NULL OR close_claim=%s OR close_claim_ts < %s)""",
+        (claimant, now_utc(), position_id, claimant, cutoff),
+    )
+    return cur.rowcount == 1
 
 
 def realized_pnl(cur, user_id: int, mode: str, since: Optional[datetime] = None) -> float:

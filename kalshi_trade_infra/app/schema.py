@@ -231,6 +231,39 @@ DDL = [
       INDEX idx_pos_user (user_id, status, closed_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
+    # Durable order-intent log (EXECUTION_RISK_HARDENING P0-1): one append-only row written and
+    # COMMITTED *before* every real exchange order, updated after. It gives each order a durable,
+    # idempotent identity (client_order_id = intent_id, reused on any retry) so a timed-out-but-
+    # filled order is reconcilable instead of a double-fill, and a crash between the fill and the
+    # DB write is recovered deterministically on boot (see repository.open_sent_intents / engine.
+    # recover_sent_intents). status: sent -> filled|unfilled|error|booked. No key material here.
+    """
+    CREATE TABLE IF NOT EXISTS app_order_intents (
+      intent_id CHAR(36) PRIMARY KEY,
+      deployment_id BIGINT NOT NULL,
+      user_id BIGINT NOT NULL,
+      position_id BIGINT NULL,            -- the open position an EXIT closes; NULL for an entry
+      mode VARCHAR(8) NOT NULL,           -- live|demo (paper never logs an intent — no real order)
+      action VARCHAR(4) NOT NULL,         -- buy|sell
+      side VARCHAR(4) NOT NULL,           -- yes|no
+      ticker VARCHAR(128) NOT NULL,
+      qty INT NOT NULL,
+      limit_price DECIMAL(10,4) NOT NULL,
+      client_order_id VARCHAR(64) NOT NULL,
+      status VARCHAR(12) NOT NULL,        -- sent|filled|unfilled|error|booked
+      external_order_id VARCHAR(128) NULL,
+      fill_qty INT NULL,
+      fill_price DECIMAL(10,4) NULL,
+      fee DECIMAL(10,6) NULL,
+      reason VARCHAR(32) NULL,            -- exit reason (carried into close_position on recovery)
+      market_close_time DATETIME NULL,    -- entry recovery needs it to re-create the position row
+      raw_json JSON NULL,
+      created_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL,
+      INDEX idx_intent_status (status, created_at),
+      UNIQUE KEY uq_intent_coid (client_order_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
     # -- conversation ---------------------------------------------------------
     """
     CREATE TABLE IF NOT EXISTS app_chat_messages (
@@ -547,6 +580,11 @@ def main() -> None:
         # decision tick (reusing the book it already fetches) so the web can show unrealized P&L.
         _add_column_if_missing(cur, "app_positions", "mark_price", "ALTER TABLE app_positions ADD COLUMN mark_price DECIMAL(10,4) NULL")
         _add_column_if_missing(cur, "app_positions", "mark_ts", "ALTER TABLE app_positions ADD COLUMN mark_ts DATETIME NULL")
+        # Per-position close claim (EXECUTION_RISK_HARDENING P0-3): the order-placing risk sweeps
+        # (drawdown force-sell) lease a position before sending a real close, so two engines can
+        # never both sell the same position into an unintended short. Mirrors claim_decision.
+        _add_column_if_missing(cur, "app_positions", "close_claim", "ALTER TABLE app_positions ADD COLUMN close_claim VARCHAR(48) NULL")
+        _add_column_if_missing(cur, "app_positions", "close_claim_ts", "ALTER TABLE app_positions ADD COLUMN close_claim_ts DATETIME NULL")
         # Strategy sharing: a shared strategy is COPIED into the recipient's inventory (so it is
         # theirs to deploy and is not revocable). These columns mark the copy's origin.
         _add_column_if_missing(cur, "app_strategies", "shared_from_user_id", "ALTER TABLE app_strategies ADD COLUMN shared_from_user_id BIGINT NULL")

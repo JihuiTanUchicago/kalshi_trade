@@ -74,6 +74,9 @@ def _wire_closes(monkeypatch, positions):
                         lambda cur, uid: {"drawdown_limit_pct": 25.0, "position_stop_pct": 40.0,
                                           "max_open_positions": 20, "max_open_notional": 1000.0})
     monkeypatch.setattr(engine.repo, "transaction", _tx)
+    # P0-3: flatten now leases each position before a real kernel sell (so two engines never both
+    # sell it). The lease always wins in these single-engine tests.
+    monkeypatch.setattr(engine.repo, "claim_position_close", lambda *a, **k: True)
     return rec
 
 
@@ -113,6 +116,7 @@ def test_flatten_partial_fill_keeps_remainder_untracked_as_nothing(monkeypatch):
     monkeypatch.setattr(engine.repo, "book_partial_exit",
                         lambda cur, pos, fq, px, fee, pnl, reason: booked.update(fq=fq, reason=reason) or True)
     monkeypatch.setattr(engine.repo, "transaction", _tx)
+    monkeypatch.setattr(engine.repo, "claim_position_close", lambda *a, **k: True)  # P0-3 lease (single engine)
     monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", True)
     pos = {"id": 1, "deployment_id": 1, "user_id": 1, "mode": "live", "ticker": "BTC-1", "side": "yes",
            "qty": 10, "entry_price": 0.50, "entry_fee": 1.0, "mark_price": 0.44}

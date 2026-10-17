@@ -115,6 +115,8 @@ def _wire(monkeypatch, *, balance=1000.0):
     def _tx(conn):
         yield object()
     monkeypatch.setattr(engine.repo, "transaction", _tx)
+    from tests.conftest import patch_intent_passthrough
+    patch_intent_passthrough(monkeypatch)  # P0-1 intent log is transparent for these routing tests
     return rec
 
 

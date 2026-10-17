@@ -267,7 +267,8 @@ MAX_ORDER_NOTIONAL = _opt_float("KALSHI_MAX_ORDER_NOTIONAL")
 
 
 def place_limit_order(
-    ticker: str, action: str, side: str, qty: int, price_dollars: float, credentials=None
+    ticker: str, action: str, side: str, qty: int, price_dollars: float, credentials=None,
+    client_order_id: Optional[str] = None,
 ) -> Dict:
     """Submit one limit order. `action` is buy/sell and `side` is the leg
     (yes|no). v2 speaks only the YES leg as bid/ask, so order_wire_params folds
@@ -282,7 +283,9 @@ def place_limit_order(
     # Same 1c..99c bounds and whole-cent rounding the old endpoint enforced, so
     # this change alters the transport and not the prices being sent.
     cents = max(1, min(99, int(round(float(wire_price) * 100))))
-    client_order_id = str(uuid.uuid4())
+    # A persisted, idempotent client_order_id (EXECUTION_RISK_HARDENING P0-1) is reused on any retry
+    # so a timed-out-but-filled order replays as a safe no-op; a fresh uuid otherwise (legacy path).
+    client_order_id = client_order_id or str(uuid.uuid4())
     body = {
         "ticker": ticker,
         "side": v2_side,
