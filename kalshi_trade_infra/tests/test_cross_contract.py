@@ -17,22 +17,22 @@ from app.markets import Contract, snapshot
 # -- deploy gate ---------------------------------------------------------------
 
 
-def test_cross_deploy_block_refuses_live_and_cross_market_but_allows_single_market_paper_demo():
+def test_cross_deploy_block_allows_single_market_live_but_still_refuses_cross_market():
     cross_market = specmod.validate({"market": "btc_daily",
         "cross": {"pairing": "cross_sectional", "legs": [{"market": "eth_daily"}]}})
     single_market = specmod.validate({"market": "btc_daily",
         "cross": {"pairing": "cross_strike", "legs": []}})
     plain = specmod.validate({"market": "btc_daily"})
 
-    # Any cross spec is refused on LIVE (multi-leg live execution is a separate, riskier step).
-    assert engine.cross_deploy_block(single_market, "live")
-    assert engine.cross_deploy_block(cross_market, "live")
-    # A cross-MARKET pair has no synchronized live feed -> research-only, even on paper/demo.
-    assert engine.cross_deploy_block(cross_market, "paper")
-    assert engine.cross_deploy_block(cross_market, "demo")
-    # A single-market pair (cross_strike/calendar) deploys on paper/demo.
+    # A single-market pair (cross_strike/calendar) now deploys on paper, demo AND live: the entry
+    # path is legging-safe and the engine already ticks that one market.
+    assert engine.cross_deploy_block(single_market, "live") is None
     assert engine.cross_deploy_block(single_market, "paper") is None
     assert engine.cross_deploy_block(single_market, "demo") is None
+    # A cross-MARKET pair has no synchronized live feed -> research-only, refused in EVERY mode.
+    assert engine.cross_deploy_block(cross_market, "live")
+    assert engine.cross_deploy_block(cross_market, "paper")
+    assert engine.cross_deploy_block(cross_market, "demo")
     # A non-cross strategy is never touched by this gate.
     assert engine.cross_deploy_block(plain, "live") is None
 

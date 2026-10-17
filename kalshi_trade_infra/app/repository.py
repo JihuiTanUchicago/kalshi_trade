@@ -1008,6 +1008,30 @@ def book_partial_exit(cur, pos: Dict, fill_qty: int, exit_price: float, exit_fee
     return True
 
 
+def insert_closed_position(
+    cur, deployment_id: int, user_id: int, mode: str, ticker: str, side: str, qty: int,
+    entry_price: float, entry_fee: float, exit_price: float, exit_fee: float, pnl: float,
+    reason: str, market_close_time: datetime, order_ref: Optional[str] = None,
+) -> int:
+    """Record a round-trip (bought then immediately sold again) as a single CLOSED position row.
+
+    ONE atomic INSERT, so an autocommit connection can never leave a phantom OPEN leg if it dies
+    mid-write (an open-then-close pair of statements could). Used by the cross-pair unwind: the
+    excess leg that was flattened on the exchange must count toward realized P&L (the loss and
+    drawdown guards sum closed-row pnl) without ever becoming a held position."""
+    close = (market_close_time.astimezone(timezone.utc).replace(tzinfo=None)
+             if market_close_time.tzinfo else market_close_time)
+    cur.execute(
+        """INSERT INTO app_positions (deployment_id, user_id, mode, ticker, side, qty, entry_price,
+             entry_fee, market_close_time, opened_at, status, exit_price, exit_fee, pnl, close_reason,
+             closed_at, order_ref)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'closed',%s,%s,%s,%s,%s,%s)""",
+        (deployment_id, user_id, mode, ticker, side, qty, entry_price, round(entry_fee, 4), close,
+         now_utc(), exit_price, round(exit_fee, 4), round(pnl, 4), reason, now_utc(), order_ref),
+    )
+    return cur.lastrowid
+
+
 def realized_pnl(cur, user_id: int, mode: str, since: Optional[datetime] = None) -> float:
     sql = "SELECT COALESCE(SUM(pnl),0) AS p FROM app_positions WHERE user_id=%s AND mode=%s AND status='closed'"
     params: List[Any] = [user_id, mode]

@@ -200,6 +200,67 @@ Key coupling invariants:
 
 ---
 
+## 4.5 Cross-contract (relative-value pair) entry
+
+A pair is two positions opened together — buy YES on the leg the model says is
+underpriced, buy NO on the leg it says is overpriced — held to settlement as a
+*relative-value* bet, not a directional one. The hedge only holds if the two legs
+carry **equal contract counts**; an imbalance is a naked directional leg of real
+money, the one thing a pair must never take.
+
+On paper this is trivial (`_paper_buy_pair`: both legs in one transaction against
+one balance check — both-or-neither). Real orders can't fill atomically, so the
+live/demo path (`_kernel_buy_pair`) keeps the legs balanced by hand and flattens
+any excess on the exchange immediately:
+
+```
+  buy YES qty                → f1 filled   ── f1 < 1 ? → return False (flat, no exposure)
+  buy NO  f1                 → f2 filled   (kernel never over-fills, so f2 ≤ f1)
+  hedged = min(f1, f2) = f2      excess = f1 − hedged
+  excess > 0 ?  sell YES excess @ bid → u filled      residual = excess − u
+  ───────────────────────────────────────────────────────────────── then record:
+  hedged ≥ 1 : two OPEN rows at `hedged`  (YES fee pro-rated f_hedged, NO fee full)
+  u ≥ 1      : one CLOSED row, the u-contract round-trip P&L booked (never held)
+  residual≥1 : one OPEN row — the still-naked YES, TRACKED + logged loudly
+  return  hedged ≥ 1
+```
+
+Every leg-1 fill is accounted for: `hedged + u + residual = f1`. Leg 1's actual
+fill fee is split pro-rata across the three slices (the residual takes the exact
+remainder, so there is no rounding drift), and the round-trip P&L
+`u·(sell − buy) − fee_buy_slice − fee_sell` is booked so the loss/drawdown guards
+see accurate realized cash.
+
+Partial-fill cases, all handled, none left as untracked exposure:
+
+| Case | Outcome |
+|---|---|
+| both legs fill fully | balanced pair recorded, no unwind, `True` |
+| leg 2 under-fills | excess YES flattened, round-trip booked, pair recorded at `min` qty, `True` |
+| leg 2 fills 0 | leg 1 fully unwound, round-trip booked, **flat**, `False` |
+| leg 1 fills 0 | no second order sent, no exposure, `False` |
+| **unwind sell under-fills** | the still-naked residual is recorded as a **tracked OPEN position** (the drawdown force-sell / loss guard closes it next tick) and logged loudly — never silently dropped |
+
+Crash-safety: all exchange orders are sent **before** any DB write, so the
+recorded state is the final, consistent picture, and the round-trip is one atomic
+`insert_closed_position` INSERT (an autocommit connection can never leave a phantom
+OPEN leg). The residual leg reuses the ordinary position machinery, so settlement,
+marks and both guards handle it with no pair-specific code.
+
+**Live scope — single-market only.** `cross_deploy_block` allows a cross pair on
+live **iff `len(involved_markets(spec)) == 1`** (cross_strike / calendar): the
+engine already ticks that one market and its frame carries every strike/settlement
+leg, so both legs price off the same `tick_market` book read. A **multi-market**
+pair (cross_sectional) needs a synchronized multi-market live feed the engine does
+not run, so it stays research-only — refused in *every* mode (paper/demo included),
+a separate future build. This gate decides only the single-vs-multi-market
+question; the other live gates — gatekeeper deployment-candidate, the
+`APP_LIVE_TRADING_ENABLED` switch, the Kalshi-key requirement, the `NO_SIDE_LIVE`
+staged-rollout flag (a pair always buys a NO leg, so it stays subject to it) and
+the typed-`LIVE` confirm — are unchanged and still run, in the same order, on top.
+
+---
+
 ## 5. Follow-ups (deliberately out of scope)
 
 1. **Maker/passive posting** to earn the rebate and halve effective fees — needs
