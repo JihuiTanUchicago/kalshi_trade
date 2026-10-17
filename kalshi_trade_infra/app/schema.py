@@ -528,6 +528,12 @@ def main() -> None:
         # own caps. A per-user daily live-loss limit auto-disables it (kill switch).
         _add_column_if_missing(cur, "app_users", "autopilot_live", "ALTER TABLE app_users ADD COLUMN autopilot_live TINYINT(1) NOT NULL DEFAULT 0")
         _add_column_if_missing(cur, "app_users", "autopilot_daily_loss_limit", "ALTER TABLE app_users ADD COLUMN autopilot_daily_loss_limit DECIMAL(10,2) NOT NULL DEFAULT 50.00")
+        # Demo (sandbox) is app-controlled money: real fills on Kalshi's demo exchange applied to a
+        # capital WE set, never the real demo-account balance. `demo_capital` is the reloadable
+        # starting capital; `demo_pnl_base` is the realized-P&L snapshot captured at the last reload,
+        # so demo P&L shown resets to 0 on reload (equity = capital + realized_since_reload).
+        _add_column_if_missing(cur, "app_users", "demo_capital", "ALTER TABLE app_users ADD COLUMN demo_capital DECIMAL(14,4) NOT NULL DEFAULT 1000.0000")
+        _add_column_if_missing(cur, "app_users", "demo_pnl_base", "ALTER TABLE app_users ADD COLUMN demo_pnl_base DECIMAL(14,4) NOT NULL DEFAULT 0.0000")
         _add_column_if_missing(cur, "app_experiments", "data_provenance_json", "ALTER TABLE app_experiments ADD COLUMN data_provenance_json JSON NULL AFTER cost_assumptions_json")
         # Backfill any user still missing a handle (idempotent: only touches NULLs).
         from app import repository as _repo

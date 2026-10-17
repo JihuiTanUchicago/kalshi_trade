@@ -1,0 +1,175 @@
+"""Per-bucket cash + funding: paper add/reset, app-controlled demo capital, and a
+mocked (never-networked) live-balance fetch that degrades without a key.
+
+These exercise the repository + accounting layer against a FakeCursor covering only the
+exact query shapes the new code runs - the established pattern (see tests/conftest.py), so
+the money math is testable without a live MySQL.
+"""
+import pytest
+
+from app import kalshi_account
+from app import repository as repo
+
+
+class FakeFundsCursor:
+    """In-memory stand-in for the app_ledger / app_positions / app_users query shapes used by
+    the paper + demo balance code. Extend the dispatch, don't reach for a real DB."""
+
+    def __init__(self):
+        self.ledger = []   # dicts: user_id, kind, amount
+        self.positions = []  # dicts: user_id, mode, status, pnl
+        self.users = {}    # id -> {"demo_capital": float, "demo_pnl_base": float}
+        self.lastrowid = None
+        self._last = None
+
+    def execute(self, sql, params=()):
+        s = " ".join(sql.split())
+        p = params or ()
+        self._last = None
+        if s.startswith("INSERT INTO app_ledger"):
+            uid, kind, amount, _pos, _memo, _ts = p
+            self.ledger.append({"user_id": uid, "kind": kind, "amount": float(amount)})
+        elif s.startswith("SELECT COALESCE(SUM(amount),0) AS b FROM app_ledger WHERE user_id=%s AND kind IN"):
+            uid = p[0]
+            total = sum(r["amount"] for r in self.ledger if r["user_id"] == uid and r["kind"] in ("deposit", "withdrawal"))
+            self._last = [{"b": total}]
+        elif s.startswith("SELECT COALESCE(SUM(amount),0) AS b FROM app_ledger WHERE user_id=%s"):
+            uid = p[0]
+            total = sum(r["amount"] for r in self.ledger if r["user_id"] == uid)
+            self._last = [{"b": total}]
+        elif s.startswith("DELETE FROM app_ledger WHERE user_id=%s"):
+            uid = p[0]
+            self.ledger = [r for r in self.ledger if r["user_id"] != uid]
+        elif s.startswith("SELECT demo_capital, demo_pnl_base FROM app_users WHERE id=%s"):
+            u = self.users.get(p[0])
+            self._last = [{"demo_capital": u["demo_capital"], "demo_pnl_base": u["demo_pnl_base"]}] if u else []
+        elif s.startswith("UPDATE app_users SET demo_capital=%s, demo_pnl_base=%s WHERE id=%s"):
+            cap, base, uid = p
+            self.users.setdefault(uid, {})["demo_capital"] = float(cap)
+            self.users[uid]["demo_pnl_base"] = float(base)
+        elif s.startswith("SELECT COALESCE(SUM(pnl),0) AS p FROM app_positions WHERE user_id=%s AND mode=%s AND status='closed'"):
+            uid, mode = p[0], p[1]
+            total = sum(r["pnl"] for r in self.positions
+                        if r["user_id"] == uid and r["mode"] == mode and r["status"] == "closed")
+            self._last = [{"p": total}]
+        else:
+            raise NotImplementedError(f"unhandled SQL: {s[:90]}")
+
+    def fetchone(self):
+        return self._last[0] if self._last else None
+
+    def fetchall(self):
+        return self._last or []
+
+
+# -- paper: add + reset --------------------------------------------------------
+
+
+def test_paper_add_then_reset_sets_the_balance():
+    cur = FakeFundsCursor()
+    repo.add_ledger(cur, 1, "deposit", repo.STARTING_PAPER_BALANCE, "Starting paper balance")
+    repo.add_ledger(cur, 1, "deposit", 250.0, "Paper deposit")
+    assert repo.paper_balance(cur, 1) == 1250.0
+    # Reset wipes the ledger and starts fresh at the target, so the balance IS the target.
+    repo.reset_paper_account(cur, 1, 500.0)
+    assert repo.paper_balance(cur, 1) == 500.0
+    assert repo.paper_deposits(cur, 1) == 500.0  # ROI denominator resets too
+
+
+def test_paper_reset_is_isolated_per_user():
+    cur = FakeFundsCursor()
+    repo.add_ledger(cur, 1, "deposit", 1000.0, "u1")
+    repo.add_ledger(cur, 2, "deposit", 1000.0, "u2")
+    repo.reset_paper_account(cur, 1, 50.0)
+    assert repo.paper_balance(cur, 1) == 50.0
+    assert repo.paper_balance(cur, 2) == 1000.0  # untouched
+
+
+# -- demo: app-controlled capital, P&L applied against it ----------------------
+
+
+def test_demo_equity_applies_realized_pnl_to_app_set_capital():
+    cur = FakeFundsCursor()
+    cur.users[1] = {"demo_capital": 1000.0, "demo_pnl_base": 0.0}
+    cur.positions += [
+        {"user_id": 1, "mode": "demo", "status": "closed", "pnl": 40.0},
+        {"user_id": 1, "mode": "demo", "status": "closed", "pnl": -15.0},
+        {"user_id": 1, "mode": "demo", "status": "open", "pnl": None},
+    ]
+    de = repo.demo_equity(cur, 1)
+    assert de["capital"] == 1000.0
+    assert de["realized"] == 25.0            # 40 - 15, open ignored
+    assert de["equity"] == 1025.0            # capital + realized
+    assert de["roi"] == round(25.0 / 1000.0, 4)
+
+
+def test_demo_reload_sets_capital_and_zeroes_displayed_pnl():
+    cur = FakeFundsCursor()
+    cur.users[1] = {"demo_capital": 1000.0, "demo_pnl_base": 0.0}
+    cur.positions.append({"user_id": 1, "mode": "demo", "status": "closed", "pnl": 40.0})
+    # Reload to $500: capital becomes 500 and the realized snapshot becomes the new baseline,
+    # so displayed P&L reads flat right after reload (real fills accrue from here).
+    repo.reload_demo(cur, 1, 500.0)
+    assert cur.users[1]["demo_capital"] == 500.0
+    assert cur.users[1]["demo_pnl_base"] == 40.0
+    de = repo.demo_equity(cur, 1)
+    assert de["capital"] == 500.0
+    assert de["realized"] == 0.0
+    assert de["equity"] == 500.0
+    # A new fill after the reload accrues against the fresh capital.
+    cur.positions.append({"user_id": 1, "mode": "demo", "status": "closed", "pnl": 12.0})
+    assert repo.demo_equity(cur, 1)["equity"] == 512.0
+
+
+def test_demo_equity_defaults_when_user_row_missing():
+    cur = FakeFundsCursor()  # no users seeded
+    de = repo.demo_equity(cur, 99)
+    assert de["capital"] == round(repo.STARTING_PAPER_BALANCE, 2)
+    assert de["equity"] == round(repo.STARTING_PAPER_BALANCE, 2)
+
+
+# -- live balance: mocked fetch, cached, graceful ------------------------------
+
+
+def test_balance_cached_memoizes_within_ttl(monkeypatch):
+    calls = {"n": 0}
+
+    def fake_balance(creds):
+        calls["n"] += 1
+        return 321.0
+
+    monkeypatch.setattr(kalshi_account, "balance", fake_balance)
+    kalshi_account._BALANCE_CACHE.pop(777, None)
+    assert kalshi_account.balance_cached(777, ("kid", object())) == 321.0
+    assert kalshi_account.balance_cached(777, ("kid", object())) == 321.0
+    assert calls["n"] == 1  # second read served from the memo, no second network call
+
+
+def test_balance_cached_degrades_to_none_on_failure(monkeypatch):
+    def boom(creds):
+        raise RuntimeError("kalshi unreachable")
+
+    monkeypatch.setattr(kalshi_account, "balance", boom)
+    kalshi_account._BALANCE_CACHE.pop(778, None)
+    assert kalshi_account.balance_cached(778, ("kid", object())) is None
+
+
+def test_live_balance_degrades_without_a_key(monkeypatch):
+    from app import server
+
+    monkeypatch.setattr(repo, "get_kalshi_key", lambda cur, uid: None)
+    out = server._live_balance(object(), 5)
+    assert out["connected"] is False
+    assert out["balance"] is None
+    assert out["funding_url"] == kalshi_account.KALSHI_FUNDING_URL
+
+
+def test_live_balance_surfaces_cached_value_when_connected(monkeypatch):
+    from app import server
+
+    monkeypatch.setattr(repo, "get_kalshi_key", lambda cur, uid: {"key_id": "abcd1234", "private_key_enc": b""})
+    monkeypatch.setattr(kalshi_account, "credentials_from_row", lambda uid, row: ("abcd1234", object()))
+    monkeypatch.setattr(kalshi_account, "balance_cached", lambda uid, creds: 150.25)
+    out = server._live_balance(object(), 5)
+    assert out["connected"] is True
+    assert out["balance"] == 150.25

@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import base64
 import os
-from typing import Optional
+import time
+from typing import Dict, Optional, Tuple
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
@@ -61,6 +62,27 @@ def credentials_from_row(user_id: int, row: dict) -> KalshiCredentials:
 
 def balance(creds: KalshiCredentials) -> Optional[float]:
     return get_kalshi_cash_balance_dollars(creds)
+
+
+# The dashboard polls often; a short per-user memo keeps a live balance on screen without a
+# Kalshi round-trip every tick. Values only (never the key or creds) are cached.
+_BALANCE_CACHE: Dict[int, Tuple[float, Optional[float]]] = {}
+_BALANCE_TTL = 60.0
+
+
+def balance_cached(user_id: int, creds: KalshiCredentials, ttl: float = _BALANCE_TTL) -> Optional[float]:
+    """Best-effort live cash balance with a short TTL memo. Returns None (never raises) when
+    Kalshi can't be reached, so callers degrade to a 'couldn't read it' state."""
+    now = time.monotonic()
+    hit = _BALANCE_CACHE.get(user_id)
+    if hit and now - hit[0] < ttl:
+        return hit[1]
+    try:
+        value = balance(creds)
+    except Exception:
+        value = None
+    _BALANCE_CACHE[user_id] = (now, value)
+    return value
 
 
 def verify(key_id: str, pem: str) -> float:
