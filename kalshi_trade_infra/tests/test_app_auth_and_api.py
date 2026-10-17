@@ -149,6 +149,9 @@ def test_deploy_any_status_on_paper_live_gated_globally(monkeypatch):
     monkeypatch.setattr(server.repo, "list_deployments", lambda *a, **k: [])
     monkeypatch.setattr(server.repo, "create_deployment", lambda cur, uid, sid, market, mode: 11)
     monkeypatch.setattr(server.repo, "add_chat", lambda *a, **k: 1)
+    # §E.5 gatekeeper gate is now required for live too; default it True here so this test still
+    # exercises the ORIGINAL live gates (switch + key + confirm). The gate itself is tested below.
+    monkeypatch.setattr(server.agent, "_is_deployment_candidate", lambda cur, sid: True)
     # any backtested status deploys on paper — the user decides
     for st in ("rejected", "failed", "passed"):
         strat["status"] = st
@@ -164,6 +167,86 @@ def test_deploy_any_status_on_paper_live_gated_globally(monkeypatch):
     # a void strategy CAN go live once the user confirms (global switch on)
     strat["status"] = "failed"
     assert server.create_deployment(ctx({"strategy_id": 5, "mode": "live", "confirm": "LIVE"})) == {"id": 11}
+
+
+def test_live_refuses_non_deployment_candidate(monkeypatch):
+    # §E.5: the manual live path must ALSO clear the gatekeeper's DEPLOYMENT_CANDIDATE gate, matching
+    # the autopilot path. Every other live gate is green, but the gate is not cleared -> refused.
+    strat = {"id": 5, "status": "passed", "market": "btc15m", "title": "T", "spec": {"side": "yes"}}
+    monkeypatch.setattr(server.repo, "get_strategy", lambda cur, uid, sid: dict(strat))
+    monkeypatch.setattr(server.repo, "list_deployments", lambda *a, **k: [])
+    monkeypatch.setattr(server.repo, "create_deployment", lambda *a, **k: 11)
+    monkeypatch.setattr(server.repo, "add_chat", lambda *a, **k: 1)
+    monkeypatch.setattr(server.engine, "LIVE_TRADING_ENABLED", True)
+    monkeypatch.setattr(server.repo, "get_kalshi_key", lambda cur, uid: {"key_id": "k"})
+    monkeypatch.setattr(server.agent, "_is_deployment_candidate", lambda cur, sid: False)
+    with pytest.raises(server.ApiError, match="deployment candidate"):
+        server.create_deployment(ctx({"strategy_id": 5, "mode": "live", "confirm": "LIVE"}))
+    # Cleared -> the original gates take over (here: confirmation), proving the gate is additive.
+    monkeypatch.setattr(server.agent, "_is_deployment_candidate", lambda cur, sid: True)
+    assert server.create_deployment(ctx({"strategy_id": 5, "mode": "live", "confirm": "LIVE"})) == {"id": 11}
+
+
+def test_dashboard_mode_buckets_do_not_double_count(monkeypatch):
+    # Three money buckets (live / demo / paper), each from its own positions + deployments only.
+    open_pos = [
+        {"mode": "paper", "qty": 10, "entry_price": 0.4},
+        {"mode": "demo", "qty": 5, "entry_price": 0.5},
+        {"mode": "live", "qty": 2, "entry_price": 0.6},
+        {"mode": "demo", "qty": 4, "entry_price": 0.25},
+    ]
+    deps = [
+        {"mode": "live", "status": "running"}, {"mode": "demo", "status": "running"},
+        {"mode": "demo", "status": "paused"}, {"mode": "paper", "status": "stopped"},
+    ]
+    monkeypatch.setattr(server.repo, "realized_pnl",
+                        lambda cur, uid, mode, since=None: {"paper": 3.0, "demo": -1.0, "live": 7.0}[mode])
+    live = server._mode_bucket(None, 1, "live", open_pos, deps, object())
+    demo = server._mode_bucket(None, 1, "demo", open_pos, deps, object())
+    paper = server._mode_bucket(None, 1, "paper", open_pos, deps, object())
+    assert live == {"open_at_cost": 1.2, "open_positions": 1, "running": 1, "realized_pnl": 7.0, "today_pnl": 7.0}
+    assert demo["open_positions"] == 2 and demo["open_at_cost"] == 3.5 and demo["running"] == 1
+    assert paper["open_positions"] == 1 and paper["running"] == 0  # a stopped deployment isn't "running"
+    # Every open position lands in exactly one bucket — the three never overlap.
+    assert live["open_positions"] + demo["open_positions"] + paper["open_positions"] == len(open_pos)
+
+
+def test_demo_deploy_requires_dev_key(monkeypatch):
+    # Demo = sandbox; it needs the user's demo key on file, nothing else money-gated.
+    strat = {"id": 6, "status": "passed", "market": "btc15m", "title": "D", "spec": {"side": "yes"}}
+    monkeypatch.setattr(server.repo, "get_strategy", lambda cur, uid, sid: dict(strat))
+    monkeypatch.setattr(server.repo, "list_deployments", lambda *a, **k: [])
+    monkeypatch.setattr(server.repo, "create_deployment", lambda cur, uid, sid, market, mode: 21)
+    monkeypatch.setattr(server.repo, "add_chat", lambda *a, **k: 1)
+    monkeypatch.setattr(server.repo, "get_kalshi_dev_key", lambda cur, uid: None)
+    with pytest.raises(server.ApiError, match="demo .*sandbox. key"):
+        server.create_deployment(ctx({"strategy_id": 6, "mode": "demo"}))
+    # With a demo key on file it deploys — no LIVE switch, no confirmation, no gatekeeper gate.
+    monkeypatch.setattr(server.repo, "get_kalshi_dev_key", lambda cur, uid: {"key_id": "DEV-k"})
+    assert server.create_deployment(ctx({"strategy_id": 6, "mode": "demo"})) == {"id": 21}
+
+
+def test_save_kalshi_dev_key_encrypts_and_never_echoes_raw(monkeypatch):
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.hazmat.primitives import serialization
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL,
+                            serialization.NoEncryption()).decode()
+    stored = {}
+    monkeypatch.setattr(server.kalshi_dev_exec, "demo_fills", lambda creds: {"fills": []})  # sandbox auth OK
+    monkeypatch.setattr(server.kalshi_account, "encrypt_private_key", lambda uid, p: b"ENC(" + p.encode() + b")")
+    monkeypatch.setattr(server.repo, "set_kalshi_dev_key",
+                        lambda cur, uid, kid, blob: stored.update(uid=uid, key_id=kid, blob=blob))
+    out = server.save_kalshi_dev_key(ctx({"key_id": "DEV-1", "private_key": pem}))
+    assert out == {"ok": True}  # the raw key is never returned
+    assert stored["key_id"] == "DEV-1" and stored["blob"].startswith(b"ENC(")  # encrypted, not plaintext
+    assert pem not in repr(out)
+    # A bad PEM is rejected at the trust boundary, before any store.
+    stored.clear()
+    with pytest.raises(server.ApiError, match="private key"):
+        server.save_kalshi_dev_key(ctx({"key_id": "DEV-1", "private_key": "not a key"}))
+    assert stored == {}
 
 
 # -- Strategies listing: pagination + true COUNT(*) figures --------------------------

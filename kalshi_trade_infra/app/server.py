@@ -25,6 +25,7 @@ from urllib.parse import parse_qs, urlparse
 
 from app import agent, auth, backtest, billing, devlog, engine, kalshi_account, notify
 from app import kalshi_dev
+from app import kalshi_dev_exec
 from app import models_catalog as catalog
 from app import repository as repo
 from app import research_repository as research_repo
@@ -179,6 +180,7 @@ def me(ctx: Ctx):
             "autopilot_daily_loss_limit": float(ctx.user.get("autopilot_daily_loss_limit") or 50),
         },
         "kalshi_connected": repo.get_kalshi_key(ctx.cur, ctx.uid) is not None,
+        "kalshi_dev_connected": repo.get_kalshi_dev_key(ctx.cur, ctx.uid) is not None,
         "live_trading_available": engine.LIVE_TRADING_ENABLED,
         "is_admin": (ctx.user["email"] or "").lower() == ADMIN_EMAIL.lower(),
         "billing_enabled": billing.configured(),
@@ -194,30 +196,43 @@ def _start_of_day_utc() -> datetime:
     return repo.now_utc().replace(hour=0, minute=0, second=0)
 
 
+def _mode_bucket(cur, uid: int, mode: str, open_pos: List[Dict], deps: List[Dict], day) -> Dict:
+    """Money in one deployment-mode bucket (paper | demo | live), from that mode's own
+    positions and deployments only — so the three buckets never double-count each other."""
+    pos = [p for p in open_pos if p["mode"] == mode]
+    return {
+        "open_at_cost": round(sum(float(p["qty"]) * float(p["entry_price"]) for p in pos), 2),
+        "open_positions": len(pos),
+        "running": sum(1 for d in deps if d["mode"] == mode and d["status"] == "running"),
+        "realized_pnl": round(repo.realized_pnl(cur, uid, mode), 2),
+        "today_pnl": round(repo.realized_pnl(cur, uid, mode, day), 2),
+    }
+
+
 def dashboard(ctx: Ctx):
     cur = ctx.cur
-    balance = repo.paper_balance(cur, ctx.uid)
-    deposited = repo.paper_deposits(cur, ctx.uid)
+    day = _start_of_day_utc()
     open_pos = repo.user_positions(cur, ctx.uid, "open")
-    at_cost = sum(float(p["qty"]) * float(p["entry_price"]) for p in open_pos if p["mode"] == "paper")
-    equity = balance + at_cost
     deps = repo.list_deployments(cur, ctx.uid)
     curves = repo.deployment_curves(cur, ctx.uid)
+    balance = repo.paper_balance(cur, ctx.uid)
+    deposited = repo.paper_deposits(cur, ctx.uid)
+    # Three mode buckets, each self-contained (real / sandbox / simulation). Paper is also the
+    # only one with a cash ledger, so it carries equity + deposits on top of the shared fields.
+    paper = _mode_bucket(cur, ctx.uid, "paper", open_pos, deps, day)
+    equity = balance + paper["open_at_cost"]
+    paper.update(
+        cash=round(balance, 2),
+        equity=round(equity, 2),
+        deposited=round(deposited, 2),
+        total_pnl=round(equity - deposited, 2),
+        roi=round((equity - deposited) / deposited, 4) if deposited > 0 else None,
+        daily=repo.daily_pnl(cur, ctx.uid, "paper"),
+    )
     return {
-        "paper": {
-            "cash": round(balance, 2),
-            "open_at_cost": round(at_cost, 2),
-            "equity": round(equity, 2),
-            "deposited": round(deposited, 2),
-            "total_pnl": round(equity - deposited, 2),
-            "roi": round((equity - deposited) / deposited, 4) if deposited > 0 else None,
-            "today_pnl": round(repo.realized_pnl(cur, ctx.uid, "paper", _start_of_day_utc()), 2),
-            "daily": repo.daily_pnl(cur, ctx.uid, "paper"),
-        },
-        "live": {
-            "realized_pnl": round(repo.realized_pnl(cur, ctx.uid, "live"), 2),
-            "today_pnl": round(repo.realized_pnl(cur, ctx.uid, "live", _start_of_day_utc()), 2),
-        },
+        "paper": paper,
+        "demo": _mode_bucket(cur, ctx.uid, "demo", open_pos, deps, day),
+        "live": _mode_bucket(cur, ctx.uid, "live", open_pos, deps, day),
         "open_positions": _with_marks(open_pos),
         "recent_closed": repo.user_positions(cur, ctx.uid, "closed", 12),
         "deployments": [_deployment_out(d, curves.get(d["id"], [])) for d in deps],
@@ -641,11 +656,17 @@ def create_deployment(ctx: Ctx):
     if mkt is not None and not mkt.deployable:
         raise ApiError(409, "%s is research-only for now — you can backtest it, but live/paper "
                             "deployment isn't open for it yet." % mkt.label)
-    if mode not in ("paper", "live"):
-        raise ApiError(400, "Choose paper or live.")
+    if mode not in ("paper", "live", "demo"):
+        raise ApiError(400, "Choose paper, demo or live.")
     if mode == "live":
-        # Any backtested strategy may go live if the user chooses; the global live switch,
-        # the Kalshi-key requirement and the typed confirmation are the real guardrails.
+        # §E.5: the manual live path must clear the SAME gatekeeper gate as the autopilot path
+        # (agent.act "deploy_live"), so a manual deploy can't bypass it. Additive and fail-closed —
+        # every existing live guard below is kept, in order, unweakened.
+        if not agent._is_deployment_candidate(cur, s["id"]):
+            raise ApiError(409, "This strategy isn't cleared for live yet — the gatekeeper must promote it to a "
+                                "deployment candidate (validation, one-time holdout, diversification) first.")
+        # The global live switch, the Kalshi-key requirement and the typed confirmation are the
+        # other guardrails.
         if not engine.LIVE_TRADING_ENABLED:
             raise ApiError(409, "Live trading isn't open yet. Deploy on paper for now.")
         if repo.get_kalshi_key(cur, ctx.uid) is None:
@@ -654,10 +675,18 @@ def create_deployment(ctx: Ctx):
             raise ApiError(409, "Live trading supports YES-only strategies in this version.")
         if ctx.body.get("confirm") != "LIVE":
             raise ApiError(400, "Type LIVE to confirm real-money trading.")
+    elif mode == "demo":
+        # Demo = Kalshi's sandbox exchange, no real money. It only needs the user's own demo key;
+        # the demo kernel's host guard makes the production exchange structurally unreachable.
+        if repo.get_kalshi_dev_key(cur, ctx.uid) is None:
+            raise ApiError(409, "Add your Kalshi demo (sandbox) key on the Funds page first.")
+        if s["spec"]["side"] != "yes":
+            raise ApiError(409, "Demo trading supports YES-only strategies in this version.")
     if sum(1 for d in repo.list_deployments(cur, ctx.uid) if d["status"] != "stopped") >= MAX_ACTIVE_DEPLOYMENTS:
         raise ApiError(429, "You can run up to %d deployments at once." % MAX_ACTIVE_DEPLOYMENTS)
     dep_id = repo.create_deployment(cur, ctx.uid, s["id"], s["market"], mode)
-    repo.add_chat(cur, ctx.uid, "system", "Deployed %s on %s." % (s["title"], "LIVE money" if mode == "live" else "paper"))
+    where = {"live": "LIVE money", "demo": "the demo (sandbox) exchange"}.get(mode, "paper")
+    repo.add_chat(cur, ctx.uid, "system", "Deployed %s on %s." % (s["title"], where))
     return {"id": dep_id}
 
 
@@ -797,9 +826,14 @@ def funds(ctx: Ctx):
             kalshi["balance"] = kalshi_account.balance(kalshi_account.credentials_from_row(ctx.uid, key))
         except Exception:
             kalshi["balance"] = None
+    dev = repo.get_kalshi_dev_key(cur, ctx.uid)
+    kalshi_dev_key = {"connected": dev is not None}
+    if dev is not None:
+        kalshi_dev_key["key_id"] = dev["key_id"][:4] + "…" + dev["key_id"][-4:]
     return {
         "paper": {"cash": round(repo.paper_balance(cur, ctx.uid), 2), "ledger": repo.ledger_rows(cur, ctx.uid)},
         "kalshi": kalshi,
+        "kalshi_dev": kalshi_dev_key,
     }
 
 
@@ -839,6 +873,41 @@ def delete_kalshi_key(ctx: Ctx):
     if any(d["mode"] == "live" and d["status"] == "running" for d in repo.list_deployments(ctx.cur, ctx.uid)):
         raise ApiError(409, "Pause or stop your live deployments before disconnecting Kalshi.")
     repo.delete_kalshi_key(ctx.cur, ctx.uid)
+    return {"ok": True}
+
+
+def save_kalshi_dev_key(ctx: Ctx):
+    """Store the user's own Kalshi DEMO (sandbox) key, encrypted at rest. Mirrors
+    save_kalshi_key, but proves the key against the SANDBOX exchange (never production) and
+    stores it in the separate app_kalshi_dev_keys table, so demo orders can never pick up a
+    live key. The raw private key is used only to verify + encrypt here; it is never logged or echoed."""
+    key_id = str(ctx.body.get("key_id") or "").strip()
+    pem = str(ctx.body.get("private_key") or "")
+    if not key_id or len(key_id) > 128:
+        raise ApiError(400, "Enter the API key ID from your Kalshi demo account settings.")
+    try:
+        creds = (key_id, kalshi_account.parse_private_key(pem))
+    except kalshi_account.KalshiKeyError as e:
+        raise ApiError(400, str(e))
+    try:
+        kalshi_dev_exec.demo_fills(creds)  # authenticate against the sandbox only — proves the key works
+    except kalshi_dev_exec.DemoHostError:
+        raise ApiError(503, "The demo (sandbox) exchange isn't configured on this server yet.")
+    except Exception:
+        raise ApiError(400, "Kalshi's demo exchange rejected this key. Check the key ID matches the private key, "
+                            "and that it's a DEMO key from demo.kalshi.co — not your live key.")
+    try:
+        blob = kalshi_account.encrypt_private_key(ctx.uid, pem.strip())
+    except RuntimeError:
+        raise ApiError(503, "This server can't store keys yet (encryption key not configured).")
+    repo.set_kalshi_dev_key(ctx.cur, ctx.uid, key_id, blob)
+    return {"ok": True}
+
+
+def delete_kalshi_dev_key(ctx: Ctx):
+    if any(d["mode"] == "demo" and d["status"] == "running" for d in repo.list_deployments(ctx.cur, ctx.uid)):
+        raise ApiError(409, "Pause or stop your demo deployments before removing your demo key.")
+    repo.delete_kalshi_dev_key(ctx.cur, ctx.uid)
     return {"ok": True}
 
 
@@ -1538,6 +1607,8 @@ ROUTES: List[Route] = [
         ("POST", "/api/funds/paper", paper_transfer, True),
         ("POST", "/api/kalshi-key", save_kalshi_key, True),
         ("POST", "/api/kalshi-key/delete", delete_kalshi_key, True),
+        ("POST", "/api/kalshi-dev-key", save_kalshi_dev_key, True),
+        ("POST", "/api/kalshi-dev-key/delete", delete_kalshi_dev_key, True),
         ("GET", r"/api/strategies/(\d+)/dev-curve", strategy_dev_curve, True),
         ("POST", r"/api/strategies/(\d+)/delete", delete_strategy, True),
     ]

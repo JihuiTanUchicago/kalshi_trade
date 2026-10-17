@@ -100,6 +100,7 @@ class Sources:
     btc: Callable[[], BtcSeries] = fetch_btc
     result: Callable[[str], Optional[str]] = fetch_result
     live_kernel: Optional[Callable[[int], object]] = None  # user_id -> kernel; None = live disabled
+    demo_kernel: Optional[Callable[[int], object]] = None  # user_id -> kernel; None = demo disabled
 
 
 # -- settlement ------------------------------------------------------------------
@@ -171,14 +172,22 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
     cur = conn.cursor()
     spec = dep["spec"]
     by_ticker = {s.contract.ticker: s for s in snaps}
-    live = dep["mode"] == "live"
+    mode = dep["mode"]
+    # Both live and demo route real orders through a MarketableLimitKernel with identical
+    # mechanics; only the key (live vs dev) and host (production vs sandbox) differ, which
+    # is baked into the respective kernel factory. Paper (no kernel) is unchanged.
+    via_kernel = mode in ("live", "demo")
     kernel = None
-    if live:
-        kernel = sources.live_kernel(dep["user_id"]) if (LIVE_TRADING_ENABLED and sources.live_kernel) else None
+    if via_kernel:
+        if mode == "live":
+            kernel = sources.live_kernel(dep["user_id"]) if (LIVE_TRADING_ENABLED and sources.live_kernel) else None
+            why = "Live trading is not enabled on this server yet."
+        else:  # demo -> sandbox exchange, signed with the user's own dev key; no LIVE switch needed
+            kernel = sources.demo_kernel(dep["user_id"]) if sources.demo_kernel else None
+            why = "Add your Kalshi demo (sandbox) key on the Funds page to run this on demo."
         if kernel is None:
-            repo.set_deployment_status(cur, dep["user_id"], dep["id"], "paused",
-                                       "Live trading is not enabled on this server yet.")
-            return {"paused": "live disabled"}
+            repo.set_deployment_status(cur, dep["user_id"], dep["id"], "paused", why)
+            return {"paused": "%s disabled" % mode}
     out = {"exits": 0, "entries": 0}
 
     positions = repo.open_positions(cur, dep["id"])
@@ -188,7 +197,7 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
         if sig is None:
             continue
         reason, price = sig
-        if live:
+        if via_kernel:
             rep = _live_trade(cur, dep, kernel, "sell", pos["ticker"], int(pos["qty"]), price)
             if rep.fill_qty_contracts < int(pos["qty"]):
                 continue  # ponytail: partial exits wait for the next slot; per-lot positions if this bites
@@ -204,7 +213,7 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
         if slots <= 0:
             break
         ticker = entry.snapshot.contract.ticker
-        if ticker in held or (live and entry.side != "yes"):
+        if ticker in held or (via_kernel and entry.side != "yes"):
             continue
         qty = specmod.contracts_for(spec["sizing"]["stake"], entry.price)
         shown = sizes.get(ticker)
@@ -212,11 +221,11 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
             qty = min(qty, int(shown))  # paper never fills more than the book showed
         if qty < 1:
             continue
-        if live:
+        if via_kernel:
             rep = _live_trade(cur, dep, kernel, "buy", ticker, qty, entry.price)
             if rep.fill_qty_contracts < 1:
                 continue
-            repo.insert_position(cur, dep["id"], dep["user_id"], "live", ticker, "yes", rep.fill_qty_contracts,
+            repo.insert_position(cur, dep["id"], dep["user_id"], mode, ticker, "yes", rep.fill_qty_contracts,
                                  rep.fill_price_dollars, rep.fee_dollars, entry.snapshot.contract.close_time,
                                  rep.external_order_id)
         elif _paper_buy(conn, dep, entry, qty) is None:
@@ -348,11 +357,23 @@ def live_kernel_factory(conn) -> Callable[[int], object]:
 def run_forever() -> None:
     from data_pipeline.common import get_db_conn
 
+    from app.kalshi_dev_exec import demo_kernel_factory
+
     last_review = 0.0
     while True:
         try:
             conn = get_db_conn()
-            sources = Sources(live_kernel=live_kernel_factory(conn) if LIVE_TRADING_ENABLED else None)
+            # Demo (sandbox) execution needs no LIVE switch, but a demo-host misconfig must never
+            # take down paper/live: build it defensively and carry on without it if it can't.
+            try:
+                demo_kernel = demo_kernel_factory(conn)
+            except Exception as e:
+                print("[engine] demo execution unavailable: %r" % e, flush=True)
+                demo_kernel = None
+            sources = Sources(
+                live_kernel=live_kernel_factory(conn) if LIVE_TRADING_ENABLED else None,
+                demo_kernel=demo_kernel,
+            )
             try:
                 while True:
                     for market in MARKETS.values():

@@ -107,3 +107,90 @@ def test_dev_key_repository_round_trip():
     assert row["key_id"] == "DEV-7" and row["private_key_enc"] == b"ciphertext"
     repo.delete_kalshi_dev_key(cur, 7)
     assert repo.get_kalshi_dev_key(cur, 7) is None
+
+
+# -- engine demo mode: execution routes to the DEMO kernel, never the live one ----------
+from datetime import datetime, timezone  # noqa: E402
+
+from app import engine  # noqa: E402
+from app.markets import Contract  # noqa: E402
+
+
+class _Report:
+    fill_qty_contracts = 1
+    fill_price_dollars = 0.41
+    fee_dollars = 0.01
+    external_order_id = "demo-order-1"
+
+
+class _Kernel:
+    def __init__(self, name):
+        self.name = name
+        self.intents = []
+
+    def execute(self, intent):
+        self.intents.append(intent)
+        return _Report()
+
+
+class _LossGuardCur:
+    """Just enough for loss_guard's SELECT SUM(pnl)."""
+
+    def execute(self, sql, params=()):
+        pass
+
+    def fetchone(self):
+        return {"p": 0.0}
+
+
+class _Conn:
+    def cursor(self):
+        return _LossGuardCur()
+
+
+class _Entry:
+    def __init__(self, ticker):
+        self.side = "yes"
+        self.price = 0.41
+        close = datetime.now(timezone.utc)
+        self.snapshot = type("Snap", (), {"contract": Contract(ticker, 98.0, close)})()
+
+
+def _demo_dep():
+    return {"id": 1, "user_id": 1, "mode": "demo", "market": "btc15m", "result": {},
+            "spec": {"side": "yes", "sizing": {"stake": 10.0, "max_positions": 3}}}
+
+
+def test_demo_decide_executes_via_demo_kernel_not_live(monkeypatch):
+    inserted = {}
+    monkeypatch.setattr(engine.repo, "open_positions", lambda cur, dep_id: [])
+    monkeypatch.setattr(engine.specmod, "entries", lambda spec, snaps: [_Entry("BTC-DEMO")])
+    monkeypatch.setattr(engine.specmod, "contracts_for", lambda stake, price: 1)
+    monkeypatch.setattr(engine.repo, "insert_position",
+                        lambda cur, dep_id, uid, mode, *a, **k: inserted.update(mode=mode) or 1)
+
+    demo_k, live_k = _Kernel("demo"), _Kernel("live")
+    sources = engine.Sources(demo_kernel=lambda uid: demo_k,
+                             live_kernel=lambda uid: live_k)  # must never be called for demo
+    out = engine.decide(_Conn(), _demo_dep(), [], {}, sources)
+
+    assert out["entries"] == 1
+    assert inserted["mode"] == "demo"                 # position booked as demo, not live
+    assert len(demo_k.intents) == 1 and demo_k.intents[0].action == "buy"
+    assert live_k.intents == []                       # the live kernel was never touched
+
+
+def test_demo_decide_pauses_without_dev_key(monkeypatch):
+    paused = {}
+    monkeypatch.setattr(engine.repo, "open_positions", lambda cur, dep_id: [])
+    monkeypatch.setattr(engine.repo, "set_deployment_status",
+                        lambda cur, uid, dep_id, status, reason: paused.update(status=status, reason=reason) or True)
+    boom = _Kernel("live")
+
+    # No dev key on file -> demo_kernel(uid) returns None -> deployment is paused, nothing executes.
+    sources = engine.Sources(demo_kernel=lambda uid: None, live_kernel=lambda uid: boom)
+    out = engine.decide(_Conn(), _demo_dep(), [], {}, sources)
+
+    assert out == {"paused": "demo disabled"}
+    assert paused["status"] == "paused" and "demo" in paused["reason"].lower()
+    assert boom.intents == []

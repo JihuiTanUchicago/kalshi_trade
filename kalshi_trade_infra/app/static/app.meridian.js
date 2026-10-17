@@ -862,12 +862,13 @@
   function deploymentSlip(d, reg, controls) {
     const exp = d.backtest && d.backtest.out_of_sample;
     const live = d.mode === 'live';
+    const modeTag = live ? '<span class="mk live">LIVE</span>' : d.mode === 'demo' ? '<span class="mk dep">DEMO</span>' : '<span class="mk">PAPER</span>';
     const actions = controls ? `<td class="act" data-lab="">
         ${d.status === 'running' ? `<button class="btn sm" data-dep="${d.id}" data-act="pause">Pause</button>` : ''}
         ${d.status === 'paused' ? `<button class="btn sm" data-dep="${d.id}" data-act="resume">Resume</button>` : ''}
         <button class="btn sm danger" data-dep="${d.id}" data-act="stop">Stop</button></td>` : '';
     return `<tr class="${live ? 'live-row' : ''}">
-      <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
+      <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a> ${modeTag}
         <div class="sub-fig">$${esc(d.stake)} a trade, up to ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' \u00b7 ' + esc(d.status_reason) : ''}</div></td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(d.market))}</span></td>
       <td data-lab="Status">${mark(d.status, live)}</td>
@@ -1190,18 +1191,30 @@
       const stubs = (rows, closed) => rows.length
         ? rows.map((r) => `<div class="stub"><b>${esc(r.side.toUpperCase())} ${esc(r.qty)} × ${cents(+r.entry_price)}</b>
             <span>${closed ? money(+r.pnl) : (r.unrealized != null ? money(r.unrealized) : usd(r.qty * r.entry_price))}</span>
-            <small>${esc(r.title)} · <span class="tick">${esc(r.ticker)}</span> · ${r.mode === 'live' ? 'LIVE' : 'paper'} · ${when(closed ? r.closed_at : r.opened_at)}</small></div>`).join('')
+            <small>${esc(r.title)} · <span class="tick">${esc(r.ticker)}</span> · ${r.mode === 'live' ? 'LIVE' : r.mode === 'demo' ? 'DEMO' : 'PAPER'} · ${when(closed ? r.closed_at : r.opened_at)}</small></div>`).join('')
         : `<p class="hint">${closed ? 'No settled trades yet.' : 'No open positions.'}</p>`;
       const sessions = recent.data?.runs.slice(0, 6) || [];
       const research = recent.error ? `<p class="hint">${esc(recent.error)}</p>` : sessions.length ? `<div class="runs overview-sessions">${sessions.map(runRow).join('')}</div>` : '<p class="hint overview-empty">No research sessions yet.</p>';
       const main = `<div class="dash dash-overview">
           <div class="overview-account-row">
-            <section class="portfolio-overview"><header><h2>Paper portfolio</h2><span class="lab">USD</span></header>
-              <dl class="portfolio-value"><dt class="vh">Paper account value</dt><dd>${usd(p.equity)}</dd></dl>
-              <p class="hint">${usd(p.cash)} cash · ${usd(p.open_at_cost)} open at cost</p>
-              <dl class="portfolio-metrics"><div><dt>Today</dt><dd>${money(p.today_pnl)}</dd></div><div><dt>All time</dt><dd>${money(p.total_pnl)}</dd></div></dl>
-              <p class="hint">${pct(p.roi)} on ${usd(p.deposited)} put in</p>
-            </section>
+            <div class="overview-buckets" style="display:grid;gap:18px">
+              <section class="portfolio-overview"><header><h2>Real money <span class="mk live">LIVE</span></h2><span class="lab">Kalshi</span></header>
+                <dl class="portfolio-value"><dt class="vh">At work on the live exchange</dt><dd>${usd(d.live.open_at_cost)}</dd></dl>
+                <dl class="portfolio-metrics"><div><dt>Today</dt><dd>${money(d.live.today_pnl)}</dd></div><div><dt>All time</dt><dd>${money(d.live.realized_pnl)}</dd></div></dl>
+                <p class="hint">${d.live.open_positions} open position${d.live.open_positions === 1 ? '' : 's'}${d.live.open_positions || d.live.running ? '' : ' — real money untouched'}</p>
+              </section>
+              <section class="portfolio-overview"><header><h2>Demo <span class="mk dep">SANDBOX</span></h2><span class="lab">demo.kalshi.co</span></header>
+                <dl class="portfolio-value"><dt class="vh">At work on the sandbox</dt><dd>${usd(d.demo.open_at_cost)}</dd></dl>
+                <dl class="portfolio-metrics"><div><dt>Today</dt><dd>${money(d.demo.today_pnl)}</dd></div><div><dt>All time</dt><dd>${money(d.demo.realized_pnl)}</dd></div></dl>
+                <p class="hint">${d.demo.open_positions} open position${d.demo.open_positions === 1 ? '' : 's'}${d.demo.open_positions || d.demo.running ? '' : ' — no demo strategies yet'}</p>
+              </section>
+              <section class="portfolio-overview"><header><h2>Paper <span class="mk">SIMULATION</span></h2><span class="lab">USD</span></header>
+                <dl class="portfolio-value"><dt class="vh">Paper account value</dt><dd>${usd(p.equity)}</dd></dl>
+                <p class="hint">${usd(p.cash)} cash · ${usd(p.open_at_cost)} open at cost</p>
+                <dl class="portfolio-metrics"><div><dt>Today</dt><dd>${money(p.today_pnl)}</dd></div><div><dt>All time</dt><dd>${money(p.total_pnl)}</dd></div></dl>
+                <p class="hint">${pct(p.roi)} on ${usd(p.deposited)} put in</p>
+              </section>
+            </div>
             <section class="portfolio-ledger overview-open-positions"><h3>Open positions <span>${d.open_positions.length}</span></h3>${stubs(d.open_positions, false)}${hasLive ? `<p class="hint">Live realized P&amp;L ${usd(d.live.realized_pnl, true)}</p>` : ''}<p class="hint freshness">${stale ? `<span class="loss">Backtest history stale ${age(d.freshness.btc)}</span>` : `History ${age(d.freshness.btc)} old`}</p></section>
           </div>
           <section class="sect overview-performance"><div class="sect-head"><h2>Paper performance</h2><span class="sect-note">Cumulative closed P&amp;L · ${days.length} day${days.length === 1 ? '' : 's'}</span></div><div id="overview-performance-chart">${performance}</div>
@@ -1488,6 +1501,7 @@
       return 'it ranked below the handful of finalists we tested on unseen data.';
     };
     const liveWhy = !S.me.live_trading_available ? 'Live trading isn’t open yet.' : !S.me.kalshi_connected ? 'Connect Kalshi on the Funds page first.' : s.side !== 'yes' ? 'Live supports YES-only strategies for now.' : '';
+    const demoWhy = !S.me.kalshi_dev_connected ? 'Add your Kalshi demo (sandbox) key on the Funds page first.' : s.side !== 'yes' ? 'Demo supports YES-only strategies for now.' : '';
     const metricRows = (m) => m ? `<dl>
         <dt>P&amp;L after fees</dt><dd class="${tone(m.pnl)}">${usd(m.pnl, true)}</dd>
         <dt>Trades</dt><dd>${m.trades}${m.trades_per_day != null ? ` <small class="hint">(${m.trades_per_day}/day)</small>` : ''}</dd>
@@ -1527,7 +1541,7 @@
             const unreal = marked.reduce((a, p) => a + p.unrealized, 0);
             return `<section class="panel"><h3>Holding right now</h3>
             <div class="sheet"><table class="table stack t-dep"><thead><tr><th>Contract</th><th>Position</th><th class="num">Cost</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
-            ${s.holdings.map((p) => `<tr><td class="tick" data-lab="Contract">${esc(p.ticker)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : ''}</td><td data-lab="Position">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(p.entry_price)}</td><td class="num" data-lab="Cost">${usd(p.cost)}</td><td class="num" data-lab="Unreal.">${p.unrealized == null ? '<span class="sub-fig">—</span>' : money(p.unrealized)}</td><td class="num" data-lab="Settles">${clock(p.market_close_time)}</td></tr>`).join('')}
+            ${s.holdings.map((p) => `<tr><td class="tick" data-lab="Contract">${esc(p.ticker)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</td><td data-lab="Position">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(p.entry_price)}</td><td class="num" data-lab="Cost">${usd(p.cost)}</td><td class="num" data-lab="Unreal.">${p.unrealized == null ? '<span class="sub-fig">—</span>' : money(p.unrealized)}</td><td class="num" data-lab="Settles">${clock(p.market_close_time)}</td></tr>`).join('')}
             </tbody></table></div>
             <p class="hint" style="margin-top:8px">${s.holdings.length} open position${s.holdings.length === 1 ? '' : 's'} at cost ${usd(s.holdings.reduce((a, p) => a + p.cost, 0))}${marked.length ? ` · unrealized ${money(unreal)} (est., mark-to-market on the current bid)` : ' · awaiting first mark'}.</p></section>`;
           })() : ''}
@@ -1535,6 +1549,8 @@
             ${canDeploy ? `<div style="display:grid;gap:10px">
                 ${s.status !== 'passed' ? `<div class="notice bad">${ICON.warn}<span>${s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${rejectReason(s)}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
                 <button class="btn" id="dep-paper">Deploy on paper</button>
+                <button class="btn ghost" id="dep-demo" ${demoWhy ? 'aria-disabled="true"' : ''}>Deploy on demo (sandbox)</button>
+                ${demoWhy ? `<p class="hint">${esc(demoWhy)}</p>` : '<p class="hint">Trades Kalshi’s demo exchange with your own demo key — real order-book fills, no real money.</p>'}
                 <button class="btn ghost" id="dep-live" ${liveWhy ? 'aria-disabled="true"' : ''}>Deploy with live money</button>
                 ${liveWhy ? `<p class="hint">${esc(liveWhy)}</p>` : ''}
                 <form id="live-confirm" hidden style="display:grid;gap:8px">
@@ -1595,6 +1611,10 @@
     if (depPaper) depPaper.onclick = () => busy(depPaper, async () => {
       try { await api('/api/deployments', { strategy_id: s.id, mode: 'paper' }); go('/deploy'); } catch (e) { flash('#depflash', e.message, 'bad'); }
     });
+    const depDemo = root.querySelector('#dep-demo');
+    if (depDemo) depDemo.onclick = () => { if (demoWhy) return; busy(depDemo, async () => {
+      try { await api('/api/deployments', { strategy_id: s.id, mode: 'demo' }); go('/deploy'); } catch (e) { flash('#depflash', e.message, 'bad'); }
+    }); };
     const stopDep = root.querySelector('#stop-dep');
     if (stopDep) stopDep.onclick = () => armed(stopDep, 'Confirm stop', () => busy(stopDep, async () => {
       try { for (const d of activeDeps) await api(`/api/deployments/${d.id}/stop`, {}); viewStrategy(s.id); } catch (e) { flash('#delflash', e.message, 'bad'); }
@@ -1716,7 +1736,7 @@
         : `<div class="empty"><h3>Nothing deployed</h3><a class="btn" href="/strategies">See passed strategies</a></div>`;
       bindDeploymentActions(root.querySelector('#deps'), loadBoard);
       root.querySelector('#openpos').innerHTML = d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
-        ${d.open_positions.map((p) => `<tr><td>${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : ''}</td><td class="tick">${esc(p.ticker)}</td><td>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num">${p.unrealized == null ? '<span class="sub-fig">—</span>' : money(p.unrealized)}</td><td class="num">${clock(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
+        ${d.open_positions.map((p) => `<tr><td>${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</td><td class="tick">${esc(p.ticker)}</td><td>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num">${p.unrealized == null ? '<span class="sub-fig">—</span>' : money(p.unrealized)}</td><td class="num">${clock(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
         : '<p class="hint">No open positions.</p>';
     };
     let lastId = 0;
@@ -1774,6 +1794,7 @@
       const d = await api('/api/funds');
       if (gen !== S.gen) return;
       const k = d.kalshi;
+      const kd = d.kalshi_dev || { connected: false };
       root.querySelector('#ffigs').innerHTML = fig('Paper cash', usd(d.paper.cash), { cls: 'lead' }) +
         fig('Kalshi cash', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected');
       root.querySelector('main').innerHTML = `<div id="flash"></div><div class="funds">
@@ -1807,6 +1828,20 @@
               <button class="btn" type="submit">Verify and connect</button>
             </form></details>`}
           <div id="kflash" style="margin-top:10px"></div>
+        </section>
+        <section class="panel">
+          <h3>Kalshi demo (sandbox) account</h3>
+          ${kd.connected ? `
+            <dl class="kv"><dt>Demo key</dt><dd>${esc(kd.key_id)}</dd></dl>
+            <button class="btn danger" id="dev-disconnect">Remove demo key</button>` : `
+            <details class="settings-connect"><summary class="btn primary">Connect demo key</summary>
+            <ol class="steps"><li>Sign in at demo.kalshi.co and open Account → API keys.</li><li>Copy the key ID and download the private key.</li><li>Paste both below. The key is checked against the demo exchange and encrypted before saving.</li></ol>
+            <form id="kalshi-dev" style="display:grid;gap:12px">
+              <label class="field"><span>Demo key ID</span><input class="input" name="key_id" autocomplete="off" spellcheck="false" required></label>
+              <label class="field"><span>Demo private key</span><textarea class="input" name="private_key" spellcheck="false" required placeholder="-----BEGIN RSA PRIVATE KEY-----"></textarea></label>
+              <button class="btn" type="submit">Verify and connect demo</button>
+            </form></details>`}
+          <div id="kdflash" style="margin-top:10px"></div>
         </section></div>`;
       const pf = root.querySelector('#paper');
       let kind = 'deposit';
@@ -1828,6 +1863,17 @@
       const dc = root.querySelector('#disconnect');
       if (dc) dc.onclick = () => armed(dc, 'Confirm disconnect', () => busy(dc, async () => {
         try { await api('/api/kalshi-key/delete', {}); if (gen !== S.gen) return; S.me.kalshi_connected = false; await load(); } catch (err) { if (gen === S.gen) flash('#kflash', err.message, 'bad'); }
+      }));
+      const kdf = root.querySelector('#kalshi-dev');
+      if (kdf) kdf.onsubmit = async (e) => {
+        e.preventDefault();
+        await busy(kdf.querySelector('button'), async () => {
+          try { await api('/api/kalshi-dev-key', { key_id: kdf.key_id.value, private_key: kdf.private_key.value }); if (gen !== S.gen) return; S.me.kalshi_dev_connected = true; await load(); flash('#kdflash', 'Demo key connected.', 'good'); } catch (err) { if (gen === S.gen) flash('#kdflash', err.message, 'bad'); }
+        });
+      };
+      const dvc = root.querySelector('#dev-disconnect');
+      if (dvc) dvc.onclick = () => armed(dvc, 'Confirm remove', () => busy(dvc, async () => {
+        try { await api('/api/kalshi-dev-key/delete', {}); if (gen !== S.gen) return; S.me.kalshi_dev_connected = false; await load(); } catch (err) { if (gen === S.gen) flash('#kdflash', err.message, 'bad'); }
       }));
     };
     await load();

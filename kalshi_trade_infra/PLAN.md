@@ -29,8 +29,23 @@ engine that separates GENERATION from JUDGMENT:
 - Dev-env trading FOUNDATION (dormant until integrated): `app_kalshi_dev_keys` table,
   per-user dev-key accessors in `repository.py`, and `app/kalshi_dev_exec.py` — an
   authenticated Kalshi DEMO (sandbox) execution client, host-isolated so it can never
-  reach the production exchange. Remaining: engine demo-mode tick, server deploy-mode +
-  key-entry endpoint, frontend key UI.
+  reach the production exchange.
+- Dev-env trading INTEGRATION (BUILT, uncommitted — awaiting user review): `engine.decide`
+  gained a `demo` mode alongside `paper`/`live` via a shared `via_kernel` path —
+  `Sources.demo_kernel` = `kalshi_dev_exec.demo_kernel_factory(conn)`, wired defensively in
+  `run_forever` (a demo-host misconfig can't take down paper/live). DESIGN DECISION: demo
+  reuses the PRODUCTION book (`MarketFeed`/`fetch_quotes`) for the SIGNAL but routes every
+  ORDER to the demo kernel against the sandbox host — clearly separated, no LIVE switch,
+  structurally incapable of reaching the real exchange (foundation host guard stays).
+  `server.save_kalshi_dev_key`/`delete_kalshi_dev_key` mirror the live-key endpoints
+  (verify against the sandbox via `demo_fills`, encrypt with `kalshi_account.encrypt_private_key`,
+  store in `app_kalshi_dev_keys`; raw key never logged/echoed). `create_deployment` accepts
+  `mode='demo'` (requires a dev key on file, YES-only). SECURITY GAP CLOSED: `create_deployment`
+  `mode='live'` now also requires `agent._is_deployment_candidate` (the manual path matches the
+  autopilot path; additive, fail-closed — no existing live gate weakened). `dashboard()`
+  aggregates money into three mode buckets (live/demo/paper) via `_mode_bucket`, no double-count.
+  Frontend (both themes, byte-identical for shared snippets): Funds demo-key form, "Deploy on
+  demo (sandbox)" affordance, three-bucket dashboard, LIVE/DEMO/PAPER row labels.
 
 Verification: 336 passed / 7 skipped; live-gate tests green; `/security-review` clean
 (no new HIGH/MEDIUM). Live-trading gate unchanged except made stricter.
