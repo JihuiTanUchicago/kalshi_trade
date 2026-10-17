@@ -35,6 +35,7 @@ from app import repository as repo
 from app import spec as specmod
 from app.llm import LLMError, ModelFn, Usage, ask_json, claude, current_model
 from app.markets import MARKETS
+from app.agent_market_data import AgentMarketData, DataScope
 
 DIRECTIONS: Dict[str, Dict[str, str]] = {
     "volatility": {
@@ -315,6 +316,7 @@ def _explore_and_gate(cur, run, ds, memory, model, usage, log, checkpoint, budge
     market = run["market"]
     chunk: List[Dict] = []
     round_no = 0
+    market_data = AgentMarketData(DataScope.research(ds.start_ts, ds.cutoff_ts), log, checkpoint)
     while True:
         checkpoint()
         round_no += 1
@@ -322,7 +324,7 @@ def _explore_and_gate(cur, run, ds, memory, model, usage, log, checkpoint, budge
         want = policy.next_batch(state).width
         if want <= 0:
             break  # policy decided to stop proposing this chunk
-        batch = ask_json(model, RESEARCH_SYSTEM,
+        batch = market_data.ask(model, RESEARCH_SYSTEM,
                          [{"role": "user", "content": _round_prompt(run, ds, memory, want, chunk)}],
                          _hypotheses_check(market, want), usage)
         if not batch:
@@ -614,7 +616,9 @@ def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.da
         else:
             task = "Answer the user's latest message."
         prompt = "%s\n\nRecent conversation:\n%s\n\n%s\n\n%s" % (_copilot_context(cur, user), transcript or "(none)", task, ACTIONS_GUIDE)
-        out = ask_json(model, COPILOT_SYSTEM, [{"role": "user", "content": prompt}], _copilot_check, usage)
+        market_data = AgentMarketData(DataScope(), lambda kind, message, data=None:
+                                     repo.add_event(cur, run["id"], kind, message, data))
+        out = market_data.ask(model, COPILOT_SYSTEM, [{"role": "user", "content": prompt}], _copilot_check, usage)
         repo.add_chat(cur, user["id"], "agent", out["reply"])
         for action in out["actions"]:
             text, proposal_id = act(cur, user, action, bool(user.get("autopilot")), dataset_fn)

@@ -57,6 +57,15 @@ strategy that fails its gate is shown as failed, not hidden.
 
 ## Capabilities and Constraints
 
+- Alpaca US stock/ETF data is integrated locally into the research agent and
+  current-time copilot, behind an explicit worker setting. The host supplies
+  watchlist data and bounded on-demand symbol reads with feed/timestamp provenance.
+  Research sees completed historical bars only within its training window;
+  copilot snapshots identify stale data. IEX is the default; SIP requires matching
+  entitlement. Existing strategies, backtests and execution remain Kalshi-specific.
+  Local tests and read-only live provider checks pass; production worker activation
+  and commercial data rights remain separate. [Setup and limits](app/README.md#alpaca-stocketf-data-for-agents--october-16-2026).
+
 - Agents produce a **thesis + parameterized strategy spec**, never code. Our backtester and
   our engines run the spec, so backtest and deployment evaluate the identical rule.
 - Deployment requires a passed backtest; so does every agent-proposed adjustment.
