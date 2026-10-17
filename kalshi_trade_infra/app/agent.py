@@ -354,6 +354,25 @@ def _metrics_line(m: Dict) -> str:
     )
 
 
+def _attribution_line(attr: Optional[Dict]) -> str:
+    """One compact line per hypothesis showing WHERE its research-fold net edge concentrates
+    (mean net return per trade, by price band / side / ET session). This is the conditional-edge
+    hint that lets the agent sharpen a real mechanism (e.g. the documented favorite-longshot bias
+    is in the cheap band) instead of guessing filters. Research-fold only (leak-free); every
+    refinement is still judged on unseen data and counts against the statistical trial budget."""
+    if not attr:
+        return ""
+    parts = []
+    for group in ("price", "side", "session"):
+        buckets = attr.get(group) or {}
+        if not buckets:
+            continue
+        inner = ", ".join("%s %+.4f (n=%d)" % (k, v["mean_net"], v["n"])
+                          for k, v in sorted(buckets.items(), key=lambda kv: kv[1]["mean_net"], reverse=True))
+        parts.append("%s[%s]" % (group, inner))
+    return ("  edge-by-regime (mean net/trade): " + "; ".join(parts)) if parts else ""
+
+
 def _memory_block(memory: List[Dict]) -> str:
     if not memory:
         return "No earlier research on this market for this user."
@@ -592,13 +611,22 @@ def _round_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], want: int
     # agent stays aware of what it tried (and doesn't repeat) without the prompt growing unbounded.
     ranked = sorted(chunk, key=lambda t: backtest.score(t["in_sample"]), reverse=True)
     detail = "\n".join(
-        "- %s: %s; spec=%s" % (t["title"], _metrics_line(t["in_sample"]), json.dumps(t["spec"], separators=(",", ":")))
+        ("- %s: %s; spec=%s%s" % (t["title"], _metrics_line(t["in_sample"]),
+                                  json.dumps(t["spec"], separators=(",", ":")),
+                                  ("\n" + _attribution_line(t.get("attribution")))
+                                  if _attribution_line(t.get("attribution")) else ""))
         for t in ranked[:12]
     )
     extra = ""
     if len(ranked) > 12:
         extra = "\nAlso already tested (do not repeat): " + "; ".join(t["title"] for t in ranked[12:])
     return (base + "\n\nResults so far this session (in-sample only; out-of-sample is held back):\n" + detail + extra
+            + "\n\nThe 'edge-by-regime' line shows WHERE each rule's in-sample net edge sat (by price "
+              "band, side, time-of-day). Use it to STRENGTHEN the economic mechanism — if the edge "
+              "lives in one regime, say WHY it should (e.g. favorite-longshot overpricing lives in the "
+              "cheap band) and condition on it. Do NOT bolt on filters that merely fit the strongest "
+              "in-sample bucket: every refinement is re-judged on data you never see and spends from "
+              "your statistical trial budget."
             + "\n\nPropose %d NEW, distinct hypotheses: refine what worked, drop what did not, "
               "and explain the change in each thesis." % want + THINK_ALOUD)
 
@@ -1104,7 +1132,7 @@ def _test_in_sample(h: Dict, ds: backtest.Dataset, partition: Dict, log, round_n
         "negative_control": h.get("negative_control") or "",
         "primary_metric": h.get("primary_metric") or "",
         "spec": h["spec"], "in_sample": ins, "round": round_no})
-    return dict(h, in_sample=ins, capital=res["capital"])
+    return dict(h, in_sample=ins, capital=res["capital"], attribution=res.get("attribution"))
 
 
 # -- co-pilot ------------------------------------------------------------------

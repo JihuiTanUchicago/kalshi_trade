@@ -24,7 +24,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional, Tuple
 
 from app import spec as specmod
-from app.markets import MARKETS, BtcSeries, Contract, Market, Snapshot, snapshot
+from app.markets import MARKETS, NEW_YORK, BtcSeries, Contract, Market, Snapshot, snapshot
 from data_pipeline.kalshi_fees import taker_fee_dollars
 
 IN_SAMPLE_FRACTION = 0.7
@@ -643,6 +643,60 @@ def metrics(trades: List[Trade], capital: float, days: float) -> Dict:
     }
 
 
+# Fixed, economically-meaningful regime cuts for conditional-edge attribution. They are NOT a
+# tunable grid: the price bands come straight from the documented Kalshi favorite-longshot bias
+# (Bürgi-Deng-Whelan: cheap "longshot" contracts are where takers systematically overpay), side
+# captures a yes/no asymmetry, and the ET session captures the time-of-day participation regime.
+# Keeping the cuts few and fixed is deliberate - it points the agent at a real mechanism, not at
+# a fishing grid over in-sample noise.
+_PRICE_BANDS = (("longshot_lt15c", 0.15), ("mid_15_85c", 0.85), ("favorite_gt85c", 1.01))
+_SESSIONS = (("asia_overnight_0_7", 0, 8), ("eu_us_open_8_12", 8, 13),
+             ("us_afternoon_13_16", 13, 17), ("us_evening_17_23", 17, 24))
+
+
+def _price_band(price: float) -> str:
+    for name, hi in _PRICE_BANDS:
+        if price < hi:
+            return name
+    return _PRICE_BANDS[-1][0]
+
+
+def _session(entry_ts: int) -> str:
+    hour = datetime.fromtimestamp(entry_ts, tz=timezone.utc).astimezone(NEW_YORK).hour
+    for name, lo, hi in _SESSIONS:
+        if lo <= hour < hi:
+            return name
+    return _SESSIONS[0][0]
+
+
+def attribution(trades: List[Trade]) -> Dict:
+    """Where a trade list's net edge concentrates, sliced by a few FIXED regimes (entry-price
+    band, yes/no side, ET session). Each bucket reports {mean_net, n}: mean per-trade NET return
+    = pnl / (qty * entry_price) - the SAME quantity the gatekeeper scores, so the research hint
+    the agent sees is on the same footing as the held-out verdict it will later be judged on.
+
+    Research-only: this runs on the leak-free research fold (research_fold_metrics), which the
+    generator may inspect freely; it never touches validation/holdout. It changes no gate - it
+    only sharpens which CONDITIONAL mechanism the agent proposes next (durable BTC-binary edge is
+    conditional, per the design). Empty/zero-cost trades are skipped; an empty list -> {}."""
+    cuts = {"price": {}, "side": {}, "session": {}}
+
+    def add(group: str, key: str, ret: float) -> None:
+        b = cuts[group].setdefault(key, [0.0, 0])
+        b[0] += ret
+        b[1] += 1
+    for t in trades:
+        cost = t.qty * t.entry_price
+        if cost <= 0:
+            continue
+        ret = t.pnl / cost
+        add("price", _price_band(t.entry_price), ret)
+        add("side", t.side, ret)
+        add("session", _session(t.entry_ts), ret)
+    return {group: {k: {"mean_net": round(s / n, 4), "n": n} for k, (s, n) in buckets.items()}
+            for group, buckets in cuts.items() if buckets}
+
+
 def _downsample(curve: List[Tuple[int, float]], n: int = EQUITY_POINTS) -> List[Tuple[int, float]]:
     if len(curve) <= n:
         return curve
@@ -849,4 +903,4 @@ def research_fold_metrics(spec: Dict, ds: Dataset, embargo_seconds: int,
         fold, span = [], (ds.end_ts - ds.start_ts) / 86400.0
     m = metrics(fold, capital, max(span, 1e-9))
     m.pop("_curve", None)
-    return {"capital": capital, "in_sample": m}
+    return {"capital": capital, "in_sample": m, "attribution": attribution(fold)}
