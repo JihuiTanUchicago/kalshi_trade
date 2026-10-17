@@ -451,10 +451,69 @@ select#rmodel { appearance: none; -webkit-appearance: none; padding-right: 28px;
 .ell::after { content: "…"; animation: ell 1.4s steps(1) infinite; }
 @keyframes ell { 0% { content: ""; } 25% { content: "·"; } 50% { content: "··"; } 75% { content: "···"; } }
 .runact { display: inline-flex; gap: 8px; }
+
+/* --- live "thinking" card: the proposer's reasoning streaming in as it's written --- */
+.log.stream .lane-think .node::after { background: var(--stock-raised); border-color: var(--ink-2); animation: thinkpulse 1.5s var(--ease) infinite; }
+@keyframes thinkpulse { 50% { box-shadow: 0 0 0 4px rgba(68, 72, 65, .14); } }
+.think .hx-head { display: flex; align-items: baseline; gap: 8px; }
+.think-el { margin-left: auto; font-family: var(--f-nar); font-size: 11px; letter-spacing: .04em; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.think-body { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); line-height: 1.55; margin-top: 2px; }
+.think-body:empty { display: none; }
+.caret { display: inline-block; width: 2px; height: 1.05em; margin-left: 1px; background: var(--ink-2); vertical-align: -2px; animation: caret 1.05s steps(1) infinite; }
+.caret[hidden] { display: none; }
+@keyframes caret { 50% { opacity: 0; } }
+.think-draft { margin-top: 6px; font-family: var(--f-nar); font-size: 11.5px; letter-spacing: .04em; color: var(--ink-3); }
+.think.sealed .think-body { color: var(--ink-3); }
+.think.sealed .think-el { opacity: .7; }
+
+/* --- the hypothesis card: intuition in the open, the homework folded, verdict grafted on --- */
+.hx .hx-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; }
+.hx .say-title { flex: 1 1 auto; min-width: 0; }
+.hx-stamp { flex: none; margin-left: auto; font-family: var(--f-nar); font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; padding: 2px 7px 1px; border-radius: var(--radius); border: 1px solid var(--rule-2); color: var(--ink-3); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.hx-stamp .working { width: .6em; height: .6em; margin: 0; border-width: 1.5px; }
+.hx-stamp.pass { color: #0E5C33; background: #DCEFE3; border-color: var(--pos); }
+.hx-stamp.void { color: #8A1021; background: var(--signal-wash); border-color: var(--neg); }
+.hx-stamp.rej { color: var(--ink-3); background: var(--stock-sunk); border-color: var(--rule-2); }
+.hx-stamp a { color: inherit; text-decoration: none; }
+.hx-stamp a:hover { text-decoration: underline; }
+.hx-more { margin-top: 8px; }
+.hx-more > summary { font-family: var(--f-nar); font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px; user-select: none; -webkit-tap-highlight-color: transparent; }
+.hx-more > summary::-webkit-details-marker { display: none; }
+.hx-more > summary::before { content: ""; width: 6px; height: 6px; border-right: 1.4px solid var(--ink-3); border-bottom: 1.4px solid var(--ink-3); transform: rotate(-45deg); transition: transform .15s var(--ease); margin-bottom: 1px; }
+.hx-more[open] > summary::before { transform: rotate(45deg); }
+.hx-more > summary:hover { color: var(--ink); }
+.hx-body { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--rule); display: grid; gap: 12px; }
+.hx-mech, .hx-spec { display: grid; grid-template-columns: minmax(96px, auto) 1fr; gap: 3px 14px; margin: 0; font-size: 12.5px; }
+.hx-mech dt, .hx-spec dt { font-family: var(--f-nar); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); padding-top: 1px; }
+.hx-mech dd, .hx-spec dd { margin: 0; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.hx-why { margin: 0; color: var(--ink-2); font-size: 12.5px; }
+.hx-code { margin: 0; }
+.hx-code figcaption { font-family: var(--f-nar); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 5px; display: flex; gap: 8px; align-items: baseline; }
+.hx-code figcaption span { color: var(--signal); font-size: 10px; }
+.hx-code pre { margin: 0; max-height: 300px; overflow: auto; background: var(--stock); border: 1px solid var(--rule); padding: 10px 12px; }
+.hx-code code { font-family: var(--f-mono, ui-monospace, monospace); font-size: 12px; line-height: 1.5; white-space: pre; color: var(--ink); }
+.hx-fine { margin: 0; font-size: 12.5px; color: var(--ink-2); }
+.hx-fine b { font-family: var(--f-nar); font-size: 10.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); margin-right: 6px; }
+.hx-review { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--rule); display: grid; gap: 9px; }
+.hx-review[hidden] { display: none; }
+.hx-tag { display: inline-block; font-family: var(--f-nar); font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-2); border: 1px solid var(--rule-2); border-radius: var(--radius); padding: 1px 6px; margin-right: 8px; vertical-align: 1px; }
+.hx-tag.pass { color: #0E5C33; border-color: var(--pos); }
+.hx-tag.void, .hx-tag.rej { color: #8A1021; border-color: var(--neg); }
+.hx-crit { margin: 0; font-size: 12.5px; color: var(--ink-2); line-height: 1.5; }
+.hx-vtext { color: var(--ink-2); font-size: 12.5px; }
+.hx-stats { display: flex; flex-wrap: wrap; gap: 2px 1px; margin: 8px 0 0; border: 1px solid var(--rule); background: var(--stock); }
+.hx-stats > div { flex: 1 1 78px; padding: 6px 10px 5px; border-right: 1px solid var(--rule); }
+.hx-stats > div:last-child { border-right: 0; }
+.hx-stats dt { font-family: var(--f-nar); font-size: 9.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); }
+.hx-stats dd { margin: 1px 0 0; font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; }
+
 @media (prefers-reduced-motion: reduce) {
   .log.stream { scroll-behavior: auto; }
   .log.stream .ln.in { animation: none; }
   .ell::after { content: "…"; animation: none; }
+  .caret { animation: none; }
+  .log.stream .lane-think .node::after { animation: none; }
+  .hx-more > summary::before { transition: none; }
 }
 
 .sheet-doc { border: 1px solid var(--rule); background: var(--stock-raised); padding: 24px; position: relative; }

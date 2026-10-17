@@ -1326,7 +1326,7 @@
   // only while the reader is already at the foot, so scrolling up to read never gets yanked back.
   // Polling (every 2s) drives it — no SSE, so it works under `script-src 'self'`.
   // ======================================================================
-  const RUN_LANE = { step: 'thought', hypothesis: 'action', challenger: 'review', verdict: 'result', done: 'done', paused: 'state', resumed: 'state', error: 'alert' };
+  const RUN_LANE = { step: 'thought', thinking: 'think', hypothesis: 'action', challenger: 'review', verdict: 'result', done: 'done', paused: 'state', resumed: 'state', error: 'alert' };
 
   function runMechText(m) {
     if (!m || typeof m !== 'object') return '';
@@ -1334,24 +1334,230 @@
     return typeof v === 'string' ? v : '';
   }
 
-  // Build one feed node (<li>) from a log event. Pure; the thought / action / result distinction
-  // is carried by the lane class (rail node shape), a Narrow kind label, and type weight — never
-  // by color alone, so it reads the same to a screen reader or in daylight.
+  // The economic mechanism, as the structured four-part case the proposer pre-registers (who is
+  // on the other side, why it isn't arbitraged, when, why it persists) — or the older free-text form.
+  function mechHtml(m) {
+    if (!m || typeof m !== 'object') { const s = runMechText(m); return s ? `<p class="hx-why">${esc(s)}</p>` : ''; }
+    const rows = [['Who pays', m.who_pays], ['Not arbitraged because', m.why_not_arbitraged], ['When', m.when], ['Why it persists', m.why_persists]].filter(([, v]) => v);
+    if (!rows.length) { const s = runMechText(m); return s ? `<p class="hx-why">${esc(s)}</p>` : ''; }
+    return `<dl class="hx-mech">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
+  }
+
+  // Render the actual strategy spec the way a trader reads it: entry/exit/sizing in plain rows —
+  // or, for an agent-authored quant strategy, the real Python in a code block (research-only).
+  function specHtml(spec) {
+    if (!spec || typeof spec !== 'object') return '';
+    if (spec.code) {
+      return `<figure class="hx-code"><figcaption>Strategy code <span>Python · research sandbox only</span></figcaption><pre><code>${esc(spec.code)}</code></pre></figure>`;
+    }
+    const e = spec.entry || {}, x = spec.exit || {}, sz = spec.sizing || {};
+    const row = (k, v) => (v == null || v === '') ? '' : `<dt>${k}</dt><dd>${esc(v)}</dd>`;
+    const entry = [];
+    const c = (v) => Math.round(v * 100) + '¢';
+    if (e.min_edge != null) entry.push(`edge ≥ ${pct(e.min_edge, false)}`);
+    if (e.min_price != null || e.max_price != null) entry.push(`price ${e.min_price != null ? c(e.min_price) : '0¢'}–${e.max_price != null ? c(e.max_price) : '100¢'}`);
+    if (e.min_tte_min != null || e.max_tte_min != null) entry.push(`${e.min_tte_min != null ? e.min_tte_min : 0}–${e.max_tte_min != null ? e.max_tte_min : '∞'} min to settle`);
+    if (e.max_spread != null) entry.push(`spread ≤ ${c(e.max_spread)}`);
+    const exit = [];
+    if (x.take_profit != null) exit.push(`take profit at ${c(x.take_profit)}`);
+    if (x.stop_loss != null) exit.push(`stop at ${c(x.stop_loss)}`);
+    if (x.min_edge_to_hold != null) exit.push(`hold while edge ≥ ${pct(x.min_edge_to_hold, false)}`);
+    const filters = (spec.filters && spec.filters.length)
+      ? spec.filters.map((f) => typeof f === 'string' ? f : JSON.stringify(f)).join('; ') : '';
+    return `<dl class="hx-spec">
+      ${row('Side', (spec.side || 'yes').toUpperCase())}
+      ${row('Enter when', entry.join(' · ') || 'any priced contract')}
+      ${row('Exit', exit.join(' · ') || 'hold to settlement')}
+      ${row('Regime filter', filters)}
+      ${row('Sizing', `$${sz.stake != null ? sz.stake : 5} per trade · up to ${sz.max_positions != null ? sz.max_positions : 20} at once`)}</dl>`;
+  }
+
+  // The gatekeeper's numbers for the reader (their own result) — never fed back to the generator.
+  function statGrid(s) {
+    if (!s) return '';
+    const num = (v, dp) => (v == null || typeof v !== 'number') ? null : v.toFixed(dp == null ? 2 : dp);
+    const p = (v) => v == null ? null : (v < 0.001 ? '<0.001' : num(v, 3));
+    const cells = [];
+    const add = (k, v) => { if (v != null && v !== '') cells.push(`<div><dt>${k}</dt><dd>${v}</dd></div>`); };
+    add('Trades', s.n_trades != null ? String(s.n_trades) : null);
+    add('p-value', p(s.p_value));
+    add('DSR', num(s.dsr));
+    add('Sharpe', num(s.sharpe));
+    if (s.ci && (s.ci.lo != null || s.ci.hi != null)) add('95% CI', `${pct(s.ci.lo, false)}…${pct(s.ci.hi, false)}`);
+    add('Placebo p', p(s.placebo_p));
+    if (s.max_drawdown != null) add('Max drawdown', usd(-Math.abs(s.max_drawdown), true));
+    return cells.length ? `<dl class="hx-stats">${cells.join('')}</dl>` : '';
+  }
+
+  // A progressively-filled hypothesis card: intuition (thesis) and the in-sample stat sit in the
+  // open; "Show the homework" expands the mechanism, the real spec/code, and the falsification +
+  // placebo. The challenger's critique and the gatekeeper's stamped verdict are grafted onto the
+  // SAME card as those events arrive, so a reader follows one strategy intuition → code → critique
+  // → verdict rather than hunting across scattered log lines.
+  function hypothesisCard(ev) {
+    const d = ev.data || {};
+    const ins = d.in_sample || {};
+    const title = ev.message;
+    const li = document.createElement('li');
+    li.className = 'ln lane-action hx';
+    const stat = (ins && ins.trades != null)
+      ? `<span class="say-stat">In-sample ${usd(ins.pnl, true)} · ${ins.trades} trade${ins.trades === 1 ? '' : 's'}</span>` : '';
+    const home = [mechHtml(d.mechanism), specHtml(d.spec),
+      d.falsification ? `<p class="hx-fine"><b>Falsified if</b> ${esc(d.falsification)}</p>` : '',
+      d.negative_control ? `<p class="hx-fine"><b>Placebo that should fail</b> ${esc(d.negative_control)}</p>` : ''].filter(Boolean).join('');
+    li.innerHTML = `<time>${clock(ev.created_at)}</time><span class="node" aria-hidden="true"></span><div class="say">
+      <div class="hx-head"><span class="say-kind">Hypothesis</span><b class="say-title">${esc(title)}</b><span class="hx-stamp pending" data-stamp>Testing<span class="working" aria-hidden="true"></span></span></div>
+      ${d.thesis ? `<span class="say-sub">${esc(d.thesis)}</span>` : ''}${stat}
+      ${home ? `<details class="hx-more"><summary>Show the homework</summary><div class="hx-body">${home}</div></details>` : ''}
+      <div class="hx-review" data-review hidden></div></div>`;
+    const stampEl = li.querySelector('[data-stamp]');
+    const reviewEl = li.querySelector('[data-review]');
+    const strip = (s, re) => (s || '').replace(re, '');
+    return {
+      li, title,
+      challenger(e2) {
+        const dec = (e2.data || {}).decision || 'review';
+        const reason = strip(strip(e2.message, /^Challenger\s+\w+\s+[-–]\s*/i), new RegExp('^' + title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ':\\s*'));
+        reviewEl.hidden = false;
+        reviewEl.insertAdjacentHTML('beforeend', `<p class="hx-crit"><span class="hx-tag">Challenger · ${esc(dec)}</span>${esc(reason)}</p>`);
+      },
+      verdict(e2) {
+        const dd = e2.data || {};
+        const cls = dd.status === 'passed' ? 'pass' : dd.status === 'rejected' ? 'rej' : 'void';
+        const label = dd.status === 'passed' ? 'PASSED' : dd.status === 'rejected' ? 'REJECTED' : 'VOID';
+        li.classList.remove('lane-action'); li.classList.add('lane-' + cls);
+        stampEl.className = 'hx-stamp ' + cls;
+        stampEl.innerHTML = dd.strategy_id ? `<a href="/strategies/${dd.strategy_id}">${label}</a>` : label;
+        const rest = strip(e2.message, /^(PASSED|VOID|FAILED|REJECTED)(\s*\(challenger\))?\s*[-–]\s*/);
+        const tail = rest.indexOf(':') >= 0 ? rest.slice(rest.indexOf(':') + 1).trim() : '';
+        reviewEl.hidden = false;
+        reviewEl.insertAdjacentHTML('beforeend', `<div class="hx-verdict"><span class="hx-tag ${cls}">Gatekeeper · ${label.toLowerCase()}</span>${tail ? `<span class="hx-vtext">${esc(tail)}</span>` : ''}${statGrid(dd.stats)}</div>`);
+      },
+    };
+  }
+
+  // A live "thinking" card: the proposer's reasoning streams in as the agent writes it, with a
+  // ticking elapsed clock and a caret, so the multi-minute generation call is visibly ALIVE rather
+  // than a silent "Researching…". Once the prose turns into the JSON spec we stop echoing raw
+  // tokens (the structured spec lands in each hypothesis card instead) and show a quiet "drafting".
+  function thinkController(block, at) {
+    const li = document.createElement('li');
+    li.className = 'ln lane-think think';
+    li.innerHTML = `<time>${clock(at)}</time><span class="node" aria-hidden="true"></span><div class="say">
+      <div class="hx-head"><span class="say-kind">Thinking</span><span class="think-el" data-el>0s</span></div>
+      <div class="think-body" data-body></div>
+      <div class="think-draft" data-draft hidden>drafting the strategy spec<span class="ell" aria-hidden="true"></span></div>
+      <span class="caret" data-caret aria-hidden="true"></span></div>`;
+    const body = li.querySelector('[data-body]');
+    const elEl = li.querySelector('[data-el]');
+    const draft = li.querySelector('[data-draft]');
+    const caret = li.querySelector('[data-caret]');
+    let raw = '';
+    const started = Date.now();
+    const tick = setInterval(() => { elEl.textContent = Math.round((Date.now() - started) / 1000) + 's'; }, 1000);
+    S.timers.push(tick);
+    return {
+      li, block,
+      feed(text) {
+        raw += text || '';
+        // Stop echoing once the JSON spec begins — a ```fence (what we ask for), a line-led brace,
+        // or a bare {" object start — the structured spec lands in the hypothesis cards instead.
+        const cut = raw.search(/```|\n\s*\{|\{\s*"/);
+        body.textContent = (cut >= 0 ? raw.slice(0, cut) : raw).trim();
+        draft.hidden = cut < 0;
+        caret.hidden = cut >= 0;
+      },
+      seal() { clearInterval(tick); caret.remove(); draft.hidden = true; li.classList.add('sealed'); if (!raw.trim()) li.remove(); },
+    };
+  }
+
+  // Controller over a .runfeed section: streams the thinking card, grafts challenger/verdict onto
+  // their hypothesis card, appends everything else newest-at-bottom with an enter animation, sticks
+  // to the latest only when already at the foot, raises a "jump to latest" chip when scrolled up,
+  // and drives the live "researching… (Ns)" pulse so it never looks frozen between polls.
+  function runFeed(section) {
+    const log = section.querySelector('.log');
+    const jump = section.querySelector('.jumplatest');
+    const pulse = section.querySelector('.runpulse');
+    let unseen = 0, first = true, appended = 0, pulseSt = null, lastAt = Date.now();
+    const cards = new Map();   // hypothesis title -> card controller (most recent wins on a title clash)
+    let think = null;          // the currently-open thinking card, if any
+    const atBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+    const toLatest = () => { log.scrollTop = log.scrollHeight; unseen = 0; jump.hidden = true; };
+    log.addEventListener('scroll', () => { if (atBottom()) { unseen = 0; jump.hidden = true; } });
+    jump.onclick = toLatest;
+    const sealThink = () => { if (think) { think.seal(); think = null; } };
+    const add = (el) => { if (!first) el.classList.add('in'); log.appendChild(el); appended++; };
+
+    function dispatch(ev) {
+      lastAt = Date.now();
+      if (ev.kind === 'thinking') {
+        const block = (ev.data || {}).block || 0;
+        if (think && think.block !== block) sealThink();
+        if ((ev.data || {}).end) { sealThink(); return; }
+        if (!think) { think = thinkController(block, ev.created_at); add(think.li); }
+        think.feed(ev.message);
+        return;
+      }
+      sealThink();  // any structured event ends the current train of thought
+      if (ev.kind === 'hypothesis') {
+        const card = hypothesisCard(ev); cards.set(card.title, card); add(card.li);
+      } else if (ev.kind === 'challenger') {
+        const card = cards.get((ev.data || {}).title); card ? card.challenger(ev) : add(runEventEl(ev));
+      } else if (ev.kind === 'verdict') {
+        const card = cards.get((ev.data || {}).title);
+        if (card) { card.verdict(ev); cards.delete(card.title); } else add(runEventEl(ev));
+      } else {
+        add(runEventEl(ev));
+      }
+    }
+
+    // Count up the seconds since the last event every second (independent of the 2s poll) so a
+    // long call that isn't streaming still reads as working, not stuck.
+    const ptick = setInterval(() => {
+      if (pulse.hidden || pulseSt === 'paused' || pulseSt === 'done') return;
+      const secs = Math.round((Date.now() - lastAt) / 1000);
+      const lab = pulse.querySelector('[data-plabel]');
+      if (lab && secs >= 3) lab.textContent = `${pulseSt === 'queued' ? 'Queued' : 'Researching'} · ${secs}s`;
+    }, 1000);
+    S.timers.push(ptick);
+
+    return {
+      push(events) {
+        if (!events || !events.length) return;
+        const stick = first || atBottom();
+        appended = 0;
+        events.forEach((ev) => { try { dispatch(ev); } catch (e) { /* one bad event must not break the feed */ } });
+        if (stick) toLatest();
+        else if (appended) { unseen += appended; jump.hidden = false; jump.textContent = unseen + ' new ↓'; }
+        first = false;
+      },
+      state(st) {  // 'queued' | 'running' | 'paused' | 'done'
+        if (st === 'done') { pulseSt = st; sealThink(); pulse.hidden = true; return; }
+        const stick = atBottom();
+        pulse.hidden = false;
+        if (st !== pulseSt) {
+          pulse.className = 'runpulse' + (st === 'paused' ? ' paused' : '');
+          pulse.innerHTML = st === 'paused'
+            ? '<span class="pulse-bar" aria-hidden="true"></span><span>Paused — resume and it picks up exactly where it left off.</span>'
+            : st === 'queued'
+              ? '<span class="working" aria-hidden="true"></span><span data-plabel>Queued — waiting for a free agent to pick this up…</span>'
+              : '<span class="working" aria-hidden="true"></span><span data-plabel>Researching<span class="ell" aria-hidden="true"></span></span>';
+        }
+        pulseSt = st;
+        if (stick) toLatest();
+      },
+    };
+  }
+
+  // Build one feed node (<li>) for the kinds that are NOT a hypothesis card or a streaming thought:
+  // steps, the RSI/dreaming notes, pause/resume, errors, and the fallback standalone verdict.
   function runEventEl(ev) {
     const li = document.createElement('li');
     const data = ev.data || {};
     let lane = RUN_LANE[ev.kind] || 'thought';
     let inner;
-    if (ev.kind === 'hypothesis') {
-      const ins = data.in_sample || {};
-      const mech = runMechText(data.mechanism);
-      const stat = (ins && ins.trades != null)
-        ? `<span class="say-stat">In-sample ${usd(ins.pnl, true)} over ${ins.trades} trade${ins.trades === 1 ? '' : 's'}</span>` : '';
-      inner = `<span class="say-kind">Hypothesis</span><b class="say-title">${esc(ev.message)}</b>`
-        + (data.thesis ? `<span class="say-sub">${esc(data.thesis)}</span>` : '')
-        + (mech ? `<span class="say-sub">Why it should work — ${esc(mech)}</span>` : '')
-        + stat;
-    } else if (ev.kind === 'verdict') {
+    if (ev.kind === 'verdict') {
       const st = data.status, sid = data.strategy_id;
       lane = st === 'passed' ? 'pass' : st === 'rejected' ? 'rej' : 'void';
       const tag = st === 'passed' ? '<b class="verdict pass">PASSED</b>'
@@ -1375,44 +1581,6 @@
     li.className = 'ln lane-' + lane + (lane === 'rsi' ? ' rsi-event' : '');
     li.innerHTML = `<time>${clock(ev.created_at)}</time><span class="node" aria-hidden="true"></span><div class="say">${inner}</div>`;
     return li;
-  }
-
-  // Controller over a .runfeed section: appends events (newest at bottom) with an enter
-  // animation, sticks to the latest only when already at the foot, raises a "jump to latest"
-  // chip when the reader has scrolled up, and drives the live "researching…/paused" pulse.
-  function runFeed(section) {
-    const log = section.querySelector('.log');
-    const jump = section.querySelector('.jumplatest');
-    const pulse = section.querySelector('.runpulse');
-    let unseen = 0, first = true;
-    const atBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 60;
-    const toLatest = () => { log.scrollTop = log.scrollHeight; unseen = 0; jump.hidden = true; };
-    log.addEventListener('scroll', () => { if (atBottom()) { unseen = 0; jump.hidden = true; } });
-    jump.onclick = toLatest;
-    return {
-      push(events) {
-        if (!events || !events.length) return;
-        const stick = first || atBottom();
-        const frag = document.createDocumentFragment();
-        events.forEach((ev) => { const el = runEventEl(ev); if (!first) el.classList.add('in'); frag.appendChild(el); });
-        log.appendChild(frag);
-        if (stick) toLatest();
-        else { unseen += events.length; jump.hidden = false; jump.textContent = unseen + ' new ↓'; }
-        first = false;
-      },
-      state(st) {  // 'queued' | 'running' | 'paused' | 'done'
-        if (st === 'done') { pulse.hidden = true; return; }
-        const stick = atBottom();
-        pulse.hidden = false;
-        pulse.className = 'runpulse' + (st === 'paused' ? ' paused' : '');
-        pulse.innerHTML = st === 'paused'
-          ? '<span class="pulse-bar" aria-hidden="true"></span><span>Paused — resume and it picks up exactly where it left off.</span>'
-          : st === 'queued'
-            ? '<span class="working" aria-hidden="true"></span><span>Queued — waiting for a free agent to pick this up…</span>'
-            : '<span class="working" aria-hidden="true"></span><span>Researching<span class="ell" aria-hidden="true"></span></span>';
-        if (stick) toLatest();
-      },
-    };
   }
 
   // Interrupt & continue: the obvious control cluster for a research run. Running → Pause;
