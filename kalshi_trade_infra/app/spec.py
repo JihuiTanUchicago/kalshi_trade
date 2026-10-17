@@ -366,6 +366,12 @@ def _phi(x: float) -> float:
 
 def fair_yes(spec: Dict, f: Dict[str, float]) -> Optional[float]:
     m = spec["model"]
+    # The GBM-digital model needs an underlying (strike-vs-spot) path: moneyness + realised vol.
+    # A sports market has neither, so there is no model fair value - return None and let the
+    # caller skip (entries/pair_entries treat None as "no signal"). Such markets are researched
+    # with code strategies, which never call fair_yes.
+    if "moneyness" not in f or ("vol_%dm" % m["vol_window"]) not in f:
+        return None
     sigma = m["vol_scale"] * f["vol_%dm" % m["vol_window"]]
     t = f["tte_min"]
     mu = 0.0

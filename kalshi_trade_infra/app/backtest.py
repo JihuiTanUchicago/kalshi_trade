@@ -72,6 +72,10 @@ def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc:
     micro: {(ticker, decision_ts): {feature: value}} order-book features to merge per snapshot (optional)."""
     micro = micro or {}
     series = BtcSeries(btc)
+    # Sports (and any market with underlying=None) have no spot path: every frame with a
+    # two-sided quote is tradable on price/order-book features alone, so skip the
+    # fresh-underlying gate and feed snapshot() an empty feature base.
+    has_underlying = market.underlying is not None
     contracts = {}
     results = {}
     for m in markets:
@@ -91,7 +95,7 @@ def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc:
         )
     frames = []
     for ts in sorted(by_ts):
-        feats = series.features_at(ts)
+        feats = series.features_at(ts) if has_underlying else {}
         if feats is None:
             continue
         snaps = [s for s in (snapshot(feats, ct, ts, b, a, micro.get((ct.ticker, ts)))

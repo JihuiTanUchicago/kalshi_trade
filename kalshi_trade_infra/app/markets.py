@@ -35,7 +35,10 @@ class Market:
     history_days: int
     close_hour_et: Optional[int] = None  # daily ladder: only the 5pm EDT event
     # Coinbase spot product that prices this market's contracts (strike vs spot).
-    underlying: str = "BTC-USD"
+    # None = no underlying price series (e.g. sports): contracts settle on an event
+    # outcome, so there is no strike/spot and the backtest trades on price/order-book
+    # features alone (no moneyness/vol/z_score).
+    underlying: Optional[str] = "BTC-USD"
     # True only for markets with a live feed + execution path, i.e. tradeable now.
     # Research can BACKTEST any market; the deploy engine ticks only deployable ones,
     # so adding a research-only crypto here never starts paper/live trading on it.
@@ -68,6 +71,14 @@ MARKETS: Dict[str, Market] = {
                         history_days=60, close_hour_et=17, underlying="SOL-USD"),
     "xrp_daily": Market("xrp_daily", "KXXRPD", "XRP daily close, 5pm EDT", candle_minutes=60,
                         history_days=60, close_hour_et=17, underlying="XRP-USD"),
+    # Research-only SPORTS market (deployable=False). Kalshi's per-game NBA moneyline
+    # (series KXNBAGAME) is a binary YES/NO that settles on the game result - structurally
+    # like the crypto binaries, but with NO strike and NO underlying price feed (underlying=None).
+    # The backtester trades it on the contract's own 1-minute price/order-book history; the
+    # strike-vs-spot GBM model does not apply (see snapshot() / spec.fair_yes). Code strategies
+    # (signals(window)) are the research vehicle here.
+    "nba_game": Market("nba_game", "KXNBAGAME", "NBA game winner (moneyline)", candle_minutes=1,
+                       history_days=30, underlying=None),
 }
 
 # A BTC price older than this cannot price a contract: no snapshot, no trade.
@@ -206,10 +217,14 @@ def snapshot(
         for k, v in micro.items():
             if v is not None:
                 f[k] = float(v)
-    vol = f["vol_60m"]
     f["tte_min"] = tte_min
-    f["moneyness"] = math.log(f["spot"] / contract.strike)
-    f["z_score"] = f["moneyness"] / (vol * math.sqrt(tte_min)) if vol > 0 else 0.0
+    # Strike-vs-spot features only for underlying-priced markets (BTC/ETH/...). A sports
+    # market has no spot, so series_features carries no "spot" and these are skipped -
+    # the snapshot then trades on price/order-book features alone.
+    if "spot" in f:
+        vol = f["vol_60m"]
+        f["moneyness"] = math.log(f["spot"] / contract.strike)
+        f["z_score"] = f["moneyness"] / (vol * math.sqrt(tte_min)) if vol > 0 else 0.0
     f["yes_bid"] = yes_bid
     f["yes_ask"] = yes_ask
     f["spread"] = yes_ask - yes_bid

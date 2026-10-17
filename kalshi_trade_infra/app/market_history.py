@@ -103,8 +103,15 @@ def sync_settled_markets(cur, market: Market, min_close: datetime) -> int:
             open_time = parse_iso_to_dt(m.get("open_time"))
             strike = m.get("floor_strike")
             result = (m.get("result") or "").lower()
-            if close_time is None or open_time is None or strike is None or result not in ("yes", "no"):
+            if close_time is None or open_time is None or result not in ("yes", "no"):
                 continue
+            # Underlying markets price against a strike; sports (underlying=None) settle on an
+            # outcome and carry no floor_strike, so store a 0.0 sentinel (never used - snapshot
+            # computes no moneyness without a spot).
+            if strike is None:
+                if market.underlying is not None:
+                    continue
+                strike = 0.0
             if not market.is_target_event(close_time):
                 continue
             rows.append(
@@ -227,6 +234,8 @@ def refresh(cur) -> Dict[str, int]:
     # each backfilled over the longest history_days of the markets that use it.
     by_symbol: Dict[str, int] = {}
     for m in MARKETS.values():
+        if m.underlying is None:  # sports: no spot series to sync
+            continue
         by_symbol[m.underlying] = max(by_symbol.get(m.underlying, 0), m.history_days)
     for symbol, history_days in by_symbol.items():
         cur.execute("SELECT MAX(start_ts) AS t FROM spot_candles_1m WHERE symbol=%s", (symbol,))
