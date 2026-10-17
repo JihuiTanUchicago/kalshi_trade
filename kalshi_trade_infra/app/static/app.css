@@ -495,14 +495,19 @@ select#rmodel { appearance: none; -webkit-appearance: none; padding-right: 28px;
 .pipechev { margin-left: auto; color: var(--ink-3); display: inline-flex; transition: transform .18s var(--ease); }
 .pipechev svg { width: 16px; height: 16px; }
 .pipefig[open] .pipechev { transform: rotate(180deg); }
-.flow { padding: 18px 16px 4px; display: grid; gap: 0; max-width: 680px; margin: 0 auto; }
-.flow-phase { display: flex; align-items: center; gap: 10px; margin: 14px 0 8px; font-family: var(--f-nar); font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); }
+/* Horizontal flow: each phase is a row of node cards reading left→right, so the whole
+   figure stays short instead of a tall single column. Rows wrap on mid-width, and stack
+   vertically (arrows rotate to point down) at phone width. */
+.flow { padding: 18px 16px 6px; display: grid; gap: 16px; max-width: 880px; margin: 0 auto; }
+.flow-stage { display: grid; gap: 8px; }
+.flow-phase { display: flex; align-items: center; gap: 10px; margin: 0; font-family: var(--f-nar); font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); }
 .flow-phase::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
-.flow-phase:first-child { margin-top: 0; }
-.flow-link { display: flex; justify-content: center; align-items: center; height: 24px; position: relative; color: var(--ink-2); }
-.flow-link::before { content: ""; position: absolute; top: 0; bottom: 0; width: 1px; background: var(--rule-2); }
-.flow-arrow { position: relative; background: var(--stock); padding: 2px 0; }
-.node { border: 1px solid var(--rule); background: var(--stock-raised); padding: 11px 14px; display: grid; gap: 4px; }
+.flow-row { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0; }
+.flow-row .node { flex: 1 1 180px; min-width: 0; }
+.flow-link { display: flex; justify-content: center; align-items: center; flex: 0 0 auto; width: 30px; align-self: center; position: relative; color: var(--ink-2); }
+.flow-link::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--rule-2); }
+.flow-arrow { position: relative; background: var(--stock); padding: 0 1px; }
+.node { border: 1px solid var(--rule); background: var(--stock-raised); padding: 11px 14px; display: grid; gap: 4px; align-content: start; }
 .node-in { background: var(--stock); border-style: dashed; border-color: var(--rule-2); }
 .node-k { font-family: var(--f-nar); font-size: 12.5px; letter-spacing: .05em; text-transform: uppercase; font-weight: 600; color: var(--ink); display: flex; align-items: center; gap: 8px; }
 .node-k .mk { flex: none; }
@@ -528,14 +533,33 @@ select#rmodel { appearance: none; -webkit-appearance: none; padding-right: 28px;
 .gout-lead { font-family: var(--f-nar); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
 .gout { font-family: var(--f-nar); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; font-weight: 600; color: var(--ink-2); border: 1px solid var(--rule-2); border-radius: var(--radius); padding: 2px 7px; }
 .gout-note { font-size: 11px; color: var(--ink-3); }
-.rsi-loop { display: flex; gap: 12px; align-items: flex-start; margin: 6px 16px 16px; padding: 12px 14px; border: 1px solid var(--rule); border-left: 3px solid var(--signal); background: var(--stock-raised); font-size: 12.5px; line-height: 1.5; color: var(--ink-2); }
-.rsi-loop b { color: var(--ink); }
-.loop-ico { color: var(--signal); flex: none; margin-top: 1px; line-height: 0; }
+/* The Tau-RSI loop, drawn as a feedback connector that returns from the end of the
+   flow back up to the Proposer — the self-improvement is visible, not just prose. */
+.rsi-loopback { position: relative; display: flex; justify-content: center; align-items: center; margin: 18px 4px 2px; min-height: 42px; }
+.loopback-arc { position: absolute; left: 8px; right: 8px; top: 4px; bottom: 50%; border: 1.5px solid var(--signal); border-top: none; border-radius: 0 0 14px 14px; opacity: .55; }
+.loopback-arc::before { content: ""; position: absolute; left: 2px; top: -2px; width: 8px; height: 8px; border-left: 1.5px solid var(--signal); border-top: 1.5px solid var(--signal); transform: rotate(45deg); }
+.loopback-label { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 8px; padding: 2px 12px; background: var(--stock); font-size: 12px; letter-spacing: .01em; color: var(--ink-2); text-align: center; max-width: calc(100% - 40px); }
+.loopback-label b { color: var(--ink); white-space: nowrap; }
+.loopback-txt { min-width: 0; }
+.loop-ico { color: var(--signal); flex: none; line-height: 0; }
+.rsi-loop { margin: 2px 16px 16px; font-size: 12.5px; line-height: 1.5; color: var(--ink-3); }
+.rsi-loop b { color: var(--ink-2); }
 
 @media (max-width: 760px) {
   .mctx-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name last" "spark vol"; gap: 6px 12px; }
   .mctx-spark svg { width: 76px; }
   .pipecap-hint { flex: 1 0 100%; }
+}
+
+/* Phone: the horizontal flow stacks into a single column and the connector rotates
+   to point down between stacked nodes. */
+@media (max-width: 680px) {
+  .flow { padding: 16px 14px 6px; }
+  .flow-row { flex-direction: column; align-items: stretch; }
+  .flow-row .node { flex: 1 1 auto; }
+  .flow-link { width: auto; height: 22px; }
+  .flow-link::before { left: 50%; right: auto; top: 0; bottom: 0; width: 1px; height: auto; }
+  .flow-arrow { transform: rotate(90deg); padding: 1px 0; }
 }
 
 .printer { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 28px; align-items: start; margin-top: 8px; }
@@ -759,13 +783,20 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
 .kv dd { margin: 0; font-weight: 600; text-align: right; }
 .steps { margin: 0 0 14px; padding-left: 18px; color: var(--ink-2); font-size: 13px; display: grid; gap: 4px; }
 
-/* Funds reads as one calm settings column: a constrained, centred track with the
-   summary tiles on top and the four accounts stacked Live → Demo → Paper → History,
-   each a full-width card on an even rhythm so nothing leaves a ragged gap. */
-.funds-page { max-width: 720px; }
+/* Funds: summary tiles on top, then (on a wide viewport) two columns — account
+   setup & connection on the right, history on the left, so a user isn't scrolling
+   a tall single column to read either. Collapses to one Live → Demo → Paper →
+   History stack on narrow screens (manage panels lead the DOM, history last). */
+.funds-page { max-width: 1060px; }
 .funds-page .measure { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.funds-page .funds { grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 18px; }
-.funds-page .funds > .panel { margin-top: 0; }
+.funds-page .funds { grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 18px; align-items: start; }
+.funds-col { display: grid; gap: 16px; align-content: start; min-width: 0; }
+.funds-col > .panel { margin-top: 0; }
+@media (min-width: 900px) {
+  .funds-page .funds { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
+  .funds-page .funds-history { grid-column: 1; grid-row: 1; }
+  .funds-page .funds-manage { grid-column: 2; grid-row: 1; }
+}
 
 .washed { animation: wash .5s var(--ease) 1; }
 @keyframes wash { from { background-color: var(--rule-2); } to { background-color: transparent; } }
@@ -1145,6 +1176,7 @@ a.snap:hover { border-color: var(--ink-3); }
 .cmt-count { font-family: var(--f-nar); font-size: 11px; letter-spacing: .04em; color: var(--ink-3); white-space: nowrap; }
 .cmt-list { display: grid; gap: 12px; }
 .cmt-more { margin: 2px 0 2px; }
+.dl-tabs { margin-top: 20px; }
 .dl-list { list-style: none; margin: 10px 0 0; padding: 0; }
 .dl-item { display: flex; gap: 14px; align-items: flex-start; padding: 16px 0; border-bottom: 1px solid var(--rule); }
 .dl-item:not(.planned) { align-items: flex-start; padding: 16px 0; }
@@ -1179,6 +1211,27 @@ a.snap:hover { border-color: var(--ink-3); }
 .rsi-score { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
 .rsi-arrow { color: var(--signal); }
 .rsi-note { color: var(--ink-3); font-size: 11.5px; }
+/* Research index: the self-improvement card demoted to a compact, collapsible line so
+   the page leads with the form rather than a stack of feature panels. */
+.rsidisc { border: 1px solid var(--rule); background: var(--stock-raised); margin-top: 14px; }
+.rsidisc-cap { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; font-family: var(--f-nar); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
+.rsidisc-cap::-webkit-details-marker { display: none; }
+.rsidisc-cap:hover { background: var(--stock); }
+.rsidisc-cap:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+.rsidisc-cap .rsi-badge { margin-right: 0; }
+.rsidisc-t { color: var(--ink); }
+.rsidisc-delta { margin-left: 2px; text-transform: none; letter-spacing: 0; }
+.rsidisc .pipechev { margin-left: auto; color: var(--ink-3); display: inline-flex; transition: transform .18s var(--ease); }
+.rsidisc .pipechev svg { width: 16px; height: 16px; }
+.rsidisc[open] .pipechev { transform: rotate(180deg); }
+.rsidisc-body { padding: 12px 14px; border-top: 1px solid var(--rule); }
+.rsidisc-body p { font-size: 13px; line-height: 1.5; color: var(--ink-2); margin: 0 0 6px; }
+.rsidisc-body p:last-child { margin-bottom: 0; }
+.rsidisc-body .rsi-last { font-size: 12.5px; color: var(--ink-3); }
+.rsidisc-body .rsi-what { color: var(--ink); background: var(--signal-wash); border-radius: 3px; padding: 7px 9px; }
+/* The secondary engine-status band (status line + figures + RSI) sits below the form. */
+.rengine { margin-top: 28px; }
+.winfig .wins { padding: 16px; }
 .rsi-policy { margin-top: 10px; border-top: 1px solid var(--rule); padding-top: 8px; }
 .rsi-policy > summary { cursor: pointer; font-family: var(--f-nar); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--signal); list-style: none; }
 .rsi-policy > summary::-webkit-details-marker { display: none; }
