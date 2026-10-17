@@ -237,3 +237,41 @@ def test_rsi_block_falls_back_to_default_policy_source():
     assert block["code"] == dreaming.DEFAULT_POLICY_SRC
     assert block["score"] is None and block["base_score"] is None
     assert block["summary"] is None and block["last_dream"] is None
+
+
+# ---- research market context (cockpit picker's live book) -------------------
+# server._research_context folds the already-cached explore feed down to just the
+# markets research can target, so the dispatch picker isn't chosen blind. No DB —
+# the feed is the input — so the folding is tested directly.
+
+
+def test_research_context_folds_feed_to_researchable_markets():
+    from app.markets import MARKETS
+
+    btc15m = MARKETS["btc15m"].series   # KXBTC15M
+    btc_daily = MARKETS["btc_daily"].series
+    feed = [
+        {"t": "A", "s": btc15m, "v24": 100, "oi": 5, "bid": 0.40, "ask": 0.42, "h": [0.40, 0.41, 0.42]},
+        {"t": "B", "s": btc15m, "v24": 300, "oi": 9, "last": 0.60},  # most active -> its mid wins
+        {"t": "C", "s": btc_daily, "v24": 50, "oi": 2, "bid": 0.50, "ask": 0.50},
+        {"t": "Z", "s": "KXNOTAMARKET", "v24": 9e9, "oi": 1},        # unknown series dropped
+        {"t": "N", "s": None, "v24": 10},                            # no series -> ignored
+    ]
+
+    out = server._research_context(feed)
+
+    keyed = {m["key"]: m for m in out}
+    assert set(keyed) == {"btc15m", "btc_daily"}      # only researchable series surface
+    assert keyed["btc15m"]["contracts"] == 2          # both KXBTC15M contracts aggregated
+    assert keyed["btc15m"]["vol24"] == 400            # 100 + 300
+    assert keyed["btc15m"]["oi"] == 14
+    assert keyed["btc15m"]["mid"] == 0.60             # the most-active contract's mid (last)
+    assert keyed["btc15m"]["trace"] == []             # the top contract (B) carries no trace
+    assert out[0]["key"] == "btc15m"                  # sorted by 24h volume, busiest first
+    assert server._feed_mid({"bid": 0.40, "ask": 0.42}) == 0.41  # bid/ask midpoint when both present
+
+
+def test_research_context_empty_when_feed_unavailable():
+    # Feed not written yet / S3 unreachable -> _explore_feed returns no markets.
+    # The cockpit must get an empty list, never an error (the picker still works blind).
+    assert server._research_context([]) == []

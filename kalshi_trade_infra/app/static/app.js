@@ -1333,40 +1333,170 @@
   }
 
   // ---------- research ----------
+  // Idea starters: real quant archetypes a trader recognizes. Clicking one seeds the idea box
+  // with a concrete, mechanism-first hypothesis (and nudges the market when the angle implies
+  // one), so a blank textarea never has to be the starting point. The seeds post through the
+  // same `prompt` field as hand-typed ideas -- no new payload, no privileged path.
+  const ARCHETYPES = [
+    { k: 'meanrev', label: 'Mean reversion', market: 'btc15m',
+      idea: 'Fade sharp intraday overshoots: when the 15-minute BTC contract runs well past the underlying spot move, bet it snaps back before settlement.' },
+    { k: 'momentum', label: 'Momentum', market: 'btc_daily',
+      idea: 'Ride the trend into the close: when BTC is trending hard in the last hour, take the side the trend favors on the 5pm daily contract.' },
+    { k: 'vol', label: 'Volatility', market: 'btc15m',
+      idea: 'Trade the volatility regime: when realized BTC vol spikes, the 15-minute contracts misprice the wings — buy the tails the market left too cheap.' },
+    { k: 'longshot', label: 'Longshot fade', market: 'btc_daily',
+      idea: 'Fade the longshot bias: sell the far out-of-the-money tails retail overpays for in the final hour before the 5pm close.' },
+    { k: 'settle', label: 'Settlement pin', market: 'btc_daily',
+      idea: 'Trade settlement convergence: as the 5pm close nears, price should pin to spot — fade contracts still trading away from where BTC actually is.' },
+    { k: 'micro', label: 'Microstructure', market: 'btc15m',
+      idea: 'Read the order book: when the yes/no spread widens and one side’s depth thins out, take the side the book is leaning toward.' },
+    { k: 'relval', label: 'Relative value', market: '',
+      idea: 'Relative value across strikes: when adjacent strike contracts imply inconsistent probabilities, buy the cheap one and sell the rich one.' },
+  ];
+  // One compact live-context row per researchable market (the server folds the explore feed to
+  // it), so the picker shows what's liquid/moving instead of being chosen blind. A row click
+  // just selects the matching radio -- the radios stay the committed input.
+  function mctxRow(m) {
+    const tr = m.trace || [], delta = tr.length >= 2 ? tr[tr.length - 1] - tr[0] : 0;
+    const dC = Math.round(delta * 100), dir = dC > 0 ? 'pos' : dC < 0 ? 'neg' : '';
+    return `<button type="button" class="mctx-row" data-mkt="${esc(m.key)}" aria-pressed="false">
+      <span class="mctx-name">${esc(marketShort(m.key))}</span>
+      <span class="mctx-spark">${hotChart(tr)}</span>
+      <span class="mctx-last"><b class="fig sm">${m.mid == null ? '—' : cents(m.mid)}</b>${dC ? `<span class="mctx-delta ${dir}">${dC > 0 ? '+' : '−'}${Math.abs(dC)}¢</span>` : ''}</span>
+      <span class="mctx-vol">${kfmt(m.vol24)} vol · 24h</span></button>`;
+  }
+  // "Build on what's worked": the user's best passed edges, one click from a deeper search line.
+  function winCard(s) {
+    const oos = s.out_of_sample;
+    const pnl = oos && oos.pnl != null ? oos.pnl : null;
+    return `<div class="win-card">
+      <a class="win-title" href="/strategies/${s.id}"><b>${esc(s.title)}</b></a>
+      <span class="win-meta">${esc(marketShort(s.market))} · ${esc(dirLabel(s.direction))}</span>
+      <div class="win-foot">
+        <span class="win-pnl"><span class="lab">Unseen P&amp;L</span><span class="fig sm ${pnl > 0 ? 'tint pos' : pnl < 0 ? 'tint neg' : ''}">${pnl == null ? '—' : usd(pnl, true)}</span></span>
+        <span class="win-act"><a class="btn sm" href="/strategies/${s.id}">Open</a><button class="btn sm primary" type="button" data-dig="${s.id}">${ICON.spark2}Dig deeper</button></span>
+      </div></div>`;
+  }
+  // The RSI loop made legible on the index: the engine rewrites its own search policy and keeps
+  // the new one only if it beats the old on the user's own history. Same card language as the run
+  // page. Hidden on a brand-new account (no history to evolve from yet).
+  function renderRsiMomentum(host, pol, tried) {
+    if (!host) return;
+    if (!pol || (!pol.evolved && !tried)) { host.innerHTML = ''; return; }
+    const delta = (pol.base_score != null && pol.score != null)
+      ? `<span class="rsi-score">${pol.base_score} <span class="rsi-arrow">→</span> ${pol.score}</span>` : '';
+    host.innerHTML = `<div class="rsi-card"><div class="rsi-head"><b class="rsi-badge">RSI</b> Self-improving research engine ${pol.evolved ? '<span class="rsi-tag">Evolved</span>' : '<span class="rsi-tag quiet">Self-tuning</span>'}</div>
+      ${pol.evolved
+        ? `<p>The engine <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
+           ${pol.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(pol.summary)}</p>` : ''}
+           <p class="rsi-last">Generalization score ${delta}${pol.evolved_at ? ' · adopted ' + when(pol.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
+        : `<p>After each cycle the engine <b>dreams up new search strategies</b> and keeps one only if it beats the current policy on your own history — scored over shuffled orderings, so it can't overfit. It gets better the more you run it.</p>`}</div>`;
+  }
+  // Figure 1 -- the real Tau research pipeline, drawn as a styled node-and-connector flow (no
+  // ASCII, no monospace). Stages verified against the code: agent.py (proposer + challenger),
+  // partitions.py (60/25/15 split with purge + embargo), gatekeeper.py (the test battery and
+  // its rejected/inconclusive verdicts), dreaming.py (the Tau-RSI exploration-policy loop).
+  // Collapsible, so a repeat user can fold it and get straight to the form.
+  const FLOW_DOWN = '<svg class="flow-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg>';
+  const LOOP_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg>';
+  const fnode = (k, d, opts = {}) => `<div class="node${opts.cls ? ' ' + opts.cls : ''}"><span class="node-k">${k}</span>${opts.extra || ''}<span class="node-d">${d}</span></div>`;
+  const flowLink = `<div class="flow-link">${FLOW_DOWN}</div>`;
+  const fphase = (n) => `<div class="flow-phase"><span>${n}</span></div>`;
+  function pipelineFigure() {
+    const gates = ['Bootstrap CI', 'PSR', 'DSR · deflated by trial count', 'Placebo / null', 'LORD++ FDR budget', 'Purged walk-forward', 'Benjamini–Hochberg'];
+    return `<details class="pipefig" open>
+      <summary class="pipecap"><b>Figure 1</b> <span class="pipecap-t">The Tau research pipeline</span><span class="pipecap-hint">how your idea becomes a deployable, evidence-backed strategy</span><span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
+      <div class="flow">
+        ${fphase('Propose')}
+        ${fnode('Idea', 'Your hypothesis, in a sentence — or a one-click angle from below.', { cls: 'node-in' })}
+        ${flowLink}
+        ${fnode('Proposer', 'An agent writes several concrete, testable strategy specs. A challenger vets each one — approve, revise, or reject — before a cent of held-out data is spent.')}
+        ${flowLink}
+        ${fnode('Pre-register &amp; freeze', 'The hypothesis, its metric, and its test are fixed and hashed before the agent sees any held-out data — so a result can’t be fitted after the fact.')}
+        ${flowLink}
+        <div class="unseen-cut"><span>Unseen by the agent below</span></div>
+        ${fphase('Test on unseen data')}
+        ${fnode('Partition the history', 'A purge + embargo gap sits at every cut, so no trade straddles a boundary. The agent only ever iterates on Research.', { cls: 'partnode', extra: '<div class="partbar" aria-hidden="true"><span class="pb res" style="flex:60"></span><span class="pb val" style="flex:25"></span><span class="pb hold" style="flex:15"></span></div><div class="partleg"><span><i class="sw res"></i>Research 60%</span><span><i class="sw val"></i>Validation 25%</span><span><i class="sw hold"></i>Locked holdout 15%</span></div>' })}
+        ${flowLink}
+        ${fnode('Backtest, net of fees', 'Every spec is simulated after real Kalshi taker fees. A gross edge that fees eat does not count.')}
+        ${flowLink}
+        ${fnode('Statistical gatekeeper', 'A battery of tests on the validation window, corrected for how many ideas were tried. A real edge has to clear all of them at once.', { cls: 'gate-node', extra: `<div class="gate-tests">${gates.map((g) => `<span class="gt">${g}</span>`).join('')}</div><div class="gate-out"><span class="gout-lead">Most ideas exit here —</span><span class="gout">Rejected</span><span class="gout">Inconclusive</span><span class="gout-note">logged to an immutable ledger, so the trial count stays honest</span></div>` })}
+        ${flowLink}
+        ${fphase('Confirm')}
+        ${fnode('One-time holdout', 'The locked 15% is spent once, and only for a finalist the validation window already supported.')}
+        ${flowLink}
+        ${fnode('Marginal-contribution check', 'It must add something new — low correlation (|ρ| ≤ 0.80) to the strategies you already run.')}
+        ${flowLink}
+        ${fnode('<span class="mk on">Passed</span> Deployment candidate', 'An edge that survived every check on data it never saw.', { cls: 'pass-node' })}
+        ${flowLink}
+        ${fphase('Trade')}
+        ${fnode('Paper first', 'Proven on paper — at least 8 closed trades and non-negative P&amp;L — before anything touches real money.')}
+        ${flowLink}
+        ${fnode('<span class="mk">Gated</span> Live money', 'Only in your own Kalshi account, and only when you explicitly arm it. Off by default.', { cls: 'live-node' })}
+      </div>
+      <p class="rsi-loop"><span class="loop-ico">${LOOP_ICON}</span><span><b>Tau-RSI loop.</b> After each cycle the engine re-scores and <b>rewrites its own exploration policy</b> from your history — graded on how well it generalizes to unseen data across many shuffled replays — then feeds the improved policy back to the Proposer, so the next batch explores smarter.</span></p>
+    </details>`;
+  }
   async function viewResearch() {
     const me = S.me;
     const DEMO_PROMPT = "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances";
     const mdl = await api('/api/models').catch(() => ({ models: [], default: '' }));
     const modelOpts = (mdl.models || []).map((m) => `<option value="${esc(m.key)}"${m.key === mdl.default ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
-    shell('/research', boardTitle('Research', 'Describe an idea. An agent turns it into a research session \u2014 several concrete strategies it backtests on data it never saw, and only the ones that pass can trade.') +
-      '<dl class="figures measure" id="rfigs" style="margin-top:14px"></dl>', `
+    const haveMkt = (k) => !k || me.markets.some((m) => m.key === k);  // only nudge to a market that exists
+    shell('/research', boardTitle('Research', 'A self-improving research engine for Bitcoin markets \u2014 describe an idea, it writes strategies and tests each on data it never saw.') +
+      '<div class="statusline" id="rstatus"><p class="said"></p></div>' +
+      '<dl class="figures measure" id="rfigs" style="margin-top:14px"></dl>' +
+      '<div id="rsimo"></div>', `
+      ${pipelineFigure()}
       <form class="panel dispatch" id="dispatch">
-        <h3>Start a research session</h3>
+        <h3>${ICON.spark2}New research session</h3>
         ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
+        <div class="field starters"><span class="label">Start from an angle — or write your own below</span>
+          <div class="chips arch">${ARCHETYPES.map((a) => `<button type="button" class="chip" data-arch="${a.k}" aria-pressed="false" title="${esc(a.idea)}">${esc(a.label)}</button>`).join('')}</div></div>
         <label class="field"><span>Describe your idea</span>
-          <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="Bro idk just give me a trading strategy frfr&#10;&#10;…or be specific: &quot;Sell overpriced tails in the last hour before the 5pm close.&quot;"></textarea></label>
-        <div class="dispatch-tune" style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;margin-top:2px">
-          ${modelOpts ? `<label class="field" style="margin:0"><span>Model</span>
-            <select class="input" name="model" id="rmodel" style="width:184px">${modelOpts}</select></label>` : ''}
-          <label class="field" style="margin:0"><span>Strategies to test</span>
-            <input class="input" type="number" name="max_hypotheses" id="maxhyp" min="1" max="1000" value="10" style="width:92px"></label>
-          <label class="switch" style="margin-top:18px"><input type="checkbox" name="run_forever" id="runforever" checked><span>Let it run until I stop it</span></label>
+          <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="Pick an angle above, or write your own — e.g. &quot;Sell overpriced tails in the last hour before the 5pm close.&quot;"></textarea></label>
+        <div class="dispatch-tune">
+          ${modelOpts ? `<label class="field"><span>Model</span>
+            <select class="input" name="model" id="rmodel">${modelOpts}</select></label>` : ''}
+          <label class="field"><span>Strategies to test</span>
+            <input class="input" type="number" name="max_hypotheses" id="maxhyp" min="1" max="1000" value="10"></label>
+          <label class="switch tune-sw"><input type="checkbox" name="run_forever" id="runforever" checked><span>Let it run until I stop it</span></label>
         </div>
         <fieldset class="field mkt-field" style="border:0;padding:0;margin:0"><legend class="label" style="margin-bottom:8px">Market</legend>
+          <div class="mctx" id="mktctx" hidden></div>
           ${marketPicker(me.markets)}
         </fieldset>
         <div class="dispatch-go">
-          <button class="btn primary" type="submit" ${me.needs_card ? 'aria-disabled="true"' : ''}>${ICON.spark2}Start session</button>
+          <button class="btn primary go" type="submit" ${me.needs_card ? 'aria-disabled="true"' : ''}>${ICON.spark2}Start session</button>
+          <button type="button" class="chip ex" data-ex="${esc(DEMO_PROMPT)}" title="Fill the box with a tiny runnable demo idea">Try the demo — Todd's random walk</button>
         </div>
-        <div class="chips" aria-label="Try the demo"><button type="button" class="chip ex" data-ex="${esc(DEMO_PROMPT)}">${ICON.spark2}Try the demo \u2014 Todd's random walk</button></div>
         <div id="dflash"></div>
         <p class="hint">A session takes a few minutes and keeps running if you leave this page.</p>
       </form>
+      <section class="sect" id="winsect" hidden><div class="sect-head"><h2>Build on what's worked</h2><p id="wincount"></p></div>
+        <div class="wins" id="winners"></div></section>
       <section class="sect"><div class="sect-head"><h2>Your sessions</h2><p id="rcount"></p></div>
         <div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div></section>`);
-    root.querySelectorAll('[data-ex]').forEach((b) => { b.onclick = () => { const t = root.querySelector('textarea[name=prompt]'); t.value = b.dataset.ex; t.focus(); }; });
     const form = root.querySelector('#dispatch');
     wireMarketPicker(form);
+    const ta = form.querySelector('textarea[name=prompt]');
+    const pressArch = (on) => form.querySelectorAll('[data-arch]').forEach((b) => b.setAttribute('aria-pressed', String(on === b)));
+    const syncCtx = () => {
+      const cur = (form.querySelector('input[name=market]:checked') || {}).value || '';
+      form.querySelectorAll('.mctx-row').forEach((row) => row.setAttribute('aria-pressed', String(row.dataset.mkt === cur)));
+    };
+    const selectMarket = (k) => {
+      const r = form.querySelector(`input[name=market][value="${k == null ? '' : k}"]`);
+      if (r) { r.checked = true; syncCtx(); }
+    };
+    form.querySelectorAll('[data-arch]').forEach((b) => (b.onclick = () => {
+      const a = ARCHETYPES.find((x) => x.k === b.dataset.arch); if (!a) return;
+      ta.value = a.idea; pressArch(b); if (a.market && haveMkt(a.market)) selectMarket(a.market);
+      ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+    }));
+    ta.addEventListener('input', () => pressArch(null));
+    root.querySelectorAll('[data-ex]').forEach((b) => (b.onclick = () => { ta.value = b.dataset.ex; pressArch(null); ta.focus(); }));
+    form.querySelectorAll('input[name=market]').forEach((r) => r.addEventListener('change', syncCtx));
     const rf = form.querySelector('#runforever'), mh = form.querySelector('#maxhyp');
     if (rf && mh) {
       const syncRf = () => { mh.disabled = rf.checked; mh.style.opacity = rf.checked ? '.4' : ''; };
@@ -1389,12 +1519,54 @@
         } catch (err) { flash('#dflash', err.message, 'bad'); }
       });
     };
+    // Live market context: fold the shared book down to the researchable markets (read-only).
+    (async () => {
+      try {
+        const c = await api('/api/research/context');
+        const box = root.querySelector('#mktctx');
+        if (box && c.markets && c.markets.length) {
+          box.innerHTML = c.markets.map(mctxRow).join('');
+          box.hidden = false;
+          box.querySelectorAll('.mctx-row').forEach((row) => (row.onclick = () => selectMarket(row.dataset.mkt)));
+          syncCtx();
+        }
+      } catch (e) { /* no feed yet -> the picker still works blind */ }
+    })();
+    // Build on what's worked: the user's best passed edges, one click from a deeper search.
+    (async () => {
+      try {
+        const w = await api('/api/strategies?status=passed');
+        const top = (w.strategies || []).slice()
+          .sort((a, b) => ((b.out_of_sample && b.out_of_sample.pnl) || 0) - ((a.out_of_sample && a.out_of_sample.pnl) || 0))
+          .slice(0, 4);
+        if (!top.length) return;
+        const sect = root.querySelector('#winsect'), box = root.querySelector('#winners');
+        box.innerHTML = top.map(winCard).join('');
+        root.querySelector('#wincount').textContent = `${w.matched || top.length} passed`;
+        sect.hidden = false;
+        box.querySelectorAll('[data-dig]').forEach((b) => (b.onclick = () => busy(b, async () => {
+          try {
+            const r = await api(`/api/strategies/${b.dataset.dig}/dig-deeper`,
+              { model: (form.querySelector('#rmodel') || {}).value || undefined, run_forever: !!(rf && rf.checked) });
+            go('/research/' + r.id);
+          } catch (err) { flash('#flash', err.message, 'bad'); }
+        })));
+      } catch (e) { /* no winners yet -> the section stays hidden */ }
+    })();
     const load = async () => {
       const d = await api('/api/runs');
       const tried = d.runs.reduce((a, r) => a + (r.hypotheses_tried || 0), 0);
       const passed = d.runs.reduce((a, r) => a + (r.strategies_passed || 0), 0);
-      root.querySelector('#rfigs').innerHTML = fig('Researching now', d.counts.research_running) + fig('Waiting', d.counts.research_queued) +
+      const running = d.counts.research_running, queued = d.counts.research_queued;
+      const said = running
+        ? `<em>${running}</em> agent${running > 1 ? 's' : ''} researching now${queued ? ` · <em>${queued}</em> waiting` : ''} — <em>${tried}</em> hypotheses tested, <em>${passed}</em> through every gate.`
+        : tried
+          ? `Your engine has tested <em>${tried}</em> hypotheses and kept <em>${passed}</em> that beat every gate. Seed another idea to keep hunting.`
+          : `Describe an idea below — the engine turns it into strategies and tests each on data it never saw.`;
+      root.querySelector('#rstatus .said').innerHTML = said;
+      root.querySelector('#rfigs').innerHTML = fig('Researching now', running) + fig('Waiting', queued) +
         fig('Hypotheses tested', tried) + fig('Passed every gate' + glo('gate'), passed, { small: tried ? `${pct(passed / tried, false)} pass rate` : '' });
+      renderRsiMomentum(root.querySelector('#rsimo'), d.policy, tried);
       root.querySelector('#rcount').textContent = d.runs.length ? `${d.runs.length} run${d.runs.length > 1 ? 's' : ''}` : '';
       root.querySelector('#runs').innerHTML = d.runs.length ? d.runs.map(runRow).join('')
         : `<div class="empty"><h3>No sessions yet</h3><p>Describe an idea above. The agent will turn it into several strategies, test each one on data it never saw, and mark each Passed or Void.</p></div>`;

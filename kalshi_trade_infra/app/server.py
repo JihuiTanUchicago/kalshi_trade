@@ -323,7 +323,17 @@ def models(ctx: Ctx):
 
 
 def list_runs(ctx: Ctx):
-    return {"runs": repo.list_runs(ctx.cur, ctx.uid), "counts": repo.active_run_counts(ctx.cur, ctx.uid)}
+    # The self-evolving exploration policy (Tau-RSI), summarized read-only for the research
+    # index so the cockpit can show the engine getting smarter — same shape as get_run's rsi
+    # block (minus the per-run dream line), so the client renders both the same way.
+    pol = repo.get_policy(ctx.cur, ctx.uid)
+    policy = {"evolved": bool(pol),
+              "score": round(float(pol["score"]), 2) if pol else None,
+              "base_score": round(pol["base_score"], 2) if (pol and pol.get("base_score") is not None) else None,
+              "summary": pol.get("summary") if pol else None,
+              "evolved_at": pol["updated_at"] if pol else None}
+    return {"runs": repo.list_runs(ctx.cur, ctx.uid), "counts": repo.active_run_counts(ctx.cur, ctx.uid),
+            "policy": policy}
 
 
 def get_run(ctx: Ctx):
@@ -1646,6 +1656,49 @@ def explore_hot(ctx: Ctx):
     return {"at": data.get("at"), "markets": hot}
 
 
+def _feed_mid(m: Dict) -> Optional[float]:
+    """Mid (0..1 probability) for one explore-feed contract: the bid/ask midpoint, else last."""
+    b, a = _efloat(m.get("bid")), _efloat(m.get("ask"))
+    if b > 0 and a > 0:
+        return round((b + a) / 2, 4)
+    last = _efloat(m.get("last"))
+    return round(last, 4) if last > 0 else None
+
+
+def _research_context(feed_markets: List[Dict]) -> List[Dict]:
+    """Fold the cached explore feed down to just the markets research can target: per
+    researchable series, the live activity (contracts live + 24h volume + open interest)
+    and the most-active contract's mid + price trace. Read-only — no DB, no orders — so the
+    dispatch picker shows what's liquid/moving instead of being chosen blind. Markets with
+    nothing in the feed are simply omitted; as the market universe grows this needs no change."""
+    by_series: Dict[str, List[Dict]] = {}
+    for m in feed_markets:
+        s = m.get("s")
+        if s:
+            by_series.setdefault(s, []).append(m)
+    out: List[Dict] = []
+    for mk in MARKETS.values():
+        rows = by_series.get(mk.series)
+        if not rows:
+            continue
+        top = max(rows, key=lambda r: _efloat(r.get("v24")))
+        out.append({
+            "key": mk.key, "series": mk.series, "label": mk.label,
+            "contracts": len(rows),
+            "vol24": round(sum(_efloat(r.get("v24")) for r in rows)),
+            "oi": round(sum(_efloat(r.get("oi")) for r in rows)),
+            "mid": _feed_mid(top), "trace": top.get("h") or [],
+        })
+    out.sort(key=lambda r: r["vol24"], reverse=True)
+    return out
+
+
+def research_context(ctx: Ctx):
+    """Live book context for the researchable markets, for the Research cockpit's picker."""
+    data = _explore_feed()
+    return {"at": data.get("at"), "markets": _research_context(data.get("markets") or [])}
+
+
 def _cnum(x) -> Optional[float]:
     try:
         return float(x)
@@ -1710,6 +1763,7 @@ ROUTES: List[Route] = [
         ("GET", "/api/explore", explore_list, True),
         ("GET", "/api/explore/hot", explore_hot, True),
         ("GET", "/api/explore/market", explore_market, True),
+        ("GET", "/api/research/context", research_context, True),
         ("GET", "/api/models", models, True),
         ("GET", "/api/runs", list_runs, True),
         ("POST", "/api/runs", create_run, True),
