@@ -10,6 +10,7 @@ from typing import Dict, List
 
 # Upcoming / in-progress, most-wanted first.
 PLANNED: List[str] = [
+    'claude code style animation demonstration in a research session',
     'Activate Alpaca stock/ETF agent data after secure worker configuration and entitlement checks, with a production canary before customer rollout',
     'All-markets collector + cross-contract',
     'Widen the live market universe',
@@ -20,6 +21,7 @@ PLANNED: List[str] = [
     'Polymarket as a 2nd venue: data + API + real & simulation trading',
     'Statistically-rigorous research pipeline (true "quant research"): immutable experiment ledger + pre-registration, Statistical Gatekeeper separate from the generator, BH/online-FDR + Deflated Sharpe, research/validation/locked-holdout split + purged walk-forward/embargo, bandit research allocation, and strategy detail as a research-paper page',
     'Risk-management force-sell layer on drawdown + portfolio caps (lost when a prior background agent exited; needs rebuild)',
+    'Authenticated dev/demo-env trading',
 ]
 
 # Shipped, newest first: (YYYY-MM-DD, what changed).

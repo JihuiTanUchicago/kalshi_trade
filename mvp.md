@@ -37,6 +37,7 @@ These are NOT done. Completed items move to **## Done** below.
 - `[v0.3]` Polymarket as a 2nd venue: data + API + real & simulation trading.
 - `[in progress]` Statistically-rigorous research pipeline (true "quant research"): immutable experiment ledger + pre-registration, Statistical Gatekeeper separate from the generator, BH/online-FDR + Deflated Sharpe, research/validation/locked-holdout split + purged walk-forward/embargo, bandit research allocation, and strategy detail as a research-paper page. Not shipped.
 - `[in progress]` Risk-management force-sell layer on drawdown + portfolio caps (lost when a prior background agent exited; needs rebuild).
+- `[in progress]` Authenticated dev/demo-env trading — per-user dev key (entered in-app, like the live key) + an isolated demo-exchange execution client, so users can place real TEST orders on Kalshi's sandbox. Foundation building; UI wiring pending.
 
 ## Done
 ### 2026-10-16
