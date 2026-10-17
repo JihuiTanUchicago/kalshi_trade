@@ -532,11 +532,26 @@ select#rmodel { appearance: none; -webkit-appearance: none; padding-right: 28px;
 }
 
 .sheet-doc { border: 1px solid var(--rule); background: var(--stock-raised); padding: 24px; position: relative; }
-.sheet-doc h2 { font-size: clamp(22px, 2.6vw, 30px); font-weight: 600; letter-spacing: -.02em; margin: 8px 0 10px; max-width: 28ch; }
-.doc-mark { position: absolute; top: 20px; right: 20px; margin: 0; }
-.doc-mark .mk { font-size: 13px; padding: 4px 11px 3px; }
-.sheet-doc .thesis { font-size: 16px; line-height: 1.6; color: var(--ink-2); max-width: 70ch; }
-.sheet-h { font-family: var(--f-nar); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin: 26px 0 8px; }
+
+/* Strategy dossier set as a research paper: masthead + abstract + numbered sections. */
+.sheet-doc.paper { padding: clamp(22px, 2.6vw, 38px); }
+.paper-head { border-bottom: 2px solid var(--ink); padding-bottom: 18px; }
+.paper-cite { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 0; font-family: var(--f-nar); font-size: 11px; letter-spacing: .11em; text-transform: uppercase; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.paper-cite span + span::before { content: "\00b7"; margin: 0 10px; color: var(--rule-2); }
+.paper .paper-title { font-size: clamp(24px, 3.2vw, 34px); font-weight: 600; letter-spacing: -.022em; line-height: 1.12; color: var(--ink); margin: 11px 0 0; max-width: 26ch; }
+.paper-byline { margin-top: 15px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.paper-byline .mk { font-size: 12px; padding: 3px 10px 2px; }
+.paper-abstract { margin-top: 22px; background: var(--stock); border: 1px solid var(--rule); padding: 16px 18px; }
+.paper-ab { font-size: clamp(15.5px, 1.5vw, 17px); line-height: 1.62; color: var(--ink); max-width: 68ch; }
+.paper-ab-result { margin-top: 10px; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); max-width: 68ch; font-variant-numeric: tabular-nums; }
+.paper-body { counter-reset: psec; }
+.paper-sec { counter-increment: psec; margin-top: 36px; }
+.paper-sec-t { display: flex; align-items: baseline; gap: 13px; margin: 0 0 18px; padding-bottom: 9px; border-bottom: 2px solid var(--ink); font-family: var(--f-nar); font-size: 13px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--ink); }
+.paper-sec-t::before { content: counter(psec, decimal-leading-zero); font-size: 12px; letter-spacing: .06em; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.paper-sub { margin-top: 22px; }
+.paper-sub:first-child { margin-top: 0; }
+.paper-h { font-family: var(--f-nar); font-size: 11.5px; font-weight: 600; letter-spacing: .11em; text-transform: uppercase; color: var(--ink-2); margin: 0 0 10px; }
+.paper-abstract .paper-h { color: var(--ink-3); margin-bottom: 9px; }
 .rules { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--rule); }
 .rules li { padding: 8px 0 8px 20px; border-bottom: 1px solid var(--rule); position: relative; max-width: 74ch; }
 .rules li::before { content: ""; position: absolute; left: 2px; top: 16px; width: 8px; height: 2px; background: var(--ink-3); }
@@ -638,8 +653,9 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   .amount { grid-template-columns: 1fr 1fr; }
   .amount .field { grid-column: 1 / -1; }
   .statusline { gap: 10px; }
-  .doc-mark { position: static; margin: 0 0 8px; }
-  .sheet-doc h2 { margin-top: 0; }
+  .sheet-doc.paper { padding: 18px 16px; }
+  .paper-sec { margin-top: 28px; }
+  .paper-sec-t { gap: 10px; letter-spacing: .1em; }
   .stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .stack tbody tr { display: flex; flex-direction: column; border-bottom: 1px solid var(--rule-2); padding: 10px 0 8px; }
   .stack tbody td { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; border: 0; padding: 2px 0; white-space: normal; text-align: left; }
@@ -1192,9 +1208,6 @@ body.landing-body .apf { display: none; }
    signal red reserved for the decisive holdout verdict and a rejection. Hairline
    separators use a 1px grid gap over a rule-coloured background so they stay clean
    at any column/row count. */
-.rpaper { margin-top: 28px; border-top: 2px solid var(--ink); padding-top: 16px; }
-.rp-sec { margin-top: 24px; }
-.rp-sec:first-child { margin-top: 0; }
 .rp-reg { font-family: var(--f-nar); font-size: 11.5px; letter-spacing: .04em; color: var(--ink-3); margin-top: 10px; }
 .rp-reg b { color: var(--ink-2); font-weight: 600; font-variant-numeric: tabular-nums; }
 .rp-prose { font-size: 14px; line-height: 1.6; color: var(--ink); max-width: 72ch; margin-top: 6px; }

@@ -807,12 +807,15 @@
     return m[cls] || ['quiet', 'Awaiting a recorded verdict.'];
   }
 
-  // Compose the one-page research paper. Returns '' for strategies with no ledger
-  // row (pre-pipeline) so the existing detail page is unchanged — additive only.
+  // Build the §D research-ledger evidence as composable paper fragments, so the detail
+  // page can file each under its canonical research-paper section (Mechanism, Methodology,
+  // Results, Verdict) alongside the always-present backtest. Returns an all-empty object for
+  // strategies with no ledger row (pre-pipeline) — additive by design, never a regression.
   function researchPaper(exp) {
-    if (!exp) return '';
-    const secs = [];
-    secs.push(`<div class="rp-sec"><h3 class="sheet-h">Classification</h3>${rpLadder(exp.classification)}</div>`);
+    const parts = { mechanism: '', methodology: '', results: '', verdict: '' };
+    if (!exp) return parts;
+    const sub = (title, body) => `<div class="paper-sub"><h4 class="paper-h">${title}</h4>${body}</div>`;
+    // Mechanism & hypothesis — who is on the other side, and what would disprove it.
     const mech = exp.mechanism;
     if (mech) {
       let body;
@@ -821,15 +824,16 @@
         const extra = Object.keys(mech).filter((k) => !RP_MECH[k] && mech[k] != null);
         body = `<dl class="rp-grid">${known.concat(extra).map((k) => `<div><dt>${esc(RP_MECH[k] || rpHuman(k))}</dt><dd>${rpText(mech[k])}</dd></div>`).join('')}</dl>`;
       } else body = `<p class="rp-prose">${rpText(mech)}</p>`;
-      secs.push(`<div class="rp-sec"><h3 class="sheet-h">Mechanism — why this edge exists</h3>${body}</div>`);
+      parts.mechanism += sub('Who is on the other side, and why the edge persists', body);
     }
     if (exp.falsification_criteria || exp.negative_control) {
       let body = '';
       if (exp.falsification_criteria) body += `<p class="rp-prose">${rpText(exp.falsification_criteria)}</p>`;
       if (exp.negative_control) body += `<p class="rp-sub"><b>Negative control:</b> ${rpText(exp.negative_control)}</p>`;
-      secs.push(`<div class="rp-sec"><h3 class="sheet-h">What would disprove it</h3>${body}</div>`);
+      parts.mechanism += sub('What would disprove it', body);
     }
-    if (exp.competing_explanations) secs.push(`<div class="rp-sec"><h3 class="sheet-h">Competing explanations</h3><p class="rp-prose">${rpText(exp.competing_explanations)}</p></div>`);
+    if (exp.competing_explanations) parts.mechanism += sub('Competing explanations', `<p class="rp-prose">${rpText(exp.competing_explanations)}</p>`);
+    // Methodology — the pre-registered, frozen test.
     const pre = [];
     if (exp.null_hypothesis) pre.push(['Null hypothesis', exp.null_hypothesis]);
     if (exp.alt_hypothesis) pre.push(['Alternative', exp.alt_hypothesis]);
@@ -840,11 +844,12 @@
     if (exp.cost_assumptions && typeof exp.cost_assumptions === 'object') pre.push(['Cost assumptions', Object.entries(exp.cost_assumptions).map(([k, v]) => `${rpHuman(k)}: ${v}`).join(' · ')]);
     if (pre.length) {
       const reg = exp.registered_at ? `<p class="rp-reg">Pre-registered <b>${esc(rpStamp(exp.registered_at))}</b> — before any validation number was computed. The frozen rule and its test could not be changed after the results came in.</p>` : '';
-      secs.push(`<div class="rp-sec"><h3 class="sheet-h">The pre-registered test</h3><dl class="rp-grid">${pre.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${rpText(v)}</dd></div>`).join('')}</dl>${reg}</div>`);
+      parts.methodology += sub('The pre-registered test', `<dl class="rp-grid">${pre.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${rpText(v)}</dd></div>`).join('')}</dl>${reg}`);
     }
+    // Results — the rigorous validation-window evidence.
     const v = exp.validation;
     if (v) {
-      const stat = (k, val, cls, sub) => `<div class="rp-stat"><div class="k">${esc(k)}</div><div class="val${cls ? ' ' + cls : ''}">${val}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div>`;
+      const stat = (k, val, cls, sb) => `<div class="rp-stat"><div class="k">${esc(k)}</div><div class="val${cls ? ' ' + cls : ''}">${val}</div>${sb ? `<div class="sub">${esc(sb)}</div>` : ''}</div>`;
       const ciTxt = (v.ci_lo != null && v.ci_hi != null) ? `90% CI ${rpCent(v.ci_lo)} to ${rpCent(v.ci_hi)}` : '';
       const stats = [
         stat('Mean net return / trade', rpCent(v.mean_net_return), (v.mean_net_return != null && v.mean_net_return > 0 ? '' : 'sig'), ciTxt),
@@ -867,8 +872,10 @@
         <div class="rp-fig wide"><h5>Per-trade return distribution</h5>${rpReturnDist(rpDiffs(v.equity_curve), v.ci_lo, v.ci_hi, v.mean_net_return)}<div class="cap">Bars: the net P&amp;L of each validation trade. Shaded band: the 90% bootstrap confidence interval of the mean. Dashed line: the mean. A band entirely right of break-even means the edge clears fees.</div></div>
         <div class="rp-fig wide"><h5>Walk-forward windows</h5>${rpWalkforward(exp.folds)}<div class="cap">Mean net return per purged/embargoed research fold — a consistent sign across windows is robustness; one window carrying the whole edge is a warning.</div></div>
       </div>`;
-      secs.push(`<div class="rp-sec"><h3 class="sheet-h">Results on the validation window</h3><div class="rp-stats">${stats}</div>${figs}</div>`);
+      parts.results += sub('Validation-window evidence', `<p class="rp-sub" style="margin-top:0">The window the agent iterated against is in-sample; these are the numbers from the held-out validation partition, under the audited false-discovery budget.</p><div class="rp-stats">${stats}</div>${figs}`);
     }
+    // Verdict — the ladder, the one-time locked holdout, and the gatekeeper's conclusion.
+    parts.verdict += `<div class="paper-sub"><h4 class="paper-h">Where it reached on the ladder</h4>${rpLadder(exp.classification)}</div>`;
     const h = exp.holdout;
     const holdBody = h ? `<div class="rp-stats">
       <div class="rp-stat"><div class="k">Mean net return / trade</div><div class="val${h.mean_net_return != null && h.mean_net_return > 0 ? '' : ' sig'}">${rpCent(h.mean_net_return)}</div><div class="sub">${h.ci_lo != null && h.ci_hi != null ? '90% CI ' + rpCent(h.ci_lo) + ' to ' + rpCent(h.ci_hi) : ''}</div></div>
@@ -876,11 +883,11 @@
       <div class="rp-stat"><div class="k">Trades</div><div class="val">${rpInt(h.n_trades)}</div></div>
       <div class="rp-stat"><div class="k">Holdout</div><div class="val${h.consumed ? ' sig' : ''}">${h.consumed ? 'Consumed' : 'Open'}</div><div class="sub">${h.consumed ? 'spent — roll to fresh forward data' : 'evaluations remain'}</div></div>
     </div>` : `<div class="rp-empty">Not yet evaluated on the locked holdout. The holdout is spent only once, on strategies that already passed validation — so an empty holdout here is expected until then.</div>`;
-    secs.push(`<div class="rp-sec"><h3 class="sheet-h">Holdout verdict</h3>${holdBody}</div>`);
-    const [tone, words] = rpConclusion(exp.classification);
-    const chip = { good: 'on', sig: 'armed', quiet: 'quiet' }[tone] || '';
-    secs.push(`<div class="rp-sec"><h3 class="sheet-h">Conclusion</h3><div class="rp-verdict ${tone}"><span class="mk ${chip}">${esc(rpHuman(exp.classification || 'unknown'))}</span><p>${words}</p></div></div>`);
-    return `<div class="rpaper">${secs.join('')}</div>`;
+    parts.verdict += sub('The one-time locked holdout', holdBody);
+    const [vtone, words] = rpConclusion(exp.classification);
+    const chip = { good: 'on', sig: 'armed', quiet: 'quiet' }[vtone] || '';
+    parts.verdict += `<div class="rp-verdict ${vtone}"><span class="mk ${chip}">${esc(rpHuman(exp.classification || 'unknown'))}</span><p>${words}</p></div>`;
+    return parts;
   }
 
   // ---------- timetable rows ----------
@@ -1812,25 +1819,66 @@
     const activeDeps = s.deployments.filter((d) => d.status !== 'stopped');  // must be stopped before delete
     const kUrl = marketKalshiUrl(s.market);
     const mktLink = kUrl ? `<a href="${kUrl}" target="_blank" rel="noopener">${esc(marketLabel(s.market))} ↗</a>` : esc(marketLabel(s.market));
+    // ---- the strategy dossier, composed as a research paper (abstract → mechanism →
+    // methodology → results → verdict). Each section renders only when it has content, so a
+    // pre-pipeline strategy with no ledger row falls back to its rule + backtest + plain verdict.
+    const rp = researchPaper(s.experiment);
+    const hasExp = !!s.experiment;
+    const filed = (() => { try { return new Date(s.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); } catch (e) { return ''; } })();
+    const abResult = oos
+      ? `On unseen data the agent never touched while iterating, it ${+oos.pnl >= 0 ? 'returned ' + usd(oos.pnl) : 'lost ' + usd(Math.abs(oos.pnl))} over ${num(oos.trades)} trade${oos.trades === 1 ? '' : 's'}${s.hypotheses_tried ? `, the one idea of ${num(s.hypotheses_tried)} tested this run that cleared the gate` : ''}.`
+      : `It was ${s.status === 'rejected' ? 'rejected before reaching' : 'not advanced to'} the unseen-data test${s.hypotheses_tried ? ` — one of ${num(s.hypotheses_tried)} ideas tried this run` : ''}.`;
+    const dataBlock = s.dataset ? `<div class="paper-sub"><h4 class="paper-h">Data &amp; partitioning</h4>
+          <dl class="rp-grid">
+            <div><dt>Market</dt><dd>${mktLink}</dd></div>
+            <div><dt>Direction</dt><dd>${esc(dirLabel(s.direction))}</dd></div>
+            <div><dt>History window</dt><dd>${esc(s.dataset.start.slice(0, 10))} → ${esc(s.dataset.end.slice(0, 10))}</dd></div>
+            <div><dt>Unseen (held out) from</dt><dd>${esc((s.dataset.out_of_sample_from || '').slice(0, 10)) || '—'}</dd></div>
+          </dl>
+          <p class="rp-sub" style="margin-top:8px">The agent only ever saw data before the held-out date. Every simulated fill pays the ask or bid plus Kalshi's taker fee — results are net of fees or they do not count.</p></div>` : '';
+    const ruleBlock = `<div class="paper-sub"><h4 class="paper-h">The decision rule, in plain words</h4>
+          <ul class="rules">${s.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
+          <details class="raw"><summary>Exact machine spec (JSON)</summary><pre>${esc(JSON.stringify(s.spec, null, 2))}</pre></details></div>`;
+    const methodologyBody = rp.methodology + ruleBlock + dataBlock;
+    const resultsBody = rp.results
+      + `<div class="paper-sub"><h4 class="paper-h">${hasExp ? 'Backtest &amp; Kalshi demo replay' : 'Backtest'}</h4>
+          <div id="sheet-results">
+            <div id="equity-wrap">${s.equity ? equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from) : ''}</div>
+            <div class="split"><div><h4>Tested on (in-sample)</h4>${metricRows(ins)}</div><div><h4>Never seen (out-of-sample)</h4>${metricRows(oos)}</div></div>
+          </div></div>`
+      + `<div class="paper-sub"><h4 class="paper-h">Most recent unseen trades</h4>${trades}</div>`;
+    let verdictBody = rp.verdict;
+    if (!hasExp) {
+      const vmap = {
+        passed: ['good', 'on', 'Passed', 'It cleared its backtest gate on data the agent never saw while iterating. Deploying it is still your decision and your risk.'],
+        failed: ['sig', 'armed', 'Void', 'It reached the unseen-data gate and failed it, so it was not validated.'],
+        rejected: ['quiet', 'quiet', 'Rejected', 'Rejected — ' + rejectReason(s)],
+      };
+      const [vt, chip, label, words] = vmap[s.status] || ['quiet', 'quiet', rpHuman(s.status), 'Awaiting a recorded verdict.'];
+      verdictBody = `<div class="rp-verdict ${vt}"><span class="mk ${chip}">${esc(label)}</span><p>${esc(words)}</p></div>`;
+    }
+    const paperSec = (title, body) => body ? `<section class="paper-sec"><h3 class="paper-sec-t">${title}</h3><div class="paper-sec-body">${body}</div></section>` : '';
     root.querySelector('main').innerHTML = `
       <div id="flash"></div>
       <div class="detail">
         <div>
-          <article class="sheet-doc">
-            <p class="doc-mark">${mark(s.status)}${s.shared_from ? ` <span class="mk shared">${ICON.share}Shared by ${esc(s.shared_from)}</span>` : ''}</p>
-            <h2>${esc(s.title)}</h2>
-            <p class="thesis">${esc(s.thesis)}</p>
-            <h3 class="sheet-h">The rule, in plain words</h3>
-            <ul class="rules">${s.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
-            ${researchPaper(s.experiment)}
-            ${s.experiment ? '<h3 class="sheet-h">Backtest &amp; demo replay</h3>' : ''}
-            <div id="sheet-results">
-              <div id="equity-wrap">${s.equity ? equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from) : ''}</div>
-              <div class="split"><div><h4>Tested on (in-sample)</h4>${metricRows(ins)}</div><div><h4>Never seen (out-of-sample)</h4>${metricRows(oos)}</div></div>
+          <article class="sheet-doc paper">
+            <header class="paper-head">
+              <div class="paper-cite"><span>${esc(serial(s.id))}</span><span>${esc(marketShort(s.market))} · ${esc(dirLabel(s.direction))}</span>${filed ? `<span>Filed ${esc(filed)}</span>` : ''}</div>
+              <h2 class="paper-title">${esc(s.title)}</h2>
+              <div class="paper-byline">${mark(s.status)}${s.shared_from ? ` <span class="mk shared">${ICON.share}Shared by ${esc(s.shared_from)}</span>` : ''}</div>
+            </header>
+            <section class="paper-abstract">
+              <h3 class="paper-h">Abstract</h3>
+              <p class="paper-ab">${mdLite(s.thesis)}</p>
+              <p class="paper-ab-result">${abResult}</p>
+            </section>
+            <div class="paper-body">
+              ${paperSec('Mechanism &amp; hypothesis', rp.mechanism)}
+              ${paperSec('Methodology', methodologyBody)}
+              ${paperSec('Results', resultsBody)}
+              ${paperSec('Verdict', verdictBody)}
             </div>
-            ${s.dataset ? `<p class="hint" style="margin-top:12px">${mktLink}. History: ${esc(s.dataset.start.slice(0, 10))} to ${esc(s.dataset.end.slice(0, 10))}. The agent only saw data before ${esc((s.dataset.out_of_sample_from || '').slice(0, 10))}. Every fill pays the ask or bid plus Kalshi's taker fee.</p>` : ''}
-            <h3 class="sheet-h">Latest unseen trades</h3>${trades}
-            <details class="raw"><summary>Exact spec</summary><pre>${esc(JSON.stringify(s.spec, null, 2))}</pre></details>
           </article>
         </div>
         <aside>
