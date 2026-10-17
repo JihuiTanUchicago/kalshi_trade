@@ -449,6 +449,8 @@ def _prereg(t: Dict, spec: Dict, run: Dict, partition: Dict, n_tests: int,
         falsification_criteria=t.get("falsification_criteria", ""),
         min_sample=int(t.get("min_sample") or 30),
         cost_assumptions={"fee": "kalshi_taker", "fill": "ask/bid"},
+        data_provenance={"features": specmod.features_used(spec),
+                         "sources": specmod.data_sources_for(spec)},
         research_partition_id=int(partition.get("id") or 0),
         planned_n_tests=n_tests, correction_method="BH", strategy_id=strategy_id,
     )

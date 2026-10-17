@@ -373,6 +373,7 @@ DDL = [
       falsification_criteria TEXT NOT NULL,
       min_sample INT NOT NULL,
       cost_assumptions_json JSON NOT NULL,
+      data_provenance_json JSON NULL,       -- {features:[...], sources:[...]} the hypothesis used
       research_partition_id BIGINT NOT NULL,
       planned_n_tests INT NOT NULL,
       correction_method VARCHAR(16) NOT NULL,   -- 'BH' | 'LORD++'
@@ -515,6 +516,7 @@ def main() -> None:
         # own caps. A per-user daily live-loss limit auto-disables it (kill switch).
         _add_column_if_missing(cur, "app_users", "autopilot_live", "ALTER TABLE app_users ADD COLUMN autopilot_live TINYINT(1) NOT NULL DEFAULT 0")
         _add_column_if_missing(cur, "app_users", "autopilot_daily_loss_limit", "ALTER TABLE app_users ADD COLUMN autopilot_daily_loss_limit DECIMAL(10,2) NOT NULL DEFAULT 50.00")
+        _add_column_if_missing(cur, "app_experiments", "data_provenance_json", "ALTER TABLE app_experiments ADD COLUMN data_provenance_json JSON NULL AFTER cost_assumptions_json")
         # Backfill any user still missing a handle (idempotent: only touches NULLs).
         from app import repository as _repo
         cur.execute("SELECT id, email, name FROM app_users WHERE username IS NULL OR username=''")

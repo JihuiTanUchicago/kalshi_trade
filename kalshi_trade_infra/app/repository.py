@@ -1003,7 +1003,34 @@ def load_history(cur, series: str, candle_minutes: int, since: datetime,
         (underlying, start_ts),
     )
     btc = [(int(r["start_ts"]), float(r["close"])) for r in cur.fetchall()]
-    return {"markets": markets, "candles": candles, "btc": btc}
+    return {"markets": markets, "candles": candles, "btc": btc,
+            "micro": _load_micro(cur, series, since)}
+
+
+def _load_micro(cur, series: str, since: datetime) -> Dict[tuple, Dict[str, Any]]:
+    """Collected order-book/microstructure features for this series' contracts since
+    `since`, keyed (ticker, minute_unix_ts) so build_dataset can join them onto the
+    matching contract snapshot. Columns are aliased to their MICRO_FEATURES names; a
+    missing table just yields no rows (older DBs that predate the feature builder)."""
+    from app.markets import MICRO_FEATURES
+    cols = ", ".join("f.%s AS %s" % (col, name) for name, (col, _d) in MICRO_FEATURES.items())
+    try:
+        cur.execute(
+            "SELECT f.market_ticker, f.snapshot_minute_utc, " + cols +
+            """ FROM model_features_1m f JOIN hist_markets h ON h.ticker=f.market_ticker
+               WHERE h.series_ticker=%s AND h.close_time >= %s AND h.candles_done=1
+                 AND f.snapshot_minute_utc >= %s""",
+            (series, since, since),
+        )
+    except Exception:  # noqa: BLE001 - table absent on legacy DBs; micro is optional
+        return {}
+    names = list(MICRO_FEATURES)
+    out: Dict[tuple, Dict[str, Any]] = {}
+    for r in cur.fetchall():
+        dt = r["snapshot_minute_utc"]
+        ts = int(dt.replace(tzinfo=timezone.utc).timestamp()) if dt.tzinfo is None else int(dt.timestamp())
+        out[(r["market_ticker"], ts)] = {n: r[n] for n in names if r.get(n) is not None}
+    return out
 
 
 def history_freshness(cur) -> Dict[str, Optional[int]]:

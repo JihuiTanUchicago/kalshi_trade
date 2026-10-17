@@ -75,6 +75,9 @@ class Prereg:
     falsification_criteria: str = ""
     min_sample: int = 30
     cost_assumptions: dict = field(default_factory=dict)
+    # What data this hypothesis looked at: {"features": [...], "sources": [...]}. Keeps the
+    # "any dataset" freedom auditable - every strategy records the features/tables it used.
+    data_provenance: dict = field(default_factory=dict)
     research_partition_id: int = 0
     planned_n_tests: int = 1
     correction_method: str = "LORD++"

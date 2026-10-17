@@ -91,6 +91,26 @@ FEATURES: Dict[str, str] = {
     "hour_et": "hour of day in New York (0-23)",
 }
 
+# Order-book / microstructure features the pipeline already collects into
+# model_features_1m, keyed {feature name: (db column, description)}. They are joined
+# onto each contract snapshot by (ticker, minute) in the backtester; every one is
+# NULLABLE, so a frame without a feature-builder row simply lacks them and a filter
+# that references one never matches (spec._passes) - it never crashes a backtest.
+MICRO_FEATURES: Dict[str, Tuple[str, str]] = {
+    "ob_imbalance": ("orderbook_imbalance",
+                     "order-book imbalance (bid_size - ask_size)/(bid_size + ask_size), -1..1"),
+    "yes_bid_size": ("yes_bid_size_fp", "resting contracts on the best YES bid"),
+    "yes_ask_size": ("yes_ask_size_fp", "resting contracts on the best YES ask"),
+    "trades_60s": ("trades_last_60s_count", "number of trades in the last 60 seconds"),
+    "trade_vol_60s": ("trades_last_60s_volume_fp", "contracts traded in the last 60 seconds"),
+    "trade_vwap_60s": ("trades_last_60s_vwap_yes", "VWAP (YES, dollars) of trades in the last 60 seconds"),
+    "quote_changes_60s": ("quote_change_events_60s", "best-quote change events in the last 60 seconds"),
+    "ob_mid_ret_1m": ("mid_ret_1m", "log return of the YES mid over the last 1 minute"),
+    "ob_mid_ret_3m": ("mid_ret_3m", "log return of the YES mid over the last 3 minutes"),
+}
+# The micro features live in the same FEATURES namespace specs filter on.
+FEATURES.update({name: desc for name, (_col, desc) in MICRO_FEATURES.items()})
+
 
 @dataclass(frozen=True)
 class Contract:
@@ -163,8 +183,13 @@ def snapshot(
     ts: int,
     yes_bid: Optional[float],
     yes_ask: Optional[float],
+    micro: Optional[Dict[str, float]] = None,
 ) -> Optional[Snapshot]:
-    """Combine BTC features with one contract's quote. None = not tradable."""
+    """Combine BTC features with one contract's quote. None = not tradable.
+
+    `micro` is the contract's collected order-book/microstructure features (keyed by
+    the MICRO_FEATURES names); None or missing values are simply skipped so a frame
+    without them still trades on the core features."""
     if series_features is None or yes_ask is None or yes_bid is None:
         return None
     if not (0.0 < yes_ask < 1.0) or not (0.0 <= yes_bid < yes_ask):
@@ -173,6 +198,10 @@ def snapshot(
     if tte_min <= 0:
         return None
     f = dict(series_features)
+    if micro:
+        for k, v in micro.items():
+            if v is not None:
+                f[k] = float(v)
     vol = f["vol_60m"]
     f["tte_min"] = tte_min
     f["moneyness"] = math.log(f["spot"] / contract.strike)

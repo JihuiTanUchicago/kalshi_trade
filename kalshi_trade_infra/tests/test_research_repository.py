@@ -141,6 +141,7 @@ def _prereg(hash_="h1", run_id=7, strategy_id=11):
         falsification_criteria="ci_lo<=0", min_sample=30,
         cost_assumptions={"fee": "kalshi_taker"}, research_partition_id=3,
         planned_n_tests=5, correction_method="BH",
+        data_provenance={"features": ["ob_imbalance", "spot"], "sources": ["model_features_1m"]},
     )
 
 
@@ -171,6 +172,21 @@ def test_get_experiment_parses_json(cur):
     exp = rr.get_experiment(cur, 7, "h1")
     assert exp["spec"] == {"a": 1}
     assert exp["cost_assumptions"] == {"fee": "kalshi_taker"}
+
+
+def test_data_provenance_recorded_in_ledger(cur):
+    rr.preregister(cur, _prereg())
+    exp = rr.get_experiment(cur, 7, "h1")
+    # the features/data sources the hypothesis used are persisted and read back
+    assert exp["data_provenance"] == {"features": ["ob_imbalance", "spot"],
+                                      "sources": ["model_features_1m"]}
+
+
+def test_data_provenance_defaults_to_empty(cur):
+    pre = _prereg(hash_="h9")
+    pre.pop("data_provenance")  # a prereg that omits it still registers
+    rr.preregister(cur, pre)
+    assert rr.get_experiment(cur, 7, "h9")["data_provenance"] == {}
 
 
 # -- append_result is append-only ----------------------------------------------

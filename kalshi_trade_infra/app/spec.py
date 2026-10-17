@@ -23,7 +23,7 @@ import math
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.markets import FEATURES, MARKETS, Snapshot
+from app.markets import FEATURES, MARKETS, MICRO_FEATURES, Snapshot
 
 OPS = (">", ">=", "<", "<=")
 MAX_FILTERS = 4
@@ -95,7 +95,11 @@ SPEC_GUIDE = """A strategy spec is a JSON object:
   },
   "sizing": {"stake": 1..500, "max_positions": 1..50}  // $/trade & concurrent positions; DEFAULT $5 x 20 = $100 book. Only change for a real sizing reason.
 }
-Features for filters: """ + "; ".join("%s = %s" % kv for kv in FEATURES.items())
+Features for filters: """ + "; ".join("%s = %s" % kv for kv in FEATURES.items()) + """
+Order-book / microstructure features (""" + ", ".join(MICRO_FEATURES) + """) come from the
+collected 1-minute book; they may be NULL on some frames (and on markets without a feed), and a
+filter on a missing feature simply does not match - condition on them when the mechanism needs the
+book, not by default."""
 
 
 class SpecError(ValueError):
@@ -292,6 +296,34 @@ def exit_signal(spec: Dict, side: str, entry_price: float, snap: Snapshot) -> Op
 def contracts_for(stake: float, price: float) -> int:
     # Not `stake // price`: in binary floating point 10 // 0.4 == 24.0.
     return int(math.floor(stake / price + 1e-9)) if price > 0 else 0
+
+
+# Features the fair-value model always consumes, independent of the spec.
+_MODEL_FEATURES = ("spot", "moneyness", "tte_min", "yes_bid", "yes_ask", "spread", "mid")
+
+
+def features_used(spec: Dict) -> List[str]:
+    """Every FEATURES key this spec reads: the model's always-on inputs, the vol/drift
+    windows it picked, and whatever the entry filters condition on. This is the dataset-
+    provenance record - 'any dataset, as long as we track it.'"""
+    used = set(_MODEL_FEATURES)
+    m = spec["model"]
+    used.add("vol_%dm" % m["vol_window"])
+    if m["drift_window"]:
+        used.add("ret_%dm" % m["drift_window"])
+    for flt in spec["entry"]["filters"]:
+        used.add(flt["feature"])
+    return sorted(used)
+
+
+def data_sources_for(spec: Dict) -> List[str]:
+    """The DB tables this spec's features are drawn from: contract quotes + the BTC
+    price path always, plus the order-book feature table iff a filter uses a micro
+    feature. Recorded alongside features_used so the ledger shows what data was touched."""
+    srcs = ["hist_markets", "market_candles", "spot_candles_1m"]
+    if any(flt["feature"] in MICRO_FEATURES for flt in spec["entry"]["filters"]):
+        srcs.append("model_features_1m")
+    return srcs
 
 
 def describe(spec: Dict) -> List[str]:
