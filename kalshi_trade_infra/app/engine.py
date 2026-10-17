@@ -188,8 +188,12 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
     kernel = None
     if via_kernel:
         if mode == "live":
-            kernel = sources.live_kernel(dep["user_id"]) if (LIVE_TRADING_ENABLED and sources.live_kernel) else None
-            why = "Live trading is not enabled on this server yet."
+            live_on = LIVE_TRADING_ENABLED and sources.live_kernel
+            kernel = sources.live_kernel(dep["user_id"]) if live_on else None
+            # Accurate reason: if live IS on, a None kernel means the user has no live key
+            # (a transient DB/build error raises instead of returning None, so it never lands here).
+            why = ("Live trading is not enabled on this server yet." if not live_on
+                   else "Add your live Kalshi key on the Funds page to run this on live money.")
         else:  # demo -> sandbox exchange, signed with the user's own dev key; no LIVE switch needed
             kernel = sources.demo_kernel(dep["user_id"]) if sources.demo_kernel else None
             why = "Add your Kalshi demo (sandbox) key on the Funds page to run this on demo."
@@ -292,8 +296,12 @@ def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] 
             continue  # another engine has it
         if late or feats is None:
             continue  # stale inputs or a late slot: skip it rather than trade a different rule
-        decide(conn, dep, snaps, sizes, sources)
-        stats["decided"] += 1
+        try:
+            decide(conn, dep, snaps, sizes, sources)
+            stats["decided"] += 1
+        except Exception as e:  # one user's blip (DB hiccup, bad key) must not stop the whole engine
+            print("[engine] decide failed dep %d user %d: %r (skipping)"
+                  % (dep["id"], dep["user_id"], e), flush=True)
     return stats
 
 
