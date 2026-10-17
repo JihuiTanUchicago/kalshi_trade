@@ -45,7 +45,7 @@ LATE_FRACTION = 0.25
 # Hard guard, no model involved: a deployment that has lost this much more
 # than its backtest's worst unseen-data drawdown is paused.
 LOSS_GUARD_MULTIPLE = 2.0
-COINBASE_CANDLES_URL = "https://api.exchange.coinbase.com/products/BTC-USD/candles"
+COINBASE_CANDLES_URL = "https://api.exchange.coinbase.com/products/%s/candles"  # %s = product, e.g. BTC-USD
 
 
 @dataclass(frozen=True)
@@ -73,10 +73,19 @@ def fetch_quotes(market: Market) -> List[LiveQuote]:
         data = api_get("/markets", params)
         for m in data.get("markets") or []:
             ct = parse_iso_to_dt(m.get("close_time"))
-            if ct is None or m.get("floor_strike") is None or not market.is_target_event(ct):
+            if ct is None or not market.is_target_event(ct):
                 continue
+            strike = m.get("floor_strike")
+            # An underlying-priced market (BTC/ETH/...) prices strike vs spot, so a contract with
+            # no strike is unusable. An outcome-settled market (underlying is None, e.g. sports)
+            # has no strike at all - use a 0.0 sentinel, matching the backtest's hist_markets
+            # (see market_history.sync_settled_markets); snapshot() never reads it without a spot.
+            if strike is None:
+                if market.underlying is not None:
+                    continue
+                strike = 0.0
             out.append(LiveQuote(
-                Contract(m["ticker"], float(m["floor_strike"]), ct.astimezone(timezone.utc)),
+                Contract(m["ticker"], float(strike), ct.astimezone(timezone.utc), market.series),
                 _f(m.get("yes_bid_dollars")), _f(m.get("yes_ask_dollars")),
                 _f(m.get("yes_bid_size_fp")), _f(m.get("yes_ask_size_fp")),
             ))
@@ -85,8 +94,13 @@ def fetch_quotes(market: Market) -> List[LiveQuote]:
             return out
 
 
-def fetch_btc() -> BtcSeries:
-    resp = requests.get(COINBASE_CANDLES_URL, params={"granularity": 60}, timeout=10)
+def fetch_spot_series(market: Market) -> Optional[BtcSeries]:
+    """One-minute spot closes that price `market`'s contracts (strike vs spot), from the
+    market's own Coinbase product. None for an outcome-settled market (underlying is None,
+    e.g. sports): it has no spot series and trades on the contract's own book features alone."""
+    if market.underlying is None:
+        return None
+    resp = requests.get(COINBASE_CANDLES_URL % market.underlying, params={"granularity": 60}, timeout=10)
     resp.raise_for_status()
     return BtcSeries([(int(r[0]), float(r[4])) for r in resp.json()])
 
@@ -102,7 +116,7 @@ class Sources:
     """Everything the engine reads from outside, swappable in tests."""
 
     quotes: Callable[[Market], List[LiveQuote]] = fetch_quotes
-    btc: Callable[[], BtcSeries] = fetch_btc
+    spot: Callable[[Market], Optional[BtcSeries]] = fetch_spot_series
     result: Callable[[str], Optional[str]] = fetch_result
     live_kernel: Optional[Callable[[int], object]] = None  # user_id -> kernel; None = live disabled
     demo_kernel: Optional[Callable[[int], object]] = None  # user_id -> kernel; None = demo disabled
@@ -549,7 +563,21 @@ def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] 
         return stats
     late = now_ts - slot > max(60, market.decision_seconds * LATE_FRACTION)
     quotes = [] if late else sources.quotes(market)
-    feats = None if late else sources.btc().features_at(now_ts)
+    # Series features price strike-vs-spot for underlying markets; an outcome-settled market
+    # (sports, underlying=None) has no spot, so its snapshot carries only book features - exactly
+    # as the backtester builds it. {} (not None) means "no spot, trade anyway"; None means skip
+    # (late slot, or an underlying whose spot feed is stale - don't trade a different rule).
+    if late:
+        feats = None
+    elif market.underlying is None:
+        feats = {}
+    else:
+        try:
+            series = sources.spot(market)
+            feats = series.features_at(now_ts) if series is not None else None
+        except Exception as e:  # a spot-feed hiccup on one market must not crash the engine loop
+            print("[engine] spot fetch failed for %s: %r (skipping tick)" % (market.key, e), flush=True)
+            feats = None
     snaps = [s for s in (snapshot(feats, q.contract, now_ts, q.yes_bid, q.yes_ask) for q in quotes) if s is not None]
     sizes = {q.contract.ticker: q.yes_ask_size for q in quotes}
     # Mark open positions to the current YES bid (the price they could be liquidated at)

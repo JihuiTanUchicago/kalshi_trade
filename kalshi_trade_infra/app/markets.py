@@ -67,25 +67,47 @@ MARKETS: Dict[str, Market] = {
                      underlying="BTC-USD", deployable=True),
     "btc_daily": Market("btc_daily", "KXBTCD", "Bitcoin daily close, 5pm EDT", candle_minutes=60,
                         history_days=60, close_hour_et=17, underlying="BTC-USD", deployable=True),
-    # Research-only (deployable=False): same strike-ladder + spot-price model as BTC, so the
-    # backtester runs on them, but they have no live feed/execution yet so the engine skips them.
+    # Deployable crypto: same strike-ladder + spot-price model as BTC. The live engine prices
+    # each from its own Coinbase product (engine.fetch_spot_series) and places orders on its
+    # Kalshi series exactly like BTC - a strategy still only trades once a user deploys it.
     "eth15m": Market("eth15m", "KXETH15M", "Ethereum 15-minute", candle_minutes=1, history_days=30,
-                     underlying="ETH-USD"),
+                     underlying="ETH-USD", deployable=True),
     "eth_daily": Market("eth_daily", "KXETHD", "Ethereum daily close, 5pm EDT", candle_minutes=60,
-                        history_days=60, close_hour_et=17, underlying="ETH-USD"),
+                        history_days=60, close_hour_et=17, underlying="ETH-USD", deployable=True),
     "sol_daily": Market("sol_daily", "KXSOLD", "Solana daily close, 5pm EDT", candle_minutes=60,
-                        history_days=60, close_hour_et=17, underlying="SOL-USD"),
+                        history_days=60, close_hour_et=17, underlying="SOL-USD", deployable=True),
     "xrp_daily": Market("xrp_daily", "KXXRPD", "XRP daily close, 5pm EDT", candle_minutes=60,
-                        history_days=60, close_hour_et=17, underlying="XRP-USD"),
-    # Research-only SPORTS market (deployable=False). Kalshi's per-game NBA moneyline
-    # (series KXNBAGAME) is a binary YES/NO that settles on the game result - structurally
-    # like the crypto binaries, but with NO strike and NO underlying price feed (underlying=None).
-    # The backtester trades it on the contract's own 1-minute price/order-book history; the
-    # strike-vs-spot GBM model does not apply (see snapshot() / spec.fair_yes). Code strategies
-    # (signals(window)) are the research vehicle here.
+                        history_days=60, close_hour_et=17, underlying="XRP-USD", deployable=True),
+    # Deployable SPORTS market. Kalshi's per-game NBA moneyline (series KXNBAGAME) is a binary
+    # YES/NO that settles on the game result - structurally like the crypto binaries, but with NO
+    # strike and NO underlying price feed (underlying=None). It trades on the contract's own
+    # price/order-book features (the strike-vs-spot GBM model does not apply); the live engine
+    # prices it from the Kalshi book alone (no Coinbase spot) and places orders the same way.
+    # A strategy only reaches live after passing research AND proving on paper on this same feed.
     "nba_game": Market("nba_game", "KXNBAGAME", "NBA game winner (moneyline)", candle_minutes=1,
-                       history_days=30, underlying=None),
+                       history_days=30, underlying=None, deployable=True),
+    # Research-only SPOT markets (kind="spot", deployable=False): Bittensor subnet alpha tokens.
+    # These are a continuous price series (alpha priced in TAO via the subnet's AMM pool ratio),
+    # NOT a Kalshi binary - no strike, no expiry, no settlement. `underlying` is the token's own
+    # row-symbol in spot_candles_1m (written by the taostats collector, NOT Coinbase/Kalshi); the
+    # backtester routes them to simulate_spot. candle_minutes defaults to 60 (taostats OHLC is
+    # hourly/daily, not 1-minute); drop it to 1 per market if a plan ever exposes minute data.
+    # Execution is BLOCKED (on-chain AMM only, no order API, no native short) - research only.
+    "tao_sn64": Market("tao_sn64", "TAO_SN64", "Bittensor SN64 (Chutes) alpha", candle_minutes=60,
+                       history_days=180, underlying="TAO-SN64", deployable=False, kind="spot"),
+    "tao_sn19": Market("tao_sn19", "TAO_SN19", "Bittensor SN19 (Nineteen) alpha", candle_minutes=60,
+                       history_days=180, underlying="TAO-SN19", deployable=False, kind="spot"),
+    "tao_sn8": Market("tao_sn8", "TAO_SN8", "Bittensor SN8 (PTN / Taoshi) alpha", candle_minutes=60,
+                      history_days=180, underlying="TAO-SN8", deployable=False, kind="spot"),
+    "tao_sn4": Market("tao_sn4", "TAO_SN4", "Bittensor SN4 (Targon) alpha", candle_minutes=60,
+                      history_days=180, underlying="TAO-SN4", deployable=False, kind="spot"),
+    "tao_sn56": Market("tao_sn56", "TAO_SN56", "Bittensor SN56 (Gradients) alpha", candle_minutes=60,
+                       history_days=180, underlying="TAO-SN56", deployable=False, kind="spot"),
 }
+
+# The USD/TAO rate series (taostats Price group) every subnet alpha is denominated against, so
+# alpha-in-USD = alpha-in-TAO * TAO-USD can be derived per frame without storing a third series.
+TAO_USD_SYMBOL = "TAO-USD"
 
 # A BTC price older than this cannot price a contract: no snapshot, no trade.
 MAX_BTC_GAP_SECONDS = 180

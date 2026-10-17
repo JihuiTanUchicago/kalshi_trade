@@ -38,11 +38,11 @@ def _sports_dataset(n_games=12, minutes=20, result="yes", bid=0.58, ask=0.60):
     return backtest.build_dataset(MARKETS["nba_game"], markets, candles, btc=[])
 
 
-def test_nba_market_is_defined_research_only():
+def test_nba_market_is_tradeable_sports_market():
     m = MARKETS["nba_game"]
     assert m.series == "KXNBAGAME" and m.candle_minutes == 1
-    assert m.underlying is None          # no spot path
-    assert m.deployable is False         # research/backtest only, never the live engine
+    assert m.underlying is None          # no spot path - trades on book features alone
+    assert m.deployable is True          # live engine ticks it (prices off the Kalshi book)
     assert m.is_target_event(datetime.now(timezone.utc)) is True  # no close-hour filter
 
 
@@ -96,3 +96,55 @@ def test_btc_snapshot_still_carries_strike_features():
     ds = backtest.build_dataset(MARKETS["btc15m"], markets, candles, btc)
     feats = ds.frames[0][1][0].features
     assert "spot" in feats and "moneyness" in feats and "z_score" in feats
+
+
+# --- Live-engine path: the sports market is now tradeable, so the live feed must handle a
+# strikeless, spot-less market exactly as the backtester does. ---
+
+def test_fetch_spot_series_none_for_sports():
+    """A sports market has no underlying price product, so the live engine fetches NO spot
+    series for it (and never hits Coinbase) - the snapshot trades on the book alone."""
+    from app import engine
+    assert engine.fetch_spot_series(MARKETS["nba_game"]) is None
+
+
+def test_fetch_quotes_keeps_strikeless_sports_contracts(monkeypatch):
+    """fetch_quotes must keep a sports contract that has no floor_strike (0.0 sentinel), but
+    still skip a strikeless contract on an UNDERLYING market (there a strike is required)."""
+    from app import engine
+    payload = {"markets": [
+        {"ticker": "KXNBAGAME-G1-TEAM", "floor_strike": None, "close_time": "2030-01-01T00:00:00Z",
+         "yes_bid_dollars": 0.58, "yes_ask_dollars": 0.60,
+         "yes_bid_size_fp": 100.0, "yes_ask_size_fp": 120.0},
+    ], "cursor": None}
+    monkeypatch.setattr(engine, "api_get", lambda *a, **k: payload)
+
+    sports = engine.fetch_quotes(MARKETS["nba_game"])
+    assert len(sports) == 1
+    assert sports[0].contract.strike == 0.0                 # sentinel, never read without a spot
+    assert sports[0].contract.series == "KXNBAGAME"
+    assert sports[0].yes_ask == 0.60
+
+    # Same strikeless row on an underlying market (BTC) is unusable -> skipped.
+    assert engine.fetch_quotes(MARKETS["btc15m"]) == []
+
+
+def test_sports_snapshot_tradeable_without_spot():
+    """The live tick builds a sports snapshot from feats={} (no spot). It must be tradeable and
+    carry only book features - the same shape the backtest produces."""
+    from app.markets import Contract, snapshot
+    c = Contract("KXNBAGAME-G1-TEAM", 0.0, datetime.fromtimestamp(T0 + 600, tz=timezone.utc), "KXNBAGAME")
+    snap = snapshot({}, c, T0, 0.58, 0.60)          # feats={} is what tick_market passes for sports
+    assert snap is not None
+    for feat in ("yes_bid", "yes_ask", "spread", "mid", "tte_min", "hour_et"):
+        assert feat in snap.features
+    for absent in ("spot", "moneyness", "z_score"):
+        assert absent not in snap.features
+
+
+def test_crypto_markets_are_deployable():
+    """The crypto research markets were flipped tradeable; each must have a Coinbase product
+    the generalized live spot fetch can use."""
+    for key in ("eth15m", "eth_daily", "sol_daily", "xrp_daily"):
+        m = MARKETS[key]
+        assert m.deployable is True and m.underlying and m.underlying.endswith("-USD")
