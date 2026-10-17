@@ -267,6 +267,9 @@ def dashboard(ctx: Ctx):
         "live": live,
         "open_positions": open_pos,
         "recent_closed": repo.user_positions(cur, ctx.uid, "closed", 12),
+        # Live book-vs-Kalshi reconciliation: empty list = book matches the exchange; any rows are
+        # open discrepancies the reconciler flagged (shown as a trust badge on the Live bucket).
+        "reconcile": repo.open_reconcile_rows(cur, ctx.uid),
         "deployments": [_deployment_out(d, curves.get(d["id"], []), unreal_by_dep.get(d["id"])) for d in deps],
         "agents": repo.active_run_counts(cur, ctx.uid),
         "freshness": _freshness(cur),

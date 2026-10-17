@@ -1257,7 +1257,7 @@
           ${fig('<span class="mk live">Real</span> Live money', d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected', { small: d.live.connected ? (d.live.balance == null ? 'Couldn\u2019t read your Kalshi balance just now' : mSub(d.live, 'Your Kalshi cash \u2014 real money untouched')) : 'Connect your Kalshi account on Funds to trade real money' })}
           ${fig('<span class="mk dep">Demo</span> Sandbox', usd(d.demo.equity), { v: d.demo.realized_pnl, small: (d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7 ${d.demo.open_positions} open \u00b7 ${usd(d.demo.realized_pnl, true)} P&amp;L` : `${usd(d.demo.capital)} capital \u00b7 no demo strategies yet` })}
           ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.total_pnl, small: `${usd(p.cash)} cash \u00b7 ${usd(p.open_at_cost)} at cost \u00b7 ${usd(p.total_pnl, true)} all time` })}
-        </dl>`;
+        </dl>${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? `\u26a0 ${d.reconcile.length} live position${d.reconcile.length === 1 ? '' : 's'} disagree with Kalshi \u2014 check your Portfolio` : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}`;
       const reg = registry(d.deployments.map((x) => x.curve));
       const deps = d.deployments.length
         ? deploymentTable(d.deployments.map((x) => deploymentSlip(x, reg, true)).join(''), true)  // same controls as Deploy
