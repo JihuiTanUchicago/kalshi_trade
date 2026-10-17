@@ -18,7 +18,12 @@ import requests
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
 MODEL = os.getenv("APP_AGENT_MODEL", "claude-sonnet-5-5")
-MAX_TOKENS = int(os.getenv("APP_AGENT_MAX_TOKENS", "6000"))
+# 6000 truncated the proposer's multi-hypothesis JSON mid-structure (8 rich hypotheses with
+# mechanism/falsification/negative-control/spec run ~10-15k output tokens), producing an
+# unparseable reply that failed the run. 16000 fits a full batch; modern Claude models allow far
+# more, and billing is per token GENERATED, not per cap, so a higher ceiling costs nothing unless
+# the model actually uses it. Env-overridable so the box can tune without a redeploy.
+MAX_TOKENS = int(os.getenv("APP_AGENT_MAX_TOKENS", "16000"))
 TIMEOUT_SECONDS = 180
 
 # "bedrock" bills Claude through AWS (uses AWS credits, no Anthropic key, auth
@@ -230,7 +235,11 @@ def ask_json(
     returns the cleaned value or raises ValueError). One repair round."""
     convo = list(messages)
     last_error = ""
-    for attempt in range(2):
+    # Three tries: large structured JSON (the proposer's hypothesis batch) occasionally comes back
+    # malformed or clipped, and one repair isn't always enough. Echo a generous slice of the broken
+    # reply (not 8k — the error is often past there, e.g. a clipped tail at ~15k) so the model can
+    # actually see and fix what was wrong.
+    for attempt in range(3):
         text, u = model(system, convo)
         usage.add(u)
         try:
@@ -238,10 +247,12 @@ def ask_json(
         except (ValueError, KeyError, TypeError) as e:
             last_error = str(e)[:1500]
             convo = convo + [
-                {"role": "assistant", "content": text[:8000]},
+                {"role": "assistant", "content": text[:24000]},
                 {
                     "role": "user",
-                    "content": "That reply was rejected: %s\nReply again with one corrected JSON object only." % last_error,
+                    "content": "That reply was rejected: %s\nReturn ONE valid, complete JSON object only "
+                               "(no prose, no markdown fence). If it was cut off, make it shorter so it "
+                               "fits — fewer items is fine." % last_error,
                 },
             ]
     raise LLMError("The agent's reply could not be used: %s" % last_error)
