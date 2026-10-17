@@ -35,8 +35,17 @@ These are NOT done. Completed items move to **## Done** below.
 - `[blocked: Kalshi]` Kalshi-dev 2nd equity line — code shipped; needs `KALSHI_DEV_API_BASE` + demo credentials set on the box to draw the real dev-env line.
 - `[v0.3]` Agent internet access / web search (Google/Tavily/Brave).
 - `[v0.3]` Polymarket as a 2nd venue: data + API + real & simulation trading.
+- `[in progress]` Statistically-rigorous research pipeline (true "quant research"): immutable experiment ledger + pre-registration, Statistical Gatekeeper separate from the generator, BH/online-FDR + Deflated Sharpe, research/validation/locked-holdout split + purged walk-forward/embargo, bandit research allocation, and strategy detail as a research-paper page. Not shipped.
+- `[in progress]` Risk-management force-sell layer on drawdown + portfolio caps (lost when a prior background agent exited; needs rebuild).
 
 ## Done
+### 2026-10-16
+- Live autopilot — full research→paper→live→risk loop, **gated and off by default** behind the typed-LIVE confirm + every existing safety gate (paper-proven, YES-only, per-user Kalshi key, daily-loss kill switch).
+- Autopilot consolidated into the floating window; the Deploy page is now board-only (Agent panel removed).
+- Dashboard pause/resume/stop for deployments (same code path as Deploy).
+- Theme switcher — pick the Tau or Meridian frontend in Settings; Meridian brought to feature parity.
+- Quant toolkit `app/quant.py` (BS-digital fair value, vol, Kalshi fees, edge, Kelly, portfolio metrics) — built + tested, not yet wired into the agent.
+
 ### 2026-10-16 — local integration
 - Alpaca stock/ETF market data connected to research/copilot calls, with on-demand symbols, historical training cutoffs, feed provenance and stale-data handling. 258 Python tests passed, 7 opt-in MySQL tests skipped. Real IEX snapshot/history reads were verified locally; production activation remains above. [Implementation](kalshi_trade_infra/PLAN.md).
 
