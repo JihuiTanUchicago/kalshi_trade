@@ -237,8 +237,10 @@ th .info { vertical-align: 0; }
 
 .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--gut) 72px; }
 .board-title { padding-top: 22px; }
-h1.page { font-size: clamp(23px, 3vw, 30px); font-weight: 600; letter-spacing: -.02em; margin: 22px 0 3px; }
-.deck { color: var(--ink-3); font-size: 14px; max-width: 72ch; margin-bottom: 2px; }
+/* The board title carries the session's prompt verbatim (up to 1000 chars, and a pasted idea
+   can be one unbroken token or URL) — break it so a pathological prompt can't force page scroll. */
+h1.page { font-size: clamp(23px, 3vw, 30px); font-weight: 600; letter-spacing: -.02em; margin: 22px 0 3px; overflow-wrap: anywhere; }
+.deck { color: var(--ink-3); font-size: 14px; max-width: 72ch; margin-bottom: 2px; overflow-wrap: anywhere; }
 .lede { color: var(--ink-2); max-width: 70ch; }
 
 .statusline { display: flex; align-items: center; gap: 14px; justify-content: space-between; flex-wrap: wrap; padding: 18px 0 16px; border-bottom: 1px solid var(--rule); }
@@ -261,7 +263,7 @@ h1.page { font-size: clamp(23px, 3vw, 30px); font-weight: 600; letter-spacing: -
 .recon.ok { color: var(--ink-3); }
 .recon.warn { color: var(--signal); }
 .recon svg { width: 13px; height: 13px; flex: none; }
-.sub-fig { font-size: 12px; color: var(--ink-3); margin-top: 4px; }
+.sub-fig { font-size: 12px; color: var(--ink-3); margin-top: 4px; overflow-wrap: anywhere; }
 
 .sect, .section { margin-top: 32px; }
 .sect-head, .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-bottom: 7px; border-bottom: 2px solid var(--ink); margin-bottom: 0; }
@@ -1226,7 +1228,7 @@ a.snap:hover { border-color: var(--ink-3); }
 .rsi-badge { display: inline-block; font-family: var(--f-nar); font-size: 10px; font-weight: 700; letter-spacing: .1em; color: #FDF2F3; background: var(--signal); padding: 1px 5px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
 .rsi-card { border: 1px solid var(--rule); border-left: 3px solid var(--signal); background: var(--stock-raised); padding: 12px 14px; margin-bottom: 16px; border-radius: 3px; }
 .rsi-head { font-family: var(--f-nar); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 6px; }
-.rsi-card p { font-size: 13px; line-height: 1.5; color: var(--ink-2); margin: 0 0 4px; }
+.rsi-card p { font-size: 13px; line-height: 1.5; color: var(--ink-2); margin: 0 0 4px; overflow-wrap: anywhere; }
 .rsi-card .rsi-last { font-size: 12.5px; color: var(--ink-3); margin-top: 6px; }
 .rsi-card .rsi-what { color: var(--ink); background: var(--signal-wash); border-radius: 3px; padding: 7px 9px; }
 .rsi-tag { font-family: var(--f-nar); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #FDF2F3; background: var(--signal); padding: 1px 6px; border-radius: 3px; margin-left: 6px; }
@@ -1248,7 +1250,7 @@ a.snap:hover { border-color: var(--ink-3); }
 .rsidisc .pipechev svg { width: 16px; height: 16px; }
 .rsidisc[open] .pipechev { transform: rotate(180deg); }
 .rsidisc-body { padding: 12px 14px; border-top: 1px solid var(--rule); }
-.rsidisc-body p { font-size: 13px; line-height: 1.5; color: var(--ink-2); margin: 0 0 6px; }
+.rsidisc-body p { font-size: 13px; line-height: 1.5; color: var(--ink-2); margin: 0 0 6px; overflow-wrap: anywhere; }
 .rsidisc-body p:last-child { margin-bottom: 0; }
 .rsidisc-body .rsi-last { font-size: 12.5px; color: var(--ink-3); }
 .rsidisc-body .rsi-what { color: var(--ink); background: var(--signal-wash); border-radius: 3px; padding: 7px 9px; }
