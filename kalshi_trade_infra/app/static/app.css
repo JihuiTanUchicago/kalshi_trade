@@ -507,7 +507,9 @@ select#rmodel { appearance: none; -webkit-appearance: none; padding-right: 28px;
 .flow-link { display: flex; justify-content: center; align-items: center; flex: 0 0 auto; width: 30px; align-self: center; position: relative; color: var(--ink-2); }
 .flow-link::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--rule-2); }
 .flow-arrow { position: relative; background: var(--stock); padding: 0 1px; }
-.node { border: 1px solid var(--rule); background: var(--stock-raised); padding: 11px 14px; display: grid; gap: 4px; align-content: start; }
+/* Scoped to the pipeline figure: the bare `.node` box used to leak onto the research-feed
+   timeline dot (also `<span class="node">`), boxing the rail and clipping the first character. */
+.flow-row .node { border: 1px solid var(--rule); background: var(--stock-raised); padding: 11px 14px; display: grid; gap: 4px; align-content: start; }
 .node-in { background: var(--stock); border-style: dashed; border-color: var(--rule-2); }
 .node-k { font-family: var(--f-nar); font-size: 12.5px; letter-spacing: .05em; text-transform: uppercase; font-weight: 600; color: var(--ink); display: flex; align-items: center; gap: 8px; }
 .node-k .mk { flex: none; }
@@ -564,10 +566,13 @@ select#rmodel { appearance: none; -webkit-appearance: none; padding-right: 28px;
 
 .printer { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 28px; align-items: start; margin-top: 8px; }
 .log { list-style: none; margin: 0; padding: 0; }
-.log li { display: grid; grid-template-columns: 52px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--rule); font-size: 13px; }
+/* Direct rows only: a markdown <ul>/<ol> rendered by feedMd nests <li> under .log, and the base
+   grid row style used to leak onto them — squishing each list item into the 52px time column and
+   wrapping one word per line. The feed rows are always direct children, so scope to them. */
+.log > li { display: grid; grid-template-columns: 52px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--rule); font-size: 13px; }
 .log time { color: var(--ink-3); font-family: var(--f-nar); font-size: 12px; }
-.log li.error { color: var(--signal); }
-.log li.verdict { background: linear-gradient(90deg, var(--stock-raised), transparent 60%); }
+.log > li.error { color: var(--signal); }
+.log > li.verdict { background: linear-gradient(90deg, var(--stock-raised), transparent 60%); }
 .log .verdict { font-family: var(--f-nar); letter-spacing: .06em; font-size: 11.5px; padding: 1px 6px; border-radius: 3px; margin-right: 2px; }
 .log .verdict.pass { color: #0E5C33; background: #DCEFE3; }
 .log .verdict.void { color: #8A1021; background: var(--signal-wash); }
@@ -576,7 +581,7 @@ select#rmodel { appearance: none; -webkit-appearance: none; padding-right: 28px;
 /* -- live research feed: a Claude-Code-style streaming agent log (both themes, identical) --- */
 .runfeed { position: relative; border: 1px solid var(--rule); background: var(--stock-raised); }
 .log.stream { height: clamp(340px, 52vh, 560px); overflow-y: auto; overscroll-behavior: contain; margin: 0; padding: 2px 16px 10px; scroll-behavior: smooth; }
-.log.stream .ln { grid-template-columns: 46px 20px minmax(0, 1fr); column-gap: 12px; align-items: start; padding: 10px 0; }
+.log.stream .ln { grid-template-columns: 40px 16px minmax(0, 1fr); column-gap: 10px; align-items: start; padding: 10px 0; }
 .log.stream .ln:last-child { border-bottom: 0; }
 .log.stream .ln time { padding-top: 3px; font-size: 11.5px; letter-spacing: .04em; font-variant-numeric: tabular-nums; }
 /* the timetable rail: a hairline down the gutter with one node per entry (thought/action/result by shape) */
@@ -1199,7 +1204,7 @@ a.snap:hover { border-color: var(--ink-3); }
 .mention-opt b { color: var(--ink); font-weight: 600; }
 .mention-opt span { color: var(--ink-3); font-size: .9em; margin-left: 4px; }
 .mention-opt.on, .mention-opt:hover { background: var(--stock-sunk); }
-.log li.rsi-event { background: var(--signal-wash); border-left: 2px solid var(--signal); padding-left: 8px; }
+.log > li.rsi-event { background: var(--signal-wash); border-left: 2px solid var(--signal); padding-left: 8px; }
 .rsi-badge { display: inline-block; font-family: var(--f-nar); font-size: 10px; font-weight: 700; letter-spacing: .1em; color: #FDF2F3; background: var(--signal); padding: 1px 5px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
 .rsi-card { border: 1px solid var(--rule); border-left: 3px solid var(--signal); background: var(--stock-raised); padding: 12px 14px; margin-bottom: 16px; border-radius: 3px; }
 .rsi-head { font-family: var(--f-nar); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 6px; }
@@ -1370,40 +1375,63 @@ body.landing-body .apf { display: none; }
 .apf.live .apf-pill-label { color: var(--signal); font-weight: 600; letter-spacing: .02em; }
 @media (prefers-reduced-motion: no-preference) { .apf.live .apf-dot { animation: apf-pulse 1.6s var(--ease) infinite; } }
 @keyframes apf-pulse { 0%,100% { box-shadow: 0 0 0 0 var(--signal-wash); } 50% { box-shadow: 0 0 0 5px transparent; } }
-.apf.open { width: 320px; max-width: calc(100vw - 32px); background: var(--stock-raised); border: 1px solid var(--ink); border-radius: var(--radius); box-shadow: 0 12px 34px rgba(0,0,0,.2); }
+/* Expanded: a wide, legible session surface — the research-session live log, scoped to the
+   whole operation. Controls pinned on top, the activity feed scrolls, the composer anchored. */
+.apf.open { display: flex; flex-direction: column; width: 560px; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px);
+  background: var(--stock-raised); border: 1px solid var(--ink); border-radius: var(--radius); box-shadow: 0 18px 48px -12px rgba(0,0,0,.34); }
 .apf.open.live { border-color: var(--signal); }
-.apf-head { display: flex; align-items: center; gap: 8px; padding: 11px 13px; border-bottom: 1px solid var(--rule); }
-.apf-head b { font-size: 13px; letter-spacing: .02em; }
+.apf-head { flex: none; display: flex; align-items: center; gap: 9px; padding: 13px 16px; border-bottom: 1px solid var(--rule); }
+.apf-head b { font-size: 14px; letter-spacing: .01em; }
 .apf.open.live .apf-head b { color: var(--signal); }
 .apf-x { margin-left: auto; background: none; border: 0; padding: 2px; color: var(--ink-3); cursor: pointer; display: inline-flex; }
 .apf-x:hover { color: var(--ink); }
-.apf-x svg { width: 16px; height: 16px; }
-.apf-body { padding: 12px 13px 13px; }
-.apf-stats { display: grid; gap: 8px; margin: 0 0 10px; }
-.apf-stats > div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; border-bottom: 1px solid var(--rule); padding-bottom: 7px; }
-.apf-stats dt { font-family: var(--f-nar); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
-.apf-stats dd { margin: 0; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
-.apf-stats dd.neg { color: var(--ink); background: var(--neg); padding: 0 5px; border-radius: 2px; }
-.apf-stats dd.pos { color: var(--ink); background: var(--pos); padding: 0 5px; border-radius: 2px; }
+.apf-x svg { width: 18px; height: 18px; }
+.apf-top { flex: none; padding: 14px 16px; border-bottom: 1px solid var(--rule); background: var(--stock); }
+.apf-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin: 0; border: 1px solid var(--rule); background: var(--rule); }
+.apf-stats > div { display: flex; flex-direction: column; gap: 3px; padding: 9px 11px; background: var(--stock-raised); }
+.apf-stats dt { font-family: var(--f-nar); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
+.apf-stats dd { margin: 0; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
+.apf-stats dd.neg { color: #8A1021; }
+.apf-stats dd.pos { color: #0E5C33; }
 .apf-live { color: var(--signal); font-weight: 600; }
-.apf-last { font-size: 12px; line-height: 1.45; color: var(--ink-2); margin: 4px 0 8px; }
+.apf-gates { margin-top: 10px; }
 .apf-gates:empty { display: none; }
-.apf-controls { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.apf-controls { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .apf-controls .btn { flex: 1 1 auto; }
 #apf-confirm { margin-top: 10px; display: grid; gap: 7px; }
 #apf-confirm[hidden] { display: none; }
-.apf.open { display: flex; flex-direction: column; max-height: calc(100vh - 32px); }
-.apf.open .apf-body { overflow-y: auto; }
-.apf .autopilot { margin-bottom: 10px; font-size: 12px; padding: 8px 10px; }
+.apf .autopilot { margin: 0 0 12px; font-size: 12.5px; padding: 10px 12px; }
 .apf .autopilot span b { margin-bottom: 2px; }
-.apf-chat { margin-top: 10px; border-top: 1px solid var(--rule); padding-top: 8px; display: grid; gap: 8px; }
-.apf-chat-head { display: flex; justify-content: space-between; align-items: baseline; }
-.apf-chat-head b { font-family: var(--f-nar); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
-.apf .messages { max-height: 38vh; padding: 0; gap: 8px; }
-.apf .messages .msg { font-size: 12.5px; padding: 7px 9px; max-width: 94%; }
-.apf .composer { border-top: 0; padding: 0; }
-.apf .composer textarea { min-height: 36px; max-height: 110px; }
-@media (max-width: 420px) { .apf { right: 10px; bottom: 10px; } .apf.open { width: calc(100vw - 20px); } }
+/* The activity feed — shares the research log's rail, lanes, cards and rise-in animation. */
+.apf-session { flex: 1 1 auto; min-height: 150px; display: flex; flex-direction: column; min-width: 0; }
+.apf-session-head { flex: none; display: flex; align-items: baseline; gap: 10px; padding: 11px 16px 7px; }
+.apf-session-head .say-kind { margin: 0; color: var(--ink); font-size: 10.5px; }
+.apf-session-sub { font-size: 11.5px; color: var(--ink-3); }
+.apf .log.stream.apf-log { flex: 1 1 auto; height: auto; min-height: 0; padding: 0 16px 10px; font-size: 13.5px; }
+.apf-log .say { font-size: 13.5px; line-height: 1.6; color: var(--ink-2); }
+.apf-log .say-title { color: var(--ink); }
+.apf-md > :first-child { margin-top: 0; } .apf-md > :last-child { margin-bottom: 0; }
+.apf-md p { margin: 0 0 7px; }
+.apf-md p.md-h { margin-top: 10px; } .apf-md p.md-h b, .apf-md b { color: var(--ink); font-weight: 600; }
+.apf-md ol, .apf-md ul { margin: 4px 0 8px; padding-left: 1.4em; }
+.apf-md ol { list-style: decimal; } .apf-md ul { list-style: disc; }
+.apf-md li { margin: 2px 0; padding-left: 3px; }
+.apf-md li::marker { color: var(--ink-3); }
+.apf-md pre.md-code { margin: 7px 0 8px; max-height: 240px; overflow: auto; background: var(--stock); border: 1px solid var(--rule); padding: 9px 11px; }
+.apf-md pre.md-code code { display: block; font-family: var(--f-mono, ui-monospace, monospace); font-size: 12px; line-height: 1.5; white-space: pre; color: var(--ink); background: none; border: 0; padding: 0; }
+.apf-md code { font-family: var(--f-mono, ui-monospace, monospace); font-size: .92em; background: var(--stock); border: 1px solid var(--rule); border-radius: 3px; padding: 0 4px; color: var(--ink); }
+.apf-act .hx-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin-bottom: 4px; }
+.apf-act .say-title { flex: 1 1 auto; min-width: 0; }
+.apf-act .hx-stamp { margin-left: auto; }
+.apf-act .proposal { margin-top: 9px; }
+.apf-you .say-kind { color: var(--ink); }
+.apf-pulse-row { flex: none; }
+.apf-idle-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--rule-2); }
+.ap-empty { padding: 16px; font-size: 13px; line-height: 1.6; color: var(--ink-3); list-style: none; }
+.apf-composer-row { flex: none; border-top: 1px solid var(--rule); padding: 11px 14px; background: var(--stock-raised); }
+.apf-composer-row textarea { min-height: 40px; max-height: 120px; }
+@media (max-width: 600px) { .apf { right: 10px; bottom: 10px; }
+  .apf.open { left: 10px; width: auto; max-width: none; max-height: calc(100vh - 20px); } }
 
 /* ---------- Strategy research-paper page (RESEARCH_PIPELINE_DESIGN.md §D) ----------
    One-page research paper: ink on stock, hairline rules, Archivo Narrow eyebrows,
