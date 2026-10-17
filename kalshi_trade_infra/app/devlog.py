@@ -12,6 +12,9 @@ from typing import Dict, List
 # full markdown explanation (rendered via mdLite); '' for bare one-liners.
 PLANNED: List[tuple] = [
     ('Autonomous Tau improvement loop runs on a schedule; each round picks one aspect (execution / research rigor / risk / data / ML tooling / UX / engineering) and ships an improvement', ''),
+    ('Risk-path hardening', ''),
+    ('Research market picker redesign (grouped, scalable, dormant/unwired markets hidden)', ''),
+    ('Widen the tradeable market universe', ''),
     ('Activate Alpaca stock/ETF agent data after secure worker configuration and entitlement checks, with a production canary before customer rollout', ''),
     ('All-markets collector', ''),
     ('Widen the live market universe', ''),
@@ -27,6 +30,9 @@ PLANNED: List[tuple] = [
 # Shipped, newest first: (YYYY-MM-DD, title, detail). `detail` is the full
 # markdown explanation (what/components/methodology); may be '' for one-liners.
 SHIPPED: List[tuple] = [
+    ('2026-10-17', 'Live deploy unblocked: wired the one-time-holdout promotion', '`judge_holdout` + `marginal_contribution_ok` were built but never called, so no strategy ever became a DEPLOYMENT_CANDIDATE and nothing could go live. Now wired into the pipeline: a finalist that passes validation → clears the one-time holdout → passes the marginal-contribution (diversification) check is promoted and becomes live-deployable. One-time-holdout latch + anti-leak (generator never sees holdout numbers) preserved; no gate weakened. (Deployed + live.)'),
+    ('2026-10-17', 'Fixed stale marks → unrealized P&L matches Kalshi + risk guards read live prices', '`mark_price` only refreshed when a decision was due (hourly for daily BTC), so unrealized P&L drifted from Kalshi and the drawdown force-sell read a stale (understated) loss. Now the live book is fetched and marks stamped EVERY tick for any market with open positions, independent of the decision cadence. Verified: a 41-min-stale mark went fresh (54¢→44¢, matching Kalshi). Trading logic unchanged. (Deployed + live.)'),
+    ('2026-10-17', 'Removed the redundant mode badge', 'in the Deployed table (LIVE/DEMO/PAPER showed twice per row; now once in Status, and demo no longer mislabels as Paper). (Deployed + live.)'),
     ('2026-10-17', 'Dashboard reconciliation trust badge', 'the Live bucket now shows "Live book reconciled with Kalshi" when your live positions match the exchange, or a signal-red count when the reconciler flagged open discrepancies — ongoing visible confirmation your money is tracked. (Deployed + live.)'),
     ('2026-10-17', 'Tau-aware live position reconciliation (rigorous tracking)', "a per-user sweep compares each user's actual Kalshi account to `app_positions` (side-aware, so NO positions aren't mis-flagged as shorts now that NO-side is live), classifies any genuine divergence (untracked exchange position / book-only / size / short), writes an audit row + notifies the user; optional orphan-adoption gated behind a default-OFF flag (paused deployment, no orders). Replaces the stale `live_alerter` check that false-flagged tracked Tau positions. Verified: the real 12× position that triggered a false alarm now reconciles clean (0 discrepancies). Read-only vs the exchange; no guard touched. (Deployed + live.)"),
     ('2026-10-17', 'Unrealized P&L column on the dashboard', "the Deployed table now shows each strategy's live mark-to-market unrealized P&L (aggregated from the per-position marks) next to realized. (Deployed + live.)"),
