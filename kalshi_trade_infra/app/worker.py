@@ -15,7 +15,7 @@ import threading
 import time
 from datetime import timedelta
 
-from app import agent, engine
+from app import agent, billing, engine
 from app import repository as repo
 from data_pipeline.common import get_db_conn
 
@@ -58,6 +58,12 @@ def due_autopilot_users(cur) -> list:
     due = []
     for uid in repo.autopilot_user_ids(cur):
         if repo.count_runs(cur, uid, "review", active_only=True) or repo.count_runs(cur, uid, "chat", active_only=True):
+            continue
+        # Money guard: an autonomous review bills Opus to this user. If they have no card / no
+        # credits, skip them — otherwise the heartbeat would run up an uncollectable negative
+        # balance every COPILOT_REVIEW_SECONDS. Manual paths already gate via _require_billing_ready;
+        # this is the same bar for the path that has no request to 402.
+        if not billing.is_ready(cur, uid):
             continue
         due.append(uid)
     return due

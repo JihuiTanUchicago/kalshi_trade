@@ -21,6 +21,37 @@ def test_usage_cost_at_list_price():
     assert billing.usage_cost("mystery-model", 1_000_000, 0) == Decimal("3.000000")
 
 
+def test_usage_cost_opus_4_5_fallback(monkeypatch):
+    # Registry miss must NOT mis-price a 4-5 string at the old $15/$75: the "opus-4-5" fallback
+    # entry precedes "opus-4" so the substring loop can't grab the wrong row first.
+    import app.models_catalog as models_catalog
+    monkeypatch.setattr(models_catalog, "price_for_model_id", lambda m: None)
+    assert billing.usage_cost("something-opus-4-5-weird", 1_000_000, 1_000_000) == Decimal("30.000000")
+    # A genuine legacy opus-4 still prices at its own $15/$75.
+    assert billing.usage_cost("claude-opus-4-20240101", 1_000_000, 0) == Decimal("15.000000")
+
+
+def test_is_ready_gates_autonomous_spend(monkeypatch):
+    import app.repository as repo
+    # Payments off => everything is free, nobody is gated.
+    monkeypatch.setattr(billing, "STRIPE_SECRET_KEY", "")
+    assert billing.is_ready(None, 1) is True
+
+    monkeypatch.setattr(billing, "STRIPE_SECRET_KEY", "sk_test")
+    # No customer / no card on file => not ready (would bill into an uncollectable balance).
+    monkeypatch.setattr(repo, "get_stripe_customer", lambda cur, uid: None)
+    assert billing.is_ready(None, 1) is False
+    monkeypatch.setattr(repo, "get_stripe_customer", lambda cur, uid: {"default_pm_id": None})
+    assert billing.is_ready(None, 1) is False
+    # Card on file but out of credits => still not ready.
+    monkeypatch.setattr(repo, "get_stripe_customer", lambda cur, uid: {"default_pm_id": "pm_1"})
+    monkeypatch.setattr(repo, "credit_balance", lambda cur, uid: 0)
+    assert billing.is_ready(None, 1) is False
+    # Card on file AND credits remain => ready.
+    monkeypatch.setattr(repo, "credit_balance", lambda cur, uid: 4.2)
+    assert billing.is_ready(None, 1) is True
+
+
 def test_topup_charge_includes_fee():
     # $20 credits + 5.5% = $21.10 -> 2110 cents.
     assert billing.topup_charge_cents(Decimal("20")) == 2110

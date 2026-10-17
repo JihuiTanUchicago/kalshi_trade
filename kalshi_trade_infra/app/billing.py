@@ -50,6 +50,9 @@ PRICES: Dict[str, Tuple[Decimal, Decimal]] = {
     "sonnet-5": (Decimal("3"), Decimal("15")),
     "haiku-4-5": (Decimal("1"), Decimal("5")),
     "haiku-5": (Decimal("1"), Decimal("5")),
+    # opus-4-5 MUST precede opus-4 — "opus-4" is a substring of "opus-4-5", so a bare
+    # "opus-4" entry would mis-price a 4-5 string at the old $15/$75 on a registry miss.
+    "opus-4-5": (Decimal("5"), Decimal("25")),
     "opus-4": (Decimal("15"), Decimal("75")),
     "opus-5": (Decimal("15"), Decimal("75")),
     "3-5-sonnet": (Decimal("3"), Decimal("15")),
@@ -64,6 +67,21 @@ class StripeError(RuntimeError):
 
 def configured() -> bool:
     return bool(STRIPE_SECRET_KEY)
+
+
+def is_ready(cur, user_id: int) -> bool:
+    """True when this user may be billed for an agent run: payments off (everything is free) OR a
+    card is on file AND credits remain. The plain-predicate twin of server._require_billing_ready,
+    for AUTONOMOUS paths (the autopilot heartbeat) that have no request to raise a 402 into — they
+    skip a non-ready user instead of billing Opus runs into an uncollectable negative balance.
+    Strictly a spend GUARD: it only ever PREVENTS a run, never enables one."""
+    if not configured():
+        return True
+    from app import repository as repo  # local: billing <-> repository would be a circular import
+    cust = repo.get_stripe_customer(cur, user_id)
+    if not (cust and cust.get("default_pm_id")):
+        return False
+    return repo.credit_balance(cur, user_id) > 0
 
 
 def _price_for(model: str) -> Tuple[Decimal, Decimal]:
