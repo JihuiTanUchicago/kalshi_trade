@@ -31,13 +31,17 @@ ban and an import hook are not a boundary — they are speed bumps. The boundary
 THE BOUNDARY (`_confined_argv`): the child runs under the platform's kernel sandbox, and if
 none is available the call is REFUSED (default-deny — untrusted code never runs unconfined):
   * macOS (dev): `sandbox-exec` with a profile that denies ALL network, denies writes anywhere
-    but the scratch dir, and denies reads of credential stores (any `…/credentials/…`, `.env`,
-    `.pem`, `.ssh`, `.aws`, `id_rsa`/`id_ed25519`, `…/secrets…`).
-  * Linux (prod): `bwrap` (`--unshare-net`, read-only root, scratch the only writable mount)
-    or `firejail` (`--net=none --read-only=/`). No network -> no DB, no order placement, and
-    nothing read can be exfiltrated; the keyfile and DB DSN are inert.
+    but the scratch + data dir, and denies reads of credential stores (any `…/credentials/…`,
+    `.env`, `.pem`, `.ssh`, `.aws`, `id_rsa`/`id_ed25519`, `…/secrets…`).
+  * Linux (prod): `bwrap` with an ALLOWLIST bind — ONLY the system libs, the interpreter, the
+    venv (all read-only), the writable scratch + data dir; the host root is NOT mounted, so every
+    secret (home dirs, `~/.aws`, `~/.ssh`, `/opt/kalshi/.env*`, the Kalshi keyfile, `/etc/shadow`)
+    is simply ABSENT from the namespace. Plus `--unshare-net` (no DB/orders/IMDS) and
+    `--unshare-user --uid nobody` (so the child's rlimits don't share the live engine's uid).
+    (firejail fallback: `--net=none --read-only=/` + a secret blacklist — best-effort only.)
 With the kernel enforcing it, even the numpy/ctypes gadget above is harmless: it can compute,
-but it cannot open a socket, write outside scratch, or (macOS) read the keys.
+but it cannot open a socket, write outside scratch/data, or read a secret that was never mounted
+— so it has nothing to exfiltrate through either a socket or its return value.
 
 DEFENSE IN DEPTH (not the boundary): the child is still a fresh `python -I -B` with a SCRUBBED
 env (no PROD_KEYID / KALSHI_* / DB DSN / AWS vars; `-I` ignores PYTHON*/cwd/user-site), a
@@ -46,11 +50,12 @@ restricted-builtins + import-gate namespace, the AST dunder/import ban, and reso
 These remove the easy routes and the high-value targets (no secrets, no `conn` object in the
 process) so the blast radius is bounded even before the kernel sandbox is considered.
 
-ponytail: the macOS profile denies credential READS directly; the Linux wrappers rely on
-`--unshare-net` to make any read inert rather than hiding every secret path (tmpfs-over-secrets
-is the follow-up if a non-exfil local read ever matters). RLIMIT_AS is honored on Linux but
-refused by the macOS kernel, so the hard memory cap is Linux-only (CPU + wall-clock bound a
-runaway allocation on macOS). `os_sandbox_available()` reports whether a confiner exists.
+The macOS profile denies credential READS by regex; the Linux bwrap allowlist bind doesn't
+mount the secrets at all (strictly stronger — it closes the return-value read channel, not just
+the network one). RLIMIT_AS is honored on Linux but refused by the macOS kernel, so the hard
+memory cap is Linux-only (CPU + wall-clock bound a runaway allocation on macOS); the Linux child
+also sets oom_score_adj=1000 so it, not the live engine, is the kernel's first OOM victim.
+`os_sandbox_available()` reports whether a confiner exists.
 """
 from __future__ import annotations
 
@@ -207,7 +212,7 @@ STRATEGY_CPU_SECONDS = 60           # RLIMIT_CPU (hard kill)
 STRATEGY_MEM_BYTES = 12 * 1024 ** 3  # RLIMIT_AS (virtual; TF/torch reserve a lot). Box has 16G RAM.
 STRATEGY_WALL_SECONDS = 120.0       # parent kills the child past this
 STRATEGY_NOFILE = 4096              # RLIMIT_NOFILE (ML libs dlopen many .so)
-STRATEGY_NPROC = 256                # RLIMIT_NPROC (allow BLAS/OpenMP threads; still bounds forks)
+STRATEGY_NPROC = 128                # RLIMIT_NPROC (allow BLAS/OpenMP threads; still bounds forks)
 STRATEGY_FSIZE_BYTES = 256 * 1024 * 1024  # RLIMIT_FSIZE (model artifacts to the data dir)
 
 # A persistent, writable data directory mounted into the sandbox so strategies can read datasets
@@ -298,6 +303,13 @@ try:
     # Bounded, not zero: the scientific/ML stack spawns BLAS/OpenMP worker threads (threads count
     # against NPROC on Linux). A finite cap still bounds a fork bomb; CPU + wall-clock bound compute.
     _set(resource.RLIMIT_NPROC, nproc)
+except Exception:
+    pass
+try:
+    # Make THIS child the kernel's first OOM victim, so a memory-hungry strategy is killed instead
+    # of the co-resident live trading engine. Raising one's own oom_score_adj is always permitted.
+    with open("/proc/self/oom_score_adj", "w") as _o:
+        _o.write("1000")
 except Exception:
     pass
 
@@ -425,18 +437,33 @@ def _confined_argv(inner: List[str], scratch: str, data_dir: Optional[str] = Non
     if conf == "sandbox-exec":
         return [_SANDBOX_EXEC, "-p", _macos_profile(scratch, data_dir)] + inner
     if conf == "bwrap":
-        args = [shutil.which("bwrap"), "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
-                "--tmpfs", "/tmp", "--bind", scratch, scratch]
+        # ALLOWLIST bind, NOT --ro-bind / /: mount only the system libs + the interpreter + the
+        # venv (all read-only), the writable scratch, and the data dir. The host root is never
+        # mounted, so secrets (/home, /root, ~/.aws, ~/.ssh, /opt/kalshi/.env*, the Kalshi keyfile,
+        # /etc/shadow) are simply ABSENT from the namespace - unreadable, so they can't be read and
+        # returned (the exfil channel --unshare-net can't close). Masking a whole-root bind was a
+        # leaky blocklist; this is the boundary. --unshare-user drops to an unprivileged uid so the
+        # child's process/mem rlimits don't share the live engine's uid (DoS isolation).
+        py_base, py_venv = sys.base_prefix, sys.prefix
+        args = [shutil.which("bwrap"), "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
+                "--ro-bind", "/usr", "/usr",
+                "--ro-bind-try", "/lib", "/lib", "--ro-bind-try", "/lib64", "/lib64",
+                "--ro-bind-try", "/bin", "/bin", "--ro-bind-try", "/sbin", "/sbin",
+                "--ro-bind-try", "/sys/devices/system/cpu", "/sys/devices/system/cpu",
+                "--ro-bind-try", "/etc/ld.so.cache", "/etc/ld.so.cache",
+                "--ro-bind-try", "/etc/ld.so.conf", "/etc/ld.so.conf",
+                "--ro-bind-try", "/etc/ld.so.conf.d", "/etc/ld.so.conf.d",
+                "--ro-bind-try", "/etc/nsswitch.conf", "/etc/nsswitch.conf",
+                "--ro-bind-try", "/etc/passwd", "/etc/passwd",
+                "--ro-bind-try", "/etc/group", "/etc/group",
+                "--ro-bind", py_base, py_base]
+        if py_venv != py_base:
+            args += ["--ro-bind", py_venv, py_venv]
+        args += ["--bind", scratch, scratch]
         if data_dir:
             args += ["--bind", data_dir, STRATEGY_DATA_MOUNT]
-        # Mask secrets (applied AFTER --ro-bind / / so they override it): empty file over each .env,
-        # tmpfs over the credentials dir. --ro-bind-try/--tmpfs no-op if the path is absent.
-        files, dirs = _secret_mask_targets()
-        for f in files:
-            args += ["--ro-bind-try", "/dev/null", f]
-        for d in dirs:
-            args += ["--tmpfs", d]
-        args += ["--chdir", scratch, "--unshare-net", "--unshare-pid", "--die-with-parent", "--"]
+        args += ["--chdir", scratch, "--unshare-net", "--unshare-pid", "--unshare-user",
+                 "--uid", "65534", "--gid", "65534", "--die-with-parent", "--"]
         return args + inner
     if conf == "firejail":
         args = [shutil.which("firejail"), "--quiet", "--net=none", "--private-tmp",
