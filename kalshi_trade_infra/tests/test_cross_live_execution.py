@@ -171,14 +171,15 @@ def test_unwind_underfill_records_residual_as_tracked_position(monkeypatch):
 # -- the deploy gate: single-market cross is now live-able; multi-market is not --
 
 
-def test_gate_allows_single_market_live_still_refuses_multi_market():
+def test_gate_allows_single_market_and_compatible_multi_market_live():
     single = specmod.validate({"market": "btc_daily",
         "cross": {"pairing": "cross_strike", "legs": []}})
+    # btc_daily + eth_daily: both deployable, both daily -> a valid, allowed multi-market pair.
     multi = specmod.validate({"market": "btc_daily",
         "cross": {"pairing": "cross_sectional", "legs": [{"market": "eth_daily"}]}})
     plain = specmod.validate({"market": "btc_daily"})
 
     for mode in ("paper", "demo", "live"):
         assert engine.cross_deploy_block(single, mode) is None      # single-market: all modes
-        assert engine.cross_deploy_block(multi, mode)               # multi-market: refused everywhere
+        assert engine.cross_deploy_block(multi, mode) is None       # compatible multi-market: allowed
         assert engine.cross_deploy_block(plain, mode) is None       # non-cross: never touched

@@ -27,7 +27,7 @@ import requests
 
 from app import repository as repo
 from app import spec as specmod
-from app.markets import MARKETS, BtcSeries, Contract, Market, Snapshot, snapshot
+from app.markets import MARKETS, BtcSeries, Contract, Market, Snapshot, compatible_cadence, snapshot
 from data_pipeline.common import api_get, parse_iso_to_dt
 from data_pipeline.kalshi_fees import taker_fee_dollars
 
@@ -235,22 +235,33 @@ def _close_position_at(conn, cur, dep: Dict, pos: Dict, kernel, via_kernel: bool
 def cross_deploy_block(spec: Dict, mode: str) -> Optional[str]:
     """Why a cross-contract (relative-value pair) spec may NOT deploy in `mode`, or None if it may.
 
-    A SINGLE-market pair (cross_strike / calendar) deploys on paper, demo AND live: the engine
-    already ticks that one market and its frame carries every strike/settlement leg, and the
-    live/demo entry path is legging-safe — both legs are kept balanced and any naked excess is
-    flattened on the exchange immediately (see `_kernel_buy_pair`).
-
-    A MULTI-market pair still needs a synchronized multi-market live feed the engine does not run
-    (the extra legs' markets aren't ticked together), so it stays research-only — refused for every
-    mode, including paper/demo. (The OTHER live gates — gatekeeper candidate, LIVE switch, Kalshi
-    key, the NO-side-live rollout flag and the typed LIVE confirm — are unchanged and still apply on
-    top of this; this function only decides the single- vs multi-market question.)"""
+    Two disjoint cases, each self-contained so they compose:
+      * MULTI-market cross (legs span >1 market): rides the synchronized multi-market feed
+        (tick_cross_markets), which fetches every leg's live book+spot on one frame and skips the
+        frame if any leg is stale. Deployable in ANY mode (paper/demo/live) ONLY when every leg's
+        market is itself deployable (has a live book + execution path) AND the legs share a decision
+        cadence (so one synchronized frame aligns them).
+      * SINGLE-market cross (cross_strike / calendar): the engine already ticks that one market and
+        its frame carries every strike/settlement leg, and the live/demo entry path is legging-safe
+        — both legs kept balanced and any naked excess flattened on the exchange immediately (see
+        `_kernel_buy_pair`) — so paper, demo AND live are all allowed.
+    The OTHER live gates (gatekeeper candidate, LIVE switch, Kalshi key, the NO-side-live rollout
+    flag, the typed LIVE confirm, autopilot, drawdown) are unchanged and still run upstream; this
+    function only decides the cross-contract deployability question and only ever ADDS conditions."""
     if not specmod.is_cross_contract(spec):
         return None
     markets = specmod.involved_markets(spec)
     if len(markets) > 1:
-        return ("This is a cross-market pair (%s) — it needs a synchronized multi-market live "
-                "feed we don't run yet, so it's research-only for now." % ", ".join(markets))
+        bad = [m for m in markets if m not in MARKETS or not MARKETS[m].deployable]
+        if bad:
+            return ("This cross-market pair touches market(s) with no live feed/execution path "
+                    "(%s), so it stays research-only." % ", ".join(bad))
+        if not compatible_cadence(markets):
+            return ("This cross-market pair spans incompatible decision cadences (%s) — its legs "
+                    "can't be ticked on one synchronized frame, so it stays research-only."
+                    % ", ".join(markets))
+        return None
+    # Single-market cross: legging-safe entry, so paper/demo/live all allowed.
     return None
 
 
@@ -628,7 +639,11 @@ def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] 
     stats = {"settled": settle_due(conn, market, sources, now)}
     slot = now_ts - now_ts % market.decision_seconds
     cur = conn.cursor()
-    due = [d for d in repo.running_deployments(cur, market.key) if d["last_decision_ts"] < slot]
+    # A multi-market cross deployment is stored under its primary leg's market, so it surfaces here,
+    # but it must decide on a SYNCHRONIZED frame of ALL its legs (tick_cross_markets owns it) — never
+    # on this single market's snaps alone. Skip it here so it's decided in exactly one place.
+    due = [d for d in repo.running_deployments(cur, market.key)
+           if d["last_decision_ts"] < slot and not _is_multi_market_cross(d["spec"])]
     if not due:
         return stats
     late = now_ts - slot > max(60, market.decision_seconds * LATE_FRACTION)
@@ -670,6 +685,110 @@ def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] 
         except Exception as e:  # one user's blip (DB hiccup, bad key) must not stop the whole engine
             print("[engine] decide failed dep %d user %d: %r (skipping)"
                   % (dep["id"], dep["user_id"], e), flush=True)
+    return stats
+
+
+# -- synchronized multi-market tick (cross-MARKET relative value) ----------------
+# A cross-MARKET pair (e.g. BTC vs ETH) trades two DIFFERENT markets at once, so it can't ride a
+# single market's tick: both legs must be priced on ONE decision frame. tick_cross_markets fetches
+# every involved market's live book + spot TOGETHER and, only if every leg is fresh, routes the
+# combined Snapshot list to decide()->_decide_pairs (the same rule the merged-dataset backtest
+# proved). The staleness rule is the legging-safety contract: if ANY leg's book or spot is stale /
+# unavailable / the slot is late, the whole frame is skipped and nothing is claimed — so a pair is
+# never half-entered with a naked leg in a second market. _kernel_buy_pair (unchanged, market-
+# agnostic) still enters/unwinds each pair's two legs; this path only guarantees it a fresh frame.
+
+
+def _is_multi_market_cross(spec: Dict) -> bool:
+    """A cross spec whose legs span >1 market — the only kind that needs the synchronized feed."""
+    return specmod.is_cross_contract(spec) and len(specmod.involved_markets(spec)) > 1
+
+
+def _cross_market_frame(markets: List[str], sources: Sources, now_ts: int):
+    """Fetch EVERY involved market's live book + spot for one synchronized decision frame and build
+    the combined (snaps, sizes). Returns None if ANY leg is stale or its book is unavailable — the
+    caller then skips the frame, so we never price/leg a pair off a market we can't read right now."""
+    all_snaps: List[Snapshot] = []
+    sizes: Dict[str, Optional[float]] = {}
+    for key in markets:
+        market = MARKETS[key]
+        try:
+            quotes = sources.quotes(market)
+        except Exception as e:
+            print("[engine] cross quote fetch failed for %s: %r (skipping frame)" % (key, e), flush=True)
+            return None
+        if not quotes:
+            return None  # this leg's book is unavailable this frame — never leg into it
+        if market.underlying is None:
+            feats: Optional[Dict[str, float]] = {}  # outcome-settled leg: no spot, trade on book features
+        else:
+            try:
+                series = sources.spot(market)
+            except Exception as e:
+                print("[engine] cross spot fetch failed for %s: %r (skipping frame)" % (key, e), flush=True)
+                return None
+            feats = series.features_at(now_ts) if series is not None else None
+            if feats is None:
+                return None  # stale/missing spot on this leg — skip the whole frame
+        for q in quotes:
+            s = snapshot(feats, q.contract, now_ts, q.yes_bid, q.yes_ask)
+            if s is not None:
+                all_snaps.append(s)
+            sizes[q.contract.ticker] = q.yes_ask_size
+    return all_snaps, sizes
+
+
+def _tick_cross_group(conn, markets: List[str], deps: List[Dict], sources: Sources, now_ts: int) -> int:
+    """Decide one group of cross-market deployments that share the same involved-market set. The
+    legs share a decision cadence (enforced at spec validation + the deploy gate), so one slot
+    serves them all. Claims happen ONLY after a fresh synchronized frame is in hand, so a stale/late
+    frame never burns the slot and never enters a pair. Returns how many deployments decided."""
+    cur = conn.cursor()
+    decision_seconds = MARKETS[markets[0]].decision_seconds
+    slot = now_ts - now_ts % decision_seconds
+    due = [d for d in deps if d["last_decision_ts"] < slot]
+    if not due:
+        return 0
+    if now_ts - slot > max(60, decision_seconds * LATE_FRACTION):
+        return 0  # late slot: the backtest decided at the boundary — skip, don't trade a different rule
+    frame = _cross_market_frame(markets, sources, now_ts)
+    if frame is None:
+        return 0  # a leg is stale/unavailable — skip the frame, never leg into a stale second market
+    snaps, sizes = frame
+    decided = 0
+    for dep in due:
+        if not repo.claim_decision(cur, dep["id"], slot):
+            continue  # another engine owns this slot
+        try:
+            decide(conn, dep, snaps, sizes, sources)
+            decided += 1
+        except Exception as e:  # one deployment's blip must not stop the rest / the engine
+            print("[engine] cross decide failed dep %d user %d: %r (skipping)"
+                  % (dep["id"], dep["user_id"], e), flush=True)
+    return decided
+
+
+def tick_cross_markets(conn, sources: Sources, now: Optional[datetime] = None) -> Dict:
+    """Tick every running MULTI-market cross deployment on a synchronized frame of all its legs.
+    Each such deployment is stored under its primary leg's market column, so one pass over the
+    deployable markets finds each exactly once (a deployment has a single market column). They are
+    grouped by their involved-market set; each group decides together on its shared cadence."""
+    now = now or datetime.now(timezone.utc)
+    now_ts = int(now.timestamp())
+    cur = conn.cursor()
+    groups: Dict[tuple, List[Dict]] = {}
+    for market in MARKETS.values():
+        if not market.deployable:
+            continue
+        for dep in repo.running_deployments(cur, market.key):
+            if _is_multi_market_cross(dep["spec"]):
+                groups.setdefault(tuple(specmod.involved_markets(dep["spec"])), []).append(dep)
+    stats = {"decided": 0}
+    for markets, deps in groups.items():
+        try:
+            stats["decided"] += _tick_cross_group(conn, list(markets), deps, sources, now_ts)
+        except Exception as e:  # one group's failure must not stop the others / the engine loop
+            print("[engine] cross-market tick failed for %s: %r (skipping)" % ("+".join(markets), e), flush=True)
     return stats
 
 
@@ -772,6 +891,14 @@ def run_forever() -> None:
                         stats = tick_market(conn, market, sources)
                         if stats.get("decided") or stats.get("settled"):
                             print("[engine] %s %s" % (market.key, stats), flush=True)
+                    # Cross-MARKET pairs belong to no single market tick: decide them on a
+                    # synchronized frame of all their legs (skipped if any leg is stale).
+                    try:
+                        xstats = tick_cross_markets(conn, sources)
+                        if xstats.get("decided"):
+                            print("[engine] cross-market %s" % xstats, flush=True)
+                    except Exception as e:  # contained: never stop the single-market loop
+                        print("[engine] cross-market tick failed: %r" % e, flush=True)
                     if time.time() - last_review > 600:
                         schedule_reviews(conn.cursor())
                         last_review = time.time()

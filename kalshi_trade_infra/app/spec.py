@@ -23,7 +23,7 @@ import math
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.markets import FEATURES, MARKETS, MICRO_FEATURES, Snapshot
+from app.markets import FEATURES, MARKETS, MICRO_FEATURES, Snapshot, compatible_cadence
 
 OPS = (">", ">=", "<", "<=")
 MAX_FILTERS = 4
@@ -108,7 +108,9 @@ SPEC_GUIDE = """A strategy spec is a JSON object:
     "relationship": "spread"                    // trade the spread of model edges (buy YES cheap leg, NO dear leg)
   }
 }
-cross.pairing: cross_sectional = two different markets (e.g. BTC vs ETH, matched per frame);
+cross.pairing: cross_sectional = two different markets (e.g. BTC vs ETH, matched per frame) - the
+two markets MUST share a decision cadence (same candle_minutes AND close schedule: two 15-min
+crypto markets, or two daily markets; never a 1-min market with a daily one);
 cross_strike = same market+settlement, different strikes; calendar = same market+strike, different settlements.
 Features for filters: """ + "; ".join("%s = %s" % kv for kv in FEATURES.items()) + """
 Order-book / microstructure features (""" + ", ".join(MICRO_FEATURES) + """) come from the
@@ -335,6 +337,11 @@ def _validate_cross(spec: Dict, errors: List[str]) -> None:
     involved = {spec["market"]} | {leg["market"] for leg in clean_legs}
     if pairing == "cross_sectional" and len(involved) < 2:
         errors.append("cross.pairing cross_sectional needs a leg on a different market than %s" % spec["market"])
+    # A cross-MARKET pair must share one decision cadence, or its legs never co-occur on a frame
+    # (merged backtest) and can't be ticked together live - never pair a 1-min market with a daily.
+    if len(involved) > 1 and not compatible_cadence(involved):
+        errors.append("cross legs span incompatible decision cadences (%s); pair only markets with "
+                      "the same candle_minutes and close schedule" % ", ".join(sorted(involved)))
     if not errors:
         spec["cross"] = {"pairing": pairing, "legs": clean_legs, "relationship": rel}
 

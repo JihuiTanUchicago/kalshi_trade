@@ -734,8 +734,10 @@ def create_deployment(ctx: Ctx):
                             "deployment isn't open for it yet." % mkt.label)
     if mode not in ("paper", "live", "demo"):
         raise ApiError(400, "Choose paper, demo or live.")
-    # Cross-contract pairs deploy on paper/demo only (single-market cross_strike/calendar); live
-    # and cross-market pairs are refused. Additive and fail-closed — never weakens a live gate.
+    # Cross-contract deploy gate. Single-market cross (cross_strike/calendar) deploys on paper/demo.
+    # Multi-market cross (relative value across DIFFERENT markets) deploys in any mode only when
+    # every leg is deployable and the legs share a cadence (it rides engine.tick_cross_markets).
+    # Additive and fail-closed — every real-money live guard below still runs, in order, unweakened.
     cross_block = engine.cross_deploy_block(s["spec"], mode)
     if cross_block:
         raise ApiError(409, cross_block)
