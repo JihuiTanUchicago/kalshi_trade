@@ -457,13 +457,28 @@ select#rmodel { appearance: none; -webkit-appearance: none; padding-right: 28px;
 @keyframes thinkpulse { 50% { box-shadow: 0 0 0 4px rgba(68, 72, 65, .14); } }
 .think .hx-head { display: flex; align-items: baseline; gap: 8px; }
 .think-el { margin-left: auto; font-family: var(--f-nar); font-size: 11px; letter-spacing: .04em; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.think-body { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); line-height: 1.55; margin-top: 2px; }
+.think-body { overflow-wrap: anywhere; color: var(--ink-2); line-height: 1.55; margin-top: 2px; }
 .think-body:empty { display: none; }
+/* --- markdown rendered inside the streaming feed (think-aloud prose) --- */
+.think-body > :first-child { margin-top: 0; }
+.think-body > :last-child { margin-bottom: 0; }
+.think-body p { margin: 0 0 7px; }
+.think-body p.md-h { margin-top: 11px; }
+.think-body p.md-h b, .think-body b { color: var(--ink); font-weight: 600; }
+.think-body ol, .think-body ul { margin: 4px 0 8px; padding-left: 1.45em; }
+.think-body ol { list-style: decimal; }
+.think-body ul { list-style: disc; }
+.think-body li { margin: 2px 0; padding-left: 3px; }
+.think-body li::marker { color: var(--ink-3); font-family: var(--f-nar); font-variant-numeric: tabular-nums; }
+.think-body pre.md-code { margin: 7px 0 8px; max-height: 300px; overflow: auto; background: var(--stock); border: 1px solid var(--rule); padding: 10px 12px; }
+.think-body pre.md-code code { display: block; font-family: var(--f-mono, ui-monospace, monospace); font-size: 12px; line-height: 1.5; white-space: pre; color: var(--ink); background: none; border: 0; padding: 0; }
+.think-body code, .log.stream .say code { font-family: var(--f-mono, ui-monospace, monospace); font-size: .92em; background: var(--stock); border: 1px solid var(--rule); border-radius: 3px; padding: 0 4px; color: var(--ink); }
 .caret { display: inline-block; width: 2px; height: 1.05em; margin-left: 1px; background: var(--ink-2); vertical-align: -2px; animation: caret 1.05s steps(1) infinite; }
 .caret[hidden] { display: none; }
 @keyframes caret { 50% { opacity: 0; } }
 .think-draft { margin-top: 6px; font-family: var(--f-nar); font-size: 11.5px; letter-spacing: .04em; color: var(--ink-3); }
 .think.sealed .think-body { color: var(--ink-3); }
+.think.sealed .think-body b { color: var(--ink-2); }
 .think.sealed .think-el { opacity: .7; }
 
 /* --- the hypothesis card: intuition in the open, the homework folded, verdict grafted on --- */

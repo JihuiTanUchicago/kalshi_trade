@@ -90,18 +90,60 @@
 
   // ---------- formatting ----------
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-  // Minimal safe markdown: escape first (so output has no raw HTML), then a tiny subset.
-  // Only http(s) links — never javascript:/data: — so there's no XSS surface.
-  const mdLite = (s) => {
-    let t = esc(s);
+  // Inline markdown on ALREADY-ESCAPED text (so there is never raw HTML in the output).
+  // Each marker needs its closing partner to fire, so a half-typed `**foo` or `` `foo `` from a
+  // mid-stream token stays literal until it closes — the property the streaming feed relies on.
+  // Only http(s) links — never javascript:/data: — so there is no XSS surface.
+  const mdInline = (t) => {
     t = t.replace(/`([^`\n]+)`/g, '<code>$1</code>');
     t = t.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
     t = t.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>');
+    t = t.replace(/(^|[^\w])_([^_\n]+)_(?![\w])/g, '$1<i>$2</i>');   // _italic_ (never snake_case)
     t = t.replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener nofollow">$1</a>');
     t = t.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noopener nofollow">$2</a>');
-    // @handle mentions (not inside an email: the lookbehind blocks a word char before @)
+    // @handle mentions (not inside an email: the class blocks a word char before @)
     t = t.replace(/(^|[^\w@])@([a-z0-9_]{2,32})/gi, '$1<span class="mention">@$2</span>');
-    return t.replace(/\n/g, '<br>');
+    return t;
+  };
+  // One-line-ish markdown: inline subset + hard line breaks. Used for devlog detail and log lines.
+  const mdLite = (s) => mdInline(esc(s)).replace(/\n/g, '<br>');
+
+  // Block-level safe markdown for the streaming research feed (the agent's think-aloud prose):
+  // paragraphs, numbered/bullet lists, headings (as a bold line), fenced code, plus every mdInline
+  // mark. Hostile-input safe: text is escaped per line before any tag is built, so no model token
+  // can inject HTML. Streaming-safe: an UNCLOSED ``` fence renders as a literal line (not an eaten
+  // tail), and an unterminated inline marker stays literal — the dangling bit resolves on the next
+  // flush once its closer streams in. (The thinking card already stops echoing at the first fence,
+  // so the fenced path is for robustness / reuse, and never collides with specHtml's code figure.)
+  const feedMd = (src) => {
+    const lines = String(src == null ? '' : src).split('\n');
+    const out = [];
+    let para = [], list = null;
+    const flushPara = () => { if (para.length) { out.push('<p>' + para.map((l) => mdInline(esc(l))).join('<br>') + '</p>'); para = []; } };
+    const flushList = () => { if (list) { out.push('<' + list.tag + '>' + list.items.map((it) => '<li>' + it + '</li>').join('') + '</' + list.tag + '>'); list = null; } };
+    const flush = () => { flushPara(); flushList(); };
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/^\s*```/.test(line)) {
+        let j = i + 1;
+        while (j < lines.length && !/^\s*```\s*$/.test(lines[j])) j++;
+        if (j < lines.length) {   // closed fence -> code block; otherwise fall through (literal)
+          flush();
+          out.push('<pre class="md-code"><code>' + esc(lines.slice(i + 1, j).join('\n')) + '</code></pre>');
+          i = j; continue;
+        }
+      }
+      if (/^\s*$/.test(line)) { flush(); continue; }
+      const h = line.match(/^\s{0,3}#{1,6}\s+(.*)$/);
+      if (h) { flush(); out.push('<p class="md-h"><b>' + mdInline(esc(h[1])) + '</b></p>'); continue; }
+      const ol = line.match(/^\s*(\d{1,9})[.)]\s+(.*)$/);
+      if (ol) { flushPara(); if (!list || list.tag !== 'ol') { flushList(); list = { tag: 'ol', items: [] }; } list.items.push(mdInline(esc(ol[2]))); continue; }
+      const ul = line.match(/^\s*[-*]\s+(.*)$/);
+      if (ul) { flushPara(); if (!list || list.tag !== 'ul') { flushList(); list = { tag: 'ul', items: [] }; } list.items.push(mdInline(esc(ul[1]))); continue; }
+      flushList(); para.push(line);
+    }
+    flush();
+    return out.join('');
   };
   // "Jihui Tan @tanjihui" — the handle muted next to the display name.
   const authorLine = (name, uname) => `${esc(name || 'Trader')}${uname ? ` <span class="uhandle">@${esc(uname)}</span>` : ''}`;
@@ -1463,7 +1505,7 @@
         // Stop echoing once the JSON spec begins — a ```fence (what we ask for), a line-led brace,
         // or a bare {" object start — the structured spec lands in the hypothesis cards instead.
         const cut = raw.search(/```|\n\s*\{|\{\s*"/);
-        body.textContent = (cut >= 0 ? raw.slice(0, cut) : raw).trim();
+        body.innerHTML = feedMd((cut >= 0 ? raw.slice(0, cut) : raw).trim());
         draft.hidden = cut < 0;
         caret.hidden = cut >= 0;
       },
@@ -1576,7 +1618,7 @@
     } else if (ev.kind === 'paused' || ev.kind === 'resumed') {
       inner = `<span class="say-kind">${ev.kind === 'paused' ? 'Paused' : 'Resumed'}</span>${esc(ev.message)}`;
     } else {
-      inner = esc(ev.message);
+      inner = mdLite(ev.message);   // step notes: inline markdown (bold/code/italic/links), escaped
     }
     li.className = 'ln lane-' + lane + (lane === 'rsi' ? ' rsi-event' : '');
     li.innerHTML = `<time>${clock(ev.created_at)}</time><span class="node" aria-hidden="true"></span><div class="say">${inner}</div>`;
