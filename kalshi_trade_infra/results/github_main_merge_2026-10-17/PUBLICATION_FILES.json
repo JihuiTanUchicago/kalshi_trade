@@ -88,5 +88,16 @@
     "kalshi_trade_infra/results/main_integration_2026-10-17/RELEASE_NOTES.md": 17,
     "kalshi_trade_infra/results/main_integration_2026-10-17/HANDOFF.md": 5
   },
-  "excluded": "private configuration/keys, raw provider or account data, bulk generated evidence and local-only QA scripts"
+  "excluded": "private configuration/keys, raw provider or account data, bulk generated evidence and local-only QA scripts",
+  "post_merge_record_paths": [
+    "kalshi_trade_infra/PLAN.md",
+    "kalshi_trade_infra/app/README.md",
+    "mvp.md",
+    "kalshi_trade_infra/results/github_main_merge_2026-10-17/HANDOFF.md",
+    "kalshi_trade_infra/results/github_main_merge_2026-10-17/VERIFICATION.json",
+    "kalshi_trade_infra/results/github_main_merge_2026-10-17/PUBLICATION_FILES.json",
+    "kalshi_trade_infra/results/github_main_merge_2026-10-17/MERGE_RECEIPT.json",
+    "kalshi_trade_infra/results/github_main_merge_2026-10-17/LOCAL_SYNC.json"
+  ],
+  "post_merge_note": "Documentation-only record of the independently confirmed PR/main merge and local preservation; no runtime/configuration change."
 }

@@ -7,13 +7,14 @@ is unchanged and separate.
 
 ## Source publication — October 17, 2026
 
-The release candidate is reconciled with GitHub main `5da1922`, including its newer
+[PR #9](https://github.com/JihuiTanUchicago/kalshi_trade/pull/9) is merged on GitHub
+main as `1df5d4f`. The source was reconciled with main `5da1922`, including its newer
 sandbox hardening, execution controls and research-paper strategy detail. It adds
 the local provider/knowledge tools and Tau workspace while preserving those
 upstream paths. Infrastructure regression: **878 passed / 9 skipped**; sibling:
 **137 passed / 22 skipped**; frontend **43 passed**, plus 11 synthetic browser
-route/theme checks and focused control interactions. GitHub publication follows the independent review and
-frontend/browser checks in the [publication handoff](../results/github_main_merge_2026-10-17/HANDOFF.md).
+route/theme checks and focused control interactions. Independent review and
+GitHub confirmation are recorded in the [publication handoff](../results/github_main_merge_2026-10-17/HANDOFF.md).
 Source publication does not deploy services or enable providers/trading. Existing
 provider entitlements and real queued worker/model acceptance still apply.
 

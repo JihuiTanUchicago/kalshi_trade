@@ -210,5 +210,44 @@
     "staged_file_count": 69,
     "unmerged_index_entries": 0,
     "diff_whitespace": "pass"
+  },
+  "github_merge_confirmation": {
+    "pr": "https://github.com/JihuiTanUchicago/kalshi_trade/pull/9",
+    "merged": true,
+    "merged_at": "2026-10-17T13:41:58Z",
+    "merge_commit": "1df5d4ff834374d15d4ca5d334798194367ce6d2",
+    "head": "6d68c537bc4ef1136cce7840192e19736e8a6b53",
+    "base_before_merge": "5da19226935ad19cff46fe29130c30303372c844",
+    "main_confirmed": "1df5d4ff834374d15d4ca5d334798194367ce6d2",
+    "tree": "08f9ccadb0f2d1a4bd4987ea32d6d89731dee624",
+    "tested_tree_identical": true,
+    "checked_at": "2026-10-17T13:42:26.997787+00:00",
+    "no_deployment_or_activation": true,
+    "local_merge_object_verified": true
+  },
+  "local_sync": {
+    "head_at_sync": "1df5d4ff834374d15d4ca5d334798194367ce6d2",
+    "private_files_unchanged": true,
+    "tracked_tree_clean_after_sync": true,
+    "reservation_released": true
+  },
+  "shared_main_post_merge_recheck": {
+    "at_commit": "1df5d4ff834374d15d4ca5d334798194367ce6d2",
+    "infrastructure": {
+      "passed": 878,
+      "skipped": 9,
+      "seconds": 7.15
+    },
+    "sibling": {
+      "passed": 137,
+      "skipped": 22,
+      "seconds": 9.67
+    },
+    "frontend": {
+      "passed": 43,
+      "skipped": 0
+    },
+    "providers_mysql_aws_metadata_disabled": true,
+    "no_runtime_changes_after_review": true
   }
 }
