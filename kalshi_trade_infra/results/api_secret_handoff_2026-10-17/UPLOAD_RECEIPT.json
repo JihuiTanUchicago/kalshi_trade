@@ -1,0 +1,40 @@
+{
+  "repository": "JihuiTanUchicago/kalshi_trade",
+  "public_repository": true,
+  "storage": "Encrypted repository GitHub Actions Secrets",
+  "status": "uploaded and metadata verified",
+  "secrets": [
+    {
+      "name": "EXA_API_KEY",
+      "created_at": "2026-10-17T13:48:48Z",
+      "updated_at": "2026-10-17T13:48:48Z"
+    },
+    {
+      "name": "MASSIVE_API_KEY",
+      "created_at": "2026-10-17T13:48:47Z",
+      "updated_at": "2026-10-17T13:48:47Z"
+    }
+  ],
+  "receipts": [
+    {
+      "name": "MASSIVE_API_KEY",
+      "exit_code": 0,
+      "client_encrypted_before_upload": true,
+      "value_logged": false
+    },
+    {
+      "name": "EXA_API_KEY",
+      "exit_code": 0,
+      "client_encrypted_before_upload": true,
+      "value_logged": false
+    }
+  ],
+  "private_env_preserved": true,
+  "not_uploaded": [
+    "raw .env file",
+    "provider enable flags",
+    "unrelated credentials"
+  ],
+  "no_production_injection_or_provider_call": true,
+  "verified_at": "2026-10-17T13:48:48.943057+00:00"
+}

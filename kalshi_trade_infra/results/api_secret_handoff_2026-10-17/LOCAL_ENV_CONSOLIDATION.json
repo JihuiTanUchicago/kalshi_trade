@@ -1,0 +1,26 @@
+{
+  "workstream": "tau-local-provider-env-20261017",
+  "status": "Alpaca copied and offline configuration verified; Databento awaiting key",
+  "completed_at": "2026-10-17T21:57:19.517749+08:00",
+  "target": "kalshi_trade_infra/.env",
+  "copied_key_names": [
+    "APCA_API_KEY_ID",
+    "APCA_API_SECRET_KEY"
+  ],
+  "source_preserved": true,
+  "existing_target_bytes_and_assignments_preserved": true,
+  "target_ignored_untracked": true,
+  "target_mode": "0600",
+  "literal_config_valid": true,
+  "provider_enable_flags_unchanged": true,
+  "alpaca_enabled_in_file": false,
+  "databento_key_present": false,
+  "databento_placeholder_present": true,
+  "provider_http_calls": 0,
+  "github_or_aws_writes": 0,
+  "service_restarts": 0,
+  "runtime_source_changes": false,
+  "secret_values_logged_or_in_evidence": false,
+  "documentation_private_value_scan": "pass",
+  "diff_whitespace": "pass"
+}

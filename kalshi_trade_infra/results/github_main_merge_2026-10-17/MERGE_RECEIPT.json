@@ -1,0 +1,14 @@
+{
+  "pr": "https://github.com/JihuiTanUchicago/kalshi_trade/pull/9",
+  "merged": true,
+  "merged_at": "2026-10-17T13:41:58Z",
+  "merge_commit": "1df5d4ff834374d15d4ca5d334798194367ce6d2",
+  "head": "6d68c537bc4ef1136cce7840192e19736e8a6b53",
+  "base_before_merge": "5da19226935ad19cff46fe29130c30303372c844",
+  "main_confirmed": "1df5d4ff834374d15d4ca5d334798194367ce6d2",
+  "tree": "08f9ccadb0f2d1a4bd4987ea32d6d89731dee624",
+  "tested_tree_identical": true,
+  "checked_at": "2026-10-17T13:42:26.997787+00:00",
+  "no_deployment_or_activation": true,
+  "local_merge_object_verified": true
+}

@@ -1,0 +1,253 @@
+{
+  "workstream": "tau-github-main-merge-20261017",
+  "timestamp": "2026-10-17T13:36:00.257000+00:00",
+  "base": "5da19226935ad19cff46fe29130c30303372c844",
+  "branch": "codex/tau-research-workspace-20261017",
+  "upstream_commits_since_prior_integration": 12,
+  "tests": [
+    {
+      "scope": "infrastructure",
+      "command": "TAU_ALPACA_ENABLED=0 TAU_MASSIVE_ENABLED=0 TAU_DATABENTO_ENABLED=0 TAU_EXA_ENABLED=0 TAU_WORLDMONITOR_ENABLED=0 APP_TEST_MYSQL=0 AWS_EC2_METADATA_DISABLED=true python -m pytest tests/ -q --tb=short",
+      "passed": 878,
+      "skipped": 9,
+      "exit_code": 0,
+      "seconds": 8.16
+    },
+    {
+      "scope": "sibling",
+      "command": "PYTHONPATH=src python -m pytest tests -q --tb=short",
+      "passed": 137,
+      "skipped": 22,
+      "exit_code": 0,
+      "seconds": 9.7
+    },
+    {
+      "scope": "frontend",
+      "command": "node --test tests/test_app_sessions.mjs tests/test_session_chat.mjs tests/test_research_artifacts.mjs tests/test_frontend_merge.mjs",
+      "passed": 43,
+      "skipped": 0,
+      "exit_code": 0
+    }
+  ],
+  "browser": {
+    "synthetic": true,
+    "broad": {
+      "mode": "synthetic UI preview; read-only fixtures, no real backend acceptance",
+      "checks": [
+        {
+          "theme": "tau",
+          "route": "/dashboard",
+          "title": [
+            "Overview",
+            "Paper portfolio",
+            "Paper performance",
+            "Recent research",
+            "Deployed"
+          ],
+          "content_present": true,
+          "no_rendered_error": true
+        },
+        {
+          "theme": "tau",
+          "route": "/research",
+          "title": [
+            "Research",
+            "Your sessions"
+          ],
+          "content_present": true,
+          "no_rendered_error": true
+        },
+        {
+          "theme": "tau",
+          "route": "/research/1",
+          "title": [
+            "Research session #1",
+            "Select a strategy"
+          ],
+          "content_present": true,
+          "no_rendered_error": true
+        },
+        {
+          "theme": "tau",
+          "route": "/strategies",
+          "title": [
+            "Strategy"
+          ],
+          "content_present": true,
+          "no_rendered_error": true
+        },
+        {
+          "theme": "tau",
+          "route": "/strategies/1",
+          "title": [
+            "Research session #1",
+            "Sample: fade overpriced tails"
+          ],
+          "content_present": true,
+          "no_rendered_error": true
+        },
+        {
+          "theme": "tau",
+          "route": "/deploy",
+          "title": [
+            "Position",
+            "Open positions",
+            "Ready to deploy"
+          ],
+          "content_present": true,
+          "no_rendered_error": true
+        },
+        {
+          "theme": "tau",
+          "route": "/funds",
+          "title": [
+            "Settings"
+          ],
+          "content_present": true,
+          "no_rendered_error": true
+        },
+        {
+          "theme": "tau",
+          "route": "/settings",
+          "title": [
+            "Settings"
+          ],
+          "content_present": true,
+          "no_rendered_error": true
+        },
+        {
+          "theme": "tau",
+          "route": "/settings/account",
+          "title": [
+            "Settings"
+          ],
+          "content_present": true,
+          "no_rendered_error": true
+        },
+        {
+          "theme": "tau",
+          "route": "/devlog",
+          "title": [
+            "Dev Logs",
+            "Shipping next",
+            "Shipped"
+          ],
+          "content_present": true,
+          "no_rendered_error": true
+        },
+        {
+          "theme": "meridian",
+          "route": "/dashboard",
+          "title": [
+            "Overview",
+            "Real money LIVE",
+            "Demo SANDBOX",
+            "Paper SIMULATION",
+            "Paper performance",
+            "Recent research",
+            "Deployed"
+          ],
+          "content_present": true,
+          "no_rendered_error": true,
+          "matching_bundle": true
+        }
+      ],
+      "page_errors": [],
+      "api_fixture_failures": [],
+      "passed": true
+    },
+    "focused": {
+      "synthetic": true,
+      "feedIdentityStable": true,
+      "streamedThought": true,
+      "hypothesisSingleCard": true,
+      "pauseResume": true,
+      "artifactAndDraftPreserved": true,
+      "demoAndLiveControls": true,
+      "pageErrors": []
+    }
+  },
+  "github_policy": {
+    "workflows": 0,
+    "required_checks": [],
+    "required_reviews": 0,
+    "main_rules": [
+      "deletion prohibited",
+      "non-fast-forward prohibited"
+    ]
+  },
+  "limits": [
+    "Offline regressions and synthetic browser fixtures are not production account/provider/worker/model acceptance.",
+    "No deployment, migration, live activation or paid provider/model call in this publication workstream.",
+    "World Monitor remains default-off WIP."
+  ],
+  "frontend_final_report": "Complete: no remaining merge blocker; 43 Node tests pass after 4 added regression checks.",
+  "history": [
+    {
+      "stage": "new frontend regression harness",
+      "result": "Initial new test failed because the fake DOM lacked replaceWith/focus; harness corrected, final 43 tests pass."
+    },
+    {
+      "stage": "full publication staging",
+      "result": "Full diff check caught CRLF/trailing whitespace in the previously untracked font license; normalized whitespace only, license text retained. Final staged whitespace check passes."
+    }
+  ],
+  "precommit_recheck": {
+    "infrastructure": {
+      "passed": 878,
+      "skipped": 9,
+      "seconds": 6.94
+    },
+    "sibling": {
+      "passed": 137,
+      "skipped": 22,
+      "seconds": 10.0
+    },
+    "frontend": {
+      "passed": 43,
+      "skipped": 0
+    },
+    "staged_file_count": 69,
+    "unmerged_index_entries": 0,
+    "diff_whitespace": "pass"
+  },
+  "github_merge_confirmation": {
+    "pr": "https://github.com/JihuiTanUchicago/kalshi_trade/pull/9",
+    "merged": true,
+    "merged_at": "2026-10-17T13:41:58Z",
+    "merge_commit": "1df5d4ff834374d15d4ca5d334798194367ce6d2",
+    "head": "6d68c537bc4ef1136cce7840192e19736e8a6b53",
+    "base_before_merge": "5da19226935ad19cff46fe29130c30303372c844",
+    "main_confirmed": "1df5d4ff834374d15d4ca5d334798194367ce6d2",
+    "tree": "08f9ccadb0f2d1a4bd4987ea32d6d89731dee624",
+    "tested_tree_identical": true,
+    "checked_at": "2026-10-17T13:42:26.997787+00:00",
+    "no_deployment_or_activation": true,
+    "local_merge_object_verified": true
+  },
+  "local_sync": {
+    "head_at_sync": "1df5d4ff834374d15d4ca5d334798194367ce6d2",
+    "private_files_unchanged": true,
+    "tracked_tree_clean_after_sync": true,
+    "reservation_released": true
+  },
+  "shared_main_post_merge_recheck": {
+    "at_commit": "1df5d4ff834374d15d4ca5d334798194367ce6d2",
+    "infrastructure": {
+      "passed": 878,
+      "skipped": 9,
+      "seconds": 7.15
+    },
+    "sibling": {
+      "passed": 137,
+      "skipped": 22,
+      "seconds": 9.67
+    },
+    "frontend": {
+      "passed": 43,
+      "skipped": 0
+    },
+    "providers_mysql_aws_metadata_disabled": true,
+    "no_runtime_changes_after_review": true
+  }
+}

@@ -40,6 +40,201 @@ per-deployment stop is `drawdown_limit_pct`.
 
 Tests: `tests/test_app_agent_autonomy.py` (clamps, proposal-vs-applied, fresh research, defensive
 re-clamp). Full suite green (529 passed / 9 skipped).
+## Alpaca and Databento GitHub secret sync — October 17, 2026, Asia/Shanghai
+
+- **Status:** synced and metadata verified; advisory reservation released (`tau-alpaca-databento-secret-sync-20261017`). The user restored Databento in Tau’s private `.env` and requested GitHub sync. `APCA_API_KEY_ID`, `APCA_API_SECRET_KEY` and `DATABENTO_API_KEY` were client-encrypted and uploaded through stdin; all five named secrets covering Alpaca/Massive/Databento/Exa are listed. Existing Massive/Exa metadata is unchanged; no secret value was logged, placed in Git or passed as an argument. Private `.env` bytes/mode are unchanged.
+- [Deployment guide](app/DEPLOYMENT_SECRETS.md) and README now reflect all four providers, explicit runtime injection and the current SSM loader’s lack of Alpaca fields. Databento’s local missing-key gate is resolved; worker activation, data-cost accounting, entitlements and real production acceptance remain under their existing gates. No workflow, AWS/server/service, provider/paid call or trading operation. [Upload receipt](results/api_secret_handoff_2026-10-17/PROVIDER_UPLOAD_RECEIPT.json) · [Handoff](results/api_secret_handoff_2026-10-17/HANDOFF.md).
+
+## Local provider environment consolidation — October 17, 2026, Asia/Shanghai
+
+- **Status:** available Alpaca credentials copied / offline configuration verified; advisory reservation released (`tau-local-provider-env-20261017`). Tau’s ignored mode-0600 `.env` now contains `APCA_API_KEY_ID` and `APCA_API_SECRET_KEY` copied from Polygon’s private root `.env`. The source and all existing target bytes/assignments are preserved. `Config.from_env` accepts the exact copied pair without any provider call; activation flags are unchanged.
+- `DATABENTO_API_KEY=` is present as an empty placeholder because no local value remains available. Restoring that value is still required; earlier successful provider checks are historical evidence. No runtime code, GitHub/AWS secret, service, deployment or trading setting changed. The existing Massive/Exa GitHub sync remains a separate milestone. [Configuration evidence](results/api_secret_handoff_2026-10-17/LOCAL_ENV_CONSOLIDATION.json) · [Handoff](results/api_secret_handoff_2026-10-17/HANDOFF.md).
+
+## API credential deployment handoff — October 17, 2026, Asia/Shanghai
+
+- **Status:** encrypted GitHub sync verified / deployment handoff ready; advisory reservation released (`tau-api-secret-handoff-20261017`). The configured `MASSIVE_API_KEY` and `EXA_API_KEY` were stored as encrypted repository Actions Secrets; command success and subsequent name/timestamp reads confirm creation. Real `.env` stays ignored, untracked and mode 0600; its bytes are unchanged. No key value was logged, committed or passed in command arguments.
+- The user is not sure whether the teammate deploys through Actions or manual SSH/AWS. [Deployment-owner guide](app/DEPLOYMENT_SECRETS.md) explains both paths, non-downloadable GitHub secret values, point-in-time sync and the existing AWS SSM loader's broader effects (including callback overwrite and web/agent restarts). No deployment workflow or AWS parameter was created, provider flag changed, service restarted or paid provider/model call made. Alpaca/Databento keys were absent from the current product `.env`; no unrelated locations were searched.
+- **Verification:** infrastructure **878 passed / 9 skipped**; independent guide review corrected the explicit OAuth callback argument, otherwise no blocker. Guide links and selected-file private-value/PEM scan pass. Public provider Dev Logs stay planned; server injection and real production worker/provider acceptance remain under their existing rollout gates. [Handoff and receipt](results/api_secret_handoff_2026-10-17/HANDOFF.md).
+
+## GitHub main publication — October 17, 2026, Asia/Shanghai
+
+- **Status:** merged on GitHub and synchronized locally; advisory reservation released (`tau-github-main-merge-20261017`). [PR #9](https://github.com/JihuiTanUchicago/kalshi_trade/pull/9) merged at `2026-10-17T13:41:58Z` as `1df5d4ff834374d15d4ca5d334798194367ce6d2`. GitHub main and the tested source tree were independently confirmed; no rules bypass.
+- Reconciled main `5da1922` and its 12 newer sandbox/execution/strategy-page commits before publication. Independent backend/frontend review found no actionable blocker. Final checks: **878 infrastructure Python passed / 9 skipped; 137 sibling Python passed / 22 skipped; 43 frontend passed; 11 synthetic browser routes/themes and focused controls passed**. GitHub had no required checks/reviews or Actions workflows configured; local evidence provided the verification.
+- Original sources are preserved in backup directory `tau-pre-github-merge-20261017_213901` and stash `c84435800b9cc8ab9f7cd289e301c00ee189a966`; shared local main fast-forwarded to the GitHub merge. Private file bytes/modes are unchanged. Original evidence and unrelated worktrees remain. Only selected source/small records were published; bulk generated/provider/account data and private keys were excluded.
+- Source publication is complete. Production deployment, migrations, provider/worker/model acceptance and trading activation remain separately gated; World Monitor remains default-off WIP. Public provider Dev Logs remain planned because this milestone does not establish production availability. [Final handoff](results/github_main_merge_2026-10-17/HANDOFF.md) · [GitHub receipt](results/github_main_merge_2026-10-17/MERGE_RECEIPT.json).
+
+## Latest-main integration — October 17, 2026, Asia/Shanghai
+
+- **Status:** complete locally / combined tree verified; reservation released (`tau-main-integration-20261017`). Shared local main is fast-forwarded to `0bd3bcf6ab80fd68d28594b63f11aad091326a19`; 58 reconciled local source files remain unstaged/uncommitted on top. No conflict entries or conflict markers remain.
+- Target main: `0bd3bcf6ab80fd68d28594b63f11aad091326a19`, **67 upstream commits** after the local baseline `f8ff5e22fb65ca24e9407d8fcc75a9734262a487`. Today's local provider/knowledge work, older frontend work and sibling feed changes are recorded separately in the [daily release notes](results/main_integration_2026-10-17/RELEASE_NOTES.md).
+- Six conflicted files were reconciled in an isolated checkout: PLAN, MVP, research agent, server, Tau JS and CSS. Streaming proposer and gatekeeper partitions now compose with Exa/gated news without losing token accounting, cancellation or infrastructure billing protection. The local research/artifact workspace retains upstream streaming cards, pause/resume, demo/live controls and the three funding buckets. Public Dev Logs keep provider rollout under planned work.
+- **Verification on shared main:** infrastructure **849 passed / 9 skipped**, sibling **137 passed / 22 skipped**, frontend **39 passed**, 11 synthetic browser route/theme checks and focused streaming/control/artifact interactions pass with no page errors. Python/JS/shell syntax and full diff whitespace pass. Earlier fixture failures (new demo key/heartbeat fields and preview buckets/replay endpoint) are documented and superseded. No provider/model/account/DB call was used in this integration.
+- Source/evidence backup: `/Users/jonathanzhang/Desktop/Polygon/.runtime/github-export/tau-main-backup-20261017_170009`; preservation stash `2efc7a7bec9cb125651fc25eee09ea5cf1cafd09` is retained, not popped. Private environment bytes/modes are unchanged. The staged-free original tree was updated only after comparison with the snapshot and tested integration files; previous PR worktrees and historical evidence remain.
+- Upstream research/gatekeeper, sandbox, TAO, sports and live-safety history is retained below. Inherited deployed/live statements describe upstream's recorded state; this integration does not newly verify a production rollout. World Monitor remains active work in progress. No commit, push or deployment is authorized by this preparation.
+- [Integration/recovery/evidence](results/main_integration_2026-10-17/HANDOFF.md) · [Daily release notes](results/main_integration_2026-10-17/RELEASE_NOTES.md). No push, new branch commit, PR mutation, deployment, migration, private-setting write or live-trading activation occurred. Real provider entitlements and production worker/model acceptance remain the next release gates.
+
+## Exa Snapshot after pay-as-you-go activation — October 17, 2026, Asia/Shanghai
+
+- **Status:** live-provider and historical adapter acceptance passed locally; advisory reservation released (`tau-exa-paygo-acceptance-20261017`). The user's pay-as-you-go switch resolved the prior Snapshot entitlement block.
+- Three real Snapshot requests returned **HTTP 200**: historical Search **10 sources**, selected-page Contents **1**, historical publication-intent Search **10**. All retained the host cutoff **2026-10-10T08:53:56Z**; dates/cutoffs, prompt evidence, host citations, no live fallback and a network-free cache repeat passed. Provider cost telemetry was absent, so cost remains unknown.
+- Existing local flags remain enabled and application_quotas=none. No runtime/private configuration edit, real LLM/DB/queued worker, production rollout/restart, purchase, commit, push or trading action occurred. The identical acceptance helper and fresh results preserve prior 403 evidence. Unchanged Exa code retains the prior offline verification; no redundant full-suite run was made for an account-state change.
+- Current evidence (local archive: `results/exa_integration_2026-10-17/paygo_acceptance_2026-10-17/HANDOFF.md`). Synthesis was scripted. Remaining gate: production worker environment/deployment and real queued model/worker acceptance.
+
+## World Monitor news monitoring — October 17, 2026, Asia/Shanghai
+
+- **Status:** in progress; advisory reservation active (`tau-worldmonitor-news-20261017`).
+- Add an independent news HTTP client, first-observed/versioned local journal, polling CLI and actual research/copilot news tool. Current headlines cannot leak into historical research. Existing Exa and market-data behavior remains separate.
+- No AGPL server implementation is embedded, private credential/configuration write or paid/deployment/trading operation. Hosted API vs self-hosted preference is pending; the protocol adapter supports either configured origin.
+- Scope and evidence (local archive: `results/worldmonitor_integration_2026-10-17/HANDOFF.md`).
+
+
+## Initial Exa Snapshot activation — October 17, 2026 (earlier 403 attempt; superseded above)
+
+- **Status at this earlier milestone:** local configuration enabled / provider acceptance blocked; verification complete and advisory reservation released (`tau-exa-snapshot-activation-20261017`). The subsequent pay-as-you-go acceptance above resolves its entitlement block.
+- Both `TAU_EXA_ENABLED=1` and `TAU_EXA_HISTORICAL_ENABLED=1` are set in the ignored mode-0600 local `.env`, preserving the key and all unrelated private bytes. Network-free status confirms both enabled with application_quotas=none. No local agent/server process is running, so there is no local process to restart. Deployed worker environment/acceptance remains separate.
+- Actual historical knowledge-adapter Search returned **HTTP 403 / entitlement** at a seven-day host cutoff; no live fallback. A separate diagnostic confirmed **SNAPSHOT_NOT_ON_PLAN**. Historical Contents/publication/cache acceptance could not proceed then. The user subsequently clarified only a card had been added, then switched to pay-as-you-go; all historical stages now pass in the follow-up above. Earlier evidence remains preserved.
+- **Verification:** all **80 Exa tests pass**; runtime source unchanged, so the previous full regression **558 passed / 7 opt-in MySQL skipped** remains the relevant broader evidence. Two real historical HTTP attempts were denied. No quota was added, model/DB/queued-worker run, production action, purchase, commit or push occurred.
+- Ownership and baseline (local archive: `results/exa_integration_2026-10-17/snapshot_activation_2026-10-17/HANDOFF.md`). Runtime code, frontend, other provider/trading settings, sibling sources and prior evidence are outside this configuration-only workstream.
+
+## Exa quota removal and credential validation — October 17, 2026, Asia/Shanghai
+
+- **Status:** implemented / offline and live-provider verified locally; advisory reservation released (`tau-exa-unlimited-20261017`). User supplied the key and requested removal of Exa budget/quota limits.
+- Removed Exa run/month dollar ceilings, request/round/batch caps, forced five-result sampling and the unpublished budget-only DAO/schema dependency. Old quota environment variables are ignored. Provider-reported cost receipts, historical boundaries, cancellation, source validation and transport/context safeguards remain. Other data providers/model-credit/trading policies retain their existing behavior.
+- Real Exa Search returned **10 sources**, selected-page Contents **1**, publication Search **10** through the actual knowledge adapter with a scripted model; host citations and a network-free cache repeat passed. Four HTTP attempts including Snapshot probe; successful responses reported **$0.015** total, not an independently reconciled invoice.
+- At this earlier milestone Snapshot returned **HTTP 403 / entitlement**, so historical activation was left disabled. A subsequent workstream enabled the flag; the latest pay-as-you-go acceptance above resolves the provider block. Current-time web tools were verified. Workers must explicitly load the environment; the key and unrelated private bytes are preserved.
+- **Verification:** 80 Exa tests; full regression **558 passed, 7 opt-in MySQL skipped**. Python/shell syntax and network-free status pass; all **323 non-owned baseline files** are unchanged. Obsolete quota DAO/tests were removed with the quota policy; the previous 569-test run is retained below as history.
+- Implementation handoff (local archive: `results/exa_integration_2026-10-17/unlimited_2026-10-17/HANDOFF.md`) records ownership, provider receipts, failed system-Python status attempt and successful venv retry. Its Snapshot entitlement gate is resolved by the passing follow-up above. Production worker/model acceptance remains pending; no migration, deployment, restart, commit or push occurred in these Exa workstreams.
+
+## Initial Exa integration — October 17, 2026 (historical; quota policy superseded above)
+
+- Initial workstream `tau-exa-integration-20261017` connected native web/publication tools, provenance/citations, temporal scope and model usage metering to actual research/copilot interfaces. It was disabled and offline verified before the user supplied a key.
+- That milestone passed 91 synthetic checks; full regression **569 passed, 7 opt-in MySQL skipped**, with 220 non-owned files preserved. Its budget DAO/schema and quota policy were subsequently removed at the user's request. No original migration or paid call ran.
+- Original evidence, preserved as history (local archive: `results/exa_integration_2026-10-17/HANDOFF.md`) · [Current setup](app/README.md#exa-web-and-publication-research--october-17-2026). Scheduled news collection/event features remain separate work.
+
+## Databento credentialed API checks — October 17, 2026, Asia/Shanghai
+
+- **Status:** local authenticated stock/futures downloads and actual agent-data context verified; reservation released. Databento remains disabled persistently; production worker/model acceptance is pending.
+- The real provider returned **10 SPY minute bars** (EQUS.MINI) and **10 ESZ6 minute bars** (GLBX.MDP3) for October 16, 14:00–14:10 UTC. Both reached `AgentMarketData.ask` through the real HTTP adapter and a scripted local model. Native prices, volumes, instrument/publisher provenance, complete intervals and cutoff boundaries passed.
+- The user explicitly removed the spending ceiling for this test. Fresh provider quotes were allocated only in the test's in-memory budget; estimated/reserved total **$0.000006258488** (SPY), futures $0. This is not a reconciled vendor billing amount or a permanent budget/activation change.
+- The authorized smoke used six successful HTTP attempts (four metadata, two downloads), then a cache repeat used **zero additional HTTP attempts or reservation**. Across both live stages: 14 attempts, three downloads (the futures window was read once directly and once through the agent loop). No real LLM call, runtime fix, credential/configuration edit, deployment or trading action.
+- The first authorized continuation stopped locally because `.env` had changed outside the workstream and lost the key. The user restored it; the same prepared smoke then passed. Earlier missing-key/metadata-retry evidence is retained. Prior implementation regression **478 passed, 7 MySQL skipped** remains valid for unchanged runtime source; it was not rerun for this provider check.
+- Remaining gates: durable paid-data accounting, explicit persistent dataset/worker configuration and a real queued model/worker canary. Current test funding does not activate future autonomous spending.
+- Live acceptance/evidence (local archive: `results/databento_integration_2026-10-17/live_2026-10-17/HANDOFF.md`).
+
+
+## Databento historical data integration — October 17, 2026, Asia/Shanghai
+
+- **Status:** implemented locally and offline verified; reservation released. Disabled by default.
+- Stocks/ETFs and explicit futures contracts now use the actual research/copilot data loop alongside Alpaca and Massive. Native 1-minute/hour/day OHLCV; per-schema availability, completed intervals, raw prices, instrument/publisher provenance and visible missing/partial coverage.
+- Every download checks an estimated decimal cost; the default zero cap rejects positive-cost requests. Reservations persist across requests/asks on one data context; billable attempts are not retried. This is not a durable account/run-wide cap or a vendor billing guarantee. Provider charges are not passed through Tau model credits.
+- **Verification:** 95 new offline tests; full regression **478 passed, 7 opt-in MySQL skipped**. Python and secret-loader shell syntax pass. The scoped patch has no trailing whitespace; whole-tree `git diff --check` retains five pre-existing `mvp.md` whitespace findings. All 321 non-owned baseline source files remain unchanged.
+- A blank Databento key slot and disabled/zero-budget settings were appended to this product's ignored mode-0600 `.env`, preserving existing contents. Tracked examples contain no key; optional AWS secret-loader wiring is ready but was not run.
+- Remaining gates: licensed datasets/key, explicit spending configuration, a bounded credentialed provider check and real worker/model canary. Live streaming, durable data-cost accounting, equity/futures backtests and deployment remain separate work. No provider/model purchase, trading or deployment took place.
+- [Setup](app/README.md#databento-historical-data-for-agents--october-17-2026) · Verification and handoff (local archive: `results/databento_integration_2026-10-17/HANDOFF.md`).
+
+## Massive credentialed provider checks — October 17, 2026, Asia/Shanghai
+
+Locally verified with the real user-supplied key / reservation released. Two bounded
+read-only passes used 10 HTTP attempts total. EUR/USD history returned 120 completed
+hourly bars; Treasury yields returned 20 observations; funding conditions returned
+31 observations. Tested SPY option-chain and current EUR/USD quote endpoints both
+returned HTTP 403 (entitlement). Those capabilities remain blocked for this key;
+no subscription change or fallback was attempted.
+
+Live funding data exposed staggered observation dates: policy IORB had October 17,
+while SOFR/effective fed funds had October 15. Agent macro context now retains each
+series' latest non-null value, observation date/age and stale flag, independently
+of the recent-row sample. Missing later values never become zero or refresh an
+older series. Full regression: **383 Python passed, 7 opt-in MySQL skipped**.
+Real read-only data reached a scripted model through the implemented agent context;
+this is not a production worker/real-LLM acceptance claim.
+
+The key stays in the ignored mode-0600 `.env`; tracked examples contain no key.
+No credential/configuration file, worker flag, AWS/service state, frontend, schema,
+order path or sibling source was changed. Persistent activation remains disabled.
+Next gates: enable the missing provider permissions if required; deploy/configure
+the worker securely and accept a real queued canary. No commit/push/deployment.
+Live evidence and handoff (local archive: `results/massive_integration_2026-10-17/live_2026-10-17/HANDOFF.md`).
+
+
+## Strategy label — October 17, 2026, Asia/Shanghai
+
+Complete locally / browser verified. Rename the full Tau navigation tab and page heading from
+Strategy Library to Strategy; retain position, routes, filters and artifact links.
+Scope: two app.js labels and current navigation/usage records. No backend, CSS,
+Meridian, provider, trading or sibling changes. JavaScript syntax passes; browser
+confirms the Strategy heading, active Strategy tab and absence of the old label.
+Current navigation/usage records and MVP updated; reservation released.
+
+
+## Massive FX/rates/options agent data — October 17, 2026, Asia/Shanghai
+
+Implemented locally / offline verified; disabled by default. Massive supplies
+completed FX bars and entitled current FX quotes, daily Treasury/funding series,
+and current option chains with Greeks, IV and prior-day open interest. Actual
+research/copilot calls use the existing bounded data-request loop and model
+metering. Alpaca remains independently supported. Historical research sees only
+completed FX bars in its training window; current snapshots and latest-vintage
+macro data are denied. Option results are bounded samples with explicit truncation.
+
+Verification: **381 Python passed, 7 opt-in MySQL skipped**. Synthetic contracts
+cover HTTP decoding into model context, real research/copilot entry points,
+provider coexistence, cutoff boundaries, freshness, caching, credentials, errors,
+pagination, cancellation and request budgets. Bash/Python syntax and protected
+source checks pass. An interim cleanup regression removed Alpaca's timezone import;
+its DST tests caught it, the import was restored, and the final full suite passes.
+
+The initial offline phase prepared a mode-0600 ignored `.env` with an empty key
+slot; the user later supplied it (see the credentialed checks above). The tracked
+`.env.example` keeps blank credentials. AWS secret-loader wiring is ready but has not been executed.
+That initial phase performed no credentialed provider/model acceptance, deployment,
+service restart, publication or trading change. No integration write targeted frontend/server,
+DB/schema or sibling source. The initial preservation snapshot matched all 314
+protected files; later concurrent frontend source/documentation edits are retained
+and recorded separately in OUTSIDE_SCOPE_CHANGES.json. Key/entitlement checks and a controlled
+production worker canary remain gates. Reservation released.
+Canonical handoff and verification (local archive: `results/massive_integration_2026-10-17/HANDOFF.md`).
+
+
+## Strategy Library navigation — October 17, 2026, Asia/Shanghai
+
+Complete locally / browser verified. Full Tau now has Strategy Library between
+Research and Explore. The existing library has the same page title and its own
+active-tab identity; filters and strategy links reuse the existing implementation.
+Six synthetic browser checks and JavaScript syntax pass. Meridian, backend/API,
+CSS, bootstrap, preview transport, credentials/trading and sibling work are unchanged.
+Current navigation/usage/design and MVP records are aligned; no commit or deployment.
+Reservation released. Evidence and handoff (local archive: `results/strategy_library_nav_2026-10-17/HANDOFF.md`).
+
+
+## Latest main frontend inspection — October 17, 2026, Asia/Shanghai
+
+Complete locally / offline verified. Main fast-forwarded from `0cc084d` to
+`f8ff5e22fb65ca24e9407d8fcc75a9734262a487`. Alpaca PR #8 is now merged upstream;
+its existing local modules/tests matched main exactly and are tracked cleanly.
+The external theme bootstrap loads one frontend bundle after the local helper
+scripts. Tau retains the Research/artifact workspace and combined Settings, with
+Theme added as a section. Meridian's JS/CSS and boot.js match main unchanged.
+
+Verification: 299 Python passed, 7 opt-in MySQL skipped; 31 Node passed; 8 synthetic
+browser checks passed with no captured console errors. Both themes render, switch
+back correctly and preserve Tau Research artifact behavior. The shared sample-data
+preview runs on 8090 under the existing CSP. Meridian Dashboard is marked as the
+browser deliverable; opening it in the app's right panel was queued by the host.
+759 protected source files and 2059 old evidence files are unchanged; repository.py
+and schema.py were intentionally updated to the fetched upstream versions.
+
+No push, migration, deployment, provider/model call, live-flag or credential change.
+Local changes remain unstaged/uncommitted and backed up. Actual account preference
+persistence needs the upstream ui_theme schema migration and configured backend;
+the preview saves only a local theme cookie and blocks other business writes.
+Scope completed; reservation released. Canonical handoff (local archive: `results/main_frontend_sync_2026-10-17/HANDOFF.md`).
+
+## Inherited upstream implementation history — fetched October 17, 2026
+
+The following three sections preserve upstream's original implementation-stage notes and
+verification counts. They are historical evidence, not new local test/deployment results;
+newer upstream shipped statuses are retained in `../mvp.md`.
 
 ## Cross-contract research + cross-day gatekeeper — October 16, 2026 (worktree, research/eval only)
 
@@ -203,6 +398,77 @@ entitlements, then production canary acceptance. The checked-in secret loader an
 per-user canary controls require follow-up before a controlled customer rollout.
 No deployment or live trading is enabled by this PR.
 
+## Alpaca integration PR — October 16, 2026, Asia/Shanghai
+
+October 17 update: PR #8 merged upstream as `058dde5`; publication evidence below
+describes its earlier review state. Production activation remains separate.
+
+Published for review: [PR #8](https://github.com/JihuiTanUchicago/kalshi_trade/pull/8),
+open, non-draft and attached. Branch `codex/alpaca-market-data-20261016`, commit
+`b102c5aaa63dc88dadd09626032c8e2f6561ef4b`, based on verified main `0cc084d`.
+Only 10 Alpaca code/test/env/documentation files are included; unrelated frontend
+and sibling work is excluded. Exact clean PR tree: 258 Python passed/7 opt-in
+MySQL skipped; staged whitespace, syntax and private-value checks pass. The
+earlier 291-test result belongs to the shared tree with local frontend tests.
+GitHub reports clean/mergeable, with no reported CI checks. All 318 protected
+shared sources and the shared main HEAD/index are preserved. No merge,
+deployment, worker restart, credential update or model/financial operation.
+Reservation released; review and production activation remain separate gates.
+Publication handoff (local archive: `results/alpaca_pr_2026-10-16/HANDOFF.md`).
+
+## Alpaca market data for agents — October 16, 2026, Asia/Shanghai
+
+Implemented locally; focused/full tests and read-only live IEX checks pass. New
+`app/alpaca_data.py` supplies snapshots and paginated raw OHLCV bars;
+`app/agent_market_data.py` supplies watchlist context and bounded on-demand symbol
+reads to actual research/copilot calls. Provider/feed/time provenance, stale-data
+handling, fixed data-only endpoints, retries/cache/request bounds and historical
+training cutoffs are enforced. Usage includes tool-request model rounds; research
+cancellation remains effective. This does not add equity strategy features,
+backtests, brokerage accounts, orders, news or a streaming collector.
+
+Verification: 59 focused tests pass; full Python suite 291 passed/7 opt-in MySQL
+skipped. Existing private local credentials were read only for an ephemeral live
+smoke process: a scripted agent received a real SPY trade/quote snapshot and 44
+hourly bars, with sampled history before its cutoff. No credential file modified
+or written. IEX verified; SIP is configurable/offline tested, not live accepted.
+
+Owned: new provider/context modules/tests, narrow agent integration, env template,
+app README/product notes, tracker, required MVP queue and isolated evidence.
+Frontend/server, database/schema, Kalshi execution/live flags, existing previews,
+credentials, standalone Polygon and sibling feed work remain outside scope.
+No commit, push, deployment, paid subscription or model call. Next gate: load
+credentials and `TAU_ALPACA_ENABLED=1` into the real agent worker environment;
+confirm commercial data entitlement before customer rollout. All 310 protected
+sources match the baseline. New additions pass whitespace checks; five existing
+MVP whitespace warnings are preserved. Advisory reservation released; handoff
+contains reproducible commands and the activation boundary.
+Workstream handoff (local archive: `results/alpaca_market_data_2026-10-16/HANDOFF.md`).
+
+## Latest GitHub main + local merge — October 16, 2026, Asia/Shanghai
+
+Complete locally / offline verified. Shared main fast-forwarded from `e40d060` to
+`0cc084d084e1296bc524509919647e307f2ec45f`, matching GitHub main on final API check.
+Five overlaps were reconciled in an isolated checkout before applying the validated
+overlay. All local user work remains uncommitted. Research/artifact, Dashboard,
+Settings and Hot Markets preserve main's model picker, RSI, paginated strategy
+search/bulk deployment, holdings, demo replay, sharing, notifications, Community,
+Dev Logs, receipts and version banner. The version marker uses an HTML data attribute
+so the existing script CSP remains intact. Session grouping follows all API pages;
+saved demo replay and what-if curves remain distinct.
+
+Scope: local source reconciliation and focused compatibility tests/docs. No push,
+remote merge, deployment, migration, credentials/provider/account operations or live
+flags. Standalone Polygon, sibling feed work and historical evidence are preserved.
+Final verification: 244 Python passed, 7 opt-in MySQL skipped; 31 Node passed;
+23 synthetic browser checks passed, including the shared preview under production
+CSP. 641 protected source files and 2016 historical evidence files match backups.
+The preview at 8090 serves current API shapes with all business writes disabled.
+No authenticated/production/mobile acceptance claimed; scoped chat backend remains
+pending. Reservation released. Recovery and exact commands are in the
+canonical handoff (local archive: `results/local_github_merge_2026-10-16/HANDOFF.md`).
+
+
 ## Landing demo animations — no-reflow (2026-10-15) — SHIPPED
 Three animated demo containers used to **expand** as rows/cards arrived (reported as annoying).
 All now hold a constant size so the page never reflows mid-animation:
@@ -253,6 +519,308 @@ Drill from a System-map box into the real code behind it, three levels deep:
   auto-advanced only; dots are real `<button>`s that jump to a picture and reset the timer
   (`paymentGate()` `show(i)`/`restart()`). Dropped `aria-hidden` on the reel so the controls aren't
   focusable-inside-hidden.
+
+## Frontend cosmetics PR — October 16, 2026, Asia/Shanghai
+
+Current GitHub status: closed, unmerged; historical publication evidence below is retained.
+
+Published for review: [PR #7](https://github.com/JihuiTanUchicago/kalshi_trade/pull/7),
+open, attached and clean/mergeable. The requested short cosmetic-only comment is
+posted. Final branch `codex/frontend-cosmetics-20261016`, commitf241469 on current
+clean-history maina46e1b8. Reapplied only presentation work; existing main Research/
+Strategies, model selection, Kalshi demo, profile, code browser and Community
+features remain. Earlier unmerged conversation/artifact features are excluded.
+Only the Settings SPA route allowlist changes server.py; business handlers stay.
+
+Main was rewritten twice during preparation/publication; exact Git objects were
+verified/imported and the branch rebased with a lease on its owned prior head.
+GitHub confirms the exact13 files/commit/tree.177 Python passed, 7 opt-in MySQL
+skipped;15 synthetic desktop browser and6 static-handler checks pass, plus syntax/
+whitespace. Phone/authenticated services/CI acceptance are not claimed.772 shared
+sources and2 external sources, original HEAD/index and8090 preview are preserved.
+Owned QA servers/successful tab closed; error tab29 cannot be closed through Browser
+because of its generated data URL. Isolated publication checkout retained, clean.
+No merge, deployment, provider/model or financial operation. Ownership released.
+Canonical handoff (local archive: `results/frontend_cosmetics_pr_2026-10-16/HANDOFF.md`).
+
+## Overview heading cleanup — October 16, 2026, Asia/Shanghai
+
+Implemented and browser verified. Overview uses the shared page-title style without
+its subtitle or bottom divider. New research and the portfolio-first body remain.
+Live realized P&L/history freshness are retained with account details; paused/live
+states remain in Deployed. Compact Hot Markets is unchanged.
+
+Owned seven frontend/current product/design/readme/surface/plan paths plus isolated
+evidence; existing dirty work, backend/API/feeds/guards, fixtures, MVP, sibling work,
+PRs and earlier evidence were outside scope. No commit/push/deploy/provider/account/
+trading operation. Verification:25 passing browser checks at1280px and the native
+1015px preview, including live/stale/missing-history/paused/empty fixtures. No errors
+on the main preview; JS syntax, served asset hashes,766 repository +2 external
+protected sources pass. All56 API literals and JS outside Dashboard are unchanged;
+CSS changes one Dashboard-only rule. QA assertion diagnostics are corrected and
+retained with passing replacements. No new unit/full suites for this reversible
+presentation change. Screenshots inspected; native Dashboard refreshed. Owned QA
+tab and synthetic8096 server closed; original8090 preview retained. Ownership
+released. Canonical handoff (local archive: `results/overview_heading_cleanup_2026-10-16/HANDOFF.md`).
+
+## Compact Hot Markets heading — October 16, 2026, Asia/Shanghai
+
+Implemented and verified. Follow the supplied Position-page screenshot: use its existing compact
+Hot Markets heading on Dashboard too. Remove the Overview-height stretching and
+its extra measurements. Both visibility controls remain removed; all existing
+panel widths, top navigation, quotes, page content and phone flow stay as restored.
+This supersedes the previous request to align the two Dashboard heading dividers.
+
+Owned seven frontend/product/design/readme/surface/plan paths and isolated evidence.
+Existing dirty source, backend/API/feeds/guards/fixtures, MVP/marketing, sibling work
+and PRs are outside scope. No commit/push/deploy/provider/account/trading operation.
+Verification:23 browser assertions across Position/Dashboard/Research/Settings at
+1280px pass; every heading measures43.195px, versus the former82.375px Dashboard
+header. The native Position preview at1015px is refreshed and also measures43.195px.
+No browser errors. JS syntax, served hashes,3 JS/1 CSS exact edits and766 repository
++2 external protected sources pass; all56 literal API calls remain unchanged.
+No new unit/full suites for this reversible refinement. Ownership released; owned
+QA tab closed and native user page retained. Handoff (local archive: `results/hot_markets_compact_heading_2026-10-16/HANDOFF.md`).
+
+## Hot Markets controls and divider — October 16, 2026, Asia/Shanghai
+
+Implemented and verified. Removed both Hot Markets visibility controls and saved collapsed state;
+keep the panel open in its existing location. Align the panel heading divider with
+the bottom of Overview while the two columns are side by side. Measure the actual
+Overview header so wrapping, polling and resizing preserve alignment; phones keep
+the existing stacked flow. No other visual or page changes.
+
+Owned seven existing frontend/product/design/readme/surface/plan records and
+isolated evidence. Existing dirty work, backend/API/feeds/guards, data/fixtures,
+MVP/marketing, sibling products and PRs remain outside scope. No commit, push,
+deployment or provider/account/trading operation. Verification:17 browser assertions
+pass at the actual1015px viewport, including exact0px divider offset after load,
+reload and navigation; no browser errors. JS syntax,2 served asset hashes,10 JS/11
+CSS exact edit replays and preservation of766 repository +2 external sources pass.
+All56 literal API calls are unchanged. No new tests/full suites for this small
+layout change. Temporary QA tab closed; original preview and user navigation
+preserved. Ownership released.
+Handoff (local archive: `results/hot_markets_alignment_2026-10-16/HANDOFF.md`).
+
+## Restore previous frontend — October 16, 2026, Asia/Shanghai
+
+Restored the saved version before the rejected Hot Markets toggle/line-cleanup
+workstream, at the user's request. Top navigation, prior dashboard layout,
+Hot Markets chevron toggle and original separators are back. Both runtime assets
+match the saved pre-cleanup bytes. Earlier Research/Settings/backend-compatible
+work and unrelated dirty files remain. Source/evidence for the rejected design
+are archived; its visual gate was never satisfied and is superseded by this revert.
+
+Verified: JavaScript syntax, both served/runtime assets exactly match the saved
+pre-cleanup bytes,10 browser assertions pass and no browser errors. Top navigation,
+original dividers,176px chart, quote toggle/resizing, Research and Settings are
+restored.766 repository +2 external protected sources remain unchanged. No new
+tests or full suites were needed for this exact-byte restoration.
+Ownership released after verification: seven prior frontend/product/design/readme/surface/plan paths and isolated
+revert evidence. No backend/API/feed/guard/fixture/MVP/sibling/PR changes or commits,
+pushes, deployments or account/trading operations.
+Canonical revert handoff (local archive: `results/frontend_line_cleanup_revert_2026-10-16/HANDOFF.md`).
+
+## Hot Markets below header — October 15, 2026, Asia/Shanghai
+
+Implemented locally, verified and approved by **GPT-6.1 Sol: 9.2/10**, no blockers. One full-width black header now sits above a shared row of Hot Markets and page content. Their top edges meet the header bottom; neutral rules join the panel divider. Above 600px the rail reserves page width; phones stack the panel between header and page. The chevron-only toggle, removed RIGHT NOW copy, quotes/refresh, persistence, navigation, keyboard/focus and existing page features remain. Charts explicitly resize on toggle; the sticky rail fits the remaining viewport while scrolling.
+
+Verification: **282 browser assertions**, **29 Node tests**, **17 focused Python tests** and JavaScript syntax pass; no browser runtime errors. Nine toggle widths, eleven routes at four widths, sticky scrolling/resizing, chart width changes, focus and the existing System read-error state are covered. **766 protected sources unchanged**; declared shell/layout changes replay exactly, with all other page/data/API/guard/chart-renderer logic identical. API paths and controls are unchanged; the existing rail ID moves into literal shell markup and gains its landmark name. Full Python regression was not rerun for this layout-only integration. Source hashes stayed fixed during independent review. The scroll-fit optimization and sparse mobile quote spacing are nonblocking follow-ups.
+
+Canonical handoff (local archive: `results/hot_markets_header_2026-10-15/HANDOFF.md`), review (local archive: `results/hot_markets_header_2026-10-15/REVIEW.md`), verification (local archive: `results/hot_markets_header_2026-10-15/VERIFICATION.json`), browser receipt (local archive: `results/hot_markets_header_2026-10-15/BROWSER_CHECKS.json`) and preservation (local archive: `results/hot_markets_header_2026-10-15/PRESERVATION.json`). Native http://127.0.0.1:8090/ refreshed with Hot Markets open at restored 1015×954: full-width header, 248px rail and 767px page meet at the same boundary, without overflow. QA tab is closed; the existing read-only sample preview remains, with writes disabled. Owned seven shell/layout and current product/design/readme/surface/plan paths plus isolated evidence; advisory ownership released. Backend/API/feeds/guards, prior copy/page features, preview transport/fixtures, public marketing, MVP, PRs, Polygon/sibling work and prior records remain untouched. No commit, publication, deployment, migration or provider/financial operation. Next: user review; broader visual and live-backend gates remain separate.
+
+## Hot Markets icon toggle — October 15, 2026, Asia/Shanghai
+
+Implemented locally, verified and approved by **GPT-6.1 Sol: 9.3/10**, no blockers. Removed RIGHT NOW/dot and the black-header Hot markets label. The compact left control now uses double chevrons, right to open and left to close, with accessible state labels and matching native tooltip. Quote-panel title, desktop/coarse targets, keyboard/focus, dock dimensions/phone flow, navigation and all data/actions remain.
+
+Verification: **57 browser assertions** at 1280/1024/600/320px in both states, JavaScript syntax passed, no runtime errors. No unit/full suites added/rerun for the reversible markup/CSS refinement. **766 protected sources unchanged**; only two JS markup lines and a tooltip assignment differ, with all other copy/API/data/chart/dock/guard logic identical and unchanged paths, IDs, controls and ARIA labels/counts. Source hashes were fixed for the independent review; its minor stroke-size nit is nonblocking.
+
+Canonical handoff (local archive: `results/hot_markets_toggle_2026-10-15/HANDOFF.md`), review (local archive: `results/hot_markets_toggle_2026-10-15/REVIEW.md`), verification (local archive: `results/hot_markets_toggle_2026-10-15/VERIFICATION.json`), browser receipt (local archive: `results/hot_markets_toggle_2026-10-15/BROWSER_CHECKS.json`), preservation (local archive: `results/hot_markets_toggle_2026-10-15/PRESERVATION.json`). Native http://127.0.0.1:8090/ refreshed with observed collapsed state and restored 1015×954 viewport; QA tab closed, preview server unchanged, sample data/writes disabled. Owned shared toggle/panel markup/CSS, current PRODUCT/DESIGN/surface/README/PLAN notes and isolated evidence; advisory ownership released. Backend/API/quotes/guards, prior cleanup/dock, transport/fixtures, public pages, MVP, PRs, Polygon/sibling work and prior records remain untouched. No commit, provider/financial operation, publication, deployment or migration. Next: user review. Scoped approval leaves broader visual/live-backend gates separate.
+
+## Hot Markets dock — October 15, 2026, Asia/Shanghai
+
+Implemented locally, verified and independently approved by **GPT-6.1 Sol: 9.2/10**, no blockers or lost features. Toggle is first on the left of the shared header. Above 600px the entire app reserves a 248–306px rail; smaller phones stack the bounded-height panel above the app in document flow. The old <=1080 overlay rule and width animation are removed, so panel visibility and reserved space change together. Quote data/API/refresh, persistence, navigation, closing focus, chart sizing, prior copy cleanup and Dashboard layout remain.
+
+Verification: **246 browser assertions**, **29 Node tests**, **17 focused Python tests** and JavaScript syntax pass; no browser runtime errors. Nine toggle widths and eleven routes at five widths cover fit/no-overlap, chart expansion/contraction, keyboard/focus, one rail, persistence, SPA/Settings navigation and read-error behavior. **766 protected sources unchanged**; all JavaScript outside toggle movement/rail DOM placement is identical, with unchanged API paths, HTML IDs, controls and ARIA labels. Full Python regression was not rerun. The authenticated sign-in redirect expectation was corrected in QA and recorded. Review is scoped to this integration; earlier overall visual design and live-backend gates remain separate.
+
+Canonical handoff (local archive: `results/hot_markets_dock_2026-10-15/HANDOFF.md`), review (local archive: `results/hot_markets_dock_2026-10-15/REVIEW.md`), verification (local archive: `results/hot_markets_dock_2026-10-15/VERIFICATION.json`), browser receipt (local archive: `results/hot_markets_dock_2026-10-15/BROWSER_CHECKS.json`) and preservation (local archive: `results/hot_markets_dock_2026-10-15/PRESERVATION.json`). Native latest page at http://127.0.0.1:8090/ is refreshed with Hot Markets open: 248px rail + 767px app at restored 1015×954. Main read-only sample preview PID85246/session13271 remains; QA tab is closed and no extra server started. Owned shared header/rail JS/CSS, current PRODUCT/DESIGN/surface/README/PLAN notes and isolated evidence; advisory ownership released. Backend/transport/fixtures, feeds/execution/guards, public marketing redesign, MVP, PRs, Polygon/sibling work and prior records remain untouched. No commit, publication, deployment, migration or provider/financial operation. Next: user review.
+
+## Frontend copy cleanup — October 15, 2026, Asia/Shanghai
+
+Implemented locally, verified and approved for copy cleanliness. Removed repeated descriptions, workflow/keyboard tutorials, payment pitches and explanatory empty-state paragraphs across all customer tabs, Research/session/artifact/library, market detail, Settings and dialogs. System descriptions are shorter; session terminology and related actions are consistent. Actual data/research/chat content, labels/accessibility, useful errors/states, evidence/provenance, fees/limits, paper/live consent and saved/scenario meaning remain. Hot Markets only loses an unsupported empty-state timing promise; its behavior/layout and the portfolio-first Dashboard remain.
+
+The user-required **GPT-6.1 Sol** subagents reviewed the baseline (**6.3/10**) and each revision (**9.1/10**, final **9.2/10**, approval YES, no harmful deletion). A capacity error interrupted the first final-review attempt; the same reviewer/model resumed and completed. Final source hash `f2d8da4f7a5ad3245e2a1e3086dca9d34e4ac75fbcfca539f01fcaf8854f428e` was fixed throughout final review. The **≥9/10 copy gate is satisfied**; this does not close the earlier overall visual design gate or live backend acceptance.
+
+Verification: **123 browser assertions**, **29 existing Node tests**, **17 focused Python tests** and JavaScript syntax pass. Eleven routes were checked at desktop/phone widths; isolated fixtures cover empty/error states, configured Billing/System, chat drafts/newlines/switching, payment prerequisite, risk/LIVE/scenario meaning and autopilot confirmation. No browser runtime errors. **766 protected sources unchanged**; all 59 declared replacement records replay exactly, API paths/HTML IDs/control names/ARIA labels/control-tag counts are identical, and CSS changes only Send alignment. Full Python regression was not rerun for this copy edit. QA diagnostics and the unchanged payment-modal Escape observation are retained; research stays blocked without a card.
+
+Canonical handoff (local archive: `results/frontend_copy_cleanup_2026-10-15/HANDOFF.md`), final review (local archive: `results/frontend_copy_cleanup_2026-10-15/REVIEW_FINAL.md`), verification (local archive: `results/frontend_copy_cleanup_2026-10-15/VERIFICATION.json`), browser receipt (local archive: `results/frontend_copy_cleanup_2026-10-15/BROWSER_CHECKS.json`) and preservation (local archive: `results/frontend_copy_cleanup_2026-10-15/PRESERVATION.json`). Existing native preview at http://127.0.0.1:8090/ is refreshed on the latest page, with its viewport restored and Hot Markets collapsed; PID85246/session13271 remains the read-only sample preview. Temporary QA tabs/server are closed. Owned only `app.js` copy, Send alignment, current PRODUCT/DESIGN/surface/README/PLAN notes and isolated evidence; advisory ownership released. Existing backend/API/guards/transport/fixtures, standalone operator console, public marketing redesign, PRs, MVP, Polygon/sibling work and prior records remain untouched. No commit, publication, deployment, migration or real provider/financial operation. Next: user review; authenticated-account acceptance remains separate.
+
+## Dashboard layout only — October 15, 2026, Asia/Shanghai
+
+Implemented locally and verified. The user approved the Dashboard portion of the preview and explicitly retained existing Hot Markets. Paper portfolio/open positions now lead, followed by performance and recent research; the complete deployed table and settled trades remain below. Account panels stack at 760px and below. Existing API reads, formatting, polling, chart sizing, error isolation and actions remain unchanged.
+
+Verification: **79 browser assertions**, **29 existing Node tests** and **17 focused Python tests** pass; JavaScript syntax and scoped whitespace/links pass. Browser checks cover 320/760/1024/1440px, source values and daily losses, keyboard disclosure, unchanged Hot Markets drawer/focus/chart resizing, and isolated synthetic research-read failure/recovery at desktop/phone widths. No browser runtime errors. **766 protected sources unchanged**; JavaScript outside the Dashboard template and all Hot Markets CSS lines are identical to the dirty baseline. No new production tests or backend behavior were added for this layout change; the full Python suite was not rerun.
+
+Canonical handoff (local archive: `results/dashboard_layout_2026-10-15/HANDOFF.md`), browser checks (local archive: `results/dashboard_layout_2026-10-15/BROWSER_CHECKS.json`), verification (local archive: `results/dashboard_layout_2026-10-15/VERIFICATION.json`) and preservation (local archive: `results/dashboard_layout_2026-10-15/PRESERVATION.json`). Native right-side Dashboard refreshed at http://127.0.0.1:8090/; PID85246/session13271 remains the read-only sample preview. Temporary failure-fixture server/tab stopped, viewport restored and original tab retained. Owned only Dashboard template/portfolio CSS, current PRODUCT/DESIGN/surface/README/PLAN notes and isolated evidence; advisory ownership released. Header/Hot Markets, Settings/Research and other views, existing backend/server/fixtures, PRs, MVP, Polygon/sibling work and prior records remain untouched. Next: user review; real-account acceptance and deployment remain separate. No rolling banner, commit, publication, deployment, migration, new feed, provider or financial operation.
+
+## Dashboard order and quote-banner preview — October 15, 2026, Asia/Shanghai
+
+Rendered and browser verified; design preview only, before frontend implementation. Portfolio/open positions come first, followed by performance and recent research, with deployed/settled information retained below. **Top banner** and **Under navigation** compare horizontal Hot Markets quote placement. Labelled sample bid/ask cents, pause/resume, hover/focus pause, a stationary quote list, reduced-motion default and adjustable speed are included. Verification: **35 browser assertions passed**, zero runtime errors at 320/760/1024px; plot sizing/labels, syntax/fragment readback and **772 protected source hashes** pass. Canonical handoff (local archive: `results/dashboard_quotes_design_2026-10-15/HANDOFF.md`), verification (local archive: `results/dashboard_quotes_design_2026-10-15/VERIFICATION.json`), preservation (local archive: `results/dashboard_quotes_design_2026-10-15/PRESERVATION.json`). Owned only the thread's `dashboard-quotes-preview.html`, isolated evidence and this entry; advisory ownership released. Active frontend/backend/preview runtime, Settings/Research, other records/PRs, MVP, Polygon/sibling work and credentials remain untouched. Temporary inspection server/tab/files cleaned up; original Dashboard tab and viewport preserved. Next: user reviews placement/layout before application integration. No commit, publication, deployment, migration, provider or financial operation.
+
+## Settings consolidation — October 15, 2026, Asia/Shanghai
+
+Implemented in the local working tree and offline/browser verified; uncommitted and not deployed. One **Settings** main-navigation entry contains horizontal Account/Billing/System sections. Existing forms/API actions, full map, financial/auth guards and legacy URLs remain; operator users/waitlist/grants expand within System under the existing role/mode. Repeated headings, introductions, balance captions, instructional filler and a duplicate expansion indicator are removed. Kalshi setup collapses; auto-reload has two labelled fields. Read failures retain navigation and recover independently; stale responses and obsolete System polling cannot update another section.
+
+Verification: **170 Python passed / 7 opt-in MySQL skipped; 29 Node passed; 84 browser and 19 HTTP checks passed** at 320/760/1280px. No browser runtime errors; syntax, scoped whitespace, links and served hashes pass. **764 protected sources unchanged**; backend AST is identical except the SPA route whitelist, and frontend API literal paths/counts are identical. Synthetic payment/account/operator writes are isolated fixtures; no providers or trading were contacted. Canonical handoff (local archive: `results/settings_integration_2026-10-15/HANDOFF.md`), browser checks (local archive: `results/settings_integration_2026-10-15/BROWSER_CHECKS.json`), HTTP checks (local archive: `results/settings_integration_2026-10-15/HTTP_CHECKS.json`), preservation (local archive: `results/settings_integration_2026-10-15/PRESERVATION.json`). Native preview is open on http://127.0.0.1:8090/settings/account, Python 3.12 PID85246/session13271, sample data with writes disabled. Temporary 8098 test server/tab cleaned up; viewport restored. Owned frontend, SPA route pattern/tests, current PRODUCT/DESIGN/surface/README/PLAN notes and isolated evidence; advisory ownership released. Other backend/provider/worker/trading sources, PRs, MVP, Polygon/sibling work and prior records remain untouched. Next: user review and configured non-production account/payment/MySQL acceptance. No commit, publication, deployment, migration or real financial/provider operation.
+
+## Combined Admin design preview — October 15, 2026, Asia/Shanghai
+
+Rendered and browser verified; design preview only, awaiting user review before application changes. One Admin navigation entry groups Account, Billing and System; recommended section rail and alternative section tabs preserve personal-account access, with operator tools restricted within System. The interactive draft uses sample data and local actions only. Verification: **72 browser assertions passed; 18 layout measurements** across 320/768/1024px and dark Account; JavaScript syntax/fragment format pass, final wrapped interactions have no new runtime errors, and **772 protected sources remain unchanged**. Earlier standalone/inspection diagnostics are retained with corrections. The user's Account tab remains unchanged; temporary inspection tab/server/wrappers are cleaned up. Canonical handoff (local archive: `results/admin_hub_design_2026-10-15/HANDOFF.md`), verification (local archive: `results/admin_hub_design_2026-10-15/VERIFICATION.json`), preservation (local archive: `results/admin_hub_design_2026-10-15/PRESERVATION.json`). Advisory ownership released. Owned only the thread's `admin-hub-preview.html`, isolated evidence and this narrow entry. Application/runtime/backend/API/auth/payment/trading contracts, Meridian/PR records, MVP, Polygon and sibling work remain untouched. Next: user selects the layout; implementation and authenticated acceptance remain pending. No commit, publication, deployment, migration, provider or financial operation.
+
+## Meridian frontend PR publication — October 15, 2026, Asia/Shanghai
+
+Published and attached: [GitHub PR #6](https://github.com/JihuiTanUchicago/kalshi_trade/pull/6), open/ready for review and clean/mergeable; not merged or deployed. Branch `codex/meridian-frontend-redesign`, commit `5a99fd0f9638863b664402935bc7e0a889c59832`, base `e40d060`. The exact 33-path tree combines the existing Research conversation/artifact workspace with compact Meridian/Catalyst presentation, local fonts, current contracts, focused tests and compact synthetic evidence. MVP/queue, Polygon/sibling work, prototype archives, credentials and unrelated records are excluded. Prior PR #5 remains closed/unmerged and unchanged.
+
+Verification in the isolated publication checkout: **163 Python passed / 7 opt-in MySQL skips; 29 Node passed; 183 synthetic browser checks passed** at 360/760/1024/1280/1440px; syntax, whitespace, links and source/tree hashes pass. Application/font/test bytes match the shared frontend; only the copied license normalizes line endings/trailing spaces. GitHub lists no CI checks/statuses, so no CI success is inferred. Git HTTPS push failed in its HTTP2 framing layer; authenticated Git REST reproduced the exact local commit/tree before ref/PR creation.
+
+All 85 protected shared sources remain unchanged. Shared main stays dirty at `e40d060` and its 8090 preview returns 200 without browser navigation or refresh. The isolated publication checkout is clean; only temporary preview 8097 was stopped. The old 8095 prototype probe returned 502 and its source/process/tabs were untouched. The PR explicitly discloses scoped chat backend implementation, authenticated non-production MySQL/account/provider acceptance and the earlier visual target (**latest 7/10; requested 9/10 unmet**) as remaining gates.
+
+Canonical handoff (local archive: `results/meridian_frontend_pr_2026-10-15/HANDOFF.md`), publication (local archive: `results/meridian_frontend_pr_2026-10-15/PUBLICATION.json`), remote verification (local archive: `results/meridian_frontend_pr_2026-10-15/GITHUB_VERIFICATION.json`), preservation (local archive: `results/meridian_frontend_pr_2026-10-15/PRESERVATION.json`). Advisory publication ownership released. Next: human PR review; no merge, deployment, migration, paid/application provider or financial operation. Product/design/surface/API contracts are committed with the candidate; publication adds no contract/provider decision or unrelated roadmap update.
+
+## Meridian design on local main — October 15, 2026, Asia/Shanghai
+
+Integrated into the local main working tree and offline/browser verified; uncommitted and not deployed. The user's requested compact Meridian/Catalyst presentation now runs in the actual customer app. Overview uses actual recent sessions and existing paper account/trade data, with period-based cumulative closed P&L, daily values, isolated read errors and stale-response protection. Compact header/rows/panels/transcripts, local fonts, a header Hot Markets trigger, measured charts and unboxed evidence replace the prototype-only presentation. Existing Research artifacts/data/actions, Explore/Hot Markets, account features and financial/auth guards remain. Form height 481px→348px and workspace heading 55px→27px at 1440px; message line-height 20.15px→18.2px; 44px touch targets retained.
+
+Verification: **163 Python passed / 7 opt-in MySQL skips; 29 Node passed; 183 browser checks passed** across 360/760/1024/1280/1440px. Six served asset hashes match. Seventy-four protected sources and three prototype runtime sources match; only static font serving/CSP changes affect the Python server. Original dirty work and source-before copies are retained. The final browser receipt covers all routes, drafts/tabs, controls/evidence, drawer fit/resizing/focus and Overview success/empty/error/race behavior. Initial nav/hidden-pane/plot-size/preservation-enumeration diagnostics remain with their corrections. No commit/push/PR mutation/deployment/migration/application provider or financial operation occurred; the user-requested design critics were invoked.
+
+The earlier visual-quality gate remains open: main critics 24–29 scored 6.2, 6.5, 6.8, 7.0, 7.2 and 7.0/10. No ≥9 or full design acceptance is claimed. Every independent screenshot-only review uses the same prompt in a fresh GPT-6.1 Sol context. The latest user priority of compact local-main integration is implemented; further studio-quality refinement remains. Canonical handoff (local archive: `results/meridian_main_integration_2026-10-15/HANDOFF.md`), verification (local archive: `results/meridian_main_integration_2026-10-15/VERIFICATION.json`), critic history (local archive: `results/meridian_main_integration_2026-10-15/ITERATIONS.json`), preservation (local archive: `results/meridian_main_integration_2026-10-15/PRESERVATION.json`). Read-only sample preview PID70137/session28157 is refreshed on Overview at http://127.0.0.1:8090/; start via /preview. Existing user prototype tabs/8095 remain. Advisory integration ownership released. Next: continue visual refinement with the compact main source intact; scoped chat backend and authenticated non-production MySQL/provider acceptance remain independent pending gates.
+
+## Local main pull and frontend compatibility — October 15, 2026, Asia/Shanghai
+
+Historical pre-Meridian sync receipt; current presentation and preview ownership are above.
+
+Completed and offline/browser verified; not deployed. Local main fast-forwarded 18 commits from 99a5399 to current upstream e40d060. Applied the already-compatible runtime/helpers/tests from frontend PR #5 while preserving the Research conversation/artifact layout and upstream Explore/Hot Markets, public System, research depth/run-forever/automatic market choice, pagination, credits and deployment warnings/guards. No additional application-code fix was needed; twelve runtime/test files match the PR. The local read-only preview now supports new deep links and Explore query/data shapes, with six research choices and honest sample conversations. User MVP, Polygon work, standalone original and independent prototype/records remain preserved; recovery backups and path-scoped stash aacb057c90f01ed049ce2e666b4e8b1adcd5256c are retained.
+
+Verification on the updated main checkout: **157 Python passed / 7 opt-in MySQL skips; 29 Node passed; 16 browser and 19 HTTP checks passed**. Syntax, owned whitespace, exact served/PR asset hashes and documentation links pass. Browser checks cover new routes/data, controls, tabs/drafts, Position, delayed-load pane selection and 360/760px layouts. A mobile probe was occluded by the open Hot Markets drawer; DOM hit testing identified the cause and checks pass with it collapsed, without a runtime pane change. Main preview PID65067/session96989 is refreshed at http://127.0.0.1:8090/research/1?strategy=1 with both original artifacts open and #1 selected; current draft was retained. Temporary 8096 server/tab stopped; viewport restored. The native market drawer is collapsed so conversation remains visible. No unrelated source changes or original local work lost. Canonical handoff (local archive: `results/local_main_frontend_sync_2026-10-15/HANDOFF.md`), verification (local archive: `results/local_main_frontend_sync_2026-10-15/VERIFICATION.json`), preservation (local archive: `results/local_main_frontend_sync_2026-10-15/PRESERVATION.json`). Advisory ownership released. Next: user review; actual scoped chat backend and authenticated non-production MySQL/account/provider acceptance remain pending. PR #5 remains open and unchanged; no remote merge, new commit/push, deployment, migration, provider/model/payment or trading operation.
+
+## Frontend GitHub PR publication — October 15, 2026, Asia/Shanghai
+
+Historical publication receipt: the local checkout subsequently advanced in the main-sync workstream above.
+
+Published and attached to this Codex task: [GitHub PR #5](https://github.com/JihuiTanUchicago/kalshi_trade/pull/5), open/ready for review and mergeable, not merged or deployed. Branch `codex/research-artifact-workspace`, commit `6eec9d5efd26f4f98b3285da3f8904b2e73e5b98`, based on current upstream `e40d060` (18 updates since the editing preview). Its 33 paths contain the final Research conversation/artifact workspace, Position deployment entrypoints, scoped chat contract, approved copy/control cleanup and final documentation/compact synthetic evidence. Explore/Hot Markets, iterative research/depth/automatic market choice, pagination, credits and upstream deployment policy/warnings are preserved. The obsolete frontend System admin redirect is corrected while authenticated routing/backend activity ownership stay intact. Description explains all final frontend changes and remaining backend boundaries.
+
+Verification: **157 Python passed / 7 opt-in MySQL skips; 29 Node passed; 24 browser and 14 HTTP checks passed**, plus syntax/whitespace/documentation links and exact served/published tree hashes. GitHub reports CLEAN/MERGEABLE with no CI checks listed; no CI success is inferred. Synthetic providers/financial writes disabled; temporary 8096 server/tab stopped and viewport reset. Direct Git transfer failed; authenticated GitHub REST recovered exact upstream objects and published the verified tree, with connectivity/hash checks. Shared main remains at `99a5399`; 290 non-evidence sources, 8090 preview, user MVP/its existing PR, Polygon integration, standalone original and independent prototype/records are preserved. Rebased code lives in sibling `kalshi_trade-frontend-pr/kalshi_trade_infra`; do not reproduce its acceptance against old shared main. Advisory publication reservation released. Canonical handoff (local archive: `results/frontend_pr_2026-10-15/HANDOFF.md`), publication (local archive: `results/frontend_pr_2026-10-15/PUBLICATION.json`), verification (local archive: `results/frontend_pr_2026-10-15/VERIFICATION.json`). Next: PR review; scoped backend implementation and authenticated non-production MySQL/account/provider acceptance remain pending. No merge, deployment, migration, paid/model/provider or financial operation.
+
+## Approved Research UI copy/control cuts — October 15, 2026, Asia/Shanghai
+
+Implemented and offline/browser verified; not deployed. Applied user-approved C1–C11/B1–B2: single session status/count, compact message-group targets, accessible composer, preserved direction/IDs without repeated headings, concise Research intro, compact Position cards and one platform live notice. Removed duplicate navigation and demo invitations. Sample conversation is explicitly labelled; one current revision retains chronological proposal/backtest history. Distinct proposals/actions, complete strategy evidence, drafts/tabs, saved-rule/live guards and both deployment entrypoints remain.
+
+Verification: **148 Python passed / 7 opt-in MySQL skips; 29 Node passed; 25 browser and 4 HTTP checks passed**. New grouped-target test preserves source IDs; browser covers every cut, revision decisions, all-status review, error/disconnection/draft behavior, Position controls, empty-state/specific live restrictions and 360/760px fit. Screenshots inspected; viewport restored; current served bytes and owned whitespace pass. **771 non-owned source files preserved; 22 non-chat fixture endpoints unchanged**. Real backend/business/records are untouched. Contract/PRODUCT unchanged because capabilities/endpoints did not change.
+
+Main preview http://127.0.0.1:8090/research/1?strategy=1 (PID70248/session98434), existing native tab with two artifacts; sample data and writes disabled. Temporary 8094 server/tab stopped. Owned presentation/helpers/test, sample JSON and related design/readme/progress evidence; advisory ownership released. Concurrent Meridian work, mvp.md, standalone/merged Polygon, credentials and other evidence remain preserved. No commit, deployment, migration, paid/provider/model or financial operation. Next: user review; session-scoped backend and authenticated non-production MySQL/account acceptance remain pending. Canonical handoff (local archive: `results/research_ui_cleanup_2026-10-15/HANDOFF.md`), verification (local archive: `results/research_ui_cleanup_2026-10-15/VERIFICATION.json`), cleaned preview (local archive: `results/research_ui_cleanup_2026-10-15/EDITING_PREVIEW.png`).
+
+## Meridian Catalyst palette and independent critic iterations — October 14, 2026, Asia/Shanghai
+
+Historical prototype milestone, continued in the user-authorized local-main integration above. Catalyst's palette, local fonts, quote strip, research queue and supporting portfolio composition were explored in the isolated Meridian concept. Prototype source is retained at iteration 23, whose independent score was 7.6/10. All 24 unfiltered prototype scores (6.5–8.0), screenshots, source snapshots and the fixed screenshot-only critic prompt remain in `results/frontend_reimagination_2026-10-14/evidence/catalyst-refinement/`. The 9/10 criterion was never included in critic prompts or claimed satisfied. Latest completed prototype browser run was iteration 22, 269/269; iteration 23 was captured/reviewed but not fully browser-regressed. Earlier real 768px overflow and test-selector diagnostics remain preserved. T1–T7/C1–C4 cuts were applied in the concept under the improvement brief; other concept sources were unchanged. The old prototype-only ownership/read-only-main boundary is superseded by the latest explicit integration request; prototype presentation ownership is released. Current implementation/evidence now belongs to the main workstream.
+
+## Research conversation and strategy artifacts — October 14–15, 2026, Asia/Shanghai
+
+Implemented and offline/browser verified; not deployed. Completed the requested restoration first, then transformed each Research session into conversation/activity/all-status strategy links on the left and opened artifact tabs/full sheets on the right. Independent Strategies navigation is removed; legacy links/library filters, ancestor/standalone artifacts and every saved evidence/scenario/gate remain. Position exposes eligible strategies with the same paper/live deployment component; existing board, positions, chat/autopilot and other screens remain.
+
+Verification: **148 Python passed / 7 opt-in MySQL skips; 28 Node passed (6 new artifact-state cases); 39 browser and 8 HTTP checks passed**. Actual GET handlers use synthetic repository data; optional fake sends/scenarios test target/result races. Coverage includes full sheets/statuses, tabs/keyboard/close/mobile, isolated drafts, history, revision review, scenario errors, poll recovery, cancellation, Position and payment gates. Corrected polling-deadline probes remain diagnostics. Screenshots inspected at desktop/mobile; 360/760/1024px fit; syntax/owned whitespace pass. **766 non-owned source files preserved**, with business server unchanged after reversing only asset hashing lines. Backend scoped chat routes remain unimplemented; real handlers preserve drafts and disable writes.
+
+Main preview http://127.0.0.1:8090/research/1?strategy=1 (PID64648/session82593) retains two artifact tabs, synthetic data and disabled writes. Existing right split request reported queued. Temporary 8094 server/tab stopped; viewport reset. Owned frontend/state/tests, static versioning and relevant UI/progress records; advisory ownership handed off. Concurrent Meridian evidence/entries, mvp.md, workers/schema/credentials and Polygon feed work remain untouched. Next: connect scoped backend contract and configured non-production account/MySQL acceptance. No commit, push, migration, deployment, paid/model or financial operation. Canonical handoff (local archive: `results/research_artifact_workspace_2026-10-14/HANDOFF.md`), verification (local archive: `results/research_artifact_workspace_2026-10-14/VERIFICATION.json`), editing preview (local archive: `results/research_artifact_workspace_2026-10-14/EDITING_PREVIEW.png`).
+
+## Meridian dark trading hub and cut review — October 14, 2026, Asia/Shanghai
+
+Implemented and browser verified; cut list proposed, not applied. User preferred Meridian and requested a dark Bloomberg-inspired trading hub. The isolated concept now uses graphite/black panels, amber headings, cyan traces and monospaced figures, with BTC context/sample Kalshi bid/ask quotes, a responsive paper-portfolio plot and activity above the retained phase board. Website, six workspace screens and dialogs are dark. Existing copy/actions remain for review. Seven text groups (T1–T7) and four replicated control patterns (C1–C4) are identified from current DOM/handlers; card Open is explicitly a repeated span affordance, not a second button. Candidate/risk/mode/review controls remain meaningful.
+
+Verification: **260/260 Chromium checks pass**, all original views fit 360/768/1024/1440px plus Meridian 440/620px; no script errors, failed resources or external interaction requests. Twelve Fieldwork/Aperture screenshots are pixel-identical. JS syntax and tracker whitespace pass; screenshots inspected. Initial table-selector diagnostic is retained; the portfolio plot now fills its measured panel width. Canonical handoff (local archive: `results/frontend_reimagination_2026-10-14/HANDOFF.md`), verification (local archive: `results/frontend_reimagination_2026-10-14/evidence/meridian-terminal/VERIFICATION.json`), cut list (local archive: `results/frontend_reimagination_2026-10-14/CUT_REVIEW.md`), review receipt (local archive: `results/frontend_reimagination_2026-10-14/evidence/meridian-terminal/REVIEW_EVIDENCE.json`). Preview: http://127.0.0.1:8095/?concept=meridian&view=workspace, existing PID58550/session73043; right-panel handoff queued.
+
+Owned only the isolated prototype/layout/scoped stylesheet, review/evidence and narrow documentation entries. Actual customer-app Research conversation/artifacts, backend, financial/provider state, user MVP, Polygon/feed work and other workstreams are read-only. Sources-before captured; other tracker entries preserved. Advisory ownership handed off. Next: user reviews chosen cut IDs; production integration/physical-device/backend acceptance remain separate. All quotes/results are illustrative. No commit, push, deployment, migration, paid/model/provider or financial action.
+
+
+## Separate Research and Strategies restoration — October 14, 2026, Asia/Shanghai
+
+Implemented and offline/browser verified; not deployed. User requested the previous separate sections while reconsidering the design. Restored upstream `99a5399` Research form/run history/activity and Strategies filters/list/direct detail, retaining current billing/admin/System/Community, Account/Position labels, unrelated cleanup, route/scenario guards and financial gates. The merged session/conversation frontend is inactive and preserved in the source backup; its helper modules and unimplemented backend contract remain design references.
+
+Verification: **148 Python passed / 7 opt-in MySQL skips, 22 Node passed (preserved inactive helpers), 23 browser and 8 actual-handler HTTP checks passed**. Browser/HTTP data is synthetic, providers and writes disabled; 360/760px layouts and screenshots inspected. No inactive session requests or financial/research/chat submissions. Corrected selector/shared-tab probe diagnostics are retained. **767 non-owned source files match baseline**, including backend, mvp.md and Polygon feed work. Main preview: http://127.0.0.1:8090/strategies/1, existing tab; temporary 8094 server/tab stopped and viewport reset. Native right split request reported queued.
+
+Owned affected frontend/navigation/styles/entrypoint, focused asset test and relevant UI/progress records; advisory ownership handed off. Previous cleanup/reimagination evidence and unrelated changes are preserved. Next: user's revised design; configured authenticated MySQL/account/provider acceptance remains pending. No commit, push, deployment, migration, paid/model call or financial action. Canonical handoff (local archive: `results/separate_research_strategies_2026-10-14/HANDOFF.md`), verification (local archive: `results/separate_research_strategies_2026-10-14/VERIFICATION.json`), source backup (local archive: `results/separate_research_strategies_2026-10-14/source_before/`).
+
+## Frontend reimagination concepts — October 14, 2026, Asia/Shanghai
+
+Historical original exploration receipt; Meridian was subsequently selected and revised in the dark-hub workstream above. Three isolated concepts were implemented and offline/browser verified. User requested complete Tau frontend redesigns inspired by a shell-generated random alphanumeric string. The 768-character seed was analyzed and deleted; only abstracted patterns remain. **Fieldwork** (warm editorial research ledger; initial recommendation), **Aperture** (dark instruments/lime/horizontal navigation), and **Meridian** (cobalt architecture/workflow board) each include a website plus Dashboard, Strategy, Position, Community, Account and Billing. Candidate evidence/comparison, scripted sample conversation, local research, explicit simulated paper review/deployment, filters/search, portfolio periods, pause/resume and community interactions are functional in the browser. All figures and replies are illustrative; there are no real backend/provider/financial calls.
+
+Verification: **255/255 Chromium checks pass**, all 21 screens fit 360/768/1024/1440px; desktop/mobile website/workspace/candidate screenshots inspected; no JavaScript errors, failed resources or external browser requests. JS/shell syntax and tracker whitespace pass. Duplicate mobile wordmark, report caption and control reflow are corrected; candidate identity/close controls remain visible during mobile scrolling; initial diagnostic receipts are retained. Bundled fonts/licenses and vector assets make the 306KB buildless source self-contained. Canonical handoff (local archive: `results/frontend_reimagination_2026-10-14/HANDOFF.md`), verification (local archive: `results/frontend_reimagination_2026-10-14/evidence/VERIFICATION.json`), browser checks (local archive: `results/frontend_reimagination_2026-10-14/evidence/BROWSER_CHECKS.json`), overview (local archive: `results/frontend_reimagination_2026-10-14/evidence/OVERVIEW.png`). Preview: **http://127.0.0.1:8095/?concept=fieldwork&view=workspace**, PID58550/session73043, right-panel browser handoff queued.
+
+Owned only results/frontend_reimagination_2026-10-14/ and this additive entry. App/backend/session/MVP/Polygon and existing previews were read-only in this workstream. Reference comparison records the separate cleanup's concurrent app.js/DESIGN/app README changes without restoring or claiming them; other shared records are preserved. Advisory ownership handed off at the design boundary. Direction selection arrived: Meridian; current refinement/cut review is recorded above. Actual app integration, configured account/backend and physical-device acceptance remain separate work. No commit, push, migration, deployment, paid/model call or financial operation.
+
+
+## Frontend copy and control cleanup — October 14, 2026, Asia/Shanghai
+
+Implemented and offline/browser verified at 2026-10-14T21:59:15.067917+08:00; not deployed. User approved the review's cuts. Session cards are single native links; repeated status/count/instruction copy, unchanged revision rows and the hardcoded custody metric are removed. Landing and empty-dashboard actions are consolidated. A desktop comparison owns the matching proposal's decision controls; close/resize restore them, with visible focus restoration and mobile pane actions retained. Existing integration and financial gates remain unchanged.
+
+Verification: **148 Python passed, 7 opt-in MySQL skips; 22 Node passed; 28 read-only synthetic browser checks passed**, including 360/760px layout and normal desktop. Normal viewport restored; current served app.js/app.css match disk. The early viewport-event sampling failure and rejected harness typo remain diagnostic evidence. Baseline snapshots preserve the previous local changes. 820 original non-owned files match; the existing compatibility workstream changed only its unowned synthetic contract-preview fixture concurrently and it was left intact. All protected app/backend/tests, user MVP and trading_agent_new source remain preserved.
+
+Owned app.js/app.css, app README, customer-app DESIGN/surface guidance, this entry and results/frontend_cleanup_2026-10-14; other workstreams are preserved. Canonical handoff (local archive: `results/frontend_cleanup_2026-10-14/HANDOFF.md`), verification (local archive: `results/frontend_cleanup_2026-10-14/VERIFICATION.json`), browser checks (local archive: `results/frontend_cleanup_2026-10-14/BROWSER_CHECKS.json`). Preview: http://127.0.0.1:8090/strategies. Advisory reservation released; next user review. No commit, push, migration, paid/provider call, deployment or financial action.
+
+## GitHub sync and frontend compatibility — October 14, 2026, Asia/Shanghai
+
+Pulled, merged and offline frontend verified: main fast-forwarded from 20995e0 to **99a5399** (40 commits); a final fetch confirms HEAD matches origin/main. The first HTTP/2 fetch failed, HTTP/1.1 retry succeeded. All 74 prior local files were backed up before stashing; recoverable stash dd2b0c01f7dc09beecda1e9301f49b50d92e2191 remains. Five shared conflicts resolved while retaining approved Strategy/session chat, upstream billing/admin/System/Community features and user mvp annotations. Protected Polygon feed work, grouping/chat helpers and earlier evidence remain byte-identical. No feature commit; local edits remain unstaged.
+
+Compatibility keeps Billing navigation, global payment dialog and needs_card checks in the unified session form, existing generation guards and both sign-out cache clears. **148 Python passed/7 MySQL skips, 22 Node passed, 13 actual-handler HTTP assertions and 19 browser checks passed** with synthetic repository data and disabled providers. Coverage includes new credit/card/role metadata, operator card gates, original/new screens, candidate/draft behavior, missing chat routes, card dialog and mobile layout. Syntax/compilation/pinned dependencies/pip check pass; PyArrow17.0.0 installed without starting collectors. The temporary 8094 server/tab is stopped; viewport reset. Original preview page is restored at http://127.0.0.1:8090/research/4 (PID52033, session44851), with current assets and refreshed synthetic metadata, writes disabled.
+
+Latest backend still lacks session-scoped chat routes; actual-handler UI correctly remains Not connected, with drafts retained. Next: scoped backend implementation and configured non-production MySQL/model/Stripe acceptance. Existing incoming billing/agent/schema business files match HEAD; no database/migration, provider/model, payment, deployment or trading action. Separate approved copy/control-cleanup and reimagination workstreams were active during final verification; their presentation changes/records are preserved and are not claimed by this sync. Advisory sync ownership handed off. Canonical handoff (local archive: `results/github_frontend_sync_2026-10-14/HANDOFF.md`), verification (local archive: `results/github_frontend_sync_2026-10-14/VERIFICATION.json`), preservation (local archive: `results/github_frontend_sync_2026-10-14/PRESERVATION.json`).
+
+## Session conversation UI and backend contract — October 14, 2026, Asia/Shanghai
+
+Implemented and offline/browser verified; backend integration and deployment pending: user approved Side conversation and chose **UI + backend connection contract**. Sessions now contain a candidate-aware composer, independent history/drafts, polling/recovery and proposal backtest/comparison/review controls. The shared picker sits above evidence and chat; <=800px uses pane buttons. Missing routes show Not connected and retain drafts. Current backend session routes, persistence, scoped worker context and revision execution remain unimplemented; account-wide Position chat is separate.
+
+Verification: **130 Python passed, 7 opt-in MySQL skips; 22 Node passed; 34 browser checks and 6 HTTP assertions passed** with synthetic loopback fixtures. Coverage includes captured/immutable targets, retries/new typing, independent read/write errors, invalid scope/data, pagination, revision gates/original retention, active research/cancellation/queue boundaries, reading position, existing scenarios/Position controls and 360/760/1024px fit. Screenshots inspected; viewport restored; temporary 8094 server/tab stopped. Canonical handoff (local archive: `results/session_chat_ui_2026-10-14/HANDOFF.md`), verification (local archive: `results/session_chat_ui_2026-10-14/VERIFICATION.json`), [backend contract](app/SESSION_CHAT_API.md).
+
+Owned frontend/static asset versioning, focused tests and related product/design/readme/progress/evidence records; advisory ownership handed off. Repository/agent/schema, grouping helper and user mvp.md match baseline. Reversing only the two new asset-version changes reproduces the baseline server hash, confirming backend business code is preserved. Standalone Polygon, prior feed work, workers, credentials and financial state are untouched. Main preview is http://127.0.0.1:8090/research/1, PID32180/session45617; its actual assets are retained in the existing app tab and right-pane placement was requested (native tool reported queued). All preview writes remain disabled. Next: implement the scoped contract and verify authenticated non-production acceptance plus opt-in MySQL checks. No commit, migration, paid/provider call, deployment or real trading operation.
+
+
+## Session conversation design — October 14, 2026, Asia/Shanghai
+
+Historical design receipt: **Side conversation approved and implemented above**. The user explicitly scoped the next stage to UI plus backend contract; the previous design-feedback gate is satisfied.
+
+Draft ready for user review, design only: the user requested a rough rendering of chat inside each Strategy agent session before implementation. Recommended Side conversation keeps the selected candidate's thesis/backtest beside a session-specific transcript; Tabbed conversation is the alternative and also the mobile pattern. Candidate/version labels remain attached to messages and proposals when the picker changes. Suggested revisions show parameter diffs and follow backtest → compare → review; saving a new candidate preserves the original. Researching queues a next trial at a safe boundary; deployed paper suggestions require the shown manual review before applying an update. Existing live-money/autopilot gates remain authoritative.
+
+Current backend /api/chat and queued copilot work are user-wide, and adjustments target deployments. Session history/context, per-session queue/busy/proposal routing, undeployed candidate revision and research intervention still need implementation after design approval. The draft uses local synthetic conversations/results only; no app, schema, API, worker, provider or financial behavior was changed. App/backend and user mvp.md hashes match the workstream baseline; prior Strategy implementation and Polygon feed work are preserved.
+
+Verification: 17 browser checks pass for context, local replies, revision test/compare/save/original retention, layout switching, dismissal, independent state, 1024px fit and 360px mobile conversation/evidence/chart reflow. JavaScript syntax and fragment checks pass; the viewport override was restored. Optional Researching/Deployed design-control variations are proposed but not browser exercised. The isolated draft is on http://127.0.0.1:8093, PID 28058, exec session 21449; the existing app remains on 8090. Scope: isolated visualization, this entry and results/session_chat_design_2026-10-14 records; advisory ownership is handed off at the design boundary. Canonical design handoff (local archive: `results/session_chat_design_2026-10-14/HANDOFF.md`), verification (local archive: `results/session_chat_design_2026-10-14/VERIFICATION.json`), browser checks (local archive: `results/session_chat_design_2026-10-14/BROWSER_CHECKS.json`). Next: user feedback on side versus tabbed conversation and revision review, then implement only the approved session behavior. No new implementation approval is implied; no commit, migration, paid model call or deployment.
+
+## Strategy UI implementation — October 14, 2026, Asia/Shanghai
+
+Implemented and offline/browser verified; not deployed: the user approved the Session cards draft on October 14. Strategy now merges research and candidates into phase cards, with partial-deployment counts and inspectable completed history. Each session contains candidate selection, thesis, saved backtest and evaluator-backed what-if controls. Research and candidate deployment reuse existing API validation/gates; Position and Account keep the existing Deploy/Funds routes. Completed-session candidate reads now filter by owner and run_id, and the new session-data.js uses existing content-hash versioning.
+
+Verification: 12 session-grouping tests passed; Python regression 130 passed, 7 opt-in MySQL money-path skips (baseline here 124 passed, 7 skipped); 33 browser checks passed with synthetic HTTP fixtures, including filters/history, polling/drafts/cancellation, candidate gates, legacy links, scenarios/races/reset/navigation, $500 stake payload and retained other screens. Cards/review at 360px and collection at 760px fit without horizontal overflow; desktop screenshots were inspected. The viewport override was restored. Actual changed app assets are open in the right-hand preview at http://127.0.0.1:8090/strategies, PID 23410, exec session 6522. Sample actions remain disabled. The approved 8091 design draft remains available.
+
+Owned scope: app/static, app/server.py and app/repository.py, focused tests, app README/product/design/surface contracts, this tracker and evidence. User-edited mvp.md matches its baseline hash; Polygon feed work, standalone package, workers, credentials, schema and financial state are preserved. Advisory ownership is handed off. Canonical implementation handoff (local archive: `results/strategy_ui_2026-10-14/HANDOFF.md`), verification (local archive: `results/strategy_ui_2026-10-14/VERIFICATION.json`) and browser checks (local archive: `results/strategy_ui_2026-10-14/BROWSER_CHECKS.json`). Remaining gate: authenticated end-to-end research, evaluator and paper deployment on a configured non-production backend, plus opt-in MySQL tests. The collection still uses the existing 50-run/200-strategy window. Next: backend acceptance when configured; full Position/Account redesign, pagination and rolling market feeds remain later work. No commit, push, migration, model/provider call or deployment.
+
+## Strategy UI redesign proposal — October 13, 2026, Asia/Shanghai
+
+Historical draft receipt below. **Approved October 14 and implemented above**; the previous feedback gate is satisfied. The isolated draft and its ten-check evidence remain available for comparison.
+
+Draft ready for review, no app implementation or acceptance: the user added the UI section in mvp.md and requested a review plus a demo before changes. The proposal merges Research and Strategies into Strategy, organized around agent-session cards. A session already owns multiple candidates via run_id; backtests, thesis and scenario controls belong inside the session, with candidate-level deployment decisions. Position retains ongoing deployment/position operations. The proposed three headline states need remaining-review counts for partial deployment and inspectable history for no eligible strategy, failures and cancellations. Current backtest status does not record a separate user-review decision.
+
+Two isolated interactive variants are available: Session cards (recommended) and Workflow board. The separate draft preview on http://127.0.0.1:8091 is PID 86338, exec session 94428; the existing 8090 app preview and user-selected Deploy tab remain intact. Ten browser checks pass, including candidate review, failing sample scenarios, local sample lifecycle changes, no-eligible history, new-session entry and the alternative layout. JavaScript syntax and fragment checks pass; desktop cards and detail view were visually checked with no horizontal overflow. All figures and scenario calculations are illustrative, and mobile has responsive CSS but was not device tested. User-edited mvp.md, actual app/static, Polygon feed work and backend/account/trading state are preserved; original app asset hashes still match. No backend API calls, migrations, paid calls, commits or deployment. Canonical draft source, state rules and remaining gates: [design handoff](../../frontend_preview/STRATEGY_UI_DESIGN_HANDOFF.md). Evidence: [verification](../../frontend_preview/STRATEGY_UI_DESIGN_VERIFICATION.json), [session screenshot](../../frontend_preview/STRATEGY_SESSIONS_DRAFT.png) and [review screenshot](../../frontend_preview/STRATEGY_REVIEW_DRAFT.png). Next at the draft milestone was feedback before implementation; approval arrived October 14. Current status is in the implementation entry above.
+
+## Local frontend preview — October 13, 2026, Asia/Shanghai
+
+Historical preview receipt below. The approved implementation now changes app assets; the current preview process and status are in the implementation handoff above.
+
+App UI editing preview complete and browser verified: the user-requested screens after login are available at http://127.0.0.1:8090/preview, with Dashboard left open in the right-hand browser panel. The loopback-only preview process is now PID 82602, exec session 63751. Existing app.js/app.css assets are served unchanged, ready for requested edits and browser reloads. Dashboard, Research and session detail, Strategies and strategy detail, Deploy, Community and Funds all render with 15 local read-only synthetic API fixtures and a persistent sample-data notice. Specific layout/style changes await the user's direction.
+
+Verification: 54 HTTP assertions pass, including filters, incremental reads, invalid cursors, unknown routes, disabled writes, exact asset bytes and returning to the landing page. All eight browser views pass; the dashboard screenshot was visually checked. `/preview` and `/preview/landing` switch local display mode using a preview cookie; Sign out clears only that cookie. This is not Google login or an app account/session. Other POST actions remain unavailable. MySQL/Google configuration and backend dependencies are still absent locally. The previous raw Google-route error recovery is retained in historical evidence.
+
+App source, user-edited mvp.md, Polygon feed work, databases and provider/account state are preserved in this preview workstream. No workers, provider operations, account writes, schema migrations or deployment were started. Canonical handoff and reproducible commands: [HANDOFF.md](../../frontend_preview/HANDOFF.md); current evidence: [APP_PREVIEW_VERIFICATION.json](../../frontend_preview/APP_PREVIEW_VERIFICATION.json) and [dashboard screenshot](../../frontend_preview/DASHBOARD_PREVIEW.png). These files, serve.py and app_fixtures.json are adjacent ignored runtime artifacts. The original preview process has ended; current process ownership is in the implementation handoff. UI implementation followed user approval on October 14; functional backend/account flows remain a separate configuration gate.
+
+## Local checkout sync — October 13, 2026, Asia/Shanghai
+
+At 19:38 Asia/Shanghai, the user-requested fast-forward pull updated local main from 4151c5e to 20995e0 (eight upstream commits), including the latest Kursbuch app/landing/waitlist changes and mvp.md additions. All 18 pre-existing Polygon local edits/untracked files were backed up and retained without conflicts. Sync only: no app service, schema migration, model call, live-trading operation or deployment was run. The existing deployed-state notes below describe earlier upstream work, not actions taken during this pull. Recovery/progress receipt: Polygon sync record (local archive: `../trading_agent_new/results/github_sync_2026-10-13/PULL_RECEIPT.json`). Next: review the incoming app before further integration; runtime acceptance was not tested here.
 
 ## ARCHITECTURE PLAN — all-markets collector + cross-contract trading (proposed 2026-10-13)
 

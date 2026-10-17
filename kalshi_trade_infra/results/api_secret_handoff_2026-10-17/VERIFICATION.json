@@ -1,0 +1,35 @@
+{
+  "workstream": "tau-api-secret-handoff-20261017",
+  "completed_at": "2026-10-17T13:51:57.245321+00:00",
+  "upload_status": "uploaded and metadata verified",
+  "private_env_preserved": true,
+  "private_env_ignored_and_untracked": true,
+  "private_env_mode": "0o600",
+  "selected_files": [
+    "kalshi_trade_infra/PLAN.md",
+    "mvp.md",
+    "kalshi_trade_infra/app/README.md",
+    "kalshi_trade_infra/app/DEPLOYMENT_SECRETS.md",
+    "kalshi_trade_infra/results/api_secret_handoff_2026-10-17/HANDOFF.md",
+    "kalshi_trade_infra/results/api_secret_handoff_2026-10-17/UPLOAD_RECEIPT.json",
+    "kalshi_trade_infra/results/api_secret_handoff_2026-10-17/VERIFICATION.json"
+  ],
+  "private_value_matches": [],
+  "broken_relative_links": [],
+  "tests": {
+    "command": "TAU_ALPACA_ENABLED=0 TAU_MASSIVE_ENABLED=0 TAU_DATABENTO_ENABLED=0 TAU_EXA_ENABLED=0 TAU_WORLDMONITOR_ENABLED=0 APP_TEST_MYSQL=0 AWS_EC2_METADATA_DISABLED=true .venv/bin/python -m pytest tests/ -q --tb=short",
+    "passed": 878,
+    "skipped": 9,
+    "seconds": 6.35
+  },
+  "independent_review": {
+    "reviewer": "secret_handoff_review",
+    "read_only": true,
+    "fix": "Documented explicit production OAuth callback, other loaded credentials/settings and service restarts.",
+    "remaining_blockers": []
+  },
+  "no_production_action_or_provider_call": true,
+  "runtime_code_unchanged": true,
+  "deployment_method": "user unsure; owner guide supports both methods",
+  "reservation_released": true
+}
