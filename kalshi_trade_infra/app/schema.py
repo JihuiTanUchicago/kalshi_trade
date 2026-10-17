@@ -561,6 +561,11 @@ def main() -> None:
         # positions or max_open_notional dollars of open entry notional. drawdown_limit_pct=0 disables
         # the force-sell for that user. Tunable per user; UI wiring is deferred (columns only for now).
         _add_column_if_missing(cur, "app_users", "drawdown_limit_pct", "ALTER TABLE app_users ADD COLUMN drawdown_limit_pct DECIMAL(6,2) NOT NULL DEFAULT 25.00")
+        # Position-level stop-loss: force-close a deployment when any OPEN position is down more than
+        # this percent of its OWN cost (deployed capital), independent of the whole-capital drawdown
+        # guard above — catches a small position that craters (large % of its cost, tiny % of capital).
+        # Default 40%; 0 disables. Tunable per user; UI wiring deferred (column only for now).
+        _add_column_if_missing(cur, "app_users", "position_stop_pct", "ALTER TABLE app_users ADD COLUMN position_stop_pct DECIMAL(6,2) NOT NULL DEFAULT 40.00")
         _add_column_if_missing(cur, "app_users", "max_open_positions", "ALTER TABLE app_users ADD COLUMN max_open_positions INT NOT NULL DEFAULT 20")
         _add_column_if_missing(cur, "app_users", "max_open_notional", "ALTER TABLE app_users ADD COLUMN max_open_notional DECIMAL(12,2) NOT NULL DEFAULT 1000.00")
         # Backfill any user still missing a handle (idempotent: only touches NULLs).

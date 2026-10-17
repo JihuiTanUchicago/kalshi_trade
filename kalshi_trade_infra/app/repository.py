@@ -754,6 +754,19 @@ def engine_heartbeat(cur, live_enabled: bool) -> None:
     )
 
 
+def engine_last_tick_age_seconds(cur) -> Optional[int]:
+    """Seconds since the deployment engine's last heartbeat tick, or None if it has never ticked.
+    A large or None value means the engine is stalled/dead — surfaced so a stuck engine still
+    holding real positions is visible, not silent. Reads the same `collector_state` liveness row
+    `engine_heartbeat` writes (the pattern the live_alerter watchdog uses for every other writer)."""
+    cur.execute(
+        "SELECT TIMESTAMPDIFF(SECOND, updated_at_utc, UTC_TIMESTAMP()) AS a FROM collector_state "
+        "WHERE state_key='recursive_engine_last_tick' LIMIT 1"
+    )
+    row = cur.fetchone() or {}
+    return int(row["a"]) if row.get("a") is not None else None
+
+
 def get_policy(cur, user_id: int) -> Optional[Dict]:
     """The user's current self-evolved exploration policy, or None (= DefaultPolicy)."""
     cur.execute("SELECT code, score, summary, base_score, updated_at FROM app_policies WHERE user_id=%s", (user_id,))
@@ -858,6 +871,20 @@ def deployments_with_open_positions(cur, market: str) -> List[Dict]:
            FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id
            JOIN app_positions p ON p.deployment_id=d.id AND p.status='open'
            WHERE d.market=%s""",
+        (market,),
+    )
+    return [_strategy_row(r) for r in cur.fetchall()]
+
+
+def paused_deployments_with_open_positions(cur, market: str) -> List[Dict]:
+    """Paused/stopped deployments that still hold open positions — the auto-flatten sweep closes
+    these so a non-running deployment never keeps exposure nothing is actively managing. (Running
+    deployments manage their own exits via the spec + force-sell, so they are excluded here.)"""
+    cur.execute(
+        """SELECT DISTINCT d.id, d.user_id, d.mode, s.spec_json, s.result_json
+           FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id
+           JOIN app_positions p ON p.deployment_id=d.id AND p.status='open'
+           WHERE d.market=%s AND d.status IN ('paused','stopped')""",
         (market,),
     )
     return [_strategy_row(r) for r in cur.fetchall()]
@@ -1021,7 +1048,8 @@ def realized_pnl(cur, user_id: int, mode: str, since: Optional[datetime] = None)
 def user_risk_config(cur, user_id: int) -> Dict:
     """Per-user risk limits for the force-sell / portfolio-cap layer (conservative DB defaults)."""
     cur.execute(
-        "SELECT drawdown_limit_pct, max_open_positions, max_open_notional FROM app_users WHERE id=%s",
+        "SELECT drawdown_limit_pct, position_stop_pct, max_open_positions, max_open_notional "
+        "FROM app_users WHERE id=%s",
         (user_id,),
     )
     return cur.fetchone()

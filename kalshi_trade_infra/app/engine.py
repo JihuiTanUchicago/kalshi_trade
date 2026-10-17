@@ -443,10 +443,18 @@ def loss_guard(cur, dep: Dict) -> bool:
     return True
 
 
-# -- drawdown force-sell ---------------------------------------------------------
+# -- drawdown + position-stop force-sell -----------------------------------------
 # Conservative fallback if a user's drawdown_limit_pct column is unexpectedly NULL. The real
 # per-user default lives in the schema (25%). A limit of 0 disables the force-sell for a user.
 DRAWDOWN_LIMIT_PCT_DEFAULT = 25.0
+# Position-level stop-loss: force-sell when any OPEN position is down more than this percent of its
+# OWN cost (deployed capital), independent of the whole-capital drawdown guard. A small position
+# that craters loses a large fraction of ITS cost but only a tiny fraction of the $capital base, so
+# the drawdown guard alone never fires (the exact gap a user hit: 6 @ 79c -> 44c, -44% of cost but
+# ~2% of a $100 base). Default 40%: it would have stopped that position, sits mid of the 35-50%
+# range, and on a 79c entry triggers near 47c (a clearly broken position, not BTC-market noise).
+# A limit of 0 disables it for a user. Fallback if the column is unexpectedly NULL.
+POSITION_STOP_PCT_DEFAULT = 40.0
 
 
 def _deployment_capital(dep: Dict) -> float:
@@ -492,6 +500,26 @@ def deployment_drawdown_pct(cur, dep: Dict) -> float:
     return 100.0 * drawdown / capital if capital > 0 else 0.0
 
 
+def worst_position_loss_pct(cur, dep: Dict) -> float:
+    """The worst open position's CURRENT loss as a percent of its own cost (qty*entry + entry_fee).
+
+    Loss = cost - liquidation value, side-aware via `_liquidation_price` (YES ~yes_bid, NO ~1-yes_bid).
+    Returns 0 when no position is marked yet or none is at a loss. A single position that craters
+    drives this past the stop even when the deployment's whole-capital drawdown is still small.
+    """
+    worst = 0.0
+    for pos in repo.open_positions(cur, dep["id"]):
+        price = _liquidation_price(pos)
+        if price is None:
+            continue  # not yet marked — priced/retried next tick
+        qty = int(pos["qty"])
+        cost = qty * float(pos["entry_price"]) + float(pos["entry_fee"])
+        if cost <= 0:
+            continue
+        worst = max(worst, 100.0 * (cost - qty * price) / cost)
+    return worst
+
+
 def _force_close_kernel(dep: Dict, sources: Sources):
     """The same kernel the normal exit path would use for this mode — reusing the live-gate and
     demo-key checks exactly, so force-sell never obtains an execution path the engine couldn't
@@ -508,20 +536,33 @@ def _force_close_kernel(dep: Dict, sources: Sources):
 
 
 def force_sell_if_drawn_down(conn, dep: Dict, sources: Sources) -> bool:
-    """If this deployment's drawdown breaches the user's limit, force-close its open positions via
-    the mode's own exit path and pause it. Returns True if it breached (and was paused). Each
+    """Force-close + pause this deployment if it breaches EITHER risk trigger:
+      - whole-capital DRAWDOWN past the user's drawdown_limit_pct (peak-to-now / capital), or
+      - any OPEN position down past position_stop_pct of its own cost (the position-level stop).
+    Both are checked every tick; whichever fires wins, and both are named if both breach. Returns
+    True if it breached (and was paused). Positions close via the mode's own exit path; each
     per-position close is contained: one failing close is logged and retried next tick, never
-    aborts the rest or the pause."""
+    aborts the rest or the pause. Each trigger is independently disabled by a 0 limit."""
     cur = conn.cursor()
-    risk = repo.user_risk_config(cur, dep["user_id"])
-    limit_pct = DRAWDOWN_LIMIT_PCT_DEFAULT
-    if risk and risk.get("drawdown_limit_pct") is not None:
-        limit_pct = float(risk["drawdown_limit_pct"])
-    if limit_pct <= 0:
-        return False  # force-sell disabled for this user
-    dd_pct = deployment_drawdown_pct(cur, dep)
-    if dd_pct < limit_pct:
+    risk = repo.user_risk_config(cur, dep["user_id"]) or {}
+    dd_limit = DRAWDOWN_LIMIT_PCT_DEFAULT
+    if risk.get("drawdown_limit_pct") is not None:
+        dd_limit = float(risk["drawdown_limit_pct"])
+    stop_limit = POSITION_STOP_PCT_DEFAULT
+    if risk.get("position_stop_pct") is not None:
+        stop_limit = float(risk["position_stop_pct"])
+    reasons: List[str] = []
+    if dd_limit > 0:
+        dd_pct = deployment_drawdown_pct(cur, dep)
+        if dd_pct >= dd_limit:
+            reasons.append("drawdown %.1f%% >= limit %.1f%%" % (dd_pct, dd_limit))
+    if stop_limit > 0:
+        loss_pct = worst_position_loss_pct(cur, dep)
+        if loss_pct >= stop_limit:
+            reasons.append("position down %.1f%% >= stop %.1f%% of cost" % (loss_pct, stop_limit))
+    if not reasons:
         return False
+    close_reason = "drawdown" if reasons[0].startswith("drawdown") else "stop"
     mode = dep["mode"]
     via_kernel = mode in ("live", "demo")
     kernel = _force_close_kernel(dep, sources) if via_kernel else None
@@ -532,11 +573,11 @@ def force_sell_if_drawn_down(conn, dep: Dict, sources: Sources) -> bool:
         if price is None:
             continue  # not yet marked — retry on a later tick
         try:
-            _close_position_at(conn, cur, dep, pos, kernel, via_kernel, price, "drawdown")
+            _close_position_at(conn, cur, dep, pos, kernel, via_kernel, price, close_reason)
         except Exception as e:  # one position's close failing must not abort the pause or the others
             print("[engine] force-close failed pos %d dep %d: %r (retry next tick)"
                   % (pos["id"], dep["id"], e), flush=True)
-    why = "force-closed: drawdown %.1f%% >= limit %.1f%%" % (dd_pct, limit_pct)
+    why = "force-closed: " + "; ".join(reasons)
     if repo.set_deployment_status(cur, dep["user_id"], dep["id"], "paused", why):
         repo.add_chat(cur, dep["user_id"], "system", "Paused deployment #%d automatically. %s" % (dep["id"], why))
         repo.create_run(cur, dep["user_id"], "review", dep["market"], None,
@@ -560,6 +601,58 @@ def enforce_drawdown_limits(conn, sources: Sources) -> int:
                 print("[engine] drawdown check failed dep %d user %d: %r (skipping)"
                       % (dep["id"], dep["user_id"], e), flush=True)
     return paused
+
+
+# -- auto-flatten on pause/stop --------------------------------------------------
+
+
+def flatten_deployment(conn, dep: Dict, sources: Sources) -> int:
+    """Close ALL open positions of a paused/stopped deployment through its mode's own exit path
+    (live/demo kernel sell, paper sell). A non-running deployment must hold NO exposure — nothing
+    is actively managing it, so it is flattened. Fail-safe and fully contained like the force-sell:
+    exits are NEVER blocked by a risk control; one failing close is logged and retried next sweep;
+    a live/demo deployment with no execution path (gate off / no key) is logged LOUDLY and its
+    positions settle at expiry (we never leave exposure silently). Returns #positions closed."""
+    cur = conn.cursor()
+    mode = dep["mode"]
+    via_kernel = mode in ("live", "demo")
+    kernel = _force_close_kernel(dep, sources) if via_kernel else None
+    closed = 0
+    for pos in repo.open_positions(cur, dep["id"]):
+        if via_kernel and kernel is None:
+            print("[engine] FLATTEN BLOCKED dep %d pos %d (%s): no execution path — REAL exposure "
+                  "left open, settles at expiry" % (dep["id"], pos["id"], mode), flush=True)
+            break
+        price = _liquidation_price(pos)
+        if price is None:
+            continue  # not yet marked — retry next sweep
+        try:
+            if _close_position_at(conn, cur, dep, pos, kernel, via_kernel, price, "flatten"):
+                closed += 1
+        except Exception as e:  # one close failing must not abort the rest
+            print("[engine] flatten close failed pos %d dep %d: %r (retry next sweep)"
+                  % (pos["id"], dep["id"], e), flush=True)
+    return closed
+
+
+def enforce_flatten_on_pause(conn, sources: Sources) -> int:
+    """Each engine loop: a paused or stopped deployment must end up FLAT. Sweep every such
+    deployment that still holds open positions and close them. Catches BOTH a manual pause/stop
+    (via the API) and an auto-pause (loss/drawdown/stop guard), and retries a close that
+    partial-filled or wasn't yet marked. Fully contained: one deployment's failure never stops the
+    sweep or the other deployments. Returns the #positions flattened this loop."""
+    cur = conn.cursor()
+    flattened = 0
+    for market in MARKETS.values():
+        if not market.deployable:
+            continue
+        for dep in repo.paused_deployments_with_open_positions(cur, market.key):
+            try:
+                flattened += flatten_deployment(conn, dep, sources)
+            except Exception as e:
+                print("[engine] flatten sweep failed dep %d user %d: %r (skipping)"
+                      % (dep["id"], dep["user_id"], e), flush=True)
+    return flattened
 
 
 def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] = None) -> Dict:
@@ -726,6 +819,13 @@ def run_forever() -> None:
                         enforce_drawdown_limits(conn, sources)
                     except Exception as e:
                         print("[engine] drawdown enforcement failed: %r" % e, flush=True)
+                    # Auto-flatten: a paused/stopped deployment (manual OR auto-paused) must hold no
+                    # exposure. Runs after the drawdown sweep so anything it just paused is swept too,
+                    # and retries any close that partial-filled. Contained — never stops the loop.
+                    try:
+                        enforce_flatten_on_pause(conn, sources)
+                    except Exception as e:
+                        print("[engine] flatten-on-pause enforcement failed: %r" % e, flush=True)
                     if LIVE_TRADING_ENABLED:
                         try:
                             enforce_autopilot_limits(conn)
