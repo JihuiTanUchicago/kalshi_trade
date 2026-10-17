@@ -146,9 +146,11 @@ Your code defines ONE function:
       # the bid). Unlisted at settlement = held to settlement. You buy the ask / sell the bid and
       # pay Kalshi fees exactly like a DSL spec.
 Allowed imports: math, cmath, statistics, random, itertools, functools, collections, heapq,
-bisect, operator, decimal, fractions, array, numpy. NO file/network/OS access, and no dunder
-access; the code runs sealed off from the DB and keys. Heavier ML libraries (torch/tensorflow)
-are not installed. Keep it deterministic and pure over the window you are handed.
+bisect, operator, decimal, fractions, array, and the scientific stack numpy, pandas, scipy,
+sklearn (scikit-learn), statsmodels - so you can write real quant/ML/stat models, not just
+loops. NO file/network/OS access, and no dunder access; the code runs sealed off from the DB
+and keys. Heavier deep-learning libraries (torch/tensorflow) are not installed. Keep it
+deterministic and pure over the window you are handed.
 """
 
 # Every proposer that reads SPEC_GUIDE also learns it may write arbitrary quant code.

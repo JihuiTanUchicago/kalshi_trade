@@ -1,0 +1,14 @@
+# Research / code-strategy sandbox stack — installed into the worker venv so agent-authored
+# `signals(window)` strategies can use real quant/ML/stat tooling (the sandbox allowlist in
+# app/sandbox.py mirrors these import roots). NOT imported by the app itself; the kernel
+# confiner (no network, scratch-only fs) makes them safe to expose to untrusted strategy code.
+# numpy + scikit-learn are already pinned in requirements.txt.
+pandas>=2.2,<3
+scipy>=1.13,<2
+statsmodels>=0.14,<1
+xgboost>=2.1,<4
+lightgbm>=4.5,<5
+arch>=7.0,<8            # GARCH / volatility models (finance staple)
+cvxpy>=1.5,<2           # convex / portfolio optimization
+torch>=2.5,<3           # deep learning (CPU, aarch64)
+tensorflow>=2.18,<3     # deep learning (CPU, aarch64)

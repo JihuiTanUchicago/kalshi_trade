@@ -18,9 +18,12 @@ decisions). It does no I/O, so it runs in-process behind three layers:
 -----------------------------------------------------------------------------------------
 TIER 2 — arbitrary-quant strategy code (subprocess, KERNEL-ISOLATED). `run_strategy_signals()`.
 -----------------------------------------------------------------------------------------
-A strategy may be ANY pure-Python/numpy code the agent writes (its own math/ML/quant
-framework). You CANNOT securely sandbox such code inside a Python interpreter: once it can
-`import numpy` it has `numpy.ctypeslib.ctypes` and the C ABI, and any allowlisted stdlib
+A strategy may be ANY code the agent writes over the allowlisted scientific-Python stack
+(numpy/pandas/scipy/scikit-learn/statsmodels/xgboost/lightgbm/arch/cvxpy/torch/tensorflow) -
+its own math/ML/quant framework - and may read/write a scoped, persisted data dir (open() is
+allowed; the confiner scopes writes to scratch + /data and masks secrets). You CANNOT securely
+sandbox such code inside a Python interpreter: once it can `import numpy` it has
+`numpy.ctypeslib.ctypes` and the C ABI, and any allowlisted stdlib
 module transitively binds `os`/`sys`/`importlib` through non-dunder attributes
 (`random._os`, `collections._sys`, `sys.modules["importlib"].import_module(...)`), so an AST
 ban and an import hook are not a boundary — they are speed bumps. The boundary is the OS.
@@ -181,17 +184,39 @@ class StrategyCodeError(SandboxError):
 
 
 STRATEGY_ENTRY = "signals"
-# Only these import roots are allowed inside a strategy. Deliberately numeric: no os, sys,
-# socket, subprocess, io, pathlib, ctypes, importlib, builtins, threading, multiprocessing.
+# Import roots a strategy may use: the numeric stdlib plus the common scientific-Python
+# analytics/ML/stat stack, so agents can write real quant models (not just row-wise loops).
+# Still NO os, sys, socket, subprocess, io, pathlib, ctypes, importlib, builtins, threading,
+# multiprocessing. These scientific libs CAN reach os/ctypes via non-dunder attributes (see the
+# module docstring) - that is expected: the allowlist is defense-in-depth, the OS kernel sandbox
+# is the boundary, and under `--unshare-net` + read-only-root a pandas/sklearn compute is inert
+# (no network, no fs outside scratch, no secrets in the process). Every root must be installed
+# in the worker venv (requirements.txt) or an import of it fails closed at runtime.
 STRATEGY_ALLOWED_IMPORTS = (
     "math", "cmath", "statistics", "random", "itertools", "functools", "collections",
-    "heapq", "bisect", "operator", "decimal", "fractions", "array", "numpy",
+    "heapq", "bisect", "operator", "decimal", "fractions", "array", "json", "re", "datetime",
+    "numpy", "pandas", "scipy", "sklearn", "statsmodels", "joblib",
+    "xgboost", "lightgbm", "arch", "cvxpy", "torch", "tensorflow",
 )
 STRATEGY_MAX_CODE = 20_000          # chars of source
-STRATEGY_CPU_SECONDS = 10           # RLIMIT_CPU (hard kill)
-STRATEGY_MEM_BYTES = 1024 ** 3      # RLIMIT_AS (Linux-enforced; see module docstring)
-STRATEGY_WALL_SECONDS = 25.0        # parent kills the child past this
-STRATEGY_NOFILE = 64                # RLIMIT_NOFILE
+# Limits sized for the scientific/ML stack (torch/tensorflow/sklearn): they dlopen many shared
+# libs, spawn BLAS/OpenMP threads, and reserve large virtual address space. Verified empirically
+# under bwrap. Code strategies are RESEARCH-ONLY (never the live/paper engine), so a generous
+# budget here never touches the trading loop; the wall-clock + CPU caps still bound any runaway.
+STRATEGY_CPU_SECONDS = 60           # RLIMIT_CPU (hard kill)
+STRATEGY_MEM_BYTES = 12 * 1024 ** 3  # RLIMIT_AS (virtual; TF/torch reserve a lot). Box has 16G RAM.
+STRATEGY_WALL_SECONDS = 120.0       # parent kills the child past this
+STRATEGY_NOFILE = 4096              # RLIMIT_NOFILE (ML libs dlopen many .so)
+STRATEGY_NPROC = 256                # RLIMIT_NPROC (allow BLAS/OpenMP threads; still bounds forks)
+STRATEGY_FSIZE_BYTES = 256 * 1024 * 1024  # RLIMIT_FSIZE (model artifacts to the data dir)
+
+# A persistent, writable data directory mounted into the sandbox so strategies can read datasets
+# and save/reload model artifacts ACROSS runs (the scoped file access). Secrets are masked out of
+# the sandbox regardless of this (see _confined_argv), so file access never exposes keys/DSN/AWS.
+STRATEGY_DATA_DIR = os.getenv(
+    "APP_STRATEGY_DATA_DIR",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "strategy_data"))
+STRATEGY_DATA_MOUNT = "/data"       # where STRATEGY_DATA_DIR appears inside a Linux (bwrap) sandbox
 
 
 def validate_strategy_code(code: str) -> None:
@@ -245,13 +270,16 @@ def _set(res, soft):
 
 in_path, out_path = sys.argv[1], sys.argv[2]
 cpu_s, mem_bytes, nofile = int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
+nproc, fsize = int(sys.argv[6]), int(sys.argv[7])
 _set(resource.RLIMIT_CPU, cpu_s)
 _set(resource.RLIMIT_AS, mem_bytes)
-_set(resource.RLIMIT_FSIZE, 32 * 1024 * 1024)
+_set(resource.RLIMIT_FSIZE, fsize)
 _set(resource.RLIMIT_NOFILE, nofile)
 _set(resource.RLIMIT_CORE, 0)
 try:
-    _set(resource.RLIMIT_NPROC, 0)  # no forks/execs where honored (Linux)
+    # Bounded, not zero: the scientific/ML stack spawns BLAS/OpenMP worker threads (threads count
+    # against NPROC on Linux). A finite cap still bounds a fork bomb; CPU + wall-clock bound compute.
+    _set(resource.RLIMIT_NPROC, nproc)
 except Exception:
     pass
 
@@ -273,11 +301,14 @@ def _gate(name, *a, **k):
         raise ImportError("import of %r is blocked in the strategy sandbox" % name)
     return _orig_import(name, *a, **k)
 
-# Restricted builtins: no open/eval/exec/compile/getattr/setattr/globals/vars/input/__import__
-# escape. `__import__` is the gate so `import numpy` works for the allowlist only.
+# Restricted builtins: no eval/exec/compile/getattr/setattr/globals/vars/input/__import__ escape.
+# `__import__` is the gate so `import numpy` works for the allowlist only. `open` IS allowed (the
+# scoped file access the user asked for): the kernel confiner makes writes land only in scratch +
+# the mounted /data dir, reads of the root are secret-masked, and there is no network, so a strategy
+# can persist/reload datasets and models but cannot reach keys/DSN/AWS or exfiltrate.
 _SAFE = ("abs min max sum len range sorted list dict tuple set frozenset float int bool round "
          "enumerate zip map filter any all reversed str bytes bytearray divmod pow complex slice "
-         "isinstance issubclass hash repr format print iter next ord chr").split()
+         "isinstance issubclass hash repr format print iter next ord chr open").split()
 _bi = {n: getattr(_b, n) for n in _SAFE}
 for _exc in ("Exception ValueError TypeError KeyError IndexError ZeroDivisionError "
              "ArithmeticError RuntimeError StopIteration OverflowError FloatingPointError").split():
@@ -308,14 +339,28 @@ _SANDBOX_EXEC = "/usr/bin/sandbox-exec"
 _SECRET_READ_REGEX = r'(/credentials/|\.env|\.pem|/\.ssh/|/\.aws/|id_rsa|id_ed25519|/secrets)'
 
 
-def _macos_profile(scratch: str) -> str:
-    """Allow-default, then subtract: no network, no writes outside scratch, no credential reads.
-    (SBPL rules are last-match-wins, so the later allow re-permits scratch writes.) `scratch` is
-    interpolated raw, so it must be a safe absolute path (validated by the caller) to avoid SBPL
-    injection; writes are narrowed to scratch (+ its realpath, for the /var -> /private/var
-    symlink) and a couple of device nodes rather than a broad /dev or temp-root grant."""
+def _secret_mask_targets() -> "tuple[List[str], List[str]]":
+    """(files, dirs) under the project root the Linux confiner masks (bind /dev/null over files,
+    tmpfs over dirs) so strategy code with file access still cannot read keys / DB DSN / AWS creds.
+    AWS creds via IMDS are already inert under --unshare-net; this closes the on-disk .env/key path."""
+    import glob
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    files = sorted(p for p in glob.glob(os.path.join(root, ".env*")) if os.path.isfile(p))
+    dirs = [d for d in (os.path.join(root, "credentials"),) if os.path.isdir(d)]
+    return files, dirs
+
+
+def _macos_profile(scratch: str, data_dir: Optional[str] = None) -> str:
+    """Allow-default, then subtract: no network, no writes outside scratch (+ the data dir), no
+    credential reads. (SBPL rules are last-match-wins, so the later allow re-permits writes.)
+    `scratch`/`data_dir` are interpolated raw, so they must be safe absolute paths (validated by the
+    caller) to avoid SBPL injection; writes are narrowed to scratch (+ its realpath, for the
+    /var -> /private/var symlink), the data dir, and a couple of device nodes."""
     real = os.path.realpath(scratch)
     scratch_rules = '(subpath "%s")' % scratch + ('' if real == scratch else ' (subpath "%s")' % real)
+    if data_dir:
+        dreal = os.path.realpath(data_dir)
+        scratch_rules += ' (subpath "%s")' % data_dir + ('' if dreal == data_dir else ' (subpath "%s")' % dreal)
     return (
         "(version 1)\n"
         "(allow default)\n"
@@ -351,19 +396,37 @@ def os_sandbox_available() -> bool:
     return _confiner() is not None
 
 
-def _confined_argv(inner: List[str], scratch: str) -> List[str]:
+def _confined_argv(inner: List[str], scratch: str, data_dir: Optional[str] = None) -> List[str]:
     """Wrap the child python argv in the kernel sandbox (the real boundary). Raises SandboxError
-    if no confiner exists, so untrusted code is NEVER run unconfined (default-deny)."""
+    if no confiner exists, so untrusted code is NEVER run unconfined (default-deny). `data_dir`,
+    when given, is mounted read-write (at STRATEGY_DATA_MOUNT on Linux) for persisted datasets /
+    model artifacts, and the project's secret files/dirs are masked so file access can't read keys."""
     conf = _confiner()
     if conf == "sandbox-exec":
-        return [_SANDBOX_EXEC, "-p", _macos_profile(scratch)] + inner
+        return [_SANDBOX_EXEC, "-p", _macos_profile(scratch, data_dir)] + inner
     if conf == "bwrap":
-        return [shutil.which("bwrap"), "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
-                "--tmpfs", "/tmp", "--bind", scratch, scratch, "--chdir", scratch,
-                "--unshare-net", "--unshare-pid", "--die-with-parent", "--"] + inner
+        args = [shutil.which("bwrap"), "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
+                "--tmpfs", "/tmp", "--bind", scratch, scratch]
+        if data_dir:
+            args += ["--bind", data_dir, STRATEGY_DATA_MOUNT]
+        # Mask secrets (applied AFTER --ro-bind / / so they override it): empty file over each .env,
+        # tmpfs over the credentials dir. --ro-bind-try/--tmpfs no-op if the path is absent.
+        files, dirs = _secret_mask_targets()
+        for f in files:
+            args += ["--ro-bind-try", "/dev/null", f]
+        for d in dirs:
+            args += ["--tmpfs", d]
+        args += ["--chdir", scratch, "--unshare-net", "--unshare-pid", "--die-with-parent", "--"]
+        return args + inner
     if conf == "firejail":
-        return [shutil.which("firejail"), "--quiet", "--net=none", "--private-tmp",
-                "--read-only=/", "--read-write=%s" % scratch, "--"] + inner
+        args = [shutil.which("firejail"), "--quiet", "--net=none", "--private-tmp",
+                "--read-only=/", "--read-write=%s" % scratch]
+        if data_dir:
+            args += ["--read-write=%s" % data_dir]
+        files, dirs = _secret_mask_targets()
+        for p in files + dirs:
+            args += ["--blacklist=%s" % p]
+        return args + ["--"] + inner
     raise SandboxError(
         "no OS-level sandbox available (need sandbox-exec on macOS, or bwrap/firejail on Linux); "
         "refusing to run untrusted strategy code on a host that holds live keys / a DB handle")
@@ -387,26 +450,48 @@ def _applied_limits() -> Dict[str, bool]:
 
 def run_strategy_signals(code: str, window: Dict, *, cpu_s: int = STRATEGY_CPU_SECONDS,
                          mem_bytes: int = STRATEGY_MEM_BYTES, wall_s: float = STRATEGY_WALL_SECONDS,
-                         nofile: int = STRATEGY_NOFILE, scratch_dir: Optional[str] = None) -> List:
+                         nofile: int = STRATEGY_NOFILE, nproc: int = STRATEGY_NPROC,
+                         fsize: int = STRATEGY_FSIZE_BYTES, scratch_dir: Optional[str] = None,
+                         data_dir: Optional[str] = STRATEGY_DATA_DIR) -> List:
     """Run the strategy's `signals(window)` in an isolated child interpreter and return its
     result (a list). Raises SandboxError on rejection, timeout, a blown resource limit, a crash,
-    or non-JSON output. See the module docstring for the isolation guarantees."""
+    or non-JSON output. See the module docstring for the isolation guarantees. `data_dir`, if set,
+    is created and mounted read-write for persisted datasets/models and surfaced as
+    window['data_dir']; secrets are masked out of it regardless."""
     validate_strategy_code(code)
     created = scratch_dir is None
     scratch = _safe_scratch(scratch_dir or tempfile.mkdtemp(prefix="strat_"))
     in_path = os.path.join(scratch, "in.json")
     out_path = os.path.join(scratch, "out.json")
+    # Scoped file access: a persistent data dir the strategy reads/writes across runs.
+    use_data = None
+    if data_dir:
+        try:
+            os.makedirs(data_dir, exist_ok=True)
+            use_data = _safe_scratch(data_dir)
+        except (OSError, SandboxError):
+            use_data = None  # no data dir available -> strategy just runs without it
+    conf = _confiner()
+    win = window
+    if use_data:
+        # Inside a Linux namespace the dir appears at STRATEGY_DATA_MOUNT; macOS keeps the real path.
+        win = dict(window)
+        win["data_dir"] = STRATEGY_DATA_MOUNT if conf in ("bwrap", "firejail") else use_data
     try:
         with open(in_path, "w") as f:
-            json.dump({"code": code, "entry": STRATEGY_ENTRY, "window": window,
+            json.dump({"code": code, "entry": STRATEGY_ENTRY, "window": win,
                        "allowed": list(STRATEGY_ALLOWED_IMPORTS)}, f)
         # Scrubbed env: NONE of the credential / DB / AWS vars. `-I` also makes the child ignore
         # PYTHON* vars, the cwd and user-site; `-B` suppresses __pycache__ writes (denied outside
-        # scratch). The kernel confiner (default-deny) is the actual isolation boundary.
-        env = {"PATH": "/usr/bin:/bin", "HOME": scratch, "TMPDIR": scratch, "LC_ALL": "C", "LANG": "C"}
+        # scratch). Thread caps keep BLAS/OpenMP from oversubscribing; cache dirs point at scratch so
+        # libs that write a cache don't hit the read-only root. The kernel confiner is the boundary.
+        env = {"PATH": "/usr/bin:/bin", "HOME": scratch, "TMPDIR": scratch, "LC_ALL": "C", "LANG": "C",
+               "OMP_NUM_THREADS": "2", "OPENBLAS_NUM_THREADS": "2", "MKL_NUM_THREADS": "2",
+               "NUMEXPR_NUM_THREADS": "2", "VECLIB_MAXIMUM_THREADS": "2", "TF_CPP_MIN_LOG_LEVEL": "3",
+               "XDG_CACHE_HOME": scratch, "MPLCONFIGDIR": scratch}
         inner = [sys.executable, "-I", "-B", "-c", _RUNNER, in_path, out_path,
-                 str(cpu_s), str(mem_bytes), str(nofile)]
-        argv = _confined_argv(inner, scratch)
+                 str(cpu_s), str(mem_bytes), str(nofile), str(nproc), str(fsize)]
+        argv = _confined_argv(inner, scratch, use_data)
         try:
             proc = subprocess.run(argv, cwd=scratch, env=env, timeout=wall_s,
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)

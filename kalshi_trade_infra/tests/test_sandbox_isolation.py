@@ -59,6 +59,14 @@ def test_dangerous_imports_blocked(mod):
         sandbox.validate_strategy_code("import %s\ndef signals(w): return []" % mod)
 
 
+@pytest.mark.parametrize("mod", ["numpy", "pandas", "scipy", "sklearn", "statsmodels",
+                                 "xgboost", "lightgbm", "arch", "cvxpy", "torch", "tensorflow"])
+def test_scientific_stack_allowed(mod):
+    # The ML/stat stack passes static validation (install-independent): agents can write real models.
+    sandbox.validate_strategy_code("import %s\ndef signals(w): return []" % mod)
+    assert mod in sandbox.STRATEGY_ALLOWED_IMPORTS
+
+
 def test_no_network_socket():
     with pytest.raises(SandboxError):
         _run("import socket\n return [socket.socket()]")
@@ -73,10 +81,26 @@ def test_cannot_place_order_via_subprocess():
 
 
 @needs_confiner
-def test_no_open_builtin():
-    # `open` is not in the restricted builtins -> NameError inside the child -> SandboxError.
+def test_open_round_trips_in_data_dir(tmp_path):
+    # open() IS available now (scoped file access): a strategy can write + read back a file in the
+    # mounted data dir, so it can persist/reload datasets and model artifacts across runs.
+    body = ("p = window['data_dir'] + '/t.txt'\n"
+            "f = open(p, 'w')\nf.write('hi')\nf.close()\n"
+            "v = open(p).read()\n"
+            "return [[{'v': v}]]")
+    out = sandbox.run_strategy_signals("def signals(window):\n" +
+                                       "\n".join("    " + ln for ln in body.splitlines()),
+                                       WIN, cpu_s=5, wall_s=12, data_dir=str(tmp_path))
+    assert out == [[{"v": "hi"}]]
+
+
+@needs_confiner
+def test_open_cannot_write_outside_scratch(tmp_path):
+    # open() is scoped by the confiner: the read-only root (anywhere but scratch + the data dir) is
+    # not writable, so an attempt to write there fails -> SandboxError.
+    target = str(tmp_path.parent / "escape_write.txt")
     with pytest.raises(SandboxError):
-        _run("return [open('/etc/passwd').read()]")
+        _run("open(%r, 'w').write('x')\nreturn [[]]" % target)
 
 
 def test_cannot_read_env_credentials(monkeypatch):
