@@ -2,6 +2,66 @@
 
 Kalshi BTC 15-minute pipeline for ingestion, feature engineering, simulation, live trading controls, and observability.
 
+## Research pipeline
+
+Beyond the live trading infra below, the `app/` product is **Tau**, a self-improving research desk: you
+describe an idea in a sentence, an agent writes concrete strategy specs, and each is tested on data it never
+saw. The hard rule is a strict information barrier — the **generator** (proposer + challenger) only ever
+iterates on the Research partition and a pass/fail label, while only the **statistical gatekeeper** may read
+the Validation and locked Holdout partitions. "Passed" is never a bare backtest: a strategy is marked
+`STAT_SUPPORTED` only after clearing the full test battery at once, then `FORWARD_VALIDATED` on the one-time
+holdout and a marginal-contribution check, to become a `DEPLOYMENT_CANDIDATE`. The Tau-RSI loop rewrites its
+own exploration policy from outcomes and feeds that back to the proposer — carrying classification labels
+only, never held-out numbers. Full spec in `RESEARCH_PIPELINE_DESIGN.md`; this diagram mirrors Figure 1 in
+the product's research tab.
+
+```mermaid
+flowchart LR
+    Idea(["Your hypothesis,<br/>in one sentence"])
+
+    subgraph GEN["Generator — blind to Validation &amp; Holdout numbers"]
+        direction LR
+        Proposer["Proposer<br/>writes concrete,<br/>testable strategy specs"]
+        Challenger["Challenger<br/>approve / revise / reject<br/>each spec"]
+        Freeze["Pre-register &amp; freeze<br/>spec, metric &amp; test hashed<br/>before any held-out data is seen"]
+        Proposer --> Challenger --> Freeze
+    end
+
+    subgraph DATA["Partitioned history — purge + embargo at every cut"]
+        direction LR
+        Research["Research 60%<br/>the only data the<br/>generator iterates on"]
+        Validation["Validation 25%"]
+        Holdout["Locked holdout 15%<br/>spent once"]
+    end
+
+    subgraph GATE["Statistical gatekeeper — the only reader of Validation &amp; Holdout"]
+        direction TB
+        Backtest["Net-of-fee backtest<br/>real Kalshi taker fees;<br/>a gross edge fees eat does not count"]
+        Battery["Test battery on Validation<br/>bootstrap CI · PSR ·<br/>DSR deflated by trial count ·<br/>placebo/null · LORD++ FDR budget ·<br/>Benjamini–Hochberg ·<br/>purged walk-forward + embargo"]
+        Backtest --> Battery
+    end
+
+    Verdict{"Clears ALL<br/>tests at once?"}
+    Ledger[("Immutable ledger<br/>rejected &amp; inconclusive logged —<br/>trial count stays honest")]
+    HoldoutEval["One-time holdout eval<br/>locked 15% spent once<br/>→ FORWARD_VALIDATED"]
+    Marginal{"Marginal contribution<br/>|ρ| ≤ 0.80 vs live book?"}
+    Candidate(["DEPLOYMENT_CANDIDATE<br/>survived every check<br/>on data it never saw"])
+
+    Idea --> Proposer
+    Freeze --> Research
+    Research --> Backtest
+    Validation -. "read by gatekeeper only" .-> Battery
+    Battery --> Verdict
+    Verdict -- "no · most ideas exit here" --> Ledger
+    Verdict -- "yes · STAT_SUPPORTED" --> HoldoutEval
+    Holdout -. "read by gatekeeper only" .-> HoldoutEval
+    HoldoutEval --> Marginal
+    Marginal -- "no" --> Ledger
+    Marginal -- "yes" --> Candidate
+
+    Verdict -. "Tau-RSI loop — rewrites its exploration policy;<br/>classification labels only, never held-out numbers" .-> Proposer
+```
+
 ## Setup
 
 ```bash
