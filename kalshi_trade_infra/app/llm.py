@@ -64,7 +64,8 @@ def _bedrock(system: str, messages: List[Dict[str, str]], model: "Optional[str]"
     unified across Claude/Nova/Llama/… and returns text + token usage the same way."""
     try:
         import boto3
-        from botocore.exceptions import ClientError
+        from botocore.config import Config
+        from botocore.exceptions import ClientError, ConnectTimeoutError, ReadTimeoutError
     except ImportError:
         raise LLMError("boto3 is required for Bedrock but is not installed.")
     model_id = model or BEDROCK_MODEL
@@ -72,7 +73,10 @@ def _bedrock(system: str, messages: List[Dict[str, str]], model: "Optional[str]"
     kwargs: Dict[str, Any] = {"modelId": model_id, "messages": conv, "inferenceConfig": {"maxTokens": MAX_TOKENS}}
     if system:
         kwargs["system"] = [{"text": system}]
-    client = boto3.client("bedrock-runtime", region_name=AWS_REGION)
+    # A large hypothesis-generation response takes minutes; botocore's default 60s read timeout
+    # was failing whole research runs. Give it room, and let a transient timeout retry below.
+    cfg = Config(read_timeout=600, connect_timeout=15, retries={"max_attempts": 0})
+    client = boto3.client("bedrock-runtime", region_name=AWS_REGION, config=cfg)
     for attempt in range(4):
         try:
             resp = client.converse(**kwargs)
@@ -83,6 +87,11 @@ def _bedrock(system: str, messages: List[Dict[str, str]], model: "Optional[str]"
                 continue
             raise LLMError("Bedrock call failed (%s). Model '%s' may need access enabled in the Bedrock console for %s."
                            % (code or e, model_id, AWS_REGION))
+        except (ReadTimeoutError, ConnectTimeoutError) as e:
+            if attempt < 3:
+                time.sleep(2 ** (attempt + 1))
+                continue
+            raise LLMError("Bedrock call timed out after retries: %s" % e)
         except Exception as e:
             raise LLMError("Bedrock call failed: %s" % e)
         msg = (resp.get("output") or {}).get("message") or {}
