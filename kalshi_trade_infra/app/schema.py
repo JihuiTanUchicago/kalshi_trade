@@ -529,6 +529,15 @@ def main() -> None:
         _add_column_if_missing(cur, "app_users", "autopilot_live", "ALTER TABLE app_users ADD COLUMN autopilot_live TINYINT(1) NOT NULL DEFAULT 0")
         _add_column_if_missing(cur, "app_users", "autopilot_daily_loss_limit", "ALTER TABLE app_users ADD COLUMN autopilot_daily_loss_limit DECIMAL(10,2) NOT NULL DEFAULT 50.00")
         _add_column_if_missing(cur, "app_experiments", "data_provenance_json", "ALTER TABLE app_experiments ADD COLUMN data_provenance_json JSON NULL AFTER cost_assumptions_json")
+        # Risk force-sell + portfolio caps (per-user, conservative defaults): when a deployment's
+        # drawdown from its high-water mark exceeds drawdown_limit_pct of its capital, the engine
+        # force-closes its open positions (via each mode's own exit path) and pauses it. The two
+        # portfolio caps block NEW entries that would push the user past max_open_positions open
+        # positions or max_open_notional dollars of open entry notional. drawdown_limit_pct=0 disables
+        # the force-sell for that user. Tunable per user; UI wiring is deferred (columns only for now).
+        _add_column_if_missing(cur, "app_users", "drawdown_limit_pct", "ALTER TABLE app_users ADD COLUMN drawdown_limit_pct DECIMAL(6,2) NOT NULL DEFAULT 25.00")
+        _add_column_if_missing(cur, "app_users", "max_open_positions", "ALTER TABLE app_users ADD COLUMN max_open_positions INT NOT NULL DEFAULT 20")
+        _add_column_if_missing(cur, "app_users", "max_open_notional", "ALTER TABLE app_users ADD COLUMN max_open_notional DECIMAL(12,2) NOT NULL DEFAULT 1000.00")
         # Backfill any user still missing a handle (idempotent: only touches NULLs).
         from app import repository as _repo
         cur.execute("SELECT id, email, name FROM app_users WHERE username IS NULL OR username=''")

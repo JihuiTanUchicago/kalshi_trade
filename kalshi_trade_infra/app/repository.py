@@ -830,6 +830,17 @@ def open_positions(cur, deployment_id: int) -> List[Dict]:
     return cur.fetchall()
 
 
+def deployment_realized_series(cur, deployment_id: int) -> List[float]:
+    """Realized P&L of each closed position, oldest first — the engine folds this into a
+    cumulative equity curve for the drawdown force-sell. Same `status='closed'` definition
+    the loss guard uses, so the two agree on what counts as realized."""
+    cur.execute(
+        "SELECT COALESCE(pnl,0) AS pnl FROM app_positions WHERE deployment_id=%s AND status='closed' ORDER BY closed_at, id",
+        (deployment_id,),
+    )
+    return [float(r["pnl"]) for r in cur.fetchall()]
+
+
 def update_marks(cur, market: str, marks: Dict[str, float], now: datetime) -> int:
     """Stamp the current YES bid on every open position whose ticker is in `marks`.
     Called from the engine tick, which already holds the live book — no extra API calls.
@@ -898,6 +909,41 @@ def close_position(cur, position_id: int, exit_price: float, exit_fee: float, pn
     return cur.rowcount == 1
 
 
+def book_partial_exit(cur, pos: Dict, fill_qty: int, exit_price: float, exit_fee: float, pnl: float,
+                      reason: str) -> bool:
+    """Record a PARTIAL exit fill: shrink the open position to the un-filled remainder and book the
+    `fill_qty` sold contracts as their own closed position row (so the realized P&L is counted by the
+    loss/drawdown guards and settlement never re-counts the sold contracts). The open row's entry fee
+    is split pro-rata with the sold slice.
+
+    Reduce-then-book ordering + the `status='open'` guard make it idempotent and crash-safe: a retried
+    tick reads the already-shrunk qty, and a crash between the two statements can only LEAVE a slice
+    un-booked, never DOUBLE-count or re-sell. MUST run inside a transaction (see repo.transaction) so
+    the two statements commit together. Returns False (books nothing) if the row is no longer open."""
+    total_qty = int(pos["qty"])
+    fill_qty = int(fill_qty)
+    if not 0 < fill_qty < total_qty:
+        raise ValueError("partial fill must be between 1 and qty-1, got %d of %d" % (fill_qty, total_qty))
+    entry_fee = float(pos["entry_fee"])
+    filled_entry_fee = round(entry_fee * fill_qty / total_qty, 4)
+    cur.execute(
+        "UPDATE app_positions SET qty=%s, entry_fee=%s WHERE id=%s AND status='open'",
+        (total_qty - fill_qty, round(entry_fee - filled_entry_fee, 4), pos["id"]),
+    )
+    if cur.rowcount != 1:
+        return False  # already closed/shrunk by another tick — book nothing (idempotent)
+    cur.execute(
+        """INSERT INTO app_positions (deployment_id, user_id, mode, ticker, side, qty, entry_price,
+             entry_fee, market_close_time, opened_at, status, exit_price, exit_fee, pnl, close_reason,
+             closed_at, order_ref)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'closed',%s,%s,%s,%s,%s,%s)""",
+        (pos["deployment_id"], pos["user_id"], pos["mode"], pos["ticker"], pos["side"], fill_qty,
+         pos["entry_price"], filled_entry_fee, pos["market_close_time"], pos["opened_at"],
+         exit_price, exit_fee, round(pnl, 4), reason, now_utc(), pos.get("order_ref")),
+    )
+    return True
+
+
 def realized_pnl(cur, user_id: int, mode: str, since: Optional[datetime] = None) -> float:
     sql = "SELECT COALESCE(SUM(pnl),0) AS p FROM app_positions WHERE user_id=%s AND mode=%s AND status='closed'"
     params: List[Any] = [user_id, mode]
@@ -906,6 +952,26 @@ def realized_pnl(cur, user_id: int, mode: str, since: Optional[datetime] = None)
         params.append(since)
     cur.execute(sql, params)
     return float(cur.fetchone()["p"])
+
+
+def user_risk_config(cur, user_id: int) -> Dict:
+    """Per-user risk limits for the force-sell / portfolio-cap layer (conservative DB defaults)."""
+    cur.execute(
+        "SELECT drawdown_limit_pct, max_open_positions, max_open_notional FROM app_users WHERE id=%s",
+        (user_id,),
+    )
+    return cur.fetchone()
+
+
+def user_open_exposure(cur, user_id: int) -> Dict:
+    """Live, cross-deployment open exposure for the per-user portfolio caps: how many open
+    positions the user holds and their total entry notional (qty * entry_price), in dollars."""
+    cur.execute(
+        "SELECT COUNT(*) AS n, COALESCE(SUM(qty*entry_price),0) AS notional "
+        "FROM app_positions WHERE user_id=%s AND status='open'",
+        (user_id,),
+    )
+    return cur.fetchone()
 
 
 def daily_pnl(cur, user_id: int, mode: str, days: int = 60) -> List[Dict]:
