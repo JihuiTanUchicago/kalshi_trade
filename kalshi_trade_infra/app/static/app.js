@@ -955,7 +955,7 @@
   // states that need the user: a paused deployment and live money.
   const MARK = {
     passed: ['on', 'Passed'], failed: ['', 'Void'], rejected: ['quiet', 'Rejected'], queued: ['quiet', 'Testing'],
-    paused: ['armed', 'Paused'], stopped: ['quiet', 'Stopped'],
+    paused: ['armed', 'Paused'], stopped: ['quiet', 'Stopped'], 'backtest-only': ['armed', 'Backtest only'],
   };
   const mark = (key, live) => {
     if (key === 'running') return live ? '<span class="mk live">Live</span>' : '<span class="mk">Paper</span>';
@@ -2100,8 +2100,10 @@
       + `<div class="paper-sub"><h4 class="paper-h">Most recent unseen trades</h4>${trades}</div>`;
     let verdictBody = rp.verdict;
     if (!hasExp) {
+      const btOnly = ['sig', 'armed', 'Backtest only', 'Backtest-only — never put through statistical validation (no pre-registration, one-time holdout, or multiple-testing control). These numbers come from a sample too small to separate skill from luck. Deploying it is your decision and your risk.'];
       const vmap = {
-        passed: ['sig', 'armed', 'Backtest only', 'Backtest-only — never put through statistical validation (no pre-registration, one-time holdout, or multiple-testing control). These numbers come from a sample too small to separate skill from luck. Deploying it is your decision and your risk.'],
+        passed: btOnly,
+        'backtest-only': btOnly,
         failed: ['sig', 'armed', 'Void', 'It reached the unseen-data gate and failed it, so it was not validated.'],
         rejected: ['quiet', 'quiet', 'Rejected', 'Rejected — ' + rejectReason(s)],
       };
