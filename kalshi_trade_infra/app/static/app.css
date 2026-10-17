@@ -278,7 +278,7 @@ table { width: 100%; border-collapse: collapse; font-size: 13px; }
 /* width:100% constrains the auto layout to the container so long titles wrap
    instead of widening the table past the viewport (no horizontal scroll). */
 .t-strat, .t-dep { table-layout: auto; width: 100%; min-width: 620px; }
-.t-strat td.name, .t-dep td.name { overflow-wrap: anywhere; }
+.t-strat td.name, .t-dep td.name { overflow-wrap: anywhere; white-space: normal; max-width: 30ch; }
 th, td { padding: 10px 12px 9px; text-align: left; vertical-align: baseline; border-bottom: 1px solid var(--rule); white-space: nowrap; }
 th { font-family: var(--f-nar); font-size: 12px; letter-spacing: .02em; color: var(--ink-3); font-weight: 600; border-bottom: 1px solid var(--rule-2); }
 td:first-child, th:first-child { padding-left: 0; }

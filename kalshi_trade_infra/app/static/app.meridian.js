@@ -878,7 +878,7 @@
         <div class="sub-fig">$${esc(d.stake)} a trade, up to ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' \u00b7 ' + esc(d.status_reason) : ''}</div></td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(d.market))}</span></td>
       <td data-lab="Status">${mark(d.status, live)}</td>
-      <td class="num" data-lab="Realized">${money(d.realized_pnl)}${d.curve && d.curve.length > 1 ? spark(d.curve, reg, 'Realized profit and loss') : ''}</td>
+      <td class="num" data-lab="Realized">${money(d.realized_pnl)}</td>
       <td class="num" data-lab="Trades">${d.closed_trades}${d.open_positions ? `<div class="sub-fig">+${d.open_positions} open</div>` : ''}</td>
       <td class="num" data-lab="Backtest unseen">${exp ? usd(exp.pnl, true) : '\u2014'}</td>
       <td data-lab="Since">${when(d.created_at)}</td>
@@ -1227,7 +1227,7 @@
             ${days.length ? `<details class="daily-results"><summary>Daily results</summary><table><thead><tr><th>Date</th><th class="num">Closed P&amp;L</th></tr></thead><tbody>${days.map(day => `<tr><td>${esc(day.d)}</td><td class="num">${money(+day.pnl)}</td></tr>`).join('')}</tbody></table></details>` : ''}
           </section>
           <section class="sect overview-research"><div class="sect-head"><h2>Recent research</h2>${sessions.length ? `<span class="sect-note">${sessions.length} recent sessions</span>` : ''}</div>${research}</section>
-          <section class="sect overview-deployed"><div class="sect-head"><h2>Deployed</h2>${d.deployments.some((x) => x.curve && x.curve.length > 1) ? '<span class="sect-note">Sparklines share one dollar scale</span>' : ''}</div>${deps}</section>
+          <section class="sect overview-deployed"><div class="sect-head"><h2>Deployed</h2></div>${deps}</section>
           <section class="portfolio-ledger overview-settled"><h3>Settled lately</h3>${stubs(d.recent_closed, true)}</section>
         </div>`;
       root.querySelector('#boardbody').innerHTML = board;

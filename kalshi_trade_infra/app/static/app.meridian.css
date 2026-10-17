@@ -258,7 +258,7 @@ td:first-child, th:first-child { padding-left: 0; }
 td:last-child, th:last-child { padding-right: 0; }
 tbody tr:hover td { background: var(--stock-raised); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums lining-nums; }
-td.name { font-weight: 600; }
+td.name { font-weight: 600; white-space: normal; overflow-wrap: anywhere; max-width: 30ch; }
 td.name a { text-decoration-color: var(--rule-2); }
 .cellwrap { max-width: 52ch; white-space: normal; word-break: break-word; line-height: 1.5; color: var(--ink-3); font-weight: 400; }
 tr.live-row td.name a { color: var(--signal); }
