@@ -70,23 +70,24 @@ already run). "No reliable edge" is a first-class, logged outcome.
 
 ## Architecture
 
-```
-per-underlying spot ─┐
-                     ├─► feature store (MySQL) ─► proposer + challenger ─► pre-register & freeze
-Kalshi book + catalog┘                                                            │
-                                                                                  ▼
-                        immutable ledger ◄── gatekeeper battery ◄── backtester ◄── partitions
-                                                   │  (net of fees)         (purge + embargo)
-                                 one-time holdout ─┤
-                                                   ▼
-          Tau-RSI ──(evolved policy)──► proposer    deployment candidate
-             ▲                                             │
-             └────────(generalization score)──────────────┤
-                                                           ▼
-                                    paper ─► demo ─► live engine ◄── risk layer
-                                                           │        (stops, caps, reconcile)
-                                                           ▼
-                                                 autopilot · dashboard / app
+```mermaid
+flowchart LR
+  subgraph data[Data]
+    S[Per-underlying spot<br/>+ Kalshi book + catalog] --> F[Feature store · MySQL]
+  end
+  F --> P[Proposer + challenger]
+  P --> PR[Pre-register & freeze]
+  PR --> PART[Partitions<br/>Research / Validation / Holdout<br/>purge + embargo]
+  PART --> BT[Backtester · net of fees]
+  BT --> G[Gatekeeper battery<br/>CI · PSR · DSR · placebo · FDR · WF]
+  G -- rejected / inconclusive --> LED[(Immutable ledger)]
+  G --> HO[One-time holdout + marginal contribution]
+  HO --> DC[Deployment candidate]
+  DC --> ENG[paper → demo → live engine]
+  RISK[Risk layer<br/>stops · caps · reconcile] --> ENG
+  ENG --> APP[Autopilot · dashboard]
+  G -. generalization score .-> RSI[Tau-RSI<br/>exploration policy]
+  RSI -. evolved policy .-> P
 ```
 
 ## Setup
