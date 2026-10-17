@@ -216,7 +216,10 @@ STRATEGY_FSIZE_BYTES = 256 * 1024 * 1024  # RLIMIT_FSIZE (model artifacts to the
 STRATEGY_DATA_DIR = os.getenv(
     "APP_STRATEGY_DATA_DIR",
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "strategy_data"))
-STRATEGY_DATA_MOUNT = "/data"       # where STRATEGY_DATA_DIR appears inside a Linux (bwrap) sandbox
+# Where STRATEGY_DATA_DIR appears inside a Linux (bwrap) sandbox. It lives UNDER /tmp (the only
+# writable tmpfs) because the root is --ro-bind read-only, so bwrap can't create a mount point at
+# the root (e.g. "/data" fails with "Read-only file system"); /tmp/data is creatable in the tmpfs.
+STRATEGY_DATA_MOUNT = "/tmp/data"
 
 
 def validate_strategy_code(code: str) -> None:
