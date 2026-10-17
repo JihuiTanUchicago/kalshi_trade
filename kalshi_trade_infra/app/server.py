@@ -182,6 +182,8 @@ def me(ctx: Ctx):
         "kalshi_connected": repo.get_kalshi_key(ctx.cur, ctx.uid) is not None,
         "kalshi_dev_connected": repo.get_kalshi_dev_key(ctx.cur, ctx.uid) is not None,
         "live_trading_available": engine.LIVE_TRADING_ENABLED,
+        # Demo (sandbox) always supports NO/either; live NO is behind the staged-rollout flag.
+        "no_side_live_enabled": engine.NO_SIDE_LIVE_ENABLED,
         "is_admin": (ctx.user["email"] or "").lower() == ADMIN_EMAIL.lower(),
         "billing_enabled": billing.configured(),
         "needs_card": _needs_card(ctx),
