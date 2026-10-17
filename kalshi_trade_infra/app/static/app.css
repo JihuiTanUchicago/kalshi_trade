@@ -1023,4 +1023,15 @@ body.landing-body .apf { display: none; }
 .apf-controls .btn { flex: 1 1 auto; }
 #apf-confirm { margin-top: 10px; display: grid; gap: 7px; }
 #apf-confirm[hidden] { display: none; }
+.apf.open { display: flex; flex-direction: column; max-height: calc(100vh - 32px); }
+.apf.open .apf-body { overflow-y: auto; }
+.apf .autopilot { margin-bottom: 10px; font-size: 12px; padding: 8px 10px; }
+.apf .autopilot span b { margin-bottom: 2px; }
+.apf-chat { margin-top: 10px; border-top: 1px solid var(--rule); padding-top: 8px; display: grid; gap: 8px; }
+.apf-chat-head { display: flex; justify-content: space-between; align-items: baseline; }
+.apf-chat-head b { font-family: var(--f-nar); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.apf .messages { max-height: 38vh; padding: 0; gap: 8px; }
+.apf .messages .msg { font-size: 12.5px; padding: 7px 9px; max-width: 94%; }
+.apf .composer { border-top: 0; padding: 0; }
+.apf .composer textarea { min-height: 36px; max-height: 110px; }
 @media (max-width: 420px) { .apf { right: 10px; bottom: 10px; } .apf.open { width: calc(100vw - 20px); } }

@@ -1396,50 +1396,13 @@
 
   // ---------- deploy + chat ----------
   async function viewDeploy() {
-    const u = S.me.user;
-    shell('/deploy', boardTitle('Deploy', 'Your strategies trading now. Talk to the agent to adjust them.') +
+    // Autopilot + the agent chat now live in the floating window (reachable from every view),
+    // so Deploy is just the board: what's trading and the open positions.
+    shell('/deploy', boardTitle('Deploy', 'Your strategies trading now.') +
       '<dl class="figures measure" id="dfigs" style="margin-top:14px"></dl>', `
-      <div class="seg" role="group" aria-label="View"><button aria-pressed="true" data-view="board">Board</button><button aria-pressed="false" data-view="chat">Agent chat</button></div>
-      <div class="deploy" data-view="board" id="deploy">
-        <div class="deploy-board"><div id="flash"></div><div id="deps">${loading(260)}</div>
-          <section class="section"><div class="section-head"><h2>Open positions</h2></div><div id="openpos"></div></section>
-        </div>
-        <section class="chat" aria-label="Agent chat">
-          <div class="chat-head">
-            <div class="t"><h2>Agent</h2><span class="hint" id="agentstate"></span></div>
-            <div class="autopilot ${u.autopilot ? 'on' : ''}" id="ap">
-              <span><b>Autopilot</b>${u.autopilot ? 'The agent adjusts and deploys paper strategies without asking. It can always pause; it never touches live money.' : 'Off. The agent proposes changes and you approve them.'}</span>
-              <label class="switch"><span class="vh">Autopilot</span><input type="checkbox" id="apswitch" ${u.autopilot ? 'checked' : ''}></label>
-            </div>
-          </div>
-          <div class="messages" id="messages" aria-live="polite"></div>
-          <form class="composer" id="composer">
-            <label class="vh" for="msg">Message the agent</label>
-            <textarea class="input" id="msg" rows="1" maxlength="2000" placeholder="Message the agent…"></textarea>
-            <button class="btn" type="submit" aria-label="Send">${ICON.send}</button>
-          </form>
-        </section>
+      <div class="deploy-board"><div id="flash"></div><div id="deps">${loading(260)}</div>
+        <section class="section"><div class="section-head"><h2>Open positions</h2></div><div id="openpos"></div></section>
       </div>`);
-    const wrap = root.querySelector('#deploy');
-    root.querySelectorAll('.seg button').forEach((b) => (b.onclick = () => {
-      wrap.dataset.view = b.dataset.view;
-      root.querySelectorAll('.seg button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-    }));
-    const sw = root.querySelector('#apswitch');
-    sw.onchange = async () => {
-      const on = sw.checked;
-      if (on && !confirmAutopilot.armed) { sw.checked = false; confirmAutopilot.armed = true; root.querySelector('#ap span').innerHTML = '<b>Turn on autopilot?</b>Flip again to confirm. The agent will act on paper strategies without asking you first.'; setTimeout(() => (confirmAutopilot.armed = false), 6000); return; }
-      confirmAutopilot.armed = false;
-      try { await api('/api/settings', { autopilot: on }); S.me.user.autopilot = on; } catch (e) { sw.checked = !on; alert0(e.message); }
-      viewDeployRefreshAP();
-      loadChat();
-    };
-    const viewDeployRefreshAP = () => {
-      const ap = root.querySelector('#ap');
-      const on = S.me.user.autopilot;
-      ap.classList.toggle('on', on);
-      ap.querySelector('span').innerHTML = on ? '<b>Autopilot</b>The agent adjusts and deploys paper strategies without asking. It can always pause; it never touches live money.' : '<b>Autopilot</b>Off. The agent proposes changes and you approve them.';
-    };
     const loadBoard = async () => {
       const d = await api('/api/deployments');
       const running = d.deployments.filter((x) => x.status === 'running');
@@ -1457,50 +1420,8 @@
         ${d.open_positions.map((p) => `<tr><td>${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : ''}</td><td class="tick">${esc(p.ticker)}</td><td>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num">${p.unrealized == null ? '<span class="sub-fig">—</span>' : money(p.unrealized)}</td><td class="num">${clock(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
         : '<p class="hint">No open positions.</p>';
     };
-    let lastId = 0;
-    const msgs = root.querySelector('#messages');
-    const renderMsg = (m) => {
-      const who = m.role === 'user' ? 'You' : m.role === 'agent' ? 'Agent' : 'Tau';
-      const prop = m.proposal_id ? `<div class="proposal" data-prop="${m.proposal_id}">${m.proposal_status === 'pending'
-        ? `<button class="btn small" data-decide="approve">Approve</button><button class="btn ghost small" data-decide="reject">Decline</button>`
-        : `<span class="state ${m.proposal_status === 'applied' ? 'gain' : ''}">${m.proposal_status === 'applied' ? 'Applied' : 'Declined'}</span>`}</div>` : '';
-      return `<div class="msg ${m.role}" data-id="${m.id}"><span class="who">${who} · ${clock(m.created_at)}</span>${esc(m.content)}${prop}</div>`;
-    };
-    const loadChat = async (full) => {
-      const d = await api('/api/chat?after=' + (full ? 0 : lastId));
-      const nearBottom = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 80;
-      if (full) msgs.innerHTML = '';
-      msgs.querySelector('.typing') && msgs.querySelector('.typing').remove();
-      d.messages.forEach((m) => { lastId = Math.max(lastId, m.id); msgs.insertAdjacentHTML('beforeend', renderMsg(m)); });
-      if (!msgs.children.length) msgs.innerHTML = `<div class="msg system">Ask anything about your deployments: "How is the volatility strategy doing?" or "Make it more selective." The agent backtests every change before suggesting it.</div>`;
-      if (d.agent_busy) msgs.insertAdjacentHTML('beforeend', '<div class="typing" aria-label="Agent is thinking"><i></i><i></i><i></i></div>');
-      root.querySelector('#agentstate').textContent = d.agent_busy ? 'thinking…' : '';
-      if (nearBottom || full) msgs.scrollTop = msgs.scrollHeight;
-      return d.agent_busy;
-    };
-    msgs.addEventListener('click', async (e) => {
-      const b = e.target.closest('[data-decide]');
-      if (!b) return;
-      const pid = b.closest('[data-prop]').dataset.prop;
-      await busy(b, async () => {
-        try { await api(`/api/proposals/${pid}/${b.dataset.decide}`, {}); await loadChat(true); await loadBoard(); } catch (err) { alert0(err.message); }
-      });
-    });
-    const form = root.querySelector('#composer');
-    const ta = root.querySelector('#msg');
-    ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(160, ta.scrollHeight) + 'px'; });
-    ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); } });
-    form.onsubmit = async (e) => {
-      e.preventDefault();
-      const content = ta.value.trim();
-      if (!content) return;
-      await busy(form.querySelector('button'), async () => {
-        try { await api('/api/chat', { content }); ta.value = ''; ta.style.height = ''; await loadChat(); } catch (err) { alert0(err.message); }
-      });
-    };
-    await Promise.all([loadBoard(), loadChat(true)]);
+    await loadBoard();
     poll(loadBoard, 10000);
-    poll(() => loadChat(), 3000);
   }
   const confirmAutopilot = { armed: false };
 
@@ -1939,45 +1860,131 @@
     'live-armed': { label: 'Autopilot · live armed', cls: 'live' },
     live: { label: 'Autopilot · LIVE', cls: 'live' },
   };
+  // The float is the single home for autopilot: the on/off toggle, live controls, and the agent
+  // chat. The expanded shell is built ONCE; the 20s status poll updates only dynamic bits so it
+  // never wipes the chat/composer. apChatTimer polls chat (3s) only while expanded.
+  let apChatLastId = 0, apChatTimer = null;
+  function apStopChat() { if (apChatTimer) { clearInterval(apChatTimer); apChatTimer = null; } }
+  function apMsgHtml(m) {
+    const who = m.role === 'user' ? 'You' : m.role === 'agent' ? 'Agent' : 'Tau';
+    const prop = m.proposal_id ? `<div class="proposal" data-prop="${m.proposal_id}">${m.proposal_status === 'pending'
+      ? `<button class="btn small" data-decide="approve">Approve</button><button class="btn ghost small" data-decide="reject">Decline</button>`
+      : `<span class="state ${m.proposal_status === 'applied' ? 'gain' : ''}">${m.proposal_status === 'applied' ? 'Applied' : 'Declined'}</span>`}</div>` : '';
+    return `<div class="msg ${m.role}" data-id="${m.id}"><span class="who">${who} · ${clock(m.created_at)}</span>${esc(m.content)}${prop}</div>`;
+  }
+  async function apLoadChat(box, full) {
+    const msgs = box.querySelector('#apf-messages'); if (!msgs) return;
+    let d; try { d = await api('/api/chat?after=' + (full ? 0 : apChatLastId)); } catch (e) { return; }
+    const nearBottom = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 80;
+    if (full) { msgs.innerHTML = ''; apChatLastId = 0; }
+    const typing = msgs.querySelector('.typing'); if (typing) typing.remove();
+    d.messages.forEach((m) => { apChatLastId = Math.max(apChatLastId, m.id); msgs.insertAdjacentHTML('beforeend', apMsgHtml(m)); });
+    if (!msgs.children.length) msgs.innerHTML = '<div class="msg system">Ask about your deployments or tell the agent what to change — it backtests every change before applying it.</div>';
+    if (d.agent_busy) msgs.insertAdjacentHTML('beforeend', '<div class="typing" aria-label="Agent is thinking"><i></i><i></i><i></i></div>');
+    const st = box.querySelector('#apf-agentstate'); if (st) st.textContent = d.agent_busy ? 'thinking…' : '';
+    if (nearBottom || full) msgs.scrollTop = msgs.scrollHeight;
+  }
   function renderAutopilot(box, d) {
-    const expanded = apExpanded();
-    const m = (d && AP_MODE[d.mode]) || AP_MODE.off;
-    box.className = 'apf' + (expanded ? ' open' : '') + (m.cls ? ' ' + m.cls : '');
-    if (!expanded) {
+    if (!apExpanded()) {
+      apStopChat();
+      const m = (d && AP_MODE[d.mode]) || AP_MODE.off;
+      box.className = 'apf' + (m.cls ? ' ' + m.cls : '');
+      box.dataset.shell = '';
       box.innerHTML = `<button type="button" class="apf-pill" data-ap="toggle" aria-expanded="false">
         <span class="apf-dot" aria-hidden="true"></span><span class="apf-pill-label">${esc(m.label)}</span>${ICON.chev || ''}</button>`;
-    } else {
-      const live = d && d.mode && d.mode.indexOf('live') === 0;
-      const pnl = d ? d.today_live_pnl : 0;
-      box.innerHTML = `
-        <div class="apf-head"><span class="apf-dot" aria-hidden="true"></span><b>${esc(m.label)}</b>
-          <button type="button" class="apf-x" data-ap="toggle" aria-label="Collapse">${ICON.cross || '×'}</button></div>
-        <div class="apf-body">
-          ${d ? `<dl class="apf-stats">
-            <div><dt>Running</dt><dd>${d.paper_running} paper${d.live_running ? ` · <span class="apf-live">${d.live_running} live</span>` : ''}</dd></div>
-            <div><dt>Live P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd></div>
-            <div><dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd></div>
-          </dl>
-          ${d.last_action ? `<p class="apf-last">${esc(d.last_action.text)}</p>` : '<p class="apf-last hint">No autopilot actions yet.</p>'}
-          <div class="apf-gates hint">${apLiveBlock(d)}</div>
-          <div id="apf-flash"></div>
-          <div class="apf-controls">
-            ${d.autopilot_live
-              ? `<button class="btn sm" data-ap="livetoggle" data-on="0">Turn off live</button>`
-              : `<button class="btn sm" data-ap="livearm" ${(d.live_enabled && d.kalshi_connected && d.autopilot) ? '' : 'aria-disabled="true"'}>Enable live autopilot</button>`}
-            <button class="btn sm danger" data-ap="kill">Kill</button>
-            <a class="btn sm ghost" href="/deploy">Open board</a>
-          </div>
-          <form id="apf-confirm" hidden>
-            <p class="hint">The agent will trade <b>real money</b> on its own, within your caps + loss guard. Type <b>LIVE AUTOPILOT</b>.</p>
-            <input class="input" name="confirm" autocomplete="off" aria-label="Type LIVE AUTOPILOT to confirm">
-            <button class="btn sm" type="submit">Confirm live autopilot</button>
-          </form>` : '<p class="hint">Loading…</p>'}
-        </div>`;
+      box.querySelector('[data-ap]').onclick = (e) => apAction(box, 'toggle', e);
+      return;
     }
-    box.querySelectorAll('[data-ap]').forEach((b) => (b.onclick = (e) => apAction(box, b.dataset.ap, e)));
-    const form = box.querySelector('#apf-confirm');
-    if (form) form.onsubmit = (e) => { e.preventDefault(); apEnableLive(box, form.confirm.value.trim()); };
+    if (box.dataset.shell !== 'expanded') apBuildShell(box);
+    apUpdate(box, d);
+  }
+  function apBuildShell(box) {
+    box.dataset.shell = 'expanded';
+    box.innerHTML = `
+      <div class="apf-head"><span class="apf-dot" aria-hidden="true"></span><b id="apf-label"></b>
+        <button type="button" class="apf-x" data-ap="toggle" aria-label="Collapse">${ICON.cross || '×'}</button></div>
+      <div class="apf-body">
+        <div class="autopilot" id="apf-ap">
+          <span id="apf-ap-copy"></span>
+          <label class="switch"><span class="vh">Autopilot</span><input type="checkbox" id="apf-apswitch"></label>
+        </div>
+        <dl class="apf-stats" id="apf-stats"></dl>
+        <p class="apf-last" id="apf-last"></p>
+        <div class="apf-gates hint" id="apf-gates"></div>
+        <div id="apf-flash"></div>
+        <div class="apf-controls" id="apf-controls"></div>
+        <form id="apf-confirm" hidden>
+          <p class="hint">The agent will trade <b>real money</b> on its own, within your caps + loss guard. Type <b>LIVE AUTOPILOT</b>.</p>
+          <input class="input" name="confirm" autocomplete="off" aria-label="Type LIVE AUTOPILOT to confirm">
+          <button class="btn sm" type="submit">Confirm live autopilot</button>
+        </form>
+        <div class="apf-chat">
+          <div class="apf-chat-head"><b>Agent</b><span class="hint" id="apf-agentstate"></span></div>
+          <div class="messages" id="apf-messages" aria-live="polite"></div>
+          <form class="composer" id="apf-composer">
+            <label class="vh" for="apf-msg">Message the agent</label>
+            <textarea class="input" id="apf-msg" rows="1" maxlength="2000" placeholder="Message the agent…"></textarea>
+            <button class="btn" type="submit" aria-label="Send">${ICON.send}</button>
+          </form>
+        </div>
+      </div>`;
+    box.querySelector('.apf-x').onclick = (e) => apAction(box, 'toggle', e);
+    box.querySelector('#apf-confirm').onsubmit = (e) => { e.preventDefault(); apEnableLive(box, box.querySelector('#apf-confirm').confirm.value.trim()); };
+    const sw = box.querySelector('#apf-apswitch');
+    sw.onchange = async () => {
+      const on = sw.checked;
+      if (on && !confirmAutopilot.armed) { sw.checked = false; confirmAutopilot.armed = true; box.querySelector('#apf-ap-copy').innerHTML = '<b>Turn on autopilot?</b>Flip again to confirm. The agent will act on paper strategies without asking you first.'; setTimeout(() => (confirmAutopilot.armed = false), 6000); return; }
+      confirmAutopilot.armed = false;
+      try { await api('/api/settings', { autopilot: on }); S.me.user.autopilot = on; } catch (e) { sw.checked = !on; alert0(e.message); return; }
+      refreshAutopilot(box);
+    };
+    const msgs = box.querySelector('#apf-messages');
+    msgs.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-decide]'); if (!b) return;
+      const pid = b.closest('[data-prop]').dataset.prop;
+      await busy(b, async () => { try { await api(`/api/proposals/${pid}/${b.dataset.decide}`, {}); await apLoadChat(box, true); } catch (err) { alert0(err.message); } });
+    });
+    const cf = box.querySelector('#apf-composer'), ta = box.querySelector('#apf-msg');
+    ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(120, ta.scrollHeight) + 'px'; });
+    ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); cf.requestSubmit(); } });
+    cf.onsubmit = async (e) => {
+      e.preventDefault(); const content = ta.value.trim(); if (!content) return;
+      await busy(cf.querySelector('button'), async () => { try { await api('/api/chat', { content }); ta.value = ''; ta.style.height = ''; await apLoadChat(box); } catch (err) { alert0(err.message); } });
+    };
+    apLoadChat(box, true);
+    apStopChat();
+    apChatTimer = setInterval(() => { const b = document.getElementById('autopilot-float'); if (b && apExpanded()) apLoadChat(b); else apStopChat(); }, 3000);
+  }
+  function apUpdate(box, d) {
+    const m = (d && AP_MODE[d.mode]) || AP_MODE.off;
+    box.className = 'apf open' + (m.cls ? ' ' + m.cls : '');
+    const label = box.querySelector('#apf-label'); if (label) label.textContent = m.label;
+    const on = d ? d.autopilot : (S.me.user && S.me.user.autopilot);
+    const ap = box.querySelector('#apf-ap'); if (ap) ap.classList.toggle('on', !!on);
+    const sw = box.querySelector('#apf-apswitch'); if (sw && document.activeElement !== sw) sw.checked = !!on;
+    const copy = box.querySelector('#apf-ap-copy');
+    if (copy && !confirmAutopilot.armed) copy.innerHTML = on
+      ? '<b>Autopilot</b>Adjusts and deploys paper strategies on its own. It never touches live money without the step below.'
+      : '<b>Autopilot</b>Off — the agent only proposes; you approve.';
+    if (!d) return;
+    const pnl = d.today_live_pnl || 0;
+    const stats = box.querySelector('#apf-stats');
+    if (stats) stats.innerHTML = `
+      <div><dt>Running</dt><dd>${d.paper_running} paper${d.live_running ? ` · <span class="apf-live">${d.live_running} live</span>` : ''}</dd></div>
+      <div><dt>Live P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd></div>
+      <div><dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd></div>`;
+    const last = box.querySelector('#apf-last');
+    if (last) { last.className = 'apf-last' + (d.last_action ? '' : ' hint'); last.textContent = d.last_action ? d.last_action.text : 'No autopilot actions yet.'; }
+    const gates = box.querySelector('#apf-gates'); if (gates) gates.textContent = apLiveBlock(d);
+    const controls = box.querySelector('#apf-controls');
+    if (controls) {
+      controls.innerHTML = `${d.autopilot_live
+        ? `<button class="btn sm" data-ap="livetoggle" data-on="0">Turn off live</button>`
+        : `<button class="btn sm" data-ap="livearm" ${(d.live_enabled && d.kalshi_connected && d.autopilot) ? '' : 'aria-disabled="true"'}>Enable live autopilot</button>`}
+        <button class="btn sm danger" data-ap="kill">Kill</button>
+        <a class="btn sm ghost" href="/deploy">Open board</a>`;
+      controls.querySelectorAll('[data-ap]').forEach((b) => (b.onclick = (e) => apAction(box, b.dataset.ap, e)));
+    }
   }
   // Why live autopilot can't be enabled yet (ordered), or '' when all gates pass.
   function apLiveBlock(d) {
