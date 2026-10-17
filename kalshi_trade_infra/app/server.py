@@ -228,7 +228,14 @@ def _live_balance(cur, uid: int) -> Dict:
 def dashboard(ctx: Ctx):
     cur = ctx.cur
     day = _start_of_day_utc()
-    open_pos = repo.user_positions(cur, ctx.uid, "open")
+    open_pos = _with_marks(repo.user_positions(cur, ctx.uid, "open"))
+    # Aggregate live mark-to-market unrealized P&L per deployment (from the marks just stamped), so
+    # the Deployed table can show each strategy's current open P&L, not only its realized P&L.
+    unreal_by_dep: Dict[int, float] = {}
+    for p in open_pos:
+        u = p.get("unrealized")
+        if u is not None and p.get("deployment_id") is not None:
+            unreal_by_dep[p["deployment_id"]] = round(unreal_by_dep.get(p["deployment_id"], 0.0) + u, 2)
     deps = repo.list_deployments(cur, ctx.uid)
     curves = repo.deployment_curves(cur, ctx.uid)
     balance = repo.paper_balance(cur, ctx.uid)
@@ -258,9 +265,9 @@ def dashboard(ctx: Ctx):
         "paper": paper,
         "demo": demo,
         "live": live,
-        "open_positions": _with_marks(open_pos),
+        "open_positions": open_pos,
         "recent_closed": repo.user_positions(cur, ctx.uid, "closed", 12),
-        "deployments": [_deployment_out(d, curves.get(d["id"], [])) for d in deps],
+        "deployments": [_deployment_out(d, curves.get(d["id"], []), unreal_by_dep.get(d["id"])) for d in deps],
         "agents": repo.active_run_counts(cur, ctx.uid),
         "freshness": _freshness(cur),
     }
@@ -272,13 +279,13 @@ def _freshness(cur) -> Dict:
     return {k: (now - int(v) if v else None) for k, v in raw.items()}
 
 
-def _deployment_out(d: Dict, curve: List) -> Dict:
+def _deployment_out(d: Dict, curve: List, unrealized: Optional[float] = None) -> Dict:
     res = d.get("result") or {}
     return {
         "id": d["id"], "strategy_id": d["strategy_id"], "title": d["title"], "direction": d["direction"],
         "market": d["market"], "mode": d["mode"], "status": d["status"], "status_reason": d["status_reason"],
         "realized_pnl": round(float(d["realized_pnl"]), 2), "closed_trades": d["closed_trades"], "wins": d["wins"],
-        "open_positions": d["open_positions"], "created_at": d["created_at"], "curve": curve,
+        "unrealized_pnl": unrealized, "open_positions": d["open_positions"], "created_at": d["created_at"], "curve": curve,
         "stake": d["spec"]["sizing"]["stake"], "max_positions": d["spec"]["sizing"]["max_positions"],
         "backtest": {"out_of_sample": res.get("out_of_sample"), "capital": res.get("capital")},
     }
