@@ -13,6 +13,7 @@ from typing import Dict, List
 PLANNED: List[tuple] = [
     ('Autonomous Tau improvement loop runs on a schedule; each round picks one aspect (execution / research rigor / risk / data / ML tooling / UX / engineering) and ships an improvement', ''),
     ('Production-grade execution + risk hardening', ''),
+    ('Execution durability / exactly-once hardening (P0)', ''),
     ('Activate Alpaca stock/ETF agent data after secure worker configuration and entitlement checks, with a production canary before customer rollout', ''),
     ('All-markets collector', ''),
     ('Widen the live market universe', ''),
@@ -21,6 +22,9 @@ PLANNED: List[tuple] = [
     ('Kalshi-dev 2nd equity line', ''),
     ('Agent internet access / web search (Google/Tavily/Brave)', ''),
     ('Polymarket as a 2nd venue: data + API + real & simulation trading', ''),
+    ('Broadened co-pilot autonomy', ''),
+    ('NO-side (and side="either") LIVE execution', ''),
+    ('Research page → quant research cockpit', ''),
     ('Bittensor (TAO) subnet tokens', ''),
     ('Onboard Opus 5.5 (claude-opus-5-5) + surface model comparison', ''),
 ]
@@ -28,6 +32,7 @@ PLANNED: List[tuple] = [
 # Shipped, newest first: (YYYY-MM-DD, title, detail). `detail` is the full
 # markdown explanation (what/components/methodology); may be '' for one-liners.
 SHIPPED: List[tuple] = [
+    ('2026-10-17', 'Autopilot/research sessions no longer crash — three infra bugs fixed + shallow-paper link', 'research runs were dying on (a) a 32 MB JSON truncation (the gatekeeper\'s per-trade equity series had no length cap and overflowed MySQL\'s packet limit, failing on read-back mid-run), (b) a DB connection desync (`read_timeout=30` firing mid-query, plus a silently-swallowed stream-sink error that left the socket broken for the next query → "Packet sequence number wrong"), and (c) a Bedrock streaming read-timeout that was the wrong exception type and bypassed the retry path. Fixes: bounded the STORED equity series (gate statistics unchanged — storage/transport only), raised the DB read-timeout, stopped swallowing connection desyncs, and made streaming timeouts actually retry. Also fixed the "shallow research paper": a re-proposed hypothesis created a new strategy row whose experiment was never re-linked, so the full stats page (CI/PSR/DSR/placebo/FDR/holdout — all already computed + stored + rendered) showed only the abstract; `preregister` now re-points the experiment at the latest `strategy_id`. No gate weakened. (Deployed + live.)'),
     ('2026-10-17', 'Tradeable universe widened 7 → 19 markets', 'added crypto 15-min (SOL/XRP/DOGE/NEAR/ZEC/HYPE), sports moneyline (NFL/NHL/NCAAF/MLB/EPL), and weather (NYC high temp), each probed live for liquidity + structural fit, reusing the generic engine/collector/backtest (no new code paths). All `deployable=True` (research + live) behind every existing per-deployment gate; TAO stays research-only. Data backfill kicked off on deploy (research works per market once its candles land). (Deployed + live; backfilling.)'),
     ('2026-10-17', 'Research market picker redesigned + dormant markets hidden', 'category-grouped, scalable, filterable picker; a market only shows once it has data (the 5 Bittensor/TAO markets auto-hide until their feed is wired). Also renamed the deployment "Stop" button to "Remove". (Deployed + live.)'),
     ('2026-10-17', 'Risk-path hardening: position-level stop-loss + auto-flatten on pause/stop (verified on live money)', "added a per-position stop (force-sell when a position is down past a % of its own COST, default 40%, not only whole-capital drawdown — the gap that let a −57% live position sit un-stopped), and an engine sweep that flattens any paused/stopped deployment still holding positions (manual or auto), through the gated exit path. Also surfaced engine liveness in the dashboard freshness payload. All additive/stricter; exits never blocked; gates untouched. **Verified end-to-end:** on deploy it stopped out the real −57.6% live positions — Kalshi account went flat, Tau's book matched, reconcile clean. (Deployed + live.)"),
