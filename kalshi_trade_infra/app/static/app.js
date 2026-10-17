@@ -979,7 +979,7 @@
     const actions = controls ? `<td class="act" data-lab="">
         ${d.status === 'running' ? `<button class="btn sm" data-dep="${d.id}" data-act="pause">Pause</button>` : ''}
         ${d.status === 'paused' ? `<button class="btn sm" data-dep="${d.id}" data-act="resume">Resume</button>` : ''}
-        <button class="btn sm danger" data-dep="${d.id}" data-act="stop">Stop</button></td>` : '';
+        <button class="btn sm danger" data-dep="${d.id}" data-act="stop">Remove</button></td>` : '';
     return `<tr class="${live ? 'live-row' : ''}">
       <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
         <div class="sub-fig">$${esc(d.stake)} a trade, up to ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' \u00b7 ' + esc(d.status_reason) : ''}</div></td>
