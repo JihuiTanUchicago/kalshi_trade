@@ -517,6 +517,10 @@ select#rmodel { appearance: none; -webkit-appearance: none; padding-right: 28px;
 .hx-tag.void, .hx-tag.rej { color: #8A1021; border-color: var(--neg); }
 .hx-crit { margin: 0; font-size: 12.5px; color: var(--ink-2); line-height: 1.5; }
 .hx-vtext { color: var(--ink-2); font-size: 12.5px; }
+.hx .say-title a.hx-titlelink { color: inherit; text-decoration: none; border-bottom: 1px solid var(--pos); }
+.hx .say-title a.hx-titlelink:hover { color: #0E5C33; border-bottom-color: #0E5C33; }
+.hx-viewstrat { display: inline-block; margin-top: 2px; font-family: var(--f-nar); font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: #0E5C33; text-decoration: none; }
+.hx-viewstrat:hover { text-decoration: underline; }
 .hx-stats { display: flex; flex-wrap: wrap; gap: 2px 1px; margin: 8px 0 0; border: 1px solid var(--rule); background: var(--stock); }
 .hx-stats > div { flex: 1 1 78px; padding: 6px 10px 5px; border-right: 1px solid var(--rule); }
 .hx-stats > div:last-child { border-right: 0; }
@@ -1039,6 +1043,14 @@ a.snap:hover { border-color: var(--ink-3); }
 .rsi-score { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
 .rsi-arrow { color: var(--signal); }
 .rsi-note { color: var(--ink-3); font-size: 11.5px; }
+.rsi-policy { margin-top: 10px; border-top: 1px solid var(--rule); padding-top: 8px; }
+.rsi-policy > summary { cursor: pointer; font-family: var(--f-nar); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--signal); list-style: none; }
+.rsi-policy > summary::-webkit-details-marker { display: none; }
+.rsi-policy > summary::before { content: "\25B8\00a0"; }
+.rsi-policy[open] > summary::before { content: "\25BE\00a0"; }
+.rsi-policy-body { margin-top: 8px; display: grid; gap: 8px; }
+.rsi-rules { font-size: 12.5px; color: var(--ink-2); line-height: 1.5; margin: 0; }
+.rsi-rules b { color: var(--ink); font-family: var(--f-mono, ui-monospace, monospace); font-size: 12px; }
 .verbar { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 100; display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--ink); color: #F1F3ED; border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.3); font-size: 13.5px; }
 .verbar .btn { background: #F1F3ED; color: var(--ink); border-color: #F1F3ED; }
 .theme-pick { display: grid; max-width: 560px; margin-top: 12px; border: 1px solid var(--rule); border-radius: var(--radius); overflow: hidden; }
