@@ -5,9 +5,12 @@ agent proposes trading hypotheses, validates each in a backtest it cannot cheat
 (it never sees the out-of-sample window while iterating), deploys only strategies
 that pass the gates — and its *exploration policy recursively self-improves* from
 its own accumulated discovery history (Tau-RSI, adapted from Dream-RSI). Built
-first on **Kalshi** prediction markets (BTC 15-minute & daily), but the data,
-backtest, and execution layers are **venue-agnostic by design** (prediction
-markets, and other venues over time). Deploy on paper, or to live money in your
+on **Kalshi** prediction markets across a **wide tradeable universe** — crypto
+(BTC/ETH/SOL/XRP/DOGE/NEAR/ZEC/HYPE), sports moneylines (NFL/NHL/NBA/NCAAF/MLB/EPL),
+and weather — with a **catalog-driven generator** that makes any suitable
+outcome-settled Kalshi series deployable. The data, backtest, and execution
+layers are **venue-agnostic by design** (prediction markets, and other venues
+over time). Deploy on paper, a real-fills demo sandbox, or to live money in your
 own venue account.
 
 > **Source-available, not (yet) open source.** Licensed under the Business
@@ -19,44 +22,76 @@ own venue account.
 
 ## What it is
 
-- **Collectors** — Coinbase BTC spot + Kalshi order book → a MySQL feature store.
+- **Collectors** — per-underlying spot (Coinbase) + the Kalshi order book across
+  the whole tradeable universe → a MySQL feature store, plus a `kalshi_series`
+  catalog that drives which markets are deployable.
 - **Feature builder** — per-minute features (moneyness, realized vol, z-score, …).
 - **Research agent** — an LLM proposes parameterized strategy *specs* (never raw
-  code); a deterministic backtester scores them in-sample, then gates the best on
-  **unseen** out-of-sample data. Every hypothesis is recorded, passed or not.
+  code); a challenger vets each, the spec is pre-registered and frozen, then a
+  deterministic backtester (net of fees) scores it and a statistical gatekeeper
+  gates it on **unseen** data. Every hypothesis — passed, rejected, or
+  inconclusive — is recorded to an immutable ledger so the trial count stays
+  honest. Agents can also write real **code strategies** in a sandbox carrying the
+  full ML/quant stack (pandas, scipy, scikit-learn, statsmodels, xgboost, torch, …).
 - **Simulated + live engines** — share one risk/execution abstraction, so a
-  backtest and a deployment evaluate the identical rule. Paper is the default;
-  live orders fire only when explicitly enabled, in your own Kalshi account.
-- **Dashboard / app** — monitor strategies, review the "homework" (thesis,
-  in-sample vs out-of-sample result, number of hypotheses tried), and promote
-  sim → live.
-- **Tau-RSI** *(in progress)* — a self-evolving research loop adapted from
-  **Dream-RSI** (see [NOTICE](NOTICE)): the agent's exploration policy improves
-  from its own accumulated discovery history.
+  backtest and a deployment evaluate the identical rule. Execution is
+  **crash-recoverable and exactly-once** (a durable order-intent log with a reused
+  client-order-id), legging-safe for cross-market pairs, and runs through a
+  marketable-limit kernel with thin-book controls. YES / NO / either-side and
+  cross-contract strategies can all trade. Paper is the default; a real-fills demo
+  sandbox sits between; live orders fire only when explicitly enabled, in your own
+  Kalshi account.
+- **Risk layer** — per-position and capital drawdown stops, auto-flatten on
+  pause/stop, per-user open-notional / open-position caps, and continuous
+  reconciliation of the live book against the exchange.
+- **Autopilot (co-pilot agent)** — can run the full research pipeline on its own
+  and manage the operation within hard safety bounds: tune model, risk, and
+  execution parameters (every value clamped — a stop can't be disabled, a cap
+  can't be exceeded) and promote proven strategies to paper/live within your caps
+  and a daily-loss kill switch. It never flips the live gate.
+- **Dashboard / app** — monitor strategies, review each one as a rigorous research
+  paper (thesis, pre-registration, the full stats battery, in- vs out-of-sample,
+  holdout), and promote sim → live.
+- **Tau-RSI** — a self-evolving research loop adapted from **Dream-RSI** (see
+  [NOTICE](NOTICE)): the agent's exploration policy is re-scored on out-of-sample
+  generalization and rewritten from its own discovery history, then fed back to
+  the proposer so each batch explores smarter.
 
 ## Pass criteria (how a strategy earns "passed")
 
-Data is split 70% in-sample / 30% unseen. Only the best few hypotheses per batch
-are tested out-of-sample (multiple-testing discipline). To pass, all gates must
-hold on the **unseen** data: positive P&L, ≥ 10 trades, profit factor ≥ 1.1, and
-max drawdown ≤ 50% of capital.
+The history is partitioned **Research 60% / Validation 25% / locked Holdout 15%**,
+with a purge + embargo gap at every cut so no trade straddles a boundary. The
+agent only ever iterates on Research. A finalist must clear a full statistical
+battery on Validation — **bootstrap confidence intervals, PSR, DSR deflated by the
+true trial count, a placebo/null test, a LORD++ FDR budget, purged walk-forward,
+and Benjamini–Hochberg** — all net of fees. Only then is the **locked holdout spent
+once**, followed by a **marginal-contribution** check (low correlation to what you
+already run). "No reliable edge" is a first-class, logged outcome.
 
 ## Architecture
 
 ```
-Coinbase spot ─┐
-               ├─► feature store (MySQL) ─► research agent ─► backtester ─► gates
-Kalshi book ───┘                                 │                           │
-                                                 ▼                           ▼
-                                        sim engine / live engine ◄── risk layer
-                                                 │
-                                                 ▼
-                                             dashboard / app
+per-underlying spot ─┐
+                     ├─► feature store (MySQL) ─► proposer + challenger ─► pre-register & freeze
+Kalshi book + catalog┘                                                            │
+                                                                                  ▼
+                        immutable ledger ◄── gatekeeper battery ◄── backtester ◄── partitions
+                                                   │  (net of fees)         (purge + embargo)
+                                 one-time holdout ─┤
+                                                   ▼
+          Tau-RSI ──(evolved policy)──► proposer    deployment candidate
+             ▲                                             │
+             └────────(generalization score)──────────────┤
+                                                           ▼
+                                    paper ─► demo ─► live engine ◄── risk layer
+                                                           │        (stops, caps, reconcile)
+                                                           ▼
+                                                 autopilot · dashboard / app
 ```
 
 ## Setup
 
-Requires Python 3.12+.
+Requires Python 3.13+.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
