@@ -61,6 +61,7 @@ from __future__ import annotations
 
 import ast
 import builtins as _builtins
+import hashlib
 import json
 import os
 import resource
@@ -510,12 +511,16 @@ def run_strategy_signals(code: str, window: Dict, *, cpu_s: int = STRATEGY_CPU_S
     scratch = _safe_scratch(scratch_dir or tempfile.mkdtemp(prefix="strat_"))
     in_path = os.path.join(scratch, "in.json")
     out_path = os.path.join(scratch, "out.json")
-    # Scoped file access: a persistent data dir the strategy reads/writes across runs.
+    # Scoped file access: a persistent data dir the strategy reads/writes across runs. It is keyed
+    # per strategy (by code hash), so a strategy can reload its OWN artifacts across runs but can
+    # never read another strategy's files — closing a cross-strategy state-passing / leakage vector
+    # that would otherwise undermine pre-registration (one hypothesis seeing another's data).
     use_data = None
     if data_dir:
+        strat_dir = os.path.join(data_dir, hashlib.sha256(code.encode("utf-8")).hexdigest()[:16])
         try:
-            os.makedirs(data_dir, exist_ok=True)
-            use_data = _safe_scratch(data_dir)
+            os.makedirs(strat_dir, exist_ok=True)
+            use_data = _safe_scratch(strat_dir)
         except (OSError, SandboxError):
             use_data = None  # no data dir available -> strategy just runs without it
     conf = _confiner()

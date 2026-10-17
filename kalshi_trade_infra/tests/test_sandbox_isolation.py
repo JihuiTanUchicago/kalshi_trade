@@ -95,6 +95,41 @@ def test_open_round_trips_in_data_dir(tmp_path):
 
 
 @needs_confiner
+def test_data_dir_scoped_per_strategy(tmp_path):
+    # A strategy writes a "secret" into its data dir; a DIFFERENT strategy (different code) must
+    # NOT be able to read it back — the per-strategy keying isolates hypotheses from each other.
+    writer = ("def signals(window):\n"
+              "    open(window['data_dir'] + '/leak.txt', 'w').write('from-strategy-A')\n"
+              "    return [[{'wrote': 1}]]")
+    reader = ("def signals(window):\n"
+              "    try:\n"
+              "        v = open(window['data_dir'] + '/leak.txt').read()\n"
+              "    except Exception:\n"
+              "        v = 'isolated'\n"
+              "    return [[{'saw': v}]]")
+    base = str(tmp_path)
+    sandbox.run_strategy_signals(writer, WIN, cpu_s=5, wall_s=12, data_dir=base)
+    out = sandbox.run_strategy_signals(reader, WIN, cpu_s=5, wall_s=12, data_dir=base)
+    assert out == [[{"saw": "isolated"}]]          # reader can't see writer's file
+
+
+@needs_confiner
+def test_data_dir_persists_for_same_strategy(tmp_path):
+    # The SAME strategy code reloads its own artifact across runs (per-strategy persistence works).
+    code = ("def signals(window):\n"
+            "    p = window['data_dir'] + '/state.txt'\n"
+            "    try:\n"
+            "        prev = open(p).read()\n"
+            "    except Exception:\n"
+            "        prev = 'first'\n"
+            "    open(p, 'w').write('seen')\n"
+            "    return [[{'prev': prev}]]")
+    base = str(tmp_path)
+    assert sandbox.run_strategy_signals(code, WIN, cpu_s=5, wall_s=12, data_dir=base) == [[{"prev": "first"}]]
+    assert sandbox.run_strategy_signals(code, WIN, cpu_s=5, wall_s=12, data_dir=base) == [[{"prev": "seen"}]]
+
+
+@needs_confiner
 def test_open_cannot_write_outside_scratch(tmp_path):
     # open() is scoped by the confiner: the read-only root (anywhere but scratch + the data dir) is
     # not writable, so an attempt to write there fails -> SandboxError.
