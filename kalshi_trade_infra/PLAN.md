@@ -1,5 +1,15 @@
 # PLAN
 
+## Alpaca and Databento GitHub secret sync — October 17, 2026, Asia/Shanghai
+
+- **Status:** synced and metadata verified; advisory reservation released (`tau-alpaca-databento-secret-sync-20261017`). The user restored Databento in Tau’s private `.env` and requested GitHub sync. `APCA_API_KEY_ID`, `APCA_API_SECRET_KEY` and `DATABENTO_API_KEY` were client-encrypted and uploaded through stdin; all five named secrets covering Alpaca/Massive/Databento/Exa are listed. Existing Massive/Exa metadata is unchanged; no secret value was logged, placed in Git or passed as an argument. Private `.env` bytes/mode are unchanged.
+- [Deployment guide](app/DEPLOYMENT_SECRETS.md) and README now reflect all four providers, explicit runtime injection and the current SSM loader’s lack of Alpaca fields. Databento’s local missing-key gate is resolved; worker activation, data-cost accounting, entitlements and real production acceptance remain under their existing gates. No workflow, AWS/server/service, provider/paid call or trading operation. [Upload receipt](results/api_secret_handoff_2026-10-17/PROVIDER_UPLOAD_RECEIPT.json) · [Handoff](results/api_secret_handoff_2026-10-17/HANDOFF.md).
+
+## Local provider environment consolidation — October 17, 2026, Asia/Shanghai
+
+- **Status:** available Alpaca credentials copied / offline configuration verified; advisory reservation released (`tau-local-provider-env-20261017`). Tau’s ignored mode-0600 `.env` now contains `APCA_API_KEY_ID` and `APCA_API_SECRET_KEY` copied from Polygon’s private root `.env`. The source and all existing target bytes/assignments are preserved. `Config.from_env` accepts the exact copied pair without any provider call; activation flags are unchanged.
+- `DATABENTO_API_KEY=` is present as an empty placeholder because no local value remains available. Restoring that value is still required; earlier successful provider checks are historical evidence. No runtime code, GitHub/AWS secret, service, deployment or trading setting changed. The existing Massive/Exa GitHub sync remains a separate milestone. [Configuration evidence](results/api_secret_handoff_2026-10-17/LOCAL_ENV_CONSOLIDATION.json) · [Handoff](results/api_secret_handoff_2026-10-17/HANDOFF.md).
+
 ## API credential deployment handoff — October 17, 2026, Asia/Shanghai
 
 - **Status:** encrypted GitHub sync verified / deployment handoff ready; advisory reservation released (`tau-api-secret-handoff-20261017`). The configured `MASSIVE_API_KEY` and `EXA_API_KEY` were stored as encrypted repository Actions Secrets; command success and subsequent name/timestamp reads confirm creation. Real `.env` stays ignored, untracked and mode 0600; its bytes are unchanged. No key value was logged, committed or passed in command arguments.

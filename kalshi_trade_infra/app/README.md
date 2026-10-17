@@ -6,8 +6,11 @@ Product truth is in `../PRODUCT.md`; the operator console (`data_pipeline/dashbo
 is unchanged and separate.
 
 For the teammate deploying this code, see [API credentials and server injection](DEPLOYMENT_SECRETS.md).
-Massive and Exa keys are stored in encrypted GitHub Actions Secrets; a clone does
-not contain them. The guide covers Actions and the existing AWS secret loader.
+Alpaca, Massive, Databento and Exa credentials are stored as five encrypted GitHub
+Actions Secrets; a clone does not contain them. Tau’s ignored private `.env` also
+contains the configured keys. The guide covers explicit runtime injection through
+Actions or AWS, including the existing loader’s Alpaca limitation. No provider or
+production service was activated by the credential sync.
 
 ## Source publication — October 17, 2026
 

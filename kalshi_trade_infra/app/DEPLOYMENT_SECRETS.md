@@ -12,16 +12,20 @@ verified on October 17, 2026:
 | --- | --- |
 | `MASSIVE_API_KEY` | FX, Treasury/funding context and entitled options endpoints |
 | `EXA_API_KEY` | Current web/publication research and entitled historical Snapshot |
+| `APCA_API_KEY_ID`, `APCA_API_SECRET_KEY` | Alpaca stock/ETF market-data credentials |
+| `DATABENTO_API_KEY` | Entitled historical stock/ETF/futures datasets |
 
 Manage them in [Settings → Secrets and variables → Actions](https://github.com/JihuiTanUchicago/kalshi_trade/settings/secrets/actions).
 GitHub encrypts these values; collaborators cannot read or download them from the
 UI/API. A clone or `git pull` does not include them. This upload is a point-in-time
 sync, not an automatic link to the developer's local `.env`.
 
-No Alpaca or Databento key was present in the current product's local `.env`, so
-this handoff did not upload `APCA_API_KEY_ID`, `APCA_API_SECRET_KEY` or
-`DATABENTO_API_KEY`. Supply those separately if this production installation needs
-them. Existing credentials elsewhere have not been inspected or replaced.
+The initial upload covered Massive/Exa. The user subsequently consolidated the
+Alpaca pair in Tau’s private `.env`, restored Databento, and requested another
+GitHub sync. All five named secrets are now listed and upload metadata is verified.
+The private `.env` stays ignored and unchanged by the sync; activation flags and
+production configuration were not copied or enabled. This is credential storage,
+not a production provider-authentication test.
 
 ## If deployment uses GitHub Actions
 
@@ -31,6 +35,9 @@ Reference each secret explicitly in the trusted deployment step:
 env:
   MASSIVE_API_KEY: ${{ secrets.MASSIVE_API_KEY }}
   EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+  APCA_API_KEY_ID: ${{ secrets.APCA_API_KEY_ID }}
+  APCA_API_SECRET_KEY: ${{ secrets.APCA_API_SECRET_KEY }}
+  DATABENTO_API_KEY: ${{ secrets.DATABENTO_API_KEY }}
 ```
 
 This fragment only supplies the runner's process environment. The deployment job
@@ -47,12 +54,18 @@ Use the existing AWS SSM Parameter Store convention in **us-east-1**:
 | --- | --- |
 | `/recursive/MASSIVE_API_KEY` | `MASSIVE_API_KEY` |
 | `/recursive/EXA_API_KEY` | `EXA_API_KEY` |
+| `/recursive/DATABENTO_API_KEY` | `DATABENTO_API_KEY` |
 
 An authorized owner must populate these parameters from the original provider
 credentials/a shared vault, or from a trusted GitHub Actions deployment step that
 can access the encrypted GitHub secrets. A manual operator cannot recover the
 values from GitHub Secrets. Give the server role the required SSM read/decryption
 access; do not put AWS credentials in Git.
+
+The current loader does **not** fetch Alpaca’s `APCA_API_KEY_ID` or
+`APCA_API_SECRET_KEY`. The deployment owner must inject that pair through the
+chosen server/runtime secret configuration; adding SSM parameters alone does not
+make this loader read them. Its behavior was not changed by this credential sync.
 
 After configuring the parameters, the deployment owner can run the existing
 loader **from the deployed product root on the production box**:
