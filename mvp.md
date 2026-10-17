@@ -35,12 +35,12 @@ These are NOT done. Completed items move to **## Done** below.
 - Kalshi-dev 2nd equity line — NOT blocked: uses the *public* demo candlesticks (no credentials), base URL now defaulted in code; draws once the slippage/dev-curve work deploys (verify after deploy). Covered by the slippage Done entry below.
 - `[v0.3]` Agent internet access / web search (Google/Tavily/Brave).
 - `[v0.3]` Polymarket as a 2nd venue: data + API + real & simulation trading.
-- `[in progress]` Statistically-rigorous research pipeline (true "quant research"): immutable experiment ledger + pre-registration, Statistical Gatekeeper separate from the generator, BH/online-FDR + Deflated Sharpe, research/validation/locked-holdout split + purged walk-forward/embargo, bandit research allocation, and strategy detail as a research-paper page. Not shipped.
 - `[in progress]` Risk-management force-sell layer on drawdown + portfolio caps (lost when a prior background agent exited; needs rebuild).
-- `[in progress]` Authenticated dev/demo-env trading — per-user dev key (entered in-app, like the live key) + an isolated demo-exchange execution client, so users can place real TEST orders on Kalshi's sandbox. Foundation building; UI wiring pending.
+- `[in progress]` Authenticated dev/demo-env trading — per-user dev key (entered in-app, like the live key) + an isolated demo-exchange execution client, so users can place real TEST orders on Kalshi's sandbox. Foundation shipped (dormant); UI/engine wiring pending.
 
 ## Done
 ### 2026-10-16
+- **Statistically-rigorous research pipeline** (true "quant research") — splits generation from judgment: immutable experiment ledger + pre-registration, a Statistical Gatekeeper separate from the generator (BH/LORD++ online-FDR, Deflated/Probabilistic Sharpe, stationary-bootstrap p-values), research/validation/locked-holdout split + purged walk-forward/embargo, a 9-phase proposer + challenger, and the strategy detail page rebuilt as a research paper (thesis/mechanism/pre-registered test/results/holdout + 5 charts). Deploy gate gained an additive, fail-closed DEPLOYMENT_CANDIDATE requirement; live gate unchanged except stricter. (Deployed + live `b4d5f2e`.)
 - **Real demo-book slippage accounting** — replays each strategy against the Kalshi demo book (read-only, no orders), measures the per-trade fill gap vs the simulated book as signed entry/exit cents, shows it on the strategy page, and defaults the what-if slippage knob to the measured value. (Deployed + live `a0d05a2`.)
 - Live autopilot — full research→paper→live→risk loop, **gated and off by default** behind the typed-LIVE confirm + every existing safety gate (paper-proven, YES-only, per-user Kalshi key, daily-loss kill switch).
 - Autopilot consolidated into the floating window; the Deploy page is now board-only (Agent panel removed).

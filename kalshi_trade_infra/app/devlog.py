@@ -19,13 +19,13 @@ PLANNED: List[str] = [
     'Kalshi-dev 2nd equity line',
     'Agent internet access / web search (Google/Tavily/Brave)',
     'Polymarket as a 2nd venue: data + API + real & simulation trading',
-    'Statistically-rigorous research pipeline (true "quant research"): immutable experiment ledger + pre-registration, Statistical Gatekeeper separate from the generator, BH/online-FDR + Deflated Sharpe, research/validation/locked-holdout split + purged walk-forward/embargo, bandit research allocation, and strategy detail as a research-paper page',
     'Risk-management force-sell layer on drawdown + portfolio caps (lost when a prior background agent exited; needs rebuild)',
     'Authenticated dev/demo-env trading',
 ]
 
 # Shipped, newest first: (YYYY-MM-DD, what changed).
 SHIPPED: List[tuple] = [
+    ('2026-10-16', 'Statistically-rigorous research pipeline'),
     ('2026-10-16', 'Real demo-book slippage accounting'),
     ('2026-10-16', 'Live autopilot'),
     ('2026-10-16', 'Autopilot consolidated into the floating window; the Deploy page is now board-only (Agent panel removed)'),
