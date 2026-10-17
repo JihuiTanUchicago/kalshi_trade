@@ -10,10 +10,12 @@ from typing import Dict, List
 
 # Upcoming / in-progress, most-wanted first.
 PLANNED: List[str] = [
+    'more robust, fast, and intelligent execution service',
     'claude code style animation demonstration in a research session',
     'Per-bucket cash + funding (live/demo/paper)',
     'Activate Alpaca stock/ETF agent data after secure worker configuration and entitlement checks, with a production canary before customer rollout',
     'All-markets collector + cross-contract',
+    'Wire the generator (agent.py) to PROPOSE cross-contract pairs + build merged validation/holdout partitions, then enable cross-contract LIVE execution (engine.py/live gate)',
     'Widen the live market universe',
     'Email-all community digest',
     'Premium model access',
@@ -21,11 +23,8 @@ PLANNED: List[str] = [
     'Agent internet access / web search (Google/Tavily/Brave)',
     'Polymarket as a 2nd venue: data + API + real & simulation trading',
     'Risk-management force-sell layer on drawdown + portfolio caps (lost when a prior background agent exited; needs rebuild)',
-    'Research follow-up on a previously passed strategy gets stuck',
-    'Dig deeper on a passed strategy',
-    'Cross-day generalization in the gates',
-    'Order-book depth to research',
-    'Contract pairs/groups & hedging',
+    'NO-side (and side="either") LIVE execution',
+    'Install bwrap/firejail on the Linux worker so code strategies are no longer inert (they fail-closed without an OS confiner, by design)',
     'NBA / Kalshi sports markets',
     'Bittensor (TAO) subnet tokens as a new venue',
     'Onboard Opus 5.5 (claude-opus-5-5) + surface model comparison',
@@ -34,9 +33,13 @@ PLANNED: List[str] = [
 # Shipped, newest first: (YYYY-MM-DD, title, detail). `detail` is the full
 # markdown explanation (what/components/methodology); may be '' for one-liners.
 SHIPPED: List[tuple] = [
+    ('2026-10-16', 'Order-book depth + microstructure exposed to research, with dataset provenance', 'the 9 collected microstructure features (order-book imbalance, bid/ask sizes, recent trade flow, quote-change intensity, short-horizon mid returns) that lived in `model_features_1m` but were hidden are now in the `FEATURES` namespace a spec can filter on (leak-safe as-of the decision minute; degrades gracefully on NULLs). Every hypothesis also records its `data_provenance` (features + data sources used) in the experiment ledger — the audit behind "use any dataset, as long as we track it." (Deployed + live.)'),
+    ('2026-10-16', '"Dig deeper" on a passed strategy (+ fixed the "stuck follow-up" bug)', 'a passed strategy is no longer a dead end: `POST /api/strategies/{id}/dig-deeper` and a co-pilot `research` action branch a NEW pre-registered research line off it (seeds its thesis/spec, keeps the mechanism, refines/stress-tests/extends) through the normal gatekeeper — no bypass; branches link to the parent via `parent_id`. This also root-caused the beta tester\'s "follow-up got stuck": it was never a hang — the co-pilot simply had no way to continue research from a passed strategy, so it dead-ended; now it can. (Deployed + live.)'),
+    ('2026-10-16', 'Arbitrary-quant code strategies (research-only, kernel-sandboxed)', 'a strategy can be agent-authored Python/numpy (any math/ML/quant framework) exposing one `signals(window)` contract, judged IDENTICALLY to a DSL spec by the gatekeeper (pre-registration hashes the code as the rule). It runs in a DEFAULT-DENY kernel sandbox (`sandbox-exec`/`bwrap`/`firejail`: no network, no credential reads, no filesystem outside scratch, CPU/mem/time caps) — a security review found and closed a real in-interpreter escape (numpy-capable code re-exposing `os` via `random._os`), so the boundary is the OS kernel, not Python. Research-only, never in the live/paper engine; inert until a confiner is installed on the Linux worker (fail-closed). (Deployed + live.)'),
     ('2026-10-16', 'Slack-grade Community feed + instant reactor tooltip', 'the reactor-names tooltip is now instant: dropped the native `title=""` attribute (which carries a ~1s browser delay) for a pure-CSS `:hover`/`:focus` popover drawn from already-loaded data (reactor names + `@handles` now in the `reactions_for` payload via one grouped query, no per-hover fetch). The feed was rebuilt into a Slack message model: avatar-gutter grid, 5-minute author grouping, an instant hover toolbar (react/reply/edit), always-on reaction pills with an inline add, a "N replies" thread affordance, and a pinned composer unified across both themes. Kursbuch tokens preserved; shared code byte-identical across themes. (Deployed + live `7c738c9`.)'),
     ('2026-10-16', 'Per-user demo-env (sandbox) trading + 3-bucket dashboard', 'authenticated Kalshi DEMO execution that is host-isolated and can never reach the real exchange: a per-user dev key entered in-app and encrypted exactly like the live key (`app_kalshi_dev_keys`), a `demo` deployment mode routing orders through `engine.decide`\'s shared kernel path to `kalshi_dev_exec.demo_kernel_factory` (paper/live untouched; no dev key → the deployment pauses, never trades), and a "Deploy on demo (sandbox)" button. The dashboard now splits money into **real / demo / paper** buckets, each with account value, realized P&L (today + all-time) and open positions. Also closed a gap: the manual `create_deployment` live path now also requires the gatekeeper\'s `DEPLOYMENT_CANDIDATE` check, matching the autopilot path. Live gate strengthened, never weakened. (Deployed + live `afdc31c`.)'),
     ('2026-10-16', 'Detailed Dev Logs', 'each shipped entry now carries a full detail body (what changed, which components, the methodology) instead of a vague title: `devlog.py` SHIPPED is `(date, title, detail)`, the `devlog-sync` skill stops truncating the mvp.md Done bullets, and the Dev Logs page renders title + detail via the XSS-safe `mdLite` in the Kursbuch timetable style, both themes byte-identical. (Deployed + live `afdc31c`.)'),
+    ('2026-10-16', 'Cross-contract research + cross-day gatekeeper', '(research/eval only, NOT live) — specs gained an optional `cross` block (relative-value pairs: cross-sectional BTC-vs-ETH, cross-strike, calendar); `backtest.simulate_pairs` + `merge_datasets` simulate a 2-leg buy-YES-cheap/buy-NO-dear pair holding both legs to settlement, reusing the real Kalshi fee/sizing math; a cross spec spends from ONE shared FDR stream (`btc_daily+eth_daily`) while single markets keep their own; and a new cross-day generalization gate (purged walk-forward folds + per-day concentration) makes STAT_SUPPORTED strictly harder — a one-day fluke is demoted to INCONCLUSIVE. Per-fold breakdown recorded on the result row + rendered in the folds strip. Single-contract strategies unchanged. (Deployed + live.)'),
     ('2026-10-16', 'Statistically-rigorous research pipeline', '(true "quant research") — splits generation from judgment: immutable experiment ledger + pre-registration, a Statistical Gatekeeper separate from the generator (BH/LORD++ online-FDR, Deflated/Probabilistic Sharpe, stationary-bootstrap p-values), research/validation/locked-holdout split + purged walk-forward/embargo, a 9-phase proposer + challenger, and the strategy detail page rebuilt as a research paper (thesis/mechanism/pre-registered test/results/holdout + 5 charts). Deploy gate gained an additive, fail-closed DEPLOYMENT_CANDIDATE requirement; live gate unchanged except stricter. (Deployed + live `b4d5f2e`.)'),
     ('2026-10-16', 'Real demo-book slippage accounting', 'replays each strategy against the Kalshi demo book (read-only, no orders), measures the per-trade fill gap vs the simulated book as signed entry/exit cents, shows it on the strategy page, and defaults the what-if slippage knob to the measured value. (Deployed + live `a0d05a2`.)'),
     ('2026-10-16', 'Live autopilot', 'full research→paper→live→risk loop, **gated and off by default** behind the typed-LIVE confirm + every existing safety gate (paper-proven, YES-only, per-user Kalshi key, daily-loss kill switch).'),
