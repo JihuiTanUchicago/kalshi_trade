@@ -37,10 +37,10 @@ These are NOT done. Completed items move to **## Done** below.
 - `[v0.3]` Polymarket as a 2nd venue: data + API + real & simulation trading.
 - `[in progress]` Statistically-rigorous research pipeline (true "quant research"): immutable experiment ledger + pre-registration, Statistical Gatekeeper separate from the generator, BH/online-FDR + Deflated Sharpe, research/validation/locked-holdout split + purged walk-forward/embargo, bandit research allocation, and strategy detail as a research-paper page. Not shipped.
 - `[in progress]` Risk-management force-sell layer on drawdown + portfolio caps (lost when a prior background agent exited; needs rebuild).
-- `[in progress]` Dev-Kalshi slippage accounting — measure the real per-trade fill gap (demo book vs simulated) and feed the measured slippage into backtest cost assumptions.
 
 ## Done
 ### 2026-10-16
+- **Real demo-book slippage accounting** — replays each strategy against the Kalshi demo book (read-only, no orders), measures the per-trade fill gap vs the simulated book as signed entry/exit cents, shows it on the strategy page, and defaults the what-if slippage knob to the measured value. (Committed; deploys with the research pipeline.)
 - Live autopilot — full research→paper→live→risk loop, **gated and off by default** behind the typed-LIVE confirm + every existing safety gate (paper-proven, YES-only, per-user Kalshi key, daily-loss kill switch).
 - Autopilot consolidated into the floating window; the Deploy page is now board-only (Agent panel removed).
 - Dashboard pause/resume/stop for deployments (same code path as Deploy).
