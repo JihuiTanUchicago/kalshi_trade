@@ -8,7 +8,7 @@ against a FakeCursor in the conftest style (no live DB), covering:
 """
 import json
 
-from app import server
+from app import dreaming, server
 from app.repository import now_utc
 
 
@@ -201,3 +201,39 @@ def test_experiment_block_is_none_when_strategy_id_does_not_match():
     cur = FakeResearchCursor(experiments=[exp], results=[_result_row()])
 
     assert server._experiment_block(cur, 1234) is None
+
+
+# ---- Tau-RSI exploration-policy panel (_rsi_block) --------------------------
+
+
+def test_rsi_block_exposes_full_evolved_policy_and_lineage():
+    # Happy path: an evolved policy is on file -> the panel carries its full source,
+    # lineage (prior -> new score, adopted-at), summary, and the latest dream line.
+    pol = {
+        "code": "def next_batch(state):\n    return 2\n",
+        "score": 1.2345,
+        "base_score": 0.9876,
+        "summary": "Require >=7 trades before testing a finalist.",
+        "updated_at": now_utc(),
+    }
+    dream = {"message": "Research policy evolved: ...", "created_at": now_utc()}
+
+    block = server._rsi_block(pol, dream)
+
+    assert block["evolved"] is True
+    assert block["code"] == pol["code"]                 # the actual decision rules, verbatim
+    assert block["score"] == 1.23 and block["base_score"] == 0.99  # rounded lineage
+    assert block["summary"] == pol["summary"]
+    assert block["evolved_at"] == pol["updated_at"]
+    assert block["last_dream"] == dream["message"]
+
+
+def test_rsi_block_falls_back_to_default_policy_source():
+    # Error/empty path: no policy row yet -> there is still something to inspect
+    # (the default policy's source), and no scores/summary are fabricated.
+    block = server._rsi_block(None, None)
+
+    assert block["evolved"] is False
+    assert block["code"] == dreaming.DEFAULT_POLICY_SRC
+    assert block["score"] is None and block["base_score"] is None
+    assert block["summary"] is None and block["last_dream"] is None

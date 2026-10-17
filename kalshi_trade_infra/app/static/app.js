@@ -1476,11 +1476,18 @@
         const label = dd.status === 'passed' ? 'PASSED' : dd.status === 'rejected' ? 'REJECTED' : 'VOID';
         li.classList.remove('lane-action'); li.classList.add('lane-' + cls);
         stampEl.className = 'hx-stamp ' + cls;
-        stampEl.innerHTML = dd.strategy_id ? `<a href="/strategies/${dd.strategy_id}">${label}</a>` : label;
+        // A PASSED hypothesis has a strategy page: link both its title and an explicit "View
+        // strategy →" affordance in the verdict row. VOID/REJECTED have no page, so stay unlinked.
+        const href = cls === 'pass' && dd.strategy_id ? `/strategies/${dd.strategy_id}` : '';
+        stampEl.innerHTML = href ? `<a href="${href}">${label}</a>` : label;
+        if (href) {
+          const t = li.querySelector('.say-title');
+          if (t) t.innerHTML = `<a class="hx-titlelink" href="${href}">${esc(title)}</a>`;
+        }
         const rest = strip(e2.message, /^(PASSED|VOID|FAILED|REJECTED)(\s*\(challenger\))?\s*[-–]\s*/);
         const tail = rest.indexOf(':') >= 0 ? rest.slice(rest.indexOf(':') + 1).trim() : '';
         reviewEl.hidden = false;
-        reviewEl.insertAdjacentHTML('beforeend', `<div class="hx-verdict"><span class="hx-tag ${cls}">Gatekeeper · ${label.toLowerCase()}</span>${tail ? `<span class="hx-vtext">${esc(tail)}</span>` : ''}${statGrid(dd.stats)}</div>`);
+        reviewEl.insertAdjacentHTML('beforeend', `<div class="hx-verdict"><span class="hx-tag ${cls}">Gatekeeper · ${label.toLowerCase()}</span>${tail ? `<span class="hx-vtext">${esc(tail)}</span>` : ''}${statGrid(dd.stats)}${href ? `<a class="hx-viewstrat" href="${href}">View strategy →</a>` : ''}</div>`);
       },
     };
   }
@@ -1681,13 +1688,22 @@
       if (rsibox && d.rsi) {
         const delta = (d.rsi.base_score != null && d.rsi.score != null)
           ? `<span class="rsi-score">${d.rsi.base_score} <span class="rsi-arrow">→</span> ${d.rsi.score}</span>` : '';
+        // The full adopted policy, verbatim. A policy is pure Python with exactly two decision
+        // rules; show them in plain English plus the raw source so the user can inspect what the
+        // agent actually does. Falls back to the default policy source when none has evolved.
+        const policy = d.rsi.code ? `<details class="rsi-policy"><summary>View the full ${d.rsi.evolved ? 'evolved ' : ''}research policy</summary>
+          <div class="rsi-policy-body">
+            <p class="rsi-rules">A policy is pure Python with two decision rules: <b>next_batch</b> — how many new hypotheses to propose each round; and <b>select_finalists</b> — which in-sample candidates earn a test on unseen data (the precision-vs-recall lever that decides what gets gated).</p>
+            <figure class="hx-code"><figcaption>${d.rsi.evolved ? 'Evolved exploration policy' : 'Default exploration policy'} <span>Python · research sandbox only</span></figcaption><pre><code>${esc(d.rsi.code)}</code></pre></figure>
+          </div></details>` : '';
         rsibox.innerHTML = `<div class="rsi-card"><div class="rsi-head"><b class="rsi-badge">RSI</b> Self-improving research ${d.rsi.evolved ? '<span class="rsi-tag">Evolved</span>' : '<span class="rsi-tag quiet">Self-tuning</span>'}</div>
           ${d.rsi.evolved
             ? `<p>This agent <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
                ${d.rsi.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(d.rsi.summary)}</p>` : ''}
                <p class="rsi-last">Generalization score ${delta}${d.rsi.evolved_at ? ' · adopted ' + when(d.rsi.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
             : `<p>The agent is <b>self-tuning</b>: after each research cycle it dreams up new search strategies and keeps one only if it beats the current policy on your own history (scored over shuffled orderings, so it can't overfit).</p>
-               ${d.rsi.last_dream ? `<p class="rsi-last"><b>Last check${d.rsi.last_dream_at ? ' · ' + when(d.rsi.last_dream_at) : ''}:</b> ${esc(d.rsi.last_dream)}</p>` : '<p class="rsi-last">The first result appears at the end of a research cycle.</p>'}`}</div>`;
+               ${d.rsi.last_dream ? `<p class="rsi-last"><b>Last check${d.rsi.last_dream_at ? ' · ' + when(d.rsi.last_dream_at) : ''}:</b> ${esc(d.rsi.last_dream)}</p>` : '<p class="rsi-last">The first result appears at the end of a research cycle.</p>'}`}
+          ${policy}</div>`;
       }
       runControls(root.querySelector('#runact'), id, r.status, load);
       d.events.forEach((ev) => { after = Math.max(after, ev.id); if (ev.kind === 'hypothesis') tried++; });

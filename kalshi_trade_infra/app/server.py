@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
-from app import agent, auth, backtest, billing, devlog, engine, kalshi_account, notify
+from app import agent, auth, backtest, billing, devlog, dreaming, engine, kalshi_account, notify
 from app import kalshi_dev
 from app import kalshi_dev_exec
 from app import models_catalog as catalog
@@ -305,12 +305,26 @@ def get_run(ctx: Ctx):
         "run": run,
         "events": repo.run_events(ctx.cur, run["id"], after),
         "strategies": [_strategy_card(s) for s in strategies if s["run_id"] == run["id"]],
-        "rsi": {"evolved": bool(pol), "score": round(float(pol["score"]), 2) if pol else None,
-                "base_score": round(pol["base_score"], 2) if (pol and pol.get("base_score") is not None) else None,
-                "summary": pol.get("summary") if pol else None,
-                "evolved_at": pol["updated_at"] if pol else None,
-                "last_dream": dream["message"] if dream else None,
-                "last_dream_at": dream["created_at"] if dream else None},
+        "rsi": _rsi_block(pol, dream),
+    }
+
+
+def _rsi_block(pol: Optional[Dict], dream: Optional[Dict]) -> Dict:
+    """Shape the Tau-RSI exploration-policy panel for the research page: whether the
+    user's search policy has evolved, its lineage (prior score -> new score, when it
+    was adopted), the plain-English summary of what it changed, and the FULL policy
+    SOURCE so the user can inspect the actual decision rules. Falls back to the default
+    policy's source when none has evolved yet, so there is always something to inspect.
+    The policy is pure, sandboxed Python over the user's own history — it holds no secrets."""
+    return {
+        "evolved": bool(pol),
+        "score": round(float(pol["score"]), 2) if pol else None,
+        "base_score": round(pol["base_score"], 2) if (pol and pol.get("base_score") is not None) else None,
+        "summary": pol.get("summary") if pol else None,
+        "evolved_at": pol["updated_at"] if pol else None,
+        "code": pol["code"] if pol else dreaming.DEFAULT_POLICY_SRC,
+        "last_dream": dream["message"] if dream else None,
+        "last_dream_at": dream["created_at"] if dream else None,
     }
 
 
