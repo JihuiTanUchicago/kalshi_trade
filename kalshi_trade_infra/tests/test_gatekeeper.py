@@ -393,3 +393,19 @@ def test_marginal_contribution_promotes_when_uncorrelated(repo):
     assert ok is True
     assert repo.results_for_experiment(None, cand, "forward")[-1]["classification"] == \
         Classification.DEPLOYMENT_CANDIDATE.value
+
+
+def test_judged_trials_counts_fitted_degrees_of_freedom():
+    """A learned model's fitted coefficients each count as an implicit trial, so a richer model
+    raises the DSR selection bar; a hand-specified gbm/code spec stays at 1. The weighting only
+    ever INCREASES the trial count -> the gate can never get easier by adding parameters."""
+    from app import spec as specmod
+    gbm = {"spec": specmod.validate({})}
+    logistic = {"spec": specmod.validate(
+        {"model": {"kind": "logistic", "features": ["z_score", "ob_imbalance", "mid"]}})}
+    calibration = {"spec": specmod.validate({"model": {"kind": "calibration"}})}
+    assert gk._judged_trials([gbm]) == 1
+    assert gk._judged_trials([logistic]) == 4          # intercept + 3 weights
+    assert gk._judged_trials([calibration]) == 2       # slope + intercept
+    assert gk._judged_trials([gbm, logistic, calibration]) == 7
+    assert gk._judged_trials([{}]) == 1                # tolerant of a missing spec (holdout path)

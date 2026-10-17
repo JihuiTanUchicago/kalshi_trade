@@ -330,9 +330,20 @@ def _classify(lord_reject: bool, bh_reject: Optional[bool], dsr: float,
 def _n_trials(cur, user_id: int, market: str, including: int) -> int:
     """Audited number of hypotheses that competed for this market's validation evidence:
     the ledger's already-validated experiments for this user+market, plus the `including`
-    being judged right now. Feeds DSR's selection correction (§B.1/§F)."""
+    being judged right now. Feeds DSR's selection correction (§B.1/§F).
+
+    `including` is a DEGREES-OF-FREEDOM count, not a bare hypothesis count: a learned model that
+    fits k coefficients from data counts as k implicit trials (specmod.n_free_params), a hand-
+    specified gbm/code spec as 1. This only ever RAISES the trial count, so a richer model faces a
+    strictly HIGHER deflated-Sharpe bar - fitting more parameters can never make the gate easier."""
     prior = rr.experiment_records_for_replay(cur, user_id, market)
     return len(prior) + max(including, 0)
+
+
+def _judged_trials(finalists: List[dict]) -> int:
+    """Degrees of freedom the finalists being judged NOW contribute to the trial count: the sum of
+    each spec's fitted-parameter count (>=1 each)."""
+    return sum(specmod.n_free_params(f.get("spec") or {}) for f in finalists)
 
 
 def _lord_state(cur, user_id: int, market: str) -> Dict[str, Any]:
@@ -412,7 +423,7 @@ def judge_validation(cur, experiment_id: int, finalist: dict, val_ds) -> dict:
     market = val_ds.market.key
     user_id = int(finalist["user_id"])
     min_sample = int(finalist.get("min_sample", 0))
-    n_trials = _n_trials(cur, user_id, market, including=1)
+    n_trials = _n_trials(cur, user_id, market, including=_judged_trials([finalist]))
 
     trades = backtest.simulate(finalist["spec"], val_ds, val_ds.start_ts, val_ds.end_ts + 1)
     n_trades = len(trades)
@@ -443,7 +454,7 @@ def judge_batch(cur, run_id: int, experiment_ids: List[int], finalists: List[dic
         return []
     market = val_ds.market.key
     user_id = int(finalists[0]["user_id"])
-    n_trials = _n_trials(cur, user_id, market, including=len(finalists))
+    n_trials = _n_trials(cur, user_id, market, including=_judged_trials(finalists))
     lord_state = _lord_state(cur, user_id, market)
 
     computed: List[Dict[str, Any]] = []
@@ -539,7 +550,7 @@ def judge_holdout(cur, experiment_id: int, finalist: dict) -> dict:
     hds = partitions.merged_dataset(cur, markets, "holdout") if cross else partitions.holdout_dataset(market, partition)
     trades = backtest.simulate(finalist["spec"], hds, hds.start_ts, hds.end_ts + 1)
     n_trades = len(trades)
-    n_trials = _n_trials(cur, user_id, market, including=1)
+    n_trials = _n_trials(cur, user_id, market, including=_judged_trials([finalist]))
     v = _compute(trades, n_trials, stats.lord_init(ALPHA), seed=_BOOT_SEED + int(experiment_id),
                  kind=getattr(hds.market, "kind", "binary"))
 

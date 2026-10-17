@@ -64,6 +64,57 @@ def test_missing_micro_feature_degrades_gracefully():
     assert backtest.simulate(s, ds, ds.start_ts, ds.end_ts + 1) == []
 
 
+def _dataset_predictive_micro(n_contracts=60, minutes=15):
+    """Synthetic book where ob_imbalance PREDICTS the outcome: even contracts settle YES with high
+    imbalance, odd settle NO with low imbalance. A logistic fit on ob_imbalance should learn a
+    positive weight. Spot sits above every strike so GBM is NOT the source of signal here."""
+    btc = [(T0 - 7200 + 60 * i, 100.0) for i in range(n_contracts * minutes + 200)]
+    markets, candles, mfeat = [], [], {}
+    for k in range(n_contracts):
+        open_ts = T0 + k * minutes * 60
+        close = datetime.fromtimestamp(open_ts + minutes * 60, tz=timezone.utc)
+        ticker = "M%d" % k
+        yes = (k % 2 == 0)
+        markets.append({"ticker": ticker, "strike": 98.0, "close_time": close,
+                        "result": "yes" if yes else "no"})
+        imb = 0.8 if yes else -0.8
+        for m in range(1, minutes + 1):
+            ts = open_ts + m * 60
+            candles.append({"ticker": ticker, "end_period_ts": ts, "yes_bid_close": 0.38, "yes_ask_close": 0.40})
+            mfeat[(ticker, ts)] = {"ob_imbalance": imb}
+    return backtest.build_dataset(MARKETS["btc15m"], markets, candles, btc, mfeat)
+
+
+def test_fit_spec_on_research_freezes_a_logistic_learned_on_the_data():
+    ds = _dataset_predictive_micro()
+    unfit = specmod.validate({"side": "yes", "model": {"kind": "logistic", "features": ["ob_imbalance"]},
+                              "entry": {"min_edge": 0.1}})
+    # an unfitted learned model trades nothing (fair_yes is None), so the gate fails it honestly
+    assert backtest.simulate(unfit, ds, ds.start_ts, ds.end_ts + 1) == []
+    fitted = backtest.fit_spec_on_research(unfit, ds)
+    assert specmod.is_fitted(fitted) and fitted["model"]["coef"][0] > 0  # learned the positive sign
+    # the frozen model prices high-imbalance (yes-settling) frames high -> it buys and wins there
+    trades = backtest.simulate(fitted, ds, ds.start_ts, ds.end_ts + 1)
+    assert trades and all(t.side == "yes" for t in trades)
+    assert sum(t.pnl for t in trades) > 0
+
+
+def test_fit_spec_leaves_too_small_a_sample_unfitted():
+    ds = _dataset_predictive_micro(n_contracts=4)  # 4*15 = 60 rows < MIN_FIT_SAMPLES
+    unfit = specmod.validate({"model": {"kind": "logistic", "features": ["ob_imbalance"]}})
+    out = backtest.fit_spec_on_research(unfit, ds)
+    assert not specmod.is_fitted(out)  # unchanged: no model fit on a thin sample
+
+
+def test_fit_spec_is_a_noop_for_gbm_and_already_fitted():
+    ds = _dataset_predictive_micro(n_contracts=4)
+    gbm = specmod.validate({"side": "yes"})
+    assert backtest.fit_spec_on_research(gbm, ds) is gbm
+    frozen = specmod.validate({"model": {"kind": "logistic", "features": ["ob_imbalance"],
+                                         "coef": [1.0], "intercept": 0.0}})
+    assert backtest.fit_spec_on_research(frozen, ds) is frozen  # never re-fits a frozen model
+
+
 def test_buys_at_the_ask_pays_fees_and_settles_on_result():
     ds = _dataset()
     s = specmod.validate({"side": "yes", "entry": {"min_edge": 0.1, "max_spread": 0.05}, "sizing": {"stake": 10.0, "max_positions": 1}})

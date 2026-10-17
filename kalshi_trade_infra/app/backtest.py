@@ -13,6 +13,7 @@ Honesty rules, each closing a way backtests usually flatter themselves:
 """
 from __future__ import annotations
 
+import copy
 import logging
 import math
 import threading
@@ -27,6 +28,7 @@ from app.markets import MARKETS, BtcSeries, Contract, Market, Snapshot, snapshot
 from data_pipeline.kalshi_fees import taker_fee_dollars
 
 IN_SAMPLE_FRACTION = 0.7
+MIN_FIT_SAMPLES = 200  # a learned model needs this many labelled research rows before it is fit
 GATES = {
     "min_oos_trades": 10,
     "min_profit_factor": 1.1,
@@ -763,6 +765,67 @@ def partition_dataset(market_key: str, partition: Dict, phase: str) -> Dataset:
                "validation": partitions.validation_dataset,
                "holdout": partitions.holdout_dataset}
     return loaders[phase](market_key, partition)
+
+
+def fit_spec_on_research(spec: Dict, ds: Dataset) -> Dict:
+    """FREEZE a learned model's coefficients, fit on the RESEARCH dataset `ds`. For a gbm/code/
+    already-fitted spec this is a no-op (returns the spec unchanged). For an unfitted logistic/
+    calibration spec it builds the (features, settlement) training set from every tradable snapshot
+    in `ds` and fits P(YES) with a ridge logistic (stats.fit_logistic), returning a NEW spec with
+    model.coef/model.intercept filled in.
+
+    This is the one place model fitting happens, and it happens ONLY on research data (§B.4): the
+    returned frozen spec is what gets pre-registered and what the gatekeeper later scores on the
+    untouched validation/holdout windows - no re-fitting there, so no leak. Too few labelled rows
+    (or a fit error) leaves the spec unfitted; fair_yes then returns None (no trades) and the gate
+    fails it honestly rather than trading a model fit on nothing."""
+    from app import spec as specmod
+    from app import stats
+    if not specmod.is_learned_model(spec) or specmod.is_fitted(spec):
+        return spec
+    m = spec["model"]
+    calibration = m.get("kind") == "calibration"
+    feats = m.get("features") or (["mid"] if calibration else [])
+    X: List[List[float]] = []
+    y: List[float] = []
+    for _ts, snaps in ds.frames:
+        for s in snaps:
+            result = ds.results.get(s.contract.ticker)
+            if result not in ("yes", "no"):
+                continue
+            f = s.features
+            if calibration:
+                mid = f.get("mid")
+                if mid is None:
+                    continue
+                row = [specmod._logit(mid)]
+            else:
+                vals = [f.get(name) for name in feats]
+                if any(v is None for v in vals):
+                    continue
+                row = [float(v) for v in vals]
+            X.append(row)
+            y.append(1.0 if result == "yes" else 0.0)
+
+    if len(X) < MIN_FIT_SAMPLES or len(set(y)) < 2:
+        logging.getLogger(__name__).info(
+            "learned model left unfitted: %d labelled rows (need %d) for %s",
+            len(X), MIN_FIT_SAMPLES, m.get("kind"))
+        return spec
+    try:
+        coef, intercept = stats.fit_logistic(X, y)
+    except (ValueError, ZeroDivisionError) as e:
+        logging.getLogger(__name__).warning("learned model fit failed (%s); left unfitted", e)
+        return spec
+    fitted = copy.deepcopy(spec)
+    fitted["model"]["coef"] = [float(c) for c in coef]
+    fitted["model"]["intercept"] = float(intercept)
+    # Re-validate so an absurd fit (NaN/inf/over the coef cap) is caught now, not at trade time.
+    try:
+        return specmod.validate(fitted)
+    except specmod.SpecError as e:
+        logging.getLogger(__name__).warning("fitted model failed validation (%s); left unfitted", e)
+        return spec
 
 
 def research_fold_metrics(spec: Dict, ds: Dataset, embargo_seconds: int,

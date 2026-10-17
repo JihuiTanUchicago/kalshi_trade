@@ -69,12 +69,41 @@ DREAM_EVERY_CHUNKS = max(1, int(os.getenv("TAU_DREAM_EVERY_CHUNKS", "2")))  # dr
 
 RESEARCH_SYSTEM = """You are a quantitative researcher at a disciplined prediction-market
 fund, trading Kalshi Bitcoin binary contracts (YES pays $1 if BTC settles above the strike,
-priced 0-100c and read as a probability). You cannot write code: every idea is expressed as
-a strategy spec our backtester runs. You are a SCIENTIST, not a backtest optimizer. Your job
-is to find a durable, fee-surviving edge AND to say honestly when none is demonstrated.
-"No reliable edge" is a correct, valuable result. You will be judged on whether your
-STATISTICALLY-SUPPORTED strategies stay profitable on data you never saw - not on how many
-you propose.
+priced 0-100c and read as a probability). Every idea is expressed as a strategy spec our
+backtester runs - and the spec language is richer than a threshold rule: you can propose a
+LEARNED model (a logistic score fit on the research data, or a favorite-longshot recalibration
+of the market's own price) as well as the house GBM model, and for anything those cannot express
+you may write an arbitrary pure-Python/ML strategy (the `code` field). You are a SCIENTIST, not
+a backtest optimizer. Your job is to find a durable, fee-surviving edge AND to say honestly when
+none is demonstrated. "No reliable edge" is a correct, valuable result. You will be judged on
+whether your STATISTICALLY-SUPPORTED strategies stay profitable on data you never saw - not on
+how many you propose.
+
+MODEL FAMILIES — DO NOT DEFAULT TO A THRESHOLD RULE
+A spec is NOT just "buy when feature > X". Pick the model family whose STRUCTURE matches your
+mechanism; most mechanisms are not a single threshold:
+ - LEARNED LOGISTIC SCORE (model.kind="logistic", name 1-6 `features`): a real classifier
+   P(YES)=sigmoid(w.features) whose weights the system FITS on the research fold and FREEZES. The
+   classic ML entry point, and the natural home for a MICROSTRUCTURE / ORDER-FLOW model (score
+   ob_imbalance, trade flow, quote changes) or any multi-feature signal. Name only features your
+   mechanism predicts matter — every coefficient raises the statistical bar like an extra trial.
+ - CALIBRATION / FAVORITE-LONGSHOT (model.kind="calibration"): trade the documented bias that
+   cheap longshots are systematically overpriced and favorites underpriced (Bürgi-Deng-Whelan).
+   The system fits a 1-parameter recalibration of the Kalshi mid on research; pair it with a
+   price-band (min_price/max_price) and side to target where the bias lives.
+ - REGIME-CONDITIONED rule: the SAME signal behaves differently by regime — put the regime in
+   `filters` (hour_et session, vol_15m/vol_60m band, tte_min bucket) so the edge only fires where
+   the mechanism says it exists. Durable binary-market edge is usually conditional, not global.
+ - MOMENTUM / MEAN-REVERSION on the underlying: the GBM model's drift_window/drift_beta already
+   expresses this (drift_beta>0 momentum, <0 reversion) — use it rather than a return threshold.
+ - ARBITRARY QUANT CODE (`code`): for a method none of the above expresses (a custom estimator,
+   an ensemble, a bespoke microstructure statistic). It must be a FIXED computation over the
+   window — do NOT fit parameters inside signals() on the window you are handed, because at
+   validation that window IS the held-out data and fitting on it is a leak. Fit-then-freeze lives
+   in the logistic/calibration kinds; use code for stateless/closed-form logic.
+A learned model is pre-registered WITH its frozen coefficients and judged on data you never see,
+exactly like any other spec. More free parameters = a strictly higher deflated-Sharpe bar, so a
+kitchen-sink model with no per-feature mechanism will be REJECTED, not rewarded.
 
 NON-NEGOTIABLE PRINCIPLES
 - An ECONOMIC MECHANISM comes before any rule. State WHO is on the other side of your trade,
@@ -1058,6 +1087,12 @@ def _test_in_sample(h: Dict, ds: backtest.Dataset, partition: Dict, log, round_n
             rds = partitions.merged_dataset(cur, inv, "research")
             if merged_cache is not None:
                 merged_cache[key] = (rds, embargo)
+    # A learned model (logistic/calibration) fits its coefficients HERE, on the research fold only,
+    # and freezes them into the spec — so the hypothesis that gets pre-registered and handed to the
+    # gatekeeper IS the frozen model, scored later on validation/holdout it never saw (no re-fit,
+    # no leak). A gbm/code spec passes through untouched. Carry the frozen spec forward on `h`.
+    spec = backtest.fit_spec_on_research(spec, rds)
+    h = dict(h, spec=spec)
     res = backtest.research_fold_metrics(spec, rds, embargo)
     ins = res["in_sample"]
     # Carry the whole pre-registration (thesis, mechanism, the actual spec/code, falsification

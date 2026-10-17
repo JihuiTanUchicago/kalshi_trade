@@ -29,6 +29,14 @@ from data_pipeline.kalshi_fees import taker_fee_per_contract_dollars
 OPS = (">", ">=", "<", "<=")
 MAX_FILTERS = 4
 
+# Fair-value model families. "gbm" is the house drifted-GBM digital (below). "logistic" and
+# "calibration" are LEARNED models whose parameters are FIT on the research fold and FROZEN into
+# the spec (coef/intercept become part of the pre-registration hash), so the gatekeeper judges the
+# exact frozen model on data it never saw - no re-fitting at validation, no leak. See fair_yes.
+MODEL_KINDS = ("gbm", "logistic", "calibration")
+MAX_MODEL_FEATURES = 6  # bounds a learned model's degrees of freedom (every coef is an implicit trial)
+COEF_CAP = 1e7          # reject NaN/inf/absurd fitted coefficients (raw-feature scale spans ~1e-5..1e4)
+
 # (min, max) for every numeric field; None-able fields are listed separately.
 RANGES: Dict[str, Tuple[float, float]] = {
     "model.vol_scale": (0.3, 3.0),
@@ -47,6 +55,7 @@ RANGES: Dict[str, Tuple[float, float]] = {
 }
 CHOICES: Dict[str, Tuple] = {
     "side": ("yes", "no", "either"),
+    "model.kind": MODEL_KINDS,
     "model.vol_window": (15, 60),
     "model.drift_window": (0, 5, 15, 60),
 }
@@ -55,7 +64,12 @@ NULLABLE = {"exit.take_profit", "exit.stop_loss", "exit.min_edge_to_hold"}
 DEFAULT_SPEC: Dict[str, Any] = {
     "market": "btc15m",
     "side": "either",
-    "model": {"vol_window": 60, "vol_scale": 1.0, "drift_window": 0, "drift_beta": 0.0},
+    # kind="gbm" -> the drifted-GBM digital below (vol_window/vol_scale/drift_window/drift_beta).
+    # kind="logistic"/"calibration" -> a LEARNED model: `features` names its inputs, and `coef` +
+    # `intercept` are FIT on research and frozen in (empty until fitted). The GBM params are then
+    # ignored. See _validate_model and fair_yes.
+    "model": {"vol_window": 60, "vol_scale": 1.0, "drift_window": 0, "drift_beta": 0.0,
+              "kind": "gbm", "features": [], "coef": [], "intercept": 0.0},
     "entry": {
         "min_edge": 0.05,
         "min_price": 0.05,
@@ -84,11 +98,20 @@ SPEC_GUIDE = """A strategy spec is a JSON object:
 {
   "market": "btc15m" | "btc_daily",
   "side": "yes" | "no" | "either",            // which leg it may buy
-  "model": {                                   // fair value = drifted GBM digital
+  "model": {                                   // the fair-value model; pick ONE kind
+    "kind": "gbm" | "logistic" | "calibration",// default "gbm"
+    // --- kind "gbm": drifted GBM digital (the house model) ---
     "vol_window": 15 | 60,                     // minutes of 1m returns for realised vol
     "vol_scale": 0.3..3.0,                     // 1.0 = trust realised vol
     "drift_window": 0 | 5 | 15 | 60,           // 0 = no drift
-    "drift_beta": -3.0..3.0                    // >0 momentum, <0 mean reversion
+    "drift_beta": -3.0..3.0,                   // >0 momentum, <0 mean reversion
+    // --- kind "logistic": a LEARNED model P(YES)=sigmoid(w.features) ---
+    "features": [ <feature name>, ... ]        // 1..6 features it scores; the SYSTEM fits the
+                                               // weights on the research fold and FREEZES them
+                                               // (you do NOT write coef - leave it out). A real
+                                               // learned classifier, not a hand-picked threshold.
+    // --- kind "calibration": recalibrate the market's own mid (favorite-longshot) ---
+    //   takes no features; the system fits a 1-parameter logit recalibration on research.
   },
   "entry": {
     "min_edge": 0..0.5,                        // fair prob minus price paid, in dollars
@@ -117,7 +140,14 @@ Features for filters: """ + "; ".join("%s = %s" % kv for kv in FEATURES.items())
 Order-book / microstructure features (""" + ", ".join(MICRO_FEATURES) + """) come from the
 collected 1-minute book; they may be NULL on some frames (and on markets without a feed), and a
 filter on a missing feature simply does not match - condition on them when the mechanism needs the
-book, not by default."""
+book, not by default.
+LEARNED MODELS (kind logistic/calibration): the system fits the coefficients ONCE on the research
+fold and freezes them into the pre-registered spec, then the gatekeeper scores that frozen model on
+data it never saw - so you do NOT and CAN NOT tune the weights by hand, and there is no re-fitting
+at validation. Every fitted coefficient is an implicit TRIAL: a logistic over k features raises the
+deflated-Sharpe bar as if you ran k+1 strategies, so name only the few features your MECHANISM
+predicts matter (e.g. order-flow features for a flow model). A learned model with no mechanism for
+each feature is overfitting, and the higher bar will reject it."""
 
 
 # -- arbitrary-quant code strategies ----------------------------------------
@@ -299,10 +329,92 @@ def validate(raw: Any) -> Dict[str, Any]:
             else:
                 clean.append({"feature": flt["feature"], "op": flt["op"], "value": float(v)})
         entry["filters"] = clean
+    _validate_model(spec, errors)
     _validate_cross(spec, errors)
     if errors:
         raise SpecError("; ".join(errors))
     return spec
+
+
+def _num_ok(v) -> bool:
+    return not isinstance(v, bool) and isinstance(v, (int, float)) and math.isfinite(v) and abs(v) <= COEF_CAP
+
+
+def _validate_model(spec: Dict, errors: List[str]) -> None:
+    """Validate the fair-value model's kind-specific fields, normalising in place. gbm takes no
+    learned fields; logistic names 1..MAX_MODEL_FEATURES known features; calibration is a 1-param
+    recalibration of the market mid. `coef` may be empty (NOT yet fit — the research pipeline fills
+    it before pre-registration) or exactly as long as the feature vector (FROZEN, fit on research).
+    Mirrors validate()'s strictness: unknown features, wrong lengths and non-finite numbers are
+    errors, never clamped - a fitted model that silently changed shape is a different hypothesis."""
+    m = spec["model"]
+    kind = m.get("kind", "gbm")
+    if kind not in MODEL_KINDS:
+        return  # the CHOICES loop already recorded the bad kind; nothing more to check
+    feats = m.get("features", [])
+    coef = m.get("coef", [])
+    intercept = m.get("intercept", 0.0)
+    if not isinstance(feats, list) or not isinstance(coef, list):
+        errors.append("model.features and model.coef must be lists")
+        return
+
+    if kind == "gbm":
+        if feats or coef:
+            errors.append("model.features/coef only apply to kind logistic or calibration")
+        m["features"], m["coef"], m["intercept"] = [], [], 0.0
+        return
+
+    if kind == "calibration":
+        # A favorite-longshot recalibration of the market's own implied probability: one engineered
+        # input (the logit of the mid). The proposer need not name a feature; we fix it to "mid".
+        if feats and feats != ["mid"]:
+            errors.append("kind calibration takes no features (it recalibrates the market mid)")
+        feats = ["mid"]
+    else:  # logistic
+        if not 1 <= len(feats) <= MAX_MODEL_FEATURES:
+            errors.append("kind logistic needs 1..%d features" % MAX_MODEL_FEATURES)
+        if len(set(feats)) != len(feats):
+            errors.append("model.features must not repeat a feature")
+        for name in feats:
+            if name not in FEATURES:
+                errors.append("model.features %r is not a known feature" % name)
+
+    if not _num_ok(intercept):
+        errors.append("model.intercept must be a finite number")
+    if coef and len(coef) != len(feats):
+        errors.append("model.coef must be empty (unfitted) or one value per feature")
+    for c in coef:
+        if not _num_ok(c):
+            errors.append("model.coef values must be finite numbers")
+            break
+    if not any("model." in e for e in errors):  # only normalise a clean model
+        m["features"] = list(feats)
+        m["coef"] = [float(c) for c in coef]
+        m["intercept"] = float(intercept)
+
+
+def is_learned_model(spec: Dict) -> bool:
+    """True for a logistic/calibration spec (a model whose coefficients are fit on research)."""
+    return not is_code_spec(spec) and spec.get("model", {}).get("kind", "gbm") in ("logistic", "calibration")
+
+
+def is_fitted(spec: Dict) -> bool:
+    """A learned spec whose coefficients are already frozen in (ready to backtest). A gbm/code
+    spec is always 'fitted' (nothing to fit)."""
+    if not is_learned_model(spec):
+        return True
+    return bool(spec["model"].get("coef"))
+
+
+def n_free_params(spec: Dict) -> int:
+    """How many parameters this spec FITS from data - its degrees of freedom, used to make the
+    DSR selection correction count every fitted coefficient as an implicit trial (more parameters
+    => a higher statistical bar, never lower). A gbm/code spec is hand-specified, not fit, so it
+    stays 1 (one hypothesis = one trial, exactly as before). A logistic model fits an intercept +
+    one weight per feature; a calibration fits a slope + intercept."""
+    if is_learned_model(spec):
+        return 1 + len(spec["model"].get("features", []))  # intercept + one weight per feature
+    return 1
 
 
 def _validate_cross(spec: Dict, errors: List[str]) -> None:
@@ -374,8 +486,40 @@ def _phi(x: float) -> float:
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
 
+def _sigmoid(z: float) -> float:
+    z = 30.0 if z > 30.0 else -30.0 if z < -30.0 else z
+    return 1.0 / (1.0 + math.exp(-z))
+
+
+def _logit(p: float) -> float:
+    p = min(1.0 - 1e-6, max(1e-6, p))
+    return math.log(p / (1.0 - p))
+
+
+def _fair_learned(m: Dict, f: Dict[str, float]) -> Optional[float]:
+    """P(YES) from a FROZEN learned model: sigmoid(intercept + coef . features). Returns None when
+    the model is not yet fit (no coef) or a required feature is missing on this frame (same 'no
+    signal' contract as the GBM path - the caller skips, it never crashes a backtest)."""
+    coef = m.get("coef") or []
+    if not coef:
+        return None  # unfitted: no signal until the research pipeline freezes coefficients in
+    if m.get("kind") == "calibration":
+        if "mid" not in f:
+            return None
+        return _sigmoid(m["intercept"] + coef[0] * _logit(f["mid"]))
+    z = m["intercept"]
+    for name, c in zip(m["features"], coef):
+        v = f.get(name)
+        if v is None:
+            return None
+        z += c * v
+    return _sigmoid(z)
+
+
 def fair_yes(spec: Dict, f: Dict[str, float]) -> Optional[float]:
     m = spec["model"]
+    if m.get("kind", "gbm") in ("logistic", "calibration"):
+        return _fair_learned(m, f)
     # The GBM-digital model needs an underlying (strike-vs-spot) path: moneyness + realised vol.
     # A sports market has neither, so there is no model fair value - return None and let the
     # caller skip (entries/pair_entries treat None as "no signal"). Such markets are researched
@@ -499,9 +643,14 @@ def features_used(spec: Dict) -> List[str]:
         return sorted(FEATURES)
     used = set(_MODEL_FEATURES)
     m = spec["model"]
-    used.add("vol_%dm" % m["vol_window"])
-    if m["drift_window"]:
-        used.add("ret_%dm" % m["drift_window"])
+    kind = m.get("kind", "gbm")
+    if kind in ("logistic", "calibration"):
+        # A learned model's provenance is exactly the features it scores (calibration reads mid).
+        used.update(m.get("features") or [])
+    else:
+        used.add("vol_%dm" % m["vol_window"])
+        if m["drift_window"]:
+            used.add("ret_%dm" % m["drift_window"])
     for flt in spec["entry"]["filters"]:
         used.add(flt["feature"])
     return sorted(used)
@@ -512,8 +661,12 @@ def data_sources_for(spec: Dict) -> List[str]:
     price path always, plus the order-book feature table iff a filter uses a micro
     feature. Recorded alongside features_used so the ledger shows what data was touched."""
     srcs = ["hist_markets", "market_candles", "spot_candles_1m"]
-    # A code spec gets the full window (micro features included), so record every source.
-    if is_code_spec(spec) or any(flt["feature"] in MICRO_FEATURES for flt in spec["entry"]["filters"]):
+    model_feats = (spec.get("model", {}).get("features") or []) if not is_code_spec(spec) else []
+    # A code spec gets the full window (micro features included), so record every source; a DSL spec
+    # touches the order-book table iff a filter OR a learned-model feature reads a micro feature.
+    if (is_code_spec(spec)
+            or any(flt["feature"] in MICRO_FEATURES for flt in spec["entry"]["filters"])
+            or any(name in MICRO_FEATURES for name in model_feats)):
         srcs.append("model_features_1m")
     return srcs
 
@@ -624,16 +777,26 @@ def describe(spec: Dict) -> List[str]:
     m, e, x, s = spec["model"], spec["entry"], spec["exit"], spec["sizing"]
     side = {"yes": "YES contracts", "no": "NO contracts", "either": "YES or NO (whichever has more edge)"}[spec["side"]]
     lines = ["Buys %s when its fair value beats the price by at least %d¢." % (side, round(e["min_edge"] * 100))]
-    view = "Fair value uses %d-minute realised volatility" % m["vol_window"]
-    if abs(m["vol_scale"] - 1.0) > 1e-9:
-        view += " scaled ×%.2f" % m["vol_scale"]
-    if m["drift_window"] and m["drift_beta"]:
-        view += ", leaning %s the last %d minutes (β %.2f)" % (
-            "with" if m["drift_beta"] > 0 else "against",
-            m["drift_window"],
-            m["drift_beta"],
-        )
-    lines.append(view + ".")
+    kind = m.get("kind", "gbm")
+    if kind == "logistic":
+        fit = "fit on the research window" if m.get("coef") else "not yet fit"
+        lines.append("Fair value is a learned logistic model (%s) scoring %s."
+                     % (fit, ", ".join(m.get("features") or []) or "its features"))
+    elif kind == "calibration":
+        fit = "fit on the research window" if m.get("coef") else "not yet fit"
+        lines.append("Fair value recalibrates the market's own implied probability (%s) to correct the "
+                     "favorite-longshot bias." % fit)
+    else:
+        view = "Fair value uses %d-minute realised volatility" % m["vol_window"]
+        if abs(m["vol_scale"] - 1.0) > 1e-9:
+            view += " scaled ×%.2f" % m["vol_scale"]
+        if m["drift_window"] and m["drift_beta"]:
+            view += ", leaning %s the last %d minutes (β %.2f)" % (
+                "with" if m["drift_beta"] > 0 else "against",
+                m["drift_window"],
+                m["drift_beta"],
+            )
+        lines.append(view + ".")
     lines.append(
         "Pays %d¢–%d¢ per contract, %g–%g minutes before settlement, spread at most %d¢."
         % (round(e["min_price"] * 100), round(e["max_price"] * 100), e["min_tte_min"], e["max_tte_min"], round(e["max_spread"] * 100))

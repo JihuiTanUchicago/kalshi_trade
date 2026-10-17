@@ -52,6 +52,7 @@ __all__ = [
     "stationary_bootstrap_ci",
     "block_bootstrap_ci",
     "purged_walkforward_splits",
+    "fit_logistic",
 ]
 
 
@@ -229,6 +230,72 @@ def deflated_sharpe_ratio(sr: float, n: int, skew: float, kurt: float,
     of hypotheses that competed for this validation evidence (from the ledger)."""
     sr0 = expected_max_sharpe(n_trials, var_trials)
     return probabilistic_sharpe_ratio(sr, n, skew, kurt, sr_benchmark=sr0)
+
+
+# ---- logistic regression (ridge, pure python) ----------------------------------------
+#
+# A learned linear classifier is the classic ML entry point for a strategy: fit P(outcome |
+# features) on the RESEARCH fold, freeze the coefficients, judge the frozen model on held-out
+# data. This is the fitter the spec's `logistic`/`calibration` model kinds use. Pure python +
+# L2 (ridge): the regularizer is a principled shrinkage prior that keeps a small fit from
+# memorizing noise, and it bounds the coefficients so a near-separable research fold cannot blow
+# them up. Features are standardized internally (so one learning rate works across BTC's wildly
+# different feature scales), then the weights are folded back onto the RAW features so the stored
+# spec reads `intercept + sum(coef_i * feature_i)` with nothing else to carry.
+# ponytail: full-batch gradient descent, fixed iters — O(iters*n*d) python, sub-second for a few
+# features over a research window; swap in numpy/IRLS only if a much larger feature set is ever fit.
+
+
+def fit_logistic(X: "list[list[float]]", y: "list[float]", l2: float = 1.0,
+                 iters: int = 400, lr: float = 0.5) -> "tuple[list[float], float]":
+    """Ridge logistic regression P(y=1) = sigmoid(intercept + coef . x), fit by gradient descent.
+
+    X is n rows of d features, y is n labels in {0,1}. Returns (coef, intercept) on the RAW
+    (un-standardized) feature scale, so the caller stores exactly those d+1 numbers. l2 is the
+    ridge strength on the STANDARDIZED weights (0 = unregularized). Deterministic: no randomness,
+    so the same research fold always yields the same frozen model (a pre-registration must be
+    reproducible). Raises ValueError on empty/ragged input or a width mismatch."""
+    n = len(X)
+    if n == 0:
+        raise ValueError("fit_logistic needs at least one row")
+    if len(y) != n:
+        raise ValueError("X and y must have the same length")
+    d = len(X[0])
+    if any(len(row) != d for row in X):
+        raise ValueError("every row of X must have the same width")
+    yv = [1.0 if v else 0.0 for v in y]
+
+    # Standardize each column (population mean/std); a constant column gets std=1 so it drops out.
+    mean = [sum(row[j] for row in X) / n for j in range(d)]
+    std = []
+    for j in range(d):
+        var = sum((row[j] - mean[j]) ** 2 for row in X) / n
+        std.append(math.sqrt(var) if var > 1e-18 else 1.0)
+    Xs = [[(row[j] - mean[j]) / std[j] for j in range(d)] for row in X]
+
+    w = [0.0] * d
+    b = 0.0
+    for _ in range(max(1, iters)):
+        gw = [0.0] * d
+        gb = 0.0
+        for i in range(n):
+            z = b + sum(w[j] * Xs[i][j] for j in range(d))
+            z = 30.0 if z > 30.0 else -30.0 if z < -30.0 else z
+            err = 1.0 / (1.0 + math.exp(-z)) - yv[i]
+            gb += err
+            xi = Xs[i]
+            for j in range(d):
+                gw[j] += err * xi[j]
+        gb /= n
+        b -= lr * gb
+        for j in range(d):
+            w[j] = w[j] - lr * (gw[j] / n + l2 * w[j] / n)
+
+    # Fold standardization back into raw-feature coefficients: z = b + sum(w_j*(x_j-mean_j)/std_j)
+    # = (b - sum(w_j*mean_j/std_j)) + sum((w_j/std_j)*x_j).
+    coef = [w[j] / std[j] for j in range(d)]
+    intercept = b - sum(w[j] * mean[j] / std[j] for j in range(d))
+    return coef, intercept
 
 
 # ---- 4. Autocorrelation-robust bootstrap CIs -----------------------------------------
@@ -446,6 +513,15 @@ def demo() -> None:
     for s in splits:
         for j in s["train_idx"]:
             assert settle[j] < s["test_from_ts"] and entry[j] < s["test_from_ts"] - 7200
+    # Logistic: a feature that perfectly separates the label gets a positive coefficient, and the
+    # fitted model predicts the right side; a pure-noise constant column stays near zero.
+    Xf = [[x, 1.0] for x in (-3.0, -2.0, -1.0, 1.0, 2.0, 3.0)]
+    yf = [0, 0, 0, 1, 1, 1]
+    coef, intercept = fit_logistic(Xf, yf, l2=0.01)
+    assert coef[0] > 0 and abs(coef[1]) < coef[0]
+    p_hi = 1.0 / (1.0 + math.exp(-(intercept + coef[0] * 3.0 + coef[1])))
+    p_lo = 1.0 / (1.0 + math.exp(-(intercept + coef[0] * -3.0 + coef[1])))
+    assert p_hi > 0.5 > p_lo
     print("stats demo OK")
 
 

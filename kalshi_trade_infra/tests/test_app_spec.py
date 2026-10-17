@@ -148,6 +148,46 @@ def test_cross_contract_spec_validates_and_keys_a_shared_stream():
     assert specmod.stream_key(cs) == "btc_daily+eth_daily"  # ONE shared stream across both legs
 
 
+def test_learned_model_validates_unfitted_and_fitted():
+    # logistic: unfitted (no coef) is valid — the research pipeline fits it later.
+    u = specmod.validate({"model": {"kind": "logistic", "features": ["z_score", "ob_imbalance"]}})
+    assert u["model"]["coef"] == [] and not specmod.is_fitted(u) and specmod.is_learned_model(u)
+    assert specmod.n_free_params(u) == 3  # intercept + 2 weights -> 3 implicit trials
+    # fitted: coef one-per-feature is valid and is_fitted.
+    f = specmod.validate({"model": {"kind": "logistic", "features": ["z_score"], "coef": [2.0], "intercept": -0.5}})
+    assert specmod.is_fitted(f)
+    # calibration takes no features; it recalibrates the mid; 2 free params (slope + intercept).
+    c = specmod.validate({"model": {"kind": "calibration"}})
+    assert c["model"]["features"] == ["mid"] and specmod.n_free_params(c) == 2
+    # gbm stays 1 trial and carries no learned fields (backward compatible default).
+    g = specmod.validate({})
+    assert g["model"]["kind"] == "gbm" and specmod.n_free_params(g) == 1 and specmod.is_fitted(g)
+
+
+def test_learned_model_rejects_bad_shapes():
+    with pytest.raises(specmod.SpecError, match="not a known feature"):
+        specmod.validate({"model": {"kind": "logistic", "features": ["astrology"]}})
+    with pytest.raises(specmod.SpecError, match="one value per feature"):
+        specmod.validate({"model": {"kind": "logistic", "features": ["z_score"], "coef": [1.0, 2.0]}})
+    with pytest.raises(specmod.SpecError, match="1..6 features"):
+        specmod.validate({"model": {"kind": "logistic", "features": []}})
+    with pytest.raises(specmod.SpecError, match="only apply to kind"):
+        specmod.validate({"model": {"kind": "gbm", "features": ["z_score"]}})
+    with pytest.raises(specmod.SpecError, match="finite number"):
+        specmod.validate({"model": {"kind": "logistic", "features": ["z_score"], "coef": [1e99], "intercept": 0.0}})
+
+
+def test_learned_fair_value_scores_features_and_is_none_when_unfitted():
+    unfit = specmod.validate({"model": {"kind": "logistic", "features": ["z_score"]}})
+    assert specmod.fair_yes(unfit, {"z_score": 1.0}) is None  # no signal until frozen
+    fit = specmod.validate({"model": {"kind": "logistic", "features": ["z_score"], "coef": [2.0], "intercept": 0.0}})
+    assert specmod.fair_yes(fit, {"z_score": 1.0}) > 0.5 > specmod.fair_yes(fit, {"z_score": -1.0})
+    assert specmod.fair_yes(fit, {}) is None  # a missing feature is 'no signal', never a crash
+    # calibration recalibrates the mid; slope 1, intercept 0 is the identity on the logit.
+    cal = specmod.validate({"model": {"kind": "calibration", "coef": [1.0], "intercept": 0.0}})
+    assert math.isclose(specmod.fair_yes(cal, {"mid": 0.3}), 0.3, abs_tol=1e-6)
+
+
 def test_cross_contract_spec_rejects_bad_blocks():
     with pytest.raises(specmod.SpecError, match="cross.pairing"):
         specmod.validate({"cross": {"pairing": "bogus", "legs": []}})
