@@ -219,8 +219,9 @@ th .info { vertical-align: 0; }
 .profile { position: relative; display: inline-flex; }
 .profile-trig { display: inline-flex; align-items: center; gap: 5px; font: inherit; color: var(--ink-3); background: none; border: 0; padding: 0; cursor: pointer; }
 .profile-trig:hover, .profile-trig[aria-expanded="true"] { color: var(--ink); }
-.profile-trig .caret { transition: transform .18s var(--ease); }
-.profile-trig[aria-expanded="true"] .caret { transform: rotate(180deg); }
+.profile-chev { flex: none; }
+.profile-trig .profile-chev { transition: transform .18s var(--ease); }
+.profile-trig[aria-expanded="true"] .profile-chev { transform: rotate(180deg); }
 .profile-trig:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 4px; }
 .profile-menu { position: absolute; top: calc(100% + 7px); right: 0; z-index: 40; display: flex; flex-direction: column; min-width: 148px; background: var(--stock-raised); border: 1px solid var(--rule-2); border-radius: 3px; padding: 4px; }
 .profile-menu[hidden] { display: none; }
