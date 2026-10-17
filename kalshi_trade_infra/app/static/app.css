@@ -507,7 +507,9 @@ select#rmodel { appearance: none; -webkit-appearance: none; padding-right: 28px;
 .flow-link { display: flex; justify-content: center; align-items: center; flex: 0 0 auto; width: 30px; align-self: center; position: relative; color: var(--ink-2); }
 .flow-link::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--rule-2); }
 .flow-arrow { position: relative; background: var(--stock); padding: 0 1px; }
-.node { border: 1px solid var(--rule); background: var(--stock-raised); padding: 11px 14px; display: grid; gap: 4px; align-content: start; }
+/* Scoped to the pipeline figure: the bare `.node` box used to leak onto the research-feed
+   timeline dot (also `<span class="node">`), boxing the rail and clipping the first character. */
+.flow-row .node { border: 1px solid var(--rule); background: var(--stock-raised); padding: 11px 14px; display: grid; gap: 4px; align-content: start; }
 .node-in { background: var(--stock); border-style: dashed; border-color: var(--rule-2); }
 .node-k { font-family: var(--f-nar); font-size: 12.5px; letter-spacing: .05em; text-transform: uppercase; font-weight: 600; color: var(--ink); display: flex; align-items: center; gap: 8px; }
 .node-k .mk { flex: none; }
@@ -564,10 +566,13 @@ select#rmodel { appearance: none; -webkit-appearance: none; padding-right: 28px;
 
 .printer { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 28px; align-items: start; margin-top: 8px; }
 .log { list-style: none; margin: 0; padding: 0; }
-.log li { display: grid; grid-template-columns: 52px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--rule); font-size: 13px; }
+/* Direct rows only: a markdown <ul>/<ol> rendered by feedMd nests <li> under .log, and the base
+   grid row style used to leak onto them — squishing each list item into the 52px time column and
+   wrapping one word per line. The feed rows are always direct children, so scope to them. */
+.log > li { display: grid; grid-template-columns: 52px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--rule); font-size: 13px; }
 .log time { color: var(--ink-3); font-family: var(--f-nar); font-size: 12px; }
-.log li.error { color: var(--signal); }
-.log li.verdict { background: linear-gradient(90deg, var(--stock-raised), transparent 60%); }
+.log > li.error { color: var(--signal); }
+.log > li.verdict { background: linear-gradient(90deg, var(--stock-raised), transparent 60%); }
 .log .verdict { font-family: var(--f-nar); letter-spacing: .06em; font-size: 11.5px; padding: 1px 6px; border-radius: 3px; margin-right: 2px; }
 .log .verdict.pass { color: #0E5C33; background: #DCEFE3; }
 .log .verdict.void { color: #8A1021; background: var(--signal-wash); }
@@ -576,7 +581,7 @@ select#rmodel { appearance: none; -webkit-appearance: none; padding-right: 28px;
 /* -- live research feed: a Claude-Code-style streaming agent log (both themes, identical) --- */
 .runfeed { position: relative; border: 1px solid var(--rule); background: var(--stock-raised); }
 .log.stream { height: clamp(340px, 52vh, 560px); overflow-y: auto; overscroll-behavior: contain; margin: 0; padding: 2px 16px 10px; scroll-behavior: smooth; }
-.log.stream .ln { grid-template-columns: 46px 20px minmax(0, 1fr); column-gap: 12px; align-items: start; padding: 10px 0; }
+.log.stream .ln { grid-template-columns: 40px 16px minmax(0, 1fr); column-gap: 10px; align-items: start; padding: 10px 0; }
 .log.stream .ln:last-child { border-bottom: 0; }
 .log.stream .ln time { padding-top: 3px; font-size: 11.5px; letter-spacing: .04em; font-variant-numeric: tabular-nums; }
 /* the timetable rail: a hairline down the gutter with one node per entry (thought/action/result by shape) */
@@ -1199,7 +1204,7 @@ a.snap:hover { border-color: var(--ink-3); }
 .mention-opt b { color: var(--ink); font-weight: 600; }
 .mention-opt span { color: var(--ink-3); font-size: .9em; margin-left: 4px; }
 .mention-opt.on, .mention-opt:hover { background: var(--stock-sunk); }
-.log li.rsi-event { background: var(--signal-wash); border-left: 2px solid var(--signal); padding-left: 8px; }
+.log > li.rsi-event { background: var(--signal-wash); border-left: 2px solid var(--signal); padding-left: 8px; }
 .rsi-badge { display: inline-block; font-family: var(--f-nar); font-size: 10px; font-weight: 700; letter-spacing: .1em; color: #FDF2F3; background: var(--signal); padding: 1px 5px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
 .rsi-card { border: 1px solid var(--rule); border-left: 3px solid var(--signal); background: var(--stock-raised); padding: 12px 14px; margin-bottom: 16px; border-radius: 3px; }
 .rsi-head { font-family: var(--f-nar); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 6px; }
