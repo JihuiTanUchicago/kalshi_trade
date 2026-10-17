@@ -379,6 +379,20 @@ def cancel_run(ctx: Ctx):
     return {"ok": True}
 
 
+def pause_run(ctx: Ctx):
+    """Interrupt a running session; the agent holds its state until resumed or cancelled."""
+    if not repo.pause_run(ctx.cur, ctx.uid, _int_param(ctx)):
+        raise ApiError(409, "Only a running session can be paused.")
+    return {"ok": True}
+
+
+def resume_run(ctx: Ctx):
+    """Continue a paused session exactly where it left off."""
+    if not repo.resume_run(ctx.cur, ctx.uid, _int_param(ctx)):
+        raise ApiError(409, "Only a paused session can be resumed.")
+    return {"ok": True}
+
+
 def _strategy_card(s: Dict) -> Dict:
     res = s.get("result") or {}
     return {
@@ -1599,6 +1613,8 @@ ROUTES: List[Route] = [
         ("POST", "/api/runs", create_run, True),
         ("GET", r"/api/runs/(\d+)", get_run, True),
         ("POST", r"/api/runs/(\d+)/cancel", cancel_run, True),
+        ("POST", r"/api/runs/(\d+)/pause", pause_run, True),
+        ("POST", r"/api/runs/(\d+)/resume", resume_run, True),
         ("GET", "/api/strategies", list_strategies, True),
         ("GET", r"/api/strategies/(\d+)", get_strategy, True),
         ("POST", r"/api/strategies/(\d+)/whatif", what_if, True),

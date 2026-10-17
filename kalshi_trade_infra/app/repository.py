@@ -358,7 +358,7 @@ def count_runs(cur, user_id: int, kind: str, since: Optional[datetime] = None, a
     sql = "SELECT COUNT(*) AS n FROM app_agent_runs WHERE user_id=%s AND kind=%s"
     params: List[Any] = [user_id, kind]
     if active_only:
-        sql += " AND status IN ('queued','running')"
+        sql += " AND status IN ('queued','running','paused')"  # a paused run still holds a worker slot
     if since is not None:
         sql += " AND created_at >= %s"
         params.append(since)
@@ -419,7 +419,27 @@ def finish_run(
 def cancel_run(cur, user_id: int, run_id: int) -> bool:
     cur.execute(
         """UPDATE app_agent_runs SET status='cancelled', finished_at=%s
-           WHERE id=%s AND user_id=%s AND status IN ('queued','running')""",
+           WHERE id=%s AND user_id=%s AND status IN ('queued','running','paused')""",
+        (now_utc(), run_id, user_id),
+    )
+    return cur.rowcount == 1
+
+
+def pause_run(cur, user_id: int, run_id: int) -> bool:
+    """Interrupt a running session: the worker holds its exact in-memory state at the next
+    checkpoint until it's resumed (or cancelled). Only a currently-running run can be paused."""
+    cur.execute(
+        "UPDATE app_agent_runs SET status='paused' WHERE id=%s AND user_id=%s AND status='running'",
+        (run_id, user_id),
+    )
+    return cur.rowcount == 1
+
+
+def resume_run(cur, user_id: int, run_id: int) -> bool:
+    """Continue a paused session right where it left off. Reset the heartbeat so the resumed run
+    is never mistaken for abandoned in the gap before its next checkpoint."""
+    cur.execute(
+        "UPDATE app_agent_runs SET status='running', heartbeat_at=%s WHERE id=%s AND user_id=%s AND status='paused'",
         (now_utc(), run_id, user_id),
     )
     return cur.rowcount == 1
@@ -1063,13 +1083,15 @@ def deployment_curves(cur, user_id: int) -> Dict[int, List[List]]:
 def active_run_counts(cur, user_id: int) -> Dict[str, int]:
     cur.execute(
         """SELECT kind, status, COUNT(*) AS n FROM app_agent_runs
-           WHERE user_id=%s AND status IN ('queued','running') GROUP BY kind, status""",
+           WHERE user_id=%s AND status IN ('queued','running','paused') GROUP BY kind, status""",
         (user_id,),
     )
     out = {"research_running": 0, "research_queued": 0, "chat_active": 0}
     for r in cur.fetchall():
         if r["kind"] == "research":
-            out["research_" + r["status"]] += int(r["n"])
+            # A paused research run is still working for the user (a held worker slot), so it
+            # counts under "running" for the at-a-glance busy indicator.
+            out["research_running" if r["status"] in ("running", "paused") else "research_queued"] += int(r["n"])
         else:
             out["chat_active"] += int(r["n"])
     return out

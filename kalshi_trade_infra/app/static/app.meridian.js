@@ -1315,24 +1315,148 @@
       <span class="run-foot"><span class="run-state">${state}</span><span class="run-when">${when(r.created_at)}</span></span></a>`;
   }
 
+  // ======================================================================
+  // Live research feed — a Claude-Code-style streaming agent log.
+  // Shared, BYTE-IDENTICAL across both themes (app.js / app.meridian.js). A running session
+  // streams its reasoning here as it happens: each thought, each hypothesis + thesis, each
+  // backtest result, the challenger's verdict and the gatekeeper's classification land as nodes
+  // on a timetable rail. Newest at the bottom like a terminal; the view sticks to the latest
+  // only while the reader is already at the foot, so scrolling up to read never gets yanked back.
+  // Polling (every 2s) drives it — no SSE, so it works under `script-src 'self'`.
+  // ======================================================================
+  const RUN_LANE = { step: 'thought', hypothesis: 'action', challenger: 'review', verdict: 'result', done: 'done', paused: 'state', resumed: 'state', error: 'alert' };
+
+  function runMechText(m) {
+    if (!m || typeof m !== 'object') return '';
+    const v = m.why || m.mechanism || m.edge || m.rationale || m.because;
+    return typeof v === 'string' ? v : '';
+  }
+
+  // Build one feed node (<li>) from a log event. Pure; the thought / action / result distinction
+  // is carried by the lane class (rail node shape), a Narrow kind label, and type weight — never
+  // by color alone, so it reads the same to a screen reader or in daylight.
+  function runEventEl(ev) {
+    const li = document.createElement('li');
+    const data = ev.data || {};
+    let lane = RUN_LANE[ev.kind] || 'thought';
+    let inner;
+    if (ev.kind === 'hypothesis') {
+      const ins = data.in_sample || {};
+      const mech = runMechText(data.mechanism);
+      const stat = (ins && ins.trades != null)
+        ? `<span class="say-stat">In-sample ${usd(ins.pnl, true)} over ${ins.trades} trade${ins.trades === 1 ? '' : 's'}</span>` : '';
+      inner = `<span class="say-kind">Hypothesis</span><b class="say-title">${esc(ev.message)}</b>`
+        + (data.thesis ? `<span class="say-sub">${esc(data.thesis)}</span>` : '')
+        + (mech ? `<span class="say-sub">Why it should work — ${esc(mech)}</span>` : '')
+        + stat;
+    } else if (ev.kind === 'verdict') {
+      const st = data.status, sid = data.strategy_id;
+      lane = st === 'passed' ? 'pass' : st === 'rejected' ? 'rej' : 'void';
+      const tag = st === 'passed' ? '<b class="verdict pass">PASSED</b>'
+        : st === 'rejected' ? '<b class="verdict rej">REJECTED</b>'
+        : '<b class="verdict void">VOID</b>';
+      const rest = ev.message.replace(/^(PASSED|VOID|FAILED|REJECTED)(\s*\(challenger\))?\s*[-–]\s*/, '');
+      const title = data.title || rest;
+      const tail = rest.startsWith(title) ? rest.slice(title.length) : '';  // keep the ": …" explanation as text
+      const titleHtml = sid ? `<a href="/strategies/${sid}">${esc(title)}</a>` : `<b>${esc(title)}</b>`;
+      inner = `${tag} ${titleHtml}${esc(tail)}`;
+    } else if (ev.kind === 'challenger') {
+      inner = `<span class="say-kind">Challenger</span>${esc(ev.message.replace(/^Challenger\s+/, ''))}`;
+    } else if (/^(Dreaming:|Research policy evolved:)/.test(ev.message)) {
+      lane = 'rsi';
+      inner = `<b class="rsi-badge">RSI</b> ${esc(ev.message)}`;
+    } else if (ev.kind === 'paused' || ev.kind === 'resumed') {
+      inner = `<span class="say-kind">${ev.kind === 'paused' ? 'Paused' : 'Resumed'}</span>${esc(ev.message)}`;
+    } else {
+      inner = esc(ev.message);
+    }
+    li.className = 'ln lane-' + lane + (lane === 'rsi' ? ' rsi-event' : '');
+    li.innerHTML = `<time>${clock(ev.created_at)}</time><span class="node" aria-hidden="true"></span><div class="say">${inner}</div>`;
+    return li;
+  }
+
+  // Controller over a .runfeed section: appends events (newest at bottom) with an enter
+  // animation, sticks to the latest only when already at the foot, raises a "jump to latest"
+  // chip when the reader has scrolled up, and drives the live "researching…/paused" pulse.
+  function runFeed(section) {
+    const log = section.querySelector('.log');
+    const jump = section.querySelector('.jumplatest');
+    const pulse = section.querySelector('.runpulse');
+    let unseen = 0, first = true;
+    const atBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+    const toLatest = () => { log.scrollTop = log.scrollHeight; unseen = 0; jump.hidden = true; };
+    log.addEventListener('scroll', () => { if (atBottom()) { unseen = 0; jump.hidden = true; } });
+    jump.onclick = toLatest;
+    return {
+      push(events) {
+        if (!events || !events.length) return;
+        const stick = first || atBottom();
+        const frag = document.createDocumentFragment();
+        events.forEach((ev) => { const el = runEventEl(ev); if (!first) el.classList.add('in'); frag.appendChild(el); });
+        log.appendChild(frag);
+        if (stick) toLatest();
+        else { unseen += events.length; jump.hidden = false; jump.textContent = unseen + ' new ↓'; }
+        first = false;
+      },
+      state(st) {  // 'queued' | 'running' | 'paused' | 'done'
+        if (st === 'done') { pulse.hidden = true; return; }
+        const stick = atBottom();
+        pulse.hidden = false;
+        pulse.className = 'runpulse' + (st === 'paused' ? ' paused' : '');
+        pulse.innerHTML = st === 'paused'
+          ? '<span class="pulse-bar" aria-hidden="true"></span><span>Paused — resume and it picks up exactly where it left off.</span>'
+          : st === 'queued'
+            ? '<span class="working" aria-hidden="true"></span><span>Queued — waiting for a free agent to pick this up…</span>'
+            : '<span class="working" aria-hidden="true"></span><span>Researching<span class="ell" aria-hidden="true"></span></span>';
+        if (stick) toLatest();
+      },
+    };
+  }
+
+  // Interrupt & continue: the obvious control cluster for a research run. Running → Pause;
+  // Paused → Resume (the primary action); every active state can Cancel. Finished shows the
+  // way onward. Pause/Resume are reversible so they act immediately; Cancel is armed to confirm.
+  function runControls(host, id, status, reload) {
+    if (status === 'paused') {
+      host.innerHTML = '<span class="runact"><button class="btn small primary" id="resume">Resume</button><button class="btn danger small" id="cancel">Cancel</button></span>';
+      host.querySelector('#resume').onclick = (e) => busy(e.currentTarget, async () => { await api(`/api/runs/${id}/resume`, {}).catch((er) => alert0(er.message)); await reload(); });
+    } else if (status === 'running') {
+      host.innerHTML = '<span class="runact"><button class="btn small" id="pause">Pause</button><button class="btn danger small" id="cancel">Cancel</button></span>';
+      host.querySelector('#pause').onclick = (e) => busy(e.currentTarget, async () => { await api(`/api/runs/${id}/pause`, {}).catch((er) => alert0(er.message)); await reload(); });
+    } else if (status === 'queued') {
+      host.innerHTML = '<span class="runact"><button class="btn danger small" id="cancel">Cancel</button></span>';
+    } else {
+      host.innerHTML = status === 'succeeded' ? '<a class="btn small" href="/strategies">All strategies</a>' : '';
+      return;
+    }
+    const cancel = host.querySelector('#cancel');
+    cancel.onclick = () => armed(cancel, 'Confirm cancel', () => busy(cancel, async () => { await api(`/api/runs/${id}/cancel`, {}).catch((er) => alert0(er.message)); await reload(); }));
+  }
+
   async function viewRun(id) {
     shell('/research', '<div id="runboard">' + boardTitle('Research run') + '</div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl>', `
       <div id="rsibox"></div>
       <div class="printer">
-        <section><div class="section-head"><h2>Agent log</h2><span id="runact"></span></div><div id="flash"></div><ol class="log" id="log" aria-live="polite"></ol></section>
+        <section><div class="section-head"><h2>Agent log</h2><span id="runact"></span></div><div id="flash"></div>
+          <div class="runfeed" id="runfeed"><ol class="log stream" id="log" role="log" aria-label="Agent reasoning log"></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button><div class="runpulse" id="runpulse" aria-live="polite" hidden></div></div></section>
         <section><div class="section-head"><h2>Hypotheses</h2><p>Best unseen P&L first</p></div>
           <div id="feed">${strategyTable('')}</div></section>
       </div>`);
     let after = 0, tried = 0, lastFeedSig = '';
+    const stream = runFeed(root.querySelector('#runfeed'));
     const load = async () => {
       const d = await api(`/api/runs/${id}?after=${after}`);
       const r = d.run;
-      const active = r.status === 'running' || r.status === 'queued';
+      const active = r.status === 'running' || r.status === 'queued' || r.status === 'paused';
       root.querySelector('#runboard').innerHTML = boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7 ${dirLabel(r.direction)}`);
       const started = r.started_at ? Date.parse(r.started_at) : null;
       const end = r.finished_at ? Date.parse(r.finished_at) : Date.now();
+      const statusText = r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
+        : r.status === 'paused' ? 'Paused'
+        : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
+        : r.status === 'succeeded' ? 'Done' : r.status === 'cancelled' ? 'Cancelled' : 'Failed';
       root.querySelector('#runfigs').innerHTML =
-        fig('Status', active ? (r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>' : 'Researching<span class="working" aria-label="in process"></span>') : r.status === 'succeeded' ? 'Done' : r.status === 'cancelled' ? 'Cancelled' : 'Failed') +
+        fig('Status', statusText) +
         fig('Time', started ? Math.max(0, Math.round((end - started) / 60000)) + ' min' : '—') +
         fig('Hypotheses', r.hypotheses_tried || tried) + fig('Passed', active ? '…' : r.strategies_passed) +
         fig('RSI policy', d.rsi && d.rsi.evolved ? 'Evolved' : 'Self-tuning',
@@ -1349,39 +1473,11 @@
             : `<p>The agent is <b>self-tuning</b>: after each research cycle it dreams up new search strategies and keeps one only if it beats the current policy on your own history (scored over shuffled orderings, so it can't overfit).</p>
                ${d.rsi.last_dream ? `<p class="rsi-last"><b>Last check${d.rsi.last_dream_at ? ' · ' + when(d.rsi.last_dream_at) : ''}:</b> ${esc(d.rsi.last_dream)}</p>` : '<p class="rsi-last">The first result appears at the end of a research cycle.</p>'}`}</div>`;
       }
-      root.querySelector('#runact').innerHTML = active ? '<button class="btn danger small" id="cancel">Cancel run</button>' : (r.status === 'succeeded' ? '<a class="btn small" href="/strategies">All strategies</a>' : '');
-      const cancel = root.querySelector('#cancel');
-      if (cancel) cancel.onclick = () => armed(cancel, 'Confirm cancel', () => busy(cancel, async () => { await api(`/api/runs/${id}/cancel`, {}).catch((e) => alert0(e.message)); await load(); }));
-      const log = root.querySelector('#log');
+      runControls(root.querySelector('#runact'), id, r.status, load);
       const feed = root.querySelector('#feed');
-      d.events.forEach((ev) => {
-        after = Math.max(after, ev.id);
-        const li = document.createElement('li');
-        li.className = ev.kind;
-        let inner;
-        if (ev.kind === 'hypothesis') {
-          inner = 'Tested <b>' + esc(ev.message) + '</b>';
-        } else if (ev.kind === 'verdict') {
-          const st = ev.data && ev.data.status;
-          const sid = ev.data && ev.data.strategy_id;
-          const tag = st === 'passed' ? '<b class="verdict pass">PASSED</b>'
-            : st === 'rejected' ? '<b class="verdict rej">REJECTED</b>'
-            : '<b class="verdict void">VOID</b>';
-          const rest = ev.message.replace(/^(PASSED|VOID|FAILED|REJECTED)\s*[-–]\s*/, '');
-          const title = (ev.data && ev.data.title) || rest;
-          const tail = rest.startsWith(title) ? rest.slice(title.length) : '';
-          const titleHtml = sid ? `<a href="/strategies/${sid}">${esc(title)}</a>` : `<b>${esc(title)}</b>`;
-          inner = `${tag} ${titleHtml}${esc(tail)}`;
-        } else if (/^(Dreaming:|Research policy evolved:)/.test(ev.message)) {
-          li.className = 'step rsi-event';
-          inner = `<b class="rsi-badge">RSI</b> ${esc(ev.message)}`;
-        } else {
-          inner = esc(ev.message);
-        }
-        li.innerHTML = `<time>${clock(ev.created_at)}</time><span>${inner}</span>`;
-        log.prepend(li);  // newest on top (each new poll batch, ascending ids, lands above older)
-        if (ev.kind === 'hypothesis') tried++;
-      });
+      d.events.forEach((ev) => { after = Math.max(after, ev.id); if (ev.kind === 'hypothesis') tried++; });
+      stream.push(d.events);
+      stream.state(active ? r.status : 'done');
       // Always show gated strategies sorted by unseen P&L (highest first); deployable above
       // void above rejected. Re-sorts live each poll as a research chunk clears the gate.
       const shownPnl = (s) => { const m = (s.out_of_sample && s.out_of_sample.pnl != null) ? s.out_of_sample : (s.in_sample || {}); return m.pnl != null ? +m.pnl : -Infinity; };

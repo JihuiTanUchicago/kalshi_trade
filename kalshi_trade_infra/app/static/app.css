@@ -412,6 +412,51 @@ select#rmodel { appearance: none; -webkit-appearance: none; padding-right: 28px;
 .log .verdict.void { color: #8A1021; background: var(--signal-wash); }
 .log .verdict.rej { color: var(--ink-3); background: var(--stock-sunk); }
 
+/* -- live research feed: a Claude-Code-style streaming agent log (both themes, identical) --- */
+.runfeed { position: relative; border: 1px solid var(--rule); background: var(--stock-raised); }
+.log.stream { height: clamp(340px, 52vh, 560px); overflow-y: auto; overscroll-behavior: contain; margin: 0; padding: 2px 16px 10px; scroll-behavior: smooth; }
+.log.stream .ln { grid-template-columns: 46px 20px minmax(0, 1fr); column-gap: 12px; align-items: start; padding: 10px 0; }
+.log.stream .ln:last-child { border-bottom: 0; }
+.log.stream .ln time { padding-top: 3px; font-size: 11.5px; letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+/* the timetable rail: a hairline down the gutter with one node per entry (thought/action/result by shape) */
+.log.stream .ln .node { position: relative; align-self: stretch; }
+.log.stream .ln .node::before { content: ""; position: absolute; left: 9px; top: -10px; height: calc(100% + 20px); border-left: 1px solid var(--rule-2); }
+.log.stream .ln:first-child .node::before { top: 9px; height: calc(100% + 1px); }
+.log.stream .ln .node::after { content: ""; position: absolute; left: 5px; top: 6px; width: 9px; height: 9px; box-sizing: border-box; background: var(--stock-raised); border: 1.5px solid var(--ink-3); border-radius: 50%; }
+.log.stream .lane-action .node::after { background: var(--ink); border-color: var(--ink); border-radius: 1px; }
+.log.stream .lane-review .node::after { border-color: var(--ink-2); border-radius: 1px; }
+.log.stream .lane-pass .node::after, .log.stream .lane-done .node::after { background: var(--ink); border-color: var(--ink); }
+.log.stream .lane-alert .node::after, .log.stream .lane-rsi .node::after { background: var(--signal); border-color: var(--signal); }
+.log.stream .lane-state .node::after { top: 8px; height: 5px; border-radius: 1px; background: var(--ink-2); border-color: var(--ink-2); }
+/* the text column: thought = plain sentence (ink-2); action = Narrow kind label + bold title; result = badge */
+.log.stream .say { min-width: 0; color: var(--ink-2); line-height: 1.5; font-size: 13px; overflow-wrap: anywhere; }
+.log.stream .say a { color: var(--ink); text-underline-offset: 2px; }
+.say-kind { display: inline-block; font-family: var(--f-nar); font-size: 10px; letter-spacing: .13em; text-transform: uppercase; color: var(--ink-3); margin-right: 8px; vertical-align: 1px; }
+.say-title { color: var(--ink); font-weight: 600; }
+.say-sub { display: block; color: var(--ink-2); margin-top: 3px; }
+.say-stat { display: inline-block; margin-top: 5px; font-family: var(--f-nar); font-size: 11.5px; letter-spacing: .03em; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.log.stream .lane-alert .say { color: var(--signal); }
+/* one authored moment: each new node rises in from the live edge */
+.log.stream .ln.in { animation: lnrise .42s var(--ease) both; }
+@keyframes lnrise { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: none; } }
+/* jump-to-latest: a transient chip, shown only while the reader has scrolled up to read */
+.jumplatest { position: absolute; left: 50%; bottom: 58px; transform: translateX(-50%); z-index: 2; font-family: var(--f-nar); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; padding: 6px 13px 5px; border: 1px solid var(--ink); border-radius: 999px; background: var(--ink); color: var(--stock-raised); cursor: pointer; }
+.jumplatest:hover { background: #000; }
+/* the live edge: the pulse the agent writes to while it works, or the held state while paused */
+.runpulse { display: flex; align-items: center; gap: 10px; padding: 11px 16px; border-top: 1px solid var(--rule); background: var(--stock); font-family: var(--f-nar); font-size: 12.5px; letter-spacing: .03em; color: var(--ink-3); }
+.runpulse.paused { color: var(--ink); background: var(--stock-sunk); }
+.pulse-bar { flex: none; position: relative; width: 11px; height: 12px; }
+.pulse-bar::before, .pulse-bar::after { content: ""; position: absolute; top: 0; bottom: 0; width: 3px; background: var(--ink); }
+.pulse-bar::before { left: 1px; } .pulse-bar::after { right: 1px; }
+.ell::after { content: "…"; animation: ell 1.4s steps(1) infinite; }
+@keyframes ell { 0% { content: ""; } 25% { content: "·"; } 50% { content: "··"; } 75% { content: "···"; } }
+.runact { display: inline-flex; gap: 8px; }
+@media (prefers-reduced-motion: reduce) {
+  .log.stream { scroll-behavior: auto; }
+  .log.stream .ln.in { animation: none; }
+  .ell::after { content: "…"; animation: none; }
+}
+
 .sheet-doc { border: 1px solid var(--rule); background: var(--stock-raised); padding: 24px; position: relative; }
 .sheet-doc h2 { font-size: clamp(22px, 2.6vw, 30px); font-weight: 600; letter-spacing: -.02em; margin: 8px 0 10px; max-width: 28ch; }
 .doc-mark { position: absolute; top: 20px; right: 20px; margin: 0; }

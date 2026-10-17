@@ -25,6 +25,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import time
 from typing import Callable, Dict, List, Optional, Tuple
 
 from app import backtest, billing
@@ -256,7 +257,10 @@ def _pick_market(run: Dict, model: ModelFn, usage: Usage, log) -> str:
         k = obj.get("market")
         if k not in MARKETS:
             raise ValueError("market must be one of: " + ", ".join(MARKETS))
-        return {"market": k, "why": str(obj.get("why") or "")[:200]}
+        # Full reasoning, not a clipped fragment: this `why` is shown verbatim as the first
+        # agent-log line, so cap it at the same 1000 chars as every other reason field (the
+        # message column is TEXT) — the old 200 clipped the sentence mid-word.
+        return {"market": k, "why": str(obj.get("why") or "")[:1000]}
 
     r = ask_json(model, RESEARCH_SYSTEM, [{"role": "user", "content": msg}], check, usage)
     log("step", "Chose to research %s. %s" % (MARKETS[r["market"]].label, r["why"]))
@@ -278,7 +282,7 @@ def _plan_lookback(run: Dict, market: str, model: ModelFn, usage: Usage, log) ->
         d = obj.get("lookback_days")
         if not isinstance(d, (int, float)):
             raise ValueError("reply needs an integer lookback_days")
-        return {"days": max(5, min(int(d), maxd)), "why": str(obj.get("why") or "")[:200]}
+        return {"days": max(5, min(int(d), maxd)), "why": str(obj.get("why") or "")[:1000]}
 
     r = ask_json(model, RESEARCH_SYSTEM, [{"role": "user", "content": msg}], check, usage)
     log("step", "Chose a %d-day backtest window for this idea. %s" % (r["days"], r["why"]))
@@ -368,6 +372,48 @@ def _in_sample_summary(ds: backtest.Dataset) -> Dict:
 
 class Cancelled(Exception):
     pass
+
+
+# How long the run loop holds a paused session before giving up (frees the worker so a
+# forgotten pause can't tie up a slot forever). Matches the worker's abandoned-run window.
+PAUSE_POLL_SECONDS = 1.5
+PAUSE_MAX_SECONDS = 20 * 60
+
+# Signs that a failure is an infra/connection blip (RDS restart, idle-timeout drop), not a
+# genuine LLM/logic error — the user must never be billed for one of these.
+_INFRA_ERROR_SIGNS = (
+    "Packet sequence number",
+    "Lost connection",
+    "Server shutdown",
+    "Connection refused",
+    "MySQL server has gone away",
+)
+
+
+def _is_infra_error(e: BaseException) -> bool:
+    try:
+        import pymysql  # local import: tests without a DB driver still import this module
+        if isinstance(e, (pymysql.err.OperationalError, pymysql.err.InterfaceError)):
+            return True
+    except Exception:
+        pass
+    return any(sign in str(e) for sign in _INFRA_ERROR_SIGNS)
+
+
+def _reconnect(conn, cur):
+    """A single model call can run for minutes; an idle DB connection can be dropped out from
+    under it (RDS/idle timeout), so the next cursor use throws 'Packet sequence number wrong'
+    and the whole run dies — and gets billed. Ping-reconnect in place before the writes that
+    follow each LLM call and hand back a fresh cursor, so a dropped idle connection heals
+    transparently instead. Best-effort: if the DB is genuinely down, the stale cursor is
+    returned and the next execute raises, which the run's handler treats as infra (no bill)."""
+    if conn is None:
+        return cur
+    try:
+        conn.ping(reconnect=True)
+        return conn.cursor()
+    except Exception:
+        return cur
 
 
 def _bill(conn, user_id, usage, run_id, model=None):
@@ -493,7 +539,7 @@ def _prereg(t: Dict, spec: Dict, run: Dict, partition: Dict, n_tests: int,
 
 
 def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk: List[Dict], log,
-                   policy: exploration.ExplorationPolicy, model: ModelFn, usage: Usage) -> int:
+                   policy: exploration.ExplorationPolicy, model: ModelFn, usage: Usage, conn=None) -> int:
     """The HAND-OFF (§B.5 step 3): freeze the finalists, let the Challenger review them, then
     hand the approved ones to the Statistical Gatekeeper for validation. The generator never
     runs a backtest on validation data and only ever receives a classification LABEL back — the
@@ -509,6 +555,9 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
     state = exploration.PolicyState(proposed=len(chunk), budget=len(chunk), round=0)
     finalists = policy.select_finalists(chunk, state)
     verdicts = _challenge(finalists, run, model, usage, log)
+    # The challenger is a minutes-long model call; reconnect before the inserts that follow so a
+    # dropped idle connection doesn't fail (and bill) the whole run.
+    cur = _reconnect(conn, cur)
     log("step", "Froze %d finalist%s; the challenger reviewed each before any validation budget was spent."
         % (len(finalists), "" if len(finalists) == 1 else "s"))
 
@@ -533,6 +582,12 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
                 % (t["title"], verdict.get("reason") or "no credible mechanism"),
                 {"title": t["title"], "status": "rejected", "strategy_id": t["strategy_id"]})
             continue
+        # Surface the challenger's APPROVE/REVISE call too (reject already logs above), so the
+        # live feed shows the skeptic's verdict on every finalist, not only the kills.
+        if verdict.get("reason"):
+            log("challenger", "Challenger %s - %s: %s"
+                % ("revised" if verdict["decision"] == "revise" else "approved", t["title"], verdict["reason"]),
+                {"title": t["title"], "decision": verdict["decision"]})
         # Insert the strategy row FIRST (provisional) so the immutable experiment can carry its
         # strategy_id, then pre-register the frozen hypothesis.
         sid = repo.insert_strategy(cur, user_id, run_id, parent, market, direction, t["title"],
@@ -571,7 +626,7 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
 
 
 def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkpoint, budget, tried,
-                      policy: exploration.ExplorationPolicy) -> Tuple[int, int]:
+                      policy: exploration.ExplorationPolicy, conn=None) -> Tuple[int, int]:
     """Explore NEW hypotheses on the Research partition (small refining rounds the policy
     sizes), then hand the finalists to the challenger + gatekeeper. Appends to the shared
     `tried` so progress survives a cancel/error."""
@@ -597,7 +652,7 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
             t["score"] = backtest.score(t["in_sample"])  # attach once, so the policy needs no backtester
             chunk.append(t)
             tried.append(t)
-    return len(chunk), _gate_and_save(cur, run, ds, partition, chunk, log, policy, model, usage)
+    return len(chunk), _gate_and_save(cur, run, ds, partition, chunk, log, policy, model, usage, conn)
 
 
 def run_research(
@@ -619,12 +674,37 @@ def run_research(
     # default if they have none yet. A new run then dreams up a better one (below).
     policy = dreaming.current_policy(cur, user_id)
 
+    paused_at = [0.0]  # when the current pause began (0 = not paused); list so the closure can mutate it
+
     def log(kind: str, message: str, data: Optional[Dict] = None) -> None:
         repo.add_event(cur, run_id, kind, message, data)
 
     def checkpoint() -> None:
-        if repo.heartbeat(cur, run_id) == "cancelled":
+        """Called at every safe point between/after LLM calls. It (1) ping-reconnects the DB so a
+        write that follows a minutes-long model call never dies on a dropped idle connection
+        (ponytail: one COM_PING per checkpoint, negligible beside the backtests), (2) stops on a
+        cancel, and (3) holds here while the user has the session paused — resuming picks up exactly
+        where it left off (same in-memory state, same worker)."""
+        nonlocal cur
+        cur = _reconnect(conn, cur)
+        status = repo.heartbeat(cur, run_id)
+        if status == "cancelled":
             raise Cancelled()
+        while status == "paused":
+            if not paused_at[0]:
+                paused_at[0] = time.monotonic()
+                log("paused", "Paused — holding here. Resume and I pick up exactly where I left off.")
+            if time.monotonic() - paused_at[0] > PAUSE_MAX_SECONDS:
+                log("step", "Paused too long — stopping to free the worker. Start a new session to continue.")
+                raise Cancelled()
+            time.sleep(PAUSE_POLL_SECONDS)
+            cur = _reconnect(conn, cur)
+            status = repo.heartbeat(cur, run_id)  # keeps heartbeat_at fresh so the run isn't reaped
+            if status == "cancelled":
+                raise Cancelled()
+        if paused_at[0]:
+            paused_at[0] = 0.0
+            log("resumed", "Resumed.")
 
     try:
         if not market:  # user left it to the agent — it picks the market from the idea first
@@ -663,7 +743,7 @@ def run_research(
             # Reload memory each chunk so a run_forever loop learns from the strategies it
             # just saved, instead of re-proposing the same ideas.
             memory = repo.strategy_memory(cur, user_id, market)
-            n, passed = _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkpoint, budget, tried, policy)
+            n, passed = _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkpoint, budget, tried, policy, conn)
             total_passed += passed
             chunks += 1
             # Tau-RSI: dream periodically DURING a long session (not only at the end), so the
@@ -714,10 +794,15 @@ def run_research(
         _bill(conn, user_id, usage, run_id, choice.model_id)  # charge whatever was spent before the stop
         log("step", "Cancelled.")
     except Exception as e:  # the run fails visibly; the worker keeps going
-        msg = str(e) if isinstance(e, LLMError) else "Unexpected error: %s" % e
+        infra = _is_infra_error(e)  # an RDS blip / dropped connection, not an LLM or logic fault
+        msg = ("The agent lost its database connection mid-run and stopped. No charge for this — "
+               "start the session again." if infra else
+               str(e) if isinstance(e, LLMError) else "Unexpected error: %s" % e)
+        cur = _reconnect(conn, cur)  # the error may have been the drop itself — heal it so we can record the failure
         log("error", msg)
         repo.finish_run(cur, run_id, "failed", msg[:2000], len(tried), 0, usage.input_tokens, usage.output_tokens)
-        _bill(conn, user_id, usage, run_id, choice.model_id)
+        if not infra:
+            _bill(conn, user_id, usage, run_id, choice.model_id)  # genuine failures still bill; an RDS blip must not
         if not isinstance(e, LLMError):
             raise
 
@@ -733,7 +818,10 @@ def _test_in_sample(h: Dict, ds: backtest.Dataset, partition: Dict, log, round_n
     # window. Purge/embargo come from the frozen partition's contract-duration horizon (§B.5).
     res = backtest.research_fold_metrics(h["spec"], ds, int(partition["embargo_seconds"]))
     ins = res["in_sample"]
-    log("hypothesis", h["title"], {"thesis": h["thesis"], "in_sample": ins, "round": round_no})
+    # Carry the thesis AND the mechanism (how/why the edge should exist) so the live feed can tell
+    # the story of each hypothesis, not just its name.
+    log("hypothesis", h["title"],
+        {"thesis": h["thesis"], "mechanism": h.get("mechanism") or {}, "in_sample": ins, "round": round_no})
     return dict(h, in_sample=ins, capital=res["capital"])
 
 
