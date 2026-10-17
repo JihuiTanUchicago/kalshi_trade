@@ -200,6 +200,117 @@ Key coupling invariants:
 
 ---
 
+## 4b. Cross-MARKET relative value (BTC vs ETH): research + synchronized live feed
+
+A **cross-market** strategy is a relative-value *pair* whose two legs live on
+**different** markets (e.g. long the underpriced BTC-daily leg, short the dear
+ETH-daily leg), as opposed to a same-market *cross-strike* / *calendar* pair. The
+spec carries a `cross` block with `pairing: "cross_sectional"` and a leg on a
+second market; `spec.involved_markets()` then spans two markets and
+`spec.stream_key()` is the joined key (`btc_daily+eth_daily`).
+
+### Cadence alignment (the precondition for everything below)
+
+Two markets can only be paired if they share a **decision cadence** —
+`markets.cadence_key() == (candle_minutes, close_hour_et)`. This is what forbids
+pairing a 1-minute market with a daily one: their decision frames would almost
+never coincide, so neither the merged backtest nor the live feed could evaluate
+both legs on one frame. The rule is enforced in **three** places, strictest-wins:
+
+- `spec._validate_cross` **rejects** a cadence-incompatible pair at validation —
+  the trust boundary, so a bad pair never becomes a spec.
+- `agent._cross_market_options` only **offers** the proposer the markets that
+  share the run market's cadence, so it explores real cross-market mispricings
+  (lead-lag, basis dislocation) instead of inventing an un-tickable pair.
+- `engine.cross_deploy_block` re-checks it **defensively** at the deploy gate.
+
+### Research path (already merged; proposer now actually uses it)
+
+A cross-market spec is pre-registered against the **merged partition** of its
+legs (`partitions.ensure_merged_partition`), backtested on the **merged dataset**
+(`partitions.merged_dataset` → `backtest.merge_datasets`, which unions each leg's
+own frozen window frame-by-frame so no leg leaks across its boundary), and judged
+by the gatekeeper on that merged validation / one-time holdout. It spends from one
+**shared FDR stream** keyed by `stream_key`, so a pair never double-spends its
+legs' separate budgets. The only new research piece here is the **proposer**: the
+research prompt now surfaces the cadence-compatible peer markets and invites a
+`cross_sectional` leg when the edge is genuinely *relative*.
+
+### Synchronized live feed (`engine.tick_cross_markets`)
+
+A single market's tick (`tick_market`) only reads *that* market's book + spot, so
+it can never price a two-market pair — and it now **excludes** multi-market cross
+deployments (`_is_multi_market_cross`) so they are decided in exactly one place.
+That place is `tick_cross_markets`, wired into `run_forever` after the per-market
+loop:
+
+1. A multi-market cross deployment is stored under its **primary leg's** market
+   column, so one pass over the deployable markets finds each exactly once.
+   Deployments are **grouped by their involved-market set**; a group shares a
+   cadence, so one decision slot serves all of them.
+2. `_cross_market_frame` fetches **every** involved market's live quotes
+   (`fetch_quotes`) **and** spot series (`fetch_spot_series`) **together**, builds
+   the combined `Snapshot` list and the per-ticker shown-size map, and hands it to
+   `decide → _decide_pairs` — the identical rule the merged backtest proved.
+
+### Legging-safety: the staleness rule (the whole point)
+
+A cross-market pair is two orders in two different markets; the danger is
+**legging in** — filling one leg while the other market is stale or unreadable,
+leaving a naked directional position. The contract:
+
+- **`_cross_market_frame` returns `None` if ANY leg is stale or unavailable** —
+  its book came back empty, its spot feed is `None`/raised, or `features_at`
+  returns `None` (the Coinbase candle is older than `MAX_BTC_GAP_SECONDS`). There
+  is no partial frame: either every leg is fresh, or the frame does not exist.
+- **`_tick_cross_group` claims the slot ONLY after a fresh frame is in hand.** A
+  stale or **late** slot (past `LATE_FRACTION`, same guard as `tick_market`) is
+  skipped *without* claiming — so a transiently-stale leg doesn't burn the slot,
+  and a fresh retry later in the same slot can still enter, while `claim_decision`
+  still guarantees at most one engine decides a given slot.
+- `_decide_pairs` and **`_kernel_buy_pair` are reused unchanged** — they are
+  market-agnostic. `_kernel_buy_pair` owns the per-leg order placement
+  (fill-both-or-unwind legging safety); `tick_cross_markets` only guarantees it a
+  *fully fresh two-market frame* to act on. The two concerns compose: the feed
+  never hands the kernel a pair it shouldn't try, and the kernel never leaves a
+  half-filled pair standing.
+
+### Deploy gate (`engine.cross_deploy_block`), additive
+
+The gate is split into two disjoint, composable cases:
+
+- **Multi-market cross** deploys in *any* mode (paper/demo/live) **only when**
+  every leg's market is itself `deployable` **and** the legs share a cadence —
+  because only then does the synchronized feed exist for it. For **live** this is
+  purely **additive**: every normal live guard still runs upstream in `server.py`
+  / `agent.act` (`LIVE_TRADING_ENABLED`, the deployment-candidate gatekeeper check,
+  the Kalshi-key requirement, the NO-side rollout flag, the typed `LIVE` confirm,
+  autopilot daily-loss kill, drawdown force-sell, loss guard). This clause only
+  *adds* requirements; it bypasses none.
+- **Single-market cross** (`cross_strike` / `calendar`) is unchanged: paper/demo
+  only, live remains a separate step.
+
+Paper/demo are now *allowed* for a deployable+compatible multi-market pair (they
+were research-only purely because the feed didn't exist). That is required, not
+incidental: the live autopilot path demands a pair first prove on paper
+(`_proven_on_paper`), which is impossible if paper is blocked.
+
+### Residual risk
+
+- **Cross-market legging across a frame boundary.** The frame is synchronized at
+  *read* time, but the two orders are still placed sequentially through
+  `_kernel_buy_pair`. If the second market's book evaporates in the milliseconds
+  between the two sends, `_kernel_buy_pair`'s fill-both-or-unwind logic (owned by
+  a separate change) must unwind the first leg; the staleness rule shrinks, but
+  cannot eliminate, that window. Settlement-risk of a surviving naked leg is
+  bounded by the per-trade stake and the drawdown force-sell.
+- **Correlated-leg settlement.** A cross-market pair's two legs settle on two
+  different underlyings; a day where both move the "wrong" way loses on both legs
+  at once. This is a strategy-risk the gatekeeper's merged-holdout judging is meant
+  to price, not an execution bug.
+
+---
+
 ## 5. Follow-ups (deliberately out of scope)
 
 1. **Maker/passive posting** to earn the rebate and halve effective fees — needs

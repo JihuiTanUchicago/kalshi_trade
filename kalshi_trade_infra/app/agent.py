@@ -388,6 +388,23 @@ def _plan_lookback(run: Dict, market: str, model: ModelFn, usage: Usage, log) ->
     return r["days"]
 
 
+def _cross_market_options(market: str) -> str:
+    """Surface the markets that can be a cross-SECTIONAL leg for `market` - those sharing its
+    decision cadence (markets.compatible_cadence). Without this the proposer only knows its single
+    run market, so it can propose same-market cross_strike/calendar but never a cross-MARKET pair.
+    Empty when nothing shares the cadence (then cross_sectional isn't offered)."""
+    from app.markets import compatible_cadence
+    peers = [k for k in MARKETS if k != market and compatible_cadence([market, k])]
+    if not peers:
+        return ""
+    labels = ", ".join('"%s" (%s)' % (k, MARKETS[k].label) for k in peers)
+    return ("\nCross-MARKET relative value: these markets share %s's decision cadence, so you MAY add "
+            "ONE as a cross_sectional leg (cross.pairing=\"cross_sectional\", "
+            "cross.legs=[{\"market\":\"<key>\"}]) when the edge is a RELATIVE mispricing between the two "
+            "markets (lead-lag, basis dislocation), not a directional view: %s. Only do so with a real "
+            "relative mechanism; otherwise stay single-contract." % (market, labels))
+
+
 def _research_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], count: int) -> str:
     idea = (run.get("prompt") or "").strip() or "Find any durable, fee-surviving edge you can justify."
     brief = _brief()
@@ -397,7 +414,7 @@ def _research_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], count:
         lens = "\nOptional lens to consider: %s - %s" % (d["label"], d["brief"])
     return """{brief}
 
-The user's idea: {idea}{lens}
+The user's idea: {idea}{lens}{cross_options}
 
 Turn this idea into concrete, testable trading strategies. Stay faithful to what the
 user asked for; if the idea is vague, pick the most promising precise reading and say so.
@@ -416,6 +433,7 @@ mechanism, falsification_criteria, negative_control, null/alt hypotheses, min_sa
         brief=brief,
         idea=idea[:1000],
         lens=lens,
+        cross_options=_cross_market_options(run["market"]),
         market_label=MARKETS[run["market"]].label,
         market=run["market"],
         summary=json.dumps(_in_sample_summary(ds)),

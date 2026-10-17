@@ -17,24 +17,26 @@ from app.markets import Contract, snapshot
 # -- deploy gate ---------------------------------------------------------------
 
 
-def test_cross_deploy_block_refuses_live_and_cross_market_but_allows_single_market_paper_demo():
-    cross_market = specmod.validate({"market": "btc_daily",
-        "cross": {"pairing": "cross_sectional", "legs": [{"market": "eth_daily"}]}})
+def test_cross_deploy_block_single_market_and_plain():
     single_market = specmod.validate({"market": "btc_daily",
         "cross": {"pairing": "cross_strike", "legs": []}})
     plain = specmod.validate({"market": "btc_daily"})
 
-    # Any cross spec is refused on LIVE (multi-leg live execution is a separate, riskier step).
+    # A single-market pair (cross_strike/calendar) deploys on paper/demo; live stays a separate step.
     assert engine.cross_deploy_block(single_market, "live")
-    assert engine.cross_deploy_block(cross_market, "live")
-    # A cross-MARKET pair has no synchronized live feed -> research-only, even on paper/demo.
-    assert engine.cross_deploy_block(cross_market, "paper")
-    assert engine.cross_deploy_block(cross_market, "demo")
-    # A single-market pair (cross_strike/calendar) deploys on paper/demo.
     assert engine.cross_deploy_block(single_market, "paper") is None
     assert engine.cross_deploy_block(single_market, "demo") is None
     # A non-cross strategy is never touched by this gate.
     assert engine.cross_deploy_block(plain, "live") is None
+
+
+def test_cross_deploy_block_allows_multi_market_when_deployable_and_compatible():
+    # btc_daily + eth_daily: both deployable, same daily cadence -> allowed in every mode now that
+    # the synchronized multi-market feed (engine.tick_cross_markets) exists.
+    cross_market = specmod.validate({"market": "btc_daily",
+        "cross": {"pairing": "cross_sectional", "legs": [{"market": "eth_daily"}]}})
+    for mode in ("paper", "demo", "live"):
+        assert engine.cross_deploy_block(cross_market, mode) is None
 
 
 # -- paper/demo tick opens BOTH legs -------------------------------------------

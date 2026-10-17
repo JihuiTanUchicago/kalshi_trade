@@ -112,6 +112,21 @@ TAO_USD_SYMBOL = "TAO-USD"
 # A BTC price older than this cannot price a contract: no snapshot, no trade.
 MAX_BTC_GAP_SECONDS = 180
 
+
+def cadence_key(market_key: str) -> Tuple[int, Optional[int]]:
+    """A market's decision-cadence identity: (candle_minutes, close_hour_et). Two markets can be
+    paired cross-sectionally (relative value across DIFFERENT markets) only if these match - same
+    decision frequency AND same close schedule, so one synchronized decision frame aligns both.
+    This is what forbids pairing a 1-minute market with a daily one."""
+    m = MARKETS[market_key]
+    return (m.candle_minutes, m.close_hour_et)
+
+
+def compatible_cadence(market_keys: Sequence[str]) -> bool:
+    """True iff every market shares one decision cadence (see cadence_key) - the precondition for
+    a cross-market pair to be backtested on one merged frame and ticked on one live frame."""
+    return len({cadence_key(k) for k in market_keys}) <= 1
+
 FEATURES: Dict[str, str] = {
     "spot": "BTC price (USD)",
     "ret_1m": "BTC log return over the last 1 minute",
