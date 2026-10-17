@@ -926,6 +926,15 @@ def update_marks(cur, market: str, marks: Dict[str, float], now: datetime) -> in
     return n
 
 
+def market_has_open_positions(cur, market: str) -> bool:
+    """Whether any deployment on `market` holds an open position — so the engine knows to refresh
+    marks (unrealized P&L + the drawdown guard read them) every tick, not only when a decision is due."""
+    cur.execute(
+        "SELECT 1 FROM app_positions p JOIN app_deployments d ON d.id=p.deployment_id "
+        "WHERE p.status='open' AND d.market=%s LIMIT 1", (market,))
+    return cur.fetchone() is not None
+
+
 def user_positions(cur, user_id: int, status: str = "open", limit: int = 100) -> List[Dict]:
     cur.execute(
         """SELECT p.*, s.title FROM app_positions p

@@ -644,10 +644,20 @@ def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] 
     # on this single market's snaps alone. Skip it here so it's decided in exactly one place.
     due = [d for d in repo.running_deployments(cur, market.key)
            if d["last_decision_ts"] < slot and not _is_multi_market_cross(d["spec"])]
+    late = now_ts - slot > max(60, market.decision_seconds * LATE_FRACTION)
+    # Fetch the live book whenever there's a decision to make OR any open position to mark. Marking
+    # runs EVERY tick (not only when a decision is due), so unrealized P&L — and the drawdown
+    # force-sell that reads these marks — track the current bid instead of a stale hourly/daily mark.
+    need_book = bool(due) or repo.market_has_open_positions(cur, market.key)
+    quotes = sources.quotes(market) if need_book else []
+    if quotes:
+        try:
+            stats["marked"] = repo.update_marks(
+                cur, market.key, {q.contract.ticker: q.yes_bid for q in quotes if q.yes_bid is not None}, now)
+        except Exception:
+            pass
     if not due:
         return stats
-    late = now_ts - slot > max(60, market.decision_seconds * LATE_FRACTION)
-    quotes = [] if late else sources.quotes(market)
     # Series features price strike-vs-spot for underlying markets; an outcome-settled market
     # (sports, underlying=None) has no spot, so its snapshot carries only book features - exactly
     # as the backtester builds it. {} (not None) means "no spot, trade anyway"; None means skip
@@ -665,14 +675,7 @@ def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] 
             feats = None
     snaps = [s for s in (snapshot(feats, q.contract, now_ts, q.yes_bid, q.yes_ask) for q in quotes) if s is not None]
     sizes = {q.contract.ticker: q.yes_ask_size for q in quotes}
-    # Mark open positions to the current YES bid (the price they could be liquidated at)
-    # using the book we just fetched — so the web shows live unrealized P&L. Best-effort:
-    # a mark failure must never block the trading decision.
-    try:
-        stats["marked"] = repo.update_marks(
-            cur, market.key, {q.contract.ticker: q.yes_bid for q in quotes if q.yes_bid is not None}, now)
-    except Exception:
-        pass
+    # (positions were already marked above, every tick — not only when a decision is due)
     stats["decided"] = 0
     for dep in due:
         if not repo.claim_decision(cur, dep["id"], slot):
