@@ -12,7 +12,7 @@ from typing import Dict, List
 # full markdown explanation (rendered via mdLite); '' for bare one-liners.
 PLANNED: List[tuple] = [
     ('Autonomous Tau improvement loop runs on a schedule; each round picks one aspect (execution / research rigor / risk / data / ML tooling / UX / engineering) and ships an improvement', ''),
-    ('Risk-path hardening', ''),
+    ('Production-grade execution + risk-monitoring hardening', ''),
     ('Research market picker redesign (grouped, scalable, dormant/unwired markets hidden)', ''),
     ('Widen the tradeable market universe', ''),
     ('Activate Alpaca stock/ETF agent data after secure worker configuration and entitlement checks, with a production canary before customer rollout', ''),
@@ -30,6 +30,7 @@ PLANNED: List[tuple] = [
 # Shipped, newest first: (YYYY-MM-DD, title, detail). `detail` is the full
 # markdown explanation (what/components/methodology); may be '' for one-liners.
 SHIPPED: List[tuple] = [
+    ('2026-10-17', 'Risk-path hardening: position-level stop-loss + auto-flatten on pause/stop (verified on live money)', "added a per-position stop (force-sell when a position is down past a % of its own COST, default 40%, not only whole-capital drawdown — the gap that let a −57% live position sit un-stopped), and an engine sweep that flattens any paused/stopped deployment still holding positions (manual or auto), through the gated exit path. Also surfaced engine liveness in the dashboard freshness payload. All additive/stricter; exits never blocked; gates untouched. **Verified end-to-end:** on deploy it stopped out the real −57.6% live positions — Kalshi account went flat, Tau's book matched, reconcile clean. (Deployed + live.)"),
     ('2026-10-17', 'Live deploy unblocked: wired the one-time-holdout promotion', '`judge_holdout` + `marginal_contribution_ok` were built but never called, so no strategy ever became a DEPLOYMENT_CANDIDATE and nothing could go live. Now wired into the pipeline: a finalist that passes validation → clears the one-time holdout → passes the marginal-contribution (diversification) check is promoted and becomes live-deployable. One-time-holdout latch + anti-leak (generator never sees holdout numbers) preserved; no gate weakened. (Deployed + live.)'),
     ('2026-10-17', 'Fixed stale marks → unrealized P&L matches Kalshi + risk guards read live prices', '`mark_price` only refreshed when a decision was due (hourly for daily BTC), so unrealized P&L drifted from Kalshi and the drawdown force-sell read a stale (understated) loss. Now the live book is fetched and marks stamped EVERY tick for any market with open positions, independent of the decision cadence. Verified: a 41-min-stale mark went fresh (54¢→44¢, matching Kalshi). Trading logic unchanged. (Deployed + live.)'),
     ('2026-10-17', 'Removed the redundant mode badge', 'in the Deployed table (LIVE/DEMO/PAPER showed twice per row; now once in Status, and demo no longer mislabels as Paper). (Deployed + live.)'),
