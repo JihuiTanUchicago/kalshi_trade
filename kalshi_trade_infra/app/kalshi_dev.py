@@ -29,8 +29,10 @@ import requests
 from app import backtest
 from app.markets import Contract, snapshot
 
-# Kalshi demo base, e.g. "https://demo-api.kalshi.co/trade-api/v2". Absent -> no curve.
-KALSHI_DEV_API_BASE = os.getenv("KALSHI_DEV_API_BASE", "").rstrip("/")
+# Kalshi demo base. Defaults to the PUBLIC demo host so the sim-vs-real second
+# line and slippage measurement work out of the box; override (or set to "") via
+# the env var. Read-only, unauthenticated candlestick GETs only - never POSTs.
+KALSHI_DEV_API_BASE = os.getenv("KALSHI_DEV_API_BASE", "https://demo-api.kalshi.co/trade-api/v2").rstrip("/")
 # Bound the number of per-contract candlestick calls on a cache miss.
 # ponytail: sequential per-contract fetch, capped to the FIRST N out-of-sample
 # contracts. btc15m has ~96 contracts/day, so N=60 covers the opening ~15h of
@@ -38,12 +40,20 @@ KALSHI_DEV_API_BASE = os.getenv("KALSHI_DEV_API_BASE", "").rstrip("/")
 # realized curve if the full window must be shown.
 MAX_CONTRACTS = int(os.getenv("KALSHI_DEV_MAX_CONTRACTS", "60"))
 CACHE_TTL_SECONDS = 600
+# Minimum aligned trades before a slippage figure is trustworthy enough to show
+# or feed into the cost model. Below this the block is null (graceful).
+MIN_ALIGNED_TRADES = 3
 
 # The contract-independent BTC features; the rest are rebuilt from dev quotes.
 _BTC_FEATURE_KEYS = ("spot", "ret_1m", "ret_5m", "ret_15m", "ret_60m", "vol_15m", "vol_60m")
 
 _cache: Dict[str, Tuple[float, Optional[Dict]]] = {}
 _lock = threading.Lock()
+# Latest measured per-fill slippage (cents) per market, populated as dev curves
+# are computed, so the research/cost model can read a market-level number
+# without a strategy id. ponytail: last-writer-wins across a market's strategies;
+# average across strategies if one strategy's window skews it.
+_slippage_by_market: Dict[str, float] = {}
 
 
 def unavailable_reason() -> str:
@@ -78,6 +88,45 @@ def _dev_candles(series: str, ticker: str, start_ts: int, end_ts: int,
         except (TypeError, ValueError, KeyError):
             continue
     return out
+
+
+def _slippage(sim_trades: List, dev_trades: List, capped: bool) -> Optional[Dict]:
+    """Realized-vs-simulated execution gap, in cents, per leg.
+
+    Aligns trades by (ticker, entry_ts, side) - the fills both books chose at
+    the same decision point. Signed so POSITIVE = the real demo book filled us
+    WORSE than our collected book: on entry (a buy) that's paying a higher price
+    (dev - sim); on exit (a sell) that's receiving a lower price (sim - dev).
+    Exit is only compared when both sides exited at the same time via a market
+    sell (not settlement, whose 0/1 payout is identical across books).
+    Returns None when too few trades align to mean anything.
+    """
+    sim_by = {(t.ticker, t.entry_ts): t for t in sim_trades}
+    entry_deltas: List[float] = []
+    exit_deltas: List[float] = []
+    for dt in dev_trades:
+        st = sim_by.get((dt.ticker, dt.entry_ts))
+        if st is None or st.side != dt.side:
+            continue
+        entry_deltas.append(dt.entry_price - st.entry_price)
+        if dt.reason != "settled" and st.reason != "settled" and dt.exit_ts == st.exit_ts:
+            exit_deltas.append(st.exit_price - dt.exit_price)
+    if len(entry_deltas) < MIN_ALIGNED_TRADES:
+        return None
+    entry_cents = round(sum(entry_deltas) / len(entry_deltas) * 100.0, 2)
+    exit_cents = (round(sum(exit_deltas) / len(exit_deltas) * 100.0, 2)
+                  if len(exit_deltas) >= MIN_ALIGNED_TRADES else None)
+    return {"entry_cents": entry_cents, "exit_cents": exit_cents,
+            "n_trades": len(entry_deltas), "capped": capped}
+
+
+def _per_fill_cents(block: Optional[Dict]) -> Optional[float]:
+    """The single symmetric per-fill slippage the backtester's `slip` knob wants:
+    mean of entry and exit legs (entry alone when exits don't compare)."""
+    if not block:
+        return None
+    entry, exit_ = block["entry_cents"], block["exit_cents"]
+    return round((entry + exit_) / 2.0, 2) if exit_ is not None else entry
 
 
 def _compute(spec: Dict, ds: backtest.Dataset) -> Optional[Dict]:
@@ -134,15 +183,20 @@ def _compute(spec: Dict, ds: backtest.Dataset) -> Optional[Dict]:
     stake = spec["sizing"]["stake"]
     capital = stake * spec["sizing"]["max_positions"]
     days = (dev_ds.end_ts - dev_ds.start_ts) / 86400.0
+    capped = len(order) > len(tickers)
     trades = backtest.simulate(spec, dev_ds, dev_ds.start_ts, dev_ds.end_ts + 1)
     m = backtest.metrics(trades, capital, days)
     curve = backtest._downsample(m["_curve"])
+    # Same spec on our collected book over the same OOS window -> the gap between
+    # these trades and the dev trades IS the real execution slippage.
+    sim_trades = backtest.simulate(spec, ds, ds.cutoff_ts, ds.end_ts + 1)
     return {
         "dev_curve": [[ts, v] for ts, v in curve],
         "dev_metrics": {k: m[k] for k in
                         ("trades", "pnl", "roi", "win_rate", "profit_factor", "max_drawdown")},
         "contracts": len(tickers),
-        "capped": len(order) > len(tickers),
+        "capped": capped,
+        "slippage": _slippage(sim_trades, trades, capped),
         "env": "kalshi-dev",
     }
 
@@ -168,4 +222,19 @@ def dev_curve_for_strategy(strategy_id: int, spec: Dict, market_key: str) -> Opt
         out = None
     with _lock:
         _cache[key] = (now, out)
+        per_fill = _per_fill_cents(out.get("slippage") if out else None)
+        if per_fill is not None:
+            _slippage_by_market[market_key] = per_fill
     return out
+
+
+def measured_slippage_cents(market_key: str) -> Optional[float]:
+    """Market-level per-fill slippage (cents) last measured against the demo book,
+    or None if none has been computed yet. Signed: positive = real fills worse.
+
+    Feeds the backtester's cost model: the what-if `slippage_cents` default and,
+    later, Wave-2's gatekeeper `Prereg.cost_assumptions` consume this so a strategy
+    is scored against the REAL measured slippage instead of the 0.0 default.
+    Callers clamp to their own bounds (the what-if path clamps to [0, 5])."""
+    with _lock:
+        return _slippage_by_market.get(market_key)

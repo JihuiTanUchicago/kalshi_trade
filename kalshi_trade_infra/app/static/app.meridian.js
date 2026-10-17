@@ -1325,7 +1325,7 @@
           ${s.status !== 'rejected' ? `<section class="panel" id="whatif"><h3>What if…</h3>
             <p class="hint" style="margin-bottom:6px">Move a dial and the whole sheet re-runs.</p>
             <div class="dial"><div class="top"><label class="label" for="wf">Fees</label><output id="wfo">1.0×</output></div><input type="range" id="wf" min="0" max="3" step="0.25" value="1"></div>
-            <div class="dial"><div class="top"><label class="label" for="ws">Slippage per fill</label><output id="wso">0¢</output></div><input type="range" id="ws" min="0" max="5" step="1" value="0"></div>
+            <div class="dial"><div class="top"><label class="label" for="ws">Slippage per fill</label><output id="wso">0.0¢</output></div><input type="range" id="ws" min="0" max="5" step="0.1" value="0"></div>
             <div class="dial"><div class="top"><label class="label" for="wk">Stake per trade</label><output id="wko">$${esc(s.stake)}</output></div><input type="range" id="wk" min="1" max="200" step="1" value="${Math.min(200, s.stake)}"></div>
             <div id="wflash" aria-live="polite"></div>
           </section>` : ''}
@@ -1339,8 +1339,16 @@
         const r = await api('/api/strategies/' + s.id + '/dev-curve');
         const wrap = root.querySelector('#equity-wrap');
         if (wrap && r && r.dev_curve && r.dev_curve.length > 1) {
+          const sl = r.slippage, sc = (v) => (v >= 0 ? '+' : '') + v.toFixed(1) + '¢';
           wrap.innerHTML = equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from, r.dev_curve)
-            + `<p class="hint" style="margin-top:6px">Dashed line: the unseen window replayed read-only against Kalshi's demo environment${r.capped ? ` (first ${r.contracts} contracts)` : ''} — real demo order-book prices, scored with the same fees. No orders are placed.</p>`;
+            + `<p class="hint" style="margin-top:6px">Dashed line: the unseen window replayed read-only against Kalshi's demo environment${r.capped ? ` (first ${r.contracts} contracts)` : ''} — real demo order-book prices, scored with the same fees. No orders are placed.</p>`
+            + (sl ? `<p class="hint" style="margin-top:4px;font-variant-numeric:tabular-nums">Real demo-book slippage: <b>${sc(sl.entry_cents)}</b> entry${sl.exit_cents != null ? ` / <b>${sc(sl.exit_cents)}</b> exit` : ''} over ${sl.n_trades} aligned trade${sl.n_trades === 1 ? '' : 's'} (positive means real fills were worse). <button type="button" class="btn sm" id="apply-slip">Apply to what-if</button></p>` : '');
+          if (sl) {
+            const perFill = Math.max(0, Math.min(5, sl.exit_cents != null ? (sl.entry_cents + sl.exit_cents) / 2 : sl.entry_cents));
+            const ws = root.querySelector('#ws'), wso = root.querySelector('#wso'), ab = root.querySelector('#apply-slip');
+            if (ws) { ws.value = perFill; if (wso) wso.textContent = perFill.toFixed(1) + '¢'; }   // pre-fill the knob with the measured number
+            if (ab && ws) ab.onclick = () => { ws.value = perFill; ws.dispatchEvent(new Event('input')); };
+          }
         }
       } catch (e) { /* demo replay is best-effort; leave the sim-only chart */ }
     })();
@@ -1387,7 +1395,7 @@
       const update = () => {
         const fee = +wi.querySelector('#wf').value, slip = +wi.querySelector('#ws').value, stake = +wi.querySelector('#wk').value;
         wi.querySelector('#wfo').textContent = fee.toFixed(2).replace(/0$/, '') + '×';
-        wi.querySelector('#wso').textContent = slip + '¢';
+        wi.querySelector('#wso').textContent = slip.toFixed(1) + '¢';
         wi.querySelector('#wko').textContent = '$' + stake;
         clearTimeout(t);
         t = setTimeout(async () => {

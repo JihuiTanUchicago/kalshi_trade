@@ -487,9 +487,14 @@ def what_if(ctx: Ctx):
     s = _owned_strategy(ctx)
     if s["status"] == "rejected":
         raise ApiError(409, "This hypothesis was rejected in-sample; there is no full backtest to vary.")
+    # Default the slippage knob to the real demo-book slippage measured for this
+    # market (clamped to the knob's bounds), so omitting it scores against the
+    # measured cost rather than 0. The frontend still sends the dial's value.
+    measured = kalshi_dev.measured_slippage_cents(s["market"])
+    default_slip = 0.0 if measured is None else max(0.0, min(5.0, measured))
     w = backtest.WhatIf(
         fee_multiplier=_num(ctx.body, "fee_multiplier", 0.0, 3.0, 1.0),
-        slippage_cents=_num(ctx.body, "slippage_cents", 0.0, 5.0, 0.0),
+        slippage_cents=_num(ctx.body, "slippage_cents", 0.0, 5.0, default_slip),
         stake=_num(ctx.body, "stake", 1.0, 500.0, s["spec"]["sizing"]["stake"]),
     )
     try:
