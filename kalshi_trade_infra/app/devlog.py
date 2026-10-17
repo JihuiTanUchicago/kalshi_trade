@@ -20,7 +20,6 @@ PLANNED: List[str] = [
     'Agent internet access / web search (Google/Tavily/Brave)',
     'Polymarket as a 2nd venue: data + API + real & simulation trading',
     'Risk-management force-sell layer on drawdown + portfolio caps (lost when a prior background agent exited; needs rebuild)',
-    'Authenticated dev/demo-env trading',
     'Research follow-up on a previously passed strategy gets stuck',
     'Dig deeper on a passed strategy',
     'Cross-day generalization in the gates',
@@ -34,6 +33,8 @@ PLANNED: List[str] = [
 # Shipped, newest first: (YYYY-MM-DD, title, detail). `detail` is the full
 # markdown explanation (what/components/methodology); may be '' for one-liners.
 SHIPPED: List[tuple] = [
+    ('2026-10-16', 'Per-user demo-env (sandbox) trading + 3-bucket dashboard', 'authenticated Kalshi DEMO execution that is host-isolated and can never reach the real exchange: a per-user dev key entered in-app and encrypted exactly like the live key (`app_kalshi_dev_keys`), a `demo` deployment mode routing orders through `engine.decide`\'s shared kernel path to `kalshi_dev_exec.demo_kernel_factory` (paper/live untouched; no dev key → the deployment pauses, never trades), and a "Deploy on demo (sandbox)" button. The dashboard now splits money into **real / demo / paper** buckets, each with account value, realized P&L (today + all-time) and open positions. Also closed a gap: the manual `create_deployment` live path now also requires the gatekeeper\'s `DEPLOYMENT_CANDIDATE` check, matching the autopilot path. Live gate strengthened, never weakened. (Deployed + live `afdc31c`.)'),
+    ('2026-10-16', 'Detailed Dev Logs', 'each shipped entry now carries a full detail body (what changed, which components, the methodology) instead of a vague title: `devlog.py` SHIPPED is `(date, title, detail)`, the `devlog-sync` skill stops truncating the mvp.md Done bullets, and the Dev Logs page renders title + detail via the XSS-safe `mdLite` in the Kursbuch timetable style, both themes byte-identical. (Deployed + live `afdc31c`.)'),
     ('2026-10-16', 'Statistically-rigorous research pipeline', '(true "quant research") — splits generation from judgment: immutable experiment ledger + pre-registration, a Statistical Gatekeeper separate from the generator (BH/LORD++ online-FDR, Deflated/Probabilistic Sharpe, stationary-bootstrap p-values), research/validation/locked-holdout split + purged walk-forward/embargo, a 9-phase proposer + challenger, and the strategy detail page rebuilt as a research paper (thesis/mechanism/pre-registered test/results/holdout + 5 charts). Deploy gate gained an additive, fail-closed DEPLOYMENT_CANDIDATE requirement; live gate unchanged except stricter. (Deployed + live `b4d5f2e`.)'),
     ('2026-10-16', 'Real demo-book slippage accounting', 'replays each strategy against the Kalshi demo book (read-only, no orders), measures the per-trade fill gap vs the simulated book as signed entry/exit cents, shows it on the strategy page, and defaults the what-if slippage knob to the measured value. (Deployed + live `a0d05a2`.)'),
     ('2026-10-16', 'Live autopilot', 'full research→paper→live→risk loop, **gated and off by default** behind the typed-LIVE confirm + every existing safety gate (paper-proven, YES-only, per-user Kalshi key, daily-loss kill switch).'),
