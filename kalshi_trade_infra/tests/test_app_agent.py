@@ -534,3 +534,16 @@ def test_verdict_event_carries_gatekeeper_stats_for_the_feed(monkeypatch):
     # The stats are for the human feed — they must NOT be written into the strategy result that
     # feeds strategy_memory back to the generator (that stays blind to held-out numbers).
     assert all("p_value" not in (s.get("result") or {}) for s in store.strategies)
+
+
+def test_adjust_missing_deployment_lists_current_ones_not_a_dead_end(monkeypatch):
+    # The agent often references a deployment it named earlier that has since been removed. act()
+    # must not dead-end with a vague "couldn't find"; it names what's gone AND lists the current
+    # deployments so the next review acts on a real one.
+    r = agent.repo
+    monkeypatch.setattr(r, "get_deployment", lambda cur, uid, did: None)  # the referenced one is gone
+    monkeypatch.setattr(r, "list_deployments", lambda cur, uid: [
+        {"id": 42, "title": "Live BTC edge", "market": "btc15m", "status": "running"}])
+    msg, pid = agent.act(None, {"id": 1}, {"type": "adjust", "deployment_id": 999, "changes": {"x": 1}}, True)
+    assert pid is None
+    assert "999" in msg and "#42" in msg and "Live BTC edge" in msg  # self-correcting, not a dead end

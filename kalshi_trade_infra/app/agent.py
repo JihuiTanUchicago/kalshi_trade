@@ -1201,7 +1201,14 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
     if kind in ("adjust", "pause", "resume"):
         dep = repo.get_deployment(cur, user_id, int(action.get("deployment_id") or 0))
         if dep is None or dep["status"] == "stopped":
-            return "I couldn't find that deployment, so I did nothing.", None
+            # The agent referenced a deployment that's gone (removed/stopped) — usually one it
+            # named in an earlier message. Don't dead-end with a vague "couldn't find"; tell it
+            # exactly what exists so the next review acts on a real one instead of repeating the miss.
+            live = repo.list_deployments(cur, user_id)
+            have = ("; ".join("#%d %s (%s, %s)" % (d["id"], d["title"], d["market"], d["status"]) for d in live)
+                    or "none — you have no active deployments, so research a new edge or deploy a proven one instead of adjusting")
+            return ("Deployment #%s no longer exists (removed or stopped). Your current deployments are: %s."
+                    % (action.get("deployment_id"), have), None)
     if kind == "adjust":
         changes = action.get("changes")
         if not isinstance(changes, dict) or not changes:
@@ -1421,6 +1428,10 @@ def _copilot_context(cur, user: Dict) -> str:
                      % (s["id"], s["title"], s["market"], oos.get("pnl"), oos.get("trades")))
     if not spare:
         lines.append("- none")
+    deployable = [k for k, m in MARKETS.items() if m.deployable]
+    lines += ["", ("Markets you can research AND deploy — you are NOT limited to the one you've been "
+                   "trading. If a market has gone quiet (no fills, no edges for days), that is a reason to "
+                   "HUNT A DIFFERENT market, not to wait: " + ", ".join(deployable))]
     return "\n".join(lines)
 
 
@@ -1472,9 +1483,13 @@ def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.da
                     "You are running on your own now — PROACTIVELY MANAGE the operation within your mandate, don't just describe it. "
                     "Assess every deployment and open position, then take the actions that improve results: start a research run to "
                     "explore a promising angle (same RSI pipeline as a manual run), promote a proven strategy (paper, or live within caps "
-                    "when live autopilot is on), tune model/risk/execution parameters, or pause/flatten if risk warrants. If nothing is "
-                    "worth doing right now, say so briefly. Every money/risk value you set is clamped and the loss budget / kill switch / "
-                    "live gate still bound you." % run.get("prompt"))
+                    "when live autopilot is on), tune model/risk/execution parameters, or pause/flatten if risk warrants. "
+                    "Only adjust/pause/resume deployments that appear in the Deployments list above, by their exact deployment_id — "
+                    "ones you named in earlier messages may have been removed and no longer exist. If the market you've been trading has "
+                    "gone quiet for days (no fills, no passing edges), that is NOT a reason to wait or 'step aside' — research a DIFFERENT "
+                    "market from the list (other coins, sports, weather); a dead regime in one market is not a dead regime everywhere, and "
+                    "sitting idle while 18 other markets are open is as passive as forcing a bad trade. If there is genuinely nothing worth "
+                    "doing, say so briefly. Every money/risk value you set is clamped and the loss budget / kill switch / live gate still bound you." % run.get("prompt"))
         else:
             task = "Answer the user's latest message."
         prompt = "%s\n\nRecent conversation:\n%s\n\n%s\n\n%s" % (_copilot_context(cur, user), transcript or "(none)", task, ACTIONS_GUIDE)
