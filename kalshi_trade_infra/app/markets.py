@@ -43,6 +43,12 @@ class Market:
     # Research can BACKTEST any market; the deploy engine ticks only deployable ones,
     # so adding a research-only crypto here never starts paper/live trading on it.
     deployable: bool = False
+    # The instrument this market is. "binary" = a Kalshi digital-option contract (strike,
+    # expiry, $0/$1 settlement - the whole spec.py/backtest.py binary path). "spot" = a
+    # continuous price series (e.g. a TAO subnet alpha token) traded long/flat via
+    # backtest.simulate_spot; it has no strike/expiry/settlement, so the binary feature and
+    # fair-value math never runs on it. simulate() routes on this field exactly once.
+    kind: str = "binary"
 
     @property
     def decision_seconds(self) -> int:

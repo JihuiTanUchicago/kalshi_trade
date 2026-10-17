@@ -177,6 +177,89 @@ Reply with ONE JSON object only."""
 # -- research ------------------------------------------------------------------
 
 
+# The proposer generates every hypothesis in one multi-minute LLM call. Without streaming the
+# feed sits silent at "Researching…" the whole time. We ask the model to THINK OUT LOUD in prose
+# first (its intuition / mechanism, the way a quant reasons at a whiteboard), then emit the JSON.
+# extract_json reads the fenced JSON regardless of the prose before it. ponytail: the prose adds
+# some output tokens, but it's the whole point (watch it think) and it's good chain-of-thought;
+# it does NOT add extra LLM calls, so cost stays ~flat vs one-hypothesis-per-call.
+THINK_ALOUD = (
+    "\n\nThink OUT LOUD first, in plain prose — a few sentences per idea: your intuition for the "
+    "edge, who is on the other side and why they keep paying, why it isn't already arbitraged away, "
+    "and what result would kill it. Reason like you're at a whiteboard. Do NOT use braces {{ }} or "
+    "JSON in this thinking part. THEN, after the reasoning, output the single JSON object inside a "
+    "```json code fence.")
+
+
+class _StreamSink:
+    """Persists the proposer's live tokens to the run log as `thinking` events so the feed shows
+    the agent writing in real time. Flushes on a cadence (time OR size), never per token, to bound
+    DB writes: a multi-minute call becomes a few hundred small rows, not a few thousand. Each model
+    call is a new `block` the feed coalesces into one growing card; an `end` marker seals it.
+    ponytail: fixed 0.7s / 350-char flush — token-exact smoothness would need SSE, which the CSP
+    (`script-src 'self'`) rules out, so the feed stays on the existing 2s poll."""
+    FLUSH_SECONDS = 0.7
+    FLUSH_CHARS = 350
+
+    def __init__(self, log: Callable):
+        self._log = log
+        self._pending = ""
+        self._last = 0.0
+        self._block = 0
+        self._streamed = False
+
+    def start(self) -> None:
+        self._block += 1
+        self._pending = ""
+        self._last = time.monotonic()
+
+    def feed(self, delta: str) -> None:
+        if not delta:
+            return
+        self._streamed = True
+        self._pending += delta
+        if len(self._pending) >= self.FLUSH_CHARS or (time.monotonic() - self._last) >= self.FLUSH_SECONDS:
+            self._emit()
+
+    def _emit(self) -> None:
+        if not self._pending:
+            return
+        self._log("thinking", self._pending, {"block": self._block})
+        self._pending = ""
+        self._last = time.monotonic()
+
+    def finish(self) -> None:
+        self._emit()
+        if self._streamed:
+            self._log("thinking", "", {"block": self._block, "end": True})
+            self._streamed = False
+
+
+def _can_stream(model: ModelFn) -> bool:
+    """True if `model` accepts the optional on_delta arg (the prod default does; injected/test
+    models take only (system, messages) and run without live tokens)."""
+    import inspect
+    try:
+        params = list(inspect.signature(model).parameters.values())
+    except (TypeError, ValueError):
+        return False
+    return len(params) >= 3 or any(p.kind == p.VAR_POSITIONAL for p in params)
+
+
+def _stream_proposer(model: ModelFn, sink: _StreamSink) -> ModelFn:
+    """Wrap the model so the proposer's generation streams its tokens into the feed. A model that
+    can't stream (test/injected, or the Anthropic-direct fallback) just runs normally."""
+    streams = _can_stream(model)
+
+    def m(system: str, messages: List[Dict]) -> "tuple[str, Dict]":
+        sink.start()
+        out = model(system, messages, sink.feed) if streams else model(system, messages)
+        sink.finish()
+        return out
+
+    return m
+
+
 def _hypotheses_check(market: str, max_n: int) -> Callable[[Dict], List[Dict]]:
     def check(obj: Dict) -> List[Dict]:
         items = obj.get("hypotheses")
@@ -444,7 +527,7 @@ def _round_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], want: int
     refines — the loop is a conversation with the data, not a fixed two-shot."""
     base = _research_prompt(run, ds, memory, want)
     if not chunk:
-        return base
+        return base + THINK_ALOUD
     # Digest, not a dump: full detail for the best few to refine, bare titles for the rest so the
     # agent stays aware of what it tried (and doesn't repeat) without the prompt growing unbounded.
     ranked = sorted(chunk, key=lambda t: backtest.score(t["in_sample"]), reverse=True)
@@ -457,7 +540,7 @@ def _round_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], want: int
         extra = "\nAlso already tested (do not repeat): " + "; ".join(t["title"] for t in ranked[12:])
     return (base + "\n\nResults so far this session (in-sample only; out-of-sample is held back):\n" + detail + extra
             + "\n\nPropose %d NEW, distinct hypotheses: refine what worked, drop what did not, "
-              "and explain the change in each thesis." % want)
+              "and explain the change in each thesis." % want + THINK_ALOUD)
 
 
 def _challenger_check(n: int) -> Callable[[Dict], List[Dict]]:
@@ -645,11 +728,21 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
                 status = _status_for(cls)
                 passed += status == "passed"
                 repo.set_strategy_outcome(cur, t["strategy_id"], status, _result_block(s, t, cls))
+                # The stats go to the FEED (the user's own results, same as the strategy page) — NOT
+                # into _result_block, which feeds strategy_memory back to the GENERATOR. The generator
+                # stays blind to the held-out numbers (closes Leak 2); the human watching does not.
                 log("verdict", "%s - %s: validation verdict is gatekeeper-held (classification=%s, "
                                "%s trades); the numbers never return to the generator."
                     % (status.upper(), t["title"], cls, outcome.get("n_trades", 0)),
                     {"title": t["title"], "status": status, "classification": cls,
-                     "strategy_id": t["strategy_id"]})
+                     "strategy_id": t["strategy_id"], "stats": {
+                         "n_trades": outcome.get("n_trades"), "p_value": outcome.get("p_value"),
+                         "dsr": outcome.get("dsr"), "psr": outcome.get("psr"),
+                         "sharpe": outcome.get("sharpe"), "ci": outcome.get("ci"),
+                         "mean_net_return": outcome.get("mean_net_return"),
+                         "placebo_p": outcome.get("placebo_p"),
+                         "max_drawdown": outcome.get("max_drawdown"),
+                         "cross_day_ok": outcome.get("cross_day_ok")}})
 
     for t in chunk:
         if t in finalists:
@@ -674,6 +767,8 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
     round_no = 0
     merged_cache: Dict[str, Tuple] = {}  # stream_key -> (merged research ds, embargo) for cross specs
     market_data = AgentMarketData(DataScope.research(ds.start_ts, ds.cutoff_ts), log, checkpoint)
+    # Stream the proposer's generation into the feed so the multi-minute call isn't a silent gap.
+    proposer = _stream_proposer(model, _StreamSink(log))
     while True:
         checkpoint()
         round_no += 1
@@ -681,7 +776,7 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
         want = policy.next_batch(state).width
         if want <= 0:
             break  # policy decided to stop proposing this chunk
-        batch = market_data.ask(model, RESEARCH_SYSTEM,
+        batch = market_data.ask(proposer, RESEARCH_SYSTEM,
                          [{"role": "user", "content": _round_prompt(run, ds, memory, want, chunk)}],
                          _hypotheses_check(market, want), usage)
         if not batch:
@@ -709,7 +804,9 @@ def run_research(
     # run makes and the price it's billed at. Tests pass their own `model`.
     choice = catalog.resolve(run.get("model"))
     if model is None:
-        model = lambda system, messages: claude(system, messages, choice.model_id)  # noqa: E731
+        # on_delta=None keeps the ordinary (system, messages) calls working everywhere; the
+        # proposer wraps this to pass a sink so its generation streams live into the feed.
+        model = lambda system, messages, on_delta=None: claude(system, messages, choice.model_id, on_delta)  # noqa: E731
     # Tau-RSI: use the user's self-evolved exploration policy (sandboxed), or the
     # default if they have none yet. A new run then dreams up a better one (below).
     policy = dreaming.current_policy(cur, user_id)
@@ -875,10 +972,15 @@ def _test_in_sample(h: Dict, ds: backtest.Dataset, partition: Dict, log, round_n
                 merged_cache[key] = (rds, embargo)
     res = backtest.research_fold_metrics(spec, rds, embargo)
     ins = res["in_sample"]
-    # Carry the thesis AND the mechanism (how/why the edge should exist) so the live feed can tell
-    # the story of each hypothesis, not just its name.
-    log("hypothesis", h["title"],
-        {"thesis": h["thesis"], "mechanism": h.get("mechanism") or {}, "in_sample": ins, "round": round_no})
+    # Carry the whole pre-registration (thesis, mechanism, the actual spec/code, falsification
+    # criteria, negative control) so the live feed can tell the full story of each hypothesis —
+    # intuition -> spec/code -> critique -> verdict — not just its name.
+    log("hypothesis", h["title"], {
+        "thesis": h["thesis"], "mechanism": h.get("mechanism") or {},
+        "falsification": h.get("falsification_criteria") or "",
+        "negative_control": h.get("negative_control") or "",
+        "primary_metric": h.get("primary_metric") or "",
+        "spec": h["spec"], "in_sample": ins, "round": round_no})
     return dict(h, in_sample=ins, capital=res["capital"])
 
 

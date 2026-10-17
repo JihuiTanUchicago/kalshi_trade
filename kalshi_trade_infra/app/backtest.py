@@ -107,6 +107,40 @@ def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc:
     return Dataset(market, frames, results, start, end, len(contracts))
 
 
+def build_spot_dataset(market: Market, candles: List[Tuple[int, float]],
+                       tao_usd: Optional[List[Tuple[int, float]]] = None,
+                       features: Optional[Dict[int, Dict[str, float]]] = None) -> Dataset:
+    """A continuous-price (spot) Dataset for a TAO subnet alpha token - the spot analogue of
+    build_dataset, with NO contracts/strikes/settlement.
+
+    candles  : (ts, alpha_price_in_TAO) for symbol TAO-SN{n} (the pool ratio tau_pool/alpha_pool),
+               the primary traded series.
+    tao_usd  : (ts, TAO/USD rate) for symbol TAO-USD; forward-filled onto each frame so alpha-in-
+               USD can be derived (alpha_usd = alpha_tao * tao_usd). No third series is stored.
+    features : {ts: {emission_weight, tao_pool, alpha_pool, registrations, net_stake_flow, ...}}
+               from tao_subnet_features, joined by ts exactly like model_features_1m is by minute.
+
+    Each frame is (ts, {"alpha_tao", "tao_usd", "alpha_usd", "features"}); simulate_spot and the
+    signals(window) contract read these. Positions settle on NOTHING - they close on an exit
+    signal or at the final mark - so Dataset.results is empty and contracts is 0."""
+    rows = sorted((int(t), float(p)) for t, p in candles if p and float(p) > 0)
+    rates = sorted((int(t), float(r)) for t, r in (tao_usd or []) if r and float(r) > 0)
+    feats = features or {}
+    frames: List[Tuple[int, Dict]] = []
+    ri = 0
+    last_rate: Optional[float] = None
+    for ts, alpha_tao in rows:
+        while ri < len(rates) and rates[ri][0] <= ts:  # forward-fill the most recent TAO/USD rate
+            last_rate = rates[ri][1]
+            ri += 1
+        alpha_usd = alpha_tao * last_rate if last_rate is not None else None
+        frames.append((ts, {"alpha_tao": alpha_tao, "tao_usd": last_rate,
+                            "alpha_usd": alpha_usd, "features": feats.get(ts, {})}))
+    start = frames[0][0] if frames else 0
+    end = frames[-1][0] if frames else 0
+    return Dataset(market, frames, {}, start, end, 0)
+
+
 # -- simulation ----------------------------------------------------------------
 
 
@@ -158,6 +192,8 @@ def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optio
     single-contract DSL path, unchanged."""
     if spec.get("cross"):
         return simulate_pairs(spec, ds, start_ts, end_ts, what_if)
+    if ds.market.kind == "spot":
+        return simulate_spot(spec, ds, start_ts, end_ts, what_if)
     w = what_if or WhatIf()
     slip = w.slippage_cents / 100.0
     stake = w.stake if w.stake is not None else spec["sizing"]["stake"]

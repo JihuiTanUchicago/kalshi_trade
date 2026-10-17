@@ -53,13 +53,42 @@ def current_model() -> str:
     return BEDROCK_MODEL if LLM_PROVIDER == "bedrock" else MODEL
 
 
-def claude(system: str, messages: List[Dict[str, str]], model: "Optional[str]" = None) -> "tuple[str, Dict]":
+def claude(system: str, messages: List[Dict[str, str]], model: "Optional[str]" = None,
+           on_delta: "Optional[Callable[[str], None]]" = None) -> "tuple[str, Dict]":
     """Route to Bedrock or the Anthropic API based on APP_LLM_PROVIDER. `model` is
-    the invokable Bedrock modelId the user chose (defaults to BEDROCK_MODEL)."""
-    return _bedrock(system, messages, model) if LLM_PROVIDER == "bedrock" else _anthropic_direct(system, messages)
+    the invokable Bedrock modelId the user chose (defaults to BEDROCK_MODEL). When `on_delta`
+    is given, the Bedrock path STREAMS, calling on_delta(text) as each token arrives (the live
+    research feed uses this); the Anthropic-direct path ignores it and returns in one shot."""
+    return (_bedrock(system, messages, model, on_delta) if LLM_PROVIDER == "bedrock"
+            else _anthropic_direct(system, messages))
 
 
-def _bedrock(system: str, messages: List[Dict[str, str]], model: "Optional[str]" = None) -> "tuple[str, Dict]":
+def _bedrock_stream(client, kwargs: Dict[str, Any], on_delta: "Callable[[str], None]") -> "tuple[str, Dict]":
+    """converse_stream: push text deltas to on_delta as they arrive, return (full text, usage).
+    A sink hiccup (e.g. a dropped DB connection mid-stream) must never kill generation, so every
+    on_delta call is isolated. ponytail: one streaming attempt, no mid-stream retry (a rare drop
+    surfaces as an empty reply the caller's repair round handles); creation errors fall back to
+    the non-streaming converse path in _bedrock."""
+    resp = client.converse_stream(**kwargs)
+    parts: List[str] = []
+    usage = {"input_tokens": 0, "output_tokens": 0}
+    for event in resp.get("stream", []):
+        if "contentBlockDelta" in event:
+            text = (event["contentBlockDelta"].get("delta") or {}).get("text", "")
+            if text:
+                parts.append(text)
+                try:
+                    on_delta(text)
+                except Exception:
+                    pass
+        elif "metadata" in event:
+            u = event["metadata"].get("usage") or {}
+            usage = {"input_tokens": u.get("inputTokens") or 0, "output_tokens": u.get("outputTokens") or 0}
+    return "".join(parts), usage
+
+
+def _bedrock(system: str, messages: List[Dict[str, str]], model: "Optional[str]" = None,
+             on_delta: "Optional[Callable[[str], None]]" = None) -> "tuple[str, Dict]":
     """One code path for every provider on Bedrock via the Converse API, which is
     unified across Claude/Nova/Llama/… and returns text + token usage the same way."""
     try:
@@ -75,8 +104,21 @@ def _bedrock(system: str, messages: List[Dict[str, str]], model: "Optional[str]"
         kwargs["system"] = [{"text": system}]
     # A large hypothesis-generation response takes minutes; botocore's default 60s read timeout
     # was failing whole research runs. Give it room, and let a transient timeout retry below.
+    # (Streaming resets the read timer on each delta, so this mainly guards the non-streaming path.)
     cfg = Config(read_timeout=600, connect_timeout=15, retries={"max_attempts": 0})
     client = boto3.client("bedrock-runtime", region_name=AWS_REGION, config=cfg)
+    if on_delta is not None:
+        # Live-feed streaming. Needs bedrock:InvokeModelWithResponseStream on the worker role; if
+        # that's missing (AccessDenied) or streaming throttles/errors at setup, fall through to the
+        # non-streaming converse below so research keeps working (just without live tokens).
+        try:
+            text, usage = _bedrock_stream(client, kwargs, on_delta)
+            if text.strip():
+                return text, usage
+        except ClientError:
+            pass
+        except Exception:
+            pass
     for attempt in range(4):
         try:
             resp = client.converse(**kwargs)

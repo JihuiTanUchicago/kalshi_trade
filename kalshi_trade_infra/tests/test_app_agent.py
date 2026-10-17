@@ -433,3 +433,70 @@ def test_challenger_verdict_is_logged(monkeypatch):
                        dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
     chal = [m for k, m, _ in store.events if k == "challenger"]
     assert any("Challenger approved" in m and "mechanism holds up" in m for m in chal)
+
+
+def streaming_scripted(replies):
+    """A model that STREAMS its reply in chunks via on_delta, mirroring the Bedrock path. ask_json
+    calls it with (system, messages); the proposer wrapper adds on_delta to drive the live feed."""
+    def model(system, messages, on_delta=None):
+        r = replies.pop(0)
+        if on_delta:
+            for i in range(0, len(r), 7):
+                on_delta(r[i:i + 7])
+        return r, {"input_tokens": 10, "output_tokens": 5}
+    return model
+
+
+def test_proposer_streams_thinking_events_sealed_with_an_end(monkeypatch):
+    store = Store(monkeypatch)
+    model = streaming_scripted([plan(), hyps(WINNER), hyps(WINNER)])
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 1}, model=model,
+                       dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    thinks = [(m, d) for k, m, d in store.events if k == "thinking"]
+    assert thinks, "the proposer's generation should stream `thinking` events"
+    assert any(d.get("block") and m for m, d in thinks), "a streamed chunk carries its block + text"
+    assert any(d.get("end") for _, d in thinks), "the block is sealed with an end marker"
+
+
+def test_non_streaming_model_runs_without_thinking_events(monkeypatch):
+    # A model that only takes (system, messages) must still work — it just has no live tokens.
+    store = Store(monkeypatch)
+    model, _ = scripted([plan(), hyps(WINNER), hyps(WINNER)])
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 1}, model=model,
+                       dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    assert store.finished[0] == "succeeded"
+    assert not [e for e in store.events if e[0] == "thinking"]
+
+
+def test_proposer_prompt_asks_the_agent_to_think_aloud(monkeypatch):
+    store = Store(monkeypatch)
+    model, prompts = scripted([plan(), hyps(WINNER), hyps(WINNER)])
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 1}, model=model,
+                       dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    assert any("Think OUT LOUD" in p for p in prompts)
+
+
+def test_hypothesis_event_carries_the_full_prereg(monkeypatch):
+    store = Store(monkeypatch)
+    hyp_json = "```json\n%s\n```" % json.dumps({"hypotheses": [{
+        "title": "H0", "thesis": "Edge from flow.", "mechanism": {"who_pays": "retail"},
+        "falsification_criteria": "no edge after fees", "negative_control": "shuffle labels",
+        "spec": WINNER}]})
+    model, _ = scripted([plan(), hyp_json])
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 1}, model=model,
+                       dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    hyp = next(d for k, _, d in store.events if k == "hypothesis")
+    assert hyp["spec"]["side"] == "yes"
+    assert hyp["falsification"] == "no edge after fees" and hyp["negative_control"] == "shuffle labels"
+
+
+def test_verdict_event_carries_gatekeeper_stats_for_the_feed(monkeypatch):
+    store = Store(monkeypatch)
+    model, _ = scripted([plan(), hyps(WINNER), hyps(WINNER)])
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 1}, model=model,
+                       dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    passed = [d for k, _, d in store.events if k == "verdict" and d and d.get("status") == "passed"]
+    assert passed and passed[0]["stats"]["n_trades"] == 20
+    # The stats are for the human feed — they must NOT be written into the strategy result that
+    # feeds strategy_memory back to the generator (that stays blind to held-out numbers).
+    assert all("p_value" not in (s.get("result") or {}) for s in store.strategies)
