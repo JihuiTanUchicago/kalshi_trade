@@ -59,6 +59,12 @@ class Store:
 
 
 class Conn:
+    def __init__(self):
+        self.pings = 0
+
+    def ping(self, reconnect=True):
+        self.pings += 1
+
     def cursor(self):
         return None
 
@@ -281,3 +287,149 @@ def test_agent_picks_market_when_unspecified(monkeypatch):
     agent.run_research(Conn(), run, model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
     assert store.finished[0] == "succeeded"
     assert picked == ["btc15m"]                 # the agent chose the market and it was persisted
+
+
+# -- resilience: reconnect + don't bill infra failures (coordinator prod fix) --------
+
+
+import pymysql  # noqa: E402  (grouped with the resilience tests that use it)
+
+
+def _raise(exc):
+    def f(*a, **k):
+        raise exc
+    return f
+
+
+def _conn_drop():
+    return pymysql.err.OperationalError(2013, "Lost connection to MySQL server during query")
+
+
+def test_checkpoint_reconnects_to_survive_a_dropped_connection(monkeypatch):
+    store = Store(monkeypatch)
+    conn = Conn()
+    model, _ = scripted([plan(), hyps(WINNER)])
+    agent.run_research(conn, {**RUN, "max_hypotheses": 1}, model=model,
+                       dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    assert store.finished[0] == "succeeded"
+    assert conn.pings > 0  # the run ping-reconnects before the writes that follow each model call
+
+
+def test_infra_error_fails_run_without_billing(monkeypatch):
+    store = Store(monkeypatch)
+    billed = []
+    monkeypatch.setattr(agent, "_bill", lambda *a, **k: billed.append(a))
+    monkeypatch.setattr(agent.repo, "strategy_memory", _raise(_conn_drop()))
+    model, _ = scripted([plan()])
+    with pytest.raises(pymysql.err.OperationalError):
+        agent.run_research(Conn(), RUN, model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    assert store.finished[0] == "failed"
+    assert billed == []  # an RDS blip must never charge the user
+
+
+def test_logic_error_still_bills(monkeypatch):
+    store = Store(monkeypatch)
+    billed = []
+    monkeypatch.setattr(agent, "_bill", lambda *a, **k: billed.append(a))
+    monkeypatch.setattr(agent.repo, "strategy_memory", _raise(RuntimeError("boom")))
+    model, _ = scripted([plan()])
+    with pytest.raises(RuntimeError):
+        agent.run_research(Conn(), RUN, model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    assert store.finished[0] == "failed"
+    assert billed  # a genuine failure still bills for the tokens already spent
+
+
+# -- interrupt & continue: pause / resume ------------------------------------------
+
+
+def test_run_holds_while_paused_then_resumes(monkeypatch):
+    store = Store(monkeypatch)
+    monkeypatch.setattr(agent.time, "sleep", lambda s: None)
+    calls = {"n": 0}
+
+    def hb(cur, run_id):
+        calls["n"] += 1
+        return "paused" if calls["n"] in (3, 4) else "running"
+
+    monkeypatch.setattr(agent.repo, "heartbeat", hb)
+    model, _ = scripted([plan(), hyps(WINNER)])
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 1}, model=model,
+                       dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    assert store.finished[0] == "succeeded"  # it resumed and finished where it left off
+    kinds = [k for k, _, _ in store.events]
+    assert "paused" in kinds and "resumed" in kinds
+
+
+def test_paused_run_announced_only_once(monkeypatch):
+    store = Store(monkeypatch)
+    monkeypatch.setattr(agent.time, "sleep", lambda s: None)
+    calls = {"n": 0}
+
+    def hb(cur, run_id):
+        calls["n"] += 1
+        return "paused" if 3 <= calls["n"] <= 7 else "running"  # paused across several polls
+
+    monkeypatch.setattr(agent.repo, "heartbeat", hb)
+    model, _ = scripted([plan(), hyps(WINNER)])
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 1}, model=model,
+                       dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    assert [k for k, _, _ in store.events].count("paused") == 1  # one notice per pause, not per poll
+
+
+def test_cancel_while_paused_stops_the_run(monkeypatch):
+    store = Store(monkeypatch)
+    monkeypatch.setattr(agent.time, "sleep", lambda s: None)
+    calls = {"n": 0}
+
+    def hb(cur, run_id):
+        calls["n"] += 1
+        if calls["n"] == 3:
+            return "paused"
+        return "cancelled" if calls["n"] >= 4 else "running"
+
+    monkeypatch.setattr(agent.repo, "heartbeat", hb)
+    model, _ = scripted([plan(), hyps(WINNER)])
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 1}, model=model,
+                       dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    assert store.finished is None  # Cancelled path never calls finish_run (matches existing cancel behavior)
+    assert any(k == "step" and m == "Cancelled." for k, m, _ in store.events)
+
+
+# -- richer log events: full reasoning + the research story ------------------------
+
+
+def test_log_keeps_full_market_choice_reasoning(monkeypatch):
+    store = Store(monkeypatch)
+    long_why = ("BTC is the only market with enough liquidity and spreads tight enough that the "
+                "edge still clears after Kalshi's taker fee, which is exactly where fees would "
+                "otherwise eat the whole move on a thinner contract." + " More detail." * 10)
+    assert len(long_why) > 200  # the old cap clipped exactly here, mid-word
+    pick_long = "```json\n%s\n```" % json.dumps({"market": "btc15m", "why": long_why})
+    model, _ = scripted([pick_long, plan(), hyps(WINNER)])
+    agent.run_research(Conn(), {**RUN, "market": None, "max_hypotheses": 1}, model=model,
+                       dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    chose = next(m for k, m, _ in store.events if k == "step" and m.startswith("Chose to research"))
+    assert long_why in chose  # full reasoning survives end to end — no mid-word truncation
+
+
+def test_hypothesis_event_carries_thesis_and_mechanism(monkeypatch):
+    store = Store(monkeypatch)
+    hyp_json = "```json\n%s\n```" % json.dumps({"hypotheses": [
+        {"title": "H0", "thesis": "Edge from flow.", "mechanism": {"why": "late-session imbalance"},
+         "spec": WINNER}]})
+    model, _ = scripted([plan(), hyp_json])
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 1}, model=model,
+                       dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    hyp = next(d for k, _, d in store.events if k == "hypothesis")
+    assert hyp["thesis"] == "Edge from flow." and hyp["mechanism"] == {"why": "late-session imbalance"}
+
+
+def test_challenger_verdict_is_logged(monkeypatch):
+    store = Store(monkeypatch)
+    monkeypatch.setattr(agent, "_challenge", lambda finalists, run, model, usage, log:
+                        [{"decision": "approve", "reason": "mechanism holds up", "fixes": None} for _ in finalists])
+    model, _ = scripted([plan(), hyps(WINNER)])
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 1}, model=model,
+                       dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    chal = [m for k, m, _ in store.events if k == "challenger"]
+    assert any("Challenger approved" in m and "mechanism holds up" in m for m in chal)
