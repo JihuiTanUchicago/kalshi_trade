@@ -149,6 +149,33 @@ def test_too_little_history_fails_before_spending_on_the_model(monkeypatch):
     assert store.finished[0] == "failed" and prompts == []
 
 
+def test_unknown_pinned_market_fails_cleanly_not_as_keyerror(monkeypatch):
+    """A pinned market no longer in MARKETS (a retired/renamed series) must fail with a clean,
+    user-facing message BEFORE any model spend — not surface as the bare KeyError('<key>') that
+    the old setup raised and that logged the useless "Unexpected error: '<key>'"."""
+    store = Store(monkeypatch)
+    model, prompts = scripted([])
+    agent.run_research(Conn(), {**RUN, "market": "retired_series_xyz"}, model=model,
+                       dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    status, error, _, _ = store.finished
+    assert status == "failed" and prompts == []            # died before a single model call
+    assert "retired_series_xyz" in error and "no longer available" in error
+    assert not error.startswith("Unexpected error")        # a clean message, not a raw KeyError dump
+
+
+def test_sports_market_passes_the_universe_guard_and_runs(monkeypatch):
+    """The guard must NOT reject a real curated sports market (underlying=None): nba_game is in
+    MARKETS, so the run gets past the chokepoint and researches exactly like a crypto market."""
+    from app.markets import MARKETS
+    assert "nba_game" in MARKETS and MARKETS["nba_game"].underlying is None
+    store = Store(monkeypatch)
+    model, prompts = scripted([plan(), hyps(WINNER)])
+    agent.run_research(Conn(), {**RUN, "market": "nba_game", "max_hypotheses": 1},
+                       model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    assert store.finished[0] == "succeeded"                 # cleared the guard and ran the loop
+    assert prompts and all(s["spec"]["market"] == "nba_game" for s in store.strategies)
+
+
 def test_cancel_stops_the_run(monkeypatch):
     store = Store(monkeypatch, status="cancelled")
     model, prompts = scripted([plan(), hyps(WINNER)])

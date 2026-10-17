@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import os
 import time
 from collections import defaultdict
@@ -43,6 +44,8 @@ from app.markets import MARKETS
 from app.agent_market_data import AgentMarketData, DataScope
 from app.agent_knowledge import AgentKnowledge
 from app.agent_news import AgentNews
+
+_LOG = logging.getLogger(__name__)
 
 DIRECTIONS: Dict[str, Dict[str, str]] = {
     "volatility": {
@@ -1000,6 +1003,14 @@ def run_research(
             market = _pick_market(run, model, usage, log)
             run = {**run, "market": market}
             repo.set_run_market(cur, run_id, market)
+        # A pinned market that has left the live universe (a retired/renamed catalog series) would
+        # otherwise surface as a bare KeyError the instant the first MARKETS[market] lookup runs in
+        # setup — the useless "Unexpected error: '<key>'" this very guard replaces. Fail cleanly
+        # here, the one place every research run funnels through before that lookup. (A market the
+        # agent PICKED is already validated against MARKETS in _pick_market; this catches the pin.)
+        if market not in MARKETS:
+            raise LLMError("The market %r is no longer available for research. Pick another market "
+                           "and start a new session." % market)
         # Freeze the Research/Validation/Holdout split once for the run; the generator may load
         # ONLY the Research window (partitions.research_dataset), and the gatekeeper keeps the
         # validation/holdout keys. Tests inject dataset_fn to supply a synthetic research set.
@@ -1085,6 +1096,10 @@ def run_research(
         _bill(conn, user_id, usage, run_id, choice.model_id)  # charge whatever was spent before the stop
         log("step", "Cancelled.")
     except Exception as e:  # the run fails visibly; the worker keeps going
+        # The user-facing msg below stays clean, but a bare str(e) (e.g. a KeyError prints just its
+        # missing key) throws the stack away and makes the next mystery crash undiagnosable. Dump
+        # the full traceback to the PROCESS log (stderr -> the worker's logfile) so it survives.
+        _LOG.exception("research run %s failed", run_id)
         infra = _is_infra_error(e)  # an RDS blip / dropped connection, not an LLM or logic fault
         msg = ("The agent lost its database connection mid-run and stopped. No charge for this — "
                "start the session again." if infra else
