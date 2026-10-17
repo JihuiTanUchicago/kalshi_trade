@@ -256,6 +256,27 @@ The backtester now runs on any strike-ladder crypto series, not just BTC:
   + quote candles (`market_candles`) accrue via the `recursive-history` loop per series.
 Next: Phase 4 (cross-contract) + the Hot-Markets sidebar + user-facing Explore tab.
 
+### STATUS (2026-10-17) — tradeable universe WIDENED to 19 deployable markets (committed on branch, not yet deployed)
+Curated static expansion of `app/markets.py` — 12 new `deployable=True` markets across 3 categories,
+each verified against the live public Kalshi + Coinbase APIs (not inferred):
+- **Crypto 15-min (strike + Coinbase spot):** sol15m, xrp15m, doge15m, near15m, zec15m, hype15m —
+  series `KX<COIN>15M`, candle_minutes=1, history_days=30. Each has a live Coinbase USD product
+  (fetch_spot_series) AND a currently-active 15M ladder (~96 settled markets/day, `floor_strike`
+  populated, balanced YES/NO) so the collector + backtest + live paths all work unchanged.
+- **Sports moneyline (outcome-settled, underlying=None, book-only — the NBA pattern):** nfl_game,
+  nhl_game, ncaaf_game, mlb_game, epl_game.
+- **Weather (outcome-settled, underlying=None, book-only):** high_ny (NYC daily high temp, candle_minutes=60).
+Architecture choice = STATIC curation, NOT catalog-driven generation: `markets.py` has no DB access
+(DB stays in the repository layer) and the catalog can't supply the fields that matter — the right
+Coinbase `underlying`, candle granularity, close-hour, and strike-vs-outcome — so a generator would
+produce FAKE config (e.g. KXDOGED *looks* like a directional crypto but its markets are strikeless and
+the collector would silently drop every one). The catalog's role is discovery (used here to survey +
+liquidity/structure-probe every candidate), not config. Excluded as bad-fit: all daily `*D` crypto
+(KXDOGED strikeless; AVAX/LINK/LTC/DOT/XLM/BCH/NEAR daily ladders dormant), ADA/BCH 15M (dormant),
+WNBA (scalar result the yes/no settle path can't resolve), monthly econ (too sparse to backtest).
+No live gate touched; TAO stays research-only. **Before research works, `market_history` must backfill
+each new series** (hist_markets + candlesticks; crypto also needs the coin's spot in `spot_candles_1m`).
+
 ### The core idea: Series (logical contract) vs Market (renewing instance)
 Kalshi tickers renew: `KXBTC15M-26OCT1401...` is one 15-minute window; a new ticker opens every
 15 minutes. The stable thing is the **series** (`KXBTC15M` = "BTC 15-min"). So:

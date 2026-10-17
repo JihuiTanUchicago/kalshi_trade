@@ -86,6 +86,47 @@ MARKETS: Dict[str, Market] = {
     # A strategy only reaches live after passing research AND proving on paper on this same feed.
     "nba_game": Market("nba_game", "KXNBAGAME", "NBA game winner (moneyline)", candle_minutes=1,
                        history_days=30, underlying=None, deployable=True),
+    # More deployable CRYPTO, 15-minute "up/down in the next 15 min" (series KX<COIN>15M). Structurally
+    # identical to btc15m/eth15m: one ATM-ish strike per window, priced strike-vs-spot off the coin's own
+    # Coinbase product (engine.fetch_spot_series). Chosen because each has a live Coinbase USD spot feed
+    # AND a currently-active Kalshi 15M ladder (~96 settled markets/day, floor_strike populated, balanced
+    # YES/NO) — so the collector fills hist_markets + candlesticks and the backtest/live paths just work.
+    # (KXADA15M / KXBCH15M were EXCLUDED: their 15M ladders are dormant — zero settled markets to collect.)
+    "sol15m": Market("sol15m", "KXSOL15M", "Solana 15-minute", candle_minutes=1, history_days=30,
+                     underlying="SOL-USD", deployable=True),
+    "xrp15m": Market("xrp15m", "KXXRP15M", "XRP 15-minute", candle_minutes=1, history_days=30,
+                     underlying="XRP-USD", deployable=True),
+    "doge15m": Market("doge15m", "KXDOGE15M", "Dogecoin 15-minute", candle_minutes=1, history_days=30,
+                      underlying="DOGE-USD", deployable=True),
+    "near15m": Market("near15m", "KXNEAR15M", "NEAR 15-minute", candle_minutes=1, history_days=30,
+                      underlying="NEAR-USD", deployable=True),
+    "zec15m": Market("zec15m", "KXZEC15M", "Zcash 15-minute", candle_minutes=1, history_days=30,
+                     underlying="ZEC-USD", deployable=True),
+    "hype15m": Market("hype15m", "KXHYPE15M", "Hyperliquid (HYPE) 15-minute", candle_minutes=1,
+                      history_days=30, underlying="HYPE-USD", deployable=True),
+    # Deployable SPORTS (outcome-settled, underlying=None): per-game moneyline series, structurally the
+    # same binary YES/NO as KXNBAGAME — no strike, no spot, so the live tick and backtest price them on
+    # the contract's own price/order-book features alone and settle on the game result (engine.fetch_result).
+    # Each is a currently-active league with clean yes/no settlement and real per-game liquidity.
+    # (KXNCAABGAME excluded: season not started — 0 settled; KXWNBAGAME excluded: off-season + "scalar"
+    # result type the yes/no settlement path can't resolve.)
+    "nfl_game": Market("nfl_game", "KXNFLGAME", "NFL game winner (moneyline)", candle_minutes=1,
+                       history_days=30, underlying=None, deployable=True),
+    "nhl_game": Market("nhl_game", "KXNHLGAME", "NHL game winner (moneyline)", candle_minutes=1,
+                       history_days=30, underlying=None, deployable=True),
+    "ncaaf_game": Market("ncaaf_game", "KXNCAAFGAME", "College football game winner", candle_minutes=1,
+                         history_days=30, underlying=None, deployable=True),
+    "mlb_game": Market("mlb_game", "KXMLBGAME", "MLB game winner (moneyline)", candle_minutes=1,
+                       history_days=30, underlying=None, deployable=True),
+    "epl_game": Market("epl_game", "KXEPLGAME", "English Premier League game result", candle_minutes=1,
+                       history_days=30, underlying=None, deployable=True),
+    # Deployable WEATHER (outcome-settled, underlying=None): daily high-temperature ladder for one city
+    # (series KXHIGHNY). A binary YES/NO ("83F or above") settling on the day's observed high — no tradable
+    # spot series, so it trades on the book-feature model exactly like sports. Daily cadence gives a usable
+    # backtest surface (unlike monthly econ releases, which are too sparse and were excluded). candle_minutes
+    # =60: a weather market lives ~1 day, so hourly decisions over the day; no close-hour filter (one event/day).
+    "high_ny": Market("high_ny", "KXHIGHNY", "NYC daily high temperature", candle_minutes=60,
+                      history_days=60, underlying=None, deployable=True),
     # Research-only SPOT markets (kind="spot", deployable=False): Bittensor subnet alpha tokens.
     # These are a continuous price series (alpha priced in TAO via the subnet's AMM pool ratio),
     # NOT a Kalshi binary - no strike, no expiry, no settlement. `underlying` is the token's own
