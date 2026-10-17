@@ -61,6 +61,61 @@ def ensure_partition(cur, market: str) -> Dict:
     return rr.save_partition(cur, market, boundaries)
 
 
+# -- merged (cross-contract) partitions ----------------------------------------
+# A cross-contract spec spans >=2 markets, so it needs ONE partition identity for the whole
+# market-SET (pre-registration id + a shared holdout ledger), while each leg keeps its own
+# single-market frozen window. ensure_merged_partition freezes that identity row (keyed by the
+# FDR stream key, e.g. "btc_daily+eth_daily"); merged_dataset serves the phase dataset by loading
+# EACH leg from its own frozen window and unioning the frames (so no leg leaks across its own
+# boundary). purge/embargo are the MAX of the legs' — the strictest leak buffer (§E.6).
+
+
+def ensure_merged_partition(cur, markets: List[str]) -> Dict:
+    """The active merged partition row for a cross-contract market-SET, freezing a new one if the
+    legs' partitions changed. Each leg is first frozen with ensure_partition; the merged row's
+    boundaries are the union span of the legs' windows and its purge/embargo the max of theirs."""
+    if len(set(markets)) < 2:
+        raise ValueError("ensure_merged_partition needs >=2 distinct markets; one uses ensure_partition")
+    legs = [ensure_partition(cur, m) for m in sorted(set(markets))]
+    b = _merged_boundaries(legs)
+    key = "+".join(sorted(set(markets)))
+    active = rr.get_active_partition(cur, key)
+    if active and active["data_fingerprint"] == b["data_fingerprint"]:
+        return active
+    return rr.save_partition(cur, key, b)
+
+
+def _merged_boundaries(legs: List[Dict]) -> Dict:
+    """Union-span boundaries + max purge/embargo for a set of frozen leg partitions. The
+    fingerprint folds in each leg's id + fingerprint, so the merged row re-freezes whenever any
+    leg re-freezes. These bounds are a record/holdout-fingerprint; the per-leg clipping that
+    actually serves data lives in merged_dataset()."""
+    h = hashlib.sha256()
+    for p in sorted(legs, key=lambda x: int(x["id"])):
+        h.update(("%s|%s\n" % (p["id"], p["data_fingerprint"])).encode())
+    return {
+        "research_from_ts": min(p["research_from_ts"] for p in legs),
+        "research_to_ts": max(p["research_to_ts"] for p in legs),
+        "validation_from_ts": min(p["validation_from_ts"] for p in legs),
+        "validation_to_ts": max(p["validation_to_ts"] for p in legs),
+        "holdout_from_ts": min(p["holdout_from_ts"] for p in legs),
+        "holdout_to_ts": max(p["holdout_to_ts"] for p in legs),
+        "embargo_seconds": max(p["embargo_seconds"] for p in legs),
+        "purge_seconds": max(p["purge_seconds"] for p in legs),
+        "data_fingerprint": h.hexdigest(),
+    }
+
+
+def merged_dataset(cur, markets: List[str], phase: str):
+    """The merged Research/Validation/Holdout dataset for a cross-contract spec: each leg loaded
+    from its OWN frozen partition window ('research'|'validation'|'holdout') and unioned frame-by-
+    frame via backtest.merge_datasets. The combined market key is the FDR stream key, so the
+    gatekeeper spends a cross pair from one shared stream (RESEARCH_PIPELINE_DESIGN §E.6)."""
+    loaders = {"research": research_dataset, "validation": validation_dataset, "holdout": holdout_dataset}
+    dses = [loaders[phase](m, ensure_partition(cur, m)) for m in sorted(set(markets))]
+    return backtest.merge_datasets(dses, key="+".join(sorted(set(markets))))
+
+
 def _compute_boundaries(market: Market, contracts: List[Dict]) -> Dict:
     """Pure math: the frozen boundary dict for a market given its settled
     contracts. Each contract is {open_ts, close_ts, result, ticker}. Boundaries

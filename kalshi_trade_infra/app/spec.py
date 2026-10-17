@@ -630,4 +630,6 @@ def describe(spec: Dict) -> List[str]:
                 "calendar": "the same strike across two settlements"}.get(cross["pairing"], cross["pairing"])
         lines.append("Relative-value pair across %s: buys YES on the underpriced leg and NO on the "
                      "overpriced leg, holding both to settlement." % kind)
+        labels = [MARKETS[m].label if m in MARKETS else m for m in involved_markets(spec)]
+        lines.append("Legs: %s." % ", ".join(labels))
     return lines

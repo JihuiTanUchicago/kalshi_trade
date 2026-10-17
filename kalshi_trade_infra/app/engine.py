@@ -208,6 +208,25 @@ def _close_position_at(conn, cur, dep: Dict, pos: Dict, kernel, via_kernel: bool
     return True
 
 
+def cross_deploy_block(spec: Dict, mode: str) -> Optional[str]:
+    """Why a cross-contract (relative-value pair) spec may NOT deploy in `mode`, or None if it may.
+    Cross specs deploy on PAPER/DEMO only: multi-leg LIVE execution + its gate is a separate,
+    riskier step, so live is refused here. And a pair that spans >1 market needs a synchronized
+    multi-market live feed the engine doesn't run (the extra legs' markets aren't deployable), so
+    it stays research-only. A single-market pair (cross_strike / calendar) deploys on paper/demo —
+    the engine already ticks that market and its frame carries every strike/settlement leg."""
+    if not specmod.is_cross_contract(spec):
+        return None
+    if mode == "live":
+        return ("Cross-contract (multi-leg) strategies can't go live yet — multi-leg live "
+                "execution is a separate, riskier step. Run it on paper or demo.")
+    markets = specmod.involved_markets(spec)
+    if len(markets) > 1:
+        return ("This is a cross-market pair (%s) — it needs a synchronized multi-market live "
+                "feed we don't run yet, so it's research-only for now." % ", ".join(markets))
+    return None
+
+
 def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[float]], sources: Sources) -> Dict:
     cur = conn.cursor()
     spec = dep["spec"]
@@ -232,6 +251,8 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
         if kernel is None:
             repo.set_deployment_status(cur, dep["user_id"], dep["id"], "paused", why)
             return {"paused": "%s disabled" % mode}
+    if specmod.is_cross_contract(spec):
+        return _decide_pairs(conn, dep, snaps, sizes, kernel, via_kernel, mode)
     out = {"exits": 0, "entries": 0}
 
     positions = repo.open_positions(cur, dep["id"])
@@ -289,6 +310,94 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
         out["entries"] += 1
     loss_guard(cur, dep)
     return out
+
+
+def _decide_pairs(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[float]],
+                  kernel, via_kernel: bool, mode: str) -> Dict:
+    """Decide a cross-contract (relative-value pair) deployment: open BOTH legs of each pair the
+    rule picks (buy YES on the underpriced leg, NO on the overpriced leg) and HOLD to settlement —
+    exactly the simulate_pairs rule the backtest proved, so there is no early-exit logic. Each leg
+    is an ordinary position row, so settlement, marks and the loss guard all reuse the single-leg
+    machinery unchanged. Only reached for paper/demo (live cross is refused at deploy)."""
+    cur = conn.cursor()
+    spec = dep["spec"]
+    out = {"exits": 0, "entries": 0}
+    positions = repo.open_positions(cur, dep["id"])
+    held = {p["ticker"] for p in positions}
+    # ponytail: every open position of a cross deployment is a pair leg, so pairs = legs // 2;
+    # a demo partial fill could orphan a leg and under-count by one — acceptable in the sandbox.
+    open_pairs = len(positions) // 2
+    max_pairs = spec["sizing"]["max_positions"]
+    risk = repo.user_risk_config(cur, dep["user_id"])
+    exposure = repo.user_open_exposure(cur, dep["user_id"])
+    open_count = int(exposure["n"])
+    open_notional = float(exposure["notional"])
+    cap_positions = int(risk["max_open_positions"])
+    cap_notional = float(risk["max_open_notional"])
+    for cand in specmod.pair_entries(spec, snaps):
+        if open_pairs >= max_pairs or open_count + 2 > cap_positions:
+            break  # pair slot cap, or the user-wide position cap has no room for two more legs
+        lt = cand.long_snap.contract.ticker
+        st = cand.short_snap.contract.ticker
+        if lt in held or st in held:
+            continue
+        pair_cost = cand.long_price + cand.short_price
+        qty = specmod.contracts_for(spec["sizing"]["stake"], pair_cost)
+        for tk in (lt, st):  # paper never fills more than either leg's book showed
+            shown = sizes.get(tk)
+            if shown is not None:
+                qty = min(qty, int(shown))
+        room = cap_notional - open_notional
+        qty = min(qty, int(room / pair_cost)) if room >= pair_cost else 0
+        if qty < 1:
+            continue
+        legs = [("yes", lt, cand.long_price, cand.long_snap.contract.close_time),
+                ("no", st, cand.short_price, cand.short_snap.contract.close_time)]
+        placed = (_kernel_buy_pair(cur, dep, kernel, legs, qty, mode) if via_kernel
+                  else _paper_buy_pair(conn, dep, legs, qty))
+        if not placed:
+            break  # out of paper cash / nothing filled this slot
+        held.update((lt, st))
+        open_pairs += 1
+        open_count += 2
+        open_notional += qty * pair_cost
+        out["entries"] += 1
+    loss_guard(cur, dep)
+    return out
+
+
+def _paper_buy_pair(conn, dep: Dict, legs, qty: int) -> bool:
+    """Buy both legs of a pair in ONE transaction (so a pair is never half-opened on paper):
+    check the combined cost against the paper balance once, then insert both leg positions."""
+    items = []
+    total = 0.0
+    for side, ticker, price, close in legs:
+        fee = taker_fee_dollars(qty, price)
+        total += qty * price + fee
+        items.append((side, ticker, price, fee, close))
+    with repo.transaction(conn) as tx:
+        repo.lock_user(tx, dep["user_id"])
+        if repo.paper_balance(tx, dep["user_id"]) < total:
+            return False
+        for side, ticker, price, fee, close in items:
+            pid = repo.insert_position(tx, dep["id"], dep["user_id"], "paper", ticker, side, qty, price, fee, close)
+            repo.add_ledger(tx, dep["user_id"], "trade", -(qty * price + fee),
+                            "Bought %d %s %s @ %.2f (pair)" % (qty, side.upper(), ticker, price), pid)
+    return True
+
+
+def _kernel_buy_pair(cur, dep: Dict, kernel, legs, qty: int, mode: str) -> bool:
+    """Demo (sandbox) pair entry: send each leg through the same MarketableLimitKernel the single-
+    leg path uses and record whatever actually filled. Returns True if any leg filled."""
+    any_filled = False
+    for side, ticker, price, close in legs:
+        rep = _live_trade(cur, dep, kernel, "buy", side, ticker, qty, price)
+        if rep.fill_qty_contracts < 1:
+            continue
+        repo.insert_position(cur, dep["id"], dep["user_id"], mode, ticker, side, rep.fill_qty_contracts,
+                             rep.fill_price_dollars, rep.fee_dollars, close, rep.external_order_id)
+        any_filled = True
+    return any_filled
 
 
 def loss_guard(cur, dep: Dict) -> bool:

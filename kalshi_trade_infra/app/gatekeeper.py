@@ -32,6 +32,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app import backtest, partitions, quant, stats
 from app import research_repository as rr
+from app import spec as specmod
 
 log = logging.getLogger(__name__)
 
@@ -476,8 +477,16 @@ def judge_holdout(cur, experiment_id: int, finalist: dict) -> dict:
     simulate the frozen spec on the holdout, record a phase='holdout' verdict, spend one
     holdout evaluation, and set FORWARD_VALIDATED (edge holds on untouched data) or REJECTED.
     At the evaluation cap the holdout ledger flips consumed=1 and we emit the roll-to-fresh-
-    data alert (§F)."""
-    market = finalist["market"]
+    data alert (§F).
+
+    A cross-contract finalist is judged on the MERGED holdout of its legs (each clipped to its own
+    frozen window): its market/FDR stream and holdout ledger are keyed by the shared stream key
+    (involved markets joined), and the merged partition is frozen the same way validation freezes
+    it. Single-market flow is unchanged."""
+    spec = finalist.get("spec") or {}
+    cross = specmod.is_cross_contract(spec)
+    markets = specmod.involved_markets(spec) if cross else None
+    market = specmod.stream_key(spec) if cross else finalist["market"]
     user_id = int(finalist["user_id"])
 
     if _latest_classification(cur, experiment_id, "validation") != Classification.STAT_SUPPORTED.value:
@@ -485,17 +494,21 @@ def judge_holdout(cur, experiment_id: int, finalist: dict) -> dict:
     if rr.results_for_experiment(cur, experiment_id, "holdout"):
         raise HoldoutConsumed("experiment already has a holdout verdict; holdout is one-time")
 
-    partition = rr.get_active_partition(cur, market)
+    if cross:
+        partition = partitions.ensure_merged_partition(cur, markets)
+        max_evals = min(partitions.holdout_max_evaluations(m) for m in markets)
+    else:
+        partition = rr.get_active_partition(cur, market)
+        max_evals = partitions.holdout_max_evaluations(market)
     if not partition:
         raise HoldoutConsumed("no active partition for market %r" % market)
     ledger = rr.ensure_holdout_ledger(cur, market, int(partition["id"]),
-                                      _holdout_fingerprint(partition),
-                                      partitions.holdout_max_evaluations(market))
+                                      _holdout_fingerprint(partition), max_evals)
     if int(ledger["consumed"]) == 1 or int(ledger["evaluations_used"]) >= int(ledger["max_evaluations"]):
         raise HoldoutConsumed("holdout consumed for market %r (%s/%s)" % (
             market, ledger["evaluations_used"], ledger["max_evaluations"]))
 
-    hds = partitions.holdout_dataset(market, partition)
+    hds = partitions.merged_dataset(cur, markets, "holdout") if cross else partitions.holdout_dataset(market, partition)
     trades = backtest.simulate(finalist["spec"], hds, hds.start_ts, hds.end_ts + 1)
     n_trades = len(trades)
     n_trials = _n_trials(cur, user_id, market, including=1)

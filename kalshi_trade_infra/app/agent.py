@@ -26,6 +26,7 @@ import copy
 import json
 import os
 import time
+from collections import defaultdict
 from typing import Callable, Dict, List, Optional, Tuple
 
 from app import backtest, billing
@@ -104,6 +105,21 @@ KALSHI-BTC-SPECIFIC ANGLES WORTH A MECHANISM (not an exhaustive list)
   sentiment signal; BRTI-vs-Coinbase basis dislocations.
 - Volatility: does the market systematically over- or under-price realized vol at specific
   horizons (e.g. the last 3-8 minutes of a 15-minute contract)?
+
+CROSS-CONTRACT RELATIVE VALUE (optional — single-contract is the default)
+Most edges are single-contract. But when the mechanism is a RELATIVE mispricing between two
+legs, you MAY propose a relative-value PAIR via the spec's `cross` block (shape in the spec
+guide): it buys YES on the leg the model says is underpriced and NO on the overpriced leg,
+holding both to settlement, so it profits on the spread rather than a directional view. Only
+propose one with a real relative mechanism and name it:
+  - cross_sectional: two DIFFERENT markets (e.g. a BTC-vs-ETH basis dislocation — one coin's
+    ladder lags the other's move). Add the other market as a leg; records BOTH markets.
+  - cross_strike: two strikes of the SAME event (the ladder's implied-probability shape is
+    locally inconsistent — adjacent strikes misprice relative to each other).
+  - calendar: the SAME strike across two settlements (near vs far expiry mispriced relative).
+A pair spends from ONE shared statistical budget across its legs and still walks all nine phases
+with its own falsifiable spread mechanism and negative control. Prefer a single-contract rule
+unless the relative structure is the actual source of edge.
 
 NINE-PHASE METHOD (every hypothesis walks all nine)
   1. IDENTIFY a structural inefficiency - name the mechanism and the loser.
@@ -523,8 +539,12 @@ def _prereg(t: Dict, spec: Dict, run: Dict, partition: Dict, n_tests: int,
         "negative_control": t.get("negative_control", ""),
         "challenger": verdict.get("reason", ""),
     }, separators=(",", ":"))
+    # A cross-contract spec's experiment is keyed by its SHARED FDR stream (involved markets
+    # joined), not the single run market — so its validation/holdout/n_trials all account on the
+    # same stream the gatekeeper spends from. stream_key == the run market for a single-contract
+    # spec, so that path is unchanged. The involved markets are recorded in data provenance.
     return gatekeeper.Prereg(
-        user_id=run["user_id"], run_id=run["id"], market=run["market"], spec=spec,
+        user_id=run["user_id"], run_id=run["id"], market=specmod.stream_key(spec), spec=spec,
         economic_rationale=rationale,
         primary_metric=t.get("primary_metric") or "mean_net_return_per_trade",
         null_hypothesis=t.get("null_hypothesis", ""), alt_hypothesis=t.get("alt_hypothesis", ""),
@@ -532,7 +552,8 @@ def _prereg(t: Dict, spec: Dict, run: Dict, partition: Dict, n_tests: int,
         min_sample=int(t.get("min_sample") or 30),
         cost_assumptions={"fee": "kalshi_taker", "fill": "ask/bid"},
         data_provenance={"features": specmod.features_used(spec),
-                         "sources": specmod.data_sources_for(spec)},
+                         "sources": specmod.data_sources_for(spec),
+                         "markets": specmod.involved_markets(spec)},
         research_partition_id=int(partition.get("id") or 0),
         planned_n_tests=n_tests, correction_method="BH", strategy_id=strategy_id,
     )
@@ -593,24 +614,42 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
         sid = repo.insert_strategy(cur, user_id, run_id, parent, market, direction, t["title"],
                                    t["thesis"], spec, "pending", _result_block(s, t, "promising"))
         t["strategy_id"] = sid
-        exp_ids.append(gatekeeper.preregister(cur, _prereg(t, spec, run, partition, len(finalists), verdict, sid)))
+        # A cross-contract spec pre-registers against the MERGED partition of its legs; a single-
+        # contract spec against the run's partition (unchanged).
+        part = partitions.ensure_merged_partition(cur, specmod.involved_markets(spec)) \
+            if specmod.is_cross_contract(spec) else partition
+        exp_ids.append(gatekeeper.preregister(cur, _prereg(t, spec, run, part, len(finalists), verdict, sid)))
         payload.append({"spec": spec, "user_id": user_id, "market": market,
                         "min_sample": int(t.get("min_sample") or 30)})
         approved.append(t)
 
     passed = 0
     if approved:
-        val_ds = backtest.partition_dataset(market, partition, "validation")
-        for t, outcome in zip(approved, gatekeeper.judge_batch(cur, run_id, exp_ids, payload, val_ds)):
-            cls = outcome["classification"]
-            status = _status_for(cls)
-            passed += status == "passed"
-            repo.set_strategy_outcome(cur, t["strategy_id"], status, _result_block(s, t, cls))
-            log("verdict", "%s - %s: validation verdict is gatekeeper-held (classification=%s, "
-                           "%s trades); the numbers never return to the generator."
-                % (status.upper(), t["title"], cls, outcome.get("n_trades", 0)),
-                {"title": t["title"], "status": status, "classification": cls,
-                 "strategy_id": t["strategy_id"]})
+        # Judge per FDR stream: single-contract finalists share the run market's validation
+        # window (one group, one BH family — unchanged); each cross-contract stream is judged on
+        # its OWN merged validation window and spends its own shared budget.
+        by_stream: Dict[str, List[int]] = defaultdict(list)
+        for i, pay in enumerate(payload):
+            by_stream[specmod.stream_key(pay["spec"])].append(i)
+        for idxs in by_stream.values():
+            spec0 = payload[idxs[0]]["spec"]
+            if specmod.is_cross_contract(spec0):
+                val_ds = partitions.merged_dataset(cur, specmod.involved_markets(spec0), "validation")
+            else:
+                val_ds = backtest.partition_dataset(market, partition, "validation")
+            outcomes = gatekeeper.judge_batch(cur, run_id, [exp_ids[i] for i in idxs],
+                                              [payload[i] for i in idxs], val_ds)
+            for i, outcome in zip(idxs, outcomes):
+                t = approved[i]
+                cls = outcome["classification"]
+                status = _status_for(cls)
+                passed += status == "passed"
+                repo.set_strategy_outcome(cur, t["strategy_id"], status, _result_block(s, t, cls))
+                log("verdict", "%s - %s: validation verdict is gatekeeper-held (classification=%s, "
+                               "%s trades); the numbers never return to the generator."
+                    % (status.upper(), t["title"], cls, outcome.get("n_trades", 0)),
+                    {"title": t["title"], "status": status, "classification": cls,
+                     "strategy_id": t["strategy_id"]})
 
     for t in chunk:
         if t in finalists:
@@ -633,6 +672,7 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
     market = run["market"]
     chunk: List[Dict] = []
     round_no = 0
+    merged_cache: Dict[str, Tuple] = {}  # stream_key -> (merged research ds, embargo) for cross specs
     market_data = AgentMarketData(DataScope.research(ds.start_ts, ds.cutoff_ts), log, checkpoint)
     while True:
         checkpoint()
@@ -648,7 +688,7 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
             break  # agent is out of fresh ideas this chunk
         for h in batch:
             checkpoint()
-            t = _test_in_sample(h, ds, partition, log, round_no)
+            t = _test_in_sample(h, ds, partition, log, round_no, cur, merged_cache)
             t["score"] = backtest.score(t["in_sample"])  # attach once, so the policy needs no backtester
             chunk.append(t)
             tried.append(t)
@@ -812,11 +852,28 @@ def _span_words(ds: backtest.Dataset) -> str:
     return "%d days" % round(days)
 
 
-def _test_in_sample(h: Dict, ds: backtest.Dataset, partition: Dict, log, round_no: int) -> Dict:
+def _test_in_sample(h: Dict, ds: backtest.Dataset, partition: Dict, log, round_no: int,
+                    cur=None, merged_cache: Optional[Dict] = None) -> Dict:
     # The in-research "OOS" the agent iterates on is a PURGED walk-forward research fold (fully
     # inside Research) — a leak-free sandbox it may look at freely, not the held-out validation
     # window. Purge/embargo come from the frozen partition's contract-duration horizon (§B.5).
-    res = backtest.research_fold_metrics(h["spec"], ds, int(partition["embargo_seconds"]))
+    spec = h["spec"]
+    rds, embargo = ds, int(partition["embargo_seconds"])
+    # A cross-SECTIONAL pair spans >1 market, so its legs aren't in the single-market research
+    # dataset — test it on the MERGED research window of its legs (cached per stream for the run).
+    # cross_strike / calendar stay on one market, so the single-market dataset already has every
+    # strike/settlement and this branch is skipped.
+    if cur is not None and specmod.is_cross_contract(spec) and len(specmod.involved_markets(spec)) > 1:
+        inv = specmod.involved_markets(spec)
+        key = specmod.stream_key(spec)
+        if merged_cache is not None and key in merged_cache:
+            rds, embargo = merged_cache[key]
+        else:
+            embargo = int(partitions.ensure_merged_partition(cur, inv)["embargo_seconds"])
+            rds = partitions.merged_dataset(cur, inv, "research")
+            if merged_cache is not None:
+                merged_cache[key] = (rds, embargo)
+    res = backtest.research_fold_metrics(spec, rds, embargo)
     ins = res["in_sample"]
     # Carry the thesis AND the mechanism (how/why the edge should exist) so the live feed can tell
     # the story of each hypothesis, not just its name.
@@ -946,6 +1003,10 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
             # code runs ONLY in the research sandbox and is never executed in the trading loop.
             return ("%s is an agent-authored code strategy; those are research-only and can't be "
                     "deployed to the trading engine." % strat["title"], None)
+        from app import engine as _engine  # local import: engine imports agent (circular)
+        cross_block = _engine.cross_deploy_block(strat["spec"], "paper")
+        if cross_block:
+            return cross_block, None
         # Additive gatekeeper gate (§E.5): never weakens the existing check above.
         if not _is_deployment_candidate(cur, strat["id"]):
             return ("I can't deploy %s yet — the gatekeeper hasn't cleared it as a deployment "
@@ -964,6 +1025,9 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
             return ("%s is an agent-authored code strategy; those are research-only and never "
                     "run in the live engine." % strat["title"], None)
         from app import engine as _engine  # local import: engine imports agent (circular)
+        cross_block = _engine.cross_deploy_block(strat["spec"], "live")
+        if cross_block:
+            return cross_block, None
         if (strat["spec"].get("side") or "yes").lower() != "yes" and not _engine.NO_SIDE_LIVE_ENABLED:
             # Staged rollout: NO-side live mechanics are validated on the demo sandbox first.
             return ("NO-side live trading is still being validated on the demo sandbox, so %s "

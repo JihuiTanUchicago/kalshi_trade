@@ -732,6 +732,11 @@ def create_deployment(ctx: Ctx):
                             "deployment isn't open for it yet." % mkt.label)
     if mode not in ("paper", "live", "demo"):
         raise ApiError(400, "Choose paper, demo or live.")
+    # Cross-contract pairs deploy on paper/demo only (single-market cross_strike/calendar); live
+    # and cross-market pairs are refused. Additive and fail-closed — never weakens a live gate.
+    cross_block = engine.cross_deploy_block(s["spec"], mode)
+    if cross_block:
+        raise ApiError(409, cross_block)
     if mode == "live":
         # §E.5: the manual live path must clear the SAME gatekeeper gate as the autopilot path
         # (agent.act "deploy_live"), so a manual deploy can't bypass it. Additive and fail-closed —
