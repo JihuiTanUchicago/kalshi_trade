@@ -47,6 +47,9 @@ class LedgerCursor:
         elif s.startswith("INSERT INTO app_experiments"):
             cols = _insert_cols(s)
             self._ins("app_experiments", dict(zip(cols, p)))
+        elif s.startswith("UPDATE app_experiments SET strategy_id=%s WHERE id=%s"):
+            sid, eid = p
+            next(r for r in self.t["app_experiments"] if r["id"] == eid)["strategy_id"] = sid
         # -- app_experiment_results --
         elif s.startswith("INSERT INTO app_experiment_results"):
             cols = _insert_cols(s)
@@ -167,6 +170,19 @@ def test_preregister_distinct_hash_inserts_new_row(cur):
     assert len(cur.t["app_experiments"]) == 2
 
 
+def test_preregister_idempotent_hit_repoints_strategy_id(cur):
+    # A re-proposed hypothesis (same run+hash) mints a NEW strategy row; the experiment must be
+    # re-pointed at it so experiments_for_strategy(new_id) resolves (else: shallow-paper bug).
+    first = rr.preregister(cur, _prereg(strategy_id=11))
+    second = rr.preregister(cur, _prereg(strategy_id=22))  # same frozen spec, new strategy row
+    assert first == second                                   # still idempotent (no dup experiment)
+    assert len(cur.t["app_experiments"]) == 1
+    assert cur.t["app_experiments"][0]["strategy_id"] == 22   # linkage moved to the latest
+    assert rr.experiments_for_strategy(cur, 22) is not None   # new strategy's paper resolves
+    # the frozen spec is untouched — only the strategy_id linkage moved
+    assert rr.get_experiment(cur, 7, "h1")["spec"] == {"a": 1}
+
+
 def test_get_experiment_parses_json(cur):
     rr.preregister(cur, _prereg())
     exp = rr.get_experiment(cur, 7, "h1")
@@ -212,6 +228,50 @@ def test_append_result_coerces_bools_and_defaults_nulls(cur):
     row = rr.results_for_experiment(cur, eid)[0]
     assert row["net_pnl"] is None and row["psr"] is None  # unset -> NULL
     assert row["holdout_consumed"] == 0                    # NOT NULL default
+
+
+# -- bounded equity series (Bug 1: 32 MiB JSON truncation) ---------------------
+
+
+def test_small_equity_series_stored_verbatim():
+    # Under the cap: per-trade resolution preserved exactly (so the paper charts don't degrade).
+    series = [[1_700_000_000 + i * 3600, round(0.01 * i, 8)] for i in range(100)]
+    assert rr._bounded_series(series) is series
+    assert rr._bounded_series(None) is None
+    assert rr._bounded_series([]) == []
+
+
+def test_huge_equity_series_is_bounded_and_round_trips(cur):
+    # A run_forever series of 60k trades over 200 days would overrun max_allowed_packet stored raw.
+    days, per_day = 200, 300
+    series = [[d * 86400 + t * 60, round(((d * 7 + t) % 11) * 0.001 - 0.005, 8)]
+              for d in range(days) for t in range(per_day)]
+    assert len(series) > rr._EQUITY_SERIES_CAP
+    bounded = rr._bounded_series(series)
+    assert len(bounded) == days                      # collapsed to one point per day
+    eid = rr.preregister(cur, _prereg())
+    rr.append_result(cur, eid, "validation", "inconclusive", len(series), equity_curve=series)
+    stored = rr.results_for_experiment(cur, eid, "validation")[-1]["equity_curve"]
+    assert stored == bounded                         # read-back parses (no truncation) and matches
+
+
+def test_bounded_series_does_not_change_gate_correlation(cur):
+    # RIGOR: marginal_contribution_ok correlates the STORED series via gatekeeper._daily_corr,
+    # which buckets by UTC day first. Day-summing the stored copy must leave that correlation
+    # IDENTICAL to the full per-trade series, so no deploy decision can flip from the cap.
+    from app import gatekeeper as gk
+    days, per_day = 150, 400                         # > cap, forces the day-bucket path
+    # Per-trade returns vary with the DAY (plus per-trade jitter) so daily sums have real
+    # day-to-day variance and genuine comovement — otherwise the correlation is a trivial 0.
+    a = [[d * 86400 + t * 30, round(((d % 7) - 3) * 0.0001 + ((t % 3) - 1) * 0.00002, 8)]
+         for d in range(days) for t in range(per_day)]
+    b = [[d * 86400 + t * 30, round(((d % 7) - 3) * 0.00008 + ((t % 5) - 2) * 0.00001, 8)]
+         for d in range(days) for t in range(per_day)]
+    full_corr = gk._daily_corr(a, b)
+    bounded_corr = gk._daily_corr(rr._bounded_series(a), rr._bounded_series(b))
+    # Identical up to 8-decimal rounding of the day sums (far below any gate's sensitivity).
+    assert abs(full_corr - bounded_corr) < 1e-6      # gate input unchanged
+    assert abs(full_corr) > 0.01                      # non-degenerate: the test actually exercises corr
 
 
 # -- fdr state round-trip ------------------------------------------------------

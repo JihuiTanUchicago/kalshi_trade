@@ -7,6 +7,8 @@ naive UTC via repository.now_utc().
 Immutability is enforced by table split, not by triggers:
   - app_experiments and app_experiment_results are INSERT-only here (no UPDATE,
     no DELETE), so the ledger of what was tried and what happened is permanent.
+    The ONE exception is preregister re-pointing a re-hit experiment's strategy_id
+    linkage (not the frozen spec) at the latest strategy row — see preregister.
   - app_fdr_state is the one UPSERTed table (alpha-wealth *state* advances); the
     per-test audit trail lives on the result rows, not here.
   - partitions supersede via active=0 (save_partition), never by mutation.
@@ -50,6 +52,16 @@ def preregister(cur, pre: Dict[str, Any]) -> int:
     """
     existing = get_experiment(cur, pre.get("run_id"), pre["hypothesis_hash"])
     if existing:
+        # A re-proposed/duplicate hypothesis (common under run_forever + dig-deeper) mints a NEW
+        # app_strategies row but re-hits this frozen experiment. Re-point the experiment at the
+        # latest strategy_id so experiments_for_strategy(new_id) resolves — otherwise the new
+        # strategy renders the shallow Abstract-only paper though its full stats live here. Only
+        # the strategy_id LINKAGE moves; the frozen spec/hypothesis/test is never touched, so
+        # pre-registration integrity holds.
+        new_sid = pre.get("strategy_id")
+        if new_sid is not None and int(new_sid) != int(existing.get("strategy_id") or 0):
+            cur.execute("UPDATE app_experiments SET strategy_id=%s WHERE id=%s",
+                        (int(new_sid), int(existing["id"])))
         return int(existing["id"])
     cur.execute(
         """INSERT INTO app_experiments
@@ -93,6 +105,29 @@ _RESULT_FIELDS = (
 )
 
 
+# A per-trade return series grows one point per trade and, on long/run_forever windows,
+# overruns the server max_allowed_packet (~32 MiB) when stored raw in a JSON column: the
+# value truncates and the later json.loads crashes the run ("Unterminated string ...").
+# Above this many points we collapse the STORED copy to one point per UTC day (summing
+# returns). This is storage/transport only and does NOT weaken any gate: the one consumer
+# that reads it back, gatekeeper.marginal_contribution_ok's diversification correlation,
+# buckets the series by UTC day (_bucketed/_daily_corr) BEFORE correlating, so a day-summed
+# series yields an IDENTICAL correlation to the full per-trade series — the deploy decision
+# cannot change. Series under the cap pass through untouched so the research-paper per-trade
+# charts keep full resolution. The day-summed form is itself bounded by the number of trading
+# days, which cannot approach the packet limit.
+_EQUITY_SERIES_CAP = 50_000
+
+
+def _bounded_series(series: Optional[List]) -> Optional[List]:
+    if not series or len(series) <= _EQUITY_SERIES_CAP:
+        return series
+    daily: Dict[int, float] = {}
+    for ts, r in series:
+        daily[int(ts) // 86400] = daily.get(int(ts) // 86400, 0.0) + float(r)
+    return [[day * 86400, round(v, 8)] for day, v in sorted(daily.items())]
+
+
 def append_result(cur, experiment_id: int, phase: str, classification: str,
                   n_trades: int, metrics: Optional[Dict[str, Any]] = None,
                   equity_curve: Optional[List] = None, folds: Optional[List] = None) -> int:
@@ -110,7 +145,7 @@ def append_result(cur, experiment_id: int, phase: str, classification: str,
             v = 1 if v else 0
         vals.append(v if f != "holdout_consumed" else (v or 0))
     cols.append("equity_curve_json")
-    vals.append(_json(equity_curve))
+    vals.append(_json(_bounded_series(equity_curve)))
     cols.append("folds_json")
     vals.append(_json(folds))
     cols.append("verdict_at")
