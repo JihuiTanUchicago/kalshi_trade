@@ -846,10 +846,18 @@ a.snap:hover { border-color: var(--ink-3); }
 .cmt-more { margin: 2px 0 2px; }
 .dl-list { list-style: none; margin: 10px 0 0; padding: 0; }
 .dl-item { display: flex; gap: 14px; align-items: baseline; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+.dl-item:not(.planned) { align-items: flex-start; padding: 16px 0; }
 .dl-item:last-child { border-bottom: 0; }
 .dl-date { flex: none; width: 92px; font-family: var(--f-nar); font-size: 12px; letter-spacing: .03em; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.dl-item:not(.planned) .dl-date { padding-top: 2px; }
+.dl-body { flex: 1 1 auto; min-width: 0; }
 .dl-what { font-size: 14.5px; line-height: 1.45; color: var(--ink); }
+.dl-body .dl-what { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.4; letter-spacing: -.01em; }
 .dl-item.planned .dl-what { color: var(--ink-2); }
+.dl-detail { max-width: 72ch; margin: 5px 0 0; font-size: 13.5px; line-height: 1.6; color: var(--ink-2); overflow-wrap: anywhere; }
+.dl-detail code { font-family: var(--f-mono, ui-monospace, monospace); font-size: .9em; background: var(--stock-sunk); padding: 1px 4px; border-radius: 3px; }
+.dl-detail a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+.dl-detail b { font-weight: 600; color: var(--ink); }
 .dl-dot { flex: none; width: 7px; height: 7px; margin-top: 6px; border-radius: 50%; background: var(--signal); }
 .uhandle { font-weight: 400; font-size: .92em; color: var(--ink-3); font-family: var(--f-nar); letter-spacing: .01em; }
 .mention { color: var(--signal); font-weight: 600; }

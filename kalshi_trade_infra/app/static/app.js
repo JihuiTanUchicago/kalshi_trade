@@ -470,7 +470,10 @@
     let d;
     try { d = await api('/api/devlog'); } catch (e) { root.querySelector('main').innerHTML = notice(e.message, 'bad'); return; }
     const planned = (d.planned || []).map((p) => `<li class="dl-item planned"><span class="dl-dot" aria-hidden="true"></span><span class="dl-what">${esc(p)}</span></li>`).join('');
-    const shipped = (d.shipped || []).map((s) => `<li class="dl-item"><span class="dl-date">${esc(s.date)}</span><span class="dl-what">${esc(s.title)}</span></li>`).join('');
+    const shipped = (d.shipped || []).map((s) => `<li class="dl-item">
+        <span class="dl-date">${esc(s.date)}</span>
+        <div class="dl-body"><h3 class="dl-what">${esc(s.title)}</h3>${s.detail ? `<p class="dl-detail">${mdLite(s.detail)}</p>` : ''}</div>
+      </li>`).join('');
     root.querySelector('main').innerHTML = `
       <section class="sect"><div class="sect-head"><h2>Shipping next</h2><p>Most-wanted first</p></div>
         <ul class="dl-list">${planned || '<li class="hint">Nothing queued.</li>'}</ul></section>
