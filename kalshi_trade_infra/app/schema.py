@@ -482,6 +482,10 @@ def main() -> None:
         _add_column_if_missing(cur, "app_agent_runs", "run_forever", "ALTER TABLE app_agent_runs ADD COLUMN run_forever TINYINT(1) NOT NULL DEFAULT 0")
         # The LLM the user picked for this run (a models_catalog key). NULL = server default (Sonnet).
         _add_column_if_missing(cur, "app_agent_runs", "model", "ALTER TABLE app_agent_runs ADD COLUMN model VARCHAR(48) NULL")
+        # "Dig deeper": a research run seeded from a passed strategy (branch/refine its mechanism).
+        # NULL = a fresh idea; non-NULL = the parent strategy this line continues from. The branched
+        # strategies carry parent_id=seed_strategy_id so the discovery tree records the lineage.
+        _add_column_if_missing(cur, "app_agent_runs", "seed_strategy_id", "ALTER TABLE app_agent_runs ADD COLUMN seed_strategy_id BIGINT NULL")
         # Tau-RSI discovery tree: which prior hypothesis this one built on (NULL = root). Nullable
         # + unused for now (P1); the replay simulator and self-evolving policy populate it later.
         _add_column_if_missing(cur, "app_strategies", "parent_id", "ALTER TABLE app_strategies ADD COLUMN parent_id BIGINT NULL")

@@ -335,13 +335,41 @@ def create_run(ctx: Ctx):
     max_hyp = max(1, min(max_hyp, agent.MAX_BUDGET))
     run_forever = bool(ctx.body.get("run_forever"))
     cur = ctx.cur
-    _require_billing_ready(ctx, "researching")
-    if repo.count_runs(cur, ctx.uid, "research", active_only=True) >= MAX_ACTIVE_RESEARCH:
-        raise ApiError(429, "You already have %d agents researching. Wait for one to finish." % MAX_ACTIVE_RESEARCH)
-    if repo.count_runs(cur, ctx.uid, "research", since=repo.now_utc() - timedelta(days=1)) >= MAX_RESEARCH_PER_DAY:
-        raise ApiError(429, "Daily research limit reached (%d). It resets over the next 24 hours." % MAX_RESEARCH_PER_DAY)
+    _require_research_capacity(ctx)
     run_id = repo.create_run(cur, ctx.uid, "research", market, direction, idea,
                              max_hypotheses=max_hyp, run_forever=run_forever, model=model)
+    return {"id": run_id}
+
+
+def _require_research_capacity(ctx: Ctx) -> None:
+    """Billing + rate gates every research run must clear, whether it's a fresh idea or a
+    'dig deeper' branch off a passed strategy. One place so the two paths can't diverge."""
+    _require_billing_ready(ctx, "researching")
+    if repo.count_runs(ctx.cur, ctx.uid, "research", active_only=True) >= MAX_ACTIVE_RESEARCH:
+        raise ApiError(429, "You already have %d agents researching. Wait for one to finish." % MAX_ACTIVE_RESEARCH)
+    if repo.count_runs(ctx.cur, ctx.uid, "research", since=repo.now_utc() - timedelta(days=1)) >= MAX_RESEARCH_PER_DAY:
+        raise ApiError(429, "Daily research limit reached (%d). It resets over the next 24 hours." % MAX_RESEARCH_PER_DAY)
+
+
+def dig_deeper(ctx: Ctx):
+    """Continue research FROM a strategy the user already passed: branch a new pre-registered
+    research line off it (refine parameters within its mechanism, stress-test, extend the thesis)
+    instead of the passed strategy being a dead end. Same gates as any research run; the refined
+    variants go through the normal gatekeeper."""
+    s = _owned_strategy(ctx)
+    if s["status"] != "passed":
+        raise ApiError(409, "Only a strategy that passed its backtest can be researched deeper.")
+    model = ctx.body.get("model") or None
+    if model is not None and model not in catalog.MODELS:
+        raise ApiError(400, "Pick a model from the list, or leave it on the default.")
+    try:
+        max_hyp = int(ctx.body.get("max_hypotheses") or agent.DEFAULT_HYPOTHESES)
+    except (TypeError, ValueError):
+        max_hyp = agent.DEFAULT_HYPOTHESES
+    max_hyp = max(1, min(max_hyp, agent.MAX_BUDGET))
+    _require_research_capacity(ctx)
+    run_id = agent.dig_deeper_run(ctx.cur, ctx.uid, s, model=model,
+                                  max_hypotheses=max_hyp, run_forever=bool(ctx.body.get("run_forever")))
     return {"id": run_id}
 
 
@@ -1569,6 +1597,7 @@ ROUTES: List[Route] = [
         ("GET", r"/api/strategies/(\d+)", get_strategy, True),
         ("POST", r"/api/strategies/(\d+)/whatif", what_if, True),
         ("POST", r"/api/strategies/(\d+)/share", share_strategy, True),
+        ("POST", r"/api/strategies/(\d+)/dig-deeper", dig_deeper, True),
         ("GET", "/api/notifications", notifications, True),
         ("POST", "/api/notifications/read", mark_notifications_read, True),
         ("POST", "/api/ui-theme", set_ui_theme, True),

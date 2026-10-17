@@ -43,7 +43,7 @@ class Store:
                             lambda finalists, run, model, usage, log: [{"decision": "approve", "reason": "", "fixes": None} for _ in finalists])
 
     def _insert(self, cur, uid, run_id, parent, market, direction, title, thesis, spec, status, result):
-        self.strategies.append({"title": title, "status": status, "result": result, "spec": spec})
+        self.strategies.append({"title": title, "status": status, "result": result, "spec": spec, "parent": parent})
         return len(self.strategies)
 
     def _set_outcome(self, cur, strategy_id, status, result):
@@ -220,6 +220,56 @@ def test_plan_lookback_clamps_to_available_history():
     model, _ = scripted([big])
     days = agent._plan_lookback({"market": "btc15m", "prompt": "x"}, "btc15m", model, Usage(), lambda *a, **k: None)
     assert days == MARKETS["btc15m"].history_days      # never asks for more history than exists
+
+
+PASSED_PARENT = {
+    "id": 55, "title": "Overnight tail fade", "market": "btc15m", "direction": "volatility",
+    "status": "passed", "thesis": "Cheap far-OTM YES is overpriced overnight.",
+    "spec": {"side": "yes", "market": "btc15m", "entry": {"min_edge": 0.1}},
+    "result": {"in_sample": {"pnl": 42.0, "trades": 30}, "classification": "statistically_supported"},
+}
+
+
+def test_dig_deeper_seeds_a_research_line_from_a_passed_strategy(monkeypatch):
+    """Regression for the 'got stuck' follow-up: a run SEEDED from a passed strategy must run to
+    completion through the normal gatekeeper, and each branched strategy must link back to the
+    parent (discovery-tree lineage). Reproduces the exact seed path and asserts it progresses."""
+    store = Store(monkeypatch)
+    seeded = {
+        "id": 1, "user_id": 7, "market": "btc15m", "direction": "volatility",
+        "prompt": agent.dig_deeper_prompt(PASSED_PARENT), "max_hypotheses": 3,
+        "seed_strategy_id": 55,   # the passed strategy this line branches off
+    }
+    model, prompts = scripted([plan(), hyps(WINNER, LOSER), hyps(WINNER)])
+    agent.run_research(Conn(), seeded, model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    status, error, tried, passed = store.finished
+    assert status == "succeeded" and tried == 3 and passed >= 1          # completed, did not hang/crash
+    # No bypass: the refined variants still went through pre-registration + judging (passed/failed/rejected).
+    assert {s["status"] for s in store.strategies} <= {"passed", "failed", "rejected"}
+    # Lineage: every branched strategy points back at the seed strategy.
+    assert store.strategies and all(s["parent"] == 55 for s in store.strategies)
+    # The seed's thesis + starting spec are carried into the research prompt as the starting point.
+    assert "Dig deeper" in prompts[1] and "Overnight tail fade" in prompts[1]
+
+
+def test_copilot_research_action_branches_a_passed_strategy(monkeypatch):
+    created = []
+    r = agent.repo
+    monkeypatch.setattr(r, "get_strategy", lambda cur, uid, sid: dict(PASSED_PARENT) if sid == 55 else None)
+    monkeypatch.setattr(r, "count_runs", lambda *a, **k: 0)
+    monkeypatch.setattr(r, "create_run", lambda cur, uid, kind, market, direction, prompt, **kw: created.append((kind, market, kw.get("seed_strategy_id"))) or 7)
+    text, pid = agent.act(None, {"id": 7}, {"type": "research", "strategy_id": 55, "reason": "dig deeper"}, False)
+    assert pid is None                                   # research queues a run; it is not a proposal
+    assert created == [("research", "btc15m", 55)]       # a research run seeded from the passed strategy
+    assert "digging deeper" in text.lower()
+
+
+def test_copilot_research_action_refuses_a_strategy_that_did_not_pass(monkeypatch):
+    r = agent.repo
+    monkeypatch.setattr(r, "get_strategy", lambda cur, uid, sid: {**PASSED_PARENT, "status": "failed"})
+    monkeypatch.setattr(r, "create_run", lambda *a, **k: pytest.fail("must not start research on an unpassed strategy"))
+    text, pid = agent.act(None, {"id": 7}, {"type": "research", "strategy_id": 55, "reason": "x"}, False)
+    assert pid is None and "passed" in text
 
 
 def test_agent_picks_market_when_unspecified(monkeypatch):
