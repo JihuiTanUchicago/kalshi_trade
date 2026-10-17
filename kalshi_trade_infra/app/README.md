@@ -5,6 +5,10 @@ backtest gate the agent cannot game, paper-first deployment, and a co-pilot chat
 Product truth is in `../PRODUCT.md`; the operator console (`data_pipeline/dashboard_server.py`)
 is unchanged and separate.
 
+For the teammate deploying this code, see [API credentials and server injection](DEPLOYMENT_SECRETS.md).
+Massive and Exa keys are stored in encrypted GitHub Actions Secrets; a clone does
+not contain them. The guide covers Actions and the existing AWS secret loader.
+
 ## Source publication — October 17, 2026
 
 [PR #9](https://github.com/JihuiTanUchicago/kalshi_trade/pull/9) is merged on GitHub

@@ -1,5 +1,11 @@
 # PLAN
 
+## API credential deployment handoff — October 17, 2026, Asia/Shanghai
+
+- **Status:** encrypted GitHub sync verified / deployment handoff ready; advisory reservation released (`tau-api-secret-handoff-20261017`). The configured `MASSIVE_API_KEY` and `EXA_API_KEY` were stored as encrypted repository Actions Secrets; command success and subsequent name/timestamp reads confirm creation. Real `.env` stays ignored, untracked and mode 0600; its bytes are unchanged. No key value was logged, committed or passed in command arguments.
+- The user is not sure whether the teammate deploys through Actions or manual SSH/AWS. [Deployment-owner guide](app/DEPLOYMENT_SECRETS.md) explains both paths, non-downloadable GitHub secret values, point-in-time sync and the existing AWS SSM loader's broader effects (including callback overwrite and web/agent restarts). No deployment workflow or AWS parameter was created, provider flag changed, service restarted or paid provider/model call made. Alpaca/Databento keys were absent from the current product `.env`; no unrelated locations were searched.
+- **Verification:** infrastructure **878 passed / 9 skipped**; independent guide review corrected the explicit OAuth callback argument, otherwise no blocker. Guide links and selected-file private-value/PEM scan pass. Public provider Dev Logs stay planned; server injection and real production worker/provider acceptance remain under their existing rollout gates. [Handoff and receipt](results/api_secret_handoff_2026-10-17/HANDOFF.md).
+
 ## GitHub main publication — October 17, 2026, Asia/Shanghai
 
 - **Status:** merged on GitHub and synchronized locally; advisory reservation released (`tau-github-main-merge-20261017`). [PR #9](https://github.com/JihuiTanUchicago/kalshi_trade/pull/9) merged at `2026-10-17T13:41:58Z` as `1df5d4ff834374d15d4ca5d334798194367ce6d2`. GitHub main and the tested source tree were independently confirmed; no rules bypass.
