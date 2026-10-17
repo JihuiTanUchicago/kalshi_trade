@@ -257,12 +257,18 @@ def refresh(cur) -> Dict[str, int]:
     for market in MARKETS.values():
         if market.kind == "spot":  # no Kalshi contract series behind a TAO alpha token
             continue
-        cur.execute("SELECT MAX(close_time) AS t FROM hist_markets WHERE series_ticker=%s", (market.series,))
-        last_close = (cur.fetchone() or {}).get("t")
-        floor = now - timedelta(days=market.history_days)
-        since = max(last_close.replace(tzinfo=timezone.utc) - timedelta(hours=2), floor) if last_close else floor
-        stats[market.key + "_markets"] = sync_settled_markets(cur, market, since)
-        stats[market.key + "_candles"] = sync_market_candles(cur, market)
+        # Contained per market: with the catalog-driven universe this loop now covers ~100 series,
+        # so one series' API/DB hiccup must not abort the backfill for all the others (it just
+        # retries next pass). A crash here used to stale every market's history at once.
+        try:
+            cur.execute("SELECT MAX(close_time) AS t FROM hist_markets WHERE series_ticker=%s", (market.series,))
+            last_close = (cur.fetchone() or {}).get("t")
+            floor = now - timedelta(days=market.history_days)
+            since = max(last_close.replace(tzinfo=timezone.utc) - timedelta(hours=2), floor) if last_close else floor
+            stats[market.key + "_markets"] = sync_settled_markets(cur, market, since)
+            stats[market.key + "_candles"] = sync_market_candles(cur, market)
+        except Exception as e:
+            print("[market_history] %s sync failed: %r (retry next pass)" % (market.key, e), flush=True)
     return stats
 
 

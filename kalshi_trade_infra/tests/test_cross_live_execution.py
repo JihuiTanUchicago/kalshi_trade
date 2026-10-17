@@ -8,6 +8,7 @@ unwind itself under-fills, recording the still-naked remainder as a TRACKED posi
 drawdown guard closes it. These tests drive that logic with a scripted fake kernel and recorded
 repo writes (the same no-live-DB pattern as test_cross_contract.py).
 """
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -59,6 +60,23 @@ def _wire(monkeypatch):
 
     monkeypatch.setattr(engine.repo, "insert_position", _open)
     monkeypatch.setattr(engine.repo, "insert_closed_position", _closed)
+
+    # P0 durability wrapper: the merged _kernel_buy_pair logs an intent before each order and books
+    # inside one transaction claimed per leg. Stub those so these tests stay focused on legging logic
+    # (the intent/recovery machinery itself is covered in test_order_intent_recovery.py).
+    @contextmanager
+    def _tx(conn):
+        yield None  # cursor unused; insert_position/_closed shims ignore it
+    counter = {"n": 0}
+
+    def _log(conn, dep, action, side, ticker, qty, price, mode, **kw):
+        counter["n"] += 1
+        return "intent-%d" % counter["n"]
+
+    monkeypatch.setattr(engine.repo, "transaction", _tx)
+    monkeypatch.setattr(engine.repo, "claim_intent_booking", lambda *a, **k: True)
+    monkeypatch.setattr(engine.repo, "mark_order_intent", lambda *a, **k: True)
+    monkeypatch.setattr(engine, "_log_order_intent", _log)
     return rec
 
 
@@ -72,7 +90,7 @@ def _dep():
 def test_both_legs_fully_fill_records_balanced_pair(monkeypatch):
     rec = _wire(monkeypatch)
     kernel = _ScriptedKernel([(10, 0.40, 0.70), (10, 0.55, 0.90)])
-    ok = engine._kernel_buy_pair(object(), _dep(), kernel, _legs(), 10, "demo")
+    ok = engine._kernel_buy_pair(object(), object(), _dep(), kernel, _legs(), 10, "demo")
     assert ok is True
     assert len(kernel.intents) == 2                       # two buys, no unwind sell
     assert all(i.action == "buy" for i in kernel.intents)
@@ -90,7 +108,7 @@ def test_leg2_underfills_unwinds_excess_and_records_pair_at_min_qty(monkeypatch)
     rec = _wire(monkeypatch)
     # buy YES 10 @0.40 fee0.70 ; buy NO fills 7 @0.55 fee0.63 ; sell 3 excess YES @0.38 fee0.06.
     kernel = _ScriptedKernel([(10, 0.40, 0.70), (7, 0.55, 0.63), (3, 0.38, 0.06)])
-    ok = engine._kernel_buy_pair(object(), _dep(), kernel, _legs(), 10, "demo")
+    ok = engine._kernel_buy_pair(object(), object(), _dep(), kernel, _legs(), 10, "demo")
     assert ok is True
     # Three orders: two buys + ONE unwind sell of exactly the excess.
     assert len(kernel.intents) == 3
@@ -120,7 +138,7 @@ def test_leg2_fills_zero_unwinds_leg1_fully_and_returns_false(monkeypatch):
     rec = _wire(monkeypatch)
     # buy YES 10 @0.40 fee0.70 ; buy NO fills 0 ; sell all 10 YES @0.38 fee0.20.
     kernel = _ScriptedKernel([(10, 0.40, 0.70), (0, 0.55, 0.0), (10, 0.38, 0.20)])
-    ok = engine._kernel_buy_pair(object(), _dep(), kernel, _legs(), 10, "demo")
+    ok = engine._kernel_buy_pair(object(), object(), _dep(), kernel, _legs(), 10, "demo")
     assert ok is False                                   # no hedged pair opened
     assert rec["opens"] == []                            # no held positions -> flat
     assert len(rec["closeds"]) == 1                      # the whole round-trip booked
@@ -136,7 +154,7 @@ def test_leg2_fills_zero_unwinds_leg1_fully_and_returns_false(monkeypatch):
 def test_leg1_fills_zero_returns_false_with_no_second_order(monkeypatch):
     rec = _wire(monkeypatch)
     kernel = _ScriptedKernel([(0, 0.40, 0.0)])           # only the leg-1 buy is attempted
-    ok = engine._kernel_buy_pair(object(), _dep(), kernel, _legs(), 10, "demo")
+    ok = engine._kernel_buy_pair(object(), object(), _dep(), kernel, _legs(), 10, "demo")
     assert ok is False
     assert len(kernel.intents) == 1                      # leg 2 is never bought if leg 1 is empty
     assert rec["opens"] == [] and rec["closeds"] == []
@@ -149,7 +167,7 @@ def test_unwind_underfill_records_residual_as_tracked_position(monkeypatch):
     rec = _wire(monkeypatch)
     # buy YES 10 ; buy NO 7 (excess 3) ; unwind sell asks 3 but fills only 1 @0.38 fee0.02.
     kernel = _ScriptedKernel([(10, 0.40, 0.70), (7, 0.55, 0.63), (1, 0.38, 0.02)])
-    ok = engine._kernel_buy_pair(object(), _dep(), kernel, _legs(), 10, "demo")
+    ok = engine._kernel_buy_pair(object(), object(), _dep(), kernel, _legs(), 10, "demo")
     assert ok is True                                    # a hedged pair of 7 did open
     yes_opens = [o for o in rec["opens"] if o["side"] == "yes"]
     no_opens = [o for o in rec["opens"] if o["side"] == "no"]

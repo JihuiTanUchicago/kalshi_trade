@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import bisect
 import math
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -49,25 +50,14 @@ class Market:
     # backtest.simulate_spot; it has no strike/expiry/settlement, so the binary feature and
     # fair-value math never runs on it. simulate() routes on this field exactly once.
     kind: str = "binary"
+    # Human-facing group for the research picker (Sports / Weather / Economics / …). The
+    # curated crypto markets carry "Crypto"; catalog-generated markets inherit Kalshi's own
+    # series category. Purely a display/grouping field - no engine logic reads it.
+    category: str = ""
 
     @property
     def decision_seconds(self) -> int:
         return self.candle_minutes * 60
-
-    @property
-    def category(self) -> str:
-        """Grouping label for the research market picker. Derived from the
-        market's own fields so a new market self-categorises with no extra
-        bookkeeping: a spot instrument is the TAO subnet-alpha research venue;
-        a binary with no underlying price settles on a real-world outcome (today
-        only the NBA moneyline); everything else is a crypto strike ladder.
-        Split the outcome bucket here (by series) when non-sports event markets
-        land - this is the one place category is decided."""
-        if self.kind == "spot":
-            return "Bittensor"
-        if self.underlying is None:
-            return "Sports"
-        return "Crypto"
 
     def is_target_event(self, close_time: datetime) -> bool:
         if self.close_hour_et is None:
@@ -76,23 +66,26 @@ class Market:
         return ct.astimezone(NEW_YORK).hour == self.close_hour_et
 
 
-MARKETS: Dict[str, Market] = {
+# The 19 CURATED markets - hand-tuned config (strike/spot/close-hour) that can't be derived
+# from the catalog. These are authoritative and never generated; catalog markets merge on top
+# of them (see MARKETS below) and can never shadow one (their series are excluded from generation).
+CURATED: Dict[str, Market] = {
     # Deployable: live feed + execution path exist, so the engine trades these.
     "btc15m": Market("btc15m", "KXBTC15M", "Bitcoin 15-minute", candle_minutes=1, history_days=30,
-                     underlying="BTC-USD", deployable=True),
+                     underlying="BTC-USD", deployable=True, category="Crypto"),
     "btc_daily": Market("btc_daily", "KXBTCD", "Bitcoin daily close, 5pm EDT", candle_minutes=60,
-                        history_days=60, close_hour_et=17, underlying="BTC-USD", deployable=True),
+                        history_days=60, close_hour_et=17, underlying="BTC-USD", deployable=True, category="Crypto"),
     # Deployable crypto: same strike-ladder + spot-price model as BTC. The live engine prices
     # each from its own Coinbase product (engine.fetch_spot_series) and places orders on its
     # Kalshi series exactly like BTC - a strategy still only trades once a user deploys it.
     "eth15m": Market("eth15m", "KXETH15M", "Ethereum 15-minute", candle_minutes=1, history_days=30,
-                     underlying="ETH-USD", deployable=True),
+                     underlying="ETH-USD", deployable=True, category="Crypto"),
     "eth_daily": Market("eth_daily", "KXETHD", "Ethereum daily close, 5pm EDT", candle_minutes=60,
-                        history_days=60, close_hour_et=17, underlying="ETH-USD", deployable=True),
+                        history_days=60, close_hour_et=17, underlying="ETH-USD", deployable=True, category="Crypto"),
     "sol_daily": Market("sol_daily", "KXSOLD", "Solana daily close, 5pm EDT", candle_minutes=60,
-                        history_days=60, close_hour_et=17, underlying="SOL-USD", deployable=True),
+                        history_days=60, close_hour_et=17, underlying="SOL-USD", deployable=True, category="Crypto"),
     "xrp_daily": Market("xrp_daily", "KXXRPD", "XRP daily close, 5pm EDT", candle_minutes=60,
-                        history_days=60, close_hour_et=17, underlying="XRP-USD", deployable=True),
+                        history_days=60, close_hour_et=17, underlying="XRP-USD", deployable=True, category="Crypto"),
     # Deployable SPORTS market. Kalshi's per-game NBA moneyline (series KXNBAGAME) is a binary
     # YES/NO that settles on the game result - structurally like the crypto binaries, but with NO
     # strike and NO underlying price feed (underlying=None). It trades on the contract's own
@@ -100,7 +93,7 @@ MARKETS: Dict[str, Market] = {
     # prices it from the Kalshi book alone (no Coinbase spot) and places orders the same way.
     # A strategy only reaches live after passing research AND proving on paper on this same feed.
     "nba_game": Market("nba_game", "KXNBAGAME", "NBA game winner (moneyline)", candle_minutes=1,
-                       history_days=30, underlying=None, deployable=True),
+                       history_days=30, underlying=None, deployable=True, category="Sports"),
     # More deployable CRYPTO, 15-minute "up/down in the next 15 min" (series KX<COIN>15M). Structurally
     # identical to btc15m/eth15m: one ATM-ish strike per window, priced strike-vs-spot off the coin's own
     # Coinbase product (engine.fetch_spot_series). Chosen because each has a live Coinbase USD spot feed
@@ -108,17 +101,17 @@ MARKETS: Dict[str, Market] = {
     # YES/NO) — so the collector fills hist_markets + candlesticks and the backtest/live paths just work.
     # (KXADA15M / KXBCH15M were EXCLUDED: their 15M ladders are dormant — zero settled markets to collect.)
     "sol15m": Market("sol15m", "KXSOL15M", "Solana 15-minute", candle_minutes=1, history_days=30,
-                     underlying="SOL-USD", deployable=True),
+                     underlying="SOL-USD", deployable=True, category="Crypto"),
     "xrp15m": Market("xrp15m", "KXXRP15M", "XRP 15-minute", candle_minutes=1, history_days=30,
-                     underlying="XRP-USD", deployable=True),
+                     underlying="XRP-USD", deployable=True, category="Crypto"),
     "doge15m": Market("doge15m", "KXDOGE15M", "Dogecoin 15-minute", candle_minutes=1, history_days=30,
-                      underlying="DOGE-USD", deployable=True),
+                      underlying="DOGE-USD", deployable=True, category="Crypto"),
     "near15m": Market("near15m", "KXNEAR15M", "NEAR 15-minute", candle_minutes=1, history_days=30,
-                      underlying="NEAR-USD", deployable=True),
+                      underlying="NEAR-USD", deployable=True, category="Crypto"),
     "zec15m": Market("zec15m", "KXZEC15M", "Zcash 15-minute", candle_minutes=1, history_days=30,
-                     underlying="ZEC-USD", deployable=True),
+                     underlying="ZEC-USD", deployable=True, category="Crypto"),
     "hype15m": Market("hype15m", "KXHYPE15M", "Hyperliquid (HYPE) 15-minute", candle_minutes=1,
-                      history_days=30, underlying="HYPE-USD", deployable=True),
+                      history_days=30, underlying="HYPE-USD", deployable=True, category="Crypto"),
     # Deployable SPORTS (outcome-settled, underlying=None): per-game moneyline series, structurally the
     # same binary YES/NO as KXNBAGAME — no strike, no spot, so the live tick and backtest price them on
     # the contract's own price/order-book features alone and settle on the game result (engine.fetch_result).
@@ -126,22 +119,22 @@ MARKETS: Dict[str, Market] = {
     # (KXNCAABGAME excluded: season not started — 0 settled; KXWNBAGAME excluded: off-season + "scalar"
     # result type the yes/no settlement path can't resolve.)
     "nfl_game": Market("nfl_game", "KXNFLGAME", "NFL game winner (moneyline)", candle_minutes=1,
-                       history_days=30, underlying=None, deployable=True),
+                       history_days=30, underlying=None, deployable=True, category="Sports"),
     "nhl_game": Market("nhl_game", "KXNHLGAME", "NHL game winner (moneyline)", candle_minutes=1,
-                       history_days=30, underlying=None, deployable=True),
+                       history_days=30, underlying=None, deployable=True, category="Sports"),
     "ncaaf_game": Market("ncaaf_game", "KXNCAAFGAME", "College football game winner", candle_minutes=1,
-                         history_days=30, underlying=None, deployable=True),
+                         history_days=30, underlying=None, deployable=True, category="Sports"),
     "mlb_game": Market("mlb_game", "KXMLBGAME", "MLB game winner (moneyline)", candle_minutes=1,
-                       history_days=30, underlying=None, deployable=True),
+                       history_days=30, underlying=None, deployable=True, category="Sports"),
     "epl_game": Market("epl_game", "KXEPLGAME", "English Premier League game result", candle_minutes=1,
-                       history_days=30, underlying=None, deployable=True),
+                       history_days=30, underlying=None, deployable=True, category="Sports"),
     # Deployable WEATHER (outcome-settled, underlying=None): daily high-temperature ladder for one city
     # (series KXHIGHNY). A binary YES/NO ("83F or above") settling on the day's observed high — no tradable
     # spot series, so it trades on the book-feature model exactly like sports. Daily cadence gives a usable
     # backtest surface (unlike monthly econ releases, which are too sparse and were excluded). candle_minutes
     # =60: a weather market lives ~1 day, so hourly decisions over the day; no close-hour filter (one event/day).
     "high_ny": Market("high_ny", "KXHIGHNY", "NYC daily high temperature", candle_minutes=60,
-                      history_days=60, underlying=None, deployable=True),
+                      history_days=60, underlying=None, deployable=True, category="Weather"),
     # Research-only SPOT markets (kind="spot", deployable=False): Bittensor subnet alpha tokens.
     # These are a continuous price series (alpha priced in TAO via the subnet's AMM pool ratio),
     # NOT a Kalshi binary - no strike, no expiry, no settlement. `underlying` is the token's own
@@ -150,15 +143,15 @@ MARKETS: Dict[str, Market] = {
     # hourly/daily, not 1-minute); drop it to 1 per market if a plan ever exposes minute data.
     # Execution is BLOCKED (on-chain AMM only, no order API, no native short) - research only.
     "tao_sn64": Market("tao_sn64", "TAO_SN64", "Bittensor SN64 (Chutes) alpha", candle_minutes=60,
-                       history_days=180, underlying="TAO-SN64", deployable=False, kind="spot"),
+                       history_days=180, underlying="TAO-SN64", deployable=False, kind="spot", category="Bittensor"),
     "tao_sn19": Market("tao_sn19", "TAO_SN19", "Bittensor SN19 (Nineteen) alpha", candle_minutes=60,
-                       history_days=180, underlying="TAO-SN19", deployable=False, kind="spot"),
+                       history_days=180, underlying="TAO-SN19", deployable=False, kind="spot", category="Bittensor"),
     "tao_sn8": Market("tao_sn8", "TAO_SN8", "Bittensor SN8 (PTN / Taoshi) alpha", candle_minutes=60,
-                      history_days=180, underlying="TAO-SN8", deployable=False, kind="spot"),
+                      history_days=180, underlying="TAO-SN8", deployable=False, kind="spot", category="Bittensor"),
     "tao_sn4": Market("tao_sn4", "TAO_SN4", "Bittensor SN4 (Targon) alpha", candle_minutes=60,
-                      history_days=180, underlying="TAO-SN4", deployable=False, kind="spot"),
+                      history_days=180, underlying="TAO-SN4", deployable=False, kind="spot", category="Bittensor"),
     "tao_sn56": Market("tao_sn56", "TAO_SN56", "Bittensor SN56 (Gradients) alpha", candle_minutes=60,
-                       history_days=180, underlying="TAO-SN56", deployable=False, kind="spot"),
+                       history_days=180, underlying="TAO-SN56", deployable=False, kind="spot", category="Bittensor"),
 }
 
 # The USD/TAO rate series (taostats Price group) every subnet alpha is denominated against, so
@@ -182,6 +175,152 @@ def compatible_cadence(market_keys: Sequence[str]) -> bool:
     """True iff every market shares one decision cadence (see cadence_key) - the precondition for
     a cross-market pair to be backtested on one merged frame and ticked on one live frame."""
     return len({cadence_key(k) for k in market_keys}) <= 1
+
+
+# -- catalog-driven universe (outcome-settled markets) -------------------------
+# The 19 CURATED markets need hand-tuned, non-derivable config (strike/spot/close-hour), so they
+# are never generated. But OUTCOME-SETTLED binaries (underlying=None, book-only, settle YES/NO on
+# an event - exactly the nba_game model) have UNIFORM, derivable config, so we generate deployable
+# Market entries straight from Kalshi's own series catalog (`kalshi_series`, enriched with category
+# + frequency by catalog_collector). This is read once at import (best-effort: any failure, or an
+# empty/un-enriched catalog, falls back to CURATED only - never crashes). New catalog series appear
+# on the next process restart; a running engine/server keeps the universe it loaded.
+
+# Recurrence classes with a real backtest surface. one_off / annual (single election, single award)
+# and the sparse monthly/quarterly have too few settled events to research, so they are excluded.
+# `custom` stays in because sports game-lines (like the curated nba_game) are frequency="custom";
+# the open-markets floor below screens out the custom one-shots that have a single live contract.
+RECURRING_FREQ = frozenset({"fifteen_min", "hourly", "daily", "weekly", "custom"})
+
+# Categories that settle YES/NO on a published event and fit the book-only model. EXCLUDED on
+# purpose: "Crypto" (curated, and priced off a spot ladder we already model) and "Financials"
+# (intraday index strike-ladders whose edge needs a live underlying feed Tau doesn't have) - the
+# task's "strike-ladder series that need a spot underlying" carve-out. Elections/Politics/
+# Entertainment are left out too: mostly one_off and subjective/disputed settlement.
+ALLOWED_CATEGORIES = frozenset({
+    "Sports", "Climate and Weather", "Economics", "Commodities",
+    "Science and Technology", "Companies", "Health", "World", "Transportation",
+})
+
+# Decision cadence + candle granularity, and backtest lookback, by recurrence. Long-open markets
+# (daily/weekly) decide hourly (60) so one market isn't 1,440 one-minute candles/day; fast ones
+# (sports games, intraday) decide at 1-minute like nba_game. history_days is bounded so the
+# collector's one-time backfill over ~100 new series stays feasible under the ~20 req/s limit.
+_FREQ_CANDLE = {"fifteen_min": 1, "hourly": 15, "daily": 60, "weekly": 60, "custom": 1}
+_FREQ_HISTORY = {"fifteen_min": 14, "hourly": 21, "daily": 45, "weekly": 120, "custom": 45}
+
+# Liquidity / activeness floor and the hard cap on how many markets we generate. Prioritized by
+# open_markets (liquidity + a recurrence proxy: an active recurring template always has several
+# concurrent contracts). Both env-tunable so the box can be throttled without a code change.
+CATALOG_MIN_OPEN = int(os.getenv("CATALOG_MIN_OPEN", "2"))
+CATALOG_MAX_MARKETS = int(os.getenv("CATALOG_MAX_MARKETS", "150"))
+# Sports has ~3,000 candidate series vs ~50 for Commodities, so pure liquidity ordering would
+# fill the whole cap with one category. A per-category ceiling keeps the universe diverse (the
+# task's "sensible set") without starving the thin-but-clean book-only markets (weather/econ).
+CATALOG_MAX_PER_CATEGORY = int(os.getenv("CATALOG_MAX_PER_CATEGORY", "40"))
+# Escape hatch: set to "1" to run on the curated 19 only (e.g. to reproduce a bug offline).
+CATALOG_DISABLED = os.getenv("TAU_DISABLE_CATALOG_MARKETS") == "1"
+
+# Curated series are authoritative and never regenerated (the SQL excludes them too).
+_CURATED_SERIES = frozenset(m.series for m in CURATED.values())
+
+
+def _market_key(series_ticker: str) -> str:
+    """A stable, spec-safe market key from a series ticker (lower snake, no punctuation)."""
+    return "".join(c if c.isalnum() else "_" for c in series_ticker.lower()).strip("_")
+
+
+def market_from_series(row: Dict) -> Optional[Market]:
+    """Build one deployable outcome-settled Market from a `kalshi_series` row, or None if the row
+    doesn't qualify. Pure (no DB/network) so it is unit-testable and the SQL filter and this guard
+    agree. `row` needs: series_ticker, title, category, frequency, open_markets."""
+    series = (row.get("series_ticker") or "").strip()
+    freq = (row.get("frequency") or "").strip()
+    category = (row.get("category") or "").strip()
+    if not series or "MVE" in series.upper():   # multi-leg parlay series don't fit one-contract book model
+        return None
+    # SCALAR guard. The engine's fetch_result only resolves YES/NO, so a scalar (numeric-settled)
+    # series can't settle and must never be generated. In today's Kalshi data every market is
+    # market_type="binary" with a yes/no result (verified: 22k open + 10k settled sampled, 100%
+    # binary/yes-no), so the catalog supplies no market_type and this never fires - but if Kalshi
+    # adds scalar series and the collector starts recording it, a non-binary row is rejected here.
+    mtype = (row.get("market_type") or "binary").strip().lower()
+    if mtype and mtype != "binary":
+        return None
+    if freq not in RECURRING_FREQ or category not in ALLOWED_CATEGORIES:
+        return None
+    try:
+        if int(row.get("open_markets") or 0) < CATALOG_MIN_OPEN:
+            return None
+    except (TypeError, ValueError):
+        return None
+    key = _market_key(series)
+    if not key or key in CURATED or series in _CURATED_SERIES:
+        return None
+    label = (row.get("title") or series).strip()[:120] or series
+    return Market(
+        key=key, series=series, label=label,
+        candle_minutes=_FREQ_CANDLE.get(freq, 60),
+        history_days=_FREQ_HISTORY.get(freq, 45),
+        underlying=None,        # outcome-settled: no spot, book-only (the nba_game model)
+        deployable=True,        # ELIGIBLE to trade; every per-deployment gate still runs
+        kind="binary",
+        category=category,
+    )
+
+
+def load_catalog_markets() -> Dict[str, Market]:
+    """Catalog-generated outcome-settled markets from the enriched `kalshi_series` table, keyed by
+    market key. Best-effort: no DB env, an empty/un-enriched catalog, or any error → {} (caller
+    falls back to CURATED only). Never raises, never touches the network."""
+    if CATALOG_DISABLED:
+        return {}
+    curated_series = {m.series for m in CURATED.values()}
+    try:
+        from app import catalog_repository
+        from data_pipeline.common import get_db_conn
+    except Exception:
+        return {}
+    conn = None
+    try:
+        conn = get_db_conn()
+        with conn.cursor() as cur:
+            # Fetch more than the cap (still bounded: kalshi_series is only a few hundred rows) so
+            # the per-category ceiling below has room to pick a diverse set, not just the top N.
+            rows = catalog_repository.deployable_series(
+                cur, curated_series, CATALOG_MIN_OPEN, max(CATALOG_MAX_MARKETS * 5, 500),
+                sorted(ALLOWED_CATEGORIES), sorted(RECURRING_FREQ),
+            )
+    except Exception:
+        return {}
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    # Rows arrive most-liquid first. Keep liquidity priority but cap per category, and stop at the
+    # global cap - a diverse, bounded universe (see CATALOG_MAX_PER_CATEGORY).
+    out: Dict[str, Market] = {}
+    per_cat: Dict[str, int] = {}
+    for row in rows:
+        if len(out) >= CATALOG_MAX_MARKETS:
+            break
+        m = market_from_series(row)
+        if m is None or m.key in out:
+            continue
+        if per_cat.get(m.category, 0) >= CATALOG_MAX_PER_CATEGORY:
+            continue
+        out[m.key] = m
+        per_cat[m.category] = per_cat.get(m.category, 0) + 1
+    return out
+
+
+# The live universe every caller iterates: catalog-generated markets with the 19 CURATED entries
+# layered ON TOP (curated is authoritative and can never be shadowed). A plain dict of Market, so
+# nothing downstream changes shape. Empty/missing catalog → just the curated 19.
+MARKETS: Dict[str, Market] = dict(load_catalog_markets())
+MARKETS.update(CURATED)
 
 FEATURES: Dict[str, str] = {
     "spot": "BTC price (USD)",

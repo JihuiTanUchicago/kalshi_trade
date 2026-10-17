@@ -1,5 +1,46 @@
 # PLAN
 
+## Broadened co-pilot autonomy — risk/execution/param control within safe bounds — October 17, 2026 (worktree, not deployed)
+
+The autopilot/co-pilot now manages the whole operation, not just pause/stop, while every money/risk
+value it sets stays inside a hard-clamped envelope.
+
+New `agent.act()` action kinds (each a logged, reversible proposal via `create_proposal`; applied
+immediately only under autopilot, else pending the user's approval — the existing pattern):
+- `set_risk` → `repo.set_user_risk_config` writes `drawdown_limit_pct` / `max_open_positions` /
+  `max_open_notional`. Clamped to `agent.RISK_BOUNDS`: drawdown_limit_pct ∈ [1, 50] (never 0, so a
+  stop can't be disabled; ≤50 so it always bites), max_open_positions ∈ [1, 50], max_open_notional
+  ∈ [1, 5000]. These feed the existing engine force-sell + portfolio caps unchanged.
+- `set_exec` → `repo.set_user_execution_config`. NEW per-user override layer: three nullable
+  `app_users.exec_*` columns the live `live_kernel_factory.make()` reads FIRST, falling back to the
+  `KALSHI_MAX_*` env defaults when NULL. Clamped to `agent.EXEC_BOUNDS`: book_fraction ∈ [0.01,0.50],
+  entry_spread ∈ [0.01,0.25], order_notional ∈ [1,500]. Each kernel knob can only shrink/abandon an
+  order and never blocks an exit, so a set value never weakens safety.
+- `research` extended: besides dig-deeper off a passed strategy, it can now start a FRESH line
+  (`market` + `idea`) through `repo.create_run(kind="research")` — the identical RSI pipeline
+  (proposer → gatekeeper → one-time holdout) a manual Research-page run uses, no narrowing.
+- `adjust` already tunes strategy/model spec params (re-validated + re-backtested); surfaced as a
+  first-class capability in the prompt.
+
+Clamping is enforced in `agent._clamp_into` at BOTH the action site and in `apply_proposal`
+(defensive re-clamp on approval). `create_proposal`/`get_proposal` gained a JSON `payload` column
+(the clamped change set to apply on approval). Proposal `kind` uses `set_exec` (not "set_execution")
+to fit the existing `VARCHAR(12)`.
+
+Immutable backstop, untouched and in order: `APP_LIVE_TRADING_ENABLED` / `APP_NO_SIDE_LIVE_ENABLED`
+flags, every deploy_live gate (`_is_deployment_candidate`, LIVE switch, Kalshi key, typed confirm,
+`_proven_on_paper`, `live_autopilot_ok`), the loss budget + daily-loss kill switch, and the
+drawdown/portfolio force-sell. Also killed the stale "YES-side only" copy (server.py autopilot_live
+message, app.js panel, schema comment): any side is promotable once `NO_SIDE_LIVE_ENABLED` is on,
+with the "being validated" fallback only when it's off.
+
+`position_stop_pct` (named in the task) was deliberately NOT added: it has no enforcement path in
+the engine, and a knob the agent could "set" that does nothing would be a safety illusion. The real
+per-deployment stop is `drawdown_limit_pct`.
+
+Tests: `tests/test_app_agent_autonomy.py` (clamps, proposal-vs-applied, fresh research, defensive
+re-clamp). Full suite green (529 passed / 9 skipped).
+
 ## Cross-contract research + cross-day gatekeeper — October 16, 2026 (worktree, research/eval only)
 
 Builds §E.6: cross-contract relative value, sequenced AFTER the gatekeeper, with per-market
@@ -242,6 +283,30 @@ Key empirical findings that shaped the design:
 - **Alignment:** one `snapshot_minute_utc` set once per scan, stamped on every row → all contracts
   share an aligned timestamp (cross-contract joins work); parallel fetch keeps the real window ~30s.
 - **Storage:** S3 + Parquet (Snappy), `s3://kalshi-trade-datalake-.../snapshots_1m/dt=.../minute=.../part.parquet`.
+### STATUS (2026-10-17) — Catalog-DRIVEN outcome-settled universe BUILT (not yet deployed)
+The 19 curated markets need hand-tuned, non-derivable config (strike/spot/close-hour), so they
+stay authored by hand. But OUTCOME-SETTLED binaries (underlying=None, book-only, settle YES/NO on
+an event — the `nba_game` model) have uniform, derivable config, so they're now GENERATED from the
+catalog:
+- `app/markets.py`: `MARKETS` = catalog-generated set + the 19 `CURATED` layered on top (authoritative,
+  never shadowed). `load_catalog_markets()` reads the enriched `kalshi_series` at import, best-effort
+  (no DB / empty / un-enriched catalog → just the curated 19; never raises, never hits the network).
+  `market_from_series()` is the pure, testable config-derivation. SQL lives in `app/catalog_repository.py`.
+- Generation filter (all derivable from the catalog): recurring frequency (fifteen_min/hourly/daily/
+  weekly/custom — excludes one_off/annual/sparse monthly+quarterly), allowed category (Sports, Weather,
+  Economics, Commodities, Sci/Tech, Companies, Health, World, Transportation — EXCLUDES Crypto [curated,
+  spot-ladder] and Financials [index strike-ladders needing a spot feed]), open_markets ≥ 2, non-MVE,
+  non-curated, non-scalar. Bounded: ≤150 total, ≤40/category, liquidity-ordered (all env-tunable).
+- `catalog_collector.refresh_series_meta()` enriches `kalshi_series` with Kalshi's own category+frequency
+  via ONE bulk `/series` call; `kalshi_series` gained a `frequency` column (init_schema DDL + migration).
+- Eager collection: `market_history.refresh` already loops `MARKETS`; each series is now contained in
+  try/except so one failing series never stalls the backfill for the rest. The ~100-series one-time
+  backfill is heavy but rate-limited (KALSHI_PAUSE); research fails closed until a market's data lands.
+- Live path unchanged: generated markets ride the exact `nba_game` engine path; `deployable=True` only
+  makes them ELIGIBLE — every per-deployment gate (gatekeeper, LIVE switch, key, typed confirm, NO-side,
+  drawdown, autopilot) still runs, in order. TAO stays research-only. No gate weakened.
+- Deploy sequence: deploy → `init_schema` → `catalog_collector` enriches → restart engine/market_history.
+
 ### STATUS (2026-10-14) — Phase 3 crypto backtest SHIPPED (research-only)
 The backtester now runs on any strike-ladder crypto series, not just BTC:
 - `Market` gained `underlying` (Coinbase product) + `deployable`. `MARKETS` now has BTC
