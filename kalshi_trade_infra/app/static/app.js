@@ -563,7 +563,18 @@
   function equityChart(curve, cutoffIso, devCurve) {
     const W = 760, H = 236, L = 52, R = 10, T = 30, B = 26;
     if (!curve || curve.length < 2) return `<div class="empty"><p>Not enough trades to draw an equity curve.</p></div>`;
-    const dev = devCurve && devCurve.length > 1 ? devCurve : null;
+    const dev0 = devCurve && devCurve.length > 1 ? devCurve : null;
+    // Anchor the real demo-replay to the simulated line at its first timestamp, so both read as
+    // cumulative P&L from the same point — the real line diverges from the sim there instead of
+    // floating near $0 and looking like a disconnected stub.
+    let dev = dev0;
+    if (dev0) {
+      const dt0 = dev0[0][0];
+      let simAt = curve[0][1];
+      for (const [t, v] of curve) { if (t <= dt0) simAt = v; else break; }
+      const off = simAt - dev0[0][1];
+      dev = dev0.map(([t, v]) => [t, v + off]);
+    }
     const all = dev ? curve.concat(dev) : curve;
     const t0 = Math.min(...all.map((p) => p[0])), t1 = Math.max(...all.map((p) => p[0]));
     const vals = all.map((p) => p[1]);
