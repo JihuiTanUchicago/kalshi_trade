@@ -934,10 +934,10 @@
         ${d.status === 'paused' ? `<button class="btn sm" data-dep="${d.id}" data-act="resume">Resume</button>` : ''}
         <button class="btn sm danger" data-dep="${d.id}" data-act="stop">Stop</button></td>` : '';
     return `<tr class="${live ? 'live-row' : ''}">
-      <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a> ${modeTag}
+      <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
         <div class="sub-fig">$${esc(d.stake)} a trade, up to ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' \u00b7 ' + esc(d.status_reason) : ''}</div></td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(d.market))}</span></td>
-      <td data-lab="Status">${mark(d.status, live)}</td>
+      <td data-lab="Status">${d.status === 'running' ? modeTag : mark(d.status, live)}</td>
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}</td>
       <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? '<span class="sub-fig">—</span>' : money(d.unrealized_pnl)}${d.unrealized_pnl != null && d.open_positions ? '<div class="sub-fig">est.</div>' : ''}</td>
       <td class="num" data-lab="Trades">${d.closed_trades}${d.open_positions ? `<div class="sub-fig">+${d.open_positions} open</div>` : ''}</td>
