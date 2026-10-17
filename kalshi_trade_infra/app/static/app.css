@@ -529,6 +529,14 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
 .kv dd { margin: 0; font-weight: 600; text-align: right; }
 .steps { margin: 0 0 14px; padding-left: 18px; color: var(--ink-2); font-size: 13px; display: grid; gap: 4px; }
 
+/* Funds reads as one calm settings column: a constrained, centred track with the
+   summary tiles on top and the four accounts stacked Live → Demo → Paper → History,
+   each a full-width card on an even rhythm so nothing leaves a ragged gap. */
+.funds-page { max-width: 720px; }
+.funds-page .measure { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.funds-page .funds { grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 18px; }
+.funds-page .funds > .panel { margin-top: 0; }
+
 .washed { animation: wash .5s var(--ease) 1; }
 @keyframes wash { from { background-color: var(--rule-2); } to { background-color: transparent; } }
 
@@ -547,6 +555,11 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   .measure { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .measure > .m { border-left: 0; padding: 12px 0 11px; }
   .measure > .m:nth-child(even) { padding-left: 16px; border-left: 1px solid var(--rule); }
+  /* Funds tiles stack into one clean list rather than a 2 + 1 orphan. */
+  .funds-page .measure { grid-template-columns: minmax(0, 1fr); }
+  .funds-page .measure > .m, .funds-page .measure > .m:nth-child(even) { border-left: 0; padding: 13px 0 12px; }
+  .funds-page .measure > .m:first-child { padding-top: 0; }
+  .funds-page .measure > .m + .m { border-top: 1px solid var(--rule); }
   .sheet { margin: 0 calc(var(--gut) * -1); padding: 0 var(--gut); }
   .amount { grid-template-columns: 1fr 1fr; }
   .amount .field { grid-column: 1 / -1; }
