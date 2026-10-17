@@ -1,0 +1,9 @@
+{
+  "github_metadata_available": true,
+  "oauth_secret_names_present": {
+    "ALPACA_OAUTH_CLIENT_ID": false,
+    "ALPACA_OAUTH_CLIENT_SECRET": false
+  },
+  "secret_values_read": false,
+  "github_mutated": false
+}

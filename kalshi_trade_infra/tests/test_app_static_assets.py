@@ -36,3 +36,16 @@ def test_font_support_keeps_missing_files_and_non_assets_inaccessible(path):
     headers, body = static_response(path)
     assert headers[0] == 404
     assert body == b'Not found'
+
+
+def test_broker_assets_are_versioned_and_loaded_before_app_boot():
+    headers, body = static_response('/settings/account')
+    html = body.decode()
+    assert headers[0] == 200
+    versions = server._static_versions()
+    assert '/static/broker-connections.js?v=' + versions['broker-connections.js'] in html
+    assert '/static/broker-connections.css?v=' + versions['broker-connections.css'] in html
+    assert '{{brokers_' not in html
+    assert html.index('/static/broker-connections.js') < html.index('/static/boot.js')
+    asset_headers, js = static_response('/static/broker-connections.js')
+    assert asset_headers[0] == 200 and b'TauBrokerConnections' in js

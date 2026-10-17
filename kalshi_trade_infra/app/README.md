@@ -6,11 +6,38 @@ Product truth is in `../PRODUCT.md`; the operator console (`data_pipeline/dashbo
 is unchanged and separate.
 
 For the teammate deploying this code, see [API credentials and server injection](DEPLOYMENT_SECRETS.md).
-Alpaca, Massive, Databento and Exa credentials are stored as five encrypted GitHub
+Alpaca, Massive, Databento and Exa market-data/news credentials use five encrypted GitHub
 Actions Secrets; a clone does not contain them. Tau’s ignored private `.env` also
 contains the configured keys. The guide covers explicit runtime injection through
 Actions or AWS, including the existing loader’s Alpaca limitation. No provider or
 production service was activated by the credential sync.
+
+## Broker account authorization — local implementation
+
+Source is available for review in [PR #10](https://github.com/JihuiTanUchicago/kalshi_trade/pull/10).
+The teammate should follow [the deployment guide](BROKER_OAUTH_DEPLOYMENT.md);
+main merge, production installation and real consent remain pending.
+
+Settings → Account adds Alpaca Connect, Robinhood Trading MCP and approved IBKR
+OAuth1a connections, with session-bound state and encrypted per-user grants.
+Alpaca defaults to paper/read access; order authorization is an explicit option.
+Existing data keys are separate from OAuth client credentials. Provider app
+registration, real consent, database migration and production acceptance remain
+required. This does not enable Tau trading or invoke broker order tools.
+See [broker setup, API contract and acceptance](BROKER_OAUTH.md).
+
+Latest Alpaca check: OAuth client ID/secret are present in the private local env;
+112 focused offline tests and paper/data authorization URL construction pass.
+The public broker callback and asset return 404, so the new code is not available
+there yet. Local `APP_SECRET_KEY` is absent; production must retain its persistent
+key. Deployment/runtime injection, migration and genuine consent remain pending.
+[Configuration and public-readiness receipts](../results/broker_oauth_2026-10-17/credentials_2026-10-17/HANDOFF.md).
+The Alpaca OAuth pair is now encrypted in GitHub Secrets (seven names total).
+Production deployment is assigned to the teammate. The [operator guide](BROKER_OAUTH_DEPLOYMENT.md)
+provides source, private credential access, the broker-only migration, whole-app
+installation, verification and rollback, with full 1,020 Python / 55 frontend
+checks passing. No production
+service or database has changed. [Rollout handoff](../results/broker_oauth_2026-10-17/production_2026-10-17/HANDOFF.md).
 
 ## Source publication — October 17, 2026
 

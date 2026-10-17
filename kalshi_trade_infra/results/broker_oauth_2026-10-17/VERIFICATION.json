@@ -1,0 +1,93 @@
+{
+  "timestamp": "2026-10-17T22:29:53+08:00",
+  "status": "implemented locally / offline verified / provider onboarding and production acceptance pending",
+  "baseline_commit": "a5d55287faba9d0659186fa406afd4fe60191a4f",
+  "python": {
+    "command": "TAU_ALPACA_ENABLED=0 TAU_MASSIVE_ENABLED=0 TAU_DATABENTO_ENABLED=0 TAU_EXA_ENABLED=0 TAU_WORLDMONITOR_ENABLED=0 APP_TEST_MYSQL=0 AWS_EC2_METADATA_DISABLED=true .venv/bin/python -m pytest tests/ -q --tb=short",
+    "working_directory": "kalshi_trade_infra",
+    "passed": 1020,
+    "skipped": 9,
+    "duration_seconds": 9.33
+  },
+  "frontend": {
+    "command": "node --test tests/test_app_sessions.mjs tests/test_session_chat.mjs tests/test_research_artifacts.mjs tests/test_frontend_merge.mjs tests/test_broker_connections.mjs",
+    "passed": 55,
+    "failed": 0
+  },
+  "independent_review": {
+    "reviewer": "broker_storage subagent; read-only manual review",
+    "focused_tests_passed": 141,
+    "actionable_blockers": 0,
+    "scope": [
+      "service",
+      "3 provider adapters",
+      "repository/vault",
+      "actual HTTP auth/CSRF/callback routes",
+      "shared frontend"
+    ],
+    "not_claimed": [
+      "named /security-review command",
+      "scan engine",
+      "real consent",
+      "production acceptance"
+    ]
+  },
+  "browser": {
+    "synthetic": true,
+    "themes": [
+      "app.css",
+      "app.meridian.css"
+    ],
+    "viewport_widths": [
+      1280,
+      390
+    ],
+    "checks": [
+      "3 cards in requested order",
+      "no horizontal overflow/page errors",
+      "explicit Alpaca live/trading request",
+      "one allowlisted authorization redirect"
+    ],
+    "real_provider_requests": 0,
+    "screenshots": [
+      "tau-brokers-app-1280.png",
+      "tau-brokers-app-390.png",
+      "tau-brokers-app.meridian-1280.png",
+      "tau-brokers-app.meridian-390.png"
+    ]
+  },
+  "public_network_evidence": "PUBLIC_DISCOVERY.json: two anonymous Robinhood discovery GETs returned 200; no client registration or account call",
+  "configuration": {
+    "APP_PUBLIC_URL": "https://d1gfpzcosqrjya.cloudfront.net",
+    "local_env_change": "APP_PUBLIC_URL only; existing private assignments/activation flags unchanged",
+    "oauth_client_credentials_configured": false,
+    "production_services_changed": false
+  },
+  "checks": [
+    "Python compilation passed",
+    "three JavaScript syntax checks passed",
+    "git diff --check passed",
+    "selected-source private value/material scan: zero matches",
+    "protected source/env checks passed"
+  ],
+  "remaining_gates": [
+    "Alpaca app registration and private client credentials",
+    "Robinhood approved hosted public client registration",
+    "IBKR vendor approval, consumer key and signing/encryption/DH material",
+    "production persistent APP_SECRET_KEY injection and APP_PUBLIC_URL",
+    "authorized database migration and whole-app deployment",
+    "real Alpaca paper consent/account check then Robinhood and IBKR acceptance",
+    "IBKR registered redirect preserves dynamic state query"
+  ],
+  "operations_not_performed": [
+    "broker OAuth/client registration",
+    "real token/account/order requests",
+    "MCP tools/call",
+    "IBKR brokerage session initialization",
+    "production DB migration",
+    "deployment",
+    "live trading activation",
+    "commit",
+    "GitHub push"
+  ]
+}
