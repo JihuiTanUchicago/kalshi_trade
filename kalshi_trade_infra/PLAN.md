@@ -1,5 +1,94 @@
 # PLAN
 
+## Cross-contract research + cross-day gatekeeper — October 16, 2026 (worktree, research/eval only)
+
+Builds §E.6: cross-contract relative value, sequenced AFTER the gatekeeper, with per-market
+FDR streams and a cross-day generalization gate. Research + EVALUATION only — no cross-contract
+LIVE execution, `engine.py`/the live gate untouched.
+
+- **Spec extension** (`app/spec.py`): an optional `cross` block turns a spec into a
+  relative-value PAIR — `{"pairing": "cross_sectional"|"cross_strike"|"calendar",
+  "legs": [{"market": …}], "relationship": "spread"}`. `cross_sectional` = two different
+  markets (BTC vs ETH), `cross_strike` = two strikes of one event, `calendar` = one strike
+  across two settlements. `pair_entries()` groups snapshots by the pairing key and buys YES on
+  the leg the GBM model says is underpriced + NO on the overpriced leg (combined edge ≥
+  `entry.min_edge`). `cross=None` → ordinary single-contract spec, unchanged. Helpers:
+  `is_cross_contract`, `involved_markets`, `stream_key`.
+- **Backtest** (`app/backtest.py`): `simulate()` dispatches a `cross` spec to `simulate_pairs()`
+  — one combined `Trade` per pair (entry_price = both legs' cost, exit_price = per-unit payoff),
+  held to settlement, reusing the real Kalshi taker fee + `contracts_for` sizing.
+  `merge_datasets()` unions single-market datasets into one whose frames carry every market's
+  snapshots per decision ts (what a cross-sectional pair needs) and whose synthetic `Market.key`
+  is the combined stream key. Contract gained a `series` field so a BTC leg is distinguishable
+  from an ETH leg at the same frame. ETH/SOL/XRP ladders were already backtest-able (Phase 3).
+- **FDR streams** (`app/gatekeeper.py` + schema): a cross spec's validation keys its LORD++
+  stream on the merged dataset's combined `market` (`btc_daily+eth_daily`) — ONE shared stream,
+  never double-spending each leg's per-market budget; single markets keep separate streams.
+  `market` columns widened VARCHAR(16)→(48) to hold the combined key (idempotent MODIFY).
+- **Cross-day gate** (`app/gatekeeper.py` `_cross_day`): splits validation trades into purged
+  walk-forward folds (`stats.purged_walkforward_splits`) and buckets per-trade returns by day.
+  STAT_SUPPORTED now also requires a majority of folds net-positive AND no single day carrying
+  >90% of the positive edge — a one-day fluke drops to INCONCLUSIVE. The per-fold breakdown is
+  stored on the result row (`app_experiment_results.folds_json`) and rendered by the existing
+  research-paper folds strip (`server._experiment_block` prefers it over the rationale's).
+- **Deferred** (`[v0.3]`): wiring agent.py to PROPOSE cross specs + merged validation/holdout
+  partitions, and cross-contract LIVE execution.
+
+## Arbitrary-quant code strategies in a hardened sandbox — October 16, 2026 (review worktree)
+
+Goal: let the research agent author ARBITRARY quant code (any Python/numpy math/ML/framework)
+as a strategy, run in a GENUINELY ISOLATED sandbox, still gated by the SAME statistical
+pipeline. Freedom in METHOD, same bar on PROOF — the code computes the signal, but every
+strategy still goes through pre-registration + the gatekeeper (purged walk-forward, FDR, DSR,
+holdout). Freedom must not reintroduce overfitting, and must not touch live trading.
+
+- `app/sandbox.py` — now two tiers.
+  - Tier 1 (unchanged): `safe_policy()` runs a PURE-function ExplorationPolicy in-process
+    (AST ban + minimal builtins + timeout + fall back to DefaultPolicy).
+  - Tier 2 (new): `run_strategy_signals(code, window)` runs untrusted strategy code in a FRESH
+    `python -I -B` child whose isolation boundary is the OS KERNEL, not the interpreter. (You
+    cannot securely sandbox code that can `import numpy` inside a Python process — numpy exposes
+    `ctypes`, and any allowlisted stdlib module reaches the real os/sys through NON-dunder attrs
+    like `random._os`; a prior security review demonstrated a working file-read + socket escape
+    of a Python-only gate. So the Python layer is now DEFENSE IN DEPTH, and the boundary is
+    `_confined_argv`.) The child runs under the platform kernel sandbox, and if none exists the
+    call is REFUSED (default-deny — untrusted code never runs unconfined):
+      * macOS (dev): `sandbox-exec` profile — deny ALL network, deny writes outside the scratch
+        dir, deny reads of credential stores (`…/credentials/…`, `.env`, `.pem`, `.ssh`, `.aws`,
+        `id_rsa`/`id_ed25519`, `…/secrets…`).
+      * Linux (prod): `bwrap` (`--unshare-net`, read-only root, scratch the only rw mount) or
+        `firejail` (`--net=none --read-only=/`). No network ⇒ no DB, no order placement, nothing
+        read can be exfiltrated; the keyfile/DSN are inert.
+    Verified end-to-end: the demonstrated `random._os` credential read and the
+    `importlib`-bypass socket now both fail with kernel PermissionError. Defense in depth (still
+    there, not the boundary): scrubbed env (no PROD_KEYID/KALSHI_*/DSN/AWS; `-I` ignores
+    PYTHON*/cwd/user-site), restricted builtins + import gate + AST dunder/import ban, and
+    rlimits (RLIMIT_CPU hard-kill + parent wall-clock + AS[Linux] + FSIZE + NOFILE + CORE=0).
+    ponytail: RLIMIT_AS is Linux-only (macOS refuses it); tmpfs-over-every-secret-path on Linux
+    is the follow-up if a non-exfil local read ever matters (unshare-net already makes it inert).
+- `app/spec.py` — `validate()` branches to `_validate_code_spec` when the spec has a `code`
+  field: a minimal `{market, sizing, code}` spec (sizing range-checked like the DSL; code
+  statically validated by the sandbox; unknown top-level fields rejected). `CODE_STRATEGY_GUIDE`
+  (appended to `SPEC_GUIDE`, so every proposer prompt surfaces it) defines the interface;
+  `describe()` renders a code spec in plain language; `is_code_spec()` is the one predicate
+  callers use.
+- `app/backtest.py` — `simulate()` detects a code spec and precomputes a per-frame target book
+  once via the sandbox (`_code_book`), then the EXISTING entry/exit/sizing/fee/settlement loop
+  consumes it through `_code_entries`/`_code_exit` exactly as it consumes DSL `entries`/
+  `exit_signal`. `_parse_book` validates the untrusted sandbox output (shape, tickers, side,
+  finite score); ANY sandbox failure or malformed output → empty book → zero trades, so a
+  broken/hostile strategy fails the gate honestly instead of crashing research. The gatekeeper
+  re-simulates the frozen code spec on validation/holdout with no change (same `simulate`).
+- `app/agent.py` — `act()` deploy / deploy_live now reject `is_code_spec` strategies up front:
+  arbitrary code runs ONLY in the research sandbox and never in the live/paper engine (which
+  evaluates the DSL rule via `specmod.entries`). Live-trading gate and `engine.py` untouched.
+- Tests: `tests/test_sandbox_isolation.py` (socket/env/file/os-import/dunder/subprocess blocked;
+  CPU + wall-clock caps fire; mem cap asserted where RLIMIT_AS is settable, else skipped; numpy
+  + pure-python strategies run) and `tests/test_code_strategy.py` (code spec validates; bad code
+  rejected; same fees/settlement as the DSL path; signal-driven exits; sandbox failure → no
+  trades; flows through the real gatekeeper and gets classified; code is the experiment identity;
+  blocked from deploy). Suite: 377 passed, 8 skipped.
+
 ## Rigorous quant-research pipeline + dev-env trading foundation — October 16, 2026
 
 Full design + signatures: `RESEARCH_PIPELINE_DESIGN.md` (source of truth). The research
@@ -474,7 +563,16 @@ rarely find a passing slip will not feel lovable. Highest-leverage next steps:
   until separately authorised. HEAD requests return 501 (no sign-in flow uses HEAD).
 
 Deferred (v0.2 or later): charging, mark-to-market of open paper positions (shown at cost
-today), partial-fill handling on live exits, NO-side live orders, email notifications.
+today), partial-fill handling on live exits, email notifications.
+
+NO-side live/demo orders: implemented (pending owner review; live still off by default). Because
+the `events/orders` endpoint only speaks the YES leg (`bid`=buy YES, `ask`=sell YES), a NO order is
+sent as its YES complement via `execution_kernel.order_wire_params`: buy NO = sell-YES `ask` at
+`1 - no_price`, sell NO = buy-YES `bid` at `1 - no_price`. The kernel prices from the NO side of the
+book (no_ask = 1−yes_bid, no_bid = 1−yes_ask) and flips the reported YES fill back to the NO cost
+basis (`1 - yes_fill`). `engine._live_trade` threads the real `entry.side`/`pos["side"]`, positions
+insert the real side, and settlement/mark-to-market were already side-generic. The YES-only guards in
+`agent.deploy_live` and `server.create_deployment` are relaxed; every other live gate is unchanged.
 
 ## Current Codebase Knowledge
 

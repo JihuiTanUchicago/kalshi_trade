@@ -335,13 +335,41 @@ def create_run(ctx: Ctx):
     max_hyp = max(1, min(max_hyp, agent.MAX_BUDGET))
     run_forever = bool(ctx.body.get("run_forever"))
     cur = ctx.cur
-    _require_billing_ready(ctx, "researching")
-    if repo.count_runs(cur, ctx.uid, "research", active_only=True) >= MAX_ACTIVE_RESEARCH:
-        raise ApiError(429, "You already have %d agents researching. Wait for one to finish." % MAX_ACTIVE_RESEARCH)
-    if repo.count_runs(cur, ctx.uid, "research", since=repo.now_utc() - timedelta(days=1)) >= MAX_RESEARCH_PER_DAY:
-        raise ApiError(429, "Daily research limit reached (%d). It resets over the next 24 hours." % MAX_RESEARCH_PER_DAY)
+    _require_research_capacity(ctx)
     run_id = repo.create_run(cur, ctx.uid, "research", market, direction, idea,
                              max_hypotheses=max_hyp, run_forever=run_forever, model=model)
+    return {"id": run_id}
+
+
+def _require_research_capacity(ctx: Ctx) -> None:
+    """Billing + rate gates every research run must clear, whether it's a fresh idea or a
+    'dig deeper' branch off a passed strategy. One place so the two paths can't diverge."""
+    _require_billing_ready(ctx, "researching")
+    if repo.count_runs(ctx.cur, ctx.uid, "research", active_only=True) >= MAX_ACTIVE_RESEARCH:
+        raise ApiError(429, "You already have %d agents researching. Wait for one to finish." % MAX_ACTIVE_RESEARCH)
+    if repo.count_runs(ctx.cur, ctx.uid, "research", since=repo.now_utc() - timedelta(days=1)) >= MAX_RESEARCH_PER_DAY:
+        raise ApiError(429, "Daily research limit reached (%d). It resets over the next 24 hours." % MAX_RESEARCH_PER_DAY)
+
+
+def dig_deeper(ctx: Ctx):
+    """Continue research FROM a strategy the user already passed: branch a new pre-registered
+    research line off it (refine parameters within its mechanism, stress-test, extend the thesis)
+    instead of the passed strategy being a dead end. Same gates as any research run; the refined
+    variants go through the normal gatekeeper."""
+    s = _owned_strategy(ctx)
+    if s["status"] != "passed":
+        raise ApiError(409, "Only a strategy that passed its backtest can be researched deeper.")
+    model = ctx.body.get("model") or None
+    if model is not None and model not in catalog.MODELS:
+        raise ApiError(400, "Pick a model from the list, or leave it on the default.")
+    try:
+        max_hyp = int(ctx.body.get("max_hypotheses") or agent.DEFAULT_HYPOTHESES)
+    except (TypeError, ValueError):
+        max_hyp = agent.DEFAULT_HYPOTHESES
+    max_hyp = max(1, min(max_hyp, agent.MAX_BUDGET))
+    _require_research_capacity(ctx)
+    run_id = agent.dig_deeper_run(ctx.cur, ctx.uid, s, model=model,
+                                  max_hypotheses=max_hyp, run_forever=bool(ctx.body.get("run_forever")))
     return {"id": run_id}
 
 
@@ -375,8 +403,8 @@ def _mark_fields(p: Dict) -> Dict:
         return {"mark": None, "value": None, "unrealized": None, "mark_ts": None}
     mark = float(mark)
     # mark is the YES bid. A YES contract liquidates ~yes_bid; a NO contract ~1-yes_ask, which we
-    # don't store — estimate NO as 1-yes_bid (slightly high). Live is YES-only; NO only shows in
-    # paper/sim, where the estimate is fine (UI labels it "est.").
+    # don't store — estimate NO as 1-yes_bid (slightly high). Same estimate across paper/sim/live
+    # (and the UI labels it "est."); NO positions now occur live too.
     value = round(qty * (mark if p["side"] == "yes" else 1.0 - mark), 2)
     return {"mark": mark, "value": value, "unrealized": round(value - cost, 2), "mark_ts": p.get("mark_ts")}
 
@@ -552,7 +580,8 @@ def _experiment_block(cur, strategy_id: int) -> Optional[Dict]:
     exp = rec["experiment"]
     results = rec["results"] or []
     latest = lambda phase: next((r for r in reversed(results) if r.get("phase") == phase), None)
-    val = _phase_block(latest("validation"))
+    val_row = latest("validation")
+    val = _phase_block(val_row)
     hold = _phase_block(latest("holdout"), holdout=True)
     rat = _rationale(exp.get("economic_rationale"))
     overall = results[-1]["classification"] if results else None
@@ -574,7 +603,9 @@ def _experiment_block(cur, strategy_id: int) -> Optional[Dict]:
         "n_trials_audited": (val or {}).get("n_trials_audited"),
         "validation": val,
         "holdout": hold,
-        "folds": rat["folds"],
+        # Prefer the gatekeeper's recorded cross-day folds (validation phase); fall back to any
+        # folds embedded in the older rationale JSON so pre-pipeline experiments still render.
+        "folds": (val_row or {}).get("folds") or rat["folds"],
     }
 
 
@@ -652,6 +683,12 @@ def create_deployment(ctx: Ctx):
         raise ApiError(404, "No such strategy.")
     if s["status"] not in ("passed", "failed", "rejected"):
         raise ApiError(409, "This strategy isn't ready to deploy.")
+    if specmod.is_code_spec(s["spec"]):
+        # Arbitrary agent-authored code runs ONLY in the research sandbox; the paper/live/demo
+        # engine evaluates the DSL rule (specmod.entries), so code strategies are research-only.
+        # Matches the same guard on agent.act's deploy/deploy_live path.
+        raise ApiError(409, "This is an agent-authored code strategy — those are research-only and "
+                            "can't be deployed to the trading engine.")
     mkt = MARKETS.get(s["market"])
     if mkt is not None and not mkt.deployable:
         raise ApiError(409, "%s is research-only for now — you can backtest it, but live/paper "
@@ -671,8 +708,8 @@ def create_deployment(ctx: Ctx):
             raise ApiError(409, "Live trading isn't open yet. Deploy on paper for now.")
         if repo.get_kalshi_key(cur, ctx.uid) is None:
             raise ApiError(409, "Connect your Kalshi account on the Funds page first.")
-        if s["spec"]["side"] != "yes":
-            raise ApiError(409, "Live trading supports YES-only strategies in this version.")
+        # Side is no longer gated: execution places the correct YES or NO leg (a NO strategy
+        # places a NO order). Every other live guard above/below is kept, in order, unweakened.
         if ctx.body.get("confirm") != "LIVE":
             raise ApiError(400, "Type LIVE to confirm real-money trading.")
     elif mode == "demo":
@@ -680,8 +717,6 @@ def create_deployment(ctx: Ctx):
         # the demo kernel's host guard makes the production exchange structurally unreachable.
         if repo.get_kalshi_dev_key(cur, ctx.uid) is None:
             raise ApiError(409, "Add your Kalshi demo (sandbox) key on the Funds page first.")
-        if s["spec"]["side"] != "yes":
-            raise ApiError(409, "Demo trading supports YES-only strategies in this version.")
     if sum(1 for d in repo.list_deployments(cur, ctx.uid) if d["status"] != "stopped") >= MAX_ACTIVE_DEPLOYMENTS:
         raise ApiError(429, "You can run up to %d deployments at once." % MAX_ACTIVE_DEPLOYMENTS)
     dep_id = repo.create_deployment(cur, ctx.uid, s["id"], s["market"], mode)
@@ -1566,6 +1601,7 @@ ROUTES: List[Route] = [
         ("GET", r"/api/strategies/(\d+)", get_strategy, True),
         ("POST", r"/api/strategies/(\d+)/whatif", what_if, True),
         ("POST", r"/api/strategies/(\d+)/share", share_strategy, True),
+        ("POST", r"/api/strategies/(\d+)/dig-deeper", dig_deeper, True),
         ("GET", "/api/notifications", notifications, True),
         ("POST", "/api/notifications/read", mark_notifications_read, True),
         ("POST", "/api/ui-theme", set_ui_theme, True),

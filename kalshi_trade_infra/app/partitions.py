@@ -165,4 +165,4 @@ def _load_window(market: str, from_ts: int, to_ts: int, history_days: Optional[i
         conn.close()
     sub = [mk for mk in rows["markets"]
            if mk.get("open_ts") is not None and from_ts <= mk["open_ts"] < to_ts]
-    return backtest.build_dataset(m, sub, rows["candles"], rows["btc"])
+    return backtest.build_dataset(m, sub, rows["candles"], rows["btc"], rows.get("micro"))

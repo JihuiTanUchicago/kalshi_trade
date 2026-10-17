@@ -1,9 +1,13 @@
 """Safety gates for live autopilot: it must refuse to go live unless every gate holds,
-and it must never trade a NO-side strategy or exceed the user's caps."""
+and must not exceed the user's caps. Side (YES or NO) is no longer gated — live execution
+now places the correct leg — but allowing NO must not weaken any other gate."""
 from app import agent, engine
 
 PASSED_YES = {"id": 7, "status": "passed", "title": "Tail fade", "market": "btc_daily",
               "direction": "custom", "spec": {"side": "yes", "sizing": {"stake": 5.0, "max_positions": 20}}}
+PASSED_NO = {"id": 8, "status": "passed", "title": "NO fade", "market": "btc_daily",
+             "direction": "custom", "spec": {"side": "no", "sizing": {"stake": 5.0, "max_positions": 20}}}
+PROVEN_NO_PAPER = [{"strategy_id": 8, "mode": "paper", "closed_trades": 12, "realized_pnl": 8.0, "status": "stopped"}]
 
 
 def _patch(monkeypatch, *, live_enabled=True, key=True, autopilot=True, ap_live=True, today_live=0.0,
@@ -53,12 +57,20 @@ def test_refused_when_any_gate_fails(monkeypatch):
         assert pid is None
 
 
-def test_no_side_strategy_never_goes_live(monkeypatch):
-    no_strat = {"id": 8, "status": "passed", "title": "NO", "market": "btc_daily",
-                "direction": "custom", "spec": {"side": "no", "sizing": {"stake": 5.0, "max_positions": 20}}}
-    user, created = _patch(monkeypatch, strat=no_strat)
+def test_no_side_strategy_goes_live_when_proven(monkeypatch):
+    # The side gate is gone: a proven, gatekeeper-cleared NO-side strategy goes live like YES.
+    user, created = _patch(monkeypatch, strat=dict(PASSED_NO), paper=list(PROVEN_NO_PAPER))
     msg, pid = agent.act(None, user, {"type": "deploy_live", "strategy_id": 8}, autopilot=True)
-    assert "mode" not in created and "paper" in msg
+    assert created.get("mode") == "live" and "LIVE" in msg and pid == 1
+
+
+def test_no_side_strategy_still_refused_when_any_gate_fails(monkeypatch):
+    # Allowing NO must not weaken any other live gate: each failure still keeps it on paper.
+    for kw in (dict(live_enabled=False), dict(key=False), dict(ap_live=False), dict(autopilot=False),
+               dict(today_live=-60.0), dict(deployment_candidate=False)):
+        user, created = _patch(monkeypatch, strat=dict(PASSED_NO), paper=list(PROVEN_NO_PAPER), **kw)
+        msg, pid = agent.act(None, user, {"type": "deploy_live", "strategy_id": 8}, autopilot=True)
+        assert "mode" not in created and pid is None, "NO went live despite a failed gate: %r" % kw
 
 
 def test_not_a_deployment_candidate_stays_on_paper(monkeypatch):

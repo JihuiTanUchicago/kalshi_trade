@@ -45,8 +45,8 @@ def preregister(cur, pre: Dict[str, Any]) -> int:
     `pre` carries the frozen fields (gatekeeper builds it from its Prereg):
     user_id, run_id, market, strategy_id, hypothesis_hash, spec, economic_rationale,
     primary_metric, null_hypothesis, alt_hypothesis, planned_test,
-    falsification_criteria, min_sample, cost_assumptions, research_partition_id,
-    planned_n_tests, correction_method.
+    falsification_criteria, min_sample, cost_assumptions, data_provenance,
+    research_partition_id, planned_n_tests, correction_method.
     """
     existing = get_experiment(cur, pre.get("run_id"), pre["hypothesis_hash"])
     if existing:
@@ -56,14 +56,16 @@ def preregister(cur, pre: Dict[str, Any]) -> int:
              (user_id, run_id, strategy_id, market, hypothesis_hash, spec_json,
               economic_rationale, primary_metric, null_hypothesis, alt_hypothesis,
               planned_test, falsification_criteria, min_sample, cost_assumptions_json,
-              research_partition_id, planned_n_tests, correction_method, registered_at)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+              data_provenance_json, research_partition_id, planned_n_tests,
+              correction_method, registered_at)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
         (
             pre["user_id"], pre.get("run_id"), pre.get("strategy_id"), pre["market"],
             pre["hypothesis_hash"], _json(pre["spec"]), pre["economic_rationale"],
             pre["primary_metric"], pre["null_hypothesis"], pre["alt_hypothesis"],
             pre["planned_test"], pre["falsification_criteria"], int(pre["min_sample"]),
-            _json(pre["cost_assumptions"]), int(pre["research_partition_id"]),
+            _json(pre["cost_assumptions"]), _json(pre.get("data_provenance") or {}),
+            int(pre["research_partition_id"]),
             int(pre["planned_n_tests"]), pre["correction_method"], now_utc(),
         ),
     )
@@ -75,6 +77,7 @@ def _experiment_row(r: Optional[Dict]) -> Optional[Dict]:
         return None
     r["spec"] = _loads(r.pop("spec_json"))
     r["cost_assumptions"] = _loads(r.pop("cost_assumptions_json"))
+    r["data_provenance"] = _loads(r.pop("data_provenance_json", None)) or {}
     return r
 
 
@@ -92,10 +95,11 @@ _RESULT_FIELDS = (
 
 def append_result(cur, experiment_id: int, phase: str, classification: str,
                   n_trades: int, metrics: Optional[Dict[str, Any]] = None,
-                  equity_curve: Optional[List] = None) -> int:
+                  equity_curve: Optional[List] = None, folds: Optional[List] = None) -> int:
     """APPEND one immutable verdict row for a phase evaluation. Never updates an
     existing row — a re-evaluation is a new row, so the full history is preserved.
-    `metrics` supplies any of _RESULT_FIELDS; missing ones store NULL."""
+    `metrics` supplies any of _RESULT_FIELDS; missing ones store NULL. `folds` is the
+    per-day/per-fold cross-day breakdown the research-paper page renders."""
     m = metrics or {}
     cols = ["experiment_id", "phase", "classification", "n_trades"]
     vals: List[Any] = [experiment_id, phase, classification, int(n_trades)]
@@ -107,6 +111,8 @@ def append_result(cur, experiment_id: int, phase: str, classification: str,
         vals.append(v if f != "holdout_consumed" else (v or 0))
     cols.append("equity_curve_json")
     vals.append(_json(equity_curve))
+    cols.append("folds_json")
+    vals.append(_json(folds))
     cols.append("verdict_at")
     vals.append(now_utc())
     placeholders = ",".join(["%s"] * len(vals))
@@ -135,6 +141,8 @@ def results_for_experiment(cur, experiment_id: int, phase: Optional[str] = None)
 def _result_row(r: Dict) -> Dict:
     if "equity_curve_json" in r:
         r["equity_curve"] = _loads(r.pop("equity_curve_json"))
+    if "folds_json" in r:
+        r["folds"] = _loads(r.pop("folds_json"))
     return r
 
 

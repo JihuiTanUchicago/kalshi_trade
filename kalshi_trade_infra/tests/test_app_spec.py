@@ -8,6 +8,28 @@ from app.markets import BtcSeries, Contract, snapshot
 from data_pipeline.binary_theory import theoretical_p_yes
 
 
+def test_microstructure_features_are_filterable():
+    # the collected order-book features are in the FEATURES namespace specs validate against
+    s = specmod.validate({"entry": {"filters": [{"feature": "ob_imbalance", "op": ">", "value": 0.2}]}})
+    assert s["entry"]["filters"][0]["feature"] == "ob_imbalance"
+
+
+def test_features_used_records_model_and_filter_inputs():
+    s = specmod.validate({"model": {"drift_window": 5, "drift_beta": 1.0},
+                          "entry": {"filters": [{"feature": "ob_imbalance", "op": ">", "value": 0.2}]}})
+    used = specmod.features_used(s)
+    assert "ob_imbalance" in used          # the filter feature
+    assert "ret_5m" in used                # the drift window it picked
+    assert "spot" in used and "moneyness" in used  # always-on model inputs
+
+
+def test_data_sources_flags_orderbook_table_only_when_used():
+    plain = specmod.validate({"entry": {"min_edge": 0.1}})
+    assert "model_features_1m" not in specmod.data_sources_for(plain)
+    withob = specmod.validate({"entry": {"filters": [{"feature": "yes_bid_size", "op": ">", "value": 10}]}})
+    assert "model_features_1m" in specmod.data_sources_for(withob)
+
+
 def test_defaults_fill_missing_fields():
     s = specmod.validate({"market": "btc_daily"})
     assert s["market"] == "btc_daily"
@@ -111,3 +133,25 @@ def test_btc_series_has_no_lookahead_and_goes_stale():
 def test_describe_reads_like_english():
     lines = specmod.describe(specmod.validate({"exit": {"take_profit": 0.2}}))
     assert any("takes profit at +20" in line for line in lines)
+
+
+def test_cross_contract_spec_validates_and_keys_a_shared_stream():
+    # single-contract: cross stays None, stream is just the market.
+    single = specmod.validate({"market": "btc_daily"})
+    assert single["cross"] is None
+    assert specmod.stream_key(single) == "btc_daily" and not specmod.is_cross_contract(single)
+    # cross_strike needs no extra market; cross_sectional needs a leg on a different market.
+    x = specmod.validate({"market": "btc_daily", "cross": {"pairing": "cross_strike", "legs": []}})
+    assert specmod.is_cross_contract(x) and specmod.stream_key(x) == "btc_daily"
+    cs = specmod.validate({"market": "btc_daily",
+                           "cross": {"pairing": "cross_sectional", "legs": [{"market": "eth_daily"}]}})
+    assert specmod.stream_key(cs) == "btc_daily+eth_daily"  # ONE shared stream across both legs
+
+
+def test_cross_contract_spec_rejects_bad_blocks():
+    with pytest.raises(specmod.SpecError, match="cross.pairing"):
+        specmod.validate({"cross": {"pairing": "bogus", "legs": []}})
+    with pytest.raises(specmod.SpecError, match="different market"):
+        specmod.validate({"market": "btc_daily", "cross": {"pairing": "cross_sectional", "legs": []}})
+    with pytest.raises(specmod.SpecError, match="not a known market"):
+        specmod.validate({"cross": {"pairing": "cross_strike", "legs": [{"market": "doge"}]}})

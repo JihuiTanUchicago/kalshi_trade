@@ -8,7 +8,11 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 from data_pipeline.architecture.contracts import RiskContext, TradeIntent
-from data_pipeline.architecture.execution_kernel import DummyExecutionKernel, MarketableLimitKernel
+from data_pipeline.architecture.execution_kernel import (
+    DummyExecutionKernel,
+    MarketableLimitKernel,
+    order_wire_params,
+)
 from data_pipeline.architecture.risk_engine import DummyRiskEngine, LiveSettingsRiskEngine
 from data_pipeline.common import api_get, api_get_auth, api_post_auth, get_db_conn, utc_now
 from data_pipeline.market_data import MarketFeed
@@ -248,16 +252,18 @@ def place_limit_order(
     ticker: str, action: str, side: str, qty: int, price_dollars: float, credentials=None
 ) -> Dict:
     """Submit one limit order. `action` is buy/sell and `side` is the leg
-    ("yes"); v2 folds both into bid/ask on the YES leg, so buying YES is a bid
-    and selling a YES position is an ask."""
-    if str(side).lower() != "yes":
-        raise ValueError(f"only the YES leg is supported, got side={side!r}")
+    (yes|no). v2 speaks only the YES leg as bid/ask, so order_wire_params folds
+    both legs into it: buy YES = bid, sell YES = ask, and a NO order is its YES
+    complement (buy NO = sell YES = ask at 1 - no_price, sell NO = bid at
+    1 - no_price). `price_dollars` is the order's OWN-side price."""
+    if str(side).lower() not in ("yes", "no"):
+        raise ValueError(f"side must be yes or no, got side={side!r}")
     if str(action).lower() not in ("buy", "sell"):
         raise ValueError(f"action must be buy or sell, got {action!r}")
-    v2_side = "bid" if str(action).lower() == "buy" else "ask"
+    v2_side, wire_price = order_wire_params(action, side, price_dollars)
     # Same 1c..99c bounds and whole-cent rounding the old endpoint enforced, so
     # this change alters the transport and not the prices being sent.
-    cents = max(1, min(99, int(round(float(price_dollars) * 100))))
+    cents = max(1, min(99, int(round(float(wire_price) * 100))))
     client_order_id = str(uuid.uuid4())
     body = {
         "ticker": ticker,

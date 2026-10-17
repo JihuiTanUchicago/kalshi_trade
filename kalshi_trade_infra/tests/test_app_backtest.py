@@ -23,6 +23,47 @@ def _dataset(n_contracts=40, minutes=15, result="yes", ask=0.40, bid=0.38, spot_
     return backtest.build_dataset(MARKETS["btc15m"], markets, candles, btc)
 
 
+def _dataset_with_micro(micro, n_contracts=40, minutes=15):
+    """Same synthetic book as _dataset, but attach a micro-feature dict to every
+    (ticker, decision_ts). `micro` is the per-frame feature dict to replicate."""
+    btc = [(T0 - 7200 + 60 * i, 100.0) for i in range(n_contracts * minutes + 200)]
+    markets, candles, mfeat = [], [], {}
+    for k in range(n_contracts):
+        open_ts = T0 + k * minutes * 60
+        close = datetime.fromtimestamp(open_ts + minutes * 60, tz=timezone.utc)
+        ticker = "M%d" % k
+        markets.append({"ticker": ticker, "strike": 98.0, "close_time": close, "result": "yes"})
+        for m in range(1, minutes + 1):
+            ts = open_ts + m * 60
+            candles.append({"ticker": ticker, "end_period_ts": ts, "yes_bid_close": 0.38, "yes_ask_close": 0.40})
+            if micro is not None:
+                mfeat[(ticker, ts)] = dict(micro)
+    return backtest.build_dataset(MARKETS["btc15m"], markets, candles, btc, mfeat or None)
+
+
+def test_spec_filters_on_orderbook_feature_and_runs():
+    ds = _dataset_with_micro({"ob_imbalance": 0.9})
+    # the micro feature reaches the snapshot
+    assert ds.frames[0][1][0].features["ob_imbalance"] == 0.9
+    s = specmod.validate({"side": "yes", "entry": {
+        "min_edge": 0.1, "filters": [{"feature": "ob_imbalance", "op": ">=", "value": 0.5}]}})
+    passing = backtest.simulate(s, ds, ds.start_ts, ds.end_ts + 1)
+    # a filter the book clears does not suppress trades
+    assert len(passing) == 40
+    blocking = specmod.validate({"side": "yes", "entry": {
+        "min_edge": 0.1, "filters": [{"feature": "ob_imbalance", "op": "<", "value": 0.0}]}})
+    assert backtest.simulate(blocking, ds, ds.start_ts, ds.end_ts + 1) == []
+
+
+def test_missing_micro_feature_degrades_gracefully():
+    ds = _dataset_with_micro(None)  # no feature-builder rows at all
+    assert "ob_imbalance" not in ds.frames[0][1][0].features
+    s = specmod.validate({"side": "yes", "entry": {
+        "min_edge": 0.1, "filters": [{"feature": "ob_imbalance", "op": ">=", "value": 0.5}]}})
+    # a filter on an absent feature never matches -> no trades, no crash
+    assert backtest.simulate(s, ds, ds.start_ts, ds.end_ts + 1) == []
+
+
 def test_buys_at_the_ask_pays_fees_and_settles_on_result():
     ds = _dataset()
     s = specmod.validate({"side": "yes", "entry": {"min_edge": 0.1, "max_spread": 0.05}, "sizing": {"stake": 10.0, "max_positions": 1}})
@@ -82,3 +123,52 @@ def test_take_profit_exits_at_the_bid_with_a_second_fee():
 
 def test_score_ignores_tiny_samples():
     assert backtest.score({"trades": 2, "pnl": 1000}) < backtest.score({"trades": 30, "pnl": 1})
+
+
+# -- cross-contract (relative-value pairs) ------------------------------------
+
+
+def _pair_dataset(n_events=12, minutes=15, bid=0.49, ask=0.51):
+    """Two strikes per 15-minute event sharing one close_time. BTC sits flat at 100, so the
+    90-strike settles YES (underpriced at ~0.50 -> long) and the 110-strike settles NO
+    (overpriced -> short the YES / buy NO). A cross_strike pair should buy YES@90 + NO@110."""
+    btc = [(T0 - 7200 + 60 * i, 100.0) for i in range(n_events * minutes + 200)]
+    markets, candles = [], []
+    for k in range(n_events):
+        open_ts = T0 + k * minutes * 60
+        close = datetime.fromtimestamp(open_ts + minutes * 60, tz=timezone.utc)
+        for strike, result in ((90.0, "yes"), (110.0, "no")):
+            ticker = "M%d_%d" % (k, int(strike))
+            markets.append({"ticker": ticker, "strike": strike, "close_time": close, "result": result})
+            for m in range(1, minutes + 1):
+                candles.append({"ticker": ticker, "end_period_ts": open_ts + m * 60,
+                                "yes_bid_close": bid, "yes_ask_close": ask})
+    return backtest.build_dataset(MARKETS["btc15m"], markets, candles, btc)
+
+
+def test_cross_strike_pair_buys_cheap_leg_yes_and_dear_leg_no():
+    ds = _pair_dataset()
+    s = specmod.validate({
+        "market": "btc15m",
+        "entry": {"min_edge": 0.1, "max_spread": 0.05},
+        "sizing": {"stake": 10.0, "max_positions": 1},
+        "cross": {"pairing": "cross_strike", "legs": []},
+    })
+    trades = backtest.simulate(s, ds, ds.start_ts, ds.end_ts + 1)
+    assert len(trades) == 12                       # one pair per event, max_positions=1
+    t = trades[0]
+    assert t.side == "pair" and "|" in t.ticker    # combined leg ticker "long|short"
+    assert t.ticker.endswith("_110") and "_90" in t.ticker  # long the 90, short (NO) the 110
+    assert round(t.entry_price, 2) == 1.02         # YES@0.51 + NO@(1-0.49)=0.51
+    assert t.exit_price == 2.0                      # both legs resolve the model's way
+    assert t.pnl > 0 and t.fees > 0                 # fees charged on BOTH legs
+
+
+def test_cross_contract_merge_unions_frames_across_markets():
+    a = _dataset(n_contracts=4)
+    b = _dataset(n_contracts=4, spot_above=False, result="no")
+    merged = backtest.merge_datasets([a, b], key="btc15m+btc15m", label="pair")
+    assert merged.market.key == "btc15m+btc15m"
+    assert merged.contracts == a.contracts + b.contracts
+    assert len(merged.frames) == len(a.frames)      # same decision timestamps, snaps concatenated
+    assert len(merged.frames[0][1]) == len(a.frames[0][1]) + len(b.frames[0][1])

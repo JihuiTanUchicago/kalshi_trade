@@ -160,10 +160,13 @@ def _paper_sell(conn, pos: Dict, price: float, reason: str) -> None:
                             "Sold %d %s %s @ %.2f (%s)" % (qty, pos["side"].upper(), pos["ticker"], price, reason), pos["id"])
 
 
-def _live_trade(cur, dep: Dict, kernel, action: str, ticker: str, qty: int, price: float):
+def _live_trade(cur, dep: Dict, kernel, action: str, side: str, ticker: str, qty: int, price: float):
     from data_pipeline.architecture.contracts import TradeIntent
 
-    intent = TradeIntent(action=action, side="yes", ticker=ticker, qty_contracts=qty, limit_price_dollars=price,
+    # `side` is the real leg (yes|no) and `price` is that side's own price; the
+    # kernel reads the correct side of the book and the submitter sends the
+    # matching YES-leg wire order. A NO strategy must never place a YES order.
+    intent = TradeIntent(action=action, side=side, ticker=ticker, qty_contracts=qty, limit_price_dollars=price,
                          model_name="app-dep-%d" % dep["id"], now_ts=datetime.now(timezone.utc))
     return kernel.execute(intent)
 
@@ -198,7 +201,7 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
             continue
         reason, price = sig
         if via_kernel:
-            rep = _live_trade(cur, dep, kernel, "sell", pos["ticker"], int(pos["qty"]), price)
+            rep = _live_trade(cur, dep, kernel, "sell", pos["side"], pos["ticker"], int(pos["qty"]), price)
             if rep.fill_qty_contracts < int(pos["qty"]):
                 continue  # ponytail: partial exits wait for the next slot; per-lot positions if this bites
             pnl = int(pos["qty"]) * (rep.fill_price_dollars - float(pos["entry_price"])) - float(pos["entry_fee"]) - rep.fee_dollars
@@ -213,7 +216,7 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
         if slots <= 0:
             break
         ticker = entry.snapshot.contract.ticker
-        if ticker in held or (via_kernel and entry.side != "yes"):
+        if ticker in held:
             continue
         qty = specmod.contracts_for(spec["sizing"]["stake"], entry.price)
         shown = sizes.get(ticker)
@@ -222,10 +225,10 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
         if qty < 1:
             continue
         if via_kernel:
-            rep = _live_trade(cur, dep, kernel, "buy", ticker, qty, entry.price)
+            rep = _live_trade(cur, dep, kernel, "buy", entry.side, ticker, qty, entry.price)
             if rep.fill_qty_contracts < 1:
                 continue
-            repo.insert_position(cur, dep["id"], dep["user_id"], mode, ticker, "yes", rep.fill_qty_contracts,
+            repo.insert_position(cur, dep["id"], dep["user_id"], mode, ticker, entry.side, rep.fill_qty_contracts,
                                  rep.fill_price_dollars, rep.fee_dollars, entry.snapshot.contract.close_time,
                                  rep.external_order_id)
         elif _paper_buy(conn, dep, entry, qty) is None:

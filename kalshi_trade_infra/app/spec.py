@@ -23,7 +23,7 @@ import math
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.markets import FEATURES, MARKETS, Snapshot
+from app.markets import FEATURES, MARKETS, MICRO_FEATURES, Snapshot
 
 OPS = (">", ">=", "<", "<=")
 MAX_FILTERS = 4
@@ -69,7 +69,15 @@ DEFAULT_SPEC: Dict[str, Any] = {
     # size differently (dynamic stake / fewer or more positions) when it has a reason;
     # absent that, every sim runs this standard $5/$100 book.
     "sizing": {"stake": 5.0, "max_positions": 20},
+    # None = ordinary single-contract strategy (unchanged). An object turns the spec into a
+    # relative-value PAIR: buy YES on the leg the model says is underpriced and NO on the leg it
+    # says is overpriced, within a matched group, holding both legs to settlement. See CROSS.
+    "cross": None,
 }
+
+CROSS_PAIRINGS = ("cross_sectional", "cross_strike", "calendar")
+CROSS_RELATIONSHIPS = ("spread",)  # ponytail: ratio is a trivial variant; add it only when asked.
+MAX_CROSS_LEGS = 3
 
 SPEC_GUIDE = """A strategy spec is a JSON object:
 {
@@ -93,13 +101,111 @@ SPEC_GUIDE = """A strategy spec is a JSON object:
     "stop_loss": null | 0.01..0.99,            // sell when price lost this much
     "min_edge_to_hold": null | -0.5..0.5       // sell when fair - sell price falls below this
   },
-  "sizing": {"stake": 1..500, "max_positions": 1..50}  // $/trade & concurrent positions; DEFAULT $5 x 20 = $100 book. Only change for a real sizing reason.
+  "sizing": {"stake": 1..500, "max_positions": 1..50},  // $/trade & concurrent positions; DEFAULT $5 x 20 = $100 book. Only change for a real sizing reason.
+  "cross": null | {                             // OPTIONAL relative-value pair (default null = single-contract)
+    "pairing": "cross_sectional"|"cross_strike"|"calendar",  // how the two legs are matched
+    "legs": [ {"market": <key>} ],              // up to 3 EXTRA markets; cross_sectional needs >=1 on a different market
+    "relationship": "spread"                    // trade the spread of model edges (buy YES cheap leg, NO dear leg)
+  }
 }
-Features for filters: """ + "; ".join("%s = %s" % kv for kv in FEATURES.items())
+cross.pairing: cross_sectional = two different markets (e.g. BTC vs ETH, matched per frame);
+cross_strike = same market+settlement, different strikes; calendar = same market+strike, different settlements.
+Features for filters: """ + "; ".join("%s = %s" % kv for kv in FEATURES.items()) + """
+Order-book / microstructure features (""" + ", ".join(MICRO_FEATURES) + """) come from the
+collected 1-minute book; they may be NULL on some frames (and on markets without a feed), and a
+filter on a missing feature simply does not match - condition on them when the mechanism needs the
+book, not by default."""
+
+
+# -- arbitrary-quant code strategies ----------------------------------------
+# A strategy may instead be agent-authored Python (any pure-Python/numpy quant method). It is
+# ONE spec field, `code`, that defines a `signals(window)` function run in app.sandbox's
+# OS-isolated child interpreter (no network/DB/credentials/filesystem). The rest of the spec is
+# just `market` and `sizing`; the backtester applies the SAME fee/sizing/settlement, and the
+# gatekeeper judges it identically to a DSL spec (pre-registration hashes the code as the rule).
+CODE_SPEC_KEYS = {"market", "sizing", "code"}
+MAX_CODE_CHARS = 20_000
+
+CODE_STRATEGY_GUIDE = """
+As an ALTERNATIVE to the fields above, a strategy may be arbitrary Python you write. Send:
+{
+  "market": "btc15m" | ...,
+  "sizing": {"stake": 1..500, "max_positions": 1..50},
+  "code": "<python source>"      // instead of model/entry/exit/side/filters
+}
+Your code defines ONE function:
+  def signals(window):
+      # window = {"market": str, "frames": [ {"ts": int, "contracts": [
+      #   {"ticker": str, "strike": float, "close_ts": int,
+      #    "yes_bid": float, "yes_ask": float, "features": {<feature name>: float}} ]} ]}
+      #   frames are ascending by ts; features are the same ones listed above.
+      # Return a list PARALLEL to window["frames"]; element i is the book you want HELD at
+      # frame i: a list of {"ticker": str, "side": "yes"|"no", "score": float (optional)}.
+      # Open = a (ticker, side) you list that you do not already hold (score orders them when
+      # more than max_positions compete). Exit = a held (ticker, side) you stop listing (sold at
+      # the bid). Unlisted at settlement = held to settlement. You buy the ask / sell the bid and
+      # pay Kalshi fees exactly like a DSL spec.
+Allowed imports: math, cmath, statistics, random, itertools, functools, collections, heapq,
+bisect, operator, decimal, fractions, array, numpy. NO file/network/OS access, and no dunder
+access; the code runs sealed off from the DB and keys. Heavier ML libraries (torch/tensorflow)
+are not installed. Keep it deterministic and pure over the window you are handed.
+"""
+
+# Every proposer that reads SPEC_GUIDE also learns it may write arbitrary quant code.
+SPEC_GUIDE = SPEC_GUIDE + "\n" + CODE_STRATEGY_GUIDE
 
 
 class SpecError(ValueError):
     pass
+
+
+def is_code_spec(spec: Dict) -> bool:
+    return isinstance(spec, dict) and bool(spec.get("code"))
+
+
+def _validate_code_spec(raw: Dict) -> Dict[str, Any]:
+    """Validate an arbitrary-quant code strategy: market + sizing + a `signals(window)` body
+    that passes the sandbox's static gate. Unknown top-level fields are errors (same strictness
+    as the DSL path). The returned spec is minimal: {market, sizing, code}."""
+    from app import sandbox  # local import: sandbox pulls in exploration/dataclasses
+    errors: List[str] = []
+    extra = set(raw) - CODE_SPEC_KEYS
+    if extra:
+        errors.append("unknown field(s) for a code strategy: %s" % ", ".join(sorted(extra)))
+
+    market = raw.get("market", DEFAULT_SPEC["market"])
+    if market not in MARKETS:
+        errors.append("market must be one of %s" % ", ".join(MARKETS))
+
+    sizing = copy.deepcopy(DEFAULT_SPEC["sizing"])
+    raw_sizing = raw.get("sizing", {})
+    if not isinstance(raw_sizing, dict):
+        errors.append("sizing must be an object")
+    else:
+        for key, value in raw_sizing.items():
+            if key not in sizing:
+                errors.append("unknown field sizing.%s" % key)
+            else:
+                sizing[key] = value
+    for key in ("stake", "max_positions"):
+        lo, hi = RANGES["sizing.%s" % key]
+        v = sizing[key]
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+            errors.append("sizing.%s must be a number" % key)
+        elif not lo <= v <= hi:
+            errors.append("sizing.%s=%s is outside %s..%s" % (key, v, lo, hi))
+        else:
+            sizing[key] = int(v) if key == "max_positions" else float(v)
+
+    code = raw.get("code")
+    try:
+        sandbox.validate_strategy_code(code)
+    except sandbox.StrategyCodeError as e:
+        errors.append("code: %s" % e)
+
+    if errors:
+        raise SpecError("; ".join(errors))
+    return {"market": market, "sizing": sizing, "code": code}
 
 
 def _get(spec: Dict, path: str):
@@ -140,6 +246,8 @@ def validate(raw: Any) -> Dict[str, Any]:
     """
     if not isinstance(raw, dict):
         raise SpecError("spec must be a JSON object")
+    if "code" in raw:
+        return _validate_code_spec(raw)
     spec = copy.deepcopy(DEFAULT_SPEC)
     errors: List[str] = []
     _merge_known(spec, raw, "", errors)
@@ -186,9 +294,67 @@ def validate(raw: Any) -> Dict[str, Any]:
             else:
                 clean.append({"feature": flt["feature"], "op": flt["op"], "value": float(v)})
         entry["filters"] = clean
+    _validate_cross(spec, errors)
     if errors:
         raise SpecError("; ".join(errors))
     return spec
+
+
+def _validate_cross(spec: Dict, errors: List[str]) -> None:
+    """Validate the optional `cross` relative-value block, normalising it in place. None stays
+    None (ordinary single-contract spec). Mirrors the strictness of the rest of validate():
+    unknown fields, bad pairing/relationship and unknown leg markets are errors, never clamped."""
+    cross = spec.get("cross")
+    if cross is None:
+        return
+    if not isinstance(cross, dict):
+        errors.append("cross must be an object or null")
+        return
+    for key in set(cross) - {"legs", "pairing", "relationship"}:
+        errors.append("unknown field cross.%s" % key)
+    pairing = cross.get("pairing")
+    if pairing not in CROSS_PAIRINGS:
+        errors.append("cross.pairing must be one of %s" % list(CROSS_PAIRINGS))
+    rel = cross.get("relationship", "spread")
+    if rel not in CROSS_RELATIONSHIPS:
+        errors.append("cross.relationship must be one of %s" % list(CROSS_RELATIONSHIPS))
+    legs = cross.get("legs", [])
+    clean_legs: List[Dict] = []
+    if not isinstance(legs, list) or len(legs) > MAX_CROSS_LEGS:
+        errors.append("cross.legs must be a list of at most %d legs" % MAX_CROSS_LEGS)
+    else:
+        for i, leg in enumerate(legs):
+            if not isinstance(leg, dict) or set(leg) != {"market"}:
+                errors.append("cross.legs[%d] must have exactly feature market" % i)
+            elif leg["market"] not in MARKETS:
+                errors.append("cross.legs[%d].market %r is not a known market" % (i, leg["market"]))
+            else:
+                clean_legs.append({"market": leg["market"]})
+    involved = {spec["market"]} | {leg["market"] for leg in clean_legs}
+    if pairing == "cross_sectional" and len(involved) < 2:
+        errors.append("cross.pairing cross_sectional needs a leg on a different market than %s" % spec["market"])
+    if not errors:
+        spec["cross"] = {"pairing": pairing, "legs": clean_legs, "relationship": rel}
+
+
+def is_cross_contract(spec: Dict) -> bool:
+    return bool(spec.get("cross"))
+
+
+def involved_markets(spec: Dict) -> List[str]:
+    """Every market a spec touches, sorted & deduped. A single-contract spec touches exactly
+    one (== spec['market']); a cross spec touches spec['market'] plus its legs'."""
+    markets = {spec["market"]}
+    for leg in (spec.get("cross") or {}).get("legs", []):
+        markets.add(leg["market"])
+    return sorted(markets)
+
+
+def stream_key(spec: Dict) -> str:
+    """The FDR alpha-wealth stream a spec spends from. Single-contract -> its own market
+    (per-market stream, unchanged). Cross-contract -> ONE shared stream across its legs
+    ('btc_daily+eth_daily'), so a pair never double-spends its legs' separate budgets."""
+    return "+".join(involved_markets(spec))
 
 
 # -- the rule ---------------------------------------------------------------
@@ -294,8 +460,135 @@ def contracts_for(stake: float, price: float) -> int:
     return int(math.floor(stake / price + 1e-9)) if price > 0 else 0
 
 
+# Features the fair-value model always consumes, independent of the spec.
+_MODEL_FEATURES = ("spot", "moneyness", "tte_min", "yes_bid", "yes_ask", "spread", "mid")
+
+
+def features_used(spec: Dict) -> List[str]:
+    """Every FEATURES key this spec reads: the model's always-on inputs, the vol/drift
+    windows it picked, and whatever the entry filters condition on. This is the dataset-
+    provenance record - 'any dataset, as long as we track it.'"""
+    if is_code_spec(spec):
+        # A code strategy's signals(window) receives the full per-frame feature dict, so it may
+        # read ANY feature. The honest provenance record is every feature we expose, not the DSL
+        # model/filter fields a code spec does not have.
+        return sorted(FEATURES)
+    used = set(_MODEL_FEATURES)
+    m = spec["model"]
+    used.add("vol_%dm" % m["vol_window"])
+    if m["drift_window"]:
+        used.add("ret_%dm" % m["drift_window"])
+    for flt in spec["entry"]["filters"]:
+        used.add(flt["feature"])
+    return sorted(used)
+
+
+def data_sources_for(spec: Dict) -> List[str]:
+    """The DB tables this spec's features are drawn from: contract quotes + the BTC
+    price path always, plus the order-book feature table iff a filter uses a micro
+    feature. Recorded alongside features_used so the ledger shows what data was touched."""
+    srcs = ["hist_markets", "market_candles", "spot_candles_1m"]
+    # A code spec gets the full window (micro features included), so record every source.
+    if is_code_spec(spec) or any(flt["feature"] in MICRO_FEATURES for flt in spec["entry"]["filters"]):
+        srcs.append("model_features_1m")
+    return srcs
+
+
+# -- cross-contract relative value (pairs) ----------------------------------
+#
+# A pair buys YES on the most UNDER-priced leg and NO on the most OVER-priced leg within a
+# matched group, so it profits on the relative mispricing rather than a directional view.
+# It reuses the same GBM fair value and entry gates as the single-contract rule; only the
+# selection (group + pick long/short) is new. The legs hold to settlement (the hedge stays
+# intact until both resolve). ponytail: spread exits would need a live co-price both legs
+# quote at the same frame; hold-to-settle is the honest default and matches single-contract.
+
+
+@dataclass(frozen=True)
+class PairEntry:
+    long_snap: Snapshot    # buy YES here (underpriced)
+    short_snap: Snapshot   # buy NO here (overpriced)
+    long_price: float      # YES ask paid on the long leg
+    short_price: float     # NO price paid on the short leg (= 1 - yes_bid)
+    edge: float            # combined relative edge = long YES edge + short NO edge
+
+
+def _pair_group_key(pairing: str, snap: Snapshot):
+    """The key contracts must share to be comparable. cross_strike groups by settlement (so
+    members differ only in strike); calendar groups by strike (members differ in settlement);
+    cross_sectional puts the whole frame in one group (members differ by market/series)."""
+    c = snap.contract
+    if pairing == "cross_strike":
+        return int(c.close_time.timestamp())
+    if pairing == "calendar":
+        return round(c.strike, 6)
+    return 0  # cross_sectional: one group per decision frame
+
+
+def _pair_distinct(pairing: str, a: Snapshot, b: Snapshot) -> bool:
+    ca, cb = a.contract, b.contract
+    if pairing == "cross_strike":
+        return abs(ca.strike - cb.strike) > 1e-9
+    if pairing == "calendar":
+        return int(ca.close_time.timestamp()) != int(cb.close_time.timestamp())
+    return (ca.series or "") != (cb.series or "")  # cross_sectional: different markets
+
+
+def pair_entries(spec: Dict, snaps: List[Snapshot]) -> List[PairEntry]:
+    """Every relative-value pair the cross spec would open now, best combined edge first.
+    Returns [] for a non-cross spec. Each leg must independently pass the entry price/spread/
+    tte/feature gates; the pair enters when (long YES edge + short NO edge) >= entry.min_edge."""
+    cross = spec.get("cross")
+    if not cross:
+        return []
+    pairing = cross["pairing"]
+    e = spec["entry"]
+    scored = []  # (snap, p_yes, yes_ask, yes_bid)
+    for s in snaps:
+        f = s.features
+        if not e["min_tte_min"] <= f["tte_min"] <= e["max_tte_min"]:
+            continue
+        if f["spread"] > e["max_spread"]:
+            continue
+        if not all(_passes(flt, f) for flt in e["filters"]):
+            continue
+        p_yes = fair_yes(spec, f)
+        if p_yes is None:
+            continue
+        scored.append((s, p_yes, s.yes_ask, s.yes_bid))
+
+    groups: Dict = {}
+    for tup in scored:
+        groups.setdefault(_pair_group_key(pairing, tup[0]), []).append(tup)
+
+    out: List[PairEntry] = []
+    for members in groups.values():
+        longs = [m for m in members if e["min_price"] <= m[2] <= e["max_price"] and 0 < m[2] < 1]
+        shorts = [m for m in members if e["min_price"] <= 1 - m[3] <= e["max_price"] and 0 < 1 - m[3] < 1]
+        if not longs or not shorts:
+            continue
+        lng = max(longs, key=lambda m: m[1] - m[2])              # YES edge = p_yes - yes_ask
+        cand = [m for m in shorts if m[0] is not lng[0] and _pair_distinct(pairing, lng[0], m[0])]
+        if not cand:
+            continue
+        srt = max(cand, key=lambda m: m[3] - m[1])               # NO edge = yes_bid - p_yes
+        edge = (lng[1] - lng[2]) + (srt[3] - srt[1])
+        if edge < e["min_edge"]:
+            continue
+        out.append(PairEntry(lng[0], srt[0], lng[2], 1 - srt[3], edge))
+    out.sort(key=lambda x: x.edge, reverse=True)
+    return out
+
+
 def describe(spec: Dict) -> List[str]:
     """Plain-language reading of a spec, for people who do not read JSON."""
+    if is_code_spec(spec):
+        s = spec["sizing"]
+        return [
+            "Agent-authored quant code (a custom signals() function), run in an isolated sandbox.",
+            "The backtester applies the same fees, settlement and sizing as any other strategy.",
+            "Stakes $%g per trade, at most %d open at once." % (s["stake"], s["max_positions"]),
+        ]
     m, e, x, s = spec["model"], spec["entry"], spec["exit"], spec["sizing"]
     side = {"yes": "YES contracts", "no": "NO contracts", "either": "YES or NO (whichever has more edge)"}[spec["side"]]
     lines = ["Buys %s when its fair value beats the price by at least %d¢." % (side, round(e["min_edge"] * 100))]
@@ -324,4 +617,11 @@ def describe(spec: Dict) -> List[str]:
         exits.append("sells when its edge drops below %d¢" % round(x["min_edge_to_hold"] * 100))
     lines.append(("Exits: " + ", ".join(exits) + "; otherwise holds to settlement.") if exits else "Holds every position to settlement.")
     lines.append("Stakes $%g per trade, at most %d open at once." % (s["stake"], s["max_positions"]))
+    cross = spec.get("cross")
+    if cross:
+        kind = {"cross_sectional": "two different markets (relative value)",
+                "cross_strike": "two strikes of the same event",
+                "calendar": "the same strike across two settlements"}.get(cross["pairing"], cross["pairing"])
+        lines.append("Relative-value pair across %s: buys YES on the underpriced leg and NO on the "
+                     "overpriced leg, holding both to settlement." % kind)
     return lines

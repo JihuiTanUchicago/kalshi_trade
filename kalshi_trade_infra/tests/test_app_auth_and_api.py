@@ -169,6 +169,20 @@ def test_deploy_any_status_on_paper_live_gated_globally(monkeypatch):
     assert server.create_deployment(ctx({"strategy_id": 5, "mode": "live", "confirm": "LIVE"})) == {"id": 11}
 
 
+def test_code_strategy_refused_by_create_deployment(monkeypatch):
+    # Code strategies are research-only: the manual deploy endpoint must reject them in EVERY mode,
+    # matching agent.act's deploy/deploy_live guard, so arbitrary code never reaches the engine.
+    strat = {"id": 5, "status": "passed", "market": "btc15m", "title": "T",
+             "spec": {"market": "btc15m", "sizing": {"stake": 5, "max_positions": 1},
+                      "code": "def signals(w): return []"}}
+    monkeypatch.setattr(server.repo, "get_strategy", lambda cur, uid, sid: dict(strat))
+    monkeypatch.setattr(server.repo, "create_deployment", lambda *a, **k: 11)
+    for mode in ("paper", "demo", "live"):
+        with pytest.raises(server.ApiError, match="research-only") as e:
+            server.create_deployment(ctx({"strategy_id": 5, "mode": mode, "confirm": "LIVE"}))
+        assert e.value.status == 409
+
+
 def test_live_refuses_non_deployment_candidate(monkeypatch):
     # §E.5: the manual live path must ALSO clear the gatekeeper's DEPLOYMENT_CANDIDATE gate, matching
     # the autopilot path. Every other live gate is green, but the gate is not cleared -> refused.
@@ -406,6 +420,36 @@ def test_delete_strategy_blocks_when_deployed(monkeypatch):
     # not deployed -> deleted
     monkeypatch.setattr(server.repo, "list_deployments", lambda cur, uid, include_stopped=False: [])
     assert server.delete_strategy(ctx({})) == {"ok": True}
+
+
+def test_dig_deeper_seeds_a_research_run_from_a_passed_strategy(monkeypatch):
+    parent = {"id": 55, "status": "passed", "market": "btc15m", "direction": "volatility",
+              "title": "Tail fade", "thesis": "Cheap OTM YES is overpriced.", "spec": {"side": "yes", "market": "btc15m"}}
+    seen = {}
+    monkeypatch.setattr(server, "_owned_strategy", lambda c: dict(parent))
+    monkeypatch.setattr(server.repo, "count_runs", lambda *a, **k: 0)
+    monkeypatch.setattr(server.repo, "create_run",
+                        lambda cur, uid, kind, market, direction, prompt, **kw:
+                        (seen.update(kind=kind, market=market, seed=kw.get("seed_strategy_id"), prompt=prompt), 77)[1])
+    assert server.dig_deeper(ctx({}, params=("55",))) == {"id": 77}
+    assert seen["kind"] == "research" and seen["market"] == "btc15m" and seen["seed"] == 55
+    assert "Dig deeper" in seen["prompt"]            # the passed strategy's thesis/spec seeds the run
+
+
+def test_dig_deeper_refuses_a_strategy_that_did_not_pass(monkeypatch):
+    monkeypatch.setattr(server, "_owned_strategy", lambda c: {"id": 55, "status": "failed", "market": "btc15m"})
+    monkeypatch.setattr(server.repo, "create_run", lambda *a, **k: pytest.fail("must not seed research from an unpassed strategy"))
+    with pytest.raises(server.ApiError) as e:
+        server.dig_deeper(ctx({}, params=("55",)))
+    assert e.value.status == 409
+
+
+def test_dig_deeper_is_rate_limited(monkeypatch):
+    monkeypatch.setattr(server, "_owned_strategy", lambda c: {"id": 55, "status": "passed", "market": "btc15m", "direction": None, "title": "T", "thesis": "x", "spec": {}})
+    monkeypatch.setattr(server.repo, "count_runs", lambda *a, **k: 99)
+    with pytest.raises(server.ApiError) as e:
+        server.dig_deeper(ctx({}, params=("55",)))
+    assert e.value.status == 429
 
 
 def test_share_strategy_copies_and_notifies(monkeypatch):

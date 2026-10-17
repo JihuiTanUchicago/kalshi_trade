@@ -322,6 +322,42 @@ mechanism, falsification_criteria, negative_control, null/alt hypotheses, min_sa
     )
 
 
+def dig_deeper_prompt(strat: Dict) -> str:
+    """Turn a PASSED strategy into the idea prompt for a new research line that branches off it:
+    keep its economic mechanism, but refine parameters, stress-test and extend the thesis. The
+    full spec is carried as the explicit starting point. The branched variants still go through the
+    normal gatekeeper — each is a NEW pre-registration (a different spec hashes differently), never
+    a mutation of the frozen original."""
+    spec = json.dumps(strat.get("spec") or {}, separators=(",", ":"))
+    return (
+        "Dig deeper on a strategy that already passed every gate: \"%s\".\n"
+        "Its thesis: %s\n"
+        "Its starting spec: %s\n\n"
+        "Keep the SAME economic mechanism, but push it further: refine the parameters within that "
+        "mechanism, stress-test it (nearby parameter values, sub-periods, doubled fees/slippage), "
+        "and extend the thesis into adjacent conditional edges it implies. Propose distinct REFINED "
+        "variants, each pre-registered as a new hypothesis in its own right — do not just resubmit "
+        "the original." % (strat.get("title") or "it", (strat.get("thesis") or "").strip()[:800], spec)
+    )
+
+
+MAX_ACTIVE_RESEARCH = 2   # mirrors server.MAX_ACTIVE_RESEARCH (not imported, to avoid a cycle)
+
+
+def dig_deeper_run(cur, user_id: int, strat: Dict, model: Optional[str] = None,
+                   max_hypotheses: Optional[int] = None, run_forever: bool = False) -> int:
+    """Create a QUEUED research run that branches off a PASSED strategy (the 'dig deeper' flow):
+    same market/direction, a prompt seeded from its thesis + starting spec, and seed_strategy_id
+    set so every branched strategy links back to it. A worker claims it like any research run; the
+    refined variants go through the normal gatekeeper (no bypass). Shared by the server endpoint
+    and the co-pilot's `research` action so both seed a run the same way."""
+    return repo.create_run(
+        cur, user_id, "research", strat["market"], strat.get("direction"),
+        dig_deeper_prompt(strat), max_hypotheses=max_hypotheses, run_forever=run_forever,
+        model=model, seed_strategy_id=strat["id"],
+    )
+
+
 def _in_sample_summary(ds: backtest.Dataset) -> Dict:
     """What the agent may know about the data: the in-sample window only."""
     s = ds.summary()
@@ -449,6 +485,8 @@ def _prereg(t: Dict, spec: Dict, run: Dict, partition: Dict, n_tests: int,
         falsification_criteria=t.get("falsification_criteria", ""),
         min_sample=int(t.get("min_sample") or 30),
         cost_assumptions={"fee": "kalshi_taker", "fill": "ask/bid"},
+        data_provenance={"features": specmod.features_used(spec),
+                         "sources": specmod.data_sources_for(spec)},
         research_partition_id=int(partition.get("id") or 0),
         planned_n_tests=n_tests, correction_method="BH", strategy_id=strategy_id,
     )
@@ -464,6 +502,9 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
     finalists are rejected exactly as before, untested."""
     user_id, run_id, market = run["user_id"], run["id"], run["market"]
     direction = run["direction"] or "custom"
+    # Discovery-tree lineage: on a "dig deeper" run every branched strategy points back at the
+    # passed strategy it refines, so the research tree records the branch (NULL on a fresh run).
+    parent = run.get("seed_strategy_id")
     s = ds.summary()
     state = exploration.PolicyState(proposed=len(chunk), budget=len(chunk), round=0)
     finalists = policy.select_finalists(chunk, state)
@@ -486,7 +527,7 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
             # challenger's reason); NEVER pre-registered and NEVER validation-tested — the
             # statistical budget is untouched (§C).
             t["strategy_id"] = repo.insert_strategy(
-                cur, user_id, run_id, None, market, direction, t["title"], t["thesis"], spec,
+                cur, user_id, run_id, parent, market, direction, t["title"], t["thesis"], spec,
                 "rejected", _result_block(s, t, "challenger_rejected", verdict.get("reason")))
             log("verdict", "REJECTED (challenger) - %s: %s"
                 % (t["title"], verdict.get("reason") or "no credible mechanism"),
@@ -494,7 +535,7 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
             continue
         # Insert the strategy row FIRST (provisional) so the immutable experiment can carry its
         # strategy_id, then pre-register the frozen hypothesis.
-        sid = repo.insert_strategy(cur, user_id, run_id, None, market, direction, t["title"],
+        sid = repo.insert_strategy(cur, user_id, run_id, parent, market, direction, t["title"],
                                    t["thesis"], spec, "pending", _result_block(s, t, "promising"))
         t["strategy_id"] = sid
         exp_ids.append(gatekeeper.preregister(cur, _prereg(t, spec, run, partition, len(finalists), verdict, sid)))
@@ -521,7 +562,7 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
             continue
         ins = t["in_sample"] or {}
         t["strategy_id"] = repo.insert_strategy(
-            cur, user_id, run_id, None, market, direction, t["title"], t["thesis"], t["spec"],
+            cur, user_id, run_id, parent, market, direction, t["title"], t["thesis"], t["spec"],
             "rejected", _result_block(s, t, "not_finalist"))
         log("verdict", "REJECTED - %s: not a finalist, so never tested on unseen data "
                        "(research pnl $%s over %s trades)." % (t["title"], ins.get("pnl"), ins.get("trades")),
@@ -812,6 +853,11 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         strat = repo.get_strategy(cur, user_id, int(action.get("strategy_id") or 0))
         if strat is None or strat["status"] != "passed":
             return "Only strategies that passed their backtest can be deployed.", None
+        if specmod.is_code_spec(strat["spec"]):
+            # The live/paper engine evaluates the DSL rule (specmod.entries); arbitrary agent
+            # code runs ONLY in the research sandbox and is never executed in the trading loop.
+            return ("%s is an agent-authored code strategy; those are research-only and can't be "
+                    "deployed to the trading engine." % strat["title"], None)
         # Additive gatekeeper gate (§E.5): never weakens the existing check above.
         if not _is_deployment_candidate(cur, strat["id"]):
             return ("I can't deploy %s yet — the gatekeeper hasn't cleared it as a deployment "
@@ -826,14 +872,17 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         strat = repo.get_strategy(cur, user_id, int(action.get("strategy_id") or 0))
         if strat is None or strat["status"] != "passed":
             return "Only strategies that passed their backtest can go live.", None
-        # Additive gatekeeper gate (§E.5): required ON TOP OF the YES-side, live_autopilot_ok
+        if specmod.is_code_spec(strat["spec"]):
+            return ("%s is an agent-authored code strategy; those are research-only and never "
+                    "run in the live engine." % strat["title"], None)
+        # Additive gatekeeper gate (§E.5): required ON TOP OF the live_autopilot_ok
         # and _proven_on_paper checks below — none of which are removed, reordered or weakened.
+        # Side is no longer gated: live execution now places the correct YES or NO leg (a NO
+        # strategy places a NO order), so any validated side may go live.
         if not _is_deployment_candidate(cur, strat["id"]):
             return ("I can't take %s live — the gatekeeper hasn't cleared it as a deployment "
                     "candidate (holdout forward-validation + diversification), so it stays on "
                     "paper." % strat["title"], None)
-        if (strat["spec"].get("side") or "").lower() != "yes":
-            return "Live supports YES-side strategies only, so I kept %s on paper." % strat["title"], None
         ok, why = live_autopilot_ok(cur, user)
         if not (autopilot and ok):
             # Gate failed: never go live silently — stays on paper (safeguard 2).
@@ -844,12 +893,25 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
             return "I'm keeping %s on paper a while longer — %s." % (strat["title"], pwhy), None
         # Deploy to live WITHIN the user's own caps. create_deployment copies the strategy's spec
         # sizing (stake x max_positions = the book cap); the engine enforces max_positions, per-trade
-        # stake, YES-only, per-user key and the loss guard. Autopilot cannot raise any of these.
+        # stake, per-user key and the loss guard. Autopilot cannot raise any of these.
         cap = float(strat["spec"]["sizing"]["stake"]) * int(strat["spec"]["sizing"]["max_positions"])
         pid = repo.create_proposal(cur, user_id, "deploy", reason, None, strat["id"], "applied")
         repo.create_deployment(cur, user_id, strat["id"], strat["market"], "live")
-        return ("Autopilot deployed %s to LIVE within your $%.0f cap (YES-only, your own Kalshi key, loss guard on)."
+        return ("Autopilot deployed %s to LIVE within your $%.0f cap (your own Kalshi key, loss guard on)."
                 % (strat["title"], cap)), pid
+    if kind == "research":
+        # "Dig deeper": branch a NEW research line off a passed strategy. No money and no proposal —
+        # the user asked for it in chat — but it spends model credits, so honour the same
+        # active-research cap the Research page enforces, and only ever branch a strategy that passed.
+        strat = repo.get_strategy(cur, user_id, int(action.get("strategy_id") or 0))
+        if strat is None or strat["status"] != "passed":
+            return "I can only dig deeper on a strategy that already passed its backtest.", None
+        if repo.count_runs(cur, user_id, "research", active_only=True) >= MAX_ACTIVE_RESEARCH:
+            return "You already have a couple of research sessions running — let one finish and I'll dig deeper then.", None
+        dig_deeper_run(cur, user_id, strat)
+        return ("Started a new research session digging deeper into “%s”: I'll refine and "
+                "stress-test its mechanism, and every variant still has to pass the same gates. "
+                "Follow it on the Research page." % strat["title"], None)
     return "I tried an action I'm not allowed to take (%s)." % kind, None
 
 
@@ -898,8 +960,9 @@ Actions:
   {"type": "adjust", "deployment_id": N, "changes": {<partial spec, e.g. {"entry": {"min_edge": 0.08}}>}, "reason": "..."}
   {"type": "pause",  "deployment_id": N, "reason": "..."}
   {"type": "resume", "deployment_id": N, "reason": "..."}
+  {"type": "research", "strategy_id": N, "reason": "..."}     (DIG DEEPER: start a new research session that branches off a strategy the user already PASSED — refine its parameters, stress-test it, extend the thesis. Use this whenever the user wants to explore, refine, improve, or build further on a passed strategy, instead of letting it be a dead end. Each refined variant still has to pass the gates. It is NOT a deployment; it just queues research.)
   {"type": "deploy", "strategy_id": N, "reason": "..."}       (paper)
-  {"type": "deploy_live", "strategy_id": N, "reason": "..."}  (REAL money; only a YES-side strategy that already proved itself on PAPER, and only when the user turned on live autopilot. If live autopilot is off or any safety gate fails it is refused and stays on paper. Never the first step for a new idea: research -> paper -> live.)
+  {"type": "deploy_live", "strategy_id": N, "reason": "..."}  (REAL money; any side (YES or NO) that already proved itself on PAPER, and only when the user turned on live autopilot. If live autopilot is off or any safety gate fails it is refused and stays on paper. Never the first step for a new idea: research -> paper -> live.)
 Use actions only when you have a concrete reason; an empty list is often right.
 """ + specmod.SPEC_GUIDE
 

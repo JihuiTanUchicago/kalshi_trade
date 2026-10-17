@@ -43,12 +43,12 @@ class FakeRepo:
 
     # verdicts
     def append_result(self, cur, experiment_id, phase, classification, n_trades,
-                      metrics=None, equity_curve=None):
+                      metrics=None, equity_curve=None, folds=None):
         rid = self._next_res
         self._next_res += 1
         row = {"id": rid, "experiment_id": experiment_id, "phase": phase,
                "classification": classification, "n_trades": n_trades,
-               "equity_curve": equity_curve}
+               "equity_curve": equity_curve, "folds": folds}
         row.update(metrics or {})
         self.results.setdefault(experiment_id, []).append(row)
         return rid
@@ -137,6 +137,21 @@ def _null_trades(n=60):
     return [_trade(1_000_000 + i * 3600, 0.50, won=(i % 2 == 0)) for i in range(n)]
 
 
+def _one_day_fluke(n=60):
+    """The SAME strong edge as _edge_trades, but every trade opens inside a single calendar day
+    (entries 60s apart). Statistically it looks great (small p, CI>0, placebo passes) yet it is a
+    one-day artifact — the cross-day gate must demote it from STAT_SUPPORTED."""
+    trades = []
+    n_win = n - max(4, n // 10)
+    cheap = [0.28, 0.30, 0.32]
+    base = 1_000_000  # 1_000_000 // 86400 == day 11, and +60*60s stays in the same day
+    for i in range(n_win):
+        trades.append(_trade(base + i * 60, cheap[i % 3], won=True))
+    for i in range(n - n_win):
+        trades.append(_trade(base + (n_win + i) * 60, 0.60, won=False))
+    return trades
+
+
 @pytest.fixture
 def repo(monkeypatch):
     r = FakeRepo()
@@ -187,6 +202,46 @@ def test_judge_validation_injected_edge_is_stat_supported(repo, monkeypatch):
     assert repo.set_fdr_calls == 1               # alpha was spent exactly once
     row = repo.results_for_experiment(None, eid, "validation")[-1]
     assert row["classification"] == Classification.STAT_SUPPORTED.value and row["fdr_reject"] == 1
+
+
+# -- cross-day generalization gate ---------------------------------------------
+
+
+def test_cross_day_gate_rejects_a_one_day_fluke(repo, monkeypatch):
+    _patch_sim(monkeypatch, lambda spec: _one_day_fluke())
+    eid = gk.preregister(None, Prereg(user_id=7, run_id=1, market="btc15m",
+                                      spec={"kind": "fluke"}, economic_rationale="m"))
+    out = gk.judge_validation(None, eid, _finalist({"kind": "fluke"}), _ds())
+    # Looks statistically strong but the edge is confined to one day -> NOT statistically supported.
+    assert out["p_value"] < gk.ALPHA and out["ci"]["lo"] > 0 and out["placebo_p"] < gk.ALPHA
+    assert out["cross_day_ok"] is False
+    assert out["classification"] == Classification.INCONCLUSIVE.value
+    row = repo.results_for_experiment(None, eid, "validation")[-1]
+    assert row["folds"]  # per-fold breakdown recorded for the research-paper folds strip
+
+
+def test_cross_day_gate_passes_an_edge_spread_across_days(repo, monkeypatch):
+    _patch_sim(monkeypatch, lambda spec: _edge_trades())  # hourly entries span several days
+    eid = gk.preregister(None, Prereg(user_id=7, run_id=1, market="btc15m",
+                                      spec={"kind": "edge"}, economic_rationale="m"))
+    out = gk.judge_validation(None, eid, _finalist({"kind": "edge"}), _ds())
+    assert out["cross_day_ok"] is True
+    assert out["classification"] == Classification.STAT_SUPPORTED.value
+
+
+def test_cross_contract_spends_from_a_shared_fdr_stream(repo, monkeypatch):
+    """A cross-contract (btc_daily+eth_daily) strategy advances ONE shared FDR stream, not each
+    leg's per-market stream — so a pair can't double-spend budgets, and single-market streams
+    stay separate (RESEARCH_PIPELINE_DESIGN.md §E.6)."""
+    _patch_sim(monkeypatch, lambda spec: _edge_trades())
+    key = "btc_daily+eth_daily"
+    eid = gk.preregister(None, Prereg(user_id=7, run_id=1, market=key,
+                                      spec={"kind": "edge"}, economic_rationale="btc-eth basis"))
+    out = gk.judge_validation(None, eid, _finalist({"kind": "edge"}, market=key), _ds(market=key))
+    assert out["classification"] == Classification.STAT_SUPPORTED.value
+    assert (7, key) in repo.fdr                                   # the shared stream advanced
+    assert (7, "btc_daily") not in repo.fdr                      # neither leg's own stream touched
+    assert (7, "eth_daily") not in repo.fdr
 
 
 # -- judge_validation: error paths ---------------------------------------------

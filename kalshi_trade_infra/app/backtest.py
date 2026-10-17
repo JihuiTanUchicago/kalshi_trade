@@ -13,6 +13,7 @@ Honesty rules, each closing a way backtests usually flatter themselves:
 """
 from __future__ import annotations
 
+import logging
 import math
 import threading
 import time
@@ -65,15 +66,18 @@ def _iso(ts: int) -> str:
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
 
 
-def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc: List[Tuple[int, float]]) -> Dataset:
-    """markets: {ticker, strike, close_time, result}; candles: {ticker, end_period_ts, yes_bid_close, yes_ask_close}."""
+def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc: List[Tuple[int, float]],
+                  micro: Optional[Dict[Tuple[str, int], Dict[str, float]]] = None) -> Dataset:
+    """markets: {ticker, strike, close_time, result}; candles: {ticker, end_period_ts, yes_bid_close, yes_ask_close}.
+    micro: {(ticker, decision_ts): {feature: value}} order-book features to merge per snapshot (optional)."""
+    micro = micro or {}
     series = BtcSeries(btc)
     contracts = {}
     results = {}
     for m in markets:
         ct = m["close_time"]
         ct = ct if ct.tzinfo else ct.replace(tzinfo=timezone.utc)
-        contracts[m["ticker"]] = Contract(m["ticker"], float(m["strike"]), ct)
+        contracts[m["ticker"]] = Contract(m["ticker"], float(m["strike"]), ct, series=market.series)
         results[m["ticker"]] = m["result"]
     by_ts: Dict[int, List[Tuple[Contract, Optional[float], Optional[float]]]] = defaultdict(list)
     for c in candles:
@@ -90,7 +94,8 @@ def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc:
         feats = series.features_at(ts)
         if feats is None:
             continue
-        snaps = [s for s in (snapshot(feats, ct, ts, b, a) for ct, b, a in by_ts[ts]) if s is not None]
+        snaps = [s for s in (snapshot(feats, ct, ts, b, a, micro.get((ct.ticker, ts)))
+                             for ct, b, a in by_ts[ts]) if s is not None]
         if snaps:
             frames.append((ts, snaps))
     start = frames[0][0] if frames else 0
@@ -141,11 +146,19 @@ class WhatIf:
 def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optional[WhatIf] = None) -> List[Trade]:
     """Trades for positions OPENED in [start_ts, end_ts). Positions settle on
     Kalshi's result even if that is after end_ts - the result was fixed by the
-    market, not chosen by the backtest."""
+    market, not chosen by the backtest.
+
+    A cross-contract (`cross`) spec routes to simulate_pairs. A code strategy (spec has
+    `code`) computes a per-frame target book in the sandbox once; the entry/exit/sizing/
+    fee/settlement mechanics below are then IDENTICAL to a DSL spec. Everything else is the
+    single-contract DSL path, unchanged."""
+    if spec.get("cross"):
+        return simulate_pairs(spec, ds, start_ts, end_ts, what_if)
     w = what_if or WhatIf()
     slip = w.slippage_cents / 100.0
     stake = w.stake if w.stake is not None else spec["sizing"]["stake"]
     max_pos = spec["sizing"]["max_positions"]
+    book = _code_book(spec, ds, start_ts, end_ts) if specmod.is_code_spec(spec) else None
     open_: List[_Open] = []
     trades: List[Trade] = []
 
@@ -172,7 +185,12 @@ def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optio
         keep = []
         for pos in open_:
             snap = by_ticker.get(pos.ticker)
-            sig = specmod.exit_signal(spec, pos.side, pos.entry_price, snap) if snap else None
+            if not snap:
+                sig = None
+            elif book is not None:
+                sig = _code_exit(book, ts, pos, snap)
+            else:
+                sig = specmod.exit_signal(spec, pos.side, pos.entry_price, snap)
             if sig is None:
                 keep.append(pos)
                 continue
@@ -189,7 +207,8 @@ def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optio
                 break
             continue  # past the window: only manage what is already open
         held = {p.ticker for p in open_}
-        for cand in specmod.entries(spec, snaps):
+        cands = _code_entries(book, ts, snaps) if book is not None else specmod.entries(spec, snaps)
+        for cand in cands:
             if len(open_) >= max_pos:
                 break
             if cand.snapshot.contract.ticker in held:
@@ -209,6 +228,108 @@ def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optio
     return trades
 
 
+@dataclass
+class _OpenPair:
+    long_ticker: str
+    short_ticker: str  # bought as NO
+    qty: int
+    entry_ts: int
+    long_price: float  # YES price paid
+    short_price: float  # NO price paid
+    fee: float
+    close_ts: int  # max of the two legs' settlement times
+    edge: float
+
+
+def simulate_pairs(spec: Dict, ds: Dataset, start_ts: int, end_ts: int,
+                   what_if: Optional[WhatIf] = None) -> List[Trade]:
+    """Relative-value pairs opened in [start_ts, end_ts). Each pair is ONE combined Trade: buy
+    YES on the underpriced leg + NO on the overpriced leg, held to settlement. entry_price is
+    the per-unit cost of both legs (in (0,2)), exit_price the per-unit payoff ({long won}+{short
+    won}), so Trade.pnl = qty*(payoff-cost)-fees stays the honest accounting. Fees are Kalshi's
+    taker fee on each leg. ds.frames must carry snapshots of every involved market at each frame
+    (a single market already does; cross-market needs merge_datasets)."""
+    w = what_if or WhatIf()
+    slip = w.slippage_cents / 100.0
+    stake = w.stake if w.stake is not None else spec["sizing"]["stake"]
+    max_pos = spec["sizing"]["max_positions"]
+    open_: List[_OpenPair] = []
+    trades: List[Trade] = []
+
+    def fee(qty: int, price: float) -> float:
+        return taker_fee_dollars(qty, price) * w.fee_multiplier
+
+    def settle(pos: _OpenPair) -> None:
+        long_won = ds.results.get(pos.long_ticker) == "yes"
+        short_won = ds.results.get(pos.short_ticker) == "no"  # a NO buy wins when it settles "no"
+        payoff = (1.0 if long_won else 0.0) + (1.0 if short_won else 0.0)
+        trades.append(
+            Trade("%s|%s" % (pos.long_ticker, pos.short_ticker), "pair", pos.qty, pos.entry_ts,
+                  pos.long_price + pos.short_price, pos.close_ts, payoff, pos.fee, "settled", pos.edge)
+        )
+
+    for ts, snaps in ds.frames[_first_frame(ds, start_ts):]:
+        keep = []
+        for pos in open_:
+            if pos.close_ts <= ts:
+                settle(pos)
+            else:
+                keep.append(pos)
+        open_ = keep
+
+        if ts >= end_ts:
+            if not open_:
+                break
+            continue  # past the window: only let open pairs settle
+        held = {t for p in open_ for t in (p.long_ticker, p.short_ticker)}
+        for cand in specmod.pair_entries(spec, snaps):
+            if len(open_) >= max_pos:
+                break
+            lt = cand.long_snap.contract.ticker
+            st = cand.short_snap.contract.ticker
+            if lt in held or st in held:
+                continue
+            long_price = min(0.99, cand.long_price + slip)
+            short_price = min(0.99, cand.short_price + slip)
+            qty = specmod.contracts_for(stake, long_price + short_price)
+            if qty < 1:
+                continue
+            close_ts = max(int(cand.long_snap.contract.close_time.timestamp()),
+                           int(cand.short_snap.contract.close_time.timestamp()))
+            open_.append(_OpenPair(lt, st, qty, ts, long_price, short_price,
+                                   fee(qty, long_price) + fee(qty, short_price), close_ts, cand.edge))
+            held.update((lt, st))
+    for pos in open_:
+        settle(pos)
+    return trades
+
+
+def merge_datasets(datasets: List[Dataset], key: str, label: Optional[str] = None) -> Dataset:
+    """Union several single-market Datasets into one whose frames carry every market's snapshots
+    at each decision ts - the input a cross-SECTIONAL pair (e.g. BTC vs ETH) needs. `key` is the
+    combined market/FDR-stream key (e.g. 'btc_daily+eth_daily'); the synthetic Market carries it
+    so the gatekeeper spends from that one shared stream. cross_strike / calendar pairs stay on a
+    single market and need no merge (one dataset's frame already holds every strike/settlement)."""
+    if not datasets:
+        raise ValueError("merge_datasets needs at least one dataset")
+    base = datasets[0].market
+    market = Market(key=key, series=key, label=label or key, candle_minutes=base.candle_minutes,
+                    history_days=base.history_days, close_hour_et=base.close_hour_et,
+                    underlying=base.underlying, deployable=False)
+    by_ts: Dict[int, List[Snapshot]] = defaultdict(list)
+    results: Dict[str, str] = {}
+    contracts = 0
+    for ds in datasets:
+        results.update(ds.results)
+        contracts += ds.contracts
+        for ts, snaps in ds.frames:
+            by_ts[ts].extend(snaps)
+    frames = [(ts, by_ts[ts]) for ts in sorted(by_ts)]
+    start = frames[0][0] if frames else 0
+    end = frames[-1][0] if frames else 0
+    return Dataset(market, frames, results, start, end, contracts)
+
+
 def _first_frame(ds: Dataset, start_ts: int) -> int:
     lo, hi = 0, len(ds.frames)
     while lo < hi:
@@ -218,6 +339,92 @@ def _first_frame(ds: Dataset, start_ts: int) -> int:
         else:
             hi = mid
     return lo
+
+
+# -- arbitrary-quant code strategies -------------------------------------------
+# The sandbox runs the agent's signals(window) ONCE over the in-window frames and returns a
+# target book per frame; the shared simulate() loop then applies sizing/fees/settlement. Any
+# sandbox failure or malformed output yields an empty book -> zero trades (fails the gate
+# honestly) rather than crashing the research run.
+
+
+def _code_book(spec: Dict, ds: Dataset, start_ts: int, end_ts: int) -> Dict[int, Dict[str, Tuple[str, float]]]:
+    """Run the strategy and return {ts: {ticker: (side, score)}} for in-window decision frames.
+    # ponytail: serializes the window to JSON per simulate() call (O(frames x contracts)); fine
+    # for current window sizes, switch to a binary channel if windows grow much larger."""
+    from app import sandbox
+    frames = [(ts, snaps) for ts, snaps in ds.frames if start_ts <= ts < end_ts]
+    window = {"market": spec["market"], "frames": [
+        {"ts": ts, "contracts": [
+            {"ticker": s.contract.ticker, "strike": s.contract.strike,
+             "close_ts": int(s.contract.close_time.timestamp()),
+             "yes_bid": s.yes_bid, "yes_ask": s.yes_ask, "features": s.features}
+            for s in snaps]}
+        for ts, snaps in frames]}
+    try:
+        raw = sandbox.run_strategy_signals(spec["code"], window)
+    except sandbox.SandboxError as e:
+        logging.getLogger(__name__).warning("code strategy sandbox failure: %s", e)
+        return {}
+    return _parse_book(raw, frames)
+
+
+def _parse_book(raw, frames) -> Dict[int, Dict[str, Tuple[str, float]]]:
+    """Validate untrusted sandbox output into a book. Any shape violation -> {} (no trades)."""
+    if not isinstance(raw, list) or len(raw) != len(frames):
+        return {}
+    book: Dict[int, Dict[str, Tuple[str, float]]] = {}
+    for (ts, snaps), picks in zip(frames, raw):
+        tickers = {s.contract.ticker for s in snaps}
+        want: Dict[str, Tuple[str, float]] = {}
+        if not isinstance(picks, list):
+            return {}
+        for p in picks:
+            if not isinstance(p, dict):
+                return {}
+            ticker, side, score = p.get("ticker"), p.get("side"), p.get("score", 0.0)
+            if ticker not in tickers or side not in ("yes", "no"):
+                return {}
+            if isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(score):
+                return {}
+            want.setdefault(ticker, (side, float(score)))  # first listing of a ticker wins
+        book[ts] = want
+    return book
+
+
+def _code_entries(book: Dict[int, Dict[str, Tuple[str, float]]], ts: int, snaps: List[Snapshot]):
+    """The contracts the code wants to OPEN at this frame, best score first, as spec.Entry so the
+    shared loop treats them exactly like DSL entries. fair/edge carry the strategy's own score."""
+    want = book.get(ts)
+    if not want:
+        return []
+    by_ticker = {s.contract.ticker: s for s in snaps}
+    out = []
+    for ticker, (side, score) in want.items():
+        snap = by_ticker.get(ticker)
+        if snap is None:
+            continue
+        price = specmod.side_prices(snap)[side][0]
+        if price <= 0 or price >= 1:
+            continue
+        out.append(specmod.Entry(snap, side, price, price, score))
+    out.sort(key=lambda e: e.edge, reverse=True)
+    return out
+
+
+def _code_exit(book: Dict[int, Dict[str, Tuple[str, float]]], ts: int, pos: _Open, snap: Snapshot):
+    """Exit when the code stops listing this (ticker, side): sell at the bid. Frames past the
+    window are not in the book, so open positions there are simply held to settlement."""
+    want = book.get(ts)
+    if want is None:
+        return None  # not a decision frame we control -> hold
+    tgt = want.get(pos.ticker)
+    if tgt is not None and tgt[0] == pos.side:
+        return None  # still wanted -> hold
+    sell = specmod.side_prices(snap)[pos.side][1]
+    if sell <= 0:
+        return None  # nobody to sell to; hold to settlement
+    return "signal", sell
 
 
 # -- metrics -----------------------------------------------------------------
@@ -361,7 +568,7 @@ def load_from_db(market: Market, history_days: Optional[int] = None) -> Dataset:
             h = repo.load_history(cur, market.series, market.candle_minutes, since, market.underlying)
     finally:
         conn.close()
-    return build_dataset(market, h["markets"], h["candles"], h["btc"])
+    return build_dataset(market, h["markets"], h["candles"], h["btc"], h.get("micro"))
 
 
 def dataset(market_key: str, history_days: Optional[int] = None) -> Dataset:
