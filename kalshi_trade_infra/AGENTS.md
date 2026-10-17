@@ -1,95 +1,109 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
-This repository is a Kalshi BTC 15-minute trading pipeline: ingestion, feature engineering,
-simulated + live trading engines, and a dashboard. See `PLAN.md` for current architecture
-details and status - it is kept up to date every session.
-- `data_pipeline/`: the actual system (collectors, feature builder, sim/live trading engines,
-  `dashboard_server.py`, `common.py` for shared DB/auth helpers, `architecture/` for the
-  live-trading risk/execution abstractions).
-- `client_api/`: pandas DataFrame client for pulling historical data from the dashboard's
-  `/api/table` endpoint (used for research, not the live pipeline itself).
-- `tests/`: pytest suite using a `FakeCursor` fixture (see `tests/conftest.py`) so engine/risk
-  logic is testable without a live database.
-- `credentials/`: key material location (do not commit secrets).
-- `scripts/`: AWS provisioning/deploy helpers (RDS, EC2).
-- `requirements.txt`: pinned runtime + test dependencies.
-- `venv/`/`.venv/`: local virtualenvs, gitignored (do not track changes here).
+**Product: "RSI for Trading."** A self-improving quant pipeline — ideation → simulation → real
+execution — for Kalshi BTC prediction markets. It places **real orders** and evolves its own
+strategy-search policy (Tau-RSI). Optimize for durable alpha and robustness, not demo polish.
+Ship fast by keeping diffs minimal and reusing what's here; ship safe by never weakening a
+guard. Deep architecture lives in `PLAN.md` (kept current every session) and the rigorous-
+research spec in `RESEARCH_PIPELINE_DESIGN.md`. This file holds only what an agent can't infer
+from the code: commands, non-obvious conventions, and the safety/rigor bars.
 
-## Build, Test, and Development Commands
-Use Python 3.12+ with a virtual environment.
-- `python -m venv venv && source venv/bin/activate`: create/activate local env.
-- `pip install -r requirements.txt`: install dependencies.
-- `python -m data_pipeline.init_schema`: create/migrate the DB schema.
-- `python -m pytest tests/`: run the test suite (no live DB required).
-- `python -m py_compile data_pipeline/*.py`: quick syntax check.
+## Project Structure
+- `data_pipeline/`: the live system — collectors, feature builder, sim/live engines,
+  `dashboard_server.py`, `common.py` (DB/auth helpers), `architecture/` (live risk/execution).
+- `app/`: the customer product (research agent, backtester, quant/stats toolkit, server, SPA).
+- `client_api/`: pandas client for the dashboard's `/api/table` (research, not the live path).
+- `tests/`: pytest with a `FakeCursor` fixture (`tests/conftest.py`) — engine/risk logic is
+  testable with no live DB. `credentials/`: key material (never commit). `scripts/`: AWS deploy.
 
-## Coding Style & Naming Conventions
-- Follow PEP 8, 4-space indentation, and explicit type hints for public methods.
-- Use `snake_case` for functions/variables, `PascalCase` for classes, `UPPER_SNAKE_CASE` for constants.
-- Keep functions focused; prefer explicit control flow over compact but opaque expressions.
-- Keep DB access in the relevant `*_repository.py`/`common.py` layer, not inline in business logic
-  (see `sim_repository.py` for the established pattern) - it's what makes engine/risk logic
-  testable without a live database.
+## Build, Test, Deploy
+Python 3.12+ in a venv. `pip install -r requirements.txt`.
+- `python -m pytest tests/` — full suite, no live DB. Run before every commit; keep it green.
+- `python -m py_compile app/*.py data_pipeline/*.py` — fast syntax check.
+- `python -m data_pipeline.init_schema` — create/migrate schema (idempotent).
+- **Deploy (when explicitly asked):** tar the **whole `app/` package** — never file-by-file
+  (partial deploys drop imports and crash-loop the box). Ship to the **web box**
+  (the CloudFront origin), not a collector box — see memory + `PLAN.md` for exact IDs/commands.
+  Invalidate CloudFront `/*` (the HTML carries the `?v=` asset hash). **Verify a live `curl`
+  returns 200 — "service active" is not proof.** These three are the documented causes of past
+  silent outages; treat them as a checklist, not advice.
 
-## Testing Guidelines
-- Add unit tests under `tests/` using `pytest` when adding non-trivial logic.
-- Name files `test_<module>.py` and cases `test_<behavior>`.
-- Prefer testing against a `FakeCursor` (extend the pattern in `tests/conftest.py`) over a live
-  DB connection - that's the point of the repository-layer extraction.
-- For dashboard/API changes, include at least one happy-path and one error-path test.
+## Coding Style
+- PEP 8, 4-space indent, explicit type hints on public methods. `snake_case` funcs/vars,
+  `PascalCase` classes, `UPPER_SNAKE_CASE` constants. Explicit over clever; focused functions.
+- **DB access stays in the repository layer** (`*_repository.py`/`common.py`), never inline in
+  business logic (pattern: `sim_repository.py`) — that layer is what makes engine/risk logic
+  testable against `FakeCursor`. Enforce DRY; flag duplication early.
+- **Stdlib/quant-toolkit first.** Reuse `app/quant.py` (fees, vol, edge, Kelly, drawdown) and
+  `app/stats.py`; do not re-implement math or add numpy/scipy unless profiling demands it.
 
-## Commit & Pull Request Guidelines
-Use Conventional Commit style:
-- `feat: add market data polling helper`
-- `fix: handle websocket reconnect on ssl error`
+## Testing
+- Add `tests/test_<module>.py`, cases `test_<behavior>`, for any non-trivial logic. Prefer
+  `FakeCursor` over a live DB. Dashboard/API changes need ≥1 happy-path and ≥1 error-path test.
+- Non-trivial branch/loop/parser/money path leaves one runnable check behind.
 
-PRs should include:
-- concise summary of behavior changes,
-- risk notes (auth, order placement, rate limit impact),
-- validation evidence (commands run, sample output),
-- linked issue/task when applicable.
+## Quant-Research Rigor (the product's whole point)
+A fee-surviving BTC edge is rare; it is trivially easy to *fake* one. For any strategy,
+backtest, or research-pipeline change, hold the bar in `RESEARCH_PIPELINE_DESIGN.md`:
+- **Mechanism before rule** — name who is on the other side and why the edge persists. No
+  mechanism, no hypothesis.
+- **Pre-register, then freeze** — the spec, hypothesis, and test are fixed before any held-out
+  number is seen. The generator never sees validation/holdout outcomes; only the gatekeeper does.
+- **Count every trial** — trial count is invisible in code and inflates every result; the
+  immutable ledger exists so DSR/FDR corrections stay honest. Record failures and INCONCLUSIVEs.
+- **Judge with tests, not point thresholds** — bootstrap CIs, PSR/DSR, FDR budget, purged
+  walk-forward + embargo. "No reliable edge" is a first-class, valuable result.
+- Fees are a hard, state-dependent hurdle; net-of-fee or it doesn't count.
 
-## Security & Configuration Tips
-- `.env.aws` holds DB credentials and AWS profile/region for the deployed pipeline; `common.py`
-  reads Kalshi API key material via `PROD_KEYID`/`PROD_KEYFILE` (or `KALSHI_WS_KEY_ID`/
-  `KALSHI_WS_PRIVATE_KEY_PATH`) and the dashboard's basic-auth/live-trading-gate passwords via
-  `DASHBOARD_PASSWORD`/`LIVE_TRADING_PASSWORD`.
-- Never commit `.env*`, private keys, or raw account/order responses containing sensitive data
-  (`.gitignore` already excludes these).
-- `live_trading_engine.py` places real orders when `live_settings.live_enabled=true` - never flip
-  that on, or make changes that could effectively do so, without explicit, separate authorization.
+## Security & Safety (NON-NEGOTIABLE)
+- `live_trading_engine.py` places real orders when `live_settings.live_enabled=true` — never
+  flip that on, or make changes that could effectively do so, without explicit, separate
+  authorization. Deploy/live checks may only ever become *stricter*, never weaker or reordered.
+- `.env.aws` holds DB creds + AWS profile/region; `common.py` reads Kalshi key material via
+  `PROD_KEYID`/`PROD_KEYFILE` (or `KALSHI_WS_KEY_ID`/`KALSHI_WS_PRIVATE_KEY_PATH`) and the
+  dashboard basic-auth/live-gate passwords via `DASHBOARD_PASSWORD`/`LIVE_TRADING_PASSWORD`.
+- Never commit `.env*`, private keys, or raw account/order responses (`.gitignore` covers these).
+- Run `/security-review` on any diff touching money, orders, auth, or a control path.
 
-## Agent-Specific Operating Principles
-These instructions apply to contributors and coding agents working on strategies and platform features.
+## Skills
+- `/ponytail` before any **backend** code; `/impeccable` before any **frontend/UI** work.
+- `/devlog-sync` whenever `mvp.md`'s Queue/Done changes (regenerates the public Dev Logs).
+- `/security-review` per the safety rule above. `/code-review`, `/simplify` are available on demand.
+- **Skills worth building (propose, don't auto-author):** a `quant-rigor` checklist skill
+  distilling `RESEARCH_PIPELINE_DESIGN.md` (pre-registration, trial-count, purged WF, DSR/PSR
+  gates); a `deploy-verify` skill encoding the whole-`app/`-tar + correct-box + CloudFront-`/*`
+  + curl-200 procedure above.
 
-### Architecture & Change Management
-- For new trading strategies or features, optimize for clear architecture, extension points, and future change.
-- Design with likely changes in mind (new data sources, strategy variants, execution logic, risk constraints).
-- Prefer minimal, intentional abstractions over speculative framework building.
+## Agent Operating Principles
+- **Opinionated recommendation, not a menu.** State concrete tradeoffs; surface genuine
+  either/or decisions as a selection and ask before committing. For missing data, propose a
+  practical acquisition path and name the support needed.
+- **Minimal intentional abstractions.** Design for likely change (new data/strategy/execution/
+  risk), but no speculative framework building. Fewest files touched; root-cause over symptom.
+- **Parallelize independent work, sequence dependencies.** Fan out read-heavy research and
+  disjoint-file edits to subagents (keeps their file-dumps out of your context — relay only the
+  conclusion); serialize anything sharing a file (e.g. `schema.py`, `agent.py` have one owner).
+- **PLAN/mvp discipline (every turn):** keep `PLAN.md` current; keep the todo list in `../mvp.md`
+  current — open work under `## TODO / Working Queue` (one flat list; `[blocked]` = needs a
+  user/AWS action). The moment something ships, MOVE it to `## Done` (dated), don't delete it.
+- After implementing a strategy, document it; prefer diagrams for architecture/signal flow.
 
-### Decision Process & Collaboration
-- For each issue or recommendation, state concrete tradeoffs.
-- Provide an opinionated recommendation, not just options.
-- Ask for input before committing to a direction when multiple reasonable approaches exist.
+## Continuous Improvement Protocol (bounded self-improvement — the agents' own RSI loop)
+This file is living documentation. Each session (or when a recurring failure surfaces) an agent
+MAY propose **exactly one** small refinement to AGENTS.md, from harvested signal: recent commits,
+`mvp.md` Done, subagent findings, repeated mistakes. Rules that make it safe, not a runaway rewrite:
+- **Additive value or proven-dead removal only** — add a rule that would have prevented a *real,
+  observed* miss, or cut guidance shown to be ignored/obsolete. Never bloat; sharpen before append.
+- **Never touch the safety/security bar except to strengthen it.** Never an automatic or unbounded
+  self-rewrite — it is one human-reviewed edit in a normal commit, reversible like any other.
+- **Log it** in the changelog below: dated, one line. Keep only the last ~10 entries (prune oldest).
 
-### Trading Strategy Expectations
-- Operate with a hedge-fund mindset: alpha durability, risk-adjusted returns, drawdown control, tuning, and rebalancing discipline.
-- If required data is missing, proactively propose practical data-acquisition paths and identify what support is needed from the repo owner.
-- After implementing a strategy, include comprehensive strategy documentation. Prefer diagrams/graphs to explain architecture and signal flow.
+### Instruction changelog
+- 2026-10-16 — Restructured for speed+safety: added product framing, Deploy checklist (whole-app
+  tar / correct box / CloudFront `/*` / curl-200, from documented outages), a Quant-Research Rigor
+  bar tied to `RESEARCH_PIPELINE_DESIGN.md`, sharpened skills + parallel-vs-sequence guidance, and
+  this bounded self-improvement protocol. Safety rules preserved and made more prominent.
 
-### PLAN
-- On every turn of response, put your most up to date knowledge about the codebase, architecture design, and action plans in PLAN.md.
-
-### TODO list
-- Always keep the running todo list current, in `../mvp.md`. Open work lives under
-  **`## TODO / Working Queue`** (one flat list; `[blocked]` = needs a user/AWS action).
-  The moment something ships, MOVE it out of the queue into the **`## Done`** section
-  (dated subsection), don't just delete it. Keep the two sections in sync every turn.
-
-### Engineering Standards
-- Enforce DRY aggressively; flag duplication early.
-- Keep code "engineered enough": avoid both fragile hacks and premature complexity.
-- Prefer handling edge cases thoughtfully over optimizing only for implementation speed.
-- Bias toward explicit code over clever code.
-- Keep diffs minimal: solve the problem with the fewest necessary abstractions and files touched.
+## Commit & PR
+Conventional Commits (`feat: …`, `fix: …`). PRs: behavior-change summary, risk notes (auth, order
+placement, rate limits), validation evidence (commands + output), linked task.
