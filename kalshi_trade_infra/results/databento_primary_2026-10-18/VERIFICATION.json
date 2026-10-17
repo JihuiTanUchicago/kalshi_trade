@@ -1,0 +1,27 @@
+{
+  "workstream": "tau-databento-primary-20261018",
+  "date": "2026-10-18",
+  "timezone": "Asia/Shanghai",
+  "base": "a5d55287faba9d0659186fa406afd4fe60191a4f",
+  "branch": "codex/databento-primary-20261018",
+  "python_regression": {"passed": 939, "skipped": 9, "seconds": 7.43, "kind": "offline"},
+  "new_routing_tests": 26,
+  "new_helper_tests": 35,
+  "independent_review": {"passed": 287, "network_sockets": "blocked", "remaining_actionable_findings": 0},
+  "syntax_check": "passed",
+  "diff_whitespace_check": "passed",
+  "provider_api_requests": 0,
+  "paid_model_requests": 0,
+  "production_operations": 0,
+  "schema_changes": false,
+  "trading_gate_changes": false,
+  "private_env_modified": false,
+  "separate_oauth_pr": 10,
+  "remaining_acceptance": [
+    "deployment-owner runtime configuration and licensed datasets/feeds",
+    "durable data-cost accounting before broad paid rollout",
+    "real provider availability and bounded download check",
+    "real queued worker/model canary",
+    "Databento live/OPRA workflow remains unimplemented"
+  ]
+}
