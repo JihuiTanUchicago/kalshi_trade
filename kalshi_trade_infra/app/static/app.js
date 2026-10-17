@@ -1496,10 +1496,6 @@
         <div id="rsimo"></div>
       </div>
       ${pipelineFigure()}
-      <details class="pipefig winfig" id="winsect" hidden>
-        <summary class="pipecap"><span class="pipecap-t">Build on what's worked</span><span class="pipecap-hint" id="wincount"></span><span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
-        <div class="wins" id="winners"></div>
-      </details>
       <section class="sect"><div class="sect-head"><h2>Your sessions</h2><p id="rcount"></p></div>
         <div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div></section>`);
     const form = root.querySelector('#dispatch');
@@ -1556,27 +1552,6 @@
           syncCtx();
         }
       } catch (e) { /* no feed yet -> the picker still works blind */ }
-    })();
-    // Build on what's worked: the user's best passed edges, one click from a deeper search.
-    (async () => {
-      try {
-        const w = await api('/api/strategies?status=passed');
-        const top = (w.strategies || []).slice()
-          .sort((a, b) => ((b.out_of_sample && b.out_of_sample.pnl) || 0) - ((a.out_of_sample && a.out_of_sample.pnl) || 0))
-          .slice(0, 4);
-        if (!top.length) return;
-        const sect = root.querySelector('#winsect'), box = root.querySelector('#winners');
-        box.innerHTML = top.map(winCard).join('');
-        root.querySelector('#wincount').textContent = `${w.matched || top.length} passed`;
-        sect.hidden = false;
-        box.querySelectorAll('[data-dig]').forEach((b) => (b.onclick = () => busy(b, async () => {
-          try {
-            const r = await api(`/api/strategies/${b.dataset.dig}/dig-deeper`,
-              { model: (form.querySelector('#rmodel') || {}).value || undefined, run_forever: !!(rf && rf.checked) });
-            go('/research/' + r.id);
-          } catch (err) { flash('#flash', err.message, 'bad'); }
-        })));
-      } catch (e) { /* no winners yet -> the section stays hidden */ }
     })();
     const load = async () => {
       const d = await api('/api/runs');
