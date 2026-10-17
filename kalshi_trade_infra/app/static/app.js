@@ -1509,8 +1509,8 @@
           ${marketPicker(me.markets)}
         </fieldset>
         <div class="dispatch-go">
-          <button class="btn primary go" type="submit" ${me.needs_card ? 'aria-disabled="true"' : ''}>${ICON.spark2}Start session</button>
           <button type="button" class="chip ex" data-ex="${esc(DEMO_PROMPT)}" title="Fill the box with a tiny runnable demo idea">Try the demo — Todd's random walk</button>
+          <button class="btn primary go" type="submit" ${me.needs_card ? 'aria-disabled="true"' : ''}>${ICON.spark2}Start session</button>
         </div>
         <div id="dflash"></div>
         <p class="hint">A session takes a few minutes and keeps running if you leave this page.</p>
