@@ -1959,7 +1959,7 @@
             <div><dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd></div>
           </dl>
           ${d.last_action ? `<p class="apf-last">${esc(d.last_action.text)}</p>` : '<p class="apf-last hint">No autopilot actions yet.</p>'}
-          <div class="apf-gates hint">${d.live_enabled ? '' : 'Live trading is off on this server. '}${d.kalshi_connected ? '' : 'No Kalshi key connected. '}</div>
+          <div class="apf-gates hint">${apLiveBlock(d)}</div>
           <div id="apf-flash"></div>
           <div class="apf-controls">
             ${d.autopilot_live
@@ -1979,10 +1979,22 @@
     const form = box.querySelector('#apf-confirm');
     if (form) form.onsubmit = (e) => { e.preventDefault(); apEnableLive(box, form.confirm.value.trim()); };
   }
+  // Why live autopilot can't be enabled yet (ordered), or '' when all gates pass.
+  function apLiveBlock(d) {
+    if (!d) return '';
+    if (!d.autopilot) return 'Turn on autopilot first — live autopilot builds on it. ';
+    if (!d.live_enabled) return 'Live trading is off on this server. ';
+    if (!d.kalshi_connected) return 'Connect your Kalshi key on the Funds page first. ';
+    return '';
+  }
   function apFlash(box, msg, kind) { const f = box.querySelector('#apf-flash'); if (f) f.innerHTML = `<p class="${kind === 'bad' ? 'error-text' : 'hint'}">${esc(msg)}</p>`; }
   async function apAction(box, action, e) {
     if (action === 'toggle') { localStorage.setItem('tau_ap_open', apExpanded() ? '0' : '1'); renderAutopilot(box, S.ap); return; }
-    if (action === 'livearm') { const f = box.querySelector('#apf-confirm'); if (f) { f.hidden = false; f.confirm.focus(); } return; }
+    if (action === 'livearm') {
+      const reason = apLiveBlock(S.ap);
+      if (reason) return apFlash(box, reason.trim(), 'bad');  // don't open the confirm if a gate is unmet
+      const f = box.querySelector('#apf-confirm'); if (f) { f.hidden = false; f.confirm.focus(); } return;
+    }
     if (action === 'livetoggle') {
       try { await api('/api/autopilot/live', { on: false }); } catch (err) { return apFlash(box, err.message, 'bad'); }
       refreshAutopilot(box);
