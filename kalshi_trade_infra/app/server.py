@@ -179,7 +179,8 @@ def _researchable_markets(cur) -> List[Dict]:
     spot_underlyings = [m.underlying for m in MARKETS.values() if m.kind == "spot" and m.underlying]
     live_spot = repo.spot_symbols_with_data(cur, spot_underlyings)
     return [
-        {"key": m.key, "label": m.label, "series": m.series, "category": m.category}
+        {"key": m.key, "label": m.label, "series": m.series, "category": m.category,
+         "deployable": m.deployable}
         for m in MARKETS.values()
         if m.kind != "spot" or m.underlying in live_spot
     ]

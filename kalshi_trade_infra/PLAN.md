@@ -283,6 +283,30 @@ Key empirical findings that shaped the design:
 - **Alignment:** one `snapshot_minute_utc` set once per scan, stamped on every row → all contracts
   share an aligned timestamp (cross-contract joins work); parallel fetch keeps the real window ~30s.
 - **Storage:** S3 + Parquet (Snappy), `s3://kalshi-trade-datalake-.../snapshots_1m/dt=.../minute=.../part.parquet`.
+### STATUS (2026-10-17) — Catalog-DRIVEN outcome-settled universe BUILT (not yet deployed)
+The 19 curated markets need hand-tuned, non-derivable config (strike/spot/close-hour), so they
+stay authored by hand. But OUTCOME-SETTLED binaries (underlying=None, book-only, settle YES/NO on
+an event — the `nba_game` model) have uniform, derivable config, so they're now GENERATED from the
+catalog:
+- `app/markets.py`: `MARKETS` = catalog-generated set + the 19 `CURATED` layered on top (authoritative,
+  never shadowed). `load_catalog_markets()` reads the enriched `kalshi_series` at import, best-effort
+  (no DB / empty / un-enriched catalog → just the curated 19; never raises, never hits the network).
+  `market_from_series()` is the pure, testable config-derivation. SQL lives in `app/catalog_repository.py`.
+- Generation filter (all derivable from the catalog): recurring frequency (fifteen_min/hourly/daily/
+  weekly/custom — excludes one_off/annual/sparse monthly+quarterly), allowed category (Sports, Weather,
+  Economics, Commodities, Sci/Tech, Companies, Health, World, Transportation — EXCLUDES Crypto [curated,
+  spot-ladder] and Financials [index strike-ladders needing a spot feed]), open_markets ≥ 2, non-MVE,
+  non-curated, non-scalar. Bounded: ≤150 total, ≤40/category, liquidity-ordered (all env-tunable).
+- `catalog_collector.refresh_series_meta()` enriches `kalshi_series` with Kalshi's own category+frequency
+  via ONE bulk `/series` call; `kalshi_series` gained a `frequency` column (init_schema DDL + migration).
+- Eager collection: `market_history.refresh` already loops `MARKETS`; each series is now contained in
+  try/except so one failing series never stalls the backfill for the rest. The ~100-series one-time
+  backfill is heavy but rate-limited (KALSHI_PAUSE); research fails closed until a market's data lands.
+- Live path unchanged: generated markets ride the exact `nba_game` engine path; `deployable=True` only
+  makes them ELIGIBLE — every per-deployment gate (gatekeeper, LIVE switch, key, typed confirm, NO-side,
+  drawdown, autopilot) still runs, in order. TAO stays research-only. No gate weakened.
+- Deploy sequence: deploy → `init_schema` → `catalog_collector` enriches → restart engine/market_history.
+
 ### STATUS (2026-10-14) — Phase 3 crypto backtest SHIPPED (research-only)
 The backtester now runs on any strike-ladder crypto series, not just BTC:
 - `Market` gained `underlying` (Coinbase product) + `deployable`. `MARKETS` now has BTC
