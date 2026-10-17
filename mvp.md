@@ -37,6 +37,7 @@ These are NOT done. Completed items move to **## Done** below.
 - `[v0.3]` Polymarket as a 2nd venue: data + API + real & simulation trading.
 - `[in progress]` Risk-management force-sell layer on drawdown + portfolio caps (lost when a prior background agent exited; needs rebuild).
 - `[in progress]` Authenticated dev/demo-env trading — per-user dev key (entered in-app, like the live key) + an isolated demo-exchange execution client, so users can place real TEST orders on Kalshi's sandbox. Foundation shipped (dormant); UI/engine wiring pending.
+- `[review]` "Dig deeper" on a passed strategy — a passed strategy is no longer a dead end. Backend seams in worktree (not committed): `POST /api/strategies/{id}/dig-deeper` + co-pilot `research` action both branch a NEW pre-registered research line off the passed strategy (seeds its thesis+spec, keeps the mechanism, refines/stress-tests/extends), through the normal gatekeeper (no bypass); branched strategies link to the parent via `parent_id` (first real use of the discovery-tree column). Also closes the "follow-up got stuck" report: the chat follow-up previously dead-ended because the co-pilot had no way to continue research. **UI still needed:** a "Dig deeper" button on the passed-strategy page → `POST /api/strategies/{id}/dig-deeper` then `go('/research/'+id)` (app.js + app.meridian.js).
 
 ## Done
 ### 2026-10-16

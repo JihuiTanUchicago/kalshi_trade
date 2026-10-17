@@ -408,6 +408,36 @@ def test_delete_strategy_blocks_when_deployed(monkeypatch):
     assert server.delete_strategy(ctx({})) == {"ok": True}
 
 
+def test_dig_deeper_seeds_a_research_run_from_a_passed_strategy(monkeypatch):
+    parent = {"id": 55, "status": "passed", "market": "btc15m", "direction": "volatility",
+              "title": "Tail fade", "thesis": "Cheap OTM YES is overpriced.", "spec": {"side": "yes", "market": "btc15m"}}
+    seen = {}
+    monkeypatch.setattr(server, "_owned_strategy", lambda c: dict(parent))
+    monkeypatch.setattr(server.repo, "count_runs", lambda *a, **k: 0)
+    monkeypatch.setattr(server.repo, "create_run",
+                        lambda cur, uid, kind, market, direction, prompt, **kw:
+                        (seen.update(kind=kind, market=market, seed=kw.get("seed_strategy_id"), prompt=prompt), 77)[1])
+    assert server.dig_deeper(ctx({}, params=("55",))) == {"id": 77}
+    assert seen["kind"] == "research" and seen["market"] == "btc15m" and seen["seed"] == 55
+    assert "Dig deeper" in seen["prompt"]            # the passed strategy's thesis/spec seeds the run
+
+
+def test_dig_deeper_refuses_a_strategy_that_did_not_pass(monkeypatch):
+    monkeypatch.setattr(server, "_owned_strategy", lambda c: {"id": 55, "status": "failed", "market": "btc15m"})
+    monkeypatch.setattr(server.repo, "create_run", lambda *a, **k: pytest.fail("must not seed research from an unpassed strategy"))
+    with pytest.raises(server.ApiError) as e:
+        server.dig_deeper(ctx({}, params=("55",)))
+    assert e.value.status == 409
+
+
+def test_dig_deeper_is_rate_limited(monkeypatch):
+    monkeypatch.setattr(server, "_owned_strategy", lambda c: {"id": 55, "status": "passed", "market": "btc15m", "direction": None, "title": "T", "thesis": "x", "spec": {}})
+    monkeypatch.setattr(server.repo, "count_runs", lambda *a, **k: 99)
+    with pytest.raises(server.ApiError) as e:
+        server.dig_deeper(ctx({}, params=("55",)))
+    assert e.value.status == 429
+
+
 def test_share_strategy_copies_and_notifies(monkeypatch):
     calls = {}
     monkeypatch.setattr(server, "_owned_strategy", lambda c: {"id": 5, "title": "Tail fade"})

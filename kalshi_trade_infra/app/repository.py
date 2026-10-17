@@ -327,13 +327,14 @@ def create_run(
     cur, user_id: int, kind: str, market: Optional[str] = None, direction: Optional[str] = None,
     prompt: Optional[str] = None, deployment_id: Optional[int] = None,
     max_hypotheses: Optional[int] = None, run_forever: bool = False, model: Optional[str] = None,
+    seed_strategy_id: Optional[int] = None,
 ) -> int:
     cur.execute(
         """INSERT INTO app_agent_runs (user_id, kind, market, direction, prompt, deployment_id, status,
-             max_hypotheses, run_forever, model, created_at)
-           VALUES (%s,%s,%s,%s,%s,%s,'queued',%s,%s,%s,%s)""",
+             max_hypotheses, run_forever, model, seed_strategy_id, created_at)
+           VALUES (%s,%s,%s,%s,%s,%s,'queued',%s,%s,%s,%s,%s)""",
         (user_id, kind, market, direction, prompt, deployment_id, max_hypotheses, 1 if run_forever else 0,
-         model, now_utc()),
+         model, seed_strategy_id, now_utc()),
     )
     return cur.lastrowid
 
