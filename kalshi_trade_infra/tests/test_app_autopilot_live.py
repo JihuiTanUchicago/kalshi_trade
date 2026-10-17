@@ -7,10 +7,14 @@ PASSED_YES = {"id": 7, "status": "passed", "title": "Tail fade", "market": "btc_
 
 
 def _patch(monkeypatch, *, live_enabled=True, key=True, autopilot=True, ap_live=True, today_live=0.0,
-           strat=None, paper=None):
+           strat=None, paper=None, deployment_candidate=True):
     r = agent.repo
     created = {}
     monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", live_enabled)
+    # Wave-2 additive gate (§E.5): deploy_live also requires the gatekeeper's DEPLOYMENT_CANDIDATE
+    # classification, ON TOP OF every existing gate. Default it True so these tests still exercise
+    # the ORIGINAL gates; the gate itself is verified separately below.
+    monkeypatch.setattr(agent, "_is_deployment_candidate", lambda cur, sid: deployment_candidate)
     monkeypatch.setattr(r, "get_strategy", lambda cur, uid, sid: (strat or dict(PASSED_YES)))
     monkeypatch.setattr(r, "get_kalshi_key", lambda cur, uid: ({"key_id": "x"} if key else None))
     monkeypatch.setattr(r, "realized_pnl", lambda cur, uid, mode, since=None: today_live)
@@ -55,6 +59,14 @@ def test_no_side_strategy_never_goes_live(monkeypatch):
     user, created = _patch(monkeypatch, strat=no_strat)
     msg, pid = agent.act(None, user, {"type": "deploy_live", "strategy_id": 8}, autopilot=True)
     assert "mode" not in created and "paper" in msg
+
+
+def test_not_a_deployment_candidate_stays_on_paper(monkeypatch):
+    # Every ORIGINAL gate is green, but the gatekeeper has not promoted the experiment to
+    # DEPLOYMENT_CANDIDATE -> the additive gate (§E.5) keeps it off live money.
+    user, created = _patch(monkeypatch, deployment_candidate=False)
+    msg, pid = agent.act(None, user, {"type": "deploy_live", "strategy_id": 7}, autopilot=True)
+    assert "mode" not in created and pid is None and "paper" in msg.lower()
 
 
 def test_gate_helper_booleans(monkeypatch):

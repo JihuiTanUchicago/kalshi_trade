@@ -587,6 +587,243 @@
     </svg>`;
   }
 
+  // ---------- strategy research paper (RESEARCH_PIPELINE_DESIGN.md §D) ----------
+  // Charts are inline SVG built here (CSP is script-src 'self'; no inline <script>).
+  // Phase colours reuse Kursbuch tokens: in-sample = muted ink, validation = ink,
+  // holdout = signal red (the one decisive, one-time forward test). Every colour is
+  // paired with a text label, never carried by colour alone.
+  const rpCent = (v) => (v == null ? '—' : (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(2) + '¢');
+  const rpProb = (v, d = 3) => (v == null ? '—' : Number(v).toFixed(d));
+  const rpInt = (v) => (v == null ? '—' : num(v));
+  const rpText = (v) => esc(v == null ? '' : String(v));
+  const rpHuman = (k) => String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+  const rpStamp = (iso) => { try { return new Date(iso).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return String(iso); } };
+  const rpDiffs = (curve) => (!curve || curve.length < 2) ? [] : curve.slice(1).map((p, i) => p[1] - curve[i][1]);
+  const RP_MECH = { who_pays: 'Who pays', why_not_arbitraged: 'Why it isn’t arbitraged', when: 'When it fires', why_persists: 'Why it persists' };
+  const RP_RUNGS = [['promising', 'Promising'], ['statistically_supported', 'Stat. supported'], ['forward_validated', 'Forward-validated'], ['deployment_candidate', 'Deployment candidate']];
+  const RP_RANK = { rejected: -1, inconclusive: 0, promising: 1, statistically_supported: 2, forward_validated: 3, deployment_candidate: 4 };
+
+  function rpLadder(cls) {
+    const rank = RP_RANK[cls] == null ? 0 : RP_RANK[cls];
+    const rungs = RP_RUNGS.map(([k, label], i) => {
+      const r = i + 1, state = r === rank ? 'lit' : r < rank ? 'done' : '';
+      return `<div class="rung ${state}"><div class="r-n">Rung ${r}</div><div class="r-t">${esc(label)}</div></div>`;
+    }).join('');
+    let terminal = '';
+    if (cls === 'rejected') terminal = `<div class="rp-terminal"><span><b>Rejected</b> — this hypothesis did not advance the ladder.</span></div>`;
+    else if (cls === 'inconclusive') terminal = `<div class="rp-terminal quiet"><span><b>Inconclusive</b> — tested, but the evidence was too weak to move it up.</span></div>`;
+    return `<div class="ladder">${rungs}</div>${terminal}`;
+  }
+
+  // 1. equity by phase — each phase its own OOS run, colour + labelled, one axis.
+  function rpPhaseEquity(phases) {
+    phases = phases.filter((p) => p.curve && p.curve.length > 1);
+    if (!phases.length) return `<div class="rp-empty">No phase equity curves recorded yet.</div>`;
+    const W = 720, H = 200, L = 48, R = 10, T = 16, B = 24;
+    const pts = [].concat(...phases.map((p) => p.curve));
+    const t0 = Math.min(...pts.map((q) => q[0])), t1 = Math.max(...pts.map((q) => q[0]));
+    const vals = pts.map((q) => q[1]);
+    let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
+    if (hi - lo < 1) { hi += 0.5; lo -= 0.5; }
+    const x = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R);
+    const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+    const line = (c, col) => `<polyline points="${c.map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(' ')}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/>`;
+    const ticks = [lo, (lo + hi) / 2, hi].map((v) => `<text x="${L - 8}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${usd(v)}</text>`).join('');
+    const day = (t) => new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const bounds = phases.slice(1).map((p) => { const bx = x(p.curve[0][0]).toFixed(1); return `<line x1="${bx}" x2="${bx}" y1="${T}" y2="${H - B}" stroke="var(--rule-2)" stroke-dasharray="3 4"/>`; }).join('');
+    const legend = `<div class="rp-legend">${phases.map((p) => `<span><i style="background:${p.color}"></i>${esc(p.label)}</span>`).join('')}</div>`;
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cumulative net profit and loss over time by research phase: ${esc(phases.map((p) => p.label).join(', '))}">
+      <line x1="${L}" x2="${W - R}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="var(--rule-2)"/>
+      ${ticks}
+      <text x="${L}" y="${H - 6}">${day(t0)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${day(t1)}</text>
+      ${bounds}${phases.map((p) => line(p.curve, p.color)).join('')}
+    </svg>${legend}`;
+  }
+
+  // 2. in-sample vs validation mean — shrinkage.
+  function rpShrinkage(isMean, oosMean) {
+    const bars = [];
+    if (isMean != null) bars.push(['In-sample', isMean, 'var(--ink-3)']);
+    if (oosMean != null) bars.push(['Validation', oosMean, 'var(--ink)']);
+    if (!bars.length) return `<div class="rp-empty">No in-sample / validation means to compare.</div>`;
+    const W = 340, H = 180, T = 24, Bm = 30, L = 10, R = 10;
+    const mags = bars.map((b) => b[1]);
+    let lo = Math.min(0, ...mags), hi = Math.max(0, ...mags);
+    if (hi - lo < 1e-4) { hi += 0.005; lo -= 0.005; }
+    const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - Bm);
+    const zero = y(0), slot = (W - L - R) / bars.length, bw = Math.min(64, slot * 0.5);
+    const cells = bars.map((b, i) => {
+      const cx = L + slot * i + slot / 2, top = Math.min(y(b[1]), zero), h = Math.max(1, Math.abs(y(b[1]) - zero));
+      return `<rect x="${(cx - bw / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" fill="${b[2]}" rx="3"/>
+        <text x="${cx.toFixed(1)}" y="${(b[1] >= 0 ? top - 6 : top + h + 14).toFixed(1)}" text-anchor="middle" style="fill:var(--ink)">${rpCent(b[1])}</text>
+        <text x="${cx.toFixed(1)}" y="${H - 8}" text-anchor="middle">${esc(b[0])}</text>`;
+    }).join('');
+    let note = '';
+    if (isMean != null && oosMean != null && isMean !== 0) {
+      const shr = Math.round((1 - oosMean / isMean) * 100);
+      note = `<div class="cap">Validation edge is ${shr >= 0 ? shr + '% smaller' : Math.abs(shr) + '% larger'} than in-sample — ${shr >= 40 ? 'heavy shrinkage, a sign the in-sample fit was partly luck' : 'modest shrinkage'}.</div>`;
+    }
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="In-sample versus validation mean net return per trade">
+      <line x1="${L}" x2="${W - R}" y1="${zero.toFixed(1)}" y2="${zero.toFixed(1)}" stroke="var(--rule-2)"/>${cells}
+    </svg>${note}`;
+  }
+
+  // 3. underwater drawdown.
+  function rpUnderwater(curve) {
+    if (!curve || curve.length < 2) return `<div class="rp-empty">No equity curve to derive drawdown from.</div>`;
+    let peak = -Infinity; const dd = curve.map(([t, v]) => { peak = Math.max(peak, v); return [t, v - peak]; });
+    const W = 340, H = 180, L = 44, R = 10, T = 14, B = 22;
+    const t0 = curve[0][0], t1 = curve[curve.length - 1][0];
+    const minDd = Math.min(0, ...dd.map((p) => p[1])), lo = minDd < 0 ? minDd : -0.5;
+    const x = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R);
+    const y = (v) => T + (1 - (v - lo) / (0 - lo)) * (H - T - B);
+    const curvePts = dd.map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    const area = `${curvePts} ${x(t1).toFixed(1)},${y(0).toFixed(1)} ${x(t0).toFixed(1)},${y(0).toFixed(1)}`;
+    const maxDd = usd(minDd);
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Underwater drawdown plot; worst drawdown ${maxDd}">
+      <polygon points="${area}" fill="var(--signal-wash)" stroke="none"/>
+      <polyline points="${curvePts}" fill="none" stroke="var(--signal)" stroke-width="1.6"/>
+      <line x1="${L}" x2="${W - R}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="var(--rule-2)"/>
+      <text x="${L - 8}" y="${(y(0) + 4).toFixed(1)}" text-anchor="end">0</text>
+      <text x="${L - 8}" y="${(y(minDd) + 4).toFixed(1)}" text-anchor="end">${maxDd}</text>
+    </svg>`;
+  }
+
+  // 4. per-trade return distribution with the bootstrap CI band + break-even line.
+  function rpReturnDist(returns, ciLo, ciHi, mean) {
+    returns = (returns || []).filter((v) => v != null && isFinite(v));
+    if (returns.length < 3) return `<div class="rp-empty">Too few trades to plot a return distribution.</div>`;
+    const W = 720, H = 200, L = 20, R = 12, T = 16, B = 26;
+    let lo = Math.min(...returns), hi = Math.max(...returns);
+    lo = Math.min(lo, 0, ciLo == null ? 0 : ciLo); hi = Math.max(hi, 0, ciHi == null ? 0 : ciHi);
+    if (hi - lo < 1e-6) { hi += 0.01; lo -= 0.01; }
+    const bins = Math.min(29, Math.max(9, Math.round(Math.sqrt(returns.length)))), bwid = (hi - lo) / bins, counts = new Array(bins).fill(0);
+    returns.forEach((v) => { let b = Math.floor((v - lo) / bwid); if (b >= bins) b = bins - 1; if (b < 0) b = 0; counts[b]++; });
+    const maxC = Math.max(...counts), base = H - B;
+    const px = (v) => L + ((v - lo) / (hi - lo)) * (W - L - R);
+    const py = (c) => T + (1 - c / maxC) * (base - T);
+    const band = (ciLo != null && ciHi != null) ? `<rect x="${px(ciLo).toFixed(1)}" y="${T}" width="${Math.max(1, px(ciHi) - px(ciLo)).toFixed(1)}" height="${(base - T).toFixed(1)}" fill="var(--stock-raised)"/>` : '';
+    const gap = 2, barW = Math.max(1, (W - L - R) / bins - gap);
+    const bars = counts.map((c, i) => c ? `<rect x="${(px(lo + i * bwid) + gap / 2).toFixed(1)}" y="${py(c).toFixed(1)}" width="${barW.toFixed(1)}" height="${(base - py(c)).toFixed(1)}" fill="var(--ink)"/>` : '').join('');
+    const zeroLine = `<line x1="${px(0).toFixed(1)}" x2="${px(0).toFixed(1)}" y1="${T}" y2="${base}" stroke="var(--rule-2)"/><text x="${px(0).toFixed(1)}" y="${H - 8}" text-anchor="middle">break-even</text>`;
+    const meanLine = mean != null ? `<line x1="${px(mean).toFixed(1)}" x2="${px(mean).toFixed(1)}" y1="${T}" y2="${base}" stroke="var(--signal)" stroke-width="1.5" stroke-dasharray="4 3"/>` : '';
+    const legend = `<div class="rp-legend"><span><i style="background:var(--ink)"></i>Per-trade net P&amp;L</span>${ciLo != null ? `<span><i style="background:var(--stock-raised);border:1px solid var(--rule-2)"></i>90% CI of the mean</span>` : ''}${mean != null ? `<span><i class="dash" style="color:var(--signal)"></i>Mean</span>` : ''}</span></div>`;
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Distribution of per-trade net profit and loss with the bootstrap confidence interval of the mean and the break-even line">
+      ${band}${bars}${zeroLine}${meanLine}
+    </svg>${legend}`;
+  }
+
+  // 5. walk-forward windows — per-fold return.
+  function rpWalkforward(folds) {
+    folds = (folds || []).filter((f) => f && f.mean_net_return != null);
+    if (!folds.length) return `<div class="rp-empty">No walk-forward folds recorded.</div>`;
+    const W = 720, H = 190, L = 40, R = 12, T = 16, B = 34;
+    const mags = folds.map((f) => f.mean_net_return);
+    let lo = Math.min(0, ...mags), hi = Math.max(0, ...mags);
+    if (hi - lo < 1e-6) { hi += 0.01; lo -= 0.01; }
+    const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B), zero = y(0);
+    const slot = (W - L - R) / folds.length, bw = Math.min(54, slot * 0.6);
+    const day = (t) => t ? new Date(t > 1e11 ? t : t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+    const cells = folds.map((f, i) => {
+      const cx = L + slot * i + slot / 2, v = f.mean_net_return, top = Math.min(y(v), zero), h = Math.max(1, Math.abs(y(v) - zero)), col = v >= 0 ? 'var(--ink)' : 'var(--signal)';
+      return `<rect x="${(cx - bw / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" fill="${col}" rx="3"/>
+        <text x="${cx.toFixed(1)}" y="${(v >= 0 ? top - 5 : top + h + 13).toFixed(1)}" text-anchor="middle" style="fill:var(--ink)">${rpCent(v)}</text>
+        <text x="${cx.toFixed(1)}" y="${H - 18}" text-anchor="middle">${esc(day(f.from) || ('W' + (i + 1)))}</text>
+        <text x="${cx.toFixed(1)}" y="${H - 6}" text-anchor="middle" style="fill:var(--ink-3)">${f.n_trades != null ? f.n_trades + 't' : ''}</text>`;
+    }).join('');
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Mean net return per trade across each purged walk-forward research fold">
+      <line x1="${L}" x2="${W - R}" y1="${zero.toFixed(1)}" y2="${zero.toFixed(1)}" stroke="var(--rule-2)"/>${cells}
+    </svg>`;
+  }
+
+  function rpConclusion(cls) {
+    const m = {
+      deployment_candidate: ['good', 'Deployment candidate. It cleared validation under the audited false-discovery budget, survived the one-time locked holdout, and is diverse enough from the deployed book to add something new.'],
+      forward_validated: ['good', 'Forward-validated. It passed validation and then held up on the locked holdout, which is evaluated exactly once — the strongest evidence this pipeline produces.'],
+      statistically_supported: ['', 'Statistically supported. The validation edge survives multiple-testing correction and the deflated-Sharpe test, but has not yet been spent against the locked holdout.'],
+      promising: ['', 'Promising. An in-research edge that has not yet faced the validation partition.'],
+      inconclusive: ['quiet', 'Inconclusive. The evidence was too weak, or the sample too small, to move the verdict — and no alpha budget was spent claiming it works.'],
+      rejected: ['sig', 'Rejected. It failed in-research, lacked a credible mechanism, or was indistinguishable from its placebo. It is kept on the record so the next search does not repeat it.'],
+    };
+    return m[cls] || ['quiet', 'Awaiting a recorded verdict.'];
+  }
+
+  // Compose the one-page research paper. Returns '' for strategies with no ledger
+  // row (pre-pipeline) so the existing detail page is unchanged — additive only.
+  function researchPaper(exp) {
+    if (!exp) return '';
+    const secs = [];
+    secs.push(`<div class="rp-sec"><h3 class="sheet-h">Classification</h3>${rpLadder(exp.classification)}</div>`);
+    const mech = exp.mechanism;
+    if (mech) {
+      let body;
+      if (typeof mech === 'object') {
+        const known = ['who_pays', 'why_not_arbitraged', 'when', 'why_persists'].filter((k) => mech[k] != null);
+        const extra = Object.keys(mech).filter((k) => !RP_MECH[k] && mech[k] != null);
+        body = `<dl class="rp-grid">${known.concat(extra).map((k) => `<div><dt>${esc(RP_MECH[k] || rpHuman(k))}</dt><dd>${rpText(mech[k])}</dd></div>`).join('')}</dl>`;
+      } else body = `<p class="rp-prose">${rpText(mech)}</p>`;
+      secs.push(`<div class="rp-sec"><h3 class="sheet-h">Mechanism — why this edge exists</h3>${body}</div>`);
+    }
+    if (exp.falsification_criteria || exp.negative_control) {
+      let body = '';
+      if (exp.falsification_criteria) body += `<p class="rp-prose">${rpText(exp.falsification_criteria)}</p>`;
+      if (exp.negative_control) body += `<p class="rp-sub"><b>Negative control:</b> ${rpText(exp.negative_control)}</p>`;
+      secs.push(`<div class="rp-sec"><h3 class="sheet-h">What would disprove it</h3>${body}</div>`);
+    }
+    if (exp.competing_explanations) secs.push(`<div class="rp-sec"><h3 class="sheet-h">Competing explanations</h3><p class="rp-prose">${rpText(exp.competing_explanations)}</p></div>`);
+    const pre = [];
+    if (exp.null_hypothesis) pre.push(['Null hypothesis', exp.null_hypothesis]);
+    if (exp.alt_hypothesis) pre.push(['Alternative', exp.alt_hypothesis]);
+    if (exp.primary_metric) pre.push(['Primary metric', exp.primary_metric]);
+    if (exp.planned_test) pre.push(['Planned test', exp.planned_test]);
+    if (exp.min_sample != null) pre.push(['Minimum sample', exp.min_sample + ' trades']);
+    if (exp.planned_n_tests != null || exp.correction_method) pre.push(['Multiple-testing control', `${exp.planned_n_tests != null ? exp.planned_n_tests + ' planned tests · ' : ''}${exp.correction_method || '—'}`]);
+    if (exp.cost_assumptions && typeof exp.cost_assumptions === 'object') pre.push(['Cost assumptions', Object.entries(exp.cost_assumptions).map(([k, v]) => `${rpHuman(k)}: ${v}`).join(' · ')]);
+    if (pre.length) {
+      const reg = exp.registered_at ? `<p class="rp-reg">Pre-registered <b>${esc(rpStamp(exp.registered_at))}</b> — before any validation number was computed. The frozen rule and its test could not be changed after the results came in.</p>` : '';
+      secs.push(`<div class="rp-sec"><h3 class="sheet-h">The pre-registered test</h3><dl class="rp-grid">${pre.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${rpText(v)}</dd></div>`).join('')}</dl>${reg}</div>`);
+    }
+    const v = exp.validation;
+    if (v) {
+      const stat = (k, val, cls, sub) => `<div class="rp-stat"><div class="k">${esc(k)}</div><div class="val${cls ? ' ' + cls : ''}">${val}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div>`;
+      const ciTxt = (v.ci_lo != null && v.ci_hi != null) ? `90% CI ${rpCent(v.ci_lo)} to ${rpCent(v.ci_hi)}` : '';
+      const stats = [
+        stat('Mean net return / trade', rpCent(v.mean_net_return), (v.mean_net_return != null && v.mean_net_return > 0 ? '' : 'sig'), ciTxt),
+        stat('Bootstrap p-value', rpProb(v.p_value), (v.p_value != null && v.p_value <= 0.1 ? '' : 'sig'), 'one-sided, autocorr-robust'),
+        stat('PSR', rpProb(v.psr), '', 'prob. true Sharpe > 0'),
+        stat('DSR', rpProb(v.dsr), (v.dsr != null && v.dsr >= 0.95 ? '' : 'sig'), 'deflated for selection'),
+        stat('Trials audited', rpInt(exp.n_trials_audited), '', 'competed for this evidence'),
+        stat('FDR α spent', rpProb(v.fdr_alpha_i, 4), '', v.fdr_reject == null ? '' : (v.fdr_reject ? 'rejects the null' : 'does not reject')),
+        stat('Placebo p-value', rpProb(v.placebo_p), (v.placebo_p != null && v.placebo_p < 0.1 ? 'sig' : ''), 'label-shuffle control'),
+        stat('Trades', rpInt(v.n_trades), '', 'on the validation window'),
+      ].join('');
+      const isMean = (exp.folds && exp.folds.length) ? exp.folds.reduce((a, f) => a + (f.mean_net_return || 0), 0) / exp.folds.length : null;
+      const figs = `<div class="rp-figs">
+        <div class="rp-fig wide"><h5>Equity by phase</h5>${rpPhaseEquity([
+          { key: 'validation', label: 'Validation', color: 'var(--ink)', curve: v.equity_curve },
+          { key: 'holdout', label: 'Holdout', color: 'var(--signal)', curve: exp.holdout && exp.holdout.equity_curve },
+        ])}<div class="cap">Each phase is its own out-of-sample run; the dashed divider marks the one-way handoff from validation to the locked holdout.</div></div>
+        <div class="rp-fig"><h5>In-sample vs validation</h5>${rpShrinkage(isMean, v.mean_net_return)}</div>
+        <div class="rp-fig"><h5>Drawdown (underwater)</h5>${rpUnderwater(v.equity_curve)}</div>
+        <div class="rp-fig wide"><h5>Per-trade return distribution</h5>${rpReturnDist(rpDiffs(v.equity_curve), v.ci_lo, v.ci_hi, v.mean_net_return)}<div class="cap">Bars: the net P&amp;L of each validation trade. Shaded band: the 90% bootstrap confidence interval of the mean. Dashed line: the mean. A band entirely right of break-even means the edge clears fees.</div></div>
+        <div class="rp-fig wide"><h5>Walk-forward windows</h5>${rpWalkforward(exp.folds)}<div class="cap">Mean net return per purged/embargoed research fold — a consistent sign across windows is robustness; one window carrying the whole edge is a warning.</div></div>
+      </div>`;
+      secs.push(`<div class="rp-sec"><h3 class="sheet-h">Results on the validation window</h3><div class="rp-stats">${stats}</div>${figs}</div>`);
+    }
+    const h = exp.holdout;
+    const holdBody = h ? `<div class="rp-stats">
+      <div class="rp-stat"><div class="k">Mean net return / trade</div><div class="val${h.mean_net_return != null && h.mean_net_return > 0 ? '' : ' sig'}">${rpCent(h.mean_net_return)}</div><div class="sub">${h.ci_lo != null && h.ci_hi != null ? '90% CI ' + rpCent(h.ci_lo) + ' to ' + rpCent(h.ci_hi) : ''}</div></div>
+      <div class="rp-stat"><div class="k">Bootstrap p-value</div><div class="val">${rpProb(h.p_value)}</div></div>
+      <div class="rp-stat"><div class="k">Trades</div><div class="val">${rpInt(h.n_trades)}</div></div>
+      <div class="rp-stat"><div class="k">Holdout</div><div class="val${h.consumed ? ' sig' : ''}">${h.consumed ? 'Consumed' : 'Open'}</div><div class="sub">${h.consumed ? 'spent — roll to fresh forward data' : 'evaluations remain'}</div></div>
+    </div>` : `<div class="rp-empty">Not yet evaluated on the locked holdout. The holdout is spent only once, on strategies that already passed validation — so an empty holdout here is expected until then.</div>`;
+    secs.push(`<div class="rp-sec"><h3 class="sheet-h">Holdout verdict</h3>${holdBody}</div>`);
+    const [tone, words] = rpConclusion(exp.classification);
+    const chip = { good: 'on', sig: 'armed', quiet: 'quiet' }[tone] || '';
+    secs.push(`<div class="rp-sec"><h3 class="sheet-h">Conclusion</h3><div class="rp-verdict ${tone}"><span class="mk ${chip}">${esc(rpHuman(exp.classification || 'unknown'))}</span><p>${words}</p></div></div>`);
+    return `<div class="rpaper">${secs.join('')}</div>`;
+  }
+
   // ---------- timetable rows ----------
   // State is a word in a mark, never colour alone. Signal red appears only on
   // states that need the user: a paused deployment and live money.
@@ -1273,6 +1510,8 @@
             <p class="thesis">${esc(s.thesis)}</p>
             <h3 class="sheet-h">Trading rules</h3>
             <ul class="rules">${s.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
+            ${researchPaper(s.experiment)}
+            ${s.experiment ? '<h3 class="sheet-h">Backtest &amp; demo replay</h3>' : ''}
             <div id="sheet-results">
               <div id="equity-wrap">${s.equity ? equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from) : ''}</div>
               <div class="split"><div><h4>Tested on (in-sample)</h4>${metricRows(ins)}</div><div><h4>Never seen (out-of-sample)</h4>${metricRows(oos)}</div></div>

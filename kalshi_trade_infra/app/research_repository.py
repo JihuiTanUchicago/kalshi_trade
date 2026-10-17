@@ -1,0 +1,336 @@
+"""All reads/writes for the rigorous-research ledger (RESEARCH_PIPELINE_DESIGN.md
+§B.3-B.5). Lives apart from repository.py so Wave-2 agents don't collide, but
+follows the same conventions: every statement takes a cursor, rows come back as
+dicts (DictCursor), JSON columns round-trip through _json/_loads, timestamps are
+naive UTC via repository.now_utc().
+
+Immutability is enforced by table split, not by triggers:
+  - app_experiments and app_experiment_results are INSERT-only here (no UPDATE,
+    no DELETE), so the ledger of what was tried and what happened is permanent.
+  - app_fdr_state is the one UPSERTed table (alpha-wealth *state* advances); the
+    per-test audit trail lives on the result rows, not here.
+  - partitions supersede via active=0 (save_partition), never by mutation.
+
+This module is DB-access only. The partition *math* (boundary snapping, purge/
+embargo, fingerprint) is in app/partitions.py; the statistical verdicts are in
+app/gatekeeper.py. Both call into here for persistence.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+from app.markets import MARKETS, Market
+from app.repository import _json, _loads, now_utc
+
+# -- pre-registration (app_experiments) ---------------------------------------
+
+
+def get_experiment(cur, run_id: Optional[int], hypothesis_hash: str) -> Optional[Dict]:
+    """The registered experiment for this (run_id, hypothesis_hash), or None.
+    NULL run_id is matched with the <=> null-safe operator."""
+    cur.execute(
+        "SELECT * FROM app_experiments WHERE hypothesis_hash=%s AND run_id<=>%s LIMIT 1",
+        (hypothesis_hash, run_id),
+    )
+    row = cur.fetchone()
+    return _experiment_row(row) if row else None
+
+
+def preregister(cur, pre: Dict[str, Any]) -> int:
+    """Insert an IMMUTABLE app_experiments row (the pre-registration). Idempotent
+    on (run_id, hypothesis_hash): re-registering the identical frozen spec returns
+    the existing id and inserts nothing. NOTHING about this row is ever UPDATEd.
+
+    `pre` carries the frozen fields (gatekeeper builds it from its Prereg):
+    user_id, run_id, market, strategy_id, hypothesis_hash, spec, economic_rationale,
+    primary_metric, null_hypothesis, alt_hypothesis, planned_test,
+    falsification_criteria, min_sample, cost_assumptions, research_partition_id,
+    planned_n_tests, correction_method.
+    """
+    existing = get_experiment(cur, pre.get("run_id"), pre["hypothesis_hash"])
+    if existing:
+        return int(existing["id"])
+    cur.execute(
+        """INSERT INTO app_experiments
+             (user_id, run_id, strategy_id, market, hypothesis_hash, spec_json,
+              economic_rationale, primary_metric, null_hypothesis, alt_hypothesis,
+              planned_test, falsification_criteria, min_sample, cost_assumptions_json,
+              research_partition_id, planned_n_tests, correction_method, registered_at)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+        (
+            pre["user_id"], pre.get("run_id"), pre.get("strategy_id"), pre["market"],
+            pre["hypothesis_hash"], _json(pre["spec"]), pre["economic_rationale"],
+            pre["primary_metric"], pre["null_hypothesis"], pre["alt_hypothesis"],
+            pre["planned_test"], pre["falsification_criteria"], int(pre["min_sample"]),
+            _json(pre["cost_assumptions"]), int(pre["research_partition_id"]),
+            int(pre["planned_n_tests"]), pre["correction_method"], now_utc(),
+        ),
+    )
+    return int(cur.lastrowid)
+
+
+def _experiment_row(r: Optional[Dict]) -> Optional[Dict]:
+    if r is None:
+        return None
+    r["spec"] = _loads(r.pop("spec_json"))
+    r["cost_assumptions"] = _loads(r.pop("cost_assumptions_json"))
+    return r
+
+
+# -- verdicts (app_experiment_results) -----------------------------------------
+
+# The columns an append_result row may set (besides experiment_id/phase/
+# classification/n_trades which are required). Keeps the INSERT honest and the
+# caller from having to spell every NULL.
+_RESULT_FIELDS = (
+    "net_pnl", "mean_net_return", "sharpe", "psr", "dsr", "p_value", "ci_lo",
+    "ci_hi", "fdr_alpha_i", "fdr_reject", "bh_reject", "placebo_p",
+    "n_trials_audited", "holdout_consumed",
+)
+
+
+def append_result(cur, experiment_id: int, phase: str, classification: str,
+                  n_trades: int, metrics: Optional[Dict[str, Any]] = None,
+                  equity_curve: Optional[List] = None) -> int:
+    """APPEND one immutable verdict row for a phase evaluation. Never updates an
+    existing row — a re-evaluation is a new row, so the full history is preserved.
+    `metrics` supplies any of _RESULT_FIELDS; missing ones store NULL."""
+    m = metrics or {}
+    cols = ["experiment_id", "phase", "classification", "n_trades"]
+    vals: List[Any] = [experiment_id, phase, classification, int(n_trades)]
+    for f in _RESULT_FIELDS:
+        cols.append(f)
+        v = m.get(f)
+        if f in ("fdr_reject", "bh_reject", "holdout_consumed") and v is not None:
+            v = 1 if v else 0
+        vals.append(v if f != "holdout_consumed" else (v or 0))
+    cols.append("equity_curve_json")
+    vals.append(_json(equity_curve))
+    cols.append("verdict_at")
+    vals.append(now_utc())
+    placeholders = ",".join(["%s"] * len(vals))
+    cur.execute(
+        "INSERT INTO app_experiment_results (%s) VALUES (%s)" % (",".join(cols), placeholders),
+        tuple(vals),
+    )
+    return int(cur.lastrowid)
+
+
+def results_for_experiment(cur, experiment_id: int, phase: Optional[str] = None) -> List[Dict]:
+    """Every verdict row for an experiment, oldest first. Filtered by phase if given."""
+    if phase:
+        cur.execute(
+            "SELECT * FROM app_experiment_results WHERE experiment_id=%s AND phase=%s ORDER BY id",
+            (experiment_id, phase),
+        )
+    else:
+        cur.execute(
+            "SELECT * FROM app_experiment_results WHERE experiment_id=%s ORDER BY id",
+            (experiment_id,),
+        )
+    return [_result_row(r) for r in cur.fetchall()]
+
+
+def _result_row(r: Dict) -> Dict:
+    if "equity_curve_json" in r:
+        r["equity_curve"] = _loads(r.pop("equity_curve_json"))
+    return r
+
+
+# -- online-FDR state (app_fdr_state) — the one UPSERTed table -----------------
+
+
+def get_fdr_state(cur, user_id: int, market: str) -> Optional[Dict]:
+    """The LORD++ alpha-wealth state for this (user, market) stream, or None if
+    the stream hasn't started. rejections_json is parsed to a list."""
+    cur.execute(
+        "SELECT * FROM app_fdr_state WHERE user_id=%s AND market=%s",
+        (user_id, market),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    row["rejections"] = _loads(row.pop("rejections_json")) or []
+    return row
+
+
+def set_fdr_state(cur, user_id: int, market: str, state: Dict[str, Any]) -> None:
+    """Upsert the alpha-wealth state (advance wealth/t/rejections). `state` is the
+    plain dict the stats layer persists: alpha, w0, wealth, t, rejections, method."""
+    cur.execute(
+        """INSERT INTO app_fdr_state
+             (user_id, market, method, alpha, w0, wealth, t, rejections_json, updated_at)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+           ON DUPLICATE KEY UPDATE method=VALUES(method), alpha=VALUES(alpha),
+             w0=VALUES(w0), wealth=VALUES(wealth), t=VALUES(t),
+             rejections_json=VALUES(rejections_json), updated_at=VALUES(updated_at)""",
+        (
+            user_id, market, state.get("method", "LORD++"), float(state["alpha"]),
+            float(state["w0"]), float(state["wealth"]), int(state["t"]),
+            _json(list(state.get("rejections", []))), now_utc(),
+        ),
+    )
+
+
+# -- locked-holdout ledger (app_holdout_ledger) --------------------------------
+
+
+def get_holdout_ledger(cur, market: str, partition_id: int) -> Optional[Dict]:
+    cur.execute(
+        "SELECT * FROM app_holdout_ledger WHERE market=%s AND partition_id=%s LIMIT 1",
+        (market, partition_id),
+    )
+    return cur.fetchone()
+
+
+def ensure_holdout_ledger(cur, market: str, partition_id: int, window_fingerprint: str,
+                          max_evaluations: int) -> Dict:
+    """Return the holdout ledger row for this partition, creating it (consumed=0,
+    evaluations_used=0) if absent. Idempotent on window_fingerprint."""
+    row = get_holdout_ledger(cur, market, partition_id)
+    if row:
+        return row
+    cur.execute(
+        """INSERT INTO app_holdout_ledger
+             (market, partition_id, window_fingerprint, evaluations_used, max_evaluations, consumed)
+           VALUES (%s,%s,%s,0,%s,0)
+           ON DUPLICATE KEY UPDATE market=VALUES(market)""",
+        (market, partition_id, window_fingerprint, int(max_evaluations)),
+    )
+    return get_holdout_ledger(cur, market, partition_id)
+
+
+def record_holdout_use(cur, ledger_id: int) -> Dict:
+    """Spend ONE holdout evaluation. REFUSES (returns {"ok": False, ...}) when the
+    holdout is already consumed or evaluations_used has reached max_evaluations —
+    the one-way latch the design calls sacred. On success increments
+    evaluations_used, flips consumed=1 when it reaches max_evaluations, stamps the
+    first/last-used timestamps, and returns {"ok": True, ...}."""
+    cur.execute("SELECT * FROM app_holdout_ledger WHERE id=%s", (ledger_id,))
+    row = cur.fetchone()
+    if not row:
+        return {"ok": False, "reason": "no_such_ledger"}
+    used = int(row["evaluations_used"])
+    cap = int(row["max_evaluations"])
+    if int(row["consumed"]) == 1 or used >= cap:
+        return {"ok": False, "reason": "holdout_consumed", "evaluations_used": used,
+                "max_evaluations": cap, "consumed": 1}
+    used += 1
+    consumed = 1 if used >= cap else 0
+    now = now_utc()
+    first = row["first_used_at"] or now
+    cur.execute(
+        """UPDATE app_holdout_ledger
+             SET evaluations_used=%s, consumed=%s, first_used_at=%s, last_used_at=%s
+           WHERE id=%s""",
+        (used, consumed, first, now, ledger_id),
+    )
+    return {"ok": True, "evaluations_used": used, "max_evaluations": cap, "consumed": consumed}
+
+
+# -- data partitions (app_data_partitions) -------------------------------------
+
+
+def get_active_partition(cur, market: str) -> Optional[Dict]:
+    cur.execute(
+        "SELECT * FROM app_data_partitions WHERE market=%s AND active=1 ORDER BY id DESC LIMIT 1",
+        (market,),
+    )
+    return cur.fetchone()
+
+
+def save_partition(cur, market: str, b: Dict[str, Any]) -> Dict:
+    """Freeze a new active partition, superseding any current active one for the
+    market (active=0, kept for audit). `b` is the boundary dict from partitions.py.
+    Returns the inserted row (with its id)."""
+    cur.execute("UPDATE app_data_partitions SET active=0 WHERE market=%s AND active=1", (market,))
+    cur.execute(
+        """INSERT INTO app_data_partitions
+             (market, research_from_ts, research_to_ts, validation_from_ts, validation_to_ts,
+              holdout_from_ts, holdout_to_ts, embargo_seconds, purge_seconds,
+              data_fingerprint, frozen_at, active)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1)""",
+        (
+            market, b["research_from_ts"], b["research_to_ts"], b["validation_from_ts"],
+            b["validation_to_ts"], b["holdout_from_ts"], b["holdout_to_ts"],
+            b["embargo_seconds"], b["purge_seconds"], b["data_fingerprint"], now_utc(),
+        ),
+    )
+    pid = int(cur.lastrowid)
+    cur.execute("SELECT * FROM app_data_partitions WHERE id=%s", (pid,))
+    return cur.fetchone()
+
+
+# -- raw history for the partition math + dataset loaders ----------------------
+
+
+def partition_contracts(cur, market: Market, since: datetime) -> List[Dict]:
+    """Settled contracts for the market since `since`, as {ticker, open_ts,
+    close_ts, result}. Drives boundary snapping and the data fingerprint. Only
+    candles_done=1 rows (same filter the backtester's load_history uses)."""
+    cur.execute(
+        """SELECT ticker, open_time, close_time, result FROM hist_markets
+           WHERE series_ticker=%s AND close_time >= %s AND candles_done=1
+           ORDER BY open_time, ticker""",
+        (market.series, since),
+    )
+    out = []
+    for r in cur.fetchall():
+        out.append({
+            "ticker": r["ticker"],
+            "open_ts": _ts(r["open_time"]),
+            "close_ts": _ts(r["close_time"]),
+            "result": r["result"],
+        })
+    return out
+
+
+def partition_source_rows(cur, market: Market, since: datetime) -> Dict[str, List]:
+    """Everything backtest.build_dataset needs, plus open_ts on each market row so
+    partitions.py can assign whole contracts to a window. Reuses repository.
+    load_history for candles/btc (no SQL duplicated) and adds the open times."""
+    from app import repository as repo
+    h = repo.load_history(cur, market.series, market.candle_minutes, since, market.underlying)
+    opens = {c["ticker"]: c["open_ts"] for c in partition_contracts(cur, market, since)}
+    for m in h["markets"]:
+        m["open_ts"] = opens.get(m["ticker"])
+    return h
+
+
+def _ts(dt: datetime) -> int:
+    return int(dt.replace(tzinfo=timezone.utc).timestamp()) if dt.tzinfo is None else int(dt.timestamp())
+
+
+# -- replay / research-paper reads ---------------------------------------------
+
+
+def experiment_records_for_replay(cur, user_id: int, market: str) -> List[Dict]:
+    """Experiments with their latest VALIDATION verdict, for replay.build_tree —
+    so the discovery tree is scored on gatekeeper-recorded validation outcomes,
+    NOT the old reused OOS (closes Leak 2/5). One row per experiment that has a
+    validation result: {experiment_id, strategy_id, hypothesis_hash, market,
+    classification, n_trades, net_pnl, mean_net_return}."""
+    cur.execute(
+        """SELECT e.id AS experiment_id, e.strategy_id, e.hypothesis_hash, e.market,
+                  r.classification, r.n_trades, r.net_pnl, r.mean_net_return
+             FROM app_experiments e
+             JOIN app_experiment_results r ON r.experiment_id=e.id
+             JOIN (SELECT experiment_id, MAX(id) AS mx FROM app_experiment_results
+                     WHERE phase='validation' GROUP BY experiment_id) last
+               ON last.experiment_id=e.id AND last.mx=r.id
+            WHERE e.user_id=%s AND e.market=%s
+            ORDER BY e.id""",
+        (user_id, market),
+    )
+    return cur.fetchall()
+
+
+def experiments_for_strategy(cur, strategy_id: int) -> Optional[Dict]:
+    """The experiment behind a strategy plus all its verdict rows, for the
+    research-paper page (§D). {"experiment": {...}, "results": [...]} or None."""
+    cur.execute("SELECT * FROM app_experiments WHERE strategy_id=%s ORDER BY id DESC LIMIT 1", (strategy_id,))
+    exp = _experiment_row(cur.fetchone())
+    if not exp:
+        return None
+    return {"experiment": exp, "results": results_for_experiment(cur, int(exp["id"]))}

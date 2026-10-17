@@ -1,0 +1,531 @@
+"""The Statistical Gatekeeper: the only component that may read Validation and Locked-
+Holdout data, that records every experiment in the immutable ledger, and that spends the
+online-FDR alpha-wealth budget. Separate from the generator by construction
+(RESEARCH_PIPELINE_DESIGN.md §B.2).
+
+STRUCTURAL SEPARATION (the whole point): this module imports the validation/holdout dataset
+loaders (`partitions.validation_dataset` is fed in as `val_ds`; `partitions.holdout_dataset`
+is called directly here). agent.py imports NEITHER — grep agent.py for a validation/holdout
+dataset call and you find none. The generator only ever gets a `Classification` enum back; it
+never sees a p-value, a CI, or a held-out pnl.
+
+Verdicts are tests, not threshold point estimates: a stationary-bootstrap one-sided p-value
+(the PRIMARY validation p-value, autocorrelation-robust), PSR/DSR (Sharpe corrected for
+non-normality and for selection across the AUDITED number of competing trials), an online
+LORD++ alpha-wealth budget (cross-run stream) plus Benjamini-Hochberg within a chunk, and a
+label-shuffle negative control. All stats math lives in app.stats; this module only wires it
+to the ledger and classifies.
+
+ponytail: per-trade returns, moments, and the placebo are plain-python loops over a few
+hundred trades — well within reach without numpy here. Vectorize only if profiling says so.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import math
+import random
+from dataclasses import asdict, dataclass, field
+from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
+
+from app import backtest, partitions, quant, stats
+from app import research_repository as rr
+
+log = logging.getLogger(__name__)
+
+# -- operator-tunable knobs (§B.2) ---------------------------------------------
+ALPHA = 0.10            # FDR / CI / p-value level
+DSR_MIN = 0.95          # deflated-Sharpe floor for STAT_SUPPORTED
+CORR_MAX = 0.80         # marginal-contribution: max |corr| to a deployed peer
+PLACEBO_SHUFFLES = 200  # label-shuffle negative-control resamples
+_BOOT_SEED = 12345      # base seed; per-experiment offset keeps verdicts deterministic
+
+
+class HoldoutConsumed(Exception):
+    """Raised when a one-time Locked-Holdout evaluation is refused: the experiment is not yet
+    STAT_SUPPORTED, the holdout window is consumed / at its evaluation cap, or this experiment
+    already has a holdout verdict. The one-way latch the design (§F) calls sacred."""
+
+
+class Classification(str, Enum):
+    REJECTED = "rejected"                          # failed in-research, no mechanism, or placebo-equivalent
+    INCONCLUSIVE = "inconclusive"                  # tested, evidence too weak to move (budget-aware)
+    PROMISING = "promising"                        # in-research edge, not yet validation-tested
+    STAT_SUPPORTED = "statistically_supported"     # passed validation under FDR + DSR
+    FORWARD_VALIDATED = "forward_validated"        # passed the one-time Locked-Holdout
+    DEPLOYMENT_CANDIDATE = "deployment_candidate"  # forward-validated AND marginal-contribution OK
+
+
+@dataclass
+class Prereg:
+    """Everything fixed BEFORE any validation number is seen. The hash of (frozen spec +
+    rationale) is the experiment's identity in the ledger. Built by agent.py from the
+    proposer+challenger output (§C)."""
+    user_id: int
+    run_id: Optional[int]
+    market: str
+    spec: dict
+    economic_rationale: str
+    primary_metric: str = "mean_net_return_per_trade"
+    null_hypothesis: str = ""
+    alt_hypothesis: str = ""
+    planned_test: str = "stationary_bootstrap one-sided, alpha from LORD++"
+    falsification_criteria: str = ""
+    min_sample: int = 30
+    cost_assumptions: dict = field(default_factory=dict)
+    research_partition_id: int = 0
+    planned_n_tests: int = 1
+    correction_method: str = "LORD++"
+    strategy_id: Optional[int] = None
+
+    def hypothesis_hash(self) -> str:
+        """sha256 of the frozen spec (canonical JSON) + economic rationale. Identical frozen
+        hypotheses hash equal, so re-registration is idempotent."""
+        h = hashlib.sha256()
+        h.update(json.dumps(self.spec, sort_keys=True, separators=(",", ":")).encode())
+        h.update(b"\x00")
+        h.update((self.economic_rationale or "").encode())
+        return h.hexdigest()
+
+    def to_dict(self) -> Dict[str, Any]:
+        """The plain dict research_repository.preregister consumes, with the hash filled in."""
+        d = asdict(self)
+        d["hypothesis_hash"] = self.hypothesis_hash()
+        return d
+
+
+def preregister(cur, pre: Prereg) -> int:
+    """Insert the IMMUTABLE pre-registration row; returns experiment_id. Idempotent on
+    (run_id, hypothesis_hash) via the repository layer."""
+    return rr.preregister(cur, pre.to_dict())
+
+
+# -- per-trade return extraction + moments -------------------------------------
+
+
+def _net_returns(trades) -> List[Tuple[int, float]]:
+    """Per-trade net return (pnl already net of fees) on capital deployed, ordered by entry
+    time: ret_i = pnl_i / (qty_i * entry_price_i). Zero-cost trades are skipped. This is the
+    serially-correlated series the bootstrap and PSR/DSR consume."""
+    out: List[Tuple[int, float]] = []
+    for t in sorted(trades, key=lambda x: x.entry_ts):
+        cost = t.qty * t.entry_price
+        if cost <= 0:
+            continue
+        out.append((int(t.entry_ts), t.pnl / cost))
+    return out
+
+
+def _sharpe(rets: List[float]) -> float:
+    """Per-trade (non-annualized) Sharpe = mean / sample std (ddof=1). Matches stats'
+    "sharpe" bootstrap stat so PSR/DSR are computed on the same quantity."""
+    n = len(rets)
+    if n < 2:
+        return 0.0
+    m = sum(rets) / n
+    sd = math.sqrt(sum((r - m) ** 2 for r in rets) / (n - 1))
+    return m / sd if sd > 0 else 0.0
+
+
+def _moments(rets: List[float]) -> Tuple[float, float]:
+    """Sample skewness and FULL (non-excess, normal=3) kurtosis of the return series, for
+    PSR's non-normality correction. Returns (skew, kurt); a degenerate (zero-variance) series
+    collapses to the normal case (0, 3)."""
+    n = len(rets)
+    if n < 2:
+        return 0.0, 3.0
+    m = sum(rets) / n
+    var = sum((r - m) ** 2 for r in rets) / n  # population normalization (standard for PSR)
+    if var <= 0:
+        return 0.0, 3.0
+    sd = math.sqrt(var)
+    skew = sum(((r - m) / sd) ** 3 for r in rets) / n
+    kurt = sum(((r - m) / sd) ** 4 for r in rets) / n
+    return skew, kurt
+
+
+def _equity(trades) -> List[Tuple[int, float]]:
+    """Cumulative pnl curve ordered by exit time, for the drawdown stat and §D graphs."""
+    cum = 0.0
+    out: List[Tuple[int, float]] = []
+    for t in sorted(trades, key=lambda x: x.exit_ts):
+        cum += t.pnl
+        out.append((int(t.exit_ts), round(cum, 4)))
+    return out
+
+
+def _placebo_pvalue(trades, seed: int) -> float:
+    """Label-shuffle negative control. For a binary, a settled trade's return gain from a WIN
+    vs a LOSS is exactly 1/entry_price (cheaper contracts pay more when they hit). So the real
+    question is: did this rule win on its cheap bets more than a random relabeling would?
+
+    Permutation test: observed_sum = sum of (1/entry) over the trades that actually won; then
+    sample `PLACEBO_SHUFFLES` random same-size subsets of all settled trades and count how
+    often their (1/entry) sum >= observed. Under a genuine conditional edge (winning the
+    underpriced contracts) the observed sum is extreme -> small p. Under a null, or when every
+    entry price is identical (no conditional edge to find), p -> ~uniform / 1.0. Returns 1.0
+    for a degenerate case (no discrimination possible)."""
+    deltas: List[float] = []
+    won: List[bool] = []
+    for t in sorted(trades, key=lambda x: x.entry_ts):
+        if t.reason != "settled" or t.entry_price <= 0:
+            continue
+        deltas.append(1.0 / t.entry_price)
+        won.append(t.exit_price >= 0.5)  # settled winners carry exit_price 1.0
+    k = sum(won)
+    m = len(deltas)
+    if m < 2 or k == 0 or k == m:
+        return 1.0
+    observed = sum(d for d, w in zip(deltas, won) if w)
+    rng = random.Random(seed)
+    ge = sum(1 for _ in range(PLACEBO_SHUFFLES) if sum(rng.sample(deltas, k)) >= observed - 1e-12)
+    return ge / PLACEBO_SHUFFLES
+
+
+# -- numeric verdict (no I/O) --------------------------------------------------
+
+
+def _compute(trades, n_trials: int, lord_state: Dict[str, Any], seed: int) -> Dict[str, Any]:
+    """The full numeric verdict for one finalist's trade list, advancing a LORD++ state by
+    one test. Pure w.r.t. the DB (callers persist). Returns every number plus the new LORD++
+    state; classification is applied separately so judge_batch can fold in BH."""
+    series = _net_returns(trades)
+    rets = [r for _, r in series]
+    n = len(rets)
+    boot = stats.stationary_bootstrap_ci(rets, stat="mean", alpha=ALPHA, seed=seed)
+    sr = _sharpe(rets)
+    skew, kurt = _moments(rets)
+    psr = stats.probabilistic_sharpe_ratio(sr, n, skew, kurt)
+    var_trials = 1.0 / (n - 1) if n > 1 else 0.0  # Var(SR_hat) under the null = dispersion of equal-length zero-edge trials
+    dsr = stats.deflated_sharpe_ratio(sr, n, skew, kurt, n_trials, var_trials)
+    placebo_p = _placebo_pvalue(trades, seed)
+    rec = stats.lord_record(lord_state, boot["p_value"])
+    equity = _equity(trades)
+    return {
+        "n_trades": n,
+        "p_value": boot["p_value"],
+        "ci_lo": boot["lo"],
+        "ci_hi": boot["hi"],
+        "mean_net_return": boot["point"],
+        "sharpe": sr,
+        "psr": psr,
+        "dsr": dsr,
+        "placebo_p": placebo_p,
+        "placebo_passed": placebo_p < ALPHA,
+        "lord_reject": rec["reject"],
+        "alpha_i": rec["alpha_i"],
+        "lord_state": rec["state"],
+        "net_pnl": sum(t.pnl for t in trades),
+        "max_drawdown": quant.max_drawdown([v for _, v in equity]),
+        "ret_series": [[ts, round(r, 8)] for ts, r in series],
+        "bh_reject": None,
+    }
+
+
+def _classify(lord_reject: bool, bh_reject: Optional[bool], dsr: float,
+              ci_lo: float, ci_hi: float, placebo_passed: bool) -> Classification:
+    """The STAT_SUPPORTED decision rule. STAT_SUPPORTED iff the online FDR budget rejects AND
+    (within a chunk) BH rejects AND DSR >= DSR_MIN AND the bootstrap CI lower bound is above 0
+    AND the negative control passes. A placebo-equivalent or flatly-negative result is
+    REJECTED; anything real-looking but short of the bar is INCONCLUSIVE (the honest, valuable
+    outcome on a tiny sample)."""
+    bh_ok = True if bh_reject is None else bh_reject
+    if lord_reject and bh_ok and dsr >= DSR_MIN and ci_lo > 0 and placebo_passed:
+        return Classification.STAT_SUPPORTED
+    if not placebo_passed:
+        return Classification.REJECTED          # edge indistinguishable from a label shuffle -> artifact
+    if ci_hi is not None and ci_hi <= 0:
+        return Classification.REJECTED          # whole CI at/below zero -> actively no edge
+    return Classification.INCONCLUSIVE
+
+
+def _n_trials(cur, user_id: int, market: str, including: int) -> int:
+    """Audited number of hypotheses that competed for this market's validation evidence:
+    the ledger's already-validated experiments for this user+market, plus the `including`
+    being judged right now. Feeds DSR's selection correction (§B.1/§F)."""
+    prior = rr.experiment_records_for_replay(cur, user_id, market)
+    return len(prior) + max(including, 0)
+
+
+def _lord_state(cur, user_id: int, market: str) -> Dict[str, Any]:
+    """Load the LORD++ alpha-wealth state for this (user, market) stream, or a fresh one.
+    Returns a clean plain dict with exactly the keys stats.lord_record expects."""
+    st = rr.get_fdr_state(cur, user_id, market)
+    if st is None:
+        return stats.lord_init(ALPHA)
+    return {
+        "method": st.get("method", "LORD++"),
+        "alpha": float(st["alpha"]),
+        "w0": float(st["w0"]),
+        "wealth": float(st["wealth"]),
+        "t": int(st["t"]),
+        "rejections": list(st.get("rejections") or []),
+    }
+
+
+def _result_metrics(v: Dict[str, Any], n_trials: int, holdout_consumed: int = 0) -> Dict[str, Any]:
+    """Map a computed verdict to the append_result column dict."""
+    return {
+        "net_pnl": round(v["net_pnl"], 4),
+        "mean_net_return": v["mean_net_return"],
+        "sharpe": v["sharpe"],
+        "psr": v["psr"],
+        "dsr": v["dsr"],
+        "p_value": v["p_value"],
+        "ci_lo": v["ci_lo"],
+        "ci_hi": v["ci_hi"],
+        "fdr_alpha_i": v["alpha_i"],
+        "fdr_reject": v["lord_reject"],
+        "bh_reject": v.get("bh_reject"),
+        "placebo_p": v["placebo_p"],
+        "n_trials_audited": n_trials,
+        "holdout_consumed": holdout_consumed,
+    }
+
+
+def _verdict_dict(v: Dict[str, Any], cls: Classification, n_trials: int) -> Dict[str, Any]:
+    """The FULL numeric verdict returned to the gatekeeper's caller. NOTE: the generator
+    (agent.py) must receive ONLY `classification` out of this — never the p-value/CI/pnl."""
+    return {
+        "classification": cls.value,
+        "n_trades": v["n_trades"],
+        "alpha_spent": True,
+        "p_value": v["p_value"],
+        "alpha_i": v["alpha_i"],
+        "fdr_reject": v["lord_reject"],
+        "bh_reject": v.get("bh_reject"),
+        "psr": v["psr"],
+        "dsr": v["dsr"],
+        "ci": {"lo": v["ci_lo"], "hi": v["ci_hi"]},
+        "mean_net_return": v["mean_net_return"],
+        "placebo_p": v["placebo_p"],
+        "max_drawdown": v["max_drawdown"],
+        "n_trials_audited": n_trials,
+    }
+
+
+# -- validation (§B.2 steps) ---------------------------------------------------
+
+
+def judge_validation(cur, experiment_id: int, finalist: dict, val_ds) -> dict:
+    """Score ONE pre-registered finalist on the VALIDATION partition and record the verdict.
+
+    Steps (§B.2): simulate the frozen spec on the (leak-free, self-contained) validation
+    window; if n_trades < min_sample -> INCONCLUSIVE and DO NOT spend alpha; else per-trade
+    net returns -> stationary-bootstrap p-value + CI, PSR, DSR (n_trials = audited ledger
+    count), advance the LORD++ stream, run the label-shuffle negative control, and classify.
+    Appends one phase='validation' row. Returns the full numeric verdict dict; the generator
+    must consume ONLY `classification`.
+
+    `finalist` carries at least {spec, user_id, min_sample}; market comes from val_ds."""
+    market = val_ds.market.key
+    user_id = int(finalist["user_id"])
+    min_sample = int(finalist.get("min_sample", 0))
+    n_trials = _n_trials(cur, user_id, market, including=1)
+
+    trades = backtest.simulate(finalist["spec"], val_ds, val_ds.start_ts, val_ds.end_ts + 1)
+    n_trades = len(trades)
+    if n_trades < min_sample:
+        cls = Classification.INCONCLUSIVE
+        rr.append_result(cur, experiment_id, "validation", cls.value, n_trades,
+                         metrics={"n_trials_audited": n_trials})
+        return {"classification": cls.value, "n_trades": n_trades, "alpha_spent": False,
+                "n_trials_audited": n_trials}
+
+    v = _compute(trades, n_trials, _lord_state(cur, user_id, market), seed=_BOOT_SEED + int(experiment_id))
+    rr.set_fdr_state(cur, user_id, market, v["lord_state"])  # alpha spent only once sample is adequate
+    cls = _classify(v["lord_reject"], None, v["dsr"], v["ci_lo"], v["ci_hi"], v["placebo_passed"])
+    rr.append_result(cur, experiment_id, "validation", cls.value, n_trades,
+                     metrics=_result_metrics(v, n_trials), equity_curve=v["ret_series"])
+    return _verdict_dict(v, cls, n_trials)
+
+
+def judge_batch(cur, run_id: int, experiment_ids: List[int], finalists: List[dict],
+                val_ds) -> List[dict]:
+    """Chunk-level entry point. Applies Benjamini-Hochberg across the chunk's p-values IN
+    ADDITION to the online LORD++ stream: a finalist is STAT_SUPPORTED only if it clears BOTH.
+    Each finalist advances the shared LORD++ state in order; the final state is persisted once.
+    Below-min-sample finalists are INCONCLUSIVE and spend no alpha and take no BH slot."""
+    if not finalists:
+        return []
+    market = val_ds.market.key
+    user_id = int(finalists[0]["user_id"])
+    n_trials = _n_trials(cur, user_id, market, including=len(finalists))
+    lord_state = _lord_state(cur, user_id, market)
+
+    computed: List[Dict[str, Any]] = []
+    for exp_id, fin in zip(experiment_ids, finalists):
+        trades = backtest.simulate(fin["spec"], val_ds, val_ds.start_ts, val_ds.end_ts + 1)
+        n = len(trades)
+        if n < int(fin.get("min_sample", 0)):
+            computed.append({"exp_id": exp_id, "n_trades": n, "insufficient": True})
+            continue
+        v = _compute(trades, n_trials, lord_state, seed=_BOOT_SEED + int(exp_id))
+        lord_state = v["lord_state"]  # advance the stream
+        v["exp_id"] = exp_id
+        v["insufficient"] = False
+        computed.append(v)
+
+    tested = [c for c in computed if not c["insufficient"]]
+    bh = stats.benjamini_hochberg([c["p_value"] for c in tested], alpha=ALPHA)
+    for c, rej in zip(tested, bh["reject"]):
+        c["bh_reject"] = bool(rej)
+    if tested:
+        rr.set_fdr_state(cur, user_id, market, lord_state)
+
+    out: List[dict] = []
+    for c in computed:
+        if c["insufficient"]:
+            cls = Classification.INCONCLUSIVE
+            rr.append_result(cur, c["exp_id"], "validation", cls.value, c["n_trades"],
+                             metrics={"n_trials_audited": n_trials})
+            out.append({"classification": cls.value, "n_trades": c["n_trades"],
+                        "alpha_spent": False, "n_trials_audited": n_trials})
+            continue
+        cls = _classify(c["lord_reject"], c["bh_reject"], c["dsr"], c["ci_lo"], c["ci_hi"], c["placebo_passed"])
+        rr.append_result(cur, c["exp_id"], "validation", cls.value, c["n_trades"],
+                         metrics=_result_metrics(c, n_trials), equity_curve=c["ret_series"])
+        out.append(_verdict_dict(c, cls, n_trials))
+    return out
+
+
+# -- locked holdout (one-time) -------------------------------------------------
+
+
+def _holdout_fingerprint(partition: Dict[str, Any]) -> str:
+    base = "%s|%s|%s" % (partition["holdout_from_ts"], partition["holdout_to_ts"],
+                         partition.get("data_fingerprint", ""))
+    return hashlib.sha256(base.encode()).hexdigest()
+
+
+def _latest_classification(cur, experiment_id: int, phase: str) -> Optional[str]:
+    rows = rr.results_for_experiment(cur, experiment_id, phase)
+    return rows[-1]["classification"] if rows else None
+
+
+def judge_holdout(cur, experiment_id: int, finalist: dict) -> dict:
+    """ONE-TIME evaluation on the Locked-Holdout. Refuses (raises HoldoutConsumed) unless the
+    experiment is already STAT_SUPPORTED, the holdout for this market is not consumed and has
+    evaluations left, and this experiment has no prior phase='holdout' result. On success:
+    simulate the frozen spec on the holdout, record a phase='holdout' verdict, spend one
+    holdout evaluation, and set FORWARD_VALIDATED (edge holds on untouched data) or REJECTED.
+    At the evaluation cap the holdout ledger flips consumed=1 and we emit the roll-to-fresh-
+    data alert (§F)."""
+    market = finalist["market"]
+    user_id = int(finalist["user_id"])
+
+    if _latest_classification(cur, experiment_id, "validation") != Classification.STAT_SUPPORTED.value:
+        raise HoldoutConsumed("experiment is not statistically_supported; holdout refused")
+    if rr.results_for_experiment(cur, experiment_id, "holdout"):
+        raise HoldoutConsumed("experiment already has a holdout verdict; holdout is one-time")
+
+    partition = rr.get_active_partition(cur, market)
+    if not partition:
+        raise HoldoutConsumed("no active partition for market %r" % market)
+    ledger = rr.ensure_holdout_ledger(cur, market, int(partition["id"]),
+                                      _holdout_fingerprint(partition),
+                                      partitions.holdout_max_evaluations(market))
+    if int(ledger["consumed"]) == 1 or int(ledger["evaluations_used"]) >= int(ledger["max_evaluations"]):
+        raise HoldoutConsumed("holdout consumed for market %r (%s/%s)" % (
+            market, ledger["evaluations_used"], ledger["max_evaluations"]))
+
+    hds = partitions.holdout_dataset(market, partition)
+    trades = backtest.simulate(finalist["spec"], hds, hds.start_ts, hds.end_ts + 1)
+    n_trades = len(trades)
+    n_trials = _n_trials(cur, user_id, market, including=1)
+    v = _compute(trades, n_trials, stats.lord_init(ALPHA), seed=_BOOT_SEED + int(experiment_id))
+
+    use = rr.record_holdout_use(cur, int(ledger["id"]))  # authoritative one-way spend
+    if not use.get("ok"):
+        raise HoldoutConsumed(use.get("reason", "holdout_consumed"))
+    consumed = int(use.get("consumed", 0))
+
+    forward = v["ci_lo"] > 0 and v["p_value"] <= ALPHA
+    cls = Classification.FORWARD_VALIDATED if forward else Classification.REJECTED
+    rr.append_result(cur, experiment_id, "holdout", cls.value, n_trades,
+                     metrics=_result_metrics(v, n_trials, holdout_consumed=consumed),
+                     equity_curve=v["ret_series"])
+    if consumed:
+        _alert("holdout for market %r is consumed (%s evaluations) — roll partitions forward "
+               "onto fresh settled history before any further holdout look (§F)." % (
+                   market, use.get("evaluations_used")))
+    verdict = _verdict_dict(v, cls, n_trials)
+    verdict["holdout_consumed"] = consumed
+    return verdict
+
+
+# -- marginal contribution (pre-deploy diversification gate) -------------------
+
+
+def _latest_validation_series(cur, experiment_id: int) -> Optional[List[List[float]]]:
+    rows = rr.results_for_experiment(cur, experiment_id, "validation")
+    return rows[-1].get("equity_curve") if rows else None
+
+
+def _bucketed(series: List[List[float]]) -> Dict[int, float]:
+    """Sum per-trade returns into daily buckets (entry_ts // 86400). ponytail: a day bucket is
+    the coarse common index two strategies trading different contracts can be aligned on; a
+    finer co-return would need matched decision frames."""
+    out: Dict[int, float] = {}
+    for ts, r in series:
+        day = int(ts) // 86400
+        out[day] = out.get(day, 0.0) + float(r)
+    return out
+
+
+def _daily_corr(a: List[List[float]], b: List[List[float]]) -> float:
+    da, db = _bucketed(a), _bucketed(b)
+    days = sorted(set(da) | set(db))
+    xs = [da.get(d, 0.0) for d in days]
+    ys = [db.get(d, 0.0) for d in days]
+    n = len(xs)
+    if n < 2:
+        return 0.0
+    mx, my = sum(xs) / n, sum(ys) / n
+    sx = sum((x - mx) ** 2 for x in xs)
+    sy = sum((y - my) ** 2 for y in ys)
+    if sx <= 0 or sy <= 0:
+        return 0.0
+    cov = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+    return cov / math.sqrt(sx * sy)
+
+
+def marginal_contribution_ok(cur, user_id: int, experiment_id: int,
+                             finalist: dict) -> Tuple[bool, str]:
+    """Pre-deploy diversification gate: correlate this strategy's validation per-trade return
+    series (daily-bucketed) against each already-DEPLOYED strategy's. '100 correlated BTC-
+    momentum strategies < 1 novel one.' Fails (False, reason) if max |corr| > CORR_MAX. On a
+    pass, promotes FORWARD_VALIDATED -> DEPLOYMENT_CANDIDATE (appends a phase='forward' row)."""
+    market = finalist["market"]
+    if _latest_classification(cur, experiment_id, "holdout") != Classification.FORWARD_VALIDATED.value:
+        return False, "experiment is not forward_validated; nothing to promote"
+    mine = _latest_validation_series(cur, experiment_id)
+    if not mine:
+        return False, "no validation return series recorded for this experiment"
+
+    worst = 0.0
+    worst_peer: Optional[int] = None
+    for rec in rr.experiment_records_for_replay(cur, user_id, market):
+        eid = int(rec["experiment_id"])
+        if eid == int(experiment_id):
+            continue
+        fwd = rr.results_for_experiment(cur, eid, "forward")
+        if not fwd or fwd[-1]["classification"] != Classification.DEPLOYMENT_CANDIDATE.value:
+            continue  # only already-deployed peers count
+        peer = _latest_validation_series(cur, eid)
+        if not peer:
+            continue
+        c = abs(_daily_corr(mine, peer))
+        if c > worst:
+            worst, worst_peer = c, eid
+
+    if worst > CORR_MAX:
+        return False, "max |corr| %.2f to deployed experiment %s exceeds %.2f" % (worst, worst_peer, CORR_MAX)
+    rr.append_result(cur, experiment_id, "forward", Classification.DEPLOYMENT_CANDIDATE.value, len(mine))
+    return True, "max |corr| %.2f within %.2f" % (worst, CORR_MAX)
+
+
+def _alert(msg: str) -> None:
+    log.warning("GATEKEEPER HOLDOUT ALERT: %s", msg)

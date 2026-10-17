@@ -366,3 +366,40 @@ def load_from_db(market: Market, history_days: Optional[int] = None) -> Dataset:
 
 def dataset(market_key: str, history_days: Optional[int] = None) -> Dataset:
     return load_dataset(market_key, load_from_db, history_days)
+
+
+def partition_dataset(market_key: str, partition: Dict, phase: str) -> Dataset:
+    """Build the Dataset for one partition window: 'research', 'validation' or 'holdout'. The
+    generator loads only 'research' (via partitions.research_dataset) and hands the 'validation'
+    window straight to the gatekeeper without ever reading a number off it — this keeps the
+    validation/holdout loaders out of agent.py entirely (§B.4). Lazy import of app.partitions
+    avoids the import cycle (partitions imports this module)."""
+    from app import partitions
+    loaders = {"research": partitions.research_dataset,
+               "validation": partitions.validation_dataset,
+               "holdout": partitions.holdout_dataset}
+    return loaders[phase](market_key, partition)
+
+
+def research_fold_metrics(spec: Dict, ds: Dataset, embargo_seconds: int,
+                          n_splits: int = 4, what_if: Optional[WhatIf] = None) -> Dict:
+    """In-research "OOS" metrics via a PURGED walk-forward split (Lopez de Prado) instead of a
+    single 70/30 cut: simulate the spec across the whole Research window, then score it only on
+    the pooled test folds. stats.purged_walkforward_splits drops train frames that settle into
+    (purge) or run up to (embargo) a test block, so the fold is leak-free WITHIN Research — the
+    agent may look at it freely. Returns {"capital", "in_sample": metrics} mirroring evaluate()."""
+    from app import stats
+    stake = (what_if.stake if what_if and what_if.stake is not None else spec["sizing"]["stake"])
+    capital = stake * spec["sizing"]["max_positions"]
+    trades = sorted(simulate(spec, ds, ds.start_ts, ds.end_ts + 1, what_if), key=lambda t: t.entry_ts)
+    if trades:
+        splits = stats.purged_walkforward_splits([t.entry_ts for t in trades],
+                                                 [t.exit_ts for t in trades], n_splits, embargo_seconds)
+        test_idx = sorted({i for sp in splits for i in sp["test_idx"]})
+        fold = [trades[i] for i in test_idx] if test_idx else trades
+        span = (fold[-1].exit_ts - fold[0].entry_ts) / 86400.0 if fold else 0.0
+    else:
+        fold, span = [], (ds.end_ts - ds.start_ts) / 86400.0
+    m = metrics(fold, capital, max(span, 1e-9))
+    m.pop("_curve", None)
+    return {"capital": capital, "in_sample": m}

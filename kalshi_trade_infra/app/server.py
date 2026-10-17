@@ -27,6 +27,7 @@ from app import agent, auth, backtest, billing, devlog, engine, kalshi_account, 
 from app import kalshi_dev
 from app import models_catalog as catalog
 from app import repository as repo
+from app import research_repository as research_repo
 from app import spec as specmod
 from app.markets import MARKETS
 from data_pipeline.common import get_db_conn
@@ -465,6 +466,103 @@ def unsubscribe(ctx: Ctx):
     return ("html", page)
 
 
+def _exp_num(row: Dict, key: str) -> Optional[float]:
+    v = row.get(key)
+    return None if v is None else float(v)
+
+
+def _exp_bool(row: Dict, key: str) -> Optional[bool]:
+    v = row.get(key)
+    return None if v is None else bool(v)
+
+
+def _exp_int(row: Dict, key: str) -> Optional[int]:
+    v = row.get(key)
+    return None if v is None else int(v)
+
+
+def _phase_block(row: Optional[Dict], holdout: bool = False) -> Optional[Dict]:
+    """Shape one app_experiment_results row (validation or holdout) into the §D block."""
+    if not row:
+        return None
+    out = {
+        "classification": row.get("classification"),
+        "n_trades": _exp_int(row, "n_trades"),
+        "mean_net_return": _exp_num(row, "mean_net_return"),
+        "ci_lo": _exp_num(row, "ci_lo"),
+        "ci_hi": _exp_num(row, "ci_hi"),
+        "p_value": _exp_num(row, "p_value"),
+        "psr": _exp_num(row, "psr"),
+        "dsr": _exp_num(row, "dsr"),
+        "sharpe": _exp_num(row, "sharpe"),
+        "net_pnl": _exp_num(row, "net_pnl"),
+        "fdr_alpha_i": _exp_num(row, "fdr_alpha_i"),
+        "fdr_reject": _exp_bool(row, "fdr_reject"),
+        "bh_reject": _exp_bool(row, "bh_reject"),
+        "placebo_p": _exp_num(row, "placebo_p"),
+        "n_trials_audited": _exp_int(row, "n_trials_audited"),
+        "equity_curve": row.get("equity_curve"),
+    }
+    if holdout:
+        out["consumed"] = bool(row.get("holdout_consumed"))
+    return out
+
+
+def _rationale(raw) -> Dict:
+    """economic_rationale is a TEXT column the gatekeeper stores as structured JSON (§D:
+    mechanism / negative_control / competing_explanations / folds). Fall back to treating
+    it as a plain mechanism string for anything older or free-form."""
+    try:
+        d = json.loads(raw) if isinstance(raw, str) else (raw if isinstance(raw, dict) else None)
+    except (ValueError, TypeError):
+        d = None
+    if not isinstance(d, dict):
+        return {"mechanism": raw or None, "negative_control": None,
+                "competing_explanations": None, "folds": []}
+    return {
+        "mechanism": d.get("mechanism") or raw,
+        "negative_control": d.get("negative_control"),
+        "competing_explanations": d.get("competing_explanations") or d.get("challenger"),
+        "folds": d.get("folds") or [],
+    }
+
+
+def _experiment_block(cur, strategy_id: int) -> Optional[Dict]:
+    """The §D research-paper `experiment` block for a strategy, or None when the strategy
+    predates the rigorous-research pipeline (no ledger row). Additive by design: a None
+    here leaves the rest of the detail page intact — never a regression for old strategies."""
+    rec = research_repo.experiments_for_strategy(cur, strategy_id)
+    if not rec:
+        return None
+    exp = rec["experiment"]
+    results = rec["results"] or []
+    latest = lambda phase: next((r for r in reversed(results) if r.get("phase") == phase), None)
+    val = _phase_block(latest("validation"))
+    hold = _phase_block(latest("holdout"), holdout=True)
+    rat = _rationale(exp.get("economic_rationale"))
+    overall = results[-1]["classification"] if results else None
+    return {
+        "classification": overall,
+        "registered_at": exp.get("registered_at"),
+        "mechanism": rat["mechanism"],
+        "negative_control": rat["negative_control"],
+        "competing_explanations": rat["competing_explanations"],
+        "falsification_criteria": exp.get("falsification_criteria"),
+        "null_hypothesis": exp.get("null_hypothesis"),
+        "alt_hypothesis": exp.get("alt_hypothesis"),
+        "primary_metric": exp.get("primary_metric"),
+        "planned_test": exp.get("planned_test"),
+        "min_sample": _exp_int(exp, "min_sample"),
+        "cost_assumptions": exp.get("cost_assumptions"),
+        "planned_n_tests": _exp_int(exp, "planned_n_tests"),
+        "correction_method": exp.get("correction_method"),
+        "n_trials_audited": (val or {}).get("n_trials_audited"),
+        "validation": val,
+        "holdout": hold,
+        "folds": rat["folds"],
+    }
+
+
 def get_strategy(ctx: Ctx):
     s = _owned_strategy(ctx)
     out = _strategy_card(s)
@@ -472,6 +570,7 @@ def get_strategy(ctx: Ctx):
     out.update(
         spec=s["spec"], rules=specmod.describe(s["spec"]), gates=res.get("gates"), dataset=res.get("dataset"),
         recent_trades=res.get("recent_trades"),
+        experiment=_experiment_block(ctx.cur, s["id"]),
         deployments=[_deployment_out(d, []) for d in repo.list_deployments(ctx.cur, ctx.uid) if d["strategy_id"] == s["id"]],
         holdings=[{
             "ticker": p["ticker"], "side": p["side"], "qty": int(p["qty"]), "mode": p["mode"],

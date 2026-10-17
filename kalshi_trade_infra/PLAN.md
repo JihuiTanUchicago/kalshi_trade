@@ -1,5 +1,40 @@
 # PLAN
 
+## Rigorous quant-research pipeline + dev-env trading foundation — October 16, 2026
+
+Full design + signatures: `RESEARCH_PIPELINE_DESIGN.md` (source of truth). The research
+loop was turned from "generate → fixed-70/30-OOS gate" into a statistically-disciplined
+engine that separates GENERATION from JUDGMENT:
+
+- `app/stats.py` — pure validity math: Benjamini-Hochberg / Benjamini-Yekutieli FDR,
+  LORD++ online-FDR (persistable alpha-wealth state), Probabilistic + Deflated Sharpe,
+  stationary-bootstrap CI (the primary validation p-value), timestamp-based purged
+  walk-forward + embargo splitter. Reuses `app/quant.py`.
+- Immutable experiment ledger (`app/schema.py`: `app_experiments` [pre-registration,
+  INSERT-only], `app_experiment_results` [append-only verdicts], `app_fdr_state`,
+  `app_holdout_ledger`, `app_data_partitions`) via `app/research_repository.py`.
+- `app/partitions.py` — frozen chronological Research/Validation/Locked-Holdout split
+  (60/25/15), purge/embargo tied to each market's settlement cadence; validation/holdout
+  loaders are gatekeeper-only (the generator can't reach them).
+- `app/gatekeeper.py` — the Statistical Gatekeeper, the only module that reads
+  validation/holdout. Pre-registers hypotheses, spends the FDR budget, classifies
+  Rejected→Inconclusive→Promising→Stat-supported→Forward-validated→Deployment-candidate.
+  STAT_SUPPORTED ⟺ LORD reject AND BH reject AND DSR≥0.95 AND CI_lo>0 AND placebo passes.
+- `app/agent.py` — 9-phase proposer + a Challenger LLM pass (3-role: propose→challenge→
+  execute); `_memory_block` no longer leaks held-out pnl into the next prompt; deploy /
+  deploy_live gained an ADDITIVE, fail-closed `DEPLOYMENT_CANDIDATE` requirement on top of
+  every existing live gate (nothing weakened). Strategy detail page is now a research paper
+  (thesis/mechanism/pre-registered test/results/holdout + 5 charts) via `server.py`'s
+  additive `experiment` block (old strategies → `experiment: null`).
+- Dev-env trading FOUNDATION (dormant until integrated): `app_kalshi_dev_keys` table,
+  per-user dev-key accessors in `repository.py`, and `app/kalshi_dev_exec.py` — an
+  authenticated Kalshi DEMO (sandbox) execution client, host-isolated so it can never
+  reach the production exchange. Remaining: engine demo-mode tick, server deploy-mode +
+  key-entry endpoint, frontend key UI.
+
+Verification: 336 passed / 7 skipped; live-gate tests green; `/security-review` clean
+(no new HIGH/MEDIUM). Live-trading gate unchanged except made stricter.
+
 ## Alpaca market data for agents — October 16, 2026, Asia/Shanghai
 
 Implemented for PR review; disabled by default. Agents previously received only

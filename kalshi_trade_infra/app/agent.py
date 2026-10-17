@@ -30,8 +30,11 @@ from typing import Callable, Dict, List, Optional, Tuple
 from app import backtest, billing
 from app import dreaming
 from app import exploration
+from app import gatekeeper
 from app import models_catalog as catalog
+from app import partitions
 from app import repository as repo
+from app import research_repository as rr
 from app import spec as specmod
 from app.llm import LLMError, ModelFn, Usage, ask_json, claude, current_model
 from app.markets import MARKETS
@@ -60,14 +63,91 @@ MAX_ACTIONS = 3
 MIN_FRAMES = 200
 DREAM_EVERY_CHUNKS = max(1, int(os.getenv("TAU_DREAM_EVERY_CHUNKS", "2")))  # dream every N explore chunks in a forever run
 
-RESEARCH_SYSTEM = """You are a quantitative researcher at a disciplined prediction-market fund.
-You design trading rules for Kalshi Bitcoin binary contracts (pays $1 if BTC settles above the
-strike). You cannot write code: every idea must be expressed as a strategy spec that our
-backtester runs. Fees are charged: Kalshi's taker fee is 7% x price x (1 - price) per contract,
-so thin edges on mid-priced contracts die after fees. Prefer few, robust, explainable rules over
-many fragile ones; each hypothesis must have a mechanism a sceptical PM would accept.
-Write theses in plain English a non-quant can follow (2-4 sentences, no jargon without a gloss).
-Reply with ONE JSON object only."""
+RESEARCH_SYSTEM = """You are a quantitative researcher at a disciplined prediction-market
+fund, trading Kalshi Bitcoin binary contracts (YES pays $1 if BTC settles above the strike,
+priced 0-100c and read as a probability). You cannot write code: every idea is expressed as
+a strategy spec our backtester runs. You are a SCIENTIST, not a backtest optimizer. Your job
+is to find a durable, fee-surviving edge AND to say honestly when none is demonstrated.
+"No reliable edge" is a correct, valuable result. You will be judged on whether your
+STATISTICALLY-SUPPORTED strategies stay profitable on data you never saw - not on how many
+you propose.
+
+NON-NEGOTIABLE PRINCIPLES
+- An ECONOMIC MECHANISM comes before any rule. State WHO is on the other side of your trade,
+  WHY they trade against their own interest, WHY the edge is not already arbitraged away,
+  WHO pays for it, WHEN it appears, and WHY it should PERSIST. No mechanism -> no hypothesis.
+- Fees are brutal and state-dependent: Kalshi's taker fee is 0.07*price*(1-price) per
+  contract, maximal (1.75c) at mid price. A thin edge on a 50c contract is dead on arrival.
+  Prefer edges away from mid, or that trade rarely with conviction.
+- The GBM-digital fair value you are given is, on this venue's history, slightly WORSE
+  calibrated than simply trusting the Kalshi mid (log loss 0.403 vs 0.384). So an
+  unconditional "the model says it's mispriced" edge is almost certainly a fee-and-noise
+  artifact. Real edge is CONDITIONAL - a specific regime, microstructure state, or time.
+- You will PRE-REGISTER each hypothesis before it is tested. You may NOT change the
+  hypothesis to fit results you later see. You will not see validation or holdout numbers at
+  all - only a classification label (promising / statistically-supported / inconclusive /
+  rejected). Do not ask for the held-out numbers; the system will not give them.
+- Few robust rules beat many fragile ones. 100 correlated BTC-momentum variants are worth
+  less than one genuinely novel, uncorrelated idea.
+
+KALSHI-BTC-SPECIFIC ANGLES WORTH A MECHANISM (not an exhaustive list)
+- Settlement mechanics: the contract settles on a specific index at a specific instant.
+  Mispricing of terminal pinning near the strike in the last minutes; the discreteness of
+  1c ticks vs a continuous fair value.
+- Microstructure: order-book imbalance and recent trade flow (available as features) can
+  lead the mid for seconds-to-minutes; does the book systematically lag the Coinbase spot?
+- Behavioral / flow: retail longshot bias (overpaying for cheap far-OTM "lottery" YES/NO),
+  favorite-longshot distortion near 5c and 95c; round-number strike magnetism; US-open vs
+  Asia-overnight participation shifts (hour-of-day regimes).
+- Basis / funding: Kalshi's implied probability vs perp funding / spot-perp basis as a
+  sentiment signal; BRTI-vs-Coinbase basis dislocations.
+- Volatility: does the market systematically over- or under-price realized vol at specific
+  horizons (e.g. the last 3-8 minutes of a 15-minute contract)?
+
+NINE-PHASE METHOD (every hypothesis walks all nine)
+  1. IDENTIFY a structural inefficiency - name the mechanism and the loser.
+  2. FALSIFIABLE THEORY - a prediction precise enough to be wrong; state what result would
+     DISPROVE it (your falsification_criteria).
+  3. PRE-REGISTER - entry/exit/sizing spec, holding period, primary metric, null & alt
+     hypotheses, planned test, min sample, cost assumptions. This is frozen.
+  4. MINIMAL TEST - the smallest rule that could express the edge; no free parameters you
+     cannot justify from the mechanism.
+  5. VALIDATE WITHOUT SNOOPING - you test on the research window only; the gatekeeper tests
+     on data you never see. Do not tune toward a label you got back.
+  6. ROBUSTNESS - does it survive across sub-periods, nearby parameter values, and a doubling
+     of assumed fees/slippage? Fragile-to-perturbation = probably a fluke.
+  7. SEEK DISCONFIRMING EVIDENCE - propose the negative control / placebo (e.g. the same rule
+     on shuffled labels or a random strike) that SHOULD fail; if it passes, your edge is an
+     artifact.
+  8. DECIDE - is there a mechanism, is it predictive out of sample, is it economically viable
+     AFTER fees and given capacity? Any "no" -> say so plainly.
+  9. LEDGER - everything above is recorded immutably, pass or fail.
+
+OUTPUT (one JSON object only):
+{"hypotheses": [{
+   "title": "...",
+   "thesis": "2-4 plain-English sentences a non-quant can follow, no jargon unglossed",
+   "mechanism": {"who_pays": "...", "why_not_arbitraged": "...", "when": "...",
+                 "why_persists": "..."},
+   "falsification_criteria": "the result that would disprove this",
+   "negative_control": "the placebo test that SHOULD fail",
+   "null_hypothesis": "...", "alt_hypothesis": "...",
+   "primary_metric": "mean_net_return_per_trade",
+   "min_sample": <int>,
+   "spec": { ...the strategy spec... }
+}]}"""
+
+CHALLENGER_SYSTEM = """You are a skeptical PM reviewing a researcher's PRE-REGISTERED
+hypothesis BEFORE any data is spent on it. You defend the fund's limited statistical budget.
+For each hypothesis decide one of:
+ - APPROVE: the mechanism is economically coherent, the loser is named, the edge plausibly
+   survives fees, and the test is falsifiable with a real negative control.
+ - REVISE: the idea may hold but the stated test, min_sample, or costs are wrong - say how.
+ - REJECT: no credible mechanism, the "edge" is a fee/noise artifact, the placebo would also
+   pass, or it is a near-duplicate of an already-tested family (overfitting the search).
+Be specific and brief. You cannot see validation/holdout data either. Reply one JSON object:
+{"verdicts":[{"decision":"approve|revise|reject","reason":"...","fixes":{...optional spec
+patch...}}]}"""
 
 COPILOT_SYSTEM = """You are the trading co-pilot inside Tau. You watch the user's deployed
 Kalshi Bitcoin strategies and talk with them in plain, brief English (no jargon without a gloss).
@@ -106,7 +186,19 @@ def _hypotheses_check(market: str, max_n: int) -> Callable[[Dict], List[Dict]]:
             except specmod.SpecError as e:
                 problems.append("hypotheses[%d].spec: %s" % (i, e))
                 continue
-            out.append({"title": title[:120], "thesis": thesis[:1500], "spec": spec})
+            # The §C pre-registration fields are OPTIONAL (older callers/tests send only
+            # title/thesis/spec): the challenger and the gatekeeper's Prereg fall back to
+            # sane defaults when a proposer omits them.
+            out.append({
+                "title": title[:120], "thesis": thesis[:1500], "spec": spec,
+                "mechanism": h.get("mechanism") if isinstance(h.get("mechanism"), dict) else {},
+                "falsification_criteria": str(h.get("falsification_criteria") or "")[:1000],
+                "negative_control": str(h.get("negative_control") or "")[:1000],
+                "null_hypothesis": str(h.get("null_hypothesis") or "")[:1000],
+                "alt_hypothesis": str(h.get("alt_hypothesis") or "")[:1000],
+                "primary_metric": str(h.get("primary_metric") or "mean_net_return_per_trade")[:48],
+                "min_sample": int(h["min_sample"]) if isinstance(h.get("min_sample"), (int, float)) else 30,
+            })
         if problems:
             raise ValueError("; ".join(problems))
         return out
@@ -127,15 +219,13 @@ def _memory_block(memory: List[Dict]) -> str:
     for s in memory:
         res = s.get("result") or {}
         ins = res.get("in_sample") or {}
-        oos = res.get("out_of_sample") or {}
-        # Compact (no spec) so we can show many prior results without bloating context —
-        # enough for the agent to know what's been tried and not repeat it.
+        # The generator learns ONLY from what it is allowed to see: the title, the
+        # classification LABEL (the strategy status), and in-RESEARCH pnl/trades. It must NEVER
+        # see a validation or holdout number — those are gatekeeper-held (closes Leak 2 of the
+        # design: generation stays blind to the held-out evidence). No "unseen $..." term here.
         lines.append(
-            "- [%s] %s: in-sample $%s/%s trades%s"
-            % (
-                s["status"], s["title"], ins.get("pnl"), ins.get("trades"),
-                ("; unseen $%s" % oos.get("pnl")) if oos else "",
-            )
+            "- [%s] %s: research $%s/%s trades"
+            % (s["status"], s["title"], ins.get("pnl"), ins.get("trades"))
         )
     return "\n".join(lines)
 
@@ -217,8 +307,9 @@ In-sample data you can test on: {summary}
 What this user's earlier research found (learn from it; do not repeat failures):
 {memory}
 
-Propose {count} distinct hypotheses for this idea. Reply:
-{{"hypotheses": [{{"title": "...", "thesis": "...", "spec": {{...}}}}]}}""".format(
+Propose {count} distinct hypotheses for this idea, each walking the nine-phase method.
+Reply with the ONE JSON object specified in your instructions (the full "hypotheses" list with
+mechanism, falsification_criteria, negative_control, null/alt hypotheses, min_sample and spec).""".format(
         brief=brief,
         idea=idea[:1000],
         lens=lens,
@@ -271,48 +362,178 @@ def _round_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], want: int
               "and explain the change in each thesis." % want)
 
 
-def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, chunk: List[Dict], log,
-                   policy: exploration.ExplorationPolicy) -> int:
-    """Freeze the finalists, test ONLY them on unseen data, and persist every hypothesis
-    (finalists with their out-of-sample verdict, the rest as rejected). Returns passers.
-    The exploration policy chooses the finalists (multiple-testing discipline lives there)."""
+def _challenger_check(n: int) -> Callable[[Dict], List[Dict]]:
+    def check(obj: Dict) -> List[Dict]:
+        vs = obj.get("verdicts")
+        if not isinstance(vs, list) or len(vs) != n:
+            raise ValueError("'verdicts' must be a list of exactly %d items, in order" % n)
+        out: List[Dict] = []
+        for i, v in enumerate(vs):
+            if not isinstance(v, dict):
+                raise ValueError("verdicts[%d] must be an object" % i)
+            d = str(v.get("decision") or "").strip().lower()
+            if d not in ("approve", "revise", "reject"):
+                raise ValueError("verdicts[%d].decision must be approve, revise, or reject" % i)
+            fixes = v.get("fixes")
+            out.append({"decision": d, "reason": str(v.get("reason") or "")[:1000],
+                        "fixes": fixes if isinstance(fixes, dict) else None})
+        return out
+
+    return check
+
+
+def _challenge(finalists: List[Dict], run: Dict, model: ModelFn, usage: Usage, log) -> List[Dict]:
+    """Role 2 — the Challenger: ONE skeptical LLM pass that APPROVE/REVISE/REJECTs each
+    finalist's pre-registration BEFORE any statistical budget is spent (§C). Returns a list
+    aligned to `finalists`. It can only make deployment harder — at worst it kills a finalist
+    before a single validation test is spent. Fails OPEN (approve as-is) on any LLM error so a
+    reviewer hiccup can't silently halt research; the gatekeeper remains the binding budget."""
+    if not finalists:
+        return []
+    items = [{"title": t.get("title"), "thesis": t.get("thesis"),
+              "mechanism": t.get("mechanism") or {},
+              "falsification_criteria": t.get("falsification_criteria", ""),
+              "negative_control": t.get("negative_control", ""),
+              "spec": t["spec"]} for t in finalists]
+    msg = ("Review these %d PRE-REGISTERED hypotheses for Kalshi %s before any statistical "
+           "budget is spent on them.\n%s\n\nReply one JSON object with exactly %d verdicts in "
+           "order: {\"verdicts\":[{\"decision\":\"approve|revise|reject\",\"reason\":\"...\","
+           "\"fixes\":{optional partial spec patch}}]}"
+           % (len(items), run["market"], json.dumps(items, separators=(",", ":")), len(items)))
+    try:
+        return ask_json(model, CHALLENGER_SYSTEM, [{"role": "user", "content": msg}],
+                        _challenger_check(len(finalists)), usage)
+    except LLMError as e:
+        log("step", "Challenger unavailable (%s); approving finalists as-is — the gatekeeper still gates." % e)
+        return [{"decision": "approve", "reason": "", "fixes": None} for _ in finalists]
+
+
+def _result_block(dataset_summary: Dict, t: Dict, classification: str, reason: Optional[str] = None) -> Dict:
+    """The strategy.result the generator persists: research-fold metrics + the classification
+    LABEL only. It deliberately carries NO held-out (validation/holdout) numbers, because
+    strategy_memory feeds this straight back into the next prompt (closes Leak 2)."""
+    block = {"capital": t.get("capital"), "dataset": dataset_summary,
+             "in_sample": t.get("in_sample"), "classification": classification}
+    if reason:
+        block["challenger_reason"] = reason[:500]
+    return block
+
+
+def _status_for(classification: str) -> str:
+    """Map the gatekeeper's Classification enum onto the strategy row's status: REJECTED ->
+    rejected, INCONCLUSIVE -> failed, STAT_SUPPORTED and better -> passed (§B.5)."""
+    if classification == gatekeeper.Classification.REJECTED.value:
+        return "rejected"
+    if classification == gatekeeper.Classification.INCONCLUSIVE.value:
+        return "failed"
+    return "passed"
+
+
+def _prereg(t: Dict, spec: Dict, run: Dict, partition: Dict, n_tests: int,
+            verdict: Dict, strategy_id: int) -> gatekeeper.Prereg:
+    """Build the immutable pre-registration from the proposer+challenger output. The mechanism,
+    negative control and challenger reason are stored as structured JSON in economic_rationale
+    (the research-paper page reads them back); the gatekeeper hashes spec+rationale as the
+    experiment identity."""
+    rationale = json.dumps({
+        "thesis": t.get("thesis", ""),
+        "mechanism": t.get("mechanism") or {},
+        "negative_control": t.get("negative_control", ""),
+        "challenger": verdict.get("reason", ""),
+    }, separators=(",", ":"))
+    return gatekeeper.Prereg(
+        user_id=run["user_id"], run_id=run["id"], market=run["market"], spec=spec,
+        economic_rationale=rationale,
+        primary_metric=t.get("primary_metric") or "mean_net_return_per_trade",
+        null_hypothesis=t.get("null_hypothesis", ""), alt_hypothesis=t.get("alt_hypothesis", ""),
+        falsification_criteria=t.get("falsification_criteria", ""),
+        min_sample=int(t.get("min_sample") or 30),
+        cost_assumptions={"fee": "kalshi_taker", "fill": "ask/bid"},
+        research_partition_id=int(partition.get("id") or 0),
+        planned_n_tests=n_tests, correction_method="BH", strategy_id=strategy_id,
+    )
+
+
+def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk: List[Dict], log,
+                   policy: exploration.ExplorationPolicy, model: ModelFn, usage: Usage) -> int:
+    """The HAND-OFF (§B.5 step 3): freeze the finalists, let the Challenger review them, then
+    hand the approved ones to the Statistical Gatekeeper for validation. The generator never
+    runs a backtest on validation data and only ever receives a classification LABEL back — the
+    p-values/CIs/held-out pnl stay inside the gatekeeper. Returns the count classified as passed.
+    Finalist selection (multiple-testing discipline) stays in the exploration policy; non-
+    finalists are rejected exactly as before, untested."""
     user_id, run_id, market = run["user_id"], run["id"], run["market"]
+    direction = run["direction"] or "custom"
     s = ds.summary()
     state = exploration.PolicyState(proposed=len(chunk), budget=len(chunk), round=0)
     finalists = policy.select_finalists(chunk, state)
-    log("step", "Froze %d finalist%s. Now testing on data the agent never saw."
+    verdicts = _challenge(finalists, run, model, usage, log)
+    log("step", "Froze %d finalist%s; the challenger reviewed each before any validation budget was spent."
         % (len(finalists), "" if len(finalists) == 1 else "s"))
+
+    approved: List[Dict] = []
+    exp_ids: List[int] = []
+    payload: List[Dict] = []
+    for t, verdict in zip(finalists, verdicts):
+        spec = t["spec"]
+        if verdict["decision"] == "revise" and verdict.get("fixes"):
+            try:
+                spec = specmod.validate(_deep_merge(spec, verdict["fixes"]))
+            except specmod.SpecError:
+                spec = t["spec"]  # keep the frozen original if the patch is invalid
+        if verdict["decision"] == "reject":
+            # Killed before testing. Recorded in the ledger (as a rejected strategy row with the
+            # challenger's reason); NEVER pre-registered and NEVER validation-tested — the
+            # statistical budget is untouched (§C).
+            t["strategy_id"] = repo.insert_strategy(
+                cur, user_id, run_id, None, market, direction, t["title"], t["thesis"], spec,
+                "rejected", _result_block(s, t, "challenger_rejected", verdict.get("reason")))
+            log("verdict", "REJECTED (challenger) - %s: %s"
+                % (t["title"], verdict.get("reason") or "no credible mechanism"),
+                {"title": t["title"], "status": "rejected", "strategy_id": t["strategy_id"]})
+            continue
+        # Insert the strategy row FIRST (provisional) so the immutable experiment can carry its
+        # strategy_id, then pre-register the frozen hypothesis.
+        sid = repo.insert_strategy(cur, user_id, run_id, None, market, direction, t["title"],
+                                   t["thesis"], spec, "pending", _result_block(s, t, "promising"))
+        t["strategy_id"] = sid
+        exp_ids.append(gatekeeper.preregister(cur, _prereg(t, spec, run, partition, len(finalists), verdict, sid)))
+        payload.append({"spec": spec, "user_id": user_id, "market": market,
+                        "min_sample": int(t.get("min_sample") or 30)})
+        approved.append(t)
+
     passed = 0
+    if approved:
+        val_ds = backtest.partition_dataset(market, partition, "validation")
+        for t, outcome in zip(approved, gatekeeper.judge_batch(cur, run_id, exp_ids, payload, val_ds)):
+            cls = outcome["classification"]
+            status = _status_for(cls)
+            passed += status == "passed"
+            repo.set_strategy_outcome(cur, t["strategy_id"], status, _result_block(s, t, cls))
+            log("verdict", "%s - %s: validation verdict is gatekeeper-held (classification=%s, "
+                           "%s trades); the numbers never return to the generator."
+                % (status.upper(), t["title"], cls, outcome.get("n_trades", 0)),
+                {"title": t["title"], "status": status, "classification": cls,
+                 "strategy_id": t["strategy_id"]})
+
     for t in chunk:
         if t in finalists:
-            result = backtest.evaluate(t["spec"], ds)
-            status = "passed" if result["passed"] else "failed"
-            passed += status == "passed"
-            verdict = "PASSED" if status == "passed" else "VOID"
-            msg = ("%s - %s: unseen-data pnl $%s over %s trades."
-                   % (verdict, t["title"], result["out_of_sample"]["pnl"], result["out_of_sample"]["trades"]))
-            data = {"title": t["title"], "status": status, "gates": result["gates"]}
-        else:
-            result = {"capital": t["capital"], "dataset": s, "in_sample": t["in_sample"]}
-            status = "rejected"
-            ins = t["in_sample"] or {}
-            msg = ("REJECTED - %s: not a finalist, so never tested on unseen data "
-                   "(in-sample pnl $%s over %s trades)." % (t["title"], ins.get("pnl"), ins.get("trades")))
-            data = {"title": t["title"], "status": "rejected"}
-        # Insert first so the verdict event can carry the strategy id — the run log links to it.
+            continue
+        ins = t["in_sample"] or {}
         t["strategy_id"] = repo.insert_strategy(
-            cur, user_id, run_id, None, market, run["direction"] or "custom", t["title"], t["thesis"], t["spec"],
-            status, result,
-        )
-        data["strategy_id"] = t["strategy_id"]
-        log("verdict", msg, data)
+            cur, user_id, run_id, None, market, direction, t["title"], t["thesis"], t["spec"],
+            "rejected", _result_block(s, t, "not_finalist"))
+        log("verdict", "REJECTED - %s: not a finalist, so never tested on unseen data "
+                       "(research pnl $%s over %s trades)." % (t["title"], ins.get("pnl"), ins.get("trades")),
+            {"title": t["title"], "status": "rejected", "strategy_id": t["strategy_id"]})
     return passed
 
 
-def _explore_and_gate(cur, run, ds, memory, model, usage, log, checkpoint, budget, tried,
+def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkpoint, budget, tried,
                       policy: exploration.ExplorationPolicy) -> Tuple[int, int]:
-    """Explore NEW hypotheses in-sample (small refining rounds the policy sizes), then gate
-    the finalists. Appends to the shared `tried` so progress survives a cancel/error."""
+    """Explore NEW hypotheses on the Research partition (small refining rounds the policy
+    sizes), then hand the finalists to the challenger + gatekeeper. Appends to the shared
+    `tried` so progress survives a cancel/error."""
     market = run["market"]
     chunk: List[Dict] = []
     round_no = 0
@@ -331,18 +552,18 @@ def _explore_and_gate(cur, run, ds, memory, model, usage, log, checkpoint, budge
             break  # agent is out of fresh ideas this chunk
         for h in batch:
             checkpoint()
-            t = _test_in_sample(h, ds, log, round_no)
+            t = _test_in_sample(h, ds, partition, log, round_no)
             t["score"] = backtest.score(t["in_sample"])  # attach once, so the policy needs no backtester
             chunk.append(t)
             tried.append(t)
-    return len(chunk), _gate_and_save(cur, run, ds, chunk, log, policy)
+    return len(chunk), _gate_and_save(cur, run, ds, partition, chunk, log, policy, model, usage)
 
 
 def run_research(
     conn,
     run: Dict,
     model: Optional[ModelFn] = None,
-    dataset_fn: Callable[[str], backtest.Dataset] = backtest.dataset,
+    dataset_fn: Optional[Callable[..., backtest.Dataset]] = None,
 ) -> None:
     cur = conn.cursor()
     usage = Usage()
@@ -370,7 +591,12 @@ def run_research(
             market = _pick_market(run, model, usage, log)
             run = {**run, "market": market}
             repo.set_run_market(cur, run_id, market)
-        ds = dataset_fn(market)  # full available window first — confirms data before any model spend
+        # Freeze the Research/Validation/Holdout split once for the run; the generator may load
+        # ONLY the Research window (partitions.research_dataset), and the gatekeeper keeps the
+        # validation/holdout keys. Tests inject dataset_fn to supply a synthetic research set.
+        partition = partitions.ensure_partition(cur, market)
+        load = dataset_fn or (lambda mk, hd=None: partitions.research_dataset(mk, partition, hd))
+        ds = load(market)  # full available window first — confirms data before any model spend
         if len(ds.frames) < MIN_FRAMES:
             raise LLMError("Not enough market history collected yet for %s." % MARKETS[market].label)
         # The agent picks the window that fits its thesis; re-load the narrower slice if it
@@ -378,7 +604,7 @@ def run_research(
         checkpoint()  # a cancel must stop before we spend a model call on planning
         lookback = _plan_lookback(run, market, model, usage, log)
         if lookback < MARKETS[market].history_days:
-            narrowed = dataset_fn(market, lookback)
+            narrowed = load(market, lookback)
             if len(narrowed.frames) >= MIN_FRAMES:
                 ds = narrowed
         s = ds.summary()
@@ -396,7 +622,7 @@ def run_research(
             # Reload memory each chunk so a run_forever loop learns from the strategies it
             # just saved, instead of re-proposing the same ideas.
             memory = repo.strategy_memory(cur, user_id, market)
-            n, passed = _explore_and_gate(cur, run, ds, memory, model, usage, log, checkpoint, budget, tried, policy)
+            n, passed = _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkpoint, budget, tried, policy)
             total_passed += passed
             chunks += 1
             # Tau-RSI: dream periodically DURING a long session (not only at the end), so the
@@ -460,8 +686,11 @@ def _span_words(ds: backtest.Dataset) -> str:
     return "%d days" % round(days)
 
 
-def _test_in_sample(h: Dict, ds: backtest.Dataset, log, round_no: int) -> Dict:
-    res = backtest.evaluate(h["spec"], ds, include_oos=False)
+def _test_in_sample(h: Dict, ds: backtest.Dataset, partition: Dict, log, round_no: int) -> Dict:
+    # The in-research "OOS" the agent iterates on is a PURGED walk-forward research fold (fully
+    # inside Research) — a leak-free sandbox it may look at freely, not the held-out validation
+    # window. Purge/embargo come from the frozen partition's contract-duration horizon (§B.5).
+    res = backtest.research_fold_metrics(h["spec"], ds, int(partition["embargo_seconds"]))
     ins = res["in_sample"]
     log("hypothesis", h["title"], {"thesis": h["thesis"], "in_sample": ins, "round": round_no})
     return dict(h, in_sample=ins, capital=res["capital"])
@@ -522,6 +751,18 @@ def _proven_on_paper(cur, user_id: int, strategy_id: int) -> Tuple[bool, str]:
     return True, ""
 
 
+def _is_deployment_candidate(cur, strategy_id: int) -> bool:
+    """True only if the Statistical Gatekeeper promoted this strategy's experiment all the way
+    to DEPLOYMENT_CANDIDATE (validation-supported -> one-time holdout forward-validated ->
+    marginal-contribution OK). The deploy path requires this IN ADDITION to every existing
+    gate (§E.5): a purely additive check that can only make deployment harder, never easier."""
+    rec = rr.experiments_for_strategy(cur, strategy_id)
+    if not rec:
+        return False
+    return any(r.get("classification") == gatekeeper.Classification.DEPLOYMENT_CANDIDATE.value
+               for r in rec.get("results", []))
+
+
 def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.dataset) -> Tuple[str, Optional[int]]:
     """Turn one agent action into a proposal (or, on autopilot, an applied
     change). Returns (sentence for the chat, proposal id if one was made)."""
@@ -571,6 +812,11 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         strat = repo.get_strategy(cur, user_id, int(action.get("strategy_id") or 0))
         if strat is None or strat["status"] != "passed":
             return "Only strategies that passed their backtest can be deployed.", None
+        # Additive gatekeeper gate (§E.5): never weakens the existing check above.
+        if not _is_deployment_candidate(cur, strat["id"]):
+            return ("I can't deploy %s yet — the gatekeeper hasn't cleared it as a deployment "
+                    "candidate (it must pass validation, the one-time holdout, and the "
+                    "diversification check first)." % strat["title"], None)
         pid = repo.create_proposal(cur, user_id, "deploy", reason, None, strat["id"], "applied" if autopilot else "pending")
         if autopilot:
             repo.create_deployment(cur, user_id, strat["id"], strat["market"], "paper")
@@ -580,6 +826,12 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         strat = repo.get_strategy(cur, user_id, int(action.get("strategy_id") or 0))
         if strat is None or strat["status"] != "passed":
             return "Only strategies that passed their backtest can go live.", None
+        # Additive gatekeeper gate (§E.5): required ON TOP OF the YES-side, live_autopilot_ok
+        # and _proven_on_paper checks below — none of which are removed, reordered or weakened.
+        if not _is_deployment_candidate(cur, strat["id"]):
+            return ("I can't take %s live — the gatekeeper hasn't cleared it as a deployment "
+                    "candidate (holdout forward-validation + diversification), so it stays on "
+                    "paper." % strat["title"], None)
         if (strat["spec"].get("side") or "").lower() != "yes":
             return "Live supports YES-side strategies only, so I kept %s on paper." % strat["title"], None
         ok, why = live_autopilot_ok(cur, user)

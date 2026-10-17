@@ -41,6 +41,7 @@ from typing import List
 
 from app import backtest
 from app import repository as repo
+from app import research_repository as rr
 from app.exploration import ExplorationPolicy, PolicyState
 
 # Objective coefficients. Tunable; defaults keep both penalties small relative to
@@ -59,6 +60,9 @@ class Node:
     tested: bool            # was this gated on unseen data (so oos_pnl is real)?
     oos_pnl: float = 0.0    # recorded out-of-sample P&L (meaningful only if tested)
     passed: bool = False    # cleared every gate
+    holdout: bool = False   # tripwire: the policy optimizer must NEVER see locked-holdout
+                            # outcomes (Leak 5). build_tree sources VALIDATION only and leaves
+                            # this False; dreaming.evolve_policy asserts none is True.
 
 
 @dataclass(frozen=True)
@@ -73,9 +77,27 @@ class ReplayResult:
 
 
 def build_tree(cur, user_id: int, market: str, limit: int = 500) -> List[Node]:
-    """Load a user's recorded discovery tree for a market as replay `Node`s
-    (in creation order). The only I/O bridge here; `replay()` itself is pure."""
-    nodes: List[Node] = []
+    """Load a user's recorded discovery tree for a market as replay `Node`s. The only I/O
+    bridge here; `replay()` itself is pure.
+
+    The `oos_pnl` signal is now the VALIDATION pnl the Statistical Gatekeeper recorded in the
+    ledger (via research_repository.experiment_records_for_replay), NOT the old reused 70/30
+    OOS — so the policy optimizer is scored on gatekeeper-held validation outcomes and NEVER on
+    the locked holdout (closes Leaks 2 & 5). Every Node is validation-sourced, so `holdout`
+    stays False. Falls back to the legacy strategy_records tree for users/markets with no ledger
+    rows yet (pre-gatekeeper history), so dreaming still works during the cutover."""
+    recs = rr.experiment_records_for_replay(cur, user_id, market)
+    if recs:
+        nodes: List[Node] = []
+        for r in recs:
+            pnl = float(r.get("net_pnl") or 0.0)
+            ins = {"pnl": pnl, "trades": int(r.get("n_trades") or 0)}
+            nodes.append(Node(
+                score=backtest.score(ins), in_sample=ins, tested=True, oos_pnl=pnl,
+                passed=r.get("classification") == "statistically_supported", holdout=False,
+            ))
+        return nodes
+    nodes = []
     for r in repo.strategy_records(cur, user_id, market, limit):
         ins = r["in_sample"]
         nodes.append(Node(

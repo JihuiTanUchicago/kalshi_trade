@@ -262,6 +262,30 @@ def delete_kalshi_key(cur, user_id: int) -> None:
     cur.execute("DELETE FROM app_kalshi_keys WHERE user_id=%s", (user_id,))
 
 
+# -- Kalshi DEMO (sandbox) keys ------------------------------------------------
+# Exact mirror of the live-key accessors above, against app_kalshi_dev_keys. The
+# demo execution path reads ONLY these, so a user's demo orders can never pick up
+# their live key.
+
+
+def set_kalshi_dev_key(cur, user_id: int, key_id: str, private_key_enc: bytes) -> None:
+    cur.execute(
+        """INSERT INTO app_kalshi_dev_keys (user_id, key_id, private_key_enc, created_at) VALUES (%s,%s,%s,%s)
+           ON DUPLICATE KEY UPDATE key_id=VALUES(key_id), private_key_enc=VALUES(private_key_enc),
+             created_at=VALUES(created_at)""",
+        (user_id, key_id, private_key_enc, now_utc()),
+    )
+
+
+def get_kalshi_dev_key(cur, user_id: int) -> Optional[Dict]:
+    cur.execute("SELECT key_id, private_key_enc, created_at FROM app_kalshi_dev_keys WHERE user_id=%s", (user_id,))
+    return cur.fetchone()
+
+
+def delete_kalshi_dev_key(cur, user_id: int) -> None:
+    cur.execute("DELETE FROM app_kalshi_dev_keys WHERE user_id=%s", (user_id,))
+
+
 # -- paper ledger --------------------------------------------------------------
 
 
@@ -457,6 +481,17 @@ def insert_strategy(
         (user_id, run_id, parent_id, market, direction, title[:200], thesis, _json(spec), status, _json(result), now_utc()),
     )
     return cur.lastrowid
+
+
+def set_strategy_outcome(cur, strategy_id: int, status: str, result: Optional[Dict]) -> None:
+    """Record a strategy's final status/result after the gatekeeper's verdict. The research loop
+    inserts the row first (so the immutable experiment can carry its strategy_id), then writes
+    the classification-derived outcome here once judging returns. Status/result only — the
+    row's identity fields are never touched."""
+    cur.execute(
+        "UPDATE app_strategies SET status=%s, result_json=%s WHERE id=%s",
+        (status, _json(result), strategy_id),
+    )
 
 
 def _strategy_row(r: Dict) -> Dict:

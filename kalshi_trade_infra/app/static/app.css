@@ -1035,3 +1035,73 @@ body.landing-body .apf { display: none; }
 .apf .composer { border-top: 0; padding: 0; }
 .apf .composer textarea { min-height: 36px; max-height: 110px; }
 @media (max-width: 420px) { .apf { right: 10px; bottom: 10px; } .apf.open { width: calc(100vw - 20px); } }
+
+/* ---------- Strategy research-paper page (RESEARCH_PIPELINE_DESIGN.md §D) ----------
+   One-page research paper: ink on stock, hairline rules, Archivo Narrow eyebrows,
+   signal red reserved for the decisive holdout verdict and a rejection. Hairline
+   separators use a 1px grid gap over a rule-coloured background so they stay clean
+   at any column/row count. */
+.rpaper { margin-top: 28px; border-top: 2px solid var(--ink); padding-top: 16px; }
+.rp-sec { margin-top: 24px; }
+.rp-sec:first-child { margin-top: 0; }
+.rp-reg { font-family: var(--f-nar); font-size: 11.5px; letter-spacing: .04em; color: var(--ink-3); margin-top: 10px; }
+.rp-reg b { color: var(--ink-2); font-weight: 600; font-variant-numeric: tabular-nums; }
+.rp-prose { font-size: 14px; line-height: 1.6; color: var(--ink); max-width: 72ch; margin-top: 6px; }
+.rp-prose + .rp-prose { margin-top: 8px; }
+.rp-sub { font-size: 12.5px; color: var(--ink-3); margin-top: 8px; max-width: 72ch; }
+.rp-sub b { color: var(--ink-2); font-weight: 600; }
+
+/* classification ladder */
+.ladder { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--rule); border: 1px solid var(--rule); margin: 4px 0 0; }
+.rung { background: var(--stock-raised); padding: 10px 12px; position: relative; }
+.rung .r-n { font-family: var(--f-nar); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.rung .r-t { font-weight: 600; font-size: 12.5px; margin-top: 3px; color: var(--ink-3); line-height: 1.25; }
+.rung.done { background: var(--stock); }
+.rung.done .r-t { color: var(--ink-2); }
+.rung.lit { background: var(--ink); }
+.rung.lit .r-n { color: var(--rule-2); }
+.rung.lit .r-t { color: #F1F3ED; }
+.rung.lit::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--signal); }
+.rp-terminal { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; padding: 7px 12px; border: 1px solid var(--signal); background: var(--signal-wash); font-size: 13px; color: var(--ink); }
+.rp-terminal.quiet { border-color: var(--rule-2); background: var(--stock); color: var(--ink-2); }
+
+/* mechanism / pre-registered-test grids */
+.rp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--rule); border: 1px solid var(--rule); margin-top: 8px; }
+.rp-grid > div { background: var(--stock-raised); padding: 12px 14px; }
+.rp-grid dt { font-family: var(--f-nar); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 4px; }
+.rp-grid dd { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--ink); }
+
+/* results / holdout stat grid */
+.rp-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); margin-top: 10px; }
+.rp-stat { background: var(--stock-raised); padding: 11px 14px; }
+.rp-stat .k { font-family: var(--f-nar); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.rp-stat .val { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 3px; color: var(--ink); }
+.rp-stat .val.sig { color: var(--signal); }
+.rp-stat .sub { font-size: 11px; color: var(--ink-3); margin-top: 1px; font-variant-numeric: tabular-nums; }
+
+/* verdict callout */
+.rp-verdict { border: 1px solid var(--ink); background: var(--stock); padding: 14px 16px; margin-top: 12px; display: flex; gap: 12px; align-items: flex-start; }
+.rp-verdict.good { border-color: var(--ink); }
+.rp-verdict.sig { border-color: var(--signal); background: var(--signal-wash); }
+.rp-verdict.quiet { border-color: var(--rule-2); background: var(--stock); }
+.rp-verdict .mk { flex: none; }
+.rp-verdict p { font-size: 13.5px; line-height: 1.55; color: var(--ink); max-width: 70ch; }
+
+/* charts */
+.rp-figs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+.rp-fig { border: 1px solid var(--rule); background: var(--stock); padding: 12px 14px; min-width: 0; }
+.rp-fig.wide { grid-column: 1 / -1; }
+.rp-fig h5 { margin: 0; font-family: var(--f-nar); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); font-weight: 600; }
+.rp-fig .cap { font-size: 11px; color: var(--ink-3); margin-top: 8px; line-height: 1.45; }
+.rp-fig .chart { margin-top: 8px; }
+.rp-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; font-size: 11.5px; color: var(--ink-2); font-family: var(--f-nar); letter-spacing: .02em; }
+.rp-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.rp-legend i { width: 15px; height: 3px; display: inline-block; border-radius: 1px; }
+.rp-legend i.dash { background-image: repeating-linear-gradient(90deg, currentColor 0 5px, transparent 5px 9px); height: 2px; }
+.rp-empty { padding: 20px 14px; border: 1px dashed var(--rule-2); color: var(--ink-3); font-size: 12px; text-align: center; margin-top: 8px; line-height: 1.5; }
+
+@media (max-width: 720px) {
+  .ladder { grid-template-columns: repeat(2, 1fr); }
+  .rp-grid, .rp-figs { grid-template-columns: minmax(0, 1fr); }
+  .rp-fig.wide { grid-column: auto; }
+}

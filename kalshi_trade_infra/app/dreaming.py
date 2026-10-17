@@ -116,6 +116,17 @@ def evolve_policy(conn, user_id: int, market: str, model: Callable, usage: Usage
     the user's policy improved. Never makes it worse (the current policy competes)."""
     cur = conn.cursor()
     tree = replay.build_tree(cur, user_id, market)
+    # Hard guard (Leak 5): the policy optimizer is scored on VALIDATION outcomes only — it
+    # chooses WHICH finalists to send; the gatekeeper alone decides whether each clears the FDR
+    # budget. It must NEVER see a locked-holdout outcome, or we would be optimizing a second
+    # search straight at the holdout. A future build_tree change that leaked holdout pnl sets
+    # Node.holdout=True and trips this assert here, loudly, instead of silently corrupting the
+    # FDR accounting downstream.
+    # ponytail: tripwire, not a type system — dreaming stays subordinate to the gatekeeper by
+    # construction (build_tree reads phase='validation'); upgrade to a phase enum only if the
+    # tree ever needs to carry more than one phase.
+    assert not any(n.holdout for n in tree), \
+        "dreaming must never score policies on locked-holdout outcomes (RESEARCH_PIPELINE_DESIGN Leak 5)"
     if len(tree) < MIN_TREE:
         return False
     budget = len(tree)

@@ -101,20 +101,34 @@ def test_generalization_rewards_a_genuine_selection_win():
 
 
 class _FakeCur:
-    def __init__(self, rows): self._rows = rows
-    def execute(self, *a): pass
-    def fetchall(self): return self._rows
+    """Routes the two queries build_tree can make: the gatekeeper's validation-records query
+    (joins app_experiments) vs the legacy strategy_records fallback (app_strategies)."""
+
+    def __init__(self, exp_rows, strat_rows): self._exp, self._strat, self._last = exp_rows, strat_rows, []
+    def execute(self, sql, *a): self._last = self._exp if "app_experiments" in sql else self._strat
+    def fetchall(self): return self._last
 
 
-def test_build_tree_maps_records_to_nodes():
+def test_build_tree_prefers_gatekeeper_validation_records():
+    # oos_pnl is now the VALIDATION pnl the gatekeeper recorded (not the old reused OOS), so the
+    # policy optimizer is scored on gatekeeper-held outcomes; holdout is never a source.
+    exp_rows = [
+        {"classification": "statistically_supported", "n_trades": 30, "net_pnl": 81.0},
+        {"classification": "inconclusive", "n_trades": 12, "net_pnl": -3.0},
+    ]
+    tree = replay.build_tree(_FakeCur(exp_rows, []), user_id=1, market="btc15m")
+    assert len(tree) == 2
+    assert tree[0].tested and tree[0].oos_pnl == 81.0 and tree[0].passed and not tree[0].holdout
+    assert tree[1].tested and tree[1].oos_pnl == -3.0 and not tree[1].passed and not tree[1].holdout
+
+
+def test_build_tree_falls_back_to_legacy_records_when_no_ledger():
     import json
-    rows = [
+    strat_rows = [
         {"status": "passed",   "result_json": json.dumps({"in_sample": {"pnl": 90, "trades": 10}, "out_of_sample": {"pnl": 81}})},
-        {"status": "failed",   "result_json": json.dumps({"in_sample": {"pnl": 50, "trades": 12}, "out_of_sample": {"pnl": -3}})},
         {"status": "rejected", "result_json": json.dumps({"in_sample": {"pnl": 80, "trades": 3}})},  # never gated
     ]
-    tree = replay.build_tree(_FakeCur(rows), user_id=1, market="btc15m")
-    assert len(tree) == 3
+    tree = replay.build_tree(_FakeCur([], strat_rows), user_id=1, market="btc15m")
+    assert len(tree) == 2
     assert tree[0].tested and tree[0].oos_pnl == 81 and tree[0].passed
-    assert tree[1].tested and tree[1].oos_pnl == -3 and not tree[1].passed
-    assert not tree[2].tested and tree[2].oos_pnl == 0.0 and not tree[2].passed
+    assert not tree[1].tested and tree[1].oos_pnl == 0.0

@@ -12,11 +12,13 @@ class Store:
 
     def __init__(self, monkeypatch, status="running"):
         self.events, self.strategies, self.finished, self.status = [], [], None, status
+        self._exp = 0
         r = agent.repo
         monkeypatch.setattr(r, "add_event", lambda cur, run_id, kind, msg, data=None: self.events.append((kind, msg, data)))
         monkeypatch.setattr(r, "heartbeat", lambda cur, run_id: self.status)
         monkeypatch.setattr(r, "strategy_memory", lambda cur, uid, market: [])
         monkeypatch.setattr(r, "insert_strategy", self._insert)
+        monkeypatch.setattr(r, "set_strategy_outcome", self._set_outcome)
         monkeypatch.setattr(r, "finish_run", lambda cur, run_id, status, error=None, tried=0, passed=0, *a: setattr(self, "finished", (status, error, tried, passed)))
         monkeypatch.setattr(r, "update_run_progress", lambda *a, **k: None)
         monkeypatch.setattr(r, "set_run_market", lambda *a, **k: None)
@@ -25,10 +27,35 @@ class Store:
         # dream over, so the self-evolution step is a clean no-op in these tests.
         monkeypatch.setattr(r, "get_policy", lambda *a, **k: None)
         monkeypatch.setattr(r, "strategy_records", lambda *a, **k: [])
+        # Wave-2 gatekeeper hand-off: stub the frozen research partition and the Statistical
+        # Gatekeeper so the research loop is testable without the ledger DB. judge_batch
+        # classifies every approved finalist STAT_SUPPORTED (-> "passed"), and the challenger
+        # approves each finalist as-is WITHOUT a model call, so the scripted replies stay 1:1
+        # with the proposer rounds (prompt counts unchanged from the pre-gatekeeper loop).
+        from app import gatekeeper
+        self._gk = gatekeeper
+        monkeypatch.setattr(agent.partitions, "ensure_partition",
+                            lambda cur, market: {"id": 1, "embargo_seconds": 900, "purge_seconds": 900})
+        monkeypatch.setattr(agent.backtest, "partition_dataset", lambda market, part, phase: None)
+        monkeypatch.setattr(agent.gatekeeper, "preregister", self._preregister)
+        monkeypatch.setattr(agent.gatekeeper, "judge_batch", self._judge_batch)
+        monkeypatch.setattr(agent, "_challenge",
+                            lambda finalists, run, model, usage, log: [{"decision": "approve", "reason": "", "fixes": None} for _ in finalists])
 
     def _insert(self, cur, uid, run_id, parent, market, direction, title, thesis, spec, status, result):
         self.strategies.append({"title": title, "status": status, "result": result, "spec": spec})
         return len(self.strategies)
+
+    def _set_outcome(self, cur, strategy_id, status, result):
+        self.strategies[strategy_id - 1].update(status=status, result=result)
+
+    def _preregister(self, cur, pre):
+        self._exp += 1
+        return self._exp
+
+    def _judge_batch(self, cur, run_id, exp_ids, finalists, val_ds):
+        return [{"classification": self._gk.Classification.STAT_SUPPORTED.value, "n_trades": 20}
+                for _ in finalists]
 
 
 class Conn:

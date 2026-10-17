@@ -90,6 +90,18 @@ DDL = [
       created_at DATETIME NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
+    # The per-user Kalshi DEMO (sandbox) API key, a dead ringer for app_kalshi_keys.
+    # Kept in its own table so a user's demo key and live key never share a row and
+    # the demo execution path (app/kalshi_dev_exec.py) can only ever read the demo key.
+    # Encrypted the same way (AES-256-GCM bound to user_id); demo != real money.
+    """
+    CREATE TABLE IF NOT EXISTS app_kalshi_dev_keys (
+      user_id BIGINT PRIMARY KEY,
+      key_id VARCHAR(128) NOT NULL,
+      private_key_enc BLOB NOT NULL,
+      created_at DATETIME NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
     # -- money ----------------------------------------------------------------
     """
     CREATE TABLE IF NOT EXISTS app_ledger (
@@ -337,6 +349,112 @@ DDL = [
       created_at DATETIME NOT NULL,
       read_at DATETIME NULL,
       INDEX idx_notif_user (user_id, read_at, id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    # -- rigorous-research ledger (RESEARCH_PIPELINE_DESIGN.md §B.3) ------------
+    # The immutable experiment ledger. Immutability is enforced by table split:
+    # registration fields (app_experiments) and result fields
+    # (app_experiment_results) are only ever INSERTed, never UPDATEd/DELETEd.
+    # Pre-registration. Written ONCE, before any validation number exists. IMMUTABLE.
+    """
+    CREATE TABLE IF NOT EXISTS app_experiments (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      run_id BIGINT NULL,
+      strategy_id BIGINT NULL,              -- links to app_strategies once the row exists
+      market VARCHAR(16) NOT NULL,
+      hypothesis_hash CHAR(64) NOT NULL,    -- sha256 of frozen spec + rationale; the identity
+      spec_json JSON NOT NULL,              -- the FROZEN entry/exit/sizing/model rule
+      economic_rationale TEXT NOT NULL,
+      primary_metric VARCHAR(48) NOT NULL,
+      null_hypothesis TEXT NOT NULL,
+      alt_hypothesis TEXT NOT NULL,
+      planned_test VARCHAR(64) NOT NULL,
+      falsification_criteria TEXT NOT NULL,
+      min_sample INT NOT NULL,
+      cost_assumptions_json JSON NOT NULL,
+      research_partition_id BIGINT NOT NULL,
+      planned_n_tests INT NOT NULL,
+      correction_method VARCHAR(16) NOT NULL,   -- 'BH' | 'LORD++'
+      registered_at DATETIME NOT NULL,
+      UNIQUE KEY uq_exp_hash_run (run_id, hypothesis_hash),
+      INDEX idx_exp_user_market (user_id, market, id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    # Verdicts. APPEND-ONLY: one row per phase evaluation (validation, holdout, forward).
+    # Records EVERY test, including failures and INCONCLUSIVEs. Never updated, never deleted.
+    """
+    CREATE TABLE IF NOT EXISTS app_experiment_results (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      experiment_id BIGINT NOT NULL,
+      phase VARCHAR(12) NOT NULL,           -- 'validation' | 'holdout' | 'forward'
+      classification VARCHAR(28) NOT NULL,  -- Classification enum value
+      n_trades INT NOT NULL,
+      net_pnl DECIMAL(14,4) NULL,
+      mean_net_return DECIMAL(14,8) NULL,
+      sharpe DECIMAL(10,4) NULL,
+      psr DECIMAL(8,6) NULL,                -- probabilistic Sharpe
+      dsr DECIMAL(8,6) NULL,                -- deflated Sharpe
+      p_value DECIMAL(10,8) NULL,           -- primary (bootstrap) one-sided p
+      ci_lo DECIMAL(14,8) NULL,
+      ci_hi DECIMAL(14,8) NULL,
+      fdr_alpha_i DECIMAL(10,8) NULL,       -- alpha spent on this test (LORD++)
+      fdr_reject TINYINT(1) NULL,
+      bh_reject TINYINT(1) NULL,
+      placebo_p DECIMAL(10,8) NULL,         -- negative-control label-shuffle p
+      n_trials_audited INT NULL,            -- trials that competed (feeds DSR)
+      holdout_consumed TINYINT(1) NOT NULL DEFAULT 0,
+      equity_curve_json JSON NULL,          -- for the research-paper page graphs
+      verdict_at DATETIME NOT NULL,
+      INDEX idx_res_exp (experiment_id, id),
+      INDEX idx_res_phase (phase, verdict_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    # Online-FDR alpha-wealth STATE. One row per (user_id, market, scope). scope lets us keep
+    # a separate wealth stream per market so a flood on btc15m can't starve btc_daily.
+    """
+    CREATE TABLE IF NOT EXISTS app_fdr_state (
+      user_id BIGINT NOT NULL,
+      market VARCHAR(16) NOT NULL,
+      method VARCHAR(16) NOT NULL DEFAULT 'LORD++',
+      alpha DOUBLE NOT NULL,
+      w0 DOUBLE NOT NULL,
+      wealth DOUBLE NOT NULL,
+      t INT NOT NULL DEFAULT 0,             -- tests performed in this stream
+      rejections_json JSON NOT NULL,        -- 1-based indices of rejecting tests (tau_j)
+      updated_at DATETIME NOT NULL,
+      PRIMARY KEY (user_id, market)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    # Locked-Holdout consumption tracker. One row per (market, holdout window fingerprint).
+    """
+    CREATE TABLE IF NOT EXISTS app_holdout_ledger (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      market VARCHAR(16) NOT NULL,
+      partition_id BIGINT NOT NULL,         -- FK to app_data_partitions
+      window_fingerprint CHAR(64) NOT NULL, -- sha256 of (holdout_from, holdout_to, data hash)
+      evaluations_used INT NOT NULL DEFAULT 0,
+      max_evaluations INT NOT NULL,
+      consumed TINYINT(1) NOT NULL DEFAULT 0,
+      first_used_at DATETIME NULL,
+      last_used_at DATETIME NULL,
+      UNIQUE KEY uq_holdout_fp (window_fingerprint)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    # Frozen chronological partition boundaries, so they cannot drift between runs.
+    """
+    CREATE TABLE IF NOT EXISTS app_data_partitions (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      market VARCHAR(16) NOT NULL,
+      research_from_ts BIGINT NOT NULL, research_to_ts BIGINT NOT NULL,
+      validation_from_ts BIGINT NOT NULL, validation_to_ts BIGINT NOT NULL,
+      holdout_from_ts BIGINT NOT NULL, holdout_to_ts BIGINT NOT NULL,
+      embargo_seconds INT NOT NULL,
+      purge_seconds INT NOT NULL,
+      data_fingerprint CHAR(64) NOT NULL,   -- sha256 over the underlying candle/market rows
+      frozen_at DATETIME NOT NULL,
+      active TINYINT(1) NOT NULL DEFAULT 1, -- superseded partitions kept for audit, active=0
+      INDEX idx_part_market (market, active, id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
 ]
