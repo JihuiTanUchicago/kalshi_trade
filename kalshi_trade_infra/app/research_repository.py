@@ -92,10 +92,11 @@ _RESULT_FIELDS = (
 
 def append_result(cur, experiment_id: int, phase: str, classification: str,
                   n_trades: int, metrics: Optional[Dict[str, Any]] = None,
-                  equity_curve: Optional[List] = None) -> int:
+                  equity_curve: Optional[List] = None, folds: Optional[List] = None) -> int:
     """APPEND one immutable verdict row for a phase evaluation. Never updates an
     existing row — a re-evaluation is a new row, so the full history is preserved.
-    `metrics` supplies any of _RESULT_FIELDS; missing ones store NULL."""
+    `metrics` supplies any of _RESULT_FIELDS; missing ones store NULL. `folds` is the
+    per-day/per-fold cross-day breakdown the research-paper page renders."""
     m = metrics or {}
     cols = ["experiment_id", "phase", "classification", "n_trades"]
     vals: List[Any] = [experiment_id, phase, classification, int(n_trades)]
@@ -107,6 +108,8 @@ def append_result(cur, experiment_id: int, phase: str, classification: str,
         vals.append(v if f != "holdout_consumed" else (v or 0))
     cols.append("equity_curve_json")
     vals.append(_json(equity_curve))
+    cols.append("folds_json")
+    vals.append(_json(folds))
     cols.append("verdict_at")
     vals.append(now_utc())
     placeholders = ",".join(["%s"] * len(vals))
@@ -135,6 +138,8 @@ def results_for_experiment(cur, experiment_id: int, phase: Optional[str] = None)
 def _result_row(r: Dict) -> Dict:
     if "equity_curve_json" in r:
         r["equity_curve"] = _loads(r.pop("equity_curve_json"))
+    if "folds_json" in r:
+        r["folds"] = _loads(r.pop("folds_json"))
     return r
 
 

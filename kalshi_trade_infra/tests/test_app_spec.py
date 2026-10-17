@@ -111,3 +111,25 @@ def test_btc_series_has_no_lookahead_and_goes_stale():
 def test_describe_reads_like_english():
     lines = specmod.describe(specmod.validate({"exit": {"take_profit": 0.2}}))
     assert any("takes profit at +20" in line for line in lines)
+
+
+def test_cross_contract_spec_validates_and_keys_a_shared_stream():
+    # single-contract: cross stays None, stream is just the market.
+    single = specmod.validate({"market": "btc_daily"})
+    assert single["cross"] is None
+    assert specmod.stream_key(single) == "btc_daily" and not specmod.is_cross_contract(single)
+    # cross_strike needs no extra market; cross_sectional needs a leg on a different market.
+    x = specmod.validate({"market": "btc_daily", "cross": {"pairing": "cross_strike", "legs": []}})
+    assert specmod.is_cross_contract(x) and specmod.stream_key(x) == "btc_daily"
+    cs = specmod.validate({"market": "btc_daily",
+                           "cross": {"pairing": "cross_sectional", "legs": [{"market": "eth_daily"}]}})
+    assert specmod.stream_key(cs) == "btc_daily+eth_daily"  # ONE shared stream across both legs
+
+
+def test_cross_contract_spec_rejects_bad_blocks():
+    with pytest.raises(specmod.SpecError, match="cross.pairing"):
+        specmod.validate({"cross": {"pairing": "bogus", "legs": []}})
+    with pytest.raises(specmod.SpecError, match="different market"):
+        specmod.validate({"market": "btc_daily", "cross": {"pairing": "cross_sectional", "legs": []}})
+    with pytest.raises(specmod.SpecError, match="not a known market"):
+        specmod.validate({"cross": {"pairing": "cross_strike", "legs": [{"market": "doge"}]}})

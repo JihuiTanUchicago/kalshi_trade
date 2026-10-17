@@ -1,5 +1,39 @@
 # PLAN
 
+## Cross-contract research + cross-day gatekeeper — October 16, 2026 (worktree, research/eval only)
+
+Builds §E.6: cross-contract relative value, sequenced AFTER the gatekeeper, with per-market
+FDR streams and a cross-day generalization gate. Research + EVALUATION only — no cross-contract
+LIVE execution, `engine.py`/the live gate untouched.
+
+- **Spec extension** (`app/spec.py`): an optional `cross` block turns a spec into a
+  relative-value PAIR — `{"pairing": "cross_sectional"|"cross_strike"|"calendar",
+  "legs": [{"market": …}], "relationship": "spread"}`. `cross_sectional` = two different
+  markets (BTC vs ETH), `cross_strike` = two strikes of one event, `calendar` = one strike
+  across two settlements. `pair_entries()` groups snapshots by the pairing key and buys YES on
+  the leg the GBM model says is underpriced + NO on the overpriced leg (combined edge ≥
+  `entry.min_edge`). `cross=None` → ordinary single-contract spec, unchanged. Helpers:
+  `is_cross_contract`, `involved_markets`, `stream_key`.
+- **Backtest** (`app/backtest.py`): `simulate()` dispatches a `cross` spec to `simulate_pairs()`
+  — one combined `Trade` per pair (entry_price = both legs' cost, exit_price = per-unit payoff),
+  held to settlement, reusing the real Kalshi taker fee + `contracts_for` sizing.
+  `merge_datasets()` unions single-market datasets into one whose frames carry every market's
+  snapshots per decision ts (what a cross-sectional pair needs) and whose synthetic `Market.key`
+  is the combined stream key. Contract gained a `series` field so a BTC leg is distinguishable
+  from an ETH leg at the same frame. ETH/SOL/XRP ladders were already backtest-able (Phase 3).
+- **FDR streams** (`app/gatekeeper.py` + schema): a cross spec's validation keys its LORD++
+  stream on the merged dataset's combined `market` (`btc_daily+eth_daily`) — ONE shared stream,
+  never double-spending each leg's per-market budget; single markets keep separate streams.
+  `market` columns widened VARCHAR(16)→(48) to hold the combined key (idempotent MODIFY).
+- **Cross-day gate** (`app/gatekeeper.py` `_cross_day`): splits validation trades into purged
+  walk-forward folds (`stats.purged_walkforward_splits`) and buckets per-trade returns by day.
+  STAT_SUPPORTED now also requires a majority of folds net-positive AND no single day carrying
+  >90% of the positive edge — a one-day fluke drops to INCONCLUSIVE. The per-fold breakdown is
+  stored on the result row (`app_experiment_results.folds_json`) and rendered by the existing
+  research-paper folds strip (`server._experiment_block` prefers it over the rationale's).
+- **Deferred** (`[v0.3]`): wiring agent.py to PROPOSE cross specs + merged validation/holdout
+  partitions, and cross-contract LIVE execution.
+
 ## Rigorous quant-research pipeline + dev-env trading foundation — October 16, 2026
 
 Full design + signatures: `RESEARCH_PIPELINE_DESIGN.md` (source of truth). The research
