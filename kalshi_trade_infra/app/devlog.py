@@ -22,7 +22,6 @@ PLANNED: List[tuple] = [
     ('Agent internet access / web search (Google/Tavily/Brave)', ''),
     ('Polymarket as a 2nd venue: data + API + real & simulation trading', ''),
     ('NO-side (and side="either") LIVE execution', ''),
-    ('NBA / Kalshi sports markets', ''),
     ('Bittensor (TAO) subnet tokens as a new venue', ''),
     ('Onboard Opus 5.5 (claude-opus-5-5) + surface model comparison', ''),
 ]
@@ -30,6 +29,9 @@ PLANNED: List[tuple] = [
 # Shipped, newest first: (YYYY-MM-DD, title, detail). `detail` is the full
 # markdown explanation (what/components/methodology); may be '' for one-liners.
 SHIPPED: List[tuple] = [
+    ('2026-10-17', 'Cross-contract strategy support (research + eval, deploy-gated)', 'a spec can declare a `cross` block (multiple `involved_markets` + a merged `stream_key`); partitions build a merged purged walk-forward dataset across markets and the gatekeeper judges the holdout over it. Cross specs are refused for LIVE at the deploy gate (adds to, never weakens, the existing live guards) — research/eval only at the exchange. (Deployed + live.)'),
+    ('2026-10-17', 'Bedrock read-timeout fix', 'large hypothesis-generation responses exceeded botocore\'s default 60s read timeout and failed whole research runs ("Read timeout on endpoint"); raised to 600s read / 15s connect and made Read/Connect timeouts retry with backoff like the throttle path. Research runs no longer die mid-generation. (Deployed + live.)'),
+    ('2026-10-17', 'NBA / Kalshi sports markets (research-only)', "KXNBAGAME added as a sports market family (outcome-settled, no strike/spot); the collector, spec, and backtest are sports-aware, and the candlestick fetch is chunked to ≤4900/request (an NBA game listed for days at 1-min candles blew past Kalshi's 5000 cap). Full intraday history ingesting. (Deployed + live.)"),
     ('2026-10-17', 'Per-bucket cash + funding', 'Live shows your real Kalshi balance + a deposit link; Demo has an app-controlled balance with a "Reload to $X" button (real sandbox fills, money we set — never touches the real demo balance); Paper has Add/Withdraw/Reset. Dashboard buckets show real balances; Funds page grouped Live → Demo → Paper → History. (Deployed + live.)'),
     ('2026-10-17', 'Risk-management force-sell + portfolio caps', "auto-closes a deployment's positions when it draws down past a limit (25% default, per-user tunable, `0` disables), reusing the exact tested exit path; per-user open-notional / open-position caps on new entries. Also fixed a real-money bug: a partial exit fill was silently dropped (contracts sold but the DB kept the position open) — partial fills are now booked and the remainder retried. (Deployed + live.)"),
     ('2026-10-17', 'Research-session live feed + pause/resume + run-stability', "a Claude-Code-style streaming agent log (fixed the swallowed/truncated entries), interrupt-and-continue (Pause/Resume, not just Cancel), and — the big one — research runs now reconnect on a stale DB connection instead of dying, and you're no longer billed for an infra failure. So runs actually complete and the gatekeeper can classify. (Deployed + live.)"),
