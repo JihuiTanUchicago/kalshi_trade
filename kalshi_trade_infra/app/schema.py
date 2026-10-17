@@ -478,6 +478,27 @@ DDL = [
       INDEX idx_part_market (market, active, id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
+    # Live position reconciliation audit trail: one open row per (user, ticker)
+    # where our book (app_positions) and the user's real Kalshi account disagree.
+    # Upserted each sweep and marked resolved when the disagreement clears, so it
+    # is a current picture of unresolved divergence, not an append-only log.
+    # exchange_qty / book_qty are SIGNED net contracts (YES positive, NO negative).
+    """
+    CREATE TABLE IF NOT EXISTS app_position_reconcile (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      ticker VARCHAR(128) NOT NULL,
+      kind VARCHAR(16) NOT NULL,            -- untracked | book_only | size_mismatch | short
+      exchange_qty INT NOT NULL,
+      book_qty INT NOT NULL,
+      status VARCHAR(10) NOT NULL DEFAULT 'open',  -- open | resolved
+      detected_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL,
+      resolved_at DATETIME NULL,
+      UNIQUE KEY uq_recon_user_ticker (user_id, ticker),
+      INDEX idx_recon_status (status, updated_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
 ]
 
 

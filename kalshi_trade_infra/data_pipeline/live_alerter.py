@@ -155,6 +155,14 @@ def position_mismatches(cur) -> List[str]:
     did not hold - and a sell with nothing behind it opens a short. Kalshi
     knew the whole time; nothing ever asked it.
 
+    Tau-aware. The operator account now also carries Tau's per-user live
+    positions, which live in ``app_positions`` (with a 'yes'/'no' side), not the
+    old ``live_positions`` table. So "ours" is the SIGNED net of BOTH tables per
+    ticker: YES adds +qty, NO adds -qty - mirroring the exchange, which reports a
+    NO position as a negative (short-YES) ``position``. Without app_positions every
+    Tau live holding looked untracked; without the sign a legitimately held NO
+    looked like a short. Only a genuine opposite-direction net is flagged SHORT now.
+
     Deliberately stateless and cheap: it compares holdings, not money. A
     balance check would need deposits and withdrawals tracked, which they are
     not, and would be wrong the first time either happened.
@@ -168,25 +176,34 @@ def position_mismatches(cur) -> List[str]:
     for p in raw:
         qty = int(float(p.get("position_fp") or p.get("position") or 0))
         if qty:
-            theirs[p["ticker"]] = qty
+            theirs[p["ticker"]] = qty  # signed: + YES, - NO
 
-    cur.execute("SELECT model_name, market_ticker, qty_contracts FROM live_positions")
     ours: Dict[str, int] = {}
+    cur.execute("SELECT model_name, market_ticker, qty_contracts FROM live_positions")
     for r in cur.fetchall():
         ours[r["market_ticker"]] = ours.get(r["market_ticker"], 0) + int(r["qty_contracts"])
+    cur.execute("SELECT ticker, side, COALESCE(SUM(qty),0) AS qty FROM app_positions "
+                "WHERE mode='live' AND status='open' GROUP BY ticker, side")
+    for r in cur.fetchall():
+        signed = int(r["qty"]) if str(r["side"]).lower() == "yes" else -int(r["qty"])
+        ours[r["ticker"]] = ours.get(r["ticker"], 0) + signed
 
     out = []
-    for ticker, qty in sorted(theirs.items()):
-        if qty < 0:
-            # We only ever buy YES, so a negative position cannot be intended.
-            out.append("SHORT position on Kalshi we never opened: %s %s contracts" % (ticker, qty))
-        elif ticker not in ours:
-            out.append("Kalshi holds %s x %s that our book does not know about" % (qty, ticker))
-        elif ours[ticker] != qty:
-            out.append("size mismatch on %s: Kalshi %s, our book %s" % (ticker, qty, ours[ticker]))
-    for ticker, qty in sorted(ours.items()):
-        if ticker not in theirs:
-            out.append("our book holds %s x %s that Kalshi does not" % (qty, ticker))
+    for ticker in sorted(set(theirs) | set(ours)):
+        t = theirs.get(ticker, 0)
+        o = ours.get(ticker, 0)
+        if t == o:
+            continue
+        if o == 0:
+            side = "NO" if t < 0 else "YES"
+            out.append("Kalshi holds %d %s x %s that our book does not know about" % (abs(t), side, ticker))
+        elif t == 0:
+            out.append("our book holds %d x %s that Kalshi does not" % (o, ticker))
+        elif (t > 0) != (o > 0):
+            # Opposite directions is the only genuine short now (sell with nothing behind it).
+            out.append("SHORT/direction mismatch on %s: Kalshi %d, our book %d" % (ticker, t, o))
+        else:
+            out.append("size mismatch on %s: Kalshi %d, our book %d" % (ticker, abs(t), abs(o)))
     return out
 
 

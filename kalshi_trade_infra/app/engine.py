@@ -869,6 +869,9 @@ def run_forever() -> None:
     from app.kalshi_dev_exec import demo_kernel_factory
 
     last_review = 0.0
+    last_reconcile = 0.0
+    # How often to reconcile each user's live book against their real Kalshi account.
+    reconcile_every = float(os.getenv("APP_RECONCILE_EVERY_SECONDS", "300"))
     while True:
         try:
             conn = get_db_conn()
@@ -918,6 +921,18 @@ def run_forever() -> None:
                             enforce_autopilot_limits(conn)
                         except Exception as e:
                             print("[engine] autopilot limit check failed: %r" % e, flush=True)
+                    # Live position reconciliation: compare each user's book to their real
+                    # Kalshi account. Read-only against the exchange; it only writes the audit
+                    # trail + user notifications. Fully contained so it can never stop the loop.
+                    if LIVE_TRADING_ENABLED and time.time() - last_reconcile > reconcile_every:
+                        try:
+                            from app import reconcile
+                            summary = reconcile.reconcile_all(conn)
+                            if summary.get("discrepancies") or summary.get("errors"):
+                                print("[engine] reconcile %s" % summary, flush=True)
+                        except Exception as e:
+                            print("[engine] reconcile sweep failed: %r" % e, flush=True)
+                        last_reconcile = time.time()
                     time.sleep(TICK_SECONDS)
             finally:
                 conn.close()
