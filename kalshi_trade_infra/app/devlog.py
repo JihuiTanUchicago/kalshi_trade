@@ -11,23 +11,23 @@ from typing import Dict, List
 # Upcoming / in-progress, most-wanted first: (title, detail). `detail` is the
 # full markdown explanation (rendered via mdLite); '' for bare one-liners.
 PLANNED: List[tuple] = [
-    ('more robust', 'fast, and intelligent execution service.'),
-    ('claude code style animation demonstration in a research session', 'allow user to interrupt and then continue. do not ship minimum, this should be production grade, commercially good.'),
-    ('Per-bucket cash + funding', '(live/demo/paper) — the 3-bucket dashboard has no funding story. Paper: in-app add/reset cash (app-minted). Demo: real sandbox FILLS (real slippage/fill prices) but money is app-controlled — a "Reload demo to $X" button, we never touch the real Kalshi demo balance. Live: show the real Kalshi balance (via live key) + a deposit link (can\'t mint real cash). Build after the expansion-merge integration pass (needs merged demo-mode base).'),
-    ('Activate Alpaca stock/ETF agent data after secure worker configuration and entitlement checks', 'with a production canary before customer rollout. Source integration is complete for review; no production deployment yet. Setup.'),
-    ('All-markets collector + cross-contract', 'Phase 1 catalog shipped; ingestion split onto a dedicated collector box + S3 data-lake. Next: per-minute S3/Parquet snapshots (Phase 2). Backtest-over-any-series (3) + cross-contract research/eval (4) now built (see Done); cross-contract **live execution** still deferred.'),
-    ('Wire the generator (agent.py) to PROPOSE cross-contract pairs + build merged validation/holdout partitions', 'then enable cross-contract LIVE execution (engine.py/live gate) — research + evaluation are in place; this is the remaining step.'),
-    ('Widen the live market universe', 'surface more of the already-collected Kalshi series in the UI (smaller than the full all-markets build).'),
-    ('Email-all community digest', '**code is live** (opt-out + HMAC unsubscribe + 4h per-recipient cooldown; background-thread dispatch on each new post), but SES is in sandbox so it only reaches *verified* addresses. Unblock: SES console → Account dashboard → Request production access (zero code change after).'),
-    ('Premium model access', 'Claude 5.5 / OpenAI GPT-6.x / Grok are AWS account-gated (agreements accepted, but invoke denies even from full-admin). Unblock: Bedrock console → Model access (us-east-1), or AWS Sales. Prices locked: Sonnet5.5 $2/$10, Opus5.5 $4/$20, Haiku5.5 $0.1/$0.5, GPT-6.1 Sol $2.2/$10, GPT-6 Sol $2/$10, GPT-5.6 Sol $8.8/$33.'),
-    ('Kalshi-dev 2nd equity line', 'NOT blocked: uses the *public* demo candlesticks (no credentials), base URL now defaulted in code; draws once the slippage/dev-curve work deploys (verify after deploy). Covered by the slippage Done entry below.'),
+    ('more robust, fast, and intelligent execution service', ''),
+    ('claude code style animation demonstration in a research session', ''),
+    ('Per-bucket cash + funding (live/demo/paper)', ''),
+    ('Activate Alpaca stock/ETF agent data after secure worker configuration and entitlement checks, with a production canary before customer rollout', ''),
+    ('All-markets collector + cross-contract', ''),
+    ('Wire the generator (agent.py) to PROPOSE cross-contract pairs + build merged validation/holdout partitions, then enable cross-contract LIVE execution (engine.py/live gate)', ''),
+    ('Widen the live market universe', ''),
+    ('Email-all community digest', ''),
+    ('Premium model access', ''),
+    ('Kalshi-dev 2nd equity line', ''),
     ('Agent internet access / web search (Google/Tavily/Brave)', ''),
-    ('Polymarket as a 2nd venue', 'data + API + real & simulation trading.'),
+    ('Polymarket as a 2nd venue: data + API + real & simulation trading', ''),
     ('Risk-management force-sell layer on drawdown + portfolio caps (lost when a prior background agent exited; needs rebuild)', ''),
-    ('NO-side (and side="either") LIVE execution', 'execution places the correct leg (buy NO = sell-YES ask at 1−no_price, priced from the NO book, filled/settled in NO terms); every other live gate kept, in order. Live NO is gated behind `APP_NO_SIDE_LIVE_ENABLED` (default OFF) until the mechanics are validated on the real demo sandbox; demo/paper NO work now. **Next:** place a demo NO order, confirm correct side/fill, then flip the flag.'),
-    ('NBA / Kalshi sports markets', 'let Tau research + trade Kalshi sports contracts (NBA to start, season kicking off); support comparing quantitative vs fundamental bets. New market family beyond BTC.'),
-    ('Bittensor (TAO) subnet tokens as a new venue', 'data from taostats.io; currently long-only (short coming), likely illiquid/event-driven; test whether Tau can reason about subnet tokenomics. New asset class.'),
-    ('Onboard Opus 5.5', '(`claude-opus-5-5`) + surface model comparison — tester wants it for NBA season. Blocked on AWS Bedrock model access like the other premium models.'),
+    ('NO-side (and side="either") LIVE execution', ''),
+    ('NBA / Kalshi sports markets', ''),
+    ('Bittensor (TAO) subnet tokens as a new venue', ''),
+    ('Onboard Opus 5.5 (claude-opus-5-5) + surface model comparison', ''),
 ]
 
 # Shipped, newest first: (YYYY-MM-DD, title, detail). `detail` is the full
