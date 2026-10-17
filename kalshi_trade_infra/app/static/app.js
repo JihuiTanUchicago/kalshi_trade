@@ -1693,6 +1693,7 @@
   // ---------- funds ----------
   async function viewFunds() {
     shell('/funds', boardTitle('Funds') + '<dl class="figures measure" id="ffigs" style="margin-top:14px"></dl>', loading(300));
+    root.querySelector('.wrap').classList.add('funds-page');
     const load = async () => {
       const d = await api('/api/funds');
       const k = d.kalshi;
