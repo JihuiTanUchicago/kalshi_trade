@@ -117,6 +117,10 @@ class Contract:
     ticker: str
     strike: float
     close_time: datetime  # tz-aware UTC
+    # Which market/series this contract belongs to (e.g. "KXBTCD"). Defaulted so single-
+    # contract callers (and the live engine) are unaffected; cross-contract pairing uses it
+    # to tell a BTC leg from an ETH leg at the same decision frame.
+    series: str = ""
 
 
 @dataclass(frozen=True)

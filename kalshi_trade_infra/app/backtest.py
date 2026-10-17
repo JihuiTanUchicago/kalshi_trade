@@ -76,7 +76,7 @@ def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc:
     for m in markets:
         ct = m["close_time"]
         ct = ct if ct.tzinfo else ct.replace(tzinfo=timezone.utc)
-        contracts[m["ticker"]] = Contract(m["ticker"], float(m["strike"]), ct)
+        contracts[m["ticker"]] = Contract(m["ticker"], float(m["strike"]), ct, series=market.series)
         results[m["ticker"]] = m["result"]
     by_ts: Dict[int, List[Tuple[Contract, Optional[float], Optional[float]]]] = defaultdict(list)
     for c in candles:
@@ -145,7 +145,10 @@ class WhatIf:
 def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optional[WhatIf] = None) -> List[Trade]:
     """Trades for positions OPENED in [start_ts, end_ts). Positions settle on
     Kalshi's result even if that is after end_ts - the result was fixed by the
-    market, not chosen by the backtest."""
+    market, not chosen by the backtest. A cross-contract (`cross`) spec routes to
+    simulate_pairs; everything else is the single-contract path, unchanged."""
+    if spec.get("cross"):
+        return simulate_pairs(spec, ds, start_ts, end_ts, what_if)
     w = what_if or WhatIf()
     slip = w.slippage_cents / 100.0
     stake = w.stake if w.stake is not None else spec["sizing"]["stake"]
@@ -211,6 +214,108 @@ def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optio
     for pos in open_:
         settle(pos)
     return trades
+
+
+@dataclass
+class _OpenPair:
+    long_ticker: str
+    short_ticker: str  # bought as NO
+    qty: int
+    entry_ts: int
+    long_price: float  # YES price paid
+    short_price: float  # NO price paid
+    fee: float
+    close_ts: int  # max of the two legs' settlement times
+    edge: float
+
+
+def simulate_pairs(spec: Dict, ds: Dataset, start_ts: int, end_ts: int,
+                   what_if: Optional[WhatIf] = None) -> List[Trade]:
+    """Relative-value pairs opened in [start_ts, end_ts). Each pair is ONE combined Trade: buy
+    YES on the underpriced leg + NO on the overpriced leg, held to settlement. entry_price is
+    the per-unit cost of both legs (in (0,2)), exit_price the per-unit payoff ({long won}+{short
+    won}), so Trade.pnl = qty*(payoff-cost)-fees stays the honest accounting. Fees are Kalshi's
+    taker fee on each leg. ds.frames must carry snapshots of every involved market at each frame
+    (a single market already does; cross-market needs merge_datasets)."""
+    w = what_if or WhatIf()
+    slip = w.slippage_cents / 100.0
+    stake = w.stake if w.stake is not None else spec["sizing"]["stake"]
+    max_pos = spec["sizing"]["max_positions"]
+    open_: List[_OpenPair] = []
+    trades: List[Trade] = []
+
+    def fee(qty: int, price: float) -> float:
+        return taker_fee_dollars(qty, price) * w.fee_multiplier
+
+    def settle(pos: _OpenPair) -> None:
+        long_won = ds.results.get(pos.long_ticker) == "yes"
+        short_won = ds.results.get(pos.short_ticker) == "no"  # a NO buy wins when it settles "no"
+        payoff = (1.0 if long_won else 0.0) + (1.0 if short_won else 0.0)
+        trades.append(
+            Trade("%s|%s" % (pos.long_ticker, pos.short_ticker), "pair", pos.qty, pos.entry_ts,
+                  pos.long_price + pos.short_price, pos.close_ts, payoff, pos.fee, "settled", pos.edge)
+        )
+
+    for ts, snaps in ds.frames[_first_frame(ds, start_ts):]:
+        keep = []
+        for pos in open_:
+            if pos.close_ts <= ts:
+                settle(pos)
+            else:
+                keep.append(pos)
+        open_ = keep
+
+        if ts >= end_ts:
+            if not open_:
+                break
+            continue  # past the window: only let open pairs settle
+        held = {t for p in open_ for t in (p.long_ticker, p.short_ticker)}
+        for cand in specmod.pair_entries(spec, snaps):
+            if len(open_) >= max_pos:
+                break
+            lt = cand.long_snap.contract.ticker
+            st = cand.short_snap.contract.ticker
+            if lt in held or st in held:
+                continue
+            long_price = min(0.99, cand.long_price + slip)
+            short_price = min(0.99, cand.short_price + slip)
+            qty = specmod.contracts_for(stake, long_price + short_price)
+            if qty < 1:
+                continue
+            close_ts = max(int(cand.long_snap.contract.close_time.timestamp()),
+                           int(cand.short_snap.contract.close_time.timestamp()))
+            open_.append(_OpenPair(lt, st, qty, ts, long_price, short_price,
+                                   fee(qty, long_price) + fee(qty, short_price), close_ts, cand.edge))
+            held.update((lt, st))
+    for pos in open_:
+        settle(pos)
+    return trades
+
+
+def merge_datasets(datasets: List[Dataset], key: str, label: Optional[str] = None) -> Dataset:
+    """Union several single-market Datasets into one whose frames carry every market's snapshots
+    at each decision ts - the input a cross-SECTIONAL pair (e.g. BTC vs ETH) needs. `key` is the
+    combined market/FDR-stream key (e.g. 'btc_daily+eth_daily'); the synthetic Market carries it
+    so the gatekeeper spends from that one shared stream. cross_strike / calendar pairs stay on a
+    single market and need no merge (one dataset's frame already holds every strike/settlement)."""
+    if not datasets:
+        raise ValueError("merge_datasets needs at least one dataset")
+    base = datasets[0].market
+    market = Market(key=key, series=key, label=label or key, candle_minutes=base.candle_minutes,
+                    history_days=base.history_days, close_hour_et=base.close_hour_et,
+                    underlying=base.underlying, deployable=False)
+    by_ts: Dict[int, List[Snapshot]] = defaultdict(list)
+    results: Dict[str, str] = {}
+    contracts = 0
+    for ds in datasets:
+        results.update(ds.results)
+        contracts += ds.contracts
+        for ts, snaps in ds.frames:
+            by_ts[ts].extend(snaps)
+    frames = [(ts, by_ts[ts]) for ts in sorted(by_ts)]
+    start = frames[0][0] if frames else 0
+    end = frames[-1][0] if frames else 0
+    return Dataset(market, frames, results, start, end, contracts)
 
 
 def _first_frame(ds: Dataset, start_ts: int) -> int:

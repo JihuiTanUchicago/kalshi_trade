@@ -362,7 +362,7 @@ DDL = [
       user_id BIGINT NOT NULL,
       run_id BIGINT NULL,
       strategy_id BIGINT NULL,              -- links to app_strategies once the row exists
-      market VARCHAR(16) NOT NULL,
+      market VARCHAR(48) NOT NULL,          -- market key, or a cross-contract stream key (a+b)
       hypothesis_hash CHAR(64) NOT NULL,    -- sha256 of frozen spec + rationale; the identity
       spec_json JSON NOT NULL,              -- the FROZEN entry/exit/sizing/model rule
       economic_rationale TEXT NOT NULL,
@@ -406,6 +406,7 @@ DDL = [
       n_trials_audited INT NULL,            -- trials that competed (feeds DSR)
       holdout_consumed TINYINT(1) NOT NULL DEFAULT 0,
       equity_curve_json JSON NULL,          -- for the research-paper page graphs
+      folds_json JSON NULL,                 -- per-day/per-fold cross-day generalization breakdown
       verdict_at DATETIME NOT NULL,
       INDEX idx_res_exp (experiment_id, id),
       INDEX idx_res_phase (phase, verdict_at)
@@ -416,7 +417,7 @@ DDL = [
     """
     CREATE TABLE IF NOT EXISTS app_fdr_state (
       user_id BIGINT NOT NULL,
-      market VARCHAR(16) NOT NULL,
+      market VARCHAR(48) NOT NULL,          -- per-market stream, or a cross-contract shared stream (a+b)
       method VARCHAR(16) NOT NULL DEFAULT 'LORD++',
       alpha DOUBLE NOT NULL,
       w0 DOUBLE NOT NULL,
@@ -431,7 +432,7 @@ DDL = [
     """
     CREATE TABLE IF NOT EXISTS app_holdout_ledger (
       id BIGINT AUTO_INCREMENT PRIMARY KEY,
-      market VARCHAR(16) NOT NULL,
+      market VARCHAR(48) NOT NULL,
       partition_id BIGINT NOT NULL,         -- FK to app_data_partitions
       window_fingerprint CHAR(64) NOT NULL, -- sha256 of (holdout_from, holdout_to, data hash)
       evaluations_used INT NOT NULL DEFAULT 0,
@@ -446,7 +447,7 @@ DDL = [
     """
     CREATE TABLE IF NOT EXISTS app_data_partitions (
       id BIGINT AUTO_INCREMENT PRIMARY KEY,
-      market VARCHAR(16) NOT NULL,
+      market VARCHAR(48) NOT NULL,
       research_from_ts BIGINT NOT NULL, research_to_ts BIGINT NOT NULL,
       validation_from_ts BIGINT NOT NULL, validation_to_ts BIGINT NOT NULL,
       holdout_from_ts BIGINT NOT NULL, holdout_to_ts BIGINT NOT NULL,
@@ -484,6 +485,13 @@ def main() -> None:
         # Tau-RSI discovery tree: which prior hypothesis this one built on (NULL = root). Nullable
         # + unused for now (P1); the replay simulator and self-evolving policy populate it later.
         _add_column_if_missing(cur, "app_strategies", "parent_id", "ALTER TABLE app_strategies ADD COLUMN parent_id BIGINT NULL")
+        # Cross-day generalization breakdown (per-day/per-fold) the research-paper folds strip renders.
+        _add_column_if_missing(cur, "app_experiment_results", "folds_json", "ALTER TABLE app_experiment_results ADD COLUMN folds_json JSON NULL AFTER equity_curve_json")
+        # Cross-contract strategies spend from a SHARED FDR stream keyed on a combined key
+        # ('btc_daily+eth_daily'), which overruns the old VARCHAR(16). Widen the market key
+        # columns to fit. MODIFY is idempotent, so this is safe to re-run.
+        for _tbl in ("app_experiments", "app_fdr_state", "app_holdout_ledger", "app_data_partitions"):
+            cur.execute("ALTER TABLE %s MODIFY market VARCHAR(48) NOT NULL" % _tbl)
         # Waitlist hygiene: drop any waitlist rows for emails that already have an account
         # (case/space-insensitive), so a signed-up user never lingers on the waitlist display.
         cur.execute("DELETE w FROM app_waitlist w JOIN app_users u "

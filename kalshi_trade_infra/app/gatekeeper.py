@@ -42,6 +42,13 @@ CORR_MAX = 0.80         # marginal-contribution: max |corr| to a deployed peer
 PLACEBO_SHUFFLES = 200  # label-shuffle negative-control resamples
 _BOOT_SEED = 12345      # base seed; per-experiment offset keeps verdicts deterministic
 
+# Cross-day generalization gate (§E.6 / beta-tester ask): a "passed" strategy must hold as a
+# PATTERN across days/folds, not a one-window fluke. This can only make STAT_SUPPORTED harder.
+CROSS_DAY_SPLITS = 4           # purged walk-forward folds over the validation trades
+CROSS_DAY_MIN_FOLDS = 3        # need at least this many folds to judge generalization
+CROSS_DAY_MIN_POS_FRACTION = 0.5   # a majority of folds must be net-positive
+CROSS_DAY_MAX_DAY_SHARE = 0.90     # no single day may carry >90% of the positive edge
+
 
 class HoldoutConsumed(Exception):
     """Raised when a one-time Locked-Holdout evaluation is refused: the experiment is not yet
@@ -108,17 +115,59 @@ def preregister(cur, pre: Prereg) -> int:
 # -- per-trade return extraction + moments -------------------------------------
 
 
-def _net_returns(trades) -> List[Tuple[int, float]]:
-    """Per-trade net return (pnl already net of fees) on capital deployed, ordered by entry
-    time: ret_i = pnl_i / (qty_i * entry_price_i). Zero-cost trades are skipped. This is the
-    serially-correlated series the bootstrap and PSR/DSR consume."""
-    out: List[Tuple[int, float]] = []
+def _per_trade(trades) -> List[Tuple[int, int, float]]:
+    """(entry_ts, exit_ts, net_return) per trade, ordered by entry time, skipping zero-cost
+    trades. net_return = pnl / (qty * entry_price). The one place the trade -> return series is
+    built, so the bootstrap, PSR/DSR and the cross-day folds all score the same quantity."""
+    out: List[Tuple[int, int, float]] = []
     for t in sorted(trades, key=lambda x: x.entry_ts):
         cost = t.qty * t.entry_price
         if cost <= 0:
             continue
-        out.append((int(t.entry_ts), t.pnl / cost))
+        out.append((int(t.entry_ts), int(t.exit_ts), t.pnl / cost))
     return out
+
+
+def _net_returns(trades) -> List[Tuple[int, float]]:
+    """(entry_ts, net_return) series the bootstrap and PSR/DSR consume."""
+    return [(ets, r) for ets, _x, r in _per_trade(trades)]
+
+
+def _cross_day(trades) -> Tuple[bool, List[Dict[str, Any]], float]:
+    """Cross-day generalization check. Splits the validation trades into purged walk-forward
+    folds (stats.purged_walkforward_splits; embargo only trims TRAIN, so the test blocks we score
+    are unaffected and embargo=0 is fine) and also buckets per-trade returns by calendar day.
+    The edge GENERALIZES only if a majority of folds are net-positive AND no single day carries
+    almost all of the positive return. Returns (ok, folds, max_day_share). Too few trades for
+    CROSS_DAY_MIN_FOLDS folds -> ok=False (we cannot establish generalization, so we do not pass
+    it). ok feeds _classify: it can only block STAT_SUPPORTED, never grant it."""
+    rows = _per_trade(trades)
+    folds: List[Dict[str, Any]] = []
+    if len(rows) >= CROSS_DAY_SPLITS + 1:
+        splits = stats.purged_walkforward_splits([r[0] for r in rows], [r[1] for r in rows],
+                                                 CROSS_DAY_SPLITS, 0)
+        for sp in splits:
+            vals = [rows[i][2] for i in sp["test_idx"]]
+            if not vals:
+                continue
+            folds.append({
+                "from_ts": int(sp["test_from_ts"]), "to_ts": int(sp["test_to_ts"]),
+                "n_trades": len(vals),
+                "mean_net_return": round(sum(vals) / len(vals), 8),
+                "net_return": round(sum(vals), 8),
+            })
+    by_day: Dict[int, float] = {}
+    for ets, _x, r in rows:
+        by_day[ets // 86400] = by_day.get(ets // 86400, 0.0) + r
+    positive = [v for v in by_day.values() if v > 0]
+    total_pos = sum(positive)
+    day_share = (max(positive) / total_pos) if total_pos > 0 else 1.0
+    n_folds = len(folds)
+    pos_folds = sum(1 for f in folds if f["net_return"] > 0)
+    ok = (n_folds >= CROSS_DAY_MIN_FOLDS
+          and pos_folds / n_folds >= CROSS_DAY_MIN_POS_FRACTION
+          and day_share <= CROSS_DAY_MAX_DAY_SHARE)
+    return ok, folds, day_share
 
 
 def _sharpe(rets: List[float]) -> float:
@@ -206,8 +255,12 @@ def _compute(trades, n_trials: int, lord_state: Dict[str, Any], seed: int) -> Di
     placebo_p = _placebo_pvalue(trades, seed)
     rec = stats.lord_record(lord_state, boot["p_value"])
     equity = _equity(trades)
+    cross_day_ok, folds, day_share = _cross_day(trades)
     return {
         "n_trades": n,
+        "cross_day_ok": cross_day_ok,
+        "folds": folds,
+        "cross_day_max_day_share": day_share,
         "p_value": boot["p_value"],
         "ci_lo": boot["lo"],
         "ci_hi": boot["hi"],
@@ -228,14 +281,16 @@ def _compute(trades, n_trials: int, lord_state: Dict[str, Any], seed: int) -> Di
 
 
 def _classify(lord_reject: bool, bh_reject: Optional[bool], dsr: float,
-              ci_lo: float, ci_hi: float, placebo_passed: bool) -> Classification:
+              ci_lo: float, ci_hi: float, placebo_passed: bool,
+              cross_day_ok: bool = True) -> Classification:
     """The STAT_SUPPORTED decision rule. STAT_SUPPORTED iff the online FDR budget rejects AND
     (within a chunk) BH rejects AND DSR >= DSR_MIN AND the bootstrap CI lower bound is above 0
-    AND the negative control passes. A placebo-equivalent or flatly-negative result is
-    REJECTED; anything real-looking but short of the bar is INCONCLUSIVE (the honest, valuable
-    outcome on a tiny sample)."""
+    AND the negative control passes AND the edge generalizes across days/folds (cross_day_ok).
+    A placebo-equivalent or flatly-negative result is REJECTED; anything real-looking but short
+    of the bar - including a one-window edge that fails cross-day - is INCONCLUSIVE (the honest,
+    valuable outcome)."""
     bh_ok = True if bh_reject is None else bh_reject
-    if lord_reject and bh_ok and dsr >= DSR_MIN and ci_lo > 0 and placebo_passed:
+    if lord_reject and bh_ok and dsr >= DSR_MIN and ci_lo > 0 and placebo_passed and cross_day_ok:
         return Classification.STAT_SUPPORTED
     if not placebo_passed:
         return Classification.REJECTED          # edge indistinguishable from a label shuffle -> artifact
@@ -306,6 +361,9 @@ def _verdict_dict(v: Dict[str, Any], cls: Classification, n_trials: int) -> Dict
         "placebo_p": v["placebo_p"],
         "max_drawdown": v["max_drawdown"],
         "n_trials_audited": n_trials,
+        "cross_day_ok": v.get("cross_day_ok"),
+        "cross_day_max_day_share": v.get("cross_day_max_day_share"),
+        "folds": v.get("folds", []),
     }
 
 
@@ -339,9 +397,10 @@ def judge_validation(cur, experiment_id: int, finalist: dict, val_ds) -> dict:
 
     v = _compute(trades, n_trials, _lord_state(cur, user_id, market), seed=_BOOT_SEED + int(experiment_id))
     rr.set_fdr_state(cur, user_id, market, v["lord_state"])  # alpha spent only once sample is adequate
-    cls = _classify(v["lord_reject"], None, v["dsr"], v["ci_lo"], v["ci_hi"], v["placebo_passed"])
+    cls = _classify(v["lord_reject"], None, v["dsr"], v["ci_lo"], v["ci_hi"], v["placebo_passed"],
+                    v["cross_day_ok"])
     rr.append_result(cur, experiment_id, "validation", cls.value, n_trades,
-                     metrics=_result_metrics(v, n_trials), equity_curve=v["ret_series"])
+                     metrics=_result_metrics(v, n_trials), equity_curve=v["ret_series"], folds=v["folds"])
     return _verdict_dict(v, cls, n_trials)
 
 
@@ -387,9 +446,11 @@ def judge_batch(cur, run_id: int, experiment_ids: List[int], finalists: List[dic
             out.append({"classification": cls.value, "n_trades": c["n_trades"],
                         "alpha_spent": False, "n_trials_audited": n_trials})
             continue
-        cls = _classify(c["lord_reject"], c["bh_reject"], c["dsr"], c["ci_lo"], c["ci_hi"], c["placebo_passed"])
+        cls = _classify(c["lord_reject"], c["bh_reject"], c["dsr"], c["ci_lo"], c["ci_hi"],
+                        c["placebo_passed"], c["cross_day_ok"])
         rr.append_result(cur, c["exp_id"], "validation", cls.value, c["n_trades"],
-                         metrics=_result_metrics(c, n_trials), equity_curve=c["ret_series"])
+                         metrics=_result_metrics(c, n_trials), equity_curve=c["ret_series"],
+                         folds=c["folds"])
         out.append(_verdict_dict(c, cls, n_trials))
     return out
 
@@ -449,7 +510,7 @@ def judge_holdout(cur, experiment_id: int, finalist: dict) -> dict:
     cls = Classification.FORWARD_VALIDATED if forward else Classification.REJECTED
     rr.append_result(cur, experiment_id, "holdout", cls.value, n_trades,
                      metrics=_result_metrics(v, n_trials, holdout_consumed=consumed),
-                     equity_curve=v["ret_series"])
+                     equity_curve=v["ret_series"], folds=v["folds"])
     if consumed:
         _alert("holdout for market %r is consumed (%s evaluations) — roll partitions forward "
                "onto fresh settled history before any further holdout look (§F)." % (

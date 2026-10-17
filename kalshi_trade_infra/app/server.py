@@ -552,7 +552,8 @@ def _experiment_block(cur, strategy_id: int) -> Optional[Dict]:
     exp = rec["experiment"]
     results = rec["results"] or []
     latest = lambda phase: next((r for r in reversed(results) if r.get("phase") == phase), None)
-    val = _phase_block(latest("validation"))
+    val_row = latest("validation")
+    val = _phase_block(val_row)
     hold = _phase_block(latest("holdout"), holdout=True)
     rat = _rationale(exp.get("economic_rationale"))
     overall = results[-1]["classification"] if results else None
@@ -574,7 +575,9 @@ def _experiment_block(cur, strategy_id: int) -> Optional[Dict]:
         "n_trials_audited": (val or {}).get("n_trials_audited"),
         "validation": val,
         "holdout": hold,
-        "folds": rat["folds"],
+        # Prefer the gatekeeper's recorded cross-day folds (validation phase); fall back to any
+        # folds embedded in the older rationale JSON so pre-pipeline experiments still render.
+        "folds": (val_row or {}).get("folds") or rat["folds"],
     }
 
 
