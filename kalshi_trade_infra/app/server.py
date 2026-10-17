@@ -683,6 +683,12 @@ def create_deployment(ctx: Ctx):
         raise ApiError(404, "No such strategy.")
     if s["status"] not in ("passed", "failed", "rejected"):
         raise ApiError(409, "This strategy isn't ready to deploy.")
+    if specmod.is_code_spec(s["spec"]):
+        # Arbitrary agent-authored code runs ONLY in the research sandbox; the paper/live/demo
+        # engine evaluates the DSL rule (specmod.entries), so code strategies are research-only.
+        # Matches the same guard on agent.act's deploy/deploy_live path.
+        raise ApiError(409, "This is an agent-authored code strategy — those are research-only and "
+                            "can't be deployed to the trading engine.")
     mkt = MARKETS.get(s["market"])
     if mkt is not None and not mkt.deployable:
         raise ApiError(409, "%s is research-only for now — you can backtest it, but live/paper "

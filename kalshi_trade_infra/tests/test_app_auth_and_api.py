@@ -169,6 +169,20 @@ def test_deploy_any_status_on_paper_live_gated_globally(monkeypatch):
     assert server.create_deployment(ctx({"strategy_id": 5, "mode": "live", "confirm": "LIVE"})) == {"id": 11}
 
 
+def test_code_strategy_refused_by_create_deployment(monkeypatch):
+    # Code strategies are research-only: the manual deploy endpoint must reject them in EVERY mode,
+    # matching agent.act's deploy/deploy_live guard, so arbitrary code never reaches the engine.
+    strat = {"id": 5, "status": "passed", "market": "btc15m", "title": "T",
+             "spec": {"market": "btc15m", "sizing": {"stake": 5, "max_positions": 1},
+                      "code": "def signals(w): return []"}}
+    monkeypatch.setattr(server.repo, "get_strategy", lambda cur, uid, sid: dict(strat))
+    monkeypatch.setattr(server.repo, "create_deployment", lambda *a, **k: 11)
+    for mode in ("paper", "demo", "live"):
+        with pytest.raises(server.ApiError, match="research-only") as e:
+            server.create_deployment(ctx({"strategy_id": 5, "mode": mode, "confirm": "LIVE"}))
+        assert e.value.status == 409
+
+
 def test_live_refuses_non_deployment_candidate(monkeypatch):
     # §E.5: the manual live path must ALSO clear the gatekeeper's DEPLOYMENT_CANDIDATE gate, matching
     # the autopilot path. Every other live gate is green, but the gate is not cleared -> refused.
