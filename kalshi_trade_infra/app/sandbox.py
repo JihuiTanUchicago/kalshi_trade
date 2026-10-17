@@ -254,6 +254,21 @@ def validate_strategy_code(code: str) -> None:
                                 % STRATEGY_ENTRY)
 
 
+def strategy_import_roots(code: str) -> List[str]:
+    """The allowlisted top-level modules the strategy actually imports. Used to pre-import ONLY
+    those in the child (so a numpy strategy never loads tensorflow): eager-importing the whole
+    heavy stack every run is slow and can exhaust memory. validate_strategy_code has already
+    guaranteed every import is in the allowlist, so this is a safe subset."""
+    allowed = set(STRATEGY_ALLOWED_IMPORTS)
+    roots = set()
+    for node in ast.walk(ast.parse(code)):
+        if isinstance(node, ast.Import):
+            roots.update(a.name.split(".")[0] for a in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            roots.add(node.module.split(".")[0])
+    return sorted(roots & allowed)
+
+
 # The child process program. Trusted code we write; the UNTRUSTED strategy is read from the
 # input file and exec'd behind the import gate + restricted builtins. argv:
 #   in_path out_path cpu_s mem_bytes nofile
@@ -287,9 +302,11 @@ with open(in_path) as _f:
     _job = json.load(_f)
 allowed = set(_job["allowed"])
 
-# Pre-import the allowlisted modules with the REAL importer so numpy's own internal imports
-# (os, ctypes, ...) happen now, before the gate is installed; afterwards they are cached.
-for _m in allowed:
+# Pre-import ONLY the modules the strategy declared (a safe subset of the allowlist) with the REAL
+# importer, so each lib's own internal imports (os, ctypes, numpy, ...) happen now, before the gate
+# is installed; afterwards they are cached. Importing just what's used keeps a numpy strategy from
+# paying tensorflow's load cost/memory. Falls back to the full allowlist if the host didn't pass one.
+for _m in (_job.get("preimport") or list(allowed)):
     try:
         __import__(_m)
     except Exception:
@@ -480,7 +497,8 @@ def run_strategy_signals(code: str, window: Dict, *, cpu_s: int = STRATEGY_CPU_S
     try:
         with open(in_path, "w") as f:
             json.dump({"code": code, "entry": STRATEGY_ENTRY, "window": win,
-                       "allowed": list(STRATEGY_ALLOWED_IMPORTS)}, f)
+                       "allowed": list(STRATEGY_ALLOWED_IMPORTS),
+                       "preimport": strategy_import_roots(code)}, f)
         # Scrubbed env: NONE of the credential / DB / AWS vars. `-I` also makes the child ignore
         # PYTHON* vars, the cwd and user-site; `-B` suppresses __pycache__ writes (denied outside
         # scratch). Thread caps keep BLAS/OpenMP from oversubscribing; cache dirs point at scratch so
