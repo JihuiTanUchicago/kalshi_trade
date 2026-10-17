@@ -33,6 +33,11 @@ from data_pipeline.kalshi_fees import taker_fee_dollars
 
 # Live orders for app users stay off until the owner explicitly turns them on.
 LIVE_TRADING_ENABLED = os.getenv("APP_LIVE_TRADING_ENABLED") == "1"
+# Staged rollout for NO-side live: the YES-leg-complement order mechanics are test-verified but
+# not yet validated against the real exchange, so non-YES strategies stay on PAPER for the LIVE
+# path until this flag is set. Demo/paper NO always work (for sandbox validation; no real money).
+# ponytail: temporary; remove once NO-side live is validated on the demo sandbox.
+NO_SIDE_LIVE_ENABLED = os.getenv("APP_NO_SIDE_LIVE_ENABLED") == "1"
 TICK_SECONDS = 15
 # A slot decided this late is skipped instead: the backtest decided at the
 # slot boundary, and a daily decision taken 50 minutes late is a different rule.

@@ -875,6 +875,11 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         if specmod.is_code_spec(strat["spec"]):
             return ("%s is an agent-authored code strategy; those are research-only and never "
                     "run in the live engine." % strat["title"], None)
+        from app import engine as _engine  # local import: engine imports agent (circular)
+        if (strat["spec"].get("side") or "yes").lower() != "yes" and not _engine.NO_SIDE_LIVE_ENABLED:
+            # Staged rollout: NO-side live mechanics are validated on the demo sandbox first.
+            return ("NO-side live trading is still being validated on the demo sandbox, so %s "
+                    "stays on paper for now — deploy it on demo to exercise the NO path." % strat["title"], None)
         # Additive gatekeeper gate (§E.5): required ON TOP OF the live_autopilot_ok
         # and _proven_on_paper checks below — none of which are removed, reordered or weakened.
         # Side is no longer gated: live execution now places the correct YES or NO leg (a NO

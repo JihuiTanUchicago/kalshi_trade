@@ -708,8 +708,10 @@ def create_deployment(ctx: Ctx):
             raise ApiError(409, "Live trading isn't open yet. Deploy on paper for now.")
         if repo.get_kalshi_key(cur, ctx.uid) is None:
             raise ApiError(409, "Connect your Kalshi account on the Funds page first.")
-        # Side is no longer gated: execution places the correct YES or NO leg (a NO strategy
-        # places a NO order). Every other live guard above/below is kept, in order, unweakened.
+        if ((s.get("spec") or {}).get("side") or "yes").lower() != "yes" and not engine.NO_SIDE_LIVE_ENABLED:
+            # Staged rollout: NO-side live mechanics are validated on the demo sandbox first.
+            raise ApiError(409, "NO-side live trading is still being validated on the demo sandbox — "
+                                "deploy this on demo or paper for now.")
         if ctx.body.get("confirm") != "LIVE":
             raise ApiError(400, "Type LIVE to confirm real-money trading.")
     elif mode == "demo":

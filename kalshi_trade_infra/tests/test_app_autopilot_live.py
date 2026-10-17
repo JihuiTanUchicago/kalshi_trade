@@ -11,10 +11,13 @@ PROVEN_NO_PAPER = [{"strategy_id": 8, "mode": "paper", "closed_trades": 12, "rea
 
 
 def _patch(monkeypatch, *, live_enabled=True, key=True, autopilot=True, ap_live=True, today_live=0.0,
-           strat=None, paper=None, deployment_candidate=True):
+           strat=None, paper=None, deployment_candidate=True, no_side_live=True):
     r = agent.repo
     created = {}
     monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", live_enabled)
+    # Staged-rollout flag for NO-side live (default True here to isolate the OTHER gates; the
+    # flag-off behavior — NO stays on paper — is verified separately below). YES ignores it.
+    monkeypatch.setattr(engine, "NO_SIDE_LIVE_ENABLED", no_side_live)
     # Wave-2 additive gate (§E.5): deploy_live also requires the gatekeeper's DEPLOYMENT_CANDIDATE
     # classification, ON TOP OF every existing gate. Default it True so these tests still exercise
     # the ORIGINAL gates; the gate itself is verified separately below.
@@ -67,7 +70,7 @@ def test_no_side_strategy_goes_live_when_proven(monkeypatch):
 def test_no_side_strategy_still_refused_when_any_gate_fails(monkeypatch):
     # Allowing NO must not weaken any other live gate: each failure still keeps it on paper.
     for kw in (dict(live_enabled=False), dict(key=False), dict(ap_live=False), dict(autopilot=False),
-               dict(today_live=-60.0), dict(deployment_candidate=False)):
+               dict(today_live=-60.0), dict(deployment_candidate=False), dict(no_side_live=False)):
         user, created = _patch(monkeypatch, strat=dict(PASSED_NO), paper=list(PROVEN_NO_PAPER), **kw)
         msg, pid = agent.act(None, user, {"type": "deploy_live", "strategy_id": 8}, autopilot=True)
         assert "mode" not in created and pid is None, "NO went live despite a failed gate: %r" % kw
