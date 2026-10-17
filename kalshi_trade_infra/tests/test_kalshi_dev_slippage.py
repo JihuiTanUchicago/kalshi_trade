@@ -7,6 +7,7 @@ model, and graceful degradation when the demo host is down.
 from datetime import datetime, timezone
 
 from app import kalshi_dev
+from app import spec as specmod
 from app.backtest import Dataset, Trade
 from app.markets import MARKETS, snapshot
 
@@ -64,7 +65,7 @@ def _oos_dataset():
 def test_down_demo_host_yields_null_without_raising(monkeypatch):
     monkeypatch.setattr(kalshi_dev, "_dev_candles", lambda *a, **k: None)  # host down
     ds = _oos_dataset()
-    assert kalshi_dev._compute({"sizing": {"stake": 10, "max_positions": 1}}, ds) is None
+    assert kalshi_dev._compute(specmod.validate({"side": "yes"}), ds) is None
 
 
 def test_measured_slippage_accessor_feeds_cost_model(monkeypatch):
