@@ -1903,28 +1903,52 @@
     const initial = esc((name || '?').trim()[0].toUpperCase());
     return pic ? `<img class="pfp" src="${esc(pic)}" alt="" referrerpolicy="no-referrer">` : `<span class="pfp ph" aria-hidden="true">${initial}</span>`;
   }
-  function postCard(p) {
-    return `<article class="post" data-id="${p.id}">
-      <div class="post-head">${avatar(p.picture, p.author)}<div><b>${authorLine(p.author, p.username)}</b><span class="when">${when(p.created_at)}${p.edited ? ' · edited' : ''}</span></div></div>
-      <div class="post-main"><p class="post-body">${mdLite(p.body)}</p>
-      ${p.image ? `<a class="post-img" href="${esc(p.image)}" target="_blank" rel="noopener"><img src="${esc(p.image)}" alt="" loading="lazy"></a>` : ''}
-      ${postSnapshot(p.snapshot)}</div>
-      <div class="post-actions">
-        ${reactionBar(p)}
-        <button class="pact" data-act="comments">${ICON.comment}<span class="c">${p.comments || ''}</span></button>
-        ${p.mine ? `<button class="pact" data-act="edit">${ICON.pencil}<span>Edit</span></button>` : ''}
+  // Reactor tooltip: names (+ @handles) are preloaded in the feed payload (reactions_for),
+  // so "who reacted" is a pure CSS :hover popover — instant, with zero per-hover fetch.
+  function rxWho(rx) {
+    const names = rx.names || [];
+    if (!names.length) return '';
+    const extra = (rx.count || 0) - names.length;
+    const list = names.map(esc).join(', ');
+    return extra > 0 ? `${list} and ${extra} other${extra > 1 ? 's' : ''}` : list;
+  }
+  function rxChip(rx) {
+    const who = rxWho(rx);
+    return `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}" aria-label="${esc(rx.emoji)}, ${rx.count}${who ? ' — ' + who : ''}">${emojiHtml(rx.emoji)}<span class="n">${rx.count}</span>${who ? `<span class="rxtip" role="tooltip">${who}</span>` : ''}</button>`;
+  }
+  // Pills for the reactions a post already has, plus the inline "+" when there is at least one.
+  function reactionChips(list) {
+    const chips = (list || []).map(rxChip).join('');
+    return chips ? chips + `<button class="rx add" data-react-add aria-label="Add a reaction">${ICON.react}<i class="plus">+</i></button>` : '';
+  }
+  const GROUP_WINDOW = 5 * 60 * 1000;  // consecutive posts by one author within 5 min collapse the header
+  // A Slack-style message row: avatar gutter + name/@handle/time header, body, attachments,
+  // reaction pills, a thread affordance, and an instant hover toolbar (react / reply / edit).
+  // A grouped post is a tight continuation of the author above it: no header, a hover-only time.
+  function postCard(p, grouped) {
+    const replies = p.comments || 0;
+    return `<article class="post${grouped ? ' grouped' : ''}" data-id="${p.id}">
+      <div class="post-gutter">${grouped ? `<time class="gutter-time">${clock(p.created_at)}</time>` : avatar(p.picture, p.author)}</div>
+      <div class="post-col">
+        ${grouped ? '' : `<div class="post-head"><b>${authorLine(p.author, p.username)}</b><span class="when">${when(p.created_at)}${p.edited ? ' · edited' : ''}</span></div>`}
+        <div class="post-main"><div class="post-body">${mdLite(p.body)}</div>
+        ${p.image ? `<a class="post-img" href="${esc(p.image)}" target="_blank" rel="noopener"><img src="${esc(p.image)}" alt="" loading="lazy"></a>` : ''}
+        ${postSnapshot(p.snapshot)}</div>
+        <div class="reactions">${reactionChips(p.reactions)}</div>
+        ${replies ? `<button class="thread-link" data-act="comments">${ICON.comment}<span>${replies} ${replies === 1 ? 'reply' : 'replies'}</span></button>` : ''}
+        <div class="comments" hidden></div>
       </div>
-      <div class="comments" hidden></div>
+      <div class="hoverbar" role="group" aria-label="Message actions">
+        <button class="hbtn" data-react-add aria-label="Add reaction">${ICON.react}</button>
+        <button class="hbtn" data-act="comments" aria-label="Reply">${ICON.comment}</button>
+        ${p.mine ? `<button class="hbtn" data-act="edit" aria-label="Edit">${ICON.pencil}</button>` : ''}
+      </div>
     </article>`;
   }
   // Emoji reactions — a fixed palette (matches the server whitelist). 'tau' is a
   // custom reaction: the Tau mark, animated (a shaking "T" = excitement).
   const REACTIONS = ['tau', '👍', '❤️', '🔥', '🚀', '😂', '🎉', '💯', '👀', '🤔', '😮', '😢', '🙌', '🧠', '📈', '📉', '💸', '✅', '❌', '🐂', '🐻', '🐐', '🦍', '🐳', '💎', '🤡', '💀', '🫡', '🌙'];
   const emojiHtml = (e) => e === 'tau' ? `<span class="tau-emoji">${ICON.mark}</span>` : esc(e);
-  function reactionBar(p) {
-    const chips = (p.reactions || []).map((rx) => `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}" title="${esc(rxTitle(rx))}">${emojiHtml(rx.emoji)}<span class="n">${rx.count}</span></button>`).join('');
-    return `<span class="reactions">${chips}<button class="rx add" data-react-add aria-label="Add a reaction">${ICON.react}<i class="plus">+</i></button></span>`;
-  }
   let emojiPop = null;
   function openEmojiPicker(anchor, onPick) {
     if (emojiPop) emojiPop.remove();
@@ -1944,8 +1968,10 @@
   async function viewCommunity() {
     shell('/community', boardTitle('Community', 'Share a strategy, an idea, or how your money is doing. Like and reply to other traders.'), `
       <div class="feedwrap">
+        <div class="chips feed-filter" role="group" aria-label="Filter posts"><button class="chip" type="button" data-feed="all" aria-pressed="true">All posts</button><button class="chip" type="button" data-feed="mine" aria-pressed="false">My posts</button></div>
+        <div id="feed">${loading(120)}${loading(120)}</div>
         <form class="panel composer-post" id="composer-post">
-          <textarea class="input" id="post-body" maxlength="2000" rows="2" placeholder="Share an idea, a strategy, or how it's going…"></textarea>
+          <textarea class="input" id="post-body" maxlength="2000" rows="1" placeholder="Share an idea, a strategy, or how it's going…"></textarea>
           <div id="photo-preview" hidden><img id="photo-img" alt="Attached photo preview"><button type="button" class="photo-x" id="photo-remove" aria-label="Remove photo">${ICON.cross}</button></div>
           <div class="post-tools">
             <button class="btn sm" type="button" id="photo-btn">${ICON.image}Photo</button>
@@ -1957,10 +1983,12 @@
           </div>
           <div id="post-flash"></div>
         </form>
-        <div class="chips feed-filter" role="group" aria-label="Filter posts"><button class="chip" type="button" data-feed="all" aria-pressed="true">All posts</button><button class="chip" type="button" data-feed="mine" aria-pressed="false">My posts</button></div>
-        <div id="feed">${loading(120)}${loading(120)}</div>
       </div>`);
-    attachMention(root.querySelector('#post-body'));
+    // composer auto-grows with the draft (starts one line, caps at the CSS max-height)
+    const ta = root.querySelector('#post-body');
+    const growTa = () => { ta.style.height = 'auto'; ta.style.height = Math.min(180, ta.scrollHeight) + 'px'; };
+    ta.addEventListener('input', growTa);
+    attachMention(ta);  // @-mention autocomplete in the composer
     // photo attach
     let pendingImage = null;
     const photoInput = root.querySelector('#photo-input');
@@ -1987,7 +2015,7 @@
       await busy(btn, async () => {
         try {
           await api('/api/community', { body, kind, ref_id, image: pendingImage || undefined });
-          root.querySelector('#post-body').value = ''; root.querySelector('#post-strat').value = '';
+          root.querySelector('#post-body').value = ''; root.querySelector('#post-strat').value = ''; growTa();
           pendingImage = null; photoInput.value = ''; root.querySelector('#photo-preview').hidden = true;
           await load();
         } catch (e) { flash('#post-flash', e.message, 'bad'); }
@@ -1996,33 +2024,26 @@
     form.onsubmit = (e) => { e.preventDefault(); const ref = root.querySelector('#post-strat').value; submit(ref ? 'strategy' : 'note', ref || undefined); };
     form.querySelector('[data-share="pnl"]').onclick = () => submit('pnl');
     const feed = root.querySelector('#feed');
-    const renderReactions = (art, list) => {
-      const bar = art.querySelector('.reactions');
-      bar.innerHTML = (list || []).map((rx) => `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}" title="${esc(rxTitle(rx))}">${emojiHtml(rx.emoji)}<span class="n">${rx.count}</span></button>`).join('')
-        + `<button class="rx add" data-react-add aria-label="Add a reaction">${ICON.react}<i class="plus">+</i></button>`;
-    };
+    const renderReactions = (art, list) => { art.querySelector('.reactions').innerHTML = reactionChips(list); };
     const react = async (pid, art, emoji) => {
       try { const r = await api(`/api/community/${pid}/react`, { emoji }); renderReactions(art, r.reactions); }
       catch (err) { alert0(err.message); }
     };
     feed.addEventListener('click', async (e) => {
-      const rx = e.target.closest('.rx');
-      if (rx) {
-        const art = rx.closest('.post'); const pid = art.dataset.id;
-        if (rx.dataset.reactAdd !== undefined) { openEmojiPicker(rx, (emoji) => react(pid, art, emoji)); }
-        else if (rx.dataset.emoji) { react(pid, art, rx.dataset.emoji); }
-        return;
-      }
-      const btn = e.target.closest('.pact'); if (!btn) return;
-      const art = btn.closest('.post'); const pid = art.dataset.id;
-      if (btn.dataset.act === 'like') {
+      const addBtn = e.target.closest('[data-react-add]');
+      if (addBtn) { const art = addBtn.closest('.post'); openEmojiPicker(addBtn, (emoji) => react(art.dataset.id, art, emoji)); return; }
+      const chip = e.target.closest('.rx[data-emoji]');
+      if (chip) { const art = chip.closest('.post'); react(art.dataset.id, art, chip.dataset.emoji); return; }
+      const act = e.target.closest('[data-act]'); if (!act) return;
+      const art = act.closest('.post'); const pid = art.dataset.id;
+      if (act.dataset.act === 'like') {
         try {
           const r = await api(`/api/community/${pid}/like`, {});
-          btn.classList.toggle('on', r.liked); btn.setAttribute('aria-pressed', r.liked);
-          const c = btn.querySelector('.c'); const n = (parseInt(c.textContent || '0', 10) || 0) + (r.liked ? 1 : -1);
+          act.classList.toggle('on', r.liked); act.setAttribute('aria-pressed', r.liked);
+          const c = act.querySelector('.c'); const n = (parseInt(c.textContent || '0', 10) || 0) + (r.liked ? 1 : -1);
           c.textContent = n > 0 ? n : '';
         } catch (err) { alert0(err.message); }
-      } else if (btn.dataset.act === 'edit') {
+      } else if (act.dataset.act === 'edit') {
         const main = art.querySelector('.post-main'); const bodyEl = main.querySelector('.post-body');
         if (main.querySelector('.edit-form')) return;
         const current = bodyEl.textContent;
@@ -2046,12 +2067,15 @@
         if (!box.hidden) { box.hidden = true; return; }
         box.hidden = false; box.innerHTML = loading(40);
         const d = await api(`/api/community/${pid}/comments`).catch(() => ({ comments: [] }));
-        const many = d.comments.length > 6;
+        const many = d.comments.length > 6;      // search bar once a thread gets long
         const PAGE = 10;
         box.innerHTML = `${many ? '<div class="cmt-search"><input class="input" type="search" placeholder="Search replies…" aria-label="Search replies"><span class="cmt-count"></span></div>' : ''}
           ${d.comments.length > PAGE ? '<button type="button" class="btn sm cmt-more"></button>' : ''}
           <div class="cmt-list">${d.comments.map((c) => `<div class="cmt">${avatar(c.picture, c.author)}<div><b>${authorLine(c.author, c.username)}</b> <span class="when">${when(c.created_at)}</span><p>${mdLite(c.body)}</p></div></div>`).join('')}</div>
           <form class="cmt-form"><input class="input" maxlength="1000" placeholder="Write a reply…" required><button class="btn sm" type="submit">Reply</button></form>`;
+        // Show the latest 10 (newest stay by the reply box); "Load earlier" reveals older in 10s.
+        // Search (when present) filters the whole loaded set. ponytail: client-side over the ≤100
+        // fetched — add a server offset if a thread ever tops that cap.
         const cmtSearch = box.querySelector('.cmt-search input');
         const count = box.querySelector('.cmt-count');
         const moreBtn = box.querySelector('.cmt-more');
@@ -2062,24 +2086,27 @@
           let matched = 0;
           items.forEach((el, i) => {
             const hit = !q || el.textContent.toLowerCase().includes(q);
-            el.hidden = !hit || (!q && i < items.length - limit);
+            el.hidden = !hit || (!q && i < items.length - limit);  // keep the newest `limit`
             if (hit) matched++;
           });
           if (count) count.textContent = q ? `${matched} of ${items.length}` : '';
-          if (moreBtn) { const rest = items.length - limit; moreBtn.hidden = !!q || rest <= 0; moreBtn.textContent = `Load ${Math.min(PAGE, rest)} earlier`; }
+          if (moreBtn) {
+            const rest = items.length - limit;
+            moreBtn.hidden = !!q || rest <= 0;
+            moreBtn.textContent = `Load ${Math.min(PAGE, rest)} earlier`;
+          }
         };
         if (cmtSearch) cmtSearch.oninput = applyView;
         if (moreBtn) moreBtn.onclick = () => { limit += PAGE; applyView(); };
         applyView();
-        attachMention(box.querySelector('.cmt-form input'));
+        attachMention(box.querySelector('.cmt-form input'));  // @-mention in replies
         box.querySelector('.cmt-form').onsubmit = async (ev) => {
           ev.preventDefault();
-          const form = ev.currentTarget;
-          const inp = form.querySelector('input'); const body = inp.value.trim(); if (!body) return;
-          await busy(form.querySelector('button'), async () => {
+          const frm = ev.currentTarget;  // scope to the form — the search box is also an <input> in this box
+          const inp = frm.querySelector('input'); const body = inp.value.trim(); if (!body) return;
+          await busy(frm.querySelector('button'), async () => {
             try { await api(`/api/community/${pid}/comments`, { body }); inp.value = '';
-              const cc = art.querySelector('[data-act="comments"] .c'); cc.textContent = (parseInt(cc.textContent || '0', 10) || 0) + 1;
-              box.hidden = true; box.innerHTML = '';
+              await load(true);  // refresh reply counts + thread affordance (also re-collapses the thread)
             } catch (err) { alert0(err.message); }
           });
         };
@@ -2091,8 +2118,13 @@
       // or anything in the feed is focused (unless this is the first/explicit render).
       if (!force && (feed.querySelector('.cmt-form') || feed.contains(document.activeElement))) return;
       const d = await api('/api/community' + (mineOnly ? '?mine=1' : ''));
-      const html = d.posts.length ? d.posts.map(postCard).join('')
-        : `<div class="empty"><h3>${mineOnly ? 'You haven’t posted yet' : 'No posts yet'}</h3></div>`;
+      const html = d.posts.length ? d.posts.map((p, i) => {
+        const prev = d.posts[i - 1];  // the post just above (newer) — a run by one author groups under it
+        const grouped = !!prev && !!p.username && prev.username === p.username
+          && Math.abs(new Date(prev.created_at) - new Date(p.created_at)) < GROUP_WINDOW;
+        return postCard(p, grouped);
+      }).join('')
+        : `<div class="empty"><h3>${mineOnly ? 'You haven’t posted yet' : 'No posts yet'}</h3><p>${mineOnly ? 'Share a strategy an agent found or how your book is doing — it’ll show up here.' : 'Be the first. Share a strategy an agent found, drop an idea worth researching, or post how your paper book is doing.'}</p></div>`;
       if (html === lastFeed) return;  // nothing changed — don't re-render (avoids flicker)
       lastFeed = html;
       feed.innerHTML = html;

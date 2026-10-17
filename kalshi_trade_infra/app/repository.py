@@ -1200,14 +1200,17 @@ def list_posts(cur, viewer_id: int, before_id: int = 0, limit: int = 30, mine_on
 
 def reactions_for(cur, post_ids: List[int], viewer_id: int) -> Dict[int, List[Dict]]:
     """Per-post emoji counts (+ whether the viewer added each, + up to 8 reactor
-    names for the hover tooltip), most-used first."""
+    names and @handles for the hover tooltip), most-used first. The names/handles ride
+    along in the feed payload so the tooltip renders from already-loaded data with no
+    per-hover round-trip. One grouped query for the whole page of posts (no N+1)."""
     if not post_ids:
         return {}
     marks = ",".join(["%s"] * len(post_ids))
     # SEPARATOR is the unit-separator char (never in a name); SUBSTRING_INDEX caps the list.
     cur.execute(
         "SELECT r.post_id, r.emoji, COUNT(*) AS n, MAX(r.user_id=%s) AS mine, "
-        "SUBSTRING_INDEX(GROUP_CONCAT(u.name ORDER BY r.created_at SEPARATOR 0x1f), 0x1f, 8) AS names "
+        "SUBSTRING_INDEX(GROUP_CONCAT(u.name ORDER BY r.created_at SEPARATOR 0x1f), 0x1f, 8) AS names, "
+        "SUBSTRING_INDEX(GROUP_CONCAT(COALESCE(u.username,'') ORDER BY r.created_at SEPARATOR 0x1f), 0x1f, 8) AS handles "
         "FROM app_post_reactions r JOIN app_users u ON u.id=r.user_id "
         "WHERE r.post_id IN (%s) GROUP BY r.post_id, r.emoji "
         "ORDER BY n DESC, r.emoji" % ("%s", marks),
@@ -1216,8 +1219,10 @@ def reactions_for(cur, post_ids: List[int], viewer_id: int) -> Dict[int, List[Di
     out: Dict[int, List[Dict]] = {}
     for r in cur.fetchall():
         names = [n for n in (r.get("names") or "").split("\x1f") if n]
+        handles = [h for h in (r.get("handles") or "").split("\x1f") if h]
         out.setdefault(r["post_id"], []).append(
-            {"emoji": r["emoji"], "count": int(r["n"]), "mine": bool(r["mine"]), "names": names})
+            {"emoji": r["emoji"], "count": int(r["n"]), "mine": bool(r["mine"]),
+             "names": names, "handles": handles})
     return out
 
 

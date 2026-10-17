@@ -758,17 +758,40 @@ body.landing-body { background: #FBFBFA; }
 
 /* ===================== COMMUNITY (Kursbuch) ===================== */
 .feedwrap { max-width: 680px; margin: 0 auto; }
-.composer-post { display: grid; gap: 12px; }
-.composer-post textarea { min-height: 58px; }
+.feedwrap .feed-filter { margin: 0 2px 12px; }
+#feed { padding-bottom: 6px; }
+/* Composer pinned to the bottom (chat-style): the feed scrolls above it, it floats
+   over the last post with its own elevation. Sticky, so it drops into flow when the feed is short. */
+.composer-post { display: grid; gap: 10px; position: sticky; bottom: 12px; z-index: 8; margin-top: 14px; background: var(--stock-raised); border: 1px solid var(--ink); box-shadow: 0 10px 30px rgba(0,0,0,.18); }
+.composer-post textarea { min-height: 40px; max-height: 180px; resize: none; }
 .post-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .post-tools select { max-width: 280px; }
 .post-tools .btn { margin-left: auto; }
 .post-tools .btn + .btn { margin-left: 8px; }
 #feed { display: grid; gap: 0; margin-top: 18px; }
-.post { border-bottom: 1px solid var(--rule); padding: 16px 0; background: transparent; }
-.post-head { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+/* Slack-style message row: avatar gutter + content column. Hover lifts the whole row and
+   floats an action toolbar; grouped posts are tight continuations of the author above. */
+.post { position: relative; display: grid; grid-template-columns: 42px 1fr; gap: 10px; padding: 7px 10px; margin: 0 -10px; border-radius: 7px; background: transparent; }
+.post:hover { background: var(--stock-raised); }
+.post + .post:not(.grouped) { margin-top: 6px; }
+.post.grouped { padding-top: 2px; padding-bottom: 2px; }
+.post-gutter { grid-column: 1; display: flex; justify-content: center; padding-top: 2px; }
+.gutter-time { font-family: var(--f-nar); font-size: 11px; line-height: 1.7; color: var(--ink-3); font-variant-numeric: tabular-nums; opacity: 0; transition: opacity .08s var(--ease); }
+.post.grouped:hover .gutter-time { opacity: 1; }
+.post-col { grid-column: 2; min-width: 0; }
+.post-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; flex-wrap: wrap; }
 .post-head b { font-weight: 600; }
-.post-head .when, .cmt .when { color: var(--ink-3); font-size: 12px; margin-left: 8px; font-family: var(--f-nar); letter-spacing: .02em; }
+.post-head .when { color: var(--ink-3); font-size: 12px; font-family: var(--f-nar); letter-spacing: .02em; }
+.cmt .when { color: var(--ink-3); font-size: 12px; margin-left: 6px; font-family: var(--f-nar); letter-spacing: .02em; }
+/* Hover toolbar — instant (CSS :hover), no JS fetch; sits at the message's top-right. */
+.hoverbar { position: absolute; top: -12px; right: 10px; display: flex; background: var(--stock-raised); border: 1px solid var(--rule-2); border-radius: 8px; box-shadow: 0 6px 16px -8px rgba(25,27,22,.4); opacity: 0; transform: translateY(3px); pointer-events: none; transition: opacity .09s var(--ease), transform .09s var(--ease); z-index: 4; }
+.post:hover .hoverbar, .hoverbar:focus-within { opacity: 1; transform: none; pointer-events: auto; }
+.hbtn { display: grid; place-items: center; width: 32px; height: 29px; border: 0; background: none; cursor: pointer; color: var(--ink-3); }
+.hbtn + .hbtn { border-left: 1px solid var(--rule); }
+.hbtn:first-child { border-radius: 7px 0 0 7px; }
+.hbtn:last-child { border-radius: 0 7px 7px 0; }
+.hbtn:hover { color: var(--ink); background: var(--stock-sunk); }
+.hbtn svg { width: 17px; height: 17px; pointer-events: none; }
 .pfp { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex: none; background: var(--stock-sunk); }
 .pfp.ph { display: grid; place-items: center; font-weight: 600; font-size: 14px; color: var(--ink-2); border: 1px solid var(--rule-2); }
 .post-body { font-size: 15px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -780,8 +803,9 @@ a.snap:hover { border-color: var(--ink-3); }
 .snap-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 13.5px; }
 .snap-row span { color: var(--ink-3); }
 /* Emoji reactions */
-.reactions { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; }
-.rx { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; min-height: 28px; border: 1px solid var(--rule-2); border-radius: 999px; background: var(--stock-raised); cursor: pointer; font-size: 14px; line-height: 1; transition: border-color .12s, background .12s; }
+.reactions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.reactions:empty { display: none; }
+.rx { position: relative; display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; min-height: 28px; border: 1px solid var(--rule-2); border-radius: 999px; background: var(--stock-raised); cursor: pointer; font-size: 14px; line-height: 1; transition: border-color .12s, background .12s; }
 .rx .n { font-family: var(--f-nar); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--ink-2); }
 .rx:hover { border-color: var(--ink-3); }
 .rx.on { background: var(--signal-wash); border-color: var(--signal); }
@@ -790,6 +814,10 @@ a.snap:hover { border-color: var(--ink-3); }
 .rx.add svg { width: 17px; height: 17px; }
 .rx.add .plus { font-style: normal; font-family: var(--f-nar); font-weight: 700; font-size: 11px; align-self: flex-start; margin-top: 1px; line-height: 1; }
 .rx.add:hover { color: var(--ink); border-color: var(--ink-3); }
+/* Reactor tooltip — preloaded names, shown instantly on :hover (no per-hover fetch). */
+.rxtip { position: absolute; left: 50%; bottom: calc(100% + 9px); transform: translateX(-50%); z-index: 20; width: max-content; max-width: 240px; padding: 6px 10px; border-radius: 6px; background: var(--ink); color: var(--stock-raised); font-family: var(--f-nar); font-size: 11.5px; font-weight: 400; line-height: 1.4; letter-spacing: .01em; text-align: center; white-space: normal; box-shadow: 0 8px 20px -8px rgba(25,27,22,.5); opacity: 0; pointer-events: none; transition: opacity .06s; }
+.rxtip::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--ink); }
+.rx:hover .rxtip, .rx:focus-visible .rxtip { opacity: 1; }
 .tau-emoji { display: inline-flex; }
 .tau-emoji svg { width: 18px; height: 18px; display: block; transform-origin: center; animation: tshake .38s linear infinite; }
 @keyframes tshake { 0%, 100% { transform: translateX(0) rotate(0) scale(1); } 15% { transform: translateX(-1.6px) rotate(-17deg) scale(1.12); } 30% { transform: translateX(1.6px) rotate(15deg) scale(1.08); } 45% { transform: translateX(-1.6px) rotate(-16deg) scale(1.12); } 60% { transform: translateX(1.4px) rotate(13deg) scale(1.06); } 75% { transform: translateX(-1px) rotate(-10deg) scale(1.04); } 90% { transform: rotate(6deg); } }
@@ -798,14 +826,11 @@ a.snap:hover { border-color: var(--ink-3); }
 .ep { display: inline-flex; align-items: center; justify-content: center; font-size: 20px; line-height: 1; padding: 6px; border: 0; background: none; border-radius: 4px; cursor: pointer; }
 .ep:hover { background: var(--stock-sunk); }
 .ep .tau-emoji svg { width: 22px; height: 22px; }
-.post-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
-.pact { display: inline-flex; align-items: center; gap: 7px; background: none; border: 0; padding: 6px 10px; cursor: pointer; color: var(--ink-3); font-family: var(--f-nar); font-size: 12.5px; letter-spacing: .04em; }
-.pact:hover { color: var(--ink); background: var(--stock-raised); }
-.pact svg { width: 17px; height: 17px; }
-.pact.like.on { color: var(--signal); }
-.pact.like.on svg { fill: var(--signal); stroke: var(--signal); }
-.pact .c { min-width: 8px; font-variant-numeric: tabular-nums; }
-.comments { margin-top: 12px; border-top: 1px dashed var(--rule-2); padding-top: 12px; display: grid; gap: 12px; }
+/* Thread affordance — appears under a message once it has replies (Slack-style). */
+.thread-link { display: inline-flex; align-items: center; gap: 7px; margin-top: 7px; padding: 4px 11px 4px 9px; border: 1px solid var(--rule); border-radius: 999px; background: none; cursor: pointer; color: var(--ink-2); font-family: var(--f-nar); font-size: 12.5px; letter-spacing: .02em; }
+.thread-link:hover { border-color: var(--ink-3); color: var(--ink); background: var(--stock-raised); }
+.thread-link svg { width: 15px; height: 15px; }
+.comments { margin-top: 8px; border-left: 1px solid var(--rule); padding: 6px 0 2px 14px; display: grid; gap: 14px; }
 .cmt { display: flex; gap: 10px; }
 .cmt .pfp { width: 28px; height: 28px; font-size: 12px; }
 .cmt b { font-weight: 600; font-size: 13.5px; }
@@ -845,7 +870,6 @@ a.snap:hover { border-color: var(--ink-3); }
 .edit-form { display: grid; gap: 8px; margin-top: 4px; }
 .edit-form textarea { min-height: 70px; }
 .edit-actions { display: flex; gap: 8px; justify-content: flex-end; }
-.pact svg { pointer-events: none; }
 
 /* ── Hot Markets left rail — the engagement spine (Kursbuch: ruled, no shadow) ───── */
 :root { --rail: 0px; }
