@@ -40,6 +40,8 @@ class LedgerCursor:
             h, rid = p
             self._last = [dict(r) for r in self.t["app_experiments"]
                           if r["hypothesis_hash"] == h and r["run_id"] == rid]
+        elif s.startswith("SELECT * FROM app_experiments WHERE id=%s"):
+            self._last = [dict(r) for r in self.t["app_experiments"] if r["id"] == p[0]][:1]
         elif s.startswith("SELECT * FROM app_experiments WHERE strategy_id=%s"):
             sid = p[0]
             rows = [dict(r) for r in self.t["app_experiments"] if r["strategy_id"] == sid]
@@ -181,6 +183,18 @@ def test_preregister_idempotent_hit_repoints_strategy_id(cur):
     assert rr.experiments_for_strategy(cur, 22) is not None   # new strategy's paper resolves
     # the frozen spec is untouched — only the strategy_id linkage moved
     assert rr.get_experiment(cur, 7, "h1")["spec"] == {"a": 1}
+
+
+def test_experiments_for_strategy_resolves_by_stored_experiment_id(cur):
+    # After a re-hit re-points app_experiments.strategy_id at the LATEST strategy (22), the earlier
+    # strategy (11) no longer resolves by the legacy strategy_id lookup — but its stored
+    # experiment_id does, so its research-paper page still renders deep (not the shallow fallback).
+    eid = rr.preregister(cur, _prereg(strategy_id=11))
+    rr.preregister(cur, _prereg(strategy_id=22))               # same frozen spec re-points to 22
+    assert rr.experiments_for_strategy(cur, 11) is None        # legacy lookup: 11 lost the link
+    assert rr.experiments_for_strategy(cur, 11, eid) is not None  # stored experiment_id resolves
+    assert rr.experiment_by_id(cur, eid)["experiment"]["id"] == eid
+    assert rr.experiment_by_id(cur, 999) is None               # unknown id -> None, no error
 
 
 def test_get_experiment_parses_json(cur):

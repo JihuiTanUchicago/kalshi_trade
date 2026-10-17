@@ -555,14 +555,17 @@ def insert_strategy(
     return cur.lastrowid
 
 
-def set_strategy_outcome(cur, strategy_id: int, status: str, result: Optional[Dict]) -> None:
+def set_strategy_outcome(cur, strategy_id: int, status: str, result: Optional[Dict],
+                         experiment_id: Optional[int] = None) -> None:
     """Record a strategy's final status/result after the gatekeeper's verdict. The research loop
     inserts the row first (so the immutable experiment can carry its strategy_id), then writes
-    the classification-derived outcome here once judging returns. Status/result only — the
+    the classification-derived outcome here once judging returns. `experiment_id` is the robust
+    link back to the pre-registration this strategy was validated under — the research-paper page
+    resolves by it first (surviving a re-hit re-point). Status/result/experiment_id only — the
     row's identity fields are never touched."""
     cur.execute(
-        "UPDATE app_strategies SET status=%s, result_json=%s WHERE id=%s",
-        (status, _json(result), strategy_id),
+        "UPDATE app_strategies SET status=%s, result_json=%s, experiment_id=%s WHERE id=%s",
+        (status, _json(result), experiment_id, strategy_id),
     )
 
 
@@ -595,7 +598,7 @@ def list_strategies(
 ) -> List[Dict]:
     where, fparams = _strategy_filter_sql(direction, status, market, run_id, q, deployed)
     sql = ("""SELECT s.id, s.run_id, s.parent_id, s.market, s.direction, s.title, s.thesis, s.spec_json, s.status,
-                    s.result_json, s.created_at, r.hypotheses_tried, s.shared_from_user_id, su.name AS shared_from_name,
+                    s.result_json, s.experiment_id, s.created_at, r.hypotheses_tried, s.shared_from_user_id, su.name AS shared_from_name,
                     (SELECT COUNT(*) FROM app_deployments d WHERE d.strategy_id=s.id AND d.status<>'stopped') AS active_deps,
                     (SELECT COUNT(*) FROM app_deployments d WHERE d.strategy_id=s.id AND d.status<>'stopped' AND d.mode='live') AS live_deps
              FROM app_strategies s LEFT JOIN app_agent_runs r ON r.id=s.run_id
@@ -716,7 +719,7 @@ def mark_notifications_read(cur, user_id: int) -> int:
 def get_strategy(cur, user_id: int, strategy_id: int) -> Optional[Dict]:
     cur.execute(
         """SELECT s.id, s.run_id, s.parent_id, s.market, s.direction, s.title, s.thesis, s.spec_json, s.status,
-                  s.result_json, s.created_at, r.hypotheses_tried, s.shared_from_user_id, su.name AS shared_from_name
+                  s.result_json, s.experiment_id, s.created_at, r.hypotheses_tried, s.shared_from_user_id, su.name AS shared_from_name
            FROM app_strategies s LEFT JOIN app_agent_runs r ON r.id=s.run_id
                 LEFT JOIN app_users su ON su.id=s.shared_from_user_id
            WHERE s.id=%s AND s.user_id=%s""",

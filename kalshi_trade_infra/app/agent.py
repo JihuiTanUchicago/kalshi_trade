@@ -798,7 +798,7 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
                 cls = outcome["classification"]
                 status = _status_for(cls)
                 passed += status == "passed"
-                repo.set_strategy_outcome(cur, t["strategy_id"], status, _result_block(s, t, cls))
+                repo.set_strategy_outcome(cur, t["strategy_id"], status, _result_block(s, t, cls), exp_ids[i])
                 # The stats go to the FEED (the user's own results, same as the strategy page) — NOT
                 # into _result_block, which feeds strategy_memory back to the GENERATOR. The generator
                 # stays blind to the held-out numbers (closes Leak 2); the human watching does not.

@@ -54,8 +54,8 @@ class Store:
         self.strategies.append({"title": title, "status": status, "result": result, "spec": spec, "parent": parent})
         return len(self.strategies)
 
-    def _set_outcome(self, cur, strategy_id, status, result):
-        self.strategies[strategy_id - 1].update(status=status, result=result)
+    def _set_outcome(self, cur, strategy_id, status, result, experiment_id=None):
+        self.strategies[strategy_id - 1].update(status=status, result=result, experiment_id=experiment_id)
 
     def _preregister(self, cur, pre):
         self._exp += 1
