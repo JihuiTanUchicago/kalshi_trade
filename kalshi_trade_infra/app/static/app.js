@@ -2824,26 +2824,82 @@
   // The float is the single home for autopilot: the on/off toggle, live controls, and the agent
   // chat. The expanded shell is built ONCE; the 20s status poll updates only dynamic bits so it
   // never wipes the chat/composer. apChatTimer polls chat (3s) only while expanded.
-  let apChatLastId = 0, apChatTimer = null;
+  let apChatLastId = 0, apChatTimer = null, apFeedFirst = true;
   function apStopChat() { if (apChatTimer) { clearInterval(apChatTimer); apChatTimer = null; } }
-  function apMsgHtml(m) {
-    const who = m.role === 'user' ? 'You' : m.role === 'agent' ? 'Agent' : 'Tau';
-    const prop = m.proposal_id ? `<div class="proposal" data-prop="${m.proposal_id}">${m.proposal_status === 'pending'
-      ? `<button class="btn small" data-decide="approve">Approve</button><button class="btn ghost small" data-decide="reject">Decline</button>`
-      : `<span class="state ${m.proposal_status === 'applied' ? 'gain' : ''}">${m.proposal_status === 'applied' ? 'Applied' : 'Declined'}</span>`}</div>` : '';
-    return `<div class="msg ${m.role}" data-id="${m.id}"><span class="who">${who} · ${clock(m.created_at)}</span>${esc(m.content)}${prop}</div>`;
+  // The autopilot's autonomous moves, keyed by the proposal kind on a system line — the clear,
+  // plain verb a reader scans ("Promoted", "Tuned"), plus the timeline lane that tints the node.
+  // No proposal on a system line = a review/holding/blocked note (nothing was changed).
+  const AP_ACT = {
+    research: 'Research', deploy: 'Promoted to paper', deploy_live: 'Promoted to live',
+    adjust: 'Tuned strategy', set_risk: 'Tuned risk', set_exec: 'Tuned execution',
+    pause: 'Paused', resume: 'Resumed',
+  };
+  // One feed entry, rendered with the SAME research-session parts (.ln timeline rail, .say card,
+  // feedMd markdown, lane tint) so the autopilot reads as one family with the research log —
+  // a legible end-to-end session, not a cramped chat. m.content is Markdown; m.stage/m.strategy/
+  // m.detail are OPTIONAL structured fields the backend can add later (see the note in PLAN.md).
+  function apFeedLi(m) {
+    const li = document.createElement('li');
+    const t = `<time>${clock(m.created_at)}</time><span class="node" aria-hidden="true"></span>`;
+    if (m.role === 'user') {
+      li.className = 'ln lane-state apf-you';
+      li.innerHTML = `${t}<div class="say"><span class="say-kind">You</span>${mdLite(m.content)}</div>`;
+      return li;
+    }
+    if (m.role !== 'system') {   // the agent's think-aloud reasoning
+      li.className = 'ln lane-think apf-think';
+      li.innerHTML = `${t}<div class="say"><span class="say-kind">Agent</span><div class="apf-md">${feedMd(m.content)}</div></div>`;
+      return li;
+    }
+    // A system line = an autopilot action (or a blocked/holding note).
+    const kind = AP_ACT[m.proposal_kind] || 'Reviewed';
+    const st = m.proposal_status;
+    const lane = !m.proposal_id ? 'state' : st === 'pending' ? 'review' : st === 'applied' ? 'action' : 'void';
+    const stamp = st === 'applied' ? '<span class="hx-stamp pass">Applied</span>'
+      : st === 'declined' || st === 'rejected' ? '<span class="hx-stamp rej">Declined</span>' : '';
+    const stage = m.stage ? `<span class="hx-tag">${esc(m.stage)}</span>` : '';
+    const title = m.strategy ? `<b class="say-title">${esc(m.strategy)}</b>` : '';
+    const detail = m.detail ? `<details class="hx-more"><summary>Show the detail</summary><div class="hx-body"><div class="apf-md">${feedMd(m.detail)}</div></div></details>` : '';
+    const ctl = (m.proposal_id && st === 'pending')
+      ? `<div class="proposal" data-prop="${m.proposal_id}"><button class="btn small" data-decide="approve">Approve</button><button class="btn ghost small" data-decide="reject">Decline</button></div>` : '';
+    li.className = 'ln lane-' + lane + ' apf-act';
+    li.innerHTML = `${t}<div class="say">
+      <div class="hx-head"><span class="say-kind">${esc(kind)}</span>${title}${stage}${stamp}</div>
+      <div class="apf-md">${feedMd(m.content)}</div>${detail}${ctl}</div>`;
+    return li;
   }
   async function apLoadChat(box, full) {
     const msgs = box.querySelector('#apf-messages'); if (!msgs) return;
     let d; try { d = await api('/api/chat?after=' + (full ? 0 : apChatLastId)); } catch (e) { return; }
-    const nearBottom = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 80;
-    if (full) { msgs.innerHTML = ''; apChatLastId = 0; }
-    const typing = msgs.querySelector('.typing'); if (typing) typing.remove();
-    d.messages.forEach((m) => { apChatLastId = Math.max(apChatLastId, m.id); msgs.insertAdjacentHTML('beforeend', apMsgHtml(m)); });
-    if (!msgs.children.length) msgs.innerHTML = '<div class="msg system">Ask about your deployments or tell the agent what to change — it backtests every change before applying it.</div>';
-    if (d.agent_busy) msgs.insertAdjacentHTML('beforeend', '<div class="typing" aria-label="Agent is thinking"><i></i><i></i><i></i></div>');
-    const st = box.querySelector('#apf-agentstate'); if (st) st.textContent = d.agent_busy ? 'thinking…' : '';
-    if (nearBottom || full) msgs.scrollTop = msgs.scrollHeight;
+    const stick = full || msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 70;
+    if (full) { msgs.innerHTML = ''; apChatLastId = 0; apFeedFirst = true; }
+    const empty = msgs.querySelector('.ap-empty'); if (empty && d.messages.length) empty.remove();
+    msgs.querySelectorAll('.apf-typing').forEach((n) => n.remove());
+    d.messages.forEach((m) => {
+      apChatLastId = Math.max(apChatLastId, m.id);
+      const li = apFeedLi(m);
+      if (!apFeedFirst) li.classList.add('in');   // backlog lands silently; new moves rise in
+      msgs.appendChild(li);
+    });
+    if (d.messages.length) apFeedFirst = false;
+    if (!msgs.children.length) msgs.innerHTML = '<li class="ap-empty">No autopilot activity yet. On its own schedule it reviews every deployment and open position, then works the whole pipeline end to end — researching angles, clearing strategies through the gates, promoting to paper or live, and tuning risk, execution and model params. Each move lands here as it happens. Message it below to steer.</li>';
+    // The live pulse — the research session's "working" signal, scoped to the operation.
+    const pulse = box.querySelector('#apf-pulse');
+    if (pulse) {
+      pulse.hidden = false;
+      pulse.className = 'runpulse apf-pulse-row';
+      pulse.innerHTML = d.agent_busy
+        ? '<span class="working" aria-hidden="true"></span><span>Working the operation<span class="ell" aria-hidden="true"></span></span>'
+        : `<span class="apf-idle-dot" aria-hidden="true"></span><span>${apIdleLine(box)}</span>`;
+    }
+    if (stick) msgs.scrollTop = msgs.scrollHeight;
+  }
+  // Idle pulse copy: lead with the autopilot's most recent move (from the status poll, always
+  // available even if chat is slow), else a plain "on a schedule" line.
+  function apIdleLine(box) {
+    const la = S.ap && S.ap.last_action;
+    if (la && la.at) return 'Idle · last move ' + sinceMin(la.at) + ' — reviews run on a schedule';
+    return 'Idle — reviews run automatically on a schedule';
   }
   function renderAutopilot(box, d) {
     if (!apExpanded()) {
@@ -2864,13 +2920,12 @@
     box.innerHTML = `
       <div class="apf-head"><span class="apf-dot" aria-hidden="true"></span><b id="apf-label"></b>
         <button type="button" class="apf-x" data-ap="toggle" aria-label="Collapse">${ICON.cross || '×'}</button></div>
-      <div class="apf-body">
+      <div class="apf-top">
         <div class="autopilot" id="apf-ap">
           <span id="apf-ap-copy"></span>
           <label class="switch"><span class="vh">Autopilot</span><input type="checkbox" id="apf-apswitch"></label>
         </div>
         <dl class="apf-stats" id="apf-stats"></dl>
-        <p class="apf-last" id="apf-last"></p>
         <div class="apf-gates hint" id="apf-gates"></div>
         <div id="apf-flash"></div>
         <div class="apf-controls" id="apf-controls"></div>
@@ -2879,16 +2934,17 @@
           <input class="input" name="confirm" autocomplete="off" aria-label="Type LIVE AUTOPILOT to confirm">
           <button class="btn sm" type="submit">Confirm live autopilot</button>
         </form>
-        <div class="apf-chat">
-          <div class="apf-chat-head"><b>Agent</b><span class="hint" id="apf-agentstate"></span></div>
-          <div class="messages" id="apf-messages" aria-live="polite"></div>
-          <form class="composer" id="apf-composer">
-            <label class="vh" for="apf-msg">Message the agent</label>
-            <textarea class="input" id="apf-msg" rows="1" maxlength="2000" placeholder="Message the agent…"></textarea>
-            <button class="btn" type="submit" aria-label="Send">${ICON.send}</button>
-          </form>
-        </div>
-      </div>`;
+      </div>
+      <div class="apf-session">
+        <div class="apf-session-head"><span class="say-kind">Live session</span><span class="apf-session-sub">everything the autopilot does, end to end</span></div>
+        <ol class="log stream apf-log" id="apf-messages" role="log" aria-label="Autopilot activity" aria-live="polite"></ol>
+        <div class="runpulse apf-pulse-row" id="apf-pulse" aria-live="polite" hidden></div>
+      </div>
+      <form class="composer apf-composer-row" id="apf-composer">
+        <label class="vh" for="apf-msg">Message the agent</label>
+        <textarea class="input" id="apf-msg" rows="1" maxlength="2000" placeholder="Tell the autopilot what to focus on…"></textarea>
+        <button class="btn" type="submit" aria-label="Send">${ICON.send}</button>
+      </form>`;
     box.querySelector('.apf-x').onclick = (e) => apAction(box, 'toggle', e);
     box.querySelector('#apf-confirm').onsubmit = (e) => { e.preventDefault(); apEnableLive(box, box.querySelector('#apf-confirm').confirm.value.trim()); };
     const sw = box.querySelector('#apf-apswitch');
@@ -2942,8 +2998,6 @@
       <div><dt>Running</dt><dd>${runTotal ? runParts.join(' · ') : 'None'}</dd></div>
       <div><dt>Live P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd></div>
       <div><dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd></div>`;
-    const last = box.querySelector('#apf-last');
-    if (last) { last.className = 'apf-last' + (d.last_action ? '' : ' hint'); last.textContent = d.last_action ? d.last_action.text : 'No autopilot actions yet.'; }
     const gates = box.querySelector('#apf-gates'); if (gates) gates.textContent = apLiveBlock(d);
     const controls = box.querySelector('#apf-controls');
     if (controls) {
