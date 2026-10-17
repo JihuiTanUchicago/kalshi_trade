@@ -562,6 +562,12 @@ def main() -> None:
         # Tau-RSI discovery tree: which prior hypothesis this one built on (NULL = root). Nullable
         # + unused for now (P1); the replay simulator and self-evolving policy populate it later.
         _add_column_if_missing(cur, "app_strategies", "parent_id", "ALTER TABLE app_strategies ADD COLUMN parent_id BIGINT NULL")
+        # Robust experiment<->strategy link: the full pipeline stamps the strategy with the id of
+        # the experiment it was pre-registered under (set in _gate_and_save). The research-paper
+        # page resolves by this first, so a strategy always renders ITS own experiment even after
+        # a re-hit re-points app_experiments.strategy_id at a later strategy row. NULL = a legacy
+        # or loose-path (backtest-only) strategy that never went through the gatekeeper.
+        _add_column_if_missing(cur, "app_strategies", "experiment_id", "ALTER TABLE app_strategies ADD COLUMN experiment_id BIGINT NULL")
         # Cross-day generalization breakdown (per-day/per-fold) the research-paper folds strip renders.
         _add_column_if_missing(cur, "app_experiment_results", "folds_json", "ALTER TABLE app_experiment_results ADD COLUMN folds_json JSON NULL AFTER equity_curve_json")
         # Cross-contract strategies spend from a SHARED FDR stream keyed on a combined key

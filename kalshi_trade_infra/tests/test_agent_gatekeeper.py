@@ -41,8 +41,8 @@ class FakeStore:
         self.strategies.append({"title": title, "status": status, "result": result, "spec": spec})
         return len(self.strategies)
 
-    def _set_outcome(self, cur, strategy_id, status, result):
-        self.strategies[strategy_id - 1].update(status=status, result=result)
+    def _set_outcome(self, cur, strategy_id, status, result, experiment_id=None):
+        self.strategies[strategy_id - 1].update(status=status, result=result, experiment_id=experiment_id)
 
     def _preregister(self, cur, pre):
         self.preregistered.append(pre)
@@ -92,6 +92,10 @@ def test_approved_finalist_is_preregistered_judged_and_mapped(monkeypatch):
     assert by_title["A"]["status"] == "passed" and by_title["B"]["status"] == "passed"
     assert by_title["Loser"]["status"] == "rejected"
     assert passed == 2
+    # Each passed strategy is robustly linked to the experiment it was validated under, so its
+    # research-paper page resolves even if a later re-hit re-points app_experiments.strategy_id.
+    assert by_title["A"]["experiment_id"] in exp_ids and by_title["B"]["experiment_id"] in exp_ids
+    assert by_title["Loser"].get("experiment_id") is None  # rejected non-finalist: never linked
     # The generator's stored result carries the classification LABEL and research metrics only —
     # never a held-out number.
     for s in store.strategies:

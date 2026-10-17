@@ -798,7 +798,7 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
                 cls = outcome["classification"]
                 status = _status_for(cls)
                 passed += status == "passed"
-                repo.set_strategy_outcome(cur, t["strategy_id"], status, _result_block(s, t, cls))
+                repo.set_strategy_outcome(cur, t["strategy_id"], status, _result_block(s, t, cls), exp_ids[i])
                 # The stats go to the FEED (the user's own results, same as the strategy page) — NOT
                 # into _result_block, which feeds strategy_memory back to the GENERATOR. The generator
                 # stays blind to the held-out numbers (closes Leak 2); the human watching does not.
@@ -1216,9 +1216,17 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         if not result["passed"]:
             failed = ", ".join(g["name"].lower() for g in result["gates"] if not g["ok"])
             return "I backtested a change to %s but it failed (%s), so I left it alone." % (dep["title"], failed), None
+        # NOT "passed": an adjustment is only a re-backtest — it never pre-registers, is never
+        # judged by the Statistical Gatekeeper, and carries no experiment. "passed" is reserved
+        # for the full-pipeline outcome (set_strategy_outcome <-> STAT_SUPPORTED <-> a linked
+        # experiment), so an adjustment gets the non-deployable "backtest-only" status. This is
+        # strictly stricter: the deploy/deploy_live gates require status=="passed" (AND a
+        # deployment candidate), so a backtest-only row can never be deployed afresh. The
+        # adjustment still applies to its existing deployment via the adjust proposal below
+        # (set_deployment_strategy), which never routes through the status=="passed" deploy gate.
         sid = repo.insert_strategy(
             cur, user_id, None, dep["strategy_id"], dep["market"], dep["direction"], dep["title"] + " (adjusted)",
-            reason, new_spec, "passed", result,
+            reason, new_spec, "backtest-only", result,
         )
         auto = autopilot and dep["mode"] == "paper" and not raises_risk(dep["spec"], new_spec)
         pid = repo.create_proposal(cur, user_id, "adjust", reason, dep["id"], sid, "applied" if auto else "pending")

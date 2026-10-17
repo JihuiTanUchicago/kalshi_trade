@@ -369,9 +369,27 @@ def experiment_records_for_replay(cur, user_id: int, market: str) -> List[Dict]:
     return cur.fetchall()
 
 
-def experiments_for_strategy(cur, strategy_id: int) -> Optional[Dict]:
-    """The experiment behind a strategy plus all its verdict rows, for the
-    research-paper page (§D). {"experiment": {...}, "results": [...]} or None."""
+def experiment_by_id(cur, experiment_id: int) -> Optional[Dict]:
+    """The experiment with this id plus all its verdict rows. The robust lookup for the
+    research-paper page: a strategy stores the id of the experiment it was validated under, so
+    this resolves ITS own experiment even after a re-hit re-pointed app_experiments.strategy_id
+    at a later strategy row. {"experiment": {...}, "results": [...]} or None."""
+    cur.execute("SELECT * FROM app_experiments WHERE id=%s LIMIT 1", (experiment_id,))
+    exp = _experiment_row(cur.fetchone())
+    if not exp:
+        return None
+    return {"experiment": exp, "results": results_for_experiment(cur, int(exp["id"]))}
+
+
+def experiments_for_strategy(cur, strategy_id: int, experiment_id: Optional[int] = None) -> Optional[Dict]:
+    """The experiment behind a strategy plus all its verdict rows, for the research-paper page
+    (§D). {"experiment": {...}, "results": [...]} or None. Resolves by the strategy's stored
+    `experiment_id` first (robust 1:1 link), falling back to the legacy strategy_id lookup so
+    strategies written before the link existed still resolve."""
+    if experiment_id:
+        rec = experiment_by_id(cur, int(experiment_id))
+        if rec:
+            return rec
     cur.execute("SELECT * FROM app_experiments WHERE strategy_id=%s ORDER BY id DESC LIMIT 1", (strategy_id,))
     exp = _experiment_row(cur.fetchone())
     if not exp:

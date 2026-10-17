@@ -54,8 +54,8 @@ class Store:
         self.strategies.append({"title": title, "status": status, "result": result, "spec": spec, "parent": parent})
         return len(self.strategies)
 
-    def _set_outcome(self, cur, strategy_id, status, result):
-        self.strategies[strategy_id - 1].update(status=status, result=result)
+    def _set_outcome(self, cur, strategy_id, status, result, experiment_id=None):
+        self.strategies[strategy_id - 1].update(status=status, result=result, experiment_id=experiment_id)
 
     def _preregister(self, cur, pre):
         self._exp += 1
@@ -189,6 +189,32 @@ def test_adjustment_that_fails_the_gates_is_not_proposed(monkeypatch):
     text, pid = agent.act(None, {"id": 1}, {"type": "adjust", "deployment_id": 3, "changes": {"side": "no"}}, False,
                           lambda m: _dataset(n_contracts=60))
     assert pid is None and "failed" in text
+
+
+def test_adjustment_is_backtest_only_not_passed_and_cannot_be_deployed(monkeypatch):
+    # An adjustment is only a re-backtest — it never goes through pre-registration or the
+    # gatekeeper, so it must NOT be minted "passed" (the status the deploy gates key on). It gets
+    # the non-deployable "backtest-only" status; the adjustment still applies to its deployment.
+    dep = {"id": 3, "title": "T", "status": "running", "mode": "paper", "market": "btc15m",
+           "direction": "volatility", "strategy_id": 9, "spec": agent.specmod.validate(WINNER)}
+    inserted = {}
+    r = agent.repo
+    monkeypatch.setattr(r, "get_deployment", lambda cur, uid, did: dict(dep))
+    monkeypatch.setattr(r, "insert_strategy",
+                        lambda cur, uid, run_id, parent, market, direction, title, thesis, spec, status, result:
+                        inserted.update(status=status) or 99)
+    monkeypatch.setattr(r, "create_proposal", lambda *a, **k: 1)
+    monkeypatch.setattr(r, "set_deployment_strategy", lambda *a: None)
+    ds = lambda m: _dataset(n_contracts=60)
+    agent.act(None, {"id": 1}, {"type": "adjust", "deployment_id": 3, "changes": {"entry": {"min_edge": 0.12}}}, True, ds)
+    assert inserted["status"] == "backtest-only"  # strictly stricter: not "passed"
+
+    # The deploy gate rejects it precisely because status != "passed" (never weakened/reordered).
+    monkeypatch.setattr(r, "get_strategy", lambda cur, uid, sid: {
+        "id": sid, "status": "backtest-only", "title": "T",
+        "spec": agent.specmod.validate(WINNER), "market": "btc15m"})
+    msg, pid = agent.act(None, {"id": 1}, {"type": "deploy", "strategy_id": 99}, False, ds)
+    assert pid is None and "passed" in msg
 
 
 def test_llm_error_type():

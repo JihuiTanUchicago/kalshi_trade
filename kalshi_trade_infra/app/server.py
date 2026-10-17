@@ -666,11 +666,12 @@ def _rationale(raw) -> Dict:
     }
 
 
-def _experiment_block(cur, strategy_id: int) -> Optional[Dict]:
+def _experiment_block(cur, strategy_id: int, experiment_id: Optional[int] = None) -> Optional[Dict]:
     """The §D research-paper `experiment` block for a strategy, or None when the strategy
-    predates the rigorous-research pipeline (no ledger row). Additive by design: a None
-    here leaves the rest of the detail page intact — never a regression for old strategies."""
-    rec = research_repo.experiments_for_strategy(cur, strategy_id)
+    predates the rigorous-research pipeline (no ledger row). Resolves by the strategy's stored
+    experiment_id first (robust link), falling back to the legacy strategy_id lookup. Additive by
+    design: a None here leaves the rest of the detail page intact — never a regression."""
+    rec = research_repo.experiments_for_strategy(cur, strategy_id, experiment_id)
     if not rec:
         return None
     exp = rec["experiment"]
@@ -712,7 +713,7 @@ def get_strategy(ctx: Ctx):
     out.update(
         spec=s["spec"], rules=specmod.describe(s["spec"]), gates=res.get("gates"), dataset=res.get("dataset"),
         recent_trades=res.get("recent_trades"),
-        experiment=_experiment_block(ctx.cur, s["id"]),
+        experiment=_experiment_block(ctx.cur, s["id"], s.get("experiment_id")),
         deployments=[_deployment_out(d, []) for d in repo.list_deployments(ctx.cur, ctx.uid) if d["strategy_id"] == s["id"]],
         holdings=[{
             "ticker": p["ticker"], "side": p["side"], "qty": int(p["qty"]), "mode": p["mode"],
