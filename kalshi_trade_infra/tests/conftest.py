@@ -104,6 +104,10 @@ class FakeCursor:
             symbol, start_ts, o, h, lo, c, v = params
             self.spot_candles[(symbol, int(start_ts))] = dict(
                 symbol=symbol, start_ts=int(start_ts), open=o, high=h, low=lo, close=c, volume=v)
+        elif s.startswith("SELECT DISTINCT symbol FROM spot_candles_1m WHERE symbol IN"):
+            want = set(params)
+            have = {sym for (sym, _ts) in self.spot_candles if sym in want}
+            self._last = [{"symbol": sym} for sym in sorted(have)]
         elif s.startswith("SELECT start_ts, close FROM spot_candles_1m WHERE symbol=%s AND start_ts >= %s"):
             symbol, since = params
             rows = [r for (sym, ts), r in self.spot_candles.items() if sym == symbol and ts >= int(since)]

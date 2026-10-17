@@ -15,6 +15,7 @@
     mark: TAU_MARK,
     dashboard: I('<rect x="3" y="4" width="18" height="7" rx="1"/><path d="M3 15h7v5H3zM14 15h7v5h-7z"/>'),
     research: I('<circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 6 6M8 10.5h5M10.5 8v5"/>'),
+    search: I('<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>'),
     strategies: I('<path d="M5 3h14v18l-2.3-1.6L14.3 21 12 19.4 9.7 21l-2.4-1.6L5 21z"/><path d="M9 8h6M9 12h6"/>'),
     deploy: I('<rect x="3" y="4" width="18" height="12" rx="1"/><path d="M8 20h8M12 16v4M7 12l3-3 2 2 4-4"/>'),
     funds: I('<path d="M3 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 7l12-3v3M16 13.5h2"/>'),
@@ -227,12 +228,58 @@
   const marketLabel = (k) => ((S.me && S.me.markets.find((m) => m.key === k)) || { label: k }).label;
   // Short, consistent chip labels for every market; unknown keys fall back to the
   // server's full label, never the raw key (keeps the market chips uniform).
-  const MKT_SHORT = { btc15m: 'BTC 15-min', btc_daily: 'BTC 5pm', eth15m: 'ETH 15-min', eth_daily: 'ETH 5pm', sol_daily: 'SOL 5pm', xrp_daily: 'XRP 5pm' };
+  const MKT_SHORT = { btc15m: 'BTC 15-min', btc_daily: 'BTC 5pm', eth15m: 'ETH 15-min', eth_daily: 'ETH 5pm', sol_daily: 'SOL 5pm', xrp_daily: 'XRP 5pm', nba_game: 'NBA winner' };
+  // Order the research picker groups by how often they're used; unknown categories fall to the end.
+  const MKT_CATS = ['Crypto', 'Sports', 'Bittensor'];
   const marketShort = (k) => (!k ? 'Agent’s choice' : MKT_SHORT[k] || marketLabel(k));
   // Link a strategy's market to its Kalshi series page.
   const marketKalshiUrl = (k) => { const m = (S.me && S.me.markets || []).find((x) => x.key === k); return m && m.series ? `https://kalshi.com/markets/${m.series.toLowerCase()}` : null; };
   const dirLabel = (k) => { if (!k) return 'Session'; const d = S.me && S.me.directions.find((x) => x.key === k); return d ? d.label : String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()); };
   const sessionTitle = (r) => (r.prompt && r.prompt.trim()) ? r.prompt.trim() : (dirLabel(r.direction) + ' \u00b7 ' + marketShort(r.market));
+
+  // Research market picker: Agent's choice leads, then markets grouped by category, with a
+  // live filter once the list grows past a handful. One radio group (name="market"), so the
+  // posted value is exactly what the old flat picker sent and native arrow-key navigation
+  // still runs across every market; a filtered-out option drops out of the tab/arrow order
+  // via [hidden]. Agent's choice always stays visible \u2014 it's the default, not a market.
+  function marketPicker(markets) {
+    const groups = {};
+    markets.forEach((m) => { (groups[m.category] || (groups[m.category] = [])).push(m); });
+    const cats = Object.keys(groups).sort((a, b) => {
+      const ia = MKT_CATS.indexOf(a), ib = MKT_CATS.indexOf(b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+    });
+    const opt = (value, name, lead) =>
+      `<label class="mkt-opt${lead ? ' lead' : ''}"><input type="radio" name="market" value="${esc(value)}"${value === '' ? ' checked' : ''}><span class="mkt-face"><b>${esc(name)}</b>${lead ? '<small>The agent picks the market that best fits your idea.</small>' : ''}</span></label>`;
+    const find = markets.length > 8;
+    return `<div class="mktpick">
+      ${find ? `<div class="mkt-find">${ICON.search}<label class="vh" for="mktfind">Filter markets</label><input class="input" type="search" id="mktfind" placeholder="Filter markets\u2026" autocomplete="off"></div>` : ''}
+      <div class="mkt-lead">${opt('', 'Agent\u2019s choice', true)}</div>
+      ${cats.map((c) => `<div class="mkt-group"><p class="mkt-group-h">${esc(c)}</p><div class="mkt-opts">${groups[c].map((m) => opt(m.key, marketShort(m.key), false)).join('')}</div></div>`).join('')}
+      <p class="mkt-none hint" hidden role="status">No market matches that filter.</p>
+    </div>`;
+  }
+  // Live filter for the picker above; no-op when the list was short enough to render no search box.
+  function wireMarketPicker(scope) {
+    const find = scope.querySelector('#mktfind');
+    if (!find) return;
+    const groups = [...scope.querySelectorAll('.mkt-group')];
+    const none = scope.querySelector('.mkt-none');
+    find.addEventListener('input', () => {
+      const q = find.value.trim().toLowerCase();
+      let shown = 0;
+      groups.forEach((g) => {
+        const cat = (g.querySelector('.mkt-group-h').textContent || '').toLowerCase();
+        let any = false;
+        g.querySelectorAll('.mkt-opt').forEach((o) => {
+          const hit = !q || cat.includes(q) || o.textContent.toLowerCase().includes(q);
+          o.hidden = !hit; if (hit) { any = true; shown++; }
+        });
+        g.hidden = !any;
+      });
+      if (none) none.hidden = shown > 0;
+    });
+  }
 
   // ---------- API ----------
   class ApiError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
@@ -1304,10 +1351,10 @@
             <input class="input" type="number" name="max_hypotheses" id="maxhyp" min="1" max="1000" value="10" style="width:92px"></label>
           <label class="switch" style="margin-top:18px"><input type="checkbox" name="run_forever" id="runforever" checked><span>Let it run until I stop it</span></label>
         </div>
-        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;justify-content:space-between">
-          <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="label" style="margin-bottom:6px">Market</legend>
-            <div class="choice"><label><input type="radio" name="market" value="" checked><span class="opt"><b>Agent's choice</b></span></label>${me.markets.map((m) => `<label><input type="radio" name="market" value="${m.key}"><span class="opt"><b>${esc(marketShort(m.key))}</b></span></label>`).join('')}</div>
-          </fieldset>
+        <fieldset class="field mkt-field" style="border:0;padding:0;margin:0"><legend class="label" style="margin-bottom:8px">Market</legend>
+          ${marketPicker(me.markets)}
+        </fieldset>
+        <div class="dispatch-go">
           <button class="btn primary" type="submit" ${me.needs_card ? 'aria-disabled="true"' : ''}>${ICON.spark2}Start session</button>
         </div>
         <div class="chips" aria-label="Try the demo"><button type="button" class="chip ex" data-ex="${esc(DEMO_PROMPT)}">${ICON.spark2}Try the demo \u2014 Todd's random walk</button></div>
@@ -1318,6 +1365,7 @@
         <div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div></section>`);
     root.querySelectorAll('[data-ex]').forEach((b) => { b.onclick = () => { const t = root.querySelector('textarea[name=prompt]'); t.value = b.dataset.ex; t.focus(); }; });
     const form = root.querySelector('#dispatch');
+    wireMarketPicker(form);
     const rf = form.querySelector('#runforever'), mh = form.querySelector('#maxhyp');
     if (rf && mh) {
       const syncRf = () => { mh.disabled = rf.checked; mh.style.opacity = rf.checked ? '.4' : ''; };

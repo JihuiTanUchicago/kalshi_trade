@@ -54,6 +54,21 @@ class Market:
     def decision_seconds(self) -> int:
         return self.candle_minutes * 60
 
+    @property
+    def category(self) -> str:
+        """Grouping label for the research market picker. Derived from the
+        market's own fields so a new market self-categorises with no extra
+        bookkeeping: a spot instrument is the TAO subnet-alpha research venue;
+        a binary with no underlying price settles on a real-world outcome (today
+        only the NBA moneyline); everything else is a crypto strike ladder.
+        Split the outcome bucket here (by series) when non-sports event markets
+        land - this is the one place category is decided."""
+        if self.kind == "spot":
+            return "Bittensor"
+        if self.underlying is None:
+            return "Sports"
+        return "Crypto"
+
     def is_target_event(self, close_time: datetime) -> bool:
         if self.close_hour_et is None:
             return True

@@ -170,6 +170,21 @@ def logout(ctx: Ctx):
 # -- read routes ---------------------------------------------------------------
 
 
+def _researchable_markets(cur) -> List[Dict]:
+    """Markets to offer in the research picker, each with its grouping category.
+
+    Dormant markets are hidden: a spot (TAO subnet-alpha) market only appears
+    once its taostats feed has written candles, so a research-only venue with no
+    data never shows up as a pickable market. Binary markets always have a feed."""
+    spot_underlyings = [m.underlying for m in MARKETS.values() if m.kind == "spot" and m.underlying]
+    live_spot = repo.spot_symbols_with_data(cur, spot_underlyings)
+    return [
+        {"key": m.key, "label": m.label, "series": m.series, "category": m.category}
+        for m in MARKETS.values()
+        if m.kind != "spot" or m.underlying in live_spot
+    ]
+
+
 def me(ctx: Ctx):
     return {
         "user": {
@@ -187,7 +202,7 @@ def me(ctx: Ctx):
         "needs_card": _needs_card(ctx),
         "free_bonus": float(billing.FREE_BONUS),
         "credit_balance": round(repo.credit_balance(ctx.cur, ctx.uid), 4),
-        "markets": [{"key": m.key, "label": m.label, "series": m.series} for m in MARKETS.values()],
+        "markets": _researchable_markets(ctx.cur),
         "directions": [{"key": k, **v} for k, v in agent.DIRECTIONS.items()],
     }
 
