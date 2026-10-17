@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.markets import FEATURES, MARKETS, MICRO_FEATURES, Snapshot, compatible_cadence
+from data_pipeline.kalshi_fees import taker_fee_per_contract_dollars
 
 OPS = (">", ">=", "<", "<=")
 MAX_FILTERS = 4
@@ -421,6 +422,7 @@ def side_prices(snap: Snapshot) -> Dict[str, Tuple[float, float]]:
 def entries(spec: Dict, snaps: List[Snapshot]) -> List[Entry]:
     """Every contract the rule would buy now, best edge first."""
     e = spec["entry"]
+    stake = spec["sizing"]["stake"]
     sides = ("yes", "no") if spec["side"] == "either" else (spec["side"],)
     out: List[Entry] = []
     for snap in snaps:
@@ -442,7 +444,14 @@ def entries(spec: Dict, snaps: List[Snapshot]) -> List[Entry]:
                 continue
             fair = p_yes if side == "yes" else 1.0 - p_yes
             edge = fair - price
-            if edge >= e["min_edge"] and (best is None or edge > best.edge):
+            # Net of Kalshi's actual taker fee at THIS fill price, for the order
+            # this spec would place (contracts_for is exactly how engine.py and
+            # backtest.py size, so backtest and live gate on the identical net
+            # edge). The fee peaks at the 50c mid; a gross gate systematically
+            # enters trades whose real edge is negative. Ranking stays on gross;
+            # only the accept test is net, so this is strictly stricter.
+            net = edge - taker_fee_per_contract_dollars(contracts_for(stake, price), price)
+            if net >= e["min_edge"] and (best is None or edge > best.edge):
                 best = Entry(snap, side, price, fair, edge)
         if best is not None:
             out.append(best)
@@ -558,6 +567,7 @@ def pair_entries(spec: Dict, snaps: List[Snapshot]) -> List[PairEntry]:
         return []
     pairing = cross["pairing"]
     e = spec["entry"]
+    stake = spec["sizing"]["stake"]
     scored = []  # (snap, p_yes, yes_ask, yes_bid)
     for s in snaps:
         f = s.features
@@ -588,9 +598,16 @@ def pair_entries(spec: Dict, snaps: List[Snapshot]) -> List[PairEntry]:
             continue
         srt = max(cand, key=lambda m: m[3] - m[1])               # NO edge = yes_bid - p_yes
         edge = (lng[1] - lng[2]) + (srt[3] - srt[1])
-        if edge < e["min_edge"]:
+        long_price, short_price = lng[2], 1 - srt[3]
+        # Both legs cross the book as takers, each paying a fee at its own fill
+        # price (YES ask on the long leg, NO price = 1 - yes_bid on the short),
+        # on the order this pair would place (contracts_for, as backtest/engine
+        # size it). Gate on the combined edge NET of both fees - strictly stricter.
+        qty = contracts_for(stake, long_price + short_price)
+        net = edge - taker_fee_per_contract_dollars(qty, long_price) - taker_fee_per_contract_dollars(qty, short_price)
+        if net < e["min_edge"]:
             continue
-        out.append(PairEntry(lng[0], srt[0], lng[2], 1 - srt[3], edge))
+        out.append(PairEntry(lng[0], srt[0], long_price, short_price, edge))
     out.sort(key=lambda x: x.edge, reverse=True)
     return out
 

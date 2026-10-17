@@ -15,6 +15,7 @@ from data_pipeline.architecture.execution_kernel import (
 )
 from data_pipeline.architecture.risk_engine import DummyRiskEngine, LiveSettingsRiskEngine
 from data_pipeline.common import api_get, api_get_auth, api_post_auth, get_db_conn, utc_now
+from data_pipeline.kalshi_fees import taker_fee_per_contract_dollars
 from data_pipeline.market_data import MarketFeed
 from data_pipeline.modeling_features import FEATURE_COLS, SOURCE_COLS, build_feature_vector, has_target
 from data_pipeline.simulated_trading_engine import (
@@ -219,7 +220,16 @@ def compute_buy_qty(prob: float, ask: float, cfg: Dict) -> int:
         return 0
     max_by_cost = int(float(cfg["max_trade_cost"]) / max(ask, 1e-6))
     scaled = int((edge / 0.03) * max_by_cost)
-    return max(0, min(max_by_cost, max(1, scaled)))
+    qty = max(0, min(max_by_cost, max(1, scaled)))
+    if qty <= 0:
+        return 0
+    # Stricter net-of-fee gate at THIS order's actual per-contract taker fee (it
+    # peaks at the 50c mid): a gross gate systematically enters trades whose real
+    # edge is negative. Identical net-of-fee rule as
+    # simulated_trading_engine.choose_qty (lockstep). Sizing above is unchanged.
+    if edge - taker_fee_per_contract_dollars(qty, ask) <= float(cfg["edge_threshold"]):
+        return 0
+    return qty
 
 
 # Kalshi retired the old order endpoint: POST /trade-api/v2/portfolio/orders
@@ -661,6 +671,11 @@ def run_loop() -> None:
                     prob = out.prob
                     edge_threshold = float(cfg["edge_threshold"])
                     edge = prob - ask
+                    # Coarse gross pre-filter (matches choose_qty's gross pre-check);
+                    # the authoritative net-of-fee entry gate is in compute_buy_qty
+                    # below, which sizes the order and rejects it if the edge is
+                    # negative net of the actual per-contract fee. No order is ever
+                    # placed on `signal` alone (see compute_buy_qty>0 guard below).
                     signal = prob >= float(cfg["signal_threshold"]) and edge > edge_threshold
                     already_paused = model_name in pause_states
 

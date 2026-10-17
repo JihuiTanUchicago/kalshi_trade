@@ -23,6 +23,7 @@ from sklearn.preprocessing import StandardScaler
 
 from data_pipeline.binary_theory import theoretical_p_yes
 from data_pipeline.common import get_db_conn, utc_now
+from data_pipeline.kalshi_fees import taker_fee_per_contract_dollars
 from data_pipeline.modeling_features import (
     BASELINE_FEATURE_COLS,
     FEATURE_COLS,
@@ -271,6 +272,12 @@ def choose_qty(
     if notional_cap is not None and price and price > 0:
         affordable = int(notional_cap / price)
         qty = max(0, min(qty, affordable))
+    # Stricter net-of-fee gate at THIS order's actual per-contract taker fee (it
+    # peaks at the 50c mid): the sim stops entering trades whose edge is positive
+    # gross but negative once the fee is paid. Identical net-of-fee rule as
+    # live_trading_engine.compute_buy_qty (lockstep). Sizing above is unchanged.
+    if price and qty > 0 and edge - taker_fee_per_contract_dollars(qty, price) <= edge_threshold:
+        return 0
     return qty
 
 
