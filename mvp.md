@@ -40,7 +40,6 @@ These are NOT done. Completed items move to **## Done** below.
 - `[v0.3]` Polymarket as a 2nd venue: data + API + real & simulation trading.
 - `[in progress]` Risk-management force-sell layer on drawdown + portfolio caps (lost when a prior background agent exited; needs rebuild).
 - `[built · gated — awaiting demo validation]` NO-side (and side="either") LIVE execution — execution places the correct leg (buy NO = sell-YES ask at 1−no_price, priced from the NO book, filled/settled in NO terms); every other live gate kept, in order. Live NO is gated behind `APP_NO_SIDE_LIVE_ENABLED` (default OFF) until the mechanics are validated on the real demo sandbox; demo/paper NO work now. **Next:** place a demo NO order, confirm correct side/fill, then flip the flag.
-- `[prod TODO]` Install `bwrap`/`firejail` on the Linux worker so **code strategies** are no longer inert (they fail-closed without an OS confiner, by design).
 
 ### From beta-tester feedback (2026-10-16) — user-first, deliver these greatly
 - **NBA / Kalshi sports markets** — let Tau research + trade Kalshi sports contracts (NBA to start, season kicking off); support comparing quantitative vs fundamental bets. New market family beyond BTC.
@@ -48,6 +47,10 @@ These are NOT done. Completed items move to **## Done** below.
 - `[blocked: AWS]` **Onboard Opus 5.5** (`claude-opus-5-5`) + surface model comparison — tester wants it for NBA season. Blocked on AWS Bedrock model access like the other premium models.
 
 ## Done
+### 2026-10-17
+- **Engine resilience fix** — one deployment's error (a stale-DB-connection blip, a bad key) in a trading tick no longer tears down the whole engine loop for everyone; a `decide()` exception now skips that deployment's tick and retries next slot. (Root-caused from a prod incident where an RDS outage thrash-restarted the engine.) Also: a live deployment paused for a genuinely-missing key now says "add your live Kalshi key" instead of the false "live trading is not enabled." (Deployed + live `cdd69d5`.)
+- **Community feed cleanup** — removed the post hover-highlight and the redundant top-right react/reply toolbar; actions stay bottom-left (reaction pills, add-emoji, reply/N-replies, Edit on own posts); the instant reactor tooltip is kept. (Deployed + live `cdd69d5`.)
+- **Sandbox confiner installed on the worker** — bubblewrap 0.10.0 installed and verified functional on the box, so arbitrary-quant **code strategies** now run in the kernel sandbox instead of being inert (fail-closed by design). (Done on prod.)
 ### 2026-10-16
 - **Order-book depth + microstructure exposed to research, with dataset provenance** — the 9 collected microstructure features (order-book imbalance, bid/ask sizes, recent trade flow, quote-change intensity, short-horizon mid returns) that lived in `model_features_1m` but were hidden are now in the `FEATURES` namespace a spec can filter on (leak-safe as-of the decision minute; degrades gracefully on NULLs). Every hypothesis also records its `data_provenance` (features + data sources used) in the experiment ledger — the audit behind "use any dataset, as long as we track it." (Deployed + live.)
 - **"Dig deeper" on a passed strategy (+ fixed the "stuck follow-up" bug)** — a passed strategy is no longer a dead end: `POST /api/strategies/{id}/dig-deeper` and a co-pilot `research` action branch a NEW pre-registered research line off it (seeds its thesis/spec, keeps the mechanism, refines/stress-tests/extends) through the normal gatekeeper — no bypass; branches link to the parent via `parent_id`. This also root-caused the beta tester's "follow-up got stuck": it was never a hang — the co-pilot simply had no way to continue research from a passed strategy, so it dead-ended; now it can. (Deployed + live.)
