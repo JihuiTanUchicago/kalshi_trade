@@ -1489,6 +1489,16 @@ def spot_symbols_with_data(cur, symbols) -> set:
     return {r["symbol"] for r in cur.fetchall()}
 
 
+def series_with_candles(cur) -> set:
+    """Series tickers that already have collected candle history — i.e. a real backtest
+    surface the research agent can actually test against. Used to flag which deployable
+    markets are ready to research versus still backfilling, so the picker can show the
+    whole universe and mark (never hide) the not-yet-ready ones. One bounded GROUP-BY,
+    same shape as history_freshness's."""
+    cur.execute("SELECT DISTINCT series_ticker FROM hist_markets WHERE candles_done=1")
+    return {r["series_ticker"] for r in cur.fetchall()}
+
+
 def history_freshness(cur) -> Dict[str, Optional[int]]:
     """Unix seconds of the newest BTC spot candle and newest settled market per series."""
     cur.execute("SELECT MAX(start_ts) AS t FROM spot_candles_1m WHERE symbol='BTC-USD'")

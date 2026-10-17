@@ -129,6 +129,10 @@ class FakeCursor:
             want = set(params)
             have = {sym for (sym, _ts) in self.spot_candles if sym in want}
             self._last = [{"symbol": sym} for sym in sorted(have)]
+        elif s.startswith("SELECT DISTINCT series_ticker FROM hist_markets WHERE candles_done=1"):
+            # No collected binary history in the fake DB: every deployable market reads
+            # as still-backfilling (has_data=False), which the picker tests don't assert on.
+            self._last = []
         elif s.startswith("SELECT start_ts, close FROM spot_candles_1m WHERE symbol=%s AND start_ts >= %s"):
             symbol, since = params
             rows = [r for (sym, ts), r in self.spot_candles.items() if sym == symbol and ts >= int(since)]

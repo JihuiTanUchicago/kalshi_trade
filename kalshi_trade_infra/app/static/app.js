@@ -228,20 +228,42 @@
   const marketLabel = (k) => ((S.me && S.me.markets.find((m) => m.key === k)) || { label: k }).label;
   // Short, consistent chip labels for every market; unknown keys fall back to the
   // server's full label, never the raw key (keeps the market chips uniform).
-  const MKT_SHORT = { btc15m: 'BTC 15-min', btc_daily: 'BTC 5pm', eth15m: 'ETH 15-min', eth_daily: 'ETH 5pm', sol_daily: 'SOL 5pm', xrp_daily: 'XRP 5pm', nba_game: 'NBA winner' };
+  const MKT_SHORT = {
+    btc15m: 'BTC 15-min', btc_daily: 'BTC 5pm', eth15m: 'ETH 15-min', eth_daily: 'ETH 5pm',
+    sol15m: 'SOL 15-min', sol_daily: 'SOL 5pm', xrp15m: 'XRP 15-min', xrp_daily: 'XRP 5pm',
+    doge15m: 'DOGE 15-min', near15m: 'NEAR 15-min', zec15m: 'ZEC 15-min', hype15m: 'HYPE 15-min',
+    nba_game: 'NBA winner', nfl_game: 'NFL winner', nhl_game: 'NHL winner',
+    ncaaf_game: 'NCAAF winner', mlb_game: 'MLB winner', epl_game: 'EPL result',
+    high_ny: 'NYC high temp',
+    tao_sn64: 'SN64 Chutes', tao_sn19: 'SN19 Nineteen', tao_sn8: 'SN8 PTN',
+    tao_sn4: 'SN4 Targon', tao_sn56: 'SN56 Gradients',
+  };
   // Order the research picker groups by how often they're used; unknown categories fall to the end.
-  const MKT_CATS = ['Crypto', 'Sports', 'Bittensor'];
+  const MKT_CATS = ['Crypto', 'Sports', 'Weather', 'Bittensor'];
   const marketShort = (k) => (!k ? 'Agent’s choice' : MKT_SHORT[k] || marketLabel(k));
   // Link a strategy's market to its Kalshi series page.
   const marketKalshiUrl = (k) => { const m = (S.me && S.me.markets || []).find((x) => x.key === k); return m && m.series ? `https://kalshi.com/markets/${m.series.toLowerCase()}` : null; };
   const dirLabel = (k) => { if (!k) return 'Session'; const d = S.me && S.me.directions.find((x) => x.key === k); return d ? d.label : String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()); };
   const sessionTitle = (r) => (r.prompt && r.prompt.trim()) ? r.prompt.trim() : (dirLabel(r.direction) + ' \u00b7 ' + marketShort(r.market));
 
-  // Research market picker: Agent's choice leads, then markets grouped by category, with a
-  // live filter once the list grows past a handful. One radio group (name="market"), so the
-  // posted value is exactly what the old flat picker sent and native arrow-key navigation
-  // still runs across every market; a filtered-out option drops out of the tab/arrow order
-  // via [hidden]. Agent's choice always stays visible \u2014 it's the default, not a market.
+  // The research market picker: ONE list in the live-row style (name \u00b7 sparkline \u00b7 mid \u00b7
+  // 24h volume), grouped by category, with Agent's choice leading as the default. Every row is
+  // a <label> wrapping one radio in a single group (name="market"), so the posted value is
+  // byte-identical to the old flat picker, selection is fully native (click the row, or arrow
+  // across the group), and ":checked" drives the selected skin. The live figures are folded in
+  // afterwards from /api/research/context; a row with no backtest history yet (has_data=false)
+  // is shown dimmed and flagged "History still building", never hidden, so the whole universe shows.
+  function mktRow(m) {
+    const pending = m.has_data === false;  // no collected history yet -> still backfilling
+    const face = `<span class="mktrow-face">
+        <span class="mktrow-name">${esc(marketShort(m.key))}</span>
+        <span class="mktrow-spark" data-spark aria-hidden="true"></span>
+        <span class="mktrow-last" data-last>${pending ? '' : '<b class="fig sm">\u2014</b>'}</span>
+        <span class="mktrow-vol" data-vol>${pending ? 'History still building' : ''}</span>
+      </span>`;
+    return `<label class="mktrow${pending ? ' pending' : ''}" data-key="${esc(m.key)}"${pending ? ' title="History still building \u2014 research may find nothing yet."' : ''}>
+      <input type="radio" name="market" value="${esc(m.key)}" class="mktrow-r">${face}</label>`;
+  }
   function marketPicker(markets) {
     const groups = {};
     markets.forEach((m) => { (groups[m.category] || (groups[m.category] = [])).push(m); });
@@ -249,17 +271,33 @@
       const ia = MKT_CATS.indexOf(a), ib = MKT_CATS.indexOf(b);
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
     });
-    const opt = (value, name, lead) =>
-      `<label class="mkt-opt${lead ? ' lead' : ''}"><input type="radio" name="market" value="${esc(value)}"${value === '' ? ' checked' : ''}><span class="mkt-face"><b>${esc(name)}</b>${lead ? '<small>The agent picks the market that best fits your idea.</small>' : ''}</span></label>`;
     const find = markets.length > 8;
+    const lead = `<div class="mkt-lead"><label class="mktrow lead" data-key=""><input type="radio" name="market" value="" class="mktrow-r" checked><span class="mktrow-face"><span class="mktrow-name">Agent\u2019s choice</span><small class="mktrow-sub">The agent picks the market that best fits your idea.</small></span></label></div>`;
     return `<div class="mktpick">
       ${find ? `<div class="mkt-find">${ICON.search}<label class="vh" for="mktfind">Filter markets</label><input class="input" type="search" id="mktfind" placeholder="Filter markets\u2026" autocomplete="off"></div>` : ''}
-      <div class="mkt-lead">${opt('', 'Agent\u2019s choice', true)}</div>
-      ${cats.map((c) => `<div class="mkt-group"><p class="mkt-group-h">${esc(c)}</p><div class="mkt-opts">${groups[c].map((m) => opt(m.key, marketShort(m.key), false)).join('')}</div></div>`).join('')}
+      ${lead}
+      ${cats.map((c) => `<div class="mkt-group"><p class="mkt-group-h">${esc(c)}</p><div class="mkt-rows">${groups[c].map(mktRow).join('')}</div></div>`).join('')}
       <p class="mkt-none hint" hidden role="status">No market matches that filter.</p>
     </div>`;
   }
-  // Live filter for the picker above; no-op when the list was short enough to render no search box.
+  // Fold one live-context row into its market's row: sparkline, mid + 24h change, 24h volume.
+  function fillLiveRow(scope, m) {
+    const face = scope.querySelector(`.mktrow[data-key="${m.key}"] .mktrow-face`);
+    if (!face) return;
+    const tr = m.trace || [], dC = tr.length >= 2 ? Math.round((tr[tr.length - 1] - tr[0]) * 100) : 0;
+    const dir = dC > 0 ? 'pos' : dC < 0 ? 'neg' : '';
+    face.querySelector('[data-spark]').innerHTML = hotChart(tr);
+    face.querySelector('[data-last]').innerHTML = `<b class="fig sm">${m.mid == null ? '\u2014' : cents(m.mid)}</b>${dC ? `<span class="mktrow-delta ${dir}">${dC > 0 ? '+' : '\u2212'}${Math.abs(dC)}\u00a2</span>` : ''}`;
+    face.querySelector('[data-vol]').textContent = `${kfmt(m.vol24)} vol \u00b7 24h`;
+    face.dataset.live = '1';
+  }
+  // Ready markets (has_data) with nothing in the live feed right now: say so plainly instead
+  // of leaving the row blank. Pending (backfilling) rows keep their own label.
+  function markQuietRows(scope) {
+    scope.querySelectorAll('.mktrow:not(.lead):not(.pending) .mktrow-face:not([data-live]) [data-vol]')
+      .forEach((v) => { if (!v.textContent) v.textContent = 'No live quote'; });
+  }
+  // Live filter for the picker; no-op when the list was short enough to render no search box.
   function wireMarketPicker(scope) {
     const find = scope.querySelector('#mktfind');
     if (!find) return;
@@ -271,7 +309,7 @@
       groups.forEach((g) => {
         const cat = (g.querySelector('.mkt-group-h').textContent || '').toLowerCase();
         let any = false;
-        g.querySelectorAll('.mkt-opt').forEach((o) => {
+        g.querySelectorAll('.mktrow').forEach((o) => {
           const hit = !q || cat.includes(q) || o.textContent.toLowerCase().includes(q);
           o.hidden = !hit; if (hit) { any = true; shown++; }
         });
@@ -1366,18 +1404,6 @@
     { k: 'relval', label: 'Relative value', market: '',
       idea: 'Relative value across strikes: when adjacent strike contracts imply inconsistent probabilities, buy the cheap one and sell the rich one.' },
   ];
-  // One compact live-context row per researchable market (the server folds the explore feed to
-  // it), so the picker shows what's liquid/moving instead of being chosen blind. A row click
-  // just selects the matching radio -- the radios stay the committed input.
-  function mctxRow(m) {
-    const tr = m.trace || [], delta = tr.length >= 2 ? tr[tr.length - 1] - tr[0] : 0;
-    const dC = Math.round(delta * 100), dir = dC > 0 ? 'pos' : dC < 0 ? 'neg' : '';
-    return `<button type="button" class="mctx-row" data-mkt="${esc(m.key)}" aria-pressed="false">
-      <span class="mctx-name">${esc(marketShort(m.key))}</span>
-      <span class="mctx-spark">${hotChart(tr)}</span>
-      <span class="mctx-last"><b class="fig sm">${m.mid == null ? '—' : cents(m.mid)}</b>${dC ? `<span class="mctx-delta ${dir}">${dC > 0 ? '+' : '−'}${Math.abs(dC)}¢</span>` : ''}</span>
-      <span class="mctx-vol">${kfmt(m.vol24)} vol · 24h</span></button>`;
-  }
   // "Build on what's worked": the user's best passed edges, one click from a deeper search line.
   function winCard(s) {
     const oos = s.out_of_sample;
@@ -1480,7 +1506,6 @@
           <label class="switch tune-sw"><input type="checkbox" name="run_forever" id="runforever" checked><span>Let it run until I stop it</span></label>
         </div>
         <fieldset class="field mkt-field" style="border:0;padding:0;margin:0"><legend class="label" style="margin-bottom:8px">Market</legend>
-          <div class="mctx" id="mktctx" hidden></div>
           ${marketPicker(me.markets)}
         </fieldset>
         <div class="dispatch-go">
@@ -1502,13 +1527,11 @@
     wireMarketPicker(form);
     const ta = form.querySelector('textarea[name=prompt]');
     const pressArch = (on) => form.querySelectorAll('[data-arch]').forEach((b) => b.setAttribute('aria-pressed', String(on === b)));
-    const syncCtx = () => {
-      const cur = (form.querySelector('input[name=market]:checked') || {}).value || '';
-      form.querySelectorAll('.mctx-row').forEach((row) => row.setAttribute('aria-pressed', String(row.dataset.mkt === cur)));
-    };
+    // Row selection is native (each row is a <label> around its radio); this just drives the
+    // one-click archetype shortcut, scrolling the chosen row into view for feedback.
     const selectMarket = (k) => {
       const r = form.querySelector(`input[name=market][value="${k == null ? '' : k}"]`);
-      if (r) { r.checked = true; syncCtx(); }
+      if (r) { r.checked = true; r.closest('.mktrow').scrollIntoView({ block: 'nearest' }); }
     };
     form.querySelectorAll('[data-arch]').forEach((b) => (b.onclick = () => {
       const a = ARCHETYPES.find((x) => x.k === b.dataset.arch); if (!a) return;
@@ -1517,7 +1540,6 @@
     }));
     ta.addEventListener('input', () => pressArch(null));
     root.querySelectorAll('[data-ex]').forEach((b) => (b.onclick = () => { ta.value = b.dataset.ex; pressArch(null); ta.focus(); }));
-    form.querySelectorAll('input[name=market]').forEach((r) => r.addEventListener('change', syncCtx));
     const rf = form.querySelector('#runforever'), mh = form.querySelector('#maxhyp');
     if (rf && mh) {
       const syncRf = () => { mh.disabled = rf.checked; mh.style.opacity = rf.checked ? '.4' : ''; };
@@ -1540,18 +1562,14 @@
         } catch (err) { flash('#dflash', err.message, 'bad'); }
       });
     };
-    // Live market context: fold the shared book down to the researchable markets (read-only).
+    // Live market context: fold the shared book onto each picker row (read-only). Rows with no
+    // live quote right now are labelled once the feed resolves; the picker works either way.
     (async () => {
       try {
         const c = await api('/api/research/context');
-        const box = root.querySelector('#mktctx');
-        if (box && c.markets && c.markets.length) {
-          box.innerHTML = c.markets.map(mctxRow).join('');
-          box.hidden = false;
-          box.querySelectorAll('.mctx-row').forEach((row) => (row.onclick = () => selectMarket(row.dataset.mkt)));
-          syncCtx();
-        }
+        (c.markets || []).forEach((m) => fillLiveRow(form, m));
       } catch (e) { /* no feed yet -> the picker still works blind */ }
+      markQuietRows(form);
     })();
     const load = async () => {
       const d = await api('/api/runs');

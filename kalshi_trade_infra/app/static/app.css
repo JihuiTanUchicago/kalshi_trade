@@ -348,31 +348,54 @@ select#rmodel { appearance: none; -webkit-appearance: none; padding-right: 28px;
 .choice input:checked + .opt small { color: #C7CBC0; }
 .choice input:focus-visible + .opt { outline: 2px solid var(--ink); outline-offset: 2px; }
 
-/* Research market picker — a timetable of researchable markets: Agent's choice leads,
-   then markets grouped by category under hairline section headers, with a live filter
-   once the list grows. One radio group, so selection reads as a single ink-filled cell. */
+/* Research market picker — ONE list in the live-row style: Agent's choice leads, then every
+   market grouped by category under hairline headers, with a filter once the list grows. Each
+   row is a <label> wrapping one radio (name="market"); :checked skins the row ink, so selection
+   reads as a single filled row. Live figures (sparkline · mid · 24h volume) fold in from the
+   book; a market still backfilling is dimmed and flagged, never hidden, so the whole universe
+   stays visible. */
 .mkt-field { width: 100%; }
-.mktpick { display: flex; flex-direction: column; gap: 14px; }
+.mktpick { display: flex; flex-direction: column; gap: 16px; }
 .mkt-find { position: relative; max-width: 320px; }
 .mkt-find > svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--ink-3); pointer-events: none; }
 .mkt-find .input { padding-left: 32px; font-size: 14px; }
-.mkt-lead, .mkt-opts { display: grid; gap: 8px; }
-.mkt-opts { grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); }
-.mkt-opt { position: relative; margin: 0; }
-.mkt-opt input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
-.mkt-face { display: flex; flex-direction: column; gap: 2px; justify-content: center; min-height: 44px; padding: 9px 12px; border: 1px solid var(--rule-2); border-radius: var(--radius); background: var(--stock-raised); cursor: pointer; height: 100%; transition: border-color .14s var(--ease), background .14s var(--ease), color .14s var(--ease); }
-.mkt-face b { font-family: var(--f-nar); font-size: 13px; letter-spacing: .04em; text-transform: uppercase; font-weight: 600; }
-.mkt-face small { color: var(--ink-3); font-size: 12px; line-height: 1.35; text-transform: none; letter-spacing: 0; }
-.mkt-opt input:hover + .mkt-face { border-color: var(--ink-3); }
-.mkt-opt input:checked + .mkt-face { border-color: var(--ink); background: var(--ink); color: #F1F3ED; }
-.mkt-opt input:checked + .mkt-face small { color: #C7CBC0; }
-.mkt-opt input:focus-visible + .mkt-face { outline: 2px solid var(--ink); outline-offset: 2px; }
-.mkt-opt.lead .mkt-face { min-height: 52px; }
 .mkt-group-h { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; font-family: var(--f-nar); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
 .mkt-group-h::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+.mkt-lead, .mkt-rows { border: 1px solid var(--rule); background: var(--stock); }
+.mktrow { display: block; position: relative; cursor: pointer; }
+.mktrow[hidden] { display: none; }
+.mktrow-r { position: absolute; width: 1px; height: 1px; opacity: 0; margin: 0; }  /* hidden, still focusable */
+.mktrow-face { display: grid; align-items: center; gap: 14px; grid-template-columns: minmax(104px, 1.15fr) 90px minmax(64px, auto) minmax(0, 0.9fr);
+  grid-template-areas: "name spark last vol"; padding: 10px 14px; border-left: 2px solid transparent; border-bottom: 1px solid var(--rule);
+  transition: background .14s var(--ease), border-color .14s var(--ease), color .14s var(--ease); }
+.mktrow:last-child .mktrow-face { border-bottom: 0; }
+.mktrow-r:hover + .mktrow-face { background: var(--stock-raised); }
+.mktrow-r:checked + .mktrow-face { background: var(--ink); color: #F1F3ED; border-left-color: var(--ink); }
+.mktrow-r:focus-visible + .mktrow-face { outline: 2px solid var(--ink); outline-offset: -2px; }
+.mktrow-name { grid-area: name; font-family: var(--f-nar); font-size: 12.5px; letter-spacing: .04em; text-transform: uppercase; font-weight: 600; }
+.mktrow-spark { grid-area: spark; color: var(--ink-2); line-height: 0; }
+.mktrow-spark svg { width: 90px; height: 24px; display: block; }
+.mktrow-last { grid-area: last; display: inline-flex; align-items: baseline; gap: 6px; }
+.mktrow-last .fig { font-size: 16px; }
+.mktrow-delta { font-family: var(--f-nar); font-weight: 600; font-size: 11px; padding: 1px 5px 0; border-radius: var(--radius); color: var(--ink); font-variant-numeric: tabular-nums lining-nums; }
+.mktrow-delta.pos { background: var(--pos); } .mktrow-delta.neg { background: var(--neg); }
+.mktrow-vol { grid-area: vol; font-family: var(--f-nar); font-size: 11px; letter-spacing: .04em; color: var(--ink-3); justify-self: end; text-align: right; white-space: nowrap; }
+/* Agent's choice: the leading default — a description, not live figures. */
+.mktrow.lead .mktrow-face { grid-template-columns: 1fr; grid-template-areas: "name" "sub"; gap: 3px; padding: 12px 14px; }
+.mktrow.lead .mktrow-sub { grid-area: sub; font-size: 12px; line-height: 1.35; color: var(--ink-3); }
+/* Still backfilling: dimmed and labelled, but selectable (research may just find nothing yet). */
+.mktrow.pending .mktrow-r:not(:checked) + .mktrow-face { background: var(--stock-sunk); }
+.mktrow.pending .mktrow-r:not(:checked) + .mktrow-face .mktrow-name { color: var(--ink-3); }
+.mktrow.pending .mktrow-vol { font-style: italic; }
+/* Selected row: lighten the secondary bits against the ink fill (placed last so it wins).
+   The sparkline SVG carries its own `.hot-chart { color: --ink }`, so it must be retargeted
+   explicitly or it would sit dark-on-dark and vanish. */
+.mktrow-r:checked + .mktrow-face .mktrow-spark .hot-chart,
+.mktrow-r:checked + .mktrow-face .mktrow-vol,
+.mktrow-r:checked + .mktrow-face .mktrow-sub { color: #C7CBC0; }
 .mkt-none { margin: 0; }
 .dispatch-go { display: flex; justify-content: flex-end; margin-top: 16px; }
-@media (prefers-reduced-motion: reduce) { .mkt-face { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .mktrow-face { transition: none; } }
 @media (max-width: 560px) { .dispatch-go { justify-content: stretch; } .dispatch-go .btn { width: 100%; } }
 
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -447,25 +470,6 @@ select#rmodel { appearance: none; -webkit-appearance: none; padding-right: 28px;
 .dispatch-tune input[type="number"].input { width: 92px; }
 .tune-sw { margin-bottom: 3px; }
 .dispatch-mkt > legend { margin-bottom: 8px; }
-
-/* Live market context above the picker — informational; a click selects the radio below. */
-.mctx { border: 1px solid var(--rule); background: var(--stock); margin-bottom: 12px; }
-.mctx[hidden] { display: none; }
-.mctx-row { display: grid; grid-template-columns: minmax(96px, 1.3fr) 92px minmax(68px, auto) minmax(0, 1fr);
-  grid-template-areas: "name spark last vol"; align-items: center; gap: 14px; width: 100%; padding: 9px 13px;
-  text-align: left; font: inherit; color: var(--ink); background: none; border: 0; border-left: 2px solid transparent;
-  border-bottom: 1px solid var(--rule); cursor: pointer; }
-.mctx-row:last-child { border-bottom: 0; }
-.mctx-row:hover { background: var(--stock-raised); }
-.mctx-row[aria-pressed="true"] { background: var(--stock-raised); border-left-color: var(--ink); }
-.mctx-name { grid-area: name; font-family: var(--f-nar); font-size: 12.5px; letter-spacing: .04em; text-transform: uppercase; font-weight: 600; }
-.mctx-spark { grid-area: spark; color: var(--ink-2); line-height: 0; }
-.mctx-spark svg { width: 90px; height: 24px; display: block; }
-.mctx-last { grid-area: last; display: inline-flex; align-items: baseline; gap: 6px; }
-.mctx-last .fig { font-size: 16px; }
-.mctx-delta { font-family: var(--f-nar); font-weight: 600; font-size: 11px; padding: 1px 5px 0; border-radius: var(--radius); color: var(--ink); font-variant-numeric: tabular-nums lining-nums; }
-.mctx-delta.pos { background: var(--pos); } .mctx-delta.neg { background: var(--neg); }
-.mctx-vol { grid-area: vol; font-family: var(--f-nar); font-size: 11px; letter-spacing: .04em; color: var(--ink-3); justify-self: end; white-space: nowrap; }
 
 /* The primary CTA sits with the demo starter. */
 .dispatch-go { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
@@ -551,8 +555,9 @@ select#rmodel { appearance: none; -webkit-appearance: none; padding-right: 28px;
 .rsi-loop b { color: var(--ink-2); }
 
 @media (max-width: 760px) {
-  .mctx-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name last" "spark vol"; gap: 6px 12px; }
-  .mctx-spark svg { width: 76px; }
+  .mktrow-face { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name last" "spark vol"; gap: 6px 12px; }
+  .mktrow.lead .mktrow-face { grid-template-columns: 1fr; grid-template-areas: "name" "sub"; }
+  .mktrow-spark svg { width: 76px; }
   .pipecap-hint { flex: 1 0 100%; }
 }
 

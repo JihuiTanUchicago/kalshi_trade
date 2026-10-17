@@ -171,19 +171,30 @@ def logout(ctx: Ctx):
 
 
 def _researchable_markets(cur) -> List[Dict]:
-    """Markets to offer in the research picker, each with its grouping category.
+    """Every market the research picker offers, each with its grouping category and a
+    `has_data` flag: True once a backtest surface (collected candle history) exists,
+    False while the collector is still backfilling. The whole deployable universe is
+    returned either way — the frontend marks the not-yet-ready ones instead of hiding
+    them, so the user sees everything Tau tracks rather than a mystery subset.
 
-    Dormant markets are hidden: a spot (TAO subnet-alpha) market only appears
-    once its taostats feed has written candles, so a research-only venue with no
-    data never shows up as a pickable market. Binary markets always have a feed."""
+    Research-only spot venues (TAO subnet alpha, kind="spot") are the one exception:
+    they appear only once their taostats feed has written candles, because that feed is
+    a genuine capability gate (no collector keyed = nothing to research), not a backfill
+    delay. Binaries always carry a Kalshi feed, so they are never hidden."""
     spot_underlyings = [m.underlying for m in MARKETS.values() if m.kind == "spot" and m.underlying]
     live_spot = repo.spot_symbols_with_data(cur, spot_underlyings)
-    return [
-        {"key": m.key, "label": m.label, "series": m.series, "category": m.category,
-         "deployable": m.deployable}
-        for m in MARKETS.values()
-        if m.kind != "spot" or m.underlying in live_spot
-    ]
+    ready_series = repo.series_with_candles(cur)
+    out: List[Dict] = []
+    for m in MARKETS.values():
+        if m.kind == "spot":
+            if m.underlying not in live_spot:
+                continue
+            has_data = True
+        else:
+            has_data = m.series in ready_series
+        out.append({"key": m.key, "label": m.label, "series": m.series,
+                    "category": m.category, "deployable": m.deployable, "has_data": has_data})
+    return out
 
 
 def me(ctx: Ctx):
