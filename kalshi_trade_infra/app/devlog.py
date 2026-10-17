@@ -12,16 +12,15 @@ from typing import Dict, List
 # full markdown explanation (rendered via mdLite); '' for bare one-liners.
 PLANNED: List[tuple] = [
     ('Autonomous Tau improvement loop runs on a schedule; each round picks one aspect (execution / research rigor / risk / data / ML tooling / UX / engineering) and ships an improvement', ''),
+    ('Tau-aware per-user live position reconciler', ''),
     ('Activate Alpaca stock/ETF agent data after secure worker configuration and entitlement checks, with a production canary before customer rollout', ''),
-    ('All-markets collector + cross-contract', ''),
-    ('Wire the generator (agent.py) to PROPOSE cross-contract pairs + build merged validation/holdout partitions, then enable cross-contract LIVE execution (engine.py/live gate)', ''),
+    ('All-markets collector', ''),
     ('Widen the live market universe', ''),
     ('Email-all community digest', ''),
     ('Premium model access', ''),
     ('Kalshi-dev 2nd equity line', ''),
     ('Agent internet access / web search (Google/Tavily/Brave)', ''),
     ('Polymarket as a 2nd venue: data + API + real & simulation trading', ''),
-    ('NO-side (and side="either") LIVE execution', ''),
     ('Bittensor (TAO) subnet tokens', ''),
     ('Onboard Opus 5.5 (claude-opus-5-5) + surface model comparison', ''),
 ]
@@ -29,6 +28,10 @@ PLANNED: List[tuple] = [
 # Shipped, newest first: (YYYY-MM-DD, title, detail). `detail` is the full
 # markdown explanation (what/components/methodology); may be '' for one-liners.
 SHIPPED: List[tuple] = [
+    ('2026-10-17', 'Cross-contract live trading (single + multi-market) + legging-safe execution', "cross strategies can now deploy live. `_kernel_buy_pair` is legging-safe (buy both legs, flatten any naked excess at the bid with exact round-trip P&L, track any residual for the drawdown/loss guard, never a silent naked leg). Single-market cross (cross_strike/calendar) deploys paper/demo/live; and a NEW synchronized multi-market feed reads BOTH legs' books on one frame (skips if either is stale) so **different-market** pairs (BTC vs ETH, etc.) also deploy on paper/demo/live when cadence-compatible + both legs deployable. The proposer now explores cross-market pairs, not just cross-strike. Every other live gate kept, in order. (Deployed + live.)"),
+    ('2026-10-17', 'NO / "either"-side live trading enabled', 'strategies that trade NO (or pick YES/NO per edge) now deploy on demo (always) and live (`APP_NO_SIDE_LIVE_ENABLED` flipped on after verifying the wire math: buy NO = sell-YES at 1−price). The deploy panel\'s hardcoded "YES-only" block is gone; `/api/me` exposes the flag so the UI enables NO/either buttons. (Deployed + live.)'),
+    ('2026-10-17', 'Execution risk controls enabled on the live path', 'the thin-book controls shipped earlier (participation cap, entry-spread guard, notional backstop) are now ON (`KALSHI_MAX_BOOK_FRACTION=0.25`, `KALSHI_MAX_ENTRY_SPREAD=0.05`, `KALSHI_MAX_ORDER_NOTIONAL=5000`), strictly-stricter, exit-safe. (Live.)'),
+    ('2026-10-17', 'UI fixes', 'the blinking black line in the header (a `.caret` class collision) is fixed to a static chevron; the typing cursors still blink. (Deployed + live.)'),
     ('2026-10-17', 'Per-strategy sandbox data dir (research-integrity)', "the persistent data dir is now keyed per strategy (by code hash), so a strategy reloads its own model artifacts across runs but can never read another strategy's files; closes a cross-run state-passing/leakage vector that would undermine pre-registration. (Deployed + live.)"),
     ('2026-10-17', 'Research platform upgrade: Python 3.13 + full ML sandbox stack + scoped file access', "the box was right-sized (t4g.small→t4g.xlarge, 4 vCPU/16 GB; disk 8→40 GB; a stable Elastic IP so stop/start can't break the CloudFront origin) and migrated to Python 3.13.16. Code-strategy sandboxes now carry the real quant/ML/stat stack — pandas, scipy, scikit-learn, statsmodels, xgboost, lightgbm, arch, cvxpy, torch, tensorflow — plus `open()` and a persistent, cross-run data dir (`window['data_dir']`), so agents can write serious models, not just loops. Security held and then hardened: an adversarial review found the Linux confiner mounted the whole host root (readable) with only a partial secret blocklist, so a strategy could read an unmasked secret and return the bytes (a no-network exfil channel) — fixed by switching bwrap to an allowlist bind (system libs + interpreter + venv only; secrets are simply absent from the namespace), plus `--unshare-user` uid-drop and an OOM guard so an ML strategy can't DoS the live engine. Verified live: torch+sklearn+pandas run, the exact exfil exploit is now blocked for every secret (aws creds, .env, /root, /etc/shadow), data persists. (Deployed + live.)"),
     ('2026-10-17', 'Execution service: thin-book microstructure controls + risk coupling', '`MarketableLimitKernel` gained four opt-in, fail-safe controls (participation / max-book-fraction cap, entry spread guard, per-order notional backstop, exit partial-fill continuation) grounded in execution research; each is strictly-stricter, none can block an exit, all default-OFF behind env knobs. Live gate untouched. Documented in `EXECUTION_DESIGN.md`. (Deployed + live.)'),
