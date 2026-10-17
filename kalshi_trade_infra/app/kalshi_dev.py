@@ -19,6 +19,7 @@ is unreachable, or no candlesticks come back for the window, this returns
 """
 from __future__ import annotations
 
+import bisect
 import os
 import threading
 import time
@@ -34,10 +35,10 @@ from app.markets import Contract, snapshot
 # the env var. Read-only, unauthenticated candlestick GETs only - never POSTs.
 KALSHI_DEV_API_BASE = os.getenv("KALSHI_DEV_API_BASE", "https://demo-api.kalshi.co/trade-api/v2").rstrip("/")
 # Bound the number of per-contract candlestick calls on a cache miss.
-# ponytail: sequential per-contract fetch, capped to the FIRST N out-of-sample
-# contracts. btc15m has ~96 contracts/day, so N=60 covers the opening ~15h of
-# the OOS window. Raise MAX_CONTRACTS, parallelise the fetch, or persist the
-# realized curve if the full window must be shown.
+# ponytail: sequential per-contract fetch, capped to N out-of-sample contracts,
+# the strategy's traded contracts first (so slippage/curve always cover the
+# contracts that matter) then first-seen to fill the rest. Raise MAX_CONTRACTS,
+# parallelise the fetch, or persist the realized curve if the full window must be shown.
 MAX_CONTRACTS = int(os.getenv("KALSHI_DEV_MAX_CONTRACTS", "60"))
 CACHE_TTL_SECONDS = 600
 # Minimum aligned trades before a slippage figure is trustworthy enough to show
@@ -120,6 +121,23 @@ def _slippage(sim_trades: List, dev_trades: List, capped: bool) -> Optional[Dict
             "n_trades": len(entry_deltas), "capped": capped}
 
 
+def _quote_end_ts(times: List[int], ts: int, interval: int) -> Optional[int]:
+    """The end_period_ts of the demo candle that prices decision frame ``ts``:
+    an exact hit when the demo book has that period, else the most recent candle
+    AT OR BEFORE ``ts`` within one candle interval (the book's last known
+    top-of-book), else None. ``times`` is one ticker's candle ends, ascending.
+
+    Decision frames sit on the candle cadence, but the thin demo book skips
+    periods, so an exact-only match drops every gap - this bridges a one-interval
+    gap without ever letting a stale quote leak past its period."""
+    if not times:
+        return None
+    i = bisect.bisect_right(times, ts) - 1
+    if i < 0 or ts - times[i] > interval:
+        return None
+    return times[i]
+
+
 def _per_fill_cents(block: Optional[Dict]) -> Optional[float]:
     """The single symmetric per-fill slippage the backtester's `slip` knob wants:
     mean of entry and exit legs (entry alone when exits don't compare)."""
@@ -135,30 +153,44 @@ def _compute(spec: Dict, ds: backtest.Dataset) -> Optional[Dict]:
     if not oos_frames:
         return None
 
-    # Distinct OOS contracts in ascending first-seen order, capped.
+    # Same spec on our collected book over the OOS window. Computed up front so the
+    # per-contract demo fetch is spent on the contracts this strategy ACTUALLY
+    # trades: on a multi-day market the first-seen strike ladder is almost disjoint
+    # from them, so capping to the first MAX_CONTRACTS first-seen tickers left the
+    # dev sim with no tradable contracts -> no dev trades, empty curve, null slippage.
+    # The gap between these trades and the dev trades IS the realized slippage.
+    sim_trades = backtest.simulate(spec, ds, ds.cutoff_ts, ds.end_ts + 1)
+
+    # Distinct OOS contracts: traded ones first, then first-seen, capped.
     contracts: Dict[str, Contract] = {}
     for _ts, snaps in oos_frames:
         for sn in snaps:
             contracts.setdefault(sn.contract.ticker, sn.contract)
-    order = list(contracts.keys())
+    traded = [tk for tk in dict.fromkeys(t.ticker for t in sim_trades) if tk in contracts]
+    order = traded + [tk for tk in contracts if tk not in set(traded)]
     tickers = order[:MAX_CONTRACTS]
 
-    # (ticker, ts) -> (yes_bid, yes_ask) from the real demo book.
+    # (ticker, ts) -> (yes_bid, yes_ask) and the ticker's candle end-times (ascending)
+    # from the real demo book.
     quotes: Dict[Tuple[str, int], Tuple[float, float]] = {}
-    host_reachable = False
+    cand_ts: Dict[str, List[int]] = {}
     for tk in tickers:
         c = contracts[tk]
         rows = _dev_candles(ds.market.series, tk, cutoff, int(c.close_time.timestamp()),
                             ds.market.candle_minutes)
         if rows is None:
             continue
-        host_reachable = True
+        rows.sort()
+        cand_ts[tk] = [r[0] for r in rows]
         for ts, bid, ask in rows:
             quotes[(tk, ts)] = (bid, ask)
     if not quotes:
         return None  # host down or no demo data for this window -> no second line
 
-    # Rebuild OOS snapshots off dev quotes, reusing the real BTC features.
+    # Rebuild OOS snapshots off dev quotes, reusing the real BTC features. Each
+    # frame is priced by the demo candle covering it (exact, else last within one
+    # interval - see _quote_end_ts), so a thin book that skips periods still maps.
+    interval = ds.market.decision_seconds
     allowed = set(tickers)
     dev_frames: List[Tuple[int, List]] = []
     for ts, snaps in oos_frames:
@@ -167,10 +199,11 @@ def _compute(spec: Dict, ds: backtest.Dataset) -> Optional[Dict]:
         for sn in snaps:
             if sn.contract.ticker not in allowed:
                 continue
-            q = quotes.get((sn.contract.ticker, ts))
-            if q is None:
+            e = _quote_end_ts(cand_ts.get(sn.contract.ticker) or [], ts, interval)
+            if e is None:
                 continue
-            ns = snapshot(base, sn.contract, ts, q[0], q[1])
+            bid, ask = quotes[(sn.contract.ticker, e)]
+            ns = snapshot(base, sn.contract, ts, bid, ask)
             if ns is not None:
                 rebuilt.append(ns)
         if rebuilt:
@@ -187,9 +220,6 @@ def _compute(spec: Dict, ds: backtest.Dataset) -> Optional[Dict]:
     trades = backtest.simulate(spec, dev_ds, dev_ds.start_ts, dev_ds.end_ts + 1)
     m = backtest.metrics(trades, capital, days)
     curve = backtest._downsample(m["_curve"])
-    # Same spec on our collected book over the same OOS window -> the gap between
-    # these trades and the dev trades IS the real execution slippage.
-    sim_trades = backtest.simulate(spec, ds, ds.cutoff_ts, ds.end_ts + 1)
     return {
         "dev_curve": [[ts, v] for ts, v in curve],
         "dev_metrics": {k: m[k] for k in
