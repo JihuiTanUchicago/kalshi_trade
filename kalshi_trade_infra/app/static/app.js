@@ -2041,6 +2041,19 @@
     };
     const liveWhy = !S.me.live_trading_available ? 'Live trading isn’t open yet.' : !S.me.kalshi_connected ? 'Connect Kalshi on the Funds page first.' : (s.side !== 'yes' && !S.me.no_side_live_enabled) ? 'NO-side live trading is still being validated on the demo sandbox — deploy this on demo or paper for now.' : '';
     const demoWhy = !S.me.kalshi_dev_connected ? 'Add your Kalshi demo (sandbox) key on the Funds page first.' : '';
+    // Overfit/luck tells on a raw backtest column: a tiny sample, a perfect win rate, no losing
+    // trades (profit factor runs away), or an implausibly high daily Sharpe are the classic
+    // signatures of a number too good to be real. Flag them inline so a raw backtest is never
+    // read as a tradable edge.
+    const luckFlag = (m) => {
+      if (!m) return '';
+      const r = [];
+      if (m.trades != null && m.trades < 30) r.push(`n=${m.trades} — too few trades to tell skill from luck`);
+      if (m.win_rate === 1) r.push('100% win rate — an overfit signature, not an edge');
+      if (typeof m.profit_factor === 'number' && m.profit_factor >= 99) r.push('no losing trades in sample — profit factor is meaningless');
+      if (typeof m.sharpe === 'number' && m.sharpe >= 3) r.push(`Sharpe ${m.sharpe} is implausibly high for a real net edge`);
+      return r.length ? `<p class="hint luck-flag">⚠ ${esc(r.join(' · '))}</p>` : '';
+    };
     const metricRows = (m) => m ? `<dl>
         <dt>P&amp;L after fees</dt><dd class="${tone(m.pnl)}">${usd(m.pnl, true)}</dd>
         <dt>Trades</dt><dd>${m.trades}${m.trades_per_day != null ? ` <small class="hint">(${m.trades_per_day}/day)</small>` : ''}</dd>
@@ -2048,7 +2061,7 @@
         <dt>Fees paid</dt><dd>${usd(m.fees)}</dd>
         <dt>Profit factor</dt><dd>${m.profit_factor == null ? '—' : m.profit_factor}</dd>
         <dt>Worst drawdown</dt><dd>${usd(m.max_drawdown)}</dd>
-        <dt>Sharpe (daily)</dt><dd>${m.sharpe == null ? '—' : m.sharpe}</dd></dl>` : `<p class="hint">Not tested on unseen data — ${rejectReason(s)}</p>`;
+        <dt>Sharpe (daily)</dt><dd>${m.sharpe == null ? '—' : m.sharpe}</dd></dl>${luckFlag(m)}` : `<p class="hint">Not tested on unseen data — ${rejectReason(s)}</p>`;
     const gatesHtml = (gs) => gs ? `<ul class="gates">${gs.map((g) => `<li class="${g.ok ? 'ok' : 'no'}">${g.ok ? ICON.check : ICON.cross}<span>${esc(g.name)}<small>needs ${esc(g.threshold)}</small></span><span class="v">${typeof g.value === 'number' && /\$|drawdown|money/i.test(g.name + g.threshold) ? usd(g.value) : esc(g.value == null ? '—' : g.value)}</span></li>`).join('')}</ul>` : '<p class="hint">Gates only run for finalists that made money in testing.</p>';
     const trades = (s.recent_trades || []).length ? `<table class="table stack"><thead><tr><th>Opened</th><th>Contract</th><th>Side</th><th class="num">Entry</th><th class="num">Exit</th><th class="num">P&amp;L</th></tr></thead><tbody>
         ${s.recent_trades.map((t) => `<tr><td>${esc(new Date(t.opened.replace('Z', ':00Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}</td><td class="tick">${esc(t.ticker)}</td><td>${esc(t.side.toUpperCase())} ×${t.qty}</td><td class="num">${cents(t.entry)}</td><td class="num">${cents(t.exit)} <small class="hint">${esc(t.reason)}</small></td><td class="num ${tone(t.pnl)}">${usd(t.pnl, true)}</td></tr>`).join('')}
@@ -2079,6 +2092,7 @@
     const methodologyBody = rp.methodology + ruleBlock + dataBlock;
     const resultsBody = rp.results
       + `<div class="paper-sub"><h4 class="paper-h">${hasExp ? 'Backtest &amp; Kalshi demo replay' : 'Backtest'}</h4>
+          ${hasExp ? '<p class="rp-sub" style="margin-top:0">These are the agent\'s own in-sample/replay numbers. The in-sample column is optimistically biased — the rule was fit on exactly this data — so trust the held-out validation-window evidence above, not the column below.</p>' : ''}
           <div id="sheet-results">
             <div id="equity-wrap">${s.equity ? equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from) : ''}</div>
             <div class="split"><div><h4>Tested on (in-sample)</h4>${metricRows(ins)}</div><div><h4>Never seen (out-of-sample)</h4>${metricRows(oos)}</div></div>
@@ -2087,7 +2101,7 @@
     let verdictBody = rp.verdict;
     if (!hasExp) {
       const vmap = {
-        passed: ['good', 'on', 'Passed', 'It cleared its backtest gate on data the agent never saw while iterating. Deploying it is still your decision and your risk.'],
+        passed: ['sig', 'armed', 'Backtest only', 'Backtest-only — never put through statistical validation (no pre-registration, one-time holdout, or multiple-testing control). These numbers come from a sample too small to separate skill from luck. Deploying it is your decision and your risk.'],
         failed: ['sig', 'armed', 'Void', 'It reached the unseen-data gate and failed it, so it was not validated.'],
         rejected: ['quiet', 'quiet', 'Rejected', 'Rejected — ' + rejectReason(s)],
       };
