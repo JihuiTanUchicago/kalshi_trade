@@ -1,6 +1,24 @@
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 from data_pipeline.architecture.contracts import ExecutionReport, TradeIntent
+
+
+def order_wire_params(action: str, side: str, price_dollars: float) -> Tuple[str, float]:
+    """Translate an order into the events/orders wire form: (``'bid'|'ask'`` on
+    the YES leg, YES-leg limit price in dollars).
+
+    The endpoint only speaks the YES leg - ``bid`` buys YES, ``ask`` sells a YES
+    position (PLAN.md "Kalshi retired the order endpoint"). Buying NO *is* selling
+    YES and selling NO *is* buying YES, and a NO price ``p`` is the YES price
+    ``1 - p``. So the wire price is ALWAYS a YES price, and the fill Kalshi reports
+    is a YES fill - callers translate a NO fill back to its own side (cost basis
+    ``1 - yes_fill``). One place owns this money-direction math so the live and
+    demo submitters cannot drift apart on it.
+    """
+    buying = str(action).lower() == "buy"
+    if str(side).lower() == "no":
+        return ("ask" if buying else "bid", 1.0 - float(price_dollars))
+    return ("bid" if buying else "ask", float(price_dollars))
 
 
 class DummyExecutionKernel:
@@ -119,25 +137,41 @@ class MarketableLimitKernel:
             raw_json={"rejected_by": "MarketableLimitKernel", **detail},
         )
 
+    @staticmethod
+    def _own_side_book(intent, quote) -> Tuple[Optional[float], Optional[float]]:
+        """(best ask, best bid) in the ORDER'S OWN side price space, from the YES
+        quote. NO is the mirror of the YES book: no_ask = 1 - yes_bid (cost to buy
+        NO), no_bid = 1 - yes_ask (proceeds to sell NO)."""
+        if str(intent.side).lower() == "no":
+            ask = None if quote.yes_bid is None else 1.0 - quote.yes_bid
+            bid = None if quote.yes_ask is None else 1.0 - quote.yes_ask
+            return ask, bid
+        return quote.yes_ask, quote.yes_bid
+
     def _limit_for(self, intent, quote, attempt: int) -> Optional[float]:
-        """Marketable limit for this attempt, or None to abandon the order."""
+        """Marketable limit for this attempt, or None to abandon the order.
+
+        In the order's own side price space (YES or NO). The submitter converts
+        this to the YES-leg wire price via ``order_wire_params``.
+        """
         buying = str(intent.action).lower() == "buy"
         # Each retry crosses one tick further, so a position cannot sit
         # unsellable while the market walks away from a stale price.
         cross = (self.entry_cross_ticks if buying else self.exit_cross_ticks) + attempt
+        best_ask, best_bid = self._own_side_book(intent, quote)
         if buying:
-            if quote.yes_ask is None:
+            if best_ask is None:
                 return None
             reference = float(intent.limit_price_dollars)
             # The signal was computed against some ask. If the live ask has
             # moved beyond tolerance, the edge that justified the trade is
             # gone - abandon rather than pay up.
-            if quote.yes_ask > reference + self.max_entry_slippage:
+            if best_ask > reference + self.max_entry_slippage:
                 return None
-            return self._clamp(quote.yes_ask + cross * TICK)
-        if quote.yes_bid is None:
+            return self._clamp(best_ask + cross * TICK)
+        if best_bid is None:
             return None
-        return self._clamp(quote.yes_bid - cross * TICK)
+        return self._clamp(best_bid - cross * TICK)
 
     def execute(self, intent) -> ExecutionReport:
         attempts: List[Dict] = []
@@ -169,13 +203,22 @@ class MarketableLimitKernel:
             res = self._submitter(
                 intent.ticker, intent.action, intent.side, intent.qty_contracts, limit
             )
+            # The submitter sent a YES-leg order (see order_wire_params), so the
+            # fill it reports is a YES price. Parse against the YES wire price so
+            # the "filled but unreadable price" fallback is in the same (YES) space,
+            # then flip a NO fill back to its own cost basis (1 - yes_fill).
+            _, wire_price = order_wire_params(intent.action, intent.side, limit)
             report = DummyExecutionKernel(lambda *a, **k: res).execute(
-                _RepricedIntent(intent, limit)
+                _RepricedIntent(intent, wire_price)
             )
+            fill_px = report.fill_price_dollars
+            if str(intent.side).lower() == "no" and fill_px > 0:
+                fill_px = round(1.0 - fill_px, 4)
             attempts.append(
                 {
                     "attempt": attempt,
                     "limit": limit,
+                    "wire_price": wire_price,
                     "quote_bid": quote.yes_bid,
                     "quote_ask": quote.yes_ask,
                     "quote_age_s": round(quote.age_seconds(), 3),
@@ -189,7 +232,7 @@ class MarketableLimitKernel:
                 return ExecutionReport(
                     accepted=True,
                     status=report.status,
-                    fill_price_dollars=report.fill_price_dollars,
+                    fill_price_dollars=fill_px,
                     fill_qty_contracts=report.fill_qty_contracts,
                     external_order_id=report.external_order_id,
                     client_order_id=report.client_order_id,

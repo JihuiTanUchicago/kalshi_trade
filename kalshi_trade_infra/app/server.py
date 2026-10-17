@@ -403,8 +403,8 @@ def _mark_fields(p: Dict) -> Dict:
         return {"mark": None, "value": None, "unrealized": None, "mark_ts": None}
     mark = float(mark)
     # mark is the YES bid. A YES contract liquidates ~yes_bid; a NO contract ~1-yes_ask, which we
-    # don't store — estimate NO as 1-yes_bid (slightly high). Live is YES-only; NO only shows in
-    # paper/sim, where the estimate is fine (UI labels it "est.").
+    # don't store — estimate NO as 1-yes_bid (slightly high). Same estimate across paper/sim/live
+    # (and the UI labels it "est."); NO positions now occur live too.
     value = round(qty * (mark if p["side"] == "yes" else 1.0 - mark), 2)
     return {"mark": mark, "value": value, "unrealized": round(value - cost, 2), "mark_ts": p.get("mark_ts")}
 
@@ -702,8 +702,8 @@ def create_deployment(ctx: Ctx):
             raise ApiError(409, "Live trading isn't open yet. Deploy on paper for now.")
         if repo.get_kalshi_key(cur, ctx.uid) is None:
             raise ApiError(409, "Connect your Kalshi account on the Funds page first.")
-        if s["spec"]["side"] != "yes":
-            raise ApiError(409, "Live trading supports YES-only strategies in this version.")
+        # Side is no longer gated: execution places the correct YES or NO leg (a NO strategy
+        # places a NO order). Every other live guard above/below is kept, in order, unweakened.
         if ctx.body.get("confirm") != "LIVE":
             raise ApiError(400, "Type LIVE to confirm real-money trading.")
     elif mode == "demo":
@@ -711,8 +711,6 @@ def create_deployment(ctx: Ctx):
         # the demo kernel's host guard makes the production exchange structurally unreachable.
         if repo.get_kalshi_dev_key(cur, ctx.uid) is None:
             raise ApiError(409, "Add your Kalshi demo (sandbox) key on the Funds page first.")
-        if s["spec"]["side"] != "yes":
-            raise ApiError(409, "Demo trading supports YES-only strategies in this version.")
     if sum(1 for d in repo.list_deployments(cur, ctx.uid) if d["status"] != "stopped") >= MAX_ACTIVE_DEPLOYMENTS:
         raise ApiError(429, "You can run up to %d deployments at once." % MAX_ACTIVE_DEPLOYMENTS)
     dep_id = repo.create_deployment(cur, ctx.uid, s["id"], s["market"], mode)
