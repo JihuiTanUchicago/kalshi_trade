@@ -64,6 +64,16 @@ def _f(v) -> Optional[float]:
         return None
 
 
+def _opt_float(v) -> Optional[float]:
+    """An optional float env knob: None (feature off) for unset/blank/unparseable."""
+    if v is None or str(v).strip() == "":
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def fetch_quotes(market: Market) -> List[LiveQuote]:
     out, cursor = [], None
     while True:
@@ -663,6 +673,12 @@ def live_kernel_factory(conn) -> Callable[[int], object]:
             max_entry_slippage=float(os.getenv("KALSHI_MAX_ENTRY_SLIPPAGE", "0.10")),
             max_attempts=int(os.getenv("KALSHI_ORDER_MAX_ATTEMPTS", "3")),
             max_quote_age_seconds=float(os.getenv("KALSHI_MAX_QUOTE_AGE_SECONDS", "2.0")),
+            # Thin-book controls, all off unless set (see MarketableLimitKernel). Each can only
+            # shrink or abandon an order, and none can block an exit, so enabling any is a
+            # strictly-stricter change, tunable without a redeploy.
+            max_book_fraction=_opt_float(os.getenv("KALSHI_MAX_BOOK_FRACTION")),
+            max_entry_spread=_opt_float(os.getenv("KALSHI_MAX_ENTRY_SPREAD")),
+            max_order_notional=_opt_float(os.getenv("KALSHI_MAX_ORDER_NOTIONAL")),
         )
 
     return make

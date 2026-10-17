@@ -23,7 +23,7 @@ A self-improving alpha discovery pipeline, from ideation, to similation, and fin
 
 ## TODO / Working Queue
 Single source of truth for OPEN work — one flat list. Each item is tagged with what it's waiting on:
-- more robust, fast, and intelligent execution service.
+- `[built · awaiting integrate+deploy]` More robust, fast, intelligent execution service — `MarketableLimitKernel` gained four opt-in, fail-safe thin-book controls (participation / max-book-fraction cap, entry spread guard, per-order notional backstop, exit partial-fill continuation), each strictly-stricter and none able to block an exit; wired to env knobs (default OFF), covered by `tests/test_execution_thin_book.py`, documented in `kalshi_trade_infra/EXECUTION_DESIGN.md`. Live gate untouched. Recommend enabling `KALSHI_MAX_BOOK_FRACTION≈0.25` + `KALSHI_MAX_ENTRY_SPREAD≈0.05` on thin sports/crypto venues after deploy. **Next:** parent integrates + deploys, then measure.
 `[delayed]` = owner chose to hold; `[blocked: …]` = needs a user/AWS action first; `[v0.3]` = next version.
 These are NOT done. Completed items move to **## Done** below.
 - `[blocked: worker environment]` Activate Alpaca stock/ETF agent data after secure worker configuration and entitlement checks, with a production canary before customer rollout. Source integration is complete for review; no production deployment yet. [Setup](kalshi_trade_infra/app/README.md#alpaca-stocketf-data-for-agents--october-16-2026).

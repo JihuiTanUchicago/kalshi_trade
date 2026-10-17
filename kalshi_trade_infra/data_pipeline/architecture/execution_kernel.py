@@ -91,15 +91,39 @@ class MarketableLimitKernel:
     quote the order is built from the single most important input, and the
     engine used to take it from a one-minute bar up to 75 seconds old.
 
-    Three things this does that the passthrough kernel did not:
+    What this does that the passthrough kernel did not:
 
     1. Re-prices against the live book, so the limit is on the correct side.
     2. Re-checks the edge at the price actually available. Following the book
        must not become chasing it: if the ask has run past the price the
        signal was computed at, the trade is abandoned, not paid up for.
-    3. Escalates through the book on an exit that will not fill. An unfilled
-       entry costs nothing - you simply do not trade. An unfilled exit is how
-       27 contracts were carried into settlement for -$9.46.
+    3. Escalates through the book on an exit that will not fully fill. An
+       unfilled entry costs nothing - you simply do not trade. An unfilled or
+       part-filled exit is how 27 contracts were carried into settlement for
+       -$9.46, so an exit keeps crossing (one tick further each retry) and
+       keeps taking the remainder until it is flat or out of attempts.
+
+    Microstructure controls for thin prediction-market books (all opt-in, each
+    defaulting to OFF so behaviour is unchanged until a knob is set; every one
+    can only make the order SMALLER or abandon it, never larger or more
+    aggressive, and none of them can ever block an exit):
+
+    * ``max_book_fraction`` - cap each child order to this fraction of the size
+      resting at the touch, so a single taker cannot walk a thin book up
+      against itself. Impact follows a square-root law that is ~independent of
+      slicing "so long as the participation rate is not too large" (Bouchaud
+      et al.; TSE 2025, arXiv:2502.16246), and the effective impact coefficient
+      grows as depth shrinks - exactly the regime a cap guards. An exit's child
+      is floored at 1 so a participation cap can never trap a position.
+    * ``max_entry_spread`` - abandon a (non-urgent) ENTRY when the touch spread
+      is wider than this. A wide touch is an illiquid/uncertain book and the
+      entry cost is ~ taker fee + half the spread; a missed entry costs nothing.
+      Exits never check it - they must get out regardless of spread.
+    * ``max_order_notional`` - hard per-order notional backstop on BUYS only,
+      enforced in the execution path as defence-in-depth behind the engine's
+      own sizing. It rejects (loudly) rather than silently resizing, because a
+      breach here means a caller mis-sized. It never applies to a sell, so it
+      can never block an exit.
     """
 
     def __init__(
@@ -111,6 +135,9 @@ class MarketableLimitKernel:
         max_entry_slippage: float = 0.02,
         max_attempts: int = 3,
         max_quote_age_seconds: float = 2.0,
+        max_book_fraction: Optional[float] = None,
+        max_entry_spread: Optional[float] = None,
+        max_order_notional: Optional[float] = None,
     ) -> None:
         self._submitter = submitter
         self._feed = feed
@@ -119,6 +146,9 @@ class MarketableLimitKernel:
         self.max_entry_slippage = float(max_entry_slippage)
         self.max_attempts = max(1, int(max_attempts))
         self.max_quote_age_seconds = float(max_quote_age_seconds)
+        self.max_book_fraction = None if max_book_fraction is None else float(max_book_fraction)
+        self.max_entry_spread = None if max_entry_spread is None else float(max_entry_spread)
+        self.max_order_notional = None if max_order_notional is None else float(max_order_notional)
 
     @staticmethod
     def _clamp(price: float) -> float:
@@ -148,6 +178,32 @@ class MarketableLimitKernel:
             return ask, bid
         return quote.yes_ask, quote.yes_bid
 
+    @staticmethod
+    def _touch_size(intent, quote) -> Optional[float]:
+        """Contracts resting at the touch level this order would consume. A buy
+        lifts an ask; a sell hits a bid; a NO order is the YES mirror (buy NO =
+        sell YES, hits the YES bid; sell NO = buy YES, lifts the YES ask)."""
+        buying = str(intent.action).lower() == "buy"
+        if str(intent.side).lower() == "no":
+            return quote.yes_bid_size if buying else quote.yes_ask_size
+        return quote.yes_ask_size if buying else quote.yes_bid_size
+
+    def _child_qty(self, intent, quote, remaining: int) -> int:
+        """How many of the ``remaining`` contracts to send this attempt. With no
+        participation cap, the whole remainder (unchanged behaviour). With a cap,
+        at most ``max_book_fraction`` of the resting touch size - but an exit is
+        floored at 1 so the cap can never trap a position, and unknown depth is
+        never capped (you cannot size to depth you cannot see)."""
+        if self.max_book_fraction is None:
+            return remaining
+        size = self._touch_size(intent, quote)
+        if size is None or size <= 0:
+            return remaining
+        cap = int(size * self.max_book_fraction)
+        if str(intent.action).lower() == "sell":
+            cap = max(1, cap)
+        return max(0, min(remaining, cap))
+
     def _limit_for(self, intent, quote, attempt: int) -> Optional[float]:
         """Marketable limit for this attempt, or None to abandon the order.
 
@@ -174,12 +230,61 @@ class MarketableLimitKernel:
         return self._clamp(best_bid - cross * TICK)
 
     def execute(self, intent) -> ExecutionReport:
+        buying = str(intent.action).lower() == "buy"
         attempts: List[Dict] = []
+        remaining = int(intent.qty_contracts)
+        filled_total = 0
+        weighted_px = 0.0  # sum of own-side fill price * qty, for a size-weighted average
+        fee_total = 0.0
+        last = None  # last child that filled - its ids/status represent the order
+
+        def _finish() -> ExecutionReport:
+            # Any partial progress is kept and reported: a sell that got some of
+            # the position out must never look like a total miss. Fail safe -
+            # report exactly what Kalshi confirmed, never the requested size.
+            if filled_total <= 0:
+                return self._rejected("unfilled", {"ticker": intent.ticker, "attempts": attempts})
+            avg_px = round(weighted_px / filled_total, 4)
+            status = "filled" if filled_total >= int(intent.qty_contracts) else "partially_filled"
+            raw = dict((last.raw_json or {}) if last else {})
+            raw["attempts"] = attempts
+            return ExecutionReport(
+                accepted=True,
+                status=status,
+                fill_price_dollars=avg_px,
+                fill_qty_contracts=filled_total,
+                external_order_id=last.external_order_id if last else None,
+                client_order_id=last.client_order_id if last else None,
+                fee_dollars=round(fee_total, 6),
+                raw_json=raw,
+            )
+
         for attempt in range(self.max_attempts):
             quote = self._feed.quote(intent.ticker, max_age_seconds=self.max_quote_age_seconds)
             if quote is None or not quote.tradable:
                 attempts.append({"attempt": attempt, "outcome": "no_quote"})
+                if filled_total > 0:
+                    break  # keep what filled; no fresh quote to price the rest
                 return self._rejected("no_quote", {"ticker": intent.ticker, "attempts": attempts})
+
+            # Entry-only spread guard: a wide touch is an illiquid/uncertain book
+            # and entry cost is ~ taker fee + half the spread. A missed entry
+            # costs nothing; an exit must get out, so it never checks this.
+            if (
+                buying
+                and self.max_entry_spread is not None
+                and quote.spread is not None
+                and quote.spread > self.max_entry_spread + 1e-9
+            ):
+                detail = {
+                    "attempt": attempt,
+                    "outcome": "spread_too_wide",
+                    "spread": quote.spread,
+                    "max_entry_spread": self.max_entry_spread,
+                }
+                attempts.append(detail)
+                return self._rejected("spread_too_wide", {"ticker": intent.ticker, "attempts": attempts})
+
             limit = self._limit_for(intent, quote, attempt)
             if limit is None:
                 attempts.append(
@@ -190,6 +295,8 @@ class MarketableLimitKernel:
                         "signal_price": float(intent.limit_price_dollars),
                     }
                 )
+                if filled_total > 0:
+                    break
                 return self._rejected(
                     "edge_gone",
                     {
@@ -200,59 +307,97 @@ class MarketableLimitKernel:
                         "attempts": attempts,
                     },
                 )
-            res = self._submitter(
-                intent.ticker, intent.action, intent.side, intent.qty_contracts, limit
-            )
+
+            child = self._child_qty(intent, quote, remaining)
+            if child < 1:
+                # Only a BUY lands here (a sell's child is floored at 1): the
+                # participation cap left no room on this thin touch. A missed
+                # entry costs nothing, so stop rather than chase a deeper level.
+                attempts.append(
+                    {
+                        "attempt": attempt,
+                        "outcome": "participation_capped",
+                        "touch_size": self._touch_size(intent, quote),
+                        "remaining": remaining,
+                    }
+                )
+                return self._rejected(
+                    "participation_capped",
+                    {"ticker": intent.ticker, "max_book_fraction": self.max_book_fraction, "attempts": attempts},
+                )
+
+            if buying and self.max_order_notional is not None and child * limit > self.max_order_notional + 1e-9:
+                attempts.append(
+                    {
+                        "attempt": attempt,
+                        "outcome": "order_notional_exceeded",
+                        "notional": round(child * limit, 4),
+                        "max_order_notional": self.max_order_notional,
+                    }
+                )
+                return self._rejected(
+                    "order_notional_exceeded", {"ticker": intent.ticker, "attempts": attempts}
+                )
+
+            res = self._submitter(intent.ticker, intent.action, intent.side, child, limit)
             # The submitter sent a YES-leg order (see order_wire_params), so the
             # fill it reports is a YES price. Parse against the YES wire price so
             # the "filled but unreadable price" fallback is in the same (YES) space,
             # then flip a NO fill back to its own cost basis (1 - yes_fill).
             _, wire_price = order_wire_params(intent.action, intent.side, limit)
             report = DummyExecutionKernel(lambda *a, **k: res).execute(
-                _RepricedIntent(intent, wire_price)
+                _RepricedIntent(intent, wire_price, child)
             )
             fill_px = report.fill_price_dollars
             if str(intent.side).lower() == "no" and fill_px > 0:
                 fill_px = round(1.0 - fill_px, 4)
+            f = int(report.fill_qty_contracts)
             attempts.append(
                 {
                     "attempt": attempt,
                     "limit": limit,
                     "wire_price": wire_price,
+                    "child_qty": child,
                     "quote_bid": quote.yes_bid,
                     "quote_ask": quote.yes_ask,
                     "quote_age_s": round(quote.age_seconds(), 3),
                     "quote_source": quote.source,
-                    "filled": report.fill_qty_contracts,
+                    "filled": f,
                 }
             )
-            if report.fill_qty_contracts > 0:
-                raw = dict(report.raw_json or {})
-                raw["attempts"] = attempts
-                return ExecutionReport(
-                    accepted=True,
-                    status=report.status,
-                    fill_price_dollars=fill_px,
-                    fill_qty_contracts=report.fill_qty_contracts,
-                    external_order_id=report.external_order_id,
-                    client_order_id=report.client_order_id,
-                    fee_dollars=report.fee_dollars,
-                    raw_json=raw,
-                )
-        return self._rejected("unfilled", {"ticker": intent.ticker, "attempts": attempts})
+            if f > 0:
+                filled_total += f
+                weighted_px += fill_px * f
+                fee_total += float(report.fee_dollars)
+                remaining -= f
+                last = report
+                # An entry takes what the touch gives and stops - chasing the
+                # remainder up the book is exactly the paying-up this avoids.
+                # An exit keeps going until flat, crossing one tick further each
+                # retry, because a part-filled exit still leaves money at risk.
+                if buying or remaining <= 0:
+                    break
+        return _finish()
 
 
 class _RepricedIntent:
-    """The intent as actually sent: same order, live limit price.
+    """The intent as actually sent: same order, live limit price and child size.
 
     The fill parser falls back to the limit when a filled order comes back
     without a readable average price, so it has to see the price that was
-    really on the wire, not the one the signal was computed at.
+    really on the wire, not the one the signal was computed at; and it reads
+    the sent quantity to classify a partial, so a sliced child passes its own
+    size, not the parent's.
     """
 
-    def __init__(self, intent, limit_price_dollars: float) -> None:
+    def __init__(self, intent, limit_price_dollars: float, qty_contracts: Optional[int] = None) -> None:
         self._intent = intent
         self.limit_price_dollars = limit_price_dollars
+        self._qty = None if qty_contracts is None else int(qty_contracts)
+
+    @property
+    def qty_contracts(self):
+        return self._intent.qty_contracts if self._qty is None else self._qty
 
     def __getattr__(self, name):
         return getattr(self._intent, name)
