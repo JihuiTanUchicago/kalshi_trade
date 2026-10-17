@@ -469,7 +469,10 @@
     shell('/devlog', boardTitle('Dev Logs', 'What we’ve shipped, and what’s next. Updated as we build.'), loading(260));
     let d;
     try { d = await api('/api/devlog'); } catch (e) { root.querySelector('main').innerHTML = notice(e.message, 'bad'); return; }
-    const planned = (d.planned || []).map((p) => `<li class="dl-item planned"><span class="dl-dot" aria-hidden="true"></span><span class="dl-what">${esc(p)}</span></li>`).join('');
+    const planned = (d.planned || []).map((p) => `<li class="dl-item planned">
+        <span class="dl-dot" aria-hidden="true"></span>
+        <div class="dl-body"><h3 class="dl-what">${esc(p.title)}</h3>${p.detail ? `<p class="dl-detail">${mdLite(p.detail)}</p>` : ''}</div>
+      </li>`).join('');
     const shipped = (d.shipped || []).map((s) => `<li class="dl-item">
         <span class="dl-date">${esc(s.date)}</span>
         <div class="dl-body"><h3 class="dl-what">${esc(s.title)}</h3>${s.detail ? `<p class="dl-detail">${mdLite(s.detail)}</p>` : ''}</div>

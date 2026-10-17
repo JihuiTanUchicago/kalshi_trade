@@ -8,31 +8,34 @@ from __future__ import annotations
 
 from typing import Dict, List
 
-# Upcoming / in-progress, most-wanted first.
-PLANNED: List[str] = [
-    'more robust, fast, and intelligent execution service',
-    'claude code style animation demonstration in a research session',
-    'Per-bucket cash + funding (live/demo/paper)',
-    'Activate Alpaca stock/ETF agent data after secure worker configuration and entitlement checks, with a production canary before customer rollout',
-    'All-markets collector + cross-contract',
-    'Wire the generator (agent.py) to PROPOSE cross-contract pairs + build merged validation/holdout partitions, then enable cross-contract LIVE execution (engine.py/live gate)',
-    'Widen the live market universe',
-    'Email-all community digest',
-    'Premium model access',
-    'Kalshi-dev 2nd equity line',
-    'Agent internet access / web search (Google/Tavily/Brave)',
-    'Polymarket as a 2nd venue: data + API + real & simulation trading',
-    'Risk-management force-sell layer on drawdown + portfolio caps (lost when a prior background agent exited; needs rebuild)',
-    'NO-side (and side="either") LIVE execution',
-    'Install bwrap/firejail on the Linux worker so code strategies are no longer inert (they fail-closed without an OS confiner, by design)',
-    'NBA / Kalshi sports markets',
-    'Bittensor (TAO) subnet tokens as a new venue',
-    'Onboard Opus 5.5 (claude-opus-5-5) + surface model comparison',
+# Upcoming / in-progress, most-wanted first: (title, detail). `detail` is the
+# full markdown explanation (rendered via mdLite); '' for bare one-liners.
+PLANNED: List[tuple] = [
+    ('more robust', 'fast, and intelligent execution service.'),
+    ('claude code style animation demonstration in a research session', 'allow user to interrupt and then continue. do not ship minimum, this should be production grade, commercially good.'),
+    ('Per-bucket cash + funding', '(live/demo/paper) — the 3-bucket dashboard has no funding story. Paper: in-app add/reset cash (app-minted). Demo: real sandbox FILLS (real slippage/fill prices) but money is app-controlled — a "Reload demo to $X" button, we never touch the real Kalshi demo balance. Live: show the real Kalshi balance (via live key) + a deposit link (can\'t mint real cash). Build after the expansion-merge integration pass (needs merged demo-mode base).'),
+    ('Activate Alpaca stock/ETF agent data after secure worker configuration and entitlement checks', 'with a production canary before customer rollout. Source integration is complete for review; no production deployment yet. Setup.'),
+    ('All-markets collector + cross-contract', 'Phase 1 catalog shipped; ingestion split onto a dedicated collector box + S3 data-lake. Next: per-minute S3/Parquet snapshots (Phase 2). Backtest-over-any-series (3) + cross-contract research/eval (4) now built (see Done); cross-contract **live execution** still deferred.'),
+    ('Wire the generator (agent.py) to PROPOSE cross-contract pairs + build merged validation/holdout partitions', 'then enable cross-contract LIVE execution (engine.py/live gate) — research + evaluation are in place; this is the remaining step.'),
+    ('Widen the live market universe', 'surface more of the already-collected Kalshi series in the UI (smaller than the full all-markets build).'),
+    ('Email-all community digest', '**code is live** (opt-out + HMAC unsubscribe + 4h per-recipient cooldown; background-thread dispatch on each new post), but SES is in sandbox so it only reaches *verified* addresses. Unblock: SES console → Account dashboard → Request production access (zero code change after).'),
+    ('Premium model access', 'Claude 5.5 / OpenAI GPT-6.x / Grok are AWS account-gated (agreements accepted, but invoke denies even from full-admin). Unblock: Bedrock console → Model access (us-east-1), or AWS Sales. Prices locked: Sonnet5.5 $2/$10, Opus5.5 $4/$20, Haiku5.5 $0.1/$0.5, GPT-6.1 Sol $2.2/$10, GPT-6 Sol $2/$10, GPT-5.6 Sol $8.8/$33.'),
+    ('Kalshi-dev 2nd equity line', 'NOT blocked: uses the *public* demo candlesticks (no credentials), base URL now defaulted in code; draws once the slippage/dev-curve work deploys (verify after deploy). Covered by the slippage Done entry below.'),
+    ('Agent internet access / web search (Google/Tavily/Brave)', ''),
+    ('Polymarket as a 2nd venue', 'data + API + real & simulation trading.'),
+    ('Risk-management force-sell layer on drawdown + portfolio caps (lost when a prior background agent exited; needs rebuild)', ''),
+    ('NO-side (and side="either") LIVE execution', 'execution places the correct leg (buy NO = sell-YES ask at 1−no_price, priced from the NO book, filled/settled in NO terms); every other live gate kept, in order. Live NO is gated behind `APP_NO_SIDE_LIVE_ENABLED` (default OFF) until the mechanics are validated on the real demo sandbox; demo/paper NO work now. **Next:** place a demo NO order, confirm correct side/fill, then flip the flag.'),
+    ('NBA / Kalshi sports markets', 'let Tau research + trade Kalshi sports contracts (NBA to start, season kicking off); support comparing quantitative vs fundamental bets. New market family beyond BTC.'),
+    ('Bittensor (TAO) subnet tokens as a new venue', 'data from taostats.io; currently long-only (short coming), likely illiquid/event-driven; test whether Tau can reason about subnet tokenomics. New asset class.'),
+    ('Onboard Opus 5.5', '(`claude-opus-5-5`) + surface model comparison — tester wants it for NBA season. Blocked on AWS Bedrock model access like the other premium models.'),
 ]
 
 # Shipped, newest first: (YYYY-MM-DD, title, detail). `detail` is the full
 # markdown explanation (what/components/methodology); may be '' for one-liners.
 SHIPPED: List[tuple] = [
+    ('2026-10-17', 'Engine resilience fix', 'one deployment\'s error (a stale-DB-connection blip, a bad key) in a trading tick no longer tears down the whole engine loop for everyone; a `decide()` exception now skips that deployment\'s tick and retries next slot. (Root-caused from a prod incident where an RDS outage thrash-restarted the engine.) Also: a live deployment paused for a genuinely-missing key now says "add your live Kalshi key" instead of the false "live trading is not enabled." (Deployed + live `cdd69d5`.)'),
+    ('2026-10-17', 'Community feed cleanup', 'removed the post hover-highlight and the redundant top-right react/reply toolbar; actions stay bottom-left (reaction pills, add-emoji, reply/N-replies, Edit on own posts); the instant reactor tooltip is kept. (Deployed + live `cdd69d5`.)'),
+    ('2026-10-17', 'Sandbox confiner installed on the worker', 'bubblewrap 0.10.0 installed and verified functional on the box, so arbitrary-quant **code strategies** now run in the kernel sandbox instead of being inert (fail-closed by design). (Done on prod.)'),
     ('2026-10-16', 'Order-book depth + microstructure exposed to research, with dataset provenance', 'the 9 collected microstructure features (order-book imbalance, bid/ask sizes, recent trade flow, quote-change intensity, short-horizon mid returns) that lived in `model_features_1m` but were hidden are now in the `FEATURES` namespace a spec can filter on (leak-safe as-of the decision minute; degrades gracefully on NULLs). Every hypothesis also records its `data_provenance` (features + data sources used) in the experiment ledger — the audit behind "use any dataset, as long as we track it." (Deployed + live.)'),
     ('2026-10-16', '"Dig deeper" on a passed strategy (+ fixed the "stuck follow-up" bug)', 'a passed strategy is no longer a dead end: `POST /api/strategies/{id}/dig-deeper` and a co-pilot `research` action branch a NEW pre-registered research line off it (seeds its thesis/spec, keeps the mechanism, refines/stress-tests/extends) through the normal gatekeeper — no bypass; branches link to the parent via `parent_id`. This also root-caused the beta tester\'s "follow-up got stuck": it was never a hang — the co-pilot simply had no way to continue research from a passed strategy, so it dead-ended; now it can. (Deployed + live.)'),
     ('2026-10-16', 'Arbitrary-quant code strategies (research-only, kernel-sandboxed)', 'a strategy can be agent-authored Python/numpy (any math/ML/quant framework) exposing one `signals(window)` contract, judged IDENTICALLY to a DSL spec by the gatekeeper (pre-registration hashes the code as the rule). It runs in a DEFAULT-DENY kernel sandbox (`sandbox-exec`/`bwrap`/`firejail`: no network, no credential reads, no filesystem outside scratch, CPU/mem/time caps) — a security review found and closed a real in-interpreter escape (numpy-capable code re-exposing `os` via `random._os`), so the boundary is the OS kernel, not Python. Research-only, never in the live/paper engine; inert until a confiner is installed on the Linux worker (fail-closed). (Deployed + live.)'),
@@ -76,6 +79,6 @@ SHIPPED: List[tuple] = [
 
 def as_json() -> Dict:
     return {
-        "planned": list(PLANNED),
+        "planned": [{"title": t, "detail": dt} for t, dt in PLANNED],
         "shipped": [{"date": d, "title": t, "detail": dt} for d, t, dt in SHIPPED],
     }

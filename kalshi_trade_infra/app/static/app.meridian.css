@@ -1084,7 +1084,7 @@ body.hot-open .hotrail { display: flex; }
 .cmt-list { display: grid; gap: 12px; }
 .cmt-more { margin: 2px 0 2px; }
 .dl-list { list-style: none; margin: 10px 0 0; padding: 0; }
-.dl-item { display: flex; gap: 14px; align-items: baseline; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+.dl-item { display: flex; gap: 14px; align-items: flex-start; padding: 16px 0; border-bottom: 1px solid var(--rule); }
 .dl-item:not(.planned) { align-items: flex-start; padding: 16px 0; }
 .dl-item:last-child { border-bottom: 0; }
 .dl-date { flex: none; width: 92px; font-family: var(--f-nar); font-size: 12px; letter-spacing: .03em; color: var(--ink-3); font-variant-numeric: tabular-nums; }
@@ -1097,7 +1097,7 @@ body.hot-open .hotrail { display: flex; }
 .dl-detail code { font-family: var(--f-mono, ui-monospace, monospace); font-size: .9em; background: var(--stock-sunk); padding: 1px 4px; border-radius: 3px; }
 .dl-detail a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
 .dl-detail b { font-weight: 600; color: var(--ink); }
-.dl-dot { flex: none; width: 7px; height: 7px; margin-top: 6px; border-radius: 50%; background: var(--signal); }
+.dl-dot { flex: none; width: 7px; height: 7px; margin-top: 7px; border-radius: 50%; background: var(--signal); }
 .uhandle { font-weight: 400; font-size: .92em; color: var(--ink-3); font-family: var(--f-nar); letter-spacing: .01em; }
 .mention { color: var(--signal); font-weight: 600; }
 .mention-pop { background: var(--stock-raised); border: 1px solid var(--ink); border-radius: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.16); max-height: 240px; overflow-y: auto; padding: 4px; }
@@ -1171,8 +1171,8 @@ body.hot-open .hotrail { display: flex; }
 .cmt-search { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .dl-date { flex: none; width: 92px; font-family: var(--f-nar); font-size: 12px; letter-spacing: .03em; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .dl-item:not(.planned) .dl-date { padding-top: 2px; }
-.dl-dot { flex: none; width: 7px; height: 7px; margin-top: 6px; border-radius: 50%; background: var(--signal); }
-.dl-item { display: flex; gap: 14px; align-items: baseline; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+.dl-dot { flex: none; width: 7px; height: 7px; margin-top: 7px; border-radius: 50%; background: var(--signal); }
+.dl-item { display: flex; gap: 14px; align-items: flex-start; padding: 16px 0; border-bottom: 1px solid var(--rule); }
 .dl-item:not(.planned) { align-items: flex-start; padding: 16px 0; }
 .dl-item.planned .dl-what { color: var(--ink-2); }
 .dl-item:last-child { border-bottom: 0; }
