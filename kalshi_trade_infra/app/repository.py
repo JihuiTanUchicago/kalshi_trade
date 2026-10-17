@@ -163,7 +163,7 @@ def users_by_usernames(cur, usernames: List[str]) -> List[Dict]:
 
 def get_user(cur, user_id: int) -> Optional[Dict]:
     cur.execute(
-        "SELECT id, email, name, username, picture_url, autopilot, ui_theme, created_at FROM app_users WHERE id=%s", (user_id,)
+        "SELECT id, email, name, username, picture_url, autopilot, autopilot_live, autopilot_daily_loss_limit, ui_theme, created_at FROM app_users WHERE id=%s", (user_id,)
     )
     return cur.fetchone()
 
@@ -177,6 +177,25 @@ def set_autopilot(cur, user_id: int, on: bool) -> None:
     cur.execute("UPDATE app_users SET autopilot=%s WHERE id=%s", (1 if on else 0, user_id))
 
 
+def set_autopilot_live(cur, user_id: int, on: bool) -> None:
+    cur.execute("UPDATE app_users SET autopilot_live=%s WHERE id=%s", (1 if on else 0, user_id))
+
+
+def autopilot_live_over_limit(cur, day_start) -> List[Dict]:
+    """Users with live autopilot ON whose live realized loss since `day_start` has hit their
+    daily loss limit. The kill switch / loss guard reads this each engine loop."""
+    cur.execute(
+        """SELECT u.id, u.autopilot_daily_loss_limit AS lim,
+                  COALESCE((SELECT SUM(p.pnl) FROM app_positions p
+                            WHERE p.user_id=u.id AND p.mode='live' AND p.status='closed' AND p.closed_at >= %s), 0) AS realized
+           FROM app_users u
+           WHERE u.autopilot_live=1
+           HAVING realized <= -lim""",
+        (day_start,),
+    )
+    return cur.fetchall()
+
+
 def create_session(cur, user_id: int, token_hash: str, ttl: timedelta) -> None:
     now = now_utc()
     cur.execute(
@@ -187,7 +206,7 @@ def create_session(cur, user_id: int, token_hash: str, ttl: timedelta) -> None:
 
 def session_user(cur, token_hash: str) -> Optional[Dict]:
     cur.execute(
-        """SELECT u.id, u.email, u.name, u.username, u.picture_url, u.autopilot, u.ui_theme, u.created_at
+        """SELECT u.id, u.email, u.name, u.username, u.picture_url, u.autopilot, u.autopilot_live, u.autopilot_daily_loss_limit, u.ui_theme, u.created_at
            FROM app_sessions s JOIN app_users u ON u.id=s.user_id
            WHERE s.token_hash=%s AND s.expires_at > %s""",
         (token_hash, now_utc()),
@@ -864,6 +883,19 @@ def daily_pnl(cur, user_id: int, mode: str, days: int = 60) -> List[Dict]:
 
 
 # -- chat & proposals ----------------------------------------------------------
+
+
+def last_autopilot_action(cur, user_id: int) -> Optional[Dict]:
+    """Most recent agent/system line about autopilot, for the floating status window."""
+    cur.execute(
+        """SELECT content, created_at FROM app_chat_messages
+           WHERE user_id=%s AND role='system'
+                 AND (content LIKE '%%utopilot%%' OR content LIKE '%%LIVE%%' OR content LIKE '%%Kill%%')
+           ORDER BY id DESC LIMIT 1""",
+        (user_id,),
+    )
+    r = cur.fetchone()
+    return {"text": r["content"], "at": r["created_at"]} if r else None
 
 
 def add_chat(cur, user_id: int, role: str, content: str, proposal_id: Optional[int] = None) -> int:

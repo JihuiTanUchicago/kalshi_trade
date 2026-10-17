@@ -297,6 +297,25 @@ def schedule_reviews(cur) -> int:
     return len(users)
 
 
+def enforce_autopilot_limits(conn) -> int:
+    """Kill switch: any user whose live autopilot has lost its daily limit today gets live
+    autopilot turned OFF and every running LIVE deployment paused at once. Runs each engine loop."""
+    cur = conn.cursor()
+    day_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+    killed = 0
+    for u in repo.autopilot_live_over_limit(cur, day_start):
+        repo.set_autopilot_live(cur, u["id"], False)
+        loss = -float(u["realized"])
+        repo.add_chat(cur, u["id"], "system",
+                      "Live autopilot auto-disabled: today's live loss $%.2f hit your $%.2f daily limit. "
+                      "Pausing live deployments." % (loss, float(u["lim"])))
+        for d in repo.list_deployments(cur, u["id"]):
+            if d["mode"] == "live" and d["status"] == "running":
+                repo.set_deployment_status(cur, u["id"], d["id"], "paused", "Autopilot daily loss limit hit")
+        killed += 1
+    return killed
+
+
 def live_kernel_factory(conn) -> Callable[[int], object]:
     """user_id -> MarketableLimitKernel signing with that user's own key."""
     from app import kalshi_account
@@ -349,6 +368,11 @@ def run_forever() -> None:
                         repo.engine_heartbeat(conn.cursor(), LIVE_TRADING_ENABLED)
                     except Exception:
                         pass  # a heartbeat write must never stop the trading loop
+                    if LIVE_TRADING_ENABLED:
+                        try:
+                            enforce_autopilot_limits(conn)
+                        except Exception as e:
+                            print("[engine] autopilot limit check failed: %r" % e, flush=True)
                     time.sleep(TICK_SECONDS)
             finally:
                 conn.close()

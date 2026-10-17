@@ -392,6 +392,11 @@ def main() -> None:
         _add_column_if_missing(cur, "app_policies", "base_score", "ALTER TABLE app_policies ADD COLUMN base_score DOUBLE NULL")
         # Which frontend the user picked: 'tau' (default, feature-complete) or 'meridian' (redesign).
         _add_column_if_missing(cur, "app_users", "ui_theme", "ALTER TABLE app_users ADD COLUMN ui_theme VARCHAR(16) NOT NULL DEFAULT 'tau'")
+        # Live autopilot: OFF by default; when on (and the server live switch + a Kalshi key are
+        # present) the agent may promote paper-passed YES-only strategies to live within the user's
+        # own caps. A per-user daily live-loss limit auto-disables it (kill switch).
+        _add_column_if_missing(cur, "app_users", "autopilot_live", "ALTER TABLE app_users ADD COLUMN autopilot_live TINYINT(1) NOT NULL DEFAULT 0")
+        _add_column_if_missing(cur, "app_users", "autopilot_daily_loss_limit", "ALTER TABLE app_users ADD COLUMN autopilot_daily_loss_limit DECIMAL(10,2) NOT NULL DEFAULT 50.00")
         # Backfill any user still missing a handle (idempotent: only touches NULLs).
         from app import repository as _repo
         cur.execute("SELECT id, email, name FROM app_users WHERE username IS NULL OR username=''")

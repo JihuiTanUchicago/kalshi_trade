@@ -174,6 +174,8 @@ def me(ctx: Ctx):
             "id": ctx.user["id"], "email": ctx.user["email"], "name": ctx.user["name"],
             "username": ctx.user.get("username"), "ui_theme": ctx.user.get("ui_theme") or "tau",
             "picture": ctx.user["picture_url"], "autopilot": bool(ctx.user["autopilot"]),
+            "autopilot_live": bool(ctx.user.get("autopilot_live")),
+            "autopilot_daily_loss_limit": float(ctx.user.get("autopilot_daily_loss_limit") or 50),
         },
         "kalshi_connected": repo.get_kalshi_key(ctx.cur, ctx.uid) is not None,
         "live_trading_available": engine.LIVE_TRADING_ENABLED,
@@ -617,7 +619,65 @@ def settings(ctx: Ctx):
         repo.add_chat(ctx.cur, ctx.uid, "system",
                       "Autopilot is %s." % ("ON: the agent may adjust and deploy paper strategies itself, and pause anything"
                                              if on else "OFF: the agent will only propose"))
+        if not on:  # turning off autopilot also turns off live autopilot (it depends on it)
+            repo.set_autopilot_live(ctx.cur, ctx.uid, False)
     return {"ok": True}
+
+
+def autopilot_live(ctx: Ctx):
+    """Enable/disable LIVE autopilot. Enabling needs a typed confirmation AND the server live
+    switch + a connected Kalshi key; disabling is one click."""
+    on = ctx.body.get("on") is True
+    if on:
+        if ctx.body.get("confirm") != "LIVE AUTOPILOT":
+            raise ApiError(400, "Type LIVE AUTOPILOT to let the agent trade real money on its own.")
+        if not engine.LIVE_TRADING_ENABLED:
+            raise ApiError(403, "Live trading isn't enabled on this server yet.")
+        if repo.get_kalshi_key(ctx.cur, ctx.uid) is None:
+            raise ApiError(400, "Connect your Kalshi key on the Funds page first.")
+        if not ctx.user.get("autopilot"):
+            raise ApiError(400, "Turn on autopilot first — live autopilot builds on it.")
+    repo.set_autopilot_live(ctx.cur, ctx.uid, on)
+    repo.add_chat(ctx.cur, ctx.uid, "system",
+                  "LIVE autopilot is %s." % ("ON — the agent may promote proven YES-side paper strategies to real money, within your caps and loss guard." if on else "OFF."))
+    return {"ok": True, "autopilot_live": on}
+
+
+def autopilot_kill(ctx: Ctx):
+    """Kill switch: turn live autopilot off and pause every running live deployment now."""
+    repo.set_autopilot_live(ctx.cur, ctx.uid, False)
+    paused = 0
+    for d in repo.list_deployments(ctx.cur, ctx.uid):
+        if d["mode"] == "live" and d["status"] == "running":
+            repo.set_deployment_status(ctx.cur, ctx.uid, d["id"], "paused", "Kill switch")
+            paused += 1
+    repo.add_chat(ctx.cur, ctx.uid, "system", "Kill switch: live autopilot off, %d live deployment(s) paused." % paused)
+    return {"ok": True, "paused": paused}
+
+
+def autopilot_status(ctx: Ctx):
+    """Lightweight status for the floating autopilot window."""
+    cur, u = ctx.cur, ctx.user
+    deps = repo.list_deployments(cur, ctx.uid)
+    live_run = [d for d in deps if d["mode"] == "live" and d["status"] == "running"]
+    paper_run = [d for d in deps if d["mode"] == "paper" and d["status"] == "running"]
+    gates_ok = bool(engine.LIVE_TRADING_ENABLED and repo.get_kalshi_key(cur, ctx.uid) is not None)
+    live_on = bool(u.get("autopilot_live")) and gates_ok and bool(u.get("autopilot"))
+    mode = "live" if (live_on and live_run) else ("live-armed" if live_on else ("paper" if u.get("autopilot") else "off"))
+    today_live = round(repo.realized_pnl(cur, ctx.uid, "live", _start_of_day_utc()), 2)
+    limit = float(u.get("autopilot_daily_loss_limit") or 50)
+    return {
+        "autopilot": bool(u.get("autopilot")),
+        "autopilot_live": bool(u.get("autopilot_live")),
+        "live_enabled": bool(engine.LIVE_TRADING_ENABLED),
+        "kalshi_connected": repo.get_kalshi_key(cur, ctx.uid) is not None,
+        "mode": mode,
+        "live_running": len(live_run), "paper_running": len(paper_run),
+        "today_live_pnl": today_live,
+        "daily_loss_limit": limit,
+        "loss_headroom": round(max(0.0, limit + min(0.0, today_live)), 2),  # how much loss budget is left today
+        "last_action": repo.last_autopilot_action(cur, ctx.uid),
+    }
 
 
 # -- funds -------------------------------------------------------------------------
@@ -1347,6 +1407,9 @@ ROUTES: List[Route] = [
         ("POST", "/api/chat", post_chat, True),
         ("POST", r"/api/proposals/(\d+)/(approve|reject)", decide_proposal, True),
         ("POST", "/api/settings", settings, True),
+        ("POST", "/api/autopilot/live", autopilot_live, True),
+        ("POST", "/api/autopilot/kill", autopilot_kill, True),
+        ("GET", "/api/autopilot/status", autopilot_status, True),
         ("GET", "/api/community", community, True),
         ("POST", "/api/community", create_community_post, True),
         ("POST", r"/api/community/(\d+)/like", like_post, True),

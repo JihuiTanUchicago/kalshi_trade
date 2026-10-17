@@ -485,6 +485,43 @@ def raises_risk(old: Dict, new: Dict) -> bool:
             or new["sizing"]["max_positions"] > old["sizing"]["max_positions"])
 
 
+def live_autopilot_ok(cur, user: Dict) -> Tuple[bool, str]:
+    """ALL gates that must hold before autopilot may touch live money. Returns (allowed, why_not).
+    Keeping this in one place means no caller can go live by skipping a check."""
+    from app import engine  # local import keeps module load order simple
+    if not user.get("autopilot"):
+        return False, "autopilot is off"
+    if not user.get("autopilot_live"):
+        return False, "live autopilot is off"
+    if not engine.LIVE_TRADING_ENABLED:
+        return False, "live trading is not enabled on this server"
+    if repo.get_kalshi_key(cur, user["id"]) is None:
+        return False, "no Kalshi key is connected"
+    from datetime import datetime, timezone
+    day_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+    if repo.realized_pnl(cur, user["id"], "live", day_start) <= -float(user.get("autopilot_daily_loss_limit") or 50):
+        return False, "today's live loss hit your daily limit"
+    return True, ""
+
+
+MIN_PAPER_TRADES_FOR_LIVE = 8
+
+
+def _proven_on_paper(cur, user_id: int, strategy_id: int) -> Tuple[bool, str]:
+    """Enforce the research -> PAPER -> live loop in code: a strategy may go live only after it has
+    actually run on paper with enough closed trades and hasn't lost money there. Backs the model's
+    'proven on paper' judgment with a hard rule so autopilot can't jump a fresh pass straight to real money."""
+    paper = [d for d in repo.list_deployments(cur, user_id, include_stopped=True)
+             if d["strategy_id"] == strategy_id and d["mode"] == "paper"]
+    trades = sum(int(d.get("closed_trades") or 0) for d in paper)
+    realized = sum(float(d.get("realized_pnl") or 0) for d in paper)
+    if trades < MIN_PAPER_TRADES_FOR_LIVE:
+        return False, "it needs %d+ closed paper trades first (has %d)" % (MIN_PAPER_TRADES_FOR_LIVE, trades)
+    if realized < 0:
+        return False, "it's still down $%.2f on paper" % (-realized)
+    return True, ""
+
+
 def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.dataset) -> Tuple[str, Optional[int]]:
     """Turn one agent action into a proposal (or, on autopilot, an applied
     change). Returns (sentence for the chat, proposal id if one was made)."""
@@ -539,6 +576,28 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
             repo.create_deployment(cur, user_id, strat["id"], strat["market"], "paper")
             return "Autopilot deployed %s on paper." % strat["title"], pid
         return "Proposed deploying %s on paper." % strat["title"], pid
+    if kind == "deploy_live":
+        strat = repo.get_strategy(cur, user_id, int(action.get("strategy_id") or 0))
+        if strat is None or strat["status"] != "passed":
+            return "Only strategies that passed their backtest can go live.", None
+        if (strat["spec"].get("side") or "").lower() != "yes":
+            return "Live supports YES-side strategies only, so I kept %s on paper." % strat["title"], None
+        ok, why = live_autopilot_ok(cur, user)
+        if not (autopilot and ok):
+            # Gate failed: never go live silently — stays on paper (safeguard 2).
+            return "I can't move %s to live (%s); it stays on paper until live autopilot is enabled." % (strat["title"], why or "live autopilot is off"), None
+        proven, pwhy = _proven_on_paper(cur, user_id, strat["id"])
+        if not proven:
+            # research -> PAPER -> live: must prove on paper before real money.
+            return "I'm keeping %s on paper a while longer — %s." % (strat["title"], pwhy), None
+        # Deploy to live WITHIN the user's own caps. create_deployment copies the strategy's spec
+        # sizing (stake x max_positions = the book cap); the engine enforces max_positions, per-trade
+        # stake, YES-only, per-user key and the loss guard. Autopilot cannot raise any of these.
+        cap = float(strat["spec"]["sizing"]["stake"]) * int(strat["spec"]["sizing"]["max_positions"])
+        pid = repo.create_proposal(cur, user_id, "deploy", reason, None, strat["id"], "applied")
+        repo.create_deployment(cur, user_id, strat["id"], strat["market"], "live")
+        return ("Autopilot deployed %s to LIVE within your $%.0f cap (YES-only, your own Kalshi key, loss guard on)."
+                % (strat["title"], cap)), pid
     return "I tried an action I'm not allowed to take (%s)." % kind, None
 
 
@@ -587,7 +646,8 @@ Actions:
   {"type": "adjust", "deployment_id": N, "changes": {<partial spec, e.g. {"entry": {"min_edge": 0.08}}>}, "reason": "..."}
   {"type": "pause",  "deployment_id": N, "reason": "..."}
   {"type": "resume", "deployment_id": N, "reason": "..."}
-  {"type": "deploy", "strategy_id": N, "reason": "..."}     (paper only)
+  {"type": "deploy", "strategy_id": N, "reason": "..."}       (paper)
+  {"type": "deploy_live", "strategy_id": N, "reason": "..."}  (REAL money; only a YES-side strategy that already proved itself on PAPER, and only when the user turned on live autopilot. If live autopilot is off or any safety gate fails it is refused and stays on paper. Never the first step for a new idea: research -> paper -> live.)
 Use actions only when you have a concrete reason; an empty list is often right.
 """ + specmod.SPEC_GUIDE
 

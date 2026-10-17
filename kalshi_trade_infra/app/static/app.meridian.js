@@ -90,6 +90,65 @@
 
   // ---------- formatting ----------
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  // Safe minimal markdown + @-mentions for community bodies (escape first, http(s) links only).
+  const mdLite = (s) => {
+    let t = esc(s);
+    t = t.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    t = t.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+    t = t.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>');
+    t = t.replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener nofollow">$1</a>');
+    t = t.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noopener nofollow">$2</a>');
+    t = t.replace(/(^|[^\w@])@([a-z0-9_]{2,32})/gi, '$1<span class="mention">@$2</span>');
+    return t.replace(/\n/g, '<br>');
+  };
+  const authorLine = (name, uname) => `${esc(name || 'Trader')}${uname ? ` <span class="uhandle">@${esc(uname)}</span>` : ''}`;
+  const rxTitle = (rx) => {
+    const names = rx.names || [];
+    if (!names.length) return '';
+    const extra = (rx.count || 0) - names.length;
+    return extra > 0 ? `${names.join(', ')} and ${extra} other${extra > 1 ? 's' : ''}` : names.join(', ');
+  };
+  function attachMention(el) {
+    if (!el || el._mention) return; el._mention = true;
+    let box = null, items = [], active = -1, token = null;
+    const close = () => { if (box) box.remove(); box = null; items = []; active = -1; token = null; };
+    const tokenAtCaret = () => {
+      const text = el.value.slice(0, el.selectionStart);
+      const m = /@([a-z0-9_]*)$/i.exec(text);
+      return m ? { q: m[1], start: el.selectionStart - m[1].length - 1, end: el.selectionStart } : null;
+    };
+    const render = () => {
+      if (!box) { box = document.createElement('div'); box.className = 'mention-pop'; document.body.appendChild(box); }
+      const r = el.getBoundingClientRect();
+      box.style.cssText = `position:fixed;left:${Math.round(r.left)}px;top:${Math.round(r.bottom + 2)}px;width:${Math.round(Math.min(300, Math.max(180, r.width)))}px;z-index:50;`;
+      box.innerHTML = items.map((u, i) => `<button type="button" class="mention-opt ${i === active ? 'on' : ''}" data-u="${esc(u.username)}"><b>@${esc(u.username)}</b>${u.name ? ` <span>${esc(u.name)}</span>` : ''}</button>`).join('');
+      box.querySelectorAll('.mention-opt').forEach((b) => { b.onmousedown = (e) => { e.preventDefault(); pick(b.dataset.u); }; });
+    };
+    const pick = (uname) => {
+      if (!token) return;
+      const before = el.value.slice(0, token.start), after = el.value.slice(token.end);
+      el.value = `${before}@${uname} ${after}`;
+      const caret = before.length + uname.length + 2;
+      el.setSelectionRange(caret, caret); el.focus();
+      close(); el.dispatchEvent(new Event('input'));
+    };
+    el.addEventListener('input', async () => {
+      token = tokenAtCaret();
+      if (!token) return close();
+      try { const d = await api('/api/users/mention?q=' + encodeURIComponent(token.q)); items = d.users || []; }
+      catch (e) { return close(); }
+      if (!items.length) return close();
+      active = 0; render();
+    });
+    el.addEventListener('keydown', (e) => {
+      if (!box || !items.length) return;
+      if (e.key === 'ArrowDown') { active = (active + 1) % items.length; render(); e.preventDefault(); }
+      else if (e.key === 'ArrowUp') { active = (active - 1 + items.length) % items.length; render(); e.preventDefault(); }
+      else if (e.key === 'Enter' && active >= 0) { pick(items[active].username); e.preventDefault(); }
+      else if (e.key === 'Escape') close();
+    });
+    el.addEventListener('blur', () => setTimeout(close, 150));
+  }
   const fmt2 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fmt0 = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
   const usd = (v, signed = false) => {
@@ -156,6 +215,7 @@
     [/^\/community$/, viewCommunity],
     [/^\/explore$/, viewExplore],
     [/^\/settings(?:\/(account|billing|system|theme))?$/, viewSettings],
+    [/^\/devlog$/, viewDevLog],
     [/^\/billing$/, () => go('/settings/billing', true)],
     [/^\/admin$/, viewAdmin],
     [/^\/system$/, () => go('/settings/system', true)],
@@ -185,8 +245,51 @@
     const id = setInterval(() => { if (!document.hidden && gen === S.gen) fn().catch(() => {}); }, ms);
     S.timers.push(id);
   }
+  let _verAt = 0;
+  async function checkVersion() {
+    if (!window.__BUILD__ || Date.now() - _verAt < 30000 || document.getElementById('verbar')) return;
+    _verAt = Date.now();
+    try {
+      const d = await api('/api/version');
+      if (d && d.v && d.v !== window.__BUILD__) {
+        const bar = document.createElement('div');
+        bar.id = 'verbar'; bar.className = 'verbar';
+        bar.innerHTML = `<span>A new version of Tau is ready.</span><button id="verreload" class="btn sm">Reload</button>`;
+        document.body.appendChild(bar);
+        bar.querySelector('#verreload').onclick = () => location.reload(true);
+      }
+    } catch (e) { /* best-effort */ }
+  }
+  async function wireBell() {
+    const wrap = root.querySelector('.bell-wrap');
+    if (!wrap) return;
+    const trig = wrap.querySelector('.bell-trig'), menu = wrap.querySelector('.bell-menu');
+    const dot = wrap.querySelector('.bell-dot'), list = wrap.querySelector('#bell-list');
+    const close = () => { menu.hidden = true; trig.setAttribute('aria-expanded', 'false'); document.removeEventListener('click', onDoc, true); };
+    const onDoc = (e) => { if (!wrap.contains(e.target)) close(); };
+    const paint = (d) => {
+      dot.hidden = !d.unread;
+      list.innerHTML = d.items.length
+        ? d.items.map((n) => `<a class="notif ${n.read ? '' : 'unread'}" href="${n.link || '#'}">${esc(n.body)}<time>${when(n.created_at)}</time></a>`).join('')
+        : '<p class="bell-empty">No notifications yet.</p>';
+    };
+    let data = { unread: 0, items: [] };
+    try { data = await api('/api/notifications'); paint(data); } catch (e) { return; }
+    trig.onclick = async (e) => {
+      e.stopPropagation();
+      if (!menu.hidden) { close(); return; }
+      menu.hidden = false; trig.setAttribute('aria-expanded', 'true'); document.addEventListener('click', onDoc, true);
+      if (data.unread) {
+        data.unread = 0; dot.hidden = true;
+        list.querySelectorAll('.notif.unread').forEach((n) => n.classList.remove('unread'));
+        api('/api/notifications/read', {}).catch(() => {});
+      }
+    };
+  }
+
   async function render() {
     clearTimers();
+    checkVersion();
     S.gen++;
     window.scrollTo(0, 0);
     const path = location.pathname;
@@ -307,7 +410,19 @@
   }
 
   // ---------- shell ----------
-  const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/explore', 'Explore', 'explore'], ['/deploy', 'Position', 'deploy'], ['/community', 'Community', 'community'], ['/settings', 'Settings', 'funds']];
+  const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/explore', 'Explore', 'explore'], ['/deploy', 'Position', 'deploy'], ['/community', 'Community', 'community'], ['/devlog', 'Dev Logs', 'devlog'], ['/settings', 'Settings', 'funds']];
+  async function viewDevLog() {
+    shell('/devlog', boardTitle('Dev Logs', 'What we’ve shipped, and what’s next. Updated as we build.'), loading(260));
+    let d;
+    try { d = await api('/api/devlog'); } catch (e) { root.querySelector('main').innerHTML = notice(e.message, 'bad'); return; }
+    const planned = (d.planned || []).map((p) => `<li class="dl-item planned"><span class="dl-dot" aria-hidden="true"></span><span class="dl-what">${esc(p)}</span></li>`).join('');
+    const shipped = (d.shipped || []).map((s) => `<li class="dl-item"><span class="dl-date">${esc(s.date)}</span><span class="dl-what">${esc(s.title)}</span></li>`).join('');
+    root.querySelector('main').innerHTML = `
+      <section class="sect"><div class="sect-head"><h2>Shipping next</h2><p>Most-wanted first</p></div>
+        <ul class="dl-list">${planned || '<li class="hint">Nothing queued.</li>'}</ul></section>
+      <section class="sect"><div class="sect-head"><h2>Shipped</h2><p>${(d.shipped || []).length} updates</p></div>
+        <ul class="dl-list">${shipped}</ul></section>`;
+  }
   // The operator can flip into a plain-user view. Only their own account is an
   // admin at all (server decides); the toggle just hides the admin surface so
   // they can see what a normal user sees. Default: admin view on.
@@ -324,7 +439,7 @@
       <header class="masthead app-header"><div class="masthead-in">
         <p class="wordmark"><a href="/">${ICON.mark}<span>Tau</span></a></p>
         <nav class="services" aria-label="Sections"><div class="services-in">${nav}</div></nav>
-        <span class="asof">${adminToggle}<span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false">${esc(u.name || u.email)}<svg class="caret" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/settings/billing">Billing</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
+        <span class="asof">${adminToggle}<span class="bell-wrap"><button class="bell-trig" data-action="bell" aria-haspopup="true" aria-expanded="false" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bell-dot" hidden></span></button><span class="bell-menu" hidden><div class="bell-head"><b>Notifications</b></div><div class="bell-list" id="bell-list"></div></span></span><span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false">${esc(u.name || u.email)}<svg class="caret" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/settings/billing">Billing</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
       </div></header>
       <div class="app-layout">
         <aside class="hotrail" id="hotrail" aria-label="Hot markets"></aside>
@@ -334,6 +449,7 @@
         </div>
       </div>`;
     root.querySelectorAll('[data-action="signout"]').forEach((b) => (b.onclick = async () => { await api('/api/logout', {}).catch(() => {}); S.me = null; go('/signin'); }));
+    wireBell();
     const prof = root.querySelector('.profile');
     if (prof) {
       const trig = prof.querySelector('.profile-trig'), menu = prof.querySelector('.profile-menu');
@@ -484,21 +600,24 @@
     return `<span class="mk ${cls}">${esc(label)}</span>`;
   };
   const money = (v) => `<span class="${tone(v)}">${usd(v, true)}</span>`;
-  const STRAT_HEAD = '<thead><tr><th>Strategy</th><th>Market</th><th class="num">Unseen P&amp;L' + glo('unseen') + '</th><th class="num">Trades</th><th class="num">Win</th><th>Tried</th><th>Status</th></tr></thead>';
-  const strategyTable = (rows) => `<div class="sheet"><table class="stack t-strat">${STRAT_HEAD}<tbody>${rows}</tbody></table></div>`;
+  const STRAT_HEAD = (pick) => `<thead><tr>${pick ? '<th class="pickcol"><input type="checkbox" id="pick-all" aria-label="Select all deployable"></th>' : ''}<th>Strategy</th><th>Market</th><th class="num">Unseen P&amp;L${glo('unseen')}</th><th class="num">Trades</th><th class="num">Win</th><th>Tried</th><th>Status</th></tr></thead>`;
+  const strategyTable = (rows, pick) => `<div class="sheet"><table class="stack t-strat">${STRAT_HEAD(pick)}<tbody>${rows}</tbody></table></div>`;
   function strategySlip(s, reg, opts = {}) {
     const oos = s.out_of_sample, ins = s.in_sample || {};
     const m = oos || ins;
     const tried = s.hypotheses_tried ? `1 of ${s.hypotheses_tried}` : s.parent_id ? 'Adjustment' : '\u2014';
     const name = opts.nolink ? esc(s.title) : `<a href="/strategies/${s.id}">${esc(s.title)}</a>`;
-    return `<tr class="${opts.land ? 'washed' : ''}">
-      <td class="name" data-lab="">${name}<div class="sub-fig cellwrap">${esc(s.thesis)}</div></td>
+    const pickCell = opts.pick ? (s.status === 'passed'
+      ? `<td class="pickcol" data-lab="Deploy"><input type="checkbox" class="pick" data-id="${s.id}" aria-label="Select for deployment"></td>`
+      : '<td class="pickcol" data-lab=""></td>') : '';
+    return `<tr class="${opts.land ? 'washed' : ''}">${pickCell}
+      <td class="name" data-lab="">${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}<div class="sub-fig cellwrap">${esc(s.thesis)}</div></td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(s.market))} \u00b7 ${esc(dirLabel(s.direction))}</span></td>
       <td class="num" data-lab="${oos ? 'Unseen P&amp;L' : 'Tested P&amp;L'}">${m.pnl == null ? '\u2014' : money(m.pnl)}${oos ? '' : '<div class="sub-fig">tested only</div>'}</td>
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
       <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>
       <td data-lab="Tried">${esc(tried)}</td>
-      <td class="act" data-lab="">${mark(s.status)}</td>
+      <td class="act" data-lab="">${mark(s.status)}${s.deployed ? ` <span class="mk ${s.deploy_live ? 'live' : 'dep'}">${s.deploy_live ? 'Live' : 'Deployed'}</span>` : ''}</td>
     </tr>`;
   }
   const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Market</th><th>Status</th><th class="num">Realized</th><th class="num">Trades</th><th class="num">Backtest unseen</th><th>Since</th>${controls ? '<th></th>' : ''}</tr></thead>`;
@@ -833,7 +952,7 @@
       const performance = days.length > 1 ? equityChart(periodCurve, null, null, `Cumulative closed paper profit and loss over the last ${days.length} days`) : bars;
       const stubs = (rows, closed) => rows.length
         ? rows.map((r) => `<div class="stub"><b>${esc(r.side.toUpperCase())} ${esc(r.qty)} × ${cents(+r.entry_price)}</b>
-            <span>${closed ? money(+r.pnl) : usd(r.qty * r.entry_price)}</span>
+            <span>${closed ? money(+r.pnl) : (r.unrealized != null ? money(r.unrealized) : usd(r.qty * r.entry_price))}</span>
             <small>${esc(r.title)} · <span class="tick">${esc(r.ticker)}</span> · ${r.mode === 'live' ? 'LIVE' : 'paper'} · ${when(closed ? r.closed_at : r.opened_at)}</small></div>`).join('')
         : `<p class="hint">${closed ? 'No settled trades yet.' : 'No open positions.'}</p>`;
       const sessions = recent.data?.runs.slice(0, 6) || [];
@@ -945,6 +1064,7 @@
 
   async function viewRun(id) {
     shell('/research', '<div id="runboard">' + boardTitle('Research run') + '</div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl>', `
+      <div id="rsibox"></div>
       <div class="printer">
         <section><div class="section-head"><h2>Agent log</h2><span id="runact"></span></div><div id="flash"></div><ol class="log" id="log" aria-live="polite"></ol></section>
         <section><div class="section-head"><h2>Hypotheses</h2><p>Best unseen P&L first</p></div>
@@ -961,7 +1081,21 @@
       root.querySelector('#runfigs').innerHTML =
         fig('Status', active ? (r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>' : 'Researching<span class="working" aria-label="in process"></span>') : r.status === 'succeeded' ? 'Done' : r.status === 'cancelled' ? 'Cancelled' : 'Failed') +
         fig('Time', started ? Math.max(0, Math.round((end - started) / 60000)) + ' min' : '—') +
-        fig('Hypotheses', r.hypotheses_tried || tried) + fig('Passed', active ? '…' : r.strategies_passed);
+        fig('Hypotheses', r.hypotheses_tried || tried) + fig('Passed', active ? '…' : r.strategies_passed) +
+        fig('RSI policy', d.rsi && d.rsi.evolved ? 'Evolved' : 'Self-tuning',
+            { small: d.rsi && d.rsi.evolved ? `generalization score ${d.rsi.score}` : 'dreams a better search each run' });
+      const rsibox = root.querySelector('#rsibox');
+      if (rsibox && d.rsi) {
+        const delta = (d.rsi.base_score != null && d.rsi.score != null)
+          ? `<span class="rsi-score">${d.rsi.base_score} <span class="rsi-arrow">→</span> ${d.rsi.score}</span>` : '';
+        rsibox.innerHTML = `<div class="rsi-card"><div class="rsi-head"><b class="rsi-badge">RSI</b> Self-improving research ${d.rsi.evolved ? '<span class="rsi-tag">Evolved</span>' : '<span class="rsi-tag quiet">Self-tuning</span>'}</div>
+          ${d.rsi.evolved
+            ? `<p>This agent <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
+               ${d.rsi.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(d.rsi.summary)}</p>` : ''}
+               <p class="rsi-last">Generalization score ${delta}${d.rsi.evolved_at ? ' · adopted ' + when(d.rsi.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
+            : `<p>The agent is <b>self-tuning</b>: after each research cycle it dreams up new search strategies and keeps one only if it beats the current policy on your own history (scored over shuffled orderings, so it can't overfit).</p>
+               ${d.rsi.last_dream ? `<p class="rsi-last"><b>Last check${d.rsi.last_dream_at ? ' · ' + when(d.rsi.last_dream_at) : ''}:</b> ${esc(d.rsi.last_dream)}</p>` : '<p class="rsi-last">The first result appears at the end of a research cycle.</p>'}`}</div>`;
+      }
       root.querySelector('#runact').innerHTML = active ? '<button class="btn danger small" id="cancel">Cancel run</button>' : (r.status === 'succeeded' ? '<a class="btn small" href="/strategies">All strategies</a>' : '');
       const cancel = root.querySelector('#cancel');
       if (cancel) cancel.onclick = () => armed(cancel, 'Confirm cancel', () => busy(cancel, async () => { await api(`/api/runs/${id}/cancel`, {}).catch((e) => alert0(e.message)); await load(); }));
@@ -976,10 +1110,18 @@
           inner = 'Tested <b>' + esc(ev.message) + '</b>';
         } else if (ev.kind === 'verdict') {
           const st = ev.data && ev.data.status;
+          const sid = ev.data && ev.data.strategy_id;
           const tag = st === 'passed' ? '<b class="verdict pass">PASSED</b>'
             : st === 'rejected' ? '<b class="verdict rej">REJECTED</b>'
             : '<b class="verdict void">VOID</b>';
-          inner = tag + ' ' + esc(ev.message.replace(/^(PASSED|VOID|FAILED|REJECTED)\s*[-–]\s*/, ''));
+          const rest = ev.message.replace(/^(PASSED|VOID|FAILED|REJECTED)\s*[-–]\s*/, '');
+          const title = (ev.data && ev.data.title) || rest;
+          const tail = rest.startsWith(title) ? rest.slice(title.length) : '';
+          const titleHtml = sid ? `<a href="/strategies/${sid}">${esc(title)}</a>` : `<b>${esc(title)}</b>`;
+          inner = `${tag} ${titleHtml}${esc(tail)}`;
+        } else if (/^(Dreaming:|Research policy evolved:)/.test(ev.message)) {
+          li.className = 'step rsi-event';
+          inner = `<b class="rsi-badge">RSI</b> ${esc(ev.message)}`;
         } else {
           inner = esc(ev.message);
         }
@@ -1012,24 +1154,27 @@
   // ---------- strategies ----------
   async function viewStrategies() {
     const q = new URLSearchParams(location.search);
-    const f = { status: q.has('status') ? q.get('status') : '', market: q.get('market') || '' };
-    shell('/strategies', boardTitle('Strategies') +
+    const f = { status: q.has('status') ? q.get('status') : '', market: q.get('market') || '', q: q.get('q') || '', deployed: q.get('deployed') === '1' ? '1' : '' };
+    shell('/strategies', boardTitle('Strategies', 'Every strategy your agents researched. Passed ones can be deployed; void ones stay here so you can see what didn’t work.') +
       '<dl class="figures measure" id="sfigs" style="margin-top:14px"></dl>', `
-      <div class="section-head filters">
-        <div class="chips" role="group" aria-label="Status">${[['', 'All'], ['passed', 'Passed'], ['failed', 'Void'], ['rejected', 'Rejected']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}" aria-pressed="${f.status === v}">${l}</button>`).join('')}</div>
+      <div class="section-head filters stratfilters">
+        <div class="chips" role="group" aria-label="Status">${[['', 'All'], ['passed', 'Passed'], ['failed', 'Void'], ['rejected', 'Rejected']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}" aria-pressed="${f.status === v}">${l}</button>`).join('')}
+          <button class="chip" data-toggle="deployed" aria-pressed="${f.deployed === '1'}">Deployed</button></div>
         <div class="chips" role="group" aria-label="Market">${[['', 'Both markets'], ...S.me.markets.map((m) => [m.key, marketShort(m.key)])].map(([v, l]) => `<button class="chip" data-f="market" data-v="${v}" aria-pressed="${f.market === v}">${esc(l)}</button>`).join('')}</div>
+        <div class="searchwrap"><input class="input" id="strat-q" type="search" placeholder="Search name or thesis…" value="${esc(f.q)}" aria-label="Search strategies"></div>
       </div>
+      <div id="bulkbar" class="bulkbar" hidden></div>
       <div id="slips" style="margin-top:16px">${loading(240)}</div>`);
-    root.querySelectorAll('[data-f]').forEach((b) => {
-      b.onclick = () => {
-        f[b.dataset.f] = b.dataset.v;
-        const p = new URLSearchParams(Object.entries(f).filter(([, v]) => v !== '' || false));
-        if (!f.status) p.set('status', '');
-        go('/strategies?' + p.toString(), true);
-      };
-    });
-    // Paginate server-side at 50/page — a run_forever session can produce far more than the old
-    // 500-row cap, and the figures/chip counts come from a real COUNT(*), not the fetched page.
+    const applyFilters = () => {
+      const p = new URLSearchParams(Object.entries(f).filter(([, v]) => v !== '' || false));
+      if (!f.status) p.set('status', '');
+      go('/strategies?' + p.toString(), true);
+    };
+    root.querySelectorAll('[data-f]').forEach((b) => { b.onclick = () => { f[b.dataset.f] = b.dataset.v; applyFilters(); }; });
+    const depToggle = root.querySelector('[data-toggle="deployed"]');
+    if (depToggle) depToggle.onclick = () => { f.deployed = f.deployed === '1' ? '' : '1'; applyFilters(); };
+    const sq = root.querySelector('#strat-q');
+    if (sq) sq.onchange = () => { const v = sq.value.trim(); if (v !== f.q) { f.q = v; applyFilters(); } };
     const CLABEL = { passed: 'Passed', failed: 'Void', rejected: 'Rejected' };
     const slipsEl = root.querySelector('#slips');
     let sp = 0;
@@ -1043,13 +1188,44 @@
         fig('Pass rate', total ? pct(c('passed') / total, false) : '—');
       root.querySelectorAll('[data-f="status"]').forEach((b) => { const v = b.dataset.v; b.textContent = v ? `${CLABEL[v]} (${c(v)})` : `All (${total})`; });
       if (!d.matched) {
-        slipsEl.innerHTML = `<div class="empty"><h3>No strategies found</h3>${total ? '' : '<a class="btn" href="/research">Go to Research</a>'}</div>`;
+        slipsEl.innerHTML = `<div class="empty"><h3>Nothing here yet</h3><p>${total ? 'Try another filter.' : 'Start a research session and the strategies it finds will land here.'}</p>${total ? '' : '<a class="btn" href="/research">Go to Research</a>'}</div>`;
         return;
       }
       const list = d.strategies, reg = registry(list.map((s) => s.equity));
-      slipsEl.innerHTML = strategyTable(list.map((s) => strategySlip(s, reg)).join(''))
+      const anyPassed = list.some((s) => s.status === 'passed');
+      slipsEl.innerHTML = strategyTable(list.map((s) => strategySlip(s, reg, { pick: anyPassed })).join(''), anyPassed)
         + (d.pages > 1 ? `<div class="xpage">${sp > 0 ? `<button class="btn sm" data-sp="${sp - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${sp + 1} of ${num(d.pages)} · ${num(d.matched)} strategies</span>${sp + 1 < d.pages ? `<button class="btn sm" data-sp="${sp + 1}">Next →</button>` : '<span></span>'}</div>` : '');
       slipsEl.querySelectorAll('[data-sp]').forEach((b) => b.onclick = () => { sp = +b.dataset.sp; load(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+      wireBulk();
+    };
+    const bar = root.querySelector('#bulkbar');
+    const picks = () => Array.from(slipsEl.querySelectorAll('.pick'));
+    const selected = () => picks().filter((c) => c.checked).map((c) => +c.dataset.id);
+    const bulkDeploy = async () => {
+      const ids = selected();
+      if (!ids.length) return;
+      let ok = 0; const errs = [];
+      for (const id of ids) {
+        try { await api('/api/deployments', { strategy_id: id, mode: 'paper' }); ok++; } catch (e) { errs.push(e.message); }
+      }
+      if (ok && !errs.length) { go('/deploy'); return; }
+      flash('#bulkflash', `${ok} deployed${errs.length ? ` · ${errs.length} failed: ${esc(errs[0])}` : ''}`, errs.length ? 'bad' : 'good');
+      if (ok) load();
+    };
+    const syncBar = () => {
+      const pickAll = root.querySelector('#pick-all');
+      const n = selected().length;
+      if (!n) { bar.hidden = true; bar.innerHTML = ''; return; }
+      bar.hidden = false;
+      bar.innerHTML = `<span class="lab">${n} selected</span><button class="btn sm" id="bulk-dep">Deploy ${n} on paper</button><button class="btn sm ghost" id="bulk-clear">Clear</button><span id="bulkflash"></span>`;
+      root.querySelector('#bulk-dep').onclick = (e) => busy(e.target, bulkDeploy);
+      root.querySelector('#bulk-clear').onclick = () => { picks().forEach((c) => c.checked = false); if (pickAll) pickAll.checked = false; syncBar(); };
+    };
+    const wireBulk = () => {
+      const pickAll = root.querySelector('#pick-all');
+      if (pickAll) pickAll.onclick = () => { picks().forEach((c) => c.checked = pickAll.checked); syncBar(); };
+      picks().forEach((c) => c.onchange = () => { if (pickAll && !c.checked) pickAll.checked = false; syncBar(); });
+      syncBar();
     };
     load();
   }
@@ -1065,6 +1241,7 @@
     root.querySelector('.board-title').outerHTML = boardTitle(serial(s.id) + ' · ' + marketShort(s.market), esc(dirLabel(s.direction)));
     root.querySelector('#figs').innerHTML = figsFor(s);
     const canDeploy = ['passed', 'failed', 'rejected'].includes(s.status);  // the user decides; status is a warning, not a block
+    const activeDeps = s.deployments.filter((d) => d.status !== 'stopped');
     // Why a strategy was rejected (never reached the unseen-data gate) — stated honestly: a
     // profitable idea with too few trades is rejected on sample size, not for "losing money".
     const rejectReason = (st) => {
@@ -1091,7 +1268,7 @@
       <div class="detail">
         <div>
           <article class="sheet-doc">
-            <p class="doc-mark">${mark(s.status)}</p>
+            <p class="doc-mark">${mark(s.status)}${s.shared_from ? ` <span class="mk shared">${ICON.share}Shared by ${esc(s.shared_from)}</span>` : ''}</p>
             <h2>${esc(s.title)}</h2>
             <p class="thesis">${esc(s.thesis)}</p>
             <h3 class="sheet-h">Trading rules</h3>
@@ -1106,6 +1283,15 @@
           </article>
         </div>
         <aside>
+          ${s.holdings && s.holdings.length ? (() => {
+            const marked = s.holdings.filter((p) => p.unrealized != null);
+            const unreal = marked.reduce((a, p) => a + p.unrealized, 0);
+            return `<section class="panel"><h3>Holding right now</h3>
+            <div class="sheet"><table class="table stack t-dep"><thead><tr><th>Contract</th><th>Position</th><th class="num">Cost</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
+            ${s.holdings.map((p) => `<tr><td class="tick" data-lab="Contract">${esc(p.ticker)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : ''}</td><td data-lab="Position">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(p.entry_price)}</td><td class="num" data-lab="Cost">${usd(p.cost)}</td><td class="num" data-lab="Unreal.">${p.unrealized == null ? '<span class="sub-fig">—</span>' : money(p.unrealized)}</td><td class="num" data-lab="Settles">${clock(p.market_close_time)}</td></tr>`).join('')}
+            </tbody></table></div>
+            <p class="hint" style="margin-top:8px">${s.holdings.length} open position${s.holdings.length === 1 ? '' : 's'} at cost ${usd(s.holdings.reduce((a, p) => a + p.cost, 0))}${marked.length ? ` · unrealized ${money(unreal)} (est., mark-to-market on the current bid)` : ' · awaiting first mark'}.</p></section>`;
+          })() : ''}
           <section class="panel"><h3>Deploy</h3>
             ${canDeploy ? `<div style="display:grid;gap:10px">
                 ${s.status !== 'passed' ? `<div class="notice bad">${ICON.warn}<span>${s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${rejectReason(s)}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
@@ -1120,6 +1306,20 @@
                 <div id="depflash"></div>
               </div>` : '<p class="hint">This strategy isn’t ready to deploy yet.</p>'}
             ${s.deployments.length ? `<p class="hint" style="margin-top:12px">Already deployed: ${s.deployments.map((d) => `#${d.id} (${esc(d.mode)}, ${esc(d.status)})`).join(', ')}. <a href="/deploy">Open the board</a></p>` : ''}
+          </section>
+          <section class="panel"><h3>Remove</h3>
+            <p class="hint" style="margin-bottom:8px">Delete this strategy from your inventory. ${activeDeps.length ? 'Stop its deployment first — you can do it right here.' : 'This can’t be undone.'}</p>
+            <div style="display:grid;gap:8px">
+              ${activeDeps.length ? `<button class="btn sm danger" id="stop-dep">Stop deployment${activeDeps.length > 1 ? 's' : ''} (${activeDeps.map((d) => '#' + d.id).join(', ')})</button>` : ''}
+              <button class="btn sm danger" id="del-strat" ${activeDeps.length ? 'aria-disabled="true"' : ''}>Delete strategy</button>
+            </div><div id="delflash"></div>
+          </section>
+          <section class="panel"><h3>Share</h3>
+            <p class="hint" style="margin-bottom:8px">Send a copy to a friend by the email they sign in with. They can deploy it like their own — sharing can't be undone.</p>
+            <form id="share-form" style="display:grid;gap:8px">
+              <input class="input" id="share-email" type="email" autocomplete="off" placeholder="friend@email.com" aria-label="Friend's email">
+              <button class="btn sm" type="submit">Share strategy</button>
+            </form><div id="shareflash"></div>
           </section>
           <section class="panel"><h3>Gates</h3><div id="gates">${gatesHtml(s.gates)}</div></section>
           ${s.status !== 'rejected' ? `<section class="panel" id="whatif"><h3>What if…</h3>
@@ -1148,6 +1348,30 @@
     if (depPaper) depPaper.onclick = () => busy(depPaper, async () => {
       try { await api('/api/deployments', { strategy_id: s.id, mode: 'paper' }); go('/deploy'); } catch (e) { flash('#depflash', e.message, 'bad'); }
     });
+    const stopDep = root.querySelector('#stop-dep');
+    if (stopDep) stopDep.onclick = () => armed(stopDep, 'Confirm stop', () => busy(stopDep, async () => {
+      try { for (const d of activeDeps) await api(`/api/deployments/${d.id}/stop`, {}); viewStrategy(s.id); } catch (e) { flash('#delflash', e.message, 'bad'); }
+    }));
+    const delStrat = root.querySelector('#del-strat');
+    if (delStrat) delStrat.onclick = () => {
+      if (activeDeps.length) { flash('#delflash', 'Stop its deployment first (button above).', 'bad'); return; }
+      armed(delStrat, 'Confirm delete', () => busy(delStrat, async () => {
+        try { await api(`/api/strategies/${s.id}/delete`, {}); go('/strategies'); } catch (e) { flash('#delflash', e.message, 'bad'); }
+      }));
+    };
+    const shareForm = root.querySelector('#share-form');
+    if (shareForm) shareForm.onsubmit = (e) => {
+      e.preventDefault();
+      const email = root.querySelector('#share-email').value.trim();
+      if (!email) { flash('#shareflash', 'Enter an email first.', 'bad'); return; }
+      busy(shareForm.querySelector('button'), async () => {
+        try {
+          const r = await api(`/api/strategies/${s.id}/share`, { email });
+          root.querySelector('#share-email').value = '';
+          flash('#shareflash', r.already ? 'They already have this strategy.' : 'Shared — they’ll see it in their inventory.', 'good');
+        } catch (err) { flash('#shareflash', err.message, 'bad'); }
+      });
+    };
     const depLive = root.querySelector('#dep-live');
     if (depLive) depLive.onclick = () => { if (!liveWhy) root.querySelector('#live-confirm').hidden = false; };
     const lc = root.querySelector('#live-confirm');
@@ -1244,8 +1468,8 @@
       root.querySelector('#deps').innerHTML = d.deployments.length ? deploymentTable(d.deployments.map((x) => deploymentSlip(x, reg, true)).join(''), true)
         : `<div class="empty"><h3>Nothing deployed</h3><a class="btn" href="/strategies">See passed strategies</a></div>`;
       bindDeploymentActions(root.querySelector('#deps'), loadBoard);
-      root.querySelector('#openpos').innerHTML = d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost</th><th class="num">Settles</th></tr></thead><tbody>
-        ${d.open_positions.map((p) => `<tr><td>${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : ''}</td><td class="tick">${esc(p.ticker)}</td><td>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num">${clock(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
+      root.querySelector('#openpos').innerHTML = d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
+        ${d.open_positions.map((p) => `<tr><td>${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : ''}</td><td class="tick">${esc(p.ticker)}</td><td>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num">${p.unrealized == null ? '<span class="sub-fig">—</span>' : money(p.unrealized)}</td><td class="num">${clock(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
         : '<p class="hint">No open positions.</p>';
     };
     let lastId = 0;
@@ -1385,8 +1609,8 @@
   }
   function postCard(p) {
     return `<article class="post" data-id="${p.id}">
-      <div class="post-head">${avatar(p.picture, p.author)}<div><b>${esc(p.author)}</b><span class="when">${when(p.created_at)}${p.edited ? ' · edited' : ''}</span></div></div>
-      <div class="post-main"><p class="post-body">${esc(p.body)}</p>
+      <div class="post-head">${avatar(p.picture, p.author)}<div><b>${authorLine(p.author, p.username)}</b><span class="when">${when(p.created_at)}${p.edited ? ' · edited' : ''}</span></div></div>
+      <div class="post-main"><p class="post-body">${mdLite(p.body)}</p>
       ${p.image ? `<a class="post-img" href="${esc(p.image)}" target="_blank" rel="noopener"><img src="${esc(p.image)}" alt="" loading="lazy"></a>` : ''}
       ${postSnapshot(p.snapshot)}</div>
       <div class="post-actions">
@@ -1399,10 +1623,10 @@
   }
   // Emoji reactions — a fixed palette (matches the server whitelist). 'tau' is a
   // custom reaction: the Tau mark, animated (a shaking "T" = excitement).
-  const REACTIONS = ['tau', '👍', '❤️', '🔥', '🚀', '😂', '🎉', '💯', '👀', '🤔', '😮', '😢', '🙌', '🧠', '📈', '📉', '💸', '✅', '❌', '🐂', '🐻'];
+  const REACTIONS = ['tau', '👍', '❤️', '🔥', '🚀', '😂', '🎉', '💯', '👀', '🤔', '😮', '😢', '🙌', '🧠', '📈', '📉', '💸', '✅', '❌', '🐂', '🐻', '🐐', '🦍', '🐳', '💎', '🤡', '💀', '🫡', '🌙'];
   const emojiHtml = (e) => e === 'tau' ? `<span class="tau-emoji">${ICON.mark}</span>` : esc(e);
   function reactionBar(p) {
-    const chips = (p.reactions || []).map((rx) => `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}">${emojiHtml(rx.emoji)}<span class="n">${rx.count}</span></button>`).join('');
+    const chips = (p.reactions || []).map((rx) => `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}" title="${esc(rxTitle(rx))}">${emojiHtml(rx.emoji)}<span class="n">${rx.count}</span></button>`).join('');
     return `<span class="reactions">${chips}<button class="rx add" data-react-add aria-label="Add a reaction">${ICON.react}<i class="plus">+</i></button></span>`;
   }
   let emojiPop = null;
@@ -1440,6 +1664,7 @@
         <div class="chips feed-filter" role="group" aria-label="Filter posts"><button class="chip" type="button" data-feed="all" aria-pressed="true">All posts</button><button class="chip" type="button" data-feed="mine" aria-pressed="false">My posts</button></div>
         <div id="feed">${loading(120)}${loading(120)}</div>
       </div>`);
+    attachMention(root.querySelector('#post-body'));
     // photo attach
     let pendingImage = null;
     const photoInput = root.querySelector('#photo-input');
@@ -1477,7 +1702,7 @@
     const feed = root.querySelector('#feed');
     const renderReactions = (art, list) => {
       const bar = art.querySelector('.reactions');
-      bar.innerHTML = (list || []).map((rx) => `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}">${emojiHtml(rx.emoji)}<span class="n">${rx.count}</span></button>`).join('')
+      bar.innerHTML = (list || []).map((rx) => `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}" title="${esc(rxTitle(rx))}">${emojiHtml(rx.emoji)}<span class="n">${rx.count}</span></button>`).join('')
         + `<button class="rx add" data-react-add aria-label="Add a reaction">${ICON.react}<i class="plus">+</i></button>`;
     };
     const react = async (pid, art, emoji) => {
@@ -1525,12 +1750,37 @@
         if (!box.hidden) { box.hidden = true; return; }
         box.hidden = false; box.innerHTML = loading(40);
         const d = await api(`/api/community/${pid}/comments`).catch(() => ({ comments: [] }));
-        box.innerHTML = `${d.comments.map((c) => `<div class="cmt">${avatar(c.picture, c.author)}<div><b>${esc(c.author)}</b> <span class="when">${when(c.created_at)}</span><p>${esc(c.body)}</p></div></div>`).join('')}
+        const many = d.comments.length > 6;
+        const PAGE = 10;
+        box.innerHTML = `${many ? '<div class="cmt-search"><input class="input" type="search" placeholder="Search replies…" aria-label="Search replies"><span class="cmt-count"></span></div>' : ''}
+          ${d.comments.length > PAGE ? '<button type="button" class="btn sm cmt-more"></button>' : ''}
+          <div class="cmt-list">${d.comments.map((c) => `<div class="cmt">${avatar(c.picture, c.author)}<div><b>${authorLine(c.author, c.username)}</b> <span class="when">${when(c.created_at)}</span><p>${mdLite(c.body)}</p></div></div>`).join('')}</div>
           <form class="cmt-form"><input class="input" maxlength="1000" placeholder="Write a reply…" required><button class="btn sm" type="submit">Reply</button></form>`;
+        const cmtSearch = box.querySelector('.cmt-search input');
+        const count = box.querySelector('.cmt-count');
+        const moreBtn = box.querySelector('.cmt-more');
+        const items = Array.from(box.querySelectorAll('.cmt-list .cmt'));
+        let limit = PAGE;
+        const applyView = () => {
+          const q = cmtSearch ? cmtSearch.value.trim().toLowerCase() : '';
+          let matched = 0;
+          items.forEach((el, i) => {
+            const hit = !q || el.textContent.toLowerCase().includes(q);
+            el.hidden = !hit || (!q && i < items.length - limit);
+            if (hit) matched++;
+          });
+          if (count) count.textContent = q ? `${matched} of ${items.length}` : '';
+          if (moreBtn) { const rest = items.length - limit; moreBtn.hidden = !!q || rest <= 0; moreBtn.textContent = `Load ${Math.min(PAGE, rest)} earlier`; }
+        };
+        if (cmtSearch) cmtSearch.oninput = applyView;
+        if (moreBtn) moreBtn.onclick = () => { limit += PAGE; applyView(); };
+        applyView();
+        attachMention(box.querySelector('.cmt-form input'));
         box.querySelector('.cmt-form').onsubmit = async (ev) => {
           ev.preventDefault();
-          const inp = box.querySelector('input'); const body = inp.value.trim(); if (!body) return;
-          await busy(box.querySelector('button'), async () => {
+          const form = ev.currentTarget;
+          const inp = form.querySelector('input'); const body = inp.value.trim(); if (!body) return;
+          await busy(form.querySelector('button'), async () => {
             try { await api(`/api/community/${pid}/comments`, { body }); inp.value = '';
               const cc = art.querySelector('[data-act="comments"] .c'); cc.textContent = (parseInt(cc.textContent || '0', 10) || 0) + 1;
               box.hidden = true; box.innerHTML = '';
@@ -1730,7 +1980,7 @@
         : '<p class="hint">No card on file.</p>';
       const main = !d.configured
         ? `<div class="notice">${ICON.warn}<span>Payments unavailable. Existing credits remain usable.</span></div>
-           <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2></div>${ledgerTable(d.ledger)}</section>`
+           <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt</a></div>${ledgerTable(d.ledger)}</section>`
         : `<div class="detail">
             <div>
               <section class="panel"><h3>Payment method</h3><div id="cards">${cardLines}</div>
@@ -1751,7 +2001,7 @@
                   <p class="hint" id="autorel-flash" style="margin-top:4px">Minimum $${d.min_reload_amount} reload, $${d.min_reload_threshold} trigger.</p>
                 </div>
               </section>
-              <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2></div>${ledgerTable(d.ledger)}</section>
+              <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt</a></div>${ledgerTable(d.ledger)}</section>
             </div>
             <aside>
               <section class="panel"><h3>Add credits</h3>

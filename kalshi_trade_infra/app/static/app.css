@@ -987,3 +987,40 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 306px; 
 .pc-grid { stroke: var(--rule); stroke-width: 1; }
 .pc-ylab { font-family: var(--f-nar); font-size: 10.5px; fill: var(--ink-3); letter-spacing: .03em; text-anchor: end; }
 .pc-xlab { font-family: var(--f-nar); font-size: 10.5px; fill: var(--ink-3); letter-spacing: .03em; }
+
+/* ---------- Floating autopilot window (bottom-right) ---------- */
+.apf { position: fixed; right: 16px; bottom: 16px; z-index: 60; font-family: var(--f-ui); }
+body.landing-body .apf { display: none; }
+.apf-pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--stock-raised); border: 1px solid var(--ink); border-radius: 999px; box-shadow: 0 6px 20px rgba(0,0,0,.14); font: inherit; font-size: 12.5px; color: var(--ink); cursor: pointer; }
+.apf-pill:hover { background: var(--stock-sunk); }
+.apf-pill svg { width: 13px; height: 13px; opacity: .6; }
+.apf-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--rule-2); }
+.apf.paper .apf-dot { background: var(--ink); }
+.apf.live .apf-dot { background: var(--signal); }
+.apf.live .apf-pill { border-color: var(--signal); }
+.apf.live .apf-pill-label { color: var(--signal); font-weight: 600; letter-spacing: .02em; }
+@media (prefers-reduced-motion: no-preference) { .apf.live .apf-dot { animation: apf-pulse 1.6s var(--ease) infinite; } }
+@keyframes apf-pulse { 0%,100% { box-shadow: 0 0 0 0 var(--signal-wash); } 50% { box-shadow: 0 0 0 5px transparent; } }
+.apf.open { width: 320px; max-width: calc(100vw - 32px); background: var(--stock-raised); border: 1px solid var(--ink); border-radius: var(--radius); box-shadow: 0 12px 34px rgba(0,0,0,.2); }
+.apf.open.live { border-color: var(--signal); }
+.apf-head { display: flex; align-items: center; gap: 8px; padding: 11px 13px; border-bottom: 1px solid var(--rule); }
+.apf-head b { font-size: 13px; letter-spacing: .02em; }
+.apf.open.live .apf-head b { color: var(--signal); }
+.apf-x { margin-left: auto; background: none; border: 0; padding: 2px; color: var(--ink-3); cursor: pointer; display: inline-flex; }
+.apf-x:hover { color: var(--ink); }
+.apf-x svg { width: 16px; height: 16px; }
+.apf-body { padding: 12px 13px 13px; }
+.apf-stats { display: grid; gap: 8px; margin: 0 0 10px; }
+.apf-stats > div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; border-bottom: 1px solid var(--rule); padding-bottom: 7px; }
+.apf-stats dt { font-family: var(--f-nar); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
+.apf-stats dd { margin: 0; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
+.apf-stats dd.neg { color: var(--ink); background: var(--neg); padding: 0 5px; border-radius: 2px; }
+.apf-stats dd.pos { color: var(--ink); background: var(--pos); padding: 0 5px; border-radius: 2px; }
+.apf-live { color: var(--signal); font-weight: 600; }
+.apf-last { font-size: 12px; line-height: 1.45; color: var(--ink-2); margin: 4px 0 8px; }
+.apf-gates:empty { display: none; }
+.apf-controls { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.apf-controls .btn { flex: 1 1 auto; }
+#apf-confirm { margin-top: 10px; display: grid; gap: 7px; }
+#apf-confirm[hidden] { display: none; }
+@media (max-width: 420px) { .apf { right: 10px; bottom: 10px; } .apf.open { width: calc(100vw - 20px); } }

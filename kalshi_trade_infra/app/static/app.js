@@ -271,6 +271,7 @@
     S.gen++;
     window.scrollTo(0, 0);
     const path = location.pathname;
+    if (path === '/signin') { const f = document.getElementById('autopilot-float'); if (f) f.remove(); }
     const match = routes.map(([re, fn]) => [path.match(re), fn]).find(([m]) => m);
     if (!S.me && path !== '/signin') {
       try { S.me = await api('/api/me'); } catch (e) { return go('/signin', true); }
@@ -461,6 +462,7 @@
       if (turningOff && location.pathname === '/admin') go('/', true); else render();
     };
     mountHotRail();
+    mountAutopilot();
   }
   const boardTitle = (title, sub = '') => `<div class="board-title"><h1 class="page">${esc(title)}</h1>${sub ? `<p class="deck">${sub}</p>` : ''}</div>`;
   async function viewDevLog() {
@@ -1914,6 +1916,88 @@
   // Hot Markets left rail: persistent (open/closed survives page switches), refreshes each minute.
   const hotOpen = () => localStorage.getItem('tau_hotrail') !== '0';
   let hotLoop = false;
+  let apLoop = false;
+
+  // ---------- floating autopilot window ----------
+  const apExpanded = () => localStorage.getItem('tau_ap_open') === '1';
+  function mountAutopilot() {
+    if (!S.me || !S.me.user) return;
+    let box = document.getElementById('autopilot-float');
+    if (!box) { box = document.createElement('div'); box.id = 'autopilot-float'; box.className = 'apf'; document.body.appendChild(box); }
+    renderAutopilot(box, S.ap);
+    const stale = !S.ap || !S.apAt || Date.now() - S.apAt > 18000;
+    if (stale) refreshAutopilot(box);
+    if (!apLoop) { apLoop = true; setInterval(() => { const b = document.getElementById('autopilot-float'); if (b) refreshAutopilot(b); }, 20000); }
+  }
+  async function refreshAutopilot(box) {
+    try { S.ap = await api('/api/autopilot/status'); S.apAt = Date.now(); renderAutopilot(box, S.ap); }
+    catch (e) { /* floating window is best-effort; never block the app */ }
+  }
+  const AP_MODE = {
+    off: { label: 'Autopilot off', cls: '' },
+    paper: { label: 'Autopilot · paper', cls: 'paper' },
+    'live-armed': { label: 'Autopilot · live armed', cls: 'live' },
+    live: { label: 'Autopilot · LIVE', cls: 'live' },
+  };
+  function renderAutopilot(box, d) {
+    const expanded = apExpanded();
+    const m = (d && AP_MODE[d.mode]) || AP_MODE.off;
+    box.className = 'apf' + (expanded ? ' open' : '') + (m.cls ? ' ' + m.cls : '');
+    if (!expanded) {
+      box.innerHTML = `<button type="button" class="apf-pill" data-ap="toggle" aria-expanded="false">
+        <span class="apf-dot" aria-hidden="true"></span><span class="apf-pill-label">${esc(m.label)}</span>${ICON.chev || ''}</button>`;
+    } else {
+      const live = d && d.mode && d.mode.indexOf('live') === 0;
+      const pnl = d ? d.today_live_pnl : 0;
+      box.innerHTML = `
+        <div class="apf-head"><span class="apf-dot" aria-hidden="true"></span><b>${esc(m.label)}</b>
+          <button type="button" class="apf-x" data-ap="toggle" aria-label="Collapse">${ICON.cross || '×'}</button></div>
+        <div class="apf-body">
+          ${d ? `<dl class="apf-stats">
+            <div><dt>Running</dt><dd>${d.paper_running} paper${d.live_running ? ` · <span class="apf-live">${d.live_running} live</span>` : ''}</dd></div>
+            <div><dt>Live P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd></div>
+            <div><dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd></div>
+          </dl>
+          ${d.last_action ? `<p class="apf-last">${esc(d.last_action.text)}</p>` : '<p class="apf-last hint">No autopilot actions yet.</p>'}
+          <div class="apf-gates hint">${d.live_enabled ? '' : 'Live trading is off on this server. '}${d.kalshi_connected ? '' : 'No Kalshi key connected. '}</div>
+          <div id="apf-flash"></div>
+          <div class="apf-controls">
+            ${d.autopilot_live
+              ? `<button class="btn sm" data-ap="livetoggle" data-on="0">Turn off live</button>`
+              : `<button class="btn sm" data-ap="livearm" ${(d.live_enabled && d.kalshi_connected && d.autopilot) ? '' : 'aria-disabled="true"'}>Enable live autopilot</button>`}
+            <button class="btn sm danger" data-ap="kill">Kill</button>
+            <a class="btn sm ghost" href="/deploy">Open board</a>
+          </div>
+          <form id="apf-confirm" hidden>
+            <p class="hint">The agent will trade <b>real money</b> on its own, within your caps + loss guard. Type <b>LIVE AUTOPILOT</b>.</p>
+            <input class="input" name="confirm" autocomplete="off" aria-label="Type LIVE AUTOPILOT to confirm">
+            <button class="btn sm" type="submit">Confirm live autopilot</button>
+          </form>` : '<p class="hint">Loading…</p>'}
+        </div>`;
+    }
+    box.querySelectorAll('[data-ap]').forEach((b) => (b.onclick = (e) => apAction(box, b.dataset.ap, e)));
+    const form = box.querySelector('#apf-confirm');
+    if (form) form.onsubmit = (e) => { e.preventDefault(); apEnableLive(box, form.confirm.value.trim()); };
+  }
+  function apFlash(box, msg, kind) { const f = box.querySelector('#apf-flash'); if (f) f.innerHTML = `<p class="${kind === 'bad' ? 'error-text' : 'hint'}">${esc(msg)}</p>`; }
+  async function apAction(box, action, e) {
+    if (action === 'toggle') { localStorage.setItem('tau_ap_open', apExpanded() ? '0' : '1'); renderAutopilot(box, S.ap); return; }
+    if (action === 'livearm') { const f = box.querySelector('#apf-confirm'); if (f) { f.hidden = false; f.confirm.focus(); } return; }
+    if (action === 'livetoggle') {
+      try { await api('/api/autopilot/live', { on: false }); } catch (err) { return apFlash(box, err.message, 'bad'); }
+      refreshAutopilot(box);
+    }
+    if (action === 'kill') {
+      if (e && e.target && e.target.dataset.armed !== '1') { e.target.dataset.armed = '1'; e.target.textContent = 'Confirm kill'; setTimeout(() => { if (e.target) { e.target.dataset.armed = ''; e.target.textContent = 'Kill'; } }, 4000); return; }
+      try { const r = await api('/api/autopilot/kill', {}); apFlash(box, `Killed — ${r.paused} live deployment(s) paused.`); } catch (err) { return apFlash(box, err.message, 'bad'); }
+      refreshAutopilot(box);
+    }
+  }
+  async function apEnableLive(box, confirm) {
+    try { await api('/api/autopilot/live', { on: true, confirm }); apFlash(box, 'Live autopilot is on.'); }
+    catch (err) { return apFlash(box, err.message, 'bad'); }
+    refreshAutopilot(box);
+  }
   function hotChart(h) {
     if (!h || h.length < 2) return '<div class="hot-chart none"></div>';
     const W = 104, H = 30, p = 3, lo = Math.min(...h), hi = Math.max(...h), rng = hi - lo || 1;
