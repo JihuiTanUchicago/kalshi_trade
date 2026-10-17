@@ -953,7 +953,7 @@
         </dl>`;
       const reg = registry(d.deployments.map((x) => x.curve));
       const deps = d.deployments.length
-        ? deploymentTable(d.deployments.map((x) => deploymentSlip(x, reg, false)).join(''), false)
+        ? deploymentTable(d.deployments.map((x) => deploymentSlip(x, reg, true)).join(''), true)  // same controls as Deploy
         : `<div class="empty"><h3>Nothing deployed yet</h3><p>Agents research strategies and test each one on data they never saw. The ones that pass every gate can be deployed here, on paper first.</p><a class="btn" href="/research">Dispatch your first agent</a></div>`;
       const stubs = (rows, closed) => rows.length
         ? rows.map((r) => `<div class="stub"><b>${esc(r.side.toUpperCase())} ${esc(r.qty)} × ${cents(+r.entry_price)}</b>
@@ -962,7 +962,7 @@
         : `<p class="hint">${closed ? 'No settled trades yet.' : 'No open positions.'}</p>`;
       const main = `<div class="dash">
           <div>
-            <section class="sect"><div class="sect-head"><h2>Deployed</h2>${d.deployments.some((x) => x.curve && x.curve.length > 1) ? '<span class="sect-note">Sparklines share one dollar scale</span>' : ''}</div>${deps}</section>
+            <section class="sect"><div class="sect-head"><h2>Deployed</h2>${d.deployments.some((x) => x.curve && x.curve.length > 1) ? '<span class="sect-note">Sparklines share one dollar scale</span>' : ''}</div><div id="dash-deps">${deps}</div></section>
           </div>
           <aside>
             <section class="panel"><h3>Open positions</h3>${stubs(d.open_positions, false)}</section>
@@ -971,6 +971,8 @@
         </div>`;
       root.querySelector('#boardbody').innerHTML = board;
       root.querySelector('main').innerHTML = main;
+      const dd = root.querySelector('#dash-deps');
+      if (dd) bindDeploymentActions(dd, load);  // pause/resume/stop from the dashboard, same as Deploy
     };
     await load();
     poll(load, 15000);
