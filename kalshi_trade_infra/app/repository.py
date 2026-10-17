@@ -1329,6 +1329,26 @@ def _load_micro(cur, series: str, since: datetime) -> Dict[tuple, Dict[str, Any]
     return out
 
 
+def spot_symbols_with_data(cur, symbols) -> set:
+    """Which of the given spot symbols already have price candles collected.
+
+    The research-only TAO subnet-alpha markets (kind="spot") carry no feed until
+    their taostats collector is keyed, so the research picker must hide them until
+    then. This is that gate: a spot market is researchable only if its symbol is in
+    the returned set. An empty `symbols` short-circuits to no query and no reveal.
+    Kept index-friendly by querying the bounded set of known spot symbols, never a
+    full DISTINCT scan of spot_candles_1m (which also holds BTC/ETH/... history)."""
+    syms = [s for s in symbols if s]
+    if not syms:
+        return set()
+    placeholders = ",".join(["%s"] * len(syms))
+    cur.execute(
+        "SELECT DISTINCT symbol FROM spot_candles_1m WHERE symbol IN (" + placeholders + ")",
+        tuple(syms),
+    )
+    return {r["symbol"] for r in cur.fetchall()}
+
+
 def history_freshness(cur) -> Dict[str, Optional[int]]:
     """Unix seconds of the newest BTC spot candle and newest settled market per series."""
     cur.execute("SELECT MAX(start_ts) AS t FROM spot_candles_1m WHERE symbol='BTC-USD'")
