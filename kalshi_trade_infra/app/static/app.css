@@ -437,12 +437,16 @@ select#rmodel { appearance: none; -webkit-appearance: none; padding-right: 28px;
 .detail { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 28px; align-items: start; margin-top: 8px; }
 .runs { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; }
 .run-card { display: grid; grid-template-rows: auto 1fr auto; gap: 8px; min-height: 128px; padding: 16px 16px 14px; border: 1px solid var(--rule); border-left: 3px solid var(--rule-2); background: var(--stock-raised); text-decoration: none; color: inherit; transition: border-color .12s, transform .12s; }
+/* Grid items default to min-width:auto, so a long unbroken token (a no-space idea, a pasted URL)
+   forces a card wider than its track and overflows the row. min-width:0 lets each cell shrink so
+   the clamps below can do their job. */
+.run-card > * { min-width: 0; }
 .run-card:hover { border-color: var(--ink-3); transform: translateY(-1px); }
 .run-card.ok { border-left-color: #1A7F4B; }
 .run-card.void { border-left-color: var(--rule-2); }
 .run-card.fail { border-left-color: var(--signal); }
 .run-card.live { border-left-color: var(--ink); }
-.run-title b { font-weight: 600; font-size: 15px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.run-title b { font-weight: 600; font-size: 15px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .run-meta { font-family: var(--f-nar); font-size: 12px; letter-spacing: .02em; color: var(--ink-3);
   /* A failed run's error (e.g. a timeout URL, or a long parse error) lives here — clamp it so one
      pathological message can't balloon a card to thousands of px and break the grid. */

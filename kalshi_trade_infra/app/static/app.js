@@ -1099,8 +1099,8 @@
         </header>
         <section class="lhero">
           <div class="lhero-copy">
-            <h1>Turn an idea into a strategy that trades for you.</h1>
-            <p class="lsub">Describe what you want to trade. An agent researches it, tests every idea on data it never saw, and only the strategies that pass can trade.</p>
+            <h1>RSI for Trading.</h1>
+            <p class="lsub">Recursive self-improvement, pointed at the market: an agent researches strategies, tests each on data it never saw, learns from every result, and trades only the ones that pass — in your own Kalshi account.</p>
             ${msg ? `<div class="lnotice">${esc(msg)}</div>` : ''}
             <div class="lcta" id="lcta">
               <a class="pill solid lg" href="/auth/google" data-native>${ICON.google}Continue with Google</a>
