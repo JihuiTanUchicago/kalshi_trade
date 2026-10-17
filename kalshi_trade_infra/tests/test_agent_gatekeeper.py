@@ -143,6 +143,33 @@ def test_memory_block_carries_no_held_out_number():
     assert "12" in block and "Old" in block            # research metrics + title still shown
 
 
+# -- cross-contract proposals --------------------------------------------------
+
+
+def test_proposer_may_emit_a_cross_spec_that_validates():
+    # The 9-phase proposer MAY emit a relative-value pair; the hypotheses check validates it.
+    check = agent._hypotheses_check("btc_daily", 3)
+    out = check({"hypotheses": [{"title": "BTC-ETH basis", "thesis": "one ladder lags the other",
+                 "spec": {"market": "btc_daily",
+                          "cross": {"pairing": "cross_sectional", "legs": [{"market": "eth_daily"}]}}}]})
+    assert specmod.is_cross_contract(out[0]["spec"])
+
+
+def test_prereg_cross_keys_shared_stream_and_records_both_markets():
+    spec = specmod.validate({"market": "btc_daily",
+                             "cross": {"pairing": "cross_sectional", "legs": [{"market": "eth_daily"}]}})
+    run = {"user_id": 7, "id": 1, "market": "btc_daily"}
+    pre = agent._prereg({"thesis": "basis", "mechanism": {}, "min_sample": 30},
+                        spec, run, {"id": 42}, 1, {"reason": "ok"}, 11)
+    assert pre.market == "btc_daily+eth_daily"                         # the shared FDR stream
+    assert pre.data_provenance["markets"] == ["btc_daily", "eth_daily"]  # both legs in provenance
+    assert pre.research_partition_id == 42
+    # a single-contract spec is unchanged: stream == its market, provenance names the one market.
+    single = agent._prereg({"min_sample": 30}, specmod.validate({"market": "btc15m"}),
+                           {"user_id": 7, "id": 1, "market": "btc15m"}, {"id": 5}, 1, {}, 2)
+    assert single.market == "btc15m" and single.data_provenance["markets"] == ["btc15m"]
+
+
 def test_agent_py_never_touches_validation_or_holdout_datasets():
     import inspect
     src = inspect.getsource(agent)

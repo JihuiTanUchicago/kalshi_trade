@@ -322,6 +322,31 @@ def test_judge_holdout_refuses_when_consumed(repo, monkeypatch):
         gk.judge_holdout(None, eid, _finalist({"kind": "x"}))
 
 
+def _cross_spec():
+    return {"market": "btc_daily",
+            "cross": {"pairing": "cross_sectional", "legs": [{"market": "eth_daily"}],
+                      "relationship": "spread"}}
+
+
+def test_judge_holdout_cross_runs_on_merged_partition(repo, monkeypatch):
+    """A cross-contract finalist is forward-validated on the MERGED holdout of its legs, with the
+    holdout ledger + FDR keyed by the shared stream (not either leg's own market)."""
+    _patch_sim(monkeypatch, lambda spec: _edge_trades())
+    key = "btc_daily+eth_daily"
+    merged = {"id": 9, "holdout_from_ts": 1_500_000, "holdout_to_ts": 2_000_000, "data_fingerprint": "m"}
+    monkeypatch.setattr(gk.partitions, "ensure_merged_partition", lambda cur, markets: merged)
+    monkeypatch.setattr(gk.partitions, "merged_dataset", lambda cur, markets, phase: _ds(market=key))
+    spec = _cross_spec()
+    eid = gk.preregister(None, Prereg(user_id=7, run_id=1, market=key, spec=spec,
+                                      economic_rationale="btc-eth basis"))
+    repo.append_result(None, eid, "validation", Classification.STAT_SUPPORTED.value, 60)
+    out = gk.judge_holdout(None, eid, {"spec": spec, "user_id": 7, "market": "btc_daily"})
+    assert out["classification"] == Classification.FORWARD_VALIDATED.value
+    # the one-time holdout ledger is keyed by the shared stream, and btc_daily's stricter cap (3) wins
+    led = next(lg for lg in repo.ledgers.values() if lg["market"] == key)
+    assert led["partition_id"] == 9 and led["max_evaluations"] == 3 and led["evaluations_used"] == 1
+
+
 def test_judge_holdout_forward_validates_on_success(repo, monkeypatch):
     _patch_sim(monkeypatch, lambda spec: _edge_trades())
     monkeypatch.setattr(gk.partitions, "holdout_dataset", lambda m, p: _ds())
