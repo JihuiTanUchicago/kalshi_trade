@@ -1289,6 +1289,36 @@ def user_risk_config(cur, user_id: int) -> Dict:
     return cur.fetchone()
 
 
+def set_user_risk_config(cur, user_id: int, changes: Dict) -> None:
+    """Update a user's risk controls. Only the three enforced columns are writable; callers
+    (agent.act) pass already-clamped values, so this layer just persists them (DRY: one UPDATE,
+    no business logic). Unknown keys are ignored so a bad agent action can't touch other columns."""
+    cols = {k: changes[k] for k in ("drawdown_limit_pct", "max_open_positions", "max_open_notional") if k in changes}
+    if not cols:
+        return
+    sql = "UPDATE app_users SET " + ", ".join("%s=%%s" % k for k in cols) + " WHERE id=%s"
+    cur.execute(sql, [*cols.values(), user_id])
+
+
+def user_execution_config(cur, user_id: int) -> Dict:
+    """Per-user execution-control overrides (NULL = use the global KALSHI_MAX_* env default).
+    The live kernel factory reads this and falls back to env when a column is NULL."""
+    cur.execute(
+        "SELECT exec_max_book_fraction, exec_max_entry_spread, exec_max_order_notional FROM app_users WHERE id=%s",
+        (user_id,),
+    )
+    return cur.fetchone() or {}
+
+
+def set_user_execution_config(cur, user_id: int, changes: Dict) -> None:
+    """Persist already-clamped per-user execution overrides (agent.act clamps to EXEC_BOUNDS)."""
+    cols = {k: changes[k] for k in ("exec_max_book_fraction", "exec_max_entry_spread", "exec_max_order_notional") if k in changes}
+    if not cols:
+        return
+    sql = "UPDATE app_users SET " + ", ".join("%s=%%s" % k for k in cols) + " WHERE id=%s"
+    cur.execute(sql, [*cols.values(), user_id])
+
+
 def user_open_exposure(cur, user_id: int) -> Dict:
     """Live, cross-deployment open exposure for the per-user portfolio caps: how many open
     positions the user holds and their total entry notional (qty * entry_price), in dollars."""
@@ -1347,19 +1377,22 @@ def chat_messages(cur, user_id: int, after_id: int = 0, limit: int = 100) -> Lis
 
 def create_proposal(
     cur, user_id: int, kind: str, reason: str, deployment_id: Optional[int] = None,
-    strategy_id: Optional[int] = None, status: str = "pending",
+    strategy_id: Optional[int] = None, status: str = "pending", payload: Optional[Dict] = None,
 ) -> int:
     cur.execute(
-        """INSERT INTO app_proposals (user_id, kind, deployment_id, strategy_id, reason, status, created_at)
-           VALUES (%s,%s,%s,%s,%s,%s,%s)""",
-        (user_id, kind, deployment_id, strategy_id, reason, status, now_utc()),
+        """INSERT INTO app_proposals (user_id, kind, deployment_id, strategy_id, reason, status, payload, created_at)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+        (user_id, kind, deployment_id, strategy_id, reason, status, _json(payload), now_utc()),
     )
     return cur.lastrowid
 
 
 def get_proposal(cur, user_id: int, proposal_id: int) -> Optional[Dict]:
     cur.execute("SELECT * FROM app_proposals WHERE id=%s AND user_id=%s", (proposal_id, user_id))
-    return cur.fetchone()
+    p = cur.fetchone()
+    if p is not None and "payload" in p:
+        p["payload"] = _loads(p["payload"])
+    return p
 
 
 def decide_proposal(cur, proposal_id: int, status: str) -> bool:

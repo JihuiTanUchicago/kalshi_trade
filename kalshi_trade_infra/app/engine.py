@@ -1188,10 +1188,20 @@ def live_kernel_factory(conn) -> Callable[[int], object]:
     feed = MarketFeed()
 
     def make(user_id: int):
-        row = repo.get_kalshi_key(conn.cursor(), user_id)
+        cur = conn.cursor()
+        row = repo.get_kalshi_key(cur, user_id)
         if row is None:
             return None
         creds = kalshi_account.credentials_from_row(user_id, row)
+        # Per-user execution overrides (set by the co-pilot's set_exec, clamped to a safe envelope)
+        # take precedence; a NULL column falls back to the global KALSHI_MAX_* env default. Each knob
+        # can only shrink or abandon an order and never blocks an exit, so this never loosens safety.
+        xc = repo.user_execution_config(cur, user_id)
+
+        def _exec(col: str, env: str) -> Optional[float]:
+            v = xc.get(col)
+            return float(v) if v is not None else _opt_float(os.getenv(env))
+
         # Market-order-like entries: cross through the touch and take the current best
         # ask quickly (IOC), rather than resting a passive limit. The slippage cap keeps
         # it from paying an absurd price if the book is thin; raise KALSHI_MAX_ENTRY_SLIPPAGE
@@ -1206,9 +1216,9 @@ def live_kernel_factory(conn) -> Callable[[int], object]:
             # Thin-book controls, all off unless set (see MarketableLimitKernel). Each can only
             # shrink or abandon an order, and none can block an exit, so enabling any is a
             # strictly-stricter change, tunable without a redeploy.
-            max_book_fraction=_opt_float(os.getenv("KALSHI_MAX_BOOK_FRACTION")),
-            max_entry_spread=_opt_float(os.getenv("KALSHI_MAX_ENTRY_SPREAD")),
-            max_order_notional=_opt_float(os.getenv("KALSHI_MAX_ORDER_NOTIONAL")),
+            max_book_fraction=_exec("exec_max_book_fraction", "KALSHI_MAX_BOOK_FRACTION"),
+            max_entry_spread=_exec("exec_max_entry_spread", "KALSHI_MAX_ENTRY_SPREAD"),
+            max_order_notional=_exec("exec_max_order_notional", "KALSHI_MAX_ORDER_NOTIONAL"),
         )
 
     return make

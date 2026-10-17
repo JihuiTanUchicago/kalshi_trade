@@ -2724,8 +2724,8 @@
     const sw = box.querySelector('#apf-apswitch'); if (sw && document.activeElement !== sw) sw.checked = !!on;
     const copy = box.querySelector('#apf-ap-copy');
     if (copy && !confirmAutopilot.armed) copy.innerHTML = on
-      ? '<b>Autopilot</b>Adjusts and deploys paper strategies on its own. It never touches live money without the step below.'
-      : '<b>Autopilot</b>Off — the agent only proposes; you approve.';
+      ? '<b>Autopilot</b>Researches, deploys and tunes paper strategies on its own, and adjusts your risk &amp; execution controls within safe bounds. It never touches live money without the step below.'
+      : '<b>Autopilot</b>Off — the agent only proposes (research, deploys, risk/execution/parameter changes); you approve each one.';
     if (!d) return;
     const pnl = d.today_live_pnl || 0;
     const stats = box.querySelector('#apf-stats');

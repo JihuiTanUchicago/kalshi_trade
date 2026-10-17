@@ -602,8 +602,9 @@ def main() -> None:
         # Which frontend the user picked: 'tau' (default, feature-complete) or 'meridian' (redesign).
         _add_column_if_missing(cur, "app_users", "ui_theme", "ALTER TABLE app_users ADD COLUMN ui_theme VARCHAR(16) NOT NULL DEFAULT 'tau'")
         # Live autopilot: OFF by default; when on (and the server live switch + a Kalshi key are
-        # present) the agent may promote paper-passed YES-only strategies to live within the user's
-        # own caps. A per-user daily live-loss limit auto-disables it (kill switch).
+        # present) the agent may promote paper-passed strategies of ANY side (YES or NO, once
+        # NO_SIDE_LIVE_ENABLED is on) to live within the user's own caps. A per-user daily
+        # live-loss limit auto-disables it (kill switch).
         _add_column_if_missing(cur, "app_users", "autopilot_live", "ALTER TABLE app_users ADD COLUMN autopilot_live TINYINT(1) NOT NULL DEFAULT 0")
         _add_column_if_missing(cur, "app_users", "autopilot_daily_loss_limit", "ALTER TABLE app_users ADD COLUMN autopilot_daily_loss_limit DECIMAL(10,2) NOT NULL DEFAULT 50.00")
         # Demo (sandbox) is app-controlled money: real fills on Kalshi's demo exchange applied to a
@@ -627,6 +628,16 @@ def main() -> None:
         _add_column_if_missing(cur, "app_users", "position_stop_pct", "ALTER TABLE app_users ADD COLUMN position_stop_pct DECIMAL(6,2) NOT NULL DEFAULT 40.00")
         _add_column_if_missing(cur, "app_users", "max_open_positions", "ALTER TABLE app_users ADD COLUMN max_open_positions INT NOT NULL DEFAULT 20")
         _add_column_if_missing(cur, "app_users", "max_open_notional", "ALTER TABLE app_users ADD COLUMN max_open_notional DECIMAL(12,2) NOT NULL DEFAULT 1000.00")
+        # Per-user execution-control overrides for the live kernel (the co-pilot's `set_exec` action
+        # tunes these within a safe envelope). NULL = fall back to the global KALSHI_MAX_* env knob.
+        # Each can only shrink or abandon an order and never blocks an exit, so a set value is always
+        # a tightening relative to "no cap"; agent-set values are clamped to EXEC_BOUNDS in agent.py.
+        _add_column_if_missing(cur, "app_users", "exec_max_book_fraction", "ALTER TABLE app_users ADD COLUMN exec_max_book_fraction DECIMAL(6,4) NULL")
+        _add_column_if_missing(cur, "app_users", "exec_max_entry_spread", "ALTER TABLE app_users ADD COLUMN exec_max_entry_spread DECIMAL(6,4) NULL")
+        _add_column_if_missing(cur, "app_users", "exec_max_order_notional", "ALTER TABLE app_users ADD COLUMN exec_max_order_notional DECIMAL(12,2) NULL")
+        # Proposal payload: the clamped values a set_risk / set_exec proposal applies on approval
+        # (deploy/adjust/pause/resume carry no payload). NULL for the older kinds.
+        _add_column_if_missing(cur, "app_proposals", "payload", "ALTER TABLE app_proposals ADD COLUMN payload JSON NULL")
         # Backfill any user still missing a handle (idempotent: only touches NULLs).
         from app import repository as _repo
         cur.execute("SELECT id, email, name FROM app_users WHERE username IS NULL OR username=''")

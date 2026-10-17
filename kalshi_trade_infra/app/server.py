@@ -879,8 +879,9 @@ def settings(ctx: Ctx):
         on = ctx.body["autopilot"] is True
         repo.set_autopilot(ctx.cur, ctx.uid, on)
         repo.add_chat(ctx.cur, ctx.uid, "system",
-                      "Autopilot is %s." % ("ON: the agent may adjust and deploy paper strategies itself, and pause anything"
-                                             if on else "OFF: the agent will only propose"))
+                      "Autopilot is %s." % ("ON: the agent may research, deploy and tune paper strategies, pause anything, "
+                                             "and adjust your risk and execution controls itself — all within safe bounds"
+                                             if on else "OFF: the agent will only propose; you approve every change"))
         if not on:  # turning off autopilot also turns off live autopilot (it depends on it)
             repo.set_autopilot_live(ctx.cur, ctx.uid, False)
     return {"ok": True}
@@ -900,8 +901,14 @@ def autopilot_live(ctx: Ctx):
         if not ctx.user.get("autopilot"):
             raise ApiError(400, "Turn on autopilot first — live autopilot builds on it.")
     repo.set_autopilot_live(ctx.cur, ctx.uid, on)
-    repo.add_chat(ctx.cur, ctx.uid, "system",
-                  "LIVE autopilot is %s." % ("ON — the agent may promote proven YES-side paper strategies to real money, within your caps and loss guard." if on else "OFF."))
+    if on:
+        sides = "paper strategies of any side (YES or NO)" if engine.NO_SIDE_LIVE_ENABLED else \
+                "proven YES-side paper strategies (NO-side is still being validated)"
+        msg = "LIVE autopilot is ON — the agent may promote %s to real money, and tune your risk, " \
+              "execution and strategy parameters, all within your caps and loss guard." % sides
+    else:
+        msg = "LIVE autopilot is OFF."
+    repo.add_chat(ctx.cur, ctx.uid, "system", msg)
     return {"ok": True, "autopilot_live": on}
 
 

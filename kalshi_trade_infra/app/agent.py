@@ -166,12 +166,23 @@ Be specific and brief. You cannot see validation/holdout data either. Reply one 
 {"verdicts":[{"decision":"approve|revise|reject","reason":"...","fixes":{...optional spec
 patch...}}]}"""
 
-COPILOT_SYSTEM = """You are the trading co-pilot inside Tau. You watch the user's deployed
-Kalshi Bitcoin strategies and talk with them in plain, brief English (no jargon without a gloss).
-You can act through structured actions; the host re-backtests every adjustment and applies it
-only if it still passes the deployment gates. Be honest about uncertainty and small samples:
-a handful of live trades proves little either way. Never promise profit.
-Reply with ONE JSON object only."""
+COPILOT_SYSTEM = """You are the trading co-pilot inside Tau. You manage the whole trading
+operation for the user — not just pausing things — and talk with them in plain, brief English
+(no jargon without a gloss). Within hard safety bounds you MAY, through structured actions:
+  - research anything: start a fresh research line on any market, or dig deeper on a passed
+    strategy. Both run the SAME RSI pipeline (pre-registration, gatekeeper, one-time holdout) —
+    you have the same freedom a manual research run has.
+  - tune a deployment's strategy/model parameters (the `adjust` action edits the spec; the host
+    re-backtests it and keeps it only if it still passes every gate).
+  - tune the user's RISK controls (drawdown limit, max open positions, max open notional) and the
+    live EXECUTION controls (book participation, entry spread, per-order notional). You can only
+    set these WITHIN a safe envelope — the host CLAMPS every value, so you can tighten freely but
+    can never disable a stop, exceed a cap, or loosen past a safe maximum.
+  - deploy a proven paper strategy of ANY side (YES or NO) to paper, or to real money once it has
+    proved itself on paper and the user has turned on live autopilot.
+You can NEVER flip the live-trading switch, bypass a deploy/live/risk gate, or weaken the loss
+budget — those are fixed. Be honest about uncertainty and small samples: a handful of live trades
+proves little either way. Never promise profit. Reply with ONE JSON object only."""
 
 
 # -- research ------------------------------------------------------------------
@@ -1114,6 +1125,59 @@ def _is_deployment_candidate(cur, strategy_id: int) -> bool:
                for r in rec.get("results", []))
 
 
+# -- the agent's safe-tuning envelope ------------------------------------------
+# The co-pilot may TUNE risk and execution controls, but every value it sets is CLAMPED into
+# [min, max] here before it is ever persisted. A TIGHTEN (safer: a lower cap / lower drawdown
+# limit) is allowed down to the min; a LOOSEN is capped at the max. The min is strictly > 0 for a
+# stop, so the agent can never DISABLE a stop, and the max is the user's hard ceiling, so it can
+# never exceed a cap or loosen past a safe maximum. This envelope is the whole point of bounded
+# autonomy. It is NOT the backstop: the loss budget, the autopilot daily-loss kill switch, and the
+# drawdown/portfolio force-sell in engine.py remain the immutable backstop regardless of what the
+# agent sets here, and this layer never touches the live-enable flags or any deploy/live gate.
+RISK_BOUNDS = {
+    # % of a deployment's capital it may draw down before the engine force-closes + pauses it.
+    # >0 so a stop is never disabled; <=50 so the stop always bites well before capital is gone.
+    "drawdown_limit_pct": (1.0, 50.0),
+    # Hard ceiling on concurrent open positions per user (portfolio cap on NEW entries).
+    "max_open_positions": (1, 50),
+    # Hard ceiling on total open entry notional per user, in dollars.
+    "max_open_notional": (1.0, 5000.0),
+}
+EXEC_BOUNDS = {
+    # Fraction of the resting touch size a single child order may take (market-impact cap).
+    "exec_max_book_fraction": (0.01, 0.50),
+    # Widest touch spread (dollars) an entry will cross before it is abandoned (thin-book cap).
+    "exec_max_entry_spread": (0.01, 0.25),
+    # Hard per-order notional backstop on buys, in dollars.
+    "exec_max_order_notional": (1.0, 500.0),
+}
+
+
+def _clamp(value: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, value))
+
+
+def _clamp_into(changes: Dict, bounds: Dict, ints: Tuple[str, ...] = ()) -> Dict:
+    """Keep only the known keys in `changes`, coerce to number, clamp each into its [lo, hi].
+    Everything the agent sends is filtered through this, so an unknown key, a non-number or an
+    out-of-range value can never reach the DB. Returns {} if nothing valid remained."""
+    out: Dict = {}
+    for key, (lo, hi) in bounds.items():
+        if key not in changes or changes[key] is None:
+            continue
+        try:
+            v = float(changes[key])
+        except (TypeError, ValueError):
+            continue
+        v = _clamp(v, lo, hi)
+        out[key] = int(round(v)) if key in ints else round(v, 4)
+    return out
+
+
+def _fmt_changes(changes: Dict) -> str:
+    return ", ".join("%s=%s" % (k, v) for k, v in changes.items())
+
+
 def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.dataset) -> Tuple[str, Optional[int]]:
     """Turn one agent action into a proposal (or, on autopilot, an applied
     change). Returns (sentence for the chat, proposal id if one was made)."""
@@ -1221,19 +1285,65 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         repo.create_deployment(cur, user_id, strat["id"], strat["market"], "live")
         return ("Autopilot deployed %s to LIVE within your $%.0f cap (your own Kalshi key, loss guard on)."
                 % (strat["title"], cap)), pid
+    if kind == "set_risk":
+        # Tune the user's risk controls within the safe envelope. Every value is CLAMPED, so a
+        # tighten is applied freely and a loosen is capped at the hard ceiling — the agent can
+        # never disable a stop or exceed a cap. Applied on autopilot, else a pending proposal.
+        changes = _clamp_into(action.get("changes") or {}, RISK_BOUNDS, ints=("max_open_positions",))
+        if not changes:
+            return "I meant to tune your risk controls but sent nothing I can set.", None
+        pid = repo.create_proposal(cur, user_id, "set_risk", reason, None, None,
+                                   "applied" if autopilot else "pending", payload=changes)
+        if autopilot:
+            repo.set_user_risk_config(cur, user_id, changes)
+            return "Autopilot updated your risk controls (within safe bounds): %s." % _fmt_changes(changes), pid
+        return "Proposed a risk-control change (within safe bounds): %s." % _fmt_changes(changes), pid
+    if kind == "set_exec":
+        # Tune the live execution controls within the safe envelope (same clamp discipline). These
+        # caps can only shrink or abandon an order and never block an exit, so a set value never
+        # weakens safety; the clamp keeps even a loosen inside the safe maximum.
+        changes = _clamp_into(action.get("changes") or {}, EXEC_BOUNDS)
+        if not changes:
+            return "I meant to tune the execution controls but sent nothing I can set.", None
+        pid = repo.create_proposal(cur, user_id, "set_exec", reason, None, None,
+                                   "applied" if autopilot else "pending", payload=changes)
+        if autopilot:
+            repo.set_user_execution_config(cur, user_id, changes)
+            return "Autopilot adjusted your execution controls (within safe bounds): %s." % _fmt_changes(changes), pid
+        return "Proposed an execution-control change (within safe bounds): %s." % _fmt_changes(changes), pid
     if kind == "research":
-        # "Dig deeper": branch a NEW research line off a passed strategy. No money and no proposal —
-        # the user asked for it in chat — but it spends model credits, so honour the same
-        # active-research cap the Research page enforces, and only ever branch a strategy that passed.
-        strat = repo.get_strategy(cur, user_id, int(action.get("strategy_id") or 0))
-        if strat is None or strat["status"] != "passed":
-            return "I can only dig deeper on a strategy that already passed its backtest.", None
+        # Run the agent through the SAME RSI pipeline a manual run uses: repo.create_run(kind=
+        # "research") -> a worker claims it -> run_research -> proposer -> gatekeeper -> one-time
+        # holdout. No narrowing: the autopilot agent has the same market/idea freedom. Two modes:
+        #   - strategy_id given  -> "dig deeper": branch off a PASSED strategy (same market/dir).
+        #   - market + idea given -> a FRESH research line, identical to the Research page endpoint.
+        # No money and no proposal (research spends only model credits), but it honours the same
+        # active-research cap the Research page enforces. Validate the intent FIRST so a bad action
+        # is rejected without consuming the capacity check.
+        sid = int(action.get("strategy_id") or 0)
+        market = action.get("market") or None
+        idea = str(action.get("idea") or action.get("reason") or "").strip()[:1000]
+        if sid:
+            strat = repo.get_strategy(cur, user_id, sid)
+            if strat is None or strat["status"] != "passed":
+                return "I can only dig deeper on a strategy that already passed its backtest.", None
+        else:
+            if market is not None and market not in MARKETS:
+                return "I can't research that market — pick one Tau supports, or let me choose.", None
+            if len(idea) < 8:
+                return "Tell me the idea to research in a sentence or two.", None
         if repo.count_runs(cur, user_id, "research", active_only=True) >= MAX_ACTIVE_RESEARCH:
-            return "You already have a couple of research sessions running — let one finish and I'll dig deeper then.", None
-        dig_deeper_run(cur, user_id, strat)
-        return ("Started a new research session digging deeper into “%s”: I'll refine and "
-                "stress-test its mechanism, and every variant still has to pass the same gates. "
-                "Follow it on the Research page." % strat["title"], None)
+            return "You already have a couple of research sessions running — let one finish and I'll start this then.", None
+        if sid:
+            dig_deeper_run(cur, user_id, strat)
+            return ("Started a new research session digging deeper into “%s”: I'll refine and "
+                    "stress-test its mechanism, and every variant still has to pass the same gates. "
+                    "Follow it on the Research page." % strat["title"], None)
+        direction = action.get("direction") if action.get("direction") in DIRECTIONS else None
+        repo.create_run(cur, user_id, "research", market, direction, idea)
+        return ("Started a fresh research session on %s — same gates as any run (pre-registration, "
+                "holdout, diversification). Follow it on the Research page."
+                % (market or "a market I'll choose"), None)
     return "I tried an action I'm not allowed to take (%s)." % kind, None
 
 
@@ -1248,13 +1358,28 @@ def apply_proposal(cur, user_id: int, proposal: Dict) -> None:
     elif kind == "deploy":
         strat = repo.get_strategy(cur, user_id, proposal["strategy_id"])
         repo.create_deployment(cur, user_id, strat["id"], strat["market"], "paper")
+    elif kind == "set_risk":
+        # payload is the already-clamped change set from act(); re-clamp defensively so an approval
+        # can never apply a value outside the safe envelope even if the stored row were tampered.
+        repo.set_user_risk_config(cur, user_id, _clamp_into(proposal.get("payload") or {}, RISK_BOUNDS, ints=("max_open_positions",)))
+    elif kind == "set_exec":
+        repo.set_user_execution_config(cur, user_id, _clamp_into(proposal.get("payload") or {}, EXEC_BOUNDS))
 
 
 def _copilot_context(cur, user: Dict) -> str:
     deps = repo.list_deployments(cur, user["id"])
     passed = [s for s in repo.list_strategies(cur, user["id"], status="passed", limit=20)]
     deployed_ids = {d["strategy_id"] for d in deps}
-    lines = ["Autopilot is %s." % ("ON" if user.get("autopilot") else "OFF"), "", "Deployments:"]
+    risk = repo.user_risk_config(cur, user["id"]) or {}
+    xc = repo.user_execution_config(cur, user["id"]) or {}
+    lines = [
+        "Autopilot is %s." % ("ON" if user.get("autopilot") else "OFF"),
+        "Risk controls: drawdown_limit_pct=%s, max_open_positions=%s, max_open_notional=%s."
+        % (risk.get("drawdown_limit_pct"), risk.get("max_open_positions"), risk.get("max_open_notional")),
+        "Execution controls (null = server default): exec_max_book_fraction=%s, exec_max_entry_spread=%s, exec_max_order_notional=%s."
+        % (xc.get("exec_max_book_fraction"), xc.get("exec_max_entry_spread"), xc.get("exec_max_order_notional")),
+        "", "Deployments:",
+    ]
     for d in deps:
         oos = ((d.get("result") or {}).get("out_of_sample") or {})
         lines.append(
@@ -1279,11 +1404,14 @@ def _copilot_context(cur, user: Dict) -> str:
 
 ACTIONS_GUIDE = """Reply: {"reply": "<what you tell the user>", "actions": [ ... at most 3 ... ]}
 Actions:
-  {"type": "adjust", "deployment_id": N, "changes": {<partial spec, e.g. {"entry": {"min_edge": 0.08}}>}, "reason": "..."}
+  {"type": "adjust", "deployment_id": N, "changes": {<partial spec>}, "reason": "..."}   (TUNE a deployment's strategy/model PARAMETERS — any field of its spec, e.g. {"entry": {"min_edge": 0.08}}, {"sizing": {"stake": 4}}. The host re-backtests the new spec and applies it only if it still passes every gate. This is your main lever for improving a running strategy.)
+  {"type": "set_risk", "changes": {"drawdown_limit_pct": 15, "max_open_positions": 10, "max_open_notional": 500}, "reason": "..."}   (Tune the user's RISK controls. Any subset of those three keys. Values are CLAMPED to a safe range — you can tighten freely; you can never set a limit to 0 or above the hard ceiling.)
+  {"type": "set_exec", "changes": {"exec_max_book_fraction": 0.2, "exec_max_entry_spread": 0.05, "exec_max_order_notional": 100}, "reason": "..."}   (Tune the live EXECUTION controls. Any subset. Also clamped to a safe range. These only ever make an order smaller/safer and never block an exit.)
   {"type": "pause",  "deployment_id": N, "reason": "..."}
   {"type": "resume", "deployment_id": N, "reason": "..."}
-  {"type": "research", "strategy_id": N, "reason": "..."}     (DIG DEEPER: start a new research session that branches off a strategy the user already PASSED — refine its parameters, stress-test it, extend the thesis. Use this whenever the user wants to explore, refine, improve, or build further on a passed strategy, instead of letting it be a dead end. Each refined variant still has to pass the gates. It is NOT a deployment; it just queues research.)
-  {"type": "deploy", "strategy_id": N, "reason": "..."}       (paper)
+  {"type": "research", "strategy_id": N, "reason": "..."}     (DIG DEEPER off a PASSED strategy — refine its parameters, stress-test it, extend the thesis. Each variant still has to pass the gates.)
+  {"type": "research", "market": "<market key or omit to let me choose>", "idea": "<the hypothesis to test>", "reason": "..."}   (FRESH research line — same RSI pipeline and the same freedom as the Research page. Name the mechanism/edge in the idea.)
+  {"type": "deploy", "strategy_id": N, "reason": "..."}       (paper; any side)
   {"type": "deploy_live", "strategy_id": N, "reason": "..."}  (REAL money; any side (YES or NO) that already proved itself on PAPER, and only when the user turned on live autopilot. If live autopilot is off or any safety gate fails it is refused and stays on paper. Never the first step for a new idea: research -> paper -> live.)
 Use actions only when you have a concrete reason; an empty list is often right.
 """ + specmod.SPEC_GUIDE

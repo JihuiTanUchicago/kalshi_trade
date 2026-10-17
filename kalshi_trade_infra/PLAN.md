@@ -1,5 +1,46 @@
 # PLAN
 
+## Broadened co-pilot autonomy — risk/execution/param control within safe bounds — October 17, 2026 (worktree, not deployed)
+
+The autopilot/co-pilot now manages the whole operation, not just pause/stop, while every money/risk
+value it sets stays inside a hard-clamped envelope.
+
+New `agent.act()` action kinds (each a logged, reversible proposal via `create_proposal`; applied
+immediately only under autopilot, else pending the user's approval — the existing pattern):
+- `set_risk` → `repo.set_user_risk_config` writes `drawdown_limit_pct` / `max_open_positions` /
+  `max_open_notional`. Clamped to `agent.RISK_BOUNDS`: drawdown_limit_pct ∈ [1, 50] (never 0, so a
+  stop can't be disabled; ≤50 so it always bites), max_open_positions ∈ [1, 50], max_open_notional
+  ∈ [1, 5000]. These feed the existing engine force-sell + portfolio caps unchanged.
+- `set_exec` → `repo.set_user_execution_config`. NEW per-user override layer: three nullable
+  `app_users.exec_*` columns the live `live_kernel_factory.make()` reads FIRST, falling back to the
+  `KALSHI_MAX_*` env defaults when NULL. Clamped to `agent.EXEC_BOUNDS`: book_fraction ∈ [0.01,0.50],
+  entry_spread ∈ [0.01,0.25], order_notional ∈ [1,500]. Each kernel knob can only shrink/abandon an
+  order and never blocks an exit, so a set value never weakens safety.
+- `research` extended: besides dig-deeper off a passed strategy, it can now start a FRESH line
+  (`market` + `idea`) through `repo.create_run(kind="research")` — the identical RSI pipeline
+  (proposer → gatekeeper → one-time holdout) a manual Research-page run uses, no narrowing.
+- `adjust` already tunes strategy/model spec params (re-validated + re-backtested); surfaced as a
+  first-class capability in the prompt.
+
+Clamping is enforced in `agent._clamp_into` at BOTH the action site and in `apply_proposal`
+(defensive re-clamp on approval). `create_proposal`/`get_proposal` gained a JSON `payload` column
+(the clamped change set to apply on approval). Proposal `kind` uses `set_exec` (not "set_execution")
+to fit the existing `VARCHAR(12)`.
+
+Immutable backstop, untouched and in order: `APP_LIVE_TRADING_ENABLED` / `APP_NO_SIDE_LIVE_ENABLED`
+flags, every deploy_live gate (`_is_deployment_candidate`, LIVE switch, Kalshi key, typed confirm,
+`_proven_on_paper`, `live_autopilot_ok`), the loss budget + daily-loss kill switch, and the
+drawdown/portfolio force-sell. Also killed the stale "YES-side only" copy (server.py autopilot_live
+message, app.js panel, schema comment): any side is promotable once `NO_SIDE_LIVE_ENABLED` is on,
+with the "being validated" fallback only when it's off.
+
+`position_stop_pct` (named in the task) was deliberately NOT added: it has no enforcement path in
+the engine, and a knob the agent could "set" that does nothing would be a safety illusion. The real
+per-deployment stop is `drawdown_limit_pct`.
+
+Tests: `tests/test_app_agent_autonomy.py` (clamps, proposal-vs-applied, fresh research, defensive
+re-clamp). Full suite green (529 passed / 9 skipped).
+
 ## Cross-contract research + cross-day gatekeeper — October 16, 2026 (worktree, research/eval only)
 
 Builds §E.6: cross-contract relative value, sequenced AFTER the gatekeeper, with per-market
