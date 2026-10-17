@@ -248,6 +248,24 @@ ORDER_MAX_ATTEMPTS = int(os.getenv("KALSHI_ORDER_MAX_ATTEMPTS", "3"))
 MAX_QUOTE_AGE_SECONDS = float(os.getenv("KALSHI_MAX_QUOTE_AGE_SECONDS", "2.0"))
 
 
+def _opt_float(name: str) -> Optional[float]:
+    """Optional float env knob: None (feature off) for unset/blank/unparseable."""
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+# Thin-book execution controls (see MarketableLimitKernel); all off unless set. Each can only
+# shrink or abandon an order and none can block an exit, so enabling any is strictly stricter.
+MAX_BOOK_FRACTION = _opt_float("KALSHI_MAX_BOOK_FRACTION")
+MAX_ENTRY_SPREAD = _opt_float("KALSHI_MAX_ENTRY_SPREAD")
+MAX_ORDER_NOTIONAL = _opt_float("KALSHI_MAX_ORDER_NOTIONAL")
+
+
 def place_limit_order(
     ticker: str, action: str, side: str, qty: int, price_dollars: float, credentials=None
 ) -> Dict:
@@ -581,6 +599,9 @@ def run_loop() -> None:
             max_entry_slippage=MAX_ENTRY_SLIPPAGE,
             max_attempts=ORDER_MAX_ATTEMPTS,
             max_quote_age_seconds=MAX_QUOTE_AGE_SECONDS,
+            max_book_fraction=MAX_BOOK_FRACTION,
+            max_entry_spread=MAX_ENTRY_SPREAD,
+            max_order_notional=MAX_ORDER_NOTIONAL,
         )
         risk_engine = DummyRiskEngine() if RISK_ENGINE_MODE == "dummy" else LiveSettingsRiskEngine()
         frozen_models = None
