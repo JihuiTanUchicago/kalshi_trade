@@ -566,11 +566,24 @@
         <span class="dl-date">${esc(s.date)}</span>
         <div class="dl-body"><h3 class="dl-what">${esc(s.title)}</h3>${s.detail ? `<p class="dl-detail">${mdLite(s.detail)}</p>` : ''}</div>
       </li>`).join('');
+    const shippedCount = (d.shipped || []).length;
+    let tab; try { tab = localStorage.getItem('tau_devlog_tab'); } catch (e) { /* private mode */ }
+    if (tab !== 'shipped') tab = 'planned';  // default to what's next
     root.querySelector('main').innerHTML = `
-      <section class="sect"><div class="sect-head"><h2>Shipping next</h2><p>Most-wanted first</p></div>
+      <div class="chips dl-tabs" role="group" aria-label="Dev Logs view">
+        <button class="chip" type="button" data-dltab="planned" aria-pressed="${tab === 'planned'}">Up next</button>
+        <button class="chip" type="button" data-dltab="shipped" aria-pressed="${tab === 'shipped'}">Shipped · ${shippedCount}</button>
+      </div>
+      <section class="sect dl-panel" data-dlpanel="planned"${tab === 'planned' ? '' : ' hidden'}><div class="sect-head"><h2>Shipping next</h2><p>Most-wanted first</p></div>
         <ul class="dl-list">${planned || '<li class="hint">Nothing queued.</li>'}</ul></section>
-      <section class="sect"><div class="sect-head"><h2>Shipped</h2><p>${(d.shipped || []).length} updates</p></div>
-        <ul class="dl-list">${shipped}</ul></section>`;
+      <section class="sect dl-panel" data-dlpanel="shipped"${tab === 'shipped' ? '' : ' hidden'}><div class="sect-head"><h2>Shipped</h2><p>${shippedCount} updates</p></div>
+        <ul class="dl-list">${shipped || '<li class="hint">Nothing shipped yet.</li>'}</ul></section>`;
+    const setTab = (t) => {
+      root.querySelectorAll('[data-dltab]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.dltab === t)));
+      root.querySelectorAll('[data-dlpanel]').forEach((p) => (p.hidden = p.dataset.dlpanel !== t));
+      try { localStorage.setItem('tau_devlog_tab', t); } catch (e) { /* private mode */ }
+    };
+    root.querySelectorAll('[data-dltab]').forEach((b) => (b.onclick = () => setTab(b.dataset.dltab)));
   }
   const THEMES = [
     { key: 'tau', name: 'Tau', desc: 'The full interface — every feature, the station-timetable look.' },
@@ -1385,56 +1398,64 @@
     if (!pol || (!pol.evolved && !tried)) { host.innerHTML = ''; return; }
     const delta = (pol.base_score != null && pol.score != null)
       ? `<span class="rsi-score">${pol.base_score} <span class="rsi-arrow">→</span> ${pol.score}</span>` : '';
-    host.innerHTML = `<div class="rsi-card"><div class="rsi-head"><b class="rsi-badge">RSI</b> Self-improving research engine ${pol.evolved ? '<span class="rsi-tag">Evolved</span>' : '<span class="rsi-tag quiet">Self-tuning</span>'}</div>
-      ${pol.evolved
-        ? `<p>The engine <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
-           ${pol.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(pol.summary)}</p>` : ''}
-           <p class="rsi-last">Generalization score ${delta}${pol.evolved_at ? ' · adopted ' + when(pol.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
-        : `<p>After each cycle the engine <b>dreams up new search strategies</b> and keeps one only if it beats the current policy on your own history — scored over shuffled orderings, so it can't overfit. It gets better the more you run it.</p>`}</div>`;
+    const tag = pol.evolved ? '<span class="rsi-tag">Evolved</span>' : '<span class="rsi-tag quiet">Self-tuning</span>';
+    const body = pol.evolved
+      ? `<p>The engine <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
+         ${pol.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(pol.summary)}</p>` : ''}
+         <p class="rsi-last">Generalization score ${delta}${pol.evolved_at ? ' · adopted ' + when(pol.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
+      : `<p>After each cycle the engine <b>dreams up new search strategies</b> and keeps one only if it beats the current policy on your own history — scored over shuffled orderings, so it can't overfit. It gets better the more you run it.</p>`;
+    // Demoted to a compact, collapsible line so the research page leads with the form, not panels.
+    host.innerHTML = `<details class="rsidisc">
+      <summary class="rsidisc-cap"><b class="rsi-badge">RSI</b><span class="rsidisc-t">Self-improving research engine</span>${tag}${pol.evolved && delta ? `<span class="rsidisc-delta">${delta}</span>` : ''}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
+      <div class="rsidisc-body">${body}</div>
+    </details>`;
   }
   // Figure 1 -- the real Tau research pipeline, drawn as a styled node-and-connector flow (no
   // ASCII, no monospace). Stages verified against the code: agent.py (proposer + challenger),
   // partitions.py (60/25/15 split with purge + embargo), gatekeeper.py (the test battery and
   // its rejected/inconclusive verdicts), dreaming.py (the Tau-RSI exploration-policy loop).
   // Collapsible, so a repeat user can fold it and get straight to the form.
-  const FLOW_DOWN = '<svg class="flow-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg>';
+  const FLOW_RIGHT = '<svg class="flow-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
   const LOOP_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg>';
   const fnode = (k, d, opts = {}) => `<div class="node${opts.cls ? ' ' + opts.cls : ''}"><span class="node-k">${k}</span>${opts.extra || ''}<span class="node-d">${d}</span></div>`;
-  const flowLink = `<div class="flow-link">${FLOW_DOWN}</div>`;
+  // The connector reads left→right in the horizontal flow; CSS rotates it to point
+  // down when the row stacks vertically at phone width.
+  const flowLink = `<div class="flow-link">${FLOW_RIGHT}</div>`;
   const fphase = (n) => `<div class="flow-phase"><span>${n}</span></div>`;
+  // A phase label plus its nodes, laid out as a horizontal row (far less vertical space
+  // than a single tall column); the row wraps on narrow screens, stacks at phone width.
+  const fstage = (phase, nodes) => `<section class="flow-stage">${fphase(phase)}<div class="flow-row">${nodes.join(flowLink)}</div></section>`;
   function pipelineFigure() {
     const gates = ['Bootstrap CI', 'PSR', 'DSR · deflated by trial count', 'Placebo / null', 'LORD++ FDR budget', 'Purged walk-forward', 'Benjamini–Hochberg'];
-    return `<details class="pipefig" open>
+    return `<details class="pipefig">
       <summary class="pipecap"><b>Figure 1</b> <span class="pipecap-t">The Tau research pipeline</span><span class="pipecap-hint">how your idea becomes a deployable, evidence-backed strategy</span><span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
       <div class="flow">
-        ${fphase('Propose')}
-        ${fnode('Idea', 'Your hypothesis, in a sentence — or a one-click angle from below.', { cls: 'node-in' })}
-        ${flowLink}
-        ${fnode('Proposer', 'An agent writes several concrete, testable strategy specs. A challenger vets each one — approve, revise, or reject — before a cent of held-out data is spent.')}
-        ${flowLink}
-        ${fnode('Pre-register &amp; freeze', 'The hypothesis, its metric, and its test are fixed and hashed before the agent sees any held-out data — so a result can’t be fitted after the fact.')}
-        ${flowLink}
+        ${fstage('Propose', [
+          fnode('Idea', 'Your hypothesis, in a sentence — or a one-click angle from below.', { cls: 'node-in' }),
+          fnode('Proposer', 'An agent writes several concrete, testable strategy specs. A challenger vets each one — approve, revise, or reject — before a cent of held-out data is spent.', { cls: 'node-proposer' }),
+          fnode('Pre-register &amp; freeze', 'The hypothesis, its metric, and its test are fixed and hashed before the agent sees any held-out data — so a result can’t be fitted after the fact.'),
+        ])}
         <div class="unseen-cut"><span>Unseen by the agent below</span></div>
-        ${fphase('Test on unseen data')}
-        ${fnode('Partition the history', 'A purge + embargo gap sits at every cut, so no trade straddles a boundary. The agent only ever iterates on Research.', { cls: 'partnode', extra: '<div class="partbar" aria-hidden="true"><span class="pb res" style="flex:60"></span><span class="pb val" style="flex:25"></span><span class="pb hold" style="flex:15"></span></div><div class="partleg"><span><i class="sw res"></i>Research 60%</span><span><i class="sw val"></i>Validation 25%</span><span><i class="sw hold"></i>Locked holdout 15%</span></div>' })}
-        ${flowLink}
-        ${fnode('Backtest, net of fees', 'Every spec is simulated after real Kalshi taker fees. A gross edge that fees eat does not count.')}
-        ${flowLink}
-        ${fnode('Statistical gatekeeper', 'A battery of tests on the validation window, corrected for how many ideas were tried. A real edge has to clear all of them at once.', { cls: 'gate-node', extra: `<div class="gate-tests">${gates.map((g) => `<span class="gt">${g}</span>`).join('')}</div><div class="gate-out"><span class="gout-lead">Most ideas exit here —</span><span class="gout">Rejected</span><span class="gout">Inconclusive</span><span class="gout-note">logged to an immutable ledger, so the trial count stays honest</span></div>` })}
-        ${flowLink}
-        ${fphase('Confirm')}
-        ${fnode('One-time holdout', 'The locked 15% is spent once, and only for a finalist the validation window already supported.')}
-        ${flowLink}
-        ${fnode('Marginal-contribution check', 'It must add something new — low correlation (|ρ| ≤ 0.80) to the strategies you already run.')}
-        ${flowLink}
-        ${fnode('<span class="mk on">Passed</span> Deployment candidate', 'An edge that survived every check on data it never saw.', { cls: 'pass-node' })}
-        ${flowLink}
-        ${fphase('Trade')}
-        ${fnode('Paper first', 'Proven on paper — at least 8 closed trades and non-negative P&amp;L — before anything touches real money.')}
-        ${flowLink}
-        ${fnode('<span class="mk">Gated</span> Live money', 'Only in your own Kalshi account, and only when you explicitly arm it. Off by default.', { cls: 'live-node' })}
+        ${fstage('Test on unseen data', [
+          fnode('Partition the history', 'A purge + embargo gap sits at every cut, so no trade straddles a boundary. The agent only ever iterates on Research.', { cls: 'partnode', extra: '<div class="partbar" aria-hidden="true"><span class="pb res" style="flex:60"></span><span class="pb val" style="flex:25"></span><span class="pb hold" style="flex:15"></span></div><div class="partleg"><span><i class="sw res"></i>Research 60%</span><span><i class="sw val"></i>Validation 25%</span><span><i class="sw hold"></i>Locked holdout 15%</span></div>' }),
+          fnode('Backtest, net of fees', 'Every spec is simulated after real Kalshi taker fees. A gross edge that fees eat does not count.'),
+          fnode('Statistical gatekeeper', 'A battery of tests on the validation window, corrected for how many ideas were tried. A real edge has to clear all of them at once.', { cls: 'gate-node', extra: `<div class="gate-tests">${gates.map((g) => `<span class="gt">${g}</span>`).join('')}</div><div class="gate-out"><span class="gout-lead">Most ideas exit here —</span><span class="gout">Rejected</span><span class="gout">Inconclusive</span><span class="gout-note">logged to an immutable ledger, so the trial count stays honest</span></div>` }),
+        ])}
+        ${fstage('Confirm', [
+          fnode('One-time holdout', 'The locked 15% is spent once, and only for a finalist the validation window already supported.'),
+          fnode('Marginal-contribution check', 'It must add something new — low correlation (|ρ| ≤ 0.80) to the strategies you already run.'),
+          fnode('<span class="mk on">Passed</span> Deployment candidate', 'An edge that survived every check on data it never saw.', { cls: 'pass-node' }),
+        ])}
+        ${fstage('Trade', [
+          fnode('Paper first', 'Proven on paper — at least 8 closed trades and non-negative P&amp;L — before anything touches real money.'),
+          fnode('<span class="mk">Gated</span> Live money', 'Only in your own Kalshi account, and only when you explicitly arm it. Off by default.', { cls: 'live-node' }),
+        ])}
+        <div class="rsi-loopback">
+          <span class="loopback-arc" aria-hidden="true"></span>
+          <span class="loopback-label"><span class="loop-ico">${LOOP_ICON}</span><span class="loopback-txt"><b>Tau-RSI loop</b> — the evolved exploration policy feeds back into the Proposer</span></span>
+        </div>
       </div>
-      <p class="rsi-loop"><span class="loop-ico">${LOOP_ICON}</span><span><b>Tau-RSI loop.</b> After each cycle the engine re-scores and <b>rewrites its own exploration policy</b> from your history — graded on how well it generalizes to unseen data across many shuffled replays — then feeds the improved policy back to the Proposer, so the next batch explores smarter.</span></p>
+      <p class="rsi-loop"><span><b>How the loop learns.</b> After each cycle the engine re-scores and <b>rewrites its own exploration policy</b> from your history — graded on how well it generalizes to unseen data across many shuffled replays — then feeds the improved policy back to the Proposer, so the next batch explores smarter.</span></p>
     </details>`;
   }
   async function viewResearch() {
@@ -1443,11 +1464,7 @@
     const mdl = await api('/api/models').catch(() => ({ models: [], default: '' }));
     const modelOpts = (mdl.models || []).map((m) => `<option value="${esc(m.key)}"${m.key === mdl.default ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
     const haveMkt = (k) => !k || me.markets.some((m) => m.key === k);  // only nudge to a market that exists
-    shell('/research', boardTitle('Research', 'A self-improving research engine for Bitcoin markets \u2014 describe an idea, it writes strategies and tests each on data it never saw.') +
-      '<div class="statusline" id="rstatus"><p class="said"></p></div>' +
-      '<dl class="figures measure" id="rfigs" style="margin-top:14px"></dl>' +
-      '<div id="rsimo"></div>', `
-      ${pipelineFigure()}
+    shell('/research', boardTitle('Research', 'A self-improving research engine for Bitcoin markets \u2014 describe an idea, it writes strategies and tests each on data it never saw.'), `
       <form class="panel dispatch" id="dispatch">
         <h3>${ICON.spark2}New research session</h3>
         ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
@@ -1473,8 +1490,16 @@
         <div id="dflash"></div>
         <p class="hint">A session takes a few minutes and keeps running if you leave this page.</p>
       </form>
-      <section class="sect" id="winsect" hidden><div class="sect-head"><h2>Build on what's worked</h2><p id="wincount"></p></div>
-        <div class="wins" id="winners"></div></section>
+      <div class="rengine" id="rengine">
+        <div class="statusline" id="rstatus"><p class="said"></p></div>
+        <dl class="figures measure" id="rfigs"></dl>
+        <div id="rsimo"></div>
+      </div>
+      ${pipelineFigure()}
+      <details class="pipefig winfig" id="winsect" hidden>
+        <summary class="pipecap"><span class="pipecap-t">Build on what's worked</span><span class="pipecap-hint" id="wincount"></span><span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
+        <div class="wins" id="winners"></div>
+      </details>
       <section class="sect"><div class="sect-head"><h2>Your sessions</h2><p id="rcount"></p></div>
         <div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div></section>`);
     const form = root.querySelector('#dispatch');
@@ -2304,6 +2329,7 @@
         fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} capital · app-controlled` }) +
         fig('Paper cash', usd(d.paper.cash), { small: 'Practice money for paper trading' });
       root.querySelector('main').innerHTML = `<div id="flash"></div><div class="funds">
+        <div class="funds-col funds-manage">
         <section class="panel">
           <h3>Kalshi account (live money)</h3>
           ${k.connected ? `
@@ -2356,12 +2382,15 @@
           </form>
           <div id="pflash" style="margin-top:10px"></div>
         </section>
+        </div>
+        <div class="funds-col funds-history">
         <section class="panel">
           <h3>Paper history</h3>
           <table class="table stack"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody>
             ${d.paper.ledger.map((r) => `<tr><td class="hint lead-cell">${when(r.created_at)}</td><td>${esc(r.memo || r.kind)}</td><td class="num ${tone(+r.amount)}">${usd(r.amount, true)}</td></tr>`).join('')}
           </tbody></table>
-        </section></div>`;
+        </section>
+        </div></div>`;
       const df = root.querySelector('#demo');
       if (df) df.onsubmit = async (e) => {
         e.preventDefault();
@@ -2901,8 +2930,16 @@
     if (!d) return;
     const pnl = d.today_live_pnl || 0;
     const stats = box.querySelector('#apf-stats');
+    // Count running strategies across every mode, not just paper — a lone demo strategy
+    // used to read as "0 paper", which looked like nothing was running. Match the dashboard.
+    const runParts = [
+      d.live_running ? `<span class="apf-live">${d.live_running} live</span>` : '',
+      d.demo_running ? `${d.demo_running} demo` : '',
+      d.paper_running ? `${d.paper_running} paper` : '',
+    ].filter(Boolean);
+    const runTotal = (d.live_running || 0) + (d.demo_running || 0) + (d.paper_running || 0);
     if (stats) stats.innerHTML = `
-      <div><dt>Running</dt><dd>${d.paper_running} paper${d.live_running ? ` · <span class="apf-live">${d.live_running} live</span>` : ''}</dd></div>
+      <div><dt>Running</dt><dd>${runTotal ? runParts.join(' · ') : 'None'}</dd></div>
       <div><dt>Live P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd></div>
       <div><dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd></div>`;
     const last = box.querySelector('#apf-last');

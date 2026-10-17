@@ -941,6 +941,7 @@ def autopilot_status(ctx: Ctx):
     deps = repo.list_deployments(cur, ctx.uid)
     live_run = [d for d in deps if d["mode"] == "live" and d["status"] == "running"]
     paper_run = [d for d in deps if d["mode"] == "paper" and d["status"] == "running"]
+    demo_run = [d for d in deps if d["mode"] == "demo" and d["status"] == "running"]
     gates_ok = bool(engine.LIVE_TRADING_ENABLED and repo.get_kalshi_key(cur, ctx.uid) is not None)
     live_on = bool(u.get("autopilot_live")) and gates_ok and bool(u.get("autopilot"))
     mode = "live" if (live_on and live_run) else ("live-armed" if live_on else ("paper" if u.get("autopilot") else "off"))
@@ -952,7 +953,7 @@ def autopilot_status(ctx: Ctx):
         "live_enabled": bool(engine.LIVE_TRADING_ENABLED),
         "kalshi_connected": repo.get_kalshi_key(cur, ctx.uid) is not None,
         "mode": mode,
-        "live_running": len(live_run), "paper_running": len(paper_run),
+        "live_running": len(live_run), "paper_running": len(paper_run), "demo_running": len(demo_run),
         "today_live_pnl": today_live,
         "daily_loss_limit": limit,
         "loss_headroom": round(max(0.0, limit + min(0.0, today_live)), 2),  # how much loss budget is left today
