@@ -812,6 +812,11 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         strat = repo.get_strategy(cur, user_id, int(action.get("strategy_id") or 0))
         if strat is None or strat["status"] != "passed":
             return "Only strategies that passed their backtest can be deployed.", None
+        if specmod.is_code_spec(strat["spec"]):
+            # The live/paper engine evaluates the DSL rule (specmod.entries); arbitrary agent
+            # code runs ONLY in the research sandbox and is never executed in the trading loop.
+            return ("%s is an agent-authored code strategy; those are research-only and can't be "
+                    "deployed to the trading engine." % strat["title"], None)
         # Additive gatekeeper gate (§E.5): never weakens the existing check above.
         if not _is_deployment_candidate(cur, strat["id"]):
             return ("I can't deploy %s yet — the gatekeeper hasn't cleared it as a deployment "
@@ -826,6 +831,9 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         strat = repo.get_strategy(cur, user_id, int(action.get("strategy_id") or 0))
         if strat is None or strat["status"] != "passed":
             return "Only strategies that passed their backtest can go live.", None
+        if specmod.is_code_spec(strat["spec"]):
+            return ("%s is an agent-authored code strategy; those are research-only and never "
+                    "run in the live engine." % strat["title"], None)
         # Additive gatekeeper gate (§E.5): required ON TOP OF the YES-side, live_autopilot_ok
         # and _proven_on_paper checks below — none of which are removed, reordered or weakened.
         if not _is_deployment_candidate(cur, strat["id"]):

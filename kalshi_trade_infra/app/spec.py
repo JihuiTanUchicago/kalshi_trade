@@ -98,8 +98,95 @@ SPEC_GUIDE = """A strategy spec is a JSON object:
 Features for filters: """ + "; ".join("%s = %s" % kv for kv in FEATURES.items())
 
 
+# -- arbitrary-quant code strategies ----------------------------------------
+# A strategy may instead be agent-authored Python (any pure-Python/numpy quant method). It is
+# ONE spec field, `code`, that defines a `signals(window)` function run in app.sandbox's
+# OS-isolated child interpreter (no network/DB/credentials/filesystem). The rest of the spec is
+# just `market` and `sizing`; the backtester applies the SAME fee/sizing/settlement, and the
+# gatekeeper judges it identically to a DSL spec (pre-registration hashes the code as the rule).
+CODE_SPEC_KEYS = {"market", "sizing", "code"}
+MAX_CODE_CHARS = 20_000
+
+CODE_STRATEGY_GUIDE = """
+As an ALTERNATIVE to the fields above, a strategy may be arbitrary Python you write. Send:
+{
+  "market": "btc15m" | ...,
+  "sizing": {"stake": 1..500, "max_positions": 1..50},
+  "code": "<python source>"      // instead of model/entry/exit/side/filters
+}
+Your code defines ONE function:
+  def signals(window):
+      # window = {"market": str, "frames": [ {"ts": int, "contracts": [
+      #   {"ticker": str, "strike": float, "close_ts": int,
+      #    "yes_bid": float, "yes_ask": float, "features": {<feature name>: float}} ]} ]}
+      #   frames are ascending by ts; features are the same ones listed above.
+      # Return a list PARALLEL to window["frames"]; element i is the book you want HELD at
+      # frame i: a list of {"ticker": str, "side": "yes"|"no", "score": float (optional)}.
+      # Open = a (ticker, side) you list that you do not already hold (score orders them when
+      # more than max_positions compete). Exit = a held (ticker, side) you stop listing (sold at
+      # the bid). Unlisted at settlement = held to settlement. You buy the ask / sell the bid and
+      # pay Kalshi fees exactly like a DSL spec.
+Allowed imports: math, cmath, statistics, random, itertools, functools, collections, heapq,
+bisect, operator, decimal, fractions, array, numpy. NO file/network/OS access, and no dunder
+access; the code runs sealed off from the DB and keys. Heavier ML libraries (torch/tensorflow)
+are not installed. Keep it deterministic and pure over the window you are handed.
+"""
+
+# Every proposer that reads SPEC_GUIDE also learns it may write arbitrary quant code.
+SPEC_GUIDE = SPEC_GUIDE + "\n" + CODE_STRATEGY_GUIDE
+
+
 class SpecError(ValueError):
     pass
+
+
+def is_code_spec(spec: Dict) -> bool:
+    return isinstance(spec, dict) and bool(spec.get("code"))
+
+
+def _validate_code_spec(raw: Dict) -> Dict[str, Any]:
+    """Validate an arbitrary-quant code strategy: market + sizing + a `signals(window)` body
+    that passes the sandbox's static gate. Unknown top-level fields are errors (same strictness
+    as the DSL path). The returned spec is minimal: {market, sizing, code}."""
+    from app import sandbox  # local import: sandbox pulls in exploration/dataclasses
+    errors: List[str] = []
+    extra = set(raw) - CODE_SPEC_KEYS
+    if extra:
+        errors.append("unknown field(s) for a code strategy: %s" % ", ".join(sorted(extra)))
+
+    market = raw.get("market", DEFAULT_SPEC["market"])
+    if market not in MARKETS:
+        errors.append("market must be one of %s" % ", ".join(MARKETS))
+
+    sizing = copy.deepcopy(DEFAULT_SPEC["sizing"])
+    raw_sizing = raw.get("sizing", {})
+    if not isinstance(raw_sizing, dict):
+        errors.append("sizing must be an object")
+    else:
+        for key, value in raw_sizing.items():
+            if key not in sizing:
+                errors.append("unknown field sizing.%s" % key)
+            else:
+                sizing[key] = value
+    for key in ("stake", "max_positions"):
+        lo, hi = RANGES["sizing.%s" % key]
+        v = sizing[key]
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+            errors.append("sizing.%s must be a number" % key)
+        elif not lo <= v <= hi:
+            errors.append("sizing.%s=%s is outside %s..%s" % (key, v, lo, hi))
+        else:
+            sizing[key] = int(v) if key == "max_positions" else float(v)
+
+    code = raw.get("code")
+    try:
+        sandbox.validate_strategy_code(code)
+    except sandbox.StrategyCodeError as e:
+        errors.append("code: %s" % e)
+
+    if errors:
+        raise SpecError("; ".join(errors))
+    return {"market": market, "sizing": sizing, "code": code}
 
 
 def _get(spec: Dict, path: str):
@@ -140,6 +227,8 @@ def validate(raw: Any) -> Dict[str, Any]:
     """
     if not isinstance(raw, dict):
         raise SpecError("spec must be a JSON object")
+    if "code" in raw:
+        return _validate_code_spec(raw)
     spec = copy.deepcopy(DEFAULT_SPEC)
     errors: List[str] = []
     _merge_known(spec, raw, "", errors)
@@ -296,6 +385,13 @@ def contracts_for(stake: float, price: float) -> int:
 
 def describe(spec: Dict) -> List[str]:
     """Plain-language reading of a spec, for people who do not read JSON."""
+    if is_code_spec(spec):
+        s = spec["sizing"]
+        return [
+            "Agent-authored quant code (a custom signals() function), run in an isolated sandbox.",
+            "The backtester applies the same fees, settlement and sizing as any other strategy.",
+            "Stakes $%g per trade, at most %d open at once." % (s["stake"], s["max_positions"]),
+        ]
     m, e, x, s = spec["model"], spec["entry"], spec["exit"], spec["sizing"]
     side = {"yes": "YES contracts", "no": "NO contracts", "either": "YES or NO (whichever has more edge)"}[spec["side"]]
     lines = ["Buys %s when its fair value beats the price by at least %d¢." % (side, round(e["min_edge"] * 100))]
