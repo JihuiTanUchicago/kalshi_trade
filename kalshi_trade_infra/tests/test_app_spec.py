@@ -8,6 +8,28 @@ from app.markets import BtcSeries, Contract, snapshot
 from data_pipeline.binary_theory import theoretical_p_yes
 
 
+def test_microstructure_features_are_filterable():
+    # the collected order-book features are in the FEATURES namespace specs validate against
+    s = specmod.validate({"entry": {"filters": [{"feature": "ob_imbalance", "op": ">", "value": 0.2}]}})
+    assert s["entry"]["filters"][0]["feature"] == "ob_imbalance"
+
+
+def test_features_used_records_model_and_filter_inputs():
+    s = specmod.validate({"model": {"drift_window": 5, "drift_beta": 1.0},
+                          "entry": {"filters": [{"feature": "ob_imbalance", "op": ">", "value": 0.2}]}})
+    used = specmod.features_used(s)
+    assert "ob_imbalance" in used          # the filter feature
+    assert "ret_5m" in used                # the drift window it picked
+    assert "spot" in used and "moneyness" in used  # always-on model inputs
+
+
+def test_data_sources_flags_orderbook_table_only_when_used():
+    plain = specmod.validate({"entry": {"min_edge": 0.1}})
+    assert "model_features_1m" not in specmod.data_sources_for(plain)
+    withob = specmod.validate({"entry": {"filters": [{"feature": "yes_bid_size", "op": ">", "value": 10}]}})
+    assert "model_features_1m" in specmod.data_sources_for(withob)
+
+
 def test_defaults_fill_missing_fields():
     s = specmod.validate({"market": "btc_daily"})
     assert s["market"] == "btc_daily"

@@ -65,8 +65,11 @@ def _iso(ts: int) -> str:
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
 
 
-def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc: List[Tuple[int, float]]) -> Dataset:
-    """markets: {ticker, strike, close_time, result}; candles: {ticker, end_period_ts, yes_bid_close, yes_ask_close}."""
+def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc: List[Tuple[int, float]],
+                  micro: Optional[Dict[Tuple[str, int], Dict[str, float]]] = None) -> Dataset:
+    """markets: {ticker, strike, close_time, result}; candles: {ticker, end_period_ts, yes_bid_close, yes_ask_close}.
+    micro: {(ticker, decision_ts): {feature: value}} order-book features to merge per snapshot (optional)."""
+    micro = micro or {}
     series = BtcSeries(btc)
     contracts = {}
     results = {}
@@ -90,7 +93,8 @@ def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc:
         feats = series.features_at(ts)
         if feats is None:
             continue
-        snaps = [s for s in (snapshot(feats, ct, ts, b, a) for ct, b, a in by_ts[ts]) if s is not None]
+        snaps = [s for s in (snapshot(feats, ct, ts, b, a, micro.get((ct.ticker, ts)))
+                             for ct, b, a in by_ts[ts]) if s is not None]
         if snaps:
             frames.append((ts, snaps))
     start = frames[0][0] if frames else 0
@@ -361,7 +365,7 @@ def load_from_db(market: Market, history_days: Optional[int] = None) -> Dataset:
             h = repo.load_history(cur, market.series, market.candle_minutes, since, market.underlying)
     finally:
         conn.close()
-    return build_dataset(market, h["markets"], h["candles"], h["btc"])
+    return build_dataset(market, h["markets"], h["candles"], h["btc"], h.get("micro"))
 
 
 def dataset(market_key: str, history_days: Optional[int] = None) -> Dataset:
