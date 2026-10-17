@@ -642,6 +642,46 @@ def _prereg(t: Dict, spec: Dict, run: Dict, partition: Dict, n_tests: int,
     )
 
 
+def _promote_if_forward_validated(cur, user_id: int, experiment_id: int, finalist: Dict, t: Dict,
+                                  log) -> None:
+    """§E.5 promotion. A finalist classified STAT_SUPPORTED on validation now gets the ONE-TIME
+    Locked-Holdout evaluation; if it forward-validates, the marginal-contribution (diversification)
+    gate promotes it FORWARD_VALIDATED -> DEPLOYMENT_CANDIDATE. This is the only path that mints a
+    deployment candidate, so the deploy gate can finally clear.
+
+    The holdout is a locked, single-use resource: `gatekeeper.judge_holdout` itself refuses
+    (HoldoutConsumed) if the experiment is not STAT_SUPPORTED, already has a holdout verdict, or the
+    window is at its evaluation cap — so a re-run never re-judges or burns it twice; we just log the
+    skip. Anti-leak (Leak 2): exactly like the validation path, every held-out number goes to the
+    FEED and the ledger ONLY — never into `_result_block`/strategy_memory — so the generator stays
+    blind to holdout data. The strategy row keeps its validation status ("passed"); the deployment
+    candidacy lives in the gatekeeper ledger, which is what `_is_deployment_candidate` reads."""
+    try:
+        verdict = gatekeeper.judge_holdout(cur, experiment_id, finalist)
+    except gatekeeper.HoldoutConsumed as e:
+        log("verdict", "%s: the one-time holdout was not evaluated (%s)." % (t["title"], e),
+            {"title": t["title"], "phase": "holdout", "skipped": True})
+        return
+    hcls = verdict["classification"]
+    log("verdict", "%s: one-time holdout verdict is gatekeeper-held (classification=%s, %s trades); "
+                   "the numbers never return to the generator."
+        % (t["title"], hcls, verdict.get("n_trades", 0)),
+        {"title": t["title"], "phase": "holdout", "classification": hcls,
+         "holdout_consumed": verdict.get("holdout_consumed"),
+         "stats": {"n_trades": verdict.get("n_trades"), "p_value": verdict.get("p_value"),
+                   "dsr": verdict.get("dsr"), "psr": verdict.get("psr"),
+                   "ci": verdict.get("ci"), "mean_net_return": verdict.get("mean_net_return")}})
+    if hcls != gatekeeper.Classification.FORWARD_VALIDATED.value:
+        return
+    ok, why = gatekeeper.marginal_contribution_ok(cur, user_id, experiment_id, finalist)
+    final = (gatekeeper.Classification.DEPLOYMENT_CANDIDATE if ok
+             else gatekeeper.Classification.FORWARD_VALIDATED).value
+    log("verdict", "%s: diversification gate %s — %s." % (
+            t["title"], "PASSED, promoted to DEPLOYMENT_CANDIDATE" if ok
+            else "blocked (stays forward-validated, not deployable)", why),
+        {"title": t["title"], "phase": "forward", "marginal_ok": ok, "classification": final})
+
+
 def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk: List[Dict], log,
                    policy: exploration.ExplorationPolicy, model: ModelFn, usage: Usage, conn=None) -> int:
     """The HAND-OFF (§B.5 step 3): freeze the finalists, let the Challenger review them, then
@@ -743,6 +783,11 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
                          "placebo_p": outcome.get("placebo_p"),
                          "max_drawdown": outcome.get("max_drawdown"),
                          "cross_day_ok": outcome.get("cross_day_ok")}})
+                # §E.5 promotion: a validation pass earns the ONE-TIME Locked-Holdout look and,
+                # if it forward-validates, the diversification gate that mints a DEPLOYMENT_CANDIDATE.
+                # Like validation, every number stays gatekeeper-held (feed + ledger only).
+                if cls == gatekeeper.Classification.STAT_SUPPORTED.value:
+                    _promote_if_forward_validated(cur, user_id, exp_ids[i], payload[i], t, log)
 
     for t in chunk:
         if t in finalists:

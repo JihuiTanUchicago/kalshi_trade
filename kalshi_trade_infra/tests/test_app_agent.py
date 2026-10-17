@@ -39,6 +39,14 @@ class Store:
         monkeypatch.setattr(agent.backtest, "partition_dataset", lambda market, part, phase: None)
         monkeypatch.setattr(agent.gatekeeper, "preregister", self._preregister)
         monkeypatch.setattr(agent.gatekeeper, "judge_batch", self._judge_batch)
+        # §E.5 promotion runs for every STAT_SUPPORTED finalist; stub the one-time holdout +
+        # diversification gate so these hand-off tests stay off the ledger DB (the promotion
+        # itself is covered in test_gatekeeper + test_holdout_promotion).
+        monkeypatch.setattr(agent.gatekeeper, "judge_holdout",
+                            lambda cur, eid, fin: {"classification": self._gk.Classification.FORWARD_VALIDATED.value,
+                                                   "n_trades": 20, "holdout_consumed": 0})
+        monkeypatch.setattr(agent.gatekeeper, "marginal_contribution_ok",
+                            lambda cur, uid, eid, fin: (True, "stub"))
         monkeypatch.setattr(agent, "_challenge",
                             lambda finalists, run, model, usage, log: [{"decision": "approve", "reason": "", "fixes": None} for _ in finalists])
 
