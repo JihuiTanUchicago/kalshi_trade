@@ -799,9 +799,10 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
 .funds-col > .panel { margin-top: 0; min-width: 0; }
 /* The paper-history table has long contract tickers; its max-content was sizing the column's
    implicit track (above) and overflowing it, painting over the account-setup column beside it.
-   The explicit minmax(0,1fr) column + fixed table layout keep it inside its own column. */
+   Explicit minmax(0,1fr) column + fixed table layout keep the table inside its own column, and
+   white-space:normal lets the long "What" cell wrap instead of overflowing into "Amount". */
 .funds-page .funds-col table { table-layout: fixed; width: 100%; }
-.funds-page .funds-col td, .funds-page .funds-col th { overflow-wrap: anywhere; }
+.funds-page .funds-col td, .funds-page .funds-col th { overflow-wrap: anywhere; white-space: normal; }
 @media (min-width: 900px) {
   .funds-page .funds { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
   .funds-page .funds-history { grid-column: 1; grid-row: 1; }
