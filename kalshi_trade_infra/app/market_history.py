@@ -282,6 +282,20 @@ def main() -> None:
             try:
                 with conn.cursor() as cur:
                     print("[market_history] %s %s" % (utc_now().isoformat(), refresh(cur)), flush=True)
+                    # Heartbeat on a COMPLETED cycle only: a wedged/hung refresh never reaches
+                    # here, so the heartbeat goes stale and the watchdog restarts us (self-heal).
+                    cur.execute(
+                        """
+                        INSERT INTO collector_state (state_key, state_value, updated_at_utc)
+                        VALUES (%s, %s, %s)
+                        ON DUPLICATE KEY UPDATE state_value=VALUES(state_value), updated_at_utc=VALUES(updated_at_utc)
+                        """,
+                        (
+                            "market_history_last_cycle",
+                            json.dumps({"cycle_utc": utc_now().isoformat()}),
+                            utc_now().replace(tzinfo=None),
+                        ),
+                    )
             finally:
                 conn.close()
         except Exception as e:  # keep the loop alive; a dead collector is what stales the backtests
