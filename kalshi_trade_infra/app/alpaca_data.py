@@ -8,9 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
-import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -19,51 +17,13 @@ from zoneinfo import ZoneInfo
 
 import requests
 
+from app.market_data_common import MarketDataError, TIMEFRAMES, equity_symbols as symbols_checked, get_json, iso, number as _number, timestamp, utc_now
+
 DATA_URL = "https://data.alpaca.markets"
 MAX_SYMBOLS = 8
 MAX_BARS = 10_000
 MAX_PAGES = 5
-TIMEFRAMES = {"1Min": 60, "5Min": 300, "15Min": 900, "1Hour": 3600, "1Day": 86400}
 NY = ZoneInfo("America/New_York")
-
-
-class MarketDataError(RuntimeError):
-    """Safe to put in an agent prompt/log; never includes response bodies or keys."""
-
-    def __init__(self, code: str, message: str):
-        super().__init__(message)
-        self.code = code
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def timestamp(value) -> datetime:
-    try:
-        dt = value if isinstance(value, datetime) else datetime.fromisoformat(value.replace("Z", "+00:00"))
-        if dt.tzinfo is None or dt.utcoffset() is None:
-            raise ValueError()
-        return dt.astimezone(timezone.utc)
-    except (AttributeError, TypeError, ValueError):
-        raise MarketDataError("invalid_data", "Market-data timestamps must be timezone-aware ISO dates.") from None
-
-
-def iso(dt: datetime) -> str:
-    return timestamp(dt).isoformat().replace("+00:00", "Z")
-
-
-def symbols_checked(symbols: Sequence[str]) -> tuple[str, ...]:
-    if not isinstance(symbols, (list, tuple)) or not 1 <= len(symbols) <= MAX_SYMBOLS:
-        raise MarketDataError("invalid_request", "Request between 1 and %d stock symbols." % MAX_SYMBOLS)
-    out = []
-    for symbol in symbols:
-        if not isinstance(symbol, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9.-]{0,14}", symbol):
-            raise MarketDataError("invalid_request", "Invalid stock symbol.")
-        symbol = symbol.upper()
-        if symbol not in out:
-            out.append(symbol)
-    return tuple(out)
 
 
 @dataclass(frozen=True)
@@ -90,18 +50,6 @@ class Config:
     @property
     def coverage(self) -> str:
         return "IEX exchange only" if self.feed == "iex" else "Consolidated US exchanges (SIP)"
-
-
-def _number(value, *, positive: bool = False) -> float:
-    try:
-        if isinstance(value, bool):
-            raise ValueError()
-        n = float(value)
-        if not math.isfinite(n) or (n <= 0 if positive else n < 0):
-            raise ValueError()
-        return n
-    except (TypeError, ValueError, OverflowError):
-        raise MarketDataError("invalid_data", "Alpaca returned invalid numeric market data.") from None
 
 
 def _bar(row: Dict, timeframe: str) -> Dict:
@@ -141,41 +89,8 @@ class AlpacaDataClient:
         if path not in {"/v2/stocks/snapshots", "/v2/stocks/bars"}:
             raise MarketDataError("invalid_request", "Only read-only stock market-data endpoints are supported.")
         headers = {"APCA-API-KEY-ID": self.config.api_key, "APCA-API-SECRET-KEY": self.config.secret_key}
-        for attempt in range(3):
-            response = None
-            delay = min(2 ** attempt, 2)
-            try:
-                response = self.session.get(DATA_URL + path, headers=headers, params=params,
-                                            timeout=(3.05, 8), allow_redirects=False)
-                status = response.status_code
-                if status == 200:
-                    payload = response.json()
-                    if not isinstance(payload, dict):
-                        raise ValueError()
-                    return payload
-                if status == 401:
-                    raise MarketDataError("authentication", "Alpaca rejected the market-data credentials.")
-                if status == 403:
-                    raise MarketDataError("entitlement", "Alpaca denied this data feed. Check the subscription; no feed fallback was used.")
-                if status != 429 and not 500 <= status <= 599:
-                    raise MarketDataError("provider_request", "Alpaca rejected the market-data request (HTTP %d)." % status)
-                if attempt == 2:
-                    code = "rate_limit" if status == 429 else "provider_unavailable"
-                    raise MarketDataError(code, "Alpaca market data is temporarily unavailable (HTTP %d)." % status)
-                try:
-                    delay = max(0, min(float(response.headers.get("Retry-After", delay)), 3))
-                except (TypeError, ValueError):
-                    pass
-            except (ValueError, TypeError):
-                raise MarketDataError("invalid_data", "Alpaca returned an invalid JSON market-data response.") from None
-            except requests.RequestException:
-                if attempt == 2:
-                    raise MarketDataError("provider_unavailable", "Could not reach Alpaca market data after three attempts.") from None
-            finally:
-                if response is not None:
-                    response.close()
-            self.sleep(delay)
-        raise AssertionError("unreachable")
+        return get_json(self.session, DATA_URL + path, headers=headers, params=params,
+                        provider="Alpaca", sleep=self.sleep)
 
     def _metadata(self) -> Dict:
         return {"provider": "alpaca", "asset_class": "us_equity", "currency": "USD",

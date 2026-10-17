@@ -15,6 +15,7 @@ NOW = datetime(2027, 2, 1, 15, 0, tzinfo=timezone.utc)
 
 @pytest.fixture(autouse=True)
 def configured(monkeypatch):
+    monkeypatch.setenv("TAU_MASSIVE_ENABLED", "0")
     monkeypatch.setenv("TAU_ALPACA_ENABLED", "1")
     monkeypatch.setenv("APCA_API_KEY_ID", "fake-agent-key-private")
     monkeypatch.setenv("APCA_API_SECRET_KEY", "fake-agent-secret-private")
@@ -229,6 +230,7 @@ def test_actual_copilot_worker_receives_current_data(monkeypatch, provider):
     records = []
     r = agent.repo
     monkeypatch.setattr(r, "get_user", lambda *args: {"id": 7})
+    monkeypatch.setattr(r, "heartbeat", lambda *args: "running")
     monkeypatch.setattr(r, "chat_messages", lambda *args, **kwargs: [{"role": "user", "content": "What is SPY trading at?"}])
     monkeypatch.setattr(r, "list_deployments", lambda *args: [])
     monkeypatch.setattr(r, "list_strategies", lambda *args, **kwargs: [])

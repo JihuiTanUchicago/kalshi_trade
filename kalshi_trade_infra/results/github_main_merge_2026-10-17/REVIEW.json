@@ -1,0 +1,31 @@
+{
+  "upstream_base": "5da19226935ad19cff46fe29130c30303372c844",
+  "protected_paths": [
+    "kalshi_trade_infra/app/sandbox.py",
+    "kalshi_trade_infra/app/spec.py",
+    "kalshi_trade_infra/app/engine.py",
+    "kalshi_trade_infra/app/gatekeeper.py",
+    "kalshi_trade_infra/app/partitions.py",
+    "kalshi_trade_infra/app/research_repository.py",
+    "kalshi_trade_infra/app/repository.py",
+    "kalshi_trade_infra/app/schema.py",
+    "kalshi_trade_infra/app/kalshi_dev_exec.py",
+    "kalshi_trade_infra/data_pipeline/live_trading_engine.py",
+    "kalshi_trade_infra/data_pipeline/architecture/execution_kernel.py"
+  ],
+  "identical_to_upstream": true,
+  "server_control_change": "Account-page guidance string only; deployment gate ordering retained",
+  "backend_independent_review": {
+    "reviewer": "publication_backend_review",
+    "read_only": true,
+    "actionable_merge_blockers": [],
+    "scope": "provider adapters; host-pinned historical cutoffs; observation journal; model wrapper composition; cancellation/usage billing; server auth/control diff; secret loader; sibling feed CLI/config",
+    "limits": "No real provider/model/DB or production acceptance. Entitlements/activation/World Monitor rollout remain separate."
+  },
+  "frontend_independent_review": {
+    "reviewer": "publication_frontend",
+    "actionable_merge_blockers": [],
+    "changes": "Retained upstream paper structure/styles plus local workspace; fixed stale ancestor-404 and late chat-approval refresh navigation; 4 behavior regressions added.",
+    "preserved": "Escaping, saved/scenario distinctions, sandbox warning, demo/live readiness, typed LIVE, saved-rule deployment and revision-evidence gates."
+  }
+}

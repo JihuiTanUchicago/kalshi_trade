@@ -49,13 +49,25 @@ strategy that fails its gate is shown as failed, not hidden.
   (`KXBTCD`, the 5pm event's strike ladder).
 - Money: every user starts with a **paper account** (simulated deposits/withdrawals). Live
   trading happens only in the user's **own Kalshi account** via an API key they connect; we
-  never hold customer funds (that would need CFTC registration). The Funds page shows the real
+  never hold customer funds (that would need CFTC registration). Settings → Account shows the real
   Kalshi balance and sends the user to Kalshi to move money.
 - Sign-in is Google only.
 - Agents run in a background worker; research takes minutes, so progress must be visible
   and survive the user closing the tab.
 
 ## Capabilities and Constraints
+
+- Massive is integrated locally alongside Alpaca for quote-derived FX history,
+  current FX bid/ask, daily Treasury/funding indicators and filtered current option
+  chains with Greeks, IV and prior-day open interest. The worker must opt in and
+  provide a server-side key with the relevant entitlements. Historical research
+  receives completed FX bars only; current options and latest-vintage macro data
+  are denied to preserve the training boundary. Data remains context for the
+  Kalshi engine, not a new executable/backtested asset class. A local real key has
+  verified EUR/USD history and daily rates; tested options/current FX endpoints
+  return 403 for this key. Macro fields retain separate observation dates/ages.
+  Commercial rights, missing entitlements and production activation remain gates.
+  [Setup and limits](app/README.md#massive-fx-rates-and-options-for-agents--october-17-2026).
 
 - Alpaca US stock/ETF data is integrated locally into the research agent and
   current-time copilot, behind an explicit worker setting. The host supplies
@@ -66,15 +78,75 @@ strategy that fails its gate is shown as failed, not hidden.
   Local tests and read-only live provider checks pass; production worker activation
   and commercial data rights remain separate. [Setup and limits](app/README.md#alpaca-stocketf-data-for-agents--october-16-2026).
 
+
+- Dashboard uses the standard Overview heading without a status subtitle or divider.
+  Live realized P&L and history freshness remain with the account details; paused
+  states remain in Deployed. Verification (local archive: `results/overview_heading_cleanup_2026-10-16/HANDOFF.md`).
+
+- Hot Markets stays open beneath the shared black header, without opening or
+  closing toggles. Every page uses the existing compact Position-page heading;
+  Dashboard no longer stretches it to match Overview. Reserved width, phone
+  stacking, navigation, quote data/refresh and chart sizing remain.
+  Current compact heading (local archive: `results/hot_markets_compact_heading_2026-10-16/HANDOFF.md`).
+
+- Customer tabs use concise labels and state messages. Repeated page descriptions,
+  tutorials, promotional dialog text and explanatory empty-state paragraphs are
+  removed. Costs, risk/consent, saved-versus-scenario meaning, evidence and actual
+  research/conversation content remain. GPT-6.1 Sol approved the final copy cleanup
+  at **9.2/10**; this score covers copy clarity, not overall visual design or live
+  backend acceptance. October 15 handoff (local archive: `results/frontend_copy_cleanup_2026-10-15/HANDOFF.md`).
+
+- Overview starts with paper portfolio and open positions, followed by paper
+  performance and recent research. Full deployed-strategy and settled-trade data
+  remain below. The account panels stack on phones. The proposed rolling Hot
+  Markets banner remains declined; its current dock is described above.
+  Existing endpoints, optional session-read isolation and financial behavior remain.
+  October 15 local layout verification (local archive: `results/dashboard_layout_2026-10-15/HANDOFF.md`).
+
+- Full Tau navigation: Dashboard, Research, Strategy, Explore, Position,
+  Community, Settings and Dev Logs. Strategy reuses the existing filtered
+  library; selecting a strategy opens its Research artifact.
+  Settings groups Account, Billing and System with horizontal section links.
+  After the October 17 main sync, Tau also exposes Theme there; the upstream
+  Tau/Meridian bootstrap selects the matching JS and stylesheet. Meridian remains
+  the alternate upstream frontend, while Tau keeps the local Research workspace.
+  Inspection evidence (local archive: `results/main_frontend_sync_2026-10-17/HANDOFF.md`).
+  Personal account/billing access and public, user-scoped System visibility remain;
+  restricted operator tools expand within System. Existing financial/auth guards
+  and legacy Account/Billing/System/Admin URLs remain supported. This is a local
+  frontend integration; account/provider acceptance and deployment are separate.
+  Latest main (`0cc084d`) is integrated locally with its model picker, RSI,
+  notifications, strategy search/pagination, sharing, holdings, receipts and demo
+  replay. Sync verification (local archive: `results/local_github_merge_2026-10-16/HANDOFF.md`).
+  The requested separate-page restoration was completed before this transformation.
+  Research sessions now hold conversation on the left and generated strategy
+  artifacts in tabs on the right. Every candidate status remains inspectable;
+  existing library/filter access and old strategy URLs remain available in Research.
+- Strategy artifacts preserve all saved evidence, exact rules/spec, equity curve,
+  sample/unseen metrics, trades, gates and evaluator-backed what-if scenarios.
+  Scenarios do not change the deployable saved rule. Paper/live controls are shared
+  with Position's eligible-strategy list; existing financial gates remain.
+- Session conversation uses the [scoped backend contract](app/SESSION_CHAT_API.md),
+  whose routes/persistence/worker behavior remain unimplemented. Unavailable routes
+  retain drafts and disable writes; Position keeps its account-wide chat/autopilot.
+  Artifact tabs and drafts are temporary per-user/session frontend state, cleared
+  on sign-out or browser reload. Workspace evidence (local archive: `results/frontend_pr_2026-10-15/HANDOFF.md`).
 - Agents produce a **thesis + parameterized strategy spec**, never code. Our backtester and
   our engines run the spec, so backtest and deployment evaluate the identical rule.
-- Deployment requires a passed backtest; so does every agent-proposed adjustment.
+- Position highlights passed candidates. Artifact deployment follows the current
+  upstream policy: users may explicitly deploy saved passed/void/rejected candidates,
+  with risk warnings for unvalidated results and the existing market/live guards.
+  Session-chat revision approval still requires a passed backtest.
 - Autopilot ("dangerously skip permission") lets the agent apply adjustments and deploy to
   paper on its own, inside guardrails: it can never move a strategy to live money and never
   raise a risk cap.
 - Live trading for app users is gated by a server-wide switch that is **off** until the owner
   explicitly authorizes it; live strategies are YES-side only in v0.1.
-- Charging (fees on transactions / credit purchases) is v0.2 and out of scope.
+- Upstream credits/Billing and the card-on-file gate are included in the current
+  code. The Research form respects `needs_card` and the global payment
+  dialog; metered agent work still uses the backend's credit/card checks. Local
+  preview has payments disabled. Actual account/payment acceptance remains a
+  configured-backend gate, separate from this frontend compatibility check.
 
 ## Brand Commitments
 

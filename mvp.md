@@ -26,15 +26,23 @@ Single source of truth for OPEN work — one flat list. Each item is tagged with
 - `[self-improving]` Autonomous Tau improvement loop runs on a schedule; each round picks one aspect (execution / research rigor / risk / data / ML tooling / UX / engineering) and ships an improvement. Never touches the live-trading gate.
 `[delayed]` = owner chose to hold; `[blocked: …]` = needs a user/AWS action first; `[v0.3]` = next version.
 These are NOT done. Completed items move to **## Done** below.
-- `[blocked: worker environment]` Activate Alpaca stock/ETF agent data after secure worker configuration and entitlement checks, with a production canary before customer rollout. Source integration is complete for review; no production deployment yet. [Setup](kalshi_trade_infra/app/README.md#alpaca-stocketf-data-for-agents--october-16-2026).
+- `[in progress: GitHub main publication]` Reconciled the provider/frontend/sibling changes with main `5da1922` and its 12 additional commits; publish through a PR after final checks. Infrastructure 878 passed / 9 skipped; sibling 137 passed / 22 skipped. Source publication only; production activation remains separately gated. [Handoff](kalshi_trade_infra/results/github_main_merge_2026-10-17/HANDOFF.md).
+- `[in progress: World Monitor news]` Integrate news digests, a local observation journal and agent monitoring tools; preserve attribution and historical cutoffs. Workstream (local archive: `kalshi_trade_infra/results/worldmonitor_integration_2026-10-17/HANDOFF.md`).
+
+- `[blocked: Databento worker activation and accounting]` Real stock/futures downloads and Tau agent context pass: 10 SPY + 10 ESZ6 minute bars, with a network-free cache repeat. The user authorized uncapped spending for this validation; the key was restored and no test approval is pending. Persistent dataset/worker configuration, durable data-cost accounting and a real queued model/worker canary remain separate gates. Live evidence (local archive: `kalshi_trade_infra/results/databento_integration_2026-10-17/live_2026-10-17/HANDOFF.md`).
+
+
+- `[blocked: Massive entitlements and worker activation]` Local real-key checks pass for EUR/USD history and daily Treasury/funding data. Tested options-chain/current FX quote endpoints return 403; enable those provider permissions if needed. Secure AWS worker configuration, explicit activation and a real queued model/worker canary remain pending. Live evidence (local archive: `kalshi_trade_infra/results/massive_integration_2026-10-17/live_2026-10-17/HANDOFF.md`).
+
+- `[blocked: worker environment]` Activate the locally integrated Alpaca agent data in the real worker environment (`APCA_API_KEY_ID`, `APCA_API_SECRET_KEY`, `TAU_ALPACA_ENABLED=1`, explicit IEX/SIP feed). Local tests and live IEX reads pass; confirm commercial entitlement before customer rollout. Setup and evidence (local archive: `kalshi_trade_infra/results/alpaca_market_data_2026-10-16/HANDOFF.md`).
 
 - `[delayed]` All-markets collector + cross-contract. Phase 1 catalog shipped; ingestion split onto a dedicated collector box + S3 data-lake. Next: per-minute S3/Parquet snapshots (Phase 2). Backtest-over-any-series (3) + cross-contract research/eval (4) now built (see Done); cross-contract **live execution** still deferred.
 - `[v0.3]` Wire the generator (agent.py) to PROPOSE cross-contract pairs + build merged validation/holdout partitions, then enable cross-contract LIVE execution (engine.py/live gate) — research + evaluation are in place; this is the remaining step.
 - `[delayed]` Widen the live market universe — surface more of the already-collected Kalshi series in the UI (smaller than the full all-markets build).
 - `[blocked: SES]` Email-all community digest — **code is live** (opt-out + HMAC unsubscribe + 4h per-recipient cooldown; background-thread dispatch on each new post), but SES is in sandbox so it only reaches *verified* addresses. Unblock: SES console → Account dashboard → Request production access (zero code change after).
 - `[blocked: AWS]` Premium model access — Claude 5.5 / OpenAI GPT-6.x / Grok are AWS account-gated (agreements accepted, but invoke denies even from full-admin). Unblock: Bedrock console → Model access (us-east-1), or AWS Sales. Prices locked: Sonnet5.5 $2/$10, Opus5.5 $4/$20, Haiku5.5 $0.1/$0.5, GPT-6.1 Sol $2.2/$10, GPT-6 Sol $2/$10, GPT-5.6 Sol $8.8/$33.
-- Kalshi-dev 2nd equity line — NOT blocked: uses the *public* demo candlesticks (no credentials), base URL now defaulted in code; draws once the slippage/dev-curve work deploys (verify after deploy). Covered by the slippage Done entry below.
-- `[v0.3]` Agent internet access / web search (Google/Tavily/Brave).
+- Kalshi-dev 2nd equity line uses the *public* demo candlesticks (no credentials); the base URL is defaulted in upstream code. Upstream reports the replay/slippage/chart fixes deployed in Done below; verify the merged behavior during local integration rather than requiring demo credentials.
+- `[blocked: Exa production worker acceptance]` Local current and historical Exa retrieval are live-provider verified; pay-as-you-go resolved Snapshot entitlement. Both local flags are enabled and app quotas remain removed. Configure/deploy the real worker environment and accept a queued model/worker run; historical provider access is no longer blocked. Current evidence (local archive: `kalshi_trade_infra/results/exa_integration_2026-10-17/paygo_acceptance_2026-10-17/HANDOFF.md`).
 - `[v0.3]` Polymarket as a 2nd venue: data + API + real & simulation trading.
 - `[built · gated — awaiting demo validation]` NO-side (and side="either") LIVE execution — execution places the correct leg (buy NO = sell-YES ask at 1−no_price, priced from the NO book, filled/settled in NO terms); every other live gate kept, in order. Live NO is gated behind `APP_NO_SIDE_LIVE_ENABLED` (default OFF) until the mechanics are validated on the real demo sandbox; demo/paper NO work now. **Next:** place a demo NO order, confirm correct side/fill, then flip the flag.
 
@@ -43,7 +51,29 @@ These are NOT done. Completed items move to **## Done** below.
 - `[blocked: AWS]` **Onboard Opus 5.5** (`claude-opus-5-5`) + surface model comparison — tester wants it for NBA season. Blocked on AWS Bedrock model access like the other premium models.
 
 ## Done
-### 2026-10-17
+- **2026-10-17 — latest-main integration, local only:** fast-forwarded shared main from `f8ff5e2` to `0bd3bcf` (67 upstream commits) and restored 58 reconciled local source files; resolved six overlap files with no conflict markers/index entries. Shared-checkout validation: **849 infra Python passed / 9 skipped; 137 sibling passed / 22 skipped; 39 frontend tests passed; 11 synthetic browser routes/themes plus streaming/control/artifact interactions passed**. Original source/evidence backup and preservation stash retained; private environment unchanged. New provider rollouts and World Monitor remain pending their recorded gates. No commit/push/deployment. [Daily release notes](kalshi_trade_infra/results/main_integration_2026-10-17/RELEASE_NOTES.md).
+
+
+Local milestones below retain their own acceptance limits. Entries labelled inherited upstream history preserve the fetched main's reported deployments; this local integration has not performed or independently reverified those deployments.
+
+### 2026-10-17 — local web research integration
+- Pay-as-you-go historical Snapshot acceptance passed: three real HTTP 200 requests returned **10 Search sources, 1 Contents page, 10 publication-intent sources**, all pinned to **2026-10-10T08:53:56Z**, with prompt evidence, host citations and a network-free cache repeat. Prior 403 attempts retained; no runtime/private config edit or new app quota. Provider costs were not supplied. Real model/queued worker/production acceptance remains separate. Passing evidence (local archive: `kalshi_trade_infra/results/exa_integration_2026-10-17/paygo_acceptance_2026-10-17/HANDOFF.md`).
+- Earlier historical Snapshot activation (entitlement block superseded by the passing pay-as-you-go milestone above): private `.env` flags both 1, credentials/unrelated settings preserved; status confirms application_quotas=none. All **80 Exa tests pass**. Re-test reached Exa with a seven-day cutoff but returned 403; diagnostic confirms **SNAPSHOT_NOT_ON_PLAN**, so provider acceptance was blocked at that earlier milestone. Two read-only HTTP attempts; no real model/DB/queued worker/deployment. Activation evidence (local archive: `kalshi_trade_infra/results/exa_integration_2026-10-17/snapshot_activation_2026-10-17/HANDOFF.md`).
+- Exa quota removal and supplied-key validation complete locally: real Search **10 sources**, Contents **1**, publication Search **10**, with host citations and a network-free cache repeat through the actual knowledge adapter/scripted model. Removed app request/dollar/month/batch/round limits, forced five-result sampling and unpublished budget DAO/table dependency; provider cost telemetry retained. Successful responses reported **$0.015**; Snapshot probe returned 403. Local `.env` enabled with unrelated private bytes preserved. **80 Exa tests; 558 passed, 7 opt-in MySQL skipped** overall. No deployment/real worker/model run. Current handoff (local archive: `kalshi_trade_infra/results/exa_integration_2026-10-17/unlimited_2026-10-17/HANDOFF.md`).
+- Initial Exa milestone (historical; supersedes the earlier generic web-search proposal; quota policy superseded by the follow-up above): native web/news/publication tools reached actual research/copilot requests with provenance, source references, temporal scope and durable quota reservations. 91 synthetic tests; **569 passed, 7 opt-in MySQL skipped** overall. At that stage the key was blank/disabled with no paid API/model call, migration or deployment. Original handoff (local archive: `kalshi_trade_infra/results/exa_integration_2026-10-17/HANDOFF.md`).
+
+### 2026-10-17 — local market-data integration
+- Databento live API validation passed: 10 SPY + 10 ESZ6 minute bars reached Tau's actual agent-data loop with a scripted model; cached repeat made no API call. Estimated total $0.000006258488 under the user's test spending authorization. Persistent activation, deployment and real worker/model acceptance remain separate. Missing-key interruption and prior receipts retained. Live evidence (local archive: `kalshi_trade_infra/results/databento_integration_2026-10-17/live_2026-10-17/HANDOFF.md`).
+- Initial offline Databento milestone (the credential gate was subsequently passed above): historical stock/ETF and explicit futures bars reach actual Tau research/copilot requests, with training cutoffs, availability/provenance, cost preflight and bounded reads. 95 new offline tests; full suite **478 passed, 7 MySQL skipped**. Blank private `.env` settings prepared; disabled, zero-budget, no paid/provider/model calls or deployment. Handoff (local archive: `kalshi_trade_infra/results/databento_integration_2026-10-17/HANDOFF.md`).
+- Real Massive key verified: 120 EUR/USD hourly bars, 20 Treasury observations and 31 funding observations reached scripted agent context. Macro fields now retain independent observation dates/ages; 383 Python tests pass, 7 MySQL skipped. SPY chains/current EUR/USD quotes are entitlement-blocked (403). Worker remains disabled and undeployed. Evidence (local archive: `kalshi_trade_infra/results/massive_integration_2026-10-17/live_2026-10-17/HANDOFF.md`).
+- Initial offline Massive milestone (real-key access and endpoint-specific gaps are recorded above): FX history/current quotes, daily Treasury/funding indicators and filtered current option chains are connected to actual TAU agent calls alongside Alpaca. Research time boundaries, shared usage metering, request/cache limits and server-side secret loading are covered by 381 passing Python tests; 7 opt-in MySQL tests skipped. Disabled by default; no provider key, deployment or trading change. Handoff (local archive: `kalshi_trade_infra/results/massive_integration_2026-10-17/HANDOFF.md`).
+
+### 2026-10-17 — local frontend inspection
+- Full Tau tab and page heading renamed to **Strategy**, between Research and Explore; existing library behavior remains. Local-only label change.
+- Earlier navigation stage, superseded only in label by **Strategy** above: full Tau restores **Strategy Library** between Research and Explore, with its own page title/active tab. Existing filters and Research artifact links remain. Syntax and 6 synthetic browser checks pass; local-only. Handoff (local archive: `kalshi_trade_infra/results/strategy_library_nav_2026-10-17/HANDOFF.md`).
+- Main `f8ff5e2` merged locally, including Alpaca PR #8 and Tau/Meridian switching. Tau keeps the existing Research artifacts and Settings sections; both frontends are available for sample-data inspection. 299 Python and 31 Node tests pass, with 8 browser checks; live backend/schema acceptance remains separate. Handoff (local archive: `kalshi_trade_infra/results/main_frontend_sync_2026-10-17/HANDOFF.md`).
+
+### 2026-10-17 — inherited upstream history
 - **Per-strategy sandbox data dir (research-integrity)** — the persistent data dir is now keyed per strategy (by code hash), so a strategy reloads its own model artifacts across runs but can never read another strategy's files; closes a cross-run state-passing/leakage vector that would undermine pre-registration. (Deployed + live.)
 - **Research platform upgrade: Python 3.13 + full ML sandbox stack + scoped file access** — the box was right-sized (t4g.small→t4g.xlarge, 4 vCPU/16 GB; disk 8→40 GB; a stable Elastic IP so stop/start can't break the CloudFront origin) and migrated to Python 3.13.16. Code-strategy sandboxes now carry the real quant/ML/stat stack — pandas, scipy, scikit-learn, statsmodels, xgboost, lightgbm, arch, cvxpy, torch, tensorflow — plus `open()` and a persistent, cross-run data dir (`window['data_dir']`), so agents can write serious models, not just loops. Security held and then hardened: an adversarial review found the Linux confiner mounted the whole host root (readable) with only a partial secret blocklist, so a strategy could read an unmasked secret and return the bytes (a no-network exfil channel) — fixed by switching bwrap to an allowlist bind (system libs + interpreter + venv only; secrets are simply absent from the namespace), plus `--unshare-user` uid-drop and an OOM guard so an ML strategy can't DoS the live engine. Verified live: torch+sklearn+pandas run, the exact exfil exploit is now blocked for every secret (aws creds, .env, /root, /etc/shadow), data persists. (Deployed + live.)
 - **Execution service: thin-book microstructure controls + risk coupling** — `MarketableLimitKernel` gained four opt-in, fail-safe controls (participation / max-book-fraction cap, entry spread guard, per-order notional backstop, exit partial-fill continuation) grounded in execution research; each is strictly-stricter, none can block an exit, all default-OFF behind env knobs. Live gate untouched. Documented in `EXECUTION_DESIGN.md`. (Deployed + live.)
@@ -63,7 +93,7 @@ These are NOT done. Completed items move to **## Done** below.
 - **Engine resilience fix** — one deployment's error (a stale-DB-connection blip, a bad key) in a trading tick no longer tears down the whole engine loop for everyone; a `decide()` exception now skips that deployment's tick and retries next slot. (Root-caused from a prod incident where an RDS outage thrash-restarted the engine.) Also: a live deployment paused for a genuinely-missing key now says "add your live Kalshi key" instead of the false "live trading is not enabled." (Deployed + live `cdd69d5`.)
 - **Community feed cleanup** — removed the post hover-highlight and the redundant top-right react/reply toolbar; actions stay bottom-left (reaction pills, add-emoji, reply/N-replies, Edit on own posts); the instant reactor tooltip is kept. (Deployed + live `cdd69d5`.)
 - **Sandbox confiner installed on the worker** — bubblewrap 0.10.0 installed and verified functional on the box, so arbitrary-quant **code strategies** now run in the kernel sandbox instead of being inert (fail-closed by design). (Done on prod.)
-### 2026-10-16
+### 2026-10-16 — inherited upstream history
 - **Order-book depth + microstructure exposed to research, with dataset provenance** — the 9 collected microstructure features (order-book imbalance, bid/ask sizes, recent trade flow, quote-change intensity, short-horizon mid returns) that lived in `model_features_1m` but were hidden are now in the `FEATURES` namespace a spec can filter on (leak-safe as-of the decision minute; degrades gracefully on NULLs). Every hypothesis also records its `data_provenance` (features + data sources used) in the experiment ledger — the audit behind "use any dataset, as long as we track it." (Deployed + live.)
 - **"Dig deeper" on a passed strategy (+ fixed the "stuck follow-up" bug)** — a passed strategy is no longer a dead end: `POST /api/strategies/{id}/dig-deeper` and a co-pilot `research` action branch a NEW pre-registered research line off it (seeds its thesis/spec, keeps the mechanism, refines/stress-tests/extends) through the normal gatekeeper — no bypass; branches link to the parent via `parent_id`. This also root-caused the beta tester's "follow-up got stuck": it was never a hang — the co-pilot simply had no way to continue research from a passed strategy, so it dead-ended; now it can. (Deployed + live.)
 - **Arbitrary-quant code strategies (research-only, kernel-sandboxed)** — a strategy can be agent-authored Python/numpy (any math/ML/quant framework) exposing one `signals(window)` contract, judged IDENTICALLY to a DSL spec by the gatekeeper (pre-registration hashes the code as the rule). It runs in a DEFAULT-DENY kernel sandbox (`sandbox-exec`/`bwrap`/`firejail`: no network, no credential reads, no filesystem outside scratch, CPU/mem/time caps) — a security review found and closed a real in-interpreter escape (numpy-capable code re-exposing `os` via `random._os`), so the boundary is the OS kernel, not Python. Research-only, never in the live/paper engine; inert until a confiner is installed on the Linux worker (fail-closed). (Deployed + live.)
@@ -80,7 +110,13 @@ These are NOT done. Completed items move to **## Done** below.
 - Quant toolkit `app/quant.py` (BS-digital fair value, vol, Kalshi fees, edge, Kelly, portfolio metrics) — built + tested, not yet wired into the agent.
 
 ### 2026-10-16 — local integration
+
+Upstream's scoped Alpaca implementation record is preserved alongside the broader local publication/shared-tree milestones below.
+
 - Alpaca stock/ETF market data connected to research/copilot calls, with on-demand symbols, historical training cutoffs, feed provenance and stale-data handling. 258 Python tests passed, 7 opt-in MySQL tests skipped. Real IEX snapshot/history reads were verified locally; production activation remains above. [Implementation](kalshi_trade_infra/PLAN.md).
+- Alpaca integration published for review as [PR #8](https://github.com/JihuiTanUchicago/kalshi_trade/pull/8), commit `b102c5a`; open/non-draft, 10 scoped files, 258 Python passed/7 opt-in MySQL skipped on the exact clean branch. Shared local work remains preserved; no merge/deployment. Publication evidence (local archive: `kalshi_trade_infra/results/alpaca_pr_2026-10-16/HANDOFF.md`).
+- Alpaca stock/ETF market data connected to actual TAU research/copilot calls: watchlist context, on-demand symbols, snapshots/history, training-cutoff and stale-data handling. 291 Python tests pass/7 MySQL skipped; real IEX SPY snapshot and 44 hourly bars reached a scripted agent. Equity execution/backtests remain separate; worker activation is tracked above. Evidence (local archive: `kalshi_trade_infra/results/alpaca_market_data_2026-10-16/HANDOFF.md`).
+- GitHub main `0cc084d` merged with the local frontend and feed work. Research artifacts, Settings and dashboard preserve main's newer features. 244 Python tests, 31 frontend tests and 23 synthetic browser checks pass; authenticated services/deployment remain separate. Evidence (local archive: `kalshi_trade_infra/results/local_github_merge_2026-10-16/HANDOFF.md`).
 
 ### 2026-10-15
 - **@-mentions in the community (Slack-style).** Every user gets a unique `@handle` (backfilled from their email; assigned on signup), shown as `Name @handle` on posts/comments. Typing `@` in the composer or a reply opens a candidate list (by handle or name, arrow/enter to pick); `@handle` renders highlighted in bodies. The mentioned person gets an in-app notification + an email (emails wait on SES prod, like the rest). New: `app_users.username`, `/api/users/mention`, `MENTION_RE`/`assign_username`. Verified on the real DB (all 10 users backfilled, unique, dedup works).
@@ -117,6 +153,23 @@ These are NOT done. Completed items move to **## Done** below.
     - **[Done]** Flipped to Stripe **live** keys (in Parameter Store → `.env.app`); real cards now save/charge. Test-mode `pmc_` dropped (code falls back to card). NOTE: webhook secret still test — set live `whsec_` before relying on top-up webhooks.
     - **[Done]** Save-card works: Payment Element collects only ZIP (correct for AVS), country `US` injected at `confirmSetup` — both the gate modal and the Billing page.
 
+## UI
+- Dashboard: A webpage with UI that allows user to login and see their profile and dashboard
+    - Include cash balance, portfolio, perfomrance/roi, etc. whatever necessary.
+    - Like a stock trading main page/dashboard
+- Strategy: I want to bring research + strategies into one page, each is indicated by a status sign
+    - Each "Agent Sessions" instance is displayed as a card
+    - Tab shows "Agent Sessions". 3 states:
+        - Researching
+        - Finalized strategy pending review
+        - Deployed
+    - Clicking into each "Agent Session", it shows
+        - backtesting performance and `if-scenario` out of sample performance
+        - the underlying strategy thesis
+- Position: shows all the user's open positions, as well as the deployed strategies
+    - Keep the current "Deploy" tab, and clean the UI as well as show positions (integrating positions with deployments)
+- Community: keep as is, I like the idea of social trading
+- Account: links to the users account details, fundings, and other connected accounts
 
 ## THOUGHTS
 ### Must-have Features
@@ -160,10 +213,14 @@ for trading firms/teams that only focus on agent-driven strategies.
     - We build data collection automation pipeline. And we enable users who need
 those data to collect and help us grow our datasets.
     - Our underlying execution service is not open sourced. Any edge we can win here?
+    - (Jonathan supp): agent runtime, platform, data, trading execution and potentially
+    even prime services (leverage, borrowing, currency conversion, etc.)
     - We can post-train models using our in-house data for:
         - A jev like model that replaces traditional ML and only output "buy"/"sell"...?
             - TBH I don't even know what this means
-    - 
+            - (Jonathan supp): this makes sense and we can make it into a classifier-type model like Jev.
+              The model outputs buy/sell/hold, with confidence level like what Jev does. Agree this is a
+              great direction that we can go post-traction (and when we have the compute for post-train)
 
 ## Traction
 - Sell product EARLY. How to ask friends/strangers to try out product
@@ -183,13 +240,18 @@ whether making them willing to pay?
                 we are cashing out the user's credit by using the user's credit and fulfills
                 someone else's totally irrelevant requests.
                     - Bad, for rate limiting reasons, and bloating a user's bill
+                    - (jonathan supp): feels a bit tricky and dangerous
         - Option D: charge them for premium execution service
             - This can also let us make our product open source.
+        - Option E: our own prop trading house run by our own TAU agents
+    - (jonathan supp): Option A is the most optimal one at this stage imo
 
 ## Frictions found along the way.
 - API keys are the bottleneck, not coding. A frictionless api-key-dependent development solution?
+    - (jonathan supp) Agree. I cannot test what has been deployed at the moment because the API key is not available my end
 - **[Done]** Visualization layer: admin System tab — live signal-flow map of the codebase.
 - Codes become harder and harder to read with fast development. (Visualization layer shipped, above.)
+    - (jonathan supp) Yes my take is frontend should be as distraction-free as possible with only the necessary information presented
 - User testing. Agent as a simulated user to test front end UIs.
 - computer agent to help me do things that previously I needed to manually do.
 - New UI/interface, but agent has old knowledge -- there should be a product that

@@ -51,7 +51,7 @@ SPA_ROUTES = re.compile(r"^/(?:|dashboard|research(?:/\d+)?|strategies(?:/\d+)?|
 
 CSP = (
     "default-src 'self'; script-src 'self' https://js.stripe.com https://pay.google.com; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; "
-    "font-src https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com https://*.stripe.com; "
+    "font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com https://*.stripe.com; "
     "connect-src 'self' https://api.stripe.com https://*.stripe.com; frame-src https://js.stripe.com https://hooks.stripe.com https://*.stripe.com https://pay.google.com; "
     "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 )
@@ -749,7 +749,7 @@ def create_deployment(ctx: Ctx):
         if not engine.LIVE_TRADING_ENABLED:
             raise ApiError(409, "Live trading isn't open yet. Deploy on paper for now.")
         if repo.get_kalshi_key(cur, ctx.uid) is None:
-            raise ApiError(409, "Connect your Kalshi account on the Funds page first.")
+            raise ApiError(409, "Connect your Kalshi account on the Account page first.")
         if ((s.get("spec") or {}).get("side") or "yes").lower() != "yes" and not engine.NO_SIDE_LIVE_ENABLED:
             # Staged rollout: NO-side live mechanics are validated on the demo sandbox first.
             raise ApiError(409, "NO-side live trading is still being validated on the demo sandbox — "
@@ -1716,7 +1716,7 @@ ROUTES: List[Route] = [
 
 def _static_versions() -> Dict[str, str]:
     out = {}
-    for name in ("app.css", "app.js", "icon.svg", "app.meridian.css", "app.meridian.js", "boot.js"):
+    for name in ("app.css", "app.js", "session-data.js", "session-chat.js", "research-artifacts.js", "icon.svg", "app.meridian.css", "app.meridian.js", "boot.js"):
         p = STATIC_DIR / name
         out[name] = hashlib.sha256(p.read_bytes()).hexdigest()[:10] if p.exists() else "0"
     return out
@@ -1770,6 +1770,9 @@ class Handler(BaseHTTPRequestHandler):
             html = (STATIC_DIR / "index.html").read_text("utf-8")
             html = (html.replace("{{css_v}}", versions["app.css"])
                     .replace("{{js_v}}", versions["app.js"])
+                    .replace("{{session_v}}", versions["session-data.js"])
+                    .replace("{{chat_v}}", versions["session-chat.js"])
+                    .replace("{{artifacts_v}}", versions["research-artifacts.js"])
                     .replace("{{icon_v}}", versions["icon.svg"])
                     .replace("{{meridian_css_v}}", versions["app.meridian.css"])
                     .replace("{{meridian_js_v}}", versions["app.meridian.js"])
@@ -1778,7 +1781,7 @@ class Handler(BaseHTTPRequestHandler):
             self._headers(200, "text/html; charset=utf-8", len(body), [("Cache-Control", "no-cache")])
             self.wfile.write(body)
             return
-        m = re.match(r"^/static/([a-z0-9_.-]+\.(css|js|svg|png|ico))$", path)
+        m = re.match(r"^/static/([a-z0-9_.-]+\.(css|js|svg|png|ico|woff2))$", path)
         f = STATIC_DIR / m.group(1) if m else None
         if f is None or not f.is_file():
             body = b"Not found"
@@ -1786,7 +1789,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
         ctype = {"css": "text/css", "js": "text/javascript", "svg": "image/svg+xml", "png": "image/png",
-                 "ico": "image/x-icon"}[m.group(2)]
+                 "ico": "image/x-icon", "woff2": "font/woff2"}[m.group(2)]
         body = f.read_bytes()
         self._headers(200, ctype + ("; charset=utf-8" if m.group(2) in ("css", "js", "svg") else ""), len(body),
                       [("Cache-Control", "public, max-age=31536000, immutable")])

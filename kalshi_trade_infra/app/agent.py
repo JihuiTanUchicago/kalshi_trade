@@ -41,6 +41,8 @@ from app import spec as specmod
 from app.llm import LLMError, ModelFn, Usage, ask_json, claude, current_model
 from app.markets import MARKETS
 from app.agent_market_data import AgentMarketData, DataScope
+from app.agent_knowledge import AgentKnowledge
+from app.agent_news import AgentNews
 
 DIRECTIONS: Dict[str, Dict[str, str]] = {
     "volatility": {
@@ -758,7 +760,7 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
 
 
 def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkpoint, budget, tried,
-                      policy: exploration.ExplorationPolicy, conn=None) -> Tuple[int, int]:
+                      policy: exploration.ExplorationPolicy, conn=None, knowledge=None, news=None) -> Tuple[int, int]:
     """Explore NEW hypotheses on the Research partition (small refining rounds the policy
     sizes), then hand the finalists to the challenger + gatekeeper. Appends to the shared
     `tried` so progress survives a cancel/error."""
@@ -769,6 +771,12 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
     market_data = AgentMarketData(DataScope.research(ds.start_ts, ds.cutoff_ts), log, checkpoint)
     # Stream the proposer's generation into the feed so the multi-minute call isn't a silent gap.
     proposer = _stream_proposer(model, _StreamSink(log))
+    # Wrap after streaming is configured: the knowledge adapter has the ordinary two-argument
+    # model contract, but every underlying proposer call must still receive its live token sink.
+    if news is not None:
+        proposer = news.wrap(proposer, usage)
+    if knowledge is not None:
+        proposer = knowledge.wrap(proposer, usage)
     while True:
         checkpoint()
         round_no += 1
@@ -787,7 +795,10 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
             t["score"] = backtest.score(t["in_sample"])  # attach once, so the policy needs no backtester
             chunk.append(t)
             tried.append(t)
-    return len(chunk), _gate_and_save(cur, run, ds, partition, chunk, log, policy, model, usage, conn)
+    challenger = news.wrap(model, usage) if news is not None else model
+    if knowledge is not None:
+        challenger = knowledge.wrap(challenger, usage)
+    return len(chunk), _gate_and_save(cur, run, ds, partition, chunk, log, policy, challenger, usage, conn)
 
 
 def run_research(
@@ -869,6 +880,8 @@ def run_research(
         log("step", "Loaded %s of %s history: %s decision points over %s contracts."
             % (_span_words(ds), MARKETS[market].label, s["decision_points"], s["contracts"]), s)
         budget = max(1, min(int(run.get("max_hypotheses") or DEFAULT_HYPOTHESES), MAX_BUDGET))
+        knowledge = AgentKnowledge(DataScope.research(ds.start_ts, ds.cutoff_ts), log, checkpoint)
+        news = AgentNews(DataScope.research(ds.start_ts, ds.cutoff_ts), log, checkpoint)
         forever = bool(run.get("run_forever"))
         log("step", "Plan: explore %s, refining each round on the in-sample results, then gate the best on data never seen.%s"
             % ("hypotheses until you stop it" if forever else "up to %d hypotheses" % budget,
@@ -880,7 +893,8 @@ def run_research(
             # Reload memory each chunk so a run_forever loop learns from the strategies it
             # just saved, instead of re-proposing the same ideas.
             memory = repo.strategy_memory(cur, user_id, market)
-            n, passed = _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkpoint, budget, tried, policy, conn)
+            n, passed = _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkpoint,
+                                          budget, tried, policy, conn, knowledge, news)
             total_passed += passed
             chunks += 1
             # Tau-RSI: dream periodically DURING a long session (not only at the end), so the
@@ -1241,8 +1255,17 @@ def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.da
     agent checking in on its own (run.prompt says why)."""
     cur = conn.cursor()
     usage = Usage()
+    billing_attempted = False
     user = repo.get_user(cur, run["user_id"])
+
+    def checkpoint() -> None:
+        nonlocal cur
+        cur = _reconnect(conn, cur)
+        if repo.heartbeat(cur, run["id"]) == "cancelled":
+            raise Cancelled()
+
     try:
+        checkpoint()
         history = repo.chat_messages(cur, user["id"], limit=20)
         transcript = "\n".join("%s: %s" % (m["role"], m["content"]) for m in history)
         if run["kind"] == "review":
@@ -1251,18 +1274,36 @@ def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.da
             task = "Answer the user's latest message."
         prompt = "%s\n\nRecent conversation:\n%s\n\n%s\n\n%s" % (_copilot_context(cur, user), transcript or "(none)", task, ACTIONS_GUIDE)
         market_data = AgentMarketData(DataScope(), lambda kind, message, data=None:
-                                     repo.add_event(cur, run["id"], kind, message, data))
-        out = market_data.ask(model, COPILOT_SYSTEM, [{"role": "user", "content": prompt}], _copilot_check, usage)
+                                     repo.add_event(cur, run["id"], kind, message, data), checkpoint)
+        knowledge = AgentKnowledge(DataScope(), lambda kind, message, data=None:
+                                   repo.add_event(cur, run["id"], kind, message, data), checkpoint)
+        news = AgentNews(DataScope(), lambda kind, message, data=None:
+                        repo.add_event(cur, run["id"], kind, message, data), checkpoint)
+        out = market_data.ask(knowledge.wrap(news.wrap(model, usage), usage), COPILOT_SYSTEM,
+                              [{"role": "user", "content": prompt}], _copilot_check, usage)
+        checkpoint()
         repo.add_chat(cur, user["id"], "agent", out["reply"])
         for action in out["actions"]:
+            checkpoint()
             text, proposal_id = act(cur, user, action, bool(user.get("autopilot")), dataset_fn)
             repo.add_chat(cur, user["id"], "system", text, proposal_id)
         repo.finish_run(cur, run["id"], "succeeded", None, 0, 0, usage.input_tokens, usage.output_tokens)
+        billing_attempted = True
         _bill(conn, user["id"], usage, run["id"])
+    except Cancelled:
+        repo.add_event(cur, run["id"], "step", "Cancelled.")
+        if not billing_attempted:
+            billing_attempted = True
+            _bill(conn, user["id"], usage, run["id"])
     except Exception as e:
         print("[agents] copilot run %s failed: %r" % (run["id"], e), flush=True)
+        infra = _is_infra_error(e)
+        cur = _reconnect(conn, cur)
         repo.add_chat(cur, user["id"], "system",
                       "The agent hit an error and didn't answer. Send your message again, or try in a minute.")
         repo.finish_run(cur, run["id"], "failed", str(e)[:2000], 0, 0, usage.input_tokens, usage.output_tokens)
+        if not infra and not billing_attempted:
+            billing_attempted = True
+            _bill(conn, user["id"], usage, run["id"])
         if not isinstance(e, LLMError):
             raise

@@ -93,6 +93,11 @@ def main(argv=None):
     parser.add_argument("--model-env",type=Path,help="Load only the configured model key from a private local env file")
     sub = parser.add_subparsers(dest="command",required=True)
     p = sub.add_parser("doctor");p.add_argument("--config")
+    p = sub.add_parser("market-data", help="Read existing Kalshi and Coinbase BTC collectors")
+    p.add_argument("action", choices=["snapshot", "watch"])
+    p.add_argument("--config", required=True)
+    p.add_argument("--data-env", type=Path, help="Load only dashboard credentials from a private env file")
+    p.add_argument("--iterations", type=int, default=0, help="Watch polls; 0 continues until interrupted")
     p = sub.add_parser("model-smoke");p.add_argument("--model-config",required=True)
     p.add_argument("--case",choices=["json","workflow"],default="json")
     p = sub.add_parser("first-episode");p.add_argument("action",choices=["prepare","status","run","transfer","benchmark","paper-gate"])
@@ -127,6 +132,22 @@ def main(argv=None):
     args = parser.parse_args(argv)
     store = None
     try:
+        if args.command == "market-data":
+            from .market_data import MarketDataReader
+            if args.model_env:
+                raise GateError("Use --data-env for dashboard credentials with market-data")
+            reader = MarketDataReader(load(args.config), args.data_env)
+            if args.action == "snapshot":
+                result = reader.snapshot()
+                emit(result)
+                return 0 if all(feed["health"]["status"] == "ok" for feed in result["feeds"].values()) else 2
+            try:
+                for update in reader.iter_updates(args.iterations):
+                    print(canonical(update), flush=True)
+            except KeyboardInterrupt:
+                print(canonical({"kind": "stopped", "reason": "interrupted"}), flush=True)
+                return 130
+            return 0
         if args.model_env:
             configuration = getattr(args,"model_config",None) or getattr(args,"config",None)
             if not configuration:
@@ -321,7 +342,11 @@ def main(argv=None):
     except (AgentError,OSError,ValueError,KeyError,TypeError) as exc:
         # Raw provider bodies, credential values and arbitrary code traces are
         # intentionally excluded from operator error reports.
-        emit({"status":"blocked_or_failed","error":str(exc) if isinstance(exc,AgentError) else type(exc).__name__})
+        error = {"status":"blocked_or_failed","error":str(exc) if isinstance(exc,AgentError) else type(exc).__name__}
+        if args.command == "market-data" and args.action == "watch":
+            print(canonical(error), flush=True)
+        else:
+            emit(error)
         return 2
     finally:
         if store: store.close()
