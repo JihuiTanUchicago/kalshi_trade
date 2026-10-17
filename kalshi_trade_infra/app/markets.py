@@ -209,15 +209,22 @@ ALLOWED_CATEGORIES = frozenset({
 _FREQ_CANDLE = {"fifteen_min": 1, "hourly": 15, "daily": 60, "weekly": 60, "custom": 1}
 _FREQ_HISTORY = {"fifteen_min": 14, "hourly": 21, "daily": 45, "weekly": 120, "custom": 45}
 
-# Liquidity / activeness floor and the hard cap on how many markets we generate. Prioritized by
-# open_markets (liquidity + a recurrence proxy: an active recurring template always has several
-# concurrent contracts). Both env-tunable so the box can be throttled without a code change.
+# Liquidity / activeness floor and the (generous) safety ceilings on how many markets we generate.
+# Prioritized by open_markets (liquidity + a recurrence proxy: an active recurring template always
+# has several concurrent contracts). The goal is that EVERY collected, genuinely-tradeable series
+# (outcome-settled YES/NO binary in an allowed category — the carve-outs in market_from_series and
+# the SQL still exclude Crypto/Financials/MVE/scalar/curated/illiquid) becomes deployable, not a
+# tightly-curated subset. The collected catalog (series with open markets) is only a few hundred
+# rows, so these ceilings are headroom, not a curation knob — but they stay env-tunable because
+# every generated market is backfilled per-pass by market_history.refresh (hist_markets + candles),
+# so the box can be throttled down (e.g. CATALOG_MAX_MARKETS=150) under a rate-limit/load crunch
+# without a code change. open_markets-DESC ordering means a throttle sheds the thinnest books first.
 CATALOG_MIN_OPEN = int(os.getenv("CATALOG_MIN_OPEN", "2"))
-CATALOG_MAX_MARKETS = int(os.getenv("CATALOG_MAX_MARKETS", "150"))
-# Sports has ~3,000 candidate series vs ~50 for Commodities, so pure liquidity ordering would
-# fill the whole cap with one category. A per-category ceiling keeps the universe diverse (the
-# task's "sensible set") without starving the thin-but-clean book-only markets (weather/econ).
-CATALOG_MAX_PER_CATEGORY = int(os.getenv("CATALOG_MAX_PER_CATEGORY", "40"))
+CATALOG_MAX_MARKETS = int(os.getenv("CATALOG_MAX_MARKETS", "1000"))
+# Per-category ceiling: still a tunable safety valve against one category (Sports has ~3,000
+# candidate series) swamping the universe if the collected catalog ever balloons, but set high
+# enough that it never starves the full collected set the owner wants tradeable.
+CATALOG_MAX_PER_CATEGORY = int(os.getenv("CATALOG_MAX_PER_CATEGORY", "1000"))
 # Escape hatch: set to "1" to run on the curated 19 only (e.g. to reproduce a bug offline).
 CATALOG_DISABLED = os.getenv("TAU_DISABLE_CATALOG_MARKETS") == "1"
 

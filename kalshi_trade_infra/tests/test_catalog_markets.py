@@ -151,7 +151,9 @@ class _DummyConn:
 
 
 def test_load_catalog_markets_caps_global_and_per_category(monkeypatch):
-    # 60 Sports + 60 Economics rows; global cap 150, per-category 40 -> 40 of each kept.
+    # The ceilings still work as a throttle when set low: 60 Sports + 60 Economics rows,
+    # global cap 150, per-category 40 -> 40 of each kept. (Caps pinned here so the test proves
+    # the MECHANISM regardless of the generous production defaults.)
     from app import catalog_repository
     import data_pipeline.common as common
     rows = ([_row(series_ticker="KXSPORT%d" % i, category="Sports", frequency="custom", open_markets=50 - i % 10)
@@ -159,6 +161,8 @@ def test_load_catalog_markets_caps_global_and_per_category(monkeypatch):
             [_row(series_ticker="KXECON%d" % i, category="Economics", frequency="daily", open_markets=30)
              for i in range(60)])
     monkeypatch.setattr(mk, "CATALOG_DISABLED", False)
+    monkeypatch.setattr(mk, "CATALOG_MAX_MARKETS", 150)
+    monkeypatch.setattr(mk, "CATALOG_MAX_PER_CATEGORY", 40)
     monkeypatch.setattr(common, "get_db_conn", lambda: _DummyConn())
     monkeypatch.setattr(catalog_repository, "deployable_series", lambda *a, **k: rows)
     gen = mk.load_catalog_markets()
@@ -166,6 +170,31 @@ def test_load_catalog_markets_caps_global_and_per_category(monkeypatch):
     assert cats["Sports"] == 40 and cats["Economics"] == 40     # per-category ceiling
     assert len(gen) == 80 <= mk.CATALOG_MAX_MARKETS             # under global cap
     assert all(m.underlying is None and m.deployable for m in gen.values())
+
+
+def test_default_caps_do_not_starve_the_collected_universe(monkeypatch):
+    # The owner's bar: every collected, tradeable series becomes deployable, not a curated subset.
+    # 300 eligible series (far above the OLD 150/40 caps) must ALL generate under the defaults.
+    from app import catalog_repository
+    import data_pipeline.common as common
+    rows = [_row(series_ticker="KXSPORT%d" % i, category="Sports", frequency="custom",
+                 open_markets=100 - i % 20) for i in range(300)]
+    monkeypatch.setattr(mk, "CATALOG_DISABLED", False)
+    monkeypatch.setattr(common, "get_db_conn", lambda: _DummyConn())
+    monkeypatch.setattr(catalog_repository, "deployable_series", lambda *a, **k: rows)
+    gen = mk.load_catalog_markets()
+    assert len(gen) == 300          # nothing starved by the (now generous) ceilings
+    assert all(m.deployable for m in gen.values())
+
+
+def test_high_volume_spread_series_is_deployable():
+    # KXNCAAFSPREAD (the owner's concrete example: Sports point-spread, Sports/custom, liquid) must
+    # generate as a deployable book-only market once the catalog is enriched with category+frequency.
+    m = market_from_series(_row(series_ticker="KXNCAAFSPREAD", title="NCAAF point spread",
+                                category="Sports", frequency="custom", open_markets=40))
+    assert m is not None
+    assert m.key == "kxncaafspread" and m.deployable is True
+    assert m.underlying is None and m.kind == "binary"   # outcome-settled YES/NO, book-only
 
 
 # -- backtest surface on a generated market ------------------------------------
