@@ -1252,7 +1252,7 @@
           ${modelOpts ? `<label class="field" style="margin:0"><span>Model</span>
             <select class="input" name="model" id="rmodel" style="width:184px">${modelOpts}</select></label>` : ''}
           <label class="field" style="margin:0"><span>Strategies to test</span>
-            <input class="input" type="number" name="max_hypotheses" id="maxhyp" min="1" max="50" value="10" style="width:92px"></label>
+            <input class="input" type="number" name="max_hypotheses" id="maxhyp" min="1" max="1000" value="10" style="width:92px"></label>
           <label class="switch" style="margin-top:18px"><input type="checkbox" name="run_forever" id="runforever" checked><span>Let it run until I stop it</span></label>
         </div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;justify-content:space-between">
