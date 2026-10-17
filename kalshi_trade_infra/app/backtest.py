@@ -467,6 +467,143 @@ def _code_exit(book: Dict[int, Dict[str, Tuple[str, float]]], ts: int, pos: _Ope
     return "signal", sell
 
 
+# -- spot (continuous price) strategies ----------------------------------------
+# A TAO subnet alpha token is a price series, not a binary contract: no strike, no expiry, no
+# $0/$1 settlement. simulate_spot is simulate() minus settlement/contract bookkeeping - positions
+# are long/flat (short is a parsed stub, off by default: there is no on-chain short), PnL is
+# qty*(exit-entry)-fees, and fills slip against pool depth (tao_fees) instead of paying a Kalshi
+# taker fee. metrics()/gatekeeper consume the resulting Trade list unchanged. The code-strategy
+# seam is reused: signals(window) returns a per-frame target book, same as the binary path.
+
+from app import tao_fees  # noqa: E402  (local venue cost model, mirrors kalshi_fees import)
+
+# Shorting an AMM-only asset is not possible on-chain (TAO_VENUE_DESIGN.md §D), so "short" picks
+# are parsed but dropped unless this is flipped on for research of a hypothetical short venue.
+SPOT_ALLOW_SHORT = False
+SPOT_SIDES = ("long", "short")
+
+
+@dataclass
+class _OpenSpot:
+    side: str            # "long" | "short"
+    qty: float           # alpha tokens held (fractional; not integer contracts)
+    entry_ts: int
+    entry_price: float   # fill price in the chosen denomination
+    fee: float           # entry swap/tx cost so far (denomination)
+
+
+def _spot_frame_prices(frame: Dict, denom: str) -> Tuple[Optional[float], Optional[float]]:
+    """(mid price in the chosen denomination, alpha_pool depth) for one spot frame. USD uses the
+    derived alpha_usd (None when no TAO/USD rate is known yet); TAO uses the raw pool-ratio price."""
+    price = frame["alpha_usd"] if denom == "usd" else frame["alpha_tao"]
+    alpha_pool = frame.get("features", {}).get("alpha_pool")
+    return price, alpha_pool
+
+
+def simulate_spot(spec: Dict, ds: Dataset, start_ts: int, end_ts: int,
+                  what_if: Optional[WhatIf] = None, denom: str = "usd") -> List[Trade]:
+    """Trades for spot positions OPENED in [start_ts, end_ts). `denom` picks the PnL/price unit:
+    "usd" (default - what the customer reads returns in) or "tao" (the pool/slippage-native unit).
+    Sizing (sizing.stake) is always a USD notional; qty is the alpha tokens that buys at the mid,
+    so the two denominations describe the SAME position and differ only by the TAO/USD rate.
+
+    A spot strategy is a code strategy (signals(window)); a non-code spec yields no book -> no
+    trades (the binary DSL has no meaning without a strike). Any sandbox/shape failure -> {} ->
+    zero trades, failing the gate honestly rather than crashing the run."""
+    w = what_if or WhatIf()
+    stake = w.stake if w.stake is not None else spec["sizing"]["stake"]
+    max_pos = spec["sizing"]["max_positions"]
+    book = _spot_code_book(spec, ds, start_ts, end_ts) if specmod.is_code_spec(spec) else {}
+    open_: List[_OpenSpot] = []
+    trades: List[Trade] = []
+    last: Optional[Tuple[int, float, Optional[float]]] = None  # (ts, mark, pool) of newest priced frame
+
+    def close(pos: _OpenSpot, ts: int, mid: float, alpha_pool: Optional[float], reason: str) -> None:
+        sell = tao_fees.fill_price(mid, pos.qty, "sell", alpha_pool)
+        fee = pos.fee + tao_fees.swap_fee(pos.qty * sell)
+        trades.append(Trade("%s" % ds.market.key, pos.side, pos.qty, pos.entry_ts, pos.entry_price,
+                            ts, sell, fee, reason, 0.0))
+
+    for ts, frame in ds.frames[_first_frame(ds, start_ts):]:
+        mid, alpha_pool = _spot_frame_prices(frame, denom)
+        if mid is None or mid <= 0:
+            continue  # no priced frame (e.g. USD before the first TAO/USD rate) -> cannot trade
+        last = (ts, mid, alpha_pool)
+        target = book.get(ts)  # (side, score) the strategy wants held now, or None
+
+        keep: List[_OpenSpot] = []
+        for pos in open_:
+            if target is not None and target[0] == pos.side:
+                keep.append(pos)              # still wanted -> hold
+            else:
+                close(pos, ts, mid, alpha_pool, "exit")  # dropped or flipped -> flat out
+        open_ = keep
+
+        if ts >= end_ts:
+            continue  # past the window: only manage/close what is open, never open new
+        held = {p.side for p in open_}
+        if target is not None and target[0] not in held and len(open_) < max_pos:
+            side = target[0]
+            buy = tao_fees.fill_price(mid, 0.0, "buy", alpha_pool)  # impact needs qty; size on mid first
+            qty = stake / mid if mid > 0 else 0.0
+            if qty > 0:
+                buy = tao_fees.fill_price(mid, qty, "buy", alpha_pool)
+                open_.append(_OpenSpot(side, qty, ts, buy, tao_fees.swap_fee(qty * buy)))
+
+    for pos in open_:  # window ended with positions open: mark them out at the final priced frame
+        if last is not None:
+            ts, mid, alpha_pool = last
+            close(pos, ts, mid, alpha_pool, "mark")
+    return trades
+
+
+def _spot_code_book(spec: Dict, ds: Dataset, start_ts: int, end_ts: int) -> Dict[int, Tuple[str, float]]:
+    """Run the spot strategy and return {ts: (side, score)} for in-window frames. The window
+    carries the alpha-in-TAO price, the TAO/USD rate, the derived alpha-in-USD price and the TAO
+    subnet features, so signals() can trade and report in either denomination (§C mechanisms)."""
+    from app import sandbox
+    frames = [(ts, fr) for ts, fr in ds.frames if start_ts <= ts < end_ts]
+    window = {"market": spec["market"], "kind": "spot", "frames": [
+        {"ts": ts, "alpha_tao": fr["alpha_tao"], "tao_usd": fr["tao_usd"],
+         "alpha_usd": fr["alpha_usd"], "features": fr["features"]}
+        for ts, fr in frames]}
+    try:
+        raw = sandbox.run_strategy_signals(spec["code"], window)
+    except sandbox.SandboxError as e:
+        logging.getLogger(__name__).warning("spot code strategy sandbox failure: %s", e)
+        return {}
+    return _parse_spot_book(raw, frames)
+
+
+def _parse_spot_book(raw, frames) -> Dict[int, Tuple[str, float]]:
+    """Validate untrusted sandbox output into {ts: (side, score)}. Element i is the book wanted at
+    frame i: a list of {"side": "long"|"short", "score": float?}; the first valid long/short pick
+    wins (one position per series). Empty/flat -> no entry for that ts. Short is dropped unless
+    SPOT_ALLOW_SHORT. Any shape violation -> {} (no trades), same contract as _parse_book."""
+    if not isinstance(raw, list) or len(raw) != len(frames):
+        return {}
+    book: Dict[int, Tuple[str, float]] = {}
+    for (ts, _fr), picks in zip(frames, raw):
+        if not isinstance(picks, list):
+            return {}
+        chosen: Optional[Tuple[str, float]] = None
+        for p in picks:
+            if not isinstance(p, dict):
+                return {}
+            side, score = p.get("side"), p.get("score", 0.0)
+            if side not in SPOT_SIDES:
+                return {}
+            if isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(score):
+                return {}
+            if side == "short" and not SPOT_ALLOW_SHORT:
+                continue  # on-chain short does not exist; stub only
+            if chosen is None:
+                chosen = (side, float(score))
+        if chosen is not None:
+            book[ts] = chosen
+    return book
+
+
 # -- metrics -----------------------------------------------------------------
 
 

@@ -20,7 +20,7 @@ from collections import Counter
 from datetime import timedelta
 from typing import Dict, List, Optional
 
-from app import backtest, research_repository as rr
+from app import backtest, research_repository as rr, tao_repository
 from app.markets import MARKETS, Market
 from app.repository import now_utc
 
@@ -47,6 +47,8 @@ def ensure_partition(cur, market: str) -> Dict:
     exists or if the underlying data has changed (old one -> active=0). Returns the
     persisted row dict."""
     m = MARKETS[market]
+    if m.kind == "spot":
+        return _ensure_spot_partition(cur, m)
     since = now_utc() - timedelta(days=m.history_days)
     contracts = rr.partition_contracts(cur, m, since)
     if not contracts:
@@ -114,6 +116,49 @@ def merged_dataset(cur, markets: List[str], phase: str):
     loaders = {"research": research_dataset, "validation": validation_dataset, "holdout": holdout_dataset}
     dses = [loaders[phase](m, ensure_partition(cur, m)) for m in sorted(set(markets))]
     return backtest.merge_datasets(dses, key="+".join(sorted(set(markets))))
+
+
+# -- spot (continuous-price) partitions ----------------------------------------
+# A spot market (TAO subnet alpha) has no settled contracts to anchor a boundary, so the candle
+# time grid plays that role: the same 60/25/15 ratio cuts, snapped forward to a real candle ts,
+# and purge/embargo = one decision bar (a spot position opens and closes within the window, so
+# there is no settlement tail to purge like a binary contract has).
+
+
+def _ensure_spot_partition(cur, market: Market) -> Dict:
+    since = now_utc() - timedelta(days=market.history_days)
+    points = tao_repository.spot_candle_points(cur, market, since)
+    if len(points) < 2:
+        raise ValueError("no TAO spot history for market %r since %s" % (market.key, since))
+    b = _compute_spot_boundaries(market, points)
+    active = rr.get_active_partition(cur, market.key)
+    if active and active["data_fingerprint"] == b["data_fingerprint"]:
+        return active
+    return rr.save_partition(cur, market.key, b)
+
+
+def _compute_spot_boundaries(market: Market, points: List[int]) -> Dict:
+    """Frozen boundary dict for a spot market from its sorted candle timestamps."""
+    pts = sorted(set(int(p) for p in points))
+    t0, t1 = pts[0], pts[-1]
+    span = t1 - t0
+    research_to = _snap_forward(pts, t0 + int(span * RESEARCH_FRAC))
+    validation_to = _snap_forward(pts, t0 + int(span * (RESEARCH_FRAC + VALIDATION_FRAC)))
+    dur = market.decision_seconds
+    h = hashlib.sha256()
+    for p in pts:
+        h.update(("%s|%d\n" % (market.underlying, p)).encode())
+    return {
+        "research_from_ts": t0,
+        "research_to_ts": research_to,
+        "validation_from_ts": research_to,
+        "validation_to_ts": validation_to,
+        "holdout_from_ts": validation_to,
+        "holdout_to_ts": t1 + 1,
+        "embargo_seconds": dur,
+        "purge_seconds": dur,
+        "data_fingerprint": h.hexdigest(),
+    }
 
 
 def _compute_boundaries(market: Market, contracts: List[Dict]) -> Dict:
@@ -215,6 +260,10 @@ def _load_window(market: str, from_ts: int, to_ts: int, history_days: Optional[i
     conn = get_db_conn()
     try:
         with conn.cursor() as cur:
+            if m.kind == "spot":
+                h = tao_repository.load_spot_history(cur, m, int(since.timestamp()))
+                candles = [(t, p) for t, p in h["candles"] if from_ts <= t < to_ts]
+                return backtest.build_spot_dataset(m, candles, h["tao_usd"], h["features"])
             rows = rr.partition_source_rows(cur, m, since)
     finally:
         conn.close()

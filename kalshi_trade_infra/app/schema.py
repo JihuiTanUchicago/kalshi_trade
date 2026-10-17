@@ -50,6 +50,25 @@ DDL = [
       PRIMARY KEY (symbol, start_ts)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
+    # Non-price TAO subnet signals (TAO_VENUE_DESIGN.md §B.3), keyed (netuid, ts) and joined onto
+    # the spot price series by ts - the same (key, minute) join model_features_1m uses. The alpha
+    # PRICE series itself lives in spot_candles_1m (symbol=TAO-SN{n}); only these tokenomics/flow
+    # features and the pool reserves (which drive the slippage fill model) live here. Written by
+    # data_pipeline/taostats_collector.py via app/tao_repository.py; read into the spot backtest
+    # window so signals(window) can condition on emission/registration/staking mechanisms.
+    """
+    CREATE TABLE IF NOT EXISTS tao_subnet_features (
+      netuid INT NOT NULL,
+      ts BIGINT NOT NULL,
+      emission_weight DECIMAL(18,10) NULL,   -- subnet's share of network emissions (tokenomics)
+      tao_pool DECIMAL(30,10) NULL,          -- TAO reserve in the subnet AMM pool (tau_pool)
+      alpha_pool DECIMAL(30,10) NULL,        -- alpha reserve in the pool (alpha_pool); drives fill depth
+      registrations INT NULL,                -- registration events / churn in the window
+      net_stake_flow DECIMAL(30,10) NULL,    -- net TAO staked into (−unstaked from) the subnet
+      raw_json JSON NULL,                    -- the source taostats payload, for audit
+      PRIMARY KEY (netuid, ts)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
     # -- identity -------------------------------------------------------------
     """
     CREATE TABLE IF NOT EXISTS app_users (

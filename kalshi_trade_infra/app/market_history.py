@@ -246,6 +246,8 @@ def refresh(cur) -> Dict[str, int]:
     for m in MARKETS.values():
         if m.underlying is None:  # sports: no spot series to sync
             continue
+        if m.kind == "spot":  # TAO subnet tokens: sourced by the taostats collector, not Coinbase/Kalshi
+            continue
         by_symbol[m.underlying] = max(by_symbol.get(m.underlying, 0), m.history_days)
     for symbol, history_days in by_symbol.items():
         cur.execute("SELECT MAX(start_ts) AS t FROM spot_candles_1m WHERE symbol=%s", (symbol,))
@@ -253,6 +255,8 @@ def refresh(cur) -> Dict[str, int]:
         start = int(last) + 60 if last else int((now - timedelta(days=history_days + 1)).timestamp())
         stats["spot_" + symbol] = sync_spot_candles(cur, symbol, start, end_ts)
     for market in MARKETS.values():
+        if market.kind == "spot":  # no Kalshi contract series behind a TAO alpha token
+            continue
         cur.execute("SELECT MAX(close_time) AS t FROM hist_markets WHERE series_ticker=%s", (market.series,))
         last_close = (cur.fetchone() or {}).get("t")
         floor = now - timedelta(days=market.history_days)

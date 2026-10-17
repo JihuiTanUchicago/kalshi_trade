@@ -237,10 +237,34 @@ def _placebo_pvalue(trades, seed: int) -> float:
     return ge / PLACEBO_SHUFFLES
 
 
+def _spot_placebo_pvalue(trades, seed: int) -> float:
+    """Negative control for a continuous-price (spot) strategy. A spot trade has no $0/$1
+    settlement and no 1/entry win value, so the binary label-shuffle is meaningless. The null
+    here is instead "the per-trade returns are symmetric noise around zero": random sign-flip of
+    the net-return series (TAO_VENUE_DESIGN.md §A.6). We flip each trade's return sign with prob
+    1/2 `PLACEBO_SHUFFLES` times and count how often the resampled mean >= the observed mean.
+
+    A genuine positive edge makes the observed mean extreme among sign-flips -> small p. A null
+    (returns centered on zero) -> p ~ 0.5. Degenerate (<2 trades) -> 1.0 (no discrimination)."""
+    rets = [r for _, r in _net_returns(trades)]
+    n = len(rets)
+    if n < 2:
+        return 1.0
+    observed = sum(rets) / n
+    rng = random.Random(seed)
+    ge = 0
+    for _ in range(PLACEBO_SHUFFLES):
+        s = sum(r if rng.random() < 0.5 else -r for r in rets)
+        if s / n >= observed - 1e-12:
+            ge += 1
+    return ge / PLACEBO_SHUFFLES
+
+
 # -- numeric verdict (no I/O) --------------------------------------------------
 
 
-def _compute(trades, n_trials: int, lord_state: Dict[str, Any], seed: int) -> Dict[str, Any]:
+def _compute(trades, n_trials: int, lord_state: Dict[str, Any], seed: int,
+             kind: str = "binary") -> Dict[str, Any]:
     """The full numeric verdict for one finalist's trade list, advancing a LORD++ state by
     one test. Pure w.r.t. the DB (callers persist). Returns every number plus the new LORD++
     state; classification is applied separately so judge_batch can fold in BH."""
@@ -253,7 +277,10 @@ def _compute(trades, n_trials: int, lord_state: Dict[str, Any], seed: int) -> Di
     psr = stats.probabilistic_sharpe_ratio(sr, n, skew, kurt)
     var_trials = 1.0 / (n - 1) if n > 1 else 0.0  # Var(SR_hat) under the null = dispersion of equal-length zero-edge trials
     dsr = stats.deflated_sharpe_ratio(sr, n, skew, kurt, n_trials, var_trials)
-    placebo_p = _placebo_pvalue(trades, seed)
+    # The placebo is the one instrument-specific stat: binary uses the 1/entry label shuffle,
+    # spot a sign-flip of the return series. Everything else (CI, PSR/DSR, LORD++, cross-day) is
+    # identical. One-line dispatch on market kind, exactly as the design prescribes (§A.6).
+    placebo_p = _spot_placebo_pvalue(trades, seed) if kind == "spot" else _placebo_pvalue(trades, seed)
     rec = stats.lord_record(lord_state, boot["p_value"])
     equity = _equity(trades)
     cross_day_ok, folds, day_share = _cross_day(trades)
@@ -396,7 +423,8 @@ def judge_validation(cur, experiment_id: int, finalist: dict, val_ds) -> dict:
         return {"classification": cls.value, "n_trades": n_trades, "alpha_spent": False,
                 "n_trials_audited": n_trials}
 
-    v = _compute(trades, n_trials, _lord_state(cur, user_id, market), seed=_BOOT_SEED + int(experiment_id))
+    v = _compute(trades, n_trials, _lord_state(cur, user_id, market), seed=_BOOT_SEED + int(experiment_id),
+                 kind=getattr(val_ds.market, "kind", "binary"))
     rr.set_fdr_state(cur, user_id, market, v["lord_state"])  # alpha spent only once sample is adequate
     cls = _classify(v["lord_reject"], None, v["dsr"], v["ci_lo"], v["ci_hi"], v["placebo_passed"],
                     v["cross_day_ok"])
@@ -425,7 +453,7 @@ def judge_batch(cur, run_id: int, experiment_ids: List[int], finalists: List[dic
         if n < int(fin.get("min_sample", 0)):
             computed.append({"exp_id": exp_id, "n_trades": n, "insufficient": True})
             continue
-        v = _compute(trades, n_trials, lord_state, seed=_BOOT_SEED + int(exp_id))
+        v = _compute(trades, n_trials, lord_state, seed=_BOOT_SEED + int(exp_id), kind=getattr(val_ds.market, "kind", "binary"))
         lord_state = v["lord_state"]  # advance the stream
         v["exp_id"] = exp_id
         v["insufficient"] = False
@@ -512,7 +540,8 @@ def judge_holdout(cur, experiment_id: int, finalist: dict) -> dict:
     trades = backtest.simulate(finalist["spec"], hds, hds.start_ts, hds.end_ts + 1)
     n_trades = len(trades)
     n_trials = _n_trials(cur, user_id, market, including=1)
-    v = _compute(trades, n_trials, stats.lord_init(ALPHA), seed=_BOOT_SEED + int(experiment_id))
+    v = _compute(trades, n_trials, stats.lord_init(ALPHA), seed=_BOOT_SEED + int(experiment_id),
+                 kind=getattr(hds.market, "kind", "binary"))
 
     use = rr.record_holdout_use(cur, int(ledger["id"]))  # authoritative one-way spend
     if not use.get("ok"):

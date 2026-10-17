@@ -19,6 +19,8 @@ class FakeCursor:
         self.sim_model_state = {}  # model_name -> {"paused":..., "paused_reason":...}
         self.forward_quotes = {}  # ticker -> yes_bid_dollars
         self.sim_settings = {}
+        self.spot_candles = {}  # (symbol, start_ts) -> row dict  (TAO venue + any spot series)
+        self.tao_features = {}  # (netuid, ts) -> row dict
         self.lastrowid = None
         self._last = None
 
@@ -97,6 +99,25 @@ class FakeCursor:
             self._last = [{"settings_json": row}] if row else []
         elif s.startswith("INSERT INTO sim_settings"):
             self.sim_settings["risk_config"] = params[0]
+        # -- TAO research venue (app/tao_repository.py) ------------------------
+        elif s.startswith("INSERT INTO spot_candles_1m"):
+            symbol, start_ts, o, h, lo, c, v = params
+            self.spot_candles[(symbol, int(start_ts))] = dict(
+                symbol=symbol, start_ts=int(start_ts), open=o, high=h, low=lo, close=c, volume=v)
+        elif s.startswith("SELECT start_ts, close FROM spot_candles_1m WHERE symbol=%s AND start_ts >= %s"):
+            symbol, since = params
+            rows = [r for (sym, ts), r in self.spot_candles.items() if sym == symbol and ts >= int(since)]
+            self._last = [{"start_ts": r["start_ts"], "close": r["close"]}
+                          for r in sorted(rows, key=lambda r: r["start_ts"])]
+        elif s.startswith("INSERT INTO tao_subnet_features"):
+            (netuid, ts, emission_weight, tao_pool, alpha_pool, registrations, net_stake_flow, raw) = params
+            self.tao_features[(int(netuid), int(ts))] = dict(
+                netuid=int(netuid), ts=int(ts), emission_weight=emission_weight, tao_pool=tao_pool,
+                alpha_pool=alpha_pool, registrations=registrations, net_stake_flow=net_stake_flow, raw_json=raw)
+        elif s.startswith("SELECT ts, emission_weight, tao_pool, alpha_pool, registrations, net_stake_flow"):
+            netuid, since = params
+            rows = [r for (nid, ts), r in self.tao_features.items() if nid == int(netuid) and ts >= int(since)]
+            self._last = [dict(r) for r in sorted(rows, key=lambda r: r["ts"])]
         else:
             raise NotImplementedError(f"unhandled SQL in FakeCursor: {s[:100]}")
 
