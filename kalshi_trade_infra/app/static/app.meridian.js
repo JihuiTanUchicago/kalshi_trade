@@ -1916,14 +1916,14 @@
     const who = rxWho(rx);
     return `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}" aria-label="${esc(rx.emoji)}, ${rx.count}${who ? ' — ' + who : ''}">${emojiHtml(rx.emoji)}<span class="n">${rx.count}</span>${who ? `<span class="rxtip" role="tooltip">${who}</span>` : ''}</button>`;
   }
-  // Pills for the reactions a post already has, plus the inline "+" when there is at least one.
+  // Pills for the reactions a post has, plus an always-present inline "+" to add one.
   function reactionChips(list) {
     const chips = (list || []).map(rxChip).join('');
-    return chips ? chips + `<button class="rx add" data-react-add aria-label="Add a reaction">${ICON.react}<i class="plus">+</i></button>` : '';
+    return chips + `<button class="rx add" data-react-add aria-label="Add a reaction">${ICON.react}<i class="plus">+</i></button>`;
   }
   const GROUP_WINDOW = 5 * 60 * 1000;  // consecutive posts by one author within 5 min collapse the header
   // A Slack-style message row: avatar gutter + name/@handle/time header, body, attachments,
-  // reaction pills, a thread affordance, and an instant hover toolbar (react / reply / edit).
+  // reaction pills, and a bottom-left action row (reply / replies count, plus edit on own posts).
   // A grouped post is a tight continuation of the author above it: no header, a hover-only time.
   function postCard(p, grouped) {
     const replies = p.comments || 0;
@@ -1935,13 +1935,11 @@
         ${p.image ? `<a class="post-img" href="${esc(p.image)}" target="_blank" rel="noopener"><img src="${esc(p.image)}" alt="" loading="lazy"></a>` : ''}
         ${postSnapshot(p.snapshot)}</div>
         <div class="reactions">${reactionChips(p.reactions)}</div>
-        ${replies ? `<button class="thread-link" data-act="comments">${ICON.comment}<span>${replies} ${replies === 1 ? 'reply' : 'replies'}</span></button>` : ''}
+        <div class="post-actions">
+          <button class="thread-link" data-act="comments">${ICON.comment}<span>${replies ? `${replies} ${replies === 1 ? 'reply' : 'replies'}` : 'Reply'}</span></button>
+          ${p.mine ? `<button class="thread-link" data-act="edit">${ICON.pencil}<span>Edit</span></button>` : ''}
+        </div>
         <div class="comments" hidden></div>
-      </div>
-      <div class="hoverbar" role="group" aria-label="Message actions">
-        <button class="hbtn" data-react-add aria-label="Add reaction">${ICON.react}</button>
-        <button class="hbtn" data-act="comments" aria-label="Reply">${ICON.comment}</button>
-        ${p.mine ? `<button class="hbtn" data-act="edit" aria-label="Edit">${ICON.pencil}</button>` : ''}
       </div>
     </article>`;
   }
