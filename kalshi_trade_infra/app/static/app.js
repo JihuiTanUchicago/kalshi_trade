@@ -3147,7 +3147,8 @@
     if (stats) stats.innerHTML = `
       <div><dt>Running</dt><dd>${runTotal ? runParts.join(' · ') : 'None'}</dd></div>
       <div><dt>Live P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd></div>
-      <div><dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd></div>`;
+      <div><dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd></div>
+      ${d.last_review_at ? `<div><dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd></div>` : ''}`;
     const gates = box.querySelector('#apf-gates'); if (gates) gates.textContent = apLiveBlock(d);
     const controls = box.querySelector('#apf-controls');
     if (controls) {

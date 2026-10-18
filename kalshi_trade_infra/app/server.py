@@ -1015,6 +1015,7 @@ def autopilot_status(ctx: Ctx):
         "daily_loss_limit": limit,
         "loss_headroom": round(max(0.0, limit + min(0.0, today_live)), 2),  # how much loss budget is left today
         "last_action": repo.last_autopilot_action(cur, ctx.uid),
+        "last_review_at": repo.last_review_at(cur, ctx.uid),  # liveness: a quiet review posts nothing, this still shows it ran
     }
 
 

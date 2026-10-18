@@ -1628,6 +1628,18 @@ def last_autopilot_action(cur, user_id: int) -> Optional[Dict]:
     return {"text": r["content"], "at": r["created_at"]} if r else None
 
 
+def last_review_at(cur, user_id: int):
+    """Timestamp of the most recent autopilot REVIEW run (whether or not it acted), for the panel's
+    liveness readout. A quiet review takes no action and posts nothing, so without this a working
+    autopilot looks dead between actions; this shows it is alive and on cadence."""
+    cur.execute(
+        "SELECT created_at FROM app_agent_runs WHERE user_id=%s AND kind='review' ORDER BY id DESC LIMIT 1",
+        (user_id,),
+    )
+    r = cur.fetchone()
+    return r["created_at"] if r else None
+
+
 def add_chat(cur, user_id: int, role: str, content: str, proposal_id: Optional[int] = None) -> int:
     cur.execute(
         "INSERT INTO app_chat_messages (user_id, role, content, proposal_id, created_at) VALUES (%s,%s,%s,%s,%s)",
