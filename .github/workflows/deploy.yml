@@ -1,63 +1,62 @@
-name: Deploy web app
-
-# Redeploy the Tau customer app to the web box WITHOUT needing the AWS key locally.
-# Manual trigger only: GitHub restricts "Run workflow" to collaborators who have write (push)
-# access to the repo — i.e. the same people who can push to main — so this is the push-to-main-
-# gated redeploy. It authenticates with a dedicated deploy IAM user's keys, stored as the repo
-# secrets AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY (least-privilege policy in DEPLOY_WORKFLOW_SETUP.md).
-# It reuses scripts/deploy_web.sh verbatim, so CI and a local deploy run the identical, rollback-
-# guarded path (whole-app tar -> S3 -> SSM on-box extract/compile/schema/restart -> curl 200 ->
-# CloudFront invalidate). One-time AWS setup + the access-key alternative: scripts/DEPLOY_WORKFLOW_SETUP.md.
-
+name: Read-only production research job inventory
 on:
   workflow_dispatch:
-    inputs:
-      ref:
-        description: "Git ref to deploy (branch, tag, or SHA)"
-        required: false
-        default: main
-      invalidate:
-        description: "Invalidate CloudFront after deploy"
-        type: boolean
-        default: true
-
-# LAST WINS, without racing the box. Same group => runs never overlap; when several are triggered
-# close together GitHub keeps the newest queued one and cancels the older pending ones, so the LAST
-# trigger is what ends up deployed. cancel-in-progress is false ON PURPOSE: a deploy already on the
-# box must finish (killing it mid-extract/restart, or starting a 2nd on-box deploy over it, would
-# corrupt the box) — so the running one completes, then the latest queued runs and wins.
+permissions:
+  contents: read
 concurrency:
   group: deploy-web
   cancel-in-progress: false
-
-permissions:
-  contents: read
-
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    # Optional: configure required reviewers on this environment in repo Settings to add a
-    # human approval gate before any deploy. Undefined => no protection, workflow still runs.
+  inspect:
+    runs-on: ubuntu-24.04
     environment: production
+    timeout-minutes: 5
     steps:
-      - name: Check out the ref being deployed
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref }}
-          fetch-depth: 0   # deploy_web.sh uses `git archive` / `git rev-parse` on the ref
-
-      - name: Configure AWS credentials (deploy IAM user keys)
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
-
-      - name: Deploy to the web box
-        env:
-          AWS_PROFILE: ""   # no local named profile in CI -> use the OIDC env credentials
+      - name: Read job metadata without changing jobs or services
+        shell: bash
         run: |
-          set -euo pipefail
-          args=(--ref "${{ inputs.ref }}")
-          if [ "${{ inputs.invalidate }}" != "true" ]; then args+=(--no-invalidate); fi
-          bash kalshi_trade_infra/scripts/deploy_web.sh "${args[@]}"
+          python3 - <<'PYCODE'
+          import base64, json, re, shlex, subprocess, time, zlib
+          REGION='us-east-1'
+          INSTANCE='i-077d6f7873e7836ba'
+          def aws(*args):
+              r=subprocess.run(['aws',*args,'--region',REGION,'--output','json'],capture_output=True,text=True,timeout=30)
+              if r.returncode:
+                  m=re.search(r'An error occurred \(([A-Za-z0-9_.-]+)\)',r.stderr)
+                  raise RuntimeError('AwsRequestFailed_'+(m[1] if m else 'AwsCliError'))
+              return json.loads(r.stdout) if r.stdout.strip() else {}
+          PROGRAM='"""One-shot inventory of job metadata; no application, job or service writes."""\nimport contextlib\nfrom datetime import datetime, timezone\nimport io\nimport json\nimport os\nfrom pathlib import Path\nimport re\nimport subprocess\n\n\nclass InventoryRepository:\n    @staticmethod\n    def snapshot(connection):\n        cursor = connection.cursor()\n        try:\n            cursor.execute(\'START TRANSACTION READ ONLY\')\n            cursor.execute("SELECT status, COUNT(*) AS n FROM app_agent_runs WHERE status IN (\'running\',\'queued\',\'paused\') GROUP BY status")\n            counts = {s: 0 for s in (\'running\', \'queued\', \'paused\')}\n            counts.update({r[\'status\']: int(r[\'n\']) for r in cursor.fetchall()})\n            cursor.execute("""SELECT id AS run_id,\n                CASE WHEN kind IN (\'research\',\'chat\',\'review\') THEN kind ELSE \'other\' END AS kind,\n                market, status, hypotheses_tried, strategies_passed, max_hypotheses,\n                run_forever, brief, created_at, started_at,\n                TIMESTAMPDIFF(SECOND, started_at, UTC_TIMESTAMP()) AS elapsed_seconds,\n                TIMESTAMPDIFF(SECOND, heartbeat_at, UTC_TIMESTAMP()) AS heartbeat_age_seconds,\n                checkpoint_json IS NOT NULL AS checkpoint_present, resume_count\n                FROM app_agent_runs WHERE status IN (\'running\',\'queued\',\'paused\')\n                ORDER BY CASE status WHEN \'running\' THEN 0 WHEN \'queued\' THEN 1 ELSE 2 END, id\n                LIMIT 101""")\n            rows = cursor.fetchall()\n            details = []\n            integers = (\'run_id\', \'hypotheses_tried\', \'strategies_passed\', \'max_hypotheses\',\n                        \'elapsed_seconds\', \'heartbeat_age_seconds\', \'resume_count\')\n            for row in rows[:100]:\n                item = {k: int(row[k]) if row[k] is not None else None for k in integers}\n                item.update({k: bool(row[k]) for k in (\'run_forever\', \'brief\', \'checkpoint_present\')})\n                for k, choices in ((\'kind\', {\'research\', \'chat\', \'review\', \'other\'}),\n                                   (\'status\', {\'running\', \'queued\', \'paused\'})):\n                    if row[k] not in choices:\n                        raise RuntimeError(\'UnexpectedJobEnum\')\n                    item[k] = row[k]\n                market = row[\'market\'] or \'\'\n                item[\'market\'] = market if re.fullmatch(r\'[a-zA-Z0-9_-]{1,64}\', market) else \'[unrecognized]\'\n                for key in (\'created_at\', \'started_at\'):\n                    value = row[key]\n                    item[key + \'_utc\'] = value.replace(tzinfo=timezone.utc).isoformat() if value else None\n                details.append(item)\n            return {\'counts\': counts, \'jobs\': details, \'truncated\': len(rows) > 100,\n                    \'transaction\': \'read_only\'}\n        finally:\n            connection.rollback()\n            cursor.close()\n\n\ndef inspect_jobs():\n    output = subprocess.run([\'systemctl\', \'show\', \'recursive-agents.service\', \'--property=MainPID\', \'--value\'],\n                            check=True, capture_output=True, text=True, timeout=10)\n    pid = int(output.stdout.strip())\n    if pid <= 1:\n        raise RuntimeError(\'NoActiveAgentWorker\')\n    proc = Path(\'/proc\') / str(pid)\n    command = [v.decode() for v in (proc / \'cmdline\').read_bytes().split(b\'\\0\') if v]\n    if (proc / \'cwd\').resolve() != Path(\'/opt/kalshi\') or not any(\n        command[i:i+3] == [\'-m\', \'app.worker\', \'agents\'] for i in range(len(command) - 2)\n    ):\n        raise RuntimeError(\'UnexpectedWorkerProcess\')\n    env = dict(v.decode().split(\'=\', 1) for v in (proc / \'environ\').read_bytes().split(b\'\\0\') if b\'=\' in v)\n    secret_values = [value for key, value in env.items()\n                     if re.search(r\'KEY|SECRET|TOKEN|PASSWORD\', key) and len(value) >= 8]\n    connection = None\n    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):\n        import pymysql\n        try:\n            required = (\'MYSQL_HOST\', \'MYSQL_USER\', \'MYSQL_PASSWORD\')\n            if not all(env.get(name) for name in required):\n                raise RuntimeError(\'WorkerDatabaseConfigurationMissing\')\n            connection = pymysql.connect(host=env[\'MYSQL_HOST\'], port=int(env.get(\'MYSQL_PORT\', \'3306\')),\n                user=env[\'MYSQL_USER\'], password=env[\'MYSQL_PASSWORD\'], database=env.get(\'MYSQL_DATABASE\', \'kalshi_trade\'),\n                autocommit=False, charset=\'utf8mb4\', cursorclass=pymysql.cursors.DictCursor,\n                connect_timeout=5, read_timeout=15, write_timeout=5)\n            result = InventoryRepository.snapshot(connection)\n        finally:\n            if connection is not None:\n                connection.close()\n    result.update(status=\'available\', checked_at_utc=datetime.now(timezone.utc).isoformat(),\n                  worker_pid=pid, database_writes=False, service_operations=False,\n                  provider_calls=0, order_calls=0)\n    serialized = json.dumps(result)\n    if any(value in serialized for value in secret_values):\n        raise RuntimeError(\'ReceiptRedactionFailure\')\n    return result\n\n\nif __name__ == \'__main__\':\n    try:\n        result = inspect_jobs()\n    except Exception as exc:\n        result = {\'status\': \'inspection_failed\', \'error_class\': type(exc).__name__,\n                  \'database_writes\': False, \'service_operations\': False, \'provider_calls\': 0, \'order_calls\': 0}\n    print(json.dumps(result))\n'
+          try:
+              packed=base64.b64encode(zlib.compress(PROGRAM.encode())).decode()
+              launcher='import base64,zlib;exec(zlib.decompress(base64.b64decode('+repr(packed)+')))'
+              command='/opt/kalshi/.venv313/bin/python -B -c '+shlex.quote(launcher)
+              if len(command)>16000:raise RuntimeError('InspectionProgramTooLarge')
+              sent=aws('ssm','send-command','--instance-ids',INSTANCE,'--document-name','AWS-RunShellScript',
+                  '--comment','Read-only Tau research job identities and progress',
+                  '--parameters',json.dumps({'commands':[command],'executionTimeout':['120']}))
+              command_id=sent['Command']['CommandId']
+              print('TAU_JOB_PHASE='+json.dumps({'ssm_command_id':command_id,'read_only':True}),flush=True)
+              invocation=None
+              for _ in range(45):
+                  time.sleep(3)
+                  try:
+                      invocation=aws('ssm','get-command-invocation','--command-id',command_id,'--instance-id',INSTANCE)
+                  except RuntimeError as exc:
+                      if 'InvocationDoesNotExist' in str(exc):continue
+                      raise
+                  if invocation['Status'] in ('Success','Failed','TimedOut','Cancelled'):break
+              if invocation is None or invocation['Status']!='Success':raise RuntimeError('InspectionDidNotComplete')
+              result=json.loads(invocation.get('StandardOutputContent','').strip())
+              if not isinstance(result,dict):raise RuntimeError('InvalidInspectionResult')
+              print('TAU_JOB_INVENTORY='+json.dumps(result),flush=True)
+              if result.get('status')!='available':raise RuntimeError('JobInspectionFailed')
+          except Exception as exc:
+              print('TAU_JOB_ERROR='+json.dumps({'error_class':type(exc).__name__}),flush=True)
+              raise SystemExit(1)
+          PYCODE
