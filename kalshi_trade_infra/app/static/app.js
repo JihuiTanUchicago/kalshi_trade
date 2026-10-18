@@ -239,7 +239,9 @@
     tao_sn4: 'SN4 Targon', tao_sn56: 'SN56 Gradients',
   };
   // Order the research picker groups by how often they're used; unknown categories fall to the end.
-  const MKT_CATS = ['Crypto', 'Sports', 'Weather', 'Bittensor'];
+  const MKT_CATS = ['Crypto', 'Sports', 'Economics', 'Commodities', 'Science and Technology', 'Climate and Weather', 'Weather', 'Bittensor'];
+  // Category sort shared by the research picker and the strategies market filter.
+  const catOrder = (a, b) => { const ia = MKT_CATS.indexOf(a), ib = MKT_CATS.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b); };
   const marketShort = (k) => (!k ? 'Agent’s choice' : MKT_SHORT[k] || marketLabel(k));
   // Link a strategy's market to its Kalshi series page.
   const marketKalshiUrl = (k) => { const m = (S.me && S.me.markets || []).find((x) => x.key === k); return m && m.series ? `https://kalshi.com/markets/${m.series.toLowerCase()}` : null; };
@@ -267,16 +269,13 @@
   function marketPicker(markets) {
     const groups = {};
     markets.forEach((m) => { (groups[m.category] || (groups[m.category] = [])).push(m); });
-    const cats = Object.keys(groups).sort((a, b) => {
-      const ia = MKT_CATS.indexOf(a), ib = MKT_CATS.indexOf(b);
-      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
-    });
+    const cats = Object.keys(groups).sort(catOrder);
     const find = markets.length > 8;
     const lead = `<div class="mkt-lead"><label class="mktrow lead" data-key=""><input type="radio" name="market" value="" class="mktrow-r" checked><span class="mktrow-face"><span class="mktrow-name">Agent\u2019s choice</span><small class="mktrow-sub">The agent picks the market that best fits your idea.</small></span></label></div>`;
     return `<div class="mktpick">
       ${find ? `<div class="mkt-find">${ICON.search}<label class="vh" for="mktfind">Filter markets</label><input class="input" type="search" id="mktfind" placeholder="Filter markets\u2026" autocomplete="off"></div>` : ''}
       ${lead}
-      ${cats.map((c) => `<div class="mkt-group"><p class="mkt-group-h">${esc(c)}</p><div class="mkt-rows">${groups[c].map(mktRow).join('')}</div></div>`).join('')}
+      ${cats.map((c, i) => `<details class="mkt-group"${cats.length === 1 ? ' open' : ''}><summary class="mkt-group-h"><span class="mkt-chev" aria-hidden="true">${ICON.chev}</span>${esc(c)}<span class="mkt-count">${groups[c].length}</span></summary><div class="mkt-rows">${groups[c].map(mktRow).join('')}</div></details>`).join('')}
       <p class="mkt-none hint" hidden role="status">No market matches that filter.</p>
     </div>`;
   }
@@ -314,6 +313,7 @@
           o.hidden = !hit; if (hit) { any = true; shown++; }
         });
         g.hidden = !any;
+        g.open = !!q && any;  // expand matching groups while filtering; collapse again when cleared
       });
       if (none) none.hidden = shown > 0;
     });
@@ -1531,7 +1531,7 @@
     // one-click archetype shortcut, scrolling the chosen row into view for feedback.
     const selectMarket = (k) => {
       const r = form.querySelector(`input[name=market][value="${k == null ? '' : k}"]`);
-      if (r) { r.checked = true; r.closest('.mktrow').scrollIntoView({ block: 'nearest' }); }
+      if (r) { const d = r.closest('details.mkt-group'); if (d) d.open = true; r.checked = true; r.closest('.mktrow').scrollIntoView({ block: 'nearest' }); }
     };
     form.querySelectorAll('[data-arch]').forEach((b) => (b.onclick = () => {
       const a = ARCHETYPES.find((x) => x.k === b.dataset.arch); if (!a) return;
@@ -1964,7 +1964,7 @@
       <div class="section-head filters stratfilters">
         <div class="chips" role="group" aria-label="Status">${[['', 'All'], ['passed', 'Passed'], ['failed', 'Void'], ['rejected', 'Rejected']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}" aria-pressed="${f.status === v}">${l}</button>`).join('')}
           <button class="chip" data-toggle="deployed" aria-pressed="${f.deployed === '1'}">Deployed</button></div>
-        <div class="chips" role="group" aria-label="Market">${[['', 'Both markets'], ...S.me.markets.map((m) => [m.key, marketShort(m.key)])].map(([v, l]) => `<button class="chip" data-f="market" data-v="${v}" aria-pressed="${f.market === v}">${esc(l)}</button>`).join('')}</div>
+        ${(() => { const by = {}; S.me.markets.forEach((m) => (by[m.category] || (by[m.category] = [])).push(m)); const cs = Object.keys(by).sort(catOrder); return `<label class="vh" for="strat-market">Market</label><select class="input strat-mkt" id="strat-market" aria-label="Filter by market"><option value="">All markets</option>${cs.map((c) => `<optgroup label="${esc(c)}">${by[c].map((m) => `<option value="${esc(m.key)}"${f.market === m.key ? ' selected' : ''}>${esc(marketShort(m.key))}</option>`).join('')}</optgroup>`).join('')}</select>`; })()}
         <div class="searchwrap"><input class="input" id="strat-q" type="search" placeholder="Search name or thesis…" value="${esc(f.q)}" aria-label="Search strategies"></div>
       </div>
       <div id="bulkbar" class="bulkbar" hidden></div>
@@ -1975,6 +1975,8 @@
       go('/strategies?' + p.toString(), true);
     };
     root.querySelectorAll('[data-f]').forEach((b) => { b.onclick = () => { f[b.dataset.f] = b.dataset.v; applyFilters(); }; });
+    const marketSel = root.querySelector('#strat-market');
+    if (marketSel) marketSel.onchange = () => { f.market = marketSel.value; applyFilters(); };
     const depToggle = root.querySelector('[data-toggle="deployed"]');
     if (depToggle) depToggle.onclick = () => { f.deployed = f.deployed === '1' ? '' : '1'; applyFilters(); };
     const sq = root.querySelector('#strat-q');
@@ -2120,7 +2122,11 @@
     if (!hasExp) {
       const btOnly = ['sig', 'armed', 'Backtest only', 'Backtest-only — never put through statistical validation (no pre-registration, one-time holdout, or multiple-testing control). These numbers come from a sample too small to separate skill from luck. Deploying it is your decision and your risk.'];
       const vmap = {
-        passed: btOnly,
+        // A 'passed' row IS validated (set_strategy_outcome only mints 'passed' on a full
+        // gatekeeper STAT_SUPPORTED verdict, with a linked experiment; the legacy relabel moved
+        // every un-validated 'passed' to 'backtest-only'). If its experiment just didn't resolve
+        // here, say so honestly — never claim "never validated", which contradicts the Passed badge.
+        passed: ['on', 'on', 'Passed', 'Cleared the full statistical gatekeeper on data it never saw — pre-registration, one-time holdout and multiple-testing control. Its detailed research paper couldn’t be loaded here; the backtest below is only the in-sample view.'],
         'backtest-only': btOnly,
         failed: ['sig', 'armed', 'Void', 'It reached the unseen-data gate and failed it, so it was not validated.'],
         rejected: ['quiet', 'quiet', 'Rejected', 'Rejected — ' + rejectReason(s)],
