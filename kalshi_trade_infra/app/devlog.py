@@ -13,7 +13,8 @@ from typing import Dict, List
 PLANNED: List[tuple] = [
     ('Autonomous Tau improvement loop runs on a schedule; each round picks one aspect (execution / research rigor / risk / data / ML tooling / UX / engineering) and ships an improvement', ''),
     ('Production-grade execution + risk hardening', ''),
-    ('Data infrastructure review + expansion', ''),
+    ('Data infrastructure expansion', ''),
+    ('Autopilot → "Claude Code for trading"', ''),
     ('Research-agent correctness', ''),
     ('Broker OAuth and Databento setup are merged on GitHub main through PR #10 and PR #11', ''),
     ('Execution service: dedicated package + measure + harden. Consolidate the scattered money-path code (execution_kernel/live_trading_engine/kalshi_account + engine order/risk bits) into a behavior-identical app/execution/ package (security-reviewed); add latency instrumentation (local encode/sign vs network RTT vs exchange) + WebSocket/keep-alive/async order entry where it measurably helps; then a continuous robustness agent that hardens one execution/risk aspect per round (P1: circuit breaker, global kill switch, mark-staleness gate, ≤1s websocket PnL, observability)', ''),
