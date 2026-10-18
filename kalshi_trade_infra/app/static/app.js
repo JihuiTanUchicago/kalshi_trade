@@ -2122,11 +2122,11 @@
     if (!hasExp) {
       const btOnly = ['sig', 'armed', 'Backtest only', 'Backtest-only — never put through statistical validation (no pre-registration, one-time holdout, or multiple-testing control). These numbers come from a sample too small to separate skill from luck. Deploying it is your decision and your risk.'];
       const vmap = {
-        // A 'passed' row IS validated (set_strategy_outcome only mints 'passed' on a full
-        // gatekeeper STAT_SUPPORTED verdict, with a linked experiment; the legacy relabel moved
-        // every un-validated 'passed' to 'backtest-only'). If its experiment just didn't resolve
-        // here, say so honestly — never claim "never validated", which contradicts the Passed badge.
-        passed: ['on', 'on', 'Passed', 'Cleared the full statistical gatekeeper on data it never saw — pre-registration, one-time holdout and multiple-testing control. Its detailed research paper couldn’t be loaded here; the backtest below is only the in-sample view.'],
+        // No experiment resolved (by experiment_id OR strategy_id) means NO gatekeeper record
+        // exists — so this was NOT validated, whatever the status says. Never claim it "cleared
+        // the gatekeeper" (that would be a lie); flag the missing record honestly. A correctly
+        // validated 'passed' always has an experiment and takes the rich path above, not this one.
+        passed: ['sig', 'armed', 'Not validated (record missing)', 'Marked passed, but no statistical-gatekeeper record (pre-registration, validation, holdout) can be found for it — so the numbers below are the in-sample backtest only, not held-out evidence. Treat it as unvalidated; the row is being reclassified to backtest-only.'],
         'backtest-only': btOnly,
         failed: ['sig', 'armed', 'Void', 'It reached the unseen-data gate and failed it, so it was not validated.'],
         rejected: ['quiet', 'quiet', 'Rejected', 'Rejected — ' + rejectReason(s)],
