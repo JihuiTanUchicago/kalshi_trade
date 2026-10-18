@@ -1,0 +1,48 @@
+/* Shared paper-execution surface; inherits each Tau theme's colors and controls. */
+.alpaca-paper { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--rule); font-size: 12px; }
+.alpaca-paper h4, .alpaca-paper h5, .alpaca-paper p, .alpaca-paper dl { margin: 0; }
+.alpaca-paper-head { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.alpaca-paper-head h4 { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+.alpaca-paper h5 { font-size: 12px; font-weight: 600; margin-bottom: 5px; }
+.alpaca-paper-head .hint, .alpaca-paper-ticket .hint, .alpaca-paper-asof { font-size: 11px; line-height: 1.4; }
+.alpaca-paper-error, .alpaca-paper-feedback, .alpaca-paper-gate { margin: 8px 0 !important; line-height: 1.4; }
+.alpaca-paper-error, .alpaca-paper-warning { color: var(--signal); }
+.alpaca-paper-gate { color: var(--ink-2); }
+.alpaca-paper-balances { display: flex; gap: 28px; flex-wrap: wrap; margin: 10px 0 12px !important; font-variant-numeric: tabular-nums; }
+.alpaca-paper-balances dt { color: var(--ink-3); font-size: 11px; }
+.alpaca-paper-balances dd { margin: 3px 0 0; font-size: 17px; font-weight: 500; color: var(--ink); }
+.alpaca-paper-ticket { margin: 10px 0; }
+.alpaca-paper-ticket fieldset { display: grid; grid-template-columns: minmax(80px, 1fr) 85px minmax(70px, .8fr) minmax(90px, 1fr) auto; gap: 8px; align-items: end; border: 0; padding: 0; margin: 0 0 6px; }
+.alpaca-paper-ticket .field { min-width: 0; }
+.alpaca-paper-ticket input, .alpaca-paper-ticket select { width: 100%; min-width: 0; min-height: 34px; padding: 6px 8px; border: 1px solid var(--rule-2); border-radius: var(--radius, 3px); box-sizing: border-box; background: var(--stock-raised, transparent); }
+.alpaca-paper-ticket input:disabled, .alpaca-paper-ticket select:disabled { color: var(--ink-3); opacity: .7; }
+.alpaca-paper-ticket .btn { min-height: 34px; justify-content: center; }
+.alpaca-paper .btn:disabled, .alpaca-paper fieldset:disabled .btn { border-color: var(--rule-2); color: var(--ink-3); cursor: not-allowed; background: transparent; }
+.alpaca-paper-orders { margin-top: 14px; }
+.alpaca-paper-order { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 9px 0; border-top: 1px solid var(--rule); }
+.alpaca-paper-order-main { min-width: 0; }
+.alpaca-paper-order-main strong { font-size: 12px; font-weight: 600; }
+.alpaca-paper-order-main p { color: var(--ink-2); font-size: 11px; line-height: 1.45; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.alpaca-paper-order-main .alpaca-paper-warning { color: var(--signal); }
+.alpaca-paper-origin, .alpaca-paper-state { display: inline-block; color: var(--ink-3); font-size: 11px; margin-left: 12px; }
+.alpaca-paper-review .alpaca-paper-state { color: var(--ink); }
+.alpaca-paper-order-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: end; flex: none; }
+.alpaca-paper-positions { margin-top: 14px; }
+.alpaca-paper-table { overflow-x: auto; }
+.alpaca-paper-table table { border-collapse: collapse; width: 100%; font-size: 11px; font-variant-numeric: tabular-nums; }
+.alpaca-paper-table th, .alpaca-paper-table td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+.alpaca-paper-table th { font-weight: 500; }
+.alpaca-paper-table thead th { color: var(--ink-3); }
+.alpaca-paper-table th:first-child { padding-left: 0; text-align: left; }
+.alpaca-paper-table td:last-child, .alpaca-paper-table th:last-child { padding-right: 0; }
+.alpaca-paper-asof { color: var(--ink-3); margin-top: 10px !important; }
+.alpaca-paper-empty { margin-top: 12px !important; }
+@media (max-width: 700px) {
+  .alpaca-paper-ticket fieldset { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .alpaca-paper-ticket .btn { grid-column: 1 / -1; }
+  .alpaca-paper-order { display: block; }
+  .alpaca-paper-order-actions { justify-content: start; margin-top: 7px; }
+  .alpaca-paper-balances { gap: 18px; }
+  .alpaca-paper-origin, .alpaca-paper-state { margin-left: 8px; }
+  .alpaca-paper .btn { min-height: 34px; }
+}

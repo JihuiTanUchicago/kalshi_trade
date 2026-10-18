@@ -1847,7 +1847,7 @@
       const who = m.role === 'user' ? 'You' : m.role === 'agent' ? 'Agent' : 'Tau';
       const prop = m.proposal_id ? `<div class="proposal" data-prop="${m.proposal_id}">${m.proposal_status === 'pending'
         ? `<button class="btn small" data-decide="approve">Approve</button><button class="btn ghost small" data-decide="reject">Decline</button>`
-        : `<span class="state ${m.proposal_status === 'applied' ? 'gain' : ''}">${m.proposal_status === 'applied' ? 'Applied' : 'Declined'}</span>`}</div>` : '';
+        : `<span class="state ${m.proposal_status === 'applied' ? 'gain' : ''}">${m.proposal_status === 'applied' ? (m.proposal_kind === 'alpaca_paper' ? 'Approved' : 'Applied') : 'Declined'}</span>`}</div>` : '';
       return `<div class="msg ${m.role}" data-id="${m.id}"><span class="who">${who} · ${clock(m.created_at)}</span>${esc(m.content)}${prop}</div>`;
     };
     const loadChat = async (full) => {

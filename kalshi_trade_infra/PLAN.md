@@ -1,5 +1,13 @@
 # PLAN
 
+## Alpaca paper production deployment — October 18, 2026, Asia/Shanghai
+
+In progress (`tau-alpaca-paper-deploy-20261018`): user explicitly authorized release. Prepare exact-main whole-app source and private paper/OAuth readiness; full app.schema and rollout remain gated on global research/agent quiescence. Existing provider activation heartbeat temporarily paused to serialize operations; staged provider overlays and live/autopilot gates preserved. [Deployment evidence](results/alpaca_paper_trading_2026-10-18/deployment/HANDOFF.md).
+
+## Alpaca paper trading — October 18, 2026, Asia/Shanghai
+
+Implemented / offline verified / independent review complete (`tau-alpaca-paper-trading-20261018`); advisory ownership handed off. Source is isolated at `../tau-alpaca-paper-20261018` from GitHub main `3c70435`. Adds per-user OAuth paper equity LIMIT DAY intents with explicit confirmation, account/positions, broker fills/cancellation reconciliation and agent proposals; shared main source is unchanged. Durable single-send claims, monotonic send generation and bounded cash/long-share checks cover timeouts/replays/concurrent fills. **1,602 Python passed / 10 skipped; 71 frontend passed; four synthetic browser scenarios/eight screenshots in both themes and desktop/mobile**. Independent control-path review has no remaining blocker. Thirty-five engine/vault/connection/data-pipeline files are byte-identical. Deployment/full app.schema, private runtime opt-in and genuine OAuth/paper-order acceptance remain pending; no provider/order, migration, service, commit/push/main merge occurred. Existing production feed activation and live/autopilot gates are preserved. [Handoff and reproducible evidence](results/alpaca_paper_trading_2026-10-18/HANDOFF.md).
+
 ## Open PR integration with latest main — October 18, 2026, Asia/Shanghai
 
 - **Status:** both PRs merged on GitHub; local main synchronized (`tau-open-pr-main-merge-20261018`); advisory reservation released. User authorized local latest-main integration, both PR updates/commits and GitHub merges. Imported all 68 newer main commits and exact object hashes, then fast-forwarded local main to `0700437`; preserve that source's research-rigor, execution/risk, reconciliation and frontend changes.

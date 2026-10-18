@@ -2983,6 +2983,7 @@
     research: 'Research', deploy: 'Promoted to paper', deploy_live: 'Promoted to live',
     adjust: 'Tuned strategy', set_risk: 'Tuned risk', set_exec: 'Tuned execution',
     pause: 'Paused', resume: 'Resumed',
+    alpaca_paper: 'Alpaca paper order',
   };
   // One feed entry, rendered with the SAME research-session parts (.ln timeline rail, .say card,
   // feedMd markdown, lane tint) so the autopilot reads as one family with the research log —
@@ -3005,7 +3006,7 @@
     const kind = AP_ACT[m.proposal_kind] || 'Reviewed';
     const st = m.proposal_status;
     const lane = !m.proposal_id ? 'state' : st === 'pending' ? 'review' : st === 'applied' ? 'action' : 'void';
-    const stamp = st === 'applied' ? '<span class="hx-stamp pass">Applied</span>'
+    const stamp = st === 'applied' ? `<span class="hx-stamp pass">${m.proposal_kind === 'alpaca_paper' ? 'Approved' : 'Applied'}</span>`
       : st === 'declined' || st === 'rejected' ? '<span class="hx-stamp rej">Declined</span>' : '';
     const stage = m.stage ? `<span class="hx-tag">${esc(m.stage)}</span>` : '';
     const title = m.strategy ? `<b class="say-title">${esc(m.strategy)}</b>` : '';
