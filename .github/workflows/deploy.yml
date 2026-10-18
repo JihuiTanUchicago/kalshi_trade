@@ -16,7 +16,7 @@ jobs:
     environment: production
     timeout-minutes: 15
     env:
-      TAU_PROBE_STATE: ${{ runner.temp }}/tau-provider-probe-state.json
+      TAU_PROBE_STATE: /tmp/tau-provider-probe-state-${{ github.run_id }}-${{ github.run_attempt }}.json
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
