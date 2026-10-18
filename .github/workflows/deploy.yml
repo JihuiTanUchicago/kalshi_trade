@@ -1,63 +1,89 @@
-name: Deploy web app
+name: Isolated Alpaca paper acceptance
 
-# Redeploy the Tau customer app to the web box WITHOUT needing the AWS key locally.
-# Manual trigger only: GitHub restricts "Run workflow" to collaborators who have write (push)
-# access to the repo — i.e. the same people who can push to main — so this is the push-to-main-
-# gated redeploy. It authenticates with a dedicated deploy IAM user's keys, stored as the repo
-# secrets AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY (least-privilege policy in DEPLOY_WORKFLOW_SETUP.md).
-# It reuses scripts/deploy_web.sh verbatim, so CI and a local deploy run the identical, rollback-
-# guarded path (whole-app tar -> S3 -> SSM on-box extract/compile/schema/restart -> curl 200 ->
-# CloudFront invalidate). One-time AWS setup + the access-key alternative: scripts/DEPLOY_WORKFLOW_SETUP.md.
-
+# Operations-only branch: dispatches a disposable test app, never an AWS deploy.
 on:
   workflow_dispatch:
-    inputs:
-      ref:
-        description: "Git ref to deploy (branch, tag, or SHA)"
-        required: false
-        default: main
-      invalidate:
-        description: "Invalidate CloudFront after deploy"
-        type: boolean
-        default: true
-
-# LAST WINS, without racing the box. Same group => runs never overlap; when several are triggered
-# close together GitHub keeps the newest queued one and cancels the older pending ones, so the LAST
-# trigger is what ends up deployed. cancel-in-progress is false ON PURPOSE: a deploy already on the
-# box must finish (killing it mid-extract/restart, or starting a 2nd on-box deploy over it, would
-# corrupt the box) — so the running one completes, then the latest queued runs and wins.
-concurrency:
-  group: deploy-web
-  cancel-in-progress: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: tau-paper-staging-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    # Optional: configure required reviewers on this environment in repo Settings to add a
-    # human approval gate before any deploy. Undefined => no protection, workflow still runs.
-    environment: production
+  paper-staging:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container: python:3.12-bookworm
+    services:
+      db:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: tau_paper_staging
+          MYSQL_USER: tau_stage
+          MYSQL_PASSWORD: disposable-fixture-only
+          MYSQL_ROOT_PASSWORD: disposable-root-fixture-only
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=24
+    env:
+      MYSQL_HOST: db
+      MYSQL_PORT: '3306'
+      MYSQL_USER: tau_stage
+      MYSQL_PASSWORD: disposable-fixture-only
+      MYSQL_DATABASE: tau_paper_staging
+      TAU_STAGING_DISPOSABLE_DB: '1'
+      TAU_DISABLE_CATALOG_MARKETS: '1'
+      APP_HOST: 127.0.0.1
+      APP_PORT: '8091'
+      APP_DEV_LOGIN: '1'
+      APP_LIVE_TRADING_ENABLED: '0'
+      APP_NO_SIDE_LIVE_ENABLED: '0'
+      APP_INSECURE_COOKIES: '1'
+      APP_PUBLIC_URL: http://127.0.0.1:8091
+      TAU_ALPACA_PAPER_ENABLED: '1'
+      TAU_ALPACA_PAPER_MAX_ORDER_USD: '500'
+      TAU_ALPACA_ENABLED: '0'
+      TAU_MASSIVE_ENABLED: '0'
+      TAU_DATABENTO_ENABLED: '0'
+      TAU_EXA_ENABLED: '0'
+      TAU_EXA_HISTORICAL_ENABLED: '0'
+      TAU_WORLDMONITOR_ENABLED: '0'
+      AWS_EC2_METADATA_DISABLED: 'true'
+      AWS_SHARED_CREDENTIALS_FILE: /dev/null
+      AWS_CONFIG_FILE: /dev/null
+      PYTHONDONTWRITEBYTECODE: '1'
     steps:
-      - name: Check out the ref being deployed
+      - name: Check out the exact isolated-test revision
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
-          fetch-depth: 0   # deploy_web.sh uses `git archive` / `git rev-parse` on the ref
-
-      - name: Configure AWS credentials (deploy IAM user keys)
-        uses: aws-actions/configure-aws-credentials@v4
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node for frontend tests
+        uses: actions/setup-node@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-
-      - name: Deploy to the web box
-        env:
-          AWS_PROFILE: ""   # no local named profile in CI -> use the OIDC env credentials
+          node-version: '22'
+      - name: Install application dependencies
+        run: pip install -r kalshi_trade_infra/requirements.txt
+      - name: Create a fresh disposable encryption key
         run: |
-          set -euo pipefail
-          args=(--ref "${{ inputs.ref }}")
-          if [ "${{ inputs.invalidate }}" != "true" ]; then args+=(--no-invalidate); fi
-          bash kalshi_trade_infra/scripts/deploy_web.sh "${args[@]}"
+          python - <<'PY'
+          import os
+          from cryptography.fernet import Fernet
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('APP_SECRET_KEY=' + Fernet.generate_key().decode() + '\n')
+          PY
+      - name: Validate staging isolation guards
+        working-directory: kalshi_trade_infra
+        run: |
+          python -m pytest tests/test_paper_staging_smoke.py -q
+          python -m py_compile app/*.py data_pipeline/*.py scripts/paper_staging_smoke.py
+      - name: Apply the full schema only to the disposable database
+        working-directory: kalshi_trade_infra
+        run: python -m app.schema
+      - name: Exercise actual HTTP and MySQL with a synthetic broker
+        working-directory: kalshi_trade_infra
+        run: python -B scripts/paper_staging_smoke.py
