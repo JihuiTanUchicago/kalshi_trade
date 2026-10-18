@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional, Tuple
 
+from app import freedata
 from app import spec as specmod
 from app.markets import MARKETS, NEW_YORK, BtcSeries, Contract, Market, Snapshot, snapshot
 from data_pipeline.kalshi_fees import taker_fee_dollars
@@ -409,6 +410,7 @@ def _code_book(spec: Dict, ds: Dataset, start_ts: int, end_ts: int) -> Dict[int,
     from app import sandbox
     frames = [(ts, snaps) for ts, snaps in ds.frames if start_ts <= ts < end_ts]
     window = _binary_window(spec["market"], frames)
+    freedata.enrich(spec, window)  # as-of join requested free external data into frame["external"]
     if spec.get("params") is not None:
         window["params"] = spec["params"]  # the frozen research-fit model; signals predicts, never refits
     try:
@@ -436,6 +438,7 @@ def freeze_code_model(spec: Dict, ds: Dataset) -> Dict:
         return spec
     frames = list(ds.frames)
     window = _binary_window(spec["market"], frames) if ds.market.kind != "spot" else _spot_window(spec["market"], frames)
+    freedata.enrich(spec, window)  # research-fold external data, as-of joined (fit sees research only)
     try:
         params = sandbox.run_strategy_fit(spec["code"], window, data_dir=None)
     except sandbox.SandboxError as e:
@@ -599,6 +602,7 @@ def _spot_code_book(spec: Dict, ds: Dataset, start_ts: int, end_ts: int) -> Dict
     from app import sandbox
     frames = [(ts, fr) for ts, fr in ds.frames if start_ts <= ts < end_ts]
     window = _spot_window(spec["market"], frames)
+    freedata.enrich(spec, window)  # as-of join requested free external data into frame["external"]
     if spec.get("params") is not None:
         window["params"] = spec["params"]  # frozen research-fit model
     try:

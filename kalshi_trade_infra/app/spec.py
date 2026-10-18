@@ -156,8 +156,13 @@ each feature is overfitting, and the higher bar will reject it."""
 # OS-isolated child interpreter (no network/DB/credentials/filesystem). The rest of the spec is
 # just `market` and `sizing`; the backtester applies the SAME fee/sizing/settlement, and the
 # gatekeeper judges it identically to a DSL spec (pre-registration hashes the code as the rule).
-CODE_SPEC_KEYS = {"market", "sizing", "code"}
+CODE_SPEC_KEYS = {"market", "sizing", "code", "datasets"}
 MAX_CODE_CHARS = 20_000
+# Free external datasets a code spec may request (Pillar 3). Resolved + as-of joined on the host
+# into frame["external"] within the research fold; see app/freedata.py. These are the sources that
+# resolve with no key/entitlement; an unknown source is a spec error.
+DATASET_SOURCES = ("fred",)
+MAX_DATASETS = 8
 
 CODE_STRATEGY_GUIDE = """
 As an ALTERNATIVE to the fields above, a strategy may be arbitrary Python you write. Send:
@@ -204,6 +209,18 @@ to use a trained model honestly: a model that fits inside signals() would re-fit
 data and its "edge" would be fake. There is NO storage that persists between fit() and signals()
 other than the params you return — that is deliberate, so your model can never peek past the
 research window. A pure-rule strategy omits fit() entirely (unchanged).
+
+FREE EXTERNAL DATA (optional) — if your edge needs an outside series (a macro series, a rate, a
+correlated price), add a top-level "datasets" list to the spec:
+  "datasets": [{"name": "dgs10", "source": "fred", "series": "DGS10", "lag_days": 1}]
+Each series is fetched on the host from a FREE, keyless source (source "fred" = any FRED series
+id) and AS-OF joined onto your frames: at a frame with time ts you see ONLY the latest value
+known by then (observation date + lag_days), so no future value can leak into an earlier frame.
+Read it in fit()/signals() as:  frame["external"]["dgs10"]  (a float; the key is ABSENT on
+frames before the first value is known, so use frame.get("external", {}).get("dgs10")). A series
+that cannot be resolved is simply skipped (its key never appears) — handle a missing value
+gracefully. lag_days is the publication delay you assert; set it honestly (daily rates ~1, a
+monthly macro release longer). The request is frozen into your pre-registered spec.
 """
 
 # Every proposer that reads SPEC_GUIDE also learns it may write arbitrary quant code.
@@ -258,9 +275,54 @@ def _validate_code_spec(raw: Dict) -> Dict[str, Any]:
     except sandbox.StrategyCodeError as e:
         errors.append("code: %s" % e)
 
+    datasets = _validate_datasets(raw.get("datasets"), errors)
+
     if errors:
         raise SpecError("; ".join(errors))
-    return {"market": market, "sizing": sizing, "code": code}
+    out = {"market": market, "sizing": sizing, "code": code}
+    if datasets:  # omit the key entirely when unused, so existing specs' hashes are unchanged
+        out["datasets"] = datasets
+    return out
+
+
+def _validate_datasets(raw, errors: List[str]) -> List[Dict[str, Any]]:
+    """Normalise spec['datasets'] (free external data requests) or append errors. Each becomes a
+    canonical {name, source, series, lag_days} dict sorted by name, so the request hashes stably
+    and pins the trial. Resolution/joining happens on the host (app/freedata.py), never here."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        errors.append("datasets must be a list")
+        return []
+    if len(raw) > MAX_DATASETS:
+        errors.append("at most %d datasets" % MAX_DATASETS)
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for i, d in enumerate(raw):
+        if not isinstance(d, dict):
+            errors.append("datasets[%d] must be an object" % i)
+            continue
+        extra = set(d) - {"name", "source", "series", "lag_days"}
+        if extra:
+            errors.append("datasets[%d] unknown field(s): %s" % (i, ", ".join(sorted(extra))))
+        name, source, series = d.get("name"), d.get("source"), d.get("series")
+        if not isinstance(name, str) or not name.replace("_", "").isalnum():
+            errors.append("datasets[%d].name must be an alphanumeric/underscore string" % i)
+            continue
+        if name in seen:
+            errors.append("datasets[%d].name %r is duplicated" % (i, name))
+        seen.add(name)
+        if source not in DATASET_SOURCES:
+            errors.append("datasets[%d].source must be one of %s" % (i, ", ".join(DATASET_SOURCES)))
+        if not isinstance(series, str) or not series.strip():
+            errors.append("datasets[%d].series must be a non-empty string" % i)
+        lag = d.get("lag_days", 1)
+        if isinstance(lag, bool) or not isinstance(lag, int) or not 0 <= lag <= 3650:
+            errors.append("datasets[%d].lag_days must be an int in 0..3650" % i)
+            lag = 1
+        out.append({"name": name, "source": source, "series": series, "lag_days": lag})
+    out.sort(key=lambda x: x["name"])
+    return out
 
 
 def _get(spec: Dict, path: str):
@@ -688,6 +750,11 @@ def data_sources_for(spec: Dict) -> List[str]:
             or any(flt["feature"] in MICRO_FEATURES for flt in spec["entry"]["filters"])
             or any(name in MICRO_FEATURES for name in model_feats)):
         srcs.append("model_features_1m")
+    # Free external data the spec requested (Pillar 3): record each as source:series@lagNd so the
+    # ledger shows exactly what external data the hypothesis touched (resolved + joined point-in-
+    # time on the host; the request itself is in the hashed spec, so the trial stays pinned).
+    for d in spec.get("datasets") or []:
+        srcs.append("%s:%s@lag%dd" % (d["source"], d["series"], d.get("lag_days", 1)))
     return srcs
 
 
