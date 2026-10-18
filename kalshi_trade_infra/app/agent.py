@@ -1511,8 +1511,8 @@ def _copilot_context(cur, user: Dict) -> str:
     lines = [
         "Autopilot is %s." % ("ON" if user.get("autopilot") else "OFF"),
         "RESEARCH RUNNING RIGHT NOW: %d.%s" % (active_research, "" if active_research else
-            " NONE is running — any research lines you mentioned in earlier messages have ALREADY "
-            "FINISHED (see 'Recent research lines' below for outcomes). Do NOT say research is 'still running'."),
+            " NONE is running — any research you mentioned in earlier messages has ALREADY FINISHED "
+            "(its outcome is listed below). Do NOT tell the user research is 'still running'."),
         "Risk controls: drawdown_limit_pct=%s, max_open_positions=%s, max_open_notional=%s."
         % (risk.get("drawdown_limit_pct"), risk.get("max_open_positions"), risk.get("max_open_notional")),
         "Execution controls (null = server default): exec_max_book_fraction=%s, exec_max_entry_spread=%s, exec_max_order_notional=%s."
