@@ -74,7 +74,7 @@ def source_diagnostics(manifest, root=ROOT):
     actual=set()
     for package in ('app','data_pipeline'):
         for path in (root/package).rglob('*'):
-            if '__pycache__' in path.parts or path.suffix=='.pyc':continue
+            if '__pycache__' in path.parts:continue
             if path.is_file() or path.is_symlink():actual.add(str(path.relative_to(root)))
     missing=sorted(set(manifest)-actual)
     mismatched=[name for name in sorted(set(manifest)&actual)
@@ -83,7 +83,7 @@ def source_diagnostics(manifest, root=ROOT):
     public_suffixes={'.py','.md','.js','.css','.html','.svg','.png','.ico','.woff','.woff2','.map'}
     safe_extra=[name for name in extra if Path(name).suffix in public_suffixes
                 and re.fullmatch(r'[A-Za-z0-9_./-]{1,200}',name)]
-    artifacts={};retained={}
+    artifacts={};retained={};unclassified={}
     known_research={'data_pipeline/research_expiry_resolution.py',
                     'data_pipeline/research_expiry_resolution_sensitivity.py','data_pipeline/research_fee_sensitivity.py'}
     for name in extra:
@@ -94,9 +94,18 @@ def source_diagnostics(manifest, root=ROOT):
             if path.name.startswith('._') and header==b'\x00\x05\x16\x07\x00\x02\x00\x00':artifacts[name]='verified_appledouble'
             elif path.name=='.DS_Store' and header==b'\x00\x00\x00\x01Bud1':artifacts[name]='verified_ds_store'
         elif name in known_research:retained[name]=file_hash(path)
+        if name not in artifacts and name not in retained:
+            public_name=(re.fullmatch(r'[A-Za-z0-9_./-]{1,200}',name)
+                         and not re.search(r'[0-9a-fA-F]{24,}|[0-9]{16,}',name))
+            if public_name:
+                unclassified[name]={'suffix':path.suffix,'bytes':path.stat().st_size,
+                                    'mode':format(stat.S_IMODE(path.stat().st_mode),'04o')}
+                if re.fullmatch(r'data_pipeline/research_[a-z0-9_]+\.(?:csv|json|txt|py)',name):
+                    unclassified[name]['sha256']=file_hash(path)
     return {'missing_known_source':missing,'changed_known_source':mismatched,'extra_file_count':len(extra),
             'extra_source_paths':safe_extra,'withheld_extra_path_count':len(extra)-len(safe_extra),
             'verified_metadata_artifacts':artifacts,'research_utility_sha256':retained,
+            'unclassified_path_metadata':unclassified,
             'unclassified_extra_count':len(set(extra)-set(artifacts)-set(retained))}
 
 def config_module():
