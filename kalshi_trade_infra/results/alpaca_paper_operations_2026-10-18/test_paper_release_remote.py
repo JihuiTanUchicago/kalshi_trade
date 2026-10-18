@@ -356,6 +356,19 @@ class DeploymentControls(unittest.TestCase):
 
 
 class SourceDiagnosticTests(unittest.TestCase):
+    def test_only_real_metadata_headers_are_classified_and_utility_is_hashed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);(root/'app').mkdir();(root/'data_pipeline').mkdir()
+            (root/'app/._a.py').write_bytes(b'\x00\x05\x16\x07\x00\x02\x00\x00fixture')
+            (root/'app/.DS_Store').write_bytes(b'\x00\x00\x00\x01Bud1fixture')
+            (root/'app/._unexpected.py').write_text('not metadata')
+            utility='data_pipeline/research_fee_sensitivity.py'
+            (root/utility).write_text('synthetic utility')
+            report=remote.source_diagnostics({},root)
+            self.assertEqual(len(report['verified_metadata_artifacts']),2)
+            self.assertEqual(report['research_utility_sha256'][utility],hashlib.sha256(b'synthetic utility').hexdigest())
+            self.assertEqual(report['unclassified_extra_count'],1)
+
     def test_diagnostics_report_names_without_reading_or_exposing_private_extra_content(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);(root/'app').mkdir();(root/'data_pipeline').mkdir()

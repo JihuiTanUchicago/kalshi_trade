@@ -83,8 +83,21 @@ def source_diagnostics(manifest, root=ROOT):
     public_suffixes={'.py','.md','.js','.css','.html','.svg','.png','.ico','.woff','.woff2','.map'}
     safe_extra=[name for name in extra if Path(name).suffix in public_suffixes
                 and re.fullmatch(r'[A-Za-z0-9_./-]{1,200}',name)]
+    artifacts={};retained={}
+    known_research={'data_pipeline/research_expiry_resolution.py',
+                    'data_pipeline/research_expiry_resolution_sensitivity.py','data_pipeline/research_fee_sensitivity.py'}
+    for name in extra:
+        path=root/name
+        if path.is_symlink():continue
+        if path.name.startswith('._') or path.name=='.DS_Store':
+            with path.open('rb') as stream:header=stream.read(8)
+            if path.name.startswith('._') and header==b'\x00\x05\x16\x07\x00\x02\x00\x00':artifacts[name]='verified_appledouble'
+            elif path.name=='.DS_Store' and header==b'\x00\x00\x00\x01Bud1':artifacts[name]='verified_ds_store'
+        elif name in known_research:retained[name]=file_hash(path)
     return {'missing_known_source':missing,'changed_known_source':mismatched,'extra_file_count':len(extra),
-            'extra_source_paths':safe_extra,'withheld_extra_path_count':len(extra)-len(safe_extra)}
+            'extra_source_paths':safe_extra,'withheld_extra_path_count':len(extra)-len(safe_extra),
+            'verified_metadata_artifacts':artifacts,'research_utility_sha256':retained,
+            'unclassified_extra_count':len(set(extra)-set(artifacts)-set(retained))}
 
 def config_module():
     namespace = {'__name__':'paper_runtime_config'}
