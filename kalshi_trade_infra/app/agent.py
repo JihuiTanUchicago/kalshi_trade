@@ -781,34 +781,13 @@ class Cancelled(Exception):
 PAUSE_POLL_SECONDS = 1.5
 PAUSE_MAX_SECONDS = 20 * 60
 
-# Signs that a failure is an infra/connection blip (RDS restart, idle-timeout drop), not a
-# genuine LLM/logic error — the user must never be billed for one of these.
-_INFRA_ERROR_SIGNS = (
-    "Packet sequence number",
-    "Lost connection",
-    "Server shutdown",
-    "Connection refused",
-    "MySQL server has gone away",
-)
-
-
-def _is_infra_error(e: BaseException) -> bool:
-    try:
-        import pymysql  # local import: tests without a DB driver still import this module
-        if isinstance(e, (pymysql.err.OperationalError, pymysql.err.InterfaceError)):
-            return True
-    except Exception:
-        pass
-    return any(sign in str(e) for sign in _INFRA_ERROR_SIGNS)
-
-
 def _reconnect(conn, cur):
     """A single model call can run for minutes; an idle DB connection can be dropped out from
     under it (RDS/idle timeout), so the next cursor use throws 'Packet sequence number wrong'
     and the whole run dies — and gets billed. Ping-reconnect in place before the writes that
     follow each LLM call and hand back a fresh cursor, so a dropped idle connection heals
     transparently instead. Best-effort: if the DB is genuinely down, the stale cursor is
-    returned and the next execute raises, which the run's handler treats as infra (no bill)."""
+    returned and the next execute raises, failing the run (which is still billed for work done)."""
     if conn is None:
         return cur
     try:
@@ -1474,15 +1453,11 @@ def run_research(
         # missing key) throws the stack away and makes the next mystery crash undiagnosable. Dump
         # the full traceback to the PROCESS log (stderr -> the worker's logfile) so it survives.
         _LOG.exception("research run %s failed", run_id)
-        infra = _is_infra_error(e)  # an RDS blip / dropped connection, not an LLM or logic fault
-        msg = ("The agent lost its database connection mid-run and stopped. No charge for this — "
-               "start the session again." if infra else
-               str(e) if isinstance(e, LLMError) else "Unexpected error: %s" % e)
+        msg = (str(e) if isinstance(e, LLMError) else "The session hit an unexpected error and stopped.")
         cur = _reconnect(conn, cur)  # the error may have been the drop itself — heal it so we can record the failure
         log("error", msg)
         repo.finish_run(cur, run_id, "failed", msg[:2000], len(tried), 0, usage.input_tokens, usage.output_tokens)
-        if not infra:
-            _bill(conn, user_id, usage, run_id, choice.model_id)  # genuine failures still bill; an RDS blip must not
+        _bill(conn, user_id, usage, run_id, choice.model_id)  # charge for the work done regardless of the failure cause
         if not isinstance(e, LLMError):
             raise
     finally:
@@ -2323,13 +2298,12 @@ def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.da
             _bill(conn, user["id"], usage, run["id"])
     except Exception as e:
         print("[agents] copilot run %s failed: %r" % (run["id"], e), flush=True)
-        infra = _is_infra_error(e)
         cur = _reconnect(conn, cur)
         repo.add_chat(cur, user["id"], "system",
                       "The agent hit an error and didn't answer. Send your message again, or try in a minute.")
         repo.finish_run(cur, run["id"], "failed", str(e)[:2000], 0, 0, usage.input_tokens, usage.output_tokens)
-        if not infra and not billing_attempted:
+        if not billing_attempted:
             billing_attempted = True
-            _bill(conn, user["id"], usage, run["id"])
+            _bill(conn, user["id"], usage, run["id"])  # charge for the work done regardless of the failure cause
         if not isinstance(e, LLMError):
             raise

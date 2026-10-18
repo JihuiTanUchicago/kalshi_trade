@@ -406,7 +406,7 @@ def test_agent_picks_market_when_unspecified(monkeypatch):
     assert picked == ["btc15m"]                 # the agent chose the market and it was persisted
 
 
-# -- resilience: reconnect + don't bill infra failures (coordinator prod fix) --------
+# -- resilience: reconnect; bill for work done on ANY failure (incl. infra blips) --------
 
 
 import pymysql  # noqa: E402  (grouped with the resilience tests that use it)
@@ -432,7 +432,9 @@ def test_checkpoint_reconnects_to_survive_a_dropped_connection(monkeypatch):
     assert conn.pings > 0  # the run ping-reconnects before the writes that follow each model call
 
 
-def test_infra_error_fails_run_without_billing(monkeypatch):
+def test_infra_error_still_bills(monkeypatch):
+    # Policy: the work done is charged regardless of the failure cause — an infra/DB blip bills
+    # too (no "no charge, start again" message), same as a logic error.
     store = Store(monkeypatch)
     billed = []
     monkeypatch.setattr(agent, "_bill", lambda *a, **k: billed.append(a))
@@ -441,7 +443,7 @@ def test_infra_error_fails_run_without_billing(monkeypatch):
     with pytest.raises(pymysql.err.OperationalError):
         agent.run_research(Conn(), RUN, model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
     assert store.finished[0] == "failed"
-    assert billed == []  # an RDS blip must never charge the user
+    assert len(billed) == 1  # billed for the work done even on an RDS blip
 
 
 def test_logic_error_still_bills(monkeypatch):

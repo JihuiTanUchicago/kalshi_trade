@@ -199,7 +199,7 @@ def test_exa_research_preserves_streamed_proposer_progress(monkeypatch):
 
 
 @pytest.mark.parametrize("research", [False, True])
-def test_database_failure_after_retrieval_does_not_charge_consumed_model_usage(monkeypatch, research):
+def test_database_failure_after_retrieval_still_charges_consumed_model_usage(monkeypatch, research):
     session, conn, store, billed, _ = wire(monkeypatch, Response())
 
     def fail_on_receipt(cur, run_id, kind, message, data=None):
@@ -216,7 +216,7 @@ def test_database_failure_after_retrieval_does_not_charge_consumed_model_usage(m
         else:
             agent.run_copilot(conn, {"id": 1, "user_id": 7, "kind": "chat"}, model=model)
     assert store.finished[0] == "failed" and len(session.calls) == 1
-    assert billed == []
+    assert len(billed) == 1  # consumed model usage is billed even when a DB blip fails the run
 
 
 @pytest.mark.parametrize("exa_enabled", ["0", "1"])
