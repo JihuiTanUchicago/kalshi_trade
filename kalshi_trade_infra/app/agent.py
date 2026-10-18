@@ -26,6 +26,7 @@ import copy
 import json
 import logging
 import os
+import threading
 import time
 from collections import defaultdict
 from typing import Callable, Dict, List, Optional, Tuple
@@ -111,6 +112,15 @@ MAX_BUDGET = 1000         # hard ceiling a user can request for one finite run (
 MAX_ACTIONS = 3
 MIN_FRAMES = 200
 DREAM_EVERY_CHUNKS = max(1, int(os.getenv("TAU_DREAM_EVERY_CHUNKS", "2")))  # dream every N explore chunks in a forever run
+# Cross-run dream cadence: the Dream-RSI tree is built from the user's ACCUMULATED validation
+# history, so a 1-chunk autopilot run can dream usefully too — but dreaming on every single
+# completion is wasteful. Dream when they've never dreamed, or every N research runs since the
+# last dream (see _should_dream). Decouples dreaming from the within-run DREAM_EVERY_CHUNKS gate.
+DREAM_EVERY_RUNS = max(1, int(os.getenv("TAU_DREAM_EVERY_RUNS", "3")))
+# Fail-fast ceiling for the startup dataset load (history query + in-memory Dataset build). The
+# load runs before the first heartbeat/event, so a wedged query or a pathological build used to
+# sit silent until the 20-min watchdog; this bounds it to minutes with a CLEAR error instead.
+DATA_LOAD_TIMEOUT = max(30, int(os.getenv("TAU_DATA_LOAD_TIMEOUT", "180")))
 # Pillar 2 — per-thesis DEPTH: how many research-fold steps the agent may spend developing ONE
 # thesis (explore -> backtest -> read prior failures -> critique -> refine) BEFORE it commits the
 # single frozen spec that becomes exactly one candidate (= one pre-registration). 1 = legacy
@@ -524,7 +534,8 @@ def _pick_market(run: Dict, model: ModelFn, usage: Usage, log) -> str:
         return {"market": k, "why": str(obj.get("why") or "")[:1000]}
 
     r = ask_json(model, RESEARCH_SYSTEM, [{"role": "user", "content": msg}], check, usage)
-    log("step", "Chose to research %s. %s" % (MARKETS[r["market"]].label, r["why"]))
+    log("step", "Chose to research %s. %s" % (MARKETS[r["market"]].label, r["why"]),
+        {"phase": "pick_market", "market": r["market"]})
     return r["market"]
 
 
@@ -546,7 +557,8 @@ def _plan_lookback(run: Dict, market: str, model: ModelFn, usage: Usage, log) ->
         return {"days": max(5, min(int(d), maxd)), "why": str(obj.get("why") or "")[:1000]}
 
     r = ask_json(model, RESEARCH_SYSTEM, [{"role": "user", "content": msg}], check, usage)
-    log("step", "Chose a %d-day backtest window for this idea. %s" % (r["days"], r["why"]))
+    log("step", "Chose a %d-day backtest window for this idea. %s" % (r["days"], r["why"]),
+        {"phase": "plan", "lookback_days": r["days"]})
     return r["days"]
 
 
@@ -901,7 +913,8 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
     # dropped idle connection doesn't fail (and bill) the whole run.
     cur = _reconnect(conn, cur)
     log("step", "Froze %d finalist%s; the challenger reviewed each before any validation budget was spent."
-        % (len(finalists), "" if len(finalists) == 1 else "s"))
+        % (len(finalists), "" if len(finalists) == 1 else "s"),
+        {"phase": "gating", "finalists": len(finalists)})
 
     approved: List[Dict] = []
     exp_ids: List[int] = []
@@ -1031,6 +1044,11 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
         want = policy.next_batch(state).width
         if want <= 0:
             break  # policy decided to stop proposing this chunk
+        # Announce each proposing round so the (multi-minute, token-streamed) generation call is
+        # never a silent gap: the feed shows "Proposing round k" before the first token arrives.
+        log("step", "Proposing round %d — generating up to %d hypothes%s…"
+            % (round_no, want, "is" if want == 1 else "es"),
+            {"phase": "proposing", "round": round_no, "width": want})
         batch = market_data.ask(proposer, RESEARCH_SYSTEM,
                          [{"role": "user", "content": _round_prompt(run, ds, memory, want, chunk)}],
                          _hypotheses_check(market, want), usage)
@@ -1050,6 +1068,89 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
     if knowledge is not None:
         challenger = knowledge.wrap(challenger, usage)
     return len(chunk), _gate_and_save(cur, run, ds, partition, chunk, log, policy, challenger, usage, conn)
+
+
+def _call_with_timeout(label: str, seconds: float, fn, *args, beat=None, beat_every: float = 5.0, **kwargs):
+    """Run `fn` in a daemon thread and fail FAST with a clear LLMError if it hasn't returned within
+    `seconds`, so a wedged startup step surfaces in minutes instead of sitting silent until the
+    20-min watchdog. The worker runs in a thread (no SIGALRM available), so a thread+join is the
+    portable guard. `beat` (if given) is called every `beat_every`s while we wait, to keep the run's
+    heartbeat fresh during the long step. ponytail: a timed-out thread is a daemon left to unwind on
+    its own — safe ONLY because the things we wrap here (the dataset load) hold their OWN resources
+    (a separate DB connection they close themselves), never the run's cursor, so an abandoned thread
+    can't corrupt the caller's connection; it dies with the worker. Upgrade path: cooperative
+    cancellation if a wrapped call ever shares mutable state with the caller."""
+    box: Dict = {}
+
+    def _run():
+        try:
+            box["v"] = fn(*args, **kwargs)
+        except BaseException as e:  # propagate the real error to the caller's thread
+            box["e"] = e
+
+    th = threading.Thread(target=_run, daemon=True)
+    th.start()
+    waited = 0.0
+    while waited < seconds:
+        th.join(min(beat_every, seconds - waited))
+        if not th.is_alive():
+            break
+        waited += beat_every
+        if beat is not None:
+            try:
+                beat()
+            except Exception:
+                pass  # a heartbeat hiccup must not turn into a spurious timeout
+    if th.is_alive():
+        raise LLMError("%s timed out after %ds and was abandoned — the step is stuck; start the "
+                       "session again." % (label, int(seconds)))
+    if "e" in box:
+        raise box["e"]
+    return box.get("v")
+
+
+def _timeout_self_check() -> None:
+    assert _call_with_timeout("fast", 5, lambda: 42) == 42, "returns the value of a fast call"
+    try:
+        _call_with_timeout("slow", 0.2, lambda: time.sleep(5), beat_every=0.05)
+    except LLMError:
+        pass
+    else:
+        raise AssertionError("a call that overruns must raise LLMError")
+    try:
+        _call_with_timeout("boom", 5, lambda: (_ for _ in ()).throw(ValueError("x")))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("the wrapped call's own exception must propagate")
+
+
+def _should_dream(cur, user_id: int) -> bool:
+    """Cross-run cadence for the end-of-run policy dream (Dream-RSI). Dreaming builds its tree from
+    the user's ACCUMULATED validation history, so even a 1-chunk autopilot run can evolve the policy
+    — but dreaming on every completion is wasteful. Dream when the user has never dreamed yet, or
+    when >= DREAM_EVERY_RUNS research runs have completed since their last dream. Leak-safe: reads
+    only run/event metadata, never a gatekeeper/holdout number, and touches nothing the gatekeeper,
+    pre-registration or ledger own."""
+    last = repo.latest_dream_event(cur, user_id)
+    if last is None:
+        return True
+    return repo.count_runs(cur, user_id, "research", since=last["created_at"]) >= DREAM_EVERY_RUNS
+
+
+def _dream_cadence_self_check() -> None:
+    import app.agent as A
+    orig_latest, orig_count = A.repo.latest_dream_event, A.repo.count_runs
+    try:
+        A.repo.latest_dream_event = lambda cur, uid: None
+        assert _should_dream(None, 1), "a user who never dreamed should dream once there is a tree"
+        A.repo.latest_dream_event = lambda cur, uid: {"created_at": 0}
+        A.repo.count_runs = lambda cur, uid, kind, since=None, **k: 1
+        assert not _should_dream(None, 1), "one run since the last dream is below the cadence"
+        A.repo.count_runs = lambda cur, uid, kind, since=None, **k: DREAM_EVERY_RUNS
+        assert _should_dream(None, 1), "hitting the cadence dreams again"
+    finally:
+        A.repo.latest_dream_event, A.repo.count_runs = orig_latest, orig_count
 
 
 def run_research(
@@ -1106,6 +1207,13 @@ def run_research(
             log("resumed", "Resumed.")
 
     try:
+        # Emit the INSTANT the run is claimed, before any expensive work, so a healthy startup and a
+        # hung one no longer look identical (both used to be silent until the first "Loaded" event,
+        # minutes later). This event also bumps the heartbeat (repo.add_event), so the run reads as
+        # alive the moment it starts.
+        log("step", "Research started — preparing %s…"
+            % (MARKETS[market].label if market in MARKETS else "the chosen market"),
+            {"phase": "start", "market": market or None})
         if not market:  # user left it to the agent — it picks the market from the idea first
             checkpoint()
             market = _pick_market(run, model, usage, log)
@@ -1124,7 +1232,13 @@ def run_research(
         # validation/holdout keys. Tests inject dataset_fn to supply a synthetic research set.
         partition = partitions.ensure_partition(cur, market)
         load = dataset_fn or (lambda mk, hd=None: partitions.research_dataset(mk, partition, hd))
-        ds = load(market)  # full available window first — confirms data before any model spend
+        # The dataset load (history query + in-memory build) is the one step that runs BEFORE the
+        # first heartbeat/event — the proven startup-hang site (prod run 397/407: claimed, then
+        # zero events/heartbeat for 20 min). Announce it (so a stall is visible to the phase), beat
+        # the heartbeat while it runs, and hard-bound it so a wedge fails fast with a clear error.
+        log("step", "Loading %s market data…" % MARKETS[market].label, {"phase": "loading", "market": market})
+        ds = _call_with_timeout("Loading %s data" % MARKETS[market].label, DATA_LOAD_TIMEOUT,
+                                load, market, beat=lambda: repo.heartbeat(cur, run_id))
         if len(ds.frames) < MIN_FRAMES:
             raise LLMError("Not enough market history collected yet for %s." % MARKETS[market].label)
         # The agent picks the window that fits its thesis; re-load the narrower slice if it
@@ -1132,12 +1246,14 @@ def run_research(
         checkpoint()  # a cancel must stop before we spend a model call on planning
         lookback = _plan_lookback(run, market, model, usage, log)
         if lookback < MARKETS[market].history_days:
-            narrowed = load(market, lookback)
+            narrowed = _call_with_timeout("Loading %s data" % MARKETS[market].label, DATA_LOAD_TIMEOUT,
+                                          load, market, lookback, beat=lambda: repo.heartbeat(cur, run_id))
             if len(narrowed.frames) >= MIN_FRAMES:
                 ds = narrowed
         s = ds.summary()
         log("step", "Loaded %s of %s history: %s decision points over %s contracts."
-            % (_span_words(ds), MARKETS[market].label, s["decision_points"], s["contracts"]), s)
+            % (_span_words(ds), MARKETS[market].label, s["decision_points"], s["contracts"]),
+            dict(s, phase="data_loaded"))
         budget = max(1, min(int(run.get("max_hypotheses") or DEFAULT_HYPOTHESES), MAX_BUDGET))
         knowledge = AgentKnowledge(DataScope.research(ds.start_ts, ds.cutoff_ts), log, checkpoint)
         news = AgentNews(DataScope.research(ds.start_ts, ds.cutoff_ts), log, checkpoint)
@@ -1184,11 +1300,13 @@ def run_research(
             log("step", "Still running - %d tested so far, %d passed. Exploring more (stop anytime)."
                 % (len(tried), total_passed))
 
-        # Dreaming: learn a better exploration policy from the user's accumulated
-        # history, validated on the replay simulator (no new backtests). Bill its
-        # tokens; never let a dreaming hiccup fail the run.
+        # Dreaming: learn a better exploration policy from the user's accumulated history, validated
+        # on the replay simulator (no new backtests). Gated by a CROSS-RUN cadence (_should_dream),
+        # not the within-run DREAM_EVERY_CHUNKS gate, so even a 1-chunk autopilot run evolves the
+        # policy on a regular schedule while bounded runs stay cheap. Bill its tokens; never let a
+        # dreaming hiccup fail the run.
         try:
-            if dreaming.evolve_policy(conn, user_id, market, model, usage, log):
+            if _should_dream(cur, user_id) and dreaming.evolve_policy(conn, user_id, market, model, usage, log):
                 tot_in += usage.input_tokens
                 tot_out += usage.output_tokens
                 _bill(conn, user_id, usage, run_id, choice.model_id)
@@ -1342,6 +1460,10 @@ def _develop_thesis(h: Dict, run: Dict, ds: backtest.Dataset, partition: Dict, m
         checkpoint()
         if cur is not None and repo.credit_balance(cur, user_id) <= 0:
             break  # deeper thesis work stays inside the credit budget
+        # Pillar 2 can spend up to THESIS_MAX_STEPS model calls on ONE thesis before the first
+        # commit — surface the per-thesis step so that long, deep development is never silent.
+        log("step", "Developing \"%s\" (step %d/%d)…" % (t["title"], step + 2, THESIS_MAX_STEPS),
+            {"phase": "developing", "title": t["title"], "step": step + 2, "max_steps": THESIS_MAX_STEPS})
         try:
             reply = market_data.ask(proposer, RESEARCH_SYSTEM,
                                     [{"role": "user", "content": _develop_prompt(run, t, memory, step)}],

@@ -157,6 +157,14 @@ def test_develop_thesis_module_self_check():
     agent._develop_self_check()
 
 
+def test_call_with_timeout_self_check():
+    agent._timeout_self_check()
+
+
+def test_dream_cadence_self_check():
+    agent._dream_cadence_self_check()
+
+
 def test_invalid_spec_gets_one_repair(monkeypatch):
     store = Store(monkeypatch)
     bad = hyps({"entry": {"min_edge": 7}})

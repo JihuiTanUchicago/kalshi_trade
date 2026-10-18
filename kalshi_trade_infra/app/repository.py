@@ -507,10 +507,17 @@ def resume_run(cur, user_id: int, run_id: int) -> bool:
 
 
 def add_event(cur, run_id: int, kind: str, message: str, data: Optional[Dict] = None) -> None:
+    now = now_utc()
     cur.execute(
         "INSERT INTO app_agent_events (run_id, kind, message, data_json, created_at) VALUES (%s,%s,%s,%s,%s)",
-        (run_id, kind, message, _json(data), now_utc()),
+        (run_id, kind, message, _json(data), now),
     )
+    # An event IS proof of life: bump the run's heartbeat on every one so a run that emits phase
+    # events (or streams thinking tokens) during a long, step-less phase never looks abandoned to
+    # the watchdog. Scoped by run_id; a no-op row for a finished run. This is why observability
+    # events double as the liveness signal — the laziest root fix for "heartbeat only advances
+    # between steps". ponytail: one extra UPDATE per event, negligible beside the backtests.
+    cur.execute("UPDATE app_agent_runs SET heartbeat_at=%s WHERE id=%s AND status='running'", (now, run_id))
 
 
 def list_runs(cur, user_id: int, limit: int = 50) -> List[Dict]:

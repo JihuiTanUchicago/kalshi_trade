@@ -150,10 +150,12 @@ def evolve_policy(conn, user_id: int, market: str, model: Callable, usage: Usage
     prompt = ("Current exploration policy:\n```python\n%s\n```\n%s\n\nPropose %d improved policies that "
               "score higher. Reply JSON: {\"policies\": [{\"code\": \"<full python>\", \"change\": \"<one line>\"}, ...]}."
               % (current_code, _tree_summary(tree, base, base_v), n))
+    log("step", "Dreaming — replaying %d recorded hypotheses to evolve the exploration policy…" % len(tree),
+        {"phase": "dreaming", "nodes": len(tree)})
     try:
         candidates = ask_json(model, DREAM_SYSTEM, [{"role": "user", "content": prompt}], _check, usage)
     except Exception as e:
-        log("step", "Dreaming skipped: %s" % e)
+        log("step", "Dreaming skipped: %s" % e, {"phase": "dreaming", "skipped": True})
         return False
 
     best_change = ""
@@ -182,13 +184,17 @@ def evolve_policy(conn, user_id: int, market: str, model: Callable, usage: Usage
         repo.set_policy(cur, user_id, best_code, best_v, summary=best_change, base_score=base_v)
         log("step", "Research policy evolved: dreamed over %d hypotheses, tried %d candidate policies, "
                     "generalization score %.3f → %.3f. %sFuture runs explore smarter."
-            % (len(tree), len(candidates), base_v, best_v, (best_change + " " if best_change else "")))
+            % (len(tree), len(candidates), base_v, best_v, (best_change + " " if best_change else "")),
+            {"phase": "dreaming", "nodes": len(tree), "improved": True,
+             "base_score": base_v, "new_score": best_v})
     else:
         # Always leave a trace so the self-improvement loop is observable, even when the
         # strong default/current policy already wins (monotonic: we only adopt a better one).
         log("step", "Dreaming: tested %d candidate policies over %d hypotheses; best generalization score "
                     "%.3f vs current %.3f — kept your current policy (none beat it yet)."
-            % (len(candidates), len(tree), best_v, base_v))
+            % (len(candidates), len(tree), best_v, base_v),
+            {"phase": "dreaming", "nodes": len(tree), "improved": False,
+             "base_score": base_v, "new_score": best_v})
     return improved
 
 
