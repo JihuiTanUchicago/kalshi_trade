@@ -44,6 +44,7 @@ import io
 import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
+from urllib.parse import quote
 
 log = logging.getLogger(__name__)
 
@@ -85,7 +86,9 @@ def _fetch_fred(series: str) -> List[Tuple[int, float]]:
     missing values are '.'. Returns (unix ts at UTC midnight of the observation date, value)."""
     import requests  # already a dependency; imported lazily so sandbox/import paths stay clean
 
-    url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=%s" % series
+    # URL-encode the model-chosen series id (host/path are hardcoded; this just stops a stray
+    # char in `series` altering the query string — defense-in-depth, the input is LLM-generated).
+    url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=%s" % quote(series, safe="")
     resp = requests.get(url, timeout=_FETCH_TIMEOUT_S)
     resp.raise_for_status()
     rows = list(csv.reader(io.StringIO(resp.text)))
