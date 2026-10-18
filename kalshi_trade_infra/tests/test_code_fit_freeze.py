@@ -59,6 +59,25 @@ def test_fit_failure_leaves_spec_unfrozen(monkeypatch):
     assert "params" not in backtest.freeze_code_model(spec, _dataset())  # fails honestly, no crash
 
 
+def test_fit_failure_records_reason_in_diag(monkeypatch):
+    monkeypatch.setattr(sandbox, "strategy_has_fit", lambda code: True)
+
+    def boom(code, window, **kw):
+        raise sandbox.SandboxError("only one class present")
+
+    monkeypatch.setattr(sandbox, "run_strategy_fit", boom)
+    diag = {}
+    backtest.freeze_code_model(_code_spec(code=FIT_COUNT), _dataset(), diag)
+    assert "only one class present" in diag.get("code_fit_failed", "")
+
+
+def test_diagnose_surfaces_code_fit_failure():
+    from app import agent
+    msg = agent._diagnose({"kind": "code", "code": "x"}, None, {"trades": 0},
+                          {"code_fit_failed": "only one class present"})
+    assert "fit() raised" in msg and "only one class present" in msg
+
+
 # -- the frozen model is part of the pre-registered identity -------------------
 
 
