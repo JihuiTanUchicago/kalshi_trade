@@ -75,7 +75,7 @@ sleep 5
 CODE=\$(curl -fsS -o /dev/null -w "%{http_code}" http://127.0.0.1:8090/ || echo 000)
 case "\$CODE" in 200|301|302|401|403) :;; *) rollback; echo "HEALTH FAILED (\$CODE)"; exit 1;; esac
 rm -rf app.bak.\$T data_pipeline.bak.\$T
-echo "[box] DEPLOY OK ($CODE) ts=\$T"
+echo "[box] DEPLOY OK (\$CODE) ts=\$T"
 EOF
 
 if [[ "$DRY_RUN" == 1 ]]; then
