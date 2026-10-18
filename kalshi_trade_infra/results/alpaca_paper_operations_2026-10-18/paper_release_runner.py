@@ -64,6 +64,8 @@ def module_program(bundle_digest=None):
             'RELEASE_MANIFEST':manifest['release'],'EXPECTED_PROVIDER_SETTINGS':manifest['provider_settings'],
             'INVENTORY_SOURCE':(HERE/'activation_wait_inventory.py').read_text(),
             'PAPER_CONFIG_SOURCE':(HERE/'paper_runtime_config.py').read_text(),
+            'PRESERVED_ON_HOST':manifest.get('preserved_on_host',{}),
+            'ARCHIVE_ONLY_ON_HOST':manifest.get('archive_only_on_host',{}),
             'BUNDLE_SHA256':bundle_digest}
     program='ns='+repr(values)+'\nexec('+repr((HERE/'paper_release_remote.py').read_text())+',ns)\n'
     return program

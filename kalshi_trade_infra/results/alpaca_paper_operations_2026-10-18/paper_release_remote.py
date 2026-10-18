@@ -26,14 +26,16 @@ OTHERS = ('recursive-engine', 'recursive-history', 'kalshi-live-engine')
 RESOURCES = ('Restart','RestartUSec','TimeoutStartUSec','TimeoutStopUSec','MemoryHigh',
              'MemoryMax','MemorySwapMax','Nice','KillMode','KillSignal')
 PROVIDER_FILES = ('/etc/tau/provider-data/market-data.env','/etc/tau/provider-data/research-data.env')
+HOST_UTILITIES={'data_pipeline/research_expiry_resolution.py',
+                'data_pipeline/research_expiry_resolution_sensitivity.py','data_pipeline/research_fee_sensitivity.py'}
 
 class ReleaseError(RuntimeError):
     def __init__(self, code):
         self.code = code
         super().__init__(code)
 
-def command(args, *, env=None, cwd=None, timeout=45, stdin=None):
-    response = subprocess.run(args,env=env,cwd=cwd,capture_output=True,timeout=timeout,input=stdin)
+def command(args, *, env=None, cwd=None, timeout=45, stdin=None, pass_fds=()):
+    response = subprocess.run(args,env=env,cwd=cwd,capture_output=True,timeout=timeout,input=stdin,pass_fds=pass_fds)
     if response.returncode:
         raise ReleaseError('subprocess_failed')
     return response.stdout
@@ -61,14 +63,60 @@ def file_hash(path):
         raise ReleaseError('source_file_missing_or_symlink')
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
-def source_check(manifest, root=ROOT):
+def metadata_artifact(path):
+    if path.is_symlink() or not path.is_file():return False
+    if not (path.name.startswith('._') or path.name=='.DS_Store'):return False
+    with path.open('rb') as stream:header=stream.read(8)
+    return ((path.name.startswith('._') and header==b'\x00\x05\x16\x07\x00\x02\x00\x00')
+            or (path.name=='.DS_Store' and header==b'\x00\x00\x00\x01Bud1'))
+
+def archive_manifest():
+    archives=globals().get('ARCHIVE_ONLY_ON_HOST',{})
+    if not isinstance(archives,dict):raise ReleaseError('invalid_on_host_archive_manifest')
+    for name,info in archives.items():
+        valid=(name=='app/static/app.js.bak.1792077295'
+               or re.fullmatch(r'data_pipeline/dashboard_server\.py\.bak(?:\.202609[0-9]{2}_[0-9]{6})?',name))
+        if (not valid or not isinstance(info,dict) or set(info)!={'bytes','mode'}
+                or type(info.get('bytes')) is not int or not 0<info['bytes']<16*1024*1024 or info.get('mode')!='0644'):
+            raise ReleaseError('invalid_on_host_archive_manifest')
+    return archives
+
+def source_check(manifest, root=ROOT, *, preserve=True, allow_archives=False):
+    preserved=globals().get('PRESERVED_ON_HOST',{}) if preserve else {}
+    if (not isinstance(preserved,dict) or not set(preserved)<=HOST_UTILITIES or set(preserved)&set(manifest)
+            or any(not isinstance(value,str) or not re.fullmatch(r'[a-f0-9]{64}',value) for value in preserved.values())):
+        raise ReleaseError('invalid_preservation_manifest')
+    expected={**manifest,**preserved}
+    archives=archive_manifest() if allow_archives else {}
+    seen_archives=set()
     actual=set()
     for package in ('app','data_pipeline'):
         for path in (root/package).rglob('*'):
-            if '__pycache__' in path.parts or path.suffix=='.pyc':continue
+            if '__pycache__' in path.parts:continue
             if path.is_symlink():raise ReleaseError('source_tree_contains_symlink')
+            if metadata_artifact(path):continue
+            name=str(path.relative_to(root))
+            if name in archives:
+                info=path.lstat();want=archives[name]
+                if (not stat.S_ISREG(info.st_mode) or info.st_nlink!=1 or info.st_size!=want['bytes']
+                        or format(stat.S_IMODE(info.st_mode),'04o')!=want['mode']):return False
+                seen_archives.add(name);continue
             if path.is_file():actual.add(str(path.relative_to(root)))
-    return actual==set(manifest) and all(file_hash(root/name)==digest for name,digest in manifest.items())
+    return (seen_archives==set(archives) and actual==set(expected)
+            and all(file_hash(root/name)==digest for name,digest in expected.items()))
+
+def preserve_utilities(directory, root=ROOT):
+    preserved=globals().get('PRESERVED_ON_HOST',{})
+    if not set(preserved)<=HOST_UTILITIES:raise ReleaseError('unreviewed_on_host_preservation_path')
+    for name,digest in preserved.items():
+        source=root/name;destination=directory/name
+        info=source.lstat()
+        if (not stat.S_ISREG(info.st_mode) or info.st_nlink!=1 or source.is_symlink()
+                or file_hash(source)!=digest or destination.exists() or destination.is_symlink()):
+            raise ReleaseError('on_host_utility_preservation_conflict')
+        shutil.copy2(source,destination,follow_symlinks=False)
+        if file_hash(destination)!=digest or stat.S_IMODE(destination.stat().st_mode)!=stat.S_IMODE(info.st_mode):
+            raise ReleaseError('on_host_utility_preservation_failed')
 
 def source_diagnostics(manifest, root=ROOT):
     actual=set()
@@ -220,7 +268,7 @@ def inspect():
     helper=config_module()
     _,_,agent_env=process('recursive-agents')
     result['jobs']=jobs(agent_env)
-    result['baseline_matches']=source_check(BASELINE_MANIFEST)
+    result['baseline_matches']=source_check(BASELINE_MANIFEST,allow_archives=True)
     result['release_matches']=source_check(RELEASE_MANIFEST) if (ROOT/'app/alpaca_paper.py').exists() else False
     result['runtimes']={}
     for service in TARGETS:
@@ -234,6 +282,8 @@ def inspect():
           'unit_plan_valid':bool(plan),'resources':{k:values[k] for k in RESOURCES}}
     provider_configuration()
     result['provider_staged_configuration_valid']=True
+    result['on_host_research_utilities_to_preserve']=len(globals().get('PRESERVED_ON_HOST',{}))
+    result['old_backup_files_to_archive']=len(archive_manifest())
     result['status']='already_installed' if result['release_matches'] else ('ready_for_quiet_window' if idle(result['jobs']) else 'waiting_for_idle')
     if not result['baseline_matches'] and not result['release_matches']:
         result.update(status='inspection_failed',error_code='production_source_conflict',
@@ -252,7 +302,7 @@ def extract_bundle(bundle, directory):
             if not (member.isfile() or member.isdir()) or member.size>32*1024*1024:
                 raise ReleaseError('unsafe_archive_member')
         archive.extractall(directory,filter='data')
-    if not source_check(RELEASE_MANIFEST,directory):raise ReleaseError('staged_release_manifest_failed')
+    if not source_check(RELEASE_MANIFEST,directory,preserve=False):raise ReleaseError('staged_release_manifest_failed')
 
 def quiet_window(env):
     report=None
@@ -273,14 +323,20 @@ def verify_environment(before, after, managed):
     if before.get('APP_SECRET_KEY')!=after.get('APP_SECRET_KEY') or not after.get('APP_SECRET_KEY'):
         raise ReleaseError('application_secret_changed')
 
-def planned_startup(plan, before, expected):
+def planned_startup(plan, before, expected, *, cwd=ROOT, overlay_fd=None):
     child=('import os,json,sys;want=json.load(sys.stdin);prefixes=tuple(want["prefixes"]);'
            'project=lambda e:{k:v for k,v in e.items() if k.startswith(prefixes) and k!="AWS_PROFILE"};'
            'print(json.dumps({"protected_environment_matches":project(dict(os.environ))==project(want["environment"])}))')
     tail=r'exec '+re.escape(PYTHON)+r' -u -m app\.(?:server|worker agents).*\Z'
     body,count=re.subn(tail,lambda _: 'exec '+shlex.join([PYTHON,'-B','-c',child]),plan['body'])
     if count!=1:raise ReleaseError('unrecognized_planned_startup_tail')
-    raw=command(['/bin/bash','-ec',body],env=before,cwd=ROOT,
+    fds=()
+    if overlay_fd is not None:
+        if type(overlay_fd) is not int or overlay_fd<3:raise ReleaseError('invalid_private_overlay_descriptor')
+        source='. /etc/tau/alpaca-paper/paper.env || exit $?;'
+        if body.count(source)!=1:raise ReleaseError('unrecognized_private_overlay_source')
+        body=body.replace(source,'. /proc/self/fd/'+str(overlay_fd)+' || exit $?;',1);fds=(overlay_fd,)
+    raw=command(['/bin/bash','-ec',body],env=before,cwd=cwd,pass_fds=fds,
                 stdin=json.dumps({'prefixes':PROTECTED_PREFIXES,'environment':expected}).encode())
     if json.loads(raw)!={'protected_environment_matches':True}:raise ReleaseError('planned_startup_environment_conflict')
 
@@ -308,7 +364,9 @@ def activate(credentials,bundle):
             if env.get(field) and env[field]!=credentials[field]:raise ReleaseError('installed_oauth_credential_conflict')
     first=jobs(before['recursive-agents'][2]);result['jobs']=first
     if not idle(first):result['status']='waiting_for_idle';return result
-    if not source_check(BASELINE_MANIFEST):raise ReleaseError('production_source_conflict')
+    if not source_check(BASELINE_MANIFEST,allow_archives=True):raise ReleaseError('production_source_conflict')
+    archive_hashes={name:file_hash(ROOT/name) for name in archive_manifest()}
+    utility_modes={name:stat.S_IMODE((ROOT/name).lstat().st_mode) for name in globals().get('PRESERVED_ON_HOST',{})}
     release_root=Path('/opt/tau-releases')
     if release_root.exists() and (release_root.is_symlink() or release_root.stat().st_uid!=0 or release_root.stat().st_mode&0o022):
         raise ReleaseError('unsafe_release_directory')
@@ -316,17 +374,31 @@ def activate(credentials,bundle):
     staging=Path(tempfile.mkdtemp(prefix='paper-'+RELEASE_SHA[:12]+'-',dir=release_root))
     os.chmod(staging,0o700)
     extract_bundle(bundle,staging)
+    preserve_utilities(staging)
+    if not source_check(RELEASE_MANIFEST,staging):raise ReleaseError('staged_preservation_manifest_failed')
     command([PYTHON,'-B','-c','import ast,pathlib;[ast.parse(p.read_bytes()) for d in ("app","data_pipeline") for p in pathlib.Path(d).rglob("*.py")]'],cwd=staging)
     expected_env={s:{**value[2],**(provider if s=='recursive-agents' else {}),**paper} for s,value in before.items()}
     for service in TARGETS:offline(staging,expected_env[service],paper=True)
     offline(staging,expected_env['recursive-agents'])
+    # Validate real base/provider shell sources before stopping either service.
+    # The candidate paper overlay lives only in an anonymous private descriptor.
+    with tempfile.TemporaryFile(dir=staging) as private_overlay:
+        private_overlay.write(overlay);private_overlay.flush()
+        for service in TARGETS:
+            private_overlay.seek(0)
+            planned_startup(plans[service][0],before[service][2],expected_env[service],
+                            cwd=staging,overlay_fd=private_overlay.fileno())
     ready,current=quiet_window(before['recursive-agents'][2]);result['jobs']=current
     if not ready:result.update(status='waiting_for_idle',staged_release=str(staging));return result
     for service,(plan,saved,values) in plans.items():
         if props(service)['MainPID']!=str(before[service][1]):raise ReleaseError('process_changed_before_cutover')
         for path,raw in saved.items():
             if path.read_bytes()!=raw:raise ReleaseError('unit_changed_before_cutover')
-    if not source_check(BASELINE_MANIFEST):raise ReleaseError('source_changed_before_cutover')
+    if not source_check(BASELINE_MANIFEST,allow_archives=True):raise ReleaseError('source_changed_before_cutover')
+    if any(file_hash(ROOT/name)!=digest for name,digest in archive_hashes.items()):raise ReleaseError('backup_file_changed_before_cutover')
+    if not source_check(RELEASE_MANIFEST,staging):raise ReleaseError('staged_release_changed_before_cutover')
+    if any(stat.S_IMODE((parent/name).lstat().st_mode)!=mode for name,mode in utility_modes.items() for parent in (ROOT,staging)):
+        raise ReleaseError('preserved_utility_mode_changed_before_cutover')
     if any(file_hash(ROOT/name)!=digest for name,digest in base_hash.items()):raise ReleaseError('base_environment_changed')
     if any(file_hash(Path(name))!=digest for name,digest in provider_hash.items()):raise ReleaseError('provider_overlay_changed')
     if not idle(jobs(before['recursive-agents'][2])):result['status']='waiting_for_idle';return result
@@ -373,11 +445,18 @@ def activate(credentials,bundle):
         if any(props(service).get('MainPID')!=pid for service,pid in others.items()):raise ReleaseError('unrelated_service_pid_changed')
         if any(file_hash(ROOT/name)!=digest for name,digest in base_hash.items()):raise ReleaseError('base_environment_changed_after_cutover')
         if any(file_hash(Path(name))!=digest for name,digest in provider_hash.items()):raise ReleaseError('provider_overlay_changed_after_cutover')
+        if not source_check(RELEASE_MANIFEST):raise ReleaseError('installed_release_manifest_failed')
+        if any(stat.S_IMODE((ROOT/name).lstat().st_mode)!=mode for name,mode in utility_modes.items()):
+            raise ReleaseError('preserved_utility_mode_changed_after_cutover')
+        if not source_check(BASELINE_MANIFEST,backup,allow_archives=True):raise ReleaseError('previous_source_archive_manifest_failed')
+        if any(file_hash(backup/name)!=digest for name,digest in archive_hashes.items()):raise ReleaseError('previous_backup_archive_integrity_failed')
         with urllib.request.urlopen('http://127.0.0.1:8090/',timeout=15) as response:
             if response.status!=200:raise ReleaseError('origin_http_failed')
         result.update(status='deployed',ready_for_user_connection=True,origin_http_status=200,
                       unrelated_services_unchanged=True,protected_controls_unchanged=True,
                       app_secret_unchanged=True,base_environments_unchanged=True,backup_directory=str(backup),
+                      git_release_manifest_matches=True,on_host_utilities_preserved=len(globals().get('PRESERVED_ON_HOST',{})),
+                      on_host_old_backups_archived=len(archive_hashes),
                       authenticated_user_consent_verified=False,paper_order_verified=False)
         return result
     except Exception as exc:
@@ -388,6 +467,13 @@ def activate(credentials,bundle):
             result['rollback_performed']=False
             result['reason']='new_worker_may_have_claimed_jobs_preserve_installed_state'
             return result
+        if stopped:
+            dependencies_ok=(all(file_hash(ROOT/name)==digest for name,digest in base_hash.items())
+                             and all(file_hash(Path(name))==digest for name,digest in provider_hash.items())
+                             and all(path.read_bytes()==raw for _,saved,_ in plans.values() for path,raw in saved.items()))
+            if not dependencies_ok:
+                result.update(status='operator_dependency_change_requires_inspection',rollback_performed=False)
+                return result
         for path,intended in attempted_config.items():
             if path in installed_config:continue
             try:current=helper['snapshot'](path)

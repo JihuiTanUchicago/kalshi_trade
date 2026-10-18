@@ -249,5 +249,60 @@
     "TAU_MASSIVE_DATASETS": "fx,treasury_yields,funding_conditions",
     "TAU_EXA_ENABLED": "1",
     "TAU_EXA_HISTORICAL_ENABLED": "1"
+  },
+  "preserved_on_host": {
+    "data_pipeline/research_expiry_resolution.py": "8a9bc3cfa6d4f9792bc389faf1f08ee2506d785624265fa7f85ae522ebd3a418",
+    "data_pipeline/research_expiry_resolution_sensitivity.py": "fe8daf9c9c7757cf6b2b7d3a8ee710b7e5d0da3ac190dff0d6f35a817085f965",
+    "data_pipeline/research_fee_sensitivity.py": "e0122dfa770991e3c6ec060a598cd14611d448409879301c0605c216fd3260e4"
+  },
+  "archive_only_on_host": {
+    "app/static/app.js.bak.1792077295": {
+      "bytes": 140742,
+      "mode": "0644"
+    },
+    "data_pipeline/dashboard_server.py.bak": {
+      "bytes": 175607,
+      "mode": "0644"
+    },
+    "data_pipeline/dashboard_server.py.bak.20260926_225140": {
+      "bytes": 117404,
+      "mode": "0644"
+    },
+    "data_pipeline/dashboard_server.py.bak.20260926_230426": {
+      "bytes": 118922,
+      "mode": "0644"
+    },
+    "data_pipeline/dashboard_server.py.bak.20260926_232408": {
+      "bytes": 120674,
+      "mode": "0644"
+    },
+    "data_pipeline/dashboard_server.py.bak.20260927_001834": {
+      "bytes": 122518,
+      "mode": "0644"
+    },
+    "data_pipeline/dashboard_server.py.bak.20260927_001930": {
+      "bytes": 122518,
+      "mode": "0644"
+    },
+    "data_pipeline/dashboard_server.py.bak.20260927_004130": {
+      "bytes": 144785,
+      "mode": "0644"
+    },
+    "data_pipeline/dashboard_server.py.bak.20260927_004812": {
+      "bytes": 166433,
+      "mode": "0644"
+    },
+    "data_pipeline/dashboard_server.py.bak.20260927_011717": {
+      "bytes": 163441,
+      "mode": "0644"
+    },
+    "data_pipeline/dashboard_server.py.bak.20260927_014954": {
+      "bytes": 173927,
+      "mode": "0644"
+    },
+    "data_pipeline/dashboard_server.py.bak.20260927_061659": {
+      "bytes": 176923,
+      "mode": "0644"
+    }
   }
 }

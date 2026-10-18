@@ -115,6 +115,21 @@ class PureControls(unittest.TestCase):
             with self.assertRaises(remote.ReleaseError):
                 remote.planned_startup({"body": body}, expected, expected)
 
+    def test_candidate_overlay_uses_inherited_descriptor_without_secret_in_shell_arguments(self):
+        body=('set -a; . /opt/kalshi/.env.aws; . /opt/kalshi/.env.app; '
+              '. /etc/tau/alpaca-paper/paper.env || exit $?; set +a; unset AWS_PROFILE; '
+              'exec /opt/kalshi/.venv313/bin/python -u -m app.server >> /tmp/synthetic.log 2>&1')
+        expected={'APP_SECRET_KEY':'synthetic-private-key'}
+        with tempfile.TemporaryFile() as overlay,patch.object(remote,'command',return_value=b'{"protected_environment_matches":true}') as command:
+            overlay.write(b'ALPACA_OAUTH_CLIENT_SECRET=synthetic-oauth-secret\n');overlay.seek(0)
+            remote.planned_startup({'body':body},expected,expected,cwd=Path('/synthetic/stage'),overlay_fd=overlay.fileno())
+            args,kwargs=command.call_args
+            self.assertIn('. /proc/self/fd/'+str(overlay.fileno()),args[0][2])
+            self.assertEqual(kwargs['pass_fds'],(overlay.fileno(),))
+            self.assertEqual(kwargs['cwd'],Path('/synthetic/stage'))
+            self.assertNotIn('synthetic-oauth-secret',str(args))
+            self.assertNotIn('synthetic-private-key',str(args))
+
 
 class DeploymentControls(unittest.TestCase):
     def setUp(self):
@@ -241,8 +256,8 @@ class DeploymentControls(unittest.TestCase):
                    "config_module": lambda: helper, "process": process, "props": props,
                    "unit_plan": plan, "provider_configuration": lambda: dict(self.provider),
                    "extract_bundle": extract, "offline": lambda *a, **kw: {"ready": True},
-                   "planned_startup": lambda *a: self.calls.append(("planned_startup",)),
-                   "source_check": lambda manifest, root=None: real_source_check(manifest, root or self.root),
+                   "planned_startup": lambda *a, **kw: self.calls.append(("planned_startup",)),
+                   "source_check": lambda manifest, root=None, **kw: real_source_check(manifest, root or self.root, **kw),
                    "file_hash": lambda p: "synthetic-provider-digest" if str(p) in remote.PROVIDER_FILES else real_hash(p),
                    "jobs": lambda env: self.job_results.pop(0), "quiet_window": lambda env: (True, job_report()),
                    "command": command}
@@ -261,6 +276,52 @@ class DeploymentControls(unittest.TestCase):
         self.lock_fds.clear()
 
     def run_release(self): return remote.activate(dict(CREDENTIALS), b"synthetic bundle")
+
+    def test_real_startup_secret_drift_fails_before_any_service_stop(self):
+        with patch.object(remote,'planned_startup',side_effect=remote.ReleaseError('planned_startup_environment_conflict')):
+            with self.assertRaises(remote.ReleaseError):self.run_release()
+        self.assert_original()
+        self.assertFalse(any(call[:2]==('systemctl','stop') for call in self.calls))
+
+    def test_concurrent_base_environment_edit_is_never_overwritten_or_started(self):
+        original=remote.command
+        def changed_schema(args,**kwargs):
+            if 'app.schema' in args:
+                (self.root/'.env.app').write_text('# concurrent operator update\n')
+                raise remote.ReleaseError('synthetic_schema_error')
+            return original(args,**kwargs)
+        with patch.object(remote,'command',side_effect=changed_schema):result=self.run_release()
+        self.assertEqual(result['status'],'operator_dependency_change_requires_inspection')
+        self.assertEqual((self.root/'.env.app').read_text(),'# concurrent operator update\n')
+        self.assertFalse(any(call[:2]==('systemctl','start') for call in self.calls))
+
+    def test_success_preserves_utility_and_archives_backups_without_deploying_backup_code(self):
+        utility='data_pipeline/research_fee_sensitivity.py';backup_name='data_pipeline/dashboard_server.py.bak'
+        (self.root/utility).write_bytes(b'synthetic retained utility');(self.root/utility).chmod(0o750)
+        (self.root/backup_name).write_bytes(b'synthetic old backup');(self.root/backup_name).chmod(0o644)
+        frozen={utility:hashlib.sha256((self.root/utility).read_bytes()).hexdigest()}
+        archived={backup_name:{'bytes':(self.root/backup_name).stat().st_size,'mode':'0644'}}
+        preserve=remote.preserve_utilities
+        class Origin:
+            status=200
+            def __enter__(self):return self
+            def __exit__(self,*args):return False
+        with patch.dict(remote.__dict__,{'PRESERVED_ON_HOST':frozen,'ARCHIVE_ONLY_ON_HOST':archived}),\
+             patch.object(remote,'preserve_utilities',side_effect=lambda folder:preserve(folder,self.root)),\
+             patch.object(remote.urllib.request,'urlopen',side_effect=lambda *a,**kw:Origin()):
+            result=self.run_release()
+        self.assertEqual(result['status'],'deployed',result)
+        self.assertEqual((self.root/utility).read_bytes(),b'synthetic retained utility')
+        self.assertEqual(stat.S_IMODE((self.root/utility).stat().st_mode),0o750)
+        self.assertFalse((self.root/backup_name).exists())
+        previous=Path(result['backup_directory'])
+        self.assertEqual((previous/backup_name).read_bytes(),b'synthetic old backup')
+        self.assertEqual(result['on_host_utilities_preserved'],1)
+        self.assertEqual(result['on_host_old_backups_archived'],1)
+        self.assertTrue(result['app_secret_unchanged'])
+        self.assertEqual(sum('app.schema' in call for call in self.calls),1)
+        service_calls=[call for call in self.calls if call[:2] in (('systemctl','start'),('systemctl','stop'))]
+        self.assertEqual(service_calls,[('systemctl','stop',*remote.TARGETS),('systemctl','start',*remote.TARGETS)])
     def assert_original(self):
         self.assertTrue(remote.source_check(self.baseline))
         self.assertFalse(self.config)
@@ -352,10 +413,61 @@ class DeploymentControls(unittest.TestCase):
         self.assertEqual(sum(call[:2] == ("systemctl", "start") for call in self.calls), 1)
         self.assertFalse(any(call[0] == "restore" for call in self.calls))
         start = next(i for i, call in enumerate(self.calls) if call[:2] == ("systemctl", "start"))
-        self.assertEqual(sum(call[0] == "planned_startup" for call in self.calls[:start]), 2)
+        self.assertEqual(sum(call[0] == "planned_startup" for call in self.calls[:start]), 4)
 
 
 class SourceDiagnosticTests(unittest.TestCase):
+    def test_old_backups_are_baseline_only_with_exact_names_sizes_modes_and_no_hardlinks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);(root/'app/static').mkdir(parents=True);(root/'data_pipeline').mkdir()
+            name='data_pipeline/dashboard_server.py.bak';path=root/name;path.write_text('backup fixture');path.chmod(0o644)
+            archive={name:{'bytes':path.stat().st_size,'mode':'0644'}}
+            with patch.dict(remote.__dict__,{'ARCHIVE_ONLY_ON_HOST':archive}):
+                self.assertTrue(remote.source_check({},root,allow_archives=True))
+                self.assertFalse(remote.source_check({},root))
+                path.chmod(0o600);self.assertFalse(remote.source_check({},root,allow_archives=True))
+                path.chmod(0o644);path.write_text('changed size');self.assertFalse(remote.source_check({},root,allow_archives=True))
+            with patch.dict(remote.__dict__,{'ARCHIVE_ONLY_ON_HOST':{'app/agent.py':{'bytes':1,'mode':'0644'}}}):
+                with self.assertRaises(remote.ReleaseError):remote.source_check({},root,allow_archives=True)
+
+    def test_verified_metadata_can_be_excluded_but_fake_metadata_and_loose_bytecode_cannot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);(root/'app').mkdir();(root/'data_pipeline').mkdir()
+            metadata=root/'app/._a.py';metadata.write_bytes(b'\x00\x05\x16\x07\x00\x02\x00\x00fixture')
+            self.assertTrue(remote.source_check({},root))
+            metadata.write_text('ordinary code cannot be hidden as metadata')
+            self.assertFalse(remote.source_check({},root));metadata.unlink()
+            (root/'app/loose.pyc').write_bytes(b'not a normal __pycache__ file')
+            self.assertFalse(remote.source_check({},root))
+
+    def test_frozen_utilities_keep_bytes_modes_and_reject_changed_or_symlinked_sources(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)/'live';stage=Path(directory)/'stage'
+            for parent in (root,stage):
+                (parent/'app').mkdir(parents=True);(parent/'data_pipeline').mkdir()
+            name='data_pipeline/research_fee_sensitivity.py';source=root/name
+            source.write_text('synthetic utility');source.chmod(0o750)
+            frozen={name:hashlib.sha256(source.read_bytes()).hexdigest()}
+            with patch.dict(remote.__dict__,{'PRESERVED_ON_HOST':frozen}):
+                self.assertTrue(remote.source_check({},root))
+                remote.preserve_utilities(stage,root)
+                self.assertTrue(remote.source_check({},stage))
+                self.assertEqual(stat.S_IMODE((stage/name).stat().st_mode),0o750)
+                (stage/name).unlink();source.write_text('changed utility')
+                self.assertFalse(remote.source_check({},root))
+                with self.assertRaises(remote.ReleaseError):remote.preserve_utilities(stage,root)
+                source.unlink();source.symlink_to(stage/'app')
+                with self.assertRaises(remote.ReleaseError):remote.preserve_utilities(stage,root)
+
+    def test_preservation_manifest_cannot_override_a_git_file_or_adopt_arbitrary_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);(root/'app').mkdir();(root/'data_pipeline').mkdir()
+            with patch.dict(remote.__dict__,{'PRESERVED_ON_HOST':{'app/agent.py':'0'*64}}):
+                with self.assertRaises(remote.ReleaseError):remote.source_check({},root)
+            utility='data_pipeline/research_fee_sensitivity.py'
+            with patch.dict(remote.__dict__,{'PRESERVED_ON_HOST':{utility:'0'*64}}):
+                with self.assertRaises(remote.ReleaseError):remote.source_check({utility:'0'*64},root)
+
     def test_only_real_metadata_headers_are_classified_and_utility_is_hashed(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);(root/'app').mkdir();(root/'data_pipeline').mkdir()
