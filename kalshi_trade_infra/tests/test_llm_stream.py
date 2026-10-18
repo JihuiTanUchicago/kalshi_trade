@@ -1,6 +1,7 @@
 """Bedrock converse_stream plumbing: text deltas reach the sink as they arrive, usage is read
 from the metadata event, and a sink that throws mid-stream never aborts generation."""
 import sys
+import time
 import types
 
 from app import llm
@@ -131,3 +132,45 @@ def test_claude_without_on_delta_is_unchanged(monkeypatch):
     monkeypatch.setattr(llm, "_bedrock", lambda s, m, model=None, on_delta=None: (seen.setdefault("on_delta", on_delta), ("ok", {}))[1])
     text, _ = llm.claude("sys", [{"role": "user", "content": "hi"}])
     assert text == "ok" and seen["on_delta"] is None
+
+
+# -- FIX 3: model-stall guard — a stream that goes silent mid-generation aborts fast ---------------
+
+
+class _StallingStream:
+    """A converse_stream result that yields a few tokens, then STALLS (blocks longer than the stall
+    window) — the silent-socket failure the guard must catch without hanging."""
+    def __init__(self, stall_for):
+        self._stall = stall_for
+
+    def __iter__(self):
+        yield {"contentBlockDelta": {"delta": {"text": "thinking "}}}
+        yield {"contentBlockDelta": {"delta": {"text": "out loud "}}}
+        time.sleep(self._stall)   # model went quiet — no more tokens
+        yield {"contentBlockDelta": {"delta": {"text": "too late"}}}
+
+
+def test_stall_guard_aborts_a_stalled_stream_fast():
+    # No token for `stall_seconds` -> LLMError quickly, NOT a hang until the stream un-stalls.
+    client = _FakeStreamClient(_StallingStream(stall_for=10))
+    got = []
+    t0 = time.monotonic()
+    try:
+        llm._bedrock_stream(client, {}, got.append, stall_seconds=0.3)
+        assert False, "expected the stall guard to raise"
+    except llm.LLMError as e:
+        assert "stalled" in str(e)
+    elapsed = time.monotonic() - t0
+    assert elapsed < 5, "must abort near the stall window (%.2fs), not wait out the 10s stall" % elapsed
+    assert got == ["thinking ", "out loud "]  # the tokens that DID arrive were delivered first
+
+
+def test_stall_guard_lets_a_healthy_stream_through():
+    # A stream that keeps producing within the window completes normally (guard never fires).
+    client = _FakeStreamClient([
+        {"contentBlockDelta": {"delta": {"text": "a"}}},
+        {"contentBlockDelta": {"delta": {"text": "b"}}},
+        {"metadata": {"usage": {"inputTokens": 3, "outputTokens": 2}}},
+    ])
+    text, usage = llm._bedrock_stream(client, {}, lambda _t: None, stall_seconds=0.5)
+    assert text == "ab" and usage == {"input_tokens": 3, "output_tokens": 2}

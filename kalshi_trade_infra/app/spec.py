@@ -184,20 +184,25 @@ Your code defines ONE function:
       # the bid). Unlisted at settlement = held to settlement. You buy the ask / sell the bid and
       # pay Kalshi fees exactly like a DSL spec.
 Allowed imports: math, cmath, statistics, random, itertools, functools, collections, heapq,
-bisect, operator, decimal, fractions, array, and the scientific stack numpy, scipy,
-sklearn (scikit-learn) - so you can write real quant/ML/stat models, not just loops (pandas /
-statsmodels are available if installed; an import of a missing library fails closed). NO
+bisect, operator, decimal, fractions, array, pickle, base64, and the scientific stack numpy,
+scipy, sklearn (scikit-learn), statsmodels, xgboost, lightgbm, arch - so you can write real
+quant/ML/stat models, not just loops, and a full sklearn/xgboost FIT works end-to-end (these
+libraries may pull in whatever standard-library helpers they need at runtime; an import of a
+library that isn't installed fails closed). NO
 file/network/OS access, and no dunder access; the code runs sealed off from the DB and keys.
 Heavier deep-learning libraries (torch/tensorflow) are not installed. Keep it deterministic
 and pure over the window you are handed.
 
 TRAINING A MODEL (ML) — fit once on research, freeze, then predict. If your edge needs a
-LEARNED model (a logistic/ridge/tree classifier, a calibration map, engineered features), add a
-SECOND function:
+LEARNED model (logistic/ridge, a random forest or gradient-boosted tree ensemble, an SVM/kernel,
+a calibration map, engineered features), add a SECOND function:
   def fit(window):
       # same window shape as signals(). Train your model on THIS research window ONLY and
-      # RETURN a JSON-serializable params object: coefficients/intercepts/thresholds, or a
-      # whole model pickled+base64'd into a string. Keep it under ~256 KB.
+      # RETURN a JSON-serializable params object. A few numbers can go back directly
+      # (coefficients/intercepts/thresholds); a whole fitted estimator that cannot round-trip as
+      # numbers (random forest, GBM, ensemble, kernel) goes back pickled+base64'd into a string
+      # (import pickle, base64 are permitted). Keep the serialized params under ~256 KB — so keep
+      # a forest modest (n_estimators x max_depth small) or the freeze is rejected.
       return params
   def signals(window):
       params = window["params"]   # the FROZEN params fit() returned on the research window
@@ -209,6 +214,38 @@ to use a trained model honestly: a model that fits inside signals() would re-fit
 data and its "edge" would be fake. There is NO storage that persists between fit() and signals()
 other than the params you return — that is deliberate, so your model can never peek past the
 research window. A pure-rule strategy omits fit() entirely (unchanged).
+Example — a fitted RandomForest, frozen and reloaded (any sklearn/xgboost/lightgbm estimator
+round-trips the same way; a few coefficients would skip the pickle and return numbers directly):
+  import numpy as np, pickle, base64
+  from sklearn.ensemble import RandomForestClassifier
+  def fit(window):
+      X, y = _rows(window)      # build (features, label) rows from the frames your mechanism uses
+      model = RandomForestClassifier(n_estimators=60, max_depth=4, random_state=0).fit(X, y)
+      return {"model": base64.b64encode(pickle.dumps(model)).decode()}
+  def signals(window):
+      model = pickle.loads(base64.b64decode(window["params"]["model"]))
+      # ...model.predict_proba(features) per frame; emit picks where it beats the mid net of fees.
+EVENT / NON-PRICE MARKETS (sports, weather, outcome-settled): the built-in `gbm` is a continuous-
+price model and does NOT apply — `code` + fit() is the first-class tool, NOT a last resort. There
+is no strike/spot; you have the contract's own price/book features and its result. A canonical
+shape is a RECALIBRATION of the market's own mid (learn where the crowd is biased on the research
+fold, then bet that correction out of sample):
+  import numpy as np
+  from sklearn.linear_model import LogisticRegression
+  def fit(window):
+      X, y = [], []
+      for fr in window["frames"]:
+          for c in fr["contracts"]:
+              mid = (c["yes_bid"] + c["yes_ask"]) / 2.0            # the market's own probability
+              X.append([mid, c["features"].get("tte_min", 0.0)])    # + any feature this market HAS
+              y.append(1 if window.get("results", {}).get(c["ticker"]) == "yes" else 0)
+      model = LogisticRegression().fit(np.array(X), np.array(y))    # P(YES) vs mid + regime
+      return {"coef": model.coef_.tolist(), "intercept": model.intercept_.tolist()}
+  def signals(window):
+      w = np.array(window["params"]["coef"][0]); b = window["params"]["intercept"][0]
+      # per frame: p = sigmoid(w·[mid, tte] + b); BUY yes where p - mid clears fees, no where mid - p does.
+  # (Swap LogisticRegression for a Poisson/Bradley-Terry/RandomForest as the mechanism needs — same
+  # fit→freeze→predict shape. A model is scored on data it never saw, so only real edge survives.)
 
 FREE EXTERNAL DATA (optional) — if your edge needs an outside series (a macro series, a rate, a
 correlated price), add a top-level "datasets" list to the spec:

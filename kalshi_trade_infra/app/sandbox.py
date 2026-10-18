@@ -208,6 +208,7 @@ STRATEGY_MAX_PARAMS = 256_000       # chars of the JSON-serialized frozen params
 STRATEGY_ALLOWED_IMPORTS = (
     "math", "cmath", "statistics", "random", "itertools", "functools", "collections",
     "heapq", "bisect", "operator", "decimal", "fractions", "array", "json", "re", "datetime",
+    "pickle", "base64",   # serialize a fitted model (RF/GBM/ensemble) into fit()'s frozen params
     "numpy", "pandas", "scipy", "sklearn", "statsmodels", "joblib",
     "xgboost", "lightgbm", "arch", "cvxpy", "torch", "tensorflow",
 )
@@ -345,9 +346,18 @@ for _m in (_job.get("preimport") or list(allowed)):
     except Exception:
         pass
 
+# Allow the scientific allowlist PLUS the standard library at runtime. A real sklearn/xgboost fit
+# lazily imports stdlib helpers (secrets, uuid, hashlib, threading, ...) the strategy never names,
+# so a bare allowlist broke EVERY fitted model, not just the exotic ones. The import gate is
+# defense-in-depth, NOT the boundary (see the module docstring: numpy already binds os/ctypes, and
+# the OS kernel sandbox — no network, no secrets, writes confined to scratch — is what contains the
+# child). So permitting stdlib here unbreaks ML fits without weakening the real boundary; the STATIC
+# gate (validate_strategy_code) still restricts what the strategy SOURCE may import to the allowlist.
+_stdlib = frozenset(getattr(sys, "stdlib_module_names", ()))
 _orig_import = _b.__import__
 def _gate(name, *a, **k):
-    if name.split(".")[0] not in allowed:
+    root = name.split(".")[0]
+    if root not in allowed and root not in _stdlib:
         raise ImportError("import of %r is blocked in the strategy sandbox" % name)
     return _orig_import(name, *a, **k)
 

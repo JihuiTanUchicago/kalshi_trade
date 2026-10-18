@@ -448,11 +448,16 @@ def claim_run(conn, worker_id: str) -> Optional[Dict]:
 
 def fail_abandoned_runs(cur, stale_after: timedelta) -> int:
     """A run whose worker stopped heart-beating is failed, not retried: a
-    retry would silently spend the user's model budget twice."""
+    retry would silently spend the user's model budget twice. The message names the silence window
+    and the likely cause so a reaped run is diagnosable, not a generic 'stopped responding'."""
+    secs = int(stale_after.total_seconds())
+    window = ("%d min" % round(secs / 60.0)) if secs >= 90 else ("%ds" % secs)
+    msg = ("No activity for over %s — the session froze (a stalled model call, data load, or "
+           "backtest) and was stopped so it wouldn't hang. Start it again." % window)
     cur.execute(
-        """UPDATE app_agent_runs SET status='failed', error='The agent stopped responding.', finished_at=%s
+        """UPDATE app_agent_runs SET status='failed', error=%s, finished_at=%s
            WHERE status='running' AND heartbeat_at < %s""",
-        (now_utc(), now_utc() - stale_after),
+        (msg, now_utc(), now_utc() - stale_after),
     )
     return cur.rowcount
 

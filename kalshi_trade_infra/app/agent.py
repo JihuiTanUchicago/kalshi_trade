@@ -52,10 +52,10 @@ _LOG = logging.getLogger(__name__)
 DIRECTIONS: Dict[str, Dict[str, str]] = {
     "volatility": {
         "label": "Volatility mispricing",
-        "brief": "Does the market over- or under-price how far BTC can move before settlement?",
+        "brief": "Does the market over- or under-price how far the underlying can move before settlement?",
     },
-    "momentum": {"label": "Momentum", "brief": "Do recent BTC moves keep going into settlement?"},
-    "mean_reversion": {"label": "Mean reversion", "brief": "Do sharp BTC moves snap back before settlement?"},
+    "momentum": {"label": "Momentum", "brief": "Do recent moves in the underlying keep going into settlement?"},
+    "mean_reversion": {"label": "Mean reversion", "brief": "Do sharp moves snap back before settlement?"},
     "near_expiry": {"label": "Near expiry", "brief": "Are contracts mispriced in the last minutes before settlement?"},
     "longshots": {
         "label": "Favorites & longshots",
@@ -130,13 +130,25 @@ DATA_LOAD_TIMEOUT = max(30, int(os.getenv("TAU_DATA_LOAD_TIMEOUT", "180")))
 # thesis never touches held-out data, never inflates the trial count, and stays bounded by spend.
 THESIS_MAX_STEPS = max(1, int(os.getenv("TAU_THESIS_MAX_STEPS", "20")))
 
+# Uniform anti-stuck: a per-run background beater keeps the DB heartbeat fresh every
+# RUN_HEARTBEAT_EVERY seconds through any legitimately long SILENT phase (a big backtest, one model
+# call) so the tightened watchdog (worker.ABANDONED_AFTER) never false-kills a working run — but
+# only while the MAIN thread showed progress within RUN_STALL_SECONDS, so a genuinely frozen run
+# stops being beaten and IS reaped. Together they bound time-to-kill a wedged run to about
+# RUN_STALL_SECONDS + ABANDONED_AFTER regardless of WHERE it froze (load, model, backtest). Env-tunable.
+RUN_HEARTBEAT_EVERY = max(5, int(os.getenv("TAU_RUN_HEARTBEAT_EVERY", "15")))
+RUN_STALL_SECONDS = max(30, int(os.getenv("TAU_RUN_STALL_SECONDS", "150")))
+
 RESEARCH_SYSTEM = """You are a quantitative researcher at a disciplined prediction-market
-fund, trading Kalshi Bitcoin binary contracts (YES pays $1 if BTC settles above the strike,
-priced 0-100c and read as a probability). Every idea is expressed as a strategy spec our
-backtester runs - and the spec language is richer than a threshold rule: you can propose a
-LEARNED model (a logistic score fit on the research data, or a favorite-longshot recalibration
-of the market's own price) as well as the house GBM model, and for anything those cannot express
-you may write an arbitrary pure-Python/ML strategy (the `code` field). You are a SCIENTIST, not
+fund, trading Kalshi binary contracts (YES pays $1 if the event settles, NO pays $1 if it does
+not, priced 0-100c and read as a probability of the event). The SPECIFIC market you are
+researching - what its contracts settle on, how settlement works, which signals matter - is
+described in the user message under "Market profile"; read it and build for THAT market, not for
+any other. Every idea is expressed as a strategy spec our backtester runs - and the spec language
+is richer than a threshold rule: you can propose a LEARNED model (a logistic score fit on the
+research data, or a favorite-longshot recalibration of the market's own price) as well as the
+house GBM model (for strike-vs-underlying markets), and for anything those cannot express you may
+write an arbitrary pure-Python/ML strategy (the `code` field). You are a SCIENTIST, not
 a backtest optimizer. Your job is to find a durable, fee-surviving edge AND to say honestly when
 none is demonstrated. "No reliable edge" is a correct, valuable result. You will be judged on
 whether your STATISTICALLY-SUPPORTED strategies stay profitable on data you never saw - not on
@@ -192,30 +204,22 @@ NON-NEGOTIABLE PRINCIPLES
 - Fees are brutal and state-dependent: Kalshi's taker fee is 0.07*price*(1-price) per
   contract, maximal (1.75c) at mid price. A thin edge on a 50c contract is dead on arrival.
   Prefer edges away from mid, or that trade rarely with conviction.
-- The GBM-digital fair value you are given is, on this venue's history, slightly WORSE
-  calibrated than simply trusting the Kalshi mid (log loss 0.403 vs 0.384). So an
-  unconditional "the model says it's mispriced" edge is almost certainly a fee-and-noise
-  artifact. Real edge is CONDITIONAL - a specific regime, microstructure state, or time.
+- The market's own mid is a STRONG baseline. Any "fair value" you compute (a model price, a
+  recalibration) has to beat the mid out of sample, and on this venue an unconditional "the model
+  says it's mispriced" edge is almost certainly a fee-and-noise artifact. Real edge is CONDITIONAL
+  - a specific regime, microstructure state, or time. (The Market profile notes how well the house
+  model is calibrated on THIS market, when that is known.)
 - You will PRE-REGISTER each hypothesis before it is tested. You may NOT change the
   hypothesis to fit results you later see. You will not see validation or holdout numbers at
   all - only a classification label (promising / statistically-supported / inconclusive /
   rejected). Do not ask for the held-out numbers; the system will not give them.
-- Few robust rules beat many fragile ones. 100 correlated BTC-momentum variants are worth
-  less than one genuinely novel, uncorrelated idea.
+- Few robust rules beat many fragile ones. 100 correlated variants of one momentum rule are
+  worth less than one genuinely novel, uncorrelated idea.
 
-KALSHI-BTC-SPECIFIC ANGLES WORTH A MECHANISM (not an exhaustive list)
-- Settlement mechanics: the contract settles on a specific index at a specific instant.
-  Mispricing of terminal pinning near the strike in the last minutes; the discreteness of
-  1c ticks vs a continuous fair value.
-- Microstructure: order-book imbalance and recent trade flow (available as features) can
-  lead the mid for seconds-to-minutes; does the book systematically lag the Coinbase spot?
-- Behavioral / flow: retail longshot bias (overpaying for cheap far-OTM "lottery" YES/NO),
-  favorite-longshot distortion near 5c and 95c; round-number strike magnetism; US-open vs
-  Asia-overnight participation shifts (hour-of-day regimes).
-- Basis / funding: Kalshi's implied probability vs perp funding / spot-perp basis as a
-  sentiment signal; BRTI-vs-Coinbase basis dislocations.
-- Volatility: does the market systematically over- or under-price realized vol at specific
-  horizons (e.g. the last 3-8 minutes of a 15-minute contract)?
+MARKET-SPECIFIC ANGLES: the "Market profile" block in the user message lists the settlement
+mechanics and the angles that actually apply to THIS market (its underlying if any, which
+features it populates, the behavioral/microstructure/seasonal effects that fit it). Ground your
+mechanism in that profile — do not reach for signals the profile says this market does not have.
 
 CROSS-CONTRACT RELATIVE VALUE (optional — single-contract is the default)
 Most edges are single-contract. But when the mechanism is a RELATIVE mispricing between two
@@ -580,6 +584,93 @@ def _cross_market_options(market: str) -> str:
             "relative mechanism; otherwise stay single-contract." % (market, labels))
 
 
+# Shared tail for every NON-PRICE (event-settled) market profile. The built-in gbm model is a
+# continuous-price model, so it genuinely can't price these — but that is NOT a dead end: `code` +
+# fit(window) is the first-class tool here, and these are the model families that fit event markets.
+# (This kills the live failure where the agent rejected gbm for an NHL market and then gave up on
+# `code` as an unknown last resort instead of writing a Poisson/logit/Bradley-Terry fit.)
+_EVENT_MODEL_NOTE = """
+MODELS FOR THIS MARKET: the built-in `gbm` fair value is a continuous-underlying-price model, so it
+does NOT apply here — do NOT try to force it, and its absence is NOT a reason to call a thesis dead.
+Your FIRST-CLASS tool is a `code` + fit(window) strategy (fit() TRAINS on the research fold and
+returns frozen params; signals() rebuilds and PREDICTS — never refits). `code` is not an unknown
+last resort: it is where event models live. Reach for a family that matches the mechanism, e.g.:
+ - a Poisson / negative-binomial rate model on scoring or event counts (statsmodels);
+ - a logistic / Bradley-Terry / paired-comparison model of the outcome (statsmodels/sklearn);
+ - a recalibration of the market's OWN moneyline/mid (favorite-longshot), fit on research;
+ - any sklearn/xgboost estimator (logit, random forest, gradient boosting) over the features this
+   market actually populates.
+Build only on features the coverage below shows are non-null for THIS market; `model.kind`
+logistic/calibration also work when their features are populated, but gbm does not."""
+
+
+def _market_profile(market: str) -> str:
+    """The per-run, market-AWARE half of the research brief: what THIS Kalshi market settles on,
+    how settlement works, and the angles/features that actually apply to it. Injected into the
+    proposer prompt so a non-BTC run is never told it trades Bitcoin (the old hardcoded framing)
+    and a BTC run reads exactly as richly as before. Branches on the market's own metadata
+    (kind / underlying / category), the single source of truth in markets.py."""
+    m = MARKETS[market]
+    head = 'Market profile — "%s" (spec market "%s", series %s, %s).' % (
+        m.label, m.key, m.series, m.category or "uncategorized")
+    if m.kind == "spot":
+        return head + """
+This is a CONTINUOUS-PRICE instrument (a Bittensor subnet alpha token priced in TAO), NOT a
+binary: there is no strike, expiry or YES/NO settlement. The backtest trades it long/flat on the
+price series itself. Angles that fit: momentum/trend and mean-reversion on the token's own
+returns, volatility regimes, and basis vs the TAO/USD rate. There is no order book or Kalshi
+mid here, so microstructure/longshot angles do NOT apply. (Execution is research-only.)"""
+    if m.underlying:   # strike-vs-spot crypto binary (BTC/ETH/SOL/…)
+        coin = m.underlying.split("-")[0]
+        gbm = ("The GBM-digital fair value you get is, on BTC history, slightly WORSE calibrated "
+               "than the Kalshi mid (log loss 0.403 vs 0.384), so an unconditional 'the model says "
+               "it's mispriced' edge is a fee/noise artifact." if market.startswith("btc")
+               else "A house GBM-digital fair value is available (strike vs %s spot), but treat the "
+                    "Kalshi mid as the baseline to beat — an unconditional model-mispricing edge is "
+                    "usually fee/noise." % coin)
+        return head + """
+YES pays $1 if %s settles above the strike at the contract's settlement instant. Contracts are
+priced strike-vs-spot off %s's Coinbase feed, so you have spot, returns, realised vol, moneyness
+and z_score, PLUS order-book/microstructure features. %s
+Angles worth a mechanism (not exhaustive):
+- Settlement mechanics: terminal pinning near the strike in the last minutes; 1c tick discreteness
+  vs a continuous fair value.
+- Microstructure: order-book imbalance and recent trade flow can lead the mid for seconds-to-
+  minutes; does the book lag %s spot?
+- Behavioral / flow: retail longshot bias (overpaying for cheap far-OTM lottery YES/NO), favorite-
+  longshot distortion near 5c/95c, round-number strike magnetism, US-open vs Asia-overnight regimes.
+- Basis / funding: implied probability vs perp funding / spot-perp basis; cross-coin ladder lead-lag.
+- Volatility: does the market over/under-price realised vol at specific horizons (e.g. the last
+  3-8 minutes of a 15-minute contract)?""" % (coin, coin, gbm, coin)
+    cat = (m.category or "").lower()
+    if "sport" in cat:
+        return head + """
+This is a per-game MONEYLINE binary: YES pays $1 if the named team/side wins; it settles on the
+game RESULT, not a price. There is NO underlying price feed, strike, moneyness or vol — the spot/
+GBM model does NOT apply. It trades on the contract's OWN price and order-book/trade-flow features
+only (many micro features may be sparse — build only on what the coverage shows is populated).
+Angles worth a mechanism: favorite-longshot bias (heavy favorites vs longshots systematically
+mis-priced), in-game momentum as the price walks toward 0/100 near the final whistle, over-reaction
+to a scoring swing, and liquidity/spread capture when flow is balanced. News of lineups/injuries
+re-prices the line before settlement.""" + _EVENT_MODEL_NOTE
+    if "weather" in cat or "climate" in cat:
+        return head + """
+This is a daily weather binary (e.g. "high temperature >= X"): YES pays $1 if the observed daily
+figure clears the threshold. It settles on the published observation, so there is NO tradable spot
+series, strike-vs-spot model, or vol feature — it trades on the contract's own price and any
+order-book features present. Angles worth a mechanism: the market's implied probability vs the
+public forecast and its diurnal update, seasonal/climatological base rates for the date, favorite-
+longshot bias on near-certain vs tail thresholds, and drift as the settlement day approaches.""" + _EVENT_MODEL_NOTE
+    # Any other outcome-settled catalog binary (Economics, Companies, Health, World, …).
+    return head + """
+This is an outcome-settled YES/NO binary: it pays $1 if the published event occurs. There is NO
+underlying price feed, strike or vol — the spot/GBM model does NOT apply; it trades on the
+contract's own price and whatever order-book features the coverage shows are populated. Angles
+worth a mechanism: favorite-longshot / calibration bias (cheap tails overpriced, near-certain
+underpriced), drift and information flow as the resolution date approaches, and over-reaction to
+scheduled releases. Ground the mechanism in who misprices this specific event and why.""" + _EVENT_MODEL_NOTE
+
+
 def _research_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], count: int) -> str:
     idea = (run.get("prompt") or "").strip() or "Find any durable, fee-surviving edge you can justify."
     brief = _brief()
@@ -588,6 +679,8 @@ def _research_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], count:
         d = DIRECTIONS[run["direction"]]
         lens = "\nOptional lens to consider: %s - %s" % (d["label"], d["brief"])
     return """{brief}
+
+{profile}
 
 The user's idea: {idea}{lens}{cross_options}
 
@@ -618,6 +711,7 @@ or a `code` strategy with fit(window) — classical stat or ML, your choice).
 Reply with the ONE JSON object specified in your instructions (the full "hypotheses" list with
 mechanism, falsification_criteria, negative_control, null/alt hypotheses, min_sample and spec).""".format(
         brief=brief,
+        profile=_market_profile(run["market"]),
         idea=idea[:1000],
         lens=lens,
         cross_options=_cross_market_options(run["market"]),
@@ -1163,6 +1257,40 @@ def _dream_cadence_self_check() -> None:
         A.repo.latest_dream_event, A.repo.count_runs = orig_latest, orig_count
 
 
+def _heartbeat_pump(run_id: int, progress: List[float], stop: threading.Event) -> None:
+    """Background liveness beater for one research run (see RUN_HEARTBEAT_EVERY/RUN_STALL_SECONDS).
+    Beats the run's DB heartbeat on a fixed cadence AS LONG AS the main thread has made progress
+    within RUN_STALL_SECONDS, so a long legit phase stays alive while a frozen one goes quiet and is
+    reaped. Uses its OWN DB connection — never the run's cursor, which belongs to the main thread and
+    would desync if two threads shared it. Best-effort end to end: if it can't open a connection
+    (e.g. unit tests with no DB) it simply exits, and the main thread's event/checkpoint beats still
+    cover the common case. ponytail: one extra connection + daemon per run, negligible beside a run's
+    backtests/model calls; it's the one place that makes 'no session ever stuck' uniform."""
+    try:
+        from data_pipeline.common import get_db_conn
+        hb_conn = get_db_conn()
+    except Exception:
+        return
+    try:
+        while not stop.wait(RUN_HEARTBEAT_EVERY):
+            if time.monotonic() - progress[0] > RUN_STALL_SECONDS:
+                continue  # main thread silent too long -> stop beating so the watchdog reaps it
+            try:
+                with hb_conn.cursor() as c:
+                    repo.heartbeat(c, run_id)
+                hb_conn.commit()
+            except Exception:
+                try:
+                    hb_conn.rollback()
+                except Exception:
+                    pass
+    finally:
+        try:
+            hb_conn.close()
+        except Exception:
+            pass
+
+
 def run_research(
     conn,
     run: Dict,
@@ -1185,8 +1313,12 @@ def run_research(
     policy = dreaming.current_policy(cur, user_id)
 
     paused_at = [0.0]  # when the current pause began (0 = not paused); list so the closure can mutate it
+    # Liveness clock for the background beater: the main thread stamps it on every real step so the
+    # beater knows the run is progressing (and a frozen main thread lets it go stale -> reaped).
+    progress = [time.monotonic()]
 
     def log(kind: str, message: str, data: Optional[Dict] = None) -> None:
+        progress[0] = time.monotonic()
         repo.add_event(cur, run_id, kind, message, data)
 
     def checkpoint() -> None:
@@ -1196,6 +1328,7 @@ def run_research(
         cancel, and (3) holds here while the user has the session paused — resuming picks up exactly
         where it left off (same in-memory state, same worker)."""
         nonlocal cur
+        progress[0] = time.monotonic()
         cur = _reconnect(conn, cur)
         status = repo.heartbeat(cur, run_id)
         if status == "cancelled":
@@ -1216,6 +1349,11 @@ def run_research(
             paused_at[0] = 0.0
             log("resumed", "Resumed.")
 
+    # Start the background liveness beater: keeps the heartbeat fresh through long silent phases so
+    # the tight watchdog only reaps a genuinely frozen run (see _heartbeat_pump). Stopped in finally.
+    _hb_stop = threading.Event()
+    threading.Thread(target=_heartbeat_pump, args=(run_id, progress, _hb_stop),
+                     name="research-heartbeat-%s" % run_id, daemon=True).start()
     try:
         # Emit the INSTANT the run is claimed, before any expensive work, so a healthy startup and a
         # hung one no longer look identical (both used to be silent until the first "Loaded" event,
@@ -1347,6 +1485,8 @@ def run_research(
             _bill(conn, user_id, usage, run_id, choice.model_id)  # genuine failures still bill; an RDS blip must not
         if not isinstance(e, LLMError):
             raise
+    finally:
+        _hb_stop.set()  # stop the background heartbeat beater on every exit path
 
 
 def _span_words(ds: backtest.Dataset) -> str:

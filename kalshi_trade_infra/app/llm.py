@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import re
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
@@ -25,6 +27,11 @@ MODEL = os.getenv("APP_AGENT_MODEL", "claude-sonnet-5-5")
 # the model actually uses it. Env-overridable so the box can tune without a redeploy.
 MAX_TOKENS = int(os.getenv("APP_AGENT_MAX_TOKENS", "16000"))
 TIMEOUT_SECONDS = 180
+# Inter-token stall guard for a STREAMING model call: if no delta arrives for this long the call is
+# aborted with an LLMError the research loop handles, instead of hanging on a silent socket until the
+# run-level watchdog reaps the whole run. A healthy stream emits tokens continuously (sub-second
+# gaps), so a multi-minute gap is a genuine stall, never slow-but-working generation. Env-tunable.
+STREAM_STALL_SECONDS = float(os.getenv("TAU_STREAM_STALL_SECONDS", "120"))
 
 # "bedrock" bills Claude through AWS (uses AWS credits, no Anthropic key, auth
 # via the instance role); anything else uses the Anthropic API directly.
@@ -76,16 +83,64 @@ def _is_sink_connection_error(exc: BaseException) -> bool:
     return (type(exc).__module__ or "").split(".", 1)[0] == "pymysql"
 
 
-def _bedrock_stream(client, kwargs: Dict[str, Any], on_delta: "Callable[[str], None]") -> "tuple[str, Dict]":
+def _safe_close_stream(resp) -> None:
+    """Best-effort close of a converse_stream response so a pump thread blocked on its socket read
+    unblocks. botocore's EventStream has no public close(), so this reaches the underlying raw
+    stream if present and otherwise no-ops — the orphaned daemon then just dies on its own read
+    timeout. ponytail: a lingering daemon socket for <=read_timeout is a bounded, rare cost (only on
+    a genuine stall); a cleaner cancel would need botocore's private stream API."""
+    try:
+        stream = resp.get("stream") if isinstance(resp, dict) else None
+        for obj in (stream, getattr(stream, "_raw_stream", None), getattr(stream, "_event_stream", None)):
+            close = getattr(obj, "close", None)
+            if callable(close):
+                close()
+                return
+    except Exception:
+        pass
+
+
+def _bedrock_stream(client, kwargs: Dict[str, Any], on_delta: "Callable[[str], None]",
+                    stall_seconds: float = STREAM_STALL_SECONDS) -> "tuple[str, Dict]":
     """converse_stream: push text deltas to on_delta as they arrive, return (full text, usage).
     A sink hiccup (a dropped render feed) must never kill generation, so on_delta is isolated —
     EXCEPT a DB connection desync, which is re-raised so the caller can reconnect rather than
     reuse a broken socket. ponytail: no in-function retry; a stream timeout is retried by _bedrock,
-    creation/other errors fall back to the non-streaming converse path there."""
+    creation/other errors fall back to the non-streaming converse path there.
+
+    STALL GUARD: the blocking event read runs in a daemon pump thread that enqueues events; we
+    consume them here with a per-token timeout, so a silently stalled stream aborts with an LLMError
+    after `stall_seconds` instead of hanging until the run-level watchdog. on_delta and usage are
+    handled HERE (the consumer thread), so the sink's DB writes stay on the caller's thread exactly
+    as before — the pump thread only moves bytes, never touches the DB."""
     resp = client.converse_stream(**kwargs)
+    q: "queue.Queue" = queue.Queue()
+    _END = object()
+
+    def _pump() -> None:
+        try:
+            for event in resp.get("stream", []):
+                q.put(("ev", event))
+        except BaseException as e:  # botocore stream/timeout error: hand it to the consumer to raise
+            q.put(("err", e))
+            return
+        q.put(("done", _END))
+
+    threading.Thread(target=_pump, name="bedrock-stream-pump", daemon=True).start()
     parts: List[str] = []
     usage = {"input_tokens": 0, "output_tokens": 0}
-    for event in resp.get("stream", []):
+    while True:
+        try:
+            kind, payload = q.get(timeout=stall_seconds)
+        except queue.Empty:
+            _safe_close_stream(resp)
+            raise LLMError("the model stalled mid-stream: no token for %ds. Aborting the call so the "
+                           "run can recover instead of hanging." % int(stall_seconds))
+        if kind == "done":
+            break
+        if kind == "err":
+            raise payload  # a real botocore error — _bedrock's retry/fallback decides what to do
+        event = payload
         if "contentBlockDelta" in event:
             text = (event["contentBlockDelta"].get("delta") or {}).get("text", "")
             if text:
@@ -144,6 +199,11 @@ def _bedrock(system: str, messages: List[Dict[str, str]], model: "Optional[str]"
                 if text.strip():
                     return text, usage
                 break  # empty stream -> let the non-streaming converse produce the reply
+            except LLMError:
+                # A mid-stream STALL (the stall guard fired). Falling back to the non-streaming
+                # converse would just stall again on its own long read timeout, so abort the call
+                # and let the research loop handle the LLMError — fast, clean, not a 10-min hang.
+                raise
             except stream_timeouts:
                 if attempt < 3:
                     time.sleep(2 ** (attempt + 1))
