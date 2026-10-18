@@ -1,0 +1,58 @@
+name: Deploy web app
+
+# Redeploy the Tau customer app to the web box WITHOUT needing the AWS key locally.
+# Manual trigger only: GitHub restricts "Run workflow" to collaborators who have write (push)
+# access to the repo — i.e. the same people who can push to main — so this is the push-to-main-
+# gated redeploy. It assumes a short-lived AWS role via GitHub OIDC (no long-lived keys stored).
+# It reuses scripts/deploy_web.sh verbatim, so CI and a local deploy run the identical, rollback-
+# guarded path (whole-app tar -> S3 -> SSM on-box extract/compile/schema/restart -> curl 200 ->
+# CloudFront invalidate). One-time AWS setup + the access-key alternative: scripts/DEPLOY_WORKFLOW_SETUP.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to deploy (branch, tag, or SHA)"
+        required: false
+        default: main
+      invalidate:
+        description: "Invalidate CloudFront after deploy"
+        type: boolean
+        default: true
+
+# Never let two deploys race the box; a second run waits for the first to finish.
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+permissions:
+  id-token: write   # mint the OIDC token used to assume the AWS deploy role
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Optional: configure required reviewers on this environment in repo Settings to add a
+    # human approval gate before any deploy. Undefined => no protection, workflow still runs.
+    environment: production
+    steps:
+      - name: Check out the ref being deployed
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0   # deploy_web.sh uses `git archive` / `git rev-parse` on the ref
+
+      - name: Assume the AWS deploy role (OIDC, no stored keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Deploy to the web box
+        env:
+          AWS_PROFILE: ""   # no local named profile in CI -> use the OIDC env credentials
+        run: |
+          set -euo pipefail
+          args=(--ref "${{ inputs.ref }}")
+          if [ "${{ inputs.invalidate }}" != "true" ]; then args+=(--no-invalidate); fi
+          bash kalshi_trade_infra/scripts/deploy_web.sh "${args[@]}"
