@@ -717,6 +717,52 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 .hx-stats dt { font-family: var(--f-nar); font-size: 9.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); }
 .hx-stats dd { margin: 1px 0 0; font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; }
 
+/* --- RSI loop observatory: the self-improving cycle + live phase + discovery tree --- */
+.rsiobs { border: 1px solid var(--rule); background: var(--stock-raised); padding: 13px 16px 15px; margin-bottom: 16px; }
+.rsiobs-head { display: flex; align-items: baseline; justify-content: space-between; gap: 4px 12px; flex-wrap: wrap; }
+.rsiobs-head h2 { font-family: var(--f-nar); font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+.rsiobs-live { margin-left: auto; }
+.rsiobs-live { display: inline-flex; align-items: center; gap: 7px; font-family: var(--f-nar); font-size: 12px; letter-spacing: .04em; color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rsiobs-pdot { width: 7px; height: 7px; border-radius: 50%; background: var(--rule-2); flex: none; }
+.rsiobs-live:not(.is-paused):not(.is-done):not(.is-wait):not(.is-stall) .rsiobs-pdot { background: var(--signal); animation: rsibeat 1.6s var(--ease) infinite; }
+.rsiobs-live.is-stall { color: var(--ink-2); }
+.rsiobs-live.is-stall .rsiobs-pdot { background: var(--ink-3); animation: rsibeat 3.4s var(--ease) infinite; }
+.rsiobs-live.is-done .rsiobs-pdot { background: var(--ink); }
+.rsiobs-live.is-paused .rsiobs-pdot { background: var(--ink-2); }
+@keyframes rsibeat { 0%, 100% { box-shadow: 0 0 0 0 var(--signal-wash); } 50% { box-shadow: 0 0 0 5px transparent; } }
+
+.rsiobs-loop { margin: 6px 0 2px; }
+.rsi-rail { display: block; width: 100%; height: auto; }
+.rsi-rail .rsi-link, .rsi-rail .rsi-arc { fill: none; stroke: var(--rule-2); stroke-width: 1.5; }
+.rsi-rail .rsi-link.is-flow, .rsi-rail .rsi-arc.is-flow { stroke: var(--signal); stroke-dasharray: 5 6; animation: sysflow .7s linear infinite; }
+.rsi-rail .rsi-dot { fill: var(--stock-raised); stroke: var(--rule-2); stroke-width: 1.8; transition: fill .3s var(--ease), stroke .3s var(--ease); }
+.rsi-rail .rsi-ring { fill: none; stroke: var(--signal); stroke-width: 1.6; opacity: 0; transform-box: fill-box; transform-origin: center; }
+.rsi-rail .is-done .rsi-dot { fill: var(--ink); stroke: var(--ink); }
+.rsi-rail .is-active .rsi-dot { fill: var(--signal); stroke: var(--signal); }
+.rsi-rail .is-active .rsi-ring { opacity: 1; animation: rsiring 1.8s var(--ease) infinite; }
+@keyframes rsiring { 0% { opacity: .55; transform: scale(.68); } 70%, 100% { opacity: 0; transform: scale(1.18); } }
+.rsi-labels { display: flex; }
+.rsi-lab { flex: 1; text-align: center; font-family: var(--f-nar); font-size: 11.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); transition: color .3s var(--ease); }
+.rsi-lab.is-done { color: var(--ink-2); }
+.rsi-lab.is-active { color: var(--ink); }
+.rsiobs-phase { margin-top: 8px; font-size: 13px; color: var(--ink); }
+
+.rsiobs-tree { margin: 13px 0 0; border-top: 1px solid var(--rule); padding-top: 11px; }
+.rsiobs-tree figcaption { font-family: var(--f-nar); font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 4px; }
+.rsiobs-tree figcaption span { margin-left: 7px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--ink-3); }
+.rsiobs-treewrap { max-width: 100%; overflow: auto; overscroll-behavior: contain; max-height: 300px; }
+.rsiobs-treesvg { display: block; }
+.rsi-tedge { fill: none; stroke: var(--rule-2); stroke-width: 1.4; }
+.rsi-tnode circle { fill: var(--stock-raised); stroke: var(--rule-2); stroke-width: 1.8; }
+.rsi-tnode.is-pass circle { fill: var(--ink); stroke: var(--ink); }
+.rsi-tnode.is-rej circle { fill: var(--stock-sunk); stroke: var(--ink-3); }
+.rsi-tnode.is-void circle { fill: var(--signal-wash); stroke: var(--signal); }
+.rsi-tnode.pop { animation: rsipop .42s var(--ease) both; transform-box: fill-box; transform-origin: center; }
+@keyframes rsipop { from { opacity: 0; transform: scale(.35); } to { opacity: 1; transform: scale(1); } }
+
+.log > li.log-empty { display: block; grid-column: 1 / -1; color: var(--ink-3); font-family: var(--f-nar); font-size: 12.5px; letter-spacing: .02em; padding: 16px 2px; border-bottom: 0; }
+.rsiobs.is-quiet .rsi-rail .is-flow { animation-play-state: paused; opacity: .5; }
+
 @media (prefers-reduced-motion: reduce) {
   .log.stream { scroll-behavior: auto; }
   .log.stream .ln.in { animation: none; }
@@ -724,6 +770,10 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
   .caret { animation: none; }
   .log.stream .lane-think .node::after { animation: none; }
   .hx-more > summary::before { transition: none; }
+  .rsiobs-pdot { animation: none !important; }
+  .rsi-rail .rsi-link.is-flow, .rsi-rail .rsi-arc.is-flow { animation: none; stroke-dasharray: none; }
+  .rsi-rail .is-active .rsi-ring { animation: none; opacity: .5; }
+  .rsi-tnode.pop { animation: none; }
 }
 
 .sheet-doc { border: 1px solid var(--rule); background: var(--stock-raised); padding: 24px; position: relative; }

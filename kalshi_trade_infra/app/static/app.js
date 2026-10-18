@@ -1784,6 +1784,7 @@
     return {
       push(events) {
         if (!events || !events.length) return;
+        const ph = log.querySelector('.log-empty'); if (ph) ph.remove();
         const stick = first || atBottom();
         appended = 0;
         events.forEach((ev) => { try { dispatch(ev); } catch (e) { /* one bad event must not break the feed */ } });
@@ -1842,6 +1843,132 @@
     return li;
   }
 
+  // ======================================================================
+  // RSI loop observatory — the self-improving cycle, made legible and alive.
+  // A station-line of the four stages (explore → backtest → gate → dream,
+  // looping back), a current-phase + liveness readout driven off the NEWEST
+  // event's own timestamp (so "active Ns ago" is honest and flips to a quiet
+  // state on its own between polls), and — when the stream carries a
+  // parent→child hypothesis lineage — a discovery tree that grows as children
+  // branch from winners. Tolerant of unknown event kinds: a kind it doesn't
+  // know keeps the last stage lit and shows a humanised label, so the new
+  // backend phase events never break it; it just gets richer as they land.
+  // ======================================================================
+  const RSI_STAGES = [['explore', 'Explore'], ['backtest', 'Backtest'], ['gate', 'Gate'], ['dream', 'Dream']];
+  // event kind -> [loop stage, human phase label]. New kinds the backend adds just fall through.
+  const RSI_PHASE = {
+    'run-start': ['explore', 'Starting up'], 'data-loaded': ['explore', 'Data loaded'],
+    'proposing': ['explore', 'Proposing hypotheses'], 'developing-thesis': ['explore', 'Developing a thesis'],
+    'thinking': ['explore', 'Thinking it through'], 'step': ['explore', 'Working'],
+    'hypothesis': ['backtest', 'Backtesting a hypothesis'], 'challenger': ['backtest', 'Challenging the result'],
+    'gating': ['gate', 'Gating on unseen data'], 'verdict': ['gate', 'Recording the verdict'],
+    'dreaming': ['dream', 'Dreaming a better search'],
+  };
+  const SX = { explore: 80, backtest: 240, gate: 400, dream: 560 };  // viewBox-x of each station (= flex-cell centres: 12.5/37.5/62.5/87.5% of 640)
+  const prettyKind = (k) => String(k || '').replace(/[-_]/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+  // Liberal id/parent extraction so the tree survives whatever the backend names its lineage fields.
+  const hypId = (d) => d.hyp_id != null ? d.hyp_id : d.id != null ? d.id : d.node_id != null ? d.node_id : null;
+  const hypParent = (d) => d.parent_id != null ? d.parent_id : d.parent != null ? d.parent : d.parent_hyp_id != null ? d.parent_hyp_id : d.parent_title != null ? d.parent_title : null;
+
+  function rsiObservatory(host) {
+    const station = ([s]) => `<g class="rsi-st" data-stage="${s}"><circle class="rsi-ring" cx="${SX[s]}" cy="50" r="17"></circle><circle class="rsi-dot" cx="${SX[s]}" cy="50" r="7.5"></circle></g>`;
+    const link = (a, b, into) => `<line class="rsi-link" data-into="${into}" x1="${SX[a] + 18}" y1="50" x2="${SX[b] - 18}" y2="50"></line>`;
+    host.innerHTML = `
+      <div class="rsiobs-head"><h2>The RSI loop</h2>
+        <span class="rsiobs-live is-wait" data-live><span class="rsiobs-pdot"></span><span data-livetext>Spinning up…</span></span></div>
+      <div class="rsiobs-loop">
+        <svg class="rsi-rail" viewBox="0 0 640 72" role="img" aria-label="The research loop: explore, backtest, gate, dream — and back again.">
+          <path class="rsi-arc" data-into="explore" d="M560 42 C 560 6, 80 6, 80 42"></path>
+          ${link('explore', 'backtest', 'backtest')}${link('backtest', 'gate', 'gate')}${link('gate', 'dream', 'dream')}
+          ${RSI_STAGES.map(station).join('')}</svg>
+        <div class="rsi-labels">${RSI_STAGES.map(([s, l]) => `<span class="rsi-lab" data-stage="${s}">${l}</span>`).join('')}</div></div>
+      <p class="rsiobs-phase" data-phase>Waiting for the agent to start.</p>
+      <figure class="rsiobs-tree" data-tree hidden><figcaption>Discovery tree <span>how each winner seeded the next</span></figcaption>
+        <div class="rsiobs-treewrap"><svg class="rsiobs-treesvg" data-treesvg></svg></div></figure>`;
+
+    const liveWrap = host.querySelector('[data-live]'), liveText = host.querySelector('[data-livetext]');
+    const phaseEl = host.querySelector('[data-phase]'), treeFig = host.querySelector('[data-tree]'), treeSvg = host.querySelector('[data-treesvg]');
+    const groups = {}, labs = {};
+    RSI_STAGES.forEach(([s]) => { groups[s] = host.querySelector(`.rsi-st[data-stage="${s}"]`); labs[s] = host.querySelector(`.rsi-lab[data-stage="${s}"]`); });
+    const links = host.querySelectorAll('.rsi-link, .rsi-arc');
+    const fired = new Set();
+    let stage = null, lastAt = Date.now(), runState = 'queued';
+    const nodes = [], byId = new Map(), byTitle = new Map(); let hasLineage = false, lastCount = -1;
+
+    function paintStages() {
+      const live = runState === 'running';
+      RSI_STAGES.forEach(([s]) => {
+        const on = live && s === stage, done = !on && fired.has(s);
+        groups[s].classList.toggle('is-active', on); groups[s].classList.toggle('is-done', done);
+        labs[s].classList.toggle('is-active', on); labs[s].classList.toggle('is-done', done);
+      });
+      links.forEach((l) => l.classList.toggle('is-flow', live && l.getAttribute('data-into') === stage));
+    }
+
+    function paintLive() {
+      host.classList.remove('is-quiet');
+      if (runState === 'paused') { liveWrap.className = 'rsiobs-live is-paused'; liveText.textContent = 'Paused'; return; }
+      if (runState === 'queued') { liveWrap.className = 'rsiobs-live is-wait'; liveText.textContent = 'Queued'; return; }
+      if (runState !== 'running') { liveWrap.className = 'rsiobs-live is-done'; liveText.textContent = runState === 'succeeded' ? 'Finished' : runState === 'cancelled' ? 'Cancelled' : 'Stopped'; return; }
+      const secs = Math.max(0, Math.round((Date.now() - lastAt) / 1000)), stalled = secs >= 75;
+      host.classList.toggle('is-quiet', stalled);
+      liveWrap.className = 'rsiobs-live' + (stalled ? ' is-stall' : '');
+      liveText.textContent = stalled ? `quiet ${secs}s — likely a long model call` : secs < 6 ? 'live' : `active ${secs}s ago`;
+    }
+    // 1s ticker keeps "Ns ago" honest between the 2s polls and flips to the quiet state on its own.
+    S.timers.push(setInterval(paintLive, 1000));
+
+    // ponytail: naive tidy-tree relayout on every change — O(n), fine for the tens of hypotheses a run makes.
+    function tree() {
+      if (!hasLineage || nodes.length === lastCount) return;
+      lastCount = nodes.length; treeFig.hidden = false;
+      const kids = new Map();
+      nodes.forEach((n) => { const p = (n.parent != null && byId.has(n.parent)) ? n.parent : null; n._p = p; if (p != null) (kids.get(p) || kids.set(p, []).get(p)).push(n); });
+      let slot = 0, maxD = 0;
+      const place = (n) => { const ch = kids.get(n.id) || []; maxD = Math.max(maxD, n.depth); if (!ch.length) { n._x = slot++; } else { ch.forEach(place); n._x = (ch[0]._x + ch[ch.length - 1]._x) / 2; } };
+      nodes.filter((n) => n._p == null).forEach(place);
+      const COL = 52, ROW = 54, PX = 24, PY = 22;
+      const x = (n) => PX + n._x * COL, y = (n) => PY + n.depth * ROW;
+      const w = Math.max((slot - 1) * COL + PX * 2, 140), h = Math.max(PY * 2 + maxD * ROW, 64);
+      treeSvg.setAttribute('viewBox', `0 0 ${w} ${h}`); treeSvg.style.width = w + 'px'; treeSvg.style.height = h + 'px';
+      let edges = '', dots = '';
+      nodes.forEach((n) => {
+        if (n._p != null) { const p = byId.get(n._p); edges += `<path class="rsi-tedge" d="M${x(p)} ${y(p) + 9} C ${x(p)} ${y(p) + ROW / 2}, ${x(n)} ${y(n) - ROW / 2}, ${x(n)} ${y(n) - 9}"></path>`; }
+        dots += `<g class="rsi-tnode is-${n.status || 'pending'}${n._new ? ' pop' : ''}"><circle cx="${x(n)}" cy="${y(n)}" r="8"></circle><title>${esc(n.title)}${n.status ? ' — ' + n.status : ''}</title></g>`;
+        n._new = false;
+      });
+      treeSvg.innerHTML = edges + dots;
+    }
+
+    return {
+      push(events, state, run) {
+        runState = state || runState;
+        (events || []).forEach((ev) => {
+          const d = ev.data || {};
+          lastAt = Date.parse(ev.created_at) || Date.now();   // newest event's own clock drives liveness
+          let ph = RSI_PHASE[ev.kind];
+          if (!ph && /^(Dreaming:|Research policy evolved:)/.test(ev.message || '')) ph = ['dream', ev.message.split(':')[0]];
+          if (ph) { stage = ph[0]; fired.add(stage); phaseEl.textContent = ph[1]; }
+          else if (ev.kind && ev.kind !== 'done') phaseEl.textContent = prettyKind(ev.kind);  // unknown kind: keep stage lit, show a readable label
+          if (ev.kind === 'hypothesis') {
+            const id = hypId(d), key = id != null ? id : ev.message;
+            if (!byId.has(key)) { const n = { id: key, parent: hypParent(d), title: ev.message, depth: 0, status: null, _new: true }; nodes.push(n); byId.set(key, n); byTitle.set(ev.message, n); }
+            const n = byId.get(key);
+            if (n.parent != null) {
+              if (!byId.has(n.parent) && byTitle.has(n.parent)) n.parent = byTitle.get(n.parent).id;  // parent given by title → resolve to its id
+              const par = byId.get(n.parent);
+              if (par) { n.depth = par.depth + 1; hasLineage = true; }
+            }
+          } else if (ev.kind === 'verdict') {
+            const id = hypId(d), n = (id != null && byId.get(id)) || (d.title && byTitle.get(d.title)) || null;
+            if (n) n.status = d.status === 'passed' ? 'pass' : d.status === 'rejected' ? 'rej' : 'void';
+          }
+        });
+        paintStages(); paintLive(); tree();
+      },
+    };
+  }
+
   // Interrupt & continue: the obvious control cluster for a research run. Running → Pause;
   // Paused → Resume (the primary action); every active state can Cancel. Finished shows the
   // way onward. Pause/Resume are reversible so they act immediately; Cancel is armed to confirm.
@@ -1865,11 +1992,13 @@
   async function viewRun(id) {
     shell('/research', '<div id="runboard">' + boardTitle('Research run') + '</div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl>', `
       <div id="rsibox"></div>
+      <div id="rsiobs" class="rsiobs"></div>
       <section><div class="section-head"><h2>Agent log</h2><span id="runact"></span></div><div id="flash"></div>
         <p class="hint" style="margin:2px 0 10px">Watch the agent reason in real time — each hypothesis, backtest and verdict as it happens. Every strategy links to its full result once its outcome is in; see them all on the <a href="/strategies">Strategies</a> page.</p>
-        <div class="runfeed" id="runfeed"><ol class="log stream" id="log" role="log" aria-label="Agent reasoning log"></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button><div class="runpulse" id="runpulse" aria-live="polite" hidden></div></div></section>`);
+        <div class="runfeed" id="runfeed"><ol class="log stream" id="log" role="log" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event — the agent is spinning up. The loop above shows the phase it's in.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button><div class="runpulse" id="runpulse" aria-live="polite" hidden></div></div></section>`);
     let after = 0, tried = 0;
     const stream = runFeed(root.querySelector('#runfeed'));
+    const obs = rsiObservatory(root.querySelector('#rsiobs'));
     const load = async () => {
       const d = await api(`/api/runs/${id}?after=${after}`);
       const r = d.run;
@@ -1912,6 +2041,7 @@
       d.events.forEach((ev) => { after = Math.max(after, ev.id); if (ev.kind === 'hypothesis') tried++; });
       stream.push(d.events);
       stream.state(active ? r.status : 'done');
+      obs.push(d.events, r.status, r);
       if (!active) clearTimers();
     };
     await load();
