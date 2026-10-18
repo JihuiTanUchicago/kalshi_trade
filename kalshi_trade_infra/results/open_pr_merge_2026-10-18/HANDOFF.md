@@ -1,7 +1,7 @@
 # OAuth and market-data PR integration
 
 Workstream: `tau-open-pr-main-merge-20261018` · 2026-10-18 Asia/Shanghai.
-Status: in progress; advisory reservation active.
+Status: combined locally / offline verified; GitHub publication in progress. Advisory reservation active.
 
 User authorized pulling latest GitHub main, combining PR #10 (broker OAuth) and
 PR #11 (Databento primary/setup), resolving conflicts, committing and merging on
@@ -69,3 +69,20 @@ backend/frontend integration issue. Newer main's agent/engine/repository/worker/
 execution source is byte-identical to imported main, apart from additive broker
 server/schema changes already reviewed. Next: commit this tested merge and then
 combine PR #11 locally before either GitHub merge.
+
+## Combined candidate
+
+Locally merged the tested OAuth/latest-main commit into PR #11. The second merge
+had progress/Dev Log conflicts only; preserved upstream shipped entries and the
+richer data-readiness entries without duplicate bare provider status rows.
+Clarified routing-only schema claims and the new main autopilot scheduler's
+600-second default reviews: each review may create a new paid-data context.
+
+Combined checks: **1,187 Python passed / 9 skipped** (9.64 seconds); **58 frontend
+tests passed**; Python/JS syntax and diff whitespace pass. Private bytes/modes,
+private-value publication scan and exact preservation of upstream execution/agent/
+worker/repository source pass. No production or provider/model calls occurred.
+
+Source GitHub publication is the next step, under normal fast-forward/merge rules
+and exact PR-head matching. Local source, tests and both operator guides are
+ready; production acceptance is still the teammate's separate work.

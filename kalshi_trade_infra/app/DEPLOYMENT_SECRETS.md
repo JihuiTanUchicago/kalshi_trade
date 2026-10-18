@@ -3,6 +3,13 @@
 The repository is public. Keep real `.env` files out of Git. The committed
 [`.env.example`](../.env.example) supplies variable names and safe defaults.
 
+For market-data setup, prefer the focused [production configuration guide](MARKET_DATA_DEPLOYMENT.md)
+and its validate-only/explicit-apply helper. It writes a separate mode-0600
+`.env.market-data` overlay and the updated agent unit loads/preflights it after
+the existing secret files. This avoids the broad loader's callback rewrites and
+web restart. It is a configuration mechanism, not a deployment or provider
+entitlement test; keys still come from the chosen private secret-delivery path.
+
 ## What is available on GitHub
 
 The following **repository GitHub Actions Secrets** were uploaded and their names

@@ -222,6 +222,31 @@ Quota-removal implementation evidence (local archive: `../results/exa_integratio
 The earlier integration handoff is retained as historical evidence; its quota policy
 was superseded by this follow-up at the user's request.
 
+## Configurable primary data and production setup — October 18, 2026
+
+Databento can now be selected as the primary historical-bar provider with
+`TAU_MARKET_DATA_PRIMARY=databento` and an explicitly allowlisted
+`TAU_DATABENTO_DEFAULT_DATASET`. Omitted-provider bar requests follow that route;
+explicit providers stay explicit and no error triggers vendor/feed fallback.
+Historical research avoids the duplicate automatic Alpaca history watchlist when
+Databento is primary. Downloads remain on demand and respect training cutoffs.
+
+Databento is **not** a complete replacement for the existing feeds: Tau has no
+Databento live ingestion or options-chain/Greeks workflow, and currency/rate
+futures do not replace spot FX or published macro observations. Retain Alpaca
+current snapshots and Massive FX/rates/options tools as needed. Brokerage OAuth
+is separate from market-data selection.
+
+The [production setup guide](MARKET_DATA_DEPLOYMENT.md) includes the official
+coverage comparison and a dedicated [configuration template](../config/market-data/.env.example).
+`scripts/configure_market_data.py` validates locally without network calls and
+optionally writes a separate protected `.env.market-data`; the updated agent
+service loads it last and runs an offline preflight before starting. It leaves
+auth/billing/encryption settings and other services alone. Existing installs keep
+their Alpaca default unless configured otherwise. No production action occurred;
+provider entitlements, durable data-cost accounting and a real queued worker/model
+canary remain acceptance gates. [Implementation evidence](../results/databento_primary_2026-10-18/HANDOFF.md).
+
 ## Databento historical data for agents — October 17, 2026
 
 `app/databento_data.py` connects on-demand historical OHLCV reads to the same
@@ -427,7 +452,8 @@ An agent request uses the existing exclusive JSON channel:
 
 Other kinds are `fx_quotes`, `macro` (with `dataset` and `lookback_days`) and
 `options_chain` (one stock symbol, optional `expiration_date`, `contract_type`,
-`strike_min`, `strike_max`). Requests without a provider retain Alpaca compatibility.
+`strike_min`, `strike_max`). Requests without a provider use the configured primary
+for bars (Alpaca by default); Massive requests always specify their provider.
 These series are research context; no FX/options strategy, backtest input or order
 execution is added to the existing Kalshi strategy engine. Continuous WebSocket
 ingestion, a durable market-data warehouse and geopolitical news remain separate work.
