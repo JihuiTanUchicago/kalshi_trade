@@ -16,7 +16,7 @@
 # Config (env-overridable; these are infra IDs, not secrets — already in PLAN.md):
 set -euo pipefail
 
-AWS_PROFILE=${AWS_PROFILE:-agent}
+AWS_PROFILE=${AWS_PROFILE-agent}   # local dev defaults to the `agent` profile; CI sets AWS_PROFILE="" to use env/OIDC creds
 AWS_REGION=${AWS_REGION:-us-east-1}
 INSTANCE_ID=${INSTANCE_ID:-i-077d6f7873e7836ba}
 BUCKET=${BUCKET:-kalshi-trade-artifacts-568386354218-us-east-1}
@@ -25,6 +25,10 @@ CF_URL=${CF_URL:-https://d1gfpzcosqrjya.cloudfront.net}
 BOX_DIR=${BOX_DIR:-/opt/kalshi}
 BOX_PY=${BOX_PY:-/opt/kalshi/.venv313/bin/python}
 SERVICES=${SERVICES:-"recursive-web recursive-agents recursive-engine recursive-history"}
+
+# Locally, use a named profile (the AWS CLI reads AWS_PROFILE from the env). In CI there is no
+# profile — the workflow provides env/OIDC creds — so unset it. (Env var, not a --profile flag.)
+if [[ -n "${AWS_PROFILE}" ]]; then export AWS_PROFILE; else unset AWS_PROFILE; fi
 
 REF=HEAD; INVALIDATE=1; DRY_RUN=0
 while [[ $# -gt 0 ]]; do
@@ -84,9 +88,9 @@ if [[ "$DRY_RUN" == 1 ]]; then
   exit 0
 fi
 
-aws s3 cp "$BUNDLE" "s3://${BUCKET}/${BKEY}" --profile "$AWS_PROFILE" --region "$AWS_REGION" >/dev/null
-aws s3 cp "$SCRIPT" "s3://${BUCKET}/${SKEY}" --profile "$AWS_PROFILE" --region "$AWS_REGION" >/dev/null
-CMD_ID=$(aws ssm send-command --profile "$AWS_PROFILE" --region "$AWS_REGION" \
+aws s3 cp "$BUNDLE" "s3://${BUCKET}/${BKEY}" --region "$AWS_REGION" >/dev/null
+aws s3 cp "$SCRIPT" "s3://${BUCKET}/${SKEY}" --region "$AWS_REGION" >/dev/null
+CMD_ID=$(aws ssm send-command --region "$AWS_REGION" \
   --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript \
   --comment "deploy $SHA" \
   --parameters "commands=[\"aws s3 cp s3://${BUCKET}/${SKEY} /tmp/d.sh && bash /tmp/d.sh\"]" \
@@ -94,11 +98,11 @@ CMD_ID=$(aws ssm send-command --profile "$AWS_PROFILE" --region "$AWS_REGION" \
 echo "[deploy] SSM command $CMD_ID — polling..."
 for i in $(seq 1 60); do
   sleep 5
-  ST=$(aws ssm get-command-invocation --profile "$AWS_PROFILE" --region "$AWS_REGION" \
+  ST=$(aws ssm get-command-invocation --region "$AWS_REGION" \
        --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || echo Pending)
   [[ "$ST" == Success || "$ST" == Failed || "$ST" == TimedOut || "$ST" == Cancelled ]] && break
 done
-OUT=$(aws ssm get-command-invocation --profile "$AWS_PROFILE" --region "$AWS_REGION" \
+OUT=$(aws ssm get-command-invocation --region "$AWS_REGION" \
       --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" --query StandardOutputContent --output text)
 echo "$OUT" | tail -4
 [[ "$ST" == Success ]] || { echo "[deploy] ON-BOX FAILED (status=$ST) — see output above"; exit 1; }
@@ -111,7 +115,7 @@ for path in / /research; do
 done
 
 if [[ "$INVALIDATE" == 1 ]]; then
-  INV=$(aws cloudfront create-invalidation --profile "$AWS_PROFILE" --distribution-id "$CF_DISTRIBUTION" \
+  INV=$(aws cloudfront create-invalidation --distribution-id "$CF_DISTRIBUTION" \
         --paths "/*" --query 'Invalidation.Id' --output text)
   echo "[deploy] CloudFront /* invalidation $INV"
 fi

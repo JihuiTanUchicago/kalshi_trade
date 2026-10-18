@@ -1558,10 +1558,29 @@ def _copilot_context(cur, user: Dict) -> str:
                   % (paper, demo, credits)]
     except Exception:
         pass
-    deployable = [k for k, m in MARKETS.items() if m.deployable]
-    lines += ["", ("Markets you can research AND deploy — you are NOT limited to the one you've been "
-                   "trading. If a market has gone quiet (no fills, no edges for days), that is a reason to "
-                   "HUNT A DIFFERENT market, not to wait: " + ", ".join(deployable))]
+    try:
+        ready = repo.series_with_candles(cur)
+    except Exception:
+        ready = None  # can't check (e.g. a test stub) -> don't filter
+    # Only offer markets with a real backtest surface: a deployable market with NO collected history
+    # (e.g. a freshly-catalogued series) crashes research with "no settled contracts". `not ready`
+    # (None or empty) means we can't tell, so show everything rather than hide the whole list.
+    deployable = [k for k, m in MARKETS.items() if m.deployable and (not ready or m.series in ready)]
+    lines += ["", ("Markets you can research AND deploy RIGHT NOW (each has collected history, so it has a "
+                   "backtest surface — research ONLY markets on this list; others have no settled contracts "
+                   "and will crash). You are NOT limited to the one you've been trading: if a market has gone "
+                   "quiet (no fills, no edges for days), HUNT A DIFFERENT one from this list, don't wait: "
+                   + ", ".join(deployable))]
+    try:
+        active_research = repo.count_runs(cur, user["id"], "research", active_only=True)
+    except Exception:
+        active_research = 0
+    open_deps = [d for d in deps if d.get("status") != "stopped"]
+    if not open_deps and not active_research:
+        lines += ["", ("EMPTY DECK: you have ZERO running deployments and ZERO research in flight. Idling now "
+                       "is a FAILURE — you MUST launch at least one new research line THIS review (a market "
+                       "from the list above + a concrete mechanism). Do NOT reply 'waiting' or 'nothing to do' "
+                       "with an empty deck: the loop only keeps moving if you keep research running.")]
     return "\n".join(lines)
 
 
@@ -1576,7 +1595,7 @@ Actions:
   {"type": "research", "market": "<market key or omit to let me choose>", "idea": "<the hypothesis to test>", "reason": "..."}   (FRESH research line — same RSI pipeline and the same freedom as the Research page. Name the mechanism/edge in the idea.)
   {"type": "deploy", "strategy_id": N, "reason": "..."}       (paper; any side)
   {"type": "deploy_live", "strategy_id": N, "reason": "..."}  (REAL money; any side (YES or NO) that already proved itself on PAPER, and only when the user turned on live autopilot. If live autopilot is off or any safety gate fails it is refused and stays on paper. Never the first step for a new idea: research -> paper -> live.)
-Back your words with actions. If your reply says you ARE doing something — starting/launching research, tuning, pausing, promoting, deploying — you MUST include the matching action(s) in `actions`. A reply that merely DESCRIBES an action without emitting it does NOTHING (no research is launched, nothing changes) and is a failure: e.g. saying "I'll launch three research threads now" requires three `research` actions in this same response, not a promise to do it later. Conversely, never invent actions you have no concrete reason for — if the right move is to wait and watch, say so plainly and return an empty list.
+Back your words with actions. If your reply says you ARE doing something — starting/launching research, tuning, pausing, promoting, deploying — you MUST include the matching action(s) in `actions`. A reply that merely DESCRIBES an action without emitting it does NOTHING (no research is launched, nothing changes) and is a failure: e.g. saying "I'll launch three research threads now" requires three `research` actions in this same response, not a promise to do it later. Conversely, never invent actions you have no concrete reason for — if the right move is to wait and watch, say so plainly and return an empty list. EXCEPTION: if the context says EMPTY DECK (zero deployments and zero research in flight), waiting is NOT allowed — you must emit at least one `research` action this turn.
 """ + specmod.SPEC_GUIDE
 
 
