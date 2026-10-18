@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
-from data_pipeline.common import get_db_conn, utc_now
+from data_pipeline.common import get_db_conn, is_primary_micro_ticker, utc_now
 
 
 def to_float(x: Any) -> Optional[float]:
@@ -136,52 +136,63 @@ def _resolve_target_btc_price(
     return {"target_btc_price": target, "target_source": source, "close_time": close_t}
 
 
-def build_row(cur, minute_mark: datetime, target_cache: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, Any]:
+def missing_tq_row(minute_mark: datetime) -> Dict[str, Any]:
+    return {
+        "snapshot_minute_utc": minute_mark,
+        "market_ticker": None,
+        "event_ticker": None,
+        "target_btc_price": None,
+        "guard_status": "error",
+        "guard_reasons": ["MISSING_TRADE_QUOTE_FEATURES"],
+        "model_eligible": 0,
+        "raw_json": {"reason": "missing_trade_quote_features"},
+    }
+
+
+def list_ok_tq_rows(cur, minute_mark: datetime) -> List[Dict[str, Any]]:
+    """Every market that has an 'ok' trade/quote feature row for this minute. The
+    feeder writes one per active series, so this is one row per (series, minute)."""
     cur.execute(
         """
         SELECT snapshot_minute_utc, market_ticker, event_ticker, trades_last_60s_count, trades_last_60s_volume_fp,
                trades_last_60s_vwap_yes, quote_change_events_60s, source_status
         FROM trade_quote_features_1m
-        WHERE snapshot_minute_utc=%s
-        LIMIT 1
+        WHERE snapshot_minute_utc=%s AND source_status='ok' AND market_ticker IS NOT NULL
         """,
         (minute_mark.replace(tzinfo=None),),
     )
-    tq = cur.fetchone()
+    return cur.fetchall()
+
+
+def build_row(cur, minute_mark: datetime, tq: Dict[str, Any], target_cache: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, Any]:
+    ticker = tq["market_ticker"]
+    event_ticker = tq.get("event_ticker")
+    # Only the primary (BTC) series feeds the live/sim models: it alone is
+    # model_eligible and carries the Coinbase-spot (cb_*) features. Other series are
+    # collected for research (order-flow features from the Kalshi book + trades) and
+    # are forced model_eligible=0 so the eligible-gated BTC readers never see them.
+    is_primary = is_primary_micro_ticker(ticker)
 
     guard_reasons: List[str] = []
     guard_status = "ok"
     model_eligible = 1
 
-    if not tq or tq.get("source_status") != "ok" or not tq.get("market_ticker"):
-        guard_reasons.append("MISSING_TRADE_QUOTE_FEATURES")
-        guard_status = "error"
-        model_eligible = 0
-        return {
-            "snapshot_minute_utc": minute_mark,
-            "market_ticker": None,
-            "event_ticker": None,
-            "target_btc_price": None,
-            "guard_status": guard_status,
-            "guard_reasons": guard_reasons,
-            "model_eligible": model_eligible,
-            "raw_json": {"reason": "missing_trade_quote_features"},
-        }
-
-    ticker = tq["market_ticker"]
-    event_ticker = tq.get("event_ticker")
-
     f0 = asof_forward(cur, ticker, minute_mark)
     f1 = asof_forward(cur, ticker, minute_mark - timedelta(minutes=1))
     f3 = asof_forward(cur, ticker, minute_mark - timedelta(minutes=3))
-    c0 = asof_coinbase(cur, minute_mark)
-    c1 = asof_coinbase(cur, minute_mark - timedelta(minutes=1))
-    c3 = asof_coinbase(cur, minute_mark - timedelta(minutes=3))
-    c5 = asof_coinbase(cur, minute_mark - timedelta(minutes=5))
+    # Coinbase is BTC-USD spot only; it is meaningful solely for the BTC series, so
+    # non-primary rows leave every cb_* feature NULL rather than fabricate a wrong one.
+    if is_primary:
+        c0 = asof_coinbase(cur, minute_mark)
+        c1 = asof_coinbase(cur, minute_mark - timedelta(minutes=1))
+        c3 = asof_coinbase(cur, minute_mark - timedelta(minutes=3))
+        c5 = asof_coinbase(cur, minute_mark - timedelta(minutes=5))
+    else:
+        c0 = c1 = c3 = c5 = None
 
     if not f0:
         guard_reasons.append("MISSING_KALSHI_FORWARD")
-    if not c0:
+    if is_primary and not c0:
         guard_reasons.append("MISSING_COINBASE_TICK")
 
     yes_bid = to_float(f0["yes_bid_dollars"]) if f0 else None
@@ -211,10 +222,11 @@ def build_row(cur, minute_mark: datetime, target_cache: Optional[Dict[str, Dict[
     cb_ret_5m = compute_ret(cb0, cb5)
 
     cb_prices: List[float] = []
-    for i in range(0, 6):
-        ci = asof_coinbase(cur, minute_mark - timedelta(minutes=i))
-        if ci and ci.get("price") is not None:
-            cb_prices.append(to_float(ci["price"]))
+    if is_primary:
+        for i in range(0, 6):
+            ci = asof_coinbase(cur, minute_mark - timedelta(minutes=i))
+            if ci and ci.get("price") is not None:
+                cb_prices.append(to_float(ci["price"]))
     cb_prices = list(reversed(cb_prices))
     cb_returns = []
     for i in range(1, len(cb_prices)):
@@ -250,6 +262,11 @@ def build_row(cur, minute_mark: datetime, target_cache: Optional[Dict[str, Dict[
         guard_reasons.append("STALE_KALSHI")
     if coinbase_age is not None and coinbase_age > 40:
         guard_reasons.append("STALE_COINBASE")
+
+    # Non-primary series are research-only: never eligible for the BTC live/sim models,
+    # regardless of how clean their order-flow data is.
+    if not is_primary:
+        guard_reasons.append("NON_PRIMARY_SERIES")
 
     if guard_reasons:
         model_eligible = 0
@@ -359,14 +376,24 @@ def run_loop() -> None:
     conn = get_db_conn()
     target_cache: Dict[str, Dict[str, Any]] = {}
     with conn.cursor() as cur:
-        print("model_features_1m builder started. Writing minute-sharp rows (+5s).")
+        print("model_features_1m builder started. Writing minute-sharp rows (+5s), one per active market.")
         while True:
             wake = next_minute_plus_delay(5)
             time.sleep(max(0.0, (wake - utc_now()).total_seconds()))
             minute_mark = wake.replace(second=0, microsecond=0)
             try:
-                row = build_row(cur, minute_mark, target_cache)
-                upsert_row(cur, row)
+                tq_rows = list_ok_tq_rows(cur, minute_mark)
+                # The collector_state heartbeat tracks the PRIMARY (BTC) row, as before,
+                # so the live-path health view is unchanged by the extra series.
+                primary_row = missing_tq_row(minute_mark)
+                if not tq_rows:
+                    upsert_row(cur, primary_row)
+                else:
+                    for tq in tq_rows:
+                        row = build_row(cur, minute_mark, tq, target_cache)
+                        upsert_row(cur, row)
+                        if is_primary_micro_ticker(row.get("market_ticker")):
+                            primary_row = row
                 cur.execute(
                     """
                     INSERT INTO collector_state (state_key,state_value,updated_at_utc)
@@ -378,17 +405,19 @@ def run_loop() -> None:
                         json.dumps(
                             {
                                 "snapshot_minute_utc": minute_mark.isoformat(),
-                                "market_ticker": row.get("market_ticker"),
-                                "guard_status": row.get("guard_status"),
-                                "model_eligible": row.get("model_eligible"),
+                                "market_ticker": primary_row.get("market_ticker"),
+                                "guard_status": primary_row.get("guard_status"),
+                                "model_eligible": primary_row.get("model_eligible"),
+                                "markets_built": len(tq_rows),
                             }
                         ),
                         utc_now().replace(tzinfo=None),
                     ),
                 )
                 print(
-                    f"model_features_1m snapshot {minute_mark.isoformat()} ticker={row.get('market_ticker')} "
-                    f"eligible={row.get('model_eligible')} status={row.get('guard_status')}"
+                    f"model_features_1m snapshot {minute_mark.isoformat()} markets={len(tq_rows)} "
+                    f"primary_ticker={primary_row.get('market_ticker')} eligible={primary_row.get('model_eligible')} "
+                    f"status={primary_row.get('guard_status')}"
                 )
             except Exception as e:
                 print(f"model_features_1m error at {minute_mark.isoformat()}: {e}")

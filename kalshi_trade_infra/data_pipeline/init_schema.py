@@ -96,6 +96,7 @@ DDL = [
     """,
     """
     CREATE TABLE IF NOT EXISTS trade_quote_features_1m (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
       snapshot_minute_utc DATETIME NOT NULL,
       market_ticker VARCHAR(128) NULL,
       event_ticker VARCHAR(128) NULL,
@@ -105,9 +106,8 @@ DDL = [
       quote_change_events_60s INT NULL,
       source_status VARCHAR(32) NOT NULL,
       raw_json JSON NOT NULL,
-      PRIMARY KEY (snapshot_minute_utc),
-      INDEX idx_feature1m_event (event_ticker, snapshot_minute_utc),
-      INDEX idx_feature1m_market (market_ticker, snapshot_minute_utc)
+      UNIQUE KEY uq_tqf_market_minute (market_ticker, snapshot_minute_utc),
+      INDEX idx_feature1m_event (event_ticker, snapshot_minute_utc)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     """
@@ -140,6 +140,7 @@ DDL = [
     """,
     """
     CREATE TABLE IF NOT EXISTS model_features_1m (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
       snapshot_minute_utc DATETIME NOT NULL,
       market_ticker VARCHAR(128) NULL,
       event_ticker VARCHAR(128) NULL,
@@ -169,8 +170,7 @@ DDL = [
       guard_status VARCHAR(16) NOT NULL,
       guard_reasons_json JSON NOT NULL,
       raw_json JSON NOT NULL,
-      PRIMARY KEY (snapshot_minute_utc),
-      INDEX idx_model_features_market (market_ticker, snapshot_minute_utc),
+      UNIQUE KEY uq_mf_market_minute (market_ticker, snapshot_minute_utc),
       INDEX idx_model_features_event (event_ticker, snapshot_minute_utc),
       INDEX idx_model_features_guard (guard_status, snapshot_minute_utc)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
@@ -459,6 +459,38 @@ def main() -> None:
                 cur.execute("ALTER TABLE live_positions DROP PRIMARY KEY, ADD PRIMARY KEY (model_name, market_ticker)")
             else:
                 print("[WARN] live_positions has open rows and an old PK shape - skipping automatic migration, resolve manually.")
+
+        # Re-key the per-minute micro feature tables from PK(snapshot_minute_utc) -
+        # one row GLOBALLY per minute, which only ever held the single BTC market and
+        # overwrote everything else - to a surrogate id PK + UNIQUE(market_ticker,
+        # snapshot_minute_utc), i.e. one row per (market, minute). This is what lets the
+        # feeder/builder collect microstructure features for more than one series. Safe
+        # on the existing populated BTC table: it had one row/minute, so (market_ticker,
+        # snapshot_minute_utc) is already unique, and no data is dropped. market_ticker
+        # stays NULLable (the no-market/missing sentinel rows), which a UNIQUE key allows
+        # since MySQL treats each NULL as distinct. Guarded by the surrogate `id` column
+        # so it runs exactly once. A surrogate id (not a compound PRIMARY KEY) because a
+        # PRIMARY KEY cannot contain the NULLable market_ticker.
+        for table, old_index, new_uq in (
+            ("model_features_1m", "idx_model_features_market", "uq_mf_market_minute"),
+            ("trade_quote_features_1m", "idx_feature1m_market", "uq_tqf_market_minute"),
+        ):
+            cur.execute(
+                """
+                SELECT COUNT(*) AS c FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s AND COLUMN_NAME='id'
+                """,
+                (table,),
+            )
+            if cur.fetchone()["c"] == 0:
+                # New index name (not the dropped one) so no "duplicate key name" in one ALTER.
+                cur.execute(
+                    f"ALTER TABLE {table} "
+                    f"DROP PRIMARY KEY, "
+                    f"ADD COLUMN id BIGINT AUTO_INCREMENT PRIMARY KEY FIRST, "
+                    f"DROP INDEX {old_index}, "
+                    f"ADD UNIQUE KEY {new_uq} (market_ticker, snapshot_minute_utc)"
+                )
 
         # Indexes added after these tables already existed in deployed
         # environments - CREATE TABLE IF NOT EXISTS above is a no-op there,

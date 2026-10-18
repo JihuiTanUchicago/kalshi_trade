@@ -585,6 +585,7 @@ def latest_model_guard():
             """
             SELECT snapshot_minute_utc, market_ticker, model_eligible, guard_status, guard_reasons_json
             FROM model_features_1m
+            WHERE market_ticker LIKE 'KXBTC15M-%' OR market_ticker IS NULL
             ORDER BY snapshot_minute_utc DESC
             LIMIT 1
             """

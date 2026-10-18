@@ -13,7 +13,7 @@ import websockets
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
-from data_pipeline.common import next_20s_mark, api_get, get_db_conn, parse_iso_to_dt, utc_now
+from data_pipeline.common import micro_series, next_20s_mark, api_get, get_db_conn, parse_iso_to_dt, utc_now
 
 
 def choose_active_event(markets: List[Dict]) -> Optional[str]:
@@ -49,14 +49,23 @@ def end_minute_bucket(dt: datetime) -> datetime:
     return base + timedelta(minutes=1)
 
 
-def fetch_active_kxbtc15m_markets() -> List[Dict]:
-    data = api_get("/markets", {"series_ticker": "KXBTC15M", "status": "open", "limit": 200})
+# forward_quotes is the ONLY RDS source of top-of-book SIZES (yes_bid_size_fp/
+# yes_ask_size_fp) -> the input to orderbook_imbalance (the S3 snapshot lake has
+# quotes but no sizes). We snapshot the live order book for every configured micro
+# series (common.micro_series(), BTC first), not just BTC, so those sizes exist for
+# the other series too. Per-series selection logic is unchanged from the BTC path.
+def fetch_active_markets(series_ticker: str) -> List[Dict]:
+    data = api_get("/markets", {"series_ticker": series_ticker, "status": "open", "limit": 200})
     markets = data.get("markets", [])
     if markets:
         return markets
     # Fallback in case status taxonomy changes.
-    data = api_get("/markets", {"series_ticker": "KXBTC15M", "limit": 200})
+    data = api_get("/markets", {"series_ticker": series_ticker, "limit": 200})
     return data.get("markets", [])
+
+
+def fetch_active_kxbtc15m_markets() -> List[Dict]:  # back-compat alias
+    return fetch_active_markets("KXBTC15M")
 
 
 class WsTickerFeed:
@@ -343,9 +352,11 @@ def loop_forever() -> None:
     else:
         print("Forward collector mode=rest-only (missing websocket creds)")
 
+    series_list = micro_series()
     with conn.cursor() as cur:
-        current_event = None
-        print("Forward collector started immediately (no initial 15m wait).")
+        # One tracked active event per series (BTC's selection logic, unchanged, per series).
+        current_event: Dict[str, Optional[str]] = {}
+        print(f"Forward collector started immediately (no initial 15m wait). Series={series_list}")
         print("Writing 20-second aligned snapshots (:00/:20/:40) into forward_quotes.")
 
         while True:
@@ -364,36 +375,56 @@ def loop_forever() -> None:
                 (json.dumps({"heartbeat_tick": tick.isoformat()}), utc_now().replace(tzinfo=None)),
             )
 
-            try:
-                markets = fetch_active_kxbtc15m_markets()
-            except Exception as e:
-                insert_na_snapshot(cur, tick, "MARKETS_API_ERROR")
-                print(f"N/A snapshot at={tick.isoformat()} reason=MARKETS_API_ERROR err={e}")
-                continue
+            # The first series (BTC by default) keeps the original N/A-row semantics the
+            # live-path freshness checks depend on; extra series are additive and only
+            # ever make forward_quotes fresher, never staler, so they skip the N/A rows.
+            total_rows = 0
+            events_snapshotted: List[str] = []
+            for idx, series in enumerate(series_list):
+                is_primary = idx == 0
+                try:
+                    markets = fetch_active_markets(series)
+                except Exception as e:
+                    if is_primary:
+                        insert_na_snapshot(cur, tick, "MARKETS_API_ERROR")
+                    print(f"N/A snapshot at={tick.isoformat()} series={series} reason=MARKETS_API_ERROR err={e}")
+                    continue
 
-            if markets:
-                insert_market_upserts(cur, markets)
-            else:
-                insert_na_snapshot(cur, tick, "NO_OPEN_KXBTC15M_MARKET")
-                print(f"N/A snapshot at={tick.isoformat()} reason=NO_OPEN_KXBTC15M_MARKET")
-                continue
+                if markets:
+                    insert_market_upserts(cur, markets)
+                else:
+                    if is_primary:
+                        insert_na_snapshot(cur, tick, "NO_OPEN_KXBTC15M_MARKET")
+                    print(f"N/A snapshot at={tick.isoformat()} series={series} reason=NO_OPEN_MARKET")
+                    continue
 
-            if current_event is None or not any(m.get("event_ticker") == current_event for m in markets):
-                current_event = choose_active_event(markets)
-                print(f"Active event -> {current_event}")
+                ev = current_event.get(series)
+                if ev is None or not any(m.get("event_ticker") == ev for m in markets):
+                    ev = choose_active_event(markets)
+                    current_event[series] = ev
+                    print(f"Active event [{series}] -> {ev}")
 
-            if current_event:
-                event_markets = [m for m in markets if m.get("event_ticker") == current_event]
+                if not ev:
+                    if is_primary:
+                        insert_na_snapshot(cur, tick, "NO_ACTIVE_EVENT")
+                    print(f"N/A snapshot at={tick.isoformat()} series={series} reason=NO_ACTIVE_EVENT")
+                    continue
+
+                event_markets = [m for m in markets if m.get("event_ticker") == ev]
                 if not event_markets:
-                    insert_na_snapshot(cur, tick, "NO_EVENT_MARKETS", current_event)
-                    print(f"N/A snapshot at={tick.isoformat()} reason=NO_EVENT_MARKETS event={current_event}")
+                    if is_primary:
+                        insert_na_snapshot(cur, tick, "NO_EVENT_MARKETS", ev)
+                    print(f"N/A snapshot at={tick.isoformat()} series={series} reason=NO_EVENT_MARKETS event={ev}")
                     continue
 
                 ticker_to_event = {m.get("ticker"): m.get("event_ticker") for m in event_markets if m.get("ticker")}
                 if ws_feed.enabled:
                     ws_feed.request_subscribe(list(ticker_to_event.keys()), ticker_to_event)
 
-                n = insert_snapshot_rows(cur, event_markets, current_event, tick, ws_feed if ws_feed.enabled else None)
+                total_rows += insert_snapshot_rows(cur, event_markets, ev, tick, ws_feed if ws_feed.enabled else None)
+                events_snapshotted.append(ev)
+
+            if events_snapshotted:
                 cur.execute(
                     """
                     INSERT INTO collector_state (state_key,state_value,updated_at_utc)
@@ -404,8 +435,9 @@ def loop_forever() -> None:
                         "forward_collector_last_snapshot",
                         json.dumps(
                             {
-                                "event_ticker": current_event,
-                                "rows": n,
+                                "event_ticker": events_snapshotted[0],  # primary series, back-compat
+                                "events": events_snapshotted,
+                                "rows": total_rows,
                                 "snapshot_time_utc": tick.isoformat(),
                                 "mode": "websocket" if ws_feed.enabled else "rest",
                             }
@@ -413,10 +445,7 @@ def loop_forever() -> None:
                         utc_now().replace(tzinfo=None),
                     ),
                 )
-                print(f"snapshot event={current_event} rows={n} at={tick.isoformat()}")
-            else:
-                insert_na_snapshot(cur, tick, "NO_ACTIVE_EVENT")
-                print(f"N/A snapshot at={tick.isoformat()} reason=NO_ACTIVE_EVENT")
+                print(f"snapshot events={events_snapshotted} rows={total_rows} at={tick.isoformat()}")
 
 
 def main() -> None:
@@ -428,5 +457,24 @@ def main() -> None:
             time.sleep(5)
 
 
+def _selfcheck() -> None:
+    # Config comes from common.micro_series(); BTC must stay first (live-path invariant).
+    assert micro_series()[0] == "KXBTC15M" and len(micro_series()) > 1, micro_series()
+    # Per-series active-event selection prefers the in-window event over a later fallback.
+    now = utc_now()
+    markets = [
+        {"event_ticker": "KXETH15M-A", "open_time": (now - timedelta(minutes=1)).isoformat(),
+         "close_time": (now + timedelta(minutes=5)).isoformat()},
+        {"event_ticker": "KXETH15M-B", "open_time": (now + timedelta(minutes=5)).isoformat(),
+         "close_time": (now + timedelta(minutes=20)).isoformat()},
+    ]
+    assert choose_active_event(markets) == "KXETH15M-A", choose_active_event(markets)
+    print("forward_collector selfcheck ok")
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    if "--selfcheck" in sys.argv:
+        _selfcheck()
+    else:
+        main()

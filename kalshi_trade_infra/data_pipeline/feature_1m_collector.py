@@ -3,7 +3,7 @@ import time
 from datetime import timedelta
 from typing import Dict, List, Optional
 
-from data_pipeline.common import api_get, get_db_conn, parse_iso_to_dt, utc_now
+from data_pipeline.common import api_get, get_db_conn, micro_series, parse_iso_to_dt, utc_now
 
 
 def next_minute_mark(now=None):
@@ -12,13 +12,17 @@ def next_minute_mark(now=None):
     return now.replace(second=0, microsecond=0) + timedelta(minutes=1)
 
 
-def fetch_open_kxbtc15m_markets() -> List[Dict]:
-    data = api_get('/markets', {'series_ticker': 'KXBTC15M', 'status': 'open', 'limit': 200})
+def fetch_open_markets(series_ticker: str) -> List[Dict]:
+    data = api_get('/markets', {'series_ticker': series_ticker, 'status': 'open', 'limit': 200})
     markets = data.get('markets', [])
     if markets:
         return markets
-    data = api_get('/markets', {'series_ticker': 'KXBTC15M', 'limit': 200})
+    data = api_get('/markets', {'series_ticker': series_ticker, 'limit': 200})
     return data.get('markets', [])
+
+
+def fetch_open_kxbtc15m_markets() -> List[Dict]:  # back-compat alias
+    return fetch_open_markets('KXBTC15M')
 
 
 def choose_active_market(markets: List[Dict]) -> Optional[Dict]:
@@ -145,51 +149,72 @@ def write_feature_row(cur, minute_mark, market_ticker, event_ticker, count, vol,
     )
 
 
+def collect_series(cur, mark, series: str, is_primary: bool) -> Optional[str]:
+    """Snapshot the active market of one series into trade_quote_features_1m for `mark`.
+    Returns the ticker written, or None. The primary series keeps the original
+    no-market/error sentinel rows (the live-path freshness view expects them); extra
+    series stay silent on a miss since their rows are purely additive."""
+    try:
+        markets = fetch_open_markets(series)
+        if not markets:
+            if is_primary:
+                write_feature_row(cur, mark, None, None, None, None, None, None, 'no_open_market', {'reason': 'no_open_market', 'series': series})
+            return None
+        m = choose_active_market(markets)
+        if not m:
+            if is_primary:
+                write_feature_row(cur, mark, None, None, None, None, None, None, 'no_active_market', {'reason': 'no_active_market', 'series': series})
+            return None
+        ticker = m.get('ticker')
+        event = m.get('event_ticker')
+        count, vol, vwap = compute_trades_60s(ticker, mark)
+        qchg = compute_quote_change_events(cur, ticker, mark)
+        payload = {
+            'ticker': ticker,
+            'event_ticker': event,
+            'series': series,
+            'trades_last_60s_count': count,
+            'trades_last_60s_volume_fp': vol,
+            'trades_last_60s_vwap_yes': vwap,
+            'quote_change_events_60s': qchg,
+        }
+        write_feature_row(cur, mark, ticker, event, count, vol, vwap, qchg, 'ok', payload)
+        print(f'trade_quote_features_1m snapshot {mark.isoformat()} series={series} ticker={ticker} count={count} qchg={qchg}')
+        return ticker
+    except Exception as e:
+        # DB-level failures still bubble (the except re-executes a write on a live cursor);
+        # a per-series API hiccup must not drop the other series.
+        if is_primary:
+            write_feature_row(cur, mark, None, None, None, None, None, None, 'error', {'error': str(e), 'series': series})
+        print(f'trade_quote_features_1m error series={series} at {mark.isoformat()}: {e}')
+        return None
+
+
 def run_loop():
     conn = get_db_conn()
+    series_list = micro_series()
     with conn.cursor() as cur:
-        print('trade_quote_features_1m collector started. Writing minute-sharp rows.')
+        print(f'trade_quote_features_1m collector started. Series={series_list}')
         while True:
             mark = next_minute_mark()
             time.sleep(max(0.0, (mark - utc_now()).total_seconds()))
-            try:
-                markets = fetch_open_kxbtc15m_markets()
-                if not markets:
-                    write_feature_row(cur, mark, None, None, None, None, None, None, 'no_open_market', {'reason': 'no_open_market'})
-                    continue
-                m = choose_active_market(markets)
-                if not m:
-                    write_feature_row(cur, mark, None, None, None, None, None, None, 'no_active_market', {'reason': 'no_active_market'})
-                    continue
-                ticker = m.get('ticker')
-                event = m.get('event_ticker')
-                count, vol, vwap = compute_trades_60s(ticker, mark)
-                qchg = compute_quote_change_events(cur, ticker, mark)
-                payload = {
-                    'ticker': ticker,
-                    'event_ticker': event,
-                    'trades_last_60s_count': count,
-                    'trades_last_60s_volume_fp': vol,
-                    'trades_last_60s_vwap_yes': vwap,
-                    'quote_change_events_60s': qchg,
-                }
-                write_feature_row(cur, mark, ticker, event, count, vol, vwap, qchg, 'ok', payload)
-                cur.execute(
-                    """
-                    INSERT INTO collector_state (state_key,state_value,updated_at_utc)
-                    VALUES (%s,%s,%s)
-                    ON DUPLICATE KEY UPDATE state_value=VALUES(state_value), updated_at_utc=VALUES(updated_at_utc)
-                    """,
-                    (
-                        'trade_quote_features_1m_last_snapshot',
-                        json.dumps({'snapshot_minute_utc': mark.isoformat(), 'ticker': ticker}),
-                        utc_now().replace(tzinfo=None),
-                    ),
-                )
-                print(f'trade_quote_features_1m snapshot {mark.isoformat()} ticker={ticker} count={count} qchg={qchg}')
-            except Exception as e:
-                write_feature_row(cur, mark, None, None, None, None, None, None, 'error', {'error': str(e)})
-                print(f'trade_quote_features_1m error at {mark.isoformat()}: {e}')
+            primary_ticker = None
+            for idx, series in enumerate(series_list):
+                written = collect_series(cur, mark, series, is_primary=(idx == 0))
+                if idx == 0:
+                    primary_ticker = written
+            cur.execute(
+                """
+                INSERT INTO collector_state (state_key,state_value,updated_at_utc)
+                VALUES (%s,%s,%s)
+                ON DUPLICATE KEY UPDATE state_value=VALUES(state_value), updated_at_utc=VALUES(updated_at_utc)
+                """,
+                (
+                    'trade_quote_features_1m_last_snapshot',
+                    json.dumps({'snapshot_minute_utc': mark.isoformat(), 'ticker': primary_ticker, 'series': series_list}),
+                    utc_now().replace(tzinfo=None),
+                ),
+            )
 
 
 if __name__ == '__main__':

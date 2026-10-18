@@ -2,7 +2,7 @@ import os
 import time
 import base64
 from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pymysql
 import requests
@@ -22,6 +22,31 @@ MYSQL_DATABASE = os.getenv("MYSQL_DATABASE", "kalshi_trade")
 KALSHI_KEY_ID = os.getenv("KALSHI_WS_KEY_ID") or os.getenv("PROD_KEYID")
 KALSHI_PRIVATE_KEY_PATH = os.getenv("KALSHI_WS_PRIVATE_KEY_PATH") or os.getenv("PROD_KEYFILE")
 _KALSHI_PRIVATE_KEY = None
+
+# Series whose per-minute microstructure/order-flow features we collect (forward_collector
+# order books -> forward_quotes, feature_1m_collector trades -> trade_quote_features_1m,
+# model_features_1m_builder -> model_features_1m, keyed per (market, minute)). BTC stays
+# FIRST and is the PRIMARY series: only the primary feeds the BTC live/sim models
+# (model_eligible=1 and the Coinbase-spot cb_* features are primary-only); every other
+# series is collected model_eligible=0 so it is visible to research (_load_micro joins by
+# ticker, ignoring model_eligible) but invisible to the eligible-gated live/sim readers.
+# Override with TAU_MICRO_SERIES (comma list) for ad-hoc runs or to narrow collection cost.
+PRIMARY_MICRO_SERIES = "KXBTC15M"
+DEFAULT_MICRO_SERIES = ["KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M", "KXDOGE15M", "KXBNB15M"]
+
+
+def micro_series() -> List[str]:
+    env = os.getenv("TAU_MICRO_SERIES", "")
+    if env.strip():
+        return [s.strip() for s in env.split(",") if s.strip()]
+    return list(DEFAULT_MICRO_SERIES)
+
+
+def is_primary_micro_ticker(market_ticker: Optional[str]) -> bool:
+    """True only for the primary (BTC) series' contracts, which alone feed the live/sim
+    models. Non-primary rows carry order-flow features for research but must never reach
+    the eligible-gated BTC readers."""
+    return bool(market_ticker) and market_ticker.startswith(PRIMARY_MICRO_SERIES + "-")
 
 
 def utc_now() -> datetime:
