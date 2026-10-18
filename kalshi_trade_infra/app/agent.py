@@ -29,6 +29,7 @@ import os
 import threading
 import time
 from collections import defaultdict
+from datetime import timedelta
 from typing import Callable, Dict, List, Optional, Tuple
 
 from app import backtest, billing
@@ -1636,6 +1637,39 @@ def _fmt_changes(changes: Dict) -> str:
     return ", ".join("%s=%s" % (k, v) for k, v in changes.items())
 
 
+# Per-market research dedup. The autopilot review fires every few minutes; MAX_ACTIVE_RESEARCH caps
+# concurrency, but it does NOT stop the review re-launching the SAME market line ("NFL", "NBA") on
+# consecutive reviews while that line is still running or just failed — that's the observed thrash,
+# credits burned re-spamming a dead idea. One cooldown window at the single choke point (act's
+# research branch) blocks it, so the loop hunts a DIFFERENT market instead.
+# ponytail: a flat per-market window, not per-idea NLP — the thrash is same-market; add idea-level
+# matching only if the model starts spamming distinct ideas on one market.
+RESEARCH_MARKET_COOLDOWN = timedelta(hours=6)
+
+
+def _market_research_recent(cur, user_id: int, market: str) -> Optional[str]:
+    """Why the autopilot should NOT open a fresh research line on `market` right now, or None if it's
+    clear. Blocks a market that already has an active research run, or one that finished (passed or
+    failed) within RESEARCH_MARKET_COOLDOWN, so the review hunts a different market instead of
+    re-spamming a dead/running line. Best-effort: any read error returns None (allow) so a context
+    hiccup never blocks legitimate research."""
+    try:
+        runs = repo.list_runs(cur, user_id, limit=30)
+    except Exception:
+        return None
+    now = repo.now_utc()
+    for r in runs:
+        if r.get("market") != market:
+            continue
+        if r.get("status") in ("queued", "running", "paused"):
+            return "a research line is already running on %s (run #%s)" % (market, r.get("id"))
+        fin = r.get("finished_at")
+        if fin and (now - fin) < RESEARCH_MARKET_COOLDOWN:
+            return ("%s was just researched (run #%s, %s) and is on a short cooldown"
+                    % (market, r.get("id"), r.get("status")))
+    return None
+
+
 def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.dataset) -> Tuple[str, Optional[int]]:
     """Turn one agent action into a proposal (or, on autopilot, an applied
     change). Returns (sentence for the chat, proposal id if one was made)."""
@@ -1817,6 +1851,14 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
             return ("Started a new research session digging deeper into “%s”: I'll refine and "
                     "stress-test its mechanism, and every variant still has to pass the same gates. "
                     "Follow it on the Research page." % strat["title"], None)
+        # Dedup/cooldown: don't re-launch a line on a market that's already running or just finished
+        # — the review should hunt a DIFFERENT market, not re-spam the same dead/running idea. Only
+        # when a market is named; market=None lets the proposer pick, so there's nothing to dedup yet.
+        if market is not None:
+            why = _market_research_recent(cur, user_id, market)
+            if why:
+                return ("I didn't start that — %s. I'll hunt a different market instead of "
+                        "re-running the same line." % why), None
         direction = action.get("direction") if action.get("direction") in DIRECTIONS else None
         repo.create_run(cur, user_id, "research", market, direction, idea)
         return ("Started a fresh research session on %s — same gates as any run (pre-registration, "
@@ -1881,12 +1923,28 @@ def _copilot_context(cur, user: Dict) -> str:
         lines.append("- none")
     lines += ["", "Passed strategies not deployed:"]
     spare = [s for s in passed if s["id"] not in deployed_ids][:10]
+    any_candidate = False
     for s in spare:
         oos = ((s.get("result") or {}).get("out_of_sample") or {})
-        lines.append("- strategy_id=%s \"%s\" market=%s unseen-data pnl $%s over %s trades"
-                     % (s["id"], s["title"], s["market"], oos.get("pnl"), oos.get("trades")))
+        # Honest, per-strategy deploy-readiness: the `deploy` action only clears a strategy the
+        # gatekeeper promoted to DEPLOYMENT-CANDIDATE, so say which are actually promotable now —
+        # otherwise the review keeps proposing deploys that get refused. Best-effort (test stub -> skip).
+        try:
+            cand = _is_deployment_candidate(cur, s["id"])
+        except Exception:
+            cand = False
+        any_candidate = any_candidate or cand
+        lines.append("- strategy_id=%s \"%s\" market=%s unseen-data pnl $%s over %s trades — %s"
+                     % (s["id"], s["title"], s["market"], oos.get("pnl"), oos.get("trades"),
+                        "DEPLOYMENT-CANDIDATE: ready to promote to PAPER now" if cand else
+                        "not yet a deployment candidate (dig deeper before it can deploy)"))
     if not spare:
         lines.append("- none")
+    if any_candidate:
+        lines.append("ACT ON RESULTS: a DEPLOYMENT-CANDIDATE above is ready — PROMOTE it to paper this "
+                     "review with a `deploy` action. Closing the research->paper loop on a proven edge "
+                     "beats launching yet another exploratory line; only open fresh research if nothing "
+                     "is ready to promote.")
     # Memory + situational awareness so a review doesn't repeat dead ends, double-launch research,
     # or spend blind to its budget. Each block is best-effort: a context-read hiccup must never fail
     # the whole review. ponytail: in tests `cur` is a stub, so these simply omit — no prompt churn.
@@ -1900,6 +1958,13 @@ def _copilot_context(cur, user: Dict) -> str:
             lines.append("- run #%s on %s [%s]: %s tried, %s passed — \"%s\""
                          % (r["id"], r["market"], r["status"], r.get("hypotheses_tried") or 0,
                             r.get("strategies_passed") or 0, (r.get("prompt") or "").strip()[:100]))
+        # Per-market dedup, spelled out: a fresh `research` action on a market that is running or on
+        # cooldown is REFUSED by act(), so name those markets here and tell the review to hunt a
+        # different one — it wastes the whole turn otherwise. Mirrors _market_research_recent.
+        busy = sorted({r["market"] for r in runs if r.get("status") in ("queued", "running", "paused") and r.get("market")})
+        if busy:
+            lines.append("OFF-LIMITS this review (a line is already running on them — pick a DIFFERENT market): "
+                         + ", ".join(busy))
     dead: List[Dict] = []
     for st in ("failed", "rejected"):
         try:
@@ -1954,6 +2019,7 @@ Actions:
   {"type": "deploy", "strategy_id": N, "reason": "..."}       (paper; any side)
   {"type": "deploy_live", "strategy_id": N, "reason": "..."}  (REAL money; any side (YES or NO) that already proved itself on PAPER, and only when the user turned on live autopilot. If live autopilot is off or any safety gate fails it is refused and stays on paper. Never the first step for a new idea: research -> paper -> live.)
 Back your words with actions. If your reply says you ARE doing something — starting/launching research, tuning, pausing, promoting, deploying — you MUST include the matching action(s) in `actions`. A reply that merely DESCRIBES an action without emitting it does NOTHING (no research is launched, nothing changes) and is a failure: e.g. saying "I'll launch three research threads now" requires three `research` actions in this same response, not a promise to do it later. Conversely, never invent actions you have no concrete reason for — if the right move is to wait and watch, say so plainly and return an empty list. EXCEPTION: if the context says EMPTY DECK (zero deployments and zero research in flight), waiting is NOT allowed — you must emit at least one `research` action this turn.
+CLOSE THE LOOP: research only pays off when a proven edge reaches the book. If a passed strategy is a DEPLOYMENT-CANDIDATE, promoting it to paper (a `deploy` action) takes priority over opening a new exploratory research line — don't explore forever while a ready edge sits undeployed. And don't re-launch research on a market that is already running or just finished: that line is refused; hunt a DIFFERENT market from the list.
 """ + specmod.SPEC_GUIDE
 
 

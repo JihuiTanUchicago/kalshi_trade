@@ -131,3 +131,37 @@ def test_research_action_needs_a_real_idea(monkeypatch):
     rec = _capture(monkeypatch)
     text, pid = agent.act(None, USER, {"type": "research", "idea": "hi"}, True)
     assert pid is None and rec["runs"] == []
+
+
+# -- per-market dedup/cooldown: don't re-spam a market that's running or just finished -------------
+
+def test_research_action_skips_a_market_already_running(monkeypatch):
+    rec = _capture(monkeypatch)
+    monkeypatch.setattr(agent.repo, "list_runs",
+                        lambda cur, uid, limit=30: [{"id": 5, "market": "btc15m", "status": "running",
+                                                     "finished_at": None}])
+    text, pid = agent.act(None, USER, {"type": "research", "market": "btc15m",
+                          "idea": "Fade the overreaction after a large 1-minute BTC move."}, True)
+    assert pid is None and rec["runs"] == []            # no duplicate line launched
+    assert "already running" in text.lower()
+
+
+def test_research_action_skips_a_market_on_cooldown(monkeypatch):
+    rec = _capture(monkeypatch)
+    monkeypatch.setattr(agent.repo, "list_runs",
+                        lambda cur, uid, limit=30: [{"id": 6, "market": "btc15m", "status": "failed",
+                                                     "finished_at": agent.repo.now_utc()}])
+    text, pid = agent.act(None, USER, {"type": "research", "market": "btc15m",
+                          "idea": "Another angle on BTC overreaction."}, True)
+    assert pid is None and rec["runs"] == []            # just-failed market is on cooldown
+    assert "cooldown" in text.lower()
+
+
+def test_research_action_allows_a_different_market(monkeypatch):
+    rec = _capture(monkeypatch)
+    monkeypatch.setattr(agent.repo, "list_runs",
+                        lambda cur, uid, limit=30: [{"id": 7, "market": "btc15m", "status": "running",
+                                                     "finished_at": None}])
+    text, pid = agent.act(None, USER, {"type": "research", "market": "eth_daily",
+                          "idea": "Mean-revert ETH after a sharp daily gap."}, True)
+    assert pid is None and rec["runs"] == [("eth_daily", None, "Mean-revert ETH after a sharp daily gap.")]
