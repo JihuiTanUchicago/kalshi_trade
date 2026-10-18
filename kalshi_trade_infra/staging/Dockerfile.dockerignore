@@ -1,0 +1,27 @@
+# Dockerfile-specific allowlist: private state never enters the build context.
+**
+!requirements.txt
+!app/
+!app/**
+!data_pipeline/
+!data_pipeline/**
+!staging/
+!staging/entrypoint.py
+!scripts/
+!scripts/paper_staging_smoke.py
+**/.env*
+**/.state
+**/.state/**
+**/.runtime
+**/.runtime/**
+**/__pycache__
+**/__pycache__/**
+**/*.pyc
+**/credentials
+**/credentials/**
+**/.aws
+**/.aws/**
+**/.ssh
+**/.ssh/**
+**/*.pem
+**/*.key
