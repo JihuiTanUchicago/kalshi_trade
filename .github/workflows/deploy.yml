@@ -3,7 +3,8 @@ name: Deploy web app
 # Redeploy the Tau customer app to the web box WITHOUT needing the AWS key locally.
 # Manual trigger only: GitHub restricts "Run workflow" to collaborators who have write (push)
 # access to the repo — i.e. the same people who can push to main — so this is the push-to-main-
-# gated redeploy. It assumes a short-lived AWS role via GitHub OIDC (no long-lived keys stored).
+# gated redeploy. It authenticates with a dedicated deploy IAM user's keys, stored as the repo
+# secrets AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY (least-privilege policy in DEPLOY_WORKFLOW_SETUP.md).
 # It reuses scripts/deploy_web.sh verbatim, so CI and a local deploy run the identical, rollback-
 # guarded path (whole-app tar -> S3 -> SSM on-box extract/compile/schema/restart -> curl 200 ->
 # CloudFront invalidate). One-time AWS setup + the access-key alternative: scripts/DEPLOY_WORKFLOW_SETUP.md.
@@ -20,13 +21,16 @@ on:
         type: boolean
         default: true
 
-# Never let two deploys race the box; a second run waits for the first to finish.
+# LAST WINS, without racing the box. Same group => runs never overlap; when several are triggered
+# close together GitHub keeps the newest queued one and cancels the older pending ones, so the LAST
+# trigger is what ends up deployed. cancel-in-progress is false ON PURPOSE: a deploy already on the
+# box must finish (killing it mid-extract/restart, or starting a 2nd on-box deploy over it, would
+# corrupt the box) — so the running one completes, then the latest queued runs and wins.
 concurrency:
   group: deploy-web
   cancel-in-progress: false
 
 permissions:
-  id-token: write   # mint the OIDC token used to assume the AWS deploy role
   contents: read
 
 jobs:
@@ -42,10 +46,11 @@ jobs:
           ref: ${{ inputs.ref }}
           fetch-depth: 0   # deploy_web.sh uses `git archive` / `git rev-parse` on the ref
 
-      - name: Assume the AWS deploy role (OIDC, no stored keys)
+      - name: Configure AWS credentials (deploy IAM user keys)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
       - name: Deploy to the web box
