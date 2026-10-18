@@ -482,8 +482,6 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 #rsimo .rsi-card { margin: 16px 0 0; }
 .dispatch > h3 { display: flex; align-items: center; gap: 8px; }
 .dispatch > h3 svg { width: 15px; height: 15px; color: var(--ink-2); }
-.starters { gap: 8px; }
-.chips.arch { gap: 7px; }
 .dispatch-tune { display: flex; gap: 18px 24px; flex-wrap: wrap; align-items: flex-end; }
 .dispatch-tune select.input { min-width: 184px; }
 .dispatch-tune input[type="number"].input { width: 92px; }

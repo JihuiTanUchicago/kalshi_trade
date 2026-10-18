@@ -1384,26 +1384,6 @@
   }
 
   // ---------- research ----------
-  // Idea starters: real quant archetypes a trader recognizes. Clicking one seeds the idea box
-  // with a concrete, mechanism-first hypothesis (and nudges the market when the angle implies
-  // one), so a blank textarea never has to be the starting point. The seeds post through the
-  // same `prompt` field as hand-typed ideas -- no new payload, no privileged path.
-  const ARCHETYPES = [
-    { k: 'meanrev', label: 'Mean reversion', market: 'btc15m',
-      idea: 'Fade sharp intraday overshoots: when the 15-minute BTC contract runs well past the underlying spot move, bet it snaps back before settlement.' },
-    { k: 'momentum', label: 'Momentum', market: 'btc_daily',
-      idea: 'Ride the trend into the close: when BTC is trending hard in the last hour, take the side the trend favors on the 5pm daily contract.' },
-    { k: 'vol', label: 'Volatility', market: 'btc15m',
-      idea: 'Trade the volatility regime: when realized BTC vol spikes, the 15-minute contracts misprice the wings — buy the tails the market left too cheap.' },
-    { k: 'longshot', label: 'Longshot fade', market: 'btc_daily',
-      idea: 'Fade the longshot bias: sell the far out-of-the-money tails retail overpays for in the final hour before the 5pm close.' },
-    { k: 'settle', label: 'Settlement pin', market: 'btc_daily',
-      idea: 'Trade settlement convergence: as the 5pm close nears, price should pin to spot — fade contracts still trading away from where BTC actually is.' },
-    { k: 'micro', label: 'Microstructure', market: 'btc15m',
-      idea: 'Read the order book: when the yes/no spread widens and one side’s depth thins out, take the side the book is leaning toward.' },
-    { k: 'relval', label: 'Relative value', market: '',
-      idea: 'Relative value across strikes: when adjacent strike contracts imply inconsistent probabilities, buy the cheap one and sell the rich one.' },
-  ];
   // "Build on what's worked": the user's best passed edges, one click from a deeper search line.
   function winCard(s) {
     const oos = s.out_of_sample;
@@ -1457,7 +1437,7 @@
       <summary class="pipecap"><b>Figure 1</b> <span class="pipecap-t">The Tau research pipeline</span><span class="pipecap-hint">how your idea becomes a deployable, evidence-backed strategy</span><span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
       <div class="flow">
         ${fstage('Propose', [
-          fnode('Idea', 'Your hypothesis, in a sentence — or a one-click angle from below.', { cls: 'node-in' }),
+          fnode('Idea', 'Your hypothesis, in a sentence.', { cls: 'node-in' }),
           fnode('Proposer', 'An agent writes several concrete, testable strategy specs. A challenger vets each one — approve, revise, or reject — before a cent of held-out data is spent.', { cls: 'node-proposer' }),
           fnode('Pre-register &amp; freeze', 'The hypothesis, its metric, and its test are fixed and hashed before the agent sees any held-out data — so a result can’t be fitted after the fact.'),
         ])}
@@ -1489,15 +1469,12 @@
     const DEMO_PROMPT = "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances";
     const mdl = await api('/api/models').catch(() => ({ models: [], default: '' }));
     const modelOpts = (mdl.models || []).map((m) => `<option value="${esc(m.key)}"${m.key === mdl.default ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
-    const haveMkt = (k) => !k || me.markets.some((m) => m.key === k);  // only nudge to a market that exists
     shell('/research', boardTitle('Research', 'A self-improving research engine for Bitcoin markets \u2014 describe an idea, it writes strategies and tests each on data it never saw.'), `
       <form class="panel dispatch" id="dispatch">
         <h3>${ICON.spark2}New research session</h3>
         ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
-        <div class="field starters"><span class="label">Start from an angle — or write your own below</span>
-          <div class="chips arch">${ARCHETYPES.map((a) => `<button type="button" class="chip" data-arch="${a.k}" aria-pressed="false" title="${esc(a.idea)}">${esc(a.label)}</button>`).join('')}</div></div>
         <label class="field"><span>Describe your idea</span>
-          <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="Pick an angle above, or write your own — e.g. &quot;Sell overpriced tails in the last hour before the 5pm close.&quot;"></textarea></label>
+          <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="Write your own — e.g. &quot;Sell overpriced tails in the last hour before the 5pm close.&quot;"></textarea></label>
         <div class="dispatch-tune">
           ${modelOpts ? `<label class="field"><span>Model</span>
             <select class="input" name="model" id="rmodel">${modelOpts}</select></label>` : ''}
@@ -1526,20 +1503,7 @@
     const form = root.querySelector('#dispatch');
     wireMarketPicker(form);
     const ta = form.querySelector('textarea[name=prompt]');
-    const pressArch = (on) => form.querySelectorAll('[data-arch]').forEach((b) => b.setAttribute('aria-pressed', String(on === b)));
-    // Row selection is native (each row is a <label> around its radio); this just drives the
-    // one-click archetype shortcut, scrolling the chosen row into view for feedback.
-    const selectMarket = (k) => {
-      const r = form.querySelector(`input[name=market][value="${k == null ? '' : k}"]`);
-      if (r) { const d = r.closest('details.mkt-group'); if (d) d.open = true; r.checked = true; r.closest('.mktrow').scrollIntoView({ block: 'nearest' }); }
-    };
-    form.querySelectorAll('[data-arch]').forEach((b) => (b.onclick = () => {
-      const a = ARCHETYPES.find((x) => x.k === b.dataset.arch); if (!a) return;
-      ta.value = a.idea; pressArch(b); if (a.market && haveMkt(a.market)) selectMarket(a.market);
-      ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
-    }));
-    ta.addEventListener('input', () => pressArch(null));
-    root.querySelectorAll('[data-ex]').forEach((b) => (b.onclick = () => { ta.value = b.dataset.ex; pressArch(null); ta.focus(); }));
+    root.querySelectorAll('[data-ex]').forEach((b) => (b.onclick = () => { ta.value = b.dataset.ex; ta.focus(); }));
     const rf = form.querySelector('#runforever'), mh = form.querySelector('#maxhyp');
     if (rf && mh) {
       const syncRf = () => { mh.disabled = rf.checked; mh.style.opacity = rf.checked ? '.4' : ''; };
