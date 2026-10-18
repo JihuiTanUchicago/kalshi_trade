@@ -1,0 +1,13 @@
+{
+  "branch": "codex/broker-oauth-20261017",
+  "previous": "49cdfb8282a913208a31f5bd362cdb9cfc21fcb8",
+  "commit": "29fc2529bb737e706f06ca4d09cf30efd9201d83",
+  "tree": "0ff52735aa44c6593f7f3c41e93ada7c69876538",
+  "parents": [
+    "49cdfb8282a913208a31f5bd362cdb9cfc21fcb8",
+    "070043758f70011bfbd2ec139348c96745f81b30"
+  ],
+  "changed_paths_vs_first_parent": 69,
+  "exact_tree_and_commit_match": true,
+  "force": false
+}

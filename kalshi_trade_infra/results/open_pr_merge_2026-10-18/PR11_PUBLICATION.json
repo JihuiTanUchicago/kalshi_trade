@@ -1,0 +1,13 @@
+{
+  "branch": "codex/databento-primary-20261018",
+  "previous": "cd4394a5089ec774b8510d2da8c032f250b9fb96",
+  "commit": "7bb068120c0c05b34566961b1c690b38bf1538e0",
+  "tree": "bc8e5b3af11875b7c8797d25e70e214c3f1692c0",
+  "parents": [
+    "cd4394a5089ec774b8510d2da8c032f250b9fb96",
+    "29fc2529bb737e706f06ca4d09cf30efd9201d83"
+  ],
+  "changed_paths_vs_first_parent": 113,
+  "exact_tree_and_commit_match": true,
+  "force": false
+}

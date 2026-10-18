@@ -3,8 +3,8 @@
 Databento is the recommended **primary historical stock/ETF and futures source**.
 It does not replace every existing Alpaca/Massive tool. This setup keeps their
 distinct capabilities available, with no automatic provider or feed fallback.
-The change is implemented locally; a production worker and real queued model run
-still need deployment-owner acceptance. The market-data routing delta introduces
+The source is merged to GitHub main through PRs #10 and #11; a production worker
+and real queued model run still need deployment-owner acceptance. The market-data routing delta introduces
 no schema or new dependency. The combined release also includes OAuth and newer
 main migrations: follow current `AGENTS.md` and run the reviewed full
 `python -m app.schema` before deploying that whole app; a broker-only migration or

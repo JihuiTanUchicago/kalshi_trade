@@ -1,11 +1,11 @@
 # Broker account connections
 
-Tau connects existing individual-user brokerage accounts in Settings → Account,
+Tau connects existing individual-user brokerage accounts in Funds (Settings → Account in Meridian),
 in Alpaca, Robinhood, Interactive Brokers order. Each user completes consent at
 their broker. Tau never asks for the user's brokerage password. Provider app
 registration and a real consent round trip are required before a connection can
-be called accepted. The integration is implemented for local verification; it
-has not been deployed or accepted against real customer accounts.
+be called accepted. The source is merged on GitHub main through PRs #10 and #11;
+this merge did not deploy or accept it against real customer accounts.
 
 ## Current Alpaca configuration — October 17, 2026
 
@@ -15,8 +15,9 @@ been authenticated through real user consent. Local `APP_SECRET_KEY` is absent.
 Anonymous production checks return 200 at `/healthz`, but 404 for the broker callback
 and new static module. The OAuth pair has since been uploaded as two encrypted
 GitHub Actions Secrets, with metadata verified. Production deployment is
-assigned to the user's teammate. A whole-app candidate and broker-only SQL are
-prepared; remote drift/schema/dependencies must be checked before install. Use the
+assigned to the user's teammate. The combined release supersedes the earlier
+broker-only archive: rebuild from the selected merged commit and apply the reviewed
+full `app.schema` migration. Remote drift/schema/dependencies must be checked before install. Use the
 [teammate deployment guide](BROKER_OAUTH_DEPLOYMENT.md). Deploy/inject/migrate before real paper consent;
 preserve the server’s existing encryption key. [Check receipts and handoff](../results/broker_oauth_2026-10-17/credentials_2026-10-17/HANDOFF.md).
 

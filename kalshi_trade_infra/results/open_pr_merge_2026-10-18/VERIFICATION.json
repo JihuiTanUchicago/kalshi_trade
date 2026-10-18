@@ -30,5 +30,8 @@
   "production_operations": 0,
   "paid_provider_model_calls": 0,
   "oauth_local_integration_commit": "29fc2529bb737e706f06ca4d09cf30efd9201d83",
-  "reviewed_runtime_tree": "19496672bddee312e0bf49642d2a696f66f71386"
+  "reviewed_runtime_tree": "19496672bddee312e0bf49642d2a696f66f71386",
+  "github_merged": true,
+  "merged_source_main": "3445f7675e16950489a76b98a034fd304273415a",
+  "merged_source_tree": "bc8e5b3af11875b7c8797d25e70e214c3f1692c0"
 }

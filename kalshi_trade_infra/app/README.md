@@ -12,11 +12,14 @@ contains the configured keys. The guide covers explicit runtime injection throug
 Actions or AWS, including the existing loader’s Alpaca limitation. No provider or
 production service was activated by the credential sync.
 
-## Broker account authorization — local implementation
+## Broker account authorization — source merged
 
-Source is available for review in [PR #10](https://github.com/JihuiTanUchicago/kalshi_trade/pull/10).
+Source is merged through [PR #10](https://github.com/JihuiTanUchicago/kalshi_trade/pull/10)
+and [PR #11](https://github.com/JihuiTanUchicago/kalshi_trade/pull/11), reconciled with
+68 newer main commits. Combined checks: **1,187 Python passed / 9 skipped;
+58 frontend passed**. [Integration handoff](../results/open_pr_merge_2026-10-18/HANDOFF.md).
 The teammate should follow [the deployment guide](BROKER_OAUTH_DEPLOYMENT.md);
-main merge, production installation and real consent remain pending.
+production installation and real consent remain pending.
 
 Funds (Settings → Account in Meridian) adds Alpaca Connect, Robinhood Trading MCP and approved IBKR
 OAuth1a connections, with session-bound state and encrypted per-user grants.
@@ -26,7 +29,7 @@ registration, real consent, database migration and production acceptance remain
 required. This does not enable Tau trading or invoke broker order tools.
 See [broker setup, API contract and acceptance](BROKER_OAUTH.md).
 
-Latest Alpaca check: OAuth client ID/secret are present in the private local env;
+Earlier October 17 Alpaca check: OAuth client ID/secret are present in the private local env;
 112 focused offline tests and paper/data authorization URL construction pass.
 The public broker callback and asset return 404, so the new code is not available
 there yet. Local `APP_SECRET_KEY` is absent; production must retain its persistent
@@ -35,8 +38,8 @@ key. Deployment/runtime injection, migration and genuine consent remain pending.
 The Alpaca OAuth pair is now encrypted in GitHub Secrets (seven names total).
 Production deployment is assigned to the teammate. The [operator guide](BROKER_OAUTH_DEPLOYMENT.md)
 provides source, private credential access, the reviewed full-app schema migration, whole-app
-installation, verification and rollback, with full 1,020 Python / 55 frontend
-checks passing. No production
+installation, verification and rollback. The original 1,020 Python / 55 frontend
+milestone is historical; current combined checks are above. No production
 service or database has changed. [Rollout handoff](../results/broker_oauth_2026-10-17/production_2026-10-17/HANDOFF.md).
 
 ## Source publication — October 17, 2026

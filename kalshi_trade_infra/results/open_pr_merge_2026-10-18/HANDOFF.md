@@ -1,7 +1,7 @@
 # OAuth and market-data PR integration
 
 Workstream: `tau-open-pr-main-merge-20261018` · 2026-10-18 Asia/Shanghai.
-Status: combined locally / offline verified; GitHub publication in progress. Advisory reservation active.
+Status: both PRs merged on GitHub; local main synchronized; advisory reservation released.
 
 User authorized pulling latest GitHub main, combining PR #10 (broker OAuth) and
 PR #11 (Databento primary/setup), resolving conflicts, committing and merging on
@@ -86,3 +86,31 @@ worker/repository source pass. No production or provider/model calls occurred.
 Source GitHub publication is the next step, under normal fast-forward/merge rules
 and exact PR-head matching. Local source, tests and both operator guides are
 ready; production acceptance is still the teammate's separate work.
+
+## GitHub merge and final handoff
+
+- PR #10 merged at **2026-10-18 10:59:15 Asia/Shanghai** as
+  `ec3d0e647c7cf27dae62ab752a10ac9e616c57ec`; its tree exactly matches tested
+  local OAuth integration `29fc2529bb737e706f06ca4d09cf30efd9201d83`.
+- PR #11 merged at **2026-10-18 11:00:26 Asia/Shanghai** as
+  `3445f7675e16950489a76b98a034fd304273415a`; its tree
+  `bc8e5b3af11875b7c8797d25e70e214c3f1692c0` exactly matches tested combined
+  integration `7bb068120c0c05b34566961b1c690b38bf1538e0`.
+- Both updates used normal non-force branch publication and GitHub merge with
+  exact PR head matching. No admin/rules bypass; no required CI checks or reviews
+  were reported. Local offline checks are evidence, not invented CI results.
+- Imported and hash-verified both signed GitHub merge commits, fast-forwarded local
+  main to the remote source merge, and confirmed no open PRs remain. A final
+  documentation/evidence-only commit records this verified result; runtime source
+  is unchanged from the combined passing candidate.
+
+See [merge receipt](MERGE_RECEIPT.json), [verification](VERIFICATION.json),
+[preservation](PRESERVATION.json), [independent review](REVIEW.md), and exact
+[PR #10 publication](PR10_PUBLICATION.json) / [PR #11 publication](PR11_PUBLICATION.json).
+
+Remaining work: teammate deploys the selected full release, reviews/applies the
+full app.schema migrations, preserves the persistent encryption key and private
+settings, applies any intended data overlay, and accepts real broker consent plus
+queued worker/provider behavior. No production migration/restart/invalidation,
+API-key upload/rotation, provider/account/order/model call or live activation was
+performed here. Existing private bytes/modes and unrelated archives are preserved.

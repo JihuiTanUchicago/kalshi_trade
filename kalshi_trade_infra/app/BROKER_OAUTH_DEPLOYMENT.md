@@ -1,8 +1,9 @@
 # Broker OAuth: teammate deployment
 
-Source review: [PR #10](https://github.com/JihuiTanUchicago/kalshi_trade/pull/10),
-branch `codex/broker-oauth-20261017` targeting main. The current integration includes
-the newer main research/risk/schema changes; production deployment remains pending.
+Source merged: [PR #10](https://github.com/JihuiTanUchicago/kalshi_trade/pull/10)
+and [PR #11](https://github.com/JihuiTanUchicago/kalshi_trade/pull/11) are on main.
+The combined release includes the newer main research/risk/schema changes;
+production deployment remains the teammate's separate acceptance work.
 
 The user has assigned production deployment to their teammate. This source is
 locally verified; no production migration, configuration, restart or real broker
@@ -13,11 +14,10 @@ and [provider setup/API contract](BROKER_OAUTH.md).
 
 ## 1. Obtain the reviewed source and compare production
 
-Review the broker OAuth PR and use its approved commit, or main after it merges.
-For a separate checkout of the review branch:
+Review the merged release and select a main commit. For a separate checkout:
 
 ```bash
-git fetch origin codex/broker-oauth-20261017
+git fetch origin main
 git worktree add --detach /tmp/tau-oauth-release FETCH_HEAD
 cd /tmp/tau-oauth-release/kalshi_trade_infra
 git -C .. archive --format=tar.gz --output=/tmp/tau-oauth-app.tgz HEAD:kalshi_trade_infra app
@@ -133,7 +133,10 @@ rollback copy. Keep replacement/restart brief. Restart only:
 sudo systemctl restart recursive-web.service
 ```
 
-Do not restart collector, house, agent, engine or history services. With the
+For OAuth alone, do not restart collector, house, agent, engine or history services.
+If also applying the market-data overlay, follow the separate
+[market-data guide](MARKET_DATA_DEPLOYMENT.md) to drain/restart the agent worker.
+With the
 actual web environment loaded, `python -m app.broker_oauth status` should report
 Alpaca configured and Tau execution disabled. Robinhood/IBKR can remain awaiting
 their separate approvals. Invalidate `/*` on the verified Tau CloudFront
