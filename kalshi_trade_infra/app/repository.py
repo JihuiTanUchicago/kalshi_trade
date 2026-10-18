@@ -751,10 +751,11 @@ def get_strategy(cur, user_id: int, strategy_id: int) -> Optional[Dict]:
 
 def strategy_records(cur, user_id: int, market: str, limit: int = 500) -> List[Dict]:
     """Raw discovery-tree records for one user+market, OLDEST first: each tested
-    hypothesis with its in-sample metrics and (if it was gated) its out-of-sample
-    outcome. Feeds the Tau-RSI replay simulator (app/replay.py)."""
+    hypothesis with its in-sample metrics, (if it was gated) its out-of-sample
+    outcome, and its id/parent_id lineage (a dig-deeper strategy points back at the
+    strategy it refined). Feeds the Tau-RSI replay simulator (app/replay.py)."""
     cur.execute(
-        """SELECT status, result_json FROM app_strategies
+        """SELECT id, parent_id, status, result_json FROM app_strategies
            WHERE user_id=%s AND market=%s ORDER BY id ASC LIMIT %s""",
         (user_id, market, limit),
     )
@@ -764,6 +765,7 @@ def strategy_records(cur, user_id: int, market: str, limit: int = 500) -> List[D
         ins = res.get("in_sample") or {}
         oos = res.get("out_of_sample")
         out.append({
+            "id": r.get("id"), "parent_id": r.get("parent_id"),
             "in_sample": {"pnl": ins.get("pnl") or 0, "trades": ins.get("trades") or 0},
             "tested": oos is not None,
             "oos_pnl": (oos or {}).get("pnl") or 0.0,

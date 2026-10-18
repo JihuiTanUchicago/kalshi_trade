@@ -352,16 +352,22 @@ def experiment_records_for_replay(cur, user_id: int, market: str) -> List[Dict]:
     """Experiments with their latest VALIDATION verdict, for replay.build_tree —
     so the discovery tree is scored on gatekeeper-recorded validation outcomes,
     NOT the old reused OOS (closes Leak 2/5). One row per experiment that has a
-    validation result: {experiment_id, strategy_id, hypothesis_hash, market,
-    classification, n_trades, net_pnl, mean_net_return}."""
+    validation result: {experiment_id, strategy_id, parent_id, hypothesis_hash,
+    market, classification, n_trades, net_pnl, mean_net_return}.
+
+    `strategy_id`/`parent_id` carry the DISCOVERY-TREE lineage (a refinement's strategy
+    points back at the strategy it dug deeper on, via app_strategies.parent_id), so
+    replay.build_tree can traverse real parent->child branches instead of a flat list.
+    LEFT JOIN: an experiment whose strategy row is gone just has parent_id NULL (a root)."""
     cur.execute(
-        """SELECT e.id AS experiment_id, e.strategy_id, e.hypothesis_hash, e.market,
+        """SELECT e.id AS experiment_id, e.strategy_id, s.parent_id, e.hypothesis_hash, e.market,
                   r.classification, r.n_trades, r.net_pnl, r.mean_net_return
              FROM app_experiments e
              JOIN app_experiment_results r ON r.experiment_id=e.id
              JOIN (SELECT experiment_id, MAX(id) AS mx FROM app_experiment_results
                      WHERE phase='validation' GROUP BY experiment_id) last
                ON last.experiment_id=e.id AND last.mx=r.id
+             LEFT JOIN app_strategies s ON s.id=e.strategy_id
             WHERE e.user_id=%s AND e.market=%s
             ORDER BY e.id""",
         (user_id, market),

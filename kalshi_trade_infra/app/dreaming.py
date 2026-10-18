@@ -26,6 +26,15 @@ MIN_TREE = 12          # need some history before evolving is meaningful
 N_CANDIDATES = 5       # revised policies to dream up per round (cheap; more shots, better hit rate)
 _EPS = 1e-6
 
+# Parallelism reward (Eq. 1 b2). The one place to turn the paper's parallelism term on.
+# Kept at 0.0 (OFF): in our online loop a round's width is the intra-run proposal count,
+# where wider = each round learns less from the last — a cost the replay can't see, so a
+# positive b2 would reward a wide-but-less-adaptive policy the online harness can't honestly
+# execute (train/serve skew). Enabling it is gated on the online parallel-branch hook that
+# makes wide batches outcome-neutral (see replay.py docstring + the roadmap). The term is
+# fully implemented and tested in replay.replay; this constant just keeps it inert live.
+PARALLELISM = replay.DEFAULT_PARALLELISM
+
 # The policy the agent starts from / improves on, shown to it verbatim.
 DEFAULT_POLICY_SRC = """\
 def next_batch(state):
@@ -134,8 +143,8 @@ def evolve_policy(conn, user_id: int, market: str, model: Callable, usage: Usage
     row = repo.get_policy(cur, user_id)
     current_code = row["code"] if row else DEFAULT_POLICY_SRC
     current = sandbox.safe_policy(current_code)  # safe: falls back to default if somehow invalid
-    base = replay.replay(current, tree, budget)          # one ordering, for the human-readable summary
-    base_v = replay.replay_generalization(current, tree, budget)  # the score we actually gate on
+    base = replay.replay(current, tree, budget, b2=PARALLELISM)          # one ordering, for the human-readable summary
+    base_v = replay.replay_generalization(current, tree, budget, b2=PARALLELISM)  # the score we actually gate on
     best_code, best_v = (row["code"] if row else None), base_v
 
     prompt = ("Current exploration policy:\n```python\n%s\n```\n%s\n\nPropose %d improved policies that "
@@ -159,10 +168,10 @@ def evolve_policy(conn, user_id: int, market: str, model: Callable, usage: Usage
             # Without this, the penalties make a do-nothing policy (V=0) look like an
             # "improvement" over a current one whose selected finalists lose money
             # out-of-sample (V<0) — adopting it would halt the user's research.
-            probe = replay.replay(cand, tree, budget)
+            probe = replay.replay(cand, tree, budget, b2=PARALLELISM)
             if probe.generations <= 0 or probe.finalists <= 0:
                 continue
-            v = replay.replay_generalization(cand, tree, budget)
+            v = replay.replay_generalization(cand, tree, budget, b2=PARALLELISM)
         except Exception:
             continue
         if v > best_v + _EPS:
