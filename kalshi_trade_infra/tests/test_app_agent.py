@@ -49,6 +49,9 @@ class Store:
                             lambda cur, uid, eid, fin: (True, "stub"))
         monkeypatch.setattr(agent, "_challenge",
                             lambda finalists, run, model, usage, log: [{"decision": "approve", "reason": "", "fixes": None} for _ in finalists])
+        # Pillar 2 per-thesis depth adds a model turn per thesis; pin it OFF here so the scripted
+        # replies stay 1:1 with the proposer rounds. The deep loop itself is covered below.
+        monkeypatch.setattr(agent, "THESIS_MAX_STEPS", 1)
 
     def _insert(self, cur, uid, run_id, parent, market, direction, title, thesis, spec, status, result):
         self.strategies.append({"title": title, "status": status, "result": result, "spec": spec, "parent": parent})
@@ -123,6 +126,35 @@ def test_research_loop_saves_everything_and_hides_out_of_sample(monkeypatch):
     for s in store.strategies:
         if s["status"] == "rejected":
             assert "out_of_sample" not in s["result"]
+
+
+def _fence(obj):
+    return "```json\n%s\n```" % json.dumps(obj)
+
+
+def test_deep_thesis_refines_on_research_fold_then_commits_one_spec(monkeypatch):
+    """Pillar 2: with per-thesis depth on, the agent backtests a thesis, refines it, then commits
+    ONE spec — the refined one — and it still produces exactly one candidate (one trial)."""
+    store = Store(monkeypatch)
+    monkeypatch.setattr(agent, "THESIS_MAX_STEPS", 3)  # up to 2 develop turns per thesis
+    refined = {"side": "no", "entry": {"min_edge": 0.2}}
+    model, prompts = scripted([plan(), hyps(WINNER),
+                               _fence({"decision": "refine", "spec": refined, "change": "flip side"}),
+                               _fence({"decision": "commit", "why": "mechanism holds"})])
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 1}, model=model,
+                       dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    status, _, tried, _ = store.finished
+    assert status == "succeeded" and tried == 1          # one thesis -> one candidate (no trial inflation)
+    assert len(store.strategies) == 1
+    assert store.strategies[0]["spec"]["side"] == "no"   # committed the REFINED spec, not the first draft
+    # The develop turn reads the research fold only: never a held-out number.
+    assert any("research fold" in p.lower() for p in prompts)
+    for p in prompts:
+        assert "out_of_sample" not in p
+
+
+def test_develop_thesis_module_self_check():
+    agent._develop_self_check()
 
 
 def test_invalid_spec_gets_one_repair(monkeypatch):

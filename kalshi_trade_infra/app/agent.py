@@ -111,6 +111,13 @@ MAX_BUDGET = 1000         # hard ceiling a user can request for one finite run (
 MAX_ACTIONS = 3
 MIN_FRAMES = 200
 DREAM_EVERY_CHUNKS = max(1, int(os.getenv("TAU_DREAM_EVERY_CHUNKS", "2")))  # dream every N explore chunks in a forever run
+# Pillar 2 — per-thesis DEPTH: how many research-fold steps the agent may spend developing ONE
+# thesis (explore -> backtest -> read prior failures -> critique -> refine) BEFORE it commits the
+# single frozen spec that becomes exactly one candidate (= one pre-registration). 1 = legacy
+# one-shot; prod default is deep (20) so the agent takes as long as a thesis needs. The real bound
+# is the per-step CREDIT gate, not the cap — the loop reads the RESEARCH FOLD only, so a deeper
+# thesis never touches held-out data, never inflates the trial count, and stays bounded by spend.
+THESIS_MAX_STEPS = max(1, int(os.getenv("TAU_THESIS_MAX_STEPS", "20")))
 
 RESEARCH_SYSTEM = """You are a quantitative researcher at a disciplined prediction-market
 fund, trading Kalshi Bitcoin binary contracts (YES pays $1 if BTC settles above the strike,
@@ -1031,7 +1038,11 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
             break  # agent is out of fresh ideas this chunk
         for h in batch:
             checkpoint()
-            t = _test_in_sample(h, ds, partition, log, round_no, cur, merged_cache)
+            # Pillar 2: develop each thesis in depth on the RESEARCH FOLD (backtest -> critique ->
+            # refine, up to THESIS_MAX_STEPS) before committing its single frozen spec. One candidate
+            # out per hypothesis, so finalist selection + pre-registration are unchanged.
+            t = _develop_thesis(h, run, ds, partition, memory, proposer, market_data,
+                                 usage, log, checkpoint, round_no, cur, run["user_id"], merged_cache)
             t["score"] = backtest.score(t["in_sample"])  # attach once, so the policy needs no backtester
             chunk.append(t)
             tried.append(t)
@@ -1257,6 +1268,130 @@ def _test_in_sample(h: Dict, ds: backtest.Dataset, partition: Dict, log, round_n
         "primary_metric": h.get("primary_metric") or "",
         "spec": h["spec"], "in_sample": ins, "round": round_no})
     return dict(h, in_sample=ins, capital=res["capital"], attribution=res.get("attribution"))
+
+
+def _develop_prompt(run: Dict, t: Dict, memory: List[Dict], step: int) -> str:
+    """One per-thesis refine turn (Pillar 2). Shows ONLY the research fold: this thesis's current
+    spec, its research-fold metrics + edge-by-regime, and the user's prior-research LABELS — the
+    same leak-free surface the batch rounds use. Never a validation/holdout number."""
+    attr = _attribution_line(t.get("attribution"))
+    return (
+        "Develop THIS one thesis in depth before committing it — you may take several steps to get "
+        "the mechanism right instead of moving on.\n"
+        "Thesis: %s\nCurrent spec: %s\nResearch-fold result (a leak-free sandbox you may study "
+        "freely — NOT the held-out data): %s%s\n\n"
+        "What this market's earlier research found (learn from it; do not repeat failures):\n%s\n\n"
+        "This is step %d of at most %d for this thesis. Decide: if a concrete change would "
+        "STRENGTHEN THE ECONOMIC MECHANISM (condition on a regime you can justify, prototype a "
+        "fitted/code model, drop a leg that only fit noise), REFINE the spec; otherwise COMMIT it. "
+        "Do NOT bolt on filters that merely fit the strongest in-sample bucket — every version is "
+        "re-judged later on data you never see and the committed one spends exactly ONE statistical "
+        "trial.\nReply ONE JSON object: "
+        '{\"decision\":\"refine\",\"spec\":{...the full revised spec...},\"change\":\"<what and why>\"} '
+        "(optionally also \"thesis\" and \"mechanism\" if the story changed) OR "
+        '{\"decision\":\"commit\",\"why\":\"<why it is ready to gate>\"}.'
+        % (t["thesis"], json.dumps(t["spec"], separators=(",", ":")),
+           _metrics_line(t["in_sample"]), ("\n" + attr) if attr else "",
+           _memory_block(memory), step + 1, THESIS_MAX_STEPS)
+    ) + THINK_ALOUD
+
+
+def _develop_check(market: str) -> Callable[[Dict], Dict]:
+    def check(obj: Dict) -> Dict:
+        decision = str(obj.get("decision") or "").strip().lower()
+        if decision == "commit":
+            return {"decision": "commit"}
+        if decision != "refine":
+            raise ValueError('decision must be "refine" or "commit"')
+        raw = obj.get("spec")
+        if isinstance(raw, dict):
+            raw = dict(raw)
+            if raw.setdefault("market", market) != market:
+                raise ValueError("spec.market must be %s" % market)
+        try:
+            spec = specmod.validate(raw)
+        except specmod.SpecError as e:
+            raise ValueError("spec: %s" % e)  # let ask_json's repair round see it
+        out: Dict = {"decision": "refine", "spec": spec, "change": str(obj.get("change") or "")[:1000]}
+        if obj.get("thesis"):
+            out["thesis"] = str(obj["thesis"])[:1500]
+        if isinstance(obj.get("mechanism"), dict):
+            out["mechanism"] = obj["mechanism"]
+        return out
+
+    return check
+
+
+def _develop_thesis(h: Dict, run: Dict, ds: backtest.Dataset, partition: Dict, memory: List[Dict],
+                    proposer: ModelFn, market_data, usage: Usage, log, checkpoint, round_no: int,
+                    cur, user_id: int, merged_cache: Optional[Dict] = None) -> Dict:
+    """Pillar 2 — spend as long as THIS thesis needs on the RESEARCH FOLD before committing it.
+
+    Backtest the freshly proposed spec, then up to THESIS_MAX_STEPS-1 times let the agent read its
+    own research-fold result (+ prior-failure labels) and either REFINE the spec or COMMIT. Only
+    the research fold is ever read; the single returned candidate is what goes to finalist
+    selection, so a deeper thesis still pre-registers exactly ONE frozen spec (no trial inflation).
+
+    Bounded three ways: the step cap, a per-step credit check (depth stays inside the budget), and
+    fail-OPEN — any bad/empty/unavailable reply commits what we already have, so a reviewer hiccup
+    can never halt research or spend unbounded. Each refine re-freezes via _test_in_sample, so the
+    committed spec is always a fit-on-research-and-frozen model, never re-fit at gate time."""
+    t = _test_in_sample(h, ds, partition, log, round_no, cur, merged_cache)
+    market = run["market"]
+    for step in range(THESIS_MAX_STEPS - 1):
+        checkpoint()
+        if cur is not None and repo.credit_balance(cur, user_id) <= 0:
+            break  # deeper thesis work stays inside the credit budget
+        try:
+            reply = market_data.ask(proposer, RESEARCH_SYSTEM,
+                                    [{"role": "user", "content": _develop_prompt(run, t, memory, step)}],
+                                    _develop_check(market), usage)
+        except LLMError:
+            break  # fail-open: keep the spec we already have
+        if reply.get("decision") != "refine" or not reply.get("spec"):
+            break  # agent is satisfied — commit the current spec
+        refined = dict(h, spec=reply["spec"])
+        if reply.get("thesis"):
+            refined["thesis"] = reply["thesis"]
+        if reply.get("mechanism"):
+            refined["mechanism"] = reply["mechanism"]
+        log("step", "Refining \"%s\": %s" % (t["title"], reply.get("change") or "sharpening the mechanism"))
+        t = _test_in_sample(refined, ds, partition, log, round_no, cur, merged_cache)
+    return t
+
+
+def _develop_self_check() -> None:
+    """One runnable check: the per-thesis loop refines when asked, then commits exactly ONE spec,
+    reads only the research fold, and honours the step cap."""
+    import app.agent as A
+    ds = type("DS", (), {"start_ts": 0, "cutoff_ts": 1, "frames": []})()
+    calls = {"backtests": 0, "asks": 0}
+
+    def fake_test(h, *a, **k):
+        calls["backtests"] += 1
+        return dict(h, in_sample={"trades": 10, "win_rate": 0.5, "pnl": 1.0, "fees": 0.1,
+                                  "profit_factor": 1.2, "max_drawdown": 0.5}, capital=100.0, attribution=None)
+
+    class MD:  # stand-in for AgentMarketData.ask: returns scripted (already-checked) develop replies
+        def __init__(self, replies):
+            self.replies = replies
+        def ask(self, model, system, messages, check, usage):
+            calls["asks"] += 1
+            return self.replies.pop(0)  # loop logic only; spec validation is covered by the pytest test
+
+    orig = A._test_in_sample
+    A._test_in_sample = fake_test
+    try:
+        A.THESIS_MAX_STEPS = 3
+        base = {"title": "H", "thesis": "t", "spec": {"market": "m", "side": "yes"}}
+        md = MD([{"decision": "refine", "spec": {"market": "m", "side": "no"}, "change": "flip"},
+                 {"decision": "commit", "why": "ready"}])
+        out = _develop_thesis(dict(base), {"market": "m"}, ds, {}, [], lambda *a, **k: None, md,
+                              Usage(), lambda *a, **k: None, lambda: None, 1, cur=None, user_id=1)
+        assert out["spec"]["side"] == "no", "committed the refined spec"
+        assert calls["asks"] == 2 and calls["backtests"] == 2, "one ask+backtest per refine, then commit"
+    finally:
+        A._test_in_sample = orig
 
 
 # -- co-pilot ------------------------------------------------------------------
