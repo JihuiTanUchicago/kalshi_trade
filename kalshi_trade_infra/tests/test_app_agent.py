@@ -379,6 +379,22 @@ def test_copilot_research_action_refuses_a_strategy_that_did_not_pass(monkeypatc
     assert pid is None and "passed" in text
 
 
+def test_act_normalizes_a_messy_action_type(monkeypatch):
+    # The model sometimes emits "Research"/"research "/"research\n" (or under "kind"); a whitespace/
+    # casing variant must still route to the research handler, not the "not allowed" fallback.
+    created = []
+    r = agent.repo
+    monkeypatch.setattr(r, "count_runs", lambda *a, **k: 0)
+    monkeypatch.setattr(r, "create_run", lambda cur, uid, kind, market, direction, prompt, **kw:
+                        created.append((kind, market)) or 9)
+    for messy in ({"type": " Research\n", "market": "btc15m", "idea": "favorite-longshot bias"},
+                  {"kind": "research", "market": "btc15m", "idea": "favorite-longshot bias"}):
+        created.clear()
+        text, pid = agent.act(None, {"id": 1}, messy, True)
+        assert "not allowed" not in text, "messy type %r fell through to the fallback" % messy
+        assert created == [("research", "btc15m")]
+
+
 def test_agent_picks_market_when_unspecified(monkeypatch):
     store = Store(monkeypatch)
     picked = []

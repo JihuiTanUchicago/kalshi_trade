@@ -1639,7 +1639,12 @@ def _fmt_changes(changes: Dict) -> str:
 def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.dataset) -> Tuple[str, Optional[int]]:
     """Turn one agent action into a proposal (or, on autopilot, an applied
     change). Returns (sentence for the chat, proposal id if one was made)."""
-    kind = action.get("type")
+    # Normalize the action type: the model sometimes emits "Research"/"research "/"research\n"
+    # (or puts it under "kind"), and an exact `== "research"` miss made every handler fall through
+    # to the "not allowed" fallback even though research IS allowed. Strip + lowercase the single
+    # read point so a whitespace/casing variant can't silently kill an action. All handler literals
+    # below are lowercase, so this never changes a correct match.
+    kind = str(action.get("type") or action.get("kind") or "").strip().lower()
     reason = str(action.get("reason") or "").strip()[:1000] or "No reason given."
     user_id = user["id"]
     if kind in ("adjust", "pause", "resume"):
@@ -1817,7 +1822,10 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         return ("Started a fresh research session on %s — same gates as any run (pre-registration, "
                 "holdout, diversification). Follow it on the Research page."
                 % (market or "a market I'll choose"), None)
-    return "I tried an action I'm not allowed to take (%s)." % kind, None
+    # Should be unreachable for a well-formed action. Log the raw dict so a genuinely new/malformed
+    # action kind is diagnosable from the agents journal instead of only this opaque chat line.
+    print("[agents] copilot emitted an unhandled action: %r" % (action,), flush=True)
+    return "I tried an action I'm not allowed to take (%s)." % (kind or "unknown"), None
 
 
 def apply_proposal(cur, user_id: int, proposal: Dict) -> None:
