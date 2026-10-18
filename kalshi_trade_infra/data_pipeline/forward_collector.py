@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set
 
 import certifi
+import pymysql
 import websockets
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -278,6 +279,29 @@ def insert_market_upserts(cur, markets: List[Dict]) -> None:
         )
 
 
+# A stuck/long transaction elsewhere can hold a lock on `markets` and make the upsert block (a
+# 24-min stuck kalshi_series txn once crash-looped the whole BTC feed this way). The catalog is
+# non-critical metadata; the live price snapshot below does NOT depend on it (it reads `markets`
+# from the API, writes a different table). So on lock contention we SKIP the catalog this cycle
+# and keep the feed alive, instead of letting the exception propagate out of the loop. The short
+# session innodb_lock_wait_timeout set in loop_forever bounds the wait to seconds, not ~50s.
+_LOCK_CONTENTION_ERRNOS = (1205, 1213)  # lock wait timeout, deadlock
+
+
+def upsert_catalog(cur, markets: List[Dict]) -> bool:
+    """Upsert the markets catalog, returning False (skipping) on DB lock contention so a stuck
+    transaction elsewhere can't crash the live feed. Re-raises anything else (e.g. a dropped
+    connection), which the caller handles by reconnecting."""
+    try:
+        insert_market_upserts(cur, markets)
+        return True
+    except pymysql.err.OperationalError as e:
+        if e.args and e.args[0] in _LOCK_CONTENTION_ERRNOS:
+            print(f"[WARN] markets catalog upsert skipped (lock contention errno={e.args[0]}); price feed continues")
+            return False
+        raise
+
+
 def _pick_value(ws_msg: Optional[Dict], market: Dict, key: str):
     if ws_msg and ws_msg.get(key) is not None:
         return ws_msg.get(key)
@@ -354,6 +378,7 @@ def loop_forever() -> None:
 
     series_list = micro_series()
     with conn.cursor() as cur:
+        cur.execute("SET SESSION innodb_lock_wait_timeout=5")  # fail fast on a contended write; don't block the 20s cadence
         # One tracked active event per series (BTC's selection logic, unchanged, per series).
         current_event: Dict[str, Optional[str]] = {}
         print(f"Forward collector started immediately (no initial 15m wait). Series={series_list}")
@@ -391,7 +416,7 @@ def loop_forever() -> None:
                     continue
 
                 if markets:
-                    insert_market_upserts(cur, markets)
+                    upsert_catalog(cur, markets)
                 else:
                     if is_primary:
                         insert_na_snapshot(cur, tick, "NO_OPEN_KXBTC15M_MARKET")
