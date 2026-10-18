@@ -1348,8 +1348,9 @@ def run_research(
     usage = Usage()
     tried: List[Dict] = []
     run_id, user_id, market = run["id"], run["user_id"], run["market"]
-    # The user's chosen model (NULL = default Sonnet) drives every LLM call this
-    # run makes and the price it's billed at. Tests pass their own `model`.
+    # The run's model drives every LLM call it makes and the price it's billed at. An autopilot
+    # research run is stamped with the user's autopilot_model at creation (act); a manual run
+    # carries the model the user picked; NULL resolves to the catalog default. Tests pass `model`.
     choice = catalog.resolve(run.get("model"))
     if model is None:
         # on_delta=None keeps the ordinary (system, messages) calls working everywhere; the
@@ -2188,7 +2189,9 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         direction = action.get("direction") if action.get("direction") in DIRECTIONS else None
         # brief=True: the co-pilot is DELEGATING, not authoring. `idea` is a high-level angle/lens,
         # and the proposer turns it into the actual hypotheses (see _research_prompt's brief branch).
-        repo.create_run(cur, user_id, "research", market, direction, idea, brief=True)
+        # Stamp the user's autopilot model so the run uses it (NULL = catalog default).
+        repo.create_run(cur, user_id, "research", market, direction, idea, brief=True,
+                        model=user.get("autopilot_model"))
         return ("Started a fresh research session on %s — same gates as any run (pre-registration, "
                 "holdout, diversification). Follow it on the Research page."
                 % (market or "a market I'll choose"), None)
@@ -2396,13 +2399,18 @@ def _copilot_check(obj: Dict) -> Dict:
     return {"reply": reply[:4000], "actions": actions, "plan": plan if isinstance(plan, dict) else None}
 
 
-def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.dataset) -> None:
+def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=backtest.dataset) -> None:
     """kind='chat' answers the user's latest message; kind='review' is the
     agent checking in on its own (run.prompt says why)."""
     cur = conn.cursor()
     usage = Usage()
     billing_attempted = False
     user = repo.get_user(cur, run["user_id"])
+    # Honor the user's autopilot model (NULL = catalog default) so a review/chat runs on — and is
+    # billed at — the model they picked, not always the global default. Tests pass their own `model`.
+    choice = catalog.resolve(run.get("model") or (user or {}).get("autopilot_model"))
+    if model is None:
+        model = lambda system, messages, on_delta=None: claude(system, messages, choice.model_id, on_delta)  # noqa: E731
 
     def checkpoint() -> None:
         nonlocal cur
@@ -2468,12 +2476,12 @@ def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.da
             repo.add_chat(cur, user["id"], "system", text, proposal_id)
         repo.finish_run(cur, run["id"], "succeeded", None, 0, 0, usage.input_tokens, usage.output_tokens)
         billing_attempted = True
-        _bill(conn, user["id"], usage, run["id"])
+        _bill(conn, user["id"], usage, run["id"], choice.model_id)
     except Cancelled:
         repo.add_event(cur, run["id"], "step", "Cancelled.")
         if not billing_attempted:
             billing_attempted = True
-            _bill(conn, user["id"], usage, run["id"])
+            _bill(conn, user["id"], usage, run["id"], choice.model_id)
     except Exception as e:
         print("[agents] copilot run %s failed: %r" % (run["id"], e), flush=True)
         cur = _reconnect(conn, cur)
@@ -2482,6 +2490,6 @@ def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.da
         repo.finish_run(cur, run["id"], "failed", str(e)[:2000], 0, 0, usage.input_tokens, usage.output_tokens)
         if not billing_attempted:
             billing_attempted = True
-            _bill(conn, user["id"], usage, run["id"])  # charge for the work done regardless of the failure cause
+            _bill(conn, user["id"], usage, run["id"], choice.model_id)  # charge for the work done regardless of the failure cause
         if not isinstance(e, LLMError):
             raise

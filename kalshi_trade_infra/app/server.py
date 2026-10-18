@@ -1016,7 +1016,18 @@ def autopilot_status(ctx: Ctx):
         "loss_headroom": round(max(0.0, limit + min(0.0, today_live)), 2),  # how much loss budget is left today
         "last_action": repo.last_autopilot_action(cur, ctx.uid),
         "last_review_at": repo.last_review_at(cur, ctx.uid),  # liveness: a quiet review posts nothing, this still shows it ran
+        "model": u.get("autopilot_model") or catalog.DEFAULT_KEY,  # the model the autopilot's own runs use
     }
+
+
+def autopilot_model(ctx: Ctx):
+    """Pick the model the autopilot's own research/review/chat runs use (manual runs still choose
+    per-run). Validated against the catalog; empty/unknown clears back to the catalog default."""
+    key = (ctx.body.get("model") or "").strip() or None
+    if key is not None and catalog.get(key) is None:
+        raise ApiError(400, "Unknown model.")
+    repo.set_autopilot_model(ctx.cur, ctx.uid, key)
+    return {"ok": True, "model": key or catalog.DEFAULT_KEY}
 
 
 # -- funds -------------------------------------------------------------------------
@@ -1870,6 +1881,7 @@ ROUTES: List[Route] = [
         ("POST", "/api/settings", settings, True),
         ("POST", "/api/autopilot/live", autopilot_live, True),
         ("POST", "/api/autopilot/kill", autopilot_kill, True),
+        ("POST", "/api/autopilot/model", autopilot_model, True),
         ("GET", "/api/autopilot/status", autopilot_status, True),
         ("GET", "/api/community", community, True),
         ("POST", "/api/community", create_community_post, True),

@@ -30,6 +30,21 @@ def test_research_action_delegates_market_and_angle(monkeypatch):
     assert rec["idea"] == "order-flow if this market has microstructure data"
 
 
+def test_research_action_stamps_user_autopilot_model(monkeypatch):
+    rec = {}
+    monkeypatch.setattr(repo, "count_runs", lambda *a, **k: 0)
+    monkeypatch.setattr(agent, "_market_research_recent", lambda *a, **k: None)
+    monkeypatch.setattr(repo, "create_run",
+                        lambda cur, uid, kind, market, direction, idea, **kw: rec.update(model=kw.get("model")) or 9)
+    agent.act(None, {"id": 1, "autopilot_model": "claude-sonnet-5-5"},
+              {"type": "research", "market": "btc15m", "idea": "order-flow microstructure angle"}, True)
+    assert rec["model"] == "claude-sonnet-5-5"   # autopilot research runs on the user's chosen model
+    # and None (default) when the user hasn't picked one
+    rec.clear()
+    agent.act(None, {"id": 1}, {"type": "research", "market": "btc15m", "idea": "order-flow microstructure angle"}, True)
+    assert rec.get("model") is None
+
+
 def test_brief_research_prompt_delegates_not_authors():
     run = {"market": "nhl_game", "prompt": "favorite-longshot on this sports market", "brief": 1}
     p = agent._research_prompt(run, _mini_ds("nhl_game"), [], count=3)

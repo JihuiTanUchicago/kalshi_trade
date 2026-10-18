@@ -3076,6 +3076,8 @@
           <label class="switch"><span class="vh">Autopilot</span><input type="checkbox" id="apf-apswitch"></label>
         </div>
         <dl class="apf-stats" id="apf-stats"></dl>
+        <label class="field apf-model"><span>Autopilot model</span>
+          <select class="input" id="apf-model" aria-label="Autopilot model"></select></label>
         <div class="apf-gates hint" id="apf-gates"></div>
         <div id="apf-flash"></div>
         <div class="apf-controls" id="apf-controls"></div>
@@ -3121,6 +3123,15 @@
     apLoadChat(box, true);
     apStopChat();
     apChatTimer = setInterval(() => { const b = document.getElementById('autopilot-float'); if (b && apExpanded()) apLoadChat(b); else apStopChat(); }, 3000);
+    // Autopilot model picker: the model its own research/review/chat runs use. Routing autopilot to
+    // a higher-quota model (e.g. Sonnet) is the durable fix for Bedrock throttling killing research.
+    (async () => {
+      const sel = box.querySelector('#apf-model'); if (!sel) return;
+      const mdl = await api('/api/models').catch(() => ({ models: [], default: '' }));
+      const cur = (S.ap && S.ap.model) || mdl.default;
+      sel.innerHTML = (mdl.models || []).map((m) => `<option value="${esc(m.key)}"${m.key === cur ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
+      sel.onchange = async () => { try { const r = await api('/api/autopilot/model', { model: sel.value }); if (S.ap) S.ap.model = r.model; } catch (e) { alert0(e.message); } };
+    })();
   }
   function apUpdate(box, d) {
     const m = (d && AP_MODE[d.mode]) || AP_MODE.off;
@@ -3149,6 +3160,7 @@
       <div><dt>Live P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd></div>
       <div><dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd></div>
       ${d.last_review_at ? `<div><dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd></div>` : ''}`;
+    const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel) msel.value = d.model;
     const gates = box.querySelector('#apf-gates'); if (gates) gates.textContent = apLiveBlock(d);
     const controls = box.querySelector('#apf-controls');
     if (controls) {

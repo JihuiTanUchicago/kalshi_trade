@@ -681,6 +681,10 @@ def main() -> None:
         # review reads + rewrites each turn, so reviews are coherent across time instead of
         # independent one-shots. NULL = no plan yet. Bounded in repository.set_autopilot_plan.
         _add_column_if_missing(cur, "app_users", "autopilot_plan", "ALTER TABLE app_users ADD COLUMN autopilot_plan JSON NULL")
+        # The model key (from models_catalog) the autopilot's own research/review/chat runs use when
+        # the run didn't pick one. NULL = the catalog default. Lets the user route autopilot to a
+        # higher-quota model (e.g. Sonnet) so Bedrock throttling stops killing research runs.
+        _add_column_if_missing(cur, "app_users", "autopilot_model", "ALTER TABLE app_users ADD COLUMN autopilot_model VARCHAR(64) NULL")
         # Proposal payload: the clamped values a set_risk / set_exec proposal applies on approval
         # (deploy/adjust/pause/resume carry no payload). NULL for the older kinds.
         _add_column_if_missing(cur, "app_proposals", "payload", "ALTER TABLE app_proposals ADD COLUMN payload JSON NULL")

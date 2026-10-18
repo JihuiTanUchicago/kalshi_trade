@@ -169,7 +169,7 @@ def users_by_usernames(cur, usernames: List[str]) -> List[Dict]:
 
 def get_user(cur, user_id: int) -> Optional[Dict]:
     cur.execute(
-        "SELECT id, email, name, username, picture_url, autopilot, autopilot_live, autopilot_daily_loss_limit, ui_theme, created_at FROM app_users WHERE id=%s", (user_id,)
+        "SELECT id, email, name, username, picture_url, autopilot, autopilot_live, autopilot_daily_loss_limit, autopilot_model, ui_theme, created_at FROM app_users WHERE id=%s", (user_id,)
     )
     return cur.fetchone()
 
@@ -1570,6 +1570,12 @@ def set_autopilot_plan(cur, user_id: int, plan: Dict) -> None:
         return
     kept = {k: str(plan[k])[:_PLAN_FIELD_MAX] for k in PLAN_KEYS if plan.get(k)}
     cur.execute("UPDATE app_users SET autopilot_plan=%s WHERE id=%s", (_json(kept) if kept else None, user_id))
+
+
+def set_autopilot_model(cur, user_id: int, model_key: Optional[str]) -> None:
+    """Set the model the autopilot's own runs use (NULL = catalog default). The caller validates
+    model_key against models_catalog so only a known key (or None) is ever stored."""
+    cur.execute("UPDATE app_users SET autopilot_model=%s WHERE id=%s", (model_key or None, user_id))
 
 
 def user_execution_config(cur, user_id: int) -> Dict:
