@@ -11,6 +11,7 @@ from typing import Dict, List
 # Upcoming / in-progress, most-wanted first: (title, detail). `detail` is the
 # full markdown explanation (rendered via mdLite); '' for bare one-liners.
 PLANNED: List[tuple] = [
+    ('Alpaca paper stock/ETF trading', 'Local implementation: per-user OAuth, explicit paper-order approval, broker balances/positions, partial fills and cancellation/status recovery. Offline verification is complete; production rollout and real-account paper acceptance remain pending.'),
     ('Autonomous Tau improvement loop runs on a schedule; each round picks one aspect (execution / research rigor / risk / data / ML tooling / UX / engineering) and ships an improvement', ''),
     ('Production-grade execution + risk hardening', ''),
     ('Data infrastructure expansion', ''),

@@ -62,7 +62,7 @@ test('brokers render in the requested order and Alpaca starts with paper read ac
   await host.click(host.button('connect', 'alpaca'));
   assert.deepEqual(calls[1], {path: '/api/brokers/alpaca/connect', body: {environment: 'paper', permission: 'read'}});
   assert.deepEqual(navigations, ['https://app.alpaca.markets/oauth/authorize?state=synthetic']);
-  assert.match(host.innerHTML, /Trading in Tau stays disabled/);
+  assert.match(host.innerHTML, /Live trading in Tau stays disabled/);
 });
 
 test('Alpaca trading authorization and live environment require explicit selection', async () => {
@@ -211,4 +211,39 @@ test('disconnect errors preserve the connection and allow another attempt', asyn
   assert.match(host.innerHTML, /Could not disconnect this account/);
   assert.doesNotMatch(host.innerHTML, /private broker token/);
   assert.equal(host.button('disconnect', 'robinhood', 'live').disabled, false);
+});
+
+test('nested Alpaca paper host survives broker refresh and environment changes and is disposed with its parent', async () => {
+  class NestedHost extends Host {
+    get innerHTML() { return this.accounts ? this.accounts.innerHTML + this.paper.innerHTML : this.html; }
+    set innerHTML(value) {
+      this.html = value; this.writes++; this.members.clear();
+      this.accounts = new Host(); this.paper = new Host();
+      this.members.add(this.accounts); this.members.add(this.paper);
+    }
+    querySelector(selector) { return selector === '[data-broker-accounts]' ? this.accounts : selector === '[data-alpaca-paper]' ? this.paper : null; }
+    contains(value) { return this.members.has(value) || !!(this.accounts && this.accounts.contains(value)); }
+    button(...args) { return this.accounts.button(...args); }
+  }
+  const host = new NestedHost(), data = fixtures();
+  data.providers.find(provider => provider.id === 'alpaca').connections = [{connected: true, environment: 'paper', scopes: ['data', 'trading']}];
+  const mounted = [], lifecycle = {refreshes: 0, destroys: 0};
+  const control = mount(host, {search: '', api: async path => path === '/api/brokers' ? data : {disconnected: true},
+    paperModule: {mount(paperHost, options) {
+      mounted.push(paperHost); assert.equal(typeof options.api, 'function'); assert.equal(options.isCurrent(), true);
+      paperHost.innerHTML = '<input value="synthetic unsent draft">';
+      return {refresh: async () => { lifecycle.refreshes++; }, destroy: () => { lifecycle.destroys++; }};
+    }}});
+  await control.ready;
+  const firstHost = host.paper;
+  host.change({brokerEnvironment: 'alpaca'}, 'live');
+  await control.refresh();
+  assert.equal(mounted.length, 1);
+  assert.equal(host.paper, firstHost);
+  assert.match(host.paper.innerHTML, /synthetic unsent draft/);
+  await host.click(host.button('disconnect', 'alpaca', 'paper'));
+  assert.equal(lifecycle.refreshes, 1);
+  assert.equal(host.paper, firstHost);
+  control.destroy();
+  assert.equal(lifecycle.destroys, 1);
 });

@@ -14,6 +14,11 @@ production service was activated by the credential sync.
 
 ## Broker account authorization — source merged
 
+The subsequent local [Alpaca paper trading integration](ALPACA_PAPER_TRADING.md)
+adds per-user broker-simulated equity limit orders, confirmation, account/positions
+and fill/cancellation reconciliation. It is opt-in, offline verified and not yet
+deployed; the OAuth milestone below describes authorization separately.
+
 Source is merged through [PR #10](https://github.com/JihuiTanUchicago/kalshi_trade/pull/10)
 and [PR #11](https://github.com/JihuiTanUchicago/kalshi_trade/pull/11), reconciled with
 68 newer main commits. Combined checks: **1,187 Python passed / 9 skipped;
@@ -26,7 +31,8 @@ OAuth1a connections, with session-bound state and encrypted per-user grants.
 Alpaca defaults to paper/read access; order authorization is an explicit option.
 Existing data keys are separate from OAuth client credentials. Provider app
 registration, real consent, database migration and production acceptance remain
-required. This does not enable Tau trading or invoke broker order tools.
+required. Authorization alone does not enable order execution; the separate paper
+service requires its server flag, trading scope and explicit user approval.
 See [broker setup, API contract and acceptance](BROKER_OAUTH.md).
 
 Earlier October 17 Alpaca check: OAuth client ID/secret are present in the private local env;

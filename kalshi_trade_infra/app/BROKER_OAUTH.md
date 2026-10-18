@@ -9,6 +9,11 @@ this merge did not deploy or accept it against real customer accounts.
 
 ## Current Alpaca configuration — October 17, 2026
 
+Subsequent local implementation: [Alpaca paper execution](ALPACA_PAPER_TRADING.md)
+uses this connection's trading scope for explicitly approved paper equity tickets.
+Its schema, runtime opt-in, risk checks and real-account acceptance are separate.
+The October 17 observations below are historical, not a fresh production check.
+
 The user supplied both OAuth app credentials in Tau’s ignored local `.env`.
 A network-free configuration/authorize-URL check passes; the credentials have not
 been authenticated through real user consent. Local `APP_SECRET_KEY` is absent.
@@ -141,7 +146,8 @@ All routes require the signed-in Tau user. All POSTs retain the existing
 
 Alpaca supports `paper` and `live`; Robinhood and IBKR expose `live` authorization
 only. Invalid environments are rejected before creating state. The UI explains
-broker permissions while showing that Tau execution remains disabled.
+broker permissions. Live equity execution remains disabled; paper execution can
+be opted into as documented in the separate paper-trading guide.
 
 State expires after ten minutes, is stored only as SHA-256, and binds user,
 provider, environment and originating Tau session. It is consumed in a committed
@@ -174,4 +180,5 @@ expired and repeated callbacks. Then separately accept Robinhood and IBKR with
 approved registrations. Mocked tests establish local contracts only. No real
 broker authorization, production deployment or account-read acceptance is claimed
 by those tests. Existing research/data flags and all trading gates are unchanged;
-there is no equity-order dispatcher or generic MCP-tool access in this change.
+that OAuth milestone added no equity-order dispatcher or generic MCP-tool access.
+The subsequent local paper dispatcher is documented separately above.

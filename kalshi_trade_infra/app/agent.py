@@ -2000,6 +2000,12 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
     kind = str(action.get("type") or action.get("kind") or "").strip().lower()
     reason = str(action.get("reason") or "").strip()[:1000] or "No reason given."
     user_id = user["id"]
+    if kind == "alpaca_paper_order":
+        from app import alpaca_paper
+        try:
+            return alpaca_paper.propose_for_agent(cur, user_id, action)
+        except alpaca_paper.Error as exc:
+            return "I could not propose that Alpaca paper order: %s" % exc, None
     if kind in ("adjust", "pause", "resume"):
         dep = repo.get_deployment(cur, user_id, int(action.get("deployment_id") or 0))
         if dep is None or dep["status"] == "stopped":
@@ -2194,6 +2200,8 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
 def apply_proposal(cur, user_id: int, proposal: Dict) -> None:
     """The user approved it: do what it says."""
     kind = proposal["kind"]
+    if kind == "alpaca_paper":
+        raise ValueError("Alpaca paper approval must use the durable broker order service.")
     if kind == "adjust":
         repo.set_deployment_strategy(cur, user_id, proposal["deployment_id"], proposal["strategy_id"])
     elif kind in ("pause", "resume"):
@@ -2372,6 +2380,7 @@ Actions:
   {"type": "research", "strategy_id": N, "reason": "..."}     (DIG DEEPER off a PASSED strategy — refine its parameters, stress-test it, extend the thesis. Each variant still has to pass the gates.)
   {"type": "research", "market": "<market key or omit to let me choose>", "idea": "<a short ANGLE/lens, NOT a full thesis>", "reason": "..."}   (FRESH research line. DELEGATE, don't author: `idea` is a high-level DIRECTION — a market + a short angle (e.g. "favorite-longshot on this sports market", "order-flow if this market has microstructure data") — and the research specialist writes the actual hypotheses and specs from it. Do NOT hand it a fully-formed strategy ("buy when implied>65%..."); that is the research pipeline's job, not yours. One or two sentences of angle is enough.)
   {"type": "deploy", "strategy_id": N, "reason": "..."}       (paper; any side)
+  {"type": "alpaca_paper_order", "symbol": "AAPL", "side": "buy", "qty": "1", "limit_price": "100.00", "reason": "..."} (A separate Alpaca broker PAPER stock/ETF experiment. Whole shares, limit DAY only. Creates a ticket for explicit USER APPROVAL even when autopilot is on; it never executes from this action. Use the current paper account/positions and the user's instruction; do not infer a fill or convert a Kalshi binary strategy into an equity strategy. This is not live equity execution.)
   {"type": "deploy_live", "strategy_id": N, "reason": "..."}  (REAL money; any side (YES or NO) that already proved itself on PAPER, and only when the user turned on live autopilot. If live autopilot is off or any safety gate fails it is refused and stays on paper. Never the first step for a new idea: research -> paper -> live.)
 Back your words with actions. If your reply says you ARE doing something — starting/launching research, tuning, pausing, promoting, deploying — you MUST include the matching action(s) in `actions`. A reply that merely DESCRIBES an action without emitting it does NOTHING (no research is launched, nothing changes) and is a failure: e.g. saying "I'll launch three research threads now" requires three `research` actions in this same response, not a promise to do it later. Conversely, never invent actions you have no concrete reason for — if the right move is to wait and watch, say so plainly and return an empty list. EXCEPTION: if the context says EMPTY DECK (zero deployments and zero research in flight), waiting is NOT allowed — you must emit at least one `research` action this turn.
 CLOSE THE LOOP: research only pays off when a proven edge reaches the book. If a passed strategy is a DEPLOYMENT-CANDIDATE, promoting it to paper (a `deploy` action) takes priority over opening a new exploratory research line — don't explore forever while a ready edge sits undeployed. And don't re-launch research on a market that is already running or just finished: that line is refused; hunt a DIFFERENT market from the list.
@@ -2436,6 +2445,9 @@ def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.da
         else:
             task = "Answer the user's latest message."
         prompt = "%s\n\nRecent conversation:\n%s\n\n%s\n\n%s" % (_copilot_context(cur, user), transcript or "(none)", task, ACTIONS_GUIDE)
+        from app import alpaca_paper
+        if alpaca_paper.enabled():
+            prompt += "\n\n" + alpaca_paper.agent_context(conn, user["id"])
         market_data = AgentMarketData(DataScope(), lambda kind, message, data=None:
                                      repo.add_event(cur, run["id"], kind, message, data), checkpoint)
         knowledge = AgentKnowledge(DataScope(), lambda kind, message, data=None:
@@ -2457,7 +2469,11 @@ def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.da
             repo.set_autopilot_plan(cur, user["id"], out["plan"])
         for action in out["actions"]:
             checkpoint()
-            text, proposal_id = act(cur, user, action, bool(user.get("autopilot")), dataset_fn)
+            if str(action.get("type") or action.get("kind") or "").strip().lower() == "alpaca_paper_order":
+                with repo.transaction(conn) as tx:
+                    text, proposal_id = act(tx, user, action, bool(user.get("autopilot")), dataset_fn)
+            else:
+                text, proposal_id = act(cur, user, action, bool(user.get("autopilot")), dataset_fn)
             repo.add_chat(cur, user["id"], "system", text, proposal_id)
         repo.finish_run(cur, run["id"], "succeeded", None, 0, 0, usage.input_tokens, usage.output_tokens)
         billing_attempted = True

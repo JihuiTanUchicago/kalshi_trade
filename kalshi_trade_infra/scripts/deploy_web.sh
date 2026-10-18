@@ -56,8 +56,12 @@ echo "[deploy] ref=$REF ($SHA) -> box=$INSTANCE_ID  invalidate=$INVALIDATE  dry_
 
 # (1) whole-package tar from the git ref (never the dirty tree, never file-by-file)
 git archive --format=tar.gz -o "$BUNDLE" "$REF:kalshi_trade_infra" app data_pipeline
-for p in app/server.py app/schema.py data_pipeline; do
-  tar -tzf "$BUNDLE" | grep -q "^${p}" || { echo "[deploy] FATAL: bundle missing $p — aborting"; exit 1; }
+# Consume tar's full listing before searching: grep -q can otherwise close the
+# pipe early and make a valid archive fail with SIGPIPE under `set -o pipefail`.
+CONTENTS="$TMPD/bundle.contents"
+tar -tzf "$BUNDLE" > "$CONTENTS"
+for p in app/server.py app/schema.py data_pipeline/; do
+  grep -Fxq -- "$p" "$CONTENTS" || { echo "[deploy] FATAL: bundle missing $p — aborting"; exit 1; }
 done
 echo "[deploy] bundle ok ($(wc -c <"$BUNDLE") bytes)"
 

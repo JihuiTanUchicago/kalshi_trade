@@ -26,7 +26,7 @@ from urllib.parse import parse_qs, urlparse
 from app import agent, auth, backtest, billing, devlog, dreaming, engine, kalshi_account, notify
 from app import kalshi_dev
 from app import kalshi_dev_exec
-from app import broker_oauth
+from app import broker_oauth, alpaca_paper
 from app import models_catalog as catalog
 from app import repository as repo
 from app import research_repository as research_repo
@@ -205,6 +205,27 @@ def broker_callback(ctx: Ctx):
 def broker_disconnect(ctx: Ctx):
     return _broker_call(broker_oauth.disconnect, ctx.conn, ctx.uid, ctx.params[0],
                         ctx.body.get("environment"))
+
+
+def _paper_call(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except alpaca_paper.Error as exc:
+        raise ApiError(exc.status, str(exc)) from None
+
+
+def alpaca_paper_account(ctx: Ctx):
+    return _paper_call(alpaca_paper.overview, ctx.conn, ctx.uid)
+
+
+def alpaca_paper_draft(ctx: Ctx):
+    return _paper_call(alpaca_paper.create_order, ctx.conn, ctx.uid, ctx.body)
+
+
+def alpaca_paper_action(ctx: Ctx):
+    operation = {"submit": alpaca_paper.submit_order, "refresh": alpaca_paper.refresh_order,
+                 "cancel": alpaca_paper.cancel_order}[ctx.params[1]]
+    return _paper_call(operation, ctx.conn, ctx.uid, _int_param(ctx))
 
 
 # -- read routes ---------------------------------------------------------------
@@ -930,6 +951,12 @@ def post_chat(ctx: Ctx):
 def decide_proposal(ctx: Ctx):
     pid, decision = _int_param(ctx), ctx.params[1]
     conn = ctx.conn
+    # Broker execution commits its durable claim before HTTP. Do not hold the
+    # generic proposal transaction around a network request or bypass the
+    # paper service's scope, ownership, cash and duplicate-send checks.
+    candidate = repo.get_proposal(ctx.cur, ctx.uid, pid)
+    if candidate and candidate["kind"] == "alpaca_paper":
+        return _paper_call(alpaca_paper.decide_proposal, conn, ctx.uid, pid, decision)
     with repo.transaction(conn) as tx:
         p = repo.get_proposal(tx, ctx.uid, pid)
         if p is None:
@@ -1833,6 +1860,9 @@ ROUTES: List[Route] = [
         ("POST", "/api/waitlist", waitlist, False),
         ("GET", "/api/me", me, True),
         ("GET", "/api/brokers", broker_connections, True),
+        ("GET", "/api/brokers/alpaca/paper", alpaca_paper_account, True),
+        ("POST", "/api/brokers/alpaca/paper/orders", alpaca_paper_draft, True),
+        ("POST", r"/api/brokers/alpaca/paper/orders/(\d+)/(submit|refresh|cancel)", alpaca_paper_action, True),
         ("POST", r"/api/brokers/(alpaca|robinhood|ibkr)/connect", broker_connect, True),
         ("POST", r"/api/brokers/(alpaca|robinhood|ibkr)/disconnect", broker_disconnect, True),
         ("GET", r"/auth/brokers/(alpaca|robinhood|ibkr)/callback", broker_callback, True),
@@ -1906,7 +1936,7 @@ ROUTES: List[Route] = [
 
 def _static_versions() -> Dict[str, str]:
     out = {}
-    for name in ("app.css", "app.js", "session-data.js", "session-chat.js", "research-artifacts.js", "broker-connections.js", "broker-connections.css", "icon.svg", "app.meridian.css", "app.meridian.js", "boot.js"):
+    for name in ("app.css", "app.js", "session-data.js", "session-chat.js", "research-artifacts.js", "alpaca-paper.js", "alpaca-paper.css", "broker-connections.js", "broker-connections.css", "icon.svg", "app.meridian.css", "app.meridian.js", "boot.js"):
         p = STATIC_DIR / name
         out[name] = hashlib.sha256(p.read_bytes()).hexdigest()[:10] if p.exists() else "0"
     return out
@@ -1965,6 +1995,8 @@ class Handler(BaseHTTPRequestHandler):
                     .replace("{{artifacts_v}}", versions["research-artifacts.js"])
                     .replace("{{brokers_v}}", versions["broker-connections.js"])
                     .replace("{{brokers_css_v}}", versions["broker-connections.css"])
+                    .replace("{{paper_js_v}}", versions["alpaca-paper.js"])
+                    .replace("{{paper_css_v}}", versions["alpaca-paper.css"])
                     .replace("{{icon_v}}", versions["icon.svg"])
                     .replace("{{meridian_css_v}}", versions["app.meridian.css"])
                     .replace("{{meridian_js_v}}", versions["app.meridian.js"])
