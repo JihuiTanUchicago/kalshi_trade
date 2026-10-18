@@ -1595,33 +1595,74 @@
     return `<dl class="hx-mech">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
   }
 
-  // Render the actual strategy spec the way a trader reads it: entry/exit/sizing in plain rows —
-  // or, for an agent-authored quant strategy, the real Python in a code block (research-only).
+  // Render the strategy spec as what it actually IS, so a fitted model never masquerades as a
+  // flat if-else threshold. Three shapes: a learned DSL model (model.kind logistic/calibration —
+  // a fitted P(YES) model, shown with its features/weights), an agent-authored code model (real
+  // Python, fit-on-research-and-frozen), or a plain threshold rule (the house GBM — unchanged).
+  // The execution gates (side, price band, time-to-settle, spread, exit) and sizing are real
+  // trade bounds and render identically for every shape.
   function specHtml(spec) {
     if (!spec || typeof spec !== 'object') return '';
-    if (spec.code) {
-      return `<figure class="hx-code"><figcaption>Strategy code <span>Python · research sandbox only</span></figcaption><pre><code>${esc(spec.code)}</code></pre></figure>`;
-    }
-    const e = spec.entry || {}, x = spec.exit || {}, sz = spec.sizing || {};
     const row = (k, v) => (v == null || v === '') ? '' : `<dt>${k}</dt><dd>${esc(v)}</dd>`;
-    const entry = [];
     const c = (v) => Math.round(v * 100) + '¢';
-    if (e.min_edge != null) entry.push(`edge ≥ ${pct(e.min_edge, false)}`);
-    if (e.min_price != null || e.max_price != null) entry.push(`price ${e.min_price != null ? c(e.min_price) : '0¢'}–${e.max_price != null ? c(e.max_price) : '100¢'}`);
-    if (e.min_tte_min != null || e.max_tte_min != null) entry.push(`${e.min_tte_min != null ? e.min_tte_min : 0}–${e.max_tte_min != null ? e.max_tte_min : '∞'} min to settle`);
-    if (e.max_spread != null) entry.push(`spread ≤ ${c(e.max_spread)}`);
+    const sz = spec.sizing || {};
+    const sizing = `$${sz.stake != null ? sz.stake : 5} per trade · up to ${sz.max_positions != null ? sz.max_positions : 20} at once`;
+    const codeFig = (src) => `<figure class="hx-code"><figcaption>Strategy code <span>Python · research sandbox only</span></figcaption><pre><code>${esc(src)}</code></pre></figure>`;
+
+    // Code strategy: an arbitrary fitted model in the sandbox, not threshold fields. Show it as
+    // one, keep the real source (and note the frozen fit, if the research run froze params in).
+    if (spec.code) {
+      const fit = (spec.params != null && spec.params !== '') ? ' · fit on research, frozen' : '';
+      return `<dl class="hx-spec"><dt>Signal</dt><dd class="hx-model">custom code model${fit}</dd>
+        ${row('Sizing', sizing)}</dl>${codeFig(spec.code)}`;
+    }
+
+    const e = spec.entry || {}, x = spec.exit || {}, m = spec.model || {};
+    // Execution gates — the real trade bounds, identical for every spec shape.
+    const bounds = [];
+    if (e.min_price != null || e.max_price != null) bounds.push(`price ${e.min_price != null ? c(e.min_price) : '0¢'}–${e.max_price != null ? c(e.max_price) : '100¢'}`);
+    if (e.min_tte_min != null || e.max_tte_min != null) bounds.push(`${e.min_tte_min != null ? e.min_tte_min : 0}–${e.max_tte_min != null ? e.max_tte_min : '∞'} min to settle`);
+    if (e.max_spread != null) bounds.push(`spread ≤ ${c(e.max_spread)}`);
     const exit = [];
     if (x.take_profit != null) exit.push(`take profit at ${c(x.take_profit)}`);
     if (x.stop_loss != null) exit.push(`stop at ${c(x.stop_loss)}`);
     if (x.min_edge_to_hold != null) exit.push(`hold while edge ≥ ${pct(x.min_edge_to_hold, false)}`);
     const filters = (spec.filters && spec.filters.length)
       ? spec.filters.map((f) => typeof f === 'string' ? f : JSON.stringify(f)).join('; ') : '';
+    const side = row('Side', (spec.side || 'yes').toUpperCase());
+    const edge = e.min_edge != null ? `P(YES) edge ≥ ${pct(e.min_edge, false)}` : '';
+
+    // Learned DSL model (logistic / calibration): a FITTED fair-value model, not a threshold.
+    if (m.kind === 'logistic' || m.kind === 'calibration') {
+      const feats = Array.isArray(m.features) ? m.features.filter(Boolean) : [];
+      const signal = m.kind === 'calibration'
+        ? 'fitted calibration of the market&rsquo;s own mid'
+        : `fitted logistic${feats.length ? ' over ' + feats.map((f) => `<span class="hx-feat">${esc(f)}</span>`).join(', ') : ''}`;
+      const coef = Array.isArray(m.coef) ? m.coef : [];
+      // Compact fitted weights, only when they are present and line up with the named features.
+      const weights = (coef.length && coef.length === feats.length && coef.every((n) => typeof n === 'number'))
+        ? `<dt>Fitted weights</dt><dd class="hx-weights">${feats.map((f, i) => `<span class="hx-feat">${esc(f)}</span> ×${coef[i].toFixed(2)}`).join(' · ')}${typeof m.intercept === 'number' ? ` · intercept ${m.intercept.toFixed(2)}` : ''}</dd>`
+        : '';
+      return `<dl class="hx-spec">
+        ${side}
+        <dt>Signal</dt><dd class="hx-model">${signal}${edge ? ' — enter when ' + edge : ''}</dd>
+        ${weights}
+        ${row('Only when', bounds.join(' · '))}
+        ${row('Exit', exit.join(' · ') || 'hold to settlement')}
+        ${row('Regime filter', filters)}
+        ${row('Sizing', sizing)}</dl>`;
+    }
+
+    // Plain DSL threshold strategy (house GBM / rules) — unchanged.
+    const entry = [];
+    if (edge) entry.push(`edge ≥ ${pct(e.min_edge, false)}`);
+    entry.push(...bounds);
     return `<dl class="hx-spec">
-      ${row('Side', (spec.side || 'yes').toUpperCase())}
+      ${side}
       ${row('Enter when', entry.join(' · ') || 'any priced contract')}
       ${row('Exit', exit.join(' · ') || 'hold to settlement')}
       ${row('Regime filter', filters)}
-      ${row('Sizing', `$${sz.stake != null ? sz.stake : 5} per trade · up to ${sz.max_positions != null ? sz.max_positions : 20} at once`)}</dl>`;
+      ${row('Sizing', sizing)}</dl>`;
   }
 
   // The gatekeeper's numbers for the reader (their own result) — never fed back to the generator.
@@ -2020,14 +2061,9 @@
       if (rsibox && d.rsi) {
         const delta = (d.rsi.base_score != null && d.rsi.score != null)
           ? `<span class="rsi-score">${d.rsi.base_score} <span class="rsi-arrow">→</span> ${d.rsi.score}</span>` : '';
-        // The full adopted policy, verbatim. A policy is pure Python with exactly two decision
-        // rules; show them in plain English plus the raw source so the user can inspect what the
-        // agent actually does. Falls back to the default policy source when none has evolved.
-        const policy = d.rsi.code ? `<details class="rsi-policy"><summary>View the full ${d.rsi.evolved ? 'evolved ' : ''}research policy</summary>
-          <div class="rsi-policy-body">
-            <p class="rsi-rules">A policy is pure Python with two decision rules: <b>next_batch</b> — how many new hypotheses to propose each round; and <b>select_finalists</b> — which in-sample candidates earn a test on unseen data (the precision-vs-recall lever that decides what gets gated).</p>
-            <figure class="hx-code"><figcaption>${d.rsi.evolved ? 'Evolved exploration policy' : 'Default exploration policy'} <span>Python · research sandbox only</span></figcaption><pre><code>${esc(d.rsi.code)}</code></pre></figure>
-          </div></details>` : '';
+        // The adopted policy is arbitrary agent-evolved Python with no structured decision record
+        // behind it, so a raw-source dump isn't inspection — the human "What it changed" summary
+        // and the generalization-score delta below are the faithful, readable account.
         rsibox.innerHTML = `<div class="rsi-card"><div class="rsi-head"><b class="rsi-badge">RSI</b> Self-improving research ${d.rsi.evolved ? '<span class="rsi-tag">Evolved</span>' : '<span class="rsi-tag quiet">Self-tuning</span>'}</div>
           ${d.rsi.evolved
             ? `<p>This agent <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
@@ -2035,7 +2071,7 @@
                <p class="rsi-last">Generalization score ${delta}${d.rsi.evolved_at ? ' · adopted ' + when(d.rsi.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
             : `<p>The agent is <b>self-tuning</b>: after each research cycle it dreams up new search strategies and keeps one only if it beats the current policy on your own history (scored over shuffled orderings, so it can't overfit).</p>
                ${d.rsi.last_dream ? `<p class="rsi-last"><b>Last check${d.rsi.last_dream_at ? ' · ' + when(d.rsi.last_dream_at) : ''}:</b> ${esc(d.rsi.last_dream)}</p>` : '<p class="rsi-last">The first result appears at the end of a research cycle.</p>'}`}
-          ${policy}</div>`;
+          </div>`;
       }
       runControls(root.querySelector('#runact'), id, r.status, load);
       d.events.forEach((ev) => { after = Math.max(after, ev.id); if (ev.kind === 'hypothesis') tried++; });
