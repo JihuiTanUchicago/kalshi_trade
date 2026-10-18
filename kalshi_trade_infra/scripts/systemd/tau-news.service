@@ -1,0 +1,26 @@
+[Unit]
+Description=Tau World Monitor news poller -> local observation journal. Runs on the customer-app box.
+After=network-online.target
+Wants=network-online.target
+# A missing/invalid key makes the poller exit cleanly; back off instead of hammering the provider
+# (same discipline as the live/sim units). Transient provider errors keep looping on the interval.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/kalshi
+# The journal is tiny and append-only; stay out of the way of ingestion/serving on a shared box.
+Nice=15
+IOSchedulingClass=idle
+CPUQuota=20%
+MemoryMax=300M
+# Reads the same .env.app the app server reads, so the poller and the agents share one journal
+# path and one key-derived namespace. The key alone lets it archive; agent exposure is gated by
+# TAU_WORLDMONITOR_ENABLED in the app server's env, not here.
+ExecStart=/bin/bash -c 'set -a; . /opt/kalshi/.env.aws; . /opt/kalshi/.env.app; set +a; unset AWS_PROFILE; exec /opt/kalshi/.venv/bin/python -u -m app.worldmonitor_data monitor --interval 300'
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

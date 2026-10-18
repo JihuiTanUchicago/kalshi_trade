@@ -27,3 +27,18 @@ Four more units, same shape: `recursive-web` (HTTP, `APP_HOST`/`APP_PORT`, defau
 `/opt/kalshi/.env.app` in addition to `.env.aws`. Run `python -m app.schema` once first.
 `APP_LIVE_TRADING_ENABLED` must stay unset until the owner explicitly authorises real
 orders for app users.
+
+### World Monitor news poller (optional)
+
+`tau-news.service` runs `app.worldmonitor_data monitor` in a loop, archiving news digests into
+the local observation journal so HISTORICAL research reads have a no-lookahead archive to query
+(copilot still fetches current news on demand without it). Same env shape as the recursive units
+(`.env.app` + `.env.aws`); enable only once `WORLDMONITOR_API_KEY` is set:
+
+    sudo cp scripts/systemd/tau-news.service /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now tau-news
+
+It and the app server must point at the same `TAU_WORLDMONITOR_JOURNAL` (both default to
+`/opt/kalshi/.runtime/worldmonitor/news.sqlite3`). A missing key makes it exit cleanly and the
+burst limit stops a crash loop; `TAU_WORLDMONITOR_ENABLED` gates agent exposure, not polling.
