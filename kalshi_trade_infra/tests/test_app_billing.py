@@ -9,16 +9,26 @@ import pytest
 from app import billing
 
 
-def test_usage_cost_at_list_price():
-    # Sonnet 4.5 list: $3/1M in, $15/1M out.
+def test_usage_cost_applies_margin():
+    # The customer is billed list price * USAGE_MARGIN (default 2 = 100% markup).
+    assert billing.USAGE_MARGIN == Decimal("2")
+    # Sonnet 4.5 list $3/$15 per 1M -> 1M+1M = $18 list -> $36 billed.
     c = billing.usage_cost("us.anthropic.claude-sonnet-4-5-20250929-v1:0", 1_000_000, 1_000_000)
-    assert c == Decimal("18.000000")
-    # The real session from the demo: 7087 in, 3270 out.
-    assert billing.usage_cost("sonnet-4-5", 7087, 3270) == Decimal("0.070311")
-    # Haiku is cheaper.
+    assert c == Decimal("36.000000")
+    # The real session from the demo: 7087 in, 3270 out -> $0.070311 list -> $0.140622 billed.
+    assert billing.usage_cost("sonnet-4-5", 7087, 3270) == Decimal("0.140622")
+    # Haiku is cheaper: $1 list -> $2 billed.
+    assert billing.usage_cost("haiku-4-5", 1_000_000, 0) == Decimal("2.000000")
+    # Unknown model falls back to the sonnet rate, never zero: $3 list -> $6 billed.
+    assert billing.usage_cost("mystery-model", 1_000_000, 0) == Decimal("6.000000")
+
+
+def test_usage_margin_is_tunable(monkeypatch):
+    # A list-price (1x) run can be restored via env; cost scales linearly with the margin.
+    monkeypatch.setattr(billing, "USAGE_MARGIN", Decimal("1"))
     assert billing.usage_cost("haiku-4-5", 1_000_000, 0) == Decimal("1.000000")
-    # Unknown model falls back to the sonnet rate, never zero.
-    assert billing.usage_cost("mystery-model", 1_000_000, 0) == Decimal("3.000000")
+    monkeypatch.setattr(billing, "USAGE_MARGIN", Decimal("3"))
+    assert billing.usage_cost("haiku-4-5", 1_000_000, 0) == Decimal("3.000000")
 
 
 def test_usage_cost_opus_4_5_fallback(monkeypatch):
@@ -26,9 +36,10 @@ def test_usage_cost_opus_4_5_fallback(monkeypatch):
     # entry precedes "opus-4" so the substring loop can't grab the wrong row first.
     import app.models_catalog as models_catalog
     monkeypatch.setattr(models_catalog, "price_for_model_id", lambda m: None)
-    assert billing.usage_cost("something-opus-4-5-weird", 1_000_000, 1_000_000) == Decimal("30.000000")
-    # A genuine legacy opus-4 still prices at its own $15/$75.
-    assert billing.usage_cost("claude-opus-4-20240101", 1_000_000, 0) == Decimal("15.000000")
+    # opus-4-5 $5/$25 list -> $30 list -> $60 billed at the 2x margin.
+    assert billing.usage_cost("something-opus-4-5-weird", 1_000_000, 1_000_000) == Decimal("60.000000")
+    # A genuine legacy opus-4 still prices at its own $15/$75 list -> $30 billed.
+    assert billing.usage_cost("claude-opus-4-20240101", 1_000_000, 0) == Decimal("30.000000")
 
 
 def test_is_ready_gates_autonomous_spend(monkeypatch):

@@ -79,15 +79,15 @@ def test_create_run_omitted_model_defaults_to_none(monkeypatch):
 
 
 def test_each_model_prices_exactly_from_the_registry():
-    # USD per 1,000,000 tokens (input, output), billed on the invokable modelId.
+    # USD per 1,000,000 tokens (input, output), billed on the invokable modelId at list * 2x margin.
     sonnet = catalog.MODELS["sonnet-4-5"]
-    assert billing.usage_cost(sonnet.model_id, 1_000_000, 1_000_000) == Decimal("18.000000")  # 3 + 15
+    assert billing.usage_cost(sonnet.model_id, 1_000_000, 1_000_000) == Decimal("36.000000")  # (3 + 15) * 2
     opus = catalog.MODELS["opus-4-5"]
-    assert billing.usage_cost(opus.model_id, 1_000_000, 1_000_000) == Decimal("30.000000")  # 5 + 25
+    assert billing.usage_cost(opus.model_id, 1_000_000, 1_000_000) == Decimal("60.000000")  # (5 + 25) * 2
     nova = catalog.MODELS["nova-lite"]
-    assert billing.usage_cost(nova.model_id, 1_000_000, 1_000_000) == Decimal("0.300000")  # 0.06 + 0.24
+    assert billing.usage_cost(nova.model_id, 1_000_000, 1_000_000) == Decimal("0.600000")  # (0.06 + 0.24) * 2
     llama = catalog.MODELS["llama-3-3-70b"]
-    assert billing.usage_cost(llama.model_id, 2_000_000, 1_000_000) == Decimal("2.160000")  # 2*0.72 + 0.72
+    assert billing.usage_cost(llama.model_id, 2_000_000, 1_000_000) == Decimal("4.320000")  # (2*0.72 + 0.72) * 2
 
 
 # -- the chosen model threads through research and billing ----------------------

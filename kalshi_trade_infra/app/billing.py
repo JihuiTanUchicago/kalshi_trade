@@ -42,8 +42,9 @@ MIN_TOPUP = Decimal("5")
 MAX_TOPUP = Decimal("1000")
 CENT = Decimal("0.01")
 
-# Anthropic public list price, USD per 1,000,000 tokens (input, output). What we
-# BILL the user; our Bedrock cost is covered by AWS credits (that gap is margin).
+# Anthropic public list price, USD per 1,000,000 tokens (input, output). The REFERENCE rate;
+# the customer is billed list * USAGE_MARGIN (see below). Our Bedrock cost is covered by AWS
+# credits, so list-vs-cost is one margin and USAGE_MARGIN is the markup on top of list.
 PRICES: Dict[str, Tuple[Decimal, Decimal]] = {
     "sonnet-4-5": (Decimal("3"), Decimal("15")),
     "sonnet-4": (Decimal("3"), Decimal("15")),
@@ -59,6 +60,10 @@ PRICES: Dict[str, Tuple[Decimal, Decimal]] = {
     "3-5-haiku": (Decimal("0.8"), Decimal("4")),
 }
 _DEFAULT_PRICE = (Decimal("3"), Decimal("15"))
+
+# Markup charged to the customer ON TOP of the list price, to cover storage, infra,
+# orchestration and the rest. 1 = list price, 2 = double (a 100% margin). Env-tunable.
+USAGE_MARGIN = Decimal(os.getenv("TAU_USAGE_MARGIN", "2"))
 
 
 class StripeError(RuntimeError):
@@ -99,10 +104,10 @@ def _price_for(model: str) -> Tuple[Decimal, Decimal]:
 
 
 def usage_cost(model: str, input_tokens: int, output_tokens: int) -> Decimal:
-    """USD to bill for one agent call, at list price. 6-dp precision."""
+    """USD to bill for one agent call = list price * USAGE_MARGIN. 6-dp precision."""
     pin, pout = _price_for(model)
-    cost = (Decimal(int(input_tokens)) * pin + Decimal(int(output_tokens)) * pout) / Decimal(1_000_000)
-    return cost.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+    list_cost = (Decimal(int(input_tokens)) * pin + Decimal(int(output_tokens)) * pout) / Decimal(1_000_000)
+    return (list_cost * USAGE_MARGIN).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
 
 
 def topup_charge_cents(credits: Decimal) -> int:
