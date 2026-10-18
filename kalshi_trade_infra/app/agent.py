@@ -63,11 +63,13 @@ DIRECTIONS: Dict[str, Dict[str, str]] = {
     "open": {"label": "Agent's choice", "brief": "Pick the most promising angle yourself and say why."},
 }
 
-# The strategy-family menu the proposer must explore BROADLY across (not many variants of one
-# threshold rule). Each family names the model STRUCTURE that expresses it in the existing spec DSL
-# — so the proposer reaches for a learned/statistical model where the mechanism is more than a
-# cutoff. Single source of truth: rendered into RESEARCH_SYSTEM and into every proposer prompt's
-# diversity mandate, and asserted by test_proposer_explores_diverse_families.
+# A SEED PALETTE of strategy angles — NOT a closed menu and NOT a checklist to fill. Its only jobs
+# are to break the "buy when feature > X" default and to show that most angles map to a learned/
+# statistical model, not a cutoff. The proposer is explicitly told it may (and should) invent angles
+# that AREN'T here — a well-motivated mechanism off this list is worth MORE, not less. Learned/ML is
+# a DIMENSION that crosses every row (any angle can be expressed as a fitted model), not a single row.
+# Single source of truth: rendered into RESEARCH_SYSTEM + every proposer prompt, asserted by
+# test_proposer_explores_diverse_families. Add rows freely; never let the prompt imply it's exhaustive.
 STRATEGY_FAMILIES = (
     ("Momentum / trend", "underlying keeps moving into settlement — GBM model with drift_beta>0 "
                          "(drift_window 5/15/60), or a code momentum estimator"),
@@ -77,17 +79,25 @@ STRATEGY_FAMILIES = (
                             "on a vol_15m/vol_60m band, or a GARCH forecast (arch) in `code`"),
     ("Calibration / favorite-longshot", "a documented price-level bias (cheap longshots overpriced, "
                                         "favorites underpriced) — model.kind=\"calibration\" on a price band"),
-    ("Microstructure / order-flow (ML)", "order-book imbalance & trade flow lead the mid — "
-                                         "model.kind=\"logistic\" over flow features, or a code classifier"),
+    ("Microstructure / order-flow", "order-book imbalance & trade flow lead the mid — "
+                                    "model.kind=\"logistic\" over flow features, or a code classifier"),
     ("Cross-market relative value", "a RELATIVE mispricing between legs — the `cross` block "
                                     "(cross_sectional / cross_strike / calendar), not a directional view"),
     ("Event-driven / near-expiry", "terminal pinning and tick discreteness in the last minutes — "
                                    "min_tte/max_tte filters plus the settlement mechanism"),
     ("Seasonality / time-of-day", "edge concentrates in a session (US open, overnight, Asia) — "
                                   "hour_et regime filters, with a participation-shift mechanism"),
-    ("Learned / statistical classifier", "a NON-linear model your mechanism needs — `code` + fit(window): "
-                                         "a ridge/tree/forest/GBM classifier (scikit-learn), a kernel or "
-                                         "quantile estimator, an ensemble, trained once and frozen"),
+    ("News / event reaction", "a scheduled or breaking event moves the underlying before the mid "
+                              "re-prices — news features (the news tool) as inputs to a `code`/logistic model"),
+    ("Liquidity / spread capture", "earn the bid-ask by providing where flow is balanced, conditioned "
+                                   "on book depth/spread state — a code rule over microstructure features"),
+    ("Cross-asset basis / funding", "spot-perp basis, perp funding, or a correlated asset leads the "
+                                    "Kalshi implied probability — those as features in a `code`/logistic model"),
+    ("Ensemble / meta-model", "combine several weak, uncorrelated sub-signals into one fitted model — "
+                              "a stacked/averaged estimator in `code` + fit(), judged on its net edge"),
+    ("Learned / statistical (open)", "ANY model your mechanism needs — `code` + fit(window): "
+                                     "ridge/tree/forest/GBM/kernel/quantile/NN estimators (scikit-learn, "
+                                     "statsmodels, arch, numpy), engineered features, ensembles — your choice"),
 )
 
 
@@ -114,25 +124,41 @@ none is demonstrated. "No reliable edge" is a correct, valuable result. You will
 whether your STATISTICALLY-SUPPORTED strategies stay profitable on data you never saw - not on
 how many you propose.
 
-STRATEGY FAMILIES — EXPLORE BROADLY, DO NOT DEFAULT TO A THRESHOLD RULE
-A spec is NOT just "buy when feature > X", and a batch of ten "buy when feature > X" variants is
-ONE idea, not ten. These are DIFFERENT families with different structure, loser, and mechanism;
-each proposal batch must SPAN several of them rather than drilling one. Pick the family whose
-STRUCTURE matches your mechanism — most mechanisms are not a single threshold:
+HOW TO EXPLORE — AN OPEN SEED PALETTE, NOT A CLOSED MENU
+A spec is NOT just "buy when feature > X", and ten "buy when feature > X" variants are ONE idea,
+not ten. The list below is a SEED PALETTE to spark breadth — it is NOT exhaustive and NOT a
+checklist to tick off. You are EXPECTED to invent approaches that are not listed: a well-motivated
+mechanism we never named is worth MORE, not less. Every intellectual lens is welcome as long as it
+rests on a real, falsifiable mechanism:
+  - an ECONOMIC / structural thesis — who supplies the mispricing, why they trade against their own
+    interest, why it is not arbitraged away, and why it should PERSIST;
+  - an ACADEMIC, literature-grounded idea — replicate or extend a documented market anomaly or a
+    published method, and name it;
+  - a TRADITIONAL / hardcore STATISTICAL or econometric method — classical time-series (ARIMA/GARCH/
+    VAR), hypothesis tests, cointegration / error-correction, regime-switching (Markov), extreme-value
+    theory, Bayesian inference — NOT only machine learning;
+  - a modern MACHINE-LEARNING model;
+  - or any combination of the above.
+Each batch should SPAN genuinely different mechanisms and model structures rather than drilling one.
+Pick the structure that matches YOUR mechanism — most mechanisms are not a single threshold:
 """ + _family_menu() + """
 
-REACH FOR A LEARNED / STATISTICAL MODEL whenever the mechanism is more than one cutoff — these
-exist precisely so your ideas are not if-else rules:
+LEARNED / STATISTICAL MODELS ARE FIRST-CLASS — classical statistics AND machine learning, your
+choice of method; these exist precisely so your ideas need not be if-else rules:
  - model.kind="logistic" (name 1-6 `features`): a real classifier P(YES)=sigmoid(w.features)
    whose weights the system FITS on the research fold and FREEZES. The classic ML entry point and
    the natural home for a microstructure/order-flow model (ob_imbalance, trade flow, quote
    changes). Name only features your mechanism predicts matter — each coefficient raises the bar.
  - model.kind="calibration": the system fits a 1-parameter recalibration of the Kalshi mid on
    research (favorite-longshot, Bürgi-Deng-Whelan); pair it with a price-band + side.
- - `code` + fit(window): ANY pure-Python/ML/stat method the two kinds above cannot express — a
-   ridge/tree/random-forest/gradient-boosted classifier (scikit-learn), a GARCH vol forecast
-   (arch), a kernel or quantile estimator, an ensemble, engineered features. fit() TRAINS ONCE on
-   the research fold and its params are FROZEN into the pre-registered spec; signals() rebuilds
+ - `code` + fit(window): ANY pure-Python/stat/ML method the two kinds above cannot express — a
+   classical econometric model (statsmodels OLS/GLS/logit/probit, ARIMA/SARIMAX/VAR, a GARCH/EGARCH
+   vol forecast via arch, a Markov regime switch, a cointegration / error-correction or Kalman
+   filter, an extreme-value or Bayesian estimator) OR a machine-learning model (ridge/tree/forest/
+   gradient-boosted/kernel/quantile/NN via scikit-learn), an ensemble, engineered features. Classical
+   hardcore statistics is as welcome as ML — reach for whichever your mechanism actually calls for.
+   fit() TRAINS ONCE on the research fold and its params are FROZEN into the pre-registered spec;
+   signals() rebuilds
    from those frozen params and PREDICTS. NEVER fit inside signals() on the window you are handed —
    at validation that window IS the held-out data, so fitting there is a leak. Fit in fit();
    predict in signals(). (The house GBM drift_window/drift_beta still expresses momentum/reversion
@@ -540,11 +566,14 @@ What this user's earlier research found (learn from it; do not repeat failures):
 {memory}
 
 Propose {count} distinct hypotheses for this idea, each walking the nine-phase method.
-MAKE THE SET DIVERSE: span at least {span} DIFFERENT strategy families from the menu in your
-instructions (momentum, mean-reversion, volatility/regime, calibration, microstructure, cross-market,
-event-driven, seasonality, learned classifier) — not {count} variants of one threshold rule — and
-unless every sound mechanism here is genuinely a pure rule, include at least one LEARNED model
-(model.kind logistic or calibration, or a `code` strategy with fit(window)).
+MAKE THE SET GENUINELY DIVERSE: span at least {span} DIFFERENT mechanisms and model structures,
+NOT {count} variants of one threshold rule. The seed palette in your instructions is a starting
+point, not a checklist — a well-motivated angle that is NOT on that list (an economic/structural
+thesis, a literature-grounded academic idea, a classical statistical/econometric method, or a
+novel mechanism of your own) counts for MORE, not less. Economic reasoning, academic rigor,
+traditional hardcore statistics and modern ML are ALL welcome. Unless every sound mechanism here
+is genuinely a pure rule, include at least one FITTED model (model.kind logistic or calibration,
+or a `code` strategy with fit(window) — classical stat or ML, your choice).
 Reply with the ONE JSON object specified in your instructions (the full "hypotheses" list with
 mechanism, falsification_criteria, negative_control, null/alt hypotheses, min_sample and spec).""".format(
         brief=brief,

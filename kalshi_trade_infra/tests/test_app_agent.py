@@ -538,18 +538,24 @@ def test_proposer_prompt_asks_the_agent_to_think_aloud(monkeypatch):
 
 
 def test_proposer_explores_diverse_families(monkeypatch):
-    # The system prompt must lay out the full family menu and the learned-model routes, and the
-    # per-call prompt must demand a diverse, family-spanning, learned-model-including set — this is
-    # what stops the proposer defaulting to a batch of if-else threshold variants.
+    # The system prompt must render the seed palette + the fitted-model routes AND frame the palette
+    # as OPEN (invent beyond it; economic / academic / classical-statistical lenses all welcome, not
+    # just ML), and the per-call prompt must demand a diverse, mechanism-spanning, fitted-model-
+    # including set — this is what stops the proposer defaulting to a batch of if-else threshold variants.
     names = [n for n, _ in agent.STRATEGY_FAMILIES]
     assert len(names) == len(set(names)) >= 8  # a real spread, no dupes
     for name, _how in agent.STRATEGY_FAMILIES:
         assert name in agent.RESEARCH_SYSTEM
     for kind in ('model.kind="logistic"', 'model.kind="calibration"', "fit(window)"):
-        assert kind in agent.RESEARCH_SYSTEM  # learned routes, not just thresholds
+        assert kind in agent.RESEARCH_SYSTEM  # fitted routes, not just thresholds
+    # Freedom, not a fixed menu: off-list angles are welcomed and every intellectual lens is allowed.
+    assert "NOT A CLOSED MENU" in agent.RESEARCH_SYSTEM and "worth MORE, not less" in agent.RESEARCH_SYSTEM
+    for lens in ("ECONOMIC", "ACADEMIC", "econometric", "NOT only machine learning"):
+        assert lens in agent.RESEARCH_SYSTEM
     proposer = agent._research_prompt(RUN, _dataset(n_contracts=60), [], count=5)
-    assert "DIFFERENT strategy families" in proposer and "LEARNED model" in proposer
-    assert "span at least 5" in proposer  # min(count=5, 9 families)
+    assert "DIFFERENT mechanisms and model structures" in proposer and "FITTED model" in proposer
+    assert "counts for MORE" in proposer  # an off-palette, well-motivated angle is rewarded
+    assert "span at least 5" in proposer  # min(count=5, len(STRATEGY_FAMILIES))
 
 
 def test_hypothesis_event_carries_the_full_prereg(monkeypatch):
