@@ -57,7 +57,7 @@ jobs:
       - name: Build the complete isolated application images
         run: docker compose --project-name "$TAU_STAGING_PROJECT" --file staging/compose.yml build
       - name: Apply full schema and boot the web preview
-        run: docker compose --project-name "$TAU_STAGING_PROJECT" --file staging/compose.yml up --detach --wait --wait-timeout 180 web
+        run: docker compose --project-name "$TAU_STAGING_PROJECT" --file staging/compose.yml up --detach --wait --wait-timeout 180 gateway
       - name: Verify actual network, ports, runtime and served source
         run: |
           python3 - <<'PY'
@@ -69,26 +69,40 @@ jobs:
           assert output(['docker','network','inspect',project+'_isolated','--format','{{.Internal}}']) == 'true'
           web = output(compose + ['ps','--quiet','web'])
           db = output(compose + ['ps','--quiet','db'])
-          ports = json.loads(output(['docker','inspect',web,'--format','{{json .HostConfig.PortBindings}}']))
-          assert ports == {'8090/tcp':[{'HostIp':'127.0.0.1','HostPort':'18090'}]}
-          assert json.loads(output(['docker','inspect',db,'--format','{{json .HostConfig.PortBindings}}'])) in ({}, None)
+          gateway = output(compose + ['ps','--quiet','gateway'])
+          ports = json.loads(output(['docker','inspect',gateway,'--format','{{json .HostConfig.PortBindings}}']))
+          assert ports == {'8080/tcp':[{'HostIp':'127.0.0.1','HostPort':'18090'}]}
+          for container in (web, db):
+              assert json.loads(output(['docker','inspect',container,'--format','{{json .HostConfig.PortBindings}}'])) in ({}, None)
+              networks = json.loads(output(['docker','inspect',container,'--format','{{json .NetworkSettings.Networks}}']))
+              assert set(networks) == {project+'_isolated'}
+          assert output(['docker','inspect',gateway,'--format','{{.Config.User}}']) == '101:101'
+          mounts = json.loads(output(['docker','inspect',gateway,'--format','{{json .Mounts}}']))
+          assert all(m['Type']=='tmpfs' or (m['Destination']=='/etc/nginx/staging.conf' and m['RW'] is False) for m in mounts)
           code = "import json; p=dict(l.split(':',1) for l in open('/proc/1/status') if ':' in l); print(json.dumps({k:p[k].strip() for k in ('Uid','Gid','CapEff')}))"
           process = json.loads(output(compose + ['exec','-T','web','python','-I','-c',code]))
           assert set(process['Uid'].split()) == {'10001'} and set(process['Gid'].split()) == {'10001'}
           assert int(process['CapEff'],16) == 0
           base = 'http://127.0.0.1:18090'
           statuses = {}
-          for path, expected in (('/',200),('/research',200),('/healthz',200),('/auth/dev',404),('/api/brokers/alpaca/paper',401)):
+          for path, expected in (('/',200),('/research',200),('/healthz',200),('/auth/dev',404),('/unsubscribe',404),('/not-a-preview-route',404),('/api/brokers/alpaca/paper',401)):
               try:
                   with urllib.request.urlopen(base+path,timeout=10) as response:
                       statuses[path] = response.status
               except urllib.error.HTTPError as exc:
                   statuses[path] = exc.code
               assert statuses[path] == expected
+          try:
+              urllib.request.urlopen(urllib.request.Request(base+'/api/brokers/alpaca/paper/orders',data=b'{}',method='POST'),timeout=10)
+              raise AssertionError('Gateway accepted a write request')
+          except urllib.error.HTTPError as exc:
+              assert exc.code == 403
+          with urllib.request.urlopen(urllib.request.Request(base+'/healthz',method='HEAD'),timeout=10) as response:
+              assert response.status == 200 and response.read() == b''
           for name in ('alpaca-paper.js','alpaca-paper.css','broker-connections.js'):
               with urllib.request.urlopen(base+'/static/'+name,timeout=10) as response:
                   assert hashlib.sha256(response.read()).digest() == hashlib.sha256((pathlib.Path('app/static')/name).read_bytes()).digest()
-          receipt = {'internal_network':True,'loopback_web_only':True,'database_host_port':False,'app_uid':10001,'app_capabilities':0,'served_assets_match':True,'public_dev_login':False,'http_statuses':statuses}
+          receipt = {'internal_network':True,'loopback_web_only':True,'database_host_port':False,'app_uid':10001,'app_capabilities':0,'served_assets_match':True,'public_dev_login':False,'readonly_gateway':True,'gateway_credentials':False,'http_statuses':statuses}
           pathlib.Path(os.environ['RUNNER_TEMP'],'tau-paper-runtime.json').write_text(json.dumps(receipt))
           print('TAU_STAGING_RUNTIME='+json.dumps(receipt))
           PY

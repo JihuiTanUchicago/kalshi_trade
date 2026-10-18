@@ -6,6 +6,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import tempfile
 import unittest
@@ -217,17 +218,95 @@ class ComposeContractTests(unittest.TestCase):
         # structural checks with stdlib, without another developer dependency.
         self.compose = json.loads((HERE / "staging/compose.yml").read_text())
 
-    def test_only_private_project_network_volume_and_web_loopback_port_exist(self):
+    def test_application_stays_private_and_only_uncredentialed_gateway_publishes_loopback(self):
         services = self.compose["services"]
-        self.assertEqual(set(services), {"db", "schema", "web", "verify"})
-        self.assertEqual(self.compose["networks"], {"isolated": {"internal": True}})
+        self.assertEqual(set(services), {"db", "schema", "web", "gateway", "verify"})
+        self.assertEqual(self.compose["networks"], {"isolated": {"internal": True}, "preview": {"driver": "bridge"}})
         self.assertEqual(self.compose["volumes"], {"mysql-data": {}})
         for name, service in services.items():
-            self.assertEqual(service["networks"], ["isolated"])
-            self.assertEqual(service.get("ports", []), ["127.0.0.1:18090:8090"] if name == "web" else [])
+            self.assertEqual(service["networks"], ["isolated", "preview"] if name == "gateway" else ["isolated"])
+            self.assertEqual(service.get("ports", []), ["127.0.0.1:18090:8080"] if name == "gateway" else [])
             self.assertFalse(any(key in service for key in ("env_file", "network_mode", "privileged", "container_name")))
         self.assertEqual(services["db"]["volumes"], ["mysql-data:/var/lib/mysql"])
         self.assertEqual(services["db"]["image"], "mysql:8.4")
+
+    def test_gateway_has_no_secrets_and_only_one_readonly_nonsecret_config_mount(self):
+        gateway = self.compose["services"]["gateway"]
+        self.assertEqual(gateway["image"], "nginx:stable-alpine")
+        self.assertEqual(gateway["user"], "101:101")
+        self.assertEqual(gateway["entrypoint"], ["nginx", "-c", "/etc/nginx/staging.conf", "-g", "daemon off;"])
+        self.assertEqual(gateway["command"], [])
+        self.assertEqual(gateway["volumes"], ["./preview-nginx.conf:/etc/nginx/staging.conf:ro"])
+        self.assertNotIn("secrets", gateway)
+        self.assertNotIn("environment", gateway)
+        self.assertNotIn("cap_add", gateway)
+        self.assertEqual(gateway["cap_drop"], ["ALL"])
+        self.assertEqual(gateway["security_opt"], ["no-new-privileges:true"])
+        self.assertTrue(gateway["read_only"])
+        self.assertEqual(gateway["depends_on"], {"web": {"condition": "service_healthy"}})
+        self.assertEqual(gateway["mem_limit"], "64m")
+        self.assertEqual(gateway["cpus"], 0.25)
+        self.assertIn("http://127.0.0.1:8080/healthz", gateway["healthcheck"]["test"])
+        for name, service in self.compose["services"].items():
+            if name not in ("db", "gateway"):
+                self.assertNotIn("volumes", service)
+
+    def test_gateway_allows_readonly_static_upstream_and_strips_browser_credentials(self):
+        text = (HERE / "staging/preview-nginx.conf").read_text()
+        self.assertIn("if ($request_method !~ ^(?:GET|HEAD)$) {\n            return 403;", text)
+        self.assertIn("if ($preview_allowed = 0) {\n                return 404;", text)
+        self.assertIn("location = /api {\n            return 401;", text)
+        self.assertIn("location ^~ /api/ {\n            return 401;", text)
+        self.assertEqual(text.count("proxy_pass "), 1)
+        self.assertIn("proxy_pass http://web:8090;", text)
+        self.assertIn("proxy_method GET;", text)
+        self.assertIn("proxy_pass_request_body off;", text)
+        self.assertIn('proxy_set_header Cookie "";', text)
+        self.assertIn('proxy_set_header Authorization "";', text)
+        self.assertIn("proxy_hide_header Set-Cookie;", text)
+        upstream = next(line for line in text.splitlines() if line.strip().startswith("proxy_pass "))
+        self.assertNotIn("$", upstream)
+        self.assertNotIn("resolver ", text)
+        self.assertIn("access_log off;", text)
+        self.assertIn("error_log stderr warn;", text)
+        self.assertIn("pid /tmp/nginx.pid;", text)
+        for kind in ("client_body", "proxy", "fastcgi", "uwsgi", "scgi"):
+            self.assertIn(kind + "_temp_path /tmp/", text)
+
+    def test_gateway_allowlist_excludes_state_changing_gets_auth_and_unknown_paths(self):
+        text = (HERE / "staging/preview-nginx.conf").read_text()
+        block = re.search(r"map \$uri \$preview_allowed \{(.*?)\n    \}", text, re.S)
+        self.assertIsNotNone(block)
+        literals, patterns = set(), []
+        for line in block.group(1).splitlines():
+            parts = line.strip().split()
+            if not parts or parts[0] == "default":
+                continue
+            self.assertEqual(parts[-1], "1;")
+            if parts[0].startswith("~"):
+                patterns.append(re.compile(parts[0][1:]))
+            else:
+                literals.add(parts[0].strip('"'))
+
+        def allowed(path):
+            return path in literals or any(pattern.fullmatch(path) for pattern in patterns)
+
+        for path in ("/", "/healthz", "/dashboard", "/research", "/research/123", "/strategies/456",
+                     "/deploy", "/community", "/billing", "/admin", "/system", "/funds", "/explore",
+                     "/devlog", "/settings", "/settings/account", "/settings/theme", "/settings/billing",
+                     "/settings/system", "/signin", "/static/app.js", "/static/alpaca-paper.css", "/static/icon.svg"):
+            with self.subTest(allowed=path):
+                self.assertTrue(allowed(path))
+        for path in ("/unsubscribe", "/auth", "/auth/dev", "/auth/google", "/auth/google/callback",
+                     "/auth/brokers/alpaca/callback", "/api", "/api/brokers/alpaca/paper",
+                     "/unknown", "/settings/unknown", "/research/abc", "/static/secret.env", "/static/sub/app.js"):
+            with self.subTest(rejected=path):
+                self.assertFalse(allowed(path))
+        method_expression = re.search(r"if \(\$request_method !~ (\S+)\)", text).group(1)
+        for method in ("GET", "HEAD"):
+            self.assertIsNotNone(re.fullmatch(method_expression, method))
+        for method in ("POST", "PUT", "DELETE", "PATCH", "OPTIONS", "TRACE", "CONNECT"):
+            self.assertIsNone(re.fullmatch(method_expression, method))
 
     def test_schema_gates_both_application_services_and_root_password_is_db_only(self):
         services = self.compose["services"]

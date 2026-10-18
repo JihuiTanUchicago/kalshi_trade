@@ -23,7 +23,7 @@ A self-improving alpha discovery pipeline, from ideation, to similation, and fin
 
 ## TODO / Working Queue
 
-- `[implemented: isolated paper staging]` Reusable Compose and GitHub acceptance setup: private MySQL/network/secrets, schema-first web preview and unpublished synthetic-broker verification. 1,642 Python / 10 skipped;34 focused guards and the14-check real MySQL/HTTP run pass. Exact-revision Compose acceptance is recorded by the dedicated Actions workflow. No production or real broker calls. [Setup](kalshi_trade_infra/staging/README.md).
+- `[implemented: isolated paper staging]` Reusable Compose and GitHub acceptance setup: private MySQL/network/secrets, schema-first web preview and unpublished synthetic-broker verification. 1,645 Python / 10 skipped;37 focused guards and the14-check real MySQL/HTTP run pass. Exact-revision Compose acceptance is recorded by the dedicated Actions workflow. No production or real broker calls. [Setup](kalshi_trade_infra/staging/README.md).
 - `[delayed: staging first]` Paper source is merged via PR #13 as `f76b2f1`, preserving latest research diagnostics. Production full migration/runtime rollout remains held; replace the paused old exact-ref operation only after staged validation. Real user OAuth/paper ticket remains separate. [Evidence](kalshi_trade_infra/results/alpaca_paper_trading_2026-10-18/deployment/HANDOFF.md).
 Single source of truth for OPEN work — one flat list. Each item is tagged with what it's waiting on:
 - `[self-improving]` Autonomous Tau improvement loop runs on a schedule; each round picks one aspect (execution / research rigor / risk / data / ML tooling / UX / engineering) and ships an improvement. Never touches the live-trading gate.

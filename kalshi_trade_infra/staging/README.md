@@ -12,7 +12,7 @@ sharing the production machine's compute resources. All commands below run from
 ```bash
 python3 staging/setup.py
 docker compose --project-name tau-paper-staging --file staging/compose.yml build
-docker compose --project-name tau-paper-staging --file staging/compose.yml up --detach --wait web
+docker compose --project-name tau-paper-staging --file staging/compose.yml up --detach --wait gateway
 docker compose --project-name tau-paper-staging --file staging/compose.yml run --rm --no-deps -T verify
 ```
 
@@ -27,7 +27,10 @@ The app's existing login/bind guard is preserved. No public staging URL is creat
 reads a production `.env` or prints a secret. Docker's context allowlist excludes
 these files; the image reads the mounted private files during a constrained
 bootstrap, clears inherited configuration, and drops to uid/gid 10001 before app
-imports. The database has no published host port; web publishes 127.0.0.1 only.
+imports. The app and database have no published host ports and remain on the
+internal network. An uncredentialed read-only gateway publishes 127.0.0.1:18090,
+allows only static/health/known page paths, and strips cookies and authorization.
+It rejects API writes, auth and unsubscribe routes.
 
 The full `python -m app.schema` runs before web/verification. Verification needs a
 fresh database: repeated runs against already seeded fixture data fail closed.
@@ -66,8 +69,9 @@ A persistent interactive staging site needs a separate host/database and its own
 hostname, Google/Alpaca OAuth app callbacks and dedicated test-account consent.
 Its secrets and session encryption must remain separate from production; never
 copy production users, grants or queues. Keep development login off and use HTTPS
-secure cookies on a public hostname. This offline stack intentionally has no
-internet egress; real OAuth requires an explicitly reviewed staging configuration.
+secure cookies on a public hostname. The app and database intentionally have no
+internet egress. The uncredentialed preview gateway joins a separate bridge and forwards only the read-only allowlist;
+real OAuth requires an explicitly reviewed staging configuration.
 A staging research worker would need this separate database/queue as well.
 
 Merging source or running this isolated workflow does not deploy production.

@@ -45,7 +45,6 @@
       "secrets": ["mysql_password", "app_secret_key"],
       "networks": ["isolated"],
       "depends_on": {"schema": {"condition": "service_completed_successfully"}},
-      "ports": ["127.0.0.1:18090:8090"],
       "healthcheck": {
         "test": ["CMD", "/usr/local/bin/python", "-I", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/healthz',timeout=3).close()"],
         "interval": "2s",
@@ -61,6 +60,30 @@
       "mem_limit": "512m",
       "cpus": 1.0,
       "pids_limit": 128
+    },
+    "gateway": {
+      "image": "nginx:stable-alpine",
+      "user": "101:101",
+      "entrypoint": ["nginx", "-c", "/etc/nginx/staging.conf", "-g", "daemon off;"],
+      "command": [],
+      "networks": ["isolated", "preview"],
+      "depends_on": {"web": {"condition": "service_healthy"}},
+      "ports": ["127.0.0.1:18090:8080"],
+      "volumes": ["./preview-nginx.conf:/etc/nginx/staging.conf:ro"],
+      "healthcheck": {
+        "test": ["CMD", "wget", "--spider", "-q", "-T", "3", "http://127.0.0.1:8080/healthz"],
+        "interval": "2s",
+        "timeout": "5s",
+        "retries": 30,
+        "start_period": "5s"
+      },
+      "read_only": true,
+      "tmpfs": ["/tmp:rw,noexec,nosuid,size=16m,mode=1777"],
+      "cap_drop": ["ALL"],
+      "security_opt": ["no-new-privileges:true"],
+      "mem_limit": "64m",
+      "cpus": 0.25,
+      "pids_limit": 32
     },
     "verify": {
       "build": {"context": "..", "dockerfile": "staging/Dockerfile"},
@@ -79,7 +102,7 @@
       "pids_limit": 128
     }
   },
-  "networks": {"isolated": {"internal": true}},
+  "networks": {"isolated": {"internal": true}, "preview": {"driver": "bridge"}},
   "volumes": {"mysql-data": {}},
   "secrets": {
     "mysql_root_password": {"file": "./.state/mysql_root_password"},
