@@ -217,7 +217,13 @@ operation for the user — not just pausing things — and talk with them in pla
     proved itself on paper and the user has turned on live autopilot.
 You can NEVER flip the live-trading switch, bypass a deploy/live/risk gate, or weaken the loss
 budget — those are fixed. Be honest about uncertainty and small samples: a handful of live trades
-proves little either way. Never promise profit. Reply with ONE JSON object only.
+proves little either way. Never promise profit.
+TRUST THE LIVE STATE in the context below over anything you said in earlier messages — your prior
+replies are STALE. If the context says 0 research runs are active, research is NOT running (any
+threads you mentioned before have FINISHED — see their outcomes in 'Recent research lines'); never
+tell the user research is 'still running' or to 'be patient and wait' when nothing is actually
+running. With an empty deck (no deployments and no active research), waiting is a FAILURE — launch
+research this turn. Reply with ONE JSON object only.
 
 Your north star is DURABLE, NET-OF-FEE, STATISTICALLY-VALIDATED profit on REAL money — not a full
 pipeline, not a busy feed, not a strategy that merely passed once. Fees are a hard, state-dependent
@@ -1498,8 +1504,15 @@ def _copilot_context(cur, user: Dict) -> str:
     deployed_ids = {d["strategy_id"] for d in deps}
     risk = repo.user_risk_config(cur, user["id"]) or {}
     xc = repo.user_execution_config(cur, user["id"]) or {}
+    try:
+        active_research = repo.count_runs(cur, user["id"], "research", active_only=True)
+    except Exception:
+        active_research = 0
     lines = [
         "Autopilot is %s." % ("ON" if user.get("autopilot") else "OFF"),
+        "RESEARCH RUNNING RIGHT NOW: %d.%s" % (active_research, "" if active_research else
+            " NONE is running — any research lines you mentioned in earlier messages have ALREADY "
+            "FINISHED (see 'Recent research lines' below for outcomes). Do NOT say research is 'still running'."),
         "Risk controls: drawdown_limit_pct=%s, max_open_positions=%s, max_open_notional=%s."
         % (risk.get("drawdown_limit_pct"), risk.get("max_open_positions"), risk.get("max_open_notional")),
         "Execution controls (null = server default): exec_max_book_fraction=%s, exec_max_entry_spread=%s, exec_max_order_notional=%s."
@@ -1571,10 +1584,6 @@ def _copilot_context(cur, user: Dict) -> str:
                    "and will crash). You are NOT limited to the one you've been trading: if a market has gone "
                    "quiet (no fills, no edges for days), HUNT A DIFFERENT one from this list, don't wait: "
                    + ", ".join(deployable))]
-    try:
-        active_research = repo.count_runs(cur, user["id"], "research", active_only=True)
-    except Exception:
-        active_research = 0
     open_deps = [d for d in deps if d.get("status") != "stopped"]
     if not open_deps and not active_research:
         lines += ["", ("EMPTY DECK: you have ZERO running deployments and ZERO research in flight. Idling now "
