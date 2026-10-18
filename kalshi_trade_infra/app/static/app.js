@@ -1962,7 +1962,7 @@
     shell('/strategies', boardTitle('Strategies', 'Every strategy your agents researched. Passed ones can be deployed; void ones stay here so you can see what didn’t work.') +
       '<dl class="figures measure" id="sfigs" style="margin-top:14px"></dl>', `
       <div class="section-head filters stratfilters">
-        <div class="chips" role="group" aria-label="Status">${[['', 'All'], ['passed', 'Passed'], ['failed', 'Void'], ['rejected', 'Rejected']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}" aria-pressed="${f.status === v}">${l}</button>`).join('')}
+        <div class="chips" role="group" aria-label="Status">${[['', 'Kept'], ['passed', 'Passed'], ['backtest-only', 'Backtest only'], ['failed', 'Void'], ['rejected', 'Rejected']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}" aria-pressed="${f.status === v}">${l}</button>`).join('')}
           <button class="chip" data-toggle="deployed" aria-pressed="${f.deployed === '1'}">Deployed</button></div>
         ${(() => { const by = {}; S.me.markets.forEach((m) => (by[m.category] || (by[m.category] = [])).push(m)); const cs = Object.keys(by).sort(catOrder); return `<label class="vh" for="strat-market">Market</label><select class="input strat-mkt" id="strat-market" aria-label="Filter by market"><option value="">All markets</option>${cs.map((c) => `<optgroup label="${esc(c)}">${by[c].map((m) => `<option value="${esc(m.key)}"${f.market === m.key ? ' selected' : ''}>${esc(marketShort(m.key))}</option>`).join('')}</optgroup>`).join('')}</select>`; })()}
         <div class="searchwrap"><input class="input" id="strat-q" type="search" placeholder="Search name or thesis…" value="${esc(f.q)}" aria-label="Search strategies"></div>
@@ -1983,7 +1983,7 @@
     if (sq) sq.onchange = () => { const v = sq.value.trim(); if (v !== f.q) { f.q = v; applyFilters(); } };
     // Paginate server-side at 50/page — a run_forever session can produce far more than the old
     // 500-row cap, and the figures/chip counts come from a real COUNT(*), not the fetched page.
-    const CLABEL = { passed: 'Passed', failed: 'Void', rejected: 'Rejected' };
+    const CLABEL = { passed: 'Passed', 'backtest-only': 'Backtest only', failed: 'Void', rejected: 'Rejected' };
     const slipsEl = root.querySelector('#slips');
     let sp = 0;
     const load = async () => {
@@ -1994,7 +1994,8 @@
       const counts = d.counts || {}, total = counts.total || 0, c = (st) => counts[st] || 0;
       root.querySelector('#sfigs').innerHTML = fig('Passed' + glo('passed'), c('passed')) + fig('Void on unseen data' + glo('void'), c('failed')) + fig('Rejected in testing' + glo('rejected'), c('rejected')) +
         fig('Pass rate', total ? pct(c('passed') / total, false) : '—');
-      root.querySelectorAll('[data-f="status"]').forEach((b) => { const v = b.dataset.v; b.textContent = v ? `${CLABEL[v]} (${c(v)})` : `All (${total})`; });
+      const kept = total - c('failed') - c('rejected');
+      root.querySelectorAll('[data-f="status"]').forEach((b) => { const v = b.dataset.v; b.textContent = v ? `${CLABEL[v]} (${c(v)})` : `Kept (${kept})`; });
       if (!d.matched) {
         slipsEl.innerHTML = `<div class="empty"><h3>Nothing here yet</h3><p>${total ? 'Try another filter.' : 'Start a research session and the strategies it finds will land here.'}</p>${total ? '' : '<a class="btn" href="/research">Go to Research</a>'}</div>`;
         return;

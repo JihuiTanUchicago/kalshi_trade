@@ -533,8 +533,13 @@ def list_strategies(ctx: Ctx):
         page = 0
     per = 50
     counts = repo.count_strategies(ctx.cur, ctx.uid, direction, market, search, deployed)  # true per-status totals, not a capped page
-    matched = counts.get(status, 0) if status else counts["total"]
-    rows = repo.list_strategies(ctx.cur, ctx.uid, direction, status, market, limit=per, offset=page * per, q=search, deployed=deployed)
+    # Default ("Kept") view hides rejected/void — the big-run noise — but keeps every row in the
+    # DB (the ledger counts them for DSR/FDR). An explicit status chip overrides and shows it.
+    hide_noise = status is None
+    noise = sum(counts.get(s, 0) for s in repo.NOISE_STATUSES)
+    matched = counts.get(status, 0) if status else counts["total"] - noise
+    rows = repo.list_strategies(ctx.cur, ctx.uid, direction, status, market, limit=per, offset=page * per,
+                                q=search, deployed=deployed, hide_noise=hide_noise)
     return {"strategies": [_strategy_card(s) for s in rows], "counts": counts,
             "matched": matched, "page": page, "per": per, "pages": (matched + per - 1) // per}
 

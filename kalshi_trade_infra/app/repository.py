@@ -576,13 +576,22 @@ def _strategy_row(r: Dict) -> Dict:
     return r
 
 
-def _strategy_filter_sql(direction, status, market, run_id, q, deployed) -> tuple:
-    """Shared WHERE clause for list/count so the headline figures and the page agree."""
+NOISE_STATUSES = ("rejected", "failed")  # the un-kept outcomes the default list view hides
+
+
+def _strategy_filter_sql(direction, status, market, run_id, q, deployed, hide_noise=False) -> tuple:
+    """Shared WHERE clause for list/count so the headline figures and the page agree.
+    `hide_noise` (default list view only) drops rejected/void rows — they stay in the DB (the
+    immutable ledger counts every tested hypothesis for DSR/FDR), just out of the default page.
+    Ignored when an explicit `status` is selected (that exact-match already scopes the view)."""
     sql, params = " WHERE s.user_id=%s", []  # caller prepends user_id
     for col, val in (("s.direction", direction), ("s.status", status), ("s.market", market), ("s.run_id", run_id)):
         if val:
             sql += " AND %s=%%s" % col
             params.append(val)
+    if hide_noise and not status:
+        sql += " AND s.status NOT IN (%s)" % ",".join(["%s"] * len(NOISE_STATUSES))
+        params.extend(NOISE_STATUSES)
     if q:
         sql += " AND (s.title LIKE %s OR s.thesis LIKE %s)"
         like = "%" + q + "%"
@@ -595,8 +604,9 @@ def _strategy_filter_sql(direction, status, market, run_id, q, deployed) -> tupl
 def list_strategies(
     cur, user_id: int, direction: Optional[str] = None, status: Optional[str] = None, market: Optional[str] = None,
     run_id: Optional[int] = None, limit: int = 500, offset: int = 0, q: Optional[str] = None, deployed: bool = False,
+    hide_noise: bool = False,
 ) -> List[Dict]:
-    where, fparams = _strategy_filter_sql(direction, status, market, run_id, q, deployed)
+    where, fparams = _strategy_filter_sql(direction, status, market, run_id, q, deployed, hide_noise)
     sql = ("""SELECT s.id, s.run_id, s.parent_id, s.market, s.direction, s.title, s.thesis, s.spec_json, s.status,
                     s.result_json, s.experiment_id, s.created_at, r.hypotheses_tried, s.shared_from_user_id, su.name AS shared_from_name,
                     (SELECT COUNT(*) FROM app_deployments d WHERE d.strategy_id=s.id AND d.status<>'stopped') AS active_deps,
