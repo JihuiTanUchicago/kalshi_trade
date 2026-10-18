@@ -423,7 +423,7 @@ def _code_book(spec: Dict, ds: Dataset, start_ts: int, end_ts: int) -> Dict[int,
     return _parse_book(raw, frames)
 
 
-def freeze_code_model(spec: Dict, ds: Dataset) -> Dict:
+def freeze_code_model(spec: Dict, ds: Dataset, diag: Optional[Dict] = None) -> Dict:
     """Fit-on-research-and-FREEZE. If the agent's code defines fit(window), run it ONCE over the
     whole RESEARCH window `ds` and freeze the returned params into spec['params'] — which becomes
     part of the pre-registered, hashed experiment identity. signals() then predicts with those
@@ -432,7 +432,12 @@ def freeze_code_model(spec: Dict, ds: Dataset) -> Dict:
 
     No fit() (a pure-rule code strategy) or a non-code DSL spec -> returned unchanged. A fit failure
     logs and returns the spec unfrozen; signals then runs without params and, if it needed a model,
-    produces an empty book -> the hypothesis fails the gate honestly rather than crashing the run."""
+    produces an empty book -> the hypothesis fails the gate honestly rather than crashing the run.
+
+    If `diag` (a dict) is passed, a fit failure records the raw error under `code_fit_failed` so the
+    research loop can tell the agent WHY its hypothesis took ~0 trades (a single-class training
+    window is the usual cause) instead of leaving it to guess. Pure observability: it never changes
+    the fit or whether the spec is frozen."""
     from app import sandbox
     if not specmod.is_code_spec(spec) or not sandbox.strategy_has_fit(spec["code"]):
         return spec
@@ -443,6 +448,8 @@ def freeze_code_model(spec: Dict, ds: Dataset) -> Dict:
         params = sandbox.run_strategy_fit(spec["code"], window, data_dir=None)
     except sandbox.SandboxError as e:
         logging.getLogger(__name__).warning("code strategy fit failed; running without a frozen model: %s", e)
+        if diag is not None:
+            diag["code_fit_failed"] = str(e)[:300]
         return spec
     return dict(spec, params=params)
 

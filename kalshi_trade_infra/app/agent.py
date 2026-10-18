@@ -1618,7 +1618,7 @@ def _test_in_sample(h: Dict, ds: backtest.Dataset, partition: Dict, log, round_n
     # specs pass through untouched. Carry the frozen spec forward on `h`.
     diag: Dict = {}
     spec = backtest.fit_spec_on_research(spec, rds, diag)
-    spec = backtest.freeze_code_model(spec, rds)
+    spec = backtest.freeze_code_model(spec, rds, diag)
     h = dict(h, spec=spec)
     res = backtest.research_fold_metrics(spec, rds, embargo)
     ins = res["in_sample"]
@@ -1645,6 +1645,13 @@ def _diagnose(spec: Dict, rds: backtest.Dataset, ins: Dict, diag: Dict) -> str:
     root cause the agent must see to stop loosening thresholds that can never fire."""
     if diag.get("reason") and not specmod.is_fitted(spec):
         return "model left UNFITTED: " + diag["reason"]
+    if diag.get("code_fit_failed"):
+        # A code strategy's fit() raised, so it ran WITHOUT a frozen model (likely ~0 trades). Give
+        # the agent the actual cause instead of a silent 0-trade result — a single-class training
+        # window (all wins or all losses) is the usual one.
+        return ("your fit() raised and the strategy ran WITHOUT a frozen model: %s — a single-class "
+                "training window (all wins or all losses) is the usual cause; fit on a market/window "
+                "with both outcomes, or drop fit() for a rule-based signal." % diag["code_fit_failed"])
     if not ins.get("trades"):
         return backtest.zero_trade_reason(spec, rds)
     return ""
