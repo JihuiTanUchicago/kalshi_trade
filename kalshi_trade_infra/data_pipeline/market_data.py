@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from data_pipeline.common import api_get, utc_now
+from data_pipeline.common import api_get, parse_iso_to_dt, utc_now
 
 # Kalshi's ticker channel pushes on every top-of-book change. Anything older
 # than this is re-fetched over REST before it is allowed to price an order.
@@ -69,6 +69,35 @@ class Quote:
         return self.yes_ask - self.yes_bid
 
 
+def ws_quote(ticker: str, msg: Optional[Dict[str, Any]]) -> Optional[Quote]:
+    """Parse one ``WsTickerFeed.get_latest`` message into a Quote.
+
+    The single place a websocket ticker message is turned into a Quote, so marking (the engine)
+    and pricing (MarketFeed) read the live book through the same parser. Returns None when the
+    message is missing or carries no usable timestamp: the socket carries a `ts` (epoch seconds)
+    or an ISO `time` string, and an absent/garbage timestamp must never read as fresh forever.
+    """
+    if not msg:
+        return None
+    raw = msg.get("ts") or msg.get("time")
+    as_of: Optional[datetime] = None
+    if isinstance(raw, (int, float)):
+        as_of = datetime.fromtimestamp(float(raw), tz=timezone.utc)
+    elif isinstance(raw, str):
+        as_of = parse_iso_to_dt(raw)
+    if as_of is None:
+        return None
+    return Quote(
+        ticker=ticker,
+        yes_bid=_to_float(msg.get("yes_bid_dollars")),
+        yes_ask=_to_float(msg.get("yes_ask_dollars")),
+        yes_bid_size=_to_float(msg.get("yes_bid_size_fp") or msg.get("yes_bid_size")),
+        yes_ask_size=_to_float(msg.get("yes_ask_size_fp") or msg.get("yes_ask_size")),
+        as_of=as_of,
+        source="websocket",
+    )
+
+
 class MarketFeed:
     """Current top of book, websocket-first with a REST backstop.
 
@@ -94,29 +123,9 @@ class MarketFeed:
         if self._ws_feed is None:
             return None
         try:
-            msg = self._ws_feed.get_latest(ticker)
+            return ws_quote(ticker, self._ws_feed.get_latest(ticker))
         except Exception:
             return None
-        if not msg:
-            return None
-        # The socket carries no receive time of its own, so the feed's own
-        # message timestamp is used when present and "now" otherwise. An
-        # absent timestamp must not read as fresh forever.
-        as_of = None
-        raw_ts = msg.get("ts") or msg.get("time")
-        if isinstance(raw_ts, (int, float)):
-            as_of = datetime.fromtimestamp(float(raw_ts), tz=timezone.utc)
-        if as_of is None:
-            return None
-        return Quote(
-            ticker=ticker,
-            yes_bid=_to_float(msg.get("yes_bid_dollars")),
-            yes_ask=_to_float(msg.get("yes_ask_dollars")),
-            yes_bid_size=_to_float(msg.get("yes_bid_size_fp") or msg.get("yes_bid_size")),
-            yes_ask_size=_to_float(msg.get("yes_ask_size_fp") or msg.get("yes_ask_size")),
-            as_of=as_of,
-            source="websocket",
-        )
 
     def _from_rest(self, ticker: str) -> Optional[Quote]:
         try:

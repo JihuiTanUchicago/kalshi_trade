@@ -172,17 +172,22 @@ def demo_order_submitter(credentials: KalshiCredentials, base_url: Optional[str]
     return submit
 
 
-def demo_kernel_factory(conn) -> Callable[[int], object]:
+def demo_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
     """user_id -> MarketableLimitKernel that places DEMO orders signed with that
     user's own dev key. Demo twin of app.engine.live_kernel_factory; reuses the
     same kernel class and the same AES-GCM-per-user decryption (credentials_from_row),
-    so the only thing that changes is the key (dev) and the host (demo)."""
+    so the only thing that changes is the key (dev) and the host (demo).
+
+    `ws_feed` (the shared WsTickerFeed) makes pricing read the live websocket book first with REST
+    as the freshness backstop (P1-1); None => REST-only, as before. Demo places REAL sandbox orders,
+    so it passes the SAME process-wide execution guards as live (P1-3) — the two must never drift."""
     from app import kalshi_account
+    from app.execution import guarded_submitter
     from data_pipeline.architecture.execution_kernel import MarketableLimitKernel
     from data_pipeline.market_data import MarketFeed
 
     _require_demo_host(KALSHI_DEV_API_BASE)  # fail fast if the demo host is misconfigured
-    feed = MarketFeed()
+    feed = MarketFeed(ws_feed=ws_feed)
 
     def make(user_id: int):
         row = repo.get_kalshi_dev_key(conn.cursor(), user_id)
@@ -190,7 +195,7 @@ def demo_kernel_factory(conn) -> Callable[[int], object]:
             return None
         creds = kalshi_account.credentials_from_row(user_id, row)
         return MarketableLimitKernel(
-            demo_order_submitter(creds), feed,
+            guarded_submitter(demo_order_submitter(creds)), feed,
             entry_cross_ticks=int(os.getenv("KALSHI_ENTRY_CROSS_TICKS", "2")),
             exit_cross_ticks=int(os.getenv("KALSHI_EXIT_CROSS_TICKS", "2")),
             max_entry_slippage=float(os.getenv("KALSHI_MAX_ENTRY_SLIPPAGE", "0.10")),

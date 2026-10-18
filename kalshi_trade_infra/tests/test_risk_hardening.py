@@ -239,3 +239,19 @@ def test_worst_position_loss_pct_picks_the_worst(monkeypatch):
     monkeypatch.setattr(engine.repo, "open_positions", lambda cur, dep_id:
                         [_pos(1, entry=0.50, mark=0.40), _pos(2, qty=6, entry=0.79, mark=0.44)])
     assert engine.worst_position_loss_pct(object(), _dep()) == pytest.approx(44.303797, abs=1e-4)
+
+
+def test_mark_staleness_gate_suppresses_trigger_off_stale_mark(monkeypatch):
+    # P1-2: a mark PROVABLY older than APP_MARK_MAX_AGE_SECONDS must not drive a force-sell (the
+    # stalled-feed case). A fresh or un-timestamped mark is evaluated exactly as before (additive).
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    stale = dict(_pos(2, qty=6, entry=0.79, mark=0.44), mark_ts=now - timedelta(seconds=10_000))
+    fresh = dict(_pos(2, qty=6, entry=0.79, mark=0.44), mark_ts=now)
+    monkeypatch.setattr(engine.repo, "open_positions", lambda cur, dep_id: [stale])
+    assert engine.worst_position_loss_pct(object(), _dep()) == 0.0  # stale -> skipped
+    monkeypatch.setattr(engine.repo, "open_positions", lambda cur, dep_id: [fresh])
+    assert engine.worst_position_loss_pct(object(), _dep()) == pytest.approx(44.303797, abs=1e-4)
+    # no mark_ts at all -> treated as fresh (additive: behaves as before the gate)
+    assert engine._mark_is_fresh(_pos()) is True

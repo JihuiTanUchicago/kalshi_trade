@@ -31,6 +31,7 @@ from app import repository as repo
 from app import spec as specmod
 from app.markets import MARKETS, BtcSeries, Contract, Market, Snapshot, compatible_cadence, snapshot
 from data_pipeline.common import api_get, parse_iso_to_dt
+from data_pipeline.market_data import ws_quote
 from data_pipeline.kalshi_fees import taker_fee_dollars
 
 # Live orders for app users stay off until the owner explicitly turns them on.
@@ -51,6 +52,17 @@ LATE_FRACTION = 0.25
 # than its backtest's worst unseen-data drawdown is paused.
 LOSS_GUARD_MULTIPLE = 2.0
 COINBASE_CANDLES_URL = "https://api.exchange.coinbase.com/products/%s/candles"  # %s = product, e.g. BTC-USD
+# Mark-staleness gate (P1-2): a risk TRIGGER (drawdown / position-stop force-sell) must not fire
+# off a mark older than this. Marks refresh every tick (~15s), so the default of 90s (6 ticks) only
+# trips when marking has actually stalled; 0 disables the gate. A stale mark is treated like an
+# unmarked one — the position is skipped for the trigger decision, never force-sold off stale data.
+# The EXIT path (flatten / force-close pricing) never consults this: an exit must always get flat.
+try:
+    MARK_MAX_AGE_SECONDS = float(os.getenv("APP_MARK_MAX_AGE_SECONDS", "90"))
+except (TypeError, ValueError):
+    MARK_MAX_AGE_SECONDS = 90.0
+# When stamping marks, prefer a websocket top-of-book no older than this over the REST snapshot.
+MARK_WS_FRESH_SECONDS = 2.0
 
 
 @dataclass(frozen=True)
@@ -139,6 +151,8 @@ class Sources:
     # Crash-recovery asks this whether a 'sent' intent's order filled; None = can't tell (leave it
     # 'sent', NEVER re-send). None here = no recovery lookup wired (recovery is a safe no-op).
     order_lookup: Optional[Callable[[Dict], Optional[Dict]]] = None
+    # Shared live-book websocket (WsTickerFeed) for ≤1s marks (P1-1). None = REST-only marks.
+    ws_feed: object = None
 
 
 # -- settlement ------------------------------------------------------------------
@@ -661,6 +675,57 @@ def _liquidation_price(pos: Dict) -> Optional[float]:
     return mark if pos["side"] == "yes" else 1.0 - mark
 
 
+def _mark_is_fresh(pos: Dict, now: Optional[datetime] = None) -> bool:
+    """Is this position's stamped mark recent enough to drive a RISK TRIGGER (P1-2)?
+
+    Refuses a force-sell driven by a mark PROVABLY older than APP_MARK_MAX_AGE_SECONDS — the
+    stalled-feed case, where `repo.update_marks` (which always co-writes mark_price + mark_ts)
+    stopped updating and the row holds a last mark with an OLD timestamp. The gate is ADDITIVE:
+    with no age info (mark_ts absent, as on a legacy / not-yet-marked row) it returns True and the
+    trigger is evaluated exactly as before this gate existed — missing age is never read as stale,
+    only a present-and-old timestamp is. ONLY the drawdown / position-stop reads consult this; the
+    exit path never does, so a stale mark can never block getting flat."""
+    if MARK_MAX_AGE_SECONDS <= 0:
+        return True  # gate disabled
+    ts = pos.get("mark_ts")
+    if ts is None:
+        return True  # no age info -> behave as before the gate (additive, no suppression)
+    now = now or datetime.now(timezone.utc)
+    if isinstance(ts, datetime) and ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    try:
+        return (now - ts).total_seconds() <= MARK_MAX_AGE_SECONDS
+    except TypeError:
+        return True  # un-ageable mark_ts type -> no positive evidence of staleness, don't suppress
+
+
+def _subscribe_ws(ws_feed, tickers) -> None:
+    """Ensure the shared live-book feed is subscribed to these markets (P1-1). Idempotent (the
+    feed keeps a set) and best-effort: no feed, or a disabled one, is a no-op and marks fall back
+    to REST. Called from the tick so the markets we price/mark are exactly the ones we subscribe."""
+    if ws_feed is None or not tickers:
+        return
+    try:
+        ws_feed.request_subscribe(list(tickers), {})
+    except Exception:
+        pass
+
+
+def _ws_mark_bid(ws_feed, ticker: str, now: datetime) -> Optional[float]:
+    """Live websocket YES bid for `ticker` if it's fresh enough to mark against (≤MARK_WS_FRESH_
+    SECONDS), else None so the caller falls back to the REST quote (P1-1). Uses the shared ws_quote
+    parser — one place parses websocket messages. A silent/stale socket reads as None, not stale."""
+    if ws_feed is None:
+        return None
+    try:
+        q = ws_quote(ticker, ws_feed.get_latest(ticker))
+    except Exception:
+        return None
+    if q is None or q.yes_bid is None or q.yes_bid <= 0:
+        return None
+    return q.yes_bid if q.age_seconds(now) <= MARK_WS_FRESH_SECONDS else None
+
+
 def deployment_drawdown_pct(cur, dep: Dict) -> float:
     """Current drawdown from the high-water mark, as a percent of capital.
 
@@ -672,8 +737,8 @@ def deployment_drawdown_pct(cur, dep: Dict) -> float:
     unrealized = 0.0
     for pos in repo.open_positions(cur, dep["id"]):
         price = _liquidation_price(pos)
-        if price is None:
-            continue
+        if price is None or not _mark_is_fresh(pos):
+            continue  # unmarked or stale (P1-2): don't drive a force-sell off it
         qty = int(pos["qty"])
         unrealized += qty * price - (qty * float(pos["entry_price"]) + float(pos["entry_fee"]))
     equity = [0.0]
@@ -697,8 +762,8 @@ def worst_position_loss_pct(cur, dep: Dict) -> float:
     worst = 0.0
     for pos in repo.open_positions(cur, dep["id"]):
         price = _liquidation_price(pos)
-        if price is None:
-            continue  # not yet marked — priced/retried next tick
+        if price is None or not _mark_is_fresh(pos):
+            continue  # unmarked or stale (P1-2): priced/retried next tick, never stopped off stale data
         qty = int(pos["qty"])
         cost = qty * float(pos["entry_price"]) + float(pos["entry_fee"])
         if cost <= 0:
@@ -999,9 +1064,19 @@ def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] 
     need_book = bool(due) or repo.market_has_open_positions(cur, market.key)
     quotes = sources.quotes(market) if need_book else []
     if quotes:
+        # Mark off the ≤1s websocket top-of-book when it's fresh, with the REST quote as the
+        # freshness backstop (P1-1). Subscribe the markets we're reading so the shared feed has
+        # them next tick. No/stale socket => REST yes_bid, exactly as before — never a regression.
+        _subscribe_ws(sources.ws_feed, [q.contract.ticker for q in quotes])
+        marks: Dict[str, float] = {}
+        for q in quotes:
+            bid = _ws_mark_bid(sources.ws_feed, q.contract.ticker, now)
+            if bid is None:
+                bid = q.yes_bid
+            if bid is not None:
+                marks[q.contract.ticker] = bid
         try:
-            stats["marked"] = repo.update_marks(
-                cur, market.key, {q.contract.ticker: q.yes_bid for q in quotes if q.yes_bid is not None}, now)
+            stats["marked"] = repo.update_marks(cur, market.key, marks, now)
         except Exception:
             pass
     if not due:
@@ -1179,13 +1254,18 @@ def enforce_autopilot_limits(conn) -> int:
     return killed
 
 
-def live_kernel_factory(conn) -> Callable[[int], object]:
-    """user_id -> MarketableLimitKernel signing with that user's own key."""
+def live_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
+    """user_id -> MarketableLimitKernel signing with that user's own key.
+
+    `ws_feed` (the shared WsTickerFeed) makes order pricing read the live websocket book first
+    (≤1s, pushed on every top-of-book change) with REST as the freshness backstop (P1-1); None
+    => REST-only, exactly as before."""
     from app import kalshi_account
+    from app.execution import guarded_submitter
     from data_pipeline.architecture.execution_kernel import MarketableLimitKernel
     from data_pipeline.market_data import MarketFeed
 
-    feed = MarketFeed()
+    feed = MarketFeed(ws_feed=ws_feed)
 
     def make(user_id: int):
         cur = conn.cursor()
@@ -1207,7 +1287,9 @@ def live_kernel_factory(conn) -> Callable[[int], object]:
         # it from paying an absurd price if the book is thin; raise KALSHI_MAX_ENTRY_SLIPPAGE
         # toward 0.99 for a true "take whatever's there" market order. All tunable by env.
         return MarketableLimitKernel(
-            kalshi_account.order_submitter(creds), feed,
+            # P1-3: every real order first passes the process-wide execution guards (kill switch,
+            # fat-finger, rate limit, circuit breaker). They only ever block a BUY, never an exit.
+            guarded_submitter(kalshi_account.order_submitter(creds)), feed,
             entry_cross_ticks=int(os.getenv("KALSHI_ENTRY_CROSS_TICKS", "2")),
             exit_cross_ticks=int(os.getenv("KALSHI_EXIT_CROSS_TICKS", "2")),
             max_entry_slippage=float(os.getenv("KALSHI_MAX_ENTRY_SLIPPAGE", "0.10")),
@@ -1233,20 +1315,32 @@ def run_forever() -> None:
     last_reconcile = 0.0
     # How often to reconcile each user's live book against their real Kalshi account.
     reconcile_every = float(os.getenv("APP_RECONCILE_EVERY_SECONDS", "300"))
+    # One shared live-book websocket for the whole engine (P1-1): marks, PnL and order pricing all
+    # read ≤1s top-of-book from it, with REST as the freshness backstop. If WS creds are absent it
+    # stays disabled and every read falls back to REST exactly as before — so this never regresses.
+    ws_feed = None
+    try:
+        from data_pipeline.forward_collector import WsTickerFeed
+        ws_feed = WsTickerFeed()
+        ws_feed.start()
+    except Exception as e:
+        print("[engine] websocket feed unavailable, pricing/marks fall back to REST: %r" % e, flush=True)
+        ws_feed = None
     while True:
         try:
             conn = get_db_conn()
             # Demo (sandbox) execution needs no LIVE switch, but a demo-host misconfig must never
             # take down paper/live: build it defensively and carry on without it if it can't.
             try:
-                demo_kernel = demo_kernel_factory(conn)
+                demo_kernel = demo_kernel_factory(conn, ws_feed=ws_feed)
             except Exception as e:
                 print("[engine] demo execution unavailable: %r" % e, flush=True)
                 demo_kernel = None
             sources = Sources(
-                live_kernel=live_kernel_factory(conn) if LIVE_TRADING_ENABLED else None,
+                live_kernel=live_kernel_factory(conn, ws_feed=ws_feed) if LIVE_TRADING_ENABLED else None,
                 demo_kernel=demo_kernel,
                 order_lookup=_make_order_lookup(conn),
+                ws_feed=ws_feed,
             )
             # Deterministic crash recovery (P0-1): before the loop (so it also runs on every
             # reconnect / box reboot), reconcile any order-intent left 'sent' by a prior crash
