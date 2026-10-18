@@ -355,5 +355,19 @@ class DeploymentControls(unittest.TestCase):
         self.assertEqual(sum(call[0] == "planned_startup" for call in self.calls[:start]), 2)
 
 
+class SourceDiagnosticTests(unittest.TestCase):
+    def test_diagnostics_report_names_without_reading_or_exposing_private_extra_content(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);(root/'app').mkdir();(root/'data_pipeline').mkdir()
+            (root/'app/a.py').write_text('changed')
+            (root/'app/old.css').write_text('obsolete fixture')
+            (root/'app/.env').write_text('synthetic-private-do-not-output')
+            report=remote.source_diagnostics({'app/a.py':'wrong','app/missing.py':'missing'},root)
+            self.assertEqual(report['changed_known_source'],['app/a.py'])
+            self.assertEqual(report['missing_known_source'],['app/missing.py'])
+            self.assertEqual(report['extra_source_paths'],['app/old.css'])
+            self.assertEqual(report['withheld_extra_path_count'],1)
+            self.assertNotIn('synthetic-private-do-not-output',str(report))
+
 if __name__ == "__main__":
     unittest.main()

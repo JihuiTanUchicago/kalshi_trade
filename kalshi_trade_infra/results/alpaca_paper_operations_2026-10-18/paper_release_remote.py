@@ -70,6 +70,22 @@ def source_check(manifest, root=ROOT):
             if path.is_file():actual.add(str(path.relative_to(root)))
     return actual==set(manifest) and all(file_hash(root/name)==digest for name,digest in manifest.items())
 
+def source_diagnostics(manifest, root=ROOT):
+    actual=set()
+    for package in ('app','data_pipeline'):
+        for path in (root/package).rglob('*'):
+            if '__pycache__' in path.parts or path.suffix=='.pyc':continue
+            if path.is_file() or path.is_symlink():actual.add(str(path.relative_to(root)))
+    missing=sorted(set(manifest)-actual)
+    mismatched=[name for name in sorted(set(manifest)&actual)
+                if (root/name).is_symlink() or file_hash(root/name)!=manifest[name]]
+    extra=sorted(actual-set(manifest))
+    public_suffixes={'.py','.md','.js','.css','.html','.svg','.png','.ico','.woff','.woff2','.map'}
+    safe_extra=[name for name in extra if Path(name).suffix in public_suffixes
+                and re.fullmatch(r'[A-Za-z0-9_./-]{1,200}',name)]
+    return {'missing_known_source':missing,'changed_known_source':mismatched,'extra_file_count':len(extra),
+            'extra_source_paths':safe_extra,'withheld_extra_path_count':len(extra)-len(safe_extra)}
+
 def config_module():
     namespace = {'__name__':'paper_runtime_config'}
     exec(PAPER_CONFIG_SOURCE,namespace)
@@ -197,7 +213,9 @@ def inspect():
     provider_configuration()
     result['provider_staged_configuration_valid']=True
     result['status']='already_installed' if result['release_matches'] else ('ready_for_quiet_window' if idle(result['jobs']) else 'waiting_for_idle')
-    if not result['baseline_matches'] and not result['release_matches']:raise ReleaseError('production_source_conflict')
+    if not result['baseline_matches'] and not result['release_matches']:
+        result.update(status='inspection_failed',error_code='production_source_conflict',
+                      source_diagnostics=source_diagnostics(BASELINE_MANIFEST))
     return result
 
 def extract_bundle(bundle, directory):
