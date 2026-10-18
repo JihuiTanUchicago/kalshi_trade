@@ -176,7 +176,7 @@ def test_invalid_spec_gets_one_repair(monkeypatch):
 
 def test_unrepairable_reply_fails_the_run_visibly(monkeypatch):
     store = Store(monkeypatch)
-    model, _ = scripted([plan(), "no json here", "still none"])
+    model, _ = scripted([plan(), "no json here", "still none", "and still none"])
     agent.run_research(Conn(), RUN, model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
     assert store.finished[0] == "failed"
     assert store.events[-1][0] == "error"

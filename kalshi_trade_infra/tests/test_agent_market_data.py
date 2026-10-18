@@ -193,7 +193,7 @@ def test_tool_loop_has_a_hard_budget(provider):
 
     with pytest.raises(LLMError, match="budget is exhausted"):
         market.AgentMarketData(market.DataScope()).ask(model, "system", [], final_check, Usage())
-    assert count == 4  # two data rounds, final response, one validation repair
+    assert count == 5  # two data rounds + ask_json's 3-attempt repair loop on the exhausted round
     assert len(provider) == 3  # initial watchlist + two allowed requests
 
 

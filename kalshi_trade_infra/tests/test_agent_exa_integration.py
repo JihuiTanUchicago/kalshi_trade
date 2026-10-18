@@ -167,12 +167,14 @@ def test_web_adapter_does_not_reset_existing_market_data_round_limit(monkeypatch
     def stock(symbol):
         return json.dumps({"market_data_requests": [{"kind": "bars", "symbols": [symbol], "lookback_days": 7}]})
     model, _ = scripted([tool_request(query="one"), stock("AAPL"), tool_request(query="two"),
-                         stock("MSFT"), stock("GOOG"), stock("GOOG")])
+                         stock("MSFT"), stock("GOOG"), stock("GOOG"), stock("GOOG")])
     usage = Usage()
     with pytest.raises(LLMError):
         market.AgentMarketData(market.DataScope()).ask(tool.wrap(model, usage), "system", [], lambda obj: obj["reply"], usage)
     assert len(alpaca_provider) == 3  # Initial watchlist plus two permitted reads.
-    assert len(session.calls) == 2 and (usage.input_tokens, usage.output_tokens) == (60, 30)
+    # 7 model calls: 2 web-tool round-trips + 2 permitted stock reads + ask_json's 3-attempt repair
+    # loop on the exhausted round (web tool must not reset the round limit); only the 2 tool calls hit the session.
+    assert len(session.calls) == 2 and (usage.input_tokens, usage.output_tokens) == (70, 35)
 
 
 def test_exa_research_preserves_streamed_proposer_progress(monkeypatch):
