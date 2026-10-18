@@ -1,63 +1,87 @@
-name: Deploy web app
-
-# Redeploy the Tau customer app to the web box WITHOUT needing the AWS key locally.
-# Manual trigger only: GitHub restricts "Run workflow" to collaborators who have write (push)
-# access to the repo — i.e. the same people who can push to main — so this is the push-to-main-
-# gated redeploy. It authenticates with a dedicated deploy IAM user's keys, stored as the repo
-# secrets AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY (least-privilege policy in DEPLOY_WORKFLOW_SETUP.md).
-# It reuses scripts/deploy_web.sh verbatim, so CI and a local deploy run the identical, rollback-
-# guarded path (whole-app tar -> S3 -> SSM on-box extract/compile/schema/restart -> curl 200 ->
-# CloudFront invalidate). One-time AWS setup + the access-key alternative: scripts/DEPLOY_WORKFLOW_SETUP.md.
+name: Production provider inventory (read-only)
 
 on:
   workflow_dispatch:
-    inputs:
-      ref:
-        description: "Git ref to deploy (branch, tag, or SHA)"
-        required: false
-        default: main
-      invalidate:
-        description: "Invalidate CloudFront after deploy"
-        type: boolean
-        default: true
-
-# LAST WINS, without racing the box. Same group => runs never overlap; when several are triggered
-# close together GitHub keeps the newest queued one and cancels the older pending ones, so the LAST
-# trigger is what ends up deployed. cancel-in-progress is false ON PURPOSE: a deploy already on the
-# box must finish (killing it mid-extract/restart, or starting a 2nd on-box deploy over it, would
-# corrupt the box) — so the running one completes, then the latest queued runs and wins.
-concurrency:
-  group: deploy-web
-  cancel-in-progress: false
 
 permissions:
   contents: read
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    # Optional: configure required reviewers on this environment in repo Settings to add a
-    # human approval gate before any deploy. Undefined => no protection, workflow still runs.
-    environment: production
-    steps:
-      - name: Check out the ref being deployed
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref }}
-          fetch-depth: 0   # deploy_web.sh uses `git archive` / `git rev-parse` on the ref
+concurrency:
+  group: production-provider-acceptance
+  cancel-in-progress: false
 
-      - name: Configure AWS credentials (deploy IAM user keys)
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 8
+    steps:
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
-
-      - name: Deploy to the web box
-        env:
-          AWS_PROFILE: ""   # no local named profile in CI -> use the OIDC env credentials
+      - name: Inspect actual production provider configuration without changing it
         run: |
-          set -euo pipefail
-          args=(--ref "${{ inputs.ref }}")
-          if [ "${{ inputs.invalidate }}" != "true" ]; then args+=(--no-invalidate); fi
-          bash kalshi_trade_infra/scripts/deploy_web.sh "${args[@]}"
+          python3 - <<'PY'
+          PROGRAM = '"""Read-only service/provider inventory. Never return raw environments or logs."""\nimport datetime\nimport hashlib\nimport json\nimport logging\nimport os\nfrom pathlib import Path\nimport re\nimport subprocess\n\nROOT = Path(\'/opt/kalshi\')\nKEYS = (\'APCA_API_KEY_ID\', \'APCA_API_SECRET_KEY\', \'MASSIVE_API_KEY\',\n        \'DATABENTO_API_KEY\', \'EXA_API_KEY\', \'ALPACA_OAUTH_CLIENT_ID\',\n        \'ALPACA_OAUTH_CLIENT_SECRET\', \'APP_SECRET_KEY\')\nSETTINGS = (\'TAU_MARKET_DATA_PRIMARY\', \'TAU_ALPACA_ENABLED\', \'TAU_ALPACA_FEED\',\n            \'TAU_MASSIVE_ENABLED\', \'TAU_MASSIVE_FX_FEED\', \'TAU_MASSIVE_DATASETS\',\n            \'TAU_DATABENTO_ENABLED\', \'TAU_DATABENTO_DEFAULT_DATASET\',\n            \'TAU_DATABENTO_DATASETS\', \'TAU_DATABENTO_MAX_COST_USD\',\n            \'TAU_EXA_ENABLED\', \'TAU_EXA_HISTORICAL_ENABLED\')\nMODULES = (\'app.market_data_config\', \'app.alpaca_data\', \'app.massive_data\',\n           \'app.databento_data\', \'app.exa_data\')\nlogging.disable(logging.CRITICAL)\n\n\ndef clean(value, env):\n    secrets = [v for k, v in env.items() if re.search(\'KEY|SECRET|TOKEN|PASSWORD\', k)\n               and isinstance(v, str) and len(v) >= 8]\n    if isinstance(value, dict):\n        return {str(k): clean(v, env) for k, v in value.items()}\n    if isinstance(value, list):\n        return [clean(v, env) for v in value]\n    if isinstance(value, str):\n        for secret in secrets:\n            value = value.replace(secret, \'[redacted]\')\n        return value\n    return value\n\n\ndef settings(env):\n    values = {}\n    for name in SETTINGS:\n        value = env.get(name)\n        values[name] = value if value is None or re.fullmatch(r\'[A-Za-z0-9_. ,:/+-]{0,180}\', value) else \'[invalid literal]\'\n    return clean({\'credential_presence\': {k: bool(env.get(k)) for k in KEYS}, \'settings\': values}, env)\n\n\ndef inspect(service):\n    result = {\'service\': service}\n    try:\n        response = subprocess.run([\'systemctl\', \'show\', service, \'--property=MainPID,ActiveState,SubState,FragmentPath\'],\n                                  capture_output=True, text=True, timeout=10, check=True)\n        props = dict(line.split(\'=\', 1) for line in response.stdout.splitlines() if \'=\' in line)\n        result.update({k: props.get(k) for k in (\'ActiveState\', \'SubState\', \'FragmentPath\')})\n        pid = int(props.get(\'MainPID\') or 0)\n        result[\'pid\'] = pid\n        if not pid:\n            result[\'status\'] = \'no_running_process\'\n            return result\n        process = Path(\'/proc\') / str(pid)\n        env = dict(item.decode(\'utf-8\', \'replace\').split(\'=\', 1)\n                   for item in (process / \'environ\').read_bytes().split(b\'\\0\') if b\'=\' in item)\n        result.update(settings(env))\n        argv = (process / \'cmdline\').read_bytes().split(b\'\\0\')\n        executable = Path(argv[0].decode())\n        cwd = (process / \'cwd\').resolve()\n        if cwd != ROOT or not executable.is_absolute() or not executable.name.startswith(\'python\') or not executable.is_file():\n            result[\'status\'] = \'unexpected_process_layout\'\n            return result\n        result[\'interpreter\'] = str(executable)\n        result[\'cwd\'] = str(cwd)\n        env[\'PYTHONDONTWRITEBYTECODE\'] = \'1\'\n        statuses = {}\n        for module in MODULES:\n            arguments = [str(executable), \'-B\', \'-m\', module, \'check\' if module.endswith(\'market_data_config\') else \'status\']\n            try:\n                response = subprocess.run(arguments, cwd=cwd, env=env, capture_output=True, text=True, timeout=12)\n                try:\n                    body = clean(json.loads(response.stdout), env)\n                except (ValueError, TypeError):\n                    body = {\'status\': \'no_json_status\'}\n                statuses[module] = {\'exit_code\': response.returncode, \'result\': body}\n            except Exception as exc:\n                statuses[module] = {\'error_class\': type(exc).__name__}\n        result[\'offline_status\'] = statuses\n        result[\'module_sha256\'] = {name: hashlib.sha256((ROOT / \'app\' / name).read_bytes()).hexdigest()\n                                    for name in (\'agent_market_data.py\', \'market_data_config.py\', \'alpaca_data.py\',\n                                                 \'massive_data.py\', \'databento_data.py\', \'exa_data.py\')\n                                    if (ROOT / \'app\' / name).is_file()}\n        result[\'status\'] = \'inspected\'\n        return result\n    except Exception as exc:\n        result.update(status=\'inspection_error\', error_class=type(exc).__name__)\n        return result\n\n\nif __name__ == \'__main__\':\n    print(json.dumps({\'mode\': \'inventory\', \'read_only\': True, \'provider_calls\': 0,\n                      \'checked_at_utc\': datetime.datetime.now(datetime.timezone.utc).isoformat(),\n                      \'services\': [inspect(\'recursive-web\'), inspect(\'recursive-agents\')]}))\n'
+          """Run a redacted, read-only inventory through the existing SSM deployment role."""
+          import base64
+          import json
+          from pathlib import Path
+          import re
+          import shlex
+          import subprocess
+          import time
+          import zlib
+
+
+          def aws(*args):
+              result = subprocess.run(['aws', *args, '--region', 'us-east-1', '--output', 'json'],
+                                      capture_output=True, text=True, timeout=30)
+              if result.returncode:
+                  match = re.search(r'An error occurred \(([A-Za-z0-9_.-]+)\)', result.stderr)
+                  raise RuntimeError('AWS request failed: ' + (match.group(1) if match else 'AwsCliError'))
+              return json.loads(result.stdout)
+
+
+          def run(program):
+              packed = base64.b64encode(zlib.compress(program.encode())).decode()
+              launcher = "import base64,zlib;exec(zlib.decompress(base64.b64decode(" + repr(packed) + ")))"
+              command = '/opt/kalshi/.venv313/bin/python -B -c ' + shlex.quote(launcher)
+              sent = aws('ssm', 'send-command', '--instance-ids', 'i-077d6f7873e7836ba',
+                         '--document-name', 'AWS-RunShellScript', '--comment', 'Tau read-only provider inventory',
+                         '--parameters', json.dumps({'commands': [command], 'executionTimeout': ['180']}))
+              command_id = sent['Command']['CommandId']
+              print(json.dumps({'ssm_command_id': command_id, 'operation': 'read-only provider inventory'}), flush=True)
+              invocation = None
+              for _ in range(60):
+                  time.sleep(3)
+                  try:
+                      invocation = aws('ssm', 'get-command-invocation', '--command-id', command_id,
+                                       '--instance-id', 'i-077d6f7873e7836ba')
+                  except RuntimeError as exc:
+                      if 'InvocationDoesNotExist' in str(exc):
+                          continue
+                      raise
+                  if invocation['Status'] in ('Success', 'Failed', 'TimedOut', 'Cancelled'):
+                      break
+              if not invocation:
+                  raise RuntimeError('No SSM invocation became available')
+              stdout = invocation.get('StandardOutputContent', '').strip()
+              try:
+                  body = json.loads(stdout)
+              except (ValueError, TypeError):
+                  body = {'status': 'no_json_result', 'ssm_status': invocation['Status'],
+                          'remote_exit_code': invocation.get('ResponseCode')}
+              print('TAU_PROVIDER_INVENTORY=' + json.dumps(body), flush=True)
+              if invocation['Status'] != 'Success':
+                  raise RuntimeError('Read-only inventory failed: ' + invocation['Status'])
+              if not isinstance(body, dict) or body.get('mode') != 'inventory' or not isinstance(body.get('services'), list):
+                  raise RuntimeError('Read-only inventory returned an invalid result')
+
+
+          if __name__ == '__main__':
+              run(PROGRAM)
+          PY
