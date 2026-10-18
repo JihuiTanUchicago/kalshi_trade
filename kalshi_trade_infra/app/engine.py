@@ -19,15 +19,17 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import Callable, Dict, List, Optional
 
 import requests
 
 from app import repository as repo
 from app import spec as specmod
-from app.markets import MARKETS, BtcSeries, Contract, Market, Snapshot, snapshot
+from app.markets import MARKETS, BtcSeries, Contract, Market, Snapshot, compatible_cadence, snapshot
 from data_pipeline.common import api_get, parse_iso_to_dt
 from data_pipeline.kalshi_fees import taker_fee_dollars
 
@@ -39,6 +41,9 @@ LIVE_TRADING_ENABLED = os.getenv("APP_LIVE_TRADING_ENABLED") == "1"
 # ponytail: temporary; remove once NO-side live is validated on the demo sandbox.
 NO_SIDE_LIVE_ENABLED = os.getenv("APP_NO_SIDE_LIVE_ENABLED") == "1"
 TICK_SECONDS = 15
+# This engine process's identity, for the per-position close claim (P0-3): whichever engine stamps
+# its id on a position owns that force-close, so two engines never both sell it into a short.
+_ENGINE_ID = "engine-%s" % uuid.uuid4()
 # A slot decided this late is skipped instead: the backtest decided at the
 # slot boundary, and a daily decision taken 50 minutes late is a different rule.
 LATE_FRACTION = 0.25
@@ -130,6 +135,10 @@ class Sources:
     result: Callable[[str], Optional[str]] = fetch_result
     live_kernel: Optional[Callable[[int], object]] = None  # user_id -> kernel; None = live disabled
     demo_kernel: Optional[Callable[[int], object]] = None  # user_id -> kernel; None = demo disabled
+    # intent_row -> {'filled':int,'avg_price':float,'fee':float,'order_id':str} or None (undetermined).
+    # Crash-recovery asks this whether a 'sent' intent's order filled; None = can't tell (leave it
+    # 'sent', NEVER re-send). None here = no recovery lookup wired (recovery is a safe no-op).
+    order_lookup: Optional[Callable[[Dict], Optional[Dict]]] = None
 
 
 # -- settlement ------------------------------------------------------------------
@@ -189,15 +198,54 @@ def _paper_sell(conn, pos: Dict, price: float, reason: str) -> None:
                             "Sold %d %s %s @ %.2f (%s)" % (qty, pos["side"].upper(), pos["ticker"], price, reason), pos["id"])
 
 
-def _live_trade(cur, dep: Dict, kernel, action: str, side: str, ticker: str, qty: int, price: float):
+def _live_trade(cur, dep: Dict, kernel, action: str, side: str, ticker: str, qty: int, price: float,
+                client_order_id_base: Optional[str] = None):
     from data_pipeline.architecture.contracts import TradeIntent
 
     # `side` is the real leg (yes|no) and `price` is that side's own price; the
     # kernel reads the correct side of the book and the submitter sends the
     # matching YES-leg wire order. A NO strategy must never place a YES order.
+    # client_order_id_base (the persisted intent id, P0-1) rides on metadata so the kernel can mint
+    # a durable, idempotent client_order_id for every child order without a signature change.
     intent = TradeIntent(action=action, side=side, ticker=ticker, qty_contracts=qty, limit_price_dollars=price,
-                         model_name="app-dep-%d" % dep["id"], now_ts=datetime.now(timezone.utc))
+                         model_name="app-dep-%d" % dep["id"], now_ts=datetime.now(timezone.utc),
+                         metadata={"client_order_id": client_order_id_base} if client_order_id_base else {})
     return kernel.execute(intent)
+
+
+def _log_order_intent(conn, dep: Dict, action: str, side: str, ticker: str, qty: int, price: float,
+                      mode: str, position_id: Optional[int] = None, reason: Optional[str] = None,
+                      market_close_time=None) -> Optional[str]:
+    """Durably record an order intent BEFORE the exchange POST (P0-1) and return its id (== the
+    client_order_id to reuse). Its own committed transaction, so the record survives a crash the
+    instant after the order is placed. Best-effort: returns None if the write fails — an EXIT must
+    never be blocked by it (the caller still flattens; the net reconciler catches an unlogged fill)."""
+    intent_id = str(uuid.uuid4())
+    try:
+        with repo.transaction(conn) as tx:
+            repo.insert_order_intent(tx, intent_id, dep["id"], dep["user_id"], mode, action, side,
+                                     ticker, qty, price, intent_id, position_id, reason, market_close_time)
+        return intent_id
+    except Exception as e:
+        print("[engine] order-intent log failed dep %d %s %s %s: %r (continuing)"
+              % (dep["id"], action, side, ticker, e), flush=True)
+        return None
+
+
+def _book_entry(conn, intent_id: Optional[str], deployment_id: int, user_id: int, mode: str, ticker: str,
+                side: str, rep, market_close_time) -> bool:
+    """Book a filled ENTRY as ONE transaction keyed to its intent (P0-2): claim the intent's single
+    'booked' transition and, only if we won it, insert the position row. The claim makes the live
+    path and crash-recovery race-safe — a fill is booked exactly once, never twice."""
+    with repo.transaction(conn) as tx:
+        if intent_id is not None and not repo.claim_intent_booking(
+            tx, intent_id, getattr(rep, "external_order_id", None), int(rep.fill_qty_contracts), rep.fill_price_dollars,
+            rep.fee_dollars, getattr(rep, "raw_json", None)
+        ):
+            return False  # already booked (recovery/live race) — no double position
+        repo.insert_position(tx, deployment_id, user_id, mode, ticker, side, int(rep.fill_qty_contracts),
+                             rep.fill_price_dollars, rep.fee_dollars, market_close_time, getattr(rep, "external_order_id", None))
+    return True
 
 
 def _close_position_at(conn, cur, dep: Dict, pos: Dict, kernel, via_kernel: bool, price: float, reason: str) -> bool:
@@ -207,47 +255,84 @@ def _close_position_at(conn, cur, dep: Dict, pos: Dict, kernel, via_kernel: bool
     so a retried tick never double-closes. Returns True only when the position actually closed; a
     partial live fill books nothing and waits for the next slot."""
     qty = int(pos["qty"])
-    if via_kernel:
-        rep = _live_trade(cur, dep, kernel, "sell", pos["side"], pos["ticker"], qty, price)
-        filled = int(rep.fill_qty_contracts)
-        if filled <= 0:
-            return False  # nothing filled this slot; retry next slot
-        if filled < qty:
-            # Partial fill: contracts WERE sold on the exchange, so the fill must be recorded, not
-            # dropped. Book the sold slice as realized P&L and shrink the open row to the remainder
-            # (which retries next slot); otherwise settlement double-counts and we re-sell what's gone.
-            # Contained: a booking failure is logged for reconciliation, never crashes the tick.
+    if not via_kernel:
+        _paper_sell(conn, pos, price, reason)
+        return True
+    # Durable order-intent BEFORE the exchange sell (P0-1). Best-effort — an EXIT is NEVER blocked by
+    # the intent log: if the write fails (intent_id is None) we STILL flatten and fall back to the
+    # net reconciler. The intent carries position_id so crash-recovery knows which position to close.
+    intent_id = _log_order_intent(conn, dep, "sell", pos["side"], pos["ticker"], qty, price, dep["mode"],
+                                  position_id=pos["id"], reason=reason)
+    rep = _live_trade(cur, dep, kernel, "sell", pos["side"], pos["ticker"], qty, price,
+                      client_order_id_base=intent_id)
+    filled = int(rep.fill_qty_contracts)
+    if filled <= 0:
+        if intent_id is not None:
             try:
-                filled_entry_fee = float(pos["entry_fee"]) * filled / qty
-                pnl = filled * (rep.fill_price_dollars - float(pos["entry_price"])) - filled_entry_fee - rep.fee_dollars
-                with repo.transaction(conn) as tx:
-                    repo.book_partial_exit(tx, pos, filled, rep.fill_price_dollars, rep.fee_dollars, pnl, reason)
-            except Exception as e:
-                print("[engine] partial-exit booking failed pos %d dep %d filled %d/%d: %r (will reconcile)"
-                      % (pos["id"], dep["id"], filled, qty, e), flush=True)
-            return False  # position not fully closed — remainder stays open
-        pnl = qty * (rep.fill_price_dollars - float(pos["entry_price"])) - float(pos["entry_fee"]) - rep.fee_dollars
-        return repo.close_position(cur, pos["id"], rep.fill_price_dollars, rep.fee_dollars, pnl, reason)
-    _paper_sell(conn, pos, price, reason)
-    return True
+                repo.mark_order_intent(cur, intent_id, "unfilled")
+            except Exception:
+                pass
+        return False  # nothing filled this slot; retry next slot
+    if filled < qty:
+        # Partial fill: contracts WERE sold on the exchange, so the fill must be recorded, not
+        # dropped. Book the sold slice as realized P&L and shrink the open row to the remainder
+        # (which retries next slot); otherwise settlement double-counts and we re-sell what's gone.
+        # Contained: a booking failure is logged for reconciliation, never crashes the tick. The
+        # intent-booking claim + book_partial_exit share ONE transaction (P0-2), keyed to the intent.
+        try:
+            filled_entry_fee = float(pos["entry_fee"]) * filled / qty
+            pnl = filled * (rep.fill_price_dollars - float(pos["entry_price"])) - filled_entry_fee - rep.fee_dollars
+            with repo.transaction(conn) as tx:
+                if intent_id is not None and not repo.claim_intent_booking(
+                    tx, intent_id, getattr(rep, "external_order_id", None), filled, rep.fill_price_dollars, rep.fee_dollars,
+                    getattr(rep, "raw_json", None)
+                ):
+                    return False  # already booked by recovery
+                repo.book_partial_exit(tx, pos, filled, rep.fill_price_dollars, rep.fee_dollars, pnl, reason)
+        except Exception as e:
+            print("[engine] partial-exit booking failed pos %d dep %d filled %d/%d: %r (will reconcile)"
+                  % (pos["id"], dep["id"], filled, qty, e), flush=True)
+        return False  # position not fully closed — remainder stays open
+    pnl = qty * (rep.fill_price_dollars - float(pos["entry_price"])) - float(pos["entry_fee"]) - rep.fee_dollars
+    with repo.transaction(conn) as tx:
+        if intent_id is not None and not repo.claim_intent_booking(
+            tx, intent_id, getattr(rep, "external_order_id", None), filled, rep.fill_price_dollars, rep.fee_dollars,
+            getattr(rep, "raw_json", None)
+        ):
+            return False  # recovery already booked this exit — don't double-close
+        return repo.close_position(tx, pos["id"], rep.fill_price_dollars, rep.fee_dollars, pnl, reason)
 
 
 def cross_deploy_block(spec: Dict, mode: str) -> Optional[str]:
     """Why a cross-contract (relative-value pair) spec may NOT deploy in `mode`, or None if it may.
-    Cross specs deploy on PAPER/DEMO only: multi-leg LIVE execution + its gate is a separate,
-    riskier step, so live is refused here. And a pair that spans >1 market needs a synchronized
-    multi-market live feed the engine doesn't run (the extra legs' markets aren't deployable), so
-    it stays research-only. A single-market pair (cross_strike / calendar) deploys on paper/demo —
-    the engine already ticks that market and its frame carries every strike/settlement leg."""
+
+    Two disjoint cases, each self-contained so they compose:
+      * MULTI-market cross (legs span >1 market): rides the synchronized multi-market feed
+        (tick_cross_markets), which fetches every leg's live book+spot on one frame and skips the
+        frame if any leg is stale. Deployable in ANY mode (paper/demo/live) ONLY when every leg's
+        market is itself deployable (has a live book + execution path) AND the legs share a decision
+        cadence (so one synchronized frame aligns them).
+      * SINGLE-market cross (cross_strike / calendar): the engine already ticks that one market and
+        its frame carries every strike/settlement leg, and the live/demo entry path is legging-safe
+        — both legs kept balanced and any naked excess flattened on the exchange immediately (see
+        `_kernel_buy_pair`) — so paper, demo AND live are all allowed.
+    The OTHER live gates (gatekeeper candidate, LIVE switch, Kalshi key, the NO-side-live rollout
+    flag, the typed LIVE confirm, autopilot, drawdown) are unchanged and still run upstream; this
+    function only decides the cross-contract deployability question and only ever ADDS conditions."""
     if not specmod.is_cross_contract(spec):
         return None
-    if mode == "live":
-        return ("Cross-contract (multi-leg) strategies can't go live yet — multi-leg live "
-                "execution is a separate, riskier step. Run it on paper or demo.")
     markets = specmod.involved_markets(spec)
     if len(markets) > 1:
-        return ("This is a cross-market pair (%s) — it needs a synchronized multi-market live "
-                "feed we don't run yet, so it's research-only for now." % ", ".join(markets))
+        bad = [m for m in markets if m not in MARKETS or not MARKETS[m].deployable]
+        if bad:
+            return ("This cross-market pair touches market(s) with no live feed/execution path "
+                    "(%s), so it stays research-only." % ", ".join(bad))
+        if not compatible_cadence(markets):
+            return ("This cross-market pair spans incompatible decision cadences (%s) — its legs "
+                    "can't be ticked on one synchronized frame, so it stays research-only."
+                    % ", ".join(markets))
+        return None
+    # Single-market cross: legging-safe entry, so paper/demo/live all allowed.
     return None
 
 
@@ -319,12 +404,24 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
         if qty < 1:
             continue
         if via_kernel:
-            rep = _live_trade(cur, dep, kernel, "buy", entry.side, ticker, qty, entry.price)
-            if rep.fill_qty_contracts < 1:
+            close_time = entry.snapshot.contract.close_time
+            # Durable order-intent BEFORE the real order (P0-1). An entry is NOT sacrosanct: if the
+            # intent write fails we skip it rather than place an untracked order (a missed entry
+            # costs nothing; an untracked live fill is exactly the F1 hole we are closing).
+            intent_id = _log_order_intent(conn, dep, "buy", entry.side, ticker, qty, entry.price, mode,
+                                          market_close_time=close_time)
+            if intent_id is None:
                 continue
-            repo.insert_position(cur, dep["id"], dep["user_id"], mode, ticker, entry.side, rep.fill_qty_contracts,
-                                 rep.fill_price_dollars, rep.fee_dollars, entry.snapshot.contract.close_time,
-                                 rep.external_order_id)
+            rep = _live_trade(cur, dep, kernel, "buy", entry.side, ticker, qty, entry.price,
+                              client_order_id_base=intent_id)
+            if rep.fill_qty_contracts < 1:
+                try:
+                    repo.mark_order_intent(cur, intent_id, "unfilled")
+                except Exception:
+                    pass
+                continue
+            # Fill -> position insert is ONE transaction keyed to the intent (P0-2), booked once.
+            _book_entry(conn, intent_id, dep["id"], dep["user_id"], mode, ticker, entry.side, rep, close_time)
         elif _paper_buy(conn, dep, entry, qty) is None:
             break  # out of paper cash
         held.add(ticker)
@@ -375,9 +472,11 @@ def _decide_pairs(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optio
         qty = min(qty, int(room / pair_cost)) if room >= pair_cost else 0
         if qty < 1:
             continue
-        legs = [("yes", lt, cand.long_price, cand.long_snap.contract.close_time),
-                ("no", st, cand.short_price, cand.short_snap.contract.close_time)]
-        placed = (_kernel_buy_pair(cur, dep, kernel, legs, qty, mode) if via_kernel
+        # Each leg: (side, ticker, buy_price, own-side SELL price at the bid, close_time). The sell
+        # price is what _kernel_buy_pair unwinds a naked leg at (YES sells ~yes_bid; NO ~1-yes_ask).
+        legs = [("yes", lt, cand.long_price, cand.long_snap.yes_bid, cand.long_snap.contract.close_time),
+                ("no", st, cand.short_price, 1.0 - cand.short_snap.yes_ask, cand.short_snap.contract.close_time)]
+        placed = (_kernel_buy_pair(conn, cur, dep, kernel, legs, qty, mode) if via_kernel
                   else _paper_buy_pair(conn, dep, legs, qty))
         if not placed:
             break  # out of paper cash / nothing filled this slot
@@ -395,7 +494,7 @@ def _paper_buy_pair(conn, dep: Dict, legs, qty: int) -> bool:
     check the combined cost against the paper balance once, then insert both leg positions."""
     items = []
     total = 0.0
-    for side, ticker, price, close in legs:
+    for side, ticker, price, _sell, close in legs:
         fee = taker_fee_dollars(qty, price)
         total += qty * price + fee
         items.append((side, ticker, price, fee, close))
@@ -410,18 +509,106 @@ def _paper_buy_pair(conn, dep: Dict, legs, qty: int) -> bool:
     return True
 
 
-def _kernel_buy_pair(cur, dep: Dict, kernel, legs, qty: int, mode: str) -> bool:
-    """Demo (sandbox) pair entry: send each leg through the same MarketableLimitKernel the single-
-    leg path uses and record whatever actually filled. Returns True if any leg filled."""
-    any_filled = False
-    for side, ticker, price, close in legs:
-        rep = _live_trade(cur, dep, kernel, "buy", side, ticker, qty, price)
-        if rep.fill_qty_contracts < 1:
-            continue
-        repo.insert_position(cur, dep["id"], dep["user_id"], mode, ticker, side, rep.fill_qty_contracts,
-                             rep.fill_price_dollars, rep.fee_dollars, close, rep.external_order_id)
-        any_filled = True
-    return any_filled
+def _kernel_buy_pair(conn, cur, dep: Dict, kernel, legs, qty: int, mode: str) -> bool:
+    """Legging-safe AND durable live/demo pair entry. A relative-value pair must stay balanced (equal
+    YES and NO contracts), but two real kernel orders can't fill atomically — so we keep the legs
+    matched by hand and flatten any naked excess on the exchange immediately, never leaving untracked
+    exposure. Every exchange order carries a durable intent logged BEFORE the POST (P0), so a crash in
+    the fill->write window is recoverable by client_order_id, and the whole consistent picture is
+    booked in ONE transaction (both-or-neither), each leg claimed exactly once:
+
+      1. Buy leg 1 (YES) for `qty` -> f1 filled. If f1 < 1, mark its intent unfilled, return False.
+      2. Buy leg 2 (NO) for f1 -> f2 filled. hedged = min(f1, f2) (the kernel never over-fills, so
+         f2 <= f1 and hedged == f2).
+      3. If leg 1 over-filled (f1 > hedged), SELL the excess YES at the bid to flatten it, and book
+         the round-trip P&L (pro-rated buy fee + sell fee) as a CLOSED row. Never becomes a position.
+      4. If that unwind sell ITSELF under-fills, the still-naked remainder is recorded as a tracked
+         OPEN position (the drawdown force-sell / loss guard will close it) and logged loudly.
+      5. Record hedged legs at `hedged` qty with pro-rated fees, inside the booking transaction.
+
+    Leg 1's real buy fee splits pro-rata across its hedged / unwound / residual slices (the residual
+    takes the remainder, so no rounding drift). Each leg's buy intent is claimed once (covering the
+    whole order fill); the booking transaction makes the pair all-or-nothing. A crash mid-entry (before
+    the transaction) is backstopped by recover_sent_intents + the live reconciler. Returns hedged >= 1."""
+    l_side, l_ticker, l_buy, l_sell, l_close = legs[0]  # long YES leg
+    s_side, s_ticker, s_buy, _s_sell, s_close = legs[1]  # short NO leg
+    uid, dep_id = dep["user_id"], dep["id"]
+
+    # Leg 1 buy: intent BEFORE the POST (never place an untracked order).
+    i1 = _log_order_intent(conn, dep, "buy", l_side, l_ticker, qty, l_buy, mode, market_close_time=l_close)
+    if i1 is None:
+        return False
+    rep1 = _live_trade(cur, dep, kernel, "buy", l_side, l_ticker, qty, l_buy, client_order_id_base=i1)
+    f1 = int(rep1.fill_qty_contracts)
+    if f1 < 1:
+        try:
+            repo.mark_order_intent(cur, i1, "unfilled")  # leg 1 never filled -> flat, nothing to unwind
+        except Exception:
+            pass
+        return False
+
+    # Leg 2 buy for the leg-1 fill: intent BEFORE the POST.
+    i2 = _log_order_intent(conn, dep, "buy", s_side, s_ticker, f1, s_buy, mode, market_close_time=s_close)
+    rep2 = _live_trade(cur, dep, kernel, "buy", s_side, s_ticker, f1, s_buy, client_order_id_base=i2) if i2 else None
+    f2 = int(rep2.fill_qty_contracts) if rep2 is not None else 0
+    hedged = min(f1, f2)
+    excess = f1 - hedged
+
+    # Flatten the unhedged leg-1 excess at the bid: intent BEFORE the POST.
+    unwound = residual = 0
+    sell_rep = None
+    i3 = None
+    if excess > 0:
+        i3 = _log_order_intent(conn, dep, "sell", l_side, l_ticker, excess, l_sell, mode, market_close_time=l_close)
+        if i3 is not None:
+            sell_rep = _live_trade(cur, dep, kernel, "sell", l_side, l_ticker, excess, l_sell, client_order_id_base=i3)
+            unwound = min(int(sell_rep.fill_qty_contracts), excess)  # a kernel never sells more than asked
+        residual = excess - unwound
+
+    # Split leg 1's real buy fee across its three slices so they sum back to it exactly.
+    l_fee_hedged = rep1.fee_dollars * hedged / f1
+    l_fee_unwound = rep1.fee_dollars * unwound / f1
+    l_fee_residual = rep1.fee_dollars - l_fee_hedged - l_fee_unwound
+
+    # Book the final consistent picture in ONE transaction (both-or-neither), each leg claimed once.
+    with repo.transaction(conn) as tx:
+        # Leg 1: claim once (covers the whole f1 fill), then allocate into hedged / unwound / residual.
+        if repo.claim_intent_booking(tx, i1, getattr(rep1, "external_order_id", None), f1,
+                                     rep1.fill_price_dollars, rep1.fee_dollars, getattr(rep1, "raw_json", None)):
+            if hedged >= 1:
+                repo.insert_position(tx, dep_id, uid, mode, l_ticker, l_side, hedged,
+                                     rep1.fill_price_dollars, l_fee_hedged, l_close, rep1.external_order_id)
+            if unwound >= 1:  # round-trip P&L of the flattened excess — booked, never held
+                pnl = (unwound * (sell_rep.fill_price_dollars - rep1.fill_price_dollars)
+                       - l_fee_unwound - sell_rep.fee_dollars)
+                repo.insert_closed_position(tx, dep_id, uid, mode, l_ticker, l_side, unwound,
+                                            rep1.fill_price_dollars, l_fee_unwound, sell_rep.fill_price_dollars,
+                                            sell_rep.fee_dollars, pnl, "pair_unwind", l_close, rep1.external_order_id)
+            if residual >= 1:  # unwind sell under-filled: still-naked YES — track it + shout
+                print("[engine] CROSS-PAIR LEGGING RISK dep %d: %d naked %s %s after unwind under-filled "
+                      "(bought %d, hedged %d, flattened %d) — recorded as a tracked position for the guard to close"
+                      % (dep_id, residual, l_side.upper(), l_ticker, f1, hedged, unwound), flush=True)
+                repo.insert_position(tx, dep_id, uid, mode, l_ticker, l_side, residual,
+                                     rep1.fill_price_dollars, l_fee_residual, l_close, rep1.external_order_id)
+        # Leg 2: claim once, insert the hedged short leg.
+        if hedged >= 1 and i2 is not None and rep2 is not None:
+            if repo.claim_intent_booking(tx, i2, getattr(rep2, "external_order_id", None), f2,
+                                         rep2.fill_price_dollars, rep2.fee_dollars, getattr(rep2, "raw_json", None)):
+                repo.insert_position(tx, dep_id, uid, mode, s_ticker, s_side, hedged,
+                                     rep2.fill_price_dollars, rep2.fee_dollars, s_close, rep2.external_order_id)
+
+    # Terminal state for intents not booked into a held position (best-effort; recovery-safe).
+    if i2 is not None and hedged < 1:
+        try:
+            repo.mark_order_intent(cur, i2, "unfilled")
+        except Exception:
+            pass
+    if i3 is not None:
+        try:
+            repo.mark_order_intent(cur, i3, "booked" if unwound >= 1 else "unfilled")
+        except Exception:
+            pass
+    return hedged >= 1
 
 
 def loss_guard(cur, dep: Dict) -> bool:
@@ -443,10 +630,18 @@ def loss_guard(cur, dep: Dict) -> bool:
     return True
 
 
-# -- drawdown force-sell ---------------------------------------------------------
+# -- drawdown + position-stop force-sell -----------------------------------------
 # Conservative fallback if a user's drawdown_limit_pct column is unexpectedly NULL. The real
 # per-user default lives in the schema (25%). A limit of 0 disables the force-sell for a user.
 DRAWDOWN_LIMIT_PCT_DEFAULT = 25.0
+# Position-level stop-loss: force-sell when any OPEN position is down more than this percent of its
+# OWN cost (deployed capital), independent of the whole-capital drawdown guard. A small position
+# that craters loses a large fraction of ITS cost but only a tiny fraction of the $capital base, so
+# the drawdown guard alone never fires (the exact gap a user hit: 6 @ 79c -> 44c, -44% of cost but
+# ~2% of a $100 base). Default 40%: it would have stopped that position, sits mid of the 35-50%
+# range, and on a 79c entry triggers near 47c (a clearly broken position, not BTC-market noise).
+# A limit of 0 disables it for a user. Fallback if the column is unexpectedly NULL.
+POSITION_STOP_PCT_DEFAULT = 40.0
 
 
 def _deployment_capital(dep: Dict) -> float:
@@ -492,6 +687,26 @@ def deployment_drawdown_pct(cur, dep: Dict) -> float:
     return 100.0 * drawdown / capital if capital > 0 else 0.0
 
 
+def worst_position_loss_pct(cur, dep: Dict) -> float:
+    """The worst open position's CURRENT loss as a percent of its own cost (qty*entry + entry_fee).
+
+    Loss = cost - liquidation value, side-aware via `_liquidation_price` (YES ~yes_bid, NO ~1-yes_bid).
+    Returns 0 when no position is marked yet or none is at a loss. A single position that craters
+    drives this past the stop even when the deployment's whole-capital drawdown is still small.
+    """
+    worst = 0.0
+    for pos in repo.open_positions(cur, dep["id"]):
+        price = _liquidation_price(pos)
+        if price is None:
+            continue  # not yet marked — priced/retried next tick
+        qty = int(pos["qty"])
+        cost = qty * float(pos["entry_price"]) + float(pos["entry_fee"])
+        if cost <= 0:
+            continue
+        worst = max(worst, 100.0 * (cost - qty * price) / cost)
+    return worst
+
+
 def _force_close_kernel(dep: Dict, sources: Sources):
     """The same kernel the normal exit path would use for this mode — reusing the live-gate and
     demo-key checks exactly, so force-sell never obtains an execution path the engine couldn't
@@ -508,20 +723,33 @@ def _force_close_kernel(dep: Dict, sources: Sources):
 
 
 def force_sell_if_drawn_down(conn, dep: Dict, sources: Sources) -> bool:
-    """If this deployment's drawdown breaches the user's limit, force-close its open positions via
-    the mode's own exit path and pause it. Returns True if it breached (and was paused). Each
+    """Force-close + pause this deployment if it breaches EITHER risk trigger:
+      - whole-capital DRAWDOWN past the user's drawdown_limit_pct (peak-to-now / capital), or
+      - any OPEN position down past position_stop_pct of its own cost (the position-level stop).
+    Both are checked every tick; whichever fires wins, and both are named if both breach. Returns
+    True if it breached (and was paused). Positions close via the mode's own exit path; each
     per-position close is contained: one failing close is logged and retried next tick, never
-    aborts the rest or the pause."""
+    aborts the rest or the pause. Each trigger is independently disabled by a 0 limit."""
     cur = conn.cursor()
-    risk = repo.user_risk_config(cur, dep["user_id"])
-    limit_pct = DRAWDOWN_LIMIT_PCT_DEFAULT
-    if risk and risk.get("drawdown_limit_pct") is not None:
-        limit_pct = float(risk["drawdown_limit_pct"])
-    if limit_pct <= 0:
-        return False  # force-sell disabled for this user
-    dd_pct = deployment_drawdown_pct(cur, dep)
-    if dd_pct < limit_pct:
+    risk = repo.user_risk_config(cur, dep["user_id"]) or {}
+    dd_limit = DRAWDOWN_LIMIT_PCT_DEFAULT
+    if risk.get("drawdown_limit_pct") is not None:
+        dd_limit = float(risk["drawdown_limit_pct"])
+    stop_limit = POSITION_STOP_PCT_DEFAULT
+    if risk.get("position_stop_pct") is not None:
+        stop_limit = float(risk["position_stop_pct"])
+    reasons: List[str] = []
+    if dd_limit > 0:
+        dd_pct = deployment_drawdown_pct(cur, dep)
+        if dd_pct >= dd_limit:
+            reasons.append("drawdown %.1f%% >= limit %.1f%%" % (dd_pct, dd_limit))
+    if stop_limit > 0:
+        loss_pct = worst_position_loss_pct(cur, dep)
+        if loss_pct >= stop_limit:
+            reasons.append("position down %.1f%% >= stop %.1f%% of cost" % (loss_pct, stop_limit))
+    if not reasons:
         return False
+    close_reason = "drawdown" if reasons[0].startswith("drawdown") else "stop"
     mode = dep["mode"]
     via_kernel = mode in ("live", "demo")
     kernel = _force_close_kernel(dep, sources) if via_kernel else None
@@ -531,12 +759,18 @@ def force_sell_if_drawn_down(conn, dep: Dict, sources: Sources) -> bool:
         price = _liquidation_price(pos)
         if price is None:
             continue  # not yet marked — retry on a later tick
+        # P0-3 (closes F3): this sweep places a REAL sell every loop with no decision-slot claim, so
+        # two engines would each sell the same position into an unintended short. Lease the position
+        # first; only the engine that wins the claim sends the order. Paper places no real order, so
+        # it needs no claim. The claim can only PREVENT a duplicate — it never blocks a legit close.
+        if via_kernel and not repo.claim_position_close(cur, pos["id"], _ENGINE_ID):
+            continue  # another engine is already force-closing this position
         try:
-            _close_position_at(conn, cur, dep, pos, kernel, via_kernel, price, "drawdown")
+            _close_position_at(conn, cur, dep, pos, kernel, via_kernel, price, close_reason)
         except Exception as e:  # one position's close failing must not abort the pause or the others
             print("[engine] force-close failed pos %d dep %d: %r (retry next tick)"
                   % (pos["id"], dep["id"], e), flush=True)
-    why = "force-closed: drawdown %.1f%% >= limit %.1f%%" % (dd_pct, limit_pct)
+    why = "force-closed: " + "; ".join(reasons)
     if repo.set_deployment_status(cur, dep["user_id"], dep["id"], "paused", why):
         repo.add_chat(cur, dep["user_id"], "system", "Paused deployment #%d automatically. %s" % (dep["id"], why))
         repo.create_run(cur, dep["user_id"], "review", dep["market"], None,
@@ -562,17 +796,216 @@ def enforce_drawdown_limits(conn, sources: Sources) -> int:
     return paused
 
 
+# -- auto-flatten on pause/stop --------------------------------------------------
+
+
+def flatten_deployment(conn, dep: Dict, sources: Sources) -> int:
+    """Close ALL open positions of a paused/stopped deployment through its mode's own exit path
+    (live/demo kernel sell, paper sell). A non-running deployment must hold NO exposure — nothing
+    is actively managing it, so it is flattened. Fail-safe and fully contained like the force-sell:
+    exits are NEVER blocked by a risk control; one failing close is logged and retried next sweep;
+    a live/demo deployment with no execution path (gate off / no key) is logged LOUDLY and its
+    positions settle at expiry (we never leave exposure silently). Returns #positions closed."""
+    cur = conn.cursor()
+    mode = dep["mode"]
+    via_kernel = mode in ("live", "demo")
+    kernel = _force_close_kernel(dep, sources) if via_kernel else None
+    closed = 0
+    for pos in repo.open_positions(cur, dep["id"]):
+        if via_kernel and kernel is None:
+            print("[engine] FLATTEN BLOCKED dep %d pos %d (%s): no execution path — REAL exposure "
+                  "left open, settles at expiry" % (dep["id"], pos["id"], mode), flush=True)
+            break
+        price = _liquidation_price(pos)
+        if price is None:
+            continue  # not yet marked — retry next sweep
+        # P0-3 (closes F3): this sweep places a REAL sell per position with no decision-slot claim, so
+        # two engines would each sell the same position. Lease it first; only the winner sends the
+        # order. Paper places no real order, so it needs no claim. A claim only PREVENTS a duplicate.
+        if via_kernel and not repo.claim_position_close(cur, pos["id"], _ENGINE_ID):
+            continue  # another engine is already flattening this position
+        try:
+            if _close_position_at(conn, cur, dep, pos, kernel, via_kernel, price, "flatten"):
+                closed += 1
+        except Exception as e:  # one close failing must not abort the rest
+            print("[engine] flatten close failed pos %d dep %d: %r (retry next sweep)"
+                  % (pos["id"], dep["id"], e), flush=True)
+    return closed
+
+
+def enforce_flatten_on_pause(conn, sources: Sources) -> int:
+    """Each engine loop: a paused or stopped deployment must end up FLAT. Sweep every such
+    deployment that still holds open positions and close them. Catches BOTH a manual pause/stop
+    (via the API) and an auto-pause (loss/drawdown/stop guard), and retries a close that
+    partial-filled or wasn't yet marked. Fully contained: one deployment's failure never stops the
+    sweep or the other deployments. Returns the #positions flattened this loop."""
+    cur = conn.cursor()
+    flattened = 0
+    for market in MARKETS.values():
+        if not market.deployable:
+            continue
+        for dep in repo.paused_deployments_with_open_positions(cur, market.key):
+            try:
+                flattened += flatten_deployment(conn, dep, sources)
+            except Exception as e:
+                print("[engine] flatten sweep failed dep %d user %d: %r (skipping)"
+                      % (dep["id"], dep["user_id"], e), flush=True)
+    return flattened
+
+
+# -- crash recovery of in-flight orders (EXECUTION_RISK_HARDENING P0-1, closes F1/F2 + the DR gap) --
+
+
+def _match_order_fill(orders: List[Dict], client_order_id: str) -> Optional[Dict]:
+    """Find the order with this client_order_id in an exchange orders list and read its fill, or None
+    if it is ABSENT. Absent is deliberately indeterminate (not 'unfilled'): an IOC order that filled
+    may not appear in a resting-orders view, and wrongly booking it unfilled would drop a real
+    position. Only a POSITIVELY-found order with an explicit fill count is acted on."""
+    def _num(v, d=0.0):
+        try:
+            return float(v) if v is not None else d
+        except (TypeError, ValueError):
+            return d
+    for o in orders or []:
+        if str(o.get("client_order_id")) == str(client_order_id):
+            filled = int(_num(o.get("fill_count")))
+            return {"filled": filled, "avg_price": _num(o.get("average_fill_price")),
+                    "fee": _num(o.get("average_fee_paid")) * filled, "order_id": o.get("order_id")}
+    return None
+
+
+def _make_order_lookup(conn) -> Callable[[Dict], Optional[Dict]]:
+    """Build the recovery lookup: intent_row -> fill-dict|None, asking the exchange (the user's own
+    key, the matching host) whether the intent's order filled, matched by its persisted
+    client_order_id. None on ANY doubt — unknown mode, missing key, network/parse error, or order
+    absent — so recovery NEVER re-sends and never mis-books; those intents stay 'sent' and surface.
+    NOTE: the Kalshi orders-field mapping (fill_count/average_fill_price) is verified on the demo
+    sandbox before it is trusted on live (see EXECUTION_RISK_HARDENING §9); until then absent->None
+    keeps it safe (a no-op + alert), never a wrong booking."""
+    from app import kalshi_account, kalshi_dev_exec
+    from data_pipeline.common import api_get_auth
+
+    def lookup(it: Dict) -> Optional[Dict]:
+        mode, coid = it["mode"], it["client_order_id"]
+        try:
+            if mode == "demo":
+                row = repo.get_kalshi_dev_key(conn.cursor(), it["user_id"])
+                if row is None:
+                    return None
+                creds = kalshi_account.credentials_from_row(it["user_id"], row)
+                orders = (kalshi_dev_exec.demo_orders(creds, ticker=it["ticker"]) or {}).get("orders") or []
+            elif mode == "live" and LIVE_TRADING_ENABLED:
+                row = repo.get_kalshi_key(conn.cursor(), it["user_id"])
+                if row is None:
+                    return None
+                creds = kalshi_account.credentials_from_row(it["user_id"], row)
+                orders = (api_get_auth("/trade-api/v2/portfolio/orders", {"ticker": it["ticker"]},
+                                       credentials=creds) or {}).get("orders") or []
+            else:
+                return None  # live recovery only when the live gate is on; unknown mode -> leave 'sent'
+            return _match_order_fill(orders, coid)
+        except Exception as e:
+            print("[engine] order lookup failed for intent %s: %r (leaving sent)"
+                  % (it.get("intent_id"), e), flush=True)
+            return None
+
+    return lookup
+
+
+def _book_recovered(conn, it: Dict, filled: int, avg_price: float, fee: float, order_id) -> None:
+    """Book a recovered fill EXACTLY ONCE, keyed to the intent (same claim_intent_booking guard the
+    live path uses, so a recovery/live race books once). An entry re-creates the position row; an
+    exit closes (or partial-exits) the intent's own position. Idempotent: a second pass, or a race
+    with the live booker, is a clean no-op."""
+    rep = SimpleNamespace(fill_qty_contracts=filled, fill_price_dollars=avg_price, fee_dollars=fee,
+                          external_order_id=str(order_id) if order_id is not None else None, raw_json=None)
+    if it["action"] == "buy":
+        _book_entry(conn, it["intent_id"], it["deployment_id"], it["user_id"], it["mode"], it["ticker"],
+                    it["side"], rep, it.get("market_close_time"))
+        return
+    # Exit: close the intent's own position. close_position/book_partial_exit are idempotent against
+    # the 'open' guard, and claim_intent_booking ensures the booking happens once.
+    cur = conn.cursor()
+    pos = repo.get_position(cur, it["position_id"]) if it.get("position_id") is not None else None
+    if pos is None or pos["status"] != "open":
+        repo.mark_order_intent(cur, it["intent_id"], "booked", getattr(rep, "external_order_id", None), filled, avg_price, fee)
+        return  # the position is already closed (settled or booked elsewhere) — nothing to re-close
+    qty = int(pos["qty"])
+    reason = it.get("reason") or "recovered"
+    with repo.transaction(conn) as tx:
+        if not repo.claim_intent_booking(tx, it["intent_id"], getattr(rep, "external_order_id", None), filled, avg_price, fee):
+            return
+        if filled >= qty:
+            pnl = qty * (avg_price - float(pos["entry_price"])) - float(pos["entry_fee"]) - fee
+            repo.close_position(tx, pos["id"], avg_price, fee, pnl, reason)
+        else:
+            filled_entry_fee = float(pos["entry_fee"]) * filled / qty
+            pnl = filled * (avg_price - float(pos["entry_price"])) - filled_entry_fee - fee
+            repo.book_partial_exit(tx, pos, filled, avg_price, fee, pnl, reason)
+
+
+def recover_sent_intents(conn, sources: Sources, older_than_seconds: int = 30) -> int:
+    """Deterministic crash recovery (P0-1): for each order-intent left 'sent' (POST issued, outcome
+    unknown — the F1/F2 crash / lost-response window), ask the exchange whether it filled and book it
+    EXACTLY ONCE or mark it unfilled. NEVER re-sends an order; when the outcome can't be determined
+    the intent stays 'sent' (safe) and is surfaced. Fully contained: one intent's failure never
+    aborts the rest or the engine loop. Returns the number of intents resolved this pass."""
+    cur = conn.cursor()
+    lookup = sources.order_lookup
+    if lookup is None:
+        return 0
+    resolved = 0
+    for it in repo.open_sent_intents(cur, older_than_seconds):
+        try:
+            fill = lookup(it)
+        except Exception as e:
+            print("[engine] recovery lookup raised for intent %s: %r (leaving sent)"
+                  % (it.get("intent_id"), e), flush=True)
+            continue
+        if fill is None:
+            print("[engine] UNRECOVERED in-flight order intent %s (%s %s %s x%d) — left 'sent', needs attention"
+                  % (it.get("intent_id"), it.get("mode"), it.get("action"), it.get("ticker"), it.get("qty")),
+                  flush=True)
+            continue  # indeterminate — NEVER re-send
+        try:
+            filled = int(fill.get("filled") or 0)
+            if filled <= 0:
+                repo.mark_order_intent(cur, it["intent_id"], "unfilled")  # IOC that didn't fill is gone
+            else:
+                _book_recovered(conn, it, filled, float(fill.get("avg_price") or 0),
+                                float(fill.get("fee") or 0), fill.get("order_id"))
+            resolved += 1
+        except Exception as e:
+            print("[engine] recovery booking failed for intent %s: %r (leaving sent)"
+                  % (it.get("intent_id"), e), flush=True)
+    return resolved
+
+
 def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] = None) -> Dict:
     now = now or datetime.now(timezone.utc)
     now_ts = int(now.timestamp())
     stats = {"settled": settle_due(conn, market, sources, now)}
     slot = now_ts - now_ts % market.decision_seconds
     cur = conn.cursor()
-    due = [d for d in repo.running_deployments(cur, market.key) if d["last_decision_ts"] < slot]
+    # A multi-market cross deployment is stored under its primary leg's market, so it surfaces here,
+    # but it must decide on a SYNCHRONIZED frame of ALL its legs (tick_cross_markets owns it) — never
+    # on this single market's snaps alone. Skip it here so it's decided in exactly one place.
+    due = [d for d in repo.running_deployments(cur, market.key)
+           if d["last_decision_ts"] < slot and not _is_multi_market_cross(d["spec"])]
+    late = now_ts - slot > max(60, market.decision_seconds * LATE_FRACTION)
+    # Fetch the live book whenever there's a decision to make OR any open position to mark. Marking
+    # runs EVERY tick (not only when a decision is due), so unrealized P&L — and the drawdown
+    # force-sell that reads these marks — track the current bid instead of a stale hourly/daily mark.
+    need_book = bool(due) or repo.market_has_open_positions(cur, market.key)
+    quotes = sources.quotes(market) if need_book else []
+    if quotes:
+        try:
+            stats["marked"] = repo.update_marks(
+                cur, market.key, {q.contract.ticker: q.yes_bid for q in quotes if q.yes_bid is not None}, now)
+        except Exception:
+            pass
     if not due:
         return stats
-    late = now_ts - slot > max(60, market.decision_seconds * LATE_FRACTION)
-    quotes = [] if late else sources.quotes(market)
     # Series features price strike-vs-spot for underlying markets; an outcome-settled market
     # (sports, underlying=None) has no spot, so its snapshot carries only book features - exactly
     # as the backtester builds it. {} (not None) means "no spot, trade anyway"; None means skip
@@ -590,14 +1023,7 @@ def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] 
             feats = None
     snaps = [s for s in (snapshot(feats, q.contract, now_ts, q.yes_bid, q.yes_ask) for q in quotes) if s is not None]
     sizes = {q.contract.ticker: q.yes_ask_size for q in quotes}
-    # Mark open positions to the current YES bid (the price they could be liquidated at)
-    # using the book we just fetched — so the web shows live unrealized P&L. Best-effort:
-    # a mark failure must never block the trading decision.
-    try:
-        stats["marked"] = repo.update_marks(
-            cur, market.key, {q.contract.ticker: q.yes_bid for q in quotes if q.yes_bid is not None}, now)
-    except Exception:
-        pass
+    # (positions were already marked above, every tick — not only when a decision is due)
     stats["decided"] = 0
     for dep in due:
         if not repo.claim_decision(cur, dep["id"], slot):
@@ -610,6 +1036,110 @@ def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] 
         except Exception as e:  # one user's blip (DB hiccup, bad key) must not stop the whole engine
             print("[engine] decide failed dep %d user %d: %r (skipping)"
                   % (dep["id"], dep["user_id"], e), flush=True)
+    return stats
+
+
+# -- synchronized multi-market tick (cross-MARKET relative value) ----------------
+# A cross-MARKET pair (e.g. BTC vs ETH) trades two DIFFERENT markets at once, so it can't ride a
+# single market's tick: both legs must be priced on ONE decision frame. tick_cross_markets fetches
+# every involved market's live book + spot TOGETHER and, only if every leg is fresh, routes the
+# combined Snapshot list to decide()->_decide_pairs (the same rule the merged-dataset backtest
+# proved). The staleness rule is the legging-safety contract: if ANY leg's book or spot is stale /
+# unavailable / the slot is late, the whole frame is skipped and nothing is claimed — so a pair is
+# never half-entered with a naked leg in a second market. _kernel_buy_pair (unchanged, market-
+# agnostic) still enters/unwinds each pair's two legs; this path only guarantees it a fresh frame.
+
+
+def _is_multi_market_cross(spec: Dict) -> bool:
+    """A cross spec whose legs span >1 market — the only kind that needs the synchronized feed."""
+    return specmod.is_cross_contract(spec) and len(specmod.involved_markets(spec)) > 1
+
+
+def _cross_market_frame(markets: List[str], sources: Sources, now_ts: int):
+    """Fetch EVERY involved market's live book + spot for one synchronized decision frame and build
+    the combined (snaps, sizes). Returns None if ANY leg is stale or its book is unavailable — the
+    caller then skips the frame, so we never price/leg a pair off a market we can't read right now."""
+    all_snaps: List[Snapshot] = []
+    sizes: Dict[str, Optional[float]] = {}
+    for key in markets:
+        market = MARKETS[key]
+        try:
+            quotes = sources.quotes(market)
+        except Exception as e:
+            print("[engine] cross quote fetch failed for %s: %r (skipping frame)" % (key, e), flush=True)
+            return None
+        if not quotes:
+            return None  # this leg's book is unavailable this frame — never leg into it
+        if market.underlying is None:
+            feats: Optional[Dict[str, float]] = {}  # outcome-settled leg: no spot, trade on book features
+        else:
+            try:
+                series = sources.spot(market)
+            except Exception as e:
+                print("[engine] cross spot fetch failed for %s: %r (skipping frame)" % (key, e), flush=True)
+                return None
+            feats = series.features_at(now_ts) if series is not None else None
+            if feats is None:
+                return None  # stale/missing spot on this leg — skip the whole frame
+        for q in quotes:
+            s = snapshot(feats, q.contract, now_ts, q.yes_bid, q.yes_ask)
+            if s is not None:
+                all_snaps.append(s)
+            sizes[q.contract.ticker] = q.yes_ask_size
+    return all_snaps, sizes
+
+
+def _tick_cross_group(conn, markets: List[str], deps: List[Dict], sources: Sources, now_ts: int) -> int:
+    """Decide one group of cross-market deployments that share the same involved-market set. The
+    legs share a decision cadence (enforced at spec validation + the deploy gate), so one slot
+    serves them all. Claims happen ONLY after a fresh synchronized frame is in hand, so a stale/late
+    frame never burns the slot and never enters a pair. Returns how many deployments decided."""
+    cur = conn.cursor()
+    decision_seconds = MARKETS[markets[0]].decision_seconds
+    slot = now_ts - now_ts % decision_seconds
+    due = [d for d in deps if d["last_decision_ts"] < slot]
+    if not due:
+        return 0
+    if now_ts - slot > max(60, decision_seconds * LATE_FRACTION):
+        return 0  # late slot: the backtest decided at the boundary — skip, don't trade a different rule
+    frame = _cross_market_frame(markets, sources, now_ts)
+    if frame is None:
+        return 0  # a leg is stale/unavailable — skip the frame, never leg into a stale second market
+    snaps, sizes = frame
+    decided = 0
+    for dep in due:
+        if not repo.claim_decision(cur, dep["id"], slot):
+            continue  # another engine owns this slot
+        try:
+            decide(conn, dep, snaps, sizes, sources)
+            decided += 1
+        except Exception as e:  # one deployment's blip must not stop the rest / the engine
+            print("[engine] cross decide failed dep %d user %d: %r (skipping)"
+                  % (dep["id"], dep["user_id"], e), flush=True)
+    return decided
+
+
+def tick_cross_markets(conn, sources: Sources, now: Optional[datetime] = None) -> Dict:
+    """Tick every running MULTI-market cross deployment on a synchronized frame of all its legs.
+    Each such deployment is stored under its primary leg's market column, so one pass over the
+    deployable markets finds each exactly once (a deployment has a single market column). They are
+    grouped by their involved-market set; each group decides together on its shared cadence."""
+    now = now or datetime.now(timezone.utc)
+    now_ts = int(now.timestamp())
+    cur = conn.cursor()
+    groups: Dict[tuple, List[Dict]] = {}
+    for market in MARKETS.values():
+        if not market.deployable:
+            continue
+        for dep in repo.running_deployments(cur, market.key):
+            if _is_multi_market_cross(dep["spec"]):
+                groups.setdefault(tuple(specmod.involved_markets(dep["spec"])), []).append(dep)
+    stats = {"decided": 0}
+    for markets, deps in groups.items():
+        try:
+            stats["decided"] += _tick_cross_group(conn, list(markets), deps, sources, now_ts)
+        except Exception as e:  # one group's failure must not stop the others / the engine loop
+            print("[engine] cross-market tick failed for %s: %r (skipping)" % ("+".join(markets), e), flush=True)
     return stats
 
 
@@ -658,10 +1188,20 @@ def live_kernel_factory(conn) -> Callable[[int], object]:
     feed = MarketFeed()
 
     def make(user_id: int):
-        row = repo.get_kalshi_key(conn.cursor(), user_id)
+        cur = conn.cursor()
+        row = repo.get_kalshi_key(cur, user_id)
         if row is None:
             return None
         creds = kalshi_account.credentials_from_row(user_id, row)
+        # Per-user execution overrides (set by the co-pilot's set_exec, clamped to a safe envelope)
+        # take precedence; a NULL column falls back to the global KALSHI_MAX_* env default. Each knob
+        # can only shrink or abandon an order and never blocks an exit, so this never loosens safety.
+        xc = repo.user_execution_config(cur, user_id)
+
+        def _exec(col: str, env: str) -> Optional[float]:
+            v = xc.get(col)
+            return float(v) if v is not None else _opt_float(os.getenv(env))
+
         # Market-order-like entries: cross through the touch and take the current best
         # ask quickly (IOC), rather than resting a passive limit. The slippage cap keeps
         # it from paying an absurd price if the book is thin; raise KALSHI_MAX_ENTRY_SLIPPAGE
@@ -676,9 +1216,9 @@ def live_kernel_factory(conn) -> Callable[[int], object]:
             # Thin-book controls, all off unless set (see MarketableLimitKernel). Each can only
             # shrink or abandon an order, and none can block an exit, so enabling any is a
             # strictly-stricter change, tunable without a redeploy.
-            max_book_fraction=_opt_float(os.getenv("KALSHI_MAX_BOOK_FRACTION")),
-            max_entry_spread=_opt_float(os.getenv("KALSHI_MAX_ENTRY_SPREAD")),
-            max_order_notional=_opt_float(os.getenv("KALSHI_MAX_ORDER_NOTIONAL")),
+            max_book_fraction=_exec("exec_max_book_fraction", "KALSHI_MAX_BOOK_FRACTION"),
+            max_entry_spread=_exec("exec_max_entry_spread", "KALSHI_MAX_ENTRY_SPREAD"),
+            max_order_notional=_exec("exec_max_order_notional", "KALSHI_MAX_ORDER_NOTIONAL"),
         )
 
     return make
@@ -690,6 +1230,9 @@ def run_forever() -> None:
     from app.kalshi_dev_exec import demo_kernel_factory
 
     last_review = 0.0
+    last_reconcile = 0.0
+    # How often to reconcile each user's live book against their real Kalshi account.
+    reconcile_every = float(os.getenv("APP_RECONCILE_EVERY_SECONDS", "300"))
     while True:
         try:
             conn = get_db_conn()
@@ -703,7 +1246,16 @@ def run_forever() -> None:
             sources = Sources(
                 live_kernel=live_kernel_factory(conn) if LIVE_TRADING_ENABLED else None,
                 demo_kernel=demo_kernel,
+                order_lookup=_make_order_lookup(conn),
             )
+            # Deterministic crash recovery (P0-1): before the loop (so it also runs on every
+            # reconnect / box reboot), reconcile any order-intent left 'sent' by a prior crash
+            # against the exchange and book or discard it exactly once. Contained.
+            last_recover = 0.0
+            try:
+                recover_sent_intents(conn, sources)
+            except Exception as e:
+                print("[engine] boot recovery failed: %r" % e, flush=True)
             try:
                 while True:
                     for market in MARKETS.values():
@@ -712,6 +1264,14 @@ def run_forever() -> None:
                         stats = tick_market(conn, market, sources)
                         if stats.get("decided") or stats.get("settled"):
                             print("[engine] %s %s" % (market.key, stats), flush=True)
+                    # Cross-MARKET pairs belong to no single market tick: decide them on a
+                    # synchronized frame of all their legs (skipped if any leg is stale).
+                    try:
+                        xstats = tick_cross_markets(conn, sources)
+                        if xstats.get("decided"):
+                            print("[engine] cross-market %s" % xstats, flush=True)
+                    except Exception as e:  # contained: never stop the single-market loop
+                        print("[engine] cross-market tick failed: %r" % e, flush=True)
                     if time.time() - last_review > 600:
                         schedule_reviews(conn.cursor())
                         last_review = time.time()
@@ -726,11 +1286,38 @@ def run_forever() -> None:
                         enforce_drawdown_limits(conn, sources)
                     except Exception as e:
                         print("[engine] drawdown enforcement failed: %r" % e, flush=True)
+                    # Auto-flatten: a paused/stopped deployment (manual OR auto-paused) must hold no
+                    # exposure. Runs after the drawdown sweep so anything it just paused is swept too,
+                    # and retries any close that partial-filled. Contained — never stops the loop.
+                    try:
+                        enforce_flatten_on_pause(conn, sources)
+                    except Exception as e:
+                        print("[engine] flatten-on-pause enforcement failed: %r" % e, flush=True)
+                    # Catch in-process orphans too (a swallowed timeout mid-run, not only a crash):
+                    # re-reconcile 'sent' intents every ~5 min. Contained; never re-sends.
+                    if time.time() - last_recover > 300:
+                        try:
+                            recover_sent_intents(conn, sources)
+                        except Exception as e:
+                            print("[engine] periodic recovery failed: %r" % e, flush=True)
+                        last_recover = time.time()
                     if LIVE_TRADING_ENABLED:
                         try:
                             enforce_autopilot_limits(conn)
                         except Exception as e:
                             print("[engine] autopilot limit check failed: %r" % e, flush=True)
+                    # Live position reconciliation: compare each user's book to their real
+                    # Kalshi account. Read-only against the exchange; it only writes the audit
+                    # trail + user notifications. Fully contained so it can never stop the loop.
+                    if LIVE_TRADING_ENABLED and time.time() - last_reconcile > reconcile_every:
+                        try:
+                            from app import reconcile
+                            summary = reconcile.reconcile_all(conn)
+                            if summary.get("discrepancies") or summary.get("errors"):
+                                print("[engine] reconcile %s" % summary, flush=True)
+                        except Exception as e:
+                            print("[engine] reconcile sweep failed: %r" % e, flush=True)
+                        last_reconcile = time.time()
                     time.sleep(TICK_SECONDS)
             finally:
                 conn.close()

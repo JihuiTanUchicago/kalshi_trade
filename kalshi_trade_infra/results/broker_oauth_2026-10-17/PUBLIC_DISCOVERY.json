@@ -1,0 +1,43 @@
+{
+  "timestamp": "2026-10-17T14:28:51.375104+00:00",
+  "type": "Anonymous public discovery only; no OAuth registration, tokens or accounts",
+  "checks": [
+    {
+      "url": "https://agent.robinhood.com/.well-known/oauth-protected-resource/mcp/trading",
+      "http_status": 200,
+      "public_metadata": {
+        "resource": "https://agent.robinhood.com/mcp/trading",
+        "authorization_servers": [
+          "https://agent.robinhood.com/mcp/trading"
+        ],
+        "scopes_supported": [
+          "internal"
+        ]
+      }
+    },
+    {
+      "url": "https://agent.robinhood.com/.well-known/oauth-authorization-server",
+      "http_status": 200,
+      "public_metadata": {
+        "issuer": "https://agent.robinhood.com/mcp/trading",
+        "authorization_endpoint": "https://robinhood.com/oauth",
+        "token_endpoint": "https://api.robinhood.com/oauth2/token/",
+        "registration_endpoint": "https://agent.robinhood.com/oauth/trading/register",
+        "scopes_supported": [
+          "internal"
+        ],
+        "code_challenge_methods_supported": [
+          "S256"
+        ],
+        "token_endpoint_auth_methods_supported": [
+          "none"
+        ],
+        "grant_types_supported": [
+          "authorization_code",
+          "refresh_token"
+        ],
+        "authorization_response_iss_parameter_supported": true
+      }
+    }
+  ]
+}

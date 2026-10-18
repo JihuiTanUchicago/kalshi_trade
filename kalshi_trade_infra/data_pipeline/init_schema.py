@@ -383,11 +383,13 @@ DDL = [
       series_ticker VARCHAR(64) PRIMARY KEY,
       title VARCHAR(255) NULL,
       category VARCHAR(64) NULL,
+      frequency VARCHAR(16) NULL,
       open_markets INT NOT NULL DEFAULT 0,
       total_markets INT NOT NULL DEFAULT 0,
       updated_at DATETIME NOT NULL,
       INDEX idx_series_open (open_markets),
-      INDEX idx_series_title (title)
+      INDEX idx_series_title (title),
+      INDEX idx_series_cat_freq (category, frequency)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
 ]
@@ -418,17 +420,21 @@ def main() -> None:
                 """
             )
 
-        for col_name, add_col_sql in (
-            ("no_bid_dollars", "ALTER TABLE forward_quotes ADD COLUMN no_bid_dollars DECIMAL(10,4) NULL AFTER open_interest_fp"),
-            ("no_ask_dollars", "ALTER TABLE forward_quotes ADD COLUMN no_ask_dollars DECIMAL(10,4) NULL AFTER no_bid_dollars"),
+        for table_name, col_name, add_col_sql in (
+            ("forward_quotes", "no_bid_dollars", "ALTER TABLE forward_quotes ADD COLUMN no_bid_dollars DECIMAL(10,4) NULL AFTER open_interest_fp"),
+            ("forward_quotes", "no_ask_dollars", "ALTER TABLE forward_quotes ADD COLUMN no_ask_dollars DECIMAL(10,4) NULL AFTER no_bid_dollars"),
+            # Catalog-driven universe: recurrence class per series, used to generate deployable
+            # outcome-settled markets (app/markets.load_catalog_markets). NULL on legacy rows until
+            # catalog_collector's next enrichment pass fills it.
+            ("kalshi_series", "frequency", "ALTER TABLE kalshi_series ADD COLUMN frequency VARCHAR(16) NULL AFTER category"),
         ):
             cur.execute(
                 """
                 SELECT COUNT(*) AS c
                 FROM information_schema.COLUMNS
-                WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='forward_quotes' AND COLUMN_NAME=%s
+                WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s AND COLUMN_NAME=%s
                 """,
-                (col_name,),
+                (table_name, col_name),
             )
             if cur.fetchone()["c"] == 0:
                 cur.execute(add_col_sql)

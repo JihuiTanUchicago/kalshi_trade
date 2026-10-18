@@ -39,6 +39,14 @@ class Store:
         monkeypatch.setattr(agent.backtest, "partition_dataset", lambda market, part, phase: None)
         monkeypatch.setattr(agent.gatekeeper, "preregister", self._preregister)
         monkeypatch.setattr(agent.gatekeeper, "judge_batch", self._judge_batch)
+        # §E.5 promotion runs for every STAT_SUPPORTED finalist; stub the one-time holdout +
+        # diversification gate so these hand-off tests stay off the ledger DB (the promotion
+        # itself is covered in test_gatekeeper + test_holdout_promotion).
+        monkeypatch.setattr(agent.gatekeeper, "judge_holdout",
+                            lambda cur, eid, fin: {"classification": self._gk.Classification.FORWARD_VALIDATED.value,
+                                                   "n_trades": 20, "holdout_consumed": 0})
+        monkeypatch.setattr(agent.gatekeeper, "marginal_contribution_ok",
+                            lambda cur, uid, eid, fin: (True, "stub"))
         monkeypatch.setattr(agent, "_challenge",
                             lambda finalists, run, model, usage, log: [{"decision": "approve", "reason": "", "fixes": None} for _ in finalists])
 
@@ -46,8 +54,8 @@ class Store:
         self.strategies.append({"title": title, "status": status, "result": result, "spec": spec, "parent": parent})
         return len(self.strategies)
 
-    def _set_outcome(self, cur, strategy_id, status, result):
-        self.strategies[strategy_id - 1].update(status=status, result=result)
+    def _set_outcome(self, cur, strategy_id, status, result, experiment_id=None):
+        self.strategies[strategy_id - 1].update(status=status, result=result, experiment_id=experiment_id)
 
     def _preregister(self, cur, pre):
         self._exp += 1
@@ -181,6 +189,32 @@ def test_adjustment_that_fails_the_gates_is_not_proposed(monkeypatch):
     text, pid = agent.act(None, {"id": 1}, {"type": "adjust", "deployment_id": 3, "changes": {"side": "no"}}, False,
                           lambda m: _dataset(n_contracts=60))
     assert pid is None and "failed" in text
+
+
+def test_adjustment_is_backtest_only_not_passed_and_cannot_be_deployed(monkeypatch):
+    # An adjustment is only a re-backtest — it never goes through pre-registration or the
+    # gatekeeper, so it must NOT be minted "passed" (the status the deploy gates key on). It gets
+    # the non-deployable "backtest-only" status; the adjustment still applies to its deployment.
+    dep = {"id": 3, "title": "T", "status": "running", "mode": "paper", "market": "btc15m",
+           "direction": "volatility", "strategy_id": 9, "spec": agent.specmod.validate(WINNER)}
+    inserted = {}
+    r = agent.repo
+    monkeypatch.setattr(r, "get_deployment", lambda cur, uid, did: dict(dep))
+    monkeypatch.setattr(r, "insert_strategy",
+                        lambda cur, uid, run_id, parent, market, direction, title, thesis, spec, status, result:
+                        inserted.update(status=status) or 99)
+    monkeypatch.setattr(r, "create_proposal", lambda *a, **k: 1)
+    monkeypatch.setattr(r, "set_deployment_strategy", lambda *a: None)
+    ds = lambda m: _dataset(n_contracts=60)
+    agent.act(None, {"id": 1}, {"type": "adjust", "deployment_id": 3, "changes": {"entry": {"min_edge": 0.12}}}, True, ds)
+    assert inserted["status"] == "backtest-only"  # strictly stricter: not "passed"
+
+    # The deploy gate rejects it precisely because status != "passed" (never weakened/reordered).
+    monkeypatch.setattr(r, "get_strategy", lambda cur, uid, sid: {
+        "id": sid, "status": "backtest-only", "title": "T",
+        "spec": agent.specmod.validate(WINNER), "market": "btc15m"})
+    msg, pid = agent.act(None, {"id": 1}, {"type": "deploy", "strategy_id": 99}, False, ds)
+    assert pid is None and "passed" in msg
 
 
 def test_llm_error_type():
@@ -500,3 +534,16 @@ def test_verdict_event_carries_gatekeeper_stats_for_the_feed(monkeypatch):
     # The stats are for the human feed — they must NOT be written into the strategy result that
     # feeds strategy_memory back to the generator (that stays blind to held-out numbers).
     assert all("p_value" not in (s.get("result") or {}) for s in store.strategies)
+
+
+def test_adjust_missing_deployment_lists_current_ones_not_a_dead_end(monkeypatch):
+    # The agent often references a deployment it named earlier that has since been removed. act()
+    # must not dead-end with a vague "couldn't find"; it names what's gone AND lists the current
+    # deployments so the next review acts on a real one.
+    r = agent.repo
+    monkeypatch.setattr(r, "get_deployment", lambda cur, uid, did: None)  # the referenced one is gone
+    monkeypatch.setattr(r, "list_deployments", lambda cur, uid: [
+        {"id": 42, "title": "Live BTC edge", "market": "btc15m", "status": "running"}])
+    msg, pid = agent.act(None, {"id": 1}, {"type": "adjust", "deployment_id": 999, "changes": {"x": 1}}, True)
+    assert pid is None
+    assert "999" in msg and "#42" in msg and "Live BTC edge" in msg  # self-correcting, not a dead end

@@ -1,6 +1,5 @@
 """Local fonts use the same restricted, immutable static asset path as CSS."""
 import io
-import re
 
 import pytest
 
@@ -17,8 +16,8 @@ def static_response(path):
 
 
 def test_bundled_font_is_served_with_font_mime_and_immutable_cache():
-    css = (server.STATIC_DIR / 'app.css').read_text()
-    name = re.search(r'url\("(dm-sans-latin-[a-f0-9]+\.woff2)"\)', css).group(1)
+    # The default UI loads Rubik externally; this font remains a shipped static asset.
+    name = 'dm-sans-latin-9fea608a94.woff2'
     headers, body = static_response('/static/' + name)
     assert headers[:3] == (200, 'font/woff2', len(body))
     assert body == (server.STATIC_DIR / name).read_bytes()
@@ -36,3 +35,16 @@ def test_font_support_keeps_missing_files_and_non_assets_inaccessible(path):
     headers, body = static_response(path)
     assert headers[0] == 404
     assert body == b'Not found'
+
+
+def test_broker_assets_are_versioned_and_loaded_before_app_boot():
+    headers, body = static_response('/settings/account')
+    html = body.decode()
+    assert headers[0] == 200
+    versions = server._static_versions()
+    assert '/static/broker-connections.js?v=' + versions['broker-connections.js'] in html
+    assert '/static/broker-connections.css?v=' + versions['broker-connections.css'] in html
+    assert '{{brokers_' not in html
+    assert html.index('/static/broker-connections.js') < html.index('/static/boot.js')
+    asset_headers, js = static_response('/static/broker-connections.js')
+    assert asset_headers[0] == 200 and b'TauBrokerConnections' in js

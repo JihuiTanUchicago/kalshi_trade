@@ -181,6 +181,13 @@ def set_autopilot_live(cur, user_id: int, on: bool) -> None:
     cur.execute("UPDATE app_users SET autopilot_live=%s WHERE id=%s", (1 if on else 0, user_id))
 
 
+def autopilot_user_ids(cur) -> List[int]:
+    """Every user with the autopilot toggle ON. The scheduler enqueues a periodic 'review' run for
+    each, which is the only thing that makes the co-pilot act on its own (otherwise it runs only on chat)."""
+    cur.execute("SELECT id FROM app_users WHERE autopilot=1")
+    return [(r["id"] if isinstance(r, dict) else r[0]) for r in cur.fetchall()]
+
+
 def autopilot_live_over_limit(cur, day_start) -> List[Dict]:
     """Users with live autopilot ON whose live realized loss since `day_start` has hit their
     daily loss limit. The kill switch / loss guard reads this each engine loop."""
@@ -548,14 +555,17 @@ def insert_strategy(
     return cur.lastrowid
 
 
-def set_strategy_outcome(cur, strategy_id: int, status: str, result: Optional[Dict]) -> None:
+def set_strategy_outcome(cur, strategy_id: int, status: str, result: Optional[Dict],
+                         experiment_id: Optional[int] = None) -> None:
     """Record a strategy's final status/result after the gatekeeper's verdict. The research loop
     inserts the row first (so the immutable experiment can carry its strategy_id), then writes
-    the classification-derived outcome here once judging returns. Status/result only — the
+    the classification-derived outcome here once judging returns. `experiment_id` is the robust
+    link back to the pre-registration this strategy was validated under — the research-paper page
+    resolves by it first (surviving a re-hit re-point). Status/result/experiment_id only — the
     row's identity fields are never touched."""
     cur.execute(
-        "UPDATE app_strategies SET status=%s, result_json=%s WHERE id=%s",
-        (status, _json(result), strategy_id),
+        "UPDATE app_strategies SET status=%s, result_json=%s, experiment_id=%s WHERE id=%s",
+        (status, _json(result), experiment_id, strategy_id),
     )
 
 
@@ -588,7 +598,7 @@ def list_strategies(
 ) -> List[Dict]:
     where, fparams = _strategy_filter_sql(direction, status, market, run_id, q, deployed)
     sql = ("""SELECT s.id, s.run_id, s.parent_id, s.market, s.direction, s.title, s.thesis, s.spec_json, s.status,
-                    s.result_json, s.created_at, r.hypotheses_tried, s.shared_from_user_id, su.name AS shared_from_name,
+                    s.result_json, s.experiment_id, s.created_at, r.hypotheses_tried, s.shared_from_user_id, su.name AS shared_from_name,
                     (SELECT COUNT(*) FROM app_deployments d WHERE d.strategy_id=s.id AND d.status<>'stopped') AS active_deps,
                     (SELECT COUNT(*) FROM app_deployments d WHERE d.strategy_id=s.id AND d.status<>'stopped' AND d.mode='live') AS live_deps
              FROM app_strategies s LEFT JOIN app_agent_runs r ON r.id=s.run_id
@@ -709,7 +719,7 @@ def mark_notifications_read(cur, user_id: int) -> int:
 def get_strategy(cur, user_id: int, strategy_id: int) -> Optional[Dict]:
     cur.execute(
         """SELECT s.id, s.run_id, s.parent_id, s.market, s.direction, s.title, s.thesis, s.spec_json, s.status,
-                  s.result_json, s.created_at, r.hypotheses_tried, s.shared_from_user_id, su.name AS shared_from_name
+                  s.result_json, s.experiment_id, s.created_at, r.hypotheses_tried, s.shared_from_user_id, su.name AS shared_from_name
            FROM app_strategies s LEFT JOIN app_agent_runs r ON r.id=s.run_id
                 LEFT JOIN app_users su ON su.id=s.shared_from_user_id
            WHERE s.id=%s AND s.user_id=%s""",
@@ -752,6 +762,19 @@ def engine_heartbeat(cur, live_enabled: bool) -> None:
            ON DUPLICATE KEY UPDATE state_value=VALUES(state_value), updated_at_utc=VALUES(updated_at_utc)""",
         ('{"live": %s}' % ("true" if live_enabled else "false"), now_utc()),
     )
+
+
+def engine_last_tick_age_seconds(cur) -> Optional[int]:
+    """Seconds since the deployment engine's last heartbeat tick, or None if it has never ticked.
+    A large or None value means the engine is stalled/dead — surfaced so a stuck engine still
+    holding real positions is visible, not silent. Reads the same `collector_state` liveness row
+    `engine_heartbeat` writes (the pattern the live_alerter watchdog uses for every other writer)."""
+    cur.execute(
+        "SELECT TIMESTAMPDIFF(SECOND, updated_at_utc, UTC_TIMESTAMP()) AS a FROM collector_state "
+        "WHERE state_key='recursive_engine_last_tick' LIMIT 1"
+    )
+    row = cur.fetchone() or {}
+    return int(row["a"]) if row.get("a") is not None else None
 
 
 def get_policy(cur, user_id: int) -> Optional[Dict]:
@@ -863,6 +886,20 @@ def deployments_with_open_positions(cur, market: str) -> List[Dict]:
     return [_strategy_row(r) for r in cur.fetchall()]
 
 
+def paused_deployments_with_open_positions(cur, market: str) -> List[Dict]:
+    """Paused/stopped deployments that still hold open positions — the auto-flatten sweep closes
+    these so a non-running deployment never keeps exposure nothing is actively managing. (Running
+    deployments manage their own exits via the spec + force-sell, so they are excluded here.)"""
+    cur.execute(
+        """SELECT DISTINCT d.id, d.user_id, d.mode, s.spec_json, s.result_json
+           FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id
+           JOIN app_positions p ON p.deployment_id=d.id AND p.status='open'
+           WHERE d.market=%s AND d.status IN ('paused','stopped')""",
+        (market,),
+    )
+    return [_strategy_row(r) for r in cur.fetchall()]
+
+
 def set_deployment_status(cur, user_id: int, deployment_id: int, status: str, reason: Optional[str] = None) -> bool:
     cur.execute(
         "UPDATE app_deployments SET status=%s, status_reason=%s, updated_at=%s WHERE id=%s AND user_id=%s AND status<>'stopped'",
@@ -924,6 +961,15 @@ def update_marks(cur, market: str, marks: Dict[str, float], now: datetime) -> in
         )
         n += cur.rowcount
     return n
+
+
+def market_has_open_positions(cur, market: str) -> bool:
+    """Whether any deployment on `market` holds an open position — so the engine knows to refresh
+    marks (unrealized P&L + the drawdown guard read them) every tick, not only when a decision is due."""
+    cur.execute(
+        "SELECT 1 FROM app_positions p JOIN app_deployments d ON d.id=p.deployment_id "
+        "WHERE p.status='open' AND d.market=%s LIMIT 1", (market,))
+    return cur.fetchone() is not None
 
 
 def user_positions(cur, user_id: int, status: str = "open", limit: int = 100) -> List[Dict]:
@@ -1008,6 +1054,231 @@ def book_partial_exit(cur, pos: Dict, fill_qty: int, exit_price: float, exit_fee
     return True
 
 
+def insert_closed_position(
+    cur, deployment_id: int, user_id: int, mode: str, ticker: str, side: str, qty: int,
+    entry_price: float, entry_fee: float, exit_price: float, exit_fee: float, pnl: float,
+    reason: str, market_close_time: datetime, order_ref: Optional[str] = None,
+) -> int:
+    """Record a round-trip (bought then immediately sold again) as a single CLOSED position row.
+
+    ONE atomic INSERT, so an autocommit connection can never leave a phantom OPEN leg if it dies
+    mid-write (an open-then-close pair of statements could). Used by the cross-pair unwind: the
+    excess leg that was flattened on the exchange must count toward realized P&L (the loss and
+    drawdown guards sum closed-row pnl) without ever becoming a held position."""
+    close = (market_close_time.astimezone(timezone.utc).replace(tzinfo=None)
+             if market_close_time.tzinfo else market_close_time)
+    cur.execute(
+        """INSERT INTO app_positions (deployment_id, user_id, mode, ticker, side, qty, entry_price,
+             entry_fee, market_close_time, opened_at, status, exit_price, exit_fee, pnl, close_reason,
+             closed_at, order_ref)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'closed',%s,%s,%s,%s,%s,%s)""",
+        (deployment_id, user_id, mode, ticker, side, qty, entry_price, round(entry_fee, 4), close,
+         now_utc(), exit_price, round(exit_fee, 4), round(pnl, 4), reason, now_utc(), order_ref),
+    )
+    return cur.lastrowid
+
+
+# -- live position reconciliation ----------------------------------------------
+# All DB access for app/reconcile.py lives here (repository layer), so the
+# reconcile/classify logic stays testable against a fake cursor.
+
+
+def users_to_reconcile(cur) -> List[int]:
+    """Every user who has a live Kalshi key AND at least one open live position.
+    Those are the only accounts whose book could diverge from the exchange."""
+    cur.execute(
+        """SELECT DISTINCT k.user_id FROM app_kalshi_keys k
+           JOIN app_positions p ON p.user_id=k.user_id AND p.mode='live' AND p.status='open'
+           ORDER BY k.user_id"""
+    )
+    return [int(r["user_id"]) for r in cur.fetchall()]
+
+
+def live_book_by_ticker_side(cur, user_id: int) -> List[Dict]:
+    """This user's open LIVE positions, summed by (ticker, side). The caller folds
+    these into a signed net per ticker (YES positive, NO negative)."""
+    cur.execute(
+        """SELECT ticker, side, COALESCE(SUM(qty),0) AS qty FROM app_positions
+           WHERE user_id=%s AND mode='live' AND status='open'
+           GROUP BY ticker, side""",
+        (user_id,),
+    )
+    return cur.fetchall()
+
+
+def get_position(cur, position_id: int) -> Optional[Dict]:
+    """One position row by id (used by crash-recovery to book/close an intent's own position)."""
+    cur.execute("SELECT * FROM app_positions WHERE id=%s", (position_id,))
+    return cur.fetchone()
+
+
+# -- durable order-intent log (EXECUTION_RISK_HARDENING P0-1) -------------------
+# A row is written and COMMITTED before every real exchange order and updated after, so every
+# order has a durable, idempotent identity. client_order_id == intent_id, reused on any retry.
+
+
+def _naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    if dt is None:
+        return None
+    return dt.astimezone(timezone.utc).replace(tzinfo=None) if dt.tzinfo else dt
+
+
+def insert_order_intent(
+    cur, intent_id: str, deployment_id: int, user_id: int, mode: str, action: str, side: str,
+    ticker: str, qty: int, limit_price: float, client_order_id: str, position_id: Optional[int] = None,
+    reason: Optional[str] = None, market_close_time: Optional[datetime] = None,
+) -> None:
+    """Record an order intent as 'sent' BEFORE the exchange POST. The caller commits this (its own
+    transaction) so the intent is durable even if the process dies the instant after the order is
+    placed — recovery then reconciles it against the exchange."""
+    now = now_utc()
+    cur.execute(
+        """INSERT INTO app_order_intents
+             (intent_id, deployment_id, user_id, position_id, mode, action, side, ticker, qty,
+              limit_price, client_order_id, status, reason, market_close_time, created_at, updated_at)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'sent',%s,%s,%s,%s)""",
+        (intent_id, deployment_id, user_id, position_id, mode, action, side, ticker, int(qty),
+         limit_price, client_order_id, reason, _naive_utc(market_close_time), now, now),
+    )
+
+
+def mark_order_intent(
+    cur, intent_id: str, status: str, external_order_id: Optional[str] = None, fill_qty: Optional[int] = None,
+    fill_price: Optional[float] = None, fee: Optional[float] = None, raw_json: Optional[dict] = None,
+) -> bool:
+    """Update an intent's status/outcome (e.g. 'unfilled', 'error'). Fill fields are only overwritten
+    when provided (COALESCE), so a status-only update keeps whatever was recorded."""
+    cur.execute(
+        """UPDATE app_order_intents
+             SET status=%s, external_order_id=COALESCE(%s,external_order_id), fill_qty=COALESCE(%s,fill_qty),
+                 fill_price=COALESCE(%s,fill_price), fee=COALESCE(%s,fee), raw_json=COALESCE(%s,raw_json),
+                 updated_at=%s
+           WHERE intent_id=%s""",
+        (status, external_order_id, fill_qty, fill_price, fee, _json(raw_json), now_utc(), intent_id),
+    )
+    return cur.rowcount == 1
+
+
+def claim_intent_booking(
+    cur, intent_id: str, external_order_id: Optional[str] = None, fill_qty: Optional[int] = None,
+    fill_price: Optional[float] = None, fee: Optional[float] = None, raw_json: Optional[dict] = None,
+) -> bool:
+    """Atomically transition an intent to 'booked' (recording the fill), only if it is not ALREADY
+    booked. Returns True iff THIS caller won the transition — the single-booking guard that makes the
+    live path and crash-recovery race-safe: whoever books first wins, the loser books nothing. Must
+    run inside the same transaction as the position/ledger write it guards (see repo.transaction)."""
+    cur.execute(
+        """UPDATE app_order_intents
+             SET status='booked', external_order_id=COALESCE(%s,external_order_id), fill_qty=COALESCE(%s,fill_qty),
+                 fill_price=COALESCE(%s,fill_price), fee=COALESCE(%s,fee), raw_json=COALESCE(%s,raw_json),
+                 updated_at=%s
+           WHERE intent_id=%s AND status<>'booked'""",
+        (external_order_id, fill_qty, fill_price, fee, _json(raw_json), now_utc(), intent_id),
+    )
+    return cur.rowcount == 1
+
+
+def open_sent_intents(cur, older_than_seconds: int = 30, limit: int = 200) -> List[Dict]:
+    """Intents still 'sent' (POST issued, outcome unknown) older than a grace window — the
+    unresolved in-flight orders a crash/lost-response can leave (the F1/F2 smoke alarm)."""
+    cutoff = now_utc() - timedelta(seconds=int(older_than_seconds))
+    cur.execute(
+        "SELECT * FROM app_order_intents WHERE status='sent' AND created_at <= %s ORDER BY created_at LIMIT %s",
+        (cutoff, int(limit)),
+    )
+    return cur.fetchall()
+
+
+def open_reconcile_rows(cur, user_id: int) -> List[Dict]:
+    cur.execute(
+        "SELECT ticker, kind, exchange_qty, book_qty FROM app_position_reconcile "
+        "WHERE user_id=%s AND status='open'",
+        (user_id,),
+    )
+    return cur.fetchall()
+
+
+def upsert_reconcile(cur, user_id: int, ticker: str, kind: str, exchange_qty: int, book_qty: int) -> None:
+    """Record (or refresh) an open discrepancy. detected_at is preserved on an
+    existing open row so the audit shows when the divergence first appeared; a row
+    that had been marked resolved reopens with a fresh detected_at."""
+    now = now_utc()
+    cur.execute(
+        """INSERT INTO app_position_reconcile
+             (user_id, ticker, kind, exchange_qty, book_qty, status, detected_at, updated_at)
+           VALUES (%s,%s,%s,%s,%s,'open',%s,%s)
+           ON DUPLICATE KEY UPDATE
+             kind=VALUES(kind), exchange_qty=VALUES(exchange_qty), book_qty=VALUES(book_qty),
+             updated_at=VALUES(updated_at),
+             detected_at=IF(status='open', detected_at, VALUES(detected_at)),
+             status='open', resolved_at=NULL""",
+        (user_id, ticker, kind, int(exchange_qty), int(book_qty), now, now),
+    )
+
+
+def resolve_reconcile_except(cur, user_id: int, active_tickers: List[str]) -> int:
+    """Mark resolved any still-open discrepancy for this user whose ticker is no
+    longer divergent. Empty active set resolves them all."""
+    if active_tickers:
+        placeholders = ",".join(["%s"] * len(active_tickers))
+        sql = ("UPDATE app_position_reconcile SET status='resolved', resolved_at=%s, updated_at=%s "
+               "WHERE user_id=%s AND status='open' AND ticker NOT IN (" + placeholders + ")")
+        params = [now_utc(), now_utc(), user_id, *active_tickers]
+    else:
+        sql = ("UPDATE app_position_reconcile SET status='resolved', resolved_at=%s, updated_at=%s "
+               "WHERE user_id=%s AND status='open'")
+        params = [now_utc(), now_utc(), user_id]
+    cur.execute(sql, params)
+    return cur.rowcount
+
+
+def reconcile_deployment_id(cur, user_id: int, market: str) -> int:
+    """The user's dedicated, PAUSED reconciliation deployment for `market`, created
+    once on demand. Adopted orphans are booked under it so they appear in the user's
+    positions and settle at expiry. It is paused (not running) deliberately: the
+    engine's decision loop only trades running deployments, so an adopted orphan is
+    never acted on by a synthetic spec — adoption records a row, nothing more."""
+    cur.execute(
+        """SELECT d.id FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id
+           WHERE d.user_id=%s AND d.market=%s AND s.direction='reconcile' LIMIT 1""",
+        (user_id, market),
+    )
+    row = cur.fetchone()
+    if row:
+        return int(row["id"])
+    now = now_utc()
+    spec = {"sizing": {"stake": 0.0, "max_positions": 0}, "rules": {}}
+    cur.execute(
+        """INSERT INTO app_strategies
+             (user_id, market, direction, title, thesis, spec_json, status, created_at)
+           VALUES (%s,%s,'reconcile',%s,%s,%s,'archived',%s)""",
+        (user_id, market, "Reconciliation holdings",
+         "System container for adopted untracked exchange positions. Not a tradable strategy.",
+         _json(spec), now),
+    )
+    strategy_id = cur.lastrowid
+    cur.execute(
+        """INSERT INTO app_deployments (user_id, strategy_id, market, mode, status, status_reason, created_at, updated_at)
+           VALUES (%s,%s,%s,'live','paused','Reconciliation container (adopted orphans)',%s,%s)""",
+        (user_id, strategy_id, market, now, now),
+    )
+    return cur.lastrowid
+
+
+def claim_position_close(cur, position_id: int, claimant: str, lease_seconds: int = 300) -> bool:
+    """Single-actor guard for the order-PLACING risk sweeps (drawdown force-sell): at most one engine
+    may send a real close for a given open position within the lease, so two engines can never both
+    sell it into an unintended short. Mirrors claim_decision. The owner can re-claim its own lease
+    (so a failed close retries next tick); a different engine only after the lease expires."""
+    cutoff = now_utc() - timedelta(seconds=int(lease_seconds))
+    cur.execute(
+        """UPDATE app_positions SET close_claim=%s, close_claim_ts=%s
+           WHERE id=%s AND status='open' AND (close_claim IS NULL OR close_claim=%s OR close_claim_ts < %s)""",
+        (claimant, now_utc(), position_id, claimant, cutoff),
+    )
+    return cur.rowcount == 1
+
+
 def realized_pnl(cur, user_id: int, mode: str, since: Optional[datetime] = None) -> float:
     sql = "SELECT COALESCE(SUM(pnl),0) AS p FROM app_positions WHERE user_id=%s AND mode=%s AND status='closed'"
     params: List[Any] = [user_id, mode]
@@ -1021,10 +1292,41 @@ def realized_pnl(cur, user_id: int, mode: str, since: Optional[datetime] = None)
 def user_risk_config(cur, user_id: int) -> Dict:
     """Per-user risk limits for the force-sell / portfolio-cap layer (conservative DB defaults)."""
     cur.execute(
-        "SELECT drawdown_limit_pct, max_open_positions, max_open_notional FROM app_users WHERE id=%s",
+        "SELECT drawdown_limit_pct, position_stop_pct, max_open_positions, max_open_notional "
+        "FROM app_users WHERE id=%s",
         (user_id,),
     )
     return cur.fetchone()
+
+
+def set_user_risk_config(cur, user_id: int, changes: Dict) -> None:
+    """Update a user's risk controls. Only the three enforced columns are writable; callers
+    (agent.act) pass already-clamped values, so this layer just persists them (DRY: one UPDATE,
+    no business logic). Unknown keys are ignored so a bad agent action can't touch other columns."""
+    cols = {k: changes[k] for k in ("drawdown_limit_pct", "max_open_positions", "max_open_notional") if k in changes}
+    if not cols:
+        return
+    sql = "UPDATE app_users SET " + ", ".join("%s=%%s" % k for k in cols) + " WHERE id=%s"
+    cur.execute(sql, [*cols.values(), user_id])
+
+
+def user_execution_config(cur, user_id: int) -> Dict:
+    """Per-user execution-control overrides (NULL = use the global KALSHI_MAX_* env default).
+    The live kernel factory reads this and falls back to env when a column is NULL."""
+    cur.execute(
+        "SELECT exec_max_book_fraction, exec_max_entry_spread, exec_max_order_notional FROM app_users WHERE id=%s",
+        (user_id,),
+    )
+    return cur.fetchone() or {}
+
+
+def set_user_execution_config(cur, user_id: int, changes: Dict) -> None:
+    """Persist already-clamped per-user execution overrides (agent.act clamps to EXEC_BOUNDS)."""
+    cols = {k: changes[k] for k in ("exec_max_book_fraction", "exec_max_entry_spread", "exec_max_order_notional") if k in changes}
+    if not cols:
+        return
+    sql = "UPDATE app_users SET " + ", ".join("%s=%%s" % k for k in cols) + " WHERE id=%s"
+    cur.execute(sql, [*cols.values(), user_id])
 
 
 def user_open_exposure(cur, user_id: int) -> Dict:
@@ -1085,19 +1387,22 @@ def chat_messages(cur, user_id: int, after_id: int = 0, limit: int = 100) -> Lis
 
 def create_proposal(
     cur, user_id: int, kind: str, reason: str, deployment_id: Optional[int] = None,
-    strategy_id: Optional[int] = None, status: str = "pending",
+    strategy_id: Optional[int] = None, status: str = "pending", payload: Optional[Dict] = None,
 ) -> int:
     cur.execute(
-        """INSERT INTO app_proposals (user_id, kind, deployment_id, strategy_id, reason, status, created_at)
-           VALUES (%s,%s,%s,%s,%s,%s,%s)""",
-        (user_id, kind, deployment_id, strategy_id, reason, status, now_utc()),
+        """INSERT INTO app_proposals (user_id, kind, deployment_id, strategy_id, reason, status, payload, created_at)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+        (user_id, kind, deployment_id, strategy_id, reason, status, _json(payload), now_utc()),
     )
     return cur.lastrowid
 
 
 def get_proposal(cur, user_id: int, proposal_id: int) -> Optional[Dict]:
     cur.execute("SELECT * FROM app_proposals WHERE id=%s AND user_id=%s", (proposal_id, user_id))
-    return cur.fetchone()
+    p = cur.fetchone()
+    if p is not None and "payload" in p:
+        p["payload"] = _loads(p["payload"])
+    return p
 
 
 def decide_proposal(cur, proposal_id: int, status: str) -> bool:
@@ -1162,6 +1467,26 @@ def _load_micro(cur, series: str, since: datetime) -> Dict[tuple, Dict[str, Any]
         ts = int(dt.replace(tzinfo=timezone.utc).timestamp()) if dt.tzinfo is None else int(dt.timestamp())
         out[(r["market_ticker"], ts)] = {n: r[n] for n in names if r.get(n) is not None}
     return out
+
+
+def spot_symbols_with_data(cur, symbols) -> set:
+    """Which of the given spot symbols already have price candles collected.
+
+    The research-only TAO subnet-alpha markets (kind="spot") carry no feed until
+    their taostats collector is keyed, so the research picker must hide them until
+    then. This is that gate: a spot market is researchable only if its symbol is in
+    the returned set. An empty `symbols` short-circuits to no query and no reveal.
+    Kept index-friendly by querying the bounded set of known spot symbols, never a
+    full DISTINCT scan of spot_candles_1m (which also holds BTC/ETH/... history)."""
+    syms = [s for s in symbols if s]
+    if not syms:
+        return set()
+    placeholders = ",".join(["%s"] * len(syms))
+    cur.execute(
+        "SELECT DISTINCT symbol FROM spot_candles_1m WHERE symbol IN (" + placeholders + ")",
+        tuple(syms),
+    )
+    return {r["symbol"] for r in cur.fetchall()}
 
 
 def history_freshness(cur) -> Dict[str, Optional[int]]:

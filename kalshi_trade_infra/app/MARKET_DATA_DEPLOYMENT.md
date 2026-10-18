@@ -4,7 +4,11 @@ Databento is the recommended **primary historical stock/ETF and futures source**
 It does not replace every existing Alpaca/Massive tool. This setup keeps their
 distinct capabilities available, with no automatic provider or feed fallback.
 The change is implemented locally; a production worker and real queued model run
-still need deployment-owner acceptance. No schema or new dependency is required.
+still need deployment-owner acceptance. The market-data routing delta introduces
+no schema or new dependency. The combined release also includes OAuth and newer
+main migrations: follow current `AGENTS.md` and run the reviewed full
+`python -m app.schema` before deploying that whole app; a broker-only migration or
+`data_pipeline.init_schema` alone is insufficient.
 
 ## Coverage decision — checked October 18, 2026
 
@@ -76,7 +80,11 @@ Set these deliberately:
 The Databento limit is shared across requests in a context and reserved before
 downloads; it resets with a new context/process. **It is not a durable account-wide
 billing cap.** Vendor invoices/limits and durable cost accounting remain deployment
-considerations before broad paid rollout. No Exa quota or credential changes are
+considerations before broad paid rollout. The newer main worker schedules
+autopilot reviews for enabled users (600 seconds by default); each new copilot
+context gets a fresh estimate limit. Include those recurring reviews, user count
+and worker concurrency when accepting a paid pilot. The per-context guard does
+not impose a daily or monthly ceiling. No Exa quota or credential changes are
 included here.
 
 Disable an optional provider with its `*_ENABLED=0` flag; its key is then optional.

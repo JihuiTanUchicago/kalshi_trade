@@ -100,7 +100,9 @@ def order_submitter(creds: KalshiCredentials):
     """Submitter for MarketableLimitKernel, signing as this user."""
     from data_pipeline.live_trading_engine import place_limit_order
 
-    def submit(ticker: str, action: str, side: str, qty: int, price: float) -> dict:
-        return place_limit_order(ticker, action, side, qty, price, credentials=creds)
+    def submit(ticker: str, action: str, side: str, qty: int, price: float,
+               client_order_id: Optional[str] = None) -> dict:
+        return place_limit_order(ticker, action, side, qty, price, credentials=creds,
+                                 client_order_id=client_order_id)
 
     return submit

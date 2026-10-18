@@ -1,0 +1,28 @@
+{
+  "timestamp": "2026-10-17T15:06:39.647924+00:00",
+  "origin": "https://d1gfpzcosqrjya.cloudfront.net",
+  "anonymous_read_only": true,
+  "checks": [
+    {
+      "path": "/healthz",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "health_ok": true
+    },
+    {
+      "path": "/auth/brokers/alpaca/callback",
+      "http_status": 404,
+      "content_type": "application/json; charset=utf-8",
+      "requires_tau_login": false,
+      "broker_callback_not_found": true
+    },
+    {
+      "path": "/static/broker-connections.js",
+      "http_status": 404,
+      "content_type": "text/plain",
+      "broker_asset_present": false
+    }
+  ],
+  "cookies_or_credentials_sent": false,
+  "raw_response_stored": false
+}

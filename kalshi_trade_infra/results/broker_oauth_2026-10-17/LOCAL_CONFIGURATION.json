@@ -1,0 +1,8 @@
+{
+  "change": "APP_PUBLIC_URL only; existing secrets and flags preserved",
+  "public_url": "https://d1gfpzcosqrjya.cloudfront.net",
+  "mode": "0o600",
+  "before_sha256": "0c7ee152460b13f9d58e748182487b3be50409459f3f84e8be1d8a531bb39f34",
+  "after_sha256": "54ec6eec2d88f2840baae2feff83abf4eaf4e353ec6fc1dc92f9c7b19ce4e9f2",
+  "configured_names_only": {}
+}

@@ -1,5 +1,5 @@
 """Cross-contract (relative-value pair) DEPLOYMENT: the paper/demo tick that opens BOTH legs,
-and the deploy gate that keeps cross specs off live (and cross-market pairs research-only).
+and the deploy gate (single-market + cadence-compatible multi-market cross are deployable).
 
 No live DB: the engine's repo reads/writes are monkeypatched + a recording fake kernel, the same
 non-MySQL pattern as test_app_force_sell.py. The pair rule itself (which legs to buy) is proven in
@@ -9,6 +9,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
+import pytest
+
 from app import engine
 from app import spec as specmod
 from app.markets import Contract, snapshot
@@ -17,24 +19,37 @@ from app.markets import Contract, snapshot
 # -- deploy gate ---------------------------------------------------------------
 
 
-def test_cross_deploy_block_refuses_live_and_cross_market_but_allows_single_market_paper_demo():
-    cross_market = specmod.validate({"market": "btc_daily",
-        "cross": {"pairing": "cross_sectional", "legs": [{"market": "eth_daily"}]}})
+def test_cross_deploy_block_single_and_compatible_multi_market_all_modes():
     single_market = specmod.validate({"market": "btc_daily",
         "cross": {"pairing": "cross_strike", "legs": []}})
+    # btc_daily + eth_daily: both deployable, both daily cadence -> a valid multi-market pair.
+    multi_market = specmod.validate({"market": "btc_daily",
+        "cross": {"pairing": "cross_sectional", "legs": [{"market": "eth_daily"}]}})
     plain = specmod.validate({"market": "btc_daily"})
 
-    # Any cross spec is refused on LIVE (multi-leg live execution is a separate, riskier step).
-    assert engine.cross_deploy_block(single_market, "live")
-    assert engine.cross_deploy_block(cross_market, "live")
-    # A cross-MARKET pair has no synchronized live feed -> research-only, even on paper/demo.
-    assert engine.cross_deploy_block(cross_market, "paper")
-    assert engine.cross_deploy_block(cross_market, "demo")
-    # A single-market pair (cross_strike/calendar) deploys on paper/demo.
-    assert engine.cross_deploy_block(single_market, "paper") is None
-    assert engine.cross_deploy_block(single_market, "demo") is None
+    # A single-market pair (cross_strike/calendar) now deploys on paper, demo AND live: the entry
+    # path is legging-safe and the engine already ticks that one market.
+    for mode in ("paper", "demo", "live"):
+        assert engine.cross_deploy_block(single_market, mode) is None
+    # A cadence-compatible, both-legs-deployable multi-market pair is allowed in every mode too
+    # (it rides the synchronized multi-market feed).
+    assert engine.cross_deploy_block(multi_market, "live") is None
+    # Incompatible-cadence legs (btc_daily 60m vs btc15m 1m) are rejected at spec validation,
+    # before the gate ever sees them.
+    with pytest.raises(specmod.SpecError):
+        specmod.validate({"market": "btc_daily",
+            "cross": {"pairing": "cross_sectional", "legs": [{"market": "btc15m"}]}})
     # A non-cross strategy is never touched by this gate.
     assert engine.cross_deploy_block(plain, "live") is None
+
+
+def test_cross_deploy_block_allows_multi_market_when_deployable_and_compatible():
+    # btc_daily + eth_daily: both deployable, same daily cadence -> allowed in every mode now that
+    # the synchronized multi-market feed (engine.tick_cross_markets) exists.
+    cross_market = specmod.validate({"market": "btc_daily",
+        "cross": {"pairing": "cross_sectional", "legs": [{"market": "eth_daily"}]}})
+    for mode in ("paper", "demo", "live"):
+        assert engine.cross_deploy_block(cross_market, mode) is None
 
 
 # -- paper/demo tick opens BOTH legs -------------------------------------------
@@ -100,6 +115,8 @@ def _wire(monkeypatch, *, balance=1000.0):
     def _tx(conn):
         yield object()
     monkeypatch.setattr(engine.repo, "transaction", _tx)
+    from tests.conftest import patch_intent_passthrough
+    patch_intent_passthrough(monkeypatch)  # P0-1 intent log is transparent for these routing tests
     return rec
 
 

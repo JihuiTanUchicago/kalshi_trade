@@ -72,6 +72,9 @@ def _wire(monkeypatch, *, realized, positions, limit_pct=25.0):
     def _tx(conn):
         yield object()
     monkeypatch.setattr(engine.repo, "transaction", _tx)
+    from tests.conftest import patch_intent_passthrough
+    patch_intent_passthrough(monkeypatch)  # P0-1 intent log transparent; claim_position_close -> True
+    monkeypatch.setattr(engine.repo, "transaction", _tx)  # keep this file's object()-yielding tx
     return rec
 
 
@@ -138,6 +141,31 @@ def test_idempotent_second_pass_closes_nothing(monkeypatch):
     assert rec["closed"] == [(1, "drawdown")]  # closed exactly once
 
 
+def test_claimed_sweep_prevents_a_second_concurrent_force_sell(monkeypatch):
+    # P0-3 (closes F3): two engines run the force-sell on the SAME open position. The per-position
+    # close claim must let exactly ONE of them send the real sell — the other skips — so the second
+    # sell can never open an unintended short. The claim, not close-idempotency, is what guards this.
+    rec = _wire(monkeypatch, realized=[-40.0], positions=[_pos()])
+    monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", True)
+    monkeypatch.setattr(engine.repo, "open_positions", lambda cur, dep_id: [_pos()])  # always still open
+
+    granted = {"1": False}
+
+    def _claim_once(cur, pid, claimant, lease_seconds=300):
+        if granted["%d" % pid]:
+            return False      # another engine already owns this position's close
+        granted["%d" % pid] = True
+        return True
+    monkeypatch.setattr(engine.repo, "claim_position_close", _claim_once)
+
+    k = _Kernel()
+    sources = engine.Sources(live_kernel=lambda uid: k, demo_kernel=lambda uid: _Kernel())
+    engine.force_sell_if_drawn_down(_Conn(), _dep(mode="live"), sources)  # engine A
+    engine.force_sell_if_drawn_down(_Conn(), _dep(mode="live"), sources)  # engine B (claim denied)
+    sells = [i for i in k.intents if i.action == "sell"]
+    assert len(sells) == 1   # exactly one real sell across the two engines
+
+
 def test_one_deployment_failure_is_contained(monkeypatch):
     # enforce_drawdown_limits must not crash if one deployment's force-sell raises.
     deps = [_dep(), dict(_dep(), id=2, user_id=2), dict(_dep(), id=3, user_id=3)]
@@ -193,6 +221,8 @@ def test_partial_live_exit_books_filled_slice_and_keeps_remainder(monkeypatch):
 
 
 def test_full_live_exit_closes_the_whole_position(monkeypatch):
+    from tests.conftest import patch_intent_passthrough
+    patch_intent_passthrough(monkeypatch)  # transparent intent log + a working repo.transaction
     booked = []
     closed = {}
     monkeypatch.setattr(engine.repo, "book_partial_exit", lambda *a, **k: booked.append(a))

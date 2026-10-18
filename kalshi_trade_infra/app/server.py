@@ -23,9 +23,10 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
-from app import agent, auth, backtest, billing, devlog, engine, kalshi_account, notify
+from app import agent, auth, backtest, billing, devlog, dreaming, engine, kalshi_account, notify
 from app import kalshi_dev
 from app import kalshi_dev_exec
+from app import broker_oauth
 from app import models_catalog as catalog
 from app import repository as repo
 from app import research_repository as research_repo
@@ -41,7 +42,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 MAX_BODY = 8 * 1024 * 1024  # allows a base64 image in a community post
 
 MAX_ACTIVE_RESEARCH = 2
-MAX_RESEARCH_PER_DAY = 12
+MAX_RESEARCH_PER_DAY = int(os.getenv("APP_MAX_RESEARCH_PER_DAY", "0"))  # 0 = unlimited (no daily cap)
 MAX_CHAT_PER_HOUR = 40
 MAX_ACTIVE_DEPLOYMENTS = 100
 MAX_PAPER_BALANCE = 1_000_000.0
@@ -167,7 +168,62 @@ def logout(ctx: Ctx):
     return {"ok": True}
 
 
+def _broker_session_hash(ctx: Ctx) -> str:
+    token = ctx.handler.cookies().get(auth.SESSION_COOKIE) if ctx.handler else None
+    if not token:
+        raise ApiError(401, "Please sign in again before connecting a brokerage.")
+    return auth.hash_token(token)
+
+
+def _broker_call(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except broker_oauth.Error as exc:
+        raise ApiError(exc.status, str(exc)) from None
+
+
+def broker_connections(ctx: Ctx):
+    return _broker_call(broker_oauth.list_brokers, ctx.cur, ctx.uid)
+
+
+def broker_connect(ctx: Ctx):
+    provider = ctx.params[0]
+    environment = ctx.body.get("environment", broker_oauth.PROVIDERS[provider]["default_environment"])
+    return _broker_call(broker_oauth.connect, ctx.conn, ctx.uid, provider, environment,
+                        _broker_session_hash(ctx), permission=ctx.body.get("permission", "read"))
+
+
+def broker_callback(ctx: Ctx):
+    provider = ctx.params[0]
+    result = _broker_call(broker_oauth.callback, ctx.conn, ctx.uid, provider, ctx.query,
+                          _broker_session_hash(ctx))
+    # Only fixed provider/status identifiers enter the return URL. Provider
+    # errors, codes, request tokens and state are never reflected into the SPA.
+    return ("redirect", "/settings/account?broker=%s&broker_status=%s" % (provider, result))
+
+
+def broker_disconnect(ctx: Ctx):
+    return _broker_call(broker_oauth.disconnect, ctx.conn, ctx.uid, ctx.params[0],
+                        ctx.body.get("environment"))
+
+
 # -- read routes ---------------------------------------------------------------
+
+
+def _researchable_markets(cur) -> List[Dict]:
+    """Markets to offer in the research picker, each with its grouping category.
+
+    Dormant markets are hidden: a spot (TAO subnet-alpha) market only appears
+    once its taostats feed has written candles, so a research-only venue with no
+    data never shows up as a pickable market. Binary markets always have a feed."""
+    spot_underlyings = [m.underlying for m in MARKETS.values() if m.kind == "spot" and m.underlying]
+    live_spot = repo.spot_symbols_with_data(cur, spot_underlyings)
+    return [
+        {"key": m.key, "label": m.label, "series": m.series, "category": m.category,
+         "deployable": m.deployable}
+        for m in MARKETS.values()
+        if m.kind != "spot" or m.underlying in live_spot
+    ]
 
 
 def me(ctx: Ctx):
@@ -182,12 +238,14 @@ def me(ctx: Ctx):
         "kalshi_connected": repo.get_kalshi_key(ctx.cur, ctx.uid) is not None,
         "kalshi_dev_connected": repo.get_kalshi_dev_key(ctx.cur, ctx.uid) is not None,
         "live_trading_available": engine.LIVE_TRADING_ENABLED,
+        # Demo (sandbox) always supports NO/either; live NO is behind the staged-rollout flag.
+        "no_side_live_enabled": engine.NO_SIDE_LIVE_ENABLED,
         "is_admin": (ctx.user["email"] or "").lower() == ADMIN_EMAIL.lower(),
         "billing_enabled": billing.configured(),
         "needs_card": _needs_card(ctx),
         "free_bonus": float(billing.FREE_BONUS),
         "credit_balance": round(repo.credit_balance(ctx.cur, ctx.uid), 4),
-        "markets": [{"key": m.key, "label": m.label, "series": m.series} for m in MARKETS.values()],
+        "markets": _researchable_markets(ctx.cur),
         "directions": [{"key": k, **v} for k, v in agent.DIRECTIONS.items()],
     }
 
@@ -226,7 +284,14 @@ def _live_balance(cur, uid: int) -> Dict:
 def dashboard(ctx: Ctx):
     cur = ctx.cur
     day = _start_of_day_utc()
-    open_pos = repo.user_positions(cur, ctx.uid, "open")
+    open_pos = _with_marks(repo.user_positions(cur, ctx.uid, "open"))
+    # Aggregate live mark-to-market unrealized P&L per deployment (from the marks just stamped), so
+    # the Deployed table can show each strategy's current open P&L, not only its realized P&L.
+    unreal_by_dep: Dict[int, float] = {}
+    for p in open_pos:
+        u = p.get("unrealized")
+        if u is not None and p.get("deployment_id") is not None:
+            unreal_by_dep[p["deployment_id"]] = round(unreal_by_dep.get(p["deployment_id"], 0.0) + u, 2)
     deps = repo.list_deployments(cur, ctx.uid)
     curves = repo.deployment_curves(cur, ctx.uid)
     balance = repo.paper_balance(cur, ctx.uid)
@@ -256,9 +321,12 @@ def dashboard(ctx: Ctx):
         "paper": paper,
         "demo": demo,
         "live": live,
-        "open_positions": _with_marks(open_pos),
+        "open_positions": open_pos,
         "recent_closed": repo.user_positions(cur, ctx.uid, "closed", 12),
-        "deployments": [_deployment_out(d, curves.get(d["id"], [])) for d in deps],
+        # Live book-vs-Kalshi reconciliation: empty list = book matches the exchange; any rows are
+        # open discrepancies the reconciler flagged (shown as a trust badge on the Live bucket).
+        "reconcile": repo.open_reconcile_rows(cur, ctx.uid),
+        "deployments": [_deployment_out(d, curves.get(d["id"], []), unreal_by_dep.get(d["id"])) for d in deps],
         "agents": repo.active_run_counts(cur, ctx.uid),
         "freshness": _freshness(cur),
     }
@@ -267,16 +335,23 @@ def dashboard(ctx: Ctx):
 def _freshness(cur) -> Dict:
     raw = repo.history_freshness(cur)
     now = int(datetime.now(timezone.utc).timestamp())
-    return {k: (now - int(v) if v else None) for k, v in raw.items()}
+    out = {k: (now - int(v) if v else None) for k, v in raw.items()}
+    # Engine liveness: seconds since the deployment engine's last tick (None = never/dead). A stalled
+    # engine holding real positions is the worst silent failure, so it rides the same payload.
+    try:
+        out["engine"] = repo.engine_last_tick_age_seconds(cur)
+    except Exception:
+        out["engine"] = None
+    return out
 
 
-def _deployment_out(d: Dict, curve: List) -> Dict:
+def _deployment_out(d: Dict, curve: List, unrealized: Optional[float] = None) -> Dict:
     res = d.get("result") or {}
     return {
         "id": d["id"], "strategy_id": d["strategy_id"], "title": d["title"], "direction": d["direction"],
         "market": d["market"], "mode": d["mode"], "status": d["status"], "status_reason": d["status_reason"],
         "realized_pnl": round(float(d["realized_pnl"]), 2), "closed_trades": d["closed_trades"], "wins": d["wins"],
-        "open_positions": d["open_positions"], "created_at": d["created_at"], "curve": curve,
+        "unrealized_pnl": unrealized, "open_positions": d["open_positions"], "created_at": d["created_at"], "curve": curve,
         "stake": d["spec"]["sizing"]["stake"], "max_positions": d["spec"]["sizing"]["max_positions"],
         "backtest": {"out_of_sample": res.get("out_of_sample"), "capital": res.get("capital")},
     }
@@ -288,7 +363,17 @@ def models(ctx: Ctx):
 
 
 def list_runs(ctx: Ctx):
-    return {"runs": repo.list_runs(ctx.cur, ctx.uid), "counts": repo.active_run_counts(ctx.cur, ctx.uid)}
+    # The self-evolving exploration policy (Tau-RSI), summarized read-only for the research
+    # index so the cockpit can show the engine getting smarter — same shape as get_run's rsi
+    # block (minus the per-run dream line), so the client renders both the same way.
+    pol = repo.get_policy(ctx.cur, ctx.uid)
+    policy = {"evolved": bool(pol),
+              "score": round(float(pol["score"]), 2) if pol else None,
+              "base_score": round(pol["base_score"], 2) if (pol and pol.get("base_score") is not None) else None,
+              "summary": pol.get("summary") if pol else None,
+              "evolved_at": pol["updated_at"] if pol else None}
+    return {"runs": repo.list_runs(ctx.cur, ctx.uid), "counts": repo.active_run_counts(ctx.cur, ctx.uid),
+            "policy": policy}
 
 
 def get_run(ctx: Ctx):
@@ -305,12 +390,26 @@ def get_run(ctx: Ctx):
         "run": run,
         "events": repo.run_events(ctx.cur, run["id"], after),
         "strategies": [_strategy_card(s) for s in strategies if s["run_id"] == run["id"]],
-        "rsi": {"evolved": bool(pol), "score": round(float(pol["score"]), 2) if pol else None,
-                "base_score": round(pol["base_score"], 2) if (pol and pol.get("base_score") is not None) else None,
-                "summary": pol.get("summary") if pol else None,
-                "evolved_at": pol["updated_at"] if pol else None,
-                "last_dream": dream["message"] if dream else None,
-                "last_dream_at": dream["created_at"] if dream else None},
+        "rsi": _rsi_block(pol, dream),
+    }
+
+
+def _rsi_block(pol: Optional[Dict], dream: Optional[Dict]) -> Dict:
+    """Shape the Tau-RSI exploration-policy panel for the research page: whether the
+    user's search policy has evolved, its lineage (prior score -> new score, when it
+    was adopted), the plain-English summary of what it changed, and the FULL policy
+    SOURCE so the user can inspect the actual decision rules. Falls back to the default
+    policy's source when none has evolved yet, so there is always something to inspect.
+    The policy is pure, sandboxed Python over the user's own history — it holds no secrets."""
+    return {
+        "evolved": bool(pol),
+        "score": round(float(pol["score"]), 2) if pol else None,
+        "base_score": round(pol["base_score"], 2) if (pol and pol.get("base_score") is not None) else None,
+        "summary": pol.get("summary") if pol else None,
+        "evolved_at": pol["updated_at"] if pol else None,
+        "code": pol["code"] if pol else dreaming.DEFAULT_POLICY_SRC,
+        "last_dream": dream["message"] if dream else None,
+        "last_dream_at": dream["created_at"] if dream else None,
     }
 
 
@@ -370,7 +469,7 @@ def _require_research_capacity(ctx: Ctx) -> None:
     _require_billing_ready(ctx, "researching")
     if repo.count_runs(ctx.cur, ctx.uid, "research", active_only=True) >= MAX_ACTIVE_RESEARCH:
         raise ApiError(429, "You already have %d agents researching. Wait for one to finish." % MAX_ACTIVE_RESEARCH)
-    if repo.count_runs(ctx.cur, ctx.uid, "research", since=repo.now_utc() - timedelta(days=1)) >= MAX_RESEARCH_PER_DAY:
+    if MAX_RESEARCH_PER_DAY and repo.count_runs(ctx.cur, ctx.uid, "research", since=repo.now_utc() - timedelta(days=1)) >= MAX_RESEARCH_PER_DAY:
         raise ApiError(429, "Daily research limit reached (%d). It resets over the next 24 hours." % MAX_RESEARCH_PER_DAY)
 
 
@@ -607,11 +706,12 @@ def _rationale(raw) -> Dict:
     }
 
 
-def _experiment_block(cur, strategy_id: int) -> Optional[Dict]:
+def _experiment_block(cur, strategy_id: int, experiment_id: Optional[int] = None) -> Optional[Dict]:
     """The §D research-paper `experiment` block for a strategy, or None when the strategy
-    predates the rigorous-research pipeline (no ledger row). Additive by design: a None
-    here leaves the rest of the detail page intact — never a regression for old strategies."""
-    rec = research_repo.experiments_for_strategy(cur, strategy_id)
+    predates the rigorous-research pipeline (no ledger row). Resolves by the strategy's stored
+    experiment_id first (robust link), falling back to the legacy strategy_id lookup. Additive by
+    design: a None here leaves the rest of the detail page intact — never a regression."""
+    rec = research_repo.experiments_for_strategy(cur, strategy_id, experiment_id)
     if not rec:
         return None
     exp = rec["experiment"]
@@ -653,7 +753,7 @@ def get_strategy(ctx: Ctx):
     out.update(
         spec=s["spec"], rules=specmod.describe(s["spec"]), gates=res.get("gates"), dataset=res.get("dataset"),
         recent_trades=res.get("recent_trades"),
-        experiment=_experiment_block(ctx.cur, s["id"]),
+        experiment=_experiment_block(ctx.cur, s["id"], s.get("experiment_id")),
         deployments=[_deployment_out(d, []) for d in repo.list_deployments(ctx.cur, ctx.uid) if d["strategy_id"] == s["id"]],
         holdings=[{
             "ticker": p["ticker"], "side": p["side"], "qty": int(p["qty"]), "mode": p["mode"],
@@ -732,8 +832,10 @@ def create_deployment(ctx: Ctx):
                             "deployment isn't open for it yet." % mkt.label)
     if mode not in ("paper", "live", "demo"):
         raise ApiError(400, "Choose paper, demo or live.")
-    # Cross-contract pairs deploy on paper/demo only (single-market cross_strike/calendar); live
-    # and cross-market pairs are refused. Additive and fail-closed — never weakens a live gate.
+    # Cross-contract deploy gate. Single-market cross (cross_strike/calendar) deploys on paper/demo.
+    # Multi-market cross (relative value across DIFFERENT markets) deploys in any mode only when
+    # every leg is deployable and the legs share a cadence (it rides engine.tick_cross_markets).
+    # Additive and fail-closed — every real-money live guard below still runs, in order, unweakened.
     cross_block = engine.cross_deploy_block(s["spec"], mode)
     if cross_block:
         raise ApiError(409, cross_block)
@@ -829,8 +931,9 @@ def settings(ctx: Ctx):
         on = ctx.body["autopilot"] is True
         repo.set_autopilot(ctx.cur, ctx.uid, on)
         repo.add_chat(ctx.cur, ctx.uid, "system",
-                      "Autopilot is %s." % ("ON: the agent may adjust and deploy paper strategies itself, and pause anything"
-                                             if on else "OFF: the agent will only propose"))
+                      "Autopilot is %s." % ("ON: the agent may research, deploy and tune paper strategies, pause anything, "
+                                             "and adjust your risk and execution controls itself — all within safe bounds"
+                                             if on else "OFF: the agent will only propose; you approve every change"))
         if not on:  # turning off autopilot also turns off live autopilot (it depends on it)
             repo.set_autopilot_live(ctx.cur, ctx.uid, False)
     return {"ok": True}
@@ -850,8 +953,14 @@ def autopilot_live(ctx: Ctx):
         if not ctx.user.get("autopilot"):
             raise ApiError(400, "Turn on autopilot first — live autopilot builds on it.")
     repo.set_autopilot_live(ctx.cur, ctx.uid, on)
-    repo.add_chat(ctx.cur, ctx.uid, "system",
-                  "LIVE autopilot is %s." % ("ON — the agent may promote proven YES-side paper strategies to real money, within your caps and loss guard." if on else "OFF."))
+    if on:
+        sides = "paper strategies of any side (YES or NO)" if engine.NO_SIDE_LIVE_ENABLED else \
+                "proven YES-side paper strategies (NO-side is still being validated)"
+        msg = "LIVE autopilot is ON — the agent may promote %s to real money, and tune your risk, " \
+              "execution and strategy parameters, all within your caps and loss guard." % sides
+    else:
+        msg = "LIVE autopilot is OFF."
+    repo.add_chat(ctx.cur, ctx.uid, "system", msg)
     return {"ok": True, "autopilot_live": on}
 
 
@@ -873,6 +982,7 @@ def autopilot_status(ctx: Ctx):
     deps = repo.list_deployments(cur, ctx.uid)
     live_run = [d for d in deps if d["mode"] == "live" and d["status"] == "running"]
     paper_run = [d for d in deps if d["mode"] == "paper" and d["status"] == "running"]
+    demo_run = [d for d in deps if d["mode"] == "demo" and d["status"] == "running"]
     gates_ok = bool(engine.LIVE_TRADING_ENABLED and repo.get_kalshi_key(cur, ctx.uid) is not None)
     live_on = bool(u.get("autopilot_live")) and gates_ok and bool(u.get("autopilot"))
     mode = "live" if (live_on and live_run) else ("live-armed" if live_on else ("paper" if u.get("autopilot") else "off"))
@@ -884,7 +994,7 @@ def autopilot_status(ctx: Ctx):
         "live_enabled": bool(engine.LIVE_TRADING_ENABLED),
         "kalshi_connected": repo.get_kalshi_key(cur, ctx.uid) is not None,
         "mode": mode,
-        "live_running": len(live_run), "paper_running": len(paper_run),
+        "live_running": len(live_run), "paper_running": len(paper_run), "demo_running": len(demo_run),
         "today_live_pnl": today_live,
         "daily_loss_limit": limit,
         "loss_headroom": round(max(0.0, limit + min(0.0, today_live)), 2),  # how much loss budget is left today
@@ -1588,6 +1698,49 @@ def explore_hot(ctx: Ctx):
     return {"at": data.get("at"), "markets": hot}
 
 
+def _feed_mid(m: Dict) -> Optional[float]:
+    """Mid (0..1 probability) for one explore-feed contract: the bid/ask midpoint, else last."""
+    b, a = _efloat(m.get("bid")), _efloat(m.get("ask"))
+    if b > 0 and a > 0:
+        return round((b + a) / 2, 4)
+    last = _efloat(m.get("last"))
+    return round(last, 4) if last > 0 else None
+
+
+def _research_context(feed_markets: List[Dict]) -> List[Dict]:
+    """Fold the cached explore feed down to just the markets research can target: per
+    researchable series, the live activity (contracts live + 24h volume + open interest)
+    and the most-active contract's mid + price trace. Read-only — no DB, no orders — so the
+    dispatch picker shows what's liquid/moving instead of being chosen blind. Markets with
+    nothing in the feed are simply omitted; as the market universe grows this needs no change."""
+    by_series: Dict[str, List[Dict]] = {}
+    for m in feed_markets:
+        s = m.get("s")
+        if s:
+            by_series.setdefault(s, []).append(m)
+    out: List[Dict] = []
+    for mk in MARKETS.values():
+        rows = by_series.get(mk.series)
+        if not rows:
+            continue
+        top = max(rows, key=lambda r: _efloat(r.get("v24")))
+        out.append({
+            "key": mk.key, "series": mk.series, "label": mk.label,
+            "contracts": len(rows),
+            "vol24": round(sum(_efloat(r.get("v24")) for r in rows)),
+            "oi": round(sum(_efloat(r.get("oi")) for r in rows)),
+            "mid": _feed_mid(top), "trace": top.get("h") or [],
+        })
+    out.sort(key=lambda r: r["vol24"], reverse=True)
+    return out
+
+
+def research_context(ctx: Ctx):
+    """Live book context for the researchable markets, for the Research cockpit's picker."""
+    data = _explore_feed()
+    return {"at": data.get("at"), "markets": _research_context(data.get("markets") or [])}
+
+
 def _cnum(x) -> Optional[float]:
     try:
         return float(x)
@@ -1648,10 +1801,15 @@ ROUTES: List[Route] = [
         ("POST", "/api/logout", logout, False),
         ("POST", "/api/waitlist", waitlist, False),
         ("GET", "/api/me", me, True),
+        ("GET", "/api/brokers", broker_connections, True),
+        ("POST", r"/api/brokers/(alpaca|robinhood|ibkr)/connect", broker_connect, True),
+        ("POST", r"/api/brokers/(alpaca|robinhood|ibkr)/disconnect", broker_disconnect, True),
+        ("GET", r"/auth/brokers/(alpaca|robinhood|ibkr)/callback", broker_callback, True),
         ("GET", "/api/dashboard", dashboard, True),
         ("GET", "/api/explore", explore_list, True),
         ("GET", "/api/explore/hot", explore_hot, True),
         ("GET", "/api/explore/market", explore_market, True),
+        ("GET", "/api/research/context", research_context, True),
         ("GET", "/api/models", models, True),
         ("GET", "/api/runs", list_runs, True),
         ("POST", "/api/runs", create_run, True),
@@ -1716,7 +1874,7 @@ ROUTES: List[Route] = [
 
 def _static_versions() -> Dict[str, str]:
     out = {}
-    for name in ("app.css", "app.js", "session-data.js", "session-chat.js", "research-artifacts.js", "icon.svg", "app.meridian.css", "app.meridian.js", "boot.js"):
+    for name in ("app.css", "app.js", "session-data.js", "session-chat.js", "research-artifacts.js", "broker-connections.js", "broker-connections.css", "icon.svg", "app.meridian.css", "app.meridian.js", "boot.js"):
         p = STATIC_DIR / name
         out[name] = hashlib.sha256(p.read_bytes()).hexdigest()[:10] if p.exists() else "0"
     return out
@@ -1773,6 +1931,8 @@ class Handler(BaseHTTPRequestHandler):
                     .replace("{{session_v}}", versions["session-data.js"])
                     .replace("{{chat_v}}", versions["session-chat.js"])
                     .replace("{{artifacts_v}}", versions["research-artifacts.js"])
+                    .replace("{{brokers_v}}", versions["broker-connections.js"])
+                    .replace("{{brokers_css_v}}", versions["broker-connections.css"])
                     .replace("{{icon_v}}", versions["icon.svg"])
                     .replace("{{meridian_css_v}}", versions["app.meridian.css"])
                     .replace("{{meridian_js_v}}", versions["app.meridian.js"])
@@ -1863,7 +2023,10 @@ class Handler(BaseHTTPRequestHandler):
                 user = repo.session_user(conn.cursor(), auth.hash_token(token))
             if needs_user and user is None:
                 raise ApiError(401, "Please sign in.")
-            query = {k: v[0] for k, v in parse_qs(parsed.query).items()}
+            parsed_query = parse_qs(parsed.query, keep_blank_values=path.startswith("/auth/brokers/"))
+            if path.startswith("/auth/brokers/") and any(len(v) != 1 for v in parsed_query.values()):
+                raise ApiError(400, "Ambiguous brokerage callback. Please reconnect.")
+            query = {k: v[0] for k, v in parsed_query.items()}
             ctx = Ctx(conn, user, params, query, body, self)
             result = fn(ctx)
             if isinstance(result, tuple) and result and result[0] == "image":
@@ -1887,6 +2050,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(302)
                 self.send_header("Location", result[1])
                 self.send_header("Cache-Control", "no-store")
+                self.send_header("Referrer-Policy", "no-referrer")
+                self.send_header("X-Content-Type-Options", "nosniff")
                 for c in ctx.set_cookies:
                     self.send_header("Set-Cookie", c)
                 self.send_header("Content-Length", "0")

@@ -207,6 +207,8 @@ def test_actual_copilot_entrypoint_can_request_historical_stock_context(monkeypa
     monkeypatch.setattr(agent.repo, "chat_messages", lambda *args, **kwargs: [{"role": "user", "content": "Check SPY history."}])
     monkeypatch.setattr(agent.repo, "list_deployments", lambda *args: [])
     monkeypatch.setattr(agent.repo, "list_strategies", lambda *args, **kwargs: [])
+    monkeypatch.setattr(agent.repo, "user_risk_config", lambda *args: {})
+    monkeypatch.setattr(agent.repo, "user_execution_config", lambda *args: {})
     monkeypatch.setattr(agent.repo, "add_chat", lambda *args: saved.append(args))
     monkeypatch.setattr(agent.repo, "add_event", lambda *args: None)
     monkeypatch.setattr(agent.repo, "finish_run", lambda *args: None)

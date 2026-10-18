@@ -25,3 +25,6 @@ scripts/scrub_secrets.env
 # local session/worktree artifacts
 .claude/
 OPEN_SOURCE_AUDIT.md
+# internal security/audit docs — describe live-money weaknesses; never publish
+EXECUTION_RISK_HARDENING.md
+CODEBASE_REVIEW.md
