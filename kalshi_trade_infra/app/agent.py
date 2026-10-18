@@ -28,6 +28,7 @@ import logging
 import os
 import threading
 import time
+from contextlib import contextmanager
 from collections import defaultdict
 from datetime import timedelta
 from typing import Callable, Dict, List, Optional, Tuple
@@ -976,8 +977,35 @@ def _promote_if_forward_validated(cur, user_id: int, experiment_id: int, finalis
         {"title": t["title"], "phase": "forward", "marginal_ok": ok, "classification": final})
 
 
+@contextmanager
+def _gate_tx(conn):
+    """One atomic transaction for a chunk's ENTIRE write-section: freeze/pre-register the finalists,
+    the gatekeeper's validation judging (which advances the LORD++ FDR stream + appends verdict
+    rows), the strategy outcomes, and — last — the checkpoint's gate-cursor advance. All of it
+    commits together or rolls back together, so a reclaim NEVER sees a half-judged chunk: either the
+    whole chunk is gated AND the cursor moved past it (resume skips it), or nothing landed and the
+    cursor still points at it (resume re-gates from the saved theses, re-pre-register being
+    idempotent and the never-judged experiments invisible to the trial count). This is what proves
+    resuming can't double-count a trial or double-spend alpha — it contains NO long model calls (the
+    challenger ran before it), only fast DB writes + the in-memory validation backtests.
+
+    On a real pymysql connection this is BEGIN..COMMIT/ROLLBACK. On a stub/None connection (unit
+    tests, which stub the ledger writes and tolerate per-statement commits) it degrades to the plain
+    cursor — the atomicity only matters against a real crash mid-commit, which tests don't exercise."""
+    if conn is not None and hasattr(conn, "begin"):
+        try:
+            conn.ping(reconnect=True)  # heal a connection the minutes-long challenger may have idled out
+        except Exception:
+            pass
+        with repo.transaction(conn) as cur:
+            yield cur
+    else:
+        yield conn.cursor() if conn is not None else None
+
+
 def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk: List[Dict], log,
-                   policy: exploration.ExplorationPolicy, model: ModelFn, usage: Usage, conn=None) -> int:
+                   policy: exploration.ExplorationPolicy, model: ModelFn, usage: Usage, conn=None,
+                   mark_gated=None) -> int:
     """The HAND-OFF (§B.5 step 3): freeze the finalists, let the Challenger review them, then
     hand the approved ones to the Statistical Gatekeeper for validation. The generator never
     runs a backtest on validation data and only ever receives a classification LABEL back — the
@@ -993,124 +1021,139 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
     state = exploration.PolicyState(proposed=len(chunk), budget=len(chunk), round=0)
     finalists = policy.select_finalists(chunk, state)
     verdicts = _challenge(finalists, run, model, usage, log)
-    # The challenger is a minutes-long model call; reconnect before the inserts that follow so a
-    # dropped idle connection doesn't fail (and bill) the whole run.
-    cur = _reconnect(conn, cur)
-    log("step", "Froze %d finalist%s; the challenger reviewed each before any validation budget was spent."
-        % (len(finalists), "" if len(finalists) == 1 else "s"),
-        {"phase": "gating", "finalists": len(finalists)})
+    # Everything below is the chunk's one atomic write-section (see _gate_tx): the pre-registrations,
+    # the gatekeeper's validation judging (which spends FDR alpha) and the gate-cursor advance all
+    # commit together, so a reclaim can never re-judge a chunk that was already (fully or partly)
+    # judged. The challenger above ran OUTSIDE it — it's the only minutes-long call here.
+    with _gate_tx(conn) as cur:
+        log("step", "Froze %d finalist%s; the challenger reviewed each before any validation budget was spent."
+            % (len(finalists), "" if len(finalists) == 1 else "s"),
+            {"phase": "gating", "finalists": len(finalists)})
 
-    approved: List[Dict] = []
-    exp_ids: List[int] = []
-    payload: List[Dict] = []
-    for t, verdict in zip(finalists, verdicts):
-        spec = t["spec"]
-        if verdict["decision"] == "revise" and verdict.get("fixes"):
-            # Strip any frozen params before re-validating (validate() rejects unknown fields and
-            # params is system-set, never agent-set), then RE-FREEZE: the revise may have changed
-            # the code, so the model must be re-fit on research to stay consistent with the frozen
-            # spec that gets pre-registered. No-op freeze for DSL / pure-rule code specs.
-            base = {k: v for k, v in spec.items() if k != "params"}
-            try:
-                revised = specmod.validate(_deep_merge(base, verdict["fixes"]))
-                spec = backtest.freeze_code_model(revised, ds) if specmod.is_code_spec(revised) else revised
-            except specmod.SpecError:
-                spec = t["spec"]  # keep the frozen original if the patch is invalid
-        if verdict["decision"] == "reject":
-            # Killed before testing. Recorded in the ledger (as a rejected strategy row with the
-            # challenger's reason); NEVER pre-registered and NEVER validation-tested — the
-            # statistical budget is untouched (§C).
+        approved: List[Dict] = []
+        exp_ids: List[int] = []
+        payload: List[Dict] = []
+        for t, verdict in zip(finalists, verdicts):
+            spec = t["spec"]
+            if verdict["decision"] == "revise" and verdict.get("fixes"):
+                # Strip any frozen params before re-validating (validate() rejects unknown fields and
+                # params is system-set, never agent-set), then RE-FREEZE: the revise may have changed
+                # the code, so the model must be re-fit on research to stay consistent with the frozen
+                # spec that gets pre-registered. No-op freeze for DSL / pure-rule code specs.
+                base = {k: v for k, v in spec.items() if k != "params"}
+                try:
+                    revised = specmod.validate(_deep_merge(base, verdict["fixes"]))
+                    spec = backtest.freeze_code_model(revised, ds) if specmod.is_code_spec(revised) else revised
+                except specmod.SpecError:
+                    spec = t["spec"]  # keep the frozen original if the patch is invalid
+            if verdict["decision"] == "reject":
+                # Killed before testing. Recorded in the ledger (as a rejected strategy row with the
+                # challenger's reason); NEVER pre-registered and NEVER validation-tested — the
+                # statistical budget is untouched (§C).
+                t["strategy_id"] = repo.insert_strategy(
+                    cur, user_id, run_id, parent, market, direction, t["title"], t["thesis"], spec,
+                    "rejected", _result_block(s, t, "challenger_rejected", verdict.get("reason")))
+                log("verdict", "REJECTED (challenger) - %s: %s"
+                    % (t["title"], verdict.get("reason") or "no credible mechanism"),
+                    {"title": t["title"], "status": "rejected", "strategy_id": t["strategy_id"]})
+                continue
+            # Surface the challenger's APPROVE/REVISE call too (reject already logs above), so the
+            # live feed shows the skeptic's verdict on every finalist, not only the kills.
+            if verdict.get("reason"):
+                log("challenger", "Challenger %s - %s: %s"
+                    % ("revised" if verdict["decision"] == "revise" else "approved", t["title"], verdict["reason"]),
+                    {"title": t["title"], "decision": verdict["decision"]})
+            # Insert the strategy row FIRST (provisional) so the immutable experiment can carry its
+            # strategy_id, then pre-register the frozen hypothesis.
+            sid = repo.insert_strategy(cur, user_id, run_id, parent, market, direction, t["title"],
+                                       t["thesis"], spec, "pending", _result_block(s, t, "promising"))
+            t["strategy_id"] = sid
+            # A cross-contract spec pre-registers against the MERGED partition of its legs; a single-
+            # contract spec against the run's partition (unchanged).
+            part = partitions.ensure_merged_partition(cur, specmod.involved_markets(spec)) \
+                if specmod.is_cross_contract(spec) else partition
+            exp_ids.append(gatekeeper.preregister(cur, _prereg(t, spec, run, part, len(finalists), verdict, sid)))
+            payload.append({"spec": spec, "user_id": user_id, "market": market,
+                            "min_sample": int(t.get("min_sample") or 30)})
+            approved.append(t)
+
+        passed = 0
+        if approved:
+            # Judge per FDR stream: single-contract finalists share the run market's validation
+            # window (one group, one BH family — unchanged); each cross-contract stream is judged on
+            # its OWN merged validation window and spends its own shared budget.
+            by_stream: Dict[str, List[int]] = defaultdict(list)
+            for i, pay in enumerate(payload):
+                by_stream[specmod.stream_key(pay["spec"])].append(i)
+            for idxs in by_stream.values():
+                spec0 = payload[idxs[0]]["spec"]
+                if specmod.is_cross_contract(spec0):
+                    val_ds = partitions.merged_dataset(cur, specmod.involved_markets(spec0), "validation")
+                else:
+                    val_ds = backtest.partition_dataset(market, partition, "validation")
+                outcomes = gatekeeper.judge_batch(cur, run_id, [exp_ids[i] for i in idxs],
+                                                  [payload[i] for i in idxs], val_ds)
+                for i, outcome in zip(idxs, outcomes):
+                    t = approved[i]
+                    cls = outcome["classification"]
+                    status = _status_for(cls)
+                    passed += status == "passed"
+                    repo.set_strategy_outcome(cur, t["strategy_id"], status, _result_block(s, t, cls), exp_ids[i])
+                    # The stats go to the FEED (the user's own results, same as the strategy page) — NOT
+                    # into _result_block, which feeds strategy_memory back to the GENERATOR. The generator
+                    # stays blind to the held-out numbers (closes Leak 2); the human watching does not.
+                    log("verdict", "%s - %s: validation verdict is gatekeeper-held (classification=%s, "
+                                   "%s trades); the numbers never return to the generator."
+                        % (status.upper(), t["title"], cls, outcome.get("n_trades", 0)),
+                        {"title": t["title"], "status": status, "classification": cls,
+                         "strategy_id": t["strategy_id"], "stats": {
+                             "n_trades": outcome.get("n_trades"), "p_value": outcome.get("p_value"),
+                             "dsr": outcome.get("dsr"), "psr": outcome.get("psr"),
+                             "sharpe": outcome.get("sharpe"), "ci": outcome.get("ci"),
+                             "mean_net_return": outcome.get("mean_net_return"),
+                             "placebo_p": outcome.get("placebo_p"),
+                             "max_drawdown": outcome.get("max_drawdown"),
+                             "cross_day_ok": outcome.get("cross_day_ok")}})
+                    # §E.5 promotion: a validation pass earns the ONE-TIME Locked-Holdout look and,
+                    # if it forward-validates, the diversification gate that mints a DEPLOYMENT_CANDIDATE.
+                    # Like validation, every number stays gatekeeper-held (feed + ledger only).
+                    if cls == gatekeeper.Classification.STAT_SUPPORTED.value:
+                        _promote_if_forward_validated(cur, user_id, exp_ids[i], payload[i], t, log)
+
+        for t in chunk:
+            if t in finalists:
+                continue
+            ins = t["in_sample"] or {}
             t["strategy_id"] = repo.insert_strategy(
-                cur, user_id, run_id, parent, market, direction, t["title"], t["thesis"], spec,
-                "rejected", _result_block(s, t, "challenger_rejected", verdict.get("reason")))
-            log("verdict", "REJECTED (challenger) - %s: %s"
-                % (t["title"], verdict.get("reason") or "no credible mechanism"),
+                cur, user_id, run_id, parent, market, direction, t["title"], t["thesis"], t["spec"],
+                "rejected", _result_block(s, t, "not_finalist"))
+            log("verdict", "REJECTED - %s: not a finalist, so never tested on unseen data "
+                           "(research pnl $%s over %s trades)." % (t["title"], ins.get("pnl"), ins.get("trades")),
                 {"title": t["title"], "status": "rejected", "strategy_id": t["strategy_id"]})
-            continue
-        # Surface the challenger's APPROVE/REVISE call too (reject already logs above), so the
-        # live feed shows the skeptic's verdict on every finalist, not only the kills.
-        if verdict.get("reason"):
-            log("challenger", "Challenger %s - %s: %s"
-                % ("revised" if verdict["decision"] == "revise" else "approved", t["title"], verdict["reason"]),
-                {"title": t["title"], "decision": verdict["decision"]})
-        # Insert the strategy row FIRST (provisional) so the immutable experiment can carry its
-        # strategy_id, then pre-register the frozen hypothesis.
-        sid = repo.insert_strategy(cur, user_id, run_id, parent, market, direction, t["title"],
-                                   t["thesis"], spec, "pending", _result_block(s, t, "promising"))
-        t["strategy_id"] = sid
-        # A cross-contract spec pre-registers against the MERGED partition of its legs; a single-
-        # contract spec against the run's partition (unchanged).
-        part = partitions.ensure_merged_partition(cur, specmod.involved_markets(spec)) \
-            if specmod.is_cross_contract(spec) else partition
-        exp_ids.append(gatekeeper.preregister(cur, _prereg(t, spec, run, part, len(finalists), verdict, sid)))
-        payload.append({"spec": spec, "user_id": user_id, "market": market,
-                        "min_sample": int(t.get("min_sample") or 30)})
-        approved.append(t)
-
-    passed = 0
-    if approved:
-        # Judge per FDR stream: single-contract finalists share the run market's validation
-        # window (one group, one BH family — unchanged); each cross-contract stream is judged on
-        # its OWN merged validation window and spends its own shared budget.
-        by_stream: Dict[str, List[int]] = defaultdict(list)
-        for i, pay in enumerate(payload):
-            by_stream[specmod.stream_key(pay["spec"])].append(i)
-        for idxs in by_stream.values():
-            spec0 = payload[idxs[0]]["spec"]
-            if specmod.is_cross_contract(spec0):
-                val_ds = partitions.merged_dataset(cur, specmod.involved_markets(spec0), "validation")
-            else:
-                val_ds = backtest.partition_dataset(market, partition, "validation")
-            outcomes = gatekeeper.judge_batch(cur, run_id, [exp_ids[i] for i in idxs],
-                                              [payload[i] for i in idxs], val_ds)
-            for i, outcome in zip(idxs, outcomes):
-                t = approved[i]
-                cls = outcome["classification"]
-                status = _status_for(cls)
-                passed += status == "passed"
-                repo.set_strategy_outcome(cur, t["strategy_id"], status, _result_block(s, t, cls), exp_ids[i])
-                # The stats go to the FEED (the user's own results, same as the strategy page) — NOT
-                # into _result_block, which feeds strategy_memory back to the GENERATOR. The generator
-                # stays blind to the held-out numbers (closes Leak 2); the human watching does not.
-                log("verdict", "%s - %s: validation verdict is gatekeeper-held (classification=%s, "
-                               "%s trades); the numbers never return to the generator."
-                    % (status.upper(), t["title"], cls, outcome.get("n_trades", 0)),
-                    {"title": t["title"], "status": status, "classification": cls,
-                     "strategy_id": t["strategy_id"], "stats": {
-                         "n_trades": outcome.get("n_trades"), "p_value": outcome.get("p_value"),
-                         "dsr": outcome.get("dsr"), "psr": outcome.get("psr"),
-                         "sharpe": outcome.get("sharpe"), "ci": outcome.get("ci"),
-                         "mean_net_return": outcome.get("mean_net_return"),
-                         "placebo_p": outcome.get("placebo_p"),
-                         "max_drawdown": outcome.get("max_drawdown"),
-                         "cross_day_ok": outcome.get("cross_day_ok")}})
-                # §E.5 promotion: a validation pass earns the ONE-TIME Locked-Holdout look and,
-                # if it forward-validates, the diversification gate that mints a DEPLOYMENT_CANDIDATE.
-                # Like validation, every number stays gatekeeper-held (feed + ledger only).
-                if cls == gatekeeper.Classification.STAT_SUPPORTED.value:
-                    _promote_if_forward_validated(cur, user_id, exp_ids[i], payload[i], t, log)
-
-    for t in chunk:
-        if t in finalists:
-            continue
-        ins = t["in_sample"] or {}
-        t["strategy_id"] = repo.insert_strategy(
-            cur, user_id, run_id, parent, market, direction, t["title"], t["thesis"], t["spec"],
-            "rejected", _result_block(s, t, "not_finalist"))
-        log("verdict", "REJECTED - %s: not a finalist, so never tested on unseen data "
-                       "(research pnl $%s over %s trades)." % (t["title"], ins.get("pnl"), ins.get("trades")),
-            {"title": t["title"], "status": "rejected", "strategy_id": t["strategy_id"]})
+        # LAST statement in the transaction: advance the checkpoint past this now-fully-gated chunk.
+        # Atomic with the judging above — commit together or roll back together — which is what makes
+        # a resume unable to re-judge a chunk (see _gate_tx / run_research.mark_gated).
+        if mark_gated is not None:
+            mark_gated(cur, passed)
     return passed
 
 
 def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkpoint, budget, tried,
-                      policy: exploration.ExplorationPolicy, conn=None, knowledge=None, news=None) -> Tuple[int, int]:
+                      policy: exploration.ExplorationPolicy, conn=None, knowledge=None, news=None,
+                      resume_chunk=None, resume_round=0, save_progress=None, mark_gated=None) -> Tuple[int, int]:
     """Explore NEW hypotheses on the Research partition (small refining rounds the policy
     sizes), then hand the finalists to the challenger + gatekeeper. Appends to the shared
-    `tried` so progress survives a cancel/error."""
+    `tried` so progress survives a cancel/error.
+
+    On a RESUME, `resume_chunk` seeds the already-developed (not-yet-gated) theses and `resume_round`
+    the round cursor, so this picks up proposing where it left off instead of re-developing them —
+    the policy's `proposed=len(chunk)` then sizes the remaining batches toward `budget` exactly as an
+    uninterrupted run would. `save_progress(chunk, round_no)` persists the in-progress chunk as each
+    thesis is developed (so a crash doesn't discard that model work); `mark_gated` advances the
+    checkpoint cursor atomically inside the gate transaction."""
     market = run["market"]
-    chunk: List[Dict] = []
-    round_no = 0
+    chunk: List[Dict] = list(resume_chunk) if resume_chunk else []
+    round_no = int(resume_round or 0)
     merged_cache: Dict[str, Tuple] = {}  # stream_key -> (merged research ds, embargo) for cross specs
     market_data = AgentMarketData(DataScope.research(ds.start_ts, ds.cutoff_ts), log, checkpoint)
     # Stream the proposer's generation into the feed so the multi-minute call isn't a silent gap.
@@ -1150,10 +1193,15 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
             t["score"] = backtest.score(t["in_sample"])  # attach once, so the policy needs no backtester
             chunk.append(t)
             tried.append(t)
+            # Durable checkpoint: persist the developed theses + round cursor as they land, so a
+            # reclaim re-uses this (expensive) model work instead of re-exploring from scratch.
+            if save_progress is not None:
+                save_progress(chunk, round_no)
     challenger = news.wrap(model, usage) if news is not None else model
     if knowledge is not None:
         challenger = knowledge.wrap(challenger, usage)
-    return len(chunk), _gate_and_save(cur, run, ds, partition, chunk, log, policy, challenger, usage, conn)
+    return len(chunk), _gate_and_save(cur, run, ds, partition, chunk, log, policy, challenger, usage,
+                                      conn, mark_gated=mark_gated)
 
 
 def _call_with_timeout(label: str, seconds: float, fn, *args, beat=None, beat_every: float = 5.0, **kwargs):
@@ -1294,6 +1342,41 @@ def run_research(
     # default if they have none yet. A new run then dreams up a better one (below).
     policy = dreaming.current_policy(cur, user_id)
 
+    # Emergency recovery: a reclaimed run (worker crash / deploy restart / watchdog reap) re-enters
+    # here with its exploration already persisted. Load the checkpoint so we resume from the saved
+    # cursor instead of re-spending the model credits already explored; a fresh run has none.
+    _ck = repo.load_checkpoint(cur, run_id)
+    resuming = _ck is not None
+    if resuming:
+        tried = list(_ck.get("tried") or [])
+    resume_chunk = list(_ck.get("chunk") or []) if resuming else []
+    resume_round = int(_ck.get("round_no") or 0) if resuming else 0
+    # Live mirror of what's persisted; save_progress / mark_gated mutate it and flush. `tried` is the
+    # SAME list object _explore_and_gate appends to, so ckpt["tried"] always reflects the latest.
+    ckpt = {
+        "chunks_done": int((_ck or {}).get("chunks_done") or 0),
+        "total_passed": int((_ck or {}).get("total_passed") or 0),
+        "tried": tried, "chunk": resume_chunk, "round_no": resume_round,
+        "market": (_ck or {}).get("market"), "lookback": (_ck or {}).get("lookback"),
+    }
+
+    def save_progress(chunk: List[Dict], round_no: int) -> None:
+        """Persist the in-progress (not-yet-gated) chunk as each thesis develops, so a reclaim
+        re-uses that model work. An autocommit write OUTSIDE the gate transaction — ckpt["chunk"] is
+        the 'un-gated work' marker that mark_gated clears atomically once the chunk is judged."""
+        ckpt["chunk"], ckpt["round_no"], ckpt["tried"] = chunk, round_no, tried
+        repo.save_checkpoint(cur, run_id, ckpt)
+
+    def mark_gated(gate_cur, passed: int) -> None:
+        """The LAST write inside the gate transaction: advance the cursor past a now-fully-gated
+        chunk and clear the in-progress chunk, atomically with that chunk's judging. A resume then
+        either skips the chunk (cursor moved) or re-gates it from the saved theses (rolled back) —
+        it can never re-judge, so no trial is double-counted and no FDR alpha double-spent."""
+        ckpt["chunks_done"] += 1
+        ckpt["total_passed"] += passed
+        ckpt["chunk"], ckpt["round_no"], ckpt["tried"] = [], 0, tried
+        repo.save_checkpoint(gate_cur, run_id, ckpt)
+
     paused_at = [0.0]  # when the current pause began (0 = not paused); list so the closure can mutate it
     # Liveness clock for the background beater: the main thread stamps it on every real step so the
     # beater knows the run is progressing (and a frozen main thread lets it go stale -> reaped).
@@ -1341,12 +1424,17 @@ def run_research(
         # hung one no longer look identical (both used to be silent until the first "Loaded" event,
         # minutes later). This event also bumps the heartbeat (repo.add_event), so the run reads as
         # alive the moment it starts.
-        log("step", "Research started — preparing %s…"
-            % (MARKETS[market].label if market in MARKETS else "the chosen market"),
-            {"phase": "start", "market": market or None})
+        log("step", "%s %s…"
+            % ("Resuming — re-using %d explored hypotheses, preparing" % len(tried) if resuming
+               else "Research started — preparing",
+               MARKETS[market].label if market in MARKETS else "the chosen market"),
+            {"phase": "start", "market": market or None, "resumed": resuming})
         if not market:  # user left it to the agent — it picks the market from the idea first
-            checkpoint()
-            market = _pick_market(run, model, usage, log)
+            if resuming and ckpt.get("market"):
+                market = ckpt["market"]  # already chosen on the first attempt; don't re-spend the pick
+            else:
+                checkpoint()
+                market = _pick_market(run, model, usage, log)
             run = {**run, "market": market}
             repo.set_run_market(cur, run_id, market)
         # A pinned market that has left the live universe (a retired/renamed catalog series) would
@@ -1357,6 +1445,7 @@ def run_research(
         if market not in MARKETS:
             raise LLMError("The market %r is no longer available for research. Pick another market "
                            "and start a new session." % market)
+        ckpt["market"] = market  # persisted with the first save_progress, so a resume keeps this market
         # Freeze the Research/Validation/Holdout split once for the run; the generator may load
         # ONLY the Research window (partitions.research_dataset), and the gatekeeper keeps the
         # validation/holdout keys. Tests inject dataset_fn to supply a synthetic research set.
@@ -1374,7 +1463,11 @@ def run_research(
         # The agent picks the window that fits its thesis; re-load the narrower slice if it
         # chose less, and keep the fuller one if the slice is too thin to be worth it.
         checkpoint()  # a cancel must stop before we spend a model call on planning
-        lookback = _plan_lookback(run, market, model, usage, log)
+        if resuming and ckpt.get("lookback") is not None:
+            lookback = int(ckpt["lookback"])  # chosen on the first attempt; don't re-spend the plan call
+        else:
+            lookback = _plan_lookback(run, market, model, usage, log)
+        ckpt["lookback"] = lookback
         if lookback < MARKETS[market].history_days:
             narrowed = _call_with_timeout("Loading %s data" % MARKETS[market].label, DATA_LOAD_TIMEOUT,
                                           load, market, lookback, beat=lambda: repo.heartbeat(cur, run_id))
@@ -1392,16 +1485,23 @@ def run_research(
             % ("hypotheses until you stop it" if forever else "up to %d hypotheses" % budget,
                " I'll keep going until you stop me." if forever else ""))
 
-        total_passed, tot_in, tot_out, chunks = 0, 0, 0, 0
-        while True:
+        # Counters seed FROM the checkpoint so a resume continues the tally rather than restarting it.
+        total_passed, tot_in, tot_out, chunks = ckpt["total_passed"], 0, 0, ckpt["chunks_done"]
+        # A reclaimed BOUNDED run whose single chunk already gated (cursor moved, no in-progress
+        # chunk) has nothing left to explore — go straight to finish so we never re-gate it.
+        already_complete = (not forever) and chunks >= 1 and not resume_chunk
+        while not already_complete:
             checkpoint()
             # Reload memory each chunk so a run_forever loop learns from the strategies it
             # just saved, instead of re-proposing the same ideas.
             memory = repo.strategy_memory(cur, user_id, market)
             n, passed = _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkpoint,
-                                          budget, tried, policy, conn, knowledge, news)
-            total_passed += passed
-            chunks += 1
+                                          budget, tried, policy, conn, knowledge, news,
+                                          resume_chunk=resume_chunk, resume_round=resume_round,
+                                          save_progress=save_progress, mark_gated=mark_gated)
+            resume_chunk, resume_round = [], 0  # only the first iteration continues a saved chunk
+            # mark_gated advanced these atomically with the chunk's judging; read them back.
+            total_passed, chunks = ckpt["total_passed"], ckpt["chunks_done"]
             # Tau-RSI: dream periodically DURING a long session (not only at the end), so the
             # agent self-improves as its history grows — and the evolved policy drives the very
             # next chunk. Billed with the chunk below; a hiccup never fails the run.

@@ -6,12 +6,18 @@ Datetimes are stored as naive UTC, like the rest of this database.
 from __future__ import annotations
 
 import json
+import os
 import re
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterator, List, Optional
 
 STARTING_PAPER_BALANCE = 1000.0
+
+# How many times a broken research run may be reclaimed + resumed from its checkpoint before it
+# fails for good. Caps a run that keeps wedging at the same spot (a hanging data load) so it can't
+# loop forever re-spending the user's model budget. Env-tunable.
+MAX_RESUMES = int(os.getenv("TAU_RUN_MAX_RESUMES", "3"))
 
 
 def now_utc() -> datetime:
@@ -415,6 +421,22 @@ def update_run_progress(cur, run_id: int, tried: int, passed: int) -> None:
     )
 
 
+def save_checkpoint(cur, run_id: int, checkpoint: Dict[str, Any]) -> None:
+    """Persist a research run's exploration progress so a reclaim resumes from here instead of
+    re-spending the model credits already explored. One compact JSON blob per run (overwritten);
+    the event log already holds the gated hypotheses/verdicts, so this carries only what ISN'T
+    recoverable from events: the in-progress (not-yet-gated) developed theses + the round/chunk
+    cursor + the resolved market/lookback."""
+    cur.execute("UPDATE app_agent_runs SET checkpoint_json=%s WHERE id=%s", (_json(checkpoint), run_id))
+
+
+def load_checkpoint(cur, run_id: int) -> Optional[Dict[str, Any]]:
+    """The saved checkpoint for a run, or None if it never checkpointed (a fresh, never-resumed run)."""
+    cur.execute("SELECT checkpoint_json FROM app_agent_runs WHERE id=%s", (run_id,))
+    row = cur.fetchone()
+    return _loads(row["checkpoint_json"]) if row and row["checkpoint_json"] is not None else None
+
+
 def count_runs(cur, user_id: int, kind: str, since: Optional[datetime] = None, active_only: bool = False) -> int:
     sql = "SELECT COUNT(*) AS n FROM app_agent_runs WHERE user_id=%s AND kind=%s"
     params: List[Any] = [user_id, kind]
@@ -446,20 +468,63 @@ def claim_run(conn, worker_id: str) -> Optional[Dict]:
         return run
 
 
-def fail_abandoned_runs(cur, stale_after: timedelta) -> int:
-    """A run whose worker stopped heart-beating is failed, not retried: a
-    retry would silently spend the user's model budget twice. The message names the silence window
-    and the likely cause so a reaped run is diagnosable, not a generic 'stopped responding'."""
+def _abandoned_msg(stale_after: timedelta) -> str:
     secs = int(stale_after.total_seconds())
     window = ("%d min" % round(secs / 60.0)) if secs >= 90 else ("%ds" % secs)
-    msg = ("No activity for over %s — the session froze (a stalled model call, data load, or "
-           "backtest) and was stopped so it wouldn't hang. Start it again." % window)
+    return ("No activity for over %s — the session froze (a stalled model call, data load, or "
+            "backtest) and was stopped so it wouldn't hang. Start it again." % window)
+
+
+def _has_progress(checkpoint: Optional[Dict[str, Any]]) -> bool:
+    """Real exploration worth resuming: a chunk already gated, or developed theses in hand."""
+    return bool(checkpoint) and bool(
+        checkpoint.get("chunks_done") or checkpoint.get("tried") or checkpoint.get("chunk"))
+
+
+def fail_abandoned_runs(cur, stale_after: timedelta, max_resumes: int = MAX_RESUMES) -> int:
+    """A run whose worker stopped heart-beating (crash, deploy restart, a frozen step the watchdog
+    reaps) is RECLAIMED, not discarded, when it's a research run that made real progress and still
+    has resume budget: re-queued so a worker picks it up and resumes from its checkpoint (the
+    model credits already spent exploring aren't thrown away). A run with no checkpointed progress,
+    or one that has exhausted its resume budget (keeps wedging at the same spot), still FAILS with a
+    clear reason. Returns how many runs were reaped (re-queued or failed).
+
+    Leak-safe: re-queuing only flips status/worker/resume_count — it never touches the gatekeeper
+    ledger. The checkpoint's gate cursor (written atomically with each chunk's judging) is what makes
+    the resume itself honest; this function just routes a reaped run to that path or to failure."""
+    stale_cut = now_utc() - stale_after
     cur.execute(
-        """UPDATE app_agent_runs SET status='failed', error=%s, finished_at=%s
-           WHERE status='running' AND heartbeat_at < %s""",
-        (msg, now_utc(), now_utc() - stale_after),
+        "SELECT id, kind, resume_count, checkpoint_json FROM app_agent_runs "
+        "WHERE status='running' AND heartbeat_at < %s",
+        (stale_cut,),
     )
-    return cur.rowcount
+    reaped = 0
+    for r in cur.fetchall():
+        ck = _loads(r["checkpoint_json"])
+        progressed = r["kind"] == "research" and _has_progress(ck)
+        if progressed and int(r["resume_count"]) < max_resumes:
+            cur.execute(
+                """UPDATE app_agent_runs SET status='queued', worker_id=NULL,
+                     resume_count=resume_count+1, heartbeat_at=%s
+                   WHERE id=%s AND status='running' AND heartbeat_at < %s""",
+                (now_utc(), r["id"], stale_cut),
+            )
+            if cur.rowcount:
+                add_event(cur, r["id"], "step",
+                          "Session interrupted — reclaiming it to resume from the last checkpoint "
+                          "(attempt %d of %d)." % (int(r["resume_count"]) + 1, max_resumes))
+                reaped += 1
+        else:
+            msg = ("The session kept breaking at the same point and exceeded its %d resume attempts, "
+                   "so it was stopped. Start a new session." % max_resumes) if progressed \
+                else _abandoned_msg(stale_after)
+            cur.execute(
+                """UPDATE app_agent_runs SET status='failed', error=%s, finished_at=%s
+                   WHERE id=%s AND status='running' AND heartbeat_at < %s""",
+                (msg, now_utc(), r["id"], stale_cut),
+            )
+            reaped += cur.rowcount
+    return reaped
 
 
 def heartbeat(cur, run_id: int) -> Optional[str]:

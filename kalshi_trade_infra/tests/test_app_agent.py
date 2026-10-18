@@ -22,6 +22,11 @@ class Store:
         monkeypatch.setattr(r, "finish_run", lambda cur, run_id, status, error=None, tried=0, passed=0, *a: setattr(self, "finished", (status, error, tried, passed)))
         monkeypatch.setattr(r, "update_run_progress", lambda *a, **k: None)
         monkeypatch.setattr(r, "set_run_market", lambda *a, **k: None)
+        # Emergency-recovery checkpoint: default to a fresh run (no saved checkpoint) and a no-op
+        # persist, so these clean-run tests behave exactly as before. Resume behaviour has its own
+        # dedicated tests that drive load_checkpoint/save_checkpoint directly.
+        monkeypatch.setattr(r, "load_checkpoint", lambda cur, run_id: None)
+        monkeypatch.setattr(r, "save_checkpoint", lambda cur, run_id, ck: None)
         monkeypatch.setattr(r, "credit_balance", lambda *a, **k: 100.0)
         # Tau-RSI: no stored policy (use the default), and no discovery history to
         # dream over, so the self-evolution step is a clean no-op in these tests.

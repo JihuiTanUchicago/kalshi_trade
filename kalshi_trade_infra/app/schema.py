@@ -584,6 +584,13 @@ def main() -> None:
         # NULL = a fresh idea; non-NULL = the parent strategy this line continues from. The branched
         # strategies carry parent_id=seed_strategy_id so the discovery tree records the lineage.
         _add_column_if_missing(cur, "app_agent_runs", "seed_strategy_id", "ALTER TABLE app_agent_runs ADD COLUMN seed_strategy_id BIGINT NULL")
+        # Emergency-recovery checkpoint: a research run's exploration progress (chunks gated so far,
+        # the in-progress chunk's developed+frozen theses, round cursor, resolved market/lookback), so
+        # a reclaimed run resumes from here instead of re-spending the model credits already explored.
+        # NULL = a run that has not checkpointed yet. resume_count bounds how many times a broken run
+        # is reclaimed before it fails for good (repository.MAX_RESUMES / TAU_RUN_MAX_RESUMES).
+        _add_column_if_missing(cur, "app_agent_runs", "checkpoint_json", "ALTER TABLE app_agent_runs ADD COLUMN checkpoint_json JSON NULL")
+        _add_column_if_missing(cur, "app_agent_runs", "resume_count", "ALTER TABLE app_agent_runs ADD COLUMN resume_count INT NOT NULL DEFAULT 0")
         # Tau-RSI discovery tree: which prior hypothesis this one built on (NULL = root). Nullable
         # + unused for now (P1); the replay simulator and self-evolving policy populate it later.
         _add_column_if_missing(cur, "app_strategies", "parent_id", "ALTER TABLE app_strategies ADD COLUMN parent_id BIGINT NULL")
