@@ -305,8 +305,9 @@ def place_limit_order(
         "self_trade_prevention_type": "taker_at_cross",
         "client_order_id": client_order_id,
     }
-    resp = api_post_auth(ORDER_PATH, body, credentials=credentials)
-    return {"client_order_id": client_order_id, "body": body, "resp": resp}
+    timing: Dict = {}
+    resp = api_post_auth(ORDER_PATH, body, credentials=credentials, timing=timing)
+    return {"client_order_id": client_order_id, "body": body, "resp": resp, "timing": timing}
 
 
 def open_live_position(

@@ -45,7 +45,7 @@ def test_live_submitter_sends_a_no_order_as_a_yes_ask(monkeypatch):
 
     sent = {}
     monkeypatch.setattr(lte, "api_post_auth",
-                        lambda path, body, credentials=None: sent.update(body) or {"fill_count": "0.00"})
+                        lambda path, body, credentials=None, timing=None: sent.update(body) or {"fill_count": "0.00"})
     lte.place_limit_order(TICKER, "buy", "no", 5, 0.30)
     assert sent["side"] == "ask", "buy NO must be sell-YES, never a YES bid"
     assert sent["price"] == "0.7000", "NO price 0.30 -> YES wire price 0.70"

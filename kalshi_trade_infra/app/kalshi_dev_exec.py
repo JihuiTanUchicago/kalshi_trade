@@ -26,6 +26,7 @@ with the identical ``execute(TradeIntent) -> ExecutionReport`` interface.
 from __future__ import annotations
 
 import os
+import time
 import uuid
 from typing import Callable, Dict, Optional
 from urllib.parse import urlparse
@@ -111,11 +112,17 @@ def demo_place_limit_order(
         "self_trade_prevention_type": "taker_at_cross",
         "client_order_id": client_order_id,
     }
+    # Execution P2: same additive timing breakdown as the live path (sign_ms / net_ms / http_status),
+    # measured around the existing calls so demo and live report latency identically.
+    _t0 = time.perf_counter()
     headers = kalshi_auth_headers("POST", _signing_path(base, _ORDER_ENDPOINT), creds)
+    _t1 = time.perf_counter()
     resp = requests.post(base + _ORDER_ENDPOINT, json=body, headers=headers, timeout=timeout)
+    _t2 = time.perf_counter()
+    timing = {"sign_ms": (_t1 - _t0) * 1000.0, "net_ms": (_t2 - _t1) * 1000.0, "http_status": resp.status_code}
     if resp.status_code >= 400:
         raise RuntimeError("demo POST %s failed %d: %s" % (_ORDER_ENDPOINT, resp.status_code, resp.text[:400]))
-    return {"client_order_id": client_order_id, "body": body, "resp": resp.json()}
+    return {"client_order_id": client_order_id, "body": body, "resp": resp.json(), "timing": timing}
 
 
 def demo_cancel_order(order_id: str, credentials: KalshiCredentials,
@@ -182,7 +189,7 @@ def demo_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
     as the freshness backstop (P1-1); None => REST-only, as before. Demo places REAL sandbox orders,
     so it passes the SAME process-wide execution guards as live (P1-3) — the two must never drift."""
     from app import kalshi_account
-    from app.execution import guarded_submitter
+    from app.execution import guarded_submitter, timed_submitter
     from data_pipeline.architecture.execution_kernel import MarketableLimitKernel
     from data_pipeline.market_data import MarketFeed
 
@@ -195,7 +202,7 @@ def demo_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
             return None
         creds = kalshi_account.credentials_from_row(user_id, row)
         return MarketableLimitKernel(
-            guarded_submitter(demo_order_submitter(creds)), feed,
+            timed_submitter(guarded_submitter(demo_order_submitter(creds)), mode="demo"), feed,
             entry_cross_ticks=int(os.getenv("KALSHI_ENTRY_CROSS_TICKS", "2")),
             exit_cross_ticks=int(os.getenv("KALSHI_EXIT_CROSS_TICKS", "2")),
             max_entry_slippage=float(os.getenv("KALSHI_MAX_ENTRY_SLIPPAGE", "0.10")),

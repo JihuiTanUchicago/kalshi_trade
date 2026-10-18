@@ -533,6 +533,27 @@ DDL = [
       INDEX idx_recon_status (status, updated_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
+    # Execution P2: per-order latency + outcome on the real-order path (live & demo). One row per
+    # exchange POST, written off the send path by the background recorder. No secrets/payload — only
+    # operational fields. Index on created_at drives the windowed p50/p95/p99 + error-rate read.
+    """
+    CREATE TABLE IF NOT EXISTS app_order_latency (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      mode VARCHAR(8) NOT NULL,            -- live|demo
+      ticker VARCHAR(128) NOT NULL,
+      action VARCHAR(4) NOT NULL,          -- buy|sell
+      side VARCHAR(4) NOT NULL,            -- yes|no
+      qty INT NOT NULL,
+      fill_qty INT NOT NULL DEFAULT 0,
+      encode_sign_ms DOUBLE NULL,          -- local order-body build + RSA-PSS sign
+      roundtrip_ms DOUBLE NULL,            -- request round-trip: network RTT + exchange processing
+      total_ms DOUBLE NOT NULL,            -- wall-clock end-to-end submit
+      http_status INT NULL,
+      outcome VARCHAR(12) NOT NULL,        -- filled|partial|unfilled|blocked|error
+      created_at DATETIME NOT NULL,
+      INDEX idx_ol_created (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
 ]
 
 

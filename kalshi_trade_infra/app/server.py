@@ -1567,6 +1567,21 @@ def admin_waitlist(ctx: Ctx):
     return {"ok": True, "email": email, "action": action}
 
 
+def exec_latency(ctx: Ctx):
+    """Execution P2: order-path lag + error observability over a trailing window (admin-only —
+    operational money-path telemetry). p50/p95/p99 round-trip + total latency, encode/sign cost,
+    error/fill rates by outcome, and feed/mark staleness. Read-only."""
+    _require_admin(ctx)
+    try:
+        window = int(ctx.query.get("window", "3600"))
+    except (TypeError, ValueError):
+        window = 3600
+    window = max(60, min(window, 7 * 24 * 3600))
+    mode = ctx.query.get("mode")
+    mode = mode if mode in ("live", "demo") else None
+    return repo.order_latency_stats(ctx.cur, window_seconds=window, mode=mode)
+
+
 def admin_system(ctx: Ctx):
     """Live telemetry for the system map: per-node freshness + volume, so the
     graph shows what the running codebase is actually doing right now. Open to every
@@ -1872,6 +1887,7 @@ ROUTES: List[Route] = [
         ("POST", "/api/billing/remove-card", billing_remove_card, True),
         ("GET", "/api/admin", admin_overview, True),
         ("GET", "/api/admin/system", admin_system, True),
+        ("GET", "/api/exec/latency", exec_latency, True),
         ("GET", "/api/system/code", system_code, True),
         ("POST", "/api/admin/grant", admin_grant, True),
         ("POST", "/api/admin/waitlist", admin_waitlist, True),

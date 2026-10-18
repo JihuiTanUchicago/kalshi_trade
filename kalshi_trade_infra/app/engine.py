@@ -1261,7 +1261,7 @@ def live_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
     (≤1s, pushed on every top-of-book change) with REST as the freshness backstop (P1-1); None
     => REST-only, exactly as before."""
     from app import kalshi_account
-    from app.execution import guarded_submitter
+    from app.execution import guarded_submitter, timed_submitter
     from data_pipeline.architecture.execution_kernel import MarketableLimitKernel
     from data_pipeline.market_data import MarketFeed
 
@@ -1289,7 +1289,9 @@ def live_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
         return MarketableLimitKernel(
             # P1-3: every real order first passes the process-wide execution guards (kill switch,
             # fat-finger, rate limit, circuit breaker). They only ever block a BUY, never an exit.
-            guarded_submitter(kalshi_account.order_submitter(creds)), feed,
+            # P2: timed_submitter is the outermost wrapper so it also measures guard-blocked and
+            # errored sends; it records off the send path and passes the result through unchanged.
+            timed_submitter(guarded_submitter(kalshi_account.order_submitter(creds)), mode="live"), feed,
             entry_cross_ticks=int(os.getenv("KALSHI_ENTRY_CROSS_TICKS", "2")),
             exit_cross_ticks=int(os.getenv("KALSHI_EXIT_CROSS_TICKS", "2")),
             max_entry_slippage=float(os.getenv("KALSHI_MAX_ENTRY_SLIPPAGE", "0.10")),

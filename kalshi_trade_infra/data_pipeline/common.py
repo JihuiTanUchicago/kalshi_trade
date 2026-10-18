@@ -126,11 +126,23 @@ def kalshi_auth_headers(method: str, path: str, credentials: Optional[KalshiCred
 
 
 def api_post_auth(
-    path: str, body: Dict[str, Any], timeout: int = 20, credentials: Optional[KalshiCredentials] = None
+    path: str, body: Dict[str, Any], timeout: int = 20, credentials: Optional[KalshiCredentials] = None,
+    timing: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    """`timing` (opt): when a dict is passed, this fills it with `sign_ms` (local encode+RSA-PSS
+    sign), `net_ms` (the request round-trip = network RTT + exchange processing) and `http_status`.
+    Purely additive measurement for the order path (Execution P2); every other caller omits it and is
+    unaffected. Measured around the existing calls — it never changes what is sent or when."""
     url = f"{KALSHI_API_HOST}{path}"
+    _t0 = time.perf_counter()
     headers = kalshi_auth_headers("POST", path, credentials)
+    _t1 = time.perf_counter()
     resp = requests.post(url, json=body, headers=headers, timeout=timeout)
+    _t2 = time.perf_counter()
+    if timing is not None:
+        timing["sign_ms"] = (_t1 - _t0) * 1000.0
+        timing["net_ms"] = (_t2 - _t1) * 1000.0
+        timing["http_status"] = resp.status_code
     if resp.status_code >= 400:
         raise RuntimeError(f"POST {url} failed {resp.status_code}: {resp.text[:400]}")
     return resp.json()
