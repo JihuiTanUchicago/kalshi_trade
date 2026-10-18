@@ -450,22 +450,39 @@ def _attribution_line(attr: Optional[Dict]) -> str:
     return ("  edge-by-regime (mean net/trade): " + "; ".join(parts)) if parts else ""
 
 
+def _failure_digest_line(d: Dict) -> str:
+    """Render repo.distill_failures output as one skeptical steering line for the proposer."""
+    cls = ", ".join("%d %s" % (c, k)
+                    for k, c in sorted(d["classifications"].items(), key=lambda kv: -kv[1]))
+    regions = ("; ".join("%s (%d×)" % (dim, c) for dim, c in d["patterns"][:8])
+               or "no single region dominates yet — vary the mechanism, not just the parameters")
+    return ("What has repeatedly FAILED here (treat as dead ends — do NOT re-propose these or near-"
+            "variants; if you revisit one, state what is materially different and why it should work "
+            "now): %d failed strategies (%s). Recurring dead regions: %s."
+            % (d["n_failed"], cls, regions))
+
+
 def _memory_block(memory: List[Dict]) -> str:
     if not memory:
         return "No earlier research on this market for this user."
+    # Passed/pending rows stay raw (few, and useful: refine winners, don't repeat them). The pile
+    # of individually-useless FAILED rows is distilled into ONE leak-safe signal of what keeps
+    # failing, so the generator explores AWAY from dead ground. Both carry only research-fold
+    # numbers + classification LABELS — no held-out number ever appears (Leak 2 stays closed).
     lines = []
     for s in memory:
-        res = s.get("result") or {}
-        ins = res.get("in_sample") or {}
-        # The generator learns ONLY from what it is allowed to see: the title, the
-        # classification LABEL (the strategy status), and in-RESEARCH pnl/trades. It must NEVER
-        # see a validation or holdout number — those are gatekeeper-held (closes Leak 2 of the
-        # design: generation stays blind to the held-out evidence). No "unseen $..." term here.
+        if s.get("status") in repo.FAILED_STATUSES:
+            continue
+        ins = (s.get("result") or {}).get("in_sample") or {}
         lines.append(
             "- [%s] %s: research $%s/%s trades"
             % (s["status"], s["title"], ins.get("pnl"), ins.get("trades"))
         )
-    return "\n".join(lines)
+    out = lines or ["(no strategies have passed yet)"]
+    digest = repo.distill_failures(memory)
+    if digest:
+        out.append(_failure_digest_line(digest))
+    return "\n".join(out)
 
 
 _BRIEF_PATH = os.path.join(os.path.dirname(__file__), "research_brief.md")
