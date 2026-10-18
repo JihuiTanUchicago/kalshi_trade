@@ -1635,6 +1635,12 @@ def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.da
     try:
         checkpoint()
         history = repo.chat_messages(cur, user["id"], limit=20)
+        # A scheduled REVIEW must reason from the LIVE state below, NOT its own prior chat narrative:
+        # feeding back its last "research still running" replies made it parrot them and never act.
+        # Keep only the USER's recent messages (their directives persist) and drop the co-pilot's own
+        # stale output. A real chat run keeps the full transcript to answer the user's message.
+        if run["kind"] == "review":
+            history = [m for m in history if m.get("role") == "user"][-3:]
         transcript = "\n".join("%s: %s" % (m["role"], m["content"]) for m in history)
         if run["kind"] == "review":
             task = ("Scheduled autopilot review. Why: %s\n"
