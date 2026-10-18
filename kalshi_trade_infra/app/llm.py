@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import random
 import re
 import threading
 import time
@@ -40,6 +41,25 @@ AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 # A Bedrock model id or cross-region inference-profile id. Must be enabled in
 # the account's Bedrock "Model access" for AWS_REGION.
 BEDROCK_MODEL = os.getenv("APP_BEDROCK_MODEL", "us.anthropic.claude-opus-4-5-20251101-v1:0")
+
+# Bedrock transient-error retries. Throttling is the #1 cause of failed research runs when the
+# autopilot runs many Opus calls concurrently across users; a throttled call must back off and
+# retry, not kill the whole run. Bounded so the worst-case total backoff stays well under the
+# research stall watchdog (agent.RUN_STALL_SECONDS, 150s) — the main thread is blocked in the sleep
+# and can't mark progress, so a longer wait would false-trip the watchdog. The durable fix for
+# SUSTAINED over-quota is a lighter/higher-quota model (the autopilot model picker) or a Bedrock
+# quota increase; these retries absorb the bursts.
+_THROTTLE_CODES = ("ThrottlingException", "ModelTimeoutException", "ServiceUnavailableException")
+_BEDROCK_RETRIES = max(1, int(os.getenv("TAU_BEDROCK_RETRIES", "5")))
+_BEDROCK_BACKOFF_CAP = max(2.0, float(os.getenv("TAU_BEDROCK_BACKOFF_CAP", "16")))
+
+
+def _retry_sleep(attempt: int) -> None:
+    """Exponential backoff (capped) with full jitter. The jitter de-syncs concurrent runs that all
+    throttled at once (several autopilot users sharing one Bedrock quota) so they don't retry in
+    lockstep and immediately re-throttle each other."""
+    base = min(_BEDROCK_BACKOFF_CAP, 2.0 ** (attempt + 1))
+    time.sleep(base + random.uniform(0.0, base * 0.5))
 
 
 class LLMError(RuntimeError):
@@ -193,7 +213,7 @@ def _bedrock(system: str, messages: List[Dict[str, str]], model: "Optional[str]"
             except (ImportError, AttributeError):
                 pass
         stream_timeouts = tuple(stream_timeouts)
-        for attempt in range(4):
+        for attempt in range(_BEDROCK_RETRIES + 1):
             try:
                 text, usage = _bedrock_stream(client, kwargs, on_delta)
                 if text.strip():
@@ -205,29 +225,35 @@ def _bedrock(system: str, messages: List[Dict[str, str]], model: "Optional[str]"
                 # and let the research loop handle the LLMError — fast, clean, not a 10-min hang.
                 raise
             except stream_timeouts:
-                if attempt < 3:
-                    time.sleep(2 ** (attempt + 1))
+                if attempt < _BEDROCK_RETRIES:
+                    _retry_sleep(attempt)
                     continue
                 break  # exhausted retries -> fall back to non-streaming converse
-            except ClientError:
-                break
+            except ClientError as e:
+                # A throttle on the stream used to fall straight through to converse, which then
+                # throttled too — wasting the whole call. Back off and retry the stream first.
+                code = e.response.get("Error", {}).get("Code", "")
+                if code in _THROTTLE_CODES and attempt < _BEDROCK_RETRIES:
+                    _retry_sleep(attempt)
+                    continue
+                break  # non-throttle client error (e.g. AccessDenied) -> fall back to non-streaming
             except Exception as e:
                 if _is_sink_connection_error(e):
                     raise  # DB desync from the sink — surface it; never hide it in the fallback
                 break
-    for attempt in range(4):
+    for attempt in range(_BEDROCK_RETRIES + 1):
         try:
             resp = client.converse(**kwargs)
         except ClientError as e:
             code = e.response.get("Error", {}).get("Code", "")
-            if code in ("ThrottlingException", "ModelTimeoutException", "ServiceUnavailableException") and attempt < 3:
-                time.sleep(2 ** (attempt + 1))
+            if code in _THROTTLE_CODES and attempt < _BEDROCK_RETRIES:
+                _retry_sleep(attempt)
                 continue
             raise LLMError("Bedrock call failed (%s). Model '%s' may need access enabled in the Bedrock console for %s."
                            % (code or e, model_id, AWS_REGION))
         except (ReadTimeoutError, ConnectTimeoutError) as e:
-            if attempt < 3:
-                time.sleep(2 ** (attempt + 1))
+            if attempt < _BEDROCK_RETRIES:
+                _retry_sleep(attempt)
                 continue
             raise LLMError("Bedrock call timed out after retries: %s" % e)
         except Exception as e:

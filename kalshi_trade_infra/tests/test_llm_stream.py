@@ -122,7 +122,44 @@ def test_streaming_timeout_exhausted_falls_back_to_converse(monkeypatch):
     client._err = _install_fake_boto3(monkeypatch, client)  # streaming never recovers
     text, _ = llm._bedrock("sys", [{"role": "user", "content": "hi"}], on_delta=lambda _t: None)
     assert text == "fallback"          # degrades to non-streaming instead of surfacing raw
-    assert client.stream_calls == 4    # 4 streaming attempts, then the converse fallback
+    assert client.stream_calls == llm._BEDROCK_RETRIES + 1  # all streaming attempts, then converse
+
+
+class _ThrottleStreamClient:
+    """Its stream raises a Bedrock ThrottlingException `fail_times`, then succeeds. converse() is
+    the non-streaming fallback, used only if the stream never recovers."""
+
+    def __init__(self, fail_times):
+        self._fail = fail_times
+        self.stream_calls = 0
+        self.ClientError = Exception  # set to the fake botocore ClientError after install
+
+    def converse_stream(self, **kwargs):
+        self.stream_calls += 1
+        if self.stream_calls <= self._fail:
+            e = self.ClientError("throttled")
+            e.response = {"Error": {"Code": "ThrottlingException"}}
+            raise e
+        return {"stream": [
+            {"contentBlockDelta": {"delta": {"text": "ok"}}},
+            {"metadata": {"usage": {"inputTokens": 1, "outputTokens": 1}}},
+        ]}
+
+    def converse(self, **kwargs):
+        return {"output": {"message": {"content": [{"text": "fallback"}]}},
+                "usage": {"inputTokens": 1, "outputTokens": 1}}
+
+
+def test_streaming_throttle_retries_instead_of_failing(monkeypatch):
+    # A throttled stream used to fall straight through to converse (which re-throttled). It must
+    # now back off and retry the stream so a transient throttle doesn't cost the whole run.
+    client = _ThrottleStreamClient(fail_times=2)
+    _install_fake_boto3(monkeypatch, client)
+    import botocore.exceptions as be
+    client.ClientError = be.ClientError
+    text, _ = llm._bedrock("sys", [{"role": "user", "content": "hi"}], on_delta=lambda _t: None)
+    assert text == "ok"                 # recovered on the stream, never fell back
+    assert client.stream_calls == 3     # 2 throttles + 1 success
 
 
 def test_claude_without_on_delta_is_unchanged(monkeypatch):
