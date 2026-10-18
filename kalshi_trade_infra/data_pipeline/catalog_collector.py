@@ -79,6 +79,38 @@ def refresh_series(cur) -> int:
 PAGE_SLEEP = float(os.getenv("CATALOG_PAGE_SLEEP", "0.4"))  # gentle on a shared box/micro DB
 
 
+def refresh_series_meta(cur) -> int:
+    """Enrich kalshi_series with Kalshi's own `category` + `frequency` for every series we track.
+
+    Kalshi's /markets payload carries neither, but the bulk /series endpoint returns both for all
+    series in ONE call. app/markets.load_catalog_markets filters on these two columns to generate
+    the deployable outcome-settled universe, so without this pass they stay NULL and generation
+    yields nothing (safe: the curated 19 still work). Returns the number of rows updated."""
+    try:
+        data = api_get("/series")
+    except Exception as e:  # a meta-fetch hiccup must never stop the catalog loop
+        print("[catalog] series-meta fetch failed: %r" % e, flush=True)
+        return 0
+    meta = {}
+    for s in data.get("series") or []:
+        t = s.get("ticker")
+        if t:
+            meta[t] = ((s.get("category") or None), (s.get("frequency") or None))
+    if not meta:
+        return 0
+    cur.execute("SELECT series_ticker FROM kalshi_series")
+    rows = [
+        (meta[r["series_ticker"]][0], meta[r["series_ticker"]][1], r["series_ticker"])
+        for r in cur.fetchall()
+        if r["series_ticker"] in meta
+    ]
+    if rows:
+        cur.executemany(
+            "UPDATE kalshi_series SET category=%s, frequency=%s WHERE series_ticker=%s", rows
+        )
+    return len(rows)
+
+
 def refresh_once(status: Optional[str] = "open") -> Dict[str, int]:
     """Stream the catalog: fetch one page, upsert it, sleep, repeat — so memory and
     DB load stay flat even across thousands of markets (never loads them all at once)."""
@@ -107,8 +139,10 @@ def refresh_once(status: Optional[str] = "open") -> Dict[str, int]:
             time.sleep(PAGE_SLEEP)  # throttle: spread the load, don't starve serving
         n_series = refresh_series(cur)
         conn.commit()
-        print("[catalog] markets=%d (open=%d) series=%d" % (total, n_open, n_series), flush=True)
-        return {"markets": total, "open": n_open, "series": n_series}
+        n_meta = refresh_series_meta(cur)  # fill category + frequency (drives catalog-market generation)
+        conn.commit()
+        print("[catalog] markets=%d (open=%d) series=%d meta=%d" % (total, n_open, n_series, n_meta), flush=True)
+        return {"markets": total, "open": n_open, "series": n_series, "meta": n_meta}
     finally:
         conn.close()
 

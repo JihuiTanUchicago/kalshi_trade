@@ -1,6 +1,5 @@
 """Local fonts use the same restricted, immutable static asset path as CSS."""
 import io
-import re
 
 import pytest
 
@@ -17,8 +16,8 @@ def static_response(path):
 
 
 def test_bundled_font_is_served_with_font_mime_and_immutable_cache():
-    css = (server.STATIC_DIR / 'app.css').read_text()
-    name = re.search(r'url\("(dm-sans-latin-[a-f0-9]+\.woff2)"\)', css).group(1)
+    # The default UI loads Rubik externally; this font remains a shipped static asset.
+    name = 'dm-sans-latin-9fea608a94.woff2'
     headers, body = static_response('/static/' + name)
     assert headers[:3] == (200, 'font/woff2', len(body))
     assert body == (server.STATIC_DIR / name).read_bytes()

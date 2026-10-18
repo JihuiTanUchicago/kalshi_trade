@@ -155,6 +155,8 @@ backstop**, never the only line of defence.
  │  • per-user caps: max_open_positions, max_open_notional (engine.decide)  │
  │  • loss guard: realized loss > 2× backtest worst DD ⇒ pause              │
  │  • drawdown force-sell: peak-to-now DD ≥ user limit ⇒ close + pause      │
+ │  • position stop-loss: any open pos down ≥ stop% of its cost ⇒ close+pause│
+ │  • auto-flatten: paused/stopped deployment with open pos ⇒ close all     │
  │  • live autopilot daily-loss kill switch ⇒ disable live + pause all      │
  │  ┌─ strategy layer (live_trading_engine) ─────────────────────────────┐  │
  │  │  • LiveSettingsRiskEngine: RED state, near-expiry, signal, caps     │  │
@@ -183,6 +185,46 @@ Key coupling invariants:
   exactly as before. The new knobs cannot enable trading; set empty they are a
   no-op, set non-empty they only tighten.
 
+### Risk-control matrix (app engine, `app/engine.py`)
+
+Each portfolio-layer control, what it measures, its threshold/knob, and what it
+does. All run every engine loop, each fully contained (one failure never stops
+the loop or the other deployments). **Every force-close routes through the one
+shared exit path `_close_position_at` → the mode's own kernel/paper sell — a
+force-sell never obtains an order path the normal exit couldn't already use, and
+an exit is never blocked by any risk control.**
+
+| Control (fn) | Scope | Measures | Threshold / knob | Action when breached |
+|---|---|---|---|---|
+| Per-user position cap (`decide`) | user, all deployments | open-position count | `max_open_positions` (dflt 20) | block **new entries** only |
+| Per-user notional cap (`decide`) | user, all deployments | open entry notional $ | `max_open_notional` (dflt $1000) | trim / block **new entries** only |
+| Loss guard (`loss_guard`) | one deployment | cumulative **realized** P&L | `max(2× backtest worst DD, 0.5× capital)` | pause (exits settle normally) |
+| Drawdown force-sell (`force_sell_if_drawn_down`) | one deployment | peak-to-now equity drawdown as **% of capital** | `drawdown_limit_pct` (dflt 25%, 0=off) | **close all + pause** |
+| **Position stop-loss** (`force_sell_if_drawn_down`) | one deployment | worst open position's loss as **% of its own cost** | `position_stop_pct` (dflt 40%, 0=off) | **close all + pause** |
+| **Auto-flatten on pause/stop** (`enforce_flatten_on_pause`) | paused/stopped deployments | any open position exists | always on | **close all** (status stays paused/stopped) |
+| Autopilot daily-loss kill switch (`enforce_autopilot_limits`) | user, live only | today's realized live loss | `autopilot_daily_loss_limit` (dflt $50) | disable live autopilot + pause all live |
+| Settlement (`settle_due`) | all open positions, any status | contract has a Kalshi result | contract expiry | book payout, close position |
+
+Notes:
+
+- **Drawdown vs position-stop — why both.** Drawdown is measured against the
+  *deployment capital* (stake × max_positions), so a small position that craters
+  is a large loss of *its* cost but a tiny fraction of capital and never trips the
+  25% capital guard (the exact reported gap: 6 @ 79¢ → 44¢ is −44% of a $4.74
+  cost but ~2% of a $100 base). The position-stop measures each open position
+  against *its own* cost, side-aware (YES ≈ `yes_bid`, NO ≈ `1−yes_bid`), so it
+  catches that case. Both are checked every tick; whichever fires first wins, and
+  both are named in the pause reason if both breach. **Default 40%**: it would
+  have stopped the reported position, sits mid of a 35–50% band, and on a 79¢
+  entry triggers near 47¢ — a clearly broken position, not BTC-market noise.
+- **Auto-flatten closes, never re-opens.** A paused/stopped deployment is swept
+  until flat; a resumed strategy starts fresh (intended). `stopped` is terminal
+  (`set_deployment_status` won't move off it), but flatten only *closes
+  positions*, so a stopped deployment ends flat while staying stopped. A
+  live/demo deployment with no execution path (gate off / no key) cannot close
+  here — it is logged **loudly** and its positions settle at expiry; exposure is
+  never left silently.
+
 ---
 
 ## 4. Idempotency & latency
@@ -197,6 +239,181 @@ Key coupling invariants:
   whatever was lying around. Lehalle–Mounjid note the value of liquidity
   prediction erodes with latency because there may be no time to cancel/reinsert
   — another reason Tau stays taker-only rather than managing resting quotes.
+- **Engine liveness.** Each loop writes a heartbeat (`repo.engine_heartbeat` →
+  `collector_state['recursive_engine_last_tick']`, the same liveness-row pattern
+  every collector + the `live_alerter` watchdog uses). `repo.engine_last_tick_age_seconds`
+  surfaces its age in the dashboard freshness payload (`freshness.engine`), so a
+  stalled-but-not-crashed engine still holding real positions is *visible*, not
+  silent — the worst failure mode on a money path.
+
+---
+
+## 4.5 Cross-contract (relative-value pair) entry
+
+A pair is two positions opened together — buy YES on the leg the model says is
+underpriced, buy NO on the leg it says is overpriced — held to settlement as a
+*relative-value* bet, not a directional one. The hedge only holds if the two legs
+carry **equal contract counts**; an imbalance is a naked directional leg of real
+money, the one thing a pair must never take.
+
+On paper this is trivial (`_paper_buy_pair`: both legs in one transaction against
+one balance check — both-or-neither). Real orders can't fill atomically, so the
+live/demo path (`_kernel_buy_pair`) keeps the legs balanced by hand and flattens
+any excess on the exchange immediately:
+
+```
+  buy YES qty                → f1 filled   ── f1 < 1 ? → return False (flat, no exposure)
+  buy NO  f1                 → f2 filled   (kernel never over-fills, so f2 ≤ f1)
+  hedged = min(f1, f2) = f2      excess = f1 − hedged
+  excess > 0 ?  sell YES excess @ bid → u filled      residual = excess − u
+  ───────────────────────────────────────────────────────────────── then record:
+  hedged ≥ 1 : two OPEN rows at `hedged`  (YES fee pro-rated f_hedged, NO fee full)
+  u ≥ 1      : one CLOSED row, the u-contract round-trip P&L booked (never held)
+  residual≥1 : one OPEN row — the still-naked YES, TRACKED + logged loudly
+  return  hedged ≥ 1
+```
+
+Every leg-1 fill is accounted for: `hedged + u + residual = f1`. Leg 1's actual
+fill fee is split pro-rata across the three slices (the residual takes the exact
+remainder, so there is no rounding drift), and the round-trip P&L
+`u·(sell − buy) − fee_buy_slice − fee_sell` is booked so the loss/drawdown guards
+see accurate realized cash.
+
+Partial-fill cases, all handled, none left as untracked exposure:
+
+| Case | Outcome |
+|---|---|
+| both legs fill fully | balanced pair recorded, no unwind, `True` |
+| leg 2 under-fills | excess YES flattened, round-trip booked, pair recorded at `min` qty, `True` |
+| leg 2 fills 0 | leg 1 fully unwound, round-trip booked, **flat**, `False` |
+| leg 1 fills 0 | no second order sent, no exposure, `False` |
+| **unwind sell under-fills** | the still-naked residual is recorded as a **tracked OPEN position** (the drawdown force-sell / loss guard closes it next tick) and logged loudly — never silently dropped |
+
+Crash-safety: all exchange orders are sent **before** any DB write, so the
+recorded state is the final, consistent picture, and the round-trip is one atomic
+`insert_closed_position` INSERT (an autocommit connection can never leave a phantom
+OPEN leg). The residual leg reuses the ordinary position machinery, so settlement,
+marks and both guards handle it with no pair-specific code.
+
+**Live scope — single-market only.** `cross_deploy_block` allows a cross pair on
+live **iff `len(involved_markets(spec)) == 1`** (cross_strike / calendar): the
+engine already ticks that one market and its frame carries every strike/settlement
+leg, so both legs price off the same `tick_market` book read. A **multi-market**
+pair (cross_sectional) needs a synchronized multi-market live feed the engine does
+not run, so it stays research-only — refused in *every* mode (paper/demo included),
+a separate future build. This gate decides only the single-vs-multi-market
+question; the other live gates — gatekeeper deployment-candidate, the
+`APP_LIVE_TRADING_ENABLED` switch, the Kalshi-key requirement, the `NO_SIDE_LIVE`
+staged-rollout flag (a pair always buys a NO leg, so it stays subject to it) and
+the typed-`LIVE` confirm — are unchanged and still run, in the same order, on top.
+## 4b. Cross-MARKET relative value (BTC vs ETH): research + synchronized live feed
+
+A **cross-market** strategy is a relative-value *pair* whose two legs live on
+**different** markets (e.g. long the underpriced BTC-daily leg, short the dear
+ETH-daily leg), as opposed to a same-market *cross-strike* / *calendar* pair. The
+spec carries a `cross` block with `pairing: "cross_sectional"` and a leg on a
+second market; `spec.involved_markets()` then spans two markets and
+`spec.stream_key()` is the joined key (`btc_daily+eth_daily`).
+
+### Cadence alignment (the precondition for everything below)
+
+Two markets can only be paired if they share a **decision cadence** —
+`markets.cadence_key() == (candle_minutes, close_hour_et)`. This is what forbids
+pairing a 1-minute market with a daily one: their decision frames would almost
+never coincide, so neither the merged backtest nor the live feed could evaluate
+both legs on one frame. The rule is enforced in **three** places, strictest-wins:
+
+- `spec._validate_cross` **rejects** a cadence-incompatible pair at validation —
+  the trust boundary, so a bad pair never becomes a spec.
+- `agent._cross_market_options` only **offers** the proposer the markets that
+  share the run market's cadence, so it explores real cross-market mispricings
+  (lead-lag, basis dislocation) instead of inventing an un-tickable pair.
+- `engine.cross_deploy_block` re-checks it **defensively** at the deploy gate.
+
+### Research path (already merged; proposer now actually uses it)
+
+A cross-market spec is pre-registered against the **merged partition** of its
+legs (`partitions.ensure_merged_partition`), backtested on the **merged dataset**
+(`partitions.merged_dataset` → `backtest.merge_datasets`, which unions each leg's
+own frozen window frame-by-frame so no leg leaks across its boundary), and judged
+by the gatekeeper on that merged validation / one-time holdout. It spends from one
+**shared FDR stream** keyed by `stream_key`, so a pair never double-spends its
+legs' separate budgets. The only new research piece here is the **proposer**: the
+research prompt now surfaces the cadence-compatible peer markets and invites a
+`cross_sectional` leg when the edge is genuinely *relative*.
+
+### Synchronized live feed (`engine.tick_cross_markets`)
+
+A single market's tick (`tick_market`) only reads *that* market's book + spot, so
+it can never price a two-market pair — and it now **excludes** multi-market cross
+deployments (`_is_multi_market_cross`) so they are decided in exactly one place.
+That place is `tick_cross_markets`, wired into `run_forever` after the per-market
+loop:
+
+1. A multi-market cross deployment is stored under its **primary leg's** market
+   column, so one pass over the deployable markets finds each exactly once.
+   Deployments are **grouped by their involved-market set**; a group shares a
+   cadence, so one decision slot serves all of them.
+2. `_cross_market_frame` fetches **every** involved market's live quotes
+   (`fetch_quotes`) **and** spot series (`fetch_spot_series`) **together**, builds
+   the combined `Snapshot` list and the per-ticker shown-size map, and hands it to
+   `decide → _decide_pairs` — the identical rule the merged backtest proved.
+
+### Legging-safety: the staleness rule (the whole point)
+
+A cross-market pair is two orders in two different markets; the danger is
+**legging in** — filling one leg while the other market is stale or unreadable,
+leaving a naked directional position. The contract:
+
+- **`_cross_market_frame` returns `None` if ANY leg is stale or unavailable** —
+  its book came back empty, its spot feed is `None`/raised, or `features_at`
+  returns `None` (the Coinbase candle is older than `MAX_BTC_GAP_SECONDS`). There
+  is no partial frame: either every leg is fresh, or the frame does not exist.
+- **`_tick_cross_group` claims the slot ONLY after a fresh frame is in hand.** A
+  stale or **late** slot (past `LATE_FRACTION`, same guard as `tick_market`) is
+  skipped *without* claiming — so a transiently-stale leg doesn't burn the slot,
+  and a fresh retry later in the same slot can still enter, while `claim_decision`
+  still guarantees at most one engine decides a given slot.
+- `_decide_pairs` and **`_kernel_buy_pair` are reused unchanged** — they are
+  market-agnostic. `_kernel_buy_pair` owns the per-leg order placement
+  (fill-both-or-unwind legging safety); `tick_cross_markets` only guarantees it a
+  *fully fresh two-market frame* to act on. The two concerns compose: the feed
+  never hands the kernel a pair it shouldn't try, and the kernel never leaves a
+  half-filled pair standing.
+
+### Deploy gate (`engine.cross_deploy_block`), additive
+
+The gate is split into two disjoint, composable cases:
+
+- **Multi-market cross** deploys in *any* mode (paper/demo/live) **only when**
+  every leg's market is itself `deployable` **and** the legs share a cadence —
+  because only then does the synchronized feed exist for it. For **live** this is
+  purely **additive**: every normal live guard still runs upstream in `server.py`
+  / `agent.act` (`LIVE_TRADING_ENABLED`, the deployment-candidate gatekeeper check,
+  the Kalshi-key requirement, the NO-side rollout flag, the typed `LIVE` confirm,
+  autopilot daily-loss kill, drawdown force-sell, loss guard). This clause only
+  *adds* requirements; it bypasses none.
+- **Single-market cross** (`cross_strike` / `calendar`) is unchanged: paper/demo
+  only, live remains a separate step.
+
+Paper/demo are now *allowed* for a deployable+compatible multi-market pair (they
+were research-only purely because the feed didn't exist). That is required, not
+incidental: the live autopilot path demands a pair first prove on paper
+(`_proven_on_paper`), which is impossible if paper is blocked.
+
+### Residual risk
+
+- **Cross-market legging across a frame boundary.** The frame is synchronized at
+  *read* time, but the two orders are still placed sequentially through
+  `_kernel_buy_pair`. If the second market's book evaporates in the milliseconds
+  between the two sends, `_kernel_buy_pair`'s fill-both-or-unwind logic (owned by
+  a separate change) must unwind the first leg; the staleness rule shrinks, but
+  cannot eliminate, that window. Settlement-risk of a surviving naked leg is
+  bounded by the per-trade stake and the drawdown force-sell.
+- **Correlated-leg settlement.** A cross-market pair's two legs settle on two
+  different underlyings; a day where both move the "wrong" way loses on both legs
+  at once. This is a strategy-risk the gatekeeper's merged-holdout judging is meant
+  to price, not an execution bug.
 
 ---
 

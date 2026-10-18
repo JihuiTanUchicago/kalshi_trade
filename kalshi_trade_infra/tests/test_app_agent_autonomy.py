@@ -1,0 +1,133 @@
+"""Broadened co-pilot autonomy: the agent may tune risk + execution controls and start fresh
+research, but every money/risk value it sets is CLAMPED into a safe envelope, and every change is
+a logged proposal (applied on autopilot, pending otherwise). These tests pin the clamps and the
+proposal/apply discipline so a future change can't quietly let the agent disable a stop, exceed a
+cap, or loosen past a safe maximum."""
+from app import agent
+
+
+def _capture(monkeypatch):
+    """Record proposals + persisted config without a DB."""
+    rec = {"proposals": [], "risk": None, "exec": None, "runs": []}
+    r = agent.repo
+    monkeypatch.setattr(r, "create_proposal",
+                        lambda cur, uid, kind, reason, did=None, sid=None, status="pending", payload=None:
+                        rec["proposals"].append({"kind": kind, "status": status, "payload": payload}) or 1)
+    monkeypatch.setattr(r, "set_user_risk_config", lambda cur, uid, changes: rec.update(risk=changes))
+    monkeypatch.setattr(r, "set_user_execution_config", lambda cur, uid, changes: rec.update(exec=changes))
+    monkeypatch.setattr(r, "count_runs", lambda *a, **k: 0)
+    monkeypatch.setattr(r, "create_run",
+                        lambda cur, uid, kind, market, direction, idea, **kw: rec["runs"].append((market, direction, idea)) or 9)
+    return rec
+
+
+USER = {"id": 1}
+
+
+# -- set_risk ----------------------------------------------------------------------
+
+def test_set_risk_applies_within_bounds_on_autopilot(monkeypatch):
+    rec = _capture(monkeypatch)
+    text, pid = agent.act(None, USER, {"type": "set_risk",
+                          "changes": {"drawdown_limit_pct": 15, "max_open_positions": 10, "max_open_notional": 500}}, True)
+    assert pid == 1
+    assert rec["proposals"][-1]["status"] == "applied"
+    assert rec["risk"] == {"drawdown_limit_pct": 15.0, "max_open_positions": 10, "max_open_notional": 500.0}
+
+
+def test_set_risk_is_a_pending_proposal_when_autopilot_off(monkeypatch):
+    rec = _capture(monkeypatch)
+    text, pid = agent.act(None, USER, {"type": "set_risk", "changes": {"drawdown_limit_pct": 15}}, False)
+    assert pid == 1
+    assert rec["proposals"][-1]["status"] == "pending"
+    assert rec["risk"] is None                       # NOT applied until the user approves
+
+
+def test_set_risk_cannot_disable_a_stop(monkeypatch):
+    rec = _capture(monkeypatch)
+    # 0 would disable the force-sell; it is clamped UP to the floor (never <= 0).
+    agent.act(None, USER, {"type": "set_risk", "changes": {"drawdown_limit_pct": 0}}, True)
+    assert rec["risk"]["drawdown_limit_pct"] == agent.RISK_BOUNDS["drawdown_limit_pct"][0]
+    assert rec["risk"]["drawdown_limit_pct"] > 0
+
+
+def test_set_risk_cannot_exceed_hard_caps(monkeypatch):
+    rec = _capture(monkeypatch)
+    agent.act(None, USER, {"type": "set_risk",
+              "changes": {"drawdown_limit_pct": 999, "max_open_positions": 10000, "max_open_notional": 1e9}}, True)
+    assert rec["risk"]["drawdown_limit_pct"] == agent.RISK_BOUNDS["drawdown_limit_pct"][1]
+    assert rec["risk"]["max_open_positions"] == agent.RISK_BOUNDS["max_open_positions"][1]
+    assert rec["risk"]["max_open_notional"] == agent.RISK_BOUNDS["max_open_notional"][1]
+
+
+def test_set_risk_can_tighten_freely(monkeypatch):
+    rec = _capture(monkeypatch)
+    # A tighten (toward the floor) passes through unclamped as long as it's >= the floor.
+    agent.act(None, USER, {"type": "set_risk", "changes": {"max_open_notional": 50}}, True)
+    assert rec["risk"] == {"max_open_notional": 50.0}
+
+
+def test_set_risk_ignores_unknown_keys(monkeypatch):
+    rec = _capture(monkeypatch)
+    text, pid = agent.act(None, USER, {"type": "set_risk",
+                          "changes": {"live_enabled": True, "position_stop_pct": 0, "max_open_positions": 5}}, True)
+    assert rec["risk"] == {"max_open_positions": 5}   # only the one real, enforced key survived
+
+
+# -- set_exec ----------------------------------------------------------------------
+
+def test_set_exec_applies_within_bounds(monkeypatch):
+    rec = _capture(monkeypatch)
+    agent.act(None, USER, {"type": "set_exec",
+              "changes": {"exec_max_book_fraction": 0.2, "exec_max_entry_spread": 0.05, "exec_max_order_notional": 100}}, True)
+    assert rec["exec"] == {"exec_max_book_fraction": 0.2, "exec_max_entry_spread": 0.05, "exec_max_order_notional": 100.0}
+
+
+def test_set_exec_loosen_past_ceiling_is_clamped(monkeypatch):
+    rec = _capture(monkeypatch)
+    agent.act(None, USER, {"type": "set_exec",
+              "changes": {"exec_max_book_fraction": 1.0, "exec_max_order_notional": 100000}}, True)
+    assert rec["exec"]["exec_max_book_fraction"] == agent.EXEC_BOUNDS["exec_max_book_fraction"][1]
+    assert rec["exec"]["exec_max_order_notional"] == agent.EXEC_BOUNDS["exec_max_order_notional"][1]
+
+
+def test_set_exec_is_pending_when_autopilot_off(monkeypatch):
+    rec = _capture(monkeypatch)
+    agent.act(None, USER, {"type": "set_exec", "changes": {"exec_max_order_notional": 100}}, False)
+    assert rec["proposals"][-1]["status"] == "pending"
+    assert rec["exec"] is None
+
+
+# -- apply_proposal re-clamps defensively ------------------------------------------
+
+def test_apply_proposal_reclamps_a_tampered_payload(monkeypatch):
+    rec = _capture(monkeypatch)
+    # Even if a stored proposal row somehow carried an out-of-range value, applying it re-clamps.
+    agent.apply_proposal(None, 1, {"kind": "set_risk", "payload": {"drawdown_limit_pct": 0, "max_open_notional": 1e9}})
+    assert rec["risk"]["drawdown_limit_pct"] == agent.RISK_BOUNDS["drawdown_limit_pct"][0]
+    assert rec["risk"]["max_open_notional"] == agent.RISK_BOUNDS["max_open_notional"][1]
+    agent.apply_proposal(None, 1, {"kind": "set_exec", "payload": {"exec_max_book_fraction": 5}})
+    assert rec["exec"]["exec_max_book_fraction"] == agent.EXEC_BOUNDS["exec_max_book_fraction"][1]
+
+
+# -- fresh research: same pipeline, same freedom -----------------------------------
+
+def test_research_action_starts_a_fresh_line(monkeypatch):
+    rec = _capture(monkeypatch)
+    text, pid = agent.act(None, USER, {"type": "research", "market": "btc15m",
+                          "idea": "Fade the overreaction after a large 1-minute BTC move."}, True)
+    assert pid is None                               # research queues a run, not a proposal
+    assert rec["runs"] == [("btc15m", None, "Fade the overreaction after a large 1-minute BTC move.")]
+
+
+def test_research_action_rejects_an_unknown_market(monkeypatch):
+    rec = _capture(monkeypatch)
+    text, pid = agent.act(None, USER, {"type": "research", "market": "not_a_market",
+                          "idea": "something plausible here"}, True)
+    assert pid is None and rec["runs"] == [] and "market" in text.lower()
+
+
+def test_research_action_needs_a_real_idea(monkeypatch):
+    rec = _capture(monkeypatch)
+    text, pid = agent.act(None, USER, {"type": "research", "idea": "hi"}, True)
+    assert pid is None and rec["runs"] == []

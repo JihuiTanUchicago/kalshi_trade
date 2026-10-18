@@ -63,12 +63,20 @@ def claude(system: str, messages: List[Dict[str, str]], model: "Optional[str]" =
             else _anthropic_direct(system, messages))
 
 
+def _is_sink_connection_error(exc: BaseException) -> bool:
+    """A think-aloud sink failure that left a DB socket half-read (pymysql's
+    'Packet sequence number wrong' / connection errors). Swallowing it would hand the
+    NEXT query a desynced connection and fail cryptically, so it must surface to the
+    caller's infra-error handler. Detected by top-level module so llm.py stays DB-agnostic."""
+    return (type(exc).__module__ or "").split(".", 1)[0] == "pymysql"
+
+
 def _bedrock_stream(client, kwargs: Dict[str, Any], on_delta: "Callable[[str], None]") -> "tuple[str, Dict]":
     """converse_stream: push text deltas to on_delta as they arrive, return (full text, usage).
-    A sink hiccup (e.g. a dropped DB connection mid-stream) must never kill generation, so every
-    on_delta call is isolated. ponytail: one streaming attempt, no mid-stream retry (a rare drop
-    surfaces as an empty reply the caller's repair round handles); creation errors fall back to
-    the non-streaming converse path in _bedrock."""
+    A sink hiccup (a dropped render feed) must never kill generation, so on_delta is isolated —
+    EXCEPT a DB connection desync, which is re-raised so the caller can reconnect rather than
+    reuse a broken socket. ponytail: no in-function retry; a stream timeout is retried by _bedrock,
+    creation/other errors fall back to the non-streaming converse path there."""
     resp = client.converse_stream(**kwargs)
     parts: List[str] = []
     usage = {"input_tokens": 0, "output_tokens": 0}
@@ -79,8 +87,10 @@ def _bedrock_stream(client, kwargs: Dict[str, Any], on_delta: "Callable[[str], N
                 parts.append(text)
                 try:
                     on_delta(text)
-                except Exception:
-                    pass
+                except Exception as e:
+                    if _is_sink_connection_error(e):
+                        raise  # DB desync — don't bury it, the connection is now unusable
+                    # otherwise a cosmetic feed hiccup: keep generating
         elif "metadata" in event:
             u = event["metadata"].get("usage") or {}
             usage = {"input_tokens": u.get("inputTokens") or 0, "output_tokens": u.get("outputTokens") or 0}
@@ -111,14 +121,35 @@ def _bedrock(system: str, messages: List[Dict[str, str]], model: "Optional[str]"
         # Live-feed streaming. Needs bedrock:InvokeModelWithResponseStream on the worker role; if
         # that's missing (AccessDenied) or streaming throttles/errors at setup, fall through to the
         # non-streaming converse below so research keeps working (just without live tokens).
-        try:
-            text, usage = _bedrock_stream(client, kwargs, on_delta)
-            if text.strip():
-                return text, usage
-        except ClientError:
-            pass
-        except Exception:
-            pass
+        # A read timeout raised DURING event-stream iteration is a ResponseStreamingError/
+        # EventStreamError, NOT a plain ReadTimeoutError, so it used to skip every retry and fail
+        # the session raw ("Bedrock call failed: Read timeout"). Retry those here before falling
+        # back. (A retry may re-emit already-streamed tokens into the live feed — cosmetic, and far
+        # better than killing the run.)
+        stream_timeouts = [ReadTimeoutError]
+        for name in ("ResponseStreamingError", "EventStreamError"):
+            try:
+                stream_timeouts.append(getattr(__import__("botocore.exceptions", fromlist=[name]), name))
+            except (ImportError, AttributeError):
+                pass
+        stream_timeouts = tuple(stream_timeouts)
+        for attempt in range(4):
+            try:
+                text, usage = _bedrock_stream(client, kwargs, on_delta)
+                if text.strip():
+                    return text, usage
+                break  # empty stream -> let the non-streaming converse produce the reply
+            except stream_timeouts:
+                if attempt < 3:
+                    time.sleep(2 ** (attempt + 1))
+                    continue
+                break  # exhausted retries -> fall back to non-streaming converse
+            except ClientError:
+                break
+            except Exception as e:
+                if _is_sink_connection_error(e):
+                    raise  # DB desync from the sink — surface it; never hide it in the fallback
+                break
     for attempt in range(4):
         try:
             resp = client.converse(**kwargs)

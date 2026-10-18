@@ -1,5 +1,11 @@
 # PLAN
 
+## Open PR integration with latest main — October 18, 2026, Asia/Shanghai
+
+- **Status:** in progress (`tau-open-pr-main-merge-20261018`); advisory reservation active. User authorized local latest-main integration, both PR updates/commits and GitHub merges. Imported all 68 newer main commits and exact object hashes, then fast-forwarded local main to `0700437`; preserve that source's research-rigor, execution/risk, reconciliation and frontend changes.
+- PR #10 conflicts are resolved by retaining the new Funds layout, adding broker mount generation guards and the `/settings/account` alias, loading broker assets before bootstrap, and retaining both progress histories. The current full `app.schema` migration supersedes the older broker-only rollout instructions. No database migration/deployment is being performed here.
+- Independent backend and frontend integration reviews are running; stale frontend tests for helpers removed on upstream main are being reconciled with the actual current UI contracts. Full offline verification precedes every commit. Private environments, runtime services, orders/gates and sibling source are no-touch. [Scope and merge evidence](results/open_pr_merge_2026-10-18/HANDOFF.md).
+
 ## Broker OAuth teammate handoff — October 17, 2026, Asia/Shanghai
 
 - **Status:** published for review / teammate handoff complete (`tau-broker-oauth-teammate-handoff-20261017`). User selected teammate execution; no further desktop AWS/SSH request is pending. Canonical operator guide covers whole-app source, original/private versus GitHub workflow credential access, preserved encryption key, exact two-table migration, web-only restart, Tau invalidation, acceptance and rollback.
@@ -23,6 +29,46 @@
 - **Verification:** infrastructure **1,020 passed / 9 skipped**; frontend **55 passed**; independent auth/protocol review **141 focused passed**, no actionable blocker; four synthetic desktop/mobile theme captures and controls pass. Two anonymous Robinhood discovery GETs returned 200; no real broker consent/token/account/order call. Python/JS syntax, whitespace, private-value scan and protected-source checks pass. Named slash review/devlog commands are not installed; no claim that they ran.
 - User confirmed `https://d1gfpzcosqrjya.cloudfront.net`; only `APP_PUBLIC_URL` was added to ignored local `.env`, preserving existing keys/flags. Alpaca app credentials were not yet supplied at this implementation milestone; their subsequent local configuration check is recorded above. Provider approval, IBKR material/callback behavior, persistent runtime encryption-key injection, authorized schema migration/deployment and real account acceptance remain open. No commit/push/deployment/migration/live activation. [Setup and exact callbacks](app/BROKER_OAUTH.md) · [Handoff](results/broker_oauth_2026-10-17/HANDOFF.md) · [Verification](results/broker_oauth_2026-10-17/VERIFICATION.json) · [Review](results/broker_oauth_2026-10-17/REVIEW.md).
 
+## Broadened co-pilot autonomy — risk/execution/param control within safe bounds — October 17, 2026 (worktree, not deployed)
+
+The autopilot/co-pilot now manages the whole operation, not just pause/stop, while every money/risk
+value it sets stays inside a hard-clamped envelope.
+
+New `agent.act()` action kinds (each a logged, reversible proposal via `create_proposal`; applied
+immediately only under autopilot, else pending the user's approval — the existing pattern):
+- `set_risk` → `repo.set_user_risk_config` writes `drawdown_limit_pct` / `max_open_positions` /
+  `max_open_notional`. Clamped to `agent.RISK_BOUNDS`: drawdown_limit_pct ∈ [1, 50] (never 0, so a
+  stop can't be disabled; ≤50 so it always bites), max_open_positions ∈ [1, 50], max_open_notional
+  ∈ [1, 5000]. These feed the existing engine force-sell + portfolio caps unchanged.
+- `set_exec` → `repo.set_user_execution_config`. NEW per-user override layer: three nullable
+  `app_users.exec_*` columns the live `live_kernel_factory.make()` reads FIRST, falling back to the
+  `KALSHI_MAX_*` env defaults when NULL. Clamped to `agent.EXEC_BOUNDS`: book_fraction ∈ [0.01,0.50],
+  entry_spread ∈ [0.01,0.25], order_notional ∈ [1,500]. Each kernel knob can only shrink/abandon an
+  order and never blocks an exit, so a set value never weakens safety.
+- `research` extended: besides dig-deeper off a passed strategy, it can now start a FRESH line
+  (`market` + `idea`) through `repo.create_run(kind="research")` — the identical RSI pipeline
+  (proposer → gatekeeper → one-time holdout) a manual Research-page run uses, no narrowing.
+- `adjust` already tunes strategy/model spec params (re-validated + re-backtested); surfaced as a
+  first-class capability in the prompt.
+
+Clamping is enforced in `agent._clamp_into` at BOTH the action site and in `apply_proposal`
+(defensive re-clamp on approval). `create_proposal`/`get_proposal` gained a JSON `payload` column
+(the clamped change set to apply on approval). Proposal `kind` uses `set_exec` (not "set_execution")
+to fit the existing `VARCHAR(12)`.
+
+Immutable backstop, untouched and in order: `APP_LIVE_TRADING_ENABLED` / `APP_NO_SIDE_LIVE_ENABLED`
+flags, every deploy_live gate (`_is_deployment_candidate`, LIVE switch, Kalshi key, typed confirm,
+`_proven_on_paper`, `live_autopilot_ok`), the loss budget + daily-loss kill switch, and the
+drawdown/portfolio force-sell. Also killed the stale "YES-side only" copy (server.py autopilot_live
+message, app.js panel, schema comment): any side is promotable once `NO_SIDE_LIVE_ENABLED` is on,
+with the "being validated" fallback only when it's off.
+
+`position_stop_pct` (named in the task) was deliberately NOT added: it has no enforcement path in
+the engine, and a knob the agent could "set" that does nothing would be a safety illusion. The real
+per-deployment stop is `drawdown_limit_pct`.
+
+Tests: `tests/test_app_agent_autonomy.py` (clamps, proposal-vs-applied, fresh research, defensive
+re-clamp). Full suite green (529 passed / 9 skipped).
 ## Alpaca and Databento GitHub secret sync — October 17, 2026, Asia/Shanghai
 
 - **Status:** synced and metadata verified; advisory reservation released (`tau-alpaca-databento-secret-sync-20261017`). The user restored Databento in Tau’s private `.env` and requested GitHub sync. `APCA_API_KEY_ID`, `APCA_API_SECRET_KEY` and `DATABENTO_API_KEY` were client-encrypted and uploaded through stdin; all five named secrets covering Alpaca/Massive/Databento/Exa are listed. Existing Massive/Exa metadata is unchanged; no secret value was logged, placed in Git or passed as an argument. Private `.env` bytes/mode are unchanged.
@@ -834,6 +880,30 @@ Key empirical findings that shaped the design:
 - **Alignment:** one `snapshot_minute_utc` set once per scan, stamped on every row → all contracts
   share an aligned timestamp (cross-contract joins work); parallel fetch keeps the real window ~30s.
 - **Storage:** S3 + Parquet (Snappy), `s3://kalshi-trade-datalake-.../snapshots_1m/dt=.../minute=.../part.parquet`.
+### STATUS (2026-10-17) — Catalog-DRIVEN outcome-settled universe BUILT (not yet deployed)
+The 19 curated markets need hand-tuned, non-derivable config (strike/spot/close-hour), so they
+stay authored by hand. But OUTCOME-SETTLED binaries (underlying=None, book-only, settle YES/NO on
+an event — the `nba_game` model) have uniform, derivable config, so they're now GENERATED from the
+catalog:
+- `app/markets.py`: `MARKETS` = catalog-generated set + the 19 `CURATED` layered on top (authoritative,
+  never shadowed). `load_catalog_markets()` reads the enriched `kalshi_series` at import, best-effort
+  (no DB / empty / un-enriched catalog → just the curated 19; never raises, never hits the network).
+  `market_from_series()` is the pure, testable config-derivation. SQL lives in `app/catalog_repository.py`.
+- Generation filter (all derivable from the catalog): recurring frequency (fifteen_min/hourly/daily/
+  weekly/custom — excludes one_off/annual/sparse monthly+quarterly), allowed category (Sports, Weather,
+  Economics, Commodities, Sci/Tech, Companies, Health, World, Transportation — EXCLUDES Crypto [curated,
+  spot-ladder] and Financials [index strike-ladders needing a spot feed]), open_markets ≥ 2, non-MVE,
+  non-curated, non-scalar. Bounded: ≤150 total, ≤40/category, liquidity-ordered (all env-tunable).
+- `catalog_collector.refresh_series_meta()` enriches `kalshi_series` with Kalshi's own category+frequency
+  via ONE bulk `/series` call; `kalshi_series` gained a `frequency` column (init_schema DDL + migration).
+- Eager collection: `market_history.refresh` already loops `MARKETS`; each series is now contained in
+  try/except so one failing series never stalls the backfill for the rest. The ~100-series one-time
+  backfill is heavy but rate-limited (KALSHI_PAUSE); research fails closed until a market's data lands.
+- Live path unchanged: generated markets ride the exact `nba_game` engine path; `deployable=True` only
+  makes them ELIGIBLE — every per-deployment gate (gatekeeper, LIVE switch, key, typed confirm, NO-side,
+  drawdown, autopilot) still runs, in order. TAO stays research-only. No gate weakened.
+- Deploy sequence: deploy → `init_schema` → `catalog_collector` enriches → restart engine/market_history.
+
 ### STATUS (2026-10-14) — Phase 3 crypto backtest SHIPPED (research-only)
 The backtester now runs on any strike-ladder crypto series, not just BTC:
 - `Market` gained `underlying` (Coinbase product) + `deployable`. `MARKETS` now has BTC
@@ -847,6 +917,27 @@ The backtester now runs on any strike-ladder crypto series, not just BTC:
 - Remaining before ETH/SOL/XRP backtests are rich: settled-contract history (`hist_markets`)
   + quote candles (`market_candles`) accrue via the `recursive-history` loop per series.
 Next: Phase 4 (cross-contract) + the Hot-Markets sidebar + user-facing Explore tab.
+
+### STATUS (2026-10-17) — tradeable universe WIDENED to 19 deployable markets (committed on branch, not yet deployed)
+Curated static expansion of `app/markets.py` — 12 new `deployable=True` markets across 3 categories,
+each verified against the live public Kalshi + Coinbase APIs (not inferred):
+- **Crypto 15-min (strike + Coinbase spot):** sol15m, xrp15m, doge15m, near15m, zec15m, hype15m —
+  series `KX<COIN>15M`, candle_minutes=1, history_days=30. Each has a live Coinbase USD product
+  (fetch_spot_series) AND a currently-active 15M ladder (~96 settled markets/day, `floor_strike`
+  populated, balanced YES/NO) so the collector + backtest + live paths all work unchanged.
+- **Sports moneyline (outcome-settled, underlying=None, book-only — the NBA pattern):** nfl_game,
+  nhl_game, ncaaf_game, mlb_game, epl_game.
+- **Weather (outcome-settled, underlying=None, book-only):** high_ny (NYC daily high temp, candle_minutes=60).
+Architecture choice = STATIC curation, NOT catalog-driven generation: `markets.py` has no DB access
+(DB stays in the repository layer) and the catalog can't supply the fields that matter — the right
+Coinbase `underlying`, candle granularity, close-hour, and strike-vs-outcome — so a generator would
+produce FAKE config (e.g. KXDOGED *looks* like a directional crypto but its markets are strikeless and
+the collector would silently drop every one). The catalog's role is discovery (used here to survey +
+liquidity/structure-probe every candidate), not config. Excluded as bad-fit: all daily `*D` crypto
+(KXDOGED strikeless; AVAX/LINK/LTC/DOT/XLM/BCH/NEAR daily ladders dormant), ADA/BCH 15M (dormant),
+WNBA (scalar result the yes/no settle path can't resolve), monthly econ (too sparse to backtest).
+No live gate touched; TAO stays research-only. **Before research works, `market_history` must backfill
+each new series** (hist_markets + candlesticks; crypto also needs the coin's spot in `spot_candles_1m`).
 
 ### The core idea: Series (logical contract) vs Market (renewing instance)
 Kalshi tickers renew: `KXBTC15M-26OCT1401...` is one 15-minute window; a new ticker opens every

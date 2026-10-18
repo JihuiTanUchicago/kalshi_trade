@@ -1,13 +1,15 @@
 # Broker OAuth: teammate deployment
 
 Source review: [PR #10](https://github.com/JihuiTanUchicago/kalshi_trade/pull/10),
-branch `codex/broker-oauth-20261017` targeting main. The PR is open; production
-deployment remains pending.
+branch `codex/broker-oauth-20261017` targeting main. The current integration includes
+the newer main research/risk/schema changes; production deployment remains pending.
 
 The user has assigned production deployment to their teammate. This source is
 locally verified; no production migration, configuration, restart or real broker
-consent has been completed. Local checks: **1,020 Python passed / 9 skipped;
-55 frontend passed**. See [provider setup and API contract](BROKER_OAUTH.md).
+consent has been completed. The original OAuth milestone had **1,020 Python passed
+/ 9 skipped; 55 frontend passed**; those are historical results, not the combined
+release's test count. See the [current integration evidence](../results/open_pr_merge_2026-10-18/HANDOFF.md)
+and [provider setup/API contract](BROKER_OAUTH.md).
 
 ## 1. Obtain the reviewed source and compare production
 
@@ -71,7 +73,18 @@ local `.env` has no production encryption key and must not replace the server fi
 Do **not** run `load_app_secrets.sh`: it omits the OAuth pair, rewrites the Google
 callback and restarts agents as well as web.
 
-## 3. Apply only the two broker tables
+## 3. Apply the reviewed full application schema
+
+The combined release must follow current `AGENTS.md`: run `python -m app.schema`,
+which includes pipeline tables, app-level column migrations and the two broker
+tables. Neither `data_pipeline.init_schema` alone nor broker-only DDL migrates the
+new main's required risk, execution and research columns. Earlier broker-only
+rollout notes/archives are superseded for this combined release.
+
+Review `app/schema.py` and `data_pipeline/init_schema.py` at the chosen commit and
+back up the database before migration. This entry point also contains legacy data
+maintenance (including waitlist/username work); its full scope must be reviewed by
+the deployment owner. This source-merge task has not run it on any database.
 
 Before migration, confirm `app_users` exists and inspect any existing
 `app_broker_connections` / `app_broker_oauth_attempts` definitions against
@@ -94,29 +107,22 @@ set +a
 unset AWS_PROFILE
 cd "$TAU_OAUTH_SOURCE"
 /opt/kalshi/.venv/bin/python - <<'PY'
-from app import broker_repository, broker_vault
-from data_pipeline.common import get_db_conn
+from app import broker_repository, broker_vault, schema
 
 if not broker_vault.configured():
     raise SystemExit("Existing APP_SECRET_KEY is missing or invalid; stop without changing it.")
 assert len(broker_repository.DDL) == 2
-conn = get_db_conn()
-try:
-    with conn.cursor() as cur:
-        cur.execute("SELECT 1 FROM app_users LIMIT 0")
-        for statement in broker_repository.DDL:
-            cur.execute(statement)
-finally:
-    conn.close()
-print("Broker table creation completed; verify definitions before installing the app.")
+schema.main()
+print("Full application schema completed; verify app migrations and broker definitions before installing the app.")
 PY
 SHELL
 ```
 
 Inspect the resulting definitions/columns before proceeding. The exact generated
-SQL is also retained in the [migration evidence](../results/broker_oauth_2026-10-17/production_2026-10-17/broker-tables.sql).
-Do **not** run `app.schema` or shared `init_schema` for this rollout: they include
-unrelated research ALTERs, waitlist deletion, username updates and history work.
+SQL is also retained in the [historical broker-only DDL evidence](../results/broker_oauth_2026-10-17/production_2026-10-17/broker-tables.sql);
+that file documents the two broker tables and is not the complete migration for
+the combined release. Confirm the app-level `exec_*`, risk, experiment and order-
+intent migrations required by the selected source as well.
 
 ## 4. Install, restart web and verify
 
@@ -143,7 +149,8 @@ Verify using GET requests (HEAD is unsupported):
 | Anonymous `/api/brokers` and broker callback | 401 |
 | POST broker connect without `X-Recursive` | 403 |
 
-Then the actual user signs into Tau, opens **Settings → Account → Alpaca**, keeps
+Then the actual user signs into Tau, opens **Funds → Alpaca** (or
+**Settings → Account** in Meridian), keeps
 **Paper** selected and completes broker consent. Confirm the masked account,
 callback, cancellation and disconnect behavior. Do not forge a user/session to
 test this. This consent/account read is what verifies the real client pair;

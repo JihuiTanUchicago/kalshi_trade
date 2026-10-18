@@ -1,0 +1,11 @@
+{
+  "source": "GitHub Git database API",
+  "base": "a5d55287faba9d0659186fa406afd4fe60191a4f",
+  "tip": "070043758f70011bfbd2ec139348c96745f81b30",
+  "commits": 68,
+  "trees_written": 251,
+  "blobs_written": 200,
+  "all_imported_objects_hash_verified": true,
+  "remote_ref_previous": "a5d55287faba9d0659186fa406afd4fe60191a4f",
+  "checkout_changed": false
+}

@@ -231,6 +231,14 @@ class MarketableLimitKernel:
 
     def execute(self, intent) -> ExecutionReport:
         buying = str(intent.action).lower() == "buy"
+        # Durable, idempotent client_order_id (EXECUTION_RISK_HARDENING P0-1): when the caller
+        # persisted an intent and threaded its id in via intent.metadata, every child order this
+        # kernel sends carries a deterministic id derived from it (base, base-1, base-2, ... one per
+        # escalating attempt), so a replay of the *same* intent is deduped by Kalshi's own
+        # client_order_id uniqueness. Absent (legacy/sim callers), the submitter mints its own uuid
+        # exactly as before — the extra kwarg is only ever passed when a base is present, so a
+        # submitter that does not accept it is never called with it.
+        coid_base = (getattr(intent, "metadata", None) or {}).get("client_order_id")
         attempts: List[Dict] = []
         remaining = int(intent.qty_contracts)
         filled_total = 0
@@ -339,7 +347,11 @@ class MarketableLimitKernel:
                     "order_notional_exceeded", {"ticker": intent.ticker, "attempts": attempts}
                 )
 
-            res = self._submitter(intent.ticker, intent.action, intent.side, child, limit)
+            if coid_base is None:
+                res = self._submitter(intent.ticker, intent.action, intent.side, child, limit)
+            else:
+                coid = coid_base if attempt == 0 else "%s-%d" % (coid_base, attempt)
+                res = self._submitter(intent.ticker, intent.action, intent.side, child, limit, client_order_id=coid)
             # The submitter sent a YES-leg order (see order_wire_params), so the
             # fill it reports is a YES price. Parse against the YES wire price so
             # the "filled but unreadable price" fallback is in the same (YES) space,

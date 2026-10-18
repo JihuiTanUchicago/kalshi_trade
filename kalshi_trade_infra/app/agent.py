@@ -168,12 +168,23 @@ Be specific and brief. You cannot see validation/holdout data either. Reply one 
 {"verdicts":[{"decision":"approve|revise|reject","reason":"...","fixes":{...optional spec
 patch...}}]}"""
 
-COPILOT_SYSTEM = """You are the trading co-pilot inside Tau. You watch the user's deployed
-Kalshi Bitcoin strategies and talk with them in plain, brief English (no jargon without a gloss).
-You can act through structured actions; the host re-backtests every adjustment and applies it
-only if it still passes the deployment gates. Be honest about uncertainty and small samples:
-a handful of live trades proves little either way. Never promise profit.
-Reply with ONE JSON object only."""
+COPILOT_SYSTEM = """You are the trading co-pilot inside Tau. You manage the whole trading
+operation for the user — not just pausing things — and talk with them in plain, brief English
+(no jargon without a gloss). Within hard safety bounds you MAY, through structured actions:
+  - research anything: start a fresh research line on any market, or dig deeper on a passed
+    strategy. Both run the SAME RSI pipeline (pre-registration, gatekeeper, one-time holdout) —
+    you have the same freedom a manual research run has.
+  - tune a deployment's strategy/model parameters (the `adjust` action edits the spec; the host
+    re-backtests it and keeps it only if it still passes every gate).
+  - tune the user's RISK controls (drawdown limit, max open positions, max open notional) and the
+    live EXECUTION controls (book participation, entry spread, per-order notional). You can only
+    set these WITHIN a safe envelope — the host CLAMPS every value, so you can tighten freely but
+    can never disable a stop, exceed a cap, or loosen past a safe maximum.
+  - deploy a proven paper strategy of ANY side (YES or NO) to paper, or to real money once it has
+    proved itself on paper and the user has turned on live autopilot.
+You can NEVER flip the live-trading switch, bypass a deploy/live/risk gate, or weaken the loss
+budget — those are fixed. Be honest about uncertainty and small samples: a handful of live trades
+proves little either way. Never promise profit. Reply with ONE JSON object only."""
 
 
 # -- research ------------------------------------------------------------------
@@ -390,6 +401,23 @@ def _plan_lookback(run: Dict, market: str, model: ModelFn, usage: Usage, log) ->
     return r["days"]
 
 
+def _cross_market_options(market: str) -> str:
+    """Surface the markets that can be a cross-SECTIONAL leg for `market` - those sharing its
+    decision cadence (markets.compatible_cadence). Without this the proposer only knows its single
+    run market, so it can propose same-market cross_strike/calendar but never a cross-MARKET pair.
+    Empty when nothing shares the cadence (then cross_sectional isn't offered)."""
+    from app.markets import compatible_cadence
+    peers = [k for k in MARKETS if k != market and compatible_cadence([market, k])]
+    if not peers:
+        return ""
+    labels = ", ".join('"%s" (%s)' % (k, MARKETS[k].label) for k in peers)
+    return ("\nCross-MARKET relative value: these markets share %s's decision cadence, so you MAY add "
+            "ONE as a cross_sectional leg (cross.pairing=\"cross_sectional\", "
+            "cross.legs=[{\"market\":\"<key>\"}]) when the edge is a RELATIVE mispricing between the two "
+            "markets (lead-lag, basis dislocation), not a directional view: %s. Only do so with a real "
+            "relative mechanism; otherwise stay single-contract." % (market, labels))
+
+
 def _research_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], count: int) -> str:
     idea = (run.get("prompt") or "").strip() or "Find any durable, fee-surviving edge you can justify."
     brief = _brief()
@@ -399,7 +427,7 @@ def _research_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], count:
         lens = "\nOptional lens to consider: %s - %s" % (d["label"], d["brief"])
     return """{brief}
 
-The user's idea: {idea}{lens}
+The user's idea: {idea}{lens}{cross_options}
 
 Turn this idea into concrete, testable trading strategies. Stay faithful to what the
 user asked for; if the idea is vague, pick the most promising precise reading and say so.
@@ -418,6 +446,7 @@ mechanism, falsification_criteria, negative_control, null/alt hypotheses, min_sa
         brief=brief,
         idea=idea[:1000],
         lens=lens,
+        cross_options=_cross_market_options(run["market"]),
         market_label=MARKETS[run["market"]].label,
         market=run["market"],
         summary=json.dumps(_in_sample_summary(ds)),
@@ -644,6 +673,46 @@ def _prereg(t: Dict, spec: Dict, run: Dict, partition: Dict, n_tests: int,
     )
 
 
+def _promote_if_forward_validated(cur, user_id: int, experiment_id: int, finalist: Dict, t: Dict,
+                                  log) -> None:
+    """§E.5 promotion. A finalist classified STAT_SUPPORTED on validation now gets the ONE-TIME
+    Locked-Holdout evaluation; if it forward-validates, the marginal-contribution (diversification)
+    gate promotes it FORWARD_VALIDATED -> DEPLOYMENT_CANDIDATE. This is the only path that mints a
+    deployment candidate, so the deploy gate can finally clear.
+
+    The holdout is a locked, single-use resource: `gatekeeper.judge_holdout` itself refuses
+    (HoldoutConsumed) if the experiment is not STAT_SUPPORTED, already has a holdout verdict, or the
+    window is at its evaluation cap — so a re-run never re-judges or burns it twice; we just log the
+    skip. Anti-leak (Leak 2): exactly like the validation path, every held-out number goes to the
+    FEED and the ledger ONLY — never into `_result_block`/strategy_memory — so the generator stays
+    blind to holdout data. The strategy row keeps its validation status ("passed"); the deployment
+    candidacy lives in the gatekeeper ledger, which is what `_is_deployment_candidate` reads."""
+    try:
+        verdict = gatekeeper.judge_holdout(cur, experiment_id, finalist)
+    except gatekeeper.HoldoutConsumed as e:
+        log("verdict", "%s: the one-time holdout was not evaluated (%s)." % (t["title"], e),
+            {"title": t["title"], "phase": "holdout", "skipped": True})
+        return
+    hcls = verdict["classification"]
+    log("verdict", "%s: one-time holdout verdict is gatekeeper-held (classification=%s, %s trades); "
+                   "the numbers never return to the generator."
+        % (t["title"], hcls, verdict.get("n_trades", 0)),
+        {"title": t["title"], "phase": "holdout", "classification": hcls,
+         "holdout_consumed": verdict.get("holdout_consumed"),
+         "stats": {"n_trades": verdict.get("n_trades"), "p_value": verdict.get("p_value"),
+                   "dsr": verdict.get("dsr"), "psr": verdict.get("psr"),
+                   "ci": verdict.get("ci"), "mean_net_return": verdict.get("mean_net_return")}})
+    if hcls != gatekeeper.Classification.FORWARD_VALIDATED.value:
+        return
+    ok, why = gatekeeper.marginal_contribution_ok(cur, user_id, experiment_id, finalist)
+    final = (gatekeeper.Classification.DEPLOYMENT_CANDIDATE if ok
+             else gatekeeper.Classification.FORWARD_VALIDATED).value
+    log("verdict", "%s: diversification gate %s — %s." % (
+            t["title"], "PASSED, promoted to DEPLOYMENT_CANDIDATE" if ok
+            else "blocked (stays forward-validated, not deployable)", why),
+        {"title": t["title"], "phase": "forward", "marginal_ok": ok, "classification": final})
+
+
 def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk: List[Dict], log,
                    policy: exploration.ExplorationPolicy, model: ModelFn, usage: Usage, conn=None) -> int:
     """The HAND-OFF (§B.5 step 3): freeze the finalists, let the Challenger review them, then
@@ -729,7 +798,7 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
                 cls = outcome["classification"]
                 status = _status_for(cls)
                 passed += status == "passed"
-                repo.set_strategy_outcome(cur, t["strategy_id"], status, _result_block(s, t, cls))
+                repo.set_strategy_outcome(cur, t["strategy_id"], status, _result_block(s, t, cls), exp_ids[i])
                 # The stats go to the FEED (the user's own results, same as the strategy page) — NOT
                 # into _result_block, which feeds strategy_memory back to the GENERATOR. The generator
                 # stays blind to the held-out numbers (closes Leak 2); the human watching does not.
@@ -745,6 +814,11 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
                          "placebo_p": outcome.get("placebo_p"),
                          "max_drawdown": outcome.get("max_drawdown"),
                          "cross_day_ok": outcome.get("cross_day_ok")}})
+                # §E.5 promotion: a validation pass earns the ONE-TIME Locked-Holdout look and,
+                # if it forward-validates, the diversification gate that mints a DEPLOYMENT_CANDIDATE.
+                # Like validation, every number stays gatekeeper-held (feed + ledger only).
+                if cls == gatekeeper.Classification.STAT_SUPPORTED.value:
+                    _promote_if_forward_validated(cur, user_id, exp_ids[i], payload[i], t, log)
 
     for t in chunk:
         if t in finalists:
@@ -1065,6 +1139,59 @@ def _is_deployment_candidate(cur, strategy_id: int) -> bool:
                for r in rec.get("results", []))
 
 
+# -- the agent's safe-tuning envelope ------------------------------------------
+# The co-pilot may TUNE risk and execution controls, but every value it sets is CLAMPED into
+# [min, max] here before it is ever persisted. A TIGHTEN (safer: a lower cap / lower drawdown
+# limit) is allowed down to the min; a LOOSEN is capped at the max. The min is strictly > 0 for a
+# stop, so the agent can never DISABLE a stop, and the max is the user's hard ceiling, so it can
+# never exceed a cap or loosen past a safe maximum. This envelope is the whole point of bounded
+# autonomy. It is NOT the backstop: the loss budget, the autopilot daily-loss kill switch, and the
+# drawdown/portfolio force-sell in engine.py remain the immutable backstop regardless of what the
+# agent sets here, and this layer never touches the live-enable flags or any deploy/live gate.
+RISK_BOUNDS = {
+    # % of a deployment's capital it may draw down before the engine force-closes + pauses it.
+    # >0 so a stop is never disabled; <=50 so the stop always bites well before capital is gone.
+    "drawdown_limit_pct": (1.0, 50.0),
+    # Hard ceiling on concurrent open positions per user (portfolio cap on NEW entries).
+    "max_open_positions": (1, 50),
+    # Hard ceiling on total open entry notional per user, in dollars.
+    "max_open_notional": (1.0, 5000.0),
+}
+EXEC_BOUNDS = {
+    # Fraction of the resting touch size a single child order may take (market-impact cap).
+    "exec_max_book_fraction": (0.01, 0.50),
+    # Widest touch spread (dollars) an entry will cross before it is abandoned (thin-book cap).
+    "exec_max_entry_spread": (0.01, 0.25),
+    # Hard per-order notional backstop on buys, in dollars.
+    "exec_max_order_notional": (1.0, 500.0),
+}
+
+
+def _clamp(value: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, value))
+
+
+def _clamp_into(changes: Dict, bounds: Dict, ints: Tuple[str, ...] = ()) -> Dict:
+    """Keep only the known keys in `changes`, coerce to number, clamp each into its [lo, hi].
+    Everything the agent sends is filtered through this, so an unknown key, a non-number or an
+    out-of-range value can never reach the DB. Returns {} if nothing valid remained."""
+    out: Dict = {}
+    for key, (lo, hi) in bounds.items():
+        if key not in changes or changes[key] is None:
+            continue
+        try:
+            v = float(changes[key])
+        except (TypeError, ValueError):
+            continue
+        v = _clamp(v, lo, hi)
+        out[key] = int(round(v)) if key in ints else round(v, 4)
+    return out
+
+
+def _fmt_changes(changes: Dict) -> str:
+    return ", ".join("%s=%s" % (k, v) for k, v in changes.items())
+
+
 def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.dataset) -> Tuple[str, Optional[int]]:
     """Turn one agent action into a proposal (or, on autopilot, an applied
     change). Returns (sentence for the chat, proposal id if one was made)."""
@@ -1074,7 +1201,14 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
     if kind in ("adjust", "pause", "resume"):
         dep = repo.get_deployment(cur, user_id, int(action.get("deployment_id") or 0))
         if dep is None or dep["status"] == "stopped":
-            return "I couldn't find that deployment, so I did nothing.", None
+            # The agent referenced a deployment that's gone (removed/stopped) — usually one it
+            # named in an earlier message. Don't dead-end with a vague "couldn't find"; tell it
+            # exactly what exists so the next review acts on a real one instead of repeating the miss.
+            live = repo.list_deployments(cur, user_id)
+            have = ("; ".join("#%d %s (%s, %s)" % (d["id"], d["title"], d["market"], d["status"]) for d in live)
+                    or "none — you have no active deployments, so research a new edge or deploy a proven one instead of adjusting")
+            return ("Deployment #%s no longer exists (removed or stopped). Your current deployments are: %s."
+                    % (action.get("deployment_id"), have), None)
     if kind == "adjust":
         changes = action.get("changes")
         if not isinstance(changes, dict) or not changes:
@@ -1089,9 +1223,17 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         if not result["passed"]:
             failed = ", ".join(g["name"].lower() for g in result["gates"] if not g["ok"])
             return "I backtested a change to %s but it failed (%s), so I left it alone." % (dep["title"], failed), None
+        # NOT "passed": an adjustment is only a re-backtest — it never pre-registers, is never
+        # judged by the Statistical Gatekeeper, and carries no experiment. "passed" is reserved
+        # for the full-pipeline outcome (set_strategy_outcome <-> STAT_SUPPORTED <-> a linked
+        # experiment), so an adjustment gets the non-deployable "backtest-only" status. This is
+        # strictly stricter: the deploy/deploy_live gates require status=="passed" (AND a
+        # deployment candidate), so a backtest-only row can never be deployed afresh. The
+        # adjustment still applies to its existing deployment via the adjust proposal below
+        # (set_deployment_strategy), which never routes through the status=="passed" deploy gate.
         sid = repo.insert_strategy(
             cur, user_id, None, dep["strategy_id"], dep["market"], dep["direction"], dep["title"] + " (adjusted)",
-            reason, new_spec, "passed", result,
+            reason, new_spec, "backtest-only", result,
         )
         auto = autopilot and dep["mode"] == "paper" and not raises_risk(dep["spec"], new_spec)
         pid = repo.create_proposal(cur, user_id, "adjust", reason, dep["id"], sid, "applied" if auto else "pending")
@@ -1172,19 +1314,65 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         repo.create_deployment(cur, user_id, strat["id"], strat["market"], "live")
         return ("Autopilot deployed %s to LIVE within your $%.0f cap (your own Kalshi key, loss guard on)."
                 % (strat["title"], cap)), pid
+    if kind == "set_risk":
+        # Tune the user's risk controls within the safe envelope. Every value is CLAMPED, so a
+        # tighten is applied freely and a loosen is capped at the hard ceiling — the agent can
+        # never disable a stop or exceed a cap. Applied on autopilot, else a pending proposal.
+        changes = _clamp_into(action.get("changes") or {}, RISK_BOUNDS, ints=("max_open_positions",))
+        if not changes:
+            return "I meant to tune your risk controls but sent nothing I can set.", None
+        pid = repo.create_proposal(cur, user_id, "set_risk", reason, None, None,
+                                   "applied" if autopilot else "pending", payload=changes)
+        if autopilot:
+            repo.set_user_risk_config(cur, user_id, changes)
+            return "Autopilot updated your risk controls (within safe bounds): %s." % _fmt_changes(changes), pid
+        return "Proposed a risk-control change (within safe bounds): %s." % _fmt_changes(changes), pid
+    if kind == "set_exec":
+        # Tune the live execution controls within the safe envelope (same clamp discipline). These
+        # caps can only shrink or abandon an order and never block an exit, so a set value never
+        # weakens safety; the clamp keeps even a loosen inside the safe maximum.
+        changes = _clamp_into(action.get("changes") or {}, EXEC_BOUNDS)
+        if not changes:
+            return "I meant to tune the execution controls but sent nothing I can set.", None
+        pid = repo.create_proposal(cur, user_id, "set_exec", reason, None, None,
+                                   "applied" if autopilot else "pending", payload=changes)
+        if autopilot:
+            repo.set_user_execution_config(cur, user_id, changes)
+            return "Autopilot adjusted your execution controls (within safe bounds): %s." % _fmt_changes(changes), pid
+        return "Proposed an execution-control change (within safe bounds): %s." % _fmt_changes(changes), pid
     if kind == "research":
-        # "Dig deeper": branch a NEW research line off a passed strategy. No money and no proposal —
-        # the user asked for it in chat — but it spends model credits, so honour the same
-        # active-research cap the Research page enforces, and only ever branch a strategy that passed.
-        strat = repo.get_strategy(cur, user_id, int(action.get("strategy_id") or 0))
-        if strat is None or strat["status"] != "passed":
-            return "I can only dig deeper on a strategy that already passed its backtest.", None
+        # Run the agent through the SAME RSI pipeline a manual run uses: repo.create_run(kind=
+        # "research") -> a worker claims it -> run_research -> proposer -> gatekeeper -> one-time
+        # holdout. No narrowing: the autopilot agent has the same market/idea freedom. Two modes:
+        #   - strategy_id given  -> "dig deeper": branch off a PASSED strategy (same market/dir).
+        #   - market + idea given -> a FRESH research line, identical to the Research page endpoint.
+        # No money and no proposal (research spends only model credits), but it honours the same
+        # active-research cap the Research page enforces. Validate the intent FIRST so a bad action
+        # is rejected without consuming the capacity check.
+        sid = int(action.get("strategy_id") or 0)
+        market = action.get("market") or None
+        idea = str(action.get("idea") or action.get("reason") or "").strip()[:1000]
+        if sid:
+            strat = repo.get_strategy(cur, user_id, sid)
+            if strat is None or strat["status"] != "passed":
+                return "I can only dig deeper on a strategy that already passed its backtest.", None
+        else:
+            if market is not None and market not in MARKETS:
+                return "I can't research that market — pick one Tau supports, or let me choose.", None
+            if len(idea) < 8:
+                return "Tell me the idea to research in a sentence or two.", None
         if repo.count_runs(cur, user_id, "research", active_only=True) >= MAX_ACTIVE_RESEARCH:
-            return "You already have a couple of research sessions running — let one finish and I'll dig deeper then.", None
-        dig_deeper_run(cur, user_id, strat)
-        return ("Started a new research session digging deeper into “%s”: I'll refine and "
-                "stress-test its mechanism, and every variant still has to pass the same gates. "
-                "Follow it on the Research page." % strat["title"], None)
+            return "You already have a couple of research sessions running — let one finish and I'll start this then.", None
+        if sid:
+            dig_deeper_run(cur, user_id, strat)
+            return ("Started a new research session digging deeper into “%s”: I'll refine and "
+                    "stress-test its mechanism, and every variant still has to pass the same gates. "
+                    "Follow it on the Research page." % strat["title"], None)
+        direction = action.get("direction") if action.get("direction") in DIRECTIONS else None
+        repo.create_run(cur, user_id, "research", market, direction, idea)
+        return ("Started a fresh research session on %s — same gates as any run (pre-registration, "
+                "holdout, diversification). Follow it on the Research page."
+                % (market or "a market I'll choose"), None)
     return "I tried an action I'm not allowed to take (%s)." % kind, None
 
 
@@ -1199,13 +1387,28 @@ def apply_proposal(cur, user_id: int, proposal: Dict) -> None:
     elif kind == "deploy":
         strat = repo.get_strategy(cur, user_id, proposal["strategy_id"])
         repo.create_deployment(cur, user_id, strat["id"], strat["market"], "paper")
+    elif kind == "set_risk":
+        # payload is the already-clamped change set from act(); re-clamp defensively so an approval
+        # can never apply a value outside the safe envelope even if the stored row were tampered.
+        repo.set_user_risk_config(cur, user_id, _clamp_into(proposal.get("payload") or {}, RISK_BOUNDS, ints=("max_open_positions",)))
+    elif kind == "set_exec":
+        repo.set_user_execution_config(cur, user_id, _clamp_into(proposal.get("payload") or {}, EXEC_BOUNDS))
 
 
 def _copilot_context(cur, user: Dict) -> str:
     deps = repo.list_deployments(cur, user["id"])
     passed = [s for s in repo.list_strategies(cur, user["id"], status="passed", limit=20)]
     deployed_ids = {d["strategy_id"] for d in deps}
-    lines = ["Autopilot is %s." % ("ON" if user.get("autopilot") else "OFF"), "", "Deployments:"]
+    risk = repo.user_risk_config(cur, user["id"]) or {}
+    xc = repo.user_execution_config(cur, user["id"]) or {}
+    lines = [
+        "Autopilot is %s." % ("ON" if user.get("autopilot") else "OFF"),
+        "Risk controls: drawdown_limit_pct=%s, max_open_positions=%s, max_open_notional=%s."
+        % (risk.get("drawdown_limit_pct"), risk.get("max_open_positions"), risk.get("max_open_notional")),
+        "Execution controls (null = server default): exec_max_book_fraction=%s, exec_max_entry_spread=%s, exec_max_order_notional=%s."
+        % (xc.get("exec_max_book_fraction"), xc.get("exec_max_entry_spread"), xc.get("exec_max_order_notional")),
+        "", "Deployments:",
+    ]
     for d in deps:
         oos = ((d.get("result") or {}).get("out_of_sample") or {})
         lines.append(
@@ -1225,18 +1428,25 @@ def _copilot_context(cur, user: Dict) -> str:
                      % (s["id"], s["title"], s["market"], oos.get("pnl"), oos.get("trades")))
     if not spare:
         lines.append("- none")
+    deployable = [k for k, m in MARKETS.items() if m.deployable]
+    lines += ["", ("Markets you can research AND deploy — you are NOT limited to the one you've been "
+                   "trading. If a market has gone quiet (no fills, no edges for days), that is a reason to "
+                   "HUNT A DIFFERENT market, not to wait: " + ", ".join(deployable))]
     return "\n".join(lines)
 
 
 ACTIONS_GUIDE = """Reply: {"reply": "<what you tell the user>", "actions": [ ... at most 3 ... ]}
 Actions:
-  {"type": "adjust", "deployment_id": N, "changes": {<partial spec, e.g. {"entry": {"min_edge": 0.08}}>}, "reason": "..."}
+  {"type": "adjust", "deployment_id": N, "changes": {<partial spec>}, "reason": "..."}   (TUNE a deployment's strategy/model PARAMETERS — any field of its spec, e.g. {"entry": {"min_edge": 0.08}}, {"sizing": {"stake": 4}}. The host re-backtests the new spec and applies it only if it still passes every gate. This is your main lever for improving a running strategy.)
+  {"type": "set_risk", "changes": {"drawdown_limit_pct": 15, "max_open_positions": 10, "max_open_notional": 500}, "reason": "..."}   (Tune the user's RISK controls. Any subset of those three keys. Values are CLAMPED to a safe range — you can tighten freely; you can never set a limit to 0 or above the hard ceiling.)
+  {"type": "set_exec", "changes": {"exec_max_book_fraction": 0.2, "exec_max_entry_spread": 0.05, "exec_max_order_notional": 100}, "reason": "..."}   (Tune the live EXECUTION controls. Any subset. Also clamped to a safe range. These only ever make an order smaller/safer and never block an exit.)
   {"type": "pause",  "deployment_id": N, "reason": "..."}
   {"type": "resume", "deployment_id": N, "reason": "..."}
-  {"type": "research", "strategy_id": N, "reason": "..."}     (DIG DEEPER: start a new research session that branches off a strategy the user already PASSED — refine its parameters, stress-test it, extend the thesis. Use this whenever the user wants to explore, refine, improve, or build further on a passed strategy, instead of letting it be a dead end. Each refined variant still has to pass the gates. It is NOT a deployment; it just queues research.)
-  {"type": "deploy", "strategy_id": N, "reason": "..."}       (paper)
+  {"type": "research", "strategy_id": N, "reason": "..."}     (DIG DEEPER off a PASSED strategy — refine its parameters, stress-test it, extend the thesis. Each variant still has to pass the gates.)
+  {"type": "research", "market": "<market key or omit to let me choose>", "idea": "<the hypothesis to test>", "reason": "..."}   (FRESH research line — same RSI pipeline and the same freedom as the Research page. Name the mechanism/edge in the idea.)
+  {"type": "deploy", "strategy_id": N, "reason": "..."}       (paper; any side)
   {"type": "deploy_live", "strategy_id": N, "reason": "..."}  (REAL money; any side (YES or NO) that already proved itself on PAPER, and only when the user turned on live autopilot. If live autopilot is off or any safety gate fails it is refused and stays on paper. Never the first step for a new idea: research -> paper -> live.)
-Use actions only when you have a concrete reason; an empty list is often right.
+Back your words with actions. If your reply says you ARE doing something — starting/launching research, tuning, pausing, promoting, deploying — you MUST include the matching action(s) in `actions`. A reply that merely DESCRIBES an action without emitting it does NOTHING (no research is launched, nothing changes) and is a failure: e.g. saying "I'll launch three research threads now" requires three `research` actions in this same response, not a promise to do it later. Conversely, never invent actions you have no concrete reason for — if the right move is to wait and watch, say so plainly and return an empty list.
 """ + specmod.SPEC_GUIDE
 
 
@@ -1269,7 +1479,17 @@ def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.da
         history = repo.chat_messages(cur, user["id"], limit=20)
         transcript = "\n".join("%s: %s" % (m["role"], m["content"]) for m in history)
         if run["kind"] == "review":
-            task = "Scheduled check-in. Why: %s\nAssess the deployments and tell the user what you see." % run.get("prompt")
+            task = ("Scheduled autopilot review. Why: %s\n"
+                    "You are running on your own now — PROACTIVELY MANAGE the operation within your mandate, don't just describe it. "
+                    "Assess every deployment and open position, then take the actions that improve results: start a research run to "
+                    "explore a promising angle (same RSI pipeline as a manual run), promote a proven strategy (paper, or live within caps "
+                    "when live autopilot is on), tune model/risk/execution parameters, or pause/flatten if risk warrants. "
+                    "Only adjust/pause/resume deployments that appear in the Deployments list above, by their exact deployment_id — "
+                    "ones you named in earlier messages may have been removed and no longer exist. If the market you've been trading has "
+                    "gone quiet for days (no fills, no passing edges), that is NOT a reason to wait or 'step aside' — research a DIFFERENT "
+                    "market from the list (other coins, sports, weather); a dead regime in one market is not a dead regime everywhere, and "
+                    "sitting idle while 18 other markets are open is as passive as forcing a bad trade. If there is genuinely nothing worth "
+                    "doing, say so briefly. Every money/risk value you set is clamped and the loss budget / kill switch / live gate still bound you." % run.get("prompt"))
         else:
             task = "Answer the user's latest message."
         prompt = "%s\n\nRecent conversation:\n%s\n\n%s\n\n%s" % (_copilot_context(cur, user), transcript or "(none)", task, ACTIONS_GUIDE)

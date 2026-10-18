@@ -45,8 +45,13 @@ def get_db_conn():
         charset="utf8mb4",
         cursorclass=pymysql.cursors.DictCursor,
         connect_timeout=10,
-        read_timeout=30,
-        write_timeout=30,
+        # A wide-window history load (partition math / run_forever backtests) legitimately reads
+        # for minutes; the old 30s fired the socket read-timeout MID-RESULT, desyncing the socket
+        # so the NEXT query died with "Packet sequence number wrong". 600s safely exceeds the
+        # longest legitimate read and matches the Bedrock budget, while connect_timeout stays short
+        # so a dead host still fails fast.
+        read_timeout=600,
+        write_timeout=600,
     )
 
 

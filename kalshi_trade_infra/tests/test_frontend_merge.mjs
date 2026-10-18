@@ -1,52 +1,137 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {createRequire} from 'node:module';
 import {test} from 'node:test';
 import vm from 'node:vm';
 
-// Exercise the shipped client with a small DOM/timer harness; no accounts, database or network.
+const require = createRequire(import.meta.url);
+const brokerConnections = require('../app/static/broker-connections.js');
 const source = readFileSync(new URL('../app/static/app.js', import.meta.url), 'utf8');
+const flush = () => new Promise(resolve => setImmediate(resolve));
+const deferred = () => {
+  let resolve;
+  const promise = new Promise(done => { resolve = done; });
+  return {promise, resolve};
+};
+const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
+
+// Parse the rendered controls: absent selectors return null, and replacing a
+// section creates new controls. The harness never starts a browser or network.
 class Element {
-  constructor() {
-    this.dataset = {}; this.nodes = new Map(); this.children = []; this.hidden = false;
-    this.scrollTop = 0; this.scrollHeight = 0; this.clientHeight = 100; this.attributes = {};
-    this.clientWidth = 760; this.isConnected = true; this.style = {};
-    this.classes = new Set(); this.writes = 0;
-    this.classList = {add: (...xs) => xs.forEach(x => this.classes.add(x)), remove: (...xs) => xs.forEach(x => this.classes.delete(x))};
+  constructor(tag = 'div', attributes = {}) {
+    this.tag = tag; this.attributes = {...attributes}; this.dataset = {};
+    this.children = []; this.listeners = new Map(); this.style = {}; this.writes = 0;
+    this.scrollTop = 0; this.scrollHeight = 0; this.clientHeight = 100; this.clientWidth = 760;
+    this.hidden = 'hidden' in attributes; this.value = attributes.value || '';
+    this.checked = 'checked' in attributes; this.disabled = 'disabled' in attributes;
+    this.classes = new Set((attributes.class || '').split(/\s+/).filter(Boolean));
+    for (const [key, value] of Object.entries(attributes)) if (key.startsWith('data-')) {
+      this.dataset[key.slice(5).replace(/-([a-z])/g, (_, x) => x.toUpperCase())] = value;
+    }
+    this.classList = {
+      add: (...xs) => xs.forEach(x => this.classes.add(x)),
+      remove: (...xs) => xs.forEach(x => this.classes.delete(x)),
+      contains: x => this.classes.has(x),
+      toggle: (x, force = !this.classes.has(x)) => { force ? this.classes.add(x) : this.classes.delete(x); return force; },
+    };
   }
-  set innerHTML(value) { this.html = value; this.writes++; }
+  get isConnected() { return !this.removed && (!this.parent || this.parent.isConnected); }
+  get className() { return [...this.classes].join(' '); }
+  set className(value) { this.classes = new Set(value.split(/\s+/)); }
+  get id() { return this.attributes.id; }
+  set id(value) { this.attributes.id = value; }
   get innerHTML() { return this.html || ''; }
-  querySelector(selector) { if (!this.nodes.has(selector)) this.nodes.set(selector, new Element()); return this.nodes.get(selector); }
-  querySelectorAll() { return []; }
-  addEventListener() {}
+  set innerHTML(value) {
+    this.html = value; this.writes++; this.children.forEach(child => { child.removed = true; }); this.children = [];
+    const stack = [{element: this, start: 0}];
+    const voids = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+    for (const match of value.matchAll(/<\/?([a-z][\w-]*)\b([^>]*)>/gi)) {
+      const tag = match[1].toLowerCase();
+      if (match[0].startsWith('</')) {
+        if (stack.length > 1 && stack.at(-1).element.tag === tag) {
+          const closed = stack.pop(); closed.element.html = value.slice(closed.start, match.index);
+        }
+      } else {
+        const attributes = {};
+        for (const [, key, quoted, single, bare] of match[2].matchAll(/([\w:-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g)) attributes[key] = quoted ?? single ?? bare ?? '';
+        const child = new Element(tag, attributes); stack.at(-1).element.appendChild(child);
+        if (!voids.has(tag) && !match[0].endsWith('/>')) stack.push({element: child, start: match.index + match[0].length});
+      }
+    }
+  }
+  get textContent() { return this.text ?? this.innerHTML.replace(/<[^>]*>/g, ''); }
+  set textContent(value) { this.text = String(value); }
+  matches(selector) {
+    const tag = selector.match(/^[\w-]+/);
+    if (tag && this.tag !== tag[0]) return false;
+    for (const [, id] of selector.matchAll(/#([\w-]+)/g)) if (this.id !== id) return false;
+    for (const [, cls] of selector.matchAll(/\.([\w-]+)/g)) if (!this.classes.has(cls)) return false;
+    for (const [, key, quoted, bare] of selector.matchAll(/\[([\w-]+)(?:=(?:"([^"]*)"|([^\]]+)))?\]/g)) {
+      if (!(key in this.attributes) || (quoted ?? bare) !== undefined && this.attributes[key] !== (quoted ?? bare)) return false;
+    }
+    return true;
+  }
+  querySelectorAll(selector) {
+    const parts = selector.trim().split(/\s+(?![^\[]*\])/), found = [];
+    const visit = element => element.children.forEach(child => {
+      if (child.matches(parts.at(-1))) {
+        let parent = child.parent, index = parts.length - 2;
+        while (parent && index >= 0) { if (parent.matches(parts[index])) index--; parent = parent.parent; }
+        if (index < 0) found.push(child);
+      }
+      visit(child);
+    });
+    visit(this); return found;
+  }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+  closest(selector) { return this.matches(selector) ? this : this.parent?.closest(selector) || null; }
+  contains(element) { return element === this || this.children.some(child => child.contains(element)); }
+  addEventListener(name, callback) { this.listeners.set(name, callback); }
+  dispatchEvent(event) { this.listeners.get(event.type)?.(event); }
   appendChild(child) { this.children.push(child); child.parent = this; }
   insertAdjacentHTML(_position, html) { this.html = (this.html || '') + html; }
   getAttribute(key) { return this.attributes[key] ?? null; }
-  setAttribute(key, value) { this.attributes[key] = value; }
-  replaceWith(element) { this.replacement = element; }
+  setAttribute(key, value) { this.attributes[key] = String(value); }
   focus() {}
   remove() { this.removed = true; }
 }
-function frontend({fetchImpl, globals = {}} = {}) {
-  const root = new Element(), intervals = new Map(), timeouts = new Map(), requests = [];
+
+function frontend({fetchImpl, brokerMount} = {}) {
+  const root = new Element('div', {id: 'app'}), body = new Element('body'); body.appendChild(root);
+  const intervals = new Map(), timeouts = new Map(), requests = [], navigations = [];
   let nextId = 0;
+  const location = {pathname: '/strategies/42', search: '', origin: 'http://offline.invalid'};
+  const navigate = (_state, _title, path) => { navigations.push(path); location.pathname = path; };
   const context = vm.createContext({
-    Intl, URLSearchParams,
-    document: {getElementById: () => root, addEventListener() {}, createElement: () => new Element()},
-    window: {addEventListener() {}, matchMedia: () => ({matches: false})}, addEventListener() {},
+    Intl, URL, URLSearchParams,
+    document: {body, getElementById: id => body.querySelector('#' + id), addEventListener() {}, removeEventListener() {}, createElement: tag => new Element(tag)},
+    window: {addEventListener() {}, scrollTo() {}, matchMedia: () => ({matches: false}),
+      ...(brokerMount ? {TauBrokerConnections: {mount: brokerMount}} : {})},
+    addEventListener() {}, location, history: {pushState: navigate, replaceState: navigate},
+    localStorage: {getItem: () => null, setItem() {}},
     setInterval: callback => { intervals.set(++nextId, callback); return nextId; },
     clearInterval: id => intervals.delete(id),
     setTimeout: callback => { timeouts.set(++nextId, callback); return nextId; },
     clearTimeout: id => timeouts.delete(id),
-    fetch: async (path, options) => { requests.push({path, options}); return fetchImpl ? fetchImpl(path, options) : {ok: true, status: 200, json: async () => ({ok: true})}; },
-    ...globals,
+    fetch: async (path, options) => {
+      requests.push({path, options});
+      if (path === '/api/notifications') return response({unread: 0, items: []});
+      if (fetchImpl) return fetchImpl(path, options);
+      throw new Error('Unexpected offline request: ' + path);
+    },
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, equityChart, strategyDeploymentHtml, bindStrategyDeployment, runControls, runFeed, researchConversationHtml, RESEARCH_STATE, runRow, feedMd, renderStrategyArtifact, viewStrategy, mountSessionChat};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewRun, viewFunds, marketPicker, wireMarketPicker};'), context);
   const api = context.frontend;
-  api.S.me = {user: {id: 7}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
-  return {...api, root, intervals, timeouts, requests};
+  api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
+  // Cached global widgets keep these page checks focused. All requests still use
+  // the offline transport above, including notifications and financial controls.
+  api.S.hot = {markets: []}; api.S.hotAt = Date.now();
+  api.S.ap = {mode: 'off'}; api.S.apAt = Date.now();
+  return {...api, root, intervals, timeouts, requests, navigations};
 }
+
 const strategy = {id: 42, status: 'passed', side: 'yes', stake: 5, deployments: []};
 const metrics = pnl => ({pnl, trades: 6, win_rate: .5, fees: 1, profit_factor: 1.2, max_drawdown: 2, sharpe: .5, roi: .1});
 const detailStrategy = overrides => ({
@@ -57,148 +142,190 @@ const detailStrategy = overrides => ({
   experiment: {mechanism: {who_pays: '<b>Counterparty</b>'}, null_hypothesis: '<script>bad()</script>', classification: 'promising'},
   ...overrides,
 });
-function artifactHost() {
-  const host = new Element(), query = host.querySelector.bind(host);
-  // Strategy artifacts mount inside a section, with no nested main element.
-  host.querySelector = selector => selector === 'main' ? null : query(selector);
-  return host;
+function strategyFrontend(detail = detailStrategy(), transport) {
+  return frontend({fetchImpl: (path, options) => {
+    if (path === '/api/strategies/42') return response(detail);
+    if (path === '/api/strategies/42/dev-curve') return response({dev_curve: [[200, 1], [300, 2]]});
+    return transport(path, options);
+  }});
 }
+const postRequests = f => f.requests.filter(({options}) => options.method === 'POST');
+const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
+  demo: {capital: 1000, equity: 1001, realized: 1}, paper: {cash: 1000, ledger: [
+    {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},
+  ]}});
 
-test('the integrated paper renders inside its artifact with escaped evidence and the saved demo curve', () => {
-  const f = frontend(), host = artifactHost(), detail = detailStrategy();
-  const entry = {devReplay: {dev_curve: [[200, 1], [300, 2]]}};
-  f.renderStrategyArtifact(detail, host, {selectedId: detail.id, entries: new Map([[detail.id, entry]])}, entry);
-  const output = host.innerHTML;
+test('the current strategy page renders an escaped research paper and a separate real demo curve', async () => {
+  const f = strategyFrontend(); await f.viewStrategy(42); await flush();
+  const output = f.root.querySelector('main').innerHTML;
   for (const label of ['Abstract', 'Mechanism &amp; hypothesis', 'Methodology', 'Results', 'Verdict']) assert.ok(output.includes(label));
   assert.match(output, /class="sheet-doc paper"/);
-  assert.match(output, /id="figs"/); assert.match(output, /id="session-revision-review"/);
-  assert.match(output, /id="result-context">Saved backtest/);
   assert.match(output, /&lt;b&gt;Counterparty&lt;\/b&gt;/);
   assert.match(output, /<b>Saved<\/b> &lt;img/);
   assert.doesNotMatch(output, /<unsafe>|<img|<script>|\[object Object\]/);
-  assert.match(output, /data-strategy-deployment/); assert.match(output, /Type <b>LIVE<\/b>/);
-  const chart = host.querySelector('#sheet-results').querySelector('#equity-wrap').innerHTML;
+  assert.match(output, /id="dep-live"/); assert.match(output, /Type <b>LIVE<\/b>/);
+  const chart = f.root.querySelector('#equity-wrap').innerHTML;
   assert.match(chart, /Kalshi dev \(real\)/); assert.doesNotMatch(chart, /NaN|undefined/);
 });
 
-test('cached what-if results stay labelled and do not rewrite the saved paper abstract or verdict', () => {
-  const f = frontend(), host = artifactHost(), detail = detailStrategy({status: 'failed', out_of_sample: metrics(-12), experiment: null});
+test('what-if results change the results panel while the saved abstract and failed verdict remain intact', async () => {
+  const detail = detailStrategy({status: 'failed', hypotheses_tried: 0, out_of_sample: metrics(-12), experiment: null});
   const result = {in_sample: metrics(50), out_of_sample: metrics(1000), equity: [[100, 0], [300, 1000]], gates: [], passed: true};
-  const entry = {scenario: {fee: 0, slip: 0, stake: 5, result, error: '', seq: 1}, devReplay: {dev_curve: [[200, 1], [300, 2]]}};
-  f.renderStrategyArtifact(detail, host, {selectedId: detail.id, entries: new Map([[detail.id, entry]])}, entry);
-  assert.match(host.innerHTML, /id="result-context">What-if scenario/);
-  const abstract = host.innerHTML.match(/<p class="paper-ab-result">(.*?)<\/p>/s)[1];
-  assert.match(abstract, /lost \$12/); assert.doesNotMatch(abstract, /1,000|cleared the gate/);
-  assert.match(host.innerHTML, /It reached the unseen-data gate and failed it/);
-  assert.match(host.innerHTML, /What-if scenarios do not change it/);
-  const chart = host.querySelector('#sheet-results').querySelector('#equity-wrap').innerHTML;
-  assert.match(chart, /ends at \+\$1,000/); assert.doesNotMatch(chart, /Kalshi dev \(real\)/);
-  assert.equal(detail.out_of_sample.pnl, -12);
+  const f = strategyFrontend(detail, (path, options) => {
+    assert.equal(path, '/api/strategies/42/whatif');
+    assert.deepEqual(JSON.parse(options.body), {fee_multiplier: 0, slippage_cents: 0, stake: 5});
+    return response(result);
+  });
+  await f.viewStrategy(42); await flush();
+  const abstract = f.root.querySelector('.paper-ab-result'), verdict = f.root.querySelector('.rp-verdict');
+  const savedAbstract = abstract.innerHTML, savedVerdict = verdict.innerHTML;
+  const whatif = f.root.querySelector('#whatif');
+  assert.match(whatif.innerHTML, /<h3>What if…<\/h3>/);
+  whatif.querySelector('#wf').value = '0';
+  whatif.querySelector('#ws').value = '0';
+  whatif.querySelector('#wk').value = '5';
+  whatif.querySelector('#wf').oninput();
+  await [...f.timeouts.values()].at(-1)();
+  assert.match(f.root.querySelector('#sheet-results').innerHTML, /ends at \+\$1,000/);
+  assert.doesNotMatch(f.root.querySelector('#sheet-results').innerHTML, /Kalshi dev \(real\)/);
+  assert.match(whatif.querySelector('#wflash').innerHTML, /under these conditions/);
+  assert.equal(abstract.innerHTML, savedAbstract); assert.match(savedAbstract, /lost \$12/);
+  assert.equal(verdict.innerHTML, savedVerdict); assert.match(savedVerdict, /failed it/);
+  assert.equal(detail.out_of_sample.pnl, -12); assert.equal(detail.status, 'failed');
 });
 
-test('a missing ancestor response cannot reopen an old workspace after navigation', async () => {
-  const f = frontend({fetchImpl: async path => {
-    if (path === '/api/strategies/42') return {ok: true, status: 200, json: async () => ({id: 42, run_id: null, parent_id: 11})};
-    assert.equal(path, '/api/strategies/11');
-    f.S.gen++;
-    return {ok: false, status: 404, json: async () => ({error: 'Not found'})};
-  }});
-  await f.viewStrategy(42);
-  assert.equal(f.requests.length, 2); assert.equal(f.root.writes, 0);
-});
-
-test('approval cannot navigate away from the current page when its conversation refresh finishes late', async () => {
-  const detail = detailStrategy();
-  const proposal = {id: 1, kind: 'revise', status: 'pending', base_strategy_id: detail.id, backtest_status: 'passed', diff: []};
-  const state = {draft: '', sending: false, error: '', after: 0, following: true, scrollTop: 0,
-    messages: new Map(), proposals: new Map([[1, proposal]]), actions: new Set(), reviewId: 1};
-  let reads = 0, approvals = 0, navigations = 0;
-  // Scope/transport validation is covered by test_session_chat; this fixture controls response timing.
-  const client = {
-    read: async () => { if (++reads === 2) f.S.gen++; return {capabilities: {approve: true, reject: true}, has_more: false}; },
-    action: async (id, action) => { assert.equal(id, 1); assert.equal(action, 'approve'); approvals++; return {session_key: 'run:9', strategy_id: 99}; },
-  };
-  const f = frontend({globals: {
-    newSessionChatState: () => state, sessionChatApi: () => client,
-    mergeSessionChat() {}, sessionRevisionPassed: () => true, sessionTargetChanged: () => false,
-    history: {pushState: () => { navigations++; throw new Error('Stale navigation'); }},
-  }});
-  f.mountSessionChat({key: 'run:9', run_id: 9, candidates: [detail], events: []}, detail);
-  await new Promise(resolve => setImmediate(resolve));
-  const host = f.root.querySelector('#session-chat-host');
-  const button = {disabled: false, dataset: {chatAction: 'approve', proposal: '1'}};
-  host.onclick({target: {closest: selector => selector === '[data-chat-action]' ? button : null}});
-  await new Promise(resolve => setImmediate(resolve));
-  assert.equal(approvals, 1); assert.equal(reads, 2);
-  assert.equal(navigations, 0); assert.equal(state.error, '');
-});
-
-test('responsive equity charts keep the real demo replay anchored without mutating input', () => {
+test('the shipped equity chart anchors the real demo replay without mutating either curve', () => {
   const f = frontend(), curve = [[100, 50], [200, 60], [300, 70]], demo = [[200, 2], [300, 4]];
-  const output = f.equityChart(curve, null, 500, 'Saved evidence', {height: 180, showDates: true, devCurve: demo});
-  assert.match(output, /viewBox="0 0 500 180"/);
-  assert.match(output, /Kalshi dev \(real\)/);
+  const output = f.equityChart(curve, null, demo);
+  assert.match(output, /viewBox="0 0 760 236"/); assert.match(output, /Kalshi dev \(real\)/);
   assert.doesNotMatch(output, /NaN|undefined/);
   const lines = [...output.matchAll(/<polyline points="([^"]+)"/g)].map(match => match[1].split(' '));
-  assert.equal(lines[1][0], lines[0][1], 'the replay starts at the simulated P&L at the same time');
-  assert.ok(Number(lines[1][1].split(',')[1]) < Number(lines[1][0].split(',')[1]), 'positive demo P&L slopes upward');
-  assert.deepEqual(demo, [[200, 2], [300, 4]]);
+  assert.equal(lines[1][0], lines[0][1]);
+  assert.ok(Number(lines[1][1].split(',')[1]) < Number(lines[1][0].split(',')[1]));
+  assert.deepEqual(demo, [[200, 2], [300, 4]]); assert.deepEqual(curve, [[100, 50], [200, 60], [300, 70]]);
 });
 
-test('deployment renders separate demo and live readiness with the original typed LIVE gate', () => {
-  const f = frontend();
-  let output = f.strategyDeploymentHtml(strategy);
-  assert.match(output, /data-dep-paper/); assert.match(output, /data-dep-demo/); assert.match(output, /data-dep-live/);
-  assert.match(output, /Type <b>LIVE<\/b>/);
+test('deployment readiness retains separate demo, live and NO-side gates', async () => {
+  const f = strategyFrontend(detailStrategy({status: 'failed'}));
   f.S.me.kalshi_dev_connected = false; f.S.me.live_trading_available = false;
-  output = f.strategyDeploymentHtml({...strategy, status: 'failed'});
-  assert.match(output, /data-dep-demo aria-disabled="true"/);
-  assert.match(output, /data-dep-live aria-disabled="true"/);
-  assert.match(output, /failed the unseen-data gate/);
-  assert.match(output, /What-if scenarios do not change it/);
+  await f.viewStrategy(42);
+  assert.equal(f.root.querySelector('#dep-demo').getAttribute('aria-disabled'), 'true');
+  assert.equal(f.root.querySelector('#dep-live').getAttribute('aria-disabled'), 'true');
+  assert.match(f.root.querySelector('main').innerHTML, /failed the unseen-data gate/);
+  await f.root.querySelector('#dep-demo').onclick();
+  f.root.querySelector('#dep-live').onclick();
+  assert.equal(f.root.querySelector('#live-confirm').hidden, true); assert.equal(postRequests(f).length, 0);
+  const no = strategyFrontend(detailStrategy({side: 'no'})); await no.viewStrategy(42);
+  assert.equal(no.root.querySelector('#dep-live').getAttribute('aria-disabled'), 'true');
+  assert.equal(no.root.querySelector('#dep-demo').getAttribute('aria-disabled'), null);
 });
 
-test('demo deployment uses the sandbox mode, while disabled demo never reaches transport', async () => {
-  const f = frontend(), host = new Element();
-  f.bindStrategyDeployment(host, strategy, 0, () => false);
-  await host.querySelector('[data-dep-demo]').onclick();
-  assert.equal(f.requests.length, 1);
-  assert.deepEqual(JSON.parse(f.requests[0].options.body), {strategy_id: 42, mode: 'demo'});
-  host.querySelector('[data-dep-demo]').setAttribute('aria-disabled', 'true');
-  await host.querySelector('[data-dep-demo]').onclick();
-  assert.equal(f.requests.length, 1);
+test('demo deployment sends sandbox mode and navigates only after the successful response', async () => {
+  const pending = deferred();
+  const f = strategyFrontend(detailStrategy(), (path, options) => {
+    assert.equal(path, '/api/deployments');
+    return options.method === 'POST' ? pending.promise : response({deployments: [], open_positions: []});
+  });
+  await f.viewStrategy(42);
+  f.root.querySelector('#dep-demo').onclick();
+  assert.deepEqual(JSON.parse(postRequests(f)[0].options.body), {strategy_id: 42, mode: 'demo'});
+  assert.deepEqual(f.navigations, []);
+  pending.resolve(response({id: 9})); await flush();
+  assert.deepEqual(f.navigations, ['/deploy']);
 });
 
-test('live deployment passes the typed phrase to the server instead of substituting confirmation', async () => {
-  const f = frontend(), host = new Element();
-  f.bindStrategyDeployment(host, strategy, 0, () => false);
-  const form = host.querySelector('[data-live-confirm]'); form.confirm = {value: '  LIVE  '};
-  await form.onsubmit({preventDefault() {}});
-  // The submit handler starts busy asynchronously; drain its fetch/json microtasks.
-  await new Promise(resolve => setImmediate(resolve));
-  assert.deepEqual(JSON.parse(f.requests[0].options.body), {strategy_id: 42, mode: 'live', confirm: 'LIVE'});
+test('live deployment forwards the exact trimmed typed phrase and leaves rejected confirmation visible', async () => {
+  for (const typed of ['  LIVE  ', 'not LIVE', '']) {
+    const f = strategyFrontend(detailStrategy(), (path, options) => {
+      assert.equal(path, '/api/deployments');
+      assert.deepEqual(JSON.parse(options.body), {strategy_id: 42, mode: 'live', confirm: typed.trim()});
+      return response({error: 'Synthetic server confirmation refusal'}, 400);
+    });
+    await f.viewStrategy(42);
+    const form = f.root.querySelector('#live-confirm');
+    assert.equal(form.hidden, true); f.root.querySelector('#dep-live').onclick(); assert.equal(form.hidden, false);
+    form.confirm = {value: typed}; form.onsubmit({preventDefault() {}}); await flush();
+    assert.equal(postRequests(f).length, 1); assert.deepEqual(f.navigations, []);
+    assert.match(f.root.querySelector('#depflash').innerHTML, /Synthetic server confirmation refusal/);
+  }
 });
 
-test('research controls retain pause and resume and preserve armed cancellation across polling', async () => {
-  const f = frontend(), host = new Element(); let reloads = 0;
+test('the OAuth account return and Funds routes open the current funds page', () => {
+  const f = frontend();
+  const route = path => f.routes.find(([pattern]) => pattern.test(path))?.[1];
+  assert.equal(route('/funds'), f.viewFunds); assert.equal(route('/settings/account'), f.viewFunds);
+  assert.notEqual(route('/settings'), f.viewFunds);
+});
+
+test('Funds preserves its current columns and mounts broker controls with a navigation guard', async () => {
+  const mounts = [];
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); return response(funds()); },
+    brokerMount: (host, options) => { mounts.push({host, options}); }});
+  await f.viewFunds();
+  const output = f.root.querySelector('main').innerHTML;
+  assert.match(output, /funds-col funds-manage/); assert.match(output, /funds-col funds-history/);
+  assert.match(output, /Paper history/); assert.match(output, /&lt;script&gt;ledger&lt;\/script&gt;/);
+  assert.doesNotMatch(output, /<script>/);
+  assert.equal(mounts.length, 1); assert.equal(mounts[0].host, f.root.querySelector('#broker-connections'));
+  assert.equal(typeof mounts[0].options.api, 'function'); assert.equal(mounts[0].options.isCurrent(), true);
+  f.S.gen++; assert.equal(mounts[0].options.isCurrent(), false);
+});
+
+test('a late Funds read cannot replace the next page or mount stale broker controls', async () => {
+  const pending = deferred(); let mounts = 0;
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); return pending.promise; }, brokerMount: () => mounts++});
+  const loading = f.viewFunds();
+  f.S.gen++; f.root.innerHTML = '<main>Next page</main>';
+  const writes = f.root.writes, main = f.root.querySelector('main');
+  pending.resolve(response(funds())); await loading;
+  assert.equal(f.root.writes, writes); assert.equal(main.writes, 0);
+  assert.equal(main.innerHTML, 'Next page'); assert.equal(mounts, 0);
+});
+
+test('the mounted broker module cannot redirect after leaving Funds during authorization', async () => {
+  const pending = deferred(), redirects = []; let control;
+  const f = frontend({brokerMount: (host, options) => {
+    control = brokerConnections.mount(host, {...options, search: '', navigate: url => redirects.push(url)});
+    return control;
+  }, fetchImpl: path => {
+    if (path === '/api/funds') return response(funds());
+    if (path === '/api/brokers') return response({providers: [{id: 'alpaca', configured: true,
+      default_environment: 'paper', environments: ['paper', 'live'], connections: []}]});
+    assert.equal(path, '/api/brokers/alpaca/connect'); return pending.promise;
+  }});
+  await f.viewFunds(); await control.ready;
+  const host = f.root.querySelector('#broker-connections');
+  const connect = host.querySelector('[data-broker-action="connect"][data-broker="alpaca"]');
+  assert.ok(connect); const connecting = host.onclick({target: connect, preventDefault() {}});
+  assert.deepEqual(JSON.parse(postRequests(f)[0].options.body), {environment: 'paper', permission: 'read'});
+  // A route may await data before replacing the old DOM. Exercise the generation
+  // guard while the broker host is still connected, independent of detachment.
+  f.S.gen++; const writes = host.writes;
+  assert.equal(host.isConnected, true);
+  pending.resolve(response({authorization_url: 'https://app.alpaca.markets/oauth/authorize?state=synthetic'}));
+  await connecting;
+  assert.deepEqual(redirects, []); assert.equal(host.writes, writes);
+});
+
+test('current research controls pause and resume and cancellation needs two current clicks', async () => {
+  const f = frontend({fetchImpl: () => response({ok: true})}), host = new Element(); let reloads = 0;
   const reload = async () => reloads++;
   f.runControls(host, 9, 'running', reload);
-  await host.querySelector('#pause').onclick({currentTarget: host.querySelector('#pause')});
-  assert.equal(f.requests[0].path, '/api/runs/9/pause');
+  const pause = host.querySelector('#pause'); await pause.onclick({currentTarget: pause});
+  assert.equal(postRequests(f)[0].path, '/api/runs/9/pause');
   f.runControls(host, 9, 'paused', reload);
-  await host.querySelector('#resume').onclick({currentTarget: host.querySelector('#resume')});
-  assert.equal(f.requests[1].path, '/api/runs/9/resume');
-  const cancel = host.querySelector('#cancel'); cancel.onclick();
-  const writes = host.writes;
+  const resume = host.querySelector('#resume'); await resume.onclick({currentTarget: resume});
+  assert.equal(postRequests(f)[1].path, '/api/runs/9/resume');
+  host.querySelector('#cancel').onclick(); assert.equal(postRequests(f).length, 2);
   f.runControls(host, 9, 'paused', reload);
-  assert.equal(host.writes, writes);
-  await cancel.onclick();
-  assert.equal(f.requests[2].path, '/api/runs/9/cancel');
-  assert.equal(reloads, 3);
+  const cancel = host.querySelector('#cancel'); cancel.onclick(); assert.equal(postRequests(f).length, 2);
+  await cancel.onclick(); assert.equal(postRequests(f)[2].path, '/api/runs/9/cancel'); assert.equal(reloads, 3);
 });
 
-test('streaming thoughts and challenger/verdict update one hypothesis card and dispose every timer', () => {
-  const f = frontend(), section = new Element(), stream = f.runFeed(section), log = section.querySelector('.log');
+test('streaming thoughts and challenger/verdict update one hypothesis and navigation clears feed timers', () => {
+  const f = frontend(), section = new Element();
+  section.innerHTML = '<ol class="log"></ol><button class="jumplatest"></button><div class="runpulse"></div>';
+  const stream = f.runFeed(section), log = section.querySelector('.log');
   const event = (id, kind, message, data = {}) => ({id, kind, message, data, created_at: '2026-10-17T10:00:00Z'});
   stream.push([event(1, 'thinking', 'A **test'), event(2, 'thinking', 'able** edge.')]);
   assert.equal(log.children.length, 1);
@@ -208,24 +335,42 @@ test('streaming thoughts and challenger/verdict update one hypothesis card and d
     event(4, 'challenger', 'Challenger accept – Momentum: sound mechanism', {title: 'Momentum', decision: 'accept'}),
     event(5, 'verdict', 'PASSED – Momentum: evidence', {title: 'Momentum', status: 'passed', strategy_id: 42, stats: {n_trades: 80, p_value: .01}}),
   ]);
-  assert.equal(log.children.length, 2);
-  assert.equal(log.children[0].classes.has('sealed'), true);
+  assert.equal(log.children.length, 2); assert.equal(log.children[0].classes.has('sealed'), true);
   const hypothesis = log.children[1];
   assert.match(hypothesis.innerHTML, /research sandbox only/);
   assert.match(hypothesis.querySelector('[data-review]').innerHTML, /sound mechanism/);
   assert.match(hypothesis.querySelector('[data-stamp]').innerHTML, /\/strategies\/42/);
   stream.state('paused'); assert.match(section.querySelector('.runpulse').innerHTML, /resume/);
-  stream.dispose(); assert.equal(f.intervals.size, 0); assert.equal(f.S.timers.length, 0);
+  f.clearTimers(); assert.equal(f.intervals.size, 0); assert.equal(f.S.timers.length, 0);
 });
 
-test('session workspace contains the streaming mount and paused runs remain visible as paused', () => {
-  const f = frontend(), run = {id: 9, prompt: '<script>unsafe</script>', status: 'paused', created_at: '2026-10-17T10:00:00Z'};
-  const output = f.researchConversationHtml({run, candidates: []});
-  assert.match(output, /data-runfeed/); assert.match(output, /role="log"/);
-  assert.doesNotMatch(output, /<script>/); assert.match(output, /&lt;script&gt;/);
-  assert.equal(f.RESEARCH_STATE.paused, 'Research paused');
-  assert.match(f.runRow({...run, market: 'btc15m'}), /Paused/);
-  assert.doesNotMatch(f.runRow({...run, market: 'btc15m'}), />Failed</);
+test('the current research run renders a safe streaming log and its paused status with Resume', async () => {
+  const run = {id: 9, prompt: '<script>unsafe</script>', status: 'paused', market: 'btc15m', created_at: '2026-10-17T10:00:00Z'};
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/runs/9?after=0'); return response({run, events: []}); }});
+  await f.viewRun(9);
+  assert.match(f.root.innerHTML, /role="log"/);
+  assert.match(f.root.querySelector('#runboard').innerHTML, /&lt;script&gt;/);
+  assert.doesNotMatch(f.root.querySelector('#runboard').innerHTML, /<script>/);
+  assert.match(f.root.querySelector('#runfigs').innerHTML, /Paused/);
+  assert.ok(f.root.querySelector('#resume')); assert.match(f.root.querySelector('#runpulse').innerHTML, /resume/);
+});
+
+test('the grouped market picker keeps Agent choice visible while filters hide unmatched categories', () => {
+  const f = frontend();
+  f.S.me.markets = Array.from({length: 9}, (_, i) => ({key: i === 0 ? 'eth15m' : 'custom' + i,
+    label: i === 8 ? '<script>market</script>' : 'Market ' + i, category: i < 3 ? 'Crypto' : i < 6 ? 'Sports' : 'Bittensor'}));
+  const host = new Element(); host.innerHTML = f.marketPicker(f.S.me.markets); f.wireMarketPicker(host);
+  const lead = host.querySelector('.mkt-lead'), search = host.querySelector('#mktfind');
+  assert.equal(lead.querySelector('input').value, ''); assert.equal(lead.querySelector('input').checked, true);
+  assert.match(host.innerHTML, /&lt;script&gt;market&lt;\/script&gt;/); assert.doesNotMatch(host.innerHTML, /<script>/);
+  search.value = 'ETH'; search.dispatchEvent({type: 'input'});
+  assert.equal(host.querySelectorAll('.mkt-group').filter(group => !group.hidden).length, 1);
+  assert.equal(lead.hidden, false); assert.equal(host.querySelector('.mkt-none').hidden, true);
+  search.value = 'no match'; search.dispatchEvent({type: 'input'});
+  assert.ok(host.querySelectorAll('.mkt-group').every(group => group.hidden));
+  assert.equal(lead.hidden, false); assert.equal(host.querySelector('.mkt-none').hidden, false);
+  search.value = ''; search.dispatchEvent({type: 'input'});
+  assert.ok(host.querySelectorAll('.mkt-group').every(group => !group.hidden));
 });
 
 test('feed markdown escapes model HTML and rejects non-http links', () => {

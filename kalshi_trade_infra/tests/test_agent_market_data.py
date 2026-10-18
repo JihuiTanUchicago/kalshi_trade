@@ -234,6 +234,8 @@ def test_actual_copilot_worker_receives_current_data(monkeypatch, provider):
     monkeypatch.setattr(r, "chat_messages", lambda *args, **kwargs: [{"role": "user", "content": "What is SPY trading at?"}])
     monkeypatch.setattr(r, "list_deployments", lambda *args: [])
     monkeypatch.setattr(r, "list_strategies", lambda *args, **kwargs: [])
+    monkeypatch.setattr(r, "user_risk_config", lambda *args: {})
+    monkeypatch.setattr(r, "user_execution_config", lambda *args: {})
     monkeypatch.setattr(r, "add_chat", lambda *args: records.append(args))
     monkeypatch.setattr(r, "add_event", lambda *args: None)
     monkeypatch.setattr(r, "finish_run", lambda *args: None)

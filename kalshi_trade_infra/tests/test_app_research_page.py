@@ -8,7 +8,7 @@ against a FakeCursor in the conftest style (no live DB), covering:
 """
 import json
 
-from app import server
+from app import dreaming, server
 from app.repository import now_utc
 
 
@@ -201,3 +201,77 @@ def test_experiment_block_is_none_when_strategy_id_does_not_match():
     cur = FakeResearchCursor(experiments=[exp], results=[_result_row()])
 
     assert server._experiment_block(cur, 1234) is None
+
+
+# ---- Tau-RSI exploration-policy panel (_rsi_block) --------------------------
+
+
+def test_rsi_block_exposes_full_evolved_policy_and_lineage():
+    # Happy path: an evolved policy is on file -> the panel carries its full source,
+    # lineage (prior -> new score, adopted-at), summary, and the latest dream line.
+    pol = {
+        "code": "def next_batch(state):\n    return 2\n",
+        "score": 1.2345,
+        "base_score": 0.9876,
+        "summary": "Require >=7 trades before testing a finalist.",
+        "updated_at": now_utc(),
+    }
+    dream = {"message": "Research policy evolved: ...", "created_at": now_utc()}
+
+    block = server._rsi_block(pol, dream)
+
+    assert block["evolved"] is True
+    assert block["code"] == pol["code"]                 # the actual decision rules, verbatim
+    assert block["score"] == 1.23 and block["base_score"] == 0.99  # rounded lineage
+    assert block["summary"] == pol["summary"]
+    assert block["evolved_at"] == pol["updated_at"]
+    assert block["last_dream"] == dream["message"]
+
+
+def test_rsi_block_falls_back_to_default_policy_source():
+    # Error/empty path: no policy row yet -> there is still something to inspect
+    # (the default policy's source), and no scores/summary are fabricated.
+    block = server._rsi_block(None, None)
+
+    assert block["evolved"] is False
+    assert block["code"] == dreaming.DEFAULT_POLICY_SRC
+    assert block["score"] is None and block["base_score"] is None
+    assert block["summary"] is None and block["last_dream"] is None
+
+
+# ---- research market context (cockpit picker's live book) -------------------
+# server._research_context folds the already-cached explore feed down to just the
+# markets research can target, so the dispatch picker isn't chosen blind. No DB —
+# the feed is the input — so the folding is tested directly.
+
+
+def test_research_context_folds_feed_to_researchable_markets():
+    from app.markets import MARKETS
+
+    btc15m = MARKETS["btc15m"].series   # KXBTC15M
+    btc_daily = MARKETS["btc_daily"].series
+    feed = [
+        {"t": "A", "s": btc15m, "v24": 100, "oi": 5, "bid": 0.40, "ask": 0.42, "h": [0.40, 0.41, 0.42]},
+        {"t": "B", "s": btc15m, "v24": 300, "oi": 9, "last": 0.60},  # most active -> its mid wins
+        {"t": "C", "s": btc_daily, "v24": 50, "oi": 2, "bid": 0.50, "ask": 0.50},
+        {"t": "Z", "s": "KXNOTAMARKET", "v24": 9e9, "oi": 1},        # unknown series dropped
+        {"t": "N", "s": None, "v24": 10},                            # no series -> ignored
+    ]
+
+    out = server._research_context(feed)
+
+    keyed = {m["key"]: m for m in out}
+    assert set(keyed) == {"btc15m", "btc_daily"}      # only researchable series surface
+    assert keyed["btc15m"]["contracts"] == 2          # both KXBTC15M contracts aggregated
+    assert keyed["btc15m"]["vol24"] == 400            # 100 + 300
+    assert keyed["btc15m"]["oi"] == 14
+    assert keyed["btc15m"]["mid"] == 0.60             # the most-active contract's mid (last)
+    assert keyed["btc15m"]["trace"] == []             # the top contract (B) carries no trace
+    assert out[0]["key"] == "btc15m"                  # sorted by 24h volume, busiest first
+    assert server._feed_mid({"bid": 0.40, "ask": 0.42}) == 0.41  # bid/ask midpoint when both present
+
+
+def test_research_context_empty_when_feed_unavailable():
+    # Feed not written yet / S3 unreachable -> _explore_feed returns no markets.
+    # The cockpit must get an empty list, never an error (the picker still works blind).
+    assert server._research_context([]) == []

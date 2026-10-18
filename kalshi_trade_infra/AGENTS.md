@@ -20,7 +20,12 @@ from the code: commands, non-obvious conventions, and the safety/rigor bars.
 Python 3.12+ in a venv. `pip install -r requirements.txt`.
 - `python -m pytest tests/` — full suite, no live DB. Run before every commit; keep it green.
 - `python -m py_compile app/*.py data_pipeline/*.py` — fast syntax check.
-- `python -m data_pipeline.init_schema` — create/migrate schema (idempotent).
+- `python -m app.schema` — create/migrate the FULL schema (idempotent): it runs
+  `data_pipeline.init_schema` (pipeline tables) **and** the app-level `_add_column_if_missing`
+  migrations (e.g. the `app_users` autopilot/risk/exec columns, `app_order_intents`). **Deploys MUST
+  run `app.schema`, not `data_pipeline.init_schema` alone** — the latter skips the app migrations, so
+  new app columns silently never land and features that read them crash at runtime (observed: the
+  autopilot broke on a missing `exec_max_book_fraction` column).
 - **Deploy (when explicitly asked):** tar the **whole `app/` package** — never file-by-file
   (partial deploys drop imports and crash-loop the box). Ship to the **web box**
   (the CloudFront origin), not a collector box — see memory + `PLAN.md` for exact IDs/commands.
@@ -99,6 +104,9 @@ MAY propose **exactly one** small refinement to AGENTS.md, from harvested signal
 - **Log it** in the changelog below: dated, one line. Keep only the last ~10 entries (prune oldest).
 
 ### Instruction changelog
+- 2026-10-17 — Fixed the migration command: deploys must run `python -m app.schema` (pipeline
+  tables + app-level `_add_column_if_missing` migrations), not `data_pipeline.init_schema` alone,
+  which silently skips app columns (broke the autopilot on a missing `exec_max_book_fraction`).
 - 2026-10-16 — Restructured for speed+safety: added product framing, Deploy checklist (whole-app
   tar / correct box / CloudFront `/*` / curl-200, from documented outages), a Quant-Research Rigor
   bar tied to `RESEARCH_PIPELINE_DESIGN.md`, sharpened skills + parallel-vs-sequence guidance, and

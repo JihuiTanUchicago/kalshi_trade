@@ -83,6 +83,7 @@ def _signing_path(base_url: str, endpoint: str) -> str:
 def demo_place_limit_order(
     ticker: str, action: str, side: str, qty: int, price_dollars: float,
     credentials: KalshiCredentials, base_url: Optional[str] = None, timeout: int = 20,
+    client_order_id: Optional[str] = None,
 ) -> Dict:
     """Submit one limit order to the DEMO exchange, signed with the dev key.
 
@@ -100,7 +101,7 @@ def demo_place_limit_order(
         raise ValueError("action must be buy or sell, got %r" % (action,))
     v2_side, wire_price = order_wire_params(action, side, price_dollars)
     cents = max(1, min(99, int(round(float(wire_price) * 100))))
-    client_order_id = str(uuid.uuid4())
+    client_order_id = client_order_id or str(uuid.uuid4())  # persisted+reused on retry (P0-1)
     body = {
         "ticker": ticker,
         "side": v2_side,
@@ -143,13 +144,30 @@ def demo_fills(credentials: KalshiCredentials, ticker: Optional[str] = None,
     return resp.json()
 
 
+def demo_orders(credentials: KalshiCredentials, ticker: Optional[str] = None,
+                base_url: Optional[str] = None, timeout: int = 20) -> Dict:
+    """Read this account's demo orders (optionally one ticker) — used by crash-recovery to find an
+    in-flight order by its client_order_id. Host-isolated like every call here (demo/sandbox only)."""
+    base = _require_demo_host(base_url or KALSHI_DEV_API_BASE)
+    creds = _require_creds(credentials)
+    endpoint = "/portfolio/orders"
+    params = {"ticker": ticker} if ticker else None
+    headers = kalshi_auth_headers("GET", _signing_path(base, endpoint), creds)
+    resp = requests.get(base + endpoint, params=params, headers=headers, timeout=timeout)
+    if resp.status_code >= 400:
+        raise RuntimeError("demo GET %s failed %d: %s" % (endpoint, resp.status_code, resp.text[:400]))
+    return resp.json()
+
+
 def demo_order_submitter(credentials: KalshiCredentials, base_url: Optional[str] = None):
     """Submitter for MarketableLimitKernel, signing demo orders as this user.
     Demo twin of kalshi_account.order_submitter."""
     creds = _require_creds(credentials)
 
-    def submit(ticker: str, action: str, side: str, qty: int, price: float) -> dict:
-        return demo_place_limit_order(ticker, action, side, qty, price, credentials=creds, base_url=base_url)
+    def submit(ticker: str, action: str, side: str, qty: int, price: float,
+               client_order_id: Optional[str] = None) -> dict:
+        return demo_place_limit_order(ticker, action, side, qty, price, credentials=creds,
+                                      base_url=base_url, client_order_id=client_order_id)
 
     return submit
 

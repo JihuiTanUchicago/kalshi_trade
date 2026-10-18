@@ -2,6 +2,10 @@
 
 Status: historical rollout preparation; the user has now assigned execution to their teammate.
 Current canonical operator guide: [BROKER_OAUTH_DEPLOYMENT.md](../../../app/BROKER_OAUTH_DEPLOYMENT.md).
+For the October 18 combined release, the broker-only migration and archive below
+are superseded: current main requires the full reviewed `python -m app.schema`
+migration and a rebuilt whole-app package from the chosen merged commit. Retain
+the following as historical evidence, not instructions for the new release.
 Local release candidate and encrypted GitHub credentials are prepared.
 Production access and deployment have not been completed. Do not install the
 candidate until the actual production source and dependencies are compared.

@@ -232,6 +232,39 @@ DDL = [
       INDEX idx_pos_user (user_id, status, closed_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
+    # Durable order-intent log (EXECUTION_RISK_HARDENING P0-1): one append-only row written and
+    # COMMITTED *before* every real exchange order, updated after. It gives each order a durable,
+    # idempotent identity (client_order_id = intent_id, reused on any retry) so a timed-out-but-
+    # filled order is reconcilable instead of a double-fill, and a crash between the fill and the
+    # DB write is recovered deterministically on boot (see repository.open_sent_intents / engine.
+    # recover_sent_intents). status: sent -> filled|unfilled|error|booked. No key material here.
+    """
+    CREATE TABLE IF NOT EXISTS app_order_intents (
+      intent_id CHAR(36) PRIMARY KEY,
+      deployment_id BIGINT NOT NULL,
+      user_id BIGINT NOT NULL,
+      position_id BIGINT NULL,            -- the open position an EXIT closes; NULL for an entry
+      mode VARCHAR(8) NOT NULL,           -- live|demo (paper never logs an intent — no real order)
+      action VARCHAR(4) NOT NULL,         -- buy|sell
+      side VARCHAR(4) NOT NULL,           -- yes|no
+      ticker VARCHAR(128) NOT NULL,
+      qty INT NOT NULL,
+      limit_price DECIMAL(10,4) NOT NULL,
+      client_order_id VARCHAR(64) NOT NULL,
+      status VARCHAR(12) NOT NULL,        -- sent|filled|unfilled|error|booked
+      external_order_id VARCHAR(128) NULL,
+      fill_qty INT NULL,
+      fill_price DECIMAL(10,4) NULL,
+      fee DECIMAL(10,6) NULL,
+      reason VARCHAR(32) NULL,            -- exit reason (carried into close_position on recovery)
+      market_close_time DATETIME NULL,    -- entry recovery needs it to re-create the position row
+      raw_json JSON NULL,
+      created_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL,
+      INDEX idx_intent_status (status, created_at),
+      UNIQUE KEY uq_intent_coid (client_order_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
     # -- conversation ---------------------------------------------------------
     """
     CREATE TABLE IF NOT EXISTS app_chat_messages (
@@ -479,6 +512,27 @@ DDL = [
       INDEX idx_part_market (market, active, id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
+    # Live position reconciliation audit trail: one open row per (user, ticker)
+    # where our book (app_positions) and the user's real Kalshi account disagree.
+    # Upserted each sweep and marked resolved when the disagreement clears, so it
+    # is a current picture of unresolved divergence, not an append-only log.
+    # exchange_qty / book_qty are SIGNED net contracts (YES positive, NO negative).
+    """
+    CREATE TABLE IF NOT EXISTS app_position_reconcile (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      ticker VARCHAR(128) NOT NULL,
+      kind VARCHAR(16) NOT NULL,            -- untracked | book_only | size_mismatch | short
+      exchange_qty INT NOT NULL,
+      book_qty INT NOT NULL,
+      status VARCHAR(10) NOT NULL DEFAULT 'open',  -- open | resolved
+      detected_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL,
+      resolved_at DATETIME NULL,
+      UNIQUE KEY uq_recon_user_ticker (user_id, ticker),
+      INDEX idx_recon_status (status, updated_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
 ]
 
 
@@ -512,6 +566,12 @@ def main() -> None:
         # Tau-RSI discovery tree: which prior hypothesis this one built on (NULL = root). Nullable
         # + unused for now (P1); the replay simulator and self-evolving policy populate it later.
         _add_column_if_missing(cur, "app_strategies", "parent_id", "ALTER TABLE app_strategies ADD COLUMN parent_id BIGINT NULL")
+        # Robust experiment<->strategy link: the full pipeline stamps the strategy with the id of
+        # the experiment it was pre-registered under (set in _gate_and_save). The research-paper
+        # page resolves by this first, so a strategy always renders ITS own experiment even after
+        # a re-hit re-points app_experiments.strategy_id at a later strategy row. NULL = a legacy
+        # or loose-path (backtest-only) strategy that never went through the gatekeeper.
+        _add_column_if_missing(cur, "app_strategies", "experiment_id", "ALTER TABLE app_strategies ADD COLUMN experiment_id BIGINT NULL")
         # Cross-day generalization breakdown (per-day/per-fold) the research-paper folds strip renders.
         _add_column_if_missing(cur, "app_experiment_results", "folds_json", "ALTER TABLE app_experiment_results ADD COLUMN folds_json JSON NULL AFTER equity_curve_json")
         # Cross-contract strategies spend from a SHARED FDR stream keyed on a combined key
@@ -530,6 +590,11 @@ def main() -> None:
         # decision tick (reusing the book it already fetches) so the web can show unrealized P&L.
         _add_column_if_missing(cur, "app_positions", "mark_price", "ALTER TABLE app_positions ADD COLUMN mark_price DECIMAL(10,4) NULL")
         _add_column_if_missing(cur, "app_positions", "mark_ts", "ALTER TABLE app_positions ADD COLUMN mark_ts DATETIME NULL")
+        # Per-position close claim (EXECUTION_RISK_HARDENING P0-3): the order-placing risk sweeps
+        # (drawdown force-sell) lease a position before sending a real close, so two engines can
+        # never both sell the same position into an unintended short. Mirrors claim_decision.
+        _add_column_if_missing(cur, "app_positions", "close_claim", "ALTER TABLE app_positions ADD COLUMN close_claim VARCHAR(48) NULL")
+        _add_column_if_missing(cur, "app_positions", "close_claim_ts", "ALTER TABLE app_positions ADD COLUMN close_claim_ts DATETIME NULL")
         # Strategy sharing: a shared strategy is COPIED into the recipient's inventory (so it is
         # theirs to deploy and is not revocable). These columns mark the copy's origin.
         _add_column_if_missing(cur, "app_strategies", "shared_from_user_id", "ALTER TABLE app_strategies ADD COLUMN shared_from_user_id BIGINT NULL")
@@ -547,8 +612,9 @@ def main() -> None:
         # Which frontend the user picked: 'tau' (default, feature-complete) or 'meridian' (redesign).
         _add_column_if_missing(cur, "app_users", "ui_theme", "ALTER TABLE app_users ADD COLUMN ui_theme VARCHAR(16) NOT NULL DEFAULT 'tau'")
         # Live autopilot: OFF by default; when on (and the server live switch + a Kalshi key are
-        # present) the agent may promote paper-passed YES-only strategies to live within the user's
-        # own caps. A per-user daily live-loss limit auto-disables it (kill switch).
+        # present) the agent may promote paper-passed strategies of ANY side (YES or NO, once
+        # NO_SIDE_LIVE_ENABLED is on) to live within the user's own caps. A per-user daily
+        # live-loss limit auto-disables it (kill switch).
         _add_column_if_missing(cur, "app_users", "autopilot_live", "ALTER TABLE app_users ADD COLUMN autopilot_live TINYINT(1) NOT NULL DEFAULT 0")
         _add_column_if_missing(cur, "app_users", "autopilot_daily_loss_limit", "ALTER TABLE app_users ADD COLUMN autopilot_daily_loss_limit DECIMAL(10,2) NOT NULL DEFAULT 50.00")
         # Demo (sandbox) is app-controlled money: real fills on Kalshi's demo exchange applied to a
@@ -565,8 +631,23 @@ def main() -> None:
         # positions or max_open_notional dollars of open entry notional. drawdown_limit_pct=0 disables
         # the force-sell for that user. Tunable per user; UI wiring is deferred (columns only for now).
         _add_column_if_missing(cur, "app_users", "drawdown_limit_pct", "ALTER TABLE app_users ADD COLUMN drawdown_limit_pct DECIMAL(6,2) NOT NULL DEFAULT 25.00")
+        # Position-level stop-loss: force-close a deployment when any OPEN position is down more than
+        # this percent of its OWN cost (deployed capital), independent of the whole-capital drawdown
+        # guard above — catches a small position that craters (large % of its cost, tiny % of capital).
+        # Default 40%; 0 disables. Tunable per user; UI wiring deferred (column only for now).
+        _add_column_if_missing(cur, "app_users", "position_stop_pct", "ALTER TABLE app_users ADD COLUMN position_stop_pct DECIMAL(6,2) NOT NULL DEFAULT 40.00")
         _add_column_if_missing(cur, "app_users", "max_open_positions", "ALTER TABLE app_users ADD COLUMN max_open_positions INT NOT NULL DEFAULT 20")
         _add_column_if_missing(cur, "app_users", "max_open_notional", "ALTER TABLE app_users ADD COLUMN max_open_notional DECIMAL(12,2) NOT NULL DEFAULT 1000.00")
+        # Per-user execution-control overrides for the live kernel (the co-pilot's `set_exec` action
+        # tunes these within a safe envelope). NULL = fall back to the global KALSHI_MAX_* env knob.
+        # Each can only shrink or abandon an order and never blocks an exit, so a set value is always
+        # a tightening relative to "no cap"; agent-set values are clamped to EXEC_BOUNDS in agent.py.
+        _add_column_if_missing(cur, "app_users", "exec_max_book_fraction", "ALTER TABLE app_users ADD COLUMN exec_max_book_fraction DECIMAL(6,4) NULL")
+        _add_column_if_missing(cur, "app_users", "exec_max_entry_spread", "ALTER TABLE app_users ADD COLUMN exec_max_entry_spread DECIMAL(6,4) NULL")
+        _add_column_if_missing(cur, "app_users", "exec_max_order_notional", "ALTER TABLE app_users ADD COLUMN exec_max_order_notional DECIMAL(12,2) NULL")
+        # Proposal payload: the clamped values a set_risk / set_exec proposal applies on approval
+        # (deploy/adjust/pause/resume carry no payload). NULL for the older kinds.
+        _add_column_if_missing(cur, "app_proposals", "payload", "ALTER TABLE app_proposals ADD COLUMN payload JSON NULL")
         # Backfill any user still missing a handle (idempotent: only touches NULLs).
         from app import repository as _repo
         cur.execute("SELECT id, email, name FROM app_users WHERE username IS NULL OR username=''")

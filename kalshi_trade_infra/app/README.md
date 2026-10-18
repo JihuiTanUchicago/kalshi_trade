@@ -18,7 +18,7 @@ Source is available for review in [PR #10](https://github.com/JihuiTanUchicago/k
 The teammate should follow [the deployment guide](BROKER_OAUTH_DEPLOYMENT.md);
 main merge, production installation and real consent remain pending.
 
-Settings → Account adds Alpaca Connect, Robinhood Trading MCP and approved IBKR
+Funds (Settings → Account in Meridian) adds Alpaca Connect, Robinhood Trading MCP and approved IBKR
 OAuth1a connections, with session-bound state and encrypted per-user grants.
 Alpaca defaults to paper/read access; order authorization is an explicit option.
 Existing data keys are separate from OAuth client credentials. Provider app
@@ -34,7 +34,7 @@ key. Deployment/runtime injection, migration and genuine consent remain pending.
 [Configuration and public-readiness receipts](../results/broker_oauth_2026-10-17/credentials_2026-10-17/HANDOFF.md).
 The Alpaca OAuth pair is now encrypted in GitHub Secrets (seven names total).
 Production deployment is assigned to the teammate. The [operator guide](BROKER_OAUTH_DEPLOYMENT.md)
-provides source, private credential access, the broker-only migration, whole-app
+provides source, private credential access, the reviewed full-app schema migration, whole-app
 installation, verification and rollback, with full 1,020 Python / 55 frontend
 checks passing. No production
 service or database has changed. [Rollout handoff](../results/broker_oauth_2026-10-17/production_2026-10-17/HANDOFF.md).

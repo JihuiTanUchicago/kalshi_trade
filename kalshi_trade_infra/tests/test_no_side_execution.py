@@ -151,8 +151,9 @@ class _Cur:
             self.lastrowid = len(self.inserted)
         elif s.startswith("SELECT COALESCE(SUM(pnl),0) AS p FROM app_positions"):
             self._last = [{"p": 0.0}]
-        elif s.startswith("SELECT drawdown_limit_pct, max_open_positions, max_open_notional FROM app_users"):
-            self._last = [{"drawdown_limit_pct": 25.0, "max_open_positions": 20, "max_open_notional": 1000.0}]
+        elif s.startswith("SELECT drawdown_limit_pct, position_stop_pct, max_open_positions, max_open_notional FROM app_users"):
+            self._last = [{"drawdown_limit_pct": 25.0, "position_stop_pct": 40.0,
+                           "max_open_positions": 20, "max_open_notional": 1000.0}]
         elif s.startswith("SELECT COUNT(*) AS n, COALESCE(SUM(qty*entry_price),0) AS notional FROM app_positions"):
             self._last = [{"n": 0, "notional": 0.0}]
         else:
@@ -200,8 +201,10 @@ def _no_snapshot():
 def test_decide_live_places_a_no_order_and_books_a_no_position(monkeypatch):
     from app import engine
     from app import spec as specmod
+    from tests.conftest import patch_intent_passthrough
 
     monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", True)
+    patch_intent_passthrough(monkeypatch)  # P0-1 intent log transparent; booking lands on _Cur
     cur = _Cur()
     conn = _Conn(cur)
     kernel = _RecordingKernel()

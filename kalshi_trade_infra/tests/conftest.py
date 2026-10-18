@@ -8,7 +8,28 @@ reaching for a real database in these tests. That's the point of the DAO
 extraction from Phase 3: engine/risk logic should be testable without a live
 MySQL connection.
 """
+from contextlib import contextmanager
+
 import pytest
+
+
+def patch_intent_passthrough(monkeypatch):
+    """Make the P0-1 durable-order-intent machinery transparent for tests about order ROUTING (not
+    durability): intents log as no-ops, every booking wins its claim, and repo.transaction yields the
+    connection's own cursor so the position/ledger writes land on the test's fake cursor as before.
+    Durability/recovery/claim behaviour has its own dedicated tests (test_order_intent_recovery.py)."""
+    from app import engine
+
+    monkeypatch.setattr(engine.repo, "insert_order_intent", lambda *a, **k: None)
+    monkeypatch.setattr(engine.repo, "mark_order_intent", lambda *a, **k: True)
+    monkeypatch.setattr(engine.repo, "claim_intent_booking", lambda *a, **k: True)
+    monkeypatch.setattr(engine.repo, "claim_position_close", lambda *a, **k: True)
+
+    @contextmanager
+    def _tx(conn):
+        yield conn.cursor()
+
+    monkeypatch.setattr(engine.repo, "transaction", _tx)
 
 
 class FakeCursor:
@@ -104,6 +125,10 @@ class FakeCursor:
             symbol, start_ts, o, h, lo, c, v = params
             self.spot_candles[(symbol, int(start_ts))] = dict(
                 symbol=symbol, start_ts=int(start_ts), open=o, high=h, low=lo, close=c, volume=v)
+        elif s.startswith("SELECT DISTINCT symbol FROM spot_candles_1m WHERE symbol IN"):
+            want = set(params)
+            have = {sym for (sym, _ts) in self.spot_candles if sym in want}
+            self._last = [{"symbol": sym} for sym in sorted(have)]
         elif s.startswith("SELECT start_ts, close FROM spot_candles_1m WHERE symbol=%s AND start_ts >= %s"):
             symbol, since = params
             rows = [r for (sym, ts), r in self.spot_candles.items() if sym == symbol and ts >= int(since)]
