@@ -26,6 +26,12 @@ ABANDONED_AFTER = timedelta(minutes=20)
 # Autopilot heartbeat: how often each autopilot-on user gets a scheduled 'review' run (the only thing
 # that makes the co-pilot act on its own; without it the agent runs only when the user chats).
 COPILOT_REVIEW_SECONDS = int(os.getenv("APP_COPILOT_REVIEW_SECONDS", "600"))
+# Minimum spacing between auto-enqueued reviews per user. The event hook (research-completion ->
+# review) makes the loop continuous; this floor keeps it PACED, not a runaway: a research run that
+# fails in 2s can't spin a tight research->review->research storm burning API/credits, because a
+# review created within this window blocks the next auto-enqueue. Only binds when runs fail fast —
+# a real Opus review takes longer than this, so an active user is never throttled by it.
+MIN_REVIEW_SECONDS = int(os.getenv("APP_AUTOPILOT_MIN_REVIEW_SECONDS", "90"))
 
 
 def agent_loop(worker_id: str) -> None:
@@ -42,6 +48,10 @@ def agent_loop(worker_id: str) -> None:
                     print("[agents] %s took run %s (%s)" % (worker_id, run["id"], run["kind"]), flush=True)
                     if run["kind"] == "research":
                         agent.run_research(conn, run)
+                        # Keystone of the continuous loop: the instant research ends (win OR fail),
+                        # drive the co-pilot to act on the fresh results instead of waiting up to
+                        # COPILOT_REVIEW_SECONDS. Bounded by the same gate the heartbeat uses.
+                        enqueue_review_after_research(conn, run["user_id"])
                     else:
                         agent.run_copilot(conn, run)
             finally:
@@ -51,29 +61,55 @@ def agent_loop(worker_id: str) -> None:
             time.sleep(5)
 
 
+def autopilot_review_ok(cur, uid: int) -> bool:
+    """The single gate for every autonomous 'review' enqueue — heartbeat AND research-completion
+    event hook — so dedup, pacing and the billing bound are enforced identically on both paths.
+    (Does NOT check the autopilot toggle: the scheduler pre-filters via autopilot_user_ids and the
+    event hook checks autopilot_on, so each caller only reaches here for an autopilot-on user.)"""
+    # Dedup: at most one review/chat in flight per user — never stack reviews. (Also absorbs the
+    # rare double-check if more than one agents process runs the scheduler.)
+    if repo.count_runs(cur, uid, "review", active_only=True) or repo.count_runs(cur, uid, "chat", active_only=True):
+        return False
+    # Pace: a review created within the floor means we just acted — don't re-spin the loop.
+    if MIN_REVIEW_SECONDS > 0 and repo.count_runs(
+        cur, uid, "review", since=repo.now_utc() - timedelta(seconds=MIN_REVIEW_SECONDS)
+    ):
+        return False
+    # Money guard: an autonomous review bills Opus to this user. If they have no card / no credits,
+    # skip them — otherwise we'd run up an uncollectable negative balance. Manual paths already gate
+    # via _require_billing_ready; this is the same bar for the paths that have no request to 402.
+    if not billing.is_ready(cur, uid):
+        return False
+    return True
+
+
 def due_autopilot_users(cur) -> list:
-    """Autopilot-on users who have no co-pilot run already queued/running — each is due a scheduled
-    review. Deduping on an in-flight review/chat keeps reviews from piling up (and absorbs the rare
-    double-check if more than one agents process runs the scheduler)."""
-    due = []
-    for uid in repo.autopilot_user_ids(cur):
-        if repo.count_runs(cur, uid, "review", active_only=True) or repo.count_runs(cur, uid, "chat", active_only=True):
-            continue
-        # Money guard: an autonomous review bills Opus to this user. If they have no card / no
-        # credits, skip them — otherwise the heartbeat would run up an uncollectable negative
-        # balance every COPILOT_REVIEW_SECONDS. Manual paths already gate via _require_billing_ready;
-        # this is the same bar for the path that has no request to 402.
-        if not billing.is_ready(cur, uid):
-            continue
-        due.append(uid)
-    return due
+    """Autopilot-on users who may be enqueued a scheduled heartbeat review right now."""
+    return [uid for uid in repo.autopilot_user_ids(cur) if autopilot_review_ok(cur, uid)]
+
+
+def enqueue_review_after_research(conn, user_id: int) -> None:
+    """Event hook: a research run just ended, so act on the fresh results NOW. Review launches
+    research, research completion enqueues the next review -> a self-sustaining loop while there's
+    work to do, paced by autopilot_review_ok so it stays continuous without ever becoming a runaway.
+    Own transaction: the research result is already committed, so a failed enqueue only rolls back
+    the enqueue, and a crash here just reconnects on the next loop (no double-enqueue, no wedge)."""
+    try:
+        with repo.transaction(conn) as cur:
+            if repo.autopilot_on(cur, user_id) and autopilot_review_ok(cur, user_id):
+                repo.create_run(cur, user_id, "review", prompt="autopilot: research completed, act on results")
+                print("[agents] research-completion review enqueued for user %s" % user_id, flush=True)
+    except Exception as e:
+        # Never let a hook failure kill the worker loop or lose the committed research result.
+        print("[agents] research-completion hook ERROR for user %s: %s" % (user_id, e), flush=True)
 
 
 def autopilot_scheduler() -> None:
-    """The autopilot heartbeat: every COPILOT_REVIEW_SECONDS, enqueue a 'review' run for each due
-    autopilot user. This is what makes the co-pilot act on its own — assess deployments, run research,
-    promote/tune/flatten — instead of only when the user chats. The clamps, loss budget, daily-loss
-    kill switch and live gate in act()/agent still bound everything it does.
+    """The autopilot heartbeat — now a FALLBACK floor, not the driver. The event hook
+    (enqueue_review_after_research) keeps an active user moving continuously; this catches idle
+    users and any missed event, enqueueing a 'review' for each due autopilot user every
+    COPILOT_REVIEW_SECONDS. The clamps, loss budget, daily-loss kill switch and live gate in
+    act()/agent still bound everything it does.
     ponytail: single in-process scheduler; the due-check dedupe is the only cross-process guard."""
     time.sleep(15)  # let the worker threads claim first so a fresh boot doesn't double-enqueue
     while True:

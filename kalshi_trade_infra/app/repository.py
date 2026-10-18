@@ -188,6 +188,16 @@ def autopilot_user_ids(cur) -> List[int]:
     return [(r["id"] if isinstance(r, dict) else r[0]) for r in cur.fetchall()]
 
 
+def autopilot_on(cur, user_id: int) -> bool:
+    """Whether one user has the autopilot toggle ON — the per-user check the research-completion
+    event hook needs (the scheduler uses autopilot_user_ids for the whole set)."""
+    cur.execute("SELECT autopilot FROM app_users WHERE id=%s", (user_id,))
+    row = cur.fetchone()
+    if not row:
+        return False
+    return bool(row["autopilot"] if isinstance(row, dict) else row[0])
+
+
 def autopilot_live_over_limit(cur, day_start) -> List[Dict]:
     """Users with live autopilot ON whose live realized loss since `day_start` has hit their
     daily loss limit. The kill switch / loss guard reads this each engine loop."""
