@@ -1,0 +1,143 @@
+name: Isolated paper staging
+
+# No AWS access, production deployment, provider keys or research worker.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/paper-staging.yml'
+      - 'kalshi_trade_infra/app/**'
+      - 'kalshi_trade_infra/data_pipeline/**'
+      - 'kalshi_trade_infra/requirements.txt'
+      - 'kalshi_trade_infra/staging/**'
+      - 'kalshi_trade_infra/scripts/paper_staging_smoke.py'
+      - 'kalshi_trade_infra/tests/test*staging*'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/paper-staging.yml'
+      - 'kalshi_trade_infra/app/**'
+      - 'kalshi_trade_infra/data_pipeline/**'
+      - 'kalshi_trade_infra/requirements.txt'
+      - 'kalshi_trade_infra/staging/**'
+      - 'kalshi_trade_infra/scripts/paper_staging_smoke.py'
+      - 'kalshi_trade_infra/tests/test*staging*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: paper-staging-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  isolated-staging:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TAU_STAGING_PROJECT: tau-paper-stage-${{ github.run_id }}-${{ github.run_attempt }}
+    defaults:
+      run:
+        working-directory: kalshi_trade_infra
+        shell: bash
+    steps:
+      - name: Check out the exact test revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node for frontend verification
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify frontend contracts
+        run: node --test tests/*.mjs
+      - name: Generate private disposable state
+        run: python3 staging/setup.py
+      - name: Build the complete isolated application images
+        run: docker compose --project-name "$TAU_STAGING_PROJECT" --file staging/compose.yml build
+      - name: Apply full schema and boot the web preview
+        run: docker compose --project-name "$TAU_STAGING_PROJECT" --file staging/compose.yml up --detach --wait --wait-timeout 180 gateway
+      - name: Verify actual network, ports, runtime and served source
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess, urllib.error, urllib.request
+          project = os.environ['TAU_STAGING_PROJECT']
+          compose = ['docker','compose','--project-name',project,'--file','staging/compose.yml']
+          def output(args):
+              return subprocess.check_output(args, text=True).strip()
+          assert output(['docker','network','inspect',project+'_isolated','--format','{{.Internal}}']) == 'true'
+          web = output(compose + ['ps','--quiet','web'])
+          db = output(compose + ['ps','--quiet','db'])
+          gateway = output(compose + ['ps','--quiet','gateway'])
+          ports = json.loads(output(['docker','inspect',gateway,'--format','{{json .HostConfig.PortBindings}}']))
+          assert ports == {'8080/tcp':[{'HostIp':'127.0.0.1','HostPort':'18090'}]}
+          for container in (web, db):
+              assert json.loads(output(['docker','inspect',container,'--format','{{json .HostConfig.PortBindings}}'])) in ({}, None)
+              networks = json.loads(output(['docker','inspect',container,'--format','{{json .NetworkSettings.Networks}}']))
+              assert set(networks) == {project+'_isolated'}
+          assert output(['docker','inspect',gateway,'--format','{{.Config.User}}']) == '101:101'
+          mounts = json.loads(output(['docker','inspect',gateway,'--format','{{json .Mounts}}']))
+          assert all(m['Type']=='tmpfs' or (m['Destination']=='/etc/nginx/staging.conf' and m['RW'] is False) for m in mounts)
+          code = "import json; p=dict(l.split(':',1) for l in open('/proc/1/status') if ':' in l); print(json.dumps({k:p[k].strip() for k in ('Uid','Gid','CapEff')}))"
+          process = json.loads(output(compose + ['exec','-T','web','python','-I','-c',code]))
+          assert set(process['Uid'].split()) == {'10001'} and set(process['Gid'].split()) == {'10001'}
+          assert int(process['CapEff'],16) == 0
+          base = 'http://127.0.0.1:18090'
+          statuses = {}
+          for path, expected in (('/',200),('/research',200),('/healthz',200),('/auth/dev',404),('/unsubscribe',404),('/not-a-preview-route',404),('/api/brokers/alpaca/paper',401)):
+              try:
+                  with urllib.request.urlopen(base+path,timeout=10) as response:
+                      statuses[path] = response.status
+              except urllib.error.HTTPError as exc:
+                  statuses[path] = exc.code
+              assert statuses[path] == expected
+          try:
+              urllib.request.urlopen(urllib.request.Request(base+'/api/brokers/alpaca/paper/orders',data=b'{}',method='POST'),timeout=10)
+              raise AssertionError('Gateway accepted a write request')
+          except urllib.error.HTTPError as exc:
+              assert exc.code == 403
+          with urllib.request.urlopen(urllib.request.Request(base+'/healthz',method='HEAD'),timeout=10) as response:
+              assert response.status == 200 and response.read() == b''
+          for name in ('alpaca-paper.js','alpaca-paper.css','broker-connections.js'):
+              with urllib.request.urlopen(base+'/static/'+name,timeout=10) as response:
+                  assert hashlib.sha256(response.read()).digest() == hashlib.sha256((pathlib.Path('app/static')/name).read_bytes()).digest()
+          receipt = {'internal_network':True,'loopback_web_only':True,'database_host_port':False,'app_uid':10001,'app_capabilities':0,'served_assets_match':True,'public_dev_login':False,'readonly_gateway':True,'gateway_credentials':False,'http_statuses':statuses}
+          pathlib.Path(os.environ['RUNNER_TEMP'],'tau-paper-runtime.json').write_text(json.dumps(receipt))
+          print('TAU_STAGING_RUNTIME='+json.dumps(receipt))
+          PY
+      - name: Run real database and HTTP acceptance with a synthetic broker
+        run: |
+          set -euo pipefail
+          docker compose --project-name "$TAU_STAGING_PROJECT" --file staging/compose.yml run --rm --no-deps -T verify | tee "$RUNNER_TEMP/tau-paper-acceptance.json"
+      - name: Validate and summarize the acceptance receipt
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          folder = pathlib.Path(os.environ['RUNNER_TEMP'])
+          report = json.loads((folder/'tau-paper-acceptance.json').read_text())
+          assert report['status']=='passed' and report['mode']=='synthetic_broker_real_mysql_http'
+          assert len(report['checks'])>=14 and all(c['passed'] for c in report['checks'])
+          assert report['production_changed'] is False and report['real_provider_calls']==0 and report['real_oauth_tested'] is False
+          assert report['counts']['active_runs']==report['counts']['active_deployments']==0
+          runtime = json.loads((folder/'tau-paper-runtime.json').read_text())
+          receipt = {'source_sha':os.environ['GITHUB_SHA'],'acceptance':report,'runtime':runtime,'persistent_public_staging':False}
+          (folder/'tau-paper-staging-result.json').write_text(json.dumps(receipt,indent=2)+'\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as summary:
+              summary.write('Isolated paper staging passed: full schema, real MySQL/HTTP, 14 synthetic-broker lifecycle checks, source hashes and runtime isolation. No production changes or provider calls. No real OAuth/order acceptance claimed.\n')
+          print('TAU_STAGING_ACCEPTED='+json.dumps(receipt))
+          PY
+      - name: Upload only sanitized acceptance evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: tau-paper-staging-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/tau-paper-staging-result.json
+            ${{ runner.temp }}/tau-paper-acceptance.json
+            ${{ runner.temp }}/tau-paper-runtime.json
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Remove this disposable stack and volume
+        if: ${{ always() }}
+        run: docker compose --project-name "$TAU_STAGING_PROJECT" --file staging/compose.yml down --volumes --remove-orphans

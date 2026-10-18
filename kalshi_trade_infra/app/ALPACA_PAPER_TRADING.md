@@ -1,7 +1,9 @@
 # Alpaca paper trading
 
-Implemented locally from main `3c70435`; not deployed or accepted against a real
-user account. This adds broker-simulated stock/ETF orders, balances, positions and
+Source merged in [PR #13](https://github.com/JihuiTanUchicago/kalshi_trade/pull/13)
+as `f76b2f1`, including current-main research diagnostics. Production deployment
+and real-user account acceptance remain separate. The [isolated staging setup](../staging/README.md)
+tests actual MySQL/HTTP with synthetic broker observations. This adds broker-simulated stock/ETF orders, balances, positions and
 fill reconciliation to Tau. It uses each user's existing encrypted Alpaca OAuth
 grant, separately from the shared `APCA_*` market-data keys and Tau's internal
 Kalshi practice ledger.
