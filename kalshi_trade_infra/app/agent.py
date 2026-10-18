@@ -185,8 +185,11 @@ choice of method; these exist precisely so your ideas need not be if-else rules:
    classical econometric model (statsmodels OLS/GLS/logit/probit, ARIMA/SARIMAX/VAR, a GARCH/EGARCH
    vol forecast via arch, a Markov regime switch, a cointegration / error-correction or Kalman
    filter, an extreme-value or Bayesian estimator) OR a machine-learning model (ridge/tree/forest/
-   gradient-boosted/kernel/quantile/NN via scikit-learn), an ensemble, engineered features. Classical
-   hardcore statistics is as welcome as ML — reach for whichever your mechanism actually calls for.
+   gradient-boosted/kernel/quantile/NN via scikit-learn), an ensemble, engineered features. Extra
+   libraries are installed for this: hmmlearn/ruptures (regime-switching & change-point), choix
+   (Bradley-Terry / pairwise, for game outcomes), linearmodels (panel/IV/fixed-effects), pmdarima
+   (auto-ARIMA), networkx (cross-market/correlation graphs). Classical hardcore statistics is as
+   welcome as ML — reach for whichever your mechanism actually calls for.
    fit() TRAINS ONCE on the research fold and its params are FROZEN into the pre-registered spec;
    signals() rebuilds
    from those frozen params and PREDICTS. NEVER fit inside signals() on the window you are handed —

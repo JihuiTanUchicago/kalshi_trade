@@ -12,3 +12,17 @@ arch>=7.0,<8            # GARCH / volatility models (finance staple)
 cvxpy>=1.5,<2           # convex / portfolio optimization
 torch>=2.5,<3           # deep learning (CPU, aarch64)
 tensorflow>=2.18,<3     # deep learning (CPU, aarch64)
+
+# Extra model families (added for hand-written code+fit strategies). Box is aarch64/Graviton —
+# versions below prefer ones with prebuilt aarch64 (manylinux_2_28_aarch64) wheels; gcc is on the
+# box as a build fallback for the C/Cython ones. Bayesian stacks (pymc/numpyro/jax) deliberately
+# OMITTED (too heavy for 16GB) — hand-roll Bayesian with scipy/numpy instead.
+networkx>=3.3,<4        # pure-Python, universal wheel — graphs / cross-market correlation structure
+choix>=0.3.5,<1         # pure-Python (numpy/scipy) — Bradley-Terry / pairwise comparison (game outcomes)
+linearmodels>=6.0,<7    # panel data / IV / fixed-effects econometrics; numpy-2 compatible, light build
+ruptures>=1.1.9,<2      # change-point detection (regime shifts); Cython ext, has aarch64 wheels
+hmmlearn>=0.3.2,<1      # hidden Markov / regime-switching; C/Cython ext, aarch64 wheels on 0.3.2+
+# pmdarima: auto-ARIMA. C/Cython extension and historically numpy-pinned — VERIFY an aarch64 wheel
+# installs cleanly against this box's numpy 2.x before relying on it; if it won't build, drop it and
+# hand-roll auto-order selection with statsmodels SARIMAX (already available).
+pmdarima>=2.0.4,<3

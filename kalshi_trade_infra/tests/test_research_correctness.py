@@ -158,6 +158,26 @@ def test_abandoned_run_message_is_informative():
     assert msg != "The agent stopped responding."  # the old generic message is gone
 
 
+def test_extra_research_libs_allowlisted():
+    # New hand-written-model libraries the proposer is told about must be importable in the sandbox
+    # (static gate = parse only, so this passes before they're installed on the box).
+    for mod in ("hmmlearn", "choix", "linearmodels", "pmdarima", "ruptures", "networkx"):
+        assert mod in sandbox.STRATEGY_ALLOWED_IMPORTS
+        sandbox.validate_strategy_code("import %s\ndef signals(w): return []" % mod)
+
+
+def test_research_eval_null_baseline_and_discovery_efficiency():
+    from app import research_eval as E
+    # Calibration: on a pure-noise market, mechanical random search makes ~no validated discovery.
+    noise = E.run_episode("null", E.random_spec, E.noise_backtest(seed=1), budget=24, seed=1)
+    assert noise.discovery_efficiency <= 0.1
+    # Power + headline control: an agent that finds the planted edge out-discovers the null baseline.
+    cmp = E.null_vs_agent("oracle", E.oracle_propose, E.planted_edge_backtest(seed=2), budget=16, seed=2)
+    assert cmp["agent"]["validated"] >= 1 and cmp["agent_beats_null"]
+    s = E.random_spec(__import__("random").Random(0))
+    assert "entry" in s and s["market"] in MARKETS
+
+
 def test_heartbeat_pump_beats_while_fresh_and_stops_when_stale(monkeypatch):
     beats = []
 

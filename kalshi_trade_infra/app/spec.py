@@ -188,7 +188,11 @@ bisect, operator, decimal, fractions, array, pickle, base64, and the scientific 
 scipy, sklearn (scikit-learn), statsmodels, xgboost, lightgbm, arch - so you can write real
 quant/ML/stat models, not just loops, and a full sklearn/xgboost FIT works end-to-end (these
 libraries may pull in whatever standard-library helpers they need at runtime; an import of a
-library that isn't installed fails closed). NO
+library that isn't installed fails closed). Extra model families are available too: regime-switching
+via hmmlearn (HMM) and ruptures (change-point detection), sports/pairwise outcomes via choix
+(Bradley-Terry), panel-data / IV / fixed-effects econometrics via linearmodels, auto-ARIMA via
+pmdarima, and graphs / cross-market correlation structure via networkx. For Bayesian work, hand-roll
+with scipy/numpy (no pymc/jax). NO
 file/network/OS access, and no dunder access; the code runs sealed off from the DB and keys.
 Heavier deep-learning libraries (torch/tensorflow) are not installed. Keep it deterministic
 and pure over the window you are handed.

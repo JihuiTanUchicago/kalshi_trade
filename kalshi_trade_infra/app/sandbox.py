@@ -211,6 +211,12 @@ STRATEGY_ALLOWED_IMPORTS = (
     "pickle", "base64",   # serialize a fitted model (RF/GBM/ensemble) into fit()'s frozen params
     "numpy", "pandas", "scipy", "sklearn", "statsmodels", "joblib",
     "xgboost", "lightgbm", "arch", "cvxpy", "torch", "tensorflow",
+    # Extra research model families (installed via requirements-research.txt): regime-switching /
+    # HMM (hmmlearn), change-point detection (ruptures), Bradley-Terry / pairwise comparison for
+    # game outcomes (choix), panel-data / IV / fixed-effects econometrics (linearmodels), auto-ARIMA
+    # (pmdarima), and graphs / correlation structure (networkx). Safe to allowlist before install:
+    # the static gate only PARSES, and the OS confiner is the boundary regardless.
+    "hmmlearn", "choix", "linearmodels", "pmdarima", "ruptures", "networkx",
 )
 STRATEGY_MAX_CODE = 20_000          # chars of source
 # Limits sized for the scientific/ML stack (torch/tensorflow/sklearn): they dlopen many shared
