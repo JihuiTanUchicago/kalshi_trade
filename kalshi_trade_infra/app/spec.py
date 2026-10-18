@@ -179,11 +179,31 @@ Your code defines ONE function:
       # the bid). Unlisted at settlement = held to settlement. You buy the ask / sell the bid and
       # pay Kalshi fees exactly like a DSL spec.
 Allowed imports: math, cmath, statistics, random, itertools, functools, collections, heapq,
-bisect, operator, decimal, fractions, array, and the scientific stack numpy, pandas, scipy,
-sklearn (scikit-learn), statsmodels - so you can write real quant/ML/stat models, not just
-loops. NO file/network/OS access, and no dunder access; the code runs sealed off from the DB
-and keys. Heavier deep-learning libraries (torch/tensorflow) are not installed. Keep it
-deterministic and pure over the window you are handed.
+bisect, operator, decimal, fractions, array, and the scientific stack numpy, scipy,
+sklearn (scikit-learn) - so you can write real quant/ML/stat models, not just loops (pandas /
+statsmodels are available if installed; an import of a missing library fails closed). NO
+file/network/OS access, and no dunder access; the code runs sealed off from the DB and keys.
+Heavier deep-learning libraries (torch/tensorflow) are not installed. Keep it deterministic
+and pure over the window you are handed.
+
+TRAINING A MODEL (ML) — fit once on research, freeze, then predict. If your edge needs a
+LEARNED model (a logistic/ridge/tree classifier, a calibration map, engineered features), add a
+SECOND function:
+  def fit(window):
+      # same window shape as signals(). Train your model on THIS research window ONLY and
+      # RETURN a JSON-serializable params object: coefficients/intercepts/thresholds, or a
+      # whole model pickled+base64'd into a string. Keep it under ~256 KB.
+      return params
+  def signals(window):
+      params = window["params"]   # the FROZEN params fit() returned on the research window
+      # rebuild your model from params and PREDICT. Do NOT re-fit here.
+      ...
+fit() runs exactly once, on the research fold; its output is frozen into your pre-registered
+strategy and handed to signals() unchanged on every later (unseen) window. This is the only way
+to use a trained model honestly: a model that fits inside signals() would re-fit on the held-out
+data and its "edge" would be fake. There is NO storage that persists between fit() and signals()
+other than the params you return — that is deliberate, so your model can never peek past the
+research window. A pure-rule strategy omits fit() entirely (unchanged).
 """
 
 # Every proposer that reads SPEC_GUIDE also learns it may write arbitrary quant code.

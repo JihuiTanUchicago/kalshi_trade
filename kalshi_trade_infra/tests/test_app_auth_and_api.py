@@ -303,7 +303,8 @@ def test_strategies_figures_come_from_count_not_the_page(monkeypatch):
     monkeypatch.setattr(server, "_strategy_card", lambda s: s)
     out = server.list_strategies(ctx(query={}))
     assert out["counts"]["total"] == 1233 and len(out["strategies"]) == 50
-    assert out["matched"] == 1233 and out["pages"] == 25 and out["page"] == 0
+    # Default "Kept" view hides rejected/void, so matched = total - (failed + rejected) = 600.
+    assert out["matched"] == 600 and out["pages"] == 12 and out["page"] == 0
     # A status filter narrows "matched" to that status's true count.
     out = server.list_strategies(ctx(query={"status": "passed"}))
     assert out["matched"] == 600 and out["pages"] == 12
@@ -313,7 +314,7 @@ def test_strategies_page_param_maps_to_offset(monkeypatch):
     seen = {}
     monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: {"passed": 10, "total": 120})
 
-    def fake_list(cur, uid, direction=None, status=None, market=None, run_id=None, limit=500, offset=0, q=None, deployed=False):
+    def fake_list(cur, uid, direction=None, status=None, market=None, run_id=None, limit=500, offset=0, q=None, deployed=False, hide_noise=False):
         seen.update(limit=limit, offset=offset)
         return []
 

@@ -100,10 +100,11 @@ mechanism; most mechanisms are not a single threshold:
  - MOMENTUM / MEAN-REVERSION on the underlying: the GBM model's drift_window/drift_beta already
    expresses this (drift_beta>0 momentum, <0 reversion) — use it rather than a return threshold.
  - ARBITRARY QUANT CODE (`code`): for a method none of the above expresses (a custom estimator,
-   an ensemble, a bespoke microstructure statistic). It must be a FIXED computation over the
-   window — do NOT fit parameters inside signals() on the window you are handed, because at
-   validation that window IS the held-out data and fitting on it is a leak. Fit-then-freeze lives
-   in the logistic/calibration kinds; use code for stateless/closed-form logic.
+   an ensemble, a bespoke microstructure statistic) — numpy / scikit-learn / scipy are available.
+   You MAY TRAIN A MODEL: define `fit(window)` and the system fits it ONCE on the research fold and
+   FREEZES the params into the spec; your `signals(window)` then reads those frozen params. Never
+   fit inside signals() on the window you are handed — at validation that window IS the held-out
+   data, so fitting there is a leak. Fit in fit(); predict in signals().
 A learned model is pre-registered WITH its frozen coefficients and judged on data you never see,
 exactly like any other spec. More free parameters = a strictly higher deflated-Sharpe bar, so a
 kitchen-sink model with no per-feature mechanism will be REJECTED, not rewarded.
@@ -811,8 +812,14 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
     for t, verdict in zip(finalists, verdicts):
         spec = t["spec"]
         if verdict["decision"] == "revise" and verdict.get("fixes"):
+            # Strip any frozen params before re-validating (validate() rejects unknown fields and
+            # params is system-set, never agent-set), then RE-FREEZE: the revise may have changed
+            # the code, so the model must be re-fit on research to stay consistent with the frozen
+            # spec that gets pre-registered. No-op freeze for DSL / pure-rule code specs.
+            base = {k: v for k, v in spec.items() if k != "params"}
             try:
-                spec = specmod.validate(_deep_merge(spec, verdict["fixes"]))
+                revised = specmod.validate(_deep_merge(base, verdict["fixes"]))
+                spec = backtest.freeze_code_model(revised, ds) if specmod.is_code_spec(revised) else revised
             except specmod.SpecError:
                 spec = t["spec"]  # keep the frozen original if the patch is invalid
         if verdict["decision"] == "reject":
@@ -1139,11 +1146,14 @@ def _test_in_sample(h: Dict, ds: backtest.Dataset, partition: Dict, log, round_n
             rds = partitions.merged_dataset(cur, inv, "research")
             if merged_cache is not None:
                 merged_cache[key] = (rds, embargo)
-    # A learned model (logistic/calibration) fits its coefficients HERE, on the research fold only,
-    # and freezes them into the spec — so the hypothesis that gets pre-registered and handed to the
-    # gatekeeper IS the frozen model, scored later on validation/holdout it never saw (no re-fit,
-    # no leak). A gbm/code spec passes through untouched. Carry the frozen spec forward on `h`.
+    # Fit-on-research-and-FREEZE before the hypothesis is tested or pre-registered, so the spec
+    # handed to the gatekeeper IS the frozen model — scored on validation/holdout it never saw,
+    # with no re-fit at test time. Two complementary freezers, each a no-op for the other's spec
+    # type: (1) a DSL learned model (logistic/calibration) freezes its coefficients; (2) a `code`
+    # strategy that defines fit(window) freezes its trained params into the spec. gbm / pure-rule
+    # specs pass through untouched. Carry the frozen spec forward on `h`.
     spec = backtest.fit_spec_on_research(spec, rds)
+    spec = backtest.freeze_code_model(spec, rds)
     h = dict(h, spec=spec)
     res = backtest.research_fold_metrics(spec, rds, embargo)
     ins = res["in_sample"]

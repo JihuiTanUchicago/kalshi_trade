@@ -390,25 +390,58 @@ def _first_frame(ds: Dataset, start_ts: int) -> int:
 # honestly) rather than crashing the research run.
 
 
-def _code_book(spec: Dict, ds: Dataset, start_ts: int, end_ts: int) -> Dict[int, Dict[str, Tuple[str, float]]]:
-    """Run the strategy and return {ts: {ticker: (side, score)}} for in-window decision frames.
-    # ponytail: serializes the window to JSON per simulate() call (O(frames x contracts)); fine
-    # for current window sizes, switch to a binary channel if windows grow much larger."""
-    from app import sandbox
-    frames = [(ts, snaps) for ts, snaps in ds.frames if start_ts <= ts < end_ts]
-    window = {"market": spec["market"], "frames": [
+def _binary_window(market: str, frames: List[Tuple[int, List[Snapshot]]]) -> Dict:
+    """The signals(window) / fit(window) input for a binary market: per-frame contract quotes +
+    features. The ONE place this window shape is built, so fit and signals see the same thing."""
+    return {"market": market, "frames": [
         {"ts": ts, "contracts": [
             {"ticker": s.contract.ticker, "strike": s.contract.strike,
              "close_ts": int(s.contract.close_time.timestamp()),
              "yes_bid": s.yes_bid, "yes_ask": s.yes_ask, "features": s.features}
             for s in snaps]}
         for ts, snaps in frames]}
+
+
+def _code_book(spec: Dict, ds: Dataset, start_ts: int, end_ts: int) -> Dict[int, Dict[str, Tuple[str, float]]]:
+    """Run the strategy and return {ts: {ticker: (side, score)}} for in-window decision frames.
+    # ponytail: serializes the window to JSON per simulate() call (O(frames x contracts)); fine
+    # for current window sizes, switch to a binary channel if windows grow much larger."""
+    from app import sandbox
+    frames = [(ts, snaps) for ts, snaps in ds.frames if start_ts <= ts < end_ts]
+    window = _binary_window(spec["market"], frames)
+    if spec.get("params") is not None:
+        window["params"] = spec["params"]  # the frozen research-fit model; signals predicts, never refits
     try:
-        raw = sandbox.run_strategy_signals(spec["code"], window)
+        # data_dir=None: no cross-run channel, so signals on this fold can read ONLY these frames +
+        # the frozen params — it cannot reach another fold's data (fold-boundary enforced here).
+        raw = sandbox.run_strategy_signals(spec["code"], window, data_dir=None)
     except sandbox.SandboxError as e:
         logging.getLogger(__name__).warning("code strategy sandbox failure: %s", e)
         return {}
     return _parse_book(raw, frames)
+
+
+def freeze_code_model(spec: Dict, ds: Dataset) -> Dict:
+    """Fit-on-research-and-FREEZE. If the agent's code defines fit(window), run it ONCE over the
+    whole RESEARCH window `ds` and freeze the returned params into spec['params'] — which becomes
+    part of the pre-registered, hashed experiment identity. signals() then predicts with those
+    frozen params on every fold (research, validation, holdout) WITHOUT refitting, so the model the
+    gatekeeper scores on unseen data was fit only on research (closes the fit-at-test-time leak).
+
+    No fit() (a pure-rule code strategy) or a non-code DSL spec -> returned unchanged. A fit failure
+    logs and returns the spec unfrozen; signals then runs without params and, if it needed a model,
+    produces an empty book -> the hypothesis fails the gate honestly rather than crashing the run."""
+    from app import sandbox
+    if not specmod.is_code_spec(spec) or not sandbox.strategy_has_fit(spec["code"]):
+        return spec
+    frames = list(ds.frames)
+    window = _binary_window(spec["market"], frames) if ds.market.kind != "spot" else _spot_window(spec["market"], frames)
+    try:
+        params = sandbox.run_strategy_fit(spec["code"], window, data_dir=None)
+    except sandbox.SandboxError as e:
+        logging.getLogger(__name__).warning("code strategy fit failed; running without a frozen model: %s", e)
+        return spec
+    return dict(spec, params=params)
 
 
 def _parse_book(raw, frames) -> Dict[int, Dict[str, Tuple[str, float]]]:
@@ -565,16 +598,23 @@ def _spot_code_book(spec: Dict, ds: Dataset, start_ts: int, end_ts: int) -> Dict
     subnet features, so signals() can trade and report in either denomination (§C mechanisms)."""
     from app import sandbox
     frames = [(ts, fr) for ts, fr in ds.frames if start_ts <= ts < end_ts]
-    window = {"market": spec["market"], "kind": "spot", "frames": [
-        {"ts": ts, "alpha_tao": fr["alpha_tao"], "tao_usd": fr["tao_usd"],
-         "alpha_usd": fr["alpha_usd"], "features": fr["features"]}
-        for ts, fr in frames]}
+    window = _spot_window(spec["market"], frames)
+    if spec.get("params") is not None:
+        window["params"] = spec["params"]  # frozen research-fit model
     try:
-        raw = sandbox.run_strategy_signals(spec["code"], window)
+        raw = sandbox.run_strategy_signals(spec["code"], window, data_dir=None)
     except sandbox.SandboxError as e:
         logging.getLogger(__name__).warning("spot code strategy sandbox failure: %s", e)
         return {}
     return _parse_spot_book(raw, frames)
+
+
+def _spot_window(market: str, frames: List[Tuple[int, Dict]]) -> Dict:
+    """The signals(window) / fit(window) input for a continuous-price (spot) market."""
+    return {"market": market, "kind": "spot", "frames": [
+        {"ts": ts, "alpha_tao": fr["alpha_tao"], "tao_usd": fr["tao_usd"],
+         "alpha_usd": fr["alpha_usd"], "features": fr["features"]}
+        for ts, fr in frames]}
 
 
 def _parse_spot_book(raw, frames) -> Dict[int, Tuple[str, float]]:

@@ -190,6 +190,13 @@ class StrategyCodeError(SandboxError):
 
 
 STRATEGY_ENTRY = "signals"
+# An OPTIONAL second entry point. A strategy that trains a model defines fit(window): it is run
+# ONCE on the RESEARCH window and returns a JSON-serializable params object (model coefficients,
+# thresholds, a base64 model blob...). Those params are frozen into the pre-registered spec and
+# handed to signals() as window["params"] on EVERY fold, so the model the gatekeeper scores on
+# unseen data was fit only on research — it cannot refit at test time (the fit-at-test-time leak).
+STRATEGY_FIT_ENTRY = "fit"
+STRATEGY_MAX_PARAMS = 256_000       # chars of the JSON-serialized frozen params (bounds DB/ledger bloat)
 # Import roots a strategy may use: the numeric stdlib plus the common scientific-Python
 # analytics/ML/stat stack, so agents can write real quant models (not just row-wise loops).
 # Still NO os, sys, socket, subprocess, io, pathlib, ctypes, importlib, builtins, threading,
@@ -261,6 +268,16 @@ def validate_strategy_code(code: str) -> None:
                for n in tree.body):
         raise StrategyCodeError("strategy must define a top-level %s(window) function"
                                 % STRATEGY_ENTRY)
+
+
+def strategy_has_fit(code: str) -> bool:
+    """True iff the strategy defines a top-level fit(window) function (the optional train-once
+    entry). Cheap AST check; validate_strategy_code has already guaranteed the code parses."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return False
+    return any(isinstance(n, ast.FunctionDef) and n.name == STRATEGY_FIT_ENTRY for n in tree.body)
 
 
 def strategy_import_roots(code: str) -> List[str]:
@@ -359,7 +376,7 @@ try:
     if not callable(fn):
         raise RuntimeError("strategy does not define a callable %s" % _job["entry"])
     result = fn(_job["window"])
-    out = {"signals": result}
+    out = {"result": result}
 except Exception as e:
     out = {"error": "%s: %s" % (type(e).__name__, e)}
 with open(out_path, "w") as _f:
@@ -496,16 +513,15 @@ def _applied_limits() -> Dict[str, bool]:
     return out
 
 
-def run_strategy_signals(code: str, window: Dict, *, cpu_s: int = STRATEGY_CPU_SECONDS,
-                         mem_bytes: int = STRATEGY_MEM_BYTES, wall_s: float = STRATEGY_WALL_SECONDS,
-                         nofile: int = STRATEGY_NOFILE, nproc: int = STRATEGY_NPROC,
-                         fsize: int = STRATEGY_FSIZE_BYTES, scratch_dir: Optional[str] = None,
-                         data_dir: Optional[str] = STRATEGY_DATA_DIR) -> List:
-    """Run the strategy's `signals(window)` in an isolated child interpreter and return its
-    result (a list). Raises SandboxError on rejection, timeout, a blown resource limit, a crash,
-    or non-JSON output. See the module docstring for the isolation guarantees. `data_dir`, if set,
-    is created and mounted read-write for persisted datasets/models and surfaced as
-    window['data_dir']; secrets are masked out of it regardless."""
+def _run_entry(code: str, window: Dict, entry: str, *, cpu_s: int, mem_bytes: int, wall_s: float,
+               nofile: int, nproc: int, fsize: int, scratch_dir: Optional[str],
+               data_dir: Optional[str]):
+    """Run `entry`(window) (either `signals` or `fit`) in the isolated child interpreter and return
+    its decoded JSON result. Raises SandboxError on rejection, timeout, a blown resource limit, a
+    crash, or non-JSON output. See the module docstring for the isolation guarantees. `data_dir`, if
+    set, is created and mounted read-write and surfaced as window['data_dir']; secrets are masked
+    out of it regardless. The research/gatekeeper path passes data_dir=None so there is NO cross-run
+    channel — the only state crossing from fit to signals is the frozen params in the spec."""
     validate_strategy_code(code)
     created = scratch_dir is None
     scratch = _safe_scratch(scratch_dir or tempfile.mkdtemp(prefix="strat_"))
@@ -531,7 +547,7 @@ def run_strategy_signals(code: str, window: Dict, *, cpu_s: int = STRATEGY_CPU_S
         win["data_dir"] = STRATEGY_DATA_MOUNT if conf in ("bwrap", "firejail") else use_data
     try:
         with open(in_path, "w") as f:
-            json.dump({"code": code, "entry": STRATEGY_ENTRY, "window": win,
+            json.dump({"code": code, "entry": entry, "window": win,
                        "allowed": list(STRATEGY_ALLOWED_IMPORTS),
                        "preimport": strategy_import_roots(code)}, f)
         # Scrubbed env: NONE of the credential / DB / AWS vars. `-I` also makes the child ignore
@@ -558,10 +574,44 @@ def run_strategy_signals(code: str, window: Dict, *, cpu_s: int = STRATEGY_CPU_S
             result = json.load(f)
         if "error" in result:
             raise SandboxError("strategy raised: %s" % result["error"])
-        sig = result.get("signals")
-        if not isinstance(sig, list):
-            raise SandboxError("strategy must return a list of per-frame signals")
-        return sig
+        return result.get("result")
     finally:
         if created:
             shutil.rmtree(scratch, ignore_errors=True)
+
+
+def run_strategy_signals(code: str, window: Dict, *, cpu_s: int = STRATEGY_CPU_SECONDS,
+                         mem_bytes: int = STRATEGY_MEM_BYTES, wall_s: float = STRATEGY_WALL_SECONDS,
+                         nofile: int = STRATEGY_NOFILE, nproc: int = STRATEGY_NPROC,
+                         fsize: int = STRATEGY_FSIZE_BYTES, scratch_dir: Optional[str] = None,
+                         data_dir: Optional[str] = STRATEGY_DATA_DIR) -> List:
+    """Run the strategy's `signals(window)` and return its result (a list of per-frame books).
+    A fitted strategy receives its frozen model as window['params']; signals never refits."""
+    sig = _run_entry(code, window, STRATEGY_ENTRY, cpu_s=cpu_s, mem_bytes=mem_bytes, wall_s=wall_s,
+                     nofile=nofile, nproc=nproc, fsize=fsize, scratch_dir=scratch_dir, data_dir=data_dir)
+    if not isinstance(sig, list):
+        raise SandboxError("strategy must return a list of per-frame signals")
+    return sig
+
+
+def run_strategy_fit(code: str, window: Dict, *, cpu_s: int = STRATEGY_CPU_SECONDS,
+                     mem_bytes: int = STRATEGY_MEM_BYTES, wall_s: float = STRATEGY_WALL_SECONDS,
+                     nofile: int = STRATEGY_NOFILE, nproc: int = STRATEGY_NPROC,
+                     fsize: int = STRATEGY_FSIZE_BYTES, scratch_dir: Optional[str] = None,
+                     data_dir: Optional[str] = None):
+    """Run the strategy's `fit(window)` ONCE on the research window and return its frozen params
+    (any JSON-serializable object). Raises SandboxError if the code has no fit(), the params aren't
+    JSON-serializable, or they exceed STRATEGY_MAX_PARAMS. data_dir defaults to None: fit sees ONLY
+    the research frames it is handed and has no persistent channel to a later signals() call."""
+    if not strategy_has_fit(code):
+        raise SandboxError("strategy defines no %s(window) function" % STRATEGY_FIT_ENTRY)
+    params = _run_entry(code, window, STRATEGY_FIT_ENTRY, cpu_s=cpu_s, mem_bytes=mem_bytes,
+                        wall_s=wall_s, nofile=nofile, nproc=nproc, fsize=fsize,
+                        scratch_dir=scratch_dir, data_dir=data_dir)
+    try:
+        blob = json.dumps(params)
+    except (TypeError, ValueError) as e:
+        raise SandboxError("fit() must return JSON-serializable params: %s" % e)
+    if len(blob) > STRATEGY_MAX_PARAMS:
+        raise SandboxError("fit() params exceed %d chars" % STRATEGY_MAX_PARAMS)
+    return params
