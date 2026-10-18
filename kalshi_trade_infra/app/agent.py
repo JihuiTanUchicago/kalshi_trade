@@ -596,6 +596,10 @@ user asked for; if the idea is vague, pick the most promising precise reading an
 
 Market: {market_label} (spec market "{market}").
 In-sample data you can test on: {summary}
+`feature_coverage_pct` is the non-null coverage of each feature ON THIS MARKET: only build models
+and filters on features that are actually populated here. A feature at or near 0% is empty on this
+market (e.g. order-book/microstructure features on sports/NEAR) — a model or filter that needs it
+will fit nothing and take 0 trades, so pick a different signal.
 
 {guide}
 
@@ -664,10 +668,13 @@ def dig_deeper_run(cur, user_id: int, strat: Dict, model: Optional[str] = None,
 
 
 def _in_sample_summary(ds: backtest.Dataset) -> Dict:
-    """What the agent may know about the data: the in-sample window only."""
+    """What the agent may know about the data: the in-sample window only, plus per-feature non-null
+    coverage for THIS market so the proposer only reaches for features the market populates (a
+    micro feature at 0% is empty here — proposing a model/filter on it just yields 0 trades)."""
     s = ds.summary()
     s["end"] = s.pop("out_of_sample_from")
     s.pop("decision_points", None)
+    s["feature_coverage_pct"] = backtest.feature_coverage(ds)
     return s
 
 
@@ -1062,6 +1069,8 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
             # out per hypothesis, so finalist selection + pre-registration are unchanged.
             t = _develop_thesis(h, run, ds, partition, memory, proposer, market_data,
                                  usage, log, checkpoint, round_no, cur, run["user_id"], merged_cache)
+            if t is None:
+                continue  # abandoned (dead-on-arrival) thesis: no candidate, no trial spent
             t["score"] = backtest.score(t["in_sample"])  # attach once, so the policy needs no backtester
             chunk.append(t)
             tried.append(t)
@@ -1372,21 +1381,38 @@ def _test_in_sample(h: Dict, ds: backtest.Dataset, partition: Dict, log, round_n
     # type: (1) a DSL learned model (logistic/calibration) freezes its coefficients; (2) a `code`
     # strategy that defines fit(window) freezes its trained params into the spec. gbm / pure-rule
     # specs pass through untouched. Carry the frozen spec forward on `h`.
-    spec = backtest.fit_spec_on_research(spec, rds)
+    diag: Dict = {}
+    spec = backtest.fit_spec_on_research(spec, rds, diag)
     spec = backtest.freeze_code_model(spec, rds)
     h = dict(h, spec=spec)
     res = backtest.research_fold_metrics(spec, rds, embargo)
     ins = res["in_sample"]
+    diagnosis = _diagnose(spec, rds, ins, diag)  # "" when the spec fit and traded fine
     # Carry the whole pre-registration (thesis, mechanism, the actual spec/code, falsification
     # criteria, negative control) so the live feed can tell the full story of each hypothesis —
-    # intuition -> spec/code -> critique -> verdict — not just its name.
+    # intuition -> spec/code -> critique -> verdict — not just its name. `diagnosis` tells the
+    # user (run page) and the agent (develop prompt) WHY a model was left unfitted or took 0
+    # trades, so a dead-on-arrival thesis is visible instead of a silent "coef:[] / 0 trades".
     log("hypothesis", h["title"], {
         "thesis": h["thesis"], "mechanism": h.get("mechanism") or {},
         "falsification": h.get("falsification_criteria") or "",
         "negative_control": h.get("negative_control") or "",
         "primary_metric": h.get("primary_metric") or "",
-        "spec": h["spec"], "in_sample": ins, "round": round_no})
-    return dict(h, in_sample=ins, capital=res["capital"], attribution=res.get("attribution"))
+        "spec": h["spec"], "in_sample": ins, "round": round_no,
+        "diagnosis": diagnosis or None})
+    return dict(h, in_sample=ins, capital=res["capital"], attribution=res.get("attribution"),
+                diagnosis=diagnosis)
+
+
+def _diagnose(spec: Dict, rds: backtest.Dataset, ins: Dict, diag: Dict) -> str:
+    """One concrete sentence for a no-edge outcome, or "" when the spec fit and traded. An unfit
+    learned model (its feature is null for this market) wins over the 0-trade reason — that is the
+    root cause the agent must see to stop loosening thresholds that can never fire."""
+    if diag.get("reason") and not specmod.is_fitted(spec):
+        return "model left UNFITTED: " + diag["reason"]
+    if not ins.get("trades"):
+        return backtest.zero_trade_reason(spec, rds)
+    return ""
 
 
 def _develop_prompt(run: Dict, t: Dict, memory: List[Dict], step: int) -> str:
@@ -1394,23 +1420,36 @@ def _develop_prompt(run: Dict, t: Dict, memory: List[Dict], step: int) -> str:
     spec, its research-fold metrics + edge-by-regime, and the user's prior-research LABELS — the
     same leak-free surface the batch rounds use. Never a validation/holdout number."""
     attr = _attribution_line(t.get("attribution"))
+    diag = t.get("diagnosis")
+    diag_line = ("\nWHY IT HAS NO EDGE YET: %s\nThis is the real reason — if it names a feature "
+                 "that is null/unavailable on THIS market, do NOT loosen thresholds (they can never "
+                 "fire): either rebuild the mechanism on features this market actually has, or "
+                 "ABANDON this thesis." % diag) if diag else ""
     return (
         "Develop THIS one thesis in depth before committing it — you may take several steps to get "
-        "the mechanism right instead of moving on.\n"
+        "the mechanism right, OR exit early at any step if it clearly can't work here.\n"
         "Thesis: %s\nCurrent spec: %s\nResearch-fold result (a leak-free sandbox you may study "
-        "freely — NOT the held-out data): %s%s\n\n"
+        "freely — NOT the held-out data): %s%s%s\n\n"
         "What this market's earlier research found (learn from it; do not repeat failures):\n%s\n\n"
-        "This is step %d of at most %d for this thesis. Decide: if a concrete change would "
-        "STRENGTHEN THE ECONOMIC MECHANISM (condition on a regime you can justify, prototype a "
-        "fitted/code model, drop a leg that only fit noise), REFINE the spec; otherwise COMMIT it. "
-        "Do NOT bolt on filters that merely fit the strongest in-sample bucket — every version is "
-        "re-judged later on data you never see and the committed one spends exactly ONE statistical "
-        "trial.\nReply ONE JSON object: "
+        "This is step %d of at most %d for this thesis — the cap is a ceiling, NOT a target: there "
+        "is no reward for staying, and dropping a dead line to hunt a better one elsewhere is the "
+        "right call. Decide ONE of three:\n"
+        "- REFINE: a concrete change would STRENGTHEN THE ECONOMIC MECHANISM (condition on a regime "
+        "you can justify, prototype a fitted/code model, drop a leg that only fit noise). Do NOT "
+        "bolt on filters that merely fit the strongest in-sample bucket.\n"
+        "- COMMIT: it is ready to gate (it trades and the mechanism holds). Every version is re-judged "
+        "later on data you never see and the committed one spends exactly ONE statistical trial, so "
+        "never commit a spec that takes ~0 trades — that just wastes a trial.\n"
+        "- ABANDON: this thesis is dead on arrival for this market (its model can't be fit because a "
+        "feature is unavailable, or it genuinely can't trade) and you have no better angle for it. "
+        "Drop it with a reason — it costs no trial and frees you to explore elsewhere.\n"
+        "Reply ONE JSON object: "
         '{\"decision\":\"refine\",\"spec\":{...the full revised spec...},\"change\":\"<what and why>\"} '
         "(optionally also \"thesis\" and \"mechanism\" if the story changed) OR "
-        '{\"decision\":\"commit\",\"why\":\"<why it is ready to gate>\"}.'
+        '{\"decision\":\"commit\",\"why\":\"<why it is ready to gate>\"} OR '
+        '{\"decision\":\"abandon\",\"why\":\"<why it cannot work here>\"}.'
         % (t["thesis"], json.dumps(t["spec"], separators=(",", ":")),
-           _metrics_line(t["in_sample"]), ("\n" + attr) if attr else "",
+           _metrics_line(t["in_sample"]), ("\n" + attr) if attr else "", diag_line,
            _memory_block(memory), step + 1, THESIS_MAX_STEPS)
     ) + THINK_ALOUD
 
@@ -1420,8 +1459,10 @@ def _develop_check(market: str) -> Callable[[Dict], Dict]:
         decision = str(obj.get("decision") or "").strip().lower()
         if decision == "commit":
             return {"decision": "commit"}
+        if decision in ("abandon", "skip", "drop"):
+            return {"decision": "abandon", "why": str(obj.get("why") or obj.get("change") or "")[:1000]}
         if decision != "refine":
-            raise ValueError('decision must be "refine" or "commit"')
+            raise ValueError('decision must be "refine", "commit", or "abandon"')
         raw = obj.get("spec")
         if isinstance(raw, dict):
             raw = dict(raw)
@@ -1443,20 +1484,28 @@ def _develop_check(market: str) -> Callable[[Dict], Dict]:
 
 def _develop_thesis(h: Dict, run: Dict, ds: backtest.Dataset, partition: Dict, memory: List[Dict],
                     proposer: ModelFn, market_data, usage: Usage, log, checkpoint, round_no: int,
-                    cur, user_id: int, merged_cache: Optional[Dict] = None) -> Dict:
-    """Pillar 2 — spend as long as THIS thesis needs on the RESEARCH FOLD before committing it.
+                    cur, user_id: int, merged_cache: Optional[Dict] = None) -> Optional[Dict]:
+    """Pillar 2 — spend as long as THIS thesis needs on the RESEARCH FOLD before committing it, or
+    ABANDON it early when it's dead on arrival for this market.
 
     Backtest the freshly proposed spec, then up to THESIS_MAX_STEPS-1 times let the agent read its
-    own research-fold result (+ prior-failure labels) and either REFINE the spec or COMMIT. Only
-    the research fold is ever read; the single returned candidate is what goes to finalist
-    selection, so a deeper thesis still pre-registers exactly ONE frozen spec (no trial inflation).
+    own research-fold result (+ the concrete no-edge diagnosis + prior-failure labels) and either
+    REFINE the spec, COMMIT it, or ABANDON it. Only the research fold is ever read; the single
+    returned candidate is what goes to finalist selection, so a deeper thesis still pre-registers
+    exactly ONE frozen spec (no trial inflation).
+
+    Returns None for an abandoned thesis — the caller drops it from the chunk, so a dead line
+    costs NO gatekeeper trial. The step cap is a ceiling, not a target: the agent may exit at any
+    step, and a spec that still takes 0 trades (or whose model can't be fit) is never committed —
+    that would only waste a trial.
 
     Bounded three ways: the step cap, a per-step credit check (depth stays inside the budget), and
-    fail-OPEN — any bad/empty/unavailable reply commits what we already have, so a reviewer hiccup
+    fail-OPEN — any bad/empty/unavailable reply keeps the spec we already have, so a reviewer hiccup
     can never halt research or spend unbounded. Each refine re-freezes via _test_in_sample, so the
     committed spec is always a fit-on-research-and-frozen model, never re-fit at gate time."""
     t = _test_in_sample(h, ds, partition, log, round_no, cur, merged_cache)
     market = run["market"]
+    committed = developed = False
     for step in range(THESIS_MAX_STEPS - 1):
         checkpoint()
         if cur is not None and repo.credit_balance(cur, user_id) <= 0:
@@ -1471,7 +1520,10 @@ def _develop_thesis(h: Dict, run: Dict, ds: backtest.Dataset, partition: Dict, m
                                     _develop_check(market), usage)
         except LLMError:
             break  # fail-open: keep the spec we already have
+        if reply.get("decision") == "abandon":
+            return _abandon(log, t, reply.get("why"))  # dead on arrival — no candidate, no trial
         if reply.get("decision") != "refine" or not reply.get("spec"):
+            committed = True
             break  # agent is satisfied — commit the current spec
         refined = dict(h, spec=reply["spec"])
         if reply.get("thesis"):
@@ -1479,21 +1531,41 @@ def _develop_thesis(h: Dict, run: Dict, ds: backtest.Dataset, partition: Dict, m
         if reply.get("mechanism"):
             refined["mechanism"] = reply["mechanism"]
         log("step", "Refining \"%s\": %s" % (t["title"], reply.get("change") or "sharpening the mechanism"))
+        developed = True
         t = _test_in_sample(refined, ds, partition, log, round_no, cur, merged_cache)
+    # Anti-grind backstop: if the agent REFINED this thesis (really worked it) yet never committed
+    # and the spec still can't trade (unfit model / 0 research-fold trades), drop it as dead on
+    # arrival rather than grind the rest of the step cap. The no-develop path (THESIS_MAX_STEPS=1)
+    # and any explicit commit are untouched; a committed 0-trade spec is harmless anyway — finalist
+    # selection requires >=5 trades, so it never reaches the gatekeeper or spends a trial.
+    if developed and not committed and not t["in_sample"].get("trades"):
+        return _abandon(log, t, t.get("diagnosis"))
     return t
 
 
+def _abandon(log, t: Dict, why: Optional[str]) -> None:
+    """Log a dropped thesis (no candidate reaches the chunk, so no statistical trial is spent)."""
+    log("verdict", "DROPPED \"%s\" (no candidate) — %s"
+        % (t["title"], why or "mechanism can't trade on this market"),
+        {"title": t["title"], "status": "abandoned", "diagnosis": t.get("diagnosis") or None})
+    return None
+
+
 def _develop_self_check() -> None:
-    """One runnable check: the per-thesis loop refines when asked, then commits exactly ONE spec,
-    reads only the research fold, and honours the step cap."""
+    """One runnable check: the per-thesis loop refines-then-commits exactly ONE spec reading only
+    the research fold; abandons to None on the agent's call; and never commits an untradeable spec
+    (0-trade DOA with no explicit commit -> dropped, no trial)."""
     import app.agent as A
     ds = type("DS", (), {"start_ts": 0, "cutoff_ts": 1, "frames": []})()
     calls = {"backtests": 0, "asks": 0}
 
-    def fake_test(h, *a, **k):
-        calls["backtests"] += 1
-        return dict(h, in_sample={"trades": 10, "win_rate": 0.5, "pnl": 1.0, "fees": 0.1,
-                                  "profit_factor": 1.2, "max_drawdown": 0.5}, capital=100.0, attribution=None)
+    def make_test(trades):
+        def fake_test(h, *a, **k):
+            calls["backtests"] += 1
+            return dict(h, in_sample={"trades": trades, "win_rate": 0.5, "pnl": 1.0, "fees": 0.1,
+                                      "profit_factor": 1.2, "max_drawdown": 0.5}, capital=100.0,
+                        attribution=None, diagnosis="" if trades else "0 trades: binding filter")
+        return fake_test
 
     class MD:  # stand-in for AgentMarketData.ask: returns scripted (already-checked) develop replies
         def __init__(self, replies):
@@ -1503,16 +1575,28 @@ def _develop_self_check() -> None:
             return self.replies.pop(0)  # loop logic only; spec validation is covered by the pytest test
 
     orig = A._test_in_sample
-    A._test_in_sample = fake_test
     try:
         A.THESIS_MAX_STEPS = 3
         base = {"title": "H", "thesis": "t", "spec": {"market": "m", "side": "yes"}}
+
+        A._test_in_sample = make_test(10)
         md = MD([{"decision": "refine", "spec": {"market": "m", "side": "no"}, "change": "flip"},
                  {"decision": "commit", "why": "ready"}])
         out = _develop_thesis(dict(base), {"market": "m"}, ds, {}, [], lambda *a, **k: None, md,
                               Usage(), lambda *a, **k: None, lambda: None, 1, cur=None, user_id=1)
         assert out["spec"]["side"] == "no", "committed the refined spec"
         assert calls["asks"] == 2 and calls["backtests"] == 2, "one ask+backtest per refine, then commit"
+
+        # Agent abandons a dead line -> None (no candidate, no trial).
+        md = MD([{"decision": "abandon", "why": "feature null here"}])
+        assert _develop_thesis(dict(base), {"market": "m"}, ds, {}, [], lambda *a, **k: None, md,
+                               Usage(), lambda *a, **k: None, lambda: None, 1, cur=None, user_id=1) is None
+
+        # Step cap reached on a 0-trade candidate with no explicit commit -> dropped, not committed.
+        A._test_in_sample = make_test(0)
+        md = MD([{"decision": "refine", "spec": {"market": "m", "side": "no"}, "change": "x"}] * 5)
+        assert _develop_thesis(dict(base), {"market": "m"}, ds, {}, [], lambda *a, **k: None, md,
+                               Usage(), lambda *a, **k: None, lambda: None, 1, cur=None, user_id=1) is None
     finally:
         A._test_in_sample = orig
 

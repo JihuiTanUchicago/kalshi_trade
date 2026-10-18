@@ -106,6 +106,31 @@ def test_fit_spec_leaves_too_small_a_sample_unfitted():
     assert not specmod.is_fitted(out)  # unchanged: no model fit on a thin sample
 
 
+def test_fit_diag_reports_why_a_model_was_left_unfitted():
+    ds = _dataset_with_micro(None)  # ob_imbalance is null on every row
+    unfit = specmod.validate({"model": {"kind": "logistic", "features": ["ob_imbalance"]}})
+    diag = {}
+    out = backtest.fit_spec_on_research(unfit, ds, diag)
+    assert not specmod.is_fitted(out)
+    assert diag["coverage"]["ob_imbalance"] == 0.0 and diag["n_usable"] == 0
+    assert "ob_imbalance" in diag["reason"] and "null" in diag["reason"] and "need 200" in diag["reason"]
+
+
+def test_zero_trade_reason_names_the_binding_filter():
+    ds = _dataset()  # all-yes synthetic book, no micro features attached
+    s = specmod.validate({"side": "yes", "entry": {
+        "min_edge": 0.1, "filters": [{"feature": "ob_imbalance", "op": ">", "value": 0.02}]}})
+    assert backtest.simulate(s, ds, ds.start_ts, ds.end_ts + 1) == []
+    reason = backtest.zero_trade_reason(s, ds)
+    assert reason.startswith("0 trades") and "ob_imbalance>0.02" in reason
+
+
+def test_feature_coverage_flags_populated_vs_empty_features():
+    cov = backtest.feature_coverage(_dataset_with_micro({"ob_imbalance": 0.9}))
+    assert cov["ob_imbalance"] == 100 and cov["spot"] == 100  # populated here
+    assert cov["trades_60s"] == 0  # a micro feature this market never carried
+
+
 def test_fit_spec_is_a_noop_for_gbm_and_already_fitted():
     ds = _dataset_predictive_micro(n_contracts=4)
     gbm = specmod.validate({"side": "yes"})

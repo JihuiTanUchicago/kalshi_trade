@@ -865,7 +865,22 @@ def partition_dataset(market_key: str, partition: Dict, phase: str) -> Dataset:
     return loaders[phase](market_key, partition)
 
 
-def fit_spec_on_research(spec: Dict, ds: Dataset) -> Dict:
+def _unfit_reason(feats: List[str], present: Dict[str, int], n_labelled: int,
+                  n_usable: int, nclass: int) -> str:
+    """Concrete reason a learned model was left unfitted: name the binding cause (a feature that
+    is null on most research rows, or only one settlement class, or just a thin sample)."""
+    if nclass < 2 and n_usable >= MIN_FIT_SAMPLES:
+        return "only one settlement class across %d labelled research rows" % n_usable
+    if feats and n_labelled:
+        worst = min(feats, key=lambda nm: present.get(nm, 0))
+        null_pct = round(100 * (1 - present[worst] / n_labelled))
+        if present[worst] < n_labelled:
+            return ("feature '%s' is null in ~%d%% of research rows (only %d usable labelled rows, "
+                    "need %d)" % (worst, null_pct, n_usable, MIN_FIT_SAMPLES))
+    return "only %d usable labelled research rows (need %d)" % (n_usable, MIN_FIT_SAMPLES)
+
+
+def fit_spec_on_research(spec: Dict, ds: Dataset, diag: Optional[Dict] = None) -> Dict:
     """FREEZE a learned model's coefficients, fit on the RESEARCH dataset `ds`. For a gbm/code/
     already-fitted spec this is a no-op (returns the spec unchanged). For an unfitted logistic/
     calibration spec it builds the (features, settlement) training set from every tradable snapshot
@@ -876,7 +891,12 @@ def fit_spec_on_research(spec: Dict, ds: Dataset) -> Dict:
     returned frozen spec is what gets pre-registered and what the gatekeeper later scores on the
     untouched validation/holdout windows - no re-fitting there, so no leak. Too few labelled rows
     (or a fit error) leaves the spec unfitted; fair_yes then returns None (no trades) and the gate
-    fails it honestly rather than trading a model fit on nothing."""
+    fails it honestly rather than trading a model fit on nothing.
+
+    If `diag` (a dict) is passed, it is filled in place with WHY the fit went the way it did -
+    per-feature non-null coverage, labelled/usable row counts, and a human `reason` string that is
+    non-empty only when the model was left unfitted. Pure observability: it never changes the fit
+    itself or when a model is left unfitted (still research-only, still frozen)."""
     from app import spec as specmod
     from app import stats
     if not specmod.is_learned_model(spec) or specmod.is_fitted(spec):
@@ -886,29 +906,41 @@ def fit_spec_on_research(spec: Dict, ds: Dataset) -> Dict:
     feats = m.get("features") or (["mid"] if calibration else [])
     X: List[List[float]] = []
     y: List[float] = []
+    n_labelled = 0
+    present = {name: 0 for name in feats}  # non-null count per required feature, labelled rows only
     for _ts, snaps in ds.frames:
         for s in snaps:
             result = ds.results.get(s.contract.ticker)
             if result not in ("yes", "no"):
                 continue
+            n_labelled += 1
             f = s.features
             if calibration:
                 mid = f.get("mid")
+                present["mid"] += mid is not None
                 if mid is None:
                     continue
                 row = [specmod._logit(mid)]
             else:
                 vals = [f.get(name) for name in feats]
+                for name, v in zip(feats, vals):
+                    present[name] += v is not None
                 if any(v is None for v in vals):
                     continue
                 row = [float(v) for v in vals]
             X.append(row)
             y.append(1.0 if result == "yes" else 0.0)
 
-    if len(X) < MIN_FIT_SAMPLES or len(set(y)) < 2:
-        logging.getLogger(__name__).info(
-            "learned model left unfitted: %d labelled rows (need %d) for %s",
-            len(X), MIN_FIT_SAMPLES, m.get("kind"))
+    nclass = len(set(y))
+    if diag is not None:
+        diag.update(n_labelled=n_labelled, n_usable=len(X), min_fit=MIN_FIT_SAMPLES,
+                    coverage={nm: round(present[nm] / n_labelled, 3) if n_labelled else 0.0
+                              for nm in feats})
+    if len(X) < MIN_FIT_SAMPLES or nclass < 2:
+        reason = _unfit_reason(feats, present, n_labelled, len(X), nclass)
+        if diag is not None:
+            diag["reason"] = reason
+        logging.getLogger(__name__).info("learned model (%s) left unfitted: %s", m.get("kind"), reason)
         return spec
     try:
         coef, intercept = stats.fit_logistic(X, y)
@@ -924,6 +956,68 @@ def fit_spec_on_research(spec: Dict, ds: Dataset) -> Dict:
     except specmod.SpecError as e:
         logging.getLogger(__name__).warning("fitted model failed validation (%s); left unfitted", e)
         return spec
+
+
+def zero_trade_reason(spec: Dict, ds: Dataset) -> str:
+    """Why a (fitted/pure-rule) spec took 0 trades on the research fold: the ONE entry constraint
+    that selects ~0 rows - its binding constraint - so the develop loop gets a concrete reason
+    instead of 'coef:[]/0 trades'. Counts each gate's pass rate independently over all snapshots
+    and names the tightest. Observability only; it never changes a trade or a trial."""
+    from app import spec as specmod
+    if specmod.is_code_spec(spec):
+        return "0 trades: the code strategy's signals(window) fired no entry on the research fold"
+    e = spec["entry"]
+    n = tte = spread = fair = 0
+    filt = [0] * len(e["filters"])
+    for _ts, snaps in ds.frames:
+        for s in snaps:
+            f = s.features
+            n += 1
+            if e["min_tte_min"] <= f.get("tte_min", -1) <= e["max_tte_min"]:
+                tte += 1
+            if f.get("spread", 1e9) <= e["max_spread"]:
+                spread += 1
+            for i, flt in enumerate(e["filters"]):
+                if specmod._passes(flt, f):
+                    filt[i] += 1
+            if specmod.fair_yes(spec, f) is not None:
+                fair += 1
+    if n == 0:
+        return "0 trades: the research fold has no tradable snapshots"
+    gates = [("time-to-expiry window [%g,%g]min" % (e["min_tte_min"], e["max_tte_min"]), tte),
+             ("max_spread<=%g" % e["max_spread"], spread),
+             ("model fair-value available", fair)]
+    for i, flt in enumerate(e["filters"]):
+        gates.append(("%s%s%g" % (flt["feature"], flt["op"], flt["value"]), filt[i]))
+    label, cnt = min(gates, key=lambda g: g[1])
+    pct = round(100 * cnt / n)
+    if cnt == 0:
+        return "0 trades: no research row satisfies %s (binding constraint; 0 of %d rows)" % (label, n)
+    if cnt < 0.02 * n:
+        return ("0 trades: %s selects only %d of %d rows (~%d%%), the binding constraint"
+                % (label, cnt, n, pct))
+    return ("0 trades: every entry gate passes rows (tightest is %s at ~%d%%), so min_edge=%g clears "
+            "on no row after fees - loosen the edge/price band or rethink the mechanism, not the gates"
+            % (label, pct, e["min_edge"]))
+
+
+def feature_coverage(ds: Dataset) -> Dict[str, int]:
+    """Non-null coverage (% of research snapshots) for every known feature on THIS market, so the
+    proposer only reaches for features the market actually populates. Micro features (ob_imbalance,
+    trade flow) are null on markets whose feed never carried them (sports, NEAR).
+    # ponytail: full scan over FEATURES x snapshots, once per research prompt; fine at research
+    # dataset sizes, revisit if prompt-building ever shows up hot."""
+    from app.markets import FEATURES
+    n = 0
+    present = {name: 0 for name in FEATURES}
+    for _ts, snaps in ds.frames:
+        for s in snaps:
+            n += 1
+            f = s.features
+            for name in FEATURES:
+                if f.get(name) is not None:
+                    present[name] += 1
+    return {name: round(100 * c / n) for name, c in present.items()} if n else {}
 
 
 def research_fold_metrics(spec: Dict, ds: Dataset, embargo_seconds: int,
