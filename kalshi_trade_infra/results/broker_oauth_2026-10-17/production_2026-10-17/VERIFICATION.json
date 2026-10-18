@@ -1,0 +1,31 @@
+{
+  "timestamp": "2026-10-17T15:22:04.677964+00:00",
+  "github_oauth_pair_synced": true,
+  "github_secret_names_count": 7,
+  "private_env_and_protected_source_unchanged": true,
+  "python": {
+    "passed": 1020,
+    "skipped": 9,
+    "seconds": 8.88,
+    "command": "TAU_ALPACA_ENABLED=0 TAU_MASSIVE_ENABLED=0 TAU_DATABENTO_ENABLED=0 TAU_EXA_ENABLED=0 TAU_WORLDMONITOR_ENABLED=0 APP_TEST_MYSQL=0 AWS_EC2_METADATA_DISABLED=true .venv/bin/python -m pytest tests/ -q --tb=short"
+  },
+  "frontend": {
+    "passed": 55,
+    "command": "node --test --test-reporter=dot tests/test_app_sessions.mjs tests/test_session_chat.mjs tests/test_research_artifacts.mjs tests/test_frontend_merge.mjs tests/test_broker_connections.mjs"
+  },
+  "independent_manual_deploy_review": "no source blocker; remote source/dependency/schema/key preflight required",
+  "candidate_sha256": "22a4045e6d07bbee36272ce3a9b6b0363a1926b2cd93e8471d1019e1c592d977",
+  "candidate_members": 68,
+  "candidate_hashes_reverified": true,
+  "private_value_matches": 0,
+  "access": "missing AWS credentials/profile and Tau SSH target; async user question pending",
+  "deployment_authorized": true,
+  "production_changed": false,
+  "schema_applied": false,
+  "runtime_secrets_injected": false,
+  "web_restarted": false,
+  "cloudfront_invalidated": false,
+  "real_paper_consent_completed": false,
+  "source_committed_or_pushed": false,
+  "next": "Obtain configured production access, then execute reviewed preflight, scoped deployment and acceptance; no repeated approval needed."
+}

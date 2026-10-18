@@ -1,0 +1,23 @@
+{
+  "timestamp": "2026-10-17T15:06:36.287863+00:00",
+  "checks": {
+    "client_configuration_present": true,
+    "correct_authorize_host": true,
+    "paper_environment": true,
+    "data_scope_only": true,
+    "exact_callback": true,
+    "fresh_state": true,
+    "client_id_matches_private_config": true,
+    "client_secret_not_in_authorize_url": true,
+    "private_file_unchanged": true
+  },
+  "callback_url": "https://d1gfpzcosqrjya.cloudfront.net/auth/brokers/alpaca/callback",
+  "local_vault_configured": false,
+  "end_to_end_connection_readiness": {
+    "configured": false,
+    "reason": "Broker connections are awaiting secure storage setup."
+  },
+  "private_env_mode": "0o600",
+  "provider_token_or_account_called": false,
+  "credential_authenticity_verified": false
+}

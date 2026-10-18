@@ -1,0 +1,34 @@
+{
+  "timestamp": "2026-10-17T23:08:00+08:00",
+  "status": "credentials found locally / configuration construction verified / consent and production rollout pending",
+  "configuration": "CONFIGURATION.json",
+  "public_readiness": "PUBLIC_READINESS.json",
+  "github_names_only": "GITHUB_METADATA.json",
+  "focused_tests": {
+    "command": "TAU_ALPACA_ENABLED=0 TAU_MASSIVE_ENABLED=0 TAU_DATABENTO_ENABLED=0 TAU_EXA_ENABLED=0 TAU_WORLDMONITOR_ENABLED=0 APP_TEST_MYSQL=0 AWS_EC2_METADATA_DISABLED=true .venv/bin/python -m pytest tests/test_broker_alpaca.py tests/test_broker_oauth.py tests/test_broker_http.py tests/test_broker_vault.py tests/test_broker_repository.py -q --tb=short",
+    "cwd": "kalshi_trade_infra",
+    "passed": 112,
+    "duration_seconds": 0.43
+  },
+  "protected_file_hashes_match": true,
+  "private_env_unchanged": true,
+  "client_secret_authenticated": false,
+  "provider_consent_complete": false,
+  "runtime_code_changed": false,
+  "operations_performed": [
+    "network-free OAuth app configuration and paper/read/data URL construction",
+    "focused synthetic offline tests",
+    "anonymous HTTPS GET healthz/callback/static asset",
+    "GitHub secret name metadata only"
+  ],
+  "operations_not_performed": [
+    "token exchange/account/order request",
+    "GitHub secret upload",
+    "production encryption-key retrieval/replacement",
+    "schema migration",
+    "service restart",
+    "deployment",
+    "commit",
+    "push"
+  ]
+}
