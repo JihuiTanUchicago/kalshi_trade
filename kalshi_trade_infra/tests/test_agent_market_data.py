@@ -245,3 +245,38 @@ def test_actual_copilot_worker_receives_current_data(monkeypatch, provider):
     assert provider == [("snapshots", ["SPY"])]
     assert "501.25" in prompts[0][1][-1]["content"]
     assert records[0][2:] == ("agent", "SPY last traded at $501.25 on IEX.")
+
+
+def _copilot_mocks(monkeypatch, records):
+    r = agent.repo
+    monkeypatch.setattr(r, "get_user", lambda *a: {"id": 7, "autopilot": 1})
+    monkeypatch.setattr(r, "heartbeat", lambda *a: "running")
+    monkeypatch.setattr(r, "chat_messages", lambda *a, **k: [{"role": "user", "content": "hi"}])
+    monkeypatch.setattr(r, "list_deployments", lambda *a: [])
+    monkeypatch.setattr(r, "list_strategies", lambda *a, **k: [])
+    monkeypatch.setattr(r, "user_risk_config", lambda *a: {})
+    monkeypatch.setattr(r, "user_execution_config", lambda *a: {})
+    monkeypatch.setattr(r, "autopilot_plan", lambda *a: {})
+    monkeypatch.setattr(r, "set_autopilot_plan", lambda *a: None)
+    monkeypatch.setattr(r, "add_chat", lambda *a: records.append(a))
+    monkeypatch.setattr(r, "add_event", lambda *a: None)
+    monkeypatch.setattr(r, "finish_run", lambda *a: None)
+    monkeypatch.setattr(agent.billing, "charge_usage", lambda *a: None)
+
+
+def test_noop_review_posts_nothing_to_chat(monkeypatch, provider):
+    # User chose "only speak when it acts": a review with no actions must not post an agent line.
+    records = []
+    _copilot_mocks(monkeypatch, records)
+    model, _ = scripted(['{"reply":"Nothing to change; strategies tracking.","actions":[]}'])
+    agent.run_copilot(Conn(), {"id": 1, "user_id": 7, "kind": "review", "prompt": "scheduled"}, model=model)
+    assert not any(a[2] == "agent" for a in records), "a no-op review must stay silent"
+
+
+def test_chat_reply_always_posts_even_with_no_actions(monkeypatch, provider):
+    # A chat run (the user asked) always answers, actions or not.
+    records = []
+    _copilot_mocks(monkeypatch, records)
+    model, _ = scripted(['{"reply":"Here is your answer.","actions":[]}'])
+    agent.run_copilot(Conn(), {"id": 1, "user_id": 7, "kind": "chat"}, model=model)
+    assert records[0][2:] == ("agent", "Here is your answer.")

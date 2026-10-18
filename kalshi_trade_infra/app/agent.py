@@ -2445,7 +2445,12 @@ def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.da
         out = market_data.ask(knowledge.wrap(news.wrap(model, usage), usage), COPILOT_SYSTEM,
                               [{"role": "user", "content": prompt}], _copilot_check, usage)
         checkpoint()
-        repo.add_chat(cur, user["id"], "agent", out["reply"])
+        # A scheduled REVIEW speaks only when it ACTS (user's choice): a no-op review still runs,
+        # updates its plan and bills, but posts nothing — otherwise every idle review drops a
+        # "nothing to change" line that reads as noise and makes a working autopilot look idle. A
+        # chat run (the user asked) always answers; an acting review posts its reply + action lines.
+        if run["kind"] != "review" or out["actions"]:
+            repo.add_chat(cur, user["id"], "agent", out["reply"])
         # Persist the updated operating plan so the next review reasons from it (coherent across
         # time). set_autopilot_plan bounds + sanitizes it, so a huge/garbage value can't bloat the row.
         if out.get("plan"):
