@@ -394,14 +394,14 @@ def create_run(
     cur, user_id: int, kind: str, market: Optional[str] = None, direction: Optional[str] = None,
     prompt: Optional[str] = None, deployment_id: Optional[int] = None,
     max_hypotheses: Optional[int] = None, run_forever: bool = False, model: Optional[str] = None,
-    seed_strategy_id: Optional[int] = None,
+    seed_strategy_id: Optional[int] = None, brief: bool = False,
 ) -> int:
     cur.execute(
         """INSERT INTO app_agent_runs (user_id, kind, market, direction, prompt, deployment_id, status,
-             max_hypotheses, run_forever, model, seed_strategy_id, created_at)
-           VALUES (%s,%s,%s,%s,%s,%s,'queued',%s,%s,%s,%s,%s)""",
+             max_hypotheses, run_forever, model, seed_strategy_id, brief, created_at)
+           VALUES (%s,%s,%s,%s,%s,%s,'queued',%s,%s,%s,%s,%s,%s)""",
         (user_id, kind, market, direction, prompt, deployment_id, max_hypotheses, 1 if run_forever else 0,
-         model, seed_strategy_id, now_utc()),
+         model, seed_strategy_id, 1 if brief else 0, now_utc()),
     )
     return cur.lastrowid
 
@@ -1547,6 +1547,29 @@ def set_user_risk_config(cur, user_id: int, changes: Dict) -> None:
         return
     sql = "UPDATE app_users SET " + ", ".join("%s=%%s" % k for k in cols) + " WHERE id=%s"
     cur.execute(sql, [*cols.values(), user_id])
+
+
+PLAN_KEYS = ("goals", "agenda", "deployments", "posture")
+_PLAN_FIELD_MAX = 800   # chars per field; keeps the plan a bounded briefing, not a growing journal
+
+
+def autopilot_plan(cur, user_id: int) -> Dict:
+    """The autopilot's durable operating plan (goals/agenda/deployments/posture), or {} if none yet.
+    Read by _copilot_context each review so reviews are coherent across time."""
+    cur.execute("SELECT autopilot_plan FROM app_users WHERE id=%s", (user_id,))
+    row = cur.fetchone()
+    plan = _loads((row or {}).get("autopilot_plan")) if row else None
+    return plan if isinstance(plan, dict) else {}
+
+
+def set_autopilot_plan(cur, user_id: int, plan: Dict) -> None:
+    """Persist the review's updated operating plan. Only the four known string fields are kept and
+    each is truncated, so the stored plan stays a small bounded briefing no matter what the model
+    emits (a bad/huge value can't bloat the row or leak other keys)."""
+    if not isinstance(plan, dict):
+        return
+    kept = {k: str(plan[k])[:_PLAN_FIELD_MAX] for k in PLAN_KEYS if plan.get(k)}
+    cur.execute("UPDATE app_users SET autopilot_plan=%s WHERE id=%s", (_json(kept) if kept else None, user_id))
 
 
 def user_execution_config(cur, user_id: int) -> Dict:

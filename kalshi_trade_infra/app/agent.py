@@ -682,14 +682,29 @@ def _research_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], count:
     if run.get("direction") and run["direction"] in DIRECTIONS:
         d = DIRECTIONS[run["direction"]]
         lens = "\nOptional lens to consider: %s - %s" % (d["label"], d["brief"])
+    # A co-pilot-delegated run (brief=True) carries a high-level ANGLE, not a finished thesis: the
+    # operation manager delegates thesis-writing to this specialist. A Research-page run carries the
+    # user's own idea, which we stay faithful to. Same pipeline either way — only the framing differs.
+    if run.get("brief"):
+        idea_label = "Angle to explore (a high-level BRIEF from the operation manager, NOT a finished thesis)"
+        idea_framing = (
+            "This is a DIRECTION, not a specification. The manager has delegated the thesis-writing "
+            "to you: treat the angle as a starting lens and GENERATE the concrete, testable "
+            "hypotheses yourself — the specific mechanisms, features, and spec are YOURS to invent. "
+            "Do not merely restate the angle as one strategy; explore the most promising precise "
+            "readings of it that THIS market's data can actually support, and say what you chose.")
+    else:
+        idea_label = "The user's idea"
+        idea_framing = (
+            "Turn this idea into concrete, testable trading strategies. Stay faithful to what the "
+            "user asked for; if the idea is vague, pick the most promising precise reading and say so.")
     return """{brief}
 
 {profile}
 
-The user's idea: {idea}{lens}{cross_options}
+{idea_label}: {idea}{lens}{cross_options}
 
-Turn this idea into concrete, testable trading strategies. Stay faithful to what the
-user asked for; if the idea is vague, pick the most promising precise reading and say so.
+{idea_framing}
 
 Market: {market_label} (spec market "{market}").
 In-sample data you can test on: {summary}
@@ -716,6 +731,8 @@ Reply with the ONE JSON object specified in your instructions (the full "hypothe
 mechanism, falsification_criteria, negative_control, null/alt hypotheses, min_sample and spec).""".format(
         brief=brief,
         profile=_market_profile(run["market"]),
+        idea_label=idea_label,
+        idea_framing=idea_framing,
         idea=idea[:1000],
         lens=lens,
         cross_options=_cross_market_options(run["market"]),
@@ -2162,7 +2179,9 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
                 return ("I didn't start that — %s. I'll hunt a different market instead of "
                         "re-running the same line." % why), None
         direction = action.get("direction") if action.get("direction") in DIRECTIONS else None
-        repo.create_run(cur, user_id, "research", market, direction, idea)
+        # brief=True: the co-pilot is DELEGATING, not authoring. `idea` is a high-level angle/lens,
+        # and the proposer turns it into the actual hypotheses (see _research_prompt's brief branch).
+        repo.create_run(cur, user_id, "research", market, direction, idea, brief=True)
         return ("Started a fresh research session on %s — same gates as any run (pre-registration, "
                 "holdout, diversification). Follow it on the Research page."
                 % (market or "a market I'll choose"), None)
@@ -2201,6 +2220,10 @@ def _copilot_context(cur, user: Dict) -> str:
         active_research = repo.count_runs(cur, user["id"], "research", active_only=True)
     except Exception:
         active_research = 0
+    try:
+        plan = repo.autopilot_plan(cur, user["id"])
+    except Exception:
+        plan = {}
     lines = [
         "Autopilot is %s." % ("ON" if user.get("autopilot") else "OFF"),
         "RESEARCH RUNNING RIGHT NOW: %d.%s" % (active_research, "" if active_research else
@@ -2210,8 +2233,19 @@ def _copilot_context(cur, user: Dict) -> str:
         % (risk.get("drawdown_limit_pct"), risk.get("max_open_positions"), risk.get("max_open_notional")),
         "Execution controls (null = server default): exec_max_book_fraction=%s, exec_max_entry_spread=%s, exec_max_order_notional=%s."
         % (xc.get("exec_max_book_fraction"), xc.get("exec_max_entry_spread"), xc.get("exec_max_order_notional")),
-        "", "Deployments:",
     ]
+    # OPERATING PLAN: your own standing brief from last review — goals, research agenda + why,
+    # how each deployment is doing, capital posture. This is what makes reviews COHERENT across
+    # time instead of independent one-shots. Read it, act consistently with it, and REWRITE it
+    # this turn (the "plan" field of your reply) to reflect what you just learned and decided.
+    lines += ["", "Your operating plan (from last review — update it this turn):"]
+    if plan:
+        for k in ("goals", "agenda", "deployments", "posture"):
+            if plan.get(k):
+                lines.append("- %s: %s" % (k, plan[k]))
+    else:
+        lines.append("- none yet — SET one this review (goals + research agenda + capital posture).")
+    lines += ["", "Deployments:"]
     for d in deps:
         oos = ((d.get("result") or {}).get("out_of_sample") or {})
         lines.append(
@@ -2287,6 +2321,16 @@ def _copilot_context(cur, user: Dict) -> str:
                   % (paper, demo, credits)]
     except Exception:
         pass
+    # PORTFOLIO VIEW: aggregate open exposure vs the user's caps, so the review manages the whole
+    # book (concentration, headroom) and not one deployment at a time.
+    try:
+        expo = repo.user_open_exposure(cur, user["id"])
+        lines.append("Aggregate open exposure: %s open positions, $%.2f entry notional (caps: max_open_positions=%s, "
+                     "max_open_notional=%s). Manage the book as a whole — don't let exposure concentrate in one market."
+                     % (expo.get("n"), float(expo.get("notional") or 0), risk.get("max_open_positions"),
+                        risk.get("max_open_notional")))
+    except Exception:
+        pass
     try:
         ready = repo.series_with_candles(cur)
     except Exception:
@@ -2300,6 +2344,14 @@ def _copilot_context(cur, user: Dict) -> str:
                    "and will crash). You are NOT limited to the one you've been trading: if a market has gone "
                    "quiet (no fills, no edges for days), HUNT A DIFFERENT one from this list, don't wait: "
                    + ", ".join(deployable))]
+    # PORTFOLIO-LEVEL direction: run the operation like a book, not a stream of one-off actions.
+    lines += ["", ("RUN IT AS A PORTFOLIO: (1) DIVERSIFY research across different markets AND different "
+                   "mechanisms — don't pile variants of one angle on one market. (2) STEER TOWARD DATA: "
+                   "order-flow / microstructure features exist only on the BTC markets; sports and event "
+                   "markets are feature-thin, so brief them on price/time/structure angles, not order-book "
+                   "signals that would fit nothing. (3) PROMOTE OVER EXPLORE: a proven edge reaching paper "
+                   "beats opening yet another exploratory line. (4) MANAGE AGGREGATE RISK, not one deployment "
+                   "in isolation. Spend this review on COHERENT operation, and record the plan you're following.")]
     open_deps = [d for d in deps if d.get("status") != "stopped"]
     if not open_deps and not active_research:
         lines += ["", ("EMPTY DECK: you have ZERO running deployments and ZERO research in flight. Idling now "
@@ -2309,7 +2361,8 @@ def _copilot_context(cur, user: Dict) -> str:
     return "\n".join(lines)
 
 
-ACTIONS_GUIDE = """Reply: {"reply": "<what you tell the user>", "actions": [ ... at most 3 ... ]}
+ACTIONS_GUIDE = """Reply: {"reply": "<what you tell the user>", "actions": [ ... at most 3 ... ], "plan": {"goals": "...", "agenda": "...", "deployments": "...", "posture": "..."}}
+"plan" is your durable OPERATING PLAN (optional on a chat reply; UPDATE IT on every scheduled review). It is how your reviews stay coherent across time instead of being independent one-shots. Keep each field to a sentence or two: goals = what this session is pursuing; agenda = the research portfolio you're running across markets/mechanisms and WHY; deployments = how each one is doing + your plan for it; posture = capital/risk stance. Rewrite it to reflect what you just learned and decided; it is shown back to you next review.
 Actions:
   {"type": "adjust", "deployment_id": N, "changes": {<partial spec>}, "reason": "..."}   (TUNE a deployment's strategy/model PARAMETERS — any field of its spec, e.g. {"entry": {"min_edge": 0.08}}, {"sizing": {"stake": 4}}. The host re-backtests the new spec and applies it only if it still passes every gate. This is your main lever for improving a running strategy.)
   {"type": "set_risk", "changes": {"drawdown_limit_pct": 15, "max_open_positions": 10, "max_open_notional": 500}, "reason": "..."}   (Tune the user's RISK controls. Any subset of those three keys. Values are CLAMPED to a safe range — you can tighten freely; you can never set a limit to 0 or above the hard ceiling.)
@@ -2317,7 +2370,7 @@ Actions:
   {"type": "pause",  "deployment_id": N, "reason": "..."}
   {"type": "resume", "deployment_id": N, "reason": "..."}
   {"type": "research", "strategy_id": N, "reason": "..."}     (DIG DEEPER off a PASSED strategy — refine its parameters, stress-test it, extend the thesis. Each variant still has to pass the gates.)
-  {"type": "research", "market": "<market key or omit to let me choose>", "idea": "<the hypothesis to test>", "reason": "..."}   (FRESH research line — same RSI pipeline and the same freedom as the Research page. Name the mechanism/edge in the idea.)
+  {"type": "research", "market": "<market key or omit to let me choose>", "idea": "<a short ANGLE/lens, NOT a full thesis>", "reason": "..."}   (FRESH research line. DELEGATE, don't author: `idea` is a high-level DIRECTION — a market + a short angle (e.g. "favorite-longshot on this sports market", "order-flow if this market has microstructure data") — and the research specialist writes the actual hypotheses and specs from it. Do NOT hand it a fully-formed strategy ("buy when implied>65%..."); that is the research pipeline's job, not yours. One or two sentences of angle is enough.)
   {"type": "deploy", "strategy_id": N, "reason": "..."}       (paper; any side)
   {"type": "deploy_live", "strategy_id": N, "reason": "..."}  (REAL money; any side (YES or NO) that already proved itself on PAPER, and only when the user turned on live autopilot. If live autopilot is off or any safety gate fails it is refused and stays on paper. Never the first step for a new idea: research -> paper -> live.)
 Back your words with actions. If your reply says you ARE doing something — starting/launching research, tuning, pausing, promoting, deploying — you MUST include the matching action(s) in `actions`. A reply that merely DESCRIBES an action without emitting it does NOTHING (no research is launched, nothing changes) and is a failure: e.g. saying "I'll launch three research threads now" requires three `research` actions in this same response, not a promise to do it later. Conversely, never invent actions you have no concrete reason for — if the right move is to wait and watch, say so plainly and return an empty list. EXCEPTION: if the context says EMPTY DECK (zero deployments and zero research in flight), waiting is NOT allowed — you must emit at least one `research` action this turn.
@@ -2332,7 +2385,8 @@ def _copilot_check(obj: Dict) -> Dict:
         raise ValueError("'reply' is required")
     if not isinstance(actions, list) or len(actions) > MAX_ACTIONS or not all(isinstance(a, dict) for a in actions):
         raise ValueError("'actions' must be a list of at most %d objects" % MAX_ACTIONS)
-    return {"reply": reply[:4000], "actions": actions}
+    plan = obj.get("plan")  # optional operating plan; repository.set_autopilot_plan bounds/sanitizes it
+    return {"reply": reply[:4000], "actions": actions, "plan": plan if isinstance(plan, dict) else None}
 
 
 def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.dataset) -> None:
@@ -2361,6 +2415,11 @@ def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.da
         transcript = "\n".join("%s: %s" % (m["role"], m["content"]) for m in history)
         if run["kind"] == "review":
             task = ("Scheduled autopilot review. Why: %s\n"
+                    "You are the OPERATION MANAGER. MANAGE the operation coherently — don't author strategies yourself. "
+                    "When you decide to research, DELEGATE: hand the research specialist a market + a short ANGLE and let it "
+                    "write the hypotheses; do not spell out a full thesis/spec (that is its job, and it has the deep per-thesis "
+                    "loop + market-aware data you don't). Follow and REWRITE your operating plan above (the 'plan' field of your "
+                    "reply) so this review builds on the last one. "
                     "You are running on your own now — PROACTIVELY MANAGE the operation within your mandate, don't just describe it. "
                     "Assess every deployment and open position, then take the actions that improve results: start a research run to "
                     "explore a promising angle (same RSI pipeline as a manual run), promote a proven strategy (paper, or live within caps "
@@ -2387,6 +2446,10 @@ def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.da
                               [{"role": "user", "content": prompt}], _copilot_check, usage)
         checkpoint()
         repo.add_chat(cur, user["id"], "agent", out["reply"])
+        # Persist the updated operating plan so the next review reasons from it (coherent across
+        # time). set_autopilot_plan bounds + sanitizes it, so a huge/garbage value can't bloat the row.
+        if out.get("plan"):
+            repo.set_autopilot_plan(cur, user["id"], out["plan"])
         for action in out["actions"]:
             checkpoint()
             text, proposal_id = act(cur, user, action, bool(user.get("autopilot")), dataset_fn)

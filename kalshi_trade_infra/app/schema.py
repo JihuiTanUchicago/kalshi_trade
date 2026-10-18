@@ -591,6 +591,10 @@ def main() -> None:
         # is reclaimed before it fails for good (repository.MAX_RESUMES / TAU_RUN_MAX_RESUMES).
         _add_column_if_missing(cur, "app_agent_runs", "checkpoint_json", "ALTER TABLE app_agent_runs ADD COLUMN checkpoint_json JSON NULL")
         _add_column_if_missing(cur, "app_agent_runs", "resume_count", "ALTER TABLE app_agent_runs ADD COLUMN resume_count INT NOT NULL DEFAULT 0")
+        # Delegation seam: a research run the AUTOPILOT opened from a high-level brief (a market +
+        # a short angle), not a user-authored verbatim thesis. The proposer treats a brief as a
+        # starting DIRECTION and writes the hypotheses itself. 0 = a faithful user idea (Research page).
+        _add_column_if_missing(cur, "app_agent_runs", "brief", "ALTER TABLE app_agent_runs ADD COLUMN brief TINYINT(1) NOT NULL DEFAULT 0")
         # Tau-RSI discovery tree: which prior hypothesis this one built on (NULL = root). Nullable
         # + unused for now (P1); the replay simulator and self-evolving policy populate it later.
         _add_column_if_missing(cur, "app_strategies", "parent_id", "ALTER TABLE app_strategies ADD COLUMN parent_id BIGINT NULL")
@@ -673,6 +677,10 @@ def main() -> None:
         _add_column_if_missing(cur, "app_users", "exec_max_book_fraction", "ALTER TABLE app_users ADD COLUMN exec_max_book_fraction DECIMAL(6,4) NULL")
         _add_column_if_missing(cur, "app_users", "exec_max_entry_spread", "ALTER TABLE app_users ADD COLUMN exec_max_entry_spread DECIMAL(6,4) NULL")
         _add_column_if_missing(cur, "app_users", "exec_max_order_notional", "ALTER TABLE app_users ADD COLUMN exec_max_order_notional DECIMAL(12,2) NULL")
+        # Autopilot operating plan: a small durable JSON (goals/agenda/deployments/posture) the
+        # review reads + rewrites each turn, so reviews are coherent across time instead of
+        # independent one-shots. NULL = no plan yet. Bounded in repository.set_autopilot_plan.
+        _add_column_if_missing(cur, "app_users", "autopilot_plan", "ALTER TABLE app_users ADD COLUMN autopilot_plan JSON NULL")
         # Proposal payload: the clamped values a set_risk / set_exec proposal applies on approval
         # (deploy/adjust/pause/resume carry no payload). NULL for the older kinds.
         _add_column_if_missing(cur, "app_proposals", "payload", "ALTER TABLE app_proposals ADD COLUMN payload JSON NULL")
