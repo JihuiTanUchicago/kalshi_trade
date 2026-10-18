@@ -24,6 +24,7 @@ def test_me_supplies_frontend_billing_readiness(monkeypatch, customer, needs_car
     monkeypatch.setattr(server.repo, 'get_kalshi_key', lambda *a: None)
     monkeypatch.setattr(server.repo, 'get_kalshi_dev_key', lambda *a: None)
     monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: 98.432156)
+    monkeypatch.setattr(server.repo, 'spot_symbols_with_data', lambda *a: set())
     data = server.me(context())
     assert data['needs_card'] is needs_card
     assert data['billing_enabled'] is True

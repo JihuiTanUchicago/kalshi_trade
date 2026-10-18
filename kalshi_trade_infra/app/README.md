@@ -6,11 +6,41 @@ Product truth is in `../PRODUCT.md`; the operator console (`data_pipeline/dashbo
 is unchanged and separate.
 
 For the teammate deploying this code, see [API credentials and server injection](DEPLOYMENT_SECRETS.md).
-Alpaca, Massive, Databento and Exa credentials are stored as five encrypted GitHub
+Alpaca, Massive, Databento and Exa market-data/news credentials use five encrypted GitHub
 Actions Secrets; a clone does not contain them. Tau’s ignored private `.env` also
 contains the configured keys. The guide covers explicit runtime injection through
 Actions or AWS, including the existing loader’s Alpaca limitation. No provider or
 production service was activated by the credential sync.
+
+## Broker account authorization — source merged
+
+Source is merged through [PR #10](https://github.com/JihuiTanUchicago/kalshi_trade/pull/10)
+and [PR #11](https://github.com/JihuiTanUchicago/kalshi_trade/pull/11), reconciled with
+68 newer main commits. Combined checks: **1,187 Python passed / 9 skipped;
+58 frontend passed**. [Integration handoff](../results/open_pr_merge_2026-10-18/HANDOFF.md).
+The teammate should follow [the deployment guide](BROKER_OAUTH_DEPLOYMENT.md);
+production installation and real consent remain pending.
+
+Funds (Settings → Account in Meridian) adds Alpaca Connect, Robinhood Trading MCP and approved IBKR
+OAuth1a connections, with session-bound state and encrypted per-user grants.
+Alpaca defaults to paper/read access; order authorization is an explicit option.
+Existing data keys are separate from OAuth client credentials. Provider app
+registration, real consent, database migration and production acceptance remain
+required. This does not enable Tau trading or invoke broker order tools.
+See [broker setup, API contract and acceptance](BROKER_OAUTH.md).
+
+Earlier October 17 Alpaca check: OAuth client ID/secret are present in the private local env;
+112 focused offline tests and paper/data authorization URL construction pass.
+The public broker callback and asset return 404, so the new code is not available
+there yet. Local `APP_SECRET_KEY` is absent; production must retain its persistent
+key. Deployment/runtime injection, migration and genuine consent remain pending.
+[Configuration and public-readiness receipts](../results/broker_oauth_2026-10-17/credentials_2026-10-17/HANDOFF.md).
+The Alpaca OAuth pair is now encrypted in GitHub Secrets (seven names total).
+Production deployment is assigned to the teammate. The [operator guide](BROKER_OAUTH_DEPLOYMENT.md)
+provides source, private credential access, the reviewed full-app schema migration, whole-app
+installation, verification and rollback. The original 1,020 Python / 55 frontend
+milestone is historical; current combined checks are above. No production
+service or database has changed. [Rollout handoff](../results/broker_oauth_2026-10-17/production_2026-10-17/HANDOFF.md).
 
 ## Source publication — October 17, 2026
 
@@ -194,6 +224,31 @@ Passing historical acceptance (local archive: `../results/exa_integration_2026-1
 Quota-removal implementation evidence (local archive: `../results/exa_integration_2026-10-17/unlimited_2026-10-17/HANDOFF.md`).
 The earlier integration handoff is retained as historical evidence; its quota policy
 was superseded by this follow-up at the user's request.
+
+## Configurable primary data and production setup — October 18, 2026
+
+Databento can now be selected as the primary historical-bar provider with
+`TAU_MARKET_DATA_PRIMARY=databento` and an explicitly allowlisted
+`TAU_DATABENTO_DEFAULT_DATASET`. Omitted-provider bar requests follow that route;
+explicit providers stay explicit and no error triggers vendor/feed fallback.
+Historical research avoids the duplicate automatic Alpaca history watchlist when
+Databento is primary. Downloads remain on demand and respect training cutoffs.
+
+Databento is **not** a complete replacement for the existing feeds: Tau has no
+Databento live ingestion or options-chain/Greeks workflow, and currency/rate
+futures do not replace spot FX or published macro observations. Retain Alpaca
+current snapshots and Massive FX/rates/options tools as needed. Brokerage OAuth
+is separate from market-data selection.
+
+The [production setup guide](MARKET_DATA_DEPLOYMENT.md) includes the official
+coverage comparison and a dedicated [configuration template](../config/market-data/.env.example).
+`scripts/configure_market_data.py` validates locally without network calls and
+optionally writes a separate protected `.env.market-data`; the updated agent
+service loads it last and runs an offline preflight before starting. It leaves
+auth/billing/encryption settings and other services alone. Existing installs keep
+their Alpaca default unless configured otherwise. No production action occurred;
+provider entitlements, durable data-cost accounting and a real queued worker/model
+canary remain acceptance gates. [Implementation evidence](../results/databento_primary_2026-10-18/HANDOFF.md).
 
 ## Databento historical data for agents — October 17, 2026
 
@@ -400,7 +455,8 @@ An agent request uses the existing exclusive JSON channel:
 
 Other kinds are `fx_quotes`, `macro` (with `dataset` and `lookback_days`) and
 `options_chain` (one stock symbol, optional `expiration_date`, `contract_type`,
-`strike_min`, `strike_max`). Requests without a provider retain Alpaca compatibility.
+`strike_min`, `strike_max`). Requests without a provider use the configured primary
+for bars (Alpaca by default); Massive requests always specify their provider.
 These series are research context; no FX/options strategy, backtest input or order
 execution is added to the existing Kalshi strategy engine. Continuous WebSocket
 ingestion, a durable market-data warehouse and geopolitical news remain separate work.

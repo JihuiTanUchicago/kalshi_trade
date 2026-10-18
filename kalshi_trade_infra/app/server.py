@@ -26,6 +26,7 @@ from urllib.parse import parse_qs, urlparse
 from app import agent, auth, backtest, billing, devlog, dreaming, engine, kalshi_account, notify
 from app import kalshi_dev
 from app import kalshi_dev_exec
+from app import broker_oauth
 from app import models_catalog as catalog
 from app import repository as repo
 from app import research_repository as research_repo
@@ -165,6 +166,45 @@ def logout(ctx: Ctx):
         repo.delete_session(ctx.cur, auth.hash_token(token))
     ctx.set_cookies.append(_session_cookie("", 0))
     return {"ok": True}
+
+
+def _broker_session_hash(ctx: Ctx) -> str:
+    token = ctx.handler.cookies().get(auth.SESSION_COOKIE) if ctx.handler else None
+    if not token:
+        raise ApiError(401, "Please sign in again before connecting a brokerage.")
+    return auth.hash_token(token)
+
+
+def _broker_call(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except broker_oauth.Error as exc:
+        raise ApiError(exc.status, str(exc)) from None
+
+
+def broker_connections(ctx: Ctx):
+    return _broker_call(broker_oauth.list_brokers, ctx.cur, ctx.uid)
+
+
+def broker_connect(ctx: Ctx):
+    provider = ctx.params[0]
+    environment = ctx.body.get("environment", broker_oauth.PROVIDERS[provider]["default_environment"])
+    return _broker_call(broker_oauth.connect, ctx.conn, ctx.uid, provider, environment,
+                        _broker_session_hash(ctx), permission=ctx.body.get("permission", "read"))
+
+
+def broker_callback(ctx: Ctx):
+    provider = ctx.params[0]
+    result = _broker_call(broker_oauth.callback, ctx.conn, ctx.uid, provider, ctx.query,
+                          _broker_session_hash(ctx))
+    # Only fixed provider/status identifiers enter the return URL. Provider
+    # errors, codes, request tokens and state are never reflected into the SPA.
+    return ("redirect", "/settings/account?broker=%s&broker_status=%s" % (provider, result))
+
+
+def broker_disconnect(ctx: Ctx):
+    return _broker_call(broker_oauth.disconnect, ctx.conn, ctx.uid, ctx.params[0],
+                        ctx.body.get("environment"))
 
 
 # -- read routes ---------------------------------------------------------------
@@ -1777,6 +1817,10 @@ ROUTES: List[Route] = [
         ("POST", "/api/logout", logout, False),
         ("POST", "/api/waitlist", waitlist, False),
         ("GET", "/api/me", me, True),
+        ("GET", "/api/brokers", broker_connections, True),
+        ("POST", r"/api/brokers/(alpaca|robinhood|ibkr)/connect", broker_connect, True),
+        ("POST", r"/api/brokers/(alpaca|robinhood|ibkr)/disconnect", broker_disconnect, True),
+        ("GET", r"/auth/brokers/(alpaca|robinhood|ibkr)/callback", broker_callback, True),
         ("GET", "/api/dashboard", dashboard, True),
         ("GET", "/api/explore", explore_list, True),
         ("GET", "/api/explore/hot", explore_hot, True),
@@ -1846,7 +1890,7 @@ ROUTES: List[Route] = [
 
 def _static_versions() -> Dict[str, str]:
     out = {}
-    for name in ("app.css", "app.js", "session-data.js", "session-chat.js", "research-artifacts.js", "icon.svg", "app.meridian.css", "app.meridian.js", "boot.js"):
+    for name in ("app.css", "app.js", "session-data.js", "session-chat.js", "research-artifacts.js", "broker-connections.js", "broker-connections.css", "icon.svg", "app.meridian.css", "app.meridian.js", "boot.js"):
         p = STATIC_DIR / name
         out[name] = hashlib.sha256(p.read_bytes()).hexdigest()[:10] if p.exists() else "0"
     return out
@@ -1903,6 +1947,8 @@ class Handler(BaseHTTPRequestHandler):
                     .replace("{{session_v}}", versions["session-data.js"])
                     .replace("{{chat_v}}", versions["session-chat.js"])
                     .replace("{{artifacts_v}}", versions["research-artifacts.js"])
+                    .replace("{{brokers_v}}", versions["broker-connections.js"])
+                    .replace("{{brokers_css_v}}", versions["broker-connections.css"])
                     .replace("{{icon_v}}", versions["icon.svg"])
                     .replace("{{meridian_css_v}}", versions["app.meridian.css"])
                     .replace("{{meridian_js_v}}", versions["app.meridian.js"])
@@ -1993,7 +2039,10 @@ class Handler(BaseHTTPRequestHandler):
                 user = repo.session_user(conn.cursor(), auth.hash_token(token))
             if needs_user and user is None:
                 raise ApiError(401, "Please sign in.")
-            query = {k: v[0] for k, v in parse_qs(parsed.query).items()}
+            parsed_query = parse_qs(parsed.query, keep_blank_values=path.startswith("/auth/brokers/"))
+            if path.startswith("/auth/brokers/") and any(len(v) != 1 for v in parsed_query.values()):
+                raise ApiError(400, "Ambiguous brokerage callback. Please reconnect.")
+            query = {k: v[0] for k, v in parsed_query.items()}
             ctx = Ctx(conn, user, params, query, body, self)
             result = fn(ctx)
             if isinstance(result, tuple) and result and result[0] == "image":
@@ -2017,6 +2066,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(302)
                 self.send_header("Location", result[1])
                 self.send_header("Cache-Control", "no-store")
+                self.send_header("Referrer-Policy", "no-referrer")
+                self.send_header("X-Content-Type-Options", "nosniff")
                 for c in ctx.set_cookies:
                     self.send_header("Set-Cookie", c)
                 self.send_header("Content-Length", "0")

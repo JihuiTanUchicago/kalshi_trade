@@ -352,7 +352,7 @@
     [/^\/billing$/, viewBilling],
     [/^\/admin$/, viewAdmin],
     [/^\/system$/, viewSystem],
-    [/^\/funds$/, viewFunds],
+    [/^\/(?:funds|settings\/account)$/, viewFunds],
     [/^\/devlog$/, viewDevLog],
     [/^\/settings$/, viewSettings],
   ];
@@ -2298,17 +2298,19 @@
 
   // ---------- funds ----------
   async function viewFunds() {
+    const gen = S.gen;
     shell('/funds', boardTitle('Funds') + '<dl class="figures measure" id="ffigs" style="margin-top:14px"></dl>', loading(300));
     root.querySelector('.wrap').classList.add('funds-page');
     const load = async () => {
       const d = await api('/api/funds');
+      if (gen !== S.gen) return;
       const k = d.kalshi;
       const kd = d.kalshi_dev || { connected: false };
       const dm = d.demo || { capital: 0, equity: 0, realized: 0 };
       root.querySelector('#ffigs').innerHTML = fig('Live money', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: k.connected ? 'Your real cash at Kalshi' : 'Connect a key to trade real money' }) +
         fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} capital · app-controlled` }) +
         fig('Paper cash', usd(d.paper.cash), { small: 'Practice money for paper trading' });
-      root.querySelector('main').innerHTML = `<div id="flash"></div><div class="funds">
+      root.querySelector('main').innerHTML = `<div id="flash"></div><section id="broker-connections" aria-label="Broker accounts"></section><div class="funds">
         <div class="funds-col funds-manage">
         <section class="panel">
           <h3>Kalshi account (live money)</h3>
@@ -2371,6 +2373,8 @@
           </tbody></table>
         </section>
         </div></div>`;
+      const brokerHost = root.querySelector('#broker-connections');
+      if (window.TauBrokerConnections && brokerHost) window.TauBrokerConnections.mount(brokerHost, {api, isCurrent: () => gen === S.gen});
       const df = root.querySelector('#demo');
       if (df) df.onsubmit = async (e) => {
         e.preventDefault();

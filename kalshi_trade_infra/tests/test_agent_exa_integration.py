@@ -46,6 +46,8 @@ def wire(monkeypatch, *responses):
     monkeypatch.setattr(agent.repo, "chat_messages", lambda *args, **kwargs: [{"role": "user", "content": "Investigate current policy news."}])
     monkeypatch.setattr(agent.repo, "list_deployments", lambda *args, **kwargs: [])
     monkeypatch.setattr(agent.repo, "list_strategies", lambda *args, **kwargs: [])
+    monkeypatch.setattr(agent.repo, "user_risk_config", lambda *args: {})
+    monkeypatch.setattr(agent.repo, "user_execution_config", lambda *args: {})
     monkeypatch.setattr(agent.repo, "add_chat", lambda *args: saved.append(args))
     return session, conn, store, billed, saved
 

@@ -301,6 +301,8 @@ def test_actual_copilot_entrypoint_can_request_and_receive_option_chain(monkeypa
     monkeypatch.setattr(r, "chat_messages", lambda *args, **kwargs: [{"role": "user", "content": "Inspect SPY option IV."}])
     monkeypatch.setattr(r, "list_deployments", lambda *args: [])
     monkeypatch.setattr(r, "list_strategies", lambda *args, **kwargs: [])
+    monkeypatch.setattr(r, "user_risk_config", lambda *args: {})
+    monkeypatch.setattr(r, "user_execution_config", lambda *args: {})
     monkeypatch.setattr(r, "add_chat", lambda *args: records.append(args))
     monkeypatch.setattr(r, "add_event", lambda *args: None)
     monkeypatch.setattr(r, "finish_run", lambda *args: None)

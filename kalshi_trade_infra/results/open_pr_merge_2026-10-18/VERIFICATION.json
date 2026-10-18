@@ -1,0 +1,37 @@
+{
+  "workstream": "tau-open-pr-main-merge-20261018",
+  "timezone": "Asia/Shanghai",
+  "date": "2026-10-18",
+  "imported_main": "070043758f70011bfbd2ec139348c96745f81b30",
+  "upstream_new_commits": 68,
+  "initial_oauth_main_check": {
+    "failed": 16,
+    "passed": 1110,
+    "skipped": 9
+  },
+  "reconciled_oauth_main_check": {
+    "passed": 1126,
+    "skipped": 9,
+    "seconds": 9.79
+  },
+  "combined_check": {
+    "passed": 1187,
+    "skipped": 9,
+    "seconds": 9.64
+  },
+  "frontend": {
+    "baseline_immutable_main_failed": 12,
+    "final_passed": 58
+  },
+  "syntax": "passed",
+  "whitespace": "passed",
+  "private_env_preserved": true,
+  "protected_upstream_runtime_preserved": true,
+  "production_operations": 0,
+  "paid_provider_model_calls": 0,
+  "oauth_local_integration_commit": "29fc2529bb737e706f06ca4d09cf30efd9201d83",
+  "reviewed_runtime_tree": "19496672bddee312e0bf49642d2a696f66f71386",
+  "github_merged": true,
+  "merged_source_main": "3445f7675e16950489a76b98a034fd304273415a",
+  "merged_source_tree": "bc8e5b3af11875b7c8797d25e70e214c3f1692c0"
+}
