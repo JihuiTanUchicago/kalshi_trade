@@ -63,6 +63,38 @@ DIRECTIONS: Dict[str, Dict[str, str]] = {
     "open": {"label": "Agent's choice", "brief": "Pick the most promising angle yourself and say why."},
 }
 
+# The strategy-family menu the proposer must explore BROADLY across (not many variants of one
+# threshold rule). Each family names the model STRUCTURE that expresses it in the existing spec DSL
+# — so the proposer reaches for a learned/statistical model where the mechanism is more than a
+# cutoff. Single source of truth: rendered into RESEARCH_SYSTEM and into every proposer prompt's
+# diversity mandate, and asserted by test_proposer_explores_diverse_families.
+STRATEGY_FAMILIES = (
+    ("Momentum / trend", "underlying keeps moving into settlement — GBM model with drift_beta>0 "
+                         "(drift_window 5/15/60), or a code momentum estimator"),
+    ("Mean reversion", "sharp moves snap back before settlement — GBM model with drift_beta<0, or a "
+                       "code reversion estimator"),
+    ("Volatility / regime", "the market mis-prices realised vol — GBM vol_scale/vol_window conditioned "
+                            "on a vol_15m/vol_60m band, or a GARCH forecast (arch) in `code`"),
+    ("Calibration / favorite-longshot", "a documented price-level bias (cheap longshots overpriced, "
+                                        "favorites underpriced) — model.kind=\"calibration\" on a price band"),
+    ("Microstructure / order-flow (ML)", "order-book imbalance & trade flow lead the mid — "
+                                         "model.kind=\"logistic\" over flow features, or a code classifier"),
+    ("Cross-market relative value", "a RELATIVE mispricing between legs — the `cross` block "
+                                    "(cross_sectional / cross_strike / calendar), not a directional view"),
+    ("Event-driven / near-expiry", "terminal pinning and tick discreteness in the last minutes — "
+                                   "min_tte/max_tte filters plus the settlement mechanism"),
+    ("Seasonality / time-of-day", "edge concentrates in a session (US open, overnight, Asia) — "
+                                  "hour_et regime filters, with a participation-shift mechanism"),
+    ("Learned / statistical classifier", "a NON-linear model your mechanism needs — `code` + fit(window): "
+                                         "a ridge/tree/forest/GBM classifier (scikit-learn), a kernel or "
+                                         "quantile estimator, an ensemble, trained once and frozen"),
+)
+
+
+def _family_menu() -> str:
+    return "\n".join(" - %s: %s." % (name, how) for name, how in STRATEGY_FAMILIES)
+
+
 DEFAULT_HYPOTHESES = 8    # when the user doesn't set a budget
 MAX_BUDGET = 1000         # hard ceiling a user can request for one finite run (run-forever is uncapped)
 # Batch width and finalist selection now live in app/exploration.py (the exploration policy).
@@ -82,29 +114,29 @@ none is demonstrated. "No reliable edge" is a correct, valuable result. You will
 whether your STATISTICALLY-SUPPORTED strategies stay profitable on data you never saw - not on
 how many you propose.
 
-MODEL FAMILIES — DO NOT DEFAULT TO A THRESHOLD RULE
-A spec is NOT just "buy when feature > X". Pick the model family whose STRUCTURE matches your
-mechanism; most mechanisms are not a single threshold:
- - LEARNED LOGISTIC SCORE (model.kind="logistic", name 1-6 `features`): a real classifier
-   P(YES)=sigmoid(w.features) whose weights the system FITS on the research fold and FREEZES. The
-   classic ML entry point, and the natural home for a MICROSTRUCTURE / ORDER-FLOW model (score
-   ob_imbalance, trade flow, quote changes) or any multi-feature signal. Name only features your
-   mechanism predicts matter — every coefficient raises the statistical bar like an extra trial.
- - CALIBRATION / FAVORITE-LONGSHOT (model.kind="calibration"): trade the documented bias that
-   cheap longshots are systematically overpriced and favorites underpriced (Bürgi-Deng-Whelan).
-   The system fits a 1-parameter recalibration of the Kalshi mid on research; pair it with a
-   price-band (min_price/max_price) and side to target where the bias lives.
- - REGIME-CONDITIONED rule: the SAME signal behaves differently by regime — put the regime in
-   `filters` (hour_et session, vol_15m/vol_60m band, tte_min bucket) so the edge only fires where
-   the mechanism says it exists. Durable binary-market edge is usually conditional, not global.
- - MOMENTUM / MEAN-REVERSION on the underlying: the GBM model's drift_window/drift_beta already
-   expresses this (drift_beta>0 momentum, <0 reversion) — use it rather than a return threshold.
- - ARBITRARY QUANT CODE (`code`): for a method none of the above expresses (a custom estimator,
-   an ensemble, a bespoke microstructure statistic) — numpy / scikit-learn / scipy are available.
-   You MAY TRAIN A MODEL: define `fit(window)` and the system fits it ONCE on the research fold and
-   FREEZES the params into the spec; your `signals(window)` then reads those frozen params. Never
-   fit inside signals() on the window you are handed — at validation that window IS the held-out
-   data, so fitting there is a leak. Fit in fit(); predict in signals().
+STRATEGY FAMILIES — EXPLORE BROADLY, DO NOT DEFAULT TO A THRESHOLD RULE
+A spec is NOT just "buy when feature > X", and a batch of ten "buy when feature > X" variants is
+ONE idea, not ten. These are DIFFERENT families with different structure, loser, and mechanism;
+each proposal batch must SPAN several of them rather than drilling one. Pick the family whose
+STRUCTURE matches your mechanism — most mechanisms are not a single threshold:
+""" + _family_menu() + """
+
+REACH FOR A LEARNED / STATISTICAL MODEL whenever the mechanism is more than one cutoff — these
+exist precisely so your ideas are not if-else rules:
+ - model.kind="logistic" (name 1-6 `features`): a real classifier P(YES)=sigmoid(w.features)
+   whose weights the system FITS on the research fold and FREEZES. The classic ML entry point and
+   the natural home for a microstructure/order-flow model (ob_imbalance, trade flow, quote
+   changes). Name only features your mechanism predicts matter — each coefficient raises the bar.
+ - model.kind="calibration": the system fits a 1-parameter recalibration of the Kalshi mid on
+   research (favorite-longshot, Bürgi-Deng-Whelan); pair it with a price-band + side.
+ - `code` + fit(window): ANY pure-Python/ML/stat method the two kinds above cannot express — a
+   ridge/tree/random-forest/gradient-boosted classifier (scikit-learn), a GARCH vol forecast
+   (arch), a kernel or quantile estimator, an ensemble, engineered features. fit() TRAINS ONCE on
+   the research fold and its params are FROZEN into the pre-registered spec; signals() rebuilds
+   from those frozen params and PREDICTS. NEVER fit inside signals() on the window you are handed —
+   at validation that window IS the held-out data, so fitting there is a leak. Fit in fit();
+   predict in signals(). (The house GBM drift_window/drift_beta still expresses momentum/reversion
+   directly — use it for those rather than a return threshold.)
 A learned model is pre-registered WITH its frozen coefficients and judged on data you never see,
 exactly like any other spec. More free parameters = a strictly higher deflated-Sharpe bar, so a
 kitchen-sink model with no per-feature mechanism will be REJECTED, not rewarded.
@@ -508,6 +540,11 @@ What this user's earlier research found (learn from it; do not repeat failures):
 {memory}
 
 Propose {count} distinct hypotheses for this idea, each walking the nine-phase method.
+MAKE THE SET DIVERSE: span at least {span} DIFFERENT strategy families from the menu in your
+instructions (momentum, mean-reversion, volatility/regime, calibration, microstructure, cross-market,
+event-driven, seasonality, learned classifier) — not {count} variants of one threshold rule — and
+unless every sound mechanism here is genuinely a pure rule, include at least one LEARNED model
+(model.kind logistic or calibration, or a `code` strategy with fit(window)).
 Reply with the ONE JSON object specified in your instructions (the full "hypotheses" list with
 mechanism, falsification_criteria, negative_control, null/alt hypotheses, min_sample and spec).""".format(
         brief=brief,
@@ -520,6 +557,7 @@ mechanism, falsification_criteria, negative_control, null/alt hypotheses, min_sa
         guide=specmod.SPEC_GUIDE,
         memory=_memory_block(memory),
         count=count,
+        span=min(count, len(STRATEGY_FAMILIES)),
     )
 
 
