@@ -4,6 +4,8 @@ import sys
 import time
 import types
 
+import pytest
+
 from app import llm
 
 
@@ -211,3 +213,66 @@ def test_stall_guard_lets_a_healthy_stream_through():
     ])
     text, usage = llm._bedrock_stream(client, {}, lambda _t: None, stall_seconds=0.5)
     assert text == "ab" and usage == {"input_tokens": 3, "output_tokens": 2}
+
+
+# -- Automatic model fallback on quota exhaustion -------------------------------------------------
+
+from app import models_catalog as _cat
+_OPUS = _cat.MODELS["opus-4-5"].model_id
+_SONNET = _cat.MODELS["sonnet-4-5"].model_id
+_HAIKU = _cat.MODELS["haiku-4-5"].model_id
+
+
+class _PerModelThrottleClient:
+    """converse throttles for model ids in `bad`, succeeds otherwise. `daily=True` makes it a daily
+    token-quota throttle (message contains 'per day'), which must fail over without wasting retries."""
+
+    def __init__(self, bad, daily=True):
+        self.bad = set(bad)
+        self.daily = daily
+        self.ClientError = Exception
+        self.calls = []
+
+    def _maybe(self, kwargs):
+        mid = kwargs.get("modelId")
+        self.calls.append(mid)
+        if mid in self.bad:
+            tail = "Too many tokens per day, please wait" if self.daily else "slow down"
+            e = self.ClientError("An error occurred (ThrottlingException): " + tail)
+            e.response = {"Error": {"Code": "ThrottlingException", "Message": tail}}
+            raise e
+
+    def converse(self, **kwargs):
+        self._maybe(kwargs)
+        return {"output": {"message": {"content": [{"text": "ok"}]}},
+                "usage": {"inputTokens": 1, "outputTokens": 1}}
+
+
+def _wire(monkeypatch, client):
+    client.ClientError = _install_fake_boto3(monkeypatch, client) and None  # install first
+    import botocore.exceptions as be
+    client.ClientError = be.ClientError
+
+
+def test_fallback_to_next_model_when_preferred_is_quota_exhausted(monkeypatch):
+    client = _PerModelThrottleClient(bad=[_OPUS], daily=True)   # Opus out of daily quota
+    _wire(monkeypatch, client)
+    text, _ = llm._bedrock("sys", [{"role": "user", "content": "hi"}])  # starts at Opus (BEDROCK_MODEL)
+    assert text == "ok"
+    assert client.calls == [_OPUS, _SONNET]   # tried Opus once, fell straight over to Sonnet
+
+
+def test_all_models_exhausted_raises_throttled(monkeypatch):
+    client = _PerModelThrottleClient(bad=[_OPUS, _SONNET, _HAIKU], daily=True)
+    _wire(monkeypatch, client)
+    with pytest.raises(llm.LLMThrottled):
+        llm._bedrock("sys", [{"role": "user", "content": "hi"}])
+    assert client.calls == [_OPUS, _SONNET, _HAIKU]   # walked the whole chain before giving up
+
+
+def test_daily_quota_does_not_waste_retries(monkeypatch):
+    # A daily-quota throttle must fail over immediately — exactly one call to the exhausted model.
+    client = _PerModelThrottleClient(bad=[_OPUS], daily=True)
+    _wire(monkeypatch, client)
+    llm._bedrock("sys", [{"role": "user", "content": "hi"}])
+    assert client.calls.count(_OPUS) == 1
