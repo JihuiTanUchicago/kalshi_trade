@@ -35,7 +35,7 @@ must inject it. Existing `APCA_API_KEY_ID` / `APCA_API_SECRET_KEY` configure
 shared market data and cannot serve as OAuth client credentials.
 
 The user-confirmed Tau production origin is
-`https://d1gfpzcosqrjya.cloudfront.net`; set `APP_PUBLIC_URL` to that exact origin.
+`https://tau-trading.com`; set `APP_PUBLIC_URL` to that exact origin.
 It is recorded in the ignored local `.env`; deployment still needs explicit
 injection into the running web service. Production requires HTTPS; `http://127.0.0.1:8090` and
 `http://localhost:8090` support local testing. No path, query, fragment or user
@@ -48,9 +48,9 @@ Register these exact production redirect URIs:
 
 | Provider | Callback |
 | --- | --- |
-| Alpaca | `https://d1gfpzcosqrjya.cloudfront.net/auth/brokers/alpaca/callback` |
-| Robinhood | `https://d1gfpzcosqrjya.cloudfront.net/auth/brokers/robinhood/callback` |
-| IBKR | `https://d1gfpzcosqrjya.cloudfront.net/auth/brokers/ibkr/callback` |
+| Alpaca | `https://tau-trading.com/auth/brokers/alpaca/callback` |
+| Robinhood | `https://tau-trading.com/auth/brokers/robinhood/callback` |
+| IBKR | `https://tau-trading.com/auth/brokers/ibkr/callback` |
 
 IBKR's documented authorization flow uses a `redirect_uri` carrying a `state`
 query parameter. Confirm that IBKR's approved redirect configuration preserves

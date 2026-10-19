@@ -331,17 +331,38 @@ def _cross_spec():
 def test_judge_holdout_cross_runs_on_merged_partition(repo, monkeypatch):
     """A cross-contract finalist is forward-validated on the MERGED holdout of its legs, with the
     holdout ledger + FDR keyed by the shared stream (not either leg's own market)."""
-    _patch_sim(monkeypatch, lambda spec: _edge_trades())
     key = "btc_daily+eth_daily"
     merged = {"id": 9, "holdout_from_ts": 1_500_000, "holdout_to_ts": 2_000_000, "data_fingerprint": "m"}
+    frozen_ds = _ds(market=key)
+    frozen_legs = [("btc_daily", dict(merged, id=10, data_fingerprint="btc")),
+                   ("eth_daily", dict(merged, id=11, data_fingerprint="eth"))]
+    loads = []
+
+    def resolve_legs(cur, markets):
+        assert cur is None and markets == ["btc_daily", "eth_daily"]
+        loads.append("resolve")
+        return frozen_legs
+
+    def load_merged(legs, phase):
+        assert legs is frozen_legs and phase == "holdout"
+        loads.append("load")
+        return frozen_ds
+
+    def simulate(spec, ds, start, end, *rest, **kw):
+        assert ds is frozen_ds and (start, end) == (frozen_ds.start_ts, frozen_ds.end_ts + 1)
+        return _edge_trades()
+
+    monkeypatch.setattr(gk.backtest, "simulate", simulate)
     monkeypatch.setattr(gk.partitions, "ensure_merged_partition", lambda cur, markets: merged)
-    monkeypatch.setattr(gk.partitions, "merged_dataset", lambda cur, markets, phase: _ds(market=key))
+    monkeypatch.setattr(gk.partitions, "merged_partitions", resolve_legs)
+    monkeypatch.setattr(gk.partitions, "merged_dataset_from", load_merged)
     spec = _cross_spec()
     eid = gk.preregister(None, Prereg(user_id=7, run_id=1, market=key, spec=spec,
                                       economic_rationale="btc-eth basis"))
     repo.append_result(None, eid, "validation", Classification.STAT_SUPPORTED.value, 60)
     out = gk.judge_holdout(None, eid, {"spec": spec, "user_id": 7, "market": "btc_daily"})
     assert out["classification"] == Classification.FORWARD_VALIDATED.value
+    assert loads == ["resolve", "load"]
     # the one-time holdout ledger is keyed by the shared stream, and btc_daily's stricter cap (3) wins
     led = next(lg for lg in repo.ledgers.values() if lg["market"] == key)
     assert led["partition_id"] == 9 and led["max_evaluations"] == 3 and led["evaluations_used"] == 1

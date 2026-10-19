@@ -26,6 +26,7 @@ import copy
 import json
 import logging
 import os
+import re
 import threading
 import time
 from contextlib import contextmanager
@@ -955,7 +956,7 @@ def _prereg(t: Dict, spec: Dict, run: Dict, partition: Dict, n_tests: int,
 
 
 def _promote_if_forward_validated(cur, user_id: int, experiment_id: int, finalist: Dict, t: Dict,
-                                  log) -> None:
+                                  log, run_id: Optional[int] = None) -> None:
     """§E.5 promotion. A finalist classified STAT_SUPPORTED on validation now gets the ONE-TIME
     Locked-Holdout evaluation; if it forward-validates, the marginal-contribution (diversification)
     gate promotes it FORWARD_VALIDATED -> DEPLOYMENT_CANDIDATE. This is the only path that mints a
@@ -968,8 +969,12 @@ def _promote_if_forward_validated(cur, user_id: int, experiment_id: int, finalis
     FEED and the ledger ONLY — never into `_result_block`/strategy_memory — so the generator stays
     blind to holdout data. The strategy row keeps its validation status ("passed"); the deployment
     candidacy lives in the gatekeeper ledger, which is what `_is_deployment_candidate` reads."""
+    # Bound the one-time holdout load the same way as the other data loads (timeout + heartbeat), so
+    # a slow RDS fails fast with a clean error instead of tripping the watchdog mid-promotion.
+    run_load = (lambda fn: _load("Loading holdout data", fn, beat=lambda: repo.heartbeat(cur, run_id))) \
+        if (cur is not None and run_id is not None) else None
     try:
-        verdict = gatekeeper.judge_holdout(cur, experiment_id, finalist)
+        verdict = gatekeeper.judge_holdout(cur, experiment_id, finalist, run_load=run_load)
     except gatekeeper.HoldoutConsumed as e:
         log("verdict", "%s: the one-time holdout was not evaluated (%s)." % (t["title"], e),
             {"title": t["title"], "phase": "holdout", "skipped": True})
@@ -1104,10 +1109,17 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
                 by_stream[specmod.stream_key(pay["spec"])].append(i)
             for idxs in by_stream.values():
                 spec0 = payload[idxs[0]]["spec"]
+                # Bound the validation load like the startup load: beat the heartbeat while it runs
+                # and fail fast with a clean LLMError if the (possibly slow) RDS wedges it, instead
+                # of going silent until the watchdog reaps the run. Partitions are resolved on THIS
+                # thread; the timeout worker only runs an off-cursor load, so it never shares `cur`.
                 if specmod.is_cross_contract(spec0):
-                    val_ds = partitions.merged_dataset(cur, specmod.involved_markets(spec0), "validation")
+                    legs = partitions.merged_partitions(cur, specmod.involved_markets(spec0))
+                    val_ds = _load("Loading validation data", partitions.merged_dataset_from, legs,
+                                   "validation", beat=lambda: repo.heartbeat(cur, run_id))
                 else:
-                    val_ds = backtest.partition_dataset(market, partition, "validation")
+                    val_ds = _load("Loading validation data", backtest.partition_dataset, market,
+                                   partition, "validation", beat=lambda: repo.heartbeat(cur, run_id))
                 outcomes = gatekeeper.judge_batch(cur, run_id, [exp_ids[i] for i in idxs],
                                                   [payload[i] for i in idxs], val_ds)
                 for i, outcome in zip(idxs, outcomes):
@@ -1135,7 +1147,7 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
                     # if it forward-validates, the diversification gate that mints a DEPLOYMENT_CANDIDATE.
                     # Like validation, every number stays gatekeeper-held (feed + ledger only).
                     if cls == gatekeeper.Classification.STAT_SUPPORTED.value:
-                        _promote_if_forward_validated(cur, user_id, exp_ids[i], payload[i], t, log)
+                        _promote_if_forward_validated(cur, user_id, exp_ids[i], payload[i], t, log, run_id)
 
         for t in chunk:
             if t in finalists:
@@ -1260,6 +1272,20 @@ def _call_with_timeout(label: str, seconds: float, fn, *args, beat=None, beat_ev
     return box.get("v")
 
 
+def _load(label: str, fn, *args, beat=None):
+    """Run a data load under the fail-fast DATA_LOAD_TIMEOUT (heartbeat beaten throughout), then
+    relabel a RECOGNIZED load failure into a clean, specific LLMError (see _classify_load_error):
+    a no-settled-contracts market or a transient RDS drop. An unrecognized error — a genuine bug —
+    propagates unchanged, so this only ever classifies the two known cases."""
+    try:
+        return _call_with_timeout(label, DATA_LOAD_TIMEOUT, fn, *args, beat=beat)
+    except Exception as e:
+        err = _classify_load_error(e)
+        if err is not None:
+            raise err from e
+        raise
+
+
 def _timeout_self_check() -> None:
     assert _call_with_timeout("fast", 5, lambda: 42) == 42, "returns the value of a fast call"
     try:
@@ -1274,6 +1300,45 @@ def _timeout_self_check() -> None:
         pass
     else:
         raise AssertionError("the wrapped call's own exception must propagate")
+
+
+def _classify_load_error(e: BaseException) -> Optional[LLMError]:
+    """Turn a RECOGNIZED data-load failure into a clean, specific, user-facing LLMError so it stops
+    surfacing as the generic 'unexpected error'. Returns None for anything unrecognized, so a genuine
+    programming bug still propagates with its full traceback — this only relabels two known cases:
+      - partitions.ensure_partition's 'no settled contracts' ValueError (a sports/un-settled market
+        with no backtest surface yet), keeping the market in the message; and
+      - a transient RDS drop (pymysql OperationalError 2006/2013 or a lost-connection / packet-
+        sequence message), which is retryable, so we say so instead of failing opaque."""
+    if isinstance(e, ValueError) and "no settled contracts" in str(e):
+        m = re.search(r"market\s+'?([^'\s]+)'?", str(e))
+        return LLMError("%s has no settled contracts / backtest surface yet — pick a market with data."
+                        % (m.group(1) if m else "That market"))
+    if _is_transient_db_error(e):
+        return LLMError("The data store was busy; please start the session again.")
+    return None
+
+
+def _is_transient_db_error(e: BaseException) -> bool:
+    """A retryable DB drop: pymysql OperationalError with errno 2006 (server gone away) / 2013 (lost
+    connection), or whose message names a lost connection / a packet-sequence desync."""
+    import pymysql
+    if not isinstance(e, pymysql.err.OperationalError):
+        return False
+    errno = e.args[0] if e.args else None
+    if errno in (2006, 2013):
+        return True
+    msg = str(e).lower()
+    return any(s in msg for s in ("lost connection", "gone away", "packet sequence number wrong"))
+
+
+def _classify_self_check() -> None:
+    import pymysql
+    v = _classify_load_error(ValueError("no settled contracts for market 'kxnflgame' since X"))
+    assert v is not None and "kxnflgame" in str(v), "no-settled-contracts keeps the market"
+    assert _classify_load_error(pymysql.err.OperationalError(2013, "Lost connection")) is not None, \
+        "a 2013 OperationalError is relabelled retryable"
+    assert _classify_load_error(KeyError("boom")) is None, "a genuine bug is NOT swallowed"
 
 
 def _should_dream(cur, user_id: int) -> bool:
@@ -1348,8 +1413,9 @@ def run_research(
     usage = Usage()
     tried: List[Dict] = []
     run_id, user_id, market = run["id"], run["user_id"], run["market"]
-    # The user's chosen model (NULL = default Sonnet) drives every LLM call this
-    # run makes and the price it's billed at. Tests pass their own `model`.
+    # The run's model drives every LLM call it makes and the price it's billed at. An autopilot
+    # research run is stamped with the user's autopilot_model at creation (act); a manual run
+    # carries the model the user picked; NULL resolves to the catalog default. Tests pass `model`.
     choice = catalog.resolve(run.get("model"))
     if model is None:
         # on_delta=None keeps the ordinary (system, messages) calls working everywhere; the
@@ -1473,8 +1539,8 @@ def run_research(
         # zero events/heartbeat for 20 min). Announce it (so a stall is visible to the phase), beat
         # the heartbeat while it runs, and hard-bound it so a wedge fails fast with a clear error.
         log("step", "Loading %s market data…" % MARKETS[market].label, {"phase": "loading", "market": market})
-        ds = _call_with_timeout("Loading %s data" % MARKETS[market].label, DATA_LOAD_TIMEOUT,
-                                load, market, beat=lambda: repo.heartbeat(cur, run_id))
+        ds = _load("Loading %s data" % MARKETS[market].label, load, market,
+                   beat=lambda: repo.heartbeat(cur, run_id))
         if len(ds.frames) < MIN_FRAMES:
             raise LLMError("Not enough market history collected yet for %s." % MARKETS[market].label)
         # The agent picks the window that fits its thesis; re-load the narrower slice if it
@@ -1486,8 +1552,8 @@ def run_research(
             lookback = _plan_lookback(run, market, model, usage, log)
         ckpt["lookback"] = lookback
         if lookback < MARKETS[market].history_days:
-            narrowed = _call_with_timeout("Loading %s data" % MARKETS[market].label, DATA_LOAD_TIMEOUT,
-                                          load, market, lookback, beat=lambda: repo.heartbeat(cur, run_id))
+            narrowed = _load("Loading %s data" % MARKETS[market].label, load, market, lookback,
+                             beat=lambda: repo.heartbeat(cur, run_id))
             if len(narrowed.frames) >= MIN_FRAMES:
                 ds = narrowed
         s = ds.summary()
@@ -1573,6 +1639,13 @@ def run_research(
         # missing key) throws the stack away and makes the next mystery crash undiagnosable. Dump
         # the full traceback to the PROCESS log (stderr -> the worker's logfile) so it survives.
         _LOG.exception("research run %s failed", run_id)
+        # Relabel the unambiguous no-settled-contracts ValueError (raised by partitions.ensure_*,
+        # which the _load wrapper doesn't cover) into a clean, specific LLMError so it stops reading
+        # as the generic 'unexpected error'. A transient RDS OperationalError is classified only at
+        # the _load boundary (so a drop on a NON-load DB call still propagates for worker reclaim,
+        # unchanged); anything else is left untouched and still propagates below.
+        if isinstance(e, ValueError):
+            e = _classify_load_error(e) or e
         msg = (str(e) if isinstance(e, LLMError) else "The session hit an unexpected error and stopped.")
         cur = _reconnect(conn, cur)  # the error may have been the drop itself — heal it so we can record the failure
         log("error", msg)
@@ -1590,7 +1663,7 @@ def _span_words(ds: backtest.Dataset) -> str:
 
 
 def _test_in_sample(h: Dict, ds: backtest.Dataset, partition: Dict, log, round_no: int,
-                    cur=None, merged_cache: Optional[Dict] = None) -> Dict:
+                    cur=None, merged_cache: Optional[Dict] = None, run_id: Optional[int] = None) -> Dict:
     # The in-research "OOS" the agent iterates on is a PURGED walk-forward research fold (fully
     # inside Research) — a leak-free sandbox it may look at freely, not the held-out validation
     # window. Purge/embargo come from the frozen partition's contract-duration horizon (§B.5).
@@ -1607,7 +1680,12 @@ def _test_in_sample(h: Dict, ds: backtest.Dataset, partition: Dict, log, round_n
             rds, embargo = merged_cache[key]
         else:
             embargo = int(partitions.ensure_merged_partition(cur, inv)["embargo_seconds"])
-            rds = partitions.merged_dataset(cur, inv, "research")
+            # Same fail-fast wrap as the other data loads: resolve the legs on this thread, then run
+            # the off-cursor merged build under the timeout so a slow RDS can't silently wedge it.
+            legs = partitions.merged_partitions(cur, inv)
+            beat = (lambda: repo.heartbeat(cur, run_id)) if run_id is not None else None
+            rds = _load("Loading %s research data" % key, partitions.merged_dataset_from, legs,
+                        "research", beat=beat)
             if merged_cache is not None:
                 merged_cache[key] = (rds, embargo)
     # Fit-on-research-and-FREEZE before the hypothesis is tested or pre-registered, so the spec
@@ -1745,7 +1823,7 @@ def _develop_thesis(h: Dict, run: Dict, ds: backtest.Dataset, partition: Dict, m
     fail-OPEN — any bad/empty/unavailable reply keeps the spec we already have, so a reviewer hiccup
     can never halt research or spend unbounded. Each refine re-freezes via _test_in_sample, so the
     committed spec is always a fit-on-research-and-frozen model, never re-fit at gate time."""
-    t = _test_in_sample(h, ds, partition, log, round_no, cur, merged_cache)
+    t = _test_in_sample(h, ds, partition, log, round_no, cur, merged_cache, run.get("id"))
     market = run["market"]
     committed = developed = False
     for step in range(THESIS_MAX_STEPS - 1):
@@ -1774,7 +1852,7 @@ def _develop_thesis(h: Dict, run: Dict, ds: backtest.Dataset, partition: Dict, m
             refined["mechanism"] = reply["mechanism"]
         log("step", "Refining \"%s\": %s" % (t["title"], reply.get("change") or "sharpening the mechanism"))
         developed = True
-        t = _test_in_sample(refined, ds, partition, log, round_no, cur, merged_cache)
+        t = _test_in_sample(refined, ds, partition, log, round_no, cur, merged_cache, run.get("id"))
     # Anti-grind backstop: if the agent REFINED this thesis (really worked it) yet never committed
     # and the spec still can't trade (unfit model / 0 research-fold trades), drop it as dead on
     # arrival rather than grind the rest of the step cap. The no-develop path (THESIS_MAX_STEPS=1)
@@ -1971,6 +2049,12 @@ def _fmt_changes(changes: Dict) -> str:
 # ponytail: a flat per-market window, not per-idea NLP — the thrash is same-market; add idea-level
 # matching only if the model starts spamming distinct ideas on one market.
 RESEARCH_MARKET_COOLDOWN = timedelta(hours=6)
+# A market that FAILS repeatedly is chronically bad for research (ephemeral event that closes
+# mid-run, an illiquid contract whose data times out, no tradeable surface) — backing it off well
+# past the ordinary cooldown stops the autopilot bleeding runs on it and steers it to markets that
+# actually complete. Self-regulating: a market with a clean record is never affected.
+RESEARCH_FAIL_WINDOW = timedelta(hours=24)
+RESEARCH_FAIL_LIMIT = int(os.getenv("TAU_RESEARCH_FAIL_LIMIT", "3"))
 
 
 def _market_research_recent(cur, user_id: int, market: str) -> Optional[str]:
@@ -1984,6 +2068,7 @@ def _market_research_recent(cur, user_id: int, market: str) -> Optional[str]:
     except Exception:
         return None
     now = repo.now_utc()
+    recent_fails = 0
     for r in runs:
         if r.get("market") != market:
             continue
@@ -1993,6 +2078,11 @@ def _market_research_recent(cur, user_id: int, market: str) -> Optional[str]:
         if fin and (now - fin) < RESEARCH_MARKET_COOLDOWN:
             return ("%s was just researched (run #%s, %s) and is on a short cooldown"
                     % (market, r.get("id"), r.get("status")))
+        if r.get("status") == "failed" and fin and (now - fin) < RESEARCH_FAIL_WINDOW:
+            recent_fails += 1
+    if recent_fails >= RESEARCH_FAIL_LIMIT:
+        return ("%s has failed %d times in the last day — it's backed off (chronically bad for "
+                "research); hunt a different market" % (market, recent_fails))
     return None
 
 
@@ -2194,7 +2284,9 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         direction = action.get("direction") if action.get("direction") in DIRECTIONS else None
         # brief=True: the co-pilot is DELEGATING, not authoring. `idea` is a high-level angle/lens,
         # and the proposer turns it into the actual hypotheses (see _research_prompt's brief branch).
-        repo.create_run(cur, user_id, "research", market, direction, idea, brief=True)
+        # Stamp the user's autopilot model so the run uses it (NULL = catalog default).
+        repo.create_run(cur, user_id, "research", market, direction, idea, brief=True,
+                        model=user.get("autopilot_model"))
         return ("Started a fresh research session on %s — same gates as any run (pre-registration, "
                 "holdout, diversification). Follow it on the Research page."
                 % (market or "a market I'll choose"), None)
@@ -2405,13 +2497,18 @@ def _copilot_check(obj: Dict) -> Dict:
     return {"reply": reply[:4000], "actions": actions, "plan": plan if isinstance(plan, dict) else None}
 
 
-def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.dataset) -> None:
+def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=backtest.dataset) -> None:
     """kind='chat' answers the user's latest message; kind='review' is the
     agent checking in on its own (run.prompt says why)."""
     cur = conn.cursor()
     usage = Usage()
     billing_attempted = False
     user = repo.get_user(cur, run["user_id"])
+    # Honor the user's autopilot model (NULL = catalog default) so a review/chat runs on — and is
+    # billed at — the model they picked, not always the global default. Tests pass their own `model`.
+    choice = catalog.resolve(run.get("model") or (user or {}).get("autopilot_model"))
+    if model is None:
+        model = lambda system, messages, on_delta=None: claude(system, messages, choice.model_id, on_delta)  # noqa: E731
 
     def checkpoint() -> None:
         nonlocal cur
@@ -2484,12 +2581,12 @@ def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.da
             repo.add_chat(cur, user["id"], "system", text, proposal_id)
         repo.finish_run(cur, run["id"], "succeeded", None, 0, 0, usage.input_tokens, usage.output_tokens)
         billing_attempted = True
-        _bill(conn, user["id"], usage, run["id"])
+        _bill(conn, user["id"], usage, run["id"], choice.model_id)
     except Cancelled:
         repo.add_event(cur, run["id"], "step", "Cancelled.")
         if not billing_attempted:
             billing_attempted = True
-            _bill(conn, user["id"], usage, run["id"])
+            _bill(conn, user["id"], usage, run["id"], choice.model_id)
     except Exception as e:
         print("[agents] copilot run %s failed: %r" % (run["id"], e), flush=True)
         cur = _reconnect(conn, cur)
@@ -2498,6 +2595,6 @@ def run_copilot(conn, run: Dict, model: ModelFn = claude, dataset_fn=backtest.da
         repo.finish_run(cur, run["id"], "failed", str(e)[:2000], 0, 0, usage.input_tokens, usage.output_tokens)
         if not billing_attempted:
             billing_attempted = True
-            _bill(conn, user["id"], usage, run["id"])  # charge for the work done regardless of the failure cause
+            _bill(conn, user["id"], usage, run["id"], choice.model_id)  # charge for the work done regardless of the failure cause
         if not isinstance(e, LLMError):
             raise

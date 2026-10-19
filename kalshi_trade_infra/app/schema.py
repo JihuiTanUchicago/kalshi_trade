@@ -570,6 +570,18 @@ def _add_column_if_missing(cur, table: str, column: str, ddl: str) -> None:
         cur.execute(ddl)
 
 
+
+def _add_index_if_missing(cur, table: str, index_name: str, ddl: str) -> None:
+    """Idempotently add a secondary index (online, non-blocking on InnoDB). Checked via
+    information_schema.STATISTICS so a re-run is a no-op, same contract as _add_column_if_missing."""
+    cur.execute(
+        "SELECT COUNT(*) AS c FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s AND INDEX_NAME=%s",
+        (table, index_name),
+    )
+    if cur.fetchone()["c"] == 0:
+        cur.execute(ddl)
+
+
 def main() -> None:
     init_schema.main()  # market_candles and the shared pipeline tables
     conn = get_db_conn()
@@ -606,6 +618,8 @@ def main() -> None:
         # or loose-path (backtest-only) strategy that never went through the gatekeeper.
         _add_column_if_missing(cur, "app_strategies", "experiment_id", "ALTER TABLE app_strategies ADD COLUMN experiment_id BIGINT NULL")
         # Cross-day generalization breakdown (per-day/per-fold) the research-paper folds strip renders.
+        _add_index_if_missing(cur, "hist_markets", "idx_hist_candles_series",
+                              "ALTER TABLE hist_markets ADD INDEX idx_hist_candles_series (candles_done, series_ticker)")
         _add_column_if_missing(cur, "app_experiment_results", "folds_json", "ALTER TABLE app_experiment_results ADD COLUMN folds_json JSON NULL AFTER equity_curve_json")
         # Cross-contract strategies spend from a SHARED FDR stream keyed on a combined key
         # ('btc_daily+eth_daily'), which overruns the old VARCHAR(16). Widen the market key
@@ -682,6 +696,7 @@ def main() -> None:
         # review reads + rewrites each turn, so reviews are coherent across time instead of
         # independent one-shots. NULL = no plan yet. Bounded in repository.set_autopilot_plan.
         _add_column_if_missing(cur, "app_users", "autopilot_plan", "ALTER TABLE app_users ADD COLUMN autopilot_plan JSON NULL")
+        _add_column_if_missing(cur, "app_users", "autopilot_model", "ALTER TABLE app_users ADD COLUMN autopilot_model VARCHAR(64) NULL")
         # Proposal payload: the clamped values a set_risk / set_exec proposal applies on approval
         # (deploy/adjust/pause/resume carry no payload). NULL for the older kinds.
         _add_column_if_missing(cur, "app_proposals", "payload", "ALTER TABLE app_proposals ADD COLUMN payload JSON NULL")

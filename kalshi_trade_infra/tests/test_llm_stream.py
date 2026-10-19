@@ -122,7 +122,7 @@ def test_streaming_timeout_exhausted_falls_back_to_converse(monkeypatch):
     client._err = _install_fake_boto3(monkeypatch, client)  # streaming never recovers
     text, _ = llm._bedrock("sys", [{"role": "user", "content": "hi"}], on_delta=lambda _t: None)
     assert text == "fallback"          # degrades to non-streaming instead of surfacing raw
-    assert client.stream_calls == 4    # 4 streaming attempts, then the converse fallback
+    assert client.stream_calls == llm._BEDROCK_RETRIES + 1  # bounded attempts, then converse fallback
 
 
 def test_claude_without_on_delta_is_unchanged(monkeypatch):

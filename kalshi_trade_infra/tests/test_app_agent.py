@@ -48,7 +48,7 @@ class Store:
         # diversification gate so these hand-off tests stay off the ledger DB (the promotion
         # itself is covered in test_gatekeeper + test_holdout_promotion).
         monkeypatch.setattr(agent.gatekeeper, "judge_holdout",
-                            lambda cur, eid, fin: {"classification": self._gk.Classification.FORWARD_VALIDATED.value,
+                            lambda cur, eid, fin, run_load=None: {"classification": self._gk.Classification.FORWARD_VALIDATED.value,
                                                    "n_trades": 20, "holdout_consumed": 0})
         monkeypatch.setattr(agent.gatekeeper, "marginal_contribution_ok",
                             lambda cur, uid, eid, fin: (True, "stub"))

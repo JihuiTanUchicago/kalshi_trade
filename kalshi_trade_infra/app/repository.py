@@ -169,7 +169,7 @@ def users_by_usernames(cur, usernames: List[str]) -> List[Dict]:
 
 def get_user(cur, user_id: int) -> Optional[Dict]:
     cur.execute(
-        "SELECT id, email, name, username, picture_url, autopilot, autopilot_live, autopilot_daily_loss_limit, ui_theme, created_at FROM app_users WHERE id=%s", (user_id,)
+        "SELECT id, email, name, username, picture_url, autopilot, autopilot_live, autopilot_daily_loss_limit, autopilot_model, ui_theme, created_at FROM app_users WHERE id=%s", (user_id,)
     )
     return cur.fetchone()
 
@@ -1572,6 +1572,12 @@ def set_autopilot_plan(cur, user_id: int, plan: Dict) -> None:
     cur.execute("UPDATE app_users SET autopilot_plan=%s WHERE id=%s", (_json(kept) if kept else None, user_id))
 
 
+def set_autopilot_model(cur, user_id: int, model_key: Optional[str]) -> None:
+    """Set the model the autopilot's own runs use (NULL = catalog default). The caller validates
+    model_key against models_catalog so only a known key (or None) is ever stored."""
+    cur.execute("UPDATE app_users SET autopilot_model=%s WHERE id=%s", (model_key or None, user_id))
+
+
 def user_execution_config(cur, user_id: int) -> Dict:
     """Per-user execution-control overrides (NULL = use the global KALSHI_MAX_* env default).
     The live kernel factory reads this and falls back to env when a column is NULL."""
@@ -1626,6 +1632,18 @@ def last_autopilot_action(cur, user_id: int) -> Optional[Dict]:
     )
     r = cur.fetchone()
     return {"text": r["content"], "at": r["created_at"]} if r else None
+
+
+def last_review_at(cur, user_id: int):
+    """Timestamp of the most recent autopilot REVIEW run (whether or not it acted), for the panel's
+    liveness readout. A quiet review takes no action and posts nothing, so without this a working
+    autopilot looks dead between actions; this shows it is alive and on cadence."""
+    cur.execute(
+        "SELECT created_at FROM app_agent_runs WHERE user_id=%s AND kind='review' ORDER BY id DESC LIMIT 1",
+        (user_id,),
+    )
+    r = cur.fetchone()
+    return r["created_at"] if r else None
 
 
 def add_chat(cur, user_id: int, role: str, content: str, proposal_id: Optional[int] = None) -> int:

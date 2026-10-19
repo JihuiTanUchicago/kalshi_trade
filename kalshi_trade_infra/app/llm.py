@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import random
 import re
 import threading
 import time
@@ -41,9 +42,48 @@ AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 # the account's Bedrock "Model access" for AWS_REGION.
 BEDROCK_MODEL = os.getenv("APP_BEDROCK_MODEL", "us.anthropic.claude-opus-4-5-20251101-v1:0")
 
+# Bedrock transient-error retries. Throttling is the #1 cause of failed research runs when the
+# autopilot runs many Opus calls concurrently across users; a throttled call must back off and
+# retry, not kill the whole run. Bounded so the worst-case total backoff stays well under the
+# research stall watchdog (agent.RUN_STALL_SECONDS, 150s) — the main thread is blocked in the sleep
+# and can't mark progress, so a longer wait would false-trip the watchdog. The durable fix for
+# SUSTAINED over-quota is a lighter/higher-quota model (the autopilot model picker) or a Bedrock
+# quota increase; these retries absorb the bursts.
+_THROTTLE_CODES = ("ThrottlingException", "ModelTimeoutException", "ServiceUnavailableException")
+_BEDROCK_RETRIES = max(1, int(os.getenv("TAU_BEDROCK_RETRIES", "5")))
+_BEDROCK_BACKOFF_CAP = max(2.0, float(os.getenv("TAU_BEDROCK_BACKOFF_CAP", "16")))
+
+
+def _retry_sleep(attempt: int) -> None:
+    """Exponential backoff (capped) with full jitter. The jitter de-syncs concurrent runs that all
+    throttled at once (several autopilot users sharing one Bedrock quota) so they don't retry in
+    lockstep and immediately re-throttle each other."""
+    base = min(_BEDROCK_BACKOFF_CAP, 2.0 ** (attempt + 1))
+    time.sleep(base + random.uniform(0.0, base * 0.5))
+
 
 class LLMError(RuntimeError):
     pass
+
+
+class LLMThrottled(LLMError):
+    """A Bedrock throttle that retries couldn't clear (incl. a daily token-quota exhaustion). Its own
+    subclass so the model-fallback wrapper can tell 'this model is out of capacity, try the next one'
+    apart from an ordinary LLMError (a real failure that every model would hit)."""
+    pass
+
+
+def _is_daily_quota(e) -> bool:
+    """A DAILY token-quota throttle ('Too many tokens per day') — it won't clear within a run's
+    retry budget (it resets ~daily), so there's no point backing off; fall over to another model now."""
+    return "per day" in str(e).lower()
+
+
+# A model that hit its DAILY quota is skipped (not even attempted) for this long, so a sustained
+# per-day exhaustion stops costing a wasted throttled round-trip on every single call. It auto-
+# expires, so the preferred model is retried once the cooldown lapses (and re-cooled if still out).
+_MODEL_COOLDOWN: Dict[str, float] = {}
+_DAILY_COOLDOWN_SEC = max(60, int(os.getenv("TAU_DAILY_QUOTA_COOLDOWN_SEC", "1800")))
 
 
 @dataclass
@@ -159,8 +199,37 @@ def _bedrock_stream(client, kwargs: Dict[str, Any], on_delta: "Callable[[str], N
 
 def _bedrock(system: str, messages: List[Dict[str, str]], model: "Optional[str]" = None,
              on_delta: "Optional[Callable[[str], None]]" = None) -> "tuple[str, Dict]":
-    """One code path for every provider on Bedrock via the Converse API, which is
-    unified across Claude/Nova/Llama/… and returns text + token usage the same way."""
+    """Call Bedrock with automatic model fallback: start at the requested model and, if its quota is
+    exhausted (LLMThrottled, e.g. the daily token cap), drop to the next-best model in the catalog's
+    FALLBACK_ORDER and retry. The chain is rebuilt every call, so once the preferred model's quota
+    frees up it is used again automatically. A non-throttle failure propagates unchanged."""
+    from app import models_catalog as _catalog  # lazy: avoid an import cycle
+    full = _catalog.fallback_chain_from(model or BEDROCK_MODEL)
+    # Skip models still in a DAILY-quota cooldown: a per-day cap won't clear for hours, so once a
+    # model trips it we stop paying a wasted round-trip on EVERY later call and go straight to the
+    # next model. If ALL are cooling down, try the full chain anyway (better to attempt than refuse).
+    now = time.monotonic()
+    chain = [m for m in full if _MODEL_COOLDOWN.get(m, 0.0) <= now] or full
+    last: "Optional[LLMThrottled]" = None
+    for i, mid in enumerate(chain):
+        try:
+            return _bedrock_once(system, messages, mid, on_delta)
+        except LLMThrottled as e:
+            last = e
+            if _is_daily_quota(e):
+                _MODEL_COOLDOWN[mid] = time.monotonic() + _DAILY_COOLDOWN_SEC  # auto-expires -> retried later
+            if i + 1 < len(chain):
+                print("[llm] %s quota exhausted (%s); falling back to %s" % (mid, e, chain[i + 1]), flush=True)
+                continue
+            raise
+    raise last if last else LLMError("no model to call")  # unreachable: chain is never empty
+
+
+def _bedrock_once(system: str, messages: List[Dict[str, str]], model: "Optional[str]" = None,
+                  on_delta: "Optional[Callable[[str], None]]" = None) -> "tuple[str, Dict]":
+    """One Bedrock Converse call for a SINGLE model (Claude/Nova/Llama/…), with the throttle/timeout
+    retries. Raises LLMThrottled when a throttle outlives the retries so the fallback wrapper can
+    switch models; other failures raise LLMError."""
     try:
         import boto3
         from botocore.config import Config
@@ -193,7 +262,7 @@ def _bedrock(system: str, messages: List[Dict[str, str]], model: "Optional[str]"
             except (ImportError, AttributeError):
                 pass
         stream_timeouts = tuple(stream_timeouts)
-        for attempt in range(4):
+        for attempt in range(_BEDROCK_RETRIES + 1):
             try:
                 text, usage = _bedrock_stream(client, kwargs, on_delta)
                 if text.strip():
@@ -205,29 +274,42 @@ def _bedrock(system: str, messages: List[Dict[str, str]], model: "Optional[str]"
                 # and let the research loop handle the LLMError — fast, clean, not a 10-min hang.
                 raise
             except stream_timeouts:
-                if attempt < 3:
-                    time.sleep(2 ** (attempt + 1))
+                if attempt < _BEDROCK_RETRIES:
+                    _retry_sleep(attempt)
                     continue
                 break  # exhausted retries -> fall back to non-streaming converse
-            except ClientError:
-                break
+            except ClientError as e:
+                # A throttle on the stream used to fall straight through to converse, which then
+                # throttled too — wasting the whole call. Back off and retry the stream first (but
+                # not for a daily-quota throttle, which won't clear — drop to converse, which raises
+                # LLMThrottled so the wrapper switches models).
+                code = e.response.get("Error", {}).get("Code", "")
+                if code in _THROTTLE_CODES and not _is_daily_quota(e) and attempt < _BEDROCK_RETRIES:
+                    _retry_sleep(attempt)
+                    continue
+                break  # non-throttle, daily-quota, or exhausted -> fall back to non-streaming converse
             except Exception as e:
                 if _is_sink_connection_error(e):
                     raise  # DB desync from the sink — surface it; never hide it in the fallback
                 break
-    for attempt in range(4):
+    for attempt in range(_BEDROCK_RETRIES + 1):
         try:
             resp = client.converse(**kwargs)
         except ClientError as e:
             code = e.response.get("Error", {}).get("Code", "")
-            if code in ("ThrottlingException", "ModelTimeoutException", "ServiceUnavailableException") and attempt < 3:
-                time.sleep(2 ** (attempt + 1))
-                continue
+            if code in _THROTTLE_CODES:
+                # A DAILY token-quota throttle won't clear within a run, so don't burn the backoff —
+                # raise LLMThrottled now and let the wrapper switch models. A transient throttle
+                # retries with backoff first, then becomes LLMThrottled once the budget is spent.
+                if not _is_daily_quota(e) and attempt < _BEDROCK_RETRIES:
+                    _retry_sleep(attempt)
+                    continue
+                raise LLMThrottled("%s on '%s': %s" % (code, model_id, e))
             raise LLMError("Bedrock call failed (%s). Model '%s' may need access enabled in the Bedrock console for %s."
                            % (code or e, model_id, AWS_REGION))
         except (ReadTimeoutError, ConnectTimeoutError) as e:
-            if attempt < 3:
-                time.sleep(2 ** (attempt + 1))
+            if attempt < _BEDROCK_RETRIES:
+                _retry_sleep(attempt)
                 continue
             raise LLMError("Bedrock call timed out after retries: %s" % e)
         except Exception as e:

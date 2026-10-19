@@ -22,6 +22,7 @@ class FakeStore:
         self.strategies = []            # id -> {title, status, result, spec}
         self.preregistered = []         # list of Prereg objects
         self.judged = []                # list of (exp_ids, finalist payloads)
+        self.holdouts = []              # list of (experiment id, finalist, optional load wrapper)
         self.events = []
         self._judgements = judgements   # list of classification values for judge_batch, or None
         monkeypatch.setattr(agent.repo, "insert_strategy", self._insert)
@@ -30,9 +31,7 @@ class FakeStore:
         monkeypatch.setattr(agent.gatekeeper, "judge_batch", self._judge_batch)
         # §E.5 promotion fires for every STAT_SUPPORTED finalist; stub the one-time holdout +
         # diversification gate (exercised for real in test_gatekeeper / test_holdout_promotion).
-        monkeypatch.setattr(agent.gatekeeper, "judge_holdout",
-                            lambda cur, eid, fin: {"classification": gatekeeper.Classification.FORWARD_VALIDATED.value,
-                                                   "n_trades": 30, "holdout_consumed": 0})
+        monkeypatch.setattr(agent.gatekeeper, "judge_holdout", self._judge_holdout)
         monkeypatch.setattr(agent.gatekeeper, "marginal_contribution_ok",
                             lambda cur, uid, eid, fin: (True, "stub"))
         monkeypatch.setattr(agent.backtest, "partition_dataset", lambda market, part, phase: None)
@@ -52,6 +51,12 @@ class FakeStore:
         self.judged.append((list(exp_ids), list(finalists)))
         cls = self._judgements or [gatekeeper.Classification.STAT_SUPPORTED.value] * len(finalists)
         return [{"classification": cls[i], "n_trades": 30} for i in range(len(finalists))]
+
+    def _judge_holdout(self, cur, eid, fin, run_load=None):
+        assert run_load is None or callable(run_load)
+        self.holdouts.append((eid, fin, run_load))
+        return {"classification": gatekeeper.Classification.FORWARD_VALIDATED.value,
+                "n_trades": 30, "holdout_consumed": 0}
 
 
 def _cand(title, pnl, trades, score):
@@ -87,6 +92,8 @@ def test_approved_finalist_is_preregistered_judged_and_mapped(monkeypatch):
     assert len(store.judged) == 1                  # one batch judge call
     exp_ids, payloads = store.judged[0]
     assert len(exp_ids) == 2 and all("spec" in p and p["user_id"] == 7 for p in payloads)
+    assert [eid for eid, _, _ in store.holdouts] == exp_ids
+    assert all(fin["user_id"] == 7 and wrapper is None for _, fin, wrapper in store.holdouts)
     # STAT_SUPPORTED -> "passed"; the non-finalist is rejected and never judged.
     by_title = {s["title"]: s for s in store.strategies}
     assert by_title["A"]["status"] == "passed" and by_title["B"]["status"] == "passed"
