@@ -19,6 +19,11 @@
   "hosted_public_url": null,
   "real_provider_calls": 0,
   "real_oauth_billing_or_order_acceptance": false,
-  "hosted_container_ci": "pending",
+  "hosted_container_ci": {
+    "status": "passed",
+    "run_id": 39191544137,
+    "mode": "synthetic_configuration_real_hosted_containers",
+    "real_provider_calls": 0
+  },
   "pending_gate": "AWS owner creates dedicated stack/OIDC role and supplies private staging OAuth/Stripe sandbox configuration"
 }
