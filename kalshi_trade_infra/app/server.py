@@ -37,6 +37,13 @@ from data_pipeline.common import get_db_conn
 PORT = int(os.getenv("APP_PORT", "8090"))
 HOST = os.getenv("APP_HOST", "127.0.0.1")
 DEV_LOGIN = os.getenv("APP_DEV_LOGIN") == "1"
+# Canonical-host redirect: a top-level GET to any host in APP_REDIRECT_HOSTS (e.g. the old
+# CloudFront URL, or www) is 301'd to APP_CANONICAL_HOST, so old links keep working after the
+# custom-domain cutover. Empty APP_CANONICAL_HOST disables it entirely (the default), so this is
+# inert until the new domain is actually live. /api and /auth are never redirected, so an in-flight
+# request from an already-loaded old-host page still completes.
+CANONICAL_HOST = os.getenv("APP_CANONICAL_HOST", "").strip().lower()
+REDIRECT_HOSTS = {h.strip().lower() for h in os.getenv("APP_REDIRECT_HOSTS", "").split(",") if h.strip()}
 SECURE_COOKIES = os.getenv("APP_INSECURE_COOKIES") != "1"
 STATIC_DIR = Path(__file__).parent / "static"
 MAX_BODY = 8 * 1024 * 1024  # allows a base64 image in a community post
@@ -2038,6 +2045,17 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         if path == "/healthz":
             return self._send_json(200, {"ok": True}, [])
+        # Canonical-host redirect (old CloudFront URL / www -> the custom domain). Inert unless
+        # APP_CANONICAL_HOST is set. Only top-level GETs move, so API/auth calls are never broken.
+        if CANONICAL_HOST and method == "GET" and not path.startswith(("/api/", "/auth/")):
+            host = (self.headers.get("Host") or "").split(":")[0].lower()
+            if host in REDIRECT_HOSTS and host != CANONICAL_HOST:
+                self.send_response(301)
+                self.send_header("Location", "https://" + CANONICAL_HOST + self.path)
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
         if path == "/api/stripe/webhook" and method == "POST":
             return self._stripe_webhook()
         route = next(((fn, m.groups(), needs) for meth, m_, fn, needs in ROUTES
