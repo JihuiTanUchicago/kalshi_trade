@@ -10,7 +10,7 @@ jobs:
   capture:
     runs-on: ubuntu-24.04
     environment: production
-    timeout-minutes: 6
+    timeout-minutes: 25
     steps:
       - name: Check out immutable reviewed operation
         uses: actions/checkout@v4
@@ -36,3 +36,6 @@ jobs:
           path: /tmp/tau-encrypted-source-review/
           retention-days: 3
           if-no-files-found: error
+      - name: Remove any pending encrypted capture
+        if: ${{ always() }}
+        run: python3 kalshi_trade_infra/results/main_production_operations_2026-10-19/capture_source_runner.py --cleanup
