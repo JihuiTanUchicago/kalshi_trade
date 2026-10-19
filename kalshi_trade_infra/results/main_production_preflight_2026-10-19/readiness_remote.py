@@ -154,7 +154,8 @@ def source_diagnostics(manifest, root=ROOT):
             'extra_source_paths':safe_extra,'withheld_extra_path_count':len(extra)-len(safe_extra),
             'verified_metadata_artifacts':artifacts,'research_utility_sha256':retained,
             'unclassified_path_metadata':unclassified,
-            'unclassified_extra_count':len(set(extra)-set(artifacts)-set(retained))}
+            'unclassified_extra_count':len(set(extra)-set(artifacts)-set(retained)),
+            'known_source_hashes':{name:{'sha256':file_hash(root/name),'git_blob':hashlib.sha1(b'blob '+str((root/name).stat().st_size).encode()+b'\0'+(root/name).read_bytes()).hexdigest()} for name in mismatched if not (root/name).is_symlink()}}
 
 def config_module():
     namespace = {'__name__':'paper_runtime_config'}
