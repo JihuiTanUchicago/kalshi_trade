@@ -42,6 +42,10 @@ DEV_LOGIN = os.getenv("APP_DEV_LOGIN") == "1"
 # custom-domain cutover. Empty APP_CANONICAL_HOST disables it entirely (the default), so this is
 # inert until the new domain is actually live. /api and /auth are never redirected, so an in-flight
 # request from an already-loaded old-host page still completes.
+# Open signup: when APP_OPEN_SIGNUP=1, ANY Google account can create a Tau account (no waitlist
+# approval). Default off = invite-only (operator + approved waitlist emails). Spend is still bounded
+# downstream (billing-readiness gate, bounded free credits), and the live-trading gate is untouched.
+OPEN_SIGNUP = os.getenv("APP_OPEN_SIGNUP") == "1"
 CANONICAL_HOST = os.getenv("APP_CANONICAL_HOST", "").strip().lower()
 REDIRECT_HOSTS = {h.strip().lower() for h in os.getenv("APP_REDIRECT_HOSTS", "").split(",") if h.strip()}
 SECURE_COOKIES = os.getenv("APP_INSECURE_COOKIES") != "1"
@@ -147,9 +151,10 @@ def google_callback(ctx: Ctx):
         ident = auth.exchange_code(ctx.query["code"], state["code_verifier"], state["nonce"])
     except auth.AuthError:
         return ("redirect", "/signin?error=google")
-    # Invite-only: only the operator or an approved waitlist email gets a new account.
+    # Account creation gate: open to anyone when APP_OPEN_SIGNUP=1, else invite-only (operator or an
+    # approved waitlist email). Existing users always sign in regardless (upsert finds them).
     email = ident["email"] or ""
-    allow_new = email.lower() == ADMIN_EMAIL.lower() or repo.is_waitlist_approved(ctx.cur, email)
+    allow_new = OPEN_SIGNUP or email.lower() == ADMIN_EMAIL.lower() or repo.is_waitlist_approved(ctx.cur, email)
     user = repo.upsert_google_user(ctx.cur, ident["sub"], email, ident["name"], ident["picture"], allow_new=allow_new)
     if user is None:
         return ("redirect", "/signin?pending=1")  # request recorded; awaiting approval
