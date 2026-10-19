@@ -14,6 +14,8 @@ PLANNED: List[tuple] = [
     ('Autonomous Tau improvement loop runs on a schedule; each round picks one aspect (execution / research rigor / risk / data / ML tooling / UX / engineering) and ships an improvement', ''),
     ('Production-grade execution + risk hardening', ''),
     ('Data infrastructure expansion', ''),
+    ('Blank page on load = slow /api/me', ''),
+    ('Did the finalist get tested?', ''),
     ('Stop the autopilot wasting research runs on bad-fit markets', ''),
     ('Check RDS capacity/network', ''),
     ('Broker OAuth and Databento setup are merged on GitHub main through PR #10 and PR #11', ''),
