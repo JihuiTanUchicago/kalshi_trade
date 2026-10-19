@@ -28,7 +28,7 @@ import math
 import random
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from app import backtest, partitions, quant, stats
 from app import research_repository as rr
@@ -509,7 +509,8 @@ def _latest_classification(cur, experiment_id: int, phase: str) -> Optional[str]
     return rows[-1]["classification"] if rows else None
 
 
-def judge_holdout(cur, experiment_id: int, finalist: dict) -> dict:
+def judge_holdout(cur, experiment_id: int, finalist: dict,
+                  run_load: Optional[Callable[[Callable], Any]] = None) -> dict:
     """ONE-TIME evaluation on the Locked-Holdout. Refuses (raises HoldoutConsumed) unless the
     experiment is already STAT_SUPPORTED, the holdout for this market is not consumed and has
     evaluations left, and this experiment has no prior phase='holdout' result. On success:
@@ -521,7 +522,13 @@ def judge_holdout(cur, experiment_id: int, finalist: dict) -> dict:
     A cross-contract finalist is judged on the MERGED holdout of its legs (each clipped to its own
     frozen window): its market/FDR stream and holdout ledger are keyed by the shared stream key
     (involved markets joined), and the merged partition is frozen the same way validation freezes
-    it. Single-market flow is unchanged."""
+    it. Single-market flow is unchanged.
+
+    `run_load` (optional) runs the holdout dataset load: the caller passes a wrapper that bounds it
+    with a timeout + heartbeat (so a slow RDS fails fast instead of tripping the watchdog). It only
+    affects HOW the load is driven — never which rows are read or any statistic — and defaults to
+    running the loader inline (unchanged behaviour)."""
+    run_load = run_load or (lambda fn: fn())
     spec = finalist.get("spec") or {}
     cross = specmod.is_cross_contract(spec)
     markets = specmod.involved_markets(spec) if cross else None
@@ -547,7 +554,13 @@ def judge_holdout(cur, experiment_id: int, finalist: dict) -> dict:
         raise HoldoutConsumed("holdout consumed for market %r (%s/%s)" % (
             market, ledger["evaluations_used"], ledger["max_evaluations"]))
 
-    hds = partitions.merged_dataset(cur, markets, "holdout") if cross else partitions.holdout_dataset(market, partition)
+    # Resolve the partition(s) on THIS thread (cursor work), then build the dataset off-cursor via
+    # run_load so the optional timeout worker never shares the run cursor.
+    if cross:
+        legs = partitions.merged_partitions(cur, markets)
+        hds = run_load(lambda: partitions.merged_dataset_from(legs, "holdout"))
+    else:
+        hds = run_load(lambda: partitions.holdout_dataset(market, partition))
     trades = backtest.simulate(finalist["spec"], hds, hds.start_ts, hds.end_ts + 1)
     n_trades = len(trades)
     n_trials = _n_trials(cur, user_id, market, including=_judged_trials([finalist]))

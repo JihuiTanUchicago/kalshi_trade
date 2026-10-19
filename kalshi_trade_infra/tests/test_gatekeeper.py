@@ -335,7 +335,8 @@ def test_judge_holdout_cross_runs_on_merged_partition(repo, monkeypatch):
     key = "btc_daily+eth_daily"
     merged = {"id": 9, "holdout_from_ts": 1_500_000, "holdout_to_ts": 2_000_000, "data_fingerprint": "m"}
     monkeypatch.setattr(gk.partitions, "ensure_merged_partition", lambda cur, markets: merged)
-    monkeypatch.setattr(gk.partitions, "merged_dataset", lambda cur, markets, phase: _ds(market=key))
+    monkeypatch.setattr(gk.partitions, "merged_partitions", lambda cur, markets: [(m, {}) for m in markets])
+    monkeypatch.setattr(gk.partitions, "merged_dataset_from", lambda legs, phase: _ds(market=key))
     spec = _cross_spec()
     eid = gk.preregister(None, Prereg(user_id=7, run_id=1, market=key, spec=spec,
                                       economic_rationale="btc-eth basis"))

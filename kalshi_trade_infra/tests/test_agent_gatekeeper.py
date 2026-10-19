@@ -31,8 +31,8 @@ class FakeStore:
         # §E.5 promotion fires for every STAT_SUPPORTED finalist; stub the one-time holdout +
         # diversification gate (exercised for real in test_gatekeeper / test_holdout_promotion).
         monkeypatch.setattr(agent.gatekeeper, "judge_holdout",
-                            lambda cur, eid, fin: {"classification": gatekeeper.Classification.FORWARD_VALIDATED.value,
-                                                   "n_trades": 30, "holdout_consumed": 0})
+                            lambda cur, eid, fin, run_load=None: {"classification": gatekeeper.Classification.FORWARD_VALIDATED.value,
+                                                                  "n_trades": 30, "holdout_consumed": 0})
         monkeypatch.setattr(agent.gatekeeper, "marginal_contribution_ok",
                             lambda cur, uid, eid, fin: (True, "stub"))
         monkeypatch.setattr(agent.backtest, "partition_dataset", lambda market, part, phase: None)

@@ -48,8 +48,8 @@ class Store:
         # diversification gate so these hand-off tests stay off the ledger DB (the promotion
         # itself is covered in test_gatekeeper + test_holdout_promotion).
         monkeypatch.setattr(agent.gatekeeper, "judge_holdout",
-                            lambda cur, eid, fin: {"classification": self._gk.Classification.FORWARD_VALIDATED.value,
-                                                   "n_trades": 20, "holdout_consumed": 0})
+                            lambda cur, eid, fin, run_load=None: {"classification": self._gk.Classification.FORWARD_VALIDATED.value,
+                                                                  "n_trades": 20, "holdout_consumed": 0})
         monkeypatch.setattr(agent.gatekeeper, "marginal_contribution_ok",
                             lambda cur, uid, eid, fin: (True, "stub"))
         monkeypatch.setattr(agent, "_challenge",
@@ -645,6 +645,69 @@ def test_verdict_event_carries_gatekeeper_stats_for_the_feed(monkeypatch):
     # The stats are for the human feed — they must NOT be written into the strategy result that
     # feeds strategy_memory back to the generator (that stays blind to held-out numbers).
     assert all("p_value" not in (s.get("result") or {}) for s in store.strategies)
+
+
+def test_classify_load_error_self_check():
+    agent._classify_self_check()
+
+
+def test_load_passes_through_a_normal_result():
+    # The timeout+classify wrapping must NOT alter a normal successful load.
+    assert agent._load("ok", lambda: "DATASET") == "DATASET"
+    sentinel = object()
+    assert agent._load("ok", lambda a, b: (a, b), sentinel, 2) == (sentinel, 2)
+
+
+def test_load_classifies_no_settled_contracts():
+    # A sports/un-settled market's "no settled contracts" ValueError surfaces as a specific,
+    # market-naming LLMError (not the generic "unexpected error").
+    def boom():
+        raise ValueError("no settled contracts for market 'kxnflgame' since 2024-01-01")
+    with pytest.raises(LLMError) as ei:
+        agent._load("Loading data", boom)
+    assert "kxnflgame" in str(ei.value) and "no settled contracts" in str(ei.value)
+
+
+def test_load_classifies_transient_db_error():
+    # A transient RDS drop (2013) during a load surfaces as the clean, retryable LLMError.
+    def boom():
+        raise _conn_drop()  # pymysql.err.OperationalError(2013, "Lost connection …")
+    with pytest.raises(LLMError) as ei:
+        agent._load("Loading data", boom)
+    assert str(ei.value) == "The data store was busy; please start the session again."
+
+
+def test_load_does_not_swallow_a_genuine_bug():
+    def boom():
+        raise KeyError("missing_key")
+    with pytest.raises(KeyError):
+        agent._load("Loading data", boom)
+
+
+def test_no_settled_contracts_surfaces_a_clean_message_end_to_end(monkeypatch):
+    # Through run_research: a startup load that raises the no-settled-contracts ValueError is
+    # recorded as the specific LLMError (not re-raised, not the generic "unexpected error").
+    store = Store(monkeypatch)
+    model, _ = scripted([plan()])
+    def no_data(m, h=None):
+        raise ValueError("no settled contracts for market 'btc15m' since 2024-01-01")
+    agent.run_research(Conn(), RUN, model=model, dataset_fn=no_data)  # LLMError -> does not re-raise
+    status, error, _, _ = store.finished
+    assert status == "failed"
+    assert "btc15m" in error and "no settled contracts" in error
+
+
+def test_transient_db_drop_in_a_load_surfaces_a_clean_message_end_to_end(monkeypatch):
+    # A transient RDS drop DURING the startup load is relabelled retryable and does not re-raise —
+    # unlike a drop on a non-load call (test_infra_error_still_bills), which still propagates.
+    store = Store(monkeypatch)
+    model, _ = scripted([plan()])
+    def dropped(m, h=None):
+        raise _conn_drop()
+    agent.run_research(Conn(), RUN, model=model, dataset_fn=dropped)
+    status, error, _, _ = store.finished
+    assert status == "failed"
+    assert error == "The data store was busy; please start the session again."
 
 
 def test_adjust_missing_deployment_lists_current_ones_not_a_dead_end(monkeypatch):
