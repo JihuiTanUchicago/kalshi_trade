@@ -782,6 +782,10 @@ def dig_deeper_prompt(strat: Dict) -> str:
 
 
 MAX_ACTIVE_RESEARCH = 2   # mirrors server.MAX_ACTIVE_RESEARCH (not imported, to avoid a cycle)
+# Mirrors server.MAX_RESEARCH_PER_DAY. The manual Research endpoint enforces this per-user daily
+# cap, but the autopilot — the biggest source of research volume — did not, so an operator's cap
+# silently didn't apply where most runs come from. 0 = unlimited (preserves today's behavior).
+MAX_RESEARCH_PER_DAY = int(os.getenv("APP_MAX_RESEARCH_PER_DAY", "0"))
 
 
 def dig_deeper_run(cur, user_id: int, strat: Dict, model: Optional[str] = None,
@@ -2302,6 +2306,10 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
                 return "Tell me the idea to research in a sentence or two.", None
         if repo.count_runs(cur, user_id, "research", active_only=True) >= MAX_ACTIVE_RESEARCH:
             return "You already have a couple of research sessions running — let one finish and I'll start this then.", None
+        if MAX_RESEARCH_PER_DAY and repo.count_runs(
+                cur, user_id, "research", since=repo.now_utc() - timedelta(days=1)) >= MAX_RESEARCH_PER_DAY:
+            return ("You've hit the daily research limit (%d) — it resets over the next 24 hours, "
+                    "and I'll resume then." % MAX_RESEARCH_PER_DAY), None
         if sid:
             dig_deeper_run(cur, user_id, strat)
             return ("Started a new research session digging deeper into “%s”: I'll refine and "
