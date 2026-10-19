@@ -6,6 +6,16 @@ import types
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def _reset_model_cooldown():
+    # The daily-quota cooldown is module-level global state; clear it around every test so a
+    # cooldown set by one fallback test doesn't skip a model in the next.
+    from app import llm as _llm
+    _llm._MODEL_COOLDOWN.clear()
+    yield
+    _llm._MODEL_COOLDOWN.clear()
+
 from app import llm
 
 
@@ -276,3 +286,16 @@ def test_daily_quota_does_not_waste_retries(monkeypatch):
     _wire(monkeypatch, client)
     llm._bedrock("sys", [{"role": "user", "content": "hi"}])
     assert client.calls.count(_OPUS) == 1
+
+
+def test_daily_quota_cooldown_skips_exhausted_model_on_next_call(monkeypatch):
+    # After Opus hits its DAILY quota, the next call should NOT re-attempt Opus (it's cooling down)
+    # — it goes straight to Sonnet, saving the wasted throttled round-trip on every later call.
+    monkeypatch.setattr(llm, "_MODEL_COOLDOWN", {})  # isolate module state
+    client = _PerModelThrottleClient(bad=[_OPUS], daily=True)
+    _wire(monkeypatch, client)
+    llm._bedrock("sys", [{"role": "user", "content": "hi"}])   # 1st: Opus throttles -> Sonnet
+    assert client.calls == [_OPUS, _SONNET]
+    client.calls.clear()
+    llm._bedrock("sys", [{"role": "user", "content": "hi"}])   # 2nd: Opus skipped (cooling) -> Sonnet
+    assert client.calls == [_SONNET]

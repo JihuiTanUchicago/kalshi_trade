@@ -79,6 +79,13 @@ def _is_daily_quota(e) -> bool:
     return "per day" in str(e).lower()
 
 
+# A model that hit its DAILY quota is skipped (not even attempted) for this long, so a sustained
+# per-day exhaustion stops costing a wasted throttled round-trip on every single call. It auto-
+# expires, so the preferred model is retried once the cooldown lapses (and re-cooled if still out).
+_MODEL_COOLDOWN: Dict[str, float] = {}
+_DAILY_COOLDOWN_SEC = max(60, int(os.getenv("TAU_DAILY_QUOTA_COOLDOWN_SEC", "1800")))
+
+
 @dataclass
 class Usage:
     input_tokens: int = 0
@@ -197,13 +204,20 @@ def _bedrock(system: str, messages: List[Dict[str, str]], model: "Optional[str]"
     FALLBACK_ORDER and retry. The chain is rebuilt every call, so once the preferred model's quota
     frees up it is used again automatically. A non-throttle failure propagates unchanged."""
     from app import models_catalog as _catalog  # lazy: avoid an import cycle
-    chain = _catalog.fallback_chain_from(model or BEDROCK_MODEL)
+    full = _catalog.fallback_chain_from(model or BEDROCK_MODEL)
+    # Skip models still in a DAILY-quota cooldown: a per-day cap won't clear for hours, so once a
+    # model trips it we stop paying a wasted round-trip on EVERY later call and go straight to the
+    # next model. If ALL are cooling down, try the full chain anyway (better to attempt than refuse).
+    now = time.monotonic()
+    chain = [m for m in full if _MODEL_COOLDOWN.get(m, 0.0) <= now] or full
     last: "Optional[LLMThrottled]" = None
     for i, mid in enumerate(chain):
         try:
             return _bedrock_once(system, messages, mid, on_delta)
         except LLMThrottled as e:
             last = e
+            if _is_daily_quota(e):
+                _MODEL_COOLDOWN[mid] = time.monotonic() + _DAILY_COOLDOWN_SEC  # auto-expires -> retried later
             if i + 1 < len(chain):
                 print("[llm] %s quota exhausted (%s); falling back to %s" % (mid, e, chain[i + 1]), flush=True)
                 continue
