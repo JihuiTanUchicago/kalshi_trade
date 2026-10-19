@@ -1084,17 +1084,14 @@
     if (S.me) return go('/', true);
     const q = new URLSearchParams(location.search);
     const err = q.get('error');
-    const msg = q.has('pending')
-      ? "You're on the waitlist — we'll email you the moment you're approved. (Access is invite-only right now.)"
-      : { cancelled: 'Sign-in was cancelled.', expired: 'That sign-in link expired. Try again.', google: "Google couldn't confirm your account. We may not have added you to the waitlist yet." }[err];
+    const msg = { cancelled: 'Sign-in was cancelled.', expired: 'That sign-in link expired. Try again.', google: "Google couldn't confirm your account. Please try again." }[err];
     document.body.classList.add('landing-body');
     root.innerHTML = `
       <div class="landing">
         <header class="lnav">
           <a class="lbrand" href="/">${ICON.mark}<span>Tau</span></a>
           <div class="lnav-actions">
-            <a class="pill" href="/auth/google" data-native>Sign in</a>
-            <button class="pill solid" data-action="waitlist-top">Join waitlist</button>
+            <a class="pill solid" href="/auth/google" data-native>Sign in</a>
           </div>
         </header>
         <section class="lhero">
@@ -1104,9 +1101,8 @@
             ${msg ? `<div class="lnotice">${esc(msg)}</div>` : ''}
             <div class="lcta" id="lcta">
               <a class="pill solid lg" href="/auth/google" data-native>${ICON.google}Continue with Google</a>
-              <button class="pill lg" data-action="waitlist-open">Join waitlist</button>
             </div>
-            <p class="lfine">Access is invite-only right now. Join the waitlist and we'll email you when a spot opens. You'll start with $1,000 of paper money; live trading is optional and runs in your own Kalshi account.</p>
+            <p class="lfine">Free to start — you'll get $1,000 of paper money to research and test strategies. Live trading is optional and runs in your own Kalshi account.</p>
           </div>
           <div class="demo" id="demo" aria-hidden="true">
             <div class="demo-bar"><i></i><i></i><i></i><span class="demo-url">tau · research</span>
@@ -1143,52 +1139,13 @@
           </div>
           <footer class="lfoot">
             <a class="lbrand" href="/">${ICON.mark}<span>Tau</span></a>
-            <div class="lfoot-links"><button class="linkish" data-action="waitlist-top">Join waitlist</button><span>Research preview</span><span>© 2026 Tau</span></div>
+            <div class="lfoot-links"><span>Research preview</span><span>© 2026 Tau</span></div>
           </footer>
         </main>
       </div>`;
     startDemo();
     setupScenes();
     root.querySelector('#demo-replay').onclick = startDemo;
-    const dlg = document.createElement('dialog');
-    dlg.className = 'wl-modal';
-    dlg.innerHTML = `
-      <form method="dialog" class="wl-inner" id="wlform">
-        <button class="wl-x" type="button" data-close aria-label="Close">${ICON.cross}</button>
-        <h2>Join the waitlist</h2>
-        <p class="wl-sub">We're opening access to Tau in batches. Leave your email to get an invitation.</p>
-        <label class="field"><span>Email</span>
-          <span class="wl-ifield">${ICON.mail}<input id="wlemail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" required></span></label>
-        <p class="wl-note">We'll email you when your spot is ready. We never share your address.</p>
-        <label class="field"><span>Twitter handle <small>(optional)</small></span>
-          <span class="wl-ifield">${ICON.at}<input id="wlhandle" type="text" autocomplete="off" placeholder="yourhandle"></span></label>
-        <div id="wlhint"></div>
-        <button class="pill solid wl-submit" type="submit">Join waitlist</button>
-      </form>`;
-    root.querySelector('.landing').appendChild(dlg);
-    const openWaitlist = () => {
-      const hint = dlg.querySelector('#wlhint'); hint.innerHTML = '';
-      if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
-      setTimeout(() => dlg.querySelector('#wlemail').focus(), 50);
-    };
-    const close = () => { dlg.open && (dlg.close ? dlg.close() : dlg.removeAttribute('open')); };
-    dlg.querySelector('[data-close]').onclick = close;
-    dlg.addEventListener('click', (e) => { if (e.target === dlg) close(); });  // backdrop click
-    dlg.querySelector('#wlform').onsubmit = async (e) => {
-      e.preventDefault();
-      const email = dlg.querySelector('#wlemail').value.trim();
-      const note = dlg.querySelector('#wlhandle').value.trim();
-      await busy(dlg.querySelector('.wl-submit'), async () => {
-        try {
-          await api('/api/waitlist', { email, note: note ? ('Twitter: ' + note) : '' });
-          dlg.querySelector('.wl-inner').innerHTML = `<button class="wl-x" type="button" data-close aria-label="Close">${ICON.cross}</button>
-            <div class="wl-done">${ICON.check}<h2>You're on the list</h2><p>We'll email <b>${esc(email)}</b> when your spot is ready.</p>
-            <button class="pill solid" type="button" data-close>Done</button></div>`;
-          dlg.querySelectorAll('[data-close]').forEach((b) => (b.onclick = close));
-        } catch (err) { dlg.querySelector('#wlhint').innerHTML = `<p class="wlhint bad">${esc(err.message)}</p>`; }
-      });
-    };
-    root.querySelectorAll('[data-action="waitlist-open"],[data-action="waitlist-top"]').forEach((b) => (b.onclick = openWaitlist));
   }
 
   // The hero demo: an idea is typed, the agent discovers strategies, each is stamped.
