@@ -98,3 +98,20 @@ def catalog_json() -> List[Dict]:
     """The registry for the research-form dropdown (GET /api/models)."""
     return [{"key": m.key, "label": m.label, "provider": m.provider,
              "default": m.key == DEFAULT_KEY} for m in MODELS.values()]
+
+
+# Capability-ordered fallback chain (best -> most-available). When a model's Bedrock quota is
+# exhausted (esp. the daily token cap), the LLM layer drops to the next model here and retries,
+# then naturally recovers to the preferred one once it's free again (the chain is rebuilt per call).
+# Kept to the Claude family: the research/agent prompts and their strict JSON replies are tuned for
+# Claude, so a non-Claude fallback would trade one failure mode (throttle) for another (bad output).
+FALLBACK_ORDER: List[str] = ["opus-4-5", "sonnet-4-5", "haiku-4-5"]
+
+
+def fallback_chain_from(model_id: str) -> List[str]:
+    """The invokable modelIds to try in order, starting at `model_id`: itself, then each lower-tier
+    model in FALLBACK_ORDER. A model_id outside the chain yields just [model_id] (no fallback)."""
+    key = next((m.key for m in MODELS.values() if m.model_id == model_id), None)
+    if key not in FALLBACK_ORDER:
+        return [model_id]
+    return [MODELS[k].model_id for k in FALLBACK_ORDER[FALLBACK_ORDER.index(key):]]

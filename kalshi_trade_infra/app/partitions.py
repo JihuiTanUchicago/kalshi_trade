@@ -108,14 +108,28 @@ def _merged_boundaries(legs: List[Dict]) -> Dict:
     }
 
 
+def merged_partitions(cur, markets: List[str]) -> List:
+    """Resolve (freeze/read) each leg's frozen partition. This is the ONLY cursor work the merged
+    load needs, so a caller can run it on its own thread and then build the dataset off-cursor
+    (merged_dataset_from) inside a fail-fast timeout thread without ever sharing the run cursor."""
+    return [(m, ensure_partition(cur, m)) for m in sorted(set(markets))]
+
+
+def merged_dataset_from(legs: List, phase: str):
+    """Build the merged dataset from PRE-RESOLVED legs (from merged_partitions). Touches NO caller
+    cursor — each leg loads its own frozen window on its own connection — so it is safe to run
+    inside _call_with_timeout's worker thread. Same union/key as merged_dataset."""
+    loaders = {"research": research_dataset, "validation": validation_dataset, "holdout": holdout_dataset}
+    dses = [loaders[phase](m, p) for m, p in legs]
+    return backtest.merge_datasets(dses, key="+".join(m for m, _ in legs))
+
+
 def merged_dataset(cur, markets: List[str], phase: str):
     """The merged Research/Validation/Holdout dataset for a cross-contract spec: each leg loaded
     from its OWN frozen partition window ('research'|'validation'|'holdout') and unioned frame-by-
     frame via backtest.merge_datasets. The combined market key is the FDR stream key, so the
     gatekeeper spends a cross pair from one shared stream (RESEARCH_PIPELINE_DESIGN §E.6)."""
-    loaders = {"research": research_dataset, "validation": validation_dataset, "holdout": holdout_dataset}
-    dses = [loaders[phase](m, ensure_partition(cur, m)) for m in sorted(set(markets))]
-    return backtest.merge_datasets(dses, key="+".join(sorted(set(markets))))
+    return merged_dataset_from(merged_partitions(cur, markets), phase)
 
 
 # -- spot (continuous-price) partitions ----------------------------------------

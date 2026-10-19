@@ -76,7 +76,7 @@ put actual API keys into an example file. Shared market-data keys cannot trade
 on behalf of individual users. Existing OAuth configuration is still required:
 
 ```dotenv
-APP_PUBLIC_URL=https://d1gfpzcosqrjya.cloudfront.net
+APP_PUBLIC_URL=https://tau-trading.com
 ALPACA_OAUTH_CLIENT_ID=<private OAuth app client ID>
 ALPACA_OAUTH_CLIENT_SECRET=<private OAuth app secret>
 TAU_ALPACA_PAPER_ENABLED=1
@@ -91,8 +91,8 @@ spending and Exa quotas. Turning submission off still allows existing order
 cancellation/status recovery while the corresponding grant remains valid.
 
 The callback stays
-`https://d1gfpzcosqrjya.cloudfront.net/auth/brokers/alpaca/callback`.
-No new callback or shared broker account is needed.
+`https://tau-trading.com/auth/brokers/alpaca/callback`.
+Register that exact HTTPS callback in the Alpaca OAuth app. If its allowlist still contains only the former CloudFront address, add the canonical-domain callback before connecting. Existing shared market-data keys cannot authorize a user account.
 
 Run the configuration check in the intended injected environment:
 

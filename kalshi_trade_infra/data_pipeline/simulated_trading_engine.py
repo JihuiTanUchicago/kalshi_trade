@@ -450,6 +450,13 @@ def _record_tick_snapshot(cur, now_ts: datetime, feature_minute, frozen_models: 
     )
 
 
+def _is_conn_lost(e) -> bool:
+    """True for a dropped/timed-out MySQL connection (errno 2006/2013) — the transient RDS/network
+    failure the engine should recover from by reconnecting, not by crashing (mirrors the live engine)."""
+    code = (getattr(e, "args", None) or [None])[0]
+    return code in (2006, 2013) or "Lost connection" in str(e) or "gone away" in str(e)
+
+
 def run_loop() -> None:
     conn = get_db_conn()
     cur = conn.cursor()
@@ -525,8 +532,18 @@ def run_loop() -> None:
             _record_tick_snapshot(cur, now_ts, feature_minute, frozen_models)
         except Exception as e:
             print(f"sim trading error at {now_ts.isoformat()}: {e}")
-            # Re-raise so the outer loop tears down this connection/cursor and
-            # acquires a fresh one, instead of retrying forever on a dead connection.
+            if _is_conn_lost(e):
+                # Transient DB connection drop: reconnect IN PLACE and continue to the next cycle
+                # instead of crashing the process (which refits the frozen models from scratch).
+                # The aborted cycle is not retried; next minute re-evaluates from fresh state.
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                conn = get_db_conn()
+                cur = conn.cursor()
+                continue
+            # Any non-connection error still tears down + restarts (unchanged recovery).
             raise
 
 

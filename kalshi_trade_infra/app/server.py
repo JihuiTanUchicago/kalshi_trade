@@ -37,6 +37,9 @@ from data_pipeline.common import get_db_conn
 PORT = int(os.getenv("APP_PORT", "8090"))
 HOST = os.getenv("APP_HOST", "127.0.0.1")
 DEV_LOGIN = os.getenv("APP_DEV_LOGIN") == "1"
+OPEN_SIGNUP = os.getenv("APP_OPEN_SIGNUP") == "1"
+CANONICAL_HOST = os.getenv("APP_CANONICAL_HOST", "").strip().lower()
+REDIRECT_HOSTS = {h.strip().lower() for h in os.getenv("APP_REDIRECT_HOSTS", "").split(",") if h.strip()}
 SECURE_COOKIES = os.getenv("APP_INSECURE_COOKIES") != "1"
 STATIC_DIR = Path(__file__).parent / "static"
 MAX_BODY = 8 * 1024 * 1024  # allows a base64 image in a community post
@@ -140,9 +143,9 @@ def google_callback(ctx: Ctx):
         ident = auth.exchange_code(ctx.query["code"], state["code_verifier"], state["nonce"])
     except auth.AuthError:
         return ("redirect", "/signin?error=google")
-    # Invite-only: only the operator or an approved waitlist email gets a new account.
+    # Preserve the production signup flag; absent/false remains invite-only.
     email = ident["email"] or ""
-    allow_new = email.lower() == ADMIN_EMAIL.lower() or repo.is_waitlist_approved(ctx.cur, email)
+    allow_new = OPEN_SIGNUP or email.lower() == ADMIN_EMAIL.lower() or repo.is_waitlist_approved(ctx.cur, email)
     user = repo.upsert_google_user(ctx.cur, ident["sub"], email, ident["name"], ident["picture"], allow_new=allow_new)
     if user is None:
         return ("redirect", "/signin?pending=1")  # request recorded; awaiting approval
@@ -1042,7 +1045,19 @@ def autopilot_status(ctx: Ctx):
         "daily_loss_limit": limit,
         "loss_headroom": round(max(0.0, limit + min(0.0, today_live)), 2),  # how much loss budget is left today
         "last_action": repo.last_autopilot_action(cur, ctx.uid),
+        "last_review_at": repo.last_review_at(cur, ctx.uid),
+        "model": u.get("autopilot_model") or catalog.DEFAULT_KEY,
     }
+
+
+def autopilot_model(ctx: Ctx):
+    """Pick the model the autopilot's own research/review/chat runs use (manual runs still choose
+    per-run). Validated against the catalog; empty/unknown clears back to the catalog default."""
+    key = (ctx.body.get("model") or "").strip() or None
+    if key is not None and catalog.get(key) is None:
+        raise ApiError(400, "Unknown model.")
+    repo.set_autopilot_model(ctx.cur, ctx.uid, key)
+    return {"ok": True, "model": key or catalog.DEFAULT_KEY}
 
 
 # -- funds -------------------------------------------------------------------------
@@ -1899,6 +1914,7 @@ ROUTES: List[Route] = [
         ("POST", "/api/settings", settings, True),
         ("POST", "/api/autopilot/live", autopilot_live, True),
         ("POST", "/api/autopilot/kill", autopilot_kill, True),
+        ("POST", "/api/autopilot/model", autopilot_model, True),
         ("GET", "/api/autopilot/status", autopilot_status, True),
         ("GET", "/api/community", community, True),
         ("POST", "/api/community", create_community_post, True),
@@ -2057,6 +2073,17 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         if path == "/healthz":
             return self._send_json(200, {"ok": True}, [])
+        # Canonical-host redirect (old CloudFront URL / www -> the custom domain). Inert unless
+        # APP_CANONICAL_HOST is set. Only top-level GETs move, so API/auth calls are never broken.
+        if CANONICAL_HOST and method == "GET" and not path.startswith(("/api/", "/auth/")):
+            host = (self.headers.get("Host") or "").split(":")[0].lower()
+            if host in REDIRECT_HOSTS and host != CANONICAL_HOST:
+                self.send_response(301)
+                self.send_header("Location", "https://" + CANONICAL_HOST + self.path)
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
         if path == "/api/stripe/webhook" and method == "POST":
             return self._stripe_webhook()
         route = next(((fn, m.groups(), needs) for meth, m_, fn, needs in ROUTES
