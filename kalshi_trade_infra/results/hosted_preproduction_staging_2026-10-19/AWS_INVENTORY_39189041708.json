@@ -1,0 +1,54 @@
+{
+  "run_id": 39189041708,
+  "run_url": "https://github.com/JihuiTanUchicago/kalshi_trade/actions/runs/39189041708",
+  "exact_head": "bb05e0d3aaabda9e84a081d4d7d726d554880cd8",
+  "inventory": {
+    "schema": "tau.hosted_staging_inventory.v1",
+    "mode": "read_only_control_plane",
+    "region": "us-east-1",
+    "resource_creation_requested": false,
+    "production_commands_sent": false,
+    "provider_calls": 0,
+    "credentials_or_identity_retained": false,
+    "checks": {
+      "identity": {
+        "status": "passed",
+        "expected_account_matches": true
+      },
+      "staging_instances": {
+        "status": "unavailable",
+        "code": "UnauthorizedOperation"
+      },
+      "default_vpc": {
+        "status": "unavailable",
+        "code": "UnauthorizedOperation"
+      },
+      "default_subnets": {
+        "status": "unavailable",
+        "code": "UnauthorizedOperation"
+      },
+      "staging_stack": {
+        "status": "unavailable",
+        "code": "AccessDenied"
+      },
+      "staging_distributions": {
+        "status": "unavailable",
+        "code": "AccessDenied"
+      }
+    },
+    "permission_simulation": {
+      "status": "unavailable",
+      "code": "AccessDenied"
+    },
+    "hosted_staging_ready": false,
+    "status": "blocked",
+    "pending_gate": "staging_inventory_permissions",
+    "unavailable_inventory_checks": [
+      "staging_instances",
+      "default_vpc",
+      "default_subnets",
+      "staging_stack",
+      "staging_distributions"
+    ]
+  }
+}

@@ -1,0 +1,41 @@
+name: Check hosted staging containers
+
+on:
+  pull_request:
+    paths:
+      - 'kalshi_trade_infra/app/**'
+      - 'kalshi_trade_infra/data_pipeline/**'
+      - 'kalshi_trade_infra/requirements.txt'
+      - 'kalshi_trade_infra/staging/hosted/**'
+      - '.github/workflows/hosted-staging-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'kalshi_trade_infra/app/**'
+      - 'kalshi_trade_infra/data_pipeline/**'
+      - 'kalshi_trade_infra/requirements.txt'
+      - 'kalshi_trade_infra/staging/hosted/**'
+      - '.github/workflows/hosted-staging-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-hosted-profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check actual containers with synthetic configuration only
+        run: python3 kalshi_trade_infra/staging/hosted/check_container.py
+      - name: Save projected fixture receipt only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hosted-container-check-${{ github.run_id }}
+          path: hosted-container-check.json
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,0 +1,29 @@
+{
+  "recorded_at": "2026-10-19T10:45:34.278894+08:00",
+  "status": "prepared_offline_verified_awaiting_aws_owner",
+  "base_main": "1bf2b13e8d8b277dcc6ddf4bd0a71123c18ab65c",
+  "python_passed": 1766,
+  "python_skipped": 10,
+  "focused_checks": 121,
+  "command": "python -m pytest tests/ -q",
+  "independent_prepared_implementation_review": "no_remaining_blocker",
+  "cloudformation_lint": {
+    "tool": "cfn-lint",
+    "version": "1.57.2",
+    "region": "us-east-1",
+    "exit_code": 0,
+    "warnings": 0
+  },
+  "production_runtime_and_deploy_workflow_unchanged": true,
+  "new_aws_resources_created": false,
+  "hosted_public_url": null,
+  "real_provider_calls": 0,
+  "real_oauth_billing_or_order_acceptance": false,
+  "hosted_container_ci": {
+    "status": "passed",
+    "run_id": 39191544137,
+    "mode": "synthetic_configuration_real_hosted_containers",
+    "real_provider_calls": 0
+  },
+  "pending_gate": "AWS owner creates dedicated stack/OIDC role and supplies private staging OAuth/Stripe sandbox configuration"
+}

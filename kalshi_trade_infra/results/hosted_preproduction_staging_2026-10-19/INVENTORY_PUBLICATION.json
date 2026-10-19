@@ -1,0 +1,17 @@
+{
+  "status": "published_for_read_only_inventory",
+  "base": "1bf2b13e8d8b277dcc6ddf4bd0a71123c18ab65c",
+  "branch": "codex/hosted-staging-inventory-20261019",
+  "head": "bb05e0d3aaabda9e84a081d4d7d726d554880cd8",
+  "tree": "26573478836dbf7f2276eee11909c960f2b0d007",
+  "operations_only_do_not_merge": true,
+  "python_passed": 1652,
+  "python_skipped": 10,
+  "production_changed": false,
+  "provisioning_requested": false,
+  "file_sha256": {
+    ".github/workflows/deploy.yml": "c7fe6deddfce5e2a4bdbf5cbcd0ec5cdb06c7988bd60790a2b4d4d4051447afb",
+    "kalshi_trade_infra/staging/hosted_inventory.py": "ce2fd68ebc46aa6726d2725483f531038c30b6c2307f04955fad7dc34002c125",
+    "kalshi_trade_infra/tests/test_hosted_staging_inventory.py": "f9d458617f9e0c84a761f086876ce27e188f1e2980a1864eb9f9ba1a4ddf55ed"
+  }
+}

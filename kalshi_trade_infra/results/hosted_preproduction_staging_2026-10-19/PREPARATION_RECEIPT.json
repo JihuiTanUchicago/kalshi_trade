@@ -1,0 +1,33 @@
+{
+  "recorded_at": "2026-10-19T10:51:47.041995+08:00",
+  "status": "prepared_verified_awaiting_aws_owner",
+  "pr": "https://github.com/JihuiTanUchicago/kalshi_trade/pull/15",
+  "source_head": "2eb35fb2886c0ff7b0adbc42df8748ce99615228",
+  "source_tree": "a6d75303a9318b0407415236045ea3646ec64cec",
+  "python_passed": 1766,
+  "python_skipped": 10,
+  "focused_checks": 121,
+  "ci": {
+    "run_id": 39191544143,
+    "conclusion": "success"
+  },
+  "hosted_container_check": {
+    "run_id": 39191544137,
+    "conclusion": "success",
+    "cleanup_passed": true
+  },
+  "offline_container_check": {
+    "run_id": 39191544140,
+    "conclusion": "success",
+    "checks_passed": 14
+  },
+  "aws_staging_role_variable_configured": false,
+  "aws_resources_created_by_this_work": false,
+  "production_commands_or_changes_by_this_work": false,
+  "real_provider_calls": 0,
+  "public_hosted_url": null,
+  "actual_google_alpaca_billing_or_order_accepted": false,
+  "required_next_action": "AWS owner applies staging bootstrap, sets AWS_STAGING_ROLE_ARN and private OAuth/Stripe sandbox runtime; then deploy and conduct genuine tester consent",
+  "no_research_worker_or_engine_added": true,
+  "graceful_production_worker_rollout_implemented": false
+}

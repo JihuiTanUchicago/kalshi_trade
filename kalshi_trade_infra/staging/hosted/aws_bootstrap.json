@@ -1,0 +1,1286 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "OWNER-APPLIED new Tau staging infrastructure only. Includes recurring EC2/EBS/NAT Gateway/public IPv4/KMS/CloudFront/S3 costs. No production imports, peering, credentials, workers or deployment rights. Data EBS, its CMK, artifact bucket and any newly-created OIDC provider are retained.",
+  "Metadata": {
+    "TauScope": {
+      "StackName": "tau-preproduction-staging",
+      "Region": "us-east-1",
+      "GitHubRepository": "JihuiTanUchicago/kalshi_trade",
+      "GitHubEnvironment": "staging",
+      "NoProductionAccess": true,
+      "PricingReferences": [
+        "https://aws.amazon.com/vpc/pricing/",
+        "https://aws.amazon.com/ec2/pricing/on-demand/",
+        "https://aws.amazon.com/ebs/pricing/",
+        "https://aws.amazon.com/cloudfront/pricing/",
+        "https://aws.amazon.com/kms/pricing/",
+        "https://aws.amazon.com/s3/pricing/"
+      ],
+      "TopologyReference": "https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-vpc-origins.html"
+    }
+  },
+  "Parameters": {
+    "AvailabilityZone": {
+      "Type": "AWS::EC2::AvailabilityZone::Name",
+      "Description": "Owner helper chooses an available us-east-1 AZ whose stable AZID is not use1-az3 (unsupported by CloudFront VPC origins)."
+    },
+    "CloudFrontOriginFacingPrefixListId": {
+      "Type": "String",
+      "AllowedPattern": "pl-[a-f0-9]+",
+      "Description": "AWS-owned com.amazonaws.global.cloudfront.origin-facing IPv4 list in us-east-1; helper discovers it."
+    },
+    "UbuntuAmi": {
+      "Type": "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>",
+      "Default": "/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id",
+      "Description": "Canonical Ubuntu24.04 amd64 public SSM AMI parameter; current value resolved by CloudFormation."
+    },
+    "ExistingGitHubOidcProviderArn": {
+      "Type": "String",
+      "Default": "",
+      "AllowedPattern": "^$|^arn:aws:iam::[0-9]{12}:oidc-provider/token\\.actions\\.githubusercontent\\.com$",
+      "Description": "Reuse the existing same-account GitHub OIDC provider; helper creates a new provider only after NoSuchEntity."
+    }
+  },
+  "Rules": {
+    "OnlyApprovedRegion": {
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Equals": [
+              {
+                "Ref": "AWS::Region"
+              },
+              "us-east-1"
+            ]
+          },
+          "AssertDescription": "This reviewed staging bootstrap supports us-east-1 only."
+        }
+      ]
+    },
+    "OnlyApprovedTauAccount": {
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Equals": [
+              {
+                "Ref": "AWS::AccountId"
+              },
+              "568386354218"
+            ]
+          },
+          "AssertDescription": "Apply this bootstrap only in the existing approved Tau AWS account."
+        }
+      ]
+    }
+  },
+  "Conditions": {
+    "CreateGitHubOidcProvider": {
+      "Fn::Equals": [
+        {
+          "Ref": "ExistingGitHubOidcProviderArn"
+        },
+        ""
+      ]
+    }
+  },
+  "Resources": {
+    "Vpc": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "10.243.0.0/16",
+        "EnableDnsSupport": true,
+        "EnableDnsHostnames": true,
+        "Tags": [
+          {
+            "Key": "TauEnvironment",
+            "Value": "staging"
+          },
+          {
+            "Key": "TauProduct",
+            "Value": "Tau"
+          },
+          {
+            "Key": "TauManagedBy",
+            "Value": "owner-bootstrap"
+          },
+          {
+            "Key": "Name",
+            "Value": "tau-staging-vpc"
+          }
+        ]
+      }
+    },
+    "InternetGateway": {
+      "Type": "AWS::EC2::InternetGateway",
+      "Properties": {
+        "Tags": [
+          {
+            "Key": "TauEnvironment",
+            "Value": "staging"
+          },
+          {
+            "Key": "TauProduct",
+            "Value": "Tau"
+          },
+          {
+            "Key": "TauManagedBy",
+            "Value": "owner-bootstrap"
+          },
+          {
+            "Key": "Name",
+            "Value": "tau-staging-egress"
+          }
+        ]
+      }
+    },
+    "InternetGatewayAttachment": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "InternetGatewayId": {
+          "Ref": "InternetGateway"
+        }
+      }
+    },
+    "PublicEgressSubnet": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "AvailabilityZone": {
+          "Ref": "AvailabilityZone"
+        },
+        "CidrBlock": "10.243.0.0/24",
+        "MapPublicIpOnLaunch": false,
+        "Tags": [
+          {
+            "Key": "TauEnvironment",
+            "Value": "staging"
+          },
+          {
+            "Key": "TauProduct",
+            "Value": "Tau"
+          },
+          {
+            "Key": "TauManagedBy",
+            "Value": "owner-bootstrap"
+          },
+          {
+            "Key": "Name",
+            "Value": "tau-staging-nat-only"
+          }
+        ]
+      }
+    },
+    "PrivateAppSubnet": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "AvailabilityZone": {
+          "Ref": "AvailabilityZone"
+        },
+        "CidrBlock": "10.243.1.0/24",
+        "MapPublicIpOnLaunch": false,
+        "Tags": [
+          {
+            "Key": "TauEnvironment",
+            "Value": "staging"
+          },
+          {
+            "Key": "TauProduct",
+            "Value": "Tau"
+          },
+          {
+            "Key": "TauManagedBy",
+            "Value": "owner-bootstrap"
+          },
+          {
+            "Key": "Name",
+            "Value": "tau-staging-private-app"
+          }
+        ]
+      }
+    },
+    "PublicRouteTable": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "Tags": [
+          {
+            "Key": "TauEnvironment",
+            "Value": "staging"
+          },
+          {
+            "Key": "TauProduct",
+            "Value": "Tau"
+          },
+          {
+            "Key": "TauManagedBy",
+            "Value": "owner-bootstrap"
+          },
+          {
+            "Key": "Name",
+            "Value": "tau-staging-egress-routes"
+          }
+        ]
+      }
+    },
+    "PrivateRouteTable": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "Tags": [
+          {
+            "Key": "TauEnvironment",
+            "Value": "staging"
+          },
+          {
+            "Key": "TauProduct",
+            "Value": "Tau"
+          },
+          {
+            "Key": "TauManagedBy",
+            "Value": "owner-bootstrap"
+          },
+          {
+            "Key": "Name",
+            "Value": "tau-staging-private-routes"
+          }
+        ]
+      }
+    },
+    "PublicRouteAssociation": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "PublicRouteTable"
+        },
+        "SubnetId": {
+          "Ref": "PublicEgressSubnet"
+        }
+      }
+    },
+    "PrivateRouteAssociation": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "PrivateRouteTable"
+        },
+        "SubnetId": {
+          "Ref": "PrivateAppSubnet"
+        }
+      }
+    },
+    "PublicDefaultRoute": {
+      "Type": "AWS::EC2::Route",
+      "DependsOn": "InternetGatewayAttachment",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "PublicRouteTable"
+        },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "GatewayId": {
+          "Ref": "InternetGateway"
+        }
+      }
+    },
+    "NatAddress": {
+      "Type": "AWS::EC2::EIP",
+      "DependsOn": "InternetGatewayAttachment",
+      "Properties": {
+        "Domain": "vpc",
+        "Tags": [
+          {
+            "Key": "TauEnvironment",
+            "Value": "staging"
+          },
+          {
+            "Key": "TauProduct",
+            "Value": "Tau"
+          },
+          {
+            "Key": "TauManagedBy",
+            "Value": "owner-bootstrap"
+          },
+          {
+            "Key": "Name",
+            "Value": "tau-staging-nat-address"
+          }
+        ]
+      }
+    },
+    "NatGateway": {
+      "Type": "AWS::EC2::NatGateway",
+      "DependsOn": "PublicDefaultRoute",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "PublicEgressSubnet"
+        },
+        "AllocationId": {
+          "Fn::GetAtt": [
+            "NatAddress",
+            "AllocationId"
+          ]
+        },
+        "ConnectivityType": "public",
+        "Tags": [
+          {
+            "Key": "TauEnvironment",
+            "Value": "staging"
+          },
+          {
+            "Key": "TauProduct",
+            "Value": "Tau"
+          },
+          {
+            "Key": "TauManagedBy",
+            "Value": "owner-bootstrap"
+          },
+          {
+            "Key": "Name",
+            "Value": "tau-staging-managed-nat"
+          }
+        ]
+      }
+    },
+    "PrivateDefaultRoute": {
+      "Type": "AWS::EC2::Route",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "PrivateRouteTable"
+        },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "NatGatewayId": {
+          "Ref": "NatGateway"
+        }
+      }
+    },
+    "StagingSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Stage-only private HTTP from CloudFront; no public ingress or SSH",
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 80,
+            "ToPort": 80,
+            "SourcePrefixListId": {
+              "Ref": "CloudFrontOriginFacingPrefixListId"
+            },
+            "Description": "AWS CloudFront managed origin-facing prefix list only"
+          }
+        ],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "-1",
+            "CidrIp": "0.0.0.0/0",
+            "Description": "Outbound via dedicated staging NAT only"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "TauEnvironment",
+            "Value": "staging"
+          },
+          {
+            "Key": "TauProduct",
+            "Value": "Tau"
+          },
+          {
+            "Key": "TauManagedBy",
+            "Value": "owner-bootstrap"
+          },
+          {
+            "Key": "Name",
+            "Value": "tau-staging-private-origin"
+          }
+        ]
+      }
+    },
+    "StagingArtifactBucket": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "IgnorePublicAcls": true,
+          "BlockPublicPolicy": true,
+          "RestrictPublicBuckets": true
+        },
+        "OwnershipControls": {
+          "Rules": [
+            {
+              "ObjectOwnership": "BucketOwnerEnforced"
+            }
+          ]
+        },
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "VersioningConfiguration": {
+          "Status": "Enabled"
+        },
+        "LifecycleConfiguration": {
+          "Rules": [
+            {
+              "Id": "StageReleaseRetention",
+              "Status": "Enabled",
+              "Prefix": "releases/",
+              "ExpirationInDays": 30,
+              "NoncurrentVersionExpiration": {
+                "NoncurrentDays": 7
+              },
+              "AbortIncompleteMultipartUpload": {
+                "DaysAfterInitiation": 1
+              }
+            }
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "TauEnvironment",
+            "Value": "staging"
+          },
+          {
+            "Key": "TauProduct",
+            "Value": "Tau"
+          },
+          {
+            "Key": "TauManagedBy",
+            "Value": "owner-bootstrap"
+          }
+        ]
+      }
+    },
+    "StagingBucketPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": {
+          "Ref": "StagingArtifactBucket"
+        },
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "DenyPlaintext",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "s3:*",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "StagingArtifactBucket",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::Sub": "${StagingArtifactBucket.Arn}/*"
+                }
+              ],
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "StagingRuntimeKmsKey": {
+      "Type": "AWS::KMS::Key",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "Description": "Tau staging runtime and retained data disk only; retained on stack deletion",
+        "EnableKeyRotation": true,
+        "PendingWindowInDays": 30,
+        "KeyPolicy": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "OwnerAccountAdministration",
+              "Effect": "Allow",
+              "Action": "kms:*",
+              "Resource": "*",
+              "Principal": {
+                "AWS": {
+                  "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+                }
+              }
+            }
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "TauEnvironment",
+            "Value": "staging"
+          },
+          {
+            "Key": "TauProduct",
+            "Value": "Tau"
+          },
+          {
+            "Key": "TauManagedBy",
+            "Value": "owner-bootstrap"
+          }
+        ]
+      }
+    },
+    "StagingRuntimeKmsAlias": {
+      "Type": "AWS::KMS::Alias",
+      "Properties": {
+        "AliasName": "alias/tau/staging/hosted-runtime",
+        "TargetKeyId": {
+          "Ref": "StagingRuntimeKmsKey"
+        }
+      }
+    },
+    "StagingDataVolume": {
+      "Type": "AWS::EC2::Volume",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "AvailabilityZone": {
+          "Ref": "AvailabilityZone"
+        },
+        "Encrypted": true,
+        "KmsKeyId": {
+          "Fn::GetAtt": [
+            "StagingRuntimeKmsKey",
+            "Arn"
+          ]
+        },
+        "Size": 40,
+        "VolumeType": "gp3",
+        "Tags": [
+          {
+            "Key": "TauEnvironment",
+            "Value": "staging"
+          },
+          {
+            "Key": "TauProduct",
+            "Value": "Tau"
+          },
+          {
+            "Key": "TauManagedBy",
+            "Value": "owner-bootstrap"
+          },
+          {
+            "Key": "Name",
+            "Value": "tau-staging-retained-data"
+          }
+        ]
+      }
+    },
+    "StagingInstanceRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": "sts:AssumeRole",
+              "Principal": {
+                "Service": "ec2.amazonaws.com"
+              }
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "StageHostOnly",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "SsmAgentHeartbeat",
+                  "Effect": "Allow",
+                  "Action": [
+                    "ssm:UpdateInstanceInformation"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Sid": "SsmAgentChannels",
+                  "Effect": "Allow",
+                  "Action": [
+                    "ssmmessages:CreateControlChannel",
+                    "ssmmessages:CreateDataChannel",
+                    "ssmmessages:OpenControlChannel",
+                    "ssmmessages:OpenDataChannel"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Sid": "SsmAgentLegacyChannels",
+                  "Effect": "Allow",
+                  "Action": [
+                    "ec2messages:AcknowledgeMessage",
+                    "ec2messages:DeleteMessage",
+                    "ec2messages:FailMessage",
+                    "ec2messages:GetEndpoint",
+                    "ec2messages:GetMessages",
+                    "ec2messages:SendReply"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Sid": "ReadOwnRelease",
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:GetObject"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "${StagingArtifactBucket.Arn}/releases/*"
+                  }
+                },
+                {
+                  "Sid": "ReadOwnRuntime",
+                  "Effect": "Allow",
+                  "Action": [
+                    "ssm:GetParameter"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/tau/staging/hosted-runtime"
+                  }
+                },
+                {
+                  "Sid": "DecryptOwnRuntime",
+                  "Effect": "Allow",
+                  "Action": [
+                    "kms:Decrypt"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "StagingRuntimeKmsKey",
+                      "Arn"
+                    ]
+                  },
+                  "Condition": {
+                    "StringEquals": {
+                      "kms:ViaService": {
+                        "Fn::Sub": "ssm.${AWS::Region}.amazonaws.com"
+                      },
+                      "kms:EncryptionContext:PARAMETER_ARN": {
+                        "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/tau/staging/hosted-runtime"
+                      }
+                    }
+                  }
+                },
+                {
+                  "Sid": "WriteOwnDeploymentReceipts",
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:PutObject"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "${StagingArtifactBucket.Arn}/receipts/*"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "TauEnvironment",
+            "Value": "staging"
+          },
+          {
+            "Key": "TauProduct",
+            "Value": "Tau"
+          },
+          {
+            "Key": "TauManagedBy",
+            "Value": "owner-bootstrap"
+          }
+        ]
+      }
+    },
+    "StagingInstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Roles": [
+          {
+            "Ref": "StagingInstanceRole"
+          }
+        ]
+      }
+    },
+    "StagingInstance": {
+      "Type": "AWS::EC2::Instance",
+      "DependsOn": [
+        "PrivateDefaultRoute",
+        "PrivateRouteAssociation"
+      ],
+      "Properties": {
+        "ImageId": {
+          "Ref": "UbuntuAmi"
+        },
+        "InstanceType": "t3.medium",
+        "CreditSpecification": {
+          "CPUCredits": "standard"
+        },
+        "AvailabilityZone": {
+          "Ref": "AvailabilityZone"
+        },
+        "IamInstanceProfile": {
+          "Ref": "StagingInstanceProfile"
+        },
+        "NetworkInterfaces": [
+          {
+            "DeviceIndex": "0",
+            "AssociatePublicIpAddress": false,
+            "SubnetId": {
+              "Ref": "PrivateAppSubnet"
+            },
+            "GroupSet": [
+              {
+                "Ref": "StagingSecurityGroup"
+              }
+            ]
+          }
+        ],
+        "MetadataOptions": {
+          "HttpTokens": "required",
+          "HttpPutResponseHopLimit": 1,
+          "HttpEndpoint": "enabled",
+          "InstanceMetadataTags": "disabled"
+        },
+        "BlockDeviceMappings": [
+          {
+            "DeviceName": "/dev/sda1",
+            "Ebs": {
+              "Encrypted": true,
+              "DeleteOnTermination": true,
+              "VolumeSize": 16,
+              "VolumeType": "gp3"
+            }
+          }
+        ],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Sub": "#!/bin/bash\nset -euo pipefail\numask 077\nexport DEBIAN_FRONTEND=noninteractive\napt-get update\napt-get install -y docker.io docker-compose-v2 nginx python3 python3-venv curl unzip ca-certificates jq\n# The separate, stack-owned EBS ID is the only device this bootstrap may format.\nexpected_serial=\"$(printf '%s' '${StagingDataVolume}' | tr -d '-')\"\nstage_device=''\nfor attempt in $(seq 1 120); do\n  for sysdisk in /sys/block/nvme*n1; do\n    test -r \"$sysdisk/device/serial\" || continue\n    serial=\"$(tr -d '[:space:]' < \"$sysdisk/device/serial\")\"\n    if test \"$serial\" = \"$expected_serial\"; then\n      stage_device=\"/dev/$(basename \"$sysdisk\")\"\n      break\n    fi\n  done\n  test -z \"$stage_device\" || break\n  sleep 2\ndone\ntest -b \"$stage_device\"\ntest \"$(lsblk -dn -o TYPE \"$stage_device\")\" = disk\nif test \"$(lsblk -nr -o NAME \"$stage_device\" | wc -l)\" -ne 1; then\n  exit 31\nfi\nstage_fstype=\"$(blkid -o value -s TYPE \"$stage_device\" || true)\"\nif test -z \"$stage_fstype\"; then\n  test \"$(wipefs --json \"$stage_device\" | jq '.signatures | length')\" -eq 0\n  mkfs.ext4 -F -L tau-staging-data \"$stage_device\"\nelif test \"$stage_fstype\" != ext4; then\n  exit 32\nfi\nstage_uuid=\"$(blkid -o value -s UUID \"$stage_device\")\"\ntest -n \"$stage_uuid\"\ninstall -d -m 0700 /opt/tau-staging\nif ! mountpoint -q /opt/tau-staging; then\n  mount -o nodev,nosuid \"$stage_device\" /opt/tau-staging\nfi\ntest \"$(findmnt -n -o UUID --target /opt/tau-staging)\" = \"$stage_uuid\"\ngrep -Fq \"UUID=$stage_uuid /opt/tau-staging \" /etc/fstab || printf 'UUID=%s /opt/tau-staging ext4 defaults,nodev,nosuid,nofail 0 2\\n' \"$stage_uuid\" >> /etc/fstab\nchmod 0700 /opt/tau-staging\ninstall -d -m 0700 /opt/tau-staging/docker /opt/tau-staging/releases /opt/tau-staging/state\nsystemctl stop docker.service docker.socket || true\ninstall -d -m 0755 /etc/docker\nprintf '%s\\n' '{\"data-root\":\"/opt/tau-staging/docker\",\"log-driver\":\"local\",\"log-opts\":{\"max-size\":\"10m\",\"max-file\":\"3\"}}' > /etc/docker/daemon.json\nsystemctl enable --now docker.service\n# SSM Agent is supplied by the Canonical AMI; fall back to its official snap.\nif ! snap list amazon-ssm-agent >/dev/null 2>&1; then\n  snap install amazon-ssm-agent --classic\nfi\nsystemctl enable --now snap.amazon-ssm-agent.amazon-ssm-agent.service\nif ! command -v aws >/dev/null 2>&1; then\n  stage_cli_dir=\"$(mktemp -d)\"\n  curl --fail --silent --show-error --location https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o \"$stage_cli_dir/awscliv2.zip\"\n  unzip -q \"$stage_cli_dir/awscliv2.zip\" -d \"$stage_cli_dir\"\n  \"$stage_cli_dir/aws/install\"\n  rm -rf \"$stage_cli_dir\"\nfi\n# Only CloudFront's private VPC-origin connection can reach this listener.\n# Never log OAuth callback query strings or cookies.\nrm -f /etc/nginx/sites-enabled/default\ncat > /etc/nginx/sites-available/tau-staging <<'NGINX'\nserver {\n    listen 80 default_server;\n    server_name _;\n    access_log off;\n    error_log /dev/null crit;\n    server_tokens off;\n    client_max_body_size 2m;\n    location / {\n        proxy_pass http://127.0.0.1:18091;\n        proxy_http_version 1.1;\n        proxy_set_header Host $http_host;\n        proxy_set_header X-Forwarded-Proto https;\n        proxy_set_header X-Forwarded-Port 443;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header Connection '';\n        proxy_buffering off;\n        proxy_read_timeout 120s;\n        proxy_intercept_errors on;\n        error_page 502 503 504 =503 @staging_unavailable;\n    }\n    location @staging_unavailable {\n        default_type application/json;\n        return 503 '{\"status\":\"staging_not_ready\"}';\n    }\n}\nNGINX\nln -s /etc/nginx/sites-available/tau-staging /etc/nginx/sites-enabled/tau-staging\nnginx -t\nsystemctl enable nginx.service\nsystemctl restart nginx.service\n# Created only after the retained disk and required host services are ready.\nprintf '%s\\n' '{\"schema_version\":1,\"environment\":\"staging\",\"product\":\"Tau\",\"stack_name\":\"tau-preproduction-staging\",\"root\":\"/opt/tau-staging\"}' > /etc/tau-staging-host.json\nchmod 0444 /etc/tau-staging-host.json\n"
+          }
+        },
+        "Tags": [
+          {
+            "Key": "TauEnvironment",
+            "Value": "staging"
+          },
+          {
+            "Key": "TauProduct",
+            "Value": "Tau"
+          },
+          {
+            "Key": "TauManagedBy",
+            "Value": "owner-bootstrap"
+          },
+          {
+            "Key": "Name",
+            "Value": "tau-preproduction-staging"
+          }
+        ]
+      }
+    },
+    "StagingDataAttachment": {
+      "Type": "AWS::EC2::VolumeAttachment",
+      "Properties": {
+        "InstanceId": {
+          "Ref": "StagingInstance"
+        },
+        "VolumeId": {
+          "Ref": "StagingDataVolume"
+        },
+        "Device": "/dev/sdf"
+      }
+    },
+    "GitHubOidcProvider": {
+      "Type": "AWS::IAM::OIDCProvider",
+      "Condition": "CreateGitHubOidcProvider",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "Url": "https://token.actions.githubusercontent.com",
+        "ClientIdList": [
+          "sts.amazonaws.com"
+        ],
+        "Tags": [
+          {
+            "Key": "TauEnvironment",
+            "Value": "staging"
+          },
+          {
+            "Key": "TauProduct",
+            "Value": "Tau"
+          },
+          {
+            "Key": "TauManagedBy",
+            "Value": "owner-bootstrap"
+          }
+        ]
+      }
+    },
+    "StagingVpcOrigin": {
+      "Type": "AWS::CloudFront::VpcOrigin",
+      "DependsOn": [
+        "InternetGatewayAttachment",
+        "StagingDataAttachment"
+      ],
+      "Properties": {
+        "VpcOriginEndpointConfig": {
+          "Arn": {
+            "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${StagingInstance}"
+          },
+          "HTTPPort": 80,
+          "HTTPSPort": 443,
+          "Name": "tau-preproduction-staging",
+          "OriginProtocolPolicy": "http-only"
+        },
+        "Tags": [
+          {
+            "Key": "TauEnvironment",
+            "Value": "staging"
+          },
+          {
+            "Key": "TauProduct",
+            "Value": "Tau"
+          },
+          {
+            "Key": "TauManagedBy",
+            "Value": "owner-bootstrap"
+          }
+        ]
+      }
+    },
+    "StagingCachePolicy": {
+      "Type": "AWS::CloudFront::CachePolicy",
+      "Properties": {
+        "CachePolicyConfig": {
+          "Name": {
+            "Fn::Sub": "${AWS::StackName}-no-cache"
+          },
+          "Comment": "No caching of stage sessions, OAuth callbacks, APIs or assets",
+          "DefaultTTL": 0,
+          "MinTTL": 0,
+          "MaxTTL": 0,
+          "ParametersInCacheKeyAndForwardedToOrigin": {
+            "EnableAcceptEncodingGzip": false,
+            "EnableAcceptEncodingBrotli": false,
+            "HeadersConfig": {
+              "HeaderBehavior": "none"
+            },
+            "CookiesConfig": {
+              "CookieBehavior": "none"
+            },
+            "QueryStringsConfig": {
+              "QueryStringBehavior": "none"
+            }
+          }
+        }
+      }
+    },
+    "StagingOriginRequestPolicy": {
+      "Type": "AWS::CloudFront::OriginRequestPolicy",
+      "Properties": {
+        "OriginRequestPolicyConfig": {
+          "Name": {
+            "Fn::Sub": "${AWS::StackName}-all-viewer"
+          },
+          "Comment": "Preserve authenticated browser requests and exact public OAuth host",
+          "HeadersConfig": {
+            "HeaderBehavior": "allViewer"
+          },
+          "CookiesConfig": {
+            "CookieBehavior": "all"
+          },
+          "QueryStringsConfig": {
+            "QueryStringBehavior": "all"
+          }
+        }
+      }
+    },
+    "StagingDistribution": {
+      "Type": "AWS::CloudFront::Distribution",
+      "Properties": {
+        "DistributionConfig": {
+          "Comment": "Isolated Tau pre-production; no production origin/database/worker",
+          "Enabled": true,
+          "HttpVersion": "http2",
+          "IPV6Enabled": true,
+          "PriceClass": "PriceClass_100",
+          "Origins": [
+            {
+              "Id": "stage-private-web",
+              "DomainName": {
+                "Fn::GetAtt": [
+                  "StagingInstance",
+                  "PrivateDnsName"
+                ]
+              },
+              "VpcOriginConfig": {
+                "VpcOriginId": {
+                  "Fn::GetAtt": [
+                    "StagingVpcOrigin",
+                    "Id"
+                  ]
+                },
+                "OriginReadTimeout": 120,
+                "OriginKeepaliveTimeout": 5
+              }
+            }
+          ],
+          "DefaultCacheBehavior": {
+            "TargetOriginId": "stage-private-web",
+            "ViewerProtocolPolicy": "https-only",
+            "AllowedMethods": [
+              "GET",
+              "HEAD",
+              "OPTIONS",
+              "PUT",
+              "POST",
+              "PATCH",
+              "DELETE"
+            ],
+            "CachedMethods": [
+              "GET",
+              "HEAD"
+            ],
+            "Compress": false,
+            "CachePolicyId": {
+              "Ref": "StagingCachePolicy"
+            },
+            "OriginRequestPolicyId": {
+              "Ref": "StagingOriginRequestPolicy"
+            }
+          },
+          "CustomErrorResponses": [
+            {
+              "ErrorCode": 400,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 403,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 404,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 405,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 414,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 416,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 500,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 501,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 502,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 503,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 504,
+              "ErrorCachingMinTTL": 0
+            }
+          ],
+          "ViewerCertificate": {
+            "CloudFrontDefaultCertificate": true
+          }
+        },
+        "Tags": [
+          {
+            "Key": "TauEnvironment",
+            "Value": "staging"
+          },
+          {
+            "Key": "TauProduct",
+            "Value": "Tau"
+          },
+          {
+            "Key": "TauManagedBy",
+            "Value": "owner-bootstrap"
+          }
+        ]
+      }
+    },
+    "StagingDeployRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "Description": "Deploy reviewed Tau releases to isolated staging only; no provisioning or production rights",
+        "MaxSessionDuration": 3600,
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": "sts:AssumeRoleWithWebIdentity",
+              "Principal": {
+                "Federated": {
+                  "Fn::If": [
+                    "CreateGitHubOidcProvider",
+                    {
+                      "Ref": "GitHubOidcProvider"
+                    },
+                    {
+                      "Ref": "ExistingGitHubOidcProviderArn"
+                    }
+                  ]
+                }
+              },
+              "Condition": {
+                "StringEquals": {
+                  "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+                  "token.actions.githubusercontent.com:sub": "repo:JihuiTanUchicago/kalshi_trade:environment:staging"
+                }
+              }
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "StagingDeploymentOnly",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "OwnStackOutputs",
+                  "Effect": "Allow",
+                  "Action": [
+                    "cloudformation:DescribeStacks"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/tau-preproduction-staging/*"
+                  }
+                },
+                {
+                  "Sid": "ReleaseObjects",
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:PutObject",
+                    "s3:GetObject",
+                    "s3:AbortMultipartUpload"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "${StagingArtifactBucket.Arn}/releases/*"
+                  }
+                },
+                {
+                  "Sid": "OwnBucketScopedListing",
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:ListBucket"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "StagingArtifactBucket",
+                      "Arn"
+                    ]
+                  },
+                  "Condition": {
+                    "StringLike": {
+                      "s3:prefix": [
+                        "releases",
+                        "releases/*",
+                        "receipts/*"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "Sid": "RunOwnHostCommand",
+                  "Effect": "Allow",
+                  "Action": [
+                    "ssm:SendCommand"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${StagingInstance}"
+                  },
+                  "Condition": {
+                    "StringEquals": {
+                      "ssm:resourceTag/TauEnvironment": "staging",
+                      "ssm:resourceTag/TauProduct": "Tau"
+                    }
+                  }
+                },
+                {
+                  "Sid": "UseAwsShellDocument",
+                  "Effect": "Allow",
+                  "Action": [
+                    "ssm:SendCommand"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWS-RunShellScript"
+                  }
+                },
+                {
+                  "Sid": "OwnRuntimeParameter",
+                  "Effect": "Allow",
+                  "Action": [
+                    "ssm:GetParameter",
+                    "ssm:PutParameter"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/tau/staging/hosted-runtime"
+                  }
+                },
+                {
+                  "Sid": "OwnRuntimeKey",
+                  "Effect": "Allow",
+                  "Action": [
+                    "kms:Decrypt",
+                    "kms:Encrypt"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "StagingRuntimeKmsKey",
+                      "Arn"
+                    ]
+                  },
+                  "Condition": {
+                    "StringEquals": {
+                      "kms:ViaService": {
+                        "Fn::Sub": "ssm.${AWS::Region}.amazonaws.com"
+                      },
+                      "kms:EncryptionContext:PARAMETER_ARN": {
+                        "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/tau/staging/hosted-runtime"
+                      }
+                    }
+                  }
+                },
+                {
+                  "Sid": "InvalidateOwnStageDistribution",
+                  "Effect": "Allow",
+                  "Action": [
+                    "cloudfront:CreateInvalidation",
+                    "cloudfront:GetInvalidation"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${StagingDistribution}"
+                  }
+                },
+                {
+                  "Sid": "ReadOwnDeploymentReceipts",
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:GetObject"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "${StagingArtifactBucket.Arn}/receipts/*"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "TauEnvironment",
+            "Value": "staging"
+          },
+          {
+            "Key": "TauProduct",
+            "Value": "Tau"
+          },
+          {
+            "Key": "TauManagedBy",
+            "Value": "owner-bootstrap"
+          }
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "StagingInstanceId": {
+      "Value": {
+        "Ref": "StagingInstance"
+      }
+    },
+    "StagingArtifactBucket": {
+      "Value": {
+        "Ref": "StagingArtifactBucket"
+      }
+    },
+    "StagingDistributionId": {
+      "Value": {
+        "Ref": "StagingDistribution"
+      }
+    },
+    "StagingUrl": {
+      "Value": {
+        "Fn::Sub": "https://${StagingDistribution.DomainName}"
+      }
+    },
+    "StagingDeployRoleArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "StagingDeployRole",
+          "Arn"
+        ]
+      }
+    },
+    "StagingRuntimeKmsKeyArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "StagingRuntimeKmsKey",
+          "Arn"
+        ]
+      }
+    },
+    "StagingRuntimeParameter": {
+      "Value": "/tau/staging/hosted-runtime"
+    },
+    "StagingDataVolumeId": {
+      "Value": {
+        "Ref": "StagingDataVolume"
+      }
+    },
+    "StagingPrivateSubnetId": {
+      "Value": {
+        "Ref": "PrivateAppSubnet"
+      }
+    },
+    "StagingNatGatewayId": {
+      "Value": {
+        "Ref": "NatGateway"
+      }
+    }
+  }
+}

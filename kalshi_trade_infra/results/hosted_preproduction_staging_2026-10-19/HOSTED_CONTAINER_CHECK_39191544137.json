@@ -1,0 +1,33 @@
+{
+  "run_id": 39191544137,
+  "run_url": "https://github.com/JihuiTanUchicago/kalshi_trade/actions/runs/39191544137",
+  "pr_head": "2eb35fb2886c0ff7b0adbc42df8748ce99615228",
+  "tested_merge_tree": "a6d75303a9318b0407415236045ea3646ec64cec",
+  "receipt": {
+    "status": "passed",
+    "mode": "synthetic_configuration_real_hosted_containers",
+    "real_provider_calls": 0,
+    "production_changed": false,
+    "persistent_hosted_site": false,
+    "real_oauth_or_paper_order_accepted": false,
+    "cleanup_passed": true,
+    "phase": "accepted_synthetic_profile",
+    "http_statuses": {
+      "/": 200,
+      "/research": 200,
+      "/healthz": 200,
+      "/api/version": 200,
+      "/api/me": 401,
+      "/auth/dev": 404
+    },
+    "full_schema_passed": true,
+    "database_unpublished": true,
+    "loopback_gateway_only": true,
+    "normal_auth_and_csrf": true,
+    "google_redirect_only_checked": true,
+    "app_uid": 10001,
+    "app_capabilities": 0,
+    "served_assets_match": true,
+    "secrets_persist": true
+  }
+}

@@ -1,5 +1,9 @@
 # PLAN
 
+## Hosted pre-production staging — October 19, 2026, Asia/Shanghai
+
+Prepared / GitHub CI verified / awaiting AWS owner (`tau-hosted-preproduction-staging-20261019`); advisory implementation reservation handed off at the owner gate. [Draft PR #15](https://github.com/JihuiTanUchicago/kalshi_trade/pull/15) publishes the separate private AWS stack, hosted web/API profile and staging-only OIDC deployment. **1,766 Python / 10 skipped; 121 focused checks**, independent review and CloudFormation lint pass. Hosted container run39191544137 verifies real MySQL/app/NGINX startup, normal auth/CSRF rejection, Google redirect generation, UID/capability/network guards, served hashes, key persistence and cleanup using synthetic configuration. Existing offline run39191544140 passes all14 broker-fixture checks; CI39191544143 passes. None establishes actual OAuth, billing, paper orders or a persistent public URL. The actual read-only AWS inventory39189041708 returned access denial, and AWS_STAGING_ROLE_ARN is not configured. AWS owner must bootstrap dedicated resources/role and supply private staging OAuth/Stripe sandbox settings. Production app/data source, workflow, services, research and the paused old rollout were not changed by this work. No worker/engine or graceful production drain was added. [Owner setup](staging/HOSTED_STAGING.md) · [Preparation receipt/handoff](results/hosted_preproduction_staging_2026-10-19/HANDOFF.md).
+
 ## Isolated paper testing and GitHub source — October 19, 2026, Asia/Shanghai
 
 Paper source merged as `f76b2f1` through PR #13, reconciled with main `8e3ec87`; latest research diagnostics are preserved. **1,608 Python / 10 skipped and 71 Node tests passed**, independent integration review and PR/main CI passed. Source merge does not deploy production; its workflow is manual and the old exact-ref activation follow-up remains paused.
