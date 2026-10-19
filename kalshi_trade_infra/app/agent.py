@@ -2049,6 +2049,12 @@ def _fmt_changes(changes: Dict) -> str:
 # ponytail: a flat per-market window, not per-idea NLP — the thrash is same-market; add idea-level
 # matching only if the model starts spamming distinct ideas on one market.
 RESEARCH_MARKET_COOLDOWN = timedelta(hours=6)
+# A market that FAILS repeatedly is chronically bad for research (ephemeral event that closes
+# mid-run, an illiquid contract whose data times out, no tradeable surface) — backing it off well
+# past the ordinary cooldown stops the autopilot bleeding runs on it and steers it to markets that
+# actually complete. Self-regulating: a market with a clean record is never affected.
+RESEARCH_FAIL_WINDOW = timedelta(hours=24)
+RESEARCH_FAIL_LIMIT = int(os.getenv("TAU_RESEARCH_FAIL_LIMIT", "3"))
 
 
 def _market_research_recent(cur, user_id: int, market: str) -> Optional[str]:
@@ -2062,6 +2068,7 @@ def _market_research_recent(cur, user_id: int, market: str) -> Optional[str]:
     except Exception:
         return None
     now = repo.now_utc()
+    recent_fails = 0
     for r in runs:
         if r.get("market") != market:
             continue
@@ -2071,6 +2078,11 @@ def _market_research_recent(cur, user_id: int, market: str) -> Optional[str]:
         if fin and (now - fin) < RESEARCH_MARKET_COOLDOWN:
             return ("%s was just researched (run #%s, %s) and is on a short cooldown"
                     % (market, r.get("id"), r.get("status")))
+        if r.get("status") == "failed" and fin and (now - fin) < RESEARCH_FAIL_WINDOW:
+            recent_fails += 1
+    if recent_fails >= RESEARCH_FAIL_LIMIT:
+        return ("%s has failed %d times in the last day — it's backed off (chronically bad for "
+                "research); hunt a different market" % (market, recent_fails))
     return None
 
 
