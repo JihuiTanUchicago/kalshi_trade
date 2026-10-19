@@ -1,5 +1,9 @@
 # PLAN
 
+## Hosted pre-production staging — October 19, 2026, Asia/Shanghai
+
+Prepared / offline verified / awaiting AWS owner (`tau-hosted-preproduction-staging-20261019`). User requested real hosted pre-production and selected a dedicated GitHub staging role. Independent review and **1,766 Python / 10 skipped; 121 focused checks** pass; CloudFormation lint passes. Separate private EC2/CloudFront VPC origin/NAT, retained DB/vault disk and KMS, narrowly scoped OIDC deployment, interactive hosted Compose, normal Google/Alpaca consent and Stripe sandbox gates are prepared. The actual read-only inventory39189041708 returned EC2 UnauthorizedOperation and CloudFormation/CloudFront/IAM AccessDenied; no provisioning, production command, job modification or provider call occurred. AWS-owner bootstrap/role variable and private stage OAuth/sandbox setup are required; hosted container CI is pending. No public hosted URL or actual OAuth/order acceptance is claimed. Production app/data source, deployment workflow, services, running/queued/paused research and PAUSED rollout are unchanged. [Operator setup](staging/HOSTED_STAGING.md) · [Evidence/handoff](results/hosted_preproduction_staging_2026-10-19/HANDOFF.md).
+
 ## Isolated paper testing and GitHub source — October 19, 2026, Asia/Shanghai
 
 Paper source merged as `f76b2f1` through PR #13, reconciled with main `8e3ec87`; latest research diagnostics are preserved. **1,608 Python / 10 skipped and 71 Node tests passed**, independent integration review and PR/main CI passed. Source merge does not deploy production; its workflow is manual and the old exact-ref activation follow-up remains paused.

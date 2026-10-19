@@ -1,0 +1,71 @@
+{
+  "services": {
+    "db": {
+      "image": "mysql:8.4",
+      "environment": {
+        "MYSQL_DATABASE": "tau_preproduction_staging",
+        "MYSQL_USER": "tau_preprod",
+        "MYSQL_ROOT_PASSWORD_FILE": "/run/secrets/mysql_root_password",
+        "MYSQL_PASSWORD_FILE": "/run/secrets/mysql_password"
+      },
+      "secrets": ["mysql_root_password", "mysql_password"],
+      "volumes": ["hosted-mysql-data:/var/lib/mysql"],
+      "networks": ["private"],
+      "healthcheck": {
+        "test": ["CMD", "mysqladmin", "ping", "--host=127.0.0.1", "--silent"],
+        "interval": "3s", "timeout": "5s", "retries": 60, "start_period": "30s"
+      },
+      "restart": "unless-stopped", "mem_limit": "768m", "cpus": 1.0, "pids_limit": 256
+    },
+    "schema": {
+      "build": {"context": "../..", "dockerfile": "staging/hosted/Dockerfile"},
+      "command": ["schema"],
+      "environment": {"TAU_HOSTED_CONTAINER": "dedicated-preproduction-v1"},
+      "secrets": ["mysql_password", "app_secret_key"],
+      "networks": ["private"],
+      "depends_on": {"db": {"condition": "service_healthy"}},
+      "read_only": true, "tmpfs": ["/tmp:rw,noexec,nosuid,size=64m,mode=1777"],
+      "cap_drop": ["ALL"], "cap_add": ["DAC_OVERRIDE", "SETUID", "SETGID"],
+      "security_opt": ["no-new-privileges:true"], "mem_limit": "512m", "cpus": 1.0, "pids_limit": 128
+    },
+    "web": {
+      "build": {"context": "../..", "dockerfile": "staging/hosted/Dockerfile"},
+      "command": ["web"],
+      "environment": {"TAU_HOSTED_CONTAINER": "dedicated-preproduction-v1"},
+      "secrets": ["mysql_password", "app_secret_key", {"source": "hosted_runtime", "target": "hosted_runtime.json"}],
+      "networks": ["private", "egress"],
+      "depends_on": {"schema": {"condition": "service_completed_successfully"}},
+      "healthcheck": {
+        "test": ["CMD", "/usr/local/bin/python", "-I", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/healthz',timeout=3).close()"],
+        "interval": "5s", "timeout": "5s", "retries": 12, "start_period": "10s"
+      },
+      "restart": "unless-stopped", "read_only": true,
+      "tmpfs": ["/tmp:rw,noexec,nosuid,size=64m,mode=1777"],
+      "cap_drop": ["ALL"], "cap_add": ["DAC_OVERRIDE", "SETUID", "SETGID"],
+      "security_opt": ["no-new-privileges:true"], "mem_limit": "512m", "cpus": 1.0, "pids_limit": 128
+    },
+    "gateway": {
+      "image": "nginx:stable-alpine", "user": "101:101",
+      "entrypoint": ["nginx", "-c", "/etc/nginx/hosted.conf", "-g", "daemon off;"], "command": [],
+      "networks": ["private", "egress"],
+      "depends_on": {"web": {"condition": "service_healthy"}},
+      "ports": ["127.0.0.1:18091:8080"],
+      "volumes": ["./nginx.conf:/etc/nginx/hosted.conf:ro"],
+      "healthcheck": {
+        "test": ["CMD", "wget", "--spider", "-q", "-T", "3", "http://127.0.0.1:8080/healthz"],
+        "interval": "5s", "timeout": "5s", "retries": 12, "start_period": "5s"
+      },
+      "restart": "unless-stopped", "read_only": true,
+      "tmpfs": ["/tmp:rw,noexec,nosuid,size=16m,mode=1777"],
+      "cap_drop": ["ALL"], "security_opt": ["no-new-privileges:true"], "mem_limit": "64m", "cpus": 0.25, "pids_limit": 32
+    }
+  },
+  "networks": {"private": {"internal": true}, "egress": {"driver": "bridge"}},
+  "volumes": {"hosted-mysql-data": {}},
+  "secrets": {
+    "mysql_root_password": {"file": "${TAU_HOSTED_STATE_DIR:-./.state}/mysql_root_password"},
+    "mysql_password": {"file": "${TAU_HOSTED_STATE_DIR:-./.state}/mysql_password"},
+    "app_secret_key": {"file": "${TAU_HOSTED_STATE_DIR:-./.state}/app_secret_key"},
+    "hosted_runtime": {"file": "${TAU_HOSTED_STATE_DIR:-./.state}/hosted_runtime.json"}
+  }
+}

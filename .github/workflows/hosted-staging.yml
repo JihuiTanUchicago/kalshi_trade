@@ -1,0 +1,65 @@
+name: Deploy hosted pre-production staging
+
+# Manual staging-only deployment. The AWS owner applies the bootstrap stack and
+# configures AWS_STAGING_ROLE_ARN first; production's workflow/keys are not used.
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: "Exact reviewed 40-character commit containing the hosted setup"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tau-hosted-preproduction
+  cancel-in-progress: false
+
+jobs:
+  staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: staging
+    steps:
+      - name: Validate staging role configuration and exact source
+        env:
+          TAU_STAGING_ROLE_ARN: ${{ vars.AWS_STAGING_ROLE_ARN }}
+          TAU_STAGING_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          source = os.environ.get('TAU_STAGING_SOURCE_SHA', '')
+          role = os.environ.get('TAU_STAGING_ROLE_ARN', '')
+          if not re.fullmatch(r'[0-9a-f]{40}', source):
+              raise SystemExit('Exact reviewed staging source commit is required.')
+          if not re.fullmatch(r'arn:aws:iam::[0-9]{12}:role/tau-preproduction-staging-[A-Za-z0-9_+=,.@-]+', role):
+              raise SystemExit('Configure the owner-created staging role in AWS_STAGING_ROLE_ARN first.')
+          PY
+      - name: Check out the reviewed staging release
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Assume the dedicated staging role using GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_STAGING_ROLE_ARN }}
+          role-session-name: tau-staging-${{ github.run_id }}
+          aws-region: us-east-1
+          mask-aws-account-id: true
+      - name: Deploy and verify staging only
+        env:
+          TAU_STAGING_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: python3 kalshi_trade_infra/staging/hosted/deploy_aws.py --source-sha "$TAU_STAGING_SOURCE_SHA"
+      - name: Save projected staging receipt only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hosted-staging-deploy-${{ github.run_id }}
+          path: hosted-staging-deploy.json
+          if-no-files-found: ignore
+          retention-days: 14

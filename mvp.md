@@ -23,6 +23,8 @@ A self-improving alpha discovery pipeline, from ideation, to similation, and fin
 
 ## TODO / Working Queue
 
+- `[blocked: AWS owner bootstrap]` Hosted pre-production setup is prepared/offline verified (1,766 Python;121 focused; clean CloudFormation lint). User selected a dedicated staging OIDC role. Existing credentials returned EC2/CF/IAM access denial; teammate must apply the isolated stack, configure AWS_STAGING_ROLE_ARN and private Google/Alpaca/Stripe sandbox settings. Container CI is pending; no public site, real brokerage acceptance or production action. [Operator setup](kalshi_trade_infra/staging/HOSTED_STAGING.md) · [Handoff](kalshi_trade_infra/results/hosted_preproduction_staging_2026-10-19/HANDOFF.md).
+
 - `[implemented: isolated paper staging]` Reusable Compose and GitHub acceptance setup: private MySQL/network/secrets, schema-first web preview and unpublished synthetic-broker verification. 1,645 Python / 10 skipped;37 focused guards and the14-check real MySQL/HTTP run pass. Exact-revision Compose acceptance is recorded by the dedicated Actions workflow. No production or real broker calls. [Setup](kalshi_trade_infra/staging/README.md).
 - `[delayed: staging first]` Paper source is merged via PR #13 as `f76b2f1`, preserving latest research diagnostics. Production full migration/runtime rollout remains held; replace the paused old exact-ref operation only after staged validation. Real user OAuth/paper ticket remains separate. [Evidence](kalshi_trade_infra/results/alpaca_paper_trading_2026-10-18/deployment/HANDOFF.md).
 Single source of truth for OPEN work — one flat list. Each item is tagged with what it's waiting on:
