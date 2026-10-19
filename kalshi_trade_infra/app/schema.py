@@ -569,6 +569,17 @@ def _add_column_if_missing(cur, table: str, column: str, ddl: str) -> None:
         cur.execute(ddl)
 
 
+def _add_index_if_missing(cur, table: str, index_name: str, ddl: str) -> None:
+    """Idempotently add a secondary index (online, non-blocking on InnoDB). Checked via
+    information_schema.STATISTICS so a re-run is a no-op, same contract as _add_column_if_missing."""
+    cur.execute(
+        "SELECT COUNT(*) AS c FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s AND INDEX_NAME=%s",
+        (table, index_name),
+    )
+    if cur.fetchone()["c"] == 0:
+        cur.execute(ddl)
+
+
 def main() -> None:
     init_schema.main()  # market_candles and the shared pipeline tables
     conn = get_db_conn()
@@ -604,6 +615,13 @@ def main() -> None:
         # a re-hit re-points app_experiments.strategy_id at a later strategy row. NULL = a legacy
         # or loose-path (backtest-only) strategy that never went through the gatekeeper.
         _add_column_if_missing(cur, "app_strategies", "experiment_id", "ALTER TABLE app_strategies ADD COLUMN experiment_id BIGINT NULL")
+        # series_with_candles() ("which series have a backtest surface") runs on EVERY authenticated
+        # page load via /api/me, as SELECT DISTINCT series_ticker FROM hist_markets WHERE candles_done=1.
+        # Without an index on candles_done it full-scans hist_markets (~450k rows, ~6s, up to ~45s under
+        # load) and the SPA blocks all rendering on /api/me -> blank page. This (candles_done, series_ticker)
+        # index makes it a loose index scan in ms AND removes that repeated full scan from the DB's load.
+        _add_index_if_missing(cur, "hist_markets", "idx_hist_candles_series",
+                              "ALTER TABLE hist_markets ADD INDEX idx_hist_candles_series (candles_done, series_ticker)")
         # Cross-day generalization breakdown (per-day/per-fold) the research-paper folds strip renders.
         _add_column_if_missing(cur, "app_experiment_results", "folds_json", "ALTER TABLE app_experiment_results ADD COLUMN folds_json JSON NULL AFTER equity_curve_json")
         # Cross-contract strategies spend from a SHARED FDR stream keyed on a combined key
