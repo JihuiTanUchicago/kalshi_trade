@@ -299,3 +299,28 @@ def test_daily_quota_cooldown_skips_exhausted_model_on_next_call(monkeypatch):
     client.calls.clear()
     llm._bedrock("sys", [{"role": "user", "content": "hi"}])   # 2nd: Opus skipped (cooling) -> Sonnet
     assert client.calls == [_SONNET]
+
+
+def test_stall_falls_over_to_next_model(monkeypatch):
+    # A mid-stream stall on the preferred model should fail OVER to the next model, not kill the run.
+    calls = []
+    def fake_once(system, messages, mid, on_delta=None):
+        calls.append(mid)
+        if mid == _OPUS:
+            raise llm.LLMStalled("stalled mid-stream")
+        return ("ok", {"input_tokens": 1, "output_tokens": 1})
+    monkeypatch.setattr(llm, "_bedrock_once", fake_once)
+    monkeypatch.setattr(llm, "LLM_PROVIDER", "bedrock")
+    text, _ = llm._bedrock("sys", [{"role": "user", "content": "hi"}])
+    assert text == "ok"
+    assert calls == [_OPUS, _SONNET]          # stalled on Opus -> recovered on Sonnet
+
+
+def test_stall_does_not_set_a_cooldown(monkeypatch):
+    # A stall is transient (the model isn't out of capacity) -> no cooldown, unlike a daily quota.
+    monkeypatch.setattr(llm, "_bedrock_once",
+                        lambda s, m, mid, on_delta=None: (_ for _ in ()).throw(llm.LLMStalled("x"))
+                        if mid == _OPUS else ("ok", {"input_tokens": 1, "output_tokens": 1}))
+    monkeypatch.setattr(llm, "LLM_PROVIDER", "bedrock")
+    llm._bedrock("sys", [{"role": "user", "content": "hi"}])
+    assert _OPUS not in llm._MODEL_COOLDOWN   # stall left no cooldown (throttle would have)
