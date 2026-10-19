@@ -1,63 +1,53 @@
-name: Deploy web app
-
-# Redeploy the Tau customer app to the web box WITHOUT needing the AWS key locally.
-# Manual trigger only: GitHub restricts "Run workflow" to collaborators who have write (push)
-# access to the repo — i.e. the same people who can push to main — so this is the push-to-main-
-# gated redeploy. It authenticates with a dedicated deploy IAM user's keys, stored as the repo
-# secrets AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY (least-privilege policy in DEPLOY_WORKFLOW_SETUP.md).
-# It reuses scripts/deploy_web.sh verbatim, so CI and a local deploy run the identical, rollback-
-# guarded path (whole-app tar -> S3 -> SSM on-box extract/compile/schema/restart -> curl 200 ->
-# CloudFront invalidate). One-time AWS setup + the access-key alternative: scripts/DEPLOY_WORKFLOW_SETUP.md.
+name: Guarded current-main production rollout
 
 on:
   workflow_dispatch:
     inputs:
-      ref:
-        description: "Git ref to deploy (branch, tag, or SHA)"
-        required: false
-        default: main
-      invalidate:
-        description: "Invalidate CloudFront after deploy"
-        type: boolean
-        default: true
-
-# LAST WINS, without racing the box. Same group => runs never overlap; when several are triggered
-# close together GitHub keeps the newest queued one and cancels the older pending ones, so the LAST
-# trigger is what ends up deployed. cancel-in-progress is false ON PURPOSE: a deploy already on the
-# box must finish (killing it mid-extract/restart, or starting a 2nd on-box deploy over it, would
-# corrupt the box) — so the running one completes, then the latest queued runs and wins.
-concurrency:
-  group: deploy-web
-  cancel-in-progress: false
+      phase:
+        description: Read-only inspection or approved current-main release with accepted research interruption
+        required: true
+        type: choice
+        options: [inspect, activate]
+        default: inspect
 
 permissions:
   contents: read
 
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    # Optional: configure required reviewers on this environment in repo Settings to add a
-    # human approval gate before any deploy. Undefined => no protection, workflow still runs.
+  paper:
+    runs-on: ubuntu-24.04
     environment: production
+    timeout-minutes: 25
+    env:
+      TAU_PAPER_RELEASE_STATE: /tmp/tau-paper-release-${{ github.run_id }}-${{ github.run_attempt }}.json
     steps:
-      - name: Check out the ref being deployed
+      - name: Check out the immutable reviewed operations revision
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
-          fetch-depth: 0   # deploy_web.sh uses `git archive` / `git rev-parse` on the ref
-
-      - name: Configure AWS credentials (deploy IAM user keys)
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+      - name: Verify pinned main and runtime tree
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api repos/JihuiTanUchicago/kalshi_trade/git/ref/heads/main --jq .object.sha)" = "0a82e65fb4c5f59bc6557e3a9e9b094e1c28ca28"
+          python3 kalshi_trade_infra/results/main_production_operations_2026-10-19/validate_release.py
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
-
-      - name: Deploy to the web box
+      - name: Inspect or perform the approved guarded rollout
         env:
-          AWS_PROFILE: ""   # no local named profile in CI -> use the OIDC env credentials
-        run: |
-          set -euo pipefail
-          args=(--ref "${{ inputs.ref }}")
-          if [ "${{ inputs.invalidate }}" != "true" ]; then args+=(--no-invalidate); fi
-          bash kalshi_trade_infra/scripts/deploy_web.sh "${args[@]}"
+          TAU_PAPER_PHASE: ${{ inputs.phase }}
+          ALPACA_OAUTH_CLIENT_ID: ${{ secrets.ALPACA_OAUTH_CLIENT_ID }}
+          ALPACA_OAUTH_CLIENT_SECRET: ${{ secrets.ALPACA_OAUTH_CLIENT_SECRET }}
+        run: python3 kalshi_trade_infra/results/main_production_operations_2026-10-19/paper_release_runner.py "$TAU_PAPER_PHASE"
+      - name: Remove any ephemeral OAuth receiver
+        if: ${{ always() }}
+        run: python3 kalshi_trade_infra/results/main_production_operations_2026-10-19/paper_release_runner.py --cleanup
