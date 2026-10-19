@@ -140,6 +140,21 @@ THESIS_MAX_STEPS = max(1, int(os.getenv("TAU_THESIS_MAX_STEPS", "20")))
 # RUN_STALL_SECONDS + ABANDONED_AFTER regardless of WHERE it froze (load, model, backtest). Env-tunable.
 RUN_HEARTBEAT_EVERY = max(5, int(os.getenv("TAU_RUN_HEARTBEAT_EVERY", "15")))
 RUN_STALL_SECONDS = max(30, int(os.getenv("TAU_RUN_STALL_SECONDS", "150")))
+# Per-attempt WALL-CLOCK cap. The stall watchdog keys off *activity* (any streamed token restamps
+# liveness), so a run that keeps cycling propose->develop->abandon looks "alive" for 40-49 min while
+# producing ZERO hypotheses and pinning a worker slot. This is the one guard activity can't game:
+# every checkpoint() (round top, per-thesis, per-step) stops a run that has overrun its budget. The
+# slot frees for the next user — the load-bearing fix for many concurrent users. Env-tunable; 0=off.
+RUN_MAX_SECONDS = max(0, int(os.getenv("TAU_RUN_MAX_SECONDS", "1200")))
+# Root-cause backstop for the unbounded proposing loop: it stops on survivors reaching `budget`, but
+# an all-abandon market never adds a survivor, so cap theses ATTEMPTED (developed, not just kept) at
+# this multiple of budget. A healthy market hits the survivor cap long before this; only a doomed
+# surface trips it, failing fast instead of spinning. Env-tunable.
+EXPLORE_ATTEMPT_MULT = max(1, int(os.getenv("TAU_EXPLORE_ATTEMPT_MULT", "4")))
+# Bounded in-place retry for a TRANSIENT RDS drop during a data load (read-only, idempotent, its own
+# connection). Absorbs a blip without the retry-storm risk of re-queuing the whole run. Env-tunable.
+LOAD_RETRIES = max(0, int(os.getenv("TAU_LOAD_RETRIES", "2")))
+LOAD_RETRY_BACKOFF = max(0.1, float(os.getenv("TAU_LOAD_RETRY_BACKOFF", "1.5")))
 
 RESEARCH_SYSTEM = """You are a quantitative researcher at a disciplined prediction-market
 fund, trading Kalshi binary contracts (YES pays $1 if the event settles, NO pays $1 if it does
@@ -1193,6 +1208,7 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
         proposer = news.wrap(proposer, usage)
     if knowledge is not None:
         proposer = knowledge.wrap(proposer, usage)
+    attempts = 0  # theses DEVELOPED this chunk (survivors + abandoned), the real cost
     while True:
         checkpoint()
         round_no += 1
@@ -1200,6 +1216,12 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
         want = policy.next_batch(state).width
         if want <= 0:
             break  # policy decided to stop proposing this chunk
+        if attempts >= budget * EXPLORE_ATTEMPT_MULT:
+            # All-abandon backstop: survivors never reached `budget`, but we've already developed a
+            # generous multiple of it. Stop burning the slot on a market with no tradeable surface.
+            log("step", "No tradeable surface after %d attempts — stopping to free the worker." % attempts,
+                {"phase": "proposing", "attempts": attempts, "kept": len(chunk)})
+            break
         # Announce each proposing round so the (multi-minute, token-streamed) generation call is
         # never a silent gap: the feed shows "Proposing round k" before the first token arrives.
         log("step", "Proposing round %d — generating up to %d hypothes%s…"
@@ -1212,6 +1234,7 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
             break  # agent is out of fresh ideas this chunk
         for h in batch:
             checkpoint()
+            attempts += 1
             # Pillar 2: develop each thesis in depth on the RESEARCH FOLD (backtest -> critique ->
             # refine, up to THESIS_MAX_STEPS) before committing its single frozen spec. One candidate
             # out per hypothesis, so finalist selection + pre-registration are unchanged.
@@ -1277,13 +1300,24 @@ def _load(label: str, fn, *args, beat=None):
     relabel a RECOGNIZED load failure into a clean, specific LLMError (see _classify_load_error):
     a no-settled-contracts market or a transient RDS drop. An unrecognized error — a genuine bug —
     propagates unchanged, so this only ever classifies the two known cases."""
-    try:
-        return _call_with_timeout(label, DATA_LOAD_TIMEOUT, fn, *args, beat=beat)
-    except Exception as e:
-        err = _classify_load_error(e)
-        if err is not None:
-            raise err from e
-        raise
+    for attempt in range(LOAD_RETRIES + 1):
+        try:
+            return _call_with_timeout(label, DATA_LOAD_TIMEOUT, fn, *args, beat=beat)
+        except Exception as e:
+            # A transient RDS drop is retryable in place (the load holds its own connection and is
+            # read-only): back off briefly and try again before surfacing "data store was busy".
+            if _is_transient_db_error(e) and attempt < LOAD_RETRIES:
+                time.sleep(LOAD_RETRY_BACKOFF * (attempt + 1))
+                if beat is not None:
+                    try:
+                        beat()  # keep the run's heartbeat fresh across the backoff
+                    except Exception:
+                        pass
+                continue
+            err = _classify_load_error(e)
+            if err is not None:
+                raise err from e
+            raise
 
 
 def _timeout_self_check() -> None:
@@ -1464,6 +1498,7 @@ def run_research(
     # Liveness clock for the background beater: the main thread stamps it on every real step so the
     # beater knows the run is progressing (and a frozen main thread lets it go stale -> reaped).
     progress = [time.monotonic()]
+    run_deadline = time.monotonic() + RUN_MAX_SECONDS if RUN_MAX_SECONDS else None
 
     def log(kind: str, message: str, data: Optional[Dict] = None) -> None:
         progress[0] = time.monotonic()
@@ -1477,6 +1512,11 @@ def run_research(
         where it left off (same in-memory state, same worker)."""
         nonlocal cur
         progress[0] = time.monotonic()
+        if run_deadline is not None and time.monotonic() > run_deadline:
+            # Ungameable wall-clock cap: a run that keeps emitting tokens/logs but makes no real
+            # progress can't outlast its budget. Frees the worker slot for the next user.
+            raise LLMError("This session ran past its %d-min time budget and was stopped to free the "
+                           "worker — start a new session to continue." % (RUN_MAX_SECONDS // 60))
         cur = _reconnect(conn, cur)
         status = repo.heartbeat(cur, run_id)
         if status == "cancelled":

@@ -668,13 +668,42 @@ def test_load_classifies_no_settled_contracts():
     assert "kxnflgame" in str(ei.value) and "no settled contracts" in str(ei.value)
 
 
-def test_load_classifies_transient_db_error():
-    # A transient RDS drop (2013) during a load surfaces as the clean, retryable LLMError.
+def test_load_classifies_transient_db_error(monkeypatch):
+    # A transient RDS drop (2013) that persists through every retry surfaces as the clean,
+    # retryable LLMError. Backoff zeroed so the test doesn't actually sleep.
+    monkeypatch.setattr(agent, "LOAD_RETRY_BACKOFF", 0.0)
     def boom():
         raise _conn_drop()  # pymysql.err.OperationalError(2013, "Lost connection …")
     with pytest.raises(LLMError) as ei:
         agent._load("Loading data", boom)
     assert str(ei.value) == "The data store was busy; please start the session again."
+
+
+def test_load_retries_a_transient_drop_then_succeeds(monkeypatch):
+    # A transient RDS blip is absorbed in place: the load retries and returns the real dataset,
+    # so the user never sees "data store was busy" for a one-off drop.
+    monkeypatch.setattr(agent, "LOAD_RETRY_BACKOFF", 0.0)
+    monkeypatch.setattr(agent, "LOAD_RETRIES", 2)
+    calls = [0]
+    def flaky():
+        calls[0] += 1
+        if calls[0] < 3:
+            raise _conn_drop()
+        return "DATASET"
+    assert agent._load("Loading data", flaky) == "DATASET"
+    assert calls[0] == 3  # two drops absorbed, third attempt succeeded
+
+
+def test_load_does_not_retry_a_non_transient_error(monkeypatch):
+    # A genuine bug (not a transient DB drop) is NOT retried — it propagates on the first attempt.
+    monkeypatch.setattr(agent, "LOAD_RETRY_BACKOFF", 0.0)
+    calls = [0]
+    def boom():
+        calls[0] += 1
+        raise KeyError("missing_key")
+    with pytest.raises(KeyError):
+        agent._load("Loading data", boom)
+    assert calls[0] == 1  # not retried
 
 
 def test_load_does_not_swallow_a_genuine_bug():
