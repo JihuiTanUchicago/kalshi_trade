@@ -34,7 +34,7 @@ STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 # compact. Set via Parameter Store; falls back to card-only when unset.
 STRIPE_PAYMENT_CONFIG = os.getenv("STRIPE_PAYMENT_CONFIG", "")
 
-FREE_BONUS = Decimal(os.getenv("TAU_FREE_CREDITS", "100"))
+FREE_BONUS = Decimal(os.getenv("TAU_FREE_CREDITS", "20"))
 TOPUP_FEE = Decimal(os.getenv("TAU_TOPUP_FEE", "0.055"))  # 5.5% on credit purchases
 AUTORELOAD_THRESHOLD = Decimal("5")   # default + floor for "reload when balance drops to Y"
 AUTORELOAD_AMOUNT = Decimal("20")     # default + floor for "reload X dollars"
