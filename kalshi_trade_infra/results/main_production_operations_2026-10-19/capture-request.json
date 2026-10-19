@@ -1,0 +1,24 @@
+{
+  "public_key": "-----BEGIN PUBLIC KEY-----\nMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAyCsk+JK5HczsFDk/PQQ1\nrOKeB6UgyG6eXSNedopQDpNLFp6uJptH3Fb6dZTq+UuvSSNoE4dZctjKToUQVtD2\n9McvZbYd1z0hl1zTVRGCzyeoM92dyFXCfW0S7eh5ST0RF02kbbiffcNGibxFpBTI\n1zZuY+9CwDfsDsOdLUEpJ3LnhiSL99wJ9XTnDktt5+ClRd8slkKX+g9zjMCOab9a\na2TyFsWB+/Sqj45Z6hqieV8JOVVUtVFhqzW2BQpWQ2i+IkPNLhkOSXcwxMbDKPnj\nbW5sAy7RXkkUYOwqy1794/AMWkUhRAmqGDlU9PNjH09175Gii3LI4KKTFW8bPxOO\nk8c0wLW4OsFZUMJK6zorgc0Mv0BWlmwTeHq1OTQNy/RIlpVQE3EokBU1cAxt6Rj+\nXCY4PeSQT6WSQBF/nTkd6W1P/bhEO+quE3g5G/kSPicfyPERR6RQJsYH1n+UKJmf\nKCw86mXuCyxkd8fk25IRVaxSsHxvaH41iNjiQsvgrVaHAgMBAAE=\n-----END PUBLIC KEY-----\n",
+  "hashes": {
+    "app/DEPLOYMENT_SECRETS.md": "1b3986778835e9448006efa0c2cd6288e0108289419271df62630068e931e1dc",
+    "app/README.md": "392f85f15d8ae3d303746a715879b6a9bc37451923ef19a3d5d8e4875d7fb6a1",
+    "app/agent.py": "a7bad13f391197ba05e2a6b8832b3c0a3369d00f25a92989c29f8ea42f270a21",
+    "app/agent_market_data.py": "c90b17760b5b46752793849adcad5391f3de004a4cad132f6cf88602305a9e66",
+    "app/backtest.py": "c43a37b80a30d513438184a514e0a7eb3b80421fee762d8ccb2c3529e8706724",
+    "app/billing.py": "b04f68abba199fa243c4bc3274805809f7b84ade0572c4adfc6c0d1520246b33",
+    "app/devlog.py": "df46b9a968f095f582ea06f03084106258e31ea34044e3c52656e7995ba73f6a",
+    "app/gatekeeper.py": "c4f9698f5d9119ea1cda9fc698048356467f0a17b98ed60660f3545a696341e9",
+    "app/llm.py": "d97ce3d2df225f455a151f0a314c84f7db59b2170a5a00b1be6bd336d756160c",
+    "app/models_catalog.py": "b0a77bff29d4d093f688b6cfddc18a2756975b88865781c7581255fa3187b07d",
+    "app/partitions.py": "f94048b970319b050636d095e1d7086fca7680276122c3f5eb20d4ccb02eb095",
+    "app/repository.py": "a2156bb725db0ca8ea882b15893d0cb960f98ec2abab5ece75c08b4c1c2e7358",
+    "app/schema.py": "f8a36b5d85ccd760bc9ec15250feb74c9d810772734a0c36f3e115be875685ed",
+    "app/server.py": "ff7b9f9232da437f13227f8f094ce42c3f2275af80c98464ec5af815ecdaf5f6",
+    "app/static/app.js": "899a93869f568066ecf4a9f468cd149edc586c1ff7c72446888666453d087f2e",
+    "app/static/app.meridian.js": "0cc7dba7e33753ee707cbe10715e51fdba1992f7f95bc0072a8e87dd5865e261",
+    "app/static/index.html": "6b2e1ac80c9aad9ee877840b1a33093b932d93aff8e4c317912a16de42a148e6",
+    "data_pipeline/live_trading_engine.py": "388644bc0e7c609c0e67cfb7c66e25adbee35b8fa5aafee457cd610f2e534dfa",
+    "data_pipeline/simulated_trading_engine.py": "e314ac010d102fb2c356f3b6a550a6a48760e2a7b874fea549ec715b6a17f731"
+  }
+}

@@ -1,63 +1,38 @@
-name: Deploy web app
-
-# Redeploy the Tau customer app to the web box WITHOUT needing the AWS key locally.
-# Manual trigger only: GitHub restricts "Run workflow" to collaborators who have write (push)
-# access to the repo — i.e. the same people who can push to main — so this is the push-to-main-
-# gated redeploy. It authenticates with a dedicated deploy IAM user's keys, stored as the repo
-# secrets AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY (least-privilege policy in DEPLOY_WORKFLOW_SETUP.md).
-# It reuses scripts/deploy_web.sh verbatim, so CI and a local deploy run the identical, rollback-
-# guarded path (whole-app tar -> S3 -> SSM on-box extract/compile/schema/restart -> curl 200 ->
-# CloudFront invalidate). One-time AWS setup + the access-key alternative: scripts/DEPLOY_WORKFLOW_SETUP.md.
-
+name: Current-main production rollout
 on:
   workflow_dispatch:
-    inputs:
-      ref:
-        description: "Git ref to deploy (branch, tag, or SHA)"
-        required: false
-        default: main
-      invalidate:
-        description: "Invalidate CloudFront after deploy"
-        type: boolean
-        default: true
-
-# LAST WINS, without racing the box. Same group => runs never overlap; when several are triggered
-# close together GitHub keeps the newest queued one and cancels the older pending ones, so the LAST
-# trigger is what ends up deployed. cancel-in-progress is false ON PURPOSE: a deploy already on the
-# box must finish (killing it mid-extract/restart, or starting a 2nd on-box deploy over it, would
-# corrupt the box) — so the running one completes, then the latest queued runs and wins.
+permissions:
+  contents: read
 concurrency:
   group: deploy-web
   cancel-in-progress: false
-
-permissions:
-  contents: read
-
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    # Optional: configure required reviewers on this environment in repo Settings to add a
-    # human approval gate before any deploy. Undefined => no protection, workflow still runs.
+  capture:
+    runs-on: ubuntu-24.04
     environment: production
+    timeout-minutes: 6
     steps:
-      - name: Check out the ref being deployed
+      - name: Check out immutable reviewed operation
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
-          fetch-depth: 0   # deploy_web.sh uses `git archive` / `git rev-parse` on the ref
-
-      - name: Configure AWS credentials (deploy IAM user keys)
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+      - name: Require the tested current main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: test "$(gh api repos/JihuiTanUchicago/kalshi_trade/git/ref/heads/main --jq .object.sha)" = "1bf2b13e8d8b277dcc6ddf4bd0a71123c18ab65c"
+      - name: Configure deployment credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
-
-      - name: Deploy to the web box
-        env:
-          AWS_PROFILE: ""   # no local named profile in CI -> use the OIDC env credentials
-        run: |
-          set -euo pipefail
-          args=(--ref "${{ inputs.ref }}")
-          if [ "${{ inputs.invalidate }}" != "true" ]; then args+=(--no-invalidate); fi
-          bash kalshi_trade_infra/scripts/deploy_web.sh "${args[@]}"
+      - name: Capture encrypted source for recovery review
+        run: python3 kalshi_trade_infra/results/main_production_operations_2026-10-19/capture_source_runner.py
+      - name: Save ciphertext only
+        uses: actions/upload-artifact@v4
+        with:
+          name: tau-encrypted-source-review
+          path: /tmp/tau-encrypted-source-review/
+          retention-days: 3
+          if-no-files-found: error
