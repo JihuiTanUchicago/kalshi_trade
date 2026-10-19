@@ -17,7 +17,8 @@ PLANNED: List[tuple] = [
     ('Blank page on load = slow /api/me', ''),
     ('Did the finalist get tested?', ''),
     ('Stop the autopilot wasting research runs on bad-fit markets', ''),
-    ('Check RDS capacity/network', ''),
+    ('RDS is drastically undersized', ''),
+    ('Bedrock Opus 4.5 DAILY token quota is exhausted', ''),
     ('markets-table capacity', ''),
     ('Data-API enablement (Databento/Exa/Massive/Alpaca)', ''),
     ('Broker OAuth and Databento setup are merged on GitHub main through PR #10 and PR #11', ''),
@@ -41,6 +42,7 @@ PLANNED: List[tuple] = [
 # Shipped, newest first: (YYYY-MM-DD, title, detail). `detail` is the full
 # markdown explanation (what/components/methodology); may be '' for one-liners.
 SHIPPED: List[tuple] = [
+    ('2026-10-19', 'LLM daily-quota cooldown', "Opus 4.5's daily token quota is exhausted, so every model call was tripping its throttle and falling back to Sonnet, paying a wasted round-trip on the dead model every time. A model that hits a daily-quota throttle is now put in a cooldown (`TAU_DAILY_QUOTA_COOLDOWN_SEC`, default 30m) and skipped entirely on later calls → straight to the fallback, less latency/waste; auto-expires so the preferred model is retried once its quota resets. (Deployed + live.)"),
     ('2026-10-19', 'Research data-loads fail fast instead of freezing', 'the gatekeeper-phase loads (validation / one-time-holdout / merged-research) ran with NO per-call timeout, so a slow RDS let them go silent until the 150s-stall + 90s watchdog reaped the run ("No activity for over 2 min — session froze"); and "no settled contracts" (sports markets) / transient DB drops surfaced as the opaque "unexpected error". Wrapped those loads in the same `DATA_LOAD_TIMEOUT` + heartbeat the startup load uses (via a `_load` helper + a `run_load` callback into `judge_holdout`), and classified the two known failures into clean, retryable `LLMError` messages (names the dataless market; "the data store was busy, start again"). LEAK-SAFE: `merged_dataset` split into `merged_partitions`+`merged_dataset_from` with byte-identical union/key/order, partitions resolved on the run thread, off-cursor build in the timeout worker — no SQL/window/phase/stat change; reviewed + 7 new tests. (Deployed + live.)'),
     ('2026-10-19', 'Research-session DB saturation relieved', '`[ops]` — mass "session froze" research failures traced to the catalog refresh: `refresh_series` aggregates the entire `markets` table (~9.5M rows / ~126GB) in ~36 min but the tau-catalog timer fired every 30 min, so it ran back-to-back, starving research data-loads on the shared RDS. Killed the stuck 37-min `INSERT INTO kalshi_series` transaction (+ its timer-restarted rerun) and spaced the timer 30min→6h, so it runs ~10% of the time instead of ~continuously. (Bedrock throttling was already down 45→5 from the model-fallback fix.) Durable `markets`-bloat/index fix + research-load hardening queued.'),
     ('2026-10-18', 'Signin page: waitlist UI removed + welcome credit $100→$20', 'with open signup live, the landing/signin page now leads with a single "Continue with Google" CTA; removed the nav/hero/footer "Join waitlist" buttons, the waitlist modal + submit wiring, and the invite-only/pending copy (the `/api/waitlist` endpoint + admin view stay, harmless). Also lowered the one-time signup free credit (`TAU_FREE_CREDITS` default) from $100 to $20. (Deployed + live, verified.)'),
