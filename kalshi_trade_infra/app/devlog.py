@@ -15,7 +15,6 @@ PLANNED: List[tuple] = [
     ('Production-grade execution + risk hardening', ''),
     ('Data infrastructure expansion', ''),
     ('Did the finalist get tested?', ''),
-    ('Negative-balance guard (money path)', ''),
     ('Cross-session research memory', ''),
     ('Storage-full prevention', ''),
     ('RDS is drastically undersized', ''),
@@ -43,6 +42,7 @@ PLANNED: List[tuple] = [
 # Shipped, newest first: (YYYY-MM-DD, title, detail). `detail` is the full
 # markdown explanation (what/components/methodology); may be '' for one-liners.
 SHIPPED: List[tuple] = [
+    ('2026-10-20', "Balance can't be driven negative — a headroom floor to start a billed run", "a user went to −$4.11 because a research/review run bills POST-PAID on actual tokens but the spend gate only required `credit_balance > 0` to START, so the autopilot could kick off a multi-dollar session for a user with pennies and overshoot. Added `MIN_RUN_BALANCE` (env `TAU_MIN_RUN_BALANCE`, default $1 ≈ one small session) as a headroom floor on both the autonomous gate (`billing.is_ready`) and manual research (`_require_research_capacity` → clear 402); cheap chat keeps the `>0` gate since one call can't meaningfully overshoot. Strictly stricter (only ever prevents starting a run), no live/order/trade gate touched. Security-reviewed clean, +tests. (Deployed + live.)"),
     ('2026-10-20', 'Public Terms of Service + Privacy Policy pages', "standalone public pages at `/terms` and `/privacy` (viewable signed in or out; added to the client router's PUBLIC set AND the server's `SPA_ROUTES` allowlist so direct URLs/refreshes serve the shell, not a 404), linked from the profile dropdown and a welcome-page footnote, cross-linking each other. Honest boilerplate about what Tau actually does (not a broker/adviser, not financial advice, Google OAuth, Stripe, AI via Anthropic/Bedrock, your-own-Kalshi-key custody). Recommend a legal review before relying on it. (Deployed + live, both return 200.)"),
     ('2026-10-20', 'Research markets are picked by data-readiness (proactive)', "the autopilot's own `_pick_market` offered the agent EVERY market regardless of data, so it routinely chose data-less markets that failed at load (the root of the thin-market failures). Now it picks only from the data-ready set (reuses the server picker's `has_data` readiness, fail-open so a cold DB never blocks research). Cuts wasted runs and spends research where an edge can be found. +4 tests. (Deployed + live.)"),
     ('2026-10-20', 'An interrupted/capped research session is "Stopped", not "Failed"', 'a frozen/reaped/capped run was shown as a red FAILED (a wall of red on the Research page) for runs that mostly just didn\'t find an edge or got interrupted. Now the watchdog reap marks a run `stopped` (neutral), carrying the checkpoint\'s explored/passed counts so the card reads "Explored N hypotheses · M passed"; only a genuine external/infra error stays `failed`. Also removed the 20-min `RUN_MAX_SECONDS` cap entirely (a session has no time limit; the work-based attempt-bound still frees slots gracefully). +tests, suite green. (Deployed + live.)'),
