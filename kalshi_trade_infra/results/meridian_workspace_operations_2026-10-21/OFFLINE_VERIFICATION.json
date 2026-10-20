@@ -1,0 +1,67 @@
+{
+  "status": "implemented_offline_verified_requires_exact_publication_pins",
+  "recorded_at_utc": "2026-10-20T16:39:23.327317+00:00",
+  "base_operations_ref": "030cd4b8609954304b430cb5de746a76d7469567",
+  "worktree": "/Users/jonathanzhang/Desktop/Polygon/.runtime/github-export/tau-meridian-operations-20261021",
+  "operation_only_do_not_merge": true,
+  "verification": {
+    "baseline_original_operation_tests": {
+      "passed": 43,
+      "command": "python3 -B -m unittest discover -s kalshi_trade_infra/results/funds_broker_removal_operations_2026-10-20 -p 'test_*.py'"
+    },
+    "meridian_operation_tests": {
+      "passed": 62,
+      "remote": 40,
+      "runner": 19,
+      "collector": 3,
+      "command": "PYTHONPATH=/tmp/tau-meridian-ops-python-20261021 python3 -B -m unittest discover -s kalshi_trade_infra/results/meridian_workspace_operations_2026-10-21 -p 'test_*.py'"
+    },
+    "python_version": "3.14.7",
+    "node_version": "v22.22.2",
+    "all_operation_python_syntax": true,
+    "git_diff_check": true,
+    "unchanged_guard_functions": {
+      "read_regular": true,
+      "safe_directory": true,
+      "layout": true,
+      "unit_state": true,
+      "exchange": true,
+      "exchange_available": true,
+      "clone_archive": true,
+      "run_schema": true
+    },
+    "schema_wrapper_sha256": "6ec914590584afabda152fea75ec8ec7da71e841a059b0c0f417f92deff35573",
+    "schema_bounds": {
+      "overall_seconds": 120,
+      "read_write_seconds": 60,
+      "lock_seconds": 3
+    },
+    "actual_observed_candidate_syntax_passed": true,
+    "observed_candidate_sha256": {
+      "app/static/app.meridian.js": "05c10ab05aaba58bd2d1899a19f6b51af7607845c47168e04e642e449148cbbc",
+      "app/static/app.meridian.css": "0cf549951e20d6c95c31bf90a9747468fb950fa993fb3c54680837583a5cdf26"
+    },
+    "syntax_parsers": {
+      "css": "tinycss2==1.4.0; webencodings==0.6.1",
+      "javascript": "node --check (JavaScript only)"
+    }
+  },
+  "offline_corrections": [
+    "Initial CSS parser traversal misclassified selector token blocks; corrected node-type-aware recursion and added actual selector/function coverage. No production execution occurred."
+  ],
+  "no_external_mutations": true,
+  "no_commits_or_pushes": true,
+  "workflow_dispatches": 0,
+  "production_calls": 0,
+  "provider_calls": 0,
+  "order_calls": 0,
+  "schema_executions_against_database": 0,
+  "shared_progress_records": "Root-owned PLAN/mvp; parent notified with evidence and remaining pins.",
+  "remaining_gates": [
+    "Root review and actual frozen source_commit/reviewed_main/before/after/preserved_sha256 values in manifest.json. Null template pins deliberately prevent apply.",
+    "Root source publication/full regression and operation-only publication; no merge of operations ref.",
+    "Fresh inventory on exact final operations head; compare source/default hashes, full-schema hash, controls fingerprint and PIDs with captured state.",
+    "Root apply dispatch using exact fresh fingerprint, successful unchanged full schema and atomic installed whole-package exchange.",
+    "CloudFront /* invalidation plus real canonical public200/hash/default API-version/Meridian HTML-version acceptance; root browser acceptance."
+  ]
+}

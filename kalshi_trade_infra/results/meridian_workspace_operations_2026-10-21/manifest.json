@@ -1,0 +1,22 @@
+{
+  "reviewed_main": "2223751625dbdf3f07710ac27b58180fcadac23f",
+  "source_commit": null,
+  "frontend": {
+    "app/static/app.meridian.js": {
+      "published_path": "kalshi_trade_infra/app/static/app.meridian.js",
+      "before_sha256": null,
+      "after_sha256": null
+    },
+    "app/static/app.meridian.css": {
+      "published_path": "kalshi_trade_infra/app/static/app.meridian.css",
+      "before_sha256": null,
+      "after_sha256": null
+    }
+  },
+  "preserved_sha256": {
+    "app/static/app.js": null,
+    "app/static/app.css": null,
+    "app/static/boot.js": null,
+    "app/static/index.html": null
+  }
+}
