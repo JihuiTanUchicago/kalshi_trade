@@ -63,5 +63,20 @@
     "Fresh inventory on exact final operations head; compare source/default hashes, full-schema hash, controls fingerprint and PIDs with captured state.",
     "Root apply dispatch using exact fresh fingerprint, successful unchanged full schema and atomic installed whole-package exchange.",
     "CloudFront /* invalidation plus real canonical public200/hash/default API-version/Meridian HTML-version acceptance; root browser acceptance."
-  ]
+  ],
+  "retry_correction": {
+    "recorded_at_utc": "2026-10-20T17:02:07.346565+00:00",
+    "status": "offline_verified_requires_fresh_exact_head_inventory",
+    "failed_apply_run": 39461605674,
+    "dedicated_operation_tests_passed": 65,
+    "full_python": {
+      "passed": 1676,
+      "skipped": 10,
+      "seconds": 22.36
+    },
+    "independent_review": "No actionable runtime findings; 65/65 tests independently reproduced.",
+    "artifact_prefix": "bundle/meridian-",
+    "permissions_changed": false,
+    "source_commit": "d8fbf233b4508c400b9ffbf92976aefba9fcbe40"
+  }
 }

@@ -186,7 +186,7 @@ def load_candidates(artifact, expected_candidates):
     if (not isinstance(artifact, dict) or set(artifact) != {'bucket', 'key', 'sha256'}
             or artifact['bucket'] != BUCKET
             or not isinstance(artifact['key'], str)
-            or not re.fullmatch(r'frontend/meridian-[0-9a-f]{40}-[0-9a-f]{32}\.json', artifact['key'])
+            or not re.fullmatch(r'bundle/meridian-[0-9a-f]{40}-[0-9a-f]{32}\.json', artifact['key'])
             or not isinstance(artifact['sha256'], str) or not re.fullmatch(r'[0-9a-f]{64}', artifact['sha256'])):
         fail('invalid_candidate_artifact')
     try:

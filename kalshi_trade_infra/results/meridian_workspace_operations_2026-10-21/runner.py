@@ -45,7 +45,10 @@ def aws(*args):
     response = subprocess.run(['aws', *args, '--region', REGION, '--output', 'json'],
                               capture_output=True, text=True, timeout=45)
     if response.returncode:
-        fail('AwsRequestFailed')
+        error = RunnerError('AwsRequestFailed')
+        match = re.search(r'An error occurred \(([A-Za-z0-9_.-]{1,80})\)', response.stderr or '')
+        error.details = {'service': args[0], 'operation': args[1], 'aws_code': match[1] if match else 'Unavailable'}
+        raise error from None
     return json.loads(response.stdout) if response.stdout.strip() else {}
 
 
@@ -135,7 +138,7 @@ def published_candidates(value):
 def stage_candidates(value, assets):
     raw = json.dumps({'assets': {p: base64.b64encode(assets[p]).decode() for p in ASSETS}},
                      sort_keys=True, separators=(',', ':')).encode()
-    key = 'frontend/meridian-' + value['source_commit'] + '-' + uuid.uuid4().hex + '.json'
+    key = 'bundle/meridian-' + value['source_commit'] + '-' + uuid.uuid4().hex + '.json'
     with tempfile.TemporaryDirectory(prefix='tau-meridian-transfer-') as directory:
         path = Path(directory) / 'candidate-assets.json'
         path.write_bytes(raw)
@@ -259,6 +262,9 @@ if __name__ == '__main__':
     try:
         run()
     except Exception as exc:
-        emit('ERROR', {'status': 'operation_requires_inspection', 'error_class': type(exc).__name__,
-                       'error_code': exc.code if isinstance(exc, RunnerError) else 'OperationFailed'})
+        report = {'status': 'operation_requires_inspection', 'error_class': type(exc).__name__,
+                  'error_code': exc.code if isinstance(exc, RunnerError) else 'OperationFailed'}
+        if isinstance(exc, RunnerError) and hasattr(exc, 'details'):
+            report['aws'] = exc.details
+        emit('ERROR', report)
         raise SystemExit(1)

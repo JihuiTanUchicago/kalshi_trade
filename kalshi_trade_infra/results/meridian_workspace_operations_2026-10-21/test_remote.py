@@ -47,7 +47,7 @@ class RemovalTests(unittest.TestCase):
             self.put(name, ('synthetic unchanged ' + name).encode())
         self.payload = json.dumps({'assets': {p: base64.b64encode(raw).decode()
                                             for p, raw in self.candidate_assets.items()}}).encode()
-        self.artifact = {'bucket': remote.BUCKET, 'key': 'frontend/meridian-' + 'a' * 40 + '-' + 'b' * 32 + '.json',
+        self.artifact = {'bucket': remote.BUCKET, 'key': 'bundle/meridian-' + 'a' * 40 + '-' + 'b' * 32 + '.json',
                          'sha256': remote.digest(self.payload)}
         os.chmod(self.root / 'data_pipeline/utility.py', 0o750)
         self.env = {'APP_SECRET_KEY': 'private-never-print', 'MYSQL_PASSWORD': 'private-db-value',
@@ -619,6 +619,14 @@ sys.modules.update({"pymysql":mysql,"app":app,"app.schema":schema})
                 self.assert_code('origin_unhealthy', lambda: remote.origin_check(candidates, preserved))
         finally:
             self.patches[-1].start()
+
+    def test_transfer_rejects_unauthorized_former_prefix(self):
+        wrong = {**self.artifact, 'key': self.artifact['key'].replace('bundle/', 'frontend/', 1)}
+        self.patches[-3].stop()
+        try:
+            self.assert_code('invalid_candidate_artifact', lambda: remote.load_candidates(wrong, self.pins()[2]))
+        finally:
+            self.patches[-3].start()
 
     def test_actual_candidate_download_is_bound_to_private_artifact_and_exact_paths(self):
         self.patches[-3].stop()

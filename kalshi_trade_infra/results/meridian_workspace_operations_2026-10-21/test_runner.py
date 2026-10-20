@@ -119,6 +119,25 @@ class ReleaseTests(unittest.TestCase):
         assets = {**self.assets, runner.ASSETS[0]: b'const = ;'}
         self.assert_code('CandidateJavaScriptInvalid', lambda: runner.validate_source_syntax(assets))
 
+    def test_artifact_namespace_matches_existing_least_privilege_deployment_policy(self):
+        policy = (runner.HERE.parents[1] / 'scripts/DEPLOY_WORKFLOW_SETUP.md').read_text()
+        self.assertIn('/bundle/*', policy)
+        with patch.object(runner, 'aws', return_value={}):
+            artifact = runner.stage_candidates(self.value, self.assets)
+        self.assertTrue(artifact['key'].startswith('bundle/'))
+        self.assertFalse(artifact['key'].startswith('frontend/'))
+
+    def test_aws_failure_reports_only_operation_and_safe_error_code(self):
+        for stderr, expected in [('An error occurred (AccessDenied) when calling the PutObject operation: PRIVATE_SECRET', 'AccessDenied'),
+                                 ('endpoint unavailable PRIVATE_SECRET', 'Unavailable')]:
+            child = type('Child', (), {'returncode': 1, 'stdout': '', 'stderr': stderr})()
+            with patch.object(runner.subprocess, 'run', return_value=child):
+                with self.assertRaises(runner.RunnerError) as caught:
+                    runner.aws('s3api', 'put-object', '--bucket', 'synthetic')
+            self.assertEqual(caught.exception.code, 'AwsRequestFailed')
+            self.assertEqual(caught.exception.details, {'service': 's3api', 'operation': 'put-object', 'aws_code': expected})
+            self.assertNotIn('PRIVATE_SECRET', json.dumps(caught.exception.details))
+
     def test_private_transfer_contains_exact_js_css_only_and_content_hash(self):
         captured = {}
         def upload(*args):
@@ -128,7 +147,7 @@ class ReleaseTests(unittest.TestCase):
         with patch.object(runner, 'aws', side_effect=upload):
             descriptor = runner.stage_candidates(self.value, self.assets)
         self.assertEqual(descriptor['bucket'], runner.BUCKET)
-        self.assertRegex(descriptor['key'], r'^frontend/meridian-' + self.value['source_commit'] + r'-[0-9a-f]{32}\.json$')
+        self.assertRegex(descriptor['key'], r'^bundle/meridian-' + self.value['source_commit'] + r'-[0-9a-f]{32}\.json$')
         self.assertEqual(hashlib.sha256(captured['raw']).hexdigest(), descriptor['sha256'])
         payload = json.loads(captured['raw'])
         self.assertEqual(set(payload['assets']), set(runner.ASSETS))
@@ -184,7 +203,7 @@ class ReleaseTests(unittest.TestCase):
 
     def test_real_remote_program_fits_ssm_bound_and_contains_no_candidate_bytes(self):
         source = (runner.HERE / 'remote.py').read_text()
-        artifact = {'bucket': runner.BUCKET, 'key': 'frontend/meridian-' + 'b' * 40 + '-' + 'c' * 32 + '.json', 'sha256': 'd' * 64}
+        artifact = {'bucket': runner.BUCKET, 'key': 'bundle/meridian-' + 'b' * 40 + '-' + 'c' * 32 + '.json', 'sha256': 'd' * 64}
         program = runner.build_program(source, 'apply', self.before, self.after, 'e' * 64, artifact, self.preserved)
         with patch.object(runner, 'aws', side_effect=[{'Command': {'CommandId': 'synthetic'}}, {'Status': 'Success', 'StandardOutputContent': '{"status":"deployed"}'}]) as aws, patch.object(runner.time, 'sleep'):
             with contextlib.redirect_stdout(io.StringIO()):
