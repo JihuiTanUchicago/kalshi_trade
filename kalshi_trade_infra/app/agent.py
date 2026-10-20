@@ -140,12 +140,9 @@ THESIS_MAX_STEPS = max(1, int(os.getenv("TAU_THESIS_MAX_STEPS", "20")))
 # RUN_STALL_SECONDS + ABANDONED_AFTER regardless of WHERE it froze (load, model, backtest). Env-tunable.
 RUN_HEARTBEAT_EVERY = max(5, int(os.getenv("TAU_RUN_HEARTBEAT_EVERY", "15")))
 RUN_STALL_SECONDS = max(30, int(os.getenv("TAU_RUN_STALL_SECONDS", "150")))
-# Per-attempt WALL-CLOCK cap. The stall watchdog keys off *activity* (any streamed token restamps
-# liveness), so a run that keeps cycling propose->develop->abandon looks "alive" for 40-49 min while
-# producing ZERO hypotheses and pinning a worker slot. This is the one guard activity can't game:
-# every checkpoint() (round top, per-thesis, per-step) stops a run that has overrun its budget. The
-# slot frees for the next user — the load-bearing fix for many concurrent users. Env-tunable; 0=off.
-RUN_MAX_SECONDS = max(0, int(os.getenv("TAU_RUN_MAX_SECONDS", "1200")))
+# The slot-freeing guard is the ATTEMPT bound below (work done), NOT a wall clock: a research session
+# has no time limit — a long run that keeps making progress is fine, and being stopped is never a
+# "failure" (see the `stopped` terminal status), so there is deliberately no RUN_MAX_SECONDS here.
 # Root-cause backstop for the unbounded proposing loop: it stops on survivors reaching `budget`, but
 # an all-abandon market never adds a survivor, so cap theses ATTEMPTED (developed, not just kept) at
 # this multiple of budget. A healthy market hits the survivor cap long before this; only a doomed
@@ -1522,7 +1519,6 @@ def run_research(
     # Liveness clock for the background beater: the main thread stamps it on every real step so the
     # beater knows the run is progressing (and a frozen main thread lets it go stale -> reaped).
     progress = [time.monotonic()]
-    run_deadline = time.monotonic() + RUN_MAX_SECONDS if RUN_MAX_SECONDS else None
 
     def log(kind: str, message: str, data: Optional[Dict] = None) -> None:
         progress[0] = time.monotonic()
@@ -1536,11 +1532,6 @@ def run_research(
         where it left off (same in-memory state, same worker)."""
         nonlocal cur
         progress[0] = time.monotonic()
-        if run_deadline is not None and time.monotonic() > run_deadline:
-            # Ungameable wall-clock cap: a run that keeps emitting tokens/logs but makes no real
-            # progress can't outlast its budget. Frees the worker slot for the next user.
-            raise LLMError("This session ran past its %d-min time budget and was stopped to free the "
-                           "worker — start a new session to continue." % (RUN_MAX_SECONDS // 60))
         cur = _reconnect(conn, cur)
         status = repo.heartbeat(cur, run_id)
         if status == "cancelled":

@@ -1544,9 +1544,11 @@
     const state = r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
       : r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
       : r.status === 'succeeded' ? `<span class="${r.strategies_passed ? 'gain' : ''}">${r.strategies_passed} of ${r.hypotheses_tried} passed</span>`
+      : r.status === 'stopped' ? `Explored ${r.hypotheses_tried} hypothes${r.hypotheses_tried === 1 ? 'is' : 'es'}${r.strategies_passed ? ` · <span class="gain">${r.strategies_passed} passed</span>` : ''}`
       : r.status === 'cancelled' ? 'Cancelled' : '<span class="loss">Failed</span>';
-    // status band: a thin color rule so passed/void/failed reads at a glance
-    const band = r.status === 'succeeded' ? (r.strategies_passed ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : r.status === 'cancelled' ? 'void' : 'live';
+    // status band: a thin color rule so passed/void/failed reads at a glance. A `stopped` run (frozen,
+    // interrupted, or capped) is neutral (void), NOT red — only a real error is `fail`.
+    const band = r.status === 'succeeded' ? (r.strategies_passed ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : (r.status === 'cancelled' || r.status === 'stopped') ? 'void' : 'live';
     return `<a class="run-card ${band}" href="/research/${r.id}">
       <span class="run-title"><b>${esc(sessionTitle(r))}</b></span>
       <span class="run-meta">${esc(marketShort(r.market))}${r.error ? ' \u00b7 ' + esc(r.error) : ''}</span>
@@ -2034,7 +2036,8 @@
       const statusText = r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
         : r.status === 'paused' ? 'Paused'
         : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
-        : r.status === 'succeeded' ? 'Done' : r.status === 'cancelled' ? 'Cancelled' : 'Failed';
+        : r.status === 'succeeded' ? 'Done' : r.status === 'stopped' ? 'Stopped'
+        : r.status === 'cancelled' ? 'Cancelled' : 'Failed';
       root.querySelector('#runfigs').innerHTML =
         fig('Status', statusText) +
         fig('Time', started ? Math.max(0, Math.round((end - started) / 60000)) + ' min' : '—') +

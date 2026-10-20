@@ -477,13 +477,6 @@ def claim_run(conn, worker_id: str) -> Optional[Dict]:
         return run
 
 
-def _abandoned_msg(stale_after: timedelta) -> str:
-    secs = int(stale_after.total_seconds())
-    window = ("%d min" % round(secs / 60.0)) if secs >= 90 else ("%ds" % secs)
-    return ("No activity for over %s — the session froze (a stalled model call, data load, or "
-            "backtest) and was stopped so it wouldn't hang. Start it again." % window)
-
-
 def _has_progress(checkpoint: Optional[Dict[str, Any]]) -> bool:
     """Real exploration worth resuming: a chunk already gated, or developed theses in hand."""
     return bool(checkpoint) and bool(
@@ -524,13 +517,20 @@ def fail_abandoned_runs(cur, stale_after: timedelta, max_resumes: int = MAX_RESU
                           "(attempt %d of %d)." % (int(r["resume_count"]) + 1, max_resumes))
                 reaped += 1
         else:
-            msg = ("The session kept breaking at the same point and exceeded its %d resume attempts, "
-                   "so it was stopped. Start a new session." % max_resumes) if progressed \
-                else _abandoned_msg(stale_after)
+            # Being interrupted/abandoned is NOT a failure — it's a STOPPED run that reports how far it
+            # got. Only a genuine external/infra error (caught in run_research) is `failed`. The card
+            # shows "Explored N hypotheses" in neutral, not a red FAILED. Carry the explored/passed
+            # counts off the checkpoint so that readout is accurate even though finish_run never ran.
+            tried_n = len(ck.get("tried") or []) if ck else 0
+            passed_n = int(ck.get("total_passed") or 0) if ck else 0
+            msg = ("Explored %d hypothes%s, then the session was interrupted and stopped — start a new "
+                   "one to keep going." % (tried_n, "is" if tried_n == 1 else "es")) if tried_n \
+                else "The session was interrupted before it explored a hypothesis — start a new one."
             cur.execute(
-                """UPDATE app_agent_runs SET status='failed', error=%s, finished_at=%s
+                """UPDATE app_agent_runs SET status='stopped', error=%s, hypotheses_tried=%s,
+                     strategies_passed=%s, finished_at=%s
                    WHERE id=%s AND status='running' AND heartbeat_at < %s""",
-                (msg, now_utc(), r["id"], stale_cut),
+                (msg, tried_n, passed_n, now_utc(), r["id"], stale_cut),
             )
             reaped += cur.rowcount
     return reaped

@@ -139,22 +139,25 @@ def test_resumable_vs_failed_and_retry_cap():
     progressed = json.dumps({"chunks_done": 0, "tried": [{"t": 1}], "chunk": [{"t": 1}]})
     rows = [
         {"id": 10, "kind": "research", "resume_count": 0, "checkpoint_json": progressed},   # -> resume
-        {"id": 11, "kind": "research", "resume_count": 3, "checkpoint_json": progressed},   # -> fail (cap)
-        {"id": 12, "kind": "research", "resume_count": 0, "checkpoint_json": None},          # -> fail (no progress)
-        {"id": 13, "kind": "review", "resume_count": 0, "checkpoint_json": progressed},      # -> fail (not research)
+        {"id": 11, "kind": "research", "resume_count": 3, "checkpoint_json": progressed},   # -> STOPPED (cap)
+        {"id": 12, "kind": "research", "resume_count": 0, "checkpoint_json": None},          # -> STOPPED (no progress)
+        {"id": 13, "kind": "review", "resume_count": 0, "checkpoint_json": progressed},      # -> STOPPED (not research)
     ]
     cur = _AbCur(rows)
     reaped = repo.fail_abandoned_runs(cur, timedelta(seconds=240), max_resumes=3)
     assert reaped == 4
 
     requeued = [p[1] for s, p in cur.status_updates if "status='queued'" in s]
-    failed = {p[2]: p[0] for s, p in cur.status_updates if "status='failed'" in s}
+    # An interrupted/abandoned run is STOPPED, never failed — the UPDATE carries (msg, tried, passed, …);
+    # id is the 5th param. No status='failed' is ever written here any more.
+    assert not any("status='failed'" in s for s, _ in cur.status_updates)
+    stopped = {p[4]: p[0] for s, p in cur.status_updates if "status='stopped'" in s}
 
     assert requeued == [10]                                  # only the one with progress + budget resumes
-    assert "resume-check" not in failed                       # sanity: keys are run ids
-    assert "exceeded" in failed[11]                           # out of retries -> clear reason
-    assert "froze" in failed[12] and "exceeded" not in failed[12]   # no progress -> plain abandoned msg
-    assert "froze" in failed[13]                              # non-research never resumes
+    assert set(stopped) == {11, 12, 13}                       # every non-resumable run is STOPPED, not failed
+    assert "Explored 1 hypothesis" in stopped[11]             # had progress -> reports how far it got
+    assert "interrupted before" in stopped[12]                # no progress -> explored nothing
+    assert "Explored 1 hypothesis" in stopped[13]             # non-research reaped the same way
     assert 10 in [p[0] for p in cur.events]                   # the reclaim is announced on the resumed run
 
 
@@ -164,5 +167,5 @@ def test_resume_count_at_cap_is_not_reclaimed():
                "checkpoint_json": json.dumps({"tried": [{"t": 1}]})}]
     cur = _AbCur(at_cap)
     repo.fail_abandoned_runs(cur, timedelta(seconds=90), max_resumes=2)
-    assert all("status='queued'" not in s for s, _ in cur.status_updates)
-    assert any("status='failed'" in s for s, _ in cur.status_updates)
+    assert all("status='queued'" not in s for s, _ in cur.status_updates)   # at the cap -> not reclaimed
+    assert any("status='stopped'" in s for s, _ in cur.status_updates)       # terminal = STOPPED, not failed
