@@ -321,7 +321,7 @@
 
   // ---------- API ----------
   class ApiError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
-  async function api(path, body) {
+  async function api(path, body, cfg) {
     const opts = { credentials: 'same-origin', headers: {} };
     if (body !== undefined) {
       opts.method = 'POST';
@@ -329,8 +329,14 @@
       opts.headers['X-Recursive'] = '1';
       opts.body = JSON.stringify(body);
     }
+    // Optional timeout (used on the boot /api/me call so a slow/overloaded server can't hang the
+    // whole app on a blank screen). AbortController fires an abort the fetch rejects on.
+    let ctl, tid;
+    if (cfg && cfg.timeoutMs) { ctl = new AbortController(); opts.signal = ctl.signal; tid = setTimeout(() => ctl.abort(), cfg.timeoutMs); }
     let res;
-    try { res = await fetch(path, opts); } catch (e) { throw new ApiError(0, "Can't reach Tau. Check your connection."); }
+    try { res = await fetch(path, opts); }
+    catch (e) { throw new ApiError(0, ctl && ctl.signal.aborted ? "Tau is taking too long to respond." : "Can't reach Tau. Check your connection."); }
+    finally { if (tid) clearTimeout(tid); }
     let data = {};
     try { data = await res.json(); } catch (e) { /* non-JSON error page */ }
     if (res.status === 401 && path !== '/api/me') { go('/signin'); throw new ApiError(401, 'Please sign in.'); }
@@ -401,7 +407,18 @@
     if (path === '/signin') { const f = document.getElementById('autopilot-float'); if (f) f.remove(); }
     const match = routes.map(([re, fn]) => [path.match(re), fn]).find(([m]) => m);
     if (!S.me && path !== '/signin') {
-      try { S.me = await api('/api/me'); } catch (e) { return go('/signin', true); }
+      // Boot: don't sit on a blank white page if /api/me is slow. Paint a branded splash after a
+      // short delay (so a fast boot never flashes it), and time the call out. A 401 means genuinely
+      // signed out (-> signin); ANY other failure (slow/overloaded/offline) is transient, so show a
+      // retry screen instead of spuriously bouncing a signed-in user to signin.
+      let splashTid = root.firstChild ? null : setTimeout(() => { if (!S.me) root.innerHTML = bootSplash(); }, 250);
+      try { S.me = await api('/api/me', undefined, { timeoutMs: 12000 }); }
+      catch (e) {
+        if (splashTid) clearTimeout(splashTid);
+        if (e.status === 401) return go('/signin', true);
+        return bootFail();
+      }
+      if (splashTid) clearTimeout(splashTid);
       // Adopt the account's saved theme on a fresh device (server wins), reloading once into it.
       const server = (S.me.user && S.me.user.ui_theme) || 'tau';
       let local = 'tau'; try { local = localStorage.getItem('tau_ui') || 'tau'; } catch (e) {}
@@ -656,6 +673,16 @@
   const dirTag = () => '';
   const notice = (msg, kind = '') => `<div class="notice ${kind}" role="${kind === 'bad' ? 'alert' : 'status'}">${kind === 'good' ? ICON.check : ICON.warn}<span>${esc(msg)}</span></div>`;
   const loading = (h = 160) => `<div class="skeleton" style="height:${h}px" aria-label="Loading"></div>`;
+  // Boot screens: shown only while /api/me is in flight (splash) or after it timed out / failed
+  // transiently (fail). Reuses the landing wordmark + spinner so it's on-world with zero new look.
+  const bootSplash = () => `<div class="boot"><div class="lbrand">${ICON.mark}<span>Tau</span></div><div class="lspin" aria-label="Loading Tau"></div></div>`;
+  function bootFail() {
+    root.innerHTML = `<div class="boot"><div class="lbrand">${ICON.mark}<span>Tau</span></div>
+      <p class="boot-msg">Tau is taking longer than usual to load — it may be briefly busy.</p>
+      <button class="btn" id="bootretry">Try again</button></div>`;
+    const b = document.getElementById('bootretry');
+    if (b) b.onclick = () => { b.disabled = true; render(); };
+  }
 
   // arm-to-confirm: first click arms for 5s, second click fires
   function armed(btn, label, fire) {
