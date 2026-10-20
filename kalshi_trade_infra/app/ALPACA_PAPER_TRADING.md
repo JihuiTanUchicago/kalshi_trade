@@ -10,6 +10,10 @@ Kalshi practice ledger.
 
 ## User flow
 
+These controls are temporarily removed from Funds in both themes while broker
+connections are unavailable. The flow below documents the retained implementation
+for a later, verified reactivation; it is not currently offered in the UI.
+
 1. Sign into Tau and open Funds, or Settings → Account in Meridian.
 2. Connect Alpaca with **Paper** selected and **Authorize trading at Alpaca** checked.
    Existing read-only connections must reconnect to grant `trading` permission.
