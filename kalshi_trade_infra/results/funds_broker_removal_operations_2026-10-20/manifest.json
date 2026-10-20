@@ -1,0 +1,21 @@
+{
+  "source_branch": "codex/hide-unavailable-brokers-20261020",
+  "source_commit": "b31dbd76c574e817de9d4bae5e54c3b144047d9f",
+  "source_pr": 17,
+  "main": "2223751625dbdf3f07710ac27b58180fcadac23f",
+  "frontend": {
+    "app/static/app.js": {
+      "before_sha256": "504eb419d558cc9dd7ee328ecc67a36946285058d7b064dddb0916112a0dbd47",
+      "after_sha256": "3916e0dce52680fbbc6bb632f5fc39bdcfed0204d880df6bfcda6f621c2e9502",
+      "matches_main_candidate": false
+    },
+    "app/static/app.meridian.js": {
+      "before_sha256": "b457ecf5d4720adaf27635712f4e2c7745e72b8ca3c02c4efa8c457423046b77",
+      "after_sha256": "0cc7dba7e33753ee707cbe10715e51fdba1992f7f95bc0072a8e87dd5865e261",
+      "matches_main_candidate": false
+    }
+  },
+  "no_service_restarts": true,
+  "no_provider_calls": true,
+  "whole_installed_package_preserved": true
+}
