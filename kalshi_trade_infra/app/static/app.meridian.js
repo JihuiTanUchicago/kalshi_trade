@@ -1901,7 +1901,7 @@
       root.querySelector('#ffigs').innerHTML = fig('Live money', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead' }) +
         fig('Demo balance', usd(dm.equity)) +
         fig('Paper cash', usd(d.paper.cash));
-      root.querySelector('main').innerHTML = `<div id="flash"></div><section id="broker-connections" aria-label="Broker accounts"></section><div class="funds">
+      root.querySelector('main').innerHTML = `<div id="flash"></div><div class="funds">
         <section class="panel">
           <h3>Kalshi account (live money)</h3>
           ${k.connected ? `
@@ -1960,8 +1960,6 @@
             ${d.paper.ledger.map((r) => `<tr><td class="hint lead-cell">${when(r.created_at)}</td><td>${esc(r.memo || r.kind)}</td><td class="num ${tone(+r.amount)}">${usd(r.amount, true)}</td></tr>`).join('')}
           </tbody></table>
         </section></div>`;
-      const brokerHost = root.querySelector('#broker-connections');
-      if (window.TauBrokerConnections && brokerHost) window.TauBrokerConnections.mount(brokerHost, {api, isCurrent: () => gen === S.gen});
       const df = root.querySelector('#demo');
       if (df) df.onsubmit = async (e) => {
         e.preventDefault();

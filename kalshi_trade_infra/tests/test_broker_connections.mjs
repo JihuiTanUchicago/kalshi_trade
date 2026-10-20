@@ -34,14 +34,14 @@ class Host {
   change(dataset, value, checked) { return this.onchange({target: {dataset, value, checked}}); }
 }
 
-test('both shipped themes load and mount the shared broker account controls', () => {
+test('broker modules remain available but unavailable connections are absent from both Funds themes', () => {
   const html = readFileSync(new URL('../app/static/index.html', import.meta.url), 'utf8');
   assert.ok(html.indexOf('broker-connections.js?v={{brokers_v}}') < html.indexOf('boot.js?v='));
   assert.match(html, /broker-connections\.css\?v=\{\{brokers_css_v\}\}/);
   for (const name of ['app.js', 'app.meridian.js']) {
     const source = readFileSync(new URL('../app/static/' + name, import.meta.url), 'utf8');
-    assert.match(source, /<section id="broker-connections" aria-label="Broker accounts"><\/section>/);
-    assert.match(source, /TauBrokerConnections\.mount\(brokerHost, \{api, isCurrent: \(\) => gen === S\.gen\}\)/);
+    assert.doesNotMatch(source, /id="broker-connections"/);
+    assert.doesNotMatch(source, /TauBrokerConnections\.mount/);
   }
   const context = vm.createContext({URL, URLSearchParams});
   vm.runInContext(readFileSync(new URL('../app/static/broker-connections.js', import.meta.url), 'utf8'), context);

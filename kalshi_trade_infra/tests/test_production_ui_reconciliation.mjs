@@ -182,6 +182,6 @@ test('current paper proposal approval semantics and broker callback route surviv
   const paper = f.apFeedLi({role: 'system', content: 'Synthetic paper order', created_at: '2026-10-19T00:00:00Z', proposal_id: 7, proposal_status: 'applied', proposal_kind: 'alpaca_paper'});
   assert.match(paper.innerHTML, /Alpaca paper order/); assert.match(paper.innerHTML, />Approved</);
   assert.doesNotMatch(paper.innerHTML, />Applied<|>Filled</);
-  assert.match(source, /TauBrokerConnections\.mount\(brokerHost, \{api, isCurrent: \(\) => gen === S\.gen\}\)/);
+  assert.doesNotMatch(source, /TauBrokerConnections\.mount/);
   assert.match(source, /api\('\/api\/waitlist'/);
 });

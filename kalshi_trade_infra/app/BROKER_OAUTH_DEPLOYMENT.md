@@ -1,5 +1,10 @@
 # Broker OAuth: teammate deployment
 
+The Broker accounts section is temporarily removed from Funds in both themes
+while account connections are unavailable. The adapters and authenticated APIs
+are retained; completing provider setup and real-user acceptance must precede
+restoring those customer controls.
+
 For the subsequent opt-in paper-order feature, also follow
 [Alpaca paper trading](ALPACA_PAPER_TRADING.md): include its additive intent table
 through the full `app.schema` migration, load the paper flags and complete real
