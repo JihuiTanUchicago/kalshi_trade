@@ -1,0 +1,21 @@
+{
+  "css": "/static/app.css?v=82b446b5e72f",
+  "height": 720,
+  "radios": [
+    {
+      "checked": "true",
+      "theme": "tau"
+    },
+    {
+      "checked": "false",
+      "theme": "meridian"
+    }
+  ],
+  "scripts": [
+    "/static/alpaca-paper.js?v=c7af50e85c5f",
+    "/static/broker-connections.js?v=3bdd0fa86d7c",
+    "/static/boot.js?v=69f63b1ea54d",
+    "/static/app.js?v=de0f28f29ae7"
+  ],
+  "width": 1280
+}

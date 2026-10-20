@@ -1,0 +1,15 @@
+{
+  "workstream": "tau-meridian-workspace-20261021",
+  "recorded_at": "2026-10-20T16:25:47.780429+00:00",
+  "base": "2223751625dbdf3f07710ac27b58180fcadac23f",
+  "hashes": {
+    "app/static/app.js": "de0f28f29ae75bc64c89d3e7a3562a20ef71d805b65bf9d62c5f9e65b1956e15",
+    "app/static/app.css": "82b446b5e72fa17f23942db4c440da0537958214776d89e9044dec316953d2b9",
+    "app/static/app.meridian.js": "bc8992814760ea673f36a7c3ab776b0182c6b1e931cb8795ed52fa1e5d9348b3",
+    "app/static/app.meridian.css": "1e7978ec34364065b51e61dcdf8a5099085dc8ab5f8da72009166d4596059c0e",
+    "app/static/boot.js": "69f63b1ea54da1c91897fb10b1a5199cb5d583f26eee1e592f8988d307a3717f",
+    "app/static/index.html": "0454456a829916175a20f329a18da94724ecd8fe661809e0fe96e9d822a40b42"
+  },
+  "owner": "root: source/tests/records/publication/deployment; read-only deployment audit may be delegated",
+  "scope": "Port frozen86 saved theme into app.meridian.js/css only, reconcile latest behavior, preserve default assets and original saved candidate. User authorizes deployment. No design-critic loop. No broker/provider/order changes."
+}

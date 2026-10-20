@@ -43,6 +43,10 @@ jobs:
         working-directory: kalshi_trade_infra
         run: python -m py_compile app/*.py data_pipeline/*.py
 
-      - name: Syntax-check frontend JS
+      - name: Check both frontend themes
         working-directory: kalshi_trade_infra
-        run: node --check app/static/app.js
+        run: |
+          node --check app/static/app.js
+          node --check app/static/app.meridian.js
+          node --test tests/*.mjs
+          TAU_TEST_THEME=meridian node --test tests/test_production_ui_reconciliation.mjs

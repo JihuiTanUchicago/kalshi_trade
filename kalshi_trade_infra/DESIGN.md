@@ -1242,6 +1242,26 @@ LIVE. Bands fill at 7–10% alpha.
 - Add a build step, framework, icon package, or runtime dependency.
 - Let the live surface and paper surfaces converge.
 
+## Meridian compact workspace — October21,2026,Asia/Shanghai
+
+The retained compact redesign is deployed as the Meridian-only release. The
+existing theme bootstrap swaps app.meridian.css and loads app.meridian.js through
+Settings; default Tau assets, HTML and bootstrap remain byte-identical. Meridian
+uses the saved warm paper/charcoal palette, bundled DM Sans, Georgia wordmark,
+tabular figures, quieter rules and concise persistent copy. Market names/full raw
+IDs, native six/five position columns, explicit financial modes, accessible source
+metadata, chart readings and guarded strategy controls remain. Research, Explore,
+Community and Funds retain their existing data/actions and native disclosures.
+
+The port reconciles current main behavior: unavailable broker controls remain
+hidden, latest paper proposal/model handling stays intact, and existing Settings
+account/billing/system/theme links remain valid. Meridian checks its own current
+HTML build for update notices because the shared JSON version identifies Tau.
+No backend or default-theme change is required. Full regression and synthetic
+320px/desktop route and theme-switch checks pass. Production origin/public200, asset hashes, theme build versions and unchanged
+Tau defaults passed acceptance in run39463270100. No new aesthetic score is claimed.
+[Deployment evidence](results/meridian_workspace_2026-10-21/HANDOFF.md).
+
 ---
 
 # Defects observed (carried by the build, not canonized)

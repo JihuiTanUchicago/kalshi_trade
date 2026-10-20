@@ -1,5 +1,11 @@
 # PLAN
 
+## Meridian compact workspace deployment — October21,2026,Asia/Shanghai
+
+Deployed and accepted (`tau-meridian-workspace-20261021`). Settings → Theme → Meridian selects the retained compact redesign. Only Meridian JS/CSS changed; the actual Tau default, backend, configuration and running service PIDs were preserved. Whole-package exchange and the full unchanged installed schema succeeded. CloudFront refresh was issued, then origin/public 200/hash/version checks passed in run39463270100 and independently from local.
+
+Verification: **1,676 Python passed / 10 skipped; 178 frontend + 8 Meridian current-behavior checks; 65 operation checks**, independent control review and synthetic desktop/320px/theme switching. No service restart, job mutation or provider/order call. Source is tracked in PR18; the separate operations branch must never merge. Ownership released at acceptance; the prior design loop remains stopped. [Canonical handoff](results/meridian_workspace_2026-10-21/HANDOFF.md).
+
 ## Isolated paper testing and GitHub source — October 19, 2026, Asia/Shanghai
 
 Paper source merged as `f76b2f1` through PR #13, reconciled with main `8e3ec87`; latest research diagnostics are preserved. **1,608 Python / 10 skipped and 71 Node tests passed**, independent integration review and PR/main CI passed. Source merge does not deploy production; its workflow is manual and the old exact-ref activation follow-up remains paused.

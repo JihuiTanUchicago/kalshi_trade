@@ -1,0 +1,44 @@
+{
+  "recorded_at_utc": "2026-10-20T17:10:10.529603+00:00",
+  "status": "deployed_and_accepted",
+  "canonical_origin": "https://tau-trading.com",
+  "select_theme": "Settings \u2192 Theme \u2192 Meridian",
+  "source_commit": "d8fbf233b4508c400b9ffbf92976aefba9fcbe40",
+  "source_pr": "https://github.com/JihuiTanUchicago/kalshi_trade/pull/18",
+  "operations_commit": "e76dbfe4b5b32d47eada1e360a753e96fe6fbb80",
+  "operations_must_not_merge": true,
+  "inventory_run": 39462684515,
+  "apply_run": 39463270100,
+  "workflow_public_acceptance": true,
+  "independent_local_public_acceptance": true,
+  "full_unchanged_installed_schema_executed": true,
+  "backend_bytes_unchanged": true,
+  "default_assets_unchanged": true,
+  "service_pids_unchanged_during_apply": true,
+  "provider_calls": 0,
+  "order_calls": 0,
+  "service_operations": 0,
+  "job_mutations": 0,
+  "meridian_sha256": {
+    "app/static/app.meridian.js": "d898ab44b8125d2bd076bbe19a82c33d921ca02bc7980a23f99377331778a0d8",
+    "app/static/app.meridian.css": "0cf549951e20d6c95c31bf90a9747468fb950fa993fb3c54680837583a5cdf26"
+  },
+  "preserved_sha256": {
+    "app/static/app.js": "3916e0dce52680fbbc6bb632f5fc39bdcfed0204d880df6bfcda6f621c2e9502",
+    "app/static/app.css": "7864251d7c0be836978beba9cd3776c3df920f219b642faeab8a6cdd1cd0b6bb",
+    "app/static/boot.js": "69f63b1ea54da1c91897fb10b1a5199cb5d583f26eee1e592f8988d307a3717f",
+    "app/static/index.html": "e0be2fb9c644388399da2a2e50ab06564ec4b8dd45c8106b01aa456b0bf5585f"
+  },
+  "private_backup_retained": true,
+  "cloudfront_invalidation": "IBYVT3BK909Z6K5G0OLC2MWB0P",
+  "limits": [
+    "Production verification used anonymous public GETs; no signed-in user preference/account/payment/order operation was performed.",
+    "Theme-switch, desktop/mobile and callback acceptance used synthetic local fixtures; actual production asset delivery and health/version were verified separately."
+  ],
+  "retained_history": [
+    "DEPLOYMENT_39461605674.json",
+    "PRE_APPLY_RETRY_REVIEW.json",
+    "PUBLIC_ACCEPTANCE_INITIAL_CHECKER_ERROR.json"
+  ],
+  "remaining_deployment_gates": []
+}

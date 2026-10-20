@@ -1,0 +1,36 @@
+{
+  "recorded_at": "2026-10-20T16:31:11.938724+00:00",
+  "canonical": "https://tau-trading.com",
+  "assets": {
+    "index.html": {
+      "status": 200,
+      "sha256": "d941f235245b2892121fcd7ad5c710cc7bc8bfcdcfd7d9d73ad2d682e3a66317",
+      "bytes": 1377
+    },
+    "app.js": {
+      "status": 200,
+      "sha256": "3916e0dce52680fbbc6bb632f5fc39bdcfed0204d880df6bfcda6f621c2e9502",
+      "bytes": 272169
+    },
+    "app.css": {
+      "status": 200,
+      "sha256": "7864251d7c0be836978beba9cd3776c3df920f219b642faeab8a6cdd1cd0b6bb",
+      "bytes": 132068
+    },
+    "app.meridian.js": {
+      "status": 200,
+      "sha256": "0cc7dba7e33753ee707cbe10715e51fdba1992f7f95bc0072a8e87dd5865e261",
+      "bytes": 209677
+    },
+    "app.meridian.css": {
+      "status": 200,
+      "sha256": "1e7978ec34364065b51e61dcdf8a5099085dc8ab5f8da72009166d4596059c0e",
+      "bytes": 109121
+    },
+    "boot.js": {
+      "status": 200,
+      "sha256": "69f63b1ea54da1c91897fb10b1a5199cb5d583f26eee1e592f8988d307a3717f",
+      "bytes": 993
+    }
+  }
+}
