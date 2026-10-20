@@ -540,19 +540,34 @@ def _brief() -> str:
         return ""
 
 
-def _pick_market(run: Dict, model: ModelFn, usage: Usage, log) -> str:
+def _researchable_keys(cur) -> List[str]:
+    """Market keys the autopilot may pick for its OWN choice: only those with a real backtest
+    surface (collected candle history / a live spot feed), so it stops picking data-less markets
+    that just fail at load — the proactive complement to the reactive fail-fast/backoff. Reuses the
+    server picker's tested readiness logic (lazy import avoids the server->agent cycle). Empty ->
+    fail open (offer all), so a cold/edge DB never blocks research entirely."""
+    from app import server  # lazy: server imports agent at module load, so import it at call time
+    try:
+        ready = [m["key"] for m in server._researchable_markets(cur) if m["has_data"]]
+    except Exception:  # noqa: BLE001 - a readiness-lookup hiccup must never block research
+        return list(MARKETS)
+    return ready or list(MARKETS)
+
+
+def _pick_market(run: Dict, model: ModelFn, usage: Usage, log, keys: List[str]) -> str:
     """When the user didn't pin a market, let the agent choose the one whose contracts best
-    fit the idea (guided by the brief). One cheap call before the research loop."""
+    fit the idea (guided by the brief), from the data-ready `keys` only. One cheap call before
+    the research loop."""
     idea = (run.get("prompt") or "").strip() or "any durable, fee-surviving edge"
-    opts = "\n".join("- %s: %s" % (k, m.label) for k, m in MARKETS.items())
+    opts = "\n".join("- %s: %s" % (k, MARKETS[k].label) for k in keys)
     msg = ("%s\n\nIdea: %s\nMarkets you can research:\n%s\n"
            "Pick the ONE market whose contracts best fit this idea. Reply exactly:\n"
            '{"market": "<key>", "why": "<one sentence>"}' % (_brief(), idea[:400], opts))
 
     def check(obj: Dict) -> Dict:
         k = obj.get("market")
-        if k not in MARKETS:
-            raise ValueError("market must be one of: " + ", ".join(MARKETS))
+        if k not in keys:
+            raise ValueError("market must be one of: " + ", ".join(keys))
         # Full reasoning, not a clipped fragment: this `why` is shown verbatim as the first
         # agent-log line, so cap it at the same 1000 chars as every other reason field (the
         # message column is TEXT) — the old 200 clipped the sentence mid-word.
@@ -1566,7 +1581,7 @@ def run_research(
                 market = ckpt["market"]  # already chosen on the first attempt; don't re-spend the pick
             else:
                 checkpoint()
-                market = _pick_market(run, model, usage, log)
+                market = _pick_market(run, model, usage, log, _researchable_keys(cur))
             run = {**run, "market": market}
             repo.set_run_market(cur, run_id, market)
         # A pinned market that has left the live universe (a retired/renamed catalog series) would
