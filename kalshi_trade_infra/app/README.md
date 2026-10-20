@@ -1,5 +1,17 @@
 # Tau (v0.1)
 
+## Meridian compact workspace — October21,2026
+
+The saved compact redesign is prepared as Meridian, selectable through the
+existing Settings theme switch. Tau's default CSS/JS and the shared bootstrap/HTML
+are unchanged. Existing account, billing, research, community, quote and trading
+controls retain their current backend contracts. Current Funds broker removal is
+preserved. Full1676Python/10skipped,178frontend and8Meridian current-behavior checks
+pass; desktop and320px synthetic routes and switching in both directions pass.
+Deployment is pending; public-source hashes and controls must match before apply.
+[Canonical deployment handoff](../results/meridian_workspace_2026-10-21/HANDOFF.md).
+
+
 The customer product: Google sign-in, agents that research Kalshi Bitcoin markets, a
 backtest gate the agent cannot game, paper-first deployment, and a co-pilot chat.
 Product truth is in `../PRODUCT.md`; the operator console (`data_pipeline/dashboard_server.py`)

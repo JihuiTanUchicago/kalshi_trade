@@ -1,5 +1,9 @@
 # PLAN
 
+## Meridian compact workspace deployment — October21,2026,Asia/Shanghai
+
+In progress (`tau-meridian-workspace-20261021`). Port the retained compact redesign to Meridian assets only; preserve Tau default hashes, latest Funds removal and paper behavior. User explicitly authorizes deployment. Implemented/offline verified:1,676Python/10skipped,178frontend+8Meridian current-behavior checks and synthetic desktop/320px/theme-switch proof pass. Git default hashes unchanged; actual production drift is recorded for preservation. Independent review and whole-installed-package no-restart rollout remain pending. [Canonical handoff](results/meridian_workspace_2026-10-21/HANDOFF.md).
+
 ## Isolated paper testing and GitHub source — October 19, 2026, Asia/Shanghai
 
 Paper source merged as `f76b2f1` through PR #13, reconciled with main `8e3ec87`; latest research diagnostics are preserved. **1,608 Python / 10 skipped and 71 Node tests passed**, independent integration review and PR/main CI passed. Source merge does not deploy production; its workflow is manual and the old exact-ref activation follow-up remains paused.

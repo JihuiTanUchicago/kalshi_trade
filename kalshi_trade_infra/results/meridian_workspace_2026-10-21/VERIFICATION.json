@@ -1,0 +1,87 @@
+{
+  "recorded_at": "2026-10-20T16:48:45.355856+00:00",
+  "status": "offline verified / ready for Meridian-only publication; production not yet changed",
+  "base": "2223751",
+  "meridian_hashes": {
+    "app/static/app.meridian.js": "d898ab44b8125d2bd076bbe19a82c33d921ca02bc7980a23f99377331778a0d8",
+    "app/static/app.meridian.css": "0cf549951e20d6c95c31bf90a9747468fb950fa993fb3c54680837583a5cdf26"
+  },
+  "default_git_assets_unchanged": [
+    "app/static/app.js",
+    "app/static/app.css",
+    "app/static/boot.js",
+    "app/static/index.html"
+  ],
+  "default_production_drift_preserved": "PUBLIC_BEFORE.json; deployment clones installed package and changes only the two Meridian assets",
+  "python": {
+    "passed": 1676,
+    "skipped": 10,
+    "seconds": 21.71,
+    "scope": "full tests/",
+    "log": "python-final.txt"
+  },
+  "frontend": {
+    "passed": 178,
+    "failed": 0,
+    "skipped": 0,
+    "log": "frontend-final.tap"
+  },
+  "meridian_current_behavior": {
+    "passed": 8,
+    "failed": 0,
+    "log": "meridian-current-final.tap"
+  },
+  "syntax_whitespace_pass": true,
+  "browser": {
+    "synthetic_only": true,
+    "settings_roundtrip": "Tau -> Meridian -> Tau -> Meridian; correct isolated JS/CSS and checked radio",
+    "desktop_routes": 9,
+    "phone_routes": 6,
+    "phone_width": 320,
+    "all_without_error_or_horizontal_overflow": true,
+    "dashboard_native_fields": 6,
+    "positions": 5,
+    "chart_samples": 7,
+    "font": "DM Sans",
+    "false_update_notice": false,
+    "viewport_restored": [
+      1280,
+      720
+    ],
+    "owned_tab_closed": "8",
+    "user_tabs_untouched": [
+      "4",
+      "5",
+      "6"
+    ]
+  },
+  "guards": "No backend, auth/risk/execution, provider/order or configuration change; saved86 candidate unchanged",
+  "visual_review": "User ended aesthetic loop; no new critic or9/10 claim",
+  "no_production_change_yet": true,
+  "initial_verification": {
+    "frontend_passed": 156,
+    "meridian_current_behavior_passed": 8,
+    "python_passed": 1676,
+    "python_skipped": 10,
+    "limits": "Independent guard audit subsequently found missing departed-view cases; corrected before publication."
+  },
+  "guard_review": {
+    "initial_findings_fixed": true,
+    "new_regressions": 22,
+    "unfixed_baseline_failed": 21,
+    "final_meridian_suite_passed": 99,
+    "scope": "Restore shipped navigation/error guards in Funds/Billing/Admin/System; no payload/financial eligibility change",
+    "handoff": "functional-guard-handoff.md",
+    "root_full_diff_reviewed": true
+  },
+  "final_source_browser": "browser-final-source.json",
+  "font_available_in_production": {
+    "dm-sans-latin-9fea608a94.woff2": {
+      "status": 200,
+      "sha256": "9fea608a947e67020c33cad9a6fe3d60c54119dfb8cff87768a8117a15ed7543",
+      "matches_source": true,
+      "content_type": "font/woff2"
+    }
+  },
+  "ci_checks_both_themes": true
+}

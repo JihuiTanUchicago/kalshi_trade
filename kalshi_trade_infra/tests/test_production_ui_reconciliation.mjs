@@ -3,7 +3,8 @@ import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import vm from 'node:vm';
 
-const source = readFileSync(new URL('../app/static/app.js', import.meta.url), 'utf8');
+const bundle = process.env.TAU_TEST_THEME === 'meridian' ? 'app.meridian.js' : 'app.js';
+const source = readFileSync(new URL('../app/static/' + bundle, import.meta.url), 'utf8');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return {promise, resolve}; };
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

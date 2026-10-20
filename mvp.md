@@ -23,6 +23,8 @@ A self-improving alpha discovery pipeline, from ideation, to similation, and fin
 
 ## TODO / Working Queue
 
+- [in progress] Deploy the retained compact workspace as Meridian through Settings, preserving the Tau default theme and latest application functionality. Whole-package frontend rollout with exact asset/control preservation. [Handoff](kalshi_trade_infra/results/meridian_workspace_2026-10-21/HANDOFF.md).
+
 - `[implemented: isolated paper staging]` Reusable Compose and GitHub acceptance setup: private MySQL/network/secrets, schema-first web preview and unpublished synthetic-broker verification. 1,645 Python / 10 skipped;37 focused guards and the14-check real MySQL/HTTP run pass. Exact-revision Compose acceptance is recorded by the dedicated Actions workflow. No production or real broker calls. [Setup](kalshi_trade_infra/staging/README.md).
 - `[delayed: staging first]` Paper source is merged via PR #13 as `f76b2f1`, preserving latest research diagnostics. Production full migration/runtime rollout remains held; replace the paused old exact-ref operation only after staged validation. Real user OAuth/paper ticket remains separate. [Evidence](kalshi_trade_infra/results/alpaca_paper_trading_2026-10-18/deployment/HANDOFF.md).
 Single source of truth for OPEN work — one flat list. Each item is tagged with what it's waiting on:
