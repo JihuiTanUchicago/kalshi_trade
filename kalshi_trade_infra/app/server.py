@@ -490,6 +490,12 @@ def _require_research_capacity(ctx: Ctx) -> None:
     """Billing + rate gates every research run must clear, whether it's a fresh idea or a
     'dig deeper' branch off a passed strategy. One place so the two paths can't diverge."""
     _require_billing_ready(ctx, "researching")
+    # Headroom gate (research only): a session bills post-paid on actual tokens, so starting one on a
+    # near-zero balance overshoots into the negative. Require one session's worth up front. Cheap chat
+    # keeps the plain >0 gate in _require_billing_ready.
+    if billing.configured() and repo.credit_balance(ctx.cur, ctx.uid) < float(billing.MIN_RUN_BALANCE):
+        raise ApiError(402, "You need at least $%.2f in credits to start a research session. Add credits "
+                            "on the Billing tab." % float(billing.MIN_RUN_BALANCE))
     if repo.count_runs(ctx.cur, ctx.uid, "research", active_only=True) >= MAX_ACTIVE_RESEARCH:
         raise ApiError(429, "You already have %d agents researching. Wait for one to finish." % MAX_ACTIVE_RESEARCH)
     if MAX_RESEARCH_PER_DAY and repo.count_runs(ctx.cur, ctx.uid, "research", since=repo.now_utc() - timedelta(days=1)) >= MAX_RESEARCH_PER_DAY:

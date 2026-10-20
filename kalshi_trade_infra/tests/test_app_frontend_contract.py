@@ -59,6 +59,20 @@ def test_saved_card_without_credits_still_blocks_research(monkeypatch):
     assert error.value.status == 402
 
 
+def test_sub_minimum_balance_blocks_research_start(monkeypatch):
+    # A POSITIVE but sub-minimum balance passes the >0 card gate yet must still be blocked from
+    # STARTING a research session — post-paid billing would otherwise overshoot it negative.
+    from decimal import Decimal
+    monkeypatch.setattr(server.billing, 'configured', lambda: True)
+    monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: {'default_pm_id': 'pm_fixture'})
+    monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: 0.5)
+    monkeypatch.setattr(server.billing, 'MIN_RUN_BALANCE', Decimal('1.00'))
+    monkeypatch.setattr(server.repo, 'create_run', lambda *a, **k: pytest.fail('agent work queued'))
+    with pytest.raises(server.ApiError, match='at least') as error:
+        server.create_run(context({'market': 'btc15m', 'prompt': 'Keep the strategy risk unchanged'}))
+    assert error.value.status == 402
+
+
 def test_unconfigured_billing_is_a_complete_readonly_frontend_payload(monkeypatch):
     monkeypatch.setattr(server.billing, 'configured', lambda: False)
     monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: None)
