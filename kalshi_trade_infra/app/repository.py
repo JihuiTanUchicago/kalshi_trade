@@ -449,6 +449,15 @@ def count_runs(cur, user_id: int, kind: str, since: Optional[datetime] = None, a
     return int(cur.fetchone()["n"])
 
 
+def count_active_research(cur) -> int:
+    """GLOBAL count (all users) of research runs that hold or await a worker slot — for autopilot
+    backpressure: when the shared queue is already saturated, don't launch more. Uses the
+    idx_runs_status(status, created_at) index on the bounded status set."""
+    cur.execute("SELECT COUNT(*) AS n FROM app_agent_runs "
+                "WHERE kind='research' AND status IN ('queued','running','paused')")
+    return int(cur.fetchone()["n"])
+
+
 def claim_run(conn, worker_id: str) -> Optional[Dict]:
     """Take the oldest queued run. SKIP LOCKED lets any number of workers
     share the queue without two of them taking the same run."""

@@ -158,6 +158,27 @@ def test_research_action_proceeds_under_the_daily_cap(monkeypatch):
     assert pid is None and rec["runs"] == [("btc15m", None, "Fade the overreaction after a large 1-minute BTC move.")]
 
 
+# -- global backpressure: don't launch when the shared research queue is saturated ----------------
+
+def test_research_action_backs_off_when_the_global_queue_is_full(monkeypatch):
+    rec = _capture(monkeypatch)
+    monkeypatch.setattr(agent, "MAX_GLOBAL_ACTIVE_RESEARCH", 3)
+    monkeypatch.setattr(agent.repo, "count_active_research", lambda cur: 3)  # at the global cap
+    text, pid = agent.act(None, USER, {"type": "research", "market": "btc15m",
+                          "idea": "Fade the overreaction after a large 1-minute BTC move."}, True)
+    assert pid is None and rec["runs"] == []
+    assert "queue is full" in text.lower()
+
+
+def test_research_action_launches_when_global_queue_has_room(monkeypatch):
+    rec = _capture(monkeypatch)
+    monkeypatch.setattr(agent, "MAX_GLOBAL_ACTIVE_RESEARCH", 3)
+    monkeypatch.setattr(agent.repo, "count_active_research", lambda cur: 1)  # under the global cap
+    text, pid = agent.act(None, USER, {"type": "research", "market": "btc15m",
+                          "idea": "Fade the overreaction after a large 1-minute BTC move."}, True)
+    assert pid is None and rec["runs"] == [("btc15m", None, "Fade the overreaction after a large 1-minute BTC move.")]
+
+
 # -- per-market dedup/cooldown: don't re-spam a market that's running or just finished -------------
 
 def test_research_action_skips_a_market_already_running(monkeypatch):

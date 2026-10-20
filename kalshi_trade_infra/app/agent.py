@@ -786,6 +786,11 @@ MAX_ACTIVE_RESEARCH = 2   # mirrors server.MAX_ACTIVE_RESEARCH (not imported, to
 # cap, but the autopilot — the biggest source of research volume — did not, so an operator's cap
 # silently didn't apply where most runs come from. 0 = unlimited (preserves today's behavior).
 MAX_RESEARCH_PER_DAY = int(os.getenv("APP_MAX_RESEARCH_PER_DAY", "0"))
+# GLOBAL (all-user) backpressure: only CONCURRENCY runs execute at once, so when many autopilot users
+# all launch research the shared queue piles deep and every run ages. Above this many active research
+# runs, the autopilot stops launching MORE (reviews still run, so risk/position management is
+# unaffected) until a slot frees. 0 = off (preserves today's behavior); set it for many-user load.
+MAX_GLOBAL_ACTIVE_RESEARCH = int(os.getenv("APP_MAX_GLOBAL_ACTIVE_RESEARCH", "0"))
 
 
 def dig_deeper_run(cur, user_id: int, strat: Dict, model: Optional[str] = None,
@@ -2310,6 +2315,8 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
                 cur, user_id, "research", since=repo.now_utc() - timedelta(days=1)) >= MAX_RESEARCH_PER_DAY:
             return ("You've hit the daily research limit (%d) — it resets over the next 24 hours, "
                     "and I'll resume then." % MAX_RESEARCH_PER_DAY), None
+        if MAX_GLOBAL_ACTIVE_RESEARCH and repo.count_active_research(cur) >= MAX_GLOBAL_ACTIVE_RESEARCH:
+            return ("The research queue is full right now — I'll start this once a slot frees up.", None)
         if sid:
             dig_deeper_run(cur, user_id, strat)
             return ("Started a new research session digging deeper into “%s”: I'll refine and "
