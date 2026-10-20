@@ -23,8 +23,6 @@ A self-improving alpha discovery pipeline, from ideation, to similation, and fin
 
 ## TODO / Working Queue
 
-- [in progress] Deploy the retained compact workspace as Meridian through Settings, preserving the Tau default theme and latest application functionality. Whole-package frontend rollout with exact asset/control preservation. [Handoff](kalshi_trade_infra/results/meridian_workspace_2026-10-21/HANDOFF.md).
-
 - `[implemented: isolated paper staging]` Reusable Compose and GitHub acceptance setup: private MySQL/network/secrets, schema-first web preview and unpublished synthetic-broker verification. 1,645 Python / 10 skipped;37 focused guards and the14-check real MySQL/HTTP run pass. Exact-revision Compose acceptance is recorded by the dedicated Actions workflow. No production or real broker calls. [Setup](kalshi_trade_infra/staging/README.md).
 - `[delayed: staging first]` Paper source is merged via PR #13 as `f76b2f1`, preserving latest research diagnostics. Production full migration/runtime rollout remains held; replace the paused old exact-ref operation only after staged validation. Real user OAuth/paper ticket remains separate. [Evidence](kalshi_trade_infra/results/alpaca_paper_trading_2026-10-18/deployment/HANDOFF.md).
 Single source of truth for OPEN work — one flat list. Each item is tagged with what it's waiting on:
@@ -60,6 +58,8 @@ These are NOT done. Completed items move to **## Done** below.
 - `[blocked: AWS]` **Onboard Opus 5.5** (`claude-opus-5-5`) + surface model comparison — tester wants it for NBA season. Blocked on AWS Bedrock model access like the other premium models.
 
 ## Done
+
+- **2026-10-21 — Meridian compact theme deployed:** the retained workspace is available through Settings → Theme → Meridian. Tau default assets are unchanged. Whole-package rollout, full installed schema, public 200/hash/version checks and independent acceptance passed (run39463270100); no service restart, job mutation or provider/order call. [Handoff](kalshi_trade_infra/results/meridian_workspace_2026-10-21/HANDOFF.md).
 
 - **2026-10-18 — OAuth and Databento PRs merged with latest main:** imported all 68 newer main commits, reconciled both PRs locally, preserved current research/risk/execution/UI changes, and merged [#10](https://github.com/JihuiTanUchicago/kalshi_trade/pull/10) then [#11](https://github.com/JihuiTanUchicago/kalshi_trade/pull/11) on GitHub. Exact merge trees match tested source; local main synchronized. **1,187 Python passed / 9 skipped; 58 frontend passed**, independent integration reviews clean. Callback/generation guards and stale-test fixtures fixed; guides require full app.schema for the combined release. Private files preserved; no production/database/service/provider/model/trading operation. [Final handoff](kalshi_trade_infra/results/open_pr_merge_2026-10-18/HANDOFF.md).
 

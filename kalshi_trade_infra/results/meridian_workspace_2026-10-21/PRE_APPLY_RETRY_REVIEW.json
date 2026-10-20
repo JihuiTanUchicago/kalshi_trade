@@ -1,0 +1,18 @@
+{
+  "recorded_at_utc": "2026-10-20T17:07:04.828282+00:00",
+  "status": "fresh_inventory_reviewed_ready_for_apply",
+  "inventory_run": 39462684515,
+  "operations_commit": "e76dbfe4b5b32d47eada1e360a753e96fe6fbb80",
+  "fingerprint": "56e7db286652961c101c0751836a49d4edbe7633eb6dc924cb706de8b2327396",
+  "source_commit": "d8fbf233b4508c400b9ffbf92976aefba9fcbe40",
+  "default_targets_schema_and_reported_configuration_metadata_match_prior_inventory": true,
+  "changed_service_pids": {
+    "recursive-agents": {
+      "previous": 288809,
+      "current": 290673
+    }
+  },
+  "control_hash_changed": true,
+  "control_review": "Agent PID changed between read-only inventories; operation performed no service/job mutation. Fresh snapshot validates required active processes, exact executable/cwd, private environment and unit/config ownership. Prior full control content is not exposed; no assertion of equality to the old private control state is made. Install clones the current whole package and fences this fresh source/control/PID snapshot exactly before and after exchange.",
+  "next": "Apply using this exact fresh fingerprint; no restart or rollback."
+}

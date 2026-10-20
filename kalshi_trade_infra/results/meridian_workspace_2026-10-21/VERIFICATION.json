@@ -1,6 +1,6 @@
 {
-  "recorded_at": "2026-10-20T16:48:45.355856+00:00",
-  "status": "offline verified / ready for Meridian-only publication; production not yet changed",
+  "recorded_at": "2026-10-20T17:10:10.529603+00:00",
+  "status": "deployed / canonical origin and public acceptance passed",
   "base": "2223751",
   "meridian_hashes": {
     "app/static/app.meridian.js": "d898ab44b8125d2bd076bbe19a82c33d921ca02bc7980a23f99377331778a0d8",
@@ -57,7 +57,7 @@
   },
   "guards": "No backend, auth/risk/execution, provider/order or configuration change; saved86 candidate unchanged",
   "visual_review": "User ended aesthetic loop; no new critic or9/10 claim",
-  "no_production_change_yet": true,
+  "no_production_change_yet": false,
   "initial_verification": {
     "frontend_passed": 156,
     "meridian_current_behavior_passed": 8,
@@ -83,5 +83,25 @@
       "content_type": "font/woff2"
     }
   },
-  "ci_checks_both_themes": true
+  "ci_checks_both_themes": true,
+  "release_acceptance": "RELEASE_ACCEPTANCE.json",
+  "apply_run": 39463270100,
+  "operation_checks_passed": 65,
+  "independent_operation_review": "No actionable runtime findings; 65/65 reproduced",
+  "production_default_assets_unchanged": true,
+  "production_backend_bytes_unchanged": true,
+  "production_service_pids_unchanged_during_apply": true,
+  "production_full_unchanged_schema_executed": true,
+  "production_provider_order_calls": 0,
+  "production_service_operations": 0,
+  "remaining_deployment_gates": [],
+  "final_release_record_regression": {
+    "passed": 1676,
+    "skipped": 10,
+    "seconds": 22.19,
+    "command": "/Users/jonathanzhang/Desktop/Polygon/.runtime/github-export/kalshi_trade/kalshi_trade_infra/.venv/bin/python -m pytest -q tests/",
+    "cwd": "kalshi_trade_infra",
+    "log": "python-release-records.txt",
+    "runtime_note": "System Python and standalone Polygon venv lack pytest; used the existing infrastructure test venv without installing or modifying dependencies."
+  }
 }

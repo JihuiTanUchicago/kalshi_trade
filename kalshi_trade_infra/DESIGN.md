@@ -1244,7 +1244,7 @@ LIVE. Bands fill at 7–10% alpha.
 
 ## Meridian compact workspace — October21,2026,Asia/Shanghai
 
-The retained compact redesign is now the Meridian-only asset candidate. The
+The retained compact redesign is deployed as the Meridian-only release. The
 existing theme bootstrap swaps app.meridian.css and loads app.meridian.js through
 Settings; default Tau assets, HTML and bootstrap remain byte-identical. Meridian
 uses the saved warm paper/charcoal palette, bundled DM Sans, Georgia wordmark,
@@ -1258,8 +1258,8 @@ hidden, latest paper proposal/model handling stays intact, and existing Settings
 account/billing/system/theme links remain valid. Meridian checks its own current
 HTML build for update notices because the shared JSON version identifies Tau.
 No backend or default-theme change is required. Full regression and synthetic
-320px/desktop route and theme-switch checks pass. Publication and production
-acceptance remain pending; no new aesthetic score is claimed.
+320px/desktop route and theme-switch checks pass. Production origin/public200, asset hashes, theme build versions and unchanged
+Tau defaults passed acceptance in run39463270100. No new aesthetic score is claimed.
 [Deployment evidence](results/meridian_workspace_2026-10-21/HANDOFF.md).
 
 ---

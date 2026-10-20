@@ -1,0 +1,32 @@
+{
+  "recorded_at": "2026-10-20T16:51:44.646434+00:00",
+  "manifest": {
+    "reviewed_main": "2223751625dbdf3f07710ac27b58180fcadac23f",
+    "source_commit": "d8fbf233b4508c400b9ffbf92976aefba9fcbe40",
+    "frontend": {
+      "app/static/app.meridian.js": {
+        "published_path": "kalshi_trade_infra/app/static/app.meridian.js",
+        "before_sha256": "0cc7dba7e33753ee707cbe10715e51fdba1992f7f95bc0072a8e87dd5865e261",
+        "after_sha256": "d898ab44b8125d2bd076bbe19a82c33d921ca02bc7980a23f99377331778a0d8"
+      },
+      "app/static/app.meridian.css": {
+        "published_path": "kalshi_trade_infra/app/static/app.meridian.css",
+        "before_sha256": "1e7978ec34364065b51e61dcdf8a5099085dc8ab5f8da72009166d4596059c0e",
+        "after_sha256": "0cf549951e20d6c95c31bf90a9747468fb950fa993fb3c54680837583a5cdf26"
+      }
+    },
+    "preserved_sha256": {
+      "app/static/app.js": "3916e0dce52680fbbc6bb632f5fc39bdcfed0204d880df6bfcda6f621c2e9502",
+      "app/static/app.css": "7864251d7c0be836978beba9cd3776c3df920f219b642faeab8a6cdd1cd0b6bb",
+      "app/static/boot.js": "69f63b1ea54da1c91897fb10b1a5199cb5d583f26eee1e592f8988d307a3717f",
+      "app/static/index.html": "e0be2fb9c644388399da2a2e50ab06564ec4b8dd45c8106b01aa456b0bf5585f"
+    }
+  },
+  "inventory_run": 39460748250,
+  "actual_installed_index_from_inventory": true,
+  "default_hashes_match_anonymous_public_baseline": true,
+  "operation_code_review": "No actionable findings;43original+62Meridian tests; exact retained guards/schema120/60/3; root read full code",
+  "remote_sha256": "6e979235222c424029941ca7793215d9adf15b75bfc792d03f9ac00b05aea174",
+  "runner_sha256": "c6b1a84a26f6f1baf0cbd5ae466dadc5ea0dcc2ea832d561829558a66a24a9ea",
+  "final_fresh_inventory_required_before_apply": true
+}

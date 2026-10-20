@@ -1,0 +1,25 @@
+{
+  "workflow": {
+    "conclusion": "failure",
+    "databaseId": 39461605674,
+    "headSha": "23e9a5e6595e5cd5687a157c66cfbe0267e9c68a",
+    "status": "completed",
+    "url": "https://github.com/JihuiTanUchicago/kalshi_trade/actions/runs/39461605674"
+  },
+  "records": [
+    {
+      "type": "PREFLIGHT",
+      "receipt": {
+        "reviewed_main_matches": true
+      }
+    },
+    {
+      "type": "ERROR",
+      "receipt": {
+        "status": "operation_requires_inspection",
+        "error_class": "RunnerError",
+        "error_code": "AwsRequestFailed"
+      }
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "workflow": {
+    "conclusion": "success",
+    "databaseId": 39462684515,
+    "headSha": "e76dbfe4b5b32d47eada1e360a753e96fe6fbb80",
+    "status": "completed",
+    "url": "https://github.com/JihuiTanUchicago/kalshi_trade/actions/runs/39462684515"
+  },
+  "records": [
+    {
+      "type": "PREFLIGHT",
+      "receipt": {
+        "reviewed_main_matches": true
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "ssm_command_id": "973af153-c179-49cd-a0ab-2bc83bfc9940"
+      }
+    },
+    {
+      "type": "INVENTORY",
+      "receipt": {
+        "status": "ready",
+        "read_only": true,
+        "fingerprint": "56e7db286652961c101c0751836a49d4edbe7633eb6dc924cb706de8b2327396",
+        "source_files": 120,
+        "source_sha256": {
+          "app/static/app.meridian.js": "0cc7dba7e33753ee707cbe10715e51fdba1992f7f95bc0072a8e87dd5865e261",
+          "app/static/app.meridian.css": "1e7978ec34364065b51e61dcdf8a5099085dc8ab5f8da72009166d4596059c0e"
+        },
+        "preserved_sha256": {
+          "app/static/app.js": "3916e0dce52680fbbc6bb632f5fc39bdcfed0204d880df6bfcda6f621c2e9502",
+          "app/static/app.css": "7864251d7c0be836978beba9cd3776c3df920f219b642faeab8a6cdd1cd0b6bb",
+          "app/static/boot.js": "69f63b1ea54da1c91897fb10b1a5199cb5d583f26eee1e592f8988d307a3717f",
+          "app/static/index.html": "e0be2fb9c644388399da2a2e50ab06564ec4b8dd45c8106b01aa456b0bf5585f"
+        },
+        "schema_sha256": "6738460234b7e46ff230cb64e287354e2e3e0f46a548f8fb504ef17c476c1084",
+        "controls_sha256": "a6e335fce96771eb6747aebb0cec31fdabdb9207a739eea521dc9ad16950f790",
+        "configuration_file_metadata": {
+          "/opt/kalshi/.env.aws": {
+            "uid": 501,
+            "gid": 20,
+            "mode": "0600"
+          },
+          "/opt/kalshi/.env.app": {
+            "uid": 0,
+            "gid": 0,
+            "mode": "0600"
+          },
+          "/opt/kalshi/.env": {
+            "uid": 501,
+            "gid": 20,
+            "mode": "0644"
+          },
+          "/etc/tau/provider-data/market-data.env": {
+            "uid": 0,
+            "gid": 0,
+            "mode": "0600"
+          },
+          "/etc/tau/provider-data/research-data.env": {
+            "uid": 0,
+            "gid": 0,
+            "mode": "0600"
+          },
+          "/etc/tau/alpaca-paper/paper.env": {
+            "uid": 0,
+            "gid": 0,
+            "mode": "0600"
+          }
+        },
+        "service_pids": {
+          "recursive-web": 273657,
+          "recursive-agents": 290673,
+          "recursive-engine": 273653,
+          "recursive-history": 283099,
+          "kalshi-live-engine": 0
+        },
+        "provider_calls": 0,
+        "service_operations": 0,
+        "job_mutations": 0
+      }
+    }
+  ]
+}
