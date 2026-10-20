@@ -550,7 +550,8 @@ def test_json_encoding_of_db_types():
 
 
 def test_spa_routes():
-    for path in ("/", "/research/12", "/strategies", "/strategies/3", "/deploy", "/funds", "/signin"):
+    for path in ("/", "/research/12", "/strategies", "/strategies/3", "/deploy", "/funds", "/signin",
+                 "/terms", "/privacy"):
         assert server.SPA_ROUTES.match(path)
     assert not server.SPA_ROUTES.match("/static/../etc/passwd")
 
