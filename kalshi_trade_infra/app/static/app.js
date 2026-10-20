@@ -361,7 +361,11 @@
     [/^\/(?:funds|settings\/account)$/, viewFunds],
     [/^\/devlog$/, viewDevLog],
     [/^\/settings$/, viewSettings],
+    [/^\/terms$/, viewTerms],
+    [/^\/privacy$/, viewPrivacy],
   ];
+  // Public routes: viewable signed-OUT, so the boot guard must not force /api/me + a signin bounce.
+  const PUBLIC = new Set(['/signin', '/terms', '/privacy']);
   function go(path, replace) {
     if (replace) history.replaceState(null, '', path); else history.pushState(null, '', path);
     render();
@@ -406,7 +410,7 @@
     const path = location.pathname;
     if (path === '/signin') { const f = document.getElementById('autopilot-float'); if (f) f.remove(); }
     const match = routes.map(([re, fn]) => [path.match(re), fn]).find(([m]) => m);
-    if (!S.me && path !== '/signin') {
+    if (!S.me && !PUBLIC.has(path)) {
       // Boot: don't sit on a blank white page if /api/me is slow. Paint a branded splash after a
       // short delay (so a fast boot never flashes it), and time the call out. A 401 means genuinely
       // signed out (-> signin); ANY other failure (slow/overloaded/offline) is transient, so show a
@@ -579,7 +583,7 @@
     root.innerHTML = `
       <header class="masthead"><div class="masthead-in">
         <p class="wordmark"><a href="/">${ICON.mark}<span>Tau</span></a></p>
-        <span class="asof">${adminToggle}<span class="bell-wrap"><button class="bell-trig" data-action="bell" aria-haspopup="true" aria-expanded="false" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bell-dot" hidden></span></button><span class="bell-menu" hidden><div class="bell-head"><b>Notifications</b></div><div class="bell-list" id="bell-list"></div></span></span><span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false">${esc(u.name || u.email)}<svg class="profile-chev" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/settings">Settings</a><a href="/billing">Billing</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
+        <span class="asof">${adminToggle}<span class="bell-wrap"><button class="bell-trig" data-action="bell" aria-haspopup="true" aria-expanded="false" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bell-dot" hidden></span></button><span class="bell-menu" hidden><div class="bell-head"><b>Notifications</b></div><div class="bell-list" id="bell-list"></div></span></span><span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false">${esc(u.name || u.email)}<svg class="profile-chev" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
       </div></header>
       <nav class="services" aria-label="Sections"><div class="services-in">${nav}</div></nav>
       <div class="wrap">
@@ -1104,6 +1108,56 @@
     ['How do deposits and withdrawals work?', 'Paper money is simulated and free to add or remove. Live trading uses your own Kalshi account — you fund and withdraw at Kalshi, and Tau only places the trades for strategies you deploy. We never hold your money.'],
     ['How safe is this?', 'Paper trading risks nothing. Live trading is off by default and takes a deliberate, confirmed step; strategies have hard loss guards that pause them automatically, and your Kalshi key is encrypted and never shared.'],
   ];
+  // ---------- public legal pages (viewable signed in OR out) ----------
+  const LEGAL_CONTACT = 'tanjihui@tau-trading.com';
+  const LEGAL_UPDATED = 'October 20, 2026';
+  const sec = (h, ...ps) => `<h2>${h}</h2>${ps.map((p) => `<p>${p}</p>`).join('')}`;
+  function legalShell(title, bodyHtml) {
+    clearTimers();
+    document.body.classList.add('landing-body');
+    const away = S.me ? '<a href="/">Dashboard</a>' : '<a href="/signin">Sign in</a>';
+    root.innerHTML = `<div class="legal-wrap">
+      <header class="legal-top"><a class="lbrand" href="/">${ICON.mark}<span>Tau</span></a>
+        <nav class="legal-nav"><a href="/terms">Terms</a><a href="/privacy">Privacy</a>${away}</nav></header>
+      <main class="legal" id="main">
+        <h1>${title}</h1><p class="legal-updated">Last updated ${LEGAL_UPDATED}</p>
+        ${bodyHtml}
+        <footer class="legal-foot"><a href="/terms">Terms of Service</a> · <a href="/privacy">Privacy Policy</a> · <span>© 2026 Tau</span></footer>
+      </main></div>`;
+  }
+  async function viewTerms() {
+    legalShell('Terms of Service',
+      sec('1. Agreement', `By accessing or using Tau (the “Service”), you agree to these Terms of Service. If you do not agree, do not use the Service.`) +
+      sec('2. What Tau is', `Tau is software that helps you research, backtest, and automate trading strategies for prediction markets offered by Kalshi. Tau can place trades in a Kalshi account you connect, using credentials you provide. Tau is a software tool — it is not a broker-dealer, exchange, investment adviser, or fiduciary, and it does not hold your funds.`) +
+      sec('3. Not financial advice', `Tau’s research, backtests, scores, and generated strategies are informational only. They are not investment, financial, legal, or tax advice, and are not a recommendation to enter into any trade. Backtested and simulated results are hypothetical and do not guarantee future performance. All trading decisions are your own and your sole responsibility.`) +
+      sec('4. Eligibility', `You must be at least 18 years old and able to form a binding contract, and you may use the Service only where trading on prediction markets is lawful for you. You are responsible for complying with Kalshi’s terms and all laws that apply to you.`) +
+      sec('5. Your account', `You sign in with Google. You are responsible for keeping your account secure and for all activity under it. Live trading uses your own Kalshi API credentials, which you choose to provide; Tau places trades only for strategies you deploy and never takes custody of your funds.`) +
+      sec('6. Trading risk', `Trading on prediction markets involves substantial risk, including the total loss of the funds you commit. Only trade with money you can afford to lose. Paper and demo modes are simulated and involve no real money.`) +
+      sec('7. Fees and billing', `Some features may require paid credits. Where paid features are enabled, you authorize charges through our payment processor (Stripe) for the credits or usage described in the app, and credits are consumed as the agent performs work for you. Pricing may change, and any changes will be reflected in the app.`) +
+      sec('8. Acceptable use', `You agree not to use the Service unlawfully; not to abuse, reverse-engineer, disrupt, or overload it; and not to use it to violate the rules of Kalshi or any exchange, venue, or third party.`) +
+      sec('9. Intellectual property', `Tau and its software, content, and branding are owned by its operator; you receive a limited, non-exclusive, non-transferable license to use the Service. Content and inputs you submit remain yours, and you grant us a license to process them solely to operate and improve the Service.`) +
+      sec('10. Disclaimers', `The Service is provided “as is” and “as available,” without warranties of any kind, express or implied, including merchantability, fitness for a particular purpose, availability, accuracy, or profitability.`) +
+      sec('11. Limitation of liability', `To the maximum extent permitted by law, the operator of Tau is not liable for any trading losses or for any indirect, incidental, special, consequential, or punitive damages arising from your use of the Service. Our total liability for any claim is limited to the amount you paid us for the Service in the three months before the claim.`) +
+      sec('12. Termination', `We may suspend or terminate access for any violation of these Terms or to protect the Service or its users. You may stop using the Service at any time.`) +
+      sec('13. Changes', `We may update these Terms from time to time. Material changes will be posted here with a new “last updated” date, and your continued use of the Service means you accept the updated Terms.`) +
+      sec('14. Contact', `Questions about these Terms: <a href="mailto:${LEGAL_CONTACT}">${LEGAL_CONTACT}</a>.`));
+  }
+  async function viewPrivacy() {
+    legalShell('Privacy Policy',
+      sec('Overview', `This policy explains what information Tau collects, how we use it, and the choices you have. By using Tau you agree to this policy.`) +
+      sec('Information we collect', `<strong>Account information</strong> — your name and email address from Google sign-in. <strong>Usage data</strong> — the research sessions, strategies, settings, and interactions you create in the app. <strong>Payment information</strong> — processed by our payment provider (Stripe); we do not store your full card number. <strong>Trading credentials</strong> — if you connect live trading, your Kalshi API key, stored encrypted. <strong>Technical data</strong> — standard logs such as IP address and browser type.`) +
+      sec('How we use it', `To provide and operate the Service; to run your research and backtests; to process billing; to secure, maintain, and improve the Service; and to communicate with you about your account.`) +
+      sec('AI processing', `Your research inputs and prompts are processed by our AI provider (Anthropic, via Amazon Bedrock) to generate research and strategies. Please do not include sensitive personal information in research prompts.`) +
+      sec('How we share it', `We do not sell your personal information. We share it only with the service providers that run Tau — Google (sign-in), Stripe (payments), Amazon Web Services (hosting), and Anthropic / Amazon Bedrock (AI) — and when required by law or to protect the Service and its users.`) +
+      sec('Cookies and local storage', `We use a session cookie to keep you signed in and your browser’s local storage for preferences such as your theme. We do not use third-party advertising cookies.`) +
+      sec('Data retention', `We keep your information while your account is active and for as long as needed to operate the Service and meet legal and security obligations.`) +
+      sec('Security', `We protect sensitive credentials with encryption and apply reasonable safeguards. No method of storage or transmission is completely secure, so we cannot guarantee absolute security.`) +
+      sec('Your choices', `You can access, correct, or delete your information by contacting us. You can disconnect live trading and sign out at any time.`) +
+      sec('Children', `Tau is not directed to, and may not be used by, anyone under 18.`) +
+      sec('Changes', `We may update this policy; we will post changes here with a new “last updated” date.`) +
+      sec('Contact', `Questions about privacy or your data: <a href="mailto:${LEGAL_CONTACT}">${LEGAL_CONTACT}</a>.`));
+  }
+
   async function viewSignin() {
     const hr = document.getElementById('hotrail'); if (hr) hr.remove();
     document.body.classList.remove('hot-open');
@@ -1166,7 +1220,7 @@
           </div>
           <footer class="lfoot">
             <a class="lbrand" href="/">${ICON.mark}<span>Tau</span></a>
-            <div class="lfoot-links"><span>Research preview</span><span>© 2026 Tau</span></div>
+            <div class="lfoot-links"><a href="/terms">Terms</a><a href="/privacy">Privacy</a><span>Research preview</span><span>© 2026 Tau</span></div>
           </footer>
         </main>
       </div>`;
