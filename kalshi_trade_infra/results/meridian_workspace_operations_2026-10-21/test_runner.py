@@ -27,6 +27,15 @@ class ProgramTest(unittest.TestCase):
         self.assertEqual(self.execute('def inventory():return {"status":"ready","read_only":True}'),
                          {'status': 'ready', 'read_only': True})
 
+    def test_directory_repair_requires_explicit_mode(self):
+        source = 'def repair_app_mode():return {"status":"permissions_repaired"}\ndef inventory():return {"status":"ready","read_only":True}'
+        self.assertEqual(self.execute(source), {'status': 'ready', 'read_only': True})
+        self.assertEqual(self.execute(source, 'repair-app-mode'), {'status': 'permissions_repaired'})
+
+    def test_source_mode_audit_requires_explicit_read_only_mode(self):
+        source = 'def audit_source_modes():return {"status":"source_modes_audited","read_only":True}'
+        self.assertEqual(self.execute(source, 'audit-source-modes'), {'status': 'source_modes_audited', 'read_only': True})
+
     def test_apply_passes_exact_pins_without_interpolation(self):
         out = self.execute('def apply(pin,before,after,artifact,preserved):return {"pin":pin,"before":before,"after":after,"artifact":artifact,"preserved":preserved}',
                            'apply', {'app/static/app.meridian.js': 'a' * 64}, {'app/static/app.meridian.js': 'b' * 64},
@@ -182,6 +191,35 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual({p: base64.b64decode(v) for p, v in payload['assets'].items()}, self.assets)
         self.assertIn('--server-side-encryption', captured['args'])
         self.assertIn('AES256', captured['args'])
+
+    def test_directory_repair_does_not_publish_assets_run_schema_or_invalidate(self):
+        with patch.object(runner.sys, 'argv', ['runner.py', 'repair-app-mode']), \
+                patch.object(runner, 'manifest', return_value=self.value), \
+                patch.object(runner, 'verify_main') as verify, \
+                patch.object(runner, 'published_candidates', side_effect=AssertionError('candidate fetch forbidden')), \
+                patch.object(runner, 'stage_candidates', side_effect=AssertionError('upload forbidden')), \
+                patch.object(runner, 'remote', return_value={'status': 'permissions_repaired'}) as remote, \
+                patch.object(runner, 'aws', side_effect=AssertionError('invalidation forbidden')), \
+                patch.object(runner, 'public_checks', side_effect=AssertionError('publish checks forbidden')), \
+                contextlib.redirect_stdout(io.StringIO()):
+            runner.run()
+        verify.assert_called_once_with(self.value)
+        program = remote.call_args.args[0]
+        self.assertIn('result=ns["repair_app_mode"]()', program)
+        self.assertNotIn('result=ns["apply"](', program)
+
+    def test_source_mode_audit_does_not_publish_assets_or_invalidate(self):
+        with patch.object(runner.sys, 'argv', ['runner.py', 'audit-source-modes']), \
+                patch.object(runner, 'manifest', return_value=self.value), \
+                patch.object(runner, 'verify_main'), \
+                patch.object(runner, 'published_candidates', side_effect=AssertionError('candidate fetch forbidden')), \
+                patch.object(runner, 'stage_candidates', side_effect=AssertionError('upload forbidden')), \
+                patch.object(runner, 'remote', return_value={'status': 'source_modes_audited', 'read_only': True}) as remote, \
+                patch.object(runner, 'aws', side_effect=AssertionError('invalidation forbidden')), \
+                contextlib.redirect_stdout(io.StringIO()):
+            runner.run()
+        self.assertIn('result=ns["audit_source_modes"]()', remote.call_args.args[0])
+        self.assertNotIn('result=ns["apply"](', remote.call_args.args[0])
 
     def html(self):
         return ('<link href="/static/app.css?v=' + self.preserved['app/static/app.css'][:10] + '">'

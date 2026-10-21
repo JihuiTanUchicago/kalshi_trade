@@ -3,10 +3,10 @@ on:
   workflow_dispatch:
     inputs:
       phase:
-        description: Inspect or atomically publish the reviewed frontend-only release
+        description: Inspect, correct the exact app-directory mode, or publish Meridian
         required: true
         type: choice
-        options: [inventory, apply]
+        options: [inventory, audit-source-modes, repair-app-mode, apply]
         default: inventory
       fingerprint:
         description: Exact fresh sanitized inventory fingerprint for apply

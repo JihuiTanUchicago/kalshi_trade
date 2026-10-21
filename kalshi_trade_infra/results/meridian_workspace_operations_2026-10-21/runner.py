@@ -210,6 +210,10 @@ def public_checks(candidates, preserved):
 def build_program(source, mode, sources, candidates, pin=None, artifact=None, preserved=None):
     if mode == 'inventory':
         call = 'ns["inventory"]()'
+    elif mode == 'repair-app-mode':
+        call = 'ns["repair_app_mode"]()'
+    elif mode == 'audit-source-modes':
+        call = 'ns["audit_source_modes"]()'
     elif mode == 'apply':
         call = 'ns["apply"](' + ','.join(map(repr, (pin, sources, candidates, artifact, preserved))) + ')'
     else:
@@ -231,7 +235,7 @@ def build_program(source, mode, sources, candidates, pin=None, artifact=None, pr
 
 def run():
     mode = sys.argv[1] if len(sys.argv) > 1 else 'inventory'
-    if mode not in ('inventory', 'apply', 'verify-main'):
+    if mode not in ('inventory', 'audit-source-modes', 'repair-app-mode', 'apply', 'verify-main'):
         fail('InvalidMode')
     value = manifest(mode)
     verify_main(value)
@@ -248,9 +252,11 @@ def run():
     code = build_program((HERE / 'remote.py').read_text(), mode, sources, candidates, fingerprint, artifact, preserved)
     result = remote(code)
     emit('INVENTORY' if mode == 'inventory' else 'RESULTS', result)
-    if result.get('status') != ('ready' if mode == 'inventory' else 'deployed') or result.get('error_code'):
+    expected_status = {'inventory': 'ready', 'audit-source-modes': 'source_modes_audited',
+                       'repair-app-mode': 'permissions_repaired', 'apply': 'deployed'}[mode]
+    if result.get('status') != expected_status or result.get('error_code'):
         fail('RemoteInspectionRequired')
-    if mode == 'inventory':
+    if mode != 'apply':
         return
     invalidation = aws('cloudfront', 'create-invalidation', '--distribution-id', 'EEQ00Y93RTB1K', '--paths', '/*')
     emit('INVALIDATION', {'id': invalidation['Invalidation']['Id']})
