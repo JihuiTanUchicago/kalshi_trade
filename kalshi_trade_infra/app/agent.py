@@ -551,15 +551,33 @@ def _researchable_keys(cur) -> List[str]:
     return ready or list(MARKETS)
 
 
-def _pick_market(run: Dict, model: ModelFn, usage: Usage, log, keys: List[str]) -> str:
+def _research_history_line(cur, user_id: int) -> str:
+    """One-line CROSS-market summary of what this user already researched (per market: tried/passed),
+    so the agent's own market pick builds on history instead of re-choosing blind. Empty for a user
+    with no research yet."""
+    try:
+        rows = repo.research_summary(cur, user_id)
+    except Exception:  # noqa: BLE001 - a history-lookup hiccup must never block/fail research
+        return ""
+    if not rows:
+        return ""
+    parts = ["%s (%d tried, %d passed)"
+             % (MARKETS[r["market"]].label if r["market"] in MARKETS else r["market"],
+                r["tried"], r["passed"]) for r in rows]
+    return "Your past research across markets — " + "; ".join(parts) + "."
+
+
+def _pick_market(run: Dict, model: ModelFn, usage: Usage, log, keys: List[str], history: str = "") -> str:
     """When the user didn't pin a market, let the agent choose the one whose contracts best
-    fit the idea (guided by the brief), from the data-ready `keys` only. One cheap call before
-    the research loop."""
+    fit the idea (guided by the brief + the user's cross-market research history), from the
+    data-ready `keys` only. One cheap call before the research loop."""
     idea = (run.get("prompt") or "").strip() or "any durable, fee-surviving edge"
     opts = "\n".join("- %s: %s" % (k, MARKETS[k].label) for k in keys)
-    msg = ("%s\n\nIdea: %s\nMarkets you can research:\n%s\n"
+    hist = ("\n\n%s Build on what's worked or deliberately explore somewhere new — your call, but "
+            "don't blindly repeat a market that keeps failing." % history) if history else ""
+    msg = ("%s\n\nIdea: %s%s\nMarkets you can research:\n%s\n"
            "Pick the ONE market whose contracts best fit this idea. Reply exactly:\n"
-           '{"market": "<key>", "why": "<one sentence>"}' % (_brief(), idea[:400], opts))
+           '{"market": "<key>", "why": "<one sentence>"}' % (_brief(), idea[:400], hist, opts))
 
     def check(obj: Dict) -> Dict:
         k = obj.get("market")
@@ -1572,7 +1590,8 @@ def run_research(
                 market = ckpt["market"]  # already chosen on the first attempt; don't re-spend the pick
             else:
                 checkpoint()
-                market = _pick_market(run, model, usage, log, _researchable_keys(cur))
+                market = _pick_market(run, model, usage, log, _researchable_keys(cur),
+                                      _research_history_line(cur, user_id))
             run = {**run, "market": market}
             repo.set_run_market(cur, run_id, market)
         # A pinned market that has left the live universe (a retired/renamed catalog series) would

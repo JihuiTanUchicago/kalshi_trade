@@ -921,6 +921,24 @@ def set_policy(cur, user_id: int, code: str, score: float,
     )
 
 
+def research_summary(cur, user_id: int, limit: int = 12) -> List[Dict]:
+    """A compact CROSS-market tally of what this user has already researched — per market: how many
+    strategies were tried and how many passed, most-recently-touched first. Feeds the agent's own
+    market pick (and the fresh-session prompt) so it builds on the user's history across markets
+    instead of re-choosing blind. Cheap GROUP-BY on the small app_strategies table."""
+    cur.execute(
+        """SELECT market,
+                  COUNT(*) AS tried,
+                  SUM(status = 'passed') AS passed,
+                  MAX(id) AS recent
+           FROM app_strategies WHERE user_id=%s
+           GROUP BY market ORDER BY recent DESC LIMIT %s""",
+        (user_id, limit),
+    )
+    return [{"market": r["market"], "tried": int(r["tried"] or 0), "passed": int(r["passed"] or 0)}
+            for r in cur.fetchall()]
+
+
 def strategy_memory(cur, user_id: int, market: str, limit: int = 40) -> List[Dict]:
     """What this user's agents already tried on this market, newest first."""
     cur.execute(

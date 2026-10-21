@@ -80,3 +80,29 @@ def test_pick_market_rejects_a_pick_outside_the_offered_keys():
         return '{"market": "nba_game", "why": "no data"}', {"input_tokens": 1, "output_tokens": 1}
     with pytest.raises(LLMError):
         agent._pick_market({"prompt": "x"}, model, Usage(), lambda *a, **k: None, ["btc15m"])
+
+
+# -- cross-session research memory: the market pick builds on the user's past research --------------
+
+def test_research_history_line_summarizes_cross_market(monkeypatch):
+    monkeypatch.setattr(agent.repo, "research_summary",
+                        lambda cur, uid, limit=12: [{"market": "btc15m", "tried": 5, "passed": 2},
+                                                    {"market": "eth_daily", "tried": 3, "passed": 0}])
+    line = agent._research_history_line(None, 1)
+    assert "5 tried, 2 passed" in line and "3 tried, 0 passed" in line
+    assert agent.MARKETS["btc15m"].label in line       # keys are mapped to human labels
+
+
+def test_research_history_line_empty_for_a_new_user(monkeypatch):
+    monkeypatch.setattr(agent.repo, "research_summary", lambda cur, uid, limit=12: [])
+    assert agent._research_history_line(None, 1) == ""
+
+
+def test_pick_market_feeds_history_into_the_prompt():
+    seen = {}
+    def model(system, messages, on_delta=None):
+        seen["msg"] = messages[-1]["content"]
+        return '{"market": "btc15m", "why": "building on momentum"}', {"input_tokens": 1, "output_tokens": 1}
+    agent._pick_market({"prompt": "momentum"}, model, Usage(), lambda *a, **k: None,
+                       ["btc15m", "eth_daily"], "Your past research across markets — Bitcoin 15-minute (5 tried, 2 passed).")
+    assert "past research across markets" in seen["msg"] and "5 tried, 2 passed" in seen["msg"]
