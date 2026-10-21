@@ -376,31 +376,8 @@
     const id = setInterval(() => { if (!document.hidden && gen === S.gen) fn().catch(() => {}); }, ms);
     S.timers.push(id);
   }
-  // SPA deploys only take effect on a full reload. Check the server's build hash on each
-  // navigation (throttled); if it changed, offer a one-click reload instead of silent staleness.
-  let _verAt = 0;
-  async function checkVersion() {
-    if (!window.__BUILD__ || Date.now() - _verAt < 30000 || document.getElementById('verbar')) return;
-    _verAt = Date.now();
-    try {
-      // The shared JSON version describes Tau; compare Meridian's own HTML build instead.
-      const response = await fetch('/', { credentials: 'same-origin', cache: 'no-store' });
-      if (!response.ok) return;
-      const page = new DOMParser().parseFromString(await response.text(), 'text/html');
-      const version = page.getElementById('tau-boot')?.dataset.merVer;
-      if (version && version !== window.__BUILD__) {
-        const bar = document.createElement('div');
-        bar.id = 'verbar'; bar.className = 'verbar';
-        bar.innerHTML = `<span>A new version of Tau is ready.</span><button id="verreload" class="btn sm">Reload</button>`;
-        document.body.appendChild(bar);
-        bar.querySelector('#verreload').onclick = () => location.reload(true);
-      }
-    } catch (e) { /* best-effort */ }
-  }
-
   async function render() {
     clearTimers();
-    checkVersion();
     S.gen++;
     window.scrollTo(0, 0);
     const path = location.pathname;
