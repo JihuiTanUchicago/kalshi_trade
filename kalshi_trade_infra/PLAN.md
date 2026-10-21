@@ -1,5 +1,9 @@
 # PLAN
 
+## Remove persistent Meridian update notice — October21,2026,Asia/Shanghai
+
+Implemented/offline verified (`tau-meridian-update-notice-20261021`): Meridian's build probe, update banner and unused styles are deleted; Tau/default/shared/backend behavior stays intact. 177frontend+8Meridian checks and1676Python/10skipped pass. Immutable publication and fresh installed-state release remain pending. Root owns the isolated fix and existing safe whole-package release; no provider/order/service actions. [Handoff](results/meridian_update_notice_2026-10-21/HANDOFF.md).
+
 ## Meridian compact workspace deployment — October21,2026,Asia/Shanghai
 
 Deployed and accepted (`tau-meridian-workspace-20261021`). Settings → Theme → Meridian selects the retained compact redesign. Only Meridian JS/CSS changed; the actual Tau default, backend, configuration and running service PIDs were preserved. Whole-package exchange and the full unchanged installed schema succeeded. CloudFront refresh was issued, then origin/public 200/hash/version checks passed in run39463270100 and independently from local.

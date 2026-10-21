@@ -117,7 +117,7 @@ class Element {
   remove() { this.removed = true; }
 }
 
-function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia = () => ({matches: false}), storage = new Map(), theme = 'meridian', build, versionDocument} = {}) {
+function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia = () => ({matches: false}), storage = new Map(), theme = 'meridian', build} = {}) {
   const root = new Element('div', {id: 'app'}), body = new Element('body');
   const document = {body, activeElement: body, hidden: false,
     getElementById: id => body.querySelector('#' + id), addEventListener() {}, removeEventListener() {},
@@ -129,7 +129,6 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
   const navigate = (_state, _title, path) => { navigations.push(path); location.pathname = path; };
   const context = vm.createContext({
     Intl, URL, URLSearchParams,
-    DOMParser: class { parseFromString() { return versionDocument || {getElementById: () => null}; } },
     document, testStripeLoader: stripeLoader,
     window: {__TAU_UI__: theme, __BUILD__: build, addEventListener(name, callback) {
       const listeners = windowListeners.get(name) || []; listeners.push(callback); windowListeners.set(name, listeners);
@@ -150,7 +149,7 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'if (globalThis.testStripeLoader) loadStripe = globalThis.testStripeLoader; globalThis.frontend = {S, api, render, checkVersion, viewSettings, viewBilling, viewSystem, viewAdmin, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewRun, viewResearch, viewFunds, viewDashboard, viewDeploy, viewCommunity, viewExplore, postSnapshot, replaceDeploymentContent, marketPicker, wireMarketPicker, hotOpen, renderHotRail};'), context);
+  vm.runInContext(source.replace(boot, 'if (globalThis.testStripeLoader) loadStripe = globalThis.testStripeLoader; globalThis.frontend = {S, api, render, viewSettings, viewBilling, viewSystem, viewAdmin, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewRun, viewResearch, viewFunds, viewDashboard, viewDeploy, viewCommunity, viewExplore, postSnapshot, replaceDeploymentContent, marketPicker, wireMarketPicker, hotOpen, renderHotRail};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -2170,30 +2169,26 @@ test('theme preference save failure retains the existing local fallback without 
   assert.deepEqual(postRequests(f).map(row => row.path), ['/api/ui-theme']);
 });
 
-for (const [label, version, changed] of [['current Meridian', 'meridian-current', false], ['new Meridian', 'meridian-new', true], ['missing build', null, false]]) {
-  test(`Meridian update check uses its own HTML build: ${label}`, async () => {
-    let reads = 0;
-    const versionDocument = {getElementById: id => id === 'tau-boot' && version ? {dataset: {merVer: version, tauVer: 'different-tau-build'}} : null};
-    const f = frontend({build: 'meridian-current', versionDocument, fetchImpl: (path, options) => {
-      assert.equal(path, '/'); assert.equal(options.cache, 'no-store'); assert.equal(options.credentials, 'same-origin'); reads++;
-      return {ok: true, text: async () => '<html>synthetic build document</html>'};
+for (const build of [undefined, 'meridian-current', 'meridian-old']) {
+  test(`Meridian navigation stays free of version requests and update banners: ${build || 'missing build'}`, async () => {
+    const f = frontend({build, fetchImpl: path => {
+      if (path === '/' || path === '/api/version') return {
+        ok: true, text: async () => '<div id="tau-boot" data-mer-ver="meridian-new"></div>',
+        json: async () => ({v: 'different-tau-build'}),
+      };
+      throw new Error('Unexpected fixture request: ' + path);
     }});
-    await f.checkVersion();
-    const bar = f.document.getElementById('verbar');
-    assert.equal(Boolean(bar), changed); assert.equal(reads, 1); assert.equal(postRequests(f).length, 0);
-    await f.checkVersion(); assert.equal(reads, 1, 'throttle prevents duplicate reads and notices');
-    if (changed) { bar.querySelector('#verreload').onclick(); assert.deepEqual(f.reloads, [true]); }
-    else assert.deepEqual(f.reloads, []);
+    f.location.pathname = '/settings';
+    for (let navigation = 0; navigation < 3; navigation++) {
+      await f.render();
+      assert.equal(f.document.getElementById('verbar'), null);
+      assert.equal(f.root.getAttribute('aria-busy'), 'false');
+      assert.ok(f.root.querySelector('[data-theme="meridian"]'), 'settings still renders');
+    }
+    assert.deepEqual(f.requests.filter(row => row.path === '/' || row.path === '/api/version'), []);
+    assert.equal(postRequests(f).length, 0); assert.deepEqual(f.reloads, []);
   });
 }
-
-test('Meridian update metadata failure leaves the workspace usable', async () => {
-  for (const fetchImpl of [() => ({ok: false}), () => { throw new Error('Synthetic offline'); }]) {
-    const f = frontend({build: 'meridian-current', fetchImpl});
-    await f.checkVersion(); assert.equal(f.document.getElementById('verbar'), null);
-    assert.equal(postRequests(f).length, 0); assert.deepEqual(f.reloads, []);
-  }
-});
 
 for (const [label, stored, blocked, expected] of [['default', null, false, 'tau'], ['saved Meridian', 'meridian', false, 'meridian'], ['saved Tau', 'tau', false, 'tau'], ['blocked storage', null, true, 'tau']]) {
   test(`unchanged bootstrap selects the correct isolated bundle: ${label}`, () => {

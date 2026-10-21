@@ -1380,8 +1380,6 @@ body.landing-body { background: #FBFBFA; }
 /* The secondary engine-status band (status line + figures + RSI) sits below the form. */
 .rengine { margin-top: 28px; }
 .winfig .wins { padding: 16px; }
-.verbar { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 100; display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--ink); color: #F1F3ED; border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.3); font-size: 13.5px; }
-.verbar .btn { background: #F1F3ED; color: var(--ink); border-color: #F1F3ED; }
 .theme-settings .section-head { max-width: 420px; padding-bottom: 4px; border: 0; }
 .theme-pick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-width: 420px; margin-top: 12px; }
 .theme-opt { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 44px; text-align: left; background: none; border: 1px solid var(--rule-2); border-radius: 3px; padding: 10px 12px; cursor: pointer; font: inherit; color: var(--ink-2); }

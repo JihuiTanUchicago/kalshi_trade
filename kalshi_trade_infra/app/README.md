@@ -1,5 +1,7 @@
 # Tau (v0.1)
 
+Meridian no longer creates new-version notices or checks deployment versions on navigation. This change is offline verified and awaiting production release; default Tau is unchanged. [Current fix](../results/meridian_update_notice_2026-10-21/HANDOFF.md).
+
 ## Meridian compact workspace — October21,2026
 
 The saved compact redesign is deployed as Meridian, selectable through the
