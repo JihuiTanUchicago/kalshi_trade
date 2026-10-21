@@ -210,8 +210,8 @@ def public_checks(candidates, preserved):
 def build_program(source, mode, sources, candidates, pin=None, artifact=None, preserved=None):
     if mode == 'inventory':
         call = 'ns["inventory"]()'
-    elif mode == 'repair-app-mode':
-        call = 'ns["repair_app_mode"]()'
+    elif mode == 'repair-source-modes':
+        call = 'ns["repair_source_modes"]()'
     elif mode == 'audit-source-modes':
         call = 'ns["audit_source_modes"]()'
     elif mode == 'apply':
@@ -235,7 +235,7 @@ def build_program(source, mode, sources, candidates, pin=None, artifact=None, pr
 
 def run():
     mode = sys.argv[1] if len(sys.argv) > 1 else 'inventory'
-    if mode not in ('inventory', 'audit-source-modes', 'repair-app-mode', 'apply', 'verify-main'):
+    if mode not in ('inventory', 'audit-source-modes', 'repair-source-modes', 'apply', 'verify-main'):
         fail('InvalidMode')
     value = manifest(mode)
     verify_main(value)
@@ -253,7 +253,7 @@ def run():
     result = remote(code)
     emit('INVENTORY' if mode == 'inventory' else 'RESULTS', result)
     expected_status = {'inventory': 'ready', 'audit-source-modes': 'source_modes_audited',
-                       'repair-app-mode': 'permissions_repaired', 'apply': 'deployed'}[mode]
+                       'repair-source-modes': 'source_modes_repaired', 'apply': 'deployed'}[mode]
     if result.get('status') != expected_status or result.get('error_code'):
         fail('RemoteInspectionRequired')
     if mode != 'apply':

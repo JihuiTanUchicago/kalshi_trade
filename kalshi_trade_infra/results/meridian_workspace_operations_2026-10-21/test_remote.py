@@ -658,123 +658,174 @@ sys.modules.update({"pymysql":mysql,"app":app,"app.schema":schema})
 
 
 
-class AppModeRepairTests(unittest.TestCase):
+class SourceModeRepairTests(unittest.TestCase):
     def setUp(self):
-        temporary = tempfile.TemporaryDirectory(prefix='tau-app-mode-offline-')
+        temporary = tempfile.TemporaryDirectory(prefix='tau-source-repair-offline-')
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name) / 'installed'
-        self.app = self.root / 'app'
-        (self.app / 'static').mkdir(parents=True)
-        self.app.chmod(0o775)
-        self.files = [self.root / '.env.aws', self.root / '.env.app',
-                      *(self.root / path for path in remote.PRESERVED), self.app / 'server.py']
-        for path in self.files:
-            path.write_bytes(('synthetic unchanged private ' + path.name).encode())
-            path.chmod(0o600 if path.name.startswith('.env') else 0o644)
-        self.native_fstat, self.native_lstat = os.fstat, Path.lstat
-        self.native_fchmod, self.native_close = os.fchmod, os.close
+        for path in ('app/static', 'data_pipeline'):
+            (self.root / path).mkdir(parents=True)
+        self.unsafe_files = [self.root / path for path in (*remote.ASSETS, *remote.PRESERVED,
+                             'app/server.py', 'app/schema.py', 'data_pipeline/common.py', 'app/static/zz-final.js')]
+        self.unsafe_files += [self.root / 'app/static' / ('source-' + str(index)) for index in range(103)]
+        self.safe_files = [self.root / 'app/static' / ('safe-' + str(index)) for index in range(13)]
+        self.config_files = [self.root / '.env.aws', self.root / '.env.app']
+        for path in (*self.unsafe_files, *self.safe_files, *self.config_files):
+            path.write_bytes(('synthetic private unchanged ' + path.name).encode())
+            path.chmod(0o664 if path in self.unsafe_files else 0o600 if path in self.config_files else 0o644)
+        for path in ('app', 'app/static', 'data_pipeline'):
+            (self.root / path).chmod(0o775)
+        self.unsafe_files[0].chmod(0o775)
+        self.final = self.root / 'app/static/zz-final.js'
+        self.native_fstat, self.native_stat, self.native_lstat, self.native_fchmod = os.fstat, os.stat, os.lstat, os.fchmod
+        self.overrides = {}
+        self.controls = {'units': {'web': {'MainPID': '123'}}, 'config': {'private': {'sha256': 'a' * 64}}}
+        self.control_reader = Mock(side_effect=lambda: (copy.deepcopy(self.controls), {'PRIVATE': 'never print'}))
         patches = [patch.object(remote, 'ROOT', self.root), patch.object(remote, 'ROOT_UID', os.geteuid()),
                    patch.object(remote.os, 'fstat', side_effect=lambda fd: self.owned(self.native_fstat(fd))),
-                   patch.object(Path, 'lstat', autospec=True, side_effect=lambda path:
-                                self.owned(self.native_lstat(path)) if path == self.app else self.native_lstat(path))]
+                   patch.object(remote.os, 'stat', side_effect=lambda *a, **kw: self.owned(self.native_stat(*a, **kw))),
+                   patch.object(remote.os, 'lstat', side_effect=lambda *a, **kw: self.owned(self.native_lstat(*a, **kw))),
+                   patch.object(remote, 'unit_state', self.control_reader)]
         for active in patches:
             active.start()
             self.addCleanup(active.stop)
 
-    def owned(self, info, **changes):
-        values = {key: getattr(info, key) for key in ('st_mode', 'st_uid', 'st_gid', 'st_dev', 'st_ino')}
-        values['st_gid'] = 0  # Synthetic root-group metadata; tests never chown.
-        values.update(changes)
-        return SimpleNamespace(**values)
+    def owned(self, info):
+        values = list(info)
+        values[5] = 0  # Synthetic root-group metadata; tests never chown.
+        for name, value in self.overrides.get(info.st_ino, {}).items():
+            values[{'st_mode': 0, 'st_ino': 1, 'st_dev': 2, 'st_nlink': 3, 'st_uid': 4, 'st_gid': 5}[name]] = value
+        return os.stat_result(values)
 
-    def file_state(self):
-        return {str(path): (path.read_bytes(), remote.metadata(self.native_lstat(path)), self.native_lstat(path).st_ino)
-                for path in self.files}
+    def state(self):
+        paths = (self.root, *self.root.rglob('*'))
+        return {str(path.relative_to(self.root)): {**remote.metadata(self.native_stat(path, follow_symlinks=False)),
+                 'inode': self.native_stat(path, follow_symlinks=False).st_ino,
+                 'content': path.read_bytes() if path.is_file() and not path.is_symlink() else None} for path in paths}
 
-    def test_exact_app_directory_repair_preserves_files_config_and_other_metadata(self):
-        files = self.file_state()
-        directories = {path: (remote.metadata(self.native_lstat(path)), self.native_lstat(path).st_ino)
-                       for path in (self.root, self.root.parent, self.app / 'static')}
-        inode = self.native_lstat(self.app).st_ino
-        with patch.object(remote.os, 'fchmod', wraps=self.native_fchmod) as chmod, \
-             patch.object(remote.os, 'close', wraps=self.native_close) as close, \
-             patch.object(remote, 'layout', wraps=remote.layout) as layout:
-            result = remote.repair_app_mode()
-        layout.assert_called_once_with()
-        chmod.assert_called_once()
-        self.assertEqual(chmod.call_args.args[1], 0o755)
-        close.assert_called_once_with(chmod.call_args.args[0])
-        self.assertEqual(result, {'status': 'permissions_repaired', 'path': str(self.app),
-                                 'before_mode': '0775', 'after_mode': '0755', 'content_changes': 0,
-                                 'service_operations': 0, 'provider_calls': 0, 'job_mutations': 0})
-        self.assertEqual(stat.S_IMODE(self.native_lstat(self.app).st_mode), 0o755)
-        self.assertEqual(self.native_lstat(self.app).st_ino, inode)
-        self.assertEqual(self.file_state(), files)
-        self.assertEqual({path: (remote.metadata(self.native_lstat(path)), self.native_lstat(path).st_ino)
-                          for path in directories}, directories)
-        self.assertNotIn('private', json.dumps(result))
-
-    def test_wrong_mode_owner_or_group_never_chmod(self):
-        for changes in ({'st_mode': stat.S_IFDIR | 0o755}, {'st_mode': stat.S_IFDIR | 0o777},
-                        {'st_uid': remote.ROOT_UID + 1}, {'st_gid': 1}):
-            with self.subTest(changes=changes), \
-                 patch.object(remote.os, 'fstat', side_effect=lambda fd: self.owned(self.native_fstat(fd), **changes)), \
-                 patch.object(remote.os, 'fchmod') as chmod, \
-                 patch.object(remote.os, 'close', wraps=self.native_close) as close:
-                with self.assertRaisesRegex(remote.RemovalError, '^app_mode_repair_precondition_changed$'):
-                    remote.repair_app_mode()
-                chmod.assert_not_called()
-                close.assert_called_once()
-            self.assertEqual(stat.S_IMODE(self.native_lstat(self.app).st_mode), 0o775)
-
-    def test_symlink_never_follows_target_or_chmod(self):
-        original = self.root / 'original-app'
-        self.app.rename(original)
-        self.app.symlink_to(original, target_is_directory=True)
+    def rejected_without_chmod(self, code):
         with patch.object(remote.os, 'fchmod') as chmod:
-            with self.assertRaisesRegex(remote.RemovalError, '^app_mode_repair_failed$'):
-                remote.repair_app_mode()
-        chmod.assert_not_called()
-        self.assertEqual(stat.S_IMODE(self.native_lstat(original).st_mode), 0o775)
-
-    def test_path_identity_mismatch_never_chmod(self):
-        with patch.object(Path, 'lstat', new=lambda path:
-                          self.owned(self.native_lstat(path), st_ino=self.native_lstat(path).st_ino + 1)
-                          if path == self.app else self.native_lstat(path)), \
-             patch.object(remote.os, 'fchmod') as chmod:
-            with self.assertRaisesRegex(remote.RemovalError, '^app_mode_repair_path_changed$'):
-                remote.repair_app_mode()
+            with self.assertRaisesRegex(remote.RemovalError, '^' + code + '$'):
+                remote.repair_source_modes()
         chmod.assert_not_called()
 
-    def test_post_chmod_drift_fails_without_a_second_mutation(self):
-        reads = 0
-        def changing_stat(fd):
-            nonlocal reads
-            reads += 1
-            return self.owned(self.native_fstat(fd), st_gid=0 if reads == 1 else 1)
-        with patch.object(remote.os, 'fstat', side_effect=changing_stat), \
-             patch.object(remote.os, 'fchmod', wraps=self.native_fchmod) as chmod, \
-             patch.object(remote.os, 'close', wraps=self.native_close) as close:
-            with self.assertRaisesRegex(remote.RemovalError, '^app_mode_repair_verification_failed$'):
-                remote.repair_app_mode()
-        chmod.assert_called_once()
-        close.assert_called_once()
+    def test_full_116_entry_repair_removes_only_group_write_and_preserves_every_content_owner_and_control(self):
+        before = self.state()
+        plan = remote._source_mode_plan()
+        self.assertEqual(len(plan['entries']), 129)
+        self.assertEqual(sum(bool(row['issues']) for row in plan['entries'].values()), 116)
+        changed = []
+        def chmod(fd, mode):
+            changed.append((self.native_fstat(fd).st_ino, mode))
+            self.native_fchmod(fd, mode)
+        with patch.object(remote.os, 'fchmod', side_effect=chmod), \
+             patch.object(Path, 'read_bytes', side_effect=AssertionError('source content read')), \
+             patch.object(remote, 'read_regular', side_effect=AssertionError('source content read')), \
+             patch.object(remote.os, 'chown', side_effect=AssertionError('ownership mutation')), \
+             patch.object(remote, 'run_schema', side_effect=AssertionError('schema execution')):
+            result = remote.repair_source_modes()
+        self.assertEqual(result['status'], 'source_modes_repaired')
+        self.assertEqual(result['entries'], 129)
+        self.assertEqual(result['repaired_entries'], 116)
+        self.assertEqual(len(changed), 116)
+        paths_by_inode = {row['inode']: path for path, row in plan['entries'].items()}
+        changed_paths = [paths_by_inode[inode] for inode, mode in changed]
+        self.assertEqual(changed_paths, sorted(changed_paths, key=lambda path: (path.count('/'), path)))
+        expected = copy.deepcopy(before)
+        for path in changed_paths:
+            expected[path]['mode'] &= ~0o020
+        self.assertEqual(self.state(), expected)
+        self.assertEqual(self.control_reader.call_count, 3)
+        self.assertEqual(result['controls_sha256'], remote.fingerprint(self.controls))
+        self.assertEqual(remote.audit_source_modes()['unsafe_count'], 0)
+        self.assertNotIn('private', json.dumps(result))
+        self.assertNotIn('never print', json.dumps(result))
 
-    def test_non_root_stops_before_layout_or_open(self):
-        with patch.object(remote.os, 'geteuid', return_value=remote.ROOT_UID + 1), \
-             patch.object(remote, 'layout') as layout, patch.object(remote.os, 'open') as opened:
-            with self.assertRaisesRegex(remote.RemovalError, '^requires_root$'):
-                remote.repair_app_mode()
-        layout.assert_not_called()
-        opened.assert_not_called()
+    def test_changed_unsafe_count_never_chmod(self):
+        self.final.chmod(0o644)
+        self.rejected_without_chmod('source_modes_repair_count_changed')
+        self.final.chmod(0o664)
+        extra = self.root / 'app/static/extra'
+        extra.touch()
+        extra.chmod(0o664)
+        self.rejected_without_chmod('source_modes_repair_count_changed')
 
-    def test_unsafe_existing_layout_stops_before_open(self):
-        self.root.chmod(0o775)
-        with patch.object(remote.os, 'open') as opened, patch.object(remote.os, 'fchmod') as chmod:
-            with self.assertRaisesRegex(remote.RemovalError, '^unsafe_directory$'):
-                remote.repair_app_mode()
-        opened.assert_not_called()
-        chmod.assert_not_called()
+    def test_world_write_or_unsupported_mode_after_first_50_rows_never_chmod(self):
+        for mode in (0o666, 0o774):
+            with self.subTest(mode=mode):
+                self.final.chmod(mode)
+                plan = remote._source_mode_plan()
+                paths = sorted((path for path, row in plan['entries'].items() if row['issues']),
+                               key=lambda path: (path.count('/'), path))
+                self.assertGreater(paths.index('app/static/zz-final.js'), 50)
+                self.rejected_without_chmod('source_modes_repair_unsupported_entry')
+
+    def test_unexpected_owner_or_gid_late_in_full_plan_never_chmod(self):
+        inode = self.native_stat(self.final).st_ino
+        for changes in ({'st_uid': remote.ROOT_UID + 1}, {'st_gid': 1}):
+            with self.subTest(changes=changes):
+                self.overrides[inode] = changes
+                self.rejected_without_chmod('source_modes_repair_unsupported_entry')
+
+    def test_symlink_or_hardlink_or_special_file_never_chmod(self):
+        self.final.unlink()
+        self.final.symlink_to(self.config_files[0])
+        self.rejected_without_chmod('source_modes_repair_unsupported_entry')
+        self.final.unlink()
+        os.link(self.unsafe_files[1], self.final)
+        self.rejected_without_chmod('source_modes_repair_unsupported_entry')
+        self.final.unlink()
+        os.mkfifo(self.final)
+        self.final.chmod(0o664)
+        self.rejected_without_chmod('source_modes_repair_unsupported_entry')
+
+    def test_inode_or_metadata_drift_after_plan_never_chmod(self):
+        original = remote._source_mode_plan
+        def replaced_plan():
+            plan = original()
+            self.final.unlink()
+            self.final.write_bytes(b'concurrent replacement')
+            self.final.chmod(0o664)
+            return plan
+        with patch.object(remote, '_source_mode_plan', side_effect=replaced_plan):
+            self.rejected_without_chmod('source_modes_repair_path_changed')
+        def changed_plan():
+            plan = original()
+            self.final.chmod(0o644)
+            return plan
+        with patch.object(remote, '_source_mode_plan', side_effect=changed_plan):
+            self.rejected_without_chmod('source_modes_repair_path_changed')
+
+    def test_symlink_swap_after_plan_is_not_followed(self):
+        original = remote._source_mode_plan
+        config = self.native_stat(self.config_files[0])
+        def swapped_plan():
+            plan = original()
+            self.final.unlink()
+            self.final.symlink_to(self.config_files[0])
+            return plan
+        with patch.object(remote, '_source_mode_plan', side_effect=swapped_plan):
+            self.rejected_without_chmod('source_modes_repair_failed')
+        self.assertEqual(self.native_stat(self.config_files[0]), config)
+
+    def test_control_drift_before_mutation_never_chmod(self):
+        self.control_reader.side_effect = [(self.controls, {}), ({'changed': True}, {})]
+        self.rejected_without_chmod('source_modes_repair_plan_changed')
+
+    def test_mid_repair_drift_preserves_partial_state_without_rollback(self):
+        writes = 0
+        def chmod(fd, mode):
+            nonlocal writes
+            self.native_fchmod(fd, mode)
+            writes += 1
+            if writes == 1:
+                (self.root / 'data_pipeline').chmod(0o755)
+        with patch.object(remote.os, 'fchmod', side_effect=chmod):
+            result = remote.repair_source_modes()
+        self.assertEqual(result, {'status': 'source_modes_requires_inspection',
+                                 'error_code': 'source_modes_repair_path_changed', 'repaired_entries': 1,
+                                 'rollback_performed': False})
+        self.assertEqual(writes, 1)
 
 
 class SourceModeAuditTests(unittest.TestCase):
@@ -863,13 +914,15 @@ class SourceModeAuditTests(unittest.TestCase):
 
     def test_traversal_limit_fails_closed(self):
         (self.root / 'app/repeated').touch()
-        native_scandir = os.scandir
+        native_scandir, native_stat = os.scandir, os.stat
         class Entries:
-            def __enter__(self): return (SimpleNamespace(name='repeated') for _ in range(8192))
+            def __enter__(self): return (SimpleNamespace(name='repeated-' + str(index)) for index in range(8192))
             def __exit__(self, *args): return False
         app_inode = (self.root / 'app').stat().st_ino
         with patch.object(remote.os, 'scandir', side_effect=lambda fd:
-                          Entries() if os.fstat(fd).st_ino == app_inode else native_scandir(fd)):
+                          Entries() if os.fstat(fd).st_ino == app_inode else native_scandir(fd)), \
+             patch.object(remote.os, 'stat', side_effect=lambda path, *a, **kw:
+                          native_stat('repeated' if isinstance(path, str) and path.startswith('repeated-') else path, *a, **kw)):
             with self.assertRaisesRegex(remote.RemovalError, '^source_modes_audit_limit$'):
                 remote.audit_source_modes()
 

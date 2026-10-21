@@ -115,77 +115,40 @@ def layout():
         fail('deployment_root_read_failed')
 
 
-def repair_app_mode() -> dict[str, object]:
-    if os.geteuid() != ROOT_UID:
-        fail('requires_root')
-    layout()
-    path, descriptor = ROOT / 'app', None
-    try:
-        descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
-        before = os.fstat(descriptor)
-        expected = {'mode': 0o775, 'uid': ROOT_UID, 'gid': 0}
-        if not stat.S_ISDIR(before.st_mode) or metadata(before) != expected:
-            fail('app_mode_repair_precondition_changed')
-        current = path.lstat()
-        identity = (before.st_dev, before.st_ino)
-        if (not stat.S_ISDIR(current.st_mode) or metadata(current) != expected
-                or (current.st_dev, current.st_ino) != identity):
-            fail('app_mode_repair_path_changed')
-        os.fchmod(descriptor, 0o755)
-        after, current = os.fstat(descriptor), path.lstat()
-        expected['mode'] = 0o755
-        if (not stat.S_ISDIR(after.st_mode) or not stat.S_ISDIR(current.st_mode)
-                or metadata(after) != expected or metadata(current) != expected
-                or (after.st_dev, after.st_ino) != identity
-                or (current.st_dev, current.st_ino) != identity):
-            fail('app_mode_repair_verification_failed')
-        return {'status': 'permissions_repaired', 'path': str(path), 'before_mode': '0775', 'after_mode': '0755',
-                'content_changes': 0, 'service_operations': 0, 'provider_calls': 0, 'job_mutations': 0}
-    except RemovalError:
-        raise
-    except Exception:
-        fail('app_mode_repair_failed')
-    finally:
-        if descriptor is not None:
-            os.close(descriptor)
+def _source_mode_metadata(info):
+    kind = ('directory' if stat.S_ISDIR(info.st_mode) else 'file' if stat.S_ISREG(info.st_mode)
+            else 'symlink' if stat.S_ISLNK(info.st_mode) else 'other')
+    return {'type': kind, 'device': info.st_dev, 'inode': info.st_ino, 'links': info.st_nlink, **metadata(info)}
 
 
-def audit_source_modes() -> dict[str, object]:
+def _source_mode_plan():
     if os.geteuid() != ROOT_UID:
         fail('requires_root')
     root_layout = layout()
     owners = {ROOT_UID, root_layout['root']['uid']}
-    entries, unsafe_count, unsafe = 0, 0, []
+    entries = {}
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 
     def visit(parent, name, relative):
-        nonlocal entries, unsafe_count
         info = os.stat(name, dir_fd=parent, follow_symlinks=False)
-        entries += 1
-        if entries > 8192:
+        if len(entries) >= 8192 or relative in entries:
             fail('source_modes_audit_limit')
-        kind = ('directory' if stat.S_ISDIR(info.st_mode) else 'file' if stat.S_ISREG(info.st_mode)
-                else 'symlink' if stat.S_ISLNK(info.st_mode) else 'other')
+        row = _source_mode_metadata(info)
         issues = []
         if info.st_mode & 0o022:
             issues.append('group_or_world_writable')
         if info.st_uid not in owners:
             issues.append('unexpected_owner')
-        if kind not in ('directory', 'file'):
+        if row['type'] not in ('directory', 'file'):
             issues.append('unsupported_type')
-        elif kind == 'file' and info.st_nlink != 1:
+        elif row['type'] == 'file' and info.st_nlink != 1:
             issues.append('hardlinked_file')
-        if issues:
-            unsafe_count += 1
-            if len(unsafe) < 50:
-                unsafe.append({'path': relative, 'type': kind, 'mode': format(stat.S_IMODE(info.st_mode), '04o'),
-                               'uid': info.st_uid, 'gid': info.st_gid, 'issues': issues})
-        if kind != 'directory' or name == '__pycache__':
+        entries[relative] = {**row, 'issues': issues}
+        if row['type'] != 'directory' or name == '__pycache__':
             return
         descriptor = os.open(name, flags, dir_fd=parent)
         try:
-            current = os.fstat(descriptor)
-            if ((current.st_dev, current.st_ino) != (info.st_dev, info.st_ino) or metadata(current) != metadata(info)):
+            if _source_mode_metadata(os.fstat(descriptor)) != row:
                 fail('source_modes_changed_during_audit')
             with os.scandir(descriptor) as children:
                 for child in children:
@@ -203,8 +166,7 @@ def audit_source_modes() -> dict[str, object]:
             fail('source_modes_changed_during_audit')
         for name in ('app', 'data_pipeline'):
             visit(descriptor, name, name)
-        return {'status': 'source_modes_audited', 'read_only': True, 'entries': entries,
-                'unsafe_count': unsafe_count, 'unsafe_entries': unsafe, 'truncated': unsafe_count > len(unsafe)}
+        return {'layout': root_layout, 'root': _source_mode_metadata(current), 'entries': entries}
     except RemovalError:
         raise
     except Exception:
@@ -212,6 +174,97 @@ def audit_source_modes() -> dict[str, object]:
     finally:
         if descriptor is not None:
             os.close(descriptor)
+
+
+def audit_source_modes() -> dict[str, object]:
+    plan = _source_mode_plan()
+    unsafe = [(path, row) for path, row in sorted(plan['entries'].items()) if row['issues']]
+    rows = [{'path': path, 'type': row['type'], 'mode': format(row['mode'], '04o'),
+             'uid': row['uid'], 'gid': row['gid'], 'issues': row['issues']} for path, row in unsafe[:50]]
+    return {'status': 'source_modes_audited', 'read_only': True, 'entries': len(plan['entries']),
+            'unsafe_count': len(unsafe), 'unsafe_entries': rows, 'truncated': len(unsafe) > len(rows)}
+
+
+def repair_source_modes() -> dict[str, object]:
+    plan = _source_mode_plan()
+    targets = sorted((path for path, row in plan['entries'].items() if row['issues']),
+                     key=lambda path: (path.count('/'), path))
+    # Read-only production audit 39537718099 observed exactly 116 unsafe entries.
+    if len(targets) != 116:
+        fail('source_modes_repair_count_changed')
+    for path in targets:
+        row = plan['entries'][path]
+        allowed_modes = (0o775,) if row['type'] == 'directory' else (0o664, 0o775)
+        if (row['type'] not in ('directory', 'file') or row['uid'] != ROOT_UID or row['gid'] != 0
+                or row['mode'] not in allowed_modes or row['issues'] != ['group_or_world_writable']
+                or (row['type'] == 'file' and row['links'] != 1)):
+            fail('source_modes_repair_unsupported_entry')
+    expected = {**plan, 'entries': {path: dict(row) for path, row in plan['entries'].items()}}
+    controls, _ = unit_state()
+    root_descriptor, descriptors, repaired = None, {}, 0
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
+
+    def check(descriptor, row):
+        actual = _source_mode_metadata(os.fstat(descriptor))
+        if any(actual[key] != row[key] for key in actual):
+            fail('source_modes_repair_path_changed')
+
+    def open_entry(path):
+        descriptor = os.dup(root_descriptor)
+        try:
+            parts = path.split('/')
+            for index, name in enumerate(parts):
+                row = expected['entries']['/'.join(parts[:index + 1])]
+                if index < len(parts) - 1 and row['type'] != 'directory':
+                    fail('source_modes_repair_path_changed')
+                child = os.open(name, flags | (os.O_DIRECTORY if row['type'] == 'directory' else 0), dir_fd=descriptor)
+                os.close(descriptor)
+                descriptor = child
+                check(descriptor, row)
+            result, descriptor = descriptor, None
+            return result
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
+
+    try:
+        root_descriptor = os.open(ROOT, flags | os.O_DIRECTORY)
+        check(root_descriptor, plan['root'])
+        for path in targets:
+            descriptors[path] = open_entry(path)
+        if _source_mode_plan() != plan or unit_state()[0] != controls:
+            fail('source_modes_repair_plan_changed')
+        for path in targets:
+            if layout() != plan['layout'] or _source_mode_metadata(ROOT.lstat()) != plan['root']:
+                fail('source_modes_repair_path_changed')
+            row, descriptor = expected['entries'][path], descriptors[path]
+            check(descriptor, row)
+            probe = open_entry(path)
+            os.close(probe)
+            os.fchmod(descriptor, row['mode'] & ~0o020)
+            repaired += 1
+            row.update(mode=row['mode'] & ~0o020, issues=[])
+            check(descriptor, row)
+            probe = open_entry(path)
+            os.close(probe)
+        after = _source_mode_plan()
+        if after != expected or unit_state()[0] != controls:
+            fail('source_modes_repair_verification_failed')
+        return {'status': 'source_modes_repaired', 'entries': len(plan['entries']), 'repaired_entries': repaired,
+                'metadata_before_sha256': fingerprint(plan), 'metadata_after_sha256': fingerprint(after),
+                'controls_sha256': fingerprint(controls), 'content_changes': 0, 'service_operations': 0,
+                'provider_calls': 0, 'job_mutations': 0}
+    except Exception as exc:
+        code = exc.code if isinstance(exc, RemovalError) else 'source_modes_repair_failed'
+        if repaired:
+            return {'status': 'source_modes_requires_inspection', 'error_code': code, 'repaired_entries': repaired,
+                    'rollback_performed': False}
+        fail(code)
+    finally:
+        for descriptor in descriptors.values():
+            os.close(descriptor)
+        if root_descriptor is not None:
+            os.close(root_descriptor)
 
 
 def scan(root, owners=None):

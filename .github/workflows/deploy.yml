@@ -3,10 +3,10 @@ on:
   workflow_dispatch:
     inputs:
       phase:
-        description: Inspect, correct the exact app-directory mode, or publish Meridian
+        description: Inspect, correct root-owned source modes, or publish Meridian
         required: true
         type: choice
-        options: [inventory, audit-source-modes, repair-app-mode, apply]
+        options: [inventory, audit-source-modes, repair-source-modes, apply]
         default: inventory
       fingerprint:
         description: Exact fresh sanitized inventory fingerprint for apply
