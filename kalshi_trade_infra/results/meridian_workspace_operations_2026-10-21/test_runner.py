@@ -5,8 +5,11 @@ import copy
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import re
+import stat
+import tempfile
 import unittest
 from unittest.mock import patch
 import runner
@@ -40,6 +43,31 @@ class ProgramTest(unittest.TestCase):
     def test_fixed_guard_code_survives(self):
         self.assertEqual(self.execute('class GuardError(Exception):code="source_changed"\ndef inventory():raise GuardError("private")'),
                          {'status': 'error', 'error_code': 'source_changed'})
+
+    def test_unsafe_directory_reports_only_existing_guard_metadata_without_writes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            path.chmod(0o777)
+            private = path / 'private.txt'
+            private.write_text('private content must not print')
+            source = (runner.HERE / 'remote.py').read_text()
+            source += '\nPRIVATE="private environment must not print"\ndef inventory():\n    safe_directory(Path(' + repr(directory) + '))\n'
+            result = self.execute(source)
+            self.assertEqual(result, {'status': 'error', 'error_code': 'unsafe_directory',
+                                     'directory': {'path': directory, 'mode': '0777', 'uid': os.getuid(), 'gid': path.stat().st_gid}})
+            self.assertNotIn('private environment', json.dumps(result))
+            self.assertNotIn('private content', json.dumps(result))
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o777)
+            self.assertEqual(private.read_text(), 'private content must not print')
+
+    def test_same_error_code_outside_the_real_guard_does_not_inspect_other_locals(self):
+        source = (runner.HERE / 'remote.py').read_text()
+        source += '\ndef inventory():\n    path="private path";info="private value"\n    fail("unsafe_directory")\n'
+        self.assertEqual(self.execute(source), {'status': 'error', 'error_code': 'unsafe_directory'})
+
+    def test_foreign_error_with_same_code_does_not_enable_diagnostics(self):
+        source = 'class GuardError(Exception):code="unsafe_directory"\ndef inventory():raise GuardError("private")'
+        self.assertEqual(self.execute(source), {'status': 'error', 'error_code': 'unsafe_directory'})
 
     def test_code_containing_result_text_does_not_break_wrapper(self):
         self.assertEqual(self.execute('literal="result=never split code"\ndef inventory():return {"text":literal}')['text'],

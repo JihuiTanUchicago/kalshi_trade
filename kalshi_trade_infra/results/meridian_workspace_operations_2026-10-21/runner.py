@@ -216,6 +216,16 @@ def build_program(source, mode, sources, candidates, pin=None, artifact=None, pr
         fail('InvalidMode')
     return ('ns={};exec(' + repr(source) + ',ns)\ntry:\n    result=' + call + '\n'
             'except Exception as exc:\n    result={"status":"error","error_code":getattr(exc,"code",type(exc).__name__)}\n'
+            '    if isinstance(exc,ns.get("RemovalError",())) and result["error_code"]=="unsafe_directory":\n'
+            '        guard=ns.get("safe_directory");trace=exc.__traceback__\n'
+            '        while guard is not None and trace is not None:\n'
+            '            frame=trace.tb_frame\n'
+            '            if frame.f_code is guard.__code__:\n'
+            '                path=frame.f_locals.get("path");info=frame.f_locals.get("info")\n'
+            '                if isinstance(path,ns.get("Path",())) and info is not None:\n'
+            '                    result["directory"]={"path":str(path),"mode":format(ns["stat"].S_IMODE(info.st_mode),"04o"),"uid":int(info.st_uid),"gid":int(info.st_gid)}\n'
+            '                break\n'
+            '            trace=trace.tb_next\n'
             'print(__import__("json").dumps(result))\n')
 
 
