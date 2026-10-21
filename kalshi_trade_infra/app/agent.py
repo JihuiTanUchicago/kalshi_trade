@@ -1375,6 +1375,12 @@ def _timeout_self_check() -> None:
         raise AssertionError("the wrapped call's own exception must propagate")
 
 
+class NoData(LLMError):
+    """The chosen market has no backtest surface yet (no settled contracts / not enough history).
+    This is NOT a failure — there is simply nothing to research there yet — so a run that ends this
+    way finishes `stopped`, not `failed` (no red FAILED card for a dataless market)."""
+
+
 def _classify_load_error(e: BaseException) -> Optional[LLMError]:
     """Turn a RECOGNIZED data-load failure into a clean, specific, user-facing LLMError so it stops
     surfacing as the generic 'unexpected error'. Returns None for anything unrecognized, so a genuine
@@ -1385,8 +1391,8 @@ def _classify_load_error(e: BaseException) -> Optional[LLMError]:
         sequence message), which is retryable, so we say so instead of failing opaque."""
     if isinstance(e, ValueError) and "no settled contracts" in str(e):
         m = re.search(r"market\s+'?([^'\s]+)'?", str(e))
-        return LLMError("%s has no settled contracts / backtest surface yet — pick a market with data."
-                        % (m.group(1) if m else "That market"))
+        return NoData("%s has no settled contracts / backtest surface yet — pick a market with data."
+                      % (m.group(1) if m else "That market"))
     if _is_transient_db_error(e):
         return LLMError("The data store was busy; please start the session again.")
     return None
@@ -1616,7 +1622,7 @@ def run_research(
         ds = _load("Loading %s data" % MARKETS[market].label, load, market,
                    beat=lambda: repo.heartbeat(cur, run_id))
         if len(ds.frames) < MIN_FRAMES:
-            raise LLMError("Not enough market history collected yet for %s." % MARKETS[market].label)
+            raise NoData("Not enough market history collected yet for %s." % MARKETS[market].label)
         # The agent picks the window that fits its thesis; re-load the narrower slice if it
         # chose less, and keep the fuller one if the slice is too thin to be worth it.
         checkpoint()  # a cancel must stop before we spend a model call on planning
@@ -1720,10 +1726,15 @@ def run_research(
         # unchanged); anything else is left untouched and still propagates below.
         if isinstance(e, ValueError):
             e = _classify_load_error(e) or e
+        # A no-data market (no settled contracts / not enough history) is NOT a failure — there's just
+        # nothing to research there yet — so it finishes `stopped` (neutral), never a red FAILED. Only a
+        # genuine error (API/DB/unexpected) is `failed`, matching the watchdog-reap semantics.
+        no_data = isinstance(e, NoData)
         msg = (str(e) if isinstance(e, LLMError) else "The session hit an unexpected error and stopped.")
-        cur = _reconnect(conn, cur)  # the error may have been the drop itself — heal it so we can record the failure
-        log("error", msg)
-        repo.finish_run(cur, run_id, "failed", msg[:2000], len(tried), 0, usage.input_tokens, usage.output_tokens)
+        cur = _reconnect(conn, cur)  # the error may have been the drop itself — heal it so we can record the outcome
+        log("step" if no_data else "error", msg)
+        repo.finish_run(cur, run_id, "stopped" if no_data else "failed", msg[:2000],
+                        len(tried), 0, usage.input_tokens, usage.output_tokens)
         _bill(conn, user_id, usage, run_id, choice.model_id)  # charge for the work done regardless of the failure cause
         if not isinstance(e, LLMError):
             raise

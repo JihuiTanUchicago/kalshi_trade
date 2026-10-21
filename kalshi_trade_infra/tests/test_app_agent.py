@@ -187,11 +187,13 @@ def test_unrepairable_reply_fails_the_run_visibly(monkeypatch):
     assert store.events[-1][0] == "error"
 
 
-def test_too_little_history_fails_before_spending_on_the_model(monkeypatch):
+def test_too_little_history_stops_before_spending_on_the_model(monkeypatch):
     store = Store(monkeypatch)
     model, prompts = scripted([])
     agent.run_research(Conn(), RUN, model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=2))
-    assert store.finished[0] == "failed" and prompts == []
+    # Not-enough-data is a NoData case: the run ends `stopped` (neutral), not a red `failed`, and
+    # still before any model spend.
+    assert store.finished[0] == "stopped" and prompts == []
 
 
 def test_unknown_pinned_market_fails_cleanly_not_as_keyerror(monkeypatch):
@@ -663,7 +665,7 @@ def test_load_classifies_no_settled_contracts():
     # market-naming LLMError (not the generic "unexpected error").
     def boom():
         raise ValueError("no settled contracts for market 'kxnflgame' since 2024-01-01")
-    with pytest.raises(LLMError) as ei:
+    with pytest.raises(agent.NoData) as ei:   # a NoData subclass -> the run finishes `stopped`, not failed
         agent._load("Loading data", boom)
     assert "kxnflgame" in str(ei.value) and "no settled contracts" in str(ei.value)
 
@@ -720,9 +722,9 @@ def test_no_settled_contracts_surfaces_a_clean_message_end_to_end(monkeypatch):
     model, _ = scripted([plan()])
     def no_data(m, h=None):
         raise ValueError("no settled contracts for market 'btc15m' since 2024-01-01")
-    agent.run_research(Conn(), RUN, model=model, dataset_fn=no_data)  # LLMError -> does not re-raise
+    agent.run_research(Conn(), RUN, model=model, dataset_fn=no_data)  # NoData -> does not re-raise
     status, error, _, _ = store.finished
-    assert status == "failed"
+    assert status == "stopped"   # a dataless market is NOT a failure — nothing to research there yet
     assert "btc15m" in error and "no settled contracts" in error
 
 
