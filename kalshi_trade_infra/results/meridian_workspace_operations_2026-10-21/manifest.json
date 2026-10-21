@@ -1,16 +1,16 @@
 {
-  "reviewed_main": "6519ae87d591e9d303eb0d59b13fb77f28a42765",
-  "source_commit": "d8fbf233b4508c400b9ffbf92976aefba9fcbe40",
+  "reviewed_main": "bac5145932838abfc0d9670cfb2bb78be668e2e9",
+  "source_commit": "d3b92d55ce6e8efba73f708399dd46037de4375a",
   "frontend": {
     "app/static/app.meridian.js": {
       "published_path": "kalshi_trade_infra/app/static/app.meridian.js",
       "before_sha256": "b457ecf5d4720adaf27635712f4e2c7745e72b8ca3c02c4efa8c457423046b77",
-      "after_sha256": "d898ab44b8125d2bd076bbe19a82c33d921ca02bc7980a23f99377331778a0d8"
+      "after_sha256": "08aaefa31f25fc6894b39ede2649e7797d532bb927a3c529297bf6b9f16f4a20"
     },
     "app/static/app.meridian.css": {
       "published_path": "kalshi_trade_infra/app/static/app.meridian.css",
       "before_sha256": "1e7978ec34364065b51e61dcdf8a5099085dc8ab5f8da72009166d4596059c0e",
-      "after_sha256": "0cf549951e20d6c95c31bf90a9747468fb950fa993fb3c54680837583a5cdf26"
+      "after_sha256": "5cc0b21f2dab28d0b2c8b9cf986898cc1086ee50936bb07b3c8c220219be588a"
     }
   },
   "preserved_sha256": {
