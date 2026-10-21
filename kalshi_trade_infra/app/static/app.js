@@ -3202,7 +3202,19 @@
       <div><dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd></div>
       ${d.last_review_at ? `<div><dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd></div>` : ''}`;
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel) msel.value = d.model;
-    const gates = box.querySelector('#apf-gates'); if (gates) gates.textContent = apLiveBlock(d);
+    const gates = box.querySelector('#apf-gates');
+    if (gates) {
+      if (d.billing_blocked) {
+        // Autopilot is on but can't spend — tell the user WHY it's quiet (so it doesn't look broken).
+        gates.innerHTML = d.billing_reason === 'card'
+          ? 'Autopilot is paused — <a href="/billing">add a payment method</a> to let it run.'
+          : 'Autopilot is paused — <a href="/billing">add credits</a> to let it keep researching.';
+        gates.classList.add('warn');
+      } else {
+        gates.textContent = apLiveBlock(d);
+        gates.classList.remove('warn');
+      }
+    }
     const controls = box.querySelector('#apf-controls');
     if (controls) {
       controls.innerHTML = `${d.autopilot_live

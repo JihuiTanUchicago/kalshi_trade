@@ -117,3 +117,44 @@ def test_public_system_activity_is_scoped_to_the_signed_in_user():
     assert len(activity) == 1
     assert 'r.user_id=%s' in activity[0][0]
     assert activity[0][1] == (7,)
+
+
+def _ap_ctx(monkeypatch, autopilot=1):
+    # Minimal Ctx + repo stubs for the autopilot_status handler (deployments/pnl/actions mocked out).
+    ctx = server.Ctx(
+        SimpleNamespace(cursor=lambda: object()),
+        {'id': 7, 'email': 'trader@example.invalid', 'name': 'S', 'picture_url': None,
+         'autopilot': autopilot, 'autopilot_live': 0, 'autopilot_daily_loss_limit': 50,
+         'autopilot_model': None},
+        (), {}, {}, SimpleNamespace())
+    monkeypatch.setattr(server.repo, 'list_deployments', lambda *a: [])
+    monkeypatch.setattr(server.repo, 'get_kalshi_key', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'realized_pnl', lambda *a: 0.0)
+    monkeypatch.setattr(server.repo, 'last_autopilot_action', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'last_review_at', lambda *a: None)
+    monkeypatch.setattr(server.billing, 'configured', lambda: True)
+    return ctx
+
+
+def test_autopilot_status_flags_billing_blocked(monkeypatch):
+    # Autopilot ON but can't spend -> the panel is told WHY it's quiet (reason: credits, card on file).
+    ctx = _ap_ctx(monkeypatch, autopilot=1)
+    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: False)
+    monkeypatch.setattr(server, '_needs_card', lambda c: False)
+    out = server.autopilot_status(ctx)
+    assert out['billing_blocked'] is True and out['billing_reason'] == 'credits'
+
+
+def test_autopilot_status_not_blocked_when_ready(monkeypatch):
+    ctx = _ap_ctx(monkeypatch, autopilot=1)
+    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: True)
+    out = server.autopilot_status(ctx)
+    assert out['billing_blocked'] is False and out['billing_reason'] is None
+
+
+def test_autopilot_status_not_blocked_when_autopilot_off(monkeypatch):
+    # Even if the spend gate would fail, an OFF autopilot is not "blocked" — it's just off.
+    ctx = _ap_ctx(monkeypatch, autopilot=0)
+    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: False)
+    out = server.autopilot_status(ctx)
+    assert out['billing_blocked'] is False

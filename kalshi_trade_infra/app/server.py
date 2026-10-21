@@ -1022,6 +1022,10 @@ def autopilot_status(ctx: Ctx):
     mode = "live" if (live_on and live_run) else ("live-armed" if live_on else ("paper" if u.get("autopilot") else "off"))
     today_live = round(repo.realized_pnl(cur, ctx.uid, "live", _start_of_day_utc()), 2)
     limit = float(u.get("autopilot_daily_loss_limit") or 50)
+    # When autopilot is ON but can't spend (no card, or balance below the per-run floor), the worker
+    # silently skips the user via billing.is_ready — the SAME gate, read here only to surface WHY the
+    # panel is quiet so it doesn't look broken. Never changes the gate; purely a status readout.
+    billing_blocked = bool(u.get("autopilot")) and billing.configured() and not billing.is_ready(cur, ctx.uid)
     return {
         "autopilot": bool(u.get("autopilot")),
         "autopilot_live": bool(u.get("autopilot_live")),
@@ -1035,6 +1039,8 @@ def autopilot_status(ctx: Ctx):
         "last_action": repo.last_autopilot_action(cur, ctx.uid),
         "last_review_at": repo.last_review_at(cur, ctx.uid),  # liveness: a quiet review posts nothing, this still shows it ran
         "model": u.get("autopilot_model") or catalog.DEFAULT_KEY,  # the model the autopilot's own runs use
+        "billing_blocked": billing_blocked,
+        "billing_reason": (("card" if _needs_card(ctx) else "credits") if billing_blocked else None),
     }
 
 
