@@ -268,6 +268,7 @@ def me(ctx: Ctx):
         "needs_card": _needs_card(ctx),
         "free_bonus": float(billing.FREE_BONUS),
         "credit_balance": round(repo.credit_balance(ctx.cur, ctx.uid), 4),
+        "min_run_balance": float(billing.MIN_RUN_BALANCE),  # the headroom a research run needs to start
         "markets": _researchable_markets(ctx.cur),
         "directions": [{"key": k, **v} for k, v in agent.DIRECTIONS.items()],
     }

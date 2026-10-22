@@ -158,3 +158,18 @@ def test_autopilot_status_not_blocked_when_autopilot_off(monkeypatch):
     monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: False)
     out = server.autopilot_status(ctx)
     assert out['billing_blocked'] is False
+
+
+def test_me_exposes_min_run_balance(monkeypatch):
+    # The research page needs the floor to warn a below-minimum user BEFORE they hit the 402.
+    from decimal import Decimal
+    monkeypatch.setattr(server.billing, 'configured', lambda: True)
+    monkeypatch.setattr(server.billing, 'MIN_RUN_BALANCE', Decimal('1.00'))
+    monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: {'default_pm_id': 'pm'})
+    monkeypatch.setattr(server.repo, 'get_kalshi_key', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'get_kalshi_dev_key', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: 0.5)
+    monkeypatch.setattr(server.repo, 'spot_symbols_with_data', lambda *a: set())
+    monkeypatch.setattr(server.repo, 'series_with_candles', lambda *a: set())
+    data = server.me(context())
+    assert data['min_run_balance'] == 1.0 and data['credit_balance'] == 0.5
