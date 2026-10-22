@@ -1497,6 +1497,12 @@ body.landing-body .apf { display: none; }
 .apf-gates:empty { display: none; }
 .apf-gates.warn { color: var(--signal); font-weight: 500; }
 .apf-gates.warn a { color: var(--signal); text-decoration: underline; }
+
+/* Admin DB-node storage breakdown (largest tables). */
+.sys-tables { margin-top: 12px; font-size: 12.5px; }
+.sys-tables ul { list-style: none; margin: 6px 0 0; padding: 0; }
+.sys-tables li { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-top: 1px solid var(--rule, #E7E6E2); }
+.sys-tables li span:last-child { color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .apf-controls { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .apf-controls .btn { flex: 1 1 auto; }
 #apf-confirm { margin-top: 10px; display: grid; gap: 7px; }

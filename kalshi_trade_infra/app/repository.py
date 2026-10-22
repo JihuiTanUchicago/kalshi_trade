@@ -449,6 +449,22 @@ def count_runs(cur, user_id: int, kind: str, since: Optional[datetime] = None, a
     return int(cur.fetchone()["n"])
 
 
+def largest_tables(cur, limit: int = 5) -> List[Dict]:
+    """The biggest tables by on-disk size (data+index), for admin storage visibility — so the
+    operator SEES which table is eating the volume (e.g. `markets.raw_json`) before it fills the
+    disk again. Read-only information_schema query; returns [] if it can't run (older/edge DBs)."""
+    try:
+        cur.execute(
+            "SELECT table_name AS t, ROUND((data_length + index_length) / 1048576) AS mb "
+            "FROM information_schema.tables WHERE table_schema = DATABASE() "
+            "ORDER BY (data_length + index_length) DESC LIMIT %s",
+            (int(limit),),
+        )
+        return [{"table": r["t"], "mb": int(r["mb"] or 0)} for r in cur.fetchall()]
+    except Exception:  # noqa: BLE001 - telemetry must never break the admin page
+        return []
+
+
 def count_active_research(cur) -> int:
     """GLOBAL count (all users) of research runs that hold or await a worker slot — for autopilot
     backpressure: when the shared queue is already saturated, don't launch more. Uses the

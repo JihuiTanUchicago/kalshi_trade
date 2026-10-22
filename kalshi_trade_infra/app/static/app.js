@@ -3550,7 +3550,13 @@
       codeState = null;
       const n = sysNode(id), L = S.sysLive && S.sysLive[id];
       const open = n.ext ? '' : `<p style="margin-top:12px"><button class="btn sm" data-code-open="${esc(id)}">Open the code ›</button></p>`;
-      detail.innerHTML = `<h3>${esc(n.label)}</h3><p class="sys-metric" id="sys-dm">${metricText(id, L) || ''}</p><p class="hint" style="margin-top:8px">${esc(SYS_DESC[id] || '')}</p>${open}`;
+      // Admin-only storage breakdown on the DB node: which tables eat the volume, so a refilling
+      // table is visible long before the disk fills (the storage-full outage had no such warning).
+      const tbls = (id === 'db' && L && L.top_tables && L.top_tables.length)
+        ? `<div class="sys-tables"><b>Largest tables</b><ul>${L.top_tables.map((t) =>
+            `<li><span>${esc(t.table)}</span><span>${t.mb >= 1024 ? (t.mb / 1024).toFixed(1) + ' GB' : num(t.mb) + ' MB'}</span></li>`).join('')}</ul></div>`
+        : '';
+      detail.innerHTML = `<h3>${esc(n.label)}</h3><p class="sys-metric" id="sys-dm">${metricText(id, L) || ''}</p><p class="hint" style="margin-top:8px">${esc(SYS_DESC[id] || '')}</p>${tbls}${open}`;
     };
     const modName = (p) => p.split('/').pop();
     const crumbs = (parts) => `<nav class="sys-crumb">${parts.map((p, i) =>
