@@ -1,9 +1,9 @@
-name: Guarded Meridian frontend release
+name: Guarded default header alignment release
 on:
   workflow_dispatch:
     inputs:
       phase:
-        description: Inspect, correct root-owned source modes, or publish Meridian
+        description: Inspect, correct root-owned source modes, or publish default CSS alignment
         required: true
         type: choice
         options: [inventory, audit-source-modes, repair-source-modes, apply]
@@ -30,7 +30,7 @@ jobs:
       - name: Verify exact reviewed main
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 kalshi_trade_infra/results/meridian_workspace_operations_2026-10-21/runner.py verify-main
+        run: python3 kalshi_trade_infra/results/header_alignment_operations_2026-10-22/runner.py verify-main
       - name: Install pinned offline CSS parser
         if: inputs.phase == 'apply'
         run: python3 -m pip install --disable-pip-version-check tinycss2==1.4.0 webencodings==0.6.1
@@ -42,6 +42,6 @@ jobs:
       - name: Inspect or publish the whole package without service restarts
         env:
           GH_TOKEN: ${{ github.token }}
-          TAU_MERIDIAN_PHASE: ${{ inputs.phase }}
-          TAU_MERIDIAN_FINGERPRINT: ${{ inputs.fingerprint }}
-        run: python3 kalshi_trade_infra/results/meridian_workspace_operations_2026-10-21/runner.py "$TAU_MERIDIAN_PHASE"
+          TAU_HEADER_ALIGNMENT_PHASE: ${{ inputs.phase }}
+          TAU_HEADER_ALIGNMENT_FINGERPRINT: ${{ inputs.fingerprint }}
+        run: python3 kalshi_trade_infra/results/header_alignment_operations_2026-10-22/runner.py "$TAU_HEADER_ALIGNMENT_PHASE"

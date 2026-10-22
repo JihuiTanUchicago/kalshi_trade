@@ -1,0 +1,43 @@
+{
+  "status": "implemented_offline_verified_requires_root_pins_and_publication",
+  "recorded_at_utc": "2026-10-22T06:53:37.087926+00:00",
+  "base_local_commit": "1fe616a04322151219b71bf79a0485581f552101",
+  "operation_only_do_not_merge": true,
+  "verification": {
+    "focused_tests_passed": 22,
+    "unchanged_prior_operation_tests_passed": 86,
+    "baseline_separate_process": true,
+    "python_syntax": true,
+    "git_diff_check": true,
+    "unchanged_original_guard_functions": [
+      "read_regular",
+      "safe_directory",
+      "layout",
+      "unit_state",
+      "exchange",
+      "exchange_available",
+      "clone_archive",
+      "run_schema"
+    ],
+    "css_parser": "tinycss2==1.4.0; webencodings==0.6.1",
+    "observed_root_candidate_sha256": "73bd0785301dff3a32df26a33f490b2e215ef066ce91fecc8f55819a81718d51",
+    "observed_root_candidate_syntax_passed": true
+  },
+  "pins": "All deployment pins remain null; observed candidate hash is evidence only. Root owns candidate.css and exact published pins.",
+  "external_actions": 0,
+  "production_actions": 0,
+  "schema_executions_against_database": 0,
+  "commits_or_pushes": 0,
+  "shared_progress_records": "Root-owned; unchanged by delegated operation task.",
+  "frozen_file_sha256": {
+    "kalshi_trade_infra/results/header_alignment_operations_2026-10-22/remote.py": "a79e2d0f3c6906936878a7dcdab4ebf045a2656774870aaf2f2aef4b8734f25f",
+    "kalshi_trade_infra/results/header_alignment_operations_2026-10-22/runner.py": "ab5fd20268a3762abdf233718e30d452afc77e1258173aefb427dccf6b0083e8",
+    "kalshi_trade_infra/results/header_alignment_operations_2026-10-22/collect.py": "1693980814b0e6f96fe551e5b02895542208589d8479696334fbd057d6fbf728",
+    "kalshi_trade_infra/results/header_alignment_operations_2026-10-22/test_remote.py": "e8951ca7ad65e9c288c8511b3742117cb881efabda8ce5845eedd8b075fb116e",
+    "kalshi_trade_infra/results/header_alignment_operations_2026-10-22/test_runner.py": "aa6cf5f6ac705221220afdb8def75253c0a7f6cb1b68f5308f5b14868373684b",
+    "kalshi_trade_infra/results/header_alignment_operations_2026-10-22/test_collect.py": "1b63fa1746b119c818d9acdb1aa4c02e564d3cc69cd378c66df7a8018b1fcda3",
+    "kalshi_trade_infra/results/header_alignment_operations_2026-10-22/manifest.json": "0aa20dc1241b26ba9d2fa95cf45cdfac898049ab23c98e64fcc886ca8f4fc2ad",
+    "kalshi_trade_infra/results/header_alignment_operations_2026-10-22/HANDOFF.md": "fe61fbbd3a7fcfd1c6f837ef81e583596f1115c21a3573aae0a3aca03c761e3e",
+    ".github/workflows/deploy.yml": "f58784db4288c267f6ddee23d7bf11f7672e88983eb623ac27e8e625aee7cecd"
+  }
+}

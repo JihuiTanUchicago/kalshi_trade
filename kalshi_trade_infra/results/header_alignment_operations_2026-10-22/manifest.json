@@ -1,0 +1,18 @@
+{
+  "reviewed_main": "bac5145932838abfc0d9670cfb2bb78be668e2e9",
+  "source_commit": null,
+  "frontend": {
+    "app/static/app.css": {
+      "published_path": "kalshi_trade_infra/results/header_alignment_operations_2026-10-22/candidate.css",
+      "before_sha256": "dd40121717952f6d642be6c8099acc1ffe9bbc3eb71e1c7e8e0643bc29ad8618",
+      "after_sha256": "73bd0785301dff3a32df26a33f490b2e215ef066ce91fecc8f55819a81718d51"
+    }
+  },
+  "preserved_sha256": {
+    "app/static/app.js": null,
+    "app/static/boot.js": null,
+    "app/static/index.html": null,
+    "app/static/app.meridian.js": null,
+    "app/static/app.meridian.css": null
+  }
+}
