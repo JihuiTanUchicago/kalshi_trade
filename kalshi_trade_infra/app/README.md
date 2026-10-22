@@ -1,5 +1,7 @@
 # Tau (v0.1)
 
+Default Tau header/Hot Markets divider alignment is offline verified with a shared50pxrow height; production release is pending and Meridian is unchanged. [Current work](../results/header_alignment_2026-10-22/HANDOFF.md).
+
 Meridian no longer creates new-version notices or checks deployment versions on navigation. This change is offline verified and awaiting production release; default Tau is unchanged. [Current fix](../results/meridian_update_notice_2026-10-21/HANDOFF.md).
 
 ## Meridian compact workspace — October21,2026

@@ -1,0 +1,34 @@
+{
+  "synthetic": true,
+  "default1280": {
+    "headerBottom": 50,
+    "railBottom": 50
+  },
+  "cases": [
+    {
+      "headerBottom": 50,
+      "headerHeight": 50,
+      "railBottom": 50,
+      "railHeight": 50,
+      "width": 1100
+    },
+    {
+      "width": 320,
+      "headerBottom": 50,
+      "railBottom": 50,
+      "headerHeight": 50,
+      "railHeight": 50,
+      "bodyPadding": "34px",
+      "settled_after_ms": 300
+    }
+  ],
+  "viewportRestored": true,
+  "initial_mobile_transition_sample": {
+    "headerBottom": 60.7421875,
+    "headerHeight": 60.7421875,
+    "railBottom": 50,
+    "railHeight": 50,
+    "width": 320
+  },
+  "note": "Initial narrow sample was taken during existing220ms padding transition; after300ms both divider edges match. Viewport reset to default1280x720."
+}

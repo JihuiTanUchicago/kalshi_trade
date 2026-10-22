@@ -1,5 +1,9 @@
 # PLAN
 
+## Tau header divider alignment — October22,2026,Asia/Shanghai
+
+Implemented/offline verified (`tau-header-alignment-20261022`): default Tau masthead and Hot Markets heading share50pxrow height; native1280/1100/320pxpreview borders align exactly. 1676Python/10skipped and177frontend+8Meridian checks pass. Production release pending. Cosmetic CSS only; preserve Meridian and actual installed unpublished boot/legal styles. [Handoff](results/header_alignment_2026-10-22/HANDOFF.md).
+
 ## Remove persistent Meridian update notice — October21,2026,Asia/Shanghai
 
 Implemented/offline verified (`tau-meridian-update-notice-20261021`): Meridian's build probe, update banner and unused styles are deleted; Tau/default/shared/backend behavior stays intact. 177frontend+8Meridian checks and1676Python/10skipped pass. Immutable publication and fresh installed-state release remain pending. Root owns the isolated fix and existing safe whole-package release; no provider/order/service actions. [Handoff](results/meridian_update_notice_2026-10-21/HANDOFF.md).
