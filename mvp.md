@@ -23,6 +23,8 @@ A self-improving alpha discovery pipeline, from ideation, to similation, and fin
 
 ## TODO / Working Queue
 
+- [in progress] Align default Tau masthead and Hot Markets black divider; preserve Meridian and installed extra CSS. [Handoff](kalshi_trade_infra/results/header_alignment_2026-10-22/HANDOFF.md).
+
 - [in progress] Remove Meridian's persistent new-version banner and navigation version probe; preserve default Tau and deploy through fresh installed-state verification. [Handoff](kalshi_trade_infra/results/meridian_update_notice_2026-10-21/HANDOFF.md).
 
 - `[implemented: isolated paper staging]` Reusable Compose and GitHub acceptance setup: private MySQL/network/secrets, schema-first web preview and unpublished synthetic-broker verification. 1,645 Python / 10 skipped;37 focused guards and the14-check real MySQL/HTTP run pass. Exact-revision Compose acceptance is recorded by the dedicated Actions workflow. No production or real broker calls. [Setup](kalshi_trade_infra/staging/README.md).

@@ -21,6 +21,7 @@
   --radius: 3px;
   --gut: clamp(14px, 2.2vw, 28px);
   --maxw: 1600px;
+  --shell-header-height: 50px;
   --f-ui: "Archivo", ui-sans-serif, system-ui, sans-serif;
   --f-nar: "Archivo Narrow", "Archivo", sans-serif;
   --ease: cubic-bezier(.16, 1, .3, 1);
@@ -178,7 +179,7 @@ th .info { vertical-align: 0; }
 /* ===================== APP SHELL (Kursbuch) ===================== */
 
 .masthead { border-bottom: 2px solid var(--ink); background: var(--stock); }
-.masthead-in { max-width: var(--maxw); margin: 0 auto; padding: 12px var(--gut); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.masthead-in { min-height: calc(var(--shell-header-height) - 2px); max-width: var(--maxw); margin: 0 auto; padding: 0 var(--gut); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .wordmark { font-family: var(--f-nar); font-weight: 600; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; margin: 0; }
 .wordmark a { text-decoration: none; }
 .wordmark .sep { color: var(--rule-2); margin: 0 .5em; }
@@ -1386,9 +1387,9 @@ body.hot-open .hot-tab { display: none; }
 /* open panel */
 .hot-panel { display: none; }
 body.hot-open .hot-panel { display: flex; flex-direction: column; width: 306px; height: 100%; }
-.hot-head { display: flex; align-items: flex-start; justify-content: space-between; padding: 14px 15px 10px; border-bottom: 2px solid var(--ink); }
+.hot-head { height: var(--shell-header-height); flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 4px 15px; border-bottom: 2px solid var(--ink); }
 .hot-kicker { display: block; font-family: var(--f-nar); font-weight: 600; font-size: 13px; letter-spacing: .13em; text-transform: uppercase; color: var(--ink); }
-.hot-now { display: inline-flex; align-items: center; gap: 6px; font-family: var(--f-nar); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin-top: 3px; }
+.hot-now { display: flex; align-items: center; gap: 6px; font-family: var(--f-nar); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin-top: 3px; }
 .hot-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--signal); animation: pulse 1.6s infinite; }
 .hot-x { border: 0; background: none; cursor: pointer; font-size: 19px; line-height: 1; color: var(--ink-3); padding: 0 2px; }
 .hot-x:hover { color: var(--ink); }
