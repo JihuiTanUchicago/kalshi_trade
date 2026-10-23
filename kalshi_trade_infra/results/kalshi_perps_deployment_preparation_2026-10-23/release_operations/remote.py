@@ -734,11 +734,13 @@ def execute(phase, release_id, bundle, guard):
     pins = bundle["pins"]
     backend = Backend(guard, pins)
     try:
-        require(os.geteuid() == 0 and phase in {"inventory", "prepare", "apply"}, "invalid_operation_context")
+        require(os.geteuid() == 0 and phase in {"inventory", "prepare", "apply", "capacity"}, "invalid_operation_context")
         if phase == "inventory":
             return inventory(backend, pins)[0]
         current = inventory(backend, pins)[0]
-        if current["status"] != "idle_inventory":
+        # The separately approved online ceiling increase never restarts or
+        # changes jobs. Source/schema activation still requires full idleness.
+        if (current["conflicts"] if phase == "capacity" else current["status"] != "idle_inventory"):
             return current
         require(pins["candidate_ready"] is True and pins["candidate"] != REJECTED_CANDIDATE, "candidate_acceptance_gate_closed")
         safe_directory(RELEASES.parent)
@@ -753,6 +755,9 @@ def execute(phase, release_id, bundle, guard):
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
             if phase == "prepare":
                 return prepare(backend, pins, release_id, base64.b64decode(bundle["archive"], validate=True))
+            if phase == "capacity":
+                import capacity
+                return capacity.run(backend, pins)
             return apply(backend, pins, release_id)
         finally:
             os.close(descriptor)

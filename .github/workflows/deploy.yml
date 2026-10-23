@@ -4,17 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       phase:
-        description: Read-only inventory or exact reviewed idle-only release
+        description: Read-only inventory, approved worker memory repair, or idle-only release
         required: true
         type: choice
-        options: [inventory, apply]
+        options: [inventory, capacity, apply]
         default: inventory
       candidate:
-        description: Exact accepted candidate commit; required for apply
+        description: Exact accepted candidate commit; required for capacity/apply
         required: false
         type: string
       fingerprint:
-        description: Exact pinned installed fingerprint; required for apply
+        description: Exact pinned installed fingerprint; required for capacity/apply
         required: false
         type: string
 

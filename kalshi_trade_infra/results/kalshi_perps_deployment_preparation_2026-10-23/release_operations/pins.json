@@ -691,6 +691,11 @@
   },
   "candidate_ready": true,
   "evidence": {
+    "approved_capacity_worker_baseline": {
+      "review_file": "CAPACITY_BASELINE_REVIEW.json",
+      "review_sha256": "7999695f474b92d5046c4126d36cf291da0fa86aa4d012d2ea7f6aca24969660",
+      "run": 39901486782
+    },
     "capture_receipt_sha256": "ac71b4b29a02514e67d32724db29f10b9f45aaf4a41adc4c0c0cb21741f04799",
     "capture_reconstruction_proved": true,
     "capture_run": 39888106069,
@@ -715,8 +720,8 @@
       "processes": {
         "recursive-agents": {
           "cmdline_sha256": "3af81a26d1c3f6b9c282e78e27f1e44b10e5637e0dd1e4bffa000ce9db344628",
-          "environment_sha256": "7114408c52fa333599f19e67fb478acf900acc62f5d3d34f59caabff42ff6846",
-          "start_ticks": "49868968"
+          "environment_sha256": "7dc31ebb2c1124287462dae5cd6fd2627bf6aa8493d5d4f64c42913e557d9f16",
+          "start_ticks": "50135843"
         },
         "recursive-engine": {
           "cmdline_sha256": "7404f1c4b417e6ba13097b872c30d36389d06278c367e431baa3ff87972f555e",
@@ -848,8 +853,8 @@
             "explicit_proxy_configured": false,
             "explicitly_configured": false
           },
-          "pid": 505078,
-          "properties_sha256": "60f7acae992533de8f951dc5fa6d9267e26f0f2c276a6c1092ca285d4ea6a60e",
+          "pid": 507858,
+          "properties_sha256": "3e78a6a49c79f0f6191382169863a02e39173023d6012d244d737e583ad6c7e5",
           "resources": {
             "CPUQuotaPerSecUSec": "infinity",
             "CPUWeight": "[not set]",
@@ -1776,7 +1781,7 @@
       "omitted_private_or_cache_entries": 3
     }
   },
-  "installed_fingerprint": "e664c1fc4851566e21516be5285fe84ad8417c070f5bbe572cd6679327872b99",
+  "installed_fingerprint": "9d3cab39086c51a5c8004672fde300bca7c8af089aa9899c5c45a7a306cd2b9d",
   "preserved_extra_paths": [
     "data_pipeline/research_expiry_resolution.py",
     "data_pipeline/research_expiry_resolution_sensitivity.py",

@@ -1,26 +1,51 @@
 {
+  "approved_resource_exception": {
+    "busy_research_may_continue": true,
+    "new_bytes": 1073741824,
+    "no_restart": true,
+    "old_bytes": 419430400,
+    "original_deployment_idle_gates_preserved": true,
+    "property": "MemoryMax",
+    "unit": "recursive-agents.service"
+  },
   "candidate": "0bfb7482ae15d542868556d8a038dd5cfa28f64b",
   "expected_main_commit": "e372a6e54faa2b71e3e00b24e97eb6b1ff252175",
   "file_hashes": {
     ".github/workflows/deploy.yml": {
-      "bytes": 1893,
-      "sha256": "061ee2903f207e6d2dfaf01e2d694e1a35152d053b3f2b7bb4a6c71c22aa02da"
+      "bytes": 1938,
+      "sha256": "4501153ff73fa11c21a885e590459d4eb0c557eff21bcedf2443241b17328ab3"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/BASELINE_REFRESH_REVIEW.json": {
       "bytes": 2638,
       "sha256": "d387dcfd0e3898ca7f96cbb5dac6f6340fd1e81f82ccf1a2115740adb864ca03"
     },
+    "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/CAPACITY_APPROVAL.json": {
+      "bytes": 1658,
+      "sha256": "a57a09ac3c1dbb9185e2cd58c3eea4e7d3f1e7d1bde9c4e27f8df7cd274bbd22"
+    },
+    "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/CAPACITY_BASELINE_REVIEW.json": {
+      "bytes": 2011,
+      "sha256": "7999695f474b92d5046c4126d36cf291da0fa86aa4d012d2ea7f6aca24969660"
+    },
+    "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/CAPACITY_HANDOFF.md": {
+      "bytes": 7231,
+      "sha256": "8faeca6661b399e0478917077ca9ef99659435c3dffff1134bcddd177e744633"
+    },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/HANDOFF.md": {
-      "bytes": 13757,
-      "sha256": "d9c2e30baf4c15c2abf75df779d566d40a33fc032e4926c517da1b6e543de7ee"
+      "bytes": 15523,
+      "sha256": "a8c446390ba112c108bb9829755b5721d645cefbce2acf17863216c2fd39c438"
+    },
+    "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/capacity.py": {
+      "bytes": 17598,
+      "sha256": "db5e4b0f32973689068e856eabb1be279ca454094c1fd4ee95b3275c900a22cc"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/collect.py": {
-      "bytes": 2258,
-      "sha256": "678971d24176b26977dbd05b0b47d60a282287e72495bdad30888be12375c050"
+      "bytes": 2267,
+      "sha256": "be1aef3c94d79ae2b7911ccf8826b4cf899a0a886774158fb59707604f127295"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/pins.json": {
-      "bytes": 60010,
-      "sha256": "b4714d54cb164aefd61d0b81e2f62455c12f197ba807b2e16584e4d4c752cd2c"
+      "bytes": 60230,
+      "sha256": "a0146cd8be3297b72eacc8f90775881426d0eb6d9037858a5b80e7f2014f7dec"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/release_database.py": {
       "bytes": 6296,
@@ -31,23 +56,28 @@
       "sha256": "c377fbea662bde9e2853565dcd1ae58fcf7cb23afe08c724e54826ac791dbb44"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/remote.py": {
-      "bytes": 39812,
-      "sha256": "ec51de1ca61bbb9f93441ff666dffa090f1913bbbad420f78a869a933afe9c18"
+      "bytes": 40149,
+      "sha256": "897623931edf049945b6d1ed17614852130f5fb8f179e0ad4f494a51e1866bfb"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/runner.py": {
-      "bytes": 14009,
-      "sha256": "b6469f4ac64e570264c7c12dc2d097cf8d04113d80fda3e980f9965825588f7d"
+      "bytes": 14798,
+      "sha256": "e6ebc8d8e27cc35d14e7458a0366811365c57ea1c7f2cd2fa166d501dc8df9f3"
+    },
+    "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/test_capacity.py": {
+      "bytes": 30033,
+      "sha256": "5e15dd0863ca2668cfa54066e3f02633409160a1e42cfabb379e7ce84cdabf1a"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/test_release.py": {
-      "bytes": 48568,
-      "sha256": "3f50cd9c64ffe70bf02a3838d740c80fb7edbac95f26d5d968e1a909d6723022"
+      "bytes": 50205,
+      "sha256": "abe8638ac1a1d3008c2de88975569f4e10729229bb0ebaa829a51bc1118b1ffb"
     }
   },
-  "file_manifest_sha256": "8f2147a4d358c9e0b80104f28b613bc190808ab6e151b443af598a9e1feb8b49",
+  "file_manifest_sha256": "3d6368efc5cd80dd11093d260bb00e8a7b87572df7bd0e05033a7df5342fefe0",
   "format": 1,
-  "installed_fingerprint": "e664c1fc4851566e21516be5285fe84ad8417c070f5bbe572cd6679327872b99",
+  "installed_fingerprint": "9d3cab39086c51a5c8004672fde300bca7c8af089aa9899c5c45a7a306cd2b9d",
   "limits_seconds": {
     "admission": 120,
+    "capacity_property_command": 8,
     "forward": 30,
     "in_flight_forward_reserve": 5,
     "recovery_budget": 74,
@@ -62,43 +92,45 @@
     "apply_dispatch": true,
     "real_provider_account_order_call": true
   },
-  "operations_base": "7fd2e25dfa759f6bb3b428f4109e85220b703879",
+  "operations_base": "c8e3302f25a8c82d594d7e941571e901efb19f0f",
   "read_only_runs": [
     39896649873,
     39896944153,
     39898387856,
     39899529490,
-    39900064672
+    39900064672,
+    39900592201,
+    39901486782
   ],
   "remaining_gates": [
-    "immutable exact OOM-scope delta review",
-    "operations publication and exact-head approval",
-    "diagnose repeated production worker OOM; no automatic repinning or resource change",
-    "fresh main/source/control inventory",
-    "all-kind zero active jobs and locked fresh zero native state",
-    "existing LOCK TABLES privileges and onbox source/environment/HTTP acceptance"
+    "full independent capacity/integration review",
+    "immutable capacity operations diff review",
+    "exact-head publication/current baseline and one capacity dispatch",
+    "actual no-restart/environment/resource verification",
+    "900sec operational stability observation",
+    "explicit new baseline review then original idle-only fullschema release acceptance"
   ],
   "source_tree": "6f75cf6d58d363c4a7e8e69e6546a0dd9df9c1f9",
-  "status": "offline_verified_exact_oom_scope_diagnosis",
+  "status": "offline_verified_approved_online_capacity_candidate",
   "verification": {
     "focused_unittest": {
       "command": "python -B -m unittest discover -s kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations -p 'test_*.py' -q",
       "database": false,
       "failed": 0,
       "network": false,
-      "passed": 48
+      "passed": 73
     },
     "git_diff_check": true,
     "owned_python_syntax": {
-      "modules": 6,
+      "modules": 8,
       "passed": true
     },
     "root_reported_existing_app_suite": {
       "executed_by_this_workstream": true,
       "passed": 1899,
-      "seconds": 24.99,
+      "seconds": 25.42,
       "skipped": 10
     }
   },
-  "verified_at_utc": "2026-10-23T04:28:08.526635+00:00"
+  "verified_at_utc": "2026-10-23T04:46:19.167372+00:00"
 }

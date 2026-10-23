@@ -574,6 +574,31 @@ class SchemaAndTransportTests(unittest.TestCase):
         with self.assertRaises(runner.RunnerError):
             runner.program({**artifact, "bucket": "other"}, "apply", "d" * 32)
 
+    def test_capacity_requires_exact_release_inputs_before_any_transport(self):
+        with patch.object(runner, "aws") as aws:
+            with self.assertRaisesRegex(runner.RunnerError, "candidate_acceptance_gate_closed"):
+                runner.run("capacity")
+        aws.assert_not_called()
+
+    def test_capacity_transport_never_prepares_installs_or_invalidates(self):
+        value, phases, emitted = runner.pins(), [], []
+        def aws(*args):
+            return {"ContentLength": 0, "ServerSideEncryption": "AES256"} if args[:2] == ("s3api", "head-object") else {}
+        def request(artifact, phase, identity):
+            phases.append(phase)
+            return {"status": "capacity_verified", "no_service_restart": True}
+        with patch.object(runner, "bundle", return_value=b"synthetic public source"), patch.object(runner, "aws", side_effect=aws), \
+                patch.object(runner, "request", side_effect=request), patch.object(runner, "invalidate") as cdn, \
+                patch.object(runner.remote, "verify_http") as public, \
+                patch.object(runner, "emit", side_effect=lambda kind, report: emitted.append((kind, report))):
+            result = runner.run("capacity", value["candidate"], value["installed_fingerprint"])
+        self.assertEqual(result["status"], "capacity_verified")
+        self.assertEqual(phases, ["capacity"])
+        cdn.assert_not_called(); public.assert_not_called()
+        self.assertFalse(emitted[-1][1]["release_committed"])
+        self.assertTrue(emitted[-1][1]["capacity_action_dispatched"])
+        self.assertTrue(emitted[-1][1]["capacity_change_verified"])
+
     def test_compressed_receipts_reject_bad_hash_and_raw_log_text(self):
         raw = b'{"status":"waiting","job_counts":{"running":1}}'
         envelope = {"encoding": "zlib+base64", "sha256": remote.digest(raw), "payload": base64.b64encode(zlib.compress(raw)).decode()}

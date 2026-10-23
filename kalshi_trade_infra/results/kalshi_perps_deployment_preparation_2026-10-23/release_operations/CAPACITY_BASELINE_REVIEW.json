@@ -1,0 +1,46 @@
+{
+  "status": "explicitly_reviewed_capacity_only_worker_baseline",
+  "reason": "Repeated own-worker OOM is confirmed; user approved one targeted online worker ceiling repair. No runtime historic environment equality inferred from opaque hashes. Actual full private environment must remain unchanged around the one command. No autorepin is implemented.",
+  "receipt_run": 39901486782,
+  "receipt_sha256": "510b943f8b0f0b03cae635d10406839d7479fea9b96633ae2e2a4771c4f0abb4",
+  "observed_combined_fingerprint": "9d3cab39086c51a5c8004672fde300bca7c8af089aa9899c5c45a7a306cd2b9d",
+  "expected_reconstructed_fingerprint": "9d3cab39086c51a5c8004672fde300bca7c8af089aa9899c5c45a7a306cd2b9d",
+  "source_fingerprint": "36d996b28af93ba164dc9c5aa321d1d2f08be233ce5da0e0784ef0595c9b230d",
+  "worker_only_changed_fields": [
+    {
+      "group": "units",
+      "field": "pid",
+      "old": 505078,
+      "new": 507858
+    },
+    {
+      "group": "units",
+      "field": "properties_sha256",
+      "old": "60f7acae992533de8f951dc5fa6d9267e26f0f2c276a6c1092ca285d4ea6a60e",
+      "new": "3e78a6a49c79f0f6191382169863a02e39173023d6012d244d737e583ad6c7e5"
+    },
+    {
+      "group": "processes",
+      "field": "environment_sha256",
+      "old": "7114408c52fa333599f19e67fb478acf900acc62f5d3d34f59caabff42ff6846",
+      "new": "7dc31ebb2c1124287462dae5cd6fd2627bf6aa8493d5d4f64c42913e557d9f16"
+    },
+    {
+      "group": "processes",
+      "field": "start_ticks",
+      "old": "49868968",
+      "new": "50135843"
+    }
+  ],
+  "preserved_checks": [
+    "all non-worker units/processes exact",
+    "unchanged source/unit-file/protected-config pins per exact reviewed inventory",
+    "same worker command hash/resources/flags/restart state",
+    "400MiB configured ceiling",
+    "own-worker OOM positive"
+  ],
+  "application_deployment_still_requires_idle": true,
+  "historical_process_environment_equality_proven": false,
+  "fresh_exact_inventory_before_capacity_required": true,
+  "time_utc": "2026-10-23T04:42:17.464582+00:00"
+}

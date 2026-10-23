@@ -79,7 +79,7 @@ def bundle(value):
         raise RunnerError("candidate_tree_mismatch")
     archive = git("archive", "--format=tar.gz", value["candidate"] + ":kalshi_trade_infra", "app", "data_pipeline")
     remote.archive_files(archive, value)
-    modules = {name: (HERE / (name + ".py")).read_text() for name in ("release_database", "release_schema", "remote")}
+    modules = {name: (HERE / (name + ".py")).read_text() for name in ("release_database", "release_schema", "remote", "capacity")}
     modules["release_guard"] = git("show", GUARD_COMMIT + ":" + GUARD_PATH).decode()
     payload = {"format": 1, "pins": value, "archive": base64.b64encode(archive).decode(), "modules": modules}
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
@@ -90,7 +90,7 @@ def bundle(value):
 
 def program(artifact, phase, release_id):
     if (artifact["bucket"] != BUCKET or not re.fullmatch(r"bundle/manual-perps-[0-9a-f]{40}-[0-9a-f]{32}\.json", artifact["key"])
-            or not re.fullmatch(r"[0-9a-f]{64}", artifact["sha256"]) or phase not in {"inventory", "prepare", "apply"}
+            or not re.fullmatch(r"[0-9a-f]{64}", artifact["sha256"]) or phase not in {"inventory", "prepare", "apply", "capacity"}
             or not re.fullmatch(r"[0-9a-f]{32}", release_id)):
         raise RunnerError("invalid_release_transport")
     code = '''import os,sys,json,types,subprocess,hashlib,base64,zlib
@@ -102,10 +102,11 @@ try:
  if r.returncode or len(r.stdout)>MAXIMUM or hashlib.sha256(r.stdout).hexdigest()!=SHA:raise ValueError()
  b=json.loads(r.stdout)
  if set(b)!={"format","pins","archive","modules"} or b["format"]!=1:raise ValueError()
- if set(b["modules"])!={"release_guard","release_database","release_schema","remote"}:raise ValueError()
+ if set(b["modules"])!={"release_guard","release_database","release_schema","remote","capacity"}:raise ValueError()
  loaded={}
- for name in ("release_guard","release_database","release_schema","remote"):
+ for name in ("release_guard","release_database","release_schema","remote","capacity"):
   module=types.ModuleType(name);sys.modules[name]=module;exec(b["modules"][name],module.__dict__);loaded[name]=module
+ loaded["capacity"].install_guard_exception(loaded["release_guard"])
  result=loaded["remote"].execute(PHASE,IDENTITY,b,loaded["release_guard"])
 except BaseException:pass
 raw=json.dumps(result,sort_keys=True,separators=(",",":")).encode()
@@ -172,12 +173,12 @@ def run(phase, expected_candidate=None, expected_fingerprint=None):
     head = git("rev-parse", "HEAD").decode().strip()
     if not re.fullmatch(r"[0-9a-f]{40}", head) or os.environ.get("GITHUB_SHA", head) != head:
         raise RunnerError("operations_head_mismatch")
-    if phase not in {"inventory", "apply"}:
+    if phase not in {"inventory", "apply", "capacity"}:
         raise RunnerError("invalid_release_phase")
-    if phase == "apply" and (not value["candidate_ready"] or expected_candidate != value["candidate"]
+    if phase in {"apply", "capacity"} and (not value["candidate_ready"] or expected_candidate != value["candidate"]
                               or expected_fingerprint != value["installed_fingerprint"]):
         raise RunnerError("candidate_acceptance_gate_closed")
-    if phase == "apply" and git("rev-parse", "refs/remotes/origin/main").decode().strip() != value["acceptance"]["merged_main"]["commit"]:
+    if phase in {"apply", "capacity"} and git("rev-parse", "refs/remotes/origin/main").decode().strip() != value["acceptance"]["merged_main"]["commit"]:
         raise RunnerError("reviewed_main_reference_changed")
     raw = bundle(value)
     release_id = uuid.uuid4().hex
@@ -187,7 +188,7 @@ def run(phase, expected_candidate=None, expected_fingerprint=None):
         "expected_main_commit": value["acceptance"]["merged_main"]["commit"], "source_tree": value["acceptance"]["source_tree"],
         "release_id": release_id, "candidate_ready": value["candidate_ready"], "installed_fingerprint": value["installed_fingerprint"],
         "bundle_sha256": artifact["sha256"], "provider_calls_from_operations": 0})
-    uploaded, committed = False, False
+    uploaded, committed, capacity_dispatched, capacity_verified = False, False, False, False
     try:
         with tempfile.TemporaryDirectory(prefix="tau-perps-release-") as temporary:
             path = Path(temporary) / "public-source-bundle.json"
@@ -198,6 +199,12 @@ def run(phase, expected_candidate=None, expected_fingerprint=None):
             if phase == "inventory":
                 result = request(artifact, "inventory", release_id)
                 emit("INVENTORY", result)
+                return result
+            if phase == "capacity":
+                capacity_dispatched = True
+                result = request(artifact, "capacity", release_id)
+                capacity_verified = result.get("status") == "capacity_verified"
+                emit("CAPACITY", result)
                 return result
             prepared = request(artifact, "prepare", release_id)
             emit("PREPARED", prepared)
@@ -238,10 +245,12 @@ def run(phase, expected_candidate=None, expected_fingerprint=None):
                 if head.get("ContentLength") != 0 or head.get("ServerSideEncryption") != "AES256":
                     raise RunnerError("transport_cleanup_not_verified")
                 emit("CLEANUP", {"current_transport_object_cleared": True, "historical_versions_deleted": False,
-                                 "release_committed": committed})
+                                 "release_committed": committed, "capacity_action_dispatched": capacity_dispatched,
+                                 "capacity_change_verified": capacity_verified})
             except Exception:
                 emit("CLEANUP", {"current_transport_object_cleared": False, "historical_versions_deleted": False,
-                                 "release_committed": committed})
+                                 "release_committed": committed, "capacity_action_dispatched": capacity_dispatched,
+                                 "capacity_change_verified": capacity_verified})
                 raise RunnerError("transport_cleanup_requires_inspection") from None
 
 
@@ -249,7 +258,7 @@ if __name__ == "__main__":
     try:
         phase = os.environ.get("TAU_PERPS_RELEASE_PHASE", "inventory")
         result = run(phase, os.environ.get("TAU_PERPS_RELEASE_CANDIDATE"), os.environ.get("TAU_PERPS_RELEASE_FINGERPRINT"))
-        raise SystemExit(0 if result.get("status") in {"idle_inventory", "waiting", "accepted"} else 1)
+        raise SystemExit(0 if result.get("status") in {"idle_inventory", "waiting", "accepted", "capacity_verified"} else 1)
     except SystemExit:
         raise
     except Exception as exc:

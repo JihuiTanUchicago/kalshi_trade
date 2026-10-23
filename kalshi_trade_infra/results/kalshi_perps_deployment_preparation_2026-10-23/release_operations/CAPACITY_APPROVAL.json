@@ -1,0 +1,54 @@
+{
+  "status": "user_approved_implementation_in_progress",
+  "approved_change": {
+    "unit": "recursive-agents.service",
+    "property": "MemoryMax",
+    "before_bytes": 419430400,
+    "after_bytes": 1073741824,
+    "method": "systemctl set-property; persistent online resource change only",
+    "service_restart_permitted": false,
+    "job_mutations_permitted": false,
+    "may_run_with_existing_research": true,
+    "source_schema_perps_activation_requires_idle": true
+  },
+  "evidence": {
+    "exact_scope_inventory_run": 39900592201,
+    "worker_limit_kernel_records_last_30m": 2,
+    "ancestor_limit_records": 0,
+    "global_constraint_records": 0,
+    "nrestarts": 44,
+    "host_total_bytes": 16537710592,
+    "host_available_bytes": 13804797952
+  },
+  "root_owned_integration": [
+    "remote.py",
+    "runner.py",
+    "collect.py",
+    ".github/workflows/deploy.yml",
+    "pins.json",
+    "HANDOFF.md",
+    "VERIFICATION.json"
+  ],
+  "delegated_disjoint_files": [
+    "capacity.py",
+    "test_capacity.py",
+    "CAPACITY_HANDOFF.md"
+  ],
+  "no_touch": [
+    "main runtime candidate",
+    "private environment files and keys",
+    "other service resources",
+    "binary/autopilot/trading gates",
+    "research job rows"
+  ],
+  "remaining_gates": [
+    "bounded wrapper implementation and independent review",
+    "full/focused checks",
+    "immutable operations diff scan",
+    "exact-head/current-state verified dispatch",
+    "actual resource/private-environment/no-restart verification",
+    "15min stability observation",
+    "fresh reviewed baseline then original idle-only deployment"
+  ],
+  "timestamp_utc": "2026-10-23T04:37:20.318957+00:00"
+}
