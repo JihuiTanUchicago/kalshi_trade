@@ -10,6 +10,7 @@ import stat
 import tarfile
 import tempfile
 import time
+import types
 import unittest
 from unittest.mock import Mock, mock_open, patch
 import zlib
@@ -691,6 +692,38 @@ class WorkerHealthTests(unittest.TestCase):
             self.assertEqual(remote.worker_health(), {"status": "unavailable", "error_code": "worker_health_projection_failed"})
 
 
+class KernelJournalReaderTests(unittest.TestCase):
+    def call(self, code, stdout, stderr=b""):
+        response = types.SimpleNamespace(returncode=code, stdout=stdout, stderr=stderr)
+        with patch.object(remote.subprocess, "run", return_value=response) as run:
+            result = remote.kernel_oom_journal()
+        self.assertEqual(run.call_args.args[0], ["journalctl", "--dmesg", "--since=-30min", "--lines=80",
+            "--grep=recursive-agents\\.service", "--no-pager", "--output=json", "--output-fields=MESSAGE"])
+        self.assertEqual(run.call_args.kwargs["timeout"], 3)
+        self.assertEqual(run.call_args.kwargs["env"]["LC_ALL"], "C")
+        self.assertTrue(run.call_args.kwargs["capture_output"])
+        return result
+
+    def test_exact_no_match_is_an_empty_window_without_disclosing_text(self):
+        self.assertEqual(self.call(1, b"-- No entries --\n"), b"")
+        self.assertEqual(self.call(0, b""), b"")
+        self.assertEqual(self.call(0, b'{"MESSAGE":"synthetic"}'), b'{"MESSAGE":"synthetic"}')
+
+    def test_nonzero_errors_warnings_and_oversized_output_are_not_zero_events(self):
+        cases = [(1, b""), (2, b"-- No entries --\n"), (1, b"private"),
+                 (1, b"-- No entries --\n", b"private warning"), (0, b"", b"private warning"),
+                 (0, b"x" * (1024 * 1024 + 1))]
+        for args in cases:
+            with self.subTest(code=args[0]):
+                with self.assertRaisesRegex(remote.ReleaseError, "^kernel_journal_unavailable$"):
+                    self.call(*args)
+
+    def test_timeout_is_sanitized(self):
+        with patch.object(remote.subprocess, "run", side_effect=TimeoutError("private")):
+            with self.assertRaisesRegex(remote.ReleaseError, "^kernel_journal_unavailable$"):
+                remote.kernel_oom_journal()
+
+
 class MemoryPressureTests(unittest.TestCase):
     host = b"MemTotal: 2097152 kB\nMemAvailable: 1048576 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\nPrivateUnused: hidden text\n"
 
@@ -702,20 +735,18 @@ class MemoryPressureTests(unittest.TestCase):
             "oom-kill:constraint=CONSTRAINT_MEMCG,oom_memcg=/system.slice/recursive-web.service,private text",
         ]
         journal = ("\n".join(json.dumps({"MESSAGE": row}) for row in rows)).encode()
-        with patch.object(remote.Path, "open", mock_open(read_data=self.host)) as files, patch.object(remote, "command", return_value=journal) as cmd:
+        with patch.object(remote.Path, "open", mock_open(read_data=self.host)) as files, patch.object(remote, "kernel_oom_journal", return_value=journal):
             report = remote.memory_pressure()
         self.assertEqual(report["host_bytes"]["MemTotal"], 2147483648)
         self.assertEqual(report["kernel_events_last_30m"], {"cgroup_constraint": 1, "global_constraint": 1,
                                                          "worker_limit": 1, "ancestor_limit": 0, "unclassified_memcg": 0})
         self.assertNotIn("private", json.dumps(report))
         files.assert_called_once_with("rb")
-        self.assertIn("--dmesg", cmd.call_args.args[0])
-        self.assertEqual(cmd.call_args.kwargs["timeout"], 3)
 
     def test_malformed_host_does_not_hide_kernel_evidence_or_echo_private_data(self):
         invalid = (b"private host contents", self.host + b"MemTotal: 1 kB\n", self.host.replace(b"2097152", b"0"), b"x" * 65537)
         for raw in invalid:
-            with patch.object(remote.Path, "open", mock_open(read_data=raw)), patch.object(remote, "command", return_value=b""):
+            with patch.object(remote.Path, "open", mock_open(read_data=raw)), patch.object(remote, "kernel_oom_journal", return_value=b""):
                 report = remote.memory_pressure()
             self.assertEqual(report, {"host_error_code": "host_memory_projection_failed", "kernel_events_last_30m": {
                 "cgroup_constraint": 0, "global_constraint": 0, "worker_limit": 0,
@@ -728,22 +759,22 @@ class MemoryPressureTests(unittest.TestCase):
             "oom-kill:constraint=CONSTRAINT_MEMCG,task_memcg=/system.slice/recursive-agents.service,private",
         ]
         raw = ("\n".join(json.dumps({"MESSAGE": message}) for message in messages)).encode()
-        with patch.object(remote.Path, "open", mock_open(read_data=self.host)), patch.object(remote, "command", return_value=raw):
+        with patch.object(remote.Path, "open", mock_open(read_data=self.host)), patch.object(remote, "kernel_oom_journal", return_value=raw):
             report = remote.memory_pressure()
         self.assertEqual(report["kernel_events_last_30m"], {"cgroup_constraint": 3, "global_constraint": 0,
                                                          "worker_limit": 0, "ancestor_limit": 2, "unclassified_memcg": 1})
         self.assertNotIn("private", json.dumps(report))
 
     def test_kernel_error_preserves_capacity_and_redacts_messages(self):
-        for raw in (b"private invalid json", b'{"MESSAGE":["private"]}'):
-            with patch.object(remote.Path, "open", mock_open(read_data=self.host)), patch.object(remote, "command", return_value=raw):
+        for raw in (b"private invalid json", b'{"MESSAGE":["private"]}', b'{}', b'[]'):
+            with patch.object(remote.Path, "open", mock_open(read_data=self.host)), patch.object(remote, "kernel_oom_journal", return_value=raw):
                 report = remote.memory_pressure()
             self.assertEqual(report["kernel_error_code"], "kernel_memory_projection_failed")
             self.assertEqual(report["host_bytes"]["MemTotal"], 2147483648)
             self.assertNotIn("private", json.dumps(report))
 
     def test_unavailable_readers_have_only_fixed_error_codes(self):
-        with patch.object(remote.Path, "open", side_effect=RuntimeError("private read")), patch.object(remote, "command", side_effect=RuntimeError("private journal")):
+        with patch.object(remote.Path, "open", side_effect=RuntimeError("private read")), patch.object(remote, "kernel_oom_journal", side_effect=RuntimeError("private journal")):
             self.assertEqual(remote.memory_pressure(), {"host_error_code": "host_memory_projection_failed", "kernel_error_code": "kernel_memory_projection_failed"})
 
 

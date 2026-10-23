@@ -43,8 +43,10 @@ recorded immediately before the command; active work and legitimate completion
 are allowed under the user's online increase approval. No idle guard in existing
 prepare/apply is edited or relaxed.
 
-Fresh pressure evidence must show own-worker constrained OOM, with no ancestor,
-global or unclassified constraint evidence. Host MemTotal must be at least 12 GiB
+Cause evidence must show own-worker constrained OOM, either in the successful
+current projection or in the exact explicitly approved prior receipt described
+below when current records are zero. Current ancestor/global/unclassified records
+or unavailable evidence block the operation. Host MemTotal must be at least 12 GiB
 and MemAvailable at least 8 GiB. The active worker's configured cap, actual fixed
 cgroup memory.max and computed effective cap must all be exactly 400 MiB. The
 fixed worker path is `/system.slice/recursive-agents.service`, and the PID's proc
@@ -59,9 +61,11 @@ obtains physical memory freshly from bounded /proc/meminfo. Receipts identify
 `kernel_hierarchy` when the optional systemd property is unavailable; no unsupported
 property is assumed to exist. Its presence/absence cannot change during the operation.
 
-Every private worker property projection restricted to the original guard.PROPERTIES
-must fingerprint to the corresponding guard snapshot's worker properties hash,
-before and after. Complete privately parsed systemd properties must agree across
+Every private worker property projection restricted to actually emitted original
+guard.PROPERTIES must fingerprint to the corresponding guard snapshot's worker
+properties hash, before and after. Only the explicitly optional EnvironmentFiles
+and EffectiveMemoryMax may be omitted; no empty keys are fabricated. Complete
+privately parsed systemd properties must agree across
 the command except MemoryMax, optional EffectiveMemoryMax, and exactly one new
 DropInPaths entry. Whole actual private environments, PID/start times, every
 non-target process/unit/resource, source hashes and protected files must be identical.
@@ -150,4 +154,66 @@ read-only file flags, non-root proc ownership, unified/v1/hybrid mapping, privat
 malformed/unknown/duplicate rows, invalid PID/path, missing/symlink/bad-format files,
 bounded response/error redaction, and effective-limit disagreement. Root owns the
 inventory-only bootstrap integration, immutable review and any read-only dispatch.
-The original capacity write implementation and every acceptance gate are unchanged.
+At this diagnostic-only milestone the original capacity write implementation and
+every acceptance gate were unchanged. The evidence-based compatibility change
+below supersedes the earlier strict missing-EnvironmentFiles requirement.
+
+## Evidence-based omission and approved cause receipt
+
+Read-only inventory 39903498965 at e692f7d735f54c4fa792c3232ca6233c303a6c80
+confirmed that only EnvironmentFiles and EffectiveMemoryMax were absent from the
+actual show output. Every other requested field was present and row-valid. The
+fixed worker/parent/proc metadata was accepted; proc mapping was exactly unified;
+worker memory.max was 419430400, parent unlimited and physical memory 16537710592.
+No property mutation occurred. This diagnosis supports only the explicit
+EnvironmentFiles omission, not generic acceptance of missing properties.
+
+The observer now permits exactly EnvironmentFiles plus the already optional
+EffectiveMemoryMax to be absent. It keeps the raw present-key dictionary and
+hashes only actual emitted guard.PROPERTIES, matching the unchanged guard's
+query without --all. Missing Environment, ExecStart, identity/resource fields,
+DropInPaths or any other requested mandatory field still fails before mutation.
+EnvironmentFiles appearing or disappearing between before/after projections is
+rejected, even when the new value is empty and the new guard hash is otherwise
+valid. No blank value is synthesized for hashing or equality.
+
+The approved prior-cause pin has exactly this public metadata shape:
+
+```json
+{
+  "run_id": 39901486782,
+  "receipt_sha256": "510b943f8b0f0b03cae635d10406839d7479fea9b96633ae2e2a4771c4f0abb4",
+  "worker_pid": 507858,
+  "kernel_events_last_30m": {
+    "worker_limit": 2,
+    "cgroup_constraint": 2,
+    "ancestor_limit": 0,
+    "global_constraint": 0,
+    "unclassified_memcg": 0
+  }
+}
+```
+
+Root owns placing this reviewed proof under pins.capacity_approved_oom_evidence
+and the narrow interpretation of a successful journal no-entry result. Capacity
+does not turn unavailable/error evidence into zero records. Prior evidence is used
+only when all five current kernel counts are typed, nonnegative and zero, there
+are no current host/kernel error markers, current actual PID and baseline pinned
+PID both equal 507858, and every prior run/hash/PID/count matches the approved
+values with strict types. Missing/extra fields, invalid counts, stale worker PID,
+bad current scopes or any current source/control conflict block the command.
+The two prior records are constraint evidence, not a claim of two distinct kills.
+
+Receipts preserve current kernel_events_last_30m separately from
+approved_prior_oom_evidence and identify cause_source as current_kernel_window or
+approved_prior_receipt. Both pre-command checks still require fresh host headroom;
+the prior receipt never supplies current capacity or process acceptance.
+
+Focused capacity verification now passes **38 tests**. New regressions cover a
+full synthetic run with the actual omitted-key shape, raw hashes differing from
+fabricated empty fields, every other mandatory omission, either EnvironmentFiles
+presence transition, exact approved prior evidence with current zero events,
+invalid/missing prior metadata, stale PID, current errors/bad scopes and conflicts.
+The fixed property command, no-restart/no-retry policy, complete private-env/source
+checks and every unrelated mutation limit remain unchanged. No commit, publication,
+dispatch, new production read, property retry or pin edit was performed here.

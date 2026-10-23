@@ -28,24 +28,24 @@
       "sha256": "7999695f474b92d5046c4126d36cf291da0fa86aa4d012d2ea7f6aca24969660"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/CAPACITY_HANDOFF.md": {
-      "bytes": 9500,
-      "sha256": "7290fac75a37adfa3d541dc31b02867172fad6ea9d898550950296b0c686a11a"
+      "bytes": 13216,
+      "sha256": "a9e4056a4d0452c73904df2695807e4cf19097e2270c0c014f1dca8805ef6c95"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/HANDOFF.md": {
-      "bytes": 16124,
-      "sha256": "b54bdf421e91e27af37b091e1d2a4dc21a47ee0f9e860bfa0437b9b6443dc0de"
+      "bytes": 17438,
+      "sha256": "708b0f727ff4226601f706cc691def79c99a7e29e9d7b9780cccf9bce301a221"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/capacity.py": {
-      "bytes": 27487,
-      "sha256": "e575a7eefb10e328938234d0864c7ae490a8e582f442de8293aba188210fc132"
+      "bytes": 29657,
+      "sha256": "e532c424662c928bce5eef976bc4d5b467cdf9b45d1d2e30cb9291e0c65a30ea"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/collect.py": {
       "bytes": 2267,
       "sha256": "be1aef3c94d79ae2b7911ccf8826b4cf899a0a886774158fb59707604f127295"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/pins.json": {
-      "bytes": 60230,
-      "sha256": "a0146cd8be3297b72eacc8f90775881426d0eb6d9037858a5b80e7f2014f7dec"
+      "bytes": 60596,
+      "sha256": "e325db7efee8958e3b5bdf9cde5b2fbfca80d9a6edcd4d0fdf5cff18d0377858"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/release_database.py": {
       "bytes": 6296,
@@ -56,23 +56,23 @@
       "sha256": "c377fbea662bde9e2853565dcd1ae58fcf7cb23afe08c724e54826ac791dbb44"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/remote.py": {
-      "bytes": 40149,
-      "sha256": "897623931edf049945b6d1ed17614852130f5fb8f179e0ad4f494a51e1866bfb"
+      "bytes": 41127,
+      "sha256": "38b03fd0803de1f2f37df6b42948925f2fa5b60c09149dbe76f66562e56f1b19"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/runner.py": {
       "bytes": 14910,
       "sha256": "a890c20f2b6ee6d245d6a2ee1afecec358f1de1fbed46976b14517790f87a393"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/test_capacity.py": {
-      "bytes": 39042,
-      "sha256": "4a7e02c735d534b1ba38d9d5bfbb2d2826e8bb07afe6e21bbcbab150f668b468"
+      "bytes": 47088,
+      "sha256": "ba4235b9c3d43c82d56519fc680cd284609747d078015605082f884148c69135"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/test_release.py": {
-      "bytes": 50205,
-      "sha256": "abe8638ac1a1d3008c2de88975569f4e10729229bb0ebaa829a51bc1118b1ffb"
+      "bytes": 51980,
+      "sha256": "bfca76570e39b49164f0721c0ff7bbd625aa49b7aaf4c786771fb812dba8067f"
     }
   },
-  "file_manifest_sha256": "abd15ddae9175b44c45f47c53ebf4fd96b8b200ff54cb83bd1dd87ffeec6c2a7",
+  "file_manifest_sha256": "567f85a2b58aa3108ae532e03fc2662395be396dbc4f5ce2d915df1f94f00051",
   "format": 1,
   "installed_fingerprint": "9d3cab39086c51a5c8004672fde300bca7c8af089aa9899c5c45a7a306cd2b9d",
   "limits_seconds": {
@@ -92,7 +92,7 @@
     "apply_dispatch": true,
     "real_provider_account_order_call": true
   },
-  "operations_base": "9d25f3c81e427360b9a369c0e8c240c30a654359",
+  "operations_base": "e692f7d735f54c4fa792c3232ca6233c303a6c80",
   "read_only_runs": [
     39896649873,
     39896944153,
@@ -100,17 +100,18 @@
     39899529490,
     39900064672,
     39900592201,
-    39901486782
+    39901486782,
+    39903498965
   ],
   "remaining_gates": [
-    "immutable read-only probe review",
-    "exact-head inventory-only dispatch and compatibility evidence",
-    "evidence-based observer correction before any resource retry",
-    "actual no-restart resource and900secstability proof",
-    "freshbaseline originalidle-onlysource/schema/appactivation"
+    "independent final combined review and immutable compatibility delta review",
+    "exact-head capacity-only dispatch with unchanged strict baseline",
+    "actual no-restart resource/private-environment proof",
+    "900sec stability observation",
+    "explicit postrepair baseline review and original idle-only source/schema activation"
   ],
   "source_tree": "6f75cf6d58d363c4a7e8e69e6546a0dd9df9c1f9",
-  "status": "offline_verified_read_only_capacity_compatibility_probe",
+  "status": "offline_verified_capacity_compatibility_correction",
   "stopped_capacity_run": {
     "error_code": "capacity_projection_invalid",
     "mutation_may_have_applied": false,
@@ -123,7 +124,7 @@
       "database": false,
       "failed": 0,
       "network": false,
-      "passed": 82
+      "passed": 91
     },
     "git_diff_check": true,
     "owned_python_syntax": {
@@ -133,9 +134,9 @@
     "root_reported_existing_app_suite": {
       "executed_by_this_workstream": true,
       "passed": 1899,
-      "seconds": 24.4,
+      "seconds": 25.54,
       "skipped": 10
     }
   },
-  "verified_at_utc": "2026-10-23T04:58:06.970804+00:00"
+  "verified_at_utc": "2026-10-23T05:07:38.125373+00:00"
 }

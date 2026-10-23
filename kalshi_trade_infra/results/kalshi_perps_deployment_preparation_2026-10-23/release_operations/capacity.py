@@ -24,6 +24,9 @@ HEADER = (b'# This is a drop-in unit file extension, created via "systemctl set-
           b"# or an equivalent operation. Do not edit.\n")
 BODY = b"[Service]\nMemoryMax=1073741824\n"
 VALID_CONTENTS = (HEADER + BODY, HEADER + BODY + b"\n")
+# Inventory 39903498965 proves only these requested properties are omitted.
+# Preserve omission in the raw dictionary; never manufacture empty hash inputs.
+OPTIONAL_PROPERTIES = frozenset({"EnvironmentFiles", "EffectiveMemoryMax"})
 ERRORS = frozenset({
     "capacity_baseline_conflict", "capacity_override_already_present", "capacity_override_unsafe",
     "capacity_override_body_unrecognized", "capacity_override_descendant_rejected",
@@ -146,7 +149,7 @@ def observe_limits(guard, command, *, physical_total=None):
         name, delimiter, value = line.partition("=")
         require(delimiter and name in names and name not in values, "capacity_projection_invalid")
         values[name] = value
-    require(set(names) - {"EffectiveMemoryMax"} <= set(values) <= set(names), "capacity_projection_invalid")
+    require(set(names) - OPTIONAL_PROPERTIES <= set(values) <= set(names), "capacity_projection_invalid")
     require(values["ControlGroup"] == CGROUP, "capacity_cgroup_not_fixed")
     for key in ("MemoryMax", "MainPID"):
         require(re.fullmatch(r"[0-9]{1,20}", values[key]) and int(values[key]) < 2**64,
@@ -187,23 +190,46 @@ def _counts(projection):
     return dict(value)
 
 
-def _pressure(report):
+def _pressure(report, pins):
     value = report.get("memory_pressure", {})
     host, events = value.get("host_bytes", {}), value.get("kernel_events_last_30m", {})
-    require(all(type(host.get(key)) is int for key in ("MemTotal", "MemAvailable"))
+    require("host_error_code" not in value and all(type(host.get(key)) is int for key in ("MemTotal", "MemAvailable"))
             and host["MemTotal"] >= MIN_TOTAL and MIN_AVAILABLE <= host["MemAvailable"] <= host["MemTotal"],
             "capacity_host_headroom_insufficient")
     names = ("worker_limit", "ancestor_limit", "global_constraint", "unclassified_memcg", "cgroup_constraint")
-    require(all(type(events.get(key)) is int and events[key] >= 0 for key in names)
-            and events["worker_limit"] > 0 and events["cgroup_constraint"] >= events["worker_limit"]
+    require("kernel_error_code" not in value and all(type(events.get(key)) is int and events[key] >= 0 for key in names)
+            and events["cgroup_constraint"] >= events["worker_limit"]
             and all(events[key] == 0 for key in ("ancestor_limit", "global_constraint", "unclassified_memcg")),
             "capacity_oom_evidence_not_exact")
-    return {"host_bytes": {key: host[key] for key in ("MemTotal", "MemAvailable")},
-            "kernel_events_last_30m": {key: events[key] for key in names}}
+    evidence = {"host_bytes": {key: host[key] for key in ("MemTotal", "MemAvailable")},
+                "kernel_events_last_30m": {key: events[key] for key in names},
+                "cause_source": "current_kernel_window"}
+    if events["worker_limit"] == 0:
+        # Only this reviewed cause receipt survives its rolling journal window.
+        # Missing/unavailable current evidence never becomes a zero-event result.
+        prior = pins.get("capacity_approved_oom_evidence")
+        expected = {"worker_limit": 2, "cgroup_constraint": 2, "ancestor_limit": 0,
+                    "global_constraint": 0, "unclassified_memcg": 0}
+        observed = report.get("observed_units", {}).get(SERVICE, {}).get("pid")
+        baseline = pins.get("installed", {}).get("controls", {}).get("units", {}).get(SERVICE, {}).get("pid")
+        require(isinstance(prior, dict) and set(prior) == {"run_id", "receipt_sha256", "worker_pid", "kernel_events_last_30m"}
+                and type(prior.get("run_id")) is int and prior["run_id"] == 39901486782
+                and prior.get("receipt_sha256") == "510b943f8b0f0b03cae635d10406839d7479fea9b96633ae2e2a4771c4f0abb4"
+                and type(prior.get("worker_pid")) is int and type(observed) is int and type(baseline) is int
+                and prior["worker_pid"] == observed == baseline == 507858
+                and isinstance(prior.get("kernel_events_last_30m"), dict)
+                and set(prior["kernel_events_last_30m"]) == set(expected)
+                and all(type(prior["kernel_events_last_30m"][key]) is int
+                        and prior["kernel_events_last_30m"][key] == expected[key] for key in expected)
+                and events["cgroup_constraint"] == 0, "capacity_oom_evidence_not_exact")
+        evidence.update(cause_source="approved_prior_receipt", approved_prior_oom_evidence=copy.deepcopy(prior))
+    return evidence
 
 
 def _bind_worker_properties(state, limits, guard):
-    projection = {name: limits["private_properties"][name] for name in guard.PROPERTIES}
+    properties = limits["private_properties"]
+    require(set(guard.PROPERTIES) - OPTIONAL_PROPERTIES <= set(properties), "capacity_projection_invalid")
+    projection = {name: properties[name] for name in guard.PROPERTIES if name in properties}
     require(remote.fingerprint(projection) == state["controls"]["units"][SERVICE]["properties_sha256"],
             "capacity_worker_property_generation_changed")
 
@@ -269,7 +295,7 @@ def run(backend, pins, *, command=None):
         require(not report["conflicts"], "capacity_baseline_conflict")
         result["job_counts_before"] = _counts(report)
         require(override_metadata(backend.guard) is None, "capacity_override_already_present")
-        result["evidence"] = _pressure(report)
+        result["evidence"] = _pressure(report, pins)
         limits = observe_limits(backend.guard, command, physical_total=result["evidence"]["host_bytes"]["MemTotal"])
         _old_worker(before, limits, backend.guard)
         # A live increase does not interrupt work. Count changes are recorded,
@@ -277,7 +303,7 @@ def run(backend, pins, *, command=None):
         fresh, current, private_current = remote.inventory(backend, pins)
         require(not fresh["conflicts"] and remote.stable_state(current) == remote.stable_state(before)
                 and private_current == private_before, "capacity_state_changed_before_command")
-        result["evidence"] = _pressure(fresh)
+        result["evidence"] = _pressure(fresh, pins)
         latest_limits = observe_limits(backend.guard, command, physical_total=result["evidence"]["host_bytes"]["MemTotal"])
         _old_worker(current, latest_limits, backend.guard)
         require(latest_limits == limits, "capacity_state_changed_before_command")
@@ -376,7 +402,7 @@ def compatibility_probe(guard, command=None):
                 for name in duplicated:
                     systemd["properties"][name]["row_valid"] = False
                 systemd["rows_valid"] = rows_valid
-                systemd["required_properties_present"] = set(names) - {"EffectiveMemoryMax"} <= set(values)
+                systemd["required_properties_present"] = set(names) - OPTIONAL_PROPERTIES <= set(values)
     except Exception:
         systemd["error_code"] = "capacity_probe_systemd_read_failed"
     for name in ("MainPID", "MemoryMax", "EffectiveMemoryMax"):

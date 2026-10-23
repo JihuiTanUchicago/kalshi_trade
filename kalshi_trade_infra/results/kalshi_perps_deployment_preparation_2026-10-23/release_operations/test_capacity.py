@@ -44,9 +44,9 @@ class Backend:
                        "effective_source": "kernel_hierarchy_and_systemd",
                        "private_properties": {"MemoryMax": str(capacity.OLD_MAX),
                            "EffectiveMemoryMax": str(capacity.OLD_MAX), "DropInPaths": "/etc/systemd/system/old.conf",
-                           "Environment": PRIVATE, "ExecStart": "/fixed/python -m app.worker agents",
+                           "Environment": PRIVATE, "EnvironmentFiles": "", "ExecStart": "/fixed/python -m app.worker agents",
                            "MainPID": str(pid), "ControlGroup": capacity.CGROUP}}
-        self.guard.PROPERTIES = ("MemoryMax", "DropInPaths", "Environment", "ExecStart", "MainPID")
+        self.guard.PROPERTIES = ("MemoryMax", "DropInPaths", "Environment", "EnvironmentFiles", "ExecStart", "MainPID")
         value = remote.fingerprint({name: self.limits["private_properties"][name] for name in self.guard.PROPERTIES})
         self.state["controls"]["units"][capacity.SERVICE]["properties_sha256"] = value
         pins["installed"]["controls"]["units"][capacity.SERVICE]["properties_sha256"] = value
@@ -75,7 +75,8 @@ class Backend:
         if self.limits["private_properties"].get("EffectiveMemoryMax", ""):
             self.limits["private_properties"]["EffectiveMemoryMax"] = str(capacity.NEW_MAX)
         self.limits["private_properties"]["DropInPaths"] += " " + str(capacity.OVERRIDE)
-        worker["properties_sha256"] = remote.fingerprint({name: self.limits["private_properties"][name] for name in self.guard.PROPERTIES})
+        worker["properties_sha256"] = remote.fingerprint({name: self.limits["private_properties"][name]
+            for name in self.guard.PROPERTIES if name in self.limits["private_properties"]})
         self.after_change()
         if self.fault == "after":
             raise TimeoutError(PRIVATE)
@@ -98,6 +99,14 @@ class CapacityRunTests(unittest.TestCase):
 
     def run_capacity(self):
         return capacity.run(self.backend, self.pins, command=self.backend.mutate)
+
+    def bind_raw_fixture_hash(self, *, baseline=False):
+        properties = self.backend.limits["private_properties"]
+        value = remote.fingerprint({name: properties[name] for name in self.backend.guard.PROPERTIES if name in properties})
+        self.backend.state["controls"]["units"][capacity.SERVICE]["properties_sha256"] = value
+        if baseline:
+            self.pins["installed"]["controls"]["units"][capacity.SERVICE]["properties_sha256"] = value
+        return value
 
     def assert_no_write(self, result):
         self.assertEqual(result["status"], "capacity_requires_inspection")
@@ -145,6 +154,56 @@ class CapacityRunTests(unittest.TestCase):
                 self.assertEqual(result["status"], "capacity_verified", result)
                 self.assertEqual(result["limits_after"]["effective_source"], "kernel_hierarchy")
 
+    def test_confirmed_environment_files_omission_preserves_raw_hash_and_full_run(self):
+        properties = self.backend.limits["private_properties"]
+        del properties["EnvironmentFiles"]
+        del properties["EffectiveMemoryMax"]
+        self.backend.limits["effective_source"] = "kernel_hierarchy"
+        expected = self.bind_raw_fixture_hash(baseline=True)
+        capacity._bind_worker_properties(self.backend.state, self.backend.limits, self.backend.guard)
+        fabricated = {name: properties[name] for name in self.backend.guard.PROPERTIES if name in properties}
+        fabricated["EnvironmentFiles"] = ""
+        self.assertNotEqual(expected, remote.fingerprint(fabricated))
+        self.assertNotIn("EnvironmentFiles", properties)
+        result = self.run_capacity()
+        self.assertEqual(result["status"], "capacity_verified", result)
+        self.assertNotIn("EnvironmentFiles", self.backend.limits["private_properties"])
+        self.assertNotIn("EffectiveMemoryMax", self.backend.limits["private_properties"])
+        self.assertEqual(len(self.backend.calls), 1)
+        self.assertNotIn(PRIVATE, json.dumps(result))
+
+    def test_missing_any_other_guard_property_blocks_before_mutation(self):
+        for name in ("MemoryMax", "DropInPaths", "Environment", "ExecStart", "MainPID"):
+            with self.subTest(name=name):
+                self.backend = Backend(self.pins)
+                del self.backend.limits["private_properties"][name]
+                self.bind_raw_fixture_hash(baseline=True)
+                result = self.run_capacity()
+                self.assert_no_write(result)
+                self.assertEqual(result["error_code"], "capacity_projection_invalid")
+
+    def test_environment_files_presence_transition_is_not_silently_accepted(self):
+        for initially_present in (False, True):
+            with self.subTest(initially_present=initially_present):
+                self.backend = Backend(self.pins)
+                properties = self.backend.limits["private_properties"]
+                if not initially_present:
+                    del properties["EnvironmentFiles"]
+                self.bind_raw_fixture_hash(baseline=True)
+                def changed():
+                    if initially_present:
+                        properties.pop("EnvironmentFiles")
+                    else:
+                        properties["EnvironmentFiles"] = ""
+                    self.bind_raw_fixture_hash()
+                self.backend.after_change = changed
+                result = self.run_capacity()
+                self.assertEqual(result["status"], "capacity_requires_inspection")
+                self.assertEqual(result["error_code"], "capacity_post_state_not_exact")
+                self.assertTrue(result["mutation_may_have_applied"])
+                self.assertEqual(len(self.backend.calls), 1)
+                self.assertNotIn(PRIVATE, json.dumps(result))
+
     def test_every_source_control_or_process_conflict_blocks_before_command(self):
         for target in ("source", "units", "unit_files", "processes", "protected_config"):
             with self.subTest(target=target):
@@ -183,6 +242,74 @@ class CapacityRunTests(unittest.TestCase):
         bad["host_bytes"]["MemAvailable"] = 0
         self.memory.side_effect = [pressure(), bad]
         self.assert_no_write(self.run_capacity())
+
+    def approved_prior_fixture(self):
+        self.pins["capacity_approved_oom_evidence"] = {
+            "run_id": 39901486782, "receipt_sha256": "510b943f8b0f0b03cae635d10406839d7479fea9b96633ae2e2a4771c4f0abb4",
+            "worker_pid": 507858, "kernel_events_last_30m": {"worker_limit": 2, "cgroup_constraint": 2,
+                "ancestor_limit": 0, "global_constraint": 0, "unclassified_memcg": 0}}
+        self.backend.state["controls"]["units"][capacity.SERVICE]["pid"] = 507858
+        self.pins["installed"]["controls"]["units"][capacity.SERVICE]["pid"] = 507858
+        self.backend.limits["pid"] = 507858
+        self.backend.limits["private_properties"]["MainPID"] = "507858"
+        self.bind_raw_fixture_hash(baseline=True)
+        current = pressure()
+        current["kernel_events_last_30m"] = dict.fromkeys(current["kernel_events_last_30m"], 0)
+        self.memory.side_effect = lambda: copy.deepcopy(current)
+        return current
+
+    def test_exact_approved_prior_cause_is_separate_from_current_zero_events(self):
+        self.approved_prior_fixture()
+        result = self.run_capacity()
+        self.assertEqual(result["status"], "capacity_verified", result)
+        evidence = result["evidence"]
+        self.assertEqual(evidence["cause_source"], "approved_prior_receipt")
+        self.assertEqual(evidence["kernel_events_last_30m"]["worker_limit"], 0)
+        self.assertEqual(evidence["approved_prior_oom_evidence"]["kernel_events_last_30m"]["worker_limit"], 2)
+        self.assertEqual(len(self.backend.calls), 1)
+
+    def test_missing_or_invalid_approved_prior_receipt_cannot_authorize_a_write(self):
+        for fault in ("missing", "run", "run_type", "hash", "pid", "count", "count_type", "bad_scope", "extra"):
+            with self.subTest(fault=fault):
+                self.backend = Backend(self.pins)
+                self.approved_prior_fixture()
+                prior = self.pins["capacity_approved_oom_evidence"]
+                if fault == "missing":
+                    del self.pins["capacity_approved_oom_evidence"]
+                elif fault in ("run", "run_type"):
+                    prior["run_id"] = 39901486783 if fault == "run" else str(prior["run_id"])
+                elif fault == "hash":
+                    prior["receipt_sha256"] = "0" * 64
+                elif fault == "pid":
+                    prior["worker_pid"] += 1
+                elif fault == "count":
+                    prior["kernel_events_last_30m"]["worker_limit"] = 1
+                elif fault == "count_type":
+                    prior["kernel_events_last_30m"]["cgroup_constraint"] = True
+                elif fault == "bad_scope":
+                    prior["kernel_events_last_30m"]["ancestor_limit"] = 1
+                else:
+                    prior["unreviewed"] = PRIVATE
+                result = self.run_capacity()
+                self.assert_no_write(result)
+                self.assertEqual(result["error_code"], "capacity_oom_evidence_not_exact")
+
+    def test_prior_proof_never_hides_current_errors_bad_scopes_or_conflicts(self):
+        for fault in ("kernel_error", "host_error", "ancestor", "global", "unclassified", "source", "stale_pid"):
+            with self.subTest(fault=fault):
+                self.backend = Backend(self.pins)
+                current = self.approved_prior_fixture()
+                if fault in ("kernel_error", "host_error"):
+                    current[fault + "_code"] = PRIVATE
+                elif fault in ("ancestor", "global", "unclassified"):
+                    key = {"ancestor": "ancestor_limit", "global": "global_constraint", "unclassified": "unclassified_memcg"}[fault]
+                    current["kernel_events_last_30m"][key] = 1
+                elif fault == "source":
+                    self.backend.state["source"]["files"]["unexpected"] = {}
+                else:
+                    self.backend.state["controls"]["units"][capacity.SERVICE]["pid"] += 1
+                    self.pins["installed"]["controls"]["units"][capacity.SERVICE]["pid"] += 1
+                self.assert_no_write(self.run_capacity())
 
     def test_configured_effective_and_cgroup_caps_must_all_be_exact_old_value(self):
         for name in ("configured_max", "effective_max", "cgroup_max"):
@@ -472,7 +599,7 @@ class GuardExceptionTests(unittest.TestCase):
 
 class LimitProjectionTests(unittest.TestCase):
     def test_fixed_cgroup_pid_and_all_requested_properties_are_required(self):
-        guard = types.SimpleNamespace(PROPERTIES=("MainPID", "MemoryMax", "DropInPaths", "Environment"), PROC=Path("/proc"))
+        guard = types.SimpleNamespace(PROPERTIES=("MainPID", "MemoryMax", "DropInPaths", "Environment", "EnvironmentFiles"), PROC=Path("/proc"))
         values = {"MainPID": "123", "MemoryMax": str(capacity.OLD_MAX), "EffectiveMemoryMax": str(capacity.OLD_MAX),
                   "ControlGroup": capacity.CGROUP, "DropInPaths": "", "Environment": PRIVATE}
         def command(args, *, timeout):
@@ -487,8 +614,14 @@ class LimitProjectionTests(unittest.TestCase):
                 patch.object(capacity.Path, "lstat", return_value=types.SimpleNamespace(st_dev=1, st_ino=2)), \
                 patch.object(capacity, "_physical_total", return_value=16 * 1024**3):
             observed = capacity.observe_limits(guard, command)
+            self.assertNotIn("EnvironmentFiles", observed["private_properties"])
             self.assertEqual(capacity._public_limits(observed)["cgroup_max"], capacity.OLD_MAX)
             self.assertNotIn(PRIVATE, json.dumps(capacity._public_limits(observed)))
+            for mandatory in ("MainPID", "MemoryMax", "DropInPaths", "Environment"):
+                saved = values.pop(mandatory)
+                with self.assertRaisesRegex(capacity.CapacityError, "capacity_projection_invalid"):
+                    capacity.observe_limits(guard, command)
+                values[mandatory] = saved
             values["ControlGroup"] = "/system.slice/another.service"
             with self.assertRaisesRegex(capacity.CapacityError, "capacity_cgroup_not_fixed"):
                 capacity.observe_limits(guard, command)
@@ -527,7 +660,7 @@ class CompatibilityProbeTests(unittest.TestCase):
         self.worker.write_text(str(capacity.OLD_MAX) + "\n")
         self.parent.write_text("max\n")
         self.mapping.write_text("0::" + capacity.CGROUP + "\n")
-        self.guard = types.SimpleNamespace(PROPERTIES=("MainPID", "MemoryMax", "Environment", "ExecStart", "CPUWeight", "DropInPaths"), PROC=self.proc)
+        self.guard = types.SimpleNamespace(PROPERTIES=("MainPID", "MemoryMax", "Environment", "EnvironmentFiles", "ExecStart", "CPUWeight", "DropInPaths"), PROC=self.proc)
         self.values = {"MainPID": "123", "MemoryMax": str(capacity.OLD_MAX), "Environment": PRIVATE,
                        "ExecStart": "/python " + PRIVATE, "CPUWeight": "100", "DropInPaths": "",
                        "ControlGroup": capacity.CGROUP, "EffectiveMemoryMax": ""}

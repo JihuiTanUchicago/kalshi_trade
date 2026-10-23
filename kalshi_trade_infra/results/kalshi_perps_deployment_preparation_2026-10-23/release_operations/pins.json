@@ -1786,5 +1786,17 @@
     "data_pipeline/research_expiry_resolution.py",
     "data_pipeline/research_expiry_resolution_sensitivity.py",
     "data_pipeline/research_fee_sensitivity.py"
-  ]
+  ],
+  "capacity_approved_oom_evidence": {
+    "run_id": 39901486782,
+    "receipt_sha256": "510b943f8b0f0b03cae635d10406839d7479fea9b96633ae2e2a4771c4f0abb4",
+    "worker_pid": 507858,
+    "kernel_events_last_30m": {
+      "worker_limit": 2,
+      "cgroup_constraint": 2,
+      "ancestor_limit": 0,
+      "global_constraint": 0,
+      "unclassified_memcg": 0
+    }
+  }
 }

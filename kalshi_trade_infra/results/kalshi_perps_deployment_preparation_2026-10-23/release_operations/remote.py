@@ -223,6 +223,26 @@ def worker_health():
         return {"status": "unavailable", "error_code": "worker_health_projection_failed"}
 
 
+def kernel_oom_journal():
+    """Read the fixed bounded query; distinguish its exact no-match result.
+
+    journalctl --grep returns one and a fixed marker when nothing matches. Other
+    nonzero exits, warnings or malformed output remain unavailable, never zero.
+    """
+    args = ["journalctl", "--dmesg", "--since=-30min", "--lines=80",
+            "--grep=recursive-agents\\.service", "--no-pager", "--output=json", "--output-fields=MESSAGE"]
+    try:
+        result = subprocess.run(args, capture_output=True, timeout=3, env={**os.environ, "LC_ALL": "C"})
+        require(isinstance(result.stdout, bytes) and isinstance(result.stderr, bytes)
+                and len(result.stdout) <= 1024 * 1024 and not result.stderr, "unsafe_memory_projection")
+        if result.returncode == 1 and result.stdout == b"-- No entries --\n":
+            return b""
+        require(result.returncode == 0, "unsafe_memory_projection")
+        return result.stdout
+    except Exception:
+        raise ReleaseError("kernel_journal_unavailable") from None
+
+
 def memory_pressure():
     """Read host capacity and classify kernel OOM records without retaining text."""
     report = {}
@@ -245,12 +265,14 @@ def memory_pressure():
     except Exception:
         report["host_error_code"] = "host_memory_projection_failed"
     try:
-        raw = command(["journalctl", "--dmesg", "--since=-30min", "--lines=80", "--grep=recursive-agents\\.service", "--no-pager", "--output=json", "--output-fields=MESSAGE"], timeout=3)
+        raw = kernel_oom_journal()
         events = {"cgroup_constraint": 0, "global_constraint": 0,
                   "worker_limit": 0, "ancestor_limit": 0, "unclassified_memcg": 0}
         for line in raw.decode().splitlines():
-            message = json.loads(line).get("MESSAGE", "")
-            require(isinstance(message, str), "unsafe_memory_projection")
+            row = json.loads(line)
+            require(isinstance(row, dict) and "MESSAGE" in row and isinstance(row["MESSAGE"], str),
+                    "unsafe_memory_projection")
+            message = row["MESSAGE"]
             if re.search(r"/system\.slice/recursive-agents\.service(?=[,/\s]|$)", message):
                 if "constraint=CONSTRAINT_MEMCG" in message:
                     events["cgroup_constraint"] += 1
