@@ -790,6 +790,18 @@ class KernelJournalReaderTests(unittest.TestCase):
             with self.assertRaisesRegex(remote.ReleaseError, "^kernel_journal_unavailable$"):
                 remote.kernel_oom_journal()
 
+    def test_only_the_fixed_repair_timestamp_can_replace_the_rolling_window(self):
+        response = types.SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+        with patch.object(remote.subprocess, "run", return_value=response) as run:
+            self.assertEqual(remote.kernel_oom_journal(since=remote.MEMORY_REPAIR_OBSERVATION_SINCE), b"")
+            self.assertIn("--since=2026-10-23 05:14:41 UTC", run.call_args.args[0])
+            self.assertIn("--lines=80", run.call_args.args[0])
+            self.assertEqual(run.call_args.kwargs["timeout"], 3)
+            run.reset_mock()
+            with self.assertRaisesRegex(remote.ReleaseError, "unsafe_memory_projection"):
+                remote.kernel_oom_journal(since="arbitrary input")
+            run.assert_not_called()
+
 
 class MemoryPressureTests(unittest.TestCase):
     host = b"MemTotal: 2097152 kB\nMemAvailable: 1048576 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\nPrivateUnused: hidden text\n"
@@ -843,6 +855,29 @@ class MemoryPressureTests(unittest.TestCase):
     def test_unavailable_readers_have_only_fixed_error_codes(self):
         with patch.object(remote.Path, "open", side_effect=RuntimeError("private read")), patch.object(remote, "kernel_oom_journal", side_effect=RuntimeError("private journal")):
             self.assertEqual(remote.memory_pressure(), {"host_error_code": "host_memory_projection_failed", "kernel_error_code": "kernel_memory_projection_failed"})
+
+    def test_fixed_repair_window_is_separate_from_rolling_counts_and_reports_coverage(self):
+        rows = b'{"MESSAGE":"oom-kill:constraint=CONSTRAINT_MEMCG,oom_memcg=/system.slice/recursive-agents.service,private"}\n'
+        for raw, count in ((b"", 0), (rows, 1), (rows * 80, 80)):
+            with patch.object(remote.Path, "open", mock_open(read_data=self.host)), \
+                    patch.object(remote, "kernel_oom_journal", return_value=raw) as journal:
+                report = remote.memory_pressure(since=remote.MEMORY_REPAIR_OBSERVATION_SINCE)
+            self.assertNotIn("kernel_events_last_30m", report)
+            self.assertEqual(report["kernel_events_since_repair"]["worker_limit"], count)
+            self.assertEqual(report["kernel_rows_observed"], count)
+            self.assertEqual(report["kernel_row_limit"], 80)
+            self.assertEqual(report["observed_since_utc"], "2026-10-23T05:14:41Z")
+            journal.assert_called_once_with(since=remote.MEMORY_REPAIR_OBSERVATION_SINCE)
+            self.assertNotIn("private", json.dumps(report))
+
+    def test_unavailable_or_malformed_repair_window_is_never_an_empty_success(self):
+        for raw in (b"{}", b"private log", b'[]'):
+            with patch.object(remote.Path, "open", mock_open(read_data=self.host)), \
+                    patch.object(remote, "kernel_oom_journal", return_value=raw):
+                report = remote.memory_pressure(since=remote.MEMORY_REPAIR_OBSERVATION_SINCE)
+            self.assertEqual(report["kernel_error_code"], "kernel_memory_projection_failed")
+            self.assertNotIn("kernel_events_since_repair", report)
+            self.assertNotIn("private", json.dumps(report))
 
 
 class RootMetadata:

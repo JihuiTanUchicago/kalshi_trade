@@ -108,7 +108,9 @@ try:
   module=types.ModuleType(name);sys.modules[name]=module;exec(b["modules"][name],module.__dict__);loaded[name]=module
  loaded["capacity"].install_guard_exception(loaded["release_guard"])
  result=loaded["remote"].execute(PHASE,IDENTITY,b,loaded["release_guard"])
- if PHASE=="inventory":result["capacity_probe"]=loaded["capacity"].compatibility_probe(loaded["release_guard"])
+ if PHASE=="inventory":
+  result["capacity_probe"]=loaded["capacity"].compatibility_probe(loaded["release_guard"])
+  result["memory_stability_since_repair"]=loaded["remote"].memory_pressure(since=loaded["remote"].MEMORY_REPAIR_OBSERVATION_SINCE)
 except BaseException:pass
 raw=json.dumps(result,sort_keys=True,separators=(",",":")).encode()
 if len(raw)>65536:raw=b'{"status":"release_requires_inspection","error_code":"receipt_limit"}'

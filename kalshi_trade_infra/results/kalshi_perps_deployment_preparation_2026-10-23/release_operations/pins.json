@@ -853,14 +853,14 @@
         },
         "recursive-agents": {
           "active_state": "active",
-          "need_daemon_reload": "yes",
+          "need_daemon_reload": "no",
           "perps": {
             "enabled": false,
             "explicit_proxy_configured": false,
             "explicitly_configured": false
           },
           "pid": 509844,
-          "properties_sha256": "1b4b8fc34c7f3c8d669f8e3cca4c5dada50848bf17c5b514b190dde69a9fd482",
+          "properties_sha256": "942d3eb556ca67a5788f127a4e917c94ae456749ec091f098fb9709af01fb4ed",
           "resources": {
             "CPUQuotaPerSecUSec": "infinity",
             "CPUWeight": "[not set]",
@@ -882,7 +882,7 @@
             "explicitly_configured": false
           },
           "pid": 463706,
-          "properties_sha256": "4b896d1f7ba65ddccbbaeef0ac375c17299045f3f6d01ad4e0d6bd38f6f85105",
+          "properties_sha256": "8fb8da23425e761952e5a039cbe6d9f9e643f77fe3382407bde6fb09f40535f2",
           "resources": {
             "CPUQuotaPerSecUSec": "infinity",
             "CPUWeight": "[not set]",
@@ -904,7 +904,7 @@
             "explicitly_configured": false
           },
           "pid": 463707,
-          "properties_sha256": "6c03bdd3b870d23eb92a5ed8a63e613657b5a0329a55cf427f6cbef6f805d856",
+          "properties_sha256": "a70296434a0af044651e2ff62e6c66bc313c0c919b3c56123f5c47f363b76611",
           "resources": {
             "CPUQuotaPerSecUSec": "infinity",
             "CPUWeight": "[not set]",
@@ -926,7 +926,7 @@
             "explicitly_configured": false
           },
           "pid": 463708,
-          "properties_sha256": "17f478e9f404d68ea0c69124e443684a093495c8367cf2c8e11b2df33c850866",
+          "properties_sha256": "7ffb540a578879cbb77c30bf490d14e1ce188cb62ef69e417584719a4754c391",
           "resources": {
             "CPUQuotaPerSecUSec": "infinity",
             "CPUWeight": "[not set]",
@@ -1787,7 +1787,7 @@
       "omitted_private_or_cache_entries": 3
     }
   },
-  "installed_fingerprint": "5f0fe04eceac16effa5e52d9d4df4e94b93872b8c86210b2037f6fd9f67425d0",
+  "installed_fingerprint": "53a505f8f48d4caadcd2edf178c031b9c8ee488a662c642d6b807a9b87f80266",
   "preserved_extra_paths": [
     "data_pipeline/research_expiry_resolution.py",
     "data_pipeline/research_expiry_resolution_sensitivity.py",

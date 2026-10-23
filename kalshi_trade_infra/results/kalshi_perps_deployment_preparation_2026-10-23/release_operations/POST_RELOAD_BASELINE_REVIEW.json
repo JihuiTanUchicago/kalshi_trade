@@ -1,0 +1,56 @@
+{
+  "status": "explicit_current_state_baseline_reviewed_after_authorized_reload",
+  "receipt_run_id": 39906328827,
+  "receipt_sha256": "e2dd5477856993d71faa00b5506106096e3fc246319d7fcee7c9e63fe46c439d",
+  "before_partial_fingerprint": "5f0fe04eceac16effa5e52d9d4df4e94b93872b8c86210b2037f6fd9f67425d0",
+  "reconstructed_current_fingerprint": "53a505f8f48d4caadcd2edf178c031b9c8ee488a662c642d6b807a9b87f80266",
+  "observed_current_fingerprint": "53a505f8f48d4caadcd2edf178c031b9c8ee488a662c642d6b807a9b87f80266",
+  "changes": [
+    {
+      "service": "recursive-agents",
+      "old_properties_sha256": "1b4b8fc34c7f3c8d669f8e3cca4c5dada50848bf17c5b514b190dde69a9fd482",
+      "new_properties_sha256": "942d3eb556ca67a5788f127a4e917c94ae456749ec091f098fb9709af01fb4ed"
+    },
+    {
+      "service": "recursive-web",
+      "old_properties_sha256": "17f478e9f404d68ea0c69124e443684a093495c8367cf2c8e11b2df33c850866",
+      "new_properties_sha256": "7ffb540a578879cbb77c30bf490d14e1ce188cb62ef69e417584719a4754c391"
+    },
+    {
+      "service": "recursive-engine",
+      "old_properties_sha256": "4b896d1f7ba65ddccbbaeef0ac375c17299045f3f6d01ad4e0d6bd38f6f85105",
+      "new_properties_sha256": "8fb8da23425e761952e5a039cbe6d9f9e643f77fe3382407bde6fb09f40535f2"
+    },
+    {
+      "service": "recursive-history",
+      "old_properties_sha256": "6c03bdd3b870d23eb92a5ed8a63e613657b5a0329a55cf427f6cbef6f805d856",
+      "new_properties_sha256": "a70296434a0af044651e2ff62e6c66bc313c0c919b3c56123f5c47f363b76611"
+    }
+  ],
+  "worker_need_daemon_reload_before": "yes",
+  "worker_need_daemon_reload_after": "no",
+  "all_processes_actual_environments_commands_start_times_unchanged": true,
+  "all_source_unit_files_private_config_unchanged": true,
+  "all_resource_scalar_limits_and_restart_policies_unchanged": true,
+  "effective_worker_limit_bytes": 1073741824,
+  "worker_pid": 509844,
+  "worker_nrestarts": 46,
+  "historical_raw_systemd_property_equivalence_proven": false,
+  "only_execstart_status_changed_proven": false,
+  "automatic_finalization_status": "failed; retained as capacity_finalize_post_state_not_exact",
+  "manual_acceptance_scope": "Current resource/no-main-restart outcome and new exact baseline only; not historical raw-property equality. Authorized manager reload rebuilds unit objects; four active-unit opaque hash changes are independently reviewed, not automatically adopted.",
+  "independent_review": "bitcoin_perps_simulation accepted limited resource/process reconciliation and new exact baseline; no repeat mutation warranted.",
+  "observed_process_stability_minimum_seconds": 1070,
+  "stability_lower_bound_utc": "2026-10-23T05:14:41Z",
+  "last_observation_run_created_at_utc": "2026-10-23T05:32:31Z",
+  "since_repair_oom_verification": "pending fixed-time read-only query; rolling counts do not establish event timing",
+  "automatic_repin_implemented": false,
+  "original_application_idle_pending_reload_schema_admission_private_preservation_guards_unchanged": true,
+  "application_activation_pending": true,
+  "jobs_at_observation": {
+    "paused": 0,
+    "queued": 1,
+    "running": 2
+  },
+  "timestamp_utc": "2026-10-23T05:39:52.015934+00:00"
+}

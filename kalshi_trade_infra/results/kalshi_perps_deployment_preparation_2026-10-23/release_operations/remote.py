@@ -223,13 +223,17 @@ def worker_health():
         return {"status": "unavailable", "error_code": "worker_health_projection_failed"}
 
 
-def kernel_oom_journal():
+MEMORY_REPAIR_OBSERVATION_SINCE = "2026-10-23 05:14:41 UTC"
+
+
+def kernel_oom_journal(*, since="-30min"):
     """Read the fixed bounded query; distinguish its exact no-match result.
 
     journalctl --grep returns one and a fixed marker when nothing matches. Other
     nonzero exits, warnings or malformed output remain unavailable, never zero.
     """
-    args = ["journalctl", "--dmesg", "--since=-30min", "--lines=80",
+    require(since in {"-30min", MEMORY_REPAIR_OBSERVATION_SINCE}, "unsafe_memory_projection")
+    args = ["journalctl", "--dmesg", "--since=" + since, "--lines=80",
             "--grep=recursive-agents\\.service", "--no-pager", "--output=json", "--output-fields=MESSAGE"]
     try:
         result = subprocess.run(args, capture_output=True, timeout=3, env={**os.environ, "LC_ALL": "C"})
@@ -243,7 +247,7 @@ def kernel_oom_journal():
         raise ReleaseError("kernel_journal_unavailable") from None
 
 
-def memory_pressure():
+def memory_pressure(*, since="-30min"):
     """Read host capacity and classify kernel OOM records without retaining text."""
     report = {}
     try:
@@ -265,7 +269,7 @@ def memory_pressure():
     except Exception:
         report["host_error_code"] = "host_memory_projection_failed"
     try:
-        raw = kernel_oom_journal()
+        raw = kernel_oom_journal() if since == "-30min" else kernel_oom_journal(since=since)
         events = {"cgroup_constraint": 0, "global_constraint": 0,
                   "worker_limit": 0, "ancestor_limit": 0, "unclassified_memcg": 0}
         for line in raw.decode().splitlines():
@@ -284,7 +288,13 @@ def memory_pressure():
                            else "unclassified_memcg")
                     events[key] += 1
                 events["global_constraint"] += int("global_oom" in message and "constraint=CONSTRAINT_NONE" in message)
-        report["kernel_events_last_30m"] = events
+        if since == "-30min":
+            report["kernel_events_last_30m"] = events
+        else:
+            report.update(kernel_events_since_repair=events,
+                          observed_since_utc="2026-10-23T05:14:41Z",
+                          kernel_rows_observed=len(raw.decode().splitlines()),
+                          kernel_row_limit=80)
     except Exception:
         report["kernel_error_code"] = "kernel_memory_projection_failed"
     return report

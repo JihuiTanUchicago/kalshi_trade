@@ -1,8 +1,16 @@
 {
+  "applied_manager_reload_operation": {
+    "attempts": 1,
+    "automatic_status": "capacity_finalize_post_state_not_exact",
+    "manual_current_state_review_run": 39906328827,
+    "raw_property_equivalence_proven": false,
+    "repeat_permitted": false,
+    "run_id": 39906153326
+  },
   "applied_memory_operation": {
     "complete_resource_acceptance": false,
     "configured_cgroup_effective_limit_bytes": 1073741824,
-    "post_state_status": "pending_daemon_reload_requires_finalization",
+    "post_state_status": "manually_reconciled resource/process/file invariance; raw-property equivalence unproved",
     "property_attempts": 1,
     "run_id": 39904624559,
     "same_pid_observed": 509844
@@ -52,8 +60,12 @@
       "sha256": "2620c79baeded099d5103279a7a83412a55014045a6bbb1ea32d6d10f8b86345"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/HANDOFF.md": {
-      "bytes": 19556,
-      "sha256": "fa07fb5facfb0f40de98ccc53acfe73140c116f553e19d087088ed64f27f2fde"
+      "bytes": 20566,
+      "sha256": "a723ba4950fa5fdda82de00524ca12528971c389da216119c99d35cb9ad754c3"
+    },
+    "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/POST_RELOAD_BASELINE_REVIEW.json": {
+      "bytes": 3170,
+      "sha256": "837939c53a76116fb8ffc3267f569a6b0cdc8227f0c22f367082557d29a39207"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/capacity.py": {
       "bytes": 29657,
@@ -68,8 +80,8 @@
       "sha256": "f92f588303988635701acf4814b933ad2e9a9cb4cd44f7097e6904a8c20a4b23"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/pins.json": {
-      "bytes": 61420,
-      "sha256": "18eb8006cc0cf9c94090223a9af0d95732017ac6d097cd42628f1daa1376657f"
+      "bytes": 61419,
+      "sha256": "c9150c04c8adf8a72ab3b006cabd7e5b9f0356ecdb439fa716cd2aee52db38ea"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/release_database.py": {
       "bytes": 6296,
@@ -80,12 +92,12 @@
       "sha256": "c377fbea662bde9e2853565dcd1ae58fcf7cb23afe08c724e54826ac791dbb44"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/remote.py": {
-      "bytes": 41775,
-      "sha256": "79c99d61f6b2d2b5edef80ed8531553f3a73b0f1c9f3d58115b01a12a5137e79"
+      "bytes": 42329,
+      "sha256": "c822a13f6b78aacdeb194d77d0ebaf51e6cfea30ec4fbf2a56413dc23002f80d"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/runner.py": {
-      "bytes": 15812,
-      "sha256": "6bd4d28a911e2fd2d3cc220c809e8a5433e63ace50670767d5e2cffac24fda24"
+      "bytes": 15946,
+      "sha256": "537b23b48cb13cfdf8a3730e1d9944a08d3e260d4bf8733f70f8fa64119cfe11"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/test_capacity.py": {
       "bytes": 47182,
@@ -96,13 +108,13 @@
       "sha256": "8bfbc9642a0c1d6cb48bb86b0223d58de4d50e02c7fbad194b830087c6f1ba6c"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/test_release.py": {
-      "bytes": 56981,
-      "sha256": "51904acdedeabd7e99561fef894cdcb22a3235119db681186af8a7d37daf9380"
+      "bytes": 59463,
+      "sha256": "cddc646899633cf4146655baa8324218458b15c174c47e46f3a74055da6d97c0"
     }
   },
-  "file_manifest_sha256": "eec8d57fdfa430bbdb9a66d7b333437e0b98aa7317e80d736988b7f754b88c87",
+  "file_manifest_sha256": "ba440503b2e5343c609b019f568f22a50c9791bea681c22f5bbfbbd9fa742558",
   "format": 1,
-  "installed_fingerprint": "5f0fe04eceac16effa5e52d9d4df4e94b93872b8c86210b2037f6fd9f67425d0",
+  "installed_fingerprint": "53a505f8f48d4caadcd2edf178c031b9c8ee488a662c642d6b807a9b87f80266",
   "limits_seconds": {
     "admission": 120,
     "capacity_property_command": 8,
@@ -118,11 +130,11 @@
   "not_performed": {
     "application_or_schema_change": true,
     "apply_dispatch": true,
-    "manager_reload": true,
+    "manager_reload": false,
     "real_provider_account_order_call": true,
     "service_restart": true
   },
-  "operations_base": "ce4f06fb7bcbf857b793ed2991d0ddd6bd06a135",
+  "operations_base": "a223ff4297814f81206e4be83ece06a97d06a649",
   "read_only_runs": [
     39896649873,
     39896944153,
@@ -134,17 +146,17 @@
     39903498965,
     39904255302,
     39904754786,
-    39905559523
+    39905559523,
+    39906328827
   ],
   "remaining_gates": [
-    "independent final combined review and immutable no-restart finalize review",
-    "exact-head capacity_finalize only with exact partial-state/source/control pins",
-    "full actual post-reload resource/private-env/sameprocess verification",
-    "900sec actual stability observation since2026-10-23T05:14:41Z",
-    "explicit accepted baseline and original idle-only application/fullschema/admission/public rollout"
+    "independent and immutable read-only exactinterval/baseline review",
+    "exact-head inventory only, sameworker/source/controlpins, since-repair typedkernelcounts0 withunsaturatedcoverage",
+    "write scopedactualmemory/stability acceptance; preservefailedautomaticreceipts/rawequivalencequalification",
+    "originalidle-onlyfullschema/admission/source/private/public application rollout after fresh reviewed baseline"
   ],
   "source_tree": "6f75cf6d58d363c4a7e8e69e6546a0dd9df9c1f9",
-  "status": "offline_verified_no_restart_memory_finalization",
+  "status": "offline_verified_read_only_exact_repair_interval_and_explicit_current_baseline",
   "stopped_capacity_run": {
     "error_code": "capacity_projection_invalid",
     "mutation_may_have_applied": false,
@@ -157,7 +169,7 @@
       "database": false,
       "failed": 0,
       "network": false,
-      "passed": 118
+      "passed": 121
     },
     "git_diff_check": true,
     "owned_python_syntax": {
@@ -167,9 +179,9 @@
     "root_reported_existing_app_suite": {
       "executed_by_this_workstream": true,
       "passed": 1899,
-      "seconds": 25.34,
+      "seconds": 24.55,
       "skipped": 10
     }
   },
-  "verified_at_utc": "2026-10-23T05:27:12.158475+00:00"
+  "verified_at_utc": "2026-10-23T05:41:31.175115+00:00"
 }
