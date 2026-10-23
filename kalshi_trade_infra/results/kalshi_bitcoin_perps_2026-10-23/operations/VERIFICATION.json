@@ -1,0 +1,54 @@
+{
+  "date": "2026-10-23",
+  "timezone": "Asia/Shanghai",
+  "status": "offline_verified_handed_to_root",
+  "candidate_commit": "b7cf7c754e09a50e8f0bc6278dbf275f0f0f2a8b",
+  "baseline_commit": "aa3664e420fe4fdf538cd434e4c91e73ee0875cf",
+  "focused_tests": {
+    "command": "<prepared .venv/bin/python> -B -m pytest results/kalshi_bitcoin_perps_2026-10-23/operations/test_readiness.py -q",
+    "passed": 33,
+    "failed": 0,
+    "seconds": 4.58,
+    "uses_real_aws_database_or_network": false
+  },
+  "root_full_regression": {
+    "passed": 1899,
+    "skipped": 10,
+    "seconds": 31.3,
+    "reported_by": "root"
+  },
+  "checks": {
+    "all_operations_python_compile_in_memory": true,
+    "git_diff_check": true,
+    "independent_manual_review_remaining_blockers": 0,
+    "named_security_scan_claimed": false
+  },
+  "actual_git_bundle": {
+    "bytes": 91420,
+    "remote_command_characters": 7342,
+    "baseline_reference_files": 117,
+    "candidate_reference_files": 122,
+    "native_source_hashes_verified": true
+  },
+  "delegated_implementation_actions": {
+    "committed": false,
+    "pushed": false,
+    "dispatched": false,
+    "production_calls": 0,
+    "database_calls": 0,
+    "provider_calls": 0,
+    "application_source_changes": 0,
+    "service_or_job_changes": 0
+  },
+  "production_release_accepted": false,
+  "full_database_integration_verified": false,
+  "replay_accepted": false,
+  "remaining_owner": "root: exact-head publication, one read-only dispatch, sanitized collection and installed-state review",
+  "root_focused_verification": {
+    "passed": 33,
+    "failed": 0,
+    "seconds": 4.36,
+    "cwd": "kalshi_trade_infra",
+    "initial_wrong_repository_root_collection": "ModuleNotFoundError: app; corrected by using documented product cwd; no code change"
+  }
+}

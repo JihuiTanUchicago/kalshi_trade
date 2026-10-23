@@ -1,0 +1,9 @@
+{
+  "candidate_commit": "b7cf7c754e09a50e8f0bc6278dbf275f0f0f2a8b",
+  "native_sha256": {
+    "app/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "app/market_data_common.py": "539bbef8d8b2cb41ce67d6c97f0a9e872d04dc5116670fbcba4796222de84ec1",
+    "app/kalshi_perps_data.py": "91cc7ea9a7a5b3b822cc3edf07353029df699c9f6f2097022985fdac4ad58156",
+    "app/kalshi_perps_collector.py": "bb6093504501bb2fed0520e8dfd6973f345856e57f0e35401dbc3257de158fd8"
+  }
+}
