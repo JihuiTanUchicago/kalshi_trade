@@ -272,6 +272,69 @@ class SpecError(ValueError):
     pass
 
 
+PERPETUAL_GUIDE = """Bitcoin Kalshi perpetual research uses a causal declarative rule:
+{"market":"btc_perp","sizing":{"stake":100,"max_positions":1},
+ "perpetual":{"signal":"momentum","lookback_minutes":60,"threshold":0.001,"side":"both"}}
+signal is momentum, mean_reversion, or funding. Momentum follows the signed trailing price
+return; mean_reversion takes its opposite. Funding shorts positive estimated funding and
+buys negative estimated funding, only when a timestamped estimate was already observable.
+threshold is an absolute fractional return/rate (0.001 = 0.1%), not dollars or percentage points.
+side restricts the rule to both, long, or short. Lookback is 1..1440 completed minutes.
+Stake is USD research capital; use enough for the verified native minimum contract size.
+The host freezes 1x exposure, one position, maximum holding 1440 minutes, 12bps taker fees
+per side and 5bps adverse slippage per fill. These are fixed research scenario assumptions,
+not a verified account fee tier or executable fills; do not optimize costs or leverage.
+Decisions use completed bars and execute at the next contiguous bar's open. Finalized funding
+payments are charged as costs and cannot be used as earlier estimates. Missing data is unknown.
+No YES/NO settlement, strike, GBM probability model, cross-market trades, arbitrary code or
+learned models are available for this initial perpetuals research path. Live, demo and paper
+deployment are disabled regardless of a successful statistical verdict. Propose mechanisms
+and falsification tests within these rules; say when the available history cannot test an idea."""
+
+
+def is_perpetual_spec(spec: Dict) -> bool:
+    market = spec.get("market") if isinstance(spec, dict) else None
+    return isinstance(market, str) and market in MARKETS and MARKETS[market].kind == "perpetual"
+
+
+def has_perpetual_market(spec: Dict, market: Optional[str] = None) -> bool:
+    names = [market, spec.get("market")]
+    cross = spec.get("cross") or {}
+    if isinstance(cross, dict):
+        legs = cross.get("legs") or []
+        if isinstance(legs, list):
+            names.extend(leg.get("market") for leg in legs if isinstance(leg, dict))
+    return any(isinstance(name, str) and name in MARKETS and MARKETS[name].kind == "perpetual"
+               for name in names)
+
+
+def research_guide(market: str) -> str:
+    return PERPETUAL_GUIDE if market in MARKETS and MARKETS[market].kind == "perpetual" else SPEC_GUIDE
+
+
+def _validate_perpetual_spec(raw: Dict) -> Dict[str, Any]:
+    from app.kalshi_perps_backtest import normalize_assumptions
+
+    extra = set(raw) - {"market", "sizing", "perpetual"}
+    if extra:
+        raise SpecError("Perpetual research does not support fields: %s" % ", ".join(sorted(extra)))
+    sizing = raw.get("sizing", {})
+    if not isinstance(sizing, dict) or set(sizing) - {"stake", "max_positions"}:
+        raise SpecError("Perpetual sizing accepts stake and max_positions only.")
+    stake, positions = sizing.get("stake", 100.0), sizing.get("max_positions", 1)
+    if (isinstance(stake, bool) or not isinstance(stake, (int, float))
+            or not math.isfinite(stake) or not 1 <= stake <= 500):
+        raise SpecError("Perpetual stake must be a finite USD capital amount from 1 to 500.")
+    if isinstance(positions, bool) or positions != 1:
+        raise SpecError("Perpetual research permits exactly one position at 1x exposure.")
+    try:
+        assumptions = normalize_assumptions(raw.get("perpetual", {}))
+    except ValueError as exc:
+        raise SpecError(str(exc)) from None
+    return {"market": raw["market"], "sizing": {"stake": float(stake), "max_positions": 1},
+            "perpetual": assumptions}
+
+
 def is_code_spec(spec: Dict) -> bool:
     return isinstance(spec, dict) and bool(spec.get("code"))
 
@@ -404,6 +467,8 @@ def validate(raw: Any) -> Dict[str, Any]:
     """
     if not isinstance(raw, dict):
         raise SpecError("spec must be a JSON object")
+    if is_perpetual_spec(raw):
+        return _validate_perpetual_spec(raw)
     if "code" in raw:
         return _validate_code_spec(raw)
     spec = copy.deepcopy(DEFAULT_SPEC)
@@ -571,6 +636,8 @@ def _validate_cross(spec: Dict, errors: List[str]) -> None:
             else:
                 clean_legs.append({"market": leg["market"]})
     involved = {spec["market"]} | {leg["market"] for leg in clean_legs}
+    if any(k in MARKETS and MARKETS[k].kind == "perpetual" for k in involved):
+        errors.append("Perpetual research cannot be a leg of a binary cross-contract strategy.")
     if pairing == "cross_sectional" and len(involved) < 2:
         errors.append("cross.pairing cross_sectional needs a leg on a different market than %s" % spec["market"])
     # A cross-MARKET pair must share one decision cadence, or its legs never co-occur on a frame
@@ -759,6 +826,9 @@ def features_used(spec: Dict) -> List[str]:
     """Every FEATURES key this spec reads: the model's always-on inputs, the vol/drift
     windows it picked, and whatever the entry filters condition on. This is the dataset-
     provenance record - 'any dataset, as long as we track it.'"""
+    if is_perpetual_spec(spec):
+        return ["funding_rate_estimate"] if spec["perpetual"]["signal"] == "funding" else [
+            "close", "trailing_return_%dm" % spec["perpetual"]["lookback_minutes"]]
     if is_code_spec(spec):
         # A code strategy's signals(window) receives the full per-frame feature dict, so it may
         # read ANY feature. The honest provenance record is every feature we expose, not the DSL
@@ -783,6 +853,8 @@ def data_sources_for(spec: Dict) -> List[str]:
     """The DB tables this spec's features are drawn from: contract quotes + the BTC
     price path always, plus the order-book feature table iff a filter uses a micro
     feature. Recorded alongside features_used so the ledger shows what data was touched."""
+    if is_perpetual_spec(spec):
+        return ["kalshi_perps_batches", "kalshi_perps_partition_sources"]
     srcs = ["hist_markets", "market_candles", "spot_candles_1m"]
     model_feats = (spec.get("model", {}).get("features") or []) if not is_code_spec(spec) else []
     # A code spec gets the full window (micro features included), so record every source; a DSL spec
@@ -895,6 +967,12 @@ def pair_entries(spec: Dict, snaps: List[Snapshot]) -> List[PairEntry]:
 
 def describe(spec: Dict) -> List[str]:
     """Plain-language reading of a spec, for people who do not read JSON."""
+    if is_perpetual_spec(spec):
+        rule = spec["perpetual"]
+        return ["Bitcoin perpetual %s research, %s directions." % (rule["signal"], rule["side"]),
+                "Uses completed history and observed funding estimates; trades at the next bar open.",
+                "One position at 1x; maximum 24 hours; fixed fee and slippage scenario costs.",
+                "Research only: no broker paper, demo or live execution."]
     if is_code_spec(spec):
         s = spec["sizing"]
         return [

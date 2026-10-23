@@ -1,0 +1,132 @@
+{
+  "workstream": "tau-kalshi-bitcoin-perps-research-20261023",
+  "verified_at_utc": "2026-10-23T01:05:08.720177+00:00",
+  "timezone": "Asia/Shanghai",
+  "base_and_unchanged_head": "aa3664e420fe4fdf538cd434e4c91e73ee0875cf",
+  "status": "implemented_offline_verified_public_feed_readable_not_deployed",
+  "branch": "codex/kalshi-bitcoin-perps-research-20261023",
+  "python": {
+    "command": "<prepared Python 3.12 venv> -m pytest tests/ -q",
+    "passed": 1899,
+    "skipped": 10,
+    "duration_seconds": 25.81,
+    "baseline_passed": 1676,
+    "new_perpetual_cases": 223
+  },
+  "frontend": {
+    "commands": [
+      "node --test --test-reporter=dot tests/*.mjs",
+      "TAU_TEST_THEME=meridian node --test --test-reporter=tap tests/test_production_ui_reconciliation.mjs"
+    ],
+    "all_node_passed": 196,
+    "meridian_reconciliation_passed": 8,
+    "new_perpetual_cases": 18,
+    "failures": 0,
+    "evidence_type": "offline VM behavior, not physical-device visual acceptance",
+    "carried_forward_unchanged_sources": true
+  },
+  "syntax_and_whitespace": {
+    "python_app_and_pipeline": "passed",
+    "both_js_bundles": "passed",
+    "git_diff_check": "passed"
+  },
+  "bridges": [
+    "synthetic native responses to public client, collector and append-only repository",
+    "actual frozen Research/Validation/Holdout phase loaders to nonzero simulator trades",
+    "actual preregistration and gatekeeper verdict persistence; insufficient holdout spends one-way allowance",
+    "all-mode API/agent/proposal/resume/direct-engine perpetual execution rejection",
+    "both frontend themes: research-only, USD prices, no trading/binary what-if/demo replay controls"
+  ],
+  "review_fixes": [
+    "UTC conversion independent of UTC/Shanghai/New York host timezones",
+    "exact committed batch manifests exclude lower allocated IDs committed after source freeze",
+    "explicit credential-free proxy routing and actionable sanitized transport failures",
+    "native BTC quantity-title and Crypto asset-class metadata parsing"
+  ],
+  "manual_independent_review": {
+    "status": "no_remaining_concrete_blocker",
+    "not_a_security_scan": true
+  },
+  "native_provider_acceptance": {
+    "status": "real_public_feed_read_verified_with_partial_candles",
+    "route": "explicit_system_proxy",
+    "receipt": "PUBLIC_FEED_CHECKS.json",
+    "diagnosis": "NETWORK_DIAGNOSIS.json",
+    "actual_server_environment_checked": false,
+    "raw_prices_or_account_responses_retained": false,
+    "checks": [
+      {
+        "environment": "production",
+        "candle_count": 2761,
+        "funding_count": 6,
+        "observation_count": 4,
+        "candle_coverage_complete": false,
+        "funding_coverage_complete": true,
+        "continuous_replay_ready": false
+      },
+      {
+        "environment": "demo",
+        "candle_count": 2822,
+        "funding_count": 6,
+        "observation_count": 4,
+        "candle_coverage_complete": false,
+        "funding_coverage_complete": true,
+        "continuous_replay_ready": false
+      }
+    ]
+  },
+  "safety": {
+    "default_enabled": false,
+    "perpetual_live_orders_enabled": false,
+    "perpetual_paper_and_demo_execution_enabled": false,
+    "paid_or_model_calls": 0,
+    "real_db_or_migrations": 0,
+    "commits_pushes_prs_or_deployments": 0,
+    "production_service_job_and_gate_changes": 0,
+    "new_secret_required_for_public_data": false
+  },
+  "remaining_acceptance": [
+    "actual deployment-server egress/proxy configuration and public data check",
+    "usable candle coverage and historical contract-version/depth validity; current samples are not contiguous",
+    "isolated MySQL migration, persistence and frozen-source replay",
+    "ordinary authenticated queued model research without billing/session bypass",
+    "execution cost/latency calibration and separately authorized rollout"
+  ],
+  "source_and_test_sha256": {
+    "PLAN.md": "635e18824dbf2ffd332ab9f234a32e0b3b2fc04a1e39ee1cd3eaa28c856d8a94",
+    "RESEARCH_PIPELINE_DESIGN.md": "a014bfa1e60fc0440814531e6ea1b476262ae0dc5e2ab6c2bf2b78b65810fe14",
+    "app/KALSHI_PERPS_RESEARCH.md": "a6baaefc342b6d9f10ccd48e7799fe27a5a59168e68639448b1d0b0003a7ce7b",
+    "app/README.md": "705fddebc7da58064654042d325704a17ff74bb48d84b94e0a56975be9ad89f1",
+    "app/agent.py": "31ef5b37b9ca4ba74fd3ad77e9710f874dbf821da3b23f8127747838d93d6c33",
+    "app/backtest.py": "131e25b416901f5e8d8fa0ecdc6d6fc2d855e7499945eadd718ea462d4631f2d",
+    "app/devlog.py": "5fc0ca9a5f01207bca47c46fde4b075b3cc73d0252a858f1a7790a801551ad2b",
+    "app/engine.py": "1c04de266ebdec81300e4316c2706ee39375688aa545471e9c2997cbc9fb5c4e",
+    "app/gatekeeper.py": "bfc674209f648d98a641eb916184f7d07c8eb5879f58b6a4ad1dea8db24a3cdc",
+    "app/kalshi_perps_backtest.py": "586c51a4263d618386706a6019d5c866c2114823d50234295c517c6d6316b740",
+    "app/kalshi_perps_collector.py": "bb6093504501bb2fed0520e8dfd6973f345856e57f0e35401dbc3257de158fd8",
+    "app/kalshi_perps_data.py": "91cc7ea9a7a5b3b822cc3edf07353029df699c9f6f2097022985fdac4ad58156",
+    "app/kalshi_perps_repository.py": "c4125ad01a1f625ac7ff87fa2e6dc2ed04925ac91a4494229c56223d2cefbe1c",
+    "app/market_history.py": "59945629929ad888a0713d6276976a06e1c1015d9ebc17566c33a1b9e6bfc652",
+    "app/markets.py": "4e0e64db561a6d0fa02f39206f74b800139629b5482e886adead3b339d8e3bf9",
+    "app/partitions.py": "b34b46846d3f5e04b74bb43391b1f11a5d7cd23497266252d2a515d16083e7c7",
+    "app/research_repository.py": "18d4047bbd275b97295e8c613e29fb534bb271fc81560c2bd1893780f30b7086",
+    "app/schema.py": "223f12440259e784b68c9f8a9713b73bd595210b068a4b3b4c271823b2c8d0d4",
+    "app/server.py": "02cfbac58e9cfe531d49e3ffc3ba5c14d9293daf9df255d72a30136ad32eeda5",
+    "app/spec.py": "2171add74261199b2dacab4dd6f31e5ceafaee84f10bbdfb52fe122e0e2dc1a4",
+    "app/static/app.js": "5880ca7f53d29d247d30de24a092feadee2a0c70b371bc382588b005d65adff9",
+    "app/static/app.meridian.js": "cd2892fab422a1b907012a32a00ec58c584646ad954263c01fa42a0dd97b91d4",
+    "tests/kalshi_perps_frontend_cases.mjs": "df23b4722f344f0847decb6477202ba2166f75fa4e07021e03ec5a9a54e3d3e9",
+    "tests/test_frontend_merge.mjs": "ea6a0adc7f2da27d195569fe164c619dc886dc5c52b2d784cc2cb5a4fa4e73c3",
+    "tests/test_kalshi_perps_backtest.py": "472a802a64346b68f46b350f84d4c0e636b1571daa7dab6d47ce800c2704b6e8",
+    "tests/test_kalshi_perps_collector.py": "a2f460229362ea7da4cd85e63721289f7a55543d310edf6454f83e4d033ef79d",
+    "tests/test_kalshi_perps_data.py": "33a4d2ae6d5fb17fc456b82c51b8c49c12b87b7e34cf9fdcf1b4efd86e1ebd17",
+    "tests/test_kalshi_perps_execution_disabled.py": "1cb4f514d998feda0606d1f71371f91921f93ff9be21b00df51bccbe052c151f",
+    "tests/test_kalshi_perps_integration.py": "32357925aa9aec952c981f5f981ce9b6556c4032ea0f0a8801194d8c91f4300c",
+    "tests/test_kalshi_perps_repository.py": "803eeb69ab5674016c69f5ecf544175f261f8d29d29ba688e361b6bd90eb6c0d",
+    "tests/test_kalshi_perps_research_controls.py": "eb54057fb584619af61e9a4a8e06c9d558f1d9c0fefeff0e78a0603de8d7c0c0",
+    "tests/test_kalshi_perps_transport.py": "5d8962bc95dc84507e556016978961e2aea5d65b34bdc80b2bb8c51f332fd293",
+    "tests/test_meridian_workspace.mjs": "f8b8970c9f9b8aaa08bfd86bc2131a7d2f08f3e1c2ead57a599f21385e09b7c0"
+  },
+  "canonical_handoff": "HANDOFF.md",
+  "setup": "../../app/KALSHI_PERPS_RESEARCH.md"
+}

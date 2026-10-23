@@ -1,0 +1,96 @@
+{
+  "recorded_at_utc": "2026-10-23T01:05:08.720177+00:00",
+  "status": "local_timeout_and_metadata_discovery_resolved",
+  "cause": "Native client bypassed the credential-free macOS system proxy; direct API and control connections failed.",
+  "direct_anonymous_checks": [
+    {
+      "host": "external-api.kalshi.com",
+      "dns": "ok",
+      "result": "ConnectTimeout",
+      "elapsed_seconds": 8.077
+    },
+    {
+      "host": "external-api.demo.kalshi.co",
+      "dns": "ok",
+      "result": "ConnectTimeout",
+      "elapsed_seconds": 8.385
+    },
+    {
+      "host": "api.elections.kalshi.com",
+      "dns": "ok",
+      "result": "ConnectionError",
+      "elapsed_seconds": 4.056
+    },
+    {
+      "host": "docs.kalshi.com",
+      "dns": "ok",
+      "result": "ConnectTimeout",
+      "elapsed_seconds": 8.044
+    }
+  ],
+  "explicit_credential_free_proxy_control_checks": [
+    {
+      "host": "external-api.kalshi.com",
+      "http_status": 200,
+      "market_count": 39,
+      "elapsed_seconds": 1.699
+    },
+    {
+      "host": "external-api.demo.kalshi.co",
+      "http_status": 200,
+      "market_count": 125,
+      "elapsed_seconds": 2.102
+    },
+    {
+      "host": "api.elections.kalshi.com",
+      "http_status": 200,
+      "elapsed_seconds": 0.755
+    },
+    {
+      "host": "docs.kalshi.com",
+      "http_status": 200,
+      "elapsed_seconds": 0.548
+    }
+  ],
+  "secondary_issue": "Native Bitcoin titles use exact BTC quantity and asset class Crypto, unlike initial synthetic naming.",
+  "fixes": [
+    "optional TAU_KALSHI_PERPS_PROXY_URL; direct remains default",
+    "reject proxy credentials, path, query and fragment; fixed HTTPS hosts and TLS checks retained",
+    "do not inherit netrc, ambient auth, headers, cookies, certificates or proxy settings",
+    "safe connection/read/TLS/proxy error categories without raw exception details",
+    "exact native BTC size-title and case-insensitive Crypto parsing with Decimal contract-unit agreement"
+  ],
+  "real_provider_receipt": "PUBLIC_FEED_CHECKS.json",
+  "server_environment_checked": false,
+  "deployment_decision": {
+    "code_with_perpetuals_disabled": "Timeout does not block a release with the default-off feature.",
+    "perpetual_research_activation": "Pending actual server routing, usable candle coverage, database and queued research acceptance.",
+    "continuous_replay": "The observed 48-hour samples have candle gaps; no replay acceptance or missing-bar imputation.",
+    "live_trading": "Remains disabled and rejected for perpetuals."
+  },
+  "verification": {
+    "full_python_passed": 1899,
+    "python_skipped": 10,
+    "duration_seconds": 25.81,
+    "new_followup_tests": 34,
+    "manual_independent_review": "no concrete blocker",
+    "security_scan_claimed": false,
+    "syntax": "passed"
+  },
+  "preservation": {
+    "changed_since_initial_receipt": [
+      "PLAN.md",
+      "RESEARCH_PIPELINE_DESIGN.md",
+      "app/KALSHI_PERPS_RESEARCH.md",
+      "app/README.md",
+      "app/devlog.py",
+      "app/kalshi_perps_data.py",
+      "tests/test_kalshi_perps_data.py"
+    ],
+    "engine_and_both_frontend_bundles_unchanged_this_followup": true,
+    "private_env_or_credentials_changed": false,
+    "production_db_services_flags_jobs_changed": false,
+    "committed_pushed_or_deployed": false
+  },
+  "official_connectivity_reference": "https://docs.kalshi.com/margin"
+}

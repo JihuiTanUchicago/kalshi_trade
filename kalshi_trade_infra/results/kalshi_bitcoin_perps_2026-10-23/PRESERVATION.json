@@ -1,0 +1,92 @@
+{
+  "checked_at_utc": "2026-10-23T00:34:32.185026+00:00",
+  "head": "aa3664e420fe4fdf538cd434e4c91e73ee0875cf",
+  "protected_unchanged_count": 15,
+  "protected_unchanged": [
+    {
+      "path": "app/execution/__init__.py",
+      "before": "fa0cc46470fea2327081e2008248354a01a26c4a3e7a86d71b799b85f5a71273",
+      "after": "fa0cc46470fea2327081e2008248354a01a26c4a3e7a86d71b799b85f5a71273"
+    },
+    {
+      "path": "app/execution/guard.py",
+      "before": "da30abcbbfb79d8425ddc35d7939c456a00cafe50b8c1310f9cf4bbd71a9946d",
+      "after": "da30abcbbfb79d8425ddc35d7939c456a00cafe50b8c1310f9cf4bbd71a9946d"
+    },
+    {
+      "path": "app/execution/latency.py",
+      "before": "edc79158cad28bf2999cfdf52674cee4b6d372f3192ef47715613756cd47af77",
+      "after": "edc79158cad28bf2999cfdf52674cee4b6d372f3192ef47715613756cd47af77"
+    },
+    {
+      "path": "data_pipeline/architecture/__init__.py",
+      "before": "89ef3a450098d608023c6ed886635e687cf46d92ac37228b1d3f4cfa4d7be240",
+      "after": "89ef3a450098d608023c6ed886635e687cf46d92ac37228b1d3f4cfa4d7be240"
+    },
+    {
+      "path": "data_pipeline/architecture/contracts.py",
+      "before": "f93505c3c9ba876e26ad7241a2dc59d97263ccb461a4955c352bf40e5defeb72",
+      "after": "f93505c3c9ba876e26ad7241a2dc59d97263ccb461a4955c352bf40e5defeb72"
+    },
+    {
+      "path": "data_pipeline/architecture/execution_kernel.py",
+      "before": "596cf6e739ddf7f7293e4a812f7c0f71a66eb4339d4cbd2b8783cbdd4603275f",
+      "after": "596cf6e739ddf7f7293e4a812f7c0f71a66eb4339d4cbd2b8783cbdd4603275f"
+    },
+    {
+      "path": "data_pipeline/architecture/risk_engine.py",
+      "before": "ae10fa09453fba5c8fd025b0bc148dc5b5bba10f70f661d98c59950e6016f87c",
+      "after": "ae10fa09453fba5c8fd025b0bc148dc5b5bba10f70f661d98c59950e6016f87c"
+    },
+    {
+      "path": "data_pipeline/architecture/simulated_venue.py",
+      "before": "dafb08fcd89674483855535f575b7f7b5b82dd995c3dd1bb1b82ad9f59245df0",
+      "after": "dafb08fcd89674483855535f575b7f7b5b82dd995c3dd1bb1b82ad9f59245df0"
+    },
+    {
+      "path": "app/kalshi_account.py",
+      "before": "84bbebef45e6cc6133a1e977b40838ed6d107b63afb9410c55e23a84aa23c088",
+      "after": "84bbebef45e6cc6133a1e977b40838ed6d107b63afb9410c55e23a84aa23c088"
+    },
+    {
+      "path": "app/kalshi_dev_exec.py",
+      "before": "9a97e79098b69b21f797153c3033dd43a2631331686abbb4c1f70575ac237335",
+      "after": "9a97e79098b69b21f797153c3033dd43a2631331686abbb4c1f70575ac237335"
+    },
+    {
+      "path": "app/broker_oauth.py",
+      "before": "100461b429b25a607a3eb5999e20c04ef82b063c0b85b64faafa566a3f596b70",
+      "after": "100461b429b25a607a3eb5999e20c04ef82b063c0b85b64faafa566a3f596b70"
+    },
+    {
+      "path": "app/broker_vault.py",
+      "before": "cf59e7267a081acd0ddfbb7b837bffae947c44140406718ba183f29675e4a46b",
+      "after": "cf59e7267a081acd0ddfbb7b837bffae947c44140406718ba183f29675e4a46b"
+    },
+    {
+      "path": "app/alpaca_paper.py",
+      "before": "c06fcfb01d8e81cbd8c9c849b085f849748602ee6c099cbcd5d765673b569236",
+      "after": "c06fcfb01d8e81cbd8c9c849b085f849748602ee6c099cbcd5d765673b569236"
+    },
+    {
+      "path": "data_pipeline/common.py",
+      "before": "86a11b40dc173d95de566178eb30333ab98405da5b32db8397c4a9439cdf515d",
+      "after": "86a11b40dc173d95de566178eb30333ab98405da5b32db8397c4a9439cdf515d"
+    },
+    {
+      "path": "data_pipeline/live_trading_engine.py",
+      "before": "388644bc0e7c609c0e67cfb7c66e25adbee35b8fa5aafee457cd610f2e534dfa",
+      "after": "388644bc0e7c609c0e67cfb7c66e25adbee35b8fa5aafee457cd610f2e534dfa"
+    }
+  ],
+  "allowed_additive_guard_changes": [
+    {
+      "path": "app/engine.py",
+      "before": "a43ddf7f2d651a037107994d8c273e83005602e6578e57d4f11e18a9b168dfc6",
+      "after": "1c04de266ebdec81300e4316c2706ee39375688aa545471e9c2997cbc9fb5c4e"
+    }
+  ],
+  "manual_review": "Engine changes add perpetual rejection before data/order work; existing binary execution mechanics and live flags remain unchanged.",
+  "private_configuration_changed": false,
+  "production_or_shared_checkout_modified": false
+}

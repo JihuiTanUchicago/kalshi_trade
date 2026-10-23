@@ -209,6 +209,12 @@
   };
   const pct = (v, signed = true) => (v == null ? '—' : (v < 0 ? '−' : signed && v > 0 ? '+' : '') + Math.abs(v * 100).toFixed(1) + '%');
   const cents = (v) => (v == null ? '—' : Math.round(v * 100) + '¢');
+  const isPerpetual = (s) => s.kind === 'perpetual' || s.market === 'btc_perp' || s.key === 'btc_perp' || (s.spec && s.spec.market === 'btc_perp');
+  const researchOnly = (s) => s.research_only === true || isPerpetual(s);
+  const researchBadge = (s) => researchOnly(s) ? '<span class="mk quiet">Research only</span>' : '';
+  const perpsPrice = new Intl.NumberFormat('en-US', {style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 6});
+  const tradePrice = (v, perpetual) => perpetual ? (!['number', 'string'].includes(typeof v) || String(v).trim() === '' || !Number.isFinite(Number(v)) ? '—' : perpsPrice.format(Number(v))) : cents(v);
+  const PERPS_SCENARIO = 'Research scenario: at most 1× capital, fixed 12 bps taker fees and 5 bps adverse slippage per fill, plus settled funding. These are uncalibrated cost assumptions; fills use the next bar’s open. No margin or liquidation model. Short losses can exceed capital.';
   const tone = (v) => (v > 0 ? 'gain' : v < 0 ? 'loss' : '');
   const serial = (n) => 'No. ' + String(n).padStart(5, '0');
   const when = (iso) => {
@@ -258,7 +264,7 @@
   function mktRow(m) {
     const pending = m.has_data === false;  // no collected history yet -> still backfilling
     const face = `<span class="mktrow-face">
-        <span class="mktrow-name">${esc(marketShort(m.key))}</span>
+        <span class="mktrow-name">${esc(marketShort(m.key))}${researchBadge(m)}</span>
         <span class="mktrow-spark" data-spark aria-hidden="true"></span>
         <span class="mktrow-last" data-last>${pending ? '' : '<b class="fig sm">\u2014</b>'}</span>
         <span class="mktrow-vol" data-vol>${pending ? 'History still building' : ''}</span>
@@ -1008,7 +1014,7 @@
     const m = oos || ins;
     const tried = s.hypotheses_tried ? `1 of ${s.hypotheses_tried}` : s.parent_id ? 'Adjustment' : '\u2014';
     const name = opts.nolink ? esc(s.title) : `<a href="/strategies/${s.id}">${esc(s.title)}</a>`;
-    const pickCell = opts.pick ? (s.status === 'passed'
+    const pickCell = opts.pick ? (s.status === 'passed' && !researchOnly(s)
       ? `<td class="pickcol" data-lab="Deploy"><input type="checkbox" class="pick" data-id="${s.id}" aria-label="Select for deployment"></td>`
       : '<td class="pickcol" data-lab=""></td>') : '';
     return `<tr class="${opts.land ? 'washed' : ''}">${pickCell}
@@ -1018,7 +1024,7 @@
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
       <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>
       <td data-lab="Tried">${esc(tried)}</td>
-      <td class="act" data-lab="">${mark(s.status)}${s.deployed ? ` <span class="mk ${s.deploy_live ? 'live' : 'dep'}">${s.deploy_live ? 'Live' : 'Deployed'}</span>` : ''}</td>
+      <td class="act" data-lab="">${mark(s.status)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` <span class="mk ${s.deploy_live ? 'live' : 'dep'}">${s.deploy_live ? 'Live' : 'Deployed'}</span>` : ''}</td>
     </tr>`;
   }
   const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Market</th><th>Status</th><th class="num">Realized</th><th class="num">Unrealized</th><th class="num">Trades</th><th class="num">Backtest unseen</th><th>Since</th>${controls ? '<th></th>' : ''}</tr></thead>`;
@@ -2089,7 +2095,7 @@
   async function viewStrategies() {
     const q = new URLSearchParams(location.search);
     const f = { status: q.has('status') ? q.get('status') : '', market: q.get('market') || '', q: q.get('q') || '', deployed: q.get('deployed') === '1' ? '1' : '' };
-    shell('/strategies', boardTitle('Strategies', 'Every strategy your agents researched. Passed ones can be deployed; void ones stay here so you can see what didn’t work.') +
+    shell('/strategies', boardTitle('Strategies', 'Every strategy your agents researched. Passed strategies on deployable markets can be deployed; void ones stay here so you can see what didn’t work.') +
       '<dl class="figures measure" id="sfigs" style="margin-top:14px"></dl>', `
       <div class="section-head filters stratfilters">
         <div class="chips" role="group" aria-label="Status">${[['', 'Kept'], ['passed', 'Passed'], ['backtest-only', 'Backtest only'], ['failed', 'Void'], ['rejected', 'Rejected']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}" aria-pressed="${f.status === v}">${l}</button>`).join('')}
@@ -2131,7 +2137,7 @@
         return;
       }
       const list = d.strategies, reg = registry(list.map((s) => s.equity));
-      const anyPassed = list.some((s) => s.status === 'passed');
+      const anyPassed = list.some((s) => s.status === 'passed' && !researchOnly(s));
       slipsEl.innerHTML = strategyTable(list.map((s) => strategySlip(s, reg, { pick: anyPassed })).join(''), anyPassed)
         + (d.pages > 1 ? `<div class="xpage">${sp > 0 ? `<button class="btn sm" data-sp="${sp - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${sp + 1} of ${num(d.pages)} · ${num(d.matched)} strategies</span>${sp + 1 < d.pages ? `<button class="btn sm" data-sp="${sp + 1}">Next →</button>` : '<span></span>'}</div>` : '');
       slipsEl.querySelectorAll('[data-sp]').forEach((b) => b.onclick = () => { sp = +b.dataset.sp; load(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
@@ -2174,6 +2180,7 @@
   async function viewStrategy(id) {
     shell('/strategies', boardTitle('Strategy') + '<dl class="figures measure" id="figs" style="margin-top:14px"></dl>', loading(420));
     const s = await api('/api/strategies/' + id);
+    const perpetual = isPerpetual(s), restricted = researchOnly(s);
     const ins = s.in_sample || {}, oos = s.out_of_sample;
     const figsFor = (r) => fig('Unseen-data P&L', r.out_of_sample ? usd(r.out_of_sample.pnl, true) : '—', { v: r.out_of_sample && r.out_of_sample.pnl, small: r.out_of_sample ? `${r.out_of_sample.trades} trades the agent never saw` : 'Rejected before the unseen test' }) +
       fig('In-sample P&L', usd(r.in_sample.pnl, true), { v: r.in_sample.pnl, small: `${r.in_sample.trades} trades` }) +
@@ -2181,7 +2188,7 @@
       fig('Hypotheses tested', s.hypotheses_tried ? `1 of ${s.hypotheses_tried}` : '—', { small: s.hypotheses_tried ? `The agent tested ${num(s.hypotheses_tried)} distinct ideas this run; this is the one that passed. More tries → higher chance one passes by luck (multiple testing).` : 'How many ideas the agent tried to find this one.' });
     root.querySelector('.board-title').outerHTML = boardTitle(serial(s.id) + ' · ' + marketShort(s.market), esc(dirLabel(s.direction)));
     root.querySelector('#figs').innerHTML = figsFor(s);
-    const canDeploy = ['passed', 'failed', 'rejected'].includes(s.status);  // the user decides; status is a warning, not a block
+    const canDeploy = !restricted && ['passed', 'failed', 'rejected'].includes(s.status);
     // Why a strategy was rejected (never reached the unseen-data gate) — stated honestly: a
     // profitable idea with too few trades is rejected on sample size, not for "losing money".
     const rejectReason = (st) => {
@@ -2214,10 +2221,10 @@
         <dt>Worst drawdown</dt><dd>${usd(m.max_drawdown)}</dd>
         <dt>Sharpe (daily)</dt><dd>${m.sharpe == null ? '—' : m.sharpe}</dd></dl>${luckFlag(m)}` : `<p class="hint">Not tested on unseen data — ${rejectReason(s)}</p>`;
     const gatesHtml = (gs) => gs ? `<ul class="gates">${gs.map((g) => `<li class="${g.ok ? 'ok' : 'no'}">${g.ok ? ICON.check : ICON.cross}<span>${esc(g.name)}<small>needs ${esc(g.threshold)}</small></span><span class="v">${typeof g.value === 'number' && /\$|drawdown|money/i.test(g.name + g.threshold) ? usd(g.value) : esc(g.value == null ? '—' : g.value)}</span></li>`).join('')}</ul>` : '<p class="hint">Gates only run for finalists that made money in testing.</p>';
-    const trades = (s.recent_trades || []).length ? `<table class="table stack"><thead><tr><th>Opened</th><th>Contract</th><th>Side</th><th class="num">Entry</th><th class="num">Exit</th><th class="num">P&amp;L</th></tr></thead><tbody>
-        ${s.recent_trades.map((t) => `<tr><td>${esc(new Date(t.opened.replace('Z', ':00Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}</td><td class="tick">${esc(t.ticker)}</td><td>${esc(t.side.toUpperCase())} ×${t.qty}</td><td class="num">${cents(t.entry)}</td><td class="num">${cents(t.exit)} <small class="hint">${esc(t.reason)}</small></td><td class="num ${tone(t.pnl)}">${usd(t.pnl, true)}</td></tr>`).join('')}
+    const trades = (s.recent_trades || []).length ? `<table class="table stack"><thead><tr><th>Opened</th><th>Contract</th><th>Side</th><th class="num">Entry${perpetual ? ' (USD)' : ''}</th><th class="num">Exit${perpetual ? ' (USD)' : ''}</th><th class="num">P&amp;L</th></tr></thead><tbody>
+        ${s.recent_trades.map((t) => `<tr><td>${esc(new Date(t.opened.replace('Z', ':00Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}</td><td class="tick">${esc(t.ticker)}</td><td>${esc(t.side.toUpperCase())} ×${t.qty}</td><td class="num">${tradePrice(t.entry, perpetual)}</td><td class="num">${tradePrice(t.exit, perpetual)} <small class="hint">${esc(t.reason)}</small></td><td class="num ${tone(t.pnl)}">${usd(t.pnl, true)}</td></tr>`).join('')}
       </tbody></table>` : '<p class="hint">No unseen-data trades to show.</p>';
-    const activeDeps = s.deployments.filter((d) => d.status !== 'stopped');  // must be stopped before delete
+    const activeDeps = restricted ? [] : s.deployments.filter((d) => d.status !== 'stopped');
     const kUrl = marketKalshiUrl(s.market);
     const mktLink = kUrl ? `<a href="${kUrl}" target="_blank" rel="noopener">${esc(marketLabel(s.market))} ↗</a>` : esc(marketLabel(s.market));
     // ---- the strategy dossier, composed as a research paper (abstract → mechanism →
@@ -2236,13 +2243,13 @@
             <div><dt>History window</dt><dd>${esc(s.dataset.start.slice(0, 10))} → ${esc(s.dataset.end.slice(0, 10))}</dd></div>
             <div><dt>Unseen (held out) from</dt><dd>${esc((s.dataset.out_of_sample_from || '').slice(0, 10)) || '—'}</dd></div>
           </dl>
-          <p class="rp-sub" style="margin-top:8px">The agent only ever saw data before the held-out date. Every simulated fill pays the ask or bid plus Kalshi's taker fee — results are net of fees or they do not count.</p></div>` : '';
+          <p class="rp-sub" style="margin-top:8px">${perpetual ? 'The agent only saw the research partition. ' + PERPS_SCENARIO : "The agent only ever saw data before the held-out date. Every simulated fill pays the ask or bid plus Kalshi's taker fee — results are net of fees or they do not count."}</p></div>` : '';
     const ruleBlock = `<div class="paper-sub"><h4 class="paper-h">The decision rule, in plain words</h4>
           <ul class="rules">${s.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
           <details class="raw"><summary>Exact machine spec (JSON)</summary><pre>${esc(JSON.stringify(s.spec, null, 2))}</pre></details></div>`;
-    const methodologyBody = rp.methodology + ruleBlock + dataBlock;
+    const methodologyBody = rp.methodology + ruleBlock + dataBlock + (perpetual && !s.dataset ? `<p class="hint">${PERPS_SCENARIO}</p>` : '');
     const resultsBody = rp.results
-      + `<div class="paper-sub"><h4 class="paper-h">${hasExp ? 'Backtest &amp; Kalshi demo replay' : 'Backtest'}</h4>
+      + `<div class="paper-sub"><h4 class="paper-h">${perpetual ? 'Perpetual research scenario' : hasExp ? 'Backtest &amp; Kalshi demo replay' : 'Backtest'}</h4>
           ${hasExp ? '<p class="rp-sub" style="margin-top:0">These are the agent\'s own in-sample/replay numbers. The in-sample column is optimistically biased — the rule was fit on exactly this data — so trust the held-out validation-window evidence above, not the column below.</p>' : ''}
           <div id="sheet-results">
             <div id="equity-wrap">${s.equity ? equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from) : ''}</div>
@@ -2251,7 +2258,7 @@
       + `<div class="paper-sub"><h4 class="paper-h">Most recent unseen trades</h4>${trades}</div>`;
     let verdictBody = rp.verdict;
     if (!hasExp) {
-      const btOnly = ['sig', 'armed', 'Backtest only', 'Backtest-only — never put through statistical validation (no pre-registration, one-time holdout, or multiple-testing control). These numbers come from a sample too small to separate skill from luck. Deploying it is your decision and your risk.'];
+      const btOnly = ['sig', 'armed', 'Backtest only', 'Backtest-only — never put through statistical validation (no pre-registration, one-time holdout, or multiple-testing control). These numbers come from a sample too small to separate skill from luck. ' + (restricted ? 'This market remains research only.' : 'Deploying it is your decision and your risk.')];
       const vmap = {
         // No experiment resolved (by experiment_id OR strategy_id) means NO gatekeeper record
         // exists — so this was NOT validated, whatever the status says. Never claim it "cleared
@@ -2274,7 +2281,7 @@
             <header class="paper-head">
               <div class="paper-cite"><span>${esc(serial(s.id))}</span><span>${esc(marketShort(s.market))} · ${esc(dirLabel(s.direction))}</span>${filed ? `<span>Filed ${esc(filed)}</span>` : ''}</div>
               <h2 class="paper-title">${esc(s.title)}</h2>
-              <div class="paper-byline">${mark(s.status)}${s.shared_from ? ` <span class="mk shared">${ICON.share}Shared by ${esc(s.shared_from)}</span>` : ''}</div>
+              <div class="paper-byline">${mark(s.status)}${researchBadge(s)}${s.shared_from ? ` <span class="mk shared">${ICON.share}Shared by ${esc(s.shared_from)}</span>` : ''}</div>
             </header>
             <section class="paper-abstract">
               <h3 class="paper-h">Abstract</h3>
@@ -2290,7 +2297,7 @@
           </article>
         </div>
         <aside>
-          ${s.holdings && s.holdings.length ? (() => {
+          ${!restricted && s.holdings && s.holdings.length ? (() => {
             const marked = s.holdings.filter((p) => p.unrealized != null);
             const unreal = marked.reduce((a, p) => a + p.unrealized, 0);
             return `<section class="panel"><h3>Holding right now</h3>
@@ -2299,7 +2306,7 @@
             </tbody></table></div>
             <p class="hint" style="margin-top:8px">${s.holdings.length} open position${s.holdings.length === 1 ? '' : 's'} at cost ${usd(s.holdings.reduce((a, p) => a + p.cost, 0))}${marked.length ? ` · unrealized ${money(unreal)} (est., mark-to-market on the current bid)` : ' · awaiting first mark'}.</p></section>`;
           })() : ''}
-          <section class="panel"><h3>Deploy</h3>
+          <section class="panel"><h3>${restricted ? 'Research only' : 'Deploy'}</h3>
             ${canDeploy ? `<div style="display:grid;gap:10px">
                 ${s.status !== 'passed' ? `<div class="notice bad">${ICON.warn}<span>${s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${rejectReason(s)}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
                 <button class="btn" id="dep-paper">Deploy on paper</button>
@@ -2313,8 +2320,8 @@
                   <button class="btn" type="submit">Confirm live deployment</button>
                 </form>
                 <div id="depflash"></div>
-              </div>` : '<p class="hint">This strategy isn’t ready to deploy yet.</p>'}
-            ${s.deployments.length ? `<p class="hint" style="margin-top:12px">Already deployed: ${s.deployments.map((d) => `#${d.id} (${esc(d.mode)}, ${esc(d.status)})`).join(', ')}. <a href="/deploy">Open the board</a></p>` : ''}
+              </div>` : restricted ? '<p class="hint">Perpetual strategies stay in research, including after passing the statistical gates. Paper, demo and live deployment are unavailable.</p>' : '<p class="hint">This strategy isn’t ready to deploy yet.</p>'}
+            ${!restricted && s.deployments.length ? `<p class="hint" style="margin-top:12px">Already deployed: ${s.deployments.map((d) => `#${d.id} (${esc(d.mode)}, ${esc(d.status)})`).join(', ')}. <a href="/deploy">Open the board</a></p>` : ''}
             ${kUrl ? `<p class="hint" style="margin-top:12px"><a href="${kUrl}" target="_blank" rel="noopener">Open ${esc(marketShort(s.market))} on Kalshi ↗</a></p>` : ''}
           </section>
           <section class="panel"><h3>Remove</h3>
@@ -2325,14 +2332,14 @@
             </div><div id="delflash"></div>
           </section>
           <section class="panel"><h3>Share</h3>
-            <p class="hint" style="margin-bottom:8px">Send a copy to a friend by the email they sign in with. They can deploy it like their own — sharing can't be undone.</p>
+            <p class="hint" style="margin-bottom:8px">${restricted ? 'Share a research-only copy using their Tau sign-in email. It keeps the same simulation limits and cannot be deployed.' : "Send a copy to a friend by the email they sign in with. They can deploy it like their own — sharing can't be undone."}</p>
             <form id="share-form" style="display:grid;gap:8px">
               <input class="input" id="share-email" type="email" autocomplete="off" placeholder="friend@email.com" aria-label="Friend's email">
               <button class="btn sm" type="submit">Share strategy</button>
             </form><div id="shareflash"></div>
           </section>
           <section class="panel"><h3>Gates</h3><div id="gates">${gatesHtml(s.gates)}</div></section>
-          ${s.status !== 'rejected' ? `<section class="panel" id="whatif"><h3>What if…</h3>
+          ${!perpetual && s.status !== 'rejected' ? `<section class="panel" id="whatif"><h3>What if…</h3>
             <p class="hint" style="margin-bottom:6px">Move a dial and the whole sheet re-runs.</p>
             <div class="dial"><div class="top"><label class="label" for="wf">Fees</label><output id="wfo">1.0×</output></div><input type="range" id="wf" min="0" max="3" step="0.25" value="1"></div>
             <div class="dial"><div class="top"><label class="label" for="ws">Slippage per fill</label><output id="wso">0.0¢</output></div><input type="range" id="ws" min="0" max="5" step="0.1" value="0"></div>
@@ -2344,7 +2351,7 @@
     // Second equity line: the strategy's unseen window replayed read-only against
     // the Kalshi demo environment. Fetched after the page so a slow/absent demo
     // never blocks the view; absent -> the chart simply stays sim-only.
-    if (s.equity && oos) (async () => {
+    if (!perpetual && s.equity && oos) (async () => {
       try {
         const r = await api('/api/strategies/' + s.id + '/dev-curve');
         const wrap = root.querySelector('#equity-wrap');
@@ -2590,7 +2597,7 @@
         <div class="snap-row"><span>Live P&amp;L</span><b class="${tone(snap.live_pnl)}">${usd(snap.live_pnl, true)}</b></div></div>`;
     }
     if (snap.kind === 'strategy') {
-      return `<a class="snap" href="/strategies/${snap.id}"><div class="snap-head"><b>${esc(snap.title)}</b>${mark(snap.status)}</div>
+      return `<a class="snap" href="/strategies/${snap.id}"><div class="snap-head"><b>${esc(snap.title)}</b>${mark(snap.status)}${researchBadge(snap)}</div>
         <div class="snap-meta">${esc(marketShort(snap.market))} · unseen ${snap.pnl == null ? '—' : usd(snap.pnl, true)}${snap.trades != null ? ' · ' + snap.trades + ' trades' : ''}${snap.win_rate != null ? ' · ' + pct(snap.win_rate, false) + ' win' : ''}</div></a>`;
     }
     if (snap.kind === 'deployment') {

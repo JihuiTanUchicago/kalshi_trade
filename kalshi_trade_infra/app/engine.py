@@ -317,6 +317,18 @@ def _close_position_at(conn, cur, dep: Dict, pos: Dict, kernel, via_kernel: bool
         return repo.close_position(tx, pos["id"], rep.fill_price_dollars, rep.fee_dollars, pnl, reason)
 
 
+_PERPETUAL_EXECUTION_DISABLED = (
+    "Bitcoin perpetuals are research-only; paper, demo and live execution are disabled."
+)
+
+
+def _perpetual_execution_block(spec: Dict, market_key: Optional[str] = None) -> Optional[str]:
+    """Reject perpetual exposure even if a persisted row bypassed the deploy routes."""
+    if specmod.has_perpetual_market(spec, market_key):
+        return _PERPETUAL_EXECUTION_DISABLED
+    return None
+
+
 def cross_deploy_block(spec: Dict, mode: str) -> Optional[str]:
     """Why a cross-contract (relative-value pair) spec may NOT deploy in `mode`, or None if it may.
 
@@ -332,7 +344,11 @@ def cross_deploy_block(spec: Dict, mode: str) -> Optional[str]:
         `_kernel_buy_pair`) — so paper, demo AND live are all allowed.
     The OTHER live gates (gatekeeper candidate, LIVE switch, Kalshi key, the NO-side-live rollout
     flag, the typed LIVE confirm, autopilot, drawdown) are unchanged and still run upstream; this
-    function only decides the cross-contract deployability question and only ever ADDS conditions."""
+    function also rejects research-only perpetuals (including non-cross specs) and only ever
+    ADDS conditions."""
+    perpetual_block = _perpetual_execution_block(spec)
+    if perpetual_block:
+        return perpetual_block
     if not specmod.is_cross_contract(spec):
         return None
     markets = specmod.involved_markets(spec)
@@ -351,8 +367,11 @@ def cross_deploy_block(spec: Dict, mode: str) -> Optional[str]:
 
 
 def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[float]], sources: Sources) -> Dict:
-    cur = conn.cursor()
     spec = dep["spec"]
+    perpetual_block = _perpetual_execution_block(spec, dep.get("market"))
+    if perpetual_block:
+        return {"blocked": perpetual_block}
+    cur = conn.cursor()
     by_ticker = {s.contract.ticker: s for s in snaps}
     mode = dep["mode"]
     # Both live and demo route real orders through a MarketableLimitKernel with identical
@@ -1047,6 +1066,8 @@ def recover_sent_intents(conn, sources: Sources, older_than_seconds: int = 30) -
 
 
 def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] = None) -> Dict:
+    if market.kind == "perpetual":
+        return {"blocked": _PERPETUAL_EXECUTION_DISABLED}
     now = now or datetime.now(timezone.utc)
     now_ts = int(now.timestamp())
     stats = {"settled": settle_due(conn, market, sources, now)}
@@ -1134,6 +1155,8 @@ def _cross_market_frame(markets: List[str], sources: Sources, now_ts: int):
     """Fetch EVERY involved market's live book + spot for one synchronized decision frame and build
     the combined (snaps, sizes). Returns None if ANY leg is stale or its book is unavailable — the
     caller then skips the frame, so we never price/leg a pair off a market we can't read right now."""
+    if any(MARKETS[key].kind == "perpetual" for key in markets):
+        return None  # a persisted cross row must never fetch/price perpetuals as binary legs
     all_snaps: List[Snapshot] = []
     sizes: Dict[str, Optional[float]] = {}
     for key in markets:

@@ -11,6 +11,34 @@ code. Ground truth was read from `app/agent.py`, `app/backtest.py`, `app/explora
 
 ---
 
+## Bitcoin perpetual research addendum — October 23, 2026
+
+The historical binary design below is extended by a separate `kind="perpetual"`
+Bitcoin path. Native one-minute prices, metadata, observed current features and
+funding payment history are append-only research data. The first partition pins
+the exact committed batch ID/fingerprint manifest as well as a source version;
+all experiments and phase loads retain that source. New bars, revisions and late
+commits do not reset a spent holdout. Research/Validation/Holdout use explicit UTC
+60/25/15 windows with 24-hour lookback/holding embargoes and in-window exits.
+
+This phase accepts only trusted causal momentum, mean-reversion and observed
+funding rules; arbitrary code, learned models and cross trades are rejected.
+Decisions use completed bars and next-open scenario fills, with exact native
+contract units, fixed 12bps fees plus 5bps adverse slippage per fill, at most 1x
+capital and one position. Recorded finalized funding is cost-only; estimates
+require decision-time availability. Unknown coverage fails closed. Existing
+trial/preregistration/bootstrap/PSR/DSR/FDR gates apply, with continuous sign-flip
+placebos and research-capital returns. Insufficient held-out evidence is
+INCONCLUSIVE and spends its one-way evaluation. No verdict authorizes trading:
+paper, demo and live execution are explicitly blocked.
+
+Status: locally implemented/offline verified; public production/demo retrieval
+passes through an explicit credential-free proxy after native metadata-label
+correction. Incomplete candle coverage, deployment-server/database and genuine
+queued-run acceptance remain pending. These scenarios are not a fill,
+margin or liquidation model. [Setup and limits](app/KALSHI_PERPS_RESEARCH.md),
+[canonical evidence](results/kalshi_bitcoin_perps_2026-10-23/HANDOFF.md).
+
 ## A. First-principles framing
 
 ### A.1 What "high-confidence profitable" means for short-horizon BTC binaries

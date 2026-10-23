@@ -1,5 +1,9 @@
 # PLAN
 
+## Bitcoin perpetual data and research — October23,2026,Asia/Shanghai
+
+Implemented and offline verified (`tau-kalshi-bitcoin-perps-research-20261023`) in an isolated worktree from exact main aa3664e. Native Bitcoin candles, funding and observed market data feed causal perpetual research with exact committed-source manifests, frozen holdout and existing statistical gates. Both themes label it Research only; all paper/demo/live perpetual execution is blocked. **1,899 Python passed / 10 skipped; prior unchanged frontend evidence: 196 plus 8 Meridian checks passed.** Manual review's UTC-window and concurrent-collector findings are fixed. Timeout follow-up resolved the Mac's direct-route bypass of its system proxy; explicit credential-free proxy support preserves auth/TLS isolation. Native quantity-title/asset-class parsing now verifies actual Bitcoin. Real collector returned 2,761 production / 2,822 demo candles, six funding records and four observations each; all ten HTTP200. Sample candles have gaps, so deployment-server, usable coverage, MySQL and genuine queued-model acceptance remain pending. Default off; disabled-feature deployment is independent of activation readiness. No commit/push, migration, deployment, production activation or account operation. [Setup](app/KALSHI_PERPS_RESEARCH.md), [canonical evidence and handoff](results/kalshi_bitcoin_perps_2026-10-23/HANDOFF.md).
+
 ## Tau header divider alignment — October22,2026,Asia/Shanghai
 
 Implemented/offline verified (`tau-header-alignment-20261022`): default Tau masthead and Hot Markets heading share50pxrow height; native1280/1100/320pxpreview borders align exactly. 1676Python/10skipped and177frontend+8Meridian checks pass. Production release pending. Cosmetic CSS only; preserve Meridian and actual installed unpublished boot/legal styles. [Handoff](results/header_alignment_2026-10-22/HANDOFF.md).

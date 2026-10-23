@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {test} from 'node:test';
 import vm from 'node:vm';
+import {perpsFrontendCases} from './kalshi_perps_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -122,7 +123,7 @@ function frontend({fetchImpl, brokerMount} = {}) {
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewRun, viewFunds, marketPicker, wireMarketPicker};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, marketPicker, wireMarketPicker};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -150,6 +151,7 @@ function strategyFrontend(detail = detailStrategy(), transport) {
   }});
 }
 const postRequests = f => f.requests.filter(({options}) => options.method === 'POST');
+perpsFrontendCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, postRequests});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
   demo: {capital: 1000, equity: 1001, realized: 1}, paper: {cash: 1000, ledger: [
     {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},

@@ -122,7 +122,7 @@ def _per_trade(trades) -> List[Tuple[int, int, float]]:
     built, so the bootstrap, PSR/DSR and the cross-day folds all score the same quantity."""
     out: List[Tuple[int, int, float]] = []
     for t in sorted(trades, key=lambda x: x.entry_ts):
-        cost = t.qty * t.entry_price
+        cost = getattr(t, "capital_at_risk", t.qty * t.entry_price)
         if cost <= 0:
             continue
         out.append((int(t.entry_ts), int(t.exit_ts), t.pnl / cost))
@@ -280,7 +280,7 @@ def _compute(trades, n_trials: int, lord_state: Dict[str, Any], seed: int,
     # The placebo is the one instrument-specific stat: binary uses the 1/entry label shuffle,
     # spot a sign-flip of the return series. Everything else (CI, PSR/DSR, LORD++, cross-day) is
     # identical. One-line dispatch on market kind, exactly as the design prescribes (§A.6).
-    placebo_p = _spot_placebo_pvalue(trades, seed) if kind == "spot" else _placebo_pvalue(trades, seed)
+    placebo_p = _spot_placebo_pvalue(trades, seed) if kind in ("spot", "perpetual") else _placebo_pvalue(trades, seed)
     rec = stats.lord_record(lord_state, boot["p_value"])
     equity = _equity(trades)
     cross_day_ok, folds, day_share = _cross_day(trades)
@@ -409,6 +409,18 @@ def _verdict_dict(v: Dict[str, Any], cls: Classification, n_trials: int) -> Dict
 # -- validation (§B.2 steps) ---------------------------------------------------
 
 
+def _assert_perpetual_source(cur, experiment_id: int, dataset) -> None:
+    if getattr(dataset.market, "kind", "binary") != "perpetual":
+        return
+    from app import kalshi_perps_repository as perps
+    experiment = rr.experiment_row_by_id(cur, experiment_id)
+    if not experiment or int(experiment["research_partition_id"]) != getattr(dataset, "partition_id", None):
+        raise ValueError("Perpetual evaluation must use the experiment's frozen partition.")
+    source = perps.partition_source(cur, int(experiment["research_partition_id"]))
+    if not source or source["source_version"] != getattr(dataset, "source_version", None):
+        raise ValueError("Perpetual evaluation data differ from the frozen source version.")
+
+
 def judge_validation(cur, experiment_id: int, finalist: dict, val_ds) -> dict:
     """Score ONE pre-registered finalist on the VALIDATION partition and record the verdict.
 
@@ -420,6 +432,7 @@ def judge_validation(cur, experiment_id: int, finalist: dict, val_ds) -> dict:
     must consume ONLY `classification`.
 
     `finalist` carries at least {spec, user_id, min_sample}; market comes from val_ds."""
+    _assert_perpetual_source(cur, experiment_id, val_ds)
     market = val_ds.market.key
     user_id = int(finalist["user_id"])
     min_sample = int(finalist.get("min_sample", 0))
@@ -459,6 +472,7 @@ def judge_batch(cur, run_id: int, experiment_ids: List[int], finalists: List[dic
 
     computed: List[Dict[str, Any]] = []
     for exp_id, fin in zip(experiment_ids, finalists):
+        _assert_perpetual_source(cur, exp_id, val_ds)
         trades = backtest.simulate(fin["spec"], val_ds, val_ds.start_ts, val_ds.end_ts + 1)
         n = len(trades)
         if n < int(fin.get("min_sample", 0)):
@@ -543,6 +557,10 @@ def judge_holdout(cur, experiment_id: int, finalist: dict,
     if cross:
         partition = partitions.ensure_merged_partition(cur, markets)
         max_evals = min(partitions.holdout_max_evaluations(m) for m in markets)
+    elif specmod.is_perpetual_spec(spec):
+        experiment = rr.experiment_row_by_id(cur, experiment_id)
+        partition = rr.partition_by_id(cur, int(experiment["research_partition_id"])) if experiment else None
+        max_evals = partitions.holdout_max_evaluations(market)
     else:
         partition = rr.get_active_partition(cur, market)
         max_evals = partitions.holdout_max_evaluations(market)
@@ -561,6 +579,7 @@ def judge_holdout(cur, experiment_id: int, finalist: dict,
         hds = run_load(lambda: partitions.merged_dataset_from(legs, "holdout"))
     else:
         hds = run_load(lambda: partitions.holdout_dataset(market, partition))
+    _assert_perpetual_source(cur, experiment_id, hds)
     trades = backtest.simulate(finalist["spec"], hds, hds.start_ts, hds.end_ts + 1)
     n_trades = len(trades)
     n_trials = _n_trials(cur, user_id, market, including=_judged_trials([finalist]))
@@ -574,6 +593,9 @@ def judge_holdout(cur, experiment_id: int, finalist: dict,
 
     forward = v["ci_lo"] > 0 and v["p_value"] <= ALPHA
     cls = Classification.FORWARD_VALIDATED if forward else Classification.REJECTED
+    if specmod.is_perpetual_spec(spec) and n_trades < int(finalist.get("min_sample", 0)):
+        # The held-out evidence was viewed, so its one-way use is still spent.
+        cls = Classification.INCONCLUSIVE
     rr.append_result(cur, experiment_id, "holdout", cls.value, n_trades,
                      metrics=_result_metrics(v, n_trials, holdout_consumed=consumed),
                      equity_curve=v["ret_series"], folds=v["folds"])
@@ -628,6 +650,8 @@ def marginal_contribution_ok(cur, user_id: int, experiment_id: int,
     series (daily-bucketed) against each already-DEPLOYED strategy's. '100 correlated BTC-
     momentum strategies < 1 novel one.' Fails (False, reason) if max |corr| > CORR_MAX. On a
     pass, promotes FORWARD_VALIDATED -> DEPLOYMENT_CANDIDATE (appends a phase='forward' row)."""
+    if specmod.has_perpetual_market(finalist.get("spec") or {}, finalist.get("market")):
+        return False, "Bitcoin perpetuals remain research-only; trading promotion is disabled."
     market = finalist["market"]
     if _latest_classification(cur, experiment_id, "holdout") != Classification.FORWARD_VALIDATED.value:
         return False, "experiment is not forward_validated; nothing to promote"

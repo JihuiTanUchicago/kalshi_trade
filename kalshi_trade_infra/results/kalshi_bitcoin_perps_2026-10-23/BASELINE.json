@@ -1,0 +1,29 @@
+{
+  "workstream": "tau-kalshi-bitcoin-perps-research-20261023",
+  "base": "aa3664e420fe4fdf538cd434e4c91e73ee0875cf",
+  "timezone": "Asia/Shanghai",
+  "scope": "Bitcoin Kalshi perpetual market data and first-class research; no live or demo order execution",
+  "live_perps_trading": false,
+  "publication_or_deployment_authorized": false,
+  "protected_sha256": {
+    "app/execution/__init__.py": "fa0cc46470fea2327081e2008248354a01a26c4a3e7a86d71b799b85f5a71273",
+    "app/execution/guard.py": "da30abcbbfb79d8425ddc35d7939c456a00cafe50b8c1310f9cf4bbd71a9946d",
+    "app/execution/latency.py": "edc79158cad28bf2999cfdf52674cee4b6d372f3192ef47715613756cd47af77",
+    "data_pipeline/architecture/__init__.py": "89ef3a450098d608023c6ed886635e687cf46d92ac37228b1d3f4cfa4d7be240",
+    "data_pipeline/architecture/contracts.py": "f93505c3c9ba876e26ad7241a2dc59d97263ccb461a4955c352bf40e5defeb72",
+    "data_pipeline/architecture/execution_kernel.py": "596cf6e739ddf7f7293e4a812f7c0f71a66eb4339d4cbd2b8783cbdd4603275f",
+    "data_pipeline/architecture/risk_engine.py": "ae10fa09453fba5c8fd025b0bc148dc5b5bba10f70f661d98c59950e6016f87c",
+    "data_pipeline/architecture/simulated_venue.py": "dafb08fcd89674483855535f575b7f7b5b82dd995c3dd1bb1b82ad9f59245df0",
+    "app/engine.py": "a43ddf7f2d651a037107994d8c273e83005602e6578e57d4f11e18a9b168dfc6",
+    "app/kalshi_account.py": "84bbebef45e6cc6133a1e977b40838ed6d107b63afb9410c55e23a84aa23c088",
+    "app/kalshi_dev_exec.py": "9a97e79098b69b21f797153c3033dd43a2631331686abbb4c1f70575ac237335",
+    "app/broker_oauth.py": "100461b429b25a607a3eb5999e20c04ef82b063c0b85b64faafa566a3f596b70",
+    "app/broker_vault.py": "cf59e7267a081acd0ddfbb7b837bffae947c44140406718ba183f29675e4a46b",
+    "app/alpaca_paper.py": "c06fcfb01d8e81cbd8c9c849b085f849748602ee6c099cbcd5d765673b569236",
+    "data_pipeline/common.py": "86a11b40dc173d95de566178eb30333ab98405da5b32db8397c4a9439cdf515d",
+    "data_pipeline/live_trading_engine.py": "388644bc0e7c609c0e67cfb7c66e25adbee35b8fa5aafee457cd610f2e534dfa"
+  },
+  "allowed_additive_research_guards": [
+    "app/engine.py"
+  ]
+}
