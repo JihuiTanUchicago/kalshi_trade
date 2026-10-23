@@ -1,0 +1,46 @@
+{
+  "status": "one_memory_property_applied_pending_no_restart_manager_reload_and_verification",
+  "approval_scope": "The user approved completing the online 1GiB worker fix without service restart; loading the saved control setting is part of completing that same repair. No additional property write is permitted.",
+  "partial_baseline_fingerprint": "5f0fe04eceac16effa5e52d9d4df4e94b93872b8c86210b2037f6fd9f67425d0",
+  "before_fingerprint": "6c9f4ece65224db9346f9be22ca96f4d3dc6216b6dd78189e66d295e3fed4806",
+  "approval_receipts": {
+    "capacity_run_id": 39904624559,
+    "capacity_receipt_sha256": "98811b3c603173748498043827bd457441ec28056dcd60a3869300b7c4742e7a",
+    "inventory_run_id": 39904754786,
+    "inventory_receipt_sha256": "ed13fb6e54b85c2804dd60433b43d9f936346b491cbd36b3cfcd8035c18b0572",
+    "before_worker_properties_sha256": "6655e1ab35e68436fc8f202ea7266f8e00bb92ec9c44c024676bf5ca04f669f1",
+    "worker_pid": 509844,
+    "worker_start_ticks": "50358518",
+    "override_sha256": "8714f37da811546b5c7bc1babb7172cc7a42b27eb0cea820a323ef1b6d07eb44"
+  },
+  "known_control_delta": {
+    "worker_memory_max": 1073741824,
+    "worker_need_daemon_reload": "yes",
+    "worker_properties_sha256": "1b4b8fc34c7f3c8d669f8e3cca4c5dada50848bf17c5b514b190dde69a9fd482",
+    "one_fixed_override": {
+      "bytes": 152,
+      "gid": 0,
+      "mode": "0644",
+      "sha256": "8714f37da811546b5c7bc1babb7172cc7a42b27eb0cea820a323ef1b6d07eb44",
+      "uid": 0
+    }
+  },
+  "all_sources_processes_private_config_other_services_unchanged": true,
+  "private_raw_property_reconstruction_required_before_reload": true,
+  "reload_command": [
+    "systemctl",
+    "daemon-reload"
+  ],
+  "reload_limit_seconds": 8,
+  "service_restarts_permitted": false,
+  "property_retry_permitted": false,
+  "job_mutations_permitted": false,
+  "original_application_idle_guard_not_relaxed": true,
+  "remaining_gates": [
+    "focused/full checks and independent immutable review",
+    "exact-head capacity_finalize only",
+    "sameprocess/fullprivate/rawproperty/source/control proof",
+    "15minute stability then original idle-only application rollout"
+  ],
+  "timestamp_utc": "2026-10-23T05:20:45.881886+00:00"
+}

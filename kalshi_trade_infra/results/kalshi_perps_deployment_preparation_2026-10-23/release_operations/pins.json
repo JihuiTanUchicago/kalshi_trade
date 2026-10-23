@@ -825,6 +825,12 @@
           "mode": "0600",
           "sha256": "d37ce94eb38e2adf0c75069239cc230e3c8c82f379df50d70c6cd672b873d45f",
           "uid": 0
+        },
+        "/etc/systemd/system.control/recursive-agents.service.d/50-MemoryMax.conf": {
+          "sha256": "8714f37da811546b5c7bc1babb7172cc7a42b27eb0cea820a323ef1b6d07eb44",
+          "uid": 0,
+          "gid": 0,
+          "mode": "0644"
         }
       },
       "units": {
@@ -847,19 +853,19 @@
         },
         "recursive-agents": {
           "active_state": "active",
-          "need_daemon_reload": "no",
+          "need_daemon_reload": "yes",
           "perps": {
             "enabled": false,
             "explicit_proxy_configured": false,
             "explicitly_configured": false
           },
           "pid": 509844,
-          "properties_sha256": "6655e1ab35e68436fc8f202ea7266f8e00bb92ec9c44c024676bf5ca04f669f1",
+          "properties_sha256": "1b4b8fc34c7f3c8d669f8e3cca4c5dada50848bf17c5b514b190dde69a9fd482",
           "resources": {
             "CPUQuotaPerSecUSec": "infinity",
             "CPUWeight": "[not set]",
             "MemoryHigh": "infinity",
-            "MemoryMax": "419430400",
+            "MemoryMax": "1073741824",
             "MemorySwapMax": "infinity",
             "Nice": "5",
             "TasksMax": "18827"
@@ -1781,7 +1787,7 @@
       "omitted_private_or_cache_entries": 3
     }
   },
-  "installed_fingerprint": "6c9f4ece65224db9346f9be22ca96f4d3dc6216b6dd78189e66d295e3fed4806",
+  "installed_fingerprint": "5f0fe04eceac16effa5e52d9d4df4e94b93872b8c86210b2037f6fd9f67425d0",
   "preserved_extra_paths": [
     "data_pipeline/research_expiry_resolution.py",
     "data_pipeline/research_expiry_resolution_sensitivity.py",
@@ -1798,5 +1804,15 @@
       "global_constraint": 0,
       "unclassified_memcg": 0
     }
+  },
+  "capacity_finalize_approval": {
+    "capacity_run_id": 39904624559,
+    "capacity_receipt_sha256": "98811b3c603173748498043827bd457441ec28056dcd60a3869300b7c4742e7a",
+    "inventory_run_id": 39904754786,
+    "inventory_receipt_sha256": "ed13fb6e54b85c2804dd60433b43d9f936346b491cbd36b3cfcd8035c18b0572",
+    "before_worker_properties_sha256": "6655e1ab35e68436fc8f202ea7266f8e00bb92ec9c44c024676bf5ca04f669f1",
+    "worker_pid": 509844,
+    "worker_start_ticks": "50358518",
+    "override_sha256": "8714f37da811546b5c7bc1babb7172cc7a42b27eb0cea820a323ef1b6d07eb44"
   }
 }

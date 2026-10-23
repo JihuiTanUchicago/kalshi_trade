@@ -31,6 +31,7 @@ class Backend:
         # Capacity fixtures model the old cap even after a later reviewed
         # production baseline legitimately records the accepted new override.
         pins["installed"]["controls"]["units"][capacity.SERVICE]["resources"]["MemoryMax"] = str(capacity.OLD_MAX)
+        pins["installed"]["controls"]["units"][capacity.SERVICE]["need_daemon_reload"] = "no"
         pins["installed"]["controls"]["unit_files"].pop(str(capacity.OVERRIDE), None)
         self.state = copy.deepcopy(pins["installed"])
         self.guard = types.SimpleNamespace()

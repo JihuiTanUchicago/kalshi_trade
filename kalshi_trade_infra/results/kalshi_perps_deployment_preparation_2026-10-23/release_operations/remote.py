@@ -756,13 +756,20 @@ def execute(phase, release_id, bundle, guard):
     pins = bundle["pins"]
     backend = Backend(guard, pins)
     try:
-        require(os.geteuid() == 0 and phase in {"inventory", "prepare", "apply", "capacity"}, "invalid_operation_context")
+        require(os.geteuid() == 0 and phase in {"inventory", "prepare", "apply", "capacity", "capacity_finalize"}, "invalid_operation_context")
         if phase == "inventory":
             return inventory(backend, pins)[0]
         current = inventory(backend, pins)[0]
         # The separately approved online ceiling increase never restarts or
         # changes jobs. Source/schema activation still requires full idleness.
-        if (current["conflicts"] if phase == "capacity" else current["status"] != "idle_inventory"):
+        if phase == "capacity_finalize":
+            # Only the exact reviewed pending-reload baseline enters this
+            # no-restart completion. Original inventory/prepare/apply are strict.
+            if (current["conflicts"] != ["pending_daemon_reload"]
+                    or any(row["need_daemon_reload"] != ("yes" if name == "recursive-agents" else "no")
+                           for name, row in current["observed_units"].items())):
+                return current
+        elif (current["conflicts"] if phase == "capacity" else current["status"] != "idle_inventory"):
             return current
         require(pins["candidate_ready"] is True and pins["candidate"] != REJECTED_CANDIDATE, "candidate_acceptance_gate_closed")
         safe_directory(RELEASES.parent)
@@ -780,6 +787,9 @@ def execute(phase, release_id, bundle, guard):
             if phase == "capacity":
                 import capacity
                 return capacity.run(backend, pins)
+            if phase == "capacity_finalize":
+                import capacity_finalize
+                return capacity_finalize.run(backend, pins)
             return apply(backend, pins, release_id)
         finally:
             os.close(descriptor)

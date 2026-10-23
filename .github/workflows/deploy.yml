@@ -7,14 +7,14 @@ on:
         description: Read-only inventory, approved worker memory repair, or idle-only release
         required: true
         type: choice
-        options: [inventory, capacity, apply]
+        options: [inventory, capacity, capacity_finalize, apply]
         default: inventory
       candidate:
-        description: Exact accepted candidate commit; required for capacity/apply
+        description: Exact accepted candidate commit; required for capacity/finalize/apply
         required: false
         type: string
       fingerprint:
-        description: Exact pinned installed fingerprint; required for capacity/apply
+        description: Exact pinned installed fingerprint; required for capacity/finalize/apply
         required: false
         type: string
 

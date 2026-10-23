@@ -325,6 +325,9 @@ class OrchestrationTests(unittest.TestCase):
         item = patch.object(remote, "memory_pressure", lambda: {"status": "synthetic"}); item.start(); self.stack.append(item)
         self.pins = runner.pins()
         self.pins["candidate_ready"] = True  # Synthetic backend; no production acceptance is exercised.
+        # Ordinary release fixtures start after the separate resource repair.
+        # The production partial state remains pinned and blocked until reload.
+        self.pins["installed"]["controls"]["units"]["recursive-agents"]["need_daemon_reload"] = "no"
         self.backend = FakeBackend(self.pins, self.root)
         self.release_id = "a" * 32
 
@@ -335,6 +338,38 @@ class OrchestrationTests(unittest.TestCase):
 
     def prepare(self):
         return remote.prepare(self.backend, self.pins, self.release_id, b"synthetic", sleep=lambda seconds: self.backend.events.append("idle-30s"))
+
+    def test_finalize_routes_busy_work_only_with_the_exact_worker_pending_baseline(self):
+        import capacity_finalize
+        units = copy.deepcopy(self.pins["installed"]["controls"]["units"])
+        units["recursive-agents"]["need_daemon_reload"] = "yes"
+        report = {"status": "waiting", "conflicts": ["pending_daemon_reload"],
+                  "observed_units": units, "job_counts": {**ZERO, "running": 2}}
+        info = types.SimpleNamespace(st_mode=stat.S_IFREG | 0o600, st_uid=0, st_nlink=1)
+        with patch.object(remote, "Backend", return_value=self.backend), \
+                patch.object(remote, "inventory", return_value=(report, {}, {})), \
+                patch.object(remote.os, "geteuid", return_value=0), patch.object(remote.os, "open", return_value=73) as opened, \
+                patch.object(remote.os, "fstat", return_value=info), patch.object(remote.os, "close"), \
+                patch.object(remote.fcntl, "flock"), \
+                patch.object(capacity_finalize, "run", return_value={"status": "capacity_finalize_verified"}) as finalize:
+            result = remote.execute("capacity_finalize", self.release_id, {"pins": self.pins}, object())
+            self.assertEqual(result["status"], "capacity_finalize_verified")
+            finalize.assert_called_once_with(self.backend, self.pins)
+            finalize.reset_mock(); opened.reset_mock()
+            for phase in ("prepare", "apply", "capacity"):
+                self.assertEqual(remote.execute(phase, self.release_id, {"pins": self.pins}, object()), report)
+            finalize.assert_not_called(); opened.assert_not_called()
+            for fault in ("other_conflict", "other_pending", "worker_not_pending"):
+                bad = copy.deepcopy(report)
+                if fault == "other_conflict":
+                    bad["conflicts"].append("source")
+                elif fault == "other_pending":
+                    bad["observed_units"]["recursive-web"]["need_daemon_reload"] = "yes"
+                else:
+                    bad["observed_units"]["recursive-agents"]["need_daemon_reload"] = "no"
+                with patch.object(remote, "inventory", return_value=(bad, {}, {})):
+                    self.assertEqual(remote.execute("capacity_finalize", self.release_id, {"pins": self.pins}, object()), bad)
+            finalize.assert_not_called(); opened.assert_not_called()
 
     def test_every_busy_status_and_every_control_source_conflict_is_inventory_only(self):
         for status in ZERO:
@@ -577,8 +612,9 @@ class SchemaAndTransportTests(unittest.TestCase):
 
     def test_capacity_requires_exact_release_inputs_before_any_transport(self):
         with patch.object(runner, "aws") as aws:
-            with self.assertRaisesRegex(runner.RunnerError, "candidate_acceptance_gate_closed"):
-                runner.run("capacity")
+            for phase in ("capacity", "capacity_finalize"):
+                with self.assertRaisesRegex(runner.RunnerError, "candidate_acceptance_gate_closed"):
+                    runner.run(phase)
         aws.assert_not_called()
 
     def test_capacity_transport_never_prepares_installs_or_invalidates(self):
@@ -599,6 +635,37 @@ class SchemaAndTransportTests(unittest.TestCase):
         self.assertFalse(emitted[-1][1]["release_committed"])
         self.assertTrue(emitted[-1][1]["capacity_action_dispatched"])
         self.assertTrue(emitted[-1][1]["capacity_change_verified"])
+
+    def test_finalize_transport_is_separate_from_property_write_and_application_release(self):
+        value, phases, emitted = runner.pins(), [], []
+        def aws(*args):
+            return {"ContentLength": 0, "ServerSideEncryption": "AES256"} if args[:2] == ("s3api", "head-object") else {}
+        def request(artifact, phase, identity):
+            phases.append(phase)
+            return {"status": "capacity_finalize_verified", "property_command_attempts": 0}
+        with patch.object(runner, "bundle", return_value=b"synthetic public source"), patch.object(runner, "aws", side_effect=aws), \
+                patch.object(runner, "request", side_effect=request), patch.object(runner, "invalidate") as cdn, \
+                patch.object(runner.remote, "verify_http") as public, \
+                patch.object(runner, "emit", side_effect=lambda kind, report: emitted.append((kind, report))):
+            result = runner.run("capacity_finalize", value["candidate"], value["installed_fingerprint"])
+        self.assertEqual(result["status"], "capacity_finalize_verified")
+        self.assertEqual(phases, ["capacity_finalize"])
+        cdn.assert_not_called(); public.assert_not_called()
+        cleanup = emitted[-1][1]
+        self.assertFalse(cleanup["release_committed"] or cleanup["capacity_action_dispatched"] or cleanup["capacity_change_verified"])
+        self.assertTrue(cleanup["capacity_finalize_dispatched"] and cleanup["capacity_finalize_verified"])
+        marker = next(row for row in emitted if row[0] == "CAPACITY_FINALIZE")
+        self.assertEqual(collect.records("TAU_PERPS_RELEASE_CAPACITY_FINALIZE=" + json.dumps(marker[1]))[0]["type"], "CAPACITY_FINALIZE")
+
+    def test_finalize_requires_unchanged_main_before_transport(self):
+        value = runner.pins()
+        actual_git = runner.git
+        def changed_main(*args):
+            return b"0" * 40 if args == ("rev-parse", "refs/remotes/origin/main") else actual_git(*args)
+        with patch.object(runner, "git", side_effect=changed_main), patch.object(runner, "aws") as aws:
+            with self.assertRaisesRegex(runner.RunnerError, "reviewed_main_reference_changed"):
+                runner.run("capacity_finalize", value["candidate"], value["installed_fingerprint"])
+        aws.assert_not_called()
 
     def test_compressed_receipts_reject_bad_hash_and_raw_log_text(self):
         raw = b'{"status":"waiting","job_counts":{"running":1}}'
