@@ -720,8 +720,8 @@
       "processes": {
         "recursive-agents": {
           "cmdline_sha256": "3af81a26d1c3f6b9c282e78e27f1e44b10e5637e0dd1e4bffa000ce9db344628",
-          "environment_sha256": "7dc31ebb2c1124287462dae5cd6fd2627bf6aa8493d5d4f64c42913e557d9f16",
-          "start_ticks": "50135843"
+          "environment_sha256": "d6de5a6149cc1470c39998890ca2d2de2d8cd98b6564783002117a723b7da87b",
+          "start_ticks": "50358518"
         },
         "recursive-engine": {
           "cmdline_sha256": "7404f1c4b417e6ba13097b872c30d36389d06278c367e431baa3ff87972f555e",
@@ -853,8 +853,8 @@
             "explicit_proxy_configured": false,
             "explicitly_configured": false
           },
-          "pid": 507858,
-          "properties_sha256": "3e78a6a49c79f0f6191382169863a02e39173023d6012d244d737e583ad6c7e5",
+          "pid": 509844,
+          "properties_sha256": "6655e1ab35e68436fc8f202ea7266f8e00bb92ec9c44c024676bf5ca04f669f1",
           "resources": {
             "CPUQuotaPerSecUSec": "infinity",
             "CPUWeight": "[not set]",
@@ -1781,7 +1781,7 @@
       "omitted_private_or_cache_entries": 3
     }
   },
-  "installed_fingerprint": "9d3cab39086c51a5c8004672fde300bca7c8af089aa9899c5c45a7a306cd2b9d",
+  "installed_fingerprint": "6c9f4ece65224db9346f9be22ca96f4d3dc6216b6dd78189e66d295e3fed4806",
   "preserved_extra_paths": [
     "data_pipeline/research_expiry_resolution.py",
     "data_pipeline/research_expiry_resolution_sensitivity.py",

@@ -1,0 +1,52 @@
+{
+  "status": "explicitly_reviewed_one_worker_oom_rollover_before_approved_capacity_fix",
+  "receipt_run": 39904255302,
+  "receipt_sha256": "d0953f320463b53d0ca6ce07357899d947f5bdf517ed0cde803021fabca4fbab",
+  "operations_head": "7eed00f2f5c33a3c53d1a2de735138ec328fc9b1",
+  "prior_reviewed_fingerprint": "9d3cab39086c51a5c8004672fde300bca7c8af089aa9899c5c45a7a306cd2b9d",
+  "expected_reconstructed_fingerprint": "6c9f4ece65224db9346f9be22ca96f4d3dc6216b6dd78189e66d295e3fed4806",
+  "observed_combined_fingerprint": "6c9f4ece65224db9346f9be22ca96f4d3dc6216b6dd78189e66d295e3fed4806",
+  "source_fingerprint": "36d996b28af93ba164dc9c5aa321d1d2f08be233ce5da0e0784ef0595c9b230d",
+  "worker_only_changed_fields": [
+    {
+      "group": "units",
+      "field": "pid",
+      "old": 507858,
+      "new": 509844
+    },
+    {
+      "group": "units",
+      "field": "properties_sha256",
+      "old": "3e78a6a49c79f0f6191382169863a02e39173023d6012d244d737e583ad6c7e5",
+      "new": "6655e1ab35e68436fc8f202ea7266f8e00bb92ec9c44c024676bf5ca04f669f1"
+    },
+    {
+      "group": "processes",
+      "field": "start_ticks",
+      "old": "50135843",
+      "new": "50358518"
+    },
+    {
+      "group": "processes",
+      "field": "environment_sha256",
+      "old": "7dc31ebb2c1124287462dae5cd6fd2627bf6aa8493d5d4f64c42913e557d9f16",
+      "new": "d6de5a6149cc1470c39998890ca2d2de2d8cd98b6564783002117a723b7da87b"
+    }
+  ],
+  "current_kernel_events_last_30m": {
+    "ancestor_limit": 0,
+    "cgroup_constraint": 1,
+    "global_constraint": 0,
+    "unclassified_memcg": 0,
+    "worker_limit": 1
+  },
+  "nrestarts": 46,
+  "all_other_controls_and_source_preserved": true,
+  "historical_process_environment_equality_proven": false,
+  "fresh_private_environment_must_match_around_command": true,
+  "automatic_repin_implemented": false,
+  "application_activation_still_idle_only": true,
+  "capacity_prior_proof_unchanged_and_cannot_authorize_zero_current_events_for_new_pid": true,
+  "property_attempt_occurred": false,
+  "timestamp_utc": "2026-10-23T05:11:41.761847+00:00"
+}

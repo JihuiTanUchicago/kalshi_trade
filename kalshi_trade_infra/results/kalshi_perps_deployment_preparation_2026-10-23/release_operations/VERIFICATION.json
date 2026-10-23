@@ -31,9 +31,13 @@
       "bytes": 13216,
       "sha256": "a9e4056a4d0452c73904df2695807e4cf19097e2270c0c014f1dca8805ef6c95"
     },
+    "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/CAPACITY_ROLLOVER_REVIEW.json": {
+      "bytes": 2053,
+      "sha256": "2620c79baeded099d5103279a7a83412a55014045a6bbb1ea32d6d10f8b86345"
+    },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/HANDOFF.md": {
-      "bytes": 17438,
-      "sha256": "708b0f727ff4226601f706cc691def79c99a7e29e9d7b9780cccf9bce301a221"
+      "bytes": 18387,
+      "sha256": "78b1229f67a06f1ab83d5c55aebd800a5306354fa1735c7f6b7b076681f90978"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/capacity.py": {
       "bytes": 29657,
@@ -45,7 +49,7 @@
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/pins.json": {
       "bytes": 60596,
-      "sha256": "e325db7efee8958e3b5bdf9cde5b2fbfca80d9a6edcd4d0fdf5cff18d0377858"
+      "sha256": "cb45526483faa24be2615c97cd0b6ce4d3f63eb266d666fbb6cd2eb0612f32df"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/release_database.py": {
       "bytes": 6296,
@@ -72,9 +76,9 @@
       "sha256": "bfca76570e39b49164f0721c0ff7bbd625aa49b7aaf4c786771fb812dba8067f"
     }
   },
-  "file_manifest_sha256": "567f85a2b58aa3108ae532e03fc2662395be396dbc4f5ce2d915df1f94f00051",
+  "file_manifest_sha256": "4a835215e5b9c1adcea5325dbda46c970f9e59e4f0dbd2379f172505304b7399",
   "format": 1,
-  "installed_fingerprint": "9d3cab39086c51a5c8004672fde300bca7c8af089aa9899c5c45a7a306cd2b9d",
+  "installed_fingerprint": "6c9f4ece65224db9346f9be22ca96f4d3dc6216b6dd78189e66d295e3fed4806",
   "limits_seconds": {
     "admission": 120,
     "capacity_property_command": 8,
@@ -92,7 +96,7 @@
     "apply_dispatch": true,
     "real_provider_account_order_call": true
   },
-  "operations_base": "e692f7d735f54c4fa792c3232ca6233c303a6c80",
+  "operations_base": "7eed00f2f5c33a3c53d1a2de735138ec328fc9b1",
   "read_only_runs": [
     39896649873,
     39896944153,
@@ -101,7 +105,8 @@
     39900064672,
     39900592201,
     39901486782,
-    39903498965
+    39903498965,
+    39904255302
   ],
   "remaining_gates": [
     "independent final combined review and immutable compatibility delta review",
@@ -111,7 +116,7 @@
     "explicit postrepair baseline review and original idle-only source/schema activation"
   ],
   "source_tree": "6f75cf6d58d363c4a7e8e69e6546a0dd9df9c1f9",
-  "status": "offline_verified_capacity_compatibility_correction",
+  "status": "offline_verified_explicit_oom_worker_rollover_baseline",
   "stopped_capacity_run": {
     "error_code": "capacity_projection_invalid",
     "mutation_may_have_applied": false,
@@ -134,9 +139,9 @@
     "root_reported_existing_app_suite": {
       "executed_by_this_workstream": true,
       "passed": 1899,
-      "seconds": 25.54,
+      "seconds": 23.97,
       "skipped": 10
     }
   },
-  "verified_at_utc": "2026-10-23T05:07:38.125373+00:00"
+  "verified_at_utc": "2026-10-23T05:11:41.764733+00:00"
 }
