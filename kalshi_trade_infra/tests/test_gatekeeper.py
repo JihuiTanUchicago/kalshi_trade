@@ -410,3 +410,41 @@ def test_judged_trials_counts_fitted_degrees_of_freedom():
     assert gk._judged_trials([calibration]) == 2       # slope + intercept
     assert gk._judged_trials([gbm, logistic, calibration]) == 7
     assert gk._judged_trials([{}]) == 1                # tolerant of a missing spec (holdout path)
+
+
+# -- the conjunctive STAT_SUPPORTED gate (pure decision rule) -------------------
+# A direct unit test of _classify: it locks that EVERY rigor pillar is a hard veto, so the
+# gate can only ever get stricter. If a future edit silently drops or loosens one pillar from
+# the conjunction, exactly one of these per-pillar assertions fails. (The judge_* tests above
+# only exercise the cross-day and placebo pillars, and only through the integration path.)
+
+# all pillars satisfied -> the ONLY input that may pass
+_PASS = dict(lord_reject=True, bh_reject=True, dsr=gk.DSR_MIN, ci_lo=0.01, ci_hi=0.5,
+             placebo_passed=True, cross_day_ok=True)
+
+
+def _clf(**over):
+    d = {**_PASS, **over}
+    return gk._classify(d["lord_reject"], d["bh_reject"], d["dsr"], d["ci_lo"], d["ci_hi"],
+                        d["placebo_passed"], d["cross_day_ok"])
+
+
+def test_classify_passes_only_when_every_pillar_holds():
+    assert _clf() == Classification.STAT_SUPPORTED                 # DSR exactly at the floor is OK (>=)
+    assert _clf(bh_reject=None) == Classification.STAT_SUPPORTED   # no chunk -> BH not applicable, not a veto
+
+
+def test_classify_each_pillar_is_a_hard_veto():
+    # Flip ONE pillar at a time to failing; none may still read STAT_SUPPORTED.
+    assert _clf(lord_reject=False) != Classification.STAT_SUPPORTED        # FDR budget didn't reject
+    assert _clf(bh_reject=False) != Classification.STAT_SUPPORTED          # BH within-chunk didn't reject
+    assert _clf(dsr=gk.DSR_MIN - 1e-9) != Classification.STAT_SUPPORTED    # just below the DSR floor
+    assert _clf(ci_lo=0.0) != Classification.STAT_SUPPORTED                # CI lower bound must be strictly > 0
+    assert _clf(cross_day_ok=False) == Classification.INCONCLUSIVE         # one-window edge -> honest INCONCLUSIVE
+    assert _clf(placebo_passed=False) == Classification.REJECTED           # label-shuffle artifact
+
+
+def test_classify_rejects_actively_negative_edge():
+    # Whole CI at/below zero (placebo still "passes") -> actively no edge, REJECTED not INCONCLUSIVE.
+    assert _clf(lord_reject=False, ci_lo=-0.2, ci_hi=0.0) == Classification.REJECTED
+    assert _clf(lord_reject=False, ci_lo=-0.2, ci_hi=0.3) == Classification.INCONCLUSIVE  # upside remains
