@@ -1,0 +1,58 @@
+{
+  "date": "2026-10-23",
+  "timezone": "Asia/Shanghai",
+  "status": "offline_verified_frozen_handed_to_root",
+  "base_commit": "0e2e79c30d13bab8dec41081ef4d273d826b127c",
+  "public_pem_sha256": "24746c869bcda8ae3c177a0c0a355939a7504f3a795443492696acf0317ccec8",
+  "selected_file_count": 8,
+  "selected_source_bytes": 842077,
+  "limits": {
+    "max_pages": 64,
+    "page_bytes": 12000,
+    "max_envelope_bytes": 768000,
+    "capture_command_characters": 13118,
+    "page_command_characters": 10602,
+    "cleanup_command_characters": 10586
+  },
+  "runtime": {"python": "3.12", "cryptography": "44.0.2"},
+  "focused_tests": {
+    "command": "<prepared .venv/bin/python> -B -m pytest results/kalshi_perps_deployment_preparation_2026-10-23/source_review/test_source_review.py -q",
+    "passed": 31,
+    "failed": 0,
+    "seconds": 1.83
+  },
+  "full_app_and_new_capture_tests": {
+    "command": "<prepared .venv/bin/python> -B -m pytest tests/ results/kalshi_perps_deployment_preparation_2026-10-23/source_review/test_source_review.py -q",
+    "passed": 1930,
+    "skipped": 10,
+    "failed": 0,
+    "seconds": 29.38
+  },
+  "historical_overbroad_check": {
+    "included": "prior readiness operation tests whose workflow assertion assumes its own unchanged deploy.yml",
+    "passed": 1962,
+    "skipped": 10,
+    "failed": 1,
+    "seconds": 34.44,
+    "failure": "old operation test requires old kalshi-perps-readiness concurrency group; this branch intentionally replaces that workflow",
+    "prior_operation_files_changed": false
+  },
+  "checks": {
+    "scoped_python_compiles_in_memory": true,
+    "git_diff_check": true,
+    "real_rsa_oaep_aesgcm_synthetic_roundtrip_and_tamper_tests": true,
+    "real_private_key_read": false,
+    "remote_decryption_definitions_included": false,
+    "plaintext_source_in_logs_or_public_artifacts": false,
+    "new_s3_permissions_or_transport": false
+  },
+  "delegated_actions": {
+    "commits": 0,
+    "pushes": 0,
+    "dispatches": 0,
+    "actual_aws_database_provider_model_account_order_calls": 0,
+    "installed_source_service_job_settings_environment_changes": 0
+  },
+  "remaining": "root independent review, exact-head publication, one capture dispatch, local private decryption and source reconciliation",
+  "deployment_or_trading_accepted": false
+}

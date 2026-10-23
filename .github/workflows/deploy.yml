@@ -1,11 +1,11 @@
-name: Read-only Bitcoin perps production readiness
+name: Encrypted read-only selected-source review
 
 on:
   workflow_dispatch:
 
 # Separate from deploy-web: this cannot replace or cancel a pending release.
 concurrency:
-  group: kalshi-perps-readiness
+  group: kalshi-perps-selected-source-review
   cancel-in-progress: false
 
 permissions:
@@ -15,7 +15,7 @@ jobs:
   inspect:
     runs-on: ubuntu-24.04
     environment: production
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,5 +29,5 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Inspect installed state and one anonymous 48-hour production window
-        run: python3 -B kalshi_trade_infra/results/kalshi_bitcoin_perps_2026-10-23/operations/runner.py
+      - name: Capture only the pinned sources as encrypted bounded pages
+        run: python3 -B kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/source_review/runner.py
