@@ -2,24 +2,18 @@
   "acceptance": {
     "authorization": "root confirmed exact runtime gates; operations review/publication/dispatch remain pending",
     "candidate": "0bfb7482ae15d542868556d8a038dd5cfa28f64b",
-    "source_tree": "6f75cf6d58d363c4a7e8e69e6546a0dd9df9c1f9",
-    "merged_main": {
-      "commit": "e372a6e54faa2b71e3e00b24e97eb6b1ff252175",
-      "tree": "6f75cf6d58d363c4a7e8e69e6546a0dd9df9c1f9",
-      "proof": "local git object and root GitHub verification",
-      "ci_run_id": 39893020446,
-      "staging_run_id": 39893020498,
-      "conclusion": "success"
-    },
-    "tested_synthetic_merge": {
-      "commit": "744bf900006923984abc8f81c6b6745e66d35e5b",
-      "tree": "6f75cf6d58d363c4a7e8e69e6546a0dd9df9c1f9",
-      "proof": "root verified GitHub git-commits API; parents main33 and candidate0bfb"
-    },
     "ci": {
       "conclusion": "success",
       "head_sha": "0bfb7482ae15d542868556d8a038dd5cfa28f64b",
       "run_id": 39892409518
+    },
+    "merged_main": {
+      "ci_run_id": 39893020446,
+      "commit": "e372a6e54faa2b71e3e00b24e97eb6b1ff252175",
+      "conclusion": "success",
+      "proof": "local git object and root GitHub verification",
+      "staging_run_id": 39893020498,
+      "tree": "6f75cf6d58d363c4a7e8e69e6546a0dd9df9c1f9"
     },
     "security": {
       "review_job_prefixes": [
@@ -38,12 +32,18 @@
       ],
       "root_confirmed_clean": true
     },
+    "source_tree": "6f75cf6d58d363c4a7e8e69e6546a0dd9df9c1f9",
     "staging": {
       "conclusion": "success",
       "head_sha": "0bfb7482ae15d542868556d8a038dd5cfa28f64b",
       "native_checks": 19,
       "paper_checks": 14,
       "run_id": 39892409572
+    },
+    "tested_synthetic_merge": {
+      "commit": "744bf900006923984abc8f81c6b6745e66d35e5b",
+      "proof": "root verified GitHub git-commits API; parents main33 and candidate0bfb",
+      "tree": "6f75cf6d58d363c4a7e8e69e6546a0dd9df9c1f9"
     }
   },
   "candidate": "0bfb7482ae15d542868556d8a038dd5cfa28f64b",
@@ -696,7 +696,17 @@
     "capture_run": 39888106069,
     "capture_snapshot_fingerprint": "62aa6a0749d88a391730f463033da862b594fd2c38a624637faac2c76f044fae",
     "readiness_receipt_sha256": "e2ff14d585dc46834c706b93a7cdd95199b23a2ac0734a53bba74ace34359dc5",
-    "readiness_run": 39884723368
+    "readiness_run": 39884723368,
+    "reviewed_worker_refresh": {
+      "capture_head": "e15c7d6666653f9d05cc275cd2a7b1cbc0448b1d",
+      "capture_run": 39896944153,
+      "current_environment_preserved_at_apply": true,
+      "diagnosis_sha256": "981ac55a0e0490a97f193f9a9da8980fef9f0bb9f0c4b569ce58588ecb0994f9",
+      "historical_environment_equality_claimed": false,
+      "inventory_run": 39896649873,
+      "old_fingerprint": "4a96e23734af4890bc8acf5f06e21b599d1b7189eb9945591f5be6531f4e8015",
+      "root_reviewed": true
+    }
   },
   "format": 1,
   "gate_code": "runtime_candidate_accepted_ops_review_pending",
@@ -705,8 +715,8 @@
       "processes": {
         "recursive-agents": {
           "cmdline_sha256": "3af81a26d1c3f6b9c282e78e27f1e44b10e5637e0dd1e4bffa000ce9db344628",
-          "environment_sha256": "d42adcc150a7118900e2e6fedbde050c15e4c97ab25fba0115749da89b3cb558",
-          "start_ticks": "49272743"
+          "environment_sha256": "7114408c52fa333599f19e67fb478acf900acc62f5d3d34f59caabff42ff6846",
+          "start_ticks": "49868968"
         },
         "recursive-engine": {
           "cmdline_sha256": "7404f1c4b417e6ba13097b872c30d36389d06278c367e431baa3ff87972f555e",
@@ -838,8 +848,8 @@
             "explicit_proxy_configured": false,
             "explicitly_configured": false
           },
-          "pid": 499286,
-          "properties_sha256": "03c43ee2e2f2ce4cd46ba2e2f55a93a5af73dc8e404bfeeeb61a4dc21448a081",
+          "pid": 505078,
+          "properties_sha256": "60f7acae992533de8f951dc5fa6d9267e26f0f2c276a6c1092ca285d4ea6a60e",
           "resources": {
             "CPUQuotaPerSecUSec": "infinity",
             "CPUWeight": "[not set]",
@@ -1766,7 +1776,7 @@
       "omitted_private_or_cache_entries": 3
     }
   },
-  "installed_fingerprint": "4a96e23734af4890bc8acf5f06e21b599d1b7189eb9945591f5be6531f4e8015",
+  "installed_fingerprint": "e664c1fc4851566e21516be5285fe84ad8417c070f5bbe572cd6679327872b99",
   "preserved_extra_paths": [
     "data_pipeline/research_expiry_resolution.py",
     "data_pipeline/research_expiry_resolution_sensitivity.py",

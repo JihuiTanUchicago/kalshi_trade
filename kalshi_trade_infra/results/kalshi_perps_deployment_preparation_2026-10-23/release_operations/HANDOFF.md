@@ -32,8 +32,19 @@ not hold the new 17-character kind. Full schema must verify width at least 32.
 
 Installed source/control pins reconstruct capture `39888106069` against readiness
 `39884723368`; their receipt hashes and reconstruction proof are in `pins.json`.
-The combined expected installed fingerprint is
+The original combined expected installed fingerprint was
 `4a96e23734af4890bc8acf5f06e21b599d1b7189eb9945591f5be6531f4e8015`.
+After explicit review of inventory39896649873 and capture39896944153, the current
+expected fingerprint is
+`e664c1fc4851566e21516be5285fe84ad8417c070f5bbe572cd6679327872b99`.
+Only the agents worker PID/start and opaque environment/property hashes changed;
+all source/configuration files, commands, visible settings, resources and other
+services matched. Historical environment equality is not inferred from hashes.
+Fresh complete actual environments must still match before/after apply; no
+preservation, idle or trading guard is relaxed. See BASELINE_REFRESH_REVIEW.json.
+The inventory now emits the already-sanitized unit/process projection for future
+drift review. Whole-state fingerprints include a mutable omitted-cache counter;
+the reviewed source/control comparison excludes only that diagnostic count.
 All 120 installed source paths are pinned with hashes and metadata. The 128-file
 candidate retains these three extra installed diagnostic paths:
 
@@ -127,7 +138,7 @@ The fixed EnvironmentFile/drop-in loading follows
 
 ## Verification and remaining gates
 
-Final focused verification: **38 offline unittest cases passed**. Cases cover
+Initial focused verification: **38 offline unittest cases passed**. Cases cover
 all-kind busy/conflict inventory, arrivals during quiescence, full-schema ordering
 and width, locked BUSY races, native existing-state rejection, partial swaps,
 rollback, deadline-crossing proofs, reserve exhaustion before stop, ownership loss
@@ -157,3 +168,13 @@ and authorizes any one dispatch. Inventory may safely return waiting while the
 remaining research runs. Apply remains blocked until all counts are zero and all
 fresh pins, schema, privilege, admission and health gates pass. No standard
 unconditional deploy script is called.
+
+Root follow-up: original operations review dff976ef-82c2-4191-bf78-ecbb4e0d12e6
+completed all10changed files with no findings. Its inventory39896649873 waited on
+the worker-state mismatch, with zero active jobs and no application/schema/service
+mutation; cleanup passed. Existing read-only capture39896944153 confirmed the
+four-field agents-only difference and cleaned its encrypted temporary output.
+The explicit baseline/projection delta requires fresh focused/full-suite checks,
+an immutable incremental review and an exact-head all-kind inventory before apply.
+
+Root baseline-delta verification:39focused cases passed; existing app1,899passed/10skipped in26.28s; whitespace and owned Python syntax pass. No application, schema, service or real provider/account/order operation has occurred. Incremental immutable review is next.

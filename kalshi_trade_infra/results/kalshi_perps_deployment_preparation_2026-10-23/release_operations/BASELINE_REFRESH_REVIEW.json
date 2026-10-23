@@ -1,0 +1,53 @@
+{
+  "application_or_control_mutations": 0,
+  "cache_counter_qualification": "Whole-state fingerprint includes an omitted-bytecode/cache diagnostic count. Source comparison uses exact source files and all control maps; cache-only diagnostic differences are already excluded by the reviewed guard.",
+  "changes": [
+    {
+      "after": "7114408c52fa333599f19e67fb478acf900acc62f5d3d34f59caabff42ff6846",
+      "before": "d42adcc150a7118900e2e6fedbde050c15e4c97ab25fba0115749da89b3cb558",
+      "path": "processes.recursive-agents.environment_sha256"
+    },
+    {
+      "after": "49868968",
+      "before": "49272743",
+      "path": "processes.recursive-agents.start_ticks"
+    },
+    {
+      "after": 505078,
+      "before": 499286,
+      "path": "units.recursive-agents.pid"
+    },
+    {
+      "after": "60f7acae992533de8f951dc5fa6d9267e26f0f2c276a6c1092ca285d4ea6a60e",
+      "before": "03c43ee2e2f2ce4cd46ba2e2f55a93a5af73dc8e404bfeeeb61a4dc21448a081",
+      "path": "units.recursive-agents.properties_sha256"
+    }
+  ],
+  "evidence": {
+    "capture_head": "e15c7d6666653f9d05cc275cd2a7b1cbc0448b1d",
+    "capture_run": 39896944153,
+    "current_environment_preserved_at_apply": true,
+    "diagnosis_sha256": "981ac55a0e0490a97f193f9a9da8980fef9f0bb9f0c4b569ce58588ecb0994f9",
+    "historical_environment_equality_claimed": false,
+    "inventory_run": 39896649873,
+    "old_fingerprint": "4a96e23734af4890bc8acf5f06e21b599d1b7189eb9945591f5be6531f4e8015",
+    "root_reviewed": true
+  },
+  "new_fingerprint": "e664c1fc4851566e21516be5285fe84ad8417c070f5bbe572cd6679327872b99",
+  "next_gate": "immutable delta review and fresh all-kind inventory; no apply yet",
+  "old_fingerprint": "4a96e23734af4890bc8acf5f06e21b599d1b7189eb9945591f5be6531f4e8015",
+  "original_operations_head": "db23fdddc575b73c36a50c489d8377e00672f8d1",
+  "provider_account_order_calls": 0,
+  "rationale": "Worker PID/start changed. Current safe unit/process projection is explicitly adopted after read-only review; opaque historical environment/property hashes do not prove only rollover fields changed. Apply still compares fresh complete current private environments before/after, preserves the shared nonempty vault key, all protected files and resources, and refuses new drift. No guard or application setting is relaxed.",
+  "reviewer": "root",
+  "status": "explicitly_reviewed_current_worker_baseline",
+  "unchanged": [
+    "all source hashes and metadata",
+    "unit files",
+    "protected configuration files",
+    "command hashes",
+    "visible active/substate and perps flags",
+    "resources/restart settings",
+    "all non-agent services/processes"
+  ]
+}

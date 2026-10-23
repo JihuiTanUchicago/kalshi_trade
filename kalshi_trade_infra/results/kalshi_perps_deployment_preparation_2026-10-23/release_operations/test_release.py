@@ -357,6 +357,17 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual(report["status"], "waiting")
         self.assertEqual(self.backend.events, [])
 
+    def test_inventory_reports_only_safe_unit_and_process_projection_for_drift_review(self):
+        self.backend.active_counts = {**ZERO, "running": 1}
+        report, state, private = remote.inventory(self.backend, self.pins)
+        self.assertEqual(report["observed_units"], state["controls"]["units"])
+        self.assertEqual(report["observed_processes"], state["controls"]["processes"])
+        self.assertEqual(report["status"], "waiting")
+        self.assertNotIn("synthetic-private-secret", json.dumps(report))
+        self.assertNotIn("APP_SECRET_KEY", json.dumps(report))
+        self.assertNotIn("protected_config", report)
+        self.assertEqual(self.backend.events, [])
+
     def test_schema_and_compilation_precede_lock_and_any_service_operation(self):
         self.assertEqual(self.prepare()["status"], "prepared")
         result = remote.apply(self.backend, self.pins, self.release_id)

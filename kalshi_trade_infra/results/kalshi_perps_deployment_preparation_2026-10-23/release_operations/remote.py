@@ -475,6 +475,8 @@ def inventory(backend, pins):
     return {"status": "waiting" if differences or not database.idle(projection["job_counts"]) else "idle_inventory",
             "read_only": True, "candidate": pins["candidate"], "conflicts": differences,
             "installed_fingerprint": fingerprint(state), "source_fingerprint": fingerprint(source_files(state)),
+            "observed_units": state["controls"]["units"],
+            "observed_processes": state["controls"]["processes"],
             "job_counts": projection["job_counts"], "schema": projection,
             "application_changes": False, "service_operations": 0, "job_mutations": 0,
             "provider_calls_from_operations": 0}, state, env
