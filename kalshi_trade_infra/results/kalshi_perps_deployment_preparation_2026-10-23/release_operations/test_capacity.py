@@ -514,5 +514,160 @@ class LimitProjectionTests(unittest.TestCase):
                 capacity.observe_limits(guard, command, physical_total=16 * 1024**3)
 
 
+class CompatibilityProbeTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(dir=HERE)
+        self.root = Path(self.temp.name)
+        self.groups, self.proc = self.root / "cgroup", self.root / "proc"
+        self.worker = self.groups / capacity.CGROUP.lstrip("/") / "memory.max"
+        self.parent = self.worker.parent.parent / "memory.max"
+        self.mapping = self.proc / "123/cgroup"
+        self.worker.parent.mkdir(parents=True)
+        self.mapping.parent.mkdir(parents=True)
+        self.worker.write_text(str(capacity.OLD_MAX) + "\n")
+        self.parent.write_text("max\n")
+        self.mapping.write_text("0::" + capacity.CGROUP + "\n")
+        self.guard = types.SimpleNamespace(PROPERTIES=("MainPID", "MemoryMax", "Environment", "ExecStart", "CPUWeight", "DropInPaths"), PROC=self.proc)
+        self.values = {"MainPID": "123", "MemoryMax": str(capacity.OLD_MAX), "Environment": PRIVATE,
+                       "ExecStart": "/python " + PRIVATE, "CPUWeight": "100", "DropInPaths": "",
+                       "ControlGroup": capacity.CGROUP, "EffectiveMemoryMax": ""}
+        self.calls, self.uid = [], 0
+        self.original_lstat, self.original_fstat = Path.lstat, os.fstat
+        self.inode = self.mapping.stat().st_ino
+        owner = self
+        class Info(RootInfo):
+            def __getattr__(inner, name):
+                if name == "st_uid" and inner.original.st_ino == owner.inode:
+                    return owner.uid
+                return super().__getattr__(name)
+        self.stack = ExitStack()
+        self.stack.enter_context(patch.object(capacity, "CGROUP_ROOT", self.groups))
+        self.stack.enter_context(patch.object(capacity.Path, "lstat", lambda path, *a, **kw: Info(self.original_lstat(path, *a, **kw))))
+        self.stack.enter_context(patch.object(os, "fstat", side_effect=lambda fd: Info(self.original_fstat(fd))))
+        self.stack.enter_context(patch.object(capacity, "_physical_total", return_value=16 * 1024**3))
+
+    def tearDown(self):
+        self.stack.close()
+        self.temp.cleanup()
+
+    def command(self, args, *, timeout):
+        self.calls.append((args, timeout))
+        return "\n".join(k + "=" + v for k, v in self.values.items()).encode()
+
+    def probe(self, command=None):
+        result = capacity.compatibility_probe(self.guard, command or self.command)
+        self.assertNotIn(PRIVATE, json.dumps(result))
+        self.assertTrue(result["diagnostic_only"] and result["read_only"])
+        for field in ("service_operations", "job_mutations", "provider_calls_from_operations", "property_command_attempts"):
+            self.assertEqual(result[field], 0)
+        self.assertFalse(result["mutation_may_have_applied"])
+        return result
+
+    def test_one_fixed_show_read_and_bounded_read_only_file_opens(self):
+        original_open, opened = os.open, []
+        def read_only(path, flags, *args, **kwargs):
+            opened.append((Path(path), flags))
+            self.assertEqual(flags & os.O_ACCMODE, os.O_RDONLY)
+            self.assertFalse(flags & (os.O_CREAT | os.O_TRUNC | os.O_APPEND))
+            self.assertTrue(flags & os.O_NOFOLLOW)
+            return original_open(path, flags, *args, **kwargs)
+        with patch.object(os, "open", side_effect=read_only):
+            result = self.probe()
+        self.assertEqual(len(self.calls), 1)
+        args, timeout = self.calls[0]
+        self.assertEqual(args[:3], ["systemctl", "show", "recursive-agents.service"])
+        self.assertEqual(timeout, 3)
+        self.assertNotIn("--all", args)
+        self.assertEqual({path for path, flags in opened}, {self.worker, self.parent, self.mapping})
+        self.assertTrue(result["systemd"]["required_properties_present"])
+        self.assertEqual(result["computed_effective_limit_bytes"], capacity.OLD_MAX)
+        self.assertTrue(result["files"]["worker_proc_cgroup"]["exact_observer_membership"])
+
+    def test_missing_required_empty_properties_are_distinguished_from_optional_absence(self):
+        del self.values["Environment"]
+        del self.values["DropInPaths"]
+        del self.values["EffectiveMemoryMax"]
+        result = self.probe()
+        fields = result["systemd"]["properties"]
+        self.assertFalse(fields["Environment"]["present"] or fields["DropInPaths"]["present"])
+        self.assertFalse(result["systemd"]["required_properties_present"])
+        self.assertFalse(fields["EffectiveMemoryMax"]["present"])
+        self.assertTrue(result["files"]["worker_memory_max"]["read_format_valid"])
+        self.values["Environment"] = self.values["DropInPaths"] = ""
+        result = self.probe()
+        self.assertTrue(result["systemd"]["required_properties_present"])
+        self.assertFalse(result["systemd"]["effective_property_nonempty"])
+
+    def test_nonroot_proc_owner_is_reported_without_relaxing_the_observer(self):
+        self.uid = 1001
+        result = self.probe()
+        proc = result["files"]["worker_proc_cgroup"]
+        self.assertTrue(proc["exists"] and proc["regular_file"] and proc["read_format_valid"])
+        self.assertFalse(proc["root_owner"] or proc["observer_metadata_accepted"])
+        self.assertTrue(proc["exact_observer_membership"])
+
+    def test_unified_v1_hybrid_and_wrong_membership_never_return_mapping_text(self):
+        cases = [("0::" + capacity.CGROUP + "\n", True, False, True),
+                 ("5:memory:" + capacity.CGROUP + "\n", False, True, False),
+                 ("0::" + capacity.CGROUP + "\n5:memory:" + capacity.CGROUP + "\n", True, True, False),
+                 ("0::/user.slice/" + PRIVATE + "\n", True, False, False)]
+        for text, unified, memory_v1, exact in cases:
+            with self.subTest(unified=unified, memory_v1=memory_v1, exact=exact):
+                self.mapping.write_text(text)
+                proc = self.probe()["files"]["worker_proc_cgroup"]
+                self.assertEqual(proc["unified_mapping_present"], unified)
+                self.assertEqual(proc["v1_memory_mapping_present"], memory_v1)
+                self.assertEqual(proc["exact_observer_membership"], exact)
+
+    def test_private_malformed_unknown_or_duplicate_property_rows_are_redacted(self):
+        for raw in (b"Environment=secret\x00value\n", b"\xff" + PRIVATE.encode(),
+                    ("PRIVATE_TOKEN=" + PRIVATE + "\nMainPID=123\nMainPID=124\n").encode()):
+            with self.subTest(raw_length=len(raw)):
+                result = self.probe(lambda *a, **kw: raw)
+                self.assertFalse(result["systemd"]["rows_valid"])
+                self.assertNotIn("PRIVATE_TOKEN", json.dumps(result))
+                self.assertFalse(result["systemd"]["numeric_valid"]["MainPID"])
+
+    def test_invalid_numeric_pid_or_control_group_cannot_select_an_arbitrary_file(self):
+        self.values["MainPID"] = "../../" + PRIVATE
+        self.values["MemoryMax"] = PRIVATE
+        self.values["ControlGroup"] = "/" + PRIVATE
+        result = self.probe()
+        self.assertFalse(result["systemd"]["control_group_matches_fixed"])
+        self.assertEqual(result["systemd"]["numeric_values"], {})
+        self.assertFalse(result["files"]["worker_proc_cgroup"]["probed"])
+
+    def test_missing_symlink_and_bad_format_files_have_only_safe_metadata(self):
+        self.worker.unlink()
+        self.parent.write_text(PRIVATE)
+        result = self.probe()
+        self.assertFalse(result["files"]["worker_memory_max"]["exists"])
+        self.assertEqual(result["files"]["worker_memory_max"]["error_code"], "capacity_probe_file_missing")
+        self.assertFalse(result["files"]["parent_memory_max"]["read_format_valid"])
+        self.worker.symlink_to(self.parent)
+        result = self.probe()
+        self.assertTrue(result["files"]["worker_memory_max"]["exists"])
+        self.assertFalse(result["files"]["worker_memory_max"]["regular_file"])
+        self.assertFalse(result["files"]["worker_memory_max"]["read_succeeded"])
+
+    def test_bounded_response_and_command_exceptions_never_reveal_raw_errors(self):
+        for source in (lambda *a, **kw: PRIVATE.encode() * (1024 * 1024),
+                       lambda *a, **kw: (_ for _ in ()).throw(RuntimeError(PRIVATE))):
+            result = self.probe(source)
+            self.assertIn(result["systemd"]["error_code"],
+                          ("capacity_probe_response_invalid", "capacity_probe_systemd_read_failed"))
+            self.assertFalse(result["systemd"]["required_properties_present"])
+
+    def test_effective_value_is_numeric_only_and_must_agree_with_kernel_bound(self):
+        self.values["EffectiveMemoryMax"] = "123"
+        result = self.probe()
+        self.assertTrue(result["systemd"]["numeric_valid"]["EffectiveMemoryMax"])
+        self.assertFalse(result["reported_effective_limit_matches"])
+        self.values["EffectiveMemoryMax"] = PRIVATE
+        result = self.probe()
+        self.assertFalse(result["systemd"]["numeric_valid"]["EffectiveMemoryMax"])
+        self.assertFalse(result["reported_effective_limit_matches"])
+
+
 if __name__ == "__main__":
     unittest.main()

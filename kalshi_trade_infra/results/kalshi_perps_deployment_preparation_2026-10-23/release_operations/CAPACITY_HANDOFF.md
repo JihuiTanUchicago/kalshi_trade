@@ -118,3 +118,36 @@ publication, fresh baseline review, any dispatch, resource acceptance and the la
 idle-only perps deployment. Shared trackers/pins/workflow/runner/collector/remote
 are intentionally unchanged by this workstream. This handoff is the scoped
 development-progress evidence record.
+
+## Read-only compatibility addendum after run 39902392787
+
+Actual capacity run 39902392787 at operations commit 9d25f3c81e427360b9a369c0e8c240c30a654359
+stopped before the property command with capacity_projection_invalid. Its canonical
+release receipt reports zero command attempts, no possible mutation, no override,
+matching source/control pins, all job counts zero, host headroom and positive own
+worker OOM evidence. This does not prove which compatibility gate rejected the host.
+No property retry, baseline change or runtime guard relaxation was performed here.
+
+New `compatibility_probe(guard, command=None)` is read-only. It issues exactly one
+fixed three-second systemctl show request using the original PROPERTIES plus
+ControlGroup/EffectiveMemoryMax, without adding --all. Only static whitelisted
+property presence/row-validity booleans and validated numeric PID/limits are returned.
+Raw Environment/ExecStart values, unknown property names/values, systemd output,
+kernel mapping text and exception bodies never enter the receipt.
+
+The probe also reads only the fixed worker/parent cgroup limit files and the
+validated numeric worker PID's proc cgroup file. It projects existence, type,
+root ownership, parent safety, bounded read/format and mapping booleans, including
+v1 memory versus unified membership. Diagnostic reads can report non-root proc
+ownership without altering the strict observer's owner requirement. File opens
+are read-only/no-follow/nonblocking and bounded to 4096 bytes; systemd output is
+bounded to 1 MiB. The physical-memory helper retains its existing bounded numeric
+read. All errors use fixed codes; every mutation/provider/job counter remains zero.
+
+Focused capacity suite now passes **32 tests**, including nine probe regression
+cases for omitted required versus optional properties, one unchanged show request,
+read-only file flags, non-root proc ownership, unified/v1/hybrid mapping, private
+malformed/unknown/duplicate rows, invalid PID/path, missing/symlink/bad-format files,
+bounded response/error redaction, and effective-limit disagreement. Root owns the
+inventory-only bootstrap integration, immutable review and any read-only dispatch.
+The original capacity write implementation and every acceptance gate are unchanged.

@@ -318,3 +318,166 @@ def run(backend, pins, *, command=None):
         result["error_code"] = str(exc) if isinstance(exc, CapacityError) and str(exc) in ERRORS else "capacity_operation_failed"
         result["mutation_may_have_applied"] = attempted
         return result
+
+
+def compatibility_probe(guard, command=None):
+    """Read-only diagnosis of observer gates; never expose raw property/mapping values.
+
+    Deliberately retain the original query without --all. This probe neither
+    repairs omitted properties nor relaxes any capacity write precondition.
+    """
+    command = command or remote.command
+    known = ("MainPID", "ActiveState", "SubState", "FragmentPath", "DropInPaths", "NeedDaemonReload",
+             "Restart", "RestartUSec", "Environment", "EnvironmentFiles", "ExecStart", "MemoryHigh",
+             "MemoryMax", "MemorySwapMax", "CPUQuotaPerSecUSec", "CPUWeight", "TasksMax", "Nice",
+             "ControlGroup", "EffectiveMemoryMax")
+    result = {"status": "capacity_compatibility_observed", "diagnostic_only": True, "read_only": True,
+              "application_changes": False, "service_operations": 0, "job_mutations": 0,
+              "provider_calls_from_operations": 0, "property_command_attempts": 0,
+              "mutation_may_have_applied": False}
+    systemd = {"command_succeeded": False, "response_within_limit": False, "utf8_valid": False,
+               "rows_valid": False, "unexpected_rows_present": False, "duplicate_rows_present": False,
+               "required_properties_present": False, "control_group_matches_fixed": False,
+               "properties": {name: {"requested": False, "present": False, "row_valid": False} for name in known},
+               "numeric_valid": {name: False for name in ("MainPID", "MemoryMax", "EffectiveMemoryMax")},
+               "numeric_values": {}, "effective_property_nonempty": False}
+    result["systemd"] = systemd
+    values, duplicated = {}, set()
+    try:
+        names = tuple(dict.fromkeys((*guard.PROPERTIES, "ControlGroup", "EffectiveMemoryMax")))
+        if not names or not set(names) <= set(known):
+            systemd["error_code"] = "capacity_probe_guard_projection_unsupported"
+        else:
+            for name in names:
+                systemd["properties"][name]["requested"] = True
+            raw = command(["systemctl", "show", UNIT, "--property=" + ",".join(names)], timeout=3)
+            systemd["command_succeeded"] = True
+            if not isinstance(raw, bytes) or len(raw) > 1024 * 1024:
+                systemd["error_code"] = "capacity_probe_response_invalid"
+            else:
+                systemd["response_within_limit"] = True
+                text = raw.decode("utf-8")
+                systemd["utf8_valid"] = True
+                rows_valid = True
+                for line in text.splitlines():
+                    name, delimiter, value = line.partition("=")
+                    if not delimiter or name not in names or "\x00" in value:
+                        rows_valid = False
+                        systemd["unexpected_rows_present"] = True
+                        continue
+                    systemd["properties"][name]["present"] = True
+                    if name in values:
+                        rows_valid = False
+                        duplicated.add(name)
+                        systemd["duplicate_rows_present"] = True
+                    else:
+                        values[name] = value
+                        systemd["properties"][name]["row_valid"] = True
+                for name in duplicated:
+                    systemd["properties"][name]["row_valid"] = False
+                systemd["rows_valid"] = rows_valid
+                systemd["required_properties_present"] = set(names) - {"EffectiveMemoryMax"} <= set(values)
+    except Exception:
+        systemd["error_code"] = "capacity_probe_systemd_read_failed"
+    for name in ("MainPID", "MemoryMax", "EffectiveMemoryMax"):
+        value = values.get(name, "")
+        if name not in duplicated and re.fullmatch(r"[0-9]{1,20}", value) and int(value) < 2**64:
+            systemd["numeric_valid"][name] = True
+            systemd["numeric_values"][name] = int(value)
+    systemd["effective_property_nonempty"] = bool(values.get("EffectiveMemoryMax", ""))
+    systemd["control_group_matches_fixed"] = "ControlGroup" not in duplicated and values.get("ControlGroup") == CGROUP
+
+    def file_probe(path, kind):
+        item = {"exists": False, "metadata_observed": False, "regular_file": False,
+                "root_owner": False, "root_group": False, "not_group_or_other_writable": False,
+                "parents_no_symlinks": True, "parents_root_safe": True, "read_succeeded": False,
+                "metadata_stable": False, "read_format_valid": False, "observer_metadata_accepted": False}
+        try:
+            for parent in reversed(path.parents):
+                info = parent.lstat()
+                directory = stat.S_ISDIR(info.st_mode)
+                item["parents_no_symlinks"] &= directory
+                item["parents_root_safe"] &= directory and info.st_uid == 0 and info.st_gid == 0 and not info.st_mode & 0o022
+            first = path.lstat()
+            item.update(exists=True, metadata_observed=True, regular_file=stat.S_ISREG(first.st_mode),
+                        root_owner=first.st_uid == 0, root_group=first.st_gid == 0,
+                        not_group_or_other_writable=not bool(first.st_mode & 0o022))
+            if not item["regular_file"] or not item["parents_no_symlinks"]:
+                item["error_code"] = "capacity_probe_file_type_rejected"
+                return item
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK)
+            with os.fdopen(descriptor, "rb") as stream:
+                opened = os.fstat(stream.fileno())
+                if not stat.S_ISREG(opened.st_mode):
+                    item["error_code"] = "capacity_probe_file_type_rejected"
+                    return item
+                content = stream.read(4097)
+                last = os.fstat(stream.fileno())
+            identity = lambda info: (info.st_dev, info.st_ino, info.st_uid, info.st_gid, info.st_mode)
+            item["metadata_stable"] = identity(first) == identity(opened) == identity(last) == identity(path.lstat())
+            if len(content) > 4096:
+                item["error_code"] = "capacity_probe_file_read_invalid"
+                return item
+            text = content.decode("ascii")
+            item["read_succeeded"] = True
+            item["observer_metadata_accepted"] = (item["metadata_stable"] and item["root_owner"]
+                and item["not_group_or_other_writable"] and (kind == "proc" or item["parents_root_safe"]))
+            if kind in ("worker", "parent"):
+                numeric = re.fullmatch(r"[0-9]{1,20}\n?", text)
+                unlimited = text in ("max", "max\n")
+                item["unlimited"] = unlimited
+                item["read_format_valid"] = bool(numeric and int(text) < 2**64 or kind == "parent" and unlimited)
+                if numeric and int(text) < 2**64:
+                    item["limit_bytes"] = int(text)
+                if kind == "parent":
+                    item["permits_new_limit"] = unlimited or bool(numeric and NEW_MAX <= int(text) < 2**64)
+            else:
+                item.update(unified_mapping_present=False, v1_memory_mapping_present=False,
+                            unified_worker_membership=False, v1_memory_worker_membership=False,
+                            exact_observer_membership=text == "0::" + CGROUP + "\n")
+                lines = text.splitlines()
+                item["read_format_valid"] = bool(lines)
+                for line in lines:
+                    match = re.fullmatch(r"([0-9]{1,10}):([A-Za-z0-9_,.=-]*):(/[^\x00\r\n]*)", line)
+                    if not match:
+                        item["read_format_valid"] = False
+                        continue
+                    unified = match[1] == "0" and match[2] == ""
+                    memory_v1 = match[1] != "0" and "memory" in match[2].split(",")
+                    item["unified_mapping_present"] |= unified
+                    item["v1_memory_mapping_present"] |= memory_v1
+                    item["unified_worker_membership"] |= unified and match[3] == CGROUP
+                    item["v1_memory_worker_membership"] |= memory_v1 and match[3] == CGROUP
+            return item
+        except FileNotFoundError:
+            item["error_code"] = "capacity_probe_file_missing"
+        except Exception:
+            item["error_code"] = "capacity_probe_file_read_failed"
+        return item
+
+    group = CGROUP_ROOT / CGROUP.lstrip("/")
+    files = {"worker_memory_max": file_probe(group / "memory.max", "worker"),
+             "parent_memory_max": file_probe(group.parent / "memory.max", "parent")}
+    pid = systemd["numeric_values"].get("MainPID", 0)
+    if 0 < pid < 2**31:
+        files["worker_proc_cgroup"] = file_probe(guard.PROC / str(pid) / "cgroup", "proc")
+    else:
+        files["worker_proc_cgroup"] = {"probed": False, "error_code": "capacity_probe_pid_invalid"}
+    result["files"] = files
+    physical = {"read_succeeded": False, "minimum_total_met": False}
+    try:
+        physical["total_bytes"] = _physical_total()
+        physical["read_succeeded"] = True
+        physical["minimum_total_met"] = physical["total_bytes"] >= MIN_TOTAL
+    except Exception:
+        physical["error_code"] = "capacity_probe_physical_read_failed"
+    result["physical_memory"] = physical
+    worker, parent = files["worker_memory_max"], files["parent_memory_max"]
+    if worker.get("read_format_valid") and parent.get("read_format_valid") and physical["read_succeeded"]:
+        limits = [worker["limit_bytes"], physical["total_bytes"]]
+        if not parent["unlimited"]:
+            limits.append(parent["limit_bytes"])
+        result["computed_effective_limit_bytes"] = min(limits)
+        result["reported_effective_limit_matches"] = (not systemd["effective_property_nonempty"] or
+            systemd["numeric_values"].get("EffectiveMemoryMax") == result["computed_effective_limit_bytes"])
+    return result
