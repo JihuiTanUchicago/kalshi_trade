@@ -1,0 +1,94 @@
+{
+  "candidate": "0bfb7482ae15d542868556d8a038dd5cfa28f64b",
+  "expected_main_commit": "e372a6e54faa2b71e3e00b24e97eb6b1ff252175",
+  "file_hashes": {
+    ".github/workflows/deploy.yml": {
+      "bytes": 1893,
+      "sha256": "061ee2903f207e6d2dfaf01e2d694e1a35152d053b3f2b7bb4a6c71c22aa02da"
+    },
+    "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/HANDOFF.md": {
+      "bytes": 9626,
+      "sha256": "41077960ec4275cedd0717ab234eb5135106d34837c9b3238d3d4497e9c62fb9"
+    },
+    "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/collect.py": {
+      "bytes": 2258,
+      "sha256": "678971d24176b26977dbd05b0b47d60a282287e72495bdad30888be12375c050"
+    },
+    "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/pins.json": {
+      "bytes": 59509,
+      "sha256": "d882e8ba323a9e77d40ddceb2f109c9f9d296394cf54c07caa6b72267b7ce131"
+    },
+    "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/release_database.py": {
+      "bytes": 6296,
+      "sha256": "d9702f9deab0ed6092d2a6d8f4df0560f44be5ff8eb7c3931c3c07fbf0fdb6f5"
+    },
+    "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/release_schema.py": {
+      "bytes": 5067,
+      "sha256": "c377fbea662bde9e2853565dcd1ae58fcf7cb23afe08c724e54826ac791dbb44"
+    },
+    "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/remote.py": {
+      "bytes": 34824,
+      "sha256": "f2640ec2e671cdb7eef12285bc65048951c6477aa456003de216a18c10b41193"
+    },
+    "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/runner.py": {
+      "bytes": 14009,
+      "sha256": "b6469f4ac64e570264c7c12dc2d097cf8d04113d80fda3e980f9965825588f7d"
+    },
+    "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/test_release.py": {
+      "bytes": 41290,
+      "sha256": "329bba70be7d8a08aed9ae1a6e4300d3a47137d567286753718fa7d02bad8629"
+    }
+  },
+  "file_manifest_sha256": "c2ce90e91c02916ecabe593c83bb1b1ad7ff28af09433a6c43c6a2fcfe9c4195",
+  "format": 1,
+  "installed_fingerprint": "4a96e23734af4890bc8acf5f06e21b599d1b7189eb9945591f5be6531f4e8015",
+  "limits_seconds": {
+    "admission": 120,
+    "forward": 30,
+    "in_flight_forward_reserve": 5,
+    "recovery_budget": 74,
+    "ssm_apply_execution": 420,
+    "ssm_apply_poll": 480,
+    "ssm_prepare_execution": 480,
+    "ssm_prepare_poll": 540,
+    "workflow": 1800
+  },
+  "not_performed": {
+    "account_order_call": true,
+    "commit": true,
+    "dispatch": true,
+    "production_change": true,
+    "provider_call": true,
+    "push": true
+  },
+  "operations_base": "e15c7d6666653f9d05cc275cd2a7b1cbc0448b1d",
+  "remaining_gates": [
+    "root immutable operations/security review",
+    "operations publication and exact-head approval",
+    "fresh main/source/control inventory",
+    "all-kind zero active jobs and locked fresh zero native state",
+    "existing LOCK TABLES privileges and onbox source/environment/HTTP acceptance"
+  ],
+  "source_tree": "6f75cf6d58d363c4a7e8e69e6546a0dd9df9c1f9",
+  "status": "offline_verified_frozen_for_root_review",
+  "verification": {
+    "focused_unittest": {
+      "command": "python -B -m unittest discover -s kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations -p 'test_*.py' -q",
+      "database": false,
+      "failed": 0,
+      "network": false,
+      "passed": 38
+    },
+    "git_diff_check": true,
+    "owned_python_syntax": {
+      "modules": 6,
+      "passed": true
+    },
+    "root_reported_existing_app_suite": {
+      "executed_by_this_workstream": false,
+      "passed": 1899,
+      "skipped": 10
+    }
+  },
+  "verified_at_utc": "2026-10-23T03:28:29Z"
+}
