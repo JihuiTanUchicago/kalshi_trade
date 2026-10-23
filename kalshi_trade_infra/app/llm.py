@@ -73,6 +73,13 @@ class LLMThrottled(LLMError):
     pass
 
 
+class LLMStalled(LLMError):
+    """A streaming call that went silent mid-generation (no token for STREAM_STALL_SECONDS) — a
+    model-side stall, not a prompt error. Its own subclass so the fallback wrapper fails it OVER to
+    the next model (a fresh stream on a different model usually won't stall) instead of killing the run."""
+    pass
+
+
 def _is_daily_quota(e) -> bool:
     """A DAILY token-quota throttle ('Too many tokens per day') — it won't clear within a run's
     retry budget (it resets ~daily), so there's no point backing off; fall over to another model now."""
@@ -174,8 +181,8 @@ def _bedrock_stream(client, kwargs: Dict[str, Any], on_delta: "Callable[[str], N
             kind, payload = q.get(timeout=stall_seconds)
         except queue.Empty:
             _safe_close_stream(resp)
-            raise LLMError("the model stalled mid-stream: no token for %ds. Aborting the call so the "
-                           "run can recover instead of hanging." % int(stall_seconds))
+            raise LLMStalled("the model stalled mid-stream: no token for %ds. Aborting the call so the "
+                             "run can recover instead of hanging." % int(stall_seconds))
         if kind == "done":
             break
         if kind == "err":
@@ -210,16 +217,20 @@ def _bedrock(system: str, messages: List[Dict[str, str]], model: "Optional[str]"
     # next model. If ALL are cooling down, try the full chain anyway (better to attempt than refuse).
     now = time.monotonic()
     chain = [m for m in full if _MODEL_COOLDOWN.get(m, 0.0) <= now] or full
-    last: "Optional[LLMThrottled]" = None
+    last: "Optional[LLMError]" = None
     for i, mid in enumerate(chain):
         try:
             return _bedrock_once(system, messages, mid, on_delta)
-        except LLMThrottled as e:
+        except (LLMThrottled, LLMStalled) as e:
+            # Both mean "this model didn't produce a result" — quota exhaustion or a mid-stream
+            # stall — so fail OVER to the next model instead of killing the run. Only a daily-quota
+            # throttle gets a cooldown (a stall is transient, the model isn't out of capacity).
             last = e
-            if _is_daily_quota(e):
+            if isinstance(e, LLMThrottled) and _is_daily_quota(e):
                 _MODEL_COOLDOWN[mid] = time.monotonic() + _DAILY_COOLDOWN_SEC  # auto-expires -> retried later
             if i + 1 < len(chain):
-                print("[llm] %s quota exhausted (%s); falling back to %s" % (mid, e, chain[i + 1]), flush=True)
+                why = "quota exhausted" if isinstance(e, LLMThrottled) else "stalled mid-stream"
+                print("[llm] %s %s (%s); falling back to %s" % (mid, why, e, chain[i + 1]), flush=True)
                 continue
             raise
     raise last if last else LLMError("no model to call")  # unreachable: chain is never empty

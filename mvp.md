@@ -23,7 +23,7 @@ A self-improving alpha discovery pipeline, from ideation, to similation, and fin
 
 ## TODO / Working Queue
 
-- [working: offline/public-feed verified; activation pending] Bitcoin Kalshi perpetual data and research: native candles/funding/observations, causal replay and frozen statistical validation; Research only in both themes and all perpetual execution blocked. 1,899 Python pass (10 skips); prior unchanged 196 frontend + 8 Meridian checks pass. Explicit proxy and native metadata fixes verified real production/demo retrieval. Default off; usable candle coverage, deployment-server/database, queued-model and rollout gates remain. [Handoff](kalshi_trade_infra/results/kalshi_bitcoin_perps_2026-10-23/HANDOFF.md).
+- [working: real-money perps release] Native Bitcoin perps orders with Kalshi's own margin/leverage limits and explicit owner confirmation for every order. No Tau financial caps or autonomous execution; binary live and research-strategy guards preserved. Encrypted source recovery passed; production fixes/header CSS being reconciled. Native client/store/service/Funds UI and hosted acceptance harness implemented;2,253 Python/10 skipped and226+8 frontend checks pass. Hosted execution, immutable security review and guarded rollout pending. [Handoff](kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/HANDOFF.md).
 
 - [in progress] Align default Tau masthead and Hot Markets black divider; preserve Meridian and installed extra CSS. [Handoff](kalshi_trade_infra/results/header_alignment_2026-10-22/HANDOFF.md).
 
@@ -64,6 +64,8 @@ These are NOT done. Completed items move to **## Done** below.
 - `[blocked: AWS]` **Onboard Opus 5.5** (`claude-opus-5-5`) + surface model comparison — tester wants it for NBA season. Blocked on AWS Bedrock model access like the other premium models.
 
 ## Done
+
+- **2026-10-23 — Bitcoin perpetual source merged and production connectivity checked:** [PR #21](https://github.com/JihuiTanUchicago/kalshi_trade/pull/21) merged as 33bfc957; 1,899 Python /10 skipped, 196+8 frontend, CI and hosted full-schema MySQL/HTTP checks pass. The actual server returned native candles, funding and observations in five HTTP200 requests. Publication/preflight are complete; rollout and activation remain in the queue. No production source/schema/service/job/flag mutation. [Evidence](kalshi_trade_infra/results/kalshi_bitcoin_perps_2026-10-23/HANDOFF.md).
 
 - **2026-10-21 — Meridian compact theme deployed:** the retained workspace is available through Settings → Theme → Meridian. Tau default assets are unchanged. Whole-package rollout, full installed schema, public 200/hash/version checks and independent acceptance passed (run39463270100); no service restart, job mutation or provider/order call. [Handoff](kalshi_trade_infra/results/meridian_workspace_2026-10-21/HANDOFF.md).
 

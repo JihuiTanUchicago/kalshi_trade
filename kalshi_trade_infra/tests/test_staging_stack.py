@@ -331,7 +331,8 @@ class ComposeContractTests(unittest.TestCase):
         self.assertEqual(copies, ["COPY requirements.txt requirements.txt", "COPY app/ app/",
                                  "COPY data_pipeline/ data_pipeline/",
                                  "COPY staging/entrypoint.py /usr/local/lib/tau-staging/entrypoint.py",
-                                 "COPY scripts/paper_staging_smoke.py scripts/paper_staging_smoke.py"])
+                                 "COPY scripts/paper_staging_smoke.py scripts/paper_staging_smoke.py",
+                                 "COPY scripts/kalshi_perps_staging_smoke.py scripts/kalshi_perps_staging_smoke.py"])
         ignored = (HERE / "staging/Dockerfile.dockerignore").read_text().splitlines()
         self.assertIn("**", ignored)
         for expected in ("!app/**", "!data_pipeline/**", "**/.env*", "**/.state/**",

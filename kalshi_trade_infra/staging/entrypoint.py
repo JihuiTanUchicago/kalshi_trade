@@ -13,7 +13,7 @@ ROOT = Path("/srv/tau-paper-staging")
 SECRET_ROOT = Path("/run/secrets")
 PYTHON = "/usr/local/bin/python"
 RUNTIME_UID = RUNTIME_GID = 10001
-MODES = ("schema", "web", "verify")
+MODES = ("schema", "web", "verify", "verify-perps")
 SECRET_FILES = ("mysql_password", "app_secret_key")
 _PASSWORD = re.compile(r"[A-Za-z0-9_-]{32,128}\Z")
 
@@ -72,6 +72,8 @@ def child_environment(mode: str, values: dict) -> dict[str, str]:
         "TAU_STAGING_DISPOSABLE_DB": "1", "APP_HOST": "127.0.0.1", "APP_PORT": "8091",
         "APP_PUBLIC_URL": "http://127.0.0.1:8091", "APP_DEV_LOGIN": "0", "APP_INSECURE_COOKIES": "1",
         "APP_LIVE_TRADING_ENABLED": "0", "APP_NO_SIDE_LIVE_ENABLED": "0",
+        "TAU_KALSHI_PERPS_ENABLED": "0", "TAU_KALSHI_PERPS_LIVE_ENABLED": "0",
+        "TAU_KALSHI_PERPS_ENVIRONMENT": "production", "TAU_KALSHI_PERPS_LIVE_ENVIRONMENT": "production",
         "TAU_ALPACA_PAPER_ENABLED": "1", "TAU_ALPACA_PAPER_MAX_ORDER_USD": "500",
         "TAU_DISABLE_CATALOG_MARKETS": "1", "TAU_ALPACA_ENABLED": "0", "TAU_MASSIVE_ENABLED": "0",
         "TAU_DATABENTO_ENABLED": "0", "TAU_EXA_ENABLED": "0", "TAU_EXA_HISTORICAL_ENABLED": "0",
@@ -85,8 +87,12 @@ def child_environment(mode: str, values: dict) -> dict[str, str]:
         # Preserve app.server.main's existing guard: a non-loopback bind always
         # has development sign-in OFF, even though Compose publishes loopback.
         env.update(APP_HOST="0.0.0.0", APP_PORT="8090", APP_PUBLIC_URL="http://127.0.0.1:18090")
-    elif mode == "verify":
+    elif mode in ("verify", "verify-perps"):
         env["APP_DEV_LOGIN"] = "1"  # No published port; the harness uses loopback.
+        if mode == "verify-perps":
+            # Only this one-shot, unexposed process replaces the broker client
+            # with a synthetic fixture before starting its loopback HTTP server.
+            env["TAU_KALSHI_PERPS_LIVE_ENABLED"] = "1"
     return env
 
 
@@ -94,9 +100,10 @@ def command(mode: str) -> list[str]:
     require(mode in MODES, "invalid_staging_mode_or_secrets")
     # -I ignores inherited Python paths; only this baked, reviewed package root
     # is explicitly inserted. No environment-provided module/arguments run.
-    if mode == "verify":
+    if mode in ("verify", "verify-perps"):
+        script = "kalshi_perps_staging_smoke.py" if mode == "verify-perps" else "paper_staging_smoke.py"
         code = ("import runpy,sys; sys.path.insert(0," + repr(str(ROOT)) + "); "
-                "runpy.run_path(" + repr(str(ROOT / "scripts/paper_staging_smoke.py")) + ",run_name='__main__')")
+                "runpy.run_path(" + repr(str(ROOT / "scripts" / script)) + ",run_name='__main__')")
     else:
         module = "app.schema" if mode == "schema" else "app.server"
         code = ("import runpy,sys; sys.path.insert(0," + repr(str(ROOT)) + "); "

@@ -191,7 +191,7 @@ def test_too_little_history_fails_before_spending_on_the_model(monkeypatch):
     store = Store(monkeypatch)
     model, prompts = scripted([])
     agent.run_research(Conn(), RUN, model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=2))
-    assert store.finished[0] == "failed" and prompts == []
+    assert store.finished[0] == "stopped" and prompts == []
 
 
 def test_unknown_pinned_market_fails_cleanly_not_as_keyerror(monkeypatch):

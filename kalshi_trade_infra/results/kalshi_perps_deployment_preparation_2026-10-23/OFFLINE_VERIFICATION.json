@@ -1,0 +1,34 @@
+{
+  "observed_at_utc": "2026-10-23T02:39:09.132082+00:00",
+  "status": "offline_verified",
+  "python": {
+    "command": "python -m pytest tests/ -q",
+    "passed": 2253,
+    "skipped": 10,
+    "seconds": 29.95
+  },
+  "frontend": {
+    "command": "node --test tests/*.mjs",
+    "passed": 226,
+    "additional_meridian_reconciliation_passed": 8
+  },
+  "syntax": "passed",
+  "whitespace": "passed",
+  "native_transport_focused_passed": 122,
+  "store_service_focused_passed": 137,
+  "ui_focused_passed": 30,
+  "staging_focused_passed": 107,
+  "hosted_staging": "pending",
+  "production_mutations": 0,
+  "real_orders": 0,
+  "per_user_manual_confirmation": true,
+  "financial_limit_authority": "Kalshi native",
+  "review_fixes": [
+    "agent_action_envelope",
+    "individual_fill_limit",
+    "key_change_serialization",
+    "cancel_uncertainty_preserved",
+    "native_count_ui_normalization"
+  ],
+  "formal_immutable_diff_review": "pending"
+}

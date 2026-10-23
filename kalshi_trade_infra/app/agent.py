@@ -140,6 +140,18 @@ THESIS_MAX_STEPS = max(1, int(os.getenv("TAU_THESIS_MAX_STEPS", "20")))
 # RUN_STALL_SECONDS + ABANDONED_AFTER regardless of WHERE it froze (load, model, backtest). Env-tunable.
 RUN_HEARTBEAT_EVERY = max(5, int(os.getenv("TAU_RUN_HEARTBEAT_EVERY", "15")))
 RUN_STALL_SECONDS = max(30, int(os.getenv("TAU_RUN_STALL_SECONDS", "150")))
+# The slot-freeing guard is the ATTEMPT bound below (work done), NOT a wall clock: a research session
+# has no time limit — a long run that keeps making progress is fine, and being stopped is never a
+# "failure" (see the `stopped` terminal status), so there is deliberately no RUN_MAX_SECONDS here.
+# Root-cause backstop for the unbounded proposing loop: it stops on survivors reaching `budget`, but
+# an all-abandon market never adds a survivor, so cap theses ATTEMPTED (developed, not just kept) at
+# this multiple of budget. A healthy market hits the survivor cap long before this; only a doomed
+# surface trips it, failing fast instead of spinning. Env-tunable.
+EXPLORE_ATTEMPT_MULT = max(1, int(os.getenv("TAU_EXPLORE_ATTEMPT_MULT", "4")))
+# Bounded in-place retry for a TRANSIENT RDS drop during a data load (read-only, idempotent, its own
+# connection). Absorbs a blip without the retry-storm risk of re-queuing the whole run. Env-tunable.
+LOAD_RETRIES = max(0, int(os.getenv("TAU_LOAD_RETRIES", "2")))
+LOAD_RETRY_BACKOFF = max(0.1, float(os.getenv("TAU_LOAD_RETRY_BACKOFF", "1.5")))
 
 RESEARCH_SYSTEM = """You are a quantitative researcher at a disciplined prediction-market
 fund, trading Kalshi binary contracts (YES pays $1 if the event settles, NO pays $1 if it does
@@ -537,9 +549,40 @@ def research_unavailable_reason(market: Optional[str]) -> Optional[str]:
     return None
 
 
-def _pick_market(run: Dict, model: ModelFn, usage: Usage, log) -> str:
+def _researchable_keys(cur) -> List[str]:
+    """Market keys the autopilot may pick for its OWN choice: only those with a real backtest
+    surface (collected candle history / a live spot feed), so it stops picking data-less markets
+    that just fail at load — the proactive complement to the reactive fail-fast/backoff. Reuses the
+    server picker's tested readiness logic (lazy import avoids the server->agent cycle). Empty ->
+    fail open (offer all), so a cold/edge DB never blocks research entirely."""
+    from app import server  # lazy: server imports agent at module load, so import it at call time
+    try:
+        ready = [m["key"] for m in server._researchable_markets(cur) if m["has_data"]]
+    except Exception:  # noqa: BLE001 - a readiness-lookup hiccup must never block research
+        return list(MARKETS)
+    return ready or list(MARKETS)
+
+
+def _research_history_line(cur, user_id: int) -> str:
+    """One-line CROSS-market summary of what this user already researched (per market: tried/passed),
+    so the agent's own market pick builds on history instead of re-choosing blind. Empty for a user
+    with no research yet."""
+    try:
+        rows = repo.research_summary(cur, user_id)
+    except Exception:  # noqa: BLE001 - a history-lookup hiccup must never block/fail research
+        return ""
+    if not rows:
+        return ""
+    parts = ["%s (%d tried, %d passed)"
+             % (MARKETS[r["market"]].label if r["market"] in MARKETS else r["market"],
+                r["tried"], r["passed"]) for r in rows]
+    return "Your past research across markets — " + "; ".join(parts) + "."
+
+
+def _pick_market(run: Dict, model: ModelFn, usage: Usage, log, keys: Optional[List[str]] = None, history: str = "") -> str:
     """When the user didn't pin a market, let the agent choose the one whose contracts best
-    fit the idea (guided by the brief). One cheap call before the research loop."""
+    fit the idea (guided by the brief + the user's cross-market research history), from the
+    data-ready `keys` only. One cheap call before the research loop."""
     idea = (run.get("prompt") or "").strip() or "any durable, fee-surviving edge"
     from app.kalshi_perps_data import Config as PerpsConfig
     from app.market_data_common import MarketDataError
@@ -547,11 +590,14 @@ def _pick_market(run: Dict, model: ModelFn, usage: Usage, log) -> str:
         perps_enabled = PerpsConfig.from_env().enabled
     except (ValueError, MarketDataError):
         perps_enabled = False
-    choices = {k: m for k, m in MARKETS.items() if m.kind != "perpetual" or perps_enabled}
-    opts = "\n".join("- %s: %s" % (k, m.label) for k, m in choices.items())
-    msg = ("%s\n\nIdea: %s\nMarkets you can research:\n%s\n"
+    choices = {k: m for k, m in MARKETS.items()
+               if (keys is None or k in keys) and (m.kind != "perpetual" or perps_enabled)}
+    opts = "\n".join("- %s: %s" % (k, MARKETS[k].label) for k in choices)
+    hist = ("\n\n%s Build on what's worked or deliberately explore somewhere new — your call, but "
+            "don't blindly repeat a market that keeps failing." % history) if history else ""
+    msg = ("%s\n\nIdea: %s%s\nMarkets you can research:\n%s\n"
            "Pick the ONE market whose contracts best fit this idea. Reply exactly:\n"
-           '{"market": "<key>", "why": "<one sentence>"}' % (_brief(), idea[:400], opts))
+           '{"market": "<key>", "why": "<one sentence>"}' % (_brief(), idea[:400], hist, opts))
 
     def check(obj: Dict) -> Dict:
         k = obj.get("market")
@@ -794,6 +840,15 @@ def dig_deeper_prompt(strat: Dict) -> str:
 
 
 MAX_ACTIVE_RESEARCH = 2   # mirrors server.MAX_ACTIVE_RESEARCH (not imported, to avoid a cycle)
+# Mirrors server.MAX_RESEARCH_PER_DAY. The manual Research endpoint enforces this per-user daily
+# cap, but the autopilot — the biggest source of research volume — did not, so an operator's cap
+# silently didn't apply where most runs come from. 0 = unlimited (preserves today's behavior).
+MAX_RESEARCH_PER_DAY = int(os.getenv("APP_MAX_RESEARCH_PER_DAY", "0"))
+# GLOBAL (all-user) backpressure: only CONCURRENCY runs execute at once, so when many autopilot users
+# all launch research the shared queue piles deep and every run ages. Above this many active research
+# runs, the autopilot stops launching MORE (reviews still run, so risk/position management is
+# unaffected) until a slot frees. 0 = off (preserves today's behavior); set it for many-user load.
+MAX_GLOBAL_ACTIVE_RESEARCH = int(os.getenv("APP_MAX_GLOBAL_ACTIVE_RESEARCH", "0"))
 
 
 def dig_deeper_run(cur, user_id: int, strat: Dict, model: Optional[str] = None,
@@ -1238,6 +1293,7 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
         proposer = news.wrap(proposer, usage)
     if knowledge is not None:
         proposer = knowledge.wrap(proposer, usage)
+    attempts = 0  # theses DEVELOPED this chunk (survivors + abandoned), the real cost
     while True:
         checkpoint()
         round_no += 1
@@ -1245,6 +1301,12 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
         want = policy.next_batch(state).width
         if want <= 0:
             break  # policy decided to stop proposing this chunk
+        if attempts >= budget * EXPLORE_ATTEMPT_MULT:
+            # All-abandon backstop: survivors never reached `budget`, but we've already developed a
+            # generous multiple of it. Stop burning the slot on a market with no tradeable surface.
+            log("step", "No tradeable surface after %d attempts — stopping to free the worker." % attempts,
+                {"phase": "proposing", "attempts": attempts, "kept": len(chunk)})
+            break
         # Announce each proposing round so the (multi-minute, token-streamed) generation call is
         # never a silent gap: the feed shows "Proposing round k" before the first token arrives.
         log("step", "Proposing round %d — generating up to %d hypothes%s…"
@@ -1257,6 +1319,7 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
             break  # agent is out of fresh ideas this chunk
         for h in batch:
             checkpoint()
+            attempts += 1
             # Pillar 2: develop each thesis in depth on the RESEARCH FOLD (backtest -> critique ->
             # refine, up to THESIS_MAX_STEPS) before committing its single frozen spec. One candidate
             # out per hypothesis, so finalist selection + pre-registration are unchanged.
@@ -1322,13 +1385,24 @@ def _load(label: str, fn, *args, beat=None):
     relabel a RECOGNIZED load failure into a clean, specific LLMError (see _classify_load_error):
     a no-settled-contracts market or a transient RDS drop. An unrecognized error — a genuine bug —
     propagates unchanged, so this only ever classifies the two known cases."""
-    try:
-        return _call_with_timeout(label, DATA_LOAD_TIMEOUT, fn, *args, beat=beat)
-    except Exception as e:
-        err = _classify_load_error(e)
-        if err is not None:
-            raise err from e
-        raise
+    for attempt in range(LOAD_RETRIES + 1):
+        try:
+            return _call_with_timeout(label, DATA_LOAD_TIMEOUT, fn, *args, beat=beat)
+        except Exception as e:
+            # A transient RDS drop is retryable in place (the load holds its own connection and is
+            # read-only): back off briefly and try again before surfacing "data store was busy".
+            if _is_transient_db_error(e) and attempt < LOAD_RETRIES:
+                time.sleep(LOAD_RETRY_BACKOFF * (attempt + 1))
+                if beat is not None:
+                    try:
+                        beat()  # keep the run's heartbeat fresh across the backoff
+                    except Exception:
+                        pass
+                continue
+            err = _classify_load_error(e)
+            if err is not None:
+                raise err from e
+            raise
 
 
 def _timeout_self_check() -> None:
@@ -1347,6 +1421,12 @@ def _timeout_self_check() -> None:
         raise AssertionError("the wrapped call's own exception must propagate")
 
 
+class NoData(LLMError):
+    """The chosen market has no backtest surface yet (no settled contracts / not enough history).
+    This is NOT a failure — there is simply nothing to research there yet — so a run that ends this
+    way finishes `stopped`, not `failed` (no red FAILED card for a dataless market)."""
+
+
 def _classify_load_error(e: BaseException) -> Optional[LLMError]:
     """Turn a RECOGNIZED data-load failure into a clean, specific, user-facing LLMError so it stops
     surfacing as the generic 'unexpected error'. Returns None for anything unrecognized, so a genuine
@@ -1357,8 +1437,8 @@ def _classify_load_error(e: BaseException) -> Optional[LLMError]:
         sequence message), which is retryable, so we say so instead of failing opaque."""
     if isinstance(e, ValueError) and "no settled contracts" in str(e):
         m = re.search(r"market\s+'?([^'\s]+)'?", str(e))
-        return LLMError("%s has no settled contracts / backtest surface yet — pick a market with data."
-                        % (m.group(1) if m else "That market"))
+        return NoData("%s has no settled contracts / backtest surface yet — pick a market with data."
+                      % (m.group(1) if m else "That market"))
     if _is_transient_db_error(e):
         return LLMError("The data store was busy; please start the session again.")
     return None
@@ -1562,7 +1642,8 @@ def run_research(
                 market = ckpt["market"]  # already chosen on the first attempt; don't re-spend the pick
             else:
                 checkpoint()
-                market = _pick_market(run, model, usage, log)
+                market = _pick_market(run, model, usage, log, _researchable_keys(cur),
+                                      _research_history_line(cur, user_id))
             run = {**run, "market": market}
             repo.set_run_market(cur, run_id, market)
         # A pinned market that has left the live universe (a retired/renamed catalog series) would
@@ -1587,7 +1668,7 @@ def run_research(
         ds = _load("Loading %s data" % MARKETS[market].label, load, market,
                    beat=lambda: repo.heartbeat(cur, run_id))
         if len(ds.frames) < MIN_FRAMES:
-            raise LLMError("Not enough market history collected yet for %s." % MARKETS[market].label)
+            raise NoData("Not enough market history collected yet for %s." % MARKETS[market].label)
         # The agent picks the window that fits its thesis; re-load the narrower slice if it
         # chose less, and keep the fuller one if the slice is too thin to be worth it.
         checkpoint()  # a cancel must stop before we spend a model call on planning
@@ -1691,10 +1772,15 @@ def run_research(
         # unchanged); anything else is left untouched and still propagates below.
         if isinstance(e, ValueError):
             e = _classify_load_error(e) or e
+        # A no-data market (no settled contracts / not enough history) is NOT a failure — there's just
+        # nothing to research there yet — so it finishes `stopped` (neutral), never a red FAILED. Only a
+        # genuine error (API/DB/unexpected) is `failed`, matching the watchdog-reap semantics.
+        no_data = isinstance(e, NoData)
         msg = (str(e) if isinstance(e, LLMError) else "The session hit an unexpected error and stopped.")
-        cur = _reconnect(conn, cur)  # the error may have been the drop itself — heal it so we can record the failure
-        log("error", msg)
-        repo.finish_run(cur, run_id, "failed", msg[:2000], len(tried), 0, usage.input_tokens, usage.output_tokens)
+        cur = _reconnect(conn, cur)  # the error may have been the drop itself — heal it so we can record the outcome
+        log("step" if no_data else "error", msg)
+        repo.finish_run(cur, run_id, "stopped" if no_data else "failed", msg[:2000],
+                        len(tried), 0, usage.input_tokens, usage.output_tokens)
         _bill(conn, user_id, usage, run_id, choice.model_id)  # charge for the work done regardless of the failure cause
         if not isinstance(e, LLMError):
             raise
@@ -2142,6 +2228,13 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
     kind = str(action.get("type") or action.get("kind") or "").strip().lower()
     reason = str(action.get("reason") or "").strip()[:1000] or "No reason given."
     user_id = user["id"]
+    if kind == "kalshi_perps_order":
+        from app import kalshi_perps_trading
+        try:
+            return kalshi_perps_trading.propose_for_agent(
+                cur, user_id, {k: v for k, v in action.items() if k not in ("type", "kind")})
+        except kalshi_perps_trading.Error as exc:
+            return "I could not propose that Bitcoin perps order: %s" % exc, None
     if kind == "alpaca_paper_order":
         from app import alpaca_paper
         try:
@@ -2318,6 +2411,12 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
             return unavailable, None
         if repo.count_runs(cur, user_id, "research", active_only=True) >= MAX_ACTIVE_RESEARCH:
             return "You already have a couple of research sessions running — let one finish and I'll start this then.", None
+        if MAX_RESEARCH_PER_DAY and repo.count_runs(
+                cur, user_id, "research", since=repo.now_utc() - timedelta(days=1)) >= MAX_RESEARCH_PER_DAY:
+            return ("You've hit the daily research limit (%d) — it resets over the next 24 hours, "
+                    "and I'll resume then." % MAX_RESEARCH_PER_DAY), None
+        if MAX_GLOBAL_ACTIVE_RESEARCH and repo.count_active_research(cur) >= MAX_GLOBAL_ACTIVE_RESEARCH:
+            return ("The research queue is full right now — I'll start this once a slot frees up.", None)
         if sid:
             dig_deeper_run(cur, user_id, strat)
             return ("Started a new research session digging deeper into “%s”: I'll refine and "
@@ -2349,6 +2448,8 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
 def apply_proposal(cur, user_id: int, proposal: Dict) -> None:
     """The user approved it: do what it says."""
     kind = proposal["kind"]
+    if kind == "kalshi_perps_live":
+        raise ValueError("A native perps order requires separate exact-ticket confirmation by its owner.")
     if kind == "alpaca_paper":
         raise ValueError("Alpaca paper approval must use the durable broker order service.")
     if kind in ("adjust", "deploy"):
@@ -2538,6 +2639,7 @@ Actions:
   {"type": "research", "market": "<market key or omit to let me choose>", "idea": "<a short ANGLE/lens, NOT a full thesis>", "reason": "..."}   (FRESH research line. DELEGATE, don't author: `idea` is a high-level DIRECTION — a market + a short angle (e.g. "favorite-longshot on this sports market", "order-flow if this market has microstructure data") — and the research specialist writes the actual hypotheses and specs from it. Do NOT hand it a fully-formed strategy ("buy when implied>65%..."); that is the research pipeline's job, not yours. One or two sentences of angle is enough.)
   {"type": "deploy", "strategy_id": N, "reason": "..."}       (paper; any side)
   {"type": "alpaca_paper_order", "symbol": "AAPL", "side": "buy", "qty": "1", "limit_price": "100.00", "reason": "..."} (A separate Alpaca broker PAPER stock/ETF experiment. Whole shares, limit DAY only. Creates a ticket for explicit USER APPROVAL even when autopilot is on; it never executes from this action. Use the current paper account/positions and the user's instruction; do not infer a fill or convert a Kalshi binary strategy into an equity strategy. This is not live equity execution.)
+  {"type": "kalshi_perps_order", "side": "bid", "count": "1", "price": "7.00", "reduce_only": false, "reason": "..."} (Native Kalshi BTC perps REAL-MONEY order proposal only. Whole contracts; price is USD PER CONTRACT, not BTC spot price. Bid buys/longs, ask sells/shorts; reduce_only must only reduce the current position. Kalshi determines account/product margin and leverage; there is no order leverage field or Tau financial cap. Always requires the owner to review a fresh exact order ticket and explicitly confirm, even with autopilot on. Never submit, approve, retry or claim execution yourself. Do not infer fills, access, buying power or liquidation safety. Research-only perps strategies remain ineligible for automatic deployment.)
   {"type": "deploy_live", "strategy_id": N, "reason": "..."}  (REAL money; any side (YES or NO) that already proved itself on PAPER, and only when the user turned on live autopilot. If live autopilot is off or any safety gate fails it is refused and stays on paper. Never the first step for a new idea: research -> paper -> live.)
 Back your words with actions. If your reply says you ARE doing something — starting/launching research, tuning, pausing, promoting, deploying — you MUST include the matching action(s) in `actions`. A reply that merely DESCRIBES an action without emitting it does NOTHING (no research is launched, nothing changes) and is a failure: e.g. saying "I'll launch three research threads now" requires three `research` actions in this same response, not a promise to do it later. Conversely, never invent actions you have no concrete reason for — if the right move is to wait and watch, say so plainly and return an empty list. EXCEPTION: if the context says EMPTY DECK (zero deployments and zero research in flight), waiting is NOT allowed — you must emit at least one `research` action this turn.
 CLOSE THE LOOP: research only pays off when a proven edge reaches the book. If a passed strategy is a DEPLOYMENT-CANDIDATE, promoting it to paper (a `deploy` action) takes priority over opening a new exploratory research line — don't explore forever while a ready edge sits undeployed. And don't re-launch research on a market that is already running or just finished: that line is refused; hunt a DIFFERENT market from the list.
@@ -2610,6 +2712,9 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
         from app import alpaca_paper
         if alpaca_paper.enabled():
             prompt += "\n\n" + alpaca_paper.agent_context(conn, user["id"])
+        from app import kalshi_perps_trading
+        if kalshi_perps_trading.enabled():
+            prompt += "\n\n" + kalshi_perps_trading.agent_context(conn, user["id"])
         market_data = AgentMarketData(DataScope(), lambda kind, message, data=None:
                                      repo.add_event(cur, run["id"], kind, message, data), checkpoint)
         knowledge = AgentKnowledge(DataScope(), lambda kind, message, data=None:
@@ -2631,7 +2736,7 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
             repo.set_autopilot_plan(cur, user["id"], out["plan"])
         for action in out["actions"]:
             checkpoint()
-            if str(action.get("type") or action.get("kind") or "").strip().lower() == "alpaca_paper_order":
+            if str(action.get("type") or action.get("kind") or "").strip().lower() in ("alpaca_paper_order", "kalshi_perps_order"):
                 with repo.transaction(conn) as tx:
                     text, proposal_id = act(tx, user, action, bool(user.get("autopilot")), dataset_fn)
             else:

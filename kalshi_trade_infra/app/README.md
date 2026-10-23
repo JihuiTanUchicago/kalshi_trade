@@ -5,11 +5,14 @@
 Kalshi native Bitcoin perpetual history, funding and current observations now
 have a separate, opt-in research path with causal replay, frozen source manifests
 and the existing statistical gates. Both themes identify results as Research
-only. Paper, demo and live perpetual execution are blocked. This is local source
-implementation with offline verification. Explicit proxy support and native
+only. Paper, demo and live perpetual execution are blocked. Source is merged
+through PR21; offline and hosted full-schema MySQL/HTTP verification pass. Explicit proxy support and native
 metadata parsing resolve the initial local timeout/discovery issues: real
 production/demo candles, funding and observations are retrieved successfully.
-Candle gaps, server/DB/queued-run acceptance and deployment remain pending.
+Five anonymous public requests also pass directly from the production server.
+Candle gaps, perps-persistence/queued-run acceptance and production rollout remain
+pending. The release must reconcile installed source differences and preserve
+existing research; no production source or service changed in this preflight.
 See [setup, supported rules and limitations](KALSHI_PERPS_RESEARCH.md) and
 [implementation evidence](../results/kalshi_bitcoin_perps_2026-10-23/HANDOFF.md).
 
@@ -936,3 +939,14 @@ APP_TEST_MYSQL=1 python -m pytest tests/   # includes the money-path tests again
 
 CloudFront in front of the app must forward cookies and allow POST (the existing
 distribution forwards no cookies and was GET-only until 2026-09-26).
+
+
+### Native Bitcoin perps tickets
+
+A separate native margin API path supports user-reviewed live limit-IOC tickets,
+with agent proposals opening the same exact-order confirmation. Kalshi sets
+account/product margin and leverage limits; Tau adds no financial cap. Capability
+is off by default; enabling it never enables binary live autopilot or perpetual
+research-strategy promotion. Every user must opt in and confirm every ticket.
+See [native order setup](KALSHI_PERPS_TRADING.md) and the
+[current release evidence](../results/kalshi_perps_deployment_preparation_2026-10-23/HANDOFF.md).

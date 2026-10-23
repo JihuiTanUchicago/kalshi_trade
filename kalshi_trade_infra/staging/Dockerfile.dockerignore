@@ -9,6 +9,7 @@
 !staging/entrypoint.py
 !scripts/
 !scripts/paper_staging_smoke.py
+!scripts/kalshi_perps_staging_smoke.py
 **/.env*
 **/.state
 **/.state/**

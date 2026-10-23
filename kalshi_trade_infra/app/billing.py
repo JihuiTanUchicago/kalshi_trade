@@ -36,6 +36,11 @@ STRIPE_PAYMENT_CONFIG = os.getenv("STRIPE_PAYMENT_CONFIG", "")
 
 FREE_BONUS = Decimal(os.getenv("TAU_FREE_CREDITS", "20"))
 TOPUP_FEE = Decimal(os.getenv("TAU_TOPUP_FEE", "0.055"))  # 5.5% on credit purchases
+# A research/review run bills POST-PAID on actual tokens, so a run started on a near-zero balance
+# overshoots into the negative by roughly one chunk's cost (observed: a user at -$4.11). Require this
+# much headroom to START a billed run, so a balance can't be driven meaningfully negative. Chat (one
+# cheap call) keeps the plain >0 gate. Env-tunable; ~one small session's worth.
+MIN_RUN_BALANCE = Decimal(os.getenv("TAU_MIN_RUN_BALANCE", "1.00"))
 AUTORELOAD_THRESHOLD = Decimal("5")   # default + floor for "reload when balance drops to Y"
 AUTORELOAD_AMOUNT = Decimal("20")     # default + floor for "reload X dollars"
 MIN_TOPUP = Decimal("5")
@@ -86,7 +91,9 @@ def is_ready(cur, user_id: int) -> bool:
     cust = repo.get_stripe_customer(cur, user_id)
     if not (cust and cust.get("default_pm_id")):
         return False
-    return repo.credit_balance(cur, user_id) > 0
+    # Headroom, not just >0: an autonomous research/review run would otherwise overshoot a near-zero
+    # balance into the negative (post-paid billing). Require one session's worth before acting.
+    return Decimal(str(repo.credit_balance(cur, user_id))) >= MIN_RUN_BALANCE
 
 
 def _price_for(model: str) -> Tuple[Decimal, Decimal]:

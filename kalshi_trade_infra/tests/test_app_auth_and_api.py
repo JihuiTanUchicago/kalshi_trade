@@ -248,6 +248,9 @@ def test_save_kalshi_dev_key_encrypts_and_never_echoes_raw(monkeypatch):
     pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL,
                             serialization.NoEncryption()).decode()
     stored = {}
+    from contextlib import nullcontext
+    monkeypatch.setattr(server.repo, "transaction", lambda conn: nullcontext(FakeCur()))
+    monkeypatch.setattr(server.kalshi_perps_trading, "guard_key_change", lambda *args: None)
     monkeypatch.setattr(server.kalshi_dev_exec, "demo_fills", lambda creds: {"fills": []})  # sandbox auth OK
     monkeypatch.setattr(server.kalshi_account, "encrypt_private_key", lambda uid, p: b"ENC(" + p.encode() + b")")
     monkeypatch.setattr(server.repo, "set_kalshi_dev_key",

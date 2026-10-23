@@ -1,0 +1,1716 @@
+{
+  "workflow": {
+    "conclusion": "success",
+    "databaseId": 39884723368,
+    "headSha": "0e2e79c30d13bab8dec41081ef4d273d826b127c",
+    "status": "completed",
+    "url": "https://github.com/JihuiTanUchicago/kalshi_trade/actions/runs/39884723368"
+  },
+  "records": [
+    {
+      "type": "PREFLIGHT",
+      "receipt": {
+        "candidate_commit": "b7cf7c754e09a50e8f0bc6278dbf275f0f0f2a8b",
+        "candidate_native_sha256": {
+          "app/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "app/kalshi_perps_collector.py": "bb6093504501bb2fed0520e8dfd6973f345856e57f0e35401dbc3257de158fd8",
+          "app/kalshi_perps_data.py": "91cc7ea9a7a5b3b822cc3edf07353029df699c9f6f2097022985fdac4ad58156",
+          "app/market_data_common.py": "539bbef8d8b2cb41ce67d6c97f0a9e872d04dc5116670fbcba4796222de84ec1"
+        },
+        "no_release_path": true,
+        "operations_sha": "0e2e79c30d13bab8dec41081ef4d273d826b127c"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "ssm_command_id": "1592d18d-7e58-46fd-87d7-9fc5436bb83c"
+      }
+    },
+    {
+      "type": "INVENTORY",
+      "receipt": {
+        "application_writes": 0,
+        "base_commit": "aa3664e420fe4fdf538cd434e4c91e73ee0875cf",
+        "candidate_commit": "b7cf7c754e09a50e8f0bc6278dbf275f0f0f2a8b",
+        "candidate_native_sha256": {
+          "app/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "app/kalshi_perps_collector.py": "bb6093504501bb2fed0520e8dfd6973f345856e57f0e35401dbc3257de158fd8",
+          "app/kalshi_perps_data.py": "91cc7ea9a7a5b3b822cc3edf07353029df699c9f6f2097022985fdac4ad58156",
+          "app/market_data_common.py": "539bbef8d8b2cb41ce67d6c97f0a9e872d04dc5116670fbcba4796222de84ec1"
+        },
+        "database": {
+          "full_database_integration_verified": false,
+          "market_column_signatures": {
+            "app_data_partitions": {
+              "collation": "utf8mb4_0900_ai_ci",
+              "column_type": "varchar(48)",
+              "max_length": 48,
+              "nullable": false
+            },
+            "app_experiments": {
+              "collation": "utf8mb4_0900_ai_ci",
+              "column_type": "varchar(48)",
+              "max_length": 48,
+              "nullable": false
+            },
+            "app_fdr_state": {
+              "collation": "utf8mb4_0900_ai_ci",
+              "column_type": "varchar(48)",
+              "max_length": 48,
+              "nullable": false
+            },
+            "app_holdout_ledger": {
+              "collation": "utf8mb4_0900_ai_ci",
+              "column_type": "varchar(48)",
+              "max_length": 48,
+              "nullable": false
+            }
+          },
+          "perps_row_counts": {},
+          "read_only_transaction": true,
+          "research_counts": {
+            "paused": 0,
+            "queued": 0,
+            "running": 1
+          },
+          "status": "checked",
+          "tables_present": {
+            "app_agent_runs": true,
+            "kalshi_perps_batches": false,
+            "kalshi_perps_partition_sources": false
+          }
+        },
+        "full_database_integration_verified": false,
+        "installed": {
+          "controls": {
+            "processes": {
+              "recursive-agents": {
+                "cmdline_sha256": "3af81a26d1c3f6b9c282e78e27f1e44b10e5637e0dd1e4bffa000ce9db344628",
+                "environment_sha256": "1062c02aa9f455f1c03e82639dc94af56a12677d23716fdf3578586cb4f91fe3",
+                "start_ticks": "49028718"
+              },
+              "recursive-engine": {
+                "cmdline_sha256": "7404f1c4b417e6ba13097b872c30d36389d06278c367e431baa3ff87972f555e",
+                "environment_sha256": "2f25a6e823e3c50652b149af85a740c961568f0f018190501399af4dd975c8b3",
+                "start_ticks": "45134892"
+              },
+              "recursive-history": {
+                "cmdline_sha256": "b6812e59a28bc82a0f2884625e250f41e004364c0906e46447da2987c5784147",
+                "environment_sha256": "b3b3a27993ac78089b3fbee0e724be854d231199836c60c5c34f152d0c4d728e",
+                "start_ticks": "45134892"
+              },
+              "recursive-web": {
+                "cmdline_sha256": "8f87b2a94080c63d779d043ec41e54700542da99a409135ef48af62d7749ff4a",
+                "environment_sha256": "4771197ea60a851763599c5c50c1ce4c0b91b60a7096f8512b297699f8e87dc0",
+                "start_ticks": "45134892"
+              }
+            },
+            "protected_config": {
+              "/etc/tau/alpaca-paper/paper.env": {
+                "gid": 0,
+                "mode": "0600",
+                "sha256": "9e903dcdd1ae5eb17904cf2435960f53b5274b99874dcf018f927e6415be4853",
+                "uid": 0
+              },
+              "/etc/tau/provider-data/market-data.env": {
+                "gid": 0,
+                "mode": "0600",
+                "sha256": "54f0ce1c4bcb4cb82c6e093b0e548370d5ea5325d8444a762764d0b347caa2a8",
+                "uid": 0
+              },
+              "/etc/tau/provider-data/research-data.env": {
+                "gid": 0,
+                "mode": "0600",
+                "sha256": "d00c996ed863c57cc5123dfc9f1177d6f97bf6e9b3f831cb95b7575b820c80cd",
+                "uid": 0
+              },
+              "/opt/kalshi/.env": {
+                "gid": 20,
+                "mode": "0644",
+                "sha256": "6b7222c5cedf47224681c89ab925d2881524793fe0c3805ea4346ecf8d5cfc42",
+                "uid": 501
+              },
+              "/opt/kalshi/.env.app": {
+                "gid": 0,
+                "mode": "0600",
+                "sha256": "27948ee2e2131e9124036f00429271b1aac992dbe0ed19b3b52e0d54763ea3f3",
+                "uid": 0
+              },
+              "/opt/kalshi/.env.aws": {
+                "gid": 20,
+                "mode": "0600",
+                "sha256": "341c636da105786d74a26c35a3b10c6030d96490f7ad162aa75c45afc72ac909",
+                "uid": 501
+              }
+            },
+            "unit_files": {
+              "/etc/systemd/system/kalshi-live-engine.service": {
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "eb9bd6c1813010eaf58b2e44c4723569ec0e7f7de025b1a8d6712e4ae97cbc11",
+                "uid": 0
+              },
+              "/etc/systemd/system/recursive-agents.service": {
+                "gid": 0,
+                "mode": "0600",
+                "sha256": "80573f379d9789f0d448b0108c025182c3de38d93fe9213a1dadc80772c1e6bb",
+                "uid": 0
+              },
+              "/etc/systemd/system/recursive-agents.service.d/90-tau-provider-data.conf": {
+                "gid": 0,
+                "mode": "0600",
+                "sha256": "0b006044da74206c96b1c08723cdbcb6a49115bf6105f0000350560abe3f9dbd",
+                "uid": 0
+              },
+              "/etc/systemd/system/recursive-agents.service.d/99-tau-alpaca-paper.conf": {
+                "gid": 0,
+                "mode": "0600",
+                "sha256": "e8fe3835d0362279050a31e98be7eed56bf78c04ee788a99883ebb728cd712c7",
+                "uid": 0
+              },
+              "/etc/systemd/system/recursive-engine.service": {
+                "gid": 0,
+                "mode": "0600",
+                "sha256": "1bf1e6990807b7e1fe86931e71e39711178ced696fcf43396ad7e569531d5cc5",
+                "uid": 0
+              },
+              "/etc/systemd/system/recursive-history.service": {
+                "gid": 0,
+                "mode": "0600",
+                "sha256": "7737495f7526385b49d343fc3c83ba835093d821b0d6795ac540ad66e8dbbc66",
+                "uid": 0
+              },
+              "/etc/systemd/system/recursive-web.service": {
+                "gid": 0,
+                "mode": "0600",
+                "sha256": "5ea421bc1c66853c2aa931e58bb0bf8d70a3749513b355a59b0a50673328b447",
+                "uid": 0
+              },
+              "/etc/systemd/system/recursive-web.service.d/99-tau-alpaca-paper.conf": {
+                "gid": 0,
+                "mode": "0600",
+                "sha256": "d37ce94eb38e2adf0c75069239cc230e3c8c82f379df50d70c6cd672b873d45f",
+                "uid": 0
+              }
+            },
+            "units": {
+              "kalshi-live-engine": {
+                "active_state": "inactive",
+                "need_daemon_reload": "no",
+                "pid": 0,
+                "properties_sha256": "848e970832dbccbca1732bf77b489d8177e1ba9a334dc8393d4f1cba0a2e389b",
+                "resources": {
+                  "CPUQuotaPerSecUSec": "infinity",
+                  "CPUWeight": "[not set]",
+                  "MemoryHigh": "infinity",
+                  "MemoryMax": "infinity",
+                  "MemorySwapMax": "infinity",
+                  "Nice": "0",
+                  "TasksMax": "18827"
+                },
+                "restart": "always",
+                "sub_state": "dead"
+              },
+              "recursive-agents": {
+                "active_state": "active",
+                "need_daemon_reload": "no",
+                "perps": {
+                  "enabled": false,
+                  "explicit_proxy_configured": false,
+                  "explicitly_configured": false
+                },
+                "pid": 497190,
+                "properties_sha256": "eabbb8d88aeacfa1b556806838d62984a001b4d9649a0ede09b3bf5046e06a20",
+                "resources": {
+                  "CPUQuotaPerSecUSec": "infinity",
+                  "CPUWeight": "[not set]",
+                  "MemoryHigh": "infinity",
+                  "MemoryMax": "419430400",
+                  "MemorySwapMax": "infinity",
+                  "Nice": "5",
+                  "TasksMax": "18827"
+                },
+                "restart": "always",
+                "sub_state": "running"
+              },
+              "recursive-engine": {
+                "active_state": "active",
+                "need_daemon_reload": "no",
+                "perps": {
+                  "enabled": false,
+                  "explicit_proxy_configured": false,
+                  "explicitly_configured": false
+                },
+                "pid": 463706,
+                "properties_sha256": "4b896d1f7ba65ddccbbaeef0ac375c17299045f3f6d01ad4e0d6bd38f6f85105",
+                "resources": {
+                  "CPUQuotaPerSecUSec": "infinity",
+                  "CPUWeight": "[not set]",
+                  "MemoryHigh": "infinity",
+                  "MemoryMax": "262144000",
+                  "MemorySwapMax": "infinity",
+                  "Nice": "5",
+                  "TasksMax": "18827"
+                },
+                "restart": "always",
+                "sub_state": "running"
+              },
+              "recursive-history": {
+                "active_state": "active",
+                "need_daemon_reload": "no",
+                "perps": {
+                  "enabled": false,
+                  "explicit_proxy_configured": false,
+                  "explicitly_configured": false
+                },
+                "pid": 463707,
+                "properties_sha256": "6c03bdd3b870d23eb92a5ed8a63e613657b5a0329a55cf427f6cbef6f805d856",
+                "resources": {
+                  "CPUQuotaPerSecUSec": "infinity",
+                  "CPUWeight": "[not set]",
+                  "MemoryHigh": "infinity",
+                  "MemoryMax": "262144000",
+                  "MemorySwapMax": "infinity",
+                  "Nice": "5",
+                  "TasksMax": "18827"
+                },
+                "restart": "always",
+                "sub_state": "running"
+              },
+              "recursive-web": {
+                "active_state": "active",
+                "need_daemon_reload": "no",
+                "perps": {
+                  "enabled": false,
+                  "explicit_proxy_configured": false,
+                  "explicitly_configured": false
+                },
+                "pid": 463708,
+                "properties_sha256": "17f478e9f404d68ea0c69124e443684a093495c8367cf2c8e11b2df33c850866",
+                "resources": {
+                  "CPUQuotaPerSecUSec": "infinity",
+                  "CPUWeight": "[not set]",
+                  "MemoryHigh": "infinity",
+                  "MemoryMax": "419430400",
+                  "MemorySwapMax": "infinity",
+                  "Nice": "5",
+                  "TasksMax": "18827"
+                },
+                "restart": "always",
+                "sub_state": "running"
+              }
+            }
+          },
+          "source": {
+            "files": {
+              "app/ALPACA_PAPER_TRADING.md": {
+                "bytes": 8635,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "ad1a53860e54134962e88c777fbfad12674bdf84a74a8091540cd1670fc0ade6",
+                "uid": 0
+              },
+              "app/BROKER_OAUTH.md": {
+                "bytes": 10813,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "e9417c276332915c89a7c7f9e26bd073ac88ed49137c3d905bdcf623451e9d64",
+                "uid": 0
+              },
+              "app/BROKER_OAUTH_DEPLOYMENT.md": {
+                "bytes": 8292,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "b4a198715d72d8da2fa207cd0f5626200fea2dd57cd1c796e9f0e1deca3e9ccb",
+                "uid": 0
+              },
+              "app/DEPLOYMENT_SECRETS.md": {
+                "bytes": 7820,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "aa8227e33892612871647366425367f98633e34e373926d89473b65129d567c8",
+                "uid": 0
+              },
+              "app/MARKET_DATA_DEPLOYMENT.md": {
+                "bytes": 12217,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "e3c38f5ac813c58dfea3fbe1b38c1f54944cce4aca6666cf40cff14bdb12eb28",
+                "uid": 0
+              },
+              "app/README.md": {
+                "bytes": 55011,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "15daf953c998b18744c8793aa3545c97ce55a03f81d3f5caa0ea78a7f4c65877",
+                "uid": 0
+              },
+              "app/SESSION_CHAT_API.md": {
+                "bytes": 9869,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "90432f42be2d5861d61c891fb283aabb1be086305f6198721d66d68c480160de",
+                "uid": 0
+              },
+              "app/__init__.py": {
+                "bytes": 0,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "uid": 0
+              },
+              "app/agent.py": {
+                "bytes": 173625,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "c78ee13f989b038e4bafc24da684a851bf2121dc8ac70827f9c442ef9902c4da",
+                "uid": 0
+              },
+              "app/agent_knowledge.py": {
+                "bytes": 11469,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "3e4326dd2246fb9fb3fb6cc730d7b23a326e034f427ff2d38956503e1339179f",
+                "uid": 0
+              },
+              "app/agent_market_data.py": {
+                "bytes": 31486,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "0c72ae87cfdca397e20da32daee8c1714e6fc20ed51b23ce464d1bad498f9e23",
+                "uid": 0
+              },
+              "app/agent_news.py": {
+                "bytes": 11875,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "2e0d0c81a4bea5a6f26abfbb90b99d82cfb26994257ae1b5a9559e24a4100e11",
+                "uid": 0
+              },
+              "app/alpaca_data.py": {
+                "bytes": 11070,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "dafa504eeceaacead9a7309c29f5c3dea029307528fa8ddd76b335eee02ed81f",
+                "uid": 0
+              },
+              "app/alpaca_paper.py": {
+                "bytes": 29108,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "c06fcfb01d8e81cbd8c9c849b085f849748602ee6c099cbcd5d765673b569236",
+                "uid": 0
+              },
+              "app/alpaca_paper_client.py": {
+                "bytes": 14110,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "08ed6d59ab65d9ead3cac2a53c4e8b1416d0c9d4aabff016bab3f00639e602bf",
+                "uid": 0
+              },
+              "app/alpaca_paper_repository.py": {
+                "bytes": 18795,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "f99e8d98568eff59ebfcaa5dee3fb6b8342dd6b86ad87ec86df2a013c9a30cfb",
+                "uid": 0
+              },
+              "app/auth.py": {
+                "bytes": 4360,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "07f4d965b5b87598ab7966e28174a328386426b2d474aa0ec5cd371bf77f53ca",
+                "uid": 0
+              },
+              "app/backtest.py": {
+                "bytes": 49467,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "c43a37b80a30d513438184a514e0a7eb3b80421fee762d8ccb2c3529e8706724",
+                "uid": 0
+              },
+              "app/billing.py": {
+                "bytes": 13576,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "0fd9b234d03df7db3c83ac0c45f487063f8eaa37f677fcfa37971708d3d3baef",
+                "uid": 0
+              },
+              "app/broker_alpaca.py": {
+                "bytes": 5716,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "ffe7b0f39b0df5ef7644486322d5f573e08f3c39018bca8d7f392c3efea9b40c",
+                "uid": 0
+              },
+              "app/broker_ibkr.py": {
+                "bytes": 12158,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "e2357518c72828b5d39ec0ba4bf4c7f659cde3f62cd9518023779897a5acd9b6",
+                "uid": 0
+              },
+              "app/broker_oauth.py": {
+                "bytes": 10287,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "a92b71ddf2e97487d5f6423fdc12e2f872cf11569ac007d4b456e8824550ef26",
+                "uid": 0
+              },
+              "app/broker_repository.py": {
+                "bytes": 11063,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "7abd7249c91e51c00805c3327f0256e858d9336d511359b5bd8b828f7d1f309c",
+                "uid": 0
+              },
+              "app/broker_robinhood.py": {
+                "bytes": 9998,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "52fed4958b7fca2adc31be3899f6dcb9b0b659f74544471f19bbc00c584816a2",
+                "uid": 0
+              },
+              "app/broker_vault.py": {
+                "bytes": 3909,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "cf59e7267a081acd0ddfbb7b837bffae947c44140406718ba183f29675e4a46b",
+                "uid": 0
+              },
+              "app/catalog_repository.py": {
+                "bytes": 2241,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "2c3c7006a4dd7553fe64c7a30ae4135e4db3ede987ef73e1a383c7f85245b967",
+                "uid": 0
+              },
+              "app/code_map.py": {
+                "bytes": 10564,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "1d02aaa12d1c7f6e5be597fa0918cc1a976548f584fac4732b9d33b8c3677327",
+                "uid": 0
+              },
+              "app/databento_data.py": {
+                "bytes": 17917,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "db718faa226649d0c90abf346932fc71d8da6d59dd9587a30b7e784d72bb7f1b",
+                "uid": 0
+              },
+              "app/devlog.py": {
+                "bytes": 101322,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "913520e1fd7686a689b4738ed8a7d8eb14540b9497131cccdea80075cc80fab7",
+                "uid": 0
+              },
+              "app/dreaming.py": {
+                "bytes": 12210,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "c11697bc38d2a1266b081a3ad33c00a83950b3dc1869f99b2ae8aa84c8853e5b",
+                "uid": 0
+              },
+              "app/engine.py": {
+                "bytes": 79318,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "a43ddf7f2d651a037107994d8c273e83005602e6578e57d4f11e18a9b168dfc6",
+                "uid": 0
+              },
+              "app/exa_data.py": {
+                "bytes": 13295,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "86deda15a0656e6c9873644c1ecb2eb1d91d66731189419cc507da016a7154a0",
+                "uid": 0
+              },
+              "app/execution/__init__.py": {
+                "bytes": 528,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "fa0cc46470fea2327081e2008248354a01a26c4a3e7a86d71b799b85f5a71273",
+                "uid": 0
+              },
+              "app/execution/guard.py": {
+                "bytes": 9590,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "da30abcbbfb79d8425ddc35d7939c456a00cafe50b8c1310f9cf4bbd71a9946d",
+                "uid": 0
+              },
+              "app/execution/latency.py": {
+                "bytes": 6959,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "edc79158cad28bf2999cfdf52674cee4b6d372f3192ef47715613756cd47af77",
+                "uid": 0
+              },
+              "app/exploration.py": {
+                "bytes": 3547,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "6d9175cce603f44842bae0783acd1010932291526567351c115e415e4e4a4f09",
+                "uid": 0
+              },
+              "app/freedata.py": {
+                "bytes": 9300,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "2b1d19e626af090e0850735ebd52431a1942165d6ec30c5d7ee13bdc59ef31f0",
+                "uid": 0
+              },
+              "app/gatekeeper.py": {
+                "bytes": 32290,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "c4f9698f5d9119ea1cda9fc698048356467f0a17b98ed60660f3545a696341e9",
+                "uid": 0
+              },
+              "app/kalshi_account.py": {
+                "bytes": 4089,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "84bbebef45e6cc6133a1e977b40838ed6d107b63afb9410c55e23a84aa23c088",
+                "uid": 0
+              },
+              "app/kalshi_dev.py": {
+                "bytes": 12386,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "e4c823a7e2bf41c569112f4ba72d3dcc66ec11f123ea333a044d21886d18e660",
+                "uid": 0
+              },
+              "app/kalshi_dev_exec.py": {
+                "bytes": 11039,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "9a97e79098b69b21f797153c3033dd43a2631331686abbb4c1f70575ac237335",
+                "uid": 0
+              },
+              "app/llm.py": {
+                "bytes": 22318,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "1ce41cbc588c116d26adc33c041b4576ed793fe188146229cb1367cfd7129444",
+                "uid": 0
+              },
+              "app/market_data_common.py": {
+                "bytes": 4408,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "539bbef8d8b2cb41ce67d6c97f0a9e872d04dc5116670fbcba4796222de84ec1",
+                "uid": 0
+              },
+              "app/market_data_config.py": {
+                "bytes": 7547,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "97aebd2239d731fa0e6c5c884b7868753e16b8947d2670dbf5faf71afd5dff7a",
+                "uid": 0
+              },
+              "app/market_history.py": {
+                "bytes": 13221,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "1a261bb9db04d8f89029bb0942dbb1d04548d880dd058cf9e10c24fbed27be2a",
+                "uid": 0
+              },
+              "app/markets.py": {
+                "bytes": 27810,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "156c7fcbfa1fda59ec3bfe5d3ee048d07b6a7a3ec48fee590591568888f9d5da",
+                "uid": 0
+              },
+              "app/massive_data.py": {
+                "bytes": 24181,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "467e35ba260c689f34c0354562dbc871f153cd427d576a57ccfb1302965f2740",
+                "uid": 0
+              },
+              "app/models_catalog.py": {
+                "bytes": 5957,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "b0a77bff29d4d093f688b6cfddc18a2756975b88865781c7581255fa3187b07d",
+                "uid": 0
+              },
+              "app/news_journal.py": {
+                "bytes": 9713,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "d200b33d1cd504f8a543b93376ea3a4f93b2db1106cd59bb87595166f5b3f262",
+                "uid": 0
+              },
+              "app/notify.py": {
+                "bytes": 5664,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "95e45adf7e23476116bc5b475158596d67077c6dfa577a927060e8686c491d0e",
+                "uid": 0
+              },
+              "app/partitions.py": {
+                "bytes": 14578,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "f94048b970319b050636d095e1d7086fca7680276122c3f5eb20d4ccb02eb095",
+                "uid": 0
+              },
+              "app/quant.py": {
+                "bytes": 7837,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "95113084a052e4713b7e20a4d0c3a9b6a885ce43f30d87c0fae9f6dfd6926314",
+                "uid": 0
+              },
+              "app/reconcile.py": {
+                "bytes": 10710,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "fc0b5a77c02f20068d9dcf2b7f73371ed3189c46be9da8103b86dd0981060e6e",
+                "uid": 0
+              },
+              "app/relabel_backtest_only.py": {
+                "bytes": 1871,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "b0557f3e873c76d7d5ea0a7300d9945bb1b580b94dbb425451de213dd0458fea",
+                "uid": 0
+              },
+              "app/replay.py": {
+                "bytes": 13399,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "d9459972a3857b1e7135e3b233159f3746f72294571366465e4d43a66051207d",
+                "uid": 0
+              },
+              "app/repository.py": {
+                "bytes": 102323,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "2cb1037da11b513f6389cbfd5eb139e9861b718e37de09b0ef64fcdc962fc5c7",
+                "uid": 0
+              },
+              "app/research_brief.md": {
+                "bytes": 1359,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "f176b4993958ca57ff04987a7e13c1032c463911f05c979d5ae51d592fdeabdc",
+                "uid": 0
+              },
+              "app/research_eval.py": {
+                "bytes": 14987,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "c61228c2833b3c1bbcb425cbf076e24e49fc8d547392da4aa431fcde6928bd50",
+                "uid": 0
+              },
+              "app/research_repository.py": {
+                "bytes": 19151,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "ab0252fd282e16e1d12f38a296ae51d7ef978f9aff85aa24b9207d7c25b1083c",
+                "uid": 0
+              },
+              "app/sandbox.py": {
+                "bytes": 35605,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "a2cf880415861948d4e9f0be213f2d90aa5fa7871927c00d2986f73d68a95acf",
+                "uid": 0
+              },
+              "app/schema.py": {
+                "bytes": 39642,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "6738460234b7e46ff230cb64e287354e2e3e0f46a548f8fb504ef17c476c1084",
+                "uid": 0
+              },
+              "app/server.py": {
+                "bytes": 107139,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "8d93c845e51c7b46696725f99ab18e20c2b5ce0041f52ac56d81a0410e7cea68",
+                "uid": 0
+              },
+              "app/spec.py": {
+                "bytes": 48388,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "874e7e1f642ae0f6325df38b037e82a4062cbd424df5247a0f8ac3c11fa9d3b6",
+                "uid": 0
+              },
+              "app/static/DM-Sans-OFL.txt": {
+                "bytes": 4388,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "7ec15e79c59bc14b86436a17e5eb7926b46cbcaeb08e1a7e6c110b415e6eb2a2",
+                "uid": 0
+              },
+              "app/static/alpaca-paper.css": {
+                "bytes": 4115,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "14430678fb70fe7a18e35bb9bd92fc4335249ec78c2f359e3d5b729422e18279",
+                "uid": 0
+              },
+              "app/static/alpaca-paper.js": {
+                "bytes": 17936,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "c7af50e85c5ff3b02c0bbc342f664d0987369655bab587a569792127e04c99ce",
+                "uid": 0
+              },
+              "app/static/app.css": {
+                "bytes": 133986,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "24392a8f61da64a9db002e471f4dbf516a09d83f701007f8db0cb5b616b5a2d7",
+                "uid": 0
+              },
+              "app/static/app.js": {
+                "bytes": 282132,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "6d290678e2b9b96887f83a7f0fd8a095d95c3df002846c656f58c6febd1742e7",
+                "uid": 0
+              },
+              "app/static/app.meridian.css": {
+                "bytes": 109121,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "1e7978ec34364065b51e61dcdf8a5099085dc8ab5f8da72009166d4596059c0e",
+                "uid": 0
+              },
+              "app/static/app.meridian.js": {
+                "bytes": 209956,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "b457ecf5d4720adaf27635712f4e2c7745e72b8ca3c02c4efa8c457423046b77",
+                "uid": 0
+              },
+              "app/static/apple-developer-merchantid-domain-association": {
+                "bytes": 9094,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "2de7b483319c713bf649352f7f158f1fedbda92f546bebfe576ae0a2d2c526c6",
+                "uid": 0
+              },
+              "app/static/boot.js": {
+                "bytes": 993,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "69f63b1ea54da1c91897fb10b1a5199cb5d583f26eee1e592f8988d307a3717f",
+                "uid": 0
+              },
+              "app/static/broker-connections.css": {
+                "bytes": 2624,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "145e5ecde23fd140fc0ed5d3e0d0167669c7b1c778afa50029906d2c9f4fa480",
+                "uid": 0
+              },
+              "app/static/broker-connections.js": {
+                "bytes": 12905,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "9cefce2fcf2ac6c2ed5a9dbfeff915da2d9a09cec314317af9c9ecd4a63b30ce",
+                "uid": 0
+              },
+              "app/static/dm-sans-latin-9fea608a94.woff2": {
+                "bytes": 36932,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "9fea608a947e67020c33cad9a6fe3d60c54119dfb8cff87768a8117a15ed7543",
+                "uid": 0
+              },
+              "app/static/icon.svg": {
+                "bytes": 264,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "e7a1a39b1bc6cc33da13bf25a9c47f41d40a251c2053fcf0c883568a668bcf1e",
+                "uid": 0
+              },
+              "app/static/index.html": {
+                "bytes": 1404,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "e0be2fb9c644388399da2a2e50ab06564ec4b8dd45c8106b01aa456b0bf5585f",
+                "uid": 0
+              },
+              "app/static/research-artifacts.js": {
+                "bytes": 1004,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "dca06621ac296b9045c2814cc965cc52c13ed1303edbb95900227917c1080a72",
+                "uid": 0
+              },
+              "app/static/session-chat.js": {
+                "bytes": 3779,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "02d2cc0b5528fbd179e639a11db0bce22bd18252b923bfa2834def837af49a68",
+                "uid": 0
+              },
+              "app/static/session-data.js": {
+                "bytes": 3664,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "b25856b562fb5085fc2fad73ac74ff2878f624fd39007ada836cd5ef3d29c1da",
+                "uid": 0
+              },
+              "app/stats.py": {
+                "bytes": 24743,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "6e9b238832aa95d7857c9a4e3a597625dcd49d028d40aede4a8eaa737c834930",
+                "uid": 0
+              },
+              "app/tao_fees.py": {
+                "bytes": 3493,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "b8e486aeebc41c9a9b44fe1b4332f022c7fb7f6e3725798efe92dea5f55918b7",
+                "uid": 0
+              },
+              "app/tao_repository.py": {
+                "bytes": 5227,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "23d93095a2702f4b7ab02433962dc1f8121f0a33ece4dfffe4b8d98133067beb",
+                "uid": 0
+              },
+              "app/worker.py": {
+                "bytes": 8159,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "b309759e3f66aa5543922d45bc592e1bb0c42408f5832375a9067a891f0e1fa5",
+                "uid": 0
+              },
+              "app/worldmonitor_data.py": {
+                "bytes": 16540,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "bef7acb13d82ad0560d3eba826a47a2c8bd933cabedd384632afa0d11a99ea20",
+                "uid": 0
+              },
+              "data_pipeline/__init__.py": {
+                "bytes": 24,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "7461c7da8b60a918eca2cf452431ddd6e807b033ad6968c4e9d8429096646603",
+                "uid": 0
+              },
+              "data_pipeline/architecture/__init__.py": {
+                "bytes": 82,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "89ef3a450098d608023c6ed886635e687cf46d92ac37228b1d3f4cfa4d7be240",
+                "uid": 0
+              },
+              "data_pipeline/architecture/contracts.py": {
+                "bytes": 1095,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "f93505c3c9ba876e26ad7241a2dc59d97263ccb461a4955c352bf40e5defeb72",
+                "uid": 0
+              },
+              "data_pipeline/architecture/execution_kernel.py": {
+                "bytes": 20343,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "596cf6e739ddf7f7293e4a812f7c0f71a66eb4339d4cbd2b8783cbdd4603275f",
+                "uid": 0
+              },
+              "data_pipeline/architecture/risk_engine.py": {
+                "bytes": 1157,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "ae10fa09453fba5c8fd025b0bc148dc5b5bba10f70f661d98c59950e6016f87c",
+                "uid": 0
+              },
+              "data_pipeline/architecture/simulated_venue.py": {
+                "bytes": 4320,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "dafb08fcd89674483855535f575b7f7b5b82dd995c3dd1bb1b82ad9f59245df0",
+                "uid": 0
+              },
+              "data_pipeline/backfill.py": {
+                "bytes": 8107,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "daf9ecdc7b151a7215191d05b961d8f77c0d3b1e2bc4eb2ea562e1120bd57fec",
+                "uid": 0
+              },
+              "data_pipeline/binary_theory.py": {
+                "bytes": 2207,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "aa2aae2166707ed97c3706fbef307a5e5c6bec5ab0c5748bf05fafa3b74a0db3",
+                "uid": 0
+              },
+              "data_pipeline/catalog_collector.py": {
+                "bytes": 6721,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "a098aadd01c7742145b54284f9bf0ead5e4dc427e4e6dec6e01519d94c420b7a",
+                "uid": 0
+              },
+              "data_pipeline/coinbase_collector.py": {
+                "bytes": 2504,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "ffaf7bce2f2bcfcd4c98ecb099a929d03ae6820aec94751de5946c6f70e2defa",
+                "uid": 0
+              },
+              "data_pipeline/common.py": {
+                "bytes": 10088,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "86a11b40dc173d95de566178eb30333ab98405da5b32db8397c4a9439cdf515d",
+                "uid": 0
+              },
+              "data_pipeline/dashboard_server.py": {
+                "bytes": 176995,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "5adbd4cfc05580653bac865dba68514f08a75507f4af844a865221877384ec68",
+                "uid": 0
+              },
+              "data_pipeline/feature_1m_collector.py": {
+                "bytes": 8577,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "318bd567c64a182417c0ed470d53068aa17b8866d012f424167f3227d00513c6",
+                "uid": 0
+              },
+              "data_pipeline/forward_collector.py": {
+                "bytes": 21209,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "fb7bea2dbfcc3fec9e695d7eb92cb4f6177e61ff479dff0c58d20bd10ab5a89f",
+                "uid": 0
+              },
+              "data_pipeline/init_schema.py": {
+                "bytes": 22821,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "31b19949a7d6b828d6bc868356ba16971b62eb161140197fc221b47e703129a3",
+                "uid": 0
+              },
+              "data_pipeline/kalshi_fees.py": {
+                "bytes": 3082,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "c3ce9eabd1d7e4a2dd13d7988d111f8e585610067873f2cdb0240ba39323bcd6",
+                "uid": 0
+              },
+              "data_pipeline/live_alerter.py": {
+                "bytes": 17424,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "b1fab41427360749c909b5a87c888cf5616dfc8b09b8118e83d387afe0050b52",
+                "uid": 0
+              },
+              "data_pipeline/live_portfolio_20s_updater.py": {
+                "bytes": 5106,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "64f57da9e924d945cd208586d6694a8caacac296f523f04b643749b7739a9a26",
+                "uid": 0
+              },
+              "data_pipeline/live_trading_engine.py": {
+                "bytes": 34820,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "388644bc0e7c609c0e67cfb7c66e25adbee35b8fa5aafee457cd610f2e534dfa",
+                "uid": 0
+              },
+              "data_pipeline/market_data.py": {
+                "bytes": 6655,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "38550140d68ebf594f3c5e3e59b44fdd0870001b9000a42b43b00ae8da1b47be",
+                "uid": 0
+              },
+              "data_pipeline/model_features_1m_builder.py": {
+                "bytes": 18262,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "2e3faee775335de99f18bda556d882f0138c0251df69133feedcbce32d9f1520",
+                "uid": 0
+              },
+              "data_pipeline/model_research_runner.py": {
+                "bytes": 25406,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "6a6e985f0a0a034ebac38c3454939eedd4985b1aba413b76a65b4ed489a13d19",
+                "uid": 0
+              },
+              "data_pipeline/modeling_features.py": {
+                "bytes": 3635,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "eb9bd27a518aa654e3c7c725879aa17661adbe6daabe3b5b03c0a2368b07213d",
+                "uid": 0
+              },
+              "data_pipeline/recompute_sim_metrics.py": {
+                "bytes": 4575,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "c131564e0c6253f32e2c7b976fcc3e4b1f801af70b342912d5dc6b22d8c040a1",
+                "uid": 0
+              },
+              "data_pipeline/research_expiry_resolution.py": {
+                "bytes": 12933,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "8a9bc3cfa6d4f9792bc389faf1f08ee2506d785624265fa7f85ae522ebd3a418",
+                "uid": 0
+              },
+              "data_pipeline/research_expiry_resolution_sensitivity.py": {
+                "bytes": 2832,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "fe8daf9c9c7757cf6b2b7d3a8ee710b7e5d0da3ac190dff0d6f35a817085f965",
+                "uid": 0
+              },
+              "data_pipeline/research_fee_sensitivity.py": {
+                "bytes": 2658,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "e0122dfa770991e3c6ec060a598cd14611d448409879301c0605c216fd3260e4",
+                "uid": 0
+              },
+              "data_pipeline/sim_config.py": {
+                "bytes": 5443,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "f3d2dcf21198fccfda361bf4d9da7b5af7bdc6ae33a04961b65f3b74e5a69007",
+                "uid": 0
+              },
+              "data_pipeline/sim_portfolio_20s_updater.py": {
+                "bytes": 5990,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "cb87f2329464c615369cc65d3883311730f8efb076d1bfb2dd5a76c2fbc49e70",
+                "uid": 0
+              },
+              "data_pipeline/sim_repository.py": {
+                "bytes": 24662,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "2c31b7ca989b168b0ce7a10a4ba0a85b94687feeb4506e514dbff3b538fe5220",
+                "uid": 0
+              },
+              "data_pipeline/simulated_trading_engine.py": {
+                "bytes": 23401,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "e314ac010d102fb2c356f3b6a550a6a48760e2a7b874fea549ec715b6a17f731",
+                "uid": 0
+              },
+              "data_pipeline/snapshot_collector.py": {
+                "bytes": 11831,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "d327ee57c017db02fda4e4742ef73074b55c9b34318f9dc1325e941d84ae83c7",
+                "uid": 0
+              },
+              "data_pipeline/snapshot_series.txt": {
+                "bytes": 1100,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "3efb260ccd747b9f64626d5034d48bb78cc1f9328c3e6a1ba08039f565c1c80d",
+                "uid": 0
+              },
+              "data_pipeline/taostats_collector.py": {
+                "bytes": 9317,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "4fce197e861553893c37b4bcc7daa43985ae8ad7b1afb7ca74f4429bef439db4",
+                "uid": 0
+              },
+              "data_pipeline/watchdog.py": {
+                "bytes": 3378,
+                "gid": 0,
+                "mode": "0644",
+                "sha256": "f53e2a2498de5b193838f57f5682e4c14a2ae157c7a9186b2c78026f10787f1f",
+                "uid": 0
+              }
+            },
+            "omitted_private_or_cache_entries": 3
+          }
+        },
+        "installed_fingerprint": "9b9472457a13a08993dcd7e87fce2115925df674a0db94c74df28344e74db6f5",
+        "job_mutations": 0,
+        "missing_candidate_files": [
+          "app/KALSHI_PERPS_RESEARCH.md",
+          "app/kalshi_perps_backtest.py",
+          "app/kalshi_perps_collector.py",
+          "app/kalshi_perps_data.py",
+          "app/kalshi_perps_repository.py"
+        ],
+        "model_calls": 0,
+        "observed_at_utc": "2026-10-23T01:34:19.718793+00:00",
+        "perps_off_in_all_active_services": true,
+        "private_provider_calls": 0,
+        "production_release_accepted": false,
+        "public_feed": {
+          "actual_candidate_client_and_collector": true,
+          "candle_count": 2761,
+          "candle_coverage_complete": false,
+          "candles_status": "partial",
+          "data_fingerprint": "11621e3b75dfa831519353debcf632ae27bdaacb827ab6d9cab1d953f16605f5",
+          "environment": "production",
+          "funding_count": 6,
+          "funding_coverage_complete": true,
+          "funding_retrieval_complete": true,
+          "funding_status": "complete",
+          "http_events": [
+            {
+              "endpoint": "public_metadata",
+              "http_status": 200
+            },
+            {
+              "endpoint": "candles",
+              "http_status": 200
+            },
+            {
+              "endpoint": "historical_funding",
+              "http_status": 200
+            },
+            {
+              "endpoint": "public_metadata",
+              "http_status": 200
+            },
+            {
+              "endpoint": "funding_estimate",
+              "http_status": 200
+            }
+          ],
+          "metadata_fingerprint": "753c6dadfd93bf3dfa3cd1a489c9bd1952abef1d84cea249bbea9452381e36ce",
+          "missing_candle_count": 120,
+          "observation_count": 4,
+          "observations_status": "complete",
+          "partial_candle_warning": true,
+          "persisted": false,
+          "private_provider_credentials_loaded": false,
+          "readable_history_and_funding": true,
+          "replay_accepted": false,
+          "request_end_ts": 1792719180,
+          "request_start_ts": 1792546380,
+          "retrieved_at": "2026-10-23T01:34:21.196221Z",
+          "route": "direct",
+          "source_schema": "kalshi-perps-normalized-v1",
+          "source_version": null,
+          "status": "checked",
+          "window_hours": 48
+        },
+        "read_only": true,
+        "replay_accepted": false,
+        "schema_sha256": "6738460234b7e46ff230cb64e287354e2e3e0f46a548f8fb504ef17c476c1084",
+        "service_operations": 0,
+        "source_and_controls_unchanged": true,
+        "source_comparison": {
+          "app/ALPACA_PAPER_TRADING.md": {
+            "matches_base": false,
+            "matches_candidate": false
+          },
+          "app/BROKER_OAUTH.md": {
+            "matches_base": false,
+            "matches_candidate": false
+          },
+          "app/BROKER_OAUTH_DEPLOYMENT.md": {
+            "matches_base": false,
+            "matches_candidate": false
+          },
+          "app/DEPLOYMENT_SECRETS.md": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/MARKET_DATA_DEPLOYMENT.md": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/README.md": {
+            "matches_base": false,
+            "matches_candidate": false
+          },
+          "app/SESSION_CHAT_API.md": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/__init__.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/agent.py": {
+            "matches_base": false,
+            "matches_candidate": false
+          },
+          "app/agent_knowledge.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/agent_market_data.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/agent_news.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/alpaca_data.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/alpaca_paper.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/alpaca_paper_client.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/alpaca_paper_repository.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/auth.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/backtest.py": {
+            "matches_base": true,
+            "matches_candidate": false
+          },
+          "app/billing.py": {
+            "matches_base": false,
+            "matches_candidate": false
+          },
+          "app/broker_alpaca.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/broker_ibkr.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/broker_oauth.py": {
+            "matches_base": false,
+            "matches_candidate": false
+          },
+          "app/broker_repository.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/broker_robinhood.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/broker_vault.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/catalog_repository.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/code_map.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/databento_data.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/devlog.py": {
+            "matches_base": false,
+            "matches_candidate": false
+          },
+          "app/dreaming.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/engine.py": {
+            "matches_base": true,
+            "matches_candidate": false
+          },
+          "app/exa_data.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/execution/__init__.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/execution/guard.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/execution/latency.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/exploration.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/freedata.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/gatekeeper.py": {
+            "matches_base": true,
+            "matches_candidate": false
+          },
+          "app/kalshi_account.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/kalshi_dev.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/kalshi_dev_exec.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/llm.py": {
+            "matches_base": false,
+            "matches_candidate": false
+          },
+          "app/market_data_common.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/market_data_config.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/market_history.py": {
+            "matches_base": true,
+            "matches_candidate": false
+          },
+          "app/markets.py": {
+            "matches_base": true,
+            "matches_candidate": false
+          },
+          "app/massive_data.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/models_catalog.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/news_journal.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/notify.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/partitions.py": {
+            "matches_base": true,
+            "matches_candidate": false
+          },
+          "app/quant.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/reconcile.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/relabel_backtest_only.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/replay.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/repository.py": {
+            "matches_base": false,
+            "matches_candidate": false
+          },
+          "app/research_brief.md": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/research_eval.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/research_repository.py": {
+            "matches_base": true,
+            "matches_candidate": false
+          },
+          "app/sandbox.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/schema.py": {
+            "matches_base": false,
+            "matches_candidate": false
+          },
+          "app/server.py": {
+            "matches_base": false,
+            "matches_candidate": false
+          },
+          "app/spec.py": {
+            "matches_base": true,
+            "matches_candidate": false
+          },
+          "app/static/DM-Sans-OFL.txt": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/static/alpaca-paper.css": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/static/alpaca-paper.js": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/static/app.css": {
+            "matches_base": false,
+            "matches_candidate": false
+          },
+          "app/static/app.js": {
+            "matches_base": false,
+            "matches_candidate": false
+          },
+          "app/static/app.meridian.css": {
+            "matches_base": false,
+            "matches_candidate": false
+          },
+          "app/static/app.meridian.js": {
+            "matches_base": false,
+            "matches_candidate": false
+          },
+          "app/static/apple-developer-merchantid-domain-association": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/static/boot.js": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/static/broker-connections.css": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/static/broker-connections.js": {
+            "matches_base": false,
+            "matches_candidate": false
+          },
+          "app/static/dm-sans-latin-9fea608a94.woff2": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/static/icon.svg": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/static/index.html": {
+            "matches_base": false,
+            "matches_candidate": false
+          },
+          "app/static/research-artifacts.js": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/static/session-chat.js": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/static/session-data.js": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/stats.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/tao_fees.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/tao_repository.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/worker.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "app/worldmonitor_data.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/__init__.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/architecture/__init__.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/architecture/contracts.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/architecture/execution_kernel.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/architecture/risk_engine.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/architecture/simulated_venue.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/backfill.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/binary_theory.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/catalog_collector.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/coinbase_collector.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/common.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/dashboard_server.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/feature_1m_collector.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/forward_collector.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/init_schema.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/kalshi_fees.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/live_alerter.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/live_portfolio_20s_updater.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/live_trading_engine.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/market_data.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/model_features_1m_builder.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/model_research_runner.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/modeling_features.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/recompute_sim_metrics.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/research_expiry_resolution.py": {
+            "matches_base": false,
+            "matches_candidate": false
+          },
+          "data_pipeline/research_expiry_resolution_sensitivity.py": {
+            "matches_base": false,
+            "matches_candidate": false
+          },
+          "data_pipeline/research_fee_sensitivity.py": {
+            "matches_base": false,
+            "matches_candidate": false
+          },
+          "data_pipeline/sim_config.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/sim_portfolio_20s_updater.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/sim_repository.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/simulated_trading_engine.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/snapshot_collector.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/snapshot_series.txt": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/taostats_collector.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          },
+          "data_pipeline/watchdog.py": {
+            "matches_base": true,
+            "matches_candidate": true
+          }
+        },
+        "source_files": 120,
+        "status": "inspected",
+        "temporary_source_cleaned": true
+      }
+    },
+    {
+      "type": "CLEANUP",
+      "receipt": {
+        "current_diagnostic_object_cleared": true,
+        "historical_s3_versions_inspected": false
+      }
+    }
+  ]
+}

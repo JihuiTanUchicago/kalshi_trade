@@ -11,6 +11,7 @@ on:
       - 'kalshi_trade_infra/requirements.txt'
       - 'kalshi_trade_infra/staging/**'
       - 'kalshi_trade_infra/scripts/paper_staging_smoke.py'
+      - 'kalshi_trade_infra/scripts/kalshi_perps_staging_smoke.py'
       - 'kalshi_trade_infra/tests/test*staging*'
   push:
     branches: [main]
@@ -21,6 +22,7 @@ on:
       - 'kalshi_trade_infra/requirements.txt'
       - 'kalshi_trade_infra/staging/**'
       - 'kalshi_trade_infra/scripts/paper_staging_smoke.py'
+      - 'kalshi_trade_infra/scripts/kalshi_perps_staging_smoke.py'
       - 'kalshi_trade_infra/tests/test*staging*'
 
 permissions:
@@ -83,9 +85,12 @@ jobs:
           process = json.loads(output(compose + ['exec','-T','web','python','-I','-c',code]))
           assert set(process['Uid'].split()) == {'10001'} and set(process['Gid'].split()) == {'10001'}
           assert int(process['CapEff'],16) == 0
+          code = "import json; e=dict(p.split(b'=',1) for p in open('/proc/1/environ','rb').read().split(b'\\0') if b'=' in p); assert e.get(b'TAU_KALSHI_PERPS_LIVE_ENABLED')==b'0' and e.get(b'TAU_KALSHI_PERPS_ENABLED')==b'0' and e.get(b'APP_DEV_LOGIN')==b'0'; print(json.dumps({'perps_live':False,'perps_data':False,'dev_login':False}))"
+          flags = json.loads(output(compose + ['exec','-T','--user','10001:10001','web','python','-I','-c',code]))
+          assert flags == {'perps_live':False,'perps_data':False,'dev_login':False}
           base = 'http://127.0.0.1:18090'
           statuses = {}
-          for path, expected in (('/',200),('/research',200),('/healthz',200),('/auth/dev',404),('/unsubscribe',404),('/not-a-preview-route',404),('/api/brokers/alpaca/paper',401)):
+          for path, expected in (('/',200),('/research',200),('/healthz',200),('/auth/dev',404),('/unsubscribe',404),('/not-a-preview-route',404),('/api/brokers/alpaca/paper',401),('/api/kalshi/perps/live',401)):
               try:
                   with urllib.request.urlopen(base+path,timeout=10) as response:
                       statuses[path] = response.status
@@ -97,12 +102,17 @@ jobs:
               raise AssertionError('Gateway accepted a write request')
           except urllib.error.HTTPError as exc:
               assert exc.code == 403
+          try:
+              urllib.request.urlopen(urllib.request.Request(base+'/api/kalshi/perps/live/orders',data=b'{}',method='POST'),timeout=10)
+              raise AssertionError('Gateway accepted a perpetual write request')
+          except urllib.error.HTTPError as exc:
+              assert exc.code == 403
           with urllib.request.urlopen(urllib.request.Request(base+'/healthz',method='HEAD'),timeout=10) as response:
               assert response.status == 200 and response.read() == b''
-          for name in ('alpaca-paper.js','alpaca-paper.css','broker-connections.js'):
+          for name in ('alpaca-paper.js','alpaca-paper.css','broker-connections.js','kalshi-perps-live.js','kalshi-perps-live.css'):
               with urllib.request.urlopen(base+'/static/'+name,timeout=10) as response:
                   assert hashlib.sha256(response.read()).digest() == hashlib.sha256((pathlib.Path('app/static')/name).read_bytes()).digest()
-          receipt = {'internal_network':True,'loopback_web_only':True,'database_host_port':False,'app_uid':10001,'app_capabilities':0,'served_assets_match':True,'public_dev_login':False,'readonly_gateway':True,'gateway_credentials':False,'http_statuses':statuses}
+          receipt = {'internal_network':True,'loopback_web_only':True,'database_host_port':False,'app_uid':10001,'app_capabilities':0,'served_assets_match':True,'public_dev_login':False,'public_perps_live_enabled':False,'readonly_gateway':True,'gateway_credentials':False,'http_statuses':statuses}
           pathlib.Path(os.environ['RUNNER_TEMP'],'tau-paper-runtime.json').write_text(json.dumps(receipt))
           print('TAU_STAGING_RUNTIME='+json.dumps(receipt))
           PY
@@ -110,6 +120,10 @@ jobs:
         run: |
           set -euo pipefail
           docker compose --project-name "$TAU_STAGING_PROJECT" --file staging/compose.yml run --rm --no-deps -T verify | tee "$RUNNER_TEMP/tau-paper-acceptance.json"
+      - name: Verify manual perpetual orders with an isolated synthetic native client
+        run: |
+          set -euo pipefail
+          docker compose --project-name "$TAU_STAGING_PROJECT" --file staging/compose.yml run --rm --no-deps -T verify verify-perps | tee "$RUNNER_TEMP/tau-perps-acceptance.json"
       - name: Validate and summarize the acceptance receipt
         run: |
           python3 - <<'PY'
@@ -120,11 +134,21 @@ jobs:
           assert len(report['checks'])>=14 and all(c['passed'] for c in report['checks'])
           assert report['production_changed'] is False and report['real_provider_calls']==0 and report['real_oauth_tested'] is False
           assert report['counts']['active_runs']==report['counts']['active_deployments']==0
+          perps = json.loads((folder/'tau-perps-acceptance.json').read_text())
+          assert perps['status']=='passed' and perps['mode']=='synthetic_kalshi_perps_real_mysql_http'
+          assert len(perps['checks'])>=19 and all(c['passed'] for c in perps['checks'])
+          assert perps['production_changed'] is False and perps['real_provider_calls']==0
+          assert perps['real_kalshi_keys_used'] is False and perps['real_order_acceptance_tested'] is False
+          assert perps['manual_confirmation_required'] is True and perps['verification_http_loopback_only'] is True
+          assert perps['synthetic_client_only'] is True
+          assert perps['counts']['active_runs']==perps['counts']['active_deployments']==perps['counts']['wrong_environment_orders']==0
+          assert perps['counts']['synthetic_submissions']==perps['counts']['independent_committed_claims']==perps['counts']['claimed_orders']==3
           runtime = json.loads((folder/'tau-paper-runtime.json').read_text())
-          receipt = {'source_sha':os.environ['GITHUB_SHA'],'acceptance':report,'runtime':runtime,'persistent_public_staging':False}
+          assert runtime['public_perps_live_enabled'] is False
+          receipt = {'source_sha':os.environ['GITHUB_SHA'],'acceptance':report,'perps_acceptance':perps,'runtime':runtime,'persistent_public_staging':False}
           (folder/'tau-paper-staging-result.json').write_text(json.dumps(receipt,indent=2)+'\n')
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as summary:
-              summary.write('Isolated paper staging passed: full schema, real MySQL/HTTP, 14 synthetic-broker lifecycle checks, source hashes and runtime isolation. No production changes or provider calls. No real OAuth/order acceptance claimed.\n')
+              summary.write('Isolated staging passed: full schema, real MySQL/HTTP, 14 Alpaca paper checks and 19 native perpetual manual-order checks with synthetic clients, source hashes and runtime isolation. Public perpetual live trading stays off. No production changes, provider calls or real OAuth/order acceptance claimed.\n')
           print('TAU_STAGING_ACCEPTED='+json.dumps(receipt))
           PY
       - name: Upload only sanitized acceptance evidence
@@ -135,6 +159,7 @@ jobs:
           path: |
             ${{ runner.temp }}/tau-paper-staging-result.json
             ${{ runner.temp }}/tau-paper-acceptance.json
+            ${{ runner.temp }}/tau-perps-acceptance.json
             ${{ runner.temp }}/tau-paper-runtime.json
           if-no-files-found: ignore
           retention-days: 14

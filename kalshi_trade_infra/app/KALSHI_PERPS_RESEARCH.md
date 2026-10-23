@@ -1,10 +1,12 @@
 # Bitcoin perpetual research
 
 This first phase adds Kalshi's native Bitcoin perpetual market data to Tau's
-research pipeline. It is implemented locally and default off. After resolving a
+research pipeline. Source is merged through PR #21 and remains default off. After resolving a
 local proxy-routing issue and matching native Bitcoin metadata labels, the real
 client/collector retrieved production and demo candles, funding and observations
-on October 23. The 48-hour sample has candle gaps; continuous replay, database and
+on October 23. The pinned client and collector also passed five public requests
+directly from the production server. Hosted full-schema MySQL/HTTP staging passed.
+The 48-hour sample has candle gaps; continuous replay, actual perps persistence and
 queued-model acceptance remain pending. Nothing in this change has been deployed
 or activated on the production worker. Public data access is not account access.
 
@@ -194,10 +196,11 @@ create fresh holdout evidence.
 Offline tests cover synthetic native responses through collection, storage,
 frozen phases, nonzero trades and gatekeeper records; golden P&L/funding and
 execution rejection cases are separate. They do not establish a real provider,
-MySQL migration or authenticated queued model run. Public native retrieval is now
-verified from this Mac using the explicit proxy, including native size-title and
-asset-class handling. Before activation, validate deployment-server connectivity,
-usable candle coverage, historical contract-version validity and retained history,
+production MySQL migration or authenticated queued model run. Hosted full-schema
+MySQL/HTTP compatibility and public native retrieval now pass. This Mac uses an
+explicit proxy; the production server passed with direct HTTPS, including native
+size-title and asset-class handling. Before activation, validate usable candle
+coverage, historical contract-version validity and retained history,
 real DB persistence and
 source replay, then a normal research run in an isolated hosted environment.
 Do not interpret synthetic profit as evidence of a tradable edge.

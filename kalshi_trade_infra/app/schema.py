@@ -8,6 +8,7 @@ line by line and two writers cannot lose an update to each other.
 from data_pipeline import init_schema
 from data_pipeline.common import get_db_conn
 from app import broker_repository, alpaca_paper_repository, kalshi_perps_repository
+from app import kalshi_perps_orders_repository
 
 DDL = [
     # -- market history (written by app.market_history; Kalshi candles go in
@@ -560,6 +561,7 @@ DDL = [
 DDL.extend(broker_repository.DDL)
 DDL.extend(alpaca_paper_repository.DDL)
 DDL.extend(kalshi_perps_repository.DDL)
+DDL.extend(kalshi_perps_orders_repository.DDL)
 
 
 def _add_column_if_missing(cur, table: str, column: str, ddl: str) -> None:
@@ -569,7 +571,6 @@ def _add_column_if_missing(cur, table: str, column: str, ddl: str) -> None:
     )
     if cur.fetchone()["c"] == 0:
         cur.execute(ddl)
-
 
 
 def _add_index_if_missing(cur, table: str, index_name: str, ddl: str) -> None:
@@ -618,9 +619,14 @@ def main() -> None:
         # a re-hit re-points app_experiments.strategy_id at a later strategy row. NULL = a legacy
         # or loose-path (backtest-only) strategy that never went through the gatekeeper.
         _add_column_if_missing(cur, "app_strategies", "experiment_id", "ALTER TABLE app_strategies ADD COLUMN experiment_id BIGINT NULL")
-        # Cross-day generalization breakdown (per-day/per-fold) the research-paper folds strip renders.
+        # series_with_candles() ("which series have a backtest surface") runs on EVERY authenticated
+        # page load via /api/me, as SELECT DISTINCT series_ticker FROM hist_markets WHERE candles_done=1.
+        # Without an index on candles_done it full-scans hist_markets (~450k rows, ~6s, up to ~45s under
+        # load) and the SPA blocks all rendering on /api/me -> blank page. This (candles_done, series_ticker)
+        # index makes it a loose index scan in ms AND removes that repeated full scan from the DB's load.
         _add_index_if_missing(cur, "hist_markets", "idx_hist_candles_series",
                               "ALTER TABLE hist_markets ADD INDEX idx_hist_candles_series (candles_done, series_ticker)")
+        # Cross-day generalization breakdown (per-day/per-fold) the research-paper folds strip renders.
         _add_column_if_missing(cur, "app_experiment_results", "folds_json", "ALTER TABLE app_experiment_results ADD COLUMN folds_json JSON NULL AFTER equity_curve_json")
         # Cross-contract strategies spend from a SHARED FDR stream keyed on a combined key
         # ('btc_daily+eth_daily'), which overruns the old VARCHAR(16). Widen the market key
@@ -697,6 +703,9 @@ def main() -> None:
         # review reads + rewrites each turn, so reviews are coherent across time instead of
         # independent one-shots. NULL = no plan yet. Bounded in repository.set_autopilot_plan.
         _add_column_if_missing(cur, "app_users", "autopilot_plan", "ALTER TABLE app_users ADD COLUMN autopilot_plan JSON NULL")
+        # The model key (from models_catalog) the autopilot's own research/review/chat runs use when
+        # the run didn't pick one. NULL = the catalog default. Lets the user route autopilot to a
+        # higher-quota model (e.g. Sonnet) so Bedrock throttling stops killing research runs.
         _add_column_if_missing(cur, "app_users", "autopilot_model", "ALTER TABLE app_users ADD COLUMN autopilot_model VARCHAR(64) NULL")
         # Proposal payload: the clamped values a set_risk / set_exec proposal applies on approval
         # (deploy/adjust/pause/resume carry no payload). NULL for the older kinds.

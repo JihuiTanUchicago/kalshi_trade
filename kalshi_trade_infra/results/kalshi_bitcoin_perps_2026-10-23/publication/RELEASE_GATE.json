@@ -1,0 +1,25 @@
+{
+  "recorded_at": "2026-10-23T01:44:06.819754+00:00",
+  "milestone": "publication_and_actual_server_preflight_complete",
+  "pr_url": "https://github.com/JihuiTanUchicago/kalshi_trade/pull/21",
+  "main_merge_sha": "33bfc957cd8443924f65776e5a744835caa5eaea",
+  "readiness_run": 39884723368,
+  "production_release_accepted": false,
+  "activation_accepted": false,
+  "source_reconciliation_pending": true,
+  "unresolved_application_paths": [
+    "app/agent.py",
+    "app/billing.py",
+    "app/devlog.py",
+    "app/llm.py",
+    "app/repository.py",
+    "app/schema.py",
+    "app/server.py",
+    "app/static/app.js"
+  ],
+  "existing_research_preserved": true,
+  "effective_perps_flags_off": true,
+  "trading": "all_perps_modes_blocked",
+  "next_boundary": "bounded selected-source read and exact-hash reconciliation; complete candidate/schema/rollback/public-HTTP verification before release",
+  "no_followup_automation_created": true
+}
