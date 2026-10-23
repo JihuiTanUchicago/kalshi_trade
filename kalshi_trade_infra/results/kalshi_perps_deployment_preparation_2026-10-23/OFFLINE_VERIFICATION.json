@@ -3,9 +3,9 @@
   "status": "offline_verified",
   "python": {
     "command": "python -m pytest tests/ -q",
-    "passed": 2253,
+    "passed": 2265,
     "skipped": 10,
-    "seconds": 29.95
+    "seconds": 31.11
   },
   "frontend": {
     "command": "node --test tests/*.mjs",
@@ -18,7 +18,7 @@
   "store_service_focused_passed": 137,
   "ui_focused_passed": 30,
   "staging_focused_passed": 107,
-  "hosted_staging": "pending",
+  "hosted_staging": "58eb085 failed safely on proposal-kind width; idempotent32-character repair added; rerun pending",
   "production_mutations": 0,
   "real_orders": 0,
   "per_user_manual_confirmation": true,
@@ -30,5 +30,5 @@
     "cancel_uncertainty_preserved",
     "native_count_ui_normalization"
   ],
-  "formal_immutable_diff_review": "pending"
+  "formal_immutable_diff_review": "58eb085 completed no findings; migration delta pending"
 }

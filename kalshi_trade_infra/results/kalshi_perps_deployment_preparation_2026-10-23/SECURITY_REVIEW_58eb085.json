@@ -1,0 +1,14 @@
+{
+  "scan_id": "a3ffaf21-3f67-4a61-9c19-6ce03b952ece",
+  "base_revision": "33bfc957cd8443924f65776e5a744835caa5eaea",
+  "head_revision": "58eb085889a4e1dead12940ab0e065e03399f0a7",
+  "status": "completed",
+  "coverage": "complete",
+  "changed_files_reviewed": 59,
+  "security_findings": 0,
+  "independent_architecture_review": true,
+  "independent_native_money_path_review": true,
+  "production_calls": 0,
+  "real_orders": 0,
+  "limitation": "Covers frozen58 only; proposal column migration and hosted release gates are subsequent work."
+}
