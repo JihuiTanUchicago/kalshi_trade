@@ -192,6 +192,37 @@ def command(args, *, timeout=12):
         raise ReleaseError("service_operation_failed") from None
 
 
+def worker_health():
+    """Project fixed systemd counters; never retain journal messages."""
+    try:
+        raw = command(["systemctl", "show", "recursive-agents", "--property=NRestarts,Result,ExecMainCode,ExecMainStatus,MemoryCurrent,MemoryPeak"], timeout=3)
+        values = dict(line.split("=", 1) for line in raw.decode().splitlines() if "=" in line)
+        result = values["Result"]
+        require(result in {"success", "exit-code", "signal", "core-dump", "watchdog", "oom-kill", "timeout", "resources", "start-limit-hit", "protocol"}, "unsafe_health_projection")
+        numbers = {}
+        for name in ("NRestarts", "ExecMainCode", "ExecMainStatus", "MemoryCurrent", "MemoryPeak"):
+            value = values.get(name, "[not set]")
+            if value == "[not set]" and name.startswith("Memory"):
+                numbers[name] = None
+            else:
+                require(re.fullmatch(r"[0-9]{1,20}", value) and int(value) <= 2**64 - 1, "unsafe_health_projection")
+                numbers[name] = int(value)
+        # Only service-manager records, never application/provider log lines.
+        raw = command(["journalctl", "--unit=recursive-agents.service", "_PID=1", "--since=-30min", "--lines=80", "--no-pager", "--output=json", "--output-fields=__REALTIME_TIMESTAMP,MESSAGE"], timeout=3)
+        events = {"oom_kill": 0, "process_exit": 0, "scheduled_restart": 0}
+        for line in raw.decode().splitlines():
+            row = json.loads(line)
+            message = row.get("MESSAGE", "")
+            require(isinstance(message, str), "unsafe_health_projection")
+            message = message.lower()
+            events["oom_kill"] += int("oom" in message and "kill" in message or "out of memory" in message)
+            events["process_exit"] += int("main process exited" in message)
+            events["scheduled_restart"] += int("scheduled restart job" in message)
+        return {"status": "observed", "service_result": result, "systemd_counters": numbers, "manager_events_last_30m": events}
+    except Exception:
+        return {"status": "unavailable", "error_code": "worker_health_projection_failed"}
+
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None
@@ -477,6 +508,7 @@ def inventory(backend, pins):
             "installed_fingerprint": fingerprint(state), "source_fingerprint": fingerprint(source_files(state)),
             "observed_units": state["controls"]["units"],
             "observed_processes": state["controls"]["processes"],
+            "worker_health": worker_health(),
             "job_counts": projection["job_counts"], "schema": projection,
             "application_changes": False, "service_operations": 0, "job_mutations": 0,
             "provider_calls_from_operations": 0}, state, env

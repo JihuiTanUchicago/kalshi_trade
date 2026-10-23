@@ -178,3 +178,5 @@ The explicit baseline/projection delta requires fresh focused/full-suite checks,
 an immutable incremental review and an exact-head all-kind inventory before apply.
 
 Root baseline-delta verification:39focused cases passed; existing app1,899passed/10skipped in26.28s; whitespace and owned Python syntax pass. No application, schema, service or real provider/account/order operation has occurred. Incremental immutable review is next.
+
+Restart-diagnosis gate: inventory39898387856 at586d051 again reported zero all-kind jobs and unchanged source/unit-file/private-config pins, but a newer agents process(PID506113). No apply, migration, restart or source installation occurred. Do not repeatedly repin. Added a fixed read-only systemd counter and PID1 service-manager journal projection to inventory; raw messages/errors are discarded and only typed counters/event totals survive.43focused tests and1,899app tests/10skipped in25.79s pass. Read-only health diagnosis requires immutable review before dispatch. Current pins remain at the previously reviewed worker505078; mismatches still block all application changes.

@@ -320,6 +320,7 @@ class OrchestrationTests(unittest.TestCase):
         item = patch.object(remote, "safe_directory", lambda *a, **kw: None); item.start(); self.stack.append(item)
         item = patch.object(remote, "fixed_file", lambda path, raw, **kw: path.write_bytes(raw)); item.start(); self.stack.append(item)
         item = patch.object(remote, "http_read", lambda *a, **kw: b'{}'); item.start(); self.stack.append(item)
+        item = patch.object(remote, "worker_health", lambda: {"status": "synthetic"}); item.start(); self.stack.append(item)
         self.pins = runner.pins()
         self.pins["candidate_ready"] = True  # Synthetic backend; no production acceptance is exercised.
         self.backend = FakeBackend(self.pins, self.root)
@@ -632,6 +633,36 @@ class SchemaAndTransportTests(unittest.TestCase):
         self.assertEqual(phases, ["prepare", "apply"])
         self.assertFalse(emitted[-1][1]["current_transport_object_cleared"])
         self.assertTrue(emitted[-1][1]["release_committed"])
+
+
+class WorkerHealthTests(unittest.TestCase):
+    counters = b"NRestarts=7\nResult=success\nExecMainCode=0\nExecMainStatus=0\nMemoryCurrent=1234\nMemoryPeak=4321\n"
+
+    def test_only_fixed_counters_and_manager_event_counts_leave_the_reader(self):
+        journal = b'{"MESSAGE":"A process was killed by the OOM killer; private account key"}\n{"MESSAGE":"Main process exited, private licensed text"}\n{"MESSAGE":"Scheduled restart job"}\n'
+        with patch.object(remote, "command", side_effect=[self.counters, journal]) as call:
+            report = remote.worker_health()
+        self.assertEqual(report["status"], "observed")
+        self.assertEqual(report["systemd_counters"]["NRestarts"], 7)
+        self.assertEqual(report["manager_events_last_30m"], {"oom_kill": 1, "process_exit": 1, "scheduled_restart": 1})
+        self.assertNotIn("private", json.dumps(report))
+        self.assertIn("_PID=1", call.call_args_list[1].args[0])
+        self.assertEqual(call.call_count, 2)
+
+    def test_missing_optional_memory_peak_does_not_hide_restart_evidence(self):
+        with patch.object(remote, "command", side_effect=[self.counters.replace(b"MemoryPeak=4321\n", b""), b""]):
+            report = remote.worker_health()
+        self.assertEqual(report["systemd_counters"]["MemoryPeak"], None)
+        self.assertEqual(report["systemd_counters"]["NRestarts"], 7)
+
+    def test_unknown_values_and_malformed_journal_never_expose_raw_messages(self):
+        for counters, journal in ((self.counters.replace(b"success", b"private account"), b""), (self.counters, b"private raw log")):
+            with patch.object(remote, "command", side_effect=[counters, journal]):
+                self.assertEqual(remote.worker_health(), {"status": "unavailable", "error_code": "worker_health_projection_failed"})
+
+    def test_unavailable_systemd_has_only_a_fixed_error_code(self):
+        with patch.object(remote, "command", side_effect=RuntimeError("private raw error")):
+            self.assertEqual(remote.worker_health(), {"status": "unavailable", "error_code": "worker_health_projection_failed"})
 
 
 class RootMetadata:
