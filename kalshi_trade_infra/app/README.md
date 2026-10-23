@@ -1,5 +1,18 @@
 # Tau (v0.1)
 
+## Bitcoin perpetual market data and research — October 23, 2026
+
+Kalshi native Bitcoin perpetual history, funding and current observations now
+have a separate, opt-in research path with causal replay, frozen source manifests
+and the existing statistical gates. Both themes identify results as Research
+only. Paper, demo and live perpetual execution are blocked. This is local source
+implementation with offline verification. Explicit proxy support and native
+metadata parsing resolve the initial local timeout/discovery issues: real
+production/demo candles, funding and observations are retrieved successfully.
+Candle gaps, server/DB/queued-run acceptance and deployment remain pending.
+See [setup, supported rules and limitations](KALSHI_PERPS_RESEARCH.md) and
+[implementation evidence](../results/kalshi_bitcoin_perps_2026-10-23/HANDOFF.md).
+
 Default Tau header/Hot Markets divider alignment is offline verified with a shared50pxrow height; production release is pending and Meridian is unchanged. [Current work](../results/header_alignment_2026-10-22/HANDOFF.md).
 
 Meridian no longer creates new-version notices or checks deployment versions on navigation. This change is offline verified and awaiting production release; default Tau is unchanged. [Current fix](../results/meridian_update_notice_2026-10-21/HANDOFF.md).

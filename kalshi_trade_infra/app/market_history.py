@@ -246,7 +246,7 @@ def refresh(cur) -> Dict[str, int]:
     for m in MARKETS.values():
         if m.underlying is None:  # sports: no spot series to sync
             continue
-        if m.kind == "spot":  # TAO subnet tokens: sourced by the taostats collector, not Coinbase/Kalshi
+        if m.kind != "binary":  # Continuous venues have their own native collectors.
             continue
         by_symbol[m.underlying] = max(by_symbol.get(m.underlying, 0), m.history_days)
     for symbol, history_days in by_symbol.items():
@@ -255,7 +255,7 @@ def refresh(cur) -> Dict[str, int]:
         start = int(last) + 60 if last else int((now - timedelta(days=history_days + 1)).timestamp())
         stats["spot_" + symbol] = sync_spot_candles(cur, symbol, start, end_ts)
     for market in MARKETS.values():
-        if market.kind == "spot":  # no Kalshi contract series behind a TAO alpha token
+        if market.kind != "binary":  # Never feed perpetuals to the expiring YES/NO history path.
             continue
         # Contained per market: with the catalog-driven universe this loop now covers ~100 series,
         # so one series' API/DB hiccup must not abort the backfill for all the others (it just

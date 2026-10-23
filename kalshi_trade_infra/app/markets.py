@@ -47,7 +47,8 @@ class Market:
     # The instrument this market is. "binary" = a Kalshi digital-option contract (strike,
     # expiry, $0/$1 settlement - the whole spec.py/backtest.py binary path). "spot" = a
     # continuous price series (e.g. a TAO subnet alpha token) traded long/flat via
-    # backtest.simulate_spot; it has no strike/expiry/settlement, so the binary feature and
+    # backtest.simulate_spot; "perpetual" uses a separate funding-aware research replay.
+    # Neither continuous instrument has binary strike/expiry/settlement, so the binary feature and
     # fair-value math never runs on it. simulate() routes on this field exactly once.
     kind: str = "binary"
     # Human-facing group for the research picker (Sports / Weather / Economics / …). The
@@ -70,6 +71,11 @@ class Market:
 # from the catalog. These are authoritative and never generated; catalog markets merge on top
 # of them (see MARKETS below) and can never shadow one (their series are excluded from generation).
 CURATED: Dict[str, Market] = {
+    # Logical research series; the native Bitcoin ticker is verified/discovered by the
+    # dedicated public-data adapter. Never send BTC_PERP to the event-contract API.
+    "btc_perp": Market("btc_perp", "BTC_PERP", "Bitcoin perpetual (research only)",
+                       candle_minutes=1, history_days=90, underlying="BTC-USD",
+                       deployable=False, kind="perpetual", category="Crypto perpetuals"),
     # Deployable: live feed + execution path exist, so the engine trades these.
     "btc15m": Market("btc15m", "KXBTC15M", "Bitcoin 15-minute", candle_minutes=1, history_days=30,
                      underlying="BTC-USD", deployable=True, category="Crypto"),

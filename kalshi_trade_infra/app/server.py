@@ -248,16 +248,28 @@ def _researchable_markets(cur) -> List[Dict]:
     spot_underlyings = [m.underlying for m in MARKETS.values() if m.kind == "spot" and m.underlying]
     live_spot = repo.spot_symbols_with_data(cur, spot_underlyings)
     ready_series = repo.series_with_candles(cur)
+    from app import kalshi_perps_repository as perps_repo
+    from app.kalshi_perps_data import Config as PerpsConfig
+    from app.market_data_common import MarketDataError
+    try:
+        perps_enabled = PerpsConfig.from_env().enabled
+    except (ValueError, MarketDataError):
+        perps_enabled = False
     out: List[Dict] = []
     for m in MARKETS.values():
-        if m.kind == "spot":
+        if m.kind == "perpetual":
+            if not perps_enabled:
+                continue
+            has_data = perps_repo.ready(cur, m)
+        elif m.kind == "spot":
             if m.underlying not in live_spot:
                 continue
             has_data = True
         else:
             has_data = m.series in ready_series
         out.append({"key": m.key, "label": m.label, "series": m.series,
-                    "category": m.category, "deployable": m.deployable, "has_data": has_data})
+                    "category": m.category, "deployable": m.deployable, "has_data": has_data,
+                    **({"kind": "perpetual", "research_only": True} if m.kind == "perpetual" else {})})
     return out
 
 
@@ -479,6 +491,9 @@ def create_run(ctx: Ctx):
         raise ApiError(400, "Pick a model from the list, or leave it on the default.")
     if market is not None and market not in MARKETS:
         raise ApiError(400, "Pick a market Tau can research, or let the agent choose.")
+    unavailable = agent.research_unavailable_reason(market)
+    if unavailable:
+        raise ApiError(409, unavailable)
     if not idea or len(idea) < 8:
         raise ApiError(400, "Describe your idea in a sentence or two first.")
     if direction is not None and direction not in agent.DIRECTIONS:
@@ -516,6 +531,9 @@ def dig_deeper(ctx: Ctx):
     s = _owned_strategy(ctx)
     if s["status"] != "passed":
         raise ApiError(409, "Only a strategy that passed its backtest can be researched deeper.")
+    unavailable = agent.research_unavailable_reason(s["market"])
+    if unavailable:
+        raise ApiError(409, unavailable)
     model = ctx.body.get("model") or None
     if model is not None and model not in catalog.MODELS:
         raise ApiError(400, "Pick a model from the list, or leave it on the default.")
@@ -558,7 +576,9 @@ def _strategy_card(s: Dict) -> Dict:
         "created_at": s["created_at"], "hypotheses_tried": s.get("hypotheses_tried"),
         "in_sample": res.get("in_sample"), "out_of_sample": res.get("out_of_sample"),
         "equity": res.get("equity"), "capital": res.get("capital"),
-        "stake": s["spec"]["sizing"]["stake"], "side": s["spec"]["side"],
+        "stake": s["spec"]["sizing"]["stake"],
+        "side": s["spec"]["perpetual"]["side"] if specmod.is_perpetual_spec(s["spec"]) else s["spec"].get("side"),
+        **({"kind": "perpetual", "research_only": True} if specmod.is_perpetual_spec(s["spec"]) else {}),
         "deployed": bool(s.get("active_deps")), "deploy_live": bool(s.get("live_deps")),
         "shared_from": s.get("shared_from_name") if s.get("shared_from_user_id") else None,
     }
@@ -807,6 +827,8 @@ def get_strategy(ctx: Ctx):
 
 def what_if(ctx: Ctx):
     s = _owned_strategy(ctx)
+    if specmod.has_perpetual_market(s["spec"], s.get("market")):
+        raise ApiError(409, "Bitcoin perpetual research uses fixed scenario costs; binary slippage controls do not apply.")
     if s["status"] == "rejected":
         raise ApiError(409, "This hypothesis was rejected in-sample; there is no full backtest to vary.")
     # Default the slippage knob to the real demo-book slippage measured for this
@@ -832,6 +854,8 @@ def strategy_dev_curve(ctx: Ctx):
     Degrades to {"dev_curve": None} (no second line) when dev replay is
     unconfigured or the demo host/data is unavailable - it never errors the page."""
     s = _owned_strategy(ctx)
+    if specmod.has_perpetual_market(s["spec"], s.get("market")):
+        return {"dev_curve": None, "reason": "Bitcoin perpetuals are research-only; event-contract demo replay is unavailable."}
     if not (s.get("result") or {}).get("out_of_sample"):
         return {"dev_curve": None, "reason": "This hypothesis has no out-of-sample backtest to replay."}
     out = kalshi_dev.dev_curve_for_strategy(s["id"], s["spec"], s["market"])
@@ -916,6 +940,8 @@ def deployment_action(ctx: Ctx):
     dep = repo.get_deployment(ctx.cur, ctx.uid, dep_id)
     if dep is None:
         raise ApiError(404, "No such deployment.")
+    if action == "resume" and specmod.has_perpetual_market(dep.get("spec") or {}, dep.get("market")):
+        raise ApiError(409, "Bitcoin perpetuals are research-only and cannot be resumed for trading.")
     status = {"pause": "paused", "resume": "running", "stop": "stopped"}[action]
     if dep["status"] == "stopped":
         raise ApiError(409, "This deployment is stopped.")

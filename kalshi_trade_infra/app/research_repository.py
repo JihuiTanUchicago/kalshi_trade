@@ -28,6 +28,16 @@ from app.repository import _json, _loads, now_utc
 # -- pre-registration (app_experiments) ---------------------------------------
 
 
+def experiment_row_by_id(cur, experiment_id: int) -> Optional[Dict]:
+    cur.execute("SELECT * FROM app_experiments WHERE id=%s", (int(experiment_id),))
+    return cur.fetchone()
+
+
+def partition_by_id(cur, partition_id: int) -> Optional[Dict]:
+    cur.execute("SELECT * FROM app_data_partitions WHERE id=%s", (int(partition_id),))
+    return cur.fetchone()
+
+
 def get_experiment(cur, run_id: Optional[int], hypothesis_hash: str) -> Optional[Dict]:
     """The registered experiment for this (run_id, hypothesis_hash), or None.
     NULL run_id is matched with the <=> null-safe operator."""

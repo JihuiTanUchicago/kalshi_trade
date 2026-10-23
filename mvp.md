@@ -23,6 +23,8 @@ A self-improving alpha discovery pipeline, from ideation, to similation, and fin
 
 ## TODO / Working Queue
 
+- [working: offline/public-feed verified; activation pending] Bitcoin Kalshi perpetual data and research: native candles/funding/observations, causal replay and frozen statistical validation; Research only in both themes and all perpetual execution blocked. 1,899 Python pass (10 skips); prior unchanged 196 frontend + 8 Meridian checks pass. Explicit proxy and native metadata fixes verified real production/demo retrieval. Default off; usable candle coverage, deployment-server/database, queued-model and rollout gates remain. [Handoff](kalshi_trade_infra/results/kalshi_bitcoin_perps_2026-10-23/HANDOFF.md).
+
 - [in progress] Align default Tau masthead and Hot Markets black divider; preserve Meridian and installed extra CSS. [Handoff](kalshi_trade_infra/results/header_alignment_2026-10-22/HANDOFF.md).
 
 - [in progress] Remove Meridian's persistent new-version banner and navigation version probe; preserve default Tau and deploy through fresh installed-state verification. [Handoff](kalshi_trade_infra/results/meridian_update_notice_2026-10-21/HANDOFF.md).
