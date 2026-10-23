@@ -11,8 +11,8 @@
       "sha256": "d387dcfd0e3898ca7f96cbb5dac6f6340fd1e81f82ccf1a2115740adb864ca03"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/HANDOFF.md": {
-      "bytes": 12993,
-      "sha256": "4e04ec707e577c9a592ea7d9660a54c64395f94745905d1d6fd3767e785fe9ec"
+      "bytes": 13757,
+      "sha256": "d9c2e30baf4c15c2abf75df779d566d40a33fc032e4926c517da1b6e543de7ee"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/collect.py": {
       "bytes": 2258,
@@ -31,19 +31,19 @@
       "sha256": "c377fbea662bde9e2853565dcd1ae58fcf7cb23afe08c724e54826ac791dbb44"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/remote.py": {
-      "bytes": 39233,
-      "sha256": "1f6adf82db1ecbe083cf99ab4b6dab7a3fac5dbb5f3056e3e3e0bc80b6bdd5bb"
+      "bytes": 39812,
+      "sha256": "ec51de1ca61bbb9f93441ff666dffa090f1913bbbad420f78a869a933afe9c18"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/runner.py": {
       "bytes": 14009,
       "sha256": "b6469f4ac64e570264c7c12dc2d097cf8d04113d80fda3e980f9965825588f7d"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/test_release.py": {
-      "bytes": 47311,
-      "sha256": "bc64051a17b5bd5e762dccad1c86bcf842eb90201f5cfb90c9f7b45e0e62b98a"
+      "bytes": 48568,
+      "sha256": "3f50cd9c64ffe70bf02a3838d740c80fb7edbac95f26d5d968e1a909d6723022"
     }
   },
-  "file_manifest_sha256": "ef43fe7a27acbba7e18e75273e7b832f28654357a3e53646eef677e09f8a5482",
+  "file_manifest_sha256": "8f2147a4d358c9e0b80104f28b613bc190808ab6e151b443af598a9e1feb8b49",
   "format": 1,
   "installed_fingerprint": "e664c1fc4851566e21516be5285fe84ad8417c070f5bbe572cd6679327872b99",
   "limits_seconds": {
@@ -62,15 +62,16 @@
     "apply_dispatch": true,
     "real_provider_account_order_call": true
   },
-  "operations_base": "79e12d437d79da34f0d5bda2dd63777160f51d03",
+  "operations_base": "7fd2e25dfa759f6bb3b428f4109e85220b703879",
   "read_only_runs": [
     39896649873,
     39896944153,
     39898387856,
-    39899529490
+    39899529490,
+    39900064672
   ],
   "remaining_gates": [
-    "immutable memory-diagnostic delta review",
+    "immutable exact OOM-scope delta review",
     "operations publication and exact-head approval",
     "diagnose repeated production worker OOM; no automatic repinning or resource change",
     "fresh main/source/control inventory",
@@ -78,14 +79,14 @@
     "existing LOCK TABLES privileges and onbox source/environment/HTTP acceptance"
   ],
   "source_tree": "6f75cf6d58d363c4a7e8e69e6546a0dd9df9c1f9",
-  "status": "offline_verified_read_only_memory_pressure_diagnosis",
+  "status": "offline_verified_exact_oom_scope_diagnosis",
   "verification": {
     "focused_unittest": {
       "command": "python -B -m unittest discover -s kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations -p 'test_*.py' -q",
       "database": false,
       "failed": 0,
       "network": false,
-      "passed": 47
+      "passed": 48
     },
     "git_diff_check": true,
     "owned_python_syntax": {
@@ -95,9 +96,9 @@
     "root_reported_existing_app_suite": {
       "executed_by_this_workstream": true,
       "passed": 1899,
-      "seconds": 25.13,
+      "seconds": 24.99,
       "skipped": 10
     }
   },
-  "verified_at_utc": "2026-10-23T04:21:50.417945+00:00"
+  "verified_at_utc": "2026-10-23T04:28:08.526635+00:00"
 }

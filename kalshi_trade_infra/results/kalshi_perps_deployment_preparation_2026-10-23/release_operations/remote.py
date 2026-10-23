@@ -246,12 +246,21 @@ def memory_pressure():
         report["host_error_code"] = "host_memory_projection_failed"
     try:
         raw = command(["journalctl", "--dmesg", "--since=-30min", "--lines=80", "--grep=recursive-agents\\.service", "--no-pager", "--output=json", "--output-fields=MESSAGE"], timeout=3)
-        events = {"cgroup_constraint": 0, "global_constraint": 0}
+        events = {"cgroup_constraint": 0, "global_constraint": 0,
+                  "worker_limit": 0, "ancestor_limit": 0, "unclassified_memcg": 0}
         for line in raw.decode().splitlines():
             message = json.loads(line).get("MESSAGE", "")
             require(isinstance(message, str), "unsafe_memory_projection")
             if re.search(r"/system\.slice/recursive-agents\.service(?=[,/\s]|$)", message):
-                events["cgroup_constraint"] += int("constraint=CONSTRAINT_MEMCG" in message)
+                if "constraint=CONSTRAINT_MEMCG" in message:
+                    events["cgroup_constraint"] += 1
+                    scope = re.search(r"(?:^|,)oom_memcg=([^,\s]+)", message)
+                    value = scope[1] if scope else ""
+                    worker = "/system.slice/recursive-agents.service"
+                    key = ("worker_limit" if value == worker else "ancestor_limit"
+                           if value.startswith("/") and worker.startswith(value.rstrip("/") + "/")
+                           else "unclassified_memcg")
+                    events[key] += 1
                 events["global_constraint"] += int("global_oom" in message and "constraint=CONSTRAINT_NONE" in message)
         report["kernel_events_last_30m"] = events
     except Exception:

@@ -680,7 +680,8 @@ class MemoryPressureTests(unittest.TestCase):
         with patch.object(remote.Path, "open", mock_open(read_data=self.host)) as files, patch.object(remote, "command", return_value=journal) as cmd:
             report = remote.memory_pressure()
         self.assertEqual(report["host_bytes"]["MemTotal"], 2147483648)
-        self.assertEqual(report["kernel_events_last_30m"], {"cgroup_constraint": 1, "global_constraint": 1})
+        self.assertEqual(report["kernel_events_last_30m"], {"cgroup_constraint": 1, "global_constraint": 1,
+                                                         "worker_limit": 1, "ancestor_limit": 0, "unclassified_memcg": 0})
         self.assertNotIn("private", json.dumps(report))
         files.assert_called_once_with("rb")
         self.assertIn("--dmesg", cmd.call_args.args[0])
@@ -691,7 +692,22 @@ class MemoryPressureTests(unittest.TestCase):
         for raw in invalid:
             with patch.object(remote.Path, "open", mock_open(read_data=raw)), patch.object(remote, "command", return_value=b""):
                 report = remote.memory_pressure()
-            self.assertEqual(report, {"host_error_code": "host_memory_projection_failed", "kernel_events_last_30m": {"cgroup_constraint": 0, "global_constraint": 0}})
+            self.assertEqual(report, {"host_error_code": "host_memory_projection_failed", "kernel_events_last_30m": {
+                "cgroup_constraint": 0, "global_constraint": 0, "worker_limit": 0,
+                "ancestor_limit": 0, "unclassified_memcg": 0}})
+
+    def test_ancestor_and_missing_scopes_cannot_implicate_the_worker_limit(self):
+        messages = [
+            "oom-kill:constraint=CONSTRAINT_MEMCG,oom_memcg=/system.slice,task_memcg=/system.slice/recursive-agents.service,private",
+            "oom-kill:constraint=CONSTRAINT_MEMCG,oom_memcg=/,task_memcg=/system.slice/recursive-agents.service,private",
+            "oom-kill:constraint=CONSTRAINT_MEMCG,task_memcg=/system.slice/recursive-agents.service,private",
+        ]
+        raw = ("\n".join(json.dumps({"MESSAGE": message}) for message in messages)).encode()
+        with patch.object(remote.Path, "open", mock_open(read_data=self.host)), patch.object(remote, "command", return_value=raw):
+            report = remote.memory_pressure()
+        self.assertEqual(report["kernel_events_last_30m"], {"cgroup_constraint": 3, "global_constraint": 0,
+                                                         "worker_limit": 0, "ancestor_limit": 2, "unclassified_memcg": 1})
+        self.assertNotIn("private", json.dumps(report))
 
     def test_kernel_error_preserves_capacity_and_redacts_messages(self):
         for raw in (b"private invalid json", b'{"MESSAGE":["private"]}'):
