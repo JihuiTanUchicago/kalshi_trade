@@ -11,7 +11,7 @@ import tarfile
 import tempfile
 import time
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, mock_open, patch
 import zlib
 
 import release_database as db
@@ -321,6 +321,7 @@ class OrchestrationTests(unittest.TestCase):
         item = patch.object(remote, "fixed_file", lambda path, raw, **kw: path.write_bytes(raw)); item.start(); self.stack.append(item)
         item = patch.object(remote, "http_read", lambda *a, **kw: b'{}'); item.start(); self.stack.append(item)
         item = patch.object(remote, "worker_health", lambda: {"status": "synthetic"}); item.start(); self.stack.append(item)
+        item = patch.object(remote, "memory_pressure", lambda: {"status": "synthetic"}); item.start(); self.stack.append(item)
         self.pins = runner.pins()
         self.pins["candidate_ready"] = True  # Synthetic backend; no production acceptance is exercised.
         self.backend = FakeBackend(self.pins, self.root)
@@ -663,6 +664,46 @@ class WorkerHealthTests(unittest.TestCase):
     def test_unavailable_systemd_has_only_a_fixed_error_code(self):
         with patch.object(remote, "command", side_effect=RuntimeError("private raw error")):
             self.assertEqual(remote.worker_health(), {"status": "unavailable", "error_code": "worker_health_projection_failed"})
+
+
+class MemoryPressureTests(unittest.TestCase):
+    host = b"MemTotal: 2097152 kB\nMemAvailable: 1048576 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\nPrivateUnused: hidden text\n"
+
+    def test_capacity_and_exact_worker_kernel_classification_only(self):
+        rows = [
+            "oom-kill:constraint=CONSTRAINT_MEMCG,oom_memcg=/system.slice/recursive-agents.service,private account",
+            "oom-kill:constraint=CONSTRAINT_NONE,global_oom,task_memcg=/system.slice/recursive-agents.service,private key",
+            "oom-kill:constraint=CONSTRAINT_MEMCG,oom_memcg=/system.slice/recursive-agents.service-other,licensed text",
+            "oom-kill:constraint=CONSTRAINT_MEMCG,oom_memcg=/system.slice/recursive-web.service,private text",
+        ]
+        journal = ("\n".join(json.dumps({"MESSAGE": row}) for row in rows)).encode()
+        with patch.object(remote.Path, "open", mock_open(read_data=self.host)) as files, patch.object(remote, "command", return_value=journal) as cmd:
+            report = remote.memory_pressure()
+        self.assertEqual(report["host_bytes"]["MemTotal"], 2147483648)
+        self.assertEqual(report["kernel_events_last_30m"], {"cgroup_constraint": 1, "global_constraint": 1})
+        self.assertNotIn("private", json.dumps(report))
+        files.assert_called_once_with("rb")
+        self.assertIn("--dmesg", cmd.call_args.args[0])
+        self.assertEqual(cmd.call_args.kwargs["timeout"], 3)
+
+    def test_malformed_host_does_not_hide_kernel_evidence_or_echo_private_data(self):
+        invalid = (b"private host contents", self.host + b"MemTotal: 1 kB\n", self.host.replace(b"2097152", b"0"), b"x" * 65537)
+        for raw in invalid:
+            with patch.object(remote.Path, "open", mock_open(read_data=raw)), patch.object(remote, "command", return_value=b""):
+                report = remote.memory_pressure()
+            self.assertEqual(report, {"host_error_code": "host_memory_projection_failed", "kernel_events_last_30m": {"cgroup_constraint": 0, "global_constraint": 0}})
+
+    def test_kernel_error_preserves_capacity_and_redacts_messages(self):
+        for raw in (b"private invalid json", b'{"MESSAGE":["private"]}'):
+            with patch.object(remote.Path, "open", mock_open(read_data=self.host)), patch.object(remote, "command", return_value=raw):
+                report = remote.memory_pressure()
+            self.assertEqual(report["kernel_error_code"], "kernel_memory_projection_failed")
+            self.assertEqual(report["host_bytes"]["MemTotal"], 2147483648)
+            self.assertNotIn("private", json.dumps(report))
+
+    def test_unavailable_readers_have_only_fixed_error_codes(self):
+        with patch.object(remote.Path, "open", side_effect=RuntimeError("private read")), patch.object(remote, "command", side_effect=RuntimeError("private journal")):
+            self.assertEqual(remote.memory_pressure(), {"host_error_code": "host_memory_projection_failed", "kernel_error_code": "kernel_memory_projection_failed"})
 
 
 class RootMetadata:

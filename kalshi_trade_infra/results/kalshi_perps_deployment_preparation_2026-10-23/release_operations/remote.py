@@ -223,6 +223,42 @@ def worker_health():
         return {"status": "unavailable", "error_code": "worker_health_projection_failed"}
 
 
+def memory_pressure():
+    """Read host capacity and classify kernel OOM records without retaining text."""
+    report = {}
+    try:
+        with Path("/proc/meminfo").open("rb") as source:
+            raw = source.read(65537)
+        require(len(raw) <= 65536, "unsafe_memory_projection")
+        fields = {}
+        for line in raw.decode().splitlines():
+            name, _, value = line.partition(":")
+            if name in ("MemTotal", "MemAvailable", "SwapTotal", "SwapFree"):
+                require(name not in fields, "unsafe_memory_projection")
+                match = re.fullmatch(r"\s*([0-9]{1,17}) kB\s*", value)
+                require(match and int(match[1]) * 1024 <= 2**64 - 1, "unsafe_memory_projection")
+                fields[name] = int(match[1]) * 1024
+        require(len(fields) == 4, "unsafe_memory_projection")
+        require(0 < fields["MemTotal"] and fields["MemAvailable"] <= fields["MemTotal"]
+                and fields["SwapFree"] <= fields["SwapTotal"], "unsafe_memory_projection")
+        report["host_bytes"] = fields
+    except Exception:
+        report["host_error_code"] = "host_memory_projection_failed"
+    try:
+        raw = command(["journalctl", "--dmesg", "--since=-30min", "--lines=80", "--grep=recursive-agents\\.service", "--no-pager", "--output=json", "--output-fields=MESSAGE"], timeout=3)
+        events = {"cgroup_constraint": 0, "global_constraint": 0}
+        for line in raw.decode().splitlines():
+            message = json.loads(line).get("MESSAGE", "")
+            require(isinstance(message, str), "unsafe_memory_projection")
+            if re.search(r"/system\.slice/recursive-agents\.service(?=[,/\s]|$)", message):
+                events["cgroup_constraint"] += int("constraint=CONSTRAINT_MEMCG" in message)
+                events["global_constraint"] += int("global_oom" in message and "constraint=CONSTRAINT_NONE" in message)
+        report["kernel_events_last_30m"] = events
+    except Exception:
+        report["kernel_error_code"] = "kernel_memory_projection_failed"
+    return report
+
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None
@@ -509,6 +545,7 @@ def inventory(backend, pins):
             "observed_units": state["controls"]["units"],
             "observed_processes": state["controls"]["processes"],
             "worker_health": worker_health(),
+            "memory_pressure": memory_pressure(),
             "job_counts": projection["job_counts"], "schema": projection,
             "application_changes": False, "service_operations": 0, "job_mutations": 0,
             "provider_calls_from_operations": 0}, state, env
