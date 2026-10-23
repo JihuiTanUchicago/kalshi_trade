@@ -60,8 +60,8 @@
       "sha256": "2620c79baeded099d5103279a7a83412a55014045a6bbb1ea32d6d10f8b86345"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/HANDOFF.md": {
-      "bytes": 20566,
-      "sha256": "a723ba4950fa5fdda82de00524ca12528971c389da216119c99d35cb9ad754c3"
+      "bytes": 21301,
+      "sha256": "42acde4961e8da71432d934876abba4423e6bb3de0c84254c8d43403f8720422"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/POST_RELOAD_BASELINE_REVIEW.json": {
       "bytes": 3170,
@@ -92,8 +92,8 @@
       "sha256": "c377fbea662bde9e2853565dcd1ae58fcf7cb23afe08c724e54826ac791dbb44"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/remote.py": {
-      "bytes": 42329,
-      "sha256": "c822a13f6b78aacdeb194d77d0ebaf51e6cfea30ec4fbf2a56413dc23002f80d"
+      "bytes": 42417,
+      "sha256": "637a5f294d51d8f57c99c923ef4eac7bbd7997b0eba28078a3188a98c0fccbe2"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/runner.py": {
       "bytes": 15946,
@@ -108,11 +108,11 @@
       "sha256": "8bfbc9642a0c1d6cb48bb86b0223d58de4d50e02c7fbad194b830087c6f1ba6c"
     },
     "kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/release_operations/test_release.py": {
-      "bytes": 59463,
-      "sha256": "cddc646899633cf4146655baa8324218458b15c174c47e46f3a74055da6d97c0"
+      "bytes": 60288,
+      "sha256": "dabc09e4d4d790626b49080a6e4c9edb6b1a508187f1ef47f6b9ccb0878ee4fb"
     }
   },
-  "file_manifest_sha256": "ba440503b2e5343c609b019f568f22a50c9791bea681c22f5bbfbbd9fa742558",
+  "file_manifest_sha256": "aa594cfbe1b4b3cca1182025b628d36a3a0ef97efa92b445f9e50d1e5cd99e04",
   "format": 1,
   "installed_fingerprint": "53a505f8f48d4caadcd2edf178c031b9c8ee488a662c642d6b807a9b87f80266",
   "limits_seconds": {
@@ -134,7 +134,7 @@
     "real_provider_account_order_call": true,
     "service_restart": true
   },
-  "operations_base": "a223ff4297814f81206e4be83ece06a97d06a649",
+  "operations_base": "352950d9eac876e0f4fd0bb73e778db720449c1a",
   "read_only_runs": [
     39896649873,
     39896944153,
@@ -147,16 +147,17 @@
     39904255302,
     39904754786,
     39905559523,
-    39906328827
+    39906328827,
+    39907393176
   ],
   "remaining_gates": [
-    "independent and immutable read-only exactinterval/baseline review",
-    "exact-head inventory only, sameworker/source/controlpins, since-repair typedkernelcounts0 withunsaturatedcoverage",
-    "write scopedactualmemory/stability acceptance; preservefailedautomaticreceipts/rawequivalencequalification",
-    "originalidle-onlyfullschema/admission/source/private/public application rollout after fresh reviewed baseline"
+    "independent and immutable JSON no-match compatibility review",
+    "exact-head inventory only, no strictconflicts andtypedzero exactsince counts/rows<80/noerror",
+    "write scopedactualmemory/stabilityacceptance; retainfailedautomaticpostproofandraw-equalityqualification",
+    "originalidle-onlyfullschema/admission/source/private/public application rollout; latest1running0queued"
   ],
   "source_tree": "6f75cf6d58d363c4a7e8e69e6546a0dd9df9c1f9",
-  "status": "offline_verified_read_only_exact_repair_interval_and_explicit_current_baseline",
+  "status": "offline_verified_read_only_json_empty_no_match_compatibility",
   "stopped_capacity_run": {
     "error_code": "capacity_projection_invalid",
     "mutation_may_have_applied": false,
@@ -169,7 +170,7 @@
       "database": false,
       "failed": 0,
       "network": false,
-      "passed": 121
+      "passed": 122
     },
     "git_diff_check": true,
     "owned_python_syntax": {
@@ -179,9 +180,9 @@
     "root_reported_existing_app_suite": {
       "executed_by_this_workstream": true,
       "passed": 1899,
-      "seconds": 24.55,
+      "seconds": 24.82,
       "skipped": 10
     }
   },
-  "verified_at_utc": "2026-10-23T05:41:31.175115+00:00"
+  "verified_at_utc": "2026-10-23T05:48:23.463975+00:00"
 }

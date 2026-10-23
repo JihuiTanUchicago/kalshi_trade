@@ -229,7 +229,8 @@ MEMORY_REPAIR_OBSERVATION_SINCE = "2026-10-23 05:14:41 UTC"
 def kernel_oom_journal(*, since="-30min"):
     """Read the fixed bounded query; distinguish its exact no-match result.
 
-    journalctl --grep returns one and a fixed marker when nothing matches. Other
+    journalctl --grep returns one when nothing matches. JSON implies quiet mode
+    and therefore empty stdout; older textual output uses the fixed marker. Other
     nonzero exits, warnings or malformed output remain unavailable, never zero.
     """
     require(since in {"-30min", MEMORY_REPAIR_OBSERVATION_SINCE}, "unsafe_memory_projection")
@@ -239,7 +240,7 @@ def kernel_oom_journal(*, since="-30min"):
         result = subprocess.run(args, capture_output=True, timeout=3, env={**os.environ, "LC_ALL": "C"})
         require(isinstance(result.stdout, bytes) and isinstance(result.stderr, bytes)
                 and len(result.stdout) <= 1024 * 1024 and not result.stderr, "unsafe_memory_projection")
-        if result.returncode == 1 and result.stdout == b"-- No entries --\n":
+        if result.returncode == 1 and result.stdout in (b"", b"-- No entries --\n"):
             return b""
         require(result.returncode == 0, "unsafe_memory_projection")
         return result.stdout

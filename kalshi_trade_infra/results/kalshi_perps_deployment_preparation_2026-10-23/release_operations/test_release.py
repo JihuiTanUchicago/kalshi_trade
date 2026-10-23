@@ -773,11 +773,13 @@ class KernelJournalReaderTests(unittest.TestCase):
 
     def test_exact_no_match_is_an_empty_window_without_disclosing_text(self):
         self.assertEqual(self.call(1, b"-- No entries --\n"), b"")
+        self.assertEqual(self.call(1, b""), b"")
         self.assertEqual(self.call(0, b""), b"")
         self.assertEqual(self.call(0, b'{"MESSAGE":"synthetic"}'), b'{"MESSAGE":"synthetic"}')
 
     def test_nonzero_errors_warnings_and_oversized_output_are_not_zero_events(self):
-        cases = [(1, b""), (2, b"-- No entries --\n"), (1, b"private"),
+        cases = [(1, b"\n"), (2, b""), (2, b"-- No entries --\n"), (1, b"private"),
+                 (1, b"", b"private warning"),
                  (1, b"-- No entries --\n", b"private warning"), (0, b"", b"private warning"),
                  (0, b"x" * (1024 * 1024 + 1))]
         for args in cases:
@@ -805,6 +807,16 @@ class KernelJournalReaderTests(unittest.TestCase):
 
 class MemoryPressureTests(unittest.TestCase):
     host = b"MemTotal: 2097152 kB\nMemAvailable: 1048576 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\nPrivateUnused: hidden text\n"
+
+    def test_json_no_match_exit_bridges_to_zero_exact_interval_without_masking_errors(self):
+        response = types.SimpleNamespace(returncode=1, stdout=b"", stderr=b"")
+        with patch.object(remote.Path, "open", mock_open(read_data=self.host)), \
+                patch.object(remote.subprocess, "run", return_value=response):
+            report = remote.memory_pressure(since=remote.MEMORY_REPAIR_OBSERVATION_SINCE)
+        self.assertNotIn("kernel_error_code", report)
+        self.assertTrue(all(value == 0 for value in report["kernel_events_since_repair"].values()))
+        self.assertEqual(report["kernel_rows_observed"], 0)
+        self.assertEqual(report["observed_since_utc"], "2026-10-23T05:14:41Z")
 
     def test_capacity_and_exact_worker_kernel_classification_only(self):
         rows = [
