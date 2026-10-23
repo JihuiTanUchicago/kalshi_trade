@@ -1,0 +1,13 @@
+{
+  "recorded_at": "2026-10-23T01:34:15.063529+00:00",
+  "run_id": 39884723368,
+  "url": "https://github.com/JihuiTanUchicago/kalshi_trade/actions/runs/39884723368",
+  "operations_branch": "codex/kalshi-perps-readiness-operations-20261023",
+  "operations_sha": "0e2e79c30d13bab8dec41081ef4d273d826b127c",
+  "remote_exact_head_verified_before_dispatch": true,
+  "existing_branch_runs_before_dispatch": 0,
+  "candidate_sha": "b7cf7c754e09a50e8f0bc6278dbf275f0f0f2a8b",
+  "mode": "read_only_production_preflight_and_isolated_anonymous_public_feed",
+  "production_deployment": false,
+  "service_or_job_mutation": false
+}

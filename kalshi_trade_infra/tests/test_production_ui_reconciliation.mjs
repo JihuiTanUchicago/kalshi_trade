@@ -184,5 +184,10 @@ test('current paper proposal approval semantics and broker callback route surviv
   assert.match(paper.innerHTML, /Alpaca paper order/); assert.match(paper.innerHTML, />Approved</);
   assert.doesNotMatch(paper.innerHTML, />Applied<|>Filled</);
   assert.doesNotMatch(source, /TauBrokerConnections\.mount/);
-  assert.match(source, /api\('\/api\/waitlist'/);
+  if (process.env.TAU_TEST_THEME === 'meridian') assert.match(source, /api\('\/api\/waitlist'/);
+  else {
+    assert.doesNotMatch(source, /api\('\/api\/waitlist'/);
+    assert.match(source, /href="\/terms"/);
+    assert.match(source, /href="\/privacy"/);
+  }
 });

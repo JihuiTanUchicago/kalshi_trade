@@ -151,13 +151,15 @@ def test_abandoned_run_message_is_informative():
         def execute(self, sql, params):
             captured["sql"], captured["params"] = sql, params  # last execute wins (the UPDATE)
         def fetchall(self):
-            # one stale run with no checkpointed progress -> the plain FAIL path (not resumable)
+            # one stale run with no checkpointed progress -> the neutral stopped path (not resumable)
             return [{"id": 1, "kind": "research", "resume_count": 0, "checkpoint_json": None}]
 
     from app import repository as repo
     repo.fail_abandoned_runs(_Cur(), timedelta(seconds=240))
     msg = captured["params"][0]
-    assert "4 min" in msg and "stalled" in msg and "Start it again" in msg
+    assert "interrupted before it explored" in msg and "start a new one" in msg
+    assert "status='stopped'" in captured["sql"]
+    assert captured["params"][1:3] == (0, 0)
     assert msg != "The agent stopped responding."  # the old generic message is gone
 
 

@@ -4,7 +4,7 @@
   'use strict';
 
   const root = document.getElementById('app');
-  const S = { me: null, timers: [], gen: 0 };
+  const S = { me: null, timers: [], gen: 0, perps: null };
 
   // ---------- brand mark ----------
   const TAU_MARK = '<svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" fill="#15161A"/><path d="M18 24h28M32 24v22" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/><circle cx="32" cy="48" r="3.5" fill="#F05A28"/></svg>';
@@ -376,7 +376,7 @@
 
   let resizePaperChart = null;
   window.addEventListener('resize', () => { if (resizePaperChart) resizePaperChart(); });
-  function clearTimers() { resizePaperChart = null; S.timers.forEach(clearInterval); S.timers = []; }
+  function clearTimers() { if (S.perps) { S.perps.destroy(); S.perps = null; } resizePaperChart = null; S.timers.forEach(clearInterval); S.timers = []; }
   function poll(fn, ms) {
     const gen = S.gen;
     const id = setInterval(() => { if (!document.hidden && gen === S.gen) fn().catch(() => {}); }, ms);
@@ -2618,6 +2618,7 @@
         </section>
         </div>
         <div class="funds-col funds-history">
+        <section id="kalshi-perps-live" aria-label="Bitcoin perpetual trading"></section>
         <section class="panel">
           <h3>Paper history</h3>
           <table class="table stack"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody>
@@ -2625,6 +2626,9 @@
           </tbody></table>
         </section>
         </div></div>`;
+      if (S.perps) { S.perps.destroy(); S.perps = null; }
+      const perpsHost = root.querySelector('#kalshi-perps-live');
+      if (window.TAU_PERPS_LIVE && perpsHost) S.perps = window.TAU_PERPS_LIVE.mount(perpsHost, {api, proposalId: new URLSearchParams(location.search).get('perps_proposal')});
       const df = root.querySelector('#demo');
       if (df) df.onsubmit = async (e) => {
         e.preventDefault();
@@ -3093,6 +3097,7 @@
     adjust: 'Tuned strategy', set_risk: 'Tuned risk', set_exec: 'Tuned execution',
     pause: 'Paused', resume: 'Resumed',
     alpaca_paper: 'Alpaca paper order',
+    kalshi_perps_live: 'Bitcoin perps live order',
   };
   // One feed entry, rendered with the SAME research-session parts (.ln timeline rail, .say card,
   // feedMd markdown, lane tint) so the autopilot reads as one family with the research log —
@@ -3121,7 +3126,7 @@
     const title = m.strategy ? `<b class="say-title">${esc(m.strategy)}</b>` : '';
     const detail = m.detail ? `<details class="hx-more"><summary>Show the detail</summary><div class="hx-body"><div class="apf-md">${feedMd(m.detail)}</div></div></details>` : '';
     const ctl = (m.proposal_id && st === 'pending')
-      ? `<div class="proposal" data-prop="${m.proposal_id}"><button class="btn small" data-decide="approve">Approve</button><button class="btn ghost small" data-decide="reject">Decline</button></div>` : '';
+      ? `<div class="proposal" data-prop="${m.proposal_id}"><button class="btn small" data-decide="approve">${m.proposal_kind === 'kalshi_perps_live' ? 'Review live order' : 'Approve'}</button><button class="btn ghost small" data-decide="reject">Decline</button></div>` : '';
     li.className = 'ln lane-' + lane + ' apf-act';
     li.innerHTML = `${t}<div class="say">
       <div class="hx-head"><span class="say-kind">${esc(kind)}</span>${title}${stage}${stamp}</div>
@@ -3221,7 +3226,7 @@
     msgs.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-decide]'); if (!b) return;
       const pid = b.closest('[data-prop]').dataset.prop;
-      await busy(b, async () => { try { await api(`/api/proposals/${pid}/${b.dataset.decide}`, {}); await apLoadChat(box, true); } catch (err) { alert0(err.message); } });
+      await busy(b, async () => { try { const result = await api(`/api/proposals/${pid}/${b.dataset.decide}`, {}); if (result.review_required && result.review_url === `/funds?perps_proposal=${pid}`) { go(result.review_url); return; } await apLoadChat(box, true); } catch (err) { alert0(err.message); } });
     });
     const cf = box.querySelector('#apf-composer'), ta = box.querySelector('#apf-msg');
     ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(120, ta.scrollHeight) + 'px'; });

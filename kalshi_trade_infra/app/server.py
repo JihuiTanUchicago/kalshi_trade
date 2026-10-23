@@ -26,7 +26,7 @@ from urllib.parse import parse_qs, urlparse
 from app import agent, auth, backtest, billing, devlog, dreaming, engine, kalshi_account, notify
 from app import kalshi_dev
 from app import kalshi_dev_exec
-from app import broker_oauth, alpaca_paper
+from app import broker_oauth, alpaca_paper, kalshi_perps_trading
 from app import models_catalog as catalog
 from app import repository as repo
 from app import research_repository as research_repo
@@ -37,6 +37,14 @@ from data_pipeline.common import get_db_conn
 PORT = int(os.getenv("APP_PORT", "8090"))
 HOST = os.getenv("APP_HOST", "127.0.0.1")
 DEV_LOGIN = os.getenv("APP_DEV_LOGIN") == "1"
+# Canonical-host redirect: a top-level GET to any host in APP_REDIRECT_HOSTS (e.g. the old
+# CloudFront URL, or www) is 301'd to APP_CANONICAL_HOST, so old links keep working after the
+# custom-domain cutover. Empty APP_CANONICAL_HOST disables it entirely (the default), so this is
+# inert until the new domain is actually live. /api and /auth are never redirected, so an in-flight
+# request from an already-loaded old-host page still completes.
+# Open signup: when APP_OPEN_SIGNUP=1, ANY Google account can create a Tau account (no waitlist
+# approval). Default off = invite-only (operator + approved waitlist emails). Spend is still bounded
+# downstream (billing-readiness gate, bounded free credits), and the live-trading gate is untouched.
 OPEN_SIGNUP = os.getenv("APP_OPEN_SIGNUP") == "1"
 CANONICAL_HOST = os.getenv("APP_CANONICAL_HOST", "").strip().lower()
 REDIRECT_HOSTS = {h.strip().lower() for h in os.getenv("APP_REDIRECT_HOSTS", "").split(",") if h.strip()}
@@ -51,7 +59,7 @@ MAX_ACTIVE_DEPLOYMENTS = 100
 MAX_PAPER_BALANCE = 1_000_000.0
 MAX_WAITLIST_PER_MINUTE = 10
 ADMIN_EMAIL = os.getenv("TAU_ADMIN_EMAIL", "tjhprivate0416@gmail.com")
-SPA_ROUTES = re.compile(r"^/(?:|dashboard|research(?:/\d+)?|strategies(?:/\d+)?|deploy|community|billing|admin|system|funds|explore|devlog|settings(?:/(?:account|billing|system|theme))?|signin)$")
+SPA_ROUTES = re.compile(r"^/(?:|dashboard|research(?:/\d+)?|strategies(?:/\d+)?|deploy|community|billing|admin|system|funds|explore|devlog|settings(?:/(?:account|billing|system|theme))?|signin|terms|privacy)$")
 
 CSP = (
     "default-src 'self'; script-src 'self' https://js.stripe.com https://pay.google.com; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; "
@@ -143,7 +151,8 @@ def google_callback(ctx: Ctx):
         ident = auth.exchange_code(ctx.query["code"], state["code_verifier"], state["nonce"])
     except auth.AuthError:
         return ("redirect", "/signin?error=google")
-    # Preserve the production signup flag; absent/false remains invite-only.
+    # Account creation gate: open to anyone when APP_OPEN_SIGNUP=1, else invite-only (operator or an
+    # approved waitlist email). Existing users always sign in regardless (upsert finds them).
     email = ident["email"] or ""
     allow_new = OPEN_SIGNUP or email.lower() == ADMIN_EMAIL.lower() or repo.is_waitlist_approved(ctx.cur, email)
     user = repo.upsert_google_user(ctx.cur, ident["sub"], email, ident["name"], ident["picture"], allow_new=allow_new)
@@ -231,6 +240,38 @@ def alpaca_paper_action(ctx: Ctx):
     return _paper_call(operation, ctx.conn, ctx.uid, _int_param(ctx))
 
 
+def _perps_live_call(fn, *args):
+    try:
+        return fn(*args)
+    except kalshi_perps_trading.Error as exc:
+        raise ApiError(exc.status, str(exc)) from None
+
+
+def kalshi_perps_live_account(ctx: Ctx):
+    return _perps_live_call(kalshi_perps_trading.overview, ctx.conn, ctx.uid)
+
+
+def kalshi_perps_live_policy(ctx: Ctx):
+    return _perps_live_call(kalshi_perps_trading.save_policy, ctx.conn, ctx.uid, ctx.body)
+
+
+def kalshi_perps_live_draft(ctx: Ctx):
+    return _perps_live_call(kalshi_perps_trading.create_order, ctx.conn, ctx.uid, ctx.body)
+
+
+def kalshi_perps_live_proposal(ctx: Ctx):
+    return _perps_live_call(kalshi_perps_trading.preview_proposal,
+                            ctx.conn, ctx.uid, _int_param(ctx), ctx.body)
+
+
+def kalshi_perps_live_action(ctx: Ctx):
+    operation = {"submit": kalshi_perps_trading.submit_order,
+                 "refresh": kalshi_perps_trading.refresh_order,
+                 "cancel": kalshi_perps_trading.cancel_order}[ctx.params[1]]
+    args = (ctx.conn, ctx.uid, _int_param(ctx))
+    return _perps_live_call(operation, *args) if ctx.params[1] == "refresh" else _perps_live_call(operation, *args, ctx.body)
+
+
 # -- read routes ---------------------------------------------------------------
 
 
@@ -292,6 +333,7 @@ def me(ctx: Ctx):
         "needs_card": _needs_card(ctx),
         "free_bonus": float(billing.FREE_BONUS),
         "credit_balance": round(repo.credit_balance(ctx.cur, ctx.uid), 4),
+        "min_run_balance": float(billing.MIN_RUN_BALANCE),  # the headroom a research run needs to start
         "markets": _researchable_markets(ctx.cur),
         "directions": [{"key": k, **v} for k, v in agent.DIRECTIONS.items()],
     }
@@ -517,6 +559,12 @@ def _require_research_capacity(ctx: Ctx) -> None:
     """Billing + rate gates every research run must clear, whether it's a fresh idea or a
     'dig deeper' branch off a passed strategy. One place so the two paths can't diverge."""
     _require_billing_ready(ctx, "researching")
+    # Headroom gate (research only): a session bills post-paid on actual tokens, so starting one on a
+    # near-zero balance overshoots into the negative. Require one session's worth up front. Cheap chat
+    # keeps the plain >0 gate in _require_billing_ready.
+    if billing.configured() and repo.credit_balance(ctx.cur, ctx.uid) < float(billing.MIN_RUN_BALANCE):
+        raise ApiError(402, "You need at least $%.2f in credits to start a research session. Add credits "
+                            "on the Billing tab." % float(billing.MIN_RUN_BALANCE))
     if repo.count_runs(ctx.cur, ctx.uid, "research", active_only=True) >= MAX_ACTIVE_RESEARCH:
         raise ApiError(429, "You already have %d agents researching. Wait for one to finish." % MAX_ACTIVE_RESEARCH)
     if MAX_RESEARCH_PER_DAY and repo.count_runs(ctx.cur, ctx.uid, "research", since=repo.now_utc() - timedelta(days=1)) >= MAX_RESEARCH_PER_DAY:
@@ -984,6 +1032,8 @@ def decide_proposal(ctx: Ctx):
     # generic proposal transaction around a network request or bypass the
     # paper service's scope, ownership, cash and duplicate-send checks.
     candidate = repo.get_proposal(ctx.cur, ctx.uid, pid)
+    if candidate and candidate["kind"] == "kalshi_perps_live":
+        return _perps_live_call(kalshi_perps_trading.decide_proposal, conn, ctx.uid, pid, decision)
     if candidate and candidate["kind"] == "alpaca_paper":
         return _paper_call(alpaca_paper.decide_proposal, conn, ctx.uid, pid, decision)
     with repo.transaction(conn) as tx:
@@ -1060,6 +1110,10 @@ def autopilot_status(ctx: Ctx):
     mode = "live" if (live_on and live_run) else ("live-armed" if live_on else ("paper" if u.get("autopilot") else "off"))
     today_live = round(repo.realized_pnl(cur, ctx.uid, "live", _start_of_day_utc()), 2)
     limit = float(u.get("autopilot_daily_loss_limit") or 50)
+    # When autopilot is ON but can't spend (no card, or balance below the per-run floor), the worker
+    # silently skips the user via billing.is_ready — the SAME gate, read here only to surface WHY the
+    # panel is quiet so it doesn't look broken. Never changes the gate; purely a status readout.
+    billing_blocked = bool(u.get("autopilot")) and billing.configured() and not billing.is_ready(cur, ctx.uid)
     return {
         "autopilot": bool(u.get("autopilot")),
         "autopilot_live": bool(u.get("autopilot_live")),
@@ -1071,8 +1125,10 @@ def autopilot_status(ctx: Ctx):
         "daily_loss_limit": limit,
         "loss_headroom": round(max(0.0, limit + min(0.0, today_live)), 2),  # how much loss budget is left today
         "last_action": repo.last_autopilot_action(cur, ctx.uid),
-        "last_review_at": repo.last_review_at(cur, ctx.uid),
-        "model": u.get("autopilot_model") or catalog.DEFAULT_KEY,
+        "last_review_at": repo.last_review_at(cur, ctx.uid),  # liveness: a quiet review posts nothing, this still shows it ran
+        "model": u.get("autopilot_model") or catalog.DEFAULT_KEY,  # the model the autopilot's own runs use
+        "billing_blocked": billing_blocked,
+        "billing_reason": (("card" if _needs_card(ctx) else "credits") if billing_blocked else None),
     }
 
 
@@ -1154,14 +1210,19 @@ def save_kalshi_key(ctx: Ctx):
         raise ApiError(400, str(e))
     except RuntimeError:
         raise ApiError(503, "This server can't store keys yet (encryption key not configured).")
-    repo.save_kalshi_key(ctx.cur, ctx.uid, key_id.strip(), blob)
+    with repo.transaction(ctx.conn) as tx:
+        _perps_live_call(kalshi_perps_trading.guard_key_change, tx, ctx.uid, "production")
+        repo.save_kalshi_key(tx, ctx.uid, key_id.strip(), blob)
     return {"ok": True, "balance": cash}
 
 
 def delete_kalshi_key(ctx: Ctx):
-    if any(d["mode"] == "live" and d["status"] == "running" for d in repo.list_deployments(ctx.cur, ctx.uid)):
-        raise ApiError(409, "Pause or stop your live deployments before disconnecting Kalshi.")
-    repo.delete_kalshi_key(ctx.cur, ctx.uid)
+    with repo.transaction(ctx.conn) as tx:
+        repo.lock_user(tx, ctx.uid)
+        if any(d["mode"] == "live" and d["status"] == "running" for d in repo.list_deployments(tx, ctx.uid)):
+            raise ApiError(409, "Pause or stop your live deployments before disconnecting Kalshi.")
+        _perps_live_call(kalshi_perps_trading.guard_key_change, tx, ctx.uid, "production")
+        repo.delete_kalshi_key(tx, ctx.uid)
     return {"ok": True}
 
 
@@ -1189,14 +1250,19 @@ def save_kalshi_dev_key(ctx: Ctx):
         blob = kalshi_account.encrypt_private_key(ctx.uid, pem.strip())
     except RuntimeError:
         raise ApiError(503, "This server can't store keys yet (encryption key not configured).")
-    repo.set_kalshi_dev_key(ctx.cur, ctx.uid, key_id, blob)
+    with repo.transaction(ctx.conn) as tx:
+        _perps_live_call(kalshi_perps_trading.guard_key_change, tx, ctx.uid, "demo")
+        repo.set_kalshi_dev_key(tx, ctx.uid, key_id, blob)
     return {"ok": True}
 
 
 def delete_kalshi_dev_key(ctx: Ctx):
-    if any(d["mode"] == "demo" and d["status"] == "running" for d in repo.list_deployments(ctx.cur, ctx.uid)):
-        raise ApiError(409, "Pause or stop your demo deployments before removing your demo key.")
-    repo.delete_kalshi_dev_key(ctx.cur, ctx.uid)
+    with repo.transaction(ctx.conn) as tx:
+        repo.lock_user(tx, ctx.uid)
+        if any(d["mode"] == "demo" and d["status"] == "running" for d in repo.list_deployments(tx, ctx.uid)):
+            raise ApiError(409, "Pause or stop your demo deployments before removing your demo key.")
+        _perps_live_call(kalshi_perps_trading.guard_key_change, tx, ctx.uid, "demo")
+        repo.delete_kalshi_dev_key(tx, ctx.uid)
     return {"ok": True}
 
 
@@ -1695,7 +1761,8 @@ def admin_system(ctx: Ctx):
         "forward":   {"age": age.get("forward_collector_last_snapshot"), "rows": approx_rows("forward_quotes"), "unit": "quote rows"},
         "cb_coll":   {"age": age.get("coinbase_collector_last_snapshot"), "rows": approx_rows("spot_candles_1m"), "unit": "1m candles"},
         "features":  {"age": age.get("model_features_1m_last_snapshot"), "rows": approx_rows("model_features_1m"), "unit": "feature rows"},
-        "db":        {"rows": approx_rows("forward_quotes") + approx_rows("market_candles"), "size_mb": scalar("SELECT ROUND(SUM(data_length+index_length)/1048576) m FROM information_schema.tables WHERE table_schema=DATABASE()")},
+        "db":        {"rows": approx_rows("forward_quotes") + approx_rows("market_candles"), "size_mb": scalar("SELECT ROUND(SUM(data_length+index_length)/1048576) m FROM information_schema.tables WHERE table_schema=DATABASE()"),
+                      **({"top_tables": repo.largest_tables(cur)} if is_admin else {})},
         "web":       {"up": True, **({"users": scalar("SELECT COUNT(*) c FROM app_users")} if is_admin else {})},
         "agents":    {"running": runs.get("running", 0), "queued": runs.get("queued", 0), "done": runs.get("succeeded", 0) + runs.get("failed", 0)},
         "backtest":  {"strategies": scalar("SELECT COUNT(*) c FROM app_strategies")},
@@ -1901,6 +1968,11 @@ ROUTES: List[Route] = [
         ("POST", "/api/waitlist", waitlist, False),
         ("GET", "/api/me", me, True),
         ("GET", "/api/brokers", broker_connections, True),
+        ("GET", "/api/kalshi/perps/live", kalshi_perps_live_account, True),
+        ("POST", "/api/kalshi/perps/live/policy", kalshi_perps_live_policy, True),
+        ("POST", "/api/kalshi/perps/live/orders", kalshi_perps_live_draft, True),
+        ("POST", r"/api/kalshi/perps/live/proposals/(\d+)/preview", kalshi_perps_live_proposal, True),
+        ("POST", r"/api/kalshi/perps/live/orders/(\d+)/(submit|refresh|cancel)", kalshi_perps_live_action, True),
         ("GET", "/api/brokers/alpaca/paper", alpaca_paper_account, True),
         ("POST", "/api/brokers/alpaca/paper/orders", alpaca_paper_draft, True),
         ("POST", r"/api/brokers/alpaca/paper/orders/(\d+)/(submit|refresh|cancel)", alpaca_paper_action, True),
@@ -1978,7 +2050,7 @@ ROUTES: List[Route] = [
 
 def _static_versions() -> Dict[str, str]:
     out = {}
-    for name in ("app.css", "app.js", "session-data.js", "session-chat.js", "research-artifacts.js", "alpaca-paper.js", "alpaca-paper.css", "broker-connections.js", "broker-connections.css", "icon.svg", "app.meridian.css", "app.meridian.js", "boot.js"):
+    for name in ("app.css", "app.js", "session-data.js", "session-chat.js", "research-artifacts.js", "alpaca-paper.js", "alpaca-paper.css", "kalshi-perps-live.js", "kalshi-perps-live.css", "broker-connections.js", "broker-connections.css", "icon.svg", "app.meridian.css", "app.meridian.js", "boot.js"):
         p = STATIC_DIR / name
         out[name] = hashlib.sha256(p.read_bytes()).hexdigest()[:10] if p.exists() else "0"
     return out
@@ -2039,6 +2111,8 @@ class Handler(BaseHTTPRequestHandler):
                     .replace("{{brokers_css_v}}", versions["broker-connections.css"])
                     .replace("{{paper_js_v}}", versions["alpaca-paper.js"])
                     .replace("{{paper_css_v}}", versions["alpaca-paper.css"])
+                    .replace("{{perps_js_v}}", versions["kalshi-perps-live.js"])
+                    .replace("{{perps_css_v}}", versions["kalshi-perps-live.css"])
                     .replace("{{icon_v}}", versions["icon.svg"])
                     .replace("{{meridian_css_v}}", versions["app.meridian.css"])
                     .replace("{{meridian_js_v}}", versions["app.meridian.js"])

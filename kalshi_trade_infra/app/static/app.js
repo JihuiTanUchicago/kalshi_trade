@@ -4,7 +4,7 @@
   'use strict';
 
   const root = document.getElementById('app');
-  const S = { me: null, timers: [], gen: 0 };
+  const S = { me: null, timers: [], gen: 0, perps: null };
 
   // ---------- brand mark ----------
   const TAU_MARK = '<svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" fill="#15161A"/><path d="M18 24h28M32 24v22" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/><circle cx="32" cy="48" r="3.5" fill="#F05A28"/></svg>';
@@ -327,7 +327,7 @@
 
   // ---------- API ----------
   class ApiError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
-  async function api(path, body) {
+  async function api(path, body, cfg) {
     const opts = { credentials: 'same-origin', headers: {} };
     if (body !== undefined) {
       opts.method = 'POST';
@@ -335,8 +335,14 @@
       opts.headers['X-Recursive'] = '1';
       opts.body = JSON.stringify(body);
     }
+    // Optional timeout (used on the boot /api/me call so a slow/overloaded server can't hang the
+    // whole app on a blank screen). AbortController fires an abort the fetch rejects on.
+    let ctl, tid;
+    if (cfg && cfg.timeoutMs) { ctl = new AbortController(); opts.signal = ctl.signal; tid = setTimeout(() => ctl.abort(), cfg.timeoutMs); }
     let res;
-    try { res = await fetch(path, opts); } catch (e) { throw new ApiError(0, "Can't reach Tau. Check your connection."); }
+    try { res = await fetch(path, opts); }
+    catch (e) { throw new ApiError(0, ctl && ctl.signal.aborted ? "Tau is taking too long to respond." : "Can't reach Tau. Check your connection."); }
+    finally { if (tid) clearTimeout(tid); }
     let data = {};
     try { data = await res.json(); } catch (e) { /* non-JSON error page */ }
     if (res.status === 401 && path !== '/api/me') { go('/signin'); throw new ApiError(401, 'Please sign in.'); }
@@ -361,7 +367,11 @@
     [/^\/(?:funds|settings\/account)$/, viewFunds],
     [/^\/devlog$/, viewDevLog],
     [/^\/settings$/, viewSettings],
+    [/^\/terms$/, viewTerms],
+    [/^\/privacy$/, viewPrivacy],
   ];
+  // Public routes: viewable signed-OUT, so the boot guard must not force /api/me + a signin bounce.
+  const PUBLIC = new Set(['/signin', '/terms', '/privacy']);
   function go(path, replace) {
     if (replace) history.replaceState(null, '', path); else history.pushState(null, '', path);
     render();
@@ -374,7 +384,7 @@
     go(a.getAttribute('href'));
   });
 
-  function clearTimers() { S.timers.forEach(clearInterval); S.timers = []; }
+  function clearTimers() { if (S.perps) { S.perps.destroy(); S.perps = null; } S.timers.forEach(clearInterval); S.timers = []; }
   function poll(fn, ms) {
     const gen = S.gen;
     const id = setInterval(() => { if (!document.hidden && gen === S.gen) fn().catch(() => {}); }, ms);
@@ -406,8 +416,19 @@
     const path = location.pathname;
     if (path === '/signin') { const f = document.getElementById('autopilot-float'); if (f) f.remove(); }
     const match = routes.map(([re, fn]) => [path.match(re), fn]).find(([m]) => m);
-    if (!S.me && path !== '/signin') {
-      try { S.me = await api('/api/me'); } catch (e) { return go('/signin', true); }
+    if (!S.me && !PUBLIC.has(path)) {
+      // Boot: don't sit on a blank white page if /api/me is slow. Paint a branded splash after a
+      // short delay (so a fast boot never flashes it), and time the call out. A 401 means genuinely
+      // signed out (-> signin); ANY other failure (slow/overloaded/offline) is transient, so show a
+      // retry screen instead of spuriously bouncing a signed-in user to signin.
+      let splashTid = root.firstChild ? null : setTimeout(() => { if (!S.me) root.innerHTML = bootSplash(); }, 250);
+      try { S.me = await api('/api/me', undefined, { timeoutMs: 12000 }); }
+      catch (e) {
+        if (splashTid) clearTimeout(splashTid);
+        if (e.status === 401) return go('/signin', true);
+        return bootFail();
+      }
+      if (splashTid) clearTimeout(splashTid);
       // Adopt the account's saved theme on a fresh device (server wins), reloading once into it.
       const server = (S.me.user && S.me.user.ui_theme) || 'tau';
       let local = 'tau'; try { local = localStorage.getItem('tau_ui') || 'tau'; } catch (e) {}
@@ -568,7 +589,7 @@
     root.innerHTML = `
       <header class="masthead"><div class="masthead-in">
         <p class="wordmark"><a href="/">${ICON.mark}<span>Tau</span></a></p>
-        <span class="asof">${adminToggle}<span class="bell-wrap"><button class="bell-trig" data-action="bell" aria-haspopup="true" aria-expanded="false" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bell-dot" hidden></span></button><span class="bell-menu" hidden><div class="bell-head"><b>Notifications</b></div><div class="bell-list" id="bell-list"></div></span></span><span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false">${esc(u.name || u.email)}<svg class="profile-chev" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/settings">Settings</a><a href="/billing">Billing</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
+        <span class="asof">${adminToggle}<span class="bell-wrap"><button class="bell-trig" data-action="bell" aria-haspopup="true" aria-expanded="false" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bell-dot" hidden></span></button><span class="bell-menu" hidden><div class="bell-head"><b>Notifications</b></div><div class="bell-list" id="bell-list"></div></span></span><span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false">${esc(u.name || u.email)}<svg class="profile-chev" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
       </div></header>
       <nav class="services" aria-label="Sections"><div class="services-in">${nav}</div></nav>
       <div class="wrap">
@@ -662,6 +683,16 @@
   const dirTag = () => '';
   const notice = (msg, kind = '') => `<div class="notice ${kind}" role="${kind === 'bad' ? 'alert' : 'status'}">${kind === 'good' ? ICON.check : ICON.warn}<span>${esc(msg)}</span></div>`;
   const loading = (h = 160) => `<div class="skeleton" style="height:${h}px" aria-label="Loading"></div>`;
+  // Boot screens: shown only while /api/me is in flight (splash) or after it timed out / failed
+  // transiently (fail). Reuses the landing wordmark + spinner so it's on-world with zero new look.
+  const bootSplash = () => `<div class="boot"><div class="lbrand">${ICON.mark}<span>Tau</span></div><div class="lspin" aria-label="Loading Tau"></div></div>`;
+  function bootFail() {
+    root.innerHTML = `<div class="boot"><div class="lbrand">${ICON.mark}<span>Tau</span></div>
+      <p class="boot-msg">Tau is taking longer than usual to load — it may be briefly busy.</p>
+      <button class="btn" id="bootretry">Try again</button></div>`;
+    const b = document.getElementById('bootretry');
+    if (b) b.onclick = () => { b.disabled = true; render(); };
+  }
 
   // arm-to-confirm: first click arms for 5s, second click fires
   function armed(btn, label, fire) {
@@ -1083,6 +1114,56 @@
     ['How do deposits and withdrawals work?', 'Paper money is simulated and free to add or remove. Live trading uses your own Kalshi account — you fund and withdraw at Kalshi, and Tau only places the trades for strategies you deploy. We never hold your money.'],
     ['How safe is this?', 'Paper trading risks nothing. Live trading is off by default and takes a deliberate, confirmed step; strategies have hard loss guards that pause them automatically, and your Kalshi key is encrypted and never shared.'],
   ];
+  // ---------- public legal pages (viewable signed in OR out) ----------
+  const LEGAL_CONTACT = 'tanjihui@tau-trading.com';
+  const LEGAL_UPDATED = 'October 20, 2026';
+  const sec = (h, ...ps) => `<h2>${h}</h2>${ps.map((p) => `<p>${p}</p>`).join('')}`;
+  function legalShell(title, bodyHtml) {
+    clearTimers();
+    document.body.classList.add('landing-body');
+    const away = S.me ? '<a href="/">Dashboard</a>' : '<a href="/signin">Sign in</a>';
+    root.innerHTML = `<div class="legal-wrap">
+      <header class="legal-top"><a class="lbrand" href="/">${ICON.mark}<span>Tau</span></a>
+        <nav class="legal-nav"><a href="/terms">Terms</a><a href="/privacy">Privacy</a>${away}</nav></header>
+      <main class="legal" id="main">
+        <h1>${title}</h1><p class="legal-updated">Last updated ${LEGAL_UPDATED}</p>
+        ${bodyHtml}
+        <footer class="legal-foot"><a href="/terms">Terms of Service</a> · <a href="/privacy">Privacy Policy</a> · <span>© 2026 Tau</span></footer>
+      </main></div>`;
+  }
+  async function viewTerms() {
+    legalShell('Terms of Service',
+      sec('1. Agreement', `By accessing or using Tau (the “Service”), you agree to these Terms of Service. If you do not agree, do not use the Service.`) +
+      sec('2. What Tau is', `Tau is software that helps you research, backtest, and automate trading strategies for prediction markets offered by Kalshi. Tau can place trades in a Kalshi account you connect, using credentials you provide. Tau is a software tool — it is not a broker-dealer, exchange, investment adviser, or fiduciary, and it does not hold your funds.`) +
+      sec('3. Not financial advice', `Tau’s research, backtests, scores, and generated strategies are informational only. They are not investment, financial, legal, or tax advice, and are not a recommendation to enter into any trade. Backtested and simulated results are hypothetical and do not guarantee future performance. All trading decisions are your own and your sole responsibility.`) +
+      sec('4. Eligibility', `You must be at least 18 years old and able to form a binding contract, and you may use the Service only where trading on prediction markets is lawful for you. You are responsible for complying with Kalshi’s terms and all laws that apply to you.`) +
+      sec('5. Your account', `You sign in with Google. You are responsible for keeping your account secure and for all activity under it. Live trading uses your own Kalshi API credentials, which you choose to provide; Tau places trades only for strategies you deploy and never takes custody of your funds.`) +
+      sec('6. Trading risk', `Trading on prediction markets involves substantial risk, including the total loss of the funds you commit. Only trade with money you can afford to lose. Paper and demo modes are simulated and involve no real money.`) +
+      sec('7. Fees and billing', `Some features may require paid credits. Where paid features are enabled, you authorize charges through our payment processor (Stripe) for the credits or usage described in the app, and credits are consumed as the agent performs work for you. Pricing may change, and any changes will be reflected in the app.`) +
+      sec('8. Acceptable use', `You agree not to use the Service unlawfully; not to abuse, reverse-engineer, disrupt, or overload it; and not to use it to violate the rules of Kalshi or any exchange, venue, or third party.`) +
+      sec('9. Intellectual property', `Tau and its software, content, and branding are owned by its operator; you receive a limited, non-exclusive, non-transferable license to use the Service. Content and inputs you submit remain yours, and you grant us a license to process them solely to operate and improve the Service.`) +
+      sec('10. Disclaimers', `The Service is provided “as is” and “as available,” without warranties of any kind, express or implied, including merchantability, fitness for a particular purpose, availability, accuracy, or profitability.`) +
+      sec('11. Limitation of liability', `To the maximum extent permitted by law, the operator of Tau is not liable for any trading losses or for any indirect, incidental, special, consequential, or punitive damages arising from your use of the Service. Our total liability for any claim is limited to the amount you paid us for the Service in the three months before the claim.`) +
+      sec('12. Termination', `We may suspend or terminate access for any violation of these Terms or to protect the Service or its users. You may stop using the Service at any time.`) +
+      sec('13. Changes', `We may update these Terms from time to time. Material changes will be posted here with a new “last updated” date, and your continued use of the Service means you accept the updated Terms.`) +
+      sec('14. Contact', `Questions about these Terms: <a href="mailto:${LEGAL_CONTACT}">${LEGAL_CONTACT}</a>.`));
+  }
+  async function viewPrivacy() {
+    legalShell('Privacy Policy',
+      sec('Overview', `This policy explains what information Tau collects, how we use it, and the choices you have. By using Tau you agree to this policy.`) +
+      sec('Information we collect', `<strong>Account information</strong> — your name and email address from Google sign-in. <strong>Usage data</strong> — the research sessions, strategies, settings, and interactions you create in the app. <strong>Payment information</strong> — processed by our payment provider (Stripe); we do not store your full card number. <strong>Trading credentials</strong> — if you connect live trading, your Kalshi API key, stored encrypted. <strong>Technical data</strong> — standard logs such as IP address and browser type.`) +
+      sec('How we use it', `To provide and operate the Service; to run your research and backtests; to process billing; to secure, maintain, and improve the Service; and to communicate with you about your account.`) +
+      sec('AI processing', `Your research inputs and prompts are processed by our AI provider (Anthropic, via Amazon Bedrock) to generate research and strategies. Please do not include sensitive personal information in research prompts.`) +
+      sec('How we share it', `We do not sell your personal information. We share it only with the service providers that run Tau — Google (sign-in), Stripe (payments), Amazon Web Services (hosting), and Anthropic / Amazon Bedrock (AI) — and when required by law or to protect the Service and its users.`) +
+      sec('Cookies and local storage', `We use a session cookie to keep you signed in and your browser’s local storage for preferences such as your theme. We do not use third-party advertising cookies.`) +
+      sec('Data retention', `We keep your information while your account is active and for as long as needed to operate the Service and meet legal and security obligations.`) +
+      sec('Security', `We protect sensitive credentials with encryption and apply reasonable safeguards. No method of storage or transmission is completely secure, so we cannot guarantee absolute security.`) +
+      sec('Your choices', `You can access, correct, or delete your information by contacting us. You can disconnect live trading and sign out at any time.`) +
+      sec('Children', `Tau is not directed to, and may not be used by, anyone under 18.`) +
+      sec('Changes', `We may update this policy; we will post changes here with a new “last updated” date.`) +
+      sec('Contact', `Questions about privacy or your data: <a href="mailto:${LEGAL_CONTACT}">${LEGAL_CONTACT}</a>.`));
+  }
+
   async function viewSignin() {
     const hr = document.getElementById('hotrail'); if (hr) hr.remove();
     document.body.classList.remove('hot-open');
@@ -1090,17 +1171,14 @@
     if (S.me) return go('/', true);
     const q = new URLSearchParams(location.search);
     const err = q.get('error');
-    const msg = q.has('pending')
-      ? "You're on the waitlist — we'll email you the moment you're approved. (Access is invite-only right now.)"
-      : { cancelled: 'Sign-in was cancelled.', expired: 'That sign-in link expired. Try again.', google: "Google couldn't confirm your account. We may not have added you to the waitlist yet." }[err];
+    const msg = { cancelled: 'Sign-in was cancelled.', expired: 'That sign-in link expired. Try again.', google: "Google couldn't confirm your account. Please try again." }[err];
     document.body.classList.add('landing-body');
     root.innerHTML = `
       <div class="landing">
         <header class="lnav">
           <a class="lbrand" href="/">${ICON.mark}<span>Tau</span></a>
           <div class="lnav-actions">
-            <a class="pill" href="/auth/google" data-native>Sign in</a>
-            <button class="pill solid" data-action="waitlist-top">Join waitlist</button>
+            <a class="pill solid" href="/auth/google" data-native>Sign in</a>
           </div>
         </header>
         <section class="lhero">
@@ -1110,9 +1188,8 @@
             ${msg ? `<div class="lnotice">${esc(msg)}</div>` : ''}
             <div class="lcta" id="lcta">
               <a class="pill solid lg" href="/auth/google" data-native>${ICON.google}Continue with Google</a>
-              <button class="pill lg" data-action="waitlist-open">Join waitlist</button>
             </div>
-            <p class="lfine">Access is invite-only right now. Join the waitlist and we'll email you when a spot opens. You'll start with $1,000 of paper money; live trading is optional and runs in your own Kalshi account.</p>
+            <p class="lfine">Free to start — you'll get $1,000 of paper money to research and test strategies. Live trading is optional and runs in your own Kalshi account.</p>
           </div>
           <div class="demo" id="demo" aria-hidden="true">
             <div class="demo-bar"><i></i><i></i><i></i><span class="demo-url">tau · research</span>
@@ -1149,52 +1226,13 @@
           </div>
           <footer class="lfoot">
             <a class="lbrand" href="/">${ICON.mark}<span>Tau</span></a>
-            <div class="lfoot-links"><button class="linkish" data-action="waitlist-top">Join waitlist</button><span>Research preview</span><span>© 2026 Tau</span></div>
+            <div class="lfoot-links"><a href="/terms">Terms</a><a href="/privacy">Privacy</a><span>Research preview</span><span>© 2026 Tau</span></div>
           </footer>
         </main>
       </div>`;
     startDemo();
     setupScenes();
     root.querySelector('#demo-replay').onclick = startDemo;
-    const dlg = document.createElement('dialog');
-    dlg.className = 'wl-modal';
-    dlg.innerHTML = `
-      <form method="dialog" class="wl-inner" id="wlform">
-        <button class="wl-x" type="button" data-close aria-label="Close">${ICON.cross}</button>
-        <h2>Join the waitlist</h2>
-        <p class="wl-sub">We're opening access to Tau in batches. Leave your email to get an invitation.</p>
-        <label class="field"><span>Email</span>
-          <span class="wl-ifield">${ICON.mail}<input id="wlemail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" required></span></label>
-        <p class="wl-note">We'll email you when your spot is ready. We never share your address.</p>
-        <label class="field"><span>Twitter handle <small>(optional)</small></span>
-          <span class="wl-ifield">${ICON.at}<input id="wlhandle" type="text" autocomplete="off" placeholder="yourhandle"></span></label>
-        <div id="wlhint"></div>
-        <button class="pill solid wl-submit" type="submit">Join waitlist</button>
-      </form>`;
-    root.querySelector('.landing').appendChild(dlg);
-    const openWaitlist = () => {
-      const hint = dlg.querySelector('#wlhint'); hint.innerHTML = '';
-      if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
-      setTimeout(() => dlg.querySelector('#wlemail').focus(), 50);
-    };
-    const close = () => { dlg.open && (dlg.close ? dlg.close() : dlg.removeAttribute('open')); };
-    dlg.querySelector('[data-close]').onclick = close;
-    dlg.addEventListener('click', (e) => { if (e.target === dlg) close(); });  // backdrop click
-    dlg.querySelector('#wlform').onsubmit = async (e) => {
-      e.preventDefault();
-      const email = dlg.querySelector('#wlemail').value.trim();
-      const note = dlg.querySelector('#wlhandle').value.trim();
-      await busy(dlg.querySelector('.wl-submit'), async () => {
-        try {
-          await api('/api/waitlist', { email, note: note ? ('Twitter: ' + note) : '' });
-          dlg.querySelector('.wl-inner').innerHTML = `<button class="wl-x" type="button" data-close aria-label="Close">${ICON.cross}</button>
-            <div class="wl-done">${ICON.check}<h2>You're on the list</h2><p>We'll email <b>${esc(email)}</b> when your spot is ready.</p>
-            <button class="pill solid" type="button" data-close>Done</button></div>`;
-          dlg.querySelectorAll('[data-close]').forEach((b) => (b.onclick = close));
-        } catch (err) { dlg.querySelector('#wlhint').innerHTML = `<p class="wlhint bad">${esc(err.message)}</p>`; }
-      });
-    };
-    root.querySelectorAll('[data-action="waitlist-open"],[data-action="waitlist-top"]').forEach((b) => (b.onclick = openWaitlist));
   }
 
   // The hero demo: an idea is typed, the agent discovers strategies, each is stamped.
@@ -1479,6 +1517,7 @@
       <form class="panel dispatch" id="dispatch">
         <h3>${ICON.spark2}New research session</h3>
         ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
+        ${(!me.needs_card && me.billing_enabled && me.credit_balance < me.min_run_balance) ? `<div class="notice" role="status">${ICON.warn}<span>You have $${me.credit_balance.toFixed(2)} in credits — a research session needs at least $${me.min_run_balance.toFixed(2)} to start. <a href="/billing">Add credits →</a></span></div>` : ''}
         <label class="field"><span>Describe your idea</span>
           <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="Write your own — e.g. &quot;Sell overpriced tails in the last hour before the 5pm close.&quot;"></textarea></label>
         <div class="dispatch-tune">
@@ -1566,9 +1605,11 @@
     const state = r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
       : r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
       : r.status === 'succeeded' ? `<span class="${r.strategies_passed ? 'gain' : ''}">${r.strategies_passed} of ${r.hypotheses_tried} passed</span>`
+      : r.status === 'stopped' ? `Explored ${r.hypotheses_tried} hypothes${r.hypotheses_tried === 1 ? 'is' : 'es'}${r.strategies_passed ? ` · <span class="gain">${r.strategies_passed} passed</span>` : ''}`
       : r.status === 'cancelled' ? 'Cancelled' : '<span class="loss">Failed</span>';
-    // status band: a thin color rule so passed/void/failed reads at a glance
-    const band = r.status === 'succeeded' ? (r.strategies_passed ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : r.status === 'cancelled' ? 'void' : 'live';
+    // status band: a thin color rule so passed/void/failed reads at a glance. A `stopped` run (frozen,
+    // interrupted, or capped) is neutral (void), NOT red — only a real error is `fail`.
+    const band = r.status === 'succeeded' ? (r.strategies_passed ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : (r.status === 'cancelled' || r.status === 'stopped') ? 'void' : 'live';
     return `<a class="run-card ${band}" href="/research/${r.id}">
       <span class="run-title"><b>${esc(sessionTitle(r))}</b></span>
       <span class="run-meta">${esc(marketShort(r.market))}${r.error ? ' \u00b7 ' + esc(r.error) : ''}</span>
@@ -2056,7 +2097,8 @@
       const statusText = r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
         : r.status === 'paused' ? 'Paused'
         : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
-        : r.status === 'succeeded' ? 'Done' : r.status === 'cancelled' ? 'Cancelled' : 'Failed';
+        : r.status === 'succeeded' ? 'Done' : r.status === 'stopped' ? 'Stopped'
+        : r.status === 'cancelled' ? 'Cancelled' : 'Failed';
       root.querySelector('#runfigs').innerHTML =
         fig('Status', statusText) +
         fig('Time', started ? Math.max(0, Math.round((end - started) / 60000)) + ' min' : '—') +
@@ -2539,6 +2581,7 @@
         </section>
         </div>
         <div class="funds-col funds-history">
+        <section id="kalshi-perps-live" aria-label="Bitcoin perpetual trading"></section>
         <section class="panel">
           <h3>Paper history</h3>
           <table class="table stack"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody>
@@ -2546,6 +2589,9 @@
           </tbody></table>
         </section>
         </div></div>`;
+      if (S.perps) { S.perps.destroy(); S.perps = null; }
+      const perpsHost = root.querySelector('#kalshi-perps-live');
+      if (window.TAU_PERPS_LIVE && perpsHost) S.perps = window.TAU_PERPS_LIVE.mount(perpsHost, {api, proposalId: new URLSearchParams(location.search).get('perps_proposal')});
       const df = root.querySelector('#demo');
       if (df) df.onsubmit = async (e) => {
         e.preventDefault();
@@ -2989,6 +3035,7 @@
     adjust: 'Tuned strategy', set_risk: 'Tuned risk', set_exec: 'Tuned execution',
     pause: 'Paused', resume: 'Resumed',
     alpaca_paper: 'Alpaca paper order',
+    kalshi_perps_live: 'Bitcoin perps live order',
   };
   // One feed entry, rendered with the SAME research-session parts (.ln timeline rail, .say card,
   // feedMd markdown, lane tint) so the autopilot reads as one family with the research log —
@@ -3017,7 +3064,7 @@
     const title = m.strategy ? `<b class="say-title">${esc(m.strategy)}</b>` : '';
     const detail = m.detail ? `<details class="hx-more"><summary>Show the detail</summary><div class="hx-body"><div class="apf-md">${feedMd(m.detail)}</div></div></details>` : '';
     const ctl = (m.proposal_id && st === 'pending')
-      ? `<div class="proposal" data-prop="${m.proposal_id}"><button class="btn small" data-decide="approve">Approve</button><button class="btn ghost small" data-decide="reject">Decline</button></div>` : '';
+      ? `<div class="proposal" data-prop="${m.proposal_id}"><button class="btn small" data-decide="approve">${m.proposal_kind === 'kalshi_perps_live' ? 'Review live order' : 'Approve'}</button><button class="btn ghost small" data-decide="reject">Decline</button></div>` : '';
     li.className = 'ln lane-' + lane + ' apf-act';
     li.innerHTML = `${t}<div class="say">
       <div class="hx-head"><span class="say-kind">${esc(kind)}</span>${title}${stage}${stamp}</div>
@@ -3117,7 +3164,7 @@
     msgs.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-decide]'); if (!b) return;
       const pid = b.closest('[data-prop]').dataset.prop;
-      await busy(b, async () => { try { await api(`/api/proposals/${pid}/${b.dataset.decide}`, {}); await apLoadChat(box, true); } catch (err) { alert0(err.message); } });
+      await busy(b, async () => { try { const result = await api(`/api/proposals/${pid}/${b.dataset.decide}`, {}); if (result.review_required && result.review_url === `/funds?perps_proposal=${pid}`) { go(result.review_url); return; } await apLoadChat(box, true); } catch (err) { alert0(err.message); } });
     });
     const cf = box.querySelector('#apf-composer'), ta = box.querySelector('#apf-msg');
     ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(120, ta.scrollHeight) + 'px'; });
@@ -3174,7 +3221,19 @@
       <div><dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd></div>
       ${d.last_review_at ? `<div><dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd></div>` : ''}`;
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
-    const gates = box.querySelector('#apf-gates'); if (gates) gates.textContent = apLiveBlock(d);
+    const gates = box.querySelector('#apf-gates');
+    if (gates) {
+      if (d.billing_blocked) {
+        // Autopilot is on but can't spend — tell the user WHY it's quiet (so it doesn't look broken).
+        gates.innerHTML = d.billing_reason === 'card'
+          ? 'Autopilot is paused — <a href="/billing">add a payment method</a> to let it run.'
+          : 'Autopilot is paused — <a href="/billing">add credits</a> to let it keep researching.';
+        gates.classList.add('warn');
+      } else {
+        gates.textContent = apLiveBlock(d);
+        gates.classList.remove('warn');
+      }
+    }
     const controls = box.querySelector('#apf-controls');
     if (controls) {
       controls.innerHTML = `${d.autopilot_live
@@ -3509,7 +3568,13 @@
       codeState = null;
       const n = sysNode(id), L = S.sysLive && S.sysLive[id];
       const open = n.ext ? '' : `<p style="margin-top:12px"><button class="btn sm" data-code-open="${esc(id)}">Open the code ›</button></p>`;
-      detail.innerHTML = `<h3>${esc(n.label)}</h3><p class="sys-metric" id="sys-dm">${metricText(id, L) || ''}</p><p class="hint" style="margin-top:8px">${esc(SYS_DESC[id] || '')}</p>${open}`;
+      // Admin-only storage breakdown on the DB node: which tables eat the volume, so a refilling
+      // table is visible long before the disk fills (the storage-full outage had no such warning).
+      const tbls = (id === 'db' && L && L.top_tables && L.top_tables.length)
+        ? `<div class="sys-tables"><b>Largest tables</b><ul>${L.top_tables.map((t) =>
+            `<li><span>${esc(t.table)}</span><span>${t.mb >= 1024 ? (t.mb / 1024).toFixed(1) + ' GB' : num(t.mb) + ' MB'}</span></li>`).join('')}</ul></div>`
+        : '';
+      detail.innerHTML = `<h3>${esc(n.label)}</h3><p class="sys-metric" id="sys-dm">${metricText(id, L) || ''}</p><p class="hint" style="margin-top:8px">${esc(SYS_DESC[id] || '')}</p>${tbls}${open}`;
     };
     const modName = (p) => p.split('/').pop();
     const crumbs = (parts) => `<nav class="sys-crumb">${parts.map((p, i) =>

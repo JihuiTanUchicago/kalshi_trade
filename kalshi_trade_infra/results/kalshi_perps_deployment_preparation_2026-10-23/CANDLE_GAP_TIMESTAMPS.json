@@ -1,0 +1,9 @@
+{
+  "status": "failed",
+  "scope": "one bounded anonymous metadata and candle read; exact prior48h window",
+  "raw_prices_retained": false,
+  "database_or_service_or_flag_changes": false,
+  "request_start_ts": 1792546380,
+  "request_end_ts": 1792719180,
+  "error_code": "provider_unavailable"
+}

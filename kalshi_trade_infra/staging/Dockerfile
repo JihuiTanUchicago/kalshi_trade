@@ -11,6 +11,7 @@ COPY app/ app/
 COPY data_pipeline/ data_pipeline/
 COPY staging/entrypoint.py /usr/local/lib/tau-staging/entrypoint.py
 COPY scripts/paper_staging_smoke.py scripts/paper_staging_smoke.py
+COPY scripts/kalshi_perps_staging_smoke.py scripts/kalshi_perps_staging_smoke.py
 
 # Bootstrap reads host-private bind secrets, then permanently drops uid/gid and
 # supplementary groups before executing any application code.

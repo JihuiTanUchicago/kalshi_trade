@@ -1,0 +1,37 @@
+{
+  "status": "merged_production_pending",
+  "recorded_at": "2026-10-23T01:25:27.008851+00:00",
+  "repository": "JihuiTanUchicago/kalshi_trade",
+  "pr": 21,
+  "pr_url": "https://github.com/JihuiTanUchicago/kalshi_trade/pull/21",
+  "base_sha": "aa3664e420fe4fdf538cd434e4c91e73ee0875cf",
+  "source_sha": "b7cf7c754e09a50e8f0bc6278dbf275f0f0f2a8b",
+  "staging_pr_merge_sha": "b2f93c1f8b468053fbc9dd457b5e12041b312bde",
+  "main_merge_sha": "33bfc957cd8443924f65776e5a744835caa5eaea",
+  "source_staging_main_tree": "fde9305a181f24815d8099ea3671f3db0a93ee79",
+  "exact_tree_equivalence_verified": true,
+  "ci_run": 39883215379,
+  "ci_conclusion": "success",
+  "isolated_staging_run": 39883215499,
+  "isolated_staging_conclusion": "success",
+  "isolated_staging_scope": "full app.schema on disposable MySQL; synthetic broker and real HTTP; not perps SQL/replay or real account acceptance",
+  "local_before_source_commit": {
+    "python_passed": 1899,
+    "python_skipped": 10,
+    "frontend_passed": 196,
+    "meridian_passed": 8
+  },
+  "production_deployed": false,
+  "production_service_changes": false,
+  "perps_activation": false,
+  "perps_execution": "blocked_all_modes",
+  "pending": [
+    "installed-source reconciliation and safe disabled-feature rollout preserving running research",
+    "full candidate production schema and public HTTP acceptance",
+    "usable historical candle coverage and isolated perps database/replay acceptance",
+    "genuine authorized queued research acceptance before activation"
+  ],
+  "secrets_or_account_data_retained": false,
+  "readiness_acceptance": "READINESS_ACCEPTANCE.json",
+  "actual_server_public_feed_checked": true
+}

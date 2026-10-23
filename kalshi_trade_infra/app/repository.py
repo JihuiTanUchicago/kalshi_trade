@@ -449,6 +449,31 @@ def count_runs(cur, user_id: int, kind: str, since: Optional[datetime] = None, a
     return int(cur.fetchone()["n"])
 
 
+def largest_tables(cur, limit: int = 5) -> List[Dict]:
+    """The biggest tables by on-disk size (data+index), for admin storage visibility — so the
+    operator SEES which table is eating the volume (e.g. `markets.raw_json`) before it fills the
+    disk again. Read-only information_schema query; returns [] if it can't run (older/edge DBs)."""
+    try:
+        cur.execute(
+            "SELECT table_name AS t, ROUND((data_length + index_length) / 1048576) AS mb "
+            "FROM information_schema.tables WHERE table_schema = DATABASE() "
+            "ORDER BY (data_length + index_length) DESC LIMIT %s",
+            (int(limit),),
+        )
+        return [{"table": r["t"], "mb": int(r["mb"] or 0)} for r in cur.fetchall()]
+    except Exception:  # noqa: BLE001 - telemetry must never break the admin page
+        return []
+
+
+def count_active_research(cur) -> int:
+    """GLOBAL count (all users) of research runs that hold or await a worker slot — for autopilot
+    backpressure: when the shared queue is already saturated, don't launch more. Uses the
+    idx_runs_status(status, created_at) index on the bounded status set."""
+    cur.execute("SELECT COUNT(*) AS n FROM app_agent_runs "
+                "WHERE kind='research' AND status IN ('queued','running','paused')")
+    return int(cur.fetchone()["n"])
+
+
 def claim_run(conn, worker_id: str) -> Optional[Dict]:
     """Take the oldest queued run. SKIP LOCKED lets any number of workers
     share the queue without two of them taking the same run."""
@@ -466,13 +491,6 @@ def claim_run(conn, worker_id: str) -> Optional[Dict]:
         )
         run.update(status="running", worker_id=worker_id, started_at=now)
         return run
-
-
-def _abandoned_msg(stale_after: timedelta) -> str:
-    secs = int(stale_after.total_seconds())
-    window = ("%d min" % round(secs / 60.0)) if secs >= 90 else ("%ds" % secs)
-    return ("No activity for over %s — the session froze (a stalled model call, data load, or "
-            "backtest) and was stopped so it wouldn't hang. Start it again." % window)
 
 
 def _has_progress(checkpoint: Optional[Dict[str, Any]]) -> bool:
@@ -515,13 +533,20 @@ def fail_abandoned_runs(cur, stale_after: timedelta, max_resumes: int = MAX_RESU
                           "(attempt %d of %d)." % (int(r["resume_count"]) + 1, max_resumes))
                 reaped += 1
         else:
-            msg = ("The session kept breaking at the same point and exceeded its %d resume attempts, "
-                   "so it was stopped. Start a new session." % max_resumes) if progressed \
-                else _abandoned_msg(stale_after)
+            # Being interrupted/abandoned is NOT a failure — it's a STOPPED run that reports how far it
+            # got. Only a genuine external/infra error (caught in run_research) is `failed`. The card
+            # shows "Explored N hypotheses" in neutral, not a red FAILED. Carry the explored/passed
+            # counts off the checkpoint so that readout is accurate even though finish_run never ran.
+            tried_n = len(ck.get("tried") or []) if ck else 0
+            passed_n = int(ck.get("total_passed") or 0) if ck else 0
+            msg = ("Explored %d hypothes%s, then the session was interrupted and stopped — start a new "
+                   "one to keep going." % (tried_n, "is" if tried_n == 1 else "es")) if tried_n \
+                else "The session was interrupted before it explored a hypothesis — start a new one."
             cur.execute(
-                """UPDATE app_agent_runs SET status='failed', error=%s, finished_at=%s
+                """UPDATE app_agent_runs SET status='stopped', error=%s, hypotheses_tried=%s,
+                     strategies_passed=%s, finished_at=%s
                    WHERE id=%s AND status='running' AND heartbeat_at < %s""",
-                (msg, now_utc(), r["id"], stale_cut),
+                (msg, tried_n, passed_n, now_utc(), r["id"], stale_cut),
             )
             reaped += cur.rowcount
     return reaped
@@ -910,6 +935,24 @@ def set_policy(cur, user_id: int, code: str, score: float,
         (user_id, code, float(score), (summary or "")[:400] or None,
          (float(base_score) if base_score is not None else None), now_utc()),
     )
+
+
+def research_summary(cur, user_id: int, limit: int = 12) -> List[Dict]:
+    """A compact CROSS-market tally of what this user has already researched — per market: how many
+    strategies were tried and how many passed, most-recently-touched first. Feeds the agent's own
+    market pick (and the fresh-session prompt) so it builds on the user's history across markets
+    instead of re-choosing blind. Cheap GROUP-BY on the small app_strategies table."""
+    cur.execute(
+        """SELECT market,
+                  COUNT(*) AS tried,
+                  SUM(status = 'passed') AS passed,
+                  MAX(id) AS recent
+           FROM app_strategies WHERE user_id=%s
+           GROUP BY market ORDER BY recent DESC LIMIT %s""",
+        (user_id, limit),
+    )
+    return [{"market": r["market"], "tried": int(r["tried"] or 0), "passed": int(r["passed"] or 0)}
+            for r in cur.fetchall()]
 
 
 def strategy_memory(cur, user_id: int, market: str, limit: int = 40) -> List[Dict]:

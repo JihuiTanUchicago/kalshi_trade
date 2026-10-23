@@ -1,20 +1,54 @@
 # Bitcoin perpetual data and research
 
 Workstream: `tau-kalshi-bitcoin-perps-research-20261023` / October 23, 2026,
-Asia/Shanghai. Status: **implemented, locally integrated, offline and public-feed-read verified;
-not published, deployed or activated**. Advisory implementation ownership is
-handed off; usable candle coverage and deployment-server/database/queued-run
-acceptance are the next gates.
+Asia/Shanghai. Status: **source merged on GitHub, offline/public-feed-read and
+hosted full-schema/web checks verified; production rollout and activation pending**.
+Advisory implementation ownership is handed off. Root owns publication evidence
+and rollout preparation. The read-only production preflight has passed; installed
+source reconciliation and a safe release window remain rollout gates. Usable
+candle coverage, isolated perps persistence/replay and genuine queued research
+remain activation gates.
 
-Publication follow-up / October 23, 2026 / in progress: the user's "Ok go ahead"
+Publication follow-up / October 23, 2026 / source merge complete: the user's "Ok go ahead"
 authorizes publishing these reviewed changes and preparing their disabled-feature
 release. Root owns the existing change set, publication receipts and fresh
-read-only production preflight. GitHub main is still exact aa3664e at this check;
+read-only production preflight. PR21 merged source b7cf7c7 as main 33bfc957;
 the separate dirty shared checkout is preserved. Native research remains opt-in
 off and all perpetual execution is blocked. Existing research must not be
 interrupted by an unconditional worker restart. Merge/release decisions require
 passing CI and a fresh installed-state review; provider activation and unresolved
-replay acceptance are not implied by source publication.
+replay acceptance are not implied by source publication. CI39883215379 and hosted
+isolated staging39883215499 passed. GitHub commit metadata proves feature b7cf7c7,
+the staging synthetic merge b2f93c1 and main merge 33bfc957 share tree fde9305a.
+The hosted workflow ran full app.schema on disposable MySQL and real HTTP with
+synthetic broker checks; it did not test perps SQL/replay or production. See
+publication/PUBLICATION.json and the sanitized hosted receipts. No production
+restart, migration, source exchange or feature-flag change has occurred.
+
+Production preflight / October 23, 2026 / inspected, rollout pending. Exact
+operations commit 0e2e79c30d13bab8dec41081ef4d273d826b127c on the separate
+codex/kalshi-perps-readiness-operations-20261023 branch ran once in workflow
+39884723368. All five anonymous native production requests returned HTTP200
+directly from the web box: 2,761 candles, six funding records and four current
+observations. The 48-hour window has 120 absent minute bars; no gap explanation,
+replay acceptance or activation is inferred. No production proxy change is needed
+for the tested route. The bounded read-only DB session found one running research
+job, zero queued/paused jobs, all four market columns already VARCHAR(48), and
+both new perps tables absent. All active service perps flags are effectively off.
+Source/control snapshots match before/after; temporary source and the current
+public-source S3 diagnostic object were cleaned (historical S3 versions were not
+inspected). No app/job/settings/schema/service mutation, private provider, model
+or order call occurred. See publication/READINESS_39884723368.json and
+publication/READINESS_ACCEPTANCE.json.
+
+Fresh installed source has 120 regular source files; 21 differ from reviewed
+base aa3664e, including backend and previously accepted styles. Offline classification found 11 exact known Git blob matches and 10 unresolved
+exact local source copies. Eight unresolved paths are application files; the two
+others are preserved diagnostic scripts. Several have accepted historical hash
+receipts. Do not call all drift unpublished or replace it with a Git archive. The standard deployment
+would restart workers and overwrite installed variants. It was not dispatched.
+The separate operations branch contains only a read-only preflight and must not
+merge into main. Its RELEASE_REVIEW.md records conditional rollout/rollback gates.
 
 Timeout follow-up / October 23, 2026 / resolved locally, ownership handed off.
 Direct requests bypassed the configured Mac proxy and failed for API and control
@@ -44,12 +78,15 @@ Worktree:
 `/Users/jonathanzhang/Desktop/Polygon/.runtime/github-export/tau-bitcoin-perps-research-20261023`
 
 Branch: `codex/kalshi-bitcoin-perps-research-20261023`.
-Base and unchanged HEAD: `aa3664e420fe4fdf538cd434e4c91e73ee0875cf`, exact GitHub
-main at the initial check. Managed worktree creation was unavailable for Polygon
+Base: `aa3664e420fe4fdf538cd434e4c91e73ee0875cf`, exact GitHub
+main at the initial check. Published source HEAD: b7cf7c754e09a50e8f0bc6278dbf275f0f0f2a8b.
+Managed worktree creation was unavailable for Polygon
 (not a Git repository), so this is a regular linked worktree of the actual repo.
-Network Git fetches failed; existing commit metadata and tree were imported with
-SHA1 verification from GitHub. No new commit was created. Ancestor history may be
-incomplete; do not reset or overwrite the separate dirty shared checkout.
+Initial network Git fetches failed; commit metadata and tree were imported with
+SHA1 verification from GitHub. Publication repaired missing ancestor history by
+an explicit credential-free proxy fetch with refetch/no-op negotiation, then
+used a normal commit/push and head-matched PR merge. Do not reset or overwrite
+the separate dirty shared checkout.
 
 Owned: new `app/kalshi_perps_{data,repository,collector,backtest}.py`, new tests,
 narrow research/API/schema/market integration, additive engine rejection,
@@ -82,8 +119,9 @@ review was performed.
   decimal strings survive client, append-only JSON storage and replay.
 - A manual bounded collector supports count/hash-only checks and explicit
   `--persist` backfills. It installs no background schedule and performs no
-  migration. App schema includes two additive perpetual tables; no real DB was
-  used here. Production/demo batches and frozen source bindings cannot mix.
+  migration. App schema includes two additive perpetual tables; full schema now
+  passes in hosted disposable MySQL. Actual perps persistence/replay and production
+  migrations remain unverified. Production/demo batches and frozen source bindings cannot mix.
 - The first partition freezes 60/25/15 Research/Validation/Holdout windows with
   24-hour holding/lookback embargoes. All phase loaders use the experiment's
   frozen source. Exact committed batch ID/fingerprint manifests exclude even
@@ -159,8 +197,10 @@ Initial anonymous public production and demo probes reported ConnectTimeout;
 this was superseded by the proxy diagnosis and successful actual public collector
 checks above. Native size-title/asset-class compatibility and 48-hour public
 retrieval now pass. Sample candle gaps, historical depth/version validity, actual
-deployment-server routing, MySQL and genuine queued-model acceptance remain
-unverified. No collector/worker persistent opt-in flag was changed.
+deployment-server routing now passes via the actual pinned client and collector.
+Actual perps SQL/replay and genuine queued-model acceptance remain unverified.
+Hosted full-schema MySQL and web compatibility pass;
+that is a narrower check. No collector/worker persistent opt-in flag was changed.
 
 Follow [setup and limitations](../../app/KALSHI_PERPS_RESEARCH.md): first obtain
 the public count/schema check on the actual deployment host, then migrate,
@@ -169,13 +209,36 @@ ordinary authenticated queued research. The manual public_feed_check.py is
 read-only; --system-proxy is an explicit diagnostic-only opt-in. A successful
 public feed check is not contiguous-replay or production activation acceptance.
 No test user,
-session, billing bypass or order was created here. Hosted setup and production
-rollout need their own authorized operations; none is implied by offline success.
+session, billing bypass or order was created here. The disabled-feature production
+rollout is authorized within the scope above and is pending fresh installed-state
+review; it has not occurred. Activation is a separate acceptance boundary.
 Current observations cannot reconstruct missing historical estimates. The fixed
 cost and next-open assumptions need calibration; future automatic window rotation
 and arbitrary code/model research are separate work.
 
 PLAN, mvp working queue, app README, research-design addendum, setup guide and
-public PLANNED devlog agree on local implementation versus pending acceptance.
+public PLANNED devlog agree on merged source versus pending production acceptance.
 Other workstreams' historical status is preserved and is not advanced here.
 See `VERIFICATION.json` for the final scoped receipt.
+
+
+## Publication/preflight handoff boundary — October 23, 2026
+
+Publication/merge and actual-server read-only readiness are complete; advisory
+ownership of this milestone is handed off. This is not production deployment or
+activation acceptance. Post-merge receipts and tracker/setup/devlog wording in
+this worktree are local handoff updates; the immutable published source is b7cf7c7
+merged as main33bfc957. The operations branch remains immutable at0e2e79c3 and must
+not merge into main. Its later review documents are copied into publication/ here.
+
+Next safe action: obtain a bounded read of the eight unresolved application files
+listed in publication/SOURCE_COMPARISON_REVIEW.md and verify exact hashes before
+reconciling the feature with installed source. Preserve unrelated billing, model,
+repository, styles/bootstrap and diagnostic bytes. Prepare/test a complete
+installed-variant candidate, full candidate schema with bounded lock/recovery
+handling, retained whole-package backup and origin/public HTTP/hash acceptance.
+Use a fresh job inventory; the single running count above is point-in-time,
+not a claim that the job remains active indefinitely. Do not dispatch the normal
+all-worker deployment, mutate jobs, or infer worker-loaded bytes from PID equality.
+A worker upgrade/activation requires its own suitable idle boundary and completed
+perps persistence/replay/queued-research gates. No automatic follow-up was created.
