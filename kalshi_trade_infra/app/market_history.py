@@ -49,6 +49,10 @@ OLD_MARKET_SECONDS = 30 * 86400       # candles of a market closed longer ago ma
 # backlog resumes next pass, rotating so every series gets its turn.
 PASS_BUDGET_SECONDS = int(os.getenv("HISTORY_PASS_BUDGET_SECONDS", "900"))
 BACKLOG_SLEEP_SECONDS = 60
+# Most of one market's backlog per pass. Without it the first few series with a deep backlog (an
+# hourly series at 1-minute candles, a 365-day weather backfill) ate the whole budget and the
+# rotation advanced ~8 of ~1,000 series a pass, so a new series waited a day for its first candle.
+MARKET_SLICE_SECONDS = int(os.getenv("HISTORY_MARKET_SLICE_SECONDS", "20"))
 # Kalshi moves markets settled before a rolling cutoff to /historical/*; the live endpoints stop
 # serving them. Refetched hourly.
 CUTOFF_TTL_SECONDS = 3600
@@ -423,7 +427,7 @@ def sync_all_markets(cur, markets, now: datetime, deadline: float, stats: Dict[s
         except Exception as e:
             print("[market_history] %s sync failed: %r (retry next pass)" % (market.key, e), flush=True)
         try:
-            sync_market_candles(cur, market, deadline=deadline)
+            sync_market_candles(cur, market, deadline=min(deadline, time.time() + MARKET_SLICE_SECONDS))
         except Exception as e:
             print("[market_history] %s candles failed: %r (retry next pass)" % (market.key, e), flush=True)
     _candle_rotation = 0
