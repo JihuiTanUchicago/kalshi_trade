@@ -93,3 +93,9 @@ def test_unlock_sets_a_derived_httponly_cookie(monkeypatch):
     assert cookie.startswith("live_gate=" + ds.live_cookie_token("s3cret-pass") + ";")
     assert "HttpOnly" in cookie
     assert _unlock(monkeypatch, "password=wrong").status == 403
+
+
+def test_a_non_ascii_cookie_is_refused_not_a_crash(monkeypatch):
+    monkeypatch.setattr(ds, "LIVE_TRADING_PASSWORD", "s3cret-pass")
+    monkeypatch.setattr(ds, "MONITOR_TOKEN", None)
+    assert not handler(cookie="live_gate=\u00e9t\u00e9")._live_authorized(urlparse("/live_settings"))

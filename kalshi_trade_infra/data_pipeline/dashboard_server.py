@@ -2842,7 +2842,9 @@ class Handler(BaseHTTPRequestHandler):
         if not LIVE_TRADING_PASSWORD:
             return False  # fail closed: no configured password means no live controls
         cookie = self._cookie_map().get(LIVE_COOKIE_NAME, "")
-        if cookie and secrets.compare_digest(cookie, live_cookie_token(LIVE_TRADING_PASSWORD)):
+        if cookie and secrets.compare_digest(
+            cookie.encode("utf-8"), live_cookie_token(LIVE_TRADING_PASSWORD).encode("utf-8")
+        ):
             return True
         if parsed is not None:
             qs = parse_qs(parsed.query)
