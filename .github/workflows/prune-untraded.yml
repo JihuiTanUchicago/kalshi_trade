@@ -1,0 +1,55 @@
+name: Prune untraded market data
+
+# Removes stored data outside the traded categories (sports, weather, crypto; Todd 2026-10-24)
+# by running scripts/prune_untraded_markets.py on the web box via scripts/run_prune_on_web.sh.
+# Manual trigger only. Run dry-run first, then apply (rebuilds `markets`, keeps the old table as
+# markets__untraded_old), check the result, then drop-old to give the space back.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run (counts only), apply (delete + rebuild markets), drop-old (drop markets__untraded_old)"
+        required: true
+        type: choice
+        options: [dry-run, apply, drop-old]
+        default: dry-run
+      stop_at:
+        description: "UTC HH:MM to stop deleting (apply only; re-run resumes)"
+        required: false
+        default: "23:45"
+      ref:
+        description: "Git ref to run the script from"
+        required: false
+        default: main
+
+concurrency:
+  group: prune-untraded
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Run on the web box
+        env:
+          AWS_PROFILE: ""
+          MODE: ${{ inputs.mode }}
+          STOP_AT: ${{ inputs.stop_at }}
+        run: bash kalshi_trade_infra/scripts/run_prune_on_web.sh --ref HEAD --mode "$MODE" --stop-at "$STOP_AT"

@@ -71,3 +71,38 @@ def test_rebuild_fills_blank_series_before_copying():
     fill = next(i for i, s in enumerate(log.sql) if s.startswith("UPDATE markets SET series_ticker"))
     copy = next(i for i, s in enumerate(log.sql) if s.startswith("INSERT IGNORE INTO markets__keep"))
     assert fill < copy
+
+
+class _DropCur:
+    """Fake cursor for drop_old_markets: per-table series counts, records statements."""
+    def __init__(self, new, old, old_exists=True):
+        self.new, self.old, self.old_exists, self.sql, self._row = new, old, old_exists, [], None
+
+    def cursor(self):
+        return self
+
+    def execute(self, sql, params=()):
+        self.sql.append(sql)
+        if "information_schema" in sql:
+            self._row = {"n": int(self.old_exists)}
+        elif sql.startswith("SELECT COUNT(*) AS n FROM markets__untraded_old"):
+            self._row = {"n": self.old.get(params[0], 0)}
+        elif sql.startswith("SELECT COUNT(*) AS n FROM markets WHERE"):
+            self._row = {"n": self.new.get(params[0], 0)}
+        else:
+            self._row = {"n": sum(self.new.values())}
+
+    def fetchone(self):
+        return self._row
+
+
+def test_drop_old_refuses_when_a_curated_series_did_not_survive():
+    from app.markets import CURATED
+    series = sorted({m.series for m in CURATED.values()})
+    cur = _DropCur(new={s: 5 for s in series[1:]}, old={s: 5 for s in series})
+    assert pr.drop_old_markets(cur) == 1
+    assert not any(s.startswith("DROP") for s in cur.sql)
+    cur = _DropCur(new={s: 5 for s in series}, old={s: 5 for s in series})
+    assert pr.drop_old_markets(cur) == 0
+    assert "DROP TABLE markets__untraded_old" in cur.sql
+    assert pr.drop_old_markets(_DropCur({}, {}, old_exists=False)) == 1
