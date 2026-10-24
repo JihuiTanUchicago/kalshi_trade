@@ -596,6 +596,9 @@ def _binary_window(market: str, frames: List[Tuple[int, List[Snapshot]]]) -> Dic
     return {"market": market, "frames": [
         {"ts": ts, "contracts": [
             {"ticker": s.contract.ticker, "strike": s.contract.strike,
+             # The Kalshi event (game / day / window) the contract belongs to: its ticker minus the
+             # strike suffix, so a ladder's strikes group without the proposer parsing tickers.
+             "event": s.contract.ticker.rsplit("-", 1)[0],
              "close_ts": int(s.contract.close_time.timestamp()),
              "yes_bid": s.yes_bid, "yes_ask": s.yes_ask,
              # Mirrored into features too: rule specs list yes_bid/yes_ask as features, so generated
