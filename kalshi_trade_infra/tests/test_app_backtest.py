@@ -184,7 +184,8 @@ def test_gates_fail_a_loser():
     assert not next(g for g in full["gates"] if g["name"] == "Makes money on unseen data")["ok"]
 
 
-def test_take_profit_exits_at_the_bid_with_a_second_fee():
+def test_take_profit_exits_at_the_bid_with_a_second_fee(monkeypatch):
+    monkeypatch.setattr(backtest, "FILL_MODEL", "signal_bar")  # legacy same-bar fill semantics
     ds = _dataset(ask=0.40, bid=0.38)
     # Second minute of every contract: bid jumps to 0.70.
     for ts, snaps in ds.frames:
@@ -248,3 +249,63 @@ def test_cross_contract_merge_unions_frames_across_markets():
     assert merged.contracts == a.contracts + b.contracts
     assert len(merged.frames) == len(a.frames)      # same decision timestamps, snaps concatenated
     assert len(merged.frames[0][1]) == len(a.frames[0][1]) + len(b.frames[0][1])
+
+
+# -- next-bar fill model (the default; mirrors the live kernel's submit-time re-pricing) ----------
+
+
+def _replace_quote(ds, offset, bid, ask, **feat):
+    """Overwrite every contract's quote at `offset` seconds after its open."""
+    for ts, snaps in ds.frames:
+        for i, sn in enumerate(snaps):
+            if (ts - T0) % 900 == offset:
+                snaps[i] = sn.__class__(sn.contract, ts, bid, ask,
+                                        dict(sn.features, yes_bid=bid, yes_ask=ask, spread=ask - bid, **feat))
+
+
+_ONE_AT_A_TIME = {"side": "yes", "entry": {"min_edge": 0.1, "max_spread": 0.05},
+                  "sizing": {"stake": 10.0, "max_positions": 1}}
+
+
+def test_next_bar_entry_fills_at_the_following_quote():
+    assert backtest.FILL_MODEL == "next_bar"
+    ds = _dataset(ask=0.40, bid=0.38)
+    _replace_quote(ds, 120, 0.43, 0.45)   # the bar after the first signal is dearer
+    t = backtest.simulate(specmod.validate(_ONE_AT_A_TIME), ds, ds.start_ts, ds.end_ts + 1)[0]
+    assert t.entry_ts == T0 + 120 and t.entry_price == 0.45   # signal at +60, filled at +120's ask
+
+
+def test_next_bar_entry_is_abandoned_past_the_reservation_price():
+    """If the ask runs past the price at which the edge still clears min_edge net of fees, live
+    abandons the entry, so the backtest must miss it too rather than fill at a price live refuses."""
+    ds = _dataset(ask=0.40, bid=0.38)
+    _replace_quote(ds, 120, 0.94, 0.96)   # fair ~1: a 96c ask cannot clear a 10c edge after fees
+    trades = backtest.simulate(specmod.validate(_ONE_AT_A_TIME), ds, ds.start_ts, ds.end_ts + 1)
+    assert trades and all(t.entry_ts % 900 != 120 for t in trades)
+    # +120's 96c quote is itself no signal, so the next signal is at +180, filled at +240's 40c ask
+    assert trades[0].entry_ts == T0 + 240 and trades[0].entry_price == 0.40
+
+
+def test_next_bar_fill_is_capped_at_displayed_size():
+    ds = _dataset_with_micro({"yes_ask_size": 7.0})
+    t = backtest.simulate(specmod.validate(_ONE_AT_A_TIME), ds, ds.start_ts, ds.end_ts + 1)[0]
+    assert t.qty == 7        # stake $10 at 40c wants 25 contracts; only 7 were offered
+
+
+def test_next_bar_exit_sells_at_the_following_bid():
+    ds = _dataset(ask=0.40, bid=0.38)
+    _replace_quote(ds, 180, 0.70, 0.72)   # spike one bar after the +120 fill
+    _replace_quote(ds, 240, 0.60, 0.62)   # the exit executes a bar later, at the lower bid
+    spec = specmod.validate(dict(_ONE_AT_A_TIME, exit={"take_profit": 0.2}))
+    t = backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1)[0]
+    assert t.reason == "take_profit" and t.exit_ts == T0 + 240 and t.exit_price == 0.60
+
+
+def test_next_bar_is_never_more_optimistic_than_signal_bar(monkeypatch):
+    ds = _dataset(ask=0.40, bid=0.38)
+    _replace_quote(ds, 120, 0.50, 0.52)
+    spec = specmod.validate({"side": "yes", "entry": {"min_edge": 0.1, "max_spread": 0.05}})
+    nxt = sum(t.pnl for t in backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1))
+    monkeypatch.setattr(backtest, "FILL_MODEL", "signal_bar")
+    sig = sum(t.pnl for t in backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1))
+    assert nxt <= sig
