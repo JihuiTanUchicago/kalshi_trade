@@ -1,0 +1,10 @@
+[Unit]
+Description=Research watch (app.research_watch): flags failed, stalled, burning and bug-killed research sessions; report to S3 research-watch/. Runs on the WEB box.
+After=network-online.target
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/kalshi
+Nice=15
+MemoryMax=400M
+TimeoutStartSec=300
+ExecStart=/bin/bash -c 'set -a; . /opt/kalshi/.env.aws; . /opt/kalshi/.env.app; set +a; unset AWS_PROFILE; exec /opt/kalshi/.venv313/bin/python -u -m app.research_watch --hours 3 >> /opt/kalshi/logs/research_watch.log 2>&1'

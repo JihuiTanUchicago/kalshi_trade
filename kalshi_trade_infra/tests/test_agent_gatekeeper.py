@@ -359,9 +359,12 @@ def test_dropped_theses_reads_new_and_legacy_drop_events():
                 return [{"id": 9}, {"id": 7}]
             return [{"message": 'DROPPED "New" (no candidate) \u2014 x', "data_json": {"title": "New", "why": "w"}},
                     {"message": 'DROPPED "Legacy FLB" (no candidate) \u2014 loses in all bins',
-                     "data_json": '{"title":"Legacy FLB","status":"abandoned"}'}]
+                     "data_json": '{"title":"Legacy FLB","status":"abandoned"}'},
+                    {"message": 'DROPPED "Bad spec" (no candidate) \u2014 spec invalid: unknown field',
+                     "data_json": {"title": "Bad spec", "why": "spec invalid: unknown field"}}]
     cur = Cur()
     out = repo.dropped_theses(cur, 1, "kxcopperd")
+    # a spec the validator rejected was never tested, so it is not a dead end to warn about
     assert out == [{"title": "New", "why": "w"}, {"title": "Legacy FLB", "why": "loses in all bins"}]
     assert cur.calls[1][1] == (9, 7, 20) and "IN (%s,%s)" in cur.calls[1][0]
     assert "LIKE 'DROPPED %%'" in cur.calls[1][0]

@@ -1,0 +1,70 @@
+"""Research watch: flags failed, stalled, burning and bug-killed research sessions."""
+from datetime import datetime, timedelta
+
+from app import research_watch as rw
+
+NOW = datetime(2026, 10, 24, 21, 0, 0)
+
+
+def _run(i, status, market="btc15m", mins_ago=60, **kw):
+    r = {"id": i, "user_id": 1, "market": market, "status": status, "model": "sonnet-4-5", "prompt": "p",
+         "error": None, "input_tokens": 0, "output_tokens": 0, "created_at": NOW - timedelta(minutes=mins_ago),
+         "started_at": NOW - timedelta(minutes=mins_ago - 1), "heartbeat_at": None, "finished_at": None}
+    r.update(kw)
+    return r
+
+
+def _drop(why, at=NOW):
+    return {"kind": "verdict", "message": "DROPPED", "data": {"status": "abandoned", "title": "idea", "why": why},
+            "created_at": at}
+
+
+def test_the_report_flags_what_needs_attention(monkeypatch):
+    monkeypatch.setattr(rw.rsi, "run_cost_usd", lambda run: 8.0 if run["id"] == 3 else 0.5)
+    runs = [
+        _run(1, "failed", error="The agent's reply could not be used: unknown field(s) for a code strategy: side",
+             finished_at=NOW - timedelta(minutes=50)),
+        _run(2, "running", heartbeat_at=NOW - timedelta(minutes=40)),
+        _run(3, "succeeded", market="kxnfltd", finished_at=NOW - timedelta(minutes=5)),
+        _run(4, "queued", started_at=None, mins_ago=90),
+        _run(5, "succeeded", market="kxnba", finished_at=NOW),
+    ]
+    events = {
+        2: [{"kind": "step", "message": "x", "data": {"phase": "developing"}, "created_at": NOW - timedelta(minutes=35)}],
+        3: [_drop("The GBM model is fundamentally incompatible with NFL outcome markets")] * 3
+           + [_drop("loses money")],
+        5: [_drop("spec invalid: unknown field")] + [_drop("taker_yes_vol_60s is not populated")] * 4,
+    }
+    rep = rw.build_report(runs, events, NOW, 3)
+    kinds = {(a["kind"], a["run_id"]) for a in rep["anomalies"]}
+    assert ("failed", 1) in kinds and ("stalled", 2) in kinds and ("burn", 3) in kinds
+    assert ("wrong_fit", 3) in kinds and ("queued_long", 4) in kinds
+    assert ("bug_deaths", 5) in kinds and ("pipeline", 5) in kinds
+    assert rep["anomalies"][0]["severity"] == "high"
+    failed = next(a for a in rep["anomalies"] if a["kind"] == "failed")
+    assert failed["detail"].startswith("our bug:")
+    stalled = next(s for s in rep["runs"] if s["run_id"] == 2)
+    assert stalled["idle_min"] == 35.0 and stalled["phase"] == "developing"
+    r3 = next(s for s in rep["runs"] if s["run_id"] == 3)
+    assert [d["tag"] for d in r3["drops"]] == ["wrong_fit"] * 3 + ["loses"]
+    assert rep["status_counts"] == {"failed": 1, "running": 1, "succeeded": 2, "queued": 1}
+    assert rep["totals"]["explored"] >= 9
+
+
+def test_a_market_researched_again_and_again_without_a_gate_is_flagged(monkeypatch):
+    monkeypatch.setattr(rw.rsi, "run_cost_usd", lambda run: 1.0)
+    runs = [_run(i, "succeeded", market="high_ny", finished_at=NOW) for i in range(3)]
+    rep = rw.build_report(runs, {}, NOW, 3)
+    assert [(a["kind"], a["market"]) for a in rep["anomalies"]] == [("repeat", "high_ny")]
+
+
+def test_publish_writes_latest_and_a_dated_copy():
+    puts = []
+
+    class S3:
+        def put_object(self, **kw):
+            puts.append(kw["Key"])
+
+    key = rw.publish({"generated_at": "2026-10-24T21:00:00+00:00", "anomalies": []}, s3=S3())
+    assert key == "research-watch/date=2026-10-24/2100.json"
+    assert puts == [key, "research-watch/latest.json"]

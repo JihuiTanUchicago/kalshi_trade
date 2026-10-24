@@ -202,6 +202,9 @@ Rewrite the playbook given the latest run. Rules:
 - Keep a lesson only if the evidence supports it; merge duplicates; drop lessons the new run contradicts.
 - An idea dropped because the proposer BELIEVED a feature was missing is a pipeline lesson, not a dead
   end: check the feature list you are given and record the truth under PIPELINE FACTS.
+- A drop tagged [wrong_fit] or [missing_context] died on the market's STRUCTURE (no game state, no team
+  ids, no continuous underlying, snapshot-only data), not on its prices: record that limit under PIPELINE
+  FACTS so the proposer stops spending ideas on it. [spec_invalid] is a system bug: ignore it.
 - Lessons must hold across the family, not one city or one game, unless you say so.
 - You see only research-window evidence and gate labels (reached / passed / failed). Never invent
   validation or holdout numbers.
@@ -217,7 +220,9 @@ def _check(obj: Dict) -> Dict:
 
 
 def idea_lines(events: List[Dict], limit: int = 40) -> List[str]:
-    """One line per idea the run judged: title, outcome label and the stated reason (labels only)."""
+    """One line per idea the run judged: title, outcome label and the stated reason (labels only).
+    A drop carries its scoreboard tag (rsi.classify_drop), so structural misses stand out."""
+    from app.rsi import classify_drop
     out = []
     for ev in events:
         if ev.get("kind") != "verdict":
@@ -227,7 +232,8 @@ def idea_lines(events: List[Dict], limit: int = 40) -> List[str]:
             continue
         title = (d.get("title") or "")[:120]
         if d.get("status") == "abandoned":
-            out.append("- DROPPED on research data: %s. Why: %s" % (title, (d.get("why") or "")[:300]))
+            why = d.get("why") or ""
+            out.append("- DROPPED on research data [%s]: %s. Why: %s" % (classify_drop(why)[0], title, why[:300]))
         elif d.get("classification"):
             out.append("- REACHED THE GATE: %s -> %s" % (title, "passed" if d.get("status") == "passed"
                                                          else "did not pass"))
