@@ -50,6 +50,14 @@ TICK_SECONDS = 15
 INFLIGHT_BLOCK_SECONDS = int(os.getenv("APP_INFLIGHT_BLOCK_SECONDS", "180"))
 # How often the engine re-reconciles 'sent' intents against the exchange (was a fixed 300s).
 RECOVER_EVERY_SECONDS = float(os.getenv("APP_RECOVER_EVERY_SECONDS", "30"))
+# An intent the exchange still cannot account for this long after its market closed (or after it
+# was logged, if it has no close time) will never resolve by asking again: it is moved to the
+# terminal 'unresolved' status (logged loudly, once) so recovery stops polling the exchange for it
+# every pass. Its contract has settled by then; the position reconciler owns any exposure.
+UNRESOLVED_AFTER_CLOSE_SECONDS = int(os.getenv("APP_UNRESOLVED_AFTER_CLOSE_SECONDS", str(24 * 3600)))
+UNRESOLVED_NO_CLOSE_SECONDS = int(os.getenv("APP_UNRESOLVED_NO_CLOSE_SECONDS", str(7 * 24 * 3600)))
+UNRECOVERED_LOG_EVERY_SECONDS = 3600
+_unrecovered_logged: Dict[str, float] = {}
 # This engine process's identity, for the per-position close claim (P0-3): whichever engine stamps
 # its id on a position owns that force-close, so two engines never both sell it into a short.
 _ENGINE_ID = "engine-%s" % uuid.uuid4()
@@ -1268,6 +1276,20 @@ def _book_recovered(conn, it: Dict, filled: int, avg_price: float, fee: float, o
             repo.book_partial_exit(tx, pos, filled, avg_price, fee, pnl, reason)
 
 
+def _past_resolution_horizon(it: Dict, now: datetime) -> bool:
+    """True once asking the exchange about this 'sent' intent again cannot help (see
+    UNRESOLVED_AFTER_CLOSE_SECONDS)."""
+    def aware(dt):
+        if not isinstance(dt, datetime):
+            return None
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+    close, created = aware(it.get("market_close_time")), aware(it.get("created_at"))
+    if close is not None:
+        return (now - close).total_seconds() > UNRESOLVED_AFTER_CLOSE_SECONDS
+    return created is not None and (now - created).total_seconds() > UNRESOLVED_NO_CLOSE_SECONDS
+
+
 def recover_sent_intents(conn, sources: Sources, older_than_seconds: int = 30) -> int:
     """Deterministic crash recovery (P0-1): for each order-intent left 'sent' (POST issued, outcome
     unknown — the F1/F2 crash / lost-response window), ask the exchange whether it filled and book it
@@ -1279,7 +1301,19 @@ def recover_sent_intents(conn, sources: Sources, older_than_seconds: int = 30) -
     if lookup is None:
         return 0
     resolved = 0
+    now = datetime.now(timezone.utc)
     for it in repo.open_sent_intents(cur, older_than_seconds):
+        if _past_resolution_horizon(it, now):
+            try:
+                repo.mark_order_intent(cur, it["intent_id"], "unresolved")
+                _unrecovered_logged.pop(str(it.get("intent_id")), None)
+                print("[engine] GAVE UP on in-flight order intent %s (%s %s %s x%d): the exchange never "
+                      "accounted for it and its market closed long ago; marked 'unresolved'"
+                      % (it.get("intent_id"), it.get("mode"), it.get("action"), it.get("ticker"), it.get("qty")),
+                      flush=True)
+            except Exception as e:
+                print("[engine] could not mark intent %s unresolved: %r" % (it.get("intent_id"), e), flush=True)
+            continue
         try:
             fill = lookup(it)
         except Exception as e:
@@ -1287,9 +1321,12 @@ def recover_sent_intents(conn, sources: Sources, older_than_seconds: int = 30) -
                   % (it.get("intent_id"), e), flush=True)
             continue
         if fill is None:
-            print("[engine] UNRECOVERED in-flight order intent %s (%s %s %s x%d) — left 'sent', needs attention"
-                  % (it.get("intent_id"), it.get("mode"), it.get("action"), it.get("ticker"), it.get("qty")),
-                  flush=True)
+            key = str(it.get("intent_id"))
+            if time.time() - _unrecovered_logged.get(key, 0.0) >= UNRECOVERED_LOG_EVERY_SECONDS:
+                _unrecovered_logged[key] = time.time()  # loud, but once an hour per intent, not every pass
+                print("[engine] UNRECOVERED in-flight order intent %s (%s %s %s x%d) — left 'sent', needs attention"
+                      % (it.get("intent_id"), it.get("mode"), it.get("action"), it.get("ticker"), it.get("qty")),
+                      flush=True)
             continue  # indeterminate — NEVER re-send
         try:
             filled = int(fill.get("filled") or 0)
