@@ -17,7 +17,9 @@ holding a contract into settlement. All three happened live on 2026-09-27.
 What is modelled here, and what is not:
 
   modelled     crossing the touch, partial fills against the resting size at
-               the touch, Kalshi's taker fee, and orders that do not fill
+               the touch, Kalshi's taker fee, orders that do not fill, and the
+               account's signed net position per ticker - including that a
+               sell with nothing behind it opens a short, as it does on Kalshi
   not modelled queue position, depth past the touch (the ticker channel does
                not carry it), and market impact
 
@@ -38,11 +40,18 @@ class SimulatedVenue:
     parser reads both venues and neither can drift from the other.
     """
 
-    def __init__(self, feed, max_quote_age_seconds: float = 2.0) -> None:
+    def __init__(self, feed, max_quote_age_seconds: float = 2.0,
+                 positions: Optional[Dict[str, int]] = None) -> None:
         self._feed = feed
         self._max_age = float(max_quote_age_seconds)
         self.orders_sent = 0
         self.orders_filled = 0
+        # Signed net per ticker, as /portfolio/positions reports it: + YES, - NO.
+        self.positions: Dict[str, int] = dict(positions or {})
+
+    def net_position(self, ticker: str) -> int:
+        """The venue's truth about what is held - the sim's /portfolio/positions."""
+        return int(self.positions.get(ticker, 0))
 
     @staticmethod
     def _response(order_id: str, filled: int, price: Optional[float], fee_per_contract: float) -> Dict:
@@ -92,6 +101,10 @@ class SimulatedVenue:
             return empty
 
         self.orders_filled += 1
+        # Kalshi nets the YES leg: buying YES or selling NO adds, the reverse
+        # subtracts. Nothing stops a sell going through zero - that is the point.
+        adds = buying != (str(side).lower() == "no")
+        self.positions[ticker] = self.net_position(ticker) + (filled if adds else -filled)
         fee_total = taker_fee_dollars(filled, fill_price)
         return {
             "client_order_id": client_order_id,

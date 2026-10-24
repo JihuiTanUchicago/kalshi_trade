@@ -166,6 +166,25 @@ def demo_orders(credentials: KalshiCredentials, ticker: Optional[str] = None,
     return resp.json()
 
 
+def demo_net_reader(credentials: KalshiCredentials, base_url: Optional[str] = None):
+    """``read_net`` for PositionGuard against the DEMO exchange: ticker -> signed net
+    (+ YES, - NO). Demo twin of position_guard.exchange_net_reader, host-isolated."""
+    from data_pipeline.architecture.position_guard import net_from_positions_response
+
+    base = _require_demo_host(base_url or KALSHI_DEV_API_BASE)
+    creds = _require_creds(credentials)
+    endpoint = "/portfolio/positions"
+
+    def read(ticker: str) -> int:
+        headers = kalshi_auth_headers("GET", _signing_path(base, endpoint), creds)
+        resp = requests.get(base + endpoint, params={"ticker": ticker}, headers=headers, timeout=5)
+        if resp.status_code >= 400:
+            raise RuntimeError("demo GET %s failed %d: %s" % (endpoint, resp.status_code, resp.text[:400]))
+        return net_from_positions_response(resp.json(), ticker)
+
+    return read
+
+
 def demo_order_submitter(credentials: KalshiCredentials, base_url: Optional[str] = None):
     """Submitter for MarketableLimitKernel, signing demo orders as this user.
     Demo twin of kalshi_account.order_submitter."""
@@ -191,6 +210,7 @@ def demo_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
     from app import kalshi_account
     from app.execution import guarded_submitter, timed_submitter
     from data_pipeline.architecture.execution_kernel import MarketableLimitKernel
+    from data_pipeline.architecture.position_guard import position_guarded_submitter
     from data_pipeline.market_data import MarketFeed
 
     _require_demo_host(KALSHI_DEV_API_BASE)  # fail fast if the demo host is misconfigured
@@ -202,7 +222,8 @@ def demo_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
             return None
         creds = kalshi_account.credentials_from_row(user_id, row)
         return MarketableLimitKernel(
-            timed_submitter(guarded_submitter(demo_order_submitter(creds)), mode="demo"), feed,
+            timed_submitter(guarded_submitter(position_guarded_submitter(
+                demo_order_submitter(creds), demo_net_reader(creds))), mode="demo"), feed,
             entry_cross_ticks=int(os.getenv("KALSHI_ENTRY_CROSS_TICKS", "2")),
             exit_cross_ticks=int(os.getenv("KALSHI_EXIT_CROSS_TICKS", "2")),
             max_entry_slippage=float(os.getenv("KALSHI_MAX_ENTRY_SLIPPAGE", "0.10")),

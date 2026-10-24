@@ -1286,6 +1286,7 @@ def live_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
     from app import kalshi_account
     from app.execution import guarded_submitter, timed_submitter
     from data_pipeline.architecture.execution_kernel import MarketableLimitKernel
+    from data_pipeline.architecture.position_guard import exchange_net_reader, position_guarded_submitter
     from data_pipeline.market_data import MarketFeed
 
     feed = MarketFeed(ws_feed=ws_feed)
@@ -1314,7 +1315,10 @@ def live_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
             # fat-finger, rate limit, circuit breaker). They only ever block a BUY, never an exit.
             # P2: timed_submitter is the outermost wrapper so it also measures guard-blocked and
             # errored sends; it records off the send path and passes the result through unchanged.
-            timed_submitter(guarded_submitter(kalshi_account.order_submitter(creds)), mode="live"), feed,
+            # Innermost: no SELL may take this user's account past flat, sized to what Kalshi
+            # (not our book) says they hold. Like the guards above it can only shrink/refuse a sell.
+            timed_submitter(guarded_submitter(position_guarded_submitter(
+                kalshi_account.order_submitter(creds), exchange_net_reader(creds))), mode="live"), feed,
             entry_cross_ticks=int(os.getenv("KALSHI_ENTRY_CROSS_TICKS", "2")),
             exit_cross_ticks=int(os.getenv("KALSHI_EXIT_CROSS_TICKS", "2")),
             max_entry_slippage=float(os.getenv("KALSHI_MAX_ENTRY_SLIPPAGE", "0.10")),

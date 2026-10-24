@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
 from data_pipeline.architecture.execution_kernel import DummyExecutionKernel
+from data_pipeline.architecture.position_guard import exchange_net_reader, position_guarded_submitter
 from data_pipeline.common import get_db_conn, utc_now
 from data_pipeline.live_trading_engine import (
     LIVE_MODELS,
@@ -3496,7 +3497,11 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError(f"no valid current bid available for {ticker} - refusing to close blind")
                 conn = get_db_conn()
                 with conn.cursor() as cur:
-                    kernel = DummyExecutionKernel(place_limit_order)
+                    # Sized to what Kalshi holds, not the row: a manual close of a
+                    # phantom/stale position must not open a short.
+                    kernel = DummyExecutionKernel(
+                        position_guarded_submitter(place_limit_order, exchange_net_reader())
+                    )
                     close_live_position(cur, kernel, model_name, ticker, bid, utc_now())
                 conn.commit()
                 conn.close()
