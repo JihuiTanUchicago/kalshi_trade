@@ -2561,6 +2561,52 @@ def auto_paper_candidates(cur, user: Dict) -> List[str]:
     return out
 
 
+# Forward paper probation (off unless APP_PAPER_PROBATION=1): the gatekeeper has never cleared a
+# strategy, so paper never trades and the realistic-fill engine has no record. Paper costs no money,
+# so a few validation near misses (positive on unseen data, p <= PROBATION_MAX_P) run on paper as a
+# forward test. Live is untouched: deploy_live and the manual live path still require a gatekeeper
+# DEPLOYMENT_CANDIDATE, which a probation strategy is not.
+PAPER_PROBATION = os.getenv("APP_PAPER_PROBATION", "0") == "1"
+PROBATION_MAX_P = float(os.getenv("APP_PROBATION_MAX_P", "0.25"))
+PROBATION_MIN_TRADES = int(os.getenv("APP_PROBATION_MIN_TRADES", "20"))
+PROBATION_MAX_ACTIVE = int(os.getenv("APP_PROBATION_MAX_ACTIVE", "4"))
+
+
+def auto_paper_probation(cur, user: Dict) -> List[str]:
+    """Put validation near misses that never ran on paper onto paper, at most PROBATION_MAX_ACTIVE
+    running at once. Autopilot-on users only. Returns the chat lines for what it did."""
+    if not (PAPER_PROBATION and user.get("autopilot")):
+        return []
+    from app import engine as _engine  # local import: engine imports agent (circular)
+    deps = repo.list_deployments(cur, user["id"], include_stopped=True)
+    tried = {d["strategy_id"] for d in deps}
+    active = sum(1 for d in deps if d["status"] != "stopped" and d["mode"] == "paper"
+                 and not _is_deployment_candidate(cur, d["strategy_id"]))
+    out: List[str] = []
+    for c in rr.probation_candidates(cur, user["id"], PROBATION_MAX_P, PROBATION_MIN_TRADES):
+        if active >= PROBATION_MAX_ACTIVE:
+            break
+        sid = c["strategy_id"]
+        mkt = MARKETS.get(c["market"])
+        if sid in tried or mkt is None or not mkt.deployable:
+            continue
+        strat = repo.get_strategy(cur, user["id"], sid)
+        if strat is None or strat.get("market") != c["market"] or specmod.is_code_spec(strat["spec"]):
+            continue
+        if _engine.cross_deploy_block(strat["spec"], "paper"):
+            continue
+        tried.add(sid)
+        repo.create_proposal(cur, user["id"], "deploy", "Paper probation: validation near miss "
+                             "(p=%.3f, $%.2f over %d unseen trades)." % (c["p_value"], c["net_pnl"], c["n_trades"]),
+                             None, sid, "applied")
+        repo.create_deployment(cur, user["id"], sid, strat["market"], "paper")
+        active += 1
+        out.append("[probation #%d] Put “%s” on paper as a forward test: it narrowly missed validation "
+                   "(p=%.3f, $%.2f over %d unseen trades). Paper only; it can't go live unless the "
+                   "gatekeeper clears it." % (sid, strat["title"], c["p_value"], c["net_pnl"], c["n_trades"]))
+    return out
+
+
 # Kalshi accepts orders in these categories only while the account's location verification is
 # current (it lapses and is renewed in the Kalshi mobile app). Paper never needs it; live does.
 ATTESTATION_CATEGORIES = frozenset({"Sports", "Elections", "Politics", "Entertainment"})
@@ -2595,6 +2641,18 @@ def live_ready_notices(cur, user: Dict) -> List[str]:
         if not ev["ready"]:
             continue
         title = d.get("title") or "Strategy %d" % sid
+        if not _is_deployment_candidate(cur, sid):
+            # A probation strategy: strong forward paper, but no live path. Say so instead of
+            # inviting a promote that the live gate would refuse.
+            marker = "[paper-standout #%d]" % sid
+            if repo.chat_contains(cur, user["id"], "system", marker):
+                continue
+            line = ("%s “%s” cleared every paper-to-live check on forward paper (%s) even though "
+                    "the gatekeeper rejected it in research. It can't go live as is; ask me to re-test it "
+                    "on fresh data." % (marker, title, paper_evidence_line(ev)))
+            repo.add_chat(cur, user["id"], "system", line)
+            out.append(line)
+            continue
         note = location_attestation_note(d.get("market"))
         line = ("%s “%s” cleared every paper-to-live check: %s. Going live is your call: promote it, or "
                 "turn on live autopilot." % (marker, title, paper_evidence_line(ev)))
@@ -3101,6 +3159,11 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
                     repo.add_chat(cur, user["id"], "system", line)
             except Exception as e:  # best-effort: never block the review itself
                 print("[agent] auto-paper failed for user %s: %r" % (user["id"], e), flush=True)
+            try:
+                for line in auto_paper_probation(cur, user):
+                    repo.add_chat(cur, user["id"], "system", line)
+            except Exception as e:  # best-effort, like the funnel above
+                print("[agent] paper probation failed for user %s: %r" % (user["id"], e), flush=True)
             try:
                 live_ready_notices(cur, user)  # adds its own chat lines
             except Exception as e:  # best-effort, like the funnel above
