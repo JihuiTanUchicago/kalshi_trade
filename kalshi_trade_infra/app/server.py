@@ -1994,6 +1994,21 @@ def research_context(ctx: Ctx):
     return {"at": data.get("at"), "markets": _research_context(data.get("markets") or [])}
 
 
+def research_scoreboard(ctx: Ctx):
+    """How the user's research loop is doing: funnel, spend, efficiency and why ideas die, in total,
+    per market family and per day (app/rsi.py). ?days= (1-60, default 7)."""
+    from app import rsi
+    try:
+        days = min(max(int(ctx.query.get("days") or 7), 1), 60)
+    except ValueError:
+        days = 7
+    from app import rsi_playbook
+    board = rsi.load_scoreboard(ctx.cur, days, ctx.uid)
+    board["cards"] = board["cards"][-50:]
+    board["playbooks"] = rsi_playbook.summary(ctx.cur, ctx.uid)
+    return board
+
+
 def _cnum(x) -> Optional[float]:
     try:
         return float(x)
@@ -2071,6 +2086,7 @@ ROUTES: List[Route] = [
         ("GET", "/api/explore/hot", explore_hot, True),
         ("GET", "/api/explore/market", explore_market, True),
         ("GET", "/api/research/context", research_context, True),
+        ("GET", "/api/research/scoreboard", research_scoreboard, True),
         ("GET", "/api/models", models, True),
         ("GET", "/api/runs", list_runs, True),
         ("POST", "/api/runs", create_run, True),

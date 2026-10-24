@@ -32,6 +32,9 @@ class Store:
         # dream over, so the self-evolution step is a clean no-op in these tests.
         monkeypatch.setattr(r, "get_policy", lambda *a, **k: None)
         monkeypatch.setattr(r, "strategy_records", lambda *a, **k: [])
+        # Research RSI playbooks: none drawn, nothing learned (the wiring has its own tests below).
+        monkeypatch.setattr(agent, "_rsi_choose", lambda *a, **k: "")
+        monkeypatch.setattr(agent, "_rsi_learn", lambda *a, **k: None)
         # Wave-2 gatekeeper hand-off: stub the frozen research partition and the Statistical
         # Gatekeeper so the research loop is testable without the ledger DB. judge_batch
         # classifies every approved finalist STAT_SUPPORTED (-> "passed"), and the challenger
@@ -844,3 +847,49 @@ def test_outcome_line_counts_theses_dropped_on_the_research_fold(monkeypatch, ca
     line = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("[research] run=")][0]
     assert "tried=8" in line and "research:dropped=8" in line
     assert store.finished[0] == "succeeded" and store.finished[2] == 8   # what the sessions list shows
+
+
+def test_the_drawn_playbook_reaches_the_proposer_and_the_develop_turn(monkeypatch):
+    store = Store(monkeypatch)
+    monkeypatch.setattr(agent, "THESIS_MAX_STEPS", 2)
+    monkeypatch.setattr(agent, "_rsi_choose", lambda cur, uid, market, run_id, log:
+                        "RESEARCH PLAYBOOK v2 for crypto markets:\nDEAD ENDS\n- ZEBRA-LESSON")
+    model, prompts = scripted([plan(), hyps(WINNER), _fence({"decision": "commit", "why": "holds"})])
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 1}, model=model,
+                       dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    assert store.finished[0] == "succeeded"
+    with_lesson = [p for p in prompts if "ZEBRA-LESSON" in p]
+    assert len(with_lesson) == 2 and "Develop THIS one thesis" in with_lesson[1]
+
+
+def test_after_a_run_the_playbook_is_scored_settled_and_rewritten(monkeypatch):
+    """_rsi_learn credits the run to its playbook, settles the trial, and with no candidate pending
+    asks the model for the next version from this run's verdicts (labels only)."""
+    from app import rsi_playbook
+    calls, logged = {}, []
+    events = [{"kind": "verdict", "message": "DROPPED", "data": {"status": "abandoned", "title": "A",
+                                                                  "why": "obs_high_f is not available"}}]
+    monkeypatch.setattr(agent.repo, "run_events", lambda cur, run_id: events)
+    monkeypatch.setattr(rsi_playbook, "score_run", lambda cur, run_id, card: calls.setdefault("card", card))
+    monkeypatch.setattr(rsi_playbook, "decide", lambda cur, uid, fam: "promoted v1 over v0 (P(better)=0.93)")
+    pending = {"cand": None}
+    monkeypatch.setattr(rsi_playbook, "candidate", lambda cur, uid, fam: pending["cand"])
+    monkeypatch.setattr(rsi_playbook, "active", lambda cur, uid, fam: {"id": 5, "version": 1, "text": "old"})
+    monkeypatch.setattr(rsi_playbook, "add_candidate",
+                        lambda cur, uid, fam, parent, text, changes, run_id: calls.setdefault("new", (text, run_id)) and 2)
+    reply = _fence({"playbook": "PIPELINE FACTS\n- obs_high_f IS populated on settling days", "changes": "fixed a myth"})
+    model, prompts = scripted([reply])
+    usage = agent.Usage()
+    log = lambda kind, msg, data=None: logged.append(msg)  # noqa: E731
+    ds = _dataset(n_contracts=60)
+    agent._rsi_learn(Conn(), None, dict(RUN, market="btc15m"), ds, 3, 1000, 100, model, usage, log)
+    assert calls["card"]["explored"] == 3 and calls["card"]["death_kinds"] == {"pipeline": 1}
+    assert calls["new"] == ("PIPELINE FACTS\n- obs_high_f IS populated on settling days", 1)
+    assert any("promoted v1 over v0" in m for m in logged)
+    assert any(m.startswith("Wrote research playbook v2") and "fixed a myth" in m for m in logged)
+    assert "obs_high_f is not available" in prompts[0] and usage.input_tokens == 10
+    # A candidate already on trial: score and settle only, no rewrite (one trial at a time).
+    pending["cand"] = {"id": 6, "version": 2}
+    model2, prompts2 = scripted([])
+    agent._rsi_learn(Conn(), None, dict(RUN, market="btc15m"), ds, 3, 1000, 100, model2, agent.Usage(), log)
+    assert prompts2 == []

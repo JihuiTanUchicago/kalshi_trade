@@ -1,5 +1,31 @@
 # PLAN
 
+## Research RSI: a scoreboard, and playbooks the loop rewrites and A/B-tests (2026-10-24)
+
+Todd: "make it really RSI". Until now the loop only evolved finalist selection (dreaming over replayed
+trees); nothing measured whether research got better, and nothing learned what to propose. PLAN's own
+2026-10-15 note named the missing piece: evolving proposal guidance needs an evaluator that replay
+cannot give. Live runs are that evaluator.
+
+- `app/rsi.py` (measure): a scorecard per run from its verdict events (explored, dropped, challenger,
+  underpowered, not-finalist, gated, passed, holdout, deploy candidates, model spend) and a scoreboard
+  in total / per family / per day: gate-reach rate, gated and passed per $100, and why ideas die. Drop
+  reasons are classified by phrase rules built from real runs into pipeline (the pipeline failed the
+  idea: "feature not available", no data), spec (0 trades), edge (loses, fee floor, falsified), other.
+  `GET /api/research/scoreboard?days=` and `python -m app.rsi --days 7 [--user N] [--cards]`.
+- `app/rsi_playbook.py` (learn and keep what helps): one playbook per (user, market family)
+  (`rsi.family`: weather-high, weather-low, crypto, sports, ...). The proposer and the develop turn read
+  the drawn playbook. After every run with ideas: the run is credited to the playbook it drew, the
+  candidate-vs-active trial is settled, and with no candidate pending the model rewrites the active
+  playbook from this run's verdicts (labels and research-window facts only: feature coverage and the
+  fair-value table) into the next candidate. Runs draw active vs candidate by Thompson sampling on
+  Beta(1+reached, 1+ideas-reached), where reached = the idea got to the gate. A candidate is promoted
+  at P(better) >= 0.9 with >= 16 ideas, retired at <= 0.1 or after 64 ideas. Version 0 is the empty
+  playbook, so the first rewrite must beat no playbook. Tables app_rsi_playbooks, app_rsi_assignments.
+- Known risk: the yardstick is gate REACH (research data only), not gate PASS (too rare to learn from
+  yet). A playbook could learn to get ideas past the research fold that then fail validation. Watch
+  the scoreboard's pass rate among gated ideas per playbook; switch the yardstick once passes exist.
+
 ## Fair value vs mid: does the forecast know anything the market doesn't? (2026-10-24)
 
 - Weather run 2613 spent its theses on forecast-vs-market ideas with no evidence the forecast adds
