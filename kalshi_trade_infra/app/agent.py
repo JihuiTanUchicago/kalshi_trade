@@ -3367,6 +3367,10 @@ def _copilot_context(cur, user: Dict) -> str:
     else:
         lines.append("- none yet — SET one this review (goals + research agenda + capital posture).")
     lines += ["", "Deployments:"]
+    try:
+        tally = repo.scan_tally(cur, [d["id"] for d in deps])
+    except Exception:
+        tally = {}
     for d in deps:
         oos = ((d.get("result") or {}).get("out_of_sample") or {})
         lines.append(
@@ -3381,6 +3385,14 @@ def _copilot_context(cur, user: Dict) -> str:
             # The engine's latest entry scan: which entry check stopped it, so a review can tell a
             # rule that never fires on the live book (a spec problem) from one waiting on a setup.
             lines.append("    last entry check: %s" % scan["why"])
+        t = tally.get(d["id"]) or {}
+        if t:
+            # Today's decisions by outcome: a rule that never reaches 'qualified' over a whole
+            # day of checks is a spec the live book doesn't produce, not a setup still to come.
+            lines.append("    entry checks today: %d decisions, qualified %d; stopped at: %s" % (
+                sum(t.values()), t.get("qualified", 0),
+                ", ".join("%s (%d)" % kv for kv in sorted(((k, n) for k, n in t.items() if k != "qualified"),
+                                                          key=lambda kv: -kv[1])) or "nothing"))
         if d["mode"] == "paper":
             # Realistic-fill evidence for the paper -> live gate, so reviews promote, keep or stop
             # paper deployments on what live would actually earn. Best-effort (test stub -> skip).

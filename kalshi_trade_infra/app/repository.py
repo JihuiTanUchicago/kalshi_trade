@@ -1235,8 +1235,32 @@ def set_deployment_status(cur, user_id: int, deployment_id: int, status: str, re
 def set_deployment_scan(cur, deployment_id: int, scan: Dict) -> None:
     """The latest entry scan (spec.entry_scan) for one deployment: why its last decision did or
     didn't buy. Overwritten every decision; a readout only, never read by trading."""
+    now = now_utc()
     cur.execute("UPDATE app_deployments SET last_scan_json=%s, last_scan_at=%s WHERE id=%s",
-                (json.dumps(scan, separators=(",", ":")), now_utc(), deployment_id))
+                (json.dumps(scan, separators=(",", ":")), now, deployment_id))
+    cur.execute("INSERT INTO app_deployment_scan_days (deployment_id, day, outcome, n) VALUES (%s,%s,%s,1) "
+                "ON DUPLICATE KEY UPDATE n=n+1", (deployment_id, now.date(), scan_outcome(scan)))
+
+
+def scan_outcome(scan: Dict) -> str:
+    if scan.get("qualifying"):
+        return "qualified"
+    if not scan.get("contracts"):
+        return "no contracts"
+    return (scan.get("blocked_at") or "other")[:160]
+
+
+def scan_tally(cur, deployment_ids: List[int], days: int = 1) -> Dict[int, Dict[str, int]]:
+    """{deployment_id: {outcome: decisions}} over the last `days` UTC days (today included)."""
+    if not deployment_ids:
+        return {}
+    cur.execute("SELECT deployment_id, outcome, SUM(n) AS n FROM app_deployment_scan_days WHERE deployment_id IN (%s) "
+                "AND day >= %%s GROUP BY deployment_id, outcome" % ",".join(["%s"] * len(deployment_ids)),
+                (*deployment_ids, (now_utc() - timedelta(days=max(1, days) - 1)).date()))
+    out: Dict[int, Dict[str, int]] = {}
+    for r in cur.fetchall():
+        out.setdefault(int(r["deployment_id"]), {})[r["outcome"]] = int(r["n"] or 0)
+    return out
 
 
 def set_deployment_strategy(cur, user_id: int, deployment_id: int, strategy_id: int) -> bool:

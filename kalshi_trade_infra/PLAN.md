@@ -11,6 +11,10 @@
 - The autopilot panel's story lists up to three waiting strategies in plain words, and the review
   context gets a "last entry check" line per deployment, so reviews can tell a rule that never fires
   on the live book (stop it, research a better one) from one waiting on a rare setup.
+- `app_deployment_scan_days` tallies every decision's outcome per deployment per UTC day ('qualified',
+  'no contracts' or the blocking check). The panel says "Today it found a contract worth buying in 0 of
+  820 checks" and the review context lists today's stops, so a rule that never fires over a whole day
+  reads differently from one waiting on a setup.
 - Paper outcomes (`rsi.paper_outcomes`) now count, per family and per playbook, the entry check each
   never-traded paper strategy last stopped at (`stuck_on`), and the review line names them. Next: have
   the proposer read `stuck_on` so it stops writing entry bands the live book never reaches.

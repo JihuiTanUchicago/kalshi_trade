@@ -358,6 +358,9 @@ def test_autopilot_story_says_what_it_is_doing_in_plain_words():
     waiting = [{"title": "SOL momentum", "why": "none of the 12 open contracts has a yes price of 85c to 95c"}]
     story = server._autopilot_story(dict(d, paper_waiting=waiting))
     assert "SOL momentum is waiting: none of the 12 open contracts has a yes price of 85c to 95c." in story
+    waiting[0].update(checks_today=820, qualified_today=0)
+    assert ("SOL momentum is waiting: none of the 12 open contracts has a yes price of 85c to 95c. "
+            "Today it found a contract worth buying in 0 of 820 checks.") in server._autopilot_story(dict(d, paper_waiting=waiting))
 
 
 def test_paper_waiting_lists_strategies_whose_last_decision_bought_nothing():
@@ -368,7 +371,9 @@ def test_paper_waiting_lists_strategies_whose_last_decision_bought_nothing():
            {"id": 76, "title": "Old", "scan": None}]
     assert server._paper_waiting(run) == [{"deployment_id": 74, "title": "Solana Deep ITM Momentum",
                                            "why": "none of the 3 open contracts has spread of 5c or less",
-                                           "blocked_at": None, "at": None}]
+                                           "blocked_at": None, "at": None, "checks_today": 0, "qualified_today": 0}]
+    tally = {74: {"qualified": 2, "the spread": 10}}
+    assert server._paper_waiting(run, tally)[0]["checks_today"] == 12
 
 
 # -- Road to live: read-only readiness view ------------------------------------------
