@@ -97,6 +97,26 @@ def _f(v) -> Optional[float]:
         return None
 
 
+def book_sizes(quotes) -> Dict:
+    """Touch depth per ticker for the side an entry would TAKE. A YES buy lifts the YES ask
+    (``ticker`` -> yes_ask_size); a NO buy is the YES mirror and hits the YES bid, so its depth is
+    yes_bid_size, keyed ``(ticker, "no")``. Sizing a NO entry off the ask showed depth that isn't
+    there (an order the book can't fill at the price we decided)."""
+    out: Dict = {}
+    for q in quotes:
+        out[q.contract.ticker] = q.yes_ask_size
+        out[(q.contract.ticker, "no")] = q.yes_bid_size
+    return out
+
+
+def shown_size(sizes: Dict, ticker: str, side: str) -> Optional[float]:
+    """Contracts the book showed for buying ``side`` of ``ticker``. Callers that only pass a
+    per-ticker number (tests, older frames) keep that number for both sides."""
+    if str(side).lower() == "no" and (ticker, "no") in sizes:
+        return sizes[(ticker, "no")]
+    return sizes.get(ticker)
+
+
 def _opt_float(v) -> Optional[float]:
     """An optional float env knob: None (feature off) for unset/blank/unparseable."""
     if v is None or str(v).strip() == "":
@@ -443,7 +463,7 @@ def cross_deploy_block(spec: Dict, mode: str) -> Optional[str]:
     return None
 
 
-def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[float]], sources: Sources) -> Dict:
+def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict, sources: Sources) -> Dict:
     spec = dep["spec"]
     perpetual_block = _perpetual_execution_block(spec, dep.get("market"))
     if perpetual_block:
@@ -513,9 +533,9 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
         if ticker in held:
             continue
         qty = specmod.contracts_for(spec["sizing"]["stake"], entry.price)
-        shown = sizes.get(ticker)
+        shown = shown_size(sizes, ticker, entry.side)
         if shown is not None:
-            qty = min(qty, int(shown))  # paper never fills more than the book showed
+            qty = min(qty, int(shown))  # never size past the depth on the side we take
         # Trim to the user-wide open-notional cap; never breach it with a new entry.
         room = cap_notional - open_notional
         if room >= entry.price:
@@ -569,7 +589,7 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
     return out
 
 
-def _decide_pairs(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[float]],
+def _decide_pairs(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict,
                   kernel, via_kernel: bool, mode: str) -> Dict:
     """Decide a cross-contract (relative-value pair) deployment: open BOTH legs of each pair the
     rule picks (buy YES on the underpriced leg, NO on the overpriced leg) and HOLD to settlement —
@@ -600,8 +620,8 @@ def _decide_pairs(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optio
             continue
         pair_cost = cand.long_price + cand.short_price
         qty = specmod.contracts_for(spec["sizing"]["stake"], pair_cost)
-        for tk in (lt, st):  # paper never fills more than either leg's book showed
-            shown = sizes.get(tk)
+        for tk, sd in ((lt, "yes"), (st, "no")):  # never size past either leg's book
+            shown = shown_size(sizes, tk, sd)
             if shown is not None:
                 qty = min(qty, int(shown))
         room = cap_notional - open_notional
@@ -1395,7 +1415,7 @@ def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] 
             print("[engine] spot fetch failed for %s: %r (skipping tick)" % (market.key, e), flush=True)
             feats = None
     snaps = [s for s in (snapshot(feats, q.contract, now_ts, q.yes_bid, q.yes_ask) for q in quotes) if s is not None]
-    sizes = {q.contract.ticker: q.yes_ask_size for q in quotes}
+    sizes = book_sizes(quotes)
     # (positions were already marked above, every tick — not only when a decision is due)
     stats["decided"] = 0
     for dep in due:
@@ -1435,7 +1455,7 @@ def _cross_market_frame(markets: List[str], sources: Sources, now_ts: int):
     if any(MARKETS[key].kind == "perpetual" for key in markets):
         return None  # a persisted cross row must never fetch/price perpetuals as binary legs
     all_snaps: List[Snapshot] = []
-    sizes: Dict[str, Optional[float]] = {}
+    sizes: Dict = {}
     for key in markets:
         market = MARKETS[key]
         try:
@@ -1460,7 +1480,7 @@ def _cross_market_frame(markets: List[str], sources: Sources, now_ts: int):
             s = snapshot(feats, q.contract, now_ts, q.yes_bid, q.yes_ask)
             if s is not None:
                 all_snaps.append(s)
-            sizes[q.contract.ticker] = q.yes_ask_size
+        sizes.update(book_sizes(quotes))
     return all_snaps, sizes
 
 
