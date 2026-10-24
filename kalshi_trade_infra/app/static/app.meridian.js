@@ -367,6 +367,7 @@
     [/^\/devlog$/, viewDevLog],
     [/^\/settings(?:\/theme)?$/, viewSettings],
   ];
+  const phone = () => !!(window.matchMedia && window.matchMedia('(max-width: 760px)').matches);
   function go(path, replace) {
     if (replace) history.replaceState(null, '', path); else history.pushState(null, '', path);
     render();
@@ -391,6 +392,8 @@
     clearTimers();
     const gen = ++S.gen;
     window.scrollTo(0, 0);
+    // On a phone the open autopilot panel fills the screen, so moving to a page closes it.
+    if (phone()) { try { localStorage.setItem('tau_ap_open', '0'); } catch (e) { /* private mode */ } }
     const path = location.pathname;
     if (path === '/signin') { const f = document.getElementById('autopilot-float'); if (f) f.remove(); }
     const match = routes.map(([re, fn]) => [path.match(re), fn]).find(([m]) => m);
@@ -567,6 +570,9 @@
         <div id="boardbody">${board}</div>
         <main id="main" tabindex="-1">${main}</main>
       </div></div>`;
+    // The section tabs scroll sideways on a phone; bring the current one into view.
+    const tabs = root.querySelector('.services-in'), here0 = tabs && tabs.querySelector('[aria-current="page"]');
+    if (here0 && here0.offsetLeft + here0.offsetWidth > tabs.clientWidth) tabs.scrollLeft = here0.offsetLeft - 16;
     root.querySelectorAll('[data-action="signout"]').forEach((b) => (b.onclick = async () => { await api('/api/logout', {}).catch(() => {}); S.me = null; go('/signin'); }));
     const prof = root.querySelector('.profile');
     if (prof) {
@@ -697,6 +703,8 @@
   // devCurve (optional): a second, realized series replayed read-only against
   // the Kalshi demo environment. Drawn dashed in the accent colour with a legend
   // so "Simulated" and "Kalshi dev" read apart. Omitting it keeps the old chart.
+  // Draw at the column's real width on a narrow screen: a 760-wide chart shrunk to a phone has 4px labels.
+  const chartWidth = () => { const m = root.querySelector('main'), w = m && m.clientWidth; return w > 0 && w < 760 ? Math.max(300, w) : 760; };
   function equityChart(curve, cutoffIso, devCurve, options = {}) {
     const W = options.width || 760, H = options.height || 236, L = 52, R = 10, T = options.paper ? 16 : 30, B = 26;
     if (!curve || curve.length < 2) return `<div class="empty"><p>Not enough trades to draw an equity curve.</p></div>`;
@@ -2338,7 +2346,7 @@
       + `<div class="paper-sub">${perpetual ? '<h4 class="paper-h">Perpetual research scenario</h4>' : hasExp ? '<h4 class="paper-h">Backtest &amp; Kalshi demo replay</h4>' : ''}
           ${hasExp ? '<p class="rp-sub" style="margin-top:0">These are the agent\'s own in-sample/replay numbers. The in-sample column is optimistically biased — the rule was fit on exactly this data — so trust the held-out validation-window evidence above, not the column below.</p>' : ''}
           <div id="sheet-results">
-            <div id="equity-wrap">${s.equity ? equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from) : ''}</div>
+            <div id="equity-wrap">${s.equity ? equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from, null, { width: chartWidth() }) : ''}</div>
             <div class="split"><div><h4>In-sample</h4>${metricRows(ins)}</div><div><h4>Out-of-sample</h4>${metricRows(oos)}</div></div>
           </div></div>`
       + `<div class="paper-sub"><h4 class="paper-h">Most recent unseen trades</h4>${trades}</div>`;
@@ -2445,7 +2453,7 @@
         const wrap = root.querySelector('#equity-wrap');
         if (wrap && r && r.dev_curve && r.dev_curve.length > 1) {
           const sl = r.slippage, sc = (v) => (v >= 0 ? '+' : '') + v.toFixed(1) + '¢';
-          wrap.innerHTML = equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from, r.dev_curve)
+          wrap.innerHTML = equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from, r.dev_curve, { width: chartWidth() })
             + `<p class="hint" style="margin-top:6px">Dashed line: the unseen window replayed read-only against Kalshi's demo environment${r.capped ? ` (first ${r.contracts} contracts)` : ''} — real demo order-book prices, scored with the same fees. No orders are placed.</p>`
             + (sl ? `<p class="hint" style="margin-top:4px;font-variant-numeric:tabular-nums">Real demo-book slippage: <b>${sc(sl.entry_cents)}</b> entry${sl.exit_cents != null ? ` / <b>${sc(sl.exit_cents)}</b> exit` : ''} over ${sl.n_trades} aligned trade${sl.n_trades === 1 ? '' : 's'} (positive means real fills were worse). <button type="button" class="btn sm" id="apply-slip">Apply to what-if</button></p>` : '');
           if (sl) {
@@ -2537,7 +2545,7 @@
           try {
             const r = await api(`/api/strategies/${s.id}/whatif`, { fee_multiplier: fee, slippage_cents: slip, stake });
             if (mine !== seq) return;
-            root.querySelector('#sheet-results').innerHTML = equityChart(r.equity, s.dataset && s.dataset.out_of_sample_from) +
+            root.querySelector('#sheet-results').innerHTML = equityChart(r.equity, s.dataset && s.dataset.out_of_sample_from, null, { width: chartWidth() }) +
               `<div class="split"><div><h4>In-sample</h4>${metricRows(r.in_sample)}</div><div><h4>Out-of-sample</h4>${metricRows(r.out_of_sample)}</div></div>`;
             root.querySelector('#gates').innerHTML = gatesHtml(r.gates);
             root.querySelector('#figs').innerHTML = figsFor({ ...r });

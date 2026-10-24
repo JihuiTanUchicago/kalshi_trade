@@ -1587,7 +1587,7 @@ body.landing-body .apf { display: none; }
 .apf-you .say-kind { color: var(--ink); }
 .apf-pulse-row { flex: none; }
 .apf-idle-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--rule-2); }
-.ap-empty { padding: 16px; font-size: 13px; line-height: 1.6; color: var(--ink-3); list-style: none; }
+.log .ap-empty, .ap-empty { display: block; padding: 16px; font-size: 13px; line-height: 1.6; color: var(--ink-3); list-style: none; }
 .apf-composer-row { flex: none; border-top: 1px solid var(--rule); padding: 11px 14px; background: var(--stock-raised); }
 .apf-composer-row textarea { min-height: 40px; max-height: 120px; }
 @media (max-width: 600px) { .apf.open { right: 10px; bottom: 10px; }
@@ -2294,4 +2294,38 @@ body.landing-body .apf { display: none; }
   .dep-monitor .deployment-actions .btn, .dep-monitor .dep-evidence > summary, .feed-filter .chip, .community-compose > summary,
   .post-footer .rx, .post-footer .rx:not(.add), .post-footer .rx.add, .post-footer .thread-link, .active-open, .research-page .research-create > summary, .t-explore th button, .t-explore .xlink a { min-height: 44px; }
   .t-explore .xlink a { min-width: 44px; opacity: 1; }
+}
+
+/* ── Phone & touch ─────────────────────────────────────────────────────────── */
+@media (pointer: coarse) {
+  /* iOS zooms the whole page into any field under 16px; at 16px focusing a field leaves the layout alone. */
+  .input, input[type=number], input[type=password], input[type=text], input[type=email], input[type=search], select, textarea { font-size: 16px; }
+  .btn, .btn.sm, .chip, .pill { min-height: 44px; }
+  .masthead .admin-toggle, .masthead .bell-trig, .masthead .profile-trig, .masthead .apf-pill, .market-control .hot-tab { min-height: 44px; }
+  .masthead .bell-trig { min-width: 34px; justify-content: center; }
+  .apf-x { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; margin: -12px -14px -12px auto; }
+  .pick, #pick-all { width: 22px; height: 22px; }
+}
+@media (max-width: 760px) {
+  /* The tabs scroll sideways; fade the right edge so it reads as "more this way". */
+  .masthead .services-in { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); padding-right: 24px; }
+}
+@media (max-width: 600px) {
+  /* Open autopilot is a full-screen sheet: one scroll for controls and session, composer pinned. */
+  .apf.open { inset: 0; width: auto; max-width: none; height: 100vh; height: 100dvh; max-height: none; border: 0; border-radius: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: env(safe-area-inset-bottom); }
+  .apf.open .apf-head { position: sticky; top: 0; z-index: 1; background: var(--stock-raised); padding-top: max(13px, env(safe-area-inset-top)); }
+  .apf.open .apf-session { flex: none; min-height: 55vh; }
+  .apf.open .apf-composer-row { position: sticky; bottom: 0; }
+  .apf-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 420px) {
+  /* One header row on a phone: drop the separator and tighten the control gaps. */
+  .masthead-in { gap: 0 6px; }
+  .brand-controls { gap: 8px; }
+  .masthead .asof .sep { display: none; }
+  .masthead .admin-toggle { margin-right: 6px; }
+  .bell-wrap { margin-right: 4px; }
+}
+@media (max-width: 374px) {
+  .masthead .admin-toggle { font-size: 0; gap: 0; }  /* the switch alone; its name stays for screen readers */
 }

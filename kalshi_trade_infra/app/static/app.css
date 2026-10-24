@@ -1450,6 +1450,10 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 306px; 
   .hotrail { width: 34px; } .hot-tab { width: 34px; }
   body.hot-open .hotrail { width: min(306px, 88vw); z-index: 60; border-right: 2px solid var(--ink); }
 }
+@media (max-width: 760px) {
+  body:not(.landing-body), body.hot-open:not(.landing-body) { padding-left: 0; }
+  .hotrail { display: none; }
+}
 @media (prefers-reduced-motion: reduce) {
   body:not(.landing-body), .hotrail { transition: none; }
   .hot-dot { animation: none; }
@@ -1535,7 +1539,7 @@ body.landing-body .apf { display: none; }
 .apf-you .say-kind { color: var(--ink); }
 .apf-pulse-row { flex: none; }
 .apf-idle-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--rule-2); }
-.ap-empty { padding: 16px; font-size: 13px; line-height: 1.6; color: var(--ink-3); list-style: none; }
+.log .ap-empty, .ap-empty { display: block; padding: 16px; font-size: 13px; line-height: 1.6; color: var(--ink-3); list-style: none; }
 .apf-composer-row { flex: none; border-top: 1px solid var(--rule); padding: 11px 14px; background: var(--stock-raised); }
 .apf-composer-row textarea { min-height: 40px; max-height: 120px; }
 @media (max-width: 600px) { .apf { right: 10px; bottom: 10px; }
@@ -1606,4 +1610,27 @@ body.landing-body .apf { display: none; }
   .ladder { grid-template-columns: repeat(2, 1fr); }
   .rp-grid, .rp-figs { grid-template-columns: minmax(0, 1fr); }
   .rp-fig.wide { grid-column: auto; }
+}
+
+/* ── Phone & touch ─────────────────────────────────────────────────────────── */
+@media (pointer: coarse) {
+  /* iOS zooms the whole page into any field under 16px; at 16px focusing a field leaves the layout alone. */
+  .input, input[type=number], input[type=password], input[type=text], input[type=email], input[type=search], select, textarea { font-size: 16px; }
+  .btn, .btn.sm, .chip, .pill { min-height: 44px; }
+  .admin-toggle, .bell-trig, .profile-trig { min-height: 44px; }
+  .bell-trig { min-width: 34px; justify-content: center; }
+  .apf-x { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; margin: -12px -14px -12px auto; }
+  .pick, #pick-all { width: 22px; height: 22px; }
+}
+@media (max-width: 760px) {
+  /* Room to scroll the last row out from under the floating autopilot pill. */
+  body:not(.landing-body) { padding-bottom: 72px; }
+}
+@media (max-width: 600px) {
+  /* Open autopilot is a full-screen sheet: one scroll for controls and session, composer pinned. */
+  .apf.open { inset: 0; width: auto; max-width: none; height: 100vh; height: 100dvh; max-height: none; border: 0; border-radius: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: env(safe-area-inset-bottom); }
+  .apf.open .apf-head { position: sticky; top: 0; z-index: 1; background: var(--stock-raised); padding-top: max(13px, env(safe-area-inset-top)); }
+  .apf.open .apf-session { flex: none; min-height: 55vh; }
+  .apf.open .apf-composer-row { position: sticky; bottom: 0; }
+  .apf-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
