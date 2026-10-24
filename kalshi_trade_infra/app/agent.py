@@ -713,7 +713,13 @@ def set_focus_action(cur, user: Dict, action: Dict, run_kind: str) -> str:
     """Apply a set_focus action. Only a chat run (the user just wrote) may change the focus; a
     scheduled review can't drift it away from what the user asked."""
     if run_kind == "review":
-        return "Only you can change the market focus. Tell me in chat."
+        try:
+            same = normalize_focus(action.get("focus") or []) == focus_tokens(user)
+        except ValueError:
+            same = False
+        # A review restating the focus it was given is a no-op, not a refusal worth a chat line
+        # (prod 21:27Z: the first review after the fix echoed set_focus and Todd saw "Only you can…").
+        return "" if same else "Only you can change the market focus. Tell me in chat."
     try:
         tokens = normalize_focus(action.get("focus") or [])
     except ValueError as e:
@@ -3924,6 +3930,8 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
             if str(action.get("type") or action.get("kind") or "").strip().lower() == "set_focus":
                 text, proposal_id = set_focus_action(cur, user, action, run["kind"]), None
                 user = repo.get_user(cur, user["id"]) or user  # later actions in this reply honour it
+                if not text:
+                    continue
             elif str(action.get("type") or action.get("kind") or "").strip().lower() in ("alpaca_paper_order", "kalshi_perps_order"):
                 with repo.transaction(conn) as tx:
                     text, proposal_id = act(tx, user, action, bool(user.get("autopilot")), dataset_fn)

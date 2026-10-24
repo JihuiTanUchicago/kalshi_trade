@@ -54,6 +54,7 @@ def test_only_the_user_can_set_the_focus(monkeypatch):
     stored = []
     monkeypatch.setattr(agent.repo, "set_autopilot_focus", lambda cur, uid, tokens: stored.append(tokens))
     assert "Only you" in agent.set_focus_action(None, {"id": 1}, {"focus": ["sports"]}, "review")
+    assert agent.set_focus_action(None, CRYPTO, {"focus": ["Crypto"]}, "review") == ""  # an echo: silent no-op
     assert stored == []
     assert "set to crypto" in agent.set_focus_action(None, {"id": 1}, {"focus": ["crypto"]}, "chat")
     assert "recognise" in agent.set_focus_action(None, {"id": 1}, {"focus": ["stonks"]}, "chat")
