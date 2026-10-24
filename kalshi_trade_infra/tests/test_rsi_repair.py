@@ -142,3 +142,32 @@ def test_without_autopilot_the_request_waits_with_a_reason(conn, monkeypatch):
     req = rsi_repair.summary(cur, uid)[0]
     assert (req["kind"], req["status"], req["note"]) == ("history", "ready", "waiting: autopilot is off")
     conn.commit()
+
+
+def test_a_micro_feature_is_ready_only_once_it_covers_the_research_window(monkeypatch):
+    """Prod 2026-10-24 run 2726: requeued "now that ob_imbalance has been collected", it died on
+    "ob_imbalance not populated": the collected hours were all newer than the research window."""
+    from datetime import datetime, timedelta
+    now = datetime(2026, 10, 24, 23, 0)
+    monkeypatch.setattr(rsi_repair, "_now", lambda: now)
+    seen = []
+
+    class Cur:
+        def execute(self, sql, args):
+            seen.append(args)
+        def fetchone(self):
+            return {"h": 24 * 5}
+
+    import app.research_repository as rr
+    monkeypatch.setattr(rr, "get_active_partition", lambda cur, m: None)
+    lo, hi = rsi_repair.research_window(Cur(), "eth15m")
+    days = rsi_repair.MARKETS["eth15m"].history_days
+    assert lo == now - timedelta(days=days) and abs((hi - lo).days - days * 0.6) <= 1
+    assert hi < now - timedelta(days=days * 0.39)
+    req = {"kind": "micro", "series": "KXETH15M", "need": "taker_yes_vol_60s", "market": "eth15m"}
+    assert rsi_repair.is_ready(Cur(), req)
+    assert seen[-1][1:] == (lo, hi)                       # coverage counted inside the window only
+    monkeypatch.setattr(rr, "get_active_partition",
+                        lambda cur, m: {"research_from_ts": 1_700_000_000, "research_to_ts": 1_710_000_000})
+    lo2, hi2 = rsi_repair.research_window(Cur(), "eth15m")
+    assert (hi2 - lo2).total_seconds() == 10_000_000
