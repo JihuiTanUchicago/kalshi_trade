@@ -2062,6 +2062,10 @@ def research_scoreboard(ctx: Ctx):
         board["scout"] = rsi_scout.ranking(ctx.cur, 10)
     except Exception:  # noqa: BLE001 - the scan table may not exist before the first deploy's schema run
         board["scout"] = []
+    try:
+        board["paper"] = rsi.paper_outcomes(ctx.cur, ctx.uid)
+    except Exception:  # noqa: BLE001 - informational; the research half of the board still renders
+        board["paper"] = None
     return board
 
 
