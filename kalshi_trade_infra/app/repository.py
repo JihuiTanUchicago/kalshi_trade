@@ -2102,6 +2102,46 @@ def load_weather_forecasts(cur, station: str, kind: str, since_day,
              float(r["value_f"]), _num(r["sd_f"])) for r in cur.fetchall()]
 
 
+# A settled value is published some time after the market closes; count it known this long after.
+WEATHER_ACTUAL_LAG_S = 2 * 3600
+
+
+def load_weather_actuals(cur, series: str, since: datetime) -> List[Tuple[int, Any, float]]:
+    """Settled daily values of a weather series since `since`, as (known_at_ts, day, value_f) for
+    app/weather_fcst's trailing bias: one per event, known WEATHER_ACTUAL_LAG_S after it closed."""
+    from app.markets import weather_target_day
+    cur.execute(
+        "SELECT event_ticker, MAX(close_time) AS closed, MAX(expiration_value) AS v FROM hist_markets "
+        "WHERE series_ticker=%s AND close_time >= %s AND expiration_value IS NOT NULL GROUP BY event_ticker",
+        (series, since))
+    out = []
+    for r in cur.fetchall():
+        day = weather_target_day(r["event_ticker"] + "-X")
+        if day is not None and r["v"] is not None:
+            out.append((int(r["closed"].replace(tzinfo=timezone.utc).timestamp()) + WEATHER_ACTUAL_LAG_S, day,
+                        float(r["v"])))
+    return out
+
+
+def load_sports_odds(cur, sport: str, since: datetime,
+                     as_of_ts: Optional[int] = None) -> List[Tuple[int, int, str, str, str, float]]:
+    """Collected sportsbook snapshots for one league since `since` (UTC naive), as the
+    (collected_ts, commence_ts, home_code, away_code, book, p_home) rows app/sports_odds.OddsBook
+    takes. as_of_ts (live) also drops snapshots collected after it."""
+    sql = ("SELECT collected_at_utc, commence_utc, home_code, away_code, book, p_home FROM sports_odds "
+           "WHERE sport=%s AND collected_at_utc >= %s")
+    args: Tuple = (sport, since)
+    if as_of_ts is not None:
+        sql += " AND collected_at_utc <= %s"
+        args += (datetime.fromtimestamp(int(as_of_ts), tz=timezone.utc).replace(tzinfo=None),)
+    cur.execute(sql, args)
+
+    def _ts(d):
+        return int(d.replace(tzinfo=timezone.utc).timestamp())
+    return [(_ts(r["collected_at_utc"]), _ts(r["commence_utc"]), r["home_code"], r["away_code"], r["book"],
+             float(r["p_home"])) for r in cur.fetchall()]
+
+
 def spot_symbols_with_data(cur, symbols) -> set:
     """Which of the given spot symbols already have price candles collected.
 

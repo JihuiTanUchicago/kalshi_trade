@@ -88,3 +88,13 @@ and the live engine read the same rows (`app/weather_fcst.py`). Backfill once wi
     sudo cp scripts/systemd/kalshi-weather-fcst.* /etc/systemd/system/
     sudo systemctl daemon-reload
     sudo systemctl enable --now kalshi-weather-fcst.timer
+
+### Sportsbook odds (web box)
+
+`kalshi-sports-odds.timer` runs `app.sports_odds_collect` 5x a day (2 credits per run: NBA + NHL,
+about 310 a month, inside The Odds API's free 500). It reads `ODDS_API_KEY` or the Secrets Manager
+secret `kalshi/odds_api_key` and is a no-op without one. For a paid plan, tighten `OnCalendar`.
+
+    sudo cp scripts/systemd/kalshi-sports-odds.* /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now kalshi-sports-odds.timer

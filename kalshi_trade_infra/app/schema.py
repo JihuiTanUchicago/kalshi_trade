@@ -574,6 +574,25 @@ DDL = [
       INDEX idx_wf_lookup (station, kind, target_day)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
+    # Every sportsbook's two-way moneyline per game as app/sports_odds_collect.py fetched it from
+    # The Odds API. collected_at_utc is the known-at time research and live both as-of join on.
+    """
+    CREATE TABLE IF NOT EXISTS sports_odds (
+      sport VARCHAR(32) NOT NULL,          -- The Odds API sport key, e.g. basketball_nba
+      event_id VARCHAR(64) NOT NULL,
+      commence_utc DATETIME NOT NULL,
+      home_code VARCHAR(8) NOT NULL,       -- Kalshi team codes (app/sports_odds.TEAMS)
+      away_code VARCHAR(8) NOT NULL,
+      book VARCHAR(32) NOT NULL,
+      book_update_utc DATETIME NULL,
+      home_price DECIMAL(8,1) NOT NULL,    -- American odds
+      away_price DECIMAL(8,1) NOT NULL,
+      p_home DOUBLE NOT NULL,              -- de-vigged home win probability
+      collected_at_utc DATETIME NOT NULL,
+      PRIMARY KEY (sport, event_id, book, collected_at_utc),
+      INDEX idx_so_lookup (sport, collected_at_utc)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
 ]
 
 

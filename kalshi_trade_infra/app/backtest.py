@@ -29,7 +29,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from app import freedata
 from app import spec as specmod
-from app import weather_fcst
+from app import sports_odds, weather_fcst
 from app.markets import (MARKETS, NEW_YORK, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot, snapshot,
                          weather_obs_applies)
 from data_pipeline.architecture.execution_kernel import reservation_price
@@ -80,15 +80,15 @@ def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc:
                   micro: Optional[Dict[Tuple[str, int], Dict[str, float]]] = None,
                   frame_series: Optional[Dict[str, List[Tuple[int, float]]]] = None,
                   frame_series_applies: Optional[Callable[[str, int], bool]] = None,
-                  forecasts: Optional[weather_fcst.ForecastBook] = None) -> Dataset:
+                  forecasts=None) -> Dataset:
     """markets: {ticker, strike, close_time, result}; candles: (ticker, end_period_ts, yes_bid, yes_ask)
     tuples as repository.load_history returns them, or the equivalent dicts.
     micro: {(ticker, decision_ts): {feature: value}} order-book features to merge per snapshot (optional).
     frame_series: {feature: [(known_at_ts, value)]} market-wide series (e.g. weather-station readings)
     as-of joined onto every frame, so a frame only sees values already known at its ts.
     frame_series_applies(ticker, ts): which contracts in a frame they describe (default: all).
-    forecasts: a weather series' issued forecasts; each contract then carries the forecast fair-value
-    features (weather_fcst.snapshot_features, the same call the live engine makes)."""
+    forecasts: an external fair-value book (forecast_book: weather forecasts or sportsbook odds); each
+    contract then carries its features (book.features, the same call the live engine makes)."""
     micro = micro or {}
     series = BtcSeries(btc)
     # Sports (and any market with underlying=None) have no spot path: every frame with a
@@ -1053,10 +1053,11 @@ def load_from_db(market: Market, history_days: Optional[int] = None) -> Dataset:
                          forecast_book(market, since))
 
 
-def forecast_book(market: Market, since: datetime) -> Optional[weather_fcst.ForecastBook]:
-    """The window's issued forecasts for a weather series (None otherwise, or if unreadable: the
-    forecast features are then absent, and a rule needing them simply never enters)."""
-    if market.series not in WEATHER_STATIONS:
+def forecast_book(market: Market, since: datetime):
+    """The window's external fair-value book: issued NWS forecasts for a weather series, collected
+    sportsbook odds for an NBA/NHL game series, else None. None too if unreadable: the features
+    are then absent, and a rule needing them simply never enters."""
+    if market.series not in WEATHER_STATIONS and market.series not in sports_odds.SPORTS:
         return None
     from app import repository as repo
     from data_pipeline.common import get_db_conn
@@ -1064,12 +1065,18 @@ def forecast_book(market: Market, since: datetime) -> Optional[weather_fcst.Fore
         conn = get_db_conn()
         try:
             with conn.cursor() as cur:
-                return weather_fcst.book_for_series(market.series, lambda station, kind: repo.load_weather_forecasts(
-                    cur, station, kind, (since - timedelta(days=2)).date()))
+                if market.series in sports_odds.SPORTS:
+                    return sports_odds.book_for_series(market.series, lambda sport: repo.load_sports_odds(
+                        cur, sport, since - timedelta(days=sports_odds.MAX_AGE_MIN / 1440.0 + 1)))
+                early = since - timedelta(days=weather_fcst.BIAS_DAYS * 2)
+                return weather_fcst.book_for_series(
+                    market.series,
+                    lambda station, kind: repo.load_weather_forecasts(cur, station, kind, early.date()),
+                    lambda series: repo.load_weather_actuals(cur, series, early))
         finally:
             conn.close()
     except Exception as e:  # noqa: BLE001 - a missing table/outage must not fail the research run
-        print("[backtest] weather forecasts unavailable for %s: %r" % (market.key, e), flush=True)
+        print("[backtest] external fair-value data unavailable for %s: %r" % (market.key, e), flush=True)
         return None
 
 
