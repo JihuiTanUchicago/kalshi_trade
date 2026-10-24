@@ -38,7 +38,11 @@ log = logging.getLogger(__name__)
 
 # -- operator-tunable knobs (§B.2) ---------------------------------------------
 ALPHA = 0.10            # FDR / CI / p-value level
-DSR_MIN = 0.95          # deflated-Sharpe floor for STAT_SUPPORTED
+# Deflated-Sharpe floor for STAT_SUPPORTED. 0.5 = the observed Sharpe beats the expected best of
+# the competing zero-edge trials (a selection check). Significance is LORD++'s job: a 0.95 floor
+# stacked on the online-FDR budget corrected twice for the same multiplicity and blocked most
+# realistic 5-8c edges (Todd's decision, 2026-10-24).
+DSR_MIN = 0.5
 CORR_MAX = 0.80         # marginal-contribution: max |corr| to a deployed peer
 PLACEBO_SHUFFLES = 200  # label-shuffle negative-control resamples
 _BOOT_SEED = 12345      # base seed; per-experiment offset keeps verdicts deterministic
