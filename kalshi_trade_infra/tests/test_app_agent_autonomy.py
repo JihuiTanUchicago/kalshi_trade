@@ -199,8 +199,33 @@ def test_research_action_skips_a_market_on_cooldown(monkeypatch):
                                                      "finished_at": agent.repo.now_utc()}])
     text, pid = agent.act(None, USER, {"type": "research", "market": "btc15m",
                           "idea": "Another angle on BTC overreaction."}, True)
-    assert pid is None and rec["runs"] == []            # just-failed market is on cooldown
+    # On autopilot a cooldown market no longer stalls research: the angle runs with market=None, and
+    # run_research picks from markets off cooldown (prod 2026-10-24: an hour of reviews started nothing).
+    assert pid is None and rec["runs"] == [(None, None, "Another angle on BTC overreaction.")]
     assert "cooldown" in text.lower()
+
+
+def test_research_action_on_cooldown_still_refuses_when_not_autopilot(monkeypatch):
+    rec = _capture(monkeypatch)
+    monkeypatch.setattr(agent.repo, "list_runs",
+                        lambda cur, uid, limit=30: [{"id": 6, "market": "btc15m", "status": "failed",
+                                                     "finished_at": agent.repo.now_utc()}])
+    text, pid = agent.act(None, USER, {"type": "research", "market": "btc15m",
+                          "idea": "Another angle on BTC overreaction."}, False)
+    assert pid is None and rec["runs"] == [] and "cooldown" in text.lower()
+
+
+def test_blocked_markets_and_cooldown_line_come_from_one_read(monkeypatch):
+    calls = []
+    now = agent.repo.now_utc()
+    runs = [{"id": 1, "market": "btc15m", "status": "stopped", "finished_at": now},
+            {"id": 2, "market": "eth_daily", "status": "running", "finished_at": None},
+            {"id": 3, "market": "high_ny", "status": "succeeded", "finished_at": now - agent.timedelta(days=2)}]
+    monkeypatch.setattr(agent.repo, "list_runs", lambda cur, uid, limit=30: calls.append(1) or runs)
+    blocked = agent._research_blocked_markets(None, 1)
+    assert set(blocked) == {"btc15m", "eth_daily"} and len(calls) == 1
+    line = agent._cooldown_line(None, 1)
+    assert "do NOT propose" in line and "btc15m" in line and "eth_daily" in line and "high_ny" not in line
 
 
 def test_research_action_allows_a_different_market(monkeypatch):
