@@ -10,7 +10,7 @@ import os
 import re
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 STARTING_PAPER_BALANCE = 1000.0
 
@@ -1086,6 +1086,16 @@ def get_deployment(cur, user_id: int, deployment_id: int) -> Optional[Dict]:
     cur.execute(_DEPLOYMENT_SELECT + " WHERE d.id=%s AND d.user_id=%s GROUP BY d.id", (deployment_id, user_id))
     row = cur.fetchone()
     return _strategy_row(row) if row else None
+
+
+def deployment_closed_stats(cur, deployment_id: int) -> Tuple[int, float]:
+    """(closed position rows, their summed P&L) for one deployment."""
+    cur.execute(
+        "SELECT COUNT(*) AS n, COALESCE(SUM(pnl),0) AS p FROM app_positions WHERE deployment_id=%s AND status='closed'",
+        (deployment_id,),
+    )
+    row = cur.fetchone() or {}
+    return int(row.get("n") or 0), float(row.get("p") or 0)
 
 
 def paper_round_trips(cur, user_id: int, strategy_id: int, ref_prefix: str = "sim:") -> List[Dict]:

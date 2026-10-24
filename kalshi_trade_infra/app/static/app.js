@@ -2429,6 +2429,7 @@
         ];
         const body = root.querySelector('#road-live-body');
         if (body) body.innerHTML = gatesHtml(rows)
+          + (p.realization != null ? `<p class="hint" style="margin-top:6px;font-variant-numeric:tabular-nums">Paper earns <b>${Math.round(p.realization * 100)}%</b> of the backtest's unseen-data P&amp;L per trade.</p>` : '')
           + `<p class="hint" style="margin-top:6px">${r.ready ? 'Every gate is clear. Autopilot may move this to live money within your caps.' : 'Blocked: ' + esc(r.blocking) + '.'} Paper counts only fills simulated against the live order book.</p>`;
       } catch (e) {
         const body = root.querySelector('#road-live-body');
