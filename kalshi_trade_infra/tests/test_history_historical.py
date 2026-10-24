@@ -31,9 +31,11 @@ class _Cur:
 @pytest.fixture(autouse=True)
 def _fresh(monkeypatch):
     mh._cutoff_cache.clear()
+    mh._last_settled.clear()
     monkeypatch.setattr(mh.time, "sleep", lambda s: None)
     yield
     mh._cutoff_cache.clear()
+    mh._last_settled.clear()
 
 
 def _mkt(ticker, close):
@@ -193,3 +195,49 @@ def test_each_market_gets_a_bounded_slice_of_the_pass(monkeypatch):
     got.clear()
     mh.sync_all_markets(_Cur(), [_cat("a")], None, 1005.0, {})
     assert got == [1005.0]  # never past the pass deadline
+
+
+def _series(key, series):
+    return Market(key, series, key, candle_minutes=60, history_days=365, underlying=None, deployable=True)
+
+
+def test_priority_weather_goes_right_after_curated_without_a_slice(monkeypatch):
+    got = []
+    monkeypatch.setattr(mh, "sync_market_candles", lambda cur, market, deadline=None: got.append((market.series, deadline)))
+    monkeypatch.setattr(mh, "_sync_settled", lambda cur, market, now, stats: None)
+    monkeypatch.setattr(mh, "MARKET_SLICE_SECONDS", 20)
+    monkeypatch.setattr(mh, "PRIORITY_SERIES", ["KXHIGHCHI", "KXHIGHAUS"])
+    monkeypatch.setattr(mh, "PRIORITY_PREFIXES", ("KXHIGH", "KXLOW"))
+    monkeypatch.setattr(mh.time, "time", lambda: 1000.0)
+    mh._candle_rotation = 0
+    ms = [_series("nba", "KXNBAGAME"), _series("lowtbos", "KXLOWTBOS"), _series("aus", "KXHIGHAUS"),
+          _series("chi", "KXHIGHCHI"), MARKETS["high_ny"]]
+    mh.sync_all_markets(_Cur(), ms, None, 1900.0, {})
+    assert [s for s, _ in got] == ["KXHIGHNY", "KXHIGHCHI", "KXHIGHAUS", "KXLOWTBOS", "KXNBAGAME"]
+    assert [d for _, d in got] == [1900.0, 1900.0, 1900.0, 1900.0, 1020.0]
+
+
+def test_catalog_settled_lists_refresh_at_most_hourly_curated_every_pass(monkeypatch):
+    calls = []
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(mh, "sync_market_candles", lambda cur, market, deadline=None: None)
+    monkeypatch.setattr(mh, "_sync_settled", lambda cur, market, now, stats: calls.append(market.key))
+    monkeypatch.setattr(mh, "SETTLED_MIN_INTERVAL_SECONDS", 3600)
+    monkeypatch.setattr(mh.time, "time", lambda: clock["t"])
+    ms = [MARKETS["high_ny"], _cat("a")]
+    mh.sync_all_markets(_Cur(), ms, None, 9e9, {})
+    clock["t"] += 600
+    mh.sync_all_markets(_Cur(), ms, None, 9e9, {})
+    assert calls == ["high_ny", "a", "high_ny"]
+    clock["t"] += 3600
+    mh.sync_all_markets(_Cur(), ms, None, 9e9, {})
+    assert calls[-2:] == ["high_ny", "a"]
+
+
+def test_rotation_starts_at_a_random_point_after_a_restart(monkeypatch):
+    monkeypatch.setattr(mh, "sync_market_candles", lambda cur, market, deadline=None: None)
+    monkeypatch.setattr(mh, "_sync_settled", lambda cur, market, now, stats: None)
+    monkeypatch.setattr(mh.random, "randrange", lambda n: 2)
+    mh._candle_rotation = None
+    mh.sync_all_markets(_Cur(), [_cat("a"), _cat("b"), _cat("c")], None, 0.0, {})  # budget already gone
+    assert mh._candle_rotation == 2

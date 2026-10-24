@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
@@ -57,7 +58,18 @@ MARKET_SLICE_SECONDS = int(os.getenv("HISTORY_MARKET_SLICE_SECONDS", "20"))
 # serving them. Refetched hourly.
 CUTOFF_TTL_SECONDS = 3600
 _cutoff_cache: Dict[str, object] = {}
-_candle_rotation = 0
+# Series filled first, with no per-market slice: the research thread is waiting on a year of weather.
+# Exact tickers come first (in this order), then anything matching a prefix. Env-tunable; empty = off.
+PRIORITY_SERIES = [t for t in os.getenv(
+    "HISTORY_PRIORITY_SERIES", "KXHIGHCHI,KXHIGHAUS,KXHIGHMIA,KXHIGHDEN,KXHIGHLAX,KXHIGHPHIL").split(",") if t]
+PRIORITY_PREFIXES = tuple(t for t in os.getenv("HISTORY_PRIORITY_PREFIXES", "KXHIGH,KXLOW").split(",") if t)
+# Catalog series re-list their settled markets at most this often (curated: every pass). Two API calls
+# for each of ~1,000 series every pass was a third of the budget for lists that change daily.
+SETTLED_MIN_INTERVAL_SECONDS = int(os.getenv("HISTORY_SETTLED_MIN_INTERVAL_SECONDS", "3600"))
+_last_settled: Dict[str, float] = {}
+# Where the catalog rotation resumes. Starts at a random point so the hourly web deploys, which
+# restart this process, don't send every pass back to the same first ~100 series.
+_candle_rotation: Optional[int] = None
 
 
 def _naive_utc(dt: datetime) -> datetime:
@@ -406,28 +418,48 @@ def _sync_settled(cur, market: Market, now: datetime, stats: Dict[str, int]) -> 
     stats[market.key + "_backfill"] = backfill_settled_markets(cur, market, now)
 
 
+def _priority_rank(series: str) -> Optional[int]:
+    if series in PRIORITY_SERIES:
+        return PRIORITY_SERIES.index(series)
+    if PRIORITY_PREFIXES and series.startswith(PRIORITY_PREFIXES):
+        return len(PRIORITY_SERIES)
+    return None
+
+
 def sync_all_markets(cur, markets, now: datetime, deadline: float, stats: Dict[str, int]) -> int:
-    """Settled markets + candles for every market within the pass budget: curated first (they are
-    what's traded), then the catalog series (~1,000 once the catalog is healthy) in a rotating order
-    resumed where the last pass ran out. Returns how many markets were left for the next pass.
+    """Settled markets + candles for every market within the pass budget. Curated first (they are
+    what's traded), then PRIORITY_* series, both with no per-market slice; then the rest of the
+    catalog (~1,000 series) in a rotating order, MARKET_SLICE_SECONDS each, resumed where the last
+    pass ran out. Returns how many markets were left for the next pass.
 
     Contained per market: one series' API/DB hiccup must not abort the others (it retries next pass).
     """
     global _candle_rotation
     curated = [m for m in markets if m.key in CURATED]
-    rest = [m for m in markets if m.key not in CURATED]
+    ranked = [(r, i, m) for i, m in enumerate(markets) if m.key not in CURATED
+              for r in [_priority_rank(m.series)] if r is not None]
+    priority = [m for _r, _i, m in sorted(ranked, key=lambda t: (t[0], t[1]))]
+    front = curated + priority
+    front_keys = {m.key for m in front}
+    rest = [m for m in markets if m.key not in front_keys]
+    if _candle_rotation is None:
+        _candle_rotation = random.randrange(len(rest)) if rest else 0
     start = _candle_rotation % len(rest) if rest else 0
-    order = curated + rest[start:] + rest[:start]
+    order = front + rest[start:] + rest[:start]
     for i, market in enumerate(order):
         if time.time() >= deadline:
-            _candle_rotation = start + max(i - len(curated), 0)
+            _candle_rotation = start + max(i - len(front), 0)
             return len(order) - i
+        last = _last_settled.get(market.key)
+        if market.key in CURATED or last is None or time.time() - last >= SETTLED_MIN_INTERVAL_SECONDS:
+            try:
+                _sync_settled(cur, market, now, stats)
+                _last_settled[market.key] = time.time()
+            except Exception as e:
+                print("[market_history] %s sync failed: %r (retry next pass)" % (market.key, e), flush=True)
+        slice_end = deadline if market.key in front_keys else min(deadline, time.time() + MARKET_SLICE_SECONDS)
         try:
-            _sync_settled(cur, market, now, stats)
-        except Exception as e:
-            print("[market_history] %s sync failed: %r (retry next pass)" % (market.key, e), flush=True)
-        try:
-            sync_market_candles(cur, market, deadline=min(deadline, time.time() + MARKET_SLICE_SECONDS))
+            sync_market_candles(cur, market, deadline=slice_end)
         except Exception as e:
             print("[market_history] %s candles failed: %r (retry next pass)" % (market.key, e), flush=True)
     _candle_rotation = 0
