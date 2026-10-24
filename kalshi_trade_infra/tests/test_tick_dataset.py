@@ -102,3 +102,12 @@ def test_a_spec_backtests_on_tick_frames_and_fills_on_the_next_decision():
     assert trades
     first_signal = min(ts for ts, snaps in ds.frames if specmod.entries(spec, snaps))
     assert trades[0].entry_ts == first_signal + M.decision_seconds   # filled at the next decision
+
+
+def test_the_per_second_twin_waits_for_enough_archive():
+    from app import agent
+    assert "of the 3 days" in M.tick_history_short(now_ts=T0 + 3600)
+    assert M.tick_history_short(now_ts=T0 + 3 * 86400) is None
+    assert MARKETS["btc15m"].tick_history_short(now_ts=T0) is None      # candle markets never wait
+    if M.tick_history_short():                                          # before 2026-10-27 20:00Z
+        assert agent.research_unavailable_reason("btc15m_tick") == M.tick_history_short()
