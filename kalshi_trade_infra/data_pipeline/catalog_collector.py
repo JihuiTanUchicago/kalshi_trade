@@ -85,7 +85,7 @@ def refresh_series(cur, seen: Dict[str, Dict[str, object]], complete: bool) -> i
         cur.executemany(
             """INSERT INTO kalshi_series (series_ticker, title, category, open_markets, total_markets, updated_at)
                VALUES (%s, %s, NULL, %s, %s, %s)
-               ON DUPLICATE KEY UPDATE title=VALUES(title), open_markets=VALUES(open_markets),
+               ON DUPLICATE KEY UPDATE title=COALESCE(NULLIF(title, ''), VALUES(title)), open_markets=VALUES(open_markets),
                  total_markets=VALUES(total_markets), updated_at=VALUES(updated_at)""",
             rows,
         )
@@ -107,7 +107,10 @@ MAX_PAGES = 200
 
 
 def refresh_series_meta(cur) -> int:
-    """Enrich kalshi_series with Kalshi's own `category` + `frequency` for every series we track.
+    """Enrich kalshi_series with Kalshi's own `category`, `frequency` and series `title` for every
+    series we track. The title matters: refresh_series only has a market's title ("Portland wins",
+    "Will the maximum temperature be >77° on Oct 25, 2026?"), which app/markets would otherwise
+    show as the series label.
 
     Kalshi's /markets payload carries neither, but the bulk /series endpoint returns both for all
     series in ONE call. app/markets.load_catalog_markets filters on these two columns to generate
@@ -122,18 +125,20 @@ def refresh_series_meta(cur) -> int:
     for s in data.get("series") or []:
         t = s.get("ticker")
         if t:
-            meta[t] = ((s.get("category") or None), (s.get("frequency") or None))
+            meta[t] = ((s.get("category") or None), (s.get("frequency") or None),
+                       str(s.get("title") or "").strip()[:255])
     if not meta:
         return 0
     cur.execute("SELECT series_ticker FROM kalshi_series")
     rows = [
-        (meta[r["series_ticker"]][0], meta[r["series_ticker"]][1], r["series_ticker"])
+        meta[r["series_ticker"]] + (r["series_ticker"],)
         for r in cur.fetchall()
         if r["series_ticker"] in meta
     ]
     if rows:
         cur.executemany(
-            "UPDATE kalshi_series SET category=%s, frequency=%s WHERE series_ticker=%s", rows
+            "UPDATE kalshi_series SET category=%s, frequency=%s, title=COALESCE(NULLIF(%s, ''), title) "
+            "WHERE series_ticker=%s", rows
         )
     return len(rows)
 
