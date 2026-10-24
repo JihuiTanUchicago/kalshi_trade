@@ -385,6 +385,18 @@ MICRO_FEATURES: Dict[str, Tuple[str, str]] = {
 # The micro features live in the same FEATURES namespace specs filter on.
 FEATURES.update({name: desc for name, (_col, desc) in MICRO_FEATURES.items()})
 
+# Daily-high temperature series -> the ASOS station Kalshi settles them on. Their datasets carry the
+# station's observations as built-in features (app/freedata.station_observations, as-of joined).
+WEATHER_STATIONS: Dict[str, str] = {
+    "KXHIGHNY": "NYC", "KXHIGHCHI": "MDW", "KXHIGHAUS": "AUS", "KXHIGHMIA": "MIA",
+    "KXHIGHDEN": "DEN", "KXHIGHLAX": "LAX", "KXHIGHPHIL": "PHL",
+}
+FEATURES.update({
+    "obs_high_f": "weather markets only: highest temperature (F) observed so far today at the settlement "
+                  "station (NWS climate day, local standard time); the day's high can only rise from here",
+    "obs_temp_f": "weather markets only: latest temperature (F) reading at the settlement station",
+})
+
 
 @dataclass(frozen=True)
 class Contract:

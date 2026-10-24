@@ -42,6 +42,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import quote
@@ -49,9 +50,14 @@ from urllib.parse import quote
 log = logging.getLogger(__name__)
 
 _FETCH_TIMEOUT_S = 20
-# Cache resolved series for the life of the process: the same series is requested across folds
-# (research/validation/holdout) and across many specs in one run. Key = (source, series).
-_CACHE: Dict[Tuple[str, str], Optional[List[Tuple[int, float]]]] = {}
+# Cache resolved series: the same series is requested across folds (research/validation/holdout)
+# and across many specs in one run. Key = (source, series) -> (fetched_at, observations). Entries
+# expire after CACHE_TTL_S, since worker processes live for days and a never-refreshed series would
+# carry a stale last value onto every newer frame.
+CACHE_TTL_S = 3600
+# Hourly station readings feed the live engine too: refresh them sooner so a new METAR shows up.
+SOURCE_TTL_S = {"asos": 600}
+_CACHE: Dict[Tuple[str, str], Tuple[float, Optional[List[Tuple[int, float]]]]] = {}
 
 # Sources that resolve for FREE with no key/entitlement on the host. Each maps source -> fetcher
 # returning observations as (observation_unix_ts_utc_midnight, value), ascending, or raising.
@@ -215,13 +221,15 @@ def resolve(req: Dict) -> Tuple[Optional[List[Tuple[int, float]]], Dict]:
         prov["skipped"] = "unknown or unconfigured source %r" % source
         return None, prov
     key = (source, series)
-    if key not in _CACHE:
+    hit = _CACHE.get(key)
+    if hit is None or time.time() - hit[0] > SOURCE_TTL_S.get(source, CACHE_TTL_S):
         try:
-            _CACHE[key] = fetcher(series)
+            got = fetcher(series)
         except Exception as e:  # network/parse/entitlement - all degrade gracefully
             log.warning("freedata: could not resolve %s:%s (%s)", source, series, e)
-            _CACHE[key] = None
-    raw = _CACHE[key]
+            got = None
+        _CACHE[key] = hit = (time.time(), got)
+    raw = hit[1]
     if raw is None:
         prov["skipped"] = "fetch failed or unavailable (see log)"
         return None, prov
@@ -231,6 +239,18 @@ def resolve(req: Dict) -> Tuple[Optional[List[Tuple[int, float]]], Dict]:
     prov["known_from"] = _iso(obs[0][0])
     prov["known_to"] = _iso(obs[-1][0])
     return obs, prov
+
+
+def station_observations(station: str) -> Dict[str, List[Tuple[int, float]]]:
+    """Built-in weather features for a daily-high market's settlement station, as (known_at, value)
+    series: obs_high_f (running max of the NWS climate day so far) and obs_temp_f (latest reading).
+    A series that can't be fetched is left out, so the features are simply absent (fail-open)."""
+    out: Dict[str, List[Tuple[int, float]]] = {}
+    for name, series in (("obs_high_f", station + ":dailymax"), ("obs_temp_f", station)):
+        obs, _prov = resolve({"name": name, "source": "asos", "series": series, "lag_days": 0})
+        if obs:
+            out[name] = obs
+    return out
 
 
 def enrich(spec: Dict, window: Dict) -> List[Dict]:

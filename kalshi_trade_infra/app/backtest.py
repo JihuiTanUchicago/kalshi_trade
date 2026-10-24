@@ -29,7 +29,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from app import freedata
 from app import spec as specmod
-from app.markets import MARKETS, NEW_YORK, BtcSeries, Contract, Market, Snapshot, snapshot
+from app.markets import MARKETS, NEW_YORK, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot, snapshot
 from data_pipeline.architecture.execution_kernel import reservation_price
 from data_pipeline.kalshi_fees import taker_fee_dollars
 
@@ -75,10 +75,13 @@ def _iso(ts: int) -> str:
 
 
 def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc: List[Tuple[int, float]],
-                  micro: Optional[Dict[Tuple[str, int], Dict[str, float]]] = None) -> Dataset:
+                  micro: Optional[Dict[Tuple[str, int], Dict[str, float]]] = None,
+                  frame_series: Optional[Dict[str, List[Tuple[int, float]]]] = None) -> Dataset:
     """markets: {ticker, strike, close_time, result}; candles: (ticker, end_period_ts, yes_bid, yes_ask)
     tuples as repository.load_history returns them, or the equivalent dicts.
-    micro: {(ticker, decision_ts): {feature: value}} order-book features to merge per snapshot (optional)."""
+    micro: {(ticker, decision_ts): {feature: value}} order-book features to merge per snapshot (optional).
+    frame_series: {feature: [(known_at_ts, value)]} market-wide series (e.g. weather-station readings)
+    as-of joined onto every frame, so a frame only sees values already known at its ts."""
     micro = micro or {}
     series = BtcSeries(btc)
     # Sports (and any market with underlying=None) have no spot path: every frame with a
@@ -103,11 +106,14 @@ def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc:
         by_ts[int(end_ts)].append(
             (contract, float(bid) if bid is not None else None, float(ask) if ask is not None else None)
         )
+    joined = {name: freedata.asof_join(list(by_ts), obs) for name, obs in (frame_series or {}).items()}
     frames = []
     for ts in sorted(by_ts):
         feats = series.features_at(ts) if has_underlying else {}
         if feats is None:
             continue
+        if joined:
+            feats = dict(feats, **{n: j[ts] for n, j in joined.items() if ts in j})
         snaps = [s for s in (snapshot(feats, ct, ts, b, a, micro.get((ct.ticker, ts)))
                              for ct, b, a in by_ts[ts]) if s is not None]
         if snaps:
@@ -1027,7 +1033,10 @@ def load_from_db(market: Market, history_days: Optional[int] = None) -> Dataset:
             h = repo.load_history(cur, market.series, market.candle_minutes, since, market.underlying)
     finally:
         conn.close()
-    return build_dataset(market, h["markets"], h["candles"], h["btc"], h.get("micro"))
+    frame_series = None
+    if market.series in WEATHER_STATIONS:
+        frame_series = freedata.station_observations(WEATHER_STATIONS[market.series])
+    return build_dataset(market, h["markets"], h["candles"], h["btc"], h.get("micro"), frame_series)
 
 
 def dataset(market_key: str, history_days: Optional[int] = None) -> Dataset:
