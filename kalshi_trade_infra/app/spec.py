@@ -93,7 +93,9 @@ DEFAULT_SPEC: Dict[str, Any] = {
 CROSS_PAIRINGS = ("cross_sectional", "cross_strike", "calendar")
 CROSS_RELATIONSHIPS = ("spread",)  # ponytail: ratio is a trivial variant; add it only when asked.
 MAX_CROSS_LEGS = 3
-MAX_POOL_MARKETS = 7  # extra markets a pooled spec may be judged across, beyond spec["market"]
+MAX_POOL_MARKETS = 3  # extra markets a pooled spec may be judged across, beyond spec["market"]
+# Memory: each 1-minute market-month of snapshots is ~50MB and every leg is loaded per phase, so
+# 4 markets keeps a pooled research run well inside the agents worker's 400M MemoryMax.
 
 SPEC_GUIDE = """A strategy spec is a JSON object:
 {
@@ -133,7 +135,7 @@ SPEC_GUIDE = """A strategy spec is a JSON object:
     "relationship": "spread"                    // trade the spread of model edges (buy YES cheap leg, NO dear leg)
   }
 }
-"pool": [<key>, ...] OPTIONAL (omit for a normal spec), up to 7 EXTRA markets with the SAME decision
+"pool": [<key>, ...] OPTIONAL (omit for a normal spec), up to 3 EXTRA markets with the SAME decision
 cadence. The same single-contract rule is judged on the POOLED trades of spec.market plus these
 markets, so the gate sees ~N times the validation sample (a ~sqrt(N) times smaller detectable edge).
 Use it only for a STRUCTURAL mechanism that should hold on every pooled market (fee/price-band

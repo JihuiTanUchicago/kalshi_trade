@@ -327,7 +327,7 @@ def test_pool_validates_and_lists_involved_markets():
 def test_pool_rejects_bad_markets_cadence_and_cross():
     import pytest
     for bad in ({"pool": ["nope"]}, {"pool": []}, {"pool": "eth15m"}, {"pool": ["btc_daily"]},
-                {"pool": ["btc15m"]},
+                {"pool": ["btc15m"]}, {"pool": ["eth15m", "sol15m", "xrp15m", "doge15m"]},
                 {"pool": ["eth15m"], "cross": {"pairing": "cross_strike", "legs": []}}):
         with pytest.raises(specmod.SpecError):
             specmod.validate(dict({"market": "btc15m"}, **bad))
