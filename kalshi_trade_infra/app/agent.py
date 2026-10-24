@@ -3009,6 +3009,20 @@ def apply_proposal(cur, user_id: int, proposal: Dict) -> None:
         repo.set_user_execution_config(cur, user_id, _clamp_into(proposal.get("payload") or {}, EXEC_BOUNDS))
 
 
+def _deployment_age_text(d: Dict) -> str:
+    # How long the deployment has been up, so a review doesn't call a 20-minute-old paper
+    # deployment "zero fills for days" and pause it before it has seen a trading window.
+    created = d.get("created_at")
+    if not created:
+        return ""
+    hours = max(0.0, (repo.now_utc() - created).total_seconds() / 3600)
+    age = "%.1f hours" % hours if hours < 48 else "%.1f days" % (hours / 24)
+    note = ""
+    if d.get("mode") == "paper" and hours < PAPER_MIN_AGE.total_seconds() / 3600:
+        note = " (too new to judge; leave it running until it has been up %d hours)" % (PAPER_MIN_AGE.total_seconds() // 3600)
+    return "deployed %s ago%s; " % (age, note)
+
+
 def _copilot_context(cur, user: Dict) -> str:
     deps = repo.list_deployments(cur, user["id"])
     passed = [s for s in repo.list_strategies(cur, user["id"], status="passed", limit=20)]
@@ -3050,10 +3064,10 @@ def _copilot_context(cur, user: Dict) -> str:
         oos = ((d.get("result") or {}).get("out_of_sample") or {})
         lines.append(
             "- deployment_id=%s \"%s\" market=%s mode=%s status=%s live: %s closed trades, %s wins, realized $%.2f, %s open; "
-            "backtest unseen-data: pnl $%s over %s trades, max drawdown $%s; spec=%s"
+            "backtest unseen-data: pnl $%s over %s trades, max drawdown $%s; %sspec=%s"
             % (d["id"], d["title"], d["market"], d["mode"], d["status"], d["closed_trades"], d["wins"],
                float(d["realized_pnl"]), d["open_positions"], oos.get("pnl"), oos.get("trades"), oos.get("max_drawdown"),
-               json.dumps(d["spec"], separators=(",", ":")))
+               _deployment_age_text(d), json.dumps(d["spec"], separators=(",", ":")))
         )
         if d["mode"] == "paper":
             # Realistic-fill evidence for the paper -> live gate, so reviews promote, keep or stop
