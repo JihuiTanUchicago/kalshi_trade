@@ -26,9 +26,8 @@ Columns (float32 unless noted):
   (Coinbase, Kraken, Bitstamp, Gemini, Bullish, Crypto.com, LMAX; tick_spot.py), a proxy for the
   index Kalshi settles on. spot_comp_n: venues in it. spot_cb_comp_bp: Coinbase mid minus
   spot_comp, in basis points. dist_sigma_comp: dist_sigma with spot_comp in place of spot.
-  Null for non-BTC series. Hours built before the other venues were recorded (features from
-  2026-10-24 ~22:00Z on have them) lack these columns; with only Coinbase quoting, spot_comp is
-  Coinbase's mid and spot_comp_n is 1.
+  Null for non-BTC series. Hours built before this change lack the four columns (the reader
+  returns them as null); with only Coinbase quoting, spot_comp is Coinbase's mid, spot_comp_n 1.
 """
 import math
 import os
