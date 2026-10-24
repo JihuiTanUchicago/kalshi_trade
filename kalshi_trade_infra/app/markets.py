@@ -74,6 +74,9 @@ class Market:
 # research gate's sample (validation is 25% of it). 90 days ~ 22 validation days, ~2.7x the old 30.
 # market_history backfills the older end when this reaches past what was collected.
 CRYPTO_15M_HISTORY_DAYS = 90
+# Weather settles on a seasonal physical quantity, so a model needs a full year; Kalshi's /historical
+# endpoints serve these series back to 2021, and market_history pages them past the live cutoff.
+WEATHER_HISTORY_DAYS = int(os.getenv("WEATHER_HISTORY_DAYS", "365"))
 
 CURATED: Dict[str, Market] = {
     # Logical research series; the native Bitcoin ticker is verified/discovered by the
@@ -145,7 +148,7 @@ CURATED: Dict[str, Market] = {
     # backtest surface (unlike monthly econ releases, which are too sparse and were excluded). candle_minutes
     # =60: a weather market lives ~1 day, so hourly decisions over the day; no close-hour filter (one event/day).
     "high_ny": Market("high_ny", "KXHIGHNY", "NYC daily high temperature", candle_minutes=60,
-                      history_days=60, underlying=None, deployable=True, category="Weather"),
+                      history_days=WEATHER_HISTORY_DAYS, underlying=None, deployable=True, category="Weather"),
     # Research-only SPOT markets (kind="spot", deployable=False): Bittensor subnet alpha tokens.
     # These are a continuous price series (alpha priced in TAO via the subnet's AMM pool ratio),
     # NOT a Kalshi binary - no strike, no expiry, no settlement. `underlying` is the token's own
@@ -217,7 +220,8 @@ ALLOWED_CATEGORIES = frozenset({
 # (daily/weekly) decide hourly (60) so one market isn't 1,440 one-minute candles/day; fast ones
 # (sports games, intraday) decide at 1-minute like nba_game. history_days is bounded so the
 # collector's one-time backfill over ~100 new series stays feasible under the ~20 req/s limit.
-_FREQ_CANDLE = {"fifteen_min": 1, "hourly": 15, "daily": 60, "weekly": 60, "custom": 1}
+# Kalshi's candlesticks endpoint accepts only 1, 60 or 1440 minutes, so hourly series decide at 1.
+_FREQ_CANDLE = {"fifteen_min": 1, "hourly": 1, "daily": 60, "weekly": 60, "custom": 1}
 _FREQ_HISTORY = {"fifteen_min": 14, "hourly": 21, "daily": 45, "weekly": 120, "custom": 45}
 
 # Liquidity / activeness floor and the (generous) safety ceilings on how many markets we generate.
@@ -279,7 +283,7 @@ def market_from_series(row: Dict) -> Optional[Market]:
     return Market(
         key=key, series=series, label=label,
         candle_minutes=_FREQ_CANDLE.get(freq, 60),
-        history_days=_FREQ_HISTORY.get(freq, 45),
+        history_days=WEATHER_HISTORY_DAYS if category == "Climate and Weather" else _FREQ_HISTORY.get(freq, 45),
         underlying=None,        # outcome-settled: no spot, book-only (the nba_game model)
         deployable=True,        # ELIGIBLE to trade; every per-deployment gate still runs
         kind="binary",
