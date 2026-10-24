@@ -149,11 +149,12 @@ def test_asos_dailymax_resets_on_the_lst_day_and_is_delayed_to_publication(monke
 
 
 def test_asos_series_grammar():
-    assert freedata._parse_asos_series("NYC") == ("NYC", None)
-    assert freedata._parse_asos_series("mdw:dailymax") == ("MDW", -6)
-    assert freedata._parse_asos_series("KXYZ:dailymax:-7") == ("KXYZ", -7)
+    assert freedata._parse_asos_series("NYC") == ("NYC", None, None)
+    assert freedata._parse_asos_series("mdw:dailymax") == ("MDW", "max", -6)
+    assert freedata._parse_asos_series("nyc:dailymin") == ("NYC", "min", -5)
+    assert freedata._parse_asos_series("KXYZ:dailymax:-7") == ("KXYZ", "max", -7)
     import pytest
-    for bad in ("N", "NY C", "NYC:dailymin", "ZZZ:dailymax", "NYC:dailymax:-5:x"):
+    for bad in ("N", "NY C", "NYC:dailyavg", "ZZZ:dailymax", "NYC:dailymax:-5:x"):
         with pytest.raises(ValueError):
             freedata._parse_asos_series(bad)
 
@@ -186,7 +187,7 @@ def test_station_observations_name_the_builtin_weather_features(monkeypatch):
     monkeypatch.setattr(freedata, "_FETCHERS", {"asos": lambda s: [(0, 70.0 if "DAILYMAX" in s.upper() else 65.0)]})
     freedata._CACHE.clear()
     out = freedata.station_observations("NYC")
-    assert out == {"obs_high_f": [(0, 70.0)], "obs_temp_f": [(0, 65.0)]}
+    assert out == {"obs_high_f": [(0, 70.0)], "obs_low_f": [(0, 65.0)], "obs_temp_f": [(0, 65.0)]}
     monkeypatch.setattr(freedata, "_FETCHERS", {"asos": lambda s: (_ for _ in ()).throw(OSError("down"))})
     freedata._CACHE.clear()
     assert freedata.station_observations("NYC") == {}   # fail-open: features simply absent
@@ -200,6 +201,27 @@ def test_live_engine_sees_the_same_station_features_as_research(monkeypatch):
     monkeypatch.setattr(freedata, "_FETCHERS",
                         {"asos": lambda s: [(100, 70.0 if "DAILYMAX" in s.upper() else 65.0), (900, 72.0)]})
     freedata._CACHE.clear()
-    assert engine._event_feats(MARKETS["high_ny"], 500) == {"obs_high_f": 70.0, "obs_temp_f": 65.0}
+    assert engine._event_feats(MARKETS["high_ny"], 500) == {"obs_high_f": 70.0, "obs_low_f": 65.0, "obs_temp_f": 65.0}
     assert engine._event_feats(MARKETS["high_ny"], 50) == {}          # nothing known yet
     assert engine._event_feats(MARKETS["nba_game"], 500) == {}
+
+
+def test_asos_dailymin_and_one_download_per_station(monkeypatch):
+    """obs_low_f (KXLOW* markets) is the running min of the climate day; a station's raw, max and min
+    series share one IEM download per refresh window."""
+    from datetime import datetime, timezone
+
+    class Resp:
+        text = _ASOS_CSV
+        def raise_for_status(self):
+            pass
+    calls = []
+    import requests
+    monkeypatch.setattr(requests, "get", lambda url, params, timeout: calls.append(1) or Resp())
+    freedata._STATION_ROWS.clear()
+    freedata._CACHE.clear()
+    lows = freedata._fetch_asos("NYC:dailymin")
+    assert [v for _, v in lows] == [50.0, 49.0, 49.0, 48.0, 47.0, 47.0]
+    freedata._fetch_asos("NYC:dailymax")
+    freedata._fetch_asos("NYC")
+    assert len(calls) == 1

@@ -120,7 +120,8 @@ def _fetch_fred(series: str) -> List[Tuple[int, float]]:
 # valid time; ASOS_LAG_S is baked into the known-at time on top of the spec's own lag_days.
 ASOS_URL = "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py"
 ASOS_LAG_S = 15 * 60
-ASOS_HISTORY_DAYS = 200
+ASOS_HISTORY_DAYS = 400  # weather research history reaches 365 days
+ASOS_TIMEOUT_S = 60
 # NWS climate days (what Kalshi's daily-high markets settle on) run midnight to midnight LOCAL
 # STANDARD time all year, so a station's day boundary is a fixed UTC offset, never DST-shifted.
 ASOS_LST_OFFSET_H = {
@@ -131,23 +132,24 @@ ASOS_LST_OFFSET_H = {
 }
 
 
-def _parse_asos_series(series: str) -> Tuple[str, Optional[int]]:
-    """'NYC' -> latest temperature (F); 'NYC:dailymax' -> running max of the NWS climate day so
-    far (F), LST offset from ASOS_LST_OFFSET_H; 'XYZ:dailymax:-6' gives the offset explicitly.
-    Returns (station, lst_offset_hours or None for the raw series); raises on a bad series."""
+def _parse_asos_series(series: str) -> Tuple[str, Optional[str], Optional[int]]:
+    """'NYC' -> latest temperature (F); 'NYC:dailymax' / 'NYC:dailymin' -> running max / min of the
+    NWS climate day so far (F), LST offset from ASOS_LST_OFFSET_H; 'XYZ:dailymax:-6' gives the offset
+    explicitly. Returns (station, "max"|"min"|None, lst_offset_hours or None); raises on a bad series."""
     parts = series.strip().upper().split(":")
     station = parts[0]
     if not (3 <= len(station) <= 4 and station.isalnum()):
         raise ValueError("bad ASOS station %r" % station)
     if len(parts) == 1:
-        return station, None
-    if parts[1] != "DAILYMAX" or len(parts) > 3:
-        raise ValueError("ASOS series must be STATION or STATION:dailymax[:<utc offset h>]")
+        return station, None, None
+    if parts[1] not in ("DAILYMAX", "DAILYMIN") or len(parts) > 3:
+        raise ValueError("ASOS series must be STATION or STATION:dailymax|dailymin[:<utc offset h>]")
+    agg = parts[1][5:].lower()
     if len(parts) == 3:
-        return station, int(parts[2])
+        return station, agg, int(parts[2])
     if station not in ASOS_LST_OFFSET_H:
-        raise ValueError("no LST offset known for %s; use %s:dailymax:<offset>" % (station, station))
-    return station, ASOS_LST_OFFSET_H[station]
+        raise ValueError("no LST offset known for %s; use %s:%s:<offset>" % (station, station, parts[1].lower()))
+    return station, agg, ASOS_LST_OFFSET_H[station]
 
 
 def _asos_rows(text: str) -> List[Tuple[int, float]]:
@@ -165,27 +167,33 @@ def _asos_rows(text: str) -> List[Tuple[int, float]]:
     return out
 
 
-def _daily_running_max(rows: List[Tuple[int, float]], lst_offset_h: int) -> List[Tuple[int, float]]:
-    """Running max of each climate day so far, emitted at every observation. A frame in a new day
-    sees the prior day's max until that day's first observation (at most about an hour)."""
+def _daily_running(rows: List[Tuple[int, float]], lst_offset_h: int, agg: str = "max") -> List[Tuple[int, float]]:
+    """Running max (or min) of each climate day so far, emitted at every observation. A frame in a
+    new day sees the prior day's value until that day's first observation (at most about an hour)."""
+    pick = max if agg == "max" else min
     out: List[Tuple[int, float]] = []
-    day, hi = None, None
+    day, cur = None, None
     for t, v in rows:
         d = (t + lst_offset_h * 3600) // 86400
         if d != day:
-            day, hi = d, v
+            day, cur = d, v
         else:
-            hi = max(hi, v)
-        out.append((t, hi))
+            cur = pick(cur, v)
+        out.append((t, cur))
     return out
 
 
-def _fetch_asos(series: str, now: Optional[datetime] = None) -> List[Tuple[int, float]]:
-    """Free, keyless IEM ASOS archive. Returns (known-at ts, value): observation time + ASOS_LAG_S."""
+_STATION_ROWS: Dict[str, Tuple[float, List[Tuple[int, float]]]] = {}
+
+
+def _station_rows(station: str, now: Optional[datetime] = None) -> List[Tuple[int, float]]:
+    """One IEM download per station per SOURCE_TTL_S, shared by its raw/max/min series."""
     import requests
     from datetime import timedelta
 
-    station, offset = _parse_asos_series(series)
+    hit = _STATION_ROWS.get(station)
+    if hit is not None and now is None and time.time() - hit[0] <= SOURCE_TTL_S["asos"]:
+        return hit[1]
     end = (now or datetime.now(timezone.utc)) + timedelta(days=1)
     start = end - timedelta(days=ASOS_HISTORY_DAYS)
     params = [("station", station), ("data", "tmpf"), ("tz", "Etc/UTC"), ("format", "onlycomma"),
@@ -193,13 +201,22 @@ def _fetch_asos(series: str, now: Optional[datetime] = None) -> List[Tuple[int, 
               ("report_type", "3"), ("report_type", "4"),
               ("year1", start.year), ("month1", start.month), ("day1", start.day),
               ("year2", end.year), ("month2", end.month), ("day2", end.day)]
-    resp = requests.get(ASOS_URL, params=params, timeout=_FETCH_TIMEOUT_S)
+    resp = requests.get(ASOS_URL, params=params, timeout=ASOS_TIMEOUT_S)
     resp.raise_for_status()
     rows = _asos_rows(resp.text)
     if not rows:
         raise ValueError("no usable ASOS observations for %s" % station)
-    if offset is not None:
-        rows = _daily_running_max(rows, offset)
+    if now is None:
+        _STATION_ROWS[station] = (time.time(), rows)
+    return rows
+
+
+def _fetch_asos(series: str, now: Optional[datetime] = None) -> List[Tuple[int, float]]:
+    """Free, keyless IEM ASOS archive. Returns (known-at ts, value): observation time + ASOS_LAG_S."""
+    station, agg, offset = _parse_asos_series(series)
+    rows = _station_rows(station, now)
+    if agg is not None:
+        rows = _daily_running(rows, offset, agg)
     return [(t + ASOS_LAG_S, v) for t, v in rows]
 
 
@@ -243,10 +260,12 @@ def resolve(req: Dict) -> Tuple[Optional[List[Tuple[int, float]]], Dict]:
 
 def station_observations(station: str) -> Dict[str, List[Tuple[int, float]]]:
     """Built-in weather features for a daily-high market's settlement station, as (known_at, value)
-    series: obs_high_f (running max of the NWS climate day so far) and obs_temp_f (latest reading).
+    series: obs_high_f / obs_low_f (running max / min of the NWS climate day so far) and obs_temp_f
+    (latest reading).
     A series that can't be fetched is left out, so the features are simply absent (fail-open)."""
     out: Dict[str, List[Tuple[int, float]]] = {}
-    for name, series in (("obs_high_f", station + ":dailymax"), ("obs_temp_f", station)):
+    for name, series in (("obs_high_f", station + ":dailymax"), ("obs_low_f", station + ":dailymin"),
+                         ("obs_temp_f", station)):
         obs, _prov = resolve({"name": name, "source": "asos", "series": series, "lag_days": 0})
         if obs:
             out[name] = obs

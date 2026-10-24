@@ -394,6 +394,8 @@ WEATHER_STATIONS: Dict[str, str] = {
 FEATURES.update({
     "obs_high_f": "weather markets only: highest temperature (F) observed so far today at the settlement "
                   "station (NWS climate day, local standard time); the day's high can only rise from here",
+    "obs_low_f": "weather markets only: lowest temperature (F) observed so far today at the settlement "
+                 "station (NWS climate day, local standard time); the day's low can only fall from here",
     "obs_temp_f": "weather markets only: latest temperature (F) reading at the settlement station",
 })
 
