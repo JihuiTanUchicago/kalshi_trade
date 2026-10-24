@@ -393,9 +393,16 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
         if kernel is None:
             repo.set_deployment_status(cur, dep["user_id"], dep["id"], "paused", why)
             return {"paused": "%s disabled" % mode}
+    # A book that still disagrees with the user's real Kalshi account after two reconcile sweeps
+    # halts new LIVE entries until it matches again (app/reconcile.py). Exits are never blocked.
+    halts = repo.live_entry_halts(cur, dep["user_id"]) if mode == "live" else []
     if specmod.is_cross_contract(spec):
+        if halts:
+            return {"halted": "position mismatch on %s" % ", ".join(h["ticker"] for h in halts)}
         return _decide_pairs(conn, dep, snaps, sizes, kernel, via_kernel, mode)
     out = {"exits": 0, "entries": 0}
+    if halts:
+        out["halted"] = "position mismatch on %s" % ", ".join(h["ticker"] for h in halts)
 
     positions = repo.open_positions(cur, dep["id"])
     for pos in positions:
@@ -418,7 +425,7 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
     open_notional = float(exposure["notional"])
     cap_positions = int(risk["max_open_positions"])
     cap_notional = float(risk["max_open_notional"])
-    for entry in specmod.entries(spec, snaps):
+    for entry in ([] if halts else specmod.entries(spec, snaps)):
         if slots <= 0 or open_count >= cap_positions:
             break  # deployment slot cap or user-wide position cap reached
         ticker = entry.snapshot.contract.ticker

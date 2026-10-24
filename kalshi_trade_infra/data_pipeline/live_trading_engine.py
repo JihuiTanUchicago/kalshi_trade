@@ -162,6 +162,115 @@ def clear_model_paused(cur, model_name: str, now_ts: datetime) -> None:
     )
 
 
+# -- account-level halts -------------------------------------------------------
+# Per-strategy caps above read only this engine's own booked trades. Two things
+# they cannot see: Kalshi holding something different from our book (the
+# 2026-09-27 phantom short), and the account losing money our records missed.
+# Both pause every live strategy. A paused strategy still exits; only entries stop.
+MISMATCH_PAUSE_PREFIX = "position mismatch"
+ACCOUNT_LOSS_PAUSE_PREFIX = "account loss"
+# One sighting is not enough: a fill booked a beat late or a settlement Kalshi
+# zeroes before we book it disagrees for a tick. Matches the alerter's 5-min cadence.
+MISMATCH_HALT_SECONDS = float(os.getenv("LIVE_MISMATCH_HALT_SECONDS", "240"))
+# Whole-account loss since the first reading of the UTC day, from Kalshi's own
+# balance + position value. 0 disables. A withdrawal reads as a loss (pauses
+# until the next UTC day); a deposit masks one. Both are rare on this account.
+ACCOUNT_MAX_DAILY_LOSS = float(os.getenv("LIVE_ACCOUNT_MAX_DAILY_LOSS", "15"))
+ACCOUNT_DAY_START_KEY = "live_account_day_start_equity"
+
+
+class MismatchTracker:
+    """When each disagreeing ticker was first seen, across engine ticks."""
+
+    def __init__(self, halt_after: float = MISMATCH_HALT_SECONDS):
+        self.halt_after = halt_after
+        self.first_seen: Dict[str, datetime] = {}
+
+    def observe(self, rows: List[Tuple[str, str, str]], now: datetime) -> Tuple[Optional[List[str]], bool]:
+        """rows from live_alerter.classify_mismatches. Returns (messages that have
+        persisted past halt_after, whether the books fully agree). (None, False) when
+        Kalshi could not be read: nothing is known, so nothing changes."""
+        from data_pipeline.live_alerter import UNREADABLE
+
+        if any(kind == UNREADABLE for _, kind, _ in rows):
+            return None, False
+        current = {key.split("|", 1)[0]: msg for key, _, msg in rows}
+        self.first_seen = {t: self.first_seen.get(t, now) for t in current}
+        persisted = [current[t] for t in sorted(current)
+                     if (now - self.first_seen[t]).total_seconds() >= self.halt_after]
+        return persisted, not current
+
+
+def account_equity_dollars() -> Optional[float]:
+    """Cash plus Kalshi's own valuation of open positions, or None if unreadable.
+    Cash alone would read every entry as a loss."""
+    try:
+        b = api_get_auth("/trade-api/v2/portfolio/balance")
+    except Exception:
+        return None
+    if b.get("balance") is None or b.get("portfolio_value") is None:
+        return None
+    return (float(b["balance"]) + float(b["portfolio_value"])) / 100.0
+
+
+def account_daily_loss(cur, equity: float, now_ts: datetime) -> float:
+    """Dollars lost since the first equity reading of this UTC day (negative = up)."""
+    day = now_ts.strftime("%Y-%m-%d")
+    cur.execute("SELECT state_value FROM collector_state WHERE state_key=%s", (ACCOUNT_DAY_START_KEY,))
+    row = cur.fetchone()
+    try:
+        base = json.loads(row["state_value"]) if row else {}
+    except (TypeError, ValueError):
+        base = {}
+    if base.get("date") != day or base.get("equity") is None:
+        base = {"date": day, "equity": equity}
+        cur.execute(
+            """
+            INSERT INTO collector_state (state_key,state_value,updated_at_utc) VALUES (%s,%s,%s)
+            ON DUPLICATE KEY UPDATE state_value=VALUES(state_value), updated_at_utc=VALUES(updated_at_utc)
+            """,
+            (ACCOUNT_DAY_START_KEY, json.dumps(base), utc_now().replace(tzinfo=None)),
+        )
+    return float(base["equity"]) - equity
+
+
+def enforce_account_halts(cur, now_ts: datetime, tracker: MismatchTracker, pause_states: Dict[str, Dict]) -> Dict:
+    """Pause every live strategy on a persisting book/Kalshi mismatch or an account
+    loss past ACCOUNT_MAX_DAILY_LOSS. A mismatch pause lifts itself once the books
+    fully agree again; a loss pause, like a risk breach, needs a human. Mutates and
+    returns pause_states so the caller's loop sees the result this tick."""
+    from data_pipeline.live_alerter import classify_mismatches
+
+    def pause_all(reason: str) -> None:
+        for m in LIVE_MODELS:
+            if m not in pause_states:
+                set_model_paused(cur, m, reason, now_ts)
+                pause_states[m] = {"paused_reason": reason, "paused_at_utc": str(now_ts)}
+                print(f"live {m}: AUTO-PAUSED - {reason}")
+
+    persisted, clean = tracker.observe(classify_mismatches(cur), now_ts)
+    if persisted:
+        more = f" (+{len(persisted) - 1} more)" if len(persisted) > 1 else ""
+        pause_all(f"{MISMATCH_PAUSE_PREFIX}: {persisted[0]}{more}")
+    elif clean:
+        for m, st in list(pause_states.items()):
+            if str(st.get("paused_reason") or "").startswith(MISMATCH_PAUSE_PREFIX):
+                clear_model_paused(cur, m, now_ts)
+                del pause_states[m]
+                print(f"live {m}: resumed - book matches Kalshi again")
+
+    if ACCOUNT_MAX_DAILY_LOSS > 0:
+        equity = account_equity_dollars()
+        if equity is not None:
+            loss = account_daily_loss(cur, equity, now_ts)
+            if loss >= ACCOUNT_MAX_DAILY_LOSS:
+                pause_all(
+                    f"{ACCOUNT_LOSS_PAUSE_PREFIX}: Kalshi account down ${loss:.2f} today "
+                    f"(limit ${ACCOUNT_MAX_DAILY_LOSS:.2f}), equity ${equity:.2f}"
+                )
+    return pause_states
+
+
 def load_feature_rows(cur, limit=8000) -> List[Dict]:
     cur.execute(
         f"""
@@ -627,6 +736,7 @@ def run_loop() -> None:
         risk_engine = DummyRiskEngine() if RISK_ENGINE_MODE == "dummy" else LiveSettingsRiskEngine()
         frozen_models = None
         frozen_cutoff = None
+        mismatch_tracker = MismatchTracker()
         while True:
             wake = next_minute_plus_delay(12)
             time.sleep(max(0.0, (wake - utc_now()).total_seconds()))
@@ -671,6 +781,14 @@ def run_loop() -> None:
                 reconcile_settled_positions(cur, now_ts)
 
                 pause_states = get_all_live_pause_states(cur)
+                halt_check_failed = False
+                try:
+                    enforce_account_halts(cur, now_ts, mismatch_tracker, pause_states)
+                except Exception as e:  # a guard bug must not refit the models every minute...
+                    if _is_conn_lost(e):
+                        raise
+                    halt_check_failed = True  # ...but it does block this tick's entries
+                    print(f"live account halts check failed at {now_ts.isoformat()}: {e}")
                 snapshot_by_model = {}
 
                 for model_name in LIVE_MODELS:
@@ -717,7 +835,7 @@ def run_loop() -> None:
                     live_enabled = bool(cfg["live_enabled"])
                     decision_allowed = False
                     decision_reasons = []
-                    if live_enabled and not already_paused:
+                    if live_enabled and not already_paused and not halt_check_failed:
                         decision = risk_engine.evaluate(
                             RiskContext(
                                 cfg=cfg,

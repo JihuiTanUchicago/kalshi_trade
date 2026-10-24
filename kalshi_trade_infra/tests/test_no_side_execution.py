@@ -137,8 +137,9 @@ def test_kernel_abandons_a_no_entry_when_the_no_ask_has_run_away():
 class _Cur:
     """Just the app_positions queries engine.decide hits for a fresh live entry."""
 
-    def __init__(self):
+    def __init__(self, halts=None):
         self.inserted = []
+        self.halts = halts or []
         self._last = []
         self.lastrowid = 1
 
@@ -156,6 +157,8 @@ class _Cur:
                            "max_open_positions": 20, "max_open_notional": 1000.0}]
         elif s.startswith("SELECT COUNT(*) AS n, COALESCE(SUM(qty*entry_price),0) AS notional FROM app_positions"):
             self._last = [{"n": 0, "notional": 0.0}]
+        elif s.startswith("SELECT ticker, kind, exchange_qty, book_qty FROM app_position_reconcile"):
+            self._last = list(self.halts)
         else:
             raise AssertionError("unexpected SQL in decide NO path: %s" % s[:90])
 
@@ -225,3 +228,26 @@ def test_decide_live_places_a_no_order_and_books_a_no_position(monkeypatch):
     params = cur.inserted[0]
     assert params[4] == "no" and params[2] == "live"
     assert float(params[6]) == pytest.approx(0.60), "booked at the NO fill price"
+
+
+def test_a_persisted_position_mismatch_halts_new_live_entries(monkeypatch):
+    """The same setup that places a NO order above places nothing while the user's
+    book and Kalshi account still disagree after two reconcile sweeps."""
+    from app import engine
+    from app import spec as specmod
+    from tests.conftest import patch_intent_passthrough
+
+    monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", True)
+    patch_intent_passthrough(monkeypatch)
+    cur = _Cur(halts=[{"ticker": "KXBTC-OTHER", "kind": "untracked", "exchange_qty": 5, "book_qty": 0}])
+    kernel = _RecordingKernel()
+    spec = specmod.validate({"side": "no", "entry": {"min_edge": 0.1}})
+    dep = {"id": 1, "user_id": 1, "market": "btc15m", "mode": "live", "spec": spec,
+           "result": {"capital": 10, "out_of_sample": {"max_drawdown": 3}}}
+    snap = _no_snapshot()
+
+    out = engine.decide(_Conn(cur), dep, [snap], {snap.contract.ticker: 1000.0},
+                        engine.Sources(live_kernel=lambda uid: kernel))
+
+    assert out["entries"] == 0 and "KXBTC-OTHER" in out["halted"]
+    assert kernel.intents == [] and cur.inserted == []
