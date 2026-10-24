@@ -1,5 +1,18 @@
 # PLAN
 
+## Fewer duplicate reviews, honest deployment counts (2026-10-24)
+
+- The heartbeat review is now a true fallback: it skips a user who had any review in the last half
+  cadence (`APP_HEARTBEAT_RECENT_SECONDS`, default 300s). A force-close review at 19:57 and the
+  heartbeat at 20:00 had posted the same summary twice and billed twice. Event-driven reviews
+  (research finished, force-close) are unchanged.
+- The review context opens with "DEPLOYMENTS RUNNING RIGHT NOW: N on paper (#ids), M live", after a
+  review headed its reply "0 deployments live/paper" while #75 and #76 were running.
+- First realistic paper trades (#74, sol15m NO side): two round trips, both force-closed by the
+  user's 40% position stop near expiry, -$5.66 net; the engine paused it and the review kept it
+  paused. The backtest holds to settlement and does not simulate that stop; flagged to the research
+  thread (strict fix: backtest applies position_stop_pct). The stop's value is Todd's call.
+
 ## Paper strategies say why they aren't trading (2026-10-24)
 
 - The three probation deployments (#74-#76) ran for 5+ hours with zero orders and the panel could only

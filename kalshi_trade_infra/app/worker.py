@@ -143,10 +143,21 @@ def _idle_review_skip(cur, uid: int) -> bool:
     return bool(repo.count_runs(cur, uid, "review", since=repo.now_utc() - timedelta(seconds=IDLE_REVIEW_SECONDS)))
 
 
+# The heartbeat is the fallback: a review an event already ran (research finished, a force-close)
+# within this window covers it. Two reviews three minutes apart said the same thing twice and
+# billed twice (2026-10-24: a force-close review at 19:57, the heartbeat at 20:00).
+HEARTBEAT_RECENT_SECONDS = int(os.getenv("APP_HEARTBEAT_RECENT_SECONDS", str(COPILOT_REVIEW_SECONDS // 2)))
+
+
+def _recent_review(cur, uid: int) -> bool:
+    return HEARTBEAT_RECENT_SECONDS > 0 and bool(repo.count_runs(
+        cur, uid, "review", since=repo.now_utc() - timedelta(seconds=HEARTBEAT_RECENT_SECONDS)))
+
+
 def due_autopilot_users(cur) -> list:
     """Autopilot-on users who may be enqueued a scheduled heartbeat review right now."""
     return [uid for uid in repo.autopilot_user_ids(cur)
-            if autopilot_review_ok(cur, uid) and not _idle_review_skip(cur, uid)]
+            if autopilot_review_ok(cur, uid) and not _recent_review(cur, uid) and not _idle_review_skip(cur, uid)]
 
 
 def enqueue_review_after_research(conn, user_id: int) -> None:

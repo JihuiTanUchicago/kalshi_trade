@@ -59,3 +59,13 @@ def test_finished_runs_say_whether_anything_passed(monkeypatch):
     assert "run #22 on nhl_game [finished, 1 strategy passed]" in ctx
     assert "run #23 on btc15m [running]" in ctx
     assert "[succeeded]" not in ctx
+
+
+def test_context_counts_running_deployments_up_front(monkeypatch):
+    dep = {"id": 75, "strategy_id": 5, "title": "t", "market": "sol_daily", "mode": "paper", "status": "running", "closed_trades": 0,
+           "wins": 0, "realized_pnl": 0, "open_positions": 0, "spec": {}, "result": {}}
+    _wire(monkeypatch, deps=[dep, dict(dep, id=74, status="paused")])
+    ctx = agent._copilot_context(None, USER)
+    assert "DEPLOYMENTS RUNNING RIGHT NOW: 1 on paper (#75), 0 live." in ctx
+    _wire(monkeypatch)
+    assert "DEPLOYMENTS RUNNING RIGHT NOW: 0 on paper, 0 live." in agent._copilot_context(None, USER)
