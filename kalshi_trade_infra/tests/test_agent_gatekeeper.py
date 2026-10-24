@@ -281,6 +281,46 @@ def test_calibration_block_tells_the_proposer_when_there_is_no_lead():
     assert "NO cell clears" in block and "favorite-longshot" in block and "LEAD (" not in block
 
 
+def _fv_dataset(informative: bool, events: int = 60):
+    import random
+    from datetime import datetime, timezone
+    from app.markets import Contract, Snapshot
+    rng = random.Random(1)
+    frames, results = [], {}
+    for i in range(events):
+        t0 = 1_700_000_000 + i * 86400
+        close = datetime.fromtimestamp(t0 + 40 * 3600, tz=timezone.utc)
+        snaps_early, snaps_late = [], []
+        for j in range(5):
+            p = rng.random() if informative else 0.5
+            c = Contract("KXHIGHNY-E%d-B%d" % (i, j), 60.0 + j, close)
+            results[c.ticker] = "yes" if rng.random() < p else "no"
+            snaps_early.append(Snapshot(c, t0, 0.48, 0.52, {"tte_min": 30 * 60.0, "fcst_p_yes": p}))
+            snaps_late.append(Snapshot(c, t0 + 20 * 3600, 0.48, 0.52, {"tte_min": 10 * 60.0, "fcst_p_yes": p}))
+        frames += [(t0, snaps_early), (t0 + 20 * 3600, snaps_late)]
+    return SimpleNamespace(frames=frames, results=results, start_ts=0, end_ts=1)
+
+
+def test_fair_value_block_finds_a_forecast_the_mid_ignores():
+    """A forecast that knows each contract's true probability while the book sits at 50c is a LEAD
+    out of sample, in every band it covers, raw and blended; bands without data are left out."""
+    block = agent._fair_value_block(_fv_dataset(informative=True))
+    rows = [ln for ln in block.splitlines() if ln.strip().startswith("fcst_p_yes")]
+    assert [r.split()[1] for r in rows] == [">24h", "4-12h"]
+    assert all("raw:" in r and "blend:" in r and r.count("LEAD") == 2 for r in rows)
+    assert "LEAD in: fcst_p_yes >24h raw" in block
+    brier = rows[0].split("Brier mid ")[1].split()
+    assert float(brier[2]) < float(brier[0])          # the forecast beats the 50c mid
+
+
+def test_fair_value_block_says_when_the_mid_already_knows():
+    block = agent._fair_value_block(_fv_dataset(informative=False))
+    assert "NO band clears" in block and "LEAD" not in block.split("NO band")[0]
+    assert "raw: no trades" in block
+    assert agent._fair_value_block(_fv_dataset(informative=True, events=8)) == ""   # too few events
+    assert agent._fair_value_block(SimpleNamespace(frames=[], results={})) == ""
+
+
 def test_abandoned_theses_are_remembered_and_shown_to_the_next_round():
     """A thesis dropped on the research fold is fed back into every later proposing round (deduped
     by title), so the proposer stops re-proposing the same dead idea under a new name."""
