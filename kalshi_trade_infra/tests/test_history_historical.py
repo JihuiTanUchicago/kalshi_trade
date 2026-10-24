@@ -179,3 +179,17 @@ def test_pending_candles_are_limited_to_the_history_window():
     floor = params[1]
     expect = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=MARKETS["high_ny"].history_days)
     assert abs((floor - expect).total_seconds()) < 60
+
+
+def test_each_market_gets_a_bounded_slice_of_the_pass(monkeypatch):
+    got = []
+    monkeypatch.setattr(mh, "sync_market_candles", lambda cur, market, deadline=None: got.append(deadline))
+    monkeypatch.setattr(mh, "_sync_settled", lambda cur, market, now, stats: None)
+    monkeypatch.setattr(mh, "MARKET_SLICE_SECONDS", 20)
+    monkeypatch.setattr(mh.time, "time", lambda: 1000.0)
+    mh._candle_rotation = 0
+    assert mh.sync_all_markets(_Cur(), [_cat("a"), _cat("b")], None, 1900.0, {}) == 0
+    assert got == [1020.0, 1020.0]  # a slice each, not the whole 900s budget
+    got.clear()
+    mh.sync_all_markets(_Cur(), [_cat("a")], None, 1005.0, {})
+    assert got == [1005.0]  # never past the pass deadline
