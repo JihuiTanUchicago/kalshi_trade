@@ -163,3 +163,13 @@ class FakeCursor:
 @pytest.fixture
 def fake_cursor():
     return FakeCursor()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_server_shared_cache():
+    """app.server memoizes global history reads process-wide; each test starts without them."""
+    import sys
+    server = sys.modules.get("app.server")
+    if server is not None:
+        server._SHARED.clear()
+    yield

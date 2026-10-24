@@ -277,6 +277,62 @@ def kalshi_perps_live_action(ctx: Ctx):
 # -- read routes ---------------------------------------------------------------
 
 
+# Global (not per-user) reads that scan big history tables, shared by every request. Prod 2026-10-24:
+# history_freshness's GROUP BY over hist_markets made /api/dashboard take 12-14s, and /api/me paid
+# for series_with_candles on every page load. Each value is computed once, then served from memory
+# while ONE background thread recomputes it on its own connection after the TTL.
+_SHARED: Dict[str, Dict[str, Any]] = {}
+_SHARED_LOCK = threading.Lock()
+
+
+def _shared(key: str, ttl: float, fn: Callable[[Any], Any], cur) -> Any:
+    now = time.time()
+    with _SHARED_LOCK:
+        ent = _SHARED.setdefault(key, {"at": 0.0, "busy": False})
+        cold = "val" not in ent
+        stale = not cold and now - ent["at"] >= ttl and not ent["busy"]
+        if stale:
+            ent["busy"] = True
+    if cold:
+        val = fn(cur)
+        with _SHARED_LOCK:
+            ent.update(val=val, at=time.time())
+        return val
+    if stale:
+        threading.Thread(target=_refresh_shared, args=(ent, fn), daemon=True).start()
+    return ent["val"]
+
+
+def _refresh_shared(ent: Dict[str, Any], fn: Callable[[Any], Any]) -> None:
+    conn = None
+    try:
+        conn = get_db_conn()
+        val = fn(conn.cursor())
+        with _SHARED_LOCK:
+            ent.update(val=val, at=time.time())
+    except Exception:
+        traceback.print_exc()  # keep serving the last good value; the next request retries
+    finally:
+        ent["busy"] = False
+        if conn is not None:
+            conn.close()
+
+
+def warm_shared() -> None:
+    """Fill the shared reads at startup, so the first page after a deploy doesn't pay for them."""
+    conn = None
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor()
+        _shared("series_with_candles", 120, lambda c: repo.series_with_candles(c), cur)
+        _shared("history_freshness", 60, lambda c: repo.history_freshness(c), cur)
+    except Exception:
+        traceback.print_exc()
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 def _researchable_markets(cur) -> List[Dict]:
     """Every market the research picker offers, each with its grouping category and a
     `has_data` flag: True once a backtest surface (collected candle history) exists,
@@ -290,7 +346,7 @@ def _researchable_markets(cur) -> List[Dict]:
     delay. Binaries always carry a Kalshi feed, so they are never hidden."""
     spot_underlyings = [m.underlying for m in MARKETS.values() if m.kind == "spot" and m.underlying]
     live_spot = repo.spot_symbols_with_data(cur, spot_underlyings)
-    ready_series = repo.series_with_candles(cur)
+    ready_series = _shared("series_with_candles", 120, lambda c: repo.series_with_candles(c), cur)
     from app import kalshi_perps_repository as perps_repo
     from app.kalshi_perps_data import Config as PerpsConfig
     from app.market_data_common import MarketDataError
@@ -425,7 +481,7 @@ def dashboard(ctx: Ctx):
 
 
 def _freshness(cur) -> Dict:
-    raw = repo.history_freshness(cur)
+    raw = _shared("history_freshness", 60, lambda c: repo.history_freshness(c), cur)
     now = int(datetime.now(timezone.utc).timestamp())
     out = {k: (now - int(v) if v else None) for k, v in raw.items()}
     # Engine liveness: seconds since the deployment engine's last tick (None = never/dead). A stalled
@@ -2594,6 +2650,7 @@ def main() -> None:
         raise SystemExit("APP_DEV_LOGIN=1 is only allowed when bound to localhost.")
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     server.daemon_threads = True
+    threading.Thread(target=warm_shared, daemon=True).start()
     print("Tau on http://%s:%d" % (HOST, PORT), flush=True)
     server.serve_forever()
 
