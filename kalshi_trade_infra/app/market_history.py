@@ -21,7 +21,7 @@ import os
 import random
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import requests
 
@@ -404,8 +404,8 @@ def refresh(cur) -> Dict[str, int]:
             stats["spot_backfill_" + symbol] = backfill_spot(cur, symbol, history_days, now)
         except Exception as e:
             print("[market_history] %s spot backfill failed: %r (retry next pass)" % (symbol, e), flush=True)
-    binary = [m for m in MARKETS.values() if m.kind == "binary"]  # never perpetuals
-    stats["deferred"] = sync_all_markets(cur, binary, now, deadline, stats)
+    binary = [m for m in MARKETS.values() if m.kind == "binary" and m.source == "candles"]  # never perpetuals
+    stats["deferred"] = sync_all_markets(cur, binary, now, deadline, stats, requested=_requested(cur))
     return stats
 
 
@@ -426,7 +426,14 @@ def _priority_rank(series: str) -> Optional[int]:
     return None
 
 
-def sync_all_markets(cur, markets, now: datetime, deadline: float, stats: Dict[str, int]) -> int:
+def _requested(cur) -> List[str]:
+    """Markets research asked for history on (app/rsi_repair.py): synced right after the curated set."""
+    from app import rsi_repair
+    return [r["market"] for r in rsi_repair.wanted(cur, "history")]
+
+
+def sync_all_markets(cur, markets, now: datetime, deadline: float, stats: Dict[str, int],
+                     requested: Optional[List[str]] = None) -> int:
     """Settled markets + candles for every market within the pass budget. Curated first (they are
     what's traded), then PRIORITY_* series, both with no per-market slice; then the rest of the
     catalog (~1,000 series) in a rotating order, MARKET_SLICE_SECONDS each, resumed where the last
@@ -439,6 +446,8 @@ def sync_all_markets(cur, markets, now: datetime, deadline: float, stats: Dict[s
     ranked = [(r, i, m) for i, m in enumerate(markets) if m.key not in CURATED
               for r in [_priority_rank(m.series)] if r is not None]
     priority = [m for _r, _i, m in sorted(ranked, key=lambda t: (t[0], t[1]))]
+    asked = [m for k in (requested or []) for m in markets if m.key == k and m.key not in CURATED]
+    priority = asked + [m for m in priority if m not in asked]
     front = curated + priority
     front_keys = {m.key for m in front}
     rest = [m for m in markets if m.key not in front_keys]

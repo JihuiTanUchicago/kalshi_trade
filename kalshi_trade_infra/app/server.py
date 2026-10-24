@@ -2130,6 +2130,8 @@ def research_scoreboard(ctx: Ctx):
         board["paper"] = rsi.paper_outcomes(ctx.cur, ctx.uid)
     except Exception:  # noqa: BLE001 - informational; the research half of the board still renders
         board["paper"] = None
+    from app import rsi_repair
+    board["data_requests"] = rsi_repair.summary(ctx.cur, ctx.uid)
     return board
 
 
