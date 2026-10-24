@@ -1,0 +1,10 @@
+[Unit]
+Description=Free mispricing scan of researchable markets (app.rsi_scout): research windows only, no model calls. Runs on the WEB box.
+After=network-online.target
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/kalshi
+Nice=15
+MemoryMax=1500M
+TimeoutStartSec=5400
+ExecStart=/bin/bash -c 'set -a; . /opt/kalshi/.env.aws; . /opt/kalshi/.env.app; set +a; unset AWS_PROFILE; exec /opt/kalshi/.venv313/bin/python -u -m app.rsi_scout --max-markets 60 --stale-hours 24 >> /opt/kalshi/logs/scout.log 2>&1'

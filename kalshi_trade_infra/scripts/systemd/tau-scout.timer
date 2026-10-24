@@ -1,0 +1,7 @@
+[Unit]
+Description=Scan 60 of the least recently scanned markets every 2 hours (each market about once a day)
+[Timer]
+OnCalendar=*-*-* 00/2:35:00
+Persistent=true
+[Install]
+WantedBy=timers.target

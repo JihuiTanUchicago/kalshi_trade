@@ -8,7 +8,7 @@ line by line and two writers cannot lose an update to each other.
 from data_pipeline import init_schema
 from data_pipeline.common import get_db_conn
 from app import broker_repository, alpaca_paper_repository, kalshi_perps_repository
-from app import kalshi_perps_orders_repository, rsi_playbook
+from app import kalshi_perps_orders_repository, rsi_playbook, rsi_scout
 
 DDL = [
     # -- market history (written by app.market_history; Kalshi candles go in
@@ -601,6 +601,7 @@ DDL.extend(alpaca_paper_repository.DDL)
 DDL.extend(kalshi_perps_repository.DDL)
 DDL.extend(kalshi_perps_orders_repository.DDL)
 DDL.extend(rsi_playbook.DDL)
+DDL.extend(rsi_scout.DDL)
 
 
 def _add_column_if_missing(cur, table: str, column: str, ddl: str) -> None:
