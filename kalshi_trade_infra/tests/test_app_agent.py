@@ -904,3 +904,28 @@ def test_after_a_run_the_playbook_is_scored_settled_and_rewritten(monkeypatch):
     model2, prompts2 = scripted([])
     agent._rsi_learn(Conn(), None, dict(RUN, market="btc15m"), ds, 3, 1000, 100, model2, agent.Usage(), log)
     assert prompts2 == []
+
+
+def test_scan_outcomes_and_tally_query():
+    from datetime import date
+    from app import repository as repo
+    assert repo.scan_outcome({"qualifying": 2, "contracts": 3}) == "qualified"
+    assert repo.scan_outcome({"qualifying": 0, "contracts": 0}) == "no contracts"
+    assert repo.scan_outcome({"qualifying": 0, "contracts": 4, "blocked_at": "a spread of 5c or less"}) == "a spread of 5c or less"
+
+    class Cur:
+        def __init__(self):
+            self.calls = []
+
+        def execute(self, sql, args=None):
+            self.calls.append((sql, args))
+
+        def fetchall(self):
+            return [{"deployment_id": 7, "outcome": "qualified", "n": 3}, {"deployment_id": 7, "outcome": "x", "n": 5}]
+    cur = Cur()
+    assert repo.scan_tally(cur, [7, 8]) == {7: {"qualified": 3, "x": 5}}
+    assert cur.calls[0][1][:2] == (7, 8) and isinstance(cur.calls[0][1][2], date)
+    assert repo.scan_tally(cur, []) == {} and len(cur.calls) == 1
+    cur = Cur()
+    repo.set_deployment_scan(cur, 7, {"qualifying": 0, "contracts": 2, "blocked_at": "b"})
+    assert "app_deployment_scan_days" in cur.calls[1][0] and cur.calls[1][1][0] == 7 and cur.calls[1][1][2] == "b"

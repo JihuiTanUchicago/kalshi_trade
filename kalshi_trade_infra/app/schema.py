@@ -193,6 +193,17 @@ DDL = [
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     # -- trading --------------------------------------------------------------
+    # Daily tally of what stopped each deployment's entry rule (spec.entry_scan.blocked_at, or
+    # 'qualified' / 'no contracts'), one row per (deployment, UTC day, outcome). Readout only.
+    """
+    CREATE TABLE IF NOT EXISTS app_deployment_scan_days (
+      deployment_id BIGINT NOT NULL,
+      day DATE NOT NULL,
+      outcome VARCHAR(160) NOT NULL,
+      n INT NOT NULL DEFAULT 0,
+      PRIMARY KEY (deployment_id, day, outcome)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
     """
     CREATE TABLE IF NOT EXISTS app_deployments (
       id BIGINT AUTO_INCREMENT PRIMARY KEY,

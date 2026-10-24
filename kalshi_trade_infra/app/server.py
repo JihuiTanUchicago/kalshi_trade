@@ -1179,7 +1179,11 @@ def _autopilot_story(d: Dict) -> List[str]:
         lines.append("%s on paper (pretend money), but none has traded yet. Each one waits for its own "
                      "setup, which can take hours." % _plural(paper, "strategy is", "strategies are"))
     for w in (d.get("paper_waiting") or [])[:3] if paper else []:
-        lines.append("%s is waiting: %s." % (w["title"], w["why"]))
+        line = "%s is waiting: %s." % (w["title"], w["why"])
+        if w.get("checks_today"):
+            line += " Today it found a contract worth buying in %d of %d checks." % (
+                int(w.get("qualified_today") or 0), int(w["checks_today"]))
+        lines.append(line)
     if int(d.get("live_running") or 0):
         lines.append("%s trading real money." % _plural(int(d["live_running"]), "strategy is", "strategies are"))
     else:
@@ -1189,19 +1193,29 @@ def _autopilot_story(d: Dict) -> List[str]:
     return lines
 
 
+def _scan_tally(cur, deps: List[Dict]) -> Dict[int, Dict[str, int]]:
+    try:
+        return repo.scan_tally(cur, [d["id"] for d in deps])
+    except Exception:  # noqa: BLE001 - a readout; the table may not exist before the first schema run
+        return {}
+
+
 def _short_title(title: str) -> str:
     return (title or "").split(" — ")[0].strip() or "A strategy"
 
 
-def _paper_waiting(paper_run: List[Dict]) -> List[Dict]:
+def _paper_waiting(paper_run: List[Dict], tally: Optional[Dict[int, Dict[str, int]]] = None) -> List[Dict]:
     """What each running paper strategy that bought nothing last decision is waiting for, from the
-    engine's entry scan (spec.entry_scan): the first entry check no open contract cleared."""
+    engine's entry scan (spec.entry_scan): the first entry check no open contract cleared, plus
+    today's tally of its decisions (repo.scan_tally) so 'waiting' and 'never fires' look different."""
     out = []
     for d in paper_run:
         sc = d.get("scan") or {}
         if sc.get("why") and not sc.get("entered") and not sc.get("qualifying"):
+            t = (tally or {}).get(d["id"]) or {}
             out.append({"deployment_id": d["id"], "title": _short_title(d.get("title")), "why": sc["why"],
-                        "blocked_at": sc.get("blocked_at"), "at": d.get("last_scan_at")})
+                        "blocked_at": sc.get("blocked_at"), "at": d.get("last_scan_at"),
+                        "checks_today": sum(t.values()), "qualified_today": t.get("qualified", 0)})
     return out[:5]
 
 
@@ -1253,7 +1267,7 @@ def autopilot_status(ctx: Ctx):
         "billing_blocked": billing_blocked,
         "billing_reason": (("card" if _needs_card(ctx) else "credits") if billing_blocked else None),
         "paper_progress": paper_progress,
-        "paper_waiting": _paper_waiting(paper_run),
+        "paper_waiting": _paper_waiting(paper_run, _scan_tally(cur, paper_run)),
     }
     out["story"] = _autopilot_story(out)
     return out
