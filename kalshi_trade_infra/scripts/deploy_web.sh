@@ -25,6 +25,10 @@ CF_URL=${CF_URL:-https://tau-trading.com}
 BOX_DIR=${BOX_DIR:-/opt/kalshi}
 BOX_PY=${BOX_PY:-/opt/kalshi/.venv313/bin/python}
 SERVICES=${SERVICES:-"recursive-web recursive-agents recursive-engine recursive-history"}
+# Memory caps, applied on the box every deploy (scripts/systemd/*.service carry the same values).
+# The units on the box are hand-installed, so the repo's MemoryMax never reached them; the 400M/250M
+# caps sized for the old 2GB box OOM-killed every research run on the 16GB one (2026-10-24).
+MEMORY_CAPS=${MEMORY_CAPS:-"recursive-agents=3G recursive-web=1G recursive-engine=1G recursive-history=512M"}
 
 # Locally, use a named profile (the AWS CLI reads AWS_PROFILE from the env). In CI there is no
 # profile — the workflow provides env/OIDC creds — so unset it. (Env var, not a --profile flag.)
@@ -81,6 +85,7 @@ set -a; . ${BOX_DIR}/.env.aws; . ${BOX_DIR}/.env.app; set +a; unset AWS_PROFILE
 # as a bare "SCHEMA FAILED" with no cause. Fold stderr into stdout so the real error is in the log.
 ${BOX_PY} -m py_compile app/*.py data_pipeline/*.py 2>&1 || { rollback; echo "COMPILE FAILED"; exit 1; }
 ${BOX_PY} -m app.schema 2>&1 || { rollback; echo "SCHEMA FAILED"; exit 1; }
+for cap in ${MEMORY_CAPS}; do systemctl set-property "\${cap%%=*}.service" "MemoryMax=\${cap#*=}" || echo "[box] WARN could not set \$cap"; done
 systemctl restart ${SERVICES}
 sleep 5
 CODE=\$(curl -fsS -o /dev/null -w "%{http_code}" http://127.0.0.1:8090/ || echo 000)

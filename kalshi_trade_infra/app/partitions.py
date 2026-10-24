@@ -367,7 +367,7 @@ def _load_window(market: str, from_ts: int, to_ts: int, history_days: Optional[i
                 h = tao_repository.load_spot_history(cur, m, int(since.timestamp()))
                 candles = [(t, p) for t, p in h["candles"] if from_ts <= t < to_ts]
                 return backtest.build_spot_dataset(m, candles, h["tao_usd"], h["features"])
-            rows = rr.partition_source_rows(cur, m, since)
+            rows = rr.partition_source_rows(cur, m, since, from_ts, to_ts)
     finally:
         conn.close()
     sub = [mk for mk in rows["markets"]

@@ -15,9 +15,8 @@ StartLimitIntervalSec=300
 StartLimitBurst=10
 KillSignal=SIGTERM
 TimeoutStopSec=30
-# Shares a 2GB box with the house live engine: if anything is OOM-killed it
-# must be this, and the house processes get the CPU first.
-MemoryMax=400M
+# The web box is a 16GB t4g.xlarge; deploy_web.sh applies this cap on every deploy.
+MemoryMax=1G
 Nice=5
 
 [Install]

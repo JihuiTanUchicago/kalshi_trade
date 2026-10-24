@@ -1891,22 +1891,59 @@ def decide_proposal(cur, proposal_id: int, status: str) -> bool:
 # -- dataset ---------------------------------------------------------------------
 
 
+def _stream_rows(cur, sql: str, params) -> Iterator:
+    """Rows one at a time from an unbuffered server-side cursor, so a multi-million-row
+    read is never materialised as a list of dicts (a 1-minute sports series is ~1.6M
+    candles: ~1GB as dicts of Decimals, the agents worker's OOM on 2026-10-24). Falls back
+    to an ordinary execute/fetchall on cursors without a pymysql connection (test fakes)."""
+    conn = getattr(cur, "connection", None)
+    if conn is None or not hasattr(conn, "cursor"):
+        cur.execute(sql, params)
+        yield from cur.fetchall()
+        return
+    import pymysql
+
+    ss = conn.cursor(pymysql.cursors.SSCursor)
+    try:
+        ss.execute(sql, params)
+        yield from ss
+    finally:
+        ss.close()
+
+
+def _num(v) -> Optional[float]:
+    return float(v) if v is not None else None
+
+
 def load_history(cur, series: str, candle_minutes: int, since: datetime,
-                 underlying: str = "BTC-USD") -> Dict[str, List]:
+                 underlying: str = "BTC-USD", tickers: Optional[set] = None) -> Dict[str, List]:
+    """markets as dicts; candles as compact (ticker, end_period_ts, bid, ask) tuples.
+    `tickers` keeps only those contracts' candles and microstructure (a partition window),
+    so rows for contracts outside it are dropped as they stream instead of held."""
     cur.execute(
         """SELECT ticker, strike, close_time, result FROM hist_markets
            WHERE series_ticker=%s AND close_time >= %s AND candles_done=1""",
         (series, since),
     )
     markets = cur.fetchall()
-    cur.execute(
+    if tickers is not None:
+        markets = [m for m in markets if m["ticker"] in tickers]
+    names = {m["ticker"]: m["ticker"] for m in markets}  # one shared str per ticker, not one per row
+    candles = []
+    for r in _stream_rows(
+        cur,
         """SELECT c.ticker, c.end_period_ts, c.yes_bid_close, c.yes_ask_close
            FROM market_candles c JOIN hist_markets h ON h.ticker=c.ticker
            WHERE h.series_ticker=%s AND h.close_time >= %s AND h.candles_done=1
              AND c.period_interval_minutes=%s""",
         (series, since, candle_minutes),
-    )
-    candles = cur.fetchall()
+    ):
+        if isinstance(r, dict):
+            r = (r["ticker"], r["end_period_ts"], r["yes_bid_close"], r["yes_ask_close"])
+        name = names.get(r[0])
+        if name is None:
+            continue
+        candles.append((name, int(r[1]), _num(r[2]), _num(r[3])))
     start_ts = int(since.replace(tzinfo=timezone.utc).timestamp()) - 2 * 86400
     # The underlying price path for THIS market's series (BTC-USD, ETH-USD, …).
     cur.execute(
@@ -1915,10 +1952,11 @@ def load_history(cur, series: str, candle_minutes: int, since: datetime,
     )
     btc = [(int(r["start_ts"]), float(r["close"])) for r in cur.fetchall()]
     return {"markets": markets, "candles": candles, "btc": btc,
-            "micro": _load_micro(cur, series, since)}
+            "micro": _load_micro(cur, series, since, tickers)}
 
 
-def _load_micro(cur, series: str, since: datetime) -> Dict[tuple, Dict[str, Any]]:
+def _load_micro(cur, series: str, since: datetime,
+                tickers: Optional[set] = None) -> Dict[tuple, Dict[str, Any]]:
     """Collected order-book/microstructure features for this series' contracts since
     `since`, keyed (ticker, minute_unix_ts) so build_dataset can join them onto the
     matching contract snapshot. Columns are aliased to their MICRO_FEATURES names; a
@@ -1938,6 +1976,8 @@ def _load_micro(cur, series: str, since: datetime) -> Dict[tuple, Dict[str, Any]
     names = list(MICRO_FEATURES)
     out: Dict[tuple, Dict[str, Any]] = {}
     for r in cur.fetchall():
+        if tickers is not None and r["market_ticker"] not in tickers:
+            continue
         dt = r["snapshot_minute_utc"]
         ts = int(dt.replace(tzinfo=timezone.utc).timestamp()) if dt.tzinfo is None else int(dt.timestamp())
         out[(r["market_ticker"], ts)] = {n: r[n] for n in names if r.get(n) is not None}
