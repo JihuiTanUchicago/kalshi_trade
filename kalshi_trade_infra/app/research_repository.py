@@ -343,20 +343,63 @@ def partition_contracts(cur, market: Market, since: datetime) -> List[Dict]:
 
 
 def partition_source_rows(cur, market: Market, since: datetime,
-                          open_from_ts: Optional[int] = None, open_to_ts: Optional[int] = None) -> Dict[str, List]:
+                          open_from_ts: Optional[int] = None, open_to_ts: Optional[int] = None,
+                          max_candle_rows: Optional[int] = None) -> Dict[str, List]:
     """Everything backtest.build_dataset needs, plus open_ts on each market row so
     partitions.py can assign whole contracts to a window. Reuses repository.
     load_history for candles/btc (no SQL duplicated) and adds the open times.
-    With a window, only contracts opening in [open_from_ts, open_to_ts) are loaded."""
+    With a window, only contracts opening in [open_from_ts, open_to_ts) are loaded, and the
+    candle query is bounded to their close times. `max_candle_rows` keeps the window's most
+    recent whole events whose estimated candle count fits (see cap_recent_events)."""
     from app import repository as repo
-    opens = {c["ticker"]: c["open_ts"] for c in partition_contracts(cur, market, since)}
-    tickers = None
+    contracts = partition_contracts(cur, market, since)
+    opens = {c["ticker"]: c["open_ts"] for c in contracts}
+    tickers, until = None, None
     if open_from_ts is not None and open_to_ts is not None:
-        tickers = {t for t, o in opens.items() if o is not None and open_from_ts <= o < open_to_ts}
-    h = repo.load_history(cur, market.series, market.candle_minutes, since, market.underlying, tickers)
+        window = [c for c in contracts if c["open_ts"] is not None and open_from_ts <= c["open_ts"] < open_to_ts]
+        if max_candle_rows:
+            window = cap_recent_events(window, market.candle_minutes, max_candle_rows)
+        tickers = {c["ticker"] for c in window}
+        if window:
+            # Same rows, far less scanned: nothing outside the kept contracts' close times is read.
+            first_open = min(c["open_ts"] for c in window)
+            since = max(since, _dt(first_open, since))
+            until = _dt(max(c["close_ts"] for c in window), since)
+    h = repo.load_history(cur, market.series, market.candle_minutes, since, market.underlying, tickers, until)
     for m in h["markets"]:
         m["open_ts"] = opens.get(m["ticker"])
     return h
+
+
+def _event(ticker: str) -> str:
+    return ticker.rsplit("-", 1)[0]
+
+
+def cap_recent_events(contracts: List[Dict], candle_minutes: int, max_rows: int) -> List[Dict]:
+    """The most recent whole events (by latest open) whose contracts' estimated candle rows, one per
+    candle_minutes over each contract's open->close life, fit max_rows. An upper bound: a 1-minute
+    series with 18k listed contracts (KXNCAAFSPREAD) can't be loaded inside the step limit or the
+    worker's memory, so research sees its latest slice instead of failing. Always keeps one event."""
+    events: Dict[str, List[Dict]] = {}
+    for c in contracts:
+        events.setdefault(_event(c["ticker"]), []).append(c)
+    order = sorted(events.values(), key=lambda cs: max(c["open_ts"] for c in cs), reverse=True)
+    step = max(60, int(candle_minutes) * 60)
+    kept: List[Dict] = []
+    rows = 0
+    for cs in order:
+        n = sum(max(1, (c["close_ts"] - c["open_ts"]) // step) for c in cs)
+        if kept and rows + n > max_rows:
+            break
+        kept.extend(cs)
+        rows += n
+    return sorted(kept, key=lambda c: (c["open_ts"], c["ticker"]))
+
+
+def _dt(ts: int, like: datetime) -> datetime:
+    """ts as a datetime with the same tz-awareness as `like` (hist_markets holds naive UTC)."""
+    d = datetime.fromtimestamp(int(ts), tz=timezone.utc)
+    return d if like.tzinfo is not None else d.replace(tzinfo=None)
 
 
 def _ts(dt: datetime) -> int:

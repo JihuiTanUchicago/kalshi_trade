@@ -1973,14 +1973,17 @@ def _num(v) -> Optional[float]:
 
 
 def load_history(cur, series: str, candle_minutes: int, since: datetime,
-                 underlying: str = "BTC-USD", tickers: Optional[set] = None) -> Dict[str, List]:
+                 underlying: str = "BTC-USD", tickers: Optional[set] = None,
+                 until: Optional[datetime] = None) -> Dict[str, List]:
     """markets as dicts; candles as compact (ticker, end_period_ts, bid, ask) tuples.
     `tickers` keeps only those contracts' candles and microstructure (a partition window),
-    so rows for contracts outside it are dropped as they stream instead of held."""
+    so rows for contracts outside it are dropped as they stream instead of held. `until` (a
+    close_time upper bound) keeps the database from scanning contracts past the window at all."""
+    upto, upto_args = (" AND close_time <= %s", (until,)) if until is not None else ("", ())
     cur.execute(
         """SELECT ticker, strike, close_time, result FROM hist_markets
-           WHERE series_ticker=%s AND close_time >= %s AND candles_done=1""",
-        (series, since),
+           WHERE series_ticker=%s AND close_time >= %s AND candles_done=1""" + upto,
+        (series, since) + upto_args,
     )
     markets = cur.fetchall()
     if tickers is not None:
@@ -1992,8 +1995,8 @@ def load_history(cur, series: str, candle_minutes: int, since: datetime,
         """SELECT c.ticker, c.end_period_ts, c.yes_bid_close, c.yes_ask_close
            FROM market_candles c JOIN hist_markets h ON h.ticker=c.ticker
            WHERE h.series_ticker=%s AND h.close_time >= %s AND h.candles_done=1
-             AND c.period_interval_minutes=%s""",
-        (series, since, candle_minutes),
+             AND c.period_interval_minutes=%s""" + upto.replace("close_time", "h.close_time"),
+        (series, since, candle_minutes) + upto_args,
     ):
         if isinstance(r, dict):
             r = (r["ticker"], r["end_period_ts"], r["yes_bid_close"], r["yes_ask_close"])
@@ -2009,7 +2012,7 @@ def load_history(cur, series: str, candle_minutes: int, since: datetime,
     )
     btc = [(int(r["start_ts"]), float(r["close"])) for r in cur.fetchall()]
     return {"markets": markets, "candles": candles, "btc": btc,
-            "micro": _load_micro(cur, series, since, tickers)}
+            "micro": _load_micro(cur, series, since, tickers, until)}
 
 
 _MICRO_COLS_TTL = 600.0
@@ -2041,7 +2044,7 @@ def _micro_select(cur, prefix: str = "") -> Tuple[str, List[str]]:
 
 
 def _load_micro(cur, series: str, since: datetime,
-                tickers: Optional[set] = None) -> Dict[tuple, Dict[str, Any]]:
+                tickers: Optional[set] = None, until: Optional[datetime] = None) -> Dict[tuple, Dict[str, Any]]:
     """Collected order-book/microstructure features for this series' contracts since
     `since`, keyed (ticker, minute_unix_ts) so build_dataset can join them onto the
     matching contract snapshot. Columns are aliased to their MICRO_FEATURES names; a
@@ -2054,8 +2057,8 @@ def _load_micro(cur, series: str, since: datetime,
             "SELECT f.market_ticker, f.snapshot_minute_utc, " + cols +
             """ FROM model_features_1m f JOIN hist_markets h ON h.ticker=f.market_ticker
                WHERE h.series_ticker=%s AND h.close_time >= %s AND h.candles_done=1
-                 AND f.snapshot_minute_utc >= %s""",
-            (series, since, since),
+                 AND f.snapshot_minute_utc >= %s""" + (" AND h.close_time <= %s" if until is not None else ""),
+            (series, since, since) + ((until,) if until is not None else ()),
         )
     except Exception:  # noqa: BLE001 - table absent on legacy DBs; micro is optional
         return {}
