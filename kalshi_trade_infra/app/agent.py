@@ -149,6 +149,12 @@ RUN_STALL_SECONDS = max(30, int(os.getenv("TAU_RUN_STALL_SECONDS", "150")))
 # this multiple of budget. A healthy market hits the survivor cap long before this; only a doomed
 # surface trips it, failing fast instead of spinning. Env-tunable.
 EXPLORE_ATTEMPT_MULT = max(1, int(os.getenv("TAU_EXPLORE_ATTEMPT_MULT", "4")))
+# Spend backstop under the attempt cap: stop proposing once this many developed theses IN A ROW were
+# dropped on the research fold. Each drop is several Opus calls, and a market that has rejected the
+# last N ideas (with the drops fed back into every prompt) rarely yields the N+1th; measured runs
+# 2541 (btc15m) and 2548 (high_ny) dropped 28 and 18 in a row for ~$10 each with nothing gated.
+# Survivors already kept still go to the gate. 0 disables. Env-tunable.
+EXPLORE_MAX_DROP_STREAK = max(0, int(os.getenv("TAU_EXPLORE_MAX_DROP_STREAK", "8")))
 # Bounded in-place retry for a TRANSIENT RDS drop during a data load (read-only, idempotent, its own
 # connection). Absorbs a blip without the retry-storm risk of re-queuing the whole run. Env-tunable.
 LOAD_RETRIES = max(0, int(os.getenv("TAU_LOAD_RETRIES", "2")))
@@ -1465,6 +1471,7 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
     if knowledge is not None:
         proposer = knowledge.wrap(proposer, usage)
     attempts = 0  # theses DEVELOPED this chunk (survivors + abandoned), the real cost
+    streak = 0  # consecutive drops, reset by any survivor
     while True:
         checkpoint()
         round_no += 1
@@ -1477,6 +1484,11 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
             # generous multiple of it. Stop burning the slot on a market with no tradeable surface.
             log("step", "No tradeable surface after %d attempts — stopping to free the worker." % attempts,
                 {"phase": "proposing", "attempts": attempts, "kept": len(chunk)})
+            break
+        if EXPLORE_MAX_DROP_STREAK and streak >= EXPLORE_MAX_DROP_STREAK:
+            log("step", "Last %d theses all dropped on the research fold. Stopping proposals; %d kept go "
+                "to the gate." % (streak, len(chunk)),
+                {"phase": "proposing", "attempts": attempts, "kept": len(chunk), "drop_streak": streak})
             break
         # Announce each proposing round so the (multi-minute, token-streamed) generation call is
         # never a silent gap: the feed shows "Proposing round k" before the first token arrives.
@@ -1498,7 +1510,11 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
                                  usage, log, checkpoint, round_no, cur, run["user_id"], merged_cache,
                                  dropped)
             if t is None:
+                streak += 1
+                if EXPLORE_MAX_DROP_STREAK and streak >= EXPLORE_MAX_DROP_STREAK:
+                    break  # don't develop the rest of this batch either
                 continue  # abandoned (dead-on-arrival) thesis: no candidate, no trial spent
+            streak = 0
             t["score"] = backtest.score(t["in_sample"])  # attach once, so the policy needs no backtester
             chunk.append(t)
             tried.append(t)

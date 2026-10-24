@@ -389,3 +389,53 @@ def test_calibration_prices_each_contract_at_its_first_quote_in_the_cell():
     assert len(late) == 1 and "avg ask 0.09" in late[0]
     assert float(late[0].split("buy-YES net")[1].split()[0].rstrip("c")) < 0
     assert "LEAD (buy-YES)" not in late[0]
+
+
+def _explore_with_outcomes(monkeypatch, outcomes, budget=8):
+    """Drive _explore_and_gate with scripted develop outcomes (None = dropped), 4 theses per round."""
+    seq, developed, gated = list(outcomes), [], []
+
+    class MD:
+        def __init__(self, *a, **k):
+            pass
+        def ask(self, *a, **k):
+            return [{"title": "h"}] * 4
+
+    def develop(h, *a, **k):
+        developed.append(1)
+        ok = seq.pop(0) if seq else None
+        return {"title": "t%d" % len(developed), "in_sample": {"trades": 9}} if ok else None
+
+    monkeypatch.setattr(agent, "AgentMarketData", MD)
+    monkeypatch.setattr(agent, "_stream_proposer", lambda m, s: m)
+    monkeypatch.setattr(agent, "_round_prompt", lambda *a, **k: "p")
+    monkeypatch.setattr(agent, "_develop_thesis", develop)
+    monkeypatch.setattr(agent.backtest, "score", lambda r: 0.0)
+    monkeypatch.setattr(agent, "_gate_and_save", lambda cur, run, ds, part, chunk, *a, **k: gated.append(len(chunk)) or 0)
+    policy = SimpleNamespace(next_batch=lambda st: SimpleNamespace(width=4 if st.proposed < st.budget else 0))
+    events = []
+    ds = SimpleNamespace(start_ts=0, cutoff_ts=1)
+    agent._explore_and_gate(None, {"market": "btc15m", "user_id": 1}, ds, {}, [], None, None,
+                            lambda *a: events.append(a), lambda: None, budget, [], policy)
+    return len(developed), gated, events
+
+
+def test_a_streak_of_drops_stops_proposing_and_gates_what_was_kept(monkeypatch):
+    """Eight dropped theses in a row end exploration (each costs several model calls), even mid-batch;
+    survivors kept before the streak still reach the gate."""
+    monkeypatch.setattr(agent, "EXPLORE_MAX_DROP_STREAK", 8)
+    n, gated, events = _explore_with_outcomes(monkeypatch, [True] + [None] * 40)
+    assert n == 9 and gated == [1]
+    assert any("all dropped" in e[1] for e in events)
+
+
+def test_a_survivor_resets_the_drop_streak(monkeypatch):
+    monkeypatch.setattr(agent, "EXPLORE_MAX_DROP_STREAK", 8)
+    n, gated, _ = _explore_with_outcomes(monkeypatch, ([None] * 7 + [True]) * 2 + [None] * 40)
+    assert n == 16 + 8 and gated == [2]
+
+
+def test_drop_streak_zero_falls_back_to_the_attempt_cap(monkeypatch):
+    monkeypatch.setattr(agent, "EXPLORE_MAX_DROP_STREAK", 0)
+    n, gated, _ = _explore_with_outcomes(monkeypatch, [None] * 40, budget=2)
+    assert n == 2 * agent.EXPLORE_ATTEMPT_MULT and gated == [0]
