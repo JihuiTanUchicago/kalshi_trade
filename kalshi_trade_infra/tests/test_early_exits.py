@@ -89,3 +89,8 @@ def test_review_context_line_flags_exits_that_cost_money():
     assert line.startswith("Early exits on paper vs holding to settlement (all time): stop 10: $-100.00 vs $-140.00 held, saved $40.00")
     assert "take_profit 2: $14.93 vs $20.00 held, COST $5.07" in line and "flatten 1 (none settled yet)" in line
     assert agent.early_exits_line({}) == ""
+
+
+def test_story_counts_read_with_thousands_separators():
+    story = server._autopilot_story({"autopilot": True, "research": {"tested_7d": 1708, "passed_7d": 0}})
+    assert "This week it tested 1,708 ideas" in story[1]

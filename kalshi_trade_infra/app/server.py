@@ -1198,7 +1198,7 @@ def _research_activity(cur, uid: int) -> Dict:
 
 
 def _plural(n: int, one: str, many: str = "") -> str:
-    return "%d %s" % (n, one if n == 1 else (many or one + "s"))
+    return "{:,} {}".format(n, one if n == 1 else (many or one + "s"))
 
 
 def _autopilot_story(d: Dict) -> List[str]:
