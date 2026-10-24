@@ -9,6 +9,11 @@ It reuses `scripts/deploy_web.sh` unchanged, so a CI deploy and a local `./deplo
 exact same rollback-guarded path (whole-app tar → S3 → SSM extract/compile/`app.schema`/restart →
 live curl 200 → CloudFront invalidate).
 
+The `Deploy collector box` workflow (`.github/workflows/deploy-collector.yml`) does the same for
+the collector box (i-0bd0683cc7e86243d) via `scripts/deploy_collector.sh`: data_pipeline/ only,
+compile, restart the collector units, roll back if any of them fails to stay up. It uses the same
+keys, which is why `RunOnBox` below lists both instances.
+
 ## How to deploy (for anyone with push access)
 
 GitHub → **Actions** tab → **Deploy web app** → **Run workflow** → pick the ref (default `main`) →
@@ -62,6 +67,7 @@ cat > /tmp/perms.json <<JSON
     { "Sid": "RunOnBox", "Effect": "Allow", "Action": "ssm:SendCommand",
       "Resource": [
         "arn:aws:ec2:${REGION}:${ACCOUNT}:instance/i-077d6f7873e7836ba",
+        "arn:aws:ec2:${REGION}:${ACCOUNT}:instance/i-0bd0683cc7e86243d",
         "arn:aws:ssm:${REGION}::document/AWS-RunShellScript" ] },
     { "Sid": "PollCommand", "Effect": "Allow",
       "Action": ["ssm:GetCommandInvocation", "ssm:ListCommandInvocations"], "Resource": "*" },
