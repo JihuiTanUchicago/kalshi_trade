@@ -309,3 +309,12 @@ def test_readiness_unknown_strategy_is_404(monkeypatch):
     with pytest.raises(server.ApiError) as e:
         server.strategy_live_readiness(_readiness_ctx(monkeypatch, strategy=False))
     assert e.value.status == 404
+
+
+def test_paper_fill_stats_reports_the_simulated_fill_rate(monkeypatch):
+    monkeypatch.delenv("APP_PAPER_REALISTIC_FILLS", raising=False)
+    make = engine.paper_kernel_factory(_Conn(_Cur()))
+    make.venue.orders_sent, make.venue.orders_filled = 4, 1
+    line = engine.paper_fill_stats(make)
+    assert "4 orders sent, 1 filled (25%)" in line
+    assert engine.paper_fill_stats(None) is None
