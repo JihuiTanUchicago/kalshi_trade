@@ -893,6 +893,11 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   .funds-page .funds-history { grid-column: 1; grid-row: 1; }
   .funds-page .funds-manage { grid-column: 2; grid-row: 1; }
 }
+/* Broker accounts now live stacked in the Funds right column (not a 3-across row), so the cards
+   stack vertically with horizontal rules instead of the left-border column dividers. */
+.funds-manage .broker-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+.funds-manage .broker-card { padding: 14px 0 0; border-left: 0; border-top: 1px solid var(--rule); }
+.funds-manage .broker-card:first-child { padding-top: 2px; border-top: 0; }
 
 .washed { animation: wash .5s var(--ease) 1; }
 @keyframes wash { from { background-color: var(--rule-2); } to { background-color: transparent; } }

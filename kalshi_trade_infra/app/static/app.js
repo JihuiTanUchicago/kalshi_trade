@@ -2518,7 +2518,7 @@
       root.querySelector('#ffigs').innerHTML = fig('Live money', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: k.connected ? 'Your real cash at Kalshi' : 'Connect a key to trade real money' }) +
         fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} capital · app-controlled` }) +
         fig('Paper cash', usd(d.paper.cash), { small: 'Practice money for paper trading' });
-      root.querySelector('main').innerHTML = `<div id="flash"></div><section id="broker-connections" aria-label="Broker accounts"></section><div class="funds">
+      root.querySelector('main').innerHTML = `<div id="flash"></div><div class="funds">
         <div class="funds-col funds-manage">
         <section class="panel">
           <h3>Kalshi account (live money)</h3>
@@ -2572,6 +2572,7 @@
           </form>
           <div id="pflash" style="margin-top:10px"></div>
         </section>
+        <section class="panel" id="broker-connections" aria-label="Broker accounts"></section>
         </div>
         <div class="funds-col funds-history">
         <section class="panel">

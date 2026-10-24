@@ -40,7 +40,7 @@ test('both shipped themes load and mount the shared broker account controls', ()
   assert.match(html, /broker-connections\.css\?v=\{\{brokers_css_v\}\}/);
   for (const name of ['app.js', 'app.meridian.js']) {
     const source = readFileSync(new URL('../app/static/' + name, import.meta.url), 'utf8');
-    assert.match(source, /<section id="broker-connections" aria-label="Broker accounts"><\/section>/);
+    assert.match(source, /<section[^>]*id="broker-connections"[^>]*aria-label="Broker accounts"[^>]*><\/section>/);
     assert.match(source, /TauBrokerConnections\.mount\(brokerHost, \{api, isCurrent: \(\) => gen === S\.gen\}\)/);
   }
   const context = vm.createContext({URL, URLSearchParams});
