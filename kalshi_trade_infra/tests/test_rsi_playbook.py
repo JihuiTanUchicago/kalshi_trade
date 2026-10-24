@@ -38,7 +38,7 @@ def test_idea_lines_carry_labels_never_held_out_numbers():
         {"kind": "step", "message": "noise", "data": {}},
     ]
     lines = pb.idea_lines(events)
-    assert lines == ["- DROPPED on research data: A. Why: loses money",
+    assert lines == ["- DROPPED on research data [loses]: A. Why: loses money",
                      "- REACHED THE GATE: B -> passed",
                      "- NOT GATED: C. REJECTED (challenger) - C: no mechanism"]
     assert not any(n in "".join(lines) for n in ("0.001", "2.5", "0.07"))

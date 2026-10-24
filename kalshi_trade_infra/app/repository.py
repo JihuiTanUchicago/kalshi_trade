@@ -1033,7 +1033,7 @@ def dropped_theses(cur, user_id: int, market: str, limit: int = 20) -> List[Dict
         m = re.match(r'DROPPED "(.*)" \(no candidate\) \S* (.*)', r["message"] or "", re.S)
         if m:
             title, why = title or m.group(1), why or m.group(2)
-        if title:
+        if title and not (why or "").startswith("spec invalid"):   # never tested: not a dead end
             out.append({"title": title, "why": (why or "").strip()})
     return out
 
