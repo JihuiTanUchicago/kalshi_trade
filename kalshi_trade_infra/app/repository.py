@@ -495,12 +495,14 @@ def count_active_research(cur) -> int:
     return int(cur.fetchone()["n"])
 
 
-def claim_run(conn, worker_id: str) -> Optional[Dict]:
+def claim_run(conn, worker_id: str, skip_research: bool = False) -> Optional[Dict]:
     """Take the oldest queued run. SKIP LOCKED lets any number of workers
-    share the queue without two of them taking the same run."""
+    share the queue without two of them taking the same run. `skip_research` is the
+    interactive lane: it takes only chats and reviews."""
     with transaction(conn) as cur:
         cur.execute(
-            "SELECT * FROM app_agent_runs WHERE status='queued' ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED"
+            "SELECT * FROM app_agent_runs WHERE status='queued'%s ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED"
+            % (" AND kind <> 'research'" if skip_research else "")
         )
         run = cur.fetchone()
         if not run:
