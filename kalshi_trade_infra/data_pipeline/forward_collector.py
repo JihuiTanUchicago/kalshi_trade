@@ -306,6 +306,18 @@ def insert_trade_row(cur, row: tuple) -> None:
     )
 
 
+# The only raw fields anything reads back from markets.raw_json (model_features_1m_builder's strike
+# target), plus a few small identifying ones. The full payload averaged 3.5KB a row - multivariate
+# legs, custom_strike and rules text - across ~1M new markets a day, which grew the table to 180GB
+# and is most of the RDS's ~10GB/day.
+MARKET_RAW_KEYS = ("floor_strike", "cap_strike", "strike_type", "strike_price", "functional_strike",
+                   "market_type", "result", "status")
+
+
+def slim_market_raw(m: Dict) -> Dict:
+    return {k: m[k] for k in MARKET_RAW_KEYS if m.get(k) is not None}
+
+
 def insert_market_upserts(cur, markets: List[Dict]) -> None:
     now = utc_now().replace(tzinfo=None)
     for m in markets:
@@ -329,7 +341,7 @@ def insert_market_upserts(cur, markets: List[Dict]) -> None:
                 parse_iso_to_dt(m.get("close_time")),
                 parse_iso_to_dt(m.get("expiration_time")),
                 now,
-                json.dumps(m),
+                json.dumps(slim_market_raw(m)),
             ),
         )
 
