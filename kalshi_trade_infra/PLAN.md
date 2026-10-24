@@ -32,6 +32,8 @@ Paper pairs now run through the simulated venue too (`_paper_kernel_buy_pair`, s
 
 Live size ramp (`engine._live_ramp_scale`): a live deployment's first `APP_LIVE_RAMP_TRADES` (20) closed trades enter at `APP_LIVE_RAMP_FRACTION` (0.25, clamped to (0, 1]) of the spec stake, at least 1 contract, so a fresh promotion risks a quarter of its size while the decay guard collects its 20 trades. Entries only; exits untouched.
 
+Research robustness: prod logs showed a code strategy's truncated `out.json` raising a raw `JSONDecodeError` out of `sandbox._run_entry`, past `freeze_code_model`'s `SandboxError` handler, killing the whole research run (its tokens already spent). Unreadable or non-object output is now a `SandboxError`, so only that hypothesis fails.
+
 Visibility: the strategy page's Road to live panel (both themes) shows each gate's progress, and the autopilot float's stats show the running paper strategy closest to live (`paper_progress` in `/api/autopilot/status`: realistic trades / 30 and net P&L, one grouped query, no bootstrap on the 20s poll).
 
 Next: feed realization to the research thread's backtest fill-model calibration.
