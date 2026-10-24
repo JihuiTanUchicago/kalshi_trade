@@ -3426,11 +3426,10 @@
   // ---------- admin ----------
   async function viewAdmin() {
     if (!adminViewOn()) return go('/', true);
-    shell('/admin', boardTitle('Admin', 'Operator tools: grant credits and see who has signed up or joined the waitlist.'), `
+    shell('/admin', boardTitle('Admin', 'Operator tools: grant credits and see who has signed up.'), `
       <div class="detail">
         <div>
           <section class="sect"><div class="sect-head"><h2>Users</h2><span id="ucount" class="sect-note"></span></div><div id="users">${loading(200)}</div></section>
-          <section class="sect"><div class="sect-head"><h2>Waitlist</h2></div><div id="waitlist"></div></section>
         </div>
         <aside>
           <form class="panel" id="grant"><h3>Grant credits</h3>
@@ -3448,18 +3447,6 @@
       root.querySelector('#users').innerHTML = `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>Email</th><th>Name</th><th>Joined</th><th class="num">Balance</th></tr></thead><tbody>${d.users.map((u) => `<tr>
         <td class="name" data-lab="Email">${esc(u.email)}</td><td data-lab="Name">${esc(u.name || '')}</td>
         <td class="hint" data-lab="Joined">${when(u.created_at)}</td><td class="num" data-lab="Balance">${usd(u.balance)}</td></tr>`).join('')}</tbody></table></div>`;
-      root.querySelector('#waitlist').innerHTML = d.waitlist.length
-        ? `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>Email</th><th>Note</th><th>When</th><th>Status</th><th></th></tr></thead><tbody>${d.waitlist.map((w) => `<tr>
-          <td class="name" data-lab="Email">${esc(w.email)}</td><td data-lab="Note">${esc(w.note || '')}</td><td class="hint" data-lab="When">${when(w.created_at)}</td>
-          <td data-lab="Status">${w.status === 'approved' ? '<span class="mk on">Approved</span> <small class="hint">awaiting their sign-in</small>' : 'Requested'}</td>
-          <td class="act" data-lab="">${w.status === 'approved' ? '' : `<button class="btn sm" data-wl="approve" data-email="${esc(w.email)}">Approve</button>`}<button class="btn sm danger" data-wl="remove" data-email="${esc(w.email)}">Remove</button></td></tr>`).join('')}</tbody></table></div>`
-        : '<p class="hint">No waitlist requests.</p>';
-      root.querySelectorAll('#waitlist [data-wl]').forEach((b) => (b.onclick = async () => {
-        await busy(b, async () => {
-          try { await api('/api/admin/waitlist', { email: b.dataset.email, action: b.dataset.wl }); await load(); }
-          catch (err) { alert0(err.message); }
-        });
-      }));
     };
     root.querySelector('#grant').onsubmit = async (e) => {
       e.preventDefault();
