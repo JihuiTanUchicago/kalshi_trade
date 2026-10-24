@@ -14,7 +14,15 @@ from data_pipeline.architecture.execution_kernel import (
     order_wire_params,
 )
 from data_pipeline.architecture.risk_engine import DummyRiskEngine, LiveSettingsRiskEngine
-from data_pipeline.common import api_get, api_get_auth, api_post_auth, get_db_conn, utc_now
+from data_pipeline.common import (
+    api_get,
+    api_get_auth,
+    api_post_auth,
+    day_start_value,
+    get_db_conn,
+    kalshi_account_equity_dollars,
+    utc_now,
+)
 from data_pipeline.kalshi_fees import taker_fee_per_contract_dollars
 from data_pipeline.market_data import MarketFeed
 from data_pipeline.modeling_features import FEATURE_COLS, SOURCE_COLS, build_feature_vector, has_target
@@ -201,37 +209,9 @@ class MismatchTracker:
         return persisted, not current
 
 
-def account_equity_dollars() -> Optional[float]:
-    """Cash plus Kalshi's own valuation of open positions, or None if unreadable.
-    Cash alone would read every entry as a loss."""
-    try:
-        b = api_get_auth("/trade-api/v2/portfolio/balance")
-    except Exception:
-        return None
-    if b.get("balance") is None or b.get("portfolio_value") is None:
-        return None
-    return (float(b["balance"]) + float(b["portfolio_value"])) / 100.0
-
-
 def account_daily_loss(cur, equity: float, now_ts: datetime) -> float:
     """Dollars lost since the first equity reading of this UTC day (negative = up)."""
-    day = now_ts.strftime("%Y-%m-%d")
-    cur.execute("SELECT state_value FROM collector_state WHERE state_key=%s", (ACCOUNT_DAY_START_KEY,))
-    row = cur.fetchone()
-    try:
-        base = json.loads(row["state_value"]) if row else {}
-    except (TypeError, ValueError):
-        base = {}
-    if base.get("date") != day or base.get("equity") is None:
-        base = {"date": day, "equity": equity}
-        cur.execute(
-            """
-            INSERT INTO collector_state (state_key,state_value,updated_at_utc) VALUES (%s,%s,%s)
-            ON DUPLICATE KEY UPDATE state_value=VALUES(state_value), updated_at_utc=VALUES(updated_at_utc)
-            """,
-            (ACCOUNT_DAY_START_KEY, json.dumps(base), utc_now().replace(tzinfo=None)),
-        )
-    return float(base["equity"]) - equity
+    return day_start_value(cur, ACCOUNT_DAY_START_KEY, now_ts.strftime("%Y-%m-%d"), equity) - equity
 
 
 def enforce_account_halts(cur, now_ts: datetime, tracker: MismatchTracker, pause_states: Dict[str, Dict]) -> Dict:
@@ -260,7 +240,7 @@ def enforce_account_halts(cur, now_ts: datetime, tracker: MismatchTracker, pause
                 print(f"live {m}: resumed - book matches Kalshi again")
 
     if ACCOUNT_MAX_DAILY_LOSS > 0:
-        equity = account_equity_dollars()
+        equity = kalshi_account_equity_dollars()
         if equity is not None:
             loss = account_daily_loss(cur, equity, now_ts)
             if loss >= ACCOUNT_MAX_DAILY_LOSS:

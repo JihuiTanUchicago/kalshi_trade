@@ -219,6 +219,27 @@ def autopilot_live_over_limit(cur, day_start) -> List[Dict]:
     return cur.fetchall()
 
 
+def users_for_equity_guard(cur) -> List[Dict]:
+    """Users with a live key who can open live positions right now (live autopilot on,
+    or a running live deployment), with their daily loss limit."""
+    cur.execute(
+        """SELECT u.id, u.autopilot_live, u.autopilot_daily_loss_limit AS lim
+           FROM app_users u JOIN app_kalshi_keys k ON k.user_id=u.id
+           WHERE u.autopilot_live=1
+              OR EXISTS (SELECT 1 FROM app_deployments d
+                         WHERE d.user_id=u.id AND d.mode='live' AND d.status='running')
+           ORDER BY u.id"""
+    )
+    return cur.fetchall()
+
+
+def equity_day_start(cur, user_id: int, day: str, equity: float) -> float:
+    """This user's first Kalshi account equity reading of the UTC `day`."""
+    from data_pipeline.common import day_start_value
+
+    return day_start_value(cur, "app_equity_day_start:%d" % int(user_id), day, equity)
+
+
 def create_session(cur, user_id: int, token_hash: str, ttl: timedelta) -> None:
     now = now_utc()
     cur.execute(

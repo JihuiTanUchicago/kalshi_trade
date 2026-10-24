@@ -1,4 +1,5 @@
 import os
+import json
 import time
 import base64
 from datetime import datetime, timezone, timedelta
@@ -238,6 +239,40 @@ def get_kalshi_cash_balance_dollars(credentials: Optional[KalshiCredentials] = N
                 except Exception:
                     continue
     return None
+
+
+def kalshi_account_equity_dollars(credentials: Optional[KalshiCredentials] = None) -> Optional[float]:
+    """Cash plus Kalshi's own valuation of open positions, or None if unreadable.
+    For loss limits: cash alone would read every entry as a loss."""
+    try:
+        b = api_get_auth("/trade-api/v2/portfolio/balance", credentials=credentials)
+    except Exception:
+        return None
+    if b.get("balance") is None or b.get("portfolio_value") is None:
+        return None
+    return (float(b["balance"]) + float(b["portfolio_value"])) / 100.0
+
+
+def day_start_value(cur, state_key: str, day: str, value: float) -> float:
+    """The first value recorded under state_key on `day` (a UTC date string); records
+    `value` as that baseline when the stored one is from another day or missing.
+    Backs the whole-account daily loss limits: loss = baseline - current equity."""
+    cur.execute("SELECT state_value FROM collector_state WHERE state_key=%s", (state_key,))
+    row = cur.fetchone()
+    try:
+        base = json.loads(row["state_value"]) if row else {}
+    except (TypeError, ValueError):
+        base = {}
+    if base.get("date") == day and base.get("value") is not None:
+        return float(base["value"])
+    cur.execute(
+        """
+        INSERT INTO collector_state (state_key,state_value,updated_at_utc) VALUES (%s,%s,%s)
+        ON DUPLICATE KEY UPDATE state_value=VALUES(state_value), updated_at_utc=VALUES(updated_at_utc)
+        """,
+        (state_key, json.dumps({"date": day, "value": value}), utc_now().replace(tzinfo=None)),
+    )
+    return value
 
 
 def next_20s_mark(now: Optional[datetime] = None) -> datetime:
