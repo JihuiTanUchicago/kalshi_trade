@@ -209,6 +209,20 @@ def test_unknown_pinned_market_fails_cleanly_not_as_keyerror(monkeypatch):
     assert not error.startswith("Unexpected error")        # a clean message, not a raw KeyError dump
 
 
+def test_autopilot_run_on_a_vanished_market_repicks_instead_of_failing(monkeypatch):
+    """An agent-launched (brief) run whose catalog market dropped out before it started keeps the
+    angle and lets the picker choose, rather than burning a slot on a 'no longer available' fail."""
+    store = Store(monkeypatch)
+    picked, pinned = [], []
+    monkeypatch.setattr(agent, "_pick_market", lambda run, model, usage, log, keys, hist: picked.append(keys) or "btc15m")
+    monkeypatch.setattr(agent.repo, "set_run_market", lambda cur, rid, m: pinned.append(m))
+    model, _ = scripted([])
+    agent.run_research(Conn(), {**RUN, "market": "retired_series_xyz", "brief": 1}, model=model,
+                       dataset_fn=lambda m, h=None: _dataset(n_contracts=2))
+    assert picked and pinned == ["btc15m"]
+    assert store.finished[0] == "stopped"  # reached the data load on the new market, not 'failed'
+
+
 def test_sports_market_passes_the_universe_guard_and_runs(monkeypatch):
     """The guard must NOT reject a real curated sports market (underlying=None): nba_game is in
     MARKETS, so the run gets past the chokepoint and researches exactly like a crypto market."""

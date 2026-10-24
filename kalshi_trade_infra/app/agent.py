@@ -1815,6 +1815,12 @@ def run_research(
                else "Research started — preparing",
                MARKETS[market].label if market in MARKETS else "the chosen market"),
             {"phase": "start", "market": market or None, "resumed": resuming})
+        if market and market not in MARKETS and run.get("brief") and not ckpt.get("market"):
+            # The autopilot named a catalog market that dropped out of the universe before the run
+            # started (catalog refresh / restart). Keep the angle and let the picker choose instead
+            # of failing the run; a user-pinned market still fails cleanly below.
+            log("step", "%s is no longer in the market list — picking another market for this angle." % market)
+            market = None
         if not market:  # user left it to the agent — it picks the market from the idea first
             if resuming and ckpt.get("market"):
                 market = ckpt["market"]  # already chosen on the first attempt; don't re-spend the pick
