@@ -126,7 +126,7 @@ ASOS_TIMEOUT_S = 60
 # STANDARD time all year, so a station's day boundary is a fixed UTC offset, never DST-shifted.
 ASOS_LST_OFFSET_H = {
     "NYC": -5, "LGA": -5, "JFK": -5, "EWR": -5, "PHL": -5, "BOS": -5, "DCA": -5, "IAD": -5,
-    "BWI": -5, "MIA": -5, "ATL": -5, "CLT": -5, "DTW": -5, "MDW": -6, "ORD": -6, "AUS": -6,
+    "BWI": -5, "MIA": -5, "ATL": -5, "CLT": -5, "DTW": -5, "TTN": -5, "SDF": -5, "OKC": -6, "MDW": -6, "ORD": -6, "AUS": -6,
     "DFW": -6, "DAL": -6, "HOU": -6, "IAH": -6, "SAT": -6, "MSP": -6, "MSY": -6, "STL": -6,
     "DEN": -7, "PHX": -7, "SLC": -7, "LAX": -8, "SFO": -8, "SEA": -8, "LAS": -8, "SAN": -8,
 }

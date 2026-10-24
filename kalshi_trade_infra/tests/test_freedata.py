@@ -225,3 +225,38 @@ def test_asos_dailymin_and_one_download_per_station(monkeypatch):
     freedata._fetch_asos("NYC:dailymax")
     freedata._fetch_asos("NYC")
     assert len(calls) == 1
+
+
+def test_every_weather_station_has_a_climate_day_offset():
+    """A station without an LST offset would silently lose obs_high_f/obs_low_f (dailymax raises)."""
+    from app.markets import WEATHER_STATIONS
+    assert set(WEATHER_STATIONS.values()) <= set(freedata.ASOS_LST_OFFSET_H)
+    assert WEATHER_STATIONS["KXHIGHCHI"] == "MDW" and WEATHER_STATIONS["KXLOWTNYC"] == "NYC"
+
+
+def test_station_readings_reach_only_the_contract_settling_today():
+    """A weather frame also quotes tomorrow's contracts; today's observed high must not leak onto
+    them, in research and live alike. 2026-10-24 15:00Z is the 10-24 climate day in NYC (EST)."""
+    from datetime import datetime, timezone
+    from app import backtest, engine, markets
+    ts = int(datetime(2026, 10, 24, 15, tzinfo=timezone.utc).timestamp())
+    today, tomorrow = "KXHIGHNY-26OCT24-T66", "KXHIGHNY-26OCT25-T66"
+    assert markets.weather_target_day(today).isoformat() == "2026-10-24"
+    assert markets.weather_obs_applies("KXHIGHNY", today, ts)
+    assert not markets.weather_obs_applies("KXHIGHNY", tomorrow, ts)
+    # 04:30Z on 10-25 is still the 10-24 climate day (midnight EST = 05:00Z).
+    late = int(datetime(2026, 10, 25, 4, 30, tzinfo=timezone.utc).timestamp())
+    assert markets.weather_obs_applies("KXHIGHNY", today, late)
+
+    close = datetime(2026, 10, 26, tzinfo=timezone.utc)
+    mk = [{"ticker": t, "strike": 66.0, "close_time": close, "result": "no"} for t in (today, tomorrow)]
+    ds = backtest.build_dataset(markets.MARKETS["high_ny"], mk, [(today, ts, 0.4, 0.45), (tomorrow, ts, 0.4, 0.45)],
+                                [], frame_series={"obs_high_f": [(ts - 60, 61.0)]},
+                                frame_series_applies=lambda tk, t: markets.weather_obs_applies("KXHIGHNY", tk, t))
+    got = {s.contract.ticker: s.features.get("obs_high_f") for s in ds.frames[0][1]}
+    assert got == {today: 61.0, tomorrow: None}
+
+    feats = {"obs_high_f": 61.0, "obs_temp_f": 60.0}
+    assert engine._contract_feats(markets.MARKETS["high_ny"], feats, today, ts) == feats
+    assert engine._contract_feats(markets.MARKETS["high_ny"], feats, tomorrow, ts) == {}
+    assert engine._contract_feats(markets.MARKETS["nba_game"], {"x": 1.0}, "KXNBAGAME-X", ts) == {"x": 1.0}

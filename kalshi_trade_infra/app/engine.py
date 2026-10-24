@@ -30,8 +30,8 @@ import requests
 from app import freedata
 from app import repository as repo
 from app import spec as specmod
-from app.markets import (MARKETS, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot, compatible_cadence,
-                         snapshot)
+from app.markets import (MARKETS, WEATHER_OBS_FEATURES, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot,
+                         compatible_cadence, snapshot, weather_obs_applies)
 from data_pipeline.common import api_get, parse_iso_to_dt
 from data_pipeline.market_data import ws_quote
 from data_pipeline.kalshi_fees import taker_fee_dollars
@@ -228,6 +228,14 @@ def _event_feats(market: Market, now_ts: int) -> Dict[str, float]:
     except Exception as e:
         print("[engine] station features unavailable for %s: %r" % (market.key, e), flush=True)
         return {}
+
+
+def _contract_feats(market: Market, feats: Optional[Dict[str, float]], ticker: str, now_ts: int):
+    """A contract's base features: a weather contract keeps the station readings only on the day it
+    settles on (research gates them the same way), so tomorrow's contract never sees today's high."""
+    if not feats or market.series not in WEATHER_STATIONS or weather_obs_applies(market.series, ticker, now_ts):
+        return feats
+    return {k: v for k, v in feats.items() if k not in WEATHER_OBS_FEATURES}
 
 
 # -- settlement ------------------------------------------------------------------
@@ -1471,7 +1479,8 @@ def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] 
             print("[engine] spot fetch failed for %s: %r (skipping tick)" % (market.key, e), flush=True)
             feats = None
     micro = _micro_for(sources, [q.contract.ticker for q in quotes], now_ts) if feats is not None else {}
-    snaps = [s for s in (snapshot(feats, q.contract, now_ts, q.yes_bid, q.yes_ask, micro.get(q.contract.ticker))
+    snaps = [s for s in (snapshot(_contract_feats(market, feats, q.contract.ticker, now_ts), q.contract, now_ts,
+                                  q.yes_bid, q.yes_ask, micro.get(q.contract.ticker))
                          for q in quotes) if s is not None]
     sizes = book_sizes(quotes)
     # (positions were already marked above, every tick — not only when a decision is due)
@@ -1536,7 +1545,8 @@ def _cross_market_frame(markets: List[str], sources: Sources, now_ts: int):
                 return None  # stale/missing spot on this leg — skip the whole frame
         micro = _micro_for(sources, [q.contract.ticker for q in quotes], now_ts)
         for q in quotes:
-            s = snapshot(feats, q.contract, now_ts, q.yes_bid, q.yes_ask, micro.get(q.contract.ticker))
+            s = snapshot(_contract_feats(market, feats, q.contract.ticker, now_ts), q.contract, now_ts,
+                         q.yes_bid, q.yes_ask, micro.get(q.contract.ticker))
             if s is not None:
                 all_snaps.append(s)
         sizes.update(book_sizes(quotes))
