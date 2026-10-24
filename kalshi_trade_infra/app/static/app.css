@@ -1491,7 +1491,10 @@ body.landing-body .apf { display: none; }
 .apf-x:hover { color: var(--ink); }
 .apf-x svg { width: 18px; height: 18px; }
 .apf-top { flex: none; padding: 14px 16px; border-bottom: 1px solid var(--rule); background: var(--stock); }
-.apf-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin: 0; border: 1px solid var(--rule); background: var(--rule); }
+.apf-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin: 0; border: 1px solid var(--rule); background: var(--rule); }
+.apf-stats[data-cols="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.apf-stats > .apf-wide { grid-column: 1 / -1; }
+.apf-top .apf-model { margin-top: 12px; }
 .apf-stats > div { display: flex; flex-direction: column; gap: 3px; padding: 9px 11px; background: var(--stock-raised); }
 .apf-stats dt { font-family: var(--f-nar); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
 .apf-stats dd { margin: 0; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
@@ -1632,5 +1635,9 @@ body.landing-body .apf { display: none; }
   .apf.open .apf-head { position: sticky; top: 0; z-index: 1; background: var(--stock-raised); padding-top: max(13px, env(safe-area-inset-top)); }
   .apf.open .apf-session { flex: none; min-height: 55vh; }
   .apf.open .apf-composer-row { position: sticky; bottom: 0; }
-  .apf-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .apf-stats, .apf-stats[data-cols] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .apf-stats > .apf-tail { grid-column: 1 / -1; }
+  /* The on/off-live switch gets the full row; Kill and Open board share the next. */
+  .apf-controls > :first-child { flex-basis: 100%; }
+  .apf-controls .btn { justify-content: center; }
 }
