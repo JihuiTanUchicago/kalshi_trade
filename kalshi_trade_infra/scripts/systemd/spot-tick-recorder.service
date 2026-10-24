@@ -1,0 +1,19 @@
+[Unit]
+Description=BRTI venue tick recorder: BTC prints and best bid/ask from Kraken, Bitstamp, Gemini, Bullish, Crypto.com and LMAX via public WebSockets -> hourly NDJSON per venue (archived to S3 by kalshi-tick-archiver). Runs on the COLLECTOR box.
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/kalshi
+MemoryMax=400M
+ExecStart=/bin/bash -c 'set -a; . /opt/kalshi/.env.aws; [ -f /opt/kalshi/.env ] && . /opt/kalshi/.env; set +a; unset AWS_PROFILE; exec /opt/kalshi/.venv313/bin/python -u -m data_pipeline.tick_recorder spot >> /opt/kalshi/logs/spot-tick-recorder.log 2>&1'
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

@@ -111,7 +111,9 @@ secret `kalshi/odds_api_key` and is a no-op without one. For a paid plan, tighte
 
 `kalshi-tick-recorder` and `coinbase-tick-recorder` stream every Kalshi BTC-series book delta,
 trade and ticker, and every Coinbase BTC-USD print and best bid/ask, into hourly NDJSON files
-under `/opt/kalshi/ticks`. `kalshi-tick-archiver.timer` turns closed hours into S3 Parquet
-(`ticks/v1/...` in the datalake bucket) and a `tick_archive_hours` row, then deletes the local
-file. `scripts/deploy_collector.sh` installs and enables all four; see
-`data_pipeline/tick_store.py` for reading the archive.
+under `/opt/kalshi/ticks`. `spot-tick-recorder` does the same for the other exchanges in the
+BRTI (Kalshi's BTC settlement index): Kraken, Bitstamp, Gemini, Bullish, Crypto.com and LMAX,
+one directory per venue, one `tick_recorder_spot` heartbeat. `kalshi-tick-archiver.timer` turns
+closed hours into S3 Parquet (`ticks/v1/...` in the datalake bucket) and a `tick_archive_hours`
+row, then deletes the local file. `scripts/deploy_collector.sh` installs and enables all five;
+see `data_pipeline/tick_store.py` for reading the archive.

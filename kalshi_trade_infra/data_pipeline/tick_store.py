@@ -5,6 +5,7 @@ backtests and the live engine.
     ts = TickStore()
     book = ts.book_1s(["KXBTC15M-26OCT241500-00"], start, end)    # {column: np.ndarray}
     spot = ts.spot_1s(start, end)                                  # Coinbase BTC-USD, dense 1s
+    comp = ts.composite_1s(start, end)                             # median mid over the BRTI venues
     flow = ts.trades_1s(["KXBTC15M-26OCT241500-00"], start, end)
     raw  = ts.read("kalshi_trades", start, end, tickers=[...])     # pyarrow.Table, tick level
     feat = ts.features_1s(start, end, series=["KXBTC15M"])          # prebuilt per-second features
@@ -92,7 +93,8 @@ class TickStore:
         import pyarrow.compute as pc
         import pyarrow.parquet as pq
         start, end = _utc(start), _utc(end)
-        key_col = "product_id" if table.startswith("coinbase") else "ticker"
+        key_col = ("product_id" if table.startswith("coinbase") else "ticker" if table.startswith("kalshi")
+                   else "product" if table.endswith(("_trades", "_quotes")) else "ticker")
         filters = []
         if tickers:
             filters.append((key_col, "in", list(tickers)))
@@ -147,10 +149,15 @@ class TickStore:
             for name in names:
                 p = self._fetch(f"{self.prefix}/v1/features_1s/date={h:%Y-%m-%d}/hour={h:%H}/series={name}/part.parquet")
                 if p is not None:
-                    parts.append(pq.read_table(p, columns=columns, filters=filters, partitioning=None))
+                    cols = columns
+                    if columns is not None:
+                        have = set(pq.read_schema(p).names)
+                        cols = [c for c in columns if c in have]
+                    parts.append(pq.read_table(p, columns=cols, filters=filters, partitioning=None))
         if not parts:
             return {}
-        t = pa.concat_tables(parts)
+        # Hours built before a column existed lack it; promote fills those rows with nulls.
+        t = pa.concat_tables(parts, promote_options="default")
         if "sec" in t.column_names:
             t = t.filter(pc.and_(pc.greater(t["sec"], int(start.timestamp())), pc.less_equal(t["sec"], int(end.timestamp()))))
         return {name: t[name].to_numpy(zero_copy_only=False) for name in t.column_names}
@@ -176,6 +183,44 @@ class TickStore:
         trades = self.read("coinbase_trades", start, end, tickers=[product])
         ticker = self.read("coinbase_ticker", start, end, tickers=[product])
         return aggregate_spot(trades, ticker, start, end)
+
+    def venue_quotes_1s(self, venue: str, start: datetime, end: datetime, product: str = "BTC-USD",
+                        lookback_s: int = 300) -> Dict[str, np.ndarray]:
+        """Dense seconds over (start, end] for one venue ("coinbase", "kraken", ...): best bid,
+        ask, mid and age_s (seconds since its last quote). Quotes from ``lookback_s`` before
+        start are replayed so the first seconds have a book and an honest age."""
+        from data_pipeline.tick_spot import quotes_1s
+        s0, s1 = int(_utc(start).timestamp()), int(_utc(end).timestamp())
+        lo = _utc(start) - timedelta(seconds=lookback_s)
+        if venue == "coinbase":
+            q = self.read("coinbase_ticker", lo, end, tickers=[product], columns=["rt", "product_id", "best_bid", "best_ask"])
+            fr = quotes_1s(q, s0 - lookback_s, s1, "best_bid", "best_ask")
+        else:
+            q = self.read(venue + "_quotes", lo, end, tickers=[product], columns=["rt", "product", "bid", "ask"])
+            fr = quotes_1s(q, s0 - lookback_s, s1)
+        return {k: v[lookback_s:] for k, v in fr.items()}
+
+    def composite_1s(self, start: datetime, end: datetime, product: str = "BTC-USD",
+                     venues: Optional[Sequence[str]] = None, max_age_s: Optional[float] = None) -> Dict[str, np.ndarray]:
+        """Cross-exchange BTC price per second over (start, end]: ``spot_comp`` = median mid of
+        the venues quoted in the last ``max_age_s`` (default tick_spot.COMPOSITE_MAX_AGE_S),
+        ``n_venues`` used, and each venue's ``mid_<venue>`` / ``age_<venue>``. A proxy for
+        the BRTI that Kalshi BTC contracts settle on. Default venues: Coinbase plus every
+        recorded BRTI venue."""
+        from data_pipeline.tick_recorder import SPOT_VENUES
+        from data_pipeline.tick_spot import COMPOSITE_MAX_AGE_S, composite
+        venues = list(venues) if venues else ["coinbase"] + list(SPOT_VENUES)
+        mids, ages = {}, {}
+        secs = None
+        for v in venues:
+            fr = self.venue_quotes_1s(v, start, end, product)
+            secs = fr["sec"]
+            mids[v], ages[v] = fr["mid"], fr["age_s"]
+        comp, n = composite(mids, ages, COMPOSITE_MAX_AGE_S if max_age_s is None else max_age_s)
+        out = {"sec": secs, "spot_comp": comp, "n_venues": n}
+        for v in venues:
+            out["mid_" + v], out["age_" + v] = mids[v], ages[v]
+        return out
 
 
 def _col(t, name) -> np.ndarray:

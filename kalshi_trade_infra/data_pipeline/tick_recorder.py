@@ -15,6 +15,8 @@ sent when the market was first subscribed (a weekly contract's may be days old).
 
 Run:  python -m data_pipeline.tick_recorder kalshi      (unit kalshi-tick-recorder)
       python -m data_pipeline.tick_recorder coinbase    (unit coinbase-tick-recorder)
+      python -m data_pipeline.tick_recorder spot        (unit spot-tick-recorder: the other BRTI
+                                                         exchanges, one source directory each)
 """
 import asyncio
 import json
@@ -49,6 +51,8 @@ HEARTBEAT_S = 10
 RESYNC_MIN_S = 30          # per subscription group
 RESYNC_BUDGET = 20         # all groups, per 10 minutes
 SILENCE_RECONNECT_S = {"kalshi": 45, "coinbase": 15}   # no message this long while subscribed -> reconnect
+# The other CF Benchmarks BRTI constituents (Kalshi's BTC settlement index), recorded by SpotRecorder.
+SPOT_VENUES = [s.strip() for s in os.getenv("TAU_TICK_SPOT_VENUES", "kraken,bitstamp,gemini,bullish,cryptocom,lmax").split(",") if s.strip()]
 
 
 def _ns() -> int:
@@ -356,14 +360,20 @@ class Recorder:
             self.file.flush()
             state = self.heartbeat_state()
             self.window = {}
-            await asyncio.to_thread(write_heartbeat, key, state)
+            await self.publish(key, state)
             silent = (_ns() - max(self.last_msg_ns, self.connected_ns)) / 1e9
-            if self.ws is not None and self.expect_traffic() and silent > SILENCE_RECONNECT_S[self.source]:
+            if self.ws is not None and self.expect_traffic() and silent > self.silence_limit():
                 print(f"[WARN] {self.source}: silent {silent:.0f}s, reconnecting", flush=True)
                 await self.ws.close()
 
+    async def publish(self, key: str, state: Dict) -> None:
+        await asyncio.to_thread(write_heartbeat, key, state)
+
     def expect_traffic(self) -> bool:
         return True
+
+    def silence_limit(self) -> float:
+        return SILENCE_RECONNECT_S.get(self.source, 60)
 
     async def run(self) -> None:
         asyncio.create_task(self.heartbeat_loop())
@@ -658,9 +668,287 @@ class CoinbaseRecorder(Recorder):
             self.last_trade_id[pid] = tid
 
 
+# --- The other BRTI constituent exchanges ---------------------------------------------------------
+# Kalshi's BTC contracts settle on CF Benchmarks' BRTI, a once-a-second index over the BTC-USD
+# order books of its constituent exchanges: Coinbase, Kraken, Bitstamp, Gemini, Bullish, Crypto.com
+# and LMAX Digital (itBit was suspended 2026-07-27). Coinbase alone misses moves led elsewhere, so
+# each venue's public BTC feed (prints plus best bid/ask) is recorded verbatim too, one source
+# directory per venue, all in one process. tick_archiver parses them into <venue>_trades and
+# <venue>_quotes; the raw lines are kept, so a parser fix can re-archive old hours.
+
+SPOT_STATE: Dict[str, Dict] = {}
+
+
+class _Conns:
+    """The open sockets of one venue session, closed together (heartbeat_loop closes self.ws)."""
+
+    def __init__(self) -> None:
+        self.socks: List = []
+
+    async def close(self) -> None:
+        for ws in self.socks:
+            await ws.close()
+
+
+class SpotRecorder(Recorder):
+    """One exchange's public BTC market data. A subclass gives ``streams`` (url, subscribe
+    messages) and may override ``kind`` (message type label for the counters), ``check``
+    (sequence/trade-id gap detection), ``reply`` (answers the venue requires, e.g. heartbeats),
+    ``keepalive`` and ``must_reconnect``."""
+    streams: List[Tuple[str, List[Dict]]] = []
+    silence_s = 30
+    subscribe_delay_s = 0.0
+    keepalive_s = 0
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._ssl = ssl.create_default_context(cafile=certifi.where())
+        self.last_seq: Dict[str, int] = {}
+
+    def silence_limit(self) -> float:
+        return self.silence_s
+
+    async def publish(self, key: str, state: Dict) -> None:
+        SPOT_STATE[self.source] = state     # one collector_state row for all venues (run_spot)
+
+    def kind(self, data) -> str:
+        if isinstance(data, dict):
+            return str(data.get("type") or data.get("channel") or data.get("event") or data.get("method") or "?")[:40]
+        return "list"
+
+    def check(self, data) -> None:
+        pass
+
+    def reply(self, data) -> Optional[Dict]:
+        return None
+
+    def keepalive(self) -> Optional[Dict]:
+        return None
+
+    def must_reconnect(self, data) -> bool:
+        return False
+
+    def seq_check(self, key: str, value, step_ok=lambda prev, cur: cur == prev + 1) -> None:
+        """Record a gap when ``value`` does not follow the last one seen for ``key``."""
+        try:
+            cur = int(value)
+        except (TypeError, ValueError):
+            return
+        prev = self.last_seq.get(key)
+        if prev is not None and cur > prev and not step_ok(prev, cur):
+            self.seq_gaps += 1
+            self.meta("seq_gap", key=key, expected=prev + 1, got=cur)
+        if prev is None or cur > prev:
+            self.last_seq[key] = cur
+
+    async def pump(self, ws, url: str, subs: List[Dict]) -> None:
+        if self.subscribe_delay_s:
+            await asyncio.sleep(self.subscribe_delay_s)
+        for msg in subs:
+            await ws.send(json.dumps(msg))
+        async for raw in ws:
+            rt = _ns()
+            if isinstance(raw, bytes):
+                raw = raw.decode("utf-8", "replace")
+            try:
+                data = json.loads(raw)
+            except ValueError:
+                self.errors.append(f"non-json {raw[:120]}")
+                continue
+            if "\n" in raw.strip():           # one line per message, whatever the venue sends
+                raw = json.dumps(data, separators=(",", ":"))
+            self.record(rt, raw, self.kind(data))
+            out = self.reply(data)
+            if out is not None:
+                await ws.send(json.dumps(out))
+            if isinstance(data, dict) and (data.get("error") or data.get("event") == "bts:error"
+                                           or data.get("type") == "error" or data.get("success") is False):
+                self.errors.append(f"{url} {raw[:200]}")
+            self.check(data)
+            if self.must_reconnect(data):
+                print(f"{self.source}: venue asked for a reconnect", flush=True)
+                return
+
+    async def keepalive_loop(self, ws) -> None:
+        while self.keepalive_s:
+            await asyncio.sleep(self.keepalive_s)
+            msg = self.keepalive()
+            if msg is not None:
+                await ws.send(json.dumps(msg))
+
+    async def session(self) -> None:
+        import websockets
+        conns = _Conns()
+        tasks = []
+        try:
+            for url, subs in self.streams:
+                ws = await websockets.connect(url, ssl=self._ssl, ping_interval=20, ping_timeout=20,
+                                              open_timeout=15, max_size=16 << 20, max_queue=4096)
+                conns.socks.append(ws)
+                tasks.append(asyncio.create_task(self.pump(ws, url, subs)))
+                if self.keepalive_s:
+                    tasks.append(asyncio.create_task(self.keepalive_loop(ws)))
+            self.ws = conns
+            self.connected_ns = _ns()
+            self.last_seq = {}
+            self.meta("connected", urls=[u for u, _ in self.streams])
+            print(f"{self.source} tick recorder connected {[u for u, _ in self.streams]}", flush=True)
+            done, _pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for t in done:
+                if t.exception() is not None:
+                    raise t.exception()
+        finally:
+            self.ws = None
+            for t in tasks:
+                t.cancel()
+            await conns.close()
+
+
+class KrakenRecorder(SpotRecorder):
+    """WS v2: every BTC/USD print (``trade``, side = taker) and best bid/ask on each change
+    (``ticker`` with event_trigger bbo). trade_id is consecutive per pair; 1/s heartbeats."""
+    source = "kraken"
+    symbol = os.getenv("TAU_TICK_KRAKEN_SYMBOL", "BTC/USD")
+    streams = [("wss://ws.kraken.com/v2", [
+        {"method": "subscribe", "params": {"channel": "trade", "symbol": [symbol], "snapshot": False}},
+        {"method": "subscribe", "params": {"channel": "ticker", "symbol": [symbol], "event_trigger": "bbo"}},
+    ])]
+    silence_s = 15
+
+    def kind(self, data) -> str:
+        if isinstance(data, dict):
+            return str(data.get("channel") or data.get("method") or "?")
+        return "list"
+
+    def check(self, data) -> None:
+        if isinstance(data, dict) and data.get("channel") == "trade" and data.get("type") == "update":
+            for t in data.get("data") or []:
+                self.seq_check("trade:" + str(t.get("symbol")), t.get("trade_id"))
+
+
+class BitstampRecorder(SpotRecorder):
+    """Every btcusd print (live_trades; type 0 = taker buy) and the top-100 book on each change
+    (order_book; its first level is the touch). Trade ids are global, so no gap check here.
+    Bitstamp sends bts:request_reconnect before maintenance."""
+    source = "bitstamp"
+    pair = os.getenv("TAU_TICK_BITSTAMP_PAIR", "btcusd")
+    streams = [("wss://ws.bitstamp.net", [
+        {"event": "bts:subscribe", "data": {"channel": "live_trades_" + pair}},
+        {"event": "bts:subscribe", "data": {"channel": "order_book_" + pair}},
+    ])]
+    silence_s = 60
+
+    def kind(self, data) -> str:
+        if isinstance(data, dict):
+            ch = str(data.get("channel") or "")
+            return str(data.get("event") or "?") + (":book" if ch.startswith("order_book") else "")
+        return "list"
+
+    def must_reconnect(self, data) -> bool:
+        return isinstance(data, dict) and data.get("event") == "bts:request_reconnect"
+
+
+class GeminiRecorder(SpotRecorder):
+    """v1 market data for BTCUSD: prints and top-of-book changes, with 5s heartbeats.
+    socket_sequence counts every message on the socket from 0, so a jump is a lost message."""
+    source = "gemini"
+    symbol = os.getenv("TAU_TICK_GEMINI_SYMBOL", "BTCUSD")
+    streams = [(f"wss://api.gemini.com/v1/marketdata/{symbol}?top_of_book=true&trades=true&heartbeat=true", [])]
+    silence_s = 20
+
+    def check(self, data) -> None:
+        if isinstance(data, dict) and "socket_sequence" in data:
+            self.seq_check("socket", data.get("socket_sequence"))
+
+
+class BullishRecorder(SpotRecorder):
+    """Unauthenticated JSON-RPC market data: anonymous trades and level-1 book, on two sockets.
+    Bullish's institutional BTC market is quoted in USDC as well as USD, so both are taken."""
+    source = "bullish"
+    symbols = [s.strip() for s in os.getenv("TAU_TICK_BULLISH_SYMBOLS", "BTCUSD,BTCUSDC").split(",") if s.strip()]
+    base = "wss://api.exchange.bullish.com/trading-api/v1/market-data"
+    streams = [
+        (base + "/trades", [{"jsonrpc": "2.0", "type": "command", "method": "subscribe",
+                             "params": {"topic": "anonymousTrades", "symbol": s}, "id": str(i + 1)}
+                            for i, s in enumerate(symbols)]),
+        (base + "/orderbook", [{"jsonrpc": "2.0", "type": "command", "method": "subscribe",
+                                "params": {"topic": "l1Orderbook", "symbol": s}, "id": str(i + 101)}
+                               for i, s in enumerate(symbols)]),
+    ]
+    silence_s = 60
+    keepalive_s = 60
+
+    def kind(self, data) -> str:
+        if isinstance(data, dict):
+            return str(data.get("dataType") or data.get("type") or data.get("method") or "?")[:40]
+        return "list"
+
+    def keepalive(self) -> Optional[Dict]:
+        return {"jsonrpc": "2.0", "type": "command", "method": "keepalivePing", "params": {}, "id": str(_ns())}
+
+
+class CryptoComRecorder(SpotRecorder):
+    """Exchange v1 market socket: trade.BTC_USD prints (side = taker) and ticker.BTC_USD best
+    bid/ask. The venue wants a 1s pause before the first request and an answer to every
+    public/heartbeat, or it drops the socket."""
+    source = "cryptocom"
+    instrument = os.getenv("TAU_TICK_CRYPTOCOM_INSTRUMENT", "BTC_USD")
+    streams = [("wss://stream.crypto.com/exchange/v1/market", [
+        {"id": 1, "method": "subscribe", "params": {"channels": ["trade." + instrument, "ticker." + instrument]}},
+    ])]
+    subscribe_delay_s = 1.1
+    silence_s = 45
+
+    def kind(self, data) -> str:
+        if isinstance(data, dict):
+            res = data.get("result") or {}
+            return str((res.get("channel") if isinstance(res, dict) else None) or data.get("method") or "?")
+        return "list"
+
+    def reply(self, data) -> Optional[Dict]:
+        if isinstance(data, dict) and data.get("method") == "public/heartbeat":
+            return {"id": data.get("id"), "method": "public/respond-heartbeat"}
+        return None
+
+
+class LmaxRecorder(SpotRecorder):
+    """LMAX Digital public market data: TICKER (last trade, best bid/ask) and ORDER_BOOK."""
+    source = "lmax"
+    instrument = os.getenv("TAU_TICK_LMAX_INSTRUMENT", "btc-usd")
+    streams = [("wss://public-data-api.london-digital.lmax.com/v1/web-socket", [
+        {"type": "SUBSCRIBE", "channels": [{"name": "TICKER", "instruments": [instrument]},
+                                           {"name": "ORDER_BOOK", "instruments": [instrument]}]},
+    ])]
+    silence_s = 60
+
+
+SPOT_RECORDERS = {c.source: c for c in (KrakenRecorder, BitstampRecorder, GeminiRecorder, BullishRecorder,
+                                        CryptoComRecorder, LmaxRecorder)}
+
+
+async def spot_heartbeat_loop() -> None:
+    """tick_recorder_spot: the process heartbeat, with each venue's recorder state inside. The
+    alerter pages only when the whole process stops; one venue's outage shows in its entry."""
+    while True:
+        await asyncio.sleep(HEARTBEAT_S)
+        state = {"host": socket.gethostname(), "venues": dict(SPOT_STATE),
+                 "live": sorted(v for v, st in SPOT_STATE.items()
+                                if st.get("last_msg_age_s") is not None and st["last_msg_age_s"] < 60)}
+        await asyncio.to_thread(write_heartbeat, "tick_recorder_spot", state)
+
+
+async def run_spot(venues: List[str]) -> None:
+    await asyncio.gather(spot_heartbeat_loop(),
+                         *(SPOT_RECORDERS[v]().run() for v in venues if v in SPOT_RECORDERS))
+
+
 def main(argv: List[str]) -> None:
     which = argv[1] if len(argv) > 1 else "kalshi"
-    rec = {"kalshi": KalshiRecorder, "coinbase": CoinbaseRecorder}[which]()
+    if which == "spot":
+        print(f"tick recorder spot {SPOT_VENUES} -> {TICK_DIR}", flush=True)
+        asyncio.run(run_spot(SPOT_VENUES))
+        return
+    rec = {"kalshi": KalshiRecorder, "coinbase": CoinbaseRecorder, **SPOT_RECORDERS}[which]()
     print(f"tick recorder {which} -> {TICK_DIR}", flush=True)
     asyncio.run(rec.run())
 
