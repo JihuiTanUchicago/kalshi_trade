@@ -147,6 +147,9 @@ class Sources:
     result: Callable[[str], Optional[str]] = fetch_result
     live_kernel: Optional[Callable[[int], object]] = None  # user_id -> kernel; None = live disabled
     demo_kernel: Optional[Callable[[int], object]] = None  # user_id -> kernel; None = demo disabled
+    # user_id -> kernel over a SimulatedVenue (never sends an order). None = legacy instant paper fills
+    # at the quoted price. Set, paper runs the live execution policy so paper P&L is comparable to live.
+    paper_kernel: Optional[Callable[[int], object]] = None
     # intent_row -> {'filled':int,'avg_price':float,'fee':float,'order_id':str} or None (undetermined).
     # Crash-recovery asks this whether a 'sent' intent's order filled; None = can't tell (leave it
     # 'sent', NEVER re-send). None here = no recovery lookup wired (recovery is a safe no-op).
@@ -186,30 +189,61 @@ def settle_due(conn, market: Market, sources: Sources, now: datetime) -> int:
 # -- decisions -------------------------------------------------------------------
 
 
-def _paper_buy(conn, dep: Dict, entry: specmod.Entry, qty: int) -> Optional[int]:
-    price = entry.price
-    fee = taker_fee_dollars(qty, price)
+def _paper_book_buy(conn, dep: Dict, ticker: str, side: str, qty: int, price: float, fee: float,
+                    close_time, order_ref: Optional[str] = None) -> Optional[int]:
+    """Debit the paper ledger and open the position in ONE transaction; None = not enough paper cash.
+    `order_ref` is set only for a fill that came through the simulated venue, which is how the live
+    gate tells realistic paper fills apart from legacy instant ones."""
     cost = qty * price + fee
     with repo.transaction(conn) as tx:
         repo.lock_user(tx, dep["user_id"])
         if repo.paper_balance(tx, dep["user_id"]) < cost:
             return None
-        ticker = entry.snapshot.contract.ticker
-        pid = repo.insert_position(tx, dep["id"], dep["user_id"], "paper", ticker, entry.side, qty, price, fee,
-                                   entry.snapshot.contract.close_time)
+        pid = repo.insert_position(tx, dep["id"], dep["user_id"], "paper", ticker, side, qty, price, fee,
+                                   close_time, order_ref)
         repo.add_ledger(tx, dep["user_id"], "trade", -cost,
-                        "Bought %d %s %s @ %.2f" % (qty, entry.side.upper(), ticker, price), pid)
+                        "Bought %d %s %s @ %.2f" % (qty, side.upper(), ticker, price), pid)
         return pid
 
 
-def _paper_sell(conn, pos: Dict, price: float, reason: str) -> None:
+def _paper_buy(conn, dep: Dict, entry: specmod.Entry, qty: int) -> Optional[int]:
+    """Legacy paper entry: fills the whole size instantly at the quoted price."""
+    price = entry.price
+    return _paper_book_buy(conn, dep, entry.snapshot.contract.ticker, entry.side, qty, price,
+                           taker_fee_dollars(qty, price), entry.snapshot.contract.close_time)
+
+
+def _paper_sell(conn, pos: Dict, price: float, reason: str, fee: Optional[float] = None) -> bool:
     qty = int(pos["qty"])
-    fee = taker_fee_dollars(qty, price)
+    fee = taker_fee_dollars(qty, price) if fee is None else float(fee)
     pnl = qty * (price - float(pos["entry_price"])) - float(pos["entry_fee"]) - fee
     with repo.transaction(conn) as tx:
         if repo.close_position(tx, pos["id"], price, fee, pnl, reason):
             repo.add_ledger(tx, pos["user_id"], "trade", qty * price - fee,
                             "Sold %d %s %s @ %.2f (%s)" % (qty, pos["side"].upper(), pos["ticker"], price, reason), pos["id"])
+            return True
+    return False
+
+
+def _paper_kernel_close(conn, cur, dep: Dict, pos: Dict, kernel, price: float, reason: str) -> bool:
+    """Paper exit through the simulated venue: the same kernel the live exit uses, so a paper exit
+    can miss or part-fill exactly as a live one can. A part fill books the sold slice (and credits
+    its proceeds) and leaves the remainder open for the next slot, mirroring the live path."""
+    qty = int(pos["qty"])
+    rep = _live_trade(cur, dep, kernel, "sell", pos["side"], pos["ticker"], qty, price)
+    filled = int(rep.fill_qty_contracts)
+    if filled <= 0:
+        return False  # no fresh quote / no bid: the position stays open, as it would live
+    if filled >= qty:
+        return _paper_sell(conn, pos, rep.fill_price_dollars, reason, fee=rep.fee_dollars)
+    filled_entry_fee = float(pos["entry_fee"]) * filled / qty
+    pnl = filled * (rep.fill_price_dollars - float(pos["entry_price"])) - filled_entry_fee - rep.fee_dollars
+    with repo.transaction(conn) as tx:
+        if repo.book_partial_exit(tx, pos, filled, rep.fill_price_dollars, rep.fee_dollars, pnl, reason):
+            repo.add_ledger(tx, pos["user_id"], "trade", filled * rep.fill_price_dollars - rep.fee_dollars,
+                            "Sold %d/%d %s %s @ %.2f (%s, partial)" % (filled, qty, pos["side"].upper(), pos["ticker"],
+                                                                      rep.fill_price_dollars, reason), pos["id"])
+    return False
 
 
 def _live_trade(cur, dep: Dict, kernel, action: str, side: str, ticker: str, qty: int, price: float,
@@ -270,6 +304,8 @@ def _close_position_at(conn, cur, dep: Dict, pos: Dict, kernel, via_kernel: bool
     partial live fill books nothing and waits for the next slot."""
     qty = int(pos["qty"])
     if not via_kernel:
+        if kernel is not None:  # paper over the simulated venue
+            return _paper_kernel_close(conn, cur, dep, pos, kernel, price, reason)
         _paper_sell(conn, pos, price, reason)
         return True
     # Durable order-intent BEFORE the exchange sell (P0-1). Best-effort — an EXIT is NEVER blocked by
@@ -400,6 +436,10 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
         if halts:
             return {"halted": "position mismatch on %s" % ", ".join(h["ticker"] for h in halts)}
         return _decide_pairs(conn, dep, snaps, sizes, kernel, via_kernel, mode)
+    if mode == "paper":
+        # Single-leg paper runs the live execution policy against a simulated venue when wired.
+        # Pairs keep the atomic two-leg paper fill (legging risk is not simulated yet).
+        kernel = sources.paper_kernel(dep["user_id"]) if sources.paper_kernel else None
     out = {"exits": 0, "entries": 0}
     if halts:
         out["halted"] = "position mismatch on %s" % ", ".join(h["ticker"] for h in halts)
@@ -462,6 +502,16 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
                 continue
             # Fill -> position insert is ONE transaction keyed to the intent (P0-2), booked once.
             _book_entry(conn, intent_id, dep["id"], dep["user_id"], mode, ticker, entry.side, rep, close_time)
+        elif kernel is not None:
+            # Paper over the simulated venue: book only what the touch actually gave, at the fill
+            # price and fee the venue charged. A miss (stale quote, edge gone) books nothing.
+            rep = _live_trade(cur, dep, kernel, "buy", entry.side, ticker, qty, entry.price)
+            if rep.fill_qty_contracts < 1:
+                continue
+            if _paper_book_buy(conn, dep, ticker, entry.side, int(rep.fill_qty_contracts), rep.fill_price_dollars,
+                               rep.fee_dollars, entry.snapshot.contract.close_time,
+                               SIM_ORDER_REF_PREFIX + str(rep.external_order_id or "")) is None:
+                break  # out of paper cash
         elif _paper_buy(conn, dep, entry, qty) is None:
             break  # out of paper cash
         held.add(ticker)
@@ -810,6 +860,8 @@ def _force_close_kernel(dep: Dict, sources: Sources):
         return None
     if mode == "demo":
         return sources.demo_kernel(dep["user_id"]) if sources.demo_kernel else None
+    if mode == "paper" and sources.paper_kernel:
+        return sources.paper_kernel(dep["user_id"])
     return None
 
 
@@ -843,7 +895,7 @@ def force_sell_if_drawn_down(conn, dep: Dict, sources: Sources) -> bool:
     close_reason = "drawdown" if reasons[0].startswith("drawdown") else "stop"
     mode = dep["mode"]
     via_kernel = mode in ("live", "demo")
-    kernel = _force_close_kernel(dep, sources) if via_kernel else None
+    kernel = _force_close_kernel(dep, sources)  # paper: the simulated-venue kernel, or None (instant)
     for pos in repo.open_positions(cur, dep["id"]):
         if via_kernel and kernel is None:
             break  # no execution path; pause below and let the positions settle at expiry
@@ -900,7 +952,7 @@ def flatten_deployment(conn, dep: Dict, sources: Sources) -> int:
     cur = conn.cursor()
     mode = dep["mode"]
     via_kernel = mode in ("live", "demo")
-    kernel = _force_close_kernel(dep, sources) if via_kernel else None
+    kernel = _force_close_kernel(dep, sources)  # paper: the simulated-venue kernel, or None (instant)
     closed = 0
     for pos in repo.open_positions(cur, dep["id"]):
         if via_kernel and kernel is None:
@@ -1325,6 +1377,40 @@ def enforce_account_equity_limits(conn) -> int:
     return killed
 
 
+SIM_ORDER_REF_PREFIX = "sim:"  # order_ref of a paper position filled through the simulated venue
+
+
+def _execution_kernel(submitter, feed, xc: Dict):
+    """The ONE execution policy every mode runs: live, demo and simulated paper differ only in the
+    submitter. `xc` is the user's execution overrides (set by the co-pilot's set_exec, clamped to a
+    safe envelope); a NULL value falls back to the global KALSHI_MAX_* env default. Each knob can
+    only shrink or abandon an order and never blocks an exit, so this never loosens safety."""
+    from data_pipeline.architecture.execution_kernel import MarketableLimitKernel
+
+    def _exec(col: str, env: str) -> Optional[float]:
+        v = xc.get(col)
+        return float(v) if v is not None else _opt_float(os.getenv(env))
+
+    # Market-order-like entries: cross through the touch and take the current best
+    # ask quickly (IOC), rather than resting a passive limit. The slippage cap keeps
+    # it from paying an absurd price if the book is thin; raise KALSHI_MAX_ENTRY_SLIPPAGE
+    # toward 0.99 for a true "take whatever's there" market order. All tunable by env.
+    return MarketableLimitKernel(
+        submitter, feed,
+        entry_cross_ticks=int(os.getenv("KALSHI_ENTRY_CROSS_TICKS", "2")),
+        exit_cross_ticks=int(os.getenv("KALSHI_EXIT_CROSS_TICKS", "2")),
+        max_entry_slippage=float(os.getenv("KALSHI_MAX_ENTRY_SLIPPAGE", "0.10")),
+        max_attempts=int(os.getenv("KALSHI_ORDER_MAX_ATTEMPTS", "3")),
+        max_quote_age_seconds=float(os.getenv("KALSHI_MAX_QUOTE_AGE_SECONDS", "2.0")),
+        # Thin-book controls, all off unless set (see MarketableLimitKernel). Each can only
+        # shrink or abandon an order, and none can block an exit, so enabling any is a
+        # strictly-stricter change, tunable without a redeploy.
+        max_book_fraction=_exec("exec_max_book_fraction", "KALSHI_MAX_BOOK_FRACTION"),
+        max_entry_spread=_exec("exec_max_entry_spread", "KALSHI_MAX_ENTRY_SPREAD"),
+        max_order_notional=_exec("exec_max_order_notional", "KALSHI_MAX_ORDER_NOTIONAL"),
+    )
+
+
 def live_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
     """user_id -> MarketableLimitKernel signing with that user's own key.
 
@@ -1333,7 +1419,6 @@ def live_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
     => REST-only, exactly as before."""
     from app import kalshi_account
     from app.execution import guarded_submitter, timed_submitter
-    from data_pipeline.architecture.execution_kernel import MarketableLimitKernel
     from data_pipeline.market_data import MarketFeed
 
     feed = MarketFeed(ws_feed=ws_feed)
@@ -1344,37 +1429,34 @@ def live_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
         if row is None:
             return None
         creds = kalshi_account.credentials_from_row(user_id, row)
-        # Per-user execution overrides (set by the co-pilot's set_exec, clamped to a safe envelope)
-        # take precedence; a NULL column falls back to the global KALSHI_MAX_* env default. Each knob
-        # can only shrink or abandon an order and never blocks an exit, so this never loosens safety.
-        xc = repo.user_execution_config(cur, user_id)
+        # P1-3: every real order first passes the process-wide execution guards (kill switch,
+        # fat-finger, rate limit, circuit breaker). They only ever block a BUY, never an exit.
+        # P2: timed_submitter is the outermost wrapper so it also measures guard-blocked and
+        # errored sends; it records off the send path and passes the result through unchanged.
+        submitter = timed_submitter(guarded_submitter(kalshi_account.order_submitter(creds)), mode="live")
+        return _execution_kernel(submitter, feed, repo.user_execution_config(cur, user_id))
 
-        def _exec(col: str, env: str) -> Optional[float]:
-            v = xc.get(col)
-            return float(v) if v is not None else _opt_float(os.getenv(env))
+    return make
 
-        # Market-order-like entries: cross through the touch and take the current best
-        # ask quickly (IOC), rather than resting a passive limit. The slippage cap keeps
-        # it from paying an absurd price if the book is thin; raise KALSHI_MAX_ENTRY_SLIPPAGE
-        # toward 0.99 for a true "take whatever's there" market order. All tunable by env.
-        return MarketableLimitKernel(
-            # P1-3: every real order first passes the process-wide execution guards (kill switch,
-            # fat-finger, rate limit, circuit breaker). They only ever block a BUY, never an exit.
-            # P2: timed_submitter is the outermost wrapper so it also measures guard-blocked and
-            # errored sends; it records off the send path and passes the result through unchanged.
-            timed_submitter(guarded_submitter(kalshi_account.order_submitter(creds)), mode="live"), feed,
-            entry_cross_ticks=int(os.getenv("KALSHI_ENTRY_CROSS_TICKS", "2")),
-            exit_cross_ticks=int(os.getenv("KALSHI_EXIT_CROSS_TICKS", "2")),
-            max_entry_slippage=float(os.getenv("KALSHI_MAX_ENTRY_SLIPPAGE", "0.10")),
-            max_attempts=int(os.getenv("KALSHI_ORDER_MAX_ATTEMPTS", "3")),
-            max_quote_age_seconds=float(os.getenv("KALSHI_MAX_QUOTE_AGE_SECONDS", "2.0")),
-            # Thin-book controls, all off unless set (see MarketableLimitKernel). Each can only
-            # shrink or abandon an order, and none can block an exit, so enabling any is a
-            # strictly-stricter change, tunable without a redeploy.
-            max_book_fraction=_exec("exec_max_book_fraction", "KALSHI_MAX_BOOK_FRACTION"),
-            max_entry_spread=_exec("exec_max_entry_spread", "KALSHI_MAX_ENTRY_SPREAD"),
-            max_order_notional=_exec("exec_max_order_notional", "KALSHI_MAX_ORDER_NOTIONAL"),
-        )
+
+def paper_kernel_factory(conn, ws_feed=None) -> Optional[Callable[[int], object]]:
+    """user_id -> the live execution kernel over a SimulatedVenue, which never sends an order.
+
+    Paper then misses entries on a stale quote or a moved ask, fills only the size resting at the
+    touch, pays the fee on the fill price and can fail to exit, all exactly as live does. That is
+    what makes paper results evidence for the live gate. The real-order guards (kill switch, rate
+    limit) are deliberately NOT applied: paper must not spend the live order budget. Returns None
+    when APP_PAPER_REALISTIC_FILLS=0 (legacy instant fills at the quote)."""
+    if os.getenv("APP_PAPER_REALISTIC_FILLS", "1").strip().lower() in ("0", "false", "no", "off"):
+        return None
+    from data_pipeline.architecture.simulated_venue import SimulatedVenue
+    from data_pipeline.market_data import MarketFeed
+
+    feed = MarketFeed(ws_feed=ws_feed)
+    venue = SimulatedVenue(feed, max_quote_age_seconds=float(os.getenv("KALSHI_MAX_QUOTE_AGE_SECONDS", "2.0")))
+
+    def make(user_id: int):
+        return _execution_kernel(venue, feed, repo.user_execution_config(conn.cursor(), user_id))
 
     return make
 
@@ -1415,6 +1497,7 @@ def run_forever() -> None:
             sources = Sources(
                 live_kernel=live_kernel_factory(conn, ws_feed=ws_feed) if LIVE_TRADING_ENABLED else None,
                 demo_kernel=demo_kernel,
+                paper_kernel=paper_kernel_factory(conn, ws_feed=ws_feed),
                 order_lookup=_make_order_lookup(conn),
                 ws_feed=ws_feed,
             )

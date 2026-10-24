@@ -984,6 +984,27 @@ def create_deployment(ctx: Ctx):
     return {"id": dep_id}
 
 
+def strategy_live_readiness(ctx: Ctx):
+    """Road to live: every gate between this strategy and real money, with progress. Read-only;
+    the same functions the deploy paths enforce, so this view can never disagree with them."""
+    s = repo.get_strategy(ctx.cur, ctx.uid, _int_param(ctx))
+    if s is None:
+        raise ApiError(404, "No such strategy.")
+    candidate = bool(agent._is_deployment_candidate(ctx.cur, s["id"]))
+    paper = agent.paper_evidence(ctx.cur, ctx.uid, s["id"])
+    live_ok, live_why = agent.live_autopilot_ok(ctx.cur, ctx.user)
+    blocking = ("" if candidate else "the gatekeeper hasn't cleared it as a deployment candidate") \
+        or paper["why"] or live_why
+    return {
+        "strategy_id": s["id"], "status": s["status"],
+        "deployment_candidate": candidate,
+        "paper": paper,
+        "live_autopilot": {"ok": live_ok, "why": live_why},
+        "ready": candidate and paper["ready"] and live_ok,
+        "blocking": blocking,
+    }
+
+
 def deployment_action(ctx: Ctx):
     dep_id, action = _int_param(ctx), ctx.params[1]
     dep = repo.get_deployment(ctx.cur, ctx.uid, dep_id)
@@ -1995,6 +2016,7 @@ ROUTES: List[Route] = [
         ("GET", "/api/strategies", list_strategies, True),
         ("GET", r"/api/strategies/(\d+)", get_strategy, True),
         ("POST", r"/api/strategies/(\d+)/whatif", what_if, True),
+        ("GET", r"/api/strategies/(\d+)/live-readiness", strategy_live_readiness, True),
         ("POST", r"/api/strategies/(\d+)/share", share_strategy, True),
         ("POST", r"/api/strategies/(\d+)/dig-deeper", dig_deeper, True),
         ("GET", "/api/notifications", notifications, True),
