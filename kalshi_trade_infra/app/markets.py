@@ -58,10 +58,15 @@ class Market:
     # curated crypto markets carry "Crypto"; catalog-generated markets inherit Kalshi's own
     # series category. Purely a display/grouping field - no engine logic reads it.
     category: str = ""
+    # "candles" (default): Kalshi candlesticks from the DB. "ticks": the per-second feature table
+    # built from the tick archive (app/tick_dataset.py), decided every decision_secs seconds.
+    source: str = "candles"
+    decision_secs: int = 0           # ticks only: decision cadence in seconds (0 = candle_minutes)
+    data_from_ts: int = 0            # ticks only: no contract opening before this has tick data
 
     @property
     def decision_seconds(self) -> int:
-        return self.candle_minutes * 60
+        return self.decision_secs or self.candle_minutes * 60
 
     def is_target_event(self, close_time: datetime) -> bool:
         if self.close_hour_et is None:
@@ -90,6 +95,12 @@ CURATED: Dict[str, Market] = {
     # Deployable: live feed + execution path exist, so the engine trades these.
     "btc15m": Market("btc15m", "KXBTC15M", "Bitcoin 15-minute", candle_minutes=1, history_days=CRYPTO_15M_HISTORY_DAYS,
                      underlying="BTC-USD", deployable=True, category="Crypto"),
+    # Research-only: the same KXBTC15M contracts replayed from the per-second tick archive
+    # (book, taker flow, Coinbase spot each second), deciding every 5s instead of every minute.
+    # Archive starts 2026-10-24 20:00Z; history is short until it accumulates.
+    "btc15m_tick": Market("btc15m_tick", "KXBTC15M", "Bitcoin 15-minute, per-second data", candle_minutes=1,
+                          history_days=7, underlying="BTC-USD", deployable=False, category="Crypto",
+                          source="ticks", decision_secs=5, data_from_ts=1792872000),
     "btc_daily": Market("btc_daily", "KXBTCD", "Bitcoin daily close, 5pm EDT", candle_minutes=60,
                         history_days=60, close_hour_et=17, underlying="BTC-USD", deployable=True, category="Crypto"),
     # Deployable crypto: same strike-ladder + spot-price model as BTC. The live engine prices
@@ -444,6 +455,26 @@ FEATURES.update({
                  "station (NWS climate day, local standard time); the day's low can only fall from here",
     "obs_temp_f": "weather markets only: latest temperature (F) reading at the settlement station",
 })
+# Features only the per-second tick datasets carry (app/tick_dataset.py, markets with source="ticks").
+TICK_FEATURES: Dict[str, str] = {
+    "ret_1s": "per-second data only: BTC log return over the last 1 second",
+    "ret_10s": "per-second data only: BTC log return over the last 10 seconds",
+    "rv_60s": "per-second data only: stdev of 1-second BTC log returns over the last 60 seconds",
+    "rv_300s": "per-second data only: stdev of 1-second BTC log returns over the last 5 minutes",
+    "spot_flow_imb_60s": "per-second data only: spot taker buy minus sell over their sum, last 60 seconds, -1..1",
+    "microprice": "per-second data only: size-weighted YES mid, (bid*ask_size + ask*bid_size)/(bid_size + ask_size)",
+    "bid_depth_5c": "per-second data only: YES contracts bid within 5c of the best bid",
+    "ask_depth_5c": "per-second data only: YES contracts offered within 5c of the best ask",
+    "book_updates_1s": "per-second data only: order-book changes in the last second",
+    "book_age_s": "per-second data only: seconds since this contract's book last changed",
+    "taker_yes_vol_10s": "per-second data only: contracts bought by YES takers in the last 10 seconds",
+    "taker_no_vol_10s": "per-second data only: contracts bought by NO takers in the last 10 seconds",
+    "z_score_5m": "per-second data only: like z_score but with 5-minute per-second volatility "
+                  "(ln(spot/strike) / (rv_300s * sqrt(seconds to close)))",
+    "flow_imb_10s": "per-second data only: signed taker flow (yes - no)/(yes + no) over the last 10 seconds; "
+                    "absent with no trades",
+}
+FEATURES.update(TICK_FEATURES)
 # Per-contract forecast fair value (app/weather_fcst.snapshot_features, research and live alike).
 FEATURES.update(_WEATHER_FCST_DOCS)
 # Per-contract sportsbook consensus (app/sports_odds.snapshot_features, research and live alike).

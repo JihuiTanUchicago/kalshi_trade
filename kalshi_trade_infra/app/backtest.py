@@ -1037,6 +1037,11 @@ def load_from_db(market: Market, history_days: Optional[int] = None) -> Dataset:
     conn = get_db_conn()
     try:
         with conn.cursor() as cur:
+            if market.source == "ticks":
+                from app import research_repository as rr
+                from app import tick_dataset
+                contracts = rr.partition_contracts(cur, market, since)
+                return tick_dataset.load_window(market, contracts, 0, 2 ** 62)
             if market.kind == "perpetual":
                 from app.kalshi_perps_repository import load_history
                 from app.kalshi_perps_backtest import build_dataset as build_perpetual_dataset

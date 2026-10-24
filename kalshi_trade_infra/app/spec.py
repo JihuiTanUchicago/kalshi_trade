@@ -23,7 +23,7 @@ import math
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.markets import FEATURES, MARKETS, MICRO_FEATURES, Snapshot, compatible_cadence
+from app.markets import FEATURES, MARKETS, MICRO_FEATURES, TICK_FEATURES, Snapshot, compatible_cadence
 from data_pipeline.kalshi_fees import taker_fee_per_contract_dollars
 
 OPS = (">", ">=", "<", "<=")
@@ -150,7 +150,8 @@ cross.pairing: cross_sectional = two different markets (e.g. BTC vs ETH, matched
 two markets MUST share a decision cadence (same candle_minutes AND close schedule: two 15-min
 crypto markets, or two daily markets; never a 1-min market with a daily one);
 cross_strike = same market+settlement, different strikes; calendar = same market+strike, different settlements.
-Features for filters: """ + "; ".join("%s = %s" % kv for kv in FEATURES.items()) + """
+Features for filters: """ + "; ".join("%s = %s" % kv for kv in FEATURES.items() if kv[0] not in TICK_FEATURES) + """
+(Markets replayed from per-second data list their extra features in the Market profile.)
 Order-book / microstructure features (""" + ", ".join(MICRO_FEATURES) + """) come from the
 collected 1-minute book; they may be NULL on some frames (and on markets without a feed), and a
 filter on a missing feature simply does not match - condition on them when the mechanism needs the

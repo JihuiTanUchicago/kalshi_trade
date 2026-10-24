@@ -382,13 +382,18 @@ def _load_window(market: str, from_ts: int, to_ts: int, history_days: Optional[i
     conn = get_db_conn()
     try:
         with conn.cursor() as cur:
-            if m.kind == "spot":
+            if m.source == "ticks":
+                contracts = rr.partition_contracts(cur, m, since)
+            elif m.kind == "spot":
                 h = tao_repository.load_spot_history(cur, m, int(since.timestamp()))
                 candles = [(t, p) for t, p in h["candles"] if from_ts <= t < to_ts]
                 return backtest.build_spot_dataset(m, candles, h["tao_usd"], h["features"])
             rows = rr.partition_source_rows(cur, m, since, from_ts, to_ts, RESEARCH_MAX_CANDLE_ROWS)
     finally:
         conn.close()
+    if m.source == "ticks":
+        from app import tick_dataset
+        return tick_dataset.load_window(m, contracts, from_ts, to_ts)
     sub = [mk for mk in rows["markets"]
            if mk.get("open_ts") is not None and from_ts <= mk["open_ts"] < to_ts]
     frame_series, applies = backtest.station_frame_series(m)
