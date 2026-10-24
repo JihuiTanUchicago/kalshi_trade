@@ -7,6 +7,7 @@ backtests and the live engine.
     spot = ts.spot_1s(start, end)                                  # Coinbase BTC-USD, dense 1s
     flow = ts.trades_1s(["KXBTC15M-26OCT241500-00"], start, end)
     raw  = ts.read("kalshi_trades", start, end, tickers=[...])     # pyarrow.Table, tick level
+    feat = ts.features_1s(start, end, series=["KXBTC15M"])          # prebuilt per-second features
 
 Frames are columnar dicts of numpy arrays keyed by column name (``sec`` = epoch second, the
 END of the second: state after every event with rt < sec). pandas.DataFrame(frame) works where
@@ -83,24 +84,35 @@ class TickStore:
         return f"{self.prefix}/v1/{table}/date={hour:%Y-%m-%d}/hour={hour:%H}/part.parquet"
 
     def read(self, table: str, start: datetime, end: datetime, tickers: Optional[Sequence[str]] = None,
-             columns: Optional[List[str]] = None, pad_hours_before: int = 0):
-        """Tick rows of ``table`` with start <= rt < end as one pyarrow.Table (sorted by rt, file
-        order kept for ties). ``tickers`` filters kalshi_* tables (product ids for coinbase_*)."""
+             columns: Optional[List[str]] = None, pad_hours_before: int = 0, series: Optional[Sequence[str]] = None):
+        """Rows of ``table`` with start <= rt < end (features_1s: start < sec <= end) as one
+        pyarrow.Table in file order. ``tickers`` filters kalshi_* / features_1s (product ids for
+        coinbase_*); ``series`` filters features_1s by series."""
         import pyarrow as pa
         import pyarrow.compute as pc
         import pyarrow.parquet as pq
         start, end = _utc(start), _utc(end)
         key_col = "product_id" if table.startswith("coinbase") else "ticker"
+        filters = []
+        if tickers:
+            filters.append((key_col, "in", list(tickers)))
+        if series:
+            filters.append(("series", "in", list(series)))
         parts = []
-        for h in hours_between(start - timedelta(hours=pad_hours_before), end):
+        hours = hours_between(start - timedelta(hours=pad_hours_before), end)
+        if table == "features_1s":   # sec is the END of a second, so end's own hour holds sec == end
+            hours = hours_between(start, end + timedelta(seconds=1))
+        for h in hours:
             p = self._fetch(self.table_key(table, h))
             if p is None:
                 continue
-            filters = [(key_col, "in", list(tickers))] if tickers else None
-            parts.append(pq.read_table(p, columns=columns, filters=filters))
+            parts.append(pq.read_table(p, columns=columns, filters=filters or None))
         if not parts:
             return None
         t = pa.concat_tables(parts)
+        if table == "features_1s":
+            mask = pc.and_(pc.greater(t["sec"], int(start.timestamp())), pc.less_equal(t["sec"], int(end.timestamp())))
+            return t.filter(mask)
         lo = int((start - timedelta(hours=pad_hours_before)).timestamp() * NS)
         mask = pc.and_(pc.greater_equal(t["rt"], lo), pc.less(t["rt"], int(end.timestamp() * NS)))
         return t.filter(mask)
@@ -119,6 +131,15 @@ class TickStore:
         return out
 
     # --- frames ----------------------------------------------------------------------------
+    def features_1s(self, start: datetime, end: datetime, tickers: Optional[Sequence[str]] = None,
+                    series: Optional[Sequence[str]] = None, columns: Optional[List[str]] = None) -> Dict[str, np.ndarray]:
+        """The prebuilt per-second feature table (data_pipeline/tick_features.py), start < sec <= end,
+        as {column: np.ndarray}. Filter by ``tickers`` and/or ``series`` (e.g. ["KXBTC15M"])."""
+        t = self.read("features_1s", start, end, tickers=tickers, series=series, columns=columns)
+        if t is None:
+            return {}
+        return {name: t[name].to_numpy(zero_copy_only=False) for name in t.column_names}
+
     def book_1s(self, tickers: Sequence[str], start: datetime, end: datetime,
                 depth_within: float = 0.05) -> Dict[str, np.ndarray]:
         """Per ticker per second: Kalshi YES best bid/ask with sizes, depth within
