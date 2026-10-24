@@ -24,7 +24,9 @@ Follow-up (PR #27): `paper_evidence` reports paper vs backtest unseen-data P&L p
 
 Funnel (PR follow-up): `agent.auto_paper_candidates` runs at the start of every autopilot review and puts each gatekeeper DEPLOYMENT_CANDIDATE that never ran on paper onto paper via `act()` (max 3 per review, 20 active), so realistic evidence accrues without waiting for the LLM. Never live; a stopped paper run is not redeployed.
 
-Next: simulate legging for paper pairs; feed realization to the research thread's backtest fill-model calibration.
+Paper pairs now run through the simulated venue too (`_paper_kernel_buy_pair`, same legging mechanics as live `_kernel_buy_pair`: short second leg -> unwind the excess, failed unwind -> tracked naked leg). Both legs share one `sim:pair-` order_ref so the gate counts a pair as one round trip.
+
+Next: feed realization to the research thread's backtest fill-model calibration.
 
 ## Kalshi perps deployment preparation — October 23, 2026, Asia/Shanghai
 
