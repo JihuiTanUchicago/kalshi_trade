@@ -51,3 +51,23 @@ def test_delete_series_stops_at_the_deadline():
     cur = _Cur(100)
     n, finished = pr.delete_series(cur, "markets", "series_ticker", "KXCPI", 5, 0, time.time() - 1)
     assert (n, finished) == (0, False) and cur.sql == []
+
+
+class _SqlLog:
+    def __init__(self):
+        self.sql, self.rowcount = [], 0
+
+    def execute(self, sql, params=()):
+        self.sql.append(sql)
+
+    def cursor(self):
+        return self
+
+
+def test_rebuild_fills_blank_series_before_copying():
+    # Live KXBTC15M rows carry series_ticker='' and would be left in the old table otherwise.
+    log = _SqlLog()
+    pr.rebuild_markets(log, {"KXBTC15M"}, drop_old=False)
+    fill = next(i for i, s in enumerate(log.sql) if s.startswith("UPDATE markets SET series_ticker"))
+    copy = next(i for i, s in enumerate(log.sql) if s.startswith("INSERT IGNORE INTO markets__keep"))
+    assert fill < copy
