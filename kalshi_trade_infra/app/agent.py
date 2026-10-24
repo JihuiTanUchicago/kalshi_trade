@@ -1512,19 +1512,48 @@ def _recent_drops(cur, user_id: int, market: str) -> List[Dict]:
         return own
 
 
+def _mechanism_of(h: Dict) -> Optional[str]:
+    from app import rsi
+    return rsi.mechanism(h.get("title"))
+
+
+def _sibling_dead(rows: List[Dict], min_drops: int = _SIBLING_MIN_DROPS,
+                  min_markets: int = _SIBLING_MIN_MARKETS) -> List[Tuple[str, List[Dict]]]:
+    """(mechanism, its sibling drops newest first) for each mechanism dropped at least `min_drops`
+    times on at least `min_markets` sibling markets, most-dropped first. Rows without "market"
+    (this market's own drops) are ignored."""
+    from app import rsi
+    by: Dict[str, List[Dict]] = defaultdict(list)
+    for d in rows:
+        mech = d.get("market") and rsi.mechanism(d["title"])
+        if mech:
+            by[mech].append(d)
+    return sorted(((m, v) for m, v in by.items()
+                   if len(v) >= min_drops and len({d["market"] for d in v}) >= min_markets),
+                  key=lambda kv: -len(kv[1]))
+
+
+# A mechanism this dead on the siblings gets ONE developed idea per chunk; further proposals of it
+# are set aside untested. Prod 2026-10-24 22:24Z (xrp15m, run 2721): with the sibling list in the
+# prompt, 6 of 9 ideas were still calibration / mean reversion / vol mispricing, and all died.
+_RATION_MIN_DROPS, _RATION_MIN_MARKETS = 6, 3
+_NEVER_RATIONED = ("generic learned recalibration (logistic / multi-factor)",)
+
+
+def _rationed_mechanisms(dropped: Optional[List[Dict]], run: Dict) -> Dict[str, int]:
+    """{mechanism: sibling drops} for the mechanisms to ration on this run, leaving out the catch-all
+    bucket and whatever the run's own prompt asks to study."""
+    from app import rsi
+    asked = rsi.mechanism(run.get("prompt") or "")
+    return {m: len(v) for m, v in _sibling_dead(dropped or [], _RATION_MIN_DROPS, _RATION_MIN_MARKETS)
+            if m not in _NEVER_RATIONED and m != asked}
+
+
 def _sibling_block(rows: List[Dict], market: str) -> str:
     """Mechanisms that died again and again on this market's SIBLINGS, so a run on one crypto
     ladder stops re-testing what the other ladders already killed. Advice, not a ban: the market
     may differ, but the proposer has to say how."""
-    from app import rsi
-    by: Dict[str, List[Dict]] = defaultdict(list)
-    for d in rows:
-        mech = rsi.mechanism(d["title"])
-        if mech:
-            by[mech].append(d)
-    dead = sorted(((m, v) for m, v in by.items()
-                   if len(v) >= _SIBLING_MIN_DROPS and len({d["market"] for d in v}) >= _SIBLING_MIN_MARKETS),
-                  key=lambda kv: -len(kv[1]))[:_SIBLING_SHOWN]
+    dead = _sibling_dead(rows)[:_SIBLING_SHOWN]
     if not dead:
         return ""
     lines = []
@@ -1963,6 +1992,8 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
     attempts = 0  # theses DEVELOPED this chunk (survivors + abandoned), the real cost
     streak = 0  # consecutive drops, reset by any survivor
     bad_rounds = 0  # proposing rounds whose every spec failed validation
+    spent: set = set()  # rationed mechanisms this chunk already developed one idea of
+    aside_rounds = 0  # proposing rounds whose every idea was a rationed repeat
     while True:
         checkpoint()
         round_no += 1
@@ -2008,8 +2039,20 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
             _abandon(log, bad, bad["why"], None)  # not added to `dropped`: the idea itself was never tested
         if not batch:
             break  # agent is out of fresh ideas this chunk
+        rationed = _rationed_mechanisms(dropped, run)
+        developed = attempts
         for h in batch:
             checkpoint()
+            mech = _mechanism_of(h) if rationed else None
+            if mech in rationed:
+                if mech in spent:
+                    why = ("not developed: %s already died %d times on sibling markets and this run spent "
+                           "its one try on it" % (mech, rationed[mech]))
+                    log("step", "Set aside untested: %s (%s)" % (h.get("title"), why),
+                        {"phase": "proposing", "rationed": mech})
+                    dropped.insert(0, {"title": h.get("title") or "", "why": why})
+                    continue
+                spent.add(mech)
             attempts += 1
             # Pillar 2: develop each thesis in depth on the RESEARCH FOLD (backtest -> critique ->
             # refine, up to THESIS_MAX_STEPS) before committing its single frozen spec. One candidate
@@ -2030,6 +2073,14 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
             # reclaim re-uses this (expensive) model work instead of re-exploring from scratch.
             if save_progress is not None:
                 save_progress(chunk, round_no)
+        if attempts == developed and batch:
+            # Every idea this round was set aside: the proposer is stuck on rationed mechanisms.
+            aside_rounds += 1
+            if aside_rounds >= 2:
+                log("step", "The proposer keeps returning mechanisms the sibling markets already killed. "
+                    "Stopping proposals; %d kept go to the gate." % len(chunk),
+                    {"phase": "proposing", "kept": len(chunk)})
+                break
     challenger = news.wrap(model, usage) if news is not None else model
     if knowledge is not None:
         challenger = knowledge.wrap(challenger, usage)

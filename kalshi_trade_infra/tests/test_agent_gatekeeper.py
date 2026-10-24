@@ -533,6 +533,49 @@ def _explore_with_outcomes(monkeypatch, outcomes, budget=8):
     return len(developed), gated, events
 
 
+_DEAD_FLB = [{"market": m, "title": "Favorite-longshot calibration %d" % i, "why": "coef 1.0"}
+             for i, m in enumerate(["eth15m", "xrp15m", "sol15m"] * 2)]
+
+
+def test_rationed_mechanisms_skip_the_catch_all_and_what_the_run_asked_for():
+    rows = _DEAD_FLB + [{"market": m, "title": "Logistic classifier %d" % i, "why": "x"}
+                        for i, m in enumerate(["eth15m", "xrp15m", "sol15m"] * 2)]
+    fl = "favorite-longshot / calibration"
+    assert agent._rationed_mechanisms(rows, {"prompt": "book imbalance"}) == {fl: 6}
+    assert agent._rationed_mechanisms(rows, {"prompt": "favorite-longshot bias late"}) == {}
+    assert agent._rationed_mechanisms(rows[:5], {"prompt": ""}) == {}               # under 6 drops
+
+
+def test_a_sibling_dead_mechanism_gets_one_developed_idea_per_chunk(monkeypatch):
+    """Prod 2026-10-24 run 2721: 6 of 9 xrp15m ideas repeated mechanisms the siblings had killed.
+    The first idea of a rationed mechanism is developed; repeats are set aside untested, the next
+    round is told why, and a proposer stuck on them stops instead of looping."""
+    titles = iter([["FLB calibration A", "FLB calibration B", "Taker burst"]] + [["Longshot fade C"]] * 9)
+    developed, prompts, events = [], [], []
+
+    class MD:
+        def __init__(self, *a, **k):
+            pass
+        def ask(self, *a, **k):
+            return [{"title": t} for t in next(titles)]
+
+    monkeypatch.setattr(agent, "AgentMarketData", MD)
+    monkeypatch.setattr(agent, "_stream_proposer", lambda m, s: m)
+    monkeypatch.setattr(agent, "_round_prompt", lambda run, ds, mem, want, chunk, dropped: prompts.append(
+        [d["title"] for d in dropped if not d.get("market")]) or "p")
+    monkeypatch.setattr(agent, "_develop_thesis", lambda h, *a, **k: developed.append(h["title"]) or None)
+    monkeypatch.setattr(agent, "_gate_and_save", lambda *a, **k: 0)
+    policy = SimpleNamespace(next_batch=lambda st: SimpleNamespace(width=3))
+    agent._explore_and_gate(None, {"market": "btc15m", "user_id": 1, "prompt": "flow"},
+                            SimpleNamespace(start_ts=0, cutoff_ts=1), {}, [], None, None,
+                            lambda *a: events.append(a), lambda: None, 50, [], policy,
+                            dropped=list(_DEAD_FLB))
+    assert developed == ["FLB calibration A", "Taker burst"]
+    assert "FLB calibration B" in prompts[1]
+    assert sum("Set aside untested" in e[1] for e in events) == 3
+    assert any("keeps returning mechanisms" in e[1] for e in events)
+
+
 def test_a_streak_of_drops_stops_proposing_and_gates_what_was_kept(monkeypatch):
     """Eight dropped theses in a row end exploration (each costs several model calls), even mid-batch;
     survivors kept before the streak still reach the gate."""
