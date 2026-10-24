@@ -309,6 +309,8 @@ def test_autopilot_status_reports_paper_strategy_closest_to_live(monkeypatch):
     monkeypatch.setattr(server.repo, "last_review_at", lambda *a: None)
     monkeypatch.setattr(server.billing, "configured", lambda: False)
     monkeypatch.setattr(server.repo, "list_runs", lambda *a, **k: [])
+    monkeypatch.setattr(server.repo, "research_week", lambda *a, **k: [])
+    monkeypatch.setattr(server.repo, "strategies_passed_since", lambda *a, **k: 0)
     seen = {}
     monkeypatch.setattr(server.repo, "paper_progress",
                         lambda cur, uid, sids: seen.setdefault("sids", sids) and {1: (4, 9.0), 2: (11, -1.0)})
@@ -330,9 +332,20 @@ def test_autopilot_status_reports_research_activity(monkeypatch):
             {"market": "btc15m", "status": "succeeded", "created_at": now - timedelta(days=9),
              "hypotheses_tried": 50, "strategies_passed": 3}]
     monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, limit=50: runs)
+    # The week is one aggregate per model (Todd's prod week: 277 runs, the 50-run list saw 73 ideas).
+    week = [{"model": "sonnet-4-5", "runs": 250, "tried": 2400, "passed": 68, "input_tokens": 10_000_000, "output_tokens": 1_000_000},
+            {"model": None, "runs": 27, "tried": 268, "passed": 0, "input_tokens": 0, "output_tokens": 0}]
+    seen = []
+    monkeypatch.setattr(server.repo, "research_week", lambda cur, uid, since: seen.append(since) or week)
+    monkeypatch.setattr(server.repo, "strategies_passed_since", lambda cur, uid, since: 1)
     out = server._research_activity(None, 7)
     assert out["active"] == [server.MARKETS["nhl_game"].label, "a market it's still picking"]
-    assert (out["tested_7d"], out["passed_7d"], out["runs_7d"]) == (9, 1, 3)
+    assert (out["tested_7d"], out["passed_7d"], out["runs_7d"]) == (2668, 1, 277)
+    assert out["cost_7d"] == round(__import__("app.rsi", fromlist=["x"]).run_cost_usd(week[0]), 2) > 0
+    assert abs((now - seen[0]).total_seconds() - 7 * 86400) < 5
+    story = server._autopilot_story({"autopilot": True, "research": dict(out, active=["a market it's still picking"])})
+    assert story[0] == "Right now it's picking a market to research."
+    assert story[1] == "This week it tested 2,668 ideas for ${:,.2f} and 1 passed.".format(out["cost_7d"])
 
 
 def test_autopilot_story_says_what_it_is_doing_in_plain_words():

@@ -1186,15 +1186,19 @@ def autopilot_kill(ctx: Ctx):
 def _research_activity(cur, uid: int) -> Dict:
     """What research is doing for the autopilot float: the markets being researched now and the
     last 7 days' tested/passed counts, so a quiet panel reads as working, not stuck. One bounded read."""
+    from app import rsi
     since = repo.now_utc() - timedelta(days=7)
-    runs = repo.list_runs(cur, uid, limit=50)
-    active = [r for r in runs if r.get("status") in ("queued", "running", "paused")]
-    week = [r for r in runs if r.get("created_at") and r["created_at"] >= since]
+    active = [r for r in repo.list_runs(cur, uid, limit=50) if r.get("status") in ("queued", "running", "paused")]
+    # The week's totals come from one aggregate, not the 50 newest runs: a busy autopilot starts
+    # 250+ runs a week, and the capped list told Todd it had tested 73 ideas when it was hundreds.
+    # Passed counts strategies that cleared every gate: an old run's counter held 68 backtest-only.
+    week = repo.research_week(cur, uid, since)
     return {"active": [MARKETS[r["market"]].label if r.get("market") in MARKETS else (r.get("market") or "a market it's still picking")
                        for r in active],
-            "tested_7d": sum(int(r.get("hypotheses_tried") or 0) for r in week),
-            "passed_7d": sum(int(r.get("strategies_passed") or 0) for r in week),
-            "runs_7d": len(week)}
+            "tested_7d": sum(int(r.get("tried") or 0) for r in week),
+            "passed_7d": repo.strategies_passed_since(cur, uid, since),
+            "runs_7d": sum(int(r.get("runs") or 0) for r in week),
+            "cost_7d": round(sum(rsi.run_cost_usd(r) for r in week), 2)}
 
 
 def _plural(n: int, one: str, many: str = "") -> str:
@@ -1213,9 +1217,10 @@ def _autopilot_story(d: Dict) -> List[str]:
     research = d.get("research") or {}
     active = research.get("active") or []
     if active:
-        names = list(dict.fromkeys(active))  # two runs on one market read as one
-        now = "Right now it's researching %s." % (
-            names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1])
+        names = [n for n in dict.fromkeys(active) if n != "a market it's still picking"]  # two runs on one market read as one
+        now = ("Right now it's researching %s." % (
+            names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1])) if names \
+            else "Right now it's picking a market to research."
     else:
         now = "Right now it's between research runs. It checks in about every %d minutes." % max(1, COPILOT_REVIEW_MINUTES)
     lines = [now]
@@ -1223,9 +1228,10 @@ def _autopilot_story(d: Dict) -> List[str]:
         lines.append("It sticks to the focus you set: %s." % ", ".join(d["focus"]))
     tested, passed = int(research.get("tested_7d") or 0), int(research.get("passed_7d") or 0)
     if tested:
-        lines.append("This week it tested %s and %s." % (
-            _plural(tested, "idea"),
-            "none has passed its tests yet. That's normal: most ideas fail" if not passed else "%d passed" % passed))
+        cost = float(research.get("cost_7d") or 0)
+        lines.append("This week it tested %s%s and %s." % (
+            _plural(tested, "idea"), " for ${:,.2f}".format(cost) if cost >= 0.01 else "",
+            "none has passed its tests yet. That's normal: most ideas fail" if not passed else "{:,} passed".format(passed)))
     paper, prog = int(d.get("paper_running") or 0), d.get("paper_progress")
     if not paper:
         lines.append("Nothing is trading on paper yet. A strategy has to pass the research tests first.")
