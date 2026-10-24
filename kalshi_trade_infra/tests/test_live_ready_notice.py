@@ -1,0 +1,56 @@
+"""Live-ready notice: once per strategy, the user is told (chat + email) when a running paper
+strategy first clears every paper -> live check. It never deploys, promotes or changes a gate."""
+from app import agent, notify
+
+READY = {"ready": True, "why": "", "trades": 31, "trades_needed": 30, "net_pnl": 4.2, "span_hours": 50.0,
+         "p_value": 0.05, "realization": None}
+
+
+def _patch(monkeypatch, deps, ready=READY, already=()):
+    chats, mails = [], []
+    monkeypatch.setattr(agent.repo, "list_deployments", lambda cur, uid: list(deps))
+    monkeypatch.setattr(agent.repo, "chat_contains", lambda cur, uid, role, needle: needle in already)
+    monkeypatch.setattr(agent.repo, "add_chat", lambda cur, uid, role, text, pid=None: chats.append((role, text)))
+    monkeypatch.setattr(agent, "paper_evidence", lambda cur, uid, sid: dict(ready, ready=ready["ready"]))
+    monkeypatch.setattr(notify, "live_ready_notice", lambda *a: mails.append(a) or True)
+    return chats, mails
+
+
+USER = {"id": 2, "email": "t@example.invalid", "name": "T"}
+DEP = {"strategy_id": 7, "mode": "paper", "status": "running", "title": "Edge"}
+
+
+def test_a_newly_ready_paper_strategy_is_announced_once(monkeypatch):
+    chats, mails = _patch(monkeypatch, [DEP, dict(DEP)])
+    lines = agent.live_ready_notices(None, USER)
+    assert len(lines) == 1 and "[live-ready #7]" in lines[0] and "Going live is your call" in lines[0]
+    assert chats == [("system", lines[0])]
+    assert len(mails) == 1 and mails[0][0] == "t@example.invalid" and mails[0][4].endswith("/strategies/7")
+
+
+def test_already_announced_is_not_repeated(monkeypatch):
+    chats, mails = _patch(monkeypatch, [DEP], already=("[live-ready #7]",))
+    assert agent.live_ready_notices(None, USER) == [] and chats == [] and mails == []
+
+
+def test_not_ready_or_not_paper_is_silent(monkeypatch):
+    chats, mails = _patch(monkeypatch, [DEP], ready=dict(READY, ready=False))
+    assert agent.live_ready_notices(None, USER) == []
+    chats, mails = _patch(monkeypatch, [dict(DEP, mode="live"), dict(DEP, status="paused")])
+    assert agent.live_ready_notices(None, USER) == [] and mails == []
+
+
+def test_chat_contains_query_is_scoped_to_user_and_role():
+    from app import repository as repo
+
+    class Rec:
+        def execute(self, sql, params=()):
+            self.sql, self.params = sql, params
+
+        def fetchone(self):
+            return None
+
+    cur = Rec()
+    assert repo.chat_contains(cur, 2, "system", "[live-ready #7]") is False
+    assert "user_id=%s AND role=%s AND content LIKE %s" in cur.sql
+    assert cur.params == (2, "system", "%[live-ready #7]%")

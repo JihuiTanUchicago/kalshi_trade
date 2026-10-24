@@ -2476,6 +2476,35 @@ def auto_paper_candidates(cur, user: Dict) -> List[str]:
     return out
 
 
+def live_ready_notices(cur, user: Dict) -> List[str]:
+    """Once per strategy, tell the user (chat line + email) when a running paper strategy first
+    clears every `paper_evidence` check. Read-only toward trading: going live stays a separate step
+    (the user's promote or live autopilot, which re-run every gate). Returns the chat lines added."""
+    from app import notify
+    out: List[str] = []
+    seen = set()
+    for d in repo.list_deployments(cur, user["id"]):
+        sid = d["strategy_id"]
+        if d["mode"] != "paper" or d["status"] != "running" or sid in seen:
+            continue
+        seen.add(sid)
+        marker = "[live-ready #%d]" % sid
+        if repo.chat_contains(cur, user["id"], "system", marker):
+            continue
+        ev = paper_evidence(cur, user["id"], sid)
+        if not ev["ready"]:
+            continue
+        title = d.get("title") or "Strategy %d" % sid
+        line = ("%s “%s” cleared every paper-to-live check: %s. Going live is your call: promote it, or "
+                "turn on live autopilot." % (marker, title, paper_evidence_line(ev)))
+        repo.add_chat(cur, user["id"], "system", line)
+        out.append(line)
+        if user.get("email"):
+            notify.live_ready_notice(user["email"], user.get("name"), title, paper_evidence_line(ev),
+                                     "%s/strategies/%d" % (notify.PUBLIC_URL, sid))
+    return out
+
+
 def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.dataset) -> Tuple[str, Optional[int]]:
     """Turn one agent action into a proposal (or, on autopilot, an applied
     change). Returns (sentence for the chat, proposal id if one was made)."""
@@ -2957,6 +2986,10 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
                     repo.add_chat(cur, user["id"], "system", line)
             except Exception as e:  # best-effort: never block the review itself
                 print("[agent] auto-paper failed for user %s: %r" % (user["id"], e), flush=True)
+            try:
+                live_ready_notices(cur, user)  # adds its own chat lines
+            except Exception as e:  # best-effort, like the funnel above
+                print("[agent] live-ready notice failed for user %s: %r" % (user["id"], e), flush=True)
         transcript = "\n".join("%s: %s" % (m["role"], m["content"]) for m in history)
         if run["kind"] == "review":
             task = ("Scheduled autopilot review. Why: %s\n"
