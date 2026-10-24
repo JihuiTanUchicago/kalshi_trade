@@ -147,3 +147,11 @@ def test_a_multi_day_tte_window_validates():
     assert specmod.validate({"market": BINARY[0]})["entry"]["max_tte_min"] == 1500.0   # default unchanged
     with pytest.raises(specmod.SpecError):
         specmod.validate({"market": BINARY[0], "entry": {"max_tte_min": 50000}})
+
+
+def test_a_min_tte_past_the_default_window_without_a_max_means_from_min_onward():
+    # Prod 2026-10-24 run 2689: min_tte_min=2000 with no max died as "min must be < max" (max 1500).
+    out = specmod.validate({"market": BINARY[0], "entry": {"min_tte_min": 2000}})
+    assert out["entry"]["max_tte_min"] == 43200.0
+    with pytest.raises(specmod.SpecError, match="must be < entry.max_tte_min"):
+        specmod.validate({"market": BINARY[0], "entry": {"min_tte_min": 2000, "max_tte_min": 1000}})

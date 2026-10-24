@@ -548,6 +548,12 @@ def validate(raw: Any) -> Dict[str, Any]:
     if not errors:
         if entry["min_price"] > entry["max_price"]:
             errors.append("entry.min_price must be <= entry.max_price")
+        raw_entry = raw.get("entry") if isinstance(raw.get("entry"), dict) else {}
+        if entry["min_tte_min"] >= entry["max_tte_min"] and "max_tte_min" not in raw_entry:
+            # Only a min was given, past the default window: the agent means "from min onward" (an
+            # NFL spec with min_tte_min=2000 died on the default max of 1500). Not a clamp: the
+            # agent never wrote a max.
+            entry["max_tte_min"] = RANGES["entry.max_tte_min"][1]
         if entry["min_tte_min"] >= entry["max_tte_min"]:
             errors.append("entry.min_tte_min must be < entry.max_tte_min")
     filters = entry["filters"]
