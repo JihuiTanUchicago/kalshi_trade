@@ -844,6 +844,28 @@ def _calibration_block(ds: backtest.Dataset) -> str:
     a contract sliding to NO through 9c..1c averages ~5c but a rule buys it at 9c, which printed a
     +1.1c "lead" on btc15m cheap YES that every backtest of it lost.) Descriptive only: whatever it
     suggests still has to pass the held-out gate."""
+    rows = calibration_cells(ds)
+    if not rows:
+        return ""
+    leads = sum(r["lead"] for r in rows)
+    lines = ["%-5s ask %2d-%2dc: n=%4d  avg ask %.2f  YES settled %.2f (+-%.2f)  "
+             "buy-YES net %+.1fc  buy-NO net %+.1fc  %s"
+             % (r["band"], r["lo_c"], r["hi_c"], r["n"], r["ask"], r["rate"], r["se"], 100 * r["yes_edge"],
+                100 * r["no_edge"], "LEAD (buy-%s)" % r["side"].upper() if r["lead"] else "noise") for r in rows]
+    verdict = ("%d cell(s) marked LEAD clear %gx their +- after fees: a calibration mechanism may target "
+               "ONLY those cells." % (leads, _CALIB_LEAD_SE) if leads else
+               "NO cell clears %gx its +- after fees: this market's prices are calibrated within noise. "
+               "Do NOT propose unconditional favorite-longshot / price-recalibration theses "
+               "here; they cannot beat the fee on this market." % _CALIB_LEAD_SE)
+    return ("CALIBRATION on the research window (per settled contract, at its FIRST quote in each cell, "
+            "i.e. what a rule entering on that condition pays; 'late' = last third of its life; net = "
+            "settled rate minus that quote, after the taker fee). %s Descriptive only:\n  %s"
+            % (verdict, "\n  ".join(lines)))
+
+
+def calibration_cells(ds: backtest.Dataset) -> List[Dict]:
+    """The calibration table's cells as data (see _calibration_block): one dict per (band, price bin)
+    with at least _CALIB_MIN_CONTRACTS settled contracts."""
     from data_pipeline.kalshi_fees import taker_fee_per_contract_dollars as fee_per
 
     cells: Dict[Tuple[str, int, str], Tuple[float, float]] = {}
@@ -865,7 +887,7 @@ def _calibration_block(ds: backtest.Dataset) -> str:
     agg: Dict[Tuple[str, int], List] = defaultdict(list)
     for (band, b, tk), (ask, bid) in cells.items():
         agg[(band, b)].append((ask, bid, 1.0 if ds.results[tk] == "yes" else 0.0))
-    rows, leads = [], 0
+    rows = []
     for band in ("early", "late"):
         for b in range(len(_CALIB_BINS) - 1):
             obs = agg.get((band, b), [])
@@ -880,24 +902,11 @@ def _calibration_block(ds: backtest.Dataset) -> str:
             no_px = 1.0 - bid
             no_edge = (1.0 - rate) - no_px - fee_per(_CALIB_FEE_QTY, no_px)
             best = max(yes_edge, no_edge)
-            lead = best > _CALIB_LEAD_SE * se
-            leads += lead
-            rows.append("%-5s ask %2d-%2dc: n=%4d  avg ask %.2f  YES settled %.2f (+-%.2f)  "
-                        "buy-YES net %+.1fc  buy-NO net %+.1fc  %s"
-                        % (band, round(100 * _CALIB_BINS[b]), round(100 * _CALIB_BINS[b + 1]), n, ask,
-                           rate, se, 100 * yes_edge, 100 * no_edge,
-                           "LEAD (buy-%s)" % ("YES" if yes_edge >= no_edge else "NO") if lead else "noise"))
-    if not rows:
-        return ""
-    verdict = ("%d cell(s) marked LEAD clear %gx their +- after fees: a calibration mechanism may target "
-               "ONLY those cells." % (leads, _CALIB_LEAD_SE) if leads else
-               "NO cell clears %gx its +- after fees: this market's prices are calibrated within noise. "
-               "Do NOT propose unconditional favorite-longshot / price-recalibration theses "
-               "here; they cannot beat the fee on this market." % _CALIB_LEAD_SE)
-    return ("CALIBRATION on the research window (per settled contract, at its FIRST quote in each cell, "
-            "i.e. what a rule entering on that condition pays; 'late' = last third of its life; net = "
-            "settled rate minus that quote, after the taker fee). %s Descriptive only:\n  %s"
-            % (verdict, "\n  ".join(rows)))
+            rows.append({"band": band, "lo_c": round(100 * _CALIB_BINS[b]), "hi_c": round(100 * _CALIB_BINS[b + 1]),
+                         "n": n, "ask": ask, "bid": bid, "rate": rate, "se": se, "yes_edge": yes_edge,
+                         "no_edge": no_edge, "best": best, "z": best / se if se else 0.0,
+                         "lead": best > _CALIB_LEAD_SE * se, "side": "yes" if yes_edge >= no_edge else "no"})
+    return rows
 
 
 def _rsi_choose(cur, user_id: int, market: str, run_id: int, log) -> str:
@@ -1035,6 +1044,37 @@ def _fair_value_table(ds: backtest.Dataset) -> str:
     the earlier events and scored on the later ones, plus the net P&L of buying wherever that blend
     (or the raw fair value) beats the quote by 2c after the fee. Descriptive, like the calibration
     table: it points the proposer at the band where the information is, or says there is none."""
+    lines, leads = [], []
+    for r in fair_value_rows(ds):
+        name, band, got = r["name"], r["band"], r
+        parts = []
+        for label in ("raw", "blend"):
+            n, n_ev, mean, se = got[label]
+            lead = n and mean > _FV_LEAD_SE * se
+            if lead:
+                leads.append("%s %s %s" % (name, band, label))
+            parts.append("%s: %d trades/%d events %+.1fc +-%.1fc%s" % (
+                label, n, n_ev, 100 * mean, 100 * se, " LEAD" if lead else "") if n else "%s: no trades" % label)
+        lines.append("%-15s %-6s n=%4d (%d events)  Brier mid %.3f  %s %.3f  blend %.3f (w_mid %.2f, "
+                     "w_fv %.2f)  |  %s" % (
+                         name, band, got["n"], got["events"], got["brier_mid"], name, got["brier_fv"],
+                         got["brier_blend"], got["w_mid"], got["w_fv"], "  ".join(parts)))
+    if not lines:
+        return ""
+    verdict = ("LEAD in: %s. Build on those bands; the others are noise." % "; ".join(leads) if leads else
+               "NO band clears %gx its +- out of sample: on this window the mid already prices these fair "
+               "values. A thesis that just trades the fair value against the mid needs a mechanism the "
+               "table cannot see (a feature it lacks, a narrower condition) and should say which." % _FV_LEAD_SE)
+    return ("FAIR VALUE vs MID on the research window (first quote per contract per time-to-close band; "
+            "blend = logistic of logit(mid) + logit(fair value) fit on the earlier half of events, scored on "
+            "the later half; trades where the probability beats the quote by %dc after the fee, net per "
+            "contract, SE clustered by event). %s\n  %s"
+            % (round(100 * _FV_MIN_EDGE), verdict, "\n  ".join(lines)))
+
+
+def fair_value_rows(ds: backtest.Dataset) -> List[Dict]:
+    """The fair-value table's rows as data: one _fv_probe result per (feature, band) with enough
+    events, plus "name" and "band"."""
     from data_pipeline.kalshi_fees import taker_fee_per_contract_dollars as fee_per
 
     first: Dict[Tuple[str, str, str], Tuple] = {}
@@ -1056,35 +1096,13 @@ def _fair_value_table(ds: backtest.Dataset) -> str:
     groups: Dict[Tuple[str, str], List[Tuple]] = defaultdict(list)
     for (name, band, _tk), row in first.items():
         groups[(name, band)].append(row)
-    lines, leads = [], []
+    rows = []
     for name in sorted({k[0] for k in groups}):
         for _lo, _hi, band in _FV_BANDS_H:
             got = _fv_probe(groups.get((name, band), []), fee_per)
-            if got is None:
-                continue
-            parts = []
-            for label in ("raw", "blend"):
-                n, n_ev, mean, se = got[label]
-                lead = n and mean > _FV_LEAD_SE * se
-                if lead:
-                    leads.append("%s %s %s" % (name, band, label))
-                parts.append("%s: %d trades/%d events %+.1fc +-%.1fc%s" % (
-                    label, n, n_ev, 100 * mean, 100 * se, " LEAD" if lead else "") if n else "%s: no trades" % label)
-            lines.append("%-15s %-6s n=%4d (%d events)  Brier mid %.3f  %s %.3f  blend %.3f (w_mid %.2f, "
-                         "w_fv %.2f)  |  %s" % (
-                             name, band, got["n"], got["events"], got["brier_mid"], name, got["brier_fv"],
-                             got["brier_blend"], got["w_mid"], got["w_fv"], "  ".join(parts)))
-    if not lines:
-        return ""
-    verdict = ("LEAD in: %s. Build on those bands; the others are noise." % "; ".join(leads) if leads else
-               "NO band clears %gx its +- out of sample: on this window the mid already prices these fair "
-               "values. A thesis that just trades the fair value against the mid needs a mechanism the "
-               "table cannot see (a feature it lacks, a narrower condition) and should say which." % _FV_LEAD_SE)
-    return ("FAIR VALUE vs MID on the research window (first quote per contract per time-to-close band; "
-            "blend = logistic of logit(mid) + logit(fair value) fit on the earlier half of events, scored on "
-            "the later half; trades where the probability beats the quote by %dc after the fee, net per "
-            "contract, SE clustered by event). %s\n  %s"
-            % (round(100 * _FV_MIN_EDGE), verdict, "\n  ".join(lines)))
+            if got is not None:
+                rows.append(dict(got, name=name, band=band))
+    return rows
 
 
 def _research_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], count: int) -> str:
@@ -3434,6 +3452,16 @@ def _copilot_context(cur, user: Dict) -> str:
                    "and will crash). You are NOT limited to the one you've been trading: if a market has gone "
                    "quiet (no fills, no edges for days), HUNT A DIFFERENT one from this list, don't wait: "
                    + ", ".join("%s (%s)" % (k, MARKETS[k].label[:40]) for k in deployable))]
+    try:
+        from app import rsi_scout
+        scan = rsi_scout.prompt_lines(cur, 8)
+    except Exception:  # noqa: BLE001 - no scan table yet / a read hiccup: offer the list alone
+        scan = ""
+    if scan:
+        lines += ["", ("FREE MISPRICING SCAN (each market's research window, no model spend; strongest measured "
+                       "leads first). Some leads are luck across many markets, so the gate still decides, but "
+                       "prefer researching a market with a lead over one without, and brief the mechanism the "
+                       "lead points at:\n" + scan)]
     # PORTFOLIO-LEVEL direction: run the operation like a book, not a stream of one-off actions.
     lines += ["", ("RUN IT AS A PORTFOLIO: (1) DIVERSIFY research across different markets AND different "
                    "mechanisms — don't pile variants of one angle on one market. (2) STEER TOWARD DATA: "

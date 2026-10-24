@@ -2006,6 +2006,11 @@ def research_scoreboard(ctx: Ctx):
     board = rsi.load_scoreboard(ctx.cur, days, ctx.uid)
     board["cards"] = board["cards"][-50:]
     board["playbooks"] = rsi_playbook.summary(ctx.cur, ctx.uid)
+    from app import rsi_scout
+    try:
+        board["scout"] = rsi_scout.ranking(ctx.cur, 10)
+    except Exception:  # noqa: BLE001 - the scan table may not exist before the first deploy's schema run
+        board["scout"] = []
     return board
 
 

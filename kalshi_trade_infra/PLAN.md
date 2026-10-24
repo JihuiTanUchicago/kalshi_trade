@@ -1,5 +1,19 @@
 # PLAN
 
+## Research RSI: free mispricing scan steers where research goes (2026-10-24)
+
+- `app/rsi_scout.py` loads each researchable binary market's RESEARCH window (its active partition, or
+  the boundaries a first run would freeze, computed without saving) and runs the calibration and
+  fair-value tables as data (`agent.calibration_cells`, `agent.fair_value_rows`). It stores lead counts
+  (cells clearing 2 SE after fees) and the strongest lead in `app_rsi_scout`. No model calls.
+- The autopilot review now sees the top 8 as "FREE MISPRICING SCAN", and `/api/research/scoreboard`
+  returns the top 10 as `scout`.
+- Scheduling: `scripts/systemd/tau-scout.{service,timer}` scans the 60 stalest markets every 2 hours
+  (MemoryMax 1500M), so each market is rescanned about daily. The units are hand-installed on the
+  web box (see scripts/systemd/README.md); until then run `python -m app.rsi_scout`.
+- Many markets are scanned, so some leads are luck. It only orders where research looks first; the
+  held-out gate still decides.
+
 ## Research RSI: a scoreboard, and playbooks the loop rewrites and A/B-tests (2026-10-24)
 
 Todd: "make it really RSI". Until now the loop only evolved finalist selection (dreaming over replayed
