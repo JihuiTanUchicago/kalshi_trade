@@ -1471,6 +1471,63 @@
       <div class="rsidisc-body">${body}</div>
     </details>`;
   }
+  // The research loop's own report card (GET /api/research/scoreboard, app/rsi.py): is research
+  // getting better, what it has learned per market family (playbooks under A/B test), where the
+  // free scan points it next, and which ideas the pipeline (not the market) killed. Fetched at
+  // most once a minute; the 5s page poll re-renders from the cached board.
+  const LOOP_FAMILY = { 'weather-high': 'Daily high temps', 'weather-low': 'Daily low temps', crypto: 'Crypto' };
+  const loopFamily = (f) => LOOP_FAMILY[f] || (f ? f.charAt(0).toUpperCase() + f.slice(1).replace(/-/g, ' ') : '');
+  const LOOP_TAG = { feature_unavailable: 'feature missing', no_data: 'no data', zero_trades: 'never traded', fee_floor: 'under the fee', loses: 'loses money', other: 'other' };
+  const loopRate = (r) => (r == null ? '—' : Math.round(r * 100) + '%');
+  const rsiLoop = { board: null, at: 0, inflight: false };
+  async function renderResearchLoop(host, pol, tried) {
+    if (!host) return;
+    if (!rsiLoop.inflight && Date.now() - rsiLoop.at > 60000) {
+      rsiLoop.inflight = true;
+      try { rsiLoop.board = await api('/api/research/scoreboard?days=14', undefined, { keep: true }); rsiLoop.at = Date.now(); }
+      catch (e) { rsiLoop.at = Date.now(); /* keep the last board; the old card still renders */ }
+      finally { rsiLoop.inflight = false; }
+    }
+    const b = rsiLoop.board;
+    if (!b || !b.total || !b.total.runs) { renderRsiMomentum(host, pol, tried); return; }
+    const t = b.total, tr = b.trend;
+    const delta = tr ? `<span class="rsi-score">${loopRate(tr.before.gate_reach_rate)} <span class="rsi-arrow">→</span> ${loopRate(tr.after.gate_reach_rate)}</span>` : '';
+    const tag = tr ? (tr.better ? '<span class="rsi-tag">Improving</span>' : '<span class="rsi-tag quiet">Not improving yet</span>') : '<span class="rsi-tag quiet">Learning</span>';
+    const perIdea = t.explored ? usd(t.cost_usd / t.explored) : '—';
+    const figs = `<dl class="figures measure loop-figs">${fig('Ideas tried', t.explored, { small: `${t.runs} session${t.runs === 1 ? '' : 's'} · 14 days` })}${fig('Reached the gate', t.gated, { small: `${loopRate(t.gate_reach_rate)} of ideas` })}${fig('Passed', t.passed, { small: t.holdout_passed ? `${t.holdout_passed} held out` : 'every gate' })}${fig('Spend', usd(t.cost_usd), { small: `${perIdea} per idea` })}${fig('Killed by our pipeline', loopRate(t.pipeline_death_share), { small: 'of dropped ideas' })}</dl>`;
+    const trendP = tr
+      ? `<p class="loop-trend">${tr.better ? 'Getting better.' : 'Not better yet.'} The newer ${tr.after.runs} session${tr.after.runs === 1 ? '' : 's'} took ${loopRate(tr.after.gate_reach_rate)} of ${tr.after.explored} ideas to the statistical gate, against ${loopRate(tr.before.gate_reach_rate)} of ${tr.before.explored} before.</p>`
+      : `<p class="loop-trend">Each session's ideas are counted from first draft to final verdict. A before/after trend appears once there are 16 ideas to compare.</p>`;
+    const maxIdeas = Math.max(1, ...(b.days || []).map((d) => d.explored));
+    const days = (b.days || []).length > 1 ? `<div class="loop-days" role="img" aria-label="Ideas per day and how many reached the gate">${b.days.slice(-14).map((d) => `<span class="loop-day" title="${esc(d.day)}: ${d.explored} ideas, ${d.gated} reached the gate"><i class="all" style="height:${Math.max(4, Math.round(40 * d.explored / maxIdeas))}px"></i><i class="hit" style="height:${d.gated ? Math.max(3, Math.round(40 * d.gated / maxIdeas)) : 0}px"></i></span>`).join('')}</div><p class="loop-legend"><i class="all"></i>ideas per day <i class="hit"></i>reached the gate</p>` : '';
+    const fams = {};
+    (b.playbooks || []).forEach((p) => { (fams[p.family] = fams[p.family] || {})[p.status] = p; });
+    const pbRows = Object.keys(fams).sort().map((f) => {
+      const a = fams[f].active, c = fams[f].candidate;
+      const rec = (p) => p.ideas ? `${p.reached} of ${p.ideas} ideas reached the gate` : 'no ideas yet';
+      const act = a ? `<b>v${a.version}</b> in use${a.version ? '' : ' (no lessons yet)'} · ${rec(a)}` : '';
+      const cand = c ? `<br><b>v${c.version}</b> on trial · ${rec(c)}${c.p_better != null ? ` · ${Math.round(c.p_better * 100)}% likely better` : ''}${c.changes ? `<span class="loop-why">What changed: ${esc(c.changes)}</span>` : ''}` : '';
+      const text = (c && c.text) || (a && a.text) || '';
+      return `<li><span class="loop-k">${esc(loopFamily(f))}</span><span class="loop-v">${act}${cand}${text ? `<details class="loop-pb"><summary>Read the playbook</summary><pre>${esc(text)}</pre></details>` : ''}</span></li>`;
+    }).join('');
+    const scout = (b.scout || []).slice(0, 5).map((s) => `<li><span class="loop-k">${esc(marketShort(s.market))}</span><span class="loop-v">${esc(s.best_what || '')} · ${s.best_net_c != null ? (s.best_net_c > 0 ? '+' : '') + s.best_net_c.toFixed(1) + '¢' : ''} net per contract · ${s.best_z != null ? s.best_z.toFixed(1) : '—'} SE</span></li>`).join('');
+    const fixes = (b.fix_list || []).slice(0, 5).map((x) => `<li><span class="loop-k">${esc(marketShort(x.market))}</span><span class="loop-v"><b>${esc(LOOP_TAG[x.tag] || x.tag)}</b> × ${x.count}${x.example ? `<span class="loop-why">${esc(String(x.example).slice(0, 180))}</span>` : ''}</span></li>`).join('');
+    const sect = (h, sub, items) => items ? `<div class="loop-sect"><h4>${h}</h4><p class="loop-sub">${sub}</p><ul class="loop-list">${items}</ul></div>` : '';
+    const body = figs + trendP + days
+      + sect('What it has learned', 'After every session the loop rewrites a playbook for that kind of market from its verdicts. A rewrite is tried on new sessions and kept only if more of its ideas reach the gate.', pbRows)
+      + sect('Where it looks next', 'A free scan of every market for prices that disagree with how they settle, after fees. Leads steer research; they still have to pass on unseen data.', scout)
+      + sect('Ideas our pipeline killed', 'Dropped because of missing data or features, not because the market said no. This is the fix list.', fixes)
+      + (pol && pol.evolved ? `<p class="rsi-last">Finalist policy evolved from your history${pol.base_score != null && pol.score != null ? ` · score ${pol.base_score} → ${pol.score}` : ''}.</p>` : '');
+    const open = !!host.querySelector('details.rsidisc[open]');
+    const focused = !!host.querySelector('details.rsidisc > summary:focus');
+    const inner = [...host.querySelectorAll('details.loop-pb')].map((d) => d.open);
+    host.innerHTML = `<details class="rsidisc loop"${open ? ' open' : ''}>
+      <summary class="rsidisc-cap"><b class="rsi-badge">RSI</b><span class="rsidisc-t">Is research getting better?</span>${tag}${delta ? `<span class="rsidisc-delta">${delta} reach the gate</span>` : ''}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
+      <div class="rsidisc-body">${body}</div>
+    </details>`;
+    host.querySelectorAll('details.loop-pb').forEach((d, i) => { if (inner[i]) d.open = true; });
+    if (focused) host.querySelector('details.rsidisc > summary').focus({ preventScroll: true });
+  }
   // Figure 1 -- the real Tau research pipeline, drawn as a styled node-and-connector flow (no
   // ASCII, no monospace). Stages verified against the code: agent.py (proposer + challenger),
   // partitions.py (60/25/15 split with purge + embargo), gatekeeper.py (the test battery and
@@ -1605,7 +1662,7 @@
       root.querySelector('#rstatus .said').innerHTML = said;
       root.querySelector('#rfigs').innerHTML = fig('Researching now', running) + fig('Waiting', queued) +
         fig('Hypotheses tested', tried) + fig('Passed every gate' + glo('gate'), passed, { small: tried ? `${pct(passed / tried, false)} pass rate` : '' });
-      renderRsiMomentum(root.querySelector('#rsimo'), d.policy, tried);
+      renderResearchLoop(root.querySelector('#rsimo'), d.policy, tried);
       root.querySelector('#rcount').textContent = d.runs.length ? `${d.runs.length} run${d.runs.length > 1 ? 's' : ''}` : '';
       root.querySelector('#runs').innerHTML = d.runs.length ? d.runs.map(runRow).join('')
         : `<div class="empty"><h3>No sessions yet</h3><p>Describe an idea above. The agent will turn it into several strategies, test each one on data it never saw, and mark each Passed or Void.</p></div>`;

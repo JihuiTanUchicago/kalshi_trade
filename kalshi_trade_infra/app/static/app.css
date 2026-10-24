@@ -1645,3 +1645,29 @@ body.landing-body .apf { display: none; }
   .apf-controls > :first-child { flex-basis: 100%; }
   .apf-controls .btn { justify-content: center; }
 }
+/* Research loop report card (renderResearchLoop): funnel figures, a before/after trend, a
+   per-day bar strip, and three short lists. Tokens only, so both themes and dark mode hold. */
+.rsidisc.loop .loop-figs { margin: 0 0 10px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.rsidisc.loop .loop-figs > .m { border: 0; padding: 4px 12px 4px 0; margin: 0; }
+.loop-trend { font-size: 13px; color: var(--ink-2); }
+.loop-days { display: flex; align-items: flex-end; gap: 4px; height: 44px; margin: 8px 0 4px; }
+.loop-day { position: relative; flex: 1 1 0; max-width: 28px; height: 100%; display: flex; align-items: flex-end; }
+.loop-day i { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 2px 2px 0 0; }
+.loop-day i.all, .loop-legend i.all { background: var(--rule-2); }
+.loop-day i.hit, .loop-legend i.hit { background: var(--signal); }
+.loop-legend { font-size: 11.5px; color: var(--ink-3); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.loop-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.loop-sect { margin-top: 14px; }
+.loop-sect h4 { margin: 0 0 2px; font-family: var(--f-nar); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink); }
+.rsidisc-body .loop-sub { font-size: 12px; color: var(--ink-3); margin-bottom: 6px; }
+.loop-list { list-style: none; margin: 0; padding: 0; }
+.loop-list li { display: grid; grid-template-columns: minmax(96px, 160px) 1fr; gap: 10px; padding: 6px 0; border-top: 1px solid var(--rule); font-size: 13px; line-height: 1.45; }
+.loop-k { color: var(--ink); font-weight: 600; overflow-wrap: anywhere; }
+.loop-v { color: var(--ink-2); overflow-wrap: anywhere; min-width: 0; }
+.loop-why { display: block; color: var(--ink-3); font-size: 12px; margin-top: 2px; }
+.loop-pb { margin-top: 4px; }
+.loop-pb summary { cursor: pointer; font-size: 12px; color: var(--ink-3); }
+.loop-pb pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.45; background: var(--stock); border: 1px solid var(--rule); padding: 8px 10px; margin: 6px 0 0; max-height: 260px; overflow: auto; }
+@media (max-width: 560px) {
+  .loop-list li { grid-template-columns: 1fr; gap: 2px; }
+}

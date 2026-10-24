@@ -100,20 +100,23 @@ def _fam():
 def test_lifecycle_baseline_trial_promotion(conn):
     cur = conn.cursor()
     fam, uid = _fam(), 990001
-    v0 = pb.choose(cur, uid, fam, run_id=10_000_001)
+    r0 = random.randrange(10**8, 2 * 10**9)   # run ids are global, so a rerun must not resume old draws
+    v0 = pb.choose(cur, uid, fam, run_id=r0)
     assert (v0["version"], v0["status"], v0["text"]) == (0, "active", "")
-    assert pb.score_run(cur, 10_000_001, dict(CARD, explored=20, gated=1)) == v0["id"]
-    assert pb.score_run(cur, 10_000_001, CARD) is None          # a run is credited once
-    v1 = pb.add_candidate(cur, uid, fam, v0, "DEAD ENDS\n- x", "first lessons", 10_000_001)
+    assert pb.score_run(cur, r0, dict(CARD, explored=20, gated=1)) == v0["id"]
+    assert pb.score_run(cur, r0, CARD) is None          # a run is credited once
+    v1 = pb.add_candidate(cur, uid, fam, v0, "DEAD ENDS\n- x", "first lessons", r0)
     assert v1 == 1 and pb.candidate(cur, uid, fam)["text"] == "DEAD ENDS\n- x"
     # Thompson draw: with the candidate far ahead on evidence it is drawn almost always...
     cur.execute("UPDATE app_rsi_playbooks SET ideas=10, reached=6 WHERE user_id=%s AND family=%s AND version=1",
                 (uid, fam))
-    draws = [pb.choose(cur, uid, fam, run_id=10_000_100 + i, rng=random.Random(i))["version"] for i in range(20)]
+    draws = [pb.choose(cur, uid, fam, run_id=r0 + 100 + i, rng=random.Random(i))["version"] for i in range(20)]
     assert draws.count(1) >= 18
     # ...and a resumed run keeps its first draw.
-    assert pb.choose(cur, uid, fam, run_id=10_000_100)["version"] == draws[0]
+    assert pb.choose(cur, uid, fam, run_id=r0 + 100)["version"] == draws[0]
     assert pb.decide(cur, uid, fam) is None                    # fewer than MIN_IDEAS on the candidate
+    trial = {r["status"]: r for r in pb.summary(cur, uid) if r["family"] == fam}
+    assert trial["active"]["p_better"] is None and trial["candidate"]["p_better"] > 0.9
     cur.execute("UPDATE app_rsi_playbooks SET ideas=20, reached=8 WHERE user_id=%s AND family=%s AND version=1",
                 (uid, fam))
     assert pb.decide(cur, uid, fam).startswith("promoted v1 over v0")

@@ -242,7 +242,8 @@ def prompt_block(pb: Optional[Dict], family: str) -> str:
 
 
 def summary(cur, user_id: int) -> List[Dict]:
-    """Every family's active and candidate playbook with its record, for the scoreboard."""
+    """Every family's active and candidate playbook with its record, for the scoreboard. A candidate
+    carries p_better: the chance its gate-reach rate beats the incumbent's on the evidence so far."""
     cur.execute("SELECT %s FROM app_rsi_playbooks WHERE user_id=%%s AND status IN ('active','candidate') "
                 "ORDER BY family, status" % _COLS, (user_id,))
     rows = list(cur.fetchall())
@@ -250,5 +251,9 @@ def summary(cur, user_id: int) -> List[Dict]:
         ideas = int(r.get("ideas") or 0)
         r["reach_rate"] = round(int(r.get("reached") or 0) / ideas, 3) if ideas else None
         r["cost_usd"] = float(r.get("cost_usd") or 0)
+    active_by_family = {r["family"]: r for r in rows if r["status"] == "active"}
+    for r in rows:
+        inc = active_by_family.get(r["family"])
+        r["p_better"] = (round(p_better(r, inc), 2) if r["status"] == "candidate" and inc else None)
     return rows
 

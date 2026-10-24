@@ -1376,11 +1376,43 @@ function researchFrontend(runs = [], {policy = null, ...options} = {}) {
   return frontend({...options, fetchImpl: path => {
     if (path === '/api/models') return response({models: [{key: 'offline', label: 'Offline model'}], default: 'offline'});
     if (path === '/api/research/context') return response({markets: []});
+    if (path.startsWith('/api/research/scoreboard')) return response({total: {runs: 0}});
     assert.equal(path, '/api/runs');
     return response({runs, counts: {research_running: runs.filter(run => run.status === 'running').length,
       research_queued: runs.filter(run => run.status === 'queued').length}, policy: typeof policy === 'function' ? policy() : policy});
   }});
 }
+
+test('Research index shows the research loop scoreboard, escaped, and keeps it open while polling', async () => {
+  const board = {total: {runs: 3, explored: 24, gated: 5, passed: 1, holdout_passed: 0, cost_usd: 30,
+      gate_reach_rate: 0.208, pipeline_death_share: 0.25},
+    trend: {before: {runs: 2, explored: 12, gated: 1, gate_reach_rate: 0.083}, after: {runs: 1, explored: 12, gated: 4, gate_reach_rate: 0.333}, better: true},
+    days: [{day: '2026-10-23', explored: 12, gated: 1}, {day: '2026-10-24', explored: 12, gated: 4}],
+    playbooks: [{family: 'weather-high', status: 'active', version: 1, ideas: 20, reached: 3, text: 'DEAD ENDS <script>x</script>'},
+      {family: 'weather-high', status: 'candidate', version: 2, ideas: 6, reached: 2, p_better: 0.81, changes: 'new <script>x</script>', text: 'v2 text'}],
+    scout: [{market: 'btc15m', best_what: 'calibration <4h 5-10c buy-NO', best_net_c: 3.2, best_z: 2.6}],
+    fix_list: [{tag: 'feature_unavailable', market: 'btc15m', count: 4, example: 'needs obs_high_f'}]};
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path === '/api/research/context') return response({markets: []});
+    if (path.startsWith('/api/research/scoreboard')) return response(board);
+    assert.equal(path, '/api/runs');
+    return response({runs: [researchRun(3, 'succeeded')], counts: {research_running: 0, research_queued: 0}, policy: null});
+  }});
+  await f.viewResearch(); await flush();
+  const details = f.root.querySelector('#rsimo details.loop');
+  assert.ok(details); assert.equal(details.open, false);
+  const html = details.innerHTML;
+  assert.match(html, /Is research getting better\?/); assert.match(html, /Improving/);
+  assert.match(html, /8% <span class="rsi-arrow">→<\/span> 33%/);
+  assert.match(html, /v2<\/b> on trial · 2 of 6 ideas reached the gate · 81% likely better/);
+  assert.match(html, /feature missing/); assert.match(html, /calibration &lt;4h/);
+  assert.ok(html.includes('&lt;script&gt;')); assert.doesNotMatch(html, /<script>/);
+  details.open = true;
+  f.intervals.get(f.S.timers.at(-1))(); await flush();
+  assert.equal(f.root.querySelector('#rsimo details.loop').open, true);
+  assert.equal(f.requests.filter(r => r.path.startsWith('/api/research/scoreboard')).length, 1);  // cached for a minute
+});
 
 for (const [label, view, selector, endpoint] of [
   ['index', 'viewResearch', '#rsimo', '/api/runs'],
@@ -1434,7 +1466,7 @@ test('Research setup is a native closed disclosure unless requested and retains 
     assert.equal(f.root.querySelector('#dispatch'), form); assert.equal(prompt.value, 'Keep my unsent idea');
     assert.equal(f.document.activeElement, prompt); assert.equal(postRequests(f).length, 0);
     assert.deepEqual([...new Set(f.requests.map(request => request.path))].sort(),
-      ['/api/models', '/api/notifications', '/api/research/context', '/api/runs']);
+      ['/api/models', '/api/notifications', '/api/research/context', '/api/research/scoreboard?days=14', '/api/runs']);
   }
 });
 
