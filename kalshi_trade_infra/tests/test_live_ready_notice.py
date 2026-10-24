@@ -54,3 +54,25 @@ def test_chat_contains_query_is_scoped_to_user_and_role():
     assert repo.chat_contains(cur, 2, "system", "[live-ready #7]") is False
     assert "user_id=%s AND role=%s AND content LIKE %s" in cur.sql
     assert cur.params == (2, "system", "%[live-ready #7]%")
+
+
+def test_sports_market_notice_says_to_reverify_location(monkeypatch):
+    chats, mails = _patch(monkeypatch, [dict(DEP, market="nhl_game")])
+    lines = agent.live_ready_notices(None, USER)
+    assert "re-verify your location in the Kalshi mobile app" in lines[0]
+    assert "Sports" in mails[0][5]
+
+
+def test_crypto_or_unknown_market_notice_has_no_location_note(monkeypatch):
+    chats, mails = _patch(monkeypatch, [dict(DEP, market="btc15m"), dict(DEP, strategy_id=8, market="nope")])
+    lines = agent.live_ready_notices(None, USER)
+    assert len(lines) == 2 and not any("location" in l for l in lines)
+    assert [m[5] for m in mails] == ["", ""]
+
+
+def test_email_body_carries_the_note(monkeypatch):
+    sent = []
+    monkeypatch.setattr(notify, "_send", lambda to, subj, body: sent.append(body) or True)
+    notify.live_ready_notice("t@example.invalid", "T", "Edge", "31 trades", "https://x/strategies/7", "Re-verify.")
+    notify.live_ready_notice("t@example.invalid", "T", "Edge", "31 trades", "https://x/strategies/7")
+    assert "Re-verify.\n\n  https://x/strategies/7" in sent[0] and "Re-verify" not in sent[1]

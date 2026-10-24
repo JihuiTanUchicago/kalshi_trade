@@ -2561,6 +2561,21 @@ def auto_paper_candidates(cur, user: Dict) -> List[str]:
     return out
 
 
+# Kalshi accepts orders in these categories only while the account's location verification is
+# current (it lapses and is renewed in the Kalshi mobile app). Paper never needs it; live does.
+ATTESTATION_CATEGORIES = frozenset({"Sports", "Elections", "Politics", "Entertainment"})
+
+
+def location_attestation_note(market_key: Optional[str]) -> str:
+    """A warning for a live-ready notice when the market's live orders need a current Kalshi
+    location verification, else ''. Unknown markets get no note (the alerter tracks expiry)."""
+    m = MARKETS.get(market_key or "")
+    if not m or m.category not in ATTESTATION_CATEGORIES:
+        return ""
+    return ("Kalshi only accepts %s orders while your location verification is current, so re-verify "
+            "your location in the Kalshi mobile app before going live." % m.category)
+
+
 def live_ready_notices(cur, user: Dict) -> List[str]:
     """Once per strategy, tell the user (chat line + email) when a running paper strategy first
     clears every `paper_evidence` check. Read-only toward trading: going live stays a separate step
@@ -2580,13 +2595,16 @@ def live_ready_notices(cur, user: Dict) -> List[str]:
         if not ev["ready"]:
             continue
         title = d.get("title") or "Strategy %d" % sid
+        note = location_attestation_note(d.get("market"))
         line = ("%s “%s” cleared every paper-to-live check: %s. Going live is your call: promote it, or "
                 "turn on live autopilot." % (marker, title, paper_evidence_line(ev)))
+        if note:
+            line += " " + note
         repo.add_chat(cur, user["id"], "system", line)
         out.append(line)
         if user.get("email"):
             notify.live_ready_notice(user["email"], user.get("name"), title, paper_evidence_line(ev),
-                                     "%s/strategies/%d" % (notify.PUBLIC_URL, sid))
+                                     "%s/strategies/%d" % (notify.PUBLIC_URL, sid), note)
     return out
 
 

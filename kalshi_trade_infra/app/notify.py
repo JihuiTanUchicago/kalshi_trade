@@ -131,7 +131,8 @@ def mention_notice(to_email: str, name: Optional[str], author: str, body: str) -
     return _send(to_email, "%s mentioned you on Tau" % author, text)
 
 
-def live_ready_notice(to_email: str, name: Optional[str], title: str, evidence: str, strategy_url: str) -> bool:
+def live_ready_notice(to_email: str, name: Optional[str], title: str, evidence: str, strategy_url: str,
+                      note: str = "") -> bool:
     """Tell a user one of their paper strategies just cleared every paper -> live check. Sent once
     per strategy (the caller dedups). It never turns anything on: going live stays the user's step."""
     body = (
@@ -141,7 +142,8 @@ def live_ready_notice(to_email: str, name: Optional[str], title: str, evidence: 
         "Nothing has changed yet. To trade it live, promote it from its strategy page or turn on live "
         "autopilot. A new live strategy starts at a quarter of its size for its first 20 trades, and "
         "it is paused automatically if live loses money on average.\n\n"
+        "%s"
         "  %s\n\n"
         "— Tau"
-    ) % (name or "there", title, evidence, strategy_url)
+    ) % (name or "there", title, evidence, (note + "\n\n") if note else "", strategy_url)
     return _send(to_email, "“%s” is ready for live trading" % title[:80], body)
