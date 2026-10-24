@@ -238,6 +238,31 @@ def test_research_prompt_states_the_detectable_edge():
     assert agent._detectability_block(SimpleNamespace(start_ts=5, end_ts=5)) == ""
 
 
+def test_calibration_block_surfaces_planted_longshot_bias():
+    """The research-window calibration table counts each contract once per (band, bin) and shows a
+    planted mispricing: 5c YES longshots that never settle YES are a positive buy-NO net edge."""
+    import random
+    from datetime import datetime, timezone
+    from app.markets import Contract, Snapshot
+    rng = random.Random(0)
+    frames, results = [], {}
+    for i in range(60):
+        close = datetime.fromtimestamp(1_700_000_000 + i * 900 + 900, tz=timezone.utc)
+        longshot = i % 2 == 0
+        c = Contract("T%d" % i, 100.0, close)
+        results[c.ticker] = "no" if longshot else ("yes" if rng.random() < 0.5 else "no")
+        ask = 0.05 if longshot else 0.50
+        for k in range(15):                       # 15 one-minute frames, one observation
+            ts = 1_700_000_000 + i * 900 + k * 60
+            frames.append((ts, [Snapshot(c, ts, ask - 0.01, ask, {"tte_min": 15.0 - k})]))
+    ds = SimpleNamespace(frames=frames, results=results, start_ts=0, end_ts=1)
+    block = agent._calibration_block(ds)
+    early = [ln for ln in block.splitlines() if ln.strip().startswith("early ask  0-10c")]
+    assert len(early) == 1 and "n=  30" in early[0] and "YES settled 0.00" in early[0]
+    assert float(early[0].split("buy-NO net")[1].strip().rstrip("c")) > 0
+    assert agent._calibration_block(SimpleNamespace(frames=[], results={})) == ""
+
+
 def test_pooled_finalist_preregisters_on_the_merged_partition(monkeypatch):
     """A pooled rule's evidence spans every pooled market: it pre-registers against the MERGED
     partition, is judged on the merged validation window under its shared stream key, and skips the
