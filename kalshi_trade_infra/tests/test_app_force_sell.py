@@ -330,7 +330,7 @@ def test_a_decision_records_why_it_bought_nothing(monkeypatch):
     out = engine.decide(_Conn(), dep, [snap], {}, engine.Sources())
     assert out["entries"] == 0
     [(dep_id, scan)] = scans
-    assert dep_id == 1 and scan["entered"] == 0 and scan["blocked_at"] == "1-3 minutes before expiry"
+    assert dep_id == 1 and scan["entered"] == 0 and scan["blocked_at"] == "is 1-3 minutes from expiry"
     # A failing readout write never fails the decision.
     monkeypatch.setattr(engine.repo, "set_deployment_scan", lambda *a: (_ for _ in ()).throw(RuntimeError("db")))
     assert engine.decide(_Conn(), dep, [snap], {}, engine.Sources())["entries"] == 0
