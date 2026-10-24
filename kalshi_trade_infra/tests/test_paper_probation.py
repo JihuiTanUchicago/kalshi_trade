@@ -109,3 +109,15 @@ def test_fresh_live_deployments_can_always_be_paused(monkeypatch):
     statuses = _pause_patch(monkeypatch, dep)
     agent.act(None, USER, {"type": "pause", "deployment_id": 9, "reason": "risk"}, autopilot=True)
     assert statuses == ["paused"]
+
+
+def test_review_context_shows_deployment_age():
+    from datetime import timedelta
+    now = agent.repo.now_utc()
+    fresh = agent._deployment_age_text({"mode": "paper", "created_at": now - timedelta(minutes=30)})
+    assert "0.5 hours ago" in fresh and "too new to judge" in fresh
+    old = agent._deployment_age_text({"mode": "paper", "created_at": now - timedelta(days=3)})
+    assert "3.0 days ago" in old and "too new" not in old
+    live = agent._deployment_age_text({"mode": "live", "created_at": now - timedelta(minutes=30)})
+    assert "too new" not in live
+    assert agent._deployment_age_text({"mode": "paper"}) == ""
