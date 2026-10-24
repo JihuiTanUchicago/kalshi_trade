@@ -149,6 +149,8 @@ def micro_days(cur, series: str, feature: str) -> float:
 
 
 def is_ready(cur, req: Dict) -> bool:
+    if req["kind"] == "ticks" and MARKETS[req["market"]].source != "ticks":
+        return False   # recording starts on request, but a re-test needs a per-second twin market first
     if req["kind"] == "micro":
         return micro_days(cur, req["series"], req["need"]) >= MICRO_READY_DAYS
     n = window_contracts(cur, req["market"])
