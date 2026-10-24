@@ -375,6 +375,76 @@ def test_dropped_theses_reads_new_and_legacy_drop_events():
     assert repo.dropped_theses(Empty(), 1, "m") == []
 
 
+def test_mechanism_buckets_put_renamed_ideas_together():
+    """Prod 2026-10-24: the same four crypto ideas died ~600 times under new names on 10 markets."""
+    from app import rsi
+    fl = "favorite-longshot / calibration"
+    assert rsi.mechanism("ZEC Favorite-Longshot Calibration Bias") == fl
+    assert rsi.mechanism("Fitted recalibration \u2014 favorite-longshot bias correction") == fl
+    assert rsi.mechanism("Terminal Pinning in Last 3 Minutes").startswith("terminal pinning")
+    assert rsi.mechanism("Late-Afternoon Volatility Overestimation").startswith("volatility mispricing")
+    assert rsi.mechanism("GARCH conditional volatility forecast").startswith("volatility mispricing")
+    assert rsi.mechanism("Logistic Mean-Reversion Classifier") == "mean reversion after a move"
+    assert rsi.mechanism("XRP-SOL Cross-Market Lead-Lag Arbitrage") == "cross-asset lead-lag / pairs"
+    assert rsi.mechanism("Logistic Multi-Factor ITM Scoring").startswith("generic learned")
+    assert rsi.mechanism("Weekly options expiry hedge unwind") is None
+
+
+def test_sibling_drops_steer_a_market_off_mechanisms_its_family_already_killed(monkeypatch):
+    """A run on one crypto ladder sees which mechanisms the other ladders killed, with counts and a
+    newest example; one-off drops, single-market patterns and unbucketed titles stay out."""
+    sib = [{"market": "eth15m", "title": "ETH favorite-longshot recal", "why": "coef 1.02, no bias"},
+           {"market": "xrp15m", "title": "XRP Longshot fade", "why": "loses"},
+           {"market": "doge15m", "title": "Calibration fade", "why": "loses"},
+           {"market": "sol15m", "title": "Terminal pinning", "why": "x"},
+           {"market": "sol15m", "title": "Terminal convergence", "why": "x"},
+           {"market": "sol15m", "title": "Pin near expiry", "why": "x"},     # 3 drops, one market only
+           {"market": "eth15m", "title": "Weird idea", "why": "x"}]
+    own = [{"title": "BTC momentum", "why": "loses"}]
+    block = agent._dropped_block(own + sib, "btc15m")
+    assert block.index("Already ABANDONED on this market") < block.index("DEAD ON SIBLING MARKETS")
+    dead = block.split("DEAD ON SIBLING MARKETS")[1]
+    assert "favorite-longshot / calibration: dropped 3 times on 3 sibling markets" in dead
+    assert "ETH favorite-longshot recal on eth15m: coef 1.02" in dead           # the newest example
+    assert "terminal" not in dead.lower().split("btc15m differs")[1] and "Weird" not in dead
+    only_sib = agent._dropped_block(sib, "btc15m")
+    assert "Already ABANDONED" not in only_sib and "DEAD ON SIBLING" in only_sib
+    assert agent._dropped_block(sib[3:], "btc15m") == ""                     # nothing qualifies
+
+    from app import repository as repo
+    seen = {}
+    monkeypatch.setattr(repo, "dropped_theses", lambda cur, uid, m: own)
+    monkeypatch.setattr(repo, "sibling_dropped_theses",
+                        lambda cur, uid, markets: seen.setdefault("m", markets) and sib)
+    out = agent._recent_drops(None, 1, "btc15m")
+    assert out[0] == own[0] and len(out) == 1 + len(sib)
+    assert "btc15m" not in seen["m"] and "eth15m" in seen["m"]
+    assert all(agent.MARKETS[k].underlying for k in seen["m"])               # crypto siblings only
+    monkeypatch.setattr(repo, "sibling_dropped_theses", lambda *a: 1 / 0)
+    assert agent._recent_drops(None, 1, "btc15m") == own                    # advisory: never fatal
+
+
+def test_sibling_dropped_theses_reads_runs_on_the_given_markets():
+    from app import repository as repo
+
+    class Cur:
+        def __init__(self):
+            self.calls = []
+        def execute(self, sql, args):
+            self.calls.append((sql, args))
+        def fetchall(self):
+            if len(self.calls) == 1:
+                return [{"id": 9, "market": "eth15m"}, {"id": 7, "market": "xrp15m"}]
+            return [{"run_id": 7, "message": 'DROPPED "FLB" (no candidate) \u2014 loses', "data_json": None},
+                    {"run_id": 9, "message": "x", "data_json": {"title": "Bad", "why": "spec invalid: y"}}]
+    cur = Cur()
+    assert repo.sibling_dropped_theses(cur, 1, ["eth15m", "xrp15m"]) == [
+        {"market": "xrp15m", "title": "FLB", "why": "loses"}]
+    assert cur.calls[0][1] == (1, "eth15m", "xrp15m", repo.SIBLING_RECENT_RUNS)
+    assert cur.calls[1][1] == (9, 7, 400)
+    assert repo.sibling_dropped_theses(cur, 1, []) == []
+
+
 def test_pooled_finalist_preregisters_on_the_merged_partition(monkeypatch):
     """A pooled rule's evidence spans every pooled market: it pre-registers against the MERGED
     partition, is judged on the merged validation window under its shared stream key, and skips the
