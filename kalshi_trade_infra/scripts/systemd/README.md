@@ -5,13 +5,16 @@ Before this, the live engine and the forward collector ran as bare
 covered only the dashboard and the sim engine, and was itself not scheduled by
 anything. Nothing restarted the live trading engine if it died.
 
-Install:
+Install (collector box):
 
     sudo cp scripts/systemd/*.service /etc/systemd/system/
     sudo systemctl daemon-reload
-    sudo systemctl enable --now kalshi-live-engine kalshi-sim-engine kalshi-forward-collector
+    sudo systemctl enable --now kalshi-sim-engine kalshi-forward-collector
 
-`kalshi-dashboard.service` already existed and is unchanged.
+`kalshi-live-engine` (the legacy BTC 15m live engine) was stopped and disabled on 2026-10-24;
+live trading now runs in `recursive-engine` on the web box. Its unit and keys stay on the
+collector box; do not re-enable it without the owner's go. `scripts/deploy_collector.sh` never
+starts a disabled unit.
 
 Each unit is `Restart=always` with a burst limit, so a crash loop backs off
 rather than hammering the exchange. Verified by SIGKILLing the sim engine:
@@ -26,7 +29,11 @@ Four more units, same shape: `recursive-web` (HTTP, `APP_HOST`/`APP_PORT`, defau
 127.0.0.1:8090), `recursive-agents`, `recursive-engine`, `recursive-history`. They read
 `/opt/kalshi/.env.app` in addition to `.env.aws`. Run `python -m app.schema` once first.
 `APP_LIVE_TRADING_ENABLED` must stay unset until the owner explicitly authorises real
-orders for app users.
+orders for app users. `scripts/deploy_web.sh` restarts these four and applies their memory caps
+(`systemctl set-property`) on every deploy, since the units on the box were hand-installed.
+
+`tau-scout.timer` (web box) runs the RSI mispricing scout (`app.rsi_scout`). The web bundle
+does not ship `scripts/`, so install it by hand like the other timers here.
 
 ### World Monitor news poller (optional)
 
@@ -91,6 +98,7 @@ and the live engine read the same rows (`app/weather_fcst.py`). Backfill once wi
 
 ### Sportsbook odds (web box)
 
+Disabled on the web box since 2026-10-24 (no odds API for now); without a key it is a no-op.
 `kalshi-sports-odds.timer` runs `app.sports_odds_collect` 5x a day (2 credits per run: NBA + NHL,
 about 310 a month, inside The Odds API's free 500). It reads `ODDS_API_KEY` or the Secrets Manager
 secret `kalshi/odds_api_key` and is a no-op without one. For a paid plan, tighten `OnCalendar`.

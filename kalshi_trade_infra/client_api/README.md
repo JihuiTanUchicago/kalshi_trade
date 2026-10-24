@@ -14,9 +14,9 @@ pip install pandas requests
 from client_api import KalshiDataClient
 
 client = KalshiDataClient(
-    base_url="https://dehiuraiut9ro.cloudfront.net",
-    username="todd",
-    password="kalshimakesmepoor",
+    base_url="https://<legacy-dashboard-host>",  # the old dehiuraiut9ro CloudFront URL no longer reaches a live origin
+    username="<dashboard user>",
+    password="<DASHBOARD_PASSWORD>",
 )
 
 # Full history (auto-paginated under the hood)

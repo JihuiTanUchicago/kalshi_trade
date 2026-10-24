@@ -1,25 +1,58 @@
-# kalshi_trade
+# kalshi_trade_infra
 
-Kalshi BTC 15-minute pipeline for ingestion, feature engineering, simulation, live trading controls, and observability.
+Everything that runs Tau, an automated research-to-live trading system on Kalshi prediction
+markets: the data collectors, the research agent and its statistical gates, the paper and live
+engines, the autopilot, and the web app at https://tau-trading.com.
 
-## Research pipeline
+Status as of 2026-10-24: no strategy has cleared the research gates yet, so nothing trades live.
+The first paper strategies run under the opt-in paper probation (below). Real-money trading is off
+unless the owner turns it on. Newest decisions and incident notes are at the top of
+[`PLAN.md`](PLAN.md).
 
-Beyond the live trading infra below, the `app/` product is **Tau**, a self-improving research desk: you
-describe an idea in a sentence, an agent writes concrete strategy specs, and each is tested on data it never
-saw. The hard rule is a strict information barrier — the **generator** (proposer + challenger) only ever
-iterates on the Research partition and a pass/fail label, while only the **statistical gatekeeper** may read
-the Validation and locked Holdout partitions. "Passed" is never a bare backtest: a strategy is marked
-`STAT_SUPPORTED` only after clearing the full test battery at once, then `FORWARD_VALIDATED` on the one-time
-holdout and a marginal-contribution check, to become a `DEPLOYMENT_CANDIDATE`. The Tau-RSI loop rewrites its
-own exploration policy from outcomes and feeds that back to the proposer — carrying classification labels
-only, never held-out numbers. Full spec in `RESEARCH_PIPELINE_DESIGN.md`; this diagram mirrors Figure 1 in
-the product's research tab.
+## Layout
+
+| Path | What it is |
+|---|---|
+| `app/` | Tau: web server and SPA, research agent, backtester, gatekeeper, paper/live engine, autopilot, RSI loop |
+| `data_pipeline/` | Collectors (Kalshi books, trades, catalog, Coinbase spot, ticks), feature builders, alerter, watchdog, the legacy BTC 15m sim/live engines |
+| `data_pipeline/architecture/` | Shared execution pieces: `execution_kernel`, `risk_engine`, `position_guard`, `simulated_venue` |
+| `scripts/` | Deploys (`deploy_web.sh`, `deploy_collector.sh`), systemd units, one-off ops tools |
+| `tests/` | pytest suite (a `FakeCursor` fixture, no live DB needed) |
+| `staging/` | Isolated Docker paper-trading staging stack |
+| `client_api/` | pandas client for the legacy dashboard's `/api/table` |
+| `results/` | Per-workstream `HANDOFF.md` evidence folders |
+
+## How a strategy gets to money
+
+1. **Research.** A user (or the autopilot) names a market and an idea. The proposer writes
+   concrete strategy specs or sandboxed code strategies, a challenger vets them, and each is
+   pre-registered and frozen before any held-out data is read.
+2. **Gates.** The backtester replays the spec net of Kalshi fees, filling at the next bar
+   (`TAU_BACKTEST_FILL_MODEL=next_bar`; `tick` replays per-second data). The gatekeeper alone reads
+   Validation and the locked Holdout. See [Research gates](#research-gates).
+3. **Paper.** The autopilot puts each `DEPLOYMENT_CANDIDATE` on paper (users can also deploy
+   any strategy to paper or to Kalshi's demo sandbox by hand). Paper orders go through the live
+   execution kernel against `SimulatedVenue`, so fills are realistic (`order_ref` starts `sim:`).
+   With `APP_PAPER_PROBATION=1`, up to 4 validation near misses (net > 0, p ≤ 0.25, ≥ 20 trades)
+   also run on paper, never live.
+4. **Live.** Only a `DEPLOYMENT_CANDIDATE` whose `agent.paper_evidence` passes: 8+ closed paper
+   trades and not down, then on realistic fills 30+ round trips, net > 0 after fees, a 48h+
+   span, and a stationary-bootstrap p ≤ 0.10. Autopilot live also needs `agent.live_autopilot_ok`: the user's autopilot and
+   `autopilot_live` switches, `APP_LIVE_TRADING_ENABLED=1` on the server, a connected Kalshi key,
+   and today's live loss inside `autopilot_daily_loss_limit`. A manual live deploy needs the
+   server switch, a key and a typed `LIVE` confirmation; NO-side live also needs
+   `APP_NO_SIDE_LIVE_ENABLED=1`.
+
+## Research gates
+
+History is split Research 60% / Validation 25% / locked Holdout 15% (`app/partitions.py`), with
+purge and embargo at each cut. The generator only ever iterates on Research.
 
 ```mermaid
 flowchart LR
     Idea(["Your hypothesis,<br/>in one sentence"])
 
-    subgraph GEN["Generator — blind to Validation &amp; Holdout numbers"]
+    subgraph GEN["Generator: blind to Validation &amp; Holdout numbers"]
         direction LR
         Proposer["Proposer<br/>writes concrete,<br/>testable strategy specs"]
         Challenger["Challenger<br/>approve / revise / reject<br/>each spec"]
@@ -27,25 +60,25 @@ flowchart LR
         Proposer --> Challenger --> Freeze
     end
 
-    subgraph DATA["Partitioned history — purge + embargo at every cut"]
+    subgraph DATA["Partitioned history: purge + embargo at every cut"]
         direction LR
         Research["Research 60%<br/>the only data the<br/>generator iterates on"]
         Validation["Validation 25%"]
         Holdout["Locked holdout 15%<br/>spent once"]
     end
 
-    subgraph GATE["Statistical gatekeeper — the only reader of Validation &amp; Holdout"]
+    subgraph GATE["Statistical gatekeeper: the only reader of Validation &amp; Holdout"]
         direction TB
-        Backtest["Net-of-fee backtest<br/>real Kalshi taker fees;<br/>a gross edge fees eat does not count"]
-        Battery["Test battery on Validation<br/>bootstrap CI · PSR ·<br/>DSR deflated by trial count ·<br/>placebo/null · LORD++ FDR budget ·<br/>Benjamini–Hochberg ·<br/>purged walk-forward + embargo"]
+        Backtest["Net-of-fee backtest<br/>next-bar fills, capped at book size"]
+        Battery["Test battery on Validation<br/>bootstrap CI · PSR ·<br/>DSR deflated by trial count ·<br/>market-implied placebo · LORD++ FDR ·<br/>Benjamini–Hochberg ·<br/>purged walk-forward · +1c cost stress"]
         Backtest --> Battery
     end
 
     Verdict{"Clears ALL<br/>tests at once?"}
-    Ledger[("Immutable ledger<br/>rejected &amp; inconclusive logged —<br/>trial count stays honest")]
+    Ledger[("Immutable ledger<br/>rejected &amp; inconclusive logged:<br/>trial count stays honest")]
     HoldoutEval["One-time holdout eval<br/>locked 15% spent once<br/>→ FORWARD_VALIDATED"]
     Marginal{"Marginal contribution<br/>|ρ| ≤ 0.80 vs live book?"}
-    Candidate(["DEPLOYMENT_CANDIDATE<br/>survived every check<br/>on data it never saw"])
+    Candidate(["DEPLOYMENT_CANDIDATE"])
 
     Idea --> Proposer
     Freeze --> Research
@@ -59,312 +92,128 @@ flowchart LR
     Marginal -- "no" --> Ledger
     Marginal -- "yes" --> Candidate
 
-    Verdict -. "Tau-RSI loop — rewrites its exploration policy;<br/>classification labels only, never held-out numbers" .-> Proposer
+    Verdict -. "RSI: scoreboard + per-family playbooks;<br/>labels only, never held-out numbers" .-> Proposer
 ```
 
-## Setup
+Thresholds live at the top of `app/gatekeeper.py`: `ALPHA=0.10`, `DSR_MIN=0.5` (owner's choice;
+`research_eval` keeps 0.95), `CORR_MAX=0.80`, `COST_STRESS_CENTS=1.0` (held-out trades re-run with
+1c extra slippage must stay positive), and a power pre-screen that marks ideas `underpowered`
+before spending validation. `tests/test_gate_power.py` checks that a planted 15c edge passes and
+a fair market does not; run it before blaming "no edge exists". Full spec:
+[`RESEARCH_PIPELINE_DESIGN.md`](RESEARCH_PIPELINE_DESIGN.md).
+
+## The RSI loop
+
+Research is meant to get better at finding edges from its own results:
+
+- `app/rsi.py`: per-run scorecard and a scoreboard (funnel, spend, why ideas died). API
+  `GET /api/research/scoreboard`, CLI `python -m app.rsi --days 7`.
+- `app/rsi_playbook.py`: one playbook per (user, market family). After each run the model
+  rewrites it into a candidate, and a Thompson draw A/B-tests candidate against incumbent on
+  gate-reach rate. A promotion is held if the candidate's passes lose on paper.
+- `app/rsi_scout.py`: free mispricing scan of the research window (`tau-scout.timer`).
+- `app/rsi_repair.py`: a crypto idea that died for missing data files an `app_data_requests` row;
+  the pipeline collects it and the idea is re-tested once.
+- `app/dreaming.py`: the original exploration-policy evolution, still called by the agent.
+
+## Markets and data
+
+- **Markets** (`app/markets.py`): curated crypto (BTC/ETH/SOL/XRP/DOGE/NEAR/ZEC/HYPE 15-minute,
+  BTC/ETH/SOL/XRP daily), sports moneylines (NFL/NHL/NBA/NCAAF/MLB/EPL), NYC high temperature,
+  plus every recurring catalog series in Sports or Climate and Weather. `btc15m_tick` (per-second
+  replay) and `btc_perp` are research only.
+- **Scope rule** (2026-10-24): only sports, weather and crypto are collected or kept.
+  `data_pipeline.common.TRADED_CATEGORIES` and `is_traded_series()` enforce it (MVE parlays are
+  rejected too); `python -m scripts.prune_untraded_markets` prunes old rows (dry run by default).
+- **Storage**: RDS MySQL 8.4 (`kalshi-trade-mysql`) holds markets, candles, features, trades,
+  research and money tables. Per-tick Bitcoin data (every KXBTC* book delta, trade and ticker, and
+  Coinbase BTC-USD prints) is recorded on the collector box and archived hourly to S3 Parquet under
+  `ticks/v1/` in the datalake bucket; read it with `data_pipeline/tick_store.py`
+  (`book_1s`, `trades_1s`, `spot_1s`, `features_1s`).
+- **Side data**: weather forecasts (NBM and GFS MOS from IEM, `app/weather_fcst*.py`), Kalshi
+  `/historical` candles back to 2021 for weather, measured execution costs
+  (`python -m app.exec_cost_model`). The sportsbook odds collector exists but has no key, so it
+  is a no-op.
+
+## Safety layers
+
+- **Live switch**: app users can place real orders only with `APP_LIVE_TRADING_ENABLED=1`. Native
+  Bitcoin perps have their own switch, `TAU_KALSHI_PERPS_LIVE_ENABLED` (default 0, off in prod),
+  and every perps ticket needs the user's confirmation. Turning either on is the owner's call.
+- **Position guard** (`architecture/position_guard.py`): every real-order path wraps its submitter
+  so a SELL is checked against Kalshi's position and can never open a short. New order paths
+  must use `position_guarded_submitter`.
+- **Reconciliation**: `app/reconcile.py` halts entries on a book mismatch, and the alerter
+  (`data_pipeline/live_alerter.py`) reports mismatches that survive two passes.
+- **Loss limits**: per-position stop (default 40%), drawdown limit (default 25%), the engine's
+  loss guard (pause at max(2× backtest worst drawdown, 50% of capital)), an account-equity kill
+  switch on `autopilot_daily_loss_limit`, and a live ramp and decay guard for new live strategies.
+- **Exactly-once orders**: a durable `app_order_intents` log with a reused client order id, so a
+  crash can't double-send.
+
+## Production
+
+Two EC2 boxes in us-east-1, both under systemd (units in [`scripts/systemd/`](scripts/systemd/README.md)).
+
+| Box | Runs | Deploy |
+|---|---|---|
+| Web, `i-077d6f7873e7836ba` (t4g.xlarge), behind CloudFront `EEQ00Y93RTB1K` | `recursive-web`, `recursive-agents`, `recursive-engine`, `recursive-history`; timers for weather forecasts, the RSI scout, the alerter and the watchdog; the legacy `kalshi-dashboard` | `scripts/deploy_web.sh` or the **Deploy web app** workflow |
+| Collector, `i-0bd0683cc7e86243d` (t4g.medium) | Forward, Coinbase and feature collectors, the feature builder, snapshots, the legacy sim engine, the tick recorders and archiver; `tau-catalog.timer` | `scripts/deploy_collector.sh` or the **Deploy collector box** workflow |
+
+The legacy `kalshi-live-engine` on the collector box is stopped and disabled (2026-10-24); live
+trading now goes through `recursive-engine`. The LLM runs through Bedrock
+(`APP_LLM_PROVIDER=bedrock`); autopilot reviews use `APP_REVIEW_MODEL` (default Sonnet 4.5).
+
+**Deploying the web box.** Merge to main, then run `scripts/deploy_web.sh` from a clean checkout
+(`unset AWS_PROFILE` when using env credentials). It tars the whole `app/` and `data_pipeline/`
+from the git ref, runs `python -m app.schema`, applies memory caps, restarts the four
+`recursive-*` services, health-checks, rolls back on failure, and invalidates CloudFront `/*`.
+Before restarting the engine, check that no `app_order_intents` row is stuck at `status='sent'`.
+Only one deploy runs at a time; batched deploys go out once an hour.
+
+**Deploying the collector box.** Run `scripts/deploy_collector.sh --ref main` from a checkout at
+main: the bundle comes from `--ref`, but the install logic (which units to install) comes from
+the local copy of the script.
+
+## Local development
+
+Python 3.12+ (CI runs 3.12, production runs 3.13). From this directory:
 
 ```bash
 pip install -r requirements.txt
-python -m data_pipeline.init_schema
+cp .env.example .env            # every variable is described inline
+python -m app.schema            # full schema: pipeline tables + app migrations
+python -m pytest tests/ -q      # no live DB needed
 ```
 
-## Architecture
+To run the app against a local MySQL or MariaDB, see "Run locally" in
+[`app/README.md`](app/README.md#run-locally): start `app.server` with `APP_DEV_LOGIN=1
+APP_INSECURE_COOKIES=1`, log in at `/auth/dev`, and run `python -m app.worker agents` and
+`python -m app.worker engine` beside it.
 
-### Active architecture (target-aligned)
+## Other docs
 
-```text
-[Connectors]
-  Kalshi REST/WS, Coinbase
-      |
-      v
-[Ingestion Workers]
-  forward_collector
-  feature_1m_collector
-  coinbase_collector
-      |
-      v
-[MySQL / RDS]
-  raw + derived stores
-      |
-      +--> model_features_1m_builder
-      |
-      +--> simulated_trading_engine (frozen models)
-      |       |
-      |       +--> risk_engine (adapter; dummy or settings-backed)
-      |       +--> execution_kernel (dummy passthrough)
-      |
-      +--> live_trading_engine
-      |       |
-      |       +--> risk_engine (adapter; dummy or settings-backed)
-      |       +--> execution_kernel (dummy passthrough)
-      |
-      +--> sim_portfolio_20s_updater
-      +--> live_portfolio_20s_updater
-      +--> dashboard_server (CloudFront)
-              \--> /api/table for client_api (pandas)
-```
+- [`AGENTS.md`](AGENTS.md): rules for coding agents (deploy checklist, rigor bar, safety).
+- [`PLAN.md`](PLAN.md): running log of decisions and incidents, newest first.
+- [`RESEARCH_PIPELINE_DESIGN.md`](RESEARCH_PIPELINE_DESIGN.md), [`EXECUTION_DESIGN.md`](EXECUTION_DESIGN.md),
+  [`PRODUCT.md`](PRODUCT.md), [`DESIGN.md`](DESIGN.md): design specs.
+- [`app/README.md`](app/README.md): app internals and dated release notes.
+- [`app/KALSHI_PERPS_TRADING.md`](app/KALSHI_PERPS_TRADING.md), [`app/KALSHI_PERPS_RESEARCH.md`](app/KALSHI_PERPS_RESEARCH.md): native Bitcoin perps.
+- [`scripts/DEPLOY_WORKFLOW_SETUP.md`](scripts/DEPLOY_WORKFLOW_SETUP.md): GitHub deploy workflow setup.
 
-### Key separation-of-concerns modules
+## Legacy BTC 15-minute pipeline
 
-- `data_pipeline/architecture/risk_engine.py` (live only):
-  - `LiveSettingsRiskEngine` (current policy adapter).
-  - `DummyRiskEngine` (bypass mode).
-- `data_pipeline/architecture/execution_kernel.py` (live only):
-  - `DummyExecutionKernel` (pass-through limit order submit; no execution optimization).
-- `data_pipeline/live_trading_engine.py`: uses the risk engine + execution kernel abstractions above.
-- `data_pipeline/sim_repository.py`: DB access layer for the sim engine (all SQL lives here, not
-  inline in trading logic - this is what makes `simulated_trading_engine.py`'s decision logic
-  testable against a mocked cursor, see `tests/`).
-- `data_pipeline/sim_config.py`: centralized sim thresholds/constants and `SimRiskSettings`.
+The original system, still partly running on the collector box: `forward_collector` and
+`coinbase_collector` feed `feature_1m_collector` and `model_features_1m_builder`, which build
+`model_features_1m` (features in `data_pipeline/modeling_features.py`). `simulated_trading_engine`
+runs frozen logistic and random-forest next-minute direction models, each with its own $100 paper
+book and the risk settings in `data_pipeline/sim_config.py`. Its live twin,
+`data_pipeline/live_trading_engine.py`, is retired. `dashboard_server` still serves the old
+dashboard and `/api/table` on the web box; its old public CloudFront URL no longer resolves to a
+live origin.
 
-### Current behavior notes
+## Security
 
-- Data storage remains UTC.
-- Dashboard renders timestamps in New York time (ET) for readability.
-- Simulation uses **frozen models** (no per-minute retraining).
-- Each sim model runs its own independent $100 paper book (see Risk Management below) so their
-  forward performance can be compared fairly - they are not a shared portfolio.
-
-## Model Training & Backtest Methodology
-
-### Current production label
-
-- Base table: `model_features_1m` where `model_eligible=1`.
-- Binary next-minute direction label:
-  - `y_t = 1` if `mid_{t+1} > mid_t`, else `0`.
-- Adjacent row pairs must share the same `market_ticker`.
-
-### Train/Test split for simulation
-
-- A live cutoff is read from `collector_state.sim_live_cutoff_utc`.
-- Effective cutoff enforces a minimum in-sample span of 48 hours.
-- Models are fit once on in-sample and then held fixed.
-- Out-of-sample is cutoff to latest available row.
-
-### Execution assumptions (simulation)
-
-- Entry fill model: conservative quote-ask fill (`quote_ask_conservative`).
-- Exit pricing:
-  - same ticker: sell against available YES bid ladder only (no midpoint fallback).
-  - ticker rotation: stale ticker bid ladder as-of replay timestamp (no lookahead).
-  - if bid liquidity is insufficient for full size, consume next bid levels when available.
-  - if no quote at all is available at the exit timestamp, fall back to the last quote ever
-    recorded for that ticker (rather than pricing the exit at `0.00`, which would misprice a
-    contract that actually settled in-the-money).
-  - near expiry (`time_to_expiry_sec <= 60`): force close at `0.99` (blocks new entries too).
-
-### PnL
-
-- Trade PnL: `(exit - entry) * qty`.
-- `sim_equity_1m` includes realized cumulative PnL and mark-to-market context in `raw_json`.
-- `sim_portfolio_20s` tracks cash, position value, equity, and drawdown over time.
-
-### Risk management
-
-Each model's position sizing and continued eligibility is gated by `sim_config.SimRiskSettings`
-(persisted in the `sim_settings` table, key `risk_config`):
-
-- `max_position_fraction` (default `0.20`): a new position's notional (`qty * entry price`) is
-  capped to this fraction of the model's *current* equity - sizing shrinks automatically as a
-  model's own book gets smaller.
-- `max_drawdown_pct` (default `0.30`): once a model's drawdown from its own peak realized equity
-  (tracked via `sim_equity_1m`, not a separate process) exceeds this fraction, the model is
-  **paused** - it stops opening new positions but still manages/closes any position it already
-  holds. A paused model stays paused until explicitly cleared via `POST /sim_risk/resume
-  {"model_name": ...}`; there is no silent auto-resume. Pause state is visible in `/health`'s
-  `sim_summary.models[].paused`/`paused_reason`.
-- `min_equity_floor` (default `$10`): hard floor - never open a new position once a model's
-  equity has fallen to or below this, regardless of the drawdown math above.
-
-## Models (Current)
-
-Shared feature vector used by production models:
-
-```text
-x_t = [
-  yes_bid_dollars,
-  yes_ask_dollars,
-  spread_dollars,
-  mid_dollars,
-  orderbook_imbalance,
-  mid_ret_1m,
-  mid_ret_3m,
-  trades_last_60s_count,
-  trades_last_60s_volume_fp,
-  trades_last_60s_vwap_yes,
-  quote_change_events_60s,
-  time_to_expiry_sec,
-  cb_ret_1m,
-  cb_ret_3m,
-  cb_ret_5m,
-  cb_vol_5m,
-  moneyness_abs,
-  moneyness_pct,
-  moneyness_vol_scaled,
-  moneyness_x_sqrt_tte,
-  moneyness_x_imbalance,
-  moneyness_x_qchg
-]
-```
-
-Current live/sim trade trigger rule:
-
-- Predict `p_yes = P(Y=1 | x_t)`.
-- Compute `edge = p_yes - yes_ask_dollars`.
-- Trigger BUY YES only if:
-  - `p_yes >= signal_threshold`
-  - `edge > edge_threshold`
-
-Configured thresholds in code/settings:
-
-- `signal_threshold = 0.55`
-- `edge_threshold = 0.01`
-
-### 1) `naive_logistic_baseline` (baseline definition)
-
-- Purpose: anchor for model-comparison discipline.
-- Form: plain logistic regression:
-  - `p_yes = sigmoid(w^T x_t + b)`
-  - baseline feature subset:
-    - `yes_bid_dollars`
-    - `yes_ask_dollars`
-    - `spread_dollars`
-    - `mid_dollars`
-    - `orderbook_imbalance`
-    - `mid_ret_1m`
-    - `mid_ret_3m`
-    - `trades_last_60s_count`
-    - `quote_change_events_60s`
-    - `time_to_expiry_sec`
-    - `cb_ret_1m`
-    - `cb_ret_3m`
-    - `moneyness_pct`
-- Use: benchmark expected for in-sample/out-of-sample comparison.
-- Note: baseline is included in simulation/dashboard comparisons.
-
-### 2) `logistic`
-
-- Regularized logistic regression (scaled features, balanced class weights).
-- Prediction form:
-  - `p_yes = sigmoid(w^T x_t + b)` using full `x_t` above.
-- Trade trigger:
-  - simulation: `signal_threshold=0.55`, `edge_threshold=0.01`
-  - live: `signal_threshold` and `edge_threshold` loaded from `live_settings` (default same values).
-- Frozen in simulation after in-sample fit.
-
-### 3) `random_forest`
-
-- Random Forest classifier with two parameter regimes:
-  - small-sample regime.
-  - default regime once `min_samples_default_rf` threshold is met.
-- Prediction form:
-  - `p_yes = RF(x_t)` where `x_t` is the full feature vector above.
-- Trade trigger:
-  - simulation: `signal_threshold=0.55`, `edge_threshold=0.01`
-  - live: `signal_threshold` and `edge_threshold` loaded from `live_settings` (default same values).
-- Frozen in simulation after in-sample fit.
-- Used for live trading decisions.
-
-## Feature Set Used by Models
-
-Full model feature set from `data_pipeline/modeling_features.py` (`FEATURE_COLS`):
-
-- `yes_bid_dollars`
-- `yes_ask_dollars`
-- `spread_dollars`
-- `mid_dollars`
-- `orderbook_imbalance`
-- `mid_ret_1m`
-- `mid_ret_3m`
-- `trades_last_60s_count`
-- `trades_last_60s_volume_fp`
-- `trades_last_60s_vwap_yes`
-- `quote_change_events_60s`
-- `time_to_expiry_sec`
-- `cb_ret_1m`
-- `cb_ret_3m`
-- `cb_ret_5m`
-- `cb_vol_5m`
-- `moneyness_abs`
-- `moneyness_pct`
-- `moneyness_vol_scaled`
-- `moneyness_x_sqrt_tte`
-- `moneyness_x_imbalance`
-- `moneyness_x_qchg`
-
-Input source columns include `target_btc_price` and `cb_price` for moneyness construction.
-
-Derived/interaction feature formulas:
-
-- `spread_dollars = yes_ask_dollars - yes_bid_dollars`
-- `mid_dollars = (yes_ask_dollars + yes_bid_dollars) / 2`
-- `orderbook_imbalance = (yes_bid_size_fp - yes_ask_size_fp) / (yes_bid_size_fp + yes_ask_size_fp)` (if denominator > 0, else 0)
-- `mid_ret_1m = (mid_t / mid_{t-1m}) - 1`
-- `mid_ret_3m = (mid_t / mid_{t-3m}) - 1`
-- `cb_ret_1m = (cb_t / cb_{t-1m}) - 1`
-- `cb_ret_3m = (cb_t / cb_{t-3m}) - 1`
-- `cb_ret_5m = (cb_t / cb_{t-5m}) - 1`
-- `moneyness_abs = cb_price - target_btc_price`
-- `moneyness_pct = (cb_price - target_btc_price) / target_btc_price`
-- `moneyness_vol_scaled = moneyness_abs / max(cb_price * max(cb_vol_5m, 1e-6), 1e-6)`
-- `moneyness_x_sqrt_tte = moneyness_pct * sqrt(max(time_to_expiry_sec, 1.0))`
-- `moneyness_x_imbalance = moneyness_pct * orderbook_imbalance`
-- `moneyness_x_qchg = moneyness_pct * quote_change_events_60s`
-
-## Core Tables
-
-- `forward_quotes`: 20-second top-of-book snapshots for active contract context.
-- `coinbase_ticks`: 20-second BTC spot context.
-- `trade_quote_features_1m`: minute trade intensity and quote-change aggregates.
-- `model_features_1m`: canonical minute feature table for ML.
-- `sim_model_predictions_1m`: model probabilities/signals per minute.
-- `sim_trades`, `sim_positions`, `sim_equity_1m`, `sim_portfolio_20s`: simulation ledger and equity state.
-- `sim_settings`: risk-config JSON blob (see Risk Management above).
-- `sim_model_state`: per-model pause flag/reason set by the drawdown risk gate.
-- `live_orders`, `live_positions`, `live_trades`, `live_portfolio_20s`: live execution and portfolio tracking.
-- `collector_state`: runtime checkpoints/config keys (`sim_live_cutoff_utc`, last snapshot states, etc.).
-
-## Runtime Processes
-
-Typical workers on EC2:
-
-- `python -m data_pipeline.forward_collector`
-- `python -m data_pipeline.feature_1m_collector`
-- `python -m data_pipeline.coinbase_collector`
-- `python -m data_pipeline.model_features_1m_builder`
-- `python -m data_pipeline.simulated_trading_engine`
-- `python -m data_pipeline.sim_portfolio_20s_updater`
-- `python -m data_pipeline.live_trading_engine`
-- `python -m data_pipeline.live_portfolio_20s_updater`
-- `python -m data_pipeline.dashboard_server`
-
-Helper script:
-
-```bash
-bash scripts/start_aws_collectors.sh
-```
-
-## Client API (Pandas)
-
-`client_api` exposes full-history DataFrame fetch helpers (internal pagination hidden).
-
-```python
-from client_api import KalshiDataClient
-
-client = KalshiDataClient(base_url="https://dehiuraiut9ro.cloudfront.net")
-df_features = client.model_features()
-df_preds = client.sim_predictions()
-```
-
-Notebook examples: `client_api/example.ipynb`.
-
-## Security / Ops Notes
-
-- Keep API keys and private key files out of git.
-- Use `.env.aws` / environment variables for DB + API credentials.
-- Live tab has an additional password gate.
-- `dashboard_server` runs under systemd (`kalshi-dashboard.service`, `Restart=always`) so a crash
-  or wedged process recovers automatically. The other processes run via `nohup`/`setsid`; all of
-  them re-raise on a DB error so the outer retry loop reacquires a fresh connection rather than
-  silently looping against a dead one (see PLAN.md for the incident this fixed).
+- Keep API keys, private keys and `.env*` files out of git.
+- Kalshi keys in the app are AES-256-GCM encrypted with `APP_SECRET_KEY`, bound to the user id.
+- Run a security review on any change that touches money, orders, auth or a control path.
