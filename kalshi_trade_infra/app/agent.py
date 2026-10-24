@@ -966,8 +966,8 @@ Every contract here is a YES/NO binary on one game outcome, settled on the RESUL
 total goes over X, the player reaches X yards/points/TDs) - the market label says which. Even on a
 spread, total or prop market the price is the market's PROBABILITY of YES for that strike, never a
 handicap in points, so calibration and favorite-longshot ideas apply exactly as on a moneyline.
-A ladder's strikes on one game are linked (P(over 41.5) >= P(over 44.5)); each contract's strike
-is in a code strategy's window ("strike"). There is NO underlying price feed, moneyness or vol —
+A ladder's strikes on one game are linked (P(over 41.5) >= P(over 44.5)); a code strategy's window
+gives each contract its "strike" and its "event" (one game: group by it), no ticker parsing needed. There is NO underlying price feed, moneyness or vol —
 the spot/GBM model does NOT apply. It trades on the contract's OWN price and order-book/trade-flow features
 only (many micro features may be sparse — build only on what the coverage shows is populated).
 Angles worth a mechanism: favorite-longshot bias (heavy favorites vs longshots systematically

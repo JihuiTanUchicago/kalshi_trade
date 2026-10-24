@@ -80,7 +80,8 @@ def test_a_code_spec_validates_on_every_market(market):
 
 
 @pytest.mark.parametrize("field,value", [("side", "yes"), ("side", "either"), ("model", {"kind": "gbm"}),
-                                         ("entry", {"min_edge": 0.05}), ("exit", {"take_profit": None})])
+                                         ("entry", {"min_edge": 0.05}), ("exit", {"take_profit": None}),
+                                         ("cross", {"kind": "cross_strike"})])
 def test_dsl_fields_carried_onto_a_code_spec_are_dropped_not_fatal(field, value):
     raw = {"market": BINARY[0], "code": RULE_CODE, field: value}
     out = specmod.validate(raw)
@@ -155,3 +156,16 @@ def test_a_min_tte_past_the_default_window_without_a_max_means_from_min_onward()
     assert out["entry"]["max_tte_min"] == 43200.0
     with pytest.raises(specmod.SpecError, match="must be < entry.max_tte_min"):
         specmod.validate({"market": BINARY[0], "entry": {"min_tte_min": 2000, "max_tte_min": 1000}})
+
+
+def test_the_code_window_names_each_contracts_event():
+    # Prod 2026-10-24 run 2702: four NFL ladder ideas died "ticker format unknown" trying to group
+    # strikes by game; the window now carries the event.
+    from datetime import datetime, timezone
+    from app import backtest
+    from app.markets import Contract, Snapshot
+    c = Contract("KXNFLSPREAD-25OCT26KCWAS-KC7", 7.0, datetime(2026, 10, 26, tzinfo=timezone.utc))
+    snap = Snapshot(contract=c, ts=1, yes_bid=0.4, yes_ask=0.42, features={})
+    w = backtest._binary_window("x", [(1, [snap])])
+    assert w["frames"][0]["contracts"][0]["event"] == "KXNFLSPREAD-25OCT26KCWAS"
+    assert '"event": str' in specmod.CODE_STRATEGY_GUIDE

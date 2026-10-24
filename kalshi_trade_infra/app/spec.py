@@ -178,7 +178,7 @@ each feature is overfitting, and the higher bar will reject it."""
 CODE_SPEC_KEYS = {"market", "sizing", "code", "datasets"}
 # DSL-only fields a proposer sometimes carries over onto a code spec. The code alone decides side,
 # entry and exit (each signal names its own side), so they are dropped rather than failing the idea.
-CODE_SPEC_IGNORED = ("side", "model", "entry", "exit")
+CODE_SPEC_IGNORED = ("side", "model", "entry", "exit", "cross")
 MAX_CODE_CHARS = 20_000
 # Free external datasets a code spec may request (Pillar 3). Resolved + as-of joined on the host
 # into frame["external"] within the research fold; see app/freedata.py. These are the sources that
@@ -196,9 +196,10 @@ As an ALTERNATIVE to the fields above, a strategy may be arbitrary Python you wr
 Your code defines ONE function:
   def signals(window):
       # window = {"market": str, "frames": [ {"ts": int, "contracts": [
-      #   {"ticker": str, "strike": float, "close_ts": int,
+      #   {"ticker": str, "strike": float, "event": str, "close_ts": int,
       #    "yes_bid": float, "yes_ask": float, "features": {<feature name>: float}} ]} ]}
-      #   frames are ascending by ts; features are the same ones listed above.
+      #   frames are ascending by ts; features are the same ones listed above. "event" is the
+      #   Kalshi event (one game, day or window): contracts sharing it are one strike ladder.
       #   Because you see the WHOLE sequence, every derived or lagged quantity is yours to compute:
       #   the previous mid, a mid or spread change, a threshold crossing, rolling stats, ratios of
       #   features, one strike's own history, the ladder's other strikes at the same ts. "Only raw
