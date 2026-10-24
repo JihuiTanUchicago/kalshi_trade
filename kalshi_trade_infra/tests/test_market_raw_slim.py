@@ -2,7 +2,8 @@
 
 The full Kalshi payload (multivariate legs, custom_strike, rules text) averaged
 3.5KB a row over ~1M new markets a day and is most of the RDS growth. The only
-reader is the strike target in model_features_1m_builder.
+reader is the strike target in model_features_1m_builder. market_candles.raw_json
+is never read; it keeps only the highs and lows the columns lack.
 """
 import json
 
@@ -37,3 +38,16 @@ def test_stored_raw_json_is_slim_but_keeps_the_strike():
 def test_strike_price_markets_keep_their_target_too():
     raw = fc.slim_market_raw({"strike_price": 4200, "mve_selected_legs": [1, 2, 3]})
     assert _target_from_market_raw(raw) == 4200.0
+
+
+def test_candle_raw_json_keeps_only_highs_and_lows():
+    from app.market_history import slim_candle_raw
+
+    candle = {
+        "price": {}, "end_period_ts": 1792742820, "volume_fp": "0.00", "open_interest_fp": "0.00",
+        "yes_ask": {"low_dollars": "0.9600", "high_dollars": "1.0000", "open_dollars": "1.0000", "close_dollars": "0.9600"},
+        "yes_bid": {"low_dollars": "0.0100", "high_dollars": "0.0400", "open_dollars": "0.0100", "close_dollars": "0.0400"},
+    }
+    slim = slim_candle_raw(candle)
+    assert slim == {"bl": "0.0100", "bh": "0.0400", "al": "0.9600", "ah": "1.0000"}
+    assert len(json.dumps(slim, separators=(",", ":"))) < len(json.dumps(candle)) / 4

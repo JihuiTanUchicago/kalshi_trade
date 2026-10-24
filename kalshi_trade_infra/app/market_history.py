@@ -160,6 +160,21 @@ def _num(v) -> Optional[float]:
         return None
 
 
+def slim_candle_raw(c: Dict) -> Dict:
+    """The part of a Kalshi candle the row's columns do not already hold: the period's highs and lows.
+
+    The full candle repeated every column (open/close, volume, OI, end ts) as strings, ~325 bytes of
+    a ~615-byte row on a 185M-row table. Nothing reads raw_json back; this keeps the only extra info.
+    """
+    out = {}
+    for key, side in (("b", "yes_bid"), ("a", "yes_ask"), ("p", "price")):
+        d = c.get(side) or {}
+        for k, field in (("l", "low_dollars"), ("h", "high_dollars")):
+            if d.get(field) is not None:
+                out[key + k] = d[field]
+    return out
+
+
 def sync_market_candles(cur, market: Market, limit: int = 2000) -> int:
     """Fetch candles for settled markets that do not have them yet."""
     cur.execute(
@@ -215,7 +230,7 @@ def sync_market_candles(cur, market: Market, limit: int = 2000) -> int:
                     _num(c.get("volume_fp")),
                     _num(c.get("open_interest_fp")),
                     now,
-                    json.dumps(c),
+                    json.dumps(slim_candle_raw(c), separators=(",", ":")),
                 )
             )
         if rows:
