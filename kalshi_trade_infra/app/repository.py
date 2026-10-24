@@ -1906,6 +1906,13 @@ def chat_contains(cur, user_id: int, role: str, needle: str) -> bool:
     return cur.fetchone() is not None
 
 
+def recent_chat_same(cur, user_id: int, role: str, content: str, since) -> bool:
+    """True if the user got this exact `role` line at or after `since` (repeat-notice suppression)."""
+    cur.execute("SELECT 1 FROM app_chat_messages WHERE user_id=%s AND role=%s AND created_at>=%s AND content=%s LIMIT 1",
+                (user_id, role, since, content))
+    return cur.fetchone() is not None
+
+
 def chat_messages(cur, user_id: int, after_id: int = 0, limit: int = 100) -> List[Dict]:
     cur.execute(
         """SELECT m.id, m.role, m.content, m.created_at, m.proposal_id,

@@ -275,7 +275,18 @@ def test_adjustment_that_fails_the_gates_is_not_proposed(monkeypatch):
     monkeypatch.setattr(agent.repo, "create_proposal", lambda *a, **k: pytest.fail("must not propose"))
     text, pid = agent.act(None, {"id": 1}, {"type": "adjust", "deployment_id": 3, "changes": {"side": "no"}}, False,
                           lambda m: _dataset(n_contracts=60))
-    assert pid is None and "failed" in text
+    assert pid is None and "didn't pass these checks" in text and '"' in text
+
+
+def test_repeat_note_query_matches_exact_text_since_a_time():
+    class Cur:
+        def execute(self, sql, params):
+            self.sql, self.params = " ".join(sql.split()), params
+        def fetchone(self):
+            return {"1": 1}
+    cur, since = Cur(), agent.repo.now_utc()
+    assert agent.repo.recent_chat_same(cur, 2, "system", "same line", since) is True
+    assert "created_at>=%s AND content=%s" in cur.sql and cur.params == (2, "system", since, "same line")
 
 
 def test_adjustment_is_backtest_only_not_passed_and_cannot_be_deployed(monkeypatch):

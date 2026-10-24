@@ -2835,6 +2835,7 @@ def auto_paper_candidates(cur, user: Dict) -> List[str]:
 # DEPLOYMENT_CANDIDATE, which a probation strategy is not.
 PAPER_PROBATION = os.getenv("APP_PAPER_PROBATION", "0") == "1"
 # Autopilot may not pause a paper deployment younger than this (live pauses are never held back).
+REPEAT_NOTE_WINDOW = timedelta(hours=2)
 PAPER_MIN_AGE = timedelta(hours=int(os.getenv("APP_PAPER_MIN_AGE_HOURS", "24")))
 PROBATION_MAX_P = float(os.getenv("APP_PROBATION_MAX_P", "0.25"))
 PROBATION_MIN_TRADES = int(os.getenv("APP_PROBATION_MIN_TRADES", "20"))
@@ -2984,8 +2985,11 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
             return "An adjustment cannot move a strategy to a different market.", None
         result = backtest.evaluate(new_spec, dataset_fn(dep["market"]))
         if not result["passed"]:
-            failed = ", ".join(g["name"].lower() for g in result["gates"] if not g["ok"])
-            return "I backtested a change to %s but it failed (%s), so I left it alone." % (dep["title"], failed), None
+            # Gate names read as goals ("Makes money on unseen data"), so a bare list after "failed"
+            # read as praise. Name them as the checks it did not pass.
+            failed = ", ".join('"%s"' % g["name"].lower() for g in result["gates"] if not g["ok"])
+            return ("I backtested a change to %s, but it didn't pass these checks: %s. I left it alone."
+                    % (dep["title"], failed)), None
         # NOT "passed": an adjustment is only a re-backtest — it never pre-registers, is never
         # judged by the Statistical Gatekeeper, and carries no experiment. "passed" is reserved
         # for the full-pipeline outcome (set_strategy_outcome <-> STAT_SUPPORTED <-> a linked
@@ -3314,9 +3318,16 @@ def _copilot_context(cur, user: Dict) -> str:
     if runs:
         lines += ["", "Recent research lines (don't re-launch one that is still active or just failed on the same idea):"]
         for r in runs:
+            # "succeeded" only means the run FINISHED. Reviews read it as "found an edge" and told
+            # the user two finished runs were "proven strategies ready for paper", then tried to
+            # deploy strategies that had failed. Say what came out of it instead.
+            st, passed = r["status"], int(r.get("strategies_passed") or 0)
+            if st == "succeeded":
+                st = "finished, %s" % ("%d strategy passed" % passed if passed == 1 else
+                                       "%d strategies passed" % passed if passed else "NOTHING passed, no new strategy")
             lines.append("- run #%s on %s [%s]: %s tried, %s passed — \"%s\""
-                         % (r["id"], r["market"], r["status"], r.get("hypotheses_tried") or 0,
-                            r.get("strategies_passed") or 0, (r.get("prompt") or "").strip()[:100]))
+                         % (r["id"], r["market"], st, r.get("hypotheses_tried") or 0,
+                            passed, (r.get("prompt") or "").strip()[:100]))
         # Per-market dedup, spelled out: a fresh `research` action on a market that is running or on
         # cooldown is REFUSED by act(), so name those markets here and tell the review to hunt a
         # different one — it wastes the whole turn otherwise. Mirrors _market_research_recent.
@@ -3515,6 +3526,12 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
                     text, proposal_id = act(tx, user, action, bool(user.get("autopilot")), dataset_fn)
             else:
                 text, proposal_id = act(cur, user, action, bool(user.get("autopilot")), dataset_fn)
+            # A scheduled review that keeps hitting the same refusal ("you already have research
+            # running") posted it every 10 minutes. Say it once per REPEAT_NOTE_WINDOW; anything
+            # that did something (a proposal) or that the user asked for always posts.
+            if (run["kind"] == "review" and proposal_id is None
+                    and repo.recent_chat_same(cur, user["id"], "system", text, repo.now_utc() - REPEAT_NOTE_WINDOW)):
+                continue
             repo.add_chat(cur, user["id"], "system", text, proposal_id)
         repo.finish_run(cur, run["id"], "succeeded", None, 0, 0, usage.input_tokens, usage.output_tokens)
         # Same greppable shape as research_outcome_line, so review vs research token cost can be

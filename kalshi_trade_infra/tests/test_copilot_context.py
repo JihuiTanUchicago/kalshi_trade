@@ -45,3 +45,17 @@ def test_context_degrades_when_a_memory_read_fails(monkeypatch):
     assert "Markets you can research" in ctx    # trailing block rendered
     assert "Recent research lines" not in ctx   # failed block omitted, no crash
     assert "Account & budget" not in ctx
+
+
+def test_finished_runs_say_whether_anything_passed(monkeypatch):
+    # "succeeded" only means the run finished; reviews read it as "found an edge" and called two
+    # empty runs "proven strategies ready for paper". The context spells out the outcome.
+    _wire(monkeypatch, runs=[
+        {"id": 21, "market": "high_ny", "status": "succeeded", "hypotheses_tried": 8, "strategies_passed": 0, "prompt": "a"},
+        {"id": 22, "market": "nhl_game", "status": "succeeded", "hypotheses_tried": 5, "strategies_passed": 1, "prompt": "b"},
+        {"id": 23, "market": "btc15m", "status": "running", "hypotheses_tried": 2, "strategies_passed": 0, "prompt": "c"}])
+    ctx = agent._copilot_context(None, USER)
+    assert "run #21 on high_ny [finished, NOTHING passed, no new strategy]" in ctx
+    assert "run #22 on nhl_game [finished, 1 strategy passed]" in ctx
+    assert "run #23 on btc15m [running]" in ctx
+    assert "[succeeded]" not in ctx
