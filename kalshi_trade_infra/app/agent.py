@@ -1935,7 +1935,13 @@ def run_research(
         "total_passed": int((_ck or {}).get("total_passed") or 0),
         "tried": tried, "chunk": resume_chunk, "round_no": resume_round,
         "market": (_ck or {}).get("market"), "lookback": (_ck or {}).get("lookback"),
+        "dropped_n": int((_ck or {}).get("dropped_n") or 0),
     }
+
+    def explored() -> int:
+        """Every thesis the run worked on: developed ones (`tried`) plus those dropped on the research
+        fold. The run's hypotheses_tried shows this, so an all-drop run reads "0 of 8", not "0 of 0"."""
+        return len(tried) + ckpt["dropped_n"]
 
     def save_progress(chunk: List[Dict], round_no: int) -> None:
         """Persist the in-progress (not-yet-gated) chunk as each thesis develops, so a reclaim
@@ -1968,6 +1974,7 @@ def run_research(
             verdicts["%s:%s" % (data.get("phase") or "validation", data["classification"])] += 1
         elif kind == "verdict" and data and data.get("status") == "abandoned":
             verdicts["research:dropped"] += 1  # died on the research fold, never gated (tried excludes it)
+            ckpt["dropped_n"] += 1
         repo.add_event(cur, run_id, kind, message, data)
 
     def checkpoint() -> None:
@@ -2122,7 +2129,7 @@ def run_research(
             tot_out += usage.output_tokens
             _bill(conn, user_id, usage, run_id, choice.model_id)
             usage.input_tokens = usage.output_tokens = 0
-            repo.update_run_progress(cur, run_id, len(tried), total_passed)  # keep counts live
+            repo.update_run_progress(cur, run_id, explored(), total_passed)  # keep counts live
             conn.commit()
             if n == 0 or not forever:
                 break
@@ -2133,7 +2140,7 @@ def run_research(
                             "session to keep researching.")
                 break
             log("step", "Still running - %d tested so far, %d passed. Exploring more (stop anytime)."
-                % (len(tried), total_passed))
+                % (explored(), total_passed))
 
         # Dreaming: learn a better exploration policy from the user's accumulated history, validated
         # on the replay simulator (no new backtests). Gated by a CROSS-RUN cadence (_should_dream),
@@ -2150,10 +2157,11 @@ def run_research(
         except Exception as e:  # dreaming is best-effort; the run still succeeds
             log("step", "Policy-evolution step skipped (%s)." % e)
 
-        log("done", "%d of %d hypotheses passed every gate." % (total_passed, len(tried)),
-            {"passed": total_passed, "tried": len(tried)})
-        repo.finish_run(cur, run_id, "succeeded", None, len(tried), total_passed, tot_in, tot_out)
-        print(research_outcome_line(run_id, user_id, market, "succeeded", len(tried), total_passed,
+        log("done", "%d of %d hypotheses passed every gate%s." % (
+            total_passed, explored(), " (%d dropped on research data)" % ckpt["dropped_n"] if ckpt["dropped_n"] else ""),
+            {"passed": total_passed, "tried": explored(), "dropped": ckpt["dropped_n"]})
+        repo.finish_run(cur, run_id, "succeeded", None, explored(), total_passed, tot_in, tot_out)
+        print(research_outcome_line(run_id, user_id, market, "succeeded", explored(), total_passed,
                                     tot_in, tot_out, choice.model_id, verdicts), flush=True)
     except Superseded:
         # No event and no finish_run: the run's new owner (or the reaper) holds its record now.
@@ -2183,8 +2191,8 @@ def run_research(
         cur = _reconnect(conn, cur)  # the error may have been the drop itself — heal it so we can record the outcome
         log("step" if no_data else "error", msg)
         repo.finish_run(cur, run_id, "stopped" if no_data else "failed", msg[:2000],
-                        len(tried), 0, usage.input_tokens, usage.output_tokens)
-        print(research_outcome_line(run_id, user_id, market, "stopped" if no_data else "failed", len(tried), 0,
+                        explored(), 0, usage.input_tokens, usage.output_tokens)
+        print(research_outcome_line(run_id, user_id, market, "stopped" if no_data else "failed", explored(), 0,
                                     usage.input_tokens, usage.output_tokens, choice.model_id, verdicts,
                                     type(e).__name__), flush=True)
         _bill(conn, user_id, usage, run_id, choice.model_id)  # charge for the work done regardless of the failure cause
@@ -3358,7 +3366,7 @@ def _copilot_context(cur, user: Dict) -> str:
                    "backtest surface — research ONLY markets on this list; others have no settled contracts "
                    "and will crash). You are NOT limited to the one you've been trading: if a market has gone "
                    "quiet (no fills, no edges for days), HUNT A DIFFERENT one from this list, don't wait: "
-                   + ", ".join(deployable))]
+                   + ", ".join("%s (%s)" % (k, MARKETS[k].label[:40]) for k in deployable))]
     # PORTFOLIO-LEVEL direction: run the operation like a book, not a stream of one-off actions.
     lines += ["", ("RUN IT AS A PORTFOLIO: (1) DIVERSIFY research across different markets AND different "
                    "mechanisms — don't pile variants of one angle on one market. (2) STEER TOWARD DATA: "
