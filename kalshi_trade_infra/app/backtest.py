@@ -207,6 +207,26 @@ class WhatIf:
     fee_multiplier: float = 1.0
     slippage_cents: float = 0.0
     stake: Optional[float] = None
+    position_stop_pct: Optional[float] = None   # None = POSITION_STOP_PCT; 0 = no stop
+
+
+# The position-level stop paper and live enforce (engine.force_sell_if_drawn_down, the user's
+# position_stop_pct, default 40): an open position marked down past this percent of its cost
+# (qty * entry + entry fee, marked at the side's bid) is sold. The backtest applies it too, so the
+# gate tests the rule that actually trades. Not simulated: the deployment PAUSE that follows a live
+# stop, and intra-bar dips (live marks every few seconds; the backtest sees one quote per bar).
+POSITION_STOP_PCT = float(os.getenv("TAU_BACKTEST_POSITION_STOP_PCT", "40"))
+
+
+def _stop_hit(pos, snap: Snapshot, stop_pct: float) -> Optional[float]:
+    """The bid to sell at when `pos` is past the stop on this bar's quote, else None."""
+    if stop_pct <= 0:
+        return None
+    bid = specmod.side_prices(snap)[pos.side][1]
+    cost = pos.qty * pos.entry_price + pos.fee
+    if bid <= 0 or cost <= 0:
+        return None          # no bid to sell into: live cannot close it either, so it settles
+    return bid if 100.0 * (cost - pos.qty * bid) / cost >= stop_pct else None
 
 
 def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optional[WhatIf] = None) -> List[Trade]:
@@ -346,6 +366,7 @@ def _simulate_next_bar(spec: Dict, ds: Dataset, start_ts: int, end_ts: int,
     trades: List[Trade] = []
     pending_entries: List[Tuple[int, specmod.Entry]] = []
     pending_exits: Dict[str, Tuple[int, str]] = {}  # ticker -> (signal ts, exit reason)
+    stop_pct = POSITION_STOP_PCT if w.position_stop_pct is None else float(w.position_stop_pct)
 
     def fee(qty: int, price: float) -> float:
         return taker_fee_dollars(qty, price) * w.fee_multiplier
@@ -365,6 +386,20 @@ def _simulate_next_bar(spec: Dict, ds: Dataset, start_ts: int, end_ts: int,
                 keep.append(pos)
         open_ = keep
         by_ticker = {s.contract.ticker: s for s in snaps}
+
+        # 0. The position stop paper/live enforce sells at this bar's bid, ahead of any spec exit.
+        keep = []
+        for pos in open_:
+            snap = by_ticker.get(pos.ticker)
+            bid = _stop_hit(pos, snap, stop_pct) if snap is not None else None
+            if bid is None:
+                keep.append(pos)
+                continue
+            price = max(0.0, bid - slip)
+            trades.append(Trade(pos.ticker, pos.side, pos.qty, pos.entry_ts, pos.entry_price, ts, price,
+                                pos.fee + fee(pos.qty, price), "stop", pos.edge))
+            pending_exits.pop(pos.ticker, None)
+        open_ = keep
 
         # 1. Exits signalled on an earlier bar sell at this bar's bid.
         keep = []
