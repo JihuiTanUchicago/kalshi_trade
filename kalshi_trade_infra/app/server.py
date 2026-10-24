@@ -2271,6 +2271,10 @@ def research_scoreboard(ctx: Ctx):
         days = 7
     from app import rsi_playbook
     board = rsi.load_scoreboard(ctx.cur, days, ctx.uid)
+    try:
+        board["autopilot"] = agent.autopilot_scorecard(board, agent.focus_tokens(repo.get_user(ctx.cur, ctx.uid)))
+    except Exception:  # noqa: BLE001 - informational
+        board["autopilot"] = None
     board["cards"] = board["cards"][-50:]
     board["playbooks"] = rsi_playbook.summary(ctx.cur, ctx.uid)
     from app import rsi_scout

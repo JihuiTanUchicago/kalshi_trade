@@ -16,6 +16,14 @@
 - Who can set it: the chat agent sets it with a `set_focus` action when the user asks. A scheduled
   review cannot. There is also `POST /api/autopilot/focus`, and the panel story says "It sticks to
   the focus you set".
+- The autopilot grades itself. `agent.autopilot_scorecard` takes the user's `rsi.load_scoreboard` over
+  the last 3 days and computes:
+  - focus adherence: runs inside the focus out of runs with a market;
+  - spend, gate reach and dollars per gated idea, per family;
+  - families burning $15 or more with nothing gated.
+  Each review sees it as "YOUR OWN SCORECARD" and is told to move spend to where ideas reach the
+  gate for the least money, and to say in its plan what it changed. The research scoreboard returns
+  it as `autopilot`, so the research thread and the autopilot read the same numbers.
 - `session_user` now also loads `autopilot_model`. The panel had been showing the catalog default
   model instead of the user's pick.
 

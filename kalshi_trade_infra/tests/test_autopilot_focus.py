@@ -95,3 +95,30 @@ def test_focus_endpoint_validates_and_stores(monkeypatch):
         server.autopilot_focus(SimpleNamespace(cur=None, uid=1, body={"focus": ["stonks"]}))
     assert stored == [["btc"]] and chat == ["Market focus set to btc."]
     assert any(r[0] == "POST" and r[1].pattern == "^/api/autopilot/focus$" for r in server.ROUTES)
+
+
+def _board():
+    # Todd's shape on 2026-10-24: told "only crypto", most runs went to sports.
+    cards = ([{"market": "btc15m"}] * 8 + [{"market": "nfl_game"}] * 13 + [{"market": "high_ny"}] + [{"market": None}])
+    return {"cards": cards, "total": {"runs": 23, "cost_usd": 61.5, "gated": 3, "passed": 0},
+            "families": {"crypto": {"runs": 8, "cost_usd": 20.0, "gated": 2, "passed": 0},
+                         "sports": {"runs": 13, "cost_usd": 38.0, "gated": 1, "passed": 0},
+                         "weather-high": {"runs": 1, "cost_usd": 3.5, "gated": 0, "passed": 0}}}
+
+
+def test_scorecard_grades_focus_adherence_and_spend_per_gated_idea():
+    card = agent.autopilot_scorecard(_board(), ["crypto"])
+    assert (card["in_focus"], card["placed"], card["adherence"]) == (8, 22, 0.364)
+    assert card["families"][0] == {"family": "sports", "runs": 13, "cost_usd": 38.0, "gated": 1, "passed": 0,
+                                   "usd_per_gated": 38.0}
+    assert card["burning"] == []  # weather spent $3.50, under the burn bar
+    lines = agent.autopilot_scorecard_lines(card)
+    assert "8 of 22 runs were inside their focus (crypto) = 36%. Every run outside it ignored the user" in lines[2]
+    assert "crypto 8 runs $20.00, gate reached 2, $10.00 per gated idea" in lines[3]
+    assert lines[-1].startswith("Act on it")
+    free = agent.autopilot_scorecard(_board(), [])
+    assert free["adherence"] is None and not any("focus (" in line for line in agent.autopilot_scorecard_lines(free))
+    b = _board()
+    b["families"]["sports"]["gated"] = 0
+    assert agent.autopilot_scorecard(b, [])["burning"] == ["sports"]
+    assert agent.autopilot_scorecard_lines(agent.autopilot_scorecard({"cards": [], "total": {}}, [])) == []

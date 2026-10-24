@@ -657,6 +657,58 @@ def focus_refusal(user: Dict, market: Optional[str]) -> Optional[str]:
             "change the focus." % (", ".join(tokens), label))
 
 
+# -- the autopilot's own scorecard -------------------------------------------------------------
+# The research scoreboard (app.rsi) grades the research pipeline; this grades the autopilot as the
+# manager that spends on it: did it follow the user's focus, and did its spend go where ideas reach
+# the gate. It feeds back into every review (so the next decision improves on the last) and is
+# shared on /api/research/scoreboard as "autopilot".
+SCORECARD_DAYS = 3
+BURN_USD = float(os.getenv("APP_AUTOPILOT_BURN_USD", "15"))
+
+
+def autopilot_scorecard(board: Dict, focus: List[str]) -> Dict:
+    """From a user's rsi.load_scoreboard: focus adherence and research spend vs gate reach per family."""
+    cards = board.get("cards") or []
+    placed = [c for c in cards if c.get("market")]
+    inside = sum(1 for c in placed if in_focus(c["market"], focus))
+    fams = []
+    for fam, r in (board.get("families") or {}).items():
+        cost, gated = float(r.get("cost_usd") or 0), int(r.get("gated") or 0)
+        fams.append({"family": fam, "runs": int(r.get("runs") or 0), "cost_usd": round(cost, 2), "gated": gated,
+                     "passed": int(r.get("passed") or 0),
+                     "usd_per_gated": round(cost / gated, 2) if gated else None})
+    fams.sort(key=lambda f: -f["cost_usd"])
+    t = board.get("total") or {}
+    return {"runs": int(t.get("runs") or 0), "cost_usd": round(float(t.get("cost_usd") or 0), 2),
+            "gated": int(t.get("gated") or 0), "passed": int(t.get("passed") or 0),
+            "focus": focus, "in_focus": inside if focus else None, "placed": len(placed),
+            "adherence": round(inside / len(placed), 3) if (focus and placed) else None,
+            "families": fams,
+            "burning": [f["family"] for f in fams if f["cost_usd"] >= BURN_USD and not f["gated"]]}
+
+
+def autopilot_scorecard_lines(card: Dict, days: int = SCORECARD_DAYS) -> List[str]:
+    if not card.get("runs"):
+        return []
+    out = ["YOUR OWN SCORECARD as the manager (last %d days). Use it to do this job better than last time:" % days,
+           "- research: %d runs, $%.2f, %d reached the gate, %d passed." % (
+               card["runs"], card["cost_usd"], card["gated"], card["passed"])]
+    if card.get("adherence") is not None:
+        out.append("- following the user: %d of %d runs were inside their focus (%s) = %.0f%%.%s" % (
+            card["in_focus"], card["placed"], ", ".join(card["focus"]), 100 * card["adherence"],
+            "" if card["adherence"] >= 1 else " Every run outside it ignored the user; it must be 100%."))
+    out.append("- spend by family: " + "; ".join(
+        "%s %d runs $%.2f, gate reached %d%s" % (f["family"], f["runs"], f["cost_usd"], f["gated"],
+                                                ", $%.2f per gated idea" % f["usd_per_gated"] if f["usd_per_gated"] else "")
+        for f in card["families"][:6]) + ".")
+    if card["burning"]:
+        out.append("- burning money with nothing reaching the gate: %s. Don't fund the same angles there again; "
+                   "change the angle or move the spend." % ", ".join(card["burning"]))
+    out.append("Act on it: put the next research where ideas reach the gate for the least money (inside the "
+               "user's focus), and say in your plan what you changed because of this scorecard.")
+    return out
+
+
 def set_focus_action(cur, user: Dict, action: Dict, run_kind: str) -> str:
     """Apply a set_focus action. Only a chat run (the user just wrote) may change the focus; a
     scheduled review can't drift it away from what the user asked."""
@@ -3600,6 +3652,12 @@ def _copilot_context(cur, user: Dict) -> str:
     if paper_lines:
         lines += ["", "How research's passes did on paper, by market family (all paper deployments, including stopped):"]
         lines += paper_lines
+    try:
+        from app import rsi
+        lines += [""] + autopilot_scorecard_lines(autopilot_scorecard(
+            rsi.load_scoreboard(cur, days=SCORECARD_DAYS, user_id=user["id"]), focus))
+    except Exception:
+        pass
     try:
         exit_line = early_exits_line(repo.early_exit_scorecard(cur, user["id"]))
     except Exception:
