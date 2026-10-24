@@ -43,7 +43,7 @@ KALSHI_PAUSE_SECONDS = 0.07  # ~14 req/s, under the basic tier's 20/s
 BACKFILL_GAP_SECONDS = 86400          # ignore gaps under a day (normal edge of the window)
 SPOT_BACKFILL_SECONDS_PER_PASS = 7 * 86400
 OLD_MARKET_SECONDS = 30 * 86400       # candles of a market closed longer ago may be unavailable
-# Wall-clock budget for one pass's candle fetching. The watchdog restarts us when no cycle completes
+# Wall-clock budget for one pass (settled markets + candles). The watchdog restarts us when no cycle completes
 # within 1500s, and a long backfill (a raised history_days, ~100 catalog series) used to blow past
 # that every pass, so no cycle ever finished. Past the budget the pass ends and the rest of the
 # backlog resumes next pass, rotating so every series gets its turn.
@@ -389,27 +389,26 @@ def refresh(cur) -> Dict[str, int]:
         except Exception as e:
             print("[market_history] %s spot backfill failed: %r (retry next pass)" % (symbol, e), flush=True)
     binary = [m for m in MARKETS.values() if m.kind == "binary"]  # never perpetuals
-    # Contained per market: with the catalog-driven universe this loop now covers ~100 series,
-    # so one series' API/DB hiccup must not abort the backfill for all the others (it just
-    # retries next pass). A crash here used to stale every market's history at once.
-    for market in binary:
-        try:
-            cur.execute("SELECT MAX(close_time) AS t FROM hist_markets WHERE series_ticker=%s", (market.series,))
-            last_close = (cur.fetchone() or {}).get("t")
-            floor = now - timedelta(days=market.history_days)
-            since = max(last_close.replace(tzinfo=timezone.utc) - timedelta(hours=2), floor) if last_close else floor
-            stats[market.key + "_markets"] = sync_settled_markets(cur, market, since)
-            stats[market.key + "_backfill"] = backfill_settled_markets(cur, market, now)
-        except Exception as e:
-            print("[market_history] %s sync failed: %r (retry next pass)" % (market.key, e), flush=True)
-    stats["candles_deferred"] = sync_all_candles(cur, binary, deadline)
+    stats["deferred"] = sync_all_markets(cur, binary, now, deadline, stats)
     return stats
 
 
-def sync_all_candles(cur, markets, deadline: float) -> int:
-    """Candles for every market within the pass budget: curated first (they are what's traded),
-    then the catalog series in a rotating order resumed where the last pass ran out. Returns how
-    many markets were left for the next pass."""
+def _sync_settled(cur, market: Market, now: datetime, stats: Dict[str, int]) -> None:
+    cur.execute("SELECT MAX(close_time) AS t FROM hist_markets WHERE series_ticker=%s", (market.series,))
+    last_close = (cur.fetchone() or {}).get("t")
+    floor = now - timedelta(days=market.history_days)
+    since = max(last_close.replace(tzinfo=timezone.utc) - timedelta(hours=2), floor) if last_close else floor
+    stats[market.key + "_markets"] = sync_settled_markets(cur, market, since)
+    stats[market.key + "_backfill"] = backfill_settled_markets(cur, market, now)
+
+
+def sync_all_markets(cur, markets, now: datetime, deadline: float, stats: Dict[str, int]) -> int:
+    """Settled markets + candles for every market within the pass budget: curated first (they are
+    what's traded), then the catalog series (~1,000 once the catalog is healthy) in a rotating order
+    resumed where the last pass ran out. Returns how many markets were left for the next pass.
+
+    Contained per market: one series' API/DB hiccup must not abort the others (it retries next pass).
+    """
     global _candle_rotation
     curated = [m for m in markets if m.key in CURATED]
     rest = [m for m in markets if m.key not in CURATED]
@@ -420,11 +419,15 @@ def sync_all_candles(cur, markets, deadline: float) -> int:
             _candle_rotation = start + max(i - len(curated), 0)
             return len(order) - i
         try:
+            _sync_settled(cur, market, now, stats)
+        except Exception as e:
+            print("[market_history] %s sync failed: %r (retry next pass)" % (market.key, e), flush=True)
+        try:
             sync_market_candles(cur, market, deadline=deadline)
         except Exception as e:
             print("[market_history] %s candles failed: %r (retry next pass)" % (market.key, e), flush=True)
+    _candle_rotation = 0
     return 0
-    return stats
 
 
 def main() -> None:
@@ -439,7 +442,7 @@ def main() -> None:
                 with conn.cursor() as cur:
                     stats = refresh(cur)
                     print("[market_history] %s %s" % (utc_now().isoformat(), stats), flush=True)
-                    if stats.get("candles_deferred"):
+                    if stats.get("deferred"):
                         sleep = BACKLOG_SLEEP_SECONDS  # backlog left: come straight back for it
                     # Heartbeat on a COMPLETED cycle only: a wedged/hung refresh never reaches
                     # here, so the heartbeat goes stale and the watchdog restarts us (self-heal).

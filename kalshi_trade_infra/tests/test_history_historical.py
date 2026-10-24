@@ -134,16 +134,19 @@ def test_pass_budget_runs_curated_first_and_rotates_the_rest(monkeypatch):
         clock["left"] -= 1
 
     monkeypatch.setattr(mh, "sync_market_candles", fake)
+    settled = []
+    monkeypatch.setattr(mh, "_sync_settled", lambda cur, market, now, stats: settled.append(market.key))
     monkeypatch.setattr(mh.time, "time", lambda: 100.0 if clock["left"] > 0 else 200.0)
     mh._candle_rotation = 0
     curated = [MARKETS["high_ny"]]
     rest = [_cat("a"), _cat("b"), _cat("c")]
     clock["left"] = 2  # curated + "a" fit, then the budget is gone
-    assert mh.sync_all_candles(_Cur(), curated + rest, deadline=150.0) == 2
+    assert mh.sync_all_markets(_Cur(), curated + rest, None, 150.0, {}) == 2
     assert seen == ["high_ny", "a"]
+    assert settled == ["high_ny", "a"]  # the settled-market sync is inside the budget too
     seen.clear()
     clock["left"] = 2
-    mh.sync_all_candles(_Cur(), curated + rest, deadline=150.0)
+    mh.sync_all_markets(_Cur(), curated + rest, None, 150.0, {})
     assert seen == ["high_ny", "b"]  # resumes after "a", curated still first
     assert "high_ny" in CURATED
 
