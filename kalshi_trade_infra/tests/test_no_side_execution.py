@@ -253,3 +253,39 @@ def test_a_persisted_position_mismatch_halts_new_live_entries(monkeypatch):
 
     assert out["entries"] == 0 and "KXBTC-OTHER" in out["halted"]
     assert kernel.intents == [] and cur.inserted == []
+
+
+# -- depth: a NO buy hits the YES bid, so it is sized by the bid's depth ---------
+
+
+def test_book_sizes_keys_no_depth_off_the_yes_bid():
+    from app import engine
+    from app.markets import Contract
+
+    q = engine.LiveQuote(Contract(TICKER, 110.0, datetime.now(timezone.utc)), 0.40, 0.42, 3.0, 900.0)
+    sizes = engine.book_sizes([q])
+    assert engine.shown_size(sizes, TICKER, "yes") == 900.0, "a YES buy lifts the YES ask"
+    assert engine.shown_size(sizes, TICKER, "no") == 3.0, "a NO buy hits the YES bid"
+    # A frame that only carries a per-ticker number keeps it for both sides.
+    assert engine.shown_size({TICKER: 7.0}, TICKER, "no") == 7.0
+
+
+def test_decide_sizes_a_no_entry_by_the_yes_bid_depth(monkeypatch):
+    from app import engine
+    from app import spec as specmod
+    from tests.conftest import patch_intent_passthrough
+
+    monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", True)
+    patch_intent_passthrough(monkeypatch)
+    cur = _Cur()
+    kernel = _RecordingKernel()
+    spec = specmod.validate({"side": "no", "entry": {"min_edge": 0.1}})
+    dep = {"id": 1, "user_id": 1, "market": "btc15m", "mode": "live", "spec": spec,
+           "result": {"capital": 10, "out_of_sample": {"max_drawdown": 3}}}
+    snap = _no_snapshot()
+    sizes = {snap.contract.ticker: 1000.0, (snap.contract.ticker, "no"): 2.0}
+
+    out = engine.decide(_Conn(cur), dep, [snap], sizes, engine.Sources(live_kernel=lambda uid: kernel))
+
+    assert out["entries"] == 1
+    assert kernel.intents[0].qty_contracts == 2, "only 2 contracts sit on the YES bid a NO buy hits"
