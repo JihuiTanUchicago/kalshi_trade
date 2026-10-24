@@ -170,7 +170,7 @@ MAX_CODE_CHARS = 20_000
 # Free external datasets a code spec may request (Pillar 3). Resolved + as-of joined on the host
 # into frame["external"] within the research fold; see app/freedata.py. These are the sources that
 # resolve with no key/entitlement; an unknown source is a spec error.
-DATASET_SOURCES = ("fred",)
+DATASET_SOURCES = ("fred", "asos")
 MAX_DATASETS = 8
 
 CODE_STRATEGY_GUIDE = """
@@ -273,6 +273,12 @@ frames before the first value is known, so use frame.get("external", {}).get("dg
 that cannot be resolved is simply skipped (its key never appears) — handle a missing value
 gracefully. lag_days is the publication delay you assert; set it honestly (daily rates ~1, a
 monthly macro release longer). The request is frozen into your pre-registered spec.
+WEATHER: source "asos" = hourly airport-station observations in degrees F (free IEM archive, already
+delayed 15 min to when they are public; use lag_days 0). series "NYC" is the latest reading;
+"NYC:dailymax" is the running max of the NWS climate day so far (midnight-midnight local STANDARD
+time, what Kalshi's daily-high markets settle on). Kalshi stations: NYC Central Park = NYC, Chicago
+Midway = MDW, Austin = AUS, Miami = MIA, Denver = DEN, Los Angeles = LAX, Philadelphia = PHL.
+Late in the day the high is mostly set: a strike already beaten by the running max is near-certain.
 """
 
 # Every proposer that reads SPEC_GUIDE also learns it may write arbitrary quant code.

@@ -55,7 +55,7 @@ _CACHE: Dict[Tuple[str, str], Optional[List[Tuple[int, float]]]] = {}
 
 # Sources that resolve for FREE with no key/entitlement on the host. Each maps source -> fetcher
 # returning observations as (observation_unix_ts_utc_midnight, value), ascending, or raising.
-SOURCES = ("fred",)
+SOURCES = ("fred", "asos")
 
 
 def asof_join(frame_tss: List[int], observations: List[Tuple[int, float]]) -> Dict[int, float]:
@@ -109,7 +109,95 @@ def _fetch_fred(series: str) -> List[Tuple[int, float]]:
     return out
 
 
-_FETCHERS = {"fred": _fetch_fred}
+# Hourly airport-station observations (ASOS/METAR) from the Iowa Environmental Mesonet archive:
+# free, keyless, and the source Kalshi weather traders use. A METAR is public within minutes of its
+# valid time; ASOS_LAG_S is baked into the known-at time on top of the spec's own lag_days.
+ASOS_URL = "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py"
+ASOS_LAG_S = 15 * 60
+ASOS_HISTORY_DAYS = 200
+# NWS climate days (what Kalshi's daily-high markets settle on) run midnight to midnight LOCAL
+# STANDARD time all year, so a station's day boundary is a fixed UTC offset, never DST-shifted.
+ASOS_LST_OFFSET_H = {
+    "NYC": -5, "LGA": -5, "JFK": -5, "EWR": -5, "PHL": -5, "BOS": -5, "DCA": -5, "IAD": -5,
+    "BWI": -5, "MIA": -5, "ATL": -5, "CLT": -5, "DTW": -5, "MDW": -6, "ORD": -6, "AUS": -6,
+    "DFW": -6, "DAL": -6, "HOU": -6, "IAH": -6, "SAT": -6, "MSP": -6, "MSY": -6, "STL": -6,
+    "DEN": -7, "PHX": -7, "SLC": -7, "LAX": -8, "SFO": -8, "SEA": -8, "LAS": -8, "SAN": -8,
+}
+
+
+def _parse_asos_series(series: str) -> Tuple[str, Optional[int]]:
+    """'NYC' -> latest temperature (F); 'NYC:dailymax' -> running max of the NWS climate day so
+    far (F), LST offset from ASOS_LST_OFFSET_H; 'XYZ:dailymax:-6' gives the offset explicitly.
+    Returns (station, lst_offset_hours or None for the raw series); raises on a bad series."""
+    parts = series.strip().upper().split(":")
+    station = parts[0]
+    if not (3 <= len(station) <= 4 and station.isalnum()):
+        raise ValueError("bad ASOS station %r" % station)
+    if len(parts) == 1:
+        return station, None
+    if parts[1] != "DAILYMAX" or len(parts) > 3:
+        raise ValueError("ASOS series must be STATION or STATION:dailymax[:<utc offset h>]")
+    if len(parts) == 3:
+        return station, int(parts[2])
+    if station not in ASOS_LST_OFFSET_H:
+        raise ValueError("no LST offset known for %s; use %s:dailymax:<offset>" % (station, station))
+    return station, ASOS_LST_OFFSET_H[station]
+
+
+def _asos_rows(text: str) -> List[Tuple[int, float]]:
+    """(valid unix ts UTC, tmpf) from IEM's onlycomma CSV (header station,valid,tmpf), ascending."""
+    out: List[Tuple[int, float]] = []
+    for r in csv.reader(io.StringIO(text)):
+        if len(r) < 3 or r[0].startswith("#") or r[1] == "valid":
+            continue
+        try:
+            t = datetime.strptime(r[1].strip(), "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
+            out.append((int(t.timestamp()), float(r[2])))
+        except (ValueError, OverflowError):
+            continue  # 'M' (missing) and malformed rows
+    out.sort()
+    return out
+
+
+def _daily_running_max(rows: List[Tuple[int, float]], lst_offset_h: int) -> List[Tuple[int, float]]:
+    """Running max of each climate day so far, emitted at every observation. A frame in a new day
+    sees the prior day's max until that day's first observation (at most about an hour)."""
+    out: List[Tuple[int, float]] = []
+    day, hi = None, None
+    for t, v in rows:
+        d = (t + lst_offset_h * 3600) // 86400
+        if d != day:
+            day, hi = d, v
+        else:
+            hi = max(hi, v)
+        out.append((t, hi))
+    return out
+
+
+def _fetch_asos(series: str, now: Optional[datetime] = None) -> List[Tuple[int, float]]:
+    """Free, keyless IEM ASOS archive. Returns (known-at ts, value): observation time + ASOS_LAG_S."""
+    import requests
+    from datetime import timedelta
+
+    station, offset = _parse_asos_series(series)
+    end = (now or datetime.now(timezone.utc)) + timedelta(days=1)
+    start = end - timedelta(days=ASOS_HISTORY_DAYS)
+    params = [("station", station), ("data", "tmpf"), ("tz", "Etc/UTC"), ("format", "onlycomma"),
+              ("latlon", "no"), ("missing", "M"), ("direct", "no"),
+              ("report_type", "3"), ("report_type", "4"),
+              ("year1", start.year), ("month1", start.month), ("day1", start.day),
+              ("year2", end.year), ("month2", end.month), ("day2", end.day)]
+    resp = requests.get(ASOS_URL, params=params, timeout=_FETCH_TIMEOUT_S)
+    resp.raise_for_status()
+    rows = _asos_rows(resp.text)
+    if not rows:
+        raise ValueError("no usable ASOS observations for %s" % station)
+    if offset is not None:
+        rows = _daily_running_max(rows, offset)
+    return [(t + ASOS_LAG_S, v) for t, v in rows]
+
+
+_FETCHERS = {"fred": _fetch_fred, "asos": _fetch_asos}
 
 
 def resolve(req: Dict) -> Tuple[Optional[List[Tuple[int, float]]], Dict]:
