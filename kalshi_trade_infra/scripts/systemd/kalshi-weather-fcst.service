@@ -7,4 +7,4 @@ WorkingDirectory=/opt/kalshi
 Nice=10
 MemoryMax=300M
 TimeoutStartSec=1200
-ExecStart=/bin/bash -c 'set -a; . /opt/kalshi/.env.aws; . /opt/kalshi/.env.app; set +a; unset AWS_PROFILE; exec /opt/kalshi/.venv/bin/python -u -m app.weather_fcst_collect >> /opt/kalshi/logs/weather_fcst.log 2>&1'
+ExecStart=/bin/bash -c 'set -a; . /opt/kalshi/.env.aws; . /opt/kalshi/.env.app; set +a; unset AWS_PROFILE; exec /opt/kalshi/.venv313/bin/python -u -m app.weather_fcst_collect >> /opt/kalshi/logs/weather_fcst.log 2>&1'
