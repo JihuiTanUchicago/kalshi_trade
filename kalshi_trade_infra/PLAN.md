@@ -24,6 +24,9 @@
 - The autopilot panel's story lists up to three waiting strategies in plain words, and the review
   context gets a "last entry check" line per deployment, so reviews can tell a rule that never fires
   on the live book (stop it, research a better one) from one waiting on a rare setup.
+- Phone pass on the waiting lines: windows read in hours ("5-20 hours from expiry", "closest is 1 hour
+  out"), the sentence is "No open contract ..." instead of "none of the 76 open contracts has ...", and
+  strategies stuck on the same reason share one line. Screenshot: /mnt/project-files/autopilot/panel-waiting-390px.png
 - `app_deployment_scan_days` tallies every decision's outcome per deployment per UTC day ('qualified',
   'no contracts' or the blocking check). The panel says "Today it found a contract worth buying in 0 of
   820 checks" and the review context lists today's stops, so a rule that never fires over a whole day

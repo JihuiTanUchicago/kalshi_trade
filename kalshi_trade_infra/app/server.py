@@ -1175,15 +1175,12 @@ def _autopilot_story(d: Dict) -> List[str]:
         lines.append("%s on paper (pretend money). The furthest along has %d of %d trades and is %s." % (
             _plural(paper, "strategy is", "strategies are"), int(prog["trades"]), int(prog["trades_needed"]),
             ("up $%.2f" % prog["net_pnl"]) if prog["net_pnl"] >= 0 else ("down $%.2f" % -prog["net_pnl"])))
+    elif d.get("paper_waiting"):
+        lines.append("%s on paper (pretend money), but none has traded yet." % _plural(paper, "strategy is", "strategies are"))
     else:
         lines.append("%s on paper (pretend money), but none has traded yet. Each one waits for its own "
                      "setup, which can take hours." % _plural(paper, "strategy is", "strategies are"))
-    for w in (d.get("paper_waiting") or [])[:3] if paper else []:
-        line = "%s is waiting: %s." % (w["title"], w["why"])
-        if w.get("checks_today"):
-            line += " Today it found a contract worth buying in %d of %d checks." % (
-                int(w.get("qualified_today") or 0), int(w["checks_today"]))
-        lines.append(line)
+    lines += _waiting_lines(d.get("paper_waiting") or []) if paper else []
     if int(d.get("live_running") or 0):
         lines.append("%s trading real money." % _plural(int(d["live_running"]), "strategy is", "strategies are"))
     else:
@@ -1217,6 +1214,25 @@ def _paper_waiting(paper_run: List[Dict], tally: Optional[Dict[int, Dict[str, in
                         "blocked_at": sc.get("blocked_at"), "at": d.get("last_scan_at"),
                         "checks_today": sum(t.values()), "qualified_today": t.get("qualified", 0)})
     return out[:5]
+
+
+def _waiting_lines(waiting: List[Dict]) -> List[str]:
+    """One line per distinct reason, naming every strategy stuck on it (two strategies on the same
+    market usually wait on the same thing, and a phone shouldn't read it twice)."""
+    groups: Dict[str, List[Dict]] = {}
+    for w in waiting:
+        groups.setdefault(w["why"], []).append(w)
+    out = []
+    for why, ws in list(groups.items())[:3]:
+        names = [w["title"] for w in ws]
+        who = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+        line = "%s %s waiting: %s." % (who, "is" if len(names) == 1 else "are", why[0].upper() + why[1:])
+        checks = sum(int(w.get("checks_today") or 0) for w in ws)
+        if checks:
+            found = sum(int(w.get("qualified_today") or 0) for w in ws)
+            line += " Today %s of %d checks found a contract worth buying." % (found or "none", checks)
+        out.append(line)
+    return out
 
 
 COPILOT_REVIEW_MINUTES = int(os.getenv("APP_COPILOT_REVIEW_SECONDS", "600")) // 60

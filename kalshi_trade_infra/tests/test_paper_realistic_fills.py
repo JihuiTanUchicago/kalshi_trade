@@ -355,12 +355,16 @@ def test_autopilot_story_says_what_it_is_doing_in_plain_words():
     assert server._autopilot_story({"autopilot": False})[0].startswith("Autopilot is off.")
     assert server._autopilot_story(dict(d, billing_blocked=True)) == []
     assert "1 strategy is trading real money." in server._autopilot_story(dict(d, live_running=1))
-    waiting = [{"title": "SOL momentum", "why": "none of the 12 open contracts has a yes price of 85c to 95c"}]
+    why = "no open contract costs 85c to 95c (of 12; nearest is 3c outside)"
+    waiting = [{"title": "SOL momentum", "why": why}]
     story = server._autopilot_story(dict(d, paper_waiting=waiting))
-    assert "SOL momentum is waiting: none of the 12 open contracts has a yes price of 85c to 95c." in story
-    waiting[0].update(checks_today=820, qualified_today=0)
-    assert ("SOL momentum is waiting: none of the 12 open contracts has a yes price of 85c to 95c. "
-            "Today it found a contract worth buying in 0 of 820 checks.") in server._autopilot_story(dict(d, paper_waiting=waiting))
+    assert "SOL momentum is waiting: No open contract costs 85c to 95c (of 12; nearest is 3c outside)." in story
+    assert not any("Each one waits" in line for line in story)
+    waiting = [dict(waiting[0], checks_today=14, qualified_today=0),
+               {"title": "SOL calm", "why": why, "checks_today": 14, "qualified_today": 0}]
+    story = server._autopilot_story(dict(d, paper_waiting=waiting))
+    assert ("SOL momentum and SOL calm are waiting: No open contract costs 85c to 95c (of 12; nearest is 3c outside). "
+            "Today none of 28 checks found a contract worth buying.") in story
 
 
 def test_paper_waiting_lists_strategies_whose_last_decision_bought_nothing():
