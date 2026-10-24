@@ -3317,15 +3317,21 @@
       d.paper_running ? `${d.paper_running} paper` : '',
     ].filter(Boolean);
     const runTotal = (d.live_running || 0) + (d.demo_running || 0) + (d.paper_running || 0);
-    if (stats) stats.innerHTML = `
-      <div><dt>Running</dt><dd>${runTotal ? runParts.join(' · ') : 'None'}</dd></div>
-      <div><dt>Live P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd></div>
-      <div><dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd></div>
-      ${d.research ? `<div><dt>Research</dt><dd>${d.research.active.length ? esc(d.research.active.join(' · ')) : 'Idle'} · ${d.research.tested_7d} ideas tested, ${d.research.passed_7d} passed this week</dd></div>` : ''}
-      ${d.paper_progress ? `<div><dt>Closest to live</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> · ${d.paper_progress.trades}/${d.paper_progress.trades_needed} paper trades · ${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}
-      ${d.last_review_at ? `<div><dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd></div>` : ''}`;
+    // Short figures share a row (as many columns as there are figures, two on a phone, the odd
+    // one out spanning); the sentence-length ones get full-width rows, so no cell sits empty.
+    const short = [
+      `<dt>Running</dt><dd>${runTotal ? runParts.join(' · ') : 'None'}</dd>`,
+      `<dt>Live P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd>`,
+      `<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`,
+    ].concat(d.last_review_at ? [`<dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd>`] : []);
+    if (stats) {
+      stats.dataset.cols = short.length;
+      stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `
+      ${d.research ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? esc(d.research.active.join(' · ')) : 'Idle'} · ${d.research.tested_7d} ideas tested, ${d.research.passed_7d} passed this week</dd></div>` : ''}
+      ${d.paper_progress ? `<div class="apf-wide"><dt>Closest to live</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> · ${d.paper_progress.trades}/${d.paper_progress.trades_needed} paper trades · ${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}`;
+    }
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
-    const gates = box.querySelector('#apf-gates'); if (gates) gates.textContent = apLiveBlock(d);
+    const gates = box.querySelector('#apf-gates'); if (gates) gates.textContent = apLiveBlock(d) || apLiveArmed(d);
     const controls = box.querySelector('#apf-controls');
     if (controls) {
       controls.innerHTML = `${d.autopilot_live
@@ -3336,6 +3342,8 @@
       controls.querySelectorAll('[data-ap]').forEach((b) => (b.onclick = (e) => apAction(box, b.dataset.ap, e)));
     }
   }
+  // Live armed with nothing live yet reads as "is it trading real money?", so say it outright.
+  const apLiveArmed = (d) => d.autopilot_live && !d.live_running ? 'Live autopilot is armed. No strategy is trading real money yet.' : '';
   // Why live autopilot can't be enabled yet (ordered), or '' when all gates pass.
   function apLiveBlock(d) {
     if (!d) return '';

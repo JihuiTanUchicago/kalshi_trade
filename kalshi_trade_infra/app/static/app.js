@@ -226,7 +226,7 @@
     if (s < 86400) return Math.floor(s / 3600) + 'h ago';
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   };
-  const clock = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  const clock = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });  // fits the 40px log rail; '10:31 AM' wrapped to 'AM'
   const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
   // Compact count for tight spaces (system-map node metrics): 1.1M, 352k, 940.
   const compact = (n) => (n == null ? '—' : n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : n >= 1e4 ? Math.round(n / 1e3) + 'k' : num(n));
@@ -3253,13 +3253,19 @@
       d.paper_running ? `${d.paper_running} paper` : '',
     ].filter(Boolean);
     const runTotal = (d.live_running || 0) + (d.demo_running || 0) + (d.paper_running || 0);
-    if (stats) stats.innerHTML = `
-      <div><dt>Running</dt><dd>${runTotal ? runParts.join(' · ') : 'None'}</dd></div>
-      <div><dt>Live P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd></div>
-      <div><dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd></div>
-      ${d.research ? `<div><dt>Research</dt><dd>${d.research.active.length ? esc(d.research.active.join(' · ')) : 'Idle'} · ${d.research.tested_7d} ideas tested, ${d.research.passed_7d} passed this week</dd></div>` : ''}
-      ${d.paper_progress ? `<div><dt>Closest to live</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> · ${d.paper_progress.trades}/${d.paper_progress.trades_needed} paper trades · ${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}
-      ${d.last_review_at ? `<div><dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd></div>` : ''}`;
+    // Short figures share a row (as many columns as there are figures, two on a phone, the odd
+    // one out spanning); the sentence-length ones get full-width rows, so no cell sits empty.
+    const short = [
+      `<dt>Running</dt><dd>${runTotal ? runParts.join(' · ') : 'None'}</dd>`,
+      `<dt>Live P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd>`,
+      `<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`,
+    ].concat(d.last_review_at ? [`<dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd>`] : []);
+    if (stats) {
+      stats.dataset.cols = short.length;
+      stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `
+      ${d.research ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? esc(d.research.active.join(' · ')) : 'Idle'} · ${d.research.tested_7d} ideas tested, ${d.research.passed_7d} passed this week</dd></div>` : ''}
+      ${d.paper_progress ? `<div class="apf-wide"><dt>Closest to live</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> · ${d.paper_progress.trades}/${d.paper_progress.trades_needed} paper trades · ${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}`;
+    }
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
     const gates = box.querySelector('#apf-gates');
     if (gates) {
@@ -3270,7 +3276,7 @@
           : 'Autopilot is paused — <a href="/billing">add credits</a> to let it keep researching.';
         gates.classList.add('warn');
       } else {
-        gates.textContent = apLiveBlock(d);
+        gates.textContent = apLiveBlock(d) || apLiveArmed(d);
         gates.classList.remove('warn');
       }
     }
@@ -3284,6 +3290,8 @@
       controls.querySelectorAll('[data-ap]').forEach((b) => (b.onclick = (e) => apAction(box, b.dataset.ap, e)));
     }
   }
+  // Live armed with nothing live yet reads as "is it trading real money?", so say it outright.
+  const apLiveArmed = (d) => d.autopilot_live && !d.live_running ? 'Live autopilot is armed. No strategy is trading real money yet.' : '';
   // Why live autopilot can't be enabled yet (ordered), or '' when all gates pass.
   function apLiveBlock(d) {
     if (!d) return '';
