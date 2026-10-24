@@ -1,0 +1,97 @@
+"""The user's market focus binds the autopilot. Prod 2026-10-24: Todd told it "Research and trade
+only crypto" and it kept launching sports research, because the instruction lived only in chat."""
+import json
+
+import pytest
+
+from app import agent, server
+
+CRYPTO = {"id": 1, "autopilot": 1, "autopilot_focus": json.dumps(["crypto"])}
+
+
+def _capture(monkeypatch):
+    rec = {"runs": [], "deployments": []}
+    r = agent.repo
+    monkeypatch.setattr(r, "count_runs", lambda *a, **k: 0)
+    monkeypatch.setattr(r, "create_run", lambda cur, uid, kind, market, direction, idea, **kw: rec["runs"].append(market) or 9)
+    monkeypatch.setattr(r, "create_proposal", lambda *a, **k: 1)
+    monkeypatch.setattr(r, "create_deployment", lambda cur, uid, sid, market, mode: rec["deployments"].append(market) or 3)
+    return rec
+
+
+def test_focus_tokens_cover_families_coins_and_keys():
+    assert agent.normalize_focus(["Crypto", "bitcoin"]) == ["crypto", "btc"]
+    assert agent.normalize_focus("crypto, high_ny") == ["crypto", "high_ny"]
+    with pytest.raises(ValueError, match="'stocks'"):
+        agent.normalize_focus(["stocks"])
+    assert agent.in_focus("btc15m", ["crypto"]) and agent.in_focus("eth_daily", ["crypto"])
+    assert agent.in_focus("btc_daily", ["btc"]) and not agent.in_focus("eth15m", ["btc"])
+    assert not agent.in_focus("nfl_game", ["crypto"]) and agent.in_focus("nfl_game", ["sports"])
+    assert agent.in_focus("nfl_game", []) and agent.in_focus(None, ["crypto"])
+    assert agent.focus_tokens({"autopilot_focus": "not json"}) == [] and agent.focus_tokens(None) == []
+
+
+def test_research_outside_the_focus_is_refused_and_inside_goes_ahead(monkeypatch):
+    rec = _capture(monkeypatch)
+    text, _ = agent.act(None, CRYPTO, {"type": "research", "market": "nfl_game", "idea": "sportsbook vs crowd recalibration"}, True)
+    assert rec["runs"] == [] and "focus on crypto" in text
+    agent.act(None, CRYPTO, {"type": "research", "market": "eth15m", "idea": "order-flow imbalance on 15m"}, True)
+    agent.act(None, CRYPTO, {"type": "research", "idea": "let the picker choose inside the focus"}, True)
+    assert rec["runs"] == ["eth15m", None]
+
+
+def test_deploys_outside_the_focus_are_refused(monkeypatch):
+    rec = _capture(monkeypatch)
+    monkeypatch.setattr(agent.repo, "get_strategy", lambda cur, uid, sid: {
+        "id": sid, "status": "passed", "market": "nba_game", "title": "NBA fade", "spec": {"market": "nba_game"}})
+    for kind in ("deploy", "deploy_live"):
+        text, pid = agent.act(None, CRYPTO, {"type": kind, "strategy_id": 4}, True)
+        assert pid is None and "won't touch" in text
+    assert rec["deployments"] == []
+
+
+def test_only_the_user_can_set_the_focus(monkeypatch):
+    stored = []
+    monkeypatch.setattr(agent.repo, "set_autopilot_focus", lambda cur, uid, tokens: stored.append(tokens))
+    assert "Only you" in agent.set_focus_action(None, {"id": 1}, {"focus": ["sports"]}, "review")
+    assert stored == []
+    assert "set to crypto" in agent.set_focus_action(None, {"id": 1}, {"focus": ["crypto"]}, "chat")
+    assert "recognise" in agent.set_focus_action(None, {"id": 1}, {"focus": ["stonks"]}, "chat")
+    assert "cleared" in agent.set_focus_action(None, {"id": 1}, {"focus": []}, "chat")
+    assert stored == [["crypto"], []]
+
+
+def test_picker_keys_and_review_context_stay_inside_the_focus(monkeypatch):
+    monkeypatch.setattr(agent.repo, "get_user", lambda cur, uid: CRYPTO)
+    assert agent.focus_keys(None, 1, ["btc15m", "nfl_game", "eth_daily"]) == ["btc15m", "eth_daily"]
+    monkeypatch.setattr(agent.repo, "get_user", lambda cur, uid: {"id": 1})
+    assert agent.focus_keys(None, 1, ["btc15m", "nfl_game"]) == ["btc15m", "nfl_game"]
+
+    r = agent.repo
+    monkeypatch.setattr(r, "list_deployments", lambda cur, uid, **k: [])
+    monkeypatch.setattr(r, "list_strategies", lambda cur, uid, **k: [])
+    monkeypatch.setattr(r, "user_risk_config", lambda cur, uid: {})
+    monkeypatch.setattr(r, "user_execution_config", lambda cur, uid: {})
+    ctx = agent._copilot_context(None, CRYPTO)
+    assert "USER'S MARKET FOCUS (binding, set by the user): crypto." in ctx
+    markets = next(line for line in ctx.splitlines() if line.startswith("Markets you can research AND deploy"))
+    assert "btc15m" in markets and "nfl_game" not in markets and "high_ny" not in markets
+    assert "emit a set_focus action" in agent._copilot_context(None, {"id": 1})
+
+
+def test_panel_says_it_sticks_to_the_focus():
+    story = server._autopilot_story({"autopilot": True, "focus": ["crypto"]})
+    assert "It sticks to the focus you set: crypto." in story
+    assert not any("focus" in line for line in server._autopilot_story({"autopilot": True, "focus": []}))
+
+
+def test_focus_endpoint_validates_and_stores(monkeypatch):
+    from types import SimpleNamespace
+    stored, chat = [], []
+    monkeypatch.setattr(server.repo, "set_autopilot_focus", lambda cur, uid, tokens: stored.append(tokens))
+    monkeypatch.setattr(server.repo, "add_chat", lambda cur, uid, role, text, *a: chat.append(text))
+    assert server.autopilot_focus(SimpleNamespace(cur=None, uid=1, body={"focus": ["Bitcoin"]})) == {"ok": True, "focus": ["btc"]}
+    with pytest.raises(server.ApiError):
+        server.autopilot_focus(SimpleNamespace(cur=None, uid=1, body={"focus": ["stonks"]}))
+    assert stored == [["btc"]] and chat == ["Market focus set to btc."]
+    assert any(r[0] == "POST" and r[1].pattern == "^/api/autopilot/focus$" for r in server.ROUTES)

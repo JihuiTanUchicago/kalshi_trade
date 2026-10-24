@@ -584,6 +584,95 @@ def _brief() -> str:
         return ""
 
 
+# -- the user's market focus ---------------------------------------------------------------
+# Prod 2026-10-24: Todd told the autopilot "Research and trade only crypto", and it kept launching
+# sports research, because the instruction lived only in chat while the prompt pushed it to
+# diversify. The focus is now stored (app_users.autopilot_focus) and enforced in code: research,
+# deploys and the paper funnel refuse anything outside it, and the research picker only offers it.
+FOCUS_ALIASES = {"bitcoin": "btc", "ethereum": "eth", "solana": "sol", "ripple": "xrp",
+                 "dogecoin": "doge", "weather": "weather-high", "temperature": "weather-high"}
+
+
+def _underlying_tag(market: str) -> str:
+    m = MARKETS.get(market or "")
+    return ((m.underlying or "").split("-")[0].lower()) if m is not None and m.underlying else ""
+
+
+def focus_tokens(user: Optional[Dict]) -> List[str]:
+    """The user's focus tokens (family names, market keys or coin tickers); [] = no focus."""
+    raw = (user or {}).get("autopilot_focus")
+    if not raw:
+        return []
+    try:
+        vals = json.loads(raw) if isinstance(raw, str) else raw
+    except ValueError:
+        return []
+    return [str(v).strip().lower() for v in vals if str(v).strip()] if isinstance(vals, list) else []
+
+
+def in_focus(market: Optional[str], tokens: List[str]) -> bool:
+    """True when `market` is inside the focus (or there is no focus, or no market yet)."""
+    if not tokens or not market:
+        return True
+    from app import rsi  # local: rsi reads agent lazily too
+    fam, key, coin = rsi.family(market), market.lower(), _underlying_tag(market)
+    return any(t == key or t == fam or fam.startswith(t + "-") or (coin and t == coin) for t in tokens)
+
+
+def normalize_focus(values) -> List[str]:
+    """Validate a focus the user (via chat or the API) asked for: each token must name a market
+    family, a market key or a coin. Raises ValueError naming what isn't recognised."""
+    from app import rsi
+    if isinstance(values, str):
+        values = re.split(r"[,\s]+", values)
+    known = set(MARKETS) | {rsi.family(k) for k in MARKETS} | {_underlying_tag(k) for k in MARKETS} - {""}
+    out, bad = [], []
+    for v in values or []:
+        t = FOCUS_ALIASES.get(str(v).strip().lower(), str(v).strip().lower())
+        if not t:
+            continue
+        (out if t in known else bad).append(t)
+    if bad:
+        raise ValueError("I don't recognise %s as a market, coin or category. Try e.g. crypto, btc, "
+                         "sports, weather-high." % ", ".join(repr(b) for b in bad))
+    return list(dict.fromkeys(out))
+
+
+def focus_keys(cur, user_id: int, keys: List[str]) -> List[str]:
+    """`keys` filtered to the user's focus (unchanged when no focus is set)."""
+    try:
+        tokens = focus_tokens(repo.get_user(cur, user_id))
+    except Exception:  # noqa: BLE001 - a read hiccup (or a test stub) must not stop research
+        tokens = []
+    return [k for k in keys if in_focus(k, tokens)] if tokens else list(keys)
+
+
+def focus_refusal(user: Dict, market: Optional[str]) -> Optional[str]:
+    """The chat line refusing an action on `market` outside the user's focus, else None."""
+    tokens = focus_tokens(user)
+    if in_focus(market, tokens):
+        return None
+    label = MARKETS[market].label if market in MARKETS else market
+    return ("You asked me to focus on %s, so I won't touch %s. Tell me in chat if you want to "
+            "change the focus." % (", ".join(tokens), label))
+
+
+def set_focus_action(cur, user: Dict, action: Dict, run_kind: str) -> str:
+    """Apply a set_focus action. Only a chat run (the user just wrote) may change the focus; a
+    scheduled review can't drift it away from what the user asked."""
+    if run_kind == "review":
+        return "Only you can change the market focus. Tell me in chat."
+    try:
+        tokens = normalize_focus(action.get("focus") or [])
+    except ValueError as e:
+        return str(e)
+    repo.set_autopilot_focus(cur, user["id"], tokens)
+    if not tokens:
+        return "Market focus cleared: autopilot may research and trade any market again."
+    return ("Market focus set to %s. Autopilot will research, deploy and trade only these from now on."
+            % ", ".join(tokens))
+
+
 def research_unavailable_reason(market: Optional[str]) -> Optional[str]:
     """Reject disabled native research before a manual/agent action queues paid work."""
     if market in MARKETS and MARKETS[market].kind == "perpetual":
@@ -2158,13 +2247,23 @@ def run_research(
             # of failing the run; a user-pinned market still fails cleanly below.
             log("step", "%s is no longer in the market list — picking another market for this angle." % market)
             market = None
+        if (market and run.get("brief") and not ckpt.get("market")
+                and not focus_keys(cur, user_id, [market])):
+            # A delegated run queued on a market outside the user's focus (an older queue entry, or
+            # another path): keep the angle, let the picker choose inside the focus.
+            log("step", "%s is outside your autopilot focus — picking a market inside it for this angle."
+                % (MARKETS[market].label if market in MARKETS else market))
+            market = None
         if not market:  # user left it to the agent — it picks the market from the idea first
             if resuming and ckpt.get("market"):
                 market = ckpt["market"]  # already chosen on the first attempt; don't re-spend the pick
             else:
                 checkpoint()
                 blocked = _research_blocked_markets(cur, user_id)
-                keys = [k for k in _researchable_keys(cur) if k not in blocked] or _researchable_keys(cur)
+                ready = focus_keys(cur, user_id, _researchable_keys(cur))
+                if not ready:
+                    raise RuntimeError("No market inside your autopilot focus is open for research right now.")
+                keys = [k for k in ready if k not in blocked] or ready
                 market = _pick_market(run, model, usage, log, keys, _research_history_line(cur, user_id))
             run = {**run, "market": market}
             repo.set_run_market(cur, run_id, market)
@@ -2981,7 +3080,7 @@ def auto_paper_candidates(cur, user: Dict) -> List[str]:
         if len(out) >= AUTO_PAPER_MAX_NEW or active >= AUTO_PAPER_MAX_ACTIVE:
             break
         mkt = MARKETS.get(s["market"])
-        if s["id"] in tried or mkt is None or not mkt.deployable:
+        if s["id"] in tried or mkt is None or not mkt.deployable or not in_focus(s["market"], focus_tokens(user)):
             continue
         if specmod.is_code_spec(s["spec"]) or not _is_deployment_candidate(cur, s["id"]):
             continue
@@ -3024,7 +3123,7 @@ def auto_paper_probation(cur, user: Dict) -> List[str]:
             break
         sid = c["strategy_id"]
         mkt = MARKETS.get(c["market"])
-        if sid in tried or mkt is None or not mkt.deployable:
+        if sid in tried or mkt is None or not mkt.deployable or not in_focus(c["market"], focus_tokens(user)):
             continue
         strat = repo.get_strategy(cur, user["id"], sid)
         if strat is None or strat.get("market") != c["market"] or specmod.is_code_spec(strat["spec"]):
@@ -3197,6 +3296,9 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         strat = repo.get_strategy(cur, user_id, int(action.get("strategy_id") or 0))
         if strat is None or strat["status"] != "passed":
             return "Only strategies that passed their backtest can be deployed.", None
+        refusal = focus_refusal(user, strat["market"])
+        if refusal:
+            return refusal, None
         if specmod.is_code_spec(strat["spec"]):
             # The live/paper engine evaluates the DSL rule (specmod.entries); arbitrary agent
             # code runs ONLY in the research sandbox and is never executed in the trading loop.
@@ -3220,6 +3322,9 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         strat = repo.get_strategy(cur, user_id, int(action.get("strategy_id") or 0))
         if strat is None or strat["status"] != "passed":
             return "Only strategies that passed their backtest can go live.", None
+        refusal = focus_refusal(user, strat["market"])
+        if refusal:
+            return refusal, None
         if specmod.is_code_spec(strat["spec"]):
             return ("%s is an agent-authored code strategy; those are research-only and never "
                     "run in the live engine." % strat["title"], None)
@@ -3302,6 +3407,9 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
                 return "I can't research that market — pick one Tau supports, or let me choose.", None
             if len(idea) < 8:
                 return "Tell me the idea to research in a sentence or two.", None
+        refusal = focus_refusal(user, strat["market"] if sid else market)
+        if refusal:
+            return refusal, None
         unavailable = research_unavailable_reason(strat["market"] if sid else market)
         if unavailable:
             return unavailable, None
@@ -3410,8 +3518,14 @@ def _copilot_context(cur, user: Dict) -> str:
     except Exception:
         plan = {}
     running = [d for d in deps if d["status"] == "running"]
+    focus = focus_tokens(user)
     lines = [
         "Autopilot is %s." % ("ON" if user.get("autopilot") else "OFF"),
+        ("USER'S MARKET FOCUS (binding, set by the user): %s. Research and deploy ONLY markets inside it: "
+         "the host refuses anything else, so don't propose it. Diversify WITHIN the focus." % ", ".join(focus))
+        if focus else
+        ("USER'S MARKET FOCUS: none set. If the user's messages ask you to focus on or stick to some "
+         "markets (e.g. 'only crypto', 'focus on bitcoin'), emit a set_focus action so it binds."),
         # Counted here so the review's status line can't contradict the list below (a review once
         # opened with "0 deployments live/paper" while two paper deployments were running).
         "DEPLOYMENTS RUNNING RIGHT NOW: %d on paper%s, %d live%s." % (
@@ -3580,7 +3694,8 @@ def _copilot_context(cur, user: Dict) -> str:
     # Only offer markets with a real backtest surface: a deployable market with NO collected history
     # (e.g. a freshly-catalogued series) crashes research with "no settled contracts". `not ready`
     # (None or empty) means we can't tell, so show everything rather than hide the whole list.
-    deployable = [k for k, m in MARKETS.items() if m.deployable and (not ready or m.series in ready)]
+    deployable = [k for k, m in MARKETS.items() if m.deployable and (not ready or m.series in ready)
+                  and in_focus(k, focus)]
     lines += ["", ("Markets you can research AND deploy RIGHT NOW (each has collected history, so it has a "
                    "backtest surface — research ONLY markets on this list; others have no settled contracts "
                    "and will crash). You are NOT limited to the one you've been trading: if a market has gone "
@@ -3591,6 +3706,9 @@ def _copilot_context(cur, user: Dict) -> str:
         scan = rsi_scout.prompt_lines(cur, 8)
     except Exception:  # noqa: BLE001 - no scan table yet / a read hiccup: offer the list alone
         scan = ""
+    if focus and scan:  # each line starts "- <market key> (": keep only leads inside the focus
+        scan = "\n".join(l for l in scan.splitlines()
+                          if in_focus((l[2:].split(" ", 1) or [""])[0], focus))
     if scan:
         lines += ["", ("FREE MISPRICING SCAN (each market's research window, no model spend; strongest measured "
                        "leads first). Some leads are luck across many markets, so the gate still decides, but "
@@ -3624,6 +3742,7 @@ Actions:
   {"type": "research", "strategy_id": N, "reason": "..."}     (DIG DEEPER off a PASSED strategy — refine its parameters, stress-test it, extend the thesis. Each variant still has to pass the gates.)
   {"type": "research", "market": "<market key or omit to let me choose>", "idea": "<a short ANGLE/lens, NOT a full thesis>", "reason": "..."}   (FRESH research line. DELEGATE, don't author: `idea` is a high-level DIRECTION — a market + a short angle (e.g. "favorite-longshot on this sports market", "order-flow if this market has microstructure data") — and the research specialist writes the actual hypotheses and specs from it. Do NOT hand it a fully-formed strategy ("buy when implied>65%..."); that is the research pipeline's job, not yours. One or two sentences of angle is enough.)
   {"type": "deploy", "strategy_id": N, "reason": "..."}       (paper; any side)
+  {"type": "set_focus", "focus": ["crypto"], "reason": "..."}   (ONLY when the USER asks in chat to focus on / stick to some markets: family names like crypto, sports, weather-high; coins like btc, eth; or market keys. [] clears it. It then binds every research and deploy. A scheduled review can't set it.)
   {"type": "alpaca_paper_order", "symbol": "AAPL", "side": "buy", "qty": "1", "limit_price": "100.00", "reason": "..."} (A separate Alpaca broker PAPER stock/ETF experiment. Whole shares, limit DAY only. Creates a ticket for explicit USER APPROVAL even when autopilot is on; it never executes from this action. Use the current paper account/positions and the user's instruction; do not infer a fill or convert a Kalshi binary strategy into an equity strategy. This is not live equity execution.)
   {"type": "kalshi_perps_order", "side": "bid", "count": "1", "price": "7.00", "reduce_only": false, "reason": "..."} (Native Kalshi BTC perps REAL-MONEY order proposal only. Whole contracts; price is USD PER CONTRACT, not BTC spot price. Bid buys/longs, ask sells/shorts; reduce_only must only reduce the current position. Kalshi determines account/product margin and leverage; there is no order leverage field or Tau financial cap. Always requires the owner to review a fresh exact order ticket and explicitly confirm, even with autopilot on. Never submit, approve, retry or claim execution yourself. Do not infer fills, access, buying power or liquidation safety. Research-only perps strategies remain ineligible for automatic deployment.)
   {"type": "deploy_live", "strategy_id": N, "reason": "..."}  (REAL money; any side (YES or NO) that already proved itself on PAPER, and only when the user turned on live autopilot. If live autopilot is off or any safety gate fails it is refused and stays on paper. Never the first step for a new idea: research -> paper -> live.)
@@ -3703,7 +3822,7 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
                     "Only adjust/pause/resume deployments that appear in the Deployments list above, by their exact deployment_id — "
                     "ones you named in earlier messages may have been removed and no longer exist. If the market you've been trading has "
                     "gone quiet for days (no fills, no passing edges), that is NOT a reason to wait or 'step aside' — research a DIFFERENT "
-                    "market from the list (other coins, sports, weather); a dead regime in one market is not a dead regime everywhere, and "
+                    "market from the list (other coins, sports, weather; inside the user's market focus when one is set); a dead regime in one market is not a dead regime everywhere, and "
                     "sitting idle while 18 other markets are open is as passive as forcing a bad trade. If there is genuinely nothing worth "
                     "doing, say so briefly. Use the context above: don't re-launch a research line that is still active or "
                     "just failed, and don't re-propose an idea already in the dead-ends list — refine its mechanism or hunt "
@@ -3739,7 +3858,10 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
             repo.set_autopilot_plan(cur, user["id"], out["plan"])
         for action in out["actions"]:
             checkpoint()
-            if str(action.get("type") or action.get("kind") or "").strip().lower() in ("alpaca_paper_order", "kalshi_perps_order"):
+            if str(action.get("type") or action.get("kind") or "").strip().lower() == "set_focus":
+                text, proposal_id = set_focus_action(cur, user, action, run["kind"]), None
+                user = repo.get_user(cur, user["id"]) or user  # later actions in this reply honour it
+            elif str(action.get("type") or action.get("kind") or "").strip().lower() in ("alpaca_paper_order", "kalshi_perps_order"):
                 with repo.transaction(conn) as tx:
                     text, proposal_id = act(tx, user, action, bool(user.get("autopilot")), dataset_fn)
             else:

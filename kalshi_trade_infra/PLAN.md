@@ -1,5 +1,24 @@
 # PLAN
 
+## Autopilot obeys the user's market focus (2026-10-24)
+
+- Bug from Todd: he told the autopilot "Research and trade only crypto" (15:35Z) and "focus on crypto"
+  (20:32Z). 14 of his 22 research runs after that were sports or weather. The instruction lived only
+  in chat, the review kept only the last 3 user messages, and the review prompt told it to diversify
+  "other coins, sports, weather".
+- Fix: a stored, enforced focus. `app_users.autopilot_focus` holds a JSON list of family names
+  (crypto, sports, weather-high), coins (btc, eth) or market keys.
+  - `act` refuses `research`, `deploy` and `deploy_live` outside the focus.
+  - The paper funnel and probation skip anything outside it.
+  - `run_research` filters the market picker to the focus. A delegated run queued on an
+    out-of-focus market re-picks inside the focus instead.
+  - The review context opens with the focus and lists only markets and scout leads inside it.
+- Who can set it: the chat agent sets it with a `set_focus` action when the user asks. A scheduled
+  review cannot. There is also `POST /api/autopilot/focus`, and the panel story says "It sticks to
+  the focus you set".
+- `session_user` now also loads `autopilot_model`. The panel had been showing the catalog default
+  model instead of the user's pick.
+
 ## Live gate: the edge must still be working (2026-10-24)
 
 - `paper_evidence` adds a check after the bootstrap edge test: `recent`. The newer half of the

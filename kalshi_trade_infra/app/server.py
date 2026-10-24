@@ -1219,6 +1219,8 @@ def _autopilot_story(d: Dict) -> List[str]:
     else:
         now = "Right now it's between research runs. It checks in about every %d minutes." % max(1, COPILOT_REVIEW_MINUTES)
     lines = [now]
+    if d.get("focus"):
+        lines.append("It sticks to the focus you set: %s." % ", ".join(d["focus"]))
     tested, passed = int(research.get("tested_7d") or 0), int(research.get("passed_7d") or 0)
     if tested:
         lines.append("This week it tested %s and %s." % (
@@ -1399,6 +1401,7 @@ def autopilot_status(ctx: Ctx):
         "last_action": repo.last_autopilot_action(cur, ctx.uid),
         "last_review_at": repo.last_review_at(cur, ctx.uid),  # liveness: a quiet review posts nothing, this still shows it ran
         "model": u.get("autopilot_model") or catalog.DEFAULT_KEY,  # the model the autopilot's own runs use
+        "focus": agent.focus_tokens(u),  # the user's binding market focus ([] = any market)
         "billing_blocked": billing_blocked,
         "billing_reason": (("card" if _needs_card(ctx) else "credits") if billing_blocked else None),
         "paper_progress": paper_progress,
@@ -1408,6 +1411,18 @@ def autopilot_status(ctx: Ctx):
     }
     out["story"] = _autopilot_story(out)
     return out
+
+
+def autopilot_focus(ctx: Ctx):
+    """Set or clear the autopilot's market focus (family names, coins or market keys)."""
+    try:
+        tokens = agent.normalize_focus(ctx.body.get("focus") or [])
+    except ValueError as e:
+        raise ApiError(400, str(e))
+    repo.set_autopilot_focus(ctx.cur, ctx.uid, tokens)
+    repo.add_chat(ctx.cur, ctx.uid, "system", ("Market focus set to %s." % ", ".join(tokens)) if tokens
+                  else "Market focus cleared.")
+    return {"ok": True, "focus": tokens}
 
 
 def autopilot_model(ctx: Ctx):
@@ -2384,6 +2399,7 @@ ROUTES: List[Route] = [
         ("POST", "/api/autopilot/live", autopilot_live, True),
         ("POST", "/api/autopilot/kill", autopilot_kill, True),
         ("POST", "/api/autopilot/model", autopilot_model, True),
+        ("POST", "/api/autopilot/focus", autopilot_focus, True),
         ("GET", "/api/autopilot/status", autopilot_status, True),
         ("GET", "/api/community", community, True),
         ("POST", "/api/community", create_community_post, True),

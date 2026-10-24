@@ -785,6 +785,9 @@ def main() -> None:
         # the run didn't pick one. NULL = the catalog default. Lets the user route autopilot to a
         # higher-quota model (e.g. Sonnet) so Bedrock throttling stops killing research runs.
         _add_column_if_missing(cur, "app_users", "autopilot_model", "ALTER TABLE app_users ADD COLUMN autopilot_model VARCHAR(64) NULL")
+        # The user's standing market focus for the autopilot (JSON list of family names or market
+        # keys; NULL = no focus). Binding: research, deploys and the paper funnel stay inside it.
+        _add_column_if_missing(cur, "app_users", "autopilot_focus", "ALTER TABLE app_users ADD COLUMN autopilot_focus VARCHAR(255) NULL")
         # Proposal payload: the clamped values a set_risk / set_exec proposal applies on approval
         # (deploy/adjust/pause/resume carry no payload). NULL for the older kinds.
         _add_column_if_missing(cur, "app_proposals", "payload", "ALTER TABLE app_proposals ADD COLUMN payload JSON NULL")
