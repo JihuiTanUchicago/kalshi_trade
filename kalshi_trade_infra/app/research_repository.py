@@ -22,7 +22,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from app.markets import MARKETS, Market
+from app.markets import MARKETS, Market, cross_product
 from app.repository import _json, _loads, now_utc
 
 # -- pre-registration (app_experiments) ---------------------------------------
@@ -367,7 +367,8 @@ def partition_source_rows(cur, market: Market, since: datetime,
             first_open = min(c["open_ts"] for c in window)
             since = max(since, _dt(first_open, since))
             until = _dt(max(c["close_ts"] for c in window), since)
-    h = repo.load_history(cur, market.series, market.candle_minutes, since, market.underlying, tickers, until)
+    h = repo.load_history(cur, market.series, market.candle_minutes, since, market.underlying, tickers, until,
+                          cross=cross_product(market))
     for m in h["markets"]:
         m["open_ts"] = opens.get(m["ticker"])
     return h

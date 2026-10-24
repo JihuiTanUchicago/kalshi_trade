@@ -68,9 +68,24 @@ def test_learned_model_kinds_validate_as_documented(kind):
 
 
 def test_every_documented_feature_validates_as_a_filter():
+    from app.markets import CROSS_FEATURES
     for name in specmod.FEATURES:
-        specmod.validate({"market": BINARY[0],
+        market = ("btc15m" if name.startswith("eth_") else "eth15m") if name in CROSS_FEATURES else BINARY[0]
+        specmod.validate({"market": market,
                           "entry": {"filters": [{"feature": name, "op": ">=", "value": 0}]}})
+
+
+def test_cross_asset_features_are_refused_on_markets_that_never_carry_them():
+    flt = lambda name: {"entry": {"filters": [{"feature": name, "op": ">", "value": 0}]}}
+    with pytest.raises(specmod.SpecError, match="only exists on non-BTC crypto markets"):
+        specmod.validate(dict(flt("btc_ret_5m"), market="btc15m"))
+    with pytest.raises(specmod.SpecError, match="only exists on BTC markets"):
+        specmod.validate(dict(flt("eth_ret_15m"), market="sol15m"))
+    with pytest.raises(specmod.SpecError, match="only exists on"):
+        specmod.validate({"market": "nba_game", "model": {"kind": "logistic", "features": ["btc_ret_1m"]}})
+    for market in ("sol_daily", "xrp15m", "hype15m", "eth_daily"):
+        specmod.validate(dict(flt("btc_vol_60m"), market=market))
+    specmod.validate(dict(flt("eth_ret_60m"), market="btc_daily"))
 
 
 @pytest.mark.parametrize("market", BINARY)

@@ -24,7 +24,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.markets import FEATURES, MARKETS, MICRO_FEATURES, TICK_FEATURES, Snapshot, compatible_cadence
+from app.markets import (CROSS_FEATURES, FEATURES, MARKETS, MICRO_FEATURES, TICK_FEATURES, Snapshot, compatible_cadence,
+                         cross_feature_names)
 from data_pipeline.kalshi_fees import taker_fee_per_contract_dollars
 
 OPS = (">", ">=", "<", "<=")
@@ -568,6 +569,8 @@ def validate(raw: Any) -> Dict[str, Any]:
                 continue
             if flt["feature"] not in FEATURES:
                 errors.append("entry.filters[%d].feature %r is not a known feature" % (i, flt["feature"]))
+            elif _cross_missing(spec, flt["feature"]):
+                errors.append("entry.filters[%d].feature %r: %s" % (i, flt["feature"], _cross_missing(spec, flt["feature"])))
             if flt["op"] not in OPS:
                 errors.append("entry.filters[%d].op must be one of %s" % (i, list(OPS)))
             v = flt["value"]
@@ -641,6 +644,15 @@ def _num_ok(v) -> bool:
     return not isinstance(v, bool) and isinstance(v, (int, float)) and math.isfinite(v) and abs(v) <= COEF_CAP
 
 
+def _cross_missing(spec: Dict, name: str) -> str:
+    """Why cross-asset feature `name` can't be used on the spec's market, or "": a filter on a
+    feature the market's frames never carry can't fire (a zero-trade death, not a hypothesis)."""
+    if name not in CROSS_FEATURES or name in cross_feature_names(MARKETS.get(spec.get("market"))):
+        return ""
+    return "only exists on %s" % ("BTC markets (ETH returns)" if name.startswith("eth_") else
+                                  "non-BTC crypto markets (BTC returns and volatility)")
+
+
 def _validate_model(spec: Dict, errors: List[str]) -> None:
     """Validate the fair-value model's kind-specific fields, normalising in place. gbm takes no
     learned fields; logistic names 1..MAX_MODEL_FEATURES known features; calibration is a 1-param
@@ -679,6 +691,8 @@ def _validate_model(spec: Dict, errors: List[str]) -> None:
         for name in feats:
             if name not in FEATURES:
                 errors.append("model.features %r is not a known feature" % name)
+            elif _cross_missing(spec, name):
+                errors.append("model.features %r: %s" % (name, _cross_missing(spec, name)))
 
     if not _num_ok(intercept):
         errors.append("model.intercept must be a finite number")

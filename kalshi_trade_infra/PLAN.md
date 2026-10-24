@@ -97,6 +97,25 @@
   never-traded paper strategy last stopped at (`stuck_on`), and the review line names them. Next: have
   the proposer read `stuck_on` so it stops writing entry bands the live book never reaches.
 
+## Research: cross-asset crypto features (2026-10-24)
+
+- Crypto research kept dropping "BTC leads ETH/SOL/XRP", "XRP-SOL spread" and "BTC-ETH lead-lag" ideas as
+  feature_unavailable or wrong_fit: a market's frames carried only its own underlying. Asked for by the
+  research thread (its top unfixed crypto death).
+- Every non-BTC crypto binary (eth/sol/xrp/doge/near/zec/hype 15m and the dailies) now carries
+  btc_ret_1m/5m/15m/60m and btc_vol_60m; BTC binaries carry eth_ret_5m/15m/60m (`markets.CROSS_FEATURES`,
+  `cross_product`, `cross_features`). Same one-minute closes and as-of rule as the market's own features
+  (last candle closed by the decision ts), so no lookahead.
+- Backtest: `repo.load_history(cross=...)` loads the cross coin from spot_candles_1m and
+  `backtest.build_dataset(cross=...)` merges it per frame (both research loaders pass it). Live:
+  `engine._with_cross` merges the same values from `fetch_product_series` (Coinbase, shared 15s cache),
+  on single-market ticks and cross-market legs. A stale cross feed drops only the cross features.
+- `spec.validate` refuses a cross feature on a market that never carries it (btc_ret_* on BTC, eth_ret_*
+  on an alt), so it fails at preflight instead of as a zero-trade death. The crypto market profile names them.
+- Per-second (btc15m_tick), spot (TAO) and perpetual markets don't get them yet.
+- Minute coverage (prod, 91 days): BTC/ETH/SOL/XRP ~100%, ZEC 98.5%, HYPE 93%, DOGE 93%, NEAR 92.5%. ZEC
+  history isn't thin; the HYPE/DOGE/NEAR gaps are minutes without a Coinbase print.
+
 ## Research RSI: paper outcomes close the loop (2026-10-24)
 
 - The scoreboard only counted what passed the backtest gate. `rsi.paper_outcomes(cur, uid)` adds what

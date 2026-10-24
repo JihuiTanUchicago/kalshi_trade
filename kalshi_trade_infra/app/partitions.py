@@ -398,4 +398,4 @@ def _load_window(market: str, from_ts: int, to_ts: int, history_days: Optional[i
            if mk.get("open_ts") is not None and from_ts <= mk["open_ts"] < to_ts]
     frame_series, applies = backtest.station_frame_series(m)
     return backtest.build_dataset(m, sub, rows["candles"], rows["btc"], rows.get("micro"), frame_series, applies,
-                                  forecasts=backtest.forecast_book(m, since))
+                                  forecasts=backtest.forecast_book(m, since), cross=rows.get("cross"))
