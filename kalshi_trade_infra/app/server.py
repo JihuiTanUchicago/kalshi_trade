@@ -1903,20 +1903,49 @@ _EXPLORE_KEY = os.getenv("DATALAKE_EXPLORE_KEY", "explore/latest.json.gz")
 _EXPLORE_SORTS = ("v24", "oi", "last")
 
 
-def _explore_feed() -> Dict:
-    import time as _time
-    now = _time.time()
-    if _EXPLORE_CACHE["data"] is not None and now - _EXPLORE_CACHE["at"] < 45:
-        return _EXPLORE_CACHE["data"]
+_EXPLORE_LOCK = threading.Lock()
+_S3: Dict[str, Any] = {}
+
+
+def _fetch_explore_feed() -> Dict:
     try:
         import gzip as _gzip
-        import boto3
-        raw = boto3.client("s3").get_object(Bucket=_EXPLORE_BUCKET, Key=_EXPLORE_KEY)["Body"].read()
-        data = json.loads(_gzip.decompress(raw))
+        if "c" not in _S3:
+            import boto3
+            _S3["c"] = boto3.client("s3")
+        raw = _S3["c"].get_object(Bucket=_EXPLORE_BUCKET, Key=_EXPLORE_KEY)["Body"].read()
+        return json.loads(_gzip.decompress(raw))
     except Exception:  # feed not written yet, or S3 unreachable -> empty, not an error
-        data = {"at": None, "total": 0, "shown": 0, "markets": []}
-    _EXPLORE_CACHE.update(at=now, data=data)
-    return data
+        return None
+
+
+def _refresh_explore_feed() -> None:
+    try:
+        data = _fetch_explore_feed()
+        if data is not None or _EXPLORE_CACHE["data"] is None:
+            _EXPLORE_CACHE.update(data=data or {"at": None, "total": 0, "shown": 0, "markets": []})
+        _EXPLORE_CACHE["at"] = time.time()
+    finally:
+        _EXPLORE_CACHE["refreshing"] = False
+
+
+def _explore_feed() -> Dict:
+    """The Explore feed from S3, cached 45s. Once warm, a stale copy is served while ONE background
+    thread refetches, so no request waits on S3 and concurrent misses don't each download the feed.
+    A failed fetch keeps the last good copy rather than blanking the page."""
+    now = time.time()
+    if _EXPLORE_CACHE["data"] is None:
+        with _EXPLORE_LOCK:
+            if _EXPLORE_CACHE["data"] is None:
+                _EXPLORE_CACHE["refreshing"] = True
+                _refresh_explore_feed()
+        return _EXPLORE_CACHE["data"]
+    if now - _EXPLORE_CACHE["at"] >= 45 and not _EXPLORE_CACHE.get("refreshing"):
+        with _EXPLORE_LOCK:
+            if not _EXPLORE_CACHE.get("refreshing"):
+                _EXPLORE_CACHE["refreshing"] = True
+                threading.Thread(target=_refresh_explore_feed, daemon=True).start()
+    return _EXPLORE_CACHE["data"]
 
 
 def _efloat(x) -> float:

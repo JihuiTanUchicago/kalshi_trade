@@ -143,3 +143,26 @@ def test_static_versions_rehash_only_when_a_file_changes(monkeypatch):
     monkeypatch.setattr(server.hashlib, "sha256", lambda b: calls.append(1) or real(b))
     assert server._static_versions() == first
     assert calls == []
+
+
+def test_explore_feed_serves_stale_while_one_thread_refreshes(monkeypatch):
+    fetched = []
+    monkeypatch.setattr(server, "_EXPLORE_CACHE", {"at": 0.0, "data": None})
+    monkeypatch.setattr(server, "_fetch_explore_feed", lambda: fetched.append(1) or {"at": len(fetched), "markets": []})
+    assert server._explore_feed()["at"] == 1  # cold: the first caller waits for S3 once
+    assert server._explore_feed()["at"] == 1 and len(fetched) == 1  # warm: cached
+    server._EXPLORE_CACHE["at"] -= 60  # stale
+    started = []
+    monkeypatch.setattr(server.threading, "Thread", lambda target, daemon: SimpleNamespace(start=lambda: started.append(target)))
+    assert server._explore_feed()["at"] == 1 and server._explore_feed()["at"] == 1  # served stale, no wait
+    assert len(started) == 1  # one refresh, not one per request
+    started[0]()
+    assert server._explore_feed()["at"] == 2
+
+
+def test_explore_feed_keeps_last_good_copy_when_s3_fails(monkeypatch):
+    monkeypatch.setattr(server, "_EXPLORE_CACHE", {"at": 0.0, "data": {"at": "good", "markets": [1]}})
+    monkeypatch.setattr(server, "_fetch_explore_feed", lambda: None)
+    server._EXPLORE_CACHE["refreshing"] = True
+    server._refresh_explore_feed()
+    assert server._EXPLORE_CACHE["data"]["at"] == "good" and server._EXPLORE_CACHE["refreshing"] is False
