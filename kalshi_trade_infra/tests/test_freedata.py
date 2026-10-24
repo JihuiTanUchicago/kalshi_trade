@@ -149,11 +149,12 @@ def test_asos_dailymax_resets_on_the_lst_day_and_is_delayed_to_publication(monke
 
 
 def test_asos_series_grammar():
-    assert freedata._parse_asos_series("NYC") == ("NYC", None)
-    assert freedata._parse_asos_series("mdw:dailymax") == ("MDW", -6)
-    assert freedata._parse_asos_series("KXYZ:dailymax:-7") == ("KXYZ", -7)
+    assert freedata._parse_asos_series("NYC") == ("NYC", None, None)
+    assert freedata._parse_asos_series("mdw:dailymax") == ("MDW", "max", -6)
+    assert freedata._parse_asos_series("nyc:dailymin") == ("NYC", "min", -5)
+    assert freedata._parse_asos_series("KXYZ:dailymax:-7") == ("KXYZ", "max", -7)
     import pytest
-    for bad in ("N", "NY C", "NYC:dailymin", "ZZZ:dailymax", "NYC:dailymax:-5:x"):
+    for bad in ("N", "NY C", "NYC:dailyavg", "ZZZ:dailymax", "NYC:dailymax:-5:x"):
         with pytest.raises(ValueError):
             freedata._parse_asos_series(bad)
 
@@ -186,7 +187,7 @@ def test_station_observations_name_the_builtin_weather_features(monkeypatch):
     monkeypatch.setattr(freedata, "_FETCHERS", {"asos": lambda s: [(0, 70.0 if "DAILYMAX" in s.upper() else 65.0)]})
     freedata._CACHE.clear()
     out = freedata.station_observations("NYC")
-    assert out == {"obs_high_f": [(0, 70.0)], "obs_temp_f": [(0, 65.0)]}
+    assert out == {"obs_high_f": [(0, 70.0)], "obs_low_f": [(0, 65.0)], "obs_temp_f": [(0, 65.0)]}
     monkeypatch.setattr(freedata, "_FETCHERS", {"asos": lambda s: (_ for _ in ()).throw(OSError("down"))})
     freedata._CACHE.clear()
     assert freedata.station_observations("NYC") == {}   # fail-open: features simply absent
@@ -200,6 +201,62 @@ def test_live_engine_sees_the_same_station_features_as_research(monkeypatch):
     monkeypatch.setattr(freedata, "_FETCHERS",
                         {"asos": lambda s: [(100, 70.0 if "DAILYMAX" in s.upper() else 65.0), (900, 72.0)]})
     freedata._CACHE.clear()
-    assert engine._event_feats(MARKETS["high_ny"], 500) == {"obs_high_f": 70.0, "obs_temp_f": 65.0}
+    assert engine._event_feats(MARKETS["high_ny"], 500) == {"obs_high_f": 70.0, "obs_low_f": 65.0, "obs_temp_f": 65.0}
     assert engine._event_feats(MARKETS["high_ny"], 50) == {}          # nothing known yet
     assert engine._event_feats(MARKETS["nba_game"], 500) == {}
+
+
+def test_asos_dailymin_and_one_download_per_station(monkeypatch):
+    """obs_low_f (KXLOW* markets) is the running min of the climate day; a station's raw, max and min
+    series share one IEM download per refresh window."""
+    from datetime import datetime, timezone
+
+    class Resp:
+        text = _ASOS_CSV
+        def raise_for_status(self):
+            pass
+    calls = []
+    import requests
+    monkeypatch.setattr(requests, "get", lambda url, params, timeout: calls.append(1) or Resp())
+    freedata._STATION_ROWS.clear()
+    freedata._CACHE.clear()
+    lows = freedata._fetch_asos("NYC:dailymin")
+    assert [v for _, v in lows] == [50.0, 49.0, 49.0, 48.0, 47.0, 47.0]
+    freedata._fetch_asos("NYC:dailymax")
+    freedata._fetch_asos("NYC")
+    assert len(calls) == 1
+
+
+def test_every_weather_station_has_a_climate_day_offset():
+    """A station without an LST offset would silently lose obs_high_f/obs_low_f (dailymax raises)."""
+    from app.markets import WEATHER_STATIONS
+    assert set(WEATHER_STATIONS.values()) <= set(freedata.ASOS_LST_OFFSET_H)
+    assert WEATHER_STATIONS["KXHIGHCHI"] == "MDW" and WEATHER_STATIONS["KXLOWTNYC"] == "NYC"
+
+
+def test_station_readings_reach_only_the_contract_settling_today():
+    """A weather frame also quotes tomorrow's contracts; today's observed high must not leak onto
+    them, in research and live alike. 2026-10-24 15:00Z is the 10-24 climate day in NYC (EST)."""
+    from datetime import datetime, timezone
+    from app import backtest, engine, markets
+    ts = int(datetime(2026, 10, 24, 15, tzinfo=timezone.utc).timestamp())
+    today, tomorrow = "KXHIGHNY-26OCT24-T66", "KXHIGHNY-26OCT25-T66"
+    assert markets.weather_target_day(today).isoformat() == "2026-10-24"
+    assert markets.weather_obs_applies("KXHIGHNY", today, ts)
+    assert not markets.weather_obs_applies("KXHIGHNY", tomorrow, ts)
+    # 04:30Z on 10-25 is still the 10-24 climate day (midnight EST = 05:00Z).
+    late = int(datetime(2026, 10, 25, 4, 30, tzinfo=timezone.utc).timestamp())
+    assert markets.weather_obs_applies("KXHIGHNY", today, late)
+
+    close = datetime(2026, 10, 26, tzinfo=timezone.utc)
+    mk = [{"ticker": t, "strike": 66.0, "close_time": close, "result": "no"} for t in (today, tomorrow)]
+    ds = backtest.build_dataset(markets.MARKETS["high_ny"], mk, [(today, ts, 0.4, 0.45), (tomorrow, ts, 0.4, 0.45)],
+                                [], frame_series={"obs_high_f": [(ts - 60, 61.0)]},
+                                frame_series_applies=lambda tk, t: markets.weather_obs_applies("KXHIGHNY", tk, t))
+    got = {s.contract.ticker: s.features.get("obs_high_f") for s in ds.frames[0][1]}
+    assert got == {today: 61.0, tomorrow: None}
+
+    feats = {"obs_high_f": 61.0, "obs_temp_f": 60.0}
+    assert engine._contract_feats(markets.MARKETS["high_ny"], feats, today, ts) == feats
+    assert engine._contract_feats(markets.MARKETS["high_ny"], feats, tomorrow, ts) == {}
+    assert engine._contract_feats(markets.MARKETS["nba_game"], {"x": 1.0}, "KXNBAGAME-X", ts) == {"x": 1.0}
