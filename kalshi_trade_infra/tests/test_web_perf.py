@@ -52,6 +52,16 @@ def test_post_rejected_before_reading_its_body_does_not_poison_the_next_request(
     assert conn.getresponse().status == 200
 
 
+def test_session_reuse_after_a_rejected_post_reconnects_cleanly(web):
+    # The staging smoke does exactly this with requests.Session: a CSRF-less POST (403), then GETs.
+    import requests
+    s = requests.Session()
+    r = s.post("http://127.0.0.1:%d/api/brokers/alpaca/paper/orders" % web, json={}, timeout=3)
+    assert r.status_code == 403 and r.headers["Connection"] == "close"
+    for _ in range(3):
+        assert s.get("http://127.0.0.1:%d/healthz" % web, timeout=3).status_code == 200
+
+
 def test_static_bundle_is_gzipped_when_accepted_and_identical_when_unzipped(web):
     conn = http.client.HTTPConnection("127.0.0.1", web, timeout=3)
     conn.request("GET", "/static/app.js", headers={"Accept-Encoding": "gzip, br"})

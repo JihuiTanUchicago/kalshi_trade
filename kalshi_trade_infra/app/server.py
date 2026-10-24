@@ -2241,6 +2241,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "same-origin")
         self.send_header("X-Frame-Options", "DENY")
+        if self._unread_body():
+            # Answered before the body was read (403, 413, 404): those bytes would be parsed as the
+            # next request on a keep-alive socket, so tell the client and close it.
+            self.send_header("Connection", "close")
+            self.close_connection = True
         if SECURE_COOKIES:
             self.send_header("Strict-Transport-Security", "max-age=31536000")
         for k, v in extra or []:
@@ -2340,13 +2345,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         self._body_read = False
+        self._timed("POST")
+
+    def _unread_body(self) -> bool:
+        if getattr(self, "command", None) != "POST" or getattr(self, "_body_read", True):
+            return False
         try:
-            self._timed("POST")
-        finally:
-            # A POST answered before its body was read (403, 413, 404) would leave those bytes on a
-            # keep-alive socket to be parsed as the next request, so close that connection instead.
-            if not self._body_read and int(self.headers.get("Content-Length") or 0) > 0:
-                self.close_connection = True
+            return int(self.headers.get("Content-Length") or 0) > 0
+        except ValueError:
+            return True
 
     def _perf(self, query: str) -> None:
         """Rolling latency/error stats for the on-box watchdog. Loopback only: through CloudFront the
