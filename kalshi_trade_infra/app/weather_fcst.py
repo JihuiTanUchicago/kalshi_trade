@@ -228,8 +228,8 @@ def _gfs_sd(lead_h: float) -> float:
 def contract_features(book: Optional[ForecastBook], ticker: str, strike: float, ts: int,
                       yes_bid: Optional[float], yes_ask: Optional[float],
                       observed: Optional[float] = None, latest_temp: Optional[float] = None) -> Dict[str, float]:
-    """Forecast features for one daily-high/low contract at ts ({} when there is no usable
-    forecast). `observed` is the frame's running max (min for a "min" book) for the station's
+    """Forecast features for one daily-high/low contract at ts (only the strike features when
+    there is no usable forecast, {} when the ticker doesn't parse). `observed` is the frame's running max (min for a "min" book) for the station's
     current climate day, if known (obs_high_f / obs_low_f); latest_temp its latest reading
     (obs_temp_f), which takes over from the forecast once a high has peaked."""
     if book is None:
@@ -238,20 +238,21 @@ def contract_features(book: Optional[ForecastBook], ticker: str, strike: float, 
     if terms is None:
         return {}
     day, lo, hi = terms
+    today, into_day = book.climate_day(ts)
+    if observed is not None and not (today == day and into_day >= OBS_GRACE_S):
+        observed = None
     got = book.latest(day, ts)
     if got is None:
-        return {}
+        return strike_features(lo, hi, None, observed)
     model, known_at, high, sd = got
     if sd is None:
         sd = _gfs_sd((book.day_end_ts(day) - known_at) / 3600.0)
     sd = max(float(sd), MIN_SD_F)
-    today, into_day = book.climate_day(ts)
-    if observed is not None and not (today == day and into_day >= OBS_GRACE_S):
-        observed = None
     mu_r, sd_r = rest_of_day(high, sd, into_day, latest_temp if observed is not None else None, book.kind)
     p = p_yes_observed(mu_r, sd_r, lo, hi, observed, book.kind)
     name = "fcst_high_f" if book.kind == "max" else "fcst_low_f"
     out = {name: high, "fcst_sd_f": sd, "fcst_age_h": (ts - known_at) / 3600.0, "fcst_p_yes": p}
+    out.update(strike_features(lo, hi, high, observed))
     trail = book.trailing_error(ts)
     if trail is not None:
         bias, rms, _n = trail
@@ -264,6 +265,32 @@ def contract_features(book: Optional[ForecastBook], ticker: str, strike: float, 
         out["fcst_edge"] = p - mid
         if "fcst_p_yes_cal" in out:
             out["fcst_edge_cal"] = out["fcst_p_yes_cal"] - mid
+    return out
+
+
+def yes_margin(x: float, lo: Optional[int], hi: Optional[int]) -> float:
+    """Signed distance (F) from x to the edge of the contract's YES range [lo-0.5, hi+0.5]:
+    positive = inside (that far from leaving it), negative = outside (that far from entering)."""
+    sides = []
+    if lo is not None:
+        sides.append(x - (lo - 0.5))
+    if hi is not None:
+        sides.append((hi + 0.5) - x)
+    return min(sides) if sides else 0.0
+
+
+def strike_features(lo: Optional[int], hi: Optional[int], fcst: Optional[float],
+                    observed: Optional[float]) -> Dict[str, float]:
+    """The contract's own strike, absolute and relative to the forecast / the day's observed
+    extreme, so a spec filter can say "forecast 3F inside the YES range" (filters compare a feature
+    with a constant; run 2613's proposer had no strike to condition on)."""
+    out = {} if fcst is None else {"fcst_yes_margin_f": yes_margin(fcst, lo, hi)}
+    if lo is not None:
+        out["strike_lo_f"] = float(lo)
+    if hi is not None:
+        out["strike_hi_f"] = float(hi)
+    if observed is not None:
+        out["obs_yes_margin_f"] = yes_margin(float(observed), lo, hi)
     return out
 
 
@@ -282,6 +309,12 @@ FEATURE_DOCS = {
     "fcst_p_yes_cal": "weather markets only: fcst_p_yes after removing fcst_bias_f and widening the spread to the "
                       "trailing forecast error",
     "fcst_edge_cal": "weather markets only: fcst_p_yes_cal minus the contract's mid",
+    "strike_lo_f": "weather markets only: lowest temperature (F) that settles this contract YES (absent if unbounded below)",
+    "strike_hi_f": "weather markets only: highest temperature (F) that settles this contract YES (absent if unbounded above)",
+    "fcst_yes_margin_f": "weather markets only: signed distance (F) from the forecast to the edge of this contract's "
+                         "YES range; positive = forecast inside YES by that much, negative = outside",
+    "obs_yes_margin_f": "weather markets only, settling day: the same signed distance for the day's observed high "
+                        "(low) so far; for a high, a contract whose floor is already beaten has a large positive value",
 }
 
 

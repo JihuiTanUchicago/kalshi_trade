@@ -655,6 +655,12 @@ def _plan_lookback(run: Dict, market: str, model: ModelFn, usage: Usage, log) ->
     clamped to what we actually have. One cheap call before the heavy research loop."""
     m = MARKETS[market]
     maxd = m.history_days
+    if not m.underlying and m.candle_minutes >= 60 and m.kind == "binary":
+        # A daily-settling series (weather) has one independent event per day, so every day cut is
+        # lost power, and its full year loads in seconds (+120MB). Run 2613 chose 156 of 365 days.
+        log("step", "Using all %d days of history: each day is one independent settlement here." % maxd,
+            {"phase": "plan", "lookback_days": maxd})
+        return maxd
     idea = (run.get("prompt") or "").strip() or "any durable, fee-surviving edge"
     msg = ("%s\n\nIdea: %s\nMarket: %s. Up to %d days of history are available to backtest on.\n"
            "Pick how many days the backtest should replay for THIS idea. Reply exactly:\n"
@@ -2162,7 +2168,31 @@ def _diagnose(spec: Dict, rds: backtest.Dataset, ins: Dict, diag: Dict) -> str:
     return ""
 
 
-def _develop_prompt(run: Dict, t: Dict, memory: List[Dict], step: int) -> str:
+_FEATURE_BLOCK: Dict[str, object] = {"ds": None, "text": ""}
+
+
+def _feature_block(ds) -> str:
+    """The populated features on this market with coverage and p10/p50/p90, for the develop turn.
+    Run 2613 abandoned 5 of 8 weather theses believing obs_high_f / fcst_high_f were unavailable
+    (both populated) because only the proposing round showed coverage. Cached per dataset."""
+    if ds is None or not getattr(ds, "frames", None):
+        return ""
+    if _FEATURE_BLOCK["ds"] is ds:
+        return _FEATURE_BLOCK["text"]
+    try:
+        cov = backtest.feature_coverage(ds)
+        rng = backtest.feature_ranges(ds)
+    except Exception:  # noqa: BLE001 - a summary hiccup must not stop development
+        return ""
+    rows = ["%s %d%% %s" % (n, c, rng.get(n, "")) for n, c in sorted(cov.items()) if c > 0]
+    text = ("\nFeatures populated on THIS market (name, % of snapshots, [p10, p50, p90]) - anything "
+            "listed IS available to filters/models/code; anything missing is not:\n" + "\n".join(rows)
+            ) if rows else ""
+    _FEATURE_BLOCK.update(ds=ds, text=text)
+    return text
+
+
+def _develop_prompt(run: Dict, t: Dict, memory: List[Dict], step: int, ds=None) -> str:
     """One per-thesis refine turn (Pillar 2). Shows ONLY the research fold: this thesis's current
     spec, its research-fold metrics + edge-by-regime, and the user's prior-research LABELS — the
     same leak-free surface the batch rounds use. Never a validation/holdout number."""
@@ -2176,7 +2206,7 @@ def _develop_prompt(run: Dict, t: Dict, memory: List[Dict], step: int) -> str:
         "Develop THIS one thesis in depth before committing it — you may take several steps to get "
         "the mechanism right, OR exit early at any step if it clearly can't work here.\n"
         "Thesis: %s\nCurrent spec: %s\nResearch-fold result (a leak-free sandbox you may study "
-        "freely — NOT the held-out data): %s%s%s\n\n"
+        "freely — NOT the held-out data): %s%s%s%s\n\n"
         "What this market's earlier research found (learn from it; do not repeat failures):\n%s\n\n"
         "This is step %d of at most %d for this thesis — the cap is a ceiling, NOT a target: there "
         "is no reward for staying, and dropping a dead line to hunt a better one elsewhere is the "
@@ -2196,7 +2226,7 @@ def _develop_prompt(run: Dict, t: Dict, memory: List[Dict], step: int) -> str:
         '{\"decision\":\"commit\",\"why\":\"<why it is ready to gate>\"} OR '
         '{\"decision\":\"abandon\",\"why\":\"<why it cannot work here>\"}.'
         % (t["thesis"], json.dumps(t["spec"], separators=(",", ":")),
-           _metrics_line(t["in_sample"]), ("\n" + attr) if attr else "", diag_line,
+           _metrics_line(t["in_sample"]), ("\n" + attr) if attr else "", diag_line, _feature_block(ds),
            _memory_block(memory), step + 1, THESIS_MAX_STEPS)
     ) + THINK_ALOUD
 
@@ -2264,7 +2294,7 @@ def _develop_thesis(h: Dict, run: Dict, ds: backtest.Dataset, partition: Dict, m
             {"phase": "developing", "title": t["title"], "step": step + 2, "max_steps": THESIS_MAX_STEPS})
         try:
             reply = market_data.ask(proposer, _research_system(market),
-                                    [{"role": "user", "content": _develop_prompt(run, t, memory, step)}],
+                                    [{"role": "user", "content": _develop_prompt(run, t, memory, step, ds)}],
                                     _develop_check(market), usage)
         except LLMError:
             break  # fail-open: keep the spec we already have

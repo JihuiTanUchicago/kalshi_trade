@@ -85,6 +85,28 @@ def test_contract_features_use_the_observed_high_only_on_the_settlement_day():
     assert h["fcst_sd_f"] == 2.5 and "fcst_edge" in h
 
 
+def test_contracts_carry_their_strike_and_margins_to_it():
+    """Filters compare a feature with a constant, so a strike-relative rule ("forecast 3F inside
+    YES", "observed high already past the floor") needs the strike as features."""
+    book = _book()
+    ts = _ts("2026-10-23 18:00")
+    f = wf.contract_features(book, "KXHIGHNY-26OCT23-B59.5", 59.0, ts, 0.30, 0.34, observed=61.0)
+    assert f["strike_lo_f"] == 59.0 and f["strike_hi_f"] == 60.0
+    assert f["fcst_yes_margin_f"] == pytest.approx(0.5)    # 60F forecast, YES range 58.5..60.5
+    assert f["obs_yes_margin_f"] == pytest.approx(-0.5)    # already 61F: half a degree past the cap
+    t = wf.contract_features(book, "KXHIGHNY-26OCT23-T64", 64.0, ts, 0.1, 0.12)
+    assert t["strike_lo_f"] == 65.0 and "strike_hi_f" not in t and "obs_yes_margin_f" not in t
+    assert t["fcst_yes_margin_f"] == pytest.approx(60.0 - 64.5)
+    assert all(k in FEATURES for k in ("strike_lo_f", "strike_hi_f", "fcst_yes_margin_f", "obs_yes_margin_f"))
+    # No forecast yet (or a stale one): the strike and the observed margin still come through.
+    late = wf.contract_features(book, "KXHIGHNY-26OCT23-B59.5", 59.0, ts + int(wf.MAX_AGE_H * 3600) * 2,
+                                0.30, 0.34)
+    assert late == {"strike_lo_f": 59.0, "strike_hi_f": 60.0}
+    early = wf.contract_features(wf.ForecastBook([], -5, "max"), "KXHIGHNY-26OCT23-T57", 0.0, ts, 0.1, 0.12,
+                                 observed=58.0)
+    assert early == {"strike_hi_f": 56.0, "obs_yes_margin_f": pytest.approx(-1.5)}
+
+
 def test_low_series_get_a_min_book_and_fcst_low_f():
     assert wf.kind_for_series("KXLOWTCHI") == "min" and wf.kind_for_series("KXHIGHNY") == "max"
     book = wf.ForecastBook([(_ts("2026-10-23 02:30"), date(2026, 10, 23), "NBS", 45.0, 2.0)], -5, "min")

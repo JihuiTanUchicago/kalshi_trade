@@ -140,6 +140,20 @@ def test_feature_ranges_show_where_each_populated_feature_sits():
     assert all(len(v) == 3 and v[0] <= v[1] <= v[2] for v in rng.values())
 
 
+def test_develop_turn_lists_the_populated_features():
+    """The develop turn (where theses get abandoned) sees which features exist and their range."""
+    from app import agent
+    ds = _dataset_with_micro({"ob_imbalance": 0.9})
+    block = agent._feature_block(ds)
+    assert "ob_imbalance 100% [0.9, 0.9, 0.9]" in block and "trades_60s" not in block
+    assert agent._feature_block(ds) is block  # cached per dataset
+    ins = backtest.metrics([], 10.0, 1.0)
+    ins.pop("_curve", None)
+    t = {"thesis": "x", "spec": {}, "in_sample": ins}
+    assert "ob_imbalance 100%" in agent._develop_prompt({}, t, [], 0, ds)
+    assert agent._feature_block(None) == ""
+
+
 def test_fit_spec_is_a_noop_for_gbm_and_already_fitted():
     ds = _dataset_predictive_micro(n_contracts=4)
     gbm = specmod.validate({"side": "yes"})
