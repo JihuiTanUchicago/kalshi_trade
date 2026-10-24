@@ -199,6 +199,11 @@ Your code defines ONE function:
       #   {"ticker": str, "strike": float, "close_ts": int,
       #    "yes_bid": float, "yes_ask": float, "features": {<feature name>: float}} ]} ]}
       #   frames are ascending by ts; features are the same ones listed above.
+      #   Because you see the WHOLE sequence, every derived or lagged quantity is yours to compute:
+      #   the previous mid, a mid or spread change, a threshold crossing, rolling stats, ratios of
+      #   features, one strike's own history, the ladder's other strikes at the same ts. "Only raw
+      #   features are available" or "no time-series history" is never a reason to drop a thesis
+      #   that needs them: write it as code.
       # Return a list PARALLEL to window["frames"]; element i is the book you want HELD at
       # frame i: a list of {"ticker": str, "side": "yes"|"no", "score": float (optional)}.
       # Open = a (ticker, side) you list that you do not already hold (score orders them when
