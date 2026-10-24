@@ -50,17 +50,25 @@ CENT = Decimal("0.01")
 # Anthropic public list price, USD per 1,000,000 tokens (input, output). The REFERENCE rate;
 # the customer is billed list * USAGE_MARGIN (see below). Our Bedrock cost is covered by AWS
 # credits, so list-vs-cost is one margin and USAGE_MARGIN is the markup on top of list.
+# Matched by substring in insertion order, so every point release MUST precede its bare prefix:
+# "opus-4" is a substring of "opus-4-5" and "opus-5" of "opus-5-5", so a bare entry first would
+# mis-price the newer model on a registry miss.
 PRICES: Dict[str, Tuple[Decimal, Decimal]] = {
+    "sonnet-5-5": (Decimal("2"), Decimal("10")),
+    "sonnet-5": (Decimal("2"), Decimal("10")),
+    "sonnet-4-6": (Decimal("3"), Decimal("15")),
     "sonnet-4-5": (Decimal("3"), Decimal("15")),
     "sonnet-4": (Decimal("3"), Decimal("15")),
-    "sonnet-5": (Decimal("3"), Decimal("15")),
+    "haiku-5-5": (Decimal("0.1"), Decimal("0.5")),
     "haiku-4-5": (Decimal("1"), Decimal("5")),
-    "haiku-5": (Decimal("1"), Decimal("5")),
-    # opus-4-5 MUST precede opus-4 — "opus-4" is a substring of "opus-4-5", so a bare
-    # "opus-4" entry would mis-price a 4-5 string at the old $15/$75 on a registry miss.
+    "opus-5-5": (Decimal("4"), Decimal("20")),
+    "opus-5": (Decimal("5"), Decimal("25")),
+    "opus-4-8": (Decimal("5"), Decimal("25")),
+    "opus-4-7": (Decimal("5"), Decimal("25")),
+    "opus-4-6": (Decimal("5"), Decimal("25")),
     "opus-4-5": (Decimal("5"), Decimal("25")),
     "opus-4": (Decimal("15"), Decimal("75")),
-    "opus-5": (Decimal("15"), Decimal("75")),
+    "fable-5": (Decimal("10"), Decimal("50")),
     "3-5-sonnet": (Decimal("3"), Decimal("15")),
     "3-5-haiku": (Decimal("0.8"), Decimal("4")),
 }
