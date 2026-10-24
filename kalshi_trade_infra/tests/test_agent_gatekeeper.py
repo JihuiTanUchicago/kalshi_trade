@@ -222,3 +222,17 @@ def test_underpowered_finalist_spends_no_validation_budget(monkeypatch):
     assert by_title["B"]["result"]["classification"] == "underpowered"
     assert "power" in by_title["B"]["result"]["gate_reason"]
     assert any("NOT TESTED - B" in msg for kind, msg, _ in store.events if kind == "verdict")
+
+
+def test_research_prompt_states_the_detectable_edge():
+    """The proposer is told how big a per-trade edge the gate can confirm on this window, derived
+    from the research window length and the gatekeeper's public constants only."""
+    ds = SimpleNamespace(start_ts=0, end_ts=18 * 86400)
+    block = agent._detectability_block(ds)
+    assert "validation window will span ~8 days" in block
+    assert block.count("trades/day") == len(agent._DETECT_TRADES_PER_DAY)
+    # more trades -> smaller detectable edge
+    import re
+    mdes = [float(m) for m in re.findall(r"needs >= ([0-9.]+)%", block)]
+    assert mdes == sorted(mdes, reverse=True)
+    assert agent._detectability_block(SimpleNamespace(start_ts=5, end_ts=5)) == ""

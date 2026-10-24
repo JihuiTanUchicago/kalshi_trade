@@ -43,6 +43,7 @@ from app import partitions
 from app import repository as repo
 from app import research_repository as rr
 from app import spec as specmod
+from app import stats
 from app.llm import LLMError, ModelFn, Usage, ask_json, claude, current_model
 from app.markets import MARKETS
 from app.agent_market_data import AgentMarketData, DataScope
@@ -749,6 +750,36 @@ underpriced), drift and information flow as the resolution date approaches, and 
 scheduled releases. Ground the mechanism in who misprices this specific event and why.""" + _EVENT_MODEL_NOTE
 
 
+_DETECT_TRADES_PER_DAY = (2, 10, 40, 150)
+
+
+def _detectability_block(ds: backtest.Dataset) -> str:
+    """What edge size is even testable here, so the proposer stops spending trials on rules the
+    gate cannot confirm however real they are. Uses only the research window's length and the
+    gatekeeper's public constants, never a held-out number.
+
+    Validation spans VALIDATION_FRAC/RESEARCH_FRAC of the research window. A per-trade net return
+    is detectable at ~50% power when mean >= z * sd / sqrt(n_val), z the first-test LORD++ level
+    of a fresh stream and sd ~= 1 for a mid-priced binary (a $1/$0 payoff on a 50c stake)."""
+    research_days = max((ds.end_ts - ds.start_ts) / 86400.0, 0.0)
+    if research_days <= 0:
+        return ""
+    val_days = research_days * partitions.VALIDATION_FRAC / partitions.RESEARCH_FRAC
+    z = stats.norm_ppf(1.0 - stats.lord_alpha(stats.lord_init(gatekeeper.ALPHA)))
+    rows = []
+    for per_day in _DETECT_TRADES_PER_DAY:
+        n_val = per_day * val_days
+        mde = z / n_val ** 0.5
+        rows.append("~%d trades/day -> ~%.0f validation trades -> needs >= %.1f%% net per trade "
+                    "(~%.1fc per contract at a 50c price)" % (per_day, n_val, 100 * mde, 50 * mde))
+    return ("DETECTABILITY (what the gate can confirm here): the held-out validation window will span "
+            "~%.0f days. At the best case (first test of a fresh budget, independent trades), a rule needs "
+            "roughly:\n  %s\nRules below these thresholds cannot pass however real they are; positions on "
+            "several strikes of the SAME event are one bet, not several. Prefer mechanisms that either trade "
+            "often or carry a large per-trade edge, and say in each thesis which row of this table it "
+            "targets." % (val_days, "\n  ".join(rows)))
+
+
 def _research_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], count: int) -> str:
     idea = (run.get("prompt") or "").strip() or "Find any durable, fee-surviving edge you can justify."
     brief = _brief()
@@ -782,6 +813,7 @@ def _research_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], count:
 
 Market: {market_label} (spec market "{market}").
 In-sample data you can test on: {summary}
+{detect}
 `feature_coverage_pct` is the non-null coverage of each feature ON THIS MARKET: only build models
 and filters on features that are actually populated here. A feature at or near 0% is empty on this
 market (e.g. order-book/microstructure features on sports/NEAR) — a model or filter that needs it
@@ -813,6 +845,7 @@ mechanism, falsification_criteria, negative_control, null/alt hypotheses, min_sa
         market_label=MARKETS[run["market"]].label,
         market=run["market"],
         summary=json.dumps(_in_sample_summary(ds)),
+        detect=_detectability_block(ds),
         guide=specmod.research_guide(run["market"]),
         memory=_memory_block(memory),
         count=count,
