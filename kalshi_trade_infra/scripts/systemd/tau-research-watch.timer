@@ -1,0 +1,7 @@
+[Unit]
+Description=Research watch every 20 minutes
+[Timer]
+OnCalendar=*-*-* *:07/20:00
+Persistent=true
+[Install]
+WantedBy=timers.target
