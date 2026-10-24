@@ -1818,8 +1818,9 @@ def run_research(
                 market = ckpt["market"]  # already chosen on the first attempt; don't re-spend the pick
             else:
                 checkpoint()
-                market = _pick_market(run, model, usage, log, _researchable_keys(cur),
-                                      _research_history_line(cur, user_id))
+                blocked = _research_blocked_markets(cur, user_id)
+                keys = [k for k in _researchable_keys(cur) if k not in blocked] or _researchable_keys(cur)
+                market = _pick_market(run, model, usage, log, keys, _research_history_line(cur, user_id))
             run = {**run, "market": market}
             repo.set_run_market(cur, run_id, market)
         # A pinned market that has left the live universe (a retired/renamed catalog series) would
@@ -2470,16 +2471,17 @@ RESEARCH_FAIL_WINDOW = timedelta(hours=24)
 RESEARCH_FAIL_LIMIT = int(os.getenv("TAU_RESEARCH_FAIL_LIMIT", "3"))
 
 
-def _market_research_recent(cur, user_id: int, market: str) -> Optional[str]:
+def _market_research_recent(cur, user_id: int, market: str, runs: Optional[List[Dict]] = None) -> Optional[str]:
     """Why the autopilot should NOT open a fresh research line on `market` right now, or None if it's
     clear. Blocks a market that already has an active research run, or one that finished (passed or
     failed) within RESEARCH_MARKET_COOLDOWN, so the review hunts a different market instead of
     re-spamming a dead/running line. Best-effort: any read error returns None (allow) so a context
     hiccup never blocks legitimate research."""
-    try:
-        runs = repo.list_runs(cur, user_id, limit=30)
-    except Exception:
-        return None
+    if runs is None:
+        try:
+            runs = repo.list_runs(cur, user_id, limit=30)
+        except Exception:
+            return None
     now = repo.now_utc()
     recent_fails = 0
     for r in runs:
@@ -2497,6 +2499,29 @@ def _market_research_recent(cur, user_id: int, market: str) -> Optional[str]:
         return ("%s has failed %d times in the last day — it's backed off (chronically bad for "
                 "research); hunt a different market" % (market, recent_fails))
     return None
+
+
+def _cooldown_line(cur, user_id: int) -> str:
+    blocked = _research_blocked_markets(cur, user_id)
+    if not blocked:
+        return "Research cooldown: none, every market is open for a fresh research line."
+    return ("Research cooldown, do NOT propose these markets now (pick others, or omit market to let the "
+            "specialist choose): %s." % ", ".join(sorted(blocked)))
+
+
+def _research_blocked_markets(cur, user_id: int) -> Dict[str, str]:
+    """{market: why} for every market `_market_research_recent` blocks right now, from one read.
+    Shown to the review so it stops proposing them, and kept out of the research pick."""
+    try:
+        runs = repo.list_runs(cur, user_id, limit=30)
+    except Exception:
+        return {}
+    out: Dict[str, str] = {}
+    for m in {r.get("market") for r in runs if r.get("market")}:
+        why = _market_research_recent(cur, user_id, m, runs)
+        if why:
+            out[m] = why
+    return out
 
 
 # Deterministic funnel step: paper costs nothing and the live gate needs a long realistic paper
@@ -2773,9 +2798,18 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         # when a market is named; market=None lets the proposer pick, so there's nothing to dedup yet.
         if market is not None:
             why = _market_research_recent(cur, user_id, market)
-            if why:
+            if why and (not autopilot or why.startswith("a research line is already running")):
                 return ("I didn't start that — %s. I'll hunt a different market instead of "
                         "re-running the same line." % why), None
+            if why:
+                # Prod 2026-10-24: reviews kept proposing the same three cooldown markets every few
+                # minutes, so for an hour no research started at all. On autopilot keep the angle and
+                # let the research specialist pick a market that is off cooldown (run_research
+                # excludes blocked markets from its pick). The active/daily caps above still apply.
+                repo.create_run(cur, user_id, "research", None, None, idea, brief=True,
+                                model=user.get("autopilot_model"))
+                return ("%s is on cooldown (%s), so I started this angle on a market the research "
+                        "specialist picks from the ones off cooldown." % (market, why)), None
         direction = action.get("direction") if action.get("direction") in DIRECTIONS else None
         # brief=True: the co-pilot is DELEGATING, not authoring. `idea` is a high-level angle/lens,
         # and the proposer turns it into the actual hypotheses (see _research_prompt's brief branch).
@@ -2843,6 +2877,7 @@ def _copilot_context(cur, user: Dict) -> str:
             "(its outcome is listed below). Do NOT tell the user research is 'still running'."),
         "Risk controls: drawdown_limit_pct=%s, max_open_positions=%s, max_open_notional=%s."
         % (risk.get("drawdown_limit_pct"), risk.get("max_open_positions"), risk.get("max_open_notional")),
+        _cooldown_line(cur, user["id"]),
         "Execution controls (null = server default): exec_max_book_fraction=%s, exec_max_entry_spread=%s, exec_max_order_notional=%s."
         % (xc.get("exec_max_book_fraction"), xc.get("exec_max_entry_spread"), xc.get("exec_max_order_notional")),
     ]
