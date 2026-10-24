@@ -1,5 +1,9 @@
 # PLAN
 
+## Pooled multi-market research specs — October 24, 2026
+
+A spec may carry `"pool": [<market>...]` (up to 3 extra markets sharing `spec.market`'s cadence, binary only, not combinable with `cross`; capped at 4 markets total because each 1-minute market-month is ~50MB of snapshots and the agents worker has MemoryMax=400M). The same single-contract rule is judged on the POOLED trades of all its markets: merged partition, merged research/validation/holdout datasets and one shared FDR stream (`stream_key`). That gives about N× the validation sample and a √N× smaller detectable edge, which is the main lever now that data (not math) binds the gate. `spec.is_multi_market` replaces `is_cross_contract` where evidence spans markets, which also fixes same-market cross_strike/calendar specs, previously sent to `ensure_merged_partition` with one market (a ValueError). Execution is untouched: a passed pooled rule is an ordinary single-market spec on `spec.market`.
+
 ## Backtest fills on the next bar at the live reservation price — October 24, 2026
 
 `app/backtest.py` now defaults to `FILL_MODEL="next_bar"` for single-contract binaries: a signal computed on bar t fills against bar t+1's quote, an entry is abandoned when that ask exceeds `execution_kernel.reservation_price(fair, min_edge, qty)` (the same cap live and paper enforce since the execution thread's change), fills are capped at displayed top-of-book size (`yes_ask_size` / `yes_bid_size` when the feed has them), and exits sell at the next bar's bid. Code strategies may not pay above their signal price. `TAU_BACKTEST_FILL_MODEL=signal_bar` restores the old optimistic same-quote fill for comparison. Research folds, validation and holdout all use it, so a gatekeeper pass now reflects fills live could actually get.

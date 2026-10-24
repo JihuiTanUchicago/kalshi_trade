@@ -668,7 +668,7 @@ def judge_holdout(cur, experiment_id: int, finalist: dict,
     running the loader inline (unchanged behaviour)."""
     run_load = run_load or (lambda fn: fn())
     spec = finalist.get("spec") or {}
-    cross = specmod.is_cross_contract(spec)
+    cross = specmod.is_multi_market(spec)  # multi-market evidence: cross-market pair or pooled rule
     markets = specmod.involved_markets(spec) if cross else None
     market = specmod.stream_key(spec) if cross else finalist["market"]
     user_id = int(finalist["user_id"])
