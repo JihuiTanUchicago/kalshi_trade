@@ -15,6 +15,8 @@
   - `/api/research/scoreboard`, as `early_exits`.
 - The panel also names paper strategies that were paused in the last 24 hours, with the reason in
   plain words. Before this, a stopped-out strategy just dropped out of the running count.
+- Phone pass at 390px with today's real shapes (two waiting, one paused, the stop line) fits with no
+  sideways scroll. Counts now use thousands separators ("tested 1,708 ideas").
 - First evidence: both of #74's sol15m NO contracts settled YES. Holding would have lost $7.19
   against the realized -$5.66, so the 40% stop saved $1.53 on its first two trades. That is too few
   trades to settle the stop question, which stays Todd's call; the scorecard keeps counting.
