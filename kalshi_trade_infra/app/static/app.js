@@ -3166,6 +3166,7 @@
           <span id="apf-ap-copy"></span>
           <label class="switch"><span class="vh">Autopilot</span><input type="checkbox" id="apf-apswitch"></label>
         </div>
+        <div class="apf-story" id="apf-story" aria-live="polite"></div>
         <dl class="apf-stats" id="apf-stats"></dl>
         <label class="field apf-model"><span>Autopilot model</span>
           <select class="input" id="apf-model" aria-label="Autopilot model"></select></label>
@@ -3243,6 +3244,9 @@
       ? '<b>Autopilot</b>Researches, deploys and tunes paper strategies on its own, and adjusts your risk &amp; execution controls within safe bounds. It never touches live money without the step below.'
       : '<b>Autopilot</b>Off — the agent only proposes (research, deploys, risk/execution/parameter changes); you approve each one.';
     if (!d) return;
+    // Plain-language summary from the server (what it's doing, why no trades yet, what live needs).
+    const story = box.querySelector('#apf-story');
+    if (story) story.innerHTML = (d.story || []).map((line) => `<p>${esc(line)}</p>`).join('');
     const pnl = d.today_live_pnl || 0;
     const stats = box.querySelector('#apf-stats');
     // Count running strategies across every mode, not just paper — a lone demo strategy
@@ -3263,7 +3267,7 @@
     if (stats) {
       stats.dataset.cols = short.length;
       stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `
-      ${d.research ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? esc(d.research.active.join(' · ')) : 'Idle'} · ${d.research.tested_7d} ideas tested, ${d.research.passed_7d} passed this week</dd></div>` : ''}
+      ${d.research ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc([...new Set(d.research.active)].join(' · ')) : 'Not researching right now'} · ${d.research.tested_7d} ideas tested this week, ${d.research.passed_7d} passed</dd></div>` : ''}
       ${d.paper_progress ? `<div class="apf-wide"><dt>Closest to live</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> · ${d.paper_progress.trades}/${d.paper_progress.trades_needed} paper trades · ${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}`;
     }
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;

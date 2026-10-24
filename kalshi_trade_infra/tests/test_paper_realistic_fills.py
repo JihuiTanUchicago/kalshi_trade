@@ -331,8 +331,30 @@ def test_autopilot_status_reports_research_activity(monkeypatch):
              "hypotheses_tried": 50, "strategies_passed": 3}]
     monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, limit=50: runs)
     out = server._research_activity(None, 7)
-    assert out["active"] == [server.MARKETS["nhl_game"].label, "choosing a market"]
+    assert out["active"] == [server.MARKETS["nhl_game"].label, "a market it's still picking"]
     assert (out["tested_7d"], out["passed_7d"], out["runs_7d"]) == (9, 1, 3)
+
+
+def test_autopilot_story_says_what_it_is_doing_in_plain_words():
+    from app import server
+    d = {"autopilot": True, "paper_running": 3, "live_running": 0,
+         "paper_progress": {"trades": 0, "trades_needed": 30, "net_pnl": 0.0},
+         "research": {"active": ["NYC daily high temperature", "NYC daily high temperature", "NHL Game"],
+                      "tested_7d": 8, "passed_7d": 0}}
+    story = server._autopilot_story(d)
+    assert story[0] == "Right now it's researching NYC daily high temperature and NHL Game."
+    assert "tested 8 ideas" in story[1] and "most ideas fail" in story[1]
+    assert "3 strategies are on paper" in story[2] and "none has traded yet" in story[2]
+    assert "%d trades" % server.agent.MIN_REALISTIC_PAPER_TRADES in story[3] and "live autopilot" in story[3]
+    # Progress, idle research, and the off / billing-blocked states.
+    d2 = dict(d, research={"active": [], "tested_7d": 0, "passed_7d": 0},
+              paper_progress={"trades": 4, "trades_needed": 30, "net_pnl": -1.5})
+    story = server._autopilot_story(d2)
+    assert story[0].startswith("Right now it's between research runs")
+    assert "4 of 30 trades and is down $1.50" in story[1]
+    assert server._autopilot_story({"autopilot": False})[0].startswith("Autopilot is off.")
+    assert server._autopilot_story(dict(d, billing_blocked=True)) == []
+    assert "1 strategy is trading real money." in server._autopilot_story(dict(d, live_running=1))
 
 
 # -- Road to live: read-only readiness view ------------------------------------------
