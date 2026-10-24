@@ -139,10 +139,17 @@ def sync_settled_markets(cur, market: Market, min_close: datetime, max_close: Op
     if max_close is not None:
         live["max_close_ts"] = int(max_close.timestamp())
     sources.append(("/markets", live))
+    lo, hi = min_close, max_close
     written = 0
     for path, params in sources:
         for page in _market_pages(path, params):
+            # /historical/markets ignores min/max_close_ts and returns the whole series (back to
+            # 2021 for some), newest first, so trim to the window and stop once past its old end.
+            closes = [parse_iso_to_dt(m.get("close_time")) for m in page]
+            page = [m for m, c in zip(page, closes) if c is not None and c >= lo and (hi is None or c <= hi)]
             written += _upsert_settled(cur, market, page)
+            if any(c is not None and c < lo for c in closes):
+                break
     return written
 
 
@@ -232,9 +239,11 @@ def sync_market_candles(cur, market: Market, limit: int = 2000, deadline: Option
     cur.execute(
         """
         SELECT ticker, strike, open_time, close_time FROM hist_markets
-        WHERE series_ticker=%s AND candles_done=0 ORDER BY close_time DESC LIMIT %s
+        WHERE series_ticker=%s AND candles_done=0 AND close_time >= %s ORDER BY close_time DESC LIMIT %s
         """,
-        (market.series, limit),
+        # Only inside history_days: older rows (e.g. from a since-trimmed /historical page) wait
+        # untouched until the window is raised to reach them.
+        (market.series, _naive_utc(utc_now() - timedelta(days=market.history_days)), limit),
     )
     pending = cur.fetchall()
     cutoff = historical_cutoff()
