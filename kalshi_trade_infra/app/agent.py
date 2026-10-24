@@ -2589,6 +2589,8 @@ def auto_paper_candidates(cur, user: Dict) -> List[str]:
 # forward test. Live is untouched: deploy_live and the manual live path still require a gatekeeper
 # DEPLOYMENT_CANDIDATE, which a probation strategy is not.
 PAPER_PROBATION = os.getenv("APP_PAPER_PROBATION", "0") == "1"
+# Autopilot may not pause a paper deployment younger than this (live pauses are never held back).
+PAPER_MIN_AGE = timedelta(hours=int(os.getenv("APP_PAPER_MIN_AGE_HOURS", "24")))
 PROBATION_MAX_P = float(os.getenv("APP_PROBATION_MAX_P", "0.25"))
 PROBATION_MIN_TRADES = int(os.getenv("APP_PROBATION_MIN_TRADES", "20"))
 PROBATION_MAX_ACTIVE = int(os.getenv("APP_PROBATION_MAX_ACTIVE", "4"))
@@ -2761,6 +2763,14 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         target = "paused" if kind == "pause" else "running"
         if dep["status"] == target:
             return "%s is already %s." % (dep["title"], target), None
+        if (autopilot and kind == "pause" and dep["mode"] == "paper" and dep.get("created_at")
+                and repo.now_utc() - dep["created_at"] < PAPER_MIN_AGE):
+            # Paper risks no money, and the live gate needs a long realistic record. A review once
+            # paused a probation deployment minutes after it started for "zero fills after hours".
+            age_h = (repo.now_utc() - dep["created_at"]).total_seconds() / 3600
+            return ("I left %s running: it has been on paper for only %.1f hours, and paper costs nothing "
+                    "while it builds the record the live gate needs (at least %d hours before I pause it)."
+                    % (dep["title"], age_h, PAPER_MIN_AGE.total_seconds() // 3600), None)
         # Pausing only lowers risk, so autopilot may do it even on live money.
         auto = autopilot and (kind == "pause" or dep["mode"] == "paper")
         pid = repo.create_proposal(cur, user_id, kind, reason, dep["id"], None, "applied" if auto else "pending")
