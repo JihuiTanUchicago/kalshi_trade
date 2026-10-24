@@ -6,7 +6,9 @@ Merged to main (branch `claude/project-thread-76ft6y`), not yet deployed. App pa
 
 Live gate (`agent._proven_on_paper`), additive only: the old 8-trade/not-negative check stays, then 30+ closed realistic round trips (`repo.paper_round_trips`, legacy fills excluded), net P&L > 0 after fees, 48h+ span, and stationary-bootstrap one-sided p ≤ 0.10 on mean P&L per trade. Existing strategies have zero realistic trades, so none can go live until they re-earn it on paper. Tests: `tests/test_paper_realistic_fills.py`, `tests/test_app_autopilot_live.py`. Deploy is pending a bundle that excludes the unreleased perps release.
 
-Next: compare paper fill prices to backtest assumptions per strategy (paper/backtest slippage drift as a gate input), simulate legging for pairs, then research automation.
+Follow-up (PR #27): `paper_evidence` reports paper vs backtest unseen-data P&L per trade (`realization`, informational) and the autopilot review context shows each paper deployment's evidence line. Live decay guard in `engine.loss_guard`: a live deployment net negative after `APP_LIVE_DECAY_MIN_TRADES` (20) closed trades is paused and flattened. Pause-only, never opens or blocks an exit.
+
+Next: simulate legging for paper pairs; feed realization to the research thread's backtest fill-model calibration.
 
 ## Kalshi perps deployment preparation — October 23, 2026, Asia/Shanghai
 

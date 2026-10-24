@@ -703,14 +703,33 @@ def loss_guard(cur, dep: Dict) -> bool:
     worst = float((result.get("out_of_sample") or {}).get("max_drawdown") or 0)
     capital = float(result.get("capital") or dep["spec"]["sizing"]["stake"] * dep["spec"]["sizing"]["max_positions"])
     limit = max(LOSS_GUARD_MULTIPLE * worst, 0.5 * capital)
-    if realized >= -limit:
+    why = None
+    if realized < -limit:
+        why = "Lost $%.2f, more than the $%.2f guard (2x its worst backtest drawdown)." % (-realized, limit)
+    elif dep.get("mode") == "live":
+        why = _live_decay_reason(cur, dep)
+    if why is None:
         return False
-    why = "Lost $%.2f, more than the $%.2f guard (2x its worst backtest drawdown)." % (-realized, limit)
     if repo.set_deployment_status(cur, dep["user_id"], dep["id"], "paused", why):
         repo.add_chat(cur, dep["user_id"], "system", "Paused deployment #%d automatically. %s" % (dep["id"], why))
         repo.create_run(cur, dep["user_id"], "review", dep["market"], None,
                         "Deployment #%d was auto-paused by the loss guard: %s" % (dep["id"], why), dep["id"])
     return True
+
+
+# Live decay guard: a strategy reaches live money only after a statistically positive realistic
+# paper record (agent.paper_evidence). If, after this many closed LIVE trades, live is losing money
+# on average, the edge did not survive real execution: pause it (flatten-on-pause closes it) and let
+# the review decide. Pausing only lowers risk; it never opens, resizes or blocks an exit.
+LIVE_DECAY_MIN_TRADES = int(os.getenv("APP_LIVE_DECAY_MIN_TRADES", "20"))
+
+
+def _live_decay_reason(cur, dep: Dict) -> Optional[str]:
+    n, total = repo.deployment_closed_stats(cur, dep["id"])
+    if n < LIVE_DECAY_MIN_TRADES or total >= 0:
+        return None
+    return ("Live is down $%.2f over its first %d closed trades ($%.2f a trade); its paper edge did not "
+            "survive real execution." % (-total, n, total / n))
 
 
 # -- drawdown + position-stop force-sell -----------------------------------------
