@@ -406,6 +406,11 @@ def build_alerts(now: Dict, prev: Dict, cur) -> Tuple[List[str], List[str]]:
     prev_stale = set(prev.get("stale") or [])
     stale_now = []
     for name, age in (now["writers"] or {}).items():
+        if name == "live_engine" and not any((now.get("enabled") or {}).values()):
+            # The legacy engine is stopped on purpose while no legacy model is live-enabled
+            # (2026-10-24, Todd's call); its heartbeat says nothing then. Enabling any model
+            # brings this check straight back.
+            continue
         expect = WRITER_CADENCE.get(name, 60)
         if age is None or age > expect * STALE_MULTIPLE:
             stale_now.append(name)

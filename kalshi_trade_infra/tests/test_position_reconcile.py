@@ -233,3 +233,27 @@ def test_state_written_before_this_fix_still_loads(monkeypatch):
     prev = dict(PRIMED, position_mismatch=["SHORT/direction mismatch on T1: Kalshi -5, our book 5"])
     urgent, normal, now = tick(prev, SHORT_EXCH, [row("T1", 5)], monkeypatch)
     assert urgent == [] and normal == [] and now["position_mismatch"] == ["T1|short"]
+
+
+# --- the legacy engine's heartbeat matters only while a legacy model can trade ---
+
+def _stale_lines(enabled, monkeypatch):
+    monkeypatch.setattr(la, "api_get_auth", lambda path, params=None: {"market_positions": []})
+    monkeypatch.setattr(la, "engine_errors_since", lambda offset: (offset, []))
+    monkeypatch.setattr(la, "attestation_days_left", lambda: 30.0)
+    now = _now()
+    now["enabled"] = enabled
+    now["writers"] = {"live_engine": 9999.0, "forward_quotes": 9999.0}
+    urgent, _normal = la.build_alerts(now, dict(PRIMED, enabled=enabled), Cur([], None))
+    return [u for u in urgent if u.startswith("STALE")]
+
+
+def test_stopped_legacy_engine_is_not_stale_while_every_model_is_off(monkeypatch):
+    lines = _stale_lines({"random_forest": False, "binary_theory_edge": False}, monkeypatch)
+    assert not any("live_engine" in ln for ln in lines)
+    assert any("forward_quotes" in ln for ln in lines), "other writers are still watched"
+
+
+def test_legacy_engine_heartbeat_returns_once_a_model_is_enabled(monkeypatch):
+    lines = _stale_lines({"random_forest": True, "binary_theory_edge": False}, monkeypatch)
+    assert any("live_engine" in ln for ln in lines)
