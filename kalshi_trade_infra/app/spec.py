@@ -210,7 +210,9 @@ TRAINING A MODEL (ML) — fit once on research, freeze, then predict. If your ed
 LEARNED model (logistic/ridge, a random forest or gradient-boosted tree ensemble, an SVM/kernel,
 a calibration map, engineered features), add a SECOND function:
   def fit(window):
-      # same window shape as signals(). Train your model on THIS research window ONLY and
+      # same window shape as signals(), plus window["results"] = {ticker: "yes"|"no"} for every
+      # contract that settled inside the research window (your training labels; signals() never
+      # gets results). Train your model on THIS research window ONLY and
       # RETURN a JSON-serializable params object. A few numbers can go back directly
       # (coefficients/intercepts/thresholds); a whole fitted estimator that cannot round-trip as
       # numbers (random forest, GBM, ensemble, kernel) goes back pickled+base64'd into a string
