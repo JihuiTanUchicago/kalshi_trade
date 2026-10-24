@@ -18,9 +18,10 @@ StartLimitIntervalSec=300
 StartLimitBurst=10
 KillSignal=SIGTERM
 TimeoutStopSec=30
-# Shares a 2GB box with the house live engine: if anything is OOM-killed it
-# must be this, and the house processes get the CPU first.
-MemoryMax=400M
+# The web box is a 16GB t4g.xlarge. A research run holds a whole 1-minute market's
+# snapshots (~0.5-1GB for a sports series) and two run at once (APP_AGENT_CONCURRENCY).
+# deploy_web.sh applies these caps on every deploy (systemctl set-property).
+MemoryMax=3G
 Nice=5
 
 [Install]

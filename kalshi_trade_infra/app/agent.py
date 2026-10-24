@@ -1740,10 +1740,18 @@ def run_research(
             lookback = _plan_lookback(run, market, model, usage, log)
         ckpt["lookback"] = lookback
         if lookback < MARKETS[market].history_days:
+            # Drop the full set before loading the slice: holding both doubled the peak, and a
+            # 1-minute sports market is ~0.5-1GB of snapshots on its own. A too-thin slice (rare)
+            # pays one more load of the full set instead.
+            ds = None
             narrowed = _load("Loading %s data" % MARKETS[market].label, load, market, lookback,
                              beat=lambda: repo.heartbeat(cur, run_id))
             if len(narrowed.frames) >= MIN_FRAMES:
                 ds = narrowed
+            else:
+                narrowed = None
+                ds = _load("Loading %s data" % MARKETS[market].label, load, market,
+                           beat=lambda: repo.heartbeat(cur, run_id))
         s = ds.summary()
         log("step", "Loaded %s of %s history: %s decision points over %s contracts."
             % (_span_words(ds), MARKETS[market].label, s["decision_points"], s["contracts"]),
