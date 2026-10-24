@@ -268,3 +268,44 @@ def test_paper_round_trips_counts_only_closed_simulated_fills():
     assert "p.mode='paper'" in cur.sql and "LIKE %s" in cur.sql and "GROUP BY p.order_ref" in cur.sql
     assert "status='open'" in cur.sql, "a trade with a slice still open is not a closed round trip"
     assert cur.params == (3, 7, engine.SIM_ORDER_REF_PREFIX + "%")
+
+
+# -- Road to live: read-only readiness view ------------------------------------------
+
+
+def _readiness_ctx(monkeypatch, *, strategy=True, candidate=True, trips=(), live=(True, "")):
+    from app import agent, server
+    monkeypatch.setattr(server.repo, "get_strategy",
+                        lambda cur, uid, sid: ({"id": sid, "status": "passed"} if strategy else None))
+    monkeypatch.setattr(agent, "_is_deployment_candidate", lambda cur, sid: candidate)
+    monkeypatch.setattr(agent.repo, "list_deployments", lambda cur, uid, include_stopped=False: [
+        {"strategy_id": 7, "mode": "paper", "closed_trades": 40, "realized_pnl": 5.0}])
+    monkeypatch.setattr(agent.repo, "paper_round_trips", lambda cur, uid, sid: list(trips))
+    monkeypatch.setattr(agent, "live_autopilot_ok", lambda cur, user: live)
+
+    class C:
+        def cursor(self):
+            return object()
+    return server.Ctx(C(), {"id": 1}, ("7",), {}, {}, None)
+
+
+def test_readiness_reports_progress_and_the_first_blocker(monkeypatch):
+    from app import server
+    out = server.strategy_live_readiness(_readiness_ctx(monkeypatch, trips=[]))
+    assert out["ready"] is False
+    assert out["paper"]["trades"] == 0 and out["paper"]["trades_needed"] == 30
+    assert "realistic fills" in out["blocking"]
+    assert out["paper"]["p_value"] is None
+
+
+def test_readiness_names_the_gatekeeper_first(monkeypatch):
+    from app import server
+    out = server.strategy_live_readiness(_readiness_ctx(monkeypatch, candidate=False))
+    assert out["ready"] is False and "gatekeeper" in out["blocking"]
+
+
+def test_readiness_unknown_strategy_is_404(monkeypatch):
+    from app import server
+    with pytest.raises(server.ApiError) as e:
+        server.strategy_live_readiness(_readiness_ctx(monkeypatch, strategy=False))
+    assert e.value.status == 404

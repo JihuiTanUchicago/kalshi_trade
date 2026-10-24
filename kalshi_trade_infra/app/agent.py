@@ -2097,41 +2097,62 @@ MIN_PAPER_SPAN_HOURS = 48.0       # first entry to last exit: one quiet afternoo
 MAX_PAPER_EDGE_P_VALUE = 0.10     # one-sided stationary-bootstrap p that mean P&L per trade <= 0
 
 
-def _proven_on_paper(cur, user_id: int, strategy_id: int) -> Tuple[bool, str]:
-    """Enforce the research -> PAPER -> live loop in code: a strategy may go live only after it has
-    actually run on paper with enough closed trades and hasn't lost money there. Backs the model's
-    'proven on paper' judgment with a hard rule so autopilot can't jump a fresh pass straight to real money.
+def paper_evidence(cur, user_id: int, strategy_id: int) -> Dict:
+    """The paper -> live evidence for one strategy, check by check, in gate order. `ready` is True
+    only when every check passes; `why` names the FIRST failing check (the gate's refusal text).
 
-    On top of that, the paper record must be on realistic fills and statistically positive: enough
-    round trips, net up after fees, spread over time, and a bootstrap test that rejects 'no edge'.
-    Each check can only refuse; none relaxes the one before it."""
+    The legacy check (8+ closed paper trades of any kind, not net negative) runs first and is kept
+    unchanged. Then, on realistic fills only (the live kernel over SimulatedVenue): enough round
+    trips, net up after fees, spread over time, and a bootstrap test that rejects 'no edge'. Each
+    check can only refuse; none relaxes the one before it. Also feeds the app's Road-to-live view."""
     paper = [d for d in repo.list_deployments(cur, user_id, include_stopped=True)
              if d["strategy_id"] == strategy_id and d["mode"] == "paper"]
-    trades = sum(int(d.get("closed_trades") or 0) for d in paper)
-    realized = sum(float(d.get("realized_pnl") or 0) for d in paper)
-    if trades < MIN_PAPER_TRADES_FOR_LIVE:
-        return False, "it needs %d+ closed paper trades first (has %d)" % (MIN_PAPER_TRADES_FOR_LIVE, trades)
-    if realized < 0:
-        return False, "it's still down $%.2f on paper" % (-realized)
+    legacy_trades = sum(int(d.get("closed_trades") or 0) for d in paper)
+    legacy_pnl = sum(float(d.get("realized_pnl") or 0) for d in paper)
     trips = repo.paper_round_trips(cur, user_id, strategy_id)
-    if len(trips) < MIN_REALISTIC_PAPER_TRADES:
-        return False, ("it needs %d+ closed paper trades on realistic fills first (has %d)"
-                       % (MIN_REALISTIC_PAPER_TRADES, len(trips)))
     pnls = [t["pnl"] for t in trips]
     net = sum(pnls)
-    if net <= 0:
-        return False, "it isn't up on realistic paper fills ($%.2f net after fees)" % net
-    start, end = trips[0].get("opened_at"), max((t.get("closed_at") for t in trips if t.get("closed_at")), default=None)
-    span_h = (end - start).total_seconds() / 3600.0 if start and end else 0.0
-    if span_h < MIN_PAPER_SPAN_HOURS:
-        return False, ("its paper record covers only %.0fh; it needs %.0fh+ so one market mood can't carry it"
-                       % (span_h, MIN_PAPER_SPAN_HOURS))
-    from app import stats  # local: numpy-backed, only needed on this rare path
-    p_value = float(stats.stationary_bootstrap_ci(pnls, stat="mean", alpha=0.10)["p_value"])
-    if p_value > MAX_PAPER_EDGE_P_VALUE:
-        return False, ("its paper edge isn't statistically clear yet (p=%.2f, needs %.2f or lower)"
-                       % (p_value, MAX_PAPER_EDGE_P_VALUE))
-    return True, ""
+    span_h = 0.0
+    if trips:
+        start = trips[0].get("opened_at")
+        end = max((t.get("closed_at") for t in trips if t.get("closed_at")), default=None)
+        if start and end:
+            span_h = max(0.0, (end - start).total_seconds() / 3600.0)
+    p_value = None
+    if len(pnls) >= MIN_REALISTIC_PAPER_TRADES:
+        from app import stats  # local: numpy-backed, only needed once there is enough evidence
+        p_value = float(stats.stationary_bootstrap_ci(pnls, stat="mean", alpha=0.10)["p_value"])
+    checks = [
+        ("legacy_trades", legacy_trades >= MIN_PAPER_TRADES_FOR_LIVE,
+         "it needs %d+ closed paper trades first (has %d)" % (MIN_PAPER_TRADES_FOR_LIVE, legacy_trades)),
+        ("legacy_pnl", legacy_pnl >= 0, "it's still down $%.2f on paper" % (-legacy_pnl)),
+        ("realistic_trades", len(trips) >= MIN_REALISTIC_PAPER_TRADES,
+         "it needs %d+ closed paper trades on realistic fills first (has %d)" % (MIN_REALISTIC_PAPER_TRADES, len(trips))),
+        ("net_pnl", net > 0, "it isn't up on realistic paper fills ($%.2f net after fees)" % net),
+        ("span", span_h >= MIN_PAPER_SPAN_HOURS,
+         "its paper record covers only %.0fh; it needs %.0fh+ so one market mood can't carry it"
+         % (span_h, MIN_PAPER_SPAN_HOURS)),
+        ("edge", p_value is not None and p_value <= MAX_PAPER_EDGE_P_VALUE,
+         "its paper edge isn't statistically clear yet (p=%s, needs %.2f or lower)"
+         % ("n/a" if p_value is None else "%.2f" % p_value, MAX_PAPER_EDGE_P_VALUE)),
+    ]
+    failing = next((why for _k, ok, why in checks if not ok), "")
+    return {
+        "ready": not failing, "why": failing,
+        "checks": {k: ok for k, ok, _why in checks},
+        "trades": len(trips), "trades_needed": MIN_REALISTIC_PAPER_TRADES,
+        "net_pnl": round(net, 4), "span_hours": round(span_h, 1), "span_needed_hours": MIN_PAPER_SPAN_HOURS,
+        "p_value": None if p_value is None else round(p_value, 4), "p_value_needed": MAX_PAPER_EDGE_P_VALUE,
+        "legacy_trades": legacy_trades, "legacy_pnl": round(legacy_pnl, 4),
+    }
+
+
+def _proven_on_paper(cur, user_id: int, strategy_id: int) -> Tuple[bool, str]:
+    """Enforce the research -> PAPER -> live loop in code: a strategy may go live only after its
+    paper record clears every check in `paper_evidence`. Backs the model's 'proven on paper'
+    judgment with a hard rule so autopilot can't jump a fresh pass straight to real money."""
+    ev = paper_evidence(cur, user_id, strategy_id)
+    return ev["ready"], ev["why"]
 
 
 def _is_deployment_candidate(cur, strategy_id: int) -> bool:
