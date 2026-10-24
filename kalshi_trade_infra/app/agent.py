@@ -25,6 +25,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import math
 import os
 import re
 import threading
@@ -783,8 +784,9 @@ re-prices the line before settlement.""" + _EVENT_MODEL_NOTE
         return head + """
 This is a daily weather binary (e.g. "high temperature >= X"): YES pays $1 if the observed daily
 figure clears the threshold. It settles on the published observation, so there is NO tradable spot
-series, strike-vs-spot model, or vol feature — it trades on the contract's own price and any
-order-book features present. Angles worth a mechanism: the market's implied probability vs the
+series or vol feature. It trades on the contract's own price plus built-in weather features: the
+strike (strike_lo_f/strike_hi_f), the station's observed extreme so far (obs_*), the NWS forecast
+and its probability for this contract (fcst_*), and margins to the YES range. Angles worth a mechanism: the market's implied probability vs the
 public forecast and its diurnal update, seasonal/climatological base rates for the date, favorite-
 longshot bias on near-certain vs tail thresholds, and drift as the settlement day approaches.""" + _EVENT_MODEL_NOTE
     # Any other outcome-settled catalog binary (Economics, Companies, Health, World, …).
@@ -898,6 +900,142 @@ def _calibration_block(ds: backtest.Dataset) -> str:
             % (verdict, "\n  ".join(rows)))
 
 
+_FV_BANDS_H = ((24.0, None, ">24h"), (12.0, 24.0, "12-24h"), (4.0, 12.0, "4-12h"), (0.0, 4.0, "<4h"))
+_FV_MIN_EVENTS = 10   # per half: fewer events than this and a band says nothing
+_FV_MIN_EDGE = 0.02   # the probe trades only when its probability clears the quote + fee by 2c
+_FV_LEAD_SE = 2.0
+
+
+def _is_fair_value(name: str) -> bool:
+    """A built-in external probability for the contract's YES (weather fcst_p_yes[_cal], sports
+    book_p_yes): the features a market's own mid can be tested against."""
+    return name.endswith("_p_yes") or name.endswith("_p_yes_cal")
+
+
+def _logit(p: float) -> float:
+    p = min(max(p, 0.01), 0.99)
+    return math.log(p / (1.0 - p))
+
+
+def _fv_probe(rows: List[Tuple], fee_per) -> Optional[Dict]:
+    """Walk-forward test of one fair-value feature in one time band. rows are (first_ts, event, bid,
+    ask, p, y), one per settled contract. The earlier half of the EVENTS fits y ~ logit(mid) +
+    logit(p); the later half scores it. Strikes of one event settle together, so the SE is
+    clustered by event."""
+    start: Dict[str, int] = {}
+    for r in rows:
+        start[r[1]] = min(start.get(r[1], r[0]), r[0])
+    events = sorted(start, key=start.get)
+    if len(events) < 2 * _FV_MIN_EVENTS:
+        return None
+    train_ev = set(events[:len(events) // 2])
+    train = [r for r in rows if r[1] in train_ev]
+    test = [r for r in rows if r[1] not in train_ev]
+    X = [[_logit((r[2] + r[3]) / 2.0), _logit(r[4])] for r in train]
+    coef, b0 = stats.fit_logistic(X, [r[5] for r in train], l2=1.0)
+
+    def blend(r):
+        z = b0 + coef[0] * _logit((r[2] + r[3]) / 2.0) + coef[1] * _logit(r[4])
+        return 1.0 / (1.0 + math.exp(-max(min(z, 30.0), -30.0)))
+
+    def brier(prob):
+        return sum((prob(r) - r[5]) ** 2 for r in test) / len(test)
+
+    out = {"n": len(test), "events": len(events) - len(train_ev),
+           "brier_mid": brier(lambda r: (r[2] + r[3]) / 2.0), "brier_fv": brier(lambda r: r[4]),
+           "brier_blend": brier(blend), "w_mid": coef[0], "w_fv": coef[1]}
+    for label, prob in (("raw", lambda r: r[4]), ("blend", blend)):
+        by_ev: Dict[str, List[float]] = defaultdict(list)
+        for r in test:
+            q, bid, ask, y = prob(r), r[2], r[3], r[5]
+            no_px = 1.0 - bid
+            if q - ask - fee_per(_CALIB_FEE_QTY, ask) >= _FV_MIN_EDGE:
+                by_ev[r[1]].append(y - ask - fee_per(_CALIB_FEE_QTY, ask))
+            elif (1.0 - q) - no_px - fee_per(_CALIB_FEE_QTY, no_px) >= _FV_MIN_EDGE:
+                by_ev[r[1]].append((1.0 - y) - no_px - fee_per(_CALIB_FEE_QTY, no_px))
+        n = sum(len(v) for v in by_ev.values())
+        mean = sum(sum(v) for v in by_ev.values()) / n if n else 0.0
+        se = (sum((sum(v) - len(v) * mean) ** 2 for v in by_ev.values()) ** 0.5 / n
+              if len(by_ev) > 1 else float("inf"))
+        out[label] = (n, len(by_ev), mean, se)
+    return out
+
+
+_FV_BLOCK: Dict[str, object] = {"ds": None, "text": ""}
+
+
+def _fair_value_block(ds: backtest.Dataset) -> str:
+    """Cached per dataset (every proposing round of a run asks again); never fails a run."""
+    if _FV_BLOCK["ds"] is ds:
+        return _FV_BLOCK["text"]
+    try:
+        text = _fair_value_table(ds)
+    except Exception:
+        _LOG.exception("fair-value block failed; prompting without it")
+        text = ""
+    _FV_BLOCK.update(ds=ds, text=text)
+    return text
+
+
+def _fair_value_table(ds: backtest.Dataset) -> str:
+    """Does a built-in fair value (weather forecast, sportsbook odds) know anything the market's own
+    mid doesn't? Measured on the RESEARCH window only, per time-to-close band, at each settled
+    contract's first quote in the band: a walk-forward logistic blend of mid + fair value, fit on
+    the earlier events and scored on the later ones, plus the net P&L of buying wherever that blend
+    (or the raw fair value) beats the quote by 2c after the fee. Descriptive, like the calibration
+    table: it points the proposer at the band where the information is, or says there is none."""
+    from data_pipeline.kalshi_fees import taker_fee_per_contract_dollars as fee_per
+
+    first: Dict[Tuple[str, str, str], Tuple] = {}
+    for ts, snaps in getattr(ds, "frames", None) or []:
+        for sn in snaps:
+            tk = sn.contract.ticker
+            y = ds.results.get(tk)
+            t = sn.features.get("tte_min")
+            if y not in ("yes", "no") or t is None or t < 0 or sn.yes_bid is None or sn.yes_ask is None:
+                continue
+            if not 0.0 <= sn.yes_bid < sn.yes_ask <= 1.0:
+                continue
+            band = next(lab for lo, hi, lab in _FV_BANDS_H if t / 60.0 >= lo and (hi is None or t / 60.0 < hi))
+            for name, v in sn.features.items():
+                if v is None or not _is_fair_value(name):
+                    continue
+                first.setdefault((name, band, tk), (ts, tk.rsplit("-", 1)[0], sn.yes_bid, sn.yes_ask,
+                                                    float(v), 1.0 if y == "yes" else 0.0))
+    groups: Dict[Tuple[str, str], List[Tuple]] = defaultdict(list)
+    for (name, band, _tk), row in first.items():
+        groups[(name, band)].append(row)
+    lines, leads = [], []
+    for name in sorted({k[0] for k in groups}):
+        for _lo, _hi, band in _FV_BANDS_H:
+            got = _fv_probe(groups.get((name, band), []), fee_per)
+            if got is None:
+                continue
+            parts = []
+            for label in ("raw", "blend"):
+                n, n_ev, mean, se = got[label]
+                lead = n and mean > _FV_LEAD_SE * se
+                if lead:
+                    leads.append("%s %s %s" % (name, band, label))
+                parts.append("%s: %d trades/%d events %+.1fc +-%.1fc%s" % (
+                    label, n, n_ev, 100 * mean, 100 * se, " LEAD" if lead else "") if n else "%s: no trades" % label)
+            lines.append("%-15s %-6s n=%4d (%d events)  Brier mid %.3f  %s %.3f  blend %.3f (w_mid %.2f, "
+                         "w_fv %.2f)  |  %s" % (
+                             name, band, got["n"], got["events"], got["brier_mid"], name, got["brier_fv"],
+                             got["brier_blend"], got["w_mid"], got["w_fv"], "  ".join(parts)))
+    if not lines:
+        return ""
+    verdict = ("LEAD in: %s. Build on those bands; the others are noise." % "; ".join(leads) if leads else
+               "NO band clears %gx its +- out of sample: on this window the mid already prices these fair "
+               "values. A thesis that just trades the fair value against the mid needs a mechanism the "
+               "table cannot see (a feature it lacks, a narrower condition) and should say which." % _FV_LEAD_SE)
+    return ("FAIR VALUE vs MID on the research window (first quote per contract per time-to-close band; "
+            "blend = logistic of logit(mid) + logit(fair value) fit on the earlier half of events, scored on "
+            "the later half; trades where the probability beats the quote by %dc after the fee, net per "
+            "contract, SE clustered by event). %s\n  %s"
+            % (round(100 * _FV_MIN_EDGE), verdict, "\n  ".join(lines)))
+
+
 def _research_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], count: int) -> str:
     idea = (run.get("prompt") or "").strip() or "Find any durable, fee-surviving edge you can justify."
     brief = _brief()
@@ -967,7 +1105,7 @@ mechanism, falsification_criteria, negative_control, null/alt hypotheses, min_sa
         market=run["market"],
         summary=json.dumps(_in_sample_summary(ds)),
         detect=_detectability_block(ds),
-        calibration=_calibration_block(ds),
+        calibration="\n".join(b for b in (_calibration_block(ds), _fair_value_block(ds)) if b),
         guide=specmod.research_guide(run["market"]),
         memory=_memory_block(memory),
         count=count,

@@ -1,5 +1,17 @@
 # PLAN
 
+## Fair value vs mid: does the forecast know anything the market doesn't? (2026-10-24)
+
+- Weather run 2613 spent its theses on forecast-vs-market ideas with no evidence the forecast adds
+  anything to the mid; execution measured the mid's Brier at .067 against the calibrated forecast's .102
+  over a year of NYC. The research prompt now carries `agent._fair_value_block`: for every built-in
+  fair-value feature (`*_p_yes`, `*_p_yes_cal`: weather forecast, sportsbook odds) and time-to-close
+  band (>24h, 12-24h, 4-12h, <4h), a logistic blend of logit(mid) + logit(fair value) is fit on the
+  earlier half of the research window's events and scored on the later half. It reports Brier and the
+  net P&L of buying wherever the raw or blended probability beats the quote by 2c after the fee, with SE
+  clustered by event. Research window only; descriptive, like the calibration table.
+- Remaining: if every band says NO, the run could skip the forecast angle entirely and save the spend.
+
 ## Window loads bounded for huge one-minute series (2026-10-24)
 - Run 2560 (kxncaafspread, 18,471 one-minute contracts) failed its 180s load step; the catalog now
   has ~1,000 series, so more of these. Every partition window now keeps its most recent whole events
