@@ -365,3 +365,27 @@ def test_code_window_exposes_quotes_both_at_top_level_and_in_features():
     assert got["yes_bid"] == got["features"]["yes_bid"] == 0.41
     assert got["yes_ask"] == got["features"]["yes_ask"] == 0.44
     assert got["features"]["tte_min"] == 15.0 and "yes_bid" not in snap.features  # snapshot untouched
+
+
+def test_calibration_prices_each_contract_at_its_first_quote_in_the_cell():
+    """Contracts sliding to NO through 9c..1c average ~5c, but a rule entering when the ask first
+    drops under 10c pays 9c. Priced at the average, a 7% YES rate looks like a buy-YES lead; priced
+    at first touch (what a rule actually pays) it is a loss. The block must show the loss."""
+    from datetime import datetime, timezone
+    from app.markets import Contract, Snapshot
+    frames, results = [], {}
+    for i in range(400):
+        close = datetime.fromtimestamp(1_700_000_000 + i * 900 + 900, tz=timezone.utc)
+        c = Contract("T%d" % i, 100.0, close)
+        yes = i % 100 < 7
+        results[c.ticker] = "yes" if yes else "no"
+        path = [0.30] * 5 + ([0.09, 0.30, 0.60] if yes else [0.09 - 0.01 * k for k in range(9)])
+        for k, ask in enumerate(path):
+            ts = 1_700_000_000 + i * 900 + k * 60
+            tte = 30.0 - k if k < 5 else 9.0 - 0.5 * (k - 5)   # the whole slide is in the late band
+            frames.append((ts, [Snapshot(c, ts, max(ask - 0.01, 0.0), ask, {"tte_min": tte})]))
+    block = agent._calibration_block(SimpleNamespace(frames=frames, results=results, start_ts=0, end_ts=1))
+    late = [ln for ln in block.splitlines() if ln.strip().startswith("late  ask  0-10c")]
+    assert len(late) == 1 and "avg ask 0.09" in late[0]
+    assert float(late[0].split("buy-YES net")[1].split()[0].rstrip("c")) < 0
+    assert "LEAD (buy-YES)" not in late[0]

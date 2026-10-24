@@ -796,11 +796,14 @@ def _calibration_block(ds: backtest.Dataset) -> str:
     """Where the market's own prices have been mis-calibrated, net of the taker fee, on the RESEARCH
     window only (never validation or holdout), so the proposer aims at measured mispricing (favorite-
     longshot, terminal pinning) instead of guessing. Each settled contract counts once per (time
-    band, price bin) at its average quote there, so a contract's 15 one-minute frames are one
-    observation, not 15. Descriptive only: whatever it suggests still has to pass the held-out gate."""
+    band, price bin), priced at its FIRST quote in that cell: what a rule that enters when the
+    condition turns true and holds to settlement actually pays. (An average quote understates it:
+    a contract sliding to NO through 9c..1c averages ~5c but a rule buys it at 9c, which printed a
+    +1.1c "lead" on btc15m cheap YES that every backtest of it lost.) Descriptive only: whatever it
+    suggests still has to pass the held-out gate."""
     from data_pipeline.kalshi_fees import taker_fee_per_contract_dollars as fee_per
 
-    cells: Dict[Tuple[str, int, str], List[float]] = defaultdict(lambda: [0.0, 0.0, 0])
+    cells: Dict[Tuple[str, int, str], Tuple[float, float]] = {}
     max_tte: Dict[str, float] = {}
     for _, snaps in ds.frames:
         for sn in snaps:
@@ -815,13 +818,10 @@ def _calibration_block(ds: backtest.Dataset) -> str:
                 continue
             band = "late" if t <= max_tte[tk] / 3.0 else "early"
             b = next(i for i in range(len(_CALIB_BINS) - 1) if sn.yes_ask < _CALIB_BINS[i + 1])
-            c = cells[(band, b, tk)]
-            c[0] += sn.yes_ask
-            c[1] += sn.yes_bid
-            c[2] += 1
+            cells.setdefault((band, b, tk), (sn.yes_ask, sn.yes_bid))  # frames ascend: first touch
     agg: Dict[Tuple[str, int], List] = defaultdict(list)
-    for (band, b, tk), (ask, bid, k) in cells.items():
-        agg[(band, b)].append((ask / k, bid / k, 1.0 if ds.results[tk] == "yes" else 0.0))
+    for (band, b, tk), (ask, bid) in cells.items():
+        agg[(band, b)].append((ask, bid, 1.0 if ds.results[tk] == "yes" else 0.0))
     rows, leads = [], 0
     for band in ("early", "late"):
         for b in range(len(_CALIB_BINS) - 1):
@@ -851,8 +851,9 @@ def _calibration_block(ds: backtest.Dataset) -> str:
                "NO cell clears %gx its +- after fees: this market's prices are calibrated within noise. "
                "Do NOT propose unconditional favorite-longshot / price-recalibration theses "
                "here; they cannot beat the fee on this market." % _CALIB_LEAD_SE)
-    return ("CALIBRATION on the research window (per settled contract; 'late' = last third of its life; "
-            "net = settled rate minus the quote you would pay, after the taker fee). %s Descriptive only:\n  %s"
+    return ("CALIBRATION on the research window (per settled contract, at its FIRST quote in each cell, "
+            "i.e. what a rule entering on that condition pays; 'late' = last third of its life; net = "
+            "settled rate minus that quote, after the taker fee). %s Descriptive only:\n  %s"
             % (verdict, "\n  ".join(rows)))
 
 

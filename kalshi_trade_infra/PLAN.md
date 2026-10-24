@@ -1,5 +1,12 @@
 # PLAN
 
+## Calibration table priced at first touch (2026-10-24)
+- Run 2541 (btc15m) read the table's "late cheap YES +1.1c" lead and spent ~10 theses on it; every one
+  lost (e.g. 3,285 pooled trades, -$1.82/trade). Cause: each contract was priced at its AVERAGE quote in
+  a cell, but a rule enters on first touch (a contract sliding to NO through 9c..1c averages ~5c, a rule
+  pays 9c). Cells are now priced at the first quote in the cell. Test shows old code printed +1.3c on
+  data where first-touch is negative.
+
 ## fit() finally gets its training labels (2026-10-24)
 - Bug: code strategies' fit(window) never received settlement outcomes, though SPEC_GUIDE's own
   recalibration example reads window["results"]. Every supervised code model trained on all-NO labels
