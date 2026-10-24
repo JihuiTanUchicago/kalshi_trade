@@ -27,6 +27,10 @@ except ImportError:  # pragma: no cover - py<3.9
 NEW_YORK = ZoneInfo("America/New_York") if ZoneInfo else None
 
 
+# Per-second research twins open once this much tick archive exists (3 days = ~288 15-min contracts).
+TICK_MIN_DAYS = float(os.getenv("TAU_TICK_MIN_DAYS", "3"))
+
+
 @dataclass(frozen=True)
 class Market:
     key: str
@@ -67,6 +71,20 @@ class Market:
     @property
     def decision_seconds(self) -> int:
         return self.decision_secs or self.candle_minutes * 60
+
+    def tick_history_short(self, now_ts: Optional[float] = None) -> Optional[str]:
+        """Why a per-second (source="ticks") market is not worth a research run yet, or None. A run
+        on a few hours of archive splits a handful of contracts into research/validation/holdout,
+        so it can only produce noise; the twin opens once TICK_MIN_DAYS of seconds exist."""
+        if self.source != "ticks":
+            return None
+        now_ts = datetime.now(timezone.utc).timestamp() if now_ts is None else now_ts
+        days = (now_ts - self.data_from_ts) / 86400.0
+        if days >= TICK_MIN_DAYS:
+            return None
+        return ("%s has %.1f of the %g days of per-second history research needs (archive started %s)"
+                % (self.label, max(days, 0.0), TICK_MIN_DAYS,
+                   datetime.fromtimestamp(self.data_from_ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%MZ")))
 
     def is_target_event(self, close_time: datetime) -> bool:
         if self.close_hour_et is None:

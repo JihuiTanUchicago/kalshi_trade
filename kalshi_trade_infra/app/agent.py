@@ -727,6 +727,8 @@ def set_focus_action(cur, user: Dict, action: Dict, run_kind: str) -> str:
 
 def research_unavailable_reason(market: Optional[str]) -> Optional[str]:
     """Reject disabled native research before a manual/agent action queues paid work."""
+    if market in MARKETS and MARKETS[market].tick_history_short():
+        return MARKETS[market].tick_history_short()
     if market in MARKETS and MARKETS[market].kind == "perpetual":
         from app.kalshi_perps_data import Config
         from app.market_data_common import MarketDataError

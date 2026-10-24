@@ -365,7 +365,7 @@ def _researchable_markets(cur) -> List[Dict]:
                 continue
             has_data = True
         else:
-            has_data = m.series in ready_series
+            has_data = m.series in ready_series and m.tick_history_short() is None
         out.append({"key": m.key, "label": m.label, "series": m.series,
                     "category": m.category, "deployable": m.deployable, "has_data": has_data,
                     **({"kind": "perpetual", "research_only": True} if m.kind == "perpetual" else {})})
@@ -2264,34 +2264,44 @@ def research_context(ctx: Ctx):
 def research_scoreboard(ctx: Ctx):
     """How the user's research loop is doing: funnel, spend, efficiency and why ideas die, in total,
     per market family and per day (app/rsi.py). ?days= (1-60, default 7)."""
-    from app import rsi
     try:
         days = min(max(int(ctx.query.get("days") or 7), 1), 60)
     except ValueError:
         days = 7
-    from app import rsi_playbook
-    board = rsi.load_scoreboard(ctx.cur, days, ctx.uid)
+    uid = ctx.uid
+    # 4.4s p50 on prod (every run's verdict events re-read and re-classified per request), so the
+    # board is memoized per (user, days) and refreshed in the background: at most a minute stale.
+    return _shared("rsi_board:%s:%s" % (uid, days), SCOREBOARD_TTL_S,
+                   lambda cur: _research_scoreboard(cur, uid, days), ctx.cur)
+
+
+SCOREBOARD_TTL_S = 60.0
+
+
+def _research_scoreboard(cur, uid: int, days: int) -> Dict:
+    from app import rsi, rsi_playbook
+    board = rsi.load_scoreboard(cur, days, uid)
     try:
-        board["autopilot"] = agent.autopilot_scorecard(board, agent.focus_tokens(repo.get_user(ctx.cur, ctx.uid)))
+        board["autopilot"] = agent.autopilot_scorecard(board, agent.focus_tokens(repo.get_user(cur, uid)))
     except Exception:  # noqa: BLE001 - informational
         board["autopilot"] = None
     board["cards"] = board["cards"][-50:]
-    board["playbooks"] = rsi_playbook.summary(ctx.cur, ctx.uid)
+    board["playbooks"] = rsi_playbook.summary(cur, uid)
     from app import rsi_scout
     try:
-        board["scout"] = rsi_scout.ranking(ctx.cur, 10)
+        board["scout"] = rsi_scout.ranking(cur, 10)
     except Exception:  # noqa: BLE001 - the scan table may not exist before the first deploy's schema run
         board["scout"] = []
     try:
-        board["paper"] = rsi.paper_outcomes(ctx.cur, ctx.uid)
+        board["paper"] = rsi.paper_outcomes(cur, uid)
     except Exception:  # noqa: BLE001 - informational; the research half of the board still renders
         board["paper"] = None
     try:
-        board["early_exits"] = repo.early_exit_scorecard(ctx.cur, ctx.uid)
+        board["early_exits"] = repo.early_exit_scorecard(cur, uid)
     except Exception:  # noqa: BLE001 - informational
         board["early_exits"] = None
     from app import rsi_repair
-    board["data_requests"] = rsi_repair.summary(ctx.cur, ctx.uid)
+    board["data_requests"] = rsi_repair.summary(cur, uid)
     return board
 
 

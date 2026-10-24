@@ -111,11 +111,18 @@ def test_scoreboard_endpoint_is_scoped_to_the_user_and_clamps_days(monkeypatch):
     from app import rsi_playbook
     cur = _Cur()
     monkeypatch.setattr(rsi_playbook, "summary", lambda c, uid: [{"family": "weather-high", "version": 1}])
+    monkeypatch.setattr(server, "_SHARED", {})
     ctx = SimpleNamespace(cur=cur, uid=2, query={"days": "999"})
     board = server.research_scoreboard(ctx)
     assert board["days_back"] == 60 and board["total"]["runs"] == 1
     assert board["playbooks"] == [{"family": "weather-high", "version": 1}]
     assert cur.sql[0][1] == [60, 2]
+    # memoized per (user, days): a second request inside the TTL reads nothing (prod p50 was 4.4s)
+    n = len(cur.sql)
+    assert server.research_scoreboard(ctx) is board and len(cur.sql) == n
+    other = _Cur()
+    server.research_scoreboard(SimpleNamespace(cur=other, uid=3, query={"days": "60"}))
+    assert other.sql and other.sql[0][1] == [60, 3]          # another user is never served user 2's board
     assert any(r[0] == "GET" and r[1].pattern == "^/api/research/scoreboard$" and r[3] for r in server.ROUTES)
 
 
