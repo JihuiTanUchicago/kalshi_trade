@@ -2403,6 +2403,7 @@
             ${kUrl ? `<p class="hint" style="margin-top:12px"><a href="${kUrl}" target="_blank" rel="noopener">Open ${esc(marketShort(s.market))} on Kalshi ↗</a></p>` : ''}
           </section>
           <section class="panel"><h3>Gates</h3><div id="gates">${gatesHtml(s.gates)}</div></section>
+          ${!restricted && s.status === 'passed' ? `<section class="panel" id="road-live"><h3>Road to live</h3><div id="road-live-body"><p class="hint">Checking…</p></div></section>` : ''}
           ${!perpetual && s.status !== 'rejected' ? `<section class="panel" id="whatif"><h3>Sensitivity</h3>
 
             <div class="dial"><div class="top"><label class="label" for="wf">Fees</label><output id="wfo">1.0×</output></div><input type="range" id="wf" min="0" max="3" step="0.25" value="1"></div>
@@ -2448,6 +2449,30 @@
           }
         }
       } catch (e) { /* demo replay is best-effort; leave the sim-only chart */ }
+    })();
+    // Road to live: the exact gates the deploy paths enforce (gatekeeper, realistic paper record,
+    // live autopilot), with progress. Best-effort and fetched after the page, like the dev curve.
+    if (root.querySelector('#road-live-body')) (async () => {
+      try {
+        const r = await api('/api/strategies/' + s.id + '/live-readiness');
+        const p = r.paper, c = p.checks;
+        const pv = p.p_value == null ? '—' : p.p_value.toFixed(2);
+        const rows = [
+          { name: 'Gatekeeper cleared', threshold: 'holdout + diversification', ok: r.deployment_candidate, value: r.deployment_candidate ? 'yes' : 'no' },
+          { name: 'Realistic paper trades', threshold: p.trades_needed + '+', ok: c.realistic_trades, value: p.trades + ' / ' + p.trades_needed },
+          { name: 'Net after fees', threshold: 'above $0', ok: c.net_pnl, value: p.net_pnl },
+          { name: 'Paper track record', threshold: p.span_needed_hours + 'h+', ok: c.span, value: Math.round(p.span_hours) + 'h' },
+          { name: 'Edge is not luck', threshold: 'p ≤ ' + p.p_value_needed.toFixed(2), ok: c.edge, value: pv },
+          { name: 'Live autopilot', threshold: 'on, key, under daily loss', ok: r.live_autopilot.ok, value: r.live_autopilot.ok ? 'ready' : 'off' },
+        ];
+        const body = root.querySelector('#road-live-body');
+        if (body) body.innerHTML = gatesHtml(rows)
+          + (p.realization != null ? `<p class="hint" style="margin-top:6px;font-variant-numeric:tabular-nums">Paper earns <b>${Math.round(p.realization * 100)}%</b> of the backtest's unseen-data P&amp;L per trade.</p>` : '')
+          + `<p class="hint" style="margin-top:6px">${r.ready ? 'Every gate is clear. Autopilot may move this to live money within your caps.' : 'Blocked: ' + esc(r.blocking) + '.'} Paper counts only fills simulated against the live order book.</p>`;
+      } catch (e) {
+        const body = root.querySelector('#road-live-body');
+        if (body) body.innerHTML = '<p class="hint">Live readiness is unavailable right now.</p>';
+      }
     })();
     const depPaper = root.querySelector('#dep-paper');
     if (depPaper) depPaper.onclick = () => busy(depPaper, async () => {
@@ -3281,6 +3306,7 @@
       <div><dt>Running</dt><dd>${runTotal ? runParts.join(' · ') : 'None'}</dd></div>
       <div><dt>Live P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd></div>
       <div><dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd></div>
+      ${d.paper_progress ? `<div><dt>Closest to live</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> · ${d.paper_progress.trades}/${d.paper_progress.trades_needed} paper trades · ${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}
       ${d.last_review_at ? `<div><dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd></div>` : ''}`;
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
     const gates = box.querySelector('#apf-gates'); if (gates) gates.textContent = apLiveBlock(d);

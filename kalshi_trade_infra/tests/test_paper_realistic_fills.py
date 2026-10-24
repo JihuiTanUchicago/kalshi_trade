@@ -270,6 +270,54 @@ def test_paper_round_trips_counts_only_closed_simulated_fills():
     assert cur.params == (3, 7, engine.SIM_ORDER_REF_PREFIX + "%")
 
 
+def test_paper_progress_groups_round_trips_per_strategy_in_one_query():
+    from app import repository as repo
+
+    class Rec:
+        calls = 0
+
+        def execute(self, sql, params=()):
+            Rec.calls += 1
+            self.sql, self.params = " ".join(sql.split()), params
+
+        def fetchall(self):
+            return [{"strategy_id": 7, "trips": 12, "pnl": "3.5"}]
+
+    cur = Rec()
+    assert repo.paper_progress(cur, 3, []) == {} and Rec.calls == 0
+    assert repo.paper_progress(cur, 3, [7, 9]) == {7: (12, 3.5)}
+    assert Rec.calls == 1
+    assert "GROUP BY d.strategy_id, p.order_ref" in cur.sql and "status='open'" in cur.sql
+    assert "IN (%s,%s)" in cur.sql
+    assert cur.params == (3, engine.SIM_ORDER_REF_PREFIX + "%", 7, 9)
+
+
+def test_autopilot_status_reports_paper_strategy_closest_to_live(monkeypatch):
+    from types import SimpleNamespace
+    from app import agent, server
+    ctx = server.Ctx(SimpleNamespace(cursor=lambda: object()),
+                     {"id": 7, "email": "t@example.invalid", "name": "S", "picture_url": None,
+                      "autopilot": 1, "autopilot_live": 0, "autopilot_daily_loss_limit": 50,
+                      "autopilot_model": None}, (), {}, {}, SimpleNamespace())
+    deps = [{"mode": "paper", "status": "running", "strategy_id": 1, "title": "Slow"},
+            {"mode": "paper", "status": "running", "strategy_id": 2, "title": "Fast"},
+            {"mode": "live", "status": "running", "strategy_id": 3, "title": "Live"}]
+    monkeypatch.setattr(server.repo, "list_deployments", lambda *a: deps)
+    monkeypatch.setattr(server.repo, "get_kalshi_key", lambda *a: None)
+    monkeypatch.setattr(server.repo, "realized_pnl", lambda *a: 0.0)
+    monkeypatch.setattr(server.repo, "last_autopilot_action", lambda *a: None)
+    monkeypatch.setattr(server.repo, "last_review_at", lambda *a: None)
+    monkeypatch.setattr(server.billing, "configured", lambda: False)
+    seen = {}
+    monkeypatch.setattr(server.repo, "paper_progress",
+                        lambda cur, uid, sids: seen.setdefault("sids", sids) and {1: (4, 9.0), 2: (11, -1.0)})
+    out = server.autopilot_status(ctx)
+    assert seen["sids"] == [1, 2], "only running paper strategies are counted"
+    assert out["paper_progress"] == {"strategy_id": 2, "title": "Fast", "trades": 11,
+                                     "trades_needed": agent.MIN_REALISTIC_PAPER_TRADES,
+                                     "net_pnl": -1.0, "strategies": 2}
+
+
 # -- Road to live: read-only readiness view ------------------------------------------
 
 
