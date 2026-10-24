@@ -1045,12 +1045,21 @@ def load_from_db(market: Market, history_days: Optional[int] = None) -> Dataset:
             h = repo.load_history(cur, market.series, market.candle_minutes, since, market.underlying)
     finally:
         conn.close()
-    frame_series = applies = None
-    if market.series in WEATHER_STATIONS:
-        frame_series = freedata.station_observations(WEATHER_STATIONS[market.series])
-        applies = lambda ticker, ts: weather_obs_applies(market.series, ticker, ts)  # noqa: E731
+    frame_series, applies = station_frame_series(market)
     return build_dataset(market, h["markets"], h["candles"], h["btc"], h.get("micro"), frame_series, applies,
                          forecast_book(market, since))
+
+
+def station_frame_series(market: Market) -> Tuple[Optional[Dict[str, List[Tuple[int, float]]]],
+                                                   Optional[Callable[[str, int], bool]]]:
+    """(frame_series, frame_series_applies) for build_dataset: a weather series' settlement-station
+    readings, attached only on each contract's settling day. (None, None) for every other market.
+    Every loader (research, and the gated validation/holdout windows) uses this, so a rule never
+    sees a feature in research that the gate's window lacks."""
+    if market.series not in WEATHER_STATIONS:
+        return None, None
+    return (freedata.station_observations(WEATHER_STATIONS[market.series]),
+            lambda ticker, ts: weather_obs_applies(market.series, ticker, ts))
 
 
 def forecast_book(market: Market, since: datetime):
