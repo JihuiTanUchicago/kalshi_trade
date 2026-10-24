@@ -228,8 +228,8 @@ def _gfs_sd(lead_h: float) -> float:
 def contract_features(book: Optional[ForecastBook], ticker: str, strike: float, ts: int,
                       yes_bid: Optional[float], yes_ask: Optional[float],
                       observed: Optional[float] = None, latest_temp: Optional[float] = None) -> Dict[str, float]:
-    """Forecast features for one daily-high/low contract at ts ({} when there is no usable
-    forecast). `observed` is the frame's running max (min for a "min" book) for the station's
+    """Forecast features for one daily-high/low contract at ts (only the strike features when
+    there is no usable forecast, {} when the ticker doesn't parse). `observed` is the frame's running max (min for a "min" book) for the station's
     current climate day, if known (obs_high_f / obs_low_f); latest_temp its latest reading
     (obs_temp_f), which takes over from the forecast once a high has peaked."""
     if book is None:
@@ -238,16 +238,16 @@ def contract_features(book: Optional[ForecastBook], ticker: str, strike: float, 
     if terms is None:
         return {}
     day, lo, hi = terms
+    today, into_day = book.climate_day(ts)
+    if observed is not None and not (today == day and into_day >= OBS_GRACE_S):
+        observed = None
     got = book.latest(day, ts)
     if got is None:
-        return {}
+        return strike_features(lo, hi, None, observed)
     model, known_at, high, sd = got
     if sd is None:
         sd = _gfs_sd((book.day_end_ts(day) - known_at) / 3600.0)
     sd = max(float(sd), MIN_SD_F)
-    today, into_day = book.climate_day(ts)
-    if observed is not None and not (today == day and into_day >= OBS_GRACE_S):
-        observed = None
     mu_r, sd_r = rest_of_day(high, sd, into_day, latest_temp if observed is not None else None, book.kind)
     p = p_yes_observed(mu_r, sd_r, lo, hi, observed, book.kind)
     name = "fcst_high_f" if book.kind == "max" else "fcst_low_f"
@@ -279,12 +279,12 @@ def yes_margin(x: float, lo: Optional[int], hi: Optional[int]) -> float:
     return min(sides) if sides else 0.0
 
 
-def strike_features(lo: Optional[int], hi: Optional[int], fcst: float,
+def strike_features(lo: Optional[int], hi: Optional[int], fcst: Optional[float],
                     observed: Optional[float]) -> Dict[str, float]:
     """The contract's own strike, absolute and relative to the forecast / the day's observed
     extreme, so a spec filter can say "forecast 3F inside the YES range" (filters compare a feature
     with a constant; run 2613's proposer had no strike to condition on)."""
-    out = {"fcst_yes_margin_f": yes_margin(fcst, lo, hi)}
+    out = {} if fcst is None else {"fcst_yes_margin_f": yes_margin(fcst, lo, hi)}
     if lo is not None:
         out["strike_lo_f"] = float(lo)
     if hi is not None:

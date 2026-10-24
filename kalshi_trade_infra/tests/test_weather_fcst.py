@@ -98,6 +98,13 @@ def test_contracts_carry_their_strike_and_margins_to_it():
     assert t["strike_lo_f"] == 65.0 and "strike_hi_f" not in t and "obs_yes_margin_f" not in t
     assert t["fcst_yes_margin_f"] == pytest.approx(60.0 - 64.5)
     assert all(k in FEATURES for k in ("strike_lo_f", "strike_hi_f", "fcst_yes_margin_f", "obs_yes_margin_f"))
+    # No forecast yet (or a stale one): the strike and the observed margin still come through.
+    late = wf.contract_features(book, "KXHIGHNY-26OCT23-B59.5", 59.0, ts + int(wf.MAX_AGE_H * 3600) * 2,
+                                0.30, 0.34)
+    assert late == {"strike_lo_f": 59.0, "strike_hi_f": 60.0}
+    early = wf.contract_features(wf.ForecastBook([], -5, "max"), "KXHIGHNY-26OCT23-T57", 0.0, ts, 0.1, 0.12,
+                                 observed=58.0)
+    assert early == {"strike_hi_f": 56.0, "obs_yes_margin_f": pytest.approx(-1.5)}
 
 
 def test_low_series_get_a_min_book_and_fcst_low_f():
