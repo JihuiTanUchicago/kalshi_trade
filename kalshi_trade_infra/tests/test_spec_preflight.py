@@ -138,3 +138,12 @@ def test_a_proposer_batch_that_never_validates_is_a_logged_drop_not_a_dead_run()
     assert card["spec_failed_runs"] == 1 and card["deaths"] == {"spec_invalid": 1}
     board = rsi.scoreboard([card])["total"]
     assert board["spec_failed_runs"] == 1 and board["bug_death_rate"] == 1.0
+
+
+def test_a_multi_day_tte_window_validates():
+    # Prod 2026-10-24: an NFL spread spec with min_tte_min=2000 died as "outside 0.0..1500.0".
+    out = specmod.validate({"market": BINARY[0], "entry": {"min_tte_min": 2000, "max_tte_min": 10080}})
+    assert (out["entry"]["min_tte_min"], out["entry"]["max_tte_min"]) == (2000, 10080)
+    assert specmod.validate({"market": BINARY[0]})["entry"]["max_tte_min"] == 1500.0   # default unchanged
+    with pytest.raises(specmod.SpecError):
+        specmod.validate({"market": BINARY[0], "entry": {"max_tte_min": 50000}})

@@ -45,8 +45,10 @@ RANGES: Dict[str, Tuple[float, float]] = {
     "entry.min_edge": (0.0, 0.5),
     "entry.min_price": (0.01, 0.99),
     "entry.max_price": (0.01, 0.99),
-    "entry.min_tte_min": (0.0, 1500.0),
-    "entry.max_tte_min": (1.0, 1500.0),
+    # 30 days: sports and weather contracts list days before settlement (2026-10-24: an NFL spec with
+    # min_tte_min=2000 was rejected under the old 1500 cap, sized for crypto 15m/daily).
+    "entry.min_tte_min": (0.0, 43200.0),
+    "entry.max_tte_min": (1.0, 43200.0),
     "entry.max_spread": (0.01, 0.5),
     "exit.take_profit": (0.01, 0.99),
     "exit.stop_loss": (0.01, 0.99),
@@ -125,7 +127,8 @@ SPEC_GUIDE = """A strategy spec is a JSON object:
   "entry": {
     "min_edge": 0..0.5,                        // fair prob minus price paid, in dollars
     "min_price": 0.01..0.99, "max_price": 0.01..0.99,   // price paid per contract
-    "min_tte_min": 0..1500, "max_tte_min": 1..1500,     // minutes to settlement
+    "min_tte_min": 0..43200, "max_tte_min": 1..43200,   // minutes to settlement; default window is
+                                               // the last 1500 (25h), raise max for multi-day markets
     "max_spread": 0.01..0.5,
     "filters": [ {"feature": <name>, "op": ">"|">="|"<"|"<=", "value": <number>} ]  // up to 4, all must hold
   },
