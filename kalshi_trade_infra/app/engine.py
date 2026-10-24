@@ -465,14 +465,14 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
     # A book that still disagrees with the user's real Kalshi account after two reconcile sweeps
     # halts new LIVE entries until it matches again (app/reconcile.py). Exits are never blocked.
     halts = repo.live_entry_halts(cur, dep["user_id"]) if mode == "live" else []
+    if mode == "paper":
+        # Paper runs the live execution policy against a simulated venue when wired (pairs too, so
+        # paper sees legging risk: a leg can fill short and the excess must be unwound).
+        kernel = sources.paper_kernel(dep["user_id"]) if sources.paper_kernel else None
     if specmod.is_cross_contract(spec):
         if halts:
             return {"halted": "position mismatch on %s" % ", ".join(h["ticker"] for h in halts)}
         return _decide_pairs(conn, dep, snaps, sizes, kernel, via_kernel, mode)
-    if mode == "paper":
-        # Single-leg paper runs the live execution policy against a simulated venue when wired.
-        # Pairs keep the atomic two-leg paper fill (legging risk is not simulated yet).
-        kernel = sources.paper_kernel(dep["user_id"]) if sources.paper_kernel else None
     out = {"exits": 0, "entries": 0}
     if halts:
         out["halted"] = "position mismatch on %s" % ", ".join(h["ticker"] for h in halts)
@@ -604,8 +604,12 @@ def _decide_pairs(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optio
         # price is what _kernel_buy_pair unwinds a naked leg at (YES sells ~yes_bid; NO ~1-yes_ask).
         legs = [("yes", lt, cand.long_price, cand.long_snap.yes_bid, cand.long_snap.contract.close_time),
                 ("no", st, cand.short_price, 1.0 - cand.short_snap.yes_ask, cand.short_snap.contract.close_time)]
-        placed = (_kernel_buy_pair(conn, cur, dep, kernel, legs, qty, mode) if via_kernel
-                  else _paper_buy_pair(conn, dep, legs, qty))
+        if via_kernel:
+            placed = _kernel_buy_pair(conn, cur, dep, kernel, legs, qty, mode)
+        elif kernel is not None:
+            placed = _paper_kernel_buy_pair(conn, cur, dep, kernel, legs, qty)
+        else:
+            placed = _paper_buy_pair(conn, dep, legs, qty)
         if not placed:
             break  # out of paper cash / nothing filled this slot
         held.update((lt, st))
@@ -635,6 +639,66 @@ def _paper_buy_pair(conn, dep: Dict, legs, qty: int) -> bool:
             repo.add_ledger(tx, dep["user_id"], "trade", -(qty * price + fee),
                             "Bought %d %s %s @ %.2f (pair)" % (qty, side.upper(), ticker, price), pid)
     return True
+
+
+def _paper_kernel_buy_pair(conn, cur, dep: Dict, kernel, legs, qty: int) -> bool:
+    """Paper pair entry through the simulated venue, with the same legging mechanics as the live
+    `_kernel_buy_pair`: buy leg 1, buy leg 2 for what leg 1 got, sell any unhedged leg-1 excess,
+    and track whatever that sell could not flatten as an open naked position. Nothing is sent, so
+    there are no order intents; the paper ledger is debited/credited for exactly what filled.
+    Both legs (and any unwind/residual slice) share one order_ref, so the live gate counts the
+    pair as ONE round trip. Returns hedged >= 1."""
+    l_side, l_ticker, l_buy, l_sell, l_close = legs[0]
+    s_side, s_ticker, s_buy, _s_sell, s_close = legs[1]
+    uid, dep_id = dep["user_id"], dep["id"]
+    est = qty * (l_buy + s_buy) + taker_fee_dollars(qty, l_buy) + taker_fee_dollars(qty, s_buy)
+    if repo.paper_balance(cur, uid) < est:
+        return False  # out of paper cash: don't simulate an entry it could not pay for
+    rep1 = _live_trade(cur, dep, kernel, "buy", l_side, l_ticker, qty, l_buy)
+    f1 = int(rep1.fill_qty_contracts)
+    if f1 < 1:
+        return False
+    rep2 = _live_trade(cur, dep, kernel, "buy", s_side, s_ticker, f1, s_buy)
+    f2 = int(rep2.fill_qty_contracts)
+    hedged = min(f1, f2)
+    excess = f1 - hedged
+    unwound = 0
+    sell_rep = None
+    if excess > 0:
+        sell_rep = _live_trade(cur, dep, kernel, "sell", l_side, l_ticker, excess, l_sell)
+        unwound = min(int(sell_rep.fill_qty_contracts), excess)
+    residual = excess - unwound
+    l_fee_hedged = rep1.fee_dollars * hedged / f1
+    l_fee_unwound = rep1.fee_dollars * unwound / f1
+    l_fee_residual = rep1.fee_dollars - l_fee_hedged - l_fee_unwound
+    s_fee = rep2.fee_dollars if hedged >= 1 else 0.0
+    ref = SIM_ORDER_REF_PREFIX + "pair-" + str(rep1.external_order_id or uuid.uuid4())
+    with repo.transaction(conn) as tx:
+        repo.lock_user(tx, uid)
+        if hedged >= 1:
+            repo.insert_position(tx, dep_id, uid, "paper", l_ticker, l_side, hedged,
+                                 rep1.fill_price_dollars, l_fee_hedged, l_close, ref)
+            pid = repo.insert_position(tx, dep_id, uid, "paper", s_ticker, s_side, hedged,
+                                       rep2.fill_price_dollars, s_fee, s_close, ref)
+            repo.add_ledger(tx, uid, "trade",
+                            -(hedged * (rep1.fill_price_dollars + rep2.fill_price_dollars) + l_fee_hedged + s_fee),
+                            "Bought %d pair %s/%s (pair)" % (hedged, l_ticker, s_ticker), pid)
+        if unwound >= 1:
+            pnl = (unwound * (sell_rep.fill_price_dollars - rep1.fill_price_dollars)
+                   - l_fee_unwound - sell_rep.fee_dollars)
+            pid = repo.insert_closed_position(tx, dep_id, uid, "paper", l_ticker, l_side, unwound,
+                                              rep1.fill_price_dollars, l_fee_unwound, sell_rep.fill_price_dollars,
+                                              sell_rep.fee_dollars, pnl, "pair_unwind", l_close, ref)
+            repo.add_ledger(tx, uid, "trade", pnl, "Unwound %d unhedged %s %s (pair)"
+                            % (unwound, l_side.upper(), l_ticker), pid)
+        if residual >= 1:
+            print("[engine] paper pair legging: dep %d left %d naked %s %s after the unwind under-filled"
+                  % (dep_id, residual, l_side.upper(), l_ticker), flush=True)
+            pid = repo.insert_position(tx, dep_id, uid, "paper", l_ticker, l_side, residual,
+                                       rep1.fill_price_dollars, l_fee_residual, l_close, ref)
+            repo.add_ledger(tx, uid, "trade", -(residual * rep1.fill_price_dollars + l_fee_residual),
+                            "Bought %d %s %s (pair leg left naked)" % (residual, l_side.upper(), l_ticker), pid)
+    return hedged >= 1
 
 
 def _kernel_buy_pair(conn, cur, dep: Dict, kernel, legs, qty: int, mode: str) -> bool:

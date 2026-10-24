@@ -318,3 +318,65 @@ def test_paper_fill_stats_reports_the_simulated_fill_rate(monkeypatch):
     line = engine.paper_fill_stats(make)
     assert "4 orders sent, 1 filled (25%)" in line
     assert engine.paper_fill_stats(None) is None
+
+
+# -- pairs: legging risk on paper ------------------------------------------------------
+
+
+class _LegKernel:
+    """Fills each (action, side) at a scripted qty cap and price, like a thin simulated book."""
+
+    def __init__(self, caps, prices, fee=0.01):
+        self.caps, self.prices, self.fee, self.calls = caps, prices, fee, []
+
+    def execute(self, intent):
+        from types import SimpleNamespace
+        key = (intent.action, intent.side)
+        self.calls.append((key, intent.qty_contracts))
+        f = min(int(intent.qty_contracts), self.caps.get(key, intent.qty_contracts))
+        return SimpleNamespace(fill_qty_contracts=f, fill_price_dollars=self.prices[key] if f else 0.0,
+                               fee_dollars=self.fee * f, external_order_id="o%d" % len(self.calls))
+
+
+_CLOSE = datetime(2026, 10, 24, 12, 0)
+_LEGS = [("yes", "T-LONG", 0.40, 0.38, _CLOSE), ("no", "T-SHORT", 0.45, 0.43, _CLOSE)]
+_PRICES = {("buy", "yes"): 0.40, ("buy", "no"): 0.45, ("sell", "yes"): 0.38}
+
+
+def test_paper_pair_fully_hedged_books_both_legs_under_one_ref(tx):
+    cur = _Cur()
+    k = _LegKernel({}, _PRICES)
+    assert engine._paper_kernel_buy_pair(_Conn(cur), cur, _paper_dep(), k, _LEGS, 10) is True
+    assert [p[5] for p in cur.inserted] == [10, 10]
+    assert cur.inserted[0][10] == cur.inserted[1][10], "one round trip for the live gate"
+    assert cur.inserted[0][10].startswith(engine.SIM_ORDER_REF_PREFIX + "pair-")
+    debit = -float(cur.ledger[0][2])
+    assert debit == pytest.approx(10 * 0.85 + 0.10 + 0.10)
+
+
+def test_paper_pair_short_second_leg_unwinds_the_excess(tx):
+    cur = _Cur()
+    k = _LegKernel({("buy", "no"): 6}, _PRICES)
+    assert engine._paper_kernel_buy_pair(_Conn(cur), cur, _paper_dep(), k, _LEGS, 10) is True
+    assert (("sell", "yes"), 4) in k.calls, "the 4 unhedged YES are sold back"
+    qtys = [p[5] for p in cur.inserted]
+    assert qtys == [6, 6, 4]  # hedged YES, hedged NO, the closed unwind row
+    unwind_pnl = float(cur.ledger[1][2])
+    assert unwind_pnl == pytest.approx(4 * (0.38 - 0.40) - 0.04 - 0.04)
+
+
+def test_paper_pair_failed_unwind_leaves_a_tracked_naked_leg(tx):
+    cur = _Cur()
+    k = _LegKernel({("buy", "no"): 6, ("sell", "yes"): 0}, _PRICES)
+    assert engine._paper_kernel_buy_pair(_Conn(cur), cur, _paper_dep(), k, _LEGS, 10) is True
+    qtys = [p[5] for p in cur.inserted]
+    assert qtys == [6, 6, 4], "the 4 naked YES stay open so the guards can close them"
+    assert all(p[10] == cur.inserted[0][10] for p in cur.inserted)
+
+
+def test_paper_pair_with_no_first_leg_fill_books_nothing(tx):
+    cur = _Cur()
+    k = _LegKernel({("buy", "yes"): 0}, _PRICES)
+    assert engine._paper_kernel_buy_pair(_Conn(cur), cur, _paper_dep(), k, _LEGS, 10) is False
+    assert cur.inserted == [] and cur.ledger == []
+    assert len(k.calls) == 1, "leg 2 is never sent when leg 1 got nothing"
