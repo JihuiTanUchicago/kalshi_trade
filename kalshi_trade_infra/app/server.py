@@ -959,6 +959,11 @@ def create_deployment(ctx: Ctx):
         if not agent._is_deployment_candidate(cur, s["id"]):
             raise ApiError(409, "This strategy isn't cleared for live yet — the gatekeeper must promote it to a "
                                 "deployment candidate (validation, one-time holdout, diversification) first.")
+        # Same paper record the autopilot's deploy_live needs (agent._proven_on_paper): realistic
+        # fills, net up, 48h+ of record, a clear bootstrap edge. Additive and fail-closed.
+        proven, why = agent._proven_on_paper(cur, ctx.uid, s["id"])
+        if not proven:
+            raise ApiError(409, "This strategy hasn't proven itself on paper yet: %s." % why)
         # The global live switch, the Kalshi-key requirement and the typed confirmation are the
         # other guardrails.
         if not engine.LIVE_TRADING_ENABLED:
