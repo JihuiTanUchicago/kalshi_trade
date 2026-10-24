@@ -355,6 +355,20 @@ def test_autopilot_story_says_what_it_is_doing_in_plain_words():
     assert server._autopilot_story({"autopilot": False})[0].startswith("Autopilot is off.")
     assert server._autopilot_story(dict(d, billing_blocked=True)) == []
     assert "1 strategy is trading real money." in server._autopilot_story(dict(d, live_running=1))
+    waiting = [{"title": "SOL momentum", "why": "none of the 12 open contracts has a yes price of 85c to 95c"}]
+    story = server._autopilot_story(dict(d, paper_waiting=waiting))
+    assert "SOL momentum is waiting: none of the 12 open contracts has a yes price of 85c to 95c." in story
+
+
+def test_paper_waiting_lists_strategies_whose_last_decision_bought_nothing():
+    from app import server
+    run = [{"id": 74, "title": "Solana Deep ITM Momentum — Trend Intact", "last_scan_at": None,
+            "scan": {"why": "none of the 3 open contracts has spread of 5c or less", "entered": 0, "qualifying": 0}},
+           {"id": 75, "title": "Bought", "scan": {"why": "2 of 3 open contracts qualify", "entered": 1, "qualifying": 2}},
+           {"id": 76, "title": "Old", "scan": None}]
+    assert server._paper_waiting(run) == [{"deployment_id": 74, "title": "Solana Deep ITM Momentum",
+                                           "why": "none of the 3 open contracts has spread of 5c or less",
+                                           "blocked_at": None, "at": None}]
 
 
 # -- Road to live: read-only readiness view ------------------------------------------

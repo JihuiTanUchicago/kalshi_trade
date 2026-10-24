@@ -664,6 +664,14 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict, sources: Sources
         open_count += 1
         open_notional += qty * entry.price  # requested qty; a short live fill only over-counts (safe for a cap)
         out["entries"] += 1
+    # What the entry rule saw this decision, so a quiet strategy can say why it isn't trading (the
+    # autopilot panel and reviews read it). Best-effort: it never touches an order or a position.
+    try:
+        scan = specmod.entry_scan(spec, snaps)
+        scan["entered"] = out["entries"]
+        repo.set_deployment_scan(cur, dep["id"], scan)
+    except Exception:
+        pass
     loss_guard(cur, dep)
     return out
 
