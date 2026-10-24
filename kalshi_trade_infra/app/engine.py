@@ -27,9 +27,11 @@ from typing import Callable, Dict, List, Optional
 
 import requests
 
+from app import freedata
 from app import repository as repo
 from app import spec as specmod
-from app.markets import MARKETS, BtcSeries, Contract, Market, Snapshot, compatible_cadence, snapshot
+from app.markets import (MARKETS, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot, compatible_cadence,
+                         snapshot)
 from data_pipeline.common import api_get, parse_iso_to_dt
 from data_pipeline.market_data import ws_quote
 from data_pipeline.kalshi_fees import taker_fee_dollars
@@ -206,6 +208,25 @@ def _micro_for(sources: Sources, tickers: List[str], now_ts: int) -> Dict[str, D
         return sources.micro(tickers, now_ts) or {}
     except Exception as e:
         print("[engine] micro features unavailable: %r" % e, flush=True)
+        return {}
+
+
+def _event_feats(market: Market, now_ts: int) -> Dict[str, float]:
+    """Base features for an outcome-settled market (no spot). Weather daily highs carry their
+    station's readings exactly as research joins them (freedata.station_observations, as of now),
+    so a rule filtering on obs_high_f trades live the way it was tested. {} when unavailable."""
+    station = WEATHER_STATIONS.get(market.series)
+    if not station:
+        return {}
+    try:
+        out = {}
+        for name, obs in freedata.station_observations(station).items():
+            v = freedata.asof_join([now_ts], obs).get(now_ts)
+            if v is not None:
+                out[name] = v
+        return out
+    except Exception as e:
+        print("[engine] station features unavailable for %s: %r" % (market.key, e), flush=True)
         return {}
 
 
@@ -1441,7 +1462,7 @@ def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] 
     if late:
         feats = None
     elif market.underlying is None:
-        feats = {}
+        feats = _event_feats(market, now_ts)
     else:
         try:
             series = sources.spot(market)
@@ -1503,7 +1524,7 @@ def _cross_market_frame(markets: List[str], sources: Sources, now_ts: int):
         if not quotes:
             return None  # this leg's book is unavailable this frame — never leg into it
         if market.underlying is None:
-            feats: Optional[Dict[str, float]] = {}  # outcome-settled leg: no spot, trade on book features
+            feats: Optional[Dict[str, float]] = _event_feats(market, now_ts)  # outcome-settled leg: no spot
         else:
             try:
                 series = sources.spot(market)

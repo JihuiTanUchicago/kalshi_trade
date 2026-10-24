@@ -356,3 +356,33 @@ def test_pooled_rule_trades_every_market_on_the_merged_dataset():
     single = backtest.simulate(spec, a, a.start_ts, a.end_ts + 1)
     assert {t.ticker[0] for t in trades} == {"M", "E"}           # evidence from both markets
     assert len(trades) == 2 * len(single)                          # ~N x the sample
+
+
+def test_hourly_weather_series_can_pool_with_each_other_but_not_with_1min_sports(monkeypatch):
+    """Daily weather highs use hourly candles (a few thousand points per load), so several cities
+    can pool their evidence; a 1-minute sports series still can't join (~1.4GB per load)."""
+    import dataclasses
+    import pytest
+    from app import markets
+    chi = dataclasses.replace(markets.MARKETS["high_ny"], key="kxhighchi", series="KXHIGHCHI")
+    monkeypatch.setitem(markets.MARKETS, "kxhighchi", chi)
+    monkeypatch.setitem(specmod.MARKETS, "kxhighchi", chi)
+    s = specmod.validate({"market": "high_ny", "side": "yes", "pool": ["kxhighchi"],
+                          "sizing": {"stake": 5, "max_positions": 1}})
+    assert s["pool"] == ["kxhighchi"]
+    with pytest.raises(specmod.SpecError):
+        specmod.validate({"market": "high_ny", "pool": ["nba_game"]})
+
+
+def test_frame_series_reach_each_frame_only_once_known():
+    """Weather-station readings are joined per frame point-in-time: a frame before a reading is
+    known lacks the feature, and every later frame carries the newest known value."""
+    from datetime import datetime, timezone
+    from app.markets import MARKETS
+    close = datetime.fromtimestamp(10_000, tz=timezone.utc)
+    mk = [{"ticker": "W", "strike": 60.0, "close_time": close, "result": "yes"}]
+    candles = [("W", ts, 0.40, 0.45) for ts in (1000, 2000, 3000)]
+    ds = backtest.build_dataset(MARKETS["high_ny"], mk, candles, [],
+                                frame_series={"obs_high_f": [(1500, 58.0), (2500, 61.0)]})
+    got = [sn[0].features.get("obs_high_f") for _, sn in ds.frames]
+    assert got == [None, 58.0, 61.0]

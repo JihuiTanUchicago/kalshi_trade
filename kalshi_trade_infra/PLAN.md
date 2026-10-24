@@ -1,5 +1,15 @@
 # PLAN
 
+## Weather: built-in station features + pooled cities (2026-10-24)
+- First high_ny run (2548): 36 days, 210 contracts = 36 independent events, no forecast/obs data, 13 drops.
+  The gate can't confirm anything on 36 events, so evidence must pool across cities.
+- `markets.WEATHER_STATIONS` maps KXHIGH* series to their settlement station. Their datasets now carry
+  built-in features obs_high_f (running max of the NWS climate day) and obs_temp_f, as-of joined per
+  frame (`build_dataset(frame_series=...)`); the live engine adds the same via `engine._event_feats`.
+- `spec._poolable`: hourly-candle series (weather) may pool like strike-vs-spot; 1-min sports still can't.
+- freedata cache now expires (1h; asos 10 min) so long-lived workers and the engine don't go stale.
+- Open: confirm which KXHIGH* city series are collected on the box.
+
 ## Research moves off 15m crypto; weather gets a real fundamental (2026-10-24)
 - btc15m: 28 theses in run 2541, all dead on the research fold. Treat 15m crypto as efficient after fees.
 - Ranking by likely inefficiency (to confirm with coverage data): 1) weather daily highs, 2) in-season

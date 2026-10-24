@@ -135,7 +135,7 @@ SPEC_GUIDE = """A strategy spec is a JSON object:
     "relationship": "spread"                    // trade the spread of model edges (buy YES cheap leg, NO dear leg)
   }
 }
-"pool": [<key>, ...] OPTIONAL (omit for a normal spec; strike-vs-spot crypto series only), up to 3 EXTRA markets with the SAME decision
+"pool": [<key>, ...] OPTIONAL (omit for a normal spec; strike-vs-spot crypto series, or hourly-candle series such as the daily weather highs), up to 3 EXTRA markets with the SAME decision
 cadence. The same single-contract rule is judged on the POOLED trades of spec.market plus these
 markets, so the gate sees ~N times the validation sample (a ~sqrt(N) times smaller detectable edge).
 Use it only for a STRUCTURAL mechanism that should hold on every pooled market (fee/price-band
@@ -544,6 +544,13 @@ def validate(raw: Any) -> Dict[str, Any]:
     return spec
 
 
+def _poolable(m) -> bool:
+    """Memory: a 1-minute event series (sports, ...) loads ~1.4GB per research run on the box, so it
+    can't be pooled. Strike-vs-spot series (~50MB) and hourly-candle series (daily weather highs:
+    a few thousand decision points) are light enough."""
+    return bool(m.underlying) or m.candle_minutes >= 60
+
+
 def _validate_pool(spec: Dict, pool: Any, errors: List[str]) -> None:
     """Validate the optional `pool`: extra markets the SAME single-contract rule is judged across,
     so its evidence pools every market's trades (≈N× the validation sample). Sets spec["pool"] to
@@ -561,17 +568,16 @@ def _validate_pool(spec: Dict, pool: Any, errors: List[str]) -> None:
             errors.append("pool[%d] %r is not a known market" % (i, key))
         elif m.kind in ("perpetual", "spot"):
             errors.append("pool[%d] %r is not a binary market" % (i, key))
-        elif not m.underlying:
-            # Memory: a catalog event series (sports, weather, ...) carries many contracts per frame,
-            # ~1.5GB per 1-minute research load measured on the box; strike-vs-spot series are ~50MB.
-            errors.append("pool[%d] %r is not a strike-vs-spot series; only those can be pooled" % (i, key))
+        elif not _poolable(m):
+            errors.append("pool[%d] %r can't be pooled (only strike-vs-spot or hourly-candle series)" % (i, key))
         elif key != spec.get("market"):
             clean.add(key)
     if spec.get("cross"):
         errors.append("pool cannot be combined with cross (a pooled spec is one single-contract rule)")
     primary = MARKETS.get(spec.get("market"))
-    if primary is not None and not primary.underlying:
-        errors.append("pool is only available on strike-vs-spot series, not %s" % spec.get("market"))
+    if primary is not None and not _poolable(primary):
+        errors.append("pool is only available on strike-vs-spot or hourly-candle series, not %s"
+                      % spec.get("market"))
     involved = clean | {spec.get("market")}
     if spec.get("market") in MARKETS and clean and not compatible_cadence(sorted(involved)):
         errors.append("pool markets span incompatible decision cadences (%s); pool only markets with "

@@ -163,3 +163,43 @@ def test_asos_is_an_accepted_dataset_source():
                           "datasets": [{"name": "nyc_hi", "source": "asos", "series": "NYC:dailymax",
                                         "lag_days": 0}]})
     assert s["datasets"] == [{"name": "nyc_hi", "source": "asos", "series": "NYC:dailymax", "lag_days": 0}]
+
+
+def test_cache_refetches_after_its_ttl(monkeypatch):
+    """Worker processes live for days: a cached series must refresh, or newer frames would carry a
+    stale last value forever."""
+    calls = []
+    monkeypatch.setattr(freedata, "_FETCHERS", {"fred": lambda s: calls.append(s) or [(0, 1.0)]})
+    freedata._CACHE.clear()
+    clock = [1000.0]
+    monkeypatch.setattr(freedata.time, "time", lambda: clock[0])
+    req = {"name": "x", "source": "fred", "series": "S", "lag_days": 0}
+    freedata.resolve(req)
+    freedata.resolve(req)
+    assert len(calls) == 1
+    clock[0] += freedata.CACHE_TTL_S + 1
+    freedata.resolve(req)
+    assert len(calls) == 2
+
+
+def test_station_observations_name_the_builtin_weather_features(monkeypatch):
+    monkeypatch.setattr(freedata, "_FETCHERS", {"asos": lambda s: [(0, 70.0 if "DAILYMAX" in s.upper() else 65.0)]})
+    freedata._CACHE.clear()
+    out = freedata.station_observations("NYC")
+    assert out == {"obs_high_f": [(0, 70.0)], "obs_temp_f": [(0, 65.0)]}
+    monkeypatch.setattr(freedata, "_FETCHERS", {"asos": lambda s: (_ for _ in ()).throw(OSError("down"))})
+    freedata._CACHE.clear()
+    assert freedata.station_observations("NYC") == {}   # fail-open: features simply absent
+
+
+def test_live_engine_sees_the_same_station_features_as_research(monkeypatch):
+    """Parity: the engine's base features for a weather market are the station readings known as of
+    now, the same as research joins per frame; non-weather event markets get {}."""
+    from app import engine
+    from app.markets import MARKETS
+    monkeypatch.setattr(freedata, "_FETCHERS",
+                        {"asos": lambda s: [(100, 70.0 if "DAILYMAX" in s.upper() else 65.0), (900, 72.0)]})
+    freedata._CACHE.clear()
+    assert engine._event_feats(MARKETS["high_ny"], 500) == {"obs_high_f": 70.0, "obs_temp_f": 65.0}
+    assert engine._event_feats(MARKETS["high_ny"], 50) == {}          # nothing known yet
+    assert engine._event_feats(MARKETS["nba_game"], 500) == {}
