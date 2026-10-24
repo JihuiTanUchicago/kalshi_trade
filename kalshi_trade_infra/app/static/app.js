@@ -2579,9 +2579,9 @@
           </form>
           <div id="pflash" style="margin-top:10px"></div>
         </section>
+        <section id="kalshi-perps-live" aria-label="Bitcoin perpetual trading"></section>
         </div>
         <div class="funds-col funds-history">
-        <section id="kalshi-perps-live" aria-label="Bitcoin perpetual trading"></section>
         <section class="panel">
           <h3>Paper history</h3>
           <table class="table stack"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody>
