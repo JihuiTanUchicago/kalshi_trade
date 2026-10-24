@@ -6,6 +6,8 @@ reconcile MATCHED, never as a phantom short. These tests pin that mapping, the
 discrepancy classes, the audit+notify surfacing, multi-user isolation, and that
 orphan adoption is OFF (places nothing) by default.
 """
+from datetime import datetime
+
 import pytest
 
 from app import reconcile
@@ -82,10 +84,13 @@ class FakeCur:
         self._last = []
         if s.startswith("SELECT DISTINCT k.user_id FROM app_kalshi_keys"):
             self._last = [{"user_id": u} for u in self.store["users"]]
+        elif s.startswith("SELECT market_ticker AS ticker, 'yes' AS side"):
+            self._last = list(self.store.get("legacy", []))
         elif s.startswith("SELECT ticker, side, COALESCE(SUM(qty),0) AS qty FROM app_positions"):
             uid = params[0]
             self._last = list(self.store["book"].get(uid, []))
-        elif s.startswith("SELECT ticker, kind, exchange_qty, book_qty FROM app_position_reconcile"):
+        elif s.startswith("SELECT ticker, kind, exchange_qty, book_qty, detected_at, updated_at "
+                          "FROM app_position_reconcile"):
             uid = params[0]
             self._last = list(self.store["recon"].get(uid, []))
         elif s.startswith("INSERT INTO app_position_reconcile"):
@@ -116,6 +121,10 @@ class FakeCur:
 
     def fetchall(self):
         return self._last
+
+
+T0 = datetime(2026, 10, 24, 8, 0, 0)
+T1 = datetime(2026, 10, 24, 8, 5, 0)
 
 
 def _store(book=None, recon=None, users=None):
@@ -171,9 +180,10 @@ def test_real_short_is_flagged_urgent():
 
 
 def test_unchanged_discrepancy_does_not_renotify():
-    # Audit already has the same open row -> upsert refreshes it but no new chat.
+    # Audit already has the same open, already-halting row -> upsert refreshes it but no new chat.
     store = _store(book={1: []},
-                   recon={1: [{"ticker": "T1", "kind": UNTRACKED, "exchange_qty": 9, "book_qty": 0}]})
+                   recon={1: [{"ticker": "T1", "kind": UNTRACKED, "exchange_qty": 9, "book_qty": 0,
+                               "detected_at": T0, "updated_at": T1}]})
     cur = FakeCur(store)
     reconcile.reconcile_user(cur, 1, {"T1": ExchPos(9, 4.5)})
     assert "chats" not in store and len(store["upserts"]) == 1
@@ -256,3 +266,75 @@ def test_reconcile_all_contains_one_user_failure(monkeypatch):
     monkeypatch.setattr(reconcile, "exchange_positions", exch)
     summary = reconcile.reconcile_all(conn)
     assert summary["errors"] == 1 and summary["users"] == 1  # user 2 still reconciled
+
+
+# -- halting live entries on a persisted mismatch --------------------------------
+
+
+def test_first_sighting_records_but_does_not_announce_a_halt():
+    store = _store(book={1: []})
+    reconcile.reconcile_user(FakeCur(store), 1, {"T1": ExchPos(9, 4.5)})
+    assert not any("HALTED" in c["content"] for c in store["chats"])
+
+
+def test_second_sighting_announces_the_halt_once():
+    # Seen once before (detected_at == updated_at): this sweep makes it a halt.
+    store = _store(book={1: []},
+                   recon={1: [{"ticker": "T1", "kind": UNTRACKED, "exchange_qty": 9, "book_qty": 0,
+                               "detected_at": T0, "updated_at": T0}]})
+    reconcile.reconcile_user(FakeCur(store), 1, {"T1": ExchPos(9, 4.5)})
+    halts = [c for c in store["chats"] if "HALTED" in c["content"]]
+    assert len(halts) == 1 and "T1" in halts[0]["content"]
+
+
+def test_clearing_a_halt_announces_the_resume():
+    store = _store(book={1: [{"ticker": "T1", "side": "yes", "qty": 9}]},
+                   recon={1: [{"ticker": "T1", "kind": UNTRACKED, "exchange_qty": 9, "book_qty": 0,
+                               "detected_at": T0, "updated_at": T1}]})
+    reconcile.reconcile_user(FakeCur(store), 1, {"T1": ExchPos(9, 4.5)})
+    assert any("resumed" in c["content"] for c in store["chats"])
+    assert store["resolves"]  # the open row is resolved, which is what lifts the engine's halt
+
+
+def test_operator_account_counts_the_legacy_engines_positions():
+    """The legacy engine's live_positions sit on the operator's Kalshi account. A Tau
+    user trading that same account must not see them as untracked (and get halted)."""
+    store = _store(book={1: []})
+    store["legacy"] = [{"ticker": "T9", "side": "yes", "qty": 3}]
+    out = reconcile.reconcile_user(FakeCur(store), 1, {"T9": ExchPos(3, 1.5)}, include_legacy=True)
+    assert out == []
+    out = reconcile.reconcile_user(FakeCur(store), 1, {"T9": ExchPos(3, 1.5)})
+    assert [d.kind for d in out] == [UNTRACKED]
+
+
+def test_only_the_operator_key_includes_the_legacy_book(monkeypatch):
+    store = _store(users=[1, 2], book={1: [], 2: []})
+    store["legacy"] = [{"ticker": "T9", "side": "yes", "qty": 3}]
+    conn = FakeConn(FakeCur(store))
+    monkeypatch.setattr(reconcile, "OPERATOR_KEY_ID", "op-key")
+    keys = {1: {"key_id": "op-key"}, 2: {"key_id": "someone-else"}}
+    monkeypatch.setattr(reconcile.repo, "get_kalshi_key", lambda c, uid: keys[uid])
+    import app.kalshi_account as ka
+    monkeypatch.setattr(ka, "credentials_from_row", lambda uid, row: uid)
+    monkeypatch.setattr(reconcile, "exchange_positions", lambda creds: {"T9": ExchPos(3, 1.5)})
+    reconcile.reconcile_all(conn)
+    assert [u["user_id"] for u in store.get("upserts", [])] == [2]
+
+
+def test_users_to_reconcile_includes_recently_flat_and_open_discrepancy_users():
+    """A sell booked against nothing leaves the book flat and the account short, so a
+    user with no open position must still be checked."""
+    from app import repository as repo
+
+    seen = {}
+
+    class Cur:
+        def execute(self, sql, params=()):
+            seen["sql"] = " ".join(sql.split())
+            seen["params"] = params
+
+        def fetchall(self):
+            return [{"user_id": 7}]
+
+    assert repo.users_to_reconcile(Cur()) == [7]
+    assert "p.closed_at >= %s" in seen["sql"] and "app_position_reconcile" in seen["sql"]

@@ -2154,6 +2154,19 @@ def paper_evidence(cur, user_id: int, strategy_id: int) -> Dict:
          % ("n/a" if p_value is None else "%.2f" % p_value, MAX_PAPER_EDGE_P_VALUE)),
     ]
     failing = next((why for _k, ok, why in checks if not ok), "")
+    # Realization: realistic paper P&L per trade as a fraction of the backtest's unseen-data P&L
+    # per trade. Informational (never gates): well under 1 means the backtest's fills or the edge
+    # itself did not survive contact with the live book, which is the signal research should learn from.
+    paper_mean = (net / len(pnls)) if pnls else None
+    backtest_mean = None
+    try:
+        strat = repo.get_strategy(cur, user_id, strategy_id) or {}
+        oos = (strat.get("result") or {}).get("out_of_sample") or {}
+        if int(oos.get("trades") or 0) > 0:
+            backtest_mean = float(oos.get("pnl") or 0) / int(oos["trades"])
+    except Exception:
+        backtest_mean = None
+    realization = (paper_mean / backtest_mean) if (paper_mean is not None and backtest_mean and backtest_mean > 0) else None
     return {
         "ready": not failing, "why": failing,
         "checks": {k: ok for k, ok, _why in checks},
@@ -2161,7 +2174,21 @@ def paper_evidence(cur, user_id: int, strategy_id: int) -> Dict:
         "net_pnl": round(net, 4), "span_hours": round(span_h, 1), "span_needed_hours": MIN_PAPER_SPAN_HOURS,
         "p_value": None if p_value is None else round(p_value, 4), "p_value_needed": MAX_PAPER_EDGE_P_VALUE,
         "legacy_trades": legacy_trades, "legacy_pnl": round(legacy_pnl, 4),
+        "paper_mean_pnl": None if paper_mean is None else round(paper_mean, 4),
+        "backtest_mean_pnl": None if backtest_mean is None else round(backtest_mean, 4),
+        "realization": None if realization is None else round(realization, 3),
     }
+
+
+def paper_evidence_line(ev: Dict) -> str:
+    """One-line summary of `paper_evidence` for the autopilot's review context."""
+    parts = ["%d/%d realistic paper trades" % (ev["trades"], ev["trades_needed"]),
+             "net $%.2f" % ev["net_pnl"], "%.0fh of record" % ev["span_hours"]]
+    if ev.get("p_value") is not None:
+        parts.append("edge p=%.2f" % ev["p_value"])
+    if ev.get("realization") is not None:
+        parts.append("paper earns %.0f%% of backtest per trade" % (100 * ev["realization"]))
+    return "; ".join(parts) + ("; LIVE-READY on paper" if ev["ready"] else "; not live-ready: " + ev["why"])
 
 
 def _proven_on_paper(cur, user_id: int, strategy_id: int) -> Tuple[bool, str]:
@@ -2586,6 +2613,13 @@ def _copilot_context(cur, user: Dict) -> str:
                float(d["realized_pnl"]), d["open_positions"], oos.get("pnl"), oos.get("trades"), oos.get("max_drawdown"),
                json.dumps(d["spec"], separators=(",", ":")))
         )
+        if d["mode"] == "paper":
+            # Realistic-fill evidence for the paper -> live gate, so reviews promote, keep or stop
+            # paper deployments on what live would actually earn. Best-effort (test stub -> skip).
+            try:
+                lines.append("    paper evidence: " + paper_evidence_line(paper_evidence(cur, user["id"], d["strategy_id"])))
+            except Exception:
+                pass
     if not deps:
         lines.append("- none")
     lines += ["", "Passed strategies not deployed:"]

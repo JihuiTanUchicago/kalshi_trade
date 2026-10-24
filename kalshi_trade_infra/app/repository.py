@@ -10,7 +10,7 @@ import os
 import re
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 STARTING_PAPER_BALANCE = 1000.0
 
@@ -217,6 +217,27 @@ def autopilot_live_over_limit(cur, day_start) -> List[Dict]:
         (day_start,),
     )
     return cur.fetchall()
+
+
+def users_for_equity_guard(cur) -> List[Dict]:
+    """Users with a live key who can open live positions right now (live autopilot on,
+    or a running live deployment), with their daily loss limit."""
+    cur.execute(
+        """SELECT u.id, u.autopilot_live, u.autopilot_daily_loss_limit AS lim
+           FROM app_users u JOIN app_kalshi_keys k ON k.user_id=u.id
+           WHERE u.autopilot_live=1
+              OR EXISTS (SELECT 1 FROM app_deployments d
+                         WHERE d.user_id=u.id AND d.mode='live' AND d.status='running')
+           ORDER BY u.id"""
+    )
+    return cur.fetchall()
+
+
+def equity_day_start(cur, user_id: int, day: str, equity: float) -> float:
+    """This user's first Kalshi account equity reading of the UTC `day`."""
+    from data_pipeline.common import day_start_value
+
+    return day_start_value(cur, "app_equity_day_start:%d" % int(user_id), day, equity)
 
 
 def create_session(cur, user_id: int, token_hash: str, ttl: timedelta) -> None:
@@ -1067,6 +1088,16 @@ def get_deployment(cur, user_id: int, deployment_id: int) -> Optional[Dict]:
     return _strategy_row(row) if row else None
 
 
+def deployment_closed_stats(cur, deployment_id: int) -> Tuple[int, float]:
+    """(closed position rows, their summed P&L) for one deployment."""
+    cur.execute(
+        "SELECT COUNT(*) AS n, COALESCE(SUM(pnl),0) AS p FROM app_positions WHERE deployment_id=%s AND status='closed'",
+        (deployment_id,),
+    )
+    row = cur.fetchone() or {}
+    return int(row.get("n") or 0), float(row.get("p") or 0)
+
+
 def paper_round_trips(cur, user_id: int, strategy_id: int, ref_prefix: str = "sim:") -> List[Dict]:
     """Closed PAPER round trips of one strategy that filled through the simulated venue, oldest
     first. One row per entry fill (a part-filled exit's slices share the entry's order_ref and are
@@ -1304,15 +1335,39 @@ def insert_closed_position(
 # reconcile/classify logic stays testable against a fake cursor.
 
 
+# How long after a user's last live close they are still reconciled. A sell booked
+# against a position Kalshi no longer held leaves the book FLAT and the account
+# SHORT - the 2026-09-27 failure - so "has open positions" alone would skip
+# exactly the account that most needs checking.
+RECONCILE_RECENT_DAYS = 3
+
+
 def users_to_reconcile(cur) -> List[int]:
-    """Every user who has a live Kalshi key AND at least one open live position.
-    Those are the only accounts whose book could diverge from the exchange."""
+    """Every user with a live Kalshi key whose book could diverge from the
+    exchange: an open live position, a live close in the last few days, or a
+    discrepancy that is still open (so it can resolve and lift its halt)."""
+    since = now_utc() - timedelta(days=RECONCILE_RECENT_DAYS)
     cur.execute(
         """SELECT DISTINCT k.user_id FROM app_kalshi_keys k
-           JOIN app_positions p ON p.user_id=k.user_id AND p.mode='live' AND p.status='open'
-           ORDER BY k.user_id"""
+           WHERE EXISTS (SELECT 1 FROM app_positions p WHERE p.user_id=k.user_id AND p.mode='live'
+                           AND (p.status='open' OR p.closed_at >= %s))
+              OR EXISTS (SELECT 1 FROM app_position_reconcile r
+                           WHERE r.user_id=k.user_id AND r.status='open')
+           ORDER BY k.user_id""",
+        (since,),
     )
     return [int(r["user_id"]) for r in cur.fetchall()]
+
+
+def legacy_live_book_rows(cur) -> List[Dict]:
+    """The legacy engine's open positions (live_positions, YES only), shaped like
+    live_book_by_ticker_side rows. They sit on the operator's Kalshi account, so
+    reconciling that account without them reads every one as untracked."""
+    cur.execute(
+        "SELECT market_ticker AS ticker, 'yes' AS side, COALESCE(SUM(qty_contracts),0) AS qty "
+        "FROM live_positions GROUP BY market_ticker"
+    )
+    return cur.fetchall()
 
 
 def live_book_by_ticker_side(cur, user_id: int) -> List[Dict]:
@@ -1410,6 +1465,18 @@ def open_sent_intents(cur, older_than_seconds: int = 30, limit: int = 200) -> Li
     return cur.fetchall()
 
 
+def ticker_has_inflight_intent(cur, user_id: int, ticker: str, within_seconds: int) -> bool:
+    """True when this user has an order on ``ticker`` still 'sent' (outcome unknown) from the last
+    ``within_seconds``. The exchange position is per account, so this spans every deployment."""
+    cutoff = now_utc() - timedelta(seconds=int(within_seconds))
+    cur.execute(
+        "SELECT 1 AS x FROM app_order_intents WHERE user_id=%s AND ticker=%s AND status='sent' "
+        "AND created_at >= %s LIMIT 1",
+        (int(user_id), ticker, cutoff),
+    )
+    return cur.fetchone() is not None
+
+
 # -- execution latency / observability (Execution P2) --------------------------
 
 
@@ -1491,8 +1558,22 @@ def order_latency_stats(cur, window_seconds: int = 3600, mode: Optional[str] = N
 
 def open_reconcile_rows(cur, user_id: int) -> List[Dict]:
     cur.execute(
-        "SELECT ticker, kind, exchange_qty, book_qty FROM app_position_reconcile "
+        "SELECT ticker, kind, exchange_qty, book_qty, detected_at, updated_at FROM app_position_reconcile "
         "WHERE user_id=%s AND status='open'",
+        (user_id,),
+    )
+    return cur.fetchall()
+
+
+def live_entry_halts(cur, user_id: int) -> List[Dict]:
+    """Open discrepancies that have survived at least one later sweep
+    (updated_at moved past detected_at). While any exist, the engine opens no new
+    LIVE position for this user. One sighting is not enough: a fill booked a beat
+    after the sweep, or a settlement Kalshi zeroes before we book it, looks like
+    a mismatch exactly once. The row resolving lifts the halt by itself."""
+    cur.execute(
+        "SELECT ticker, kind, exchange_qty, book_qty FROM app_position_reconcile "
+        "WHERE user_id=%s AND status='open' AND updated_at > detected_at ORDER BY ticker",
         (user_id,),
     )
     return cur.fetchall()
