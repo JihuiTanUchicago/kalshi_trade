@@ -33,17 +33,17 @@ def ctx(body):
 # -- registry (single source of truth) ------------------------------------------
 
 
-def test_default_model_is_opus_4_5():
-    assert catalog.DEFAULT_KEY == "opus-4-5"
-    assert catalog.default().model_id == "us.anthropic.claude-opus-4-5-20251101-v1:0"
+def test_default_model_is_opus_4_6():
+    assert catalog.DEFAULT_KEY == "opus-4-6"
+    assert catalog.default().model_id == "us.anthropic.claude-opus-4-6-v1"
     cj = catalog.catalog_json()
     assert sum(1 for m in cj if m["default"]) == 1  # exactly one default
-    assert next(m for m in cj if m["default"])["key"] == "opus-4-5"
+    assert next(m for m in cj if m["default"])["key"] == "opus-4-6"
 
 
 def test_models_endpoint_returns_the_registry():
     res = server.models(ctx({}))
-    assert res["default"] == "opus-4-5"
+    assert res["default"] == "opus-4-6"
     keys = {m["key"] for m in res["models"]}
     assert {"sonnet-4-5", "opus-4-5", "nova-pro", "llama-3-3-70b"} <= keys
 
@@ -144,9 +144,14 @@ def test_pending_models_are_listed_but_not_selectable(monkeypatch):
     assert e.value.status == 400
 
 
-def test_default_and_fallback_chain_unchanged():
-    assert catalog.DEFAULT_KEY == "opus-4-5"
-    assert catalog.FALLBACK_ORDER == ["opus-4-5", "sonnet-4-5", "haiku-4-5"]
+def test_fallback_chain_stays_on_opus_before_sonnet():
+    assert catalog.FALLBACK_ORDER[0] == catalog.DEFAULT_KEY == "opus-4-6"
+    ids = {k: catalog.MODELS[k].model_id for k in catalog.FALLBACK_ORDER}
+    assert catalog.fallback_chain_from(ids["opus-4-6"]) == [
+        ids["opus-4-6"], ids["opus-4-5"], ids["sonnet-4-6"], ids["sonnet-4-5"], ids["haiku-4-5"]]
+    # a user who picked Opus 4.5 explicitly never climbs UP to 4.6
+    assert catalog.fallback_chain_from(ids["opus-4-5"])[:2] == [ids["opus-4-5"], ids["sonnet-4-6"]]
+    assert catalog.fallback_chain_from(ids["sonnet-4-5"]) == [ids["sonnet-4-5"], ids["haiku-4-5"]]
 
 
 @pytest.mark.parametrize("model,price", [

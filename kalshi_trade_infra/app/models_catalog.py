@@ -42,7 +42,7 @@ class ModelChoice:
 
 # Default research model (matches llm.BEDROCK_MODEL). A run with no model chosen
 # resolves to this for both the call and billing.
-DEFAULT_KEY = "opus-4-5"
+DEFAULT_KEY = "opus-4-6"
 
 MODELS: Dict[str, ModelChoice] = {
     m.key: m
@@ -109,7 +109,7 @@ def get(key: Optional[str]) -> Optional[ModelChoice]:
 
 
 def resolve(key: Optional[str]) -> ModelChoice:
-    """The chosen model, falling back to the default (NULL model = default Sonnet)."""
+    """The chosen model, falling back to the default (NULL model = DEFAULT_KEY)."""
     return get(key) or default()
 
 
@@ -131,7 +131,10 @@ def catalog_json() -> List[Dict]:
 # then naturally recovers to the preferred one once it's free again (the chain is rebuilt per call).
 # Kept to the Claude family: the research/agent prompts and their strict JSON replies are tuned for
 # Claude, so a non-Claude fallback would trade one failure mode (throttle) for another (bad output).
-FALLBACK_ORDER: List[str] = ["opus-4-5", "sonnet-4-5", "haiku-4-5"]
+# Opus 4.6 and Sonnet 4.6 have no DAILY token cap on this account (only per-minute limits, checked
+# 2026-10-24), unlike Opus 4.5 (6.75M/day on the us profile) and Sonnet 4.5. Opus 4.5 comes next at
+# the same price, so a per-minute throttle or a stall on 4.6 stays on Opus before dropping to Sonnet.
+FALLBACK_ORDER: List[str] = ["opus-4-6", "opus-4-5", "sonnet-4-6", "sonnet-4-5", "haiku-4-5"]
 
 
 def fallback_chain_from(model_id: str) -> List[str]:

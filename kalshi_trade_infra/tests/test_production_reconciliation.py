@@ -23,7 +23,7 @@ def fallback_state(monkeypatch):
 
 
 def test_daily_quota_fallback_skips_exhausted_model_until_cooldown_expires(monkeypatch, fallback_state):
-    preferred, secondary, _ = models_catalog.fallback_chain_from(models_catalog.default().model_id)
+    preferred, secondary = models_catalog.fallback_chain_from(models_catalog.default().model_id)[:2]
     successful = ("accepted", {"input_tokens": 12, "output_tokens": 7})
     call = Mock(side_effect=[llm.LLMThrottled("Too many tokens per day"), successful, successful, successful])
     monkeypatch.setattr(llm, "_bedrock_once", call)
