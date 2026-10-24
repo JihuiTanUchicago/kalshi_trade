@@ -1,0 +1,7 @@
+[Unit]
+Description=Tau heartbeat watchdog (restarts silently-stalled services)
+After=network-online.target
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/kalshi
+ExecStart=/bin/bash -c 'set -a; . /opt/kalshi/.env.aws; [ -f /opt/kalshi/.env.app ] && . /opt/kalshi/.env.app; [ -f /opt/kalshi/.env.watchdog ] && . /opt/kalshi/.env.watchdog; set +a; unset AWS_PROFILE; exec /opt/kalshi/.venv/bin/python -u -m data_pipeline.watchdog'

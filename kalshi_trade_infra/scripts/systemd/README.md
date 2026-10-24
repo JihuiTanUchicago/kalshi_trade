@@ -56,3 +56,23 @@ Kalshi's positions; a disagreement is reported only once it survives to the next
     sudo systemctl enable --now kalshi-alerter.timer
 
 If the old hand-made timer is still enabled, disable it first or every alert goes out twice.
+
+## Dashboard and watchdog
+
+These ran only from hand-written files on the servers; they are checked in as copied from
+the boxes on 2026-10-24, so rebuilding a box no longer drops them.
+
+- `kalshi-dashboard.service` (web box): the legacy `data_pipeline.dashboard_server` on `.venv`,
+  reading `.env.aws` + `.env.dashboard`.
+- `tau-watchdog.service` + `tau-watchdog.timer` (both boxes): `data_pipeline.watchdog` every 60s,
+  restarting services whose heartbeat stalls. This is the web-box unit. The collector box's copy
+  sources `/opt/kalshi/.env` instead of `.env.app` and does not `unset AWS_PROFILE`; when that
+  box is rebuilt, install this one and check that `.env.app` (or `.env.watchdog`) carries what
+  the watchdog needs there.
+
+    sudo cp scripts/systemd/kalshi-dashboard.service scripts/systemd/tau-watchdog.* /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now kalshi-dashboard tau-watchdog.timer
+
+Both boxes run `kalshi-alerter.timer` today (checked 2026-10-24), each with its own
+`.alerter_state.json`, so every alert goes out twice. Keep it enabled on one box only.
