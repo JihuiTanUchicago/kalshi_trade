@@ -1237,6 +1237,10 @@ def _autopilot_story(d: Dict) -> List[str]:
         lines.append("%s on paper (pretend money), but none has traded yet. Each one waits for its own "
                      "setup, which can take hours." % _plural(paper, "strategy is", "strategies are"))
     lines += _waiting_lines(d.get("paper_waiting") or []) if paper else []
+    lines += _paused_lines(d.get("paused_recent") or [])
+    stop_line = _stop_line(d.get("early_exits_7d") or {})
+    if stop_line:
+        lines.append(stop_line)
     if int(d.get("live_running") or 0):
         lines.append("%s trading real money." % _plural(int(d["live_running"]), "strategy is", "strategies are"))
     else:
@@ -1250,6 +1254,13 @@ def _scan_tally(cur, deps: List[Dict]) -> Dict[int, Dict[str, int]]:
     try:
         return repo.scan_tally(cur, [d["id"] for d in deps])
     except Exception:  # noqa: BLE001 - a readout; the table may not exist before the first schema run
+        return {}
+
+
+def _early_exits(cur, uid: int) -> Dict[str, Dict]:
+    try:
+        return repo.early_exit_scorecard(cur, uid, since=repo.now_utc() - timedelta(days=7))
+    except Exception:  # noqa: BLE001 - a readout; the columns may not exist before the first schema run
         return {}
 
 
@@ -1289,6 +1300,58 @@ def _waiting_lines(waiting: List[Dict]) -> List[str]:
             line += " Today %s of %d checks found a contract worth buying." % (found or "none", checks)
         out.append(line)
     return out
+
+
+def _money(x: float) -> str:
+    return ("up $%.2f" % x) if x >= 0 else ("down $%.2f" % -x)
+
+
+def _plain_pause_reason(why: str) -> str:
+    """The engine's pause reason in plain words, for the phone panel."""
+    why = (why or "").strip()
+    m = re.search(r"position down ([\d.]+)% >= stop ([\d.]+)%", why)
+    if m:
+        return "its safety stop sold a position that had lost %.0f%% of its cost" % float(m.group(1))
+    m = re.search(r"drawdown ([\d.]+)% >= limit ([\d.]+)%", why)
+    if m:
+        return "it lost %.0f%% of its money, past its %.0f%% limit" % (float(m.group(1)), float(m.group(2)))
+    if why.lower().startswith("lost $"):
+        return "it hit its loss guard"
+    return why.rstrip(".")[:120] or "it was paused"
+
+
+def _paused_recent(deps: List[Dict], hours: int = 24) -> List[Dict]:
+    """Paper deployments paused in the last `hours`: they leave the 'running' count, so without
+    this a stopped-out strategy simply vanishes from the panel."""
+    since = repo.now_utc() - timedelta(hours=hours)
+    out = []
+    for d in deps:
+        at = d.get("updated_at")
+        if d["mode"] == "paper" and d["status"] == "paused" and at is not None and at >= since:
+            out.append({"deployment_id": d["id"], "title": _short_title(d.get("title")),
+                        "trades": int(d.get("closed_trades") or 0), "pnl": round(float(d.get("realized_pnl") or 0), 2),
+                        "why": _plain_pause_reason(d.get("status_reason"))})
+    return out[:3]
+
+
+def _paused_lines(paused: List[Dict]) -> List[str]:
+    return ["%s was paused after %s (%s): %s." % (p["title"], _plural(p["trades"], "paper trade"), _money(p["pnl"]), p["why"])
+            for p in paused]
+
+
+def _stop_line(exits: Dict[str, Dict]) -> str:
+    """This week's safety-stop exits against holding to settlement, once their contracts settled."""
+    rows = [exits[r] for r in repo.STOP_EXIT_REASONS if r in exits]
+    n, scored = sum(r["exits"] for r in rows), sum(r["scored"] for r in rows)
+    if not scored:
+        return ""
+    hold, saved = sum(r["hold_pnl"] for r in rows), sum(r["saved"] for r in rows)
+    held = ("lost $%.2f" % -hold) if hold < 0 else ("made $%.2f" % hold)
+    verdict = ("so the stop saved $%.2f" % saved) if saved >= 0 else ("so the stop cost $%.2f" % -saved)
+    return "This week the safety stop sold %s on paper. Holding %s to the end would have %s, %s." % (
+        _plural(n, "position"), ("it" if n == 1 else "them") if scored == n else
+        "the %d that %s settled" % (scored, "has" if scored == 1 else "have"),
+        held, verdict)
 
 
 COPILOT_REVIEW_MINUTES = int(os.getenv("APP_COPILOT_REVIEW_SECONDS", "600")) // 60
@@ -1340,6 +1403,8 @@ def autopilot_status(ctx: Ctx):
         "billing_reason": (("card" if _needs_card(ctx) else "credits") if billing_blocked else None),
         "paper_progress": paper_progress,
         "paper_waiting": _paper_waiting(paper_run, _scan_tally(cur, paper_run)),
+        "paused_recent": _paused_recent(deps),
+        "early_exits_7d": _early_exits(cur, ctx.uid),
     }
     out["story"] = _autopilot_story(out)
     return out
@@ -2202,6 +2267,10 @@ def research_scoreboard(ctx: Ctx):
         board["paper"] = rsi.paper_outcomes(ctx.cur, ctx.uid)
     except Exception:  # noqa: BLE001 - informational; the research half of the board still renders
         board["paper"] = None
+    try:
+        board["early_exits"] = repo.early_exit_scorecard(ctx.cur, ctx.uid)
+    except Exception:  # noqa: BLE001 - informational
+        board["early_exits"] = None
     from app import rsi_repair
     board["data_requests"] = rsi_repair.summary(ctx.cur, ctx.uid)
     return board

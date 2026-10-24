@@ -718,6 +718,10 @@ def main() -> None:
         # The latest entry scan per deployment (spec.entry_scan): why it did or didn't buy last decision.
         _add_column_if_missing(cur, "app_deployments", "last_scan_json", "ALTER TABLE app_deployments ADD COLUMN last_scan_json JSON NULL")
         _add_column_if_missing(cur, "app_deployments", "last_scan_at", "ALTER TABLE app_deployments ADD COLUMN last_scan_at DATETIME NULL")
+        # Early exits scored against holding to settlement (engine.score_early_exits): what the
+        # contract settled at and what the position would have made held to the end.
+        _add_column_if_missing(cur, "app_positions", "settle_result", "ALTER TABLE app_positions ADD COLUMN settle_result VARCHAR(4) NULL")
+        _add_column_if_missing(cur, "app_positions", "hold_pnl", "ALTER TABLE app_positions ADD COLUMN hold_pnl DECIMAL(14,4) NULL")
         # Per-position close claim (EXECUTION_RISK_HARDENING P0-3): the order-placing risk sweeps
         # (drawdown force-sell) lease a position before sending a real close, so two engines can
         # never both sell the same position into an unintended short. Mirrors claim_decision.

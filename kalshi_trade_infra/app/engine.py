@@ -298,6 +298,36 @@ def settle_due(conn, market: Market, sources: Sources, now: datetime) -> int:
     return settled
 
 
+EARLY_EXIT_SCORE_SECONDS = 600
+_last_exit_score: Dict[str, float] = {}
+
+
+def score_early_exits(conn, market: Market, sources: Sources, now: datetime) -> int:
+    """Score positions that exited before settlement (the stop, a take-profit, a flatten) against
+    holding them to the end, once their contract settles: hold_pnl is what the position would have
+    made held to expiry. That is how the stop proves (or disproves) itself on the live book. At most
+    once per EARLY_EXIT_SCORE_SECONDS per market; read-only toward the exchange; never trades."""
+    ts = now.timestamp()
+    if ts - _last_exit_score.get(market.key, 0.0) < EARLY_EXIT_SCORE_SECONDS:
+        return 0
+    _last_exit_score[market.key] = ts
+    cur = conn.cursor()
+    scored = 0
+    results: Dict[str, Optional[str]] = {}
+    for pos in repo.unscored_early_exits(cur, market.key, now):
+        if pos["ticker"] not in results:
+            results[pos["ticker"]] = sources.result(pos["ticker"])
+        result = results[pos["ticker"]]
+        if result is None:
+            continue  # not settled yet (or voided): try again next round
+        qty = float(pos["qty"])
+        payout = qty if result == pos["side"] else 0.0
+        hold = payout - qty * float(pos["entry_price"]) - float(pos["entry_fee"])
+        if repo.score_early_exit(cur, pos["id"], result, hold):
+            scored += 1
+    return scored
+
+
 # -- decisions -------------------------------------------------------------------
 
 
@@ -1472,6 +1502,11 @@ def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] 
     now = now or datetime.now(timezone.utc)
     now_ts = int(now.timestamp())
     stats = {"settled": settle_due(conn, market, sources, now)}
+    try:
+        if score_early_exits(conn, market, sources, now):
+            stats["exits_scored"] = True
+    except Exception as e:  # a readout; a lookup blip must never stop the tick
+        print("[engine] early-exit scoring failed for %s: %r" % (market.key, e), flush=True)
     slot = now_ts - now_ts % market.decision_seconds
     cur = conn.cursor()
     # A multi-market cross deployment is stored under its primary leg's market, so it surfaces here,
