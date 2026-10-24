@@ -724,6 +724,8 @@ def set_strategy_outcome(cur, strategy_id: int, status: str, result: Optional[Di
 
 def _strategy_row(r: Dict) -> Dict:
     r["spec"] = _loads(r.pop("spec_json"))
+    if "last_scan_json" in r:
+        r["scan"] = _loads(r.pop("last_scan_json"))
     if "result_json" in r:
         r["result"] = _loads(r.pop("result_json"))
     return r
@@ -1112,7 +1114,7 @@ def create_deployment(cur, user_id: int, strategy_id: int, market: str, mode: st
 
 _DEPLOYMENT_SELECT = """
     SELECT d.id, d.user_id, d.strategy_id, d.market, d.mode, d.status, d.status_reason, d.last_decision_ts,
-           d.created_at, d.updated_at, s.title, s.direction, s.spec_json, s.result_json,
+           d.created_at, d.updated_at, d.last_scan_json, d.last_scan_at, s.title, s.direction, s.spec_json, s.result_json,
            COALESCE(SUM(CASE WHEN p.status='closed' THEN p.pnl END),0) AS realized_pnl,
            COUNT(CASE WHEN p.status='closed' THEN 1 END) AS closed_trades,
            COUNT(CASE WHEN p.status='closed' AND p.pnl > 0 THEN 1 END) AS wins,
@@ -1228,6 +1230,13 @@ def set_deployment_status(cur, user_id: int, deployment_id: int, status: str, re
         (status, reason, now_utc(), deployment_id, user_id),
     )
     return cur.rowcount == 1
+
+
+def set_deployment_scan(cur, deployment_id: int, scan: Dict) -> None:
+    """The latest entry scan (spec.entry_scan) for one deployment: why its last decision did or
+    didn't buy. Overwritten every decision; a readout only, never read by trading."""
+    cur.execute("UPDATE app_deployments SET last_scan_json=%s, last_scan_at=%s WHERE id=%s",
+                (json.dumps(scan, separators=(",", ":")), now_utc(), deployment_id))
 
 
 def set_deployment_strategy(cur, user_id: int, deployment_id: int, strategy_id: int) -> bool:

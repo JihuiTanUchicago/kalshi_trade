@@ -3360,6 +3360,11 @@ def _copilot_context(cur, user: Dict) -> str:
                float(d["realized_pnl"]), d["open_positions"], oos.get("pnl"), oos.get("trades"), oos.get("max_drawdown"),
                _deployment_age_text(d), json.dumps(d["spec"], separators=(",", ":")))
         )
+        scan = d.get("scan") or {}
+        if scan.get("why"):
+            # The engine's latest entry scan: which entry check stopped it, so a review can tell a
+            # rule that never fires on the live book (a spec problem) from one waiting on a setup.
+            lines.append("    last entry check: %s" % scan["why"])
         if d["mode"] == "paper":
             # Realistic-fill evidence for the paper -> live gate, so reviews promote, keep or stop
             # paper deployments on what live would actually earn. Best-effort (test stub -> skip).

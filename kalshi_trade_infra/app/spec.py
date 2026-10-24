@@ -895,6 +895,86 @@ def entries(spec: Dict, snaps: List[Snapshot]) -> List[Entry]:
     return out
 
 
+def _cents(x: float) -> str:
+    return "%.0fc" % (100 * x) if abs(100 * x - round(100 * x)) < 1e-6 else "%.1fc" % (100 * x)
+
+
+def entry_scan(spec: Dict, snaps: List[Snapshot]) -> Dict:
+    """Why the rule bought nothing (or what it could buy) on this decision: how many open contracts
+    cleared each entry check, in exactly the order `entries` applies them, the first check none
+    cleared, and how close the nearest contract came to it. Read-only; feeds the autopilot's
+    'why no trades yet' line so a quiet paper strategy explains itself instead of looking broken."""
+    e = spec["entry"]
+    stake = spec["sizing"]["stake"]
+    sides = ("yes", "no") if spec["side"] == "either" else (spec["side"],)
+    lo, hi = e["min_tte_min"], e["max_tte_min"]
+
+    def in_band(snap):
+        return [(side, price) for side, (price, _sell) in side_prices(snap).items()
+                if side in sides and 0 < price < 1 and e["min_price"] <= price <= e["max_price"]]
+
+    def best_net(snap):
+        p_yes = fair_yes(spec, snap.features)
+        nets = [((p_yes if side == "yes" else 1.0 - p_yes) - price
+                 - taker_fee_per_contract_dollars(contracts_for(stake, price), price)) for side, price in in_band(snap)]
+        return max(nets) if nets else None
+
+    def price_gap(snap):
+        gaps = [max(e["min_price"] - p, p - e["max_price"], 0.0)
+                for side, (p, _sell) in side_prices(snap).items() if side in sides and 0 < p < 1]
+        return min(gaps) if gaps else None
+
+    # (label, keep, nearest): nearest(survivors) says how close the best contract came to passing.
+    checks = [
+        ("%g-%g minutes before expiry" % (lo, hi), lambda s: lo <= s.features["tte_min"] <= hi,
+         lambda ss: "nearest is %.0f minutes out" % min(ss, key=lambda s: max(lo - s.features["tte_min"], s.features["tte_min"] - hi)).features["tte_min"]),
+        ("a spread of %s or less" % _cents(e["max_spread"]), lambda s: s.features["spread"] <= e["max_spread"],
+         lambda ss: "tightest is %s" % _cents(min(s.features["spread"] for s in ss))),
+    ]
+    for flt in e["filters"]:
+        def keep(s, flt=flt):
+            return _passes(flt, s.features)
+
+        def nearest(ss, flt=flt):
+            vals = [s.features.get(flt["feature"]) for s in ss if s.features.get(flt["feature"]) is not None]
+            if not vals:
+                return "%s isn't available right now" % flt["feature"]
+            v = max(vals) if flt["op"] in (">", ">=") else min(vals)
+            return "closest is %.4g" % v
+        checks.append(("%s %s %g" % (flt["feature"], flt["op"], flt["value"]), keep, nearest))
+    checks += [
+        ("a fair value from the model", lambda s: fair_yes(spec, s.features) is not None, lambda ss: ""),
+        ("a %s price of %s to %s" % ("/".join(sides), _cents(e["min_price"]), _cents(e["max_price"])),
+         lambda s: bool(in_band(s)),
+         lambda ss: "nearest is %s outside" % _cents(min(g for g in (price_gap(s) for s in ss) if g is not None))
+         if any(price_gap(s) is not None for s in ss) else "no side has a price"),
+        ("an edge of %s or more after fees" % _cents(e["min_edge"]),
+         lambda s: (best_net(s) if best_net(s) is not None else -1.0) >= e["min_edge"],
+         lambda ss: "best is %s" % _cents(max(best_net(s) for s in ss))),
+    ]
+    alive = list(snaps)
+    steps, blocked, nearest_txt = [], None, None
+    for label, keep, near in checks:
+        passed = [s for s in alive if keep(s)]
+        steps.append({"check": label, "passed": len(passed)})
+        if not passed and alive and blocked is None:
+            blocked = label
+            try:
+                nearest_txt = near(alive) or None
+            except (ValueError, TypeError, KeyError):
+                nearest_txt = None
+        alive = passed
+    n = len(snaps)
+    if not n:
+        why = "no open contracts in the order book right now"
+    elif blocked:
+        why = "none of the %d open contracts has %s%s" % (n, blocked, " (%s)" % nearest_txt if nearest_txt else "")
+    else:
+        why = "%d of %d open contracts qualify" % (len(alive), n)
+    return {"contracts": n, "qualifying": len(alive), "steps": steps, "blocked_at": blocked,
+            "nearest": nearest_txt, "why": why}
+
+
 def exit_signal(spec: Dict, side: str, entry_price: float, snap: Snapshot) -> Optional[Tuple[str, float]]:
     """(reason, sell price) if the rule says sell now, else None (hold)."""
     x = spec["exit"]

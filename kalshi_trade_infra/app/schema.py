@@ -703,6 +703,9 @@ def main() -> None:
         # decision tick (reusing the book it already fetches) so the web can show unrealized P&L.
         _add_column_if_missing(cur, "app_positions", "mark_price", "ALTER TABLE app_positions ADD COLUMN mark_price DECIMAL(10,4) NULL")
         _add_column_if_missing(cur, "app_positions", "mark_ts", "ALTER TABLE app_positions ADD COLUMN mark_ts DATETIME NULL")
+        # The latest entry scan per deployment (spec.entry_scan): why it did or didn't buy last decision.
+        _add_column_if_missing(cur, "app_deployments", "last_scan_json", "ALTER TABLE app_deployments ADD COLUMN last_scan_json JSON NULL")
+        _add_column_if_missing(cur, "app_deployments", "last_scan_at", "ALTER TABLE app_deployments ADD COLUMN last_scan_at DATETIME NULL")
         # Per-position close claim (EXECUTION_RISK_HARDENING P0-3): the order-placing risk sweeps
         # (drawdown force-sell) lease a position before sending a real close, so two engines can
         # never both sell the same position into an unintended short. Mirrors claim_decision.

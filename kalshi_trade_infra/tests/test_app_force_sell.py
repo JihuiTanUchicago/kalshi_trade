@@ -310,3 +310,27 @@ def test_portfolio_notional_cap_trims_a_new_entry(monkeypatch):
 
     out = engine.decide(_Conn(), _dep(mode="paper"), [], {}, engine.Sources())
     assert out["entries"] == 1 and bought == [10]
+
+
+def test_a_decision_records_why_it_bought_nothing(monkeypatch):
+    from app import spec as specmod
+    from app.markets import Contract, snapshot
+    from datetime import datetime, timezone
+    scans = []
+    monkeypatch.setattr(engine.repo, "open_positions", lambda cur, dep_id: [])
+    monkeypatch.setattr(engine, "loss_guard", lambda cur, dep: False)
+    monkeypatch.setattr(engine.repo, "user_risk_config",
+                        lambda cur, uid: {"drawdown_limit_pct": 25.0, "max_open_positions": 20, "max_open_notional": 1000.0})
+    monkeypatch.setattr(engine.repo, "user_open_exposure", lambda cur, uid: {"n": 0, "notional": 0.0})
+    monkeypatch.setattr(engine.repo, "set_deployment_scan", lambda cur, dep_id, scan: scans.append((dep_id, scan)))
+    ts = 1_800_000_000
+    feats = {"spot": 100.0, "ret_1m": 0.0, "ret_5m": 0.0, "ret_15m": 0.0, "ret_60m": 0.0, "vol_15m": 0.001, "vol_60m": 0.001}
+    snap = snapshot(feats, Contract("T", 100.0, datetime.fromtimestamp(ts + 600, tz=timezone.utc)), ts, 0.45, 0.47)
+    dep = dict(_dep(), spec=specmod.validate({"entry": {"max_tte_min": 3}}))
+    out = engine.decide(_Conn(), dep, [snap], {}, engine.Sources())
+    assert out["entries"] == 0
+    [(dep_id, scan)] = scans
+    assert dep_id == 1 and scan["entered"] == 0 and scan["blocked_at"] == "1-3 minutes before expiry"
+    # A failing readout write never fails the decision.
+    monkeypatch.setattr(engine.repo, "set_deployment_scan", lambda *a: (_ for _ in ()).throw(RuntimeError("db")))
+    assert engine.decide(_Conn(), dep, [snap], {}, engine.Sources())["entries"] == 0

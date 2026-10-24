@@ -195,3 +195,26 @@ def test_cross_contract_spec_rejects_bad_blocks():
         specmod.validate({"market": "btc_daily", "cross": {"pairing": "cross_sectional", "legs": []}})
     with pytest.raises(specmod.SpecError, match="not a known market"):
         specmod.validate({"cross": {"pairing": "cross_strike", "legs": [{"market": "doge"}]}})
+
+
+def test_entry_scan_agrees_with_entries_and_names_the_first_blocking_check():
+    snap = _snap(spot=102.0, strike=100.0, tte_min=5, bid=0.58, ask=0.60)
+    ok = specmod.validate({"entry": {"min_edge": 0.1, "max_price": 0.95}})
+    scan = specmod.entry_scan(ok, [snap])
+    assert scan["qualifying"] == len(specmod.entries(ok, [snap])) == 1 and scan["blocked_at"] is None
+    late = specmod.validate({"entry": {"max_tte_min": 3}})
+    scan = specmod.entry_scan(late, [snap, _snap(tte_min=8)])
+    assert scan["blocked_at"] == "1-3 minutes before expiry" and scan["nearest"] == "nearest is 5 minutes out"
+    assert scan["why"] == "none of the 2 open contracts has 1-3 minutes before expiry (nearest is 5 minutes out)"
+    cheap = specmod.validate({"entry": {"min_price": 0.85, "max_price": 0.95}})
+    scan = specmod.entry_scan(cheap, [snap])
+    assert scan["blocked_at"].startswith("a yes/no price of 85c") and scan["nearest"] == "nearest is 25c outside"
+    flt = specmod.validate({"entry": {"filters": [{"feature": "ret_5m", "op": ">", "value": 0.01}]}})
+    scan = specmod.entry_scan(flt, [_snap(ret5=0.002), _snap(ret5=0.004)])
+    assert scan["blocked_at"] == "ret_5m > 0.01" and scan["nearest"] == "closest is 0.004"
+    assert [st["passed"] for st in scan["steps"]][:3] == [2, 2, 0]
+    greedy = specmod.validate({"entry": {"min_edge": 0.5, "max_price": 0.95}})
+    scan = specmod.entry_scan(greedy, [snap])
+    assert scan["blocked_at"] == "an edge of 50c or more after fees" and scan["nearest"].startswith("best is ")
+    assert specmod.entries(greedy, [snap]) == []
+    assert specmod.entry_scan(ok, [])["why"] == "no open contracts in the order book right now"

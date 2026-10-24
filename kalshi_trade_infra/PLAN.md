@@ -1,5 +1,19 @@
 # PLAN
 
+## Paper strategies say why they aren't trading (2026-10-24)
+
+- The three probation deployments (#74-#76) ran for 5+ hours with zero orders and the panel could only
+  say "each one waits for its own setup". `spec.entry_scan` replays the exact entry checks `entries`
+  applies (expiry window, spread, each filter, model fair value, price band, edge after fees) and
+  reports how many open contracts cleared each one, the first check none cleared, and how close the
+  nearest contract came. The engine stores it per deployment every decision
+  (`app_deployments.last_scan_json`, best-effort, never touches an order).
+- The autopilot panel's story lists up to three waiting strategies in plain words, and the review
+  context gets a "last entry check" line per deployment, so reviews can tell a rule that never fires
+  on the live book (stop it, research a better one) from one waiting on a rare setup.
+- Next: feed "never cleared check X in N hours" into the paper outcomes for research, so the proposer
+  stops writing entry bands the live book never reaches.
+
 ## Research RSI: paper outcomes close the loop (2026-10-24)
 
 - The scoreboard only counted what passed the backtest gate. `rsi.paper_outcomes(cur, uid)` adds what

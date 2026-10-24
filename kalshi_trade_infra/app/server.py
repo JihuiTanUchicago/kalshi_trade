@@ -1176,6 +1176,8 @@ def _autopilot_story(d: Dict) -> List[str]:
     else:
         lines.append("%s on paper (pretend money), but none has traded yet. Each one waits for its own "
                      "setup, which can take hours." % _plural(paper, "strategy is", "strategies are"))
+    for w in (d.get("paper_waiting") or [])[:3] if paper else []:
+        lines.append("%s is waiting: %s." % (w["title"], w["why"]))
     if int(d.get("live_running") or 0):
         lines.append("%s trading real money." % _plural(int(d["live_running"]), "strategy is", "strategies are"))
     else:
@@ -1183,6 +1185,22 @@ def _autopilot_story(d: Dict) -> List[str]:
                      "and %d hours, and you turn on live autopilot." % (agent.MIN_REALISTIC_PAPER_TRADES,
                                                                       int(agent.MIN_PAPER_SPAN_HOURS)))
     return lines
+
+
+def _short_title(title: str) -> str:
+    return (title or "").split(" — ")[0].strip() or "A strategy"
+
+
+def _paper_waiting(paper_run: List[Dict]) -> List[Dict]:
+    """What each running paper strategy that bought nothing last decision is waiting for, from the
+    engine's entry scan (spec.entry_scan): the first entry check no open contract cleared."""
+    out = []
+    for d in paper_run:
+        sc = d.get("scan") or {}
+        if sc.get("why") and not sc.get("entered") and not sc.get("qualifying"):
+            out.append({"deployment_id": d["id"], "title": _short_title(d.get("title")), "why": sc["why"],
+                        "blocked_at": sc.get("blocked_at"), "at": d.get("last_scan_at")})
+    return out[:5]
 
 
 COPILOT_REVIEW_MINUTES = int(os.getenv("APP_COPILOT_REVIEW_SECONDS", "600")) // 60
@@ -1233,6 +1251,7 @@ def autopilot_status(ctx: Ctx):
         "billing_blocked": billing_blocked,
         "billing_reason": (("card" if _needs_card(ctx) else "credits") if billing_blocked else None),
         "paper_progress": paper_progress,
+        "paper_waiting": _paper_waiting(paper_run),
     }
     out["story"] = _autopilot_story(out)
     return out
