@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-AWS_PROFILE=${AWS_PROFILE:-agent}
+AWS_PROFILE=${AWS_PROFILE-agent}   # local dev defaults to the `agent` profile; set AWS_PROFILE="" to use env creds (cloud/CI)
+# The AWS CLI reads AWS_PROFILE from the env, so an unset profile falls back to env/instance creds.
+if [[ -n "${AWS_PROFILE}" ]]; then export AWS_PROFILE; else unset AWS_PROFILE; fi
 AWS_REGION=${AWS_REGION:-us-east-1}
 ENV_FILE=${ENV_FILE:-.env.aws}
 RUN_BACKFILL=${RUN_BACKFILL:-false}
