@@ -343,7 +343,8 @@
     }
     let res;
     // A GET that hits a restart (a deploy takes the server away for a second, and CloudFront
-    // answers 502/503/504) retries twice before the page shows an error. Writes never retry.
+    // answers 502/503/504 with its own non-JSON page) retries twice before the page shows an
+    // error. A JSON error is Tau itself answering, so it is final. Writes never retry.
     for (let attempt = 0; ; attempt++) {
       try { res = await fetch(path, opts); }
       catch (e) {
@@ -351,7 +352,12 @@
         if (body === undefined && attempt < 2) { await sleep(RETRY_MS[attempt]); continue; }
         throw new ApiError(0, "Can't reach Tau. Check your connection.");
       }
-      if (body === undefined && attempt < 2 && TRANSIENT.has(res.status)) { await sleep(RETRY_MS[attempt]); continue; }
+      if (body === undefined && attempt < 2 && TRANSIENT.has(res.status)) {
+        let parsed = null;
+        try { parsed = await res.json(); } catch (e) { /* CloudFront's error page */ }
+        if (!parsed || typeof parsed !== 'object') { await sleep(RETRY_MS[attempt]); continue; }
+        res = {ok: res.ok, status: res.status, json: async () => parsed};
+      }
       break;
     }
     let data = {};
