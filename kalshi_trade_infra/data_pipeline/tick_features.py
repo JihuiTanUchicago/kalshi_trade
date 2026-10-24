@@ -22,6 +22,13 @@ Columns (float32 unless noted):
   rv_300s * sqrt(secs_to_close). Floor only: ln(spot/lo). Cap only: ln(hi/spot). Both (range):
   the nearer edge, min(ln(spot/lo), ln(hi/spot)), positive inside the range. Null when undefined.
   book_age_s, spot_stale (bool: no Coinbase ticker message in the last 5s)
+  spot_comp: cross-exchange BTC price, the median mid of the BRTI venues quoted in the last 60s
+  (Coinbase, Kraken, Bitstamp, Gemini, Bullish, Crypto.com, LMAX; tick_spot.py), a proxy for the
+  index Kalshi settles on. spot_comp_n: venues in it. spot_cb_comp_bp: Coinbase mid minus
+  spot_comp, in basis points. dist_sigma_comp: dist_sigma with spot_comp in place of spot.
+  Null for non-BTC series. Hours built before the other venues were recorded (features from
+  2026-10-24 ~22:00Z on have them) lack these columns; with only Coinbase quoting, spot_comp is
+  Coinbase's mid and spot_comp_n is 1.
 """
 import math
 import os
@@ -39,7 +46,8 @@ SPOT_STALE_S = 5
 F32 = ["strike_lo", "strike_hi", "yes_bid", "yes_ask", "yes_bid_size", "yes_ask_size", "bid_depth", "ask_depth",
        "updates", "mid", "spread", "microprice", "imbalance", "yes_taker_10s", "no_taker_10s", "yes_taker_60s",
        "no_taker_60s", "n_prints_60s", "last_yes", "spot", "spot_ret_1s", "spot_ret_10s", "spot_ret_60s",
-       "spot_ret_300s", "rv_60s", "rv_300s", "spot_taker_imb_60s", "secs_to_close", "dist_sigma", "book_age_s"]
+       "spot_ret_300s", "rv_60s", "rv_300s", "spot_taker_imb_60s", "secs_to_close", "dist_sigma", "book_age_s",
+       "spot_comp", "spot_comp_n", "spot_cb_comp_bp", "dist_sigma_comp"]
 
 
 def schema():
@@ -106,7 +114,22 @@ def spot_features(store, hour: datetime, product: str = "BTC-USD") -> Dict[str, 
            "spot_ret_60s": _lag_diff(logp, 60), "spot_ret_300s": _lag_diff(logp, 300),
            "rv_60s": _roll_std(r1, 60), "rv_300s": _roll_std(r1, 300), "spot_taker_imb_60s": imb,
            "spot_stale": stale}
-    return {k: v[SPOT_LOOKBACK_S:] for k, v in out.items()}
+    out = {k: v[SPOT_LOOKBACK_S:] for k, v in out.items()}
+    out.update(composite_features(store, hour, product))
+    return out
+
+
+def composite_features(store, hour: datetime, product: str = "BTC-USD") -> Dict[str, np.ndarray]:
+    """spot_comp, spot_comp_n, spot_cb_comp_bp for the hour's 3600 seconds (NaN off BTC: the
+    other venues are recorded for BTC only)."""
+    nan = np.full(3600, np.nan)
+    if product != "BTC-USD" or not hasattr(store, "composite_1s"):
+        return {"spot_comp": nan, "spot_comp_n": nan.copy(), "spot_cb_comp_bp": nan.copy()}
+    c = store.composite_1s(hour, hour + timedelta(hours=1), product)
+    comp = c["spot_comp"].astype(float)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        bp = (c["mid_coinbase"] / comp - 1.0) * 1e4
+    return {"spot_comp": comp, "spot_comp_n": c["n_venues"].astype(float), "spot_cb_comp_bp": bp}
 
 
 def _group(t, key: str) -> Dict[str, np.ndarray]:
@@ -228,19 +251,10 @@ def ticker_rows(ticker: str, meta: Dict, secs: np.ndarray, spot: Dict[str, np.nd
     lo, hi = meta.get("floor_strike"), meta.get("cap_strike")
     stc = (close_ts - secs).astype(float) if close_ts is not None else np.full(n, np.nan)
     out["secs_to_close"] = stc
-    with np.errstate(invalid="ignore", divide="ignore"):
-        s = spot["spot"].astype(float)
-        denom = spot["rv_300s"] * np.sqrt(np.maximum(stc, 0.0))
-        if lo is not None and hi is not None:
-            num = np.minimum(np.log(s / lo), np.log(hi / s))
-        elif lo is not None:
-            num = np.log(s / lo)
-        elif hi is not None:
-            num = np.log(hi / s)
-        else:
-            num = np.full(n, np.nan)
-        dist = np.where(denom > 0, num / denom, np.nan)
-    out["dist_sigma"] = dist
+    denom = spot["rv_300s"] * np.sqrt(np.maximum(stc, 0.0))
+    out["dist_sigma"] = _dist_sigma(spot["spot"], lo, hi, denom)
+    comp = spot.get("spot_comp")
+    out["dist_sigma_comp"] = _dist_sigma(comp, lo, hi, denom) if comp is not None else np.full(n, np.nan)
     out["strike_lo"] = np.full(n, np.nan if lo is None else lo)
     out["strike_hi"] = np.full(n, np.nan if hi is None else hi)
     rows = {k: v[mask] for k, v in out.items()}
@@ -250,6 +264,20 @@ def ticker_rows(ticker: str, meta: Dict, secs: np.ndarray, spot: Dict[str, np.nd
     rows["series"] = np.array([meta.get("series") or ticker.split("-")[0]] * k, dtype=object)
     rows["close_ts"] = np.full(k, -1 if close_ts is None else close_ts, dtype=np.int64)
     return rows
+
+
+def _dist_sigma(spot: np.ndarray, lo, hi, denom: np.ndarray) -> np.ndarray:
+    with np.errstate(invalid="ignore", divide="ignore"):
+        s = np.asarray(spot, dtype=float)
+        if lo is not None and hi is not None:
+            num = np.minimum(np.log(s / lo), np.log(hi / s))
+        elif lo is not None:
+            num = np.log(s / lo)
+        elif hi is not None:
+            num = np.log(hi / s)
+        else:
+            num = np.full(len(s), np.nan)
+        return np.where(denom > 0, num / denom, np.nan)
 
 
 def _latest_meta(t) -> Dict[str, Dict]:

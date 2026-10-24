@@ -39,10 +39,11 @@ POSITION_COST_ALERT = float(os.getenv("ALERT_POSITION_COST", "20"))
 # dashboard's own as-of rule so the two never disagree.
 STALE_MULTIPLE = 6
 WRITER_CADENCE = {"live_portfolio_20s": 20, "live_engine": 60, "forward_quotes": 20,
-                  "tick_recorder_kalshi": 10, "tick_recorder_coinbase": 10, "tick_archive": 1200}
+                  "tick_recorder_kalshi": 10, "tick_recorder_coinbase": 10, "tick_recorder_spot": 10,
+                  "tick_archive": 1200}
 # Writers that only exist once their units are deployed: no row yet means "not installed",
 # not "stopped", so they are skipped until they first write.
-OPTIONAL_WRITERS = ("tick_recorder_kalshi", "tick_recorder_coinbase", "tick_archive")
+OPTIONAL_WRITERS = ("tick_recorder_kalshi", "tick_recorder_coinbase", "tick_recorder_spot", "tick_archive")
 DASHBOARD_URL = os.getenv("DASHBOARD_URL", "https://dehiuraiut9ro.cloudfront.net/?tab=live-trading")
 # The engine crash-looping is invisible to every other check here: it restarts
 # fast enough that its snapshot never looks stale, and it writes no trade. That
@@ -96,11 +97,12 @@ def _writer_ages(cur) -> Dict[str, Optional[float]]:
     except Exception:
         pass
     # A recorder whose socket is dead still heartbeats, so its age is the older of the
-    # heartbeat and the last exchange message it reports.
+    # heartbeat and the last exchange message it reports. tick_recorder_spot (six research-only
+    # venues in one process) reports no top-level message age: only the process stopping pages.
     try:
         cur.execute(
             "SELECT state_key, state_value, TIMESTAMPDIFF(SECOND, updated_at_utc, UTC_TIMESTAMP()) a "
-            "FROM collector_state WHERE state_key IN ('tick_recorder_kalshi','tick_recorder_coinbase')"
+            "FROM collector_state WHERE state_key IN ('tick_recorder_kalshi','tick_recorder_coinbase','tick_recorder_spot')"
         )
         for r in cur.fetchall():
             age = float(r["a"]) if r.get("a") is not None else None

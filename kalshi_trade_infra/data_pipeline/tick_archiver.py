@@ -18,7 +18,13 @@ Tables (rt = receive time, epoch ns, on every row):
                   exch_ms (exchange time, ms; kalshi_book deltas carry it too: rt - exch_ms = feed latency)
   coinbase_trades product_id, trade_id, price, size, taker_side, exch_ns
   coinbase_ticker product_id, trade_id, price, best_bid, best_ask, best_bid_size, best_ask_size, exch_ns
-  tick_meta       source, event, detail (connects, disconnects, sequence gaps)
+  <venue>_trades  product, trade_id, price, size, taker_side, exch_ns     (the other BRTI exchanges:
+  <venue>_quotes  product, bid, bid_size, ask, ask_size, exch_ns          kraken, bitstamp, gemini,
+                                                                          bullish, cryptocom, lmax;
+                                                                          see data_pipeline/tick_spot.py)
+  tick_meta       source, event, detail (connects, disconnects, sequence gaps) for kalshi;
+                  <source>_meta for every other source (one file per table-hour, so sources
+                  cannot share a table)
 
 The RDS row (tick_archive_hours) is what gap monitoring and research discovery read: per source
 and hour, message count, max silence between messages, sequence gaps, reconnects, bytes.
@@ -42,7 +48,8 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 from data_pipeline.common import get_db_conn, utc_now
 from data_pipeline.init_schema import TICK_ARCHIVE_DDL as MANIFEST_DDL
-from data_pipeline.tick_recorder import TICK_DIR, delta_fields, snapshot_levels, _num
+from data_pipeline import tick_spot
+from data_pipeline.tick_recorder import SPOT_RECORDERS, SPOT_VENUES, TICK_DIR, delta_fields, snapshot_levels, _num
 
 BUCKET = os.getenv("DATALAKE_BUCKET", "kalshi-trade-datalake-568386354218-us-east-1")
 PREFIX = os.getenv("TAU_TICK_PREFIX", "ticks")
@@ -73,7 +80,26 @@ def _schemas():
                                       ("best_ask", f), ("best_bid_size", f), ("best_ask_size", f),
                                       ("exch_ns", i64)]),
         "tick_meta": pa.schema([rt, ("source", s), ("event", s), ("detail", s)]),
+        "spot_trades": pa.schema([rt, ("product", s), ("trade_id", s), ("price", f), ("size", f),
+                                  ("taker_side", s), ("exch_ns", i64)]),
+        "spot_quotes": pa.schema([rt, ("product", s), ("bid", f), ("bid_size", f), ("ask", f),
+                                  ("ask_size", f), ("exch_ns", i64)]),
     }
+
+
+def schema_for(table: str):
+    """A table's schema; per-venue and per-source tables share the spot/meta layouts."""
+    sch = _schemas()
+    if table in sch:
+        return sch[table]
+    for suffix, base in (("_meta", "tick_meta"), ("_trades", "spot_trades"), ("_quotes", "spot_quotes")):
+        if table.endswith(suffix):
+            return sch[base]
+    raise KeyError(table)
+
+
+def meta_table(source: str) -> str:
+    return "tick_meta" if source == "kalshi" else source + "_meta"
 
 
 def _dollars(msg: Dict, key: str) -> Optional[float]:
@@ -141,6 +167,9 @@ def parse_line(source: str, line: str) -> Iterable[Tuple[str, tuple]]:
                 yield "kalshi_book", row
         return
     data = rec.get("m") or {}
+    if source in SPOT_RECORDERS:
+        yield from tick_spot.parse(source, rt, data, getattr(SPOT_RECORDERS[source], "symbol", None))
+        return
     typ = data.get("type")
     if source == "kalshi":
         msg = data.get("msg") or {}
@@ -197,7 +226,6 @@ def read_records(fh) -> Iterable[str]:
 class TableWriters:
     def __init__(self, tmpdir: str) -> None:
         self.tmpdir = tmpdir
-        self.schemas = _schemas()
         self.buf: Dict[str, List[tuple]] = {}
         self.writers: Dict[str, object] = {}
         self.rows: Dict[str, int] = {}
@@ -214,7 +242,7 @@ class TableWriters:
         rows = self.buf.get(table) or []
         if not rows:
             return
-        schema = self.schemas[table]
+        schema = schema_for(table)
         cols = list(zip(*rows))
         arrays = [pa.array(list(c), type=schema.field(i).type) for i, c in enumerate(cols)]
         tbl = pa.Table.from_arrays(arrays, schema=schema)
@@ -261,6 +289,7 @@ def archive_file(path: str, source: str, hour: datetime, s3=None, conn=None) -> 
                             gaps += 1
                         elif row[2] == "disconnected":
                             reconnects += 1
+                        table = meta_table(source)
                     writers.add(table, row)
         files = writers.close()
 
@@ -280,6 +309,8 @@ def archive_file(path: str, source: str, hour: datetime, s3=None, conn=None) -> 
             "parquet_bytes": parquet_bytes, "tables": writers.rows, "host": socket.gethostname(),
             "s3_prefix": f"s3://{BUCKET}/{PREFIX}/v1/",
         }
+        if source in SPOT_RECORDERS:
+            manifest["parser"] = tick_spot.PARSER_VERSION
         man_path = os.path.join(tmpdir, "manifest.json")
         with open(man_path, "w") as fh:
             json.dump(manifest, fh)
@@ -453,10 +484,17 @@ def build_features(s3=None, store=None, now: Optional[datetime] = None, conn=Non
     return n
 
 
+def needs_rearchive(source: str, m: Dict) -> bool:
+    """More unparseable lines than messages (an archiver that could not read the recorder's
+    format), or a spot venue hour parsed by an older tick_spot parser."""
+    if (m.get("bad_lines") or 0) > (m.get("messages") or 0):
+        return True
+    return source in SPOT_RECORDERS and (m.get("parser") or 0) < tick_spot.PARSER_VERSION
+
+
 def repair_broken_hours(s3=None, now: Optional[datetime] = None, conn=None) -> int:
-    """Re-archive, from its raw gzip, any hour of the last FEATURE_LOOKBACK_H whose manifest
-    shows more unparseable lines than messages (an archiver that could not read the recorder's
-    format), and queue its features_1s for rebuild."""
+    """Re-archive, from its raw gzip, any hour of the last FEATURE_LOOKBACK_H that
+    needs_rearchive, and queue its features_1s for rebuild."""
     if s3 is None:
         import boto3
         s3 = boto3.client("s3")
@@ -469,11 +507,11 @@ def repair_broken_hours(s3=None, now: Optional[datetime] = None, conn=None) -> i
     except Exception:
         checked = set()
     fixed = 0
-    for source in ("kalshi", "coinbase"):
+    for source in ["kalshi", "coinbase"] + [v for v in SPOT_VENUES if v in SPOT_RECORDERS]:
         for d in sorted({(now - timedelta(hours=h)).strftime("%Y-%m-%d") for h in (0, FEATURE_LOOKBACK_H // 2, FEATURE_LOOKBACK_H)}):
             resp = s3.list_objects_v2(Bucket=BUCKET, Prefix=f"{PREFIX}/manifest/{source}/date={d}/")
             for obj in resp.get("Contents") or []:
-                tag = f"{obj['Key']}@{obj.get('ETag', '')}"
+                tag = f"{obj['Key']}@{obj.get('ETag', '')}@p{tick_spot.PARSER_VERSION}"
                 if tag in checked:
                     continue
                 checked.add(tag)
@@ -483,7 +521,7 @@ def repair_broken_hours(s3=None, now: Optional[datetime] = None, conn=None) -> i
                     s3.download_file(BUCKET, obj["Key"], man_path)
                     with open(man_path) as fh:
                         m = json.load(fh)
-                    if (m.get("bad_lines") or 0) <= (m.get("messages") or 0):
+                    if not needs_rearchive(source, m):
                         continue
                     hour = datetime.strptime(m["hour_utc"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
                     gz = os.path.join(tmpdir, "raw.gz")
