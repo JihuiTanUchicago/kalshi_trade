@@ -1,0 +1,7 @@
+[Unit]
+Description=Collect NWS station forecasts every hour, shortly after the NBM text bulletins post
+[Timer]
+OnCalendar=*-*-* *:20:00
+Persistent=true
+[Install]
+WantedBy=timers.target

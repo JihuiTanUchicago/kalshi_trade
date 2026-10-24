@@ -556,6 +556,24 @@ DDL = [
       INDEX idx_ol_created (created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
+    # Issued NWS station forecasts of the daily max/min (app/weather_fcst_collect.py), one row per
+    # (model run, settlement day). known_at_utc = runtime + the model's publication lag: research
+    # and the live engine both read only rows with known_at_utc <= the frame (app/weather_fcst).
+    """
+    CREATE TABLE IF NOT EXISTS weather_forecasts (
+      station VARCHAR(8) NOT NULL,         -- NWS climate station as in markets.WEATHER_STATIONS
+      model VARCHAR(8) NOT NULL,           -- NBS (NBM blend) | GFS (GFS MOS)
+      kind CHAR(3) NOT NULL,               -- max|min
+      runtime_utc DATETIME NOT NULL,
+      target_day DATE NOT NULL,            -- local climate day the max/min is for
+      value_f DECIMAL(6,1) NOT NULL,
+      sd_f DECIMAL(5,2) NULL,              -- NBM's XND spread; NULL for GFS MOS
+      known_at_utc DATETIME NOT NULL,
+      collected_at_utc DATETIME NOT NULL,
+      PRIMARY KEY (station, model, kind, runtime_utc, target_day),
+      INDEX idx_wf_lookup (station, kind, target_day)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
 ]
 
 

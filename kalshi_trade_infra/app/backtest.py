@@ -29,6 +29,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from app import freedata
 from app import spec as specmod
+from app import weather_fcst
 from app.markets import (MARKETS, NEW_YORK, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot, snapshot,
                          weather_obs_applies)
 from data_pipeline.architecture.execution_kernel import reservation_price
@@ -78,13 +79,16 @@ def _iso(ts: int) -> str:
 def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc: List[Tuple[int, float]],
                   micro: Optional[Dict[Tuple[str, int], Dict[str, float]]] = None,
                   frame_series: Optional[Dict[str, List[Tuple[int, float]]]] = None,
-                  frame_series_applies: Optional[Callable[[str, int], bool]] = None) -> Dataset:
+                  frame_series_applies: Optional[Callable[[str, int], bool]] = None,
+                  forecasts: Optional[weather_fcst.ForecastBook] = None) -> Dataset:
     """markets: {ticker, strike, close_time, result}; candles: (ticker, end_period_ts, yes_bid, yes_ask)
     tuples as repository.load_history returns them, or the equivalent dicts.
     micro: {(ticker, decision_ts): {feature: value}} order-book features to merge per snapshot (optional).
     frame_series: {feature: [(known_at_ts, value)]} market-wide series (e.g. weather-station readings)
     as-of joined onto every frame, so a frame only sees values already known at its ts.
-    frame_series_applies(ticker, ts): which contracts in a frame they describe (default: all)."""
+    frame_series_applies(ticker, ts): which contracts in a frame they describe (default: all).
+    forecasts: a weather series' issued forecasts; each contract then carries the forecast fair-value
+    features (weather_fcst.snapshot_features, the same call the live engine makes)."""
     micro = micro or {}
     series = BtcSeries(btc)
     # Sports (and any market with underlying=None) have no spot path: every frame with a
@@ -117,10 +121,13 @@ def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc:
             continue
         extra = {n: j[ts] for n, j in joined.items() if ts in j}
         with_extra = dict(feats, **extra) if extra else feats
-        snaps = [s for s in (snapshot(with_extra if extra and (frame_series_applies is None
-                                                               or frame_series_applies(ct.ticker, ts)) else feats,
-                                      ct, ts, b, a, micro.get((ct.ticker, ts)))
-                             for ct, b, a in by_ts[ts]) if s is not None]
+        snaps = []
+        for ct, b, a in by_ts[ts]:
+            cf = with_extra if extra and (frame_series_applies is None or frame_series_applies(ct.ticker, ts)) else feats
+            s = snapshot(cf, ct, ts, b, a,
+                         weather_fcst.with_forecast(micro.get((ct.ticker, ts)), forecasts, ct, ts, b, a, cf))
+            if s is not None:
+                snaps.append(s)
         if snaps:
             frames.append((ts, snaps))
     start = frames[0][0] if frames else 0
@@ -1042,7 +1049,28 @@ def load_from_db(market: Market, history_days: Optional[int] = None) -> Dataset:
     if market.series in WEATHER_STATIONS:
         frame_series = freedata.station_observations(WEATHER_STATIONS[market.series])
         applies = lambda ticker, ts: weather_obs_applies(market.series, ticker, ts)  # noqa: E731
-    return build_dataset(market, h["markets"], h["candles"], h["btc"], h.get("micro"), frame_series, applies)
+    return build_dataset(market, h["markets"], h["candles"], h["btc"], h.get("micro"), frame_series, applies,
+                         forecast_book(market, since))
+
+
+def forecast_book(market: Market, since: datetime) -> Optional[weather_fcst.ForecastBook]:
+    """The window's issued forecasts for a weather series (None otherwise, or if unreadable: the
+    forecast features are then absent, and a rule needing them simply never enters)."""
+    if market.series not in WEATHER_STATIONS:
+        return None
+    from app import repository as repo
+    from data_pipeline.common import get_db_conn
+    try:
+        conn = get_db_conn()
+        try:
+            with conn.cursor() as cur:
+                return weather_fcst.book_for_series(market.series, lambda station, kind: repo.load_weather_forecasts(
+                    cur, station, kind, (since - timedelta(days=2)).date()))
+        finally:
+            conn.close()
+    except Exception as e:  # noqa: BLE001 - a missing table/outage must not fail the research run
+        print("[backtest] weather forecasts unavailable for %s: %r" % (market.key, e), flush=True)
+        return None
 
 
 def dataset(market_key: str, history_days: Optional[int] = None) -> Dataset:
