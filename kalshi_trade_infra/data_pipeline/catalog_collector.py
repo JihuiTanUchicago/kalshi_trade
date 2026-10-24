@@ -53,30 +53,57 @@ def fetch_all_markets(status: Optional[str] = "open", page_limit: int = 1000, ma
     return out
 
 
-def refresh_series(cur) -> int:
-    """Rebuild the series catalog from whatever is in `markets` right now."""
-    now = utc_now().replace(tzinfo=None)
-    open_list = ",".join("'%s'" % s for s in OPEN_STATES)
-    cur.execute(
-        """INSERT INTO kalshi_series (series_ticker, title, category, open_markets, total_markets, updated_at)
-           SELECT m.series_ticker,
-                  SUBSTRING(MAX(m.title), 1, 255) AS title,
-                  NULL AS category,
-                  SUM(m.status IN (%s)) AS open_markets,
-                  COUNT(*) AS total_markets,
-                  %%s
-           FROM markets m WHERE m.series_ticker IS NOT NULL AND m.series_ticker <> ''
-           GROUP BY m.series_ticker
-           ON DUPLICATE KEY UPDATE title=VALUES(title), open_markets=VALUES(open_markets),
-             total_markets=VALUES(total_markets), updated_at=VALUES(updated_at)""" % open_list,
-        (now,),
-    )
+def refresh_series(cur, seen: Dict[str, Dict[str, object]], complete: bool) -> int:
+    """Upsert the series catalog from this refresh's open markets.
+
+    `seen` maps series_ticker -> {"open": n, "title": str}, counted from the /markets pages just
+    fetched, so open_markets is Kalshi's live count rather than stale `markets.status` values (a
+    row's status only changes when the market is re-fetched). total_markets is an indexed count
+    of just these series. The old version GROUP BY'd all of `markets` (11M+ rows, 99% parlays)
+    and timed out. Series not seen drop to open_markets=0, but only after a complete fetch, so a
+    failed page never empties the catalog."""
+    # Whole seconds: DATETIME rounds fractions, so a fractional `now` could make this run's own
+    # rows compare as older than `now` and get zeroed below.
+    now = utc_now().replace(tzinfo=None, microsecond=0)
+    tickers = sorted(seen)
+    totals: Dict[str, int] = {}
+    for i in range(0, len(tickers), 500):
+        chunk = tickers[i:i + 500]
+        cur.execute(
+            "SELECT series_ticker, COUNT(*) AS n FROM markets WHERE series_ticker IN (%s) GROUP BY series_ticker"
+            % ",".join(["%s"] * len(chunk)),
+            tuple(chunk),
+        )
+        for r in cur.fetchall():
+            t, n = (r["series_ticker"], r["n"]) if isinstance(r, dict) else (r[0], r[1])
+            totals[t] = int(n)
+    rows = [
+        (t, str(seen[t].get("title") or "")[:255], int(seen[t]["open"]), max(totals.get(t, 0), int(seen[t]["open"])), now)
+        for t in tickers
+    ]
+    if rows:
+        cur.executemany(
+            """INSERT INTO kalshi_series (series_ticker, title, category, open_markets, total_markets, updated_at)
+               VALUES (%s, %s, NULL, %s, %s, %s)
+               ON DUPLICATE KEY UPDATE title=VALUES(title), open_markets=VALUES(open_markets),
+                 total_markets=VALUES(total_markets), updated_at=VALUES(updated_at)""",
+            rows,
+        )
+    if complete:
+        cur.execute("UPDATE kalshi_series SET open_markets=0, updated_at=%s WHERE updated_at < %s AND open_markets <> 0",
+                    (now, now))
     cur.execute("SELECT COUNT(*) AS n FROM kalshi_series")
     row = cur.fetchone()
     return int(row["n"] if isinstance(row, dict) else row[0])
 
 
 PAGE_SLEEP = float(os.getenv("CATALOG_PAGE_SLEEP", "0.4"))  # gentle on a shared box/micro DB
+# Kalshi's open universe is ~99.5% multivariate parlays (KXMVECROSSCATEGORY*, ~8.8M rows by
+# 2026-10-24), which app/markets never trades and which made `markets` 190GB. With 200 pages of
+# 1000 the scan also hit its page cap inside the parlays, before reaching most real series.
+# "exclude" skips them at the API; set CATALOG_MVE_FILTER="" to fetch everything again.
+MVE_FILTER = os.getenv("CATALOG_MVE_FILTER", "exclude")
+MAX_PAGES = 200
 
 
 def refresh_series_meta(cur) -> int:
@@ -119,25 +146,35 @@ def refresh_once(status: Optional[str] = "open") -> Dict[str, int]:
     cursor: Optional[str] = None
     try:
         cur = conn.cursor()
-        for _ in range(200):
+        seen: Dict[str, Dict[str, object]] = {}
+        complete = False
+        for _ in range(MAX_PAGES):
             params: Dict[str, object] = {"limit": 1000}
             if status:
                 params["status"] = status
+            if MVE_FILTER:
+                params["mve_filter"] = MVE_FILTER
             if cursor:
                 params["cursor"] = cursor
             data = api_get("/markets", params)
             batch = data.get("markets") or []
             for m in batch:
                 m["series_ticker"] = _series_of(m)
-                n_open += 1 if m.get("status") in OPEN_STATES else 0
+                is_open = m.get("status") in OPEN_STATES
+                n_open += 1 if is_open else 0
+                s = m["series_ticker"]
+                if s:
+                    entry = seen.setdefault(s, {"open": 0, "title": m.get("title")})
+                    entry["open"] = int(entry["open"]) + (1 if is_open else 0)
             insert_market_upserts(cur, batch)
             conn.commit()
             total += len(batch)
             cursor = data.get("cursor")
             if not cursor or not batch:
+                complete = True
                 break
             time.sleep(PAGE_SLEEP)  # throttle: spread the load, don't starve serving
-        n_series = refresh_series(cur)
+        n_series = refresh_series(cur, seen, complete=complete and status == "open")
         conn.commit()
         n_meta = refresh_series_meta(cur)  # fill category + frequency (drives catalog-market generation)
         conn.commit()
