@@ -175,6 +175,25 @@ def parse_line(source: str, line: str) -> Iterable[Tuple[str, tuple]]:
                                       _iso_ns(data.get("time")))
 
 
+def read_records(fh) -> Iterable[str]:
+    """Recorder lines, stripped. A line that is just "}" closes the line before it: the first
+    recorder build kept Kalshi's trailing newline inside each message (fixed since)."""
+    prev = None
+    for line in fh:
+        line = line.strip()
+        if not line:
+            continue
+        if line == "}" and prev is not None:
+            yield prev + "}"
+            prev = None
+            continue
+        if prev is not None:
+            yield prev
+        prev = line
+    if prev is not None:
+        yield prev
+
+
 class TableWriters:
     def __init__(self, tmpdir: str) -> None:
         self.tmpdir = tmpdir
@@ -224,10 +243,7 @@ def archive_file(path: str, source: str, hour: datetime, s3=None, conn=None) -> 
         max_gap = 0.0
         gaps = reconnects = bad = 0
         with open(path, "r") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
+            for line in read_records(fh):
                 try:
                     pairs = list(parse_line(source, line))
                     rt = int(json.loads(line)["rt"]) if not pairs else pairs[0][1][0]
@@ -436,6 +452,64 @@ def build_features(s3=None, store=None, now: Optional[datetime] = None, conn=Non
     return n
 
 
+def repair_broken_hours(s3=None, now: Optional[datetime] = None, conn=None) -> int:
+    """Re-archive, from its raw gzip, any hour of the last FEATURE_LOOKBACK_H whose manifest
+    shows more unparseable lines than messages (an archiver that could not read the recorder's
+    format), and queue its features_1s for rebuild."""
+    if s3 is None:
+        import boto3
+        s3 = boto3.client("s3")
+    now = now or utc_now()
+    built = _load_built()
+    checked_path = FEATURE_STATE.replace("tick_features_built", "tick_repair_checked")
+    try:
+        with open(checked_path) as fh:
+            checked = set(json.load(fh))
+    except Exception:
+        checked = set()
+    fixed = 0
+    for source in ("kalshi", "coinbase"):
+        for d in sorted({(now - timedelta(hours=h)).strftime("%Y-%m-%d") for h in (0, FEATURE_LOOKBACK_H // 2, FEATURE_LOOKBACK_H)}):
+            resp = s3.list_objects_v2(Bucket=BUCKET, Prefix=f"{PREFIX}/manifest/{source}/date={d}/")
+            for obj in resp.get("Contents") or []:
+                tag = f"{obj['Key']}@{obj.get('ETag', '')}"
+                if tag in checked:
+                    continue
+                checked.add(tag)
+                tmpdir = tempfile.mkdtemp(prefix="tickfix_")
+                try:
+                    man_path = os.path.join(tmpdir, "m.json")
+                    s3.download_file(BUCKET, obj["Key"], man_path)
+                    with open(man_path) as fh:
+                        m = json.load(fh)
+                    if (m.get("bad_lines") or 0) <= (m.get("messages") or 0):
+                        continue
+                    hour = datetime.strptime(m["hour_utc"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                    gz = os.path.join(tmpdir, "raw.gz")
+                    s3.download_file(BUCKET, f"{PREFIX}/raw/{source}/date={hour:%Y-%m-%d}/{hour:%H}.ndjson.gz", gz)
+                    raw = os.path.join(tmpdir, "raw.ndjson")
+                    with gzip.open(gz, "rb") as src, open(raw, "wb") as dst:
+                        shutil.copyfileobj(src, dst, 1 << 20)
+                    os.remove(gz)
+                    new = archive_file(raw, source, hour, s3=s3, conn=conn)
+                    built.discard(hour.strftime("%Y-%m-%d %H"))
+                    _save_built(built)
+                    fixed += 1
+                    print(f"repaired {source} {hour:%Y-%m-%d %H}:00: msgs {m.get('messages')} -> {new['messages']}, "
+                          f"bad_lines {m.get('bad_lines')} -> {new['bad_lines']}, tables={new['tables']}", flush=True)
+                except Exception as e:
+                    print(f"[ERROR] repair {obj['Key']}: {type(e).__name__}: {e}", flush=True)
+                finally:
+                    shutil.rmtree(tmpdir, ignore_errors=True)
+    try:
+        with open(checked_path + ".tmp", "w") as fh:
+            json.dump(sorted(checked)[-500:], fh)
+        os.replace(checked_path + ".tmp", checked_path)
+    except OSError:
+        pass
+    return fixed
+
+
 def run_once() -> int:
     done = 0
     for path, source, hour in closed_hour_files(TICK_DIR):
@@ -453,6 +527,10 @@ def run_once() -> int:
         if os.path.isdir(d) and not os.listdir(d):
             os.rmdir(d)
     disk_guard()
+    try:
+        repair_broken_hours()
+    except Exception as e:
+        print(f"[ERROR] repair: {type(e).__name__}: {e}", flush=True)
     try:
         build_features()
     except Exception as e:
