@@ -228,9 +228,10 @@ def test_stall_guard_lets_a_healthy_stream_through():
 # -- Automatic model fallback on quota exhaustion -------------------------------------------------
 
 from app import models_catalog as _cat
-_OPUS = _cat.MODELS["opus-4-5"].model_id
-_SONNET = _cat.MODELS["sonnet-4-5"].model_id
-_HAIKU = _cat.MODELS["haiku-4-5"].model_id
+# The default chain (llm.BEDROCK_MODEL defaults to the catalog default): _OPUS is the preferred
+# model and _SONNET stands for "the next model down", whatever the catalog's FALLBACK_ORDER says.
+_CHAIN = _cat.fallback_chain_from(llm.BEDROCK_MODEL)
+_OPUS, _SONNET = _CHAIN[0], _CHAIN[1]
 
 
 class _PerModelThrottleClient:
@@ -273,11 +274,11 @@ def test_fallback_to_next_model_when_preferred_is_quota_exhausted(monkeypatch):
 
 
 def test_all_models_exhausted_raises_throttled(monkeypatch):
-    client = _PerModelThrottleClient(bad=[_OPUS, _SONNET, _HAIKU], daily=True)
+    client = _PerModelThrottleClient(bad=_CHAIN, daily=True)
     _wire(monkeypatch, client)
     with pytest.raises(llm.LLMThrottled):
         llm._bedrock("sys", [{"role": "user", "content": "hi"}])
-    assert client.calls == [_OPUS, _SONNET, _HAIKU]   # walked the whole chain before giving up
+    assert client.calls == _CHAIN   # walked the whole chain before giving up
 
 
 def test_daily_quota_does_not_waste_retries(monkeypatch):
