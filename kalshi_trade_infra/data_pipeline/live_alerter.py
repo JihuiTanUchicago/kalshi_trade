@@ -16,9 +16,8 @@ Design rules it follows deliberately:
 - **Read-only.** It never writes to any trading table and never places an
   order. Its IAM policy grants sns:Publish on one topic and nothing else.
 
-Run it from cron every few minutes:
-    */5 * * * * cd /opt/kalshi && . .env.aws && . .env.alerts && \\
-        PYTHONPATH=/opt/kalshi .venv/bin/python -m data_pipeline.live_alerter
+Run it every five minutes from the systemd timer in
+scripts/systemd/kalshi-alerter.timer (this AMI has no crontab).
 """
 import json
 import os
@@ -147,30 +146,44 @@ def collect(cur) -> Dict:
     }
 
 
-def position_mismatches(cur) -> List[str]:
-    """Where our book and Kalshi's disagree about what we hold.
+# Mismatch kinds. The kind, not the message, is what persistence keys on: a
+# size that drifts between runs must not reset the clock and hide a standing
+# disagreement forever.
+UNTRACKED = "untracked"
+BOOK_ONLY = "book_only"
+SHORT = "short"
+SIZE = "size"
+UNREADABLE = "unreadable"
+# The 2026-09-27 failure looked like an untracked negative position once Tau's
+# NO-side made the exchange sign ambiguous, so untracked is as loud as SHORT.
+URGENT_MISMATCH_KINDS = (UNTRACKED, SHORT)
+POSITIONS_PAGE_LIMIT = 1000
+POSITIONS_MAX_PAGES = 20
 
-    This is the check that was missing on 2026-09-27. Orders were recorded as
-    filled when they had been cancelled, so the engine "closed" positions it
-    did not hold - and a sell with nothing behind it opens a short. Kalshi
-    knew the whole time; nothing ever asked it.
 
-    Tau-aware. The operator account now also carries Tau's per-user live
-    positions, which live in ``app_positions`` (with a 'yes'/'no' side), not the
-    old ``live_positions`` table. So "ours" is the SIGNED net of BOTH tables per
-    ticker: YES adds +qty, NO adds -qty - mirroring the exchange, which reports a
-    NO position as a negative (short-YES) ``position``. Without app_positions every
-    Tau live holding looked untracked; without the sign a legitimately held NO
-    looked like a short. Only a genuine opposite-direction net is flagged SHORT now.
+def _kalshi_positions() -> List[Dict]:
+    """Every market position on the account. The endpoint pages, and a
+    holding past the first page would read as a phantom in our book."""
+    out: List[Dict] = []
+    cursor = None
+    for _ in range(POSITIONS_MAX_PAGES):
+        params = {"limit": POSITIONS_PAGE_LIMIT}
+        if cursor:
+            params["cursor"] = cursor
+        resp = api_get_auth("/trade-api/v2/portfolio/positions", params=params)
+        out.extend(resp.get("market_positions") or [])
+        cursor = resp.get("cursor")
+        if not cursor:
+            return out
+    raise RuntimeError("positions did not finish paging after %d pages" % POSITIONS_MAX_PAGES)
 
-    Deliberately stateless and cheap: it compares holdings, not money. A
-    balance check would need deposits and withdrawals tracked, which they are
-    not, and would be wrong the first time either happened.
-    """
+
+def classify_mismatches(cur) -> List[Tuple[str, str, str]]:
+    """(key, kind, message) for each disagreement; see position_mismatches."""
     try:
-        raw = api_get_auth("/trade-api/v2/portfolio/positions").get("market_positions") or []
+        raw = _kalshi_positions()
     except Exception as e:
-        return ["could not read Kalshi positions to reconcile: %s" % e]
+        return [(UNREADABLE, UNREADABLE, "could not read Kalshi positions to reconcile: %s" % e)]
 
     theirs: Dict[str, int] = {}
     for p in raw:
@@ -196,15 +209,39 @@ def position_mismatches(cur) -> List[str]:
             continue
         if o == 0:
             side = "NO" if t < 0 else "YES"
-            out.append("Kalshi holds %d %s x %s that our book does not know about" % (abs(t), side, ticker))
+            kind, msg = UNTRACKED, "Kalshi holds %d %s x %s that our book does not know about" % (abs(t), side, ticker)
         elif t == 0:
-            out.append("our book holds %d x %s that Kalshi does not" % (o, ticker))
+            kind, msg = BOOK_ONLY, "our book holds %d x %s that Kalshi does not" % (o, ticker)
         elif (t > 0) != (o > 0):
             # Opposite directions is the only genuine short now (sell with nothing behind it).
-            out.append("SHORT/direction mismatch on %s: Kalshi %d, our book %d" % (ticker, t, o))
+            kind, msg = SHORT, "SHORT/direction mismatch on %s: Kalshi %d, our book %d" % (ticker, t, o)
         else:
-            out.append("size mismatch on %s: Kalshi %d, our book %d" % (ticker, abs(t), abs(o)))
+            kind, msg = SIZE, "size mismatch on %s: Kalshi %d, our book %d" % (ticker, abs(t), abs(o))
+        out.append(("%s|%s" % (ticker, kind), kind, msg))
     return out
+
+
+def position_mismatches(cur) -> List[str]:
+    """Where our book and Kalshi's disagree about what we hold.
+
+    This is the check that was missing on 2026-09-27. Orders were recorded as
+    filled when they had been cancelled, so the engine "closed" positions it
+    did not hold - and a sell with nothing behind it opens a short. Kalshi
+    knew the whole time; nothing ever asked it.
+
+    Tau-aware. The operator account now also carries Tau's per-user live
+    positions, which live in ``app_positions`` (with a 'yes'/'no' side), not the
+    old ``live_positions`` table. So "ours" is the SIGNED net of BOTH tables per
+    ticker: YES adds +qty, NO adds -qty - mirroring the exchange, which reports a
+    NO position as a negative (short-YES) ``position``. Without app_positions every
+    Tau live holding looked untracked; without the sign a legitimately held NO
+    looked like a short. Only a genuine opposite-direction net is flagged SHORT now.
+
+    Deliberately stateless and cheap: it compares holdings, not money. A
+    balance check would need deposits and withdrawals tracked, which they are
+    not, and would be wrong the first time either happened.
+    """
+    return [msg for _, _, msg in classify_mismatches(cur)]
 
 
 def engine_errors_since(offset: int) -> Tuple[int, List[str]]:
@@ -307,12 +344,26 @@ def build_alerts(now: Dict, prev: Dict, cur) -> Tuple[List[str], List[str]]:
 
     # Settlement moves Kalshi's position to zero a beat before the engine
     # books it, so a single disagreement is usually just that. Only report a
-    # mismatch that is still there on the next run five minutes later.
-    mismatches = position_mismatches(cur)
-    now["position_mismatch"] = mismatches
-    for line in mismatches:
-        if line in (prev.get("position_mismatch") or []):
-            (urgent if "SHORT" in line else normal).append("book disagrees with Kalshi: " + line)
+    # mismatch that is still there on the next run five minutes later, then
+    # stay quiet while it stands and say so once when it clears.
+    mismatches = classify_mismatches(cur)
+    seen_before = set(prev.get("position_mismatch") or [])
+    announced_before = set(prev.get("position_mismatch_announced") or [])
+    announced = []
+    for key, kind, msg in mismatches:
+        if key in announced_before:
+            announced.append(key)
+        elif key in seen_before:
+            (urgent if kind in URGENT_MISMATCH_KINDS else normal).append("book disagrees with Kalshi: " + msg)
+            announced.append(key)
+    current_keys = {key for key, _, _ in mismatches}
+    for key in sorted(announced_before - current_keys):
+        if key == UNREADABLE:
+            normal.append("Resolved: Kalshi positions are readable again")
+        else:
+            normal.append("Resolved: book agrees with Kalshi again on " + key.split("|", 1)[0])
+    now["position_mismatch"] = sorted(current_keys)
+    now["position_mismatch_announced"] = sorted(announced)
 
     new_offset, errs = engine_errors_since(int(prev.get("log_offset") or 0))
     now["log_offset"] = new_offset

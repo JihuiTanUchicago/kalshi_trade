@@ -42,3 +42,17 @@ the local observation journal so HISTORICAL research reads have a no-lookahead a
 It and the app server must point at the same `TAU_WORLDMONITOR_JOURNAL` (both default to
 `/opt/kalshi/.runtime/worldmonitor/news.sqlite3`). A missing key makes it exit cleanly and the
 burst limit stops a crash loop; `TAU_WORLDMONITOR_ENABLED` gates agent exposure, not polling.
+
+## Live alerter
+
+`kalshi-alerter.timer` runs `data_pipeline.live_alerter` every 5 minutes. Until now
+the box ran it from a hand-written `run_alerter.sh` and timer that were never checked in;
+these units reproduce that (source `.env.aws` + `.env.alerts`, then `unset AWS_PROFILE`
+so boto3 falls through to the instance role). Each pass also reconciles our book against
+Kalshi's positions; a disagreement is reported only once it survives to the next pass.
+
+    sudo cp scripts/systemd/kalshi-alerter.* /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now kalshi-alerter.timer
+
+If the old hand-made timer is still enabled, disable it first or every alert goes out twice.
