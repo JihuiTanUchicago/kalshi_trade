@@ -2769,6 +2769,19 @@ def paper_evidence(cur, user_id: int, strategy_id: int) -> Dict:
     }
 
 
+def early_exits_line(exits: Dict[str, Dict]) -> str:
+    """Paper exits before settlement vs holding to the end (repo.early_exit_scorecard), for the
+    review: whether the stop and take-profit rules are adding or destroying value on the live book."""
+    parts = []
+    for reason, r in sorted(exits.items(), key=lambda kv: -kv[1]["exits"]):
+        if not r["scored"]:
+            parts.append("%s %d (none settled yet)" % (reason, r["exits"]))
+            continue
+        parts.append("%s %d: $%.2f vs $%.2f held, %s $%.2f" % (
+            reason, r["scored"], r["scored_pnl"], r["hold_pnl"], "saved" if r["saved"] >= 0 else "COST", abs(r["saved"])))
+    return ("Early exits on paper vs holding to settlement (all time): " + "; ".join(parts)) if parts else ""
+
+
 def paper_evidence_line(ev: Dict) -> str:
     """One-line summary of `paper_evidence` for the autopilot's review context."""
     parts = ["%d/%d realistic paper trades" % (ev["trades"], ev["trades_needed"]),
@@ -3449,6 +3462,12 @@ def _copilot_context(cur, user: Dict) -> str:
     if paper_lines:
         lines += ["", "How research's passes did on paper, by market family (all paper deployments, including stopped):"]
         lines += paper_lines
+    try:
+        exit_line = early_exits_line(repo.early_exit_scorecard(cur, user["id"]))
+    except Exception:
+        exit_line = ""
+    if exit_line:
+        lines += ["", exit_line]
     lines += ["", "Passed strategies not deployed:"]
     spare = [s for s in passed if s["id"] not in deployed_ids][:10]
     any_candidate = False

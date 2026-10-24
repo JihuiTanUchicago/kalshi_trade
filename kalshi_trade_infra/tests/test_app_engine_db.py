@@ -194,3 +194,22 @@ def test_paper_withdrawal_cannot_overdraw(conn, user):
     from app import repository as repo
 
     assert repo.paper_balance(conn.cursor(), user["id"]) == 600.0
+
+
+def test_a_stopped_out_position_is_scored_against_holding_once_it_settles(conn, user):
+    from app import engine
+    from app import repository as repo
+
+    dep = _deployment(conn, user)
+    cur = conn.cursor()
+    ticker = "TEST-" + uuid.uuid4().hex[:8]
+    now = datetime.now(timezone.utc)
+    close = (now - timedelta(minutes=1)).replace(tzinfo=None)
+    pid = repo.insert_position(cur, dep["id"], user["id"], "paper", ticker, "no", 11, 0.19, 0.10, close, None)
+    assert repo.close_position(cur, pid, 0.024, 0.0, -1.98, "stop")
+    assert [p["id"] for p in repo.unscored_early_exits(cur, "btc15m", now) if p["id"] == pid] == [pid]
+    engine._last_exit_score.clear()
+    engine.score_early_exits(conn, engine.MARKETS["btc15m"], engine.Sources(result=lambda t: "yes"), now)
+    assert pid not in [p["id"] for p in repo.unscored_early_exits(cur, "btc15m", now)]
+    card = repo.early_exit_scorecard(cur, user["id"], since=now - timedelta(days=1))
+    assert card["stop"] == {"exits": 1, "scored": 1, "pnl": -1.98, "scored_pnl": -1.98, "hold_pnl": -2.19, "saved": 0.21}

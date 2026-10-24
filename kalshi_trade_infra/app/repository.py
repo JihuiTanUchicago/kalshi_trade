@@ -1363,6 +1363,53 @@ def insert_position(
     return cur.lastrowid
 
 
+# Close reasons that are the safety stop selling a loser (position stop, spec stop, drawdown sweep).
+STOP_EXIT_REASONS = ("stop", "stop_loss", "drawdown")
+
+
+def unscored_early_exits(cur, market: str, now: datetime, days: int = 30, limit: int = 20) -> List[Dict]:
+    """Positions on `market` that closed before settlement (stop, take-profit, flatten...) whose
+    contract has now closed, not yet scored against holding to the end. Newest first, bounded."""
+    cur.execute(
+        """SELECT p.id, p.ticker, p.side, p.qty, p.entry_price, p.entry_fee
+           FROM app_positions p JOIN app_deployments d ON d.id=p.deployment_id
+           WHERE d.market=%s AND p.status='closed' AND p.close_reason<>'settled' AND p.hold_pnl IS NULL
+             AND p.market_close_time <= %s AND p.closed_at >= %s
+           ORDER BY p.id DESC LIMIT %s""",
+        (market, now.replace(tzinfo=None), (now - timedelta(days=days)).replace(tzinfo=None), int(limit)),
+    )
+    return cur.fetchall()
+
+
+def score_early_exit(cur, position_id: int, result: str, hold_pnl: float) -> bool:
+    cur.execute("UPDATE app_positions SET settle_result=%s, hold_pnl=%s WHERE id=%s AND hold_pnl IS NULL",
+                (result, round(hold_pnl, 4), position_id))
+    return cur.rowcount == 1
+
+
+def early_exit_scorecard(cur, user_id: int, mode: str = "paper", since: Optional[datetime] = None) -> Dict[str, Dict]:
+    """Per close reason: how many positions exited before settlement, their realized P&L, and (for
+    the ones whose contract has settled) what holding to the end would have made. `saved` > 0 means
+    selling early beat holding. This is the evidence for the stop setting, on the live book."""
+    sql = ("""SELECT close_reason AS reason, COUNT(*) AS exits, COUNT(hold_pnl) AS scored,
+                     COALESCE(SUM(pnl),0) AS pnl,
+                     COALESCE(SUM(CASE WHEN hold_pnl IS NOT NULL THEN pnl END),0) AS scored_pnl,
+                     COALESCE(SUM(hold_pnl),0) AS hold_pnl
+              FROM app_positions WHERE user_id=%s AND mode=%s AND status='closed' AND close_reason<>'settled'""")
+    args: List = [user_id, mode]
+    if since is not None:
+        sql += " AND closed_at >= %s"
+        args.append(since.replace(tzinfo=None))
+    cur.execute(sql + " GROUP BY close_reason", args)
+    out = {}
+    for r in cur.fetchall():
+        scored_pnl, hold = float(r["scored_pnl"] or 0), float(r["hold_pnl"] or 0)
+        out[r["reason"] or "other"] = {"exits": int(r["exits"]), "scored": int(r["scored"]),
+                                       "pnl": round(float(r["pnl"] or 0), 2), "scored_pnl": round(scored_pnl, 2),
+                                       "hold_pnl": round(hold, 2), "saved": round(scored_pnl - hold, 2)}
+    return out
+
+
 def close_position(cur, position_id: int, exit_price: float, exit_fee: float, pnl: float, reason: str) -> bool:
     """Idempotent: only an open position closes, so a retried tick cannot
     book the same exit twice."""

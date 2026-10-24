@@ -1,5 +1,24 @@
 # PLAN
 
+## Did the stop help? Early exits scored against holding (2026-10-24)
+
+- Every position that exits before settlement (stop, stop_loss, drawdown, take_profit, flatten,
+  edge_gone) is scored once its contract settles: `app_positions.settle_result` and `hold_pnl`, i.e.
+  what the position would have made held to the end. The engine fills these in
+  `engine.score_early_exits`, at most every 10 minutes per market, for exits in the last 30 days. It
+  only looks up results and never trades.
+- `repo.early_exit_scorecard` gives, per close reason, exits, scored, realized, held, and `saved`
+  (realized minus held; above 0 means selling early beat holding). It reaches:
+  - the autopilot panel, which now shows a weekly line on the safety stop;
+  - the review context, as all-time figures per reason, with COST flagged when an exit rule lost
+    money against holding;
+  - `/api/research/scoreboard`, as `early_exits`.
+- The panel also names paper strategies that were paused in the last 24 hours, with the reason in
+  plain words. Before this, a stopped-out strategy just dropped out of the running count.
+- First evidence: both of #74's sol15m NO contracts settled YES. Holding would have lost $7.19
+  against the realized -$5.66, so the 40% stop saved $1.53 on its first two trades. That is too few
+  trades to settle the stop question, which stays Todd's call; the scorecard keeps counting.
+
 ## Fewer duplicate reviews, honest deployment counts (2026-10-24)
 
 - The heartbeat review is now a true fallback: it skips a user who had any review in the last half
