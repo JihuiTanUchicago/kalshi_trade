@@ -247,7 +247,8 @@ def _paper_kernel_close(conn, cur, dep: Dict, pos: Dict, kernel, price: float, r
 
 
 def _live_trade(cur, dep: Dict, kernel, action: str, side: str, ticker: str, qty: int, price: float,
-                client_order_id_base: Optional[str] = None):
+                client_order_id_base: Optional[str] = None, fair: Optional[float] = None,
+                min_edge: Optional[float] = None):
     from data_pipeline.architecture.contracts import TradeIntent
 
     # `side` is the real leg (yes|no) and `price` is that side's own price; the
@@ -255,9 +256,16 @@ def _live_trade(cur, dep: Dict, kernel, action: str, side: str, ticker: str, qty
     # matching YES-leg wire order. A NO strategy must never place a YES order.
     # client_order_id_base (the persisted intent id, P0-1) rides on metadata so the kernel can mint
     # a durable, idempotent client_order_id for every child order without a signature change.
+    # fair/min_edge (an entry's own-side fair value and the spec's required net edge) let the kernel
+    # cap the BUY limit at the reservation price, so the fill can never be worse than the edge allows.
+    meta: Dict = {}
+    if client_order_id_base:
+        meta["client_order_id"] = client_order_id_base
+    if fair is not None:
+        meta["fair"] = float(fair)
+        meta["min_edge"] = float(min_edge or 0.0)
     intent = TradeIntent(action=action, side=side, ticker=ticker, qty_contracts=qty, limit_price_dollars=price,
-                         model_name="app-dep-%d" % dep["id"], now_ts=datetime.now(timezone.utc),
-                         metadata={"client_order_id": client_order_id_base} if client_order_id_base else {})
+                         model_name="app-dep-%d" % dep["id"], now_ts=datetime.now(timezone.utc), metadata=meta)
     return kernel.execute(intent)
 
 
@@ -493,7 +501,7 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
             if intent_id is None:
                 continue
             rep = _live_trade(cur, dep, kernel, "buy", entry.side, ticker, qty, entry.price,
-                              client_order_id_base=intent_id)
+                              client_order_id_base=intent_id, fair=entry.fair, min_edge=spec["entry"]["min_edge"])
             if rep.fill_qty_contracts < 1:
                 try:
                     repo.mark_order_intent(cur, intent_id, "unfilled")

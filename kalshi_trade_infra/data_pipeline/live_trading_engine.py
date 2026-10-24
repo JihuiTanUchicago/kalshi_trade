@@ -410,7 +410,9 @@ def open_live_position(
         limit_price_dollars=ask,
         model_name=model_name,
         now_ts=now_ts,
-        metadata={"prob_yes": prob},
+        # fair caps the limit at breakeven net of the taker fee (min_edge 0): slippage and retry
+        # escalation can never buy a contract the model itself prices below cost + fee.
+        metadata={"prob_yes": prob, "fair": prob, "min_edge": 0.0},
     )
     rep = kernel.execute(intent)
     cur.execute(
