@@ -50,6 +50,45 @@ def asof_coinbase(cur, ts: datetime) -> Optional[Dict]:
     return cur.fetchone()
 
 
+def _imbalance(yes: Optional[float], no: Optional[float]) -> Optional[float]:
+    if yes is None or no is None or (yes + no) <= 0:
+        return None
+    return (yes - no) / (yes + no)
+
+
+def trade_flow(cur, ticker: str, minute_mark: datetime) -> Dict[str, Optional[float]]:
+    """Signed order flow from market_trades prints strictly before the minute: contracts bought by
+    YES takers vs NO takers (a NO taker hits the YES bid) over 60s, and the imbalance
+    (yes - no) / (yes + no) over 60s and 300s (None when nothing traded). Best effort: a failed
+    read leaves every flow feature None rather than stopping the builder."""
+    out: Dict[str, Optional[float]] = {"taker_yes_vol_60s": None, "taker_no_vol_60s": None,
+                                       "flow_imbalance_60s": None, "flow_imbalance_300s": None}
+    end = minute_mark.replace(tzinfo=None)
+    start60 = end - timedelta(seconds=60)
+    try:
+        cur.execute(
+            """
+            SELECT
+              SUM(CASE WHEN taker_side='yes' AND created_time >= %s THEN count_fp ELSE 0 END) AS y60,
+              SUM(CASE WHEN taker_side='no' AND created_time >= %s THEN count_fp ELSE 0 END) AS n60,
+              SUM(CASE WHEN taker_side='yes' THEN count_fp ELSE 0 END) AS y300,
+              SUM(CASE WHEN taker_side='no' THEN count_fp ELSE 0 END) AS n300
+            FROM market_trades
+            WHERE ticker=%s AND created_time >= %s AND created_time < %s
+            """,
+            (start60, start60, ticker, end - timedelta(seconds=300), end),
+        )
+        r = cur.fetchone() or {}
+    except Exception as e:
+        print(f"[WARN] trade flow read failed for {ticker}: {e}")
+        return out
+    y60, n60 = to_float(r.get("y60")) or 0.0, to_float(r.get("n60")) or 0.0
+    y300, n300 = to_float(r.get("y300")) or 0.0, to_float(r.get("n300")) or 0.0
+    out.update(taker_yes_vol_60s=y60, taker_no_vol_60s=n60,
+               flow_imbalance_60s=_imbalance(y60, n60), flow_imbalance_300s=_imbalance(y300, n300))
+    return out
+
+
 def compute_ret(now_val: Optional[float], prev_val: Optional[float]) -> Optional[float]:
     if now_val is None or prev_val is None or prev_val == 0:
         return None
@@ -241,6 +280,8 @@ def build_row(cur, minute_mark: datetime, tq: Dict[str, Any], target_cache: Opti
     if c0 and c0.get("snapshot_time_utc"):
         coinbase_age = int((minute_mark.replace(tzinfo=None) - c0["snapshot_time_utc"]).total_seconds())
 
+    flow = trade_flow(cur, ticker, minute_mark)
+
     target_info = _resolve_target_btc_price(cur, ticker, event_ticker, minute_mark, target_cache)
     target_btc_price = target_info.get("target_btc_price")
 
@@ -293,6 +334,10 @@ def build_row(cur, minute_mark: datetime, tq: Dict[str, Any], target_cache: Opti
         "trades_last_60s_volume_fp": to_float(tq.get("trades_last_60s_volume_fp")),
         "trades_last_60s_vwap_yes": to_float(tq.get("trades_last_60s_vwap_yes")),
         "quote_change_events_60s": tq.get("quote_change_events_60s"),
+        "taker_yes_vol_60s": flow["taker_yes_vol_60s"],
+        "taker_no_vol_60s": flow["taker_no_vol_60s"],
+        "flow_imbalance_60s": flow["flow_imbalance_60s"],
+        "flow_imbalance_300s": flow["flow_imbalance_300s"],
         "time_to_expiry_sec": tte,
         "cb_price": cb0,
         "cb_ret_1m": cb_ret_1m,
@@ -322,8 +367,9 @@ def upsert_row(cur, row: Dict[str, Any]) -> None:
         (snapshot_minute_utc,market_ticker,event_ticker,target_btc_price,yes_bid_dollars,yes_ask_dollars,spread_dollars,mid_dollars,
          yes_bid_size_fp,yes_ask_size_fp,orderbook_imbalance,mid_ret_1m,mid_ret_3m,trades_last_60s_count,trades_last_60s_volume_fp,
          trades_last_60s_vwap_yes,quote_change_events_60s,time_to_expiry_sec,cb_price,cb_ret_1m,cb_ret_3m,cb_ret_5m,cb_vol_5m,
-         kalshi_data_age_sec,coinbase_data_age_sec,model_eligible,guard_status,guard_reasons_json,raw_json)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+         kalshi_data_age_sec,coinbase_data_age_sec,model_eligible,guard_status,guard_reasons_json,raw_json,
+         taker_yes_vol_60s,taker_no_vol_60s,flow_imbalance_60s,flow_imbalance_300s)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         ON DUPLICATE KEY UPDATE
           market_ticker=VALUES(market_ticker), event_ticker=VALUES(event_ticker), target_btc_price=VALUES(target_btc_price),
           yes_bid_dollars=VALUES(yes_bid_dollars), yes_ask_dollars=VALUES(yes_ask_dollars),
@@ -336,7 +382,9 @@ def upsert_row(cur, row: Dict[str, Any]) -> None:
           cb_ret_1m=VALUES(cb_ret_1m), cb_ret_3m=VALUES(cb_ret_3m), cb_ret_5m=VALUES(cb_ret_5m), cb_vol_5m=VALUES(cb_vol_5m),
           kalshi_data_age_sec=VALUES(kalshi_data_age_sec), coinbase_data_age_sec=VALUES(coinbase_data_age_sec),
           model_eligible=VALUES(model_eligible), guard_status=VALUES(guard_status),
-          guard_reasons_json=VALUES(guard_reasons_json), raw_json=VALUES(raw_json)
+          guard_reasons_json=VALUES(guard_reasons_json), raw_json=VALUES(raw_json),
+          taker_yes_vol_60s=VALUES(taker_yes_vol_60s), taker_no_vol_60s=VALUES(taker_no_vol_60s),
+          flow_imbalance_60s=VALUES(flow_imbalance_60s), flow_imbalance_300s=VALUES(flow_imbalance_300s)
         """,
         (
             row["snapshot_minute_utc"].replace(tzinfo=None),
@@ -368,6 +416,10 @@ def upsert_row(cur, row: Dict[str, Any]) -> None:
             row.get("guard_status"),
             json.dumps(row.get("guard_reasons", [])),
             json.dumps(row.get("raw_json", {}), default=str),
+            row.get("taker_yes_vol_60s"),
+            row.get("taker_no_vol_60s"),
+            row.get("flow_imbalance_60s"),
+            row.get("flow_imbalance_300s"),
         ),
     )
 

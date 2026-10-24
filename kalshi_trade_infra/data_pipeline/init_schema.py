@@ -427,6 +427,12 @@ def main() -> None:
             # outcome-settled markets (app/markets.load_catalog_markets). NULL on legacy rows until
             # catalog_collector's next enrichment pass fills it.
             ("kalshi_series", "frequency", "ALTER TABLE kalshi_series ADD COLUMN frequency VARCHAR(16) NULL AFTER category"),
+            # Signed order flow from market_trades prints (model_features_1m_builder.trade_flow).
+            # Appended (no AFTER) so MySQL adds them INSTANT on the large table.
+            ("model_features_1m", "taker_yes_vol_60s", "ALTER TABLE model_features_1m ADD COLUMN taker_yes_vol_60s DECIMAL(18,2) NULL"),
+            ("model_features_1m", "taker_no_vol_60s", "ALTER TABLE model_features_1m ADD COLUMN taker_no_vol_60s DECIMAL(18,2) NULL"),
+            ("model_features_1m", "flow_imbalance_60s", "ALTER TABLE model_features_1m ADD COLUMN flow_imbalance_60s DOUBLE NULL"),
+            ("model_features_1m", "flow_imbalance_300s", "ALTER TABLE model_features_1m ADD COLUMN flow_imbalance_300s DOUBLE NULL"),
         ):
             cur.execute(
                 """
