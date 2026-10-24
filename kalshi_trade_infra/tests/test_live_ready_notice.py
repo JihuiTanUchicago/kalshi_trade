@@ -6,8 +6,9 @@ READY = {"ready": True, "why": "", "trades": 31, "trades_needed": 30, "net_pnl":
          "p_value": 0.05, "realization": None}
 
 
-def _patch(monkeypatch, deps, ready=READY, already=()):
+def _patch(monkeypatch, deps, ready=READY, already=(), candidate=True):
     chats, mails = [], []
+    monkeypatch.setattr(agent, "_is_deployment_candidate", lambda cur, sid: candidate)
     monkeypatch.setattr(agent.repo, "list_deployments", lambda cur, uid: list(deps))
     monkeypatch.setattr(agent.repo, "chat_contains", lambda cur, uid, role, needle: needle in already)
     monkeypatch.setattr(agent.repo, "add_chat", lambda cur, uid, role, text, pid=None: chats.append((role, text)))
@@ -76,3 +77,12 @@ def test_email_body_carries_the_note(monkeypatch):
     notify.live_ready_notice("t@example.invalid", "T", "Edge", "31 trades", "https://x/strategies/7", "Re-verify.")
     notify.live_ready_notice("t@example.invalid", "T", "Edge", "31 trades", "https://x/strategies/7")
     assert "Re-verify.\n\n  https://x/strategies/7" in sent[0] and "Re-verify" not in sent[1]
+
+
+def test_a_ready_probation_strategy_gets_a_standout_line_not_a_promote_invite(monkeypatch):
+    chats, mails = _patch(monkeypatch, [DEP], candidate=False)
+    lines = agent.live_ready_notices(None, USER)
+    assert len(lines) == 1 and "[paper-standout #7]" in lines[0] and "can't go live" in lines[0]
+    assert "[live-ready" not in lines[0] and mails == []
+    chats, mails = _patch(monkeypatch, [DEP], candidate=False, already=("[paper-standout #7]",))
+    assert agent.live_ready_notices(None, USER) == []

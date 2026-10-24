@@ -89,6 +89,8 @@ Research funnel telemetry: every finished research run prints one `[research] ru
 
 Research robustness: prod logs showed a code strategy's truncated `out.json` raising a raw `JSONDecodeError` out of `sandbox._run_entry`, past `freeze_code_model`'s `SandboxError` handler, killing the whole research run (its tokens already spent). Unreadable or non-object output is now a `SandboxError`, so only that hypothesis fails.
 
+Forward paper probation (`agent.auto_paper_probation`, off unless `APP_PAPER_PROBATION=1`): 2,857 strategies rejected and none cleared, so paper has never traded and the realistic-fill engine has no production record. Each autopilot review puts validation near misses (latest validation row net > 0, p ≤ `APP_PROBATION_MAX_P` 0.25, ≥ 20 trades; `rr.probation_candidates`) that never ran on paper onto paper, at most `APP_PROBATION_MAX_ACTIVE` (4) at once. Live is unchanged: deploy_live and the manual live path still require a gatekeeper DEPLOYMENT_CANDIDATE. A probation strategy that clears every paper check gets a `[paper-standout #id]` line, not a promote invite. For Todd on 2026-10-24 that is #16001 (sol15m, p=0.155), #11280 and #11281 (sol_daily, p≈0.22).
+
 Visibility: the strategy page's Road to live panel (both themes) shows each gate's progress, and the autopilot float's stats show the running paper strategy closest to live (`paper_progress` in `/api/autopilot/status`: realistic trades / 30 and net P&L, one grouped query, no bootstrap on the 20s poll).
 
 Next: feed realization to the research thread's backtest fill-model calibration.
