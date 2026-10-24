@@ -147,17 +147,22 @@ class Books:
 
     def __init__(self) -> None:
         self.books: Dict[str, Dict[str, Dict[float, float]]] = {}
+        self.updated: Dict[str, int] = {}      # ticker -> rt of its last snapshot/delta
 
-    def snapshot(self, msg: Dict) -> None:
+    def snapshot(self, msg: Dict, rt: Optional[int] = None) -> None:
         t = msg.get("market_ticker")
         if t:
             self.books[t] = {s: dict(snapshot_levels(msg, s)) for s in ("yes", "no")}
+            if rt is not None:
+                self.updated[t] = rt
 
-    def delta(self, msg: Dict) -> None:
+    def delta(self, msg: Dict, rt: Optional[int] = None) -> None:
         t = msg.get("market_ticker")
         side, price, d = delta_fields(msg)
         if not t or side not in ("yes", "no") or price is None or d is None:
             return
+        if rt is not None:
+            self.updated[t] = rt
         lv = self.books.setdefault(t, {"yes": {}, "no": {}})[side]
         q = lv.get(price, 0.0) + d
         if q <= 1e-9:
@@ -168,10 +173,28 @@ class Books:
     def drop(self, tickers) -> None:
         for t in tickers:
             self.books.pop(t, None)
+            self.updated.pop(t, None)
 
-    def checkpoint(self) -> Dict[str, Dict[str, List[List[float]]]]:
-        return {t: {s: sorted([p, q] for p, q in b[s].items()) for s in ("yes", "no")}
-                for t, b in self.books.items()}
+    def checkpoint(self) -> Dict[str, Dict]:
+        """{ticker: {"yes": [[p, q]..], "no": [..], "t": rt of the last real update}}; "t" lets a
+        reader of a later hour still know how stale the book is."""
+        out = {}
+        for t, b in self.books.items():
+            out[t] = {s: sorted([p, q] for p, q in b[s].items()) for s in ("yes", "no")}
+            if t in self.updated:
+                out[t]["t"] = self.updated[t]
+        return out
+
+
+MARKET_META_KEYS = ("event_ticker", "open_time", "close_time", "floor_strike", "cap_strike", "strike_type", "status")
+
+
+def market_meta(m: Dict) -> Dict:
+    """What features need about a contract: its window and strike(s). Series from the ticker prefix."""
+    out = {k: m.get(k) for k in MARKET_META_KEYS if m.get(k) is not None}
+    out["ticker"] = m.get("ticker")
+    out["series_ticker"] = m.get("series_ticker") or str(m.get("ticker") or "").split("-")[0]
+    return out
 
 
 # --- Kalshi market discovery ---------------------------------------------------------------------
@@ -318,6 +341,11 @@ class Recorder:
 
 
 class KalshiRecorder(Recorder):
+    """One socket, one subscription per channel. Kalshi folds every later ``subscribe`` for a
+    channel into that channel's existing sid (it answers "ok" with the sid, not "subscribed"),
+    so markets are added with ``subscribe`` and removed with ``update_subscription``
+    delete_markets on each sid; never ``unsubscribe``, which would end the stream for every
+    market at once. ``seq`` counts every message on a sid, all markets together."""
     source = "kalshi"
 
     def __init__(self) -> None:
@@ -329,71 +357,75 @@ class KalshiRecorder(Recorder):
         self.books = Books()
         self.series: List[str] = []
         self.series_at = 0.0
-        self._id = 0
-        self.pending: Dict[int, Dict] = {}            # cmd id -> group
-        self.groups: List[Dict] = []                  # {"tickers": set, "close": dt, "sids": {channel: sid}}
-        self.sid_group: Dict[int, Dict] = {}
-        self.last_seq: Dict[int, int] = {}
         self.close_time: Dict[str, Optional[datetime]] = {}
+        self.meta_by_ticker: Dict[str, Dict] = {}
+        self.resync_times: List[float] = []
+        self.solo: Set[str] = set()                   # tickers whose batch was rejected: one per command
+        self.reset_session()
+
+    def reset_session(self) -> None:
+        self._id = 0
+        self._rt = 0
+        self.subscribed: Set[str] = set()
+        self.pending: Dict[int, List[str]] = {}       # subscribe cmd id -> tickers
+        self.sids: Dict[str, int] = {}                # channel -> sid
+        self.last_seq: Dict[int, int] = {}
 
     def on_roll(self, write, rt: int) -> None:
         write(json.dumps({"rt": rt, "checkpoint": self.books.checkpoint()}, separators=(",", ":")))
+        metas = [m for t, m in self.meta_by_ticker.items() if t in self.subscribed]
+        if metas:
+            write(json.dumps({"rt": rt, "markets": metas}, separators=(",", ":")))
 
     def subscribed_tickers(self) -> Set[str]:
-        out: Set[str] = set()
-        for g in self.groups:
-            out |= g["tickers"]
-        return out
+        return set(self.subscribed)
 
     def expect_traffic(self) -> bool:
-        return bool(self.groups)
+        return bool(self.subscribed)
 
-    async def send(self, cmd: str, params: Dict, group: Optional[Dict] = None) -> None:
+    async def send(self, cmd: str, params: Dict) -> int:
         self._id += 1
-        if group is not None:
-            self.pending[self._id] = group
         await self.ws.send(json.dumps({"id": self._id, "cmd": cmd, "params": params}))
+        return self._id
 
     async def subscribe(self, tickers: List[str], channels: List[str] = KALSHI_CHANNELS) -> None:
-        close = [self.close_time.get(t) for t in tickers]
-        group = {"tickers": set(tickers), "sids": {}, "channels": list(channels),
-                 "close": max((c for c in close if c is not None), default=None)}
-        self.groups.append(group)
-        await self.send("subscribe", {"channels": list(channels), "market_tickers": sorted(tickers)}, group)
-
-    async def unsubscribe(self, group: Dict) -> None:
-        sids = list(group["sids"].values())
-        if sids:
-            await self.send("unsubscribe", {"sids": sids})
-        for s in sids:
-            self.sid_group.pop(s, None)
-            self.last_seq.pop(s, None)
-        if group in self.groups:
-            self.groups.remove(group)
-
-    async def resync(self, sid: int) -> None:
-        """A sequence gap means a lost delta, so this group's book is wrong: drop its orderbook
-        stream and resubscribe, which sends a fresh snapshot."""
-        group = self.sid_group.get(sid)
-        if group is None:
+        if not tickers:
             return
-        # Bounded: a group resyncs at most once per RESYNC_MIN_S, and all groups together at most
-        # RESYNC_BUDGET times per 10 minutes. If gaps were systematic (a seq semantics change),
-        # unbounded resubscribes would hammer the exchange; the raw stream is kept either way.
+        self.subscribed.update(tickers)
+        cid = await self.send("subscribe", {"channels": list(channels), "market_tickers": sorted(tickers)})
+        self.pending[cid] = list(tickers)
+
+    async def remove(self, tickers: List[str]) -> None:
+        if not tickers:
+            return
+        for sid in sorted(set(self.sids.values())):
+            await self.send("update_subscription",
+                            {"sids": [sid], "market_tickers": sorted(tickers), "action": "delete_markets"})
+        self.subscribed.difference_update(tickers)
+        self.solo.difference_update(tickers)
+        self.books.drop(tickers)
+        for t in tickers:
+            self.meta_by_ticker.pop(t, None)
+
+    async def resync(self) -> None:
+        """A seq gap on the orderbook sid means some delta was lost, and with one sid for all
+        markets we cannot tell which book is wrong: resubscribe the orderbook channel for every
+        market, which sends fresh snapshots. Bounded to once per RESYNC_MIN_S and RESYNC_BUDGET
+        per 10 minutes so a systematic issue cannot hammer the exchange; the raw stream is kept."""
         now = time.time()
-        self.resync_times = [t for t in getattr(self, "resync_times", []) if now - t < 600]
-        if now - group.get("resynced_at", 0.0) < RESYNC_MIN_S or len(self.resync_times) >= RESYNC_BUDGET:
+        self.resync_times = [t for t in self.resync_times if now - t < 600]
+        if (self.resync_times and now - self.resync_times[-1] < RESYNC_MIN_S) or len(self.resync_times) >= RESYNC_BUDGET:
             return
         self.resync_times.append(now)
-        self.sid_group.pop(sid, None)
-        self.last_seq.pop(sid, None)
-        group["sids"].pop("orderbook_delta", None)
-        await self.send("unsubscribe", {"sids": [sid]})
-        group["channels"] = [c for c in group["channels"] if c != "orderbook_delta"]
-        if not group["channels"]:
-            self.groups.remove(group)
-        await self.subscribe(sorted(group["tickers"]), ["orderbook_delta"])
-        self.groups[-1]["resynced_at"] = now
+        sid = self.sids.pop("orderbook_delta", None)
+        if sid is not None:
+            await self.send("unsubscribe", {"sids": [sid]})
+            self.last_seq.pop(sid, None)
+        tickers = sorted(self.subscribed)
+        if tickers:
+            cid = await self.send("subscribe", {"channels": ["orderbook_delta"], "market_tickers": tickers})
+            self.pending[cid] = []
+        self.meta("resync", markets=len(tickers))
 
     async def discovery_loop(self) -> None:
         while self.ws is not None:
@@ -411,24 +443,34 @@ class KalshiRecorder(Recorder):
     async def reconcile(self, markets: Dict[str, Dict]) -> None:
         for t, m in markets.items():
             self.close_time[t] = parse_iso_to_dt(m.get("close_time"))
-        have = self.subscribed_tickers()
-        new = [t for t in markets if t not in have]
-        # One subscription per event (and per opened/unopened), so a whole event is unsubscribed
-        # when it closes and a rejected unopened market never takes open ones down with it.
-        by_event: Dict[Tuple[str, bool], List[str]] = {}
+        changed = []
+        for t, m in markets.items():
+            meta = market_meta(m)
+            if self.meta_by_ticker.get(t) != meta:
+                self.meta_by_ticker[t] = meta
+                changed.append(meta)
+        if changed:
+            rt = _ns()
+            self.file.write(rt, json.dumps({"rt": rt, "markets": changed}, separators=(",", ":")))
+        # Open and unopened markets go in separate commands, so a rejected unopened market
+        # cannot take open ones down with it.
+        new = [t for t in markets if t not in self.subscribed]
+        batch = [t for t in new if t not in self.solo]
+        opened = [t for t in batch if str(markets[t].get("status")) in ("active", "open")]
+        unopened = [t for t in batch if t not in set(opened)]
+        await self.subscribe(opened)
+        await self.subscribe(unopened)
         for t in new:
-            key = (markets[t].get("event_ticker") or t, str(markets[t].get("status")) in ("active", "open"))
-            by_event.setdefault(key, []).append(t)
-        for tickers in by_event.values():
-            await self.subscribe(tickers)
+            if t in self.solo:
+                await self.subscribe([t])
         if new:
-            print(f"subscribed {len(new)} markets in {len(by_event)} events; total {len(self.subscribed_tickers())}", flush=True)
+            print(f"subscribed {len(new)} markets ({len(unopened)} not yet open); total {len(self.subscribed)}", flush=True)
         now = utc_now()
-        for g in list(self.groups):
-            if g["close"] is not None and (now - g["close"]).total_seconds() > UNSUB_GRACE_S \
-                    and not (g["tickers"] & set(markets)):
-                await self.unsubscribe(g)
-                self.books.drop(g["tickers"])
+        done = [t for t in self.subscribed if t not in markets and self.close_time.get(t) is not None
+                and (now - self.close_time[t]).total_seconds() > UNSUB_GRACE_S]
+        if done:
+            await self.remove(done)
+            print(f"removed {len(done)} closed markets; total {len(self.subscribed)}", flush=True)
 
     def handle(self, rt: int, raw: str) -> Optional[Tuple[str, Dict]]:
         data = json.loads(raw)
@@ -438,7 +480,7 @@ class KalshiRecorder(Recorder):
 
     async def session(self) -> None:
         import websockets
-        self.groups, self.pending, self.sid_group, self.last_seq = [], {}, {}, {}
+        self.reset_session()
         async with websockets.connect(
             self.auth.ws_url, additional_headers=self.auth._auth_headers(), ssl=self.auth._ssl_ctx,
             ping_interval=20, ping_timeout=20, open_timeout=15, max_size=64 << 20, max_queue=4096,
@@ -452,6 +494,7 @@ class KalshiRecorder(Recorder):
                 async for raw in ws:
                     rt = _ns()
                     typ, data = self.handle(rt, raw)
+                    self._rt = rt
                     await self.on_message(typ, data)
             finally:
                 self.ws = None
@@ -459,34 +502,39 @@ class KalshiRecorder(Recorder):
 
     async def on_message(self, typ: str, data: Dict) -> None:
         msg = data.get("msg") or {}
-        if typ in ("orderbook_snapshot", "orderbook_delta"):
-            sid, seq = data.get("sid"), data.get("seq")
-            if sid is not None and seq is not None:
-                prev = self.last_seq.get(sid)
-                self.last_seq[sid] = seq
-                if typ == "orderbook_delta" and prev is not None and seq != prev + 1:
-                    self.seq_gaps += 1
-                    self.meta("seq_gap", sid=sid, expected=prev + 1, got=seq)
-                    await self.resync(sid)
+        sid, seq = data.get("sid"), data.get("seq")
+        if typ == "subscribed":
+            ch, s = msg.get("channel"), msg.get("sid")
+            if ch and s is not None:
+                self.sids[ch] = s
+                self.last_seq.pop(s, None)
+            self.pending.pop(data.get("id"), None)
+            return
+        if sid is not None and seq is not None:
+            prev = self.last_seq.get(sid)
+            self.last_seq[sid] = seq
+            if prev is not None and seq != prev + 1:
+                self.seq_gaps += 1
+                self.meta("seq_gap", sid=sid, expected=prev + 1, got=seq)
+                if sid == self.sids.get("orderbook_delta"):
+                    await self.resync()
                     return
-            if typ == "orderbook_snapshot":
-                self.books.snapshot(msg)
-            else:
-                self.books.delta(msg)
-        elif typ == "subscribed":
-            group = self.pending.get(data.get("id"))
-            ch, sid = msg.get("channel"), msg.get("sid")
-            if group is not None and ch and sid is not None:
-                group["sids"][ch] = sid
-                self.sid_group[sid] = group
-                if len(group["sids"]) >= len(group["channels"]):
-                    self.pending.pop(data.get("id"), None)
+        if typ == "orderbook_snapshot":
+            self.books.snapshot(msg, self._rt or None)
+        elif typ == "orderbook_delta":
+            self.books.delta(msg, self._rt or None)
         elif typ == "error":
             self.errors.append(f"ws error {msg}"[:300])
             print(f"[WARN] kalshi ws error: {data}", flush=True)
-            group = self.pending.pop(data.get("id"), None)
-            if group is not None and not group["sids"] and group in self.groups:
-                self.groups.remove(group)  # never streamed: the next discovery pass retries it
+            failed = self.pending.pop(data.get("id"), None)
+            if failed:
+                # The next discovery pass retries them, one per command if it was a batch, so one
+                # bad market cannot keep a whole batch out.
+                self.subscribed.difference_update(failed)
+                if len(failed) > 1:
+                    self.solo.update(failed)
+        elif typ == "ok":
+            self.pending.pop(data.get("id"), None)
 
 
 def _next_discovery_delay(now_s: float) -> float:

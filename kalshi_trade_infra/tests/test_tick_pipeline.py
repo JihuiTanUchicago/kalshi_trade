@@ -62,31 +62,78 @@ def test_discovery_runs_right_after_each_quarter_hour():
     assert tick_recorder._next_discovery_delay(q + 100) == 30
 
 
-def test_seq_gap_triggers_resubscribe():
+def _bare_recorder(sent):
     rec = tick_recorder.KalshiRecorder.__new__(tick_recorder.KalshiRecorder)
     tick_recorder.Recorder.__init__(rec)
-    rec.books, rec.groups, rec.pending, rec.sid_group, rec.last_seq, rec.close_time = Books(), [], {}, {}, {}, {}
-    rec._id = 0
-    sent = []
+    rec.books, rec.close_time, rec.meta_by_ticker, rec.resync_times, rec.solo = Books(), {}, {}, [], set()
+    rec.reset_session()
 
     class WS:
         async def send(self, s):
             sent.append(json.loads(s))
     rec.ws = WS()
-    rec.file = HourlyFile("/tmp/_tick_test_unused", "kalshi")
     rec.meta = lambda *a, **k: None
+    rec.file = HourlyFile("/tmp/_tick_test_unused", "kalshi")
+    return rec
+
+
+def test_one_sid_per_channel_seq_gap_resubscribes_all_books():
+    sent = []
+    rec = _bare_recorder(sent)
+    other = "KXBTCD-26OCT2417-T80000"
 
     async def go():
         await rec.subscribe([TK])
-        await rec.on_message("subscribed", {"id": 1, "type": "subscribed", "msg": {"channel": "orderbook_delta", "sid": 7}})
-        await rec.on_message("orderbook_snapshot", {"sid": 7, "seq": 1, "msg": {"market_ticker": TK, "yes": [[40, 1]]}})
-        await rec.on_message("orderbook_delta", {"sid": 7, "seq": 2, "msg": {"market_ticker": TK, "side": "yes", "price": 41, "delta": 2}})
-        await rec.on_message("orderbook_delta", {"sid": 7, "seq": 5, "msg": {"market_ticker": TK, "side": "yes", "price": 42, "delta": 2}})
+        for ch, sid in (("orderbook_delta", 1), ("trade", 2), ("ticker", 3)):
+            await rec.on_message("subscribed", {"id": 1, "type": "subscribed", "msg": {"channel": ch, "sid": sid}})
+        await rec.subscribe([other])          # Kalshi folds this into sids 1-3 and answers "ok"
+        await rec.on_message("ok", {"id": 2, "type": "ok", "sid": 1, "seq": 1, "msg": {"market_tickers": [TK, other]}})
+        await rec.on_message("orderbook_snapshot", {"sid": 1, "seq": 2, "msg": {"market_ticker": TK, "yes": [[40, 1]]}})
+        await rec.on_message("orderbook_delta", {"sid": 1, "seq": 3, "msg": {"market_ticker": TK, "side": "yes", "price": 41, "delta": 2}})
+        await rec.on_message("trade", {"sid": 2, "seq": 7, "msg": {"market_ticker": TK}})
+        await rec.on_message("trade", {"sid": 2, "seq": 9, "msg": {"market_ticker": TK}})   # lost a print: noted only
+        assert rec.seq_gaps == 1 and len(sent) == 2
+        await rec.on_message("orderbook_delta", {"sid": 1, "seq": 6, "msg": {"market_ticker": TK, "side": "yes", "price": 42, "delta": 2}})
     asyncio.run(go())
-    assert rec.seq_gaps == 1
-    assert sent[-2] == {"id": 2, "cmd": "unsubscribe", "params": {"sids": [7]}}
-    assert sent[-1]["cmd"] == "subscribe" and sent[-1]["params"] == {"channels": ["orderbook_delta"], "market_tickers": [TK]}
-    assert 42 not in [p for p, _ in rec.books.checkpoint()[TK]["yes"]]  # the post-gap delta was not applied
+    assert rec.seq_gaps == 2
+    assert sent[-2] == {"id": 3, "cmd": "unsubscribe", "params": {"sids": [1]}}
+    assert sent[-1]["params"] == {"channels": ["orderbook_delta"], "market_tickers": sorted([TK, other])}
+    assert 0.42 not in [p for p, _ in rec.books.checkpoint()[TK]["yes"]]  # the post-gap delta was not applied
+
+
+def test_closed_markets_leave_via_update_subscription_never_unsubscribe():
+    sent = []
+    rec = _bare_recorder(sent)
+    now = datetime.now(timezone.utc)
+    old = {"ticker": "OLD-1", "event_ticker": "OLD", "status": "active",
+           "close_time": (now + timedelta(minutes=1)).isoformat()}
+
+    async def go():
+        await rec.reconcile({"OLD-1": old})
+        for ch, sid in (("orderbook_delta", 1), ("trade", 2), ("ticker", 3)):
+            await rec.on_message("subscribed", {"id": 1, "type": "subscribed", "msg": {"channel": ch, "sid": sid}})
+        rec.close_time["OLD-1"] = now - timedelta(minutes=10)
+        await rec.reconcile({})
+    asyncio.run(go())
+    cmds = [c["cmd"] for c in sent]
+    assert "unsubscribe" not in cmds
+    upd = [c["params"] for c in sent if c["cmd"] == "update_subscription"]
+    assert upd == [{"sids": [s], "market_tickers": ["OLD-1"], "action": "delete_markets"} for s in (1, 2, 3)]
+    assert rec.subscribed == set()
+
+
+def test_rejected_batch_is_retried_one_market_per_command():
+    sent = []
+    rec = _bare_recorder(sent)
+    mk = {t: {"ticker": t, "status": "initialized"} for t in ("A-1", "A-2")}
+
+    async def go():
+        await rec.reconcile(mk)
+        await rec.on_message("error", {"id": 1, "type": "error", "msg": {"code": 8, "msg": "Unknown market"}})
+        await rec.reconcile(mk)
+    asyncio.run(go())
+    subs = [c["params"]["market_tickers"] for c in sent if c["cmd"] == "subscribe"]
+    assert subs == [["A-1", "A-2"], ["A-1"], ["A-2"]]
 
 
 class FakeS3:
@@ -103,8 +150,11 @@ def _write_hour(tmp_path):
     kal = tmp_path / "ticks" / "kalshi" / "20261024"
     kal.mkdir(parents=True)
     lines = [
-        json.dumps({"rt": T0 + 1, "checkpoint": {TK: {"yes": [[0.40, 100.0]], "no": [[0.58, 50.0]]}}}),
-        _kalshi(T0 + 2 * S + 10, "orderbook_delta", {"market_ticker": TK, "side": "yes", "price_dollars": "0.4100", "delta_fp": "30"}, seq=2),
+        json.dumps({"rt": T0 + 1, "checkpoint": {TK: {"yes": [[0.40, 100.0]], "no": [[0.58, 50.0]], "t": T0 - 7 * S}}}),
+        json.dumps({"rt": T0 + 1, "markets": [{"ticker": TK, "series_ticker": "KXBTC15M", "event_ticker": "KXBTC15M-26OCT241500",
+                                               "open_time": "2026-10-24T17:45:00Z", "close_time": "2026-10-24T18:00:00Z",
+                                               "floor_strike": 80242.56, "strike_type": "greater_or_equal"}]}),
+        _kalshi(T0 + 2 * S + 10, "orderbook_delta", {"market_ticker": TK, "side": "yes", "price_dollars": "0.4100", "delta_fp": "30", "ts_ms": 1792867202001}, seq=2),
         _kalshi(T0 + 2 * S + 20, "trade", {"market_ticker": TK, "trade_id": "t1", "yes_price_dollars": "0.4100",
                                            "no_price_dollars": "0.5900", "count_fp": "5", "taker_side": "yes", "ts": int(H.timestamp()) + 2}),
         _kalshi(T0 + 3 * S + 5, "orderbook_delta", {"market_ticker": TK, "side": "no", "price": 58, "delta": -50}, seq=3),
@@ -140,7 +190,8 @@ def test_archive_then_read_per_second(tmp_path, monkeypatch):
     for path, source, hour in files:
         tick_archiver.archive_file(path, source, hour, s3=FakeS3(str(lake)))
     kal = [m for m in rows if m["source"] == "kalshi"][0]
-    assert kal["messages"] == 7 and kal["bad_lines"] == 1 and kal["seq_gaps"] == 1
+    assert kal["messages"] == 8 and kal["bad_lines"] == 1 and kal["seq_gaps"] == 1
+    assert kal["tables"]["kalshi_markets"] == 1
     assert kal["tables"]["kalshi_trades"] == 1 and kal["max_gap_s"] == pytest.approx(2.0, abs=0.01)
     assert (lake / "ticks/raw/kalshi/date=2026-10-24/18.ndjson.gz").exists()
     assert (lake / "ticks/manifest/coinbase/date=2026-10-24/18.json").exists()
@@ -163,8 +214,14 @@ def test_archive_then_read_per_second(tmp_path, monkeypatch):
     assert spot["price"][3] == 80002 and spot["taker_buy"][1] == 0.1 and spot["taker_buy"][3] == 0
     assert spot["taker_sell"][3] == 0.3 and spot["bid"][4] == 80000.0
 
+    mk = ts.read("kalshi_markets", H, H + timedelta(hours=1)).to_pylist()[0]
+    assert mk["close_ts"] == int(H.timestamp()) and mk["floor_strike"] == 80242.56 and mk["series"] == "KXBTC15M"
+    raw = ts.read("kalshi_book", H, H + timedelta(hours=1), tickers=[TK]).to_pylist()
+    assert raw[0]["upd_rt"] == T0 - 7 * S and raw[0]["side"] is None          # checkpoint reset marker
+    assert [r["exch_ms"] for r in raw if r["kind"] == 1][0] == 1792867202001
+
     cov = ts.coverage("kalshi", H, H + timedelta(hours=2))
-    assert cov[0]["messages"] == 7 and cov[1] == {"hour_utc": "2026-10-24 19:00:00", "missing": True}
+    assert cov[0]["messages"] == 8 and cov[1] == {"hour_utc": "2026-10-24 19:00:00", "missing": True}
 
 
 def test_ffill_leaves_leading_nans():
