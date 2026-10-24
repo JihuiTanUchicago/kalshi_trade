@@ -1725,6 +1725,8 @@ def run_forever() -> None:
     equity_every = float(os.getenv("APP_EQUITY_CHECK_EVERY_SECONDS", "60"))
     # How often to reconcile each user's live book against their real Kalshi account.
     reconcile_every = float(os.getenv("APP_RECONCILE_EVERY_SECONDS", "300"))
+    last_perps_watch = 0.0
+    perps_watch_every = float(os.getenv("TAU_KALSHI_PERPS_WATCH_EVERY_SECONDS", "60"))
     # One shared live-book websocket for the whole engine (P1-1): marks, PnL and order pricing all
     # read ≤1s top-of-book from it, with REST as the freshness backstop. If WS creds are absent it
     # stays disabled and every read falls back to REST exactly as before — so this never regresses.
@@ -1835,6 +1837,17 @@ def run_forever() -> None:
                         except Exception as e:
                             print("[engine] reconcile sweep failed: %r" % e, flush=True)
                         last_reconcile = time.time()
+                    # Same idea for native Bitcoin perps: positions vs Tau's filled orders,
+                    # plus liquidation and margin proximity. Read-only, contained.
+                    if time.time() - last_perps_watch > perps_watch_every:
+                        try:
+                            from app import kalshi_perps_watch
+                            summary = kalshi_perps_watch.watch_all(conn)
+                            if summary.get("alerts") or summary.get("errors"):
+                                print("[engine] perps watch %s" % summary, flush=True)
+                        except Exception as e:
+                            print("[engine] perps watch sweep failed: %r" % e, flush=True)
+                        last_perps_watch = time.time()
                     time.sleep(TICK_SECONDS)
             finally:
                 conn.close()

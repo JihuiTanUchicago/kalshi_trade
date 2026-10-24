@@ -104,6 +104,21 @@ DDL = [
       INDEX idx_kalshi_perps_reservations (user_id, environment, status),
       INDEX idx_kalshi_perps_claims (user_id, environment, claimed_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    # Standing conditions found by app.kalshi_perps_watch, so each is announced
+    # once (and once when it clears) rather than on every sweep.
+    """CREATE TABLE IF NOT EXISTS app_kalshi_perps_watch (
+      user_id BIGINT NOT NULL,
+      environment VARCHAR(10) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+      alert_key VARCHAR(220) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+      kind VARCHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+      detail VARCHAR(400) NOT NULL,
+      status VARCHAR(10) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'open',
+      detected_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL,
+      resolved_at DATETIME NULL,
+      PRIMARY KEY (user_id, environment, alert_key),
+      INDEX idx_kalshi_perps_watch_open (environment, status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 ]
 
 
@@ -655,3 +670,63 @@ def begin_cancel(cur: Any, user_id: int, environment: str, order_id: int,
         return False
     return record_result(cur, user_id, environment, order_id, status="cancel_pending",
                          expected_version=expected_version)
+
+
+# -- position and margin watch (app.kalshi_perps_watch) ------------------------
+
+
+def users_to_watch(cur: Any, environment: str) -> list[int]:
+    """Users whose perps account could hold something: opted in, any order that
+    filled, or a watch condition still open (so it can clear)."""
+    if environment not in ("production", "demo"):
+        raise ValueError("A native perpetual environment is required.")
+    cur.execute("""SELECT user_id FROM app_kalshi_perps_settings WHERE environment=%s AND enabled=TRUE
+        UNION SELECT user_id FROM app_kalshi_perps_orders WHERE environment=%s AND filled_count > 0
+        UNION SELECT user_id FROM app_kalshi_perps_watch WHERE environment=%s AND status='open'
+        ORDER BY user_id""", (environment, environment, environment))
+    return [int(row["user_id"]) for row in cur.fetchall()]
+
+
+def filled_net_by_ticker(cur: Any, user_id: int, environment: str) -> dict[str, Decimal]:
+    """Signed contracts Tau's own orders filled, per ticker: bid +, ask -. This is
+    the book the exchange position is checked against."""
+    _context(user_id, environment)
+    cur.execute("""SELECT request_json, filled_count FROM app_kalshi_perps_orders
+        WHERE user_id=%s AND environment=%s AND filled_count > 0""", (user_id, environment))
+    net: dict[str, Decimal] = {}
+    for row in cur.fetchall():
+        request = row["request_json"]
+        request = request if isinstance(request, dict) else json.loads(request)
+        qty = Decimal(str(row["filled_count"]))
+        signed = qty if request["side"] == "bid" else -qty
+        net[request["ticker"]] = net.get(request["ticker"], Decimal(0)) + signed
+    return {ticker: qty for ticker, qty in net.items() if qty != 0}
+
+
+def open_watch_rows(cur: Any, user_id: int, environment: str) -> list[dict]:
+    _context(user_id, environment)
+    cur.execute("""SELECT alert_key, kind, detail, detected_at, updated_at FROM app_kalshi_perps_watch
+        WHERE user_id=%s AND environment=%s AND status='open'""", (user_id, environment))
+    return list(cur.fetchall())
+
+
+def upsert_watch(cur: Any, user_id: int, environment: str, alert_key: str, kind: str, detail: str) -> None:
+    _context(user_id, environment)
+    now = now_utc()
+    cur.execute("""INSERT INTO app_kalshi_perps_watch
+        (user_id, environment, alert_key, kind, detail, status, detected_at, updated_at)
+        VALUES (%s,%s,%s,%s,%s,'open',%s,%s)
+        ON DUPLICATE KEY UPDATE kind=VALUES(kind), detail=VALUES(detail), updated_at=VALUES(updated_at),
+          detected_at=IF(status='open', detected_at, VALUES(detected_at)), status='open', resolved_at=NULL""",
+                (user_id, environment, alert_key[:220], kind, detail[:400], now, now))
+
+
+def resolve_watch(cur: Any, user_id: int, environment: str, alert_keys: list[str]) -> None:
+    _context(user_id, environment)
+    if not alert_keys:
+        return
+    now = now_utc()
+    marks = ",".join(["%s"] * len(alert_keys))
+    cur.execute("UPDATE app_kalshi_perps_watch SET status='resolved', resolved_at=%s, updated_at=%s "
+                "WHERE user_id=%s AND environment=%s AND status='open' AND alert_key IN (" + marks + ")",
+                (now, now, user_id, environment, *alert_keys))
