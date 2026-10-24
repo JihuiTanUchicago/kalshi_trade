@@ -1,5 +1,14 @@
 # PLAN
 
+## Research stops re-proposing dead ideas (2026-10-24)
+- Prod run 2531 (kxcopperd) dropped 18 theses in 40 min; 7 were the same favorite-longshot idea. Dropped
+  theses never reached app_strategies, so neither later rounds nor later runs knew about them.
+- Now: `repo.dropped_theses` reads recent runs' DROPPED events; every proposing round shows them
+  (deduped, newest first) and new drops are added live. Fail-open if the read errors.
+- Calibration rows are labeled LEAD (best net edge > 2 SE after fees) or noise; with no lead the block
+  tells the proposer not to try unconditional favorite-longshot theses on that market.
+- Code strategies see yes_bid/yes_ask in `features` too (one thesis died reading None there).
+
 ## 90-day history for 15m crypto + old-end backfill + monotonic research cut — October 24, 2026
 
 - **Why.** Sample size, not math, binds the research gate. The 15m ladders settle ~96 contracts a day each, but research used only 30 days (~8 validation days). Collected history goes back only to 2026-09-13 (BTC) and 09-17 (SOL/XRP/DOGE/HYPE), because the collector started with a 30-day floor and only ever syncs forward.

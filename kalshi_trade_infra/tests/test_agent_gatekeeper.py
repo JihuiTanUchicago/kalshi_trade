@@ -246,7 +246,7 @@ def test_calibration_block_surfaces_planted_longshot_bias():
     from app.markets import Contract, Snapshot
     rng = random.Random(0)
     frames, results = [], {}
-    for i in range(60):
+    for i in range(400):
         close = datetime.fromtimestamp(1_700_000_000 + i * 900 + 900, tz=timezone.utc)
         longshot = i % 2 == 0
         c = Contract("T%d" % i, 100.0, close)
@@ -258,9 +258,78 @@ def test_calibration_block_surfaces_planted_longshot_bias():
     ds = SimpleNamespace(frames=frames, results=results, start_ts=0, end_ts=1)
     block = agent._calibration_block(ds)
     early = [ln for ln in block.splitlines() if ln.strip().startswith("early ask  0-10c")]
-    assert len(early) == 1 and "n=  30" in early[0] and "YES settled 0.00" in early[0]
-    assert float(early[0].split("buy-NO net")[1].strip().rstrip("c")) > 0
+    assert len(early) == 1 and "n= 200" in early[0] and "YES settled 0.00" in early[0]
+    assert float(early[0].split("buy-NO net")[1].split()[0].rstrip("c")) > 0
+    assert early[0].endswith("LEAD (buy-NO)") and "cell(s) marked LEAD" in block
+    assert all(ln.endswith("noise") for ln in block.splitlines() if "ask 40-60c" in ln)  # fair coin
     assert agent._calibration_block(SimpleNamespace(frames=[], results={})) == ""
+
+
+def test_calibration_block_tells_the_proposer_when_there_is_no_lead():
+    """A market priced right (50c contracts settling YES half the time) has no cell that clears 2 SE
+    after fees, so the block says so outright instead of inviting another favorite-longshot thesis."""
+    from datetime import datetime, timezone
+    from app.markets import Contract, Snapshot
+    frames, results = [], {}
+    for i in range(60):
+        close = datetime.fromtimestamp(1_700_000_000 + i * 900 + 900, tz=timezone.utc)
+        c = Contract("T%d" % i, 100.0, close)
+        results[c.ticker] = "yes" if i % 2 else "no"
+        ts = 1_700_000_000 + i * 900
+        frames.append((ts, [Snapshot(c, ts, 0.49, 0.50, {"tte_min": 15.0})]))
+    block = agent._calibration_block(SimpleNamespace(frames=frames, results=results, start_ts=0, end_ts=1))
+    assert "NO cell clears" in block and "favorite-longshot" in block and "LEAD (" not in block
+
+
+def test_abandoned_theses_are_remembered_and_shown_to_the_next_round():
+    """A thesis dropped on the research fold is fed back into every later proposing round (deduped
+    by title), so the proposer stops re-proposing the same dead idea under a new name."""
+    events, dropped = [], [{"title": "Old idea", "why": "no underlying feed"}]
+    agent._abandon(lambda *a: events.append(a), {"title": "FLB recal"}, "loses in every bin", dropped)
+    agent._abandon(lambda *a: events.append(a), {"title": "flb recal "}, "again", dropped)
+    assert events[0][2]["why"] == "loses in every bin" and events[0][2]["status"] == "abandoned"
+    assert [d["title"] for d in dropped] == ["flb recal ", "FLB recal", "Old idea"]
+    block = agent._dropped_block(dropped)
+    assert block.count("\n- ") == 2 and "Old idea: no underlying feed" in block  # dup title shown once
+    assert agent._dropped_block([]) == ""
+    run = {"market": "btc15m", "prompt": "x"}
+    ds = SimpleNamespace(start_ts=0, end_ts=0, frames=[], results={}, cutoff_ts=0,
+                         summary=lambda: {"out_of_sample_from": 0})
+    import app.backtest as bt
+    orig = bt.feature_coverage
+    bt.feature_coverage = lambda ds: {}
+    try:
+        assert "Old idea" in agent._round_prompt(run, ds, [], 3, [], dropped)
+    finally:
+        bt.feature_coverage = orig
+
+
+def test_dropped_theses_reads_new_and_legacy_drop_events():
+    """repo.dropped_theses returns recent runs' abandoned theses as {title, why}, from the event's
+    data (new rows) or by parsing the message (rows logged before `why` was stored)."""
+    from app import repository as repo
+
+    class Cur:
+        def __init__(self):
+            self.calls = []
+        def execute(self, sql, args):
+            self.calls.append((sql, args))
+        def fetchall(self):
+            if len(self.calls) == 1:
+                return [{"id": 9}, {"id": 7}]
+            return [{"message": 'DROPPED "New" (no candidate) \u2014 x', "data_json": {"title": "New", "why": "w"}},
+                    {"message": 'DROPPED "Legacy FLB" (no candidate) \u2014 loses in all bins',
+                     "data_json": '{"title":"Legacy FLB","status":"abandoned"}'}]
+    cur = Cur()
+    out = repo.dropped_theses(cur, 1, "kxcopperd")
+    assert out == [{"title": "New", "why": "w"}, {"title": "Legacy FLB", "why": "loses in all bins"}]
+    assert cur.calls[1][1] == (9, 7, 20) and "IN (%s,%s)" in cur.calls[1][0]
+    assert "LIKE 'DROPPED %%'" in cur.calls[1][0]
+
+    class Empty(Cur):
+        def fetchall(self):
+            return []
+    assert repo.dropped_theses(Empty(), 1, "m") == []
 
 
 def test_pooled_finalist_preregisters_on_the_merged_partition(monkeypatch):
@@ -282,3 +351,17 @@ def test_pooled_finalist_preregisters_on_the_merged_partition(monkeypatch):
     assert store.preregistered[0].research_partition_id == 77
     assert store.preregistered[0].market == "btc15m+eth15m+sol15m"
     assert loads == ["validation"] and len(store.judged) == 1
+
+
+def test_code_window_exposes_quotes_both_at_top_level_and_in_features():
+    """Generated code reads the quote either as c["yes_bid"] (documented) or c["features"]["yes_bid"]
+    (how rule specs name it); both must see the real quote, never None."""
+    from datetime import datetime, timezone
+    from app import backtest
+    from app.markets import Contract, Snapshot
+    c = Contract("T", 100.0, datetime.fromtimestamp(1_700_000_900, tz=timezone.utc))
+    snap = Snapshot(c, 1_700_000_000, 0.41, 0.44, {"tte_min": 15.0})
+    got = backtest._binary_window("kxcopperd", [(1_700_000_000, [snap])])["frames"][0]["contracts"][0]
+    assert got["yes_bid"] == got["features"]["yes_bid"] == 0.41
+    assert got["yes_ask"] == got["features"]["yes_ask"] == 0.44
+    assert got["features"]["tte_min"] == 15.0 and "yes_bid" not in snap.features  # snapshot untouched

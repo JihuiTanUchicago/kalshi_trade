@@ -544,7 +544,10 @@ def _binary_window(market: str, frames: List[Tuple[int, List[Snapshot]]]) -> Dic
         {"ts": ts, "contracts": [
             {"ticker": s.contract.ticker, "strike": s.contract.strike,
              "close_ts": int(s.contract.close_time.timestamp()),
-             "yes_bid": s.yes_bid, "yes_ask": s.yes_ask, "features": s.features}
+             "yes_bid": s.yes_bid, "yes_ask": s.yes_ask,
+             # Mirrored into features too: rule specs list yes_bid/yes_ask as features, so generated
+             # code often reads c["features"]["yes_bid"] and saw None (a dropped thesis in prod).
+             "features": dict(s.features, yes_bid=s.yes_bid, yes_ask=s.yes_ask)}
             for s in snaps]}
         for ts, snaps in frames]}
 

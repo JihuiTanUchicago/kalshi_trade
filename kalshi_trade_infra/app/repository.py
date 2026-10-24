@@ -986,6 +986,36 @@ def strategy_memory(cur, user_id: int, market: str, limit: int = 40) -> List[Dic
     return [_strategy_row(r) for r in cur.fetchall()]
 
 
+DROPPED_RECENT_RUNS = 10
+
+
+def dropped_theses(cur, user_id: int, market: str, limit: int = 20) -> List[Dict]:
+    """Theses this user's recent research on this market abandoned before they ever became a
+    strategy (DOA: wrong mechanism, missing feed, 0 research-fold trades), newest first, as
+    {title, why}. They never reach app_strategies, so strategy_memory can't warn the proposer off
+    them and every run re-proposes the same dead idea. Reasons are research-fold only (leak-safe)."""
+    cur.execute(
+        "SELECT id FROM app_agent_runs WHERE user_id=%s AND kind='research' AND market=%s "
+        "ORDER BY id DESC LIMIT %s", (user_id, market, DROPPED_RECENT_RUNS))
+    ids = [r["id"] for r in cur.fetchall()]
+    if not ids:
+        return []
+    cur.execute(
+        "SELECT message, data_json FROM app_agent_events WHERE run_id IN (%s) AND kind='verdict' "
+        "AND message LIKE 'DROPPED %%%%' ORDER BY id DESC LIMIT %%s" % ",".join(["%s"] * len(ids)),
+        (*ids, limit))
+    out = []
+    for r in cur.fetchall():
+        data = _loads(r.get("data_json")) or {}
+        title, why = data.get("title"), data.get("why")
+        m = re.match(r'DROPPED "(.*)" \(no candidate\) \S* (.*)', r["message"] or "", re.S)
+        if m:
+            title, why = title or m.group(1), why or m.group(2)
+        if title:
+            out.append({"title": title, "why": (why or "").strip()})
+    return out
+
+
 # -- leak-safe failure distillation (learn from dead ends) ---------------------
 # A failed strategy's row status. REJECTED (no mechanism / not a finalist / rejected on
 # validation) and INCONCLUSIVE map here (see agent._status_for); "passed"/"pending" don't.
