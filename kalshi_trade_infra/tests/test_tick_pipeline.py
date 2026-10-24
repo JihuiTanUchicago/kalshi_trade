@@ -250,3 +250,38 @@ def test_alerter_ages_a_silent_recorder_by_its_last_message():
     assert ages["tick_archive"] == 1500.0
     assert ages["tick_recorder_kalshi"] > la.WRITER_CADENCE["tick_recorder_kalshi"] * la.STALE_MULTIPLE
     assert set(la.OPTIONAL_WRITERS) <= set(la.WRITER_CADENCE)
+
+
+def test_requested_series_are_recorded_with_their_spot(monkeypatch):
+    from data_pipeline import common
+
+    class Conn:
+        def cursor(self):
+            class C:
+                def __enter__(s):
+                    return s
+
+                def __exit__(s, *a):
+                    return False
+            return C()
+
+        def close(self):
+            pass
+    monkeypatch.setattr(tick_recorder, "get_db_conn", lambda: Conn())
+    monkeypatch.setattr(common, "requested_series", lambda cur, kind, limit: ["KXETH15M", {"series": "KXSOLD"}] if kind == "ticks" else [], raising=False)
+    monkeypatch.setattr(tick_recorder, "api_get", lambda *a, **k: {"series": [{"ticker": "KXBTCD"}, {"ticker": "KXETHD"}]})
+    assert tick_recorder.requested_tick_series() == ["KXETH15M", "KXSOLD"]
+    got = tick_recorder.discover_series()
+    assert {"KXETH15M", "KXSOLD", "KXBTCD", "KXBTC15M"} <= set(got) and "KXETHD" not in got
+    rec = tick_recorder.CoinbaseRecorder()
+    assert rec.wanted_products() == ["BTC-USD", "ETH-USD", "SOL-USD"]
+    assert tick_recorder.spot_product("KXBNB15M") == "BNB-USD" and tick_recorder.spot_product("KXNBAGAME") is None
+
+
+def test_requested_series_absent_helper_or_db_is_empty(monkeypatch):
+    from data_pipeline import common
+    monkeypatch.delattr(common, "requested_series", raising=False)
+    assert tick_recorder.requested_tick_series() == []
+    monkeypatch.setattr(common, "requested_series", lambda *a: ["X"], raising=False)
+    monkeypatch.setattr(tick_recorder, "get_db_conn", lambda: (_ for _ in ()).throw(RuntimeError("no db")))
+    assert tick_recorder.requested_tick_series() == []

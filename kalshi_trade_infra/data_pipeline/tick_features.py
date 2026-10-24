@@ -14,7 +14,8 @@ Columns (float32 unless noted):
   yes_bid, yes_ask, yes_bid_size, yes_ask_size, bid_depth, ask_depth (within 5c of each touch),
   updates (book deltas in the second), mid, spread, microprice, imbalance
   yes_taker_10s, no_taker_10s, yes_taker_60s, no_taker_60s, n_prints_60s, last_yes
-  spot, spot_ret_1s, spot_ret_10s, spot_ret_60s, spot_ret_300s (log), rv_60s, rv_300s (stdev
+  spot (Coinbase product of the series' coin: BTC-USD, ETH-USD for KXETH15M, ...),
+  spot_ret_1s, spot_ret_10s, spot_ret_60s, spot_ret_300s (log), rv_60s, rv_300s (stdev
   of 1s log returns, per second), spot_taker_imb_60s
   secs_to_close, dist_sigma: log distance from spot to the strike on the YES side, over
   rv_300s * sqrt(secs_to_close). Floor only: ln(spot/lo). Cap only: ln(hi/spot). Both (range):
@@ -271,7 +272,8 @@ def build_hour(store, hour: datetime, out_path: str) -> Optional[Dict]:
         return None
     h0 = int(hour.timestamp())
     secs = np.arange(h0 + 1, h0 + 3601, dtype=np.int64)
-    spot = spot_features(store, hour)
+    from data_pipeline.tick_recorder import spot_product
+    spots: Dict[str, Dict[str, np.ndarray]] = {}
     book = store.read("kalshi_book", hour, end)
     trades = store.read("kalshi_trades", hour - timedelta(seconds=FLOW_LOOKBACK_S), end)
     bgroups, tgroups = _group(book, "ticker"), _group(trades, "ticker")
@@ -283,7 +285,10 @@ def build_hour(store, hour: datetime, out_path: str) -> Optional[Dict]:
     try:
         for ticker in sorted(meta):
             bi, ti = bgroups.get(ticker), tgroups.get(ticker)
-            rows = ticker_rows(ticker, meta[ticker], secs, spot,
+            product = spot_product(meta[ticker].get("series") or ticker) or "BTC-USD"
+            if product not in spots:
+                spots[product] = spot_features(store, hour, product)
+            rows = ticker_rows(ticker, meta[ticker], secs, spots[product],
                                {c: v[bi] for c, v in bcols.items()} if bi is not None else None,
                                {c: v[ti] for c, v in tcols.items()} if ti is not None else None)
             if rows is None:
