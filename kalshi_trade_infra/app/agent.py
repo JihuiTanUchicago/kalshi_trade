@@ -2083,15 +2083,27 @@ def _test_in_sample(h: Dict, ds: backtest.Dataset, partition: Dict, log, round_n
         if merged_cache is not None and key in merged_cache:
             rds, embargo = merged_cache[key]
         else:
-            embargo = int(partitions.ensure_merged_partition(cur, inv)["embargo_seconds"])
-            # Same fail-fast wrap as the other data loads: resolve the legs on this thread, then run
-            # the off-cursor merged build under the timeout so a slow RDS can't silently wedge it.
-            legs = partitions.merged_partitions(cur, inv)
-            beat = (lambda: repo.heartbeat(cur, run_id)) if run_id is not None else None
-            rds = _load("Loading %s research data" % key, partitions.merged_dataset_from, legs,
-                        "research", beat=beat)
+            try:
+                embargo = int(partitions.ensure_merged_partition(cur, inv)["embargo_seconds"])
+                # Same fail-fast wrap as the other data loads: resolve the legs on this thread, then
+                # run the off-cursor merged build under the timeout so a slow RDS can't wedge it.
+                legs = partitions.merged_partitions(cur, inv)
+                beat = (lambda: repo.heartbeat(cur, run_id)) if run_id is not None else None
+                rds = _load("Loading %s research data" % key, partitions.merged_dataset_from, legs,
+                            "research", beat=beat)
+            except NoData as e:
+                rds = e  # cached too, so a re-proposal of the same set doesn't re-query
+            except ValueError as e:
+                if _classify_load_error(e) is None:
+                    raise
+                rds = _classify_load_error(e)
             if merged_cache is not None:
                 merged_cache[key] = (rds, embargo)
+        if isinstance(rds, NoData):
+            # A pool/cross leg with no settled history (a freshly catalogued city still backfilling)
+            # fails THIS hypothesis with a reason the agent can act on, not the whole run (run 2599).
+            return _no_surface(h, spec, log, round_no, "a pooled/cross market has no history yet (%s) — "
+                               "drop it and use only markets with data" % rds)
     # Fit-on-research-and-FREEZE before the hypothesis is tested or pre-registered, so the spec
     # handed to the gatekeeper IS the frozen model — scored on validation/holdout it never saw,
     # with no re-fit at test time. Two complementary freezers, each a no-op for the other's spec
@@ -2119,6 +2131,17 @@ def _test_in_sample(h: Dict, ds: backtest.Dataset, partition: Dict, log, round_n
         "diagnosis": diagnosis or None})
     return dict(h, in_sample=ins, capital=res["capital"], attribution=res.get("attribution"),
                 diagnosis=diagnosis)
+
+
+def _no_surface(h: Dict, spec: Dict, log, round_no: int, diagnosis: str) -> Dict:
+    """A 0-trade result for a hypothesis whose data can't be loaded; _develop_thesis then refines
+    it (e.g. drops the dataless leg) or drops it, and finalist selection never sees 0 trades."""
+    capital = spec["sizing"]["stake"] * spec["sizing"]["max_positions"]
+    ins = backtest.metrics([], capital, 1e-9)
+    ins.pop("_curve", None)
+    log("hypothesis", h["title"], {"thesis": h.get("thesis"), "spec": spec, "in_sample": ins,
+                                   "round": round_no, "diagnosis": diagnosis})
+    return dict(h, in_sample=ins, capital=capital, attribution={}, diagnosis=diagnosis)
 
 
 def _diagnose(spec: Dict, rds: backtest.Dataset, ins: Dict, diag: Dict) -> str:
