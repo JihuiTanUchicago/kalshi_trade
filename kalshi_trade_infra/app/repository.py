@@ -1477,6 +1477,39 @@ def ticker_has_inflight_intent(cur, user_id: int, ticker: str, within_seconds: i
     return cur.fetchone() is not None
 
 
+def order_intents_between(cur, since: datetime, until: Optional[datetime] = None,
+                          modes=("live", "demo")) -> List[Dict]:
+    """Real-order intents (live/demo) created in [since, until), oldest first, for TCA."""
+    until = until or now_utc()
+    marks = ",".join(["%s"] * len(modes))
+    cur.execute(
+        "SELECT * FROM app_order_intents WHERE created_at >= %s AND created_at < %s "
+        "AND mode IN (" + marks + ") ORDER BY created_at",
+        (_naive_utc(since), _naive_utc(until), *modes),
+    )
+    return cur.fetchall()
+
+
+def yes_quote_at(cur, ticker: str, ts: datetime, max_lag_seconds: int = 30) -> Optional[Dict]:
+    """The first recorded YES top-of-book for ``ticker`` at or after ``ts`` (within ``max_lag_seconds``):
+    the websocket tick table first, the REST snapshot table as the fallback. None if neither has one."""
+    start = _naive_utc(ts)
+    end = start + timedelta(seconds=int(max_lag_seconds))
+    for sql in (
+        "SELECT yes_bid_dollars, yes_ask_dollars, observed_at_utc AS at FROM forward_quote_ticks "
+        "WHERE market_ticker=%s AND observed_at_utc >= %s AND observed_at_utc < %s "
+        "ORDER BY observed_at_utc LIMIT 1",
+        "SELECT yes_bid_dollars, yes_ask_dollars, snapshot_time_utc AS at FROM forward_quotes "
+        "WHERE market_ticker=%s AND snapshot_time_utc >= %s AND snapshot_time_utc < %s "
+        "ORDER BY snapshot_time_utc LIMIT 1",
+    ):
+        cur.execute(sql, (ticker, start, end))
+        row = cur.fetchone()
+        if row and row.get("yes_bid_dollars") is not None and row.get("yes_ask_dollars") is not None:
+            return {"yes_bid": float(row["yes_bid_dollars"]), "yes_ask": float(row["yes_ask_dollars"]), "at": row["at"]}
+    return None
+
+
 # -- execution latency / observability (Execution P2) --------------------------
 
 

@@ -352,7 +352,7 @@ def _close_position_at(conn, cur, dep: Dict, pos: Dict, kernel, via_kernel: bool
     if filled <= 0:
         if intent_id is not None:
             try:
-                repo.mark_order_intent(cur, intent_id, "unfilled")
+                repo.mark_order_intent(cur, intent_id, "unfilled", raw_json=getattr(rep, "raw_json", None))
             except Exception:
                 pass
         return False  # nothing filled this slot; retry next slot
@@ -532,7 +532,7 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
                               min_edge=(spec.get("entry") or {}).get("min_edge"))
             if rep.fill_qty_contracts < 1:
                 try:
-                    repo.mark_order_intent(cur, intent_id, "unfilled")
+                    repo.mark_order_intent(cur, intent_id, "unfilled", raw_json=getattr(rep, "raw_json", None))
                 except Exception:
                     pass
                 continue
