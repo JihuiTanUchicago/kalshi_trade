@@ -32,7 +32,7 @@ import threading
 import time
 from contextlib import contextmanager
 from collections import defaultdict
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional, Tuple
 
 from app import backtest, billing
@@ -726,6 +726,21 @@ Build only on features the coverage below shows are non-null for THIS market; `m
 logistic/calibration also work when their features are populated, but gbm does not."""
 
 
+def _tick_profile(m) -> str:
+    """Extra profile for a market replayed from the per-second tick archive (tick_dataset.py)."""
+    from app.markets import TICK_FEATURES
+    return ("\nPER-SECOND DATA: this dataset is replayed from the tick archive, one decision every %ds "
+            "(not 1-minute candles). Every value is as of the end of that second, from events before it; "
+            "orders fill at the NEXT decision's quote (%ds later), capped by the shown size. vol_15m, "
+            "vol_60m, ret_15m, ret_60m and z_score are rebuilt from minute closes and are absent in the "
+            "first hour of each data stretch. Extra features: %s. History is short (the archive began %s), so "
+            "prefer simple, structural rules that need few trades: second-scale lead-lag of the book "
+            "behind spot, taker-flow bursts, stale quotes (book_age_s) after a spot move."
+            % (m.decision_seconds, m.decision_seconds,
+               "; ".join("%s = %s" % (k, v.replace("per-second data only: ", "")) for k, v in TICK_FEATURES.items()),
+               datetime.fromtimestamp(m.data_from_ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%MZ")))
+
+
 def _market_profile(market: str) -> str:
     """The per-run, market-AWARE half of the research brief: what THIS Kalshi market settles on,
     how settlement works, and the angles/features that actually apply to it. Injected into the
@@ -768,7 +783,7 @@ Angles worth a mechanism (not exhaustive):
   longshot distortion near 5c/95c, round-number strike magnetism, US-open vs Asia-overnight regimes.
 - Basis / funding: implied probability vs perp funding / spot-perp basis; cross-coin ladder lead-lag.
 - Volatility: does the market over/under-price realised vol at specific horizons (e.g. the last
-  3-8 minutes of a 15-minute contract)?""" % (coin, coin, gbm, coin)
+  3-8 minutes of a 15-minute contract)?""" % (coin, coin, gbm, coin) + (_tick_profile(m) if m.source == "ticks" else "")
     cat = (m.category or "").lower()
     if "sport" in cat:
         return head + """

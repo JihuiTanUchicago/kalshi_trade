@@ -261,7 +261,7 @@ def test_research_context_folds_feed_to_researchable_markets():
     out = server._research_context(feed)
 
     keyed = {m["key"]: m for m in out}
-    assert set(keyed) == {"btc15m", "btc_daily"}      # only researchable series surface
+    assert set(keyed) == {"btc15m", "btc15m_tick", "btc_daily"}  # only researchable series surface
     assert keyed["btc15m"]["contracts"] == 2          # both KXBTC15M contracts aggregated
     assert keyed["btc15m"]["vol24"] == 400            # 100 + 300
     assert keyed["btc15m"]["oi"] == 14

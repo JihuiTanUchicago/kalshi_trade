@@ -119,7 +119,8 @@ def candidates(cur, stale_hours: float) -> List[str]:
     """Researchable binary markets with candles, least recently scanned first, skipping fresh scans."""
     from app import repository as repo
     ready = repo.series_with_candles(cur)
-    keys = [k for k, m in MARKETS.items() if m.kind == "binary" and m.series in ready]
+    # A tick-sourced twin (btc15m_tick) shares its candle market's contracts; the candle one is scanned.
+    keys = [k for k, m in MARKETS.items() if m.kind == "binary" and m.source == "candles" and m.series in ready]
     cur.execute("SELECT market, scanned_at FROM app_rsi_scout")
     seen = {r["market"]: r["scanned_at"] for r in cur.fetchall()}
     cutoff = _now().timestamp() - stale_hours * 3600

@@ -339,6 +339,8 @@ def partition_contracts(cur, market: Market, since: datetime) -> List[Dict]:
             "close_ts": _ts(r["close_time"]),
             "result": r["result"],
         })
+    if market.data_from_ts:   # a tick-sourced market: contracts before its archive have no data
+        out = [c for c in out if c["open_ts"] >= market.data_from_ts]
     return out
 
 
