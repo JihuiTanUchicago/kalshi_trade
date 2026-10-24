@@ -137,3 +137,22 @@ def test_refused_when_edge_is_not_statistically_clear(monkeypatch):
 def test_proven_on_realistic_fills_goes_live(monkeypatch):
     msg, created = _deploy_live(monkeypatch, trips=_trips())
     assert created.get("mode") == "live"
+
+
+def test_paper_evidence_reports_backtest_realization(monkeypatch):
+    _patch(monkeypatch, trips=_trips(pnls=[0.5] * 40))
+    monkeypatch.setattr(agent.repo, "get_strategy", lambda cur, uid, sid: {
+        "id": sid, "result": {"out_of_sample": {"pnl": 40.0, "trades": 40}}})  # $1.00/trade in backtest
+    ev = agent.paper_evidence(None, 1, 7)
+    assert ev["paper_mean_pnl"] == 0.5 and ev["backtest_mean_pnl"] == 1.0
+    assert ev["realization"] == 0.5
+    line = agent.paper_evidence_line(ev)
+    assert "50% of backtest" in line and "40/30 realistic" in line
+
+
+def test_paper_evidence_line_names_the_blocker(monkeypatch):
+    _patch(monkeypatch, trips=_trips(n=5))
+    monkeypatch.setattr(agent.repo, "get_strategy", lambda cur, uid, sid: None)
+    ev = agent.paper_evidence(None, 1, 7)
+    assert ev["realization"] is None
+    assert "not live-ready: it needs 30+" in agent.paper_evidence_line(ev)
