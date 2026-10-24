@@ -667,6 +667,27 @@ def list_runs(cur, user_id: int, limit: int = 50) -> List[Dict]:
     return cur.fetchall()
 
 
+def research_week(cur, user_id: int, since) -> List[Dict]:
+    """The user's research runs created since `since`, totalled per model (for pricing): runs,
+    ideas tried, strategies passed, tokens. One indexed aggregate, cheap enough for the panel poll."""
+    cur.execute(
+        """SELECT model, COUNT(*) AS runs, COALESCE(SUM(hypotheses_tried),0) AS tried,
+                  COALESCE(SUM(strategies_passed),0) AS passed, COALESCE(SUM(input_tokens),0) AS input_tokens,
+                  COALESCE(SUM(output_tokens),0) AS output_tokens
+           FROM app_agent_runs WHERE user_id=%s AND kind='research' AND created_at>=%s GROUP BY model""",
+        (user_id, since),
+    )
+    return cur.fetchall()
+
+
+def strategies_passed_since(cur, user_id: int, since) -> int:
+    """Strategies that cleared every gate (status 'passed') created since `since`. The runs'
+    strategies_passed counter is not this: a 2026-10-17 run counted 68 backtest-only rows there."""
+    cur.execute("SELECT COUNT(*) AS n FROM app_strategies WHERE user_id=%s AND status='passed' AND created_at>=%s",
+                (user_id, since))
+    return int((cur.fetchone() or {}).get("n") or 0)
+
+
 def get_run(cur, user_id: int, run_id: int) -> Optional[Dict]:
     cur.execute(
         """SELECT id, kind, market, direction, prompt, status, hypotheses_tried, strategies_passed, error,
