@@ -91,7 +91,7 @@ def test_low_series_get_a_min_book_and_fcst_low_f():
     f = wf.snapshot_features(book, "KXLOWTNYC-26OCT23-B44.5", 44.0, _ts("2026-10-23 08:00"), 0.2, 0.25,
                              {"obs_high_f": 99.0, "obs_low_f": 46.0})
     assert f["fcst_low_f"] == 45.0 and "fcst_high_f" not in f
-    assert f["fcst_p_yes"] == pytest.approx(wf.p_yes(45.0, 2.0, 44, 45, 46.0, "min"))
+    assert f["fcst_p_yes"] == pytest.approx(wf.p_yes_observed(45.0, 2.0, 44, 45, 46.0, "min"))
 
 
 def test_every_forecast_feature_is_a_registered_feature():
@@ -237,3 +237,17 @@ def test_trailing_bias_uses_only_settlements_known_by_the_frame():
     g = wf.contract_features(wf.ForecastBook(rows_early, -5, "max", actuals), "KXHIGHNY-26OCT11-B59.5", 59.0,
                              early, 0.2, 0.3)
     assert "fcst_bias_f" not in g and "fcst_p_yes" in g
+
+
+def test_after_the_afternoon_peak_the_high_is_what_was_observed():
+    book = wf.ForecastBook([(_ts("2026-08-18 14:30"), date(2026, 8, 18), "NBS", 84.0, 2.0)], -5, "max")
+    late = _ts("2026-08-18 22:00")  # 17:00 EST: past the peak, 83F now, 85F was the high
+    p = lambda t: wf.contract_features(book, t, 0.0 if "T85" in t else 87.0, late, 0.0, 0.01,  # noqa: E731
+                                       observed=85.0, latest_temp=83.0)["fcst_p_yes"]
+    # After the peak only the hourly readings' miss is left: settled = 85 + {0,1,2,3} with OBS_GAP_PMF.
+    assert p("KXHIGHNY-26AUG18-B87.5") == pytest.approx(0.11, abs=0.005)   # 87-88: a 2-3F miss
+    assert p("KXHIGHNY-26AUG18-B85.5") == pytest.approx(0.89, abs=0.005)   # 85-86
+    assert p("KXHIGHNY-26AUG18-T85") == 0.0                                # below 85: already ruled out
+    noon = _ts("2026-08-18 17:00")   # 12:00 EST: the forecast still says a degree or two more is possible
+    q = wf.contract_features(book, "KXHIGHNY-26AUG18-B87.5", 87.0, noon, 0.0, 0.01, observed=82.0, latest_temp=82.0)
+    assert q["fcst_p_yes"] > 0.05

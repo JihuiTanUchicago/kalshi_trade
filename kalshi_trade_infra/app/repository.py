@@ -2108,19 +2108,28 @@ WEATHER_ACTUAL_LAG_S = 2 * 3600
 
 def load_weather_actuals(cur, series: str, since: datetime) -> List[Tuple[int, Any, float]]:
     """Settled daily values of a weather series since `since`, as (known_at_ts, day, value_f) for
-    app/weather_fcst's trailing bias: one per event, known WEATHER_ACTUAL_LAG_S after it closed."""
-    from app.markets import weather_target_day
+    app/weather_fcst's trailing bias: one per event, known WEATHER_ACTUAL_LAG_S after it closed.
+    An event is kept only when its value lies in the contract that settled YES: Kalshi's
+    historical endpoint returns 0.0 for some older events' expiration_value, which would
+    otherwise read as a 60F forecast bias."""
+    from app.weather_fcst import parse_contract
     cur.execute(
-        "SELECT event_ticker, MAX(close_time) AS closed, MAX(expiration_value) AS v FROM hist_markets "
-        "WHERE series_ticker=%s AND close_time >= %s AND expiration_value IS NOT NULL GROUP BY event_ticker",
+        "SELECT event_ticker, ticker, strike, close_time, result, expiration_value FROM hist_markets "
+        "WHERE series_ticker=%s AND close_time >= %s AND expiration_value IS NOT NULL",
         (series, since))
-    out = []
+    events: Dict[str, Dict[str, Any]] = {}
     for r in cur.fetchall():
-        day = weather_target_day(r["event_ticker"] + "-X")
-        if day is not None and r["v"] is not None:
-            out.append((int(r["closed"].replace(tzinfo=timezone.utc).timestamp()) + WEATHER_ACTUAL_LAG_S, day,
-                        float(r["v"])))
-    return out
+        e = events.setdefault(r["event_ticker"], {"closed": r["close_time"], "v": float(r["expiration_value"]),
+                                                  "ok": None, "day": None})
+        e["closed"] = max(e["closed"], r["close_time"])
+        if (r.get("result") or "").lower() == "yes":
+            terms = parse_contract(r["ticker"], float(r["strike"] or 0))
+            if terms is not None:
+                day, lo, hi = terms
+                v = int(round(float(r["expiration_value"])))
+                e["day"], e["ok"] = day, (lo is None or lo <= v) and (hi is None or v <= hi)
+    return [(int(e["closed"].replace(tzinfo=timezone.utc).timestamp()) + WEATHER_ACTUAL_LAG_S, e["day"], e["v"])
+            for e in events.values() if e["ok"]]
 
 
 def load_sports_odds(cur, sport: str, since: datetime,

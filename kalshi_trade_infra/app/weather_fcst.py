@@ -45,6 +45,13 @@ MAX_AGE_H = 36.0
 BIAS_DAYS = 30
 BIAS_MIN_DAYS = 7
 BIAS_REF_LOCAL_H = 10
+# Hourly ASOS readings miss the true peak between them: the settled (NWS CLI) high minus the hourly
+# running high at 17:00-23:00 local was 0F 40%, +1F 49%, +2F 10%, +3F 1% at NYC (Oct 2025-Oct 2026,
+# ~325 days). Lows are assumed to mirror it (settled low below the hourly low); unmeasured yet.
+OBS_GAP_PMF = ((0, 0.40), (1, 0.49), (2, 0.10), (3, 0.01))
+# Afternoon window over which a high's remaining max moves from the forecast to the latest reading.
+PEAK_FROM_LOCAL_H = 13.0
+PEAK_DONE_LOCAL_H = 16.0
 # The first hour of a climate day can still carry yesterday's running max in obs_high_f (see
 # freedata._daily_running_max), so the day's observations only condition the probability after it.
 OBS_GRACE_S = 3600
@@ -87,27 +94,53 @@ def _p_between(mu: float, sd: float, lo: Optional[int], hi: Optional[int]) -> fl
     return max(0.0, b - a)
 
 
+def _cdf_int(mu: float, sd: float, x: Optional[int]) -> float:
+    """P(rounded value <= x) for value ~ N(mu, sd); None = +inf."""
+    return 1.0 if x is None else _phi((x + 0.5 - mu) / sd)
+
+
 def p_yes(mu: float, sd: float, lo: Optional[int], hi: Optional[int],
           observed: Optional[float] = None, kind: str = "max") -> float:
-    """Probability the day's max (kind "max") or min ("min") lands in [lo, hi], given the
-    forecast and, once the day is underway, the extreme observed so far: the final max can't be
-    below it, the final min can't be above it."""
+    """Probability the day's max (kind "max") or min ("min") lands in [lo, hi]. mu/sd describe
+    the extreme of the part of the day still to come (the whole day before it starts); once the
+    day is underway the final value is max(observed, rest) for a high, min(observed, rest) for a
+    low, so it can't fall below (rise above) what was already observed."""
     sd = max(float(sd), MIN_SD_F)
     if observed is None:
         return _p_between(mu, sd, lo, hi)
     m = int(round(observed))
-    if kind == "max":
-        if hi is not None and hi < m:
-            return 0.0
-        lo2, hi2, room = (m if lo is None else max(lo, m)), hi, (m, None)
-    else:
-        if lo is not None and lo > m:
-            return 0.0
-        lo2, hi2, room = lo, (m if hi is None else min(hi, m)), (None, m)
-    denom = _p_between(mu, sd, *room)
-    if denom < 1e-9:  # the forecast can't get past the observed extreme: that extreme is final
-        return 1.0 if (lo is None or lo <= m) and (hi is None or m <= hi) else 0.0
-    return min(1.0, _p_between(mu, sd, lo2, hi2) / denom)
+    if kind == "max":  # F(x) = P(max(m, R) <= x) = 0 below m, else P(R <= x)
+        def cdf(x):
+            return 1.0 if x is None else (0.0 if x < m else _cdf_int(mu, sd, x))
+        below = 0.0 if lo is None else cdf(lo - 1)
+        return max(0.0, cdf(hi) - below)
+    # P(min(m, R) >= x) = 0 above m, else P(R >= x)
+    def sf(x):
+        return 1.0 if x is None else (0.0 if x > m else 1.0 - _cdf_int(mu, sd, x - 1))
+    above = 0.0 if hi is None else sf(hi + 1)
+    return max(0.0, sf(lo) - above)
+
+
+def p_yes_observed(mu: float, sd: float, lo: Optional[int], hi: Optional[int],
+                   observed: Optional[float], kind: str = "max") -> float:
+    """p_yes allowing for the hourly readings' miss: the settled extreme is the observed one
+    shifted by OBS_GAP_PMF (higher for a max, lower for a min)."""
+    if observed is None:
+        return p_yes(mu, sd, lo, hi, None, kind)
+    sign = 1 if kind == "max" else -1
+    return sum(w * p_yes(mu, sd, lo, hi, observed + sign * g, kind) for g, w in OBS_GAP_PMF)
+
+
+def rest_of_day(mu: float, sd: float, local_s: int, latest_temp: Optional[float], kind: str) -> Tuple[float, float]:
+    """(mean, sd) of the extreme still to come. A high usually peaks mid-afternoon: from
+    PEAK_FROM_LOCAL_H to PEAK_DONE_LOCAL_H local standard time the remaining max slides from the
+    forecast to the latest reading (tight), since after the peak the temperature only falls.
+    Lows keep the forecast (a night-time low can still undercut the morning's)."""
+    if kind != "max" or latest_temp is None:
+        return mu, sd
+    h = local_s / 3600.0
+    w = min(1.0, max(0.0, (h - PEAK_FROM_LOCAL_H) / (PEAK_DONE_LOCAL_H - PEAK_FROM_LOCAL_H)))
+    return (1 - w) * mu + w * float(latest_temp), (1 - w) * sd + w * MIN_SD_F
 
 
 class ForecastBook:
@@ -194,10 +227,11 @@ def _gfs_sd(lead_h: float) -> float:
 
 def contract_features(book: Optional[ForecastBook], ticker: str, strike: float, ts: int,
                       yes_bid: Optional[float], yes_ask: Optional[float],
-                      observed: Optional[float] = None) -> Dict[str, float]:
+                      observed: Optional[float] = None, latest_temp: Optional[float] = None) -> Dict[str, float]:
     """Forecast features for one daily-high/low contract at ts ({} when there is no usable
     forecast). `observed` is the frame's running max (min for a "min" book) for the station's
-    current climate day, if known (obs_high_f / obs_low_f)."""
+    current climate day, if known (obs_high_f / obs_low_f); latest_temp its latest reading
+    (obs_temp_f), which takes over from the forecast once a high has peaked."""
     if book is None:
         return {}
     terms = parse_contract(ticker, strike)
@@ -214,14 +248,17 @@ def contract_features(book: Optional[ForecastBook], ticker: str, strike: float, 
     today, into_day = book.climate_day(ts)
     if observed is not None and not (today == day and into_day >= OBS_GRACE_S):
         observed = None
-    p = p_yes(high, sd, lo, hi, observed, book.kind)
+    mu_r, sd_r = rest_of_day(high, sd, into_day, latest_temp if observed is not None else None, book.kind)
+    p = p_yes_observed(mu_r, sd_r, lo, hi, observed, book.kind)
     name = "fcst_high_f" if book.kind == "max" else "fcst_low_f"
     out = {name: high, "fcst_sd_f": sd, "fcst_age_h": (ts - known_at) / 3600.0, "fcst_p_yes": p}
     trail = book.trailing_error(ts)
     if trail is not None:
         bias, rms, _n = trail
         out["fcst_bias_f"] = bias
-        out["fcst_p_yes_cal"] = p_yes(high - bias, max(sd, rms), lo, hi, observed, book.kind)
+        mu_c, sd_c = rest_of_day(high - bias, max(sd, rms), into_day,
+                                 latest_temp if observed is not None else None, book.kind)
+        out["fcst_p_yes_cal"] = p_yes_observed(mu_c, sd_c, lo, hi, observed, book.kind)
     if yes_bid is not None and yes_ask is not None:
         mid = (float(yes_bid) + float(yes_ask)) / 2.0
         out["fcst_edge"] = p - mid
@@ -276,8 +313,9 @@ def snapshot_features(book: Optional[ForecastBook], ticker: str, strike: float, 
     make per contract."""
     if book is None:
         return {}
-    obs = (frame_feats or {}).get("obs_high_f" if book.kind == "max" else "obs_low_f")
-    return contract_features(book, ticker, strike, ts, yes_bid, yes_ask, obs)
+    ff = frame_feats or {}
+    obs = ff.get("obs_high_f" if book.kind == "max" else "obs_low_f")
+    return contract_features(book, ticker, strike, ts, yes_bid, yes_ask, obs, ff.get("obs_temp_f"))
 
 
 def with_forecast(micro: Optional[Dict[str, float]], book, contract, ts: int,
