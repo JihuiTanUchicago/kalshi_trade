@@ -21,6 +21,9 @@ from app import repository as repo
 from data_pipeline.common import get_db_conn
 
 CONCURRENCY = int(os.getenv("APP_AGENT_CONCURRENCY", "4"))
+# Extra threads that take only chats and reviews. Research runs last an hour or more, so with every
+# CONCURRENCY thread on research a user's chat (and the autopilot review) used to wait for one to end.
+INTERACTIVE_LANES = max(0, int(os.getenv("APP_AGENT_INTERACTIVE_LANES", "1")))
 IDLE_SECONDS = 2.0
 # A frozen run is reaped this long after its LAST heartbeat. A HEALTHY run now beats continuously:
 # every event bumps the heartbeat, a wrapped data-load beats every ~5s, the streaming proposer beats
@@ -68,7 +71,7 @@ def _yield_on_sigterm(signum, frame) -> None:
     os._exit(0)
 
 
-def agent_loop(worker_id: str) -> None:
+def agent_loop(worker_id: str, skip_research: bool = False) -> None:
     while True:
         try:
             conn = get_db_conn()
@@ -78,7 +81,7 @@ def agent_loop(worker_id: str) -> None:
                         time.sleep(IDLE_SECONDS)  # shutting down: claim nothing new
                         continue
                     repo.fail_abandoned_runs(conn.cursor(), ABANDONED_AFTER)
-                    run = repo.claim_run(conn, worker_id)
+                    run = repo.claim_run(conn, worker_id, skip_research=skip_research)
                     if run is None:
                         time.sleep(IDLE_SECONDS)
                         continue
@@ -174,6 +177,8 @@ def main() -> None:
     if mode == "agents":
         base = "%s:%d" % (socket.gethostname(), os.getpid())
         threads = [threading.Thread(target=agent_loop, args=("%s:%d" % (base, i),), daemon=True) for i in range(CONCURRENCY)]
+        threads += [threading.Thread(target=agent_loop, args=("%s:chat%d" % (base, i), True), daemon=True)
+                    for i in range(INTERACTIVE_LANES)]
         threads.append(threading.Thread(target=autopilot_scheduler, daemon=True))  # the autopilot heartbeat
         signal.signal(signal.SIGTERM, _yield_on_sigterm)
         for t in threads:

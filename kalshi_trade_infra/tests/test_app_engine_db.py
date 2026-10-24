@@ -157,6 +157,18 @@ def test_two_workers_never_take_the_same_run(conn, user):
         other.close()
 
 
+def test_the_interactive_lane_skips_research(conn, user):
+    from app import repository as repo
+
+    cur = conn.cursor()
+    cur.execute("UPDATE app_agent_runs SET status='cancelled' WHERE status='queued'")
+    repo.create_run(cur, user["id"], "research", "btc15m", "momentum")
+    review = repo.create_run(cur, user["id"], "review", None, "scheduled")
+    assert repo.claim_run(conn, "chat0", skip_research=True)["id"] == review
+    assert repo.claim_run(conn, "chat0", skip_research=True) is None
+    assert repo.claim_run(conn, "w1")["kind"] == "research"
+
+
 def test_loss_guard_pauses_and_asks_for_review(conn, user):
     from app import engine
     from app import repository as repo
