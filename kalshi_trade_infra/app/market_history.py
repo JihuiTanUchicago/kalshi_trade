@@ -17,13 +17,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 
 import requests
 
-from app.markets import MARKETS, Market
+from app.markets import CURATED, MARKETS, Market
 from data_pipeline.common import api_get, get_db_conn, parse_iso_to_dt, utc_now
 
 COINBASE_CANDLES_URL = "https://api.exchange.coinbase.com/products/%s/candles"  # %s = product, e.g. BTC-USD
@@ -42,6 +43,17 @@ KALSHI_PAUSE_SECONDS = 0.07  # ~14 req/s, under the basic tier's 20/s
 BACKFILL_GAP_SECONDS = 86400          # ignore gaps under a day (normal edge of the window)
 SPOT_BACKFILL_SECONDS_PER_PASS = 7 * 86400
 OLD_MARKET_SECONDS = 30 * 86400       # candles of a market closed longer ago may be unavailable
+# Wall-clock budget for one pass's candle fetching. The watchdog restarts us when no cycle completes
+# within 1500s, and a long backfill (a raised history_days, ~100 catalog series) used to blow past
+# that every pass, so no cycle ever finished. Past the budget the pass ends and the rest of the
+# backlog resumes next pass, rotating so every series gets its turn.
+PASS_BUDGET_SECONDS = int(os.getenv("HISTORY_PASS_BUDGET_SECONDS", "900"))
+BACKLOG_SLEEP_SECONDS = 60
+# Kalshi moves markets settled before a rolling cutoff to /historical/*; the live endpoints stop
+# serving them. Refetched hourly.
+CUTOFF_TTL_SECONDS = 3600
+_cutoff_cache: Dict[str, object] = {}
+_candle_rotation = 0
 
 
 def _naive_utc(dt: datetime) -> datetime:
@@ -90,65 +102,91 @@ def sync_spot_candles(cur, symbol: str, start_ts: int, end_ts: int) -> int:
     return written
 
 
-def sync_settled_markets(cur, market: Market, min_close: datetime, max_close: Optional[datetime] = None) -> int:
-    written = 0
+def historical_cutoff() -> Optional[datetime]:
+    """Kalshi's market_settled_ts cutoff (tz-aware), or None if it can't be fetched (then only the
+    live endpoints are used, as before)."""
+    now = time.time()
+    if _cutoff_cache and now - float(_cutoff_cache["at"]) < CUTOFF_TTL_SECONDS:
+        return _cutoff_cache["ts"]  # type: ignore[return-value]
+    try:
+        ts = parse_iso_to_dt((api_get("/historical/cutoff") or {}).get("market_settled_ts"))
+    except Exception as e:
+        print("[market_history] historical cutoff unavailable: %r" % (e,), flush=True)
+        return _cutoff_cache.get("ts")  # type: ignore[return-value]
+    _cutoff_cache.update(at=now, ts=ts)
+    return ts
+
+
+def _market_pages(path: str, params: Dict):
     cursor = None
     while True:
-        params = {
-            "series_ticker": market.series,
-            "status": "settled",
-            "min_close_ts": int(min_close.timestamp()),
-            "limit": 1000,
-        }
-        if max_close is not None:
-            params["max_close_ts"] = int(max_close.timestamp())
-        if cursor:
-            params["cursor"] = cursor
-        data = api_get("/markets", params)
-        rows = []
-        for m in data.get("markets") or []:
-            close_time = parse_iso_to_dt(m.get("close_time"))
-            open_time = parse_iso_to_dt(m.get("open_time"))
-            strike = m.get("floor_strike")
-            result = (m.get("result") or "").lower()
-            if close_time is None or open_time is None or result not in ("yes", "no"):
-                continue
-            # Underlying markets price against a strike; sports (underlying=None) settle on an
-            # outcome and carry no floor_strike, so store a 0.0 sentinel (never used - snapshot
-            # computes no moneyness without a spot).
-            if strike is None:
-                if market.underlying is not None:
-                    continue
-                strike = 0.0
-            if not market.is_target_event(close_time):
-                continue
-            rows.append(
-                (
-                    m["ticker"],
-                    market.series,
-                    m.get("event_ticker") or "",
-                    float(strike),
-                    _naive_utc(open_time),
-                    _naive_utc(close_time),
-                    result,
-                    m.get("expiration_value"),
-                )
-            )
-        if rows:
-            cur.executemany(
-                """
-                INSERT INTO hist_markets
-                  (ticker, series_ticker, event_ticker, strike, open_time, close_time, result, expiration_value)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-                ON DUPLICATE KEY UPDATE result=VALUES(result), expiration_value=VALUES(expiration_value)
-                """,
-                rows,
-            )
-            written += len(rows)
+        data = api_get(path, dict(params, cursor=cursor) if cursor else params)
+        yield data.get("markets") or []
         cursor = data.get("cursor")
         if not cursor:
-            return written
+            return
         time.sleep(KALSHI_PAUSE_SECONDS)
+
+
+def sync_settled_markets(cur, market: Market, min_close: datetime, max_close: Optional[datetime] = None) -> int:
+    base = {"series_ticker": market.series, "min_close_ts": int(min_close.timestamp()), "limit": 1000}
+    sources = []
+    cutoff = historical_cutoff()
+    if cutoff is not None and min_close < cutoff:
+        hist_max = cutoff if max_close is None else min(max_close, cutoff)
+        sources.append(("/historical/markets", dict(base, max_close_ts=int(hist_max.timestamp()))))
+    live = dict(base, status="settled")
+    if max_close is not None:
+        live["max_close_ts"] = int(max_close.timestamp())
+    sources.append(("/markets", live))
+    written = 0
+    for path, params in sources:
+        for page in _market_pages(path, params):
+            written += _upsert_settled(cur, market, page)
+    return written
+
+
+def _upsert_settled(cur, market: Market, markets) -> int:
+    rows = []
+    for m in markets:
+        close_time = parse_iso_to_dt(m.get("close_time"))
+        open_time = parse_iso_to_dt(m.get("open_time"))
+        strike = m.get("floor_strike")
+        result = (m.get("result") or "").lower()
+        if close_time is None or open_time is None or result not in ("yes", "no"):
+            continue
+        # Underlying markets price against a strike; sports (underlying=None) settle on an
+        # outcome and carry no floor_strike, so store a 0.0 sentinel (never used - snapshot
+        # computes no moneyness without a spot).
+        if strike is None:
+            if market.underlying is not None:
+                continue
+            strike = 0.0
+        if not market.is_target_event(close_time):
+            continue
+        rows.append(
+            (
+                m["ticker"],
+                market.series,
+                m.get("event_ticker") or "",
+                float(strike),
+                _naive_utc(open_time),
+                _naive_utc(close_time),
+                result,
+                m.get("expiration_value"),
+            )
+        )
+    if rows:
+        cur.executemany(
+            """
+            INSERT INTO hist_markets
+              (ticker, series_ticker, event_ticker, strike, open_time, close_time, result, expiration_value)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            ON DUPLICATE KEY UPDATE result=VALUES(result), expiration_value=VALUES(expiration_value)
+            """,
+            rows,
+        )
+    return len(rows)
 
 
 def _spot_close_at(cur, symbol: str, ts: int) -> Optional[float]:
@@ -168,6 +206,12 @@ def _num(v) -> Optional[float]:
         return None
 
 
+def _px(d: Dict, field: str):
+    """A candle price field: the live API names it "<field>_dollars", /historical just "<field>"."""
+    v = d.get(field + "_dollars")
+    return v if v is not None else d.get(field)
+
+
 def slim_candle_raw(c: Dict) -> Dict:
     """The part of a Kalshi candle the row's columns do not already hold: the period's highs and lows.
 
@@ -177,14 +221,14 @@ def slim_candle_raw(c: Dict) -> Dict:
     out = {}
     for key, side in (("b", "yes_bid"), ("a", "yes_ask"), ("p", "price")):
         d = c.get(side) or {}
-        for k, field in (("l", "low_dollars"), ("h", "high_dollars")):
-            if d.get(field) is not None:
-                out[key + k] = d[field]
+        for k, field in (("l", "low"), ("h", "high")):
+            if _px(d, field) is not None:
+                out[key + k] = _px(d, field)
     return out
 
 
-def sync_market_candles(cur, market: Market, limit: int = 2000) -> int:
-    """Fetch candles for settled markets that do not have them yet."""
+def sync_market_candles(cur, market: Market, limit: int = 2000, deadline: Optional[float] = None) -> int:
+    """Fetch candles for settled markets that do not have them yet, stopping at `deadline`."""
     cur.execute(
         """
         SELECT ticker, strike, open_time, close_time FROM hist_markets
@@ -193,8 +237,12 @@ def sync_market_candles(cur, market: Market, limit: int = 2000) -> int:
         (market.series, limit),
     )
     pending = cur.fetchall()
+    cutoff = historical_cutoff()
+    cutoff_ts = cutoff.timestamp() if cutoff is not None else None
     done = 0
     for m in pending:
+        if deadline is not None and time.time() >= deadline:
+            break
         open_ts = int(m["open_time"].replace(tzinfo=timezone.utc).timestamp())
         close_ts = int(m["close_time"].replace(tzinfo=timezone.utc).timestamp())
         if market.close_hour_et is not None:
@@ -207,6 +255,10 @@ def sync_market_candles(cur, market: Market, limit: int = 2000) -> int:
         # Kalshi caps candlesticks at 5000 per request; chunk the window by time, since a market
         # listed for days at 1-minute candles (e.g. NBA games) blows past the cap in one call.
         max_candles = 4900
+        if cutoff_ts is not None and close_ts < cutoff_ts:
+            path = "/historical/markets/%s/candlesticks" % m["ticker"]
+        else:
+            path = "/series/%s/markets/%s/candlesticks" % (market.series, m["ticker"])
         span = market.candle_minutes * 60
         candles = []
         data: Optional[Dict] = {}
@@ -215,7 +267,7 @@ def sync_market_candles(cur, market: Market, limit: int = 2000) -> int:
             chunk_end = min(t + max_candles * span, close_ts)
             try:
                 data = api_get(
-                    "/series/%s/markets/%s/candlesticks" % (market.series, m["ticker"]),
+                    path,
                     {"start_ts": t, "end_ts": chunk_end, "period_interval": market.candle_minutes},
                 )
             except RuntimeError as e:
@@ -241,14 +293,14 @@ def sync_market_candles(cur, market: Market, limit: int = 2000) -> int:
                     m["ticker"],
                     int(c["end_period_ts"]),
                     market.candle_minutes,
-                    _num(bid.get("open_dollars")),
-                    _num(bid.get("close_dollars")),
-                    _num(ask.get("open_dollars")),
-                    _num(ask.get("close_dollars")),
-                    _num(price.get("open_dollars")),
-                    _num(price.get("close_dollars")),
-                    _num(c.get("volume_fp")),
-                    _num(c.get("open_interest_fp")),
+                    _num(_px(bid, "open")),
+                    _num(_px(bid, "close")),
+                    _num(_px(ask, "open")),
+                    _num(_px(ask, "close")),
+                    _num(_px(price, "open")),
+                    _num(_px(price, "close")),
+                    _num(c.get("volume_fp", c.get("volume"))),
+                    _num(c.get("open_interest_fp", c.get("open_interest"))),
                     now,
                     json.dumps(slim_candle_raw(c), separators=(",", ":")),
                 )
@@ -306,6 +358,7 @@ def backfill_settled_markets(cur, market: Market, now: datetime) -> int:
 
 def refresh(cur) -> Dict[str, int]:
     now = utc_now()
+    deadline = time.time() + PASS_BUDGET_SECONDS
     end_ts = int(now.timestamp()) - 60
     stats: Dict[str, int] = {}
     # One spot-candle series per distinct underlying in MARKETS (BTC-USD, ETH-USD, …),
@@ -326,12 +379,11 @@ def refresh(cur) -> Dict[str, int]:
             stats["spot_backfill_" + symbol] = backfill_spot(cur, symbol, history_days, now)
         except Exception as e:
             print("[market_history] %s spot backfill failed: %r (retry next pass)" % (symbol, e), flush=True)
-    for market in MARKETS.values():
-        if market.kind != "binary":  # Never feed perpetuals to the expiring YES/NO history path.
-            continue
-        # Contained per market: with the catalog-driven universe this loop now covers ~100 series,
-        # so one series' API/DB hiccup must not abort the backfill for all the others (it just
-        # retries next pass). A crash here used to stale every market's history at once.
+    binary = [m for m in MARKETS.values() if m.kind == "binary"]  # never perpetuals
+    # Contained per market: with the catalog-driven universe this loop now covers ~100 series,
+    # so one series' API/DB hiccup must not abort the backfill for all the others (it just
+    # retries next pass). A crash here used to stale every market's history at once.
+    for market in binary:
         try:
             cur.execute("SELECT MAX(close_time) AS t FROM hist_markets WHERE series_ticker=%s", (market.series,))
             last_close = (cur.fetchone() or {}).get("t")
@@ -339,9 +391,30 @@ def refresh(cur) -> Dict[str, int]:
             since = max(last_close.replace(tzinfo=timezone.utc) - timedelta(hours=2), floor) if last_close else floor
             stats[market.key + "_markets"] = sync_settled_markets(cur, market, since)
             stats[market.key + "_backfill"] = backfill_settled_markets(cur, market, now)
-            stats[market.key + "_candles"] = sync_market_candles(cur, market)
         except Exception as e:
             print("[market_history] %s sync failed: %r (retry next pass)" % (market.key, e), flush=True)
+    stats["candles_deferred"] = sync_all_candles(cur, binary, deadline)
+    return stats
+
+
+def sync_all_candles(cur, markets, deadline: float) -> int:
+    """Candles for every market within the pass budget: curated first (they are what's traded),
+    then the catalog series in a rotating order resumed where the last pass ran out. Returns how
+    many markets were left for the next pass."""
+    global _candle_rotation
+    curated = [m for m in markets if m.key in CURATED]
+    rest = [m for m in markets if m.key not in CURATED]
+    start = _candle_rotation % len(rest) if rest else 0
+    order = curated + rest[start:] + rest[:start]
+    for i, market in enumerate(order):
+        if time.time() >= deadline:
+            _candle_rotation = start + max(i - len(curated), 0)
+            return len(order) - i
+        try:
+            sync_market_candles(cur, market, deadline=deadline)
+        except Exception as e:
+            print("[market_history] %s candles failed: %r (retry next pass)" % (market.key, e), flush=True)
+    return 0
     return stats
 
 
@@ -350,11 +423,15 @@ def main() -> None:
     ap.add_argument("--once", action="store_true")
     args = ap.parse_args()
     while True:
+        sleep = REFRESH_SECONDS
         try:
             conn = get_db_conn()
             try:
                 with conn.cursor() as cur:
-                    print("[market_history] %s %s" % (utc_now().isoformat(), refresh(cur)), flush=True)
+                    stats = refresh(cur)
+                    print("[market_history] %s %s" % (utc_now().isoformat(), stats), flush=True)
+                    if stats.get("candles_deferred"):
+                        sleep = BACKLOG_SLEEP_SECONDS  # backlog left: come straight back for it
                     # Heartbeat on a COMPLETED cycle only: a wedged/hung refresh never reaches
                     # here, so the heartbeat goes stale and the watchdog restarts us (self-heal).
                     cur.execute(
@@ -377,7 +454,7 @@ def main() -> None:
                 raise
         if args.once:
             return
-        time.sleep(REFRESH_SECONDS)
+        time.sleep(sleep)
 
 
 if __name__ == "__main__":

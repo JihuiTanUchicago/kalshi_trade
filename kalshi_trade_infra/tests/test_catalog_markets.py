@@ -32,14 +32,14 @@ def test_generates_valid_deployable_outcome_settled_market():
     assert m.deployable is True          # ELIGIBLE (every per-deployment gate still runs)
     assert m.category == "Climate and Weather"
     assert m.close_hour_et is None       # no daily-ladder close-hour filter
-    assert m.candle_minutes == 60 and m.history_days == 45   # daily cadence/lookback
+    assert m.candle_minutes == 60 and m.history_days == 365  # daily cadence, a year of weather
     # label is carried from the Kalshi title
     assert m.label == "Highest temperature in Miami"
 
 
 def test_candle_cadence_tracks_frequency():
     assert market_from_series(_row(frequency="custom", series_ticker="KXUFCBOUT")).candle_minutes == 1
-    assert market_from_series(_row(frequency="hourly", series_ticker="KXHIGHCHI")).candle_minutes == 15
+    assert market_from_series(_row(frequency="hourly", series_ticker="KXHIGHCHI")).candle_minutes == 1
     assert market_from_series(_row(frequency="weekly", series_ticker="KXMBAAPPS")).candle_minutes == 60
 
 
@@ -205,8 +205,8 @@ T0 = 1_800_000_000 - 1_800_000_000 % 3600
 def test_generated_market_builds_backtest_and_settles(monkeypatch):
     """A generated outcome-settled market must build a book-only dataset and settle YES/NO -
     the same shape nba_game proves, but on a market produced by the generator."""
-    m = market_from_series(_row(series_ticker="KXHIGHMIA", frequency="hourly"))  # candle_minutes=15
-    assert m is not None and m.candle_minutes == 15
+    m = market_from_series(_row(series_ticker="KXHIGHMIA", frequency="hourly"))  # candle_minutes=1
+    assert m is not None and m.candle_minutes == 1
     markets, candles = [], []
     for k in range(8):
         open_ts = T0 + k * 3600
