@@ -119,6 +119,8 @@ Forward paper probation (`agent.auto_paper_probation`, off unless `APP_PAPER_PRO
 
 Probation turned on (Todd, 2026-10-24 13:10Z): `APP_PAPER_PROBATION=1` is in the box `.env.app` from the 13:50Z batch.
 
+Fresh paper is left alone (`agent.PAPER_MIN_AGE`, env `APP_PAPER_MIN_AGE_HOURS`, default 24). Within minutes of probation going live, review 2558 paused deployment #74 (#16001, sol15m) for "zero fills after hours on paper", though it was 10 minutes old. Autopilot pauses of a paper deployment younger than 24h are now refused with the deployment's age. Live pauses are never held back, and the engine's own guards (drawdown, loss) are untouched.
+
 Research in the autopilot float (`server._research_activity`, `research` in `/api/autopilot/status`): the markets being researched now, plus the last 7 days' ideas tested and passed, from one `list_runs(limit=50)` read. A quiet panel reads as working rather than stuck.
 
 Visibility: the strategy page's Road to live panel (both themes) shows each gate's progress, and the autopilot float's stats show the running paper strategy closest to live (`paper_progress` in `/api/autopilot/status`: realistic trades / 30 and net P&L, one grouped query, no bootstrap on the 20s poll).

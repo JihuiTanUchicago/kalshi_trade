@@ -80,3 +80,32 @@ def test_candidates_query_takes_the_latest_validation_row_only():
     out = rr.probation_candidates(cur, 2, 0.25, 20, limit=7)
     assert out == [{"strategy_id": 5, "market": "m", "p_value": 0.1, "net_pnl": 3.0, "n_trades": 30}]
     assert "MAX(r2.id)" in cur.sql and "r.net_pnl > 0" in cur.sql and cur.params == (2, 0.25, 20, 7)
+
+
+def _pause_patch(monkeypatch, dep):
+    statuses = []
+    monkeypatch.setattr(agent.repo, "get_deployment", lambda cur, uid, did: dict(dep))
+    monkeypatch.setattr(agent.repo, "create_proposal", lambda *a: 1)
+    monkeypatch.setattr(agent.repo, "set_deployment_status", lambda cur, uid, did, st, why=None: statuses.append(st))
+    return statuses
+
+
+def test_autopilot_cannot_pause_a_fresh_paper_deployment(monkeypatch):
+    from datetime import timedelta
+    now = agent.repo.now_utc()
+    dep = {"id": 74, "title": "S", "mode": "paper", "status": "running", "market": "sol15m",
+           "spec": dict(SPEC), "created_at": now - timedelta(minutes=10)}
+    statuses = _pause_patch(monkeypatch, dep)
+    text, pid = agent.act(None, USER, {"type": "pause", "deployment_id": 74, "reason": "zero fills"}, autopilot=True)
+    assert pid is None and statuses == [] and "only 0.2 hours" in text
+    statuses = _pause_patch(monkeypatch, dict(dep, created_at=now - timedelta(hours=30)))
+    agent.act(None, USER, {"type": "pause", "deployment_id": 74, "reason": "idle"}, autopilot=True)
+    assert statuses == ["paused"]
+
+
+def test_fresh_live_deployments_can_always_be_paused(monkeypatch):
+    dep = {"id": 9, "title": "L", "mode": "live", "status": "running", "market": "sol15m",
+           "spec": dict(SPEC), "created_at": agent.repo.now_utc()}
+    statuses = _pause_patch(monkeypatch, dep)
+    agent.act(None, USER, {"type": "pause", "deployment_id": 9, "reason": "risk"}, autopilot=True)
+    assert statuses == ["paused"]
