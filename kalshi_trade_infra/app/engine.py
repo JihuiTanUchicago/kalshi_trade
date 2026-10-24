@@ -42,6 +42,14 @@ LIVE_TRADING_ENABLED = os.getenv("APP_LIVE_TRADING_ENABLED") == "1"
 # ponytail: temporary; remove once NO-side live is validated on the demo sandbox.
 NO_SIDE_LIVE_ENABLED = os.getenv("APP_NO_SIDE_LIVE_ENABLED") == "1"
 TICK_SECONDS = 15
+# An order whose outcome is unknown (intent still 'sent': a timeout, a crash, a lost response) may
+# already have filled. No new order goes out on that user's ticker until recovery reads the truth
+# from the exchange, so a retry never stacks a second buy or a second sell on top of a fill we
+# cannot see yet (the oversell-into-a-short shape). Bounded: after this window the block lifts
+# even if recovery could not resolve it, so an exit is delayed, never trapped.
+INFLIGHT_BLOCK_SECONDS = int(os.getenv("APP_INFLIGHT_BLOCK_SECONDS", "180"))
+# How often the engine re-reconciles 'sent' intents against the exchange (was a fixed 300s).
+RECOVER_EVERY_SECONDS = float(os.getenv("APP_RECOVER_EVERY_SECONDS", "30"))
 # This engine process's identity, for the per-position close claim (P0-3): whichever engine stamps
 # its id on a position owns that force-close, so two engines never both sell it into a short.
 _ENGINE_ID = "engine-%s" % uuid.uuid4()
@@ -247,7 +255,8 @@ def _paper_kernel_close(conn, cur, dep: Dict, pos: Dict, kernel, price: float, r
 
 
 def _live_trade(cur, dep: Dict, kernel, action: str, side: str, ticker: str, qty: int, price: float,
-                client_order_id_base: Optional[str] = None):
+                client_order_id_base: Optional[str] = None, fair: Optional[float] = None,
+                min_edge: Optional[float] = None):
     from data_pipeline.architecture.contracts import TradeIntent
 
     # `side` is the real leg (yes|no) and `price` is that side's own price; the
@@ -255,10 +264,28 @@ def _live_trade(cur, dep: Dict, kernel, action: str, side: str, ticker: str, qty
     # matching YES-leg wire order. A NO strategy must never place a YES order.
     # client_order_id_base (the persisted intent id, P0-1) rides on metadata so the kernel can mint
     # a durable, idempotent client_order_id for every child order without a signature change.
+    # fair/min_edge (an entry's own-side fair value and the spec's required net edge) let the kernel
+    # cap the BUY limit at the reservation price, so the fill can never be worse than the edge allows.
+    meta: Dict = {}
+    if client_order_id_base:
+        meta["client_order_id"] = client_order_id_base
+    if fair is not None:
+        meta["fair"] = float(fair)
+        meta["min_edge"] = float(min_edge or 0.0)
     intent = TradeIntent(action=action, side=side, ticker=ticker, qty_contracts=qty, limit_price_dollars=price,
-                         model_name="app-dep-%d" % dep["id"], now_ts=datetime.now(timezone.utc),
-                         metadata={"client_order_id": client_order_id_base} if client_order_id_base else {})
+                         model_name="app-dep-%d" % dep["id"], now_ts=datetime.now(timezone.utc), metadata=meta)
     return kernel.execute(intent)
+
+
+def _order_in_flight(cur, user_id: int, ticker: str) -> bool:
+    """True while this user has an unresolved order on ``ticker`` (see INFLIGHT_BLOCK_SECONDS).
+    Fails open on a read error: the block is an extra layer over recovery + reconciliation, and a DB
+    blip must not freeze every order."""
+    try:
+        return repo.ticker_has_inflight_intent(cur, user_id, ticker, INFLIGHT_BLOCK_SECONDS)
+    except Exception as e:
+        print("[engine] in-flight check failed user %s %s: %r (proceeding)" % (user_id, ticker, e), flush=True)
+        return False
 
 
 def _log_order_intent(conn, dep: Dict, action: str, side: str, ticker: str, qty: int, price: float,
@@ -308,6 +335,12 @@ def _close_position_at(conn, cur, dep: Dict, pos: Dict, kernel, via_kernel: bool
             return _paper_kernel_close(conn, cur, dep, pos, kernel, price, reason)
         _paper_sell(conn, pos, price, reason)
         return True
+    if _order_in_flight(cur, dep["user_id"], pos["ticker"]):
+        # An earlier order on this ticker may already have sold some or all of it. Selling the DB
+        # quantity again could oversell into a short; wait for recovery to book the truth.
+        print("[engine] exit deferred pos %d %s: an earlier order's outcome is still unknown"
+              % (pos["id"], pos["ticker"]), flush=True)
+        return False
     # Durable order-intent BEFORE the exchange sell (P0-1). Best-effort — an EXIT is NEVER blocked by
     # the intent log: if the write fails (intent_id is None) we STILL flatten and fall back to the
     # net reconciler. The intent carries position_id so crash-recovery knows which position to close.
@@ -484,6 +517,8 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
         if qty < 1:
             continue
         if via_kernel:
+            if _order_in_flight(cur, dep["user_id"], ticker):
+                continue  # an earlier order here may have filled; never stack a second buy on it
             close_time = entry.snapshot.contract.close_time
             # Durable order-intent BEFORE the real order (P0-1). An entry is NOT sacrosanct: if the
             # intent write fails we skip it rather than place an untracked order (a missed entry
@@ -493,7 +528,8 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
             if intent_id is None:
                 continue
             rep = _live_trade(cur, dep, kernel, "buy", entry.side, ticker, qty, entry.price,
-                              client_order_id_base=intent_id)
+                              client_order_id_base=intent_id, fair=getattr(entry, "fair", None),
+                              min_edge=(spec.get("entry") or {}).get("min_edge"))
             if rep.fill_qty_contracts < 1:
                 try:
                     repo.mark_order_intent(cur, intent_id, "unfilled")
@@ -505,7 +541,9 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
         elif kernel is not None:
             # Paper over the simulated venue: book only what the touch actually gave, at the fill
             # price and fee the venue charged. A miss (stale quote, edge gone) books nothing.
-            rep = _live_trade(cur, dep, kernel, "buy", entry.side, ticker, qty, entry.price)
+            # Same reservation-price cap as live, so paper never books a fill live would refuse.
+            rep = _live_trade(cur, dep, kernel, "buy", entry.side, ticker, qty, entry.price,
+                              fair=getattr(entry, "fair", None), min_edge=(spec.get("entry") or {}).get("min_edge"))
             if rep.fill_qty_contracts < 1:
                 continue
             if _paper_book_buy(conn, dep, ticker, entry.side, int(rep.fill_qty_contracts), rep.fill_price_dollars,
@@ -623,6 +661,8 @@ def _kernel_buy_pair(conn, cur, dep: Dict, kernel, legs, qty: int, mode: str) ->
     l_side, l_ticker, l_buy, l_sell, l_close = legs[0]  # long YES leg
     s_side, s_ticker, s_buy, _s_sell, s_close = legs[1]  # short NO leg
     uid, dep_id = dep["user_id"], dep["id"]
+    if _order_in_flight(cur, uid, l_ticker) or _order_in_flight(cur, uid, s_ticker):
+        return False  # an earlier order on a leg is unresolved; never leg in on top of it
 
     # Leg 1 buy: intent BEFORE the POST (never place an untracked order).
     i1 = _log_order_intent(conn, dep, "buy", l_side, l_ticker, qty, l_buy, mode, market_close_time=l_close)
@@ -1018,22 +1058,78 @@ def enforce_flatten_on_pause(conn, sources: Sources) -> int:
 # -- crash recovery of in-flight orders (EXECUTION_RISK_HARDENING P0-1, closes F1/F2 + the DR gap) --
 
 
-def _match_order_fill(orders: List[Dict], client_order_id: str) -> Optional[Dict]:
-    """Find the order with this client_order_id in an exchange orders list and read its fill, or None
-    if it is ABSENT. Absent is deliberately indeterminate (not 'unfilled'): an IOC order that filled
-    may not appear in a resting-orders view, and wrongly booking it unfilled would drop a real
-    position. Only a POSITIVELY-found order with an explicit fill count is acted on."""
+def _match_order_fill(orders: List[Dict], client_order_id: str, side: Optional[str] = None) -> Optional[Dict]:
+    """Read one intent's TOTAL fill from an exchange orders list, or None if it is indeterminate.
+
+    One intent can send several child orders: ``client_order_id`` for the first, then ``<id>-1``,
+    ``<id>-2``, ... for each escalating retry (execution_kernel.child_client_order_id). A crash or a
+    timeout on any child leaves the intent 'sent', and every child that filled is real exposure, so
+    the fill is the SUM over every child found, with a size-weighted average price and summed fees.
+
+    The first child ABSENT is indeterminate (None), not 'unfilled': an IOC order that filled may not
+    appear in the view we read, and wrongly booking it unfilled would drop a real position. Only a
+    positively-found first order is acted on; a retry child that is absent was never sent.
+
+    Fill prices on the wire are YES prices (order_wire_params), so a NO intent's average is flipped
+    back to its own cost basis (1 - yes), exactly as the kernel parses a live fill."""
     def _num(v, d=0.0):
         try:
             return float(v) if v is not None else d
         except (TypeError, ValueError):
             return d
+    base = str(client_order_id)
+    found_base = False
+    filled_total, weighted, fee_total, order_id = 0, 0.0, 0.0, None
     for o in orders or []:
-        if str(o.get("client_order_id")) == str(client_order_id):
-            filled = int(_num(o.get("fill_count")))
-            return {"filled": filled, "avg_price": _num(o.get("average_fill_price")),
-                    "fee": _num(o.get("average_fee_paid")) * filled, "order_id": o.get("order_id")}
-    return None
+        coid = str(o.get("client_order_id"))
+        if coid == base:
+            found_base = True
+        elif not (coid.startswith(base + "-") and coid[len(base) + 1:].isdigit()):
+            continue
+        filled = int(_num(o.get("fill_count")))
+        if filled <= 0:
+            if order_id is None and coid == base:
+                order_id = o.get("order_id")
+            continue
+        px = _num(o.get("average_fill_price"))
+        if str(side or "").lower() == "no" and px > 0:
+            px = 1.0 - px
+        filled_total += filled
+        weighted += px * filled
+        fee_total += _num(o.get("average_fee_paid")) * filled
+        order_id = o.get("order_id")
+    if not found_base:
+        return None
+    avg = round(weighted / filled_total, 4) if filled_total else 0.0
+    return {"filled": filled_total, "avg_price": avg, "fee": round(fee_total, 6), "order_id": order_id}
+
+
+def _intent_min_ts(it: Dict) -> Optional[int]:
+    """Unix seconds a little before the intent was logged, to bound the exchange orders read."""
+    created = it.get("created_at")
+    if not isinstance(created, datetime):
+        return None
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+    return int(created.timestamp()) - 120
+
+
+def _orders_since(fetch_page: Callable[[Dict], Dict], ticker: str, min_ts: Optional[int],
+                  max_pages: int = 10) -> List[Dict]:
+    """Every order on ``ticker`` since ``min_ts``, following the cursor (a busy ticker has more than
+    one page, and the child we need may not be on the first)."""
+    params: Dict = {"ticker": ticker, "limit": 200}
+    if min_ts is not None:
+        params["min_ts"] = min_ts
+    out: List[Dict] = []
+    for _ in range(max_pages):
+        page = fetch_page(dict(params)) or {}
+        out.extend(page.get("orders") or [])
+        cursor = page.get("cursor")
+        if not cursor:
+            break
+        params["cursor"] = cursor
+    return out
 
 
 def _make_order_lookup(conn) -> Callable[[Dict], Optional[Dict]]:
@@ -1055,17 +1151,19 @@ def _make_order_lookup(conn) -> Callable[[Dict], Optional[Dict]]:
                 if row is None:
                     return None
                 creds = kalshi_account.credentials_from_row(it["user_id"], row)
-                orders = (kalshi_dev_exec.demo_orders(creds, ticker=it["ticker"]) or {}).get("orders") or []
+                orders = _orders_since(lambda p: kalshi_dev_exec.demo_orders(creds, params=p),
+                                       it["ticker"], _intent_min_ts(it))
             elif mode == "live" and LIVE_TRADING_ENABLED:
                 row = repo.get_kalshi_key(conn.cursor(), it["user_id"])
                 if row is None:
                     return None
                 creds = kalshi_account.credentials_from_row(it["user_id"], row)
-                orders = (api_get_auth("/trade-api/v2/portfolio/orders", {"ticker": it["ticker"]},
-                                       credentials=creds) or {}).get("orders") or []
+                orders = _orders_since(lambda p: api_get_auth("/trade-api/v2/portfolio/orders", p,
+                                                              credentials=creds),
+                                       it["ticker"], _intent_min_ts(it))
             else:
                 return None  # live recovery only when the live gate is on; unknown mode -> leave 'sent'
-            return _match_order_fill(orders, coid)
+            return _match_order_fill(orders, coid, it.get("side"))
         except Exception as e:
             print("[engine] order lookup failed for intent %s: %r (leaving sent)"
                   % (it.get("intent_id"), e), flush=True)
@@ -1566,8 +1664,10 @@ def run_forever() -> None:
                     except Exception as e:
                         print("[engine] flatten-on-pause enforcement failed: %r" % e, flush=True)
                     # Catch in-process orphans too (a swallowed timeout mid-run, not only a crash):
-                    # re-reconcile 'sent' intents every ~5 min. Contained; never re-sends.
-                    if time.time() - last_recover > 300:
+                    # re-reconcile 'sent' intents every RECOVER_EVERY_SECONDS. Cheap when there are
+                    # none (one indexed read); while one is open its ticker is blocked
+                    # (INFLIGHT_BLOCK_SECONDS), so resolve it fast. Contained; never re-sends.
+                    if time.time() - last_recover > RECOVER_EVERY_SECONDS:
                         try:
                             recover_sent_intents(conn, sources)
                         except Exception as e:
