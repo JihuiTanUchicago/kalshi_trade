@@ -55,8 +55,11 @@ DDL = [
 FAMILIES = ("crypto",)
 READY_MIN_CONTRACTS = 120      # research-window contracts before a history/ticks re-test is worth it
 READY_GROWTH = 24              # ... and at least this many more than when the data was asked for
-MICRO_READY_DAYS = 3           # days of a collected micro feature before re-testing on it
+MICRO_READY_DAYS = 3           # days of a collected micro feature, INSIDE the research window, before re-testing
 EXPIRE_DAYS = 21               # an open request that never fills is dropped
+# A micro feature collected from today reaches the research window (the oldest 60% of history) only
+# after ~40% of history_days, so its request must outlive that.
+MICRO_EXPIRE_DAYS = 75
 MAX_REQUEUES_PER_PASS = 2      # per user, on top of the autopilot caps
 MAX_MICRO_SERIES = 12          # extra series the 1-minute collector may take on
 MAX_TICK_SERIES = 6            # extra series the tick recorder may take on
@@ -136,13 +139,35 @@ def window_contracts(cur, market: str) -> int:
     return len(rr.partition_contracts(cur, m, _now() - timedelta(days=m.history_days)))
 
 
-def micro_days(cur, series: str, feature: str) -> float:
-    """Days (distinct hours / 24) in the last two weeks with the feature collected for the series."""
+def research_window(cur, market: str) -> Tuple[datetime, datetime]:
+    """[from, to) of the data a research run on `market` would load: the active partition's research
+    window, or where a fresh partition would put it (the oldest RESEARCH_FRAC of history_days)."""
+    from app import partitions
+    from app import research_repository as rr
+    active = None
+    try:
+        active = rr.get_active_partition(cur, market)
+    except Exception:  # noqa: BLE001 - no partition table yet: use the fresh split
+        pass
+    if active and active.get("research_to_ts"):
+        return (datetime.fromtimestamp(int(active["research_from_ts"]), tz=timezone.utc).replace(tzinfo=None),
+                datetime.fromtimestamp(int(active["research_to_ts"]), tz=timezone.utc).replace(tzinfo=None))
+    days = MARKETS[market].history_days
+    start = _now() - timedelta(days=days)
+    return start, start + timedelta(days=days * partitions.RESEARCH_FRAC)
+
+
+def micro_days(cur, series: str, feature: str, window: Optional[Tuple[datetime, datetime]] = None) -> float:
+    """Days (distinct hours / 24) with the feature collected for the series, inside `window` (default:
+    the last two weeks). Readiness passes the research window: prod 2026-10-24 run 2726 was requeued
+    "now that ob_imbalance has been collected" and died again on "ob_imbalance not populated",
+    because the collected hours were all newer than the research window."""
     col = MICRO_FEATURES[feature][0]
+    lo, hi = window or (_now() - timedelta(days=14), _now())
     try:
         cur.execute("SELECT COUNT(DISTINCT DATE_FORMAT(f.snapshot_minute_utc, '%%Y-%%m-%%d %%H')) AS h "
                     "FROM model_features_1m f WHERE f.market_ticker LIKE %s AND f." + col + " IS NOT NULL "
-                    "AND f.snapshot_minute_utc >= %s", (series + "-%", _now() - timedelta(days=14)))
+                    "AND f.snapshot_minute_utc >= %s AND f.snapshot_minute_utc < %s", (series + "-%", lo, hi))
         return float((cur.fetchone() or {}).get("h") or 0) / 24.0
     except Exception:  # noqa: BLE001 - no table / no column yet means no coverage
         return 0.0
@@ -152,7 +177,7 @@ def is_ready(cur, req: Dict) -> bool:
     if req["kind"] == "ticks" and MARKETS[req["market"]].source != "ticks":
         return False   # recording starts on request, but a re-test needs a per-second twin market first
     if req["kind"] == "micro":
-        return micro_days(cur, req["series"], req["need"]) >= MICRO_READY_DAYS
+        return micro_days(cur, req["series"], req["need"], research_window(cur, req["market"])) >= MICRO_READY_DAYS
     n = window_contracts(cur, req["market"])
     return n >= READY_MIN_CONTRACTS and n >= int(req.get("baseline") or 0) + READY_GROWTH
 
@@ -247,7 +272,7 @@ def run(conn, days: int = 3) -> Dict[str, int]:
     per_user: Dict[int, int] = {}
     for req in cur.fetchall():
         if req["status"] == "open":
-            if req["created_at"] < _now() - timedelta(days=EXPIRE_DAYS):
+            if req["created_at"] < _now() - timedelta(days=MICRO_EXPIRE_DAYS if req["kind"] == "micro" else EXPIRE_DAYS):
                 cur.execute("UPDATE app_data_requests SET status='expired' WHERE id=%s", (req["id"],))
                 stats["expired"] += 1
                 continue
