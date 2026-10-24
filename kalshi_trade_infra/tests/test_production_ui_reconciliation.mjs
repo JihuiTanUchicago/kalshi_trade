@@ -191,3 +191,27 @@ test('current paper proposal approval semantics and broker callback route surviv
     assert.match(source, /href="\/privacy"/);
   }
 });
+
+test('market focus picker shows the saved focus, posts a change and follows status updates', async () => {
+  const f = frontend(path => path === '/api/models' ? response(catalog) : path === '/api/autopilot/focus' ? response({ok: true, focus: ['crypto']}) : response({messages: []}));
+  f.S.ap.focus = ['btc']; f.apBuildShell(f.box); await flush();
+  const select = f.box.querySelector('#apf-focus');
+  assert.equal(select.value, 'btc');
+  assert.deepEqual(select.options.map(o => o.attributes.value), ['', 'crypto', 'btc', 'sports']);
+  select.value = 'crypto'; await select.onchange();
+  const post = posts(f).find(row => row.path === '/api/autopilot/focus');
+  assert.deepEqual(JSON.parse(post.options.body), {focus: ['crypto']});
+  assert.deepEqual([...f.S.ap.focus], ['crypto']); assert.equal(select.value, 'crypto'); assert.equal(select.disabled, false);
+  f.apUpdate(f.box, status({focus: ['high_ny']}));
+  const synced = f.box.querySelector('#apf-focus');
+  assert.equal(synced.value, 'high_ny'); assert.match(synced.innerHTML, /Only high_ny/);
+  f.apUpdate(f.box, status({focus: []})); assert.equal(f.box.querySelector('#apf-focus').value, '');
+});
+
+test('a rejected focus change restores the previous choice', async () => {
+  const f = frontend(path => path === '/api/models' ? response(catalog) : response({error: 'Synthetic focus rejection'}, 400));
+  f.S.ap.focus = ['crypto']; f.apBuildShell(f.box); await flush();
+  const select = f.box.querySelector('#apf-focus'); select.value = 'sports'; await select.onchange();
+  assert.equal(select.value, 'crypto'); assert.deepEqual([...f.S.ap.focus], ['crypto']);
+  assert.deepEqual(f.alerts, ['Synthetic focus rejection']);
+});
