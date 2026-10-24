@@ -90,3 +90,49 @@ def test_fetch_ticks_groups_by_contract():
     out = ecm.fetch_ticks(c, "S", datetime(2026, 10, 24, tzinfo=timezone.utc), datetime(2026, 10, 25, tzinfo=timezone.utc))
     assert list(out) == ["S-A"] and len(out["S-A"]) == 1 and out["S-A"][0].ask_size is None
     assert c.params[2] == "S-%"
+
+
+# -- queue-aware maker fills from trade prints -----------------------------------
+
+from app.exec_cost_model import Print
+
+
+def P(t, price, count, side="no"):
+    return Print(float(t), price, float(count), side)
+
+
+def test_queue_fill_needs_bid_hits_past_the_queue_ahead():
+    # Post at 40c behind 10 contracts. 6 + 4 hit the bid: still 1 short of 10 ahead + our 1.
+    ticks = [T(0, 0.40, 0.42, bs=10), T(200, 0.40, 0.42, bs=10), T(400, 0.40, 0.42, bs=10)]
+    short = [P(0, 0.41, 1, side="yes"), P(10, 0.40, 6), P(20, 0.40, 4), P(30, 0.41, 50, side="yes"), P(399, 0.42, 1, side="yes")]
+    q = ecm.maker_queue_stats(ticks, short, horizons=(60,), post_every=1000)
+    assert q["60s"]["posts"] == 1 and q["60s"]["fill_queue"] == 0.0
+    enough = short[:3] + [P(25, 0.40, 1)] + short[3:]
+    q = ecm.maker_queue_stats(ticks, enough, horizons=(60,), post_every=1000)
+    assert q["60s"]["fill_queue"] == 1.0
+
+
+def test_queue_fill_when_a_print_trades_through_our_price():
+    ticks = [T(0, 0.40, 0.42, bs=500), T(100, 0.37, 0.39, bs=5), T(400, 0.37, 0.39, bs=5)]
+    prints = [P(0, 0.41, 1, side="yes"), P(50, 0.39, 2), P(399, 0.39, 1)]
+    q = ecm.maker_queue_stats(ticks, prints, horizons=(60,), markout_s=60, post_every=1000)
+    assert q["60s"]["fill_queue"] == 1.0
+    # Filled at 40c at t=50; the mid at t=110 is 38c: a 2c adverse move.
+    assert q["60s"]["adverse_move_mean"] == pytest.approx(-0.02)
+
+
+def test_queue_stats_only_count_posts_covered_by_prints():
+    ticks = [T(0, 0.40, 0.42), T(500, 0.40, 0.42), T(1000, 0.40, 0.42)]
+    prints = [P(490, 0.41, 1, side="yes"), P(900, 0.41, 1, side="yes")]
+    q = ecm.maker_queue_stats(ticks, prints, horizons=(60,), post_every=1)
+    assert q["60s"]["posts"] == 1  # only the t=500 post; t=0 predates the first print
+    assert ecm.maker_queue_stats(ticks, [], horizons=(60,)) == {}
+
+
+def test_series_model_reports_queue_view_when_prints_exist():
+    ticks = [T(i * 10, 0.40, 0.42, bs=1) for i in range(40)]
+    prints = [P(i * 10 + 5, 0.40, 5) for i in range(40)]
+    out = ecm.series_model({"S-A": ticks}, {"S-A": prints})
+    assert out["maker_queue"]["60s"]["fill_queue"] == 1.0
+    assert "60s" in out["maker_queue_vs_taker"]
+    assert "maker_queue" not in ecm.series_model({"S-A": ticks})
