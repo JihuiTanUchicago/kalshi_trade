@@ -123,7 +123,7 @@ function frontend({fetchImpl, brokerMount} = {}) {
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, marketPicker, wireMarketPicker};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewDashboard, marketPicker, wireMarketPicker};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -279,9 +279,25 @@ test('a late Funds read cannot replace the next page or mount stale broker contr
   const loading = f.viewFunds();
   f.S.gen++; f.root.innerHTML = '<main>Next page</main>';
   const writes = f.root.writes, main = f.root.querySelector('main');
-  pending.resolve(response(funds())); await loading;
+  // A read for a page the user has left never settles (api drops it), so wait for the event loop, not the view.
+  pending.resolve(response(funds())); await flush(); await flush();
   assert.equal(f.root.writes, writes); assert.equal(main.writes, 0);
   assert.equal(main.innerHTML, 'Next page'); assert.equal(mounts, 0);
+});
+
+test('a late Dashboard read cannot paint over the page the user moved to or keep polling there', async () => {
+  // The reported bug: open the app on Dashboard, tap Deploy before /api/dashboard answers, and
+  // the dashboard used to land on the Deploy page and then repaint it every 15 seconds.
+  const pending = deferred();
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return pending.promise; }});
+  const loading = f.viewDashboard();
+  f.S.gen++; f.clearTimers(); f.root.innerHTML = '<div id="boardbody">Deploy board</div><main>Deploy page</main>';
+  const writes = f.root.writes, board = f.root.querySelector('#boardbody'), main = f.root.querySelector('main');
+  pending.resolve(response({paper: {}, deployments: [], open_positions: [], recent_closed: []}));
+  await flush(); await flush();
+  assert.equal(f.root.writes, writes); assert.equal(board.writes, 0); assert.equal(main.writes, 0);
+  assert.equal(main.innerHTML, 'Deploy page'); assert.equal(f.S.timers.length, 0);
+  void loading;
 });
 
 test('the retained broker module still rejects a late redirect after its owning view changes', async () => {

@@ -177,7 +177,7 @@
     el.addEventListener('input', async () => {
       token = tokenAtCaret();
       if (!token) return close();
-      try { const d = await api('/api/users/mention?q=' + encodeURIComponent(token.q)); items = d.users || []; }
+      try { const d = await api('/api/users/mention?q=' + encodeURIComponent(token.q), undefined, { keep: true }); items = d.users || []; }
       catch (e) { return close(); }
       if (!items.length) return close();
       active = 0; render();
@@ -327,7 +327,11 @@
 
   // ---------- API ----------
   class ApiError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
-  async function api(path, body) {
+  // A read started by a page the user has since left never settles, so the old page can't paint
+  // over the new one (or arm its poll there). Widgets that outlive a page pass { keep: true }.
+  const STALE = () => new Promise(() => {});
+  async function api(path, body, cfg) {
+    const gen = S.gen, scoped = body === undefined && !(cfg && cfg.keep);
     const opts = { credentials: 'same-origin', headers: {} };
     if (body !== undefined) {
       opts.method = 'POST';
@@ -336,10 +340,11 @@
       opts.body = JSON.stringify(body);
     }
     let res;
-    try { res = await fetch(path, opts); } catch (e) { throw new ApiError(0, "Can't reach Tau. Check your connection."); }
+    try { res = await fetch(path, opts); } catch (e) { if (scoped && gen !== S.gen) return STALE(); throw new ApiError(0, "Can't reach Tau. Check your connection."); }
     let data = {};
     try { data = await res.json(); } catch (e) { /* non-JSON error page */ }
-    if (res.status === 401 && path !== '/api/me') { go('/signin'); throw new ApiError(401, 'Please sign in.'); }
+    if (scoped && gen !== S.gen) return STALE();
+    if (res.status === 401 && path !== '/api/me') { S.me = null; go('/signin'); throw new ApiError(401, 'Please sign in.'); }
     if (!res.ok) throw new ApiError(res.status, data.error || 'Request failed (' + res.status + ').');
     return data;
   }
@@ -384,7 +389,7 @@
   }
   async function render() {
     clearTimers();
-    S.gen++;
+    const gen = ++S.gen;
     window.scrollTo(0, 0);
     const path = location.pathname;
     if (path === '/signin') { const f = document.getElementById('autopilot-float'); if (f) f.remove(); }
@@ -401,7 +406,8 @@
     }
     if (!match) return go('/', true);
     root.setAttribute('aria-busy', 'true');
-    try { await match[1](...match[0].slice(1)); } catch (e) { if (e.status !== 401) shell('', boardTitle('Something went wrong'), notice(e.message, 'bad')); }
+    try { await match[1](...match[0].slice(1)); } catch (e) { if (gen === S.gen && e.status !== 401) shell('', boardTitle('Something went wrong'), notice(e.message, 'bad')); }
+    if (gen !== S.gen) return;  // the user moved on while this page loaded
     root.setAttribute('aria-busy', 'false');
     paymentGate().catch(() => {});
   }
@@ -475,7 +481,7 @@
     restart();
     const hint = dlg.querySelector('#pay-hint');
     try {
-      const state = await api('/api/billing');
+      const state = await api('/api/billing', undefined, { keep: true });
       if (!state.configured) { dlg.querySelector('#pay-el').innerHTML = ''; hint.innerHTML = '<p class="wl-err">Payments aren’t enabled on this server yet.</p>'; dlg.querySelector('#pay-submit').setAttribute('aria-disabled', 'true'); return; }
       const Stripe = await loadStripe();
       const sp = Stripe(state.publishable_key);
@@ -497,7 +503,7 @@
           } catch (err) { hint.innerHTML = `<p class="wl-err">${esc(err.message || 'Could not save the card.')}</p>`; return; }
           if (r.error) { hint.innerHTML = `<p class="wl-err">${esc(r.error.message)}</p>`; return; }
           try { await api('/api/billing/card-added', { payment_method_id: r.setupIntent.payment_method }); } catch (err) { hint.innerHTML = `<p class="wl-err">${esc(err.message)}</p>`; return; }
-          S.me = await api('/api/me');
+          S.me = await api('/api/me', undefined, { keep: true });
           closePay();
           render();
         });
@@ -526,7 +532,7 @@
         : '<p class="bell-empty">No notifications yet.</p>';
     };
     let data = { unread: 0, items: [] };
-    try { data = await api('/api/notifications'); paint(data); } catch (e) { return; }  // bell is best-effort
+    try { data = await api('/api/notifications', undefined, { keep: true }); paint(data); } catch (e) { return; }  // bell is best-effort
     trig.onclick = async (e) => {
       e.stopPropagation();
       if (!menu.hidden) { close(); return; }
@@ -1570,6 +1576,7 @@
   async function viewResearch() {
     const me = S.me;
     const DEMO_PROMPT = "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances";
+    shell('/research', '', loading(320));  // switch pages at once; the model list can be slow
     const mdl = await api('/api/models').catch(() => ({ models: [], default: '' }));
     const modelOpts = (mdl.models || []).map((m) => `<option value="${esc(m.key)}"${m.key === mdl.default ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
     shell('/research', '', `
@@ -3100,7 +3107,7 @@
     if (!apLoop) { apLoop = true; setInterval(() => { const b = document.getElementById('autopilot-float'); if (b) refreshAutopilot(b); }, 20000); }
   }
   async function refreshAutopilot(box) {
-    try { S.ap = await api('/api/autopilot/status'); S.apAt = Date.now(); renderAutopilot(box, S.ap); }
+    try { S.ap = await api('/api/autopilot/status', undefined, { keep: true }); S.apAt = Date.now(); renderAutopilot(box, S.ap); }
     catch (e) { /* floating window is best-effort; never block the app */ }
   }
   const AP_MODE = {
@@ -3160,7 +3167,7 @@
   }
   async function apLoadChat(box, full) {
     const msgs = box.querySelector('#apf-messages'); if (!msgs) return;
-    let d; try { d = await api('/api/chat?after=' + (full ? 0 : apChatLastId)); } catch (e) { return; }
+    let d; try { d = await api('/api/chat?after=' + (full ? 0 : apChatLastId), undefined, { keep: true }); } catch (e) { return; }
     const stick = full || msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 70;
     if (full) { msgs.innerHTML = ''; apChatLastId = 0; apFeedFirst = true; }
     const empty = msgs.querySelector('.ap-empty'); if (empty && d.messages.length) empty.remove();
@@ -3267,7 +3274,7 @@
     (async () => {
       const sel = box.querySelector('#apf-model'); if (!sel) return;
       const current = () => box.isConnected !== false && box.querySelector('#apf-model') === sel;
-      const mdl = await api('/api/models').catch(() => ({ models: [], default: '' }));
+      const mdl = await api('/api/models', undefined, { keep: true }).catch(() => ({ models: [], default: '' }));
       if (!current()) return;
       const cur = (S.ap && S.ap.model) || mdl.default;
       sel.innerHTML = (mdl.models || []).map((m) => `<option value="${esc(m.key)}"${m.key === cur ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
@@ -3400,7 +3407,7 @@
     rail.querySelector('.hot-ft a') && (rail.querySelector('.hot-ft a').onclick = (e) => { e.preventDefault(); go('/explore'); });
   }
   async function refreshHot() {
-    try { S.hot = await api('/api/explore/hot'); renderHotRail(); } catch (e) {}
+    try { S.hot = await api('/api/explore/hot', undefined, { keep: true }); renderHotRail(); } catch (e) {}
   }
   function mountHotRail() {
     if (!S.me || !S.me.user) return;

@@ -705,7 +705,7 @@ test('a late initial or polled Dashboard read cannot repaint the next page or re
     f.root.innerHTML = '<div id="boardbody">Next board</div><main><div class="paper-plot">Next page</div></main>';
     const board = f.root.querySelector('#boardbody'), main = f.root.querySelector('main'), plot = main.querySelector('.paper-plot');
     const writes = [f.root.writes, board.writes, main.writes, plot.writes], intervals = [...f.intervals.keys()], requestCount = f.requests.length;
-    pending.resolve(response(data)); await loading; await flush();
+    pending.resolve(response(data)); await flush(); await flush();
     f.windowListeners.get('resize').forEach(callback => callback());
     assert.deepEqual([f.root.writes, board.writes, main.writes, plot.writes], writes, phase + ' read');
     assert.equal(board.innerHTML, 'Next board'); assert.equal(plot.innerHTML, 'Next page');
@@ -1140,7 +1140,8 @@ test('a late Funds read cannot replace the next page or mount stale broker contr
   const loading = f.viewFunds();
   f.S.gen++; f.root.innerHTML = '<main>Next page</main>';
   const writes = f.root.writes, main = f.root.querySelector('main');
-  pending.resolve(response(funds())); await loading;
+  // A read for a page the user has left never settles (api drops it), so wait for the event loop, not the view.
+  pending.resolve(response(funds())); await flush(); await flush();
   assert.equal(f.root.writes, writes); assert.equal(main.writes, 0);
   assert.equal(main.innerHTML, 'Next page'); assert.equal(mounts, 0);
 });
@@ -1842,7 +1843,8 @@ test('Explore ignores superseded requests and responses from a departed route, i
   const opening = g.viewExplore(), initialBody = g.root.querySelector('#xbody'), initialFigures = g.root.querySelector('#xfigs');
   const initialWrites = [initialBody.writes, initialFigures.writes];
   g.S.gen++; g.root.innerHTML = '<main>New route before first result</main>';
-  initial.resolve(response(payload('Late first result'))); await opening;
+  // A read for a page the user has left never settles (api drops it), so wait for the event loop, not the view.
+  initial.resolve(response(payload('Late first result'))); await flush(); await flush();
   assert.equal(g.root.querySelector('main').textContent, 'New route before first result');
   assert.deepEqual([initialBody.writes, initialFigures.writes], initialWrites);
   assert.equal(g.S.timers.length, 0); assert.equal(postRequests(g).length, 0); assert.deepEqual(g.navigations, []);
@@ -2024,7 +2026,7 @@ for (const [label, path, data] of [['System', '/system', systemData], ['Billing'
       const html = f.root.innerHTML, writes = f.root.writes, intervals = f.intervals.size;
       const live = f.S.sysLive;
       pending.resolve(failure ? response({error: 'Synthetic departed failure'}, 503) : response(data()));
-      await loading;
+      await flush(); await flush();  // the departed read never settles, so its view never resumes
       assert.equal(f.root.innerHTML, html); assert.equal(f.root.writes, writes);
       assert.equal(f.intervals.size, intervals); assert.equal(f.S.timers.length, 0);
       assert.equal(f.S.sysLive, live); assert.equal(postRequests(f).length, 0);
