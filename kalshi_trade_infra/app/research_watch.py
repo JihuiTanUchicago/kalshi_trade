@@ -32,6 +32,10 @@ from app import rsi
 STALL_MIN = float(os.getenv("TAU_WATCH_STALL_MIN", "20"))
 QUEUE_MIN = float(os.getenv("TAU_WATCH_QUEUE_MIN", "45"))
 BURN_USD = float(os.getenv("TAU_WATCH_BURN_USD", "5"))
+# A finished run's flags drop to "low" (stale) once it ended this long ago: the watch runs every 20
+# minutes, so by then they were reported at their real severity, and repeating a handled failure as
+# "high" for the whole 3h window buries the new ones.
+FRESH_MIN = float(os.getenv("TAU_WATCH_FRESH_MIN", "60"))
 BUCKET = os.getenv("DATALAKE_BUCKET", "kalshi-trade-datalake-568386354218-us-east-1")
 PREFIX = "research-watch"
 _RUN_COLS = ("id, user_id, market, status, error, model, prompt, hypotheses_tried, strategies_passed, "
@@ -74,6 +78,7 @@ def run_summary(run: Dict, events: List[Dict], now: datetime) -> Dict:
         "created_at": str(created or ""), "queued_min": _minutes(created, started or now),
         "run_min": _minutes(started, end) if started else None,
         "idle_min": _minutes(beat, now) if run.get("status") == "running" else None,
+        "ended_min_ago": _minutes(_naive(run.get("finished_at")), now),
         "phase": phase, "cost_usd": card["cost_usd"], "explored": card["explored"],
         "dropped": card["dropped"], "gated": card["gated"], "passed": card["passed"],
         "deaths": card["deaths"], "death_kinds": card["death_kinds"], "drops": drops[-12:],
@@ -89,6 +94,7 @@ def anomalies(summaries: List[Dict]) -> List[Dict]:
     out: List[Dict] = []
     finished = ("succeeded", "stopped", "failed")
     for s in summaries:
+        first = len(out)
         deaths = s["deaths"]
         if s["status"] == "failed":
             bug = s["error_tag"] == "spec_invalid"
@@ -110,6 +116,9 @@ def anomalies(summaries: List[Dict]) -> List[Dict]:
             _flag(out, "low", "wrong_fit", s, "%d ideas did not fit the market's structure" % deaths["wrong_fit"])
         if n >= 4 and deaths.get("other", 0) * 10 >= 3 * n:
             _flag(out, "low", "unclassified", s, "%d of %d drops unclassified" % (deaths["other"], n))
+        if (s["ended_min_ago"] or 0) > FRESH_MIN:
+            for a in out[first:]:
+                a.update(severity="low", stale=True)
     by_market: Dict[str, List[Dict]] = defaultdict(list)
     for s in summaries:
         if s["status"] in finished:
