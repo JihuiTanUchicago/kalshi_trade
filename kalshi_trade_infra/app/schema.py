@@ -479,6 +479,7 @@ DDL = [
       t INT NOT NULL DEFAULT 0,             -- tests performed in this stream
       rejections_json JSON NOT NULL,        -- 1-based indices of rejecting tests (tau_j)
       updated_at DATETIME NOT NULL,
+      epoch_to_ts BIGINT NULL,              -- end of the validation window this stream spends on
       PRIMARY KEY (user_id, market)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
@@ -649,6 +650,9 @@ def main() -> None:
         # columns to fit. MODIFY is idempotent, so this is safe to re-run.
         for _tbl in ("app_experiments", "app_fdr_state", "app_holdout_ledger", "app_data_partitions"):
             cur.execute("ALTER TABLE %s MODIFY market VARCHAR(48) NOT NULL" % _tbl)
+        # Evidence epoch for the LORD++ stream: the end of the validation window it spends on. A
+        # fresh stream starts only once validation has fully rolled past it (gatekeeper._lord_state).
+        _add_column_if_missing(cur, "app_fdr_state", "epoch_to_ts", "ALTER TABLE app_fdr_state ADD COLUMN epoch_to_ts BIGINT NULL")
         # Waitlist hygiene: drop any waitlist rows for emails that already have an account
         # (case/space-insensitive), so a signed-up user never lingers on the waitlist display.
         cur.execute("DELETE w FROM app_waitlist w JOIN app_users u "

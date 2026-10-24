@@ -997,14 +997,15 @@ def _challenge(finalists: List[Dict], run: Dict, model: ModelFn, usage: Usage, l
         return [{"decision": "approve", "reason": "", "fixes": None} for _ in finalists]
 
 
-def _result_block(dataset_summary: Dict, t: Dict, classification: str, reason: Optional[str] = None) -> Dict:
+def _result_block(dataset_summary: Dict, t: Dict, classification: str, reason: Optional[str] = None,
+                  reason_key: str = "challenger_reason") -> Dict:
     """The strategy.result the generator persists: research-fold metrics + the classification
     LABEL only. It deliberately carries NO held-out (validation/holdout) numbers, because
     strategy_memory feeds this straight back into the next prompt (closes Leak 2)."""
     block = {"capital": t.get("capital"), "dataset": dataset_summary,
              "in_sample": t.get("in_sample"), "classification": classification}
     if reason:
-        block["challenger_reason"] = reason[:500]
+        block[reason_key] = reason[:500]
     return block
 
 
@@ -1185,6 +1186,22 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
                 log("challenger", "Challenger %s - %s: %s"
                     % ("revised" if verdict["decision"] == "revise" else "approved", t["title"], verdict["reason"]),
                     {"title": t["title"], "decision": verdict["decision"]})
+            # Validation-budget pre-screen (research data only): a finalist whose research-fold edge
+            # cannot plausibly clear the next alpha level is NOT pre-registered and spends nothing, so
+            # it neither decays the LORD++ stream nor inflates the DSR trial count for real candidates.
+            # Cross-contract and perpetual specs judge on their own windows and skip this screen.
+            if not specmod.is_cross_contract(spec) and not specmod.is_perpetual_spec(spec):
+                pw = gatekeeper.validation_power(cur, user_id, market, spec, ds, partition,
+                                                 int(t.get("min_sample") or 30))
+                if not pw["ok"]:
+                    t["strategy_id"] = repo.insert_strategy(
+                        cur, user_id, run_id, parent, market, direction, t["title"], t["thesis"], spec,
+                        "rejected", _result_block(s, t, "underpowered", pw["reason"], "gate_reason"))
+                    log("verdict", "NOT TESTED - %s: %s. No validation budget spent."
+                        % (t["title"], pw["reason"]),
+                        {"title": t["title"], "status": "rejected", "strategy_id": t["strategy_id"],
+                         "power": pw["power"]})
+                    continue
             # Insert the strategy row FIRST (provisional) so the immutable experiment can carry its
             # strategy_id, then pre-register the frozen hypothesis.
             sid = repo.insert_strategy(cur, user_id, run_id, parent, market, direction, t["title"],

@@ -1,5 +1,15 @@
 # PLAN
 
+## Research gatekeeper can pass a real edge again — October 24, 2026
+
+Root cause of "no strategy has ever passed research": the gatekeeper could not pass a real edge. A power simulation through the actual gate code rejected a planted 15c/contract edge over 400 validation trades 6/6 times. Fixed on `claude/project-thread-dehmjp`:
+- **Placebo:** the binary negative control was a winner-subset 1/price shuffle that only accepted edges concentrated in cheap contracts; a uniform real edge scored p≈1 and was classified REJECTED. Replaced with a market-implied null (each settled contract redrawn as Bernoulli(entry price)).
+- **Primary p-value:** now 1−Φ(mean/bootstrap SE). The empirical bootstrap mass moves in 1/n_boot steps (5e-4) while LORD++ alpha is below that by the 3rd test, so it could not reject.
+- **Evidence epochs:** the LORD++ stream carries `epoch_to_ts` (new `app_fdr_state` column); a fresh stream starts only once validation has fully rolled past the old one. DSR trial count = experiments whose validation window overlaps the current one (ledger-derived). Legacy streams continue until their data rolls out.
+- **Validation-budget pre-screen:** finalists whose research-fold edge projects <20% power at the next alpha are recorded `underpowered` and never pre-registered (no alpha, no DSR trial).
+- **Holdout churn latch:** partitions re-freeze on every settlement; the holdout cap now counts looks across all overlapping re-frozen windows.
+After: the planted 15c edge passes 6/6, an 8c edge over 400 trades passes ~50% on a fresh stream, a 4c edge needs ~2,000 validation trades (data, not math, is now the constraint), breakeven noise passes 0/20. Open decision for Todd: DSR≥0.95 stacked on LORD++ double-corrects for multiplicity. Next: next-bar fills with reservation price and depth caps; cross-market pooled hypotheses for sample size; MDE feedback to the generator.
+
 ## Realistic paper fills and a stronger live gate — October 24, 2026, UTC
 
 Merged to main (branch `claude/project-thread-76ft6y`), not yet deployed. App paper deployments now run the live `MarketableLimitKernel` over `SimulatedVenue` (`engine.paper_kernel_factory`, `Sources.paper_kernel`, shared `_execution_kernel` helper so paper and live cannot drift). Paper now misses on a stale quote or a moved ask, fills only the touch size, pays the fee per child order and can part-fill an exit; simulated fills carry `order_ref='sim:<id>'`. `APP_PAPER_REALISTIC_FILLS=0` restores legacy instant fills. Cross-contract pairs keep the atomic paper fill (legging risk not simulated yet). Fixed `SimulatedVenue` pricing NO orders off the YES touch; it now uses the `order_wire_params` mirror.

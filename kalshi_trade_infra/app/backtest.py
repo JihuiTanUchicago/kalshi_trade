@@ -1050,6 +1050,21 @@ def feature_coverage(ds: Dataset) -> Dict[str, int]:
     return {name: round(100 * c / n) for name, c in present.items()} if n else {}
 
 
+def research_fold_trades(spec: Dict, ds: Dataset, embargo_seconds: int, n_splits: int = 4,
+                         what_if: Optional[WhatIf] = None) -> List[Trade]:
+    """The trades research_fold_metrics scores: simulate the spec across the whole Research window,
+    keep only the pooled PURGED walk-forward test folds (stats.purged_walkforward_splits), ordered
+    by entry. Too few trades to split -> every trade. Research data only, so free to inspect."""
+    from app import stats
+    trades = sorted(simulate(spec, ds, ds.start_ts, ds.end_ts + 1, what_if), key=lambda t: t.entry_ts)
+    if not trades:
+        return []
+    splits = stats.purged_walkforward_splits([t.entry_ts for t in trades],
+                                             [t.exit_ts for t in trades], n_splits, embargo_seconds)
+    test_idx = sorted({i for sp in splits for i in sp["test_idx"]})
+    return [trades[i] for i in test_idx] if test_idx else trades
+
+
 def research_fold_metrics(spec: Dict, ds: Dataset, embargo_seconds: int,
                           n_splits: int = 4, what_if: Optional[WhatIf] = None) -> Dict:
     """In-research "OOS" metrics via a PURGED walk-forward split (Lopez de Prado) instead of a
@@ -1057,18 +1072,10 @@ def research_fold_metrics(spec: Dict, ds: Dataset, embargo_seconds: int,
     the pooled test folds. stats.purged_walkforward_splits drops train frames that settle into
     (purge) or run up to (embargo) a test block, so the fold is leak-free WITHIN Research — the
     agent may look at it freely. Returns {"capital", "in_sample": metrics} mirroring evaluate()."""
-    from app import stats
     stake = (what_if.stake if what_if and what_if.stake is not None else spec["sizing"]["stake"])
     capital = stake * spec["sizing"]["max_positions"]
-    trades = sorted(simulate(spec, ds, ds.start_ts, ds.end_ts + 1, what_if), key=lambda t: t.entry_ts)
-    if trades:
-        splits = stats.purged_walkforward_splits([t.entry_ts for t in trades],
-                                                 [t.exit_ts for t in trades], n_splits, embargo_seconds)
-        test_idx = sorted({i for sp in splits for i in sp["test_idx"]})
-        fold = [trades[i] for i in test_idx] if test_idx else trades
-        span = (fold[-1].exit_ts - fold[0].entry_ts) / 86400.0 if fold else 0.0
-    else:
-        fold, span = [], (ds.end_ts - ds.start_ts) / 86400.0
+    fold = research_fold_trades(spec, ds, embargo_seconds, n_splits, what_if)
+    span = (fold[-1].exit_ts - fold[0].entry_ts) / 86400.0 if fold else (ds.end_ts - ds.start_ts) / 86400.0
     m = metrics(fold, capital, max(span, 1e-9))
     m.pop("_curve", None)
     return {"capital": capital, "in_sample": m, "attribution": attribution(fold)}
