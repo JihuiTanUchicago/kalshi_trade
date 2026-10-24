@@ -281,10 +281,12 @@ Midway = MDW, Austin = AUS, Miami = MIA, Denver = DEN, Los Angeles = LAX, Philad
 Every KXHIGH*/KXLOW* market already carries these as built-in features obs_high_f / obs_low_f /
 obs_temp_f (settling day only), plus the NWS forecast features fcst_* - no datasets entry needed.
 Late in the day the high is mostly set: a strike already beaten by the running max is near-certain.
-Measured on 67 NYC days: the RAW forecast (fcst_p_yes / fcst_edge) loses to the Kalshi mid (Brier
-0.13 vs 0.09; raw NBM runs ~1F warm), so a plain fcst_edge filter is a known loser. Start from the
-bias-corrected fcst_p_yes_cal / fcst_edge_cal, and prefer rules that combine it with the market
-(trade only where they disagree by more than the fee and the forecast is fresh) over replacing it.
+Measured on a year of NYC frames: the Kalshi mid beats the forecast (Brier 0.067 vs 0.102 calibrated,
+0.108 raw; raw NBM runs ~1F warm), and late in the settling day the market is far better (5pm local:
+0.006 vs 0.038; it sees finer readings than our hourly feed). So a plain fcst_edge filter is a known
+loser, and so is fading the market in the afternoon. Start from fcst_p_yes_cal / fcst_edge_cal and
+combine it WITH the mid on the day before and morning frames (trade only where they disagree by more
+than the fee). obs_high_f is hourly: the settled high is ~0.7F above it on average (+0..+3F).
 """
 
 # Every proposer that reads SPEC_GUIDE also learns it may write arbitrary quant code.
