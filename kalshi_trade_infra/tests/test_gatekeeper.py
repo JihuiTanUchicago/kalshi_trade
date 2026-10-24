@@ -624,20 +624,20 @@ _POWER_PART = {"embargo_seconds": 900, "validation_from_ts": 3_000_000,
 
 def test_validation_power_passes_a_strong_research_edge(repo, monkeypatch):
     monkeypatch.setattr(gk.backtest, "research_fold_trades",
-                        lambda spec, ds, emb: _uniform_trades(300, 0.15, 1, days=12))
+                        lambda spec, ds, emb, what_if=None: _uniform_trades(300, 0.15, 1, days=12))
     pw = gk.validation_power(None, 7, "btc15m", {}, None, _POWER_PART, min_sample=30)
     assert pw["ok"] and pw["power"] > 0.5 and pw["n_val_expected"] == pytest.approx(400, rel=0.01)
 
 
 def test_validation_power_screens_out_a_thin_edge(repo, monkeypatch):
     monkeypatch.setattr(gk.backtest, "research_fold_trades",
-                        lambda spec, ds, emb: _uniform_trades(150, 0.03, 2, days=12))
+                        lambda spec, ds, emb, what_if=None: _uniform_trades(150, 0.03, 2, days=12))
     pw = gk.validation_power(None, 7, "btc15m", {}, None, _POWER_PART, min_sample=30)
     assert not pw["ok"] and pw["reason"]
 
 
 def test_validation_power_needs_research_trades(repo, monkeypatch):
-    monkeypatch.setattr(gk.backtest, "research_fold_trades", lambda spec, ds, emb: [])
+    monkeypatch.setattr(gk.backtest, "research_fold_trades", lambda spec, ds, emb, what_if=None: [])
     pw = gk.validation_power(None, 7, "btc15m", {}, None, _POWER_PART)
     assert not pw["ok"] and "research-fold trades" in pw["reason"]
 
@@ -669,3 +669,57 @@ def test_dsr_floor_is_a_selection_check_not_a_second_significance_test():
     assert research_eval.DSR_MIN == 0.95
     assert _clf(dsr=0.6) == Classification.STAT_SUPPORTED
     assert _clf(dsr=0.6, lord_reject=False) != Classification.STAT_SUPPORTED   # LORD++ still required
+
+
+# -- cost stress -----------------------------------------------------------------------------
+
+
+def test_classify_cost_stress_failure_is_inconclusive():
+    """Every other pillar holds but the edge dies under 1c of extra slippage: not supported."""
+    d = dict(_PASS)
+    args = (d["lord_reject"], d["bh_reject"], d["dsr"], d["ci_lo"], d["ci_hi"], d["placebo_passed"],
+            d["cross_day_ok"])
+    assert gk._classify(*args, cost_stress_ok=True) == Classification.STAT_SUPPORTED
+    assert gk._classify(*args, cost_stress_ok=False) == Classification.INCONCLUSIVE
+
+
+def _cs_trade(i, entry, exit_price):
+    return Trade("T%d" % i, "yes", 10, 1_700_000_000 + i * 900, entry, 1_700_000_000 + i * 900 + 900,
+                 exit_price, 0.0, "settled", 0.0)
+
+
+def test_cost_stress_resimulates_with_extra_slippage(monkeypatch):
+    """_cost_stress re-runs the same spec with WhatIf(slippage_cents=COST_STRESS_CENTS); a thin edge
+    that is positive at zero friction and negative once the stress is paid fails."""
+    seen = []
+
+    def fake_simulate(spec, ds, start, end, what_if=None):
+        seen.append(what_if)
+        bump = what_if.slippage_cents / 100.0 if what_if else 0.0
+        # 0.5c per contract of edge at zero friction: 50.5% wins at 50c entry
+        return [_cs_trade(i, 0.50 + bump, 1.0 if i % 200 < 101 else 0.0) for i in range(400)]
+
+    monkeypatch.setattr(gk.backtest, "simulate", fake_simulate)
+    ds = SimpleNamespace(market=SimpleNamespace(kind="binary"), start_ts=0, end_ts=1)
+    base = fake_simulate({}, ds, 0, 2)
+    seen.clear()
+    out = gk._cost_stress({}, ds, base)
+    assert seen and seen[0].slippage_cents == gk.COST_STRESS_CENTS
+    assert out["cost_stress_trades"] == 400 and out["cost_stress_mean"] < 0 and not out["cost_stress_ok"]
+    # no trades, or a non-binary instrument, is not re-simulated
+    assert gk._cost_stress({}, ds, [])["cost_stress_ok"]
+    assert gk._cost_stress({}, SimpleNamespace(market=SimpleNamespace(kind="spot")), base)["cost_stress_ok"]
+
+
+def test_validation_power_projects_at_the_stressed_cost(repo, monkeypatch):
+    """The pre-screen asks for research-fold trades at the gate's COST_STRESS_CENTS on a binary market."""
+    seen = []
+
+    def fold(spec, ds, emb, what_if=None):
+        seen.append(what_if)
+        return _uniform_trades(300, 0.15, 1, days=12)
+
+    monkeypatch.setattr(gk.backtest, "research_fold_trades", fold)
+    ds = SimpleNamespace(market=SimpleNamespace(kind="binary"))
+    gk.validation_power(None, 7, "btc15m", {}, ds, _POWER_PART, min_sample=30)
+    assert seen[-1].slippage_cents == gk.COST_STRESS_CENTS
