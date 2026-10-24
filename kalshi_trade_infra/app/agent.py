@@ -3344,8 +3344,16 @@ def _copilot_context(cur, user: Dict) -> str:
         plan = repo.autopilot_plan(cur, user["id"])
     except Exception:
         plan = {}
+    running = [d for d in deps if d["status"] == "running"]
     lines = [
         "Autopilot is %s." % ("ON" if user.get("autopilot") else "OFF"),
+        # Counted here so the review's status line can't contradict the list below (a review once
+        # opened with "0 deployments live/paper" while two paper deployments were running).
+        "DEPLOYMENTS RUNNING RIGHT NOW: %d on paper%s, %d live%s." % (
+            sum(1 for d in running if d["mode"] == "paper"),
+            " (%s)" % ", ".join("#%s" % d["id"] for d in running if d["mode"] == "paper") if any(d["mode"] == "paper" for d in running) else "",
+            sum(1 for d in running if d["mode"] == "live"),
+            " (%s)" % ", ".join("#%s" % d["id"] for d in running if d["mode"] == "live") if any(d["mode"] == "live" for d in running) else ""),
         "RESEARCH RUNNING RIGHT NOW: %d.%s" % (active_research, "" if active_research else
             " NONE is running — any research you mentioned in earlier messages has ALREADY FINISHED "
             "(its outcome is listed below). Do NOT tell the user research is 'still running'."),

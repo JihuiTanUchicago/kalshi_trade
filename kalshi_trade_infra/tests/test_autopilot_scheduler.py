@@ -74,3 +74,15 @@ if __name__ == "__main__":
     test_all_free_users_are_due()
     test_no_autopilot_users_means_nothing_due()
     print("ok")
+
+
+def test_heartbeat_skips_a_user_an_event_review_just_covered():
+    def count_runs(cur, uid, kind, since=None, active_only=False):
+        if kind == "review" and since is not None and not active_only:
+            window = (worker.repo.now_utc() - since).total_seconds()
+            return 1 if worker.MIN_REVIEW_SECONDS < window <= worker.HEARTBEAT_RECENT_SECONDS else 0
+        return 0
+    with patch.object(worker.repo, "autopilot_user_ids", return_value=[2]), \
+         patch.object(worker.repo, "count_runs", side_effect=count_runs), \
+         patch.object(worker.repo, "list_deployments", return_value=[]):
+        assert worker.due_autopilot_users(cur=None) == []
