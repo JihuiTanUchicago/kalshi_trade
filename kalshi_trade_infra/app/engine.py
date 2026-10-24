@@ -541,7 +541,9 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
         elif kernel is not None:
             # Paper over the simulated venue: book only what the touch actually gave, at the fill
             # price and fee the venue charged. A miss (stale quote, edge gone) books nothing.
-            rep = _live_trade(cur, dep, kernel, "buy", entry.side, ticker, qty, entry.price)
+            # Same reservation-price cap as live, so paper never books a fill live would refuse.
+            rep = _live_trade(cur, dep, kernel, "buy", entry.side, ticker, qty, entry.price,
+                              fair=getattr(entry, "fair", None), min_edge=(spec.get("entry") or {}).get("min_edge"))
             if rep.fill_qty_contracts < 1:
                 continue
             if _paper_book_buy(conn, dep, ticker, entry.side, int(rep.fill_qty_contracts), rep.fill_price_dollars,
