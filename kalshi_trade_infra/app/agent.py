@@ -789,6 +789,7 @@ def _detectability_block(ds: backtest.Dataset) -> str:
 _CALIB_BINS = (0.0, 0.10, 0.25, 0.40, 0.60, 0.75, 0.90, 1.0)
 _CALIB_MIN_CONTRACTS = 20
 _CALIB_FEE_QTY = 10  # amortize Kalshi's per-order fee cent over a typical order
+_CALIB_LEAD_SE = 2.0  # a cell is a lead only when its best net edge clears this many standard errors
 
 
 def _calibration_block(ds: backtest.Dataset) -> str:
@@ -821,7 +822,7 @@ def _calibration_block(ds: backtest.Dataset) -> str:
     agg: Dict[Tuple[str, int], List] = defaultdict(list)
     for (band, b, tk), (ask, bid, k) in cells.items():
         agg[(band, b)].append((ask / k, bid / k, 1.0 if ds.results[tk] == "yes" else 0.0))
-    rows = []
+    rows, leads = [], 0
     for band in ("early", "late"):
         for b in range(len(_CALIB_BINS) - 1):
             obs = agg.get((band, b), [])
@@ -835,16 +836,24 @@ def _calibration_block(ds: backtest.Dataset) -> str:
             yes_edge = rate - ask - fee_per(_CALIB_FEE_QTY, ask)
             no_px = 1.0 - bid
             no_edge = (1.0 - rate) - no_px - fee_per(_CALIB_FEE_QTY, no_px)
+            best = max(yes_edge, no_edge)
+            lead = best > _CALIB_LEAD_SE * se
+            leads += lead
             rows.append("%-5s ask %2d-%2dc: n=%4d  avg ask %.2f  YES settled %.2f (+-%.2f)  "
-                        "buy-YES net %+.1fc  buy-NO net %+.1fc"
+                        "buy-YES net %+.1fc  buy-NO net %+.1fc  %s"
                         % (band, round(100 * _CALIB_BINS[b]), round(100 * _CALIB_BINS[b + 1]), n, ask,
-                           rate, se, 100 * yes_edge, 100 * no_edge))
+                           rate, se, 100 * yes_edge, 100 * no_edge,
+                           "LEAD (buy-%s)" % ("YES" if yes_edge >= no_edge else "NO") if lead else "noise"))
     if not rows:
         return ""
+    verdict = ("%d cell(s) marked LEAD clear %gx their +- after fees: a calibration mechanism may target "
+               "ONLY those cells." % (leads, _CALIB_LEAD_SE) if leads else
+               "NO cell clears %gx its +- after fees: this market's prices are calibrated within noise. "
+               "Do NOT propose unconditional favorite-longshot / price-recalibration theses "
+               "here; they cannot beat the fee on this market." % _CALIB_LEAD_SE)
     return ("CALIBRATION on the research window (per settled contract; 'late' = last third of its life; "
-            "net = settled rate minus the quote you would pay, after the taker fee). A net edge larger "
-            "than ~2x its +- is a lead worth a mechanism; smaller is noise. Descriptive only:\n  %s"
-            % "\n  ".join(rows))
+            "net = settled rate minus the quote you would pay, after the taker fee). %s Descriptive only:\n  %s"
+            % (verdict, "\n  ".join(rows)))
 
 
 def _research_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], count: int) -> str:
@@ -1028,10 +1037,42 @@ def _bill(conn, user_id, usage, run_id, model=None):
         billing.charge_usage(conn, user_id, model or current_model(), usage.input_tokens, usage.output_tokens, run_id)
 
 
-def _round_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], want: int, chunk: List[Dict]) -> str:
+_DROPPED_SHOWN = 15
+
+
+def _recent_drops(cur, user_id: int, market: str) -> List[Dict]:
+    """Advisory only: a failed read just means the proposer isn't warned off old dead ends."""
+    try:
+        return repo.dropped_theses(cur, user_id, market)
+    except Exception:
+        return []
+
+
+def _dropped_block(dropped: Optional[List[Dict]]) -> str:
+    """Theses already abandoned on this market (this run and recent ones), so the proposer stops
+    re-proposing the same dead idea under a new title. Research-fold reasons only."""
+    if not dropped:
+        return ""
+    seen, lines = set(), []
+    for d in dropped:
+        key = d["title"].strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        lines.append("- %s: %s" % (d["title"], " ".join((d.get("why") or "").split())[:240]))
+        if len(lines) >= _DROPPED_SHOWN:
+            break
+    return ("\n\nAlready ABANDONED on this market (dead on arrival on the research fold). Do NOT "
+            "re-propose these or near-variants under a new name, including the same mechanism with a "
+            "different model or threshold. Revisit one only if you name the specific new data or "
+            "mechanism that answers the reason it died:\n" + "\n".join(lines))
+
+
+def _round_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], want: int, chunk: List[Dict],
+                  dropped: Optional[List[Dict]] = None) -> str:
     """Round 1 asks fresh; later rounds show the agent its own in-sample results so it
     refines — the loop is a conversation with the data, not a fixed two-shot."""
-    base = _research_prompt(run, ds, memory, want)
+    base = _research_prompt(run, ds, memory, want) + _dropped_block(dropped)
     if not chunk:
         return base + THINK_ALOUD
     # Digest, not a dump: full detail for the best few to refine, bare titles for the rest so the
@@ -1395,7 +1436,8 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
 
 def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkpoint, budget, tried,
                       policy: exploration.ExplorationPolicy, conn=None, knowledge=None, news=None,
-                      resume_chunk=None, resume_round=0, save_progress=None, mark_gated=None) -> Tuple[int, int]:
+                      resume_chunk=None, resume_round=0, save_progress=None, mark_gated=None,
+                      dropped: Optional[List[Dict]] = None) -> Tuple[int, int]:
     """Explore NEW hypotheses on the Research partition (small refining rounds the policy
     sizes), then hand the finalists to the challenger + gatekeeper. Appends to the shared
     `tried` so progress survives a cancel/error.
@@ -1405,8 +1447,10 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
     the policy's `proposed=len(chunk)` then sizes the remaining batches toward `budget` exactly as an
     uninterrupted run would. `save_progress(chunk, round_no)` persists the in-progress chunk as each
     thesis is developed (so a crash doesn't discard that model work); `mark_gated` advances the
-    checkpoint cursor atomically inside the gate transaction."""
+    checkpoint cursor atomically inside the gate transaction. `dropped` (newest first) seeds the
+    theses recent runs abandoned; this chunk's own drops are added as they happen."""
     market = run["market"]
+    dropped = dropped if dropped is not None else []
     chunk: List[Dict] = list(resume_chunk) if resume_chunk else []
     round_no = int(resume_round or 0)
     merged_cache: Dict[str, Tuple] = {}  # stream_key -> (merged research ds, embargo) for cross specs
@@ -1439,7 +1483,7 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
             % (round_no, want, "is" if want == 1 else "es"),
             {"phase": "proposing", "round": round_no, "width": want})
         batch = market_data.ask(proposer, _research_system(market),
-                         [{"role": "user", "content": _round_prompt(run, ds, memory, want, chunk)}],
+                         [{"role": "user", "content": _round_prompt(run, ds, memory, want, chunk, dropped)}],
                          _hypotheses_check(market, want), usage)
         if not batch:
             break  # agent is out of fresh ideas this chunk
@@ -1450,7 +1494,8 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
             # refine, up to THESIS_MAX_STEPS) before committing its single frozen spec. One candidate
             # out per hypothesis, so finalist selection + pre-registration are unchanged.
             t = _develop_thesis(h, run, ds, partition, memory, proposer, market_data,
-                                 usage, log, checkpoint, round_no, cur, run["user_id"], merged_cache)
+                                 usage, log, checkpoint, round_no, cur, run["user_id"], merged_cache,
+                                 dropped)
             if t is None:
                 continue  # abandoned (dead-on-arrival) thesis: no candidate, no trial spent
             t["score"] = backtest.score(t["in_sample"])  # attach once, so the policy needs no backtester
@@ -1842,10 +1887,12 @@ def run_research(
             # Reload memory each chunk so a run_forever loop learns from the strategies it
             # just saved, instead of re-proposing the same ideas.
             memory = repo.strategy_memory(cur, user_id, market)
+            dropped = _recent_drops(cur, user_id, market)
             n, passed = _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkpoint,
                                           budget, tried, policy, conn, knowledge, news,
                                           resume_chunk=resume_chunk, resume_round=resume_round,
-                                          save_progress=save_progress, mark_gated=mark_gated)
+                                          save_progress=save_progress, mark_gated=mark_gated,
+                                          dropped=dropped)
             resume_chunk, resume_round = [], 0  # only the first iteration continues a saved chunk
             # mark_gated advanced these atomically with the chunk's judging; read them back.
             total_passed, chunks = ckpt["total_passed"], ckpt["chunks_done"]
@@ -2089,7 +2136,8 @@ def _develop_check(market: str) -> Callable[[Dict], Dict]:
 
 def _develop_thesis(h: Dict, run: Dict, ds: backtest.Dataset, partition: Dict, memory: List[Dict],
                     proposer: ModelFn, market_data, usage: Usage, log, checkpoint, round_no: int,
-                    cur, user_id: int, merged_cache: Optional[Dict] = None) -> Optional[Dict]:
+                    cur, user_id: int, merged_cache: Optional[Dict] = None,
+                    dropped: Optional[List[Dict]] = None) -> Optional[Dict]:
     """Pillar 2 — spend as long as THIS thesis needs on the RESEARCH FOLD before committing it, or
     ABANDON it early when it's dead on arrival for this market.
 
@@ -2126,7 +2174,7 @@ def _develop_thesis(h: Dict, run: Dict, ds: backtest.Dataset, partition: Dict, m
         except LLMError:
             break  # fail-open: keep the spec we already have
         if reply.get("decision") == "abandon":
-            return _abandon(log, t, reply.get("why"))  # dead on arrival — no candidate, no trial
+            return _abandon(log, t, reply.get("why"), dropped)  # dead on arrival — no candidate, no trial
         if reply.get("decision") != "refine" or not reply.get("spec"):
             committed = True
             break  # agent is satisfied — commit the current spec
@@ -2144,15 +2192,19 @@ def _develop_thesis(h: Dict, run: Dict, ds: backtest.Dataset, partition: Dict, m
     # and any explicit commit are untouched; a committed 0-trade spec is harmless anyway — finalist
     # selection requires >=5 trades, so it never reaches the gatekeeper or spends a trial.
     if developed and not committed and not t["in_sample"].get("trades"):
-        return _abandon(log, t, t.get("diagnosis"))
+        return _abandon(log, t, t.get("diagnosis"), dropped)
     return t
 
 
-def _abandon(log, t: Dict, why: Optional[str]) -> None:
-    """Log a dropped thesis (no candidate reaches the chunk, so no statistical trial is spent)."""
-    log("verdict", "DROPPED \"%s\" (no candidate) — %s"
-        % (t["title"], why or "mechanism can't trade on this market"),
-        {"title": t["title"], "status": "abandoned", "diagnosis": t.get("diagnosis") or None})
+def _abandon(log, t: Dict, why: Optional[str], dropped: Optional[List[Dict]] = None) -> None:
+    """Log a dropped thesis (no candidate reaches the chunk, so no statistical trial is spent), and
+    remember it in `dropped` so later rounds don't re-propose the same dead idea."""
+    why = why or "mechanism can't trade on this market"
+    log("verdict", "DROPPED \"%s\" (no candidate) — %s" % (t["title"], why),
+        {"title": t["title"], "status": "abandoned", "why": why[:600],
+         "diagnosis": t.get("diagnosis") or None})
+    if dropped is not None:
+        dropped.insert(0, {"title": t["title"], "why": why})
     return None
 
 
