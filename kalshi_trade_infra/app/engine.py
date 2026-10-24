@@ -1575,7 +1575,21 @@ def paper_kernel_factory(conn, ws_feed=None) -> Optional[Callable[[int], object]
     def make(user_id: int):
         return _execution_kernel(venue, feed, repo.user_execution_config(conn.cursor(), user_id))
 
+    make.venue, make.feed = venue, feed  # read by paper_fill_stats for the engine log
     return make
+
+
+def paper_fill_stats(paper_kernel) -> Optional[str]:
+    """One log line on how simulated paper orders are faring: orders sent and filled through the
+    SimulatedVenue, and where pricing quotes came from. A low fill rate or many quote misses means
+    paper is starved of evidence (stale book), which the live gate would then never see."""
+    venue = getattr(paper_kernel, "venue", None)
+    if venue is None:
+        return None
+    sent, filled = int(venue.orders_sent), int(venue.orders_filled)
+    rate = (100.0 * filled / sent) if sent else 0.0
+    quotes = dict(getattr(getattr(paper_kernel, "feed", None), "stats", None) or {})
+    return "[engine] paper sim: %d orders sent, %d filled (%.0f%%); quotes %s" % (sent, filled, rate, quotes)
 
 
 def run_forever() -> None:
@@ -1645,6 +1659,9 @@ def run_forever() -> None:
                     if time.time() - last_review > 600:
                         schedule_reviews(conn.cursor())
                         last_review = time.time()
+                        line = paper_fill_stats(sources.paper_kernel)
+                        if line:
+                            print(line, flush=True)
                     try:
                         repo.engine_heartbeat(conn.cursor(), LIVE_TRADING_ENABLED)
                     except Exception:
