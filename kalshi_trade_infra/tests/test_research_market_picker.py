@@ -75,9 +75,32 @@ def test_pick_market_offers_only_the_data_ready_keys():
     assert "nba_game" not in seen["msg"]            # a data-less market is never even offered
 
 
-def test_pick_market_rejects_a_pick_outside_the_offered_keys():
+def test_a_pick_outside_the_offered_keys_never_fails_the_run():
+    # Prod run 2674 failed because the model kept naming a market off the list. It is told why the
+    # pick was refused, and after the repair rounds the run takes the listed market best matching
+    # the idea instead of failing.
+    seen = []
     def model(system, messages, on_delta=None):     # agent keeps naming a market not on offer
+        seen.append(messages[-1]["content"])
         return '{"market": "nba_game", "why": "no data"}', {"input_tokens": 1, "output_tokens": 1}
+    picked = agent._pick_market({"prompt": "ether daily drift"}, model, Usage(), lambda *a, **k: None,
+                                ["btc15m", "eth_daily"])
+    assert picked == "eth_daily"
+    assert "'nba_game' is not open for research right now" in seen[-1]
+
+
+def test_a_pick_by_label_or_case_is_accepted():
+    label = agent.MARKETS["eth_daily"].label
+    for reply in ('{"market": "ETH_DAILY"}', '{"market": "%s"}' % label):
+        def model(system, messages, on_delta=None, reply=reply):
+            return reply, {"input_tokens": 1, "output_tokens": 1}
+        assert agent._pick_market({"prompt": "x"}, model, Usage(), lambda *a, **k: None,
+                                  ["btc15m", "eth_daily"]) == "eth_daily"
+
+
+def test_a_failed_model_call_still_fails_the_pick():
+    def model(system, messages, on_delta=None):
+        raise LLMError("model call timed out")
     with pytest.raises(LLMError):
         agent._pick_market({"prompt": "x"}, model, Usage(), lambda *a, **k: None, ["btc15m"])
 
