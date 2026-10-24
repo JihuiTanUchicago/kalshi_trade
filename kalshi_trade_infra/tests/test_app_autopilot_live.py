@@ -134,6 +134,17 @@ def test_refused_when_edge_is_not_statistically_clear(monkeypatch):
     assert "mode" not in created and "statistically" in msg
 
 
+def test_refused_when_the_newer_half_of_the_record_is_down(monkeypatch):
+    # A strong first half carries the whole record (net up, edge "clear"), but the newer 20 trades
+    # lose money: the edge may have faded, so it stays on paper.
+    fading = [1.0 if i % 4 else 0.5 for i in range(20)] + [0.3 if i % 2 else -0.5 for i in range(20)]
+    msg, created = _deploy_live(monkeypatch, trips=_trips(pnls=fading))
+    assert "mode" not in created and "newer 20 paper trades are down $2.00" in msg
+    ev = agent.paper_evidence(None, 1, 7)
+    assert ev["checks"]["edge"] and not ev["checks"]["recent"]
+    assert (ev["recent_trades"], ev["recent_net_pnl"]) == (20, -2.0)
+
+
 def test_proven_on_realistic_fills_goes_live(monkeypatch):
     msg, created = _deploy_live(monkeypatch, trips=_trips())
     assert created.get("mode") == "live"

@@ -2724,7 +2724,8 @@ def paper_evidence(cur, user_id: int, strategy_id: int) -> Dict:
 
     The legacy check (8+ closed paper trades of any kind, not net negative) runs first and is kept
     unchanged. Then, on realistic fills only (the live kernel over SimulatedVenue): enough round
-    trips, net up after fees, spread over time, and a bootstrap test that rejects 'no edge'. Each
+    trips, net up after fees, spread over time, a bootstrap test that rejects 'no edge', and the
+    newer half of the record up on its own (an edge that has faded stays on paper). Each
     check can only refuse; none relaxes the one before it. Also feeds the app's Road-to-live view."""
     paper = [d for d in repo.list_deployments(cur, user_id, include_stopped=True)
              if d["strategy_id"] == strategy_id and d["mode"] == "paper"]
@@ -2739,6 +2740,10 @@ def paper_evidence(cur, user_id: int, strategy_id: int) -> Dict:
         end = max((t.get("closed_at") for t in trips if t.get("closed_at")), default=None)
         if start and end:
             span_h = max(0.0, (end - start).total_seconds() / 3600.0)
+    # Recent form: the newer half of the record (trips are oldest first) must be up on its own, so
+    # an early winning streak can't carry a strategy whose edge has since faded into live money.
+    recent = pnls[len(pnls) // 2:]
+    recent_net = sum(recent)
     p_value = None
     if len(pnls) >= MIN_REALISTIC_PAPER_TRADES:
         from app import stats  # local: numpy-backed, only needed once there is enough evidence
@@ -2756,6 +2761,9 @@ def paper_evidence(cur, user_id: int, strategy_id: int) -> Dict:
         ("edge", p_value is not None and p_value <= MAX_PAPER_EDGE_P_VALUE,
          "its paper edge isn't statistically clear yet (p=%s, needs %.2f or lower)"
          % ("n/a" if p_value is None else "%.2f" % p_value, MAX_PAPER_EDGE_P_VALUE)),
+        ("recent", bool(recent) and recent_net > 0,
+         "its newer %d paper trades are %s, so the edge may be fading" % (
+             len(recent), ("down $%.2f" % -recent_net) if recent_net < 0 else "flat")),
     ]
     failing = next((why for _k, ok, why in checks if not ok), "")
     # Realization: realistic paper P&L per trade as a fraction of the backtest's unseen-data P&L
@@ -2777,6 +2785,7 @@ def paper_evidence(cur, user_id: int, strategy_id: int) -> Dict:
         "trades": len(trips), "trades_needed": MIN_REALISTIC_PAPER_TRADES,
         "net_pnl": round(net, 4), "span_hours": round(span_h, 1), "span_needed_hours": MIN_PAPER_SPAN_HOURS,
         "p_value": None if p_value is None else round(p_value, 4), "p_value_needed": MAX_PAPER_EDGE_P_VALUE,
+        "recent_trades": len(recent), "recent_net_pnl": round(recent_net, 4),
         "legacy_trades": legacy_trades, "legacy_pnl": round(legacy_pnl, 4),
         "paper_mean_pnl": None if paper_mean is None else round(paper_mean, 4),
         "backtest_mean_pnl": None if backtest_mean is None else round(backtest_mean, 4),
