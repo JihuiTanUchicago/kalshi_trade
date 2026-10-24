@@ -177,7 +177,7 @@
     el.addEventListener('input', async () => {
       token = tokenAtCaret();
       if (!token) return close();
-      try { const d = await api('/api/users/mention?q=' + encodeURIComponent(token.q)); items = d.users || []; }
+      try { const d = await api('/api/users/mention?q=' + encodeURIComponent(token.q), undefined, { keep: true }); items = d.users || []; }
       catch (e) { return close(); }
       if (!items.length) return close();
       active = 0; render();
@@ -327,7 +327,11 @@
 
   // ---------- API ----------
   class ApiError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
+  // A read started by a page the user has since left never settles, so the old page can't paint
+  // over the new one (or arm its poll there). Widgets that outlive a page pass { keep: true }.
+  const STALE = () => new Promise(() => {});
   async function api(path, body, cfg) {
+    const gen = S.gen, scoped = body === undefined && !(cfg && cfg.keep);
     const opts = { credentials: 'same-origin', headers: {} };
     if (body !== undefined) {
       opts.method = 'POST';
@@ -341,11 +345,12 @@
     if (cfg && cfg.timeoutMs) { ctl = new AbortController(); opts.signal = ctl.signal; tid = setTimeout(() => ctl.abort(), cfg.timeoutMs); }
     let res;
     try { res = await fetch(path, opts); }
-    catch (e) { throw new ApiError(0, ctl && ctl.signal.aborted ? "Tau is taking too long to respond." : "Can't reach Tau. Check your connection."); }
+    catch (e) { if (scoped && gen !== S.gen) return STALE(); throw new ApiError(0, ctl && ctl.signal.aborted ? "Tau is taking too long to respond." : "Can't reach Tau. Check your connection."); }
     finally { if (tid) clearTimeout(tid); }
     let data = {};
     try { data = await res.json(); } catch (e) { /* non-JSON error page */ }
-    if (res.status === 401 && path !== '/api/me') { go('/signin'); throw new ApiError(401, 'Please sign in.'); }
+    if (scoped && gen !== S.gen) return STALE();
+    if (res.status === 401 && path !== '/api/me') { S.me = null; go('/signin'); throw new ApiError(401, 'Please sign in.'); }
     if (!res.ok) throw new ApiError(res.status, data.error || 'Request failed (' + res.status + ').');
     return data;
   }
@@ -372,6 +377,7 @@
   ];
   // Public routes: viewable signed-OUT, so the boot guard must not force /api/me + a signin bounce.
   const PUBLIC = new Set(['/signin', '/terms', '/privacy']);
+  const phone = () => !!(window.matchMedia && window.matchMedia('(max-width: 760px)').matches);
   function go(path, replace) {
     if (replace) history.replaceState(null, '', path); else history.pushState(null, '', path);
     render();
@@ -397,7 +403,7 @@
     if (!window.__BUILD__ || Date.now() - _verAt < 30000 || document.getElementById('verbar')) return;
     _verAt = Date.now();
     try {
-      const d = await api('/api/version');
+      const d = await api('/api/version', undefined, { keep: true });
       if (d && d.v && d.v !== window.__BUILD__) {
         const bar = document.createElement('div');
         bar.id = 'verbar'; bar.className = 'verbar';
@@ -411,8 +417,10 @@
   async function render() {
     clearTimers();
     checkVersion();
-    S.gen++;
+    const gen = ++S.gen;
     window.scrollTo(0, 0);
+    // On a phone the open autopilot panel fills the screen, so moving to a page closes it.
+    if (phone()) { try { localStorage.setItem('tau_ap_open', '0'); } catch (e) { /* private mode */ } }
     const path = location.pathname;
     if (path === '/signin') { const f = document.getElementById('autopilot-float'); if (f) f.remove(); }
     const match = routes.map(([re, fn]) => [path.match(re), fn]).find(([m]) => m);
@@ -439,7 +447,8 @@
     }
     if (!match) return go('/', true);
     root.setAttribute('aria-busy', 'true');
-    try { await match[1](...match[0].slice(1)); } catch (e) { if (e.status !== 401) shell('', boardTitle('Something went wrong'), notice(e.message, 'bad')); }
+    try { await match[1](...match[0].slice(1)); } catch (e) { if (gen === S.gen && e.status !== 401) shell('', boardTitle('Something went wrong'), notice(e.message, 'bad')); }
+    if (gen !== S.gen) return;  // the user moved on while this page loaded
     root.setAttribute('aria-busy', 'false');
     paymentGate().catch(() => {});
   }
@@ -513,7 +522,7 @@
     restart();
     const hint = dlg.querySelector('#pay-hint');
     try {
-      const state = await api('/api/billing');
+      const state = await api('/api/billing', undefined, { keep: true });
       if (!state.configured) { dlg.querySelector('#pay-el').innerHTML = ''; hint.innerHTML = '<p class="wl-err">Payments aren’t enabled on this server yet.</p>'; dlg.querySelector('#pay-submit').setAttribute('aria-disabled', 'true'); return; }
       const Stripe = await loadStripe();
       const sp = Stripe(state.publishable_key);
@@ -535,7 +544,7 @@
           } catch (err) { hint.innerHTML = `<p class="wl-err">${esc(err.message || 'Could not save the card.')}</p>`; return; }
           if (r.error) { hint.innerHTML = `<p class="wl-err">${esc(r.error.message)}</p>`; return; }
           try { await api('/api/billing/card-added', { payment_method_id: r.setupIntent.payment_method }); } catch (err) { hint.innerHTML = `<p class="wl-err">${esc(err.message)}</p>`; return; }
-          S.me = await api('/api/me');
+          S.me = await api('/api/me', undefined, { keep: true });
           closePay();
           render();
         });
@@ -564,7 +573,7 @@
         : '<p class="bell-empty">No notifications yet.</p>';
     };
     let data = { unread: 0, items: [] };
-    try { data = await api('/api/notifications'); paint(data); } catch (e) { return; }  // bell is best-effort
+    try { data = await api('/api/notifications', undefined, { keep: true }); paint(data); } catch (e) { return; }  // bell is best-effort
     trig.onclick = async (e) => {
       e.stopPropagation();
       if (!menu.hidden) { close(); return; }
@@ -737,8 +746,10 @@
   // devCurve (optional): a second, realized series replayed read-only against
   // the Kalshi demo environment. Drawn dashed in the accent colour with a legend
   // so "Simulated" and "Kalshi dev" read apart. Omitting it keeps the old chart.
-  function equityChart(curve, cutoffIso, devCurve) {
-    const W = 760, H = 236, L = 52, R = 10, T = 30, B = 26;
+  // Draw at the column's real width on a narrow screen: a 760-wide chart shrunk to a phone has 4px labels.
+  const chartWidth = () => { const m = root.querySelector('main'), w = m && m.clientWidth; return w > 0 && w < 760 ? Math.max(300, w) : 760; };
+  function equityChart(curve, cutoffIso, devCurve, options = {}) {
+    const W = options.width || 760, H = 236, L = 52, R = 10, T = 30, B = 26;
     if (!curve || curve.length < 2) return `<div class="empty"><p>Not enough trades to draw an equity curve.</p></div>`;
     const dev0 = devCurve && devCurve.length > 1 ? devCurve : null;
     // Anchor the real demo-replay to the simulated line at its first timestamp, so both read as
@@ -1511,6 +1522,7 @@
   async function viewResearch() {
     const me = S.me;
     const DEMO_PROMPT = "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances";
+    shell('/research', '', loading(320));  // switch pages at once; the model list can be slow
     const mdl = await api('/api/models').catch(() => ({ models: [], default: '' }));
     const modelOpts = (mdl.models || []).map((m) => `<option value="${esc(m.key)}"${m.key === mdl.default ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
     shell('/research', boardTitle('Research', 'A self-improving research engine for Bitcoin markets \u2014 describe an idea, it writes strategies and tests each on data it never saw.'), `
@@ -2294,7 +2306,7 @@
       + `<div class="paper-sub"><h4 class="paper-h">${perpetual ? 'Perpetual research scenario' : hasExp ? 'Backtest &amp; Kalshi demo replay' : 'Backtest'}</h4>
           ${hasExp ? '<p class="rp-sub" style="margin-top:0">These are the agent\'s own in-sample/replay numbers. The in-sample column is optimistically biased — the rule was fit on exactly this data — so trust the held-out validation-window evidence above, not the column below.</p>' : ''}
           <div id="sheet-results">
-            <div id="equity-wrap">${s.equity ? equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from) : ''}</div>
+            <div id="equity-wrap">${s.equity ? equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from, null, { width: chartWidth() }) : ''}</div>
             <div class="split"><div><h4>Tested on (in-sample)</h4>${metricRows(ins)}</div><div><h4>Never seen (out-of-sample)</h4>${metricRows(oos)}</div></div>
           </div></div>`
       + `<div class="paper-sub"><h4 class="paper-h">Most recent unseen trades</h4>${trades}</div>`;
@@ -2400,7 +2412,7 @@
         const wrap = root.querySelector('#equity-wrap');
         if (wrap && r && r.dev_curve && r.dev_curve.length > 1) {
           const sl = r.slippage, sc = (v) => (v >= 0 ? '+' : '') + v.toFixed(1) + '¢';
-          wrap.innerHTML = equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from, r.dev_curve)
+          wrap.innerHTML = equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from, r.dev_curve, { width: chartWidth() })
             + `<p class="hint" style="margin-top:6px">Dashed line: the unseen window replayed read-only against Kalshi's demo environment${r.capped ? ` (first ${r.contracts} contracts)` : ''} — real demo order-book prices, scored with the same fees. No orders are placed.</p>`
             + (sl ? `<p class="hint" style="margin-top:4px;font-variant-numeric:tabular-nums">Real demo-book slippage: <b>${sc(sl.entry_cents)}</b> entry${sl.exit_cents != null ? ` / <b>${sc(sl.exit_cents)}</b> exit` : ''} over ${sl.n_trades} aligned trade${sl.n_trades === 1 ? '' : 's'} (positive means real fills were worse). <button type="button" class="btn sm" id="apply-slip">Apply to what-if</button></p>` : '');
           if (sl) {
@@ -2492,7 +2504,7 @@
           try {
             const r = await api(`/api/strategies/${s.id}/whatif`, { fee_multiplier: fee, slippage_cents: slip, stake });
             if (mine !== seq) return;
-            root.querySelector('#sheet-results').innerHTML = equityChart(r.equity, s.dataset && s.dataset.out_of_sample_from) +
+            root.querySelector('#sheet-results').innerHTML = equityChart(r.equity, s.dataset && s.dataset.out_of_sample_from, null, { width: chartWidth() }) +
               `<div class="split"><div><h4>Tested on (in-sample)</h4>${metricRows(r.in_sample)}</div><div><h4>Never seen (out-of-sample)</h4>${metricRows(r.out_of_sample)}</div></div>`;
             root.querySelector('#gates').innerHTML = gatesHtml(r.gates);
             root.querySelector('#figs').innerHTML = figsFor({ ...r });
@@ -3008,11 +3020,11 @@
       const rows = d.markets.map((m) => {
         const mid = midOf(m);
         return `<tr><td class="name"><a href="/explore?m=${encodeURIComponent(m.t)}">${esc(mktLabel(m))}</a>${m.s ? ` <span class="mk quiet">${esc(m.s)}</span>` : ''}</td>
-          <td class="num">${mid == null ? '—' : cents(mid)}</td><td class="num">${num(Math.round(+m.v24 || 0))}</td><td class="num">${num(Math.round(+m.oi || 0))}</td>
-          <td class="num xlink"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`;
+          <td class="num" data-lab="Yes price">${mid == null ? '—' : cents(mid)}</td><td class="num" data-lab="24h volume">${num(Math.round(+m.v24 || 0))}</td><td class="num" data-lab="Open int.">${num(Math.round(+m.oi || 0))}</td>
+          <td class="num xlink" data-lab="Kalshi"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`;
       }).join('');
       const pages = Math.max(1, Math.ceil(d.matched / d.per));
-      body.innerHTML = `<div class="sheet"><table><thead><tr><th>Market</th><th class="num">Yes price</th><th class="num">24h volume</th><th class="num">Open int.</th><th class="num" aria-label="Link"></th></tr></thead><tbody>${rows}</tbody></table></div>
+      body.innerHTML = `<div class="sheet"><table class="stack"><thead><tr><th>Market</th><th class="num">Yes price</th><th class="num">24h volume</th><th class="num">Open int.</th><th class="num" aria-label="Link"></th></tr></thead><tbody>${rows}</tbody></table></div>
         ${pages > 1 ? `<div class="xpage">${f.page > 0 ? `<button class="btn sm" data-pg="${f.page - 1}">${ICON.up ? '' : ''}← Prev</button>` : '<span></span>'}<span class="lab">Page ${f.page + 1} of ${num(pages)}</span>${f.page + 1 < pages ? `<button class="btn sm" data-pg="${f.page + 1}">Next →</button>` : '<span></span>'}</div>` : ''}`;
       body.querySelectorAll('[data-pg]').forEach((b) => b.onclick = () => { f.page = +b.dataset.pg; sync(); window.scrollTo({ top: 0, behavior: 'smooth' }); load(); });
     };
@@ -3022,7 +3034,8 @@
   }
 
   // Hot Markets left rail: persistent (open/closed survives page switches), refreshes each minute.
-  const hotOpen = () => localStorage.getItem('tau_hotrail') !== '0';
+  // On a phone the rail is hidden (Explore covers it): an open rail would cover the whole page.
+  const hotOpen = () => !phone() && localStorage.getItem('tau_hotrail') !== '0';
   let hotLoop = false;
   let apLoop = false;
 
@@ -3038,7 +3051,7 @@
     if (!apLoop) { apLoop = true; setInterval(() => { const b = document.getElementById('autopilot-float'); if (b) refreshAutopilot(b); }, 20000); }
   }
   async function refreshAutopilot(box) {
-    try { S.ap = await api('/api/autopilot/status'); S.apAt = Date.now(); renderAutopilot(box, S.ap); }
+    try { S.ap = await api('/api/autopilot/status', undefined, { keep: true }); S.apAt = Date.now(); renderAutopilot(box, S.ap); }
     catch (e) { /* floating window is best-effort; never block the app */ }
   }
   const AP_MODE = {
@@ -3098,7 +3111,7 @@
   }
   async function apLoadChat(box, full) {
     const msgs = box.querySelector('#apf-messages'); if (!msgs) return;
-    let d; try { d = await api('/api/chat?after=' + (full ? 0 : apChatLastId)); } catch (e) { return; }
+    let d; try { d = await api('/api/chat?after=' + (full ? 0 : apChatLastId), undefined, { keep: true }); } catch (e) { return; }
     const stick = full || msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 70;
     if (full) { msgs.innerHTML = ''; apChatLastId = 0; apFeedFirst = true; }
     const empty = msgs.querySelector('.ap-empty'); if (empty && d.messages.length) empty.remove();
@@ -3205,7 +3218,7 @@
     (async () => {
       const sel = box.querySelector('#apf-model'); if (!sel) return;
       const current = () => box.isConnected !== false && box.querySelector('#apf-model') === sel;
-      const mdl = await api('/api/models').catch(() => ({ models: [], default: '' }));
+      const mdl = await api('/api/models', undefined, { keep: true }).catch(() => ({ models: [], default: '' }));
       if (!current()) return;
       const cur = (S.ap && S.ap.model) || mdl.default;
       sel.innerHTML = (mdl.models || []).map((m) => `<option value="${esc(m.key)}"${m.key === cur ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
@@ -3337,7 +3350,7 @@
     rail.querySelector('.hot-ft a') && (rail.querySelector('.hot-ft a').onclick = (e) => { e.preventDefault(); go('/explore'); });
   }
   async function refreshHot() {
-    try { S.hot = await api('/api/explore/hot'); renderHotRail(); } catch (e) {}
+    try { S.hot = await api('/api/explore/hot', undefined, { keep: true }); renderHotRail(); } catch (e) {}
   }
   function mountHotRail() {
     if (!S.me || !S.me.user) return;
