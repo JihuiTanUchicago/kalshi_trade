@@ -199,10 +199,50 @@ def market_meta(m: Dict) -> Dict:
 
 # --- Kalshi market discovery ---------------------------------------------------------------------
 
+# Research can ask for per-second data on a series it lacks (app_data_requests, kind "ticks");
+# those series are recorded alongside the BTC ones, re-read every REQUEST_REFRESH_S.
+REQUEST_REFRESH_S = 600
+REQUEST_LIMIT = 6
+SPOT_SYMBOLS = ("BTC", "ETH", "SOL", "XRP", "DOGE", "BNB", "ADA", "AVAX", "LTC", "LINK", "SHIB", "HYPE")
+
+
+def spot_product(series: str) -> Optional[str]:
+    """Coinbase product that prices a Kalshi crypto series (KXETH15M -> ETH-USD), else None."""
+    s = (series or "").upper()
+    for sym in SPOT_SYMBOLS:
+        if s.startswith("KX" + sym):
+            return sym + "-USD"
+    return None
+
+
+def requested_tick_series(limit: int = REQUEST_LIMIT) -> List[str]:
+    """Series with open "ticks" data requests, oldest first; [] if the helper or table is absent."""
+    try:
+        from data_pipeline import common
+        fn = getattr(common, "requested_series", None)
+        if fn is None:
+            return []
+        conn = get_db_conn()
+        try:
+            with conn.cursor() as cur:
+                rows = fn(cur, "ticks", limit) or []
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[WARN] requested series read failed: {e}", flush=True)
+        return []
+    out = []
+    for r in rows:
+        v = r if isinstance(r, str) else (r.get("series") or r.get("series_ticker") if isinstance(r, dict) else None)
+        if v and v not in out:
+            out.append(str(v))
+    return out
+
+
 def discover_series() -> List[str]:
     if TICK_SERIES:
-        return list(TICK_SERIES)
-    found: Set[str] = set()
+        return sorted(set(TICK_SERIES) | set(requested_tick_series()))
+    found: Set[str] = set(requested_tick_series())
     try:
         data = api_get("/series", {"category": "Crypto"})
         for s in data.get("series") or []:
@@ -430,7 +470,7 @@ class KalshiRecorder(Recorder):
     async def discovery_loop(self) -> None:
         while self.ws is not None:
             try:
-                if not self.series or time.time() - self.series_at > 3600:
+                if not self.series or time.time() - self.series_at > REQUEST_REFRESH_S:
                     self.series = await asyncio.to_thread(discover_series)
                     self.series_at = time.time()
                 markets = await asyncio.to_thread(wanted_markets, self.series)
@@ -551,6 +591,29 @@ class CoinbaseRecorder(Recorder):
         super().__init__()
         self.last_trade_id: Dict[str, int] = {}
         self._ssl = ssl.create_default_context(cafile=certifi.where())
+        self.products: List[str] = list(COINBASE_PRODUCTS)
+
+    def wanted_products(self) -> List[str]:
+        """The configured products plus the spot behind every requested Kalshi series."""
+        out = list(COINBASE_PRODUCTS)
+        for s in requested_tick_series():
+            p = spot_product(s)
+            if p and p not in out:
+                out.append(p)
+        return out
+
+    async def products_loop(self) -> None:
+        while self.ws is not None:
+            await asyncio.sleep(REQUEST_REFRESH_S)
+            try:
+                wanted = await asyncio.to_thread(self.wanted_products)
+                new = [p for p in wanted if p not in self.products]
+                if new and self.ws is not None:
+                    await self.ws.send(json.dumps({"type": "subscribe", "product_ids": new, "channels": COINBASE_CHANNELS}))
+                    self.products += new
+                    print(f"coinbase: added {new}", flush=True)
+            except Exception as e:
+                self.errors.append(f"products {type(e).__name__}: {e}"[:300])
 
     async def session(self) -> None:
         import websockets
@@ -560,9 +623,11 @@ class CoinbaseRecorder(Recorder):
             self.connected_ns = _ns()
             self.last_trade_id = {}
             self.meta("connected")
-            await ws.send(json.dumps({"type": "subscribe", "product_ids": COINBASE_PRODUCTS,
+            self.products = await asyncio.to_thread(self.wanted_products)
+            await ws.send(json.dumps({"type": "subscribe", "product_ids": self.products,
                                       "channels": COINBASE_CHANNELS}))
-            print(f"coinbase tick recorder connected {COINBASE_PRODUCTS} {COINBASE_CHANNELS}", flush=True)
+            print(f"coinbase tick recorder connected {self.products} {COINBASE_CHANNELS}", flush=True)
+            refresh = asyncio.create_task(self.products_loop())
             try:
                 async for raw in ws:
                     rt = _ns()
@@ -575,6 +640,7 @@ class CoinbaseRecorder(Recorder):
                         self.errors.append(f"ws error {data}"[:300])
             finally:
                 self.ws = None
+                refresh.cancel()
 
     def check_trade_id(self, data: Dict) -> None:
         """Coinbase trade_ids are consecutive per product, so a jump is a missed print."""
