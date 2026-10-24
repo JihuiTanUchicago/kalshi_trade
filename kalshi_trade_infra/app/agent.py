@@ -2952,6 +2952,11 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
                 text, proposal_id = act(cur, user, action, bool(user.get("autopilot")), dataset_fn)
             repo.add_chat(cur, user["id"], "system", text, proposal_id)
         repo.finish_run(cur, run["id"], "succeeded", None, 0, 0, usage.input_tokens, usage.output_tokens)
+        # Same greppable shape as research_outcome_line, so review vs research token cost can be
+        # split from the worker log (reviews outnumber research runs about 3:2 in prod).
+        print("[copilot] run=%s user=%s kind=%s status=succeeded actions=%d tokens_in=%d tokens_out=%d model=%s"
+              % (run["id"], user["id"], run["kind"], len(out["actions"]), usage.input_tokens,
+                 usage.output_tokens, choice.model_id), flush=True)
         billing_attempted = True
         _bill(conn, user["id"], usage, run["id"], choice.model_id)
     except Cancelled:
