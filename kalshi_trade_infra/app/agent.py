@@ -141,6 +141,11 @@ THESIS_MAX_STEPS = max(1, int(os.getenv("TAU_THESIS_MAX_STEPS", "20")))
 # RUN_STALL_SECONDS + ABANDONED_AFTER regardless of WHERE it froze (load, model, backtest). Env-tunable.
 RUN_HEARTBEAT_EVERY = max(5, int(os.getenv("TAU_RUN_HEARTBEAT_EVERY", "15")))
 RUN_STALL_SECONDS = max(30, int(os.getenv("TAU_RUN_STALL_SECONDS", "150")))
+# A model call is not a frozen main thread: it is bounded by its own timeouts (stream stall guard,
+# read_timeout, retries) and a non-streaming one (a throttle/daily-quota fallback) is legitimately
+# silent for minutes. Proposals went 240-310s without a token and the run was reaped mid-call while
+# healthy, so a call in flight counts as progress for up to this long.
+MODEL_CALL_GRACE_SECONDS = max(60, int(os.getenv("TAU_MODEL_CALL_GRACE_SECONDS", "900")))
 # The slot-freeing guard is the ATTEMPT bound below (work done), NOT a wall clock: a research session
 # has no time limit — a long run that keeps making progress is fine, and being stopped is never a
 # "failure" (see the `stopped` terminal status), so there is deliberately no RUN_MAX_SECONDS here.
@@ -409,6 +414,30 @@ def _can_stream(model: ModelFn) -> bool:
     except (TypeError, ValueError):
         return False
     return len(params) >= 3 or any(p.kind == p.VAR_POSITIONAL for p in params)
+
+
+def _alive_during_calls(model: ModelFn, progress: List[float]) -> ModelFn:
+    """Wrap the model so the heartbeat beater treats a call in flight as progress (see
+    MODEL_CALL_GRACE_SECONDS). Keeps the wrapped model's streaming signature, so _can_stream sees
+    the same thing it would on the bare model."""
+    def busy() -> None:
+        progress[0] = time.monotonic() + MODEL_CALL_GRACE_SECONDS - RUN_STALL_SECONDS
+
+    if _can_stream(model):
+        def m(system: str, messages: List[Dict], on_delta=None) -> "tuple[str, Dict]":
+            busy()
+            try:
+                return model(system, messages, on_delta)
+            finally:
+                progress[0] = time.monotonic()
+    else:
+        def m(system: str, messages: List[Dict]) -> "tuple[str, Dict]":  # type: ignore[misc]
+            busy()
+            try:
+                return model(system, messages)
+            finally:
+                progress[0] = time.monotonic()
+    return m
 
 
 def _stream_proposer(model: ModelFn, sink: _StreamSink) -> ModelFn:
@@ -1782,6 +1811,7 @@ def run_research(
     # Liveness clock for the background beater: the main thread stamps it on every real step so the
     # beater knows the run is progressing (and a frozen main thread lets it go stale -> reaped).
     progress = [time.monotonic()]
+    model = _alive_during_calls(model, progress)
 
     verdicts: Dict[str, int] = defaultdict(int)  # gatekeeper verdicts this run, for the outcome line
 
