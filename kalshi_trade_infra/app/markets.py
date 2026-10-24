@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Sequence, Tuple
 
+from app.weather_fcst import FEATURE_DOCS as _WEATHER_FCST_DOCS
+
 try:
     from zoneinfo import ZoneInfo
 except ImportError:  # pragma: no cover - py<3.9
@@ -400,6 +402,8 @@ FEATURES.update({
                   "station (NWS climate day, local standard time); the day's high can only rise from here",
     "obs_temp_f": "weather markets only: latest temperature (F) reading at the settlement station",
 })
+# Per-contract forecast fair value (app/weather_fcst.snapshot_features, research and live alike).
+FEATURES.update(_WEATHER_FCST_DOCS)
 
 
 @dataclass(frozen=True)

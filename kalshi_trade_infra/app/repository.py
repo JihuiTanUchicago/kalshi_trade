@@ -2086,6 +2086,22 @@ def latest_micro(cur, tickers, as_of_ts: int, max_age_seconds: int = 120) -> Dic
     return out
 
 
+def load_weather_forecasts(cur, station: str, kind: str, since_day,
+                           as_of_ts: Optional[int] = None) -> List[Tuple[int, Any, str, float, Optional[float]]]:
+    """Issued forecasts for one station's daily max/min with target_day >= since_day, as the
+    (known_at_ts, target_day, model, value_f, sd_f) rows app/weather_fcst.ForecastBook takes.
+    as_of_ts (live) also drops rows not yet known, though the book's as-of lookup does that too."""
+    sql = ("SELECT known_at_utc, target_day, model, value_f, sd_f FROM weather_forecasts "
+           "WHERE station=%s AND kind=%s AND target_day >= %s")
+    args: Tuple = (station, kind, since_day)
+    if as_of_ts is not None:
+        sql += " AND known_at_utc <= %s"
+        args += (datetime.fromtimestamp(int(as_of_ts), tz=timezone.utc).replace(tzinfo=None),)
+    cur.execute(sql, args)
+    return [(int(r["known_at_utc"].replace(tzinfo=timezone.utc).timestamp()), r["target_day"], r["model"],
+             float(r["value_f"]), _num(r["sd_f"])) for r in cur.fetchall()]
+
+
 def spot_symbols_with_data(cur, symbols) -> set:
     """Which of the given spot symbols already have price candles collected.
 

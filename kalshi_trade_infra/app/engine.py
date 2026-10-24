@@ -30,6 +30,7 @@ import requests
 from app import freedata
 from app import repository as repo
 from app import spec as specmod
+from app import weather_fcst
 from app.markets import (MARKETS, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot, compatible_cadence,
                          snapshot)
 from data_pipeline.common import api_get, parse_iso_to_dt
@@ -197,6 +198,9 @@ class Sources:
     # (tickers, as_of_ts) -> {ticker: {micro feature: value}}: the order-book features research
     # joins onto every snapshot (model_features_1m). None = snapshots carry no micro features.
     micro: Optional[Callable[[List[str], int], Dict[str, Dict[str, float]]]] = None
+    # (station, kind, as_of_ts) -> issued forecast rows (repository.load_weather_forecasts) for a
+    # weather series' per-contract forecast features. None = snapshots carry no forecast features.
+    forecasts: Optional[Callable[[str, str, int], List]] = None
 
 
 def _micro_for(sources: Sources, tickers: List[str], now_ts: int) -> Dict[str, Dict[str, float]]:
@@ -209,6 +213,19 @@ def _micro_for(sources: Sources, tickers: List[str], now_ts: int) -> Dict[str, D
     except Exception as e:
         print("[engine] micro features unavailable: %r" % e, flush=True)
         return {}
+
+
+def _forecast_book(market: Market, sources: Sources, now_ts: int) -> Optional[weather_fcst.ForecastBook]:
+    """This frame's forecast book for a weather series (research builds the same one from the same
+    table), or None when unwired, not a weather series, or unreadable: a rule that filters on a
+    forecast feature then doesn't enter, as in research on a frame with no forecast."""
+    if sources.forecasts is None or market.series not in WEATHER_STATIONS:
+        return None
+    try:
+        return weather_fcst.book_for_series(market.series, lambda station, kind: sources.forecasts(station, kind, now_ts))
+    except Exception as e:
+        print("[engine] weather forecasts unavailable for %s: %r" % (market.key, e), flush=True)
+        return None
 
 
 def _event_feats(market: Market, now_ts: int) -> Dict[str, float]:
@@ -1471,7 +1488,9 @@ def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] 
             print("[engine] spot fetch failed for %s: %r (skipping tick)" % (market.key, e), flush=True)
             feats = None
     micro = _micro_for(sources, [q.contract.ticker for q in quotes], now_ts) if feats is not None else {}
-    snaps = [s for s in (snapshot(feats, q.contract, now_ts, q.yes_bid, q.yes_ask, micro.get(q.contract.ticker))
+    book = _forecast_book(market, sources, now_ts) if feats is not None else None
+    snaps = [s for s in (snapshot(feats, q.contract, now_ts, q.yes_bid, q.yes_ask, weather_fcst.with_forecast(
+                             micro.get(q.contract.ticker), book, q.contract, now_ts, q.yes_bid, q.yes_ask, feats))
                          for q in quotes) if s is not None]
     sizes = book_sizes(quotes)
     # (positions were already marked above, every tick — not only when a decision is due)
@@ -1535,8 +1554,10 @@ def _cross_market_frame(markets: List[str], sources: Sources, now_ts: int):
             if feats is None:
                 return None  # stale/missing spot on this leg — skip the whole frame
         micro = _micro_for(sources, [q.contract.ticker for q in quotes], now_ts)
+        book = _forecast_book(market, sources, now_ts)
         for q in quotes:
-            s = snapshot(feats, q.contract, now_ts, q.yes_bid, q.yes_ask, micro.get(q.contract.ticker))
+            s = snapshot(feats, q.contract, now_ts, q.yes_bid, q.yes_ask, weather_fcst.with_forecast(
+                micro.get(q.contract.ticker), book, q.contract, now_ts, q.yes_bid, q.yes_ask, feats))
             if s is not None:
                 all_snaps.append(s)
         sizes.update(book_sizes(quotes))
@@ -1818,6 +1839,8 @@ def run_forever() -> None:
                 order_lookup=_make_order_lookup(conn),
                 ws_feed=ws_feed,
                 micro=lambda tickers, ts: repo.latest_micro(conn.cursor(), tickers, ts),
+                forecasts=lambda station, kind, ts: repo.load_weather_forecasts(
+                    conn.cursor(), station, kind, (datetime.fromtimestamp(ts, tz=timezone.utc) - timedelta(days=2)).date(), ts),
             )
             # Deterministic crash recovery (P0-1): before the loop (so it also runs on every
             # reconnect / box reboot), reconcile any order-intent left 'sent' by a prior crash

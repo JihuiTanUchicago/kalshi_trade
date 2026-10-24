@@ -76,3 +76,15 @@ the boxes on 2026-10-24, so rebuilding a box no longer drops them.
 
 Both boxes run `kalshi-alerter.timer` today (checked 2026-10-24), each with its own
 `.alerter_state.json`, so every alert goes out twice. Keep it enabled on one box only.
+
+### Weather forecasts (web box)
+
+`kalshi-weather-fcst.timer` runs `app.weather_fcst_collect` hourly at :20, storing every issued
+NBM and GFS MOS daily max/min for the stations in `markets.WEATHER_STATIONS` into
+`weather_forecasts` (point-in-time: `known_at_utc` = run time + publication lag). Research datasets
+and the live engine read the same rows (`app/weather_fcst.py`). Backfill once with
+`python -m app.weather_fcst_collect --since 2025-10-01`.
+
+    sudo cp scripts/systemd/kalshi-weather-fcst.* /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now kalshi-weather-fcst.timer
