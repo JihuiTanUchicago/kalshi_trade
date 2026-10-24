@@ -646,16 +646,31 @@ def _pick_market(run: Dict, model: ModelFn, usage: Usage, log, keys: Optional[Li
            "Pick the ONE market whose contracts best fit this idea. Reply exactly:\n"
            '{"market": "<key>", "why": "<one sentence>"}' % (_brief(), idea[:400], hist, opts))
 
+    by_label = {m.label.strip().lower(): k for k, m in choices.items()}
+
     def check(obj: Dict) -> Dict:
-        k = obj.get("market")
-        if k not in choices:
-            raise ValueError("market must be one of: " + ", ".join(choices))
+        raw = str(obj.get("market") or "").strip()
+        k = raw if raw in choices else raw.lower() if raw.lower() in choices else by_label.get(raw.lower())
+        if k is None:
+            # Prod run 2674: the model kept naming a market outside the list. Say WHY it was refused
+            # (a known market that isn't ready or is on cooldown reads like a typo otherwise).
+            why = ("%r is not open for research right now (no data yet, or on cooldown)" % raw
+                   if raw in MARKETS else "%r is not a market key" % raw)
+            raise ValueError("%s. Reply with one key exactly as listed: %s" % (why, ", ".join(choices)))
         # Full reasoning, not a clipped fragment: this `why` is shown verbatim as the first
         # agent-log line, so cap it at the same 1000 chars as every other reason field (the
         # message column is TEXT) — the old 200 clipped the sentence mid-word.
         return {"market": k, "why": str(obj.get("why") or "")[:1000]}
 
-    r = ask_json(model, RESEARCH_SYSTEM, [{"role": "user", "content": msg}], check, usage)
+    try:
+        r = ask_json(model, RESEARCH_SYSTEM, [{"role": "user", "content": msg}], check, usage)
+    except LLMError as e:
+        if "could not be used" not in str(e) or not choices:
+            raise
+        # Never fail a run over the pick: take the listed market whose name best matches the idea.
+        words = set(re.findall(r"[a-z0-9]+", idea.lower()))
+        k = max(choices, key=lambda c: len(words & set(re.findall(r"[a-z0-9]+", (c + " " + choices[c].label).lower()))))
+        r = {"market": k, "why": "The pick reply was unusable, so I took the market that best matches the idea."}
     log("step", "Chose to research %s. %s" % (MARKETS[r["market"]].label, r["why"]),
         {"phase": "pick_market", "market": r["market"]})
     return r["market"]
