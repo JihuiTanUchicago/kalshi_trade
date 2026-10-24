@@ -23,6 +23,10 @@ Tables (rt = receive time, epoch ns, on every row):
 The RDS row (tick_archive_hours) is what gap monitoring and research discovery read: per source
 and hour, message count, max silence between messages, sequence gaps, reconnects, bytes.
 
+Each run also builds features_1s (data_pipeline/tick_features.py) for archived hours that lack
+it, and guards the disk: below TAU_TICK_MIN_FREE_GB free (default 3) the oldest unarchived hour
+files are deleted, so failing uploads cost old ticks, never a full disk under the collectors.
+
 Run: python -m data_pipeline.tick_archiver   (timer kalshi-tick-archiver, every 10 minutes)
 """
 import glob
@@ -323,6 +327,115 @@ def closed_hour_files(root: str, now: Optional[datetime] = None) -> List[Tuple[s
     return out
 
 
+MIN_FREE_BYTES = int(float(os.getenv("TAU_TICK_MIN_FREE_GB", "3")) * 1e9)
+CACHE_DIR = os.getenv("TAU_TICK_CACHE", os.path.join(os.path.dirname(TICK_DIR.rstrip("/")) or "/", "tick_cache"))
+CACHE_MAX_AGE_S = 6 * 3600
+FEATURE_LOOKBACK_H = 48
+FEATURE_STATE = os.path.join(os.path.dirname(TICK_DIR.rstrip("/")) or "/", "tick_features_built.json")
+
+
+def disk_guard(root: str = TICK_DIR, min_free: int = MIN_FREE_BYTES, now: Optional[datetime] = None) -> List[str]:
+    """If free space is under ``min_free`` (uploads failing for hours, say), delete the oldest
+    closed hour files until it is not. Losing old ticks beats filling the disk under every
+    collector on the box. Returns what was deleted."""
+    dropped = []
+    for path, _source, _hour in closed_hour_files(root, now):
+        if shutil.disk_usage(root).free >= min_free:
+            break
+        os.remove(path)
+        dropped.append(path)
+        print(f"[ERROR] disk guard: free < {min_free / 1e9:.1f} GB, deleted unarchived {path}", flush=True)
+    return dropped
+
+
+def clean_cache(cache_dir: str = CACHE_DIR, max_age_s: int = CACHE_MAX_AGE_S) -> None:
+    cutoff = utc_now().timestamp() - max_age_s
+    for dirpath, _dirs, files in os.walk(cache_dir):
+        for f in files:
+            p = os.path.join(dirpath, f)
+            try:
+                if os.path.getmtime(p) < cutoff:
+                    os.remove(p)
+            except OSError:
+                pass
+
+
+def _load_built() -> set:
+    try:
+        with open(FEATURE_STATE) as fh:
+            return set(json.load(fh))
+    except Exception:
+        return set()
+
+
+def _save_built(built: set) -> None:
+    keep = sorted(built)[-FEATURE_LOOKBACK_H * 2:]
+    with open(FEATURE_STATE + ".tmp", "w") as fh:
+        json.dump(keep, fh)
+    os.replace(FEATURE_STATE + ".tmp", FEATURE_STATE)
+
+
+def _exists(s3, key: str) -> bool:
+    try:
+        s3.head_object(Bucket=BUCKET, Key=key)
+        return True
+    except Exception:
+        return False
+
+
+def build_features(s3=None, store=None, now: Optional[datetime] = None, conn=None) -> int:
+    """features_1s for every archived Kalshi hour in the last FEATURE_LOOKBACK_H that lacks it,
+    once its Coinbase hour is archived too (or 2 hours have passed without it)."""
+    from data_pipeline import tick_features
+    from data_pipeline.tick_store import TickStore
+    if s3 is None:
+        import boto3
+        s3 = boto3.client("s3")
+    store = store or TickStore(bucket=BUCKET, prefix=PREFIX, cache_dir=CACHE_DIR, s3=s3)
+    now = now or utc_now()
+    built = _load_built()
+    top = now.replace(minute=0, second=0, microsecond=0)
+    n = 0
+    for k in range(FEATURE_LOOKBACK_H, 0, -1):
+        hour = top - timedelta(hours=k)
+        tag = hour.strftime("%Y-%m-%d %H")
+        if tag in built:
+            continue
+        date, hh = hour.strftime("%Y-%m-%d"), hour.strftime("%H")
+        if not _exists(s3, f"{PREFIX}/manifest/kalshi/date={date}/{hh}.json"):
+            continue
+        if not _exists(s3, f"{PREFIX}/manifest/coinbase/date={date}/{hh}.json") and k < 2:
+            continue
+        tmpdir = tempfile.mkdtemp(prefix="tickfeat_")
+        try:
+            out = os.path.join(tmpdir, "part.parquet")
+            t0 = utc_now()
+            res = tick_features.build_hour(store, hour, out)
+            if res is not None:
+                s3.upload_file(out, BUCKET, f"{PREFIX}/v1/features_1s/date={date}/hour={hh}/part.parquet")
+                manifest = {"source": "features_1s", "hour_utc": hour.strftime("%Y-%m-%d %H:00:00"),
+                            "messages": res["rows"], "first_rt_utc": None, "last_rt_utc": None, "max_gap_s": None,
+                            "seq_gaps": 0, "reconnects": 0, "raw_bytes": 0, "parquet_bytes": os.path.getsize(out),
+                            "tables": {"features_1s": res["rows"], "tickers": res["tickers"]},
+                            "host": socket.gethostname(), "s3_prefix": f"s3://{BUCKET}/{PREFIX}/v1/",
+                            "build_s": round((utc_now() - t0).total_seconds(), 1)}
+                man = os.path.join(tmpdir, "manifest.json")
+                with open(man, "w") as fh:
+                    json.dump(manifest, fh)
+                s3.upload_file(man, BUCKET, f"{PREFIX}/manifest/features_1s/date={date}/{hh}.json")
+                write_manifest_row(manifest, conn)
+                print(f"features_1s {tag}:00 rows={res['rows']} tickers={res['tickers']} "
+                      f"{manifest['parquet_bytes'] / 1e6:.1f}MB in {manifest['build_s']}s", flush=True)
+                n += 1
+            built.add(tag)
+            _save_built(built)
+        except Exception as e:
+            print(f"[ERROR] features_1s {tag}: {type(e).__name__}: {e}", flush=True)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+    return n
+
+
 def run_once() -> int:
     done = 0
     for path, source, hour in closed_hour_files(TICK_DIR):
@@ -339,6 +452,12 @@ def run_once() -> int:
     for d in glob.glob(os.path.join(TICK_DIR, "*", "*")):
         if os.path.isdir(d) and not os.listdir(d):
             os.rmdir(d)
+    disk_guard()
+    try:
+        build_features()
+    except Exception as e:
+        print(f"[ERROR] features_1s: {type(e).__name__}: {e}", flush=True)
+    clean_cache()
     return done
 
 

@@ -9,5 +9,5 @@ WorkingDirectory=/opt/kalshi
 Nice=15
 IOSchedulingClass=idle
 CPUQuota=60%
-MemoryMax=1500M
+MemoryMax=2G
 ExecStart=/bin/bash -c 'set -a; . /opt/kalshi/.env.aws; [ -f /opt/kalshi/.env ] && . /opt/kalshi/.env; set +a; unset AWS_PROFILE; exec /opt/kalshi/.venv313/bin/python -u -m data_pipeline.tick_archiver >> /opt/kalshi/logs/kalshi-tick-archiver.log 2>&1'
