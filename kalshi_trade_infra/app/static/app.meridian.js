@@ -330,6 +330,8 @@
   // A read started by a page the user has since left never settles, so the old page can't paint
   // over the new one (or arm its poll there). Widgets that outlive a page pass { keep: true }.
   const STALE = () => new Promise(() => {});
+  const TRANSIENT = new Set([502, 503, 504]), RETRY_MS = [700, 1800];
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   async function api(path, body, cfg) {
     const gen = S.gen, scoped = body === undefined && !(cfg && cfg.keep);
     const opts = { credentials: 'same-origin', headers: {} };
@@ -340,7 +342,24 @@
       opts.body = JSON.stringify(body);
     }
     let res;
-    try { res = await fetch(path, opts); } catch (e) { if (scoped && gen !== S.gen) return STALE(); throw new ApiError(0, "Can't reach Tau. Check your connection."); }
+    // A GET that hits a restart (a deploy takes the server away for a second, and CloudFront
+    // answers 502/503/504 with its own non-JSON page) retries twice before the page shows an
+    // error. A JSON error is Tau itself answering, so it is final. Writes never retry.
+    for (let attempt = 0; ; attempt++) {
+      try { res = await fetch(path, opts); }
+      catch (e) {
+        if (scoped && gen !== S.gen) return STALE();
+        if (body === undefined && attempt < 2) { await sleep(RETRY_MS[attempt]); continue; }
+        throw new ApiError(0, "Can't reach Tau. Check your connection.");
+      }
+      if (body === undefined && attempt < 2 && TRANSIENT.has(res.status)) {
+        let parsed = null;
+        try { parsed = await res.json(); } catch (e) { /* CloudFront's error page */ }
+        if (!parsed || typeof parsed !== 'object') { await sleep(RETRY_MS[attempt]); continue; }
+        res = {ok: res.ok, status: res.status, json: async () => parsed};
+      }
+      break;
+    }
     let data = {};
     try { data = await res.json(); } catch (e) { /* non-JSON error page */ }
     if (scoped && gen !== S.gen) return STALE();

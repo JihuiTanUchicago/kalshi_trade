@@ -14,6 +14,7 @@ import json
 import os
 import re
 import threading
+import time
 import traceback
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -31,6 +32,7 @@ from app import models_catalog as catalog
 from app import repository as repo
 from app import research_repository as research_repo
 from app import spec as specmod
+from app import webperf
 from app.markets import MARKETS
 from data_pipeline.common import get_db_conn
 
@@ -1971,20 +1973,49 @@ _EXPLORE_KEY = os.getenv("DATALAKE_EXPLORE_KEY", "explore/latest.json.gz")
 _EXPLORE_SORTS = ("v24", "oi", "last")
 
 
-def _explore_feed() -> Dict:
-    import time as _time
-    now = _time.time()
-    if _EXPLORE_CACHE["data"] is not None and now - _EXPLORE_CACHE["at"] < 45:
-        return _EXPLORE_CACHE["data"]
+_EXPLORE_LOCK = threading.Lock()
+_S3: Dict[str, Any] = {}
+
+
+def _fetch_explore_feed() -> Dict:
     try:
         import gzip as _gzip
-        import boto3
-        raw = boto3.client("s3").get_object(Bucket=_EXPLORE_BUCKET, Key=_EXPLORE_KEY)["Body"].read()
-        data = json.loads(_gzip.decompress(raw))
+        if "c" not in _S3:
+            import boto3
+            _S3["c"] = boto3.client("s3")
+        raw = _S3["c"].get_object(Bucket=_EXPLORE_BUCKET, Key=_EXPLORE_KEY)["Body"].read()
+        return json.loads(_gzip.decompress(raw))
     except Exception:  # feed not written yet, or S3 unreachable -> empty, not an error
-        data = {"at": None, "total": 0, "shown": 0, "markets": []}
-    _EXPLORE_CACHE.update(at=now, data=data)
-    return data
+        return None
+
+
+def _refresh_explore_feed() -> None:
+    try:
+        data = _fetch_explore_feed()
+        if data is not None or _EXPLORE_CACHE["data"] is None:
+            _EXPLORE_CACHE.update(data=data or {"at": None, "total": 0, "shown": 0, "markets": []})
+        _EXPLORE_CACHE["at"] = time.time()
+    finally:
+        _EXPLORE_CACHE["refreshing"] = False
+
+
+def _explore_feed() -> Dict:
+    """The Explore feed from S3, cached 45s. Once warm, a stale copy is served while ONE background
+    thread refetches, so no request waits on S3 and concurrent misses don't each download the feed.
+    A failed fetch keeps the last good copy rather than blanking the page."""
+    now = time.time()
+    if _EXPLORE_CACHE["data"] is None:
+        with _EXPLORE_LOCK:
+            if _EXPLORE_CACHE["data"] is None:
+                _EXPLORE_CACHE["refreshing"] = True
+                _refresh_explore_feed()
+        return _EXPLORE_CACHE["data"]
+    if now - _EXPLORE_CACHE["at"] >= 45 and not _EXPLORE_CACHE.get("refreshing"):
+        with _EXPLORE_LOCK:
+            if not _EXPLORE_CACHE.get("refreshing"):
+                _EXPLORE_CACHE["refreshing"] = True
+                threading.Thread(target=_refresh_explore_feed, daemon=True).start()
+    return _EXPLORE_CACHE["data"]
 
 
 def _efloat(x) -> float:
@@ -2234,20 +2265,60 @@ ROUTES: List[Route] = [
 ]
 
 
+_STATIC_NAMES = ("app.css", "app.js", "session-data.js", "session-chat.js", "research-artifacts.js", "alpaca-paper.js", "alpaca-paper.css", "kalshi-perps-live.js", "kalshi-perps-live.css", "broker-connections.js", "broker-connections.css", "icon.svg", "app.meridian.css", "app.meridian.js", "boot.js")
+_VERSIONS_CACHE: Dict[str, Any] = {"sig": None, "out": None}
+
+
 def _static_versions() -> Dict[str, str]:
+    """Content hash per bundle, for the ?v= cache-busters. Re-hashed only when a file's mtime or size
+    changes (a deploy), not on every page load and /api/version poll."""
+    stats = []
+    for name in _STATIC_NAMES:
+        try:
+            st = (STATIC_DIR / name).stat()
+            stats.append((name, st.st_mtime_ns, st.st_size))
+        except OSError:
+            stats.append((name, 0, -1))
+    sig = tuple(stats)
+    if _VERSIONS_CACHE["sig"] == sig:
+        return _VERSIONS_CACHE["out"]
     out = {}
-    for name in ("app.css", "app.js", "session-data.js", "session-chat.js", "research-artifacts.js", "alpaca-paper.js", "alpaca-paper.css", "kalshi-perps-live.js", "kalshi-perps-live.css", "broker-connections.js", "broker-connections.css", "icon.svg", "app.meridian.css", "app.meridian.js", "boot.js"):
+    for name, _, size in stats:
         p = STATIC_DIR / name
-        out[name] = hashlib.sha256(p.read_bytes()).hexdigest()[:10] if p.exists() else "0"
+        out[name] = hashlib.sha256(p.read_bytes()).hexdigest()[:10] if size >= 0 else "0"
+    _VERSIONS_CACHE.update(sig=sig, out=out)
     return out
 
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "Tau"
     sys_version = ""
+    # Keep-alive: CloudFront reuses its origin connection instead of paying a fresh TCP handshake
+    # (one more edge-to-Virginia round trip) on every API call. Every response sets Content-Length.
+    protocol_version = "HTTP/1.1"
+    timeout = 75  # idle keep-alive sockets close after this; longer than CloudFront's origin keep-alive
 
-    def log_message(self, fmt, *args):  # one line per request, no query strings (they can carry OAuth codes)
-        print("[app] %s %s %s" % (self.command, urlparse(self.path).path, args[1] if len(args) > 1 else ""), flush=True)
+    def log_request(self, code="-", size="-"):
+        self._status = code if isinstance(code, int) else int(getattr(code, "value", 0) or 0)
+
+    def log_message(self, fmt, *args):  # errors from the stdlib (bad request line, 501); no query strings
+        # Also reached on an idle keep-alive timeout, before any request line set command/path.
+        print("[app] %s %s %s" % (getattr(self, "command", None) or "-", urlparse(getattr(self, "path", None) or "").path,
+                                  (fmt % args)[:120]), flush=True)
+
+    def _timed(self, method: str) -> None:
+        """One access line per request, with its time: `[app] GET /api/x 200 12ms 2026-10-24T17:50:01Z`.
+        No query strings (they can carry OAuth codes)."""
+        t0 = time.perf_counter()
+        self._status, self._spa = 0, False
+        try:
+            self._dispatch(method)
+        finally:
+            ms = (time.perf_counter() - t0) * 1000
+            path = urlparse(self.path).path
+            webperf.record(webperf.route_key(method, path, self._spa), self._status, ms)
+            print("[app] %s %s %s %dms %s" % (method, path, self._status, ms,
+                                              datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")), flush=True)
 
     def cookies(self) -> Dict[str, str]:
         out = {}
@@ -2265,17 +2336,32 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "same-origin")
         self.send_header("X-Frame-Options", "DENY")
+        if self._unread_body():
+            # Answered before the body was read (403, 413, 404): those bytes would be parsed as the
+            # next request on a keep-alive socket, so tell the client and close it.
+            self.send_header("Connection", "close")
+            self.close_connection = True
         if SECURE_COOKIES:
             self.send_header("Strict-Transport-Security", "max-age=31536000")
         for k, v in extra or []:
             self.send_header(k, v)
         self.end_headers()
 
+    def _send(self, status: int, ctype: str, body: bytes, extra: Optional[List[Tuple[str, str]]] = None,
+              gz_key: Optional[Tuple[str, int, int]] = None) -> None:
+        """Write a whole response, gzipped when the client accepts it and it's worth it (JSON, HTML,
+        JS, CSS). CloudFront's cache is off for the app, so it never compresses for us."""
+        req_headers = getattr(self, "headers", None)
+        if webperf.wants_gzip(req_headers.get("Accept-Encoding") if req_headers else None, ctype, len(body)):
+            body = webperf.gzip_bytes(body, gz_key)
+            extra = list(extra or []) + [("Content-Encoding", "gzip"), ("Vary", "Accept-Encoding")]
+        self._headers(status, ctype, len(body), extra)
+        self.wfile.write(body)
+
     def _send_json(self, status: int, payload: Any, cookies: List[str]) -> None:
         body = json.dumps(payload, default=_json_default, separators=(",", ":")).encode("utf-8")
         extra = [("Cache-Control", "no-store")] + [("Set-Cookie", c) for c in cookies]
-        self._headers(status, "application/json; charset=utf-8", len(body), extra)
-        self.wfile.write(body)
+        self._send(status, "application/json; charset=utf-8", body, extra)
 
     def _send_static(self, path: str) -> None:
         if path == "/.well-known/apple-developer-merchantid-domain-association":
@@ -2304,8 +2390,8 @@ class Handler(BaseHTTPRequestHandler):
                     .replace("{{meridian_js_v}}", versions["app.meridian.js"])
                     .replace("{{boot_v}}", versions["boot.js"]))
             body = html.encode("utf-8")
-            self._headers(200, "text/html; charset=utf-8", len(body), [("Cache-Control", "no-cache")])
-            self.wfile.write(body)
+            self._spa = True
+            self._send(200, "text/html; charset=utf-8", body, [("Cache-Control", "no-cache")])
             return
         m = re.match(r"^/static/([a-z0-9_.-]+\.(css|js|svg|png|ico|woff2))$", path)
         f = STATIC_DIR / m.group(1) if m else None
@@ -2317,13 +2403,14 @@ class Handler(BaseHTTPRequestHandler):
         ctype = {"css": "text/css", "js": "text/javascript", "svg": "image/svg+xml", "png": "image/png",
                  "ico": "image/x-icon", "woff2": "font/woff2"}[m.group(2)]
         body = f.read_bytes()
-        self._headers(200, ctype + ("; charset=utf-8" if m.group(2) in ("css", "js", "svg") else ""), len(body),
-                      [("Cache-Control", "public, max-age=31536000, immutable")])
-        self.wfile.write(body)
+        st = f.stat()
+        self._send(200, ctype + ("; charset=utf-8" if m.group(2) in ("css", "js", "svg") else ""), body,
+                   [("Cache-Control", "public, max-age=31536000, immutable")], gz_key=(f.name, st.st_mtime_ns, st.st_size))
 
     def _stripe_webhook(self) -> None:
         length = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(length) if length else b""
+        self._body_read = True
         sig = self.headers.get("Stripe-Signature", "")
         try:
             event = billing.verify_webhook(raw, sig)
@@ -2349,16 +2436,38 @@ class Handler(BaseHTTPRequestHandler):
         return self._send_json(200, {"received": True}, [])
 
     def do_GET(self):
-        self._dispatch("GET")
+        self._timed("GET")
 
     def do_POST(self):
-        self._dispatch("POST")
+        self._body_read = False
+        self._timed("POST")
+
+    def _unread_body(self) -> bool:
+        if getattr(self, "command", None) != "POST" or getattr(self, "_body_read", True):
+            return False
+        try:
+            return int(self.headers.get("Content-Length") or 0) > 0
+        except ValueError:
+            return True
+
+    def _perf(self, query: str) -> None:
+        """Rolling latency/error stats for the on-box watchdog. Loopback only: through CloudFront the
+        peer is an edge address, so the public internet always gets the 404."""
+        if self.client_address[0] not in ("127.0.0.1", "::1"):
+            return self._send_json(404, {"error": "Not found"}, [])
+        try:
+            window = max(60.0, min(86400.0, float(parse_qs(query).get("window", ["900"])[0])))
+        except ValueError:
+            window = 900.0
+        return self._send_json(200, webperf.summary(window), [])
 
     def _dispatch(self, method: str) -> None:
         parsed = urlparse(self.path)
         path = parsed.path
         if path == "/healthz":
             return self._send_json(200, {"ok": True}, [])
+        if path == "/internal/perf" and method == "GET":
+            return self._perf(parsed.query)
         # Canonical-host redirect (old CloudFront URL / www -> the custom domain). Inert unless
         # APP_CANONICAL_HOST is set. Only top-level GETs move, so API/auth calls are never broken.
         if CANONICAL_HOST and method == "GET" and not path.startswith(("/api/", "/auth/")):
@@ -2390,6 +2499,7 @@ class Handler(BaseHTTPRequestHandler):
                 if length > MAX_BODY:
                     raise ApiError(413, "Request too large.")
                 raw = self.rfile.read(length) if length else b""
+                self._body_read = True
                 body = json.loads(raw) if raw else {}
                 if not isinstance(body, dict):
                     raise ApiError(400, "Expected a JSON object.")
