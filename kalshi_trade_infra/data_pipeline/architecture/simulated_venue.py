@@ -28,6 +28,7 @@ position does not apply: every order this system sends is a taker.
 import uuid
 from typing import Dict, Optional
 
+from data_pipeline.architecture.execution_kernel import order_wire_params
 from data_pipeline.kalshi_fees import taker_fee_dollars
 
 
@@ -52,15 +53,20 @@ class SimulatedVenue:
             body["average_fee_paid"] = f"{fee_per_contract:.6f}"
         return body
 
-    def __call__(self, ticker: str, action: str, side: str, qty: int, price_dollars: float) -> Dict:
+    def __call__(self, ticker: str, action: str, side: str, qty: int, price_dollars: float,
+                 client_order_id: Optional[str] = None) -> Dict:
         self.orders_sent += 1
-        client_order_id = str(uuid.uuid4())
+        client_order_id = client_order_id or str(uuid.uuid4())
         order_id = str(uuid.uuid4())
+        # Same wire translation as the real submitters: the exchange only has a YES book, so a NO
+        # order is the mirror YES order (buy NO = sell YES at 1-p). The fill is reported as a YES
+        # price, and the kernel flips it back to the NO cost basis, exactly as it does live.
+        wire_side, wire_price = order_wire_params(action, side, price_dollars)
         body = {
             "ticker": ticker,
-            "side": "bid" if str(action).lower() == "buy" else "ask",
+            "side": wire_side,
             "count": f"{int(qty)}.00",
-            "price": f"{float(price_dollars):.4f}",
+            "price": f"{float(wire_price):.4f}",
             "time_in_force": "immediate_or_cancel",
         }
         empty = {"client_order_id": client_order_id, "body": body,
@@ -70,15 +76,14 @@ class SimulatedVenue:
         if quote is None or not quote.tradable:
             return empty
 
-        buying = str(action).lower() == "buy"
-        if buying:
-            # A buy only executes if its limit reaches the resting ask.
-            if quote.yes_ask is None or float(price_dollars) < quote.yes_ask:
+        if wire_side == "bid":
+            # A YES bid only executes if its limit reaches the resting ask.
+            if quote.yes_ask is None or float(wire_price) < quote.yes_ask - 1e-9:
                 return empty
             fill_price = float(quote.yes_ask)
             available = quote.yes_ask_size
         else:
-            if quote.yes_bid is None or float(price_dollars) > quote.yes_bid:
+            if quote.yes_bid is None or float(wire_price) > quote.yes_bid + 1e-9:
                 return empty
             fill_price = float(quote.yes_bid)
             available = quote.yes_bid_size
