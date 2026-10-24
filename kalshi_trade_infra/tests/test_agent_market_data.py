@@ -280,3 +280,19 @@ def test_chat_reply_always_posts_even_with_no_actions(monkeypatch, provider):
     model, _ = scripted(['{"reply":"Here is your answer.","actions":[]}'])
     agent.run_copilot(Conn(), {"id": 1, "user_id": 7, "kind": "chat"}, model=model)
     assert records[0][2:] == ("agent", "Here is your answer.")
+
+
+def test_review_says_a_repeated_refusal_only_once(monkeypatch, provider):
+    # Reviews every ~10 minutes kept posting "you already have research running"; a refusal
+    # (no proposal) already posted recently is skipped on a review, but a chat always posts it.
+    records = []
+    _copilot_mocks(monkeypatch, records)
+    monkeypatch.setattr(agent, "act", lambda *a, **k: ("You already have research running.", None))
+    monkeypatch.setattr(agent.repo, "recent_chat_same", lambda cur, uid, role, text, since: True)
+    reply = '{"reply":"Starting research.","actions":[{"type":"research","market":"btc15m","idea":"x"}]}'
+    model, _ = scripted([reply])
+    agent.run_copilot(Conn(), {"id": 1, "user_id": 7, "kind": "review", "prompt": "scheduled"}, model=model)
+    assert not any(a[2] == "system" for a in records)
+    model, _ = scripted([reply])
+    agent.run_copilot(Conn(), {"id": 2, "user_id": 7, "kind": "chat"}, model=model)
+    assert any(a[2] == "system" and a[3] == "You already have research running." for a in records)

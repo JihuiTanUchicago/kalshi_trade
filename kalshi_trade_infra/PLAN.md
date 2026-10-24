@@ -191,6 +191,10 @@ The manual live path now needs the paper record too. `server.create_deployment` 
 
 Catalog market labels come from the series now. kalshi_series.title held one market's title ("Portland wins", "Middle Tennessee wins by over 7.5 points", "Will the maximum temperature be >77° on Oct 25, 2026?"), so the research picker, run logs and the app named catalog markets after a single contract. `catalog_collector.refresh_series_meta` now also writes the /series title ("NBA Game", "College Football Spread", "Highest temperature in Chicago"), and `refresh_series` no longer overwrites a stored title.
 
+The autopilot panel opens with a plain-language summary (`server._autopilot_story`, rendered into `#apf-story` in both themes). It says what it is researching now, how many ideas it tested this week and that most fail, whether the paper strategies have traded yet and why not, and what live needs: 30 realistic paper trades over 48h+, net up, and live autopilot turned on. It is built only from the status payload, so it can't disagree with the figures under it. The Research row now reads "Researching X" or "Not researching right now", not "choosing a market · Idle". Checked at 390px.
+
+The autopilot feed got three fixes. (1) Reviews saw finished research runs as "[succeeded]" and told Todd that two empty runs were "proven strategies ready for paper", then tried to deploy strategies that had failed. The context now says "[finished, NOTHING passed, no new strategy]" or "[finished, N passed]". (2) A refused action with no proposal ("you already have research running") is posted once per 2 hours on a scheduled review (`agent.REPEAT_NOTE_WINDOW`, `repo.recent_chat_same`). Chats always post. (3) A failed adjustment says "didn't pass these checks: \"makes money on unseen data\"", instead of a gate list that read as praise.
+
 Next: feed realization to the research thread's backtest fill-model calibration.
 
 ## Kalshi perps deployment preparation — October 23, 2026, Asia/Shanghai

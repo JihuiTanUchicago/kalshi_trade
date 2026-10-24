@@ -1132,11 +1132,60 @@ def _research_activity(cur, uid: int) -> Dict:
     runs = repo.list_runs(cur, uid, limit=50)
     active = [r for r in runs if r.get("status") in ("queued", "running", "paused")]
     week = [r for r in runs if r.get("created_at") and r["created_at"] >= since]
-    return {"active": [MARKETS[r["market"]].label if r.get("market") in MARKETS else (r.get("market") or "choosing a market")
+    return {"active": [MARKETS[r["market"]].label if r.get("market") in MARKETS else (r.get("market") or "a market it's still picking")
                        for r in active],
             "tested_7d": sum(int(r.get("hypotheses_tried") or 0) for r in week),
             "passed_7d": sum(int(r.get("strategies_passed") or 0) for r in week),
             "runs_7d": len(week)}
+
+
+def _plural(n: int, one: str, many: str = "") -> str:
+    return "%d %s" % (n, one if n == 1 else (many or one + "s"))
+
+
+def _autopilot_story(d: Dict) -> List[str]:
+    """The autopilot panel's plain-language summary: what it's doing now, why there may be no
+    trades yet, and what has to happen before real money. Built only from the status payload
+    `d` (no extra reads), so it can never disagree with the figures shown under it."""
+    if not d.get("autopilot"):
+        return ["Autopilot is off. Turn it on and it researches, tests and runs strategies on paper by itself, "
+                "with no real money."]
+    if d.get("billing_blocked"):
+        return []  # the panel's billing warning already says why it's paused
+    research = d.get("research") or {}
+    active = research.get("active") or []
+    if active:
+        names = list(dict.fromkeys(active))  # two runs on one market read as one
+        now = "Right now it's researching %s." % (
+            names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1])
+    else:
+        now = "Right now it's between research runs. It checks in about every %d minutes." % max(1, COPILOT_REVIEW_MINUTES)
+    lines = [now]
+    tested, passed = int(research.get("tested_7d") or 0), int(research.get("passed_7d") or 0)
+    if tested:
+        lines.append("This week it tested %s and %s." % (
+            _plural(tested, "idea"),
+            "none has passed its tests yet. That's normal: most ideas fail" if not passed else "%d passed" % passed))
+    paper, prog = int(d.get("paper_running") or 0), d.get("paper_progress")
+    if not paper:
+        lines.append("Nothing is trading on paper yet. A strategy has to pass the research tests first.")
+    elif prog and int(prog.get("trades") or 0) > 0:
+        lines.append("%s on paper (pretend money). The furthest along has %d of %d trades and is %s." % (
+            _plural(paper, "strategy is", "strategies are"), int(prog["trades"]), int(prog["trades_needed"]),
+            ("up $%.2f" % prog["net_pnl"]) if prog["net_pnl"] >= 0 else ("down $%.2f" % -prog["net_pnl"])))
+    else:
+        lines.append("%s on paper (pretend money), but none has traded yet. Each one waits for its own "
+                     "setup, which can take hours." % _plural(paper, "strategy is", "strategies are"))
+    if int(d.get("live_running") or 0):
+        lines.append("%s trading real money." % _plural(int(d["live_running"]), "strategy is", "strategies are"))
+    else:
+        lines.append("Nothing trades real money until a strategy makes money on paper over at least %d trades "
+                     "and %d hours, and you turn on live autopilot." % (agent.MIN_REALISTIC_PAPER_TRADES,
+                                                                      int(agent.MIN_PAPER_SPAN_HOURS)))
+    return lines
+
+
+COPILOT_REVIEW_MINUTES = int(os.getenv("APP_COPILOT_REVIEW_SECONDS", "600")) // 60
 
 
 def autopilot_status(ctx: Ctx):
@@ -1167,7 +1216,7 @@ def autopilot_status(ctx: Ctx):
         paper_progress = {"strategy_id": best, "title": titles[best], "trades": trades,
                           "trades_needed": agent.MIN_REALISTIC_PAPER_TRADES, "net_pnl": round(net, 2),
                           "strategies": len(sids)}
-    return {
+    out = {
         "research": _research_activity(cur, ctx.uid),
         "autopilot": bool(u.get("autopilot")),
         "autopilot_live": bool(u.get("autopilot_live")),
@@ -1185,6 +1234,8 @@ def autopilot_status(ctx: Ctx):
         "billing_reason": (("card" if _needs_card(ctx) else "credits") if billing_blocked else None),
         "paper_progress": paper_progress,
     }
+    out["story"] = _autopilot_story(out)
+    return out
 
 
 def autopilot_model(ctx: Ctx):
