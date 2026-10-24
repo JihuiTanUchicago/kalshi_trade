@@ -439,3 +439,28 @@ def test_drop_streak_zero_falls_back_to_the_attempt_cap(monkeypatch):
     monkeypatch.setattr(agent, "EXPLORE_MAX_DROP_STREAK", 0)
     n, gated, _ = _explore_with_outcomes(monkeypatch, [None] * 40, budget=2)
     assert n == 2 * agent.EXPLORE_ATTEMPT_MULT and gated == [0]
+
+
+def test_a_dataless_pool_leg_fails_only_that_hypothesis(monkeypatch):
+    """Run 2599 died because one pooled city had no settled history yet. Now that hypothesis gets
+    0 trades plus a reason naming the market, and the run carries on."""
+    def no_history(cur, inv):
+        raise ValueError("no settled contracts for market 'eth15m' since 2025-10-24")
+    monkeypatch.setattr(agent.partitions, "ensure_merged_partition", no_history)
+    spec = specmod.validate({"market": "btc15m", "pool": ["eth15m"]})
+    events, cache = [], {}
+    h = {"title": "P", "thesis": "t", "spec": spec}
+    out = agent._test_in_sample(h, None, {"embargo_seconds": 0}, lambda *a: events.append(a), 1,
+                                cur=object(), merged_cache=cache)
+    assert out["in_sample"]["trades"] == 0 and "eth15m" in out["diagnosis"]
+    assert events and events[0][0] == "hypothesis"
+    monkeypatch.setattr(agent.partitions, "ensure_merged_partition", lambda *a: 1 / 0)
+    again = agent._test_in_sample(h, None, {"embargo_seconds": 0}, lambda *a: None, 1,
+                                  cur=object(), merged_cache=cache)
+    assert again["in_sample"]["trades"] == 0  # cached: the dataless set isn't re-queried
+    monkeypatch.setattr(agent.partitions, "ensure_merged_partition",
+                        lambda *a: (_ for _ in ()).throw(ValueError("boom")))
+    import pytest
+    with pytest.raises(ValueError):  # an unrecognized error is still a real bug and propagates
+        agent._test_in_sample(dict(h, spec=specmod.validate({"market": "btc15m", "pool": ["sol15m"]})),
+                              None, {"embargo_seconds": 0}, lambda *a: None, 1, cur=object(), merged_cache={})
