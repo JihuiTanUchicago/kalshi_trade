@@ -41,6 +41,7 @@ DEPTH = 0.05
 SPOT_LOOKBACK_S = 300
 FLOW_LOOKBACK_S = 60
 SPOT_STALE_S = 5
+ROW_GROUP = 1 << 20
 
 F32 = ["strike_lo", "strike_hi", "yes_bid", "yes_ask", "yes_bid_size", "yes_ask_size", "bid_depth", "ask_depth",
        "updates", "mid", "spread", "microprice", "imbalance", "yes_taker_10s", "no_taker_10s", "yes_taker_60s",
@@ -312,7 +313,16 @@ def build_hour(store, hour: datetime, out_dir: str) -> Optional[Dict]:
     tcols = {c: _np(trades, c) for c in ("rt", "yes_price", "count", "taker_side")} if tgroups else {}
     sch = schema()
     writers: Dict[str, object] = {}
+    pending: Dict[str, List] = {}
     files: Dict[str, str] = {}
+
+    def flush(series: str) -> None:
+        # One row group per ~1M rows, not per ticker: the spot columns repeat across a
+        # series' tickers each second, so big row groups dictionary-encode them (3-4x smaller).
+        if pending.get(series):
+            writers[series].write_table(pa.concat_tables(pending[series]), row_group_size=ROW_GROUP)
+            pending[series] = []
+
     per_series: Dict[str, int] = {}
     total, nt = 0, 0
     try:
@@ -338,10 +348,14 @@ def build_hour(store, hour: datetime, out_dir: str) -> Optional[Dict]:
             if series not in writers:
                 files[series] = os.path.join(out_dir, series + ".parquet")
                 writers[series] = pq.ParquetWriter(files[series], sch, compression="zstd")
-            writers[series].write_table(pa.Table.from_arrays(arrays, schema=sch))
+            pending.setdefault(series, []).append(pa.Table.from_arrays(arrays, schema=sch))
+            if sum(t.num_rows for t in pending[series]) >= ROW_GROUP:
+                flush(series)
             per_series[series] = per_series.get(series, 0) + len(rows["sec"])
             total += len(rows["sec"])
             nt += 1
+        for series in list(pending):
+            flush(series)
     finally:
         for w in writers.values():
             w.close()
