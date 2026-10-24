@@ -165,17 +165,49 @@ def delete_series(cur, table: str, col: str, series: str, batch: int, pause: flo
         time.sleep(pause)
 
 
+def _fill_blank_series(cur) -> None:
+    """The copy matches on series_ticker, so a row with it blank would be left behind. The live
+    KXBTC15M/ETH/SOL/... rows are written that way (4,775 on 10-24), so derive it first."""
+    cur.execute("UPDATE markets SET series_ticker = SUBSTRING_INDEX(event_ticker, '-', 1) "
+                "WHERE (series_ticker IS NULL OR series_ticker = '') AND event_ticker IS NOT NULL")
+    print("[prune] markets: filled blank series_ticker on %d rows" % (cur.rowcount or 0), flush=True)
+
+
+def drop_old_markets(conn) -> int:
+    """DROP markets__untraded_old, but only if every curated series that had rows there also has
+    rows in the new markets table. Returns 0 on drop, 1 if a check fails."""
+    from app.markets import CURATED
+
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) AS n FROM information_schema.tables "
+                "WHERE table_schema = DATABASE() AND table_name = 'markets__untraded_old'")
+    if not int(cur.fetchone()["n"]):
+        print("[prune] no markets__untraded_old table; nothing to drop", flush=True)
+        return 1
+    missing = []
+    for series in sorted({m.series for m in CURATED.values()}):
+        new = count_rows(cur, "markets", "series_ticker", series)
+        old = count_rows(cur, "markets__untraded_old", "series_ticker", series)
+        print("[prune] curated %-14s markets=%8d  old=%8d" % (series, new, old), flush=True)
+        if old and not new:
+            missing.append(series)
+    cur.execute("SELECT COUNT(*) AS n FROM markets")
+    print("[prune] markets rows now: %d" % int(cur.fetchone()["n"]), flush=True)
+    if missing:
+        print("[prune] NOT dropping: curated series missing from markets: %s" % ", ".join(missing), flush=True)
+        return 1
+    cur.execute("DROP TABLE markets__untraded_old")
+    print("[prune] dropped markets__untraded_old", flush=True)
+    return 0
+
+
 def rebuild_markets(conn, keep_series: Set[str], drop_old: bool) -> None:
     """Copy the kept `markets` rows into markets__keep, catch up on rows written meanwhile, then
     swap with one atomic RENAME. A short lock_wait_timeout makes the RENAME give up rather than
     queue every reader behind a metadata lock if a long query is holding the table."""
     cur = conn.cursor()
     keep = sorted(keep_series)
-    # The copy matches on series_ticker, so a row with it blank would be left behind. The live
-    # KXBTC15M/ETH/SOL/... rows are written that way (4,775 on 10-24), so derive it first.
-    cur.execute("UPDATE markets SET series_ticker = SUBSTRING_INDEX(event_ticker, '-', 1) "
-                "WHERE (series_ticker IS NULL OR series_ticker = '') AND event_ticker IS NOT NULL")
-    print("[prune] markets: filled blank series_ticker on %d rows" % (cur.rowcount or 0), flush=True)
+    _fill_blank_series(cur)
     cur.execute("DROP TABLE IF EXISTS markets__keep")
     cur.execute("CREATE TABLE markets__keep LIKE markets")
     started = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
@@ -186,6 +218,7 @@ def rebuild_markets(conn, keep_series: Set[str], drop_old: bool) -> None:
                     % ",".join(["%s"] * len(chunk)), tuple(chunk))
         copied += cur.rowcount or 0
     print("[prune] markets__keep: copied %d rows" % copied, flush=True)
+    _fill_blank_series(cur)   # rows forward_collector wrote (blank) during the copy
     for i in range(0, len(keep), 200):
         chunk = keep[i:i + 200]
         cur.execute("REPLACE INTO markets__keep SELECT * FROM markets WHERE series_ticker IN (%s) AND last_seen_utc >= %%s"
@@ -222,6 +255,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--rebuild-markets", action="store_true",
                     help="swap `markets` for a copy holding only kept series instead of DELETEing from it")
     ap.add_argument("--drop-old", action="store_true", help="with --rebuild-markets, drop the old table after the swap")
+    ap.add_argument("--drop-old-only", action="store_true",
+                    help="only drop markets__untraded_old, after checking curated series survived the swap")
     ap.add_argument("--pause", type=float, default=0.2, help="seconds between DELETE batches")
     ap.add_argument("--stop-at", default="23:45", help="UTC HH:MM to stop deleting (resume by re-running)")
     ap.add_argument("--tables", default=",".join(t for t, _, _ in TABLES), help="comma list of tables to prune")
@@ -230,6 +265,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     deadline = _deadline(args.stop_at) if args.apply else float("inf")
 
     conn = get_db_conn()
+    if args.drop_old_only:
+        return drop_old_markets(conn)
     cur = conn.cursor()
     ours = known_series(cur)
     kalshi = kalshi_categories()
