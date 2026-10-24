@@ -192,6 +192,21 @@ class Sources:
     order_lookup: Optional[Callable[[Dict], Optional[Dict]]] = None
     # Shared live-book websocket (WsTickerFeed) for ≤1s marks (P1-1). None = REST-only marks.
     ws_feed: object = None
+    # (tickers, as_of_ts) -> {ticker: {micro feature: value}}: the order-book features research
+    # joins onto every snapshot (model_features_1m). None = snapshots carry no micro features.
+    micro: Optional[Callable[[List[str], int], Dict[str, Dict[str, float]]]] = None
+
+
+def _micro_for(sources: Sources, tickers: List[str], now_ts: int) -> Dict[str, Dict[str, float]]:
+    """Micro features for this frame, or {} when unwired or unreadable. Without them a strategy
+    that filters on one simply doesn't enter (spec._passes), the same as research on a missing row."""
+    if sources.micro is None or not tickers:
+        return {}
+    try:
+        return sources.micro(tickers, now_ts) or {}
+    except Exception as e:
+        print("[engine] micro features unavailable: %r" % e, flush=True)
+        return {}
 
 
 # -- settlement ------------------------------------------------------------------
@@ -1434,7 +1449,9 @@ def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] 
         except Exception as e:  # a spot-feed hiccup on one market must not crash the engine loop
             print("[engine] spot fetch failed for %s: %r (skipping tick)" % (market.key, e), flush=True)
             feats = None
-    snaps = [s for s in (snapshot(feats, q.contract, now_ts, q.yes_bid, q.yes_ask) for q in quotes) if s is not None]
+    micro = _micro_for(sources, [q.contract.ticker for q in quotes], now_ts) if feats is not None else {}
+    snaps = [s for s in (snapshot(feats, q.contract, now_ts, q.yes_bid, q.yes_ask, micro.get(q.contract.ticker))
+                         for q in quotes) if s is not None]
     sizes = book_sizes(quotes)
     # (positions were already marked above, every tick — not only when a decision is due)
     stats["decided"] = 0
@@ -1496,8 +1513,9 @@ def _cross_market_frame(markets: List[str], sources: Sources, now_ts: int):
             feats = series.features_at(now_ts) if series is not None else None
             if feats is None:
                 return None  # stale/missing spot on this leg — skip the whole frame
+        micro = _micro_for(sources, [q.contract.ticker for q in quotes], now_ts)
         for q in quotes:
-            s = snapshot(feats, q.contract, now_ts, q.yes_bid, q.yes_ask)
+            s = snapshot(feats, q.contract, now_ts, q.yes_bid, q.yes_ask, micro.get(q.contract.ticker))
             if s is not None:
                 all_snaps.append(s)
         sizes.update(book_sizes(quotes))
@@ -1778,6 +1796,7 @@ def run_forever() -> None:
                 paper_kernel=paper_kernel_factory(conn, ws_feed=ws_feed),
                 order_lookup=_make_order_lookup(conn),
                 ws_feed=ws_feed,
+                micro=lambda tickers, ts: repo.latest_micro(conn.cursor(), tickers, ts),
             )
             # Deterministic crash recovery (P0-1): before the loop (so it also runs on every
             # reconnect / box reboot), reconcile any order-intent left 'sent' by a prior crash

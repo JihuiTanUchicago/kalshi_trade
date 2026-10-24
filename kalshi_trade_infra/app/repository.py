@@ -1984,6 +1984,30 @@ def _load_micro(cur, series: str, since: datetime,
     return out
 
 
+def latest_micro(cur, tickers, as_of_ts: int, max_age_seconds: int = 120) -> Dict[str, Dict[str, Any]]:
+    """The live counterpart of _load_micro: per ticker, the newest model_features_1m row at or
+    before ``as_of_ts`` and no older than ``max_age_seconds``, aliased to MICRO_FEATURES names.
+    A ticker with no fresh row is absent, exactly as a missing row leaves research's snapshot
+    without the features (and a filter on one then never matches)."""
+    from app.markets import MICRO_FEATURES
+    tickers = sorted({t for t in tickers if t})
+    if not tickers:
+        return {}
+    as_of = datetime.fromtimestamp(int(as_of_ts), tz=timezone.utc).replace(tzinfo=None)
+    cols = ", ".join("%s AS %s" % (col, name) for name, (col, _d) in MICRO_FEATURES.items())
+    cur.execute(
+        "SELECT market_ticker, snapshot_minute_utc, " + cols + " FROM model_features_1m "
+        "WHERE market_ticker IN (" + ",".join(["%s"] * len(tickers)) + ") "
+        "AND snapshot_minute_utc <= %s AND snapshot_minute_utc >= %s ORDER BY snapshot_minute_utc",
+        tuple(tickers) + (as_of, as_of - timedelta(seconds=int(max_age_seconds))),
+    )
+    names = list(MICRO_FEATURES)
+    out: Dict[str, Dict[str, Any]] = {}
+    for r in cur.fetchall():
+        out[r["market_ticker"]] = {n: r[n] for n in names if r.get(n) is not None}  # newest row wins
+    return out
+
+
 def spot_symbols_with_data(cur, symbols) -> set:
     """Which of the given spot symbols already have price candles collected.
 
