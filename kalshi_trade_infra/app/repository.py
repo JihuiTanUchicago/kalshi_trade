@@ -169,7 +169,7 @@ def users_by_usernames(cur, usernames: List[str]) -> List[Dict]:
 
 def get_user(cur, user_id: int) -> Optional[Dict]:
     cur.execute(
-        "SELECT id, email, name, username, picture_url, autopilot, autopilot_live, autopilot_daily_loss_limit, autopilot_model, ui_theme, created_at FROM app_users WHERE id=%s", (user_id,)
+        "SELECT id, email, name, username, picture_url, autopilot, autopilot_live, autopilot_daily_loss_limit, autopilot_model, autopilot_focus, ui_theme, created_at FROM app_users WHERE id=%s", (user_id,)
     )
     return cur.fetchone()
 
@@ -250,7 +250,8 @@ def create_session(cur, user_id: int, token_hash: str, ttl: timedelta) -> None:
 
 def session_user(cur, token_hash: str) -> Optional[Dict]:
     cur.execute(
-        """SELECT u.id, u.email, u.name, u.username, u.picture_url, u.autopilot, u.autopilot_live, u.autopilot_daily_loss_limit, u.ui_theme, u.created_at
+        """SELECT u.id, u.email, u.name, u.username, u.picture_url, u.autopilot, u.autopilot_live, u.autopilot_daily_loss_limit,
+                  u.autopilot_model, u.autopilot_focus, u.ui_theme, u.created_at
            FROM app_sessions s JOIN app_users u ON u.id=s.user_id
            WHERE s.token_hash=%s AND s.expires_at > %s""",
         (token_hash, now_utc()),
@@ -1901,6 +1902,12 @@ def set_autopilot_model(cur, user_id: int, model_key: Optional[str]) -> None:
     """Set the model the autopilot's own runs use (NULL = catalog default). The caller validates
     model_key against models_catalog so only a known key (or None) is ever stored."""
     cur.execute("UPDATE app_users SET autopilot_model=%s WHERE id=%s", (model_key or None, user_id))
+
+
+def set_autopilot_focus(cur, user_id: int, tokens: Optional[List[str]]) -> None:
+    """Store the user's market focus (validated by the caller); empty/None clears it."""
+    cur.execute("UPDATE app_users SET autopilot_focus=%s WHERE id=%s",
+                (json.dumps(tokens) if tokens else None, user_id))
 
 
 def user_execution_config(cur, user_id: int) -> Dict:
