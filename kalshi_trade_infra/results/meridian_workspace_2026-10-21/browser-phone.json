@@ -1,0 +1,50 @@
+[
+  {
+    "docWidth": 320,
+    "error": false,
+    "overflow": false,
+    "title": "Overview",
+    "url": "http://127.0.0.1:8096/",
+    "width": 320
+  },
+  {
+    "docWidth": 320,
+    "error": false,
+    "overflow": false,
+    "title": "Research",
+    "url": "http://127.0.0.1:8096/research",
+    "width": 320
+  },
+  {
+    "docWidth": 320,
+    "error": false,
+    "overflow": false,
+    "title": "Explore",
+    "url": "http://127.0.0.1:8096/explore",
+    "width": 320
+  },
+  {
+    "docWidth": 320,
+    "error": false,
+    "overflow": false,
+    "title": "Community",
+    "url": "http://127.0.0.1:8096/community",
+    "width": 320
+  },
+  {
+    "docWidth": 320,
+    "error": false,
+    "overflow": false,
+    "title": "Funds",
+    "url": "http://127.0.0.1:8096/funds",
+    "width": 320
+  },
+  {
+    "docWidth": 320,
+    "error": false,
+    "overflow": false,
+    "title": "Settings",
+    "url": "http://127.0.0.1:8096/settings",
+    "width": 320
+  }
+]

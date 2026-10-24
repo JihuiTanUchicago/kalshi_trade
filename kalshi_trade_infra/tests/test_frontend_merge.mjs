@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {test} from 'node:test';
 import vm from 'node:vm';
+import {perpsFrontendCases} from './kalshi_perps_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -122,7 +123,7 @@ function frontend({fetchImpl, brokerMount} = {}) {
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewRun, viewFunds, marketPicker, wireMarketPicker};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, marketPicker, wireMarketPicker};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -150,6 +151,7 @@ function strategyFrontend(detail = detailStrategy(), transport) {
   }});
 }
 const postRequests = f => f.requests.filter(({options}) => options.method === 'POST');
+perpsFrontendCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, postRequests});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
   demo: {capital: 1000, equity: 1001, realized: 1}, paper: {cash: 1000, ledger: [
     {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},
@@ -257,7 +259,7 @@ test('the OAuth account return and Funds routes open the current funds page', ()
   assert.notEqual(route('/settings'), f.viewFunds);
 });
 
-test('Funds preserves its current columns and mounts broker controls with a navigation guard', async () => {
+test('Funds preserves account controls and history without mounting unavailable broker connections', async () => {
   const mounts = [];
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); return response(funds()); },
     brokerMount: (host, options) => { mounts.push({host, options}); }});
@@ -266,9 +268,9 @@ test('Funds preserves its current columns and mounts broker controls with a navi
   assert.match(output, /funds-col funds-manage/); assert.match(output, /funds-col funds-history/);
   assert.match(output, /Paper history/); assert.match(output, /&lt;script&gt;ledger&lt;\/script&gt;/);
   assert.doesNotMatch(output, /<script>/);
-  assert.equal(mounts.length, 1); assert.equal(mounts[0].host, f.root.querySelector('#broker-connections'));
-  assert.equal(typeof mounts[0].options.api, 'function'); assert.equal(mounts[0].options.isCurrent(), true);
-  f.S.gen++; assert.equal(mounts[0].options.isCurrent(), false);
+  assert.equal(mounts.length, 0); assert.equal(f.root.querySelector('#broker-connections'), null);
+  assert.ok(f.root.querySelector('#kalshi')); assert.ok(f.root.querySelector('#demo')); assert.ok(f.root.querySelector('#paper'));
+  assert.equal(f.requests.some(({path}) => path.startsWith('/api/brokers')), false);
 });
 
 test('a late Funds read cannot replace the next page or mount stale broker controls', async () => {
@@ -282,19 +284,21 @@ test('a late Funds read cannot replace the next page or mount stale broker contr
   assert.equal(main.innerHTML, 'Next page'); assert.equal(mounts, 0);
 });
 
-test('the mounted broker module cannot redirect after leaving Funds during authorization', async () => {
-  const pending = deferred(), redirects = []; let control;
-  const f = frontend({brokerMount: (host, options) => {
-    control = brokerConnections.mount(host, {...options, search: '', navigate: url => redirects.push(url)});
-    return control;
-  }, fetchImpl: path => {
+test('the retained broker module still rejects a late redirect after its owning view changes', async () => {
+  const pending = deferred(), redirects = [];
+  const f = frontend({fetchImpl: path => {
     if (path === '/api/funds') return response(funds());
     if (path === '/api/brokers') return response({providers: [{id: 'alpaca', configured: true,
       default_environment: 'paper', environments: ['paper', 'live'], connections: []}]});
     assert.equal(path, '/api/brokers/alpaca/connect'); return pending.promise;
   }});
-  await f.viewFunds(); await control.ready;
-  const host = f.root.querySelector('#broker-connections');
+  await f.viewFunds();
+  // Explicit isolated module fixture; customer Funds does not mount this host.
+  const host = new Element('section', {id: 'offline-broker-control'}); f.root.appendChild(host);
+  const generation = f.S.gen;
+  const control = brokerConnections.mount(host, {api: f.api, search: '',
+    isCurrent: () => generation === f.S.gen, navigate: url => redirects.push(url)});
+  await control.ready;
   const connect = host.querySelector('[data-broker-action="connect"][data-broker="alpaca"]');
   assert.ok(connect); const connecting = host.onclick({target: connect, preventDefault() {}});
   assert.deepEqual(JSON.parse(postRequests(f)[0].options.body), {environment: 'paper', permission: 'read'});

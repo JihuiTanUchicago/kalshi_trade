@@ -17,7 +17,7 @@ from __future__ import annotations
 import bisect
 import hashlib
 from collections import Counter
-from datetime import timedelta
+from datetime import timedelta, timezone
 from typing import Dict, List, Optional
 
 from app import backtest, research_repository as rr, tao_repository
@@ -47,6 +47,8 @@ def ensure_partition(cur, market: str) -> Dict:
     exists or if the underlying data has changed (old one -> active=0). Returns the
     persisted row dict."""
     m = MARKETS[market]
+    if m.kind == "perpetual":
+        return _ensure_perpetual_partition(cur, m)
     if m.kind == "spot":
         return _ensure_spot_partition(cur, m)
     since = now_utc() - timedelta(days=m.history_days)
@@ -130,6 +132,61 @@ def merged_dataset(cur, markets: List[str], phase: str):
     frame via backtest.merge_datasets. The combined market key is the FDR stream key, so the
     gatekeeper spends a cross pair from one shared stream (RESEARCH_PIPELINE_DESIGN §E.6)."""
     return merged_dataset_from(merged_partitions(cur, markets), phase)
+
+
+# -- perpetual research: one immutable source and holdout per active window ----
+
+
+def _ensure_perpetual_partition(cur, market: Market) -> Dict:
+    from app import kalshi_perps_repository as perps
+    from app.kalshi_perps_data import Config
+
+    if not Config.from_env().enabled:
+        raise ValueError("Bitcoin perpetual research is disabled; configure its public data collector first.")
+    # Serialize the initial freeze. New minute bars or revisions must not grant
+    # another evaluation allowance over almost the same held-out observations.
+    with perps.partition_lock(cur, market):
+        active = rr.get_active_partition(cur, market.key)
+        if active:
+            source = perps.partition_source(cur, int(active["id"]))
+            if not source:
+                raise ValueError("The perpetual research partition has no frozen data source.")
+            if source["data_fingerprint"] != active["data_fingerprint"]:
+                raise ValueError("The perpetual partition and source fingerprints differ.")
+            return dict(active, source_version=source["source_version"],
+                        source_data_fingerprint=source["data_fingerprint"])
+        now = now_utc()
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
+        since = int((now - timedelta(days=market.history_days)).timestamp())
+        history = perps.load_history(cur, market, since)
+        points = sorted({int(bar["ts"]) for bar in history["candles"]})
+        boundaries = _perpetual_boundaries(points, history["data_fingerprint"])
+        saved = rr.save_partition(cur, market.key, boundaries)
+        perps.bind_partition_source(cur, int(saved["id"]), history["source_version"], history["data_fingerprint"],
+                                     history["coverage"]["source_batches"])
+        return dict(saved, source_version=history["source_version"],
+                    source_data_fingerprint=history["data_fingerprint"])
+
+
+def _perpetual_boundaries(points: List[int], fingerprint: str) -> Dict:
+    from app.kalshi_perps_backtest import MAX_HOLDING_SECONDS, MAX_LOOKBACK_MINUTES
+
+    if len(points) < 600:
+        raise ValueError("Not enough completed Bitcoin perpetual history for three research windows.")
+    start, end = points[0], points[-1]
+    gap = max(MAX_HOLDING_SECONDS, MAX_LOOKBACK_MINUTES * 60)
+    research_to = _snap_forward(points, start + int((end - start) * RESEARCH_FRAC))
+    validation_to = _snap_forward(points, start + int((end - start) * (RESEARCH_FRAC + VALIDATION_FRAC)))
+    validation_from = _snap_forward(points, research_to + gap)
+    holdout_from = _snap_forward(points, validation_to + gap)
+    if not start < research_to < validation_from < validation_to < holdout_from < end:
+        raise ValueError("Bitcoin perpetual history is too short for holding-period embargoes; collect more data.")
+    return {"research_from_ts": start, "research_to_ts": research_to,
+            "validation_from_ts": validation_from, "validation_to_ts": validation_to,
+            "holdout_from_ts": holdout_from, "holdout_to_ts": end + 1,
+            "purge_seconds": MAX_HOLDING_SECONDS, "embargo_seconds": gap,
+            "data_fingerprint": fingerprint}
 
 
 # -- spot (continuous-price) partitions ----------------------------------------
@@ -250,17 +307,49 @@ def research_dataset(market: str, partition: Dict, history_days: Optional[int] =
     [research_from_ts, research_to_ts). The in-research walk-forward split
     (stats.purged_walkforward_splits) runs inside this, replacing the single
     0.7 cut; agent.py owns that iteration."""
+    if MARKETS[market].kind == "perpetual":
+        return _load_perpetual_window(market, partition, "research")
     return _load_window(market, partition["research_from_ts"], partition["research_to_ts"], history_days)
 
 
 def validation_dataset(market: str, partition: Dict, history_days: Optional[int] = None) -> backtest.Dataset:
     """Gatekeeper-only. Contracts opening in [validation_from_ts, validation_to_ts)."""
+    if MARKETS[market].kind == "perpetual":
+        return _load_perpetual_window(market, partition, "validation")
     return _load_window(market, partition["validation_from_ts"], partition["validation_to_ts"], history_days)
 
 
 def holdout_dataset(market: str, partition: Dict, history_days: Optional[int] = None) -> backtest.Dataset:
     """Gatekeeper-only, one-time. Contracts opening in [holdout_from_ts, holdout_to_ts)."""
+    if MARKETS[market].kind == "perpetual":
+        return _load_perpetual_window(market, partition, "holdout")
     return _load_window(market, partition["holdout_from_ts"], partition["holdout_to_ts"], history_days)
+
+
+def _load_perpetual_window(market: str, partition: Dict, phase: str) -> backtest.Dataset:
+    from app import kalshi_perps_repository as perps
+    from app.kalshi_perps_backtest import build_dataset
+    from app.kalshi_perps_data import Config
+    from data_pipeline.common import get_db_conn
+
+    if not Config.from_env().enabled:
+        raise ValueError("Bitcoin perpetual research is disabled.")
+    conn = get_db_conn()
+    try:
+        with conn.cursor() as cur:
+            source = perps.partition_source(cur, int(partition["id"]))
+            if not source:
+                raise ValueError("The Bitcoin perpetual data source is not frozen.")
+            if source["data_fingerprint"] != partition["data_fingerprint"]:
+                raise ValueError("The perpetual partition and source fingerprints differ.")
+            history = perps.load_history(cur, MARKETS[market], int(partition[phase + "_from_ts"]),
+                                         int(partition[phase + "_to_ts"]) - 1, source_version=source["source_version"],
+                                         source_manifest=source["source_manifest"])
+        dataset = build_dataset(MARKETS[market], history)
+        dataset.partition_id = int(partition["id"])
+        return dataset
+    finally:
+        conn.close()
 
 
 def _load_window(market: str, from_ts: int, to_ts: int, history_days: Optional[int]) -> backtest.Dataset:

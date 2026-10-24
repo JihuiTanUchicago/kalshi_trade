@@ -18,7 +18,7 @@ from app import repository as repo
 PROVIDERS = {
     "alpaca": {
         "name": "Alpaca", "environments": ["paper", "live"], "default_environment": "paper",
-        "permission_note": "Account and market-data access. Order authorization is optional; Tau execution remains disabled.",
+        "permission_note": "Account and market-data access. Paper orders require order authorization and your confirmation. Live execution in Tau remains disabled.",
         "setup_url": "https://docs.alpaca.markets/us/docs/about-connect-api",
     },
     "robinhood": {
@@ -114,7 +114,10 @@ def list_brokers(cur, user_id: int) -> dict:
                 "account_label": str(meta.get("account_label") or "Authorized account")[:100],
                 "verification": str(meta.get("verification") or "authorization_received")[:40],
                 "authorized_at": _iso(row.get("connected_at")), "expires_at": _iso(expiry),
-                "expired": expired, "scopes": scopes, "trading_enabled": False,
+                "expired": expired, "scopes": scopes,
+                "trading_enabled": (provider == "alpaca" and row["environment"] == "paper"
+                                    and bool(row.get("connected")) and not expired and "trading" in scopes
+                                    and os.getenv("TAU_ALPACA_PAPER_ENABLED", "0") == "1"),
             })
         providers.append({"id": provider, **definition, **_config(provider), "connections": connections})
     return {"providers": providers}

@@ -1,0 +1,17 @@
+{
+  "local_commit": "4f54ea29a73818b99d2c60f46b4a38cb406423e3",
+  "published_commit": "e76dbfe4b5b32d47eada1e360a753e96fe6fbb80",
+  "tree": "3336c26b6243c7f1f5383897819fb3dffa80775e",
+  "parent": "23e9a5e6595e5cd5687a157c66cfbe0267e9c68a",
+  "branch": "codex/meridian-workspace-operations-20261021",
+  "files": [
+    "kalshi_trade_infra/results/meridian_workspace_operations_2026-10-21/HANDOFF.md",
+    "kalshi_trade_infra/results/meridian_workspace_operations_2026-10-21/OFFLINE_VERIFICATION.json",
+    "kalshi_trade_infra/results/meridian_workspace_operations_2026-10-21/remote.py",
+    "kalshi_trade_infra/results/meridian_workspace_operations_2026-10-21/runner.py",
+    "kalshi_trade_infra/results/meridian_workspace_operations_2026-10-21/test_remote.py",
+    "kalshi_trade_infra/results/meridian_workspace_operations_2026-10-21/test_runner.py"
+  ],
+  "exact_tested_tree": true,
+  "method": "GitHub Git Data API; normal new ref or non-forced fast-forward"
+}

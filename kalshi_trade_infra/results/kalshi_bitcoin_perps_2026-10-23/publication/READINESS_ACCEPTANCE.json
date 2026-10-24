@@ -1,0 +1,38 @@
+{
+  "status": "read_only_preflight_accepted_release_pending",
+  "run_id": 39884723368,
+  "run_url": "https://github.com/JihuiTanUchicago/kalshi_trade/actions/runs/39884723368",
+  "operations_sha": "0e2e79c30d13bab8dec41081ef4d273d826b127c",
+  "candidate_sha": "b7cf7c754e09a50e8f0bc6278dbf275f0f0f2a8b",
+  "server_public_native_feed": "passed_all_5_http_requests",
+  "research_counts": {
+    "paused": 0,
+    "queued": 0,
+    "running": 1
+  },
+  "perps_effectively_off_all_active_services": true,
+  "counts": {
+    "candle_count": 2761,
+    "funding_count": 6,
+    "observation_count": 4,
+    "missing_candle_count": 120
+  },
+  "continuous_replay_accepted": false,
+  "perps_tables_present": {
+    "kalshi_perps_batches": false,
+    "kalshi_perps_partition_sources": false
+  },
+  "installed_source_files": 120,
+  "installed_drift_files": 21,
+  "source_controls_preserved": true,
+  "diagnostic_current_object_and_temporary_source_cleaned": true,
+  "production_deployed": false,
+  "activation": false,
+  "gates": [
+    "running research must be preserved",
+    "reconcile installed source against published candidate before any whole-package replacement",
+    "full candidate schema and public HTTP acceptance for release",
+    "actual perps database/replay and authorized queued research for activation"
+  ],
+  "no_secrets_prices_accounts_or_raw_logs_retained": true
+}

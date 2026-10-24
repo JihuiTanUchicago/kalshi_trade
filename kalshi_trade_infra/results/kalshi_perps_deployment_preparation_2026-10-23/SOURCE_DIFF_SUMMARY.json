@@ -1,0 +1,93 @@
+{
+  "comparisons": [
+    {
+      "path": "app/agent.py",
+      "bytes": 173625,
+      "base_bytes": 168496,
+      "crlf_lines": 0,
+      "line_ending_only": false,
+      "diff_blocks": 23,
+      "old_changed_lines": 38,
+      "new_changed_lines": 113,
+      "credential_pattern_line_numbers": []
+    },
+    {
+      "path": "app/billing.py",
+      "bytes": 13576,
+      "base_bytes": 12901,
+      "crlf_lines": 0,
+      "line_ending_only": false,
+      "diff_blocks": 2,
+      "old_changed_lines": 1,
+      "new_changed_lines": 8,
+      "credential_pattern_line_numbers": []
+    },
+    {
+      "path": "app/devlog.py",
+      "bytes": 101322,
+      "base_bytes": 82944,
+      "crlf_lines": 0,
+      "line_ending_only": false,
+      "diff_blocks": 3,
+      "old_changed_lines": 1,
+      "new_changed_lines": 32,
+      "credential_pattern_line_numbers": []
+    },
+    {
+      "path": "app/llm.py",
+      "bytes": 22318,
+      "base_bytes": 21542,
+      "crlf_lines": 0,
+      "line_ending_only": false,
+      "diff_blocks": 6,
+      "old_changed_lines": 6,
+      "new_changed_lines": 17,
+      "credential_pattern_line_numbers": []
+    },
+    {
+      "path": "app/repository.py",
+      "bytes": 102323,
+      "base_bytes": 99765,
+      "crlf_lines": 0,
+      "line_ending_only": false,
+      "diff_blocks": 6,
+      "old_changed_lines": 12,
+      "new_changed_lines": 55,
+      "credential_pattern_line_numbers": []
+    },
+    {
+      "path": "app/schema.py",
+      "bytes": 39642,
+      "base_bytes": 38887,
+      "crlf_lines": 0,
+      "line_ending_only": false,
+      "diff_blocks": 6,
+      "old_changed_lines": 4,
+      "new_changed_lines": 10,
+      "credential_pattern_line_numbers": []
+    },
+    {
+      "path": "app/server.py",
+      "bytes": 107139,
+      "base_bytes": 106408,
+      "crlf_lines": 0,
+      "line_ending_only": false,
+      "diff_blocks": 14,
+      "old_changed_lines": 39,
+      "new_changed_lines": 30,
+      "credential_pattern_line_numbers": []
+    },
+    {
+      "path": "app/static/app.js",
+      "bytes": 282132,
+      "base_bytes": 273808,
+      "crlf_lines": 0,
+      "line_ending_only": false,
+      "diff_blocks": 29,
+      "old_changed_lines": 71,
+      "new_changed_lines": 125,
+      "credential_pattern_line_numbers": []
+    }
+  ],
+  "capture_run": 39888106069
+}

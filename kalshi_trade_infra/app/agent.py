@@ -537,6 +537,18 @@ def _brief() -> str:
         return ""
 
 
+def research_unavailable_reason(market: Optional[str]) -> Optional[str]:
+    """Reject disabled native research before a manual/agent action queues paid work."""
+    if market in MARKETS and MARKETS[market].kind == "perpetual":
+        from app.kalshi_perps_data import Config
+        from app.market_data_common import MarketDataError
+        try:
+            Config.from_env().require_enabled()
+        except MarketDataError as exc:
+            return str(exc)
+    return None
+
+
 def _researchable_keys(cur) -> List[str]:
     """Market keys the autopilot may pick for its OWN choice: only those with a real backtest
     surface (collected candle history / a live spot feed), so it stops picking data-less markets
@@ -567,12 +579,20 @@ def _research_history_line(cur, user_id: int) -> str:
     return "Your past research across markets — " + "; ".join(parts) + "."
 
 
-def _pick_market(run: Dict, model: ModelFn, usage: Usage, log, keys: List[str], history: str = "") -> str:
+def _pick_market(run: Dict, model: ModelFn, usage: Usage, log, keys: Optional[List[str]] = None, history: str = "") -> str:
     """When the user didn't pin a market, let the agent choose the one whose contracts best
     fit the idea (guided by the brief + the user's cross-market research history), from the
     data-ready `keys` only. One cheap call before the research loop."""
     idea = (run.get("prompt") or "").strip() or "any durable, fee-surviving edge"
-    opts = "\n".join("- %s: %s" % (k, MARKETS[k].label) for k in keys)
+    from app.kalshi_perps_data import Config as PerpsConfig
+    from app.market_data_common import MarketDataError
+    try:
+        perps_enabled = PerpsConfig.from_env().enabled
+    except (ValueError, MarketDataError):
+        perps_enabled = False
+    choices = {k: m for k, m in MARKETS.items()
+               if (keys is None or k in keys) and (m.kind != "perpetual" or perps_enabled)}
+    opts = "\n".join("- %s: %s" % (k, MARKETS[k].label) for k in choices)
     hist = ("\n\n%s Build on what's worked or deliberately explore somewhere new — your call, but "
             "don't blindly repeat a market that keeps failing." % history) if history else ""
     msg = ("%s\n\nIdea: %s%s\nMarkets you can research:\n%s\n"
@@ -581,8 +601,8 @@ def _pick_market(run: Dict, model: ModelFn, usage: Usage, log, keys: List[str], 
 
     def check(obj: Dict) -> Dict:
         k = obj.get("market")
-        if k not in keys:
-            raise ValueError("market must be one of: " + ", ".join(keys))
+        if k not in choices:
+            raise ValueError("market must be one of: " + ", ".join(choices))
         # Full reasoning, not a clipped fragment: this `why` is shown verbatim as the first
         # agent-log line, so cap it at the same 1000 chars as every other reason field (the
         # message column is TEXT) — the old 200 clipped the sentence mid-word.
@@ -611,7 +631,7 @@ def _plan_lookback(run: Dict, market: str, model: ModelFn, usage: Usage, log) ->
             raise ValueError("reply needs an integer lookback_days")
         return {"days": max(5, min(int(d), maxd)), "why": str(obj.get("why") or "")[:1000]}
 
-    r = ask_json(model, RESEARCH_SYSTEM, [{"role": "user", "content": msg}], check, usage)
+    r = ask_json(model, _research_system(market), [{"role": "user", "content": msg}], check, usage)
     log("step", "Chose a %d-day backtest window for this idea. %s" % (r["days"], r["why"]),
         {"phase": "plan", "lookback_days": r["days"]})
     return r["days"]
@@ -623,7 +643,10 @@ def _cross_market_options(market: str) -> str:
     run market, so it can propose same-market cross_strike/calendar but never a cross-MARKET pair.
     Empty when nothing shares the cadence (then cross_sectional isn't offered)."""
     from app.markets import compatible_cadence
-    peers = [k for k in MARKETS if k != market and compatible_cadence([market, k])]
+    if MARKETS[market].kind == "perpetual":
+        return ""
+    peers = [k for k in MARKETS if k != market and MARKETS[k].kind != "perpetual"
+             and compatible_cadence([market, k])]
     if not peers:
         return ""
     labels = ", ".join('"%s" (%s)' % (k, MARKETS[k].label) for k in peers)
@@ -663,6 +686,11 @@ def _market_profile(market: str) -> str:
     m = MARKETS[market]
     head = 'Market profile — "%s" (spec market "%s", series %s, %s).' % (
         m.label, m.key, m.series, m.category or "uncategorized")
+    if m.kind == "perpetual":
+        return head + ("\nA continuous Bitcoin perpetual with native Kalshi prices and recorded funding. "
+                       "This run is research-only. Available mechanisms are causal momentum, "
+                       "mean reversion and funding estimates observed at the decision time. "
+                       "A successful research verdict does not enable trading.")
     if m.kind == "spot":
         return head + """
 This is a CONTINUOUS-PRICE instrument (a Bittensor subnet alpha token priced in TAO), NOT a
@@ -785,7 +813,7 @@ mechanism, falsification_criteria, negative_control, null/alt hypotheses, min_sa
         market_label=MARKETS[run["market"]].label,
         market=run["market"],
         summary=json.dumps(_in_sample_summary(ds)),
-        guide=specmod.SPEC_GUIDE,
+        guide=specmod.research_guide(run["market"]),
         memory=_memory_block(memory),
         count=count,
         span=min(count, len(STRATEGY_FAMILIES)),
@@ -846,6 +874,19 @@ def _in_sample_summary(ds: backtest.Dataset) -> Dict:
     s.pop("decision_points", None)
     s["feature_coverage_pct"] = backtest.feature_coverage(ds)
     return s
+
+
+def _research_system(market: str) -> str:
+    if market in MARKETS and MARKETS[market].kind == "perpetual":
+        # Keep the shared pre-registration/falsification/JSON instructions, while
+        # removing binary settlement and model-family instructions for this instrument.
+        return ("You are a disciplined quantitative researcher studying Bitcoin perpetuals.\n"
+                + RESEARCH_SYSTEM[RESEARCH_SYSTEM.find("The SPECIFIC market"):]
+                + "\nINSTRUMENT OVERRIDE: This run uses only the Bitcoin perpetual causal rule spec below. "
+                  "Binary settlement, GBM/logistic/calibration and code strategies mentioned in shared "
+                  "examples are unavailable. Never invent data or claim execution readiness.\n"
+                + specmod.PERPETUAL_GUIDE)
+    return RESEARCH_SYSTEM
 
 
 class Cancelled(Exception):
@@ -1000,10 +1041,15 @@ def _prereg(t: Dict, spec: Dict, run: Dict, partition: Dict, n_tests: int,
         null_hypothesis=t.get("null_hypothesis", ""), alt_hypothesis=t.get("alt_hypothesis", ""),
         falsification_criteria=t.get("falsification_criteria", ""),
         min_sample=int(t.get("min_sample") or 30),
-        cost_assumptions={"fee": "kalshi_taker", "fill": "ask/bid"},
+        cost_assumptions=(dict(spec["perpetual"], fill="next_open", funding="finalized_payments_as_cost_only",
+                               scenario="one_times_notional_research_not_execution") if specmod.is_perpetual_spec(spec)
+                          else {"fee": "kalshi_taker", "fill": "ask/bid"}),
         data_provenance={"features": specmod.features_used(spec),
                          "sources": specmod.data_sources_for(spec),
-                         "markets": specmod.involved_markets(spec)},
+                         "markets": specmod.involved_markets(spec),
+                         **({"source_version": partition.get("source_version"),
+                              "data_fingerprint": partition.get("source_data_fingerprint", partition.get("data_fingerprint"))}
+                            if specmod.is_perpetual_spec(spec) else {})},
         research_partition_id=int(partition.get("id") or 0),
         planned_n_tests=n_tests, correction_method="BH", strategy_id=strategy_id,
     )
@@ -1266,7 +1312,7 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
         log("step", "Proposing round %d — generating up to %d hypothes%s…"
             % (round_no, want, "is" if want == 1 else "es"),
             {"phase": "proposing", "round": round_no, "width": want})
-        batch = market_data.ask(proposer, RESEARCH_SYSTEM,
+        batch = market_data.ask(proposer, _research_system(market),
                          [{"role": "user", "content": _round_prompt(run, ds, memory, want, chunk)}],
                          _hypotheses_check(market, want), usage)
         if not batch:
@@ -1920,7 +1966,7 @@ def _develop_thesis(h: Dict, run: Dict, ds: backtest.Dataset, partition: Dict, m
         log("step", "Developing \"%s\" (step %d/%d)…" % (t["title"], step + 2, THESIS_MAX_STEPS),
             {"phase": "developing", "title": t["title"], "step": step + 2, "max_steps": THESIS_MAX_STEPS})
         try:
-            reply = market_data.ask(proposer, RESEARCH_SYSTEM,
+            reply = market_data.ask(proposer, _research_system(market),
                                     [{"role": "user", "content": _develop_prompt(run, t, memory, step)}],
                                     _develop_check(market), usage)
         except LLMError:
@@ -2182,6 +2228,19 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
     kind = str(action.get("type") or action.get("kind") or "").strip().lower()
     reason = str(action.get("reason") or "").strip()[:1000] or "No reason given."
     user_id = user["id"]
+    if kind == "kalshi_perps_order":
+        from app import kalshi_perps_trading
+        try:
+            return kalshi_perps_trading.propose_for_agent(
+                cur, user_id, {k: v for k, v in action.items() if k not in ("type", "kind")})
+        except kalshi_perps_trading.Error as exc:
+            return "I could not propose that Bitcoin perps order: %s" % exc, None
+    if kind == "alpaca_paper_order":
+        from app import alpaca_paper
+        try:
+            return alpaca_paper.propose_for_agent(cur, user_id, action)
+        except alpaca_paper.Error as exc:
+            return "I could not propose that Alpaca paper order: %s" % exc, None
     if kind in ("adjust", "pause", "resume"):
         dep = repo.get_deployment(cur, user_id, int(action.get("deployment_id") or 0))
         if dep is None or dep["status"] == "stopped":
@@ -2193,6 +2252,8 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
                     or "none — you have no active deployments, so research a new edge or deploy a proven one instead of adjusting")
             return ("Deployment #%s no longer exists (removed or stopped). Your current deployments are: %s."
                     % (action.get("deployment_id"), have), None)
+        if kind != "pause" and specmod.has_perpetual_market(dep.get("spec") or {}, dep.get("market")):
+            return "Bitcoin perpetuals are research-only; their deployments cannot be resumed or adjusted.", None
     if kind == "adjust":
         changes = action.get("changes")
         if not isinstance(changes, dict) or not changes:
@@ -2345,6 +2406,9 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
                 return "I can't research that market — pick one Tau supports, or let me choose.", None
             if len(idea) < 8:
                 return "Tell me the idea to research in a sentence or two.", None
+        unavailable = research_unavailable_reason(strat["market"] if sid else market)
+        if unavailable:
+            return unavailable, None
         if repo.count_runs(cur, user_id, "research", active_only=True) >= MAX_ACTIVE_RESEARCH:
             return "You already have a couple of research sessions running — let one finish and I'll start this then.", None
         if MAX_RESEARCH_PER_DAY and repo.count_runs(
@@ -2384,13 +2448,25 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
 def apply_proposal(cur, user_id: int, proposal: Dict) -> None:
     """The user approved it: do what it says."""
     kind = proposal["kind"]
+    if kind == "kalshi_perps_live":
+        raise ValueError("A native perps order requires separate exact-ticket confirmation by its owner.")
+    if kind == "alpaca_paper":
+        raise ValueError("Alpaca paper approval must use the durable broker order service.")
+    if kind in ("adjust", "deploy"):
+        strategy = repo.get_strategy(cur, user_id, proposal["strategy_id"])
+        if strategy and specmod.has_perpetual_market(strategy.get("spec") or {}, strategy.get("market")):
+            raise ValueError("Bitcoin perpetual research cannot be deployed or applied to a deployment.")
+    if kind in ("adjust", "resume"):
+        deployment = repo.get_deployment(cur, user_id, proposal["deployment_id"])
+        if deployment and specmod.has_perpetual_market(deployment.get("spec") or {}, deployment.get("market")):
+            raise ValueError("Bitcoin perpetual deployments cannot be resumed or adjusted.")
     if kind == "adjust":
         repo.set_deployment_strategy(cur, user_id, proposal["deployment_id"], proposal["strategy_id"])
     elif kind in ("pause", "resume"):
         repo.set_deployment_status(cur, user_id, proposal["deployment_id"], "paused" if kind == "pause" else "running",
                                    "Approved agent proposal")
     elif kind == "deploy":
-        strat = repo.get_strategy(cur, user_id, proposal["strategy_id"])
+        strat = strategy
         repo.create_deployment(cur, user_id, strat["id"], strat["market"], "paper")
     elif kind == "set_risk":
         # payload is the already-clamped change set from act(); re-clamp defensively so an approval
@@ -2562,6 +2638,8 @@ Actions:
   {"type": "research", "strategy_id": N, "reason": "..."}     (DIG DEEPER off a PASSED strategy — refine its parameters, stress-test it, extend the thesis. Each variant still has to pass the gates.)
   {"type": "research", "market": "<market key or omit to let me choose>", "idea": "<a short ANGLE/lens, NOT a full thesis>", "reason": "..."}   (FRESH research line. DELEGATE, don't author: `idea` is a high-level DIRECTION — a market + a short angle (e.g. "favorite-longshot on this sports market", "order-flow if this market has microstructure data") — and the research specialist writes the actual hypotheses and specs from it. Do NOT hand it a fully-formed strategy ("buy when implied>65%..."); that is the research pipeline's job, not yours. One or two sentences of angle is enough.)
   {"type": "deploy", "strategy_id": N, "reason": "..."}       (paper; any side)
+  {"type": "alpaca_paper_order", "symbol": "AAPL", "side": "buy", "qty": "1", "limit_price": "100.00", "reason": "..."} (A separate Alpaca broker PAPER stock/ETF experiment. Whole shares, limit DAY only. Creates a ticket for explicit USER APPROVAL even when autopilot is on; it never executes from this action. Use the current paper account/positions and the user's instruction; do not infer a fill or convert a Kalshi binary strategy into an equity strategy. This is not live equity execution.)
+  {"type": "kalshi_perps_order", "side": "bid", "count": "1", "price": "7.00", "reduce_only": false, "reason": "..."} (Native Kalshi BTC perps REAL-MONEY order proposal only. Whole contracts; price is USD PER CONTRACT, not BTC spot price. Bid buys/longs, ask sells/shorts; reduce_only must only reduce the current position. Kalshi determines account/product margin and leverage; there is no order leverage field or Tau financial cap. Always requires the owner to review a fresh exact order ticket and explicitly confirm, even with autopilot on. Never submit, approve, retry or claim execution yourself. Do not infer fills, access, buying power or liquidation safety. Research-only perps strategies remain ineligible for automatic deployment.)
   {"type": "deploy_live", "strategy_id": N, "reason": "..."}  (REAL money; any side (YES or NO) that already proved itself on PAPER, and only when the user turned on live autopilot. If live autopilot is off or any safety gate fails it is refused and stays on paper. Never the first step for a new idea: research -> paper -> live.)
 Back your words with actions. If your reply says you ARE doing something — starting/launching research, tuning, pausing, promoting, deploying — you MUST include the matching action(s) in `actions`. A reply that merely DESCRIBES an action without emitting it does NOTHING (no research is launched, nothing changes) and is a failure: e.g. saying "I'll launch three research threads now" requires three `research` actions in this same response, not a promise to do it later. Conversely, never invent actions you have no concrete reason for — if the right move is to wait and watch, say so plainly and return an empty list. EXCEPTION: if the context says EMPTY DECK (zero deployments and zero research in flight), waiting is NOT allowed — you must emit at least one `research` action this turn.
 CLOSE THE LOOP: research only pays off when a proven edge reaches the book. If a passed strategy is a DEPLOYMENT-CANDIDATE, promoting it to paper (a `deploy` action) takes priority over opening a new exploratory research line — don't explore forever while a ready edge sits undeployed. And don't re-launch research on a market that is already running or just finished: that line is refused; hunt a DIFFERENT market from the list.
@@ -2631,6 +2709,12 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
         else:
             task = "Answer the user's latest message."
         prompt = "%s\n\nRecent conversation:\n%s\n\n%s\n\n%s" % (_copilot_context(cur, user), transcript or "(none)", task, ACTIONS_GUIDE)
+        from app import alpaca_paper
+        if alpaca_paper.enabled():
+            prompt += "\n\n" + alpaca_paper.agent_context(conn, user["id"])
+        from app import kalshi_perps_trading
+        if kalshi_perps_trading.enabled():
+            prompt += "\n\n" + kalshi_perps_trading.agent_context(conn, user["id"])
         market_data = AgentMarketData(DataScope(), lambda kind, message, data=None:
                                      repo.add_event(cur, run["id"], kind, message, data), checkpoint)
         knowledge = AgentKnowledge(DataScope(), lambda kind, message, data=None:
@@ -2652,7 +2736,11 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
             repo.set_autopilot_plan(cur, user["id"], out["plan"])
         for action in out["actions"]:
             checkpoint()
-            text, proposal_id = act(cur, user, action, bool(user.get("autopilot")), dataset_fn)
+            if str(action.get("type") or action.get("kind") or "").strip().lower() in ("alpaca_paper_order", "kalshi_perps_order"):
+                with repo.transaction(conn) as tx:
+                    text, proposal_id = act(tx, user, action, bool(user.get("autopilot")), dataset_fn)
+            else:
+                text, proposal_id = act(cur, user, action, bool(user.get("autopilot")), dataset_fn)
             repo.add_chat(cur, user["id"], "system", text, proposal_id)
         repo.finish_run(cur, run["id"], "succeeded", None, 0, 0, usage.input_tokens, usage.output_tokens)
         billing_attempted = True

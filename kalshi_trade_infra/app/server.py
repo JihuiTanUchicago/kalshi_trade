@@ -26,7 +26,7 @@ from urllib.parse import parse_qs, urlparse
 from app import agent, auth, backtest, billing, devlog, dreaming, engine, kalshi_account, notify
 from app import kalshi_dev
 from app import kalshi_dev_exec
-from app import broker_oauth
+from app import broker_oauth, alpaca_paper, kalshi_perps_trading
 from app import models_catalog as catalog
 from app import repository as repo
 from app import research_repository as research_repo
@@ -219,6 +219,59 @@ def broker_disconnect(ctx: Ctx):
                         ctx.body.get("environment"))
 
 
+def _paper_call(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except alpaca_paper.Error as exc:
+        raise ApiError(exc.status, str(exc)) from None
+
+
+def alpaca_paper_account(ctx: Ctx):
+    return _paper_call(alpaca_paper.overview, ctx.conn, ctx.uid)
+
+
+def alpaca_paper_draft(ctx: Ctx):
+    return _paper_call(alpaca_paper.create_order, ctx.conn, ctx.uid, ctx.body)
+
+
+def alpaca_paper_action(ctx: Ctx):
+    operation = {"submit": alpaca_paper.submit_order, "refresh": alpaca_paper.refresh_order,
+                 "cancel": alpaca_paper.cancel_order}[ctx.params[1]]
+    return _paper_call(operation, ctx.conn, ctx.uid, _int_param(ctx))
+
+
+def _perps_live_call(fn, *args):
+    try:
+        return fn(*args)
+    except kalshi_perps_trading.Error as exc:
+        raise ApiError(exc.status, str(exc)) from None
+
+
+def kalshi_perps_live_account(ctx: Ctx):
+    return _perps_live_call(kalshi_perps_trading.overview, ctx.conn, ctx.uid)
+
+
+def kalshi_perps_live_policy(ctx: Ctx):
+    return _perps_live_call(kalshi_perps_trading.save_policy, ctx.conn, ctx.uid, ctx.body)
+
+
+def kalshi_perps_live_draft(ctx: Ctx):
+    return _perps_live_call(kalshi_perps_trading.create_order, ctx.conn, ctx.uid, ctx.body)
+
+
+def kalshi_perps_live_proposal(ctx: Ctx):
+    return _perps_live_call(kalshi_perps_trading.preview_proposal,
+                            ctx.conn, ctx.uid, _int_param(ctx), ctx.body)
+
+
+def kalshi_perps_live_action(ctx: Ctx):
+    operation = {"submit": kalshi_perps_trading.submit_order,
+                 "refresh": kalshi_perps_trading.refresh_order,
+                 "cancel": kalshi_perps_trading.cancel_order}[ctx.params[1]]
+    args = (ctx.conn, ctx.uid, _int_param(ctx))
+    return _perps_live_call(operation, *args) if ctx.params[1] == "refresh" else _perps_live_call(operation, *args, ctx.body)
+
+
 # -- read routes ---------------------------------------------------------------
 
 
@@ -236,16 +289,28 @@ def _researchable_markets(cur) -> List[Dict]:
     spot_underlyings = [m.underlying for m in MARKETS.values() if m.kind == "spot" and m.underlying]
     live_spot = repo.spot_symbols_with_data(cur, spot_underlyings)
     ready_series = repo.series_with_candles(cur)
+    from app import kalshi_perps_repository as perps_repo
+    from app.kalshi_perps_data import Config as PerpsConfig
+    from app.market_data_common import MarketDataError
+    try:
+        perps_enabled = PerpsConfig.from_env().enabled
+    except (ValueError, MarketDataError):
+        perps_enabled = False
     out: List[Dict] = []
     for m in MARKETS.values():
-        if m.kind == "spot":
+        if m.kind == "perpetual":
+            if not perps_enabled:
+                continue
+            has_data = perps_repo.ready(cur, m)
+        elif m.kind == "spot":
             if m.underlying not in live_spot:
                 continue
             has_data = True
         else:
             has_data = m.series in ready_series
         out.append({"key": m.key, "label": m.label, "series": m.series,
-                    "category": m.category, "deployable": m.deployable, "has_data": has_data})
+                    "category": m.category, "deployable": m.deployable, "has_data": has_data,
+                    **({"kind": "perpetual", "research_only": True} if m.kind == "perpetual" else {})})
     return out
 
 
@@ -468,6 +533,9 @@ def create_run(ctx: Ctx):
         raise ApiError(400, "Pick a model from the list, or leave it on the default.")
     if market is not None and market not in MARKETS:
         raise ApiError(400, "Pick a market Tau can research, or let the agent choose.")
+    unavailable = agent.research_unavailable_reason(market)
+    if unavailable:
+        raise ApiError(409, unavailable)
     if not idea or len(idea) < 8:
         raise ApiError(400, "Describe your idea in a sentence or two first.")
     if direction is not None and direction not in agent.DIRECTIONS:
@@ -511,6 +579,9 @@ def dig_deeper(ctx: Ctx):
     s = _owned_strategy(ctx)
     if s["status"] != "passed":
         raise ApiError(409, "Only a strategy that passed its backtest can be researched deeper.")
+    unavailable = agent.research_unavailable_reason(s["market"])
+    if unavailable:
+        raise ApiError(409, unavailable)
     model = ctx.body.get("model") or None
     if model is not None and model not in catalog.MODELS:
         raise ApiError(400, "Pick a model from the list, or leave it on the default.")
@@ -553,7 +624,9 @@ def _strategy_card(s: Dict) -> Dict:
         "created_at": s["created_at"], "hypotheses_tried": s.get("hypotheses_tried"),
         "in_sample": res.get("in_sample"), "out_of_sample": res.get("out_of_sample"),
         "equity": res.get("equity"), "capital": res.get("capital"),
-        "stake": s["spec"]["sizing"]["stake"], "side": s["spec"]["side"],
+        "stake": s["spec"]["sizing"]["stake"],
+        "side": s["spec"]["perpetual"]["side"] if specmod.is_perpetual_spec(s["spec"]) else s["spec"].get("side"),
+        **({"kind": "perpetual", "research_only": True} if specmod.is_perpetual_spec(s["spec"]) else {}),
         "deployed": bool(s.get("active_deps")), "deploy_live": bool(s.get("live_deps")),
         "shared_from": s.get("shared_from_name") if s.get("shared_from_user_id") else None,
     }
@@ -802,6 +875,8 @@ def get_strategy(ctx: Ctx):
 
 def what_if(ctx: Ctx):
     s = _owned_strategy(ctx)
+    if specmod.has_perpetual_market(s["spec"], s.get("market")):
+        raise ApiError(409, "Bitcoin perpetual research uses fixed scenario costs; binary slippage controls do not apply.")
     if s["status"] == "rejected":
         raise ApiError(409, "This hypothesis was rejected in-sample; there is no full backtest to vary.")
     # Default the slippage knob to the real demo-book slippage measured for this
@@ -827,6 +902,8 @@ def strategy_dev_curve(ctx: Ctx):
     Degrades to {"dev_curve": None} (no second line) when dev replay is
     unconfigured or the demo host/data is unavailable - it never errors the page."""
     s = _owned_strategy(ctx)
+    if specmod.has_perpetual_market(s["spec"], s.get("market")):
+        return {"dev_curve": None, "reason": "Bitcoin perpetuals are research-only; event-contract demo replay is unavailable."}
     if not (s.get("result") or {}).get("out_of_sample"):
         return {"dev_curve": None, "reason": "This hypothesis has no out-of-sample backtest to replay."}
     out = kalshi_dev.dev_curve_for_strategy(s["id"], s["spec"], s["market"])
@@ -911,6 +988,8 @@ def deployment_action(ctx: Ctx):
     dep = repo.get_deployment(ctx.cur, ctx.uid, dep_id)
     if dep is None:
         raise ApiError(404, "No such deployment.")
+    if action == "resume" and specmod.has_perpetual_market(dep.get("spec") or {}, dep.get("market")):
+        raise ApiError(409, "Bitcoin perpetuals are research-only and cannot be resumed for trading.")
     status = {"pause": "paused", "resume": "running", "stop": "stopped"}[action]
     if dep["status"] == "stopped":
         raise ApiError(409, "This deployment is stopped.")
@@ -949,6 +1028,14 @@ def post_chat(ctx: Ctx):
 def decide_proposal(ctx: Ctx):
     pid, decision = _int_param(ctx), ctx.params[1]
     conn = ctx.conn
+    # Broker execution commits its durable claim before HTTP. Do not hold the
+    # generic proposal transaction around a network request or bypass the
+    # paper service's scope, ownership, cash and duplicate-send checks.
+    candidate = repo.get_proposal(ctx.cur, ctx.uid, pid)
+    if candidate and candidate["kind"] == "kalshi_perps_live":
+        return _perps_live_call(kalshi_perps_trading.decide_proposal, conn, ctx.uid, pid, decision)
+    if candidate and candidate["kind"] == "alpaca_paper":
+        return _paper_call(alpaca_paper.decide_proposal, conn, ctx.uid, pid, decision)
     with repo.transaction(conn) as tx:
         p = repo.get_proposal(tx, ctx.uid, pid)
         if p is None:
@@ -1123,14 +1210,19 @@ def save_kalshi_key(ctx: Ctx):
         raise ApiError(400, str(e))
     except RuntimeError:
         raise ApiError(503, "This server can't store keys yet (encryption key not configured).")
-    repo.save_kalshi_key(ctx.cur, ctx.uid, key_id.strip(), blob)
+    with repo.transaction(ctx.conn) as tx:
+        _perps_live_call(kalshi_perps_trading.guard_key_change, tx, ctx.uid, "production")
+        repo.save_kalshi_key(tx, ctx.uid, key_id.strip(), blob)
     return {"ok": True, "balance": cash}
 
 
 def delete_kalshi_key(ctx: Ctx):
-    if any(d["mode"] == "live" and d["status"] == "running" for d in repo.list_deployments(ctx.cur, ctx.uid)):
-        raise ApiError(409, "Pause or stop your live deployments before disconnecting Kalshi.")
-    repo.delete_kalshi_key(ctx.cur, ctx.uid)
+    with repo.transaction(ctx.conn) as tx:
+        repo.lock_user(tx, ctx.uid)
+        if any(d["mode"] == "live" and d["status"] == "running" for d in repo.list_deployments(tx, ctx.uid)):
+            raise ApiError(409, "Pause or stop your live deployments before disconnecting Kalshi.")
+        _perps_live_call(kalshi_perps_trading.guard_key_change, tx, ctx.uid, "production")
+        repo.delete_kalshi_key(tx, ctx.uid)
     return {"ok": True}
 
 
@@ -1158,14 +1250,19 @@ def save_kalshi_dev_key(ctx: Ctx):
         blob = kalshi_account.encrypt_private_key(ctx.uid, pem.strip())
     except RuntimeError:
         raise ApiError(503, "This server can't store keys yet (encryption key not configured).")
-    repo.set_kalshi_dev_key(ctx.cur, ctx.uid, key_id, blob)
+    with repo.transaction(ctx.conn) as tx:
+        _perps_live_call(kalshi_perps_trading.guard_key_change, tx, ctx.uid, "demo")
+        repo.set_kalshi_dev_key(tx, ctx.uid, key_id, blob)
     return {"ok": True}
 
 
 def delete_kalshi_dev_key(ctx: Ctx):
-    if any(d["mode"] == "demo" and d["status"] == "running" for d in repo.list_deployments(ctx.cur, ctx.uid)):
-        raise ApiError(409, "Pause or stop your demo deployments before removing your demo key.")
-    repo.delete_kalshi_dev_key(ctx.cur, ctx.uid)
+    with repo.transaction(ctx.conn) as tx:
+        repo.lock_user(tx, ctx.uid)
+        if any(d["mode"] == "demo" and d["status"] == "running" for d in repo.list_deployments(tx, ctx.uid)):
+            raise ApiError(409, "Pause or stop your demo deployments before removing your demo key.")
+        _perps_live_call(kalshi_perps_trading.guard_key_change, tx, ctx.uid, "demo")
+        repo.delete_kalshi_dev_key(tx, ctx.uid)
     return {"ok": True}
 
 
@@ -1871,6 +1968,14 @@ ROUTES: List[Route] = [
         ("POST", "/api/waitlist", waitlist, False),
         ("GET", "/api/me", me, True),
         ("GET", "/api/brokers", broker_connections, True),
+        ("GET", "/api/kalshi/perps/live", kalshi_perps_live_account, True),
+        ("POST", "/api/kalshi/perps/live/policy", kalshi_perps_live_policy, True),
+        ("POST", "/api/kalshi/perps/live/orders", kalshi_perps_live_draft, True),
+        ("POST", r"/api/kalshi/perps/live/proposals/(\d+)/preview", kalshi_perps_live_proposal, True),
+        ("POST", r"/api/kalshi/perps/live/orders/(\d+)/(submit|refresh|cancel)", kalshi_perps_live_action, True),
+        ("GET", "/api/brokers/alpaca/paper", alpaca_paper_account, True),
+        ("POST", "/api/brokers/alpaca/paper/orders", alpaca_paper_draft, True),
+        ("POST", r"/api/brokers/alpaca/paper/orders/(\d+)/(submit|refresh|cancel)", alpaca_paper_action, True),
         ("POST", r"/api/brokers/(alpaca|robinhood|ibkr)/connect", broker_connect, True),
         ("POST", r"/api/brokers/(alpaca|robinhood|ibkr)/disconnect", broker_disconnect, True),
         ("GET", r"/auth/brokers/(alpaca|robinhood|ibkr)/callback", broker_callback, True),
@@ -1945,7 +2050,7 @@ ROUTES: List[Route] = [
 
 def _static_versions() -> Dict[str, str]:
     out = {}
-    for name in ("app.css", "app.js", "session-data.js", "session-chat.js", "research-artifacts.js", "broker-connections.js", "broker-connections.css", "icon.svg", "app.meridian.css", "app.meridian.js", "boot.js"):
+    for name in ("app.css", "app.js", "session-data.js", "session-chat.js", "research-artifacts.js", "alpaca-paper.js", "alpaca-paper.css", "kalshi-perps-live.js", "kalshi-perps-live.css", "broker-connections.js", "broker-connections.css", "icon.svg", "app.meridian.css", "app.meridian.js", "boot.js"):
         p = STATIC_DIR / name
         out[name] = hashlib.sha256(p.read_bytes()).hexdigest()[:10] if p.exists() else "0"
     return out
@@ -2004,6 +2109,10 @@ class Handler(BaseHTTPRequestHandler):
                     .replace("{{artifacts_v}}", versions["research-artifacts.js"])
                     .replace("{{brokers_v}}", versions["broker-connections.js"])
                     .replace("{{brokers_css_v}}", versions["broker-connections.css"])
+                    .replace("{{paper_js_v}}", versions["alpaca-paper.js"])
+                    .replace("{{paper_css_v}}", versions["alpaca-paper.css"])
+                    .replace("{{perps_js_v}}", versions["kalshi-perps-live.js"])
+                    .replace("{{perps_css_v}}", versions["kalshi-perps-live.css"])
                     .replace("{{icon_v}}", versions["icon.svg"])
                     .replace("{{meridian_css_v}}", versions["app.meridian.css"])
                     .replace("{{meridian_js_v}}", versions["app.meridian.js"])

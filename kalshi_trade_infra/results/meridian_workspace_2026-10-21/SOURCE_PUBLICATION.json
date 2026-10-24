@@ -1,0 +1,33 @@
+{
+  "local_commit": "23c65379fd3c8b6e3c01634c279f089632193668",
+  "published_commit": "d8fbf233b4508c400b9ffbf92976aefba9fcbe40",
+  "tree": "984bfe0cee6716701927a94335ac0a03fa11d512",
+  "parent": "2223751625dbdf3f07710ac27b58180fcadac23f",
+  "branch": "codex/meridian-workspace-20261021",
+  "files": [
+    ".github/workflows/ci.yml",
+    "kalshi_trade_infra/DESIGN.md",
+    "kalshi_trade_infra/PLAN.md",
+    "kalshi_trade_infra/app/README.md",
+    "kalshi_trade_infra/app/static/app.meridian.css",
+    "kalshi_trade_infra/app/static/app.meridian.js",
+    "kalshi_trade_infra/results/meridian_workspace_2026-10-21/BASELINE.json",
+    "kalshi_trade_infra/results/meridian_workspace_2026-10-21/FONT_READINESS.json",
+    "kalshi_trade_infra/results/meridian_workspace_2026-10-21/FUNCTIONAL_REVIEW.md",
+    "kalshi_trade_infra/results/meridian_workspace_2026-10-21/HANDOFF.md",
+    "kalshi_trade_infra/results/meridian_workspace_2026-10-21/PORT.json",
+    "kalshi_trade_infra/results/meridian_workspace_2026-10-21/PUBLIC_BEFORE.json",
+    "kalshi_trade_infra/results/meridian_workspace_2026-10-21/VERIFICATION.json",
+    "kalshi_trade_infra/results/meridian_workspace_2026-10-21/browser-final-source.json",
+    "kalshi_trade_infra/results/meridian_workspace_2026-10-21/browser-phone.json",
+    "kalshi_trade_infra/results/meridian_workspace_2026-10-21/browser-routes.json",
+    "kalshi_trade_infra/results/meridian_workspace_2026-10-21/browser-theme-roundtrip.json",
+    "kalshi_trade_infra/results/meridian_workspace_2026-10-21/dashboard-meridian-final.png",
+    "kalshi_trade_infra/results/meridian_workspace_2026-10-21/functional-guard-handoff.md",
+    "kalshi_trade_infra/tests/test_meridian_workspace.mjs",
+    "kalshi_trade_infra/tests/test_production_ui_reconciliation.mjs",
+    "mvp.md"
+  ],
+  "exact_tested_tree": true,
+  "method": "GitHub Git Data API; normal new ref or non-forced fast-forward"
+}

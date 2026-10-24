@@ -151,7 +151,7 @@ def test_abandoned_run_message_is_informative():
         def execute(self, sql, params):
             captured["sql"], captured["params"] = sql, params  # last execute wins (the UPDATE)
         def fetchall(self):
-            # one stale run with no checkpointed progress -> the STOPPED path (interrupted, not failed)
+            # one stale run with no checkpointed progress -> the neutral stopped path (not resumable)
             return [{"id": 1, "kind": "research", "resume_count": 0, "checkpoint_json": None}]
 
     from app import repository as repo
@@ -159,7 +159,10 @@ def test_abandoned_run_message_is_informative():
     # An interrupted run is STOPPED, never failed, and says it was interrupted — not a scary error.
     assert "status='stopped'" in " ".join(captured["sql"].split())
     msg = captured["params"][0]
-    assert "interrupted" in msg and "new one" in msg
+    assert "interrupted before it explored" in msg and "start a new one" in msg
+    assert "status='stopped'" in captured["sql"]
+    assert captured["params"][1:3] == (0, 0)
+    assert msg != "The agent stopped responding."  # the old generic message is gone
 
 
 def test_extra_research_libs_allowlisted():

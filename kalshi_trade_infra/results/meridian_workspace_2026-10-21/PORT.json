@@ -1,0 +1,17 @@
+{
+  "source": "frozen86 saved candidate; original remains unchanged",
+  "latest_behavior_base": "2223751",
+  "conflicts": 1,
+  "resolution": "Retain concise saved Funds figures; preserve current removal of broker host and mount. All other latest default changes merge cleanly.",
+  "meridian_compatibility": [
+    "retain settings/account, billing, system and theme deep links",
+    "compare actual Meridian version from current HTML to avoid Tau-version false reload banner",
+    "retain shipped generation and async error guards in Funds/Billing/Admin/System"
+  ],
+  "css_exact_frozen86": true,
+  "default_assets_unchanged": true,
+  "new_sha256": {
+    "app/static/app.meridian.js": "d898ab44b8125d2bd076bbe19a82c33d921ca02bc7980a23f99377331778a0d8",
+    "app/static/app.meridian.css": "0cf549951e20d6c95c31bf90a9747468fb950fa993fb3c54680837583a5cdf26"
+  }
+}

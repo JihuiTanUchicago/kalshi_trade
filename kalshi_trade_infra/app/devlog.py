@@ -11,6 +11,11 @@ from typing import Dict, List
 # Upcoming / in-progress, most-wanted first: (title, detail). `detail` is the
 # full markdown explanation (rendered via mdLite); '' for bare one-liners.
 PLANNED: List[tuple] = [
+    ("Native Bitcoin perps orders with Kalshi's own margin/leverage limits and explicit owner confirmation for every order", ''),
+    ('Align default Tau masthead and Hot Markets black divider; preserve Meridian and installed extra CSS', ''),
+    ("Remove Meridian's persistent new-version banner and navigation version probe; preserve default Tau and deploy through fresh installed-state verification", ''),
+    ('Reusable Compose and GitHub acceptance setup: private MySQL/network/secrets, schema-first web preview and unpublished synthetic-broker verification', ''),
+    ('Paper source is merged via PR #13 as f76b2f1, preserving latest research diagnostics', ''),
     ('Autonomous Tau improvement loop runs on a schedule; each round picks one aspect (execution / research rigor / risk / data / ML tooling / UX / engineering) and ships an improvement', ''),
     ('Production-grade execution + risk hardening', ''),
     ('Data infrastructure expansion', ''),
@@ -20,6 +25,7 @@ PLANNED: List[tuple] = [
     ('Bedrock Opus 4.5 DAILY token quota is exhausted', ''),
     ('markets-table capacity', ''),
     ('Data-API enablement (Databento/Exa/Massive/Alpaca)', ''),
+    ('2026-10-18', ''),
     ('Broker OAuth and Databento setup are merged on GitHub main through PR #10 and PR #11', ''),
     ('Execution service: dedicated package + measure + harden. Consolidate the scattered money-path code (execution_kernel/live_trading_engine/kalshi_account + engine order/risk bits) into a behavior-identical app/execution/ package (security-reviewed); add latency instrumentation (local encode/sign vs network RTT vs exchange) + WebSocket/keep-alive/async order entry where it measurably helps; then a continuous robustness agent that hardens one execution/risk aspect per round (P1: circuit breaker, global kill switch, mark-staleness gate, ≤1s websocket PnL, observability)', ''),
     ('Activate Alpaca stock/ETF agent data after secure worker configuration and entitlement checks, with a production canary before customer rollout', ''),

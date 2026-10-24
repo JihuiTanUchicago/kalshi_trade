@@ -1,10 +1,10 @@
-/* Account authorization only. This module has no order-placement transport. */
+/* Broker authorization controls and the nested Alpaca paper account surface. */
 (function (root, factory) {
   'use strict';
-  const api = factory();
+  const api = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.TauBrokerConnections = api;
-})(typeof globalThis === 'object' ? globalThis : this, function () {
+})(typeof globalThis === 'object' ? globalThis : this, function (root) {
   'use strict';
 
   const BROKERS = {
@@ -40,7 +40,7 @@
     const broker = Object.hasOwn(BROKERS, id) ? BROKERS[id] : null;
     if (!broker) return null;
     const messages = {
-      connected: ['connected. Trading in Tau remains disabled.', false],
+      connected: [id === 'alpaca' ? 'connected. Paper orders require trading authorization.' : 'connected. Trading in Tau remains disabled.', false],
       cancelled: ['connection cancelled.', false],
       expired: ['authorization expired. Try connecting again.', true],
       failed: ['could not be connected. Try again.', true],
@@ -81,6 +81,7 @@
     const callback = callbackMessage(options.search === undefined ? (typeof window === 'object' ? window.location.search : '') : options.search);
     const states = new Map();
     let providers = [], loading = false, loadFailed = false, disposed = false, sequence = 0;
+    let accountsHost = null, paperHost = null, paperControl = null;
 
     function stateFor(provider) {
       if (!states.has(provider.id)) states.set(provider.id, {environment: provider.default_environment, permission: 'read', pending: false, error: '', notice: ''});
@@ -114,9 +115,25 @@
 
     function render() {
       if (!current()) return;
-      host.innerHTML = `<div class="broker-section-head"><h3>Broker accounts</h3><p class="hint">Authorize access at your broker. Trading in Tau stays disabled.</p></div>
+      const html = `<div class="broker-section-head"><h3>Broker accounts</h3><p class="hint">Alpaca paper orders require authorization. Live trading in Tau stays disabled.</p></div>
         ${callback ? `<p class="broker-callback${callback.error ? ' broker-error' : ''}" role="${callback.error ? 'alert' : 'status'}">${esc(callback.text)}</p>` : ''}
         ${loadFailed ? '<div class="broker-load-error" role="alert"><span>Broker accounts could not be loaded.</span><button type="button" class="btn sm" data-broker-action="retry">Retry</button></div>' : loading && !providers.length ? '<p class="hint" role="status">Loading broker accounts…</p>' : `<div class="broker-grid">${providers.map(providerHtml).join('')}</div>`}`;
+      // Keep the paper host mounted while broker controls change, preserving its
+      // ticket, pending requests and idempotency key across reconnect/refresh.
+      if (typeof host.querySelector === 'function') {
+        if (!accountsHost || !host.contains(accountsHost)) {
+          if (paperControl) paperControl.destroy();
+          paperControl = null;
+          host.innerHTML = '<div data-broker-accounts></div><section class="alpaca-paper" data-alpaca-paper aria-label="Alpaca paper trading"></section>';
+          accountsHost = host.querySelector('[data-broker-accounts]');
+          paperHost = host.querySelector('[data-alpaca-paper]');
+        }
+        accountsHost.innerHTML = html;
+        const paperModule = options.paperModule || root.TauAlpacaPaper;
+        if (!paperControl && paperHost && providers.some(provider => provider.id === 'alpaca') && paperModule && typeof paperModule.mount === 'function') {
+          paperControl = paperModule.mount(paperHost, {api: request, isCurrent: current});
+        }
+      } else host.innerHTML = html;
       host.setAttribute('aria-busy', loading ? 'true' : 'false');
     }
 
@@ -156,6 +173,7 @@
           if (!result || result.disconnected !== true) throw new Error('Disconnect not confirmed');
           provider.connections = provider.connections.filter(connection => connection.environment !== environment);
           state.notice = 'Tau access removed. You can also revoke the grant at your broker.';
+          if (provider.id === 'alpaca' && paperControl) await paperControl.refresh();
         }
       } catch (_) {
         if (current()) state.error = action === 'connect' ? 'Could not start the connection. Try again.' : 'Could not disconnect this account. Try again.';
@@ -181,7 +199,7 @@
       if (target.dataset.brokerPermission && provider.id === 'alpaca') state.permission = target.checked ? 'trading' : 'read';
     };
     const ready = refresh();
-    return {ready, refresh, destroy() { disposed = true; sequence++; host.onclick = null; host.onchange = null; }};
+    return {ready, refresh, destroy() { disposed = true; sequence++; if (paperControl) paperControl.destroy(); host.onclick = null; host.onchange = null; }};
   }
 
   return {mount, authorizationUrl, callbackMessage};

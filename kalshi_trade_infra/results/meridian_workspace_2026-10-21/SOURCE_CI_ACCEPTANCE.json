@@ -1,0 +1,26 @@
+{
+  "headRefOid": "d8fbf233b4508c400b9ffbf92976aefba9fcbe40",
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-20T16:53:04Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/JihuiTanUchicago/kalshi_trade/actions/runs/39461148109/job/118760639010",
+      "name": "test",
+      "startedAt": "2026-10-20T16:51:56Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-20T16:54:04Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/JihuiTanUchicago/kalshi_trade/actions/runs/39461148104/job/118760639745",
+      "name": "isolated-staging",
+      "startedAt": "2026-10-20T16:51:54Z",
+      "status": "COMPLETED",
+      "workflowName": "Isolated paper staging"
+    }
+  ],
+  "url": "https://github.com/JihuiTanUchicago/kalshi_trade/pull/18"
+}

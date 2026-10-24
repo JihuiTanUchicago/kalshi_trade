@@ -49,7 +49,7 @@ class Store:
         # itself is covered in test_gatekeeper + test_holdout_promotion).
         monkeypatch.setattr(agent.gatekeeper, "judge_holdout",
                             lambda cur, eid, fin, run_load=None: {"classification": self._gk.Classification.FORWARD_VALIDATED.value,
-                                                                  "n_trades": 20, "holdout_consumed": 0})
+                                                   "n_trades": 20, "holdout_consumed": 0})
         monkeypatch.setattr(agent.gatekeeper, "marginal_contribution_ok",
                             lambda cur, uid, eid, fin: (True, "stub"))
         monkeypatch.setattr(agent, "_challenge",
@@ -191,8 +191,7 @@ def test_too_little_history_stops_before_spending_on_the_model(monkeypatch):
     store = Store(monkeypatch)
     model, prompts = scripted([])
     agent.run_research(Conn(), RUN, model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=2))
-    # Not-enough-data is a NoData case: the run ends `stopped` (neutral), not a red `failed`, and
-    # still before any model spend.
+    # Not-enough-data is a NoData case: the run ends `stopped` (neutral), not a red `failed`.
     assert store.finished[0] == "stopped" and prompts == []
 
 

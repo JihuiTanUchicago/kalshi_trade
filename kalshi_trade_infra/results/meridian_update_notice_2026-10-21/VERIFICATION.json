@@ -1,0 +1,42 @@
+{
+  "status": "implemented_offline_verified_waiting_publication_and_deployment",
+  "runtime_changes": [
+    "Delete Meridian version check and render caller",
+    "Delete banner/reload control and unused CSS"
+  ],
+  "assets_sha256": {
+    "app.meridian.js": "08aaefa31f25fc6894b39ede2649e7797d532bb927a3c529297bf6b9f16f4a20",
+    "app.meridian.css": "5cc0b21f2dab28d0b2c8b9cf986898cc1086ee50936bb07b3c8c220219be588a"
+  },
+  "default_source_assets_unchanged": true,
+  "python": {
+    "passed": 1676,
+    "skipped": 10,
+    "seconds": 24.96,
+    "command": "python -m pytest -q tests/"
+  },
+  "frontend": {
+    "passed": 177,
+    "command": "node --test tests/*.mjs"
+  },
+  "meridian_current_behavior": {
+    "passed": 8,
+    "command": "TAU_TEST_THEME=meridian node --test tests/test_production_ui_reconciliation.mjs"
+  },
+  "meridian_workspace": {
+    "passed": 98,
+    "command": "node --test tests/test_meridian_workspace.mjs"
+  },
+  "regression_cases": {
+    "before_removal": {
+      "pass": 1,
+      "fail": 2
+    },
+    "after_removal": {
+      "pass": 3,
+      "fail": 0
+    },
+    "coverage": "Repeated Settings navigation with missing/current/old builds creates no version requests/banner/reloads and keeps Settings usable."
+  },
+  "production_gate": "Fresh strict inventory and immutable source publication required; not yet deployed."
+}

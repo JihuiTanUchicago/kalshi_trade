@@ -1,0 +1,14 @@
+{
+  "source_tree_matches_main": "19f61f0bd469e3f63cb77f0ed6ba068fa9b93a75",
+  "source_sha256": {
+    "kalshi_trade_infra/app/static/app.js": "de0f28f29ae75bc64c89d3e7a3562a20ef71d805b65bf9d62c5f9e65b1956e15",
+    "kalshi_trade_infra/app/static/app.css": "82b446b5e72fa17f23942db4c440da0537958214776d89e9044dec316953d2b9",
+    "kalshi_trade_infra/app/static/boot.js": "69f63b1ea54da1c91897fb10b1a5199cb5d583f26eee1e592f8988d307a3717f",
+    "kalshi_trade_infra/app/static/index.html": "0454456a829916175a20f329a18da94724ecd8fe661809e0fe96e9d822a40b42",
+    "kalshi_trade_infra/app/static/app.meridian.js": "d898ab44b8125d2bd076bbe19a82c33d921ca02bc7980a23f99377331778a0d8",
+    "kalshi_trade_infra/app/static/app.meridian.css": "0cf549951e20d6c95c31bf90a9747468fb950fa993fb3c54680837583a5cdf26"
+  },
+  "observed_production_meridian_js": "b457ecf5d4720adaf27635712f4e2c7745e72b8ca3c02c4efa8c457423046b77",
+  "observed_production_meridian_css": "1e7978ec34364065b51e61dcdf8a5099085dc8ab5f8da72009166d4596059c0e",
+  "production_default_js": "373b0cc61f2b9878655f92486085715766c7d35141aa38b68c3b742d2b85f55d"
+}

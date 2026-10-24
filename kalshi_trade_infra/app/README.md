@@ -1,5 +1,37 @@
 # Tau (v0.1)
 
+## Bitcoin perpetual market data and research — October 23, 2026
+
+Kalshi native Bitcoin perpetual history, funding and current observations now
+have a separate, opt-in research path with causal replay, frozen source manifests
+and the existing statistical gates. Both themes identify results as Research
+only. Paper, demo and live perpetual execution are blocked. Source is merged
+through PR21; offline and hosted full-schema MySQL/HTTP verification pass. Explicit proxy support and native
+metadata parsing resolve the initial local timeout/discovery issues: real
+production/demo candles, funding and observations are retrieved successfully.
+Five anonymous public requests also pass directly from the production server.
+Candle gaps, perps-persistence/queued-run acceptance and production rollout remain
+pending. The release must reconcile installed source differences and preserve
+existing research; no production source or service changed in this preflight.
+See [setup, supported rules and limitations](KALSHI_PERPS_RESEARCH.md) and
+[implementation evidence](../results/kalshi_bitcoin_perps_2026-10-23/HANDOFF.md).
+
+Default Tau header/Hot Markets divider alignment is offline verified with a shared50pxrow height; production release is pending and Meridian is unchanged. [Current work](../results/header_alignment_2026-10-22/HANDOFF.md).
+
+Meridian no longer creates new-version notices or checks deployment versions on navigation. This change is offline verified and awaiting production release; default Tau is unchanged. [Current fix](../results/meridian_update_notice_2026-10-21/HANDOFF.md).
+
+## Meridian compact workspace — October21,2026
+
+The saved compact redesign is deployed as Meridian, selectable through the
+existing Settings theme switch. Tau's default CSS/JS and the shared bootstrap/HTML
+are unchanged. Existing account, billing, research, community, quote and trading
+controls retain their current backend contracts. Current Funds broker removal is
+preserved. **1,676 Python passed / 10 skipped; 178 frontend + 8 Meridian current-behavior
+checks passed.** Synthetic desktop/320px routes and switching in both directions pass.
+Production acceptance passed: only Meridian assets changed, with Tau defaults and running service PIDs preserved. CloudFront refresh was issued and origin/public200/hash/version checks passed; no provider/order call or service restart.
+[Canonical deployment handoff](../results/meridian_workspace_2026-10-21/HANDOFF.md).
+
+
 The customer product: Google sign-in, agents that research Kalshi Bitcoin markets, a
 backtest gate the agent cannot game, paper-first deployment, and a co-pilot chat.
 Product truth is in `../PRODUCT.md`; the operator console (`data_pipeline/dashboard_server.py`)
@@ -14,6 +46,11 @@ production service was activated by the credential sync.
 
 ## Broker account authorization — source merged
 
+The subsequent local [Alpaca paper trading integration](ALPACA_PAPER_TRADING.md)
+adds per-user broker-simulated equity limit orders, confirmation, account/positions
+and fill/cancellation reconciliation. It is opt-in, offline verified and not yet
+deployed; the OAuth milestone below describes authorization separately.
+
 Source is merged through [PR #10](https://github.com/JihuiTanUchicago/kalshi_trade/pull/10)
 and [PR #11](https://github.com/JihuiTanUchicago/kalshi_trade/pull/11), reconciled with
 68 newer main commits. Combined checks: **1,187 Python passed / 9 skipped;
@@ -26,7 +63,8 @@ OAuth1a connections, with session-bound state and encrypted per-user grants.
 Alpaca defaults to paper/read access; order authorization is an explicit option.
 Existing data keys are separate from OAuth client credentials. Provider app
 registration, real consent, database migration and production acceptance remain
-required. This does not enable Tau trading or invoke broker order tools.
+required. Authorization alone does not enable order execution; the separate paper
+service requires its server flag, trading scope and explicit user approval.
 See [broker setup, API contract and acceptance](BROKER_OAUTH.md).
 
 Earlier October 17 Alpaca check: OAuth client ID/secret are present in the private local env;
@@ -901,3 +939,14 @@ APP_TEST_MYSQL=1 python -m pytest tests/   # includes the money-path tests again
 
 CloudFront in front of the app must forward cookies and allow POST (the existing
 distribution forwards no cookies and was GET-only until 2026-09-26).
+
+
+### Native Bitcoin perps tickets
+
+A separate native margin API path supports user-reviewed live limit-IOC tickets,
+with agent proposals opening the same exact-order confirmation. Kalshi sets
+account/product margin and leverage limits; Tau adds no financial cap. Capability
+is off by default; enabling it never enables binary live autopilot or perpetual
+research-strategy promotion. Every user must opt in and confirm every ticket.
+See [native order setup](KALSHI_PERPS_TRADING.md) and the
+[current release evidence](../results/kalshi_perps_deployment_preparation_2026-10-23/HANDOFF.md).

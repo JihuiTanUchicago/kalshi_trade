@@ -135,7 +135,7 @@ class _AbCur:
         return self._fetch
 
 
-def test_resumable_vs_failed_and_retry_cap():
+def test_resumable_vs_stopped_and_retry_cap():
     progressed = json.dumps({"chunks_done": 0, "tried": [{"t": 1}], "chunk": [{"t": 1}]})
     rows = [
         {"id": 10, "kind": "research", "resume_count": 0, "checkpoint_json": progressed},   # -> resume
@@ -148,21 +148,19 @@ def test_resumable_vs_failed_and_retry_cap():
     assert reaped == 4
 
     requeued = [p[1] for s, p in cur.status_updates if "status='queued'" in s]
-    # An interrupted/abandoned run is STOPPED, never failed — the UPDATE carries (msg, tried, passed, …);
-    # id is the 5th param. No status='failed' is ever written here any more.
-    assert not any("status='failed'" in s for s, _ in cur.status_updates)
-    stopped = {p[4]: p[0] for s, p in cur.status_updates if "status='stopped'" in s}
+    assert not any("status='failed'" in s for s, _ in cur.status_updates)  # never failed any more
+    stopped = {p[4]: p for s, p in cur.status_updates if "status='stopped'" in s}
 
     assert requeued == [10]                                  # only the one with progress + budget resumes
-    assert set(stopped) == {11, 12, 13}                       # every non-resumable run is STOPPED, not failed
-    assert "Explored 1 hypothesis" in stopped[11]             # had progress -> reports how far it got
-    assert "interrupted before" in stopped[12]                # no progress -> explored nothing
-    assert "Explored 1 hypothesis" in stopped[13]             # non-research reaped the same way
+    assert "resume-check" not in stopped                       # sanity: keys are run ids
+    assert stopped[11][1:3] == (1, 0)                           # out of retries -> clear reason
+    assert "before it explored" in stopped[12][0] and stopped[12][1:3] == (0, 0)   # no progress -> plain abandoned msg
+    assert "interrupted" in stopped[13][0]                              # non-research never resumes
     assert 10 in [p[0] for p in cur.events]                   # the reclaim is announced on the resumed run
 
 
 def test_resume_count_at_cap_is_not_reclaimed():
-    """One extra guard on the boundary: resume_count == max_resumes fails, resume_count < max resumes."""
+    """One extra guard on the boundary: resume_count == max_resumes stops, resume_count < max resumes."""
     at_cap = [{"id": 1, "kind": "research", "resume_count": 2,
                "checkpoint_json": json.dumps({"tried": [{"t": 1}]})}]
     cur = _AbCur(at_cap)

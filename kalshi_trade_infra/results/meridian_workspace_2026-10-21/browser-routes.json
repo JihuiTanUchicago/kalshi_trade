@@ -1,0 +1,74 @@
+[
+  {
+    "brokerHost": false,
+    "error": false,
+    "mainLength": 586,
+    "overflow": false,
+    "title": "Research",
+    "url": "http://127.0.0.1:8096/research"
+  },
+  {
+    "brokerHost": false,
+    "error": false,
+    "mainLength": 3346,
+    "overflow": false,
+    "title": "Explore",
+    "url": "http://127.0.0.1:8096/explore"
+  },
+  {
+    "brokerHost": false,
+    "error": false,
+    "mainLength": 1323,
+    "overflow": false,
+    "title": "Community",
+    "url": "http://127.0.0.1:8096/community"
+  },
+  {
+    "brokerHost": false,
+    "error": false,
+    "mainLength": 519,
+    "overflow": false,
+    "title": "Strategies",
+    "url": "http://127.0.0.1:8096/strategies"
+  },
+  {
+    "brokerHost": false,
+    "error": false,
+    "mainLength": 759,
+    "overflow": false,
+    "title": "Deploy",
+    "url": "http://127.0.0.1:8096/deploy"
+  },
+  {
+    "brokerHost": false,
+    "error": false,
+    "mainLength": 714,
+    "overflow": false,
+    "title": "Funds",
+    "url": "http://127.0.0.1:8096/settings/account"
+  },
+  {
+    "brokerHost": false,
+    "error": false,
+    "mainLength": 162,
+    "overflow": false,
+    "title": "Billing",
+    "url": "http://127.0.0.1:8096/settings/billing"
+  },
+  {
+    "brokerHost": false,
+    "error": false,
+    "mainLength": 440,
+    "overflow": false,
+    "title": "System",
+    "url": "http://127.0.0.1:8096/settings/system"
+  },
+  {
+    "brokerHost": false,
+    "error": false,
+    "mainLength": 18,
+    "overflow": false,
+    "title": "Settings",
+    "url": "http://127.0.0.1:8096/settings/theme"
+  }
+]

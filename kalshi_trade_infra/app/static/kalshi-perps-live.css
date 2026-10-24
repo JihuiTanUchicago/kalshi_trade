@@ -1,0 +1,60 @@
+/* Compact shared Funds surface; all colors and controls inherit the active theme. */
+.kalshi-perps-live { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--rule); color: var(--ink); font-size: 12px; }
+.kalshi-perps-live h4, .kalshi-perps-live h5, .kalshi-perps-live p, .kalshi-perps-live dl { margin: 0; }
+.kp-head, .kp-review-head, .kp-policy, .kp-order { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.kp-head { align-items: flex-start; margin-bottom: 10px; }
+.kp-head h4 { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+.kalshi-perps-live h5 { font-size: 12px; font-weight: 600; }
+.kp-live { color: var(--signal); font-size: 11px; font-weight: 500; margin-left: 8px; }
+.kp-hint { color: var(--ink-3); font-size: 11px; line-height: 1.45; }
+.kp-error, .kp-feedback, .kp-gate { margin: 8px 0 !important; line-height: 1.45; }
+.kp-error { color: var(--signal); }
+.kp-feedback, .kp-gate { color: var(--ink-2); }
+.kp-policy { justify-content: flex-start; margin: 10px 0; flex-wrap: wrap; }
+.kp-check { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 11px; }
+.kp-check input { accent-color: var(--signal); margin: 0; width: 14px; height: 14px; flex: none; }
+.kp-balances { display: flex; flex-wrap: wrap; gap: 10px 22px; margin: 12px 0 4px !important; font-variant-numeric: tabular-nums; }
+.kp-balances dt, .kp-preview dt, .kp-fills dt { color: var(--ink-3); font-size: 11px; }
+.kp-balances dd { margin: 3px 0 0; font-size: 15px; font-weight: 500; overflow-wrap: anywhere; }
+.kp-asof { margin-bottom: 10px !important; }
+.kp-ticket { margin: 10px 0; }
+.kp-ticket fieldset { display: grid; grid-template-columns: 72px minmax(75px, .8fr) minmax(110px, 1fr) auto auto; gap: 8px; align-items: end; border: 0; padding: 0; margin: 0 0 5px; }
+.kp-field { display: grid; gap: 4px; min-width: 0; color: var(--ink-2); font-size: 11px; }
+.kp-field input, .kp-field select { width: 100%; min-width: 0; min-height: 34px; border: 1px solid var(--rule-2); border-radius: var(--radius, 3px); padding: 6px 8px; color: var(--ink); background: var(--stock-raised); font: inherit; font-size: 12px; }
+.kp-reduce { min-height: 34px; }
+.kalshi-perps-live .btn { min-height: 34px; justify-content: center; }
+.kalshi-perps-live .btn:disabled, .kalshi-perps-live fieldset:disabled .btn { background: transparent; border-color: var(--rule-2); color: var(--ink-3); cursor: not-allowed; }
+.kp-field input:disabled, .kp-field select:disabled { color: var(--ink-3); opacity: .7; }
+.kp-review { border: 1px solid var(--rule-2); border-radius: var(--radius, 3px); padding: 12px; margin-top: 12px; background: var(--stock-raised); }
+.kp-review-head { align-items: flex-start; margin-bottom: 10px; }
+.kp-review-head span { color: var(--ink-2); font-size: 11px; }
+.kp-preview, .kp-fills { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px 14px; font-variant-numeric: tabular-nums; }
+.kp-preview dd, .kp-fills dd { margin: 3px 0 0; color: var(--ink); overflow-wrap: anywhere; }
+.kp-review > .kp-hint { margin-top: 9px; }
+.kp-fills { margin-top: 10px !important; }
+.kp-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; flex: none; }
+.kp-review > .kp-actions { margin-top: 10px; }
+.kp-orders, .kp-positions { margin-top: 14px; }
+.kp-order { padding: 8px 0; border-bottom: 1px solid var(--rule); }
+.kp-order strong { font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
+.kp-order p { color: var(--ink-3); font-size: 11px; margin-top: 3px; }
+.kp-table { overflow-x: auto; margin-top: 5px; }
+.kp-table table { width: 100%; border-collapse: collapse; font-size: 11px; font-variant-numeric: tabular-nums; }
+.kp-table th, .kp-table td { padding: 6px 0; text-align: right; border-bottom: 1px solid var(--rule); }
+.kp-table th:first-child { text-align: left; font-weight: 500; }
+.kp-table thead th { color: var(--ink-3); }
+.kp-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+@media (max-width: 800px) {
+  .kp-ticket fieldset { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .kp-ticket .kp-price { grid-column: 1 / -1; }
+  .kp-ticket .btn { align-self: stretch; }
+}
+@media (max-width: 480px) {
+  .kp-preview, .kp-fills { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kp-balances { gap: 10px 16px; }
+  .kp-balances dd { font-size: 14px; }
+  .kp-order { display: block; }
+  .kp-order .kp-actions { margin-top: 7px; }
+  .kp-review-head { display: block; }
+  .kp-review-head span { display: block; margin-top: 3px; }
+}

@@ -1,0 +1,15 @@
+{
+  "run_id": 39890914968,
+  "url": "https://github.com/JihuiTanUchicago/kalshi_trade/actions/runs/39890914968",
+  "source_revision": "58eb085889a4e1dead12940ab0e065e03399f0a7",
+  "status": "failed",
+  "mode": "synthetic_kalshi_perps_real_mysql_http",
+  "stage": "agent_proposal_review_only",
+  "last_completed_check": "unknown_submission_no_retry_and_get_only_reconciliation",
+  "passed_check_count": 11,
+  "exception_class": "DataError",
+  "mysql_error_code": 1406,
+  "cause": "new17-character proposal kind exceeds existing12-character column",
+  "production_changed": false,
+  "real_provider_calls": 0
+}

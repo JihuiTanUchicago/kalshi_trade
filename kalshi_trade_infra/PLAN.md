@@ -1,5 +1,41 @@
 # PLAN
 
+## Kalshi perps deployment preparation — October 23, 2026, Asia/Shanghai
+
+In progress (`tau-kalshi-perps-deployment-preparation-20261023`): build a native real-money Bitcoin perps path, using Kalshi's own margin/leverage limits and mandatory owner confirmation for every agent-proposed order. No extra Tau financial caps and no autonomous broker execution. Existing binary live gates and research-only strategy promotion blocks stay unchanged. Encrypted selected-source recovery passed (run39888106069); legitimate installed fixes and header CSS are being reconciled into main. Native client/store/service, both-theme Funds preview/confirmation and hosted synthetic acceptance harness are implemented; 2,265 Python/10 skipped and226+8 frontend checks pass. Frozen58 security review completed with no findings; hosted staging found a proposal-column width mismatch, now repaired. Hosted rerun and migration-delta review remain pending. Production code, services, settings and jobs remain unchanged. Full candidate verification and guarded rollout remain required. [Preparation handoff](results/kalshi_perps_deployment_preparation_2026-10-23/HANDOFF.md).
+
+## Bitcoin perpetual data and research — October23,2026,Asia/Shanghai
+
+Source merged through [PR #21](https://github.com/JihuiTanUchicago/kalshi_trade/pull/21) as main 33bfc957 (`tau-kalshi-bitcoin-perps-research-20261023`). Native Bitcoin candles, funding and observations feed causal research with committed-source manifests, frozen holdout and existing statistical gates. Both themes label it Research only; all perpetual execution is blocked. **1,899 Python / 10 skipped and 196+8 frontend checks pass; CI and hosted full-schema MySQL/HTTP staging pass on the identical source tree.** Explicit proxy and native metadata fixes resolve local retrieval; real production/demo reads returned 2,761/2,822 candles, six funding records and four observations each. Candle gaps still prevent continuous-replay acceptance. Read-only production check39884723368 passed: five native HTTP200 requests, all active perps flags off, one running research and no queued/paused jobs at inspection. Installed-source reconciliation is required: 21 files differ from base; 11 match known Git blobs and 10 have unresolved exact source copies. Preserve accepted styles and existing research; no deployment/migration/restart occurred. Actual perps SQL/replay and genuine queued research remain activation gates. [Setup](app/KALSHI_PERPS_RESEARCH.md), [canonical evidence and handoff](results/kalshi_bitcoin_perps_2026-10-23/HANDOFF.md).
+
+## Tau header divider alignment — October22,2026,Asia/Shanghai
+
+Implemented/offline verified (`tau-header-alignment-20261022`): default Tau masthead and Hot Markets heading share50pxrow height; native1280/1100/320pxpreview borders align exactly. 1676Python/10skipped and177frontend+8Meridian checks pass. Production release pending. Cosmetic CSS only; preserve Meridian and actual installed unpublished boot/legal styles. [Handoff](results/header_alignment_2026-10-22/HANDOFF.md).
+
+## Remove persistent Meridian update notice — October21,2026,Asia/Shanghai
+
+Implemented/offline verified (`tau-meridian-update-notice-20261021`): Meridian's build probe, update banner and unused styles are deleted; Tau/default/shared/backend behavior stays intact. 177frontend+8Meridian checks and1676Python/10skipped pass. Immutable publication and fresh installed-state release remain pending. Root owns the isolated fix and existing safe whole-package release; no provider/order/service actions. [Handoff](results/meridian_update_notice_2026-10-21/HANDOFF.md).
+
+## Meridian compact workspace deployment — October21,2026,Asia/Shanghai
+
+Deployed and accepted (`tau-meridian-workspace-20261021`). Settings → Theme → Meridian selects the retained compact redesign. Only Meridian JS/CSS changed; the actual Tau default, backend, configuration and running service PIDs were preserved. Whole-package exchange and the full unchanged installed schema succeeded. CloudFront refresh was issued, then origin/public 200/hash/version checks passed in run39463270100 and independently from local.
+
+Verification: **1,676 Python passed / 10 skipped; 178 frontend + 8 Meridian current-behavior checks; 65 operation checks**, independent control review and synthetic desktop/320px/theme switching. No service restart, job mutation or provider/order call. Source is tracked in PR18; the separate operations branch must never merge. Ownership released at acceptance; the prior design loop remains stopped. [Canonical handoff](results/meridian_workspace_2026-10-21/HANDOFF.md).
+
+## Isolated paper testing and GitHub source — October 19, 2026, Asia/Shanghai
+
+Paper source merged as `f76b2f1` through PR #13, reconciled with main `8e3ec87`; latest research diagnostics are preserved. **1,608 Python / 10 skipped and 71 Node tests passed**, independent integration review and PR/main CI passed. Source merge does not deploy production; its workflow is manual and the old exact-ref activation follow-up remains paused.
+
+Implemented repeatable offline staging (`tau-paper-main-staging-20261019`): complete app/data image, separate MySQL8.4 DB/user, private generated secrets, internal network and web-only loopback preview. Full schema precedes web; synthetic authenticated acceptance runs in an unpublished verification container. **1,645 Python passed / 10 skipped**, including 37 isolation/fixture/stack guards. [Real MySQL/HTTP run39144052370](https://github.com/JihuiTanUchicago/kalshi_trade/actions/runs/39144052370) passed14 lifecycle checks with zero provider/order calls or production changes. The dedicated staging workflow boots and verifies the actual Compose stack on each relevant revision and retains sanitized acceptance artifacts. This is not a persistent public site or actual user OAuth/fill acceptance. [Setup and boundaries](staging/README.md).
+
+## Alpaca paper production deployment — October 18, 2026, Asia/Shanghai
+
+Production rollout held for staging first (`tau-alpaca-paper-deploy-20261018`). Paper source is now merged in PR #13; no production migration/restart has been accepted. The old exact-ref operation is paused and must be replaced/reviewed against merged source before use. Staged provider overlays, active research and live/autopilot gates remain unchanged. [Deployment evidence](results/alpaca_paper_trading_2026-10-18/deployment/HANDOFF.md).
+
+## Alpaca paper trading — October 18, 2026, Asia/Shanghai
+
+Implemented / offline verified / independent review complete (`tau-alpaca-paper-trading-20261018`); advisory ownership handed off. Source is isolated at `../tau-alpaca-paper-20261018` from GitHub main `3c70435`. Adds per-user OAuth paper equity LIMIT DAY intents with explicit confirmation, account/positions, broker fills/cancellation reconciliation and agent proposals; shared main source is unchanged. Durable single-send claims, monotonic send generation and bounded cash/long-share checks cover timeouts/replays/concurrent fills. **1,602 Python passed / 10 skipped; 71 frontend passed; four synthetic browser scenarios/eight screenshots in both themes and desktop/mobile**. Independent control-path review has no remaining blocker. Thirty-five engine/vault/connection/data-pipeline files are byte-identical. The earlier implementation milestone was local-only; source is now merged via PR #13 with latest-main diagnostics preserved. Production full app.schema/private runtime opt-in and genuine OAuth/paper-order acceptance remain pending; no production provider/order, migration or service change is claimed. Existing production feed activation and live/autopilot gates are preserved. [Handoff and reproducible evidence](results/alpaca_paper_trading_2026-10-18/HANDOFF.md).
+
 ## Open PR integration with latest main — October 18, 2026, Asia/Shanghai
 
 - **Status:** both PRs merged on GitHub; local main synchronized (`tau-open-pr-main-merge-20261018`); advisory reservation released. User authorized local latest-main integration, both PR updates/commits and GitHub merges. Imported all 68 newer main commits and exact object hashes, then fast-forwarded local main to `0700437`; preserve that source's research-rigor, execution/risk, reconciliation and frontend changes.

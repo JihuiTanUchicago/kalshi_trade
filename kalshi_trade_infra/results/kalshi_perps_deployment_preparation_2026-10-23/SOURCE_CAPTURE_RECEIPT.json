@@ -1,0 +1,591 @@
+{
+  "workflow": {
+    "conclusion": "success",
+    "databaseId": 39888106069,
+    "headSha": "e15c7d6666653f9d05cc275cd2a7b1cbc0448b1d",
+    "status": "completed",
+    "url": "https://github.com/JihuiTanUchicago/kalshi_trade/actions/runs/39888106069"
+  },
+  "records": [
+    {
+      "type": "PREFLIGHT",
+      "receipt": {
+        "capture_id": "e70267cc83c54c0e87573e8239e9f3d3",
+        "max_pages": 64,
+        "no_release_or_provider_path": true,
+        "operations_sha": "e15c7d6666653f9d05cc275cd2a7b1cbc0448b1d",
+        "recipient_pem_sha256": "24746c869bcda8ae3c177a0c0a355939a7504f3a795443492696acf0317ccec8",
+        "selected_source_pins": {
+          "app/agent.py": {
+            "bytes": 173625,
+            "sha256": "c78ee13f989b038e4bafc24da684a851bf2121dc8ac70827f9c442ef9902c4da"
+          },
+          "app/billing.py": {
+            "bytes": 13576,
+            "sha256": "0fd9b234d03df7db3c83ac0c45f487063f8eaa37f677fcfa37971708d3d3baef"
+          },
+          "app/devlog.py": {
+            "bytes": 101322,
+            "sha256": "913520e1fd7686a689b4738ed8a7d8eb14540b9497131cccdea80075cc80fab7"
+          },
+          "app/llm.py": {
+            "bytes": 22318,
+            "sha256": "1ce41cbc588c116d26adc33c041b4576ed793fe188146229cb1367cfd7129444"
+          },
+          "app/repository.py": {
+            "bytes": 102323,
+            "sha256": "2cb1037da11b513f6389cbfd5eb139e9861b718e37de09b0ef64fcdc962fc5c7"
+          },
+          "app/schema.py": {
+            "bytes": 39642,
+            "sha256": "6738460234b7e46ff230cb64e287354e2e3e0f46a548f8fb504ef17c476c1084"
+          },
+          "app/server.py": {
+            "bytes": 107139,
+            "sha256": "8d93c845e51c7b46696725f99ab18e20c2b5ce0041f52ac56d81a0410e7cea68"
+          },
+          "app/static/app.js": {
+            "bytes": 282132,
+            "sha256": "6d290678e2b9b96887f83a7f0fd8a095d95c3df002846c656f58c6febd1742e7"
+          }
+        }
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "capture",
+        "ssm_command_id": "a8a0debe-5de0-4859-b683-76eb6907028c"
+      }
+    },
+    {
+      "type": "CAPTURE",
+      "receipt": {
+        "capture_id": "e70267cc83c54c0e87573e8239e9f3d3",
+        "envelope_bytes": 526631,
+        "envelope_sha256": "2be7c5440f3201f4b1c686b07cbcf5e5b37938fac08f1c3ddba120c47608b9cb",
+        "metadata": {
+          "application_writes": 0,
+          "controls_sha256": "901d7a042e973e66523ab5efdd34541bbaededfe8556ff8c9adc1186b15ac267",
+          "database": {
+            "full_database_integration_verified": false,
+            "market_column_signatures": {
+              "app_data_partitions": {
+                "collation": "utf8mb4_0900_ai_ci",
+                "column_type": "varchar(48)",
+                "max_length": 48,
+                "nullable": false
+              },
+              "app_experiments": {
+                "collation": "utf8mb4_0900_ai_ci",
+                "column_type": "varchar(48)",
+                "max_length": 48,
+                "nullable": false
+              },
+              "app_fdr_state": {
+                "collation": "utf8mb4_0900_ai_ci",
+                "column_type": "varchar(48)",
+                "max_length": 48,
+                "nullable": false
+              },
+              "app_holdout_ledger": {
+                "collation": "utf8mb4_0900_ai_ci",
+                "column_type": "varchar(48)",
+                "max_length": 48,
+                "nullable": false
+              }
+            },
+            "perps_row_counts": {},
+            "read_only_transaction": true,
+            "research_counts": {
+              "paused": 0,
+              "queued": 0,
+              "running": 1
+            },
+            "status": "checked",
+            "tables_present": {
+              "app_agent_runs": true,
+              "kalshi_perps_batches": false,
+              "kalshi_perps_partition_sources": false
+            }
+          },
+          "job_mutations": 0,
+          "model_calls": 0,
+          "observed_at_utc": "2026-10-23T02:10:36.255161+00:00",
+          "perps_off_in_all_active_services": true,
+          "processes": {
+            "recursive-agents": {
+              "cmdline_sha256": "3af81a26d1c3f6b9c282e78e27f1e44b10e5637e0dd1e4bffa000ce9db344628",
+              "environment_sha256": "d42adcc150a7118900e2e6fedbde050c15e4c97ab25fba0115749da89b3cb558",
+              "start_ticks": "49272743"
+            },
+            "recursive-engine": {
+              "cmdline_sha256": "7404f1c4b417e6ba13097b872c30d36389d06278c367e431baa3ff87972f555e",
+              "environment_sha256": "2f25a6e823e3c50652b149af85a740c961568f0f018190501399af4dd975c8b3",
+              "start_ticks": "45134892"
+            },
+            "recursive-history": {
+              "cmdline_sha256": "b6812e59a28bc82a0f2884625e250f41e004364c0906e46447da2987c5784147",
+              "environment_sha256": "b3b3a27993ac78089b3fbee0e724be854d231199836c60c5c34f152d0c4d728e",
+              "start_ticks": "45134892"
+            },
+            "recursive-web": {
+              "cmdline_sha256": "8f87b2a94080c63d779d043ec41e54700542da99a409135ef48af62d7749ff4a",
+              "environment_sha256": "4771197ea60a851763599c5c50c1ce4c0b91b60a7096f8512b297699f8e87dc0",
+              "start_ticks": "45134892"
+            }
+          },
+          "protected_environment_files_read": false,
+          "provider_calls": 0,
+          "read_only": true,
+          "service_operations": 0,
+          "snapshot_fingerprint": "62aa6a0749d88a391730f463033da862b594fd2c38a624637faac2c76f044fae",
+          "source_and_controls_unchanged": true,
+          "units": {
+            "kalshi-live-engine": {
+              "active_state": "inactive",
+              "need_daemon_reload": "no",
+              "pid": 0,
+              "properties_sha256": "848e970832dbccbca1732bf77b489d8177e1ba9a334dc8393d4f1cba0a2e389b",
+              "resources": {
+                "CPUQuotaPerSecUSec": "infinity",
+                "CPUWeight": "[not set]",
+                "MemoryHigh": "infinity",
+                "MemoryMax": "infinity",
+                "MemorySwapMax": "infinity",
+                "Nice": "0",
+                "TasksMax": "18827"
+              },
+              "restart": "always",
+              "sub_state": "dead"
+            },
+            "recursive-agents": {
+              "active_state": "active",
+              "need_daemon_reload": "no",
+              "perps": {
+                "enabled": false,
+                "explicit_proxy_configured": false,
+                "explicitly_configured": false
+              },
+              "pid": 499286,
+              "properties_sha256": "03c43ee2e2f2ce4cd46ba2e2f55a93a5af73dc8e404bfeeeb61a4dc21448a081",
+              "resources": {
+                "CPUQuotaPerSecUSec": "infinity",
+                "CPUWeight": "[not set]",
+                "MemoryHigh": "infinity",
+                "MemoryMax": "419430400",
+                "MemorySwapMax": "infinity",
+                "Nice": "5",
+                "TasksMax": "18827"
+              },
+              "restart": "always",
+              "sub_state": "running"
+            },
+            "recursive-engine": {
+              "active_state": "active",
+              "need_daemon_reload": "no",
+              "perps": {
+                "enabled": false,
+                "explicit_proxy_configured": false,
+                "explicitly_configured": false
+              },
+              "pid": 463706,
+              "properties_sha256": "4b896d1f7ba65ddccbbaeef0ac375c17299045f3f6d01ad4e0d6bd38f6f85105",
+              "resources": {
+                "CPUQuotaPerSecUSec": "infinity",
+                "CPUWeight": "[not set]",
+                "MemoryHigh": "infinity",
+                "MemoryMax": "262144000",
+                "MemorySwapMax": "infinity",
+                "Nice": "5",
+                "TasksMax": "18827"
+              },
+              "restart": "always",
+              "sub_state": "running"
+            },
+            "recursive-history": {
+              "active_state": "active",
+              "need_daemon_reload": "no",
+              "perps": {
+                "enabled": false,
+                "explicit_proxy_configured": false,
+                "explicitly_configured": false
+              },
+              "pid": 463707,
+              "properties_sha256": "6c03bdd3b870d23eb92a5ed8a63e613657b5a0329a55cf427f6cbef6f805d856",
+              "resources": {
+                "CPUQuotaPerSecUSec": "infinity",
+                "CPUWeight": "[not set]",
+                "MemoryHigh": "infinity",
+                "MemoryMax": "262144000",
+                "MemorySwapMax": "infinity",
+                "Nice": "5",
+                "TasksMax": "18827"
+              },
+              "restart": "always",
+              "sub_state": "running"
+            },
+            "recursive-web": {
+              "active_state": "active",
+              "need_daemon_reload": "no",
+              "perps": {
+                "enabled": false,
+                "explicit_proxy_configured": false,
+                "explicitly_configured": false
+              },
+              "pid": 463708,
+              "properties_sha256": "17f478e9f404d68ea0c69124e443684a093495c8367cf2c8e11b2df33c850866",
+              "resources": {
+                "CPUQuotaPerSecUSec": "infinity",
+                "CPUWeight": "[not set]",
+                "MemoryHigh": "infinity",
+                "MemoryMax": "419430400",
+                "MemorySwapMax": "infinity",
+                "Nice": "5",
+                "TasksMax": "18827"
+              },
+              "restart": "always",
+              "sub_state": "running"
+            }
+          }
+        },
+        "pages": 44,
+        "recipient_pem_sha256": "24746c869bcda8ae3c177a0c0a355939a7504f3a795443492696acf0317ccec8",
+        "source_sha256": {
+          "app/agent.py": "c78ee13f989b038e4bafc24da684a851bf2121dc8ac70827f9c442ef9902c4da",
+          "app/billing.py": "0fd9b234d03df7db3c83ac0c45f487063f8eaa37f677fcfa37971708d3d3baef",
+          "app/devlog.py": "913520e1fd7686a689b4738ed8a7d8eb14540b9497131cccdea80075cc80fab7",
+          "app/llm.py": "1ce41cbc588c116d26adc33c041b4576ed793fe188146229cb1367cfd7129444",
+          "app/repository.py": "2cb1037da11b513f6389cbfd5eb139e9861b718e37de09b0ef64fcdc962fc5c7",
+          "app/schema.py": "6738460234b7e46ff230cb64e287354e2e3e0f46a548f8fb504ef17c476c1084",
+          "app/server.py": "8d93c845e51c7b46696725f99ab18e20c2b5ce0041f52ac56d81a0410e7cea68",
+          "app/static/app.js": "6d290678e2b9b96887f83a7f0fd8a095d95c3df002846c656f58c6febd1742e7"
+        },
+        "status": "captured"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "193afe72-3f49-4cb4-b8c1-2c3094e55f25"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "baf9fc59-b0bf-4ff8-a075-b0a1f2409326"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "4ca79853-e3b7-4bec-a1cc-7906920957d7"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "ebff59d3-c514-4a80-b066-26fa175df139"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "5ff017e7-09ab-4a00-a651-d71a490d19d7"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "bb34ce9e-accc-4eaa-8b2f-e595d67d557f"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "84dc9a92-8360-4109-aaab-1101040eff8d"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "88dc6be9-15d0-4501-a1ef-99e0ddb39df2"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "8f9495fd-613c-4f04-b8e2-f2a36522b6d1"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "f0a7bfcf-1bcf-434b-be24-ea03b0d55917"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "63b4a431-4870-4040-abee-4131ad4f4bb8"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "07d5951e-ebd1-45c0-b6b2-b729d433596f"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "1d9b79d5-cfb0-4af7-b42d-3fabef2c6d79"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "b6ffdefe-8b1e-481d-9e0c-de32c1256cfc"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "fda0ea4f-b6d4-490d-953a-0e568114725b"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "e419280a-1589-4b31-a09a-34c010a11569"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "28f02a7f-a85d-46e6-b43b-e680edce32a7"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "977c980a-416e-49ea-9e0a-9ba022dcfbc7"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "5844835f-cf5f-425d-8c8f-110271c52bcf"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "50bcb61b-5d24-455d-a8b8-0053d94521b9"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "99ef6a89-6d8a-42a0-a9c9-09528c33965d"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "2071380c-3a41-4533-a8e9-0b526c7f297a"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "34e46788-8192-4a31-8ff5-b31a090e9b16"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "1f6de528-5d97-4d38-9b8f-2507d5517590"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "b45fee61-56a7-4d89-b0fa-72916f357e68"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "350e2da3-f8a1-4a21-9958-2b0674281083"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "01d9cf66-4aed-4c92-913d-8bdcd01ea1e2"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "1794d4e0-3276-4939-9c03-1f94127af73f"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "4d7fc701-3002-49be-92e3-0a8e66010cdf"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "b38b0afb-6581-4583-bf9b-ac0692d84df7"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "54d8f8ad-7fbd-4134-9e79-49ed89c32d80"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "2e06353c-20a2-499e-b669-6f84e0d46c9c"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "094e3569-2e17-48ba-aa80-8d17598d8fc1"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "324bb2ff-4176-405c-8b00-710251970c81"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "2dfd45eb-faaa-4b17-8a32-43eaa2dd461e"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "b8d6ae5e-d40a-4334-a132-2be70876bbbd"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "244d2de9-3ca5-4301-8ef3-59b7ac418828"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "c1fd8478-8b3d-4ec1-a101-59face68cf84"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "9852c7f6-52d3-4952-9c00-5160a35b0469"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "6b86f1d8-3cb0-4d06-a676-7c7a2cda01e3"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "94bb0f55-7bc6-4d09-802c-e3aae33e31ea"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "cac3257c-9933-4dc8-91b4-02b46d6c3c38"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "9606c97b-7063-4f54-87f0-135e1541924f"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "page",
+        "ssm_command_id": "10eecf19-27a4-47dd-a3aa-521112fea0d8"
+      }
+    },
+    {
+      "type": "PHASE",
+      "receipt": {
+        "operation": "cleanup",
+        "ssm_command_id": "13a7dfa3-726f-4d99-ab5f-108b750c168f"
+      }
+    },
+    {
+      "type": "CLEANUP",
+      "receipt": {
+        "capture_id": "e70267cc83c54c0e87573e8239e9f3d3",
+        "status": "cleaned",
+        "temporary_directory_removed": true
+      }
+    }
+  ]
+}

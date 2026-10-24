@@ -1,0 +1,32 @@
+{
+  "status": "implemented_offline_verified_waiting_release",
+  "runtime_changes": "Four default CSS rules share50pxheader height; no JS/backend/Meridian changes.",
+  "source_css_sha256": "ee7445e021ab377d2efb38555b9564bbbb6e906d5a71c14b5554a2834baaca22",
+  "production_candidate_css_sha256": "73bd0785301dff3a32df26a33f490b2e215ef066ce91fecc8f55819a81718d51",
+  "production_extra_styles_preserved": true,
+  "source_protected_hashes_match": true,
+  "browser": {
+    "synthetic": true,
+    "cases": "1280,1100,320px; settled masthead/rail borders all50px",
+    "initial_transition_sample_retained": true,
+    "screenshot": "header-aligned.png",
+    "viewport_restored": true,
+    "production_signed_in_tab_inspection": "timed out before inspection; no preference or account action"
+  },
+  "python": {
+    "passed": 1676,
+    "skipped": 10,
+    "seconds": 25.58,
+    "command": "python -m pytest -q tests/"
+  },
+  "frontend": {
+    "passed": 177,
+    "command": "node --test tests/*.mjs"
+  },
+  "meridian_behavior": {
+    "passed": 8,
+    "command": "TAU_TEST_THEME=meridian node --test tests/test_production_ui_reconciliation.mjs"
+  },
+  "tests_added": "None: reversible CSS-only change; native browser geometry and current regressions used.",
+  "production_gate": "Pending immutable source, strict inventory and whole-package guarded apply."
+}

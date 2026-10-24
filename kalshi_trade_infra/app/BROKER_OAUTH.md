@@ -9,6 +9,11 @@ this merge did not deploy or accept it against real customer accounts.
 
 ## Current Alpaca configuration — October 17, 2026
 
+Subsequent local implementation: [Alpaca paper execution](ALPACA_PAPER_TRADING.md)
+uses this connection's trading scope for explicitly approved paper equity tickets.
+Its schema, runtime opt-in, risk checks and real-account acceptance are separate.
+The October 17 observations below are historical, not a fresh production check.
+
 The user supplied both OAuth app credentials in Tau’s ignored local `.env`.
 A network-free configuration/authorize-URL check passes; the credentials have not
 been authenticated through real user consent. Local `APP_SECRET_KEY` is absent.
@@ -30,7 +35,7 @@ must inject it. Existing `APCA_API_KEY_ID` / `APCA_API_SECRET_KEY` configure
 shared market data and cannot serve as OAuth client credentials.
 
 The user-confirmed Tau production origin is
-`https://d1gfpzcosqrjya.cloudfront.net`; set `APP_PUBLIC_URL` to that exact origin.
+`https://tau-trading.com`; set `APP_PUBLIC_URL` to that exact origin.
 It is recorded in the ignored local `.env`; deployment still needs explicit
 injection into the running web service. Production requires HTTPS; `http://127.0.0.1:8090` and
 `http://localhost:8090` support local testing. No path, query, fragment or user
@@ -43,9 +48,9 @@ Register these exact production redirect URIs:
 
 | Provider | Callback |
 | --- | --- |
-| Alpaca | `https://d1gfpzcosqrjya.cloudfront.net/auth/brokers/alpaca/callback` |
-| Robinhood | `https://d1gfpzcosqrjya.cloudfront.net/auth/brokers/robinhood/callback` |
-| IBKR | `https://d1gfpzcosqrjya.cloudfront.net/auth/brokers/ibkr/callback` |
+| Alpaca | `https://tau-trading.com/auth/brokers/alpaca/callback` |
+| Robinhood | `https://tau-trading.com/auth/brokers/robinhood/callback` |
+| IBKR | `https://tau-trading.com/auth/brokers/ibkr/callback` |
 
 IBKR's documented authorization flow uses a `redirect_uri` carrying a `state`
 query parameter. Confirm that IBKR's approved redirect configuration preserves
@@ -141,7 +146,8 @@ All routes require the signed-in Tau user. All POSTs retain the existing
 
 Alpaca supports `paper` and `live`; Robinhood and IBKR expose `live` authorization
 only. Invalid environments are rejected before creating state. The UI explains
-broker permissions while showing that Tau execution remains disabled.
+broker permissions. Live equity execution remains disabled; paper execution can
+be opted into as documented in the separate paper-trading guide.
 
 State expires after ten minutes, is stored only as SHA-256, and binds user,
 provider, environment and originating Tau session. It is consumed in a committed
@@ -174,4 +180,5 @@ expired and repeated callbacks. Then separately accept Robinhood and IBKR with
 approved registrations. Mocked tests establish local contracts only. No real
 broker authorization, production deployment or account-read acceptance is claimed
 by those tests. Existing research/data flags and all trading gates are unchanged;
-there is no equity-order dispatcher or generic MCP-tool access in this change.
+that OAuth milestone added no equity-order dispatcher or generic MCP-tool access.
+The subsequent local paper dispatcher is documented separately above.

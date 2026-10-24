@@ -1,0 +1,122 @@
+{
+  "actual_server_environment_checked": false,
+  "checked_at_utc": "2026-10-23T01:00:49.213688+00:00",
+  "checks": [
+    {
+      "actual_client_and_collector": true,
+      "candle_count": 2761,
+      "candle_coverage_complete": false,
+      "candles_status": "partial",
+      "continuous_replay_ready": false,
+      "data_fingerprint": "19a190b0e406fcece4d3adc41f8e74b4430502e60a4f8283e147479cb8934e62",
+      "environment": "production",
+      "funding_count": 6,
+      "funding_coverage_complete": true,
+      "funding_retrieval_complete": true,
+      "funding_status": "complete",
+      "http_events": [
+        {
+          "endpoint": "public_metadata",
+          "header_elapsed_seconds": 1.009,
+          "http_status": 200
+        },
+        {
+          "endpoint": "candles",
+          "header_elapsed_seconds": 0.386,
+          "http_status": 200
+        },
+        {
+          "endpoint": "historical_funding",
+          "header_elapsed_seconds": 0.332,
+          "http_status": 200
+        },
+        {
+          "endpoint": "public_metadata",
+          "header_elapsed_seconds": 0.328,
+          "http_status": 200
+        },
+        {
+          "endpoint": "funding_estimate",
+          "header_elapsed_seconds": 0.327,
+          "http_status": 200
+        }
+      ],
+      "metadata_fingerprint": "753c6dadfd93bf3dfa3cd1a489c9bd1952abef1d84cea249bbea9452381e36ce",
+      "observation_count": 4,
+      "observation_kinds": [
+        "funding_estimate",
+        "index",
+        "mark",
+        "quote"
+      ],
+      "observations_status": "complete",
+      "readable_history_and_funding": true,
+      "request_end_ts": 1792717140,
+      "request_start_ts": 1792544340,
+      "retrieved_at": "2026-10-23T01:00:49.069867Z",
+      "source_schema": "kalshi-perps-normalized-v1",
+      "source_version": null,
+      "status": "checked"
+    },
+    {
+      "actual_client_and_collector": true,
+      "candle_count": 2822,
+      "candle_coverage_complete": false,
+      "candles_status": "partial",
+      "continuous_replay_ready": false,
+      "data_fingerprint": "789179f50c294780b04a3f2aa950d63174b6f0c1a4f110f87d5d8d8e78c49f92",
+      "environment": "demo",
+      "funding_count": 6,
+      "funding_coverage_complete": true,
+      "funding_retrieval_complete": true,
+      "funding_status": "complete",
+      "http_events": [
+        {
+          "endpoint": "public_metadata",
+          "header_elapsed_seconds": 1.014,
+          "http_status": 200
+        },
+        {
+          "endpoint": "candles",
+          "header_elapsed_seconds": 0.391,
+          "http_status": 200
+        },
+        {
+          "endpoint": "historical_funding",
+          "header_elapsed_seconds": 0.335,
+          "http_status": 200
+        },
+        {
+          "endpoint": "public_metadata",
+          "header_elapsed_seconds": 0.334,
+          "http_status": 200
+        },
+        {
+          "endpoint": "funding_estimate",
+          "header_elapsed_seconds": 0.336,
+          "http_status": 200
+        }
+      ],
+      "metadata_fingerprint": "728627e9c79435d33ad1de6c22f2c27bb44856391d89d371a23ddfbbc0cfe7e7",
+      "observation_count": 4,
+      "observation_kinds": [
+        "funding_estimate",
+        "index",
+        "mark",
+        "quote"
+      ],
+      "observations_status": "complete",
+      "readable_history_and_funding": true,
+      "request_end_ts": 1792717140,
+      "request_start_ts": 1792544340,
+      "retrieved_at": "2026-10-23T01:00:49.202676Z",
+      "source_schema": "kalshi-perps-normalized-v1",
+      "source_version": null,
+      "status": "checked"
+    }
+  ],
+  "database_or_service_or_order_changes": false,
+  "private_credentials_loaded": false,
+  "raw_prices_or_account_bodies_saved": false,
+  "route": "explicit_system_proxy"
+}

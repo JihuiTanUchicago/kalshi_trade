@@ -7,7 +7,8 @@ line by line and two writers cannot lose an update to each other.
 """
 from data_pipeline import init_schema
 from data_pipeline.common import get_db_conn
-from app import broker_repository
+from app import broker_repository, alpaca_paper_repository, kalshi_perps_repository
+from app import kalshi_perps_orders_repository
 
 DDL = [
     # -- market history (written by app.market_history; Kalshi candles go in
@@ -370,7 +371,7 @@ DDL = [
     CREATE TABLE IF NOT EXISTS app_proposals (
       id BIGINT AUTO_INCREMENT PRIMARY KEY,
       user_id BIGINT NOT NULL,
-      kind VARCHAR(12) NOT NULL,
+      kind VARCHAR(32) NOT NULL,
       deployment_id BIGINT NULL,
       strategy_id BIGINT NULL,
       reason TEXT NOT NULL,
@@ -558,6 +559,9 @@ DDL = [
 
 
 DDL.extend(broker_repository.DDL)
+DDL.extend(alpaca_paper_repository.DDL)
+DDL.extend(kalshi_perps_repository.DDL)
+DDL.extend(kalshi_perps_orders_repository.DDL)
 
 
 def _add_column_if_missing(cur, table: str, column: str, ddl: str) -> None:
@@ -578,6 +582,22 @@ def _add_index_if_missing(cur, table: str, index_name: str, ddl: str) -> None:
     )
     if cur.fetchone()["c"] == 0:
         cur.execute(ddl)
+
+
+def _ensure_proposal_kind_width(cur) -> None:
+    """Admit native perps proposal names on existing installations; never shrink."""
+    cur.execute(
+        "SELECT DATA_TYPE AS data_type, CHARACTER_MAXIMUM_LENGTH AS max_length, "
+        "IS_NULLABLE AS nullable FROM information_schema.COLUMNS "
+        "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s AND COLUMN_NAME=%s",
+        ("app_proposals", "kind"),
+    )
+    row = cur.fetchone()
+    if (not row or row["data_type"] != "varchar" or row["nullable"] != "NO"
+            or type(row["max_length"]) is not int):
+        raise RuntimeError("Unexpected proposal-kind schema; migration requires review.")
+    if row["max_length"] < 32:
+        cur.execute("ALTER TABLE app_proposals MODIFY COLUMN kind VARCHAR(32) NOT NULL")
 
 
 def main() -> None:
@@ -706,6 +726,7 @@ def main() -> None:
         # Proposal payload: the clamped values a set_risk / set_exec proposal applies on approval
         # (deploy/adjust/pause/resume carry no payload). NULL for the older kinds.
         _add_column_if_missing(cur, "app_proposals", "payload", "ALTER TABLE app_proposals ADD COLUMN payload JSON NULL")
+        _ensure_proposal_kind_width(cur)
         # Backfill any user still missing a handle (idempotent: only touches NULLs).
         from app import repository as _repo
         cur.execute("SELECT id, email, name FROM app_users WHERE username IS NULL OR username=''")

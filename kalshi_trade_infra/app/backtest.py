@@ -193,6 +193,11 @@ def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optio
     `code`) computes a per-frame target book in the sandbox once; the entry/exit/sizing/
     fee/settlement mechanics below are then IDENTICAL to a DSL spec. Everything else is the
     single-contract DSL path, unchanged."""
+    if ds.market.kind == "perpetual" or specmod.is_perpetual_spec(spec):
+        if ds.market.kind != "perpetual" or spec.get("market") != ds.market.key:
+            raise ValueError("Perpetual research requires its own matching instrument dataset.")
+        from app.kalshi_perps_backtest import simulate as simulate_perpetual
+        return simulate_perpetual(spec, ds, start_ts, end_ts, what_if)
     if spec.get("cross"):
         return simulate_pairs(spec, ds, start_ts, end_ts, what_if)
     if ds.market.kind == "spot":
@@ -439,6 +444,9 @@ def freeze_code_model(spec: Dict, ds: Dataset, diag: Optional[Dict] = None) -> D
     window is the usual cause) instead of leaving it to guess. Pure observability: it never changes
     the fit or whether the spec is frozen."""
     from app import sandbox
+    if ds.market.kind == "perpetual":
+        # Phase one uses trusted causal rules, never a full-fold arbitrary code strategy.
+        return specmod.validate(spec)
     if not specmod.is_code_spec(spec) or not sandbox.strategy_has_fit(spec["code"]):
         return spec
     frames = list(ds.frames)
@@ -737,11 +745,11 @@ def attribution(trades: List[Trade]) -> Dict:
         b[0] += ret
         b[1] += 1
     for t in trades:
-        cost = t.qty * t.entry_price
+        cost = getattr(t, "capital_at_risk", t.qty * t.entry_price)
         if cost <= 0:
             continue
         ret = t.pnl / cost
-        add("price", _price_band(t.entry_price), ret)
+        add("price", "continuous_price" if hasattr(t, "capital_at_risk") else _price_band(t.entry_price), ret)
         add("side", t.side, ret)
         add("session", _session(t.entry_ts), ret)
     return {group: {k: {"mean_net": round(s / n, 4), "n": n} for k, (s, n) in buckets.items()}
@@ -849,6 +857,11 @@ def load_from_db(market: Market, history_days: Optional[int] = None) -> Dataset:
     conn = get_db_conn()
     try:
         with conn.cursor() as cur:
+            if market.kind == "perpetual":
+                from app.kalshi_perps_repository import load_history
+                from app.kalshi_perps_backtest import build_dataset as build_perpetual_dataset
+                utc_since = since.replace(tzinfo=timezone.utc) if since.tzinfo is None else since
+                return build_perpetual_dataset(market, load_history(cur, market, int(utc_since.timestamp())))
             h = repo.load_history(cur, market.series, market.candle_minutes, since, market.underlying)
     finally:
         conn.close()
@@ -971,6 +984,9 @@ def zero_trade_reason(spec: Dict, ds: Dataset) -> str:
     instead of 'coef:[]/0 trades'. Counts each gate's pass rate independently over all snapshots
     and names the tightest. Observability only; it never changes a trade or a trial."""
     from app import spec as specmod
+    if specmod.is_perpetual_spec(spec):
+        return ("0 trades: " + ds.last_rejection if getattr(ds, "last_rejection", None) else
+                "0 trades: no perpetual rule signal with a complete lookback, funding coverage and next-bar fill.")
     if specmod.is_code_spec(spec):
         return "0 trades: the code strategy's signals(window) fired no entry on the research fold"
     e = spec["entry"]
@@ -1015,6 +1031,13 @@ def feature_coverage(ds: Dataset) -> Dict[str, int]:
     # ponytail: full scan over FEATURES x snapshots, once per research prompt; fine at research
     # dataset sizes, revisit if prompt-building ever shows up hot."""
     from app.markets import FEATURES
+    if ds.market.kind == "perpetual":
+        rows = [frame for _, frame in ds.frames]
+        if not rows:
+            return {}
+        keys = {key for frame in rows for key in frame.get("features", {})}
+        return {key: round(100 * sum(frame.get("features", {}).get(key) is not None for frame in rows) / len(rows))
+                for key in sorted(keys)}
     n = 0
     present = {name: 0 for name in FEATURES}
     for _ts, snaps in ds.frames:

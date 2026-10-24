@@ -1,0 +1,10 @@
+{
+  "css": "/static/app.meridian.css?v=0cf549951e20",
+  "falseUpdate": false,
+  "height": 720,
+  "overflow": false,
+  "rows": 5,
+  "script": "/static/app.meridian.js?v=d898ab44b812",
+  "url": "http://127.0.0.1:8096/dashboard",
+  "width": 1280
+}
