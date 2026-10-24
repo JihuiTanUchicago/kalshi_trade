@@ -173,3 +173,18 @@ def test_me_exposes_min_run_balance(monkeypatch):
     monkeypatch.setattr(server.repo, 'series_with_candles', lambda *a: set())
     data = server.me(context())
     assert data['min_run_balance'] == 1.0 and data['credit_balance'] == 0.5
+
+
+def test_me_exposes_perps_live_available(monkeypatch):
+    # The Funds page hides the Bitcoin-perps box unless live perps are enabled on this server.
+    monkeypatch.setattr(server.billing, 'configured', lambda: False)
+    monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'get_kalshi_key', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'get_kalshi_dev_key', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: 10.0)
+    monkeypatch.setattr(server.repo, 'spot_symbols_with_data', lambda *a: set())
+    monkeypatch.setattr(server.repo, 'series_with_candles', lambda *a: set())
+    monkeypatch.setattr(server.kalshi_perps_trading, 'enabled', lambda: False)
+    assert server.me(context())['perps_live_available'] is False
+    monkeypatch.setattr(server.kalshi_perps_trading, 'enabled', lambda: True)
+    assert server.me(context())['perps_live_available'] is True

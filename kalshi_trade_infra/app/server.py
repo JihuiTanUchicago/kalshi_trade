@@ -334,6 +334,7 @@ def me(ctx: Ctx):
         "free_bonus": float(billing.FREE_BONUS),
         "credit_balance": round(repo.credit_balance(ctx.cur, ctx.uid), 4),
         "min_run_balance": float(billing.MIN_RUN_BALANCE),  # the headroom a research run needs to start
+        "perps_live_available": kalshi_perps_trading.enabled(),  # hide the Funds perps box when live perps are off
         "markets": _researchable_markets(ctx.cur),
         "directions": [{"key": k, **v} for k, v in agent.DIRECTIONS.items()],
     }

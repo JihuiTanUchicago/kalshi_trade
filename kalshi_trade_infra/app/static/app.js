@@ -2579,7 +2579,7 @@
           </form>
           <div id="pflash" style="margin-top:10px"></div>
         </section>
-        <section id="kalshi-perps-live" aria-label="Bitcoin perpetual trading"></section>
+        ${S.me.perps_live_available ? '<section id="kalshi-perps-live" aria-label="Bitcoin perpetual trading"></section>' : ''}
         </div>
         <div class="funds-col funds-history">
         <section class="panel">
