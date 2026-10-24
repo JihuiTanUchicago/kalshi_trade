@@ -30,7 +30,8 @@ from typing import Callable, Dict, List, Optional, Tuple
 from app import freedata
 from app import spec as specmod
 from app import weather_fcst
-from app.markets import MARKETS, NEW_YORK, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot, snapshot
+from app.markets import (MARKETS, NEW_YORK, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot, snapshot,
+                         weather_obs_applies)
 from data_pipeline.architecture.execution_kernel import reservation_price
 from data_pipeline.kalshi_fees import taker_fee_dollars
 
@@ -78,12 +79,14 @@ def _iso(ts: int) -> str:
 def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc: List[Tuple[int, float]],
                   micro: Optional[Dict[Tuple[str, int], Dict[str, float]]] = None,
                   frame_series: Optional[Dict[str, List[Tuple[int, float]]]] = None,
+                  frame_series_applies: Optional[Callable[[str, int], bool]] = None,
                   forecasts: Optional[weather_fcst.ForecastBook] = None) -> Dataset:
     """markets: {ticker, strike, close_time, result}; candles: (ticker, end_period_ts, yes_bid, yes_ask)
     tuples as repository.load_history returns them, or the equivalent dicts.
     micro: {(ticker, decision_ts): {feature: value}} order-book features to merge per snapshot (optional).
     frame_series: {feature: [(known_at_ts, value)]} market-wide series (e.g. weather-station readings)
     as-of joined onto every frame, so a frame only sees values already known at its ts.
+    frame_series_applies(ticker, ts): which contracts in a frame they describe (default: all).
     forecasts: a weather series' issued forecasts; each contract then carries the forecast fair-value
     features (weather_fcst.snapshot_features, the same call the live engine makes)."""
     micro = micro or {}
@@ -116,11 +119,15 @@ def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc:
         feats = series.features_at(ts) if has_underlying else {}
         if feats is None:
             continue
-        if joined:
-            feats = dict(feats, **{n: j[ts] for n, j in joined.items() if ts in j})
-        snaps = [s for s in (snapshot(feats, ct, ts, b, a, weather_fcst.with_forecast(
-                                 micro.get((ct.ticker, ts)), forecasts, ct, ts, b, a, feats))
-                             for ct, b, a in by_ts[ts]) if s is not None]
+        extra = {n: j[ts] for n, j in joined.items() if ts in j}
+        with_extra = dict(feats, **extra) if extra else feats
+        snaps = []
+        for ct, b, a in by_ts[ts]:
+            cf = with_extra if extra and (frame_series_applies is None or frame_series_applies(ct.ticker, ts)) else feats
+            s = snapshot(cf, ct, ts, b, a,
+                         weather_fcst.with_forecast(micro.get((ct.ticker, ts)), forecasts, ct, ts, b, a, cf))
+            if s is not None:
+                snaps.append(s)
         if snaps:
             frames.append((ts, snaps))
     start = frames[0][0] if frames else 0
@@ -1038,10 +1045,11 @@ def load_from_db(market: Market, history_days: Optional[int] = None) -> Dataset:
             h = repo.load_history(cur, market.series, market.candle_minutes, since, market.underlying)
     finally:
         conn.close()
-    frame_series = None
+    frame_series = applies = None
     if market.series in WEATHER_STATIONS:
         frame_series = freedata.station_observations(WEATHER_STATIONS[market.series])
-    return build_dataset(market, h["markets"], h["candles"], h["btc"], h.get("micro"), frame_series,
+        applies = lambda ticker, ts: weather_obs_applies(market.series, ticker, ts)  # noqa: E731
+    return build_dataset(market, h["markets"], h["candles"], h["btc"], h.get("micro"), frame_series, applies,
                          forecast_book(market, since))
 
 

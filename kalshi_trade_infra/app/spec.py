@@ -275,7 +275,7 @@ gracefully. lag_days is the publication delay you assert; set it honestly (daily
 monthly macro release longer). The request is frozen into your pre-registered spec.
 WEATHER: source "asos" = hourly airport-station observations in degrees F (free IEM archive, already
 delayed 15 min to when they are public; use lag_days 0). series "NYC" is the latest reading;
-"NYC:dailymax" is the running max of the NWS climate day so far (midnight-midnight local STANDARD
+"NYC:dailymax" ("NYC:dailymin") is the running max (min) of the NWS climate day so far (midnight-midnight local STANDARD
 time, what Kalshi's daily-high markets settle on). Kalshi stations: NYC Central Park = NYC, Chicago
 Midway = MDW, Austin = AUS, Miami = MIA, Denver = DEN, Los Angeles = LAX, Philadelphia = PHL.
 Late in the day the high is mostly set: a strike already beaten by the running max is near-certain.

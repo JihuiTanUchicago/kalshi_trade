@@ -13,7 +13,7 @@ import bisect
 import math
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from app.weather_fcst import FEATURE_DOCS as _WEATHER_FCST_DOCS
@@ -393,13 +393,57 @@ FEATURES.update({name: desc for name, (_col, desc) in MICRO_FEATURES.items()})
 
 # Daily-high temperature series -> the ASOS station Kalshi settles them on. Their datasets carry the
 # station's observations as built-in features (app/freedata.station_observations, as-of joined).
+# Station = the NWS CLI code each series' market rules name ("Chicago (CLIMDW)"), probed 2026-10-24.
 WEATHER_STATIONS: Dict[str, str] = {
-    "KXHIGHNY": "NYC", "KXHIGHCHI": "MDW", "KXHIGHAUS": "AUS", "KXHIGHMIA": "MIA",
-    "KXHIGHDEN": "DEN", "KXHIGHLAX": "LAX", "KXHIGHPHIL": "PHL",
+    "KXHIGHAUS": "AUS", "KXHIGHCHI": "MDW", "KXHIGHDEN": "DEN", "KXHIGHHOU": "HOU", "KXHIGHLAX": "LAX",
+    "KXHIGHMIA": "MIA", "KXHIGHNY": "NYC", "KXHIGHOU": "HOU", "KXHIGHPHIL": "PHL", "KXHIGHTATL": "ATL",
+    "KXHIGHTBOS": "BOS", "KXHIGHTDAL": "DFW", "KXHIGHTDC": "DCA", "KXHIGHTEMPDEN": "DEN",
+    "KXHIGHTEWR": "EWR", "KXHIGHTHOU": "HOU", "KXHIGHTLV": "LAS", "KXHIGHTMIN": "MSP",
+    "KXHIGHTNOLA": "MSY", "KXHIGHTOKC": "OKC", "KXHIGHTPHX": "PHX", "KXHIGHTSAN": "SAN",
+    "KXHIGHTSATX": "SAT", "KXHIGHTSDF": "SDF", "KXHIGHTSEA": "SEA", "KXHIGHTSFO": "SFO",
+    "KXHIGHTTTN": "TTN", "KXLOWTATL": "ATL", "KXLOWTAUS": "AUS", "KXLOWTBOS": "BOS", "KXLOWTCHI": "MDW",
+    "KXLOWTDAL": "DFW", "KXLOWTDC": "DCA", "KXLOWTDEN": "DEN", "KXLOWTEWR": "EWR", "KXLOWTHOU": "HOU",
+    "KXLOWTLAX": "LAX", "KXLOWTLV": "LAS", "KXLOWTMIA": "MIA", "KXLOWTMIN": "MSP", "KXLOWTNOLA": "MSY",
+    "KXLOWTNYC": "NYC", "KXLOWTOKC": "OKC", "KXLOWTPHIL": "PHL", "KXLOWTPHX": "PHX", "KXLOWTSAN": "SAN",
+    "KXLOWTSATX": "SAT", "KXLOWTSDF": "SDF", "KXLOWTSEA": "SEA", "KXLOWTSFO": "SFO", "KXLOWTTTN": "TTN",
 }
+WEATHER_OBS_FEATURES = ("obs_high_f", "obs_low_f", "obs_temp_f")
+
+
+def weather_target_day(ticker: str) -> Optional[date]:
+    """The local day a daily weather contract settles on, from its event segment:
+    KXHIGHNY-26OCT24-T66 -> 2026-10-24. None if the ticker doesn't carry one."""
+    parts = ticker.split("-")
+    if len(parts) < 2:
+        return None
+    try:
+        return datetime.strptime(parts[1].upper(), "%y%b%d").date()
+    except ValueError:
+        return None
+
+
+def climate_day(station: str, ts: int) -> Optional[date]:
+    """The NWS climate day (local STANDARD time, never DST-shifted) a station is in at ts."""
+    from app.freedata import ASOS_LST_OFFSET_H
+    off = ASOS_LST_OFFSET_H.get(station)
+    if off is None:
+        return None
+    return datetime.fromtimestamp(ts + off * 3600, tz=timezone.utc).date()
+
+
+def weather_obs_applies(series: str, ticker: str, ts: int) -> bool:
+    """Today's station readings describe a contract only on the day it settles on: a frame also
+    quotes tomorrow's contracts, and today's observed high says nothing about tomorrow's."""
+    station = WEATHER_STATIONS.get(series)
+    target = weather_target_day(ticker)
+    return bool(station) and target is not None and climate_day(station, ts) == target
+
+
 FEATURES.update({
     "obs_high_f": "weather markets only: highest temperature (F) observed so far today at the settlement "
                   "station (NWS climate day, local standard time); the day's high can only rise from here",
+    "obs_low_f": "weather markets only: lowest temperature (F) observed so far today at the settlement "
+                 "station (NWS climate day, local standard time); the day's low can only fall from here",
     "obs_temp_f": "weather markets only: latest temperature (F) reading at the settlement station",
 })
 # Per-contract forecast fair value (app/weather_fcst.snapshot_features, research and live alike).
