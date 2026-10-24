@@ -31,6 +31,7 @@ from app import freedata
 from app import spec as specmod
 from app import sports_odds, weather_fcst
 from app.markets import (MARKETS, NEW_YORK, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot, snapshot,
+                         cross_features, cross_product,
                          weather_obs_applies)
 from data_pipeline.architecture.execution_kernel import reservation_price
 from data_pipeline.kalshi_fees import taker_fee_dollars
@@ -80,7 +81,7 @@ def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc:
                   micro: Optional[Dict[Tuple[str, int], Dict[str, float]]] = None,
                   frame_series: Optional[Dict[str, List[Tuple[int, float]]]] = None,
                   frame_series_applies: Optional[Callable[[str, int], bool]] = None,
-                  forecasts=None) -> Dataset:
+                  forecasts=None, cross: Optional[List[Tuple[int, float]]] = None) -> Dataset:
     """markets: {ticker, strike, close_time, result}; candles: (ticker, end_period_ts, yes_bid, yes_ask)
     tuples as repository.load_history returns them, or the equivalent dicts.
     micro: {(ticker, decision_ts): {feature: value}} order-book features to merge per snapshot (optional).
@@ -88,9 +89,13 @@ def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc:
     as-of joined onto every frame, so a frame only sees values already known at its ts.
     frame_series_applies(ticker, ts): which contracts in a frame they describe (default: all).
     forecasts: an external fair-value book (forecast_book: weather forecasts or sportsbook odds); each
-    contract then carries its features (book.features, the same call the live engine makes)."""
+    contract then carries its features (book.features, the same call the live engine makes).
+    cross: one-minute (start_ts, close) of markets.cross_product(market), whose CROSS_FEATURES are
+    merged onto every frame they're fresh for (the engine's _with_cross does the same live)."""
     micro = micro or {}
     series = BtcSeries(btc)
+    xprod = cross_product(market) if cross else None
+    xseries = BtcSeries(cross) if xprod else None
     # Sports (and any market with underlying=None) have no spot path: every frame with a
     # two-sided quote is tradable on price/order-book features alone, so skip the
     # fresh-underlying gate and feed snapshot() an empty feature base.
@@ -119,6 +124,10 @@ def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc:
         feats = series.features_at(ts) if has_underlying else {}
         if feats is None:
             continue
+        if xseries is not None:
+            xf = cross_features(xprod, xseries, ts)
+            if xf:
+                feats = dict(feats, **xf)
         extra = {n: j[ts] for n, j in joined.items() if ts in j}
         with_extra = dict(feats, **extra) if extra else feats
         snaps = []
@@ -1085,12 +1094,13 @@ def load_from_db(market: Market, history_days: Optional[int] = None) -> Dataset:
                 from app.kalshi_perps_backtest import build_dataset as build_perpetual_dataset
                 utc_since = since.replace(tzinfo=timezone.utc) if since.tzinfo is None else since
                 return build_perpetual_dataset(market, load_history(cur, market, int(utc_since.timestamp())))
-            h = repo.load_history(cur, market.series, market.candle_minutes, since, market.underlying)
+            h = repo.load_history(cur, market.series, market.candle_minutes, since, market.underlying,
+                                  cross=cross_product(market))
     finally:
         conn.close()
     frame_series, applies = station_frame_series(market)
     return build_dataset(market, h["markets"], h["candles"], h["btc"], h.get("micro"), frame_series, applies,
-                         forecast_book(market, since))
+                         forecast_book(market, since), cross=h.get("cross"))
 
 
 def station_frame_series(market: Market) -> Tuple[Optional[Dict[str, List[Tuple[int, float]]]],

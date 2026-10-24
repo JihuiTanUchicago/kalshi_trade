@@ -2120,8 +2120,9 @@ def _num(v) -> Optional[float]:
 
 def load_history(cur, series: str, candle_minutes: int, since: datetime,
                  underlying: str = "BTC-USD", tickers: Optional[set] = None,
-                 until: Optional[datetime] = None) -> Dict[str, List]:
+                 until: Optional[datetime] = None, cross: Optional[str] = None) -> Dict[str, List]:
     """markets as dicts; candles as compact (ticker, end_period_ts, bid, ask) tuples.
+    `cross` (a spot symbol, markets.cross_product) also loads that coin's closes as "cross".
     `tickers` keeps only those contracts' candles and microstructure (a partition window),
     so rows for contracts outside it are dropped as they stream instead of held. `until` (a
     close_time upper bound) keeps the database from scanning contracts past the window at all."""
@@ -2157,8 +2158,13 @@ def load_history(cur, series: str, candle_minutes: int, since: datetime,
         (underlying, start_ts),
     )
     btc = [(int(r["start_ts"]), float(r["close"])) for r in cur.fetchall()]
-    return {"markets": markets, "candles": candles, "btc": btc,
-            "micro": _load_micro(cur, series, since, tickers, until)}
+    out = {"markets": markets, "candles": candles, "btc": btc,
+           "micro": _load_micro(cur, series, since, tickers, until)}
+    if cross:
+        cur.execute("SELECT start_ts, close FROM spot_candles_1m WHERE symbol=%s AND start_ts >= %s ORDER BY start_ts",
+                    (cross, start_ts))
+        out["cross"] = [(int(r["start_ts"]), float(r["close"])) for r in cur.fetchall()]
+    return out
 
 
 _MICRO_COLS_TTL = 600.0

@@ -391,6 +391,18 @@ FEATURES: Dict[str, str] = {
     "hour_et": "hour of day in New York (0-23)",
 }
 
+# Cross-asset features: a crypto market's frames also carry the leading coin's returns, from the
+# same one-minute closes and the same as-of rule (the last candle closed by the decision ts). BTC
+# is the cross for every alt; ETH is the cross for BTC. Crypto research kept dropping "BTC leads
+# ETH/SOL/XRP" ideas as feature_unavailable because a market only saw its own underlying.
+CROSS_FEATURES: Dict[str, str] = {
+    **{"btc_ret_%dm" % n: "non-BTC crypto markets only: BTC log return over the last %d minute%s"
+       % (n, "" if n == 1 else "s") for n in (1, 5, 15, 60)},
+    "btc_vol_60m": "non-BTC crypto markets only: stdev of 1-minute BTC log returns over the last 60 minutes",
+    **{"eth_ret_%dm" % n: "BTC markets only: ETH log return over the last %d minutes" % n for n in (5, 15, 60)},
+}
+FEATURES.update(CROSS_FEATURES)
+
 # Order-book / microstructure features the pipeline already collects into
 # model_features_1m, keyed {feature name: (db column, description)}. They are joined
 # onto each contract snapshot by (ticker, minute) in the backtester; every one is
@@ -566,6 +578,39 @@ class BtcSeries:
         for n in (15, 60):
             out["vol_%dm" % n] = self._vol(i, n) or 0.0
         return out
+
+
+def cross_product(market: Market) -> Optional[str]:
+    """The Coinbase product whose returns ride along on `market`'s frames (CROSS_FEATURES), or
+    None: BTC-USD for an alt-coin binary, ETH-USD for a BTC one. Minute-candle binaries only
+    (per-second, spot and perpetual markets build their features elsewhere)."""
+    u = market.underlying or ""
+    if not u.endswith("-USD") or market.kind != "binary" or market.source == "ticks":
+        return None
+    return "ETH-USD" if u == "BTC-USD" else "BTC-USD"
+
+
+def cross_feature_names(market: Optional[Market]) -> frozenset:
+    """The CROSS_FEATURES names `market`'s frames can carry (empty when it has no cross product)."""
+    prod = cross_product(market) if market is not None else None
+    if prod is None:
+        return frozenset()
+    coin = prod.split("-")[0].lower()
+    return frozenset(k for k in CROSS_FEATURES if k.startswith(coin + "_"))
+
+
+def cross_features(product: Optional[str], series: Optional["BtcSeries"], ts: int) -> Dict[str, float]:
+    """The CROSS_FEATURES of `product` as of ts, {} when its series is missing or stale (a filter
+    on an absent feature never matches, so a stale cross feed can't trade a different rule)."""
+    f = series.features_at(ts) if (product and series is not None) else None
+    if f is None:
+        return {}
+    if product == "BTC-USD":
+        out = {"btc_ret_%dm" % n: f["ret_%dm" % n] for n in (1, 5, 15, 60)}
+        out["btc_vol_60m"] = f["vol_60m"]
+        return out
+    coin = product.split("-")[0].lower()
+    return {"%s_ret_%dm" % (coin, n): f["ret_%dm" % n] for n in (5, 15, 60)}
 
 
 # One float object per hour, shared by every snapshot: a research dataset holds ~1M of them.

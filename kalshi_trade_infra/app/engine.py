@@ -23,7 +23,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 import requests
 
@@ -32,6 +32,7 @@ from app import repository as repo
 from app import spec as specmod
 from app import sports_odds, weather_fcst
 from app.markets import (MARKETS, WEATHER_OBS_FEATURES, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot,
+                         cross_features, cross_product,
                          compatible_cadence, snapshot, weather_obs_applies)
 from data_pipeline.common import api_get, fetch_open_markets, parse_iso_to_dt
 from data_pipeline.market_data import ws_quote
@@ -164,6 +165,37 @@ def fetch_spot_series(market: Market) -> Optional[BtcSeries]:
     return BtcSeries([(int(r[0]), float(r[4])) for r in resp.json()])
 
 
+_cross_cache: Dict[str, Tuple[float, BtcSeries]] = {}
+CROSS_CACHE_SECONDS = 15.0
+
+
+def fetch_product_series(product: str) -> Optional[BtcSeries]:
+    """One-minute Coinbase closes of a cross product (markets.cross_product), shared by every
+    market that reads it for CROSS_CACHE_SECONDS so seven alt markets cost one BTC request."""
+    hit = _cross_cache.get(product)
+    if hit and time.time() - hit[0] < CROSS_CACHE_SECONDS:
+        return hit[1]
+    resp = requests.get(COINBASE_CANDLES_URL % product, params={"granularity": 60}, timeout=10)
+    resp.raise_for_status()
+    series = BtcSeries([(int(r[0]), float(r[4])) for r in resp.json()])
+    _cross_cache[product] = (time.time(), series)
+    return series
+
+
+def _with_cross(market: Market, sources: "Sources", now_ts: int, feats: Optional[Dict[str, float]]):
+    """feats plus the market's CROSS_FEATURES, exactly as backtest.build_dataset merges them. A
+    missing or stale cross feed leaves feats as they are (filters on the cross names then can't match)."""
+    prod = cross_product(market)
+    if feats is None or prod is None or sources.cross_spot is None:
+        return feats
+    try:
+        xf = cross_features(prod, sources.cross_spot(prod), now_ts)
+    except Exception as e:  # noqa: BLE001 - a cross-feed hiccup must not stop the market's own tick
+        print("[engine] cross spot fetch failed for %s (%s): %r" % (market.key, prod, e), flush=True)
+        return feats
+    return dict(feats, **xf) if xf else feats
+
+
 def fetch_result(ticker: str) -> Optional[str]:
     m = (api_get("/markets/%s" % ticker) or {}).get("market") or {}
     result = (m.get("result") or "").lower()
@@ -176,6 +208,8 @@ class Sources:
 
     quotes: Callable[[Market], List[LiveQuote]] = fetch_quotes
     spot: Callable[[Market], Optional[BtcSeries]] = fetch_spot_series
+    # product -> one-minute closes for CROSS_FEATURES; None (tests' default) = no cross features
+    cross_spot: Optional[Callable[[str], Optional[BtcSeries]]] = None
     result: Callable[[str], Optional[str]] = fetch_result
     live_kernel: Optional[Callable[[int], object]] = None  # user_id -> kernel; None = live disabled
     demo_kernel: Optional[Callable[[int], object]] = None  # user_id -> kernel; None = demo disabled
@@ -1549,7 +1583,7 @@ def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] 
     else:
         try:
             series = sources.spot(market)
-            feats = series.features_at(now_ts) if series is not None else None
+            feats = _with_cross(market, sources, now_ts, series.features_at(now_ts) if series is not None else None)
         except Exception as e:  # a spot-feed hiccup on one market must not crash the engine loop
             print("[engine] spot fetch failed for %s: %r (skipping tick)" % (market.key, e), flush=True)
             feats = None
@@ -1614,7 +1648,7 @@ def _cross_market_frame(markets: List[str], sources: Sources, now_ts: int):
             except Exception as e:
                 print("[engine] cross spot fetch failed for %s: %r (skipping frame)" % (key, e), flush=True)
                 return None
-            feats = series.features_at(now_ts) if series is not None else None
+            feats = _with_cross(market, sources, now_ts, series.features_at(now_ts) if series is not None else None)
             if feats is None:
                 return None  # stale/missing spot on this leg — skip the whole frame
         micro = _micro_for(sources, [q.contract.ticker for q in quotes], now_ts)
@@ -1896,6 +1930,7 @@ def run_forever() -> None:
                 print("[engine] demo execution unavailable: %r" % e, flush=True)
                 demo_kernel = None
             sources = Sources(
+                cross_spot=fetch_product_series,
                 live_kernel=live_kernel_factory(conn, ws_feed=ws_feed) if LIVE_TRADING_ENABLED else None,
                 demo_kernel=demo_kernel,
                 paper_kernel=paper_kernel_factory(conn, ws_feed=ws_feed),

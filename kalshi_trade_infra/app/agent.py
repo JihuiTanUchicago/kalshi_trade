@@ -944,10 +944,16 @@ mid here, so microstructure/longshot angles do NOT apply. (Execution is research
                else "A house GBM-digital fair value is available (strike vs %s spot), but treat the "
                     "Kalshi mid as the baseline to beat — an unconditional model-mispricing edge is "
                     "usually fee/noise." % coin)
+        from app.markets import CROSS_FEATURES, cross_feature_names, cross_product
+        xprod, xnames = cross_product(m), cross_feature_names(m)
+        cross = ("\nCross-asset: every frame also carries %s's moves as of the decision (%s), so lead-lag "
+                 "ideas (does %s's move lead %s's ladder?) are testable as filters, models or code."
+                 % (xprod.split("-")[0], ", ".join(k for k in CROSS_FEATURES if k in xnames), xprod.split("-")[0], coin)
+                 ) if xprod else ""
         return head + """
 YES pays $1 if %s settles above the strike at the contract's settlement instant. Contracts are
 priced strike-vs-spot off %s's Coinbase feed, so you have spot, returns, realised vol, moneyness
-and z_score, PLUS order-book/microstructure features. %s
+and z_score, PLUS order-book/microstructure features. %s%s
 Angles worth a mechanism (not exhaustive):
 - Settlement mechanics: terminal pinning near the strike in the last minutes; 1c tick discreteness
   vs a continuous fair value.
@@ -957,7 +963,7 @@ Angles worth a mechanism (not exhaustive):
   longshot distortion near 5c/95c, round-number strike magnetism, US-open vs Asia-overnight regimes.
 - Basis / funding: implied probability vs perp funding / spot-perp basis; cross-coin ladder lead-lag.
 - Volatility: does the market over/under-price realised vol at specific horizons (e.g. the last
-  3-8 minutes of a 15-minute contract)?""" % (coin, coin, gbm, coin) + (_tick_profile(m) if m.source == "ticks" else "")
+  3-8 minutes of a 15-minute contract)?""" % (coin, coin, gbm, cross, coin) + (_tick_profile(m) if m.source == "ticks" else "")
     cat = (m.category or "").lower()
     if "sport" in cat:
         return head + """
