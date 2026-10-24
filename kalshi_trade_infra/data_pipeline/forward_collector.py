@@ -14,7 +14,8 @@ import websockets
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
-from data_pipeline.common import micro_series, next_20s_mark, api_get, get_db_conn, parse_iso_to_dt, utc_now
+from data_pipeline.common import (micro_series, next_20s_mark, api_get, fetch_open_markets, get_db_conn,
+                                  parse_iso_to_dt, utc_now)
 
 
 def choose_active_event(markets: List[Dict]) -> Optional[str]:
@@ -43,6 +44,11 @@ def choose_active_event(markets: List[Dict]) -> Optional[str]:
     return None
 
 
+def _closed(m: Dict) -> bool:
+    close_t = parse_iso_to_dt(m.get("close_time"))
+    return close_t is not None and close_t <= utc_now()
+
+
 def end_minute_bucket(dt: datetime) -> datetime:
     base = dt.replace(second=0, microsecond=0)
     if dt.second == 0 and dt.microsecond == 0:
@@ -56,13 +62,10 @@ def end_minute_bucket(dt: datetime) -> datetime:
 # series (common.micro_series(), BTC first), not just BTC, so those sizes exist for
 # the other series too. Per-series selection logic is unchanged from the BTC path.
 def fetch_active_markets(series_ticker: str) -> List[Dict]:
-    data = api_get("/markets", {"series_ticker": series_ticker, "status": "open", "limit": 200})
-    markets = data.get("markets", [])
-    if markets:
-        return markets
-    # Fallback in case status taxonomy changes.
-    data = api_get("/markets", {"series_ticker": series_ticker, "limit": 200})
-    return data.get("markets", [])
+    # No unfiltered /markets fallback: it lists ~50h of past and future contracts, so the
+    # tracked event stayed "present" after it closed and the collector snapshotted a dead
+    # market for hours (2026-10-24 16:15Z-). fetch_open_markets falls back to /events.
+    return fetch_open_markets(series_ticker, get=api_get)
 
 
 def fetch_active_kxbtc15m_markets() -> List[Dict]:  # back-compat alias
@@ -491,7 +494,7 @@ def loop_forever() -> None:
                     continue
 
                 ev = current_event.get(series)
-                if ev is None or not any(m.get("event_ticker") == ev for m in markets):
+                if ev is None or not any(m.get("event_ticker") == ev and not _closed(m) for m in markets):
                     ev = choose_active_event(markets)
                     current_event[series] = ev
                     print(f"Active event [{series}] -> {ev}")

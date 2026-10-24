@@ -109,6 +109,53 @@ def api_get(path: str, params: Optional[Dict[str, Any]] = None, timeout: int = 2
         return resp.json()
 
 
+OPEN_MARKET_STATUSES = ("active", "open")
+
+
+def fetch_open_markets(series_ticker: str, get=None, limit: int = 1000, max_pages: int = 40) -> List[Dict[str, Any]]:
+    """Every open market of one series.
+
+    Kalshi's /markets?status=open filter can silently return nothing for a series that is
+    trading: on 2026-10-24 from 16:15Z it answered [] for KXBTC15M while
+    KXBTC15M-26OCT241500-00 was active, which froze the forward collector on a closed event
+    and blinded the btc15m live feed. An empty answer therefore falls back to
+    /events?status=open with nested markets, which still listed it. ``get`` defaults to
+    api_get; callers pass their own (throttled or monkeypatched) getter."""
+    get = get or api_get
+    out: List[Dict[str, Any]] = []
+    cursor = None
+    for _ in range(max_pages):
+        params: Dict[str, Any] = {"series_ticker": series_ticker, "status": "open", "limit": limit}
+        if cursor:
+            params["cursor"] = cursor
+        data = get("/markets", params) or {}
+        batch = data.get("markets") or []
+        out.extend(batch)
+        cursor = data.get("cursor")
+        if not cursor or not batch:
+            break
+    if out:
+        return out
+    cursor = None
+    for _ in range(max_pages):
+        params = {"series_ticker": series_ticker, "status": "open", "with_nested_markets": "true",
+                  "limit": min(limit, 200)}
+        if cursor:
+            params["cursor"] = cursor
+        data = get("/events", params) or {}
+        events = data.get("events") or []
+        for ev in events:
+            for m in ev.get("markets") or []:
+                if str(m.get("status") or "").lower() in OPEN_MARKET_STATUSES:
+                    m.setdefault("event_ticker", ev.get("event_ticker"))
+                    m.setdefault("series_ticker", ev.get("series_ticker") or series_ticker)
+                    out.append(m)
+        cursor = data.get("cursor")
+        if not cursor or not events:
+            break
+    return out
+
+
 def _get_private_key():
     global _KALSHI_PRIVATE_KEY
     if _KALSHI_PRIVATE_KEY is not None:

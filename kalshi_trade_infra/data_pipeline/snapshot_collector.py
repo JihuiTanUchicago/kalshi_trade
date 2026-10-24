@@ -44,7 +44,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from data_pipeline.common import api_get
+from data_pipeline.common import api_get, fetch_open_markets
 
 BUCKET = os.getenv("DATALAKE_BUCKET", "kalshi-trade-datalake-568386354218-us-east-1")
 PREFIX = os.getenv("DATALAKE_SNAPSHOT_PREFIX", "snapshots_1m")
@@ -126,6 +126,9 @@ def _collect_series(series: str, minute_iso: str, max_pages: int = 40) -> List[D
         cursor = data.get("cursor")
         if not cursor or not batch:
             break
+    if not rows:
+        # /markets?status=open can answer [] for a trading series (KXBTC15M, 2026-10-24).
+        rows = [_row(m, _series_of(m), minute_iso) for m in fetch_open_markets(series, get=_throttled_get)]
     return rows
 
 

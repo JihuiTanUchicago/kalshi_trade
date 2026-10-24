@@ -33,7 +33,7 @@ from app import spec as specmod
 from app import sports_odds, weather_fcst
 from app.markets import (MARKETS, WEATHER_OBS_FEATURES, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot,
                          compatible_cadence, snapshot, weather_obs_applies)
-from data_pipeline.common import api_get, parse_iso_to_dt
+from data_pipeline.common import api_get, fetch_open_markets, parse_iso_to_dt
 from data_pipeline.market_data import ws_quote
 from data_pipeline.kalshi_fees import taker_fee_dollars
 
@@ -131,33 +131,26 @@ def _opt_float(v) -> Optional[float]:
 
 
 def fetch_quotes(market: Market) -> List[LiveQuote]:
-    out, cursor = [], None
-    while True:
-        params = {"series_ticker": market.series, "status": "open", "limit": 1000}
-        if cursor:
-            params["cursor"] = cursor
-        data = api_get("/markets", params)
-        for m in data.get("markets") or []:
-            ct = parse_iso_to_dt(m.get("close_time"))
-            if ct is None or not market.is_target_event(ct):
+    out = []
+    for m in fetch_open_markets(market.series, get=api_get):
+        ct = parse_iso_to_dt(m.get("close_time"))
+        if ct is None or not market.is_target_event(ct):
+            continue
+        strike = m.get("floor_strike")
+        # An underlying-priced market (BTC/ETH/...) prices strike vs spot, so a contract with
+        # no strike is unusable. An outcome-settled market (underlying is None, e.g. sports)
+        # has no strike at all - use a 0.0 sentinel, matching the backtest's hist_markets
+        # (see market_history.sync_settled_markets); snapshot() never reads it without a spot.
+        if strike is None:
+            if market.underlying is not None:
                 continue
-            strike = m.get("floor_strike")
-            # An underlying-priced market (BTC/ETH/...) prices strike vs spot, so a contract with
-            # no strike is unusable. An outcome-settled market (underlying is None, e.g. sports)
-            # has no strike at all - use a 0.0 sentinel, matching the backtest's hist_markets
-            # (see market_history.sync_settled_markets); snapshot() never reads it without a spot.
-            if strike is None:
-                if market.underlying is not None:
-                    continue
-                strike = 0.0
-            out.append(LiveQuote(
-                Contract(m["ticker"], float(strike), ct.astimezone(timezone.utc), market.series),
-                _f(m.get("yes_bid_dollars")), _f(m.get("yes_ask_dollars")),
-                _f(m.get("yes_bid_size_fp")), _f(m.get("yes_ask_size_fp")),
-            ))
-        cursor = data.get("cursor")
-        if not cursor:
-            return out
+            strike = 0.0
+        out.append(LiveQuote(
+            Contract(m["ticker"], float(strike), ct.astimezone(timezone.utc), market.series),
+            _f(m.get("yes_bid_dollars")), _f(m.get("yes_ask_dollars")),
+            _f(m.get("yes_bid_size_fp")), _f(m.get("yes_ask_size_fp")),
+        ))
+    return out
 
 
 def fetch_spot_series(market: Market) -> Optional[BtcSeries]:
