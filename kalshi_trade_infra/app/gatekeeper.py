@@ -45,6 +45,11 @@ ALPHA = 0.10            # FDR / CI / p-value level
 DSR_MIN = 0.5
 CORR_MAX = 0.80         # marginal-contribution: max |corr| to a deployed peer
 PLACEBO_SHUFFLES = 200  # label-shuffle negative-control resamples
+# Cost stress: the held-out trades are re-simulated paying this much more per contract on every
+# fill, and the mean net return must stay > 0. Measured basis (execution thread, 2026-10-24): the
+# ask moves 0.2c against us at 1s latency and 0.55c at 2s, p90 spread up to 2.4c, and there are no
+# live fills to calibrate against yet. Only ever makes STAT_SUPPORTED / FORWARD_VALIDATED harder.
+COST_STRESS_CENTS = 1.0
 _BOOT_SEED = 12345      # base seed; per-experiment offset keeps verdicts deterministic
 
 # Cross-day generalization gate (§E.6 / beta-tester ask): a "passed" strategy must hold as a
@@ -299,6 +304,21 @@ def _primary_p(boot: Dict[str, Any]) -> float:
 
 
 
+def _cost_stress(spec: dict, ds, trades) -> Dict[str, Any]:
+    """Re-simulate the same frozen spec on the same window with COST_STRESS_CENTS of extra
+    slippage on every fill. Entries the stress pushes above the reservation price are skipped, as
+    they would be live. ok = stressed mean net return > 0 (no trades left is not ok). Perpetual and
+    spot paths model their own costs, so they pass through unchanged."""
+    if not trades or getattr(ds.market, "kind", "binary") != "binary" or COST_STRESS_CENTS <= 0:
+        return {"cost_stress_ok": True, "cost_stress_mean": None, "cost_stress_trades": None}
+    stressed = backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1,
+                                 what_if=backtest.WhatIf(slippage_cents=COST_STRESS_CENTS))
+    rets = [r for _, r in _net_returns(stressed)]
+    mean = sum(rets) / len(rets) if rets else None
+    return {"cost_stress_ok": mean is not None and mean > 0, "cost_stress_mean": mean,
+            "cost_stress_trades": len(rets)}
+
+
 def _compute(trades, n_trials: int, lord_state: Dict[str, Any], seed: int,
              kind: str = "binary") -> Dict[str, Any]:
     """The full numeric verdict for one finalist's trade list, advancing a LORD++ state by
@@ -349,15 +369,17 @@ def _compute(trades, n_trials: int, lord_state: Dict[str, Any], seed: int,
 
 def _classify(lord_reject: bool, bh_reject: Optional[bool], dsr: float,
               ci_lo: float, ci_hi: float, placebo_passed: bool,
-              cross_day_ok: bool = True) -> Classification:
+              cross_day_ok: bool = True, cost_stress_ok: bool = True) -> Classification:
     """The STAT_SUPPORTED decision rule. STAT_SUPPORTED iff the online FDR budget rejects AND
     (within a chunk) BH rejects AND DSR >= DSR_MIN AND the bootstrap CI lower bound is above 0
     AND the negative control passes AND the edge generalizes across days/folds (cross_day_ok).
     A placebo-equivalent or flatly-negative result is REJECTED; anything real-looking but short
     of the bar - including a one-window edge that fails cross-day - is INCONCLUSIVE (the honest,
-    valuable outcome)."""
+    valuable outcome). An edge that turns non-positive under COST_STRESS_CENTS of extra slippage
+    (cost_stress_ok False) only works at zero friction and is INCONCLUSIVE at best."""
     bh_ok = True if bh_reject is None else bh_reject
-    if lord_reject and bh_ok and dsr >= DSR_MIN and ci_lo > 0 and placebo_passed and cross_day_ok:
+    if (lord_reject and bh_ok and dsr >= DSR_MIN and ci_lo > 0 and placebo_passed and cross_day_ok
+            and cost_stress_ok):
         return Classification.STAT_SUPPORTED
     if not placebo_passed:
         return Classification.REJECTED          # edge indistinguishable from a label shuffle -> artifact
@@ -465,6 +487,8 @@ def _verdict_dict(v: Dict[str, Any], cls: Classification, n_trials: int) -> Dict
         "n_trials_audited": n_trials,
         "cross_day_ok": v.get("cross_day_ok"),
         "cross_day_max_day_share": v.get("cross_day_max_day_share"),
+        "cost_stress_ok": v.get("cost_stress_ok"),
+        "cost_stress_mean": v.get("cost_stress_mean"),
         "folds": v.get("folds", []),
     }
 
@@ -515,8 +539,9 @@ def judge_validation(cur, experiment_id: int, finalist: dict, val_ds) -> dict:
                  seed=_BOOT_SEED + int(experiment_id),
                  kind=getattr(val_ds.market, "kind", "binary"))
     rr.set_fdr_state(cur, user_id, market, v["lord_state"])  # alpha spent only once sample is adequate
+    v.update(_cost_stress(finalist["spec"], val_ds, trades))
     cls = _classify(v["lord_reject"], None, v["dsr"], v["ci_lo"], v["ci_hi"], v["placebo_passed"],
-                    v["cross_day_ok"])
+                    v["cross_day_ok"], v["cost_stress_ok"])
     rr.append_result(cur, experiment_id, "validation", cls.value, n_trades,
                      metrics=_result_metrics(v, n_trials), equity_curve=v["ret_series"], folds=v["folds"])
     return _verdict_dict(v, cls, n_trials)
@@ -546,6 +571,7 @@ def judge_batch(cur, run_id: int, experiment_ids: List[int], finalists: List[dic
             continue
         v = _compute(trades, n_trials, lord_state, seed=_BOOT_SEED + int(exp_id), kind=getattr(val_ds.market, "kind", "binary"))
         lord_state = v["lord_state"]  # advance the stream
+        v.update(_cost_stress(fin["spec"], val_ds, trades))
         v["exp_id"] = exp_id
         v["insufficient"] = False
         computed.append(v)
@@ -567,7 +593,7 @@ def judge_batch(cur, run_id: int, experiment_ids: List[int], finalists: List[dic
                         "alpha_spent": False, "n_trials_audited": n_trials})
             continue
         cls = _classify(c["lord_reject"], c["bh_reject"], c["dsr"], c["ci_lo"], c["ci_hi"],
-                        c["placebo_passed"], c["cross_day_ok"])
+                        c["placebo_passed"], c["cross_day_ok"], c.get("cost_stress_ok", True))
         rr.append_result(cur, c["exp_id"], "validation", cls.value, c["n_trades"],
                          metrics=_result_metrics(c, n_trials), equity_curve=c["ret_series"],
                          folds=c["folds"])
@@ -595,7 +621,13 @@ def validation_power(cur, user_id: int, market: str, spec: dict, research_ds, pa
         # No frozen validation window to project onto: nothing to screen, let validation judge.
         return {"ok": True, "power": None, "mu": None, "n_research": None, "n_val_expected": None,
                 "alpha_next": None, "reason": "no validation window to project onto"}
-    rows = _per_trade(backtest.research_fold_trades(spec, research_ds, int(partition.get("embargo_seconds") or 0)))
+    # Projected at the same COST_STRESS_CENTS the gate will charge, so a zero-friction edge is
+    # screened out here instead of spending alpha to learn it at validation.
+    stress = (backtest.WhatIf(slippage_cents=COST_STRESS_CENTS)
+              if getattr(getattr(research_ds, "market", None), "kind", "binary") == "binary" and COST_STRESS_CENTS > 0
+              else None)
+    rows = _per_trade(backtest.research_fold_trades(spec, research_ds, int(partition.get("embargo_seconds") or 0),
+                                                    what_if=stress))
     out: Dict[str, Any] = {"ok": False, "power": 0.0, "mu": None, "n_research": len(rows),
                            "n_val_expected": 0.0, "alpha_next": None, "reason": ""}
     if len(rows) < POWER_MIN_RESEARCH_TRADES:
@@ -719,12 +751,13 @@ def judge_holdout(cur, experiment_id: int, finalist: dict,
     v = _compute(trades, n_trials, stats.lord_init(ALPHA), seed=_BOOT_SEED + int(experiment_id),
                  kind=getattr(hds.market, "kind", "binary"))
 
+    v.update(_cost_stress(finalist["spec"], hds, trades))  # before the spend: a raise here costs no look
     use = rr.record_holdout_use(cur, int(ledger["id"]))  # authoritative one-way spend
     if not use.get("ok"):
         raise HoldoutConsumed(use.get("reason", "holdout_consumed"))
     consumed = int(use.get("consumed", 0))
 
-    forward = v["ci_lo"] > 0 and v["p_value"] <= ALPHA
+    forward = v["ci_lo"] > 0 and v["p_value"] <= ALPHA and v["cost_stress_ok"]
     cls = Classification.FORWARD_VALIDATED if forward else Classification.REJECTED
     if specmod.is_perpetual_spec(spec) and n_trades < int(finalist.get("min_sample", 0)):
         # The held-out evidence was viewed, so its one-way use is still spent.

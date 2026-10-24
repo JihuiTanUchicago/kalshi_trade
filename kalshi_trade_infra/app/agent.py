@@ -786,6 +786,67 @@ def _detectability_block(ds: backtest.Dataset) -> str:
             "targets." % (val_days, "\n  ".join(rows)))
 
 
+_CALIB_BINS = (0.0, 0.10, 0.25, 0.40, 0.60, 0.75, 0.90, 1.0)
+_CALIB_MIN_CONTRACTS = 20
+_CALIB_FEE_QTY = 10  # amortize Kalshi's per-order fee cent over a typical order
+
+
+def _calibration_block(ds: backtest.Dataset) -> str:
+    """Where the market's own prices have been mis-calibrated, net of the taker fee, on the RESEARCH
+    window only (never validation or holdout), so the proposer aims at measured mispricing (favorite-
+    longshot, terminal pinning) instead of guessing. Each settled contract counts once per (time
+    band, price bin) at its average quote there, so a contract's 15 one-minute frames are one
+    observation, not 15. Descriptive only: whatever it suggests still has to pass the held-out gate."""
+    from data_pipeline.kalshi_fees import taker_fee_per_contract_dollars as fee_per
+
+    cells: Dict[Tuple[str, int, str], List[float]] = defaultdict(lambda: [0.0, 0.0, 0])
+    max_tte: Dict[str, float] = {}
+    for _, snaps in ds.frames:
+        for sn in snaps:
+            t = sn.features.get("tte_min")
+            if t is not None and t > max_tte.get(sn.contract.ticker, 0.0):
+                max_tte[sn.contract.ticker] = t
+    for _, snaps in ds.frames:
+        for sn in snaps:
+            tk = sn.contract.ticker
+            t = sn.features.get("tte_min")
+            if ds.results.get(tk) not in ("yes", "no") or t is None or not max_tte.get(tk):
+                continue
+            band = "late" if t <= max_tte[tk] / 3.0 else "early"
+            b = next(i for i in range(len(_CALIB_BINS) - 1) if sn.yes_ask < _CALIB_BINS[i + 1])
+            c = cells[(band, b, tk)]
+            c[0] += sn.yes_ask
+            c[1] += sn.yes_bid
+            c[2] += 1
+    agg: Dict[Tuple[str, int], List] = defaultdict(list)
+    for (band, b, tk), (ask, bid, k) in cells.items():
+        agg[(band, b)].append((ask / k, bid / k, 1.0 if ds.results[tk] == "yes" else 0.0))
+    rows = []
+    for band in ("early", "late"):
+        for b in range(len(_CALIB_BINS) - 1):
+            obs = agg.get((band, b), [])
+            n = len(obs)
+            if n < _CALIB_MIN_CONTRACTS:
+                continue
+            ask = sum(o[0] for o in obs) / n
+            bid = sum(o[1] for o in obs) / n
+            rate = sum(o[2] for o in obs) / n
+            se = (max(rate * (1 - rate), 1.0 / n) / n) ** 0.5
+            yes_edge = rate - ask - fee_per(_CALIB_FEE_QTY, ask)
+            no_px = 1.0 - bid
+            no_edge = (1.0 - rate) - no_px - fee_per(_CALIB_FEE_QTY, no_px)
+            rows.append("%-5s ask %2d-%2dc: n=%4d  avg ask %.2f  YES settled %.2f (+-%.2f)  "
+                        "buy-YES net %+.1fc  buy-NO net %+.1fc"
+                        % (band, round(100 * _CALIB_BINS[b]), round(100 * _CALIB_BINS[b + 1]), n, ask,
+                           rate, se, 100 * yes_edge, 100 * no_edge))
+    if not rows:
+        return ""
+    return ("CALIBRATION on the research window (per settled contract; 'late' = last third of its life; "
+            "net = settled rate minus the quote you would pay, after the taker fee). A net edge larger "
+            "than ~2x its +- is a lead worth a mechanism; smaller is noise. Descriptive only:\n  %s"
+            % "\n  ".join(rows))
+
+
 def _research_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], count: int) -> str:
     idea = (run.get("prompt") or "").strip() or "Find any durable, fee-surviving edge you can justify."
     brief = _brief()
@@ -820,6 +881,7 @@ def _research_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], count:
 Market: {market_label} (spec market "{market}").
 In-sample data you can test on: {summary}
 {detect}
+{calibration}
 `feature_coverage_pct` is the non-null coverage of each feature ON THIS MARKET: only build models
 and filters on features that are actually populated here. A feature at or near 0% is empty on this
 market (e.g. order-book/microstructure features on sports/NEAR) — a model or filter that needs it
@@ -852,6 +914,7 @@ mechanism, falsification_criteria, negative_control, null/alt hypotheses, min_sa
         market=run["market"],
         summary=json.dumps(_in_sample_summary(ds)),
         detect=_detectability_block(ds),
+        calibration=_calibration_block(ds),
         guide=specmod.research_guide(run["market"]),
         memory=_memory_block(memory),
         count=count,

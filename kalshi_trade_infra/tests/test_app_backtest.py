@@ -331,6 +331,11 @@ def test_pool_rejects_bad_markets_cadence_and_cross():
                 {"pool": ["eth15m"], "cross": {"pairing": "cross_strike", "legs": []}}):
         with pytest.raises(specmod.SpecError):
             specmod.validate(dict({"market": "btc15m"}, **bad))
+    # event series (many contracts per frame, ~GB datasets) cannot be pooled, either way round
+    with pytest.raises(specmod.SpecError):
+        specmod.validate({"market": "btc15m", "pool": ["nba_game"]})
+    with pytest.raises(specmod.SpecError):
+        specmod.validate({"market": "nba_game", "pool": ["nfl_game"]})
 
 
 def _renamed(ds, prefix):
