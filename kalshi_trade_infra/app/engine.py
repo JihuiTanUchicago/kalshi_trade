@@ -429,13 +429,20 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
         if kernel is None:
             repo.set_deployment_status(cur, dep["user_id"], dep["id"], "paused", why)
             return {"paused": "%s disabled" % mode}
+    # A book that still disagrees with the user's real Kalshi account after two reconcile sweeps
+    # halts new LIVE entries until it matches again (app/reconcile.py). Exits are never blocked.
+    halts = repo.live_entry_halts(cur, dep["user_id"]) if mode == "live" else []
     if specmod.is_cross_contract(spec):
+        if halts:
+            return {"halted": "position mismatch on %s" % ", ".join(h["ticker"] for h in halts)}
         return _decide_pairs(conn, dep, snaps, sizes, kernel, via_kernel, mode)
     if mode == "paper":
         # Single-leg paper runs the live execution policy against a simulated venue when wired.
         # Pairs keep the atomic two-leg paper fill (legging risk is not simulated yet).
         kernel = sources.paper_kernel(dep["user_id"]) if sources.paper_kernel else None
     out = {"exits": 0, "entries": 0}
+    if halts:
+        out["halted"] = "position mismatch on %s" % ", ".join(h["ticker"] for h in halts)
 
     positions = repo.open_positions(cur, dep["id"])
     for pos in positions:
@@ -458,7 +465,7 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
     open_notional = float(exposure["notional"])
     cap_positions = int(risk["max_open_positions"])
     cap_notional = float(risk["max_open_notional"])
-    for entry in specmod.entries(spec, snaps):
+    for entry in ([] if halts else specmod.entries(spec, snaps)):
         if slots <= 0 or open_count >= cap_positions:
             break  # deployment slot cap or user-wide position cap reached
         ticker = entry.snapshot.contract.ticker
@@ -1329,6 +1336,47 @@ def enforce_autopilot_limits(conn) -> int:
     return killed
 
 
+def enforce_account_equity_limits(conn) -> int:
+    """Kill switch on the user's REAL Kalshi account, not our book: if account equity (cash plus
+    Kalshi's own position value) has fallen by the user's daily loss limit since the first reading
+    of the UTC day, turn live autopilot off and pause every running LIVE deployment, exactly like
+    enforce_autopilot_limits. That one reads only booked P&L, so a fill we never recorded, a fee we
+    under-counted or an open position marked down never trips it. A withdrawal reads as a loss
+    (stops early, the safe side); a deposit masks one. Read-only against the exchange."""
+    from app import kalshi_account
+    from data_pipeline.common import kalshi_account_equity_dollars
+
+    cur = conn.cursor()
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    killed = 0
+    for u in repo.users_for_equity_guard(cur):
+        uid, lim = int(u["id"]), float(u["lim"] or 0)
+        if lim <= 0:
+            continue
+        try:
+            creds = kalshi_account.credentials_from_row(uid, repo.get_kalshi_key(cur, uid))
+            equity = kalshi_account_equity_dollars(creds)
+        except Exception as e:  # contained per user
+            print("[engine] equity read failed for user %d: %r" % (uid, e), flush=True)
+            continue
+        if equity is None:
+            continue
+        loss = repo.equity_day_start(cur, uid, day, equity) - equity
+        if loss < lim:
+            continue
+        if u.get("autopilot_live"):
+            repo.set_autopilot_live(cur, uid, False)
+        for d in repo.list_deployments(cur, uid):
+            if d["mode"] == "live" and d["status"] == "running":
+                repo.set_deployment_status(cur, uid, d["id"], "paused", "Kalshi account daily loss limit hit")
+        repo.add_chat(cur, uid, "system",
+                      "Live trading stopped: your Kalshi account is down $%.2f today (equity $%.2f), past "
+                      "your $%.2f daily limit. Live autopilot is off and live deployments are paused."
+                      % (loss, equity, lim))
+        killed += 1
+    return killed
+
+
 SIM_ORDER_REF_PREFIX = "sim:"  # order_ref of a paper position filled through the simulated venue
 
 
@@ -1420,6 +1468,9 @@ def run_forever() -> None:
 
     last_review = 0.0
     last_reconcile = 0.0
+    last_equity_check = 0.0
+    # How often to read each live user's real Kalshi equity for the account loss kill switch.
+    equity_every = float(os.getenv("APP_EQUITY_CHECK_EVERY_SECONDS", "60"))
     # How often to reconcile each user's live book against their real Kalshi account.
     reconcile_every = float(os.getenv("APP_RECONCILE_EVERY_SECONDS", "300"))
     # One shared live-book websocket for the whole engine (P1-1): marks, PnL and order pricing all
@@ -1508,6 +1559,13 @@ def run_forever() -> None:
                             enforce_autopilot_limits(conn)
                         except Exception as e:
                             print("[engine] autopilot limit check failed: %r" % e, flush=True)
+                        if time.time() - last_equity_check > equity_every:
+                            try:
+                                if enforce_account_equity_limits(conn):
+                                    print("[engine] account equity kill switch tripped", flush=True)
+                            except Exception as e:
+                                print("[engine] account equity check failed: %r" % e, flush=True)
+                            last_equity_check = time.time()
                     # Live position reconciliation: compare each user's book to their real
                     # Kalshi account. Read-only against the exchange; it only writes the audit
                     # trail + user notifications. Fully contained so it can never stop the loop.
