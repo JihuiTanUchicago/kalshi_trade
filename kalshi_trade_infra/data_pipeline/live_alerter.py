@@ -279,6 +279,26 @@ def attestation_days_left() -> Optional[float]:
     return (int(ts) - time.time()) / 86400.0
 
 
+def attestation_alert(days: Optional[float], was: Optional[float]) -> Optional[str]:
+    """The attestation line to send this run, if any. Warns on entering the
+    window, again when it actually lapses, and again when a re-attestation
+    starts a window that is already inside the warning range. The last case is
+    2026-10-24: the alerter was off while the expired attestation was renewed,
+    so it went from -9 days straight to 0.4 and the old "only on crossing the
+    threshold" rule stayed silent with hours left."""
+    if days is None or days >= ATTEST_WARN_DAYS:
+        return None
+    entered = was is None or was >= ATTEST_WARN_DAYS
+    lapsed = days <= 0 < was if was is not None else False
+    renewed = was is not None and days > was + 0.5
+    if not (entered or lapsed or renewed):
+        return None
+    return (
+        f"Kalshi location attestation {'EXPIRED' if days <= 0 else f'expires in {days:.1f} days'}"
+        " - re-verify in the Kalshi app or every order will 403"
+    )
+
+
 def new_closed_trades(cur, since_id: int) -> List[Dict]:
     cur.execute(
         "SELECT id, model_name, market_ticker, qty_contracts, entry_price_dollars, "
@@ -379,13 +399,9 @@ def build_alerts(now: Dict, prev: Dict, cur) -> Tuple[List[str], List[str]]:
 
     days = attestation_days_left()
     now["attest_days"] = days
-    if days is not None and days < ATTEST_WARN_DAYS:
-        was = prev.get("attest_days")
-        if was is None or was >= ATTEST_WARN_DAYS:
-            urgent.append(
-                f"Kalshi location attestation {'EXPIRED' if days <= 0 else f'expires in {days:.1f} days'}"
-                " - re-verify in the Kalshi app or every order will 403"
-            )
+    line = attestation_alert(days, prev.get("attest_days"))
+    if line:
+        urgent.append(line)
 
     prev_stale = set(prev.get("stale") or [])
     stale_now = []
