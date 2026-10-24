@@ -146,3 +146,33 @@ def test_pass_budget_runs_curated_first_and_rotates_the_rest(monkeypatch):
     mh.sync_all_candles(_Cur(), curated + rest, deadline=150.0)
     assert seen == ["high_ny", "b"]  # resumes after "a", curated still first
     assert "high_ny" in CURATED
+
+
+def test_historical_rows_outside_the_window_are_dropped_and_paging_stops(monkeypatch):
+    calls = []
+
+    def api(path, params=None):
+        calls.append(path)
+        if path == "/historical/cutoff":
+            return {"market_settled_ts": "2026-08-25T00:00:00Z"}
+        if path == "/historical/markets":  # ignores min_close_ts: newest first, straight past the floor
+            return {"markets": [_mkt("KXHIGHNY-IN", CUTOFF - timedelta(days=10)),
+                                _mkt("KXHIGHNY-OLD", CUTOFF - timedelta(days=900))], "cursor": "more"}
+        return {"markets": []}
+
+    monkeypatch.setattr(mh, "api_get", api)
+    cur = _Cur()
+    assert mh.sync_settled_markets(cur, MARKETS["high_ny"], CUTOFF - timedelta(days=100)) == 1
+    assert [r[0] for _sql, rows in cur.many for r in rows] == ["KXHIGHNY-IN"]
+    assert calls.count("/historical/markets") == 1  # did not follow the cursor into older pages
+
+
+def test_pending_candles_are_limited_to_the_history_window():
+    cur = _Cur()
+    mh._cutoff_cache.update(at=time.time(), ts=CUTOFF)
+    mh.sync_market_candles(cur, MARKETS["high_ny"])
+    sql, params = cur.sql[0]
+    assert "close_time >= %s" in sql
+    floor = params[1]
+    expect = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=MARKETS["high_ny"].history_days)
+    assert abs((floor - expect).total_seconds()) < 60
