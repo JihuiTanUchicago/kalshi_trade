@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 **Product: "RSI for Trading."** A self-improving quant pipeline — ideation → simulation → real
-execution — for Kalshi BTC prediction markets. It places **real orders** and evolves its own
+execution — for Kalshi prediction markets (crypto, sports, weather). It places **real orders** and evolves its own
 strategy-search policy (Tau-RSI). Optimize for durable alpha and robustness, not demo polish.
 Ship fast by keeping diffs minimal and reusing what's here; ship safe by never weakening a
 guard. Deep architecture lives in `PLAN.md` (kept current every session) and the rigorous-
@@ -9,15 +9,19 @@ research spec in `RESEARCH_PIPELINE_DESIGN.md`. This file holds only what an age
 from the code: commands, non-obvious conventions, and the safety/rigor bars.
 
 ## Project Structure
-- `data_pipeline/`: the live system — collectors, feature builder, sim/live engines,
-  `dashboard_server.py`, `common.py` (DB/auth helpers), `architecture/` (live risk/execution).
-- `app/`: the customer product (research agent, backtester, quant/stats toolkit, server, SPA).
+- `app/`: Tau, the live product — research agent, backtester, gatekeeper, paper/live engine
+  (`engine.py`, run by `recursive-engine`), autopilot, RSI loop (`rsi*.py`), server, SPA.
+- `data_pipeline/`: collectors (Kalshi books/trades/catalog, Coinbase, per-tick recorders),
+  feature builders, `live_alerter.py`, `watchdog.py`, `common.py` (DB/auth helpers),
+  `architecture/` (execution kernel, risk engine, position guard, simulated venue), and the
+  legacy BTC 15m sim/live engines (`live_trading_engine.py` is retired, its unit disabled).
 - `client_api/`: pandas client for the dashboard's `/api/table` (research, not the live path).
 - `tests/`: pytest with a `FakeCursor` fixture (`tests/conftest.py`) — engine/risk logic is
-  testable with no live DB. `credentials/`: key material (never commit). `scripts/`: AWS deploy.
+  testable with no live DB. `credentials/`: key material (never commit). `scripts/`: deploys,
+  systemd units, ops tools. `README.md` has the production layout (two boxes, what runs where).
 
 ## Build, Test, Deploy
-Python 3.12+ in a venv. `pip install -r requirements.txt`.
+Python 3.12+ in a venv (CI runs 3.12, the boxes run 3.13 in `.venv313`). `pip install -r requirements.txt`.
 - `python -m pytest tests/` — full suite, no live DB. Run before every commit; keep it green.
 - `python -m py_compile app/*.py data_pipeline/*.py` — fast syntax check.
 - `python -m app.schema` — create/migrate the FULL schema (idempotent): it runs
@@ -26,12 +30,14 @@ Python 3.12+ in a venv. `pip install -r requirements.txt`.
   run `app.schema`, not `data_pipeline.init_schema` alone** — the latter skips the app migrations, so
   new app columns silently never land and features that read them crash at runtime (observed: the
   autopilot broke on a missing `exec_max_book_fraction` column).
-- **Deploy (when explicitly asked):** tar the **whole `app/` package** — never file-by-file
-  (partial deploys drop imports and crash-loop the box). Ship to the **web box**
-  (the CloudFront origin), not a collector box — see memory + `PLAN.md` for exact IDs/commands.
-  Invalidate CloudFront `/*` (the HTML carries the `?v=` asset hash). **Verify a live `curl`
-  returns 200 — "service active" is not proof.** These three are the documented causes of past
-  silent outages; treat them as a checklist, not advice.
+- **Deploy the web box with `scripts/deploy_web.sh`** (or the "Deploy web app" workflow), from
+  merged main, never by hand. It enforces the checklist from past silent outages: the **whole
+  `app/` + `data_pipeline/` tar** from a git ref (never file-by-file), `app.schema`, memory caps,
+  restart, a **live curl 200** ("service active" is not proof), rollback on failure, and a
+  CloudFront `/*` invalidation (the HTML carries the `?v=` asset hash). The **collector box**
+  deploys with `scripts/deploy_collector.sh --ref main`, run from a checkout at main (the unit
+  install list comes from the local script). One deploy at a time; before restarting
+  `recursive-engine`, check `app_order_intents` for rows stuck at `status='sent'`.
 
 ## Coding Style
 - PEP 8, 4-space indent, explicit type hints on public methods. `snake_case` funcs/vars,
@@ -61,9 +67,14 @@ backtest, or research-pipeline change, hold the bar in `RESEARCH_PIPELINE_DESIGN
 - Fees are a hard, state-dependent hurdle; net-of-fee or it doesn't count.
 
 ## Security & Safety (NON-NEGOTIABLE)
-- `live_trading_engine.py` places real orders when `live_settings.live_enabled=true` — never
-  flip that on, or make changes that could effectively do so, without explicit, separate
-  authorization. Deploy/live checks may only ever become *stricter*, never weaker or reordered.
+- Real orders come from `app/engine.py` when `APP_LIVE_TRADING_ENABLED=1` (plus the user's own
+  opt-in and the paper-evidence gate), from native perps when `TAU_KALSHI_PERPS_LIVE_ENABLED=1`,
+  and from the retired `live_trading_engine.py` when `live_settings.live_enabled=true`. Never
+  flip any of these on, raise a risk/position/loss limit, or make changes that could effectively
+  do so, without explicit, separate authorization from the owner. Deploy/live checks may only
+  ever become *stricter*, never weaker or reordered.
+- Every real-order path wraps its submitter with `position_guarded_submitter`
+  (`data_pipeline/architecture/position_guard.py`), so a sell can never open a short.
 - `.env.aws` holds DB creds + AWS profile/region; `common.py` reads Kalshi key material via
   `PROD_KEYID`/`PROD_KEYFILE` (or `KALSHI_WS_KEY_ID`/`KALSHI_WS_PRIVATE_KEY_PATH`) and the
   dashboard basic-auth/live-gate passwords via `DASHBOARD_PASSWORD`/`LIVE_TRADING_PASSWORD`.
@@ -88,7 +99,8 @@ backtest, or research-pipeline change, hold the bar in `RESEARCH_PIPELINE_DESIGN
 - **Parallelize independent work, sequence dependencies.** Fan out read-heavy research and
   disjoint-file edits to subagents (keeps their file-dumps out of your context — relay only the
   conclusion); serialize anything sharing a file (e.g. `schema.py`, `agent.py` have one owner).
-- **PLAN/mvp discipline (every turn):** keep `PLAN.md` current; keep the todo list in `../mvp.md`
+- **PLAN/mvp discipline (every turn):** keep `PLAN.md` current (newest entry on top; per-
+  workstream evidence in `results/<topic>_<date>/HANDOFF.md`); keep the todo list in `../mvp.md`
   current — open work under `## TODO / Working Queue` (one flat list; `[blocked]` = needs a
   user/AWS action). The moment something ships, MOVE it to `## Done` (dated), don't delete it.
 - After implementing a strategy, document it; prefer diagrams for architecture/signal flow.
@@ -104,6 +116,9 @@ MAY propose **exactly one** small refinement to AGENTS.md, from harvested signal
 - **Log it** in the changelog below: dated, one line. Keep only the last ~10 entries (prune oldest).
 
 ### Instruction changelog
+- 2026-10-24 — Brought the doc up to date: `app/` is the live system (recursive-engine), the
+  legacy live engine is retired; deploys go through `deploy_web.sh` / `deploy_collector.sh`;
+  safety bar now names every live switch (app, perps, legacy) and the position guard rule.
 - 2026-10-17 — Fixed the migration command: deploys must run `python -m app.schema` (pipeline
   tables + app-level `_add_column_if_missing` migrations), not `data_pipeline.init_schema` alone,
   which silently skips app columns (broke the autopilot on a missing `exec_max_book_fraction`).

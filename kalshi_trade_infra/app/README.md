@@ -1,5 +1,9 @@
 # Tau (v0.1)
 
+> The dated sections below are release notes, newest first; older ones describe the state on
+> their date. For how the system runs today (production layout, research gates, the paper to
+> live path, deploys), start with [`../README.md`](../README.md).
+
 ## Bitcoin perpetual market data and research — October 23, 2026
 
 Kalshi native Bitcoin perpetual history, funding and current observations now
@@ -10,9 +14,10 @@ through PR21; offline and hosted full-schema MySQL/HTTP verification pass. Expli
 metadata parsing resolve the initial local timeout/discovery issues: real
 production/demo candles, funding and observations are retrieved successfully.
 Five anonymous public requests also pass directly from the production server.
-Candle gaps, perps-persistence/queued-run acceptance and production rollout remain
-pending. The release must reconcile installed source differences and preserve
-existing research; no production source or service changed in this preflight.
+Update 2026-10-24: merged main, perps included, is deployed to the web box, and
+hosted staging including the perps verification passes. Native perps orders stay
+off (`TAU_KALSHI_PERPS_LIVE_ENABLED` unset); `app/kalshi_perps_watch.py` adds
+position, liquidation and margin alerts for when they are turned on.
 See [setup, supported rules and limitations](KALSHI_PERPS_RESEARCH.md) and
 [implementation evidence](../results/kalshi_bitcoin_perps_2026-10-23/HANDOFF.md).
 
@@ -881,38 +886,46 @@ enter when edge >= min_edge, price/tte/spread in range, all filters hold
 exit: take_profit / stop_loss / edge decay, else hold to settlement
 ```
 
-| Market | Kalshi series | Decision cadence | History |
-|---|---|---|---|
-| `btc15m` | KXBTC15M | every minute | 30 days of 1m candles |
-| `btc_daily` | KXBTCD, 5pm EDT event only | every hour | 60 days of 1h candles (strikes within ±7% of BTC at open) |
+Markets are defined in `app/markets.py`: the curated `CURATED` dict (crypto 15-minute and
+daily, sports moneylines, NYC high temperature, research-only `btc15m_tick` and `btc_perp`)
+plus every recurring catalog series in Sports or Climate and Weather.
 
 Fills: buy at the ask, sell at the bid, Kalshi taker fee (`kalshi_fees`) on every fill,
-settle on Kalshi's own `result`. Paper fills are capped at the size shown on the book.
+settle on Kalshi's own `result`. Backtests fill on the next bar by default
+(`TAU_BACKTEST_FILL_MODEL`) and cap size at the book. Paper orders go through the live
+execution kernel against `SimulatedVenue` (realistic fills, `order_ref` prefix `sim:`).
 
 ## Gates (all must pass to deploy)
 
-| Gate | Threshold |
-|---|---|
-| Makes money in-sample | > $0 |
-| Makes money on unseen data | > $0 |
-| Enough unseen trades | ≥ 10 |
-| Unseen profit factor | ≥ 1.1 |
-| Unseen worst drawdown | ≤ 50% of capital |
+The old five point-threshold gates were replaced by the statistical gatekeeper
+(`app/gatekeeper.py`): bootstrap CI, PSR, DSR deflated by the trial count, a market-implied
+placebo, LORD++ FDR, Benjamini–Hochberg, purged walk-forward and a +1c cost stress on
+Validation, then the one-time holdout and a marginal-contribution check. Only a
+`DEPLOYMENT_CANDIDATE` may go live, manually or by autopilot, and the autopilot puts only
+candidates (or probation near misses) on paper. Going live also needs `agent.paper_evidence` (30+ realistic
+paper round trips, net > 0, 48h+ span, bootstrap p ≤ 0.10). Details:
+[`../README.md`](../README.md#research-gates).
 
-Agent adjustments (chat or autopilot) are re-backtested against the same gates before they
-can be proposed or applied.
+Agent adjustments (chat or autopilot) are re-backtested before they can be proposed or applied.
 
 ## Guardrails
 
 * Autopilot may: apply gate-passing adjustments that don't raise stake or position count,
-  deploy passed strategies **on paper**, and pause anything. It may never move money to
-  live or resume a live deployment.
+  deploy passed strategies **on paper**, and pause anything. It touches live money only when
+  every check in `agent.live_autopilot_ok` holds (user's autopilot and `autopilot_live` on,
+  `APP_LIVE_TRADING_ENABLED=1`, a connected key, today's live loss inside
+  `autopilot_daily_loss_limit`) and the strategy's paper evidence passes.
+* Paper probation (`APP_PAPER_PROBATION=1`, off by default): up to 4 validation near misses
+  run on paper to gather evidence; they can never go live on that basis.
 * Loss guard (engine, no model involved): a deployment that loses more than
   max(2 × its backtest's worst unseen drawdown, 50% of capital) is paused, and a review run is queued.
-* Live for app users is off unless `APP_LIVE_TRADING_ENABLED=1`; live is YES-only, needs a
-  connected key and a typed `LIVE` confirmation.
+* Live for app users is off unless `APP_LIVE_TRADING_ENABLED=1`; it needs a connected key and
+  a typed `LIVE` confirmation. NO-side live orders also need `APP_NO_SIDE_LIVE_ENABLED=1`.
+* A book mismatch against Kalshi halts the user's new live entries (`app/reconcile.py`), and
+  every sell is checked against Kalshi's position so it can't open a short.
 * Kalshi private keys are AES-256-GCM encrypted (`APP_SECRET_KEY`), bound to the user id.
-* Limits: 2 concurrent / 12 daily research runs, 40 chat messages per hour, 10 active deployments.
+* Limits: 2 concurrent research runs (daily cap `APP_MAX_RESEARCH_PER_DAY`, default unlimited),
+  40 chat messages per hour, 100 active deployments.
 
 ## Run locally
 
@@ -934,7 +947,9 @@ APP_TEST_MYSQL=1 python -m pytest tests/   # includes the money-path tests again
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | OAuth client (Web application) |
 | `APP_GOOGLE_REDIRECT_URI` | e.g. `https://<host>/auth/google/callback`, registered in Google Cloud |
 | `APP_SECRET_KEY` | 32 random bytes, urlsafe base64 (`python -c "import os,base64;print(base64.urlsafe_b64encode(os.urandom(32)).decode())"`) |
-| `ANTHROPIC_API_KEY`, `APP_AGENT_MODEL` | agent model (default `claude-sonnet-5-5`) |
+| `APP_LLM_PROVIDER`, `APP_BEDROCK_MODEL` | `bedrock` in production (billed through AWS); `anthropic` uses `ANTHROPIC_API_KEY` + `APP_AGENT_MODEL` |
+| `APP_REVIEW_MODEL` | model for autopilot reviews (default `sonnet-4-5`) |
+| `APP_PAPER_PROBATION` | `1` puts validation near misses on paper (off by default) |
 | `APP_LIVE_TRADING_ENABLED` | leave unset until explicitly authorised |
 
 CloudFront in front of the app must forward cookies and allow POST (the existing
