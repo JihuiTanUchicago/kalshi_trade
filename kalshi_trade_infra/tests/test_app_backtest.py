@@ -381,6 +381,16 @@ def test_hourly_weather_series_can_pool_with_each_other_but_not_with_1min_sports
     assert s["pool"] == ["kxhighchi"]
     with pytest.raises(specmod.SpecError):
         specmod.validate({"market": "high_ny", "pool": ["nba_game"]})
+    # hourly series are light (+120MB per 365-day city), so a weather pool may hold 6 extra cities
+    cities = ["kxcity%d" % i for i in range(7)]
+    for key in cities:
+        city = dataclasses.replace(chi, key=key, series=key.upper())
+        monkeypatch.setitem(markets.MARKETS, key, city)
+        monkeypatch.setitem(specmod.MARKETS, key, city)
+    assert len(specmod.validate({"market": "high_ny", "pool": cities[:6]})["pool"]) == 6
+    with pytest.raises(specmod.SpecError):
+        specmod.validate({"market": "high_ny", "pool": cities})
+    assert specmod.max_pool(markets.MARKETS["btc15m"]) == specmod.MAX_POOL_MARKETS == 3
 
 
 def test_frame_series_reach_each_frame_only_once_known():
