@@ -285,3 +285,48 @@ def test_requested_series_absent_helper_or_db_is_empty(monkeypatch):
     monkeypatch.setattr(common, "requested_series", lambda *a: ["X"], raising=False)
     monkeypatch.setattr(tick_recorder, "get_db_conn", lambda: (_ for _ in ()).throw(RuntimeError("no db")))
     assert tick_recorder.requested_tick_series() == []
+
+
+def test_kalshi_trailing_newline_is_stripped_and_old_split_lines_are_repaired(tmp_path, monkeypatch):
+    import gzip
+    rec = tick_recorder.Recorder()
+    rec.file = HourlyFile(str(tmp_path / "rec"), "kalshi")
+    raw = json.dumps({"type": "trade", "sid": 2, "msg": {"market_ticker": TK, "trade_id": "x", "count_fp": "1",
+                                                        "yes_price_dollars": "0.5", "taker_side": "yes"}}) + "\n"
+    rec.record(T0 + S, raw, "trade")
+    rec.file.close()
+    assert len(open(rec.file.path).read().splitlines()) == 1
+
+    # An hour written by the first build: every Kalshi message split before its closing brace.
+    broken = "".join('{"rt":%d,"m":%s}\n' % (T0 + i * S, raw) for i in range(3))
+    assert list(tick_archiver.read_records(broken.splitlines(True)))[0].endswith("}}")
+
+    lake = tmp_path / "lake"
+    key_raw = lake / "ticks/raw/kalshi/date=2026-10-24/18.ndjson.gz"
+    key_raw.parent.mkdir(parents=True)
+    with gzip.open(key_raw, "wt") as fh:
+        fh.write(broken)
+    man = lake / "ticks/manifest/kalshi/date=2026-10-24/18.json"
+    man.parent.mkdir(parents=True)
+    man.write_text(json.dumps({"hour_utc": "2026-10-24 18:00:00", "messages": 0, "bad_lines": 6}))
+
+    class S3(FakeS3):
+        def list_objects_v2(self, Bucket, Prefix):
+            base = os.path.join(self.root, Prefix)
+            if not os.path.isdir(base):
+                return {}
+            return {"Contents": [{"Key": Prefix + f, "ETag": str(os.path.getmtime(os.path.join(base, f)))}
+                                 for f in sorted(os.listdir(base))]}
+
+        def download_file(self, bucket, key, path):
+            shutil.copy(os.path.join(self.root, key), path)
+
+    rows = []
+    monkeypatch.setattr(tick_archiver, "write_manifest_row", lambda m, conn=None: rows.append(m))
+    monkeypatch.setattr(tick_archiver, "FEATURE_STATE", str(tmp_path / "tick_features_built.json"))
+    tick_archiver._save_built({"2026-10-24 18"})
+    s3 = S3(str(lake))
+    assert tick_archiver.repair_broken_hours(s3=s3, now=H + timedelta(hours=2)) == 1
+    assert rows[0]["messages"] == 3 and rows[0]["bad_lines"] == 0 and rows[0]["tables"]["kalshi_trades"] == 3
+    assert "2026-10-24 18" not in tick_archiver._load_built()          # features get rebuilt
+    assert tick_archiver.repair_broken_hours(s3=s3, now=H + timedelta(hours=2)) == 0

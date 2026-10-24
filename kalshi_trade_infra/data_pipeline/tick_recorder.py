@@ -322,7 +322,9 @@ class Recorder:
         pass
 
     def record(self, rt: int, raw: str, typ: str) -> None:
-        self.file.write(rt, '{"rt":%d,"m":%s}' % (rt, raw))
+        # Kalshi frames end with a newline; left in, it would split the line (the 19:00Z hour
+        # on 2026-10-24 was written that way; tick_archiver.read_records repairs it).
+        self.file.write(rt, '{"rt":%d,"m":%s}' % (rt, raw.strip()))
         self.counts[typ] = self.counts.get(typ, 0) + 1
         self.window[typ] = self.window.get(typ, 0) + 1
         self.last_msg_ns = rt
