@@ -2292,6 +2292,41 @@ def _market_research_recent(cur, user_id: int, market: str) -> Optional[str]:
     return None
 
 
+# Deterministic funnel step: paper costs nothing and the live gate needs a long realistic paper
+# record, so every gatekeeper-cleared candidate should start earning evidence at once instead of
+# waiting for a review to think of it. Bounded per review and in total; never touches live.
+AUTO_PAPER_MAX_NEW = 3
+AUTO_PAPER_MAX_ACTIVE = 20
+
+
+def auto_paper_candidates(cur, user: Dict) -> List[str]:
+    """Put each gatekeeper DEPLOYMENT_CANDIDATE that has never run on paper onto paper, through
+    act()'s own deploy path (so every deploy check applies). Autopilot-on users only. A strategy
+    that already had a paper deployment, even a stopped one, is left to the review: stopping it was
+    a decision. Returns the chat lines for what it did."""
+    if not user.get("autopilot"):
+        return []
+    deps = repo.list_deployments(cur, user["id"], include_stopped=True)
+    active = sum(1 for d in deps if d["status"] != "stopped")
+    tried = {d["strategy_id"] for d in deps if d["mode"] == "paper" or d["status"] != "stopped"}
+    out: List[str] = []
+    for s in repo.list_strategies(cur, user["id"], status="passed", limit=50):
+        if len(out) >= AUTO_PAPER_MAX_NEW or active >= AUTO_PAPER_MAX_ACTIVE:
+            break
+        mkt = MARKETS.get(s["market"])
+        if s["id"] in tried or mkt is None or not mkt.deployable:
+            continue
+        if specmod.is_code_spec(s["spec"]) or not _is_deployment_candidate(cur, s["id"]):
+            continue
+        text, pid = act(cur, user, {"type": "deploy", "strategy_id": s["id"],
+                                    "reason": "Gatekeeper cleared it; paper builds the realistic record the live gate needs."},
+                        autopilot=True)
+        if pid is not None:
+            out.append(text)
+            active += 1
+    return out
+
+
 def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.dataset) -> Tuple[str, Optional[int]]:
     """Turn one agent action into a proposal (or, on autopilot, an applied
     change). Returns (sentence for the chat, proposal id if one was made)."""
@@ -2767,6 +2802,12 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
         # stale output. A real chat run keeps the full transcript to answer the user's message.
         if run["kind"] == "review":
             history = [m for m in history if m.get("role") == "user"][-3:]
+            # Funnel first, so the review below already sees the new paper deployments.
+            try:
+                for line in auto_paper_candidates(cur, user):
+                    repo.add_chat(cur, user["id"], "system", line)
+            except Exception as e:  # best-effort: never block the review itself
+                print("[agent] auto-paper failed for user %s: %r" % (user["id"], e), flush=True)
         transcript = "\n".join("%s: %s" % (m["role"], m["content"]) for m in history)
         if run["kind"] == "review":
             task = ("Scheduled autopilot review. Why: %s\n"
