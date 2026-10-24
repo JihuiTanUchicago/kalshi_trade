@@ -942,6 +942,11 @@ def dig_deeper_prompt(strat: Dict) -> str:
 
 
 MAX_ACTIVE_RESEARCH = 2   # mirrors server.MAX_ACTIVE_RESEARCH (not imported, to avoid a cycle)
+# Scheduled autopilot REVIEWS run on this catalog model, whatever the user's autopilot model. A
+# review is ~26k input tokens every few minutes; on Opus that alone ate most of Bedrock's
+# non-adjustable Opus tokens-per-day quota, pushing research (where model quality matters) down
+# to Sonnet/Haiku. Chats and research keep the user's model. Empty or unknown = the user's model.
+REVIEW_MODEL_KEY = os.getenv("APP_REVIEW_MODEL", "sonnet-4-5")
 # Mirrors server.MAX_RESEARCH_PER_DAY. The manual Research endpoint enforces this per-user daily
 # cap, but the autopilot — the biggest source of research volume — did not, so an operator's cap
 # silently didn't apply where most runs come from. 0 = unlimited (preserves today's behavior).
@@ -2962,6 +2967,8 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
     # Honor the user's autopilot model (NULL = catalog default) so a review/chat runs on — and is
     # billed at — the model they picked, not always the global default. Tests pass their own `model`.
     choice = catalog.resolve(run.get("model") or (user or {}).get("autopilot_model"))
+    if run["kind"] == "review" and catalog.get(REVIEW_MODEL_KEY):
+        choice = catalog.get(REVIEW_MODEL_KEY)
     if model is None:
         model = lambda system, messages, on_delta=None: claude(system, messages, choice.model_id, on_delta)  # noqa: E731
 
