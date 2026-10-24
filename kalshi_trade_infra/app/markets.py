@@ -209,15 +209,12 @@ def compatible_cadence(market_keys: Sequence[str]) -> bool:
 # the open-markets floor below screens out the custom one-shots that have a single live contract.
 RECURRING_FREQ = frozenset({"fifteen_min", "hourly", "daily", "weekly", "custom"})
 
-# Categories that settle YES/NO on a published event and fit the book-only model. EXCLUDED on
-# purpose: "Crypto" (curated, and priced off a spot ladder we already model) and "Financials"
-# (intraday index strike-ladders whose edge needs a live underlying feed Tau doesn't have) - the
-# task's "strike-ladder series that need a spot underlying" carve-out. Elections/Politics/
-# Entertainment are left out too: mostly one_off and subjective/disputed settlement.
-ALLOWED_CATEGORIES = frozenset({
-    "Sports", "Climate and Weather", "Economics", "Commodities",
-    "Science and Technology", "Companies", "Health", "World", "Transportation",
-})
+# Categories that settle YES/NO on a published event and fit the book-only model, cut to what we
+# trade (Todd, 2026-10-24: sports, weather and crypto only; data_pipeline.common.TRADED_CATEGORIES).
+# "Crypto" is traded but not generated here: it is curated and priced off a spot ladder we already
+# model. Economics, Commodities, Financials, Politics, Entertainment and the rest are out, and the
+# collectors no longer store them.
+ALLOWED_CATEGORIES = frozenset({"Sports", "Climate and Weather"})
 
 # Decision cadence + candle granularity, and backtest lookback, by recurrence. Long-open markets
 # (daily/weekly) decide hourly (60) so one market isn't 1,440 one-minute candles/day; fast ones

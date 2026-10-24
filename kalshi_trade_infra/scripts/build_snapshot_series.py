@@ -2,7 +2,8 @@
 snapshot collector samples (see data_pipeline/snapshot_collector.py).
 
 Selection: every Crypto-category series + the top N real series by current open-market
-count, excluding the combinatorial parlay series (KXMVECROSSCATEGORY*). Enumeration uses
+count in the other traded categories (common.TRADED_CATEGORIES: sports, weather), excluding
+the combinatorial parlay series (KXMVECROSSCATEGORY*). Enumeration uses
 /series (crypto) and /events?with_nested_markets (real counts) -- NOT /markets?status=open,
 which is ~99.9% parlay markets and never reaches the real universe.
 
@@ -18,7 +19,7 @@ import os
 import time
 from collections import Counter
 
-from data_pipeline.common import api_get
+from data_pipeline.common import api_get, is_traded_series
 
 OUT = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data_pipeline", "snapshot_series.txt")
 TOP_REAL = int(os.getenv("TOP_REAL", "20"))
@@ -30,7 +31,7 @@ def crypto_series() -> list:
 
 
 def real_series_by_open_markets() -> Counter:
-    """Open-market count per series, from /events (bypasses the parlay flood)."""
+    """Open-market count per traded series, from /events (bypasses the parlay flood)."""
     cnt: Counter = Counter()
     cursor = None
     for _ in range(400):
@@ -41,7 +42,7 @@ def real_series_by_open_markets() -> Counter:
         events = data.get("events") or []
         for e in events:
             s = e.get("series_ticker")
-            if s:
+            if s and is_traded_series(s, e.get("category")):
                 cnt[s] += len(e.get("markets") or [])
         cursor = data.get("cursor")
         if not cursor or not events:

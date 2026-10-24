@@ -116,7 +116,8 @@ def test_refresh_asks_kalshi_to_exclude_parlays(monkeypatch):
 
     def api(path, params=None):
         if path == "/series":
-            return {"series": []}
+            return {"series": [{"ticker": "KXNBAGAME", "category": "Sports"},
+                               {"ticker": "KXHIGHNY", "category": "Climate and Weather"}]}
         calls.append(dict(params))
         return pages[len(calls) - 1]
 
@@ -136,8 +137,59 @@ def test_refresh_asks_kalshi_to_exclude_parlays(monkeypatch):
     monkeypatch.setattr(cc, "get_db_conn", lambda: Conn())
     monkeypatch.setattr(cc, "insert_market_upserts", lambda cur, batch: upserts.extend(batch))
     monkeypatch.setattr(cc, "PAGE_SLEEP", 0)
-    monkeypatch.setattr(cc, "refresh_series_meta", lambda cur: 0)
+    monkeypatch.setattr(cc, "refresh_series_meta", lambda cur, meta=None: 0)
     out = cc.refresh_once()
     assert all(c.get("mve_filter") == "exclude" for c in calls) and len(calls) == 2
     assert out["markets"] == 2 and len(upserts) == 2
     assert db.series["KXNBAGAME"]["open"] == 1 and db.series["KXMVECROSSCATEGORY"]["open"] == 0
+
+
+def _run_refresh(monkeypatch, series_meta, pages):
+    calls, upserts = [], []
+
+    def api(path, params=None):
+        if path == "/series":
+            return {"series": series_meta}
+        calls.append(dict(params))
+        return pages[len(calls) - 1]
+
+    db = _DB()
+
+    class Conn:
+        def cursor(self):
+            return db
+
+        def commit(self):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(cc, "api_get", api)
+    monkeypatch.setattr(cc, "get_db_conn", lambda: Conn())
+    monkeypatch.setattr(cc, "insert_market_upserts", lambda cur, batch: upserts.extend(batch))
+    monkeypatch.setattr(cc, "PAGE_SLEEP", 0)
+    monkeypatch.setattr(cc, "refresh_series_meta", lambda cur, meta=None: 0)
+    return cc.refresh_once(), calls, upserts, db
+
+
+def test_refresh_stores_only_sports_weather_and_crypto(monkeypatch):
+    meta = [{"ticker": "KXNBAGAME", "category": "Sports"},
+            {"ticker": "KXHIGHNY", "category": "Climate and Weather"},
+            {"ticker": "KXBTCD", "category": "Crypto"},
+            {"ticker": "KXCPI", "category": "Economics"},
+            {"ticker": "KXCOPPER", "category": "Commodities"},
+            {"ticker": "KXPRES", "category": "Politics"}]
+    page = {"markets": [{"ticker": t + "-26OCT24-A", "event_ticker": t + "-26OCT24", "status": "active", "title": t}
+                        for t in ("KXNBAGAME", "KXHIGHNY", "KXBTCD", "KXCPI", "KXCOPPER", "KXPRES", "KXUNLISTED")],
+            "cursor": ""}
+    out, calls, upserts, db = _run_refresh(monkeypatch, meta, [page])
+    assert sorted(m["series_ticker"] for m in upserts) == ["KXBTCD", "KXHIGHNY", "KXNBAGAME"]
+    assert out["markets"] == 3 and out["skipped"] == 4
+    assert sorted(db.series) == ["KXBTCD", "KXHIGHNY", "KXNBAGAME"]
+
+
+def test_refresh_is_skipped_without_series_meta(monkeypatch):
+    page = {"markets": [{"ticker": "KXCPI-26OCT24-A", "event_ticker": "KXCPI-26OCT24", "status": "active"}], "cursor": ""}
+    out, calls, upserts, db = _run_refresh(monkeypatch, [], [page])
+    assert calls == [] and upserts == [] and out["markets"] == 0

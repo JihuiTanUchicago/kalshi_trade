@@ -32,6 +32,22 @@ _KALSHI_PRIVATE_KEY = None
 # series is collected model_eligible=0 so it is visible to research (_load_micro joins by
 # ticker, ignoring model_eligible) but invisible to the eligible-gated live/sim readers.
 # Override with TAU_MICRO_SERIES (comma list) for ad-hoc runs or to narrow collection cost.
+
+# Kalshi series categories we collect and trade (Todd, 2026-10-24: sports, weather and crypto
+# only). catalog_collector skips every other category, app/markets generates catalog markets only
+# inside it, and scripts/prune_untraded_markets.py deletes the stored rows of everything else.
+# Multi-leg (MVE) parlay series are out whatever their category: nothing here can trade them.
+TRADED_CATEGORIES = frozenset(
+    c.strip() for c in os.getenv("TAU_TRADED_CATEGORIES", "Sports,Climate and Weather,Crypto").split(",")
+    if c.strip()
+)
+
+
+def is_traded_series(series_ticker: Optional[str], category: Optional[str]) -> bool:
+    """True if a series belongs to the traded universe: a traded category and not a parlay."""
+    s = (series_ticker or "").strip().upper()
+    return bool(s) and "MVE" not in s and (category or "").strip() in TRADED_CATEGORIES
+
 PRIMARY_MICRO_SERIES = "KXBTC15M"
 DEFAULT_MICRO_SERIES = ["KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M", "KXDOGE15M", "KXBNB15M"]
 
