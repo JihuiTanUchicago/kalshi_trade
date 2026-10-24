@@ -84,10 +84,10 @@ class TickStore:
         return f"{self.prefix}/v1/{table}/date={hour:%Y-%m-%d}/hour={hour:%H}/part.parquet"
 
     def read(self, table: str, start: datetime, end: datetime, tickers: Optional[Sequence[str]] = None,
-             columns: Optional[List[str]] = None, pad_hours_before: int = 0, series: Optional[Sequence[str]] = None):
-        """Rows of ``table`` with start <= rt < end (features_1s: start < sec <= end) as one
-        pyarrow.Table in file order. ``tickers`` filters kalshi_* / features_1s (product ids for
-        coinbase_*); ``series`` filters features_1s by series."""
+             columns: Optional[List[str]] = None, pad_hours_before: int = 0):
+        """Rows of a raw tick ``table`` with start <= rt < end as one pyarrow.Table in file order.
+        ``tickers`` filters kalshi_* tables (product ids for coinbase_*). For features use
+        features_1s()."""
         import pyarrow as pa
         import pyarrow.compute as pc
         import pyarrow.parquet as pq
@@ -96,23 +96,15 @@ class TickStore:
         filters = []
         if tickers:
             filters.append((key_col, "in", list(tickers)))
-        if series:
-            filters.append(("series", "in", list(series)))
         parts = []
-        hours = hours_between(start - timedelta(hours=pad_hours_before), end)
-        if table == "features_1s":   # sec is the END of a second, so end's own hour holds sec == end
-            hours = hours_between(start, end + timedelta(seconds=1))
-        for h in hours:
+        for h in hours_between(start - timedelta(hours=pad_hours_before), end):
             p = self._fetch(self.table_key(table, h))
             if p is None:
                 continue
-            parts.append(pq.read_table(p, columns=columns, filters=filters or None))
+            parts.append(pq.read_table(p, columns=columns, filters=filters or None, partitioning=None))
         if not parts:
             return None
         t = pa.concat_tables(parts)
-        if table == "features_1s":
-            mask = pc.and_(pc.greater(t["sec"], int(start.timestamp())), pc.less_equal(t["sec"], int(end.timestamp())))
-            return t.filter(mask)
         lo = int((start - timedelta(hours=pad_hours_before)).timestamp() * NS)
         mask = pc.and_(pc.greater_equal(t["rt"], lo), pc.less(t["rt"], int(end.timestamp() * NS)))
         return t.filter(mask)
@@ -134,10 +126,33 @@ class TickStore:
     def features_1s(self, start: datetime, end: datetime, tickers: Optional[Sequence[str]] = None,
                     series: Optional[Sequence[str]] = None, columns: Optional[List[str]] = None) -> Dict[str, np.ndarray]:
         """The prebuilt per-second feature table (data_pipeline/tick_features.py), start < sec <= end,
-        as {column: np.ndarray}. Filter by ``tickers`` and/or ``series`` (e.g. ["KXBTC15M"])."""
-        t = self.read("features_1s", start, end, tickers=tickers, series=series, columns=columns)
-        if t is None:
+        as {column: np.ndarray}. Filter by ``series`` (e.g. ["KXBTC15M"]) and/or ``tickers``; only
+        those series' files are fetched (one per series per hour). With neither, every series the
+        hour's manifest lists is read."""
+        import pyarrow as pa
+        import pyarrow.compute as pc
+        import pyarrow.parquet as pq
+        start, end = _utc(start), _utc(end)
+        wanted = list(series) if series else sorted({t.split("-")[0] for t in tickers}) if tickers else None
+        filters = [("ticker", "in", list(tickers))] if tickers else None
+        parts = []
+        for h in hours_between(start, end + timedelta(seconds=1)):   # sec == end lives in end's hour
+            names = wanted
+            if names is None:
+                man = self._fetch(f"{self.prefix}/manifest/features_1s/date={h:%Y-%m-%d}/{h:%H}.json")
+                if man is None:
+                    continue
+                with open(man) as fh:
+                    names = sorted(((json.load(fh).get("tables") or {}).get("series") or {}))
+            for name in names:
+                p = self._fetch(f"{self.prefix}/v1/features_1s/date={h:%Y-%m-%d}/hour={h:%H}/series={name}/part.parquet")
+                if p is not None:
+                    parts.append(pq.read_table(p, columns=columns, filters=filters, partitioning=None))
+        if not parts:
             return {}
+        t = pa.concat_tables(parts)
+        if "sec" in t.column_names:
+            t = t.filter(pc.and_(pc.greater(t["sec"], int(start.timestamp())), pc.less_equal(t["sec"], int(end.timestamp()))))
         return {name: t[name].to_numpy(zero_copy_only=False) for name in t.column_names}
 
     def book_1s(self, tickers: Sequence[str], start: datetime, end: datetime,

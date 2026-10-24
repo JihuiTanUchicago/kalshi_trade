@@ -424,15 +424,16 @@ def build_features(s3=None, store=None, now: Optional[datetime] = None, conn=Non
             continue
         tmpdir = tempfile.mkdtemp(prefix="tickfeat_")
         try:
-            out = os.path.join(tmpdir, "part.parquet")
             t0 = utc_now()
-            res = tick_features.build_hour(store, hour, out)
+            res = tick_features.build_hour(store, hour, tmpdir)
             if res is not None:
-                s3.upload_file(out, BUCKET, f"{PREFIX}/v1/features_1s/date={date}/hour={hh}/part.parquet")
+                for series, path in res["files"].items():
+                    s3.upload_file(path, BUCKET, f"{PREFIX}/v1/features_1s/date={date}/hour={hh}/series={series}/part.parquet")
                 manifest = {"source": "features_1s", "hour_utc": hour.strftime("%Y-%m-%d %H:00:00"),
                             "messages": res["rows"], "first_rt_utc": None, "last_rt_utc": None, "max_gap_s": None,
-                            "seq_gaps": 0, "reconnects": 0, "raw_bytes": 0, "parquet_bytes": os.path.getsize(out),
-                            "tables": {"features_1s": res["rows"], "tickers": res["tickers"]},
+                            "seq_gaps": 0, "reconnects": 0, "raw_bytes": 0,
+                            "parquet_bytes": sum(os.path.getsize(p) for p in res["files"].values()),
+                            "tables": {"features_1s": res["rows"], "tickers": res["tickers"], "series": res["series"]},
                             "host": socket.gethostname(), "s3_prefix": f"s3://{BUCKET}/{PREFIX}/v1/",
                             "build_s": round((utc_now() - t0).total_seconds(), 1)}
                 man = os.path.join(tmpdir, "manifest.json")
@@ -440,7 +441,7 @@ def build_features(s3=None, store=None, now: Optional[datetime] = None, conn=Non
                     json.dump(manifest, fh)
                 s3.upload_file(man, BUCKET, f"{PREFIX}/manifest/features_1s/date={date}/{hh}.json")
                 write_manifest_row(manifest, conn)
-                print(f"features_1s {tag}:00 rows={res['rows']} tickers={res['tickers']} "
+                print(f"features_1s {tag}:00 rows={res['rows']} tickers={res['tickers']} series={len(res['series'])} "
                       f"{manifest['parquet_bytes'] / 1e6:.1f}MB in {manifest['build_s']}s", flush=True)
                 n += 1
             built.add(tag)
