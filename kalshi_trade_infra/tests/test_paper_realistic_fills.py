@@ -247,3 +247,24 @@ def test_paper_kernel_factory_builds_a_simulated_kernel(monkeypatch):
     kernel = make(1)
     assert isinstance(kernel, MarketableLimitKernel)
     assert isinstance(kernel._submitter, SimulatedVenue), "paper must never reach a real submitter"
+
+
+# -- the live gate's evidence query ---------------------------------------------------
+
+
+def test_paper_round_trips_counts_only_closed_simulated_fills():
+    from app import repository as repo
+
+    class Rec:
+        def execute(self, sql, params=()):
+            self.sql, self.params = " ".join(sql.split()), params
+
+        def fetchall(self):
+            return [{"order_ref": "sim:a", "pnl": "1.25", "opened_at": 1, "closed_at": 2}]
+
+    cur = Rec()
+    rows = repo.paper_round_trips(cur, 3, 7)
+    assert rows == [{"pnl": 1.25, "opened_at": 1, "closed_at": 2}]
+    assert "p.mode='paper'" in cur.sql and "LIKE %s" in cur.sql and "GROUP BY p.order_ref" in cur.sql
+    assert "status='open'" in cur.sql, "a trade with a slice still open is not a closed round trip"
+    assert cur.params == (3, 7, engine.SIM_ORDER_REF_PREFIX + "%")

@@ -1,5 +1,13 @@
 # PLAN
 
+## Realistic paper fills and a stronger live gate — October 24, 2026, UTC
+
+Merged to main (branch `claude/project-thread-76ft6y`), not yet deployed. App paper deployments now run the live `MarketableLimitKernel` over `SimulatedVenue` (`engine.paper_kernel_factory`, `Sources.paper_kernel`, shared `_execution_kernel` helper so paper and live cannot drift). Paper now misses on a stale quote or a moved ask, fills only the touch size, pays the fee per child order and can part-fill an exit; simulated fills carry `order_ref='sim:<id>'`. `APP_PAPER_REALISTIC_FILLS=0` restores legacy instant fills. Cross-contract pairs keep the atomic paper fill (legging risk not simulated yet). Fixed `SimulatedVenue` pricing NO orders off the YES touch; it now uses the `order_wire_params` mirror.
+
+Live gate (`agent._proven_on_paper`), additive only: the old 8-trade/not-negative check stays, then 30+ closed realistic round trips (`repo.paper_round_trips`, legacy fills excluded), net P&L > 0 after fees, 48h+ span, and stationary-bootstrap one-sided p ≤ 0.10 on mean P&L per trade. Existing strategies have zero realistic trades, so none can go live until they re-earn it on paper. Tests: `tests/test_paper_realistic_fills.py`, `tests/test_app_autopilot_live.py`. Deploy is pending a bundle that excludes the unreleased perps release.
+
+Next: compare paper fill prices to backtest assumptions per strategy (paper/backtest slippage drift as a gate input), simulate legging for pairs, then research automation.
+
 ## Kalshi perps deployment preparation — October 23, 2026, Asia/Shanghai
 
 In progress (`tau-kalshi-perps-deployment-preparation-20261023`): build a native real-money Bitcoin perps path, using Kalshi's own margin/leverage limits and mandatory owner confirmation for every agent-proposed order. No extra Tau financial caps and no autonomous broker execution. Existing binary live gates and research-only strategy promotion blocks stay unchanged. Encrypted selected-source recovery passed (run39888106069); legitimate installed fixes and header CSS are being reconciled into main. Native client/store/service, both-theme Funds preview/confirmation and hosted synthetic acceptance harness are implemented; 2,265 Python/10 skipped and226+8 frontend checks pass. Frozen58 security review completed with no findings; hosted staging found a proposal-column width mismatch, now repaired. Hosted rerun and migration-delta review remain pending. Production code, services, settings and jobs remain unchanged. Full candidate verification and guarded rollout remain required. [Preparation handoff](results/kalshi_perps_deployment_preparation_2026-10-23/HANDOFF.md).
