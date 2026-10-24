@@ -26,7 +26,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-PARSER_VERSION = 1
+PARSER_VERSION = 2      # 2: LMAX trade side inferred from the touch; repeated trades dropped
 NS = 1_000_000_000
 COMPOSITE_MAX_AGE_S = 60
 QUOTE_COINS = ("USDC", "USDT", "USD")
@@ -206,10 +206,14 @@ def parse(source: str, rt: int, data, product_hint: Optional[str] = None) -> Ite
             bp, ap = _num(data.get("best_bid")), _num(data.get("best_ask"))
             if bp is not None or ap is not None:
                 yield Q, (rt, prod, bp, None, ap, None, exch)
-            if data.get("trade_id") is not None and _num(data.get("last_price")) is not None:
-                # repeated on every ticker update; readers drop duplicate trade_ids
-                yield T, (rt, prod, str(data.get("trade_id")), _num(data.get("last_price")),
-                          _num(data.get("last_quantity")), None, exch)
+            px = _num(data.get("last_price"))
+            if data.get("trade_id") is not None and px is not None:
+                # LMAX gives no aggressor; the print is nearer the side it lifted. The last trade is
+                # repeated on every ticker update; tick_archiver keeps its first appearance only.
+                side = None
+                if bp is not None and ap is not None and abs(px - ap) != abs(px - bp):
+                    side = "buy" if abs(px - ap) < abs(px - bp) else "sell"
+                yield T, (rt, prod, str(data.get("trade_id")), px, _num(data.get("last_quantity")), side, exch)
 
 
 def parse_line(source: str, line: str, product_hint: Optional[str] = None) -> Iterable[Tuple[str, tuple]]:
