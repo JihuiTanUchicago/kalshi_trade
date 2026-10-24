@@ -98,3 +98,12 @@ secret `kalshi/odds_api_key` and is a no-op without one. For a paid plan, tighte
     sudo cp scripts/systemd/kalshi-sports-odds.* /etc/systemd/system/
     sudo systemctl daemon-reload
     sudo systemctl enable --now kalshi-sports-odds.timer
+
+## Tick recorders (collector box)
+
+`kalshi-tick-recorder` and `coinbase-tick-recorder` stream every Kalshi BTC-series book delta,
+trade and ticker, and every Coinbase BTC-USD print and best bid/ask, into hourly NDJSON files
+under `/opt/kalshi/ticks`. `kalshi-tick-archiver.timer` turns closed hours into S3 Parquet
+(`ticks/v1/...` in the datalake bucket) and a `tick_archive_hours` row, then deletes the local
+file. `scripts/deploy_collector.sh` installs and enables all four; see
+`data_pipeline/tick_store.py` for reading the archive.

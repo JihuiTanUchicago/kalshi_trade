@@ -38,7 +38,11 @@ POSITION_COST_ALERT = float(os.getenv("ALERT_POSITION_COST", "20"))
 # A writer this far past its cadence is treated as stopped, matching the
 # dashboard's own as-of rule so the two never disagree.
 STALE_MULTIPLE = 6
-WRITER_CADENCE = {"live_portfolio_20s": 20, "live_engine": 60, "forward_quotes": 20}
+WRITER_CADENCE = {"live_portfolio_20s": 20, "live_engine": 60, "forward_quotes": 20,
+                  "tick_recorder_kalshi": 10, "tick_recorder_coinbase": 10, "tick_archive": 1200}
+# Writers that only exist once their units are deployed: no row yet means "not installed",
+# not "stopped", so they are skipped until they first write.
+OPTIONAL_WRITERS = ("tick_recorder_kalshi", "tick_recorder_coinbase", "tick_archive")
 DASHBOARD_URL = os.getenv("DASHBOARD_URL", "https://dehiuraiut9ro.cloudfront.net/?tab=live-trading")
 # The engine crash-looping is invisible to every other check here: it restarts
 # fast enough that its snapshot never looks stale, and it writes no trade. That
@@ -84,6 +88,29 @@ def _writer_ages(cur) -> Dict[str, Optional[float]]:
             out[name] = float(row["a"]) if row.get("a") is not None else None
         except Exception:
             out[name] = None
+    try:
+        cur.execute("SELECT TIMESTAMPDIFF(SECOND, MAX(archived_at_utc), UTC_TIMESTAMP()) a FROM tick_archive_hours")
+        row = cur.fetchone() or {}
+        if row.get("a") is not None:
+            out["tick_archive"] = float(row["a"])
+    except Exception:
+        pass
+    # A recorder whose socket is dead still heartbeats, so its age is the older of the
+    # heartbeat and the last exchange message it reports.
+    try:
+        cur.execute(
+            "SELECT state_key, state_value, TIMESTAMPDIFF(SECOND, updated_at_utc, UTC_TIMESTAMP()) a "
+            "FROM collector_state WHERE state_key IN ('tick_recorder_kalshi','tick_recorder_coinbase')"
+        )
+        for r in cur.fetchall():
+            age = float(r["a"]) if r.get("a") is not None else None
+            try:
+                msg_age = (json.loads(r["state_value"]) or {}).get("last_msg_age_s")
+            except Exception:
+                msg_age = None
+            out[r["state_key"]] = max(a for a in (age, msg_age, 0.0) if a is not None) if age is not None else None
+    except Exception:
+        pass
     return out
 
 
@@ -412,6 +439,8 @@ def build_alerts(now: Dict, prev: Dict, cur) -> Tuple[List[str], List[str]]:
             # brings this check straight back.
             continue
         expect = WRITER_CADENCE.get(name, 60)
+        if age is None and name in OPTIONAL_WRITERS:
+            continue
         if age is None or age > expect * STALE_MULTIPLE:
             stale_now.append(name)
             if name not in prev_stale:

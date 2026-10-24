@@ -1,0 +1,13 @@
+[Unit]
+Description=Tick archiver: closed hourly tick files -> S3 Parquet + raw gzip + tick_archive_hours manifest
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/kalshi
+# Background work on a shared 2-vCPU box: never starve the recorders or the forward collector.
+Nice=15
+IOSchedulingClass=idle
+CPUQuota=60%
+MemoryMax=1500M
+ExecStart=/bin/bash -c 'set -a; . /opt/kalshi/.env.aws; [ -f /opt/kalshi/.env ] && . /opt/kalshi/.env; set +a; unset AWS_PROFILE; exec /opt/kalshi/.venv313/bin/python -u -m data_pipeline.tick_archiver >> /opt/kalshi/logs/kalshi-tick-archiver.log 2>&1'

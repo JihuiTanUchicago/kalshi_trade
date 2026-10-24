@@ -1,0 +1,8 @@
+[Unit]
+Description=Archive closed tick hours to S3 every 10 minutes
+[Timer]
+OnBootSec=3min
+OnCalendar=*:03/10
+Persistent=true
+[Install]
+WantedBy=timers.target
