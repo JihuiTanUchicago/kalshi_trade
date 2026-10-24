@@ -6,12 +6,16 @@ Layout (bucket DATALAKE_BUCKET):
   ticks/manifest/<source>/date=YYYY-MM-DD/HH.json          the manifest row below, as JSON
 
 Tables (rt = receive time, epoch ns, on every row):
-  kalshi_book     ticker, kind, side, price, qty, sid, seq
+  kalshi_book     ticker, kind, side, price, qty, sid, seq, upd_rt, exch_ms
                   kind 0 = exchange snapshot level, 1 = delta (qty is the change),
                   3 = recorder checkpoint level (top of each hour). A row with kind 0/3 and side
-                  NULL is a reset marker: clear that ticker's book before applying the levels.
-  kalshi_trades   ticker, trade_id, yes_price, no_price, count, taker_side, ts_s
-  kalshi_ticker   ticker, price, yes_bid, yes_ask, yes_bid_size, yes_ask_size, volume, open_interest, ts_s
+                  NULL is a reset marker: clear that ticker's book before applying the levels; its
+                  upd_rt is when the book last really changed (a checkpoint is not a change).
+  kalshi_markets  ticker, event_ticker, series, open_ts, close_ts, floor_strike, cap_strike,
+                  strike_type, status (on subscribe/change, and for every market each hour)
+  kalshi_trades   ticker, trade_id, yes_price, no_price, count, taker_side, ts_s, exch_ms
+  kalshi_ticker   ticker, price, yes_bid, yes_ask, yes_bid_size, yes_ask_size, volume, open_interest, ts_s,
+                  exch_ms (exchange time, ms; kalshi_book deltas carry it too: rt - exch_ms = feed latency)
   coinbase_trades product_id, trade_id, price, size, taker_side, exch_ns
   coinbase_ticker product_id, trade_id, price, best_bid, best_ask, best_bid_size, best_ask_size, exch_ns
   tick_meta       source, event, detail (connects, disconnects, sequence gaps)
@@ -49,12 +53,16 @@ def _schemas():
     s, f, i64 = pa.string(), pa.float64(), pa.int64()
     return {
         "kalshi_book": pa.schema([rt, ("ticker", s), ("kind", pa.int8()), ("side", s), ("price", f),
-                                  ("qty", f), ("sid", i64), ("seq", i64)]),
+                                  ("qty", f), ("sid", i64), ("seq", i64), ("upd_rt", i64),
+                                  ("exch_ms", i64)]),
+        "kalshi_markets": pa.schema([rt, ("ticker", s), ("event_ticker", s), ("series", s), ("open_ts", i64),
+                                     ("close_ts", i64), ("floor_strike", f), ("cap_strike", f),
+                                     ("strike_type", s), ("status", s)]),
         "kalshi_trades": pa.schema([rt, ("ticker", s), ("trade_id", s), ("yes_price", f), ("no_price", f),
-                                    ("count", f), ("taker_side", s), ("ts_s", i64)]),
+                                    ("count", f), ("taker_side", s), ("ts_s", i64), ("exch_ms", i64)]),
         "kalshi_ticker": pa.schema([rt, ("ticker", s), ("price", f), ("yes_bid", f), ("yes_ask", f),
                                     ("yes_bid_size", f), ("yes_ask_size", f), ("volume", f),
-                                    ("open_interest", f), ("ts_s", i64)]),
+                                    ("open_interest", f), ("ts_s", i64), ("exch_ms", i64)]),
         "coinbase_trades": pa.schema([rt, ("product_id", s), ("trade_id", i64), ("price", f), ("size", f),
                                       ("taker_side", s), ("exch_ns", i64)]),
         "coinbase_ticker": pa.schema([rt, ("product_id", s), ("trade_id", i64), ("price", f), ("best_bid", f),
@@ -95,11 +103,17 @@ def _iso_ns(v) -> Optional[int]:
 
 
 def _book_levels(rt: int, ticker: str, kind: int, book: Dict, sid=None, seq=None) -> List[tuple]:
-    rows = [(rt, ticker, kind, None, None, None, sid, seq)]  # reset marker
+    # Reset marker; on a checkpoint it carries upd_rt, the rt of the book's last real update.
+    rows = [(rt, ticker, kind, None, None, None, sid, seq, _int(book.get("t")) if kind == 3 else rt, None)]
     for side in ("yes", "no"):
         for p, q in book.get(side, []):
-            rows.append((rt, ticker, kind, side, float(p), float(q), sid, seq))
+            rows.append((rt, ticker, kind, side, float(p), float(q), sid, seq, None, None))
     return rows
+
+
+def _epoch_s(v) -> Optional[int]:
+    ns = _iso_ns(v)
+    return None if ns is None else ns // 1_000_000_000
 
 
 def parse_line(source: str, line: str) -> Iterable[Tuple[str, tuple]]:
@@ -109,6 +123,13 @@ def parse_line(source: str, line: str) -> Iterable[Tuple[str, tuple]]:
     if "meta" in rec:
         detail = {k: v for k, v in rec.items() if k not in ("rt", "meta")}
         yield "tick_meta", (rt, source, rec["meta"], json.dumps(detail) if detail else None)
+        return
+    if "markets" in rec:
+        for m in rec["markets"] or []:
+            yield "kalshi_markets", (rt, m.get("ticker"), m.get("event_ticker"), m.get("series_ticker"),
+                                     _epoch_s(m.get("open_time")), _epoch_s(m.get("close_time")),
+                                     _num(m.get("floor_strike")), _num(m.get("cap_strike")),
+                                     m.get("strike_type"), m.get("status"))
         return
     if "checkpoint" in rec:
         for t, book in (rec["checkpoint"] or {}).items():
@@ -126,15 +147,16 @@ def parse_line(source: str, line: str) -> Iterable[Tuple[str, tuple]]:
                 yield "kalshi_book", row
         elif typ == "orderbook_delta" and t:
             side, price, d = delta_fields(msg)
-            yield "kalshi_book", (rt, t, 1, side, price, d, data.get("sid"), data.get("seq"))
+            yield "kalshi_book", (rt, t, 1, side, price, d, data.get("sid"), data.get("seq"), None,
+                                  _int(msg.get("ts_ms")))
         elif typ == "trade" and t:
             yield "kalshi_trades", (rt, t, str(msg.get("trade_id") or ""), _dollars(msg, "yes_price"),
                                     _dollars(msg, "no_price"), _fp(msg, "count"), msg.get("taker_side"),
-                                    _int(msg.get("ts")))
+                                    _int(msg.get("ts")), _int(msg.get("ts_ms")))
         elif typ == "ticker" and t:
             yield "kalshi_ticker", (rt, t, _dollars(msg, "price"), _dollars(msg, "yes_bid"), _dollars(msg, "yes_ask"),
                                     _fp(msg, "yes_bid_size"), _fp(msg, "yes_ask_size"), _fp(msg, "volume"),
-                                    _fp(msg, "open_interest"), _int(msg.get("ts")))
+                                    _fp(msg, "open_interest"), _int(msg.get("ts")), _int(msg.get("ts_ms")))
     elif source == "coinbase":
         if typ in ("match", "last_match"):
             # Coinbase "side" is the MAKER's side; the taker is the other one.
