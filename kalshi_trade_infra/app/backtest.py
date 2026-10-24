@@ -572,6 +572,22 @@ def _code_book(spec: Dict, ds: Dataset, start_ts: int, end_ts: int) -> Dict[int,
     return _parse_book(raw, frames)
 
 
+def _fit_results(ds: Dataset, frames: List[Tuple[int, List[Snapshot]]]) -> Dict[str, str]:
+    """The training labels fit(window) reads as window["results"] ({ticker: "yes"|"no"}): only
+    contracts that SETTLED inside the research window, so no outcome dated past the fold reaches the
+    frozen model. signals() never gets results (its window is the one being scored). Before this,
+    fit() saw no results at all, so every supervised model trained on all-NO labels and failed with
+    "only one class present" or fit nothing."""
+    out: Dict[str, str] = {}
+    for _, snaps in frames:
+        for s in snaps:
+            tk = s.contract.ticker
+            if tk not in out and ds.results.get(tk) in ("yes", "no") \
+                    and s.contract.close_time.timestamp() <= ds.end_ts:
+                out[tk] = ds.results[tk]
+    return out
+
+
 def freeze_code_model(spec: Dict, ds: Dataset, diag: Optional[Dict] = None) -> Dict:
     """Fit-on-research-and-FREEZE. If the agent's code defines fit(window), run it ONCE over the
     whole RESEARCH window `ds` and freeze the returned params into spec['params'] — which becomes
@@ -595,6 +611,8 @@ def freeze_code_model(spec: Dict, ds: Dataset, diag: Optional[Dict] = None) -> D
         return spec
     frames = list(ds.frames)
     window = _binary_window(spec["market"], frames) if ds.market.kind != "spot" else _spot_window(spec["market"], frames)
+    if ds.market.kind != "spot":
+        window["results"] = _fit_results(ds, frames)
     freedata.enrich(spec, window)  # research-fold external data, as-of joined (fit sees research only)
     try:
         params = sandbox.run_strategy_fit(spec["code"], window, data_dir=None)

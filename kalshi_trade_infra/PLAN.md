@@ -1,5 +1,12 @@
 # PLAN
 
+## fit() finally gets its training labels (2026-10-24)
+- Bug: code strategies' fit(window) never received settlement outcomes, though SPEC_GUIDE's own
+  recalibration example reads window["results"]. Every supervised code model trained on all-NO labels
+  and died with "only one class present" or fit nothing (seen in prod run 2531).
+- Now `freeze_code_model` adds window["results"] for contracts settled inside the research window
+  only; signals() windows never carry results.
+
 ## Research stops re-proposing dead ideas (2026-10-24)
 - Prod run 2531 (kxcopperd) dropped 18 theses in 40 min; 7 were the same favorite-longshot idea. Dropped
   theses never reached app_strategies, so neither later rounds nor later runs knew about them.

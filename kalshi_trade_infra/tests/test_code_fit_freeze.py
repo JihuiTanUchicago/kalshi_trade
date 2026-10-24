@@ -132,3 +132,23 @@ def test_model_frozen_on_research_is_not_refit_on_validation():
     assert trades, "the frozen params must flow into signals (no params -> KeyError -> no trades)"
     assert any(abs(t.edge - float(r)) < 1e-9 for t in trades)
     assert not any(abs(t.edge - float(v)) < 1e-9 for t in trades)
+
+
+def test_fit_window_carries_settled_results_but_signals_window_does_not(monkeypatch):
+    """fit() trains on outcomes: window["results"] maps each contract that settled inside the
+    research window to its result. A contract settling after the window is left out (its outcome is
+    dated past the fold), and signals() never sees results at all."""
+    import dataclasses
+    ds = _dataset(n=6)
+    ds.results["M1"] = "no"
+    last_close = max(s.contract.close_time.timestamp() for _, sn in ds.frames for s in sn)
+    ds = dataclasses.replace(ds, end_ts=int(last_close) - 1)    # the last contract settles after the fold
+    seen = {}
+    monkeypatch.setattr(sandbox, "strategy_has_fit", lambda code: True)
+    monkeypatch.setattr(sandbox, "run_strategy_fit", lambda code, window, **kw: seen.update(fit=window) or {})
+    monkeypatch.setattr(sandbox, "run_strategy_signals",
+                        lambda code, window, **kw: seen.update(sig=window) or [[] for _ in window["frames"]])
+    frozen = backtest.freeze_code_model(_code_spec(code=FIT_COUNT), ds)
+    assert seen["fit"]["results"] == {"M0": "yes", "M1": "no", "M2": "yes", "M3": "yes", "M4": "yes"}
+    backtest._code_book(frozen, ds, ds.start_ts, ds.end_ts + 10**6)
+    assert "results" not in seen["sig"]
