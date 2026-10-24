@@ -1,5 +1,12 @@
 # PLAN
 
+## 90-day history for 15m crypto + old-end backfill + monotonic research cut — October 24, 2026
+
+- **Why.** Sample size, not math, binds the research gate. The 15m ladders settle ~96 contracts a day each, but research used only 30 days (~8 validation days). Collected history goes back only to 2026-09-13 (BTC) and 09-17 (SOL/XRP/DOGE/HYPE), because the collector started with a 30-day floor and only ever syncs forward.
+- `markets.CRYPTO_15M_HISTORY_DAYS = 90` for the eight 15m crypto ladders.
+- `market_history` backfills the OLD end whenever history_days reaches past what was collected: settled markets between the floor and the oldest close (`/markets` with `max_close_ts`), and spot candles in 7-day slices per pass. Candles for the backfilled markets then flow through the normal `candles_done=0` path, newest first. An OLD market (closed >30 days ago) that Kalshi answers with 400/404 is marked `candles_done=3` and skipped, instead of blocking the series. Recent markets still raise, so real bugs are retried, not hidden.
+- **Honesty guard.** `partitions._compute_boundaries(min_research_to=active.research_to_ts)` makes the research cut monotonic. History that grows at the old end widens Research only, and Validation/Holdout keep splitting what lies after the previous cut 25:15. Without this, backfilled history would have moved already-researched contracts into Validation. Validation therefore grows from ~10 to ~22 days as time passes (about 20 days), never by re-labelling researched data.
+
 ## Calibration table + 1c cost-stress gate — October 24, 2026
 
 - **Calibration table in the research prompt** (`agent._calibration_block`). On the research window only, per time band (early vs the last third of a contract's life) and price bin, the proposer sees the settled YES rate vs the quote and the buy-YES / buy-NO net edge after the taker fee, with a standard error. Each contract counts once per cell. It aims generation at measured mispricing (favorite-longshot, terminal pinning) without touching held-out data.

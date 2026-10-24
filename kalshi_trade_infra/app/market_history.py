@@ -36,6 +36,12 @@ COINBASE_MAX_CANDLES = 300
 LADDER_BAND = 0.07
 REFRESH_SECONDS = 600
 KALSHI_PAUSE_SECONDS = 0.07  # ~14 req/s, under the basic tier's 20/s
+# Backfill: when a market's history_days reaches further back than what was collected (it was
+# raised, or collection started late), fill the gap at the OLD end too, a bounded slice per pass
+# so a 10-minute cycle stays short. The forward sync above only ever moves forward.
+BACKFILL_GAP_SECONDS = 86400          # ignore gaps under a day (normal edge of the window)
+SPOT_BACKFILL_SECONDS_PER_PASS = 7 * 86400
+OLD_MARKET_SECONDS = 30 * 86400       # candles of a market closed longer ago may be unavailable
 
 
 def _naive_utc(dt: datetime) -> datetime:
@@ -84,7 +90,7 @@ def sync_spot_candles(cur, symbol: str, start_ts: int, end_ts: int) -> int:
     return written
 
 
-def sync_settled_markets(cur, market: Market, min_close: datetime) -> int:
+def sync_settled_markets(cur, market: Market, min_close: datetime, max_close: Optional[datetime] = None) -> int:
     written = 0
     cursor = None
     while True:
@@ -94,6 +100,8 @@ def sync_settled_markets(cur, market: Market, min_close: datetime) -> int:
             "min_close_ts": int(min_close.timestamp()),
             "limit": 1000,
         }
+        if max_close is not None:
+            params["max_close_ts"] = int(max_close.timestamp())
         if cursor:
             params["cursor"] = cursor
         data = api_get("/markets", params)
@@ -201,15 +209,27 @@ def sync_market_candles(cur, market: Market, limit: int = 2000) -> int:
         max_candles = 4900
         span = market.candle_minutes * 60
         candles = []
+        data: Optional[Dict] = {}
         t = open_ts
         while t < close_ts:
             chunk_end = min(t + max_candles * span, close_ts)
-            data = api_get(
-                "/series/%s/markets/%s/candlesticks" % (market.series, m["ticker"]),
-                {"start_ts": t, "end_ts": chunk_end, "period_interval": market.candle_minutes},
-            )
+            try:
+                data = api_get(
+                    "/series/%s/markets/%s/candlesticks" % (market.series, m["ticker"]),
+                    {"start_ts": t, "end_ts": chunk_end, "period_interval": market.candle_minutes},
+                )
+            except RuntimeError as e:
+                # Only an OLD (backfilled) market may be written off on a 400/404: Kalshi may no
+                # longer serve it. A recent one keeps raising, so a real bug is retried, not hidden.
+                if not _is_client_error(e) or time.time() - close_ts < OLD_MARKET_SECONDS:
+                    raise
+                data = None  # skip it so it can't block the rest of the series
+                break
             candles.extend(data.get("candlesticks") or [])
             t = chunk_end
+        if data is None:
+            cur.execute("UPDATE hist_markets SET candles_done=3 WHERE ticker=%s", (m["ticker"],))
+            continue
         now = _naive_utc(utc_now())
         rows = []
         for c in candles:
@@ -251,6 +271,39 @@ def sync_market_candles(cur, market: Market, limit: int = 2000) -> int:
     return done
 
 
+def _is_client_error(e: Exception) -> bool:
+    """api_get raises RuntimeError("GET <url> failed <status>: ...") on HTTP errors. A 400/404
+    is permanent for that resource (e.g. a market past Kalshi's retention); 5xx and 429 are not."""
+    msg = str(e)
+    return " failed 400" in msg or " failed 404" in msg
+
+
+def backfill_spot(cur, symbol: str, history_days: int, now: datetime) -> int:
+    """Fill spot candles between the history floor and the OLDEST collected candle, at most
+    SPOT_BACKFILL_SECONDS_PER_PASS per call (newest part of the gap first)."""
+    floor_ts = int((now - timedelta(days=history_days + 1)).timestamp())
+    cur.execute("SELECT MIN(start_ts) AS t FROM spot_candles_1m WHERE symbol=%s", (symbol,))
+    first = (cur.fetchone() or {}).get("t")
+    if first is None or int(first) - floor_ts < BACKFILL_GAP_SECONDS:
+        return 0
+    start = max(floor_ts, int(first) - SPOT_BACKFILL_SECONDS_PER_PASS)
+    return sync_spot_candles(cur, symbol, start, int(first))
+
+
+def backfill_settled_markets(cur, market: Market, now: datetime) -> int:
+    """Settled markets between the history floor and the OLDEST collected close. Their candles
+    are then fetched by sync_market_candles like any candles_done=0 row (newest first)."""
+    floor = now - timedelta(days=market.history_days)
+    cur.execute("SELECT MIN(close_time) AS t FROM hist_markets WHERE series_ticker=%s", (market.series,))
+    first = (cur.fetchone() or {}).get("t")
+    if first is None:
+        return 0  # nothing collected yet: the forward sync starts from the floor anyway
+    first = first.replace(tzinfo=timezone.utc) if first.tzinfo is None else first
+    if (first - floor).total_seconds() < BACKFILL_GAP_SECONDS:
+        return 0
+    return sync_settled_markets(cur, market, floor, max_close=first)
+
+
 def refresh(cur) -> Dict[str, int]:
     now = utc_now()
     end_ts = int(now.timestamp()) - 60
@@ -269,6 +322,10 @@ def refresh(cur) -> Dict[str, int]:
         last = (cur.fetchone() or {}).get("t")
         start = int(last) + 60 if last else int((now - timedelta(days=history_days + 1)).timestamp())
         stats["spot_" + symbol] = sync_spot_candles(cur, symbol, start, end_ts)
+        try:
+            stats["spot_backfill_" + symbol] = backfill_spot(cur, symbol, history_days, now)
+        except Exception as e:
+            print("[market_history] %s spot backfill failed: %r (retry next pass)" % (symbol, e), flush=True)
     for market in MARKETS.values():
         if market.kind != "binary":  # Never feed perpetuals to the expiring YES/NO history path.
             continue
@@ -281,6 +338,7 @@ def refresh(cur) -> Dict[str, int]:
             floor = now - timedelta(days=market.history_days)
             since = max(last_close.replace(tzinfo=timezone.utc) - timedelta(hours=2), floor) if last_close else floor
             stats[market.key + "_markets"] = sync_settled_markets(cur, market, since)
+            stats[market.key + "_backfill"] = backfill_settled_markets(cur, market, now)
             stats[market.key + "_candles"] = sync_market_candles(cur, market)
         except Exception as e:
             print("[market_history] %s sync failed: %r (retry next pass)" % (market.key, e), flush=True)

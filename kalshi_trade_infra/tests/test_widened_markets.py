@@ -8,7 +8,7 @@ Mirrors tests/test_nba_sports_market.py.
 """
 from datetime import datetime, timezone
 
-from app import backtest, engine
+from app import backtest, engine, markets
 from app.markets import MARKETS, Contract, snapshot
 
 T0 = 1_800_000_000 - 1_800_000_000 % 3600
@@ -24,7 +24,7 @@ def test_new_strike_markets_present_and_valid():
         assert m.deployable is True
         assert m.kind == "binary"
         assert m.underlying and m.underlying.endswith("-USD")   # has a Coinbase spot product
-        assert m.candle_minutes == 1 and m.history_days == 30
+        assert m.candle_minutes == 1 and m.history_days == markets.CRYPTO_15M_HISTORY_DAYS
         assert m.close_hour_et is None                           # 15M ladder: every window, no daily filter
 
 

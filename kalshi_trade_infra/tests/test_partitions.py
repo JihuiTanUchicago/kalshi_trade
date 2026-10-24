@@ -56,6 +56,24 @@ def test_split_ratios_are_roughly_60_25_15():
     assert 0.22 <= validation <= 0.28
 
 
+def test_history_growing_at_the_old_end_never_moves_research_into_validation():
+    """A backfill prepends 60 older contracts to the 100 we had. The natural 60% cut would now land
+    inside what was Research before, re-serving researched contracts as Validation. The previous
+    research_to clamps it: the old data widens Research and the rest splits 25:15."""
+    before = _contracts(900, 900, 100, start_ts=1_000_000 + 60 * 900)
+    prior = partitions._compute_boundaries(MARKETS["btc15m"], before)
+    grown = _contracts(900, 900, 60, start_ts=1_000_000) + before
+    natural = partitions._compute_boundaries(MARKETS["btc15m"], grown)
+    assert natural["research_to_ts"] < prior["research_to_ts"]          # the leak the clamp prevents
+    b = partitions._compute_boundaries(MARKETS["btc15m"], grown, min_research_to=prior["research_to_ts"])
+    assert b["research_from_ts"] == grown[0]["open_ts"]                   # older data widens Research
+    assert b["research_to_ts"] == prior["research_to_ts"]
+    assert b["validation_to_ts"] == prior["validation_to_ts"]             # same evidence windows as before
+    assert b["research_to_ts"] == b["validation_from_ts"] and b["validation_to_ts"] == b["holdout_from_ts"]
+    # rolling forward (natural cut already past the prior one) is unchanged by the clamp
+    assert partitions._compute_boundaries(MARKETS["btc15m"], before, min_research_to=prior["research_to_ts"] - 900) == prior
+
+
 def test_embargo_purge_btc15m():
     b = partitions._compute_boundaries(MARKETS["btc15m"], _contracts(900, 900, 100))
     assert b["purge_seconds"] == 900          # one settlement cadence
