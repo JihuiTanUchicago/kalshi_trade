@@ -95,7 +95,12 @@ CROSS_RELATIONSHIPS = ("spread",)  # ponytail: ratio is a trivial variant; add i
 MAX_CROSS_LEGS = 3
 MAX_POOL_MARKETS = 3  # extra markets a pooled spec may be judged across, beyond spec["market"]
 # Memory: each 1-minute market-month of snapshots is ~50MB and every leg is loaded per phase, so
-# 4 markets keeps a pooled research run well inside the agents worker's 400M MemoryMax.
+# 4 markets keeps a pooled research run well inside the agents worker's 3G MemoryMax.
+# Hourly-candle, outcome-settled series (the daily weather highs/lows) are far lighter: a full
+# 365-day KXHIGHNY load measured +120MB RSS (2,190 contracts, 78k snapshots, 6.7s) on the box on
+# 10-24, so 1+6 cities is ~0.85GB per run, leaving room for two concurrent runs. More cities is the
+# main lever on statistical power for a daily market (one settlement per city per day).
+MAX_POOL_MARKETS_HOURLY = 6
 
 SPEC_GUIDE = """A strategy spec is a JSON object:
 {
@@ -135,8 +140,8 @@ SPEC_GUIDE = """A strategy spec is a JSON object:
     "relationship": "spread"                    // trade the spread of model edges (buy YES cheap leg, NO dear leg)
   }
 }
-"pool": [<key>, ...] OPTIONAL (omit for a normal spec; strike-vs-spot crypto series, or hourly-candle series such as the daily weather highs), up to 3 EXTRA markets with the SAME decision
-cadence. The same single-contract rule is judged on the POOLED trades of spec.market plus these
+"pool": [<key>, ...] OPTIONAL (omit for a normal spec; strike-vs-spot crypto series, or hourly-candle series such as the daily weather highs), up to 3 EXTRA markets (6 for hourly-candle series such as
+weather cities) with the SAME decision cadence. The same single-contract rule is judged on the POOLED trades of spec.market plus these
 markets, so the gate sees ~N times the validation sample (a ~sqrt(N) times smaller detectable edge).
 Use it only for a STRUCTURAL mechanism that should hold on every pooled market (fee/price-band
 effects, settlement mechanics, favorite-longshot), never as a way to fish. Not combinable with
@@ -559,6 +564,14 @@ def _poolable(m) -> bool:
     return bool(m.underlying) or m.candle_minutes >= 60
 
 
+def max_pool(primary) -> int:
+    """Extra markets a pool on `primary` may hold: hourly outcome-settled series are light enough
+    for MAX_POOL_MARKETS_HOURLY (cadence must match, so every pooled leg is hourly too)."""
+    if primary is not None and not primary.underlying and primary.candle_minutes >= 60:
+        return MAX_POOL_MARKETS_HOURLY
+    return MAX_POOL_MARKETS
+
+
 def _validate_pool(spec: Dict, pool: Any, errors: List[str]) -> None:
     """Validate the optional `pool`: extra markets the SAME single-contract rule is judged across,
     so its evidence pools every market's trades (≈N× the validation sample). Sets spec["pool"] to
@@ -566,8 +579,9 @@ def _validate_pool(spec: Dict, pool: Any, errors: List[str]) -> None:
     be binary, share spec["market"]'s decision cadence, and cannot be combined with `cross`."""
     if pool is None:
         return
-    if not isinstance(pool, list) or not pool or len(pool) > MAX_POOL_MARKETS:
-        errors.append("pool must be a list of 1..%d extra market keys" % MAX_POOL_MARKETS)
+    cap = max_pool(MARKETS.get(spec.get("market")))
+    if not isinstance(pool, list) or not pool or len(pool) > cap:
+        errors.append("pool must be a list of 1..%d extra market keys" % cap)
         return
     clean = set()
     for i, key in enumerate(pool):
