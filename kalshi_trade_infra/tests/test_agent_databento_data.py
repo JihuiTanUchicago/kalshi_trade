@@ -254,3 +254,22 @@ def test_research_cancellation_propagates_after_data_request_before_provider_rea
     with pytest.raises(agent.Cancelled):
         market.AgentMarketData(market.DataScope(), checkpoint=checkpoint).ask(model, "system", [], final_check, Usage())
     assert provider == []
+
+
+def test_finished_copilot_run_prints_one_outcome_line(monkeypatch, capsys):
+    monkeypatch.setattr(agent.repo, "get_user", lambda *args: {"id": 7})
+    monkeypatch.setattr(agent.repo, "heartbeat", lambda *args: "running")
+    monkeypatch.setattr(agent.repo, "chat_messages", lambda *args, **kwargs: [{"role": "user", "content": "hi"}])
+    monkeypatch.setattr(agent.repo, "list_deployments", lambda *args: [])
+    monkeypatch.setattr(agent.repo, "list_strategies", lambda *args, **kwargs: [])
+    monkeypatch.setattr(agent.repo, "user_risk_config", lambda *args: {})
+    monkeypatch.setattr(agent.repo, "user_execution_config", lambda *args: {})
+    monkeypatch.setattr(agent.repo, "add_chat", lambda *args: None)
+    monkeypatch.setattr(agent.repo, "add_event", lambda *args: None)
+    monkeypatch.setattr(agent.repo, "finish_run", lambda *args: None)
+    monkeypatch.setattr(agent.billing, "charge_usage", lambda *args: None)
+    model, _ = scripted(['{"reply":"ok","actions":[]}'])
+    agent.run_copilot(Conn(), {"id": 5, "user_id": 7, "kind": "chat"}, model=model)
+    lines = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("[copilot] run=")]
+    assert len(lines) == 1 and "run=5 user=7 kind=chat status=succeeded actions=0" in lines[0]
+    assert "tokens_in=" in lines[0] and "tokens_out=" in lines[0]
