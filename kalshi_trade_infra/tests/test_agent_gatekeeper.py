@@ -35,6 +35,15 @@ class FakeStore:
         monkeypatch.setattr(agent.gatekeeper, "marginal_contribution_ok",
                             lambda cur, uid, eid, fin: (True, "stub"))
         monkeypatch.setattr(agent.backtest, "partition_dataset", lambda market, part, phase: None)
+        # The research-fold power pre-screen runs for real in test_gatekeeper; here every finalist
+        # is powered unless a test names it in `underpowered`.
+        self.underpowered = set()
+        monkeypatch.setattr(agent.gatekeeper, "validation_power", self._power)
+
+    def _power(self, cur, uid, market, spec, ds, partition, min_sample):
+        weak = spec.get("_title") in self.underpowered
+        return {"ok": not weak, "power": 0.05 if weak else 0.9,
+                "reason": "projected validation power 5% < 20%" if weak else ""}
 
     def _insert(self, cur, uid, run_id, parent, market, direction, title, thesis, spec, status, result):
         self.strategies.append({"title": title, "status": status, "result": result, "spec": spec})
@@ -194,3 +203,22 @@ def test_agent_py_never_touches_validation_or_holdout_datasets():
     # The reviewer's grep: the generator must not import or call the gatekeeper-only loaders.
     assert "validation_dataset" not in src
     assert "holdout_dataset" not in src
+
+
+def test_underpowered_finalist_spends_no_validation_budget(monkeypatch):
+    """A finalist whose research-fold edge projects too little validation power is recorded as
+    rejected ('underpowered') and is never pre-registered or judged, so it costs no alpha and
+    adds no DSR trial."""
+    store = FakeStore(monkeypatch)
+    a, b = _cand("A", 50, 20, 9.0), _cand("B", 40, 15, 8.0)
+    b["spec"] = dict(b["spec"], _title="B")
+    store.underpowered = {"B"}
+    _run_gate(monkeypatch, store, [a, b], [{"decision": "approve", "reason": "", "fixes": None}] * 2)
+    assert len(store.preregistered) == 1 and store.preregistered[0].spec is a["spec"]
+    exp_ids, payloads = store.judged[0]
+    assert len(payloads) == 1
+    by_title = {s["title"]: s for s in store.strategies}
+    assert by_title["B"]["status"] == "rejected"
+    assert by_title["B"]["result"]["classification"] == "underpowered"
+    assert "power" in by_title["B"]["result"]["gate_reason"]
+    assert any("NOT TESTED - B" in msg for kind, msg, _ in store.events if kind == "verdict")

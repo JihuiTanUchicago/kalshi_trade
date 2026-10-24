@@ -69,11 +69,11 @@ class LedgerCursor:
             self._last = [dict(r) for r in self.t["app_fdr_state"]
                           if r["user_id"] == uid and r["market"] == mk]
         elif s.startswith("INSERT INTO app_fdr_state"):
-            uid, mk, method, alpha, w0, wealth, t, rej, upd = p
+            uid, mk, method, alpha, w0, wealth, t, rej, upd, epoch_to = p
             existing = next((r for r in self.t["app_fdr_state"]
                              if r["user_id"] == uid and r["market"] == mk), None)
             vals = dict(user_id=uid, market=mk, method=method, alpha=alpha, w0=w0,
-                        wealth=wealth, t=t, rejections_json=rej, updated_at=upd)
+                        wealth=wealth, t=t, rejections_json=rej, updated_at=upd, epoch_to_ts=epoch_to)
             if existing:
                 existing.update(vals)
             else:
@@ -112,6 +112,27 @@ class LedgerCursor:
             self._ins("app_data_partitions", row)
         elif s.startswith("SELECT * FROM app_data_partitions WHERE id=%s"):
             self._last = [dict(r) for r in self.t["app_data_partitions"] if r["id"] == p[0]]
+        elif s.startswith("SELECT COUNT(DISTINCT e.id) AS n FROM app_experiments e"):
+            uid, mk, wfrom = p
+            parts = {r["id"]: r for r in self.t["app_data_partitions"]}
+            judged = {r["experiment_id"] for r in self.t["app_experiment_results"] if r["phase"] == "validation"}
+            n = 0
+            for e in self.t["app_experiments"]:
+                if e["user_id"] != uid or e["market"] != mk or e["id"] not in judged:
+                    continue
+                part = parts.get(e.get("research_partition_id"))
+                if part is None or part["validation_to_ts"] > wfrom:
+                    n += 1
+            self._last = [{"n": n}]
+        elif s.startswith("SELECT COALESCE(SUM(h.evaluations_used), 0) AS n FROM app_holdout_ledger h"):
+            mk, hfrom = p
+            parts = {r["id"]: r for r in self.t["app_data_partitions"]}
+            n = 0
+            for h in self.t["app_holdout_ledger"]:
+                part = parts.get(h["partition_id"])
+                if h["market"] == mk and (part is None or part["holdout_to_ts"] > hfrom):
+                    n += h["evaluations_used"]
+            self._last = [{"n": n}]
         # -- hist_markets (partition_contracts) --
         elif s.startswith("SELECT ticker, open_time, close_time, result FROM hist_markets"):
             series, since = p[0], p[1]
@@ -337,3 +358,41 @@ def test_ensure_holdout_ledger_idempotent(cur):
 
 def test_record_holdout_use_no_such_ledger(cur):
     assert rr.record_holdout_use(cur, 999)["ok"] is False
+
+
+# -- evidence-epoch queries ----------------------------------------------------
+
+
+def test_fdr_state_round_trips_epoch(cur):
+    rr.set_fdr_state(cur, 1, "btc15m", {"alpha": 0.1, "w0": 0.05, "wealth": 0.05, "t": 1,
+                                        "rejections": [], "epoch_to_ts": 1_700_000_000})
+    assert rr.get_fdr_state(cur, 1, "btc15m")["epoch_to_ts"] == 1_700_000_000
+    rr.set_fdr_state(cur, 1, "btc15m", {"alpha": 0.1, "w0": 0.05, "wealth": 0.05, "t": 1, "rejections": []})
+    assert rr.get_fdr_state(cur, 1, "btc15m")["epoch_to_ts"] is None   # legacy callers store NULL
+
+
+def _partition_row(cur, val_to, hold_to):
+    return cur._ins("app_data_partitions", {"market": "btc15m", "validation_to_ts": val_to,
+                                             "holdout_to_ts": hold_to, "active": 0})
+
+
+def test_validated_trials_overlapping_counts_only_live_evidence(cur):
+    old, live = _partition_row(cur, 1_000, 1_500), _partition_row(cur, 3_000, 3_500)
+    for i, part_id in enumerate((old["id"], live["id"], 999)):     # 999: partition row missing
+        pre = dict(_prereg(hash_="h%d" % i), research_partition_id=part_id)
+        eid = rr.preregister(cur, pre)
+        rr.append_result(cur, eid, "validation", "inconclusive", 30)
+    unjudged = rr.preregister(cur, dict(_prereg(hash_="never"), research_partition_id=live["id"]))
+    assert unjudged
+    assert rr.validated_trials_overlapping(cur, 1, "btc15m", 2_000) == 2   # live + missing row
+    assert rr.validated_trials_overlapping(cur, 1, "btc15m", 500) == 3
+
+
+def test_holdout_evaluations_overlapping_sums_refrozen_windows(cur):
+    old, live = _partition_row(cur, 1_000, 1_500), _partition_row(cur, 3_000, 3_500)
+    for part in (old, live):
+        lid = rr.ensure_holdout_ledger(cur, "btc15m", part["id"], "fp%d" % part["id"], 10)["id"]
+        rr.record_holdout_use(cur, lid)
+        rr.record_holdout_use(cur, lid)
+    assert rr.holdout_evaluations_overlapping(cur, "btc15m", 2_000) == 2   # only the live window
+    assert rr.holdout_evaluations_overlapping(cur, "btc15m", 1_000) == 4

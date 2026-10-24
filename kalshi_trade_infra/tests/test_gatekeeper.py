@@ -77,6 +77,23 @@ class FakeRepo:
                             "market": market, "classification": val[-1]["classification"]})
         return out
 
+    def validated_trials_overlapping(self, cur, user_id, market, window_from_ts):
+        # Experiments carry an optional `val_to` (their partition's validation_to_ts); without it
+        # they are treated as overlapping, like a missing partition row in the real query.
+        n = 0
+        for eid, e in self.experiments.items():
+            if e["user_id"] != user_id or e["market"] != market:
+                continue
+            if not any(r["phase"] == "validation" for r in self.results.get(eid, [])):
+                continue
+            if e.get("val_to") is None or e["val_to"] > window_from_ts:
+                n += 1
+        return n
+
+    def holdout_evaluations_overlapping(self, cur, market, holdout_from_ts):
+        return sum(lg["evaluations_used"] for lg in self.ledgers.values()
+                   if lg["market"] == market and lg.get("holdout_to", holdout_from_ts + 1) > holdout_from_ts)
+
     # partitions / holdout ledger
     def get_active_partition(self, cur, market):
         return self.partitions.get(market)
@@ -468,3 +485,177 @@ def test_classify_rejects_actively_negative_edge():
     # Whole CI at/below zero (placebo still "passes") -> actively no edge, REJECTED not INCONCLUSIVE.
     assert _clf(lord_reject=False, ci_lo=-0.2, ci_hi=0.0) == Classification.REJECTED
     assert _clf(lord_reject=False, ci_lo=-0.2, ci_hi=0.3) == Classification.INCONCLUSIVE  # upside remains
+
+
+# -- end-to-end calibration: can the gate pass a real edge, and does it hold noise out? ----------
+#
+# A gate that rejects everything is as useless as one that passes everything, and it fails
+# silently: "nothing passed" reads as "no edge exists". These pin both directions on realistic
+# shapes: uniform entry prices (no longshot concentration), ~16 days of validation, Kalshi fees.
+
+import random as _random
+
+from app import stats as _stats
+
+
+def _uniform_trades(n, gross_edge, seed, days=16):
+    """n binary YES buys at prices ~U(0.25, 0.75) that win with prob price + gross_edge, Kalshi
+    taker fee charged, entries spread evenly over `days`."""
+    rng = _random.Random(seed)
+    out = []
+    for i in range(n):
+        p = rng.uniform(0.25, 0.75)
+        qty = 10
+        win = rng.random() < min(0.99, p + gross_edge)
+        ts = 1_700_000_000 + int(i * days * 86400 / n)
+        out.append(Trade("T%d" % i, "yes", qty, ts, p, ts + 900, 1.0 if win else 0.0,
+                         0.07 * p * (1 - p) * qty, "settled", gross_edge))
+    return out
+
+
+@pytest.fixture
+def fast_boot(monkeypatch):
+    orig = _stats.stationary_bootstrap_ci
+    monkeypatch.setattr(gk.stats, "stationary_bootstrap_ci",
+                        lambda x, **kw: orig(x, **dict(kw, n_boot=500)))
+
+
+def _verdict(trades, seed, n_trials=1):
+    v = gk._compute(trades, n_trials, _stats.lord_init(gk.ALPHA), seed=seed)
+    return gk._classify(v["lord_reject"], None, v["dsr"], v["ci_lo"], v["ci_hi"],
+                        v["placebo_passed"], v["cross_day_ok"]), v
+
+
+def test_calibration_uniform_real_edge_is_stat_supported(fast_boot):
+    """A real 15c/contract edge at mid-range prices over 400 validation trades must pass. Under the
+    old winner-subset placebo this was REJECTED in every seed."""
+    passes = sum(_verdict(_uniform_trades(400, 0.15, s), s)[0] == Classification.STAT_SUPPORTED
+                 for s in range(6))
+    assert passes >= 5
+
+
+def test_calibration_breakeven_noise_is_held_out(fast_boot):
+    """Gross edge equal to the mid-price fee (net ~0): the first test in a fresh stream spends
+    alpha ~2.7e-3, so essentially no seed may pass."""
+    passes = sum(_verdict(_uniform_trades(400, 0.0175, s), 100 + s)[0] == Classification.STAT_SUPPORTED
+                 for s in range(20))
+    assert passes <= 1
+
+
+def test_placebo_accepts_an_edge_on_dear_contracts():
+    """Winning more often than the price implies on EXPENSIVE contracts is a real edge; the
+    market-implied null must see it (the old test scored this p ~ 1)."""
+    trades = [_trade(1_000_000 + i * 3600, 0.70, won=(i % 10 != 0)) for i in range(80)]  # 90% wins at 70c
+    assert gk._placebo_pvalue(trades, seed=1) < gk.ALPHA
+
+
+def test_placebo_is_uniform_when_outcomes_match_prices():
+    rng = _random.Random(3)
+    ps = []
+    for seed in range(40):
+        trades = []
+        for i in range(120):
+            p = rng.uniform(0.1, 0.9)
+            trades.append(_trade(1_000_000 + i * 3600, p, won=rng.random() < p))
+        ps.append(gk._placebo_pvalue(trades, seed=seed))
+    assert sum(p < gk.ALPHA for p in ps) <= 10        # ~10% expected, not systematically small
+    assert 0.3 < sum(ps) / len(ps) < 0.7              # roughly uniform on average
+
+
+def test_primary_p_is_continuous_below_bootstrap_resolution():
+    """The bootstrap mass at/below zero is pinned at 0 for a strong edge, but LORD++ needs to
+    compare against alphas far below 1/n_boot; the SE-based p must stay finite and tiny."""
+    boot = {"point": 0.05, "se": 0.01, "p_value": 0.0}
+    p = gk._primary_p(boot)
+    assert 0.0 < p < 1e-5
+    assert gk._primary_p({"point": 0.05, "se": 0.0, "p_value": 0.0}) == 0.0   # degenerate SE -> empirical
+
+
+# -- evidence epochs: FDR stream + DSR trial count follow the validation data ---------------------
+
+
+def test_lord_stream_continues_while_validation_windows_overlap(repo):
+    repo.fdr[(7, "btc15m")] = {"method": "LORD++", "alpha": 0.1, "w0": 0.05, "wealth": 0.01,
+                               "t": 40, "rejections": [], "epoch_to_ts": 2_000_000}
+    st = gk._lord_state(None, 7, "btc15m", 1_500_000, 2_100_000)
+    assert st["t"] == 40 and st["epoch_to_ts"] == 2_000_000
+
+
+def test_lord_stream_restarts_on_fresh_validation_data(repo):
+    repo.fdr[(7, "btc15m")] = {"method": "LORD++", "alpha": 0.1, "w0": 0.05, "wealth": 0.01,
+                               "t": 40, "rejections": [], "epoch_to_ts": 2_000_000}
+    st = gk._lord_state(None, 7, "btc15m", 2_000_000, 2_600_000)
+    assert st["t"] == 0 and st["wealth"] == st["w0"] and st["epoch_to_ts"] == 2_600_000
+
+
+def test_legacy_stream_is_continued_and_stamped(repo):
+    repo.fdr[(7, "btc15m")] = {"method": "LORD++", "alpha": 0.1, "w0": 0.05, "wealth": 0.01,
+                               "t": 300, "rejections": []}
+    st = gk._lord_state(None, 7, "btc15m", 1_500_000, 2_100_000)
+    assert st["t"] == 300 and st["epoch_to_ts"] == 2_100_000   # no free refill on the same data
+
+
+def test_epoch_is_persisted_after_judging(repo, monkeypatch):
+    _patch_sim(monkeypatch, lambda spec: _edge_trades())
+    eid = gk.preregister(None, Prereg(user_id=7, run_id=1, market="btc15m",
+                                      spec={"kind": "edge"}, economic_rationale="m"))
+    gk.judge_validation(None, eid, _finalist({"kind": "edge"}), _ds(start=1_000_000, end=2_000_000))
+    assert repo.fdr[(7, "btc15m")]["epoch_to_ts"] == 2_000_000
+
+
+def test_dsr_trials_count_only_overlapping_validation_windows(repo):
+    for i, val_to in enumerate((900_000, 1_200_000, None)):
+        eid = gk.preregister(None, Prereg(user_id=7, run_id=1, market="btc15m",
+                                          spec={"i": i}, economic_rationale="m"))
+        repo.experiments[eid]["val_to"] = val_to
+        repo.append_result(None, eid, "validation", "inconclusive", 30)
+    # window starts at 1_000_000: the 900_000 window has fully rolled out; 1_200_000 and the
+    # partition-less one (conservatively) still overlap.
+    assert gk._n_trials(None, 7, "btc15m", including=1, window_from_ts=1_000_000) == 3
+    assert gk._n_trials(None, 7, "btc15m", including=1) == 4    # holdout path: all-time
+
+
+# -- validation-budget pre-screen ------------------------------------------------------------------
+
+
+_POWER_PART = {"embargo_seconds": 900, "validation_from_ts": 3_000_000,
+               "validation_to_ts": 3_000_000 + 16 * 86400}
+
+
+def test_validation_power_passes_a_strong_research_edge(repo, monkeypatch):
+    monkeypatch.setattr(gk.backtest, "research_fold_trades",
+                        lambda spec, ds, emb: _uniform_trades(300, 0.15, 1, days=12))
+    pw = gk.validation_power(None, 7, "btc15m", {}, None, _POWER_PART, min_sample=30)
+    assert pw["ok"] and pw["power"] > 0.5 and pw["n_val_expected"] == pytest.approx(400, rel=0.01)
+
+
+def test_validation_power_screens_out_a_thin_edge(repo, monkeypatch):
+    monkeypatch.setattr(gk.backtest, "research_fold_trades",
+                        lambda spec, ds, emb: _uniform_trades(150, 0.03, 2, days=12))
+    pw = gk.validation_power(None, 7, "btc15m", {}, None, _POWER_PART, min_sample=30)
+    assert not pw["ok"] and pw["reason"]
+
+
+def test_validation_power_needs_research_trades(repo, monkeypatch):
+    monkeypatch.setattr(gk.backtest, "research_fold_trades", lambda spec, ds, emb: [])
+    pw = gk.validation_power(None, 7, "btc15m", {}, None, _POWER_PART)
+    assert not pw["ok"] and "research-fold trades" in pw["reason"]
+
+
+# -- holdout re-freeze churn -----------------------------------------------------------------------
+
+
+def test_holdout_cap_counts_looks_across_refrozen_windows(repo, monkeypatch):
+    """Ten looks on yesterday's frozen window + a re-freeze (new partition id) on almost the same
+    data must NOT open ten more looks."""
+    repo.ledgers[99] = {"id": 99, "market": "btc15m", "partition_id": 0, "window_fingerprint": "old",
+                        "evaluations_used": 10, "max_evaluations": 10, "consumed": 1,
+                        "holdout_to": 2_000_000}
+    repo.partitions["btc15m"] = _partition()   # new id=1 window, holdout_from 1_500_000 overlaps
+    _patch_sim(monkeypatch, lambda spec: _edge_trades())
+    eid = gk.preregister(None, Prereg(user_id=7, run_id=1, market="btc15m",
+                                      spec={"kind": "edge"}, economic_rationale="m"))
+    repo.append_result(None, eid, "validation", Classification.STAT_SUPPORTED.value, 60)
+    monkeypatch.setattr(gk.partitions, "holdout_dataset", lambda market, part: _ds())
+    with pytest.raises(HoldoutConsumed):
+        gk.judge_holdout(None, eid, _finalist({"kind": "edge"}))

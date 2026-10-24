@@ -50,6 +50,13 @@ CROSS_DAY_MIN_FOLDS = 3        # need at least this many folds to judge generali
 CROSS_DAY_MIN_POS_FRACTION = 0.5   # a majority of folds must be net-positive
 CROSS_DAY_MAX_DAY_SHARE = 0.90     # no single day may carry >90% of the positive edge
 
+# Validation-budget pre-screen: a finalist is sent to validation (and spends LORD++ alpha) only if
+# its leak-free research-fold edge, projected onto the validation window's expected trade count,
+# gives at least this probability of clearing the NEXT alpha level. Hopeless tests otherwise
+# decay the stream's alpha toward zero and starve the real candidates behind them.
+POWER_MIN = 0.20
+POWER_MIN_RESEARCH_TRADES = 10
+
 
 class HoldoutConsumed(Exception):
     """Raised when a one-time Locked-Holdout evaluation is refused: the experiment is not yet
@@ -210,30 +217,38 @@ def _equity(trades) -> List[Tuple[int, float]]:
 
 
 def _placebo_pvalue(trades, seed: int) -> float:
-    """Label-shuffle negative control. For a binary, a settled trade's return gain from a WIN
-    vs a LOSS is exactly 1/entry_price (cheaper contracts pay more when they hit). So the real
-    question is: did this rule win on its cheap bets more than a random relabeling would?
+    """Market-implied-null negative control for a binary. The null "this rule has no edge over
+    the price it paid" says each settled contract wins with probability equal to its entry price
+    (a calibrated market: buying at p is worth exactly p). So redraw every settled trade's outcome
+    as Bernoulli(entry_price) `PLACEBO_SHUFFLES` times and count how often the simulated gross
+    payoff sum(win/entry) is >= the observed one. A genuine edge (winning more often than the
+    price implies, at ANY price level) makes the observed payoff extreme -> small p; a rule that
+    merely pays the price -> p ~ uniform.
 
-    Permutation test: observed_sum = sum of (1/entry) over the trades that actually won; then
-    sample `PLACEBO_SHUFFLES` random same-size subsets of all settled trades and count how
-    often their (1/entry) sum >= observed. Under a genuine conditional edge (winning the
-    underpriced contracts) the observed sum is extreme -> small p. Under a null, or when every
-    entry price is identical (no conditional edge to find), p -> ~uniform / 1.0. Returns 1.0
-    for a degenerate case (no discrimination possible)."""
-    deltas: List[float] = []
+    This replaces a winner-subset label shuffle that only rewarded edges concentrated in CHEAP
+    contracts: under that test, a uniform real edge (true prob = price + e) skews winners toward
+    the dear contracts and scored p ~ 1, so the gate REJECTED essentially every non-longshot edge.
+
+    Gross, not net: fees are the bootstrap test's job; this asks only "is there signal beyond the
+    price?". Outcomes are drawn independently, which ignores same-event correlation across strikes
+    (the autocorrelation-robust bootstrap remains the primary test). Early exits carry no
+    settlement draw and are left out. <2 settled trades -> 1.0 (no discrimination possible)."""
+    prices: List[float] = []
     won: List[bool] = []
     for t in sorted(trades, key=lambda x: x.entry_ts):
-        if t.reason != "settled" or t.entry_price <= 0:
+        if t.reason != "settled" or not 0.0 < t.entry_price < 1.0:
             continue
-        deltas.append(1.0 / t.entry_price)
+        prices.append(float(t.entry_price))
         won.append(t.exit_price >= 0.5)  # settled winners carry exit_price 1.0
-    k = sum(won)
-    m = len(deltas)
-    if m < 2 or k == 0 or k == m:
+    if len(prices) < 2:
         return 1.0
-    observed = sum(d for d, w in zip(deltas, won) if w)
+    observed = sum(1.0 / p for p, w in zip(prices, won) if w)
     rng = random.Random(seed)
-    ge = sum(1 for _ in range(PLACEBO_SHUFFLES) if sum(rng.sample(deltas, k)) >= observed - 1e-12)
+    ge = 0
+    for _ in range(PLACEBO_SHUFFLES):
+        sim = sum(1.0 / p for p in prices if rng.random() < p)
+        if sim >= observed - 1e-12:
+            ge += 1
     return ge / PLACEBO_SHUFFLES
 
 
@@ -263,6 +278,23 @@ def _spot_placebo_pvalue(trades, seed: int) -> float:
 # -- numeric verdict (no I/O) --------------------------------------------------
 
 
+def _primary_p(boot: Dict[str, Any]) -> float:
+    """The PRIMARY one-sided validation p-value: H0 mean net return <= 0, z = mean / bootstrap SE,
+    p = 1 - Phi(z). The SE comes from the stationary bootstrap, so it is autocorrelation-robust.
+
+    Why not the raw bootstrap mass at/below zero: it moves in steps of 1/n_boot (5e-4 at 2,000
+    resamples), while the LORD++ level falls below 5e-4 by the third test in a stream and below
+    5e-5 after ~50. A step p-value then cannot reject at all unless every resample is positive, so
+    a real edge stops being judgeable. The normal tail is continuous and agrees with the empirical
+    mass where both are resolvable. Degenerate SE (constant or tiny series) -> the empirical mass."""
+    point, se = boot.get("point"), boot.get("se")
+    if point is None or se is None or not math.isfinite(point) or not math.isfinite(se) or se <= 0:
+        return boot["p_value"]
+    return 1.0 - stats._norm_cdf(point / se)
+
+
+
+
 def _compute(trades, n_trials: int, lord_state: Dict[str, Any], seed: int,
              kind: str = "binary") -> Dict[str, Any]:
     """The full numeric verdict for one finalist's trade list, advancing a LORD++ state by
@@ -272,6 +304,7 @@ def _compute(trades, n_trials: int, lord_state: Dict[str, Any], seed: int,
     rets = [r for _, r in series]
     n = len(rets)
     boot = stats.stationary_bootstrap_ci(rets, stat="mean", alpha=ALPHA, seed=seed)
+    p_value = _primary_p(boot)
     sr = _sharpe(rets)
     skew, kurt = _moments(rets)
     psr = stats.probabilistic_sharpe_ratio(sr, n, skew, kurt)
@@ -281,7 +314,8 @@ def _compute(trades, n_trials: int, lord_state: Dict[str, Any], seed: int,
     # spot a sign-flip of the return series. Everything else (CI, PSR/DSR, LORD++, cross-day) is
     # identical. One-line dispatch on market kind, exactly as the design prescribes (§A.6).
     placebo_p = _spot_placebo_pvalue(trades, seed) if kind in ("spot", "perpetual") else _placebo_pvalue(trades, seed)
-    rec = stats.lord_record(lord_state, boot["p_value"])
+    rec = stats.lord_record(lord_state, p_value)
+    rec["state"]["epoch_to_ts"] = lord_state.get("epoch_to_ts")  # the epoch rides along with the stream
     equity = _equity(trades)
     cross_day_ok, folds, day_share = _cross_day(trades)
     return {
@@ -289,7 +323,8 @@ def _compute(trades, n_trials: int, lord_state: Dict[str, Any], seed: int,
         "cross_day_ok": cross_day_ok,
         "folds": folds,
         "cross_day_max_day_share": day_share,
-        "p_value": boot["p_value"],
+        "p_value": p_value,
+        "p_value_empirical": boot["p_value"],
         "ci_lo": boot["lo"],
         "ci_hi": boot["hi"],
         "mean_net_return": boot["point"],
@@ -327,17 +362,26 @@ def _classify(lord_reject: bool, bh_reject: Optional[bool], dsr: float,
     return Classification.INCONCLUSIVE
 
 
-def _n_trials(cur, user_id: int, market: str, including: int) -> int:
-    """Audited number of hypotheses that competed for this market's validation evidence:
-    the ledger's already-validated experiments for this user+market, plus the `including`
-    being judged right now. Feeds DSR's selection correction (§B.1/§F).
+def _n_trials(cur, user_id: int, market: str, including: int,
+              window_from_ts: Optional[int] = None) -> int:
+    """Audited number of hypotheses that competed for this validation evidence, plus the
+    `including` being judged right now. Feeds DSR's selection correction (§B.1/§F).
+
+    With `window_from_ts` (validation judging) only experiments whose validation window OVERLAPS
+    the current one count: a hypothesis judged on an older window that has fully rolled out of
+    validation never saw this evidence, so it cannot have been selected on it. Read straight off
+    the immutable ledger (experiment -> its frozen partition), so it is reconstructable by audit.
+    Without it (holdout) the all-time count is used, as before.
 
     `including` is a DEGREES-OF-FREEDOM count, not a bare hypothesis count: a learned model that
     fits k coefficients from data counts as k implicit trials (specmod.n_free_params), a hand-
     specified gbm/code spec as 1. This only ever RAISES the trial count, so a richer model faces a
     strictly HIGHER deflated-Sharpe bar - fitting more parameters can never make the gate easier."""
-    prior = rr.experiment_records_for_replay(cur, user_id, market)
-    return len(prior) + max(including, 0)
+    if window_from_ts is None:
+        prior = len(rr.experiment_records_for_replay(cur, user_id, market))
+    else:
+        prior = rr.validated_trials_overlapping(cur, user_id, market, int(window_from_ts))
+    return prior + max(including, 0)
 
 
 def _judged_trials(finalists: List[dict]) -> int:
@@ -346,12 +390,26 @@ def _judged_trials(finalists: List[dict]) -> int:
     return sum(specmod.n_free_params(f.get("spec") or {}) for f in finalists)
 
 
-def _lord_state(cur, user_id: int, market: str) -> Dict[str, Any]:
+def _lord_state(cur, user_id: int, market: str, window_from_ts: int, window_to_ts: int) -> Dict[str, Any]:
     """Load the LORD++ alpha-wealth state for this (user, market) stream, or a fresh one.
-    Returns a clean plain dict with exactly the keys stats.lord_record expects."""
+
+    EVIDENCE EPOCHS. A stream is tied to the validation evidence it spends on. It carries
+    `epoch_to_ts`, the end of the validation window of the stream's first test. Partitions slide
+    forward as contracts settle, and once the current validation window starts at/after
+    `epoch_to_ts` every test in the old stream was run on data this window does not contain: the
+    new window is fresh, disjoint evidence, so a fresh LORD++ stream (full w0) starts on it. While
+    windows still overlap, the stream continues and keeps decaying, so re-freezing a partition can
+    never be used to refill the budget on the same data. A legacy stream (no epoch recorded) is
+    continued and stamped with the current window's end, so it too ends only once that data has
+    fully rolled out of validation.
+
+    Returns a plain dict with exactly the keys stats.lord_record expects, plus `epoch_to_ts`."""
     st = rr.get_fdr_state(cur, user_id, market)
-    if st is None:
-        return stats.lord_init(ALPHA)
+    epoch_to = st.get("epoch_to_ts") if st else None
+    if st is None or (epoch_to is not None and int(window_from_ts) >= int(epoch_to)):
+        fresh = stats.lord_init(ALPHA)
+        fresh["epoch_to_ts"] = int(window_to_ts)
+        return fresh
     return {
         "method": st.get("method", "LORD++"),
         "alpha": float(st["alpha"]),
@@ -359,6 +417,7 @@ def _lord_state(cur, user_id: int, market: str) -> Dict[str, Any]:
         "wealth": float(st["wealth"]),
         "t": int(st["t"]),
         "rejections": list(st.get("rejections") or []),
+        "epoch_to_ts": int(epoch_to) if epoch_to is not None else int(window_to_ts),
     }
 
 
@@ -436,7 +495,8 @@ def judge_validation(cur, experiment_id: int, finalist: dict, val_ds) -> dict:
     market = val_ds.market.key
     user_id = int(finalist["user_id"])
     min_sample = int(finalist.get("min_sample", 0))
-    n_trials = _n_trials(cur, user_id, market, including=_judged_trials([finalist]))
+    n_trials = _n_trials(cur, user_id, market, including=_judged_trials([finalist]),
+                         window_from_ts=val_ds.start_ts)
 
     trades = backtest.simulate(finalist["spec"], val_ds, val_ds.start_ts, val_ds.end_ts + 1)
     n_trades = len(trades)
@@ -447,7 +507,8 @@ def judge_validation(cur, experiment_id: int, finalist: dict, val_ds) -> dict:
         return {"classification": cls.value, "n_trades": n_trades, "alpha_spent": False,
                 "n_trials_audited": n_trials}
 
-    v = _compute(trades, n_trials, _lord_state(cur, user_id, market), seed=_BOOT_SEED + int(experiment_id),
+    v = _compute(trades, n_trials, _lord_state(cur, user_id, market, val_ds.start_ts, val_ds.end_ts),
+                 seed=_BOOT_SEED + int(experiment_id),
                  kind=getattr(val_ds.market, "kind", "binary"))
     rr.set_fdr_state(cur, user_id, market, v["lord_state"])  # alpha spent only once sample is adequate
     cls = _classify(v["lord_reject"], None, v["dsr"], v["ci_lo"], v["ci_hi"], v["placebo_passed"],
@@ -467,8 +528,9 @@ def judge_batch(cur, run_id: int, experiment_ids: List[int], finalists: List[dic
         return []
     market = val_ds.market.key
     user_id = int(finalists[0]["user_id"])
-    n_trials = _n_trials(cur, user_id, market, including=_judged_trials(finalists))
-    lord_state = _lord_state(cur, user_id, market)
+    n_trials = _n_trials(cur, user_id, market, including=_judged_trials(finalists),
+                         window_from_ts=val_ds.start_ts)
+    lord_state = _lord_state(cur, user_id, market, val_ds.start_ts, val_ds.end_ts)
 
     computed: List[Dict[str, Any]] = []
     for exp_id, fin in zip(experiment_ids, finalists):
@@ -506,6 +568,64 @@ def judge_batch(cur, run_id: int, experiment_ids: List[int], finalists: List[dic
                          metrics=_result_metrics(c, n_trials), equity_curve=c["ret_series"],
                          folds=c["folds"])
         out.append(_verdict_dict(c, cls, n_trials))
+    return out
+
+
+# -- validation-budget pre-screen (research data only) -----------------------
+
+
+def validation_power(cur, user_id: int, market: str, spec: dict, research_ds, partition: Dict[str, Any],
+                     min_sample: int = 0) -> Dict[str, Any]:
+    """Is this finalist worth a validation test? Reads ONLY the Research partition (which the
+    generator may inspect freely) plus the partition's frozen validation boundaries and the
+    stream's next alpha level, so it leaks no held-out number.
+
+    Projection: the research-fold mean net return mu and its stationary-bootstrap SE over n fold
+    trades; the validation window is expected to hold n_val = n * validation_days / fold_days
+    trades, so its SE is se * sqrt(n / n_val). Power = Phi(mu / se_val - z_req), z_req the normal
+    quantile of the next LORD++ alpha. The research estimate is optimistic (it is also what the
+    finalist was selected on), so this only screens out the hopeless; it never grants anything.
+
+    Returns {"ok", "power", "mu", "n_research", "n_val_expected", "alpha_next", "reason"}."""
+    if partition.get("validation_from_ts") is None or partition.get("validation_to_ts") is None:
+        # No frozen validation window to project onto: nothing to screen, let validation judge.
+        return {"ok": True, "power": None, "mu": None, "n_research": None, "n_val_expected": None,
+                "alpha_next": None, "reason": "no validation window to project onto"}
+    rows = _per_trade(backtest.research_fold_trades(spec, research_ds, int(partition.get("embargo_seconds") or 0)))
+    out: Dict[str, Any] = {"ok": False, "power": 0.0, "mu": None, "n_research": len(rows),
+                           "n_val_expected": 0.0, "alpha_next": None, "reason": ""}
+    if len(rows) < POWER_MIN_RESEARCH_TRADES:
+        out["reason"] = ("only %d research-fold trades (need %d) to project validation power"
+                         % (len(rows), POWER_MIN_RESEARCH_TRADES))
+        return out
+    rets = [r for _e, _x, r in rows]
+    boot = stats.stationary_bootstrap_ci(rets, stat="mean", n_boot=500, alpha=ALPHA, seed=_BOOT_SEED)
+    mu, se = float(boot["point"]), float(boot.get("se") or 0.0)
+    out["mu"] = mu
+    if mu <= 0:
+        out["reason"] = "research-fold mean net return %.4f is not positive" % mu
+        return out
+    fold_days = max((rows[-1][1] - rows[0][0]) / 86400.0, 1.0 / 24)
+    val_from, val_to = int(partition["validation_from_ts"]), int(partition["validation_to_ts"])
+    n_val = len(rows) * max(val_to - val_from, 0) / 86400.0 / fold_days
+    out["n_val_expected"] = round(n_val, 1)
+    if n_val < max(int(min_sample), 2):
+        out["reason"] = ("validation window is expected to hold ~%.0f trades, below the pre-registered "
+                         "min_sample %d" % (n_val, min_sample))
+        return out
+    alpha_next = stats.lord_alpha(_lord_state(cur, user_id, market, val_from, val_to))
+    out["alpha_next"] = alpha_next
+    if se <= 0 or not math.isfinite(se):
+        power = 1.0  # a zero-variance positive edge: nothing to project, let validation judge it
+    else:
+        z_proj = mu / (se * math.sqrt(len(rows) / n_val))
+        power = stats._norm_cdf(z_proj - stats.norm_ppf(1.0 - alpha_next))
+    out["power"] = round(power, 4)
+    out["ok"] = power >= POWER_MIN
+    if not out["ok"]:
+        out["reason"] = ("projected validation power %.0f%% < %.0f%%: a research-fold edge of %.2f%%/trade "
+                         "over ~%.0f validation trades is unlikely to clear the next alpha %.1e"
+                         % (100 * power, 100 * POWER_MIN, 100 * mu, n_val, alpha_next))
     return out
 
 
@@ -571,6 +691,15 @@ def judge_holdout(cur, experiment_id: int, finalist: dict,
     if int(ledger["consumed"]) == 1 or int(ledger["evaluations_used"]) >= int(ledger["max_evaluations"]):
         raise HoldoutConsumed("holdout consumed for market %r (%s/%s)" % (
             market, ledger["evaluations_used"], ledger["max_evaluations"]))
+    # Partitions re-freeze whenever new contracts settle, and each frozen window gets its own
+    # ledger row, so the per-row cap alone could be sidestepped by churn: ten looks, one new
+    # settlement, ten more on almost the same data. Count every look whose holdout window still
+    # overlaps this one against the cap.
+    overlapping = rr.holdout_evaluations_overlapping(cur, market, int(partition["holdout_from_ts"]))
+    if overlapping >= int(max_evals):
+        raise HoldoutConsumed("holdout data for market %r already viewed %s times across re-frozen "
+                              "windows (cap %s); wait for fresh settled history" % (
+                                  market, overlapping, max_evals))
 
     # Resolve the partition(s) on THIS thread (cursor work), then build the dataset off-cursor via
     # run_load so the optional timeout worker never shares the run cursor.
