@@ -334,6 +334,7 @@ def me(ctx: Ctx):
         "free_bonus": float(billing.FREE_BONUS),
         "credit_balance": round(repo.credit_balance(ctx.cur, ctx.uid), 4),
         "min_run_balance": float(billing.MIN_RUN_BALANCE),  # the headroom a research run needs to start
+        "perps_live_available": kalshi_perps_trading.enabled(),  # hide the Funds perps box when live perps are off
         "markets": _researchable_markets(ctx.cur),
         "directions": [{"key": k, **v} for k, v in agent.DIRECTIONS.items()],
     }
@@ -983,6 +984,27 @@ def create_deployment(ctx: Ctx):
     return {"id": dep_id}
 
 
+def strategy_live_readiness(ctx: Ctx):
+    """Road to live: every gate between this strategy and real money, with progress. Read-only;
+    the same functions the deploy paths enforce, so this view can never disagree with them."""
+    s = repo.get_strategy(ctx.cur, ctx.uid, _int_param(ctx))
+    if s is None:
+        raise ApiError(404, "No such strategy.")
+    candidate = bool(agent._is_deployment_candidate(ctx.cur, s["id"]))
+    paper = agent.paper_evidence(ctx.cur, ctx.uid, s["id"])
+    live_ok, live_why = agent.live_autopilot_ok(ctx.cur, ctx.user)
+    blocking = ("" if candidate else "the gatekeeper hasn't cleared it as a deployment candidate") \
+        or paper["why"] or live_why
+    return {
+        "strategy_id": s["id"], "status": s["status"],
+        "deployment_candidate": candidate,
+        "paper": paper,
+        "live_autopilot": {"ok": live_ok, "why": live_why},
+        "ready": candidate and paper["ready"] and live_ok,
+        "blocking": blocking,
+    }
+
+
 def deployment_action(ctx: Ctx):
     dep_id, action = _int_param(ctx), ctx.params[1]
     dep = repo.get_deployment(ctx.cur, ctx.uid, dep_id)
@@ -1114,6 +1136,18 @@ def autopilot_status(ctx: Ctx):
     # silently skips the user via billing.is_ready — the SAME gate, read here only to surface WHY the
     # panel is quiet so it doesn't look broken. Never changes the gate; purely a status readout.
     billing_blocked = bool(u.get("autopilot")) and billing.configured() and not billing.is_ready(cur, ctx.uid)
+    # Paper -> live progress: the running paper strategy closest to the realistic-trade gate, so a
+    # user on autopilot can see the funnel moving. Counts only (no bootstrap): this endpoint polls.
+    paper_progress = None
+    if paper_run:
+        sids = sorted({int(d["strategy_id"]) for d in paper_run})
+        prog = repo.paper_progress(cur, ctx.uid, sids)
+        titles = {int(d["strategy_id"]): d.get("title") or "" for d in paper_run}
+        best = max(sids, key=lambda s: (prog.get(s, (0, 0.0))[0], prog.get(s, (0, 0.0))[1]))
+        trades, net = prog.get(best, (0, 0.0))
+        paper_progress = {"strategy_id": best, "title": titles[best], "trades": trades,
+                          "trades_needed": agent.MIN_REALISTIC_PAPER_TRADES, "net_pnl": round(net, 2),
+                          "strategies": len(sids)}
     return {
         "autopilot": bool(u.get("autopilot")),
         "autopilot_live": bool(u.get("autopilot_live")),
@@ -1129,6 +1163,7 @@ def autopilot_status(ctx: Ctx):
         "model": u.get("autopilot_model") or catalog.DEFAULT_KEY,  # the model the autopilot's own runs use
         "billing_blocked": billing_blocked,
         "billing_reason": (("card" if _needs_card(ctx) else "credits") if billing_blocked else None),
+        "paper_progress": paper_progress,
     }
 
 
@@ -1701,6 +1736,38 @@ def admin_waitlist(ctx: Ctx):
     return {"ok": True, "email": email, "action": action}
 
 
+def admin_kill_switch(ctx: Ctx):
+    """The DB-backed execution kill switch. While on, every engine process refuses new BUYS
+    within ~5s (no restart); SELLS always run. Admin-only."""
+    _require_admin(ctx)
+    from app.execution import kill_switch as ks
+    st = ks.read_state(ctx.cur)
+    return {"on": bool(st.get("on")), "reason": st.get("reason") or "", "by": st.get("by") or "",
+            "updated_at": st.get("updated_at_utc"), "env_on": os.getenv("APP_KILL_SWITCH") == "1"}
+
+
+def admin_kill_switch_set(ctx: Ctx):
+    """POST {on: bool, reason}: flip the DB-backed execution kill switch, then return its state."""
+    _require_admin(ctx)
+    from app.execution import kill_switch as ks
+    on = ctx.body.get("on")
+    if not isinstance(on, bool):
+        raise ApiError(400, "Send on: true or false.")
+    ks.write_state(ctx.cur, on, str(ctx.body.get("reason") or "")[:200], ctx.user["email"])
+    return admin_kill_switch(ctx)
+
+
+def exec_tca(ctx: Ctx):
+    """Transaction cost analysis of real orders over a trailing window (admin-only). Read-only."""
+    _require_admin(ctx)
+    from app import tca
+    try:
+        days = float(ctx.query.get("days", "7"))
+    except (TypeError, ValueError):
+        days = 7.0
+    return tca.report(ctx.cur, days=max(0.1, min(days, 90.0)))
+
+
 def exec_latency(ctx: Ctx):
     """Execution P2: order-path lag + error observability over a trailing window (admin-only —
     operational money-path telemetry). p50/p95/p99 round-trip + total latency, encode/sign cost,
@@ -1994,6 +2061,7 @@ ROUTES: List[Route] = [
         ("GET", "/api/strategies", list_strategies, True),
         ("GET", r"/api/strategies/(\d+)", get_strategy, True),
         ("POST", r"/api/strategies/(\d+)/whatif", what_if, True),
+        ("GET", r"/api/strategies/(\d+)/live-readiness", strategy_live_readiness, True),
         ("POST", r"/api/strategies/(\d+)/share", share_strategy, True),
         ("POST", r"/api/strategies/(\d+)/dig-deeper", dig_deeper, True),
         ("GET", "/api/notifications", notifications, True),
@@ -2032,6 +2100,9 @@ ROUTES: List[Route] = [
         ("GET", "/api/admin", admin_overview, True),
         ("GET", "/api/admin/system", admin_system, True),
         ("GET", "/api/exec/latency", exec_latency, True),
+        ("GET", "/api/exec/tca", exec_tca, True),
+        ("GET", "/api/admin/kill-switch", admin_kill_switch, True),
+        ("POST", "/api/admin/kill-switch", admin_kill_switch_set, True),
         ("GET", "/api/system/code", system_code, True),
         ("POST", "/api/admin/grant", admin_grant, True),
         ("POST", "/api/admin/waitlist", admin_waitlist, True),

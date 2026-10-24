@@ -1,5 +1,43 @@
 # PLAN
 
+## Pooled multi-market research specs — October 24, 2026
+
+A spec may carry `"pool": [<market>...]` (up to 3 extra markets sharing `spec.market`'s cadence, binary only, not combinable with `cross`; capped at 4 markets total because each 1-minute market-month is ~50MB of snapshots and the agents worker has MemoryMax=400M). The same single-contract rule is judged on the POOLED trades of all its markets: merged partition, merged research/validation/holdout datasets and one shared FDR stream (`stream_key`). That gives about N× the validation sample and a √N× smaller detectable edge, which is the main lever now that data (not math) binds the gate. `spec.is_multi_market` replaces `is_cross_contract` where evidence spans markets, which also fixes same-market cross_strike/calendar specs, previously sent to `ensure_merged_partition` with one market (a ValueError). Execution is untouched: a passed pooled rule is an ordinary single-market spec on `spec.market`.
+
+## Backtest fills on the next bar at the live reservation price — October 24, 2026
+
+`app/backtest.py` now defaults to `FILL_MODEL="next_bar"` for single-contract binaries: a signal computed on bar t fills against bar t+1's quote, an entry is abandoned when that ask exceeds `execution_kernel.reservation_price(fair, min_edge, qty)` (the same cap live and paper enforce since the execution thread's change), fills are capped at displayed top-of-book size (`yes_ask_size` / `yes_bid_size` when the feed has them), and exits sell at the next bar's bid. Code strategies may not pay above their signal price. `TAU_BACKTEST_FILL_MODEL=signal_bar` restores the old optimistic same-quote fill for comparison. Research folds, validation and holdout all use it, so a gatekeeper pass now reflects fills live could actually get.
+
+## Research gatekeeper can pass a real edge again — October 24, 2026
+
+Root cause of "no strategy has ever passed research": the gatekeeper could not pass a real edge. A power simulation through the actual gate code rejected a planted 15c/contract edge over 400 validation trades 6/6 times. Fixed on `claude/project-thread-dehmjp`:
+- **Placebo:** the binary negative control was a winner-subset 1/price shuffle that only accepted edges concentrated in cheap contracts; a uniform real edge scored p≈1 and was classified REJECTED. Replaced with a market-implied null (each settled contract redrawn as Bernoulli(entry price)).
+- **Primary p-value:** now 1−Φ(mean/bootstrap SE). The empirical bootstrap mass moves in 1/n_boot steps (5e-4) while LORD++ alpha is below that by the 3rd test, so it could not reject.
+- **Evidence epochs:** the LORD++ stream carries `epoch_to_ts` (new `app_fdr_state` column); a fresh stream starts only once validation has fully rolled past the old one. DSR trial count = experiments whose validation window overlaps the current one (ledger-derived). Legacy streams continue until their data rolls out.
+- **Validation-budget pre-screen:** finalists whose research-fold edge projects <20% power at the next alpha are recorded `underpowered` and never pre-registered (no alpha, no DSR trial).
+- **Holdout churn latch:** partitions re-freeze on every settlement; the holdout cap now counts looks across all overlapping re-frozen windows.
+After: the planted 15c edge passes 6/6, an 8c edge over 400 trades passes ~50% on a fresh stream, a 4c edge needs ~2,000 validation trades (data, not math, is now the constraint), breakeven noise passes 0/20. Open decision for Todd: DSR≥0.95 stacked on LORD++ double-corrects for multiplicity. Next: next-bar fills with reservation price and depth caps; cross-market pooled hypotheses for sample size; MDE feedback to the generator.
+
+## Realistic paper fills and a stronger live gate — October 24, 2026, UTC
+
+Merged to main (branch `claude/project-thread-76ft6y`) and deployed 08:42Z; pairs (#35) deployed 09:03Z. App paper deployments now run the live `MarketableLimitKernel` over `SimulatedVenue` (`engine.paper_kernel_factory`, `Sources.paper_kernel`, shared `_execution_kernel` helper so paper and live cannot drift). Paper now misses on a stale quote or a moved ask, fills only the touch size, pays the fee per child order and can part-fill an exit; simulated fills carry `order_ref='sim:<id>'`. `APP_PAPER_REALISTIC_FILLS=0` restores legacy instant fills. Cross-contract pairs keep the atomic paper fill (legging risk not simulated yet). Fixed `SimulatedVenue` pricing NO orders off the YES touch; it now uses the `order_wire_params` mirror.
+
+Live gate (`agent._proven_on_paper`), additive only: the old 8-trade/not-negative check stays, then 30+ closed realistic round trips (`repo.paper_round_trips`, legacy fills excluded), net P&L > 0 after fees, 48h+ span, and stationary-bootstrap one-sided p ≤ 0.10 on mean P&L per trade. Existing strategies have zero realistic trades, so none can go live until they re-earn it on paper. Tests: `tests/test_paper_realistic_fills.py`, `tests/test_app_autopilot_live.py`. Deploy is pending a bundle that excludes the unreleased perps release.
+
+Follow-up (PR #27): `paper_evidence` reports paper vs backtest unseen-data P&L per trade (`realization`, informational) and the autopilot review context shows each paper deployment's evidence line. Live decay guard in `engine.loss_guard`: a live deployment net negative after `APP_LIVE_DECAY_MIN_TRADES` (20) closed trades is paused and flattened. Pause-only, never opens or blocks an exit.
+
+Funnel (PR follow-up): `agent.auto_paper_candidates` runs at the start of every autopilot review and puts each gatekeeper DEPLOYMENT_CANDIDATE that never ran on paper onto paper via `act()` (max 3 per review, 20 active), so realistic evidence accrues without waiting for the LLM. Never live; a stopped paper run is not redeployed.
+
+Paper pairs now run through the simulated venue too (`_paper_kernel_buy_pair`, same legging mechanics as live `_kernel_buy_pair`: short second leg -> unwind the excess, failed unwind -> tracked naked leg). Both legs share one `sim:pair-` order_ref so the gate counts a pair as one round trip.
+
+Live size ramp (`engine._live_ramp_scale`): a live deployment's first `APP_LIVE_RAMP_TRADES` (20) closed trades enter at `APP_LIVE_RAMP_FRACTION` (0.25, clamped to (0, 1]) of the spec stake, at least 1 contract, so a fresh promotion risks a quarter of its size while the decay guard collects its 20 trades. Entries only; exits untouched.
+
+Research robustness: prod logs showed a code strategy's truncated `out.json` raising a raw `JSONDecodeError` out of `sandbox._run_entry`, past `freeze_code_model`'s `SandboxError` handler, killing the whole research run (its tokens already spent). Unreadable or non-object output is now a `SandboxError`, so only that hypothesis fails.
+
+Visibility: the strategy page's Road to live panel (both themes) shows each gate's progress, and the autopilot float's stats show the running paper strategy closest to live (`paper_progress` in `/api/autopilot/status`: realistic trades / 30 and net P&L, one grouped query, no bootstrap on the 20s poll).
+
+Next: feed realization to the research thread's backtest fill-model calibration.
+
 ## Kalshi perps deployment preparation — October 23, 2026, Asia/Shanghai
 
 In progress (`tau-kalshi-perps-deployment-preparation-20261023`): build a native real-money Bitcoin perps path, using Kalshi's own margin/leverage limits and mandatory owner confirmation for every agent-proposed order. No extra Tau financial caps and no autonomous broker execution. Existing binary live gates and research-only strategy promotion blocks stay unchanged. Encrypted selected-source recovery passed (run39888106069); legitimate installed fixes and header CSS are being reconciled into main. Native client/store/service, both-theme Funds preview/confirmation and hosted synthetic acceptance harness are implemented; 2,265 Python/10 skipped and226+8 frontend checks pass. Frozen58 security review completed with no findings; hosted staging found a proposal-column width mismatch, now repaired. Hosted rerun and migration-delta review remain pending. Production code, services, settings and jobs remain unchanged. Full candidate verification and guarded rollout remain required. [Preparation handoff](results/kalshi_perps_deployment_preparation_2026-10-23/HANDOFF.md).

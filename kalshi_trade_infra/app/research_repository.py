@@ -210,18 +210,21 @@ def get_fdr_state(cur, user_id: int, market: str) -> Optional[Dict]:
 
 def set_fdr_state(cur, user_id: int, market: str, state: Dict[str, Any]) -> None:
     """Upsert the alpha-wealth state (advance wealth/t/rejections). `state` is the
-    plain dict the stats layer persists: alpha, w0, wealth, t, rejections, method."""
+    plain dict the stats layer persists: alpha, w0, wealth, t, rejections, method, plus the
+    gatekeeper's `epoch_to_ts` (end of the validation window the stream is spending on)."""
     cur.execute(
         """INSERT INTO app_fdr_state
-             (user_id, market, method, alpha, w0, wealth, t, rejections_json, updated_at)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+             (user_id, market, method, alpha, w0, wealth, t, rejections_json, updated_at, epoch_to_ts)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
            ON DUPLICATE KEY UPDATE method=VALUES(method), alpha=VALUES(alpha),
              w0=VALUES(w0), wealth=VALUES(wealth), t=VALUES(t),
-             rejections_json=VALUES(rejections_json), updated_at=VALUES(updated_at)""",
+             rejections_json=VALUES(rejections_json), updated_at=VALUES(updated_at),
+             epoch_to_ts=VALUES(epoch_to_ts)""",
         (
             user_id, market, state.get("method", "LORD++"), float(state["alpha"]),
             float(state["w0"]), float(state["wealth"]), int(state["t"]),
             _json(list(state.get("rejections", []))), now_utc(),
+            int(state["epoch_to_ts"]) if state.get("epoch_to_ts") is not None else None,
         ),
     )
 
@@ -356,6 +359,41 @@ def _ts(dt: datetime) -> int:
 
 
 # -- replay / research-paper reads ---------------------------------------------
+
+
+def validated_trials_overlapping(cur, user_id: int, market: str, window_from_ts: int) -> int:
+    """How many of this user's experiments on `market` were validation-judged on a window that
+    still overlaps a validation window starting at `window_from_ts` (their frozen partition's
+    validation_to_ts is after it). These are the trials that competed for the current evidence:
+    the gatekeeper's DSR deflates for exactly this count. An experiment whose partition row is
+    missing is counted (conservative: unknown evidence is assumed to overlap)."""
+    cur.execute(
+        """SELECT COUNT(DISTINCT e.id) AS n
+             FROM app_experiments e
+             JOIN app_experiment_results r ON r.experiment_id=e.id AND r.phase='validation'
+             LEFT JOIN app_data_partitions p ON p.id=e.research_partition_id
+            WHERE e.user_id=%s AND e.market=%s
+              AND (p.id IS NULL OR p.validation_to_ts > %s)""",
+        (user_id, market, int(window_from_ts)),
+    )
+    row = cur.fetchone()
+    return int((row or {}).get("n") or 0)
+
+
+def holdout_evaluations_overlapping(cur, market: str, holdout_from_ts: int) -> int:
+    """Total one-time holdout looks already spent on `market` across every frozen partition whose
+    holdout window still overlaps a holdout starting at `holdout_from_ts`. Partitions re-freeze as
+    contracts settle, so the per-ledger cap must be enforced over overlapping windows too. A
+    ledger whose partition row is missing is counted (conservative)."""
+    cur.execute(
+        """SELECT COALESCE(SUM(h.evaluations_used), 0) AS n
+             FROM app_holdout_ledger h
+             LEFT JOIN app_data_partitions p ON p.id=h.partition_id
+            WHERE h.market=%s AND (p.id IS NULL OR p.holdout_to_ts > %s)""",
+        (market, int(holdout_from_ts)),
+    )
+    row = cur.fetchone()
+    return int((row or {}).get("n") or 0)
 
 
 def experiment_records_for_replay(cur, user_id: int, market: str) -> List[Dict]:

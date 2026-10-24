@@ -43,6 +43,7 @@ from app import partitions
 from app import repository as repo
 from app import research_repository as rr
 from app import spec as specmod
+from app import stats
 from app.llm import LLMError, ModelFn, Usage, ask_json, claude, current_model
 from app.markets import MARKETS
 from app.agent_market_data import AgentMarketData, DataScope
@@ -654,7 +655,13 @@ def _cross_market_options(market: str) -> str:
             "ONE as a cross_sectional leg (cross.pairing=\"cross_sectional\", "
             "cross.legs=[{\"market\":\"<key>\"}]) when the edge is a RELATIVE mispricing between the two "
             "markets (lead-lag, basis dislocation), not a directional view: %s. Only do so with a real "
-            "relative mechanism; otherwise stay single-contract." % (market, labels))
+            "relative mechanism; otherwise stay single-contract.\n"
+            "POOLED evidence: a STRUCTURAL mechanism that should hold on all of these markets (fee/price-"
+            "band effects, settlement mechanics, favorite-longshot overpricing) can instead be judged on "
+            "their POOLED trades: add \"pool\": [<keys>] (no cross). The same rule runs on every pooled "
+            "market, so validation sees ~N times the trades and the detectable edge shrinks ~sqrt(N) times; "
+            "it trades only on %s if it passes. The mechanism must apply to every pooled market."
+            % (market, labels, market))
 
 
 # Shared tail for every NON-PRICE (event-settled) market profile. The built-in gbm model is a
@@ -749,6 +756,36 @@ underpriced), drift and information flow as the resolution date approaches, and 
 scheduled releases. Ground the mechanism in who misprices this specific event and why.""" + _EVENT_MODEL_NOTE
 
 
+_DETECT_TRADES_PER_DAY = (2, 10, 40, 150)
+
+
+def _detectability_block(ds: backtest.Dataset) -> str:
+    """What edge size is even testable here, so the proposer stops spending trials on rules the
+    gate cannot confirm however real they are. Uses only the research window's length and the
+    gatekeeper's public constants, never a held-out number.
+
+    Validation spans VALIDATION_FRAC/RESEARCH_FRAC of the research window. A per-trade net return
+    is detectable at ~50% power when mean >= z * sd / sqrt(n_val), z the first-test LORD++ level
+    of a fresh stream and sd ~= 1 for a mid-priced binary (a $1/$0 payoff on a 50c stake)."""
+    research_days = max((ds.end_ts - ds.start_ts) / 86400.0, 0.0)
+    if research_days <= 0:
+        return ""
+    val_days = research_days * partitions.VALIDATION_FRAC / partitions.RESEARCH_FRAC
+    z = stats.norm_ppf(1.0 - stats.lord_alpha(stats.lord_init(gatekeeper.ALPHA)))
+    rows = []
+    for per_day in _DETECT_TRADES_PER_DAY:
+        n_val = per_day * val_days
+        mde = z / n_val ** 0.5
+        rows.append("~%d trades/day -> ~%.0f validation trades -> needs >= %.1f%% net per trade "
+                    "(~%.1fc per contract at a 50c price)" % (per_day, n_val, 100 * mde, 50 * mde))
+    return ("DETECTABILITY (what the gate can confirm here): the held-out validation window will span "
+            "~%.0f days. At the best case (first test of a fresh budget, independent trades), a rule needs "
+            "roughly:\n  %s\nRules below these thresholds cannot pass however real they are; positions on "
+            "several strikes of the SAME event are one bet, not several. Prefer mechanisms that either trade "
+            "often or carry a large per-trade edge, and say in each thesis which row of this table it "
+            "targets." % (val_days, "\n  ".join(rows)))
+
+
 def _research_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], count: int) -> str:
     idea = (run.get("prompt") or "").strip() or "Find any durable, fee-surviving edge you can justify."
     brief = _brief()
@@ -782,6 +819,7 @@ def _research_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], count:
 
 Market: {market_label} (spec market "{market}").
 In-sample data you can test on: {summary}
+{detect}
 `feature_coverage_pct` is the non-null coverage of each feature ON THIS MARKET: only build models
 and filters on features that are actually populated here. A feature at or near 0% is empty on this
 market (e.g. order-book/microstructure features on sports/NEAR) — a model or filter that needs it
@@ -813,6 +851,7 @@ mechanism, falsification_criteria, negative_control, null/alt hypotheses, min_sa
         market_label=MARKETS[run["market"]].label,
         market=run["market"],
         summary=json.dumps(_in_sample_summary(ds)),
+        detect=_detectability_block(ds),
         guide=specmod.research_guide(run["market"]),
         memory=_memory_block(memory),
         count=count,
@@ -997,14 +1036,15 @@ def _challenge(finalists: List[Dict], run: Dict, model: ModelFn, usage: Usage, l
         return [{"decision": "approve", "reason": "", "fixes": None} for _ in finalists]
 
 
-def _result_block(dataset_summary: Dict, t: Dict, classification: str, reason: Optional[str] = None) -> Dict:
+def _result_block(dataset_summary: Dict, t: Dict, classification: str, reason: Optional[str] = None,
+                  reason_key: str = "challenger_reason") -> Dict:
     """The strategy.result the generator persists: research-fold metrics + the classification
     LABEL only. It deliberately carries NO held-out (validation/holdout) numbers, because
     strategy_memory feeds this straight back into the next prompt (closes Leak 2)."""
     block = {"capital": t.get("capital"), "dataset": dataset_summary,
              "in_sample": t.get("in_sample"), "classification": classification}
     if reason:
-        block["challenger_reason"] = reason[:500]
+        block[reason_key] = reason[:500]
     return block
 
 
@@ -1185,15 +1225,33 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
                 log("challenger", "Challenger %s - %s: %s"
                     % ("revised" if verdict["decision"] == "revise" else "approved", t["title"], verdict["reason"]),
                     {"title": t["title"], "decision": verdict["decision"]})
+            # Validation-budget pre-screen (research data only): a finalist whose research-fold edge
+            # cannot plausibly clear the next alpha level is NOT pre-registered and spends nothing, so
+            # it neither decays the LORD++ stream nor inflates the DSR trial count for real candidates.
+            # Cross-contract and perpetual specs judge on their own windows and skip this screen.
+            if not (specmod.is_cross_contract(spec) or specmod.is_multi_market(spec)
+                    or specmod.is_perpetual_spec(spec)):
+                pw = gatekeeper.validation_power(cur, user_id, market, spec, ds, partition,
+                                                 int(t.get("min_sample") or 30))
+                if not pw["ok"]:
+                    t["strategy_id"] = repo.insert_strategy(
+                        cur, user_id, run_id, parent, market, direction, t["title"], t["thesis"], spec,
+                        "rejected", _result_block(s, t, "underpowered", pw["reason"], "gate_reason"))
+                    log("verdict", "NOT TESTED - %s: %s. No validation budget spent."
+                        % (t["title"], pw["reason"]),
+                        {"title": t["title"], "status": "rejected", "strategy_id": t["strategy_id"],
+                         "power": pw["power"]})
+                    continue
             # Insert the strategy row FIRST (provisional) so the immutable experiment can carry its
             # strategy_id, then pre-register the frozen hypothesis.
             sid = repo.insert_strategy(cur, user_id, run_id, parent, market, direction, t["title"],
                                        t["thesis"], spec, "pending", _result_block(s, t, "promising"))
             t["strategy_id"] = sid
-            # A cross-contract spec pre-registers against the MERGED partition of its legs; a single-
-            # contract spec against the run's partition (unchanged).
+            # A multi-market spec (cross-market pair or pooled rule) pre-registers against the MERGED
+            # partition of its markets; a single-market spec (including a same-market cross_strike /
+            # calendar pair) against the run's partition.
             part = partitions.ensure_merged_partition(cur, specmod.involved_markets(spec)) \
-                if specmod.is_cross_contract(spec) else partition
+                if specmod.is_multi_market(spec) else partition
             exp_ids.append(gatekeeper.preregister(cur, _prereg(t, spec, run, part, len(finalists), verdict, sid)))
             payload.append({"spec": spec, "user_id": user_id, "market": market,
                             "min_sample": int(t.get("min_sample") or 30)})
@@ -1213,7 +1271,7 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
                 # and fail fast with a clean LLMError if the (possibly slow) RDS wedges it, instead
                 # of going silent until the watchdog reaps the run. Partitions are resolved on THIS
                 # thread; the timeout worker only runs an off-cursor load, so it never shares `cur`.
-                if specmod.is_cross_contract(spec0):
+                if specmod.is_multi_market(spec0):
                     legs = partitions.merged_partitions(cur, specmod.involved_markets(spec0))
                     val_ds = _load("Loading validation data", partitions.merged_dataset_from, legs,
                                    "validation", beat=lambda: repo.heartbeat(cur, run_id))
@@ -1804,7 +1862,7 @@ def _test_in_sample(h: Dict, ds: backtest.Dataset, partition: Dict, log, round_n
     # dataset — test it on the MERGED research window of its legs (cached per stream for the run).
     # cross_strike / calendar stay on one market, so the single-market dataset already has every
     # strike/settlement and this branch is skipped.
-    if cur is not None and specmod.is_cross_contract(spec) and len(specmod.involved_markets(spec)) > 1:
+    if cur is not None and specmod.is_multi_market(spec):
         inv = specmod.involved_markets(spec)
         key = specmod.stream_key(spec)
         if merged_cache is not None and key in merged_cache:
@@ -2090,21 +2148,96 @@ def live_autopilot_ok(cur, user: Dict) -> Tuple[bool, str]:
 
 
 MIN_PAPER_TRADES_FOR_LIVE = 8
+# Evidence bar on REALISTIC paper fills (the live kernel over SimulatedVenue, order_ref 'sim:').
+# Legacy instant paper fills overstate live results, so they count toward nothing below.
+MIN_REALISTIC_PAPER_TRADES = 30   # closed round trips: fewer cannot tell edge from luck
+MIN_PAPER_SPAN_HOURS = 48.0       # first entry to last exit: one quiet afternoon is not a track record
+MAX_PAPER_EDGE_P_VALUE = 0.10     # one-sided stationary-bootstrap p that mean P&L per trade <= 0
+
+
+def paper_evidence(cur, user_id: int, strategy_id: int) -> Dict:
+    """The paper -> live evidence for one strategy, check by check, in gate order. `ready` is True
+    only when every check passes; `why` names the FIRST failing check (the gate's refusal text).
+
+    The legacy check (8+ closed paper trades of any kind, not net negative) runs first and is kept
+    unchanged. Then, on realistic fills only (the live kernel over SimulatedVenue): enough round
+    trips, net up after fees, spread over time, and a bootstrap test that rejects 'no edge'. Each
+    check can only refuse; none relaxes the one before it. Also feeds the app's Road-to-live view."""
+    paper = [d for d in repo.list_deployments(cur, user_id, include_stopped=True)
+             if d["strategy_id"] == strategy_id and d["mode"] == "paper"]
+    legacy_trades = sum(int(d.get("closed_trades") or 0) for d in paper)
+    legacy_pnl = sum(float(d.get("realized_pnl") or 0) for d in paper)
+    trips = repo.paper_round_trips(cur, user_id, strategy_id)
+    pnls = [t["pnl"] for t in trips]
+    net = sum(pnls)
+    span_h = 0.0
+    if trips:
+        start = trips[0].get("opened_at")
+        end = max((t.get("closed_at") for t in trips if t.get("closed_at")), default=None)
+        if start and end:
+            span_h = max(0.0, (end - start).total_seconds() / 3600.0)
+    p_value = None
+    if len(pnls) >= MIN_REALISTIC_PAPER_TRADES:
+        from app import stats  # local: numpy-backed, only needed once there is enough evidence
+        p_value = float(stats.stationary_bootstrap_ci(pnls, stat="mean", alpha=0.10)["p_value"])
+    checks = [
+        ("legacy_trades", legacy_trades >= MIN_PAPER_TRADES_FOR_LIVE,
+         "it needs %d+ closed paper trades first (has %d)" % (MIN_PAPER_TRADES_FOR_LIVE, legacy_trades)),
+        ("legacy_pnl", legacy_pnl >= 0, "it's still down $%.2f on paper" % (-legacy_pnl)),
+        ("realistic_trades", len(trips) >= MIN_REALISTIC_PAPER_TRADES,
+         "it needs %d+ closed paper trades on realistic fills first (has %d)" % (MIN_REALISTIC_PAPER_TRADES, len(trips))),
+        ("net_pnl", net > 0, "it isn't up on realistic paper fills ($%.2f net after fees)" % net),
+        ("span", span_h >= MIN_PAPER_SPAN_HOURS,
+         "its paper record covers only %.0fh; it needs %.0fh+ so one market mood can't carry it"
+         % (span_h, MIN_PAPER_SPAN_HOURS)),
+        ("edge", p_value is not None and p_value <= MAX_PAPER_EDGE_P_VALUE,
+         "its paper edge isn't statistically clear yet (p=%s, needs %.2f or lower)"
+         % ("n/a" if p_value is None else "%.2f" % p_value, MAX_PAPER_EDGE_P_VALUE)),
+    ]
+    failing = next((why for _k, ok, why in checks if not ok), "")
+    # Realization: realistic paper P&L per trade as a fraction of the backtest's unseen-data P&L
+    # per trade. Informational (never gates): well under 1 means the backtest's fills or the edge
+    # itself did not survive contact with the live book, which is the signal research should learn from.
+    paper_mean = (net / len(pnls)) if pnls else None
+    backtest_mean = None
+    try:
+        strat = repo.get_strategy(cur, user_id, strategy_id) or {}
+        oos = (strat.get("result") or {}).get("out_of_sample") or {}
+        if int(oos.get("trades") or 0) > 0:
+            backtest_mean = float(oos.get("pnl") or 0) / int(oos["trades"])
+    except Exception:
+        backtest_mean = None
+    realization = (paper_mean / backtest_mean) if (paper_mean is not None and backtest_mean and backtest_mean > 0) else None
+    return {
+        "ready": not failing, "why": failing,
+        "checks": {k: ok for k, ok, _why in checks},
+        "trades": len(trips), "trades_needed": MIN_REALISTIC_PAPER_TRADES,
+        "net_pnl": round(net, 4), "span_hours": round(span_h, 1), "span_needed_hours": MIN_PAPER_SPAN_HOURS,
+        "p_value": None if p_value is None else round(p_value, 4), "p_value_needed": MAX_PAPER_EDGE_P_VALUE,
+        "legacy_trades": legacy_trades, "legacy_pnl": round(legacy_pnl, 4),
+        "paper_mean_pnl": None if paper_mean is None else round(paper_mean, 4),
+        "backtest_mean_pnl": None if backtest_mean is None else round(backtest_mean, 4),
+        "realization": None if realization is None else round(realization, 3),
+    }
+
+
+def paper_evidence_line(ev: Dict) -> str:
+    """One-line summary of `paper_evidence` for the autopilot's review context."""
+    parts = ["%d/%d realistic paper trades" % (ev["trades"], ev["trades_needed"]),
+             "net $%.2f" % ev["net_pnl"], "%.0fh of record" % ev["span_hours"]]
+    if ev.get("p_value") is not None:
+        parts.append("edge p=%.2f" % ev["p_value"])
+    if ev.get("realization") is not None:
+        parts.append("paper earns %.0f%% of backtest per trade" % (100 * ev["realization"]))
+    return "; ".join(parts) + ("; LIVE-READY on paper" if ev["ready"] else "; not live-ready: " + ev["why"])
 
 
 def _proven_on_paper(cur, user_id: int, strategy_id: int) -> Tuple[bool, str]:
-    """Enforce the research -> PAPER -> live loop in code: a strategy may go live only after it has
-    actually run on paper with enough closed trades and hasn't lost money there. Backs the model's
-    'proven on paper' judgment with a hard rule so autopilot can't jump a fresh pass straight to real money."""
-    paper = [d for d in repo.list_deployments(cur, user_id, include_stopped=True)
-             if d["strategy_id"] == strategy_id and d["mode"] == "paper"]
-    trades = sum(int(d.get("closed_trades") or 0) for d in paper)
-    realized = sum(float(d.get("realized_pnl") or 0) for d in paper)
-    if trades < MIN_PAPER_TRADES_FOR_LIVE:
-        return False, "it needs %d+ closed paper trades first (has %d)" % (MIN_PAPER_TRADES_FOR_LIVE, trades)
-    if realized < 0:
-        return False, "it's still down $%.2f on paper" % (-realized)
-    return True, ""
+    """Enforce the research -> PAPER -> live loop in code: a strategy may go live only after its
+    paper record clears every check in `paper_evidence`. Backs the model's 'proven on paper'
+    judgment with a hard rule so autopilot can't jump a fresh pass straight to real money."""
+    ev = paper_evidence(cur, user_id, strategy_id)
+    return ev["ready"], ev["why"]
 
 
 def _is_deployment_candidate(cur, strategy_id: int) -> bool:
@@ -2215,6 +2348,41 @@ def _market_research_recent(cur, user_id: int, market: str) -> Optional[str]:
         return ("%s has failed %d times in the last day — it's backed off (chronically bad for "
                 "research); hunt a different market" % (market, recent_fails))
     return None
+
+
+# Deterministic funnel step: paper costs nothing and the live gate needs a long realistic paper
+# record, so every gatekeeper-cleared candidate should start earning evidence at once instead of
+# waiting for a review to think of it. Bounded per review and in total; never touches live.
+AUTO_PAPER_MAX_NEW = 3
+AUTO_PAPER_MAX_ACTIVE = 20
+
+
+def auto_paper_candidates(cur, user: Dict) -> List[str]:
+    """Put each gatekeeper DEPLOYMENT_CANDIDATE that has never run on paper onto paper, through
+    act()'s own deploy path (so every deploy check applies). Autopilot-on users only. A strategy
+    that already had a paper deployment, even a stopped one, is left to the review: stopping it was
+    a decision. Returns the chat lines for what it did."""
+    if not user.get("autopilot"):
+        return []
+    deps = repo.list_deployments(cur, user["id"], include_stopped=True)
+    active = sum(1 for d in deps if d["status"] != "stopped")
+    tried = {d["strategy_id"] for d in deps if d["mode"] == "paper" or d["status"] != "stopped"}
+    out: List[str] = []
+    for s in repo.list_strategies(cur, user["id"], status="passed", limit=50):
+        if len(out) >= AUTO_PAPER_MAX_NEW or active >= AUTO_PAPER_MAX_ACTIVE:
+            break
+        mkt = MARKETS.get(s["market"])
+        if s["id"] in tried or mkt is None or not mkt.deployable:
+            continue
+        if specmod.is_code_spec(s["spec"]) or not _is_deployment_candidate(cur, s["id"]):
+            continue
+        text, pid = act(cur, user, {"type": "deploy", "strategy_id": s["id"],
+                                    "reason": "Gatekeeper cleared it; paper builds the realistic record the live gate needs."},
+                        autopilot=True)
+        if pid is not None:
+            out.append(text)
+            active += 1
+    return out
 
 
 def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.dataset) -> Tuple[str, Optional[int]]:
@@ -2521,6 +2689,13 @@ def _copilot_context(cur, user: Dict) -> str:
                float(d["realized_pnl"]), d["open_positions"], oos.get("pnl"), oos.get("trades"), oos.get("max_drawdown"),
                json.dumps(d["spec"], separators=(",", ":")))
         )
+        if d["mode"] == "paper":
+            # Realistic-fill evidence for the paper -> live gate, so reviews promote, keep or stop
+            # paper deployments on what live would actually earn. Best-effort (test stub -> skip).
+            try:
+                lines.append("    paper evidence: " + paper_evidence_line(paper_evidence(cur, user["id"], d["strategy_id"])))
+            except Exception:
+                pass
     if not deps:
         lines.append("- none")
     lines += ["", "Passed strategies not deployed:"]
@@ -2685,6 +2860,12 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
         # stale output. A real chat run keeps the full transcript to answer the user's message.
         if run["kind"] == "review":
             history = [m for m in history if m.get("role") == "user"][-3:]
+            # Funnel first, so the review below already sees the new paper deployments.
+            try:
+                for line in auto_paper_candidates(cur, user):
+                    repo.add_chat(cur, user["id"], "system", line)
+            except Exception as e:  # best-effort: never block the review itself
+                print("[agent] auto-paper failed for user %s: %r" % (user["id"], e), flush=True)
         transcript = "\n".join("%s: %s" % (m["role"], m["content"]) for m in history)
         if run["kind"] == "review":
             task = ("Scheduled autopilot review. Why: %s\n"

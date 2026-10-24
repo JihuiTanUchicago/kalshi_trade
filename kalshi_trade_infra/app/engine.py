@@ -42,6 +42,22 @@ LIVE_TRADING_ENABLED = os.getenv("APP_LIVE_TRADING_ENABLED") == "1"
 # ponytail: temporary; remove once NO-side live is validated on the demo sandbox.
 NO_SIDE_LIVE_ENABLED = os.getenv("APP_NO_SIDE_LIVE_ENABLED") == "1"
 TICK_SECONDS = 15
+# An order whose outcome is unknown (intent still 'sent': a timeout, a crash, a lost response) may
+# already have filled. No new order goes out on that user's ticker until recovery reads the truth
+# from the exchange, so a retry never stacks a second buy or a second sell on top of a fill we
+# cannot see yet (the oversell-into-a-short shape). Bounded: after this window the block lifts
+# even if recovery could not resolve it, so an exit is delayed, never trapped.
+INFLIGHT_BLOCK_SECONDS = int(os.getenv("APP_INFLIGHT_BLOCK_SECONDS", "180"))
+# How often the engine re-reconciles 'sent' intents against the exchange (was a fixed 300s).
+RECOVER_EVERY_SECONDS = float(os.getenv("APP_RECOVER_EVERY_SECONDS", "30"))
+# An intent the exchange still cannot account for this long after its market closed (or after it
+# was logged, if it has no close time) will never resolve by asking again: it is moved to the
+# terminal 'unresolved' status (logged loudly, once) so recovery stops polling the exchange for it
+# every pass. Its contract has settled by then; the position reconciler owns any exposure.
+UNRESOLVED_AFTER_CLOSE_SECONDS = int(os.getenv("APP_UNRESOLVED_AFTER_CLOSE_SECONDS", str(24 * 3600)))
+UNRESOLVED_NO_CLOSE_SECONDS = int(os.getenv("APP_UNRESOLVED_NO_CLOSE_SECONDS", str(7 * 24 * 3600)))
+UNRECOVERED_LOG_EVERY_SECONDS = 3600
+_unrecovered_logged: Dict[str, float] = {}
 # This engine process's identity, for the per-position close claim (P0-3): whichever engine stamps
 # its id on a position owns that force-close, so two engines never both sell it into a short.
 _ENGINE_ID = "engine-%s" % uuid.uuid4()
@@ -79,6 +95,26 @@ def _f(v) -> Optional[float]:
         return float(v) if v is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def book_sizes(quotes) -> Dict:
+    """Touch depth per ticker for the side an entry would TAKE. A YES buy lifts the YES ask
+    (``ticker`` -> yes_ask_size); a NO buy is the YES mirror and hits the YES bid, so its depth is
+    yes_bid_size, keyed ``(ticker, "no")``. Sizing a NO entry off the ask showed depth that isn't
+    there (an order the book can't fill at the price we decided)."""
+    out: Dict = {}
+    for q in quotes:
+        out[q.contract.ticker] = q.yes_ask_size
+        out[(q.contract.ticker, "no")] = q.yes_bid_size
+    return out
+
+
+def shown_size(sizes: Dict, ticker: str, side: str) -> Optional[float]:
+    """Contracts the book showed for buying ``side`` of ``ticker``. Callers that only pass a
+    per-ticker number (tests, older frames) keep that number for both sides."""
+    if str(side).lower() == "no" and (ticker, "no") in sizes:
+        return sizes[(ticker, "no")]
+    return sizes.get(ticker)
 
 
 def _opt_float(v) -> Optional[float]:
@@ -147,6 +183,9 @@ class Sources:
     result: Callable[[str], Optional[str]] = fetch_result
     live_kernel: Optional[Callable[[int], object]] = None  # user_id -> kernel; None = live disabled
     demo_kernel: Optional[Callable[[int], object]] = None  # user_id -> kernel; None = demo disabled
+    # user_id -> kernel over a SimulatedVenue (never sends an order). None = legacy instant paper fills
+    # at the quoted price. Set, paper runs the live execution policy so paper P&L is comparable to live.
+    paper_kernel: Optional[Callable[[int], object]] = None
     # intent_row -> {'filled':int,'avg_price':float,'fee':float,'order_id':str} or None (undetermined).
     # Crash-recovery asks this whether a 'sent' intent's order filled; None = can't tell (leave it
     # 'sent', NEVER re-send). None here = no recovery lookup wired (recovery is a safe no-op).
@@ -186,34 +225,66 @@ def settle_due(conn, market: Market, sources: Sources, now: datetime) -> int:
 # -- decisions -------------------------------------------------------------------
 
 
-def _paper_buy(conn, dep: Dict, entry: specmod.Entry, qty: int) -> Optional[int]:
-    price = entry.price
-    fee = taker_fee_dollars(qty, price)
+def _paper_book_buy(conn, dep: Dict, ticker: str, side: str, qty: int, price: float, fee: float,
+                    close_time, order_ref: Optional[str] = None) -> Optional[int]:
+    """Debit the paper ledger and open the position in ONE transaction; None = not enough paper cash.
+    `order_ref` is set only for a fill that came through the simulated venue, which is how the live
+    gate tells realistic paper fills apart from legacy instant ones."""
     cost = qty * price + fee
     with repo.transaction(conn) as tx:
         repo.lock_user(tx, dep["user_id"])
         if repo.paper_balance(tx, dep["user_id"]) < cost:
             return None
-        ticker = entry.snapshot.contract.ticker
-        pid = repo.insert_position(tx, dep["id"], dep["user_id"], "paper", ticker, entry.side, qty, price, fee,
-                                   entry.snapshot.contract.close_time)
+        pid = repo.insert_position(tx, dep["id"], dep["user_id"], "paper", ticker, side, qty, price, fee,
+                                   close_time, order_ref)
         repo.add_ledger(tx, dep["user_id"], "trade", -cost,
-                        "Bought %d %s %s @ %.2f" % (qty, entry.side.upper(), ticker, price), pid)
+                        "Bought %d %s %s @ %.2f" % (qty, side.upper(), ticker, price), pid)
         return pid
 
 
-def _paper_sell(conn, pos: Dict, price: float, reason: str) -> None:
+def _paper_buy(conn, dep: Dict, entry: specmod.Entry, qty: int) -> Optional[int]:
+    """Legacy paper entry: fills the whole size instantly at the quoted price."""
+    price = entry.price
+    return _paper_book_buy(conn, dep, entry.snapshot.contract.ticker, entry.side, qty, price,
+                           taker_fee_dollars(qty, price), entry.snapshot.contract.close_time)
+
+
+def _paper_sell(conn, pos: Dict, price: float, reason: str, fee: Optional[float] = None) -> bool:
     qty = int(pos["qty"])
-    fee = taker_fee_dollars(qty, price)
+    fee = taker_fee_dollars(qty, price) if fee is None else float(fee)
     pnl = qty * (price - float(pos["entry_price"])) - float(pos["entry_fee"]) - fee
     with repo.transaction(conn) as tx:
         if repo.close_position(tx, pos["id"], price, fee, pnl, reason):
             repo.add_ledger(tx, pos["user_id"], "trade", qty * price - fee,
                             "Sold %d %s %s @ %.2f (%s)" % (qty, pos["side"].upper(), pos["ticker"], price, reason), pos["id"])
+            return True
+    return False
+
+
+def _paper_kernel_close(conn, cur, dep: Dict, pos: Dict, kernel, price: float, reason: str) -> bool:
+    """Paper exit through the simulated venue: the same kernel the live exit uses, so a paper exit
+    can miss or part-fill exactly as a live one can. A part fill books the sold slice (and credits
+    its proceeds) and leaves the remainder open for the next slot, mirroring the live path."""
+    qty = int(pos["qty"])
+    rep = _live_trade(cur, dep, kernel, "sell", pos["side"], pos["ticker"], qty, price)
+    filled = int(rep.fill_qty_contracts)
+    if filled <= 0:
+        return False  # no fresh quote / no bid: the position stays open, as it would live
+    if filled >= qty:
+        return _paper_sell(conn, pos, rep.fill_price_dollars, reason, fee=rep.fee_dollars)
+    filled_entry_fee = float(pos["entry_fee"]) * filled / qty
+    pnl = filled * (rep.fill_price_dollars - float(pos["entry_price"])) - filled_entry_fee - rep.fee_dollars
+    with repo.transaction(conn) as tx:
+        if repo.book_partial_exit(tx, pos, filled, rep.fill_price_dollars, rep.fee_dollars, pnl, reason):
+            repo.add_ledger(tx, pos["user_id"], "trade", filled * rep.fill_price_dollars - rep.fee_dollars,
+                            "Sold %d/%d %s %s @ %.2f (%s, partial)" % (filled, qty, pos["side"].upper(), pos["ticker"],
+                                                                      rep.fill_price_dollars, reason), pos["id"])
+    return False
 
 
 def _live_trade(cur, dep: Dict, kernel, action: str, side: str, ticker: str, qty: int, price: float,
-                client_order_id_base: Optional[str] = None):
+                client_order_id_base: Optional[str] = None, fair: Optional[float] = None,
+                min_edge: Optional[float] = None):
     from data_pipeline.architecture.contracts import TradeIntent
 
     # `side` is the real leg (yes|no) and `price` is that side's own price; the
@@ -221,10 +292,28 @@ def _live_trade(cur, dep: Dict, kernel, action: str, side: str, ticker: str, qty
     # matching YES-leg wire order. A NO strategy must never place a YES order.
     # client_order_id_base (the persisted intent id, P0-1) rides on metadata so the kernel can mint
     # a durable, idempotent client_order_id for every child order without a signature change.
+    # fair/min_edge (an entry's own-side fair value and the spec's required net edge) let the kernel
+    # cap the BUY limit at the reservation price, so the fill can never be worse than the edge allows.
+    meta: Dict = {}
+    if client_order_id_base:
+        meta["client_order_id"] = client_order_id_base
+    if fair is not None:
+        meta["fair"] = float(fair)
+        meta["min_edge"] = float(min_edge or 0.0)
     intent = TradeIntent(action=action, side=side, ticker=ticker, qty_contracts=qty, limit_price_dollars=price,
-                         model_name="app-dep-%d" % dep["id"], now_ts=datetime.now(timezone.utc),
-                         metadata={"client_order_id": client_order_id_base} if client_order_id_base else {})
+                         model_name="app-dep-%d" % dep["id"], now_ts=datetime.now(timezone.utc), metadata=meta)
     return kernel.execute(intent)
+
+
+def _order_in_flight(cur, user_id: int, ticker: str) -> bool:
+    """True while this user has an unresolved order on ``ticker`` (see INFLIGHT_BLOCK_SECONDS).
+    Fails open on a read error: the block is an extra layer over recovery + reconciliation, and a DB
+    blip must not freeze every order."""
+    try:
+        return repo.ticker_has_inflight_intent(cur, user_id, ticker, INFLIGHT_BLOCK_SECONDS)
+    except Exception as e:
+        print("[engine] in-flight check failed user %s %s: %r (proceeding)" % (user_id, ticker, e), flush=True)
+        return False
 
 
 def _log_order_intent(conn, dep: Dict, action: str, side: str, ticker: str, qty: int, price: float,
@@ -270,8 +359,16 @@ def _close_position_at(conn, cur, dep: Dict, pos: Dict, kernel, via_kernel: bool
     partial live fill books nothing and waits for the next slot."""
     qty = int(pos["qty"])
     if not via_kernel:
+        if kernel is not None:  # paper over the simulated venue
+            return _paper_kernel_close(conn, cur, dep, pos, kernel, price, reason)
         _paper_sell(conn, pos, price, reason)
         return True
+    if _order_in_flight(cur, dep["user_id"], pos["ticker"]):
+        # An earlier order on this ticker may already have sold some or all of it. Selling the DB
+        # quantity again could oversell into a short; wait for recovery to book the truth.
+        print("[engine] exit deferred pos %d %s: an earlier order's outcome is still unknown"
+              % (pos["id"], pos["ticker"]), flush=True)
+        return False
     # Durable order-intent BEFORE the exchange sell (P0-1). Best-effort — an EXIT is NEVER blocked by
     # the intent log: if the write fails (intent_id is None) we STILL flatten and fall back to the
     # net reconciler. The intent carries position_id so crash-recovery knows which position to close.
@@ -283,7 +380,7 @@ def _close_position_at(conn, cur, dep: Dict, pos: Dict, kernel, via_kernel: bool
     if filled <= 0:
         if intent_id is not None:
             try:
-                repo.mark_order_intent(cur, intent_id, "unfilled")
+                repo.mark_order_intent(cur, intent_id, "unfilled", raw_json=getattr(rep, "raw_json", None))
             except Exception:
                 pass
         return False  # nothing filled this slot; retry next slot
@@ -366,7 +463,7 @@ def cross_deploy_block(spec: Dict, mode: str) -> Optional[str]:
     return None
 
 
-def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[float]], sources: Sources) -> Dict:
+def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict, sources: Sources) -> Dict:
     spec = dep["spec"]
     perpetual_block = _perpetual_execution_block(spec, dep.get("market"))
     if perpetual_block:
@@ -393,9 +490,20 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
         if kernel is None:
             repo.set_deployment_status(cur, dep["user_id"], dep["id"], "paused", why)
             return {"paused": "%s disabled" % mode}
+    # A book that still disagrees with the user's real Kalshi account after two reconcile sweeps
+    # halts new LIVE entries until it matches again (app/reconcile.py). Exits are never blocked.
+    halts = repo.live_entry_halts(cur, dep["user_id"]) if mode == "live" else []
+    if mode == "paper":
+        # Paper runs the live execution policy against a simulated venue when wired (pairs too, so
+        # paper sees legging risk: a leg can fill short and the excess must be unwound).
+        kernel = sources.paper_kernel(dep["user_id"]) if sources.paper_kernel else None
     if specmod.is_cross_contract(spec):
+        if halts:
+            return {"halted": "position mismatch on %s" % ", ".join(h["ticker"] for h in halts)}
         return _decide_pairs(conn, dep, snaps, sizes, kernel, via_kernel, mode)
     out = {"exits": 0, "entries": 0}
+    if halts:
+        out["halted"] = "position mismatch on %s" % ", ".join(h["ticker"] for h in halts)
 
     positions = repo.open_positions(cur, dep["id"])
     for pos in positions:
@@ -418,16 +526,19 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
     open_notional = float(exposure["notional"])
     cap_positions = int(risk["max_open_positions"])
     cap_notional = float(risk["max_open_notional"])
-    for entry in specmod.entries(spec, snaps):
+    ramp = _live_ramp_scale(cur, dep) if mode == "live" and not halts else 1.0
+    for entry in ([] if halts else specmod.entries(spec, snaps)):
         if slots <= 0 or open_count >= cap_positions:
             break  # deployment slot cap or user-wide position cap reached
         ticker = entry.snapshot.contract.ticker
         if ticker in held:
             continue
         qty = specmod.contracts_for(spec["sizing"]["stake"], entry.price)
-        shown = sizes.get(ticker)
+        if ramp < 1.0 and qty >= 1:
+            qty = max(1, int(qty * ramp))  # live size ramp: a fresh live deployment trades small
+        shown = shown_size(sizes, ticker, entry.side)
         if shown is not None:
-            qty = min(qty, int(shown))  # paper never fills more than the book showed
+            qty = min(qty, int(shown))  # never size past the depth on the side we take
         # Trim to the user-wide open-notional cap; never breach it with a new entry.
         room = cap_notional - open_notional
         if room >= entry.price:
@@ -437,6 +548,8 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
         if qty < 1:
             continue
         if via_kernel:
+            if _order_in_flight(cur, dep["user_id"], ticker):
+                continue  # an earlier order here may have filled; never stack a second buy on it
             close_time = entry.snapshot.contract.close_time
             # Durable order-intent BEFORE the real order (P0-1). An entry is NOT sacrosanct: if the
             # intent write fails we skip it rather than place an untracked order (a missed entry
@@ -446,15 +559,28 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
             if intent_id is None:
                 continue
             rep = _live_trade(cur, dep, kernel, "buy", entry.side, ticker, qty, entry.price,
-                              client_order_id_base=intent_id)
+                              client_order_id_base=intent_id, fair=getattr(entry, "fair", None),
+                              min_edge=(spec.get("entry") or {}).get("min_edge"))
             if rep.fill_qty_contracts < 1:
                 try:
-                    repo.mark_order_intent(cur, intent_id, "unfilled")
+                    repo.mark_order_intent(cur, intent_id, "unfilled", raw_json=getattr(rep, "raw_json", None))
                 except Exception:
                     pass
                 continue
             # Fill -> position insert is ONE transaction keyed to the intent (P0-2), booked once.
             _book_entry(conn, intent_id, dep["id"], dep["user_id"], mode, ticker, entry.side, rep, close_time)
+        elif kernel is not None:
+            # Paper over the simulated venue: book only what the touch actually gave, at the fill
+            # price and fee the venue charged. A miss (stale quote, edge gone) books nothing.
+            # Same reservation-price cap as live, so paper never books a fill live would refuse.
+            rep = _live_trade(cur, dep, kernel, "buy", entry.side, ticker, qty, entry.price,
+                              fair=getattr(entry, "fair", None), min_edge=(spec.get("entry") or {}).get("min_edge"))
+            if rep.fill_qty_contracts < 1:
+                continue
+            if _paper_book_buy(conn, dep, ticker, entry.side, int(rep.fill_qty_contracts), rep.fill_price_dollars,
+                               rep.fee_dollars, entry.snapshot.contract.close_time,
+                               SIM_ORDER_REF_PREFIX + str(rep.external_order_id or "")) is None:
+                break  # out of paper cash
         elif _paper_buy(conn, dep, entry, qty) is None:
             break  # out of paper cash
         held.add(ticker)
@@ -466,7 +592,7 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[flo
     return out
 
 
-def _decide_pairs(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optional[float]],
+def _decide_pairs(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict,
                   kernel, via_kernel: bool, mode: str) -> Dict:
     """Decide a cross-contract (relative-value pair) deployment: open BOTH legs of each pair the
     rule picks (buy YES on the underpriced leg, NO on the overpriced leg) and HOLD to settlement —
@@ -497,8 +623,8 @@ def _decide_pairs(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optio
             continue
         pair_cost = cand.long_price + cand.short_price
         qty = specmod.contracts_for(spec["sizing"]["stake"], pair_cost)
-        for tk in (lt, st):  # paper never fills more than either leg's book showed
-            shown = sizes.get(tk)
+        for tk, sd in ((lt, "yes"), (st, "no")):  # never size past either leg's book
+            shown = shown_size(sizes, tk, sd)
             if shown is not None:
                 qty = min(qty, int(shown))
         room = cap_notional - open_notional
@@ -509,8 +635,12 @@ def _decide_pairs(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict[str, Optio
         # price is what _kernel_buy_pair unwinds a naked leg at (YES sells ~yes_bid; NO ~1-yes_ask).
         legs = [("yes", lt, cand.long_price, cand.long_snap.yes_bid, cand.long_snap.contract.close_time),
                 ("no", st, cand.short_price, 1.0 - cand.short_snap.yes_ask, cand.short_snap.contract.close_time)]
-        placed = (_kernel_buy_pair(conn, cur, dep, kernel, legs, qty, mode) if via_kernel
-                  else _paper_buy_pair(conn, dep, legs, qty))
+        if via_kernel:
+            placed = _kernel_buy_pair(conn, cur, dep, kernel, legs, qty, mode)
+        elif kernel is not None:
+            placed = _paper_kernel_buy_pair(conn, cur, dep, kernel, legs, qty)
+        else:
+            placed = _paper_buy_pair(conn, dep, legs, qty)
         if not placed:
             break  # out of paper cash / nothing filled this slot
         held.update((lt, st))
@@ -542,6 +672,66 @@ def _paper_buy_pair(conn, dep: Dict, legs, qty: int) -> bool:
     return True
 
 
+def _paper_kernel_buy_pair(conn, cur, dep: Dict, kernel, legs, qty: int) -> bool:
+    """Paper pair entry through the simulated venue, with the same legging mechanics as the live
+    `_kernel_buy_pair`: buy leg 1, buy leg 2 for what leg 1 got, sell any unhedged leg-1 excess,
+    and track whatever that sell could not flatten as an open naked position. Nothing is sent, so
+    there are no order intents; the paper ledger is debited/credited for exactly what filled.
+    Both legs (and any unwind/residual slice) share one order_ref, so the live gate counts the
+    pair as ONE round trip. Returns hedged >= 1."""
+    l_side, l_ticker, l_buy, l_sell, l_close = legs[0]
+    s_side, s_ticker, s_buy, _s_sell, s_close = legs[1]
+    uid, dep_id = dep["user_id"], dep["id"]
+    est = qty * (l_buy + s_buy) + taker_fee_dollars(qty, l_buy) + taker_fee_dollars(qty, s_buy)
+    if repo.paper_balance(cur, uid) < est:
+        return False  # out of paper cash: don't simulate an entry it could not pay for
+    rep1 = _live_trade(cur, dep, kernel, "buy", l_side, l_ticker, qty, l_buy)
+    f1 = int(rep1.fill_qty_contracts)
+    if f1 < 1:
+        return False
+    rep2 = _live_trade(cur, dep, kernel, "buy", s_side, s_ticker, f1, s_buy)
+    f2 = int(rep2.fill_qty_contracts)
+    hedged = min(f1, f2)
+    excess = f1 - hedged
+    unwound = 0
+    sell_rep = None
+    if excess > 0:
+        sell_rep = _live_trade(cur, dep, kernel, "sell", l_side, l_ticker, excess, l_sell)
+        unwound = min(int(sell_rep.fill_qty_contracts), excess)
+    residual = excess - unwound
+    l_fee_hedged = rep1.fee_dollars * hedged / f1
+    l_fee_unwound = rep1.fee_dollars * unwound / f1
+    l_fee_residual = rep1.fee_dollars - l_fee_hedged - l_fee_unwound
+    s_fee = rep2.fee_dollars if hedged >= 1 else 0.0
+    ref = SIM_ORDER_REF_PREFIX + "pair-" + str(rep1.external_order_id or uuid.uuid4())
+    with repo.transaction(conn) as tx:
+        repo.lock_user(tx, uid)
+        if hedged >= 1:
+            repo.insert_position(tx, dep_id, uid, "paper", l_ticker, l_side, hedged,
+                                 rep1.fill_price_dollars, l_fee_hedged, l_close, ref)
+            pid = repo.insert_position(tx, dep_id, uid, "paper", s_ticker, s_side, hedged,
+                                       rep2.fill_price_dollars, s_fee, s_close, ref)
+            repo.add_ledger(tx, uid, "trade",
+                            -(hedged * (rep1.fill_price_dollars + rep2.fill_price_dollars) + l_fee_hedged + s_fee),
+                            "Bought %d pair %s/%s (pair)" % (hedged, l_ticker, s_ticker), pid)
+        if unwound >= 1:
+            pnl = (unwound * (sell_rep.fill_price_dollars - rep1.fill_price_dollars)
+                   - l_fee_unwound - sell_rep.fee_dollars)
+            pid = repo.insert_closed_position(tx, dep_id, uid, "paper", l_ticker, l_side, unwound,
+                                              rep1.fill_price_dollars, l_fee_unwound, sell_rep.fill_price_dollars,
+                                              sell_rep.fee_dollars, pnl, "pair_unwind", l_close, ref)
+            repo.add_ledger(tx, uid, "trade", pnl, "Unwound %d unhedged %s %s (pair)"
+                            % (unwound, l_side.upper(), l_ticker), pid)
+        if residual >= 1:
+            print("[engine] paper pair legging: dep %d left %d naked %s %s after the unwind under-filled"
+                  % (dep_id, residual, l_side.upper(), l_ticker), flush=True)
+            pid = repo.insert_position(tx, dep_id, uid, "paper", l_ticker, l_side, residual,
+                                       rep1.fill_price_dollars, l_fee_residual, l_close, ref)
+            repo.add_ledger(tx, uid, "trade", -(residual * rep1.fill_price_dollars + l_fee_residual),
+                            "Bought %d %s %s (pair leg left naked)" % (residual, l_side.upper(), l_ticker), pid)
+    return hedged >= 1
+
+
 def _kernel_buy_pair(conn, cur, dep: Dict, kernel, legs, qty: int, mode: str) -> bool:
     """Legging-safe AND durable live/demo pair entry. A relative-value pair must stay balanced (equal
     YES and NO contracts), but two real kernel orders can't fill atomically — so we keep the legs
@@ -566,6 +756,8 @@ def _kernel_buy_pair(conn, cur, dep: Dict, kernel, legs, qty: int, mode: str) ->
     l_side, l_ticker, l_buy, l_sell, l_close = legs[0]  # long YES leg
     s_side, s_ticker, s_buy, _s_sell, s_close = legs[1]  # short NO leg
     uid, dep_id = dep["user_id"], dep["id"]
+    if _order_in_flight(cur, uid, l_ticker) or _order_in_flight(cur, uid, s_ticker):
+        return False  # an earlier order on a leg is unresolved; never leg in on top of it
 
     # Leg 1 buy: intent BEFORE the POST (never place an untracked order).
     i1 = _log_order_intent(conn, dep, "buy", l_side, l_ticker, qty, l_buy, mode, market_close_time=l_close)
@@ -653,14 +845,50 @@ def loss_guard(cur, dep: Dict) -> bool:
     worst = float((result.get("out_of_sample") or {}).get("max_drawdown") or 0)
     capital = float(result.get("capital") or dep["spec"]["sizing"]["stake"] * dep["spec"]["sizing"]["max_positions"])
     limit = max(LOSS_GUARD_MULTIPLE * worst, 0.5 * capital)
-    if realized >= -limit:
+    why = None
+    if realized < -limit:
+        why = "Lost $%.2f, more than the $%.2f guard (2x its worst backtest drawdown)." % (-realized, limit)
+    elif dep.get("mode") == "live":
+        why = _live_decay_reason(cur, dep)
+    if why is None:
         return False
-    why = "Lost $%.2f, more than the $%.2f guard (2x its worst backtest drawdown)." % (-realized, limit)
     if repo.set_deployment_status(cur, dep["user_id"], dep["id"], "paused", why):
         repo.add_chat(cur, dep["user_id"], "system", "Paused deployment #%d automatically. %s" % (dep["id"], why))
         repo.create_run(cur, dep["user_id"], "review", dep["market"], None,
                         "Deployment #%d was auto-paused by the loss guard: %s" % (dep["id"], why), dep["id"])
     return True
+
+
+# Live decay guard: a strategy reaches live money only after a statistically positive realistic
+# paper record (agent.paper_evidence). If, after this many closed LIVE trades, live is losing money
+# on average, the edge did not survive real execution: pause it (flatten-on-pause closes it) and let
+# the review decide. Pausing only lowers risk; it never opens, resizes or blocks an exit.
+LIVE_DECAY_MIN_TRADES = int(os.getenv("APP_LIVE_DECAY_MIN_TRADES", "20"))
+
+
+# Live size ramp: a deployment's first LIVE_RAMP_TRADES closed live trades run at LIVE_RAMP_FRACTION
+# of the spec's stake (at least 1 contract), so a fresh promotion risks a fraction of its size while
+# the decay guard above is still gathering its 20 trades. Shrinks entries only; the fraction is
+# clamped to (0, 1] so no setting can make a ramp larger than full size.
+LIVE_RAMP_TRADES = int(os.getenv("APP_LIVE_RAMP_TRADES", "20"))
+def _ramp_fraction(raw: str) -> float:
+    return min(1.0, max(0.01, float(raw)))
+
+
+LIVE_RAMP_FRACTION = _ramp_fraction(os.getenv("APP_LIVE_RAMP_FRACTION", "0.25"))
+
+
+def _live_ramp_scale(cur, dep: Dict) -> float:
+    n, _total = repo.deployment_closed_stats(cur, dep["id"])
+    return LIVE_RAMP_FRACTION if n < LIVE_RAMP_TRADES else 1.0
+
+
+def _live_decay_reason(cur, dep: Dict) -> Optional[str]:
+    n, total = repo.deployment_closed_stats(cur, dep["id"])
+    if n < LIVE_DECAY_MIN_TRADES or total >= 0:
+        return None
+    return ("Live is down $%.2f over its first %d closed trades ($%.2f a trade); its paper edge did not "
+            "survive real execution." % (-total, n, total / n))
 
 
 # -- drawdown + position-stop force-sell -----------------------------------------
@@ -803,6 +1031,8 @@ def _force_close_kernel(dep: Dict, sources: Sources):
         return None
     if mode == "demo":
         return sources.demo_kernel(dep["user_id"]) if sources.demo_kernel else None
+    if mode == "paper" and sources.paper_kernel:
+        return sources.paper_kernel(dep["user_id"])
     return None
 
 
@@ -836,7 +1066,7 @@ def force_sell_if_drawn_down(conn, dep: Dict, sources: Sources) -> bool:
     close_reason = "drawdown" if reasons[0].startswith("drawdown") else "stop"
     mode = dep["mode"]
     via_kernel = mode in ("live", "demo")
-    kernel = _force_close_kernel(dep, sources) if via_kernel else None
+    kernel = _force_close_kernel(dep, sources)  # paper: the simulated-venue kernel, or None (instant)
     for pos in repo.open_positions(cur, dep["id"]):
         if via_kernel and kernel is None:
             break  # no execution path; pause below and let the positions settle at expiry
@@ -893,7 +1123,7 @@ def flatten_deployment(conn, dep: Dict, sources: Sources) -> int:
     cur = conn.cursor()
     mode = dep["mode"]
     via_kernel = mode in ("live", "demo")
-    kernel = _force_close_kernel(dep, sources) if via_kernel else None
+    kernel = _force_close_kernel(dep, sources)  # paper: the simulated-venue kernel, or None (instant)
     closed = 0
     for pos in repo.open_positions(cur, dep["id"]):
         if via_kernel and kernel is None:
@@ -940,22 +1170,78 @@ def enforce_flatten_on_pause(conn, sources: Sources) -> int:
 # -- crash recovery of in-flight orders (EXECUTION_RISK_HARDENING P0-1, closes F1/F2 + the DR gap) --
 
 
-def _match_order_fill(orders: List[Dict], client_order_id: str) -> Optional[Dict]:
-    """Find the order with this client_order_id in an exchange orders list and read its fill, or None
-    if it is ABSENT. Absent is deliberately indeterminate (not 'unfilled'): an IOC order that filled
-    may not appear in a resting-orders view, and wrongly booking it unfilled would drop a real
-    position. Only a POSITIVELY-found order with an explicit fill count is acted on."""
+def _match_order_fill(orders: List[Dict], client_order_id: str, side: Optional[str] = None) -> Optional[Dict]:
+    """Read one intent's TOTAL fill from an exchange orders list, or None if it is indeterminate.
+
+    One intent can send several child orders: ``client_order_id`` for the first, then ``<id>-1``,
+    ``<id>-2``, ... for each escalating retry (execution_kernel.child_client_order_id). A crash or a
+    timeout on any child leaves the intent 'sent', and every child that filled is real exposure, so
+    the fill is the SUM over every child found, with a size-weighted average price and summed fees.
+
+    The first child ABSENT is indeterminate (None), not 'unfilled': an IOC order that filled may not
+    appear in the view we read, and wrongly booking it unfilled would drop a real position. Only a
+    positively-found first order is acted on; a retry child that is absent was never sent.
+
+    Fill prices on the wire are YES prices (order_wire_params), so a NO intent's average is flipped
+    back to its own cost basis (1 - yes), exactly as the kernel parses a live fill."""
     def _num(v, d=0.0):
         try:
             return float(v) if v is not None else d
         except (TypeError, ValueError):
             return d
+    base = str(client_order_id)
+    found_base = False
+    filled_total, weighted, fee_total, order_id = 0, 0.0, 0.0, None
     for o in orders or []:
-        if str(o.get("client_order_id")) == str(client_order_id):
-            filled = int(_num(o.get("fill_count")))
-            return {"filled": filled, "avg_price": _num(o.get("average_fill_price")),
-                    "fee": _num(o.get("average_fee_paid")) * filled, "order_id": o.get("order_id")}
-    return None
+        coid = str(o.get("client_order_id"))
+        if coid == base:
+            found_base = True
+        elif not (coid.startswith(base + "-") and coid[len(base) + 1:].isdigit()):
+            continue
+        filled = int(_num(o.get("fill_count")))
+        if filled <= 0:
+            if order_id is None and coid == base:
+                order_id = o.get("order_id")
+            continue
+        px = _num(o.get("average_fill_price"))
+        if str(side or "").lower() == "no" and px > 0:
+            px = 1.0 - px
+        filled_total += filled
+        weighted += px * filled
+        fee_total += _num(o.get("average_fee_paid")) * filled
+        order_id = o.get("order_id")
+    if not found_base:
+        return None
+    avg = round(weighted / filled_total, 4) if filled_total else 0.0
+    return {"filled": filled_total, "avg_price": avg, "fee": round(fee_total, 6), "order_id": order_id}
+
+
+def _intent_min_ts(it: Dict) -> Optional[int]:
+    """Unix seconds a little before the intent was logged, to bound the exchange orders read."""
+    created = it.get("created_at")
+    if not isinstance(created, datetime):
+        return None
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+    return int(created.timestamp()) - 120
+
+
+def _orders_since(fetch_page: Callable[[Dict], Dict], ticker: str, min_ts: Optional[int],
+                  max_pages: int = 10) -> List[Dict]:
+    """Every order on ``ticker`` since ``min_ts``, following the cursor (a busy ticker has more than
+    one page, and the child we need may not be on the first)."""
+    params: Dict = {"ticker": ticker, "limit": 200}
+    if min_ts is not None:
+        params["min_ts"] = min_ts
+    out: List[Dict] = []
+    for _ in range(max_pages):
+        page = fetch_page(dict(params)) or {}
+        out.extend(page.get("orders") or [])
+        cursor = page.get("cursor")
+        if not cursor:
+            break
+        params["cursor"] = cursor
+    return out
 
 
 def _make_order_lookup(conn) -> Callable[[Dict], Optional[Dict]]:
@@ -977,17 +1263,19 @@ def _make_order_lookup(conn) -> Callable[[Dict], Optional[Dict]]:
                 if row is None:
                     return None
                 creds = kalshi_account.credentials_from_row(it["user_id"], row)
-                orders = (kalshi_dev_exec.demo_orders(creds, ticker=it["ticker"]) or {}).get("orders") or []
+                orders = _orders_since(lambda p: kalshi_dev_exec.demo_orders(creds, params=p),
+                                       it["ticker"], _intent_min_ts(it))
             elif mode == "live" and LIVE_TRADING_ENABLED:
                 row = repo.get_kalshi_key(conn.cursor(), it["user_id"])
                 if row is None:
                     return None
                 creds = kalshi_account.credentials_from_row(it["user_id"], row)
-                orders = (api_get_auth("/trade-api/v2/portfolio/orders", {"ticker": it["ticker"]},
-                                       credentials=creds) or {}).get("orders") or []
+                orders = _orders_since(lambda p: api_get_auth("/trade-api/v2/portfolio/orders", p,
+                                                              credentials=creds),
+                                       it["ticker"], _intent_min_ts(it))
             else:
                 return None  # live recovery only when the live gate is on; unknown mode -> leave 'sent'
-            return _match_order_fill(orders, coid)
+            return _match_order_fill(orders, coid, it.get("side"))
         except Exception as e:
             print("[engine] order lookup failed for intent %s: %r (leaving sent)"
                   % (it.get("intent_id"), e), flush=True)
@@ -1028,6 +1316,20 @@ def _book_recovered(conn, it: Dict, filled: int, avg_price: float, fee: float, o
             repo.book_partial_exit(tx, pos, filled, avg_price, fee, pnl, reason)
 
 
+def _past_resolution_horizon(it: Dict, now: datetime) -> bool:
+    """True once asking the exchange about this 'sent' intent again cannot help (see
+    UNRESOLVED_AFTER_CLOSE_SECONDS)."""
+    def aware(dt):
+        if not isinstance(dt, datetime):
+            return None
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+    close, created = aware(it.get("market_close_time")), aware(it.get("created_at"))
+    if close is not None:
+        return (now - close).total_seconds() > UNRESOLVED_AFTER_CLOSE_SECONDS
+    return created is not None and (now - created).total_seconds() > UNRESOLVED_NO_CLOSE_SECONDS
+
+
 def recover_sent_intents(conn, sources: Sources, older_than_seconds: int = 30) -> int:
     """Deterministic crash recovery (P0-1): for each order-intent left 'sent' (POST issued, outcome
     unknown — the F1/F2 crash / lost-response window), ask the exchange whether it filled and book it
@@ -1039,7 +1341,19 @@ def recover_sent_intents(conn, sources: Sources, older_than_seconds: int = 30) -
     if lookup is None:
         return 0
     resolved = 0
+    now = datetime.now(timezone.utc)
     for it in repo.open_sent_intents(cur, older_than_seconds):
+        if _past_resolution_horizon(it, now):
+            try:
+                repo.mark_order_intent(cur, it["intent_id"], "unresolved")
+                _unrecovered_logged.pop(str(it.get("intent_id")), None)
+                print("[engine] GAVE UP on in-flight order intent %s (%s %s %s x%d): the exchange never "
+                      "accounted for it and its market closed long ago; marked 'unresolved'"
+                      % (it.get("intent_id"), it.get("mode"), it.get("action"), it.get("ticker"), it.get("qty")),
+                      flush=True)
+            except Exception as e:
+                print("[engine] could not mark intent %s unresolved: %r" % (it.get("intent_id"), e), flush=True)
+            continue
         try:
             fill = lookup(it)
         except Exception as e:
@@ -1047,9 +1361,12 @@ def recover_sent_intents(conn, sources: Sources, older_than_seconds: int = 30) -
                   % (it.get("intent_id"), e), flush=True)
             continue
         if fill is None:
-            print("[engine] UNRECOVERED in-flight order intent %s (%s %s %s x%d) — left 'sent', needs attention"
-                  % (it.get("intent_id"), it.get("mode"), it.get("action"), it.get("ticker"), it.get("qty")),
-                  flush=True)
+            key = str(it.get("intent_id"))
+            if time.time() - _unrecovered_logged.get(key, 0.0) >= UNRECOVERED_LOG_EVERY_SECONDS:
+                _unrecovered_logged[key] = time.time()  # loud, but once an hour per intent, not every pass
+                print("[engine] UNRECOVERED in-flight order intent %s (%s %s %s x%d) — left 'sent', needs attention"
+                      % (it.get("intent_id"), it.get("mode"), it.get("action"), it.get("ticker"), it.get("qty")),
+                      flush=True)
             continue  # indeterminate — NEVER re-send
         try:
             filled = int(fill.get("filled") or 0)
@@ -1118,7 +1435,7 @@ def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] 
             print("[engine] spot fetch failed for %s: %r (skipping tick)" % (market.key, e), flush=True)
             feats = None
     snaps = [s for s in (snapshot(feats, q.contract, now_ts, q.yes_bid, q.yes_ask) for q in quotes) if s is not None]
-    sizes = {q.contract.ticker: q.yes_ask_size for q in quotes}
+    sizes = book_sizes(quotes)
     # (positions were already marked above, every tick — not only when a decision is due)
     stats["decided"] = 0
     for dep in due:
@@ -1158,7 +1475,7 @@ def _cross_market_frame(markets: List[str], sources: Sources, now_ts: int):
     if any(MARKETS[key].kind == "perpetual" for key in markets):
         return None  # a persisted cross row must never fetch/price perpetuals as binary legs
     all_snaps: List[Snapshot] = []
-    sizes: Dict[str, Optional[float]] = {}
+    sizes: Dict = {}
     for key in markets:
         market = MARKETS[key]
         try:
@@ -1183,7 +1500,7 @@ def _cross_market_frame(markets: List[str], sources: Sources, now_ts: int):
             s = snapshot(feats, q.contract, now_ts, q.yes_bid, q.yes_ask)
             if s is not None:
                 all_snaps.append(s)
-            sizes[q.contract.ticker] = q.yes_ask_size
+        sizes.update(book_sizes(quotes))
     return all_snaps, sizes
 
 
@@ -1277,6 +1594,81 @@ def enforce_autopilot_limits(conn) -> int:
     return killed
 
 
+def enforce_account_equity_limits(conn) -> int:
+    """Kill switch on the user's REAL Kalshi account, not our book: if account equity (cash plus
+    Kalshi's own position value) has fallen by the user's daily loss limit since the first reading
+    of the UTC day, turn live autopilot off and pause every running LIVE deployment, exactly like
+    enforce_autopilot_limits. That one reads only booked P&L, so a fill we never recorded, a fee we
+    under-counted or an open position marked down never trips it. A withdrawal reads as a loss
+    (stops early, the safe side); a deposit masks one. Read-only against the exchange."""
+    from app import kalshi_account
+    from data_pipeline.common import kalshi_account_equity_dollars
+
+    cur = conn.cursor()
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    killed = 0
+    for u in repo.users_for_equity_guard(cur):
+        uid, lim = int(u["id"]), float(u["lim"] or 0)
+        if lim <= 0:
+            continue
+        try:
+            creds = kalshi_account.credentials_from_row(uid, repo.get_kalshi_key(cur, uid))
+            equity = kalshi_account_equity_dollars(creds)
+        except Exception as e:  # contained per user
+            print("[engine] equity read failed for user %d: %r" % (uid, e), flush=True)
+            continue
+        if equity is None:
+            continue
+        loss = repo.equity_day_start(cur, uid, day, equity) - equity
+        if loss < lim:
+            continue
+        if u.get("autopilot_live"):
+            repo.set_autopilot_live(cur, uid, False)
+        for d in repo.list_deployments(cur, uid):
+            if d["mode"] == "live" and d["status"] == "running":
+                repo.set_deployment_status(cur, uid, d["id"], "paused", "Kalshi account daily loss limit hit")
+        repo.add_chat(cur, uid, "system",
+                      "Live trading stopped: your Kalshi account is down $%.2f today (equity $%.2f), past "
+                      "your $%.2f daily limit. Live autopilot is off and live deployments are paused."
+                      % (loss, equity, lim))
+        killed += 1
+    return killed
+
+
+SIM_ORDER_REF_PREFIX = "sim:"  # order_ref of a paper position filled through the simulated venue
+
+
+def _execution_kernel(submitter, feed, xc: Dict):
+    """The ONE execution policy every mode runs: live, demo and simulated paper differ only in the
+    submitter. `xc` is the user's execution overrides (set by the co-pilot's set_exec, clamped to a
+    safe envelope); a NULL value falls back to the global KALSHI_MAX_* env default. Each knob can
+    only shrink or abandon an order and never blocks an exit, so this never loosens safety."""
+    from data_pipeline.architecture.execution_kernel import MarketableLimitKernel
+
+    def _exec(col: str, env: str) -> Optional[float]:
+        v = xc.get(col)
+        return float(v) if v is not None else _opt_float(os.getenv(env))
+
+    # Market-order-like entries: cross through the touch and take the current best
+    # ask quickly (IOC), rather than resting a passive limit. The slippage cap keeps
+    # it from paying an absurd price if the book is thin; raise KALSHI_MAX_ENTRY_SLIPPAGE
+    # toward 0.99 for a true "take whatever's there" market order. All tunable by env.
+    return MarketableLimitKernel(
+        submitter, feed,
+        entry_cross_ticks=int(os.getenv("KALSHI_ENTRY_CROSS_TICKS", "2")),
+        exit_cross_ticks=int(os.getenv("KALSHI_EXIT_CROSS_TICKS", "2")),
+        max_entry_slippage=float(os.getenv("KALSHI_MAX_ENTRY_SLIPPAGE", "0.10")),
+        max_attempts=int(os.getenv("KALSHI_ORDER_MAX_ATTEMPTS", "3")),
+        max_quote_age_seconds=float(os.getenv("KALSHI_MAX_QUOTE_AGE_SECONDS", "2.0")),
+        # Thin-book controls, all off unless set (see MarketableLimitKernel). Each can only
+        # shrink or abandon an order, and none can block an exit, so enabling any is a
+        # strictly-stricter change, tunable without a redeploy.
+        max_book_fraction=_exec("exec_max_book_fraction", "KALSHI_MAX_BOOK_FRACTION"),
+        max_entry_spread=_exec("exec_max_entry_spread", "KALSHI_MAX_ENTRY_SPREAD"),
+        max_order_notional=_exec("exec_max_order_notional", "KALSHI_MAX_ORDER_NOTIONAL"),
+    )
+
+
 def live_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
     """user_id -> MarketableLimitKernel signing with that user's own key.
 
@@ -1285,7 +1677,6 @@ def live_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
     => REST-only, exactly as before."""
     from app import kalshi_account
     from app.execution import guarded_submitter, timed_submitter
-    from data_pipeline.architecture.execution_kernel import MarketableLimitKernel
     from data_pipeline.architecture.position_guard import exchange_net_reader, position_guarded_submitter
     from data_pipeline.market_data import MarketFeed
 
@@ -1297,42 +1688,53 @@ def live_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
         if row is None:
             return None
         creds = kalshi_account.credentials_from_row(user_id, row)
-        # Per-user execution overrides (set by the co-pilot's set_exec, clamped to a safe envelope)
-        # take precedence; a NULL column falls back to the global KALSHI_MAX_* env default. Each knob
-        # can only shrink or abandon an order and never blocks an exit, so this never loosens safety.
-        xc = repo.user_execution_config(cur, user_id)
-
-        def _exec(col: str, env: str) -> Optional[float]:
-            v = xc.get(col)
-            return float(v) if v is not None else _opt_float(os.getenv(env))
-
-        # Market-order-like entries: cross through the touch and take the current best
-        # ask quickly (IOC), rather than resting a passive limit. The slippage cap keeps
-        # it from paying an absurd price if the book is thin; raise KALSHI_MAX_ENTRY_SLIPPAGE
-        # toward 0.99 for a true "take whatever's there" market order. All tunable by env.
-        return MarketableLimitKernel(
-            # P1-3: every real order first passes the process-wide execution guards (kill switch,
-            # fat-finger, rate limit, circuit breaker). They only ever block a BUY, never an exit.
-            # P2: timed_submitter is the outermost wrapper so it also measures guard-blocked and
-            # errored sends; it records off the send path and passes the result through unchanged.
-            # Innermost: no SELL may take this user's account past flat, sized to what Kalshi
-            # (not our book) says they hold. Like the guards above it can only shrink/refuse a sell.
-            timed_submitter(guarded_submitter(position_guarded_submitter(
-                kalshi_account.order_submitter(creds), exchange_net_reader(creds))), mode="live"), feed,
-            entry_cross_ticks=int(os.getenv("KALSHI_ENTRY_CROSS_TICKS", "2")),
-            exit_cross_ticks=int(os.getenv("KALSHI_EXIT_CROSS_TICKS", "2")),
-            max_entry_slippage=float(os.getenv("KALSHI_MAX_ENTRY_SLIPPAGE", "0.10")),
-            max_attempts=int(os.getenv("KALSHI_ORDER_MAX_ATTEMPTS", "3")),
-            max_quote_age_seconds=float(os.getenv("KALSHI_MAX_QUOTE_AGE_SECONDS", "2.0")),
-            # Thin-book controls, all off unless set (see MarketableLimitKernel). Each can only
-            # shrink or abandon an order, and none can block an exit, so enabling any is a
-            # strictly-stricter change, tunable without a redeploy.
-            max_book_fraction=_exec("exec_max_book_fraction", "KALSHI_MAX_BOOK_FRACTION"),
-            max_entry_spread=_exec("exec_max_entry_spread", "KALSHI_MAX_ENTRY_SPREAD"),
-            max_order_notional=_exec("exec_max_order_notional", "KALSHI_MAX_ORDER_NOTIONAL"),
-        )
+        # P1-3: every real order first passes the process-wide execution guards (kill switch,
+        # fat-finger, rate limit, circuit breaker). They only ever block a BUY, never an exit.
+        # P2: timed_submitter is the outermost wrapper so it also measures guard-blocked and
+        # errored sends; it records off the send path and passes the result through unchanged.
+        # Innermost: no SELL may take this user's account past flat, sized to what Kalshi
+        # (not our book) says they hold. Like the guards above it can only shrink/refuse a sell.
+        submitter = timed_submitter(guarded_submitter(position_guarded_submitter(
+            kalshi_account.order_submitter(creds), exchange_net_reader(creds))), mode="live")
+        return _execution_kernel(submitter, feed, repo.user_execution_config(cur, user_id))
 
     return make
+
+
+def paper_kernel_factory(conn, ws_feed=None) -> Optional[Callable[[int], object]]:
+    """user_id -> the live execution kernel over a SimulatedVenue, which never sends an order.
+
+    Paper then misses entries on a stale quote or a moved ask, fills only the size resting at the
+    touch, pays the fee on the fill price and can fail to exit, all exactly as live does. That is
+    what makes paper results evidence for the live gate. The real-order guards (kill switch, rate
+    limit) are deliberately NOT applied: paper must not spend the live order budget. Returns None
+    when APP_PAPER_REALISTIC_FILLS=0 (legacy instant fills at the quote)."""
+    if os.getenv("APP_PAPER_REALISTIC_FILLS", "1").strip().lower() in ("0", "false", "no", "off"):
+        return None
+    from data_pipeline.architecture.simulated_venue import SimulatedVenue
+    from data_pipeline.market_data import MarketFeed
+
+    feed = MarketFeed(ws_feed=ws_feed)
+    venue = SimulatedVenue(feed, max_quote_age_seconds=float(os.getenv("KALSHI_MAX_QUOTE_AGE_SECONDS", "2.0")))
+
+    def make(user_id: int):
+        return _execution_kernel(venue, feed, repo.user_execution_config(conn.cursor(), user_id))
+
+    make.venue, make.feed = venue, feed  # read by paper_fill_stats for the engine log
+    return make
+
+
+def paper_fill_stats(paper_kernel) -> Optional[str]:
+    """One log line on how simulated paper orders are faring: orders sent and filled through the
+    SimulatedVenue, and where pricing quotes came from. A low fill rate or many quote misses means
+    paper is starved of evidence (stale book), which the live gate would then never see."""
+    venue = getattr(paper_kernel, "venue", None)
+    if venue is None:
+        return None
+    sent, filled = int(venue.orders_sent), int(venue.orders_filled)
+    rate = (100.0 * filled / sent) if sent else 0.0
+    quotes = dict(getattr(getattr(paper_kernel, "feed", None), "stats", None) or {})
+    return "[engine] paper sim: %d orders sent, %d filled (%.0f%%); quotes %s" % (sent, filled, rate, quotes)
 
 
 def run_forever() -> None:
@@ -1342,6 +1744,9 @@ def run_forever() -> None:
 
     last_review = 0.0
     last_reconcile = 0.0
+    last_equity_check = 0.0
+    # How often to read each live user's real Kalshi equity for the account loss kill switch.
+    equity_every = float(os.getenv("APP_EQUITY_CHECK_EVERY_SECONDS", "60"))
     # How often to reconcile each user's live book against their real Kalshi account.
     reconcile_every = float(os.getenv("APP_RECONCILE_EVERY_SECONDS", "300"))
     # One shared live-book websocket for the whole engine (P1-1): marks, PnL and order pricing all
@@ -1368,6 +1773,7 @@ def run_forever() -> None:
             sources = Sources(
                 live_kernel=live_kernel_factory(conn, ws_feed=ws_feed) if LIVE_TRADING_ENABLED else None,
                 demo_kernel=demo_kernel,
+                paper_kernel=paper_kernel_factory(conn, ws_feed=ws_feed),
                 order_lookup=_make_order_lookup(conn),
                 ws_feed=ws_feed,
             )
@@ -1398,6 +1804,9 @@ def run_forever() -> None:
                     if time.time() - last_review > 600:
                         schedule_reviews(conn.cursor())
                         last_review = time.time()
+                        line = paper_fill_stats(sources.paper_kernel)
+                        if line:
+                            print(line, flush=True)
                     try:
                         repo.engine_heartbeat(conn.cursor(), LIVE_TRADING_ENABLED)
                     except Exception:
@@ -1417,8 +1826,10 @@ def run_forever() -> None:
                     except Exception as e:
                         print("[engine] flatten-on-pause enforcement failed: %r" % e, flush=True)
                     # Catch in-process orphans too (a swallowed timeout mid-run, not only a crash):
-                    # re-reconcile 'sent' intents every ~5 min. Contained; never re-sends.
-                    if time.time() - last_recover > 300:
+                    # re-reconcile 'sent' intents every RECOVER_EVERY_SECONDS. Cheap when there are
+                    # none (one indexed read); while one is open its ticker is blocked
+                    # (INFLIGHT_BLOCK_SECONDS), so resolve it fast. Contained; never re-sends.
+                    if time.time() - last_recover > RECOVER_EVERY_SECONDS:
                         try:
                             recover_sent_intents(conn, sources)
                         except Exception as e:
@@ -1429,6 +1840,13 @@ def run_forever() -> None:
                             enforce_autopilot_limits(conn)
                         except Exception as e:
                             print("[engine] autopilot limit check failed: %r" % e, flush=True)
+                        if time.time() - last_equity_check > equity_every:
+                            try:
+                                if enforce_account_equity_limits(conn):
+                                    print("[engine] account equity kill switch tripped", flush=True)
+                            except Exception as e:
+                                print("[engine] account equity check failed: %r" % e, flush=True)
+                            last_equity_check = time.time()
                     # Live position reconciliation: compare each user's book to their real
                     # Kalshi account. Read-only against the exchange; it only writes the audit
                     # trail + user notifications. Fully contained so it can never stop the loop.

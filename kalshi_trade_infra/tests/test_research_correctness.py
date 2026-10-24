@@ -156,6 +156,8 @@ def test_abandoned_run_message_is_informative():
 
     from app import repository as repo
     repo.fail_abandoned_runs(_Cur(), timedelta(seconds=240))
+    # An interrupted run is STOPPED, never failed, and says it was interrupted — not a scary error.
+    assert "status='stopped'" in " ".join(captured["sql"].split())
     msg = captured["params"][0]
     assert "interrupted before it explored" in msg and "start a new one" in msg
     assert "status='stopped'" in captured["sql"]

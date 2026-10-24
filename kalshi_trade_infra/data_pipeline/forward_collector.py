@@ -5,7 +5,7 @@ import os
 import ssl
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Set
 
 import certifi
@@ -160,6 +160,9 @@ class WsTickerFeed:
                 except asyncio.TimeoutError:
                     continue
                 data = json.loads(msg_raw)
+                if data.get("type") == "trade":
+                    self._record_trade(data.get("msg") or {})
+                    continue
                 if data.get("type") != "ticker":
                     continue
                 msg = data.get("msg") or {}
@@ -179,7 +182,10 @@ class WsTickerFeed:
         payload = {
             "id": self._msg_id,
             "cmd": "subscribe",
-            "params": {"channels": ["ticker"], "market_tickers": tickers},
+            # "trade" streams every print on these markets into market_trades: who took
+            # liquidity, at what price, how many. Book ticks alone can only bracket when a
+            # resting order would have filled; prints say when one actually could have.
+            "params": {"channels": ["ticker", "trade"], "market_tickers": tickers},
         }
         self._msg_id += 1
         await self._ws.send(json.dumps(payload))
@@ -208,6 +214,17 @@ class WsTickerFeed:
             )
         except Exception as e:
             print(f"[WARN] quote tick insert failed: {e}")
+
+    def _record_trade(self, msg: Dict) -> None:
+        """One market_trades row per print. Best effort, like the quote ticks."""
+        row = trade_row(msg)
+        if row is None:
+            return
+        try:
+            self._ensure_db()
+            insert_trade_row(self._db_cur, row)
+        except Exception as e:
+            print(f"[WARN] trade insert failed: {e}")
 
     def _record_quote_change(self, msg: Dict) -> None:
         ticker = msg.get("market_ticker")
@@ -249,6 +266,44 @@ class WsTickerFeed:
             """,
             (bucket, ticker, event_ticker, bid, ask, utc_now().replace(tzinfo=None)),
         )
+
+
+def _dollars(msg: Dict, key: str) -> Optional[float]:
+    """A price in dollars from a WS trade message: ``<key>_dollars`` if sent, else cents."""
+    v = msg.get(key + "_dollars")
+    if v is not None:
+        return float(v)
+    v = msg.get(key)
+    return None if v is None else float(v) / 100.0
+
+
+def trade_row(msg: Dict) -> Optional[tuple]:
+    """The market_trades row for one WS ``trade`` message, or None if it is unusable."""
+    trade_id, ticker = msg.get("trade_id"), msg.get("market_ticker")
+    if not trade_id or not ticker:
+        return None
+    try:
+        ts = msg.get("ts")
+        created = datetime.fromtimestamp(int(ts), tz=timezone.utc) if ts is not None else utc_now()
+        yes, no = _dollars(msg, "yes_price"), _dollars(msg, "no_price")
+        count = msg.get("count_fp")
+        count = float(count) if count is not None else (None if msg.get("count") is None else float(msg["count"]))
+    except (TypeError, ValueError):
+        return None
+    return (str(trade_id), ticker, created.replace(tzinfo=None), yes, no, count, msg.get("taker_side"),
+            utc_now().replace(tzinfo=None), json.dumps(msg))
+
+
+def insert_trade_row(cur, row: tuple) -> None:
+    # INSERT IGNORE: a reconnect resubscribes, and the same trade_id can arrive twice.
+    cur.execute(
+        """
+        INSERT IGNORE INTO market_trades
+        (trade_id,ticker,created_time,yes_price_dollars,no_price_dollars,count_fp,taker_side,collected_at_utc,raw_json)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """,
+        row,
+    )
 
 
 def insert_market_upserts(cur, markets: List[Dict]) -> None:

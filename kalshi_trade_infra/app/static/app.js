@@ -2381,6 +2381,7 @@
             </form><div id="shareflash"></div>
           </section>
           <section class="panel"><h3>Gates</h3><div id="gates">${gatesHtml(s.gates)}</div></section>
+          ${!restricted && s.status === 'passed' ? `<section class="panel" id="road-live"><h3>Road to live</h3><div id="road-live-body"><p class="hint">Checking…</p></div></section>` : ''}
           ${!perpetual && s.status !== 'rejected' ? `<section class="panel" id="whatif"><h3>What if…</h3>
             <p class="hint" style="margin-bottom:6px">Move a dial and the whole sheet re-runs.</p>
             <div class="dial"><div class="top"><label class="label" for="wf">Fees</label><output id="wfo">1.0×</output></div><input type="range" id="wf" min="0" max="3" step="0.25" value="1"></div>
@@ -2410,6 +2411,30 @@
           }
         }
       } catch (e) { /* demo replay is best-effort; leave the sim-only chart */ }
+    })();
+    // Road to live: the exact gates the deploy paths enforce (gatekeeper, realistic paper record,
+    // live autopilot), with progress. Best-effort and fetched after the page, like the dev curve.
+    if (root.querySelector('#road-live-body')) (async () => {
+      try {
+        const r = await api('/api/strategies/' + s.id + '/live-readiness');
+        const p = r.paper, c = p.checks;
+        const pv = p.p_value == null ? '—' : p.p_value.toFixed(2);
+        const rows = [
+          { name: 'Gatekeeper cleared', threshold: 'holdout + diversification', ok: r.deployment_candidate, value: r.deployment_candidate ? 'yes' : 'no' },
+          { name: 'Realistic paper trades', threshold: p.trades_needed + '+', ok: c.realistic_trades, value: p.trades + ' / ' + p.trades_needed },
+          { name: 'Net after fees', threshold: 'above $0', ok: c.net_pnl, value: p.net_pnl },
+          { name: 'Paper track record', threshold: p.span_needed_hours + 'h+', ok: c.span, value: Math.round(p.span_hours) + 'h' },
+          { name: 'Edge is not luck', threshold: 'p ≤ ' + p.p_value_needed.toFixed(2), ok: c.edge, value: pv },
+          { name: 'Live autopilot', threshold: 'on, key, under daily loss', ok: r.live_autopilot.ok, value: r.live_autopilot.ok ? 'ready' : 'off' },
+        ];
+        const body = root.querySelector('#road-live-body');
+        if (body) body.innerHTML = gatesHtml(rows)
+          + (p.realization != null ? `<p class="hint" style="margin-top:6px;font-variant-numeric:tabular-nums">Paper earns <b>${Math.round(p.realization * 100)}%</b> of the backtest's unseen-data P&amp;L per trade.</p>` : '')
+          + `<p class="hint" style="margin-top:6px">${r.ready ? 'Every gate is clear. Autopilot may move this to live money within your caps.' : 'Blocked: ' + esc(r.blocking) + '.'} Paper counts only fills simulated against the live order book.</p>`;
+      } catch (e) {
+        const body = root.querySelector('#road-live-body');
+        if (body) body.innerHTML = '<p class="hint">Live readiness is unavailable right now.</p>';
+      }
     })();
     const depPaper = root.querySelector('#dep-paper');
     if (depPaper) depPaper.onclick = () => busy(depPaper, async () => {
@@ -2579,9 +2604,9 @@
           </form>
           <div id="pflash" style="margin-top:10px"></div>
         </section>
+        ${S.me.perps_live_available ? '<section id="kalshi-perps-live" aria-label="Bitcoin perpetual trading"></section>' : ''}
         </div>
         <div class="funds-col funds-history">
-        <section id="kalshi-perps-live" aria-label="Bitcoin perpetual trading"></section>
         <section class="panel">
           <h3>Paper history</h3>
           <table class="table stack"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody>
@@ -3219,6 +3244,7 @@
       <div><dt>Running</dt><dd>${runTotal ? runParts.join(' · ') : 'None'}</dd></div>
       <div><dt>Live P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd></div>
       <div><dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd></div>
+      ${d.paper_progress ? `<div><dt>Closest to live</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> · ${d.paper_progress.trades}/${d.paper_progress.trades_needed} paper trades · ${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}
       ${d.last_review_at ? `<div><dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd></div>` : ''}`;
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
     const gates = box.querySelector('#apf-gates');
@@ -3443,11 +3469,10 @@
   // ---------- admin ----------
   async function viewAdmin() {
     if (!adminViewOn()) return go('/', true);
-    shell('/admin', boardTitle('Admin', 'Operator tools: grant credits and see who has signed up or joined the waitlist.'), `
+    shell('/admin', boardTitle('Admin', 'Operator tools: grant credits and see who has signed up.'), `
       <div class="detail">
         <div>
           <section class="sect"><div class="sect-head"><h2>Users</h2><span id="ucount" class="sect-note"></span></div><div id="users">${loading(200)}</div></section>
-          <section class="sect"><div class="sect-head"><h2>Waitlist</h2></div><div id="waitlist"></div></section>
         </div>
         <aside>
           <form class="panel" id="grant"><h3>Grant credits</h3>
@@ -3457,6 +3482,13 @@
             <div id="g-flash"></div>
             <p class="hint" style="margin-top:8px">The user must have signed in at least once.</p>
           </form>
+          <form class="panel" id="kill" style="margin-top:14px"><h3>Kill switch</h3>
+            <p id="k-state" class="hint">Loading…</p>
+            <label class="field"><span>Reason</span><input class="input" id="k-reason" type="text" maxlength="200" placeholder="why you are halting"></label>
+            <button class="btn danger" type="submit" id="k-btn" style="margin-top:12px;width:100%">Halt new buys</button>
+            <div id="k-flash"></div>
+            <p class="hint" style="margin-top:8px">Stops every new live and demo buy within about 5 seconds. Exits always run.</p>
+          </form>
         </aside>
       </div>`);
     const load = async () => {
@@ -3465,18 +3497,6 @@
       root.querySelector('#users').innerHTML = `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>Email</th><th>Name</th><th>Joined</th><th class="num">Balance</th></tr></thead><tbody>${d.users.map((u) => `<tr>
         <td class="name" data-lab="Email">${esc(u.email)}</td><td data-lab="Name">${esc(u.name || '')}</td>
         <td class="hint" data-lab="Joined">${when(u.created_at)}</td><td class="num" data-lab="Balance">${usd(u.balance)}</td></tr>`).join('')}</tbody></table></div>`;
-      root.querySelector('#waitlist').innerHTML = d.waitlist.length
-        ? `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>Email</th><th>Note</th><th>When</th><th>Status</th><th></th></tr></thead><tbody>${d.waitlist.map((w) => `<tr>
-          <td class="name" data-lab="Email">${esc(w.email)}</td><td data-lab="Note">${esc(w.note || '')}</td><td class="hint" data-lab="When">${when(w.created_at)}</td>
-          <td data-lab="Status">${w.status === 'approved' ? '<span class="mk on">Approved</span> <small class="hint">awaiting their sign-in</small>' : 'Requested'}</td>
-          <td class="act" data-lab="">${w.status === 'approved' ? '' : `<button class="btn sm" data-wl="approve" data-email="${esc(w.email)}">Approve</button>`}<button class="btn sm danger" data-wl="remove" data-email="${esc(w.email)}">Remove</button></td></tr>`).join('')}</tbody></table></div>`
-        : '<p class="hint">No waitlist requests.</p>';
-      root.querySelectorAll('#waitlist [data-wl]').forEach((b) => (b.onclick = async () => {
-        await busy(b, async () => {
-          try { await api('/api/admin/waitlist', { email: b.dataset.email, action: b.dataset.wl }); await load(); }
-          catch (err) { alert0(err.message); }
-        });
-      }));
     };
     root.querySelector('#grant').onsubmit = async (e) => {
       e.preventDefault();
@@ -3485,6 +3505,26 @@
           const r = await api('/api/admin/grant', { email: root.querySelector('#g-email').value.trim(), amount: +root.querySelector('#g-amt').value });
           flash('#g-flash', `Granted. ${esc(r.email)} balance: ${usd(r.balance)}.`, 'good'); await load();
         } catch (err) { flash('#g-flash', err.message, 'bad'); }
+      });
+    };
+        const killShow = (k) => {
+      const st = root.querySelector('#k-state'), btn = root.querySelector('#k-btn');
+      st.innerHTML = k.on || k.env_on
+        ? `<span class="mk on">ON</span> New buys are halted${k.reason ? `: ${esc(k.reason)}` : ''}${k.by ? ` <small class="hint">by ${esc(k.by)}</small>` : ''}${k.env_on ? ' <small class="hint">(also set in the server env)</small>' : ''}`
+        : 'Off. Orders flow normally.';
+      btn.textContent = k.on ? 'Resume buys' : 'Halt new buys';
+      btn.className = k.on ? 'btn primary' : 'btn danger';
+      btn.dataset.on = k.on ? '1' : '';
+    };
+    api('/api/admin/kill-switch').then((k) => { killShow(k); }).catch((err) => { flash('#k-flash', err.message, 'bad'); });
+    root.querySelector('#kill').onsubmit = async (e) => {
+      e.preventDefault();
+      const btn = root.querySelector('#k-btn');
+      await busy(btn, async () => {
+        try {
+          const k = await api('/api/admin/kill-switch', { on: !btn.dataset.on, reason: root.querySelector('#k-reason').value.trim() });
+          killShow(k);
+        } catch (err) { flash('#k-flash', err.message, 'bad'); }
       });
     };
     await load();

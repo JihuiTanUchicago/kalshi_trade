@@ -553,6 +553,33 @@ def test_json_encoding_of_db_types():
 
 
 def test_spa_routes():
-    for path in ("/", "/research/12", "/strategies", "/strategies/3", "/deploy", "/funds", "/signin"):
+    for path in ("/", "/research/12", "/strategies", "/strategies/3", "/deploy", "/funds", "/signin",
+                 "/terms", "/privacy"):
         assert server.SPA_ROUTES.match(path)
     assert not server.SPA_ROUTES.match("/static/../etc/passwd")
+
+
+def test_open_signup_flag_controls_new_account_creation(monkeypatch):
+    # The APP_OPEN_SIGNUP flag decides whether a brand-new, non-approved Google email can create an
+    # account. The value passed as allow_new to upsert_google_user is the gate.
+    captured = {}
+    monkeypatch.setattr(server.repo, "pop_oauth_state", lambda cur, s: {"code_verifier": "v", "nonce": "n"})
+    monkeypatch.setattr(server.auth, "exchange_code",
+                        lambda code, v, n: {"email": "rando@x.com", "sub": "s1", "name": "R", "picture": None})
+    monkeypatch.setattr(server.repo, "is_waitlist_approved", lambda cur, e: False)
+    monkeypatch.setattr(server.repo, "upsert_google_user",
+                        lambda cur, sub, email, name, pic, allow_new: captured.update(allow_new=allow_new) or {"id": 42})
+    monkeypatch.setattr(server, "_start_session", lambda ctx, uid: None)
+
+    class Ctx:
+        cur = None
+        set_cookies = []
+        query = {"code": "c", "state": "st"}
+
+    monkeypatch.setattr(server, "OPEN_SIGNUP", False)   # invite-only (default)
+    server.google_callback(Ctx())
+    assert captured["allow_new"] is False               # a random email is waitlisted, not admitted
+
+    monkeypatch.setattr(server, "OPEN_SIGNUP", True)     # open signup
+    server.google_callback(Ctx())
+    assert captured["allow_new"] is True                # the same random email is now admitted

@@ -1,6 +1,7 @@
 from typing import Callable, Dict, List, Optional, Tuple
 
 from data_pipeline.architecture.contracts import ExecutionReport, TradeIntent
+from data_pipeline.kalshi_fees import taker_fee_per_contract_dollars
 
 
 def order_wire_params(action: str, side: str, price_dollars: float) -> Tuple[str, float]:
@@ -82,6 +83,30 @@ MIN_PRICE = 0.01
 MAX_PRICE = 0.99
 
 
+def child_client_order_id(base: str, attempt: int) -> str:
+    """The client_order_id of the ``attempt``-th child order of one intent: ``base`` for the first
+    send, ``base-1``, ``base-2``, ... for each escalating retry. Crash recovery rebuilds the same ids
+    to find EVERY child on the exchange, so this is the one place the scheme is defined."""
+    return base if int(attempt) == 0 else "%s-%d" % (base, int(attempt))
+
+
+def reservation_price(fair: float, min_edge: float, qty: int) -> Optional[float]:
+    """The most a BUY may pay per contract and still clear ``min_edge`` net of the taker fee.
+
+    ``fair`` is the order's own-side fair value (YES fair for a YES buy, 1 - YES fair for a NO buy).
+    Returns the highest whole-cent price ``p`` with ``fair - p - fee_per_contract(qty, p) >= min_edge``,
+    or None when no price on the 1c..99c grid clears it. ``fair - p - fee(p)`` never increases with
+    ``p`` (the fee's slope is at most 0.07 per dollar, and its cent-ceiling moves by at most 1c per 1c
+    step), so scanning down from the top and taking the first price that clears is the maximum.
+    """
+    q = max(1, int(qty))
+    for cents in range(int(round(MAX_PRICE * 100)), int(round(MIN_PRICE * 100)) - 1, -1):
+        p = cents / 100.0
+        if fair - p - taker_fee_per_contract_dollars(q, p) >= min_edge - 1e-9:
+            return p
+    return None
+
+
 class MarketableLimitKernel:
     """Prices every order from the live book at the moment it is submitted.
 
@@ -119,6 +144,14 @@ class MarketableLimitKernel:
       is wider than this. A wide touch is an illiquid/uncertain book and the
       entry cost is ~ taker fee + half the spread; a missed entry costs nothing.
       Exits never check it - they must get out regardless of spread.
+    * reservation price - when the caller puts the entry's own-side ``fair``
+      value (and optionally ``min_edge``) on ``intent.metadata``, every BUY limit
+      is capped at the highest price whose edge still clears ``min_edge`` net of
+      the taker fee, and the entry is abandoned when the live ask is already past
+      it. The decision gate checked the net edge at the decision price; this
+      re-checks it at the price actually paid, so slippage, cross ticks and retry
+      escalation can never turn an edge-positive signal into a fee-negative fill.
+      Absent ``fair``, behaviour is unchanged. Never applies to a sell.
     * ``max_order_notional`` - hard per-order notional backstop on BUYS only,
       enforced in the execution path as defence-in-depth behind the engine's
       own sizing. It rejects (loudly) rather than silently resizing, because a
@@ -164,7 +197,7 @@ class MarketableLimitKernel:
             external_order_id=None,
             client_order_id=None,
             fee_dollars=0.0,
-            raw_json={"rejected_by": "MarketableLimitKernel", **detail},
+            raw_json={"rejected_by": "MarketableLimitKernel", "status": status, **detail},
         )
 
     @staticmethod
@@ -238,7 +271,21 @@ class MarketableLimitKernel:
         # client_order_id uniqueness. Absent (legacy/sim callers), the submitter mints its own uuid
         # exactly as before — the extra kwarg is only ever passed when a base is present, so a
         # submitter that does not accept it is never called with it.
-        coid_base = (getattr(intent, "metadata", None) or {}).get("client_order_id")
+        meta = getattr(intent, "metadata", None) or {}
+        coid_base = meta.get("client_order_id")
+        # Own-side fair value + required net edge for the reservation-price cap (BUY only; see the
+        # class docstring). Absent fair => no cap, exactly the old behaviour.
+        fair = None if meta.get("fair") is None else float(meta["fair"])
+        min_edge = float(meta.get("min_edge") or 0.0)
+        # Transaction-cost-analysis context carried on every report (app/tca.py reads it back from
+        # the order intent): the price the decision was made at and, for an entry, the fair value
+        # and required edge, so realized slippage and edge capture are measurable per fill.
+        tca: Dict = {"decision_price": float(intent.limit_price_dollars)}
+        if fair is not None:
+            tca.update(fair=fair, min_edge=min_edge)
+
+        def reject(status: str, detail: Dict) -> ExecutionReport:
+            return self._rejected(status, {**detail, **tca})
         attempts: List[Dict] = []
         remaining = int(intent.qty_contracts)
         filled_total = 0
@@ -251,11 +298,12 @@ class MarketableLimitKernel:
             # the position out must never look like a total miss. Fail safe -
             # report exactly what Kalshi confirmed, never the requested size.
             if filled_total <= 0:
-                return self._rejected("unfilled", {"ticker": intent.ticker, "attempts": attempts})
+                return reject("unfilled", {"ticker": intent.ticker, "attempts": attempts})
             avg_px = round(weighted_px / filled_total, 4)
             status = "filled" if filled_total >= int(intent.qty_contracts) else "partially_filled"
             raw = dict((last.raw_json or {}) if last else {})
             raw["attempts"] = attempts
+            raw.update(tca)
             return ExecutionReport(
                 accepted=True,
                 status=status,
@@ -273,7 +321,7 @@ class MarketableLimitKernel:
                 attempts.append({"attempt": attempt, "outcome": "no_quote"})
                 if filled_total > 0:
                     break  # keep what filled; no fresh quote to price the rest
-                return self._rejected("no_quote", {"ticker": intent.ticker, "attempts": attempts})
+                return reject("no_quote", {"ticker": intent.ticker, "attempts": attempts})
 
             # Entry-only spread guard: a wide touch is an illiquid/uncertain book
             # and entry cost is ~ taker fee + half the spread. A missed entry
@@ -291,7 +339,7 @@ class MarketableLimitKernel:
                     "max_entry_spread": self.max_entry_spread,
                 }
                 attempts.append(detail)
-                return self._rejected("spread_too_wide", {"ticker": intent.ticker, "attempts": attempts})
+                return reject("spread_too_wide", {"ticker": intent.ticker, "attempts": attempts})
 
             limit = self._limit_for(intent, quote, attempt)
             if limit is None:
@@ -305,7 +353,7 @@ class MarketableLimitKernel:
                 )
                 if filled_total > 0:
                     break
-                return self._rejected(
+                return reject(
                     "edge_gone",
                     {
                         "ticker": intent.ticker,
@@ -329,10 +377,37 @@ class MarketableLimitKernel:
                         "remaining": remaining,
                     }
                 )
-                return self._rejected(
+                return reject(
                     "participation_capped",
                     {"ticker": intent.ticker, "max_book_fraction": self.max_book_fraction, "attempts": attempts},
                 )
+
+            if buying and fair is not None:
+                # Re-check the edge at the price actually available, net of the fee for the child
+                # actually sent (a smaller child amortizes the fee's cent-ceiling over fewer
+                # contracts, so it can only lower the cap). Cap the limit there, so even a
+                # level-sweeping IOC never takes a contract whose edge is below min_edge.
+                cap = reservation_price(fair, min_edge, child)
+                best_ask = self._own_side_book(intent, quote)[0]
+                if cap is None or best_ask is None or best_ask > cap + 1e-9:
+                    attempts.append(
+                        {
+                            "attempt": attempt,
+                            "outcome": "edge_gone_net",
+                            "live_ask": best_ask,
+                            "reservation": cap,
+                            "fair": fair,
+                            "min_edge": min_edge,
+                        }
+                    )
+                    if filled_total > 0:
+                        break
+                    return reject(
+                        "edge_gone_net",
+                        {"ticker": intent.ticker, "fair": fair, "min_edge": min_edge,
+                         "reservation": cap, "live_ask": best_ask, "attempts": attempts},
+                    )
+                limit = min(limit, cap)
 
             if buying and self.max_order_notional is not None and child * limit > self.max_order_notional + 1e-9:
                 attempts.append(
@@ -343,14 +418,14 @@ class MarketableLimitKernel:
                         "max_order_notional": self.max_order_notional,
                     }
                 )
-                return self._rejected(
+                return reject(
                     "order_notional_exceeded", {"ticker": intent.ticker, "attempts": attempts}
                 )
 
             if coid_base is None:
                 res = self._submitter(intent.ticker, intent.action, intent.side, child, limit)
             else:
-                coid = coid_base if attempt == 0 else "%s-%d" % (coid_base, attempt)
+                coid = child_client_order_id(coid_base, attempt)
                 res = self._submitter(intent.ticker, intent.action, intent.side, child, limit, client_order_id=coid)
             # The submitter sent a YES-leg order (see order_wire_params), so the
             # fill it reports is a YES price. Parse against the YES wire price so

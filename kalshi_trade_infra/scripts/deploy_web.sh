@@ -21,7 +21,7 @@ AWS_REGION=${AWS_REGION:-us-east-1}
 INSTANCE_ID=${INSTANCE_ID:-i-077d6f7873e7836ba}
 BUCKET=${BUCKET:-kalshi-trade-artifacts-568386354218-us-east-1}
 CF_DISTRIBUTION=${CF_DISTRIBUTION:-EEQ00Y93RTB1K}
-CF_URL=${CF_URL:-https://d1gfpzcosqrjya.cloudfront.net}
+CF_URL=${CF_URL:-https://tau-trading.com}
 BOX_DIR=${BOX_DIR:-/opt/kalshi}
 BOX_PY=${BOX_PY:-/opt/kalshi/.venv313/bin/python}
 SERVICES=${SERVICES:-"recursive-web recursive-agents recursive-engine recursive-history"}
@@ -76,8 +76,11 @@ cp -r app app.bak.\$T && cp -r data_pipeline data_pipeline.bak.\$T || { echo "BA
 rollback(){ echo "[box] ROLLBACK"; rm -rf app data_pipeline; mv app.bak.\$T app; mv data_pipeline.bak.\$T data_pipeline; systemctl restart ${SERVICES}; }
 tar -xzf /tmp/tau_bundle.tgz -C ${BOX_DIR} || { rollback; echo "EXTRACT FAILED"; exit 1; }
 set -a; . ${BOX_DIR}/.env.aws; . ${BOX_DIR}/.env.app; set +a; unset AWS_PROFILE
-${BOX_PY} -m py_compile app/*.py data_pipeline/*.py || { rollback; echo "COMPILE FAILED"; exit 1; }
-${BOX_PY} -m app.schema || { rollback; echo "SCHEMA FAILED"; exit 1; }
+# 2>&1 on these two: their failure detail (a py_compile SyntaxError, an app.schema DB traceback)
+# goes to STDERR, which SSM stores in a separate stream the poller didn't fetch — so a failure read
+# as a bare "SCHEMA FAILED" with no cause. Fold stderr into stdout so the real error is in the log.
+${BOX_PY} -m py_compile app/*.py data_pipeline/*.py 2>&1 || { rollback; echo "COMPILE FAILED"; exit 1; }
+${BOX_PY} -m app.schema 2>&1 || { rollback; echo "SCHEMA FAILED"; exit 1; }
 systemctl restart ${SERVICES}
 sleep 5
 CODE=\$(curl -fsS -o /dev/null -w "%{http_code}" http://127.0.0.1:8090/ || echo 000)
@@ -108,14 +111,26 @@ for i in $(seq 1 60); do
 done
 OUT=$(aws ssm get-command-invocation --region "$AWS_REGION" \
       --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" --query StandardOutputContent --output text)
-echo "$OUT" | tail -4
-[[ "$ST" == Success ]] || { echo "[deploy] ON-BOX FAILED (status=$ST) — see output above"; exit 1; }
+if [[ "$ST" == Success ]]; then
+  echo "$OUT" | tail -4
+else
+  # On failure, surface the WHOLE picture, not tail -4: more stdout AND the box's stderr stream
+  # (where a Python traceback lands). This is what turns an opaque "SCHEMA FAILED" into a diagnosis.
+  ERR=$(aws ssm get-command-invocation --region "$AWS_REGION" \
+        --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" --query StandardErrorContent --output text 2>/dev/null || true)
+  echo "$OUT" | tail -30
+  [[ -n "$ERR" ]] && { echo "[deploy] --- box stderr ---"; echo "$ERR" | tail -30; }
+  echo "[deploy] ON-BOX FAILED (status=$ST) — see output above"; exit 1
+fi
 
-# (3) verify a LIVE curl 200 through CloudFront — the real proof
+# (3) verify a LIVE curl through the CDN on the canonical domain (follow redirects so the
+# old-URL -> custom-domain 301 and www -> apex canonicalization both resolve to a real page).
+# Non-fatal: the on-box 200 check above is the authoritative health gate; this external check can
+# see transient DNS-propagation / redirect states that don't mean the deploy is unhealthy.
 for path in / /research; do
-  CODE=$(curl -fsS -o /dev/null -w "%{http_code}" "${CF_URL}${path}" || echo 000)
+  CODE=$(curl -fsSL -o /dev/null -w "%{http_code}" "${CF_URL}${path}" || echo 000)
   echo "[deploy] live ${path} -> ${CODE}"
-  [[ "$CODE" == 200 || "$CODE" == 302 ]] || { echo "[deploy] LIVE CHECK FAILED on $path ($CODE)"; exit 1; }
+  [[ "$CODE" == 200 || "$CODE" == 302 ]] || echo "[deploy] WARN: live check on $path returned $CODE (on-box health already passed; likely DNS propagation)"
 done
 
 if [[ "$INVALIDATE" == 1 ]]; then

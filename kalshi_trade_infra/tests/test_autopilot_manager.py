@@ -30,6 +30,21 @@ def test_research_action_delegates_market_and_angle(monkeypatch):
     assert rec["idea"] == "order-flow if this market has microstructure data"
 
 
+def test_research_action_stamps_user_autopilot_model(monkeypatch):
+    rec = {}
+    monkeypatch.setattr(repo, "count_runs", lambda *a, **k: 0)
+    monkeypatch.setattr(agent, "_market_research_recent", lambda *a, **k: None)
+    monkeypatch.setattr(repo, "create_run",
+                        lambda cur, uid, kind, market, direction, idea, **kw: rec.update(model=kw.get("model")) or 9)
+    agent.act(None, {"id": 1, "autopilot_model": "claude-sonnet-5-5"},
+              {"type": "research", "market": "btc15m", "idea": "order-flow microstructure angle"}, True)
+    assert rec["model"] == "claude-sonnet-5-5"   # autopilot research runs on the user's chosen model
+    # and None (default) when the user hasn't picked one
+    rec.clear()
+    agent.act(None, {"id": 1}, {"type": "research", "market": "btc15m", "idea": "order-flow microstructure angle"}, True)
+    assert rec.get("model") is None
+
+
 def test_brief_research_prompt_delegates_not_authors():
     run = {"market": "nhl_game", "prompt": "favorite-longshot on this sports market", "brief": 1}
     p = agent._research_prompt(run, _mini_ds("nhl_game"), [], count=3)
@@ -149,3 +164,26 @@ class _FakeCur2:
     def execute(self, *a, **k): pass
     def fetchone(self): return {"n": 0}
     def fetchall(self): return []
+
+
+def test_market_backed_off_after_repeated_failures(monkeypatch):
+    # A market that fails repeatedly (>= RESEARCH_FAIL_LIMIT) within the day is backed off, so the
+    # autopilot stops burning runs on a chronically-bad market and hunts a different one.
+    from datetime import datetime, timedelta
+    now = datetime(2026, 10, 19, 12, 0, 0)
+    monkeypatch.setattr(repo, "now_utc", lambda: now)
+    fails = [{"id": i, "market": "natgas", "status": "failed",
+              "finished_at": now - timedelta(hours=7 + i)} for i in range(agent.RESEARCH_FAIL_LIMIT)]
+    monkeypatch.setattr(repo, "list_runs", lambda cur, uid, limit=30: fails)
+    reason = agent._market_research_recent(None, 1, "natgas")
+    assert reason is not None and "backed off" in reason
+
+
+def test_market_with_a_single_old_failure_is_not_backed_off(monkeypatch):
+    from datetime import datetime, timedelta
+    now = datetime(2026, 10, 19, 12, 0, 0)
+    monkeypatch.setattr(repo, "now_utc", lambda: now)
+    # one failure, 7h ago (past the 6h short cooldown, under the fail limit) -> clear to research
+    monkeypatch.setattr(repo, "list_runs", lambda cur, uid, limit=30:
+                        [{"id": 1, "market": "btc15m", "status": "failed", "finished_at": now - timedelta(hours=7)}])
+    assert agent._market_research_recent(None, 1, "btc15m") is None

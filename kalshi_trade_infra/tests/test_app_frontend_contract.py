@@ -59,6 +59,20 @@ def test_saved_card_without_credits_still_blocks_research(monkeypatch):
     assert error.value.status == 402
 
 
+def test_sub_minimum_balance_blocks_research_start(monkeypatch):
+    # A POSITIVE but sub-minimum balance passes the >0 card gate yet must still be blocked from
+    # STARTING a research session — post-paid billing would otherwise overshoot it negative.
+    from decimal import Decimal
+    monkeypatch.setattr(server.billing, 'configured', lambda: True)
+    monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: {'default_pm_id': 'pm_fixture'})
+    monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: 0.5)
+    monkeypatch.setattr(server.billing, 'MIN_RUN_BALANCE', Decimal('1.00'))
+    monkeypatch.setattr(server.repo, 'create_run', lambda *a, **k: pytest.fail('agent work queued'))
+    with pytest.raises(server.ApiError, match='at least') as error:
+        server.create_run(context({'market': 'btc15m', 'prompt': 'Keep the strategy risk unchanged'}))
+    assert error.value.status == 402
+
+
 def test_unconfigured_billing_is_a_complete_readonly_frontend_payload(monkeypatch):
     monkeypatch.setattr(server.billing, 'configured', lambda: False)
     monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: None)
@@ -103,3 +117,74 @@ def test_public_system_activity_is_scoped_to_the_signed_in_user():
     assert len(activity) == 1
     assert 'r.user_id=%s' in activity[0][0]
     assert activity[0][1] == (7,)
+
+
+def _ap_ctx(monkeypatch, autopilot=1):
+    # Minimal Ctx + repo stubs for the autopilot_status handler (deployments/pnl/actions mocked out).
+    ctx = server.Ctx(
+        SimpleNamespace(cursor=lambda: object()),
+        {'id': 7, 'email': 'trader@example.invalid', 'name': 'S', 'picture_url': None,
+         'autopilot': autopilot, 'autopilot_live': 0, 'autopilot_daily_loss_limit': 50,
+         'autopilot_model': None},
+        (), {}, {}, SimpleNamespace())
+    monkeypatch.setattr(server.repo, 'list_deployments', lambda *a: [])
+    monkeypatch.setattr(server.repo, 'get_kalshi_key', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'realized_pnl', lambda *a: 0.0)
+    monkeypatch.setattr(server.repo, 'last_autopilot_action', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'last_review_at', lambda *a: None)
+    monkeypatch.setattr(server.billing, 'configured', lambda: True)
+    return ctx
+
+
+def test_autopilot_status_flags_billing_blocked(monkeypatch):
+    # Autopilot ON but can't spend -> the panel is told WHY it's quiet (reason: credits, card on file).
+    ctx = _ap_ctx(monkeypatch, autopilot=1)
+    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: False)
+    monkeypatch.setattr(server, '_needs_card', lambda c: False)
+    out = server.autopilot_status(ctx)
+    assert out['billing_blocked'] is True and out['billing_reason'] == 'credits'
+
+
+def test_autopilot_status_not_blocked_when_ready(monkeypatch):
+    ctx = _ap_ctx(monkeypatch, autopilot=1)
+    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: True)
+    out = server.autopilot_status(ctx)
+    assert out['billing_blocked'] is False and out['billing_reason'] is None
+
+
+def test_autopilot_status_not_blocked_when_autopilot_off(monkeypatch):
+    # Even if the spend gate would fail, an OFF autopilot is not "blocked" — it's just off.
+    ctx = _ap_ctx(monkeypatch, autopilot=0)
+    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: False)
+    out = server.autopilot_status(ctx)
+    assert out['billing_blocked'] is False
+
+
+def test_me_exposes_min_run_balance(monkeypatch):
+    # The research page needs the floor to warn a below-minimum user BEFORE they hit the 402.
+    from decimal import Decimal
+    monkeypatch.setattr(server.billing, 'configured', lambda: True)
+    monkeypatch.setattr(server.billing, 'MIN_RUN_BALANCE', Decimal('1.00'))
+    monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: {'default_pm_id': 'pm'})
+    monkeypatch.setattr(server.repo, 'get_kalshi_key', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'get_kalshi_dev_key', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: 0.5)
+    monkeypatch.setattr(server.repo, 'spot_symbols_with_data', lambda *a: set())
+    monkeypatch.setattr(server.repo, 'series_with_candles', lambda *a: set())
+    data = server.me(context())
+    assert data['min_run_balance'] == 1.0 and data['credit_balance'] == 0.5
+
+
+def test_me_exposes_perps_live_available(monkeypatch):
+    # The Funds page hides the Bitcoin-perps box unless live perps are enabled on this server.
+    monkeypatch.setattr(server.billing, 'configured', lambda: False)
+    monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'get_kalshi_key', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'get_kalshi_dev_key', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: 10.0)
+    monkeypatch.setattr(server.repo, 'spot_symbols_with_data', lambda *a: set())
+    monkeypatch.setattr(server.repo, 'series_with_candles', lambda *a: set())
+    monkeypatch.setattr(server.kalshi_perps_trading, 'enabled', lambda: False)
+    assert server.me(context())['perps_live_available'] is False
+    monkeypatch.setattr(server.kalshi_perps_trading, 'enabled', lambda: True)
+    assert server.me(context())['perps_live_available'] is True

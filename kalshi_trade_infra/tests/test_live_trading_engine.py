@@ -231,3 +231,20 @@ def test_open_and_close_position_are_scoped_by_model(fake_cursor):
     lte.close_live_position(fake_cursor, kernel, "random_forest", "T1", 0.50, now)
     assert ("random_forest", "T1") not in fake_cursor.live_positions
     assert ("binary_theory_edge", "T1") in fake_cursor.live_positions, "closing one strategy's position must not touch another's on the same ticker"
+
+
+# -- DB connection-loss recovery: a dropped/timed-out connection reconnects, not crashes ----------
+
+def test_is_conn_lost_recognizes_dropped_connection():
+    import pymysql
+    # The exact error the engine was crash-looping on (errno 2013, "timed out").
+    assert lte._is_conn_lost(pymysql.err.OperationalError(2013, "Lost connection to MySQL server during query (timed out)"))
+    assert lte._is_conn_lost(pymysql.err.OperationalError(2006, "MySQL server has gone away"))
+
+
+def test_is_conn_lost_ignores_real_errors():
+    # A genuine bug (not a connection drop) must still propagate and crash/restart, not be swallowed.
+    assert not lte._is_conn_lost(ValueError("bad spec"))
+    assert not lte._is_conn_lost(KeyError("edge_threshold"))
+    import pymysql
+    assert not lte._is_conn_lost(pymysql.err.OperationalError(1205, "Lock wait timeout exceeded"))

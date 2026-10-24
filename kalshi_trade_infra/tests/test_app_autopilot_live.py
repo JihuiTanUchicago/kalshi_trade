@@ -7,11 +7,21 @@ PASSED_YES = {"id": 7, "status": "passed", "title": "Tail fade", "market": "btc_
               "direction": "custom", "spec": {"side": "yes", "sizing": {"stake": 5.0, "max_positions": 20}}}
 PASSED_NO = {"id": 8, "status": "passed", "title": "NO fade", "market": "btc_daily",
              "direction": "custom", "spec": {"side": "no", "sizing": {"stake": 5.0, "max_positions": 20}}}
+def _trips(n=40, hours=72.0, pnls=None):
+    """Realistic (simulated-venue) paper round trips, evenly spread over `hours`."""
+    from datetime import datetime, timedelta
+    t0 = datetime(2026, 10, 1)
+    pnls = pnls if pnls is not None else [0.6 if i % 4 else -0.4 for i in range(n)]  # clear positive edge
+    step = hours / max(1, len(pnls) - 1)
+    return [{"pnl": p, "opened_at": t0 + timedelta(hours=i * step), "closed_at": t0 + timedelta(hours=i * step, minutes=15)}
+            for i, p in enumerate(pnls)]
+
+
 PROVEN_NO_PAPER = [{"strategy_id": 8, "mode": "paper", "closed_trades": 12, "realized_pnl": 8.0, "status": "stopped"}]
 
 
 def _patch(monkeypatch, *, live_enabled=True, key=True, autopilot=True, ap_live=True, today_live=0.0,
-           strat=None, paper=None, deployment_candidate=True, no_side_live=True):
+           strat=None, paper=None, deployment_candidate=True, no_side_live=True, trips=None):
     r = agent.repo
     created = {}
     monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", live_enabled)
@@ -28,6 +38,8 @@ def _patch(monkeypatch, *, live_enabled=True, key=True, autopilot=True, ap_live=
     # Paper history for the research->paper->live gate; default = proven (12 trades, +$8).
     monkeypatch.setattr(r, "list_deployments", lambda cur, uid, include_stopped=False: (
         paper if paper is not None else [{"strategy_id": 7, "mode": "paper", "closed_trades": 12, "realized_pnl": 8.0, "status": "stopped"}]))
+    # Realistic-fill paper evidence for the strengthened gate; default = proven.
+    monkeypatch.setattr(r, "paper_round_trips", lambda cur, uid, sid: (trips if trips is not None else _trips()))
     monkeypatch.setattr(r, "create_proposal", lambda *a, **k: 1)
     monkeypatch.setattr(r, "create_deployment", lambda cur, uid, sid, market, mode: (created.__setitem__("mode", mode), 99)[1])
     user = {"id": 1, "autopilot": autopilot, "autopilot_live": ap_live, "autopilot_daily_loss_limit": 50}
@@ -91,3 +103,56 @@ def test_gate_helper_booleans(monkeypatch):
     user2, _ = _patch(monkeypatch, key=False)
     ok2, why2 = agent.live_autopilot_ok(None, user2)
     assert not ok2 and "Kalshi" in why2
+
+
+def _deploy_live(monkeypatch, **kw):
+    user, created = _patch(monkeypatch, **kw)
+    msg, pid = agent.act(None, user, {"type": "deploy_live", "strategy_id": 7}, autopilot=True)
+    return msg, created
+
+
+def test_refused_without_enough_realistic_paper_trades(monkeypatch):
+    # Legacy totals look proven, but only 10 trades ran on realistic fills.
+    msg, created = _deploy_live(monkeypatch, trips=_trips(n=10))
+    assert "mode" not in created and "realistic" in msg
+
+
+def test_refused_when_net_negative_on_realistic_fills(monkeypatch):
+    msg, created = _deploy_live(monkeypatch, trips=_trips(pnls=[-0.1] * 40))
+    assert "mode" not in created and "isn't up" in msg
+
+
+def test_refused_when_paper_record_is_too_short(monkeypatch):
+    msg, created = _deploy_live(monkeypatch, trips=_trips(hours=6.0))
+    assert "mode" not in created and "covers only" in msg
+
+
+def test_refused_when_edge_is_not_statistically_clear(monkeypatch):
+    # Net positive but noise-dominated: +$0.05 drift on +/-$5 swings.
+    noisy = [5.05 if i % 2 else -4.95 for i in range(40)]
+    msg, created = _deploy_live(monkeypatch, trips=_trips(pnls=noisy))
+    assert "mode" not in created and "statistically" in msg
+
+
+def test_proven_on_realistic_fills_goes_live(monkeypatch):
+    msg, created = _deploy_live(monkeypatch, trips=_trips())
+    assert created.get("mode") == "live"
+
+
+def test_paper_evidence_reports_backtest_realization(monkeypatch):
+    _patch(monkeypatch, trips=_trips(pnls=[0.5] * 40))
+    monkeypatch.setattr(agent.repo, "get_strategy", lambda cur, uid, sid: {
+        "id": sid, "result": {"out_of_sample": {"pnl": 40.0, "trades": 40}}})  # $1.00/trade in backtest
+    ev = agent.paper_evidence(None, 1, 7)
+    assert ev["paper_mean_pnl"] == 0.5 and ev["backtest_mean_pnl"] == 1.0
+    assert ev["realization"] == 0.5
+    line = agent.paper_evidence_line(ev)
+    assert "50% of backtest" in line and "40/30 realistic" in line
+
+
+def test_paper_evidence_line_names_the_blocker(monkeypatch):
+    _patch(monkeypatch, trips=_trips(n=5))
+    monkeypatch.setattr(agent.repo, "get_strategy", lambda cur, uid, sid: None)
+    ev = agent.paper_evidence(None, 1, 7)
+    assert ev["realization"] is None
+    assert "not live-ready: it needs 30+" in agent.paper_evidence_line(ev)

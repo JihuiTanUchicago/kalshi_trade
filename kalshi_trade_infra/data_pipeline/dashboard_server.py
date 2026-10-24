@@ -1,6 +1,8 @@
 import html
 import os
 import base64
+import hashlib
+import hmac
 import secrets
 import ast
 import json
@@ -32,7 +34,10 @@ HOST = os.getenv("DASHBOARD_HOST", "0.0.0.0")
 PORT = int(os.getenv("DASHBOARD_PORT", "8080"))
 AUTH_USER = os.getenv("DASHBOARD_USER", "todd")
 AUTH_PASSWORD = os.getenv("DASHBOARD_PASSWORD")
-LIVE_TRADING_PASSWORD = os.getenv("LIVE_TRADING_PASSWORD", "iwanttoberich")
+# The second gate in front of every real-money control. No default: a value
+# committed here is a value anyone with the repo knows, and it was the live gate
+# in production while the env var went unset. Unset now means locked, not open.
+LIVE_TRADING_PASSWORD = os.getenv("LIVE_TRADING_PASSWORD", "")
 # A read-only credential for an off-box monitor. It unlocks exactly the three
 # status endpoints below, over GET only, and nothing else: no pages, no table
 # browsing, no POST, so it can never trade or change a cap. Kept separate from
@@ -315,6 +320,20 @@ STATUS_MARK_SVG = (
 )
 
 LIVE_COOKIE_NAME = "live_gate"
+
+
+def live_cookie_token(password: str) -> str:
+    """The unlock cookie's value: derived from the password, so it cannot be
+    forged without knowing it, and rotating the password logs every browser out.
+    The old cookie was the literal "ok", which anyone past basic auth could set."""
+    return hmac.new(password.encode("utf-8"), b"live_gate.v1", hashlib.sha256).hexdigest()
+
+
+def live_password_ok(candidate: str) -> bool:
+    """Constant-time check; always False when no password is configured."""
+    return bool(LIVE_TRADING_PASSWORD) and bool(candidate) and secrets.compare_digest(
+        candidate.encode("utf-8"), LIVE_TRADING_PASSWORD.encode("utf-8")
+    )
 PAGE_SIZE = 100
 TABLES = [
     "markets",
@@ -2822,13 +2841,15 @@ class Handler(BaseHTTPRequestHandler):
         if parsed is not None and self._monitor_authorized(parsed):
             return True
         if not LIVE_TRADING_PASSWORD:
-            return True
-        if self._cookie_map().get(LIVE_COOKIE_NAME) == "ok":
+            return False  # fail closed: no configured password means no live controls
+        cookie = self._cookie_map().get(LIVE_COOKIE_NAME, "")
+        if cookie and secrets.compare_digest(
+            cookie.encode("utf-8"), live_cookie_token(LIVE_TRADING_PASSWORD).encode("utf-8")
+        ):
             return True
         if parsed is not None:
             qs = parse_qs(parsed.query)
-            qp = qs.get("live_password", [""])[0]
-            if qp and qp == LIVE_TRADING_PASSWORD:
+            if live_password_ok(qs.get("live_password", [""])[0]):
                 return True
         return False
 
@@ -2851,9 +2872,15 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/live_unlock":
             qs = parse_qs(parsed.query)
             pw = qs.get("password", [""])[0]
-            if pw == LIVE_TRADING_PASSWORD:
+            if not LIVE_TRADING_PASSWORD:
+                self._send("Live trading is locked: LIVE_TRADING_PASSWORD is not set on this server.", 403)
+                return
+            if live_password_ok(pw):
+                token = live_cookie_token(LIVE_TRADING_PASSWORD)
                 self.send_response(302)
-                self.send_header("Set-Cookie", f"{LIVE_COOKIE_NAME}=ok; Path=/; Max-Age=86400; SameSite=Lax")
+                self.send_header(
+                    "Set-Cookie", f"{LIVE_COOKIE_NAME}={token}; Path=/; Max-Age=86400; HttpOnly; SameSite=Lax"
+                )
                 self.send_header("Location", "/?tab=live-trading")
                 self.end_headers()
                 return
@@ -3547,6 +3574,8 @@ def main():
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     server.daemon_threads = True
     print(f"Dashboard listening on {HOST}:{PORT}")
+    if not LIVE_TRADING_PASSWORD:
+        print("WARNING: LIVE_TRADING_PASSWORD is unset - every live control is locked until it is set.")
     server.serve_forever()
 
 

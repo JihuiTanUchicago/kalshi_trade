@@ -6,8 +6,9 @@ existing guard: **a SELL is never blocked** — an exit must always be able to g
 Only new risk (a BUY) is ever gated, and a blocked BUY is reported as ``unfilled``, which
 the kernel already handles (a missed entry costs nothing).
 
-  * kill switch   — APP_KILL_SWITCH=1 halts all new BUYS instantly (read live every call,
-                    so it is flippable without a redeploy, like the other KALSHI_* knobs).
+  * kill switch   — APP_KILL_SWITCH=1 (process env, needs a restart to change) OR the DB-backed
+                    switch (kill_switch.py: `python -m app.execution.kill_switch on`, picked up by
+                    every process within ~5s, no restart) halts all new BUYS.
   * fat-finger    — a BUY above a hard qty / notional ceiling, or off the 1c..99c grid, is
                     refused. A defence-in-depth ceiling WELL above any legitimate order; a
                     breach means a caller mis-sized, so it rejects loudly, never resizes.
@@ -29,6 +30,8 @@ import threading
 import time
 from collections import deque
 from typing import Callable, Deque, Dict, Optional
+
+from app.execution.kill_switch import DbKillSwitch
 
 
 def _env_float(name: str, default: float) -> float:
@@ -61,6 +64,7 @@ class ExecutionGuard:
         rate_window_s: float,
         breaker_errors: int,
         breaker_cooldown_s: float,
+        db_switch=None,
     ) -> None:
         self.max_qty = int(max_qty)
         self.max_notional = float(max_notional)
@@ -68,15 +72,17 @@ class ExecutionGuard:
         self.rate_window_s = float(rate_window_s)
         self.breaker_errors = int(breaker_errors)
         self.breaker_cooldown_s = float(breaker_cooldown_s)
+        self._db_switch = db_switch  # DbKillSwitch or None (env-only)
         self._lock = threading.Lock()
         self._buy_times: Deque[float] = deque()
         self._consec_errors = 0
         self._open_until = 0.0  # breaker open while monotonic() < this
 
     # -- read-only checks (caller holds no lock) ------------------------------
-    @staticmethod
-    def _kill_switch_on() -> bool:
-        return os.getenv("APP_KILL_SWITCH") == "1"
+    def _kill_switch_on(self) -> bool:
+        if os.getenv("APP_KILL_SWITCH") == "1":
+            return True
+        return self._db_switch is not None and self._db_switch.is_on()
 
     def _fat_finger_reason(self, qty: int, price: float) -> Optional[str]:
         if qty < 1:
@@ -161,6 +167,7 @@ _GUARD = ExecutionGuard(
     rate_window_s=_env_float("APP_EXEC_RATE_WINDOW_SECONDS", 10.0),
     breaker_errors=_env_int("APP_EXEC_BREAKER_ERRORS", 5),
     breaker_cooldown_s=_env_float("APP_EXEC_BREAKER_COOLDOWN_SECONDS", 30.0),
+    db_switch=DbKillSwitch(),
 )
 
 

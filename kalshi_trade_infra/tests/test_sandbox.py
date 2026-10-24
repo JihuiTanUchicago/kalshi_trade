@@ -69,3 +69,22 @@ def test_runaway_loop_times_out_and_falls_back(monkeypatch):
             "def select_finalists(candidates, state):\n    return []")
     p = load_policy(code)
     assert p.next_batch(PolicyState(proposed=0, budget=10, round=1)).width == 4  # timed out -> default
+
+
+@pytest.mark.parametrize("garbage", ['{"result": {"a": 1, ', "[1, 2]", ""])
+def test_unreadable_strategy_output_is_a_sandbox_error(monkeypatch, garbage):
+    # Prod 2026-10-24: a fit() whose out.json came back truncated raised a raw JSONDecodeError,
+    # which escaped freeze_code_model's SandboxError handler and killed the whole research run.
+    import os
+    import types
+
+    def fake_run(argv, cwd, **kw):
+        with open(os.path.join(cwd, "out.json"), "w") as f:
+            f.write(garbage)
+        return types.SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(sandbox, "_confined_argv", lambda inner, scratch, data_dir=None: inner)
+    monkeypatch.setattr(sandbox.subprocess, "run", fake_run)
+    code = "def fit(window):\n    return {}\n\ndef signals(window):\n    return []\n"
+    with pytest.raises(sandbox.SandboxError, match="unreadable"):
+        sandbox.run_strategy_fit(code, {"frames": []})

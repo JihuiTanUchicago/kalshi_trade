@@ -195,3 +195,19 @@ def test_equity_floor_blocks_new_entries(fake_cursor):
     )
     summary = process_model_tick(fake_cursor, "random_forest", _row("TICK-1", 0.50, 500), now_ts, _strong_signal(), risk)
     assert summary["open"] is False
+
+
+# -- DB connection-loss recovery: a dropped connection reconnects, not crashes (mirrors live) -----
+
+def test_sim_is_conn_lost_recognizes_dropped_connection():
+    import pymysql
+    from data_pipeline import simulated_trading_engine as ste
+    assert ste._is_conn_lost(pymysql.err.OperationalError(2013, "Lost connection to MySQL server during query (timed out)"))
+    assert ste._is_conn_lost(pymysql.err.OperationalError(2006, "MySQL server has gone away"))
+
+
+def test_sim_is_conn_lost_ignores_real_errors():
+    from data_pipeline import simulated_trading_engine as ste
+    assert not ste._is_conn_lost(ValueError("bad spec"))
+    import pymysql
+    assert not ste._is_conn_lost(pymysql.err.OperationalError(1205, "Lock wait timeout exceeded"))

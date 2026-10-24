@@ -248,6 +248,7 @@ def test_holdout_timeout_does_not_consume_the_one_time_ledger(monkeypatch, cross
     monkeypatch.setattr(gatekeeper.partitions, "ensure_merged_partition", lambda *args: partition)
     monkeypatch.setattr(gatekeeper.partitions, "merged_partitions", lambda *args: [("a", partition), ("z", partition)])
     monkeypatch.setattr(gatekeeper.rr, "ensure_holdout_ledger", lambda *args: {"id": 2, "consumed": 0, "evaluations_used": 0, "max_evaluations": 3})
+    monkeypatch.setattr(gatekeeper.rr, "holdout_evaluations_overlapping", lambda *args: 0)
     spend, append = Mock(), Mock()
     monkeypatch.setattr(gatekeeper.rr, "record_holdout_use", spend)
     monkeypatch.setattr(gatekeeper.rr, "append_result", append)

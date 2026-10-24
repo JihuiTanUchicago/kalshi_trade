@@ -586,8 +586,16 @@ def _run_entry(code: str, window: Dict, entry: str, *, cpu_s: int, mem_bytes: in
             # Deliberately do NOT echo the child's stderr: it is untrusted output and a strategy
             # could gadget-read a secret and write it to fd 2 to smuggle bytes into our logs.
             raise SandboxError("strategy produced no output (exit %s)" % proc.returncode)
-        with open(out_path) as f:
-            result = json.load(f)
+        # out.json lives in the strategy's own scratch dir and is capped by RLIMIT_FSIZE, so it can be
+        # truncated or overwritten by the code itself. Unreadable output fails THIS strategy, never
+        # the whole research run (a raw JSONDecodeError escaped every SandboxError handler).
+        try:
+            with open(out_path) as f:
+                result = json.load(f)
+        except (ValueError, OSError) as e:
+            raise SandboxError("strategy output was unreadable (truncated or malformed): %s" % e)
+        if not isinstance(result, dict):
+            raise SandboxError("strategy output was unreadable (not an object)")
         if "error" in result:
             raise SandboxError("strategy raised: %s" % result["error"])
         return result.get("result")

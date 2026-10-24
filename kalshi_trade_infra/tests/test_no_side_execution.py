@@ -137,8 +137,9 @@ def test_kernel_abandons_a_no_entry_when_the_no_ask_has_run_away():
 class _Cur:
     """Just the app_positions queries engine.decide hits for a fresh live entry."""
 
-    def __init__(self):
+    def __init__(self, halts=None):
         self.inserted = []
+        self.halts = halts or []
         self._last = []
         self.lastrowid = 1
 
@@ -151,11 +152,15 @@ class _Cur:
             self.lastrowid = len(self.inserted)
         elif s.startswith("SELECT COALESCE(SUM(pnl),0) AS p FROM app_positions"):
             self._last = [{"p": 0.0}]
+        elif s.startswith("SELECT COUNT(*) AS n, COALESCE(SUM(pnl),0) AS p FROM app_positions"):
+            self._last = [{"n": 0, "p": 0.0}]  # live decay guard: no closed live trades yet
         elif s.startswith("SELECT drawdown_limit_pct, position_stop_pct, max_open_positions, max_open_notional FROM app_users"):
             self._last = [{"drawdown_limit_pct": 25.0, "position_stop_pct": 40.0,
                            "max_open_positions": 20, "max_open_notional": 1000.0}]
         elif s.startswith("SELECT COUNT(*) AS n, COALESCE(SUM(qty*entry_price),0) AS notional FROM app_positions"):
             self._last = [{"n": 0, "notional": 0.0}]
+        elif s.startswith("SELECT ticker, kind, exchange_qty, book_qty FROM app_position_reconcile"):
+            self._last = list(self.halts)
         else:
             raise AssertionError("unexpected SQL in decide NO path: %s" % s[:90])
 
@@ -225,3 +230,104 @@ def test_decide_live_places_a_no_order_and_books_a_no_position(monkeypatch):
     params = cur.inserted[0]
     assert params[4] == "no" and params[2] == "live"
     assert float(params[6]) == pytest.approx(0.60), "booked at the NO fill price"
+
+
+def test_a_persisted_position_mismatch_halts_new_live_entries(monkeypatch):
+    """The same setup that places a NO order above places nothing while the user's
+    book and Kalshi account still disagree after two reconcile sweeps."""
+    from app import engine
+    from app import spec as specmod
+    from tests.conftest import patch_intent_passthrough
+
+    monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", True)
+    patch_intent_passthrough(monkeypatch)
+    cur = _Cur(halts=[{"ticker": "KXBTC-OTHER", "kind": "untracked", "exchange_qty": 5, "book_qty": 0}])
+    kernel = _RecordingKernel()
+    spec = specmod.validate({"side": "no", "entry": {"min_edge": 0.1}})
+    dep = {"id": 1, "user_id": 1, "market": "btc15m", "mode": "live", "spec": spec,
+           "result": {"capital": 10, "out_of_sample": {"max_drawdown": 3}}}
+    snap = _no_snapshot()
+
+    out = engine.decide(_Conn(cur), dep, [snap], {snap.contract.ticker: 1000.0},
+                        engine.Sources(live_kernel=lambda uid: kernel))
+
+    assert out["entries"] == 0 and "KXBTC-OTHER" in out["halted"]
+    assert kernel.intents == [] and cur.inserted == []
+
+
+# -- depth: a NO buy hits the YES bid, so it is sized by the bid's depth ---------
+
+
+def test_book_sizes_keys_no_depth_off_the_yes_bid():
+    from app import engine
+    from app.markets import Contract
+
+    q = engine.LiveQuote(Contract(TICKER, 110.0, datetime.now(timezone.utc)), 0.40, 0.42, 3.0, 900.0)
+    sizes = engine.book_sizes([q])
+    assert engine.shown_size(sizes, TICKER, "yes") == 900.0, "a YES buy lifts the YES ask"
+    assert engine.shown_size(sizes, TICKER, "no") == 3.0, "a NO buy hits the YES bid"
+    # A frame that only carries a per-ticker number keeps it for both sides.
+    assert engine.shown_size({TICKER: 7.0}, TICKER, "no") == 7.0
+
+
+def test_decide_sizes_a_no_entry_by_the_yes_bid_depth(monkeypatch):
+    from app import engine
+    from app import spec as specmod
+    from tests.conftest import patch_intent_passthrough
+
+    monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", True)
+    patch_intent_passthrough(monkeypatch)
+    cur = _Cur()
+    monkeypatch.setattr(engine.repo, "deployment_closed_stats",
+                        lambda c, dep_id: (engine.LIVE_RAMP_TRADES, 0.0))  # past the size ramp
+    kernel = _RecordingKernel()
+    spec = specmod.validate({"side": "no", "entry": {"min_edge": 0.1}})
+    dep = {"id": 1, "user_id": 1, "market": "btc15m", "mode": "live", "spec": spec,
+           "result": {"capital": 10, "out_of_sample": {"max_drawdown": 3}}}
+    snap = _no_snapshot()
+    sizes = {snap.contract.ticker: 1000.0, (snap.contract.ticker, "no"): 2.0}
+
+    out = engine.decide(_Conn(cur), dep, [snap], sizes, engine.Sources(live_kernel=lambda uid: kernel))
+
+    assert out["entries"] == 1
+    assert kernel.intents[0].qty_contracts == 2, "only 2 contracts sit on the YES bid a NO buy hits"
+
+
+def _live_entry_qty(monkeypatch, closed_trades):
+    from app import engine
+    from app import spec as specmod
+    from tests.conftest import patch_intent_passthrough
+
+    monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", True)
+    patch_intent_passthrough(monkeypatch)
+    cur = _Cur()
+    monkeypatch.setattr(engine.repo, "deployment_closed_stats", lambda c, dep_id: (closed_trades, 0.0))
+    kernel = _RecordingKernel()
+    spec = specmod.validate({"side": "no", "entry": {"min_edge": 0.1}})
+    dep = {"id": 1, "user_id": 1, "market": "btc15m", "mode": "live", "spec": spec,
+           "result": {"capital": 10, "out_of_sample": {"max_drawdown": 3}}}
+    snap = _no_snapshot()
+    engine.decide(_Conn(cur), dep, [snap], {snap.contract.ticker: 1000.0},
+                  engine.Sources(live_kernel=lambda uid: kernel))
+    full = specmod.contracts_for(spec["sizing"]["stake"], 0.60)
+    return int(kernel.intents[0].qty_contracts), full
+
+
+def test_a_fresh_live_deployment_trades_at_the_ramp_fraction(monkeypatch):
+    from app import engine
+    qty, full = _live_entry_qty(monkeypatch, closed_trades=0)
+    assert full > 1
+    assert qty == max(1, int(full * engine.LIVE_RAMP_FRACTION)) and qty < full
+
+
+def test_live_size_ramp_ends_after_enough_closed_trades(monkeypatch):
+    from app import engine
+    qty, full = _live_entry_qty(monkeypatch, closed_trades=engine.LIVE_RAMP_TRADES)
+    assert qty == full
+
+
+def test_live_ramp_fraction_can_never_exceed_full_size():
+    from app import engine
+    assert engine._ramp_fraction("5") == 1.0
+    assert engine._ramp_fraction("0") == 0.01, "a ramp never rounds a fresh deployment to zero size"
+    assert engine._ramp_fraction("0.25") == 0.25

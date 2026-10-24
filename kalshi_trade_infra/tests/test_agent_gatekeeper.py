@@ -35,6 +35,15 @@ class FakeStore:
         monkeypatch.setattr(agent.gatekeeper, "marginal_contribution_ok",
                             lambda cur, uid, eid, fin: (True, "stub"))
         monkeypatch.setattr(agent.backtest, "partition_dataset", lambda market, part, phase: None)
+        # The research-fold power pre-screen runs for real in test_gatekeeper; here every finalist
+        # is powered unless a test names it in `underpowered`.
+        self.underpowered = set()
+        monkeypatch.setattr(agent.gatekeeper, "validation_power", self._power)
+
+    def _power(self, cur, uid, market, spec, ds, partition, min_sample):
+        weak = spec.get("_title") in self.underpowered
+        return {"ok": not weak, "power": 0.05 if weak else 0.9,
+                "reason": "projected validation power 5% < 20%" if weak else ""}
 
     def _insert(self, cur, uid, run_id, parent, market, direction, title, thesis, spec, status, result):
         self.strategies.append({"title": title, "status": status, "result": result, "spec": spec})
@@ -194,3 +203,57 @@ def test_agent_py_never_touches_validation_or_holdout_datasets():
     # The reviewer's grep: the generator must not import or call the gatekeeper-only loaders.
     assert "validation_dataset" not in src
     assert "holdout_dataset" not in src
+
+
+def test_underpowered_finalist_spends_no_validation_budget(monkeypatch):
+    """A finalist whose research-fold edge projects too little validation power is recorded as
+    rejected ('underpowered') and is never pre-registered or judged, so it costs no alpha and
+    adds no DSR trial."""
+    store = FakeStore(monkeypatch)
+    a, b = _cand("A", 50, 20, 9.0), _cand("B", 40, 15, 8.0)
+    b["spec"] = dict(b["spec"], _title="B")
+    store.underpowered = {"B"}
+    _run_gate(monkeypatch, store, [a, b], [{"decision": "approve", "reason": "", "fixes": None}] * 2)
+    assert len(store.preregistered) == 1 and store.preregistered[0].spec is a["spec"]
+    exp_ids, payloads = store.judged[0]
+    assert len(payloads) == 1
+    by_title = {s["title"]: s for s in store.strategies}
+    assert by_title["B"]["status"] == "rejected"
+    assert by_title["B"]["result"]["classification"] == "underpowered"
+    assert "power" in by_title["B"]["result"]["gate_reason"]
+    assert any("NOT TESTED - B" in msg for kind, msg, _ in store.events if kind == "verdict")
+
+
+def test_research_prompt_states_the_detectable_edge():
+    """The proposer is told how big a per-trade edge the gate can confirm on this window, derived
+    from the research window length and the gatekeeper's public constants only."""
+    ds = SimpleNamespace(start_ts=0, end_ts=18 * 86400)
+    block = agent._detectability_block(ds)
+    assert "validation window will span ~8 days" in block
+    assert block.count("trades/day") == len(agent._DETECT_TRADES_PER_DAY)
+    # more trades -> smaller detectable edge
+    import re
+    mdes = [float(m) for m in re.findall(r"needs >= ([0-9.]+)%", block)]
+    assert mdes == sorted(mdes, reverse=True)
+    assert agent._detectability_block(SimpleNamespace(start_ts=5, end_ts=5)) == ""
+
+
+def test_pooled_finalist_preregisters_on_the_merged_partition(monkeypatch):
+    """A pooled rule's evidence spans every pooled market: it pre-registers against the MERGED
+    partition, is judged on the merged validation window under its shared stream key, and skips the
+    single-market power pre-screen (which would only see the run market's research fold)."""
+    store = FakeStore(monkeypatch)
+    merged_calls, loads = [], []
+    monkeypatch.setattr(agent.partitions, "ensure_merged_partition",
+                        lambda cur, mk: merged_calls.append(tuple(mk)) or {"id": 77, "embargo_seconds": 900})
+    monkeypatch.setattr(agent.partitions, "merged_partitions", lambda cur, mk: [(m, {}) for m in mk])
+    monkeypatch.setattr(agent.partitions, "merged_dataset_from", lambda legs, phase: loads.append(phase) or "VAL")
+    store.underpowered = {"P"}  # would be screened out if the single-market pre-screen ran
+    cand = _cand("P", 50, 20, 9.0)
+    cand["spec"] = dict(specmod.validate({"side": "yes", "entry": {"min_edge": 0.1},
+                                          "pool": ["eth15m", "sol15m"]}), _title="P")
+    _run_gate(monkeypatch, store, [cand], [{"decision": "approve", "reason": "", "fixes": None}])
+    assert merged_calls == [("btc15m", "eth15m", "sol15m")]
+    assert store.preregistered[0].research_partition_id == 77
+    assert store.preregistered[0].market == "btc15m+eth15m+sol15m"
+    assert loads == ["validation"] and len(store.judged) == 1

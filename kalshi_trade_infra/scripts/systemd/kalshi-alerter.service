@@ -1,0 +1,8 @@
+[Unit]
+Description=Kalshi live alerter: one pass of push alerts (halts, fills, cash, stale writers, book vs Kalshi positions)
+After=network-online.target
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/kalshi
+Environment=PYTHONPATH=/opt/kalshi
+ExecStart=/bin/bash -c 'set -a; . /opt/kalshi/.env.aws; . /opt/kalshi/.env.alerts; set +a; unset AWS_PROFILE; exec /opt/kalshi/.venv/bin/python -m data_pipeline.live_alerter'

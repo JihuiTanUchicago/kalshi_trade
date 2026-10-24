@@ -139,15 +139,16 @@ def test_resumable_vs_stopped_and_retry_cap():
     progressed = json.dumps({"chunks_done": 0, "tried": [{"t": 1}], "chunk": [{"t": 1}]})
     rows = [
         {"id": 10, "kind": "research", "resume_count": 0, "checkpoint_json": progressed},   # -> resume
-        {"id": 11, "kind": "research", "resume_count": 3, "checkpoint_json": progressed},   # -> fail (cap)
-        {"id": 12, "kind": "research", "resume_count": 0, "checkpoint_json": None},          # -> fail (no progress)
-        {"id": 13, "kind": "review", "resume_count": 0, "checkpoint_json": progressed},      # -> fail (not research)
+        {"id": 11, "kind": "research", "resume_count": 3, "checkpoint_json": progressed},   # -> STOPPED (cap)
+        {"id": 12, "kind": "research", "resume_count": 0, "checkpoint_json": None},          # -> STOPPED (no progress)
+        {"id": 13, "kind": "review", "resume_count": 0, "checkpoint_json": progressed},      # -> STOPPED (not research)
     ]
     cur = _AbCur(rows)
     reaped = repo.fail_abandoned_runs(cur, timedelta(seconds=240), max_resumes=3)
     assert reaped == 4
 
     requeued = [p[1] for s, p in cur.status_updates if "status='queued'" in s]
+    assert not any("status='failed'" in s for s, _ in cur.status_updates)  # never failed any more
     stopped = {p[4]: p for s, p in cur.status_updates if "status='stopped'" in s}
 
     assert requeued == [10]                                  # only the one with progress + budget resumes
@@ -164,5 +165,5 @@ def test_resume_count_at_cap_is_not_reclaimed():
                "checkpoint_json": json.dumps({"tried": [{"t": 1}]})}]
     cur = _AbCur(at_cap)
     repo.fail_abandoned_runs(cur, timedelta(seconds=90), max_resumes=2)
-    assert all("status='queued'" not in s for s, _ in cur.status_updates)
-    assert any("status='stopped'" in s for s, _ in cur.status_updates)
+    assert all("status='queued'" not in s for s, _ in cur.status_updates)   # at the cap -> not reclaimed
+    assert any("status='stopped'" in s for s, _ in cur.status_updates)       # terminal = STOPPED, not failed

@@ -37,7 +37,7 @@ from typing import Dict, List, NamedTuple
 
 from app import repository as repo
 from app.markets import MARKETS
-from data_pipeline.common import api_get_auth, utc_now
+from data_pipeline.common import KALSHI_KEY_ID, api_get_auth, utc_now
 
 # Discrepancy kinds (stored verbatim in app_position_reconcile.kind).
 UNTRACKED = "untracked"          # exchange holds a position our book does not — the serious one
@@ -47,6 +47,10 @@ SHORT = "short"                  # signs conflict: a genuine, unexpected opposit
 
 # Kinds urgent enough to flag loudly in the user notification.
 _URGENT = (UNTRACKED, SHORT)
+
+# The legacy engine's key. A Tau user whose key matches trades the same Kalshi
+# account, so that account's book includes live_positions too.
+OPERATOR_KEY_ID = KALSHI_KEY_ID
 
 
 class ExchPos(NamedTuple):
@@ -167,16 +171,35 @@ def _adopt_orphan(cur, user_id: int, d: Discrepancy, exch: Dict[str, ExchPos]) -
                          utc_now() + timedelta(days=1), order_ref="reconcile-adopt")
 
 
-def reconcile_user(cur, user_id: int, exch: Dict[str, ExchPos], adopt: bool = False) -> List[Discrepancy]:
+def _persisted(row: Dict) -> bool:
+    """An open audit row seen on at least two sweeps (see repo.live_entry_halts)."""
+    d, u = row.get("detected_at"), row.get("updated_at")
+    return d is not None and u is not None and u > d
+
+
+def reconcile_user(cur, user_id: int, exch: Dict[str, ExchPos], adopt: bool = False,
+                   include_legacy: bool = False) -> List[Discrepancy]:
     """Reconcile one user's live book against their exchange positions. Upserts each
     genuine discrepancy to the audit trail, notifies the user when a discrepancy is
     new or changed (never every sweep — the standing-condition discipline), resolves
-    audit rows that have cleared, and optionally adopts untracked orphans."""
-    book_net = book_net_from_rows(repo.live_book_by_ticker_side(cur, user_id))
+    audit rows that have cleared, and optionally adopts untracked orphans.
+
+    A discrepancy still open on the next sweep halts the user's new LIVE entries
+    (engine.decide reads repo.live_entry_halts); exits keep running. The user is
+    told once when the halt starts and once when it lifts.
+
+    include_legacy: this user's key trades the operator account, which also holds
+    the legacy engine's live_positions; count them as ours."""
+    rows = list(repo.live_book_by_ticker_side(cur, user_id))
+    if include_legacy:
+        rows += list(repo.legacy_live_book_rows(cur))
+    book_net = book_net_from_rows(rows)
     exch_net = {t: ep.net for t, ep in exch.items()}
     discreps = classify(book_net, exch_net)
 
     existing = {r["ticker"]: r for r in repo.open_reconcile_rows(cur, user_id)}
+    was_halted = any(_persisted(r) for r in existing.values())
+    halted_now = [d for d in discreps if d.ticker in existing]
     active: List[str] = []
     for d in discreps:
         active.append(d.ticker)
@@ -190,6 +213,14 @@ def reconcile_user(cur, user_id: int, exch: Dict[str, ExchPos], adopt: bool = Fa
         if adopt and d.kind == UNTRACKED:
             _adopt_orphan(cur, user_id, d, exch)
     repo.resolve_reconcile_except(cur, user_id, active)
+    if halted_now and not was_halted:
+        repo.add_chat(cur, user_id, "system",
+                      "Live entries HALTED: your book and your Kalshi account still disagree on %s after "
+                      "two checks. No new live position will open until they match again; exits keep "
+                      "running." % ", ".join(sorted(d.ticker for d in halted_now)))
+    elif was_halted and not halted_now:
+        repo.add_chat(cur, user_id, "system",
+                      "Live entries resumed: your book matches your Kalshi account again.")
     return discreps
 
 
@@ -211,8 +242,9 @@ def reconcile_all(conn) -> Dict[str, int]:
                 continue
             creds = kalshi_account.credentials_from_row(uid, key)
             exch = exchange_positions(creds)  # read-only exchange call, this user's own key
+            operator = bool(OPERATOR_KEY_ID) and key.get("key_id") == OPERATOR_KEY_ID
             with repo.transaction(conn) as tx:
-                discreps = reconcile_user(tx, uid, exch, adopt=adopt)
+                discreps = reconcile_user(tx, uid, exch, adopt=adopt, include_legacy=operator)
             summary["users"] += 1
             summary["discrepancies"] += len(discreps)
         except Exception as e:  # contained per user: a reconcile error is never fatal

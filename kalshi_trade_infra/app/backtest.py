@@ -4,6 +4,9 @@ Honesty rules, each closing a way backtests usually flatter themselves:
 
 * Buys pay the ask, sells hit the bid, and every fill pays Kalshi's taker fee
   (`kalshi_fees`), rounded up per order as Kalshi does.
+* Fills happen on the NEXT bar, not the one that produced the signal (FILL_MODEL), the way
+  the live kernel re-prices at submit: an entry fills only if the next ask is still within the
+  edge-clearing reservation price, and never for more than the displayed top-of-book size.
 * Positions settle on Kalshi's own result for that contract.
 * The window is split in time: the agent iterates on IN-SAMPLE only and never
   sees out-of-sample numbers until its final candidates are frozen. A spec
@@ -16,6 +19,7 @@ from __future__ import annotations
 import copy
 import logging
 import math
+import os
 import threading
 import time
 from collections import defaultdict
@@ -26,6 +30,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 from app import freedata
 from app import spec as specmod
 from app.markets import MARKETS, NEW_YORK, BtcSeries, Contract, Market, Snapshot, snapshot
+from data_pipeline.architecture.execution_kernel import reservation_price
 from data_pipeline.kalshi_fees import taker_fee_dollars
 
 IN_SAMPLE_FRACTION = 0.7
@@ -202,6 +207,8 @@ def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optio
         return simulate_pairs(spec, ds, start_ts, end_ts, what_if)
     if ds.market.kind == "spot":
         return simulate_spot(spec, ds, start_ts, end_ts, what_if)
+    if FILL_MODEL == "next_bar":
+        return _simulate_next_bar(spec, ds, start_ts, end_ts, what_if)
     w = what_if or WhatIf()
     slip = w.slippage_cents / 100.0
     stake = w.stake if w.stake is not None else spec["sizing"]["stake"]
@@ -271,6 +278,138 @@ def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optio
                       int(cand.snapshot.contract.close_time.timestamp()), cand.edge)
             )
             held.add(ticker)
+    for pos in open_:
+        settle(pos)
+    return trades
+
+
+# How single-contract binary fills are modeled. "next_bar" (default) mirrors the live kernel: the
+# signal is computed from a bar's closing quote, the order executes against the NEXT bar's quote,
+# an entry is abandoned if that ask is past the edge-clearing reservation price (exactly
+# execution_kernel.reservation_price, the cap live and paper enforce), and the filled size is capped
+# at the displayed best-level size when the feed carries it. "signal_bar" is the legacy optimistic
+# model that filled at the very quote that produced the signal; it is kept for comparison only.
+FILL_MODEL = os.getenv("TAU_BACKTEST_FILL_MODEL", "next_bar")
+FILL_MAX_DELAY_BARS = 2  # an order whose next quote is further away than this many bars expires
+
+
+def _top_size(snap: Snapshot, side: str) -> Optional[float]:
+    """Contracts resting at the best level a BUY of `side` would take: YES buys lift the YES ask;
+    NO buys hit the YES bid (a NO ask is 1 - YES bid). None when the feed has no size."""
+    v = snap.features.get("yes_ask_size" if side == "yes" else "yes_bid_size")
+    return float(v) if v is not None else None
+
+
+def _simulate_next_bar(spec: Dict, ds: Dataset, start_ts: int, end_ts: int,
+                       what_if: Optional[WhatIf] = None) -> List[Trade]:
+    """simulate() under FILL_MODEL="next_bar". Same sizing, fees, holding and settlement rules; the
+    only difference is WHEN and AT WHAT PRICE an order fills:
+
+    * an entry signalled at bar t fills at bar t+1's ask for that contract, only if that ask (plus
+      what-if slippage) is <= the reservation price for the spec's own fair value and min_edge (a
+      code strategy, which has no fair value, may not pay more than its signal price), and for at
+      most the displayed top-of-book size. Otherwise the entry is missed, as live would abandon it;
+    * an exit signalled at bar t sells at bar t+1's bid. Until it fills the position keeps settling
+      normally, so a contract that expires first simply settles;
+    * an order whose next quote is more than FILL_MAX_DELAY_BARS bars away expires unfilled.
+
+    Entry timestamps are fill times, so trade timing, the purged splits and the cross-day checks all
+    see when the position really existed."""
+    w = what_if or WhatIf()
+    slip = w.slippage_cents / 100.0
+    stake = w.stake if w.stake is not None else spec["sizing"]["stake"]
+    max_pos = spec["sizing"]["max_positions"]
+    book = _code_book(spec, ds, start_ts, end_ts) if specmod.is_code_spec(spec) else None
+    min_edge = None if book is not None else float(spec["entry"]["min_edge"])
+    max_delay = FILL_MAX_DELAY_BARS * max(int(getattr(ds.market, "decision_seconds", 60) or 60), 1)
+    open_: List[_Open] = []
+    trades: List[Trade] = []
+    pending_entries: List[Tuple[int, specmod.Entry]] = []
+    pending_exits: Dict[str, Tuple[int, str]] = {}  # ticker -> (signal ts, exit reason)
+
+    def fee(qty: int, price: float) -> float:
+        return taker_fee_dollars(qty, price) * w.fee_multiplier
+
+    def settle(pos: _Open) -> None:
+        won = ds.results.get(pos.ticker) == pos.side
+        trades.append(Trade(pos.ticker, pos.side, pos.qty, pos.entry_ts, pos.entry_price, pos.close_ts,
+                            1.0 if won else 0.0, pos.fee, "settled", pos.edge))
+
+    for ts, snaps in ds.frames[_first_frame(ds, start_ts):]:
+        keep = []
+        for pos in open_:
+            if pos.close_ts <= ts:
+                settle(pos)
+                pending_exits.pop(pos.ticker, None)
+            else:
+                keep.append(pos)
+        open_ = keep
+        by_ticker = {s.contract.ticker: s for s in snaps}
+
+        # 1. Exits signalled on an earlier bar sell at this bar's bid.
+        keep = []
+        for pos in open_:
+            sig = pending_exits.get(pos.ticker)
+            snap = by_ticker.get(pos.ticker)
+            if sig is not None and ts - sig[0] > max_delay:
+                pending_exits.pop(pos.ticker)  # stale; re-evaluated below
+            elif sig is not None and snap is not None:
+                sell = specmod.side_prices(snap)[pos.side][1]
+                if sell > 0:
+                    price = max(0.0, sell - slip)
+                    trades.append(Trade(pos.ticker, pos.side, pos.qty, pos.entry_ts, pos.entry_price, ts,
+                                        price, pos.fee + fee(pos.qty, price), sig[1], pos.edge))
+                    pending_exits.pop(pos.ticker)
+                    continue
+            keep.append(pos)
+        open_ = keep
+
+        # 2. Entries signalled on the previous bar fill at this bar's ask, within the reservation.
+        held = {p.ticker for p in open_}
+        for sig_ts, cand in pending_entries:
+            if len(open_) >= max_pos:
+                break
+            ticker = cand.snapshot.contract.ticker
+            snap = by_ticker.get(ticker)
+            if ts - sig_ts > max_delay or ticker in held or snap is None:
+                continue
+            ask = specmod.side_prices(snap)[cand.side][0]
+            if not 0.0 < ask < 1.0:
+                continue
+            price = min(0.99, ask + slip)
+            qty = specmod.contracts_for(stake, price)
+            size = _top_size(snap, cand.side)
+            if size is not None:
+                qty = min(qty, int(size))
+            if qty < 1:
+                continue
+            limit = cand.price if min_edge is None else reservation_price(cand.fair, min_edge, qty)
+            if limit is None or price > limit + 1e-9:
+                continue  # the ask ran past what the edge allows: live abandons, so do we
+            open_.append(_Open(ticker, cand.side, qty, ts, price, fee(qty, price),
+                               int(snap.contract.close_time.timestamp()), cand.edge))
+            held.add(ticker)
+        pending_entries = []
+
+        # 3. New exit signals on open positions (filled next bar).
+        for pos in open_:
+            if pos.ticker in pending_exits:
+                continue
+            snap = by_ticker.get(pos.ticker)
+            if not snap:
+                continue
+            sig = _code_exit(book, ts, pos, snap) if book is not None else \
+                specmod.exit_signal(spec, pos.side, pos.entry_price, snap)
+            if sig is not None:
+                pending_exits[pos.ticker] = (ts, sig[0])
+
+        # 4. New entry signals (filled next bar), only inside the window.
+        if ts >= end_ts:
+            if not open_:
+                break
+            continue
+        cands = _code_entries(book, ts, snaps) if book is not None else specmod.entries(spec, snaps)
+        pending_entries = [(ts, c) for c in cands if c.snapshot.contract.ticker not in held]
     for pos in open_:
         settle(pos)
     return trades
@@ -1050,6 +1189,21 @@ def feature_coverage(ds: Dataset) -> Dict[str, int]:
     return {name: round(100 * c / n) for name, c in present.items()} if n else {}
 
 
+def research_fold_trades(spec: Dict, ds: Dataset, embargo_seconds: int, n_splits: int = 4,
+                         what_if: Optional[WhatIf] = None) -> List[Trade]:
+    """The trades research_fold_metrics scores: simulate the spec across the whole Research window,
+    keep only the pooled PURGED walk-forward test folds (stats.purged_walkforward_splits), ordered
+    by entry. Too few trades to split -> every trade. Research data only, so free to inspect."""
+    from app import stats
+    trades = sorted(simulate(spec, ds, ds.start_ts, ds.end_ts + 1, what_if), key=lambda t: t.entry_ts)
+    if not trades:
+        return []
+    splits = stats.purged_walkforward_splits([t.entry_ts for t in trades],
+                                             [t.exit_ts for t in trades], n_splits, embargo_seconds)
+    test_idx = sorted({i for sp in splits for i in sp["test_idx"]})
+    return [trades[i] for i in test_idx] if test_idx else trades
+
+
 def research_fold_metrics(spec: Dict, ds: Dataset, embargo_seconds: int,
                           n_splits: int = 4, what_if: Optional[WhatIf] = None) -> Dict:
     """In-research "OOS" metrics via a PURGED walk-forward split (Lopez de Prado) instead of a
@@ -1057,18 +1211,10 @@ def research_fold_metrics(spec: Dict, ds: Dataset, embargo_seconds: int,
     the pooled test folds. stats.purged_walkforward_splits drops train frames that settle into
     (purge) or run up to (embargo) a test block, so the fold is leak-free WITHIN Research — the
     agent may look at it freely. Returns {"capital", "in_sample": metrics} mirroring evaluate()."""
-    from app import stats
     stake = (what_if.stake if what_if and what_if.stake is not None else spec["sizing"]["stake"])
     capital = stake * spec["sizing"]["max_positions"]
-    trades = sorted(simulate(spec, ds, ds.start_ts, ds.end_ts + 1, what_if), key=lambda t: t.entry_ts)
-    if trades:
-        splits = stats.purged_walkforward_splits([t.entry_ts for t in trades],
-                                                 [t.exit_ts for t in trades], n_splits, embargo_seconds)
-        test_idx = sorted({i for sp in splits for i in sp["test_idx"]})
-        fold = [trades[i] for i in test_idx] if test_idx else trades
-        span = (fold[-1].exit_ts - fold[0].entry_ts) / 86400.0 if fold else 0.0
-    else:
-        fold, span = [], (ds.end_ts - ds.start_ts) / 86400.0
+    fold = research_fold_trades(spec, ds, embargo_seconds, n_splits, what_if)
+    span = (fold[-1].exit_ts - fold[0].entry_ts) / 86400.0 if fold else (ds.end_ts - ds.start_ts) / 86400.0
     m = metrics(fold, capital, max(span, 1e-9))
     m.pop("_curve", None)
     return {"capital": capital, "in_sample": m, "attribution": attribution(fold)}

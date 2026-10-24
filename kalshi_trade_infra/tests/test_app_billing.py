@@ -61,6 +61,13 @@ def test_is_ready_gates_autonomous_spend(monkeypatch):
     # Card on file AND credits remain => ready.
     monkeypatch.setattr(repo, "credit_balance", lambda cur, uid: 4.2)
     assert billing.is_ready(None, 1) is True
+    # Headroom gate: a POSITIVE but sub-minimum balance can't start a billed run (post-paid billing
+    # would overshoot it into the negative — the -$4.11 bug). Must have >= MIN_RUN_BALANCE.
+    monkeypatch.setattr(billing, "MIN_RUN_BALANCE", Decimal("1.00"))
+    monkeypatch.setattr(repo, "credit_balance", lambda cur, uid: 0.5)
+    assert billing.is_ready(None, 1) is False
+    monkeypatch.setattr(repo, "credit_balance", lambda cur, uid: 1.0)
+    assert billing.is_ready(None, 1) is True
 
 
 def test_topup_charge_includes_fee():

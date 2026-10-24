@@ -360,6 +360,10 @@ def _ci_result(boot: np.ndarray, point: float, alpha: float, n_boot: int, avg_bl
         "lo": float(np.percentile(boot, 100.0 * (alpha / 2.0))),
         "hi": float(np.percentile(boot, 100.0 * (1.0 - alpha / 2.0))),
         "p_value": float(np.mean(boot <= 0.0)),  # one-sided mass at/below 0
+        # Bootstrap standard error of the statistic (autocorrelation-robust via the resampling
+        # scheme). Lets a caller form a continuous normal-tail p-value when the empirical
+        # mass above is pinned at its 1/n_boot resolution floor.
+        "se": float(np.std(boot, ddof=1)) if len(boot) > 1 else float("nan"),
         "n_boot": int(n_boot),
         "avg_block": float(avg_block),
     }
@@ -370,10 +374,11 @@ def _degenerate_result(x: np.ndarray, stat: str, n_boot: int, avg_block: float) 
     n = len(x)
     if n == 0:
         return {"point": float("nan"), "lo": float("nan"), "hi": float("nan"),
-                "p_value": float("nan"), "n_boot": int(n_boot), "avg_block": float(avg_block)}
+                "p_value": float("nan"), "se": float("nan"), "n_boot": int(n_boot),
+                "avg_block": float(avg_block)}
     if n == 1:
         pt = _stat_value(x, stat)
-        return {"point": pt, "lo": pt, "hi": pt, "p_value": float(pt <= 0.0),
+        return {"point": pt, "lo": pt, "hi": pt, "p_value": float(pt <= 0.0), "se": 0.0,
                 "n_boot": int(n_boot), "avg_block": float(avg_block)}
     return None
 

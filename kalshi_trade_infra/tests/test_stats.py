@@ -77,7 +77,7 @@ def test_stationary_bootstrap_injected_edge_vs_null():
     null = list(rng.normal(0.0, 0.1, 300))      # mean ~ 0 (edge destroyed)
     r_edge = stats.stationary_bootstrap_ci(edge, "mean", n_boot=1000, seed=1)
     r_null = stats.stationary_bootstrap_ci(null, "mean", n_boot=1000, seed=1)
-    assert set(r_edge) == {"point", "lo", "hi", "p_value", "n_boot", "avg_block"}
+    assert set(r_edge) == {"point", "lo", "hi", "p_value", "se", "n_boot", "avg_block"}
     assert r_edge["p_value"] < 0.05 and r_edge["lo"] > 0.0   # significant, CI above 0
     assert r_null["p_value"] > 0.1                           # not significant
     assert r_edge["avg_block"] >= 2.0                        # Politis-White floored at 2
@@ -90,7 +90,7 @@ def test_bootstrap_edges_and_block_variant():
     # Fixed moving-block variant has the same shape and a usable p_value.
     rng = np.random.default_rng(2)
     r = stats.block_bootstrap_ci(list(rng.normal(0.05, 0.1, 300)), "mean", n_boot=800, block=5, seed=3)
-    assert set(r) == {"point", "lo", "hi", "p_value", "n_boot", "avg_block"}
+    assert set(r) == {"point", "lo", "hi", "p_value", "se", "n_boot", "avg_block"}
     assert r["avg_block"] == 5.0 and r["p_value"] < 0.05
     # Sharpe stat is supported.
     assert "point" in stats.stationary_bootstrap_ci([0.01, -0.02, 0.03, 0.01, 0.02], "sharpe", seed=1)
