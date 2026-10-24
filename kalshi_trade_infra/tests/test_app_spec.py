@@ -211,10 +211,16 @@ def test_entry_scan_agrees_with_entries_and_names_the_first_blocking_check():
     assert scan["blocked_at"].startswith("a yes/no price of 85c") and scan["nearest"] == "nearest is 25c outside"
     flt = specmod.validate({"entry": {"filters": [{"feature": "ret_5m", "op": ">", "value": 0.01}]}})
     scan = specmod.entry_scan(flt, [_snap(ret5=0.002), _snap(ret5=0.004)])
-    assert scan["blocked_at"] == "ret_5m > 0.01" and scan["nearest"] == "closest is 0.004"
+    assert scan["blocked_at"] == "the 5-minute return > 0.01" and scan["nearest"] == "closest is 0.004"
     assert [st["passed"] for st in scan["steps"]][:3] == [2, 2, 0]
     greedy = specmod.validate({"entry": {"min_edge": 0.5, "max_price": 0.95}})
     scan = specmod.entry_scan(greedy, [snap])
     assert scan["blocked_at"] == "an edge of 50c or more after fees" and scan["nearest"].startswith("best is ")
     assert specmod.entries(greedy, [snap]) == []
     assert specmod.entry_scan(ok, [])["why"] == "no open contracts in the order book right now"
+
+
+def test_plain_feature_names():
+    assert specmod.plain_feature("ret_5m") == "the 5-minute return"
+    assert specmod.plain_feature("vol_60m") == "the 60-minute volatility"
+    assert specmod.plain_feature("z_score") == "the z-score" and specmod.plain_feature("ob_imbalance") == "ob_imbalance"

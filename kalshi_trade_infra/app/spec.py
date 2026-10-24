@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import copy
 import math
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -900,6 +901,18 @@ def _cents(x: float) -> str:
     return "%.0fc" % (100 * x) if abs(100 * x - round(100 * x)) < 1e-6 else "%.1fc" % (100 * x)
 
 
+_PLAIN_FEATURES = {"z_score": "the z-score", "hour_et": "the hour (ET)", "spread": "the spread",
+                   "moneyness": "moneyness", "spot": "the spot price", "tte_min": "minutes to expiry"}
+
+
+def plain_feature(name: str) -> str:
+    """A feature name a person can read in the autopilot panel ('ret_5m' -> 'the 5-minute return')."""
+    m = re.fullmatch(r"(ret|vol)_(\d+)m", name or "")
+    if m:
+        return "the %s-minute %s" % (m.group(2), "return" if m.group(1) == "ret" else "volatility")
+    return _PLAIN_FEATURES.get(name, name)
+
+
 def entry_scan(spec: Dict, snaps: List[Snapshot]) -> Dict:
     """Why the rule bought nothing (or what it could buy) on this decision: how many open contracts
     cleared each entry check, in exactly the order `entries` applies them, the first check none
@@ -942,7 +955,7 @@ def entry_scan(spec: Dict, snaps: List[Snapshot]) -> Dict:
                 return "%s isn't available right now" % flt["feature"]
             v = max(vals) if flt["op"] in (">", ">=") else min(vals)
             return "closest is %.4g" % v
-        checks.append(("%s %s %g" % (flt["feature"], flt["op"], flt["value"]), keep, nearest))
+        checks.append(("%s %s %g" % (plain_feature(flt["feature"]), flt["op"], flt["value"]), keep, nearest))
     checks += [
         ("a fair value from the model", lambda s: fair_yes(spec, s.features) is not None, lambda ss: ""),
         ("a %s price of %s to %s" % ("/".join(sides), _cents(e["min_price"]), _cents(e["max_price"])),
