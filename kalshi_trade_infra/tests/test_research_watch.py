@@ -68,3 +68,15 @@ def test_publish_writes_latest_and_a_dated_copy():
     key = rw.publish({"generated_at": "2026-10-24T21:00:00+00:00", "anomalies": []}, s3=S3())
     assert key == "research-watch/date=2026-10-24/2100.json"
     assert puts == [key, "research-watch/latest.json"]
+
+
+def test_flags_of_a_run_that_ended_over_an_hour_ago_drop_to_low(monkeypatch):
+    """A handled failure was re-flagged "high" for the whole 3h window, burying new ones."""
+    monkeypatch.setattr(rw.rsi, "run_cost_usd", lambda run: 0.5)
+    err = "The agent's reply could not be used: unknown field(s) for a code strategy: side"
+    runs = [_run(1, "failed", error=err, finished_at=NOW - timedelta(minutes=90), mins_ago=120),
+            _run(2, "failed", error=err, finished_at=NOW - timedelta(minutes=10))]
+    rep = rw.build_report(runs, {}, NOW, 3)
+    sev = {a["run_id"]: (a["severity"], a.get("stale", False)) for a in rep["anomalies"]}
+    assert sev == {1: ("low", True), 2: ("high", False)}
+    assert rep["anomalies"][0]["run_id"] == 2
