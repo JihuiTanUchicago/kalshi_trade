@@ -339,6 +339,51 @@ def test_run_forever_runs_many_chunks_until_cancelled(monkeypatch):
     assert len(store.strategies) >= 2                        # it had completed at least one chunk first
 
 
+def test_a_reaped_run_stops_its_zombie_copy_quietly(monkeypatch):
+    """The watchdog re-queued the run while this thread was in a long silent phase: the old thread
+    must stop at its next checkpoint, writing no events and no finish over the new owner's record."""
+    store = Store(monkeypatch)
+    beats = {"n": 0}
+
+    def hb(cur, run_id):
+        beats["n"] += 1
+        return "running" if beats["n"] < 3 else "queued"
+
+    monkeypatch.setattr(agent.repo, "heartbeat", hb)
+    monkeypatch.setattr(agent.repo, "run_worker", lambda cur, run_id: "w1")
+    model, _ = scripted([plan()] + [hyps(WINNER, LOSER)] * 30)
+    agent.run_research(Conn(), {**RUN, "worker_id": "w1", "max_hypotheses": 2, "run_forever": True},
+                       model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    assert store.finished is None
+    assert not any("Cancelled" in m for (k, m, d) in store.events)
+    n_events = len(store.events)
+    assert beats["n"] == 3 and n_events > 0
+
+
+def test_a_run_reclaimed_by_another_worker_stops_this_copy(monkeypatch):
+    store = Store(monkeypatch)
+    owners = iter(["w1", "w1", "w2"])
+    monkeypatch.setattr(agent.repo, "run_worker", lambda cur, run_id: next(owners, "w2"))
+    model, _ = scripted([plan()] + [hyps(WINNER, LOSER)] * 30)
+    agent.run_research(Conn(), {**RUN, "worker_id": "w1", "max_hypotheses": 2, "run_forever": True},
+                       model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    assert store.finished is None
+
+
+def test_run_worker_reads_the_owner():
+    from app import repository as repo
+
+    class Rec:
+        def execute(self, sql, params=()):
+            self.sql, self.params = sql, params
+
+        def fetchone(self):
+            return {"worker_id": "host:1:0"}
+
+    cur = Rec()
+    assert repo.run_worker(cur, 5) == "host:1:0" and cur.params == (5,)
+
+
 def test_plan_lookback_clamps_to_available_history():
     from app import agent
     from app.llm import Usage
