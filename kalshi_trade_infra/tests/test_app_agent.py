@@ -831,8 +831,9 @@ def test_research_outcome_line_format():
 
 
 def test_outcome_line_counts_theses_dropped_on_the_research_fold(monkeypatch, capsys):
-    """A run whose every thesis dies on the research fold reports tried=0, so the outcome line must
-    say how many were dropped, or it reads like a run that did nothing."""
+    """A run whose every thesis dies on the research fold counts those theses as tried (the sessions
+    list showed "0 of 0 passed" for runs that explored 8 ideas), and the outcome line still says how
+    many were dropped."""
     store = Store(monkeypatch)
     model, _prompts = scripted([plan()] + [hyps(WINNER, LOSER)] * 20)
     monkeypatch.setattr(agent, "_develop_thesis",
@@ -841,4 +842,5 @@ def test_outcome_line_counts_theses_dropped_on_the_research_fold(monkeypatch, ca
     agent.run_research(Conn(), {**RUN, "max_hypotheses": 3}, model=model,
                        dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
     line = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("[research] run=")][0]
-    assert "tried=0" in line and "research:dropped=" in line
+    assert "tried=8" in line and "research:dropped=8" in line
+    assert store.finished[0] == "succeeded" and store.finished[2] == 8   # what the sessions list shows
