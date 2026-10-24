@@ -1,0 +1,47 @@
+name: Deploy collector box
+
+# Redeploy data_pipeline/ to the collector box (tau-collector), the counterpart of deploy.yml.
+# Manual trigger only (repo writers). Reuses scripts/deploy_collector.sh verbatim: tar from the
+# ref -> S3 -> SSM on-box backup/extract/compile/restart -> every unit still up -> else rollback.
+# Uses the same tau-deploy-ci keys; its SendCommand permission must include the collector
+# instance (scripts/DEPLOY_WORKFLOW_SETUP.md).
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to deploy (branch, tag, or SHA)"
+        required: false
+        default: main
+
+concurrency:
+  group: deploy-collector
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check out the ref being deployed
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Configure AWS credentials (deploy IAM user keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Deploy to the collector box
+        env:
+          AWS_PROFILE: ""
+        run: |
+          set -euo pipefail
+          bash kalshi_trade_infra/scripts/deploy_collector.sh --ref "${{ inputs.ref }}"
