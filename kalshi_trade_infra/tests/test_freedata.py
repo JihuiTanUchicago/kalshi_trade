@@ -111,3 +111,55 @@ def test_enrich_noop_without_datasets():
     window = backtest._binary_window("btc15m", ds.frames)
     assert freedata.enrich(_code_spec(code=BUY_ALL), window) == []
     assert all("external" not in f for f in window["frames"])
+
+
+# -- asos: hourly weather-station observations ----------------------------------
+
+_ASOS_CSV = """station,valid,tmpf
+NYC,2026-10-23 03:51,50.0
+NYC,2026-10-23 05:51,49.0
+NYC,2026-10-23 18:51,61.0
+NYC,2026-10-23 20:51,M
+NYC,2026-10-24 04:51,48.0
+NYC,2026-10-24 05:51,47.0
+NYC,2026-10-24 12:51,55.0
+"""
+
+
+def test_asos_dailymax_resets_on_the_lst_day_and_is_delayed_to_publication(monkeypatch):
+    """NYC:dailymax is the running max of the NWS climate day (midnight EST = 05:00 UTC, even under
+    DST), known 15 min after each observation; missing readings are skipped."""
+    from datetime import datetime, timezone
+
+    class Resp:
+        text = _ASOS_CSV
+        def raise_for_status(self):
+            pass
+    seen = {}
+    import requests
+    monkeypatch.setattr(requests, "get", lambda url, params, timeout: seen.update(p=params) or Resp())
+    obs = freedata._fetch_asos("nyc:dailymax", now=datetime(2026, 10, 24, tzinfo=timezone.utc))
+    ts = lambda s: int(datetime.strptime(s, "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc).timestamp())
+    assert [v for _, v in obs] == [50.0, 49.0, 61.0, 61.0, 47.0, 55.0]
+    # 03:51Z is still the 10-22 climate day; 05:51Z starts 10-23; 10-24 04:51Z is still 10-23.
+    assert obs[0][0] == ts("2026-10-23 03:51") + freedata.ASOS_LAG_S
+    assert ("station", "NYC") in seen["p"] and ("data", "tmpf") in seen["p"]
+    raw = freedata._fetch_asos("NYC", now=datetime(2026, 10, 24, tzinfo=timezone.utc))
+    assert [v for _, v in raw] == [50.0, 49.0, 61.0, 48.0, 47.0, 55.0]
+
+
+def test_asos_series_grammar():
+    assert freedata._parse_asos_series("NYC") == ("NYC", None)
+    assert freedata._parse_asos_series("mdw:dailymax") == ("MDW", -6)
+    assert freedata._parse_asos_series("KXYZ:dailymax:-7") == ("KXYZ", -7)
+    import pytest
+    for bad in ("N", "NY C", "NYC:dailymin", "ZZZ:dailymax", "NYC:dailymax:-5:x"):
+        with pytest.raises(ValueError):
+            freedata._parse_asos_series(bad)
+
+
+def test_asos_is_an_accepted_dataset_source():
+    s = specmod.validate({"market": "btc15m", "code": BUY_ALL, "sizing": {"stake": 5, "max_positions": 1},
+                          "datasets": [{"name": "nyc_hi", "source": "asos", "series": "NYC:dailymax",
+                                        "lag_days": 0}]})
+    assert s["datasets"] == [{"name": "nyc_hi", "source": "asos", "series": "NYC:dailymax", "lag_days": 0}]

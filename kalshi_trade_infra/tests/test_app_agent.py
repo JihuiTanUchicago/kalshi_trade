@@ -769,3 +769,17 @@ def test_research_outcome_line_format():
                                        {"validation:rejected": 3}, "RuntimeError")
     assert line == ("[research] run=7 user=2 market=btc15m status=failed tried=4 passed=0 tokens_in=100 "
                     "tokens_out=20 model=m verdicts=validation:rejected=3 error=RuntimeError")
+
+
+def test_outcome_line_counts_theses_dropped_on_the_research_fold(monkeypatch, capsys):
+    """A run whose every thesis dies on the research fold reports tried=0, so the outcome line must
+    say how many were dropped, or it reads like a run that did nothing."""
+    store = Store(monkeypatch)
+    model, _prompts = scripted([plan()] + [hyps(WINNER, LOSER)] * 20)
+    monkeypatch.setattr(agent, "_develop_thesis",
+                        lambda h, run, ds, partition, memory, proposer, md, usage, log, *a, **k:
+                        agent._abandon(log, h, "dead on arrival", k.get("dropped")))
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 3}, model=model,
+                       dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    line = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("[research] run=")][0]
+    assert "tried=0" in line and "research:dropped=" in line

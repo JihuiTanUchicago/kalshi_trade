@@ -1768,6 +1768,8 @@ def run_research(
         progress[0] = time.monotonic()
         if kind == "verdict" and data and data.get("classification"):
             verdicts["%s:%s" % (data.get("phase") or "validation", data["classification"])] += 1
+        elif kind == "verdict" and data and data.get("status") == "abandoned":
+            verdicts["research:dropped"] += 1  # died on the research fold, never gated (tried excludes it)
         repo.add_event(cur, run_id, kind, message, data)
 
     def checkpoint() -> None:

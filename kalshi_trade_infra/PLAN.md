@@ -1,5 +1,14 @@
 # PLAN
 
+## Research moves off 15m crypto; weather gets a real fundamental (2026-10-24)
+- btc15m: 28 theses in run 2541, all dead on the research fold. Treat 15m crypto as efficient after fees.
+- Ranking by likely inefficiency (to confirm with coverage data): 1) weather daily highs, 2) in-season
+  sports moneylines (NHL/NBA/NCAAF), 3) catalog econ/commodity dailies. Autopilot pointed at high_ny/nhl.
+- New free source `asos` (IEM ASOS archive): "NYC" latest temp F, "NYC:dailymax" running max of the NWS
+  climate day (LST midnight). Known-at = obs time + 15 min. Unverified from the web box until infra
+  confirms outbound access to mesonet.agron.iastate.edu.
+- Outcome line now counts `research:dropped`, so an all-DOA run no longer reads as tried=0 doing nothing.
+
 ## Calibration table priced at first touch (2026-10-24)
 - Run 2541 (btc15m) read the table's "late cheap YES +1.1c" lead and spent ~10 theses on it; every one
   lost (e.g. 3,285 pooled trades, -$1.82/trade). Cause: each contract was priced at its AVERAGE quote in
