@@ -1,0 +1,15 @@
+[Unit]
+Description=Kalshi dashboard_server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/kalshi
+ExecStart=/bin/bash -c 'source /opt/kalshi/.env.aws && source /opt/kalshi/.env.dashboard && exec /opt/kalshi/.venv/bin/python -m data_pipeline.dashboard_server'
+Restart=always
+RestartSec=5
+StandardOutput=append:/opt/kalshi/dashboard.log
+StandardError=append:/opt/kalshi/dashboard.log
+
+[Install]
+WantedBy=multi-user.target

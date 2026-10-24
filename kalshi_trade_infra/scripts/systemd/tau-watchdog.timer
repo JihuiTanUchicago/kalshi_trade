@@ -1,0 +1,8 @@
+[Unit]
+Description=Run the Tau watchdog every 60s
+[Timer]
+OnBootSec=120
+OnUnitActiveSec=60
+AccuracySec=10
+[Install]
+WantedBy=timers.target
