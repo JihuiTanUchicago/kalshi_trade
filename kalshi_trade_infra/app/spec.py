@@ -173,6 +173,9 @@ each feature is overfitting, and the higher bar will reject it."""
 # just `market` and `sizing`; the backtester applies the SAME fee/sizing/settlement, and the
 # gatekeeper judges it identically to a DSL spec (pre-registration hashes the code as the rule).
 CODE_SPEC_KEYS = {"market", "sizing", "code", "datasets"}
+# DSL-only fields a proposer sometimes carries over onto a code spec. The code alone decides side,
+# entry and exit (each signal names its own side), so they are dropped rather than failing the idea.
+CODE_SPEC_IGNORED = ("side", "model", "entry", "exit")
 MAX_CODE_CHARS = 20_000
 # Free external datasets a code spec may request (Pillar 3). Resolved + as-of joined on the host
 # into frame["external"] within the research fold; see app/freedata.py. These are the sources that
@@ -371,13 +374,20 @@ def is_code_spec(spec: Dict) -> bool:
     return isinstance(spec, dict) and bool(spec.get("code"))
 
 
+def ignored_code_fields(raw: Any) -> List[str]:
+    """The DSL-only fields validate() drops from this raw code spec (for the feed, not an error)."""
+    if not isinstance(raw, dict) or "code" not in raw:
+        return []
+    return [k for k in CODE_SPEC_IGNORED if k in raw]
+
+
 def _validate_code_spec(raw: Dict) -> Dict[str, Any]:
     """Validate an arbitrary-quant code strategy: market + sizing + a `signals(window)` body
-    that passes the sandbox's static gate. Unknown top-level fields are errors (same strictness
-    as the DSL path). The returned spec is minimal: {market, sizing, code}."""
+    that passes the sandbox's static gate. DSL-only fields (CODE_SPEC_IGNORED) are dropped; any
+    other unknown top-level field is an error. The returned spec is minimal: {market, sizing, code}."""
     from app import sandbox  # local import: sandbox pulls in exploration/dataclasses
     errors: List[str] = []
-    extra = set(raw) - CODE_SPEC_KEYS
+    extra = set(raw) - CODE_SPEC_KEYS - set(CODE_SPEC_IGNORED)
     if extra:
         errors.append("unknown field(s) for a code strategy: %s" % ", ".join(sorted(extra)))
 

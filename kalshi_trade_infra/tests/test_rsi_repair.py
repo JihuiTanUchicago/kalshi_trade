@@ -28,6 +28,12 @@ def test_what_each_pipeline_death_asks_for():
     assert rsi_repair.tick_twin("eth15m") is None and rsi_repair.tick_twin("btc15m") == "btc15m_tick"
 
 
+def test_a_per_second_request_without_a_twin_records_but_never_retests_on_candles():
+    assert rsi_repair.classify_need("eth15m", "feature_unavailable", "needs tick-level data, unavailable") == \
+        ("ticks", "", "eth15m")
+    assert rsi_repair.is_ready(None, {"kind": "ticks", "market": "eth15m", "need": "", "series": "KXETH15M"}) is False
+
+
 def test_the_requeue_prompt_names_the_idea_and_what_arrived():
     p = rsi_repair.requeue_prompt({"kind": "micro", "need": "flow_imb_60s", "idea_title": "Flow leads mid",
                                    "idea_why": "flow_imb_60s is not populated"})
