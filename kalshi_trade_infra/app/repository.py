@@ -1849,6 +1849,13 @@ def add_chat(cur, user_id: int, role: str, content: str, proposal_id: Optional[i
     return cur.lastrowid
 
 
+def chat_contains(cur, user_id: int, role: str, needle: str) -> bool:
+    """True if the user already has a chat line of `role` containing `needle` (a one-time marker)."""
+    cur.execute("SELECT 1 FROM app_chat_messages WHERE user_id=%s AND role=%s AND content LIKE %s LIMIT 1",
+                (user_id, role, "%" + needle + "%"))
+    return cur.fetchone() is not None
+
+
 def chat_messages(cur, user_id: int, after_id: int = 0, limit: int = 100) -> List[Dict]:
     cur.execute(
         """SELECT m.id, m.role, m.content, m.created_at, m.proposal_id,
