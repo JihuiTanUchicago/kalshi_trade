@@ -1455,6 +1455,18 @@ def open_sent_intents(cur, older_than_seconds: int = 30, limit: int = 200) -> Li
     return cur.fetchall()
 
 
+def ticker_has_inflight_intent(cur, user_id: int, ticker: str, within_seconds: int) -> bool:
+    """True when this user has an order on ``ticker`` still 'sent' (outcome unknown) from the last
+    ``within_seconds``. The exchange position is per account, so this spans every deployment."""
+    cutoff = now_utc() - timedelta(seconds=int(within_seconds))
+    cur.execute(
+        "SELECT 1 AS x FROM app_order_intents WHERE user_id=%s AND ticker=%s AND status='sent' "
+        "AND created_at >= %s LIMIT 1",
+        (int(user_id), ticker, cutoff),
+    )
+    return cur.fetchone() is not None
+
+
 # -- execution latency / observability (Execution P2) --------------------------
 
 

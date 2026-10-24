@@ -24,6 +24,7 @@ def patch_intent_passthrough(monkeypatch):
     monkeypatch.setattr(engine.repo, "mark_order_intent", lambda *a, **k: True)
     monkeypatch.setattr(engine.repo, "claim_intent_booking", lambda *a, **k: True)
     monkeypatch.setattr(engine.repo, "claim_position_close", lambda *a, **k: True)
+    monkeypatch.setattr(engine.repo, "ticker_has_inflight_intent", lambda *a, **k: False)
 
     @contextmanager
     def _tx(conn):

@@ -152,13 +152,16 @@ def demo_fills(credentials: KalshiCredentials, ticker: Optional[str] = None,
 
 
 def demo_orders(credentials: KalshiCredentials, ticker: Optional[str] = None,
-                base_url: Optional[str] = None, timeout: int = 20) -> Dict:
+                base_url: Optional[str] = None, timeout: int = 20, params: Optional[Dict] = None) -> Dict:
     """Read this account's demo orders (optionally one ticker) — used by crash-recovery to find an
     in-flight order by its client_order_id. Host-isolated like every call here (demo/sandbox only)."""
     base = _require_demo_host(base_url or KALSHI_DEV_API_BASE)
     creds = _require_creds(credentials)
     endpoint = "/portfolio/orders"
-    params = {"ticker": ticker} if ticker else None
+    params = dict(params or {})
+    if ticker:
+        params["ticker"] = ticker
+    params = params or None
     headers = kalshi_auth_headers("GET", _signing_path(base, endpoint), creds)
     resp = requests.get(base + endpoint, params=params, headers=headers, timeout=timeout)
     if resp.status_code >= 400:

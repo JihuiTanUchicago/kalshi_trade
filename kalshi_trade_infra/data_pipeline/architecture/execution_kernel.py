@@ -83,6 +83,13 @@ MIN_PRICE = 0.01
 MAX_PRICE = 0.99
 
 
+def child_client_order_id(base: str, attempt: int) -> str:
+    """The client_order_id of the ``attempt``-th child order of one intent: ``base`` for the first
+    send, ``base-1``, ``base-2``, ... for each escalating retry. Crash recovery rebuilds the same ids
+    to find EVERY child on the exchange, so this is the one place the scheme is defined."""
+    return base if int(attempt) == 0 else "%s-%d" % (base, int(attempt))
+
+
 def reservation_price(fair: float, min_edge: float, qty: int) -> Optional[float]:
     """The most a BUY may pay per contract and still clear ``min_edge`` net of the taker fee.
 
@@ -408,7 +415,7 @@ class MarketableLimitKernel:
             if coid_base is None:
                 res = self._submitter(intent.ticker, intent.action, intent.side, child, limit)
             else:
-                coid = coid_base if attempt == 0 else "%s-%d" % (coid_base, attempt)
+                coid = child_client_order_id(coid_base, attempt)
                 res = self._submitter(intent.ticker, intent.action, intent.side, child, limit, client_order_id=coid)
             # The submitter sent a YES-leg order (see order_wire_params), so the
             # fill it reports is a YES price. Parse against the YES wire price so
