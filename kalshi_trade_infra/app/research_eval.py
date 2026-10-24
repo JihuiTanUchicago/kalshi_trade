@@ -32,10 +32,11 @@ from app import backtest, gatekeeper, stats
 from app import spec as specmod
 from app.markets import FEATURES, MARKETS
 
-# A "validated discovery" must clear the SAME deflated-Sharpe floor the production gatekeeper uses
-# for STAT_SUPPORTED, plus a positive bootstrap lower bound and a passing placebo — scored AFTER
-# deflating by the full search size (n_trials = budget), which is the memo's multiple-testing point.
-DSR_MIN = gatekeeper.DSR_MIN
+# A "validated discovery" must clear a deflated-Sharpe floor of 0.95 plus a positive bootstrap lower
+# bound — scored AFTER deflating by the full search size (n_trials = budget), which is the memo's
+# multiple-testing point. This offline scorecard has no LORD++ budget, so DSR is its ONLY
+# multiplicity control and keeps the strict floor (production pairs DSR >= 0.5 with LORD++).
+DSR_MIN = 0.95
 MIN_DISCOVERY_TRADES = 20
 
 # A conservative, always-valid subset of filterable features + sane numeric ranges for the
