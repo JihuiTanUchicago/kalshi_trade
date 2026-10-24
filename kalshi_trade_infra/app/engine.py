@@ -30,7 +30,7 @@ import requests
 from app import freedata
 from app import repository as repo
 from app import spec as specmod
-from app import weather_fcst
+from app import sports_odds, weather_fcst
 from app.markets import (MARKETS, WEATHER_OBS_FEATURES, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot,
                          compatible_cadence, snapshot, weather_obs_applies)
 from data_pipeline.common import api_get, parse_iso_to_dt
@@ -201,6 +201,12 @@ class Sources:
     # (station, kind, as_of_ts) -> issued forecast rows (repository.load_weather_forecasts) for a
     # weather series' per-contract forecast features. None = snapshots carry no forecast features.
     forecasts: Optional[Callable[[str, str, int], List]] = None
+    # (sport, as_of_ts) -> collected sportsbook snapshots (repository.load_sports_odds) for an NBA/NHL
+    # game series' consensus features. None = snapshots carry no sportsbook features.
+    odds: Optional[Callable[[str, int], List]] = None
+    # (series, as_of_ts) -> settled daily values (repository.load_weather_actuals) for the trailing
+    # forecast bias (fcst_bias_f / fcst_p_yes_cal). None = those two features are absent.
+    weather_actuals: Optional[Callable[[str, int], List]] = None
 
 
 def _micro_for(sources: Sources, tickers: List[str], now_ts: int) -> Dict[str, Dict[str, float]]:
@@ -215,16 +221,23 @@ def _micro_for(sources: Sources, tickers: List[str], now_ts: int) -> Dict[str, D
         return {}
 
 
-def _forecast_book(market: Market, sources: Sources, now_ts: int) -> Optional[weather_fcst.ForecastBook]:
-    """This frame's forecast book for a weather series (research builds the same one from the same
-    table), or None when unwired, not a weather series, or unreadable: a rule that filters on a
-    forecast feature then doesn't enter, as in research on a frame with no forecast."""
-    if sources.forecasts is None or market.series not in WEATHER_STATIONS:
-        return None
+def _forecast_book(market: Market, sources: Sources, now_ts: int):
+    """This frame's external fair-value book (research builds the same one from the same table):
+    issued forecasts for a weather series, collected sportsbook odds for an NBA/NHL game series.
+    None when unwired, not such a series, or unreadable: a rule that filters on one of its
+    features then doesn't enter, as in research on a frame without them."""
     try:
-        return weather_fcst.book_for_series(market.series, lambda station, kind: sources.forecasts(station, kind, now_ts))
+        if market.series in sports_odds.SPORTS:
+            if sources.odds is None:
+                return None
+            return sports_odds.book_for_series(market.series, lambda sport: sources.odds(sport, now_ts))
+        if sources.forecasts is None or market.series not in WEATHER_STATIONS:
+            return None
+        return weather_fcst.book_for_series(
+            market.series, lambda station, kind: sources.forecasts(station, kind, now_ts),
+            (lambda series: sources.weather_actuals(series, now_ts)) if sources.weather_actuals else None)
     except Exception as e:
-        print("[engine] weather forecasts unavailable for %s: %r" % (market.key, e), flush=True)
+        print("[engine] external fair-value data unavailable for %s: %r" % (market.key, e), flush=True)
         return None
 
 
@@ -256,7 +269,7 @@ def _contract_feats(market: Market, feats: Optional[Dict[str, float]], ticker: s
 
 
 def _contract_snapshot(market: Market, feats: Optional[Dict[str, float]], q: LiveQuote, now_ts: int,
-                       micro: Dict[str, Dict[str, float]], book: Optional[weather_fcst.ForecastBook]):
+                       micro: Dict[str, Dict[str, float]], book):
     """One live contract's Snapshot, built as research builds it: the contract's base features,
     its micro features, and (weather) its forecast features from those same base features."""
     cf = _contract_feats(market, feats, q.contract.ticker, now_ts)
@@ -1854,7 +1867,14 @@ def run_forever() -> None:
                 ws_feed=ws_feed,
                 micro=lambda tickers, ts: repo.latest_micro(conn.cursor(), tickers, ts),
                 forecasts=lambda station, kind, ts: repo.load_weather_forecasts(
-                    conn.cursor(), station, kind, (datetime.fromtimestamp(ts, tz=timezone.utc) - timedelta(days=2)).date(), ts),
+                    conn.cursor(), station, kind,
+                    (datetime.fromtimestamp(ts, tz=timezone.utc) - timedelta(days=weather_fcst.BIAS_DAYS * 2)).date(), ts),
+                weather_actuals=lambda series, ts: [r for r in repo.load_weather_actuals(
+                    conn.cursor(), series, datetime.fromtimestamp(ts, tz=timezone.utc).replace(tzinfo=None)
+                    - timedelta(days=weather_fcst.BIAS_DAYS * 2)) if r[0] <= ts],
+                odds=lambda sport, ts: repo.load_sports_odds(
+                    conn.cursor(), sport, datetime.fromtimestamp(ts - int(sports_odds.MAX_AGE_MIN * 60), tz=timezone.utc)
+                    .replace(tzinfo=None), ts),
             )
             # Deterministic crash recovery (P0-1): before the loop (so it also runs on every
             # reconnect / box reboot), reconcile any order-intent left 'sent' by a prior crash

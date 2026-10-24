@@ -1,0 +1,7 @@
+[Unit]
+Description=Snapshot sportsbook odds 5x a day, weighted toward North American tip-off times (fits the free 500-credit plan)
+[Timer]
+OnCalendar=*-*-* 01,12,17,21,23:05:00
+Persistent=true
+[Install]
+WantedBy=timers.target

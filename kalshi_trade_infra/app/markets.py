@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Dict, List, Optional, Sequence, Tuple
 
+from app.sports_odds import FEATURE_DOCS as _SPORTS_ODDS_DOCS
 from app.weather_fcst import FEATURE_DOCS as _WEATHER_FCST_DOCS
 
 try:
@@ -448,6 +449,8 @@ FEATURES.update({
 })
 # Per-contract forecast fair value (app/weather_fcst.snapshot_features, research and live alike).
 FEATURES.update(_WEATHER_FCST_DOCS)
+# Per-contract sportsbook consensus (app/sports_odds.snapshot_features, research and live alike).
+FEATURES.update(_SPORTS_ODDS_DOCS)
 
 
 @dataclass(frozen=True)

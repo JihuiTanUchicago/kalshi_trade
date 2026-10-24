@@ -40,6 +40,11 @@ GFS_SD_BY_LEAD_H = ((24, 2.5), (48, 3.0), (10 ** 9, 3.8))
 # A forecast older than this is ignored rather than trusted (a stalled collector must not freeze
 # the feature at a days-old value).
 MAX_AGE_H = 36.0
+# Trailing calibration (fcst_bias_f): the last BIAS_DAYS settled days, each scored on the forecast
+# known at BIAS_REF_LOCAL_H local standard time on the day; at least BIAS_MIN_DAYS of them.
+BIAS_DAYS = 30
+BIAS_MIN_DAYS = 7
+BIAS_REF_LOCAL_H = 10
 # The first hour of a climate day can still carry yesterday's running max in obs_high_f (see
 # freedata._daily_running_max), so the day's observations only condition the probability after it.
 OBS_GRACE_S = 3600
@@ -109,12 +114,16 @@ class ForecastBook:
     """One station's issued forecasts of one kind ("max" or "min"), indexed for as-of lookups
     by settlement day.
 
-    rows: (known_at_ts, target_day, model, value_f, sd_f or None), any order."""
+    rows: (known_at_ts, target_day, model, value_f, sd_f or None), any order.
+    actuals: (known_at_ts, day, settled value_f) of past settled days, for the trailing bias."""
 
     def __init__(self, rows: Iterable[Tuple[int, date, str, float, Optional[float]]], lst_offset_h: int,
-                 kind: str = "max"):
+                 kind: str = "max", actuals: Iterable[Tuple[int, date, float]] = ()):
         self.lst_offset_h = int(lst_offset_h)
         self.kind = kind
+        self._actuals = sorted((int(k), d, float(v)) for k, d, v in actuals if v is not None)
+        self._actual_keys = [a[0] for a in self._actuals]
+        self._bias_cache: Dict[int, Optional[Tuple[float, float, int]]] = {}
         by_key: Dict[Tuple[date, str], List[Tuple[int, float, Optional[float]]]] = {}
         for known_at, day, model, high, sd in rows:
             if high is None or model not in MODEL_PREF:
@@ -143,6 +152,33 @@ class ForecastBook:
         """(NWS climate day containing ts, seconds since that day began), local standard time."""
         local = ts + self.lst_offset_h * 3600
         return datetime.fromtimestamp(local - local % 86400, tz=timezone.utc).date(), local % 86400
+
+    def features(self, ticker: str, strike: float, ts: int, yes_bid: Optional[float], yes_ask: Optional[float],
+                 frame_feats: Optional[Dict[str, float]] = None) -> Dict[str, float]:
+        return snapshot_features(self, ticker, strike, ts, yes_bid, yes_ask, frame_feats)
+
+    def trailing_error(self, ts: int) -> Optional[Tuple[float, float, int]]:
+        """(mean forecast-minus-settled, RMS of it, days) over the BIAS_DAYS settled days known by
+        ts, scoring each day's forecast as known at BIAS_REF_LOCAL_H local standard time that day.
+        None with fewer than BIAS_MIN_DAYS. Only settlements known by ts enter (point-in-time)."""
+        n_known = bisect.bisect_right(self._actual_keys, ts)
+        if n_known in self._bias_cache:
+            return self._bias_cache[n_known]
+        errs: List[float] = []
+        for _k, day, actual in reversed(self._actuals[:n_known]):
+            if len(errs) >= BIAS_DAYS:
+                break
+            got = self.latest(day, self.day_start_ts(day) + BIAS_REF_LOCAL_H * 3600)
+            if got is not None:
+                errs.append(got[2] - actual)
+        out = None
+        if len(errs) >= BIAS_MIN_DAYS:
+            out = (sum(errs) / len(errs), math.sqrt(sum(e * e for e in errs) / len(errs)), len(errs))
+        self._bias_cache[n_known] = out
+        return out
+
+    def day_start_ts(self, day: date) -> int:
+        return int(datetime(day.year, day.month, day.day, tzinfo=timezone.utc).timestamp()) - self.lst_offset_h * 3600
 
     def day_end_ts(self, day: date) -> int:
         start = int(datetime(day.year, day.month, day.day, tzinfo=timezone.utc).timestamp())
@@ -181,8 +217,16 @@ def contract_features(book: Optional[ForecastBook], ticker: str, strike: float, 
     p = p_yes(high, sd, lo, hi, observed, book.kind)
     name = "fcst_high_f" if book.kind == "max" else "fcst_low_f"
     out = {name: high, "fcst_sd_f": sd, "fcst_age_h": (ts - known_at) / 3600.0, "fcst_p_yes": p}
+    trail = book.trailing_error(ts)
+    if trail is not None:
+        bias, rms, _n = trail
+        out["fcst_bias_f"] = bias
+        out["fcst_p_yes_cal"] = p_yes(high - bias, max(sd, rms), lo, hi, observed, book.kind)
     if yes_bid is not None and yes_ask is not None:
-        out["fcst_edge"] = p - (float(yes_bid) + float(yes_ask)) / 2.0
+        mid = (float(yes_bid) + float(yes_ask)) / 2.0
+        out["fcst_edge"] = p - mid
+        if "fcst_p_yes_cal" in out:
+            out["fcst_edge_cal"] = out["fcst_p_yes_cal"] - mid
     return out
 
 
@@ -196,6 +240,11 @@ FEATURE_DOCS = {
     "fcst_p_yes": "weather markets only: forecast-implied probability this contract settles YES, "
                   "conditioned on the observed high (low) so far once the day is underway",
     "fcst_edge": "weather markets only: fcst_p_yes minus the contract's mid (positive = YES cheap vs forecast)",
+    "fcst_bias_f": "weather markets only: this station's trailing 30-settled-day mean of morning-of forecast minus "
+                   "settled value (F); positive = the forecast has been running warm",
+    "fcst_p_yes_cal": "weather markets only: fcst_p_yes after removing fcst_bias_f and widening the spread to the "
+                      "trailing forecast error",
+    "fcst_edge_cal": "weather markets only: fcst_p_yes_cal minus the contract's mid",
 }
 
 
@@ -204,10 +253,11 @@ def kind_for_series(series: str) -> str:
     return "min" if (series or "").upper().startswith("KXLOW") else "max"
 
 
-def book_for_series(series: str, load_rows) -> Optional[ForecastBook]:
+def book_for_series(series: str, load_rows, load_actuals=None) -> Optional[ForecastBook]:
     """The ForecastBook for a weather series, or None when it isn't one (or its station's local
     standard time is unknown). load_rows(station, kind) returns repository.load_weather_forecasts
-    rows: research passes a window-wide loader, the live engine a recent-days one."""
+    rows: research passes a window-wide loader, the live engine a recent-days one.
+    load_actuals(series), if given, returns repository.load_weather_actuals rows for the bias."""
     from app import freedata
     from app.markets import WEATHER_STATIONS
     station = WEATHER_STATIONS.get(series)
@@ -215,7 +265,7 @@ def book_for_series(series: str, load_rows) -> Optional[ForecastBook]:
     if offset is None:
         return None
     kind = kind_for_series(series)
-    return ForecastBook(load_rows(station, kind), offset, kind)
+    return ForecastBook(load_rows(station, kind), offset, kind, load_actuals(series) if load_actuals else ())
 
 
 def snapshot_features(book: Optional[ForecastBook], ticker: str, strike: float, ts: int,
@@ -230,12 +280,13 @@ def snapshot_features(book: Optional[ForecastBook], ticker: str, strike: float, 
     return contract_features(book, ticker, strike, ts, yes_bid, yes_ask, obs)
 
 
-def with_forecast(micro: Optional[Dict[str, float]], book: Optional[ForecastBook], contract, ts: int,
+def with_forecast(micro: Optional[Dict[str, float]], book, contract, ts: int,
                   yes_bid: Optional[float], yes_ask: Optional[float],
                   frame_feats: Optional[Dict[str, float]]) -> Optional[Dict[str, float]]:
     """A contract's per-snapshot extras for markets.snapshot(): its micro features plus the
-    forecast features. `micro` is returned as is (no copy) when there is no forecast book."""
+    features of an external fair-value book (a weather ForecastBook or a sports_odds.OddsBook,
+    anything with .features). `micro` is returned as is (no copy) when there is no book."""
     if book is None:
         return micro
-    fc = snapshot_features(book, contract.ticker, contract.strike, ts, yes_bid, yes_ask, frame_feats)
+    fc = book.features(contract.ticker, contract.strike, ts, yes_bid, yes_ask, frame_feats)
     return dict(micro, **fc) if micro else fc

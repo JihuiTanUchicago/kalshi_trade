@@ -212,3 +212,28 @@ def test_collect_applies_the_publication_lag_and_backs_off_on_429():
     by_model = {r[1]: r for r in cur.rows}
     assert by_model["NBS"][7] - by_model["NBS"][3] == timedelta(seconds=wfc.LAG_S["NBS"])
     assert by_model["GFS"][7] - by_model["GFS"][3] == timedelta(seconds=wfc.LAG_S["GFS"])
+
+
+def test_trailing_bias_uses_only_settlements_known_by_the_frame():
+    # 10 settled days, each with a morning-of NBS forecast 2F warm.
+    rows, actuals = [], []
+    for i in range(10):
+        d = date(2026, 10, 1) + timedelta(days=i)
+        start = int(datetime(d.year, d.month, d.day, tzinfo=timezone.utc).timestamp()) + 5 * 3600  # 00:00 EST
+        rows.append((start + 6 * 3600, d, "NBS", 62.0, 1.5))
+        actuals.append((start + 30 * 3600, d, 60.0))       # settled value known the next morning
+    target = date(2026, 10, 11)
+    t_start = int(datetime(2026, 10, 11, tzinfo=timezone.utc).timestamp()) + 5 * 3600
+    rows.append((t_start + 6 * 3600, target, "NBS", 62.0, 1.5))
+    book = wf.ForecastBook(rows, -5, "max", actuals)
+    ts = t_start + 8 * 3600
+    f = wf.contract_features(book, "KXHIGHNY-26OCT11-B59.5", 59.0, ts, 0.2, 0.3)
+    assert f["fcst_bias_f"] == pytest.approx(2.0)
+    assert f["fcst_p_yes_cal"] == pytest.approx(wf.p_yes(60.0, 2.0, 59, 60))  # spread widened to the 2F error
+    assert f["fcst_edge_cal"] == pytest.approx(f["fcst_p_yes_cal"] - 0.25)
+    # Earlier, only 6 settlements were known: too few, so no calibrated features.
+    early = actuals[5][0] + 1
+    rows_early = rows[:-1] + [(early - 3600, target, "NBS", 62.0, 1.5)]
+    g = wf.contract_features(wf.ForecastBook(rows_early, -5, "max", actuals), "KXHIGHNY-26OCT11-B59.5", 59.0,
+                             early, 0.2, 0.3)
+    assert "fcst_bias_f" not in g and "fcst_p_yes" in g
