@@ -270,6 +270,7 @@ def archive_file(path: str, source: str, hour: datetime, s3=None, conn=None) -> 
         first = last = None
         max_gap = 0.0
         gaps = reconnects = bad = 0
+        last_trade: Dict[tuple, str] = {}     # venue feeds that repeat the last print (LMAX TICKER)
         with open(path, "r") as fh:
             for line in read_records(fh):
                 try:
@@ -290,6 +291,10 @@ def archive_file(path: str, source: str, hour: datetime, s3=None, conn=None) -> 
                         elif row[2] == "disconnected":
                             reconnects += 1
                         table = meta_table(source)
+                    elif source in SPOT_RECORDERS and table.endswith("_trades"):
+                        if last_trade.get((table, row[1])) == row[2]:
+                            continue
+                        last_trade[(table, row[1])] = row[2]
                     writers.add(table, row)
         files = writers.close()
 

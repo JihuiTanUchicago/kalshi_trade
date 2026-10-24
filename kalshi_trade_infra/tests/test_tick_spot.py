@@ -105,6 +105,15 @@ def test_cryptocom_skips_subscribe_snapshot():
     assert rows("cryptocom", {"id": 9, "method": "public/heartbeat"}) == []
 
 
+def test_lmax_ticker_trade_side_from_the_touch():
+    tk = {"type": "TICKER", "instrument_id": "btc-usd", "timestamp": "2026-10-24T21:54:33.884Z", "best_bid": "80224.001",
+          "best_ask": "80243.381", "trade_id": "Q1", "last_quantity": "0.04", "last_price": "80243.381"}
+    out = rows("lmax", tk)
+    assert out[0] == ("lmax_quotes", (1, "BTC-USD", 80224.001, None, 80243.381, None, tick_spot._iso_ns(tk["timestamp"])))
+    assert out[1][1][2:6] == ("Q1", 80243.381, 0.04, "buy")
+    assert rows("lmax", dict(tk, last_price="80225"))[1][1][5] == "sell"
+
+
 def test_lmax_book_and_helpers():
     assert rows("lmax", LMAX_BOOK) == [
         ("lmax_quotes", (1, "BTC-USD", 66996.0, 1.2, 67008.0, 0.9, tick_spot._iso_ns("2026-10-24T18:00:06Z")))]
@@ -234,6 +243,9 @@ def _write(root):
         ("bitstamp", "18", [_line((H0 + k) * S + 9, dict(BITSTAMP_BOOK, data=dict(BITSTAMP_BOOK["data"], bids=[["67019", "1"]],
                                                                                     asks=[["67021", "1"]])))
                             for k in range(0, 100, 10)]),
+        ("lmax", "17", [_line((H0 - 3600 + k) * S, {"type": "TICKER", "instrument_id": "btc-usd", "best_bid": "67039",
+                                             "best_ask": "67041", "trade_id": "L1" if k < 3 else "L2",
+                                             "last_price": "67041", "last_quantity": "0.1"}) for k in range(5)]),
         ("gemini", "18", [_line((H0 + 1) * S, dict(GEMINI_UPDATE, events=[{"type": "change", "side": "bid", "price": "67029",
                                                                            "remaining": "1", "reason": "initial"}])),
 ] + [_line((H0 + k) * S, dict(GEMINI_UPDATE, events=[{"type": "change", "side": "ask", "price": "67031",
@@ -266,6 +278,8 @@ def test_archive_writes_per_venue_tables_and_parser_version(lake):
     assert pq.read_table(v1 / "kraken_quotes/date=2026-10-24/hour=18/part.parquet").num_rows == 180
     assert (v1 / "kraken_meta/date=2026-10-24/hour=18/part.parquet").exists()          # not tick_meta
     assert not (v1 / "tick_meta/date=2026-10-24/hour=18/part.parquet").exists()
+    lm = pq.read_table(v1 / "lmax_trades/date=2026-10-24/hour=17/part.parquet", partitioning=None)
+    assert lm.column("trade_id").to_pylist() == ["L1", "L2"]          # repeats of the last print dropped
     man = json.loads((lake / "ticks/manifest/kraken/date=2026-10-24/18.json").read_text())
     assert man["parser"] == tick_spot.PARSER_VERSION and man["bad_lines"] == 0
     assert man["tables"]["kraken_quotes"] == 180
