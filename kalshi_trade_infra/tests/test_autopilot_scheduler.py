@@ -32,6 +32,43 @@ def test_no_autopilot_users_means_nothing_due():
         assert worker.due_autopilot_users(cur=None) == []
 
 
+def _idle_counts(research_active, recent_review):
+    def count_runs(cur, uid, kind, since=None, active_only=False):
+        if kind == "research" and active_only:
+            return research_active
+        if kind == "review" and since is not None and not active_only:
+            # MIN_REVIEW_SECONDS window (90s) sees nothing; the idle window sees the last review
+            return recent_review if (worker.repo.now_utc() - since).total_seconds() > 600 else 0
+        return 0
+    return count_runs
+
+
+def test_saturated_research_and_nothing_deployed_spaces_out_heartbeat_reviews():
+    with patch.object(worker.repo, "autopilot_user_ids", return_value=[2]), \
+         patch.object(worker.repo, "count_runs", side_effect=_idle_counts(2, 1)), \
+         patch.object(worker.repo, "list_deployments", return_value=[{"status": "stopped"}]):
+        assert worker.due_autopilot_users(cur=None) == []
+    # No review in the idle window yet -> still due.
+    with patch.object(worker.repo, "autopilot_user_ids", return_value=[2]), \
+         patch.object(worker.repo, "count_runs", side_effect=_idle_counts(2, 0)), \
+         patch.object(worker.repo, "list_deployments", return_value=[]):
+        assert worker.due_autopilot_users(cur=None) == [2]
+
+
+def test_a_free_research_slot_or_a_live_deployment_keeps_the_normal_cadence():
+    with patch.object(worker.repo, "autopilot_user_ids", return_value=[2]), \
+         patch.object(worker.repo, "count_runs", side_effect=_idle_counts(1, 1)):
+        assert worker.due_autopilot_users(cur=None) == [2]
+    with patch.object(worker.repo, "autopilot_user_ids", return_value=[2]), \
+         patch.object(worker.repo, "count_runs", side_effect=_idle_counts(2, 1)), \
+         patch.object(worker.repo, "list_deployments", return_value=[{"status": "running"}]):
+        assert worker.due_autopilot_users(cur=None) == [2]
+    with patch.object(worker.repo, "autopilot_user_ids", return_value=[2]), \
+         patch.object(worker.repo, "count_runs", side_effect=_idle_counts(2, 1)), \
+         patch.object(worker.repo, "list_deployments", return_value=[{"status": "paused"}]):
+        assert worker.due_autopilot_users(cur=None) == []  # a guard-paused deployment trades nothing
+
+
 if __name__ == "__main__":
     test_due_skips_users_with_an_inflight_copilot_run()
     test_all_free_users_are_due()

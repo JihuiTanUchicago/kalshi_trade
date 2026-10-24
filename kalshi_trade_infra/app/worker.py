@@ -127,9 +127,26 @@ def autopilot_review_ok(cur, uid: int) -> bool:
     return True
 
 
+# A heartbeat review with nothing to act on: every research slot is busy and nothing is running, so
+# the review can only re-propose research the cap refuses. Space those out; research completion
+# still enqueues a review at once (enqueue_review_after_research), so no result waits on this.
+IDLE_REVIEW_SECONDS = int(os.getenv("APP_IDLE_REVIEW_SECONDS", "1800"))
+
+
+def _idle_review_skip(cur, uid: int) -> bool:
+    if IDLE_REVIEW_SECONDS <= COPILOT_REVIEW_SECONDS:
+        return False
+    if repo.count_runs(cur, uid, "research", active_only=True) < agent.MAX_ACTIVE_RESEARCH:
+        return False
+    if any(d["status"] == "running" for d in repo.list_deployments(cur, uid)):
+        return False
+    return bool(repo.count_runs(cur, uid, "review", since=repo.now_utc() - timedelta(seconds=IDLE_REVIEW_SECONDS)))
+
+
 def due_autopilot_users(cur) -> list:
     """Autopilot-on users who may be enqueued a scheduled heartbeat review right now."""
-    return [uid for uid in repo.autopilot_user_ids(cur) if autopilot_review_ok(cur, uid)]
+    return [uid for uid in repo.autopilot_user_ids(cur)
+            if autopilot_review_ok(cur, uid) and not _idle_review_skip(cur, uid)]
 
 
 def enqueue_review_after_research(conn, user_id: int) -> None:
