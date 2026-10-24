@@ -9,6 +9,7 @@ SKIP LOCKED and engine decisions with a per-slot claim.
 from __future__ import annotations
 
 import os
+import signal
 import socket
 import sys
 import threading
@@ -40,26 +41,60 @@ COPILOT_REVIEW_SECONDS = int(os.getenv("APP_COPILOT_REVIEW_SECONDS", "600"))
 MIN_REVIEW_SECONDS = int(os.getenv("APP_AUTOPILOT_MIN_REVIEW_SECONDS", "90"))
 
 
+# Runs this process is executing, by worker id, so a clean stop can hand research runs back.
+_HELD: dict = {}
+_STOPPING = threading.Event()
+
+
+def _yield_on_sigterm(signum, frame) -> None:
+    """Deploys restart this worker several times a day. Without this, each restart left research
+    runs to the 90s reaper, which spends one of MAX_RESUMES (3) per restart, so a run restarted
+    four times was stopped for good. Stop claiming, re-queue held research runs at full resume
+    budget (their checkpoint already holds the work), then exit. Reviews and chats are left to the
+    reaper: re-running one could repeat actions it already took. A SIGKILL (OOM) skips all this and
+    still counts as a crash."""
+    _STOPPING.set()
+    try:
+        conn = get_db_conn()
+        try:
+            cur = conn.cursor()
+            for wid, run in list(_HELD.items()):
+                if run.get("kind") == "research" and repo.yield_run(cur, run["id"], wid):
+                    print("[agents] yielded research run %s on shutdown" % run["id"], flush=True)
+        finally:
+            conn.close()
+    except Exception as e:
+        print("[agents] shutdown yield ERROR %s" % e, flush=True)
+    os._exit(0)
+
+
 def agent_loop(worker_id: str) -> None:
     while True:
         try:
             conn = get_db_conn()
             try:
                 while True:
+                    if _STOPPING.is_set():
+                        time.sleep(IDLE_SECONDS)  # shutting down: claim nothing new
+                        continue
                     repo.fail_abandoned_runs(conn.cursor(), ABANDONED_AFTER)
                     run = repo.claim_run(conn, worker_id)
                     if run is None:
                         time.sleep(IDLE_SECONDS)
                         continue
                     print("[agents] %s took run %s (%s)" % (worker_id, run["id"], run["kind"]), flush=True)
-                    if run["kind"] == "research":
-                        agent.run_research(conn, run)
-                        # Keystone of the continuous loop: the instant research ends (win OR fail),
-                        # drive the co-pilot to act on the fresh results instead of waiting up to
-                        # COPILOT_REVIEW_SECONDS. Bounded by the same gate the heartbeat uses.
-                        enqueue_review_after_research(conn, run["user_id"])
-                    else:
-                        agent.run_copilot(conn, run)
+                    _HELD[worker_id] = run
+                    try:
+                        if run["kind"] == "research":
+                            agent.run_research(conn, run)
+                            # Keystone of the continuous loop: the instant research ends (win OR fail),
+                            # drive the co-pilot to act on the fresh results instead of waiting up to
+                            # COPILOT_REVIEW_SECONDS. Bounded by the same gate the heartbeat uses.
+                            enqueue_review_after_research(conn, run["user_id"])
+                        else:
+                            agent.run_copilot(conn, run)
+                    finally:
+                        _HELD.pop(worker_id, None)
             finally:
                 conn.close()
         except Exception as e:
@@ -140,6 +175,7 @@ def main() -> None:
         base = "%s:%d" % (socket.gethostname(), os.getpid())
         threads = [threading.Thread(target=agent_loop, args=("%s:%d" % (base, i),), daemon=True) for i in range(CONCURRENCY)]
         threads.append(threading.Thread(target=autopilot_scheduler, daemon=True))  # the autopilot heartbeat
+        signal.signal(signal.SIGTERM, _yield_on_sigterm)
         for t in threads:
             t.start()
         for t in threads:

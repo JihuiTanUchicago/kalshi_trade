@@ -573,6 +573,17 @@ def fail_abandoned_runs(cur, stale_after: timedelta, max_resumes: int = MAX_RESU
     return reaped
 
 
+def yield_run(cur, run_id: int, worker_id: str) -> bool:
+    """Hand a running run back to the queue on a CLEAN worker stop (a deploy's SIGTERM), without
+    spending its resume budget: a restart is not a wedge, so it must not count toward the
+    MAX_RESUMES that fail_abandoned_runs enforces for crashes. Only the run this worker holds."""
+    cur.execute("UPDATE app_agent_runs SET status='queued', worker_id=NULL, heartbeat_at=%s "
+                "WHERE id=%s AND status='running' AND worker_id=%s", (now_utc(), run_id, worker_id))
+    if cur.rowcount:
+        add_event(cur, run_id, "step", "Paused for a server update; resuming from the last checkpoint.")
+    return bool(cur.rowcount)
+
+
 def heartbeat(cur, run_id: int) -> Optional[str]:
     """Touch the run and return its status (so a cancel is noticed)."""
     cur.execute("UPDATE app_agent_runs SET heartbeat_at=%s WHERE id=%s", (now_utc(), run_id))
