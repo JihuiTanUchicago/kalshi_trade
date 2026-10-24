@@ -1,0 +1,228 @@
+"""Research RSI, part 1: measure the research loop itself.
+
+A loop can only improve what it measures. Each research run leaves its whole funnel in
+app_agent_events: every idea it developed or dropped, every challenger kill, power pre-screen and
+gate verdict. This module turns that into a scorecard per run and a scoreboard across runs:
+
+  funnel     explored -> dropped on research data -> challenger/underpowered/not-finalist ->
+             gated -> passed (+ holdout passes)
+  spend      the run's model tokens priced at its model's list price
+  deaths     why each dropped idea died, classified as
+               pipeline  the pipeline failed the idea (a feature it thought was missing, no data, a
+                         load error): engineering work, not evidence about the market
+               spec      the spec never traded (0 trades): usually a filter cut outside the data
+               edge      the market killed it (loses money, fee floor, mechanism falsified)
+               other     anything the rules don't recognise
+  efficiency gated ideas and passes per $100, pipeline share of deaths
+
+Read-only. The scoreboard reads labels and counts only; no held-out number is computed here.
+
+    python -m app.rsi --days 7 [--user 2]
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+from collections import Counter, defaultdict
+from typing import Dict, Iterable, List, Optional, Tuple
+
+from app.markets import MARKETS
+
+# (tag, kind, pattern) checked in order; the first match wins. Built from the drop reasons of real
+# runs (2531, 2563, 2613): the proposer explains a drop in prose, so these are phrase patterns.
+_DROP_RULES: Tuple[Tuple[str, str, str], ...] = (
+    ("feature_unavailable", "pipeline",
+     r"not available|unavailable|unpopulated|not populated|isn't available|is not visible|not visible in"
+     r"|(feature|column)s? (is |are )?(missing|null|empty|sparse)|cannot confirm .{0,40}(feature|populated|available)"
+     r"|no (such )?feature|isn't a feature|not a (strategy )?feature"),
+    ("no_data", "pipeline",
+     r"no settled|no data|no history|failed to load|could not load|timed? ?out|load error|no contracts"),
+    ("zero_trades", "spec", r"\b0 trades|zero trades|no trades|never (fires|trades|enters)|took no trades"),
+    ("fee_floor", "edge", r"fee floor|below the fee|fees? (eat|kill|exceed|swamp)|dead on arrival|can'?t beat the fee"),
+    ("loses", "edge",
+     r"loses|lost \$|losing|negative (p&?l|pnl|edge|return)|worse than random|-\d+(\.\d+)?c ?/ ?trade"
+     r"|falsif|disprov|backward|no edge|calibrated within noise"),
+)
+_COMPILED = tuple((tag, kind, re.compile(pat, re.I)) for tag, kind, pat in _DROP_RULES)
+KINDS = ("pipeline", "spec", "edge", "other")
+
+
+def classify_drop(why: Optional[str]) -> Tuple[str, str]:
+    """(tag, kind) for one dropped idea's reason; ("other", "other") when no rule matches."""
+    text = why or ""
+    for tag, kind, rx in _COMPILED:
+        if rx.search(text):
+            return tag, kind
+    return "other", "other"
+
+
+def family(market: Optional[str]) -> str:
+    """The market family a run belongs to (lessons and allocation are per family, not per city):
+    weather splits into daily highs and lows; everything else is its catalog category."""
+    m = MARKETS.get(market or "")
+    if m is None:
+        return "unknown"
+    series = (m.series or "").upper()
+    if series.startswith("KXHIGH"):
+        return "weather-high"
+    if series.startswith("KXLOWT"):
+        return "weather-low"
+    cat = (m.category or "").strip().lower()
+    if not cat:
+        return "crypto" if m.underlying else "other"
+    return re.sub(r"[^a-z0-9]+", "-", cat).strip("-")
+
+
+def run_cost_usd(run: Dict) -> float:
+    """The run's model spend at list price (what the user is billed)."""
+    from app import billing
+    from app import models_catalog as catalog
+    try:
+        model_id = catalog.resolve(run.get("model")).model_id
+    except Exception:  # noqa: BLE001 - an unknown model prices at the default
+        model_id = ""
+    return float(billing.usage_cost(model_id, int(run.get("input_tokens") or 0),
+                                    int(run.get("output_tokens") or 0)))
+
+
+def run_card(run: Dict, events: Iterable[Dict]) -> Dict:
+    """One run's scorecard from its events (each {kind, message, data})."""
+    f = Counter()
+    deaths: Counter = Counter()
+    kinds: Counter = Counter()
+    for ev in events:
+        if ev.get("kind") != "verdict":
+            continue
+        d = ev.get("data") or {}
+        msg = ev.get("message") or ""
+        phase = d.get("phase")
+        if d.get("status") == "abandoned":
+            f["dropped"] += 1
+            tag, kind = classify_drop(d.get("why") or msg)
+            deaths[tag] += 1
+            kinds[kind] += 1
+        elif phase == "holdout":
+            f["holdout_passed" if d.get("classification") == "forward_validated" else "holdout_other"] += 1
+        elif phase == "forward":
+            f["deploy_candidates"] += d.get("classification") == "deployment_candidate"
+        elif d.get("classification"):
+            f["gated"] += 1
+            f["passed"] += d.get("status") == "passed"
+        elif "power" in d:
+            f["underpowered"] += 1
+        elif msg.startswith("REJECTED (challenger)"):
+            f["challenger_rejected"] += 1
+        elif "not a finalist" in msg:
+            f["not_finalist"] += 1
+    developed = f["gated"] + f["underpowered"] + f["challenger_rejected"] + f["not_finalist"]
+    explored = max(developed + f["dropped"], int(run.get("hypotheses_tried") or 0))
+    cost = run_cost_usd(run)
+    return {
+        "run_id": run.get("id"), "user_id": run.get("user_id"), "market": run.get("market"),
+        "family": family(run.get("market")), "status": run.get("status"),
+        "created_at": str(run.get("created_at") or ""), "cost_usd": round(cost, 4),
+        "explored": explored, "developed": developed, "dropped": f["dropped"],
+        "challenger_rejected": f["challenger_rejected"], "underpowered": f["underpowered"],
+        "not_finalist": f["not_finalist"], "gated": f["gated"], "passed": f["passed"],
+        "holdout_passed": f["holdout_passed"], "deploy_candidates": f["deploy_candidates"],
+        "deaths": dict(deaths), "death_kinds": {k: kinds[k] for k in KINDS if kinds[k]},
+    }
+
+
+def _rollup(cards: List[Dict]) -> Dict:
+    tot = Counter()
+    deaths: Counter = Counter()
+    kinds: Counter = Counter()
+    for c in cards:
+        for k in ("explored", "developed", "dropped", "gated", "passed", "holdout_passed", "deploy_candidates"):
+            tot[k] += c[k]
+        tot["cost_cents"] += round(100 * c["cost_usd"])
+        deaths.update(c["deaths"])
+        kinds.update(c["death_kinds"])
+    cost = tot["cost_cents"] / 100.0
+    per100 = (100.0 / cost) if cost > 0 else None
+    return {
+        "runs": len(cards), "cost_usd": round(cost, 2), "explored": tot["explored"],
+        "developed": tot["developed"], "dropped": tot["dropped"], "gated": tot["gated"],
+        "passed": tot["passed"], "holdout_passed": tot["holdout_passed"],
+        "deploy_candidates": tot["deploy_candidates"],
+        "gate_reach_rate": round(tot["gated"] / tot["explored"], 3) if tot["explored"] else None,
+        "pass_rate": round(tot["passed"] / tot["explored"], 3) if tot["explored"] else None,
+        "gated_per_100usd": round(tot["gated"] * per100, 2) if per100 else None,
+        "passed_per_100usd": round(tot["passed"] * per100, 2) if per100 else None,
+        "pipeline_death_share": round(kinds["pipeline"] / tot["dropped"], 3) if tot["dropped"] else None,
+        "death_kinds": {k: kinds[k] for k in KINDS if kinds[k]},
+        "top_deaths": deaths.most_common(5),
+    }
+
+
+def scoreboard(cards: List[Dict]) -> Dict:
+    """Totals, per family and per day (oldest first) over run cards, so a trend is visible."""
+    by_family: Dict[str, List[Dict]] = defaultdict(list)
+    by_day: Dict[str, List[Dict]] = defaultdict(list)
+    for c in cards:
+        by_family[c["family"]].append(c)
+        by_day[c["created_at"][:10]].append(c)
+    return {
+        "total": _rollup(cards),
+        "families": {k: _rollup(v) for k, v in sorted(by_family.items())},
+        "days": [dict(day=k, **_rollup(v)) for k, v in sorted(by_day.items())],
+    }
+
+
+def recent_runs(cur, days: int = 7, user_id: Optional[int] = None) -> List[Dict]:
+    sql = ("SELECT id, user_id, market, status, model, hypotheses_tried, strategies_passed, input_tokens, "
+           "output_tokens, created_at FROM app_agent_runs WHERE kind='research' "
+           "AND created_at >= UTC_TIMESTAMP() - INTERVAL %s DAY AND status IN ('succeeded','stopped','failed')")
+    args: List = [int(days)]
+    if user_id is not None:
+        sql += " AND user_id=%s"
+        args.append(int(user_id))
+    cur.execute(sql + " ORDER BY id", args)
+    return list(cur.fetchall())
+
+
+def verdict_events(cur, run_ids: List[int]) -> Dict[int, List[Dict]]:
+    out: Dict[int, List[Dict]] = defaultdict(list)
+    for i in range(0, len(run_ids), 200):
+        chunk = run_ids[i:i + 200]
+        cur.execute("SELECT run_id, kind, message, data_json FROM app_agent_events WHERE kind='verdict' "
+                    "AND run_id IN (%s) ORDER BY id" % ",".join(["%s"] * len(chunk)), chunk)
+        for r in cur.fetchall():
+            data = r.get("data_json")
+            if isinstance(data, (bytes, str)):
+                try:
+                    data = json.loads(data)
+                except ValueError:
+                    data = None
+            out[r["run_id"]].append({"kind": r["kind"], "message": r["message"], "data": data or {}})
+    return out
+
+
+def load_scoreboard(cur, days: int = 7, user_id: Optional[int] = None) -> Dict:
+    runs = recent_runs(cur, days, user_id)
+    events = verdict_events(cur, [r["id"] for r in runs])
+    cards = [run_card(r, events.get(r["id"], [])) for r in runs]
+    return dict(scoreboard(cards), days_back=days, cards=cards)
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--days", type=int, default=7)
+    ap.add_argument("--user", type=int, default=None)
+    ap.add_argument("--cards", action="store_true", help="include one scorecard per run")
+    a = ap.parse_args()
+    from data_pipeline.common import get_db_conn
+    conn = get_db_conn()
+    try:
+        board = load_scoreboard(conn.cursor(), a.days, a.user)
+    finally:
+        conn.close()
+    if not a.cards:
+        board.pop("cards")
+    print(json.dumps(board, indent=1, default=str))
+
+
+if __name__ == "__main__":
+    main()

@@ -900,6 +900,57 @@ def _calibration_block(ds: backtest.Dataset) -> str:
             % (verdict, "\n  ".join(rows)))
 
 
+def _rsi_choose(cur, user_id: int, market: str, run_id: int, log) -> str:
+    """Draw this run's research playbook (rsi_playbook.choose) and return its prompt block, "" for
+    the empty version 0. Best-effort: a playbook hiccup never blocks research."""
+    from app import rsi, rsi_playbook
+    fam = rsi.family(market)
+    try:
+        pb = rsi_playbook.choose(cur, user_id, fam, run_id)
+    except Exception:  # noqa: BLE001
+        _LOG.exception("rsi playbook choice failed for run %s", run_id)
+        return ""
+    if pb and (pb.get("text") or "").strip():
+        log("step", "Using research playbook v%s for %s markets (%s)."
+            % (pb["version"], fam, "on trial against the current one" if pb["status"] == "candidate" else "current"),
+            {"phase": "playbook", "family": fam, "version": pb["version"], "status": pb["status"]})
+    return rsi_playbook.prompt_block(pb, fam)
+
+
+def _rsi_learn(conn, cur, run: Dict, ds, explored: int, tokens_in: int, tokens_out: int, model, usage,
+               log) -> None:
+    """After a run: credit its ideas to the playbook it drew, settle the candidate-vs-active trial,
+    and (with no candidate pending) have the model rewrite the active playbook from this run's
+    verdicts into the next candidate. Research-window evidence and gate labels only."""
+    from app import rsi, rsi_playbook
+    user_id, market, run_id = run["user_id"], run["market"], run["id"]
+    fam = rsi.family(market)
+    try:
+        events = repo.run_events(cur, run_id)
+        card = rsi.run_card(dict(run, hypotheses_tried=explored, input_tokens=tokens_in,
+                                 output_tokens=tokens_out), events)
+        rsi_playbook.score_run(cur, run_id, card)
+        verdict = rsi_playbook.decide(cur, user_id, fam)
+        if verdict:
+            log("step", "Research playbook for %s markets: %s." % (fam, verdict),
+                {"phase": "playbook", "family": fam, "decision": verdict})
+        conn.commit()
+        if rsi_playbook.candidate(cur, user_id, fam):
+            return  # one rewrite on trial at a time, so the A/B stays readable
+        current = rsi_playbook.active(cur, user_id, fam)
+        facts = "\n".join(b for b in (_feature_block(ds), _fair_value_block(ds)) if b)
+        new = rsi_playbook.reflect(model, usage, fam, MARKETS[market].label, current, card,
+                                   rsi_playbook.idea_lines(events), facts[:6000])
+        version = rsi_playbook.add_candidate(cur, user_id, fam, current, new["playbook"], new["changes"], run_id)
+        conn.commit()
+        log("step", "Wrote research playbook v%d for %s markets from this run's verdicts; it now runs on "
+                    "trial against v%s. %s" % (version, fam, current["version"], new["changes"]),
+            {"phase": "playbook", "family": fam, "version": version, "changes": new["changes"]})
+    except Exception as e:  # noqa: BLE001 - learning is best-effort; the run's results are already saved
+        _LOG.exception("rsi learn step failed for run %s", run_id)
+        log("step", "Playbook update skipped (%s)." % str(e)[:200])
+
+
 _FV_BANDS_H = ((24.0, None, ">24h"), (12.0, 24.0, "12-24h"), (4.0, 12.0, "4-12h"), (0.0, 4.0, "<4h"))
 _FV_MIN_EVENTS = 10   # per half: fewer events than this and a band says nothing
 _FV_MIN_EDGE = 0.02   # the probe trades only when its probability clears the quote + fee by 2c
@@ -1080,7 +1131,7 @@ keeps under 10% of snapshots, and one past the min/max keeps none).
 
 {guide}
 
-What this user's earlier research found (learn from it; do not repeat failures):
+{playbook}What this user's earlier research found (learn from it; do not repeat failures):
 {memory}
 
 Propose {count} distinct hypotheses for this idea, each walking the nine-phase method.
@@ -1108,6 +1159,7 @@ mechanism, falsification_criteria, negative_control, null/alt hypotheses, min_sa
         calibration="\n".join(b for b in (_calibration_block(ds), _fair_value_block(ds)) if b),
         guide=specmod.research_guide(run["market"]),
         memory=_memory_block(memory),
+        playbook=(run.get("_playbook") + "\n\n") if run.get("_playbook") else "",
         count=count,
         span=min(count, len(STRATEGY_FAMILIES)),
     )
@@ -2087,6 +2139,9 @@ def run_research(
         log("step", "Loaded %s of %s history: %s decision points over %s contracts."
             % (_span_words(ds), MARKETS[market].label, s["decision_points"], s["contracts"]),
             dict(s, phase="data_loaded"))
+        playbook = _rsi_choose(cur, user_id, market, run_id, log)
+        if playbook:
+            run = {**run, "_playbook": playbook}
         budget = max(1, min(int(run.get("max_hypotheses") or DEFAULT_HYPOTHESES), MAX_BUDGET))
         knowledge = AgentKnowledge(DataScope.research(ds.start_ts, ds.cutoff_ts), log, checkpoint)
         news = AgentNews(DataScope.research(ds.start_ts, ds.cutoff_ts), log, checkpoint)
@@ -2156,6 +2211,17 @@ def run_research(
                 conn.commit()
         except Exception as e:  # dreaming is best-effort; the run still succeeds
             log("step", "Policy-evolution step skipped (%s)." % e)
+
+        # Research RSI: score this run against the playbook it drew, settle the A/B, and rewrite the
+        # playbook from this run's verdicts. Billed like dreaming; a hiccup never fails the run.
+        if explored():
+            _rsi_learn(conn, cur, run, ds, explored(), tot_in, tot_out, model, usage, log)
+            if usage.input_tokens or usage.output_tokens:
+                tot_in += usage.input_tokens
+                tot_out += usage.output_tokens
+                _bill(conn, user_id, usage, run_id, choice.model_id)
+                usage.input_tokens = usage.output_tokens = 0
+            conn.commit()
 
         log("done", "%d of %d hypotheses passed every gate%s." % (
             total_passed, explored(), " (%d dropped on research data)" % ckpt["dropped_n"] if ckpt["dropped_n"] else ""),
@@ -2353,7 +2419,7 @@ def _develop_prompt(run: Dict, t: Dict, memory: List[Dict], step: int, ds=None) 
         "the mechanism right, OR exit early at any step if it clearly can't work here.\n"
         "Thesis: %s\nCurrent spec: %s\nResearch-fold result (a leak-free sandbox you may study "
         "freely — NOT the held-out data): %s%s%s%s\n\n"
-        "What this market's earlier research found (learn from it; do not repeat failures):\n%s\n\n"
+        "What this market's earlier research found (learn from it; do not repeat failures):\n%s\n\n%s"
         "This is step %d of at most %d for this thesis — the cap is a ceiling, NOT a target: there "
         "is no reward for staying, and dropping a dead line to hunt a better one elsewhere is the "
         "right call. Decide ONE of three:\n"
@@ -2373,7 +2439,8 @@ def _develop_prompt(run: Dict, t: Dict, memory: List[Dict], step: int, ds=None) 
         '{\"decision\":\"abandon\",\"why\":\"<why it cannot work here>\"}.'
         % (t["thesis"], json.dumps(t["spec"], separators=(",", ":")),
            _metrics_line(t["in_sample"]), ("\n" + attr) if attr else "", diag_line, _feature_block(ds),
-           _memory_block(memory), step + 1, THESIS_MAX_STEPS)
+           _memory_block(memory), (run.get("_playbook") + "\n\n") if run.get("_playbook") else "",
+           step + 1, THESIS_MAX_STEPS)
     ) + THINK_ALOUD
 
 
