@@ -1016,6 +1016,11 @@ class Cancelled(Exception):
     pass
 
 
+class Superseded(Exception):
+    """This worker no longer owns the run: the watchdog reaped it (re-queued or stopped) or another
+    worker reclaimed it. The thread stops quietly instead of racing the owner as a zombie."""
+
+
 # How long the run loop holds a paused session before giving up (frees the worker so a
 # forgotten pause can't tie up a slot forever). Matches the worker's abandoned-run window.
 PAUSE_POLL_SECONDS = 1.5
@@ -1800,6 +1805,9 @@ def run_research(
         status = repo.heartbeat(cur, run_id)
         if status == "cancelled":
             raise Cancelled()
+        owner = run.get("worker_id")
+        if status not in ("running", "paused") or (owner and repo.run_worker(cur, run_id) != owner):
+            raise Superseded()
         while status == "paused":
             if not paused_at[0]:
                 paused_at[0] = time.monotonic()
@@ -1970,6 +1978,11 @@ def run_research(
         repo.finish_run(cur, run_id, "succeeded", None, len(tried), total_passed, tot_in, tot_out)
         print(research_outcome_line(run_id, user_id, market, "succeeded", len(tried), total_passed,
                                     tot_in, tot_out, choice.model_id, verdicts), flush=True)
+    except Superseded:
+        # No event and no finish_run: the run's new owner (or the reaper) holds its record now.
+        _bill(conn, user_id, usage, run_id, choice.model_id)  # tokens this thread spent are still real
+        print("[research] run=%s superseded on worker %s; stopping this copy" % (run_id, run.get("worker_id")),
+              flush=True)
     except Cancelled:
         _bill(conn, user_id, usage, run_id, choice.model_id)  # charge whatever was spent before the stop
         log("step", "Cancelled.")

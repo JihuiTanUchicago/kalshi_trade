@@ -594,6 +594,13 @@ def heartbeat(cur, run_id: int) -> Optional[str]:
     return row["status"] if row else None
 
 
+def run_worker(cur, run_id: int) -> Optional[str]:
+    """The worker that currently owns a run (None once it's re-queued or finished by the reaper)."""
+    cur.execute("SELECT worker_id FROM app_agent_runs WHERE id=%s", (run_id,))
+    row = cur.fetchone()
+    return row["worker_id"] if row else None
+
+
 def finish_run(
     cur, run_id: int, status: str, error: Optional[str] = None, tried: int = 0, passed: int = 0,
     input_tokens: int = 0, output_tokens: int = 0,
