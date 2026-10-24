@@ -55,8 +55,9 @@ def ensure_partition(cur, market: str) -> Dict:
     contracts = rr.partition_contracts(cur, m, since)
     if not contracts:
         raise ValueError("no settled contracts for market %r since %s" % (market, since))
-    boundaries = _compute_boundaries(m, contracts)
     active = rr.get_active_partition(cur, market)
+    boundaries = _compute_boundaries(m, contracts,
+                                     min_research_to=int(active["research_to_ts"]) if active else None)
     # ponytail: re-freeze on ANY change to the underlying rows (fingerprint diff).
     # Simple and keeps the holdout ledger honest; coarsen to a roll-threshold
     # (e.g. one new contract beyond the current holdout) if partition churn bites.
@@ -232,11 +233,18 @@ def _compute_spot_boundaries(market: Market, points: List[int]) -> Dict:
     }
 
 
-def _compute_boundaries(market: Market, contracts: List[Dict]) -> Dict:
+def _compute_boundaries(market: Market, contracts: List[Dict], min_research_to: Optional[int] = None) -> Dict:
     """Pure math: the frozen boundary dict for a market given its settled
     contracts. Each contract is {open_ts, close_ts, result, ticker}. Boundaries
     are snapped forward to contract open times; purge/embargo come from the
-    observed contract duration."""
+    observed contract duration.
+
+    `min_research_to` (the previous partition's research_to) makes the research cut monotonic:
+    data that was once Research is never re-served as Validation or Holdout. Rolling forward never
+    moves the cut back, but history that grows at the OLD end (a backfill, or history_days raised)
+    would, putting already-researched contracts into validation. With the clamp the older data
+    simply widens Research, and Validation/Holdout split what lies after the cut 25:15 until the
+    natural 60% cut catches up."""
     opens = sorted({c["open_ts"] for c in contracts})
     t0 = opens[0]
     t1 = opens[-1]
@@ -245,6 +253,10 @@ def _compute_boundaries(market: Market, contracts: List[Dict]) -> Dict:
     # so a contract belongs wholly to one partition.
     research_to = _snap_forward(opens, t0 + int(span * RESEARCH_FRAC))
     validation_to = _snap_forward(opens, t0 + int(span * (RESEARCH_FRAC + VALIDATION_FRAC)))
+    if min_research_to is not None and research_to < min_research_to < t1:
+        research_to = _snap_forward(opens, int(min_research_to))
+        rest = t1 - research_to
+        validation_to = _snap_forward(opens, research_to + int(rest * VALIDATION_FRAC / (1.0 - RESEARCH_FRAC)))
     # End just past the newest contract's settlement so its frames are included.
     holdout_to = max(c["close_ts"] for c in contracts) + 1
 
