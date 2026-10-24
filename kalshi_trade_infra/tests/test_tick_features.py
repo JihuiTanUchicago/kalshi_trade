@@ -87,8 +87,9 @@ def built(tmp_path, monkeypatch):
     store = TickStore(local_root=str(lake))
     n = tick_archiver.build_features(s3=s3, store=store, now=H + timedelta(hours=1, minutes=5))
     assert n == 1
-    t = pq.read_table(lake / "ticks/v1/features_1s/date=2026-10-24/hour=18/part.parquet")
-    assert (lake / "ticks/manifest/features_1s/date=2026-10-24/18.json").exists()
+    t = pq.read_table(lake / "ticks/v1/features_1s/date=2026-10-24/hour=18/series=KXBTC15M/part.parquet", partitioning=None)
+    man = json.loads((lake / "ticks/manifest/features_1s/date=2026-10-24/18.json").read_text())
+    assert man["tables"]["series"] == {"KXBTC15M": 900}
     rows = {c: t[c].to_numpy(zero_copy_only=False) for c in t.column_names}
     return rows, store, t
 
@@ -158,8 +159,10 @@ def test_reader_filters_by_series(built):
     _, store, _ = built
     f = store.features_1s(H, H + timedelta(minutes=1), series=["KXBTC15M"], columns=["sec", "ticker", "yes_bid"])
     assert len(f["sec"]) == 60 and f["sec"][0] == H0 + 1 and set(f) == {"sec", "ticker", "yes_bid"}
-    assert store.features_1s(H, H + timedelta(minutes=1), series=["KXBTCD"]) == {} or \
-        len(store.features_1s(H, H + timedelta(minutes=1), series=["KXBTCD"])["sec"]) == 0
+    assert store.features_1s(H, H + timedelta(minutes=1), series=["KXBTCD"]) == {}
+    by_ticker = store.features_1s(H, H + timedelta(minutes=2), tickers=[TK], columns=["sec"])
+    everything = store.features_1s(H, H + timedelta(minutes=2), columns=["sec"])     # series from the manifest
+    assert len(by_ticker["sec"]) == len(everything["sec"]) == 120
 
 
 def test_disk_guard_drops_oldest_closed_hours(tmp_path):

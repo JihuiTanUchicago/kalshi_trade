@@ -1,9 +1,10 @@
 """features_1s: one row per (Kalshi BTC contract, second it is open), built from the tick archive.
 
 Built by tick_archiver for each archived hour (needs that hour's kalshi tables, and the
-Coinbase hour plus the 5 minutes before it for spot returns and volatility). Written to
-ticks/v1/features_1s/date=YYYY-MM-DD/hour=HH/part.parquet with a manifest like the raw tables;
-read it with TickStore.features_1s(...).
+Coinbase hour plus the 5 minutes before it for spot returns and volatility). Written one file
+per series, ticks/v1/features_1s/date=YYYY-MM-DD/hour=HH/series=<SERIES>/part.parquet, with a
+manifest like the raw tables (its tables.series lists the series and their row counts); read it
+with TickStore.features_1s(...).
 
 Every value at ``sec`` uses only events received before ``sec`` (rt < sec * 1e9): ``sec`` is
 the END of the second, as in tick_store's frames. Book state is carried forward between
@@ -23,6 +24,7 @@ Columns (float32 unless noted):
   book_age_s, spot_stale (bool: no Coinbase ticker message in the last 5s)
 """
 import math
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
@@ -260,9 +262,11 @@ def _latest_meta(t) -> Dict[str, Dict]:
     return meta
 
 
-def build_hour(store, hour: datetime, out_path: str) -> Optional[Dict]:
-    """Write features_1s for one hour to ``out_path``. Returns {"rows", "tickers"} or None
-    when the hour has no market metadata (nothing was recorded)."""
+def build_hour(store, hour: datetime, out_dir: str) -> Optional[Dict]:
+    """Write features_1s for one hour as one Parquet file per series, <out_dir>/<series>.parquet,
+    so a reader of KXBTC15M fetches a few MB, not every BTC contract. Returns {"rows",
+    "tickers", "series": {series: rows}, "files": {series: path}}, or None when the hour has no
+    market metadata (nothing was recorded)."""
     import pyarrow as pa
     import pyarrow.parquet as pq
     hour = hour.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
@@ -280,7 +284,9 @@ def build_hour(store, hour: datetime, out_path: str) -> Optional[Dict]:
     bcols = {c: _np(book, c) for c in ("rt", "kind", "side", "price", "qty", "upd_rt")} if bgroups else {}
     tcols = {c: _np(trades, c) for c in ("rt", "yes_price", "count", "taker_side")} if tgroups else {}
     sch = schema()
-    writer = pq.ParquetWriter(out_path, sch, compression="zstd")
+    writers: Dict[str, object] = {}
+    files: Dict[str, str] = {}
+    per_series: Dict[str, int] = {}
     total, nt = 0, 0
     try:
         for ticker in sorted(meta):
@@ -301,9 +307,15 @@ def build_hour(store, hour: datetime, out_path: str) -> Optional[Dict]:
                 elif f.type == pa.bool_():
                     v = np.asarray(v, dtype=bool)
                 arrays.append(pa.array(v, type=f.type))
-            writer.write_table(pa.Table.from_arrays(arrays, schema=sch))
+            series = str(rows["series"][0])
+            if series not in writers:
+                files[series] = os.path.join(out_dir, series + ".parquet")
+                writers[series] = pq.ParquetWriter(files[series], sch, compression="zstd")
+            writers[series].write_table(pa.Table.from_arrays(arrays, schema=sch))
+            per_series[series] = per_series.get(series, 0) + len(rows["sec"])
             total += len(rows["sec"])
             nt += 1
     finally:
-        writer.close()
-    return {"rows": total, "tickers": nt}
+        for w in writers.values():
+            w.close()
+    return {"rows": total, "tickers": nt, "series": per_series, "files": files}
