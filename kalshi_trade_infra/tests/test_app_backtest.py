@@ -324,6 +324,22 @@ def test_next_bar_exit_sells_at_the_following_bid():
     assert t.reason == "take_profit" and t.exit_ts == T0 + 240 and t.exit_price == 0.60
 
 
+def test_the_position_stop_paper_and_live_enforce_is_backtested():
+    """Filled at +120 for 40c; at +240 the bid is 20c, a loss of over 40% of cost: sold there, as the
+    engine's position stop would, instead of riding to a settlement the backtest alone would see."""
+    ds = _dataset(ask=0.40, bid=0.38)
+    _replace_quote(ds, 240, 0.20, 0.22)
+    spec = specmod.validate(_ONE_AT_A_TIME)
+    t = backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1)[0]
+    assert (t.reason, t.exit_ts, t.exit_price) == ("stop", T0 + 240, 0.20)
+    held = backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1, backtest.WhatIf(position_stop_pct=0))[0]
+    assert held.reason == "settled" and held.exit_price == 1.0
+    # a dip short of the stop (30c bid = 25% down) is ridden out
+    ds = _dataset(ask=0.40, bid=0.38)
+    _replace_quote(ds, 240, 0.30, 0.32)
+    assert backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1)[0].reason == "settled"
+
+
 def test_next_bar_is_never_more_optimistic_than_signal_bar(monkeypatch):
     ds = _dataset(ask=0.40, bid=0.38)
     _replace_quote(ds, 120, 0.50, 0.52)
