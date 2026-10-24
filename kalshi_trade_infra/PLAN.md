@@ -137,6 +137,8 @@ Visibility: the strategy page's Road to live panel (both themes) shows each gate
 
 The manual live path now needs the paper record too. `server.create_deployment` with mode live checked the gatekeeper candidate but not `agent._proven_on_paper`, so a candidate could go live by hand with no realistic paper trades while the autopilot path and the Road-to-live view both required them. It now refuses with the first failing paper check (30+ realistic round trips, net up, 48h+, bootstrap p ≤ 0.10). Paper and demo are unchanged.
 
+Catalog market labels come from the series now. kalshi_series.title held one market's title ("Portland wins", "Middle Tennessee wins by over 7.5 points", "Will the maximum temperature be >77° on Oct 25, 2026?"), so the research picker, run logs and the app named catalog markets after a single contract. `catalog_collector.refresh_series_meta` now also writes the /series title ("NBA Game", "College Football Spread", "Highest temperature in Chicago"), and `refresh_series` no longer overwrites a stored title.
+
 Next: feed realization to the research thread's backtest fill-model calibration.
 
 ## Kalshi perps deployment preparation — October 23, 2026, Asia/Shanghai

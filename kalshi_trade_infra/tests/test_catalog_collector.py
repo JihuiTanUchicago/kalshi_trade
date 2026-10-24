@@ -22,7 +22,8 @@ class _Cur:
 
 def test_refresh_series_meta_updates_only_tracked_series(monkeypatch):
     payload = {"series": [
-        {"ticker": "KXHIGHNY", "category": "Climate and Weather", "frequency": "daily"},
+        {"ticker": "KXHIGHNY", "category": "Climate and Weather", "frequency": "daily",
+         "title": "Highest temperature in NYC"},
         {"ticker": "KXNBAGAME", "category": "Sports", "frequency": "custom"},
         {"ticker": "KXNOTTRACKED", "category": "Economics", "frequency": "weekly"},
     ]}
@@ -30,9 +31,11 @@ def test_refresh_series_meta_updates_only_tracked_series(monkeypatch):
     cur = _Cur(existing_tickers=["KXHIGHNY", "KXNBAGAME"])   # KXNOTTRACKED absent from our catalog
     n = cc.refresh_series_meta(cur)
     assert n == 2
-    # (category, frequency, series_ticker) per row; only the two tracked series updated.
-    got = {r[2]: (r[0], r[1]) for r in cur.updates}
-    assert got == {"KXHIGHNY": ("Climate and Weather", "daily"), "KXNBAGAME": ("Sports", "custom")}
+    # (category, frequency, title, series_ticker) per row; only the two tracked series updated.
+    # The series title replaces the market title refresh_series stored; a missing one keeps it.
+    got = {r[3]: (r[0], r[1], r[2]) for r in cur.updates}
+    assert got == {"KXHIGHNY": ("Climate and Weather", "daily", "Highest temperature in NYC"),
+                   "KXNBAGAME": ("Sports", "custom", "")}
 
 
 def test_refresh_series_meta_survives_fetch_failure(monkeypatch):
