@@ -1,5 +1,18 @@
 # PLAN
 
+## Research RSI: paper outcomes close the loop (2026-10-24)
+
+- The scoreboard only counted what passed the backtest gate. `rsi.paper_outcomes(cur, uid)` adds what
+  survived realistic paper fills, keyed by `rsi.family` like the scoreboard: strategies on paper, how
+  many have traded, realistic round trips, net P&L after fees, realization (paper net over the
+  trip-weighted backtest unseen-data P&L per trade) and how many cleared the paper gate. `by_playbook`
+  credits each strategy to the playbook its research run drew (app_strategies.run_id ->
+  app_rsi_assignments.run_id), so a playbook whose passes bleed on paper stops looking like a winner.
+- Shown under `paper` in `GET /api/research/scoreboard`, and as one line per family in the autopilot
+  review context, which flags families whose paper strategies have never traded. One learning loop:
+  the research thread's playbook scoring can read `by_playbook` instead of a second loop.
+- Next: fold `by_playbook.realization` into playbook scoring once any family has 30+ paper trips.
+
 ## Research RSI: free mispricing scan steers where research goes (2026-10-24)
 
 - `app/rsi_scout.py` loads each researchable binary market's RESEARCH window (its active partition, or

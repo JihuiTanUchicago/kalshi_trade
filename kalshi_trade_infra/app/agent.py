@@ -3369,6 +3369,17 @@ def _copilot_context(cur, user: Dict) -> str:
                 pass
     if not deps:
         lines.append("- none")
+    # Research's track record on the live book, per market family: the backtest gate says what
+    # passed, this says what held up on realistic paper fills. Steer research toward families whose
+    # passes survive paper, away from ones whose passes bleed or never fire. Best-effort.
+    try:
+        from app import rsi
+        paper_lines = rsi.paper_outcomes_lines(rsi.paper_outcomes(cur, user["id"]))
+    except Exception:
+        paper_lines = []
+    if paper_lines:
+        lines += ["", "How research's passes did on paper, by market family (all paper deployments, including stopped):"]
+        lines += paper_lines
     lines += ["", "Passed strategies not deployed:"]
     spare = [s for s in passed if s["id"] not in deployed_ids][:10]
     any_candidate = False

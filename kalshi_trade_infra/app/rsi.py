@@ -228,6 +228,96 @@ def load_scoreboard(cur, days: int = 7, user_id: Optional[int] = None) -> Dict:
     return dict(scoreboard(cards), days_back=days, cards=cards)
 
 
+def _playbook_of(cur, strategy_ids: List[int]) -> Dict[int, int]:
+    """{strategy_id: playbook_id} for strategies whose research run drew a playbook."""
+    if not strategy_ids:
+        return {}
+    try:
+        cur.execute("SELECT s.id AS strategy_id, a.playbook_id FROM app_strategies s "
+                    "JOIN app_rsi_assignments a ON a.run_id=s.run_id WHERE s.id IN (%s)"
+                    % ",".join(["%s"] * len(strategy_ids)), list(strategy_ids))
+        return {int(r["strategy_id"]): int(r["playbook_id"]) for r in cur.fetchall()}
+    except Exception:  # noqa: BLE001 - the assignments table may not exist before the first schema run
+        return {}
+
+
+def _paper_rollup(rows: List[Dict]) -> Dict:
+    trips = sum(r["round_trips"] for r in rows)
+    net = sum(r["net_pnl"] for r in rows)
+    # Trip-weighted backtest expectation: what these trips "should" have earned per the backtest's
+    # unseen-data P&L per trade. Realization = paper net / that; None until something traded.
+    expected = sum(r["round_trips"] * r["backtest_per_trade"] for r in rows if r["backtest_per_trade"])
+    return {
+        "strategies": len(rows), "trading": sum(1 for r in rows if r["round_trips"]),
+        "round_trips": trips, "net_pnl": round(net, 4),
+        "realization": round(net / expected, 3) if expected > 0 else None,
+        "live_ready": sum(1 for r in rows if r["live_ready"]),
+    }
+
+
+def paper_outcomes(cur, user_id: int) -> Dict:
+    """RSI part 3: what research's passes earned once they met the live book on paper. The other
+    half of the loop's scorecard: the scoreboard counts what passed the backtest gate, this counts
+    what survived realistic fills (the live kernel over SimulatedVenue). Per family (same keys as
+    the scoreboard) and per playbook (via the run that produced each strategy), so a playbook that
+    yields gate passes which then bleed on paper stops looking like a winner.
+
+    Read-only. Strategies with too few trips to clear the paper gate skip the (bootstrap) live-ready
+    check, so this stays cheap enough for the panel."""
+    from app import agent
+    from app import repository as repo
+    deps = [d for d in repo.list_deployments(cur, user_id, include_stopped=True) if d.get("mode") == "paper"]
+    by_strategy: Dict[int, Dict] = {}
+    for d in deps:
+        by_strategy.setdefault(int(d["strategy_id"]), d)
+    ids = sorted(by_strategy)
+    progress = repo.paper_progress(cur, user_id, ids)
+    playbooks = _playbook_of(cur, ids)
+    rows = []
+    for sid in ids:
+        d = by_strategy[sid]
+        trips, net = progress.get(sid, (0, 0.0))
+        oos = (d.get("result") or {}).get("out_of_sample") or {}
+        n_bt = int(oos.get("trades") or 0)
+        ready = False
+        if trips >= agent.MIN_REALISTIC_PAPER_TRADES:
+            try:
+                ready = bool(agent.paper_evidence(cur, user_id, sid)["ready"])
+            except Exception:  # noqa: BLE001 - informational; never fail the scoreboard
+                ready = False
+        rows.append({"strategy_id": sid, "family": family(d.get("market")), "playbook_id": playbooks.get(sid),
+                     "round_trips": int(trips), "net_pnl": float(net),
+                     "backtest_per_trade": float(oos.get("pnl") or 0) / n_bt if n_bt else None,
+                     "live_ready": ready})
+    fams: Dict[str, List[Dict]] = defaultdict(list)
+    pbs: Dict[int, List[Dict]] = defaultdict(list)
+    for r in rows:
+        fams[r["family"]].append(r)
+        if r["playbook_id"] is not None:
+            pbs[r["playbook_id"]].append(r)
+    return {
+        "total": _paper_rollup(rows),
+        "families": {k: _paper_rollup(v) for k, v in sorted(fams.items())},
+        "by_playbook": {k: _paper_rollup(v) for k, v in sorted(pbs.items())},
+    }
+
+
+def paper_outcomes_lines(outcomes: Dict) -> List[str]:
+    """One line per family for the autopilot review: did research's passes hold up on paper?"""
+    out = []
+    for fam, r in (outcomes.get("families") or {}).items():
+        line = "- %s: %d on paper, %d trading, %d realistic round trips, net $%.2f" % (
+            fam, r["strategies"], r["trading"], r["round_trips"], r["net_pnl"])
+        if r["realization"] is not None:
+            line += ", paper earns %.0f%% of backtest per trade" % (100 * r["realization"])
+        if r["live_ready"]:
+            line += ", %d live-ready" % r["live_ready"]
+        if r["strategies"] and not r["trading"]:
+            line += " (none has traded yet: their entry rules may never fire on the live book)"
+        out.append(line)
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--days", type=int, default=7)

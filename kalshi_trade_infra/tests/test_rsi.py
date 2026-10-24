@@ -117,3 +117,61 @@ def test_scoreboard_endpoint_is_scoped_to_the_user_and_clamps_days(monkeypatch):
     assert board["playbooks"] == [{"family": "weather-high", "version": 1}]
     assert cur.sql[0][1] == [60, 2]
     assert any(r[0] == "GET" and r[1].pattern == "^/api/research/scoreboard$" and r[3] for r in server.ROUTES)
+
+
+def _paper_setup(monkeypatch, deps, progress, assignments, ready_ids=()):
+    from app import agent
+    from app import repository as repo
+    monkeypatch.setattr(repo, "list_deployments", lambda cur, uid, include_stopped=False: deps)
+    monkeypatch.setattr(repo, "paper_progress", lambda cur, uid, ids: {k: v for k, v in progress.items() if k in ids})
+    monkeypatch.setattr(agent, "paper_evidence", lambda cur, uid, sid: {"ready": sid in ready_ids})
+
+    class Cur:
+        def __init__(self):
+            self.sql = []
+
+        def execute(self, sql, args=None):
+            self.sql.append((sql, args))
+            self._rows = [{"strategy_id": s, "playbook_id": p} for s, p in assignments.items() if s in args]
+
+        def fetchall(self):
+            return self._rows
+    return Cur()
+
+
+def _dep(sid, market, mode="paper", pnl=10.0, trades=10):
+    return {"strategy_id": sid, "market": market, "mode": mode,
+            "result": {"out_of_sample": {"pnl": pnl, "trades": trades}}}
+
+
+def test_paper_outcomes_score_families_and_playbooks_on_realistic_fills(monkeypatch):
+    deps = [_dep(1, "high_ny"), _dep(1, "high_ny"), _dep(2, "high_ny", pnl=20.0), _dep(3, "btc15m"),
+            _dep(4, "high_ny", mode="live")]
+    # 1: 40 trips, +$8 (backtest says $1/trade -> 20% realized); 2: 10 trips, -$5; 3: never traded.
+    cur = _paper_setup(monkeypatch, deps, {1: (40, 8.0), 2: (10, -5.0)}, {1: 7, 2: 7, 3: 9}, ready_ids={1})
+    out = rsi.paper_outcomes(cur, 2)
+    high = out["families"]["weather-high"]
+    assert high == {"strategies": 2, "trading": 2, "round_trips": 50, "net_pnl": 3.0,
+                    "realization": round(3.0 / (40 * 1.0 + 10 * 2.0), 3), "live_ready": 1}
+    assert out["families"]["crypto"]["trading"] == 0 and out["families"]["crypto"]["realization"] is None
+    assert out["by_playbook"][7]["round_trips"] == 50 and out["by_playbook"][9]["strategies"] == 1
+    assert out["total"]["strategies"] == 3  # the live deployment is not paper evidence
+    assert "app_rsi_assignments" in cur.sql[0][0] and cur.sql[0][1] == [1, 2, 3]
+    lines = rsi.paper_outcomes_lines(out)
+    assert lines[0].startswith("- crypto: 1 on paper, 0 trading") and "never fire" in lines[0]
+    assert "paper earns 5% of backtest per trade, 1 live-ready" in lines[1]
+
+
+def test_paper_outcomes_skip_the_bootstrap_until_there_are_enough_trips(monkeypatch):
+    from app import agent
+    cur = _paper_setup(monkeypatch, [_dep(5, "high_ny")], {5: (3, 1.0)}, {})
+    monkeypatch.setattr(agent, "paper_evidence", lambda *a: (_ for _ in ()).throw(AssertionError("too early")))
+    out = rsi.paper_outcomes(cur, 2)
+    assert out["total"]["live_ready"] == 0 and out["by_playbook"] == {}
+
+
+def test_paper_outcomes_with_nothing_on_paper_is_empty(monkeypatch):
+    cur = _paper_setup(monkeypatch, [], {}, {})
+    out = rsi.paper_outcomes(cur, 2)
+    assert out["total"]["strategies"] == 0 and out["families"] == {} and cur.sql == []
+    assert rsi.paper_outcomes_lines(out) == []
