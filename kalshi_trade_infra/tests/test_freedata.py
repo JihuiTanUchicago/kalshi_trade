@@ -282,7 +282,7 @@ def test_gated_partition_windows_carry_the_station_features(monkeypatch):
     seen = {}
     monkeypatch.setattr(common, "get_db_conn", lambda: Conn())
     monkeypatch.setattr(partitions.rr, "partition_source_rows",
-                        lambda cur, m, since, a, b: {"markets": [{"open_ts": 5}], "candles": {}, "btc": []})
+                        lambda cur, m, since, a, b, cap=None: {"markets": [{"open_ts": 5}], "candles": {}, "btc": []})
     monkeypatch.setattr(backtest, "station_frame_series", lambda m: ({"obs_high_f": [(1, 70.0)]}, "APPLIES"))
     monkeypatch.setattr(backtest, "forecast_book", lambda m, since: None)
     monkeypatch.setattr(backtest, "build_dataset", lambda *a, **k: seen.update(args=a, kw=k) or "DS")

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import bisect
 import hashlib
+import os
 from collections import Counter
 from datetime import timedelta, timezone
 from typing import Dict, List, Optional
@@ -29,6 +30,12 @@ from app.repository import now_utc
 # one-time locked holdout, the closest proxy to "future".
 RESEARCH_FRAC = 0.60
 VALIDATION_FRAC = 0.25  # (holdout gets the remaining 0.15)
+
+# Most estimated candle rows one window load may hold (rr.cap_recent_events keeps the latest whole
+# events that fit). Measured 10-24: nhl_game + high_ny together peaked at 1.44GB of the 3GB worker,
+# while KXNCAAFSPREAD (18,471 one-minute contracts) timed out the 180s load step. Applies to every
+# window, so a gate loads the same bounded slice research would; ordinary markets sit far below it.
+RESEARCH_MAX_CANDLE_ROWS = int(os.getenv("TAU_RESEARCH_MAX_CANDLE_ROWS", "1500000"))
 
 # Holdout one-time-evaluation ceilings (§B.4). A ~10-day holdout cannot survive
 # hundreds of looks; btc_daily's holdout is only a handful of settlements.
@@ -365,9 +372,9 @@ def _load_perpetual_window(market: str, partition: Dict, phase: str) -> backtest
 
 
 def _load_window(market: str, from_ts: int, to_ts: int, history_days: Optional[int]) -> backtest.Dataset:
-    """Load the market's history, keep only contracts opening in [from_ts, to_ts),
-    and build a Dataset from them. Opens its own connection (these run in the
-    gatekeeper/agent runtime, not under a passed cursor)."""
+    """Load the market's history, keep only contracts opening in [from_ts, to_ts) (at most
+    RESEARCH_MAX_CANDLE_ROWS of their most recent events), and build a Dataset from them. Opens
+    its own connection (these run in the gatekeeper/agent runtime, not under a passed cursor)."""
     from data_pipeline.common import get_db_conn
 
     m = MARKETS[market]
@@ -379,7 +386,7 @@ def _load_window(market: str, from_ts: int, to_ts: int, history_days: Optional[i
                 h = tao_repository.load_spot_history(cur, m, int(since.timestamp()))
                 candles = [(t, p) for t, p in h["candles"] if from_ts <= t < to_ts]
                 return backtest.build_spot_dataset(m, candles, h["tao_usd"], h["features"])
-            rows = rr.partition_source_rows(cur, m, since, from_ts, to_ts)
+            rows = rr.partition_source_rows(cur, m, since, from_ts, to_ts, RESEARCH_MAX_CANDLE_ROWS)
     finally:
         conn.close()
     sub = [mk for mk in rows["markets"]

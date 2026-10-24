@@ -1,5 +1,13 @@
 # PLAN
 
+## Window loads bounded for huge one-minute series (2026-10-24)
+- Run 2560 (kxncaafspread, 18,471 one-minute contracts) failed its 180s load step; the catalog now
+  has ~1,000 series, so more of these. Every partition window now keeps its most recent whole events
+  whose estimated candles (one per candle_minutes over each contract's life) fit
+  `partitions.RESEARCH_MAX_CANDLE_ROWS` (1.5M, env TAU_RESEARCH_MAX_CANDLE_ROWS), and the candle /
+  micro queries are bounded to the kept contracts' close times (`load_history(until=...)`), so the
+  database no longer scans the whole series. Weather, crypto and NHL windows sit below the cap.
+
 ## Research spend: stop after a streak of drops; gated windows get station features (2026-10-24)
 - Runs 2541 (btc15m) and 2548 (high_ny) each dropped every thesis on the research fold (28 and 18)
   for ~$10 of Opus with nothing gated. `agent.EXPLORE_MAX_DROP_STREAK` (8, env

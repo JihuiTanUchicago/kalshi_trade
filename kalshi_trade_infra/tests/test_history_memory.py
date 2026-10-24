@@ -126,3 +126,45 @@ def test_deploy_applies_the_memory_caps_before_restarting():
     script = (Path(__file__).resolve().parents[1] / "scripts" / "deploy_web.sh").read_text()
     assert "recursive-agents=3G" in script
     assert script.index("set-property") < script.index("systemctl restart ${SERVICES}\nsleep 5")
+
+
+def test_a_huge_window_keeps_its_most_recent_whole_events():
+    """An 18k-contract one-minute series can't load inside the step limit: the window keeps its
+    latest whole events (every strike of a game together) up to the estimated candle budget."""
+    from app import research_repository as rr
+
+    def c(event, strike, open_ts, life_min):
+        return {"ticker": "KXS-%s-%s" % (event, strike), "open_ts": open_ts, "close_ts": open_ts + life_min * 60}
+
+    old = [c("G1", s, 0, 100) for s in (3, 7)]
+    mid = [c("G2", s, 1000, 100) for s in (3, 7)]
+    new = [c("G3", s, 2000, 100) for s in (3, 7)]
+    kept = rr.cap_recent_events(old + mid + new, 1, 450)
+    assert {k["ticker"].split("-")[1] for k in kept} == {"G2", "G3"}  # 400 rows fit, the 3rd game doesn't
+    assert rr.cap_recent_events(new, 1, 10) == new  # never empty: the newest event always stays
+    assert rr.cap_recent_events(old + new, 60, 450) == old + new  # hourly candles: everything fits
+
+
+def test_a_window_load_is_bounded_to_its_contracts_close_times():
+    """The candle query no longer scans the whole series: since/until wrap the kept contracts."""
+    from app import research_repository as rr
+    from app.markets import Market
+
+    seen = {}
+
+    class Cur:
+        def execute(self, sql, params=()):
+            seen.setdefault("q", []).append((" ".join(sql.split()), params))
+        def fetchall(self):
+            q = seen["q"][-1][0]
+            if q.startswith("SELECT ticker, open_time"):
+                return [{"ticker": "X-E1-1", "open_time": datetime(2026, 10, 5), "close_time": datetime(2026, 10, 6), "result": "yes"},
+                        {"ticker": "X-E2-1", "open_time": datetime(2026, 10, 20), "close_time": datetime(2026, 10, 21), "result": "no"}]
+            return []
+
+    m = Market(key="x", series="X", label="x", candle_minutes=60, history_days=30, underlying=None)
+    lo = int(datetime(2026, 10, 1, tzinfo=timezone.utc).timestamp())
+    hi = int(datetime(2026, 10, 10, tzinfo=timezone.utc).timestamp())
+    rr.partition_source_rows(Cur(), m, SINCE, lo, hi, 10_000)
+    sql, params = next((q, p) for q, p in seen["q"] if q.startswith("SELECT ticker, strike"))
+    assert "close_time <= %s" in sql and params == ("X", datetime(2026, 10, 5), datetime(2026, 10, 6))
