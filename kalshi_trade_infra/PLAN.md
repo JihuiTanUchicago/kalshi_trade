@@ -13,6 +13,9 @@
   - `run_research` filters the market picker to the focus. A delegated run queued on an
     out-of-focus market re-picks inside the focus instead.
   - The review context opens with the focus and lists only markets and scout leads inside it.
+  - The autopilot panel has a "Markets it may trade" picker (Any, Crypto, Bitcoin, Sports) beside
+    the model picker. It posts the same endpoint and follows the status poll, so a focus set in
+    chat shows up there too.
 - Who can set it: the chat agent sets it with a `set_focus` action when the user asks. A scheduled
   review cannot. There is also `POST /api/autopilot/focus`, and the panel story says "It sticks to
   the focus you set".

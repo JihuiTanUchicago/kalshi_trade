@@ -3318,6 +3318,8 @@
         <dl class="apf-stats" id="apf-stats"></dl>
         <label class="field apf-model"><span>Autopilot model</span>
           <select class="input" id="apf-model" aria-label="Autopilot model"></select></label>
+        <label class="field apf-model"><span>Markets it may trade</span>
+          <select class="input" id="apf-focus" aria-label="Markets the autopilot may research and trade"></select></label>
         <div class="apf-gates hint" id="apf-gates"></div>
         <div id="apf-flash"></div>
         <div class="apf-controls" id="apf-controls"></div>
@@ -3363,6 +3365,23 @@
     apLoadChat(box, true);
     apStopChat();
     apChatTimer = setInterval(() => { const b = document.getElementById('autopilot-float'); if (b && apExpanded()) apLoadChat(b); else apStopChat(); }, 3000);
+    // Market focus: binding on research, deploys and the paper funnel (server enforces it).
+    (() => {
+      const sel = box.querySelector('#apf-focus'); if (!sel) return;
+      sel.onchange = async () => {
+        if (sel.disabled) return;
+        const prev = sel.dataset.cur || '';
+        sel.disabled = true;
+        const current = () => box.isConnected !== false && box.querySelector('#apf-focus') === sel;
+        try {
+          const r = await api('/api/autopilot/focus', { focus: sel.value ? sel.value.split(',') : [] });
+          if (S.ap) S.ap.focus = r.focus;
+          if (current()) { apFocusOptions(sel, r.focus); apLoadChat(box); }
+        } catch (e) { if (current()) { sel.value = prev; alert0(e.message); } }
+        finally { if (current()) sel.disabled = false; }
+      };
+      apFocusOptions(sel, (S.ap && S.ap.focus) || []);
+    })();
     // The autopilot's research, review and chat share its saved model preference.
     (async () => {
       const sel = box.querySelector('#apf-model'); if (!sel) return;
@@ -3379,6 +3398,13 @@
         finally { if (current()) sel.disabled = false; }
       };
     })();
+  }
+  const AP_FOCUS = [['', 'Any market'], ['crypto', 'Crypto only'], ['btc', 'Bitcoin only'], ['sports', 'Sports only']];
+  function apFocusOptions(sel, focus) {
+    const cur = (focus || []).join(',');
+    const opts = AP_FOCUS.some(([v]) => v === cur) ? AP_FOCUS : AP_FOCUS.concat([[cur, 'Only ' + (focus || []).join(', ')]]);
+    sel.innerHTML = opts.map(([v, label]) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(label)}</option>`).join('');
+    sel.dataset.cur = cur;
   }
   function apUpdate(box, d) {
     const m = (d && AP_MODE[d.mode]) || AP_MODE.off;
@@ -3419,6 +3445,8 @@
       ${d.paper_progress ? `<div class="apf-wide"><dt>Closest to live</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> · ${d.paper_progress.trades}/${d.paper_progress.trades_needed} paper trades · ${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}`;
     }
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
+    const fsel = box.querySelector('#apf-focus');
+    if (fsel && Array.isArray(d.focus) && document.activeElement !== fsel && !fsel.disabled && fsel.dataset.cur !== d.focus.join(',')) apFocusOptions(fsel, d.focus);
     const gates = box.querySelector('#apf-gates'); if (gates) gates.textContent = apLiveBlock(d) || apLiveArmed(d);
     const controls = box.querySelector('#apf-controls');
     if (controls) {
