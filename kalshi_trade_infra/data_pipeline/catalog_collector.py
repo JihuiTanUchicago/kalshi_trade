@@ -14,7 +14,7 @@ import sys
 import time
 from typing import Dict, List, Optional
 
-from data_pipeline.common import api_get, get_db_conn, utc_now
+from data_pipeline.common import api_get, get_db_conn, is_traded_series, utc_now
 from data_pipeline.forward_collector import insert_market_upserts
 
 REFRESH_MINUTES = 30
@@ -106,7 +106,24 @@ MVE_FILTER = os.getenv("CATALOG_MVE_FILTER", "exclude")
 MAX_PAGES = 200
 
 
-def refresh_series_meta(cur) -> int:
+def fetch_series_meta() -> Dict[str, tuple]:
+    """series_ticker -> (category, frequency, title) for every Kalshi series, from ONE bulk /series
+    call. {} on any failure: a meta-fetch hiccup must never crash the catalog loop."""
+    try:
+        data = api_get("/series")
+    except Exception as e:
+        print("[catalog] series-meta fetch failed: %r" % e, flush=True)
+        return {}
+    meta = {}
+    for s in data.get("series") or []:
+        t = s.get("ticker")
+        if t:
+            meta[t] = ((s.get("category") or None), (s.get("frequency") or None),
+                       str(s.get("title") or "").strip()[:255])
+    return meta
+
+
+def refresh_series_meta(cur, meta: Optional[Dict[str, tuple]] = None) -> int:
     """Enrich kalshi_series with Kalshi's own `category`, `frequency` and series `title` for every
     series we track. The title matters: refresh_series only has a market's title ("Portland wins",
     "Will the maximum temperature be >77° on Oct 25, 2026?"), which app/markets would otherwise
@@ -116,17 +133,8 @@ def refresh_series_meta(cur) -> int:
     series in ONE call. app/markets.load_catalog_markets filters on these two columns to generate
     the deployable outcome-settled universe, so without this pass they stay NULL and generation
     yields nothing (safe: the curated 19 still work). Returns the number of rows updated."""
-    try:
-        data = api_get("/series")
-    except Exception as e:  # a meta-fetch hiccup must never stop the catalog loop
-        print("[catalog] series-meta fetch failed: %r" % e, flush=True)
-        return 0
-    meta = {}
-    for s in data.get("series") or []:
-        t = s.get("ticker")
-        if t:
-            meta[t] = ((s.get("category") or None), (s.get("frequency") or None),
-                       str(s.get("title") or "").strip()[:255])
+    if meta is None:
+        meta = fetch_series_meta()
     if not meta:
         return 0
     cur.execute("SELECT series_ticker FROM kalshi_series")
@@ -145,9 +153,18 @@ def refresh_series_meta(cur) -> int:
 
 def refresh_once(status: Optional[str] = "open") -> Dict[str, int]:
     """Stream the catalog: fetch one page, upsert it, sleep, repeat — so memory and
-    DB load stay flat even across thousands of markets (never loads them all at once)."""
+    DB load stay flat even across thousands of markets (never loads them all at once).
+
+    Only traded series (common.TRADED_CATEGORIES, no parlays) are stored. Kalshi's /markets
+    payload has no category, so the /series map is fetched first; without it we can't tell
+    traded from untraded, so the pass is skipped rather than storing everything."""
+    meta = fetch_series_meta()
+    if not meta:
+        print("[catalog] no series meta; skipping this refresh", flush=True)
+        return {"markets": 0, "open": 0, "series": 0, "meta": 0, "skipped": 0}
+    traded = {t for t, (category, _f, _t) in meta.items() if is_traded_series(t, category)}
     conn = get_db_conn()
-    total = n_open = 0
+    total = n_open = skipped = 0
     cursor: Optional[str] = None
     try:
         cur = conn.cursor()
@@ -162,9 +179,14 @@ def refresh_once(status: Optional[str] = "open") -> Dict[str, int]:
             if cursor:
                 params["cursor"] = cursor
             data = api_get("/markets", params)
-            batch = data.get("markets") or []
-            for m in batch:
+            page = data.get("markets") or []
+            batch = []
+            for m in page:
                 m["series_ticker"] = _series_of(m)
+                if m["series_ticker"] not in traded:
+                    skipped += 1
+                    continue
+                batch.append(m)
                 is_open = m.get("status") in OPEN_STATES
                 n_open += 1 if is_open else 0
                 s = m["series_ticker"]
@@ -175,16 +197,17 @@ def refresh_once(status: Optional[str] = "open") -> Dict[str, int]:
             conn.commit()
             total += len(batch)
             cursor = data.get("cursor")
-            if not cursor or not batch:
+            if not cursor or not page:
                 complete = True
                 break
             time.sleep(PAGE_SLEEP)  # throttle: spread the load, don't starve serving
         n_series = refresh_series(cur, seen, complete=complete and status == "open")
         conn.commit()
-        n_meta = refresh_series_meta(cur)  # fill category + frequency (drives catalog-market generation)
+        n_meta = refresh_series_meta(cur, meta)  # fill category + frequency (drives catalog-market generation)
         conn.commit()
-        print("[catalog] markets=%d (open=%d) series=%d meta=%d" % (total, n_open, n_series, n_meta), flush=True)
-        return {"markets": total, "open": n_open, "series": n_series, "meta": n_meta}
+        print("[catalog] markets=%d (open=%d) skipped_untraded=%d series=%d meta=%d"
+              % (total, n_open, skipped, n_series, n_meta), flush=True)
+        return {"markets": total, "open": n_open, "series": n_series, "meta": n_meta, "skipped": skipped}
     finally:
         conn.close()
 

@@ -55,7 +55,7 @@ def test_excludes_illiquid_series():
 
 
 def test_excludes_crypto_financials_and_other_disallowed_categories():
-    for cat in ("Crypto", "Financials", "Elections", "Politics", "Entertainment", "", None):
+    for cat in ("Crypto", "Financials", "Elections", "Politics", "Entertainment", "Economics", "Commodities", "", None):
         assert market_from_series(_row(category=cat)) is None
 
 
@@ -151,14 +151,14 @@ class _DummyConn:
 
 
 def test_load_catalog_markets_caps_global_and_per_category(monkeypatch):
-    # The ceilings still work as a throttle when set low: 60 Sports + 60 Economics rows,
+    # The ceilings still work as a throttle when set low: 60 Sports + 60 Weather rows,
     # global cap 150, per-category 40 -> 40 of each kept. (Caps pinned here so the test proves
     # the MECHANISM regardless of the generous production defaults.)
     from app import catalog_repository
     import data_pipeline.common as common
     rows = ([_row(series_ticker="KXSPORT%d" % i, category="Sports", frequency="custom", open_markets=50 - i % 10)
              for i in range(60)] +
-            [_row(series_ticker="KXECON%d" % i, category="Economics", frequency="daily", open_markets=30)
+            [_row(series_ticker="KXHIGHX%d" % i, category="Climate and Weather", frequency="daily", open_markets=30)
              for i in range(60)])
     monkeypatch.setattr(mk, "CATALOG_DISABLED", False)
     monkeypatch.setattr(mk, "CATALOG_MAX_MARKETS", 150)
@@ -167,7 +167,7 @@ def test_load_catalog_markets_caps_global_and_per_category(monkeypatch):
     monkeypatch.setattr(catalog_repository, "deployable_series", lambda *a, **k: rows)
     gen = mk.load_catalog_markets()
     cats = collections.Counter(m.category for m in gen.values())
-    assert cats["Sports"] == 40 and cats["Economics"] == 40     # per-category ceiling
+    assert cats["Sports"] == 40 and cats["Climate and Weather"] == 40     # per-category ceiling
     assert len(gen) == 80 <= mk.CATALOG_MAX_MARKETS             # under global cap
     assert all(m.underlying is None and m.deployable for m in gen.values())
 
@@ -237,3 +237,10 @@ def test_generated_market_builds_backtest_and_settles(monkeypatch):
         trades = backtest.simulate(s, ds, ds.start_ts, ds.end_ts + 1)
         assert len(trades) == 8
         assert trades[0].exit_price == 1.0 and trades[0].reason == "settled"
+
+
+def test_generated_categories_stay_inside_the_traded_set():
+    from data_pipeline.common import TRADED_CATEGORIES
+    assert mk.ALLOWED_CATEGORIES <= TRADED_CATEGORIES
+    assert {"Sports", "Climate and Weather"} <= mk.ALLOWED_CATEGORIES
+    assert {m.category for m in mk.CURATED.values()} <= {"Crypto", "Crypto perpetuals", "Sports", "Weather", "Bittensor"}
