@@ -348,3 +348,11 @@ def test_session_opens_every_stream_and_closes_all_when_one_ends(tmp_path, monke
     lm.meta = lambda *a, **k: None
     asyncio.run(lm.session())
     assert pings[-1] is None
+
+
+def test_features_write_big_row_groups_not_one_per_ticker(lake, monkeypatch):
+    lake, s3 = lake
+    monkeypatch.setattr(tick_features, "ROW_GROUP", 1000)
+    assert tick_archiver.build_features(s3=s3, store=TickStore(local_root=str(lake)), now=H + timedelta(hours=1, minutes=5)) == 1
+    f = pq.ParquetFile(lake / "ticks/v1/features_1s/date=2026-10-24/hour=18/series=KXBTCD/part.parquet")
+    assert f.metadata.num_rows == 3600 and f.num_row_groups == 4
