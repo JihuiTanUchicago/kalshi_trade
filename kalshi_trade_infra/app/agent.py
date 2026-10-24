@@ -939,7 +939,8 @@ def _rsi_learn(conn, cur, run: Dict, ds, explored: int, tokens_in: int, tokens_o
         card = rsi.run_card(dict(run, hypotheses_tried=explored, input_tokens=tokens_in,
                                  output_tokens=tokens_out), events)
         rsi_playbook.score_run(cur, run_id, card)
-        verdict = rsi_playbook.decide(cur, user_id, fam)
+        verdict = rsi_playbook.decide(cur, user_id, fam,
+                                      paper_of=lambda: rsi.paper_outcomes(cur, user_id)["by_playbook"])
         if verdict:
             log("step", "Research playbook for %s markets: %s." % (fam, verdict),
                 {"phase": "playbook", "family": fam, "decision": verdict})

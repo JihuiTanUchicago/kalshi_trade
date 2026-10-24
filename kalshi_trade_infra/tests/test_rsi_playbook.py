@@ -141,3 +141,20 @@ def test_a_losing_rewrite_is_retired_and_the_incumbent_stays(conn):
     # The next rewrite gets the next version number.
     assert pb.add_candidate(cur, uid, fam, v0, "third try", "", None) == 2
     conn.commit()
+
+
+@needs_db
+def test_a_rewrite_whose_passes_lose_on_paper_is_not_promoted(conn):
+    cur = conn.cursor()
+    fam, uid = _fam(), 990003
+    v0 = pb.active(cur, uid, fam)
+    cur.execute("UPDATE app_rsi_playbooks SET ideas=30, reached=3 WHERE id=%s", (v0["id"],))
+    pb.add_candidate(cur, uid, fam, v0, "gate-friendly lessons", "", None)
+    cand = pb.candidate(cur, uid, fam)
+    cur.execute("UPDATE app_rsi_playbooks SET ideas=20, reached=10 WHERE id=%s", (cand["id"],))
+    bleeding = {str(cand["id"]): {"round_trips": 40, "net_pnl": -12.5}}
+    assert pb.decide(cur, uid, fam, paper_of=lambda: bleeding) is None
+    assert pb.candidate(cur, uid, fam)["id"] == cand["id"]           # still on trial
+    few = {cand["id"]: {"round_trips": 5, "net_pnl": -3.0}}              # too few trips to veto
+    assert pb.decide(cur, uid, fam, paper_of=lambda: few).startswith("promoted v1 over v0")
+    conn.rollback()

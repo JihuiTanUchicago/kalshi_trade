@@ -5,7 +5,8 @@ and keeps only when the rewrite measurably helps.
                    └► the proposer and the develop turn read the drawn playbook
     run ends ───► score_run(): the run's ideas and how many reached the gate count for that playbook
               ├─► decide(): promote the candidate when P(candidate beats active) >= 0.9, retire it
-              │            at <= 0.1 or after MAX_IDEAS without a verdict
+              │            at <= 0.1 or after MAX_IDEAS without a verdict; a promotion is held while
+              │            the candidate's passes lose money on paper and the incumbent's don't
               └─► reflect(): with no candidate pending, the model rewrites the active playbook from
                              this run's verdicts into the next candidate
 
@@ -23,7 +24,7 @@ from __future__ import annotations
 import logging
 import random
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 
 _LOG = logging.getLogger(__name__)
@@ -141,8 +142,24 @@ def score_run(cur, run_id: int, card: Dict) -> Optional[int]:
     return got["playbook_id"]
 
 
-def decide(cur, user_id: int, family: str) -> Optional[str]:
-    """Promote, retire or keep testing the family's candidate. Returns what happened, if anything."""
+PAPER_MIN_TRIPS = 30   # realistic paper round trips before a playbook's paper record can veto it
+
+
+def _paper_loses(rec: Optional[Dict]) -> Optional[bool]:
+    """True/False once a playbook's passes have PAPER_MIN_TRIPS realistic round trips, else None."""
+    if not rec or int(rec.get("round_trips") or 0) < PAPER_MIN_TRIPS:
+        return None
+    return float(rec.get("net_pnl") or 0) < 0
+
+
+def decide(cur, user_id: int, family: str,
+           paper_of: Optional[Callable[[], Dict]] = None) -> Optional[str]:
+    """Promote, retire or keep testing the family's candidate. Returns what happened, if anything.
+
+    paper_of, when given, returns rsi.paper_outcomes(...)["by_playbook"]. It is read only when a
+    promotion is due: a candidate whose gate passes lose money on paper (PAPER_MIN_TRIPS+ realistic
+    trips) is held while the incumbent's do not, since reaching the gate more often is worth nothing
+    if what passes bleeds against the live book."""
     cand = candidate(cur, user_id, family)
     if not cand or int(cand["ideas"] or 0) < MIN_IDEAS:
         return None
@@ -150,13 +167,26 @@ def decide(cur, user_id: int, family: str) -> Optional[str]:
     p = p_better(cand, act)
     now = _now()
     if p >= PROMOTE_P:
+        if paper_of is not None:
+            try:
+                paper = paper_of() or {}
+            except Exception:  # noqa: BLE001 - paper evidence is advisory; the gate evidence stands
+                paper = {}
+            pick = lambda pid: paper.get(pid) or paper.get(str(pid))  # noqa: E731 - JSON keys may be str
+            if _paper_loses(pick(cand["id"])) and not _paper_loses(pick(act["id"])):
+                return None if int(cand["ideas"]) < MAX_IDEAS else _retire(cur, cand, act, p, now, " its passes lose on paper")
         cur.execute("UPDATE app_rsi_playbooks SET status='retired', decided_at=%s WHERE id=%s", (now, act["id"]))
         cur.execute("UPDATE app_rsi_playbooks SET status='active', decided_at=%s WHERE id=%s", (now, cand["id"]))
         return "promoted v%d over v%d (P(better)=%.2f)" % (cand["version"], act["version"], p)
     if p <= RETIRE_P or int(cand["ideas"]) >= MAX_IDEAS:
-        cur.execute("UPDATE app_rsi_playbooks SET status='retired', decided_at=%s WHERE id=%s", (now, cand["id"]))
-        return "retired v%d, v%d stays (P(better)=%.2f)" % (cand["version"], act["version"], p)
+        return _retire(cur, cand, act, p, now)
     return None
+
+
+def _retire(cur, cand: Dict, act: Dict, p: float, now, why: str = "") -> str:
+    cur.execute("UPDATE app_rsi_playbooks SET status='retired', decided_at=%s WHERE id=%s", (now, cand["id"]))
+    return "retired v%d, v%d stays (P(better)=%.2f%s)" % (cand["version"], act["version"], p,
+                                                          (";" + why) if why else "")
 
 
 REFLECT_SYSTEM = """You maintain the research PLAYBOOK for one family of Kalshi prediction markets: the
