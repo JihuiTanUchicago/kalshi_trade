@@ -222,3 +222,15 @@ def test_heartbeat_pump_beats_while_fresh_and_stops_when_stale(monkeypatch):
     finally:
         stop.set()
         th.join(1)
+
+
+def test_sports_profile_says_a_spread_or_total_price_is_still_a_probability():
+    # Prod 2026-10-24: runs on NFL spread/total/prop ladders dropped ideas as "the mid is a point
+    # handicap, not a probability" (the old profile called every sports market a moneyline), and a
+    # playbook recorded that as a PIPELINE FACT.
+    p = agent._market_profile("nhl_game")
+    assert "PROBABILITY of YES" in p and "never a" in p and "handicap" in p
+    assert "ONE STRIKE of a ladder" in p and '"strike"' in p
+    from app import rsi_playbook as pb
+    assert "the probability of YES" in pb.REFLECT_SYSTEM
+    assert "the profile is right" in pb.prompt_block({"version": 2, "text": "PIPELINE FACTS\n- x"}, "sports")

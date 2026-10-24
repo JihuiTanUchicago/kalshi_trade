@@ -205,6 +205,10 @@ Rewrite the playbook given the latest run. Rules:
 - A drop tagged [wrong_fit] or [missing_context] died on the market's STRUCTURE (no game state, no team
   ids, no continuous underlying, snapshot-only data), not on its prices: record that limit under PIPELINE
   FACTS so the proposer stops spending ideas on it. [spec_invalid] is a system bug: ignore it.
+- PIPELINE FACTS must be facts about the data you were shown (feature coverage, measured numbers),
+  never beliefs about how a contract works. Every Kalshi contract is a YES/NO binary whose price is
+  the probability of YES, including spread, total and prop strikes: never record otherwise, and
+  delete any such line already in the playbook.
 - Lessons must hold across the family, not one city or one game, unless you say so.
 - You see only research-window evidence and gate labels (reached / passed / failed). Never invent
   validation or holdout numbers.
@@ -273,7 +277,8 @@ def prompt_block(pb: Optional[Dict], family: str) -> str:
         return ""
     return ("RESEARCH PLAYBOOK v%s for %s markets: lessons this research loop learned from its own earlier "
             "runs on this family. Treat DEAD ENDS as settled unless you name what is different now, trust "
-            "PIPELINE FACTS over your assumptions about the data, and prefer NEXT ANGLES:\n%s"
+            "PIPELINE FACTS over your assumptions about the data, and prefer NEXT ANGLES. Where a line "
+            "contradicts the Market profile, the profile is right:\n%s"
             % (pb["version"], family, pb["text"].strip()))
 
 
