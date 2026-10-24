@@ -260,3 +260,33 @@ def test_station_readings_reach_only_the_contract_settling_today():
     assert engine._contract_feats(markets.MARKETS["high_ny"], feats, today, ts) == feats
     assert engine._contract_feats(markets.MARKETS["high_ny"], feats, tomorrow, ts) == {}
     assert engine._contract_feats(markets.MARKETS["nba_game"], {"x": 1.0}, "KXNBAGAME-X", ts) == {"x": 1.0}
+
+
+def test_gated_partition_windows_carry_the_station_features(monkeypatch):
+    """Validation/holdout windows load through partitions._load_window; they must join the same
+    settling-day station readings research saw, or a rule using obs_high_f is judged without it."""
+    import data_pipeline.common as common
+    from app import backtest, partitions
+    from app.markets import MARKETS
+
+    class Conn:
+        def cursor(self):
+            return self
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def close(self):
+            pass
+
+    seen = {}
+    monkeypatch.setattr(common, "get_db_conn", lambda: Conn())
+    monkeypatch.setattr(partitions.rr, "partition_source_rows",
+                        lambda cur, m, since, a, b: {"markets": [{"open_ts": 5}], "candles": {}, "btc": []})
+    monkeypatch.setattr(backtest, "station_frame_series", lambda m: ({"obs_high_f": [(1, 70.0)]}, "APPLIES"))
+    monkeypatch.setattr(backtest, "forecast_book", lambda m, since: None)
+    monkeypatch.setattr(backtest, "build_dataset", lambda *a, **k: seen.update(args=a, kw=k) or "DS")
+    assert partitions._load_window("high_ny", 0, 10, None) == "DS"
+    assert seen["args"][5] == {"obs_high_f": [(1, 70.0)]} and seen["args"][6] == "APPLIES"
+    monkeypatch.undo()
+    assert backtest.station_frame_series(MARKETS["btc15m"]) == (None, None)

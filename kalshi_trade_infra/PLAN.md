@@ -1,5 +1,15 @@
 # PLAN
 
+## Research spend: stop after a streak of drops; gated windows get station features (2026-10-24)
+- Runs 2541 (btc15m) and 2548 (high_ny) each dropped every thesis on the research fold (28 and 18)
+  for ~$10 of Opus with nothing gated. `agent.EXPLORE_MAX_DROP_STREAK` (8, env
+  TAU_EXPLORE_MAX_DROP_STREAK, 0 disables) ends proposing after 8 drops in a row; kept survivors
+  still go to the gate. Roughly halves the cost of a dead market; the 4x-budget attempt cap stays.
+- `partitions._load_window` (validation/holdout) passed no station frame_series, so obs_high_f /
+  obs_low_f existed in research but not at the gate. Both loaders now use `backtest.station_frame_series`.
+- Execution's check on 67 NYC days: raw NBM loses to the Kalshi mid (Brier 0.13 vs 0.09, runs ~1F
+  warm). Edge, if any, is in a bias-corrected forecast combined with the market, not raw fcst_edge.
+
 ## Weather: built-in station features + pooled cities (2026-10-24)
 - First high_ny run (2548): 36 days, 210 contracts = 36 independent events, no forecast/obs data, 13 drops.
   The gate can't confirm anything on 36 events, so evidence must pool across cities.
