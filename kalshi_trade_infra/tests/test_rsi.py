@@ -76,6 +76,9 @@ def test_scoreboard_rolls_up_efficiency_per_family_and_day():
     assert set(board["families"]) == {"weather-high", "crypto"}
     assert [d["day"] for d in board["days"]] == ["2026-10-24", "2026-10-25"]
     assert rsi.scoreboard([])["total"]["pass_rate"] is None
+    fixes = board["fix_list"]
+    assert fixes == [{"tag": "feature_unavailable", "market": "high_ny", "family": "weather-high", "count": 1,
+                      "latest_run": 9, "example": REAL_2613[1][0], "title": ""}]
 
 
 class _Cur:

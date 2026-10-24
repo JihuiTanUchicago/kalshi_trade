@@ -91,6 +91,7 @@ def run_card(run: Dict, events: Iterable[Dict]) -> Dict:
     f = Counter()
     deaths: Counter = Counter()
     kinds: Counter = Counter()
+    pipeline: List[Dict] = []
     for ev in events:
         if ev.get("kind") != "verdict":
             continue
@@ -102,6 +103,9 @@ def run_card(run: Dict, events: Iterable[Dict]) -> Dict:
             tag, kind = classify_drop(d.get("why") or msg)
             deaths[tag] += 1
             kinds[kind] += 1
+            if kind == "pipeline":
+                pipeline.append({"tag": tag, "title": (d.get("title") or "")[:120],
+                                 "why": (d.get("why") or msg)[:300]})
         elif phase == "holdout":
             f["holdout_passed" if d.get("classification") == "forward_validated" else "holdout_other"] += 1
         elif phase == "forward":
@@ -127,6 +131,7 @@ def run_card(run: Dict, events: Iterable[Dict]) -> Dict:
         "not_finalist": f["not_finalist"], "gated": f["gated"], "passed": f["passed"],
         "holdout_passed": f["holdout_passed"], "deploy_candidates": f["deploy_candidates"],
         "deaths": dict(deaths), "death_kinds": {k: kinds[k] for k in KINDS if kinds[k]},
+        "pipeline_deaths": pipeline,
     }
 
 
@@ -157,6 +162,21 @@ def _rollup(cards: List[Dict]) -> Dict:
     }
 
 
+def fix_list(cards: List[Dict], limit: int = 15) -> List[Dict]:
+    """Ideas the PIPELINE killed (not the market), newest first, grouped by tag: the engineering
+    backlog the loop hands back, with one example reason per (tag, market) so a fix can be aimed."""
+    seen: Dict[Tuple[str, str], Dict] = {}
+    for c in reversed(cards):
+        for p in c.get("pipeline_deaths") or []:
+            key = (p["tag"], c["market"])
+            if key in seen:
+                seen[key]["count"] += 1
+            else:
+                seen[key] = {"tag": p["tag"], "market": c["market"], "family": c["family"], "count": 1,
+                             "latest_run": c["run_id"], "example": p["why"], "title": p["title"]}
+    return sorted(seen.values(), key=lambda r: -r["count"])[:limit]
+
+
 def scoreboard(cards: List[Dict]) -> Dict:
     """Totals, per family and per day (oldest first) over run cards, so a trend is visible."""
     by_family: Dict[str, List[Dict]] = defaultdict(list)
@@ -168,6 +188,7 @@ def scoreboard(cards: List[Dict]) -> Dict:
         "total": _rollup(cards),
         "families": {k: _rollup(v) for k, v in sorted(by_family.items())},
         "days": [dict(day=k, **_rollup(v)) for k, v in sorted(by_day.items())],
+        "fix_list": fix_list(cards),
     }
 
 
