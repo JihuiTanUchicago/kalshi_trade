@@ -273,3 +273,46 @@ def test_finished_copilot_run_prints_one_outcome_line(monkeypatch, capsys):
     lines = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("[copilot] run=")]
     assert len(lines) == 1 and "run=5 user=7 kind=chat status=succeeded actions=0" in lines[0]
     assert "tokens_in=" in lines[0] and "tokens_out=" in lines[0]
+
+
+def _copilot_model_used(monkeypatch, kind, autopilot_model=None):
+    monkeypatch.setattr(agent.repo, "get_user", lambda *args: {"id": 7, "autopilot_model": autopilot_model})
+    monkeypatch.setattr(agent.repo, "heartbeat", lambda *args: "running")
+    monkeypatch.setattr(agent.repo, "chat_messages", lambda *args, **kwargs: [{"role": "user", "content": "hi"}])
+    monkeypatch.setattr(agent.repo, "list_deployments", lambda *args, **kwargs: [])
+    monkeypatch.setattr(agent.repo, "list_strategies", lambda *args, **kwargs: [])
+    monkeypatch.setattr(agent.repo, "user_risk_config", lambda *args: {})
+    monkeypatch.setattr(agent.repo, "user_execution_config", lambda *args: {})
+    monkeypatch.setattr(agent.repo, "add_chat", lambda *args: None)
+    monkeypatch.setattr(agent.repo, "add_event", lambda *args: None)
+    monkeypatch.setattr(agent.repo, "finish_run", lambda *args: None)
+    monkeypatch.setattr(agent, "auto_paper_candidates", lambda cur, user: [])
+    monkeypatch.setattr(agent, "live_ready_notices", lambda cur, user: [])
+    billed = []
+    monkeypatch.setattr(agent, "_bill", lambda conn, uid, usage, run_id, model_id: billed.append(model_id))
+    used = []
+
+    def fake_claude(system, messages, model_id, on_delta=None):
+        used.append(model_id)
+        return '{"reply":"ok","actions":[]}', {"input_tokens": 10, "output_tokens": 2}
+
+    monkeypatch.setattr(agent, "claude", fake_claude)
+    agent.run_copilot(Conn(), {"id": 5, "user_id": 7, "kind": kind, "prompt": "x"})
+    return used, billed
+
+
+def test_scheduled_reviews_run_on_the_review_model_not_opus(monkeypatch):
+    used, billed = _copilot_model_used(monkeypatch, "review", autopilot_model="opus-4-5")
+    sonnet = agent.catalog.get("sonnet-4-5").model_id
+    assert used and set(used) == {sonnet} and billed == [sonnet], "billed at the model it ran on"
+
+
+def test_chats_keep_the_users_model(monkeypatch):
+    used, _ = _copilot_model_used(monkeypatch, "chat", autopilot_model="opus-4-5")
+    assert set(used) == {agent.catalog.get("opus-4-5").model_id}
+
+
+def test_unset_review_model_falls_back_to_the_users_model(monkeypatch):
+    monkeypatch.setattr(agent, "REVIEW_MODEL_KEY", "")
+    used, _ = _copilot_model_used(monkeypatch, "review", autopilot_model="opus-4-5")
+    assert set(used) == {agent.catalog.get("opus-4-5").model_id}
