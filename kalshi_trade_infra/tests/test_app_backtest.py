@@ -131,6 +131,15 @@ def test_feature_coverage_flags_populated_vs_empty_features():
     assert cov["trades_60s"] == 0  # a micro feature this market never carried
 
 
+def test_feature_ranges_show_where_each_populated_feature_sits():
+    """The proposer sees p10/p50/p90 per populated feature, so it can't cut below a floor the data
+    never reaches (fcst_age_h is never under 0.5h on an hourly weather market)."""
+    rng = backtest.feature_ranges(_dataset_with_micro({"ob_imbalance": 0.9}))
+    assert rng["ob_imbalance"] == [0.9, 0.9, 0.9]
+    assert "trades_60s" not in rng  # an empty feature has no range
+    assert all(len(v) == 3 and v[0] <= v[1] <= v[2] for v in rng.values())
+
+
 def test_fit_spec_is_a_noop_for_gbm_and_already_fitted():
     ds = _dataset_predictive_micro(n_contracts=4)
     gbm = specmod.validate({"side": "yes"})

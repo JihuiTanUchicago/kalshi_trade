@@ -930,7 +930,9 @@ In-sample data you can test on: {summary}
 `feature_coverage_pct` is the non-null coverage of each feature ON THIS MARKET: only build models
 and filters on features that are actually populated here. A feature at or near 0% is empty on this
 market (e.g. order-book/microstructure features on sports/NEAR) — a model or filter that needs it
-will fit nothing and take 0 trades, so pick a different signal.
+will fit nothing and take 0 trades, so pick a different signal. `feature_p10_p50_p90` is where each
+populated feature's values actually sit here: put filter cuts inside that range (a cut past p10..p90
+keeps under 10% of snapshots, and one past the min/max keeps none).
 
 {guide}
 
@@ -1025,6 +1027,7 @@ def _in_sample_summary(ds: backtest.Dataset) -> Dict:
     s["end"] = s.pop("out_of_sample_from")
     s.pop("decision_points", None)
     s["feature_coverage_pct"] = backtest.feature_coverage(ds)
+    s["feature_p10_p50_p90"] = backtest.feature_ranges(ds)
     return s
 
 

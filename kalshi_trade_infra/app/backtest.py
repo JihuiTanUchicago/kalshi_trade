@@ -1271,6 +1271,32 @@ def feature_coverage(ds: Dataset) -> Dict[str, int]:
     return {name: round(100 * c / n) for name, c in present.items()} if n else {}
 
 
+def feature_ranges(ds: Dataset, max_samples: int = 20000) -> Dict[str, List[float]]:
+    """[p10, p50, p90] of every populated numeric feature on THIS market's snapshots (an evenly
+    strided sample of at most max_samples), so the proposer sets filter cuts where the data lives:
+    run 2563 asked for fcst_age_h below its 0.5h floor and took 0 trades."""
+    from app.markets import FEATURES
+    if not ds.frames or ds.market.kind == "perpetual":
+        return {}
+    total = sum(len(snaps) for _ts, snaps in ds.frames)
+    stride = max(1, total // max_samples)
+    vals: Dict[str, List[float]] = {}
+    i = 0
+    for _ts, snaps in ds.frames:
+        for sn in snaps:
+            i += 1
+            if i % stride:
+                continue
+            for name, v in sn.features.items():
+                if name in FEATURES and isinstance(v, (int, float)) and math.isfinite(v):
+                    vals.setdefault(name, []).append(float(v))
+    out = {}
+    for name, xs in sorted(vals.items()):
+        xs.sort()
+        out[name] = [float("%.3g" % xs[min(len(xs) - 1, int(q * len(xs)))]) for q in (0.1, 0.5, 0.9)]
+    return out
+
+
 def research_fold_trades(spec: Dict, ds: Dataset, embargo_seconds: int, n_splits: int = 4,
                          what_if: Optional[WhatIf] = None) -> List[Trade]:
     """The trades research_fold_metrics scores: simulate the spec across the whole Research window,
