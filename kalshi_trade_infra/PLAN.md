@@ -16,6 +16,8 @@
 - Who can set it: the chat agent sets it with a `set_focus` action when the user asks. A scheduled
   review cannot. There is also `POST /api/autopilot/focus`, and the panel story says "It sticks to
   the focus you set".
+- A review that echoes the current focus in a set_focus action is a silent no-op. The first review
+  after the fix did that, and Todd saw "Only you can change the market focus" in chat.
 - The autopilot grades itself. `agent.autopilot_scorecard` takes the user's `rsi.load_scoreboard` over
   the last 3 days and computes:
   - focus adherence: runs inside the focus out of runs with a market;
