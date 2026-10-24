@@ -751,3 +751,21 @@ def test_adjust_missing_deployment_lists_current_ones_not_a_dead_end(monkeypatch
     msg, pid = agent.act(None, {"id": 1}, {"type": "adjust", "deployment_id": 999, "changes": {"x": 1}}, True)
     assert pid is None
     assert "999" in msg and "#42" in msg and "Live BTC edge" in msg  # self-correcting, not a dead end
+
+
+def test_finished_research_run_prints_one_outcome_line(monkeypatch, capsys):
+    store = Store(monkeypatch)
+    model, _prompts = scripted([plan(), hyps(WINNER, LOSER), hyps(WINNER)])
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 3}, model=model,
+                       dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    lines = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("[research] run=")]
+    assert len(lines) == 1
+    assert "status=succeeded tried=3" in lines[0] and "verdicts=" in lines[0]
+    assert "validation:" in lines[0], "each gatekeeper verdict is tallied by phase"
+
+
+def test_research_outcome_line_format():
+    line = agent.research_outcome_line(7, 2, "btc15m", "failed", 4, 0, 100, 20, "m",
+                                       {"validation:rejected": 3}, "RuntimeError")
+    assert line == ("[research] run=7 user=2 market=btc15m status=failed tried=4 passed=0 tokens_in=100 "
+                    "tokens_out=20 model=m verdicts=validation:rejected=3 error=RuntimeError")
