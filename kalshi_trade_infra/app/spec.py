@@ -278,7 +278,13 @@ delayed 15 min to when they are public; use lag_days 0). series "NYC" is the lat
 "NYC:dailymax" ("NYC:dailymin") is the running max (min) of the NWS climate day so far (midnight-midnight local STANDARD
 time, what Kalshi's daily-high markets settle on). Kalshi stations: NYC Central Park = NYC, Chicago
 Midway = MDW, Austin = AUS, Miami = MIA, Denver = DEN, Los Angeles = LAX, Philadelphia = PHL.
+Every KXHIGH*/KXLOW* market already carries these as built-in features obs_high_f / obs_low_f /
+obs_temp_f (settling day only), plus the NWS forecast features fcst_* - no datasets entry needed.
 Late in the day the high is mostly set: a strike already beaten by the running max is near-certain.
+Measured on 67 NYC days: the RAW forecast (fcst_p_yes / fcst_edge) loses to the Kalshi mid (Brier
+0.13 vs 0.09; raw NBM runs ~1F warm), so a plain fcst_edge filter is a known loser. Start from the
+bias-corrected fcst_p_yes_cal / fcst_edge_cal, and prefer rules that combine it with the market
+(trade only where they disagree by more than the fee and the forecast is fresh) over replacing it.
 """
 
 # Every proposer that reads SPEC_GUIDE also learns it may write arbitrary quant code.
