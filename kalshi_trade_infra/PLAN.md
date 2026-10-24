@@ -1,5 +1,9 @@
 # PLAN
 
+## Backtest fills on the next bar at the live reservation price — October 24, 2026
+
+`app/backtest.py` now defaults to `FILL_MODEL="next_bar"` for single-contract binaries: a signal computed on bar t fills against bar t+1's quote, an entry is abandoned when that ask exceeds `execution_kernel.reservation_price(fair, min_edge, qty)` (the same cap live and paper enforce since the execution thread's change), fills are capped at displayed top-of-book size (`yes_ask_size` / `yes_bid_size` when the feed has them), and exits sell at the next bar's bid. Code strategies may not pay above their signal price. `TAU_BACKTEST_FILL_MODEL=signal_bar` restores the old optimistic same-quote fill for comparison. Research folds, validation and holdout all use it, so a gatekeeper pass now reflects fills live could actually get.
+
 ## Research gatekeeper can pass a real edge again — October 24, 2026
 
 Root cause of "no strategy has ever passed research": the gatekeeper could not pass a real edge. A power simulation through the actual gate code rejected a planted 15c/contract edge over 400 validation trades 6/6 times. Fixed on `claude/project-thread-dehmjp`:
