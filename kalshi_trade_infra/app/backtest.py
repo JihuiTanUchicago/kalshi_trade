@@ -76,7 +76,8 @@ def _iso(ts: int) -> str:
 
 def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc: List[Tuple[int, float]],
                   micro: Optional[Dict[Tuple[str, int], Dict[str, float]]] = None) -> Dataset:
-    """markets: {ticker, strike, close_time, result}; candles: {ticker, end_period_ts, yes_bid_close, yes_ask_close}.
+    """markets: {ticker, strike, close_time, result}; candles: (ticker, end_period_ts, yes_bid, yes_ask)
+    tuples as repository.load_history returns them, or the equivalent dicts.
     micro: {(ticker, decision_ts): {feature: value}} order-book features to merge per snapshot (optional)."""
     micro = micro or {}
     series = BtcSeries(btc)
@@ -93,12 +94,13 @@ def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc:
         results[m["ticker"]] = m["result"]
     by_ts: Dict[int, List[Tuple[Contract, Optional[float], Optional[float]]]] = defaultdict(list)
     for c in candles:
-        contract = contracts.get(c["ticker"])
+        if isinstance(c, dict):
+            c = (c["ticker"], c["end_period_ts"], c["yes_bid_close"], c["yes_ask_close"])
+        ticker, end_ts, bid, ask = c
+        contract = contracts.get(ticker)
         if contract is None:
             continue
-        bid = c["yes_bid_close"]
-        ask = c["yes_ask_close"]
-        by_ts[int(c["end_period_ts"])].append(
+        by_ts[int(end_ts)].append(
             (contract, float(bid) if bid is not None else None, float(ask) if ask is not None else None)
         )
     frames = []

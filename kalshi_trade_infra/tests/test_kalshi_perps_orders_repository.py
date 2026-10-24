@@ -633,7 +633,8 @@ def test_missing_owner_cannot_create_orphan_order_or_enable_settings(cur):
 
 def test_ddl_uses_dedicated_context_unique_decimal_tables_and_no_private_fields():
     ddl = " ".join(repo.DDL)
-    assert len(repo.DDL) == 2 and "DECIMAL(38,18)" in ddl and "FLOAT" not in ddl
+    assert len(repo.DDL) == 3 and "DECIMAL(38,18)" in ddl and "FLOAT" not in ddl
+    assert "PRIMARY KEY (user_id, environment, alert_key)" in ddl
     assert "PRIMARY KEY (user_id, environment)" in ddl
     assert "UNIQUE KEY uq_kalshi_perps_token (user_id, environment, client_token)" in ddl
     assert "UNIQUE KEY uq_kalshi_perps_client (environment, client_order_id)" in ddl

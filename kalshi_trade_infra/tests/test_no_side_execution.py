@@ -278,6 +278,8 @@ def test_decide_sizes_a_no_entry_by_the_yes_bid_depth(monkeypatch):
     monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", True)
     patch_intent_passthrough(monkeypatch)
     cur = _Cur()
+    monkeypatch.setattr(engine.repo, "deployment_closed_stats",
+                        lambda c, dep_id: (engine.LIVE_RAMP_TRADES, 0.0))  # past the size ramp
     kernel = _RecordingKernel()
     spec = specmod.validate({"side": "no", "entry": {"min_edge": 0.1}})
     dep = {"id": 1, "user_id": 1, "market": "btc15m", "mode": "live", "spec": spec,
@@ -289,3 +291,43 @@ def test_decide_sizes_a_no_entry_by_the_yes_bid_depth(monkeypatch):
 
     assert out["entries"] == 1
     assert kernel.intents[0].qty_contracts == 2, "only 2 contracts sit on the YES bid a NO buy hits"
+
+
+def _live_entry_qty(monkeypatch, closed_trades):
+    from app import engine
+    from app import spec as specmod
+    from tests.conftest import patch_intent_passthrough
+
+    monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", True)
+    patch_intent_passthrough(monkeypatch)
+    cur = _Cur()
+    monkeypatch.setattr(engine.repo, "deployment_closed_stats", lambda c, dep_id: (closed_trades, 0.0))
+    kernel = _RecordingKernel()
+    spec = specmod.validate({"side": "no", "entry": {"min_edge": 0.1}})
+    dep = {"id": 1, "user_id": 1, "market": "btc15m", "mode": "live", "spec": spec,
+           "result": {"capital": 10, "out_of_sample": {"max_drawdown": 3}}}
+    snap = _no_snapshot()
+    engine.decide(_Conn(cur), dep, [snap], {snap.contract.ticker: 1000.0},
+                  engine.Sources(live_kernel=lambda uid: kernel))
+    full = specmod.contracts_for(spec["sizing"]["stake"], 0.60)
+    return int(kernel.intents[0].qty_contracts), full
+
+
+def test_a_fresh_live_deployment_trades_at_the_ramp_fraction(monkeypatch):
+    from app import engine
+    qty, full = _live_entry_qty(monkeypatch, closed_trades=0)
+    assert full > 1
+    assert qty == max(1, int(full * engine.LIVE_RAMP_FRACTION)) and qty < full
+
+
+def test_live_size_ramp_ends_after_enough_closed_trades(monkeypatch):
+    from app import engine
+    qty, full = _live_entry_qty(monkeypatch, closed_trades=engine.LIVE_RAMP_TRADES)
+    assert qty == full
+
+
+def test_live_ramp_fraction_can_never_exceed_full_size():
+    from app import engine
+    assert engine._ramp_fraction("5") == 1.0
+    assert engine._ramp_fraction("0") == 0.01, "a ramp never rounds a fresh deployment to zero size"
+    assert engine._ramp_fraction("0.25") == 0.25

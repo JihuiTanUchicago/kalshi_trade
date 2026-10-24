@@ -385,7 +385,7 @@ class Contract:
     series: str = ""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Snapshot:
     """One contract's tradable state at one decision time."""
 
@@ -443,6 +443,10 @@ class BtcSeries:
         return out
 
 
+# One float object per hour, shared by every snapshot: a research dataset holds ~1M of them.
+_HOURS = tuple(float(h) for h in range(24))
+
+
 def snapshot(
     series_features: Optional[Dict[str, float]],
     contract: Contract,
@@ -480,5 +484,5 @@ def snapshot(
     f["yes_ask"] = yes_ask
     f["spread"] = yes_ask - yes_bid
     f["mid"] = (yes_ask + yes_bid) / 2.0
-    f["hour_et"] = float(datetime.fromtimestamp(ts, tz=timezone.utc).astimezone(NEW_YORK).hour)
+    f["hour_et"] = _HOURS[datetime.fromtimestamp(ts, tz=timezone.utc).astimezone(NEW_YORK).hour]
     return Snapshot(contract=contract, ts=ts, yes_bid=yes_bid, yes_ask=yes_ask, features=f)

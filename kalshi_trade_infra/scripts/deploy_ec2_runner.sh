@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-AWS_PROFILE=${AWS_PROFILE:-agent}
+AWS_PROFILE=${AWS_PROFILE-agent}   # local dev defaults to the `agent` profile; set AWS_PROFILE="" to use env creds (cloud/CI)
+# The AWS CLI reads AWS_PROFILE from the env, so an unset profile falls back to env/instance creds.
+if [[ -n "${AWS_PROFILE}" ]]; then export AWS_PROFILE; else unset AWS_PROFILE; fi
 AWS_REGION=${AWS_REGION:-us-east-1}
 ENV_FILE=${ENV_FILE:-.env.aws}
 INSTANCE_NAME=${INSTANCE_NAME:-kalshi-collector}
@@ -17,70 +19,70 @@ if [[ ! -f "$ENV_FILE" ]]; then
 fi
 source "$ENV_FILE"
 
-ACCOUNT_ID=$(aws sts get-caller-identity --profile "$AWS_PROFILE" --query Account --output text)
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 BUCKET="kalshi-trade-artifacts-${ACCOUNT_ID}-${AWS_REGION}"
 KEY="bundle/kalshi_bundle_$(date +%Y%m%d_%H%M%S).tgz"
 
 # ensure artifact bucket
-aws s3api head-bucket --bucket "$BUCKET" --profile "$AWS_PROFILE" 2>/dev/null || \
+aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null || \
   {
     if [[ "$AWS_REGION" == "us-east-1" ]]; then
-      aws s3api create-bucket --bucket "$BUCKET" --region "$AWS_REGION" --profile "$AWS_PROFILE" >/dev/null
+      aws s3api create-bucket --bucket "$BUCKET" --region "$AWS_REGION" >/dev/null
     else
       aws s3api create-bucket --bucket "$BUCKET" --region "$AWS_REGION" \
         --create-bucket-configuration LocationConstraint="$AWS_REGION" \
-        --profile "$AWS_PROFILE" >/dev/null
+        >/dev/null
     fi
   }
 
 # package code
 TAR_PATH="/tmp/kalshi_bundle.tgz"
 tar -czf "$TAR_PATH" data_pipeline scripts requirements.txt
-aws s3 cp "$TAR_PATH" "s3://${BUCKET}/${KEY}" --profile "$AWS_PROFILE" >/dev/null
+aws s3 cp "$TAR_PATH" "s3://${BUCKET}/${KEY}" >/dev/null
 
 # IAM role/profile for EC2 + SSM + S3 read
-if ! aws iam get-role --role-name "$ROLE_NAME" --profile "$AWS_PROFILE" >/dev/null 2>&1; then
+if ! aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
   cat >/tmp/assume-role-ec2.json <<JSON
 {
   "Version":"2012-10-17",
   "Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]
 }
 JSON
-  aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document file:///tmp/assume-role-ec2.json --profile "$AWS_PROFILE" >/dev/null
-  aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore --profile "$AWS_PROFILE"
-  aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess --profile "$AWS_PROFILE"
+  aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document file:///tmp/assume-role-ec2.json >/dev/null
+  aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+  aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
 fi
 
-if ! aws iam get-instance-profile --instance-profile-name "$PROFILE_NAME" --profile "$AWS_PROFILE" >/dev/null 2>&1; then
-  aws iam create-instance-profile --instance-profile-name "$PROFILE_NAME" --profile "$AWS_PROFILE" >/dev/null
-  aws iam add-role-to-instance-profile --instance-profile-name "$PROFILE_NAME" --role-name "$ROLE_NAME" --profile "$AWS_PROFILE"
+if ! aws iam get-instance-profile --instance-profile-name "$PROFILE_NAME" >/dev/null 2>&1; then
+  aws iam create-instance-profile --instance-profile-name "$PROFILE_NAME" >/dev/null
+  aws iam add-role-to-instance-profile --instance-profile-name "$PROFILE_NAME" --role-name "$ROLE_NAME"
   sleep 10
 fi
 
 # networking
-VPC_ID=$(aws ec2 describe-vpcs --filters Name=isDefault,Values=true --query 'Vpcs[0].VpcId' --output text --profile "$AWS_PROFILE" --region "$AWS_REGION")
-SUBNET_ID=$(aws ec2 describe-subnets --filters Name=vpc-id,Values="$VPC_ID" Name=default-for-az,Values=true --query 'Subnets[0].SubnetId' --output text --profile "$AWS_PROFILE" --region "$AWS_REGION")
+VPC_ID=$(aws ec2 describe-vpcs --filters Name=isDefault,Values=true --query 'Vpcs[0].VpcId' --output text --region "$AWS_REGION")
+SUBNET_ID=$(aws ec2 describe-subnets --filters Name=vpc-id,Values="$VPC_ID" Name=default-for-az,Values=true --query 'Subnets[0].SubnetId' --output text --region "$AWS_REGION")
 
-EC2_SG_ID=$(aws ec2 describe-security-groups --profile "$AWS_PROFILE" --region "$AWS_REGION" \
+EC2_SG_ID=$(aws ec2 describe-security-groups --region "$AWS_REGION" \
   --filters Name=group-name,Values="$EC2_SG_NAME" Name=vpc-id,Values="$VPC_ID" \
   --query 'SecurityGroups[0].GroupId' --output text)
 if [[ "$EC2_SG_ID" == "None" || -z "$EC2_SG_ID" ]]; then
-  EC2_SG_ID=$(aws ec2 create-security-group --group-name "$EC2_SG_NAME" --description "Kalshi collector EC2 SG" --vpc-id "$VPC_ID" --profile "$AWS_PROFILE" --region "$AWS_REGION" --query GroupId --output text)
+  EC2_SG_ID=$(aws ec2 create-security-group --group-name "$EC2_SG_NAME" --description "Kalshi collector EC2 SG" --vpc-id "$VPC_ID" --region "$AWS_REGION" --query GroupId --output text)
 fi
 
 PUBLIC_IP=$(curl -s https://checkip.amazonaws.com | tr -d '\n')
-aws ec2 authorize-security-group-ingress --profile "$AWS_PROFILE" --region "$AWS_REGION" --group-id "$EC2_SG_ID" \
+aws ec2 authorize-security-group-ingress --region "$AWS_REGION" --group-id "$EC2_SG_ID" \
   --ip-permissions IpProtocol=tcp,FromPort=8080,ToPort=8080,IpRanges='[{CidrIp='"$PUBLIC_IP"'/32,Description="dashboard"}]' >/dev/null 2>&1 || true
-aws ec2 authorize-security-group-ingress --profile "$AWS_PROFILE" --region "$AWS_REGION" --group-id "$EC2_SG_ID" \
+aws ec2 authorize-security-group-ingress --region "$AWS_REGION" --group-id "$EC2_SG_ID" \
   --ip-permissions IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges='[{CidrIp='"$PUBLIC_IP"'/32,Description="ssh-optional"}]' >/dev/null 2>&1 || true
 
 # allow EC2 SG -> RDS SG
-RDS_SG_ID=$(aws rds describe-db-instances --profile "$AWS_PROFILE" --region "$AWS_REGION" \
+RDS_SG_ID=$(aws rds describe-db-instances --region "$AWS_REGION" \
   --query 'DBInstances[0].VpcSecurityGroups[0].VpcSecurityGroupId' --output text)
-aws ec2 authorize-security-group-ingress --profile "$AWS_PROFILE" --region "$AWS_REGION" --group-id "$RDS_SG_ID" \
+aws ec2 authorize-security-group-ingress --region "$AWS_REGION" --group-id "$RDS_SG_ID" \
   --ip-permissions IpProtocol=tcp,FromPort=3306,ToPort=3306,UserIdGroupPairs='[{GroupId='"$EC2_SG_ID"'}]' >/dev/null 2>&1 || true
 
-AMI_ID=$(aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-arm64 --query 'Parameter.Value' --output text --profile "$AWS_PROFILE" --region "$AWS_REGION")
+AMI_ID=$(aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-arm64 --query 'Parameter.Value' --output text --region "$AWS_REGION")
 
 cat >/tmp/user-data-kalshi.sh <<USERDATA
 #!/bin/bash
@@ -96,7 +98,6 @@ python3 -m venv /opt/kalshi/.venv
 /opt/kalshi/.venv/bin/pip install -r /opt/kalshi/requirements.txt
 
 cat >/opt/kalshi/.env.aws <<EOT
-export AWS_PROFILE=${AWS_PROFILE}
 export AWS_REGION=${AWS_REGION}
 export MYSQL_HOST=${MYSQL_HOST}
 export MYSQL_PORT=${MYSQL_PORT}
@@ -124,7 +125,7 @@ nohup /opt/kalshi/.venv/bin/python -m data_pipeline.dashboard_server >/opt/kalsh
 USERDATA
 
 INSTANCE_ID=$(aws ec2 run-instances \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION" \
+  --region "$AWS_REGION" \
   --image-id "$AMI_ID" \
   --instance-type "$INSTANCE_TYPE" \
   --iam-instance-profile Name="$PROFILE_NAME" \
@@ -137,10 +138,10 @@ INSTANCE_ID=$(aws ec2 run-instances \
 echo "$INSTANCE_ID" > pids/ec2_instance_id.txt
 
 echo "[INFO] Launched EC2 instance $INSTANCE_ID, waiting until running..."
-aws ec2 wait instance-running --instance-ids "$INSTANCE_ID" --profile "$AWS_PROFILE" --region "$AWS_REGION"
+aws ec2 wait instance-running --instance-ids "$INSTANCE_ID" --region "$AWS_REGION"
 
-PUBLIC_DNS=$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" --profile "$AWS_PROFILE" --region "$AWS_REGION" --query 'Reservations[0].Instances[0].PublicDnsName' --output text)
-PUBLIC_IP_OUT=$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" --profile "$AWS_PROFILE" --region "$AWS_REGION" --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+PUBLIC_DNS=$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" --region "$AWS_REGION" --query 'Reservations[0].Instances[0].PublicDnsName' --output text)
+PUBLIC_IP_OUT=$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" --region "$AWS_REGION" --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
 
 echo "[INFO] EC2 ready"
 echo "INSTANCE_ID=$INSTANCE_ID"

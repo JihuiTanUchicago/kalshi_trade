@@ -13,6 +13,7 @@ from data_pipeline.architecture.execution_kernel import (
     MarketableLimitKernel,
     order_wire_params,
 )
+from data_pipeline.architecture.position_guard import exchange_net_reader, position_guarded_submitter
 from data_pipeline.architecture.risk_engine import DummyRiskEngine, LiveSettingsRiskEngine
 from data_pipeline.common import (
     api_get,
@@ -704,7 +705,10 @@ def run_loop() -> None:
         # only ever used for model features - never for a price.
         feed = MarketFeed(ws_feed=None, max_quote_age_seconds=MAX_QUOTE_AGE_SECONDS)
         kernel = MarketableLimitKernel(
-            place_limit_order,
+            # Every sell is sized to what Kalshi says is held, never past flat:
+            # a sell sized from a stale live_positions row is how this
+            # YES-only strategy ended up short.
+            position_guarded_submitter(place_limit_order, exchange_net_reader()),
             feed,
             entry_cross_ticks=ENTRY_CROSS_TICKS,
             exit_cross_ticks=EXIT_CROSS_TICKS,

@@ -342,13 +342,18 @@ def partition_contracts(cur, market: Market, since: datetime) -> List[Dict]:
     return out
 
 
-def partition_source_rows(cur, market: Market, since: datetime) -> Dict[str, List]:
+def partition_source_rows(cur, market: Market, since: datetime,
+                          open_from_ts: Optional[int] = None, open_to_ts: Optional[int] = None) -> Dict[str, List]:
     """Everything backtest.build_dataset needs, plus open_ts on each market row so
     partitions.py can assign whole contracts to a window. Reuses repository.
-    load_history for candles/btc (no SQL duplicated) and adds the open times."""
+    load_history for candles/btc (no SQL duplicated) and adds the open times.
+    With a window, only contracts opening in [open_from_ts, open_to_ts) are loaded."""
     from app import repository as repo
-    h = repo.load_history(cur, market.series, market.candle_minutes, since, market.underlying)
     opens = {c["ticker"]: c["open_ts"] for c in partition_contracts(cur, market, since)}
+    tickers = None
+    if open_from_ts is not None and open_to_ts is not None:
+        tickers = {t for t, o in opens.items() if o is not None and open_from_ts <= o < open_to_ts}
+    h = repo.load_history(cur, market.series, market.candle_minutes, since, market.underlying, tickers)
     for m in h["markets"]:
         m["open_ts"] = opens.get(m["ticker"])
     return h

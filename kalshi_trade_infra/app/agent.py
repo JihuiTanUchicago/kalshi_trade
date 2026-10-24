@@ -1711,8 +1711,12 @@ def run_research(
     # beater knows the run is progressing (and a frozen main thread lets it go stale -> reaped).
     progress = [time.monotonic()]
 
+    verdicts: Dict[str, int] = defaultdict(int)  # gatekeeper verdicts this run, for the outcome line
+
     def log(kind: str, message: str, data: Optional[Dict] = None) -> None:
         progress[0] = time.monotonic()
+        if kind == "verdict" and data and data.get("classification"):
+            verdicts["%s:%s" % (data.get("phase") or "validation", data["classification"])] += 1
         repo.add_event(cur, run_id, kind, message, data)
 
     def checkpoint() -> None:
@@ -1799,10 +1803,18 @@ def run_research(
             lookback = _plan_lookback(run, market, model, usage, log)
         ckpt["lookback"] = lookback
         if lookback < MARKETS[market].history_days:
+            # Drop the full set before loading the slice: holding both doubled the peak, and a
+            # 1-minute sports market is ~0.5-1GB of snapshots on its own. A too-thin slice (rare)
+            # pays one more load of the full set instead.
+            ds = None
             narrowed = _load("Loading %s data" % MARKETS[market].label, load, market, lookback,
                              beat=lambda: repo.heartbeat(cur, run_id))
             if len(narrowed.frames) >= MIN_FRAMES:
                 ds = narrowed
+            else:
+                narrowed = None
+                ds = _load("Loading %s data" % MARKETS[market].label, load, market,
+                           beat=lambda: repo.heartbeat(cur, run_id))
         s = ds.summary()
         log("step", "Loaded %s of %s history: %s decision points over %s contracts."
             % (_span_words(ds), MARKETS[market].label, s["decision_points"], s["contracts"]),
@@ -1878,6 +1890,8 @@ def run_research(
         log("done", "%d of %d hypotheses passed every gate." % (total_passed, len(tried)),
             {"passed": total_passed, "tried": len(tried)})
         repo.finish_run(cur, run_id, "succeeded", None, len(tried), total_passed, tot_in, tot_out)
+        print(research_outcome_line(run_id, user_id, market, "succeeded", len(tried), total_passed,
+                                    tot_in, tot_out, choice.model_id, verdicts), flush=True)
     except Cancelled:
         _bill(conn, user_id, usage, run_id, choice.model_id)  # charge whatever was spent before the stop
         log("step", "Cancelled.")
@@ -1902,11 +1916,25 @@ def run_research(
         log("step" if no_data else "error", msg)
         repo.finish_run(cur, run_id, "stopped" if no_data else "failed", msg[:2000],
                         len(tried), 0, usage.input_tokens, usage.output_tokens)
+        print(research_outcome_line(run_id, user_id, market, "stopped" if no_data else "failed", len(tried), 0,
+                                    usage.input_tokens, usage.output_tokens, choice.model_id, verdicts,
+                                    type(e).__name__), flush=True)
         _bill(conn, user_id, usage, run_id, choice.model_id)  # charge for the work done regardless of the failure cause
         if not isinstance(e, LLMError):
             raise
     finally:
         _hb_stop.set()  # stop the background heartbeat beater on every exit path
+
+
+def research_outcome_line(run_id, user_id, market, status: str, tried: int, passed: int, tokens_in: int,
+                          tokens_out: int, model_id: str, verdicts: Dict[str, int], error: str = "") -> str:
+    """One greppable process-log line per finished research run, so the funnel (hypotheses tried,
+    gatekeeper verdicts, passes) and its token cost can be read from the worker log alone. The
+    tokens_in/out are what was billed at finish (a failed run's are the unbilled remainder)."""
+    v = ",".join("%s=%d" % (k, n) for k, n in sorted(verdicts.items())) or "none"
+    return ("[research] run=%s user=%s market=%s status=%s tried=%d passed=%d tokens_in=%d tokens_out=%d "
+            "model=%s verdicts=%s%s" % (run_id, user_id, market, status, tried, passed, tokens_in, tokens_out,
+                                        model_id, v, (" error=%s" % error) if error else ""))
 
 
 def _span_words(ds: backtest.Dataset) -> str:
@@ -2987,6 +3015,11 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
                 text, proposal_id = act(cur, user, action, bool(user.get("autopilot")), dataset_fn)
             repo.add_chat(cur, user["id"], "system", text, proposal_id)
         repo.finish_run(cur, run["id"], "succeeded", None, 0, 0, usage.input_tokens, usage.output_tokens)
+        # Same greppable shape as research_outcome_line, so review vs research token cost can be
+        # split from the worker log (reviews outnumber research runs about 3:2 in prod).
+        print("[copilot] run=%s user=%s kind=%s status=succeeded actions=%d tokens_in=%d tokens_out=%d model=%s"
+              % (run["id"], user["id"], run["kind"], len(out["actions"]), usage.input_tokens,
+                 usage.output_tokens, choice.model_id), flush=True)
         billing_attempted = True
         _bill(conn, user["id"], usage, run["id"], choice.model_id)
     except Cancelled:

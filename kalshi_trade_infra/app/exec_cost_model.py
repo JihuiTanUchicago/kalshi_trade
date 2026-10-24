@@ -20,6 +20,12 @@ contract the feed watches. This module replays those ticks and measures, per ser
     * net vs taker    per contract, (maker cost if filled) vs (taker cost), and what that saving is
                       worth once multiplied by the fill odds
 
+  Maker from trade prints (market_trades, when recorded)
+    * queue fill      a buy joining the back of the best-bid queue fills once YES-bid-hitting prints
+                      (taker_side "no") at our price exceed the size ahead of us plus our own size,
+                      or any print trades below our price. Assumes no one ahead cancels, so it is a
+                      conservative estimate - and, unlike the brackets, it needs no guess.
+
 All prices are YES dollars per contract; a buy of NO is the mirror and has the same statistics by
 symmetry of the YES book (no_ask = 1 - yes_bid), so the YES-buy view is reported.
 
@@ -52,6 +58,14 @@ class Tick:
     ask: float
     bid_size: Optional[float]
     ask_size: Optional[float]
+
+
+@dataclass(frozen=True)
+class Print:
+    t: float  # unix seconds
+    yes_price: float
+    count: float
+    taker_side: str  # "yes" = taker bought YES (lifted the ask); "no" = taker sold YES (hit the bid)
 
 
 def _pct(xs: Sequence[float], q: float) -> Optional[float]:
@@ -180,6 +194,62 @@ def maker_stats(ticks: List[Tick], horizons: Iterable[int] = MAKER_HORIZONS,
     return out
 
 
+def maker_queue_stats(ticks: List[Tick], prints: List[Print], horizons: Iterable[int] = MAKER_HORIZONS,
+                      qty: float = 1.0, markout_s: int = MARKOUT_SECONDS,
+                      post_every: float = POST_EVERY_SECONDS) -> Dict:
+    """Queue-aware fill odds for a ``qty`` buy joining the back of the best-bid queue, from prints.
+
+    At post time t the queue ahead is the bid size then. Over (t, t+T] the post fills when a print
+    trades below p (the level was swept), or when bid-hitting prints at p sum past ahead + qty.
+    Cancels ahead of us are ignored, so this understates fills. Adverse move as in maker_stats."""
+    out: Dict = {}
+    if len(ticks) < 2 or not prints:
+        return out
+    times = [k.t for k in ticks]
+    ptimes = [p.t for p in prints]
+    first_print, last_print = ptimes[0], ptimes[-1]
+    for T in horizons:
+        posts = filled = 0
+        adverse: List[float] = []
+        next_post = ticks[0].t
+        for k in ticks:
+            # Only posts whose whole window is covered by recorded prints.
+            if k.t < next_post or k.t < first_print or k.t + T > min(times[-1], last_print):
+                continue
+            if k.bid_size is None:
+                continue
+            next_post = k.t + post_every
+            p, need = k.bid, k.bid_size + qty
+            posts += 1
+            hit = 0.0
+            fill_t = None
+            j = bisect.bisect_right(ptimes, k.t)
+            while j < len(prints) and prints[j].t <= k.t + T:
+                pr = prints[j]
+                if pr.yes_price < p - 1e-9:
+                    fill_t = pr.t
+                    break
+                if pr.taker_side == "no" and abs(pr.yes_price - p) < 1e-9:
+                    hit += pr.count
+                    if hit >= need:
+                        fill_t = pr.t
+                        break
+                j += 1
+            if fill_t is None:
+                continue
+            filled += 1
+            if times[-1] >= fill_t + markout_s:
+                m = bisect.bisect_right(times, fill_t + markout_s) - 1
+                adverse.append(((ticks[m].bid + ticks[m].ask) / 2) - p)
+        out["%ds" % T] = {
+            "posts": posts,
+            "fill_queue": round(filled / posts, 4) if posts else None,
+            "adverse_move_mean": round(sum(adverse) / len(adverse), 5) if adverse else None,
+            "adverse_n": len(adverse),
+        }
+    return out
+
+
 def maker_vs_taker(taker: Dict, maker: Dict) -> Dict:
     """Per-contract economics of resting at the bid vs crossing at the ask, at the median book.
 
@@ -195,24 +265,30 @@ def maker_vs_taker(taker: Dict, maker: Dict) -> Dict:
     out = {"taker_cost": round(taker_cost, 5)}
     for h, m in maker.items():
         adv = m.get("adverse_move_mean")
-        if adv is None or m.get("fill_lower") is None:
+        if adv is None or (m.get("fill_lower") is None and m.get("fill_queue") is None):
             continue
         maker_cost = -half + fee_per_contract(MAKER_FEE_RATE, mid) - adv
         saving = taker_cost - maker_cost
-        out[h] = {"maker_cost_if_filled": round(maker_cost, 5), "saving_if_filled": round(saving, 5),
-                  "expected_saving_lower": round(saving * m["fill_lower"], 5),
-                  "expected_saving_upper": round(saving * m["fill_upper"], 5)}
+        row = {"maker_cost_if_filled": round(maker_cost, 5), "saving_if_filled": round(saving, 5)}
+        for k in ("fill_lower", "fill_upper", "fill_queue"):
+            if m.get(k) is not None:
+                row["expected_saving_" + k[5:]] = round(saving * m[k], 5)
+        out[h] = row
     return out
 
 
-def series_model(tick_lists: Dict[str, List[Tick]]) -> Dict:
+def series_model(tick_lists: Dict[str, List[Tick]], print_lists: Optional[Dict[str, List[Print]]] = None) -> Dict:
     """Aggregate per-contract stats into one series view (tick-count weighted means)."""
     per = []
+    queue = []
     for ticker, ticks in tick_lists.items():
         ts = clean(ticks)
         if len(ts) < 10:
             continue
         per.append((len(ts), taker_stats(ts), maker_stats(ts)))
+        q = maker_queue_stats(ts, (print_lists or {}).get(ticker) or [])
+        if q:
+            queue.append(q)
     if not per:
         return {"contracts": 0}
 
@@ -234,8 +310,21 @@ def series_model(tick_lists: Dict[str, List[Tick]]) -> Dict:
                     for k in ("fill_lower", "fill_upper", "adverse_move_mean")}
         maker[h]["posts"] = sum((m.get(h) or {}).get("posts") or 0 for _, _, m in per)
         maker[h]["adverse_n"] = sum((m.get(h) or {}).get("adverse_n") or 0 for _, _, m in per)
-    return {"contracts": len(per), "ticks": sum(n for n, _, _ in per), "taker": taker, "maker": maker,
-            "maker_vs_taker": maker_vs_taker(taker, maker)}
+    out = {"contracts": len(per), "ticks": sum(n for n, _, _ in per), "taker": taker, "maker": maker,
+           "maker_vs_taker": maker_vs_taker(taker, maker)}
+    if queue:
+        mq = {}
+        for h in ("%ds" % x for x in MAKER_HORIZONS):
+            rows = [q[h] for q in queue if (q.get(h) or {}).get("posts")]
+            posts = sum(r["posts"] for r in rows)
+            filled = sum(r["posts"] * r["fill_queue"] for r in rows)
+            adv_n = sum(r["adverse_n"] for r in rows)
+            adv = sum(r["adverse_move_mean"] * r["adverse_n"] for r in rows if r["adverse_n"])
+            mq[h] = {"posts": posts, "fill_queue": round(filled / posts, 4) if posts else None,
+                     "adverse_move_mean": round(adv / adv_n, 5) if adv_n else None, "adverse_n": adv_n}
+        out["maker_queue"] = mq
+        out["maker_queue_vs_taker"] = maker_vs_taker(taker, mq)
+    return out
 
 
 def fetch_ticks(cur, series: str, since: datetime, until: datetime) -> Dict[str, List[Tick]]:
@@ -257,11 +346,29 @@ def fetch_ticks(cur, series: str, since: datetime, until: datetime) -> Dict[str,
     return out
 
 
+def fetch_prints(cur, series: str, since: datetime, until: datetime) -> Dict[str, List[Print]]:
+    """Every recorded trade print for the series' contracts in [since, until), time-ordered."""
+    cur.execute(
+        "SELECT ticker, created_time, yes_price_dollars, count_fp, taker_side FROM market_trades "
+        "WHERE created_time >= %s AND created_time < %s AND ticker LIKE %s ORDER BY created_time",
+        (since.replace(tzinfo=None), until.replace(tzinfo=None), series + "-%"),
+    )
+    out: Dict[str, List[Print]] = {}
+    for r in cur.fetchall():
+        if r["yes_price_dollars"] is None or r["count_fp"] is None:
+            continue
+        out.setdefault(r["ticker"], []).append(Print(
+            r["created_time"].replace(tzinfo=timezone.utc).timestamp(), float(r["yes_price_dollars"]),
+            float(r["count_fp"]), str(r["taker_side"] or "")))
+    return out
+
+
 def report(cur, series: Iterable[str], hours: float = 24.0, now: Optional[datetime] = None) -> Dict:
     now = now or datetime.now(timezone.utc)
     since = now - timedelta(hours=float(hours))
     return {"generated_at": now.isoformat(), "window_hours": float(hours),
-            "series": {s: series_model(fetch_ticks(cur, s, since, now)) for s in series}}
+            "series": {s: series_model(fetch_ticks(cur, s, since, now), fetch_prints(cur, s, since, now))
+                       for s in series}}
 
 
 def main() -> None:  # pragma: no cover - thin CLI over report()

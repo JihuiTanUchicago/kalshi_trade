@@ -36,6 +36,12 @@ Funnel (PR follow-up): `agent.auto_paper_candidates` runs at the start of every 
 
 Paper pairs now run through the simulated venue too (`_paper_kernel_buy_pair`, same legging mechanics as live `_kernel_buy_pair`: short second leg -> unwind the excess, failed unwind -> tracked naked leg). Both legs share one `sim:pair-` order_ref so the gate counts a pair as one round trip.
 
+Live size ramp (`engine._live_ramp_scale`): a live deployment's first `APP_LIVE_RAMP_TRADES` (20) closed trades enter at `APP_LIVE_RAMP_FRACTION` (0.25, clamped to (0, 1]) of the spec stake, at least 1 contract, so a fresh promotion risks a quarter of its size while the decay guard collects its 20 trades. Entries only; exits untouched.
+
+Research funnel telemetry: every finished research run prints one `[research] run=… status=… tried=… passed=… tokens_in=… tokens_out=… model=… verdicts=phase:class=n,…` line to the agents log (`agent.research_outcome_line`), so pass rates and token cost per pass can be measured from the box log without DB reads. Copilot (review/chat) runs print a matching `[copilot] run=… kind=… actions=… tokens_in=… tokens_out=…` line, since reviews outnumber research runs ~3:2. Bedrock Claude spend measured at ~$90–175/day (Oct 18–23, credits-covered), with Opus 4.5's non-adjustable daily token cap hit most days (fallback Sonnet → Haiku); spend held flat until the fixed gatekeeper shows passes.
+
+Research robustness: prod logs showed a code strategy's truncated `out.json` raising a raw `JSONDecodeError` out of `sandbox._run_entry`, past `freeze_code_model`'s `SandboxError` handler, killing the whole research run (its tokens already spent). Unreadable or non-object output is now a `SandboxError`, so only that hypothesis fails.
+
 Visibility: the strategy page's Road to live panel (both themes) shows each gate's progress, and the autopilot float's stats show the running paper strategy closest to live (`paper_progress` in `/api/autopilot/status`: realistic trades / 30 and net P&L, one grouped query, no bootstrap on the 20s poll).
 
 Next: feed realization to the research thread's backtest fill-model calibration.

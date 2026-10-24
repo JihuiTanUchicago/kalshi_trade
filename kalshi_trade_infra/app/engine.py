@@ -526,6 +526,7 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict, sources: Sources
     open_notional = float(exposure["notional"])
     cap_positions = int(risk["max_open_positions"])
     cap_notional = float(risk["max_open_notional"])
+    ramp = _live_ramp_scale(cur, dep) if mode == "live" and not halts else 1.0
     for entry in ([] if halts else specmod.entries(spec, snaps)):
         if slots <= 0 or open_count >= cap_positions:
             break  # deployment slot cap or user-wide position cap reached
@@ -533,6 +534,8 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict, sources: Sources
         if ticker in held:
             continue
         qty = specmod.contracts_for(spec["sizing"]["stake"], entry.price)
+        if ramp < 1.0 and qty >= 1:
+            qty = max(1, int(qty * ramp))  # live size ramp: a fresh live deployment trades small
         shown = shown_size(sizes, ticker, entry.side)
         if shown is not None:
             qty = min(qty, int(shown))  # never size past the depth on the side we take
@@ -861,6 +864,23 @@ def loss_guard(cur, dep: Dict) -> bool:
 # on average, the edge did not survive real execution: pause it (flatten-on-pause closes it) and let
 # the review decide. Pausing only lowers risk; it never opens, resizes or blocks an exit.
 LIVE_DECAY_MIN_TRADES = int(os.getenv("APP_LIVE_DECAY_MIN_TRADES", "20"))
+
+
+# Live size ramp: a deployment's first LIVE_RAMP_TRADES closed live trades run at LIVE_RAMP_FRACTION
+# of the spec's stake (at least 1 contract), so a fresh promotion risks a fraction of its size while
+# the decay guard above is still gathering its 20 trades. Shrinks entries only; the fraction is
+# clamped to (0, 1] so no setting can make a ramp larger than full size.
+LIVE_RAMP_TRADES = int(os.getenv("APP_LIVE_RAMP_TRADES", "20"))
+def _ramp_fraction(raw: str) -> float:
+    return min(1.0, max(0.01, float(raw)))
+
+
+LIVE_RAMP_FRACTION = _ramp_fraction(os.getenv("APP_LIVE_RAMP_FRACTION", "0.25"))
+
+
+def _live_ramp_scale(cur, dep: Dict) -> float:
+    n, _total = repo.deployment_closed_stats(cur, dep["id"])
+    return LIVE_RAMP_FRACTION if n < LIVE_RAMP_TRADES else 1.0
 
 
 def _live_decay_reason(cur, dep: Dict) -> Optional[str]:
@@ -1657,6 +1677,7 @@ def live_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
     => REST-only, exactly as before."""
     from app import kalshi_account
     from app.execution import guarded_submitter, timed_submitter
+    from data_pipeline.architecture.position_guard import exchange_net_reader, position_guarded_submitter
     from data_pipeline.market_data import MarketFeed
 
     feed = MarketFeed(ws_feed=ws_feed)
@@ -1671,7 +1692,10 @@ def live_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
         # fat-finger, rate limit, circuit breaker). They only ever block a BUY, never an exit.
         # P2: timed_submitter is the outermost wrapper so it also measures guard-blocked and
         # errored sends; it records off the send path and passes the result through unchanged.
-        submitter = timed_submitter(guarded_submitter(kalshi_account.order_submitter(creds)), mode="live")
+        # Innermost: no SELL may take this user's account past flat, sized to what Kalshi
+        # (not our book) says they hold. Like the guards above it can only shrink/refuse a sell.
+        submitter = timed_submitter(guarded_submitter(position_guarded_submitter(
+            kalshi_account.order_submitter(creds), exchange_net_reader(creds))), mode="live")
         return _execution_kernel(submitter, feed, repo.user_execution_config(cur, user_id))
 
     return make
@@ -1725,6 +1749,8 @@ def run_forever() -> None:
     equity_every = float(os.getenv("APP_EQUITY_CHECK_EVERY_SECONDS", "60"))
     # How often to reconcile each user's live book against their real Kalshi account.
     reconcile_every = float(os.getenv("APP_RECONCILE_EVERY_SECONDS", "300"))
+    last_perps_watch = 0.0
+    perps_watch_every = float(os.getenv("TAU_KALSHI_PERPS_WATCH_EVERY_SECONDS", "60"))
     # One shared live-book websocket for the whole engine (P1-1): marks, PnL and order pricing all
     # read ≤1s top-of-book from it, with REST as the freshness backstop. If WS creds are absent it
     # stays disabled and every read falls back to REST exactly as before — so this never regresses.
@@ -1835,6 +1861,17 @@ def run_forever() -> None:
                         except Exception as e:
                             print("[engine] reconcile sweep failed: %r" % e, flush=True)
                         last_reconcile = time.time()
+                    # Same idea for native Bitcoin perps: positions vs Tau's filled orders,
+                    # plus liquidation and margin proximity. Read-only, contained.
+                    if time.time() - last_perps_watch > perps_watch_every:
+                        try:
+                            from app import kalshi_perps_watch
+                            summary = kalshi_perps_watch.watch_all(conn)
+                            if summary.get("alerts") or summary.get("errors"):
+                                print("[engine] perps watch %s" % summary, flush=True)
+                        except Exception as e:
+                            print("[engine] perps watch sweep failed: %r" % e, flush=True)
+                        last_perps_watch = time.time()
                     time.sleep(TICK_SECONDS)
             finally:
                 conn.close()
