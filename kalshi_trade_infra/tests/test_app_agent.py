@@ -882,7 +882,7 @@ def test_after_a_run_the_playbook_is_scored_settled_and_rewritten(monkeypatch):
                                                                   "why": "obs_high_f is not available"}}]
     monkeypatch.setattr(agent.repo, "run_events", lambda cur, run_id: events)
     monkeypatch.setattr(rsi_playbook, "score_run", lambda cur, run_id, card: calls.setdefault("card", card))
-    monkeypatch.setattr(rsi_playbook, "decide", lambda cur, uid, fam: "promoted v1 over v0 (P(better)=0.93)")
+    monkeypatch.setattr(rsi_playbook, "decide", lambda cur, uid, fam, paper_of=None: "promoted v1 over v0 (P(better)=0.93)")
     pending = {"cand": None}
     monkeypatch.setattr(rsi_playbook, "candidate", lambda cur, uid, fam: pending["cand"])
     monkeypatch.setattr(rsi_playbook, "active", lambda cur, uid, fam: {"id": 5, "version": 1, "text": "old"})

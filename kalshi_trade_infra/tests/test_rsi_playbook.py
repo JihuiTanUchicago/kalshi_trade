@@ -100,20 +100,23 @@ def _fam():
 def test_lifecycle_baseline_trial_promotion(conn):
     cur = conn.cursor()
     fam, uid = _fam(), 990001
-    v0 = pb.choose(cur, uid, fam, run_id=10_000_001)
+    r0 = random.randrange(10**8, 2 * 10**9)   # run ids are global, so a rerun must not resume old draws
+    v0 = pb.choose(cur, uid, fam, run_id=r0)
     assert (v0["version"], v0["status"], v0["text"]) == (0, "active", "")
-    assert pb.score_run(cur, 10_000_001, dict(CARD, explored=20, gated=1)) == v0["id"]
-    assert pb.score_run(cur, 10_000_001, CARD) is None          # a run is credited once
-    v1 = pb.add_candidate(cur, uid, fam, v0, "DEAD ENDS\n- x", "first lessons", 10_000_001)
+    assert pb.score_run(cur, r0, dict(CARD, explored=20, gated=1)) == v0["id"]
+    assert pb.score_run(cur, r0, CARD) is None          # a run is credited once
+    v1 = pb.add_candidate(cur, uid, fam, v0, "DEAD ENDS\n- x", "first lessons", r0)
     assert v1 == 1 and pb.candidate(cur, uid, fam)["text"] == "DEAD ENDS\n- x"
     # Thompson draw: with the candidate far ahead on evidence it is drawn almost always...
     cur.execute("UPDATE app_rsi_playbooks SET ideas=10, reached=6 WHERE user_id=%s AND family=%s AND version=1",
                 (uid, fam))
-    draws = [pb.choose(cur, uid, fam, run_id=10_000_100 + i, rng=random.Random(i))["version"] for i in range(20)]
+    draws = [pb.choose(cur, uid, fam, run_id=r0 + 100 + i, rng=random.Random(i))["version"] for i in range(20)]
     assert draws.count(1) >= 18
     # ...and a resumed run keeps its first draw.
-    assert pb.choose(cur, uid, fam, run_id=10_000_100)["version"] == draws[0]
+    assert pb.choose(cur, uid, fam, run_id=r0 + 100)["version"] == draws[0]
     assert pb.decide(cur, uid, fam) is None                    # fewer than MIN_IDEAS on the candidate
+    trial = {r["status"]: r for r in pb.summary(cur, uid) if r["family"] == fam}
+    assert trial["active"]["p_better"] is None and trial["candidate"]["p_better"] > 0.9
     cur.execute("UPDATE app_rsi_playbooks SET ideas=20, reached=8 WHERE user_id=%s AND family=%s AND version=1",
                 (uid, fam))
     assert pb.decide(cur, uid, fam).startswith("promoted v1 over v0")
@@ -138,3 +141,20 @@ def test_a_losing_rewrite_is_retired_and_the_incumbent_stays(conn):
     # The next rewrite gets the next version number.
     assert pb.add_candidate(cur, uid, fam, v0, "third try", "", None) == 2
     conn.commit()
+
+
+@needs_db
+def test_a_rewrite_whose_passes_lose_on_paper_is_not_promoted(conn):
+    cur = conn.cursor()
+    fam, uid = _fam(), 990003
+    v0 = pb.active(cur, uid, fam)
+    cur.execute("UPDATE app_rsi_playbooks SET ideas=30, reached=3 WHERE id=%s", (v0["id"],))
+    pb.add_candidate(cur, uid, fam, v0, "gate-friendly lessons", "", None)
+    cand = pb.candidate(cur, uid, fam)
+    cur.execute("UPDATE app_rsi_playbooks SET ideas=20, reached=10 WHERE id=%s", (cand["id"],))
+    bleeding = {str(cand["id"]): {"round_trips": 40, "net_pnl": -12.5}}
+    assert pb.decide(cur, uid, fam, paper_of=lambda: bleeding) is None
+    assert pb.candidate(cur, uid, fam)["id"] == cand["id"]           # still on trial
+    few = {cand["id"]: {"round_trips": 5, "net_pnl": -3.0}}              # too few trips to veto
+    assert pb.decide(cur, uid, fam, paper_of=lambda: few).startswith("promoted v1 over v0")
+    conn.rollback()

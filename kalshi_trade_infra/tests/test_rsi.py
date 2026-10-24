@@ -177,3 +177,13 @@ def test_paper_outcomes_with_nothing_on_paper_is_empty(monkeypatch):
     out = rsi.paper_outcomes(cur, 2)
     assert out["total"]["strategies"] == 0 and out["families"] == {} and cur.sql == []
     assert rsi.paper_outcomes_lines(out) == []
+
+def test_trend_compares_the_newer_half_of_ideas_with_the_older_half():
+    def card(i, explored, gated):
+        return rsi.run_card(dict(RUN, id=i, hypotheses_tried=explored, created_at="2026-10-2%d 00:00:00" % i),
+                            [_ev("PASSED", status="passed", classification="x", strategy_id=j) for j in range(gated)])
+    assert rsi.trend([card(1, 5, 0), card(2, 5, 1)]) is None          # too few ideas to compare
+    t = rsi.trend([card(1, 10, 0), card(2, 6, 1), card(3, 10, 3), card(4, 6, 2)])
+    assert (t["before"]["explored"], t["after"]["explored"]) == (16, 16)
+    assert (t["before"]["gate_reach_rate"], t["after"]["gate_reach_rate"], t["better"]) == (0.062, 0.312, True)
+    assert rsi.scoreboard([card(1, 10, 0), card(2, 10, 2)])["trend"]["better"] is True

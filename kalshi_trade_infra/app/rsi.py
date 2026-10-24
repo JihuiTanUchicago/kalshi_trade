@@ -189,7 +189,29 @@ def scoreboard(cards: List[Dict]) -> Dict:
         "families": {k: _rollup(v) for k, v in sorted(by_family.items())},
         "days": [dict(day=k, **_rollup(v)) for k, v in sorted(by_day.items())],
         "fix_list": fix_list(cards),
+        "trend": trend(cards),
     }
+
+
+def trend(cards: List[Dict], min_ideas: int = 8) -> Optional[Dict]:
+    """Is research getting better? Gate-reach rate of the newer half of runs vs the older half
+    (split by ideas explored, so a few huge runs cannot hide in one side). None until each half
+    has min_ideas ideas."""
+    total = sum(c["explored"] for c in cards)
+    if total < 2 * min_ideas:
+        return None
+    seen, split = 0, len(cards)
+    for i, c in enumerate(cards):
+        seen += c["explored"]
+        if seen * 2 >= total:
+            split = i + 1
+            break
+    old, new = _rollup(cards[:split]), _rollup(cards[split:])
+    if old["explored"] < min_ideas or new["explored"] < min_ideas:
+        return None
+    return {"before": {k: old[k] for k in ("runs", "explored", "gated", "gate_reach_rate", "cost_usd")},
+            "after": {k: new[k] for k in ("runs", "explored", "gated", "gate_reach_rate", "cost_usd")},
+            "better": new["gate_reach_rate"] > old["gate_reach_rate"]}
 
 
 def recent_runs(cur, days: int = 7, user_id: Optional[int] = None) -> List[Dict]:
