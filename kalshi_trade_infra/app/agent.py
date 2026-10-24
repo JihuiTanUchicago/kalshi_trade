@@ -655,7 +655,13 @@ def _cross_market_options(market: str) -> str:
             "ONE as a cross_sectional leg (cross.pairing=\"cross_sectional\", "
             "cross.legs=[{\"market\":\"<key>\"}]) when the edge is a RELATIVE mispricing between the two "
             "markets (lead-lag, basis dislocation), not a directional view: %s. Only do so with a real "
-            "relative mechanism; otherwise stay single-contract." % (market, labels))
+            "relative mechanism; otherwise stay single-contract.\n"
+            "POOLED evidence: a STRUCTURAL mechanism that should hold on all of these markets (fee/price-"
+            "band effects, settlement mechanics, favorite-longshot overpricing) can instead be judged on "
+            "their POOLED trades: add \"pool\": [<keys>] (no cross). The same rule runs on every pooled "
+            "market, so validation sees ~N times the trades and the detectable edge shrinks ~sqrt(N) times; "
+            "it trades only on %s if it passes. The mechanism must apply to every pooled market."
+            % (market, labels, market))
 
 
 # Shared tail for every NON-PRICE (event-settled) market profile. The built-in gbm model is a
@@ -1223,7 +1229,8 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
             # cannot plausibly clear the next alpha level is NOT pre-registered and spends nothing, so
             # it neither decays the LORD++ stream nor inflates the DSR trial count for real candidates.
             # Cross-contract and perpetual specs judge on their own windows and skip this screen.
-            if not specmod.is_cross_contract(spec) and not specmod.is_perpetual_spec(spec):
+            if not (specmod.is_cross_contract(spec) or specmod.is_multi_market(spec)
+                    or specmod.is_perpetual_spec(spec)):
                 pw = gatekeeper.validation_power(cur, user_id, market, spec, ds, partition,
                                                  int(t.get("min_sample") or 30))
                 if not pw["ok"]:
@@ -1240,10 +1247,11 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
             sid = repo.insert_strategy(cur, user_id, run_id, parent, market, direction, t["title"],
                                        t["thesis"], spec, "pending", _result_block(s, t, "promising"))
             t["strategy_id"] = sid
-            # A cross-contract spec pre-registers against the MERGED partition of its legs; a single-
-            # contract spec against the run's partition (unchanged).
+            # A multi-market spec (cross-market pair or pooled rule) pre-registers against the MERGED
+            # partition of its markets; a single-market spec (including a same-market cross_strike /
+            # calendar pair) against the run's partition.
             part = partitions.ensure_merged_partition(cur, specmod.involved_markets(spec)) \
-                if specmod.is_cross_contract(spec) else partition
+                if specmod.is_multi_market(spec) else partition
             exp_ids.append(gatekeeper.preregister(cur, _prereg(t, spec, run, part, len(finalists), verdict, sid)))
             payload.append({"spec": spec, "user_id": user_id, "market": market,
                             "min_sample": int(t.get("min_sample") or 30)})
@@ -1263,7 +1271,7 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
                 # and fail fast with a clean LLMError if the (possibly slow) RDS wedges it, instead
                 # of going silent until the watchdog reaps the run. Partitions are resolved on THIS
                 # thread; the timeout worker only runs an off-cursor load, so it never shares `cur`.
-                if specmod.is_cross_contract(spec0):
+                if specmod.is_multi_market(spec0):
                     legs = partitions.merged_partitions(cur, specmod.involved_markets(spec0))
                     val_ds = _load("Loading validation data", partitions.merged_dataset_from, legs,
                                    "validation", beat=lambda: repo.heartbeat(cur, run_id))
@@ -1854,7 +1862,7 @@ def _test_in_sample(h: Dict, ds: backtest.Dataset, partition: Dict, log, round_n
     # dataset — test it on the MERGED research window of its legs (cached per stream for the run).
     # cross_strike / calendar stay on one market, so the single-market dataset already has every
     # strike/settlement and this branch is skipped.
-    if cur is not None and specmod.is_cross_contract(spec) and len(specmod.involved_markets(spec)) > 1:
+    if cur is not None and specmod.is_multi_market(spec):
         inv = specmod.involved_markets(spec)
         key = specmod.stream_key(spec)
         if merged_cache is not None and key in merged_cache:

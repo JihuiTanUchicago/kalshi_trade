@@ -309,3 +309,45 @@ def test_next_bar_is_never_more_optimistic_than_signal_bar(monkeypatch):
     monkeypatch.setattr(backtest, "FILL_MODEL", "signal_bar")
     sig = sum(t.pnl for t in backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1))
     assert nxt <= sig
+
+
+# -- pooled (multi-market) specs ---------------------------------------------------------------
+
+
+def test_pool_validates_and_lists_involved_markets():
+    s = specmod.validate({"market": "btc15m", "pool": ["eth15m", "sol15m", "btc15m"]})
+    assert s["pool"] == ["eth15m", "sol15m"]                      # primary removed, sorted, deduped
+    assert specmod.involved_markets(s) == ["btc15m", "eth15m", "sol15m"]
+    assert specmod.stream_key(s) == "btc15m+eth15m+sol15m"
+    assert specmod.is_pooled(s) and specmod.is_multi_market(s) and not specmod.is_cross_contract(s)
+    plain = specmod.validate({"market": "btc15m"})
+    assert "pool" not in plain and not specmod.is_multi_market(plain)   # absent pool: spec unchanged
+
+
+def test_pool_rejects_bad_markets_cadence_and_cross():
+    import pytest
+    for bad in ({"pool": ["nope"]}, {"pool": []}, {"pool": "eth15m"}, {"pool": ["btc_daily"]},
+                {"pool": ["btc15m"]},
+                {"pool": ["eth15m"], "cross": {"pairing": "cross_strike", "legs": []}}):
+        with pytest.raises(specmod.SpecError):
+            specmod.validate(dict({"market": "btc15m"}, **bad))
+
+
+def _renamed(ds, prefix):
+    """The same synthetic book under a different ticker namespace (a second market)."""
+    from dataclasses import replace
+    frames = [(ts, [replace(sn, contract=replace(sn.contract, ticker=prefix + sn.contract.ticker))
+                    for sn in snaps]) for ts, snaps in ds.frames]
+    return backtest.Dataset(ds.market, frames, {prefix + k: v for k, v in ds.results.items()},
+                            ds.start_ts, ds.end_ts, ds.contracts)
+
+
+def test_pooled_rule_trades_every_market_on_the_merged_dataset():
+    a = _dataset(n_contracts=10)
+    merged = backtest.merge_datasets([a, _renamed(a, "E")], key="btc15m+eth15m")
+    spec = specmod.validate({"market": "btc15m", "pool": ["eth15m"], "side": "yes",
+                             "entry": {"min_edge": 0.1}, "sizing": {"stake": 10.0, "max_positions": 4}})
+    trades = backtest.simulate(spec, merged, merged.start_ts, merged.end_ts + 1)
+    single = backtest.simulate(spec, a, a.start_ts, a.end_ts + 1)
+    assert {t.ticker[0] for t in trades} == {"M", "E"}           # evidence from both markets
+    assert len(trades) == 2 * len(single)                          # ~N x the sample

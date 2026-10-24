@@ -93,6 +93,7 @@ DEFAULT_SPEC: Dict[str, Any] = {
 CROSS_PAIRINGS = ("cross_sectional", "cross_strike", "calendar")
 CROSS_RELATIONSHIPS = ("spread",)  # ponytail: ratio is a trivial variant; add it only when asked.
 MAX_CROSS_LEGS = 3
+MAX_POOL_MARKETS = 7  # extra markets a pooled spec may be judged across, beyond spec["market"]
 
 SPEC_GUIDE = """A strategy spec is a JSON object:
 {
@@ -132,6 +133,12 @@ SPEC_GUIDE = """A strategy spec is a JSON object:
     "relationship": "spread"                    // trade the spread of model edges (buy YES cheap leg, NO dear leg)
   }
 }
+"pool": [<key>, ...] OPTIONAL (omit for a normal spec), up to 7 EXTRA markets with the SAME decision
+cadence. The same single-contract rule is judged on the POOLED trades of spec.market plus these
+markets, so the gate sees ~N times the validation sample (a ~sqrt(N) times smaller detectable edge).
+Use it only for a STRUCTURAL mechanism that should hold on every pooled market (fee/price-band
+effects, settlement mechanics, favorite-longshot), never as a way to fish. Not combinable with
+cross. A passed pooled rule trades on spec.market.
 cross.pairing: cross_sectional = two different markets (e.g. BTC vs ETH, matched per frame) - the
 two markets MUST share a decision cadence (same candle_minutes AND close schedule: two 15-min
 crypto markets, or two daily markets; never a 1-min market with a daily one);
@@ -473,6 +480,8 @@ def validate(raw: Any) -> Dict[str, Any]:
         return _validate_code_spec(raw)
     spec = copy.deepcopy(DEFAULT_SPEC)
     errors: List[str] = []
+    raw = dict(raw)
+    pool = raw.pop("pool", None)  # optional; absent keeps the spec byte-identical to before
     _merge_known(spec, raw, "", errors)
 
     if spec["market"] not in MARKETS:
@@ -519,9 +528,41 @@ def validate(raw: Any) -> Dict[str, Any]:
         entry["filters"] = clean
     _validate_model(spec, errors)
     _validate_cross(spec, errors)
+    _validate_pool(spec, pool, errors)
     if errors:
         raise SpecError("; ".join(errors))
     return spec
+
+
+def _validate_pool(spec: Dict, pool: Any, errors: List[str]) -> None:
+    """Validate the optional `pool`: extra markets the SAME single-contract rule is judged across,
+    so its evidence pools every market's trades (≈N× the validation sample). Sets spec["pool"] to
+    the sorted, deduped list (without spec["market"]) only when one is given. Pooled markets must
+    be binary, share spec["market"]'s decision cadence, and cannot be combined with `cross`."""
+    if pool is None:
+        return
+    if not isinstance(pool, list) or not pool or len(pool) > MAX_POOL_MARKETS:
+        errors.append("pool must be a list of 1..%d extra market keys" % MAX_POOL_MARKETS)
+        return
+    clean = set()
+    for i, key in enumerate(pool):
+        m = MARKETS.get(key) if isinstance(key, str) else None
+        if m is None:
+            errors.append("pool[%d] %r is not a known market" % (i, key))
+        elif m.kind in ("perpetual", "spot"):
+            errors.append("pool[%d] %r is not a binary market" % (i, key))
+        elif key != spec.get("market"):
+            clean.add(key)
+    if spec.get("cross"):
+        errors.append("pool cannot be combined with cross (a pooled spec is one single-contract rule)")
+    involved = clean | {spec.get("market")}
+    if spec.get("market") in MARKETS and clean and not compatible_cadence(sorted(involved)):
+        errors.append("pool markets span incompatible decision cadences (%s); pool only markets with "
+                      "the same candle_minutes and close schedule" % ", ".join(sorted(involved)))
+    if not clean and not errors:
+        errors.append("pool needs at least one market other than %s" % spec.get("market"))
+    if not errors:
+        spec["pool"] = sorted(clean)
 
 
 def _num_ok(v) -> bool:
@@ -653,12 +694,28 @@ def is_cross_contract(spec: Dict) -> bool:
     return bool(spec.get("cross"))
 
 
+def is_pooled(spec: Dict) -> bool:
+    """A single-contract rule judged across several markets' pooled trades (spec["pool"]). It is NOT
+    a cross contract: execution runs it as the ordinary single-market rule on spec["market"]."""
+    return bool(spec.get("pool"))
+
+
+def is_multi_market(spec: Dict) -> bool:
+    """Its research/validation/holdout evidence spans >1 market's data (a cross-market pair or a
+    pooled rule), so it needs the merged partition, dataset and FDR stream of involved_markets."""
+    if "market" not in spec:
+        return False  # not a binary DSL spec (perpetual/code/partial): no multi-market evidence
+    return len(involved_markets(spec)) > 1
+
+
 def involved_markets(spec: Dict) -> List[str]:
     """Every market a spec touches, sorted & deduped. A single-contract spec touches exactly
-    one (== spec['market']); a cross spec touches spec['market'] plus its legs'."""
+    one (== spec['market']); a cross spec touches spec['market'] plus its legs'; a pooled spec
+    spec['market'] plus its pool."""
     markets = {spec["market"]}
     for leg in (spec.get("cross") or {}).get("legs", []):
         markets.add(leg["market"])
+    markets.update(spec.get("pool") or [])
     return sorted(markets)
 
 
@@ -1027,4 +1084,8 @@ def describe(spec: Dict) -> List[str]:
                      "overpriced leg, holding both to settlement." % kind)
         labels = [MARKETS[m].label if m in MARKETS else m for m in involved_markets(spec)]
         lines.append("Legs: %s." % ", ".join(labels))
+    if spec.get("pool"):
+        labels = [MARKETS[m].label if m in MARKETS else m for m in involved_markets(spec)]
+        lines.append("Judged on the pooled trades of %s; trades %s." % (
+            ", ".join(labels), MARKETS[spec["market"]].label if spec["market"] in MARKETS else spec["market"]))
     return lines

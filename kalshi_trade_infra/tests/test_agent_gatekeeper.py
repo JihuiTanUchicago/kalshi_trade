@@ -236,3 +236,24 @@ def test_research_prompt_states_the_detectable_edge():
     mdes = [float(m) for m in re.findall(r"needs >= ([0-9.]+)%", block)]
     assert mdes == sorted(mdes, reverse=True)
     assert agent._detectability_block(SimpleNamespace(start_ts=5, end_ts=5)) == ""
+
+
+def test_pooled_finalist_preregisters_on_the_merged_partition(monkeypatch):
+    """A pooled rule's evidence spans every pooled market: it pre-registers against the MERGED
+    partition, is judged on the merged validation window under its shared stream key, and skips the
+    single-market power pre-screen (which would only see the run market's research fold)."""
+    store = FakeStore(monkeypatch)
+    merged_calls, loads = [], []
+    monkeypatch.setattr(agent.partitions, "ensure_merged_partition",
+                        lambda cur, mk: merged_calls.append(tuple(mk)) or {"id": 77, "embargo_seconds": 900})
+    monkeypatch.setattr(agent.partitions, "merged_partitions", lambda cur, mk: [(m, {}) for m in mk])
+    monkeypatch.setattr(agent.partitions, "merged_dataset_from", lambda legs, phase: loads.append(phase) or "VAL")
+    store.underpowered = {"P"}  # would be screened out if the single-market pre-screen ran
+    cand = _cand("P", 50, 20, 9.0)
+    cand["spec"] = dict(specmod.validate({"side": "yes", "entry": {"min_edge": 0.1},
+                                          "pool": ["eth15m", "sol15m"]}), _title="P")
+    _run_gate(monkeypatch, store, [cand], [{"decision": "approve", "reason": "", "fixes": None}])
+    assert merged_calls == [("btc15m", "eth15m", "sol15m")]
+    assert store.preregistered[0].research_partition_id == 77
+    assert store.preregistered[0].market == "btc15m+eth15m+sol15m"
+    assert loads == ["validation"] and len(store.judged) == 1
