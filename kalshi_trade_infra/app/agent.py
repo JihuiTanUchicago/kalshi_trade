@@ -1493,19 +1493,63 @@ def _bill(conn, user_id, usage, run_id, model=None):
 _DROPPED_SHOWN = 15
 
 
+_SIBLING_MIN_DROPS, _SIBLING_MIN_MARKETS, _SIBLING_SHOWN = 3, 2, 6
+
+
 def _recent_drops(cur, user_id: int, market: str) -> List[Dict]:
-    """Advisory only: a failed read just means the proposer isn't warned off old dead ends."""
+    """This market's recent drops, then its siblings' (same family; rows carry "market").
+    Advisory only: a failed read just means the proposer isn't warned off old dead ends."""
     try:
-        return repo.dropped_theses(cur, user_id, market)
+        own = repo.dropped_theses(cur, user_id, market)
     except Exception:
         return []
+    from app import rsi
+    fam = rsi.family(market)
+    siblings = [k for k in MARKETS if k != market and fam not in ("other", "unknown") and rsi.family(k) == fam]
+    try:
+        return own + repo.sibling_dropped_theses(cur, user_id, siblings)
+    except Exception:
+        return own
 
 
-def _dropped_block(dropped: Optional[List[Dict]]) -> str:
+def _sibling_block(rows: List[Dict], market: str) -> str:
+    """Mechanisms that died again and again on this market's SIBLINGS, so a run on one crypto
+    ladder stops re-testing what the other ladders already killed. Advice, not a ban: the market
+    may differ, but the proposer has to say how."""
+    from app import rsi
+    by: Dict[str, List[Dict]] = defaultdict(list)
+    for d in rows:
+        mech = rsi.mechanism(d["title"])
+        if mech:
+            by[mech].append(d)
+    dead = sorted(((m, v) for m, v in by.items()
+                   if len(v) >= _SIBLING_MIN_DROPS and len({d["market"] for d in v}) >= _SIBLING_MIN_MARKETS),
+                  key=lambda kv: -len(kv[1]))[:_SIBLING_SHOWN]
+    if not dead:
+        return ""
+    lines = []
+    for mech, v in dead:
+        ex = v[0]   # newest
+        lines.append("- %s: dropped %d times on %d sibling markets (e.g. %s on %s: %s)" % (
+            mech, len(v), len({d["market"] for d in v}), ex["title"], ex["market"],
+            " ".join((ex.get("why") or "").split())[:160]))
+    return ("\n\nMECHANISMS ALREADY DEAD ON SIBLING MARKETS (same family as %s, research fold only). These "
+            "markets share its structure, so the same idea under a new name will most likely die the same way. "
+            "Spend this run on mechanisms NOT in this list. Propose one of these only if you name the concrete "
+            "way %s differs from the siblings that answers why it died there:\n" % (market, market)
+            + "\n".join(lines))
+
+
+def _dropped_block(dropped: Optional[List[Dict]], market: Optional[str] = None) -> str:
     """Theses already abandoned on this market (this run and recent ones), so the proposer stops
-    re-proposing the same dead idea under a new title. Research-fold reasons only."""
+    re-proposing the same dead idea under a new title, then the mechanisms its siblings keep
+    killing (rows with a "market"). Research-fold reasons only."""
     if not dropped:
         return ""
+    sib = _sibling_block([d for d in dropped if d.get("market")], market or "this market")
+    dropped = [d for d in dropped if not d.get("market")]
+    if not dropped:
+        return sib
     seen, lines = set(), []
     for d in dropped:
         key = d["title"].strip().lower()
@@ -1518,14 +1562,14 @@ def _dropped_block(dropped: Optional[List[Dict]]) -> str:
     return ("\n\nAlready ABANDONED on this market (dead on arrival on the research fold). Do NOT "
             "re-propose these or near-variants under a new name, including the same mechanism with a "
             "different model or threshold. Revisit one only if you name the specific new data or "
-            "mechanism that answers the reason it died:\n" + "\n".join(lines))
+            "mechanism that answers the reason it died:\n" + "\n".join(lines) + sib)
 
 
 def _round_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], want: int, chunk: List[Dict],
                   dropped: Optional[List[Dict]] = None) -> str:
     """Round 1 asks fresh; later rounds show the agent its own in-sample results so it
     refines — the loop is a conversation with the data, not a fixed two-shot."""
-    base = _research_prompt(run, ds, memory, want) + _dropped_block(dropped)
+    base = _research_prompt(run, ds, memory, want) + _dropped_block(dropped, run.get("market"))
     if not chunk:
         return base + THINK_ALOUD
     # Digest, not a dump: full detail for the best few to refine, bare titles for the rest so the

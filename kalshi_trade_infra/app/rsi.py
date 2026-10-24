@@ -82,6 +82,35 @@ def classify_drop(why: Optional[str]) -> Tuple[str, str]:
     return "other", "other"
 
 
+# What an idea's TITLE says it trades on, coarse enough that the same idea under a new name lands in
+# the same bucket. First match wins, so a "logistic mean-reversion classifier" is mean reversion, and
+# the generic learned-recalibration bucket only catches what names no mechanism at all. Measured on
+# 2026-10-24's crypto drops: four of these buckets held ~80% of all drops, each across 4-10 markets.
+MECHANISMS = (
+    ("favorite-longshot / calibration", r"favou?rite.?longshot|longshot|calibrat"),
+    ("terminal pinning / convergence near expiry",
+     r"pinning|\bpin\b|terminal|convergence|near.?expiry|(final|last) \d+(-\d+)? min"),
+    ("volatility mispricing (vol scale / regime / GARCH)",
+     r"vol(atility)?[ -](mispric|overpric|underpric|overestimat|underestimat|regime|compression|crush|scale"
+     r"|decay|expansion|forecast|clustering)|garch|realized vol|vol_scale|vol scale"),
+    ("mean reversion after a move", r"mean.?revers|revert|reversal|anti.?momentum|overshoot|fade"),
+    ("momentum / drift continuation", r"momentum|drift|continuation|trend"),
+    ("cross-asset lead-lag / pairs", r"lead.?lag|\bpairs?\b|cross.?(market|asset)|relative.?value|spread z"),
+    ("order-book / flow microstructure", r"order.?book|imbalance|\bflow\b|quote|volume burst|bid.?ask size"),
+    ("session / time-of-day filter", r"session|overnight|time.?of.?day|weekend|\basia"),
+    ("generic learned recalibration (logistic / multi-factor)", r"logistic|classifier|multi.?factor|ridge"),
+)
+_MECH_RX = tuple((name, re.compile(rx, re.I)) for name, rx in MECHANISMS)
+
+
+def mechanism(title: Optional[str]) -> Optional[str]:
+    """The MECHANISMS bucket an idea's title names, or None when it names none of them."""
+    for name, rx in _MECH_RX:
+        if rx.search(title or ""):
+            return name
+    return None
+
+
 def family(market: Optional[str]) -> str:
     """The market family a run belongs to (lessons and allocation are per family, not per city):
     weather splits into daily highs and lows; everything else is its catalog category."""

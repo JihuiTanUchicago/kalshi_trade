@@ -1039,6 +1039,37 @@ def dropped_theses(cur, user_id: int, market: str, limit: int = 20) -> List[Dict
     return out
 
 
+SIBLING_RECENT_RUNS = 40
+
+
+def sibling_dropped_theses(cur, user_id: int, markets: List[str], limit: int = 400) -> List[Dict]:
+    """dropped_theses across this user's recent runs on SIBLING markets (same family), as
+    {market, title, why}. Each run used to rediscover alone that, say, favorite-longshot calibration
+    is dead on every crypto 15m strike ladder; this is what lets one market learn from the others."""
+    if not markets:
+        return []
+    cur.execute(
+        "SELECT id, market FROM app_agent_runs WHERE user_id=%%s AND kind='research' AND market IN (%s) "
+        "ORDER BY id DESC LIMIT %%s" % ",".join(["%s"] * len(markets)), (user_id, *markets, SIBLING_RECENT_RUNS))
+    runs = {r["id"]: r["market"] for r in cur.fetchall()}
+    if not runs:
+        return []
+    cur.execute(
+        "SELECT run_id, message, data_json FROM app_agent_events WHERE run_id IN (%s) AND kind='verdict' "
+        "AND message LIKE 'DROPPED %%%%' ORDER BY id DESC LIMIT %%s" % ",".join(["%s"] * len(runs)),
+        (*runs, limit))
+    out = []
+    for r in cur.fetchall():
+        data = _loads(r.get("data_json")) or {}
+        title, why = data.get("title"), data.get("why")
+        m = re.match(r'DROPPED "(.*)" \(no candidate\) \S* (.*)', r["message"] or "", re.S)
+        if m:
+            title, why = title or m.group(1), why or m.group(2)
+        if title and not (why or "").startswith("spec invalid"):
+            out.append({"market": runs.get(r["run_id"]), "title": title, "why": (why or "").strip()})
+    return out
+
+
 # -- leak-safe failure distillation (learn from dead ends) ---------------------
 # A failed strategy's row status. REJECTED (no mechanism / not a finalist / rejected on
 # validation) and INCONCLUSIVE map here (see agent._status_for); "passed"/"pending" don't.
