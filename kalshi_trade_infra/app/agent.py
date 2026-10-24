@@ -992,7 +992,7 @@ def _fair_value_table(ds: backtest.Dataset) -> str:
             tk = sn.contract.ticker
             y = ds.results.get(tk)
             t = sn.features.get("tte_min")
-            if y not in ("yes", "no") or t is None or sn.yes_bid is None or sn.yes_ask is None:
+            if y not in ("yes", "no") or t is None or t < 0 or sn.yes_bid is None or sn.yes_ask is None:
                 continue
             if not 0.0 <= sn.yes_bid < sn.yes_ask <= 1.0:
                 continue
