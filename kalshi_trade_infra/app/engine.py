@@ -526,6 +526,7 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict, sources: Sources
     open_notional = float(exposure["notional"])
     cap_positions = int(risk["max_open_positions"])
     cap_notional = float(risk["max_open_notional"])
+    ramp = _live_ramp_scale(cur, dep) if mode == "live" and not halts else 1.0
     for entry in ([] if halts else specmod.entries(spec, snaps)):
         if slots <= 0 or open_count >= cap_positions:
             break  # deployment slot cap or user-wide position cap reached
@@ -533,6 +534,8 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict, sources: Sources
         if ticker in held:
             continue
         qty = specmod.contracts_for(spec["sizing"]["stake"], entry.price)
+        if ramp < 1.0 and qty >= 1:
+            qty = max(1, int(qty * ramp))  # live size ramp: a fresh live deployment trades small
         shown = shown_size(sizes, ticker, entry.side)
         if shown is not None:
             qty = min(qty, int(shown))  # never size past the depth on the side we take
@@ -861,6 +864,23 @@ def loss_guard(cur, dep: Dict) -> bool:
 # on average, the edge did not survive real execution: pause it (flatten-on-pause closes it) and let
 # the review decide. Pausing only lowers risk; it never opens, resizes or blocks an exit.
 LIVE_DECAY_MIN_TRADES = int(os.getenv("APP_LIVE_DECAY_MIN_TRADES", "20"))
+
+
+# Live size ramp: a deployment's first LIVE_RAMP_TRADES closed live trades run at LIVE_RAMP_FRACTION
+# of the spec's stake (at least 1 contract), so a fresh promotion risks a fraction of its size while
+# the decay guard above is still gathering its 20 trades. Shrinks entries only; the fraction is
+# clamped to (0, 1] so no setting can make a ramp larger than full size.
+LIVE_RAMP_TRADES = int(os.getenv("APP_LIVE_RAMP_TRADES", "20"))
+def _ramp_fraction(raw: str) -> float:
+    return min(1.0, max(0.01, float(raw)))
+
+
+LIVE_RAMP_FRACTION = _ramp_fraction(os.getenv("APP_LIVE_RAMP_FRACTION", "0.25"))
+
+
+def _live_ramp_scale(cur, dep: Dict) -> float:
+    n, _total = repo.deployment_closed_stats(cur, dep["id"])
+    return LIVE_RAMP_FRACTION if n < LIVE_RAMP_TRADES else 1.0
 
 
 def _live_decay_reason(cur, dep: Dict) -> Optional[str]:
