@@ -127,6 +127,8 @@ Research in the autopilot float (`server._research_activity`, `research` in `/ap
 
 Visibility: the strategy page's Road to live panel (both themes) shows each gate's progress, and the autopilot float's stats show the running paper strategy closest to live (`paper_progress` in `/api/autopilot/status`: realistic trades / 30 and net P&L, one grouped query, no bootstrap on the 20s poll).
 
+The manual live path now needs the paper record too. `server.create_deployment` with mode live checked the gatekeeper candidate but not `agent._proven_on_paper`, so a candidate could go live by hand with no realistic paper trades while the autopilot path and the Road-to-live view both required them. It now refuses with the first failing paper check (30+ realistic round trips, net up, 48h+, bootstrap p ≤ 0.10). Paper and demo are unchanged.
+
 Next: feed realization to the research thread's backtest fill-model calibration.
 
 ## Kalshi perps deployment preparation — October 23, 2026, Asia/Shanghai

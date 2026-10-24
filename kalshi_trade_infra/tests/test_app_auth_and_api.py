@@ -152,6 +152,7 @@ def test_deploy_any_status_on_paper_live_gated_globally(monkeypatch):
     # §E.5 gatekeeper gate is now required for live too; default it True here so this test still
     # exercises the ORIGINAL live gates (switch + key + confirm). The gate itself is tested below.
     monkeypatch.setattr(server.agent, "_is_deployment_candidate", lambda cur, sid: True)
+    monkeypatch.setattr(server.agent, "_proven_on_paper", lambda cur, uid, sid: (True, ""))
     # any backtested status deploys on paper — the user decides
     for st in ("rejected", "failed", "passed"):
         strat["status"] = st
@@ -194,11 +195,32 @@ def test_live_refuses_non_deployment_candidate(monkeypatch):
     monkeypatch.setattr(server.engine, "LIVE_TRADING_ENABLED", True)
     monkeypatch.setattr(server.repo, "get_kalshi_key", lambda cur, uid: {"key_id": "k"})
     monkeypatch.setattr(server.agent, "_is_deployment_candidate", lambda cur, sid: False)
+    monkeypatch.setattr(server.agent, "_proven_on_paper", lambda cur, uid, sid: (True, ""))
     with pytest.raises(server.ApiError, match="deployment candidate"):
         server.create_deployment(ctx({"strategy_id": 5, "mode": "live", "confirm": "LIVE"}))
     # Cleared -> the original gates take over (here: confirmation), proving the gate is additive.
     monkeypatch.setattr(server.agent, "_is_deployment_candidate", lambda cur, sid: True)
     assert server.create_deployment(ctx({"strategy_id": 5, "mode": "live", "confirm": "LIVE"})) == {"id": 11}
+
+
+def test_live_refuses_a_strategy_not_proven_on_paper(monkeypatch):
+    # The manual live path needs the same paper record as the autopilot's deploy_live, even for a
+    # gatekeeper deployment candidate with every other live gate green.
+    strat = {"id": 5, "status": "passed", "market": "btc15m", "title": "T", "spec": {"side": "yes"}}
+    monkeypatch.setattr(server.repo, "get_strategy", lambda cur, uid, sid: dict(strat))
+    monkeypatch.setattr(server.repo, "list_deployments", lambda *a, **k: [])
+    monkeypatch.setattr(server.repo, "create_deployment", lambda *a, **k: 11)
+    monkeypatch.setattr(server.repo, "add_chat", lambda *a, **k: 1)
+    monkeypatch.setattr(server.engine, "LIVE_TRADING_ENABLED", True)
+    monkeypatch.setattr(server.repo, "get_kalshi_key", lambda cur, uid: {"key_id": "k"})
+    monkeypatch.setattr(server.agent, "_is_deployment_candidate", lambda cur, sid: True)
+    monkeypatch.setattr(server.agent, "_proven_on_paper",
+                        lambda cur, uid, sid: (False, "it needs 30+ closed paper trades on realistic fills first (has 3)"))
+    with pytest.raises(server.ApiError, match="proven itself on paper.*has 3") as e:
+        server.create_deployment(ctx({"strategy_id": 5, "mode": "live", "confirm": "LIVE"}))
+    assert e.value.status == 409
+    # Paper stays open: the paper record is what this gate waits for.
+    assert server.create_deployment(ctx({"strategy_id": 5, "mode": "paper"})) == {"id": 11}
 
 
 def test_dashboard_mode_buckets_do_not_double_count(monkeypatch):
