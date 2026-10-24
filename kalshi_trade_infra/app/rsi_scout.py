@@ -177,6 +177,11 @@ def main() -> None:
     try:
         n = run(conn, a.market, a.max_markets, a.stale_hours)
         print("[scout] scanned %d market(s)" % n, flush=True)
+        from app import rsi_repair   # same cadence: ask for missing data, re-test ideas whose data arrived
+        try:
+            print("[scout] data repair %s" % rsi_repair.run(conn), flush=True)
+        except Exception as e:  # noqa: BLE001 - the scan's results are already committed
+            print("[scout] data repair failed: %r" % e, flush=True)
     finally:
         conn.close()
 

@@ -59,6 +59,18 @@ def micro_series() -> List[str]:
     return list(DEFAULT_MICRO_SERIES)
 
 
+def requested_series(cur, kind: str, limit: int) -> List[str]:
+    """Series research asked a collector to add (app_data_requests, written by app/rsi_repair.py on the
+    web box; read here so the collector box needs no app/ code). Oldest open request first. [] when the
+    table is absent or unreadable: a collector must never stop over it."""
+    try:
+        cur.execute("SELECT series, MIN(created_at) AS since FROM app_data_requests WHERE status='open' AND kind=%s "
+                    "GROUP BY series ORDER BY since LIMIT %s", (kind, int(limit)))
+        return [r["series"] for r in cur.fetchall() if r.get("series")]
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def is_primary_micro_ticker(market_ticker: Optional[str]) -> bool:
     """True only for the primary (BTC) series' contracts, which alone feed the live/sim
     models. Non-primary rows carry order-flow features for research but must never reach

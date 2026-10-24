@@ -3,7 +3,7 @@ import time
 from datetime import timedelta
 from typing import Dict, List, Optional
 
-from data_pipeline.common import api_get, get_db_conn, micro_series, parse_iso_to_dt, utc_now
+from data_pipeline.common import api_get, get_db_conn, micro_series, parse_iso_to_dt, requested_series, utc_now
 
 
 def next_minute_mark(now=None):
@@ -190,12 +190,25 @@ def collect_series(cur, mark, series: str, is_primary: bool) -> Optional[str]:
         return None
 
 
+REQUESTED_MAX_SERIES = 12      # extra series research may ask for (app/rsi_repair.py MAX_MICRO_SERIES)
+REQUESTED_REFRESH_SECONDS = 600
+
+
+def with_requested(base: List[str], cur) -> List[str]:
+    """The configured series, then any research asked for (never displacing the primary first)."""
+    return base + [s for s in requested_series(cur, "micro", REQUESTED_MAX_SERIES) if s not in base]
+
+
 def run_loop():
     conn = get_db_conn()
-    series_list = micro_series()
+    base = micro_series()
     with conn.cursor() as cur:
+        series_list = with_requested(base, cur)
+        refreshed = time.time()
         print(f'trade_quote_features_1m collector started. Series={series_list}')
         while True:
+            if time.time() - refreshed >= REQUESTED_REFRESH_SECONDS:
+                series_list, refreshed = with_requested(base, cur), time.time()
             mark = next_minute_mark()
             time.sleep(max(0.0, (mark - utc_now()).total_seconds()))
             primary_ticker = None

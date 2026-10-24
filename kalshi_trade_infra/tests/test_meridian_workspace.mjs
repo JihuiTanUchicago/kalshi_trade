@@ -1393,7 +1393,9 @@ test('Research index shows the research loop scoreboard, escaped, and keeps it o
     scout: [{market: 'btc15m', best_what: 'calibration <4h 5-10c buy-NO', best_net_c: 3.2, best_z: 2.6}],
     fix_list: [{tag: 'feature_unavailable', market: 'btc15m', count: 4, example: 'needs obs_high_f'}],
     paper: {total: {strategies: 2, trading: 1, round_trips: 12, net_pnl: -1.5, realization: -0.4, live_ready: 0},
-      by_playbook: {'7': {round_trips: 12, net_pnl: -1.5}}}};
+      by_playbook: {'7': {round_trips: 12, net_pnl: -1.5}}},
+    data_requests: [{market: 'btc15m', kind: 'micro', need: 'flow_imb_60s', status: 'requeued', requeued_run_id: 44,
+      idea_title: 'Flow <b>leads</b>', note: null}]};
   const f = frontend({fetchImpl: path => {
     if (path === '/api/models') return response({models: [], default: ''});
     if (path === '/api/research/context') return response({markets: []});
@@ -1411,6 +1413,8 @@ test('Research index shows the research loop scoreboard, escaped, and keeps it o
   assert.match(html, /feature missing/); assert.match(html, /calibration &lt;4h/);
   assert.match(html, /On paper against the live book: 2 passed strategies, 1 trading, 12 round trips, net −\$1\.50, losing money where the backtest expected a profit/);
   assert.match(html, /3 of 20 ideas reached the gate · on paper 12 trips, −\$1\.50/);
+  assert.match(html, /order-book feature · flow_imb_60s<\/b> · idea re-tested · <a href="\/research\/44">session<\/a>/);
+  assert.match(html, /For: Flow &lt;b&gt;leads&lt;\/b&gt;/);
   assert.ok(html.includes('&lt;script&gt;')); assert.doesNotMatch(html, /<script>/);
   details.open = true;
   f.intervals.get(f.S.timers.at(-1))(); await flush();
