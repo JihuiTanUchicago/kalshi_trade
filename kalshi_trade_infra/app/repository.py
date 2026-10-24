@@ -1955,14 +1955,43 @@ def load_history(cur, series: str, candle_minutes: int, since: datetime,
             "micro": _load_micro(cur, series, since, tickers)}
 
 
+_MICRO_COLS_TTL = 600.0
+_micro_cols_cache: Dict[str, Any] = {"at": 0.0, "fields": None}
+
+
+def _micro_select(cur, prefix: str = "") -> Tuple[str, List[str]]:
+    """The MICRO_FEATURES select list restricted to columns that exist in model_features_1m now,
+    plus their names. A feature is added to MICRO_FEATURES before (or without) its migration on
+    some box; selecting a missing column would fail the whole query, and both loaders treat a
+    failure as "no micro at all", silently dropping every order-book feature from research and
+    live alike. Columns are re-read every _MICRO_COLS_TTL seconds; if they can't be read, all of
+    MICRO_FEATURES is used, as before."""
+    import time as _time
+    from app.markets import MICRO_FEATURES
+    fields = _micro_cols_cache["fields"]
+    if fields is None or _time.time() - _micro_cols_cache["at"] > _MICRO_COLS_TTL:
+        try:
+            cur.execute("SHOW COLUMNS FROM model_features_1m")
+            rows = cur.fetchall() or []
+            got = {r.get("Field") for r in rows if isinstance(r, dict)} - {None}
+        except Exception:  # noqa: BLE001 - unreadable schema: fall back to the full list
+            got = set()
+        fields = got or None
+        if fields:
+            _micro_cols_cache.update(at=_time.time(), fields=fields)
+    items = [(n, c) for n, (c, _d) in MICRO_FEATURES.items() if fields is None or c in fields]
+    return ", ".join("%s%s AS %s" % (prefix, c, n) for n, c in items), [n for n, _c in items]
+
+
 def _load_micro(cur, series: str, since: datetime,
                 tickers: Optional[set] = None) -> Dict[tuple, Dict[str, Any]]:
     """Collected order-book/microstructure features for this series' contracts since
     `since`, keyed (ticker, minute_unix_ts) so build_dataset can join them onto the
     matching contract snapshot. Columns are aliased to their MICRO_FEATURES names; a
     missing table just yields no rows (older DBs that predate the feature builder)."""
-    from app.markets import MICRO_FEATURES
-    cols = ", ".join("f.%s AS %s" % (col, name) for name, (col, _d) in MICRO_FEATURES.items())
+    cols, names = _micro_select(cur, "f.")
+    if not names:
+        return {}
     try:
         cur.execute(
             "SELECT f.market_ticker, f.snapshot_minute_utc, " + cols +
@@ -1973,7 +2002,6 @@ def _load_micro(cur, series: str, since: datetime,
         )
     except Exception:  # noqa: BLE001 - table absent on legacy DBs; micro is optional
         return {}
-    names = list(MICRO_FEATURES)
     out: Dict[tuple, Dict[str, Any]] = {}
     for r in cur.fetchall():
         if tickers is not None and r["market_ticker"] not in tickers:
@@ -1989,19 +2017,19 @@ def latest_micro(cur, tickers, as_of_ts: int, max_age_seconds: int = 120) -> Dic
     before ``as_of_ts`` and no older than ``max_age_seconds``, aliased to MICRO_FEATURES names.
     A ticker with no fresh row is absent, exactly as a missing row leaves research's snapshot
     without the features (and a filter on one then never matches)."""
-    from app.markets import MICRO_FEATURES
     tickers = sorted({t for t in tickers if t})
     if not tickers:
         return {}
     as_of = datetime.fromtimestamp(int(as_of_ts), tz=timezone.utc).replace(tzinfo=None)
-    cols = ", ".join("%s AS %s" % (col, name) for name, (col, _d) in MICRO_FEATURES.items())
+    cols, names = _micro_select(cur)
+    if not names:
+        return {}
     cur.execute(
         "SELECT market_ticker, snapshot_minute_utc, " + cols + " FROM model_features_1m "
         "WHERE market_ticker IN (" + ",".join(["%s"] * len(tickers)) + ") "
         "AND snapshot_minute_utc <= %s AND snapshot_minute_utc >= %s ORDER BY snapshot_minute_utc",
         tuple(tickers) + (as_of, as_of - timedelta(seconds=int(max_age_seconds))),
     )
-    names = list(MICRO_FEATURES)
     out: Dict[str, Dict[str, Any]] = {}
     for r in cur.fetchall():
         out[r["market_ticker"]] = {n: r[n] for n in names if r.get(n) is not None}  # newest row wins

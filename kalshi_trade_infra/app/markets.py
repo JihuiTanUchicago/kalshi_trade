@@ -369,6 +369,13 @@ MICRO_FEATURES: Dict[str, Tuple[str, str]] = {
     "quote_changes_60s": ("quote_change_events_60s", "best-quote change events in the last 60 seconds"),
     "ob_mid_ret_1m": ("mid_ret_1m", "log return of the YES mid over the last 1 minute"),
     "ob_mid_ret_3m": ("mid_ret_3m", "log return of the YES mid over the last 3 minutes"),
+    # Signed taker flow from market_trades (collected from 2026-10-24 09:21Z): who crossed the spread.
+    "taker_yes_vol_60s": ("taker_yes_vol_60s", "contracts bought by YES takers in the last 60 seconds"),
+    "taker_no_vol_60s": ("taker_no_vol_60s", "contracts bought by NO takers (YES bid hit) in the last 60 seconds"),
+    "flow_imb_60s": ("flow_imbalance_60s",
+                     "signed taker flow (yes - no)/(yes + no) over the last 60 seconds, -1..1; absent with no trades"),
+    "flow_imb_300s": ("flow_imbalance_300s",
+                      "signed taker flow (yes - no)/(yes + no) over the last 5 minutes, -1..1; absent with no trades"),
 }
 # The micro features live in the same FEATURES namespace specs filter on.
 FEATURES.update({name: desc for name, (_col, desc) in MICRO_FEATURES.items()})

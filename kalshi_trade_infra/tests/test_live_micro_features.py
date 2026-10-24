@@ -99,3 +99,33 @@ def test_tick_market_passes_micro_into_the_decision_snapshots(monkeypatch):
 
     engine.tick_market(_Conn(), market, src, now)
     assert got["snaps"] and all(s.features["ob_imbalance"] == -0.5 for s in got["snaps"])
+
+
+class _SchemaCur(_Cur):
+    """Answers SHOW COLUMNS with a model_features_1m that predates the flow columns."""
+
+    def __init__(self, rows, fields):
+        super().__init__(rows)
+        self.fields = fields
+        self._last = None
+
+    def execute(self, sql, params=None):
+        super().execute(sql, params)
+        self._last = sql
+
+    def fetchall(self):
+        if self._last and self._last.startswith("SHOW COLUMNS"):
+            return [{"Field": f} for f in self.fields]
+        return self.rows
+
+
+def test_micro_select_skips_columns_missing_from_the_table(monkeypatch):
+    """A MICRO_FEATURES entry whose migration hasn't run must not fail the whole read (which would
+    drop every order-book feature from research and live): it is just left out."""
+    monkeypatch.setattr(repo, "_micro_cols_cache", {"at": 0.0, "fields": None})
+    legacy = [c for n, (c, _d) in MICRO_FEATURES.items() if not c.startswith(("taker_", "flow_"))]
+    now = 1_800_000_000
+    cur = _SchemaCur([_row("A", now - 60, 0.3)], ["market_ticker", "snapshot_minute_utc"] + legacy)
+    out = repo.latest_micro(cur, ["A"], now)
+    assert out == {"A": {"ob_imbalance": 0.3, "yes_bid_size": 10}}
+    assert "flow_imbalance_60s" not in cur.sql and "orderbook_imbalance AS ob_imbalance" in cur.sql
