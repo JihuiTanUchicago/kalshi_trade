@@ -464,3 +464,14 @@ def test_a_dataless_pool_leg_fails_only_that_hypothesis(monkeypatch):
     with pytest.raises(ValueError):  # an unrecognized error is still a real bug and propagates
         agent._test_in_sample(dict(h, spec=specmod.validate({"market": "btc15m", "pool": ["sol15m"]})),
                               None, {"embargo_seconds": 0}, lambda *a: None, 1, cur=object(), merged_cache={})
+
+
+def test_daily_settling_markets_use_all_their_history():
+    """Run 2613 picked 156 of high_ny's 365 days: for one-event-per-day markets that's lost power."""
+    from app.markets import MARKETS
+    def no_model(*a, **k):
+        raise AssertionError("no planning call for a daily-settling market")
+    logs = []
+    assert agent._plan_lookback({"prompt": "x"}, "high_ny", no_model, None,
+                                lambda *a: logs.append(a)) == MARKETS["high_ny"].history_days
+    assert "independent settlement" in logs[0][1]
