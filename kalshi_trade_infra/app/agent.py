@@ -456,7 +456,15 @@ def _stream_proposer(model: ModelFn, sink: _StreamSink) -> ModelFn:
 
 
 def _hypotheses_check(market: str, max_n: int) -> Callable[[Dict], List[Dict]]:
+    """Validate a proposer batch. An invalid spec gets ONE repair round (the errors go back to the
+    model); after that the valid ideas go ahead and each still-invalid one is kept on
+    check.invalid ({title, why}) for the caller to log as a dropped idea, so one bad spec can no
+    longer sink the whole batch. Only a batch with no valid idea at all fails the attempt."""
+    state = {"calls": 0}
+
     def check(obj: Dict) -> List[Dict]:
+        state["calls"] += 1
+        check.invalid = []
         items = obj.get("hypotheses")
         if not isinstance(items, list) or not 1 <= len(items) <= max_n:
             raise ValueError("'hypotheses' must be a list of 1 to %d items" % max_n)
@@ -480,6 +488,7 @@ def _hypotheses_check(market: str, max_n: int) -> Callable[[Dict], List[Dict]]:
                 spec = specmod.validate(raw)
             except specmod.SpecError as e:
                 problems.append("hypotheses[%d].spec: %s" % (i, e))
+                check.invalid.append({"title": title[:120], "why": "spec invalid: %s" % e})
                 continue
             # The §C pre-registration fields are OPTIONAL (older callers/tests send only
             # title/thesis/spec): the challenger and the gatekeeper's Prereg fall back to
@@ -494,10 +503,11 @@ def _hypotheses_check(market: str, max_n: int) -> Callable[[Dict], List[Dict]]:
                 "primary_metric": str(h.get("primary_metric") or "mean_net_return_per_trade")[:48],
                 "min_sample": int(h["min_sample"]) if isinstance(h.get("min_sample"), (int, float)) else 30,
             })
-        if problems:
+        if problems and (not out or state["calls"] == 1):
             raise ValueError("; ".join(problems))
         return out
 
+    check.invalid = []
     return check
 
 
@@ -1739,6 +1749,7 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
         proposer = knowledge.wrap(proposer, usage)
     attempts = 0  # theses DEVELOPED this chunk (survivors + abandoned), the real cost
     streak = 0  # consecutive drops, reset by any survivor
+    bad_rounds = 0  # proposing rounds whose every spec failed validation
     while True:
         checkpoint()
         round_no += 1
@@ -1762,9 +1773,26 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
         log("step", "Proposing round %d — generating up to %d hypothes%s…"
             % (round_no, want, "is" if want == 1 else "es"),
             {"phase": "proposing", "round": round_no, "width": want})
-        batch = market_data.ask(proposer, _research_system(market),
-                         [{"role": "user", "content": _round_prompt(run, ds, memory, want, chunk, dropped)}],
-                         _hypotheses_check(market, want), usage)
+        check = _hypotheses_check(market, want)
+        try:
+            batch = market_data.ask(proposer, _research_system(market),
+                                    [{"role": "user", "content": _round_prompt(run, ds, memory, want, chunk, dropped)}],
+                                    check, usage)
+        except LLMError as e:
+            if "could not be used" not in str(e):
+                raise  # the model call itself failed (timeout, API): not a spec problem
+            # Every idea in the batch stayed invalid through the repair rounds. That is a proposer or
+            # schema bug, not evidence: log it as a dropped idea (the scoreboard counts it as
+            # spec_invalid) and try one fresh round before giving up on proposing.
+            bad_rounds += 1
+            _abandon(log, {"title": "Proposing round %d" % round_no}, "spec invalid: %s" % e, None)
+            if bad_rounds < 2:
+                continue
+            if chunk:
+                break  # gate what this chunk already developed
+            raise
+        for bad in check.invalid:
+            _abandon(log, bad, bad["why"], None)  # not added to `dropped`: the idea itself was never tested
         if not batch:
             break  # agent is out of fresh ideas this chunk
         for h in batch:

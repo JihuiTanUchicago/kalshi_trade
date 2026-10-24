@@ -67,7 +67,7 @@ def test_code_spec_validates_to_minimal_shape():
     {"market": "btc15m", "code": "import os\ndef signals(w): return []", "sizing": {"stake": 5, "max_positions": 1}},
     {"market": "btc15m", "code": BUY_ALL, "sizing": {"stake": 9999, "max_positions": 1}},
     {"market": "nope", "code": BUY_ALL, "sizing": {"stake": 5, "max_positions": 1}},
-    {"market": "btc15m", "code": BUY_ALL, "sizing": {"stake": 5, "max_positions": 1}, "entry": {}},
+    {"market": "btc15m", "code": BUY_ALL, "sizing": {"stake": 5, "max_positions": 1}, "entyr": {}},
 ])
 def test_bad_code_spec_rejected(raw):
     with pytest.raises(specmod.SpecError):

@@ -184,10 +184,14 @@ def test_invalid_spec_gets_one_repair(monkeypatch):
 
 def test_unrepairable_reply_fails_the_run_visibly(monkeypatch):
     store = Store(monkeypatch)
-    model, _ = scripted([plan(), "no json here", "still none", "and still none"])
+    # Two proposing rounds (3 tries each) with nothing usable and nothing developed: the run fails,
+    # and each dead round is logged as a spec_invalid drop the research scoreboard counts.
+    model, _ = scripted([plan()] + ["no json here"] * 6)
     agent.run_research(Conn(), RUN, model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
     assert store.finished[0] == "failed"
     assert store.events[-1][0] == "error"
+    drops = [e for e in store.events if e[0] == "verdict" and "spec invalid" in e[1]]
+    assert len(drops) == 2
 
 
 def test_too_little_history_stops_before_spending_on_the_model(monkeypatch):

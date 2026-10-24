@@ -9,7 +9,8 @@ gate verdict. This module turns that into a scorecard per run and a scoreboard a
   spend      the run's model tokens priced at its model's list price
   deaths     why each dropped idea died, classified as
                pipeline  the pipeline failed the idea (a feature it thought was missing, no data, a
-                         load error): engineering work, not evidence about the market
+                         load error, a spec the validator rejected): engineering work, not evidence
+                         about the market
                spec      the spec never traded (0 trades): usually a filter cut outside the data
                edge      the market killed it (loses money, fee floor, mechanism falsified)
                other     anything the rules don't recognise
@@ -32,6 +33,9 @@ from app.markets import MARKETS
 # (tag, kind, pattern) checked in order; the first match wins. Built from the drop reasons of real
 # runs (2531, 2563, 2613): the proposer explains a drop in prose, so these are phrase patterns.
 _DROP_RULES: Tuple[Tuple[str, str, str], ...] = (
+    # the spec validator (or the proposer's reply parser) rejected the idea before it was tested
+    ("spec_invalid", "pipeline",
+     r"spec invalid|could not be used|unknown field|is not a known feature|spec must be"),
     ("feature_unavailable", "pipeline",
      r"not available|unavailable|unpopulated|not populated|isn't available|is not visible|not visible in"
      r"|(feature|column)s? (is |are )?(missing|null|empty|sparse)|cannot confirm .{0,40}(feature|populated|available)"
@@ -119,6 +123,9 @@ def run_card(run: Dict, events: Iterable[Dict]) -> Dict:
             f["challenger_rejected"] += 1
         elif "not a finalist" in msg:
             f["not_finalist"] += 1
+    # A run that FAILED on an unusable proposer reply never logged its ideas: count it as a bug death.
+    if run.get("status") == "failed" and classify_drop(run.get("error"))[0] == "spec_invalid":
+        f["spec_failed_runs"] += 1
     developed = f["gated"] + f["underpowered"] + f["challenger_rejected"] + f["not_finalist"]
     explored = max(developed + f["dropped"], int(run.get("hypotheses_tried") or 0))
     cost = run_cost_usd(run)
@@ -131,7 +138,7 @@ def run_card(run: Dict, events: Iterable[Dict]) -> Dict:
         "not_finalist": f["not_finalist"], "gated": f["gated"], "passed": f["passed"],
         "holdout_passed": f["holdout_passed"], "deploy_candidates": f["deploy_candidates"],
         "deaths": dict(deaths), "death_kinds": {k: kinds[k] for k in KINDS if kinds[k]},
-        "pipeline_deaths": pipeline,
+        "pipeline_deaths": pipeline, "spec_failed_runs": f["spec_failed_runs"],
     }
 
 
@@ -143,6 +150,7 @@ def _rollup(cards: List[Dict]) -> Dict:
         for k in ("explored", "developed", "dropped", "gated", "passed", "holdout_passed", "deploy_candidates"):
             tot[k] += c[k]
         tot["cost_cents"] += round(100 * c["cost_usd"])
+        tot["spec_failed_runs"] += c.get("spec_failed_runs", 0)
         deaths.update(c["deaths"])
         kinds.update(c["death_kinds"])
     cost = tot["cost_cents"] / 100.0
@@ -157,6 +165,9 @@ def _rollup(cards: List[Dict]) -> Dict:
         "gated_per_100usd": round(tot["gated"] * per100, 2) if per100 else None,
         "passed_per_100usd": round(tot["passed"] * per100, 2) if per100 else None,
         "pipeline_death_share": round(kinds["pipeline"] / tot["dropped"], 3) if tot["dropped"] else None,
+        # infrastructure bugs: ideas the validator/parser killed, plus whole runs it failed
+        "spec_invalid_deaths": deaths["spec_invalid"], "spec_failed_runs": tot["spec_failed_runs"],
+        "bug_death_rate": round(deaths["spec_invalid"] / tot["dropped"], 3) if tot["dropped"] else None,
         "death_kinds": {k: kinds[k] for k in KINDS if kinds[k]},
         "top_deaths": deaths.most_common(5),
     }
@@ -215,7 +226,7 @@ def trend(cards: List[Dict], min_ideas: int = 8) -> Optional[Dict]:
 
 
 def recent_runs(cur, days: int = 7, user_id: Optional[int] = None) -> List[Dict]:
-    sql = ("SELECT id, user_id, market, status, model, hypotheses_tried, strategies_passed, input_tokens, "
+    sql = ("SELECT id, user_id, market, status, error, model, hypotheses_tried, strategies_passed, input_tokens, "
            "output_tokens, created_at FROM app_agent_runs WHERE kind='research' "
            "AND created_at >= UTC_TIMESTAMP() - INTERVAL %s DAY AND status IN ('succeeded','stopped','failed')")
     args: List = [int(days)]
