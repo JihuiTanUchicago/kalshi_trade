@@ -1120,6 +1120,20 @@ def autopilot_kill(ctx: Ctx):
     return {"ok": True, "paused": paused}
 
 
+def _research_activity(cur, uid: int) -> Dict:
+    """What research is doing for the autopilot float: the markets being researched now and the
+    last 7 days' tested/passed counts, so a quiet panel reads as working, not stuck. One bounded read."""
+    since = repo.now_utc() - timedelta(days=7)
+    runs = repo.list_runs(cur, uid, limit=50)
+    active = [r for r in runs if r.get("status") in ("queued", "running", "paused")]
+    week = [r for r in runs if r.get("created_at") and r["created_at"] >= since]
+    return {"active": [MARKETS[r["market"]].label if r.get("market") in MARKETS else (r.get("market") or "choosing a market")
+                       for r in active],
+            "tested_7d": sum(int(r.get("hypotheses_tried") or 0) for r in week),
+            "passed_7d": sum(int(r.get("strategies_passed") or 0) for r in week),
+            "runs_7d": len(week)}
+
+
 def autopilot_status(ctx: Ctx):
     """Lightweight status for the floating autopilot window."""
     cur, u = ctx.cur, ctx.user
@@ -1149,6 +1163,7 @@ def autopilot_status(ctx: Ctx):
                           "trades_needed": agent.MIN_REALISTIC_PAPER_TRADES, "net_pnl": round(net, 2),
                           "strategies": len(sids)}
     return {
+        "research": _research_activity(cur, ctx.uid),
         "autopilot": bool(u.get("autopilot")),
         "autopilot_live": bool(u.get("autopilot_live")),
         "live_enabled": bool(engine.LIVE_TRADING_ENABLED),

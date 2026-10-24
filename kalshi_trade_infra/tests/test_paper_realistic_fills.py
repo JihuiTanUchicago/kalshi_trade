@@ -308,6 +308,7 @@ def test_autopilot_status_reports_paper_strategy_closest_to_live(monkeypatch):
     monkeypatch.setattr(server.repo, "last_autopilot_action", lambda *a: None)
     monkeypatch.setattr(server.repo, "last_review_at", lambda *a: None)
     monkeypatch.setattr(server.billing, "configured", lambda: False)
+    monkeypatch.setattr(server.repo, "list_runs", lambda *a, **k: [])
     seen = {}
     monkeypatch.setattr(server.repo, "paper_progress",
                         lambda cur, uid, sids: seen.setdefault("sids", sids) and {1: (4, 9.0), 2: (11, -1.0)})
@@ -316,6 +317,22 @@ def test_autopilot_status_reports_paper_strategy_closest_to_live(monkeypatch):
     assert out["paper_progress"] == {"strategy_id": 2, "title": "Fast", "trades": 11,
                                      "trades_needed": agent.MIN_REALISTIC_PAPER_TRADES,
                                      "net_pnl": -1.0, "strategies": 2}
+
+
+def test_autopilot_status_reports_research_activity(monkeypatch):
+    from datetime import timedelta
+    from app import server
+    now = server.repo.now_utc()
+    runs = [{"market": "nhl_game", "status": "running", "created_at": now, "hypotheses_tried": 0, "strategies_passed": 0},
+            {"market": None, "status": "queued", "created_at": now, "hypotheses_tried": 0, "strategies_passed": 0},
+            {"market": "btc15m", "status": "succeeded", "created_at": now - timedelta(days=1),
+             "hypotheses_tried": 9, "strategies_passed": 1},
+            {"market": "btc15m", "status": "succeeded", "created_at": now - timedelta(days=9),
+             "hypotheses_tried": 50, "strategies_passed": 3}]
+    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, limit=50: runs)
+    out = server._research_activity(None, 7)
+    assert out["active"] == [server.MARKETS["nhl_game"].label, "choosing a market"]
+    assert (out["tested_7d"], out["passed_7d"], out["runs_7d"]) == (9, 1, 3)
 
 
 # -- Road to live: read-only readiness view ------------------------------------------

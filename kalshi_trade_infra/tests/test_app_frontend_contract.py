@@ -132,6 +132,7 @@ def _ap_ctx(monkeypatch, autopilot=1):
     monkeypatch.setattr(server.repo, 'realized_pnl', lambda *a: 0.0)
     monkeypatch.setattr(server.repo, 'last_autopilot_action', lambda *a: None)
     monkeypatch.setattr(server.repo, 'last_review_at', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'list_runs', lambda *a, **k: [])
     monkeypatch.setattr(server.billing, 'configured', lambda: True)
     return ctx
 
