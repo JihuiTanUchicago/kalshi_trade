@@ -11,8 +11,9 @@
 - The autopilot panel's story lists up to three waiting strategies in plain words, and the review
   context gets a "last entry check" line per deployment, so reviews can tell a rule that never fires
   on the live book (stop it, research a better one) from one waiting on a rare setup.
-- Next: feed "never cleared check X in N hours" into the paper outcomes for research, so the proposer
-  stops writing entry bands the live book never reaches.
+- Paper outcomes (`rsi.paper_outcomes`) now count, per family and per playbook, the entry check each
+  never-traded paper strategy last stopped at (`stuck_on`), and the review line names them. Next: have
+  the proposer read `stuck_on` so it stops writing entry bands the live book never reaches.
 
 ## Research RSI: paper outcomes close the loop (2026-10-24)
 

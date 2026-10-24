@@ -252,6 +252,9 @@ def _paper_rollup(rows: List[Dict]) -> Dict:
         "round_trips": trips, "net_pnl": round(net, 4),
         "realization": round(net / expected, 3) if expected > 0 else None,
         "live_ready": sum(1 for r in rows if r["live_ready"]),
+        # For strategies that never traded: the entry check the engine last saw no contract clear
+        # (spec.entry_scan). Tells research which part of its specs the live book never reaches.
+        "stuck_on": dict(Counter(r["stuck_on"] for r in rows if not r["round_trips"] and r.get("stuck_on"))),
     }
 
 
@@ -288,7 +291,7 @@ def paper_outcomes(cur, user_id: int) -> Dict:
         rows.append({"strategy_id": sid, "family": family(d.get("market")), "playbook_id": playbooks.get(sid),
                      "round_trips": int(trips), "net_pnl": float(net),
                      "backtest_per_trade": float(oos.get("pnl") or 0) / n_bt if n_bt else None,
-                     "live_ready": ready})
+                     "live_ready": ready, "stuck_on": (d.get("scan") or {}).get("blocked_at")})
     fams: Dict[str, List[Dict]] = defaultdict(list)
     pbs: Dict[int, List[Dict]] = defaultdict(list)
     for r in rows:
@@ -314,6 +317,9 @@ def paper_outcomes_lines(outcomes: Dict) -> List[str]:
             line += ", %d live-ready" % r["live_ready"]
         if r["strategies"] and not r["trading"]:
             line += " (none has traded yet: their entry rules may never fire on the live book)"
+        if r.get("stuck_on"):
+            line += "; untraded ones last stopped at: %s" % ", ".join(
+                "%s (%d)" % (k, n) for k, n in sorted(r["stuck_on"].items(), key=lambda kv: -kv[1]))
         out.append(line)
     return out
 

@@ -139,26 +139,28 @@ def _paper_setup(monkeypatch, deps, progress, assignments, ready_ids=()):
     return Cur()
 
 
-def _dep(sid, market, mode="paper", pnl=10.0, trades=10):
-    return {"strategy_id": sid, "market": market, "mode": mode,
+def _dep(sid, market, mode="paper", pnl=10.0, trades=10, stuck=None):
+    return {"strategy_id": sid, "market": market, "mode": mode, "scan": {"blocked_at": stuck} if stuck else None,
             "result": {"out_of_sample": {"pnl": pnl, "trades": trades}}}
 
 
 def test_paper_outcomes_score_families_and_playbooks_on_realistic_fills(monkeypatch):
-    deps = [_dep(1, "high_ny"), _dep(1, "high_ny"), _dep(2, "high_ny", pnl=20.0), _dep(3, "btc15m"),
+    deps = [_dep(1, "high_ny"), _dep(1, "high_ny"), _dep(2, "high_ny", pnl=20.0), _dep(3, "btc15m", stuck="ret_5m > 0"),
             _dep(4, "high_ny", mode="live")]
     # 1: 40 trips, +$8 (backtest says $1/trade -> 20% realized); 2: 10 trips, -$5; 3: never traded.
     cur = _paper_setup(monkeypatch, deps, {1: (40, 8.0), 2: (10, -5.0)}, {1: 7, 2: 7, 3: 9}, ready_ids={1})
     out = rsi.paper_outcomes(cur, 2)
     high = out["families"]["weather-high"]
     assert high == {"strategies": 2, "trading": 2, "round_trips": 50, "net_pnl": 3.0,
-                    "realization": round(3.0 / (40 * 1.0 + 10 * 2.0), 3), "live_ready": 1}
+                    "realization": round(3.0 / (40 * 1.0 + 10 * 2.0), 3), "live_ready": 1, "stuck_on": {}}
+    assert out["families"]["crypto"]["stuck_on"] == {"ret_5m > 0": 1}
     assert out["families"]["crypto"]["trading"] == 0 and out["families"]["crypto"]["realization"] is None
     assert out["by_playbook"][7]["round_trips"] == 50 and out["by_playbook"][9]["strategies"] == 1
     assert out["total"]["strategies"] == 3  # the live deployment is not paper evidence
     assert "app_rsi_assignments" in cur.sql[0][0] and cur.sql[0][1] == [1, 2, 3]
     lines = rsi.paper_outcomes_lines(out)
     assert lines[0].startswith("- crypto: 1 on paper, 0 trading") and "never fire" in lines[0]
+    assert lines[0].endswith("untraded ones last stopped at: ret_5m > 0 (1)")
     assert "paper earns 5% of backtest per trade, 1 live-ready" in lines[1]
 
 
