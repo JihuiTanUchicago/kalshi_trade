@@ -1723,6 +1723,38 @@ def admin_waitlist(ctx: Ctx):
     return {"ok": True, "email": email, "action": action}
 
 
+def admin_kill_switch(ctx: Ctx):
+    """The DB-backed execution kill switch. While on, every engine process refuses new BUYS
+    within ~5s (no restart); SELLS always run. Admin-only."""
+    _require_admin(ctx)
+    from app.execution import kill_switch as ks
+    st = ks.read_state(ctx.cur)
+    return {"on": bool(st.get("on")), "reason": st.get("reason") or "", "by": st.get("by") or "",
+            "updated_at": st.get("updated_at_utc"), "env_on": os.getenv("APP_KILL_SWITCH") == "1"}
+
+
+def admin_kill_switch_set(ctx: Ctx):
+    """POST {on: bool, reason}: flip the DB-backed execution kill switch, then return its state."""
+    _require_admin(ctx)
+    from app.execution import kill_switch as ks
+    on = ctx.body.get("on")
+    if not isinstance(on, bool):
+        raise ApiError(400, "Send on: true or false.")
+    ks.write_state(ctx.cur, on, str(ctx.body.get("reason") or "")[:200], ctx.user["email"])
+    return admin_kill_switch(ctx)
+
+
+def exec_tca(ctx: Ctx):
+    """Transaction cost analysis of real orders over a trailing window (admin-only). Read-only."""
+    _require_admin(ctx)
+    from app import tca
+    try:
+        days = float(ctx.query.get("days", "7"))
+    except (TypeError, ValueError):
+        days = 7.0
+    return tca.report(ctx.cur, days=max(0.1, min(days, 90.0)))
+
+
 def exec_latency(ctx: Ctx):
     """Execution P2: order-path lag + error observability over a trailing window (admin-only —
     operational money-path telemetry). p50/p95/p99 round-trip + total latency, encode/sign cost,
@@ -2055,6 +2087,9 @@ ROUTES: List[Route] = [
         ("GET", "/api/admin", admin_overview, True),
         ("GET", "/api/admin/system", admin_system, True),
         ("GET", "/api/exec/latency", exec_latency, True),
+        ("GET", "/api/exec/tca", exec_tca, True),
+        ("GET", "/api/admin/kill-switch", admin_kill_switch, True),
+        ("POST", "/api/admin/kill-switch", admin_kill_switch_set, True),
         ("GET", "/api/system/code", system_code, True),
         ("POST", "/api/admin/grant", admin_grant, True),
         ("POST", "/api/admin/waitlist", admin_waitlist, True),

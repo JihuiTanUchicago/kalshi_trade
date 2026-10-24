@@ -136,3 +136,47 @@ def test_inflight_query_is_scoped_to_user_ticker_and_window():
     assert "status='sent'" in c.sql and "user_id=%s" in c.sql and "ticker=%s" in c.sql
     assert c.params[0] == 9 and c.params[1] == "T"
     assert c.params[2] > repo.now_utc() - timedelta(seconds=200)
+
+
+def test_intent_past_its_horizon_is_marked_unresolved_without_polling(monkeypatch):
+    now = datetime.now(timezone.utc)
+    old = {"intent_id": "old", "mode": "demo", "action": "buy", "ticker": "T", "qty": 5,
+           "market_close_time": (now - timedelta(days=2)).replace(tzinfo=None),
+           "created_at": (now - timedelta(days=7)).replace(tzinfo=None)}
+    fresh = {"intent_id": "new", "mode": "live", "action": "buy", "ticker": "T", "qty": 5,
+             "market_close_time": (now + timedelta(minutes=10)).replace(tzinfo=None),
+             "created_at": (now - timedelta(minutes=1)).replace(tzinfo=None)}
+    marked, asked = [], []
+    monkeypatch.setattr(engine.repo, "open_sent_intents", lambda cur, s: [old, fresh])
+    monkeypatch.setattr(engine.repo, "mark_order_intent", lambda cur, iid, status, *a, **k: marked.append((iid, status)))
+
+    class C:
+        def cursor(self):
+            return None
+
+    engine.recover_sent_intents(C(), engine.Sources(order_lookup=lambda it: asked.append(it["intent_id"])))
+    assert marked == [("old", "unresolved")]
+    assert asked == ["new"]  # only the live one is still asked about
+
+
+def test_horizon_without_a_close_time_uses_the_intent_age():
+    now = datetime.now(timezone.utc)
+    assert engine._past_resolution_horizon({"created_at": now - timedelta(days=8)}, now)
+    assert not engine._past_resolution_horizon({"created_at": now - timedelta(days=1)}, now)
+    assert not engine._past_resolution_horizon({}, now)
+
+
+def test_unrecovered_log_is_throttled(monkeypatch, capsys):
+    it = {"intent_id": "x", "mode": "live", "action": "buy", "ticker": "T", "qty": 1,
+          "created_at": datetime.now(timezone.utc).replace(tzinfo=None)}
+    monkeypatch.setattr(engine.repo, "open_sent_intents", lambda cur, s: [it])
+    engine._unrecovered_logged.clear()
+
+    class C:
+        def cursor(self):
+            return None
+
+    src = engine.Sources(order_lookup=lambda i: None)
+    engine.recover_sent_intents(C(), src)
+    engine.recover_sent_intents(C(), src)
+    assert capsys.readouterr().out.count("UNRECOVERED") == 1

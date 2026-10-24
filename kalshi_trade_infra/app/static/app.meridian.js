@@ -3528,6 +3528,13 @@
             <div id="g-flash"></div>
             <p class="hint" style="margin-top:8px">The user must have signed in at least once.</p>
           </form>
+          <form class="panel" id="kill" style="margin-top:14px"><h3>Kill switch</h3>
+            <p id="k-state" class="hint">Loading…</p>
+            <label class="field"><span>Reason</span><input class="input" id="k-reason" type="text" maxlength="200" placeholder="why you are halting"></label>
+            <button class="btn danger" type="submit" id="k-btn" style="margin-top:12px;width:100%">Halt new buys</button>
+            <div id="k-flash"></div>
+            <p class="hint" style="margin-top:8px">Stops every new live and demo buy within about 5 seconds. Exits always run.</p>
+          </form>
         </aside>
       </div>`);
     const load = async () => {
@@ -3558,6 +3565,26 @@
           if (gen !== S.gen) return;
           flash('#g-flash', `Granted. ${esc(r.email)} balance: ${usd(r.balance)}.`, 'good'); await load();
         } catch (err) { if (gen === S.gen) flash('#g-flash', err.message, 'bad'); }
+      });
+    };
+    const killShow = (k) => {
+      const st = root.querySelector('#k-state'), btn = root.querySelector('#k-btn');
+      st.innerHTML = k.on || k.env_on
+        ? `<span class="mk on">ON</span> New buys are halted${k.reason ? `: ${esc(k.reason)}` : ''}${k.by ? ` <small class="hint">by ${esc(k.by)}</small>` : ''}${k.env_on ? ' <small class="hint">(also set in the server env)</small>' : ''}`
+        : 'Off. Orders flow normally.';
+      btn.textContent = k.on ? 'Resume buys' : 'Halt new buys';
+      btn.className = k.on ? 'btn primary' : 'btn danger';
+      btn.dataset.on = k.on ? '1' : '';
+    };
+    api('/api/admin/kill-switch').then((k) => { if (gen !== S.gen) return; killShow(k); }).catch((err) => { if (gen === S.gen) flash('#k-flash', err.message, 'bad'); });
+    root.querySelector('#kill').onsubmit = async (e) => {
+      e.preventDefault();
+      const btn = root.querySelector('#k-btn');
+      await busy(btn, async () => {
+        try {
+          const k = await api('/api/admin/kill-switch', { on: !btn.dataset.on, reason: root.querySelector('#k-reason').value.trim() });
+          if (gen !== S.gen) return; killShow(k);
+        } catch (err) { if (gen === S.gen) flash('#k-flash', err.message, 'bad'); }
       });
     };
     try { await load(); } catch (err) { if (gen === S.gen) throw err; }
