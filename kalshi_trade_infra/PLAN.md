@@ -8,6 +8,8 @@ Live gate (`agent._proven_on_paper`), additive only: the old 8-trade/not-negativ
 
 Follow-up (PR #27): `paper_evidence` reports paper vs backtest unseen-data P&L per trade (`realization`, informational) and the autopilot review context shows each paper deployment's evidence line. Live decay guard in `engine.loss_guard`: a live deployment net negative after `APP_LIVE_DECAY_MIN_TRADES` (20) closed trades is paused and flattened. Pause-only, never opens or blocks an exit.
 
+Funnel (PR follow-up): `agent.auto_paper_candidates` runs at the start of every autopilot review and puts each gatekeeper DEPLOYMENT_CANDIDATE that never ran on paper onto paper via `act()` (max 3 per review, 20 active), so realistic evidence accrues without waiting for the LLM. Never live; a stopped paper run is not redeployed.
+
 Next: simulate legging for paper pairs; feed realization to the research thread's backtest fill-model calibration.
 
 ## Kalshi perps deployment preparation — October 23, 2026, Asia/Shanghai
