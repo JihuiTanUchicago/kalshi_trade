@@ -3244,6 +3244,7 @@
       <div><dt>Running</dt><dd>${runTotal ? runParts.join(' · ') : 'None'}</dd></div>
       <div><dt>Live P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd></div>
       <div><dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd></div>
+      ${d.paper_progress ? `<div><dt>Closest to live</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> · ${d.paper_progress.trades}/${d.paper_progress.trades_needed} paper trades · ${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}
       ${d.last_review_at ? `<div><dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd></div>` : ''}`;
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
     const gates = box.querySelector('#apf-gates');

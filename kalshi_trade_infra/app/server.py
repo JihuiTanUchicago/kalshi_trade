@@ -1136,6 +1136,18 @@ def autopilot_status(ctx: Ctx):
     # silently skips the user via billing.is_ready — the SAME gate, read here only to surface WHY the
     # panel is quiet so it doesn't look broken. Never changes the gate; purely a status readout.
     billing_blocked = bool(u.get("autopilot")) and billing.configured() and not billing.is_ready(cur, ctx.uid)
+    # Paper -> live progress: the running paper strategy closest to the realistic-trade gate, so a
+    # user on autopilot can see the funnel moving. Counts only (no bootstrap): this endpoint polls.
+    paper_progress = None
+    if paper_run:
+        sids = sorted({int(d["strategy_id"]) for d in paper_run})
+        prog = repo.paper_progress(cur, ctx.uid, sids)
+        titles = {int(d["strategy_id"]): d.get("title") or "" for d in paper_run}
+        best = max(sids, key=lambda s: (prog.get(s, (0, 0.0))[0], prog.get(s, (0, 0.0))[1]))
+        trades, net = prog.get(best, (0, 0.0))
+        paper_progress = {"strategy_id": best, "title": titles[best], "trades": trades,
+                          "trades_needed": agent.MIN_REALISTIC_PAPER_TRADES, "net_pnl": round(net, 2),
+                          "strategies": len(sids)}
     return {
         "autopilot": bool(u.get("autopilot")),
         "autopilot_live": bool(u.get("autopilot_live")),
@@ -1151,6 +1163,7 @@ def autopilot_status(ctx: Ctx):
         "model": u.get("autopilot_model") or catalog.DEFAULT_KEY,  # the model the autopilot's own runs use
         "billing_blocked": billing_blocked,
         "billing_reason": (("card" if _needs_card(ctx) else "credits") if billing_blocked else None),
+        "paper_progress": paper_progress,
     }
 
 

@@ -16,7 +16,7 @@ After: the planted 15c edge passes 6/6, an 8c edge over 400 trades passes ~50% o
 
 ## Realistic paper fills and a stronger live gate — October 24, 2026, UTC
 
-Merged to main (branch `claude/project-thread-76ft6y`), not yet deployed. App paper deployments now run the live `MarketableLimitKernel` over `SimulatedVenue` (`engine.paper_kernel_factory`, `Sources.paper_kernel`, shared `_execution_kernel` helper so paper and live cannot drift). Paper now misses on a stale quote or a moved ask, fills only the touch size, pays the fee per child order and can part-fill an exit; simulated fills carry `order_ref='sim:<id>'`. `APP_PAPER_REALISTIC_FILLS=0` restores legacy instant fills. Cross-contract pairs keep the atomic paper fill (legging risk not simulated yet). Fixed `SimulatedVenue` pricing NO orders off the YES touch; it now uses the `order_wire_params` mirror.
+Merged to main (branch `claude/project-thread-76ft6y`) and deployed 08:42Z; pairs (#35) deployed 09:03Z. App paper deployments now run the live `MarketableLimitKernel` over `SimulatedVenue` (`engine.paper_kernel_factory`, `Sources.paper_kernel`, shared `_execution_kernel` helper so paper and live cannot drift). Paper now misses on a stale quote or a moved ask, fills only the touch size, pays the fee per child order and can part-fill an exit; simulated fills carry `order_ref='sim:<id>'`. `APP_PAPER_REALISTIC_FILLS=0` restores legacy instant fills. Cross-contract pairs keep the atomic paper fill (legging risk not simulated yet). Fixed `SimulatedVenue` pricing NO orders off the YES touch; it now uses the `order_wire_params` mirror.
 
 Live gate (`agent._proven_on_paper`), additive only: the old 8-trade/not-negative check stays, then 30+ closed realistic round trips (`repo.paper_round_trips`, legacy fills excluded), net P&L > 0 after fees, 48h+ span, and stationary-bootstrap one-sided p ≤ 0.10 on mean P&L per trade. Existing strategies have zero realistic trades, so none can go live until they re-earn it on paper. Tests: `tests/test_paper_realistic_fills.py`, `tests/test_app_autopilot_live.py`. Deploy is pending a bundle that excludes the unreleased perps release.
 
@@ -25,6 +25,8 @@ Follow-up (PR #27): `paper_evidence` reports paper vs backtest unseen-data P&L p
 Funnel (PR follow-up): `agent.auto_paper_candidates` runs at the start of every autopilot review and puts each gatekeeper DEPLOYMENT_CANDIDATE that never ran on paper onto paper via `act()` (max 3 per review, 20 active), so realistic evidence accrues without waiting for the LLM. Never live; a stopped paper run is not redeployed.
 
 Paper pairs now run through the simulated venue too (`_paper_kernel_buy_pair`, same legging mechanics as live `_kernel_buy_pair`: short second leg -> unwind the excess, failed unwind -> tracked naked leg). Both legs share one `sim:pair-` order_ref so the gate counts a pair as one round trip.
+
+Visibility: the strategy page's Road to live panel (both themes) shows each gate's progress, and the autopilot float's stats show the running paper strategy closest to live (`paper_progress` in `/api/autopilot/status`: realistic trades / 30 and net P&L, one grouped query, no bootstrap on the 20s poll).
 
 Next: feed realization to the research thread's backtest fill-model calibration.
 

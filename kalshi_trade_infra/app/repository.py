@@ -1116,6 +1116,26 @@ def paper_round_trips(cur, user_id: int, strategy_id: int, ref_prefix: str = "si
             for r in cur.fetchall()]
 
 
+def paper_progress(cur, user_id: int, strategy_ids: List[int], ref_prefix: str = "sim:") -> Dict[int, Tuple[int, float]]:
+    """{strategy_id: (closed realistic paper round trips, their net P&L)} for the given strategies,
+    in one query. Same counting as `paper_round_trips` (one row per order_ref, still-open slices
+    excluded); a cheap progress readout for the autopilot panel, which polls often."""
+    if not strategy_ids:
+        return {}
+    marks = ",".join(["%s"] * len(strategy_ids))
+    cur.execute(
+        """SELECT t.strategy_id, COUNT(*) AS trips, COALESCE(SUM(t.pnl),0) AS pnl FROM (
+             SELECT d.strategy_id, p.order_ref, SUM(p.pnl) AS pnl
+             FROM app_positions p JOIN app_deployments d ON d.id=p.deployment_id
+             WHERE p.user_id=%s AND p.mode='paper' AND p.order_ref LIKE %s AND d.strategy_id IN (""" + marks + """)
+             GROUP BY d.strategy_id, p.order_ref
+             HAVING SUM(CASE WHEN p.status='open' THEN 1 ELSE 0 END)=0) t
+           GROUP BY t.strategy_id""",
+        (user_id, ref_prefix + "%", *strategy_ids),
+    )
+    return {int(r["strategy_id"]): (int(r["trips"] or 0), float(r["pnl"] or 0)) for r in cur.fetchall()}
+
+
 def running_deployments(cur, market: str) -> List[Dict]:
     cur.execute(
         """SELECT d.id, d.user_id, d.strategy_id, d.market, d.mode, d.last_decision_ts, s.spec_json, s.result_json
