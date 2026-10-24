@@ -13,6 +13,8 @@ gate verdict. This module turns that into a scorecard per run and a scoreboard a
                          about the market
                spec      the spec never traded (0 trades): usually a filter cut outside the data
                edge      the market killed it (loses money, fee floor, mechanism falsified)
+               fit       the mechanism cannot work on this market's structure (a GBM on a game
+                         outcome, a time-series idea on snapshot data): the proposer should have known
                other     anything the rules don't recognise
   efficiency gated ideas and passes per $100, pipeline share of deaths
 
@@ -47,9 +49,28 @@ _DROP_RULES: Tuple[Tuple[str, str, str], ...] = (
     ("loses", "edge",
      r"loses|lost \$|losing|negative (p&?l|pnl|edge|return)|worse than random|-\d+(\.\d+)?c ?/ ?trade"
      r"|falsif|disprov|backward|no edge|calibrated within noise"),
+    # From the 80-reason sample of run 2026-10-22..24 "other" deaths (688 of 1620 drops).
+    ("missing_context", "pipeline",   # information the market's frames never carry (game state, books)
+     r"game[- ]state|does not (expose|populate|report|include|carry)|no (live )?(game|score|team|injury|lineup|sportsbook)"
+     r"|(features?|feature set|data) (contains?|has|have|provides?) no|not (exposed|reported)|without (time-series|game|score)"
+     r"|no (independent )?fair[- ]value benchmark|requires knowing|feature set|available features"
+     r"|not (appear to be |be )?(native or )?(reliably )?populated"),
+    ("thin_sample", "spec",           # the regime the idea needs is (almost) absent from the research window
+     r"too (few|small|little|sparse)|insufficient|only \d+ (trades|outcomes|contracts|observations)|sample size"
+     r"|fires in <|<\s?\d+(\.\d+)?% of|unfalsifiable|p90 (of [a-z_ ]+)?(is|=)|no [a-z0-9 -]{0,30}data (is |in )"
+     r"|all snapshots have|\d+(th|st|nd) percentile|research window \("),
+    ("no_signal", "edge",             # tested, and the research fold shows nothing
+     r"zero (wins|predictive)|\b0(\.\d+)?% win|\b\d+/\d+ wins|catastrophic|found essentially none|near-zero weight"
+     r"|no meaningful|contradict|-\$\d|win rate .{0,20}(\d|\.)|essentially zero|null \(all|mid-only"
+     r"|however,? (the )?(research|market) (data|fold|window|result)|(research|market) data (reveals|shows)"),
+    ("wrong_fit", "fit",              # the mechanism cannot work on this market's structure: a proposer miss
+     r"incompatible|does(n't| not) (apply|fit|work)|cannot work|structural(ly)? (mismatch|unsound|invalid)|mismatch"
+     r"|misaligned|inverted|backwards|conflat|circular|tautolog|contradictory|internally|overfit|fundamentally"
+     r"|not grounded|confuses|ambiguous|nonsensical|not a standard|fatal|does not support|functionally"
+     r"|atomic|continuous(ly)? (observable|order|underlying)|facts kill"),
 )
 _COMPILED = tuple((tag, kind, re.compile(pat, re.I)) for tag, kind, pat in _DROP_RULES)
-KINDS = ("pipeline", "spec", "edge", "other")
+KINDS = ("pipeline", "spec", "edge", "fit", "other")
 
 
 def classify_drop(why: Optional[str]) -> Tuple[str, str]:

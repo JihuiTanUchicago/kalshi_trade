@@ -187,3 +187,25 @@ def test_trend_compares_the_newer_half_of_ideas_with_the_older_half():
     assert (t["before"]["explored"], t["after"]["explored"]) == (16, 16)
     assert (t["before"]["gate_reach_rate"], t["after"]["gate_reach_rate"], t["better"]) == (0.062, 0.312, True)
     assert rsi.scoreboard([card(1, 10, 0), card(2, 10, 2)])["trend"]["better"] is True
+
+
+def test_the_old_other_bucket_splits_into_reasons_the_loop_can_act_on():
+    # Real drop reasons from 2026-10-22..24 that used to land in "other".
+    cases = {
+        "The GBM model architecture is fundamentally incompatible with NFL outcome markets": ("wrong_fit", "fit"),
+        "The core model architecture is circular: a logistic classifier fit on [mid, tte_min]": ("wrong_fit", "fit"),
+        "The thesis requires detecting game state (trailing vs. leading, score differential)":
+            ("missing_context", "pipeline"),
+        "but no live game-state features are available in this system": ("missing_context", "pipeline"),
+        "this market has too few extreme-price settled contracts in the research window": ("thin_sample", "spec"),
+        "the research data shows all snapshots have tte_min >= 215 minutes": ("thin_sample", "spec"),
+        "The research-fold result shows zero predictive power: 206 trades with 0.5% win rate": ("no_signal", "edge"),
+        "Research fold shows 0/8 wins across all price and side regimes": ("no_signal", "edge"),
+    }
+    for why, want in cases.items():
+        assert rsi.classify_drop(why) == want, why
+    # the original tags still win where they matched before
+    assert rsi.classify_drop("taker_yes_vol_60s is not populated, so it is fundamentally untestable")[0] == \
+        "feature_unavailable"
+    assert rsi.classify_drop("the spec took 0 trades: too few rows")[0] == "zero_trades"
+    assert "fit" in rsi.KINDS
