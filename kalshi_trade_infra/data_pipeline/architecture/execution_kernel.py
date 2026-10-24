@@ -197,7 +197,7 @@ class MarketableLimitKernel:
             external_order_id=None,
             client_order_id=None,
             fee_dollars=0.0,
-            raw_json={"rejected_by": "MarketableLimitKernel", **detail},
+            raw_json={"rejected_by": "MarketableLimitKernel", "status": status, **detail},
         )
 
     @staticmethod
@@ -277,6 +277,15 @@ class MarketableLimitKernel:
         # class docstring). Absent fair => no cap, exactly the old behaviour.
         fair = None if meta.get("fair") is None else float(meta["fair"])
         min_edge = float(meta.get("min_edge") or 0.0)
+        # Transaction-cost-analysis context carried on every report (app/tca.py reads it back from
+        # the order intent): the price the decision was made at and, for an entry, the fair value
+        # and required edge, so realized slippage and edge capture are measurable per fill.
+        tca: Dict = {"decision_price": float(intent.limit_price_dollars)}
+        if fair is not None:
+            tca.update(fair=fair, min_edge=min_edge)
+
+        def reject(status: str, detail: Dict) -> ExecutionReport:
+            return self._rejected(status, {**detail, **tca})
         attempts: List[Dict] = []
         remaining = int(intent.qty_contracts)
         filled_total = 0
@@ -289,11 +298,12 @@ class MarketableLimitKernel:
             # the position out must never look like a total miss. Fail safe -
             # report exactly what Kalshi confirmed, never the requested size.
             if filled_total <= 0:
-                return self._rejected("unfilled", {"ticker": intent.ticker, "attempts": attempts})
+                return reject("unfilled", {"ticker": intent.ticker, "attempts": attempts})
             avg_px = round(weighted_px / filled_total, 4)
             status = "filled" if filled_total >= int(intent.qty_contracts) else "partially_filled"
             raw = dict((last.raw_json or {}) if last else {})
             raw["attempts"] = attempts
+            raw.update(tca)
             return ExecutionReport(
                 accepted=True,
                 status=status,
@@ -311,7 +321,7 @@ class MarketableLimitKernel:
                 attempts.append({"attempt": attempt, "outcome": "no_quote"})
                 if filled_total > 0:
                     break  # keep what filled; no fresh quote to price the rest
-                return self._rejected("no_quote", {"ticker": intent.ticker, "attempts": attempts})
+                return reject("no_quote", {"ticker": intent.ticker, "attempts": attempts})
 
             # Entry-only spread guard: a wide touch is an illiquid/uncertain book
             # and entry cost is ~ taker fee + half the spread. A missed entry
@@ -329,7 +339,7 @@ class MarketableLimitKernel:
                     "max_entry_spread": self.max_entry_spread,
                 }
                 attempts.append(detail)
-                return self._rejected("spread_too_wide", {"ticker": intent.ticker, "attempts": attempts})
+                return reject("spread_too_wide", {"ticker": intent.ticker, "attempts": attempts})
 
             limit = self._limit_for(intent, quote, attempt)
             if limit is None:
@@ -343,7 +353,7 @@ class MarketableLimitKernel:
                 )
                 if filled_total > 0:
                     break
-                return self._rejected(
+                return reject(
                     "edge_gone",
                     {
                         "ticker": intent.ticker,
@@ -367,7 +377,7 @@ class MarketableLimitKernel:
                         "remaining": remaining,
                     }
                 )
-                return self._rejected(
+                return reject(
                     "participation_capped",
                     {"ticker": intent.ticker, "max_book_fraction": self.max_book_fraction, "attempts": attempts},
                 )
@@ -392,7 +402,7 @@ class MarketableLimitKernel:
                     )
                     if filled_total > 0:
                         break
-                    return self._rejected(
+                    return reject(
                         "edge_gone_net",
                         {"ticker": intent.ticker, "fair": fair, "min_edge": min_edge,
                          "reservation": cap, "live_ask": best_ask, "attempts": attempts},
@@ -408,7 +418,7 @@ class MarketableLimitKernel:
                         "max_order_notional": self.max_order_notional,
                     }
                 )
-                return self._rejected(
+                return reject(
                     "order_notional_exceeded", {"ticker": intent.ticker, "attempts": attempts}
                 )
 
