@@ -1,5 +1,14 @@
 # PLAN
 
+## Live gate: the edge must still be working (2026-10-24)
+
+- `paper_evidence` adds a check after the bootstrap edge test: `recent`. The newer half of the
+  realistic paper record has to be net up on its own. This stops an early winning streak from
+  carrying a strategy whose edge has since faded into live money. The refusal reads "its newer N
+  paper trades are down $X, so the edge may be fading".
+- It can only refuse. Every earlier check is unchanged: 30 trips, net up, 48h, p <= 0.10.
+- Road to live shows a "Still working lately" row with the newer half's net, in both bundles.
+
 ## Did the stop help? Early exits scored against holding (2026-10-24)
 
 - Every position that exits before settlement (stop, stop_loss, drawdown, take_profit, flatten,

@@ -2520,6 +2520,7 @@
           { name: 'Net after fees', threshold: 'above $0', ok: c.net_pnl, value: p.net_pnl },
           { name: 'Paper track record', threshold: p.span_needed_hours + 'h+', ok: c.span, value: Math.round(p.span_hours) + 'h' },
           { name: 'Edge is not luck', threshold: 'p ≤ ' + p.p_value_needed.toFixed(2), ok: c.edge, value: pv },
+          { name: 'Still working lately', threshold: 'newer half above $0', ok: c.recent, value: p.recent_trades ? p.recent_net_pnl : '—' },
           { name: 'Live autopilot', threshold: 'on, key, under daily loss', ok: r.live_autopilot.ok, value: r.live_autopilot.ok ? 'ready' : 'off' },
         ];
         const body = root.querySelector('#road-live-body');
