@@ -312,9 +312,10 @@ def test_features_carry_composite_columns_and_old_hours_still_read(lake, tmp_pat
 
 def test_session_opens_every_stream_and_closes_all_when_one_ends(tmp_path, monkeypatch):
     import websockets
-    opened = []
+    opened, pings = [], []
 
     async def connect(url, **kw):
+        pings.append(kw.get("ping_interval"))
         ws = FakeWS([json.dumps(BULLISH_TRADES)] if url.endswith("/trades") else [])
         opened.append((url, ws))
         return ws
@@ -328,3 +329,8 @@ def test_session_opens_every_stream_and_closes_all_when_one_ends(tmp_path, monke
     trades_ws = opened[0][1]
     assert [m["params"]["symbol"] for m in trades_ws.sent] == ["BTCUSD", "BTCUSDC"]
     assert {m["params"]["topic"] for m in opened[1][1].sent} == {"l1Orderbook"}
+    assert pings == [20, 20]
+    lm = _rec(tick_recorder.LmaxRecorder, tmp_path)
+    lm.meta = lambda *a, **k: None
+    asyncio.run(lm.session())
+    assert pings[-1] is None

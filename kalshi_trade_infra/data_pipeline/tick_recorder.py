@@ -699,6 +699,7 @@ class SpotRecorder(Recorder):
     silence_s = 30
     subscribe_delay_s = 0.0
     keepalive_s = 0
+    ping_interval_s: Optional[float] = 20     # client WebSocket pings; None = none (silence_s still applies)
 
     def __init__(self) -> None:
         super().__init__()
@@ -782,7 +783,7 @@ class SpotRecorder(Recorder):
         tasks = []
         try:
             for url, subs in self.streams:
-                ws = await websockets.connect(url, ssl=self._ssl, ping_interval=20, ping_timeout=20,
+                ws = await websockets.connect(url, ssl=self._ssl, ping_interval=self.ping_interval_s, ping_timeout=20,
                                               open_timeout=15, max_size=16 << 20, max_queue=4096)
                 conns.socks.append(ws)
                 tasks.append(asyncio.create_task(self.pump(ws, url, subs)))
@@ -920,6 +921,7 @@ class LmaxRecorder(SpotRecorder):
                                            {"name": "ORDER_BOOK", "instruments": [instrument]}]},
     ])]
     silence_s = 60
+    ping_interval_s = None      # LMAX closes with 1008 "Excessive pings received" at one ping per 20s
 
 
 SPOT_RECORDERS = {c.source: c for c in (KrakenRecorder, BitstampRecorder, GeminiRecorder, BullishRecorder,
