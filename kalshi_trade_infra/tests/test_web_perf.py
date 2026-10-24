@@ -176,3 +176,37 @@ def test_explore_feed_keeps_last_good_copy_when_s3_fails(monkeypatch):
     server._EXPLORE_CACHE["refreshing"] = True
     server._refresh_explore_feed()
     assert server._EXPLORE_CACHE["data"]["at"] == "good" and server._EXPLORE_CACHE["refreshing"] is False
+
+
+def test_shared_reads_compute_once_then_refresh_in_one_background_thread(monkeypatch):
+    calls = []
+    fn = lambda cur: calls.append(cur) or len(calls)
+    assert server._shared("k", 60, fn, "cur") == 1
+    assert server._shared("k", 60, fn, "cur") == 1 and calls == ["cur"]
+    server._SHARED["k"]["at"] -= 61
+    started = []
+    monkeypatch.setattr(server.threading, "Thread", lambda target, args, daemon: SimpleNamespace(start=lambda: started.append(args)))
+    assert server._shared("k", 60, fn, "cur") == 1 and server._shared("k", 60, fn, "cur") == 1
+    assert len(started) == 1  # one refresh while stale, not one per request
+    conn = SimpleNamespace(cursor=lambda: "bg", close=lambda: None)
+    monkeypatch.setattr(server, "get_db_conn", lambda: conn)
+    server._refresh_shared(*started[0])
+    assert server._shared("k", 60, fn, "cur") == 2 and calls[-1] == "bg"
+
+
+def test_shared_refresh_failure_keeps_the_last_value(monkeypatch):
+    server._shared("k", 60, lambda cur: "good", None)
+    monkeypatch.setattr(server, "get_db_conn", lambda: (_ for _ in ()).throw(RuntimeError("db down")))
+    ent = server._SHARED["k"]
+    ent["busy"] = True
+    server._refresh_shared(ent, lambda cur: "never")
+    assert ent["val"] == "good" and ent["busy"] is False
+
+
+def test_dashboard_freshness_uses_the_shared_read(monkeypatch):
+    calls = []
+    monkeypatch.setattr(server.repo, "history_freshness", lambda cur: calls.append(1) or {"btc": None})
+    monkeypatch.setattr(server.repo, "engine_last_tick_age_seconds", lambda cur: 5)
+    for _ in range(3):
+        assert server._freshness(None) == {"btc": None, "engine": 5}
+    assert calls == [1]
