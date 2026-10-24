@@ -1,6 +1,29 @@
 from data_pipeline.common import get_db_conn
 
+# One row per tick-archive hour (data_pipeline/tick_archiver.py): the gap monitor and research's
+# index of what tick data exists. The ticks themselves live in S3 Parquet, never in RDS.
+TICK_ARCHIVE_DDL = """
+CREATE TABLE IF NOT EXISTS tick_archive_hours (
+  source VARCHAR(16) NOT NULL,
+  hour_utc DATETIME NOT NULL,
+  messages BIGINT NOT NULL DEFAULT 0,
+  first_rt_utc DATETIME(3) NULL,
+  last_rt_utc DATETIME(3) NULL,
+  max_gap_s DOUBLE NULL,
+  seq_gaps INT NOT NULL DEFAULT 0,
+  reconnects INT NOT NULL DEFAULT 0,
+  raw_bytes BIGINT NOT NULL DEFAULT 0,
+  parquet_bytes BIGINT NOT NULL DEFAULT 0,
+  tables_json JSON NULL,
+  s3_prefix VARCHAR(255) NULL,
+  host VARCHAR(64) NULL,
+  archived_at_utc DATETIME NOT NULL,
+  PRIMARY KEY (source, hour_utc)
+)
+"""
+
 DDL = [
+    TICK_ARCHIVE_DDL,
     """
     CREATE TABLE IF NOT EXISTS markets (
       ticker VARCHAR(128) PRIMARY KEY,

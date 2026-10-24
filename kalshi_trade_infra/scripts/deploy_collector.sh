@@ -18,7 +18,10 @@ INSTANCE_ID=${INSTANCE_ID:-i-0bd0683cc7e86243d}
 BUCKET=${BUCKET:-kalshi-trade-artifacts-568386354218-us-east-1}
 BOX_DIR=${BOX_DIR:-/opt/kalshi}
 BOX_PY=${BOX_PY:-/opt/kalshi/.venv313/bin/python}
-SERVICES=${SERVICES:-"kalshi-forward-collector kalshi-coinbase-collector kalshi-feature-1m kalshi-feature-builder kalshi-sim-engine tau-snapshot"}
+SERVICES=${SERVICES:-"kalshi-forward-collector kalshi-coinbase-collector kalshi-feature-1m kalshi-feature-builder kalshi-sim-engine tau-snapshot kalshi-tick-recorder coinbase-tick-recorder"}
+# Unit files this script owns on the box: copied from scripts/systemd when they differ, then
+# enabled. Timers are enabled --now; services start with the SERVICES restart below.
+UNITS=${UNITS:-"kalshi-tick-recorder.service coinbase-tick-recorder.service kalshi-tick-archiver.service kalshi-tick-archiver.timer"}
 
 if [[ -n "${AWS_PROFILE}" ]]; then export AWS_PROFILE; else unset AWS_PROFILE; fi
 
@@ -44,7 +47,8 @@ SKEY="bundle/deploy_collector_${TS}.sh"
 
 echo "[deploy-collector] ref=$REF ($SHA) -> box=$INSTANCE_ID  dry_run=$DRY_RUN"
 
-git archive --format=tar.gz -o "$BUNDLE" "$REF:kalshi_trade_infra" data_pipeline
+UNIT_PATHS=""; for u in $UNITS; do UNIT_PATHS="$UNIT_PATHS scripts/systemd/$u"; done
+git archive --format=tar.gz -o "$BUNDLE" "$REF:kalshi_trade_infra" data_pipeline $UNIT_PATHS
 CONTENTS="$TMPD/bundle.contents"
 tar -tzf "$BUNDLE" > "$CONTENTS"
 for p in data_pipeline/forward_collector.py data_pipeline/common.py; do
@@ -64,6 +68,18 @@ cp -r data_pipeline data_pipeline.bak.\$T || { echo "BACKUP FAILED"; exit 1; }
 rollback(){ echo "[box] ROLLBACK"; rm -rf data_pipeline; mv data_pipeline.bak.\$T data_pipeline; systemctl restart ${SERVICES}; }
 tar -xzf /tmp/collector_bundle.tgz -C ${BOX_DIR} || { rollback; echo "EXTRACT FAILED"; exit 1; }
 ${BOX_PY} -m py_compile data_pipeline/*.py 2>&1 || { rollback; echo "COMPILE FAILED"; exit 1; }
+mkdir -p ${BOX_DIR}/logs ${BOX_DIR}/ticks
+RELOAD=0
+for u in ${UNITS}; do
+  cmp -s scripts/systemd/\$u /etc/systemd/system/\$u || { cp scripts/systemd/\$u /etc/systemd/system/\$u; RELOAD=1; echo "[box] installed unit \$u"; }
+done
+[ "\$RELOAD" = 1 ] && systemctl daemon-reload
+for u in ${UNITS}; do
+  case "\$u" in
+    *.timer) systemctl enable --now "\$u" ;;
+    *.service) grep -q '^WantedBy' scripts/systemd/\$u && systemctl enable "\$u" ;;
+  esac
+done
 systemctl restart ${SERVICES}
 sleep 15
 DOWN=""

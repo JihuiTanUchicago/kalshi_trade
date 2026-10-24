@@ -1,0 +1,19 @@
+[Unit]
+Description=Coinbase tick recorder: every BTC-USD print and best bid/ask via WebSocket -> hourly NDJSON (archived to S3 by kalshi-tick-archiver). Runs on the COLLECTOR box.
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/kalshi
+MemoryMax=400M
+ExecStart=/bin/bash -c 'set -a; . /opt/kalshi/.env.aws; [ -f /opt/kalshi/.env ] && . /opt/kalshi/.env; set +a; unset AWS_PROFILE; exec /opt/kalshi/.venv313/bin/python -u -m data_pipeline.tick_recorder coinbase >> /opt/kalshi/logs/coinbase-tick-recorder.log 2>&1'
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target
