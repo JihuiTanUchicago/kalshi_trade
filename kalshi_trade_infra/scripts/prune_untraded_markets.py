@@ -171,6 +171,11 @@ def rebuild_markets(conn, keep_series: Set[str], drop_old: bool) -> None:
     queue every reader behind a metadata lock if a long query is holding the table."""
     cur = conn.cursor()
     keep = sorted(keep_series)
+    # The copy matches on series_ticker, so a row with it blank would be left behind. The live
+    # KXBTC15M/ETH/SOL/... rows are written that way (4,775 on 10-24), so derive it first.
+    cur.execute("UPDATE markets SET series_ticker = SUBSTRING_INDEX(event_ticker, '-', 1) "
+                "WHERE (series_ticker IS NULL OR series_ticker = '') AND event_ticker IS NOT NULL")
+    print("[prune] markets: filled blank series_ticker on %d rows" % (cur.rowcount or 0), flush=True)
     cur.execute("DROP TABLE IF EXISTS markets__keep")
     cur.execute("CREATE TABLE markets__keep LIKE markets")
     started = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
