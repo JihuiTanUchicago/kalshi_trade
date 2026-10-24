@@ -14,7 +14,13 @@ Price sources (verified 2026-10-15):
     API (`aws pricing get-products --service-code AmazonBedrock`,
     us-east-1, base Input/Output token usagetype - not batch/cache/custom).
 Every modelId below was confirmed ACTIVE and invokable via the Bedrock
-Converse API in us-east-1 on 2026-10-15.
+Converse API in us-east-1 on 2026-10-15 (Opus 4.6 / Sonnet 4.6 on 2026-10-24).
+
+PENDING holds newer Claude models whose inference profiles are ACTIVE in us-east-1
+but which this AWS account can't invoke yet (Converse returns AccessDenied "not
+available for this account", checked 2026-10-24). They show in the dropdown as
+disabled "access pending" options and are NOT in MODELS, so the server rejects
+them. Once Bedrock grants access, move an entry from PENDING into MODELS.
 """
 from __future__ import annotations
 
@@ -31,6 +37,7 @@ class ModelChoice:
     model_id: str       # invokable Bedrock (inference-profile) modelId
     price_in: Decimal   # USD per 1,000,000 input tokens
     price_out: Decimal  # USD per 1,000,000 output tokens
+    available: bool = True  # False = listed in the dropdown but not selectable yet
 
 
 # Default research model (matches llm.BEDROCK_MODEL). A run with no model chosen
@@ -40,7 +47,11 @@ DEFAULT_KEY = "opus-4-5"
 MODELS: Dict[str, ModelChoice] = {
     m.key: m
     for m in [
-        # -- Anthropic (Anthropic list price, 2026-10-15) ---------------------
+        # -- Anthropic (Anthropic list price, 2026-10-15; 4.6 added 2026-10-24) -
+        ModelChoice("opus-4-6", "Claude Opus 4.6", "Anthropic",
+                    "us.anthropic.claude-opus-4-6-v1", Decimal("5"), Decimal("25")),
+        ModelChoice("sonnet-4-6", "Claude Sonnet 4.6", "Anthropic",
+                    "us.anthropic.claude-sonnet-4-6", Decimal("3"), Decimal("15")),
         ModelChoice("sonnet-4-5", "Claude Sonnet 4.5", "Anthropic",
                     "us.anthropic.claude-sonnet-4-5-20250929-v1:0", Decimal("3"), Decimal("15")),
         ModelChoice("opus-4-5", "Claude Opus 4.5", "Anthropic",
@@ -69,6 +80,19 @@ MODELS: Dict[str, ModelChoice] = {
     ]
 }
 
+# Newer Claude models awaiting Bedrock access for this account (see the module docstring).
+# Anthropic list price, 2026-10-24. Haiku 5.5's price is for prompts up to 100K tokens.
+PENDING: List[ModelChoice] = [
+    ModelChoice("opus-5-5", "Claude Opus 5.5", "Anthropic",
+                "us.anthropic.claude-opus-5-5", Decimal("4"), Decimal("20"), available=False),
+    ModelChoice("sonnet-5-5", "Claude Sonnet 5.5", "Anthropic",
+                "us.anthropic.claude-sonnet-5-5", Decimal("2"), Decimal("10"), available=False),
+    ModelChoice("haiku-5-5", "Claude Haiku 5.5", "Anthropic",
+                "us.anthropic.claude-haiku-5-5", Decimal("0.1"), Decimal("0.5"), available=False),
+    ModelChoice("fable-5-1", "Claude Fable 5.1", "Anthropic",
+                "us.anthropic.claude-fable-5-1", Decimal("10"), Decimal("50"), available=False),
+]
+
 # modelId -> price, for billing to resolve a run's chosen model exactly.
 _PRICE_BY_MODEL_ID: Dict[str, Tuple[Decimal, Decimal]] = {
     m.model_id: (m.price_in, m.price_out) for m in MODELS.values()
@@ -95,9 +119,11 @@ def price_for_model_id(model_id: Optional[str]) -> Optional[Tuple[Decimal, Decim
 
 
 def catalog_json() -> List[Dict]:
-    """The registry for the research-form dropdown (GET /api/models)."""
+    """The registry for the research-form dropdown (GET /api/models). Pending models come first,
+    flagged available=False, so the UI can show them as disabled "access pending" options."""
     return [{"key": m.key, "label": m.label, "provider": m.provider,
-             "default": m.key == DEFAULT_KEY} for m in MODELS.values()]
+             "default": m.key == DEFAULT_KEY, "available": m.available}
+            for m in PENDING + list(MODELS.values())]
 
 
 # Capability-ordered fallback chain (best -> most-available). When a model's Bedrock quota is
