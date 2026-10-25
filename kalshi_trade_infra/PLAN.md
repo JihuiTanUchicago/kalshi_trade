@@ -138,6 +138,12 @@
   dirs (3.2 GB on RAM-backed tmpfs) left by os._exit on deploy restarts. The agents worker now
   sweeps strat_* dirs older than 10 min at startup. Abandon-window and reaper changes belong to
   the research thread.
+- Stop scorecard splits out collateral (2026-10-25): a position past position_stop_pct flattens the
+  whole deployment, so `early_exit_scorecard` now reports stop['collateral'] (positions sold above
+  the user's stop line) and the review line shows what flattening healthy positions saved or cost.
+  All-time read at 07:30Z: breachers saved $121.84 on 11 scored exits; collateral +$3.58 on 3,
+  with Todd's #78 rain flatten (6 exits) unscored and provisionally about -$1.5. Too thin for a
+  "close only the breacher" decision; bring it to Todd once collateral n >= 20.
 
 ## Did the stop help? Early exits scored against holding (2026-10-24)
 

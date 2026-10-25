@@ -213,3 +213,20 @@ def test_a_stopped_out_position_is_scored_against_holding_once_it_settles(conn, 
     assert pid not in [p["id"] for p in repo.unscored_early_exits(cur, "btc15m", now)]
     card = repo.early_exit_scorecard(cur, user["id"], since=now - timedelta(days=1))
     assert card["stop"] == {"exits": 1, "scored": 1, "pnl": -1.98, "scored_pnl": -1.98, "hold_pnl": -2.19, "saved": 0.21}
+
+
+def test_scorecard_separates_the_breacher_from_positions_flattened_alongside_it(conn, user):
+    from app import repository as repo
+
+    dep = _deployment(conn, user)
+    cur = conn.cursor()
+    now = datetime.now(timezone.utc)
+    close = (now - timedelta(minutes=1)).replace(tzinfo=None)
+    breacher = repo.insert_position(cur, dep["id"], user["id"], "paper", "TEST-" + uuid.uuid4().hex[:8], "no", 2, 0.80, 0.02, close, None)
+    healthy = repo.insert_position(cur, dep["id"], user["id"], "paper", "TEST-" + uuid.uuid4().hex[:8], "no", 5, 0.87, 0.05, close, None)
+    assert repo.close_position(cur, breacher, 0.38, 0.0, -0.91, "stop")   # -52%: past the 40% stop
+    assert repo.close_position(cur, healthy, 0.94, 0.0, 0.28, "stop")     # +8%: sold alongside it
+    cur.execute("UPDATE app_positions SET settle_result='no', hold_pnl=%s WHERE id=%s", (0.60, healthy))
+    card = repo.early_exit_scorecard(cur, user["id"], since=now - timedelta(days=1))
+    assert card["stop"]["exits"] == 2
+    assert card["stop"]["collateral"] == {"exits": 1, "scored": 1, "saved": -0.32}

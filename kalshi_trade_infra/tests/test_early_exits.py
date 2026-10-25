@@ -56,6 +56,19 @@ def test_scorecard_says_whether_selling_early_beat_holding():
     assert cur.sql[0][1] == [2, "paper", datetime(2026, 10, 17)] and "close_reason<>'settled'" in cur.sql[0][0]
 
 
+def test_scorecard_splits_out_healthy_positions_the_stop_flattened():
+    # A stop that fires on one position sells every position of the deployment. The ones sold above
+    # the stop line are reported separately: they are what "close only the breacher" would change.
+    cur = _Cur([{"reason": "stop", "exits": 7, "scored": 4, "pnl": -0.6, "scored_pnl": -0.6, "hold_pnl": -2.0,
+                 "c_exits": 6, "c_scored": 3, "c_saved": -1.25}])
+    out = repo.early_exit_scorecard(cur, 1)
+    assert out["stop"]["collateral"] == {"exits": 6, "scored": 3, "saved": -1.25}
+    assert "JOIN app_users" in cur.sql[0][0] and "position_stop_pct" in cur.sql[0][0]
+    line = agent.early_exits_line(out)
+    assert line.endswith("stop 4: $-0.60 vs $-2.00 held, saved $1.40 "
+                         "(of which 3 healthy positions sold alongside a breach: COST $1.25)")
+
+
 def test_panel_names_a_paused_strategy_and_what_the_stop_did():
     now = repo.now_utc()
     deps = [{"id": 74, "mode": "paper", "status": "paused", "updated_at": now - timedelta(hours=1),

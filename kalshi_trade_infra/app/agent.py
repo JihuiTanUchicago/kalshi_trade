@@ -3245,8 +3245,13 @@ def early_exits_line(exits: Dict[str, Dict]) -> str:
         if not r["scored"]:
             parts.append("%s %d (none settled yet)" % (reason, r["exits"]))
             continue
-        parts.append("%s %d: $%.2f vs $%.2f held, %s $%.2f" % (
-            reason, r["scored"], r["scored_pnl"], r["hold_pnl"], "saved" if r["saved"] >= 0 else "COST", abs(r["saved"])))
+        part = "%s %d: $%.2f vs $%.2f held, %s $%.2f" % (
+            reason, r["scored"], r["scored_pnl"], r["hold_pnl"], "saved" if r["saved"] >= 0 else "COST", abs(r["saved"]))
+        c = r.get("collateral")
+        if c and c["scored"]:
+            part += " (of which %d healthy positions sold alongside a breach: %s $%.2f)" % (
+                c["scored"], "saved" if c["saved"] >= 0 else "COST", abs(c["saved"]))
+        parts.append(part)
     return ("Early exits on paper vs holding to settlement (all time): " + "; ".join(parts)) if parts else ""
 
 
