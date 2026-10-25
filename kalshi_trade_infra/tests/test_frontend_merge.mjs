@@ -368,6 +368,23 @@ test('only the admin view shows backtest-history lag on the dashboard status lin
   assert.match(f.root.querySelector('#boardbody').innerHTML, /No backtest history yet/);
 });
 
+test('the Deploy board puts realized P&L beside the backtest pace for the same trades', async () => {
+  const dep = (id, closed, oos) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode: 'paper', status: 'running', status_reason: null,
+    realized_pnl: 1, closed_trades: closed, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1,
+    backtest: {out_of_sample: oos}});
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/deployments') return response({deployments: [dep(1, 5, {pnl: 12, trades: 6}), dep(2, 0, {pnl: 12, trades: 6}), dep(3, 4, null)], open_positions: []});
+    return response({});
+  }});
+  await f.viewDeploy(); await flush(); await flush();
+  const html = f.root.querySelector('#deps').innerHTML;
+  assert.match(html, />Backtest pace</);
+  // $12 over 6 unseen trades = $2 a trade, so 5 closed trades -> +$10.00.
+  assert.match(html, /\+\$10\.00<div class="sub-fig">same 5 trades<\/div>/);
+  assert.match(html, /no closed trades/);
+  assert.doesNotMatch(html, /Backtest unseen/);
+});
+
 test('while autopilot is off, Turn on autopilot is the only primary button on the dashboard', async () => {
   const f = frontend({fetchImpl: path => {
     if (path === '/api/dashboard') return response(emptyDashboard());
