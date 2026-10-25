@@ -342,6 +342,10 @@
       opts.headers['X-Recursive'] = '1';
       opts.body = JSON.stringify(body);
     }
+    // Optional timeout (a poll passes one so a hung read is aborted and counted as a failure).
+    // AbortController fires an abort the fetch rejects on.
+    let ctl, tid;
+    if (cfg && cfg.timeoutMs) { ctl = new AbortController(); opts.signal = ctl.signal; tid = setTimeout(() => ctl.abort(), cfg.timeoutMs); }
     let res;
     // A GET that hits a restart (a deploy takes the server away for a second, and CloudFront
     // answers 502/503/504 with its own non-JSON page) retries twice before the page shows an
@@ -349,9 +353,10 @@
     for (let attempt = 0; ; attempt++) {
       try { res = await fetch(path, opts); }
       catch (e) {
-        if (scoped && gen !== S.gen) return STALE();
-        if (body === undefined && attempt < 2) { await sleep(RETRY_MS[attempt]); continue; }
-        throw new ApiError(0, "Can't reach Tau. Check your connection.");
+        if (scoped && gen !== S.gen) { if (tid) clearTimeout(tid); return STALE(); }
+        if (body === undefined && attempt < 2 && !(ctl && ctl.signal.aborted)) { await sleep(RETRY_MS[attempt]); continue; }
+        if (tid) clearTimeout(tid);
+        throw new ApiError(0, ctl && ctl.signal.aborted ? "Tau is taking too long to respond." : "Can't reach Tau. Check your connection.");
       }
       if (body === undefined && attempt < 2 && TRANSIENT.has(res.status)) {
         let parsed = null;
@@ -361,6 +366,7 @@
       }
       break;
     }
+    if (tid) clearTimeout(tid);
     let data = {};
     try { data = await res.json(); } catch (e) { /* non-JSON error page */ }
     if (scoped && gen !== S.gen) return STALE();
@@ -413,9 +419,34 @@
   let resizePaperChart = null;
   window.addEventListener('resize', () => { if (resizePaperChart) resizePaperChart(); });
   function clearTimers() { if (S.perps) { S.perps.destroy(); S.perps = null; } resizePaperChart = null; S.timers.forEach(clearInterval); S.timers = []; }
-  function poll(fn, ms) {
+  // A poll goes easy on a struggling server. It runs one read at a time, where a hung read used to
+  // stack a new one every tick (every 2s on a run page). A read that hangs past 15s is aborted and
+  // counts as a failure. After each failure in a row it sits out twice as many ticks, up to two
+  // minutes, before it tries again; the first success puts it back on its interval.
+  const POLL_READ = { timeoutMs: 15000 }, POLL_MAX_GAP = 120000;
+  // Once a poll's last good read is older than about two of its intervals and it is still failing,
+  // the figures it painted stay up but say how old they are. The next good read clears the note.
+  const staleAfter = (ms) => Math.max(2 * ms, 10000);
+  const staleText = (at) => `Last updated ${age(Math.max(0, Math.round((Date.now() - at) / 1000)))} ago, retrying`;
+  function paced(read, ms, note) {
+    let busy = false, fails = 0, wait = 0, okAt = Date.now();
+    const mark = () => { if (note) note((busy || fails) && Date.now() - okAt > staleAfter(ms) ? okAt : null); };
+    return () => {
+      if (busy || wait > 0) { if (!busy) wait--; mark(); return null; }
+      busy = true;
+      // The read starts now, not a microtask later: a page left in between must not start it.
+      let run; try { run = Promise.resolve(read(POLL_READ)); } catch (e) { run = Promise.reject(e); }
+      return run.then(
+        () => { fails = 0; okAt = Date.now(); },
+        () => { fails++; wait = Math.min(2 ** fails, Math.ceil(POLL_MAX_GAP / ms)) - 1; },
+      ).finally(() => { busy = false; mark(); });
+    };
+  }
+  // noteId names the page's quiet "Last updated 2m ago, retrying" line beside the figures it polls.
+  function poll(fn, ms, noteId) {
     const gen = S.gen;
-    const id = setInterval(() => { if (!document.hidden && gen === S.gen) fn().catch(() => {}); }, ms);
+    const tick = paced(fn, ms, noteId && ((at) => { const el = document.getElementById(noteId); if (el) el.textContent = at ? staleText(at) : ''; }));
+    const id = setInterval(() => { if (!document.hidden && gen === S.gen) tick(); }, ms);
     S.timers.push(id);
   }
   async function render() {
@@ -1465,8 +1496,8 @@
   async function viewDashboard() {
     shell('/', loading(120), loading(320));
     const gen = S.gen;
-    const load = async () => {
-      const d = await api('/api/dashboard');
+    const load = async (cfg) => {
+      const d = await api('/api/dashboard', undefined, cfg);
       if (gen !== S.gen) return;
       const p = d.paper;
       // Realized P&L (all-time + today) and open count for one money bucket; a tasteful
@@ -1550,7 +1581,7 @@
       const periodLabel = days.length > 1 ? new Intl.DateTimeFormat(undefined, {month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC'}).formatRange(new Date(days[0].d + 'T12:00:00Z'), new Date(days[days.length - 1].d + 'T12:00:00Z')) : '';
       const performance = days.length > 1 ? `<details class="overview-performance" id="paper-performance"${performanceOpen ? ' open' : ''}><summary><span class="performance-heading"><span class="performance-caption"><h2>Closed P&amp;L</h2>${ICON.chev}</span><strong class="${tone(periodPnl)}" title="Cumulative closed P&L over this period">${usd(periodPnl, true)}</strong></span><span class="performance-meta"><span class="performance-mode"><span class="performance-mode-prefix">Paper · </span>cumulative</span><span class="sect-note" title="${esc(days[0].d)} – ${esc(days[days.length - 1].d)}">${esc(periodLabel)}</span></span></summary><div class="paper-plot">${paperPlot()}</div></details>` : '';
       const main = `<section id="dash-ap" class="apcard" aria-label="Autopilot"></section><div class="dash${paperWorkspace ? ' paper-workspace' : ''}"><div class="dash-layout">
-        <section class="account-band"><dl class="figures measure dashboard-figures ${hasLive ? 'live-primary' : ''}">${hasLive ? liveSummary : paperFigure}</dl></section>
+        <section class="account-band"><dl class="figures measure dashboard-figures ${hasLive ? 'live-primary' : ''}">${hasLive ? liveSummary : paperFigure}</dl><p class="stale-note" id="dash-stale" role="status"></p></section>
         <section class="positions-ledger"><div class="sect-head"><h2>Open positions <span class="section-count">${d.open_positions.length}</span>${paperOnly(d.open_positions) ? ' <span class="position-group-mode">Paper</span>' : ''}</h2></div>
           ${d.open_positions.length ? positionTable(d.open_positions, false) : '<p class="hint">No open positions.</p>'}
           ${d.recent_closed.length ? `<details class="recent-settlements" id="recent-settlements"${settlementsOpen ? ' open' : ''}><summary>Recent settlements <span>${d.recent_closed.length}</span>${paperOnly(d.recent_closed) ? ' <span class="position-group-mode">Paper</span>' : ''}</summary>${positionTable(d.recent_closed, true)}</details>` : ''}
@@ -1580,7 +1611,7 @@
     };
     await load();
     if (gen !== S.gen) return;
-    poll(load, 15000);
+    poll(load, 15000, 'dash-stale');
     dashTrackRecord();
   }
 
@@ -2324,7 +2355,7 @@
   }
 
   async function viewRun(id) {
-    shell('/research', '<div class="run-header"><div id="runboard">' + boardTitle('Research run') + '</div><span id="runact"></span></div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl>', `
+    shell('/research', '<div class="run-header"><div id="runboard">' + boardTitle('Research run') + '</div><span id="runact"></span></div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl><p class="stale-note" id="run-stale" role="status"></p>', `
       <div id="flash"></div>
       <section class="run-artifacts" id="run-artifacts" hidden></section>
       <div id="rsibox"></div>
@@ -2334,8 +2365,8 @@
     let after = 0, tried = 0, runActive = true, loaded = false;
     const stream = runFeed(root.querySelector('#runfeed'));
     const obs = rsiObservatory(root.querySelector('#rsiobs'));
-    const load = async () => {
-      const d = await api(`/api/runs/${id}?after=${after}`);
+    const load = async (cfg) => {
+      const d = await api(`/api/runs/${id}?after=${after}`, undefined, cfg);
       const r = d.run;
       const active = r.status === 'running' || r.status === 'queued' || r.status === 'paused';
       runActive = active;
@@ -2388,7 +2419,7 @@
       if (!active) clearTimers();
     };
     await load();
-    if (runActive) poll(load, 2000);
+    if (runActive) poll(load, 2000, 'run-stale');
   }
   const DIR_BRIEF = (k) => ((S.me.directions.find((d) => d.key === k)) || { brief: '' }).brief;
 
@@ -3549,26 +3580,36 @@
     if (!apLoop) {
       // Background tabs don't poll (each status read is ~14 queries); coming back refreshes a stale one.
       apLoop = true;
-      setInterval(() => { const b = document.getElementById('autopilot-float'); if (b && !document.hidden) refreshAutopilot(b); }, 20000);
+      const tick = paced((cfg) => refreshAutopilot(document.getElementById('autopilot-float'), false, cfg).then((ok) => { if (!ok) throw new Error('Autopilot status read failed'); }), 20000, apPaintStale);
+      setInterval(() => { if (document.getElementById('autopilot-float') && !document.hidden) tick(); }, 20000);
       document.addEventListener('visibilitychange', () => {
         const b = document.getElementById('autopilot-float');
         if (b && !document.hidden && (!S.apAt || Date.now() - S.apAt > 18000)) refreshAutopilot(b, true);
       });
     }
   }
-  async function refreshAutopilot(box, share = false) {
+  // Resolves true when the status read landed. The loop backs off on false; other callers ignore it.
+  async function refreshAutopilot(box, share = false, cfg) {
     // Pages that paint the shell twice (instant switch, then content) share one in-flight read;
     // a refresh after a change always reads fresh.
     let req = share && apReq;
-    if (!req) { req = apReq = api('/api/autopilot/status', undefined, { keep: true }); req.finally(() => { if (apReq === req) apReq = null; }).catch(() => {}); }
+    if (!req) { req = apReq = api('/api/autopilot/status', undefined, { keep: true, ...cfg }); req.finally(() => { if (apReq === req) apReq = null; }).catch(() => {}); }
     try {
-      S.ap = await req; S.apAt = Date.now();
+      S.ap = await req; S.apAt = Date.now(); S.apFailing = false;
       // The status read is the switch's truth (another tab or device may have flipped it); copy that
       // reads S.me.user.autopilot, like the empty paper track record, follows it through syncApCopy.
       if (S.me && S.me.user && typeof S.ap.autopilot === 'boolean') S.me.user.autopilot = S.ap.autopilot;
       renderAutopilot(box, S.ap); paintDashAp();
     }
-    catch (e) { /* floating window is best-effort; never block the app */ }
+    catch (e) { S.apFailing = true; apPaintStale(); return false; }  // best-effort: never block the app
+    return true;
+  }
+  // The autopilot's figures (the panel's and the dashboard card's) say how old they are once its
+  // status read has been failing for about two polls; the next good read clears it.
+  const apStale = () => S.apFailing && S.apAt && Date.now() - S.apAt > staleAfter(20000) ? staleText(S.apAt) : '';
+  function apPaintStale() {
+    const text = apStale();
+    ['apf-stale', 'dash-ap-stale'].forEach((id) => { const el = document.getElementById(id); if (el) el.textContent = text; });
   }
   // The paper book's equity P&L (dashboard total_pnl) restarts when the account is reset, so it reads
   // "since reset" then; the track record keeps every closed trade and would otherwise disagree.
@@ -3621,7 +3662,7 @@
     host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>${esc(m.label)}</span>
         <p class="apcard-now">${now}</p>${Array.isArray(d.focus) ? `
         <p class="ap-focus">${apFocusLine(d.focus, 'data-apcard="focus"')}</p>` : ''}
-        <dl class="apcard-figs">${cells.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>${apWeek(d.week)}</div>
+        <dl class="apcard-figs">${cells.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl><p class="stale-note" id="dash-ap-stale" role="status">${apStale()}</p>${apWeek(d.week)}</div>
       <div class="apcard-act"><button type="button" class="btn" data-apcard="open">Open autopilot</button></div>`;
     host.querySelector('[data-apcard="open"]').onclick = () => apOpen();
     const idleFocus = host.querySelector('[data-apcard="idle-focus"]');
@@ -3858,6 +3899,7 @@
           <label class="switch"><span class="vh">Autopilot</span><input type="checkbox" id="apf-apswitch"></label>
         </div>
         <dl class="apf-stats" id="apf-stats"></dl>
+        <p class="stale-note" id="apf-stale" role="status"></p>
         <div id="apf-week"></div>
         <div class="apf-story" id="apf-story" aria-live="polite"></div>
         <p class="ap-focus" id="apf-focusline" hidden></p>
@@ -4010,6 +4052,7 @@
       ${d.research && !(d.story || []).length ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc([...new Set(d.research.active)].join(' · ')) : 'Not researching right now'} · ${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested this week, ${d.research.passed_7d} passed${d.research.cost_7d ? ', $' + Number(d.research.cost_7d).toFixed(2) + ' spent' : ''}</dd></div>` : ''}
       ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> · ${d.paper_progress.trades}/${d.paper_progress.trades_needed} paper trades · ${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}`;
     }
+    const staleEl = box.querySelector('#apf-stale'); if (staleEl) staleEl.textContent = apStale();
     const week = box.querySelector('#apf-week'); if (week) week.innerHTML = d.autopilot ? apWeek(d.week) : '';
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
     if (Array.isArray(d.focus)) apFocusPaint(box, d.focus);

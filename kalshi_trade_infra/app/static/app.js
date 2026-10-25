@@ -421,9 +421,34 @@
   });
 
   function clearTimers() { if (S.perps) { S.perps.destroy(); S.perps = null; } S.timers.forEach(clearInterval); S.timers = []; }
-  function poll(fn, ms) {
+  // A poll goes easy on a struggling server. It runs one read at a time, where a hung read used to
+  // stack a new one every tick (every 2s on a run page). A read that hangs past 15s is aborted and
+  // counts as a failure. After each failure in a row it sits out twice as many ticks, up to two
+  // minutes, before it tries again; the first success puts it back on its interval.
+  const POLL_READ = { timeoutMs: 15000 }, POLL_MAX_GAP = 120000;
+  // Once a poll's last good read is older than about two of its intervals and it is still failing,
+  // the figures it painted stay up but say how old they are. The next good read clears the note.
+  const staleAfter = (ms) => Math.max(2 * ms, 10000);
+  const staleText = (at) => `Last updated ${age(Math.max(0, Math.round((Date.now() - at) / 1000)))} ago, retrying`;
+  function paced(read, ms, note) {
+    let busy = false, fails = 0, wait = 0, okAt = Date.now();
+    const mark = () => { if (note) note((busy || fails) && Date.now() - okAt > staleAfter(ms) ? okAt : null); };
+    return () => {
+      if (busy || wait > 0) { if (!busy) wait--; mark(); return null; }
+      busy = true;
+      // The read starts now, not a microtask later: a page left in between must not start it.
+      let run; try { run = Promise.resolve(read(POLL_READ)); } catch (e) { run = Promise.reject(e); }
+      return run.then(
+        () => { fails = 0; okAt = Date.now(); },
+        () => { fails++; wait = Math.min(2 ** fails, Math.ceil(POLL_MAX_GAP / ms)) - 1; },
+      ).finally(() => { busy = false; mark(); });
+    };
+  }
+  // noteId names the page's quiet "Last updated 2m ago, retrying" line beside the figures it polls.
+  function poll(fn, ms, noteId) {
     const gen = S.gen;
-    const id = setInterval(() => { if (!document.hidden && gen === S.gen) fn().catch(() => {}); }, ms);
+    const tick = paced(fn, ms, noteId && ((at) => { const el = document.getElementById(noteId); if (el) el.textContent = at ? staleText(at) : ''; }));
+    const id = setInterval(() => { if (!document.hidden && gen === S.gen) tick(); }, ms);
     S.timers.push(id);
   }
   // SPA deploys only take effect on a full reload. Check the server's build hash on each
@@ -1473,8 +1498,8 @@
   const DASH_ROWS = 5;  // rows per dashboard list before it links to the full page
   async function viewDashboard() {
     shell('/', loading(120), loading(320));
-    const load = async () => {
-      const d = await api('/api/dashboard');
+    const load = async (cfg) => {
+      const d = await api('/api/dashboard', undefined, cfg);
       const p = d.paper;
       // Realized P&L (all-time + today) and open count for one money bucket; a tasteful
       // zero line when the bucket has no activity so an empty card never looks broken.
@@ -1503,7 +1528,7 @@
           ${fig('<span class="mk live">Real</span> Kalshi cash', d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected', { small: (d.live.connected ? (d.live.balance == null ? 'Couldn\u2019t read your Kalshi balance just now' : mSub(d.live, 'Your Kalshi cash \u2014 real money untouched')) : 'Connect your Kalshi account on <a href="/funds">Funds</a> to trade real money') + tradesCsv('live', d.live) })}
           ${fig('<span class="mk dep">Demo</span> Sandbox', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7 ${d.demo.open_positions} open \u00b7 ${usd(d.demo.realized_pnl, true)} P&amp;L ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital \u00b7 no demo strategies yet`} \u00b7 ${DEMO_WHAT}${tradesCsv('demo', d.demo)}` })}
           ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.total_pnl, small: `${usd(p.cash)} cash \u00b7 ${usd(p.open_at_cost)} at cost \u00b7 ${usd(p.total_pnl, true)} ${paperSpan(p)}${tradesCsv('paper', p)}` })}
-        </dl>${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? `\u26a0 ${d.reconcile.length} live position${d.reconcile.length === 1 ? '' : 's'} disagree with Kalshi \u2014 check your Portfolio` : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}`;
+        </dl><p class="stale-note" id="dash-stale" role="status"></p>${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? `\u26a0 ${d.reconcile.length} live position${d.reconcile.length === 1 ? '' : 's'} disagree with Kalshi \u2014 check your Portfolio` : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}`;
       const regs = curveRegs(d.deployments);
       // The dashboard is a summary: the first few deployments (paused ones, which need the user, then
       // real money, demo, paper) and a link to Deploy for the rest. Six phone cards ran ~1,400px.
@@ -1535,7 +1560,7 @@
       if (dd) bindDeploymentActions(dd, load);  // pause/resume/stop from the dashboard, same as Deploy
     };
     await load();
-    poll(load, 15000);
+    poll(load, 15000, 'dash-stale');
     dashTrackRecord();
   }
 
@@ -2317,7 +2342,7 @@
   }
 
   async function viewRun(id) {
-    shell('/research', '<div id="runboard">' + boardTitle('Research run') + '</div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl>', `
+    shell('/research', '<div id="runboard">' + boardTitle('Research run') + '</div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl><p class="stale-note" id="run-stale" role="status"></p>', `
       <div id="rsibox"></div>
       <div id="rsiobs" class="rsiobs"></div>
       <section><div class="section-head"><h2>Agent log</h2><span id="runact"></span></div><div id="flash"></div>
@@ -2326,8 +2351,8 @@
     let after = 0, tried = 0;
     const stream = runFeed(root.querySelector('#runfeed'));
     const obs = rsiObservatory(root.querySelector('#rsiobs'));
-    const load = async () => {
-      const d = await api(`/api/runs/${id}?after=${after}`);
+    const load = async (cfg) => {
+      const d = await api(`/api/runs/${id}?after=${after}`, undefined, cfg);
       const r = d.run;
       const active = r.status === 'running' || r.status === 'queued' || r.status === 'paused';
       root.querySelector('#runboard').innerHTML = boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7 ${dirLabel(r.direction)}${r.example ? ' \u00b7 ' + EXAMPLE_NOTE : ''}`);
@@ -2371,7 +2396,7 @@
       if (!active) clearTimers();
     };
     await load();
-    poll(load, 2000);
+    poll(load, 2000, 'run-stale');
   }
   const DIR_BRIEF = (k) => ((S.me.directions.find((d) => d.key === k)) || { brief: '' }).brief;
 
@@ -3509,7 +3534,8 @@
     if (!apLoop) {
       // Background tabs don't poll (each status read is ~14 queries); coming back refreshes a stale one.
       apLoop = true;
-      setInterval(() => { const b = document.getElementById('autopilot-float'); if (b && !document.hidden) refreshAutopilot(b); }, 20000);
+      const tick = paced((cfg) => refreshAutopilot(document.getElementById('autopilot-float'), false, cfg).then((ok) => { if (!ok) throw new Error('Autopilot status read failed'); }), 20000, apPaintStale);
+      setInterval(() => { if (document.getElementById('autopilot-float') && !document.hidden) tick(); }, 20000);
       document.addEventListener('visibilitychange', () => {
         const b = document.getElementById('autopilot-float');
         if (b && !document.hidden && (!S.apAt || Date.now() - S.apAt > 18000)) refreshAutopilot(b, true);
@@ -3521,19 +3547,28 @@
       document.addEventListener('toggle', yieldSoon, true); document.addEventListener('input', yieldSoon, true);
     }
   }
-  async function refreshAutopilot(box, share = false) {
+  // Resolves true when the status read landed. The loop backs off on false; other callers ignore it.
+  async function refreshAutopilot(box, share = false, cfg) {
     // Pages that paint the shell twice (instant switch, then content) share one in-flight read;
     // a refresh after a change always reads fresh.
     let req = share && apReq;
-    if (!req) { req = apReq = api('/api/autopilot/status', undefined, { keep: true }); req.finally(() => { if (apReq === req) apReq = null; }).catch(() => {}); }
+    if (!req) { req = apReq = api('/api/autopilot/status', undefined, { keep: true, ...cfg }); req.finally(() => { if (apReq === req) apReq = null; }).catch(() => {}); }
     try {
-      S.ap = await req; S.apAt = Date.now();
+      S.ap = await req; S.apAt = Date.now(); S.apFailing = false;
       // The status read is the switch's truth (another tab or device may have flipped it); copy that
       // reads S.me.user.autopilot, like the empty paper track record, follows it through syncApCopy.
       if (S.me && S.me.user && typeof S.ap.autopilot === 'boolean') S.me.user.autopilot = S.ap.autopilot;
       renderAutopilot(box, S.ap); paintDashAp();
     }
-    catch (e) { /* floating window is best-effort; never block the app */ }
+    catch (e) { S.apFailing = true; apPaintStale(); return false; }  // best-effort: never block the app
+    return true;
+  }
+  // The autopilot's figures (the panel's and the dashboard card's) say how old they are once its
+  // status read has been failing for about two polls; the next good read clears it.
+  const apStale = () => S.apFailing && S.apAt && Date.now() - S.apAt > staleAfter(20000) ? staleText(S.apAt) : '';
+  function apPaintStale() {
+    const text = apStale();
+    ['apf-stale', 'dash-ap-stale'].forEach((id) => { const el = document.getElementById(id); if (el) el.textContent = text; });
   }
   // The paper book's equity P&L (dashboard total_pnl) restarts when the account is reset, so it reads
   // "since reset" then; the track record keeps every closed trade and would otherwise disagree.
@@ -3586,7 +3621,7 @@
     host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>${esc(m.label)}</span>
         <p class="apcard-now">${now}</p>${Array.isArray(d.focus) ? `
         <p class="ap-focus">${apFocusLine(d.focus, 'data-apcard="focus"')}</p>` : ''}
-        <dl class="apcard-figs">${cells.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>${apWeek(d.week)}</div>
+        <dl class="apcard-figs">${cells.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl><p class="stale-note" id="dash-ap-stale" role="status">${apStale()}</p>${apWeek(d.week)}</div>
       <div class="apcard-act"><button type="button" class="btn" data-apcard="open">Open autopilot</button></div>`;
     host.querySelector('[data-apcard="open"]').onclick = () => apOpen();
     const idleFocus = host.querySelector('[data-apcard="idle-focus"]');
@@ -3839,6 +3874,7 @@
           <label class="switch"><span class="vh">Autopilot</span><input type="checkbox" id="apf-apswitch"></label>
         </div>
         <dl class="apf-stats" id="apf-stats"></dl>
+        <p class="stale-note" id="apf-stale" role="status"></p>
         <div id="apf-week"></div>
         <div class="apf-story" id="apf-story" aria-live="polite"></div>
         <p class="ap-focus" id="apf-focusline" hidden></p>
@@ -3991,6 +4027,7 @@
       ${d.research && !(d.story || []).length ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc([...new Set(d.research.active)].join(' · ')) : 'Not researching right now'} · ${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested this week, ${d.research.passed_7d} passed${d.research.cost_7d ? ', $' + Number(d.research.cost_7d).toFixed(2) + ' spent' : ''}</dd></div>` : ''}
       ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> · ${d.paper_progress.trades}/${d.paper_progress.trades_needed} paper trades · ${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}`;
     }
+    const staleEl = box.querySelector('#apf-stale'); if (staleEl) staleEl.textContent = apStale();
     const week = box.querySelector('#apf-week'); if (week) week.innerHTML = d.autopilot ? apWeek(d.week) : '';
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
     if (Array.isArray(d.focus)) apFocusPaint(box, d.focus);

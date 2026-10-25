@@ -2518,3 +2518,9 @@ body.landing-body .apf { display: none; }
 
 /* What a research session usually costs, under Start session. */
 .go-cost { margin: 8px 0 0; }
+
+/* A poll that keeps failing leaves its last good figures up and says how old they are, in the
+   quiet voice of the markets feed's "Updated" line. Empty (the usual case) it takes no room. */
+.stale-note { margin: 8px 0 0; font-family: var(--f-nar); font-size: 12px; letter-spacing: .02em; color: var(--ink-3); }
+.stale-note:empty { display: none; }
+#run-stale { margin-bottom: 14px; }  /* the run page puts a boxed panel right under it */
