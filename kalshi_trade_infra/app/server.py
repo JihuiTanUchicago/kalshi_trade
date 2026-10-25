@@ -591,6 +591,12 @@ def get_run(ctx: Ctx):
     dream = repo.latest_dream_event(ctx.cur, ctx.uid)
     _with_spent(ctx.cur, ctx.uid, [run])
     _mark_example([run])
+    # How long it has waited for a research worker (or gone quiet), timed by the server so a reload
+    # doesn't restart the count; once overdue, how many queued sessions a worker takes first.
+    wait = _run_wait(run)
+    if wait and wait["overdue"] and wait["state"] == "queued":
+        wait["ahead"] = repo.research_queue_ahead(ctx.cur, run["id"])
+    run["wait"] = wait
     return {
         "run": run,
         "events": repo.run_events(ctx.cur, run["id"], after),
@@ -1195,8 +1201,12 @@ def deployment_action(ctx: Ctx):
 
 def get_chat(ctx: Ctx):
     after = int(ctx.query.get("after") or 0)
-    counts = repo.active_run_counts(ctx.cur, ctx.uid)
-    return {"messages": repo.chat_messages(ctx.cur, ctx.uid, after), "agent_busy": counts["chat_active"] > 0}
+    run = repo.active_agent_run(ctx.cur, ctx.uid)
+    wait = _run_wait(run)
+    # agent_wait: the oldest chat/review in flight has waited or gone quiet past the reaper's limit,
+    # so the panel's pulse says that instead of "working" for as long as it lasts.
+    return {"messages": repo.chat_messages(ctx.cur, ctx.uid, after), "agent_busy": run is not None,
+            "agent_wait": wait if wait and wait["overdue"] else None}
 
 
 def post_chat(ctx: Ctx):
@@ -1333,15 +1343,20 @@ def _autopilot_story(d: Dict) -> List[str]:
             else "Right now it's picking a market to research."
     elif d.get("reviewing"):
         now = "Right now it's reviewing the markets to pick its next move. Each move shows up in its activity feed."
+    elif d.get("review_wait"):
+        w = d["review_wait"]
+        mins = max(1, int(w.get("seconds") or 0) // 60)
+        now = ("Its next review has waited %s for a free worker, longer than usual. It starts when one frees up."
+               % _span(mins)) if w.get("state") == "queued" else \
+              ("Its review hasn't checked in for %s. A review that quiet is normally stopped, and the next one "
+               "starts on schedule." % _span(mins))
     else:
         now = "Right now it's between research runs. It checks in about every %d minutes." % max(1, COPILOT_REVIEW_MINUTES)
         quiet = _quiet_minutes(d.get("last_review_at"))
         if quiet:
             # A stalled worker would leave "checks in every 10 minutes" on screen for hours; say how long it's been.
             # Same steps as the "Last reviewed" figure beside it (sinceMin), so the two never disagree.
-            ago = (_plural(quiet, "minute") if quiet < 90 else _plural(int(quiet / 60 + .5), "hour") if quiet < 2880
-                   else _plural(int(quiet / 1440 + .5), "day"))
-            now = "Right now it's between research runs. Its last check-in was %s ago, longer than usual." % ago
+            now = "Right now it's between research runs. Its last check-in was %s ago, longer than usual." % _span(quiet)
     lines = [now]
     if d.get("focus"):
         lines.append("It sticks to the focus you set: %s." % ", ".join(d["focus"]))
@@ -1525,6 +1540,40 @@ COPILOT_REVIEW_MINUTES = int(os.getenv("APP_COPILOT_REVIEW_SECONDS", "600")) // 
 QUIET_AFTER_MINUTES = max(COPILOT_REVIEW_MINUTES, int(os.getenv("APP_IDLE_REVIEW_SECONDS", "1800")) // 60) * 3 // 2
 
 
+# A queued or silent run reads as overdue once it passes the reaper's limit (worker.ABANDONED_AFTER,
+# TAU_RUN_ABANDONED_SECONDS): a running run that hasn't beaten for that long is one the reaper stops,
+# and a queued run is never reaped, so without this a backed-up or dead worker showed a spinner forever.
+RUN_OVERDUE_SECONDS = int(worker.ABANDONED_AFTER.total_seconds())
+
+
+def _run_wait(run: Optional[Dict]) -> Optional[Dict]:
+    """How long a run has been waiting for a worker, or silent while running: {"state": "queued" |
+    "silent", "seconds": n, "overdue": bool}. A queued run always reports its wait, measured from its
+    last re-queue (heartbeat_at) or its creation; a running one only once its heartbeat is overdue.
+    None for anything else."""
+    if not run:
+        return None
+    if run.get("status") == "queued":
+        since, state = run.get("heartbeat_at") or run.get("created_at"), "queued"
+    elif run.get("status") == "running":
+        since, state = run.get("heartbeat_at") or run.get("started_at"), "silent"
+    else:
+        return None
+    if not isinstance(since, datetime):
+        return None
+    secs = max(0, int((repo.now_utc() - since).total_seconds()))
+    overdue = secs > RUN_OVERDUE_SECONDS
+    if state == "silent" and not overdue:
+        return None
+    return {"state": state, "seconds": secs, "overdue": overdue}
+
+
+def _span(mins: int) -> str:
+    """Minutes as the panel says them: "6 minutes", "2 hours", "3 days"."""
+    return (_plural(mins, "minute") if mins < 90 else _plural(int(mins / 60 + .5), "hour") if mins < 2880
+            else _plural(int(mins / 1440 + .5), "day"))
+
+
 def _quiet_minutes(last_review_at) -> int:
     """Minutes since the last autopilot review when that's later than the worker's cadence, else 0."""
     if not isinstance(last_review_at, datetime):
@@ -1549,6 +1598,8 @@ def autopilot_status(ctx: Ctx):
     # silently skips the user via billing.is_ready — the SAME gate, read here only to surface WHY the
     # panel is quiet so it doesn't look broken. Never changes the gate; purely a status readout.
     billing_blocked = bool(u.get("autopilot")) and billing.configured() and not billing.is_ready(cur, ctx.uid)
+    review = repo.active_agent_run(cur, ctx.uid, "review") if u.get("autopilot") else None
+    review_wait = _run_wait(review) or {"overdue": False}
     # Paper -> live progress: the running paper strategy closest to the realistic-trade gate, so a
     # user on autopilot can see the funnel moving. Counts only (no bootstrap): this endpoint polls.
     paper_progress = None
@@ -1587,7 +1638,10 @@ def autopilot_status(ctx: Ctx):
         "last_review_at": repo.last_review_at(cur, ctx.uid),  # liveness: a quiet review posts nothing, this still shows it ran
         # A review queued or running now. Switching on queues the first one at once, and the panel said
         # "between research runs, checks in every 10 minutes" over a "Working" pulse while it waited.
-        "reviewing": bool(u.get("autopilot")) and repo.review_in_flight(cur, ctx.uid),
+        "reviewing": bool(review) and not review_wait["overdue"],
+        # Set once that review has waited or gone quiet past the reaper's limit, so the panel says so
+        # instead of "reviewing" forever.
+        "review_wait": review_wait if review_wait["overdue"] else None,
         "model": u.get("autopilot_model") or catalog.DEFAULT_KEY,  # the model the autopilot's own runs use
         "focus": agent.focus_tokens(u),  # the user's binding market focus ([] = any market)
         "billing_blocked": billing_blocked,

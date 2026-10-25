@@ -281,11 +281,19 @@ def research_week(cur, user_id: int, since, include_demo: bool = False) -> List[
 def get_run(cur, user_id: int, run_id: int) -> Optional[Dict]:
     cur.execute(
         """SELECT id, kind, market, direction, prompt, status, hypotheses_tried, strategies_passed, error,
-                  max_hypotheses, run_forever, model, created_at, started_at, finished_at
+                  max_hypotheses, run_forever, model, created_at, started_at, finished_at, heartbeat_at
            FROM app_agent_runs WHERE id=%s AND user_id=%s""",
         (run_id, user_id),
     )
     return cur.fetchone()
+
+
+def research_queue_ahead(cur, run_id: int) -> int:
+    """GLOBAL count of queued research runs that a worker will take before this one (claim_run takes
+    the lowest id first), so a long wait can say how many sessions are ahead of it."""
+    cur.execute("SELECT COUNT(*) AS n FROM app_agent_runs WHERE kind='research' AND status='queued' AND id<%s",
+                (run_id,))
+    return int(cur.fetchone()["n"])
 
 
 def set_run_counts(cur, run_id: int, tried: int, passed: int) -> None:

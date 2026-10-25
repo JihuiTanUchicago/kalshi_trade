@@ -997,6 +997,43 @@ test('the current research run renders a safe streaming log and its paused statu
   assert.ok(f.root.querySelector('#resume')); assert.match(f.root.querySelector('#runpulse').innerHTML, /resume/);
 });
 
+test('a queued run counts its wait from the server, and past the reaper limit says plainly it is waiting', async () => {
+  const at = (wait, status = 'queued') => {
+    const run = {id: 9, prompt: 'Idea', status, market: 'btc15m', created_at: '2026-10-17T10:00:00Z', wait};
+    return frontend({fetchImpl: path => { assert.ok(path.startsWith('/api/runs/9')); return response({run, events: []}); }});
+  };
+  // Under the limit: the spinner stays, but the count is the server's (a reload used to restart it at 0s).
+  let f = at({state: 'queued', seconds: 200, overdue: false});
+  await f.viewRun(9);
+  [...f.intervals.values()].forEach(tick => tick());
+  assert.match(f.root.querySelector('#runpulse [data-plabel]').textContent, /^Queued · 20\ds$/);
+  assert.equal(f.root.querySelector('#rsiobs [data-wait]').hidden, true);
+  f.clearTimers();
+  // Past it: no spinner, how long, and how many sessions a worker takes first.
+  f = at({state: 'queued', seconds: 360, overdue: true, ahead: 2});
+  await f.viewRun(9);
+  const line = 'Still waiting for a free research worker (6 min). 2 sessions are ahead of it; it starts when one frees up.';
+  assert.match(f.root.querySelector('#runfigs').innerHTML, /Waiting 6 min/);
+  assert.ok(f.root.querySelector('#runpulse').classes.has('late'));
+  assert.ok(f.root.querySelector('#runpulse').innerHTML.includes(line));
+  assert.doesNotMatch(f.root.querySelector('#runpulse').innerHTML, /class="working"/);
+  const wait = f.root.querySelector('#rsiobs [data-wait]');
+  assert.equal(wait.hidden, false); assert.equal(wait.textContent, line);
+  assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Waiting 6 min');
+  f.clearTimers();
+  f = at({state: 'queued', seconds: 300, overdue: true, ahead: 0});
+  await f.viewRun(9);
+  assert.equal(f.root.querySelector('#rsiobs [data-wait]').textContent, 'Still waiting for a free research worker (5 min). It’s next in line and starts when one frees up.');
+  f.clearTimers();
+  // A running session whose heartbeat is past the limit reads as silent, not Researching.
+  f = at({state: 'silent', seconds: 420, overdue: true}, 'running');
+  await f.viewRun(9);
+  assert.match(f.root.querySelector('#runfigs').innerHTML, /Silent 7 min/);
+  assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Silent 7 min');
+  assert.ok(f.root.querySelector('#runpulse').innerHTML.includes('No word from the agent for 7 min. A session this quiet is normally interrupted and resumed from its last checkpoint.'));
+  f.clearTimers();
+});
+
 test('phone labels on strategy rows say the P&L is a backtest', () => {
   const f = frontend({fetchImpl: path => { throw new Error('Unexpected offline request: ' + path); }});
   const m = (pnl) => ({pnl, trades: 40, win_rate: 0.54});

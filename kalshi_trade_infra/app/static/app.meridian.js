@@ -2160,6 +2160,7 @@
         <span class="rsiobs-live is-wait" data-live><span data-livetext>Spinning up…</span></span>${ICON.chev}</summary>
       <ol class="rsi-labels" aria-label="Research cycle: explore, backtest, validate, refine, then repeat">${RSI_STAGES.map(([s, l]) => `<li class="rsi-lab" data-stage="${s}">${l}</li>`).join('')}</ol>
       <p class="rsiobs-phase" data-phase>Waiting for the agent to start.</p>
+      <p class="rsiobs-phase rsiobs-wait" data-wait hidden></p>
       <figure class="rsiobs-tree" data-tree hidden><figcaption>Discovery tree</figcaption>
         <div class="rsiobs-treewrap"><svg class="rsiobs-treesvg" data-treesvg></svg></div></figure></details>`;
 
@@ -2169,7 +2170,9 @@
     const labs = {};
     RSI_STAGES.forEach(([s]) => { labs[s] = host.querySelector(`.rsi-lab[data-stage="${s}"]`); });
     const fired = new Set();
-    let stage = null, lastAt = Date.now(), runState = 'queued', initialUpdate = true;
+    let stage = null, lastAt = Date.now(), runState = 'queued', initialUpdate = true, wait = null, waitAt = 0;
+    const waitEl = host.querySelector('[data-wait]');
+    const waitNow = () => (wait ? { ...wait, seconds: wait.seconds + Math.round((Date.now() - waitAt) / 1000) } : null);
     const nodes = [], byId = new Map(), byTitle = new Map(); let hasLineage = false, lastCount = -1;
 
     function paintStages() {
@@ -2183,6 +2186,11 @@
 
     function paintLive() {
       host.classList.remove('is-quiet');
+      const w = ['queued', 'running'].includes(runState) ? waitNow() : null, late = !!(w && w.overdue);
+      waitEl.hidden = !late;
+      if (late) waitEl.textContent = runWaitLine(w);
+      if (late && runState === 'queued') { liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Waiting ' + waitSpan(w.seconds); return; }
+      if (late) { host.classList.add('is-quiet'); liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Silent ' + waitSpan(w.seconds); return; }
       if (runState === 'paused') { liveWrap.className = 'rsiobs-live is-paused'; liveText.textContent = 'Paused'; return; }
       if (runState === 'queued') { liveWrap.className = 'rsiobs-live is-wait'; liveText.textContent = 'Queued'; return; }
       if (runState !== 'running') { liveWrap.className = 'rsiobs-live is-done'; liveText.textContent = runState === 'succeeded' ? 'Finished' : runState === 'cancelled' ? 'Cancelled' : 'Stopped'; return; }
@@ -2219,6 +2227,7 @@
 
     return {
       push(events, state, run) {
+        wait = (run && run.wait) || null; waitAt = Date.now();
         const firstUpdate = initialUpdate;
         initialUpdate = false;
         runState = state || runState;
@@ -2291,7 +2300,9 @@
       root.querySelector('#runboard').innerHTML = boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7 ${dirLabel(r.direction)}${r.example ? ' \u00b7 ' + EXAMPLE_NOTE : ''}`);
       const started = r.started_at ? Date.parse(r.started_at) : null;
       const end = r.finished_at ? Date.parse(r.finished_at) : Date.now();
-      const statusText = r.status === 'queued' ? 'Waiting'
+      const late = r.wait && r.wait.overdue ? r.wait : null;
+      const statusText = late ? (late.state === 'queued' ? 'Waiting ' : 'Silent ') + waitSpan(late.seconds)
+        : r.status === 'queued' ? 'Waiting'
         : r.status === 'paused' ? 'Paused'
         : r.status === 'running' ? 'Researching'
         : r.status === 'succeeded' ? 'Done' : r.status === 'cancelled' ? 'Cancelled' : 'Failed';
@@ -3340,6 +3351,18 @@
   const kfmt = (n) => { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n)); };
   const sinceMin = (iso) => { if (!iso) return '—'; const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000); return s < 90 ? 'just now' : s < 5400 ? Math.round(s / 60) + 'm ago' : s < 172800 ? Math.round(s / 3600) + 'h ago' : Math.round(s / 86400) + 'd ago'; };
 
+  // A run past the reaper's limit (the server's run.wait / agent_wait / review_wait, timed on the
+  // server so a reload doesn't restart the count) is said plainly instead of under a spinner.
+  const waitSpan = (s) => { const m = Math.max(1, Math.floor((+s || 0) / 60)); return m < 90 ? m + ' min' : Math.round(m / 60) + ' hr'; };
+  function runWaitLine(w) {
+    const t = waitSpan(w.seconds);
+    if (w.state === 'queued') {
+      const ahead = +w.ahead || 0;
+      return `Still waiting for a free research worker (${t}). ${ahead ? `${ahead === 1 ? '1 session is' : num(ahead) + ' sessions are'} ahead of it; it starts` : 'It’s next in line and starts'} when one frees up.`;
+    }
+    return `No word from the agent for ${t}. A session this quiet is normally interrupted and resumed from its last checkpoint.`;
+  }
+
   function priceChart(points) {
     if (!points || points.length < 2) return '<div class="empty"><h3>Not enough price history</h3></div>';
     const W = 760, H = 260, pl = 44, pr = 14, pt = 14, pb = 26, iw = W - pl - pr, ih = H - pt - pb;
@@ -3711,7 +3734,11 @@
     if (pulse) {
       pulse.hidden = false;
       pulse.className = 'runpulse apf-pulse-row';
-      pulse.innerHTML = d.agent_busy
+      // Past the reaper's limit the spinner would claim work nobody is doing; say how long instead.
+      const w = d.agent_wait;
+      pulse.innerHTML = w
+        ? `<span class="apf-idle-dot" aria-hidden="true"></span><span>${w.state === 'queued' ? 'Waiting for a free worker' : 'No word from it'} for ${waitSpan(w.seconds)}, longer than usual</span>`
+        : d.agent_busy
         ? '<span class="working" aria-hidden="true"></span><span>Working on its next move<span class="ell" aria-hidden="true"></span></span>'
         : `<span>${apIdleLine(box)}</span>`;
     }
@@ -3887,7 +3914,8 @@
       `<dt>${liveInPlay ? 'Live' : 'Paper'} P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd>`,
     ].concat(liveInPlay ? [`<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`] : [])
       // A queued or running review is not a finished one: right after switching on, "Last reviewed just now" claimed a review that hadn't run.
-      .concat(d.reviewing ? ['<dt>Review</dt><dd>In progress</dd>'] : d.last_review_at ? [`<dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd>`] : []);
+      .concat(d.review_wait ? [`<dt>Review</dt><dd>${d.review_wait.state === 'queued' ? 'Waiting' : 'Silent'} ${waitSpan(d.review_wait.seconds)}</dd>`]
+        : d.reviewing ? ['<dt>Review</dt><dd>In progress</dd>'] : d.last_review_at ? [`<dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd>`] : []);
     if (stats) {
       stats.dataset.cols = short.length;
       stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `

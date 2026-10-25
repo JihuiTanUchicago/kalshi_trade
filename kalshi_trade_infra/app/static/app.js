@@ -2007,7 +2007,7 @@
     const log = section.querySelector('.log');
     const jump = section.querySelector('.jumplatest');
     const pulse = section.querySelector('.runpulse');
-    let unseen = 0, first = true, appended = 0, pulseSt = null, lastAt = Date.now();
+    let unseen = 0, first = true, appended = 0, pulseSt = null, pulseKey = '', lastAt = Date.now(), queuedAt = null;
     const cards = new Map();   // hypothesis title -> card controller (most recent wins on a title clash)
     let think = null;          // the currently-open thinking card, if any
     const atBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 60;
@@ -2043,8 +2043,8 @@
     // Count up the seconds since the last event every second (independent of the 2s poll) so a
     // long call that isn't streaming still reads as working, not stuck.
     const ptick = setInterval(() => {
-      if (pulse.hidden || pulseSt === 'paused' || pulseSt === 'done') return;
-      const secs = Math.round((Date.now() - lastAt) / 1000);
+      if (pulse.hidden || pulseSt === 'paused' || pulseSt === 'done' || pulse.classList.contains('late')) return;
+      const secs = Math.round((Date.now() - (pulseSt === 'queued' && queuedAt != null ? queuedAt : lastAt)) / 1000);
       const lab = pulse.querySelector('[data-plabel]');
       if (lab && secs >= 3) lab.textContent = `${pulseSt === 'queued' ? 'Queued' : 'Researching'} · ${secs}s`;
     }, 1000);
@@ -2061,14 +2061,19 @@
         else if (appended) { unseen += appended; jump.hidden = false; jump.textContent = unseen + ' new ↓'; }
         first = false;
       },
-      state(st) {  // 'queued' | 'running' | 'paused' | 'done'
+      state(st, wait) {  // 'queued' | 'running' | 'paused' | 'done'; wait = the server's run.wait
         if (st === 'done') { pulseSt = st; sealThink(); pulse.hidden = true; return; }
         const stick = atBottom();
         pulse.hidden = false;
-        if (st !== pulseSt) {
-          pulse.className = 'runpulse' + (st === 'paused' ? ' paused' : '');
+        // Count the queue from the server's clock: "Queued · 19s" restarted on every reload.
+        queuedAt = st === 'queued' && wait && wait.state === 'queued' ? Date.now() - wait.seconds * 1000 : null;
+        const late = st !== 'paused' && wait && wait.overdue ? runWaitLine(wait) : '';
+        if (st + late !== pulseKey) {
+          pulseKey = st + late;
+          pulse.className = 'runpulse' + (st === 'paused' ? ' paused' : late ? ' late' : '');
           pulse.innerHTML = st === 'paused'
             ? '<span class="pulse-bar" aria-hidden="true"></span><span>Paused — resume and it picks up exactly where it left off.</span>'
+            : late ? `<span class="apf-idle-dot" aria-hidden="true"></span><span>${esc(late)}</span>`
             : st === 'queued'
               ? '<span class="working" aria-hidden="true"></span><span data-plabel>Queued — waiting for a free agent to pick this up…</span>'
               : '<span class="working" aria-hidden="true"></span><span data-plabel>Researching<span class="ell" aria-hidden="true"></span></span>';
@@ -2152,6 +2157,7 @@
           ${RSI_STAGES.map(station).join('')}</svg>
         <div class="rsi-labels">${RSI_STAGES.map(([s, l]) => `<span class="rsi-lab" data-stage="${s}">${l}</span>`).join('')}</div></div>
       <p class="rsiobs-phase" data-phase>Waiting for the agent to start.</p>
+      <p class="rsiobs-phase rsiobs-wait" data-wait hidden></p>
       <figure class="rsiobs-tree" data-tree hidden><figcaption>Discovery tree <span>how each winner seeded the next</span></figcaption>
         <div class="rsiobs-treewrap"><svg class="rsiobs-treesvg" data-treesvg></svg></div></figure>`;
 
@@ -2161,7 +2167,9 @@
     RSI_STAGES.forEach(([s]) => { groups[s] = host.querySelector(`.rsi-st[data-stage="${s}"]`); labs[s] = host.querySelector(`.rsi-lab[data-stage="${s}"]`); });
     const links = host.querySelectorAll('.rsi-link, .rsi-arc');
     const fired = new Set();
-    let stage = null, lastAt = Date.now(), runState = 'queued';
+    let stage = null, lastAt = Date.now(), runState = 'queued', wait = null, waitAt = 0;
+    const waitEl = host.querySelector('[data-wait]');
+    const waitNow = () => (wait ? { ...wait, seconds: wait.seconds + Math.round((Date.now() - waitAt) / 1000) } : null);
     const nodes = [], byId = new Map(), byTitle = new Map(); let hasLineage = false, lastCount = -1;
 
     function paintStages() {
@@ -2176,6 +2184,11 @@
 
     function paintLive() {
       host.classList.remove('is-quiet');
+      const w = ['queued', 'running'].includes(runState) ? waitNow() : null, late = !!(w && w.overdue);
+      waitEl.hidden = !late;
+      if (late) waitEl.textContent = runWaitLine(w);
+      if (late && runState === 'queued') { liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Waiting ' + waitSpan(w.seconds); return; }
+      if (late) { host.classList.add('is-quiet'); liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Silent ' + waitSpan(w.seconds); return; }
       if (runState === 'paused') { liveWrap.className = 'rsiobs-live is-paused'; liveText.textContent = 'Paused'; return; }
       if (runState === 'queued') { liveWrap.className = 'rsiobs-live is-wait'; liveText.textContent = 'Queued'; return; }
       if (runState !== 'running') { liveWrap.className = 'rsiobs-live is-done'; liveText.textContent = runState === 'succeeded' ? 'Finished' : runState === 'cancelled' ? 'Cancelled' : 'Stopped'; return; }
@@ -2211,6 +2224,7 @@
 
     return {
       push(events, state, run) {
+        wait = (run && run.wait) || null; waitAt = Date.now();
         runState = state || runState;
         (events || []).forEach((ev) => {
           const d = ev.data || {};
@@ -2278,7 +2292,9 @@
       root.querySelector('#runboard').innerHTML = boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7 ${dirLabel(r.direction)}${r.example ? ' \u00b7 ' + EXAMPLE_NOTE : ''}`);
       const started = r.started_at ? Date.parse(r.started_at) : null;
       const end = r.finished_at ? Date.parse(r.finished_at) : Date.now();
-      const statusText = r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
+      const late = r.wait && r.wait.overdue ? r.wait : null;
+      const statusText = late ? (late.state === 'queued' ? 'Waiting ' : 'Silent ') + waitSpan(late.seconds)
+        : r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
         : r.status === 'paused' ? 'Paused'
         : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
         : r.status === 'succeeded' ? 'Done' : r.status === 'stopped' ? 'Stopped'
@@ -2309,7 +2325,7 @@
       runControls(root.querySelector('#runact'), id, r.status, load);
       d.events.forEach((ev) => { after = Math.max(after, ev.id); if (ev.kind === 'hypothesis') tried++; });
       stream.push(d.events);
-      stream.state(active ? r.status : 'done');
+      stream.state(active ? r.status : 'done', r.wait);
       obs.push(d.events, r.status, r);
       if (!active) clearTimers();
     };
@@ -3318,6 +3334,18 @@
   const kfmt = (n) => { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n)); };
   const sinceMin = (iso) => { if (!iso) return '—'; const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000); return s < 90 ? 'just now' : s < 5400 ? Math.round(s / 60) + 'm ago' : s < 172800 ? Math.round(s / 3600) + 'h ago' : Math.round(s / 86400) + 'd ago'; };
 
+  // A run past the reaper's limit (the server's run.wait / agent_wait / review_wait, timed on the
+  // server so a reload doesn't restart the count) is said plainly instead of under a spinner.
+  const waitSpan = (s) => { const m = Math.max(1, Math.floor((+s || 0) / 60)); return m < 90 ? m + ' min' : Math.round(m / 60) + ' hr'; };
+  function runWaitLine(w) {
+    const t = waitSpan(w.seconds);
+    if (w.state === 'queued') {
+      const ahead = +w.ahead || 0;
+      return `Still waiting for a free research worker (${t}). ${ahead ? `${ahead === 1 ? '1 session is' : num(ahead) + ' sessions are'} ahead of it; it starts` : 'It’s next in line and starts'} when one frees up.`;
+    }
+    return `No word from the agent for ${t}. A session this quiet is normally interrupted and resumed from its last checkpoint.`;
+  }
+
   function priceChart(points) {
     if (!points || points.length < 2) return '<div class="empty"><h3>Not enough history yet</h3><p>This market is new or thinly traded — its price curve fills in as it trades.</p></div>';
     const W = 760, H = 260, pl = 44, pr = 14, pt = 14, pb = 26, iw = W - pl - pr, ih = H - pt - pb;
@@ -3667,7 +3695,11 @@
     if (pulse) {
       pulse.hidden = false;
       pulse.className = 'runpulse apf-pulse-row';
-      pulse.innerHTML = d.agent_busy
+      // Past the reaper's limit the spinner would claim work nobody is doing; say how long instead.
+      const w = d.agent_wait;
+      pulse.innerHTML = w
+        ? `<span class="apf-idle-dot" aria-hidden="true"></span><span>${w.state === 'queued' ? 'Waiting for a free worker' : 'No word from it'} for ${waitSpan(w.seconds)}, longer than usual</span>`
+        : d.agent_busy
         ? '<span class="working" aria-hidden="true"></span><span>Working on its next move<span class="ell" aria-hidden="true"></span></span>'
         : `<span class="apf-idle-dot" aria-hidden="true"></span><span>${apIdleLine(box)}</span>`;
     }
@@ -3843,7 +3875,8 @@
       `<dt>${liveInPlay ? 'Live' : 'Paper'} P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd>`,
     ].concat(liveInPlay ? [`<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`] : [])
       // A queued or running review is not a finished one: right after switching on, "Last reviewed just now" claimed a review that hadn't run.
-      .concat(d.reviewing ? ['<dt>Review</dt><dd>In progress</dd>'] : d.last_review_at ? [`<dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd>`] : []);
+      .concat(d.review_wait ? [`<dt>Review</dt><dd>${d.review_wait.state === 'queued' ? 'Waiting' : 'Silent'} ${waitSpan(d.review_wait.seconds)}</dd>`]
+        : d.reviewing ? ['<dt>Review</dt><dd>In progress</dd>'] : d.last_review_at ? [`<dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd>`] : []);
     if (stats) {
       stats.dataset.cols = short.length;
       stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `

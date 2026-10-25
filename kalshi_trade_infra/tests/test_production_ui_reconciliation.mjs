@@ -61,6 +61,7 @@ class Element {
   setAttribute(key, value) { this.attributes[key] = String(value); }
   remove() { this.removed = true; }
 }
+let chatReply = {messages: [], agent_busy: false};  // what the panel's chat poll reads
 function frontend(transport = () => { throw new Error('Unexpected synthetic request'); }) {
   const root = new Element('div', {id: 'app'}), body = new Element('body'), box = new Element('div', {id: 'autopilot-float'});
   body.appendChild(root); body.appendChild(box);
@@ -71,7 +72,7 @@ function frontend(transport = () => { throw new Error('Unexpected synthetic requ
     location: {pathname: '/funds', search: '', origin: 'https://offline.invalid'}, history: {},
     localStorage: {getItem: key => key === 'tau_ap_open' ? '1' : null, setItem() {}},
     setInterval: callback => { intervals.set(++next, callback); return next; }, clearInterval: id => intervals.delete(id), setTimeout() {}, clearTimeout() {},
-    fetch: async (path, options) => { requests.push({path, options}); if (path.startsWith('/api/chat?')) return response({messages: [], agent_busy: false}); return transport(path, options); },
+    fetch: async (path, options) => { requests.push({path, options}); if (path.startsWith('/api/chat?')) return response(chatReply); return transport(path, options); },
     testAlert: value => alerts.push(value), testShell: (_active, board, main) => { root.innerHTML = board + '<main>' + main + '</main>'; },
   });
   const boot = '  setupGlossary();\n  render();';
@@ -222,6 +223,28 @@ test('a queued or running review reads as in progress, not as a review that alre
   f.apUpdate(f.box, status({reviewing: false, last_review_at: at}));
   assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Last reviewed<\/dt><dd>just now<\/dd>/);
   assert.doesNotMatch(source, /Working the operation/);
+});
+
+test('the autopilot pulse and Review figure say how long a run has waited once past the reaper limit', async () => {
+  try {
+    chatReply = {messages: [], agent_busy: true, agent_wait: null};
+    let f = frontend(() => response(catalog)); f.apBuildShell(f.box); await flush();
+    assert.match(f.box.querySelector('#apf-pulse').innerHTML, /Working on its next move/);
+    chatReply = {messages: [], agent_busy: true, agent_wait: {state: 'queued', seconds: 420, overdue: true}};
+    f = frontend(() => response(catalog)); f.apBuildShell(f.box); await flush();
+    const pulse = f.box.querySelector('#apf-pulse').innerHTML;
+    assert.match(pulse, /Waiting for a free worker for 7 min, longer than usual/);
+    assert.doesNotMatch(pulse, /Working on its next move|class="working"/);
+    chatReply = {messages: [], agent_busy: true, agent_wait: {state: 'silent', seconds: 5340, overdue: true}};
+    f = frontend(() => response(catalog)); f.apBuildShell(f.box); await flush();
+    assert.match(f.box.querySelector('#apf-pulse').innerHTML, /No word from it for 89 min, longer than usual/);
+    const at = new Date().toISOString();
+    f.apUpdate(f.box, status({reviewing: false, review_wait: {state: 'queued', seconds: 300, overdue: true}, last_review_at: at}));
+    assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Review<\/dt><dd>Waiting 5 min<\/dd>/);
+    f.apUpdate(f.box, status({reviewing: false, review_wait: {state: 'silent', seconds: 7200, overdue: true}, last_review_at: at}));
+    assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Review<\/dt><dd>Silent 2 hr<\/dd>/);
+    assert.doesNotMatch(f.box.querySelector('#apf-stats').innerHTML, /In progress/);
+  } finally { chatReply = {messages: [], agent_busy: false}; }
 });
 
 test('the autopilot feed labels switch notes as switches, not reviews', () => {

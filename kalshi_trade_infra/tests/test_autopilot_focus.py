@@ -153,6 +153,10 @@ def test_story_says_a_queued_or_running_review_is_happening_now(monkeypatch):
     monkeypatch.setattr(server.repo, "now_utc", lambda: now)
     first = server._autopilot_story({"autopilot": True, "reviewing": True, "last_review_at": now})
     assert first[0] == "Right now it's reviewing the markets to pick its next move. Each move shows up in its activity feed."
+    queued = server._autopilot_story({"autopilot": True, "last_review_at": now,
+                                      "review_wait": {"state": "queued", "seconds": 400, "overdue": True}})
+    assert queued[0] == ("Its next review has waited 6 minutes for a free worker, longer than usual. "
+                         "It starts when one frees up.")
     # Research already running is the more specific answer.
     assert server._autopilot_story({"autopilot": True, "reviewing": True,
                                     "research": {"active": ["Bitcoin"]}})[0] == "Right now it's researching Bitcoin."

@@ -1359,6 +1359,31 @@ test('the current research run renders a safe streaming log and its paused statu
   assert.ok(f.root.querySelector('#resume')); assert.equal(f.root.querySelector('#runpulse'), null);
 });
 
+test('a Research run queued or silent past the reaper limit says how long instead of Queued', async () => {
+  const at = (wait, status = 'queued') => {
+    const run = {id: 9, prompt: 'Idea', status, market: 'btc15m', created_at: '2026-10-17T10:00:00Z', wait};
+    return frontend({fetchImpl: path => { assert.ok(path.startsWith('/api/runs/9')); return response({run, events: []}); }});
+  };
+  let f = at({state: 'queued', seconds: 90, overdue: false});
+  await f.viewRun(9);
+  assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Queued');
+  assert.equal(f.root.querySelector('#rsiobs [data-wait]').hidden, true);
+  f.clearTimers();
+  f = at({state: 'queued', seconds: 540, overdue: true, ahead: 1});
+  await f.viewRun(9);
+  assert.match(f.root.querySelector('#runfigs').innerHTML, /Waiting 9 min/);
+  assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Waiting 9 min');
+  const wait = f.root.querySelector('#rsiobs [data-wait]');
+  assert.equal(wait.hidden, false);
+  assert.equal(wait.textContent, 'Still waiting for a free research worker (9 min). 1 session is ahead of it; it starts when one frees up.');
+  f.clearTimers();
+  f = at({state: 'silent', seconds: 300, overdue: true}, 'running');
+  await f.viewRun(9);
+  assert.match(f.root.querySelector('#runfigs').innerHTML, /Silent 5 min/);
+  assert.equal(f.root.querySelector('#rsiobs [data-wait]').textContent, 'No word from the agent for 5 min. A session this quiet is normally interrupted and resumed from its last checkpoint.');
+  f.clearTimers();
+});
+
 test('opening a terminal Research run seals hydrated thoughts and keeps native history inspectable without polling', async () => {
   for (const status of ['succeeded', 'failed', 'cancelled']) {
     const run = researchRun(9, status), events = [{id: 1, kind: 'thinking', message: 'Saved **reasoning** <script>unsafe</script>', data: {block: 1}, created_at: run.created_at}];
