@@ -56,11 +56,11 @@ from app.adapters.db.user_config_repository import (  # noqa: F401
     user_risk_config,
 )
 from app.adapters.db.position_repository import (  # noqa: F401
-    STOP_EXIT_REASONS, _newest_closed, book_partial_exit, claim_position_close, close_position, closed_trade_counts,
-    closed_trades_for_export, daily_pnl,
+    STOP_EXIT_REASONS, _newest_closed, book_partial_exit, claim_position_close, close_position, closed_book_totals,
+    closed_trade_counts, closed_trades_for_export, daily_pnl,
     deployment_realized_series, early_exit_scorecard, insert_closed_position, insert_position,
     market_has_open_positions, open_positions, positions_for_strategy, realized_pnl,
-    realized_pnl_by_mode, score_early_exit, unscored_early_exits, update_marks, user_open_exposure, user_positions,
+    score_early_exit, unscored_early_exits, update_marks, user_open_exposure, user_positions,
 )
 from app.adapters.db.paper_ledger_repository import (  # noqa: F401
     STARTING_PAPER_BALANCE, add_ledger, ledger_rows, lock_user, paper_balance, paper_deposits,
@@ -76,7 +76,7 @@ from app.adapters.db.demo_record_repository import (  # noqa: F401
 from app.adapters.db.deployment_repository import (  # noqa: F401
     _DEPLOYMENT_SELECT, _PAPER_SOURCE, autopilot_paper_week, claim_decision, create_deployment, deployment_closed_stats,
     deployment_closed_totals, deployment_order_refs, deployments_with_open_positions, get_deployment, list_deployments,
-    list_deployments_brief, paper_event_counts,
+    list_deployments_brief, list_deployments_for_display, paper_event_counts,
     paper_fills_for_gate, paper_progress, paper_round_trips, paused_deployments_with_open_positions,
     running_code_paper_deployments, running_deployments, scan_outcome, scan_tally, set_deployment_scan, set_deployment_status,
     set_deployment_strategy,
@@ -454,7 +454,9 @@ def get_policy(cur, user_id: int) -> Optional[Dict]:
 
 def latest_dream_event(cur, user_id: int) -> Optional[Dict]:
     """The user's most recent dreaming log line, across all their runs, so any run page
-    can show the Tau-RSI loop is active even when the current run hasn't dreamed yet."""
+    can show the Tau-RSI loop is active even when the current run hasn't dreamed yet. The two
+    message prefixes range-scan idx_events_message (message(24)) instead of every event the user's
+    runs logged."""
     cur.execute(
         """SELECT e.message, e.created_at FROM app_agent_events e
            JOIN app_agent_runs r ON r.id=e.run_id

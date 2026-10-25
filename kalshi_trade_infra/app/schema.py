@@ -839,6 +839,13 @@ def main() -> None:
         _add_index_if_missing(cur, "app_agent_events", "idx_events_run_kind",
                               "ALTER TABLE app_agent_events ADD INDEX idx_events_run_kind (run_id, kind, id), "
                               "ALGORITHM=INPLACE, LOCK=NONE")
+        # The run page's "Last check" line (latest_dream_event, once a minute per user) looks for
+        # 'Dreaming:' / 'Research policy evolved' lines and walked every event of every run the user
+        # has: ~850ms at 6,000 runs and 600k events. A message prefix lets those two LIKE prefixes
+        # range-scan the few dream lines instead (~3ms). The order path never writes this table.
+        _add_index_if_missing(cur, "app_agent_events", "idx_events_message",
+                              "ALTER TABLE app_agent_events ADD INDEX idx_events_message (message(24)), "
+                              "ALGORITHM=INPLACE, LOCK=NONE")
         # The autopilot status poll sums the week's research debits (research_spent_since); without
         # this it walks the user's whole ledger through idx_credit_user on every 20s poll.
         _add_index_if_missing(cur, "app_credit_ledger", "idx_credit_user_kind_time",

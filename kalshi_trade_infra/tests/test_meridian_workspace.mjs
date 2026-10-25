@@ -2959,3 +2959,32 @@ test('Meridian: separators wrap with the item after them, the phone tabs show wh
     /<td class="act st" data-lab="Status">/);
   assert.match(source, /<td class="hint lead-cell" data-lab="When">\$\{when\(r\.created_at\)\}<\/td><td class="name" data-lab="What">[^\n]*data-lab="Amount">/);
 });
+
+test('Meridian: a finished session says what to do next: your own idea after the example, the passed strategy after yours', async () => {
+  const at = async (run, strategies) => {
+    const f = frontend({fetchImpl: () => response({run: {id: 9, prompt: 'Idea', market: 'btc15m', created_at: '2026-10-25T10:00:00Z', ...run}, events: [], strategies})});
+    await f.viewRun(9); f.clearTimers();
+    return f.root.querySelector('#runnext').innerHTML;
+  };
+  // The example's log ends on "now describe a real idea": the page now gives the button to do it.
+  assert.match(await at({status: 'succeeded', example: true}, []), /<a class="btn primary" href="\/research\?new=1">Describe your own idea<\/a>/);
+  // A session that passed something links straight to it, above the log (escaped), and not to what it rejected.
+  const html = await at({status: 'succeeded'}, [{id: 42, title: '<b>Late</b> momentum', status: 'passed'}, {id: 43, title: 'Fade', status: 'rejected'}]);
+  assert.match(html, /Passed: <a href="\/strategies\/42">&lt;b&gt;Late&lt;\/b&gt; momentum<\/a>\. Open it to deploy it on paper\./);
+  assert.doesNotMatch(html, /strategies\/43/);
+  assert.match(await at({status: 'succeeded'}, [{id: 43, title: 'Fade', status: 'rejected'}]), /Nothing passed this time\. Most ideas don’t\. <a href="\/research\?new=1">Try another idea<\/a>/);
+  assert.equal(await at({status: 'running'}, []), '');  // still going: nothing to do yet
+});
+
+test('Meridian: after a deploy the Deploy page offers autopilot in words, and the panel says what its switch does', async () => {
+  const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [dashboardDeployment('paper')], open_positions: []}) : response({})});
+  f.S.me.user.autopilot = false;
+  await f.viewDeploy(); await flush(); await flush();
+  assert.match(f.root.querySelector('#dep-ap').innerHTML, /Want it to find and deploy more like this\? <button type="button" data-research-ap>Turn on autopilot<\/button>/);
+  const none = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [], open_positions: []}) : response({})});
+  none.S.me.user.autopilot = false;
+  await none.viewDeploy(); await flush(); await flush();
+  assert.equal(none.root.querySelector('#dep-ap').innerHTML, '');  // the empty board already speaks to autopilot
+  assert.ok(!source.includes('the agent only proposes'));
+  assert.match(source, /Off: it only suggests ideas and changes, and you approve each one\. Flip the switch to let it research and trade on paper by itself\./);
+});

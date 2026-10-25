@@ -426,7 +426,7 @@ def _mode_bucket(cur, uid: int, mode: str, open_pos: List[Dict], deps: List[Dict
     """Money in one deployment-mode bucket (paper | demo | live), from that mode's own
     positions and deployments only — so the three buckets never double-count each other.
     `realized` is (all time, since `day`) when the caller read every book's at once.
-    `closed` is repo.closed_trade_counts (read once for all three)."""
+    `closed` is the closed-trade counts of repo.closed_book_totals (read once for all three)."""
     pos = [p for p in open_pos if p["mode"] == mode]
     if realized is None:
         realized = (repo.realized_pnl(cur, uid, mode), repo.realized_pnl(cur, uid, mode, day))
@@ -511,15 +511,15 @@ def dashboard(ctx: Ctx):
         u = p.get("unrealized")
         if u is not None and p.get("deployment_id") is not None:
             unreal_by_dep[p["deployment_id"]] = round(unreal_by_dep.get(p["deployment_id"], 0.0) + u, 2)
-    deps = repo.list_deployments(cur, ctx.uid)
+    deps = repo.list_deployments_for_display(cur, ctx.uid)
     curves = repo.deployment_curves(cur, ctx.uid)
     balance = repo.paper_balance(cur, ctx.uid)
     deposited = repo.paper_deposits(cur, ctx.uid)
-    realized = repo.realized_pnl_by_mode(cur, ctx.uid, day)  # every book's realized P&L in one read
+    # Every book's realized P&L and closed-trade count, in one read.
+    realized, closed = repo.closed_book_totals(cur, ctx.uid, day)
     # Three mode buckets, each self-contained (real / sandbox / simulation). Paper + demo both
     # carry an app-controlled cash layer on top of the shared fields; live carries the real
     # Kalshi balance (money we never hold).
-    closed = repo.closed_trade_counts(cur, ctx.uid)
     paper = _mode_bucket(cur, ctx.uid, "paper", open_pos, deps, day, realized["paper"], closed)
     equity = balance + paper["open_at_cost"]
     paper.update(
@@ -663,8 +663,9 @@ _LAST_DREAM: Dict[int, Tuple[float, Optional[Dict]]] = {}
 
 def _last_dream(cur, uid: int) -> Optional[Dict]:
     """The run page's "Last check" line (repo.latest_dream_event), cached per user like the research
-    totals. That read walks every event of every run the user has (~1s at 6,000 runs and 600k events)
-    and the page asked for it on every 2s poll. The line can trail a new dream by up to a minute."""
+    totals. That read walked every event of every run the user has (~1s at 6,000 runs and 600k events;
+    idx_events_message now narrows it to the dream lines, ~3ms) and the page asked for it on every 2s
+    poll. The line can trail a new dream by up to a minute."""
     hit = _LAST_DREAM.get(uid)
     if hit and time.time() - hit[0] < LAST_DREAM_TTL:
         return hit[1]
@@ -922,7 +923,7 @@ def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
     if not any(c.get("deployed") for c in cards):
         return
     real: Dict[int, Dict[str, Dict]] = {}
-    for d in repo.list_deployments(cur, uid):
+    for d in repo.list_deployments_for_display(cur, uid):
         r = real.setdefault(d["strategy_id"], {}).setdefault(d["mode"], {"pnl": 0.0, "trades": 0, "open": 0, "paused": False})
         r["paused"] = r["paused"] or d.get("status") == "paused"  # often auto-paused; the list flags it
         r["pnl"] += float(d["realized_pnl"] or 0)
