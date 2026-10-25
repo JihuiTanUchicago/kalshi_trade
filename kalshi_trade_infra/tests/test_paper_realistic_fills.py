@@ -314,7 +314,10 @@ def test_autopilot_status_reports_paper_strategy_closest_to_live(monkeypatch):
     seen = {}
     monkeypatch.setattr(server.repo, "paper_progress",
                         lambda cur, uid, sids: seen.setdefault("sids", sids) and {1: (4, 9.0), 2: (11, -1.0)})
+    monkeypatch.setattr(server.repo, "user_open_exposure",
+                        lambda cur, uid, mode=None: {"n": 4 if mode == "paper" else 9, "notional": 3.0})
     out = server.autopilot_status(ctx)
+    assert out["paper_open"] == 4, "open PAPER positions only"
     assert seen["sids"] == [1, 2], "only running paper strategies are counted"
     assert out["paper_progress"] == {"strategy_id": 2, "title": "Fast", "trades": 11,
                                      "trades_needed": agent.MIN_REALISTIC_PAPER_TRADES,
@@ -365,6 +368,12 @@ def test_autopilot_story_says_what_it_is_doing_in_plain_words():
     story = server._autopilot_story(d2)
     assert story[0].startswith("Right now it's between research runs")
     assert "4 of 30 trades and is down $1.50" in story[1]
+    assert "from %d separate events" % server.agent.MIN_PAPER_EVENTS in story[-1]
+    # Bought but not settled: it says so instead of "none has traded yet".
+    story = server._autopilot_story(dict(d, paper_open=4))
+    assert story[2] == "3 strategies are on paper (pretend money). 4 positions are open, waiting to settle; none has closed yet."
+    assert server._autopilot_story(dict(d, paper_running=1, paper_open=1))[2].startswith(
+        "1 strategy is on paper (pretend money). 1 position is open")
     assert server._autopilot_story({"autopilot": False})[0].startswith("Autopilot is off.")
     assert server._autopilot_story(dict(d, billing_blocked=True)) == []
     assert "1 strategy is trading real money." in server._autopilot_story(dict(d, live_running=1))

@@ -1224,6 +1224,12 @@ def _autopilot_story(d: Dict) -> List[str]:
         lines.append("%s on paper (pretend money). The furthest along has %d of %d trades and is %s." % (
             _plural(paper, "strategy is", "strategies are"), int(prog["trades"]), int(prog["trades_needed"]),
             ("up $%.2f" % prog["net_pnl"]) if prog["net_pnl"] >= 0 else ("down $%.2f" % -prog["net_pnl"])))
+    elif int(d.get("paper_open") or 0):
+        # Bought but not yet settled: "none has traded yet" told Todd nothing happened while his
+        # first four rain contracts sat open (2026-10-25).
+        lines.append("%s on paper (pretend money). %s open, waiting to settle; none has closed yet." % (
+            _plural(paper, "strategy is", "strategies are"),
+            _plural(int(d["paper_open"]), "position is", "positions are")))
     elif d.get("paper_waiting"):
         lines.append("%s on paper (pretend money), but none has traded yet." % _plural(paper, "strategy is", "strategies are"))
     else:
@@ -1241,8 +1247,8 @@ def _autopilot_story(d: Dict) -> List[str]:
         lines.append("%s trading real money." % _plural(int(d["live_running"]), "strategy is", "strategies are"))
     else:
         lines.append("Nothing trades real money until a strategy makes money on paper over at least %d trades "
-                     "and %d hours, and you turn on live autopilot." % (agent.MIN_REALISTIC_PAPER_TRADES,
-                                                                      int(agent.MIN_PAPER_SPAN_HOURS)))
+                     "from %d separate events and %d hours, and you turn on live autopilot." % (
+                         agent.MIN_REALISTIC_PAPER_TRADES, agent.MIN_PAPER_EVENTS, int(agent.MIN_PAPER_SPAN_HOURS)))
     return lines
 
 
@@ -1422,6 +1428,7 @@ def autopilot_status(ctx: Ctx):
         "billing_blocked": billing_blocked,
         "billing_reason": (("card" if _needs_card(ctx) else "credits") if billing_blocked else None),
         "paper_progress": paper_progress,
+        "paper_open": int(repo.user_open_exposure(cur, ctx.uid, "paper")["n"]) if paper_run else 0,
         "paper_waiting": _paper_waiting(paper_run, _scan_tally(cur, paper_run)),
         "paused_recent": _paused_recent(deps),
         "early_exits_7d": _early_exits(cur, ctx.uid),
