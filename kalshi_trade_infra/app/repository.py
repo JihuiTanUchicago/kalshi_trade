@@ -70,8 +70,8 @@ from app.adapters.db.demo_capital_repository import (  # noqa: F401
 )
 from app.adapters.db.deployment_repository import (  # noqa: F401
     _DEPLOYMENT_SELECT, claim_decision, create_deployment, deployment_closed_stats,
-    deployments_with_open_positions, get_deployment, list_deployments, paper_progress,
-    paper_round_trips, paused_deployments_with_open_positions, running_deployments, scan_outcome,
+    deployments_with_open_positions, get_deployment, list_deployments, paper_event_counts,
+    paper_progress, paper_round_trips, paused_deployments_with_open_positions, running_deployments, scan_outcome,
     scan_tally, set_deployment_scan, set_deployment_status, set_deployment_strategy,
     track_record_rows,
 )

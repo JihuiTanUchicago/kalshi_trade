@@ -170,8 +170,10 @@
   running paper strategy could have 30 realistic trips and 48h of record, at its own paper pace
   once it has 3+ trips (else its research pace). The autopilot story adds "At the pace they trade,
   the soonest one could have enough for the live check is about N days (title), and only if it's
-  up by then." At 18:30Z Todd's soonest was rain #78 (11 trips in 17.7h, ~1.3 days); his btc15m
-  entrants are 7-20 days out at research pace.
+  up by then." Once a strategy trades, its separate-event pace counts too (`repo.paper_event_counts`,
+  same event key as the gate): Todd's rain #78 has 11 trips but 2 events (every city's rain on one
+  day is one event), so it is ~6.6 days from 20 events, not the 1.3 its trips alone suggested. His
+  btc15m entrants are 7-20 days out at research pace.
 - Underpowered verdicts enter paper on their unseen trades (2026-10-25): a below-min-sample
   validation verdict now records its validation net P&L (no p-value, no alpha), and paper
   probation admits it only if that P&L is up. Older rows fall back to the research fold (#284).

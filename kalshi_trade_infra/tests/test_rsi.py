@@ -215,6 +215,8 @@ def test_paper_eta_uses_its_own_pace_once_it_trades_and_never_beats_the_span():
     assert rsi.paper_eta_days(dep(12.8, 17.7), 11, now) == 1.3
     # Enough trips already, but the record must also span 48h: 48 - 30 = 18h more.
     assert rsi.paper_eta_days(dep(50, 30), 40, now) == 0.8
+    # Events bind once it trades: 11 trips but 2 events in 17.7h is 2.7 events/day -> 18 more in 6.6 days.
+    assert rsi.paper_eta_days(dep(12.8, 17.7), 11, now, events=2) == 6.6
     assert rsi.paper_eta_days({"created_at": now}, 0, now) is None
     assert rsi.paper_eta_days({}, 5, now) is None
 
