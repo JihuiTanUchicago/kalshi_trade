@@ -259,3 +259,122 @@ def test_backfill_writes_versioned_day_files(tmp_path, monkeypatch):
     stats = json.loads((tmp_path / "ticks/manifest/polymarket_history/date=2026-10-24.json").read_text())
     assert stats["markets"] == 2 and stats["rows"] == 4
     assert pmk.backfill(days=1, s3=s3, now=day + timedelta(days=1, hours=2)) == 0      # already there
+
+
+# --- app adapter: books, feature provider, feed, research store, engine/backtest wiring ----------
+
+from types import SimpleNamespace  # noqa: E402
+
+from app import backtest, engine  # noqa: E402
+from app.adapters.polymarket import features as pmf  # noqa: E402
+from app.adapters.polymarket import store as pms  # noqa: E402
+from app.adapters.polymarket.feed import SnapshotFeed  # noqa: E402
+from app.adapters.polymarket.instruments import instrument  # noqa: E402
+from app.markets import FEATURES, MARKETS  # noqa: E402
+from trading_core.domain.instruments import BinaryTerms, Instrument, InstrumentId, InstrumentKind  # noqa: E402
+from trading_core.ports import FeatureProvider, MarketDataFeed  # noqa: E402
+
+
+def _snap_rows(ts=NOON_ET_OCT25 - 600):
+    o = NOON_ET_OCT25 - 900
+    up = pmk.PmMarket("u", "btc-updown-15m-x", "", "", "0xu", "U", "D", "Up", "updown", None, None, o, NOON_ET_OCT25)
+    a1 = pmk.PmMarket("a1", "", "", "", "0xa1", "Y1", "N1", "Yes", "above", 108000.0, None, None, NOON_ET_OCT25)
+    a2 = pmk.PmMarket("a2", "", "", "", "0xa2", "Y2", "N2", "Yes", "above", 110000.0, None, None, NOON_ET_OCT25)
+    return [dict(up.row(), bid=0.60, ask=0.62, bid_size=10.0, ask_size=20.0, ts=ts),
+            dict(a1.row(), bid=0.79, ask=0.81, ts=ts), dict(a2.row(), bid=0.49, ask=0.51, ts=ts)]
+
+
+def test_book_prices_kxbtc15m_from_the_window_and_kxbtcd_from_the_ladder():
+    book = pmf.book_from_snapshot(_snap_rows())
+    ts = NOON_ET_OCT25 - 560
+    f = book.features("KXBTC15M-25OCT251200-00", 111111.0, ts, 0.55, 0.57, None, close_ts=NOON_ET_OCT25)
+    assert f["pm_p_yes"] == pytest.approx(0.61) and f["pm_edge"] == pytest.approx(0.05) and f["pm_age_s"] == 40
+    d = book.features("KXBTCD-25OCT2512-T108999.99", 108999.99, ts, 0.6, 0.7, None, close_ts=NOON_ET_OCT25)
+    assert 0.5 < d["pm_p_yes"] < 0.8 and "pm_edge" in d
+    assert book.features("KXBTCD-25OCT2512-T120000", 120000.0, ts, 0.1, 0.2, None, close_ts=NOON_ET_OCT25) == {}
+    assert book.features("KXBTCD-X", 109000.0, ts + 3600, 0.1, 0.2, None, close_ts=NOON_ET_OCT25) == {}  # stale
+    assert pmf.book_from_snapshot([]) is None
+    assert set(pmf.FEATURE_NAMES) <= set(FEATURES)
+
+
+def test_feature_provider_and_feed_satisfy_the_ports():
+    book = pmf.book_from_snapshot(_snap_rows())
+    prov = pmf.PolymarketFeatures(lambda as_of: book)
+    assert isinstance(prov, FeatureProvider)
+    exp = datetime.fromtimestamp(NOON_ET_OCT25, tz=timezone.utc)
+    yes = Instrument(InstrumentId("kalshi", "KXBTCD-X", "yes"), InstrumentKind.BINARY, series="KXBTCD",
+                     terms=BinaryTerms(expiry=exp, strike=109000.0))
+    out = prov.features([yes, yes.complement()], NOON_ET_OCT25 - 560)
+    assert out[yes.id]["pm_p_yes"] + out[yes.complement().id]["pm_p_yes"] == pytest.approx(1.0)
+    feed = SnapshotFeed(_snap_rows())
+    assert isinstance(feed, MarketDataFeed)
+    up = instrument(pmk.quotes_from_snapshot(_snap_rows())[0].market)
+    assert up.kind is InstrumentKind.BINARY and up.id == InstrumentId("polymarket", "0xu", "yes")
+    q, qn = feed.quote(up.id), feed.quote(up.complement().id)
+    assert (q.bid, q.ask, q.bid_size) == (0.60, 0.62, 10.0)
+    assert (qn.bid, qn.ask, qn.bid_size) == (pytest.approx(0.38), pytest.approx(0.40), 20.0)
+
+
+def test_latest_snapshot_reads_the_heartbeat_and_drops_the_future():
+    rows = _snap_rows()
+
+    class Cur:
+        def execute(self, sql, args=None):
+            assert args == (pmk.HEARTBEAT_KEY,)
+
+        def fetchone(self):
+            return {"state_value": json.dumps({"snapshot": rows})}
+
+    assert len(pms.latest_snapshot(Cur(), NOON_ET_OCT25)) == 3
+    assert pms.latest_snapshot(Cur(), NOON_ET_OCT25 - 601) is None
+
+
+def test_research_store_reads_the_history_day_files(tmp_path, monkeypatch):
+    day = datetime(2026, 10, 23, tzinfo=timezone.utc)
+    o = int(day.timestamp()) + 3600
+    rows = [{"t": o - 60, "market_id": "u", "slug": "", "kind": "updown", "strike_lo": None, "strike_hi": None,
+             "start_ts": o, "end_ts": o + 900, "p": 0.5, "resolved": 1.0},
+            {"t": o + 60, "market_id": "u", "slug": "", "kind": "updown", "strike_lo": None, "strike_hi": None,
+             "start_ts": o, "end_ts": o + 900, "p": 0.55, "resolved": 1.0},
+            {"t": o + 60, "market_id": "a", "slug": "", "kind": "above", "strike_lo": 1e5, "strike_hi": None,
+             "start_ts": None, "end_ts": o + 900, "p": 0.3, "resolved": None}]
+    p = tmp_path / pmk.day_key(day)
+    p.parent.mkdir(parents=True)
+    pmk.write_day(rows, str(p))
+    store = TickStore(local_root=str(tmp_path))
+    qs = pms.load_quotes(day, day + timedelta(days=1), store, kinds=("updown",))
+    assert [(q.market.market_id, q.ts, q.bid) for q in qs] == [("u", o + 60, 0.55)]   # pre-open point dropped
+    book = pmf.load_book("KXBTC15M", day, day + timedelta(days=1), store)
+    f = book.features("KXBTC15M-X", 1.0, o + 90, None, None, None, close_ts=o + 900)
+    assert f["pm_p_yes"] == pytest.approx(0.55) and "pm_edge" not in f
+    lad = pmf.load_book("KXBTCD", day, day + timedelta(days=1), store)
+    assert lad.features("KXBTCD-X", 1e5, o + 90, None, None, None, close_ts=o + 900) == {}   # one ladder point
+
+
+def test_engine_and_backtest_merge_options_and_polymarket(monkeypatch):
+    market = MARKETS["btc15m"]
+
+    class Opt:
+        def __len__(self):
+            return 1
+
+        def features(self, *a, **k):
+            return {"opt_p_yes": 0.5}
+
+    monkeypatch.setattr(engine.options_fair, "book_from_rows", lambda rows: Opt())
+    src = SimpleNamespace(options=lambda ts: [{}], polymarket=lambda ts: _snap_rows())
+    book = engine._btc_fair_books(market, src, NOON_ET_OCT25 - 560)
+    f = book.features("KXBTC15M-X", 1.0, NOON_ET_OCT25 - 560, 0.5, 0.52, None, close_ts=NOON_ET_OCT25)
+    assert f["opt_p_yes"] == 0.5 and f["pm_p_yes"] == pytest.approx(0.61)
+
+    def boom(ts):
+        raise RuntimeError("db down")
+
+    only_pm = engine._btc_fair_books(market, SimpleNamespace(options=boom, polymarket=lambda ts: _snap_rows()),
+                                     NOON_ET_OCT25 - 560)
+    assert isinstance(only_pm, pmf.PolymarketBook)
+    assert engine._btc_fair_books(market, SimpleNamespace(options=None, polymarket=None), 0) is None
+
+    monkeypatch.setattr(backtest.options_fair, "load_book", lambda since: None)
+    monkeypatch.setattr(pmf, "load_book", lambda series, since: pmf.book_from_snapshot(_snap_rows()))
+    assert isinstance(backtest.forecast_book(market, datetime(2026, 10, 1, tzinfo=timezone.utc)), pmf.PolymarketBook)

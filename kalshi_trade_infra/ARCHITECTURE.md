@@ -96,7 +96,7 @@ the only difference is which adapters the bootstrap plugs in.
 | Coinbase spot / BRTI venues | SPOT | none (data only) | spot series provider; `spot_comp` composite | n/a | none |
 | Bittensor TAO alpha tokens (`tao_*`) | SPOT | TAO venue adapter when traded | taostats provider | `TaoSwapFees` (impact stays in the fill price) | none |
 | Alpaca equities paper (`alpaca_paper*`) | SPOT, fractional | `adapters/alpaca/venue.py` wraps `alpaca_paper_client.Client` | Alpaca/Databento/Massive bars | `NotionalRateFees(0.0)` | none |
-| Polymarket (new) | BINARY: its outcome tokens map 1:1 to `outcome` yes/no | CLOB order adapter | CLOB book feed | `NotionalRateFees` | none |
+| Polymarket (data since 2026-10-25) | BINARY: its outcome tokens map 1:1 to `outcome` yes/no (`adapters/polymarket/instruments.py`) | none (read-only, keyless; a CLOB order adapter only if we ever trade it) | `data_pipeline/polymarket.py` recorder; `SnapshotFeed`; `PolymarketFeatures` provider: `pm_p_yes`/`pm_edge` for any BTC binary, with strike ladders read by `trading_core.pricing.binary_curve` | `NotionalRateFees` | none |
 | A crypto perp exchange (new) | PERPETUAL | REST/ws order adapter, `shorting=True` | exchange book + funding | `NotionalRateFees` with per-symbol tiers | none |
 
 Strategy and research code read `Instrument.kind` and `Quote.features`, never a venue name.
