@@ -56,7 +56,7 @@ def main(argv=None) -> int:
     from app import backtest
     from app.adapters.kalshi.spec_strategy import simulate_on_loop
 
-    summary = {"cases": 0, "legacy_trades": 0, "diffs": [], "markets": {}}
+    summary = {"cases": 0, "legacy_trades": 0, "legacy_s": 0.0, "loop_s": 0.0, "diffs": [], "markets": {}}
     for market in [m.strip() for m in args.markets.split(",") if m.strip()]:
         t0 = time.time()
         ds = backtest.dataset(market, args.days)
@@ -66,8 +66,12 @@ def main(argv=None) -> int:
         for fill in ("next_bar", "signal_bar"):
             backtest.FILL_MODEL = fill
             for sid, spec in specs:
+                t1 = time.perf_counter()
                 legacy = sorted(backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1), key=_row)
+                t2 = time.perf_counter()
                 loop = sorted(simulate_on_loop(spec, ds, ds.start_ts, ds.end_ts + 1, fill_model=fill), key=_row)
+                summary["legacy_s"] += t2 - t1
+                summary["loop_s"] += time.perf_counter() - t2
                 summary["cases"] += 1
                 summary["legacy_trades"] += len(legacy)
                 a, b = [_row(t) for t in legacy], [_row(t) for t in loop]
@@ -77,6 +81,7 @@ def main(argv=None) -> int:
                                              "legacy": len(a), "loop": len(b),
                                              "first": [a[i:i + 1], b[i:i + 1]]})
         summary["markets"][market]["total_s"] = round(time.time() - t0, 1)
+    summary["legacy_s"], summary["loop_s"] = round(summary["legacy_s"], 2), round(summary["loop_s"], 2)
     print(json.dumps(summary, default=str))
     return 1 if summary["diffs"] else 0
 

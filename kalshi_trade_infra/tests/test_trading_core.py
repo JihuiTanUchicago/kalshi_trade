@@ -84,6 +84,19 @@ def test_portfolio_cash_and_equity_across_venues():
     assert set(pf.open_positions()) == {KALSHI_YES, perp}
 
 
+def test_open_positions_index_follows_fills_settlement_and_seeding():
+    other = InstrumentId("kalshi", "KXBTCD-26OCT2517-T101000", "no")
+    pf = Portfolio(positions={other: Position(other, qty=3, avg_price=0.2), KALSHI_YES: Position(KALSHI_YES)})
+    assert set(pf.open_positions()) == {other}
+    pf.apply(Fill(KALSHI_YES, Side.BUY, 5, 0.40))
+    assert set(pf.open_positions()) == {other, KALSHI_YES}
+    pf.apply(Fill(KALSHI_YES, Side.SELL, 5, 0.50))
+    pf.settle(other, 1.0)
+    assert pf.open_positions() == {} and set(pf.positions) == {other, KALSHI_YES}  # flat ones keep their P&L
+    pf.open_positions()[KALSHI_YES] = Position(KALSHI_YES, qty=1)  # a copy: callers can't corrupt the index
+    assert pf.open_positions() == {}
+
+
 def test_exits_skip_every_risk_check():
     def refuse_all(_intent):
         return RiskDecision.refuse("kill_switch", "halted")

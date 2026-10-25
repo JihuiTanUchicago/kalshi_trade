@@ -75,10 +75,24 @@ class Position:
 
 @dataclass
 class Portfolio:
-    """Cash plus positions. One per book (a user's paper book and live book never mix)."""
+    """Cash plus positions. One per book (a user's paper book and live book never mix).
+
+    Change positions through ``apply``/``settle`` only: they keep the open-position index that
+    ``open_positions`` reads (flat positions stay in ``positions`` for their realized P&L, so a long
+    backtest would otherwise rescan every instrument it ever traded on every step)."""
 
     cash: float = 0.0
     positions: Dict[InstrumentId, Position] = field(default_factory=dict)
+    _open: Dict[InstrumentId, Position] = field(default_factory=dict, init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        self._open = {i: p for i, p in self.positions.items() if not p.is_flat}
+
+    def _reindex(self, pos: Position) -> None:
+        if pos.is_flat:
+            self._open.pop(pos.instrument, None)
+        else:
+            self._open[pos.instrument] = pos
 
     def position(self, instrument: InstrumentId, multiplier: float = 1.0) -> Position:
         pos = self.positions.get(instrument)
@@ -87,7 +101,9 @@ class Portfolio:
         return pos
 
     def apply(self, fill: Fill, multiplier: float = 1.0) -> None:
-        self.position(fill.instrument, multiplier).apply(fill)
+        pos = self.position(fill.instrument, multiplier)
+        pos.apply(fill)
+        self._reindex(pos)
         self.cash -= fill.signed_qty * fill.price * multiplier + fill.fee
 
     def settle(self, instrument: InstrumentId, price: float) -> float:
@@ -97,7 +113,9 @@ class Portfolio:
         if pos is None or pos.is_flat:
             return 0.0
         self.cash += pos.qty * price * pos.multiplier
-        return pos.settle(price)
+        pnl = pos.settle(price)
+        self._reindex(pos)
+        return pnl
 
     def apply_all(self, fills: Iterable[Fill]) -> None:
         for f in fills:
@@ -112,4 +130,4 @@ class Portfolio:
         return value
 
     def open_positions(self) -> Dict[InstrumentId, Position]:
-        return {i: p for i, p in self.positions.items() if not p.is_flat}
+        return dict(self._open)
