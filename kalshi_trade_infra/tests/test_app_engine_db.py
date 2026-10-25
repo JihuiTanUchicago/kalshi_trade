@@ -200,6 +200,26 @@ def test_research_spend_is_the_ledger_debits_of_research_runs_only(conn, user):
     assert repo.research_spent_since(cur, user["id"], since) == pytest.approx(1.75)
 
 
+def test_runs_spent_sums_each_runs_usage_debits(conn, user):
+    """The run page's "Spent so far": the usage rows billed to that run, nothing else."""
+    from decimal import Decimal
+    from app import repository as repo
+
+    cur = conn.cursor()
+    a = repo.create_run(cur, user["id"], "research", "btc15m", "momentum")
+    b = repo.create_run(cur, user["id"], "research", "btc15m", "momentum")
+    idle = repo.create_run(cur, user["id"], "research", "btc15m", "momentum")
+    cur.execute("UPDATE app_agent_runs SET status='cancelled' WHERE id IN (%s,%s,%s)", (a, b, idle))
+    for run_id, amount in ((a, "-1.250000"), (a, "-0.587250"), (b, "-0.300000")):
+        repo.add_credit(cur, user["id"], "usage", Decimal(amount), "Agent usage", run_id=run_id)
+    repo.add_credit(cur, user["id"], "admin_grant", Decimal("5"), "Grant", run_id=a)  # not usage
+    spent = repo.runs_spent(cur, user["id"], [a, b, idle])
+    assert spent == {a: pytest.approx(1.83725), b: pytest.approx(0.3)}
+    assert repo.runs_spent(cur, user["id"] + 10**9, [a]) == {}  # another user's run reads nothing
+    cur.execute("SHOW INDEX FROM app_credit_ledger WHERE Key_name='idx_credit_run_kind'")
+    assert [r["Column_name"] for r in cur.fetchall()] == ["run_id", "kind"]
+
+
 def test_the_interactive_lane_skips_research(conn, user):
     from app import repository as repo
 

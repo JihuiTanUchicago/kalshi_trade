@@ -309,6 +309,7 @@ def test_autopilot_status_reports_paper_strategy_closest_to_live(monkeypatch):
     monkeypatch.setattr(server.repo, "realized_pnl", lambda cur, uid, mode, since=None: {"live": -2.0, "paper": 1.234}[mode])
     monkeypatch.setattr(server.repo, "last_autopilot_action", lambda *a: None)
     monkeypatch.setattr(server.repo, "last_review_at", lambda *a: None)
+    monkeypatch.setattr(server.repo, "review_in_flight", lambda *a: False)
     monkeypatch.setattr(server.billing, "configured", lambda: False)
     monkeypatch.setattr(server.repo, "list_runs", lambda *a, **k: [])
     monkeypatch.setattr(server.repo, "research_week", lambda *a, **k: [])

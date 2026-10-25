@@ -118,6 +118,7 @@ def test_demo_equity_applies_realized_pnl_to_app_set_capital():
     assert de["realized"] == 25.0            # 40 - 15, open ignored
     assert de["equity"] == 1025.0            # capital + realized
     assert de["roi"] == round(25.0 / 1000.0, 4)
+    assert de["before_reload"] == 0.0        # never reloaded: the shown P&L is every closed demo trade
 
 
 def test_demo_reload_sets_capital_and_zeroes_displayed_pnl():
@@ -133,6 +134,7 @@ def test_demo_reload_sets_capital_and_zeroes_displayed_pnl():
     assert de["capital"] == 500.0
     assert de["realized"] == 0.0
     assert de["equity"] == 500.0
+    assert de["before_reload"] == 40.0  # what the "since reload" figure leaves out
     # A new fill after the reload accrues against the fresh capital.
     cur.positions.append({"user_id": 1, "mode": "demo", "status": "closed", "pnl": 12.0})
     assert repo.demo_equity(cur, 1)["equity"] == 512.0

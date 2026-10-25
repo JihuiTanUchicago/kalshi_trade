@@ -156,3 +156,23 @@ def test_research_spend_reads_the_ledger_for_research_runs_only():
     assert "FROM app_credit_ledger l JOIN app_agent_runs r ON r.id = l.run_id" in cur.sql
     assert "l.kind='usage'" in cur.sql and "l.created_at >= %s" in cur.sql and "r.kind='research'" in cur.sql
     assert "r.direction <> 'random_walk'" in cur.sql  # the seeded demo never ran, as in research_week
+
+
+def test_runs_spent_is_one_grouped_ledger_read():
+    from app import repository as repo
+
+    class Cur:
+        executed = []
+
+        def execute(self, sql, params):
+            self.executed.append((" ".join(sql.split()), params))
+
+        def fetchall(self):
+            return [{"run_id": 9, "s": Decimal("1.250000")}, {"run_id": 4, "s": Decimal("0.010000")}]
+
+    cur = Cur()
+    assert repo.runs_spent(cur, 7, []) == {} and cur.executed == []  # nothing listed, no query
+    assert repo.runs_spent(cur, 7, [9, 4, 9]) == {9: 1.25, 4: 0.01}
+    sql, params = cur.executed[0]
+    assert len(cur.executed) == 1 and params == (4, 9, 7)
+    assert "WHERE run_id IN (%s,%s) AND kind='usage' AND user_id=%s GROUP BY run_id" in sql

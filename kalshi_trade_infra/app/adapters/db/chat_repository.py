@@ -31,6 +31,16 @@ def last_review_at(cur, user_id: int):
     return r["created_at"] if r else None
 
 
+def review_in_flight(cur, user_id: int) -> bool:
+    """True while an autopilot review run is queued or running. Switching autopilot on queues its
+    first review at once, so the panel can say it is reviewing now instead of "between runs"."""
+    cur.execute(
+        "SELECT 1 FROM app_agent_runs WHERE user_id=%s AND kind='review' AND status IN ('queued','running') LIMIT 1",
+        (user_id,),
+    )
+    return cur.fetchone() is not None
+
+
 def add_chat(cur, user_id: int, role: str, content: str, proposal_id: Optional[int] = None) -> int:
     cur.execute(
         "INSERT INTO app_chat_messages (user_id, role, content, proposal_id, created_at) VALUES (%s,%s,%s,%s,%s)",

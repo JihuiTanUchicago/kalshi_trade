@@ -503,6 +503,31 @@ test('Overview empty Deployed box never says autopilot is researching while the 
   }
 });
 
+test('Overview demo account says what demo is and that its P&L restarts at a reload', async () => {
+  for (const [demo, re] of [
+    [{equity: 1000, capital: 1000, realized_pnl: 0}, /\$1,000\.00 capital · No demo deployments · real fills on Kalshi’s sandbox, not real money/],
+    [{equity: 512, capital: 500, realized_pnl: 12, running: 1, before_reload: 40}, /\$500\.00 capital · 0 open · \+\$12\.00 P&amp;L since reload · real fills/],
+    [{equity: 1012, capital: 1000, realized_pnl: 12, running: 1, before_reload: 0}, /\+\$12\.00 P&amp;L all time · real fills/],
+  ]) {
+    const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(dashboardData({demo})); }});
+    await f.viewDashboard(); await flush();
+    assert.match(f.root.querySelector('#other-accounts').innerHTML, re);
+  }
+});
+
+test('Funds demo labels say "since reload" only after a reload, and that demo fills are real', async () => {
+  for (const before_reload of [0, 40]) {
+    const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds(); d.demo.before_reload = before_reload; return response(d); }});
+    await f.viewFunds(); await flush();
+    const main = f.root.querySelector('main').innerHTML;
+    assert.match(main, before_reload ? /<dt>Capital at last reload<\/dt>/ : /<dt>Starting capital<\/dt>/);
+    assert.match(main, before_reload ? /<dt>P&amp;L since reload<\/dt>/ : /<dt>P&amp;L all time<\/dt>/);
+    assert.match(main, /fills and slippage are real; the money is simulated/);
+    assert.match(main, /the track record still counts every closed demo trade/);
+    assert.match(f.root.querySelector('#ffigs').innerHTML, before_reload ? /capital at last reload · real fills on Kalshi’s sandbox/ : /starting capital · real fills on Kalshi’s sandbox/);
+  }
+});
+
 test('Deploy realized says it counts only the strategies listed, never summing live with paper', async () => {
   const dep = (id, mode, pnl) => ({...dashboardDeployment(mode), id, strategy_id: id, realized_pnl: pnl});
   for (const [deployments, re] of [[[dep(1, 'paper', 2)], /\+\$2\.00[\s\S]*paper money, not real · strategies listed below/],
@@ -523,6 +548,28 @@ test('Overview "paused, needs you" jumps to the first paused deployment', async 
   assert.match(f.root.querySelector('.statusline').innerHTML, /<a class="needs-link" href="#dash-paused"><em>2 paused, needs you<\/em><\/a>/);
   const anchored = f.root.querySelectorAll('#dash-deps article#dash-paused');
   assert.equal(anchored.length, 1); assert.equal(anchored[0].querySelector('header h3 a').getAttribute('href'), '/strategies/42');
+});
+
+test('Overview autopilot card says what switching it on costs, and a running first review reads as one', async () => {
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(dashboardData()); }});
+  const card = () => f.root.querySelector('#dash-ap'), cost = () => f.root.querySelector('#dash-ap .apcard-cost');
+  f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 18.4, auto_reload: {amount: 20, charge: 21.1, threshold: 5}};
+  await f.viewDashboard(); await flush();
+  assert.match(cost().innerHTML, /uses your credits while it's on \(\$18\.40 left\)\. When they fall to \$5\.00, auto-reload charges your card \$21\.10 for \$20\.00 more\./);
+  f.S.me.auto_reload = null;
+  await f.viewDashboard(); await flush();
+  assert.match(cost().innerHTML, /and pauses when they run out\. Turn it off any time\./);
+  f.S.me.billing_enabled = false;
+  await f.viewDashboard(); await flush();
+  assert.equal(cost(), null); assert.match(card().innerHTML, /Turn on autopilot/);
+  // Switched on, first review still queued: the card says so instead of "Last move just now".
+  const at = new Date().toISOString();
+  f.S.me.user.autopilot = true;
+  f.S.ap = {autopilot: true, mode: 'paper', story: ['Right now it’s reviewing the markets to pick its next move.'], research: {tested_7d: 0, passed_7d: 0, active: []},
+    live_running: 0, demo_running: 0, paper_running: 0, reviewing: true, last_review_at: at, last_action: {at, text: 'Autopilot is ON: …'}};
+  f.S.apAt = Date.now();
+  await f.viewDashboard(); await flush();
+  assert.match(card().innerHTML, /<dt>Last move<\/dt><dd>Reviewing now<\/dd>/);
 });
 
 test('Overview deployment monitors preserve every mode, status, risk field and unknown-versus-zero result', async () => {
@@ -2396,4 +2443,27 @@ test('Meridian empty paper track record points at autopilot when it is on', () =
   assert.match(paper, /Autopilot runs the strategies that pass every gate on paper/);
   assert.match(paper, /See its research/); assert.doesNotMatch(paper, /Go to Deploy/);
   assert.match(f.trackRecordPanel({trades: 0, label: 'Demo'}, 'demo', th), /Go to Deploy/);
+});
+
+test('a research run shows what it has cost so far from its ledger debits, and its cost once finished', async () => {
+  for (const [status, label] of [['running', 'Spent so far'], ['succeeded', 'Cost'], ['failed', 'Cost']]) {
+    const run = {...researchRun(9, status), spent_usd: 1.8372};
+    const f = frontend({fetchImpl: path => { assert.ok(path.startsWith('/api/runs/9')); return response({run, events: []}); }});
+    await f.viewRun(9);
+    assert.match(f.root.querySelector('#runfigs').innerHTML, new RegExp(`${label}</dt><dd><span class="fig ">\\$1\\.84</span>`), status);
+    f.clearTimers();
+  }
+  const f = frontend({fetchImpl: () => response({run: researchRun(9, 'running'), events: []})});
+  await f.viewRun(9);
+  assert.doesNotMatch(f.root.querySelector('#runfigs').innerHTML, /Spent so far|Cost/);
+  f.clearTimers();
+});
+
+test('Research history rows state each session\'s cost from the ledger', async () => {
+  const f = researchFrontend([{...researchRun(3, 'succeeded'), spent_usd: 2.5}, researchRun(4, 'failed')]);
+  await f.viewResearch(); await flush();
+  const html = f.root.querySelector('#runs').innerHTML;
+  assert.match(html, /href="\/research\/3"[\s\S]*?Cost: \$2\.50/);
+  assert.doesNotMatch(html.split('href="/research/4"')[1], /Cost:/);  // no figure from the server, no claim
+  f.clearTimers();
 });

@@ -1081,7 +1081,10 @@
   // would start a second deployment of the same rules and double its positions.
   const bulkDeployable = (s) => s.status === 'passed' && !researchOnly(s) && !s.deployed;
   // What a deployed strategy has actually done, beside its backtest columns.
-  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades ? `${money(r.pnl)} since deploying \u00b7 ${r.trades} trade${r.trades === 1 ? '' : 's'}` : 'No closed trades yet'}</div>` : '';
+  // The server sends one book (live, else paper, else demo) and a paper strategy's demo book beside it
+  // under r.demo, so sandbox dollars are never added to paper ones.
+  const realTrades = (n) => `${n} trade${n === 1 ? '' : 's'}`;
+  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : ''}since deploying \u00b7 ${realTrades(r.trades)}` : r.mode === 'demo' ? 'No closed demo trades yet' : 'No closed trades yet'}</div>${r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)} \u00b7 ${realTrades(r.demo.trades)}` : 'no closed trades yet'}</div>` : ''}` : '';
   function strategySlip(s, reg, opts = {}) {
     const oos = s.out_of_sample, ins = s.in_sample || {};
     const m = oos || ins;
@@ -1478,7 +1481,7 @@
       ].filter(Boolean).join('<span class="sep">/</span>');
       const liveFigure = fig('Live account', d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected', { small: d.live.connected ? (d.live.balance == null ? 'Couldn\u2019t read your Kalshi balance just now' : mSub(d.live, 'Your Kalshi cash \u2014 real money untouched')) : '<a href="/funds">Connect Kalshi</a>' });
       const liveSummary = `<div class="m live-summary"><dt class="lab vh">Live account · Kalshi</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Live account · Kalshi</span><strong class="fig${!d.live.connected || d.live.balance == null ? ' balance-state' : ''}">${d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected'}</strong><span class="portfolio-return">${d.live.connected ? (d.live.balance == null ? 'Couldn\u2019t read your Kalshi balance just now' : `${money(d.live.realized_pnl)} realized all time`) : '<a href="/funds">Connect Kalshi</a>'}</span></div><div class="portfolio-detail"><span class="lab">Realized today</span><strong>${money(d.live.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Open positions</span><strong>${esc(d.live.open_positions)}</strong></div><div class="portfolio-detail"><span class="lab">Open at cost</span><strong>${usd(d.live.open_at_cost)}</strong></div></div></dd></div>`;
-      const demoFigure = fig('Demo balance', usd(d.demo.equity), { v: d.demo.realized_pnl, small: (d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7 ${d.demo.open_positions} open \u00b7 ${usd(d.demo.realized_pnl, true)} P&amp;L` : `${usd(d.demo.capital)} capital · No demo deployments` });
+      const demoFigure = fig('Demo balance', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7 ${d.demo.open_positions} open \u00b7 ${usd(d.demo.realized_pnl, true)} P&amp;L ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital · No demo deployments`} \u00b7 ${DEMO_WHAT}` });
       const paperFigure = `<div class="m paper-summary"><dt class="lab vh">Paper portfolio</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Paper portfolio</span><strong class="fig">${usd(p.equity)}</strong><span class="portfolio-return">${p.reset_at ? 'P&amp;L since reset' : 'All-time P&amp;L'} ${money(p.total_pnl)}</span></div><div class="portfolio-detail"><span class="lab">Realized today</span><strong>${money(p.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Available cash</span><strong>${usd(p.cash)}</strong></div><div class="portfolio-detail"><span class="lab">Open at cost</span><strong>${usd(p.open_at_cost)}</strong></div></div></dd></div>`;
       const board = `
         ${said ? `<div class="statusline dashboard-status ${needs ? 'needs' : ''}"><p class="said">${said}</p></div>` : ''}
@@ -1808,6 +1811,10 @@
     await load();
     poll(load, 5000);
   }
+  // What a run has taken from credits (the ledger rows billed to it, `spent_usd` from the server).
+  // A run still going says "so far"; a finished one states its cost.
+  const runLive = (r) => r.status === 'running' || r.status === 'queued' || r.status === 'paused';
+  const runSpent = (r) => r.spent_usd == null ? '' : `${runLive(r) ? 'Spent so far' : 'Cost'}: ${usd(r.spent_usd)}`;
   function runRow(r) {
     const state = r.status === 'running' ? 'Researching'
       : r.status === 'queued' ? 'Waiting'
@@ -1817,7 +1824,7 @@
     // status band: a thin color rule so passed/void/failed reads at a glance
     const band = r.status === 'succeeded' ? (r.strategies_passed ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : r.status === 'cancelled' ? 'void' : 'live';
     return `<a class="run-card ${band}" href="/research/${r.id}">
-      <span class="run-identity"><span class="run-title" title="${esc(sessionTitle(r))}"><b>${esc(sessionTitle(r))}</b>${r.error ? `<span class="run-error">${esc(r.error)}</span>` : ''}</span><span class="run-meta-group"><span class="run-id">Session ${esc(r.id)}</span><span class="run-meta"><span class="vh">Market </span>${esc(marketShort(r.market))}</span><span class="run-when"><span class="vh">Created </span>${when(r.created_at)}</span></span></span><span class="run-state"><span class="vh">Outcome </span>${state}</span></a>`;
+      <span class="run-identity"><span class="run-title" title="${esc(sessionTitle(r))}"><b>${esc(sessionTitle(r))}</b>${r.error ? `<span class="run-error">${esc(r.error)}</span>` : ''}</span><span class="run-meta-group"><span class="run-id">Session ${esc(r.id)}</span><span class="run-meta"><span class="vh">Market </span>${esc(marketShort(r.market))}${r.spent_usd != null ? ' \u00b7 ' + runSpent(r) : ''}</span><span class="run-when"><span class="vh">Created </span>${when(r.created_at)}</span></span></span><span class="run-state"><span class="vh">Outcome </span>${state}</span></a>`;
   }
 
   // ======================================================================
@@ -2285,6 +2292,7 @@
       root.querySelector('#runfigs').innerHTML =
         fig('Status', statusText) +
         fig('Time', started ? Math.max(0, Math.round((end - started) / 60000)) + ' min' : '—') +
+        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', usd(r.spent_usd), { small: 'from your credits' }) : '') +
         fig('Hypotheses', r.hypotheses_tried || tried) + fig('Passed', r.strategies_passed == null ? '—' : r.strategies_passed);
       const artifacts = root.querySelector('#run-artifacts'), strategies = d.strategies || [];
       const focusedArtifact = artifacts.querySelector('a:focus')?.getAttribute('href');
@@ -2376,9 +2384,10 @@
       if (depChip && counts.deployed != null) depChip.textContent = `Deployed (${counts.deployed})`;
       if (!d.matched) {
         const noneKept = total && !kept && !f.status && !f.q && !f.market && !f.deployed;  // a new user's default view, not a filter miss
-        // With autopilot on, the empty list says it is already researching instead of asking for a session.
+        // With autopilot on, the empty list says it is on instead of asking for a session (not "researching":
+        // the autopilot panel may be reporting a stale check-in or a billing pause).
         const apOn = !!(S.me && S.me.user && S.me.user.autopilot);
-        slipsEl.innerHTML = `<div class="empty"><h3>${noneKept ? 'No strategy has passed yet' : total ? 'No matching strategies' : 'No strategies yet'}</h3>${noneKept ? `<p>Most ideas fail their tests; the ones that pass land here.${apOn ? ' Autopilot keeps researching on its own.' : ''}</p>` : !total && apOn ? '<p>Autopilot is researching. The strategies it finds will land here.</p>' : ''}${total && !noneKept ? '' : `${apNudge('Rather not write ideas yourself?', 'and it researches on its own, on paper.')}${apOn ? '<a class="btn" href="/research">See its research</a>' : '<a class="btn" href="/research?new=1">New session</a>'}`}</div>`;
+        slipsEl.innerHTML = `<div class="empty"><h3>${noneKept ? 'No strategy has passed yet' : total ? 'No matching strategies' : 'No strategies yet'}</h3>${noneKept ? `<p>Most ideas fail their tests; the ones that pass land here.${apOn ? ' Autopilot keeps researching on its own.' : ''}</p>` : !total && apOn ? '<p>Autopilot is on. The strategies it finds will land here.</p>' : ''}${total && !noneKept ? '' : `${apNudge('Rather not write ideas yourself?', 'and it researches on its own, on paper.')}${apOn ? '<a class="btn" href="/research">See its research</a>' : '<a class="btn" href="/research?new=1">New session</a>'}`}</div>`;
         return;
       }
       const list = d.strategies, reg = registry(list.map((s) => s.equity));
@@ -2752,19 +2761,21 @@
     const loadBoard = async () => {
       const d = await api('/api/deployments');
       const running = d.deployments.filter((x) => x.status === 'running');
-      // Real-money and practice (paper/demo) results are never summed into one figure. Removed
+      // Live, paper and demo results are never summed into one figure: each book gets its own. Removed
       // deployments aren't listed, so their P&L isn't here (the dashboard and track record keep it).
       const sumPnl = (xs) => xs.reduce((a, x) => a + x.realized_pnl, 0);
-      const liveDeps = d.deployments.filter((x) => x.mode === 'live'), practice = d.deployments.filter((x) => x.mode !== 'live');
-      const liveRealized = sumPnl(liveDeps), practiceRealized = sumPnl(practice);
-      const practiceKind = practice.some((x) => x.mode === 'demo') ? 'paper and demo' : 'paper';
+      const byMode = (m) => d.deployments.filter((x) => x.mode === m);
+      const liveDeps = byMode('live'), paperDeps = byMode('paper'), demoDeps = byMode('demo');
+      const liveRealized = sumPnl(liveDeps), paperRealized = sumPnl(paperDeps), demoRealized = sumPnl(demoDeps);
       const live = d.deployments.filter((x) => x.mode === 'live' && x.status === 'running');
+      const runDemo = running.some((x) => x.mode === 'demo'), runPaper = running.some((x) => x.mode === 'paper');
       root.querySelector('#dfigs').innerHTML = fig('Running', running.length, { small: `${d.deployments.length - running.length} paused` }) +
         (liveDeps.length
-          ? fig('Live realized', usd(liveRealized, true), { v: liveRealized, small: practice.length ? `real money, strategies listed below · ${usd(practiceRealized, true)} on ${practiceKind}, counted apart` : 'real money, strategies listed below' })
-          : fig('Realized', usd(practiceRealized, true), { v: practiceRealized, small: `${practiceKind} money, not real · strategies listed below` })) +
+          ? fig('Live realized', usd(liveRealized, true), { v: liveRealized, small: paperDeps.length ? `real money, strategies listed below · ${usd(paperRealized, true)} on paper, counted apart` : 'real money, strategies listed below' })
+          : paperDeps.length || !demoDeps.length ? fig('Realized', usd(paperRealized, true), { v: paperRealized, small: 'paper money, not real · strategies listed below' }) : '') +
+        (demoDeps.length ? fig('Demo realized', usd(demoRealized, true), { v: demoRealized, small: `${DEMO_WHAT} · strategies listed below` }) : '') +
         fig('Open positions', d.open_positions.length) +
-        fig('Money', live.length ? '<span class="mk live">Live</span>' : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : 'nothing on live money' });
+        fig('Money', live.length ? '<span class="mk live">Live</span>' : runDemo ? `${runPaper ? '<span class="mk">Paper</span> ' : ''}<span class="mk dep">Demo</span>` : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : 'nothing on live money' });
       replaceDeploymentContent(root.querySelector('#deps'), d.deployments.length ? deploymentTable(pausedFirst(d.deployments).map((x) => deploymentSlip(x, true)).join(''), true)
         : `<div class="empty"><h3>Nothing deployed</h3>${S.me && S.me.user && S.me.user.autopilot ? '<p>Autopilot is on: strategies that pass every gate deploy here on their own, on paper.</p>' : ''}${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}<a class="btn" href="/strategies?status=passed">See passed strategies</a></div>`);
       bindDeploymentActions(root.querySelector('#deps'), loadBoard);
@@ -2794,6 +2805,7 @@
     const caveats = [];
     if (m.excluded_instant_fills) caveats.push(`${num(m.excluded_instant_fills)} instant-fill paper trade${m.excluded_instant_fills === 1 ? '' : 's'} left out (fills real execution would not get).`);
     if (m.open_trades) caveats.push(`${num(m.open_trades)} open trade${m.open_trades === 1 ? '' : 's'} (${usd(m.open_at_cost)} at cost) join the record when they close.`);
+    if (key === 'demo' && m.trades) caveats.push('Demo trades are real fills on Kalshi’s sandbox exchange with simulated money. Reloading the demo account doesn’t reset this record, so it can differ from P&L since reload.');
     const cav = caveats.length ? `<p class="hint tr-caveat">${caveats.map(esc).join(' ')}</p>` : '';
     if (!m.trades) {
       // Paper only: the live and demo tabs keep their own copy.
@@ -2908,7 +2920,7 @@
       const kd = d.kalshi_dev || { connected: false };
       const dm = d.demo || { capital: 0, equity: 0, realized: 0 };
       root.querySelector('#ffigs').innerHTML = fig('Live money', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead' }) +
-        fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} starting capital` }) +
+        fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} ${dm.before_reload ? 'capital at last reload' : 'starting capital'} · ${DEMO_WHAT}` }) +
         fig('Paper cash', usd(d.paper.cash));
       root.querySelector('main').innerHTML = `<div id="flash"></div><div class="funds">
         <div class="funds-col funds-manage">
@@ -2933,8 +2945,8 @@
         </section>
         <section class="panel">
           <h3>Kalshi demo (sandbox) account</h3>
-          <dl class="kv"><dt>Demo balance</dt><dd>${usd(dm.equity)}</dd><dt>Starting capital</dt><dd>${usd(dm.capital)}</dd><dt>P&amp;L since reload</dt><dd class="${tone(dm.realized)}">${usd(dm.realized, true)}</dd></dl>
-          <p class="lede" style="margin-bottom:14px">Simulated funds for sandbox orders. Reloading changes Tau’s balance only.</p>
+          <dl class="kv"><dt>Demo balance</dt><dd>${usd(dm.equity)}</dd><dt>${dm.before_reload ? 'Capital at last reload' : 'Starting capital'}</dt><dd>${usd(dm.capital)}</dd><dt>P&amp;L ${demoSpan(dm)}</dt><dd class="${tone(dm.realized)}">${usd(dm.realized, true)}</dd></dl>
+          <p class="lede" style="margin-bottom:14px">Real orders on Kalshi’s sandbox exchange, so fills and slippage are real; the money is simulated. Reloading changes Tau’s balance only and starts P&amp;L since reload at $0.00; the track record still counts every closed demo trade.</p>
           <form id="demo" class="amount">
             <label class="field"><span>Reload to</span><input class="input" name="amount" type="number" min="1" max="100000" step="0.01" inputmode="decimal" required placeholder="1000"></label>
             <button class="btn" type="submit">Reload demo</button>
@@ -3471,6 +3483,10 @@
   // The paper book's equity P&L (dashboard total_pnl) restarts when the account is reset, so it reads
   // "since reset" then; the track record keeps every closed trade and would otherwise disagree.
   function paperSpan(p) { return p && p.reset_at ? 'since reset' : 'all time'; }
+  // Demo P&L restarts at a reload (before_reload holds what came before), unlike the track record.
+  function demoSpan(dm) { return dm && dm.before_reload ? 'since reload' : 'all time'; }
+  // What demo is, for a reader who has never used it: real exchange fills, pretend money.
+  const DEMO_WHAT = 'real fills on Kalshi’s sandbox, not real money';
   // Dashboard autopilot card: the one-click way in while autopilot is off, and once it's on a
   // plain "what is it doing, is it making money" strip. Painted from the float's status poll
   // (S.ap) plus the dashboard's paper book (S.dashPaper), so it never needs its own request.
@@ -3484,7 +3500,7 @@
       host.className = 'apcard';
       host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>Autopilot off</span>
         <h2>Let the autopilot trade for you</h2>
-        <p>It picks markets, tests ideas on data it never saw, and runs the ones that pass on paper money. Every move shows up in its activity feed. Real money stays off until you turn it on separately.</p></div>
+        <p>It picks markets, tests ideas on data it never saw, and runs the ones that pass on paper money. Every move shows up in its activity feed. Real money stays off until you turn it on separately.</p>${apCostLine()}</div>
         <div class="apcard-act"><button type="button" class="btn primary" data-apcard="on">Turn on autopilot</button><a class="apcard-alt" href="/research">or research by hand</a></div>
         <p class="apcard-err error-text" role="alert"></p>`;
       const b = host.querySelector('[data-apcard="on"]');
@@ -3500,7 +3516,7 @@
       ['Strategies running', running ? String(running) : 'None yet'],
       ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested · ${r.passed_7d || 0} passed`],
       prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${prog.trades} of ${prog.trades_needed} paper trades</a>`]
-        : ['Last move', d.last_action && d.last_action.at ? sinceMin(d.last_action.at) : (d.last_review_at ? 'Reviewed ' + sinceMin(d.last_review_at) : 'Starting up')],
+        : ['Last move', d.reviewing ? 'Reviewing now' : d.last_action && d.last_action.at ? sinceMin(d.last_action.at) : (d.last_review_at ? 'Reviewed ' + sinceMin(d.last_review_at) : 'Starting up')],
     ];
     const now = d.billing_blocked
       ? `Paused: <a href="/billing">${d.billing_reason === 'card' ? 'add a payment method' : 'add credits'}</a> so it can keep researching.`
@@ -3511,6 +3527,16 @@
         <dl class="apcard-figs">${cells.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl></div>
       <div class="apcard-act"><button type="button" class="btn" data-apcard="open">Open autopilot</button></div>`;
     host.querySelector('[data-apcard="open"]').onclick = () => apOpen();
+  }
+  // What switching it on costs, said before the click: the agent's runs spend credits, and with
+  // auto-reload on the saved card is charged when they run low. Payments off on this server: no line.
+  function apCostLine() {
+    const me = S.me;
+    if (!me || !me.billing_enabled) return '';
+    const ar = me.auto_reload;
+    return `<p class="apcard-cost">It uses your credits while it's on (${usd(me.credit_balance)} left)${ar
+      ? `. When they fall to ${usd(ar.threshold)}, auto-reload charges your card ${usd(ar.charge)} for ${usd(ar.amount)} more. Turn it off any time, or change auto-reload on <a href="/billing">Billing</a>.`
+      : ' and pauses when they run out. Turn it off any time.'}</p>`;
   }
   function apOpen() {
     try { localStorage.setItem('tau_ap_open', '1'); } catch (e) { /* private mode */ }
@@ -3597,7 +3623,10 @@
       return li;
     }
     // A system line = an autopilot action (or a blocked/holding note).
-    const kind = AP_ACT[m.proposal_kind] || 'Reviewed';
+    // The switch notes ("Autopilot is ON: …") were labelled Reviewed, so a new user's first feed line
+    // said it had reviewed something seconds after the click, before any review ran.
+    const flip = !m.proposal_kind && /^(LIVE )?autopilot is (ON|OFF)\b/i.exec(m.content || '');
+    const kind = AP_ACT[m.proposal_kind] || (flip ? (flip[1] ? 'Live autopilot ' : 'Autopilot ') + (/on/i.test(flip[2]) ? 'on' : 'off') : 'Reviewed');
     const st = m.proposal_status;
     const lane = !m.proposal_id ? 'state' : st === 'pending' ? 'review' : st === 'applied' ? 'action' : 'void';
     const stamp = st === 'applied' ? `<span class="hx-stamp pass">${m.proposal_kind === 'alpaca_paper' ? 'Approved' : 'Applied'}</span>`
@@ -3634,7 +3663,7 @@
       pulse.hidden = false;
       pulse.className = 'runpulse apf-pulse-row';
       pulse.innerHTML = d.agent_busy
-        ? '<span class="working" aria-hidden="true"></span><span>Working the operation<span class="ell" aria-hidden="true"></span></span>'
+        ? '<span class="working" aria-hidden="true"></span><span>Working on its next move<span class="ell" aria-hidden="true"></span></span>'
         : `<span>${apIdleLine(box)}</span>`;
     }
     if (stick) msgs.scrollTop = msgs.scrollHeight;
@@ -3801,7 +3830,9 @@
     const short = [
       `<dt>Running</dt><dd>${runTotal ? runParts.join(' · ') : 'None'}</dd>`,
       `<dt>${liveInPlay ? 'Live' : 'Paper'} P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd>`,
-    ].concat(liveInPlay ? [`<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`] : []).concat(d.last_review_at ? [`<dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd>`] : []);
+    ].concat(liveInPlay ? [`<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`] : [])
+      // A queued or running review is not a finished one: right after switching on, "Last reviewed just now" claimed a review that hadn't run.
+      .concat(d.reviewing ? ['<dt>Review</dt><dd>In progress</dd>'] : d.last_review_at ? [`<dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd>`] : []);
     if (stats) {
       stats.dataset.cols = short.length;
       stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `

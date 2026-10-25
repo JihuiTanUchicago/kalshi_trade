@@ -15,7 +15,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 from app.adapters.db.sql import _json, _loads, now_utc, transaction  # noqa: F401
 from app.adapters.db.billing_repository import (  # noqa: F401
     add_credit, credit_balance, credit_rows, credit_spent_total, get_stripe_customer,
-    research_spent_since, save_stripe_customer, set_auto_reload, set_default_pm, user_by_email,
+    research_spent_since, runs_spent, save_stripe_customer, set_auto_reload, set_default_pm, user_by_email,
 )
 from app.adapters.db.kalshi_keys_repository import (  # noqa: F401
     delete_kalshi_key, get_kalshi_key, save_kalshi_key,
@@ -25,7 +25,7 @@ from app.adapters.db.kalshi_dev_keys_repository import (  # noqa: F401
 )
 from app.adapters.db.chat_repository import (  # noqa: F401
     add_chat, chat_contains, chat_messages, create_proposal, decide_proposal, get_proposal,
-    last_autopilot_action, last_review_at, recent_chat_same,
+    last_autopilot_action, last_review_at, recent_chat_same, review_in_flight,
 )
 from app.adapters.db.order_intent_repository import (  # noqa: F401
     _naive_utc, claim_intent_booking, insert_order_intent, mark_order_intent, open_sent_intents,

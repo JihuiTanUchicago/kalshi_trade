@@ -148,6 +148,7 @@ def _ap_ctx(monkeypatch, autopilot=1):
     monkeypatch.setattr(server.repo, 'realized_pnl', lambda *a: 0.0)
     monkeypatch.setattr(server.repo, 'last_autopilot_action', lambda *a: None)
     monkeypatch.setattr(server.repo, 'last_review_at', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'review_in_flight', lambda *a: False)
     monkeypatch.setattr(server.repo, 'list_runs', lambda *a, **k: [])
     monkeypatch.setattr(server.repo, 'research_week', lambda *a, **k: [])
     monkeypatch.setattr(server.repo, 'research_spent_since', lambda *a, **k: 0.0)
@@ -166,6 +167,34 @@ def test_autopilot_status_flags_billing_blocked(monkeypatch):
     monkeypatch.setattr(server, '_needs_card', lambda c: False)
     out = server.autopilot_status(ctx)
     assert out['billing_blocked'] is True and out['billing_reason'] == 'credits'
+
+
+def test_autopilot_status_says_when_a_review_is_in_flight(monkeypatch):
+    ctx = _ap_ctx(monkeypatch, autopilot=1)
+    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: True)
+    monkeypatch.setattr(server.repo, 'review_in_flight', lambda cur, uid: True)
+    out = server.autopilot_status(ctx)
+    assert out['reviewing'] is True
+    assert out['story'][0].startswith("Right now it's reviewing the markets")
+    off = server.autopilot_status(_ap_ctx(monkeypatch, autopilot=0))
+    assert off['reviewing'] is False  # an off autopilot reads nothing extra
+
+
+def test_me_states_what_auto_reload_will_charge_the_card(monkeypatch):
+    ctx = _ap_ctx(monkeypatch, autopilot=0)
+    monkeypatch.setattr(server.billing, 'TOPUP_FEE', server.Decimal('0.055'))
+    monkeypatch.setattr(server.repo, 'get_stripe_customer',
+                        lambda *a: {'default_pm_id': 'pm_1', 'auto_reload': 1, 'reload_amount': None, 'reload_threshold': None})
+    assert server._auto_reload_terms(ctx) == {'amount': 20.0, 'charge': 21.1, 'threshold': 5.0}
+    # Saved amounts below the floors charge the floors, as billing.auto_reload does.
+    monkeypatch.setattr(server.repo, 'get_stripe_customer',
+                        lambda *a: {'default_pm_id': 'pm_1', 'auto_reload': 1, 'reload_amount': 50, 'reload_threshold': 1})
+    assert server._auto_reload_terms(ctx) == {'amount': 50.0, 'charge': 52.75, 'threshold': 5.0}
+    for cust in (None, {'default_pm_id': None, 'auto_reload': 1}, {'default_pm_id': 'pm_1', 'auto_reload': 0}):
+        monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a, c=cust: c)
+        assert server._auto_reload_terms(ctx) is None
+    monkeypatch.setattr(server.billing, 'configured', lambda: False)
+    assert server._auto_reload_terms(ctx) is None
 
 
 def test_autopilot_status_not_blocked_when_ready(monkeypatch):
@@ -239,3 +268,26 @@ def test_every_market_has_a_short_label(bundle):
     block = src[src.index('const MKT_SHORT = {'):]
     keys = set(re.findall(r'(\w+):', block[:block.index('};')]))
     assert set(markets.MARKETS) - keys == set()
+
+
+def test_run_page_and_research_list_carry_each_runs_ledger_spend(monkeypatch):
+    # A run-until-stopped session shows what it has taken from credits: the ledger rows billed to
+    # the run, read once per response (one grouped query for the list, not one per row).
+    calls = []
+    monkeypatch.setattr(server.repo, 'runs_spent', lambda cur, uid, ids: calls.append((uid, list(ids))) or {9: 1.83725})
+    monkeypatch.setattr(server.repo, 'get_run', lambda cur, uid, rid: {'id': rid, 'kind': 'research', 'status': 'running'})
+    monkeypatch.setattr(server.repo, 'list_strategies', lambda *a, **k: [])
+    monkeypatch.setattr(server.repo, 'get_policy', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'latest_dream_event', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'run_events', lambda *a: [])
+    ctx = context()
+    ctx.params = ('9',)
+    assert server.get_run(ctx)['run']['spent_usd'] == 1.8373
+    assert calls == [(7, [9])]
+    calls.clear()
+    monkeypatch.setattr(server.repo, 'list_runs', lambda cur, uid: [{'id': 9}, {'id': 4}, {'id': 2}])
+    monkeypatch.setattr(server.repo, 'active_run_counts', lambda *a: {})
+    monkeypatch.setattr(server, '_research_totals', lambda *a: {})
+    runs = server.list_runs(context())['runs']
+    assert [r['spent_usd'] for r in runs] == [1.8373, 0.0, 0.0]  # a run with no debit cost nothing
+    assert calls == [(7, [9, 4, 2])]

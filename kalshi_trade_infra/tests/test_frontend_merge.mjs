@@ -642,6 +642,33 @@ test('paper P&L reads "since reset" on the card and dashboard once the paper acc
   }
 });
 
+test('the dashboard demo card says what demo is and that its P&L restarts at a reload', async () => {
+  for (const [demo, re] of [
+    [{equity: 1000, capital: 1000}, /\$1,000\.00 capital · no demo strategies yet · real fills on Kalshi’s sandbox, not real money/],
+    [{equity: 512, capital: 500, realized_pnl: 12, running: 1, open_positions: 0, before_reload: 40}, /\$500\.00 capital · 0 open · \+\$12\.00 P&amp;L since reload · real fills/],
+    [{equity: 1012, capital: 1000, realized_pnl: 12, running: 1, open_positions: 0, before_reload: 0}, /\+\$12\.00 P&amp;L all time · real fills/],
+  ]) {
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/dashboard') return response({...emptyDashboard(), demo});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    await f.viewDashboard(); await flush();
+    assert.match(f.root.querySelector('#boardbody').innerHTML, re);
+  }
+});
+
+test('Funds demo labels say "since reload" only after a reload, and that demo fills are real', async () => {
+  for (const before_reload of [0, 40]) {
+    const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds(); d.demo.before_reload = before_reload; return response(d); }});
+    await f.viewFunds();
+    const main = f.root.querySelector('main').innerHTML;
+    assert.match(main, before_reload ? /<dt>Capital at last reload<\/dt>/ : /<dt>Starting capital<\/dt>/);
+    assert.match(main, before_reload ? /<dt>P&amp;L since reload<\/dt>/ : /<dt>P&amp;L all time<\/dt>/);
+    assert.match(main, /the track record still counts every closed demo trade/);
+    assert.match(f.root.querySelector('#ffigs').innerHTML, /real fills on Kalshi’s sandbox, not real money/);
+  }
+});
+
 test('Deploy realized says it counts only the strategies listed, never summing live with paper', async () => {
   const dep = (id, mode, pnl) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode, status: 'running', status_reason: null,
     realized_pnl: pnl, closed_trades: 1, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1,
@@ -666,6 +693,39 @@ test('a failed autopilot switch-on leaves the dashboard card off and says why', 
   assert.notEqual(f.S.me.user.autopilot, true);
   assert.match(f.root.querySelector('#dash-ap').innerHTML, /Turn on autopilot/);
   assert.match(f.root.querySelector('#dash-ap .apcard-err').innerHTML, /Add a payment method first\./);
+});
+
+test('the autopilot card says what switching it on costs before the click', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(emptyDashboard());
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  const cost = () => f.root.querySelector('#dash-ap .apcard-cost');
+  f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 18.4, auto_reload: {amount: 20, charge: 21.1, threshold: 5}};
+  await f.viewDashboard(); await flush();
+  assert.match(cost().innerHTML, /uses your credits while it's on \(\$18\.40 left\)/);
+  assert.match(cost().innerHTML, /When they fall to \$5\.00, auto-reload charges your card \$21\.10 for \$20\.00 more\./);
+  assert.match(cost().innerHTML, /<a href="\/billing">Billing<\/a>/);
+  f.S.me.auto_reload = null; f.paintDashAp();
+  assert.match(cost().innerHTML, /\(\$18\.40 left\) and pauses when they run out\. Turn it off any time\./);
+  assert.doesNotMatch(cost().innerHTML, /auto-reload/);
+  f.S.me.billing_enabled = false; f.paintDashAp();  // payments off on this server: nothing is spent
+  assert.equal(cost(), null);
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, /Turn on autopilot/);
+});
+
+test('right after switching on, the card says the first review is running, not that it already moved', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(emptyDashboard());
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = true;
+  const at = new Date().toISOString();
+  f.S.ap = {...apOn, paper_running: 0, paper_progress: null, reviewing: true, last_review_at: at, last_action: {at, text: 'Autopilot is ON: …'}};
+  await f.viewDashboard(); await flush();
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Last move<\/dt><dd>Reviewing now<\/dd>/);
+  f.S.ap = {...f.S.ap, reviewing: false}; f.paintDashAp();
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Last move<\/dt><dd>just now<\/dd>/);
 });
 
 test('the autopilot panel shows Kill only once real money is armed or running', () => {
@@ -935,4 +995,39 @@ test('feed markdown escapes model HTML and rejects non-http links', () => {
   const f = frontend(), output = f.feedMd('<img src=x onerror=alert(1)>\n[unsafe](javascript:alert(1))\n**complete** and **pending');
   assert.doesNotMatch(output, /<img|href="javascript:/);
   assert.match(output, /<b>complete<\/b>/); assert.match(output, /\*\*pending/);
+});
+
+test('a research run shows what it has cost so far from its ledger debits, and its cost once finished', async () => {
+  for (const [status, label] of [['running', 'Spent so far'], ['paused', 'Spent so far'], ['succeeded', 'Cost'], ['cancelled', 'Cost']]) {
+    const run = {id: 9, prompt: 'Idea', status, market: 'btc15m', created_at: '2026-10-17T10:00:00Z', spent_usd: 1.8372};
+    const f = frontend({fetchImpl: path => { assert.ok(path.startsWith('/api/runs/9')); return response({run, events: []}); }});
+    await f.viewRun(9);
+    assert.match(f.root.querySelector('#runfigs').innerHTML, new RegExp(`${label}</dt><dd><span class="fig ">\\$1\\.84</span>`), status);
+    f.clearTimers();
+  }
+  // An older server that sends no figure shows none, rather than a made-up $0.00.
+  const run = {id: 9, prompt: 'Idea', status: 'running', market: 'btc15m', created_at: '2026-10-17T10:00:00Z'};
+  const f = frontend({fetchImpl: () => response({run, events: []})});
+  await f.viewRun(9);
+  assert.doesNotMatch(f.root.querySelector('#runfigs').innerHTML, /Spent so far|Cost/);
+  f.clearTimers();
+});
+
+test('research list rows state each session\'s cost from the ledger', async () => {
+  const runs = [{id: 6, status: 'succeeded', market: 'btc15m', prompt: 'Done idea', hypotheses_tried: 3, strategies_passed: 0, created_at: '2026-10-25T08:00:00Z', spent_usd: 2.5},
+    {id: 7, status: 'running', market: 'btc15m', prompt: 'Live idea', hypotheses_tried: 1, strategies_passed: 0, created_at: '2026-10-25T09:00:00Z', spent_usd: 0.42}];
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path === '/api/research/context') return response({markets: []});
+    if (path === '/api/runs') return response({runs, counts: {research_running: 1, research_queued: 0}, policy: null});
+    if (path.startsWith('/api/research/scoreboard')) return response({});
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = false;
+  await f.viewResearch(); await flush(); await flush();
+  const html = f.root.querySelector('#runs').innerHTML;
+  assert.match(html, /href="\/research\/6"[\s\S]*?Cost: \$2\.50/);
+  assert.match(html, /href="\/research\/7"[\s\S]*?Spent so far: \$0\.42/);
+  f.clearTimers();
 });

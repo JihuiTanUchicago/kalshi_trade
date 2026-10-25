@@ -384,6 +384,7 @@ def me(ctx: Ctx):
         "is_admin": (ctx.user["email"] or "").lower() == ADMIN_EMAIL.lower(),
         "billing_enabled": billing.configured(),
         "needs_card": _needs_card(ctx),
+        "auto_reload": _auto_reload_terms(ctx),
         "free_bonus": float(billing.FREE_BONUS),
         "credit_balance": round(repo.credit_balance(ctx.cur, ctx.uid), 4),
         "min_run_balance": float(billing.MIN_RUN_BALANCE),  # the headroom a research run needs to start
@@ -460,7 +461,7 @@ def dashboard(ctx: Ctx):
     demo = _mode_bucket(cur, ctx.uid, "demo", open_pos, deps, day)
     de = repo.demo_equity(cur, ctx.uid)
     demo.update(capital=de["capital"], equity=de["equity"], realized_pnl=de["realized"],
-                total_pnl=de["realized"], roi=de["roi"])
+                total_pnl=de["realized"], roi=de["roi"], before_reload=de["before_reload"])
     live = _mode_bucket(cur, ctx.uid, "live", open_pos, deps, day)
     live.update(_live_balance(cur, ctx.uid))
     return {
@@ -534,8 +535,18 @@ def list_runs(ctx: Ctx):
               "base_score": round(pol["base_score"], 2) if (pol and pol.get("base_score") is not None) else None,
               "summary": pol.get("summary") if pol else None,
               "evolved_at": pol["updated_at"] if pol else None}
-    return {"runs": repo.list_runs(ctx.cur, ctx.uid), "counts": repo.active_run_counts(ctx.cur, ctx.uid),
+    runs = repo.list_runs(ctx.cur, ctx.uid)
+    _with_spent(ctx.cur, ctx.uid, runs)
+    return {"runs": runs, "counts": repo.active_run_counts(ctx.cur, ctx.uid),
             "policy": policy, "totals": _research_totals(ctx.cur, ctx.uid)}
+
+
+def _with_spent(cur, uid: int, runs: List[Dict]) -> None:
+    """Stamp each run with `spent_usd`: what its usage debits took from credits so far (the ledger
+    rows billed to that run), so a run-until-stopped session shows its running cost."""
+    spent = repo.runs_spent(cur, uid, [r["id"] for r in runs])
+    for r in runs:
+        r["spent_usd"] = round(spent.get(r["id"], 0.0), 4)
 
 
 RUN_TOTALS_TTL = 30.0  # seconds; the Research page polls /api/runs every 5s
@@ -569,6 +580,7 @@ def get_run(ctx: Ctx):
     strategies = repo.list_strategies(ctx.cur, ctx.uid, run_id=run["id"])
     pol = repo.get_policy(ctx.cur, ctx.uid)  # the self-evolving exploration policy (Tau-RSI)
     dream = repo.latest_dream_event(ctx.cur, ctx.uid)
+    _with_spent(ctx.cur, ctx.uid, [run])
     return {
         "run": run,
         "events": repo.run_events(ctx.cur, run["id"], after),
@@ -605,6 +617,20 @@ def _needs_card(ctx: Ctx) -> bool:
         return False
     cust = repo.get_stripe_customer(ctx.cur, ctx.uid)
     return not (cust and cust.get("default_pm_id"))
+
+
+def _auto_reload_terms(ctx: Ctx) -> Optional[Dict]:
+    """What auto-reload will charge the saved card, for the autopilot card's cost line: the credits
+    added, the card charge (credits plus the top-up fee) and the balance that triggers it. The same
+    floors billing.auto_reload applies. None when payments are off, no card is saved, or it is off."""
+    if not billing.configured():
+        return None
+    cust = repo.get_stripe_customer(ctx.cur, ctx.uid)
+    if not (cust and cust.get("default_pm_id") and cust.get("auto_reload")):
+        return None
+    amount = max(billing.AUTORELOAD_AMOUNT, Decimal(str(cust.get("reload_amount") or billing.AUTORELOAD_AMOUNT)))
+    threshold = max(billing.AUTORELOAD_THRESHOLD, Decimal(str(cust.get("reload_threshold") or billing.AUTORELOAD_THRESHOLD)))
+    return {"amount": float(amount), "charge": billing.topup_charge_cents(amount) / 100, "threshold": float(threshold)}
 
 
 def _require_billing_ready(ctx: Ctx, gerund: str) -> None:
@@ -776,14 +802,14 @@ def list_strategies(ctx: Ctx):
 def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
     """Stamp each deployed card with what it has actually done since deploying (realized P&L and
     closed trades across its active deployments), so the list shows reality next to the backtest.
-    Real money is never summed with practice money: a strategy with a live deployment reports its
-    live deployments only (beside its Live badge), otherwise its paper/demo ones. One query, and
-    only when the page has a deployed strategy."""
+    Money books are never summed: a strategy with a live deployment reports its live deployments
+    only (beside its Live badge), otherwise its paper ones, with its demo (sandbox) book beside them
+    under "demo" rather than added in. One query, and only when the page has a deployed strategy."""
     if not any(c.get("deployed") for c in cards):
         return
-    real: Dict[int, Dict[bool, Dict]] = {}
+    real: Dict[int, Dict[str, Dict]] = {}
     for d in repo.list_deployments(cur, uid):
-        r = real.setdefault(d["strategy_id"], {}).setdefault(d["mode"] == "live", {"pnl": 0.0, "trades": 0, "open": 0, "paused": False})
+        r = real.setdefault(d["strategy_id"], {}).setdefault(d["mode"], {"pnl": 0.0, "trades": 0, "open": 0, "paused": False})
         r["paused"] = r["paused"] or d.get("status") == "paused"  # often auto-paused; the list flags it
         r["pnl"] += float(d["realized_pnl"] or 0)
         r["trades"] += int(d["closed_trades"] or 0)
@@ -791,9 +817,14 @@ def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
     for c in cards:
         books = real.get(c["id"]) if c.get("deployed") else None
         if books:
-            live = True in books
-            r = books[live]
-            c["real"] = {**r, "pnl": round(r["pnl"], 2), "live": live}
+            mode = next((m for m in ("live", "paper", "demo") if m in books), None)
+            if mode is None:  # only a mode this list doesn't show
+                continue
+            r = books[mode]
+            c["real"] = {**r, "pnl": round(r["pnl"], 2), "live": mode == "live", "mode": mode}
+            if mode == "paper" and "demo" in books:
+                dm = books["demo"]
+                c["real"]["demo"] = {"pnl": round(dm["pnl"], 2), "trades": dm["trades"], "open": dm["open"]}
 
 
 def _owned_strategy(ctx: Ctx) -> Dict:
@@ -1286,6 +1317,8 @@ def _autopilot_story(d: Dict) -> List[str]:
         now = ("Right now it's researching %s." % (
             names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1])) if names \
             else "Right now it's picking a market to research."
+    elif d.get("reviewing"):
+        now = "Right now it's reviewing the markets to pick its next move. Each move shows up in its activity feed."
     else:
         now = "Right now it's between research runs. It checks in about every %d minutes." % max(1, COPILOT_REVIEW_MINUTES)
         quiet = _quiet_minutes(d.get("last_review_at"))
@@ -1538,6 +1571,9 @@ def autopilot_status(ctx: Ctx):
         "loss_headroom": round(max(0.0, limit + min(0.0, today_live)), 2),  # how much loss budget is left today
         "last_action": repo.last_autopilot_action(cur, ctx.uid),
         "last_review_at": repo.last_review_at(cur, ctx.uid),  # liveness: a quiet review posts nothing, this still shows it ran
+        # A review queued or running now. Switching on queues the first one at once, and the panel said
+        # "between research runs, checks in every 10 minutes" over a "Working" pulse while it waited.
+        "reviewing": bool(u.get("autopilot")) and repo.review_in_flight(cur, ctx.uid),
         "model": u.get("autopilot_model") or catalog.DEFAULT_KEY,  # the model the autopilot's own runs use
         "focus": agent.focus_tokens(u),  # the user's binding market focus ([] = any market)
         "billing_blocked": billing_blocked,
@@ -1594,7 +1630,8 @@ def funds(ctx: Ctx):
     de = repo.demo_equity(cur, ctx.uid)
     return {
         "paper": {"cash": round(repo.paper_balance(cur, ctx.uid), 2), "ledger": repo.ledger_rows(cur, ctx.uid)},
-        "demo": {"capital": de["capital"], "equity": de["equity"], "realized": de["realized"]},
+        "demo": {"capital": de["capital"], "equity": de["equity"], "realized": de["realized"],
+                 "before_reload": de["before_reload"]},
         "kalshi": kalshi,
         "kalshi_dev": kalshi_dev_key,
     }
