@@ -1257,6 +1257,11 @@ def _autopilot_story(d: Dict) -> List[str]:
             else "Right now it's picking a market to research."
     else:
         now = "Right now it's between research runs. It checks in about every %d minutes." % max(1, COPILOT_REVIEW_MINUTES)
+        quiet = _quiet_minutes(d.get("last_review_at"))
+        if quiet:
+            # A stalled worker would leave "checks in every 10 minutes" on screen for hours; say how long it's been.
+            ago = _plural(quiet // 60, "hour") if quiet >= 120 else _plural(quiet, "minute")
+            now = "Right now it's between research runs. Its last check-in was %s ago, longer than usual." % ago
     lines = [now]
     if d.get("focus"):
         lines.append("It sticks to the focus you set: %s." % ", ".join(d["focus"]))
@@ -1429,6 +1434,16 @@ def _stop_line(exits: Dict[str, Dict]) -> str:
 
 
 COPILOT_REVIEW_MINUTES = int(os.getenv("APP_COPILOT_REVIEW_SECONDS", "600")) // 60
+# The worker spaces idle reviews up to APP_IDLE_REVIEW_SECONDS apart, so only a gap well past that is late.
+QUIET_AFTER_MINUTES = max(COPILOT_REVIEW_MINUTES, int(os.getenv("APP_IDLE_REVIEW_SECONDS", "1800")) // 60) * 3 // 2
+
+
+def _quiet_minutes(last_review_at) -> int:
+    """Minutes since the last autopilot review when that's later than the worker's cadence, else 0."""
+    if not isinstance(last_review_at, datetime):
+        return 0
+    mins = int((repo.now_utc() - last_review_at).total_seconds() // 60)
+    return mins if mins > QUIET_AFTER_MINUTES else 0
 
 
 def autopilot_status(ctx: Ctx):
