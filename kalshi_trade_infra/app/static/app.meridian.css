@@ -220,7 +220,7 @@ th .info { vertical-align: 0; }
 .bell-menu { position: absolute; top: calc(100% + 7px); right: 0; z-index: 40; width: 300px; max-width: 80vw; background: var(--stock-raised); border: 1px solid var(--rule-2); border-radius: 3px; padding: 4px; max-height: 60vh; overflow-y: auto; }
 .bell-menu[hidden] { display: none; }
 .bell-head { padding: 7px 9px 5px; font-family: var(--f-nar); font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); border-bottom: 1px solid var(--rule); }
-.bell-list .notif { display: block; padding: 9px; font-size: 13px; line-height: 1.4; color: var(--ink-2); text-decoration: none; border-bottom: 1px solid var(--rule); text-transform: none; letter-spacing: normal; }
+.bell-list .notif { display: block; padding: 9px; font-size: 13px; line-height: 1.4; color: var(--ink-2); text-decoration: none; border-bottom: 1px solid var(--rule); text-transform: none; letter-spacing: normal; white-space: normal; overflow-wrap: anywhere; }  /* the header row is nowrap; a notice must wrap to be read */
 .bell-list .notif:last-child { border-bottom: 0; }
 .bell-list .notif:hover { background: var(--stock-sunk); color: var(--ink); }
 .bell-list .notif.unread { background: var(--signal-wash); }
