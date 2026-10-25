@@ -316,6 +316,10 @@ test('Billing shows how long credits last at last week\'s pace, and the welcome 
   await f.viewBilling();
   figs = f.root.querySelector('#bfigs').innerHTML;
   assert.match(figs, /Welcome credit/); assert.doesNotMatch(figs, /Credits last/);
+  // The ledger is a statement on a phone (item and amount on one line), not a labelled card per line.
+  data = billing({ledger: [{kind: 'usage', memo: 'Research run', amount: -0.91, created_at: '2026-10-21T00:00:00Z'}]});
+  await f.viewBilling();
+  assert.match(f.root.querySelector('#main').innerHTML, /class="table stack t-dep t-ledger"[\s\S]*Research run[\s\S]*−\$0\.91/);
 });
 
 test('a late Funds read cannot replace the next page or mount stale broker controls', async () => {

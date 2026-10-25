@@ -1047,6 +1047,13 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   .t-dep.stack tbody td.num { grid-column: auto; flex-direction: column; align-items: flex-start; flex-wrap: nowrap; gap: 1px; }
   .t-dep.stack tbody td .sub-fig { flex: none; }
   .t-dep.stack tbody td.name .dep-meta { flex: 1 0 100%; }
+  /* Credit ledger reads like a bank statement on a phone: item left, amount right, date beneath,
+     so a month of usage is a short scroll instead of a labelled card per line. */
+  .t-ledger.stack tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 12px; padding: 10px 0; }
+  .t-ledger.stack tbody td.name { grid-column: 1; grid-row: 1; }
+  .t-ledger.stack tbody td.num { grid-column: 2; grid-row: 1; display: block; text-align: right; white-space: nowrap; }
+  .t-ledger.stack tbody td.hint { grid-column: 1; grid-row: 2; font-size: 12.5px; }
+  .t-ledger.stack tbody td.num::before, .t-ledger.stack tbody td.hint::before { content: none; }
   .lhero { padding-top: 24px; }
   .lnav { padding: 16px 0; }
   .pill { padding: 8px 14px; font-size: 14px; white-space: nowrap; }
