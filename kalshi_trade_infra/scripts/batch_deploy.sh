@@ -29,7 +29,7 @@ REQUIRED_CHECKS=${REQUIRED_CHECKS-"test money-path-mysql"}
 STAGING_PATHS='^kalshi_trade_infra/(app|data_pipeline|trading_core|staging)/|^kalshi_trade_infra/requirements\.txt$|^kalshi_trade_infra/scripts/(paper|kalshi_perps)_staging_smoke\.py$|^kalshi_trade_infra/tests/test[^/]*staging|^\.github/workflows/paper-staging\.yml$'
 
 STALE_MINUTES=${STALE_MINUTES:-90}
-MIN_GAP_MINUTES=${MIN_GAP_MINUTES:-25}
+MIN_GAP_MINUTES=${MIN_GAP_MINUTES:-15}
 BATCH_EVENT=${BATCH_EVENT:-}
 DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1

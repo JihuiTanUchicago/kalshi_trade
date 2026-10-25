@@ -152,7 +152,9 @@
   collector_sha). A run fails, and GitHub mails the owner, when merges wait more than 90 minutes.
   This replaced a session-only cron that lapsed twice on 2026-10-25 (10:30-13:16Z, 14:30-16:36Z).
   GitHub never fired the schedule in its first hour, so it also runs after each CI run on main
-  (#334); a CI-triggered run waits until the last deploy is 25 minutes old, then ships (#336).
+  (#334); a CI-triggered run waits until the last deploy is 15 minutes old (25 until Todd asked to
+  ship faster, 19:12Z), then ships (#336). Research survives the restarts: all 37 research runs in
+  the 8h before the cut succeeded, resuming from their checkpoint after up to 6 deploy yields each.
 - Live sports contracts count time to expiry the way research does (2026-10-25): an open
   outcome-settled contract that can close early carries a backstop close_time (every open
   KXNFL1HSPREAD contract said two days after its game), while research's settled markets carry the
