@@ -3566,10 +3566,12 @@
     }
     const controls = box.querySelector('#apf-controls');
     if (controls) {
+      // A paper-only user sees no red Kill and no greyed live button: Kill appears once real money
+      // is armed or running, and the live step once autopilot is on (the gate line says why not yet).
       controls.innerHTML = `${d.autopilot_live
         ? `<button class="btn sm" data-ap="livetoggle" data-on="0">Turn off live</button>`
-        : `<button class="btn sm" data-ap="livearm" ${(d.live_enabled && d.kalshi_connected && d.autopilot) ? '' : 'aria-disabled="true"'}>Enable live autopilot</button>`}
-        <button class="btn sm danger" data-ap="kill">Kill</button>
+        : d.autopilot ? `<button class="btn sm" data-ap="livearm" ${(d.live_enabled && d.kalshi_connected) ? '' : 'aria-disabled="true"'}>Enable live autopilot</button>` : ''}
+        ${d.autopilot_live || d.live_running ? '<button class="btn sm danger" data-ap="kill">Kill</button>' : ''}
         <a class="btn sm ghost" href="/deploy">Open board</a>`;
       controls.querySelectorAll('[data-ap]').forEach((b) => (b.onclick = (e) => apAction(box, b.dataset.ap, e)));
     }
