@@ -95,11 +95,11 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     await f.viewStrategy(42); await flush();
     const html = f.root.querySelector('main').innerHTML;
     assert.match(html, /Since deploying/);
-    assert.match(html, /Paper<\/span> <span class="[^"]*">\+\$1\.25<\/span> realized over 7 closed trades · 2 open/);
+    assert.match(html, /Paper<\/span> <span class="[^"]*">\+\$1\.25<\/span> realized over 7 closed trades ·\u00a02 open/);
     assert.match(html, /Demo<\/span> No closed trades yet/);
     assert.ok(html.indexOf('>Demo<') < html.indexOf('>Paper<'), 'demo before paper');
     // Unseen-data backtest: +$12 over 6 trades at a $5 stake = $2 a trade, so 7 paper trades -> +$14.
-    assert.match(html, /backtest's unseen-data pace, 7 trades would have made \+\$14\.00 · too few trades to judge yet/);
+    assert.match(html, /backtest's unseen-data pace, 7 trades would have made \+\$14\.00 ·\u00a0too few trades to judge yet/);
     assert.equal((html.match(/real-pace/g) || []).length, 1, 'no pace line for a mode with no closed trades');
     // Scaled to each deployment's own stake: 10 trades at $10 a trade -> 10 x $2 x 2 = +$40, enough to judge.
     const big = strategyFrontend(detailStrategy({deployments: [{id: 4, mode: 'live', status: 'running', realized_pnl: 30, closed_trades: 10, open_positions: 0, stake: 10}]}));
@@ -134,8 +134,8 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
   test(`${name}: a deployed strategy row shows its real P&L beside the backtest`, async () => {
     const f = frontend({fetchImpl: () => response({})});
     const row = s => f.strategySlip(detailStrategy({id: 46, title: 'Row fixture', ...s}), null, {});
-    assert.match(row({deployed: true, real: {pnl: 1.67, trades: 5, open: 1}}), /\+\$1\.67<\/span> since deploying · 5 trades/);
-    assert.match(row({deployed: true, real: {pnl: 0, trades: 1, open: 0}}), /since deploying · 1 trade</);
+    assert.match(row({deployed: true, real: {pnl: 1.67, trades: 5, open: 1}}), /\+\$1\.67<\/span> since deploying ·\u00a05 trades/);
+    assert.match(row({deployed: true, real: {pnl: 0, trades: 1, open: 0}}), /since deploying ·\u00a01 trade</);
     assert.match(row({deployed: true, real: {pnl: 0, trades: 0, open: 2}}), /No closed trades yet/);
     assert.doesNotMatch(row({}), /real-fig/);
     assert.match(row({deployed: true, real: {pnl: -12, trades: 9, open: 0, paused: true}}), /Deployed<\/span> <span class="mk armed">Paused<\/span>/);
@@ -148,10 +148,10 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const f = frontend({fetchImpl: () => response({})});
     const row = real => f.strategySlip(detailStrategy({id: 48, title: 'Books fixture', deployed: true, real}), null, {});
     const both = row({pnl: 1, trades: 3, open: 1, mode: 'paper', demo: {pnl: -0.5, trades: 2, open: 0}});
-    assert.match(both, /\+\$1\.00<\/span> since deploying · 3 trades/);
-    assert.match(both, /Demo: <span class="[^"]*">−\$0\.50<\/span> · 2 trades/);
+    assert.match(both, /\+\$1\.00<\/span> since deploying ·\u00a03 trades/);
+    assert.match(both, /Demo: <span class="[^"]*">−\$0\.50<\/span> ·\u00a02 trades/);
     assert.doesNotMatch(both, /\$0\.50<\/span> since deploying/);
-    assert.match(row({pnl: 2, trades: 1, open: 0, mode: 'demo'}), /\+\$2\.00<\/span> on demo since deploying · 1 trade</);
+    assert.match(row({pnl: 2, trades: 1, open: 0, mode: 'demo'}), /\+\$2\.00<\/span> on demo since deploying ·\u00a01 trade</);
     assert.match(row({pnl: 0, trades: 0, open: 1, mode: 'demo'}), /No closed demo trades yet/);
     assert.match(row({pnl: 0, trades: 0, open: 1, mode: 'paper', demo: {pnl: 0, trades: 0, open: 1}}), /Demo: no closed trades yet/);
   });
@@ -191,15 +191,15 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     await f.viewStrategy(42); await flush();
     const main = f.root.querySelector('main').innerHTML;
     const hint = main.slice(main.indexOf('<p class="hint" style="margin-top:8px">'), main.indexOf('</p>', main.indexOf('<p class="hint" style="margin-top:8px">')));
-    assert.match(hint, /Live: 1 open position at cost \$0\.80 · unrealized (?:<span[^>]*>)?\+\$0\.20/);
-    assert.match(hint, /Demo: 1 open position at cost \$8\.00 · unrealized (?:<span[^>]*>)?−\$3\.00/);
-    assert.match(hint, /Paper: 2 open positions at cost \$6\.00 · unrealized (?:<span[^>]*>)?\+\$1\.00/);
+    assert.match(hint, /Live: 1 open position at cost \$0\.80 ·\u00a0unrealized (?:<span[^>]*>)?\+\$0\.20/);
+    assert.match(hint, /Demo: 1 open position at cost \$8\.00 ·\u00a0unrealized (?:<span[^>]*>)?−\$3\.00/);
+    assert.match(hint, /Paper: 2 open positions at cost \$6\.00 ·\u00a0unrealized (?:<span[^>]*>)?\+\$1\.00/);
     assert.doesNotMatch(hint, /4 open positions|\$14\.80|−\$1\.80/);  // the cross-book totals it used to print
     f.clearTimers && f.clearTimers();
     // One book alone reads as before, with no label.
     const g = strategyFrontend(detailStrategy({holdings: [h('paper', 4, 1)], deployed: true, deployments: [{id: 1, mode: 'paper', status: 'running'}]}));
     await g.viewStrategy(42); await flush();
-    assert.match(g.root.querySelector('main').innerHTML, />1 open position at cost \$4\.00 · unrealized (?:<span[^>]*>)?\+\$1\.00(?:<\/span>)? \(est\./);
+    assert.match(g.root.querySelector('main').innerHTML, />1 open position at cost \$4\.00 ·\u00a0unrealized (?:<span[^>]*>)?\+\$1\.00(?:<\/span>)? \(est\./);
     g.clearTimers && g.clearTimers();
   });
 
@@ -311,8 +311,8 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     };
     const both = await ladder({deployments: [d(1, 'paper', 12, 3.4), d(2, 'demo', 5, -1.2), d(3, 'paper', 2, 1, 'paused')]}, readiness);
     // Paper's own trades and P&L (the paused paper deployment is still paper's book), demo's apart.
-    assert.match(both, /<span class="mk ">Paper<\/span> running · 14 closed trades · (?:<span[^>]*>)?\+\$4\.40/);
-    assert.match(both, /<span class="mk dep">Demo<\/span> running · 5 closed trades · (?:<span[^>]*>)?−\$1\.20/);
+    assert.match(both, /<span class="mk ">Paper<\/span> running ·\u00a014 closed trades ·\u00a0(?:<span[^>]*>)?\+\$4\.40/);
+    assert.match(both, /<span class="mk dep">Demo<\/span> running ·\u00a05 closed trades ·\u00a0(?:<span[^>]*>)?−\$1\.20/);
     assert.doesNotMatch(both, /19 closed|\$3\.20|\$5\.60/);  // what a sum across books would read
     assert.match(both, /Next rung, live: blocked because it needs 30\+ closed paper trades on realistic fills first \(has 12\)\./);
     assert.ok(both.indexOf('Paper</span>') < both.indexOf('Demo</span>'), 'books run up the ladder in order');
@@ -324,12 +324,12 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.match(await ladder({deployments: [d(2, 'demo', 5, -1.2)]}, {...readiness, ready: true}), /Next rung, live: every gate is clear\./);
     // Paper only: the next rung is demo, and it names the missing demo key.
     assert.match(await ladder({deployments: [d(1, 'paper', 0, 0)]}, readiness, {kalshi_dev_connected: false}),
-      /Paper<\/span> running · 0 closed trades[\s\S]*Next rung, demo: needs your Kalshi demo \(sandbox\) key/);
+      /Paper<\/span> running ·\u00a00 closed trades[\s\S]*Next rung, demo: needs your Kalshi demo \(sandbox\) key/);
     assert.match(await ladder({deployments: [d(1, 'paper', 0, 0)]}, readiness), /Next rung, demo: nothing needed/);
     // Nothing running yet; a paused book is not running.
     const idle = await ladder({deployments: [d(1, 'paper', 2, 1, 'paused')]}, readiness);
     assert.doesNotMatch(idle, /running/); assert.match(idle, /Next rung, paper: nothing needed/);
-    assert.match(await ladder({deployments: [d(1, 'paper', 1, 1), d(4, 'live', 3, 0.5)]}, readiness), /Live<\/span> running · 3 closed trades[\s\S]*Top rung: it trades live money\./);
+    assert.match(await ladder({deployments: [d(1, 'paper', 1, 1), d(4, 'live', 3, 0.5)]}, readiness), /Live<\/span> running ·\u00a03 closed trades[\s\S]*Top rung: it trades live money\./);
     // Research-only strategies have no ladder at all.
     assert.equal(await ladder({research_only: true, deployments: [d(1, 'paper', 1, 1)]}, readiness), null);
   });

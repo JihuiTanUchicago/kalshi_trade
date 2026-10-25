@@ -542,12 +542,12 @@ class _Counting:
         return getattr(self.cur, name)
 
 
-def test_recent_closed_reads_only_the_newest_ids_and_answers_as_the_join_did(conn, user):
-    """The dashboard's recent_closed sorted all of a user's closed positions, with their deployments
-    and strategies, to send 12. Now the newest ids come from idx_pos_user and only those rows are
-    joined. The answer must not change. Positions close out of id order, a deleted strategy's
-    positions still drop out, and when more of the newest drop out than the slack covers, the
-    original join answers."""
+def test_settled_lately_ranks_by_settle_time_and_reads_only_the_newest_index_entries(conn, user):
+    """recent_closed (the dashboard's "Settled lately", Deploy's recent trades) lists the most
+    recently settled positions: closed_at newest first, then id. A position that opened first but
+    settled last ranks first. The rows come from the newest idx_pos_user entries alone, with no sort.
+    A deleted strategy's positions still drop out; the slack covers a few, and the join answers when
+    more of the newest drop out. Open positions keep their own SQL and order."""
     import random
     from decimal import Decimal
 
@@ -560,37 +560,46 @@ def test_recent_closed_reads_only_the_newest_ids_and_answers_as_the_join_did(con
     kept, gone = _deployment(conn, user), _deployment(conn, user)
     start = datetime(2026, 3, 1)
 
-    def trades(dep, n):  # closed out of order: id order is not close order
-        rows = [(dep["id"], user["id"], "paper", "TEST-RECENT-%d" % i, "yes", 1, 0.40, 0.01, start, start, "closed",
-                 start + timedelta(minutes=rng.randint(0, 10000)), Decimal(rng.randint(-100, 100)) / 100) for i in range(n)]
+    def trades(dep, closes, status="closed"):
+        rows = [(dep["id"], user["id"], "paper", "TEST-SETTLED-%d" % i, "yes", 1, 0.40, 0.01, start, start, status,
+                 at, Decimal(rng.randint(-100, 100)) / 100) for i, at in enumerate(closes)]
         conn.cursor().executemany(
             """INSERT INTO app_positions (deployment_id, user_id, mode, ticker, side, qty, entry_price, entry_fee,
                market_close_time, opened_at, status, closed_at, pnl) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", rows)
 
+    def minutes(lo, hi, n):
+        return [start + timedelta(minutes=rng.randint(lo, hi)) for _ in range(n)]
+
     def check(statements):
+        everything = conn.cursor()
+        everything.execute(joined, (user["id"], "closed", 10 ** 6))
+        settled = sorted(everything.fetchall(), key=lambda r: (r["closed_at"], r["id"]), reverse=True)
         for limit in (12, 20):
             cur = _Counting(conn.cursor())
-            got = repo.user_positions(cur, user["id"], "closed", limit)
-            ref = conn.cursor()
-            ref.execute(joined, (user["id"], "closed", limit))
-            assert got == ref.fetchall()
+            assert repo.user_positions(cur, user["id"], "closed", limit) == settled[:limit]
             assert cur.n == statements, (limit, cur.n)
-        ref.execute(joined, (user["id"], "open", 100))
-        assert repo.user_positions(conn.cursor(), user["id"], "open") == ref.fetchall()
+        everything.execute(joined, (user["id"], "open", 100))
+        assert repo.user_positions(conn.cursor(), user["id"], "open") == everything.fetchall()
 
-    assert repo.user_positions(conn.cursor(), user["id"], "closed", 12) == []  # dormant: nothing, one statement
-    trades(kept, 60)
+    assert repo.user_positions(conn.cursor(), user["id"], "closed", 12) == []  # dormant: nothing
+    trades(kept, [start + timedelta(days=30)])  # opened first (lowest id), a long-dated contract settled last
+    trades(kept, minutes(0, 10000, 60))  # opened after it, settled before it, in no particular order
+    trades(kept, [None, None], status="open")
+    first = repo.user_positions(conn.cursor(), user["id"], "closed", 12)
+    assert first[0]["closed_at"] == start + timedelta(days=30)
+    assert first[0]["id"] == min(r["id"] for r in repo.user_positions(conn.cursor(), user["id"], "closed", 100))
     check(1)
-    trades(gone, pr.CLOSED_SLACK - 2)
+    trades(gone, minutes(20000, 30000, pr.CLOSED_SLACK - 2))
     conn.cursor().execute("DELETE FROM app_strategies WHERE id=%s", (gone["strategy_id"],))
-    check(1)  # a few of the newest belong to the deleted strategy: the slack covers them
-    trades(gone, 30)
-    check(2)  # most of the newest do: the original join answers
+    check(1)  # a few of the most recently settled belong to the deleted strategy: the slack covers them
+    trades(gone, minutes(30000, 40000, 30))
+    check(2)  # most of them do: the join answers, in the same order
     plan = conn.cursor()
-    plan.execute("EXPLAIN SELECT id FROM app_positions FORCE INDEX (idx_pos_user) WHERE user_id=%s AND status='closed' "
-                 "ORDER BY id DESC LIMIT 20", (user["id"],))
-    assert [r["key"] for r in plan.fetchall()] == ["idx_pos_user"]
-
+    plan.execute("EXPLAIN SELECT id, closed_at FROM app_positions FORCE INDEX (idx_pos_user) WHERE user_id=%s "
+                 "AND status='closed' ORDER BY closed_at DESC, id DESC LIMIT 20", (user["id"],))
+    rows = plan.fetchall()
+    assert [r["key"] for r in rows] == ["idx_pos_user"]
+    assert "filesort" not in (rows[0]["Extra"] or "")  # read straight off the index, newest first
 
 def test_last_autopilot_action_looks_back_a_bounded_window_of_chat(conn, user, monkeypatch):
     """The 20s status poll used to scan a user's whole chat history for the last autopilot line

@@ -236,7 +236,7 @@
   // Short, consistent chip labels for every market; unknown keys fall back to the
   // server's full label, never the raw key (keeps the market chips uniform).
   const MKT_SHORT = {
-    btc15m: 'BTC 15-min', btc15m_tick: 'BTC 15-min · per second', btc_perp: 'BTC perp', btc_daily: 'BTC 5pm', eth15m: 'ETH 15-min', eth_daily: 'ETH 5pm',
+    btc15m: 'BTC 15-min', btc15m_tick: 'BTC 15-min ·\u00a0per second', btc_perp: 'BTC perp', btc_daily: 'BTC 5pm', eth15m: 'ETH 15-min', eth_daily: 'ETH 5pm',
     sol15m: 'SOL 15-min', sol_daily: 'SOL 5pm', xrp15m: 'XRP 15-min', xrp_daily: 'XRP 5pm',
     doge15m: 'DOGE 15-min', near15m: 'NEAR 15-min', zec15m: 'ZEC 15-min', hype15m: 'HYPE 15-min',
     nba_game: 'NBA winner', nfl_game: 'NFL winner', nhl_game: 'NHL winner',
@@ -253,7 +253,7 @@
   // Link a strategy's market to its Kalshi series page.
   const marketKalshiUrl = (k) => { const m = (S.me && S.me.markets || []).find((x) => x.key === k); return m && m.series ? `https://kalshi.com/markets/${m.series.toLowerCase()}` : null; };
   const dirLabel = (k) => { if (!k) return 'Session'; const d = S.me && S.me.directions.find((x) => x.key === k); return d ? d.label : String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()); };
-  const sessionTitle = (r) => (r.prompt && r.prompt.trim()) ? r.prompt.trim() : (dirLabel(r.direction) + ' \u00b7 ' + marketShort(r.market));
+  const sessionTitle = (r) => (r.prompt && r.prompt.trim()) ? r.prompt.trim() : (dirLabel(r.direction) + ' \u00b7\u00a0' + marketShort(r.market));
 
   // The research market picker: ONE list in the live-row style (name \u00b7 sparkline \u00b7 mid \u00b7
   // 24h volume), grouped by category, with Agent's choice leading as the default. Every row is
@@ -294,7 +294,7 @@
     const dir = dC > 0 ? 'pos' : dC < 0 ? 'neg' : '';
     face.querySelector('[data-spark]').innerHTML = hotChart(tr);
     face.querySelector('[data-last]').innerHTML = `<b class="fig sm">${m.mid == null ? '\u2014' : cents(m.mid)}</b>${dC ? `<span class="mktrow-delta ${dir}">${dC > 0 ? '+' : '\u2212'}${Math.abs(dC)}\u00a2</span>` : ''}`;
-    face.querySelector('[data-vol]').textContent = `${kfmt(m.vol24)} vol \u00b7 24h`;
+    face.querySelector('[data-vol]').textContent = `${kfmt(m.vol24)} vol \u00b7\u00a024h`;
     face.dataset.live = '1';
   }
   // Ready markets (has_data) with nothing in the live feed right now: say so plainly instead
@@ -395,6 +395,25 @@
     [/^\/settings(?:\/theme)?$/, viewSettings],
   ];
   const phone = () => !!(window.matchMedia && window.matchMedia('(max-width: 760px)').matches);
+  // On a phone the section tabs scroll sideways in one row. Mark the edges that have more tabs past
+  // them (more-l / more-r on the nav), so the CSS fades and points only those edges, and the hint goes
+  // away once the last tab is in view.
+  let tabResize = false;
+  function tabEdges(tabs) {
+    const nav = tabs && tabs.parentElement;
+    if (!nav) return;
+    const mark = () => {
+      const max = (tabs.scrollWidth || 0) - (tabs.clientWidth || 0);
+      nav.classList.toggle('more-l', max > 2 && tabs.scrollLeft > 2);
+      nav.classList.toggle('more-r', max > 2 && tabs.scrollLeft < max - 2);
+    };
+    tabs.addEventListener('scroll', mark, { passive: true });
+    if (!tabResize) {
+      tabResize = true;
+      addEventListener('resize', () => { const t = document.querySelector('.services-in'); if (t && t.dispatchEvent) t.dispatchEvent(new Event('scroll')); });
+    }
+    mark();
+  }
   // Signed out on a deep link: carry the page through Google sign-in (/auth/google?next=, checked by
   // the server) so the visitor lands back on it instead of on the dashboard.
   const signinPath = () => /^\/(?:|signin|dashboard)$/.test(location.pathname) ? '/signin' : '/signin?next=' + encodeURIComponent(location.pathname + location.search);
@@ -646,6 +665,7 @@
     // The section tabs scroll sideways on a phone; bring the current one into view.
     const tabs = root.querySelector('.services-in'), here0 = tabs && tabs.querySelector('[aria-current="page"]');
     if (here0 && here0.offsetLeft + here0.offsetWidth > tabs.clientWidth) tabs.scrollLeft = here0.offsetLeft - 16;
+    if (tabs) tabEdges(tabs);
     root.querySelectorAll('[data-action="signout"]').forEach((b) => (b.onclick = async () => { await api('/api/logout', {}).catch(() => {}); S.me = null; go('/signin'); }));
     const prof = root.querySelector('.profile');
     if (prof) {
@@ -686,7 +706,7 @@
     root.querySelector('main').innerHTML = `
       <div class="chips dl-tabs" role="group" aria-label="Dev Logs view">
         <button class="chip" type="button" data-dltab="planned" aria-pressed="${tab === 'planned'}">Up next</button>
-        <button class="chip" type="button" data-dltab="shipped" aria-pressed="${tab === 'shipped'}">Shipped · ${shippedCount}</button>
+        <button class="chip" type="button" data-dltab="shipped" aria-pressed="${tab === 'shipped'}">Shipped ·\u00a0${shippedCount}</button>
       </div>
       <section class="sect dl-panel" data-dlpanel="planned"${tab === 'planned' ? '' : ' hidden'}><div class="sect-head"><h2>Shipping next</h2></div>
         <ul class="dl-list">${planned || '<li class="hint">Nothing queued.</li>'}</ul></section>
@@ -838,7 +858,7 @@
       const right = i < curve.length - 1 ? (px + x(curve[i + 1][0])) / 2 : W - R;
       const boxX = Math.max(L, Math.min(W - R - boxWidth, px + 8));
       const boxY = py < T + 32 ? T + 8 : T;
-      const label = `${day(t)} · ${usd(value, true)}`;
+      const label = `${day(t)} ·\u00a0${usd(value, true)}`;
       return `<g class="chart-sample" data-time="${t}" tabindex="0" role="img" aria-label="${esc(label)}">
         <rect x="${left}" y="${T}" width="${Math.max(0, right - left)}" height="${H - T - B}" fill="transparent"/>
         <g class="chart-reading" aria-hidden="true"><line x1="${px}" x2="${px}" y1="${T}" y2="${H - B}" stroke="var(--rule-2)" stroke-dasharray="2 3"/><circle cx="${px}" cy="${py}" r="3" fill="var(--ink)"/>
@@ -1054,8 +1074,8 @@
     if (exp.primary_metric) pre.push(['Primary metric', exp.primary_metric]);
     if (exp.planned_test) pre.push(['Planned test', exp.planned_test]);
     if (exp.min_sample != null) pre.push(['Minimum sample', exp.min_sample + ' trades']);
-    if (exp.planned_n_tests != null || exp.correction_method) pre.push(['Multiple-testing control', `${exp.planned_n_tests != null ? exp.planned_n_tests + ' planned tests · ' : ''}${exp.correction_method || '—'}`]);
-    if (exp.cost_assumptions && typeof exp.cost_assumptions === 'object') pre.push(['Cost assumptions', Object.entries(exp.cost_assumptions).map(([k, v]) => `${rpHuman(k)}: ${v}`).join(' · ')]);
+    if (exp.planned_n_tests != null || exp.correction_method) pre.push(['Multiple-testing control', `${exp.planned_n_tests != null ? exp.planned_n_tests + ' planned tests ·\u00a0' : ''}${exp.correction_method || '—'}`]);
+    if (exp.cost_assumptions && typeof exp.cost_assumptions === 'object') pre.push(['Cost assumptions', Object.entries(exp.cost_assumptions).map(([k, v]) => `${rpHuman(k)}: ${v}`).join(' ·\u00a0')]);
     if (pre.length) {
       const reg = exp.registered_at ? `<p class="rp-reg">Pre-registered <b>${esc(rpStamp(exp.registered_at))}</b> — before any validation number was computed. The frozen rule and its test could not be changed after the results came in.</p>` : '';
       parts.methodology += sub('The pre-registered test', `<dl class="rp-grid">${pre.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${rpText(v)}</dd></div>`).join('')}</dl>${reg}`);
@@ -1130,7 +1150,7 @@
   // `example`, leaves it out of every headline count, and the lists say the app ran it for free.
   const EXAMPLE_NOTE = 'An example Tau ran for you when you signed up. It cost you nothing.';
   const EXAMPLE_TAG = `<span class="mk quiet example-tag" title="${EXAMPLE_NOTE}">Example</span>`;
-  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : ''}since deploying \u00b7 ${realTrades(r.trades)}` : r.mode === 'demo' ? 'No closed demo trades yet' : 'No closed trades yet'}</div>${r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)} \u00b7 ${realTrades(r.demo.trades)}` : 'no closed trades yet'}</div>` : ''}` : '';
+  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : ''}since deploying \u00b7\u00a0${realTrades(r.trades)}` : r.mode === 'demo' ? 'No closed demo trades yet' : 'No closed trades yet'}</div>${r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)} \u00b7\u00a0${realTrades(r.demo.trades)}` : 'no closed trades yet'}</div>` : ''}` : '';
   function strategySlip(s, reg, opts = {}) {
     const oos = s.out_of_sample, ins = s.in_sample || {};
     const m = oos || ins;
@@ -1141,12 +1161,12 @@
       : '<td class="pickcol" data-lab=""></td>') : '';
     return `<tr class="${opts.land ? 'washed' : ''}">${pickCell}
       <td class="name" data-lab=""><span class="strategy-ref">${esc(String(s.id).padStart(4, '0'))}</span>${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}${s.example ? ' ' + EXAMPLE_TAG : ''}</td>
-      <td data-lab="Market"><span class="tick">${esc(marketShort(s.market))} \u00b7 ${esc(dirLabel(s.direction))}</span></td>
+      <td data-lab="Market"><span class="tick">${esc(marketShort(s.market))} \u00b7\u00a0${esc(dirLabel(s.direction))}</span></td>
       <td class="num" data-lab="${oos ? 'Backtest P&amp;L (unseen)' : 'Backtest P&amp;L (tested)'}">${m.pnl == null ? '\u2014' : money(m.pnl)}${oos ? '' : '<div class="sub-fig">tested only</div>'}</td>
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
       <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>
       <td class="num${tried === '\u2014' ? ' nil' : ''}" data-lab="Run trials">${esc(tried)}</td>
-      <td class="act" data-lab="">${mark(s.status)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` <span class="mk ${s.deploy_live ? 'live' : 'dep'}">${s.deploy_live ? 'Live' : 'Deployed'}</span>${s.real && s.real.paused ? ' ' + mark('paused') : ''}${realFig(s.real)}` : ''}</td>
+      <td class="act st" data-lab="Status">${mark(s.status)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` <span class="mk ${s.deploy_live ? 'live' : 'dep'}">${s.deploy_live ? 'Live' : 'Deployed'}</span>${s.real && s.real.paused ? ' ' + mark('paused') : ''}${realFig(s.real)}` : ''}</td>
     </tr>`;
   }
   const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Status</th><th class="num">Realized P&amp;L</th><th class="num">Unrealized</th><th class="num">Trades</th>${controls ? '<th class="act"><span class="vh">Actions</span></th>' : ''}</tr></thead>`;
@@ -1164,16 +1184,16 @@
   const backtestPace = (d) => {
     const oos = d.backtest && d.backtest.out_of_sample, n = +d.closed_trades || 0;
     if (!oos || !(+oos.trades > 0) || !n) return '';
-    return `Backtest pace ${usd((+oos.pnl || 0) / +oos.trades * n, true)} for the same ${n} trade${n === 1 ? '' : 's'} · `;
+    return `Backtest pace ${usd((+oos.pnl || 0) / +oos.trades * n, true)} for the same ${n} trade${n === 1 ? '' : 's'} ·\u00a0`;
   };
-  const deploymentEvidence = (d, manage = false) => `<details class="dep-evidence" data-deployment="${esc(d.id)}"><summary aria-label="Backtest and deployment details">Details</summary><div>${backtestPace(d)}Unseen P&amp;L ${d.backtest && d.backtest.out_of_sample ? usd(d.backtest.out_of_sample.pnl, true) : '\u2014'} · Deployed ${when(d.created_at)}${manage ? `<div class="deployment-actions">${deploymentRemove(d)}</div>` : ''}</div></details>`;
+  const deploymentEvidence = (d, manage = false) => `<details class="dep-evidence" data-deployment="${esc(d.id)}"><summary aria-label="Backtest and deployment details">Details</summary><div>${backtestPace(d)}Unseen P&amp;L ${d.backtest && d.backtest.out_of_sample ? usd(d.backtest.out_of_sample.pnl, true) : '\u2014'} ·\u00a0Deployed ${when(d.created_at)}${manage ? `<div class="deployment-actions">${deploymentRemove(d)}</div>` : ''}</div></details>`;
   function deploymentSlip(d, controls, regs) {
     const live = d.mode === 'live';
     const modeTag = deploymentMode(d);
     const actions = controls ? `<td class="act" data-lab="">${deploymentActions(d)}</td>` : '';
     return `<tr class="${live ? 'live-row' : ''}">
       <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
-        <div class="dep-meta"><span class="sub-fig">${esc(marketShort(d.market))} · $${esc(d.stake)} / trade · Max ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' \u00b7 ' + esc(d.status_reason) : ''}</span>
+        <div class="dep-meta"><span class="sub-fig">${esc(marketShort(d.market))} ·\u00a0$${esc(d.stake)} / trade ·\u00a0Max ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' \u00b7\u00a0' + esc(d.status_reason) : ''}</span>
         ${deploymentEvidence(d)}</div></td>
       <td data-lab="Status">${d.status === 'running' ? '<span class="deployment-state">Running</span>' : mark(d.status, live)}<div class="sub-fig">${modeTag}</div></td>
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
@@ -1186,7 +1206,7 @@
     const live = d.mode === 'live';
     return `<article ${anchor ? 'id="dash-paused" ' : ''}class="dep-monitor${live ? ' live-row' : ''}">
       <header><h3><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a></h3><span class="monitor-state"><span class="monitor-mode">${deploymentMode(d)}</span><span aria-hidden="true">·</span>${d.status === 'running' ? '<span class="deployment-state">Running</span>' : mark(d.status, live)}</span></header>
-      <div class="monitor-config"><div class="monitor-summary"><p class="monitor-setup">${esc(marketShort(d.market))} · $${esc(d.stake)} / trade</p><div class="monitor-limits"><span> · Max ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' · ' + esc(d.status_reason) : ''}</span></div></div></div>
+      <div class="monitor-config"><div class="monitor-summary"><p class="monitor-setup">${esc(marketShort(d.market))} ·\u00a0$${esc(d.stake)} / trade</p><div class="monitor-limits"><span> ·\u00a0Max ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' ·\u00a0' + esc(d.status_reason) : ''}</span></div></div></div>
       <dl class="monitor-metrics">
         <div class="monitor-realized"><dt>Realized P&amp;L</dt><dd>${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</dd></div>
         <div class="monitor-unrealized"><dt>${d.unrealized_pnl != null && d.open_positions ? 'Unrealized (est.)' : 'Unrealized P&amp;L'}</dt><dd>${d.unrealized_pnl == null ? '<span class="unavailable">Unavailable</span>' : money(d.unrealized_pnl)}</dd></div>
@@ -1274,7 +1294,7 @@
             <p class="lfine">Access is invite-only right now. Join the waitlist and we'll email you when a spot opens. You'll start with $1,000 of paper money; live trading is optional and runs in your own Kalshi account.</p>
           </div>
           <div class="demo" id="demo" aria-hidden="true">
-            <div class="demo-bar"><i></i><i></i><i></i><span class="demo-url">tau · research</span>
+            <div class="demo-bar"><i></i><i></i><i></i><span class="demo-url">tau ·\u00a0research</span>
               <button class="replay" id="demo-replay" type="button">${ICON.plus}<span>Replay</span></button></div>
             <div class="demo-body" id="demo-body"></div>
           </div>
@@ -1287,7 +1307,7 @@
                 <h2>Open any strategy and see its proof.</h2>
                 <p>The thesis in plain words, the equity curve, the result on data the agent never saw, and every gate it had to clear. Nothing is a black box.</p>
               </div>
-              <div class="demo"><div class="demo-bar"><i></i><i></i><i></i><span class="demo-url">tau · strategy</span></div><div class="demo-body"></div></div>
+              <div class="demo"><div class="demo-bar"><i></i><i></i><i></i><span class="demo-url">tau ·\u00a0strategy</span></div><div class="demo-body"></div></div>
             </div>
             <div class="scene rev" data-scene="deploy">
               <div class="scene-copy">
@@ -1295,7 +1315,7 @@
                 <h2>Go live, and watch every trade.</h2>
                 <p>Flip a passed strategy from paper to live in your own Kalshi account. Positions and P&amp;L stream in as it trades — and a loss guard pauses it automatically if it goes wrong.</p>
               </div>
-              <div class="demo"><div class="demo-bar"><i></i><i></i><i></i><span class="demo-url">tau · deploy</span></div><div class="demo-body"></div></div>
+              <div class="demo"><div class="demo-bar"><i></i><i></i><i></i><span class="demo-url">tau ·\u00a0deploy</span></div><div class="demo-body"></div></div>
             </div>
             <div class="scene" data-scene="agent">
               <div class="scene-copy">
@@ -1303,7 +1323,7 @@
                 <h2>Or let the agent run the whole desk.</h2>
                 <p>Turn on autopilot and the agent researches, backtests, and deploys on its own — a loop that keeps hunting for edge. Every move is written down, and it never touches live money without you.</p>
               </div>
-              <div class="demo"><div class="demo-bar"><i></i><i></i><i></i><span class="demo-url">tau · autopilot</span></div><div class="demo-body"></div></div>
+              <div class="demo"><div class="demo-bar"><i></i><i></i><i></i><span class="demo-url">tau ·\u00a0autopilot</span></div><div class="demo-body"></div></div>
             </div>
           </div>
           <footer class="lfoot">
@@ -1359,7 +1379,7 @@
   // The hero demo: an idea is typed, the agent discovers strategies, each is stamped.
   const DEMO_IDEA_TEXT = 'Sell overpriced tails in last hour before 5pm close';
   const DEMO_STRATS = [
-    ['Fade the far tails', 'volatility · fees in', 'pass', '+$38 unseen'],
+    ['Fade the far tails', 'volatility ·\u00a0fees in', 'pass', '+$38 unseen'],
     ['Sell only when calm', 'vol filter', 'pass', '+$21 unseen'],
     ['Press every strike', 'no filter', 'void', '−$44 unseen'],
     ['Chase the move', 'momentum', 'void', '−$12 unseen'],
@@ -1388,7 +1408,7 @@
       const [t, meta, mk, pnl] = d;
       const el = document.createElement('div');
       el.className = 'dcard';
-      el.innerHTML = `<b>${esc(t)}</b><span class="dmk ${mk === 'pass' ? 'pass' : 'void'}">${mk === 'pass' ? 'Passed' : 'Void'}</span><span class="dmeta">${esc(meta)} · ${esc(pnl)}</span>`;
+      el.innerHTML = `<b>${esc(t)}</b><span class="dmk ${mk === 'pass' ? 'pass' : 'void'}">${mk === 'pass' ? 'Passed' : 'Void'}</span><span class="dmeta">${esc(meta)} ·\u00a0${esc(pnl)}</span>`;
       cards.appendChild(el);
       return el;
     });
@@ -1446,7 +1466,7 @@
       let pnl = 0;
       rows.forEach((r, i) => sAt(1300 + i * 620, () => {
         const el = document.createElement('div'); el.className = 'p in';
-        el.innerHTML = `<b>${r[0]}</b><b class="${r[1] >= 0 ? 'gain' : 'loss'}">${r[1] >= 0 ? '+' : '−'}$${Math.abs(r[1]).toFixed(2)}</b><small>settled · paper → live</small>`;
+        el.innerHTML = `<b>${r[0]}</b><b class="${r[1] >= 0 ? 'gain' : 'loss'}">${r[1] >= 0 ? '+' : '−'}$${Math.abs(r[1]).toFixed(2)}</b><small>settled ·\u00a0paper → live</small>`;
         pos.appendChild(el); pos.scrollTop = pos.scrollHeight;
         pnl += r[1]; pnlEl.textContent = (pnl >= 0 ? '+' : '−') + '$' + Math.abs(pnl).toFixed(2);
         pnlEl.className = pnl >= 0 ? 'gain' : 'loss';
@@ -1462,10 +1482,10 @@
       const steps = [
         ['spin', 'Researching momentum into the close…'],
         ['check', "Found <b>Lean into the move</b> — passed every gate"],
-        ['dot', 'Deployed on paper · watching it trade'],
+        ['dot', 'Deployed on paper ·\u00a0watching it trade'],
         ['spin', 'Researching mean reversion…'],
         ['check', "Found <b>Fade the overreaction</b> — passed"],
-        ['dot', 'Autopilot running · 2 strategies live on paper'],
+        ['dot', 'Autopilot running ·\u00a02 strategies live on paper'],
       ];
       let shown = [];
       steps.forEach((st, i) => sAt(1200 + i * 820, () => {
@@ -1503,7 +1523,7 @@
       // Realized P&L (all-time + today) and open count for one money bucket; a tasteful
       // zero line when the bucket has no activity so an empty card never looks broken.
       // The figure above it is Kalshi's cash for the whole account; this line is Tau's own trades.
-      const mSub = (b, zero) => (b.open_positions || b.running || b.realized_pnl) ? `Tau trades: ${b.open_positions} open${b.open_positions ? ' (not in cash)' : ''} · ${usd(b.realized_pnl, true)} realized all time · ${usd(b.today_pnl, true)} realized today (UTC)` : zero;
+      const mSub = (b, zero) => (b.open_positions || b.running || b.realized_pnl) ? `Tau trades: ${b.open_positions} open${b.open_positions ? ' (not in cash)' : ''} ·\u00a0${usd(b.realized_pnl, true)} realized all time ·\u00a0${usd(b.today_pnl, true)} realized today (UTC)` : zero;
       const hasLive = d.deployments.some((x) => x.mode === 'live' && x.status !== 'stopped');
       const paperWorkspace = !hasLive && d.open_positions.concat(d.recent_closed, d.deployments).every(x => x.mode === 'paper');
       const sharedPaperRunning = d.deployments.length > 0 && d.deployments.every(x => x.mode === 'paper' && x.status === 'running');
@@ -1528,7 +1548,7 @@
       ].filter(Boolean).join('<span class="sep">/</span>');
       const liveFigure = fig('Kalshi cash', d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected', { small: (d.live.connected ? (d.live.balance == null ? 'Couldn\u2019t read your Kalshi balance just now' : mSub(d.live, 'Your Kalshi cash \u2014 real money untouched')) : '<a href="/funds">Connect Kalshi</a>') + tradesCsv('live', d.live) });
       const liveSummary = `<div class="m live-summary"><dt class="lab vh">Kalshi cash</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Kalshi cash</span><strong class="fig${!d.live.connected || d.live.balance == null ? ' balance-state' : ''}">${d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected'}</strong><span class="portfolio-return">${d.live.connected ? (d.live.balance == null ? 'Couldn\u2019t read your Kalshi balance just now' : `${money(d.live.realized_pnl)} realized all time by Tau trades`) : '<a href="/funds">Connect Kalshi</a>'}${tradesCsv('live', d.live)}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${money(d.live.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Open positions</span><strong>${esc(d.live.open_positions)}</strong></div><div class="portfolio-detail"><span class="lab">Open at cost, not in cash</span><strong>${usd(d.live.open_at_cost)}</strong></div></div></dd></div>`;
-      const demoFigure = fig('Demo balance', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7 ${d.demo.open_positions} open \u00b7 ${usd(d.demo.realized_pnl, true)} P&amp;L ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital · No demo deployments`} \u00b7 ${DEMO_WHAT}${tradesCsv('demo', d.demo)}` });
+      const demoFigure = fig('Demo balance', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} P&amp;L ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital ·\u00a0No demo deployments`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` });
       const paperFigure = `<div class="m paper-summary"><dt class="lab vh">Paper portfolio</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Paper portfolio</span><strong class="fig">${usd(p.equity)}</strong><span class="portfolio-return">${p.reset_at ? 'P&amp;L since reset' : 'All-time P&amp;L'} ${money(p.total_pnl)}${tradesCsv('paper', p)}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${money(p.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Available cash</span><strong>${usd(p.cash)}</strong></div><div class="portfolio-detail"><span class="lab">Open at cost</span><strong>${usd(p.open_at_cost)}</strong></div></div></dd></div>`;
       const board = `
         ${said ? `<div class="statusline dashboard-status ${needs ? 'needs' : ''}"><p class="said">${said}</p></div>` : ''}
@@ -1546,7 +1566,7 @@
         const close = r.market_close_time && new Date(r.market_close_time);
         const expiry = close && Number.isFinite(close.getTime()) ? close.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',  }) : '';
         return `<tr class="${closed ? 'settled-position' : 'open-position'}">
-        <td class="name"><details class="position-details" data-position="${closed ? 'closed' : 'open'}-${esc(r.id)}"><summary aria-label="${market ? `${esc(market.label || marketShort(market.key))} · ` : ''}${esc(r.title)} · ${esc(r.ticker)} · ${r.mode === 'live' ? 'LIVE' : r.mode === 'demo' ? 'Demo' : 'Paper'}">${ICON.chev}<span class="position-title vh">${esc(r.title)}</span><span class="position-mode">${r.mode === 'live' ? '<span class="mk live">LIVE</span>' : r.mode === 'demo' ? 'Demo' : 'Paper'}</span>${market ? `<span class="position-market">${esc(market.label || marketShort(market.key))}</span>` : ''}<span class="position-contract">${contract}</span></summary><div class="sub-fig">${esc(r.ticker)} · ${esc(r.title)}<span class="position-opened">${closed ? 'Closed' : 'Opened'} ${when(closed ? r.closed_at : r.opened_at)}</span>${close && Number.isFinite(close.getTime()) ? `<span class="position-absolute">Expires ${esc(close.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'long', hourCycle: 'h23' }))}</span>` : ''}${!closed && r.unrealized == null ? '<span class="position-mark-note">Unrealized P&amp;L unavailable</span>' : ''}</div></details></td>
+        <td class="name"><details class="position-details" data-position="${closed ? 'closed' : 'open'}-${esc(r.id)}"><summary aria-label="${market ? `${esc(market.label || marketShort(market.key))} ·\u00a0` : ''}${esc(r.title)} ·\u00a0${esc(r.ticker)} ·\u00a0${r.mode === 'live' ? 'LIVE' : r.mode === 'demo' ? 'Demo' : 'Paper'}">${ICON.chev}<span class="position-title vh">${esc(r.title)}</span><span class="position-mode">${r.mode === 'live' ? '<span class="mk live">LIVE</span>' : r.mode === 'demo' ? 'Demo' : 'Paper'}</span>${market ? `<span class="position-market">${esc(market.label || marketShort(market.key))}</span>` : ''}<span class="position-contract">${contract}</span></summary><div class="sub-fig">${esc(r.ticker)} ·\u00a0${esc(r.title)}<span class="position-opened">${closed ? 'Closed' : 'Opened'} ${when(closed ? r.closed_at : r.opened_at)}</span>${close && Number.isFinite(close.getTime()) ? `<span class="position-absolute">Expires ${esc(close.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'long', hourCycle: 'h23' }))}</span>` : ''}${!closed && r.unrealized == null ? '<span class="position-mark-note">Unrealized P&amp;L unavailable</span>' : ''}</div></details></td>
         <td class="position-size-cell"><span class="position-size"><span class="position-side">${esc(r.side.toUpperCase())}</span><span aria-hidden="true"> × </span><span class="position-quantity"><span class="vh">Quantity </span>${esc(r.qty)}</span></span></td>
         <td class="position-expiry-cell">${expiry ? `<time class="position-expiry" datetime="${esc(close.toISOString())}">${esc(expiry)}</time>` : '<span class="unavailable" title="Expiry unavailable"><span aria-hidden="true">—</span><span class="vh">Expiry unavailable</span></span>'}</td>
         <td class="num position-entry">${cents(+r.entry_price)}</td>
@@ -1579,7 +1599,7 @@
       const periodCurve = days.map(day => [Date.parse(day.d + 'T12:00:00Z') / 1000, periodPnl += +day.pnl]);
       const paperPlot = (width) => equityChart(periodCurve, null, null, { width: Math.max(280, width || root.querySelector('main').clientWidth), height: 180, paper: true, endLabel: false, label: `Cumulative closed paper profit and loss from ${days[0].d} through ${days[days.length - 1].d}; ends at ${usd(periodPnl, true)}` });
       const periodLabel = days.length > 1 ? new Intl.DateTimeFormat(undefined, {month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC'}).formatRange(new Date(days[0].d + 'T12:00:00Z'), new Date(days[days.length - 1].d + 'T12:00:00Z')) : '';
-      const performance = days.length > 1 ? `<details class="overview-performance" id="paper-performance"${performanceOpen ? ' open' : ''}><summary><span class="performance-heading"><span class="performance-caption"><h2>Closed P&amp;L</h2>${ICON.chev}</span><strong class="${tone(periodPnl)}" title="Cumulative closed P&L over this period">${usd(periodPnl, true)}</strong></span><span class="performance-meta"><span class="performance-mode"><span class="performance-mode-prefix">Paper · </span>cumulative</span><span class="sect-note" title="${esc(days[0].d)} – ${esc(days[days.length - 1].d)}">${esc(periodLabel)}</span></span></summary><div class="paper-plot">${paperPlot()}</div></details>` : '';
+      const performance = days.length > 1 ? `<details class="overview-performance" id="paper-performance"${performanceOpen ? ' open' : ''}><summary><span class="performance-heading"><span class="performance-caption"><h2>Closed P&amp;L</h2>${ICON.chev}</span><strong class="${tone(periodPnl)}" title="Cumulative closed P&L over this period">${usd(periodPnl, true)}</strong></span><span class="performance-meta"><span class="performance-mode"><span class="performance-mode-prefix">Paper ·\u00a0</span>cumulative</span><span class="sect-note" title="${esc(days[0].d)} – ${esc(days[days.length - 1].d)}">${esc(periodLabel)}</span></span></summary><div class="paper-plot">${paperPlot()}</div></details>` : '';
       const main = `<section id="dash-ap" class="apcard" aria-label="Autopilot"></section><div class="dash${paperWorkspace ? ' paper-workspace' : ''}"><div class="dash-layout">
         <section class="account-band"><dl class="figures measure dashboard-figures ${hasLive ? 'live-primary' : ''}">${hasLive ? liveSummary : paperFigure}</dl><p class="stale-note" id="dash-stale" role="status"></p></section>
         <section class="positions-ledger"><div class="sect-head"><h2>Open positions <span class="section-count">${d.open_positions.length}</span>${paperOnly(d.open_positions) ? ' <span class="position-group-mode">Paper</span>' : ''}</h2></div>
@@ -1628,7 +1648,7 @@
     const body = pol.evolved
       ? `<p>The engine <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
          ${pol.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(pol.summary)}</p>` : ''}
-         <p class="rsi-last">Generalization score ${delta}${pol.evolved_at ? ' · adopted ' + when(pol.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
+         <p class="rsi-last">Generalization score ${delta}${pol.evolved_at ? ' ·\u00a0adopted ' + when(pol.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
       : `<p>New search policies are scored against the current policy over shuffled history. Only an improvement is adopted.</p>`;
     // Demoted to a compact, collapsible line so the research page leads with the form, not panels.
     const expanded = !!host.querySelector('details[open]');
@@ -1662,35 +1682,35 @@
     const delta = tr ? `<span class="rsi-score">${loopRate(tr.before.gate_reach_rate)} <span class="rsi-arrow">→</span> ${loopRate(tr.after.gate_reach_rate)}</span>` : '';
     const tag = tr ? (tr.better ? '<span class="rsi-tag">Improving</span>' : '<span class="rsi-tag quiet">Not improving yet</span>') : '<span class="rsi-tag quiet">Learning</span>';
     const perIdea = t.explored ? usd(t.cost_usd / t.explored) : '—';
-    const figs = `<dl class="figures measure loop-figs">${fig('Ideas tried', t.explored, { small: `${t.runs} session${t.runs === 1 ? '' : 's'} · 14 days` })}${fig('Reached the gate', t.gated, { small: `${loopRate(t.gate_reach_rate)} of ideas` })}${fig('Passed', t.passed, { small: t.holdout_passed ? `${t.holdout_passed} held out` : 'every gate' })}${fig('Spend', usd(t.cost_usd), { small: `${perIdea} per idea` })}${fig('Killed by our pipeline', loopRate(t.pipeline_death_share), { small: 'of dropped ideas' })}</dl>`;
+    const figs = `<dl class="figures measure loop-figs">${fig('Ideas tried', t.explored, { small: `${t.runs} session${t.runs === 1 ? '' : 's'} ·\u00a014 days` })}${fig('Reached the gate', t.gated, { small: `${loopRate(t.gate_reach_rate)} of ideas` })}${fig('Passed', t.passed, { small: t.holdout_passed ? `${t.holdout_passed} held out` : 'every gate' })}${fig('Spend', usd(t.cost_usd), { small: `${perIdea} per idea` })}${fig('Killed by our pipeline', loopRate(t.pipeline_death_share), { small: 'of dropped ideas' })}</dl>`;
     const trendP = tr
       ? `<p class="loop-trend">${tr.better ? 'Getting better.' : 'Not better yet.'} The newer ${tr.after.runs} session${tr.after.runs === 1 ? '' : 's'} took ${loopRate(tr.after.gate_reach_rate)} of ${tr.after.explored} ideas to the statistical gate, against ${loopRate(tr.before.gate_reach_rate)} of ${tr.before.explored} before.</p>`
       : `<p class="loop-trend">Each session's ideas are counted from first draft to final verdict. A before/after trend appears once there are 16 ideas to compare.</p>`;
     const maxIdeas = Math.max(1, ...(b.days || []).map((d) => d.explored));
     const days = (b.days || []).length > 1 ? `<div class="loop-days" role="img" aria-label="Ideas per day and how many reached the gate">${b.days.slice(-14).map((d) => `<span class="loop-day" title="${esc(d.day)}: ${d.explored} ideas, ${d.gated} reached the gate"><i class="all" style="height:${Math.max(4, Math.round(40 * d.explored / maxIdeas))}px"></i><i class="hit" style="height:${d.gated ? Math.max(3, Math.round(40 * d.gated / maxIdeas)) : 0}px"></i></span>`).join('')}</div><p class="loop-legend"><i class="all"></i>ideas per day <i class="hit"></i>reached the gate</p>` : '';
     const pt = b.paper && b.paper.total, byPb = (b.paper && b.paper.by_playbook) || {};
-    const paperP = pt && pt.strategies ? `<p class="loop-trend">On paper against the live book: ${pt.strategies} passed strateg${pt.strategies === 1 ? 'y' : 'ies'}, ${pt.trading} trading, ${pt.round_trips} round trip${pt.round_trips === 1 ? '' : 's'}, net ${usd(pt.net_pnl, true)}${pt.realization == null ? '' : pt.realization < 0 ? ', losing money where the backtest expected a profit' : `, earning ${Math.round(pt.realization * 100)}% of what the backtest expected`}${pt.live_ready ? ` · ${pt.live_ready} ready for live` : ''}.</p>` : '';
+    const paperP = pt && pt.strategies ? `<p class="loop-trend">On paper against the live book: ${pt.strategies} passed strateg${pt.strategies === 1 ? 'y' : 'ies'}, ${pt.trading} trading, ${pt.round_trips} round trip${pt.round_trips === 1 ? '' : 's'}, net ${usd(pt.net_pnl, true)}${pt.realization == null ? '' : pt.realization < 0 ? ', losing money where the backtest expected a profit' : `, earning ${Math.round(pt.realization * 100)}% of what the backtest expected`}${pt.live_ready ? ` ·\u00a0${pt.live_ready} ready for live` : ''}.</p>` : '';
     const fams = {};
     (b.playbooks || []).forEach((p) => { (fams[p.family] = fams[p.family] || {})[p.status] = p; });
     const pbRows = Object.keys(fams).sort().map((f) => {
       const a = fams[f].active, c = fams[f].candidate;
-      const paper = (p) => { const q = byPb[p.id] || byPb[String(p.id)]; return q && q.round_trips ? ` · on paper ${q.round_trips} trips, ${usd(q.net_pnl, true)}` : ''; };
+      const paper = (p) => { const q = byPb[p.id] || byPb[String(p.id)]; return q && q.round_trips ? ` ·\u00a0on paper ${q.round_trips} trips, ${usd(q.net_pnl, true)}` : ''; };
       const rec = (p) => (p.ideas ? `${p.reached} of ${p.ideas} ideas reached the gate` : 'no ideas yet') + paper(p);
-      const act = a ? `<b>v${a.version}</b> in use${a.version ? '' : ' (no lessons yet)'} · ${rec(a)}` : '';
-      const cand = c ? `<br><b>v${c.version}</b> on trial · ${rec(c)}${c.p_better != null ? ` · ${Math.round(c.p_better * 100)}% likely better` : ''}${c.changes ? `<span class="loop-why">What changed: ${esc(c.changes)}</span>` : ''}` : '';
+      const act = a ? `<b>v${a.version}</b> in use${a.version ? '' : ' (no lessons yet)'} ·\u00a0${rec(a)}` : '';
+      const cand = c ? `<br><b>v${c.version}</b> on trial ·\u00a0${rec(c)}${c.p_better != null ? ` ·\u00a0${Math.round(c.p_better * 100)}% likely better` : ''}${c.changes ? `<span class="loop-why">What changed: ${esc(c.changes)}</span>` : ''}` : '';
       const text = (c && c.text) || (a && a.text) || '';
       return `<li><span class="loop-k">${esc(loopFamily(f))}</span><span class="loop-v">${act}${cand}${text ? `<details class="loop-pb"><summary>Read the playbook</summary><pre>${esc(text)}</pre></details>` : ''}</span></li>`;
     }).join('');
-    const scout = (b.scout || []).slice(0, 5).map((s) => `<li><span class="loop-k">${esc(marketShort(s.market))}</span><span class="loop-v">${esc(s.best_what || '')} · ${s.best_net_c != null ? (s.best_net_c > 0 ? '+' : '') + s.best_net_c.toFixed(1) + '¢' : ''} net per contract · ${s.best_z != null ? s.best_z.toFixed(1) : '—'} SE</span></li>`).join('');
+    const scout = (b.scout || []).slice(0, 5).map((s) => `<li><span class="loop-k">${esc(marketShort(s.market))}</span><span class="loop-v">${esc(s.best_what || '')} ·\u00a0${s.best_net_c != null ? (s.best_net_c > 0 ? '+' : '') + s.best_net_c.toFixed(1) + '¢' : ''} net per contract ·\u00a0${s.best_z != null ? s.best_z.toFixed(1) : '—'} SE</span></li>`).join('');
     const fixes = (b.fix_list || []).slice(0, 5).map((x) => `<li><span class="loop-k">${esc(marketShort(x.market))}</span><span class="loop-v"><b>${esc(LOOP_TAG[x.tag] || x.tag)}</b> × ${x.count}${x.example ? `<span class="loop-why">${esc(String(x.example).slice(0, 180))}</span>` : ''}</span></li>`).join('');
     const REQ_KIND = { history: 'more settled history', micro: 'order-book feature', ticks: 'per-second data' };
     const REQ_STATE = { open: 'collecting', ready: 'data arrived', requeued: 'idea re-tested', expired: 'gave up' };
-    const reqs = (b.data_requests || []).slice(0, 6).map((r) => `<li><span class="loop-k">${esc(marketShort(r.market))}</span><span class="loop-v"><b>${esc(REQ_KIND[r.kind] || r.kind)}${r.need ? ' · ' + esc(r.need) : ''}</b> · ${esc(REQ_STATE[r.status] || r.status)}${r.requeued_run_id ? ` · <a href="/research/${r.requeued_run_id}">session</a>` : ''}${r.idea_title ? `<span class="loop-why">For: ${esc(r.idea_title)}</span>` : ''}${r.status !== 'requeued' && r.note ? `<span class="loop-why">${esc(r.note)}</span>` : ''}</span></li>`).join('');
+    const reqs = (b.data_requests || []).slice(0, 6).map((r) => `<li><span class="loop-k">${esc(marketShort(r.market))}</span><span class="loop-v"><b>${esc(REQ_KIND[r.kind] || r.kind)}${r.need ? ' ·\u00a0' + esc(r.need) : ''}</b> ·\u00a0${esc(REQ_STATE[r.status] || r.status)}${r.requeued_run_id ? ` ·\u00a0<a href="/research/${r.requeued_run_id}">session</a>` : ''}${r.idea_title ? `<span class="loop-why">For: ${esc(r.idea_title)}</span>` : ''}${r.status !== 'requeued' && r.note ? `<span class="loop-why">${esc(r.note)}</span>` : ''}</span></li>`).join('');
     const sect = (h, sub, items) => items ? `<div class="loop-sect"><h4>${h}</h4><p class="loop-sub">${sub}</p><ul class="loop-list">${items}</ul></div>` : '';
     const tn = b.tournament, tnEnt = tn ? (tn.entrants || []).filter((r) => r.strategy_id).sort((x, y) => y.weight - x.weight) : [];
     const tnCash = tn ? (tn.entrants || []).find((r) => !r.strategy_id) : null;
-    const tnRows = tnEnt.slice(0, 8).map((r) => `<li><span class="loop-k">${esc(marketShort(r.market))}</span><span class="loop-v"><b>${Math.round(r.weight * 100)}% of the book</b> · ${esc(r.title || '')} · ${r.trips} bet${r.trips === 1 ? '' : 's'}, ${usd(r.net_pnl, true)} · ${Math.round((r.p_positive || 0) * 100)}% likely to make money${r.verdict ? `<span class="loop-why">Retiring: ${esc(r.verdict)}</span>` : ''}</span></li>`).join('')
-      + (tnEnt.length && tnCash ? `<li><span class="loop-k">Cash</span><span class="loop-v"><b>${Math.round(tnCash.weight * 100)}% of the book</b> · held back until an entrant beats zero</span></li>` : '');
+    const tnRows = tnEnt.slice(0, 8).map((r) => `<li><span class="loop-k">${esc(marketShort(r.market))}</span><span class="loop-v"><b>${Math.round(r.weight * 100)}% of the book</b> ·\u00a0${esc(r.title || '')} ·\u00a0${r.trips} bet${r.trips === 1 ? '' : 's'}, ${usd(r.net_pnl, true)} ·\u00a0${Math.round((r.p_positive || 0) * 100)}% likely to make money${r.verdict ? `<span class="loop-why">Retiring: ${esc(r.verdict)}</span>` : ''}</span></li>`).join('')
+      + (tnEnt.length && tnCash ? `<li><span class="loop-k">Cash</span><span class="loop-v"><b>${Math.round(tnCash.weight * 100)}% of the book</b> ·\u00a0held back until an entrant beats zero</span></li>` : '');
     const tnSub = tn && tn.pooled ? `Every near miss trades on paper at once, and a bandit moves a ${usd(tn.book.capital)} practice book toward what earns. All entrants together: ${tn.pooled.trips} of the ${tn.pooled.target} independent bets the gate needs${tn.pooled.days_to_target != null ? `, about ${Math.round(tn.pooled.days_to_target)} days to go at ${tn.pooled.per_day} a day` : ''}${tn.pooled.mean_return != null ? `, averaging ${(tn.pooled.mean_return * 100).toFixed(1)}% of stake a bet` : ''}. Book so far: ${usd(tn.book.pnl, true)} over ${tn.book.trips} trade${tn.book.trips === 1 ? '' : 's'}.` : '';
     const body = figs + trendP + days + paperP
       + sect('Paper tournament', tnSub, tnRows)
@@ -1698,7 +1718,7 @@
       + sect('Where it looks next', 'A free scan of every market for prices that disagree with how they settle, after fees. Leads steer research; they still have to pass on unseen data.', scout)
       + sect('Ideas our pipeline killed', 'Dropped because of missing data or features, not because the market said no. This is the fix list.', fixes)
       + sect('Data it asked for', 'Crypto ideas that died for lack of data start a collection, and the idea is re-tested once the data exists (autopilot on, at most once each).', reqs)
-      + (pol && pol.evolved ? `<p class="rsi-last">Finalist policy evolved from your history${pol.base_score != null && pol.score != null ? ` · score ${pol.base_score} → ${pol.score}` : ''}.</p>` : '');
+      + (pol && pol.evolved ? `<p class="rsi-last">Finalist policy evolved from your history${pol.base_score != null && pol.score != null ? ` ·\u00a0score ${pol.base_score} → ${pol.score}` : ''}.</p>` : '');
     const open = !!host.querySelector('details.rsidisc[open]');
     const focused = !!host.querySelector('details.rsidisc > summary:focus');
     const inner = [...host.querySelectorAll('details.loop-pb')].map((d) => d.open);
@@ -1725,7 +1745,7 @@
   // than a single tall column); the row wraps on narrow screens, stacks at phone width.
   const fstage = (phase, nodes) => `<section class="flow-stage">${fphase(phase)}<div class="flow-row">${nodes.join(flowLink)}</div></section>`;
   function pipelineFigure() {
-    const gates = ['Bootstrap CI', 'PSR', 'DSR · deflated by trial count', 'Placebo / null', 'LORD++ FDR budget', 'Purged walk-forward', 'Benjamini–Hochberg'];
+    const gates = ['Bootstrap CI', 'PSR', 'DSR ·\u00a0deflated by trial count', 'Placebo / null', 'LORD++ FDR budget', 'Purged walk-forward', 'Benjamini–Hochberg'];
     return `<details class="pipefig">
       <summary class="pipecap"><span class="pipecap-t">Research process</span><span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
       <div class="flow">
@@ -1887,7 +1907,7 @@
     // status band: a thin color rule so passed/void/failed reads at a glance
     const band = r.status === 'succeeded' ? (r.strategies_passed ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : r.status === 'cancelled' ? 'void' : 'live';
     return `<a class="run-card ${band}" href="/research/${r.id}">
-      <span class="run-identity"><span class="run-title" title="${esc(sessionTitle(r))}"><b>${esc(sessionTitle(r))}</b>${r.example ? ' ' + EXAMPLE_TAG : ''}${r.error ? `<span class="run-error">${esc(r.error)}</span>` : ''}</span><span class="run-meta-group"><span class="run-id">Session ${esc(r.id)}</span><span class="run-meta"><span class="vh">Market </span>${esc(marketShort(r.market))}${r.example ? ' \u00b7 ' + EXAMPLE_NOTE : r.spent_usd != null ? ' \u00b7 ' + runSpent(r) : ''}</span><span class="run-when"><span class="vh">Created </span>${when(r.created_at)}</span></span></span><span class="run-state"><span class="vh">Outcome </span>${state}</span></a>`;
+      <span class="run-identity"><span class="run-title" title="${esc(sessionTitle(r))}"><b>${esc(sessionTitle(r))}</b>${r.example ? ' ' + EXAMPLE_TAG : ''}${r.error ? `<span class="run-error">${esc(r.error)}</span>` : ''}</span><span class="run-meta-group"><span class="run-id">Session ${esc(r.id)}</span><span class="run-meta"><span class="vh">Market </span>${esc(marketShort(r.market))}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : r.spent_usd != null ? ' \u00b7\u00a0' + runSpent(r) : ''}</span><span class="run-when"><span class="vh">Created </span>${when(r.created_at)}</span></span></span><span class="run-state"><span class="vh">Outcome </span>${state}</span></a>`;
   }
 
   // ======================================================================
@@ -1927,13 +1947,13 @@
     const row = (k, v) => (v == null || v === '') ? '' : `<dt>${k}</dt><dd>${esc(v)}</dd>`;
     const c = (v) => Math.round(v * 100) + '¢';
     const sz = spec.sizing || {};
-    const sizing = `$${sz.stake != null ? sz.stake : 5} per trade · up to ${sz.max_positions != null ? sz.max_positions : 20} at once`;
-    const codeFig = (src) => `<figure class="hx-code"><figcaption>Strategy code <span>Python · research sandbox only</span></figcaption><pre><code>${esc(src)}</code></pre></figure>`;
+    const sizing = `$${sz.stake != null ? sz.stake : 5} per trade ·\u00a0up to ${sz.max_positions != null ? sz.max_positions : 20} at once`;
+    const codeFig = (src) => `<figure class="hx-code"><figcaption>Strategy code <span>Python ·\u00a0research sandbox only</span></figcaption><pre><code>${esc(src)}</code></pre></figure>`;
 
     // Code strategy: an arbitrary fitted model in the sandbox, not threshold fields. Show it as
     // one, keep the real source (and note the frozen fit, if the research run froze params in).
     if (spec.code) {
-      const fit = (spec.params != null && spec.params !== '') ? ' · fit on research, frozen' : '';
+      const fit = (spec.params != null && spec.params !== '') ? ' ·\u00a0fit on research, frozen' : '';
       return `<dl class="hx-spec"><dt>Signal</dt><dd class="hx-model">custom code model${fit}</dd>
         ${row('Sizing', sizing)}</dl>${codeFig(spec.code)}`;
     }
@@ -1962,14 +1982,14 @@
       const coef = Array.isArray(m.coef) ? m.coef : [];
       // Compact fitted weights, only when they are present and line up with the named features.
       const weights = (coef.length && coef.length === feats.length && coef.every((n) => typeof n === 'number'))
-        ? `<dt>Fitted weights</dt><dd class="hx-weights">${feats.map((f, i) => `<span class="hx-feat">${esc(f)}</span> ×${coef[i].toFixed(2)}`).join(' · ')}${typeof m.intercept === 'number' ? ` · intercept ${m.intercept.toFixed(2)}` : ''}</dd>`
+        ? `<dt>Fitted weights</dt><dd class="hx-weights">${feats.map((f, i) => `<span class="hx-feat">${esc(f)}</span> ×${coef[i].toFixed(2)}`).join(' ·\u00a0')}${typeof m.intercept === 'number' ? ` ·\u00a0intercept ${m.intercept.toFixed(2)}` : ''}</dd>`
         : '';
       return `<dl class="hx-spec">
         ${side}
         <dt>Signal</dt><dd class="hx-model">${signal}${edge ? ' — enter when ' + edge : ''}</dd>
         ${weights}
-        ${row('Only when', bounds.join(' · '))}
-        ${row('Exit', exit.join(' · ') || 'hold to settlement')}
+        ${row('Only when', bounds.join(' ·\u00a0'))}
+        ${row('Exit', exit.join(' ·\u00a0') || 'hold to settlement')}
         ${row('Regime filter', filters)}
         ${row('Sizing', sizing)}</dl>`;
     }
@@ -1980,8 +2000,8 @@
     entry.push(...bounds);
     return `<dl class="hx-spec">
       ${side}
-      ${row('Enter when', entry.join(' · ') || 'any priced contract')}
-      ${row('Exit', exit.join(' · ') || 'hold to settlement')}
+      ${row('Enter when', entry.join(' ·\u00a0') || 'any priced contract')}
+      ${row('Exit', exit.join(' ·\u00a0') || 'hold to settlement')}
       ${row('Regime filter', filters)}
       ${row('Sizing', sizing)}</dl>`;
   }
@@ -2015,7 +2035,7 @@
     const li = document.createElement('li');
     li.className = 'ln lane-action hx';
     const stat = (ins && ins.trades != null)
-      ? `<span class="say-stat">In-sample ${usd(ins.pnl, true)} · ${ins.trades} trade${ins.trades === 1 ? '' : 's'}</span>` : '';
+      ? `<span class="say-stat">In-sample ${usd(ins.pnl, true)} ·\u00a0${ins.trades} trade${ins.trades === 1 ? '' : 's'}</span>` : '';
     const home = [mechHtml(d.mechanism), specHtml(d.spec),
       d.falsification ? `<p class="hx-fine"><b>Falsified if</b> ${esc(d.falsification)}</p>` : '',
       d.negative_control ? `<p class="hx-fine"><b>Placebo that should fail</b> ${esc(d.negative_control)}</p>` : ''].filter(Boolean).join('');
@@ -2033,7 +2053,7 @@
         const dec = (e2.data || {}).decision || 'review';
         const reason = strip(strip(e2.message, /^Challenger\s+\w+\s+[-–]\s*/i), new RegExp('^' + title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ':\\s*'));
         reviewEl.hidden = false;
-        reviewEl.insertAdjacentHTML('beforeend', `<p class="hx-crit"><span class="hx-tag">Challenger · ${esc(dec)}</span>${esc(reason)}</p>`);
+        reviewEl.insertAdjacentHTML('beforeend', `<p class="hx-crit"><span class="hx-tag">Challenger ·\u00a0${esc(dec)}</span>${esc(reason)}</p>`);
       },
       verdict(e2) {
         const dd = e2.data || {};
@@ -2358,7 +2378,7 @@
       const r = d.run;
       const active = r.status === 'running' || r.status === 'queued' || r.status === 'paused';
       runActive = active;
-      root.querySelector('#runboard').innerHTML = boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7 ${dirLabel(r.direction)}${r.example ? ' \u00b7 ' + EXAMPLE_NOTE : ''}`);
+      root.querySelector('#runboard').innerHTML = boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7\u00a0${dirLabel(r.direction)}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : ''}`);
       const started = r.started_at ? Date.parse(r.started_at) : null;
       const end = r.finished_at ? Date.parse(r.finished_at) : Date.now();
       const late = r.wait && r.wait.overdue ? r.wait : null;
@@ -2393,9 +2413,9 @@
           ${d.rsi.evolved
             ? `<p>This agent <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
                ${d.rsi.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(d.rsi.summary)}</p>` : ''}
-               <p class="rsi-last">Generalization score ${delta}${d.rsi.evolved_at ? ' · adopted ' + when(d.rsi.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
+               <p class="rsi-last">Generalization score ${delta}${d.rsi.evolved_at ? ' ·\u00a0adopted ' + when(d.rsi.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
             : `<p>The agent is <b>self-tuning</b>: after each research cycle it dreams up new search strategies and keeps one only if it beats the current policy on your own history (scored over shuffled orderings, so it can't overfit).</p>
-               ${d.rsi.last_dream ? `<p class="rsi-last"><b>Last check${d.rsi.last_dream_at ? ' · ' + when(d.rsi.last_dream_at) : ''}:</b> ${esc(d.rsi.last_dream)}</p>` : `<p class="rsi-last">No check yet. The first one runs at the end of a session, once at least ${d.rsi.min_history || 12} ideas have been tested.</p>`}`}
+               ${d.rsi.last_dream ? `<p class="rsi-last"><b>Last check${d.rsi.last_dream_at ? ' ·\u00a0' + when(d.rsi.last_dream_at) : ''}:</b> ${esc(d.rsi.last_dream)}</p>` : `<p class="rsi-last">No check yet. The first one runs at the end of a session, once at least ${d.rsi.min_history || 12} ideas have been tested.</p>`}`}
           </div></details>`;
         if (focused) rsibox.querySelector('summary').focus({ preventScroll: true });
       }
@@ -2471,7 +2491,7 @@
       const list = d.strategies, reg = registry(list.map((s) => s.equity));
       const anyPassed = list.some(bulkDeployable);
       slipsEl.innerHTML = strategyTable(list.map((s) => strategySlip(s, reg, { pick: anyPassed })).join(''), anyPassed)
-        + (d.pages > 1 ? `<div class="xpage">${sp > 0 ? `<button class="btn sm" data-sp="${sp - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${sp + 1} of ${num(d.pages)} · ${num(d.matched)} strategies</span>${sp + 1 < d.pages ? `<button class="btn sm" data-sp="${sp + 1}">Next →</button>` : '<span></span>'}</div>` : '');
+        + (d.pages > 1 ? `<div class="xpage">${sp > 0 ? `<button class="btn sm" data-sp="${sp - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${sp + 1} of ${num(d.pages)} ·\u00a0${num(d.matched)} strategies</span>${sp + 1 < d.pages ? `<button class="btn sm" data-sp="${sp + 1}">Next →</button>` : '<span></span>'}</div>` : '');
       slipsEl.querySelectorAll('[data-sp]').forEach((b) => b.onclick = () => { sp = +b.dataset.sp; load(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
       wireBulk();
     };
@@ -2488,7 +2508,7 @@
         try { await api('/api/deployments', { strategy_id: id, mode: 'paper' }); ok++; } catch (e) { errs.push(e.message); }
       }
       if (ok && !errs.length) { go('/deploy'); return; }
-      flash('#bulkflash', `${ok} deployed${errs.length ? ` · ${errs.length} failed: ${esc(errs[0])}` : ''}`, errs.length ? 'bad' : 'good');
+      flash('#bulkflash', `${ok} deployed${errs.length ? ` ·\u00a0${errs.length} failed: ${esc(errs[0])}` : ''}`, errs.length ? 'bad' : 'good');
       if (ok) load();
     };
     const syncBar = () => {
@@ -2524,7 +2544,7 @@
       if (!n || !oos || !(+oos.trades > 0) || !(stake > 0)) return '';
       const per = (+oos.pnl || 0) / +oos.trades;
       const exp = ds.reduce((a, d) => a + (+d.closed_trades || 0) * per * ((+d.stake || stake) / stake), 0);
-      return `<p class="sub-fig real-pace">At the backtest's unseen-data pace, ${n} trade${n === 1 ? '' : 's'} would have made ${usd(exp, true)}${n < 10 ? ' · too few trades to judge yet' : ''}</p>`;
+      return `<p class="sub-fig real-pace">At the backtest's unseen-data pace, ${n} trade${n === 1 ? '' : 's'} would have made ${usd(exp, true)}${n < 10 ? ' ·\u00a0too few trades to judge yet' : ''}</p>`;
     };
     const order = ['live', 'demo', 'paper'], label = { live: 'Live', demo: 'Demo', paper: 'Paper' }, cls = { live: 'live', demo: 'dep', paper: '' };
     const lines = order.map((mode) => {
@@ -2533,7 +2553,7 @@
       const pnl = ds.reduce((a, d) => a + (+d.realized_pnl || 0), 0), n = ds.reduce((a, d) => a + (+d.closed_trades || 0), 0);
       const open = ds.reduce((a, d) => a + (+d.open_positions || 0), 0);
       const since = ds.map((d) => d.created_at).filter(Boolean).sort()[0];
-      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span> ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}` : 'No closed trades yet'}${open ? ` · ${open} open` : ''}${since ? ` · deployed ${when(since)}` : ''}</p>${pace(ds, n)}${pausedLine(ds)}`;
+      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span> ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}` : 'No closed trades yet'}${open ? ` ·\u00a0${open} open` : ''}${since ? ` ·\u00a0deployed ${when(since)}` : ''}</p>${pace(ds, n)}${pausedLine(ds)}`;
     }).join('');
     return lines ? `<section class="real-record" aria-label="Since deploying"><h3 class="paper-h">Since deploying</h3>${lines}</section>` : '';
   }
@@ -2548,7 +2568,7 @@
     const books = running.map(([m, label, cls]) => {
       const ds = deps.filter((d) => d.mode === m);
       const n = ds.reduce((a, d) => a + (+d.closed_trades || 0), 0), pnl = ds.reduce((a, d) => a + (+d.realized_pnl || 0), 0);
-      return `<p><span class="mk ${cls}">${label}</span> running · ${num(n)} closed trade${n === 1 ? '' : 's'} · ${money(pnl)} realized</p>`;
+      return `<p><span class="mk ${cls}">${label}</span> running ·\u00a0${num(n)} closed trade${n === 1 ? '' : 's'} ·\u00a0${money(pnl)} realized</p>`;
     });
     const next = LADDER[running.length ? LADDER.indexOf(running[running.length - 1]) + 1 : 0];
     let need = '';
@@ -2570,7 +2590,7 @@
       fig('Return on capital', r.out_of_sample ? pct(r.out_of_sample.roi) : '—', { small: r.capital ? `$${fmt0.format(r.capital)} at risk at most` : '' }) +
       fig('Run trials', s.hypotheses_tried != null ? num(s.hypotheses_tried) : '—', { small: s.hypotheses_tried == null ? 'Trial count unavailable.' : '' });
     // A strategy from the seeded example session says so here too, as the lists and its run page do.
-    root.querySelector('.board-title').outerHTML = `<div class="board-title strategy-pagehead"><h1 class="page">${esc(s.title)}</h1><p class="deck"><span>${esc(serial(s.id))} · ${esc(marketShort(s.market))} · ${esc(dirLabel(s.direction))}</span>${filed ? `<span>Filed ${esc(filed)}</span>` : ''}${mark(s.status)}${researchBadge(s)}${s.example ? `${EXAMPLE_TAG}<span class="example-note">${EXAMPLE_NOTE}</span>` : ''}</p></div>`;
+    root.querySelector('.board-title').outerHTML = `<div class="board-title strategy-pagehead"><h1 class="page">${esc(s.title)}</h1><p class="deck"><span>${esc(serial(s.id))} ·\u00a0${esc(marketShort(s.market))} ·\u00a0${esc(dirLabel(s.direction))}</span>${filed ? `<span>Filed ${esc(filed)}</span>` : ''}${mark(s.status)}${researchBadge(s)}${s.example ? `${EXAMPLE_TAG}<span class="example-note">${EXAMPLE_NOTE}</span>` : ''}</p></div>`;
     const canDeploy = !restricted && ['passed', 'failed', 'rejected'].includes(s.status);
     // Why a strategy was rejected (never reached the unseen-data gate) — stated honestly: a
     // profitable idea with too few trades is rejected on sample size, not for "losing money".
@@ -2594,7 +2614,7 @@
       if (m.win_rate === 1) r.push('100% win rate — an overfit signature, not an edge');
       if (typeof m.profit_factor === 'number' && m.profit_factor >= 99) r.push('no losing trades in sample — profit factor is meaningless');
       if (typeof m.sharpe === 'number' && m.sharpe >= 3) r.push(`Sharpe ${m.sharpe} is implausibly high for a real net edge`);
-      return r.length ? `<p class="hint luck-flag">⚠ ${esc(r.join(' · '))}</p>` : '';
+      return r.length ? `<p class="hint luck-flag">⚠ ${esc(r.join(' ·\u00a0'))}</p>` : '';
     };
     const metricRows = (m) => m ? `<dl>
         <dt>P&amp;L after fees</dt><dd class="${tone(m.pnl)}">${usd(m.pnl, true)}</dd>
@@ -2686,7 +2706,7 @@
             const bookLine = (xs) => {
               const marked = xs.filter((p) => p.unrealized != null), unreal = marked.reduce((a, p) => a + p.unrealized, 0);
               const lead = books.length > 1 ? ({ live: 'Live', demo: 'Demo', paper: 'Paper' })[xs[0].mode || 'paper'] + ': ' : '';
-              return `${lead}${xs.length} open position${xs.length === 1 ? '' : 's'} at cost ${usd(xs.reduce((a, p) => a + p.cost, 0))}${marked.length ? ` · unrealized ${money(unreal)} (est., mark-to-market on the current bid)` : ' · awaiting first mark'}.`;
+              return `${lead}${xs.length} open position${xs.length === 1 ? '' : 's'} at cost ${usd(xs.reduce((a, p) => a + p.cost, 0))}${marked.length ? ` ·\u00a0unrealized ${money(unreal)} (est., mark-to-market on the current bid)` : ' ·\u00a0awaiting first mark'}.`;
             };
             // A list, not a five-column table: in the sidebar the table clipped everything after Position.
             return `<section class="panel"><h3>Holding right now</h3>
@@ -2696,7 +2716,7 @@
           })() : ''}
           ${ladder ? `<section class="panel" id="ladder"><h3>Paper → demo → live</h3><div class="rung-books" id="ladder-body">${ladder}</div></section>` : ''}
           <section class="panel"><h3>${restricted ? 'Research only' : 'Deploy'}</h3>
-            ${!restricted && s.deployments.length ? `<div class="strategy-deployments"><p class="hint">${s.deployments.map((d) => `#${d.id} · ${esc(d.mode)} · ${esc(d.status)}`).join('<br>')}</p><a class="btn${activeDeps.length ? ' primary' : ''}" href="/deploy">View deployments</a></div>` : ''}
+            ${!restricted && s.deployments.length ? `<div class="strategy-deployments"><p class="hint">${s.deployments.map((d) => `#${d.id} ·\u00a0${esc(d.mode)} ·\u00a0${esc(d.status)}`).join('<br>')}</p><a class="btn${activeDeps.length ? ' primary' : ''}" href="/deploy">View deployments</a></div>` : ''}
             ${canDeploy ? `<div style="display:grid;gap:10px">
                 ${s.status !== 'passed' ? `<div class="notice bad">${ICON.warn}<span>${s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${rejectReason(s)}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
                 <button class="btn${activeDeps.length ? '' : ' primary'}" id="dep-paper">Deploy on paper</button>
@@ -2886,12 +2906,12 @@
       // no-break space keeps each "3 paper" whole when the figure wraps on a phone.
       const liveOn = !!(S.me && S.me.live_trading_available) || liveDeps.length > 0;
       const openSplit = ['paper', 'demo', 'live'].map((m) => [m, d.open_positions.filter((p) => (p.mode || 'paper') === m).length])
-        .filter(([m, n]) => n || (m === 'live' && liveOn)).map(([m, n]) => `${num(n)}\u00a0${m}`).join(' · ') || 'None';
+        .filter(([m, n]) => n || (m === 'live' && liveOn)).map(([m, n]) => `${num(n)}\u00a0${m}`).join(' ·\u00a0') || 'None';
       root.querySelector('#dfigs').innerHTML = fig('Running', running.length, { small: `${d.deployments.length - running.length} paused` }) +
         (liveDeps.length
-          ? fig('Live realized', usd(liveRealized, true), { v: liveRealized, small: paperDeps.length ? `real money, strategies listed below · ${usd(paperRealized, true)} on paper, counted apart` : 'real money, strategies listed below' })
-          : paperDeps.length || !demoDeps.length ? fig('Realized', usd(paperRealized, true), { v: paperRealized, small: 'paper money, not real · strategies listed below' }) : '') +
-        (demoDeps.length ? fig('Demo realized', usd(demoRealized, true), { v: demoRealized, small: `${DEMO_WHAT} · strategies listed below` }) : '') +
+          ? fig('Live realized', usd(liveRealized, true), { v: liveRealized, small: paperDeps.length ? `real money, strategies listed below ·\u00a0${usd(paperRealized, true)} on paper, counted apart` : 'real money, strategies listed below' })
+          : paperDeps.length || !demoDeps.length ? fig('Realized', usd(paperRealized, true), { v: paperRealized, small: 'paper money, not real ·\u00a0strategies listed below' }) : '') +
+        (demoDeps.length ? fig('Demo realized', usd(demoRealized, true), { v: demoRealized, small: `${DEMO_WHAT} ·\u00a0strategies listed below` }) : '') +
         fig('Open positions', openSplit) +
         fig('Money', live.length ? '<span class="mk live">Live</span>' : runDemo ? `${runPaper ? '<span class="mk">Paper</span> ' : ''}<span class="mk dep">Demo</span>` : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : 'nothing on live money' });
       const regs = curveRegs(d.deployments);
@@ -2948,11 +2968,11 @@
     const good = s.level === 'solid' && s.edge === 'positive';
     const figs = `<dl class="figures measure tr-figs">
       ${fig('Net P&amp;L', usd(m.net_pnl, true), { v: m.net_pnl, cls: 'lead', small: `after ${usd(m.fees)} in fees` })}
-      ${fig('Return', pct(m.return), { v: m.return, small: `on ${usd(m.capital)} capital required${m.annualized_return != null ? ` · ${pct(m.annualized_return)} a year` : ''}` })}
+      ${fig('Return', pct(m.return), { v: m.return, small: `on ${usd(m.capital)} capital required${m.annualized_return != null ? ` ·\u00a0${pct(m.annualized_return)} a year` : ''}` })}
       ${fig('Max drawdown', m.max_drawdown ? usd(-m.max_drawdown) : usd(0), { small: m.max_drawdown_pct != null ? `${pct(m.max_drawdown_pct, false)} of capital` : '' })}
-      ${fig('Sharpe', trFix(m.sharpe), { small: m.sharpe == null ? `shown after ${th.min_sharpe_days} days` : `PSR ${pct(m.psr, false)} · Sortino ${trFix(m.sortino)}` })}
+      ${fig('Sharpe', trFix(m.sharpe), { small: m.sharpe == null ? `shown after ${th.min_sharpe_days} days` : `PSR ${pct(m.psr, false)} ·\u00a0Sortino ${trFix(m.sortino)}` })}
       ${fig('Win rate', pct(m.win_rate, false), { small: trCi(m.win_rate_ci, (v) => pct(v, false)) })}
-      ${fig('Trades', num(m.trades), { small: `${num(m.wins)} won · ${num(m.losses)} lost` })}
+      ${fig('Trades', num(m.trades), { small: `${num(m.wins)} won ·\u00a0${num(m.losses)} lost` })}
       ${fig('Avg trade', usd(m.avg_trade, true), { v: m.avg_trade, small: trCi(m.avg_trade_ci, (v) => usd(v, true)) })}
       ${fig('Profit factor', trFix(m.profit_factor), { small: 'gross wins ÷ gross losses' })}
     </dl>`;
@@ -2999,7 +3019,7 @@
     if (!d.modes[tab]) tab = d.default_mode;
     host.innerHTML = `<div class="section-head"><h2>Track record</h2><p>Realized results from closed trades. Nothing here is a backtest.</p></div>
       <div class="chips tr-tabs" role="group" aria-label="Money type">
-        ${TR_MODES.map(([k, label]) => `<button class="chip" type="button" data-trtab="${k}" aria-pressed="${k === tab}">${label} · ${num(d.modes[k].trades)}</button>`).join('')}
+        ${TR_MODES.map(([k, label]) => `<button class="chip" type="button" data-trtab="${k}" aria-pressed="${k === tab}">${label} ·\u00a0${num(d.modes[k].trades)}</button>`).join('')}
       </div>
       <div class="trpanel"></div>
       <details class="tr-method"><summary>How these numbers are computed</summary>
@@ -3050,7 +3070,7 @@
       const kd = d.kalshi_dev || { connected: false };
       const dm = d.demo || { capital: 0, equity: 0, realized: 0 };
       root.querySelector('#ffigs').innerHTML = fig('Kalshi cash', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: k.connected ? 'Real money at Kalshi, open positions not included' : '' }) +
-        fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} ${dm.before_reload ? 'capital at last reload' : 'starting capital'} · ${DEMO_WHAT}` }) +
+        fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} ${dm.before_reload ? 'capital at last reload' : 'starting capital'} ·\u00a0${DEMO_WHAT}` }) +
         fig('Paper cash', usd(d.paper.cash));
       root.querySelector('main').innerHTML = `<div id="flash"></div><div class="funds">
         <div class="funds-col funds-manage">
@@ -3114,7 +3134,7 @@
         <section class="panel">
           <h3>Paper history</h3>
           <table class="table stack t-ledger"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody>
-            ${d.paper.ledger.map((r) => `<tr><td class="hint lead-cell">${when(r.created_at)}</td><td class="name">${esc(r.memo || r.kind)}</td><td class="num ${tone(+r.amount)}">${usd(r.amount, true)}</td></tr>`).join('')}
+            ${d.paper.ledger.map((r) => `<tr><td class="hint lead-cell" data-lab="When">${when(r.created_at)}</td><td class="name" data-lab="What">${esc(r.memo || r.kind)}</td><td class="num ${tone(+r.amount)}" data-lab="Amount">${usd(r.amount, true)}</td></tr>`).join('')}
           </tbody></table>
         </section>
         </div></div>`;
@@ -3227,7 +3247,7 @@
     const replies = p.comments || 0;
     return `<article class="post${grouped ? ' grouped' : ''}${p.picture ? ' post-photo' : ''}" data-id="${p.id}">
       <div class="post-gutter">${grouped ? `<time class="gutter-time">${clock(p.created_at)}</time>` : avatar(p.picture, p.author)}</div>
-      ${grouped ? '' : `<div class="post-head"><b>${authorLine(p.author, p.username)}</b><span class="when">${when(p.created_at)}${p.edited ? ' · edited' : ''}</span></div>`}
+      ${grouped ? '' : `<div class="post-head"><b>${authorLine(p.author, p.username)}</b><span class="when">${when(p.created_at)}${p.edited ? ' ·\u00a0edited' : ''}</span></div>`}
       <div class="post-col">
         <div class="post-main"><div class="post-body">${mdLite(p.body)}</div>
         ${p.image ? `<a class="post-img" href="${esc(p.image)}" target="_blank" rel="noopener"><img src="${esc(p.image)}" alt="" loading="lazy"></a>` : ''}
@@ -3357,7 +3377,7 @@
             try {
               await api(`/api/community/${pid}/edit`, { body: nb });
               bodyEl.textContent = nb; bodyEl.hidden = false; ef.remove();
-              const w = art.querySelector('.post-head .when'); if (w && !/edited/.test(w.textContent)) w.textContent += ' · edited';
+              const w = art.querySelector('.post-head .when'); if (w && !/edited/.test(w.textContent)) w.textContent += ' ·\u00a0edited';
             } catch (err) { alert0(err.message); }
           });
         };
@@ -3455,7 +3475,7 @@
   // strike sub-title is what tells them apart.
   // The yes subtitle only when it adds something: "Minnesota wins · Minnesota" and "Will Bitcoin be
   // above $200000 by Jan 1…? · Above $200000" repeated the title.
-  const mktLabel = (m) => { const t = (m.ti || '').trim(), s = (m.su || '').trim(); return s && !t.toLowerCase().includes(s.toLowerCase()) ? (t ? `${t} · ${s}` : s) : (t || m.t); };
+  const mktLabel = (m) => { const t = (m.ti || '').trim(), s = (m.su || '').trim(); return s && !t.toLowerCase().includes(s.toLowerCase()) ? (t ? `${t} ·\u00a0${s}` : s) : (t || m.t); };
   const compactCondition = label => label.replace(/^(\$[\d,]+(?:\.\d+)?) or above$/i, '≥ $1').replace(/^(\$[\d,]+(?:\.\d+)?) or below$/i, '≤ $1').replace(/^Above (\$[\d,]+(?:\.\d+)?)$/i, '> $1').replace(/^Below (\$[\d,]+(?:\.\d+)?)$/i, '< $1');
   const kalshiUrl = (m) => `https://kalshi.com/markets/${encodeURIComponent((m.s || '').toLowerCase())}`;
   const kfmt = (n) => { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n)); };
@@ -3497,15 +3517,15 @@
     const closes = d.close_time ? new Date(d.close_time).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
     const gran = d.period_min >= 1440 ? 'daily' : d.period_min >= 60 ? 'hourly' : 'per-minute';
     const fmtT = (t) => new Date(t * 1000).toLocaleString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-    shell('/explore', boardTitle(label, `${d.series} · ${d.status || 'market'} · ${d.ticker}`) +
+    shell('/explore', boardTitle(label, `${d.series} ·\u00a0${d.status || 'market'} ·\u00a0${d.ticker}`) +
       '<dl class="figures measure" style="margin-top:14px">' +
         fig('Yes price', mid == null ? '—' : cents(mid)) + fig('24h volume', num(Math.round(+d.volume_24h || 0))) +
         fig('Open interest', num(Math.round(+d.open_interest || 0))) + fig('Closes', closes) + '</dl>', `
-      <section class="sect"><div class="sect-head"><h2>Price history</h2><p>Yes price${d.history_unavailable ? '' : ` · Kalshi ${gran} candles`}</p></div>
+      <section class="sect"><div class="sect-head"><h2>Price history</h2><p>Yes price${d.history_unavailable ? '' : ` ·\u00a0Kalshi ${gran} candles`}</p></div>
         <div class="pchart-wrap">${d.history_unavailable
           ? '<div class="empty"><h3>Price history didn’t load</h3><p>Kalshi didn’t send it just now. The figures above are from the latest market snapshot.</p><button class="btn sm" type="button" id="mk-retry">Try again</button></div>'
           : priceChart(d.points)}</div></section>
-      <section class="sect"><div class="sect-head"><h2>Raw data</h2><p>${d.history_unavailable ? 'Not loaded' : `${num(d.points.length)} ${gran} points${d.points.length ? ' · newest first' : ''}`}</p></div>
+      <section class="sect"><div class="sect-head"><h2>Raw data</h2><p>${d.history_unavailable ? 'Not loaded' : `${num(d.points.length)} ${gran} points${d.points.length ? ' ·\u00a0newest first' : ''}`}</p></div>
         <div id="rawsect"></div></section>
       <div class="xpage"><a class="btn sm" href="/explore">← Back to Explore</a>
         <span class="xpage-acts"><button class="btn sm" id="dl-csv" ${d.points.length ? '' : 'disabled'}>Download CSV</button>
@@ -3520,7 +3540,7 @@
       const pages = Math.max(1, Math.ceil(pts.length / PER));
       const rows = pts.slice(pg * PER, (pg + 1) * PER).map((p) => `<tr><td class="tick">${fmtT(p.t)}</td><td class="num">${cents(p.yes)}</td><td class="num">${num(Math.round(p.vol || 0))}</td></tr>`).join('');
       rawEl.innerHTML = `<div class="sheet"><table><thead><tr><th>Time (UTC)</th><th class="num">Yes price</th><th class="num">Volume</th></tr></thead><tbody>${rows}</tbody></table></div>
-        <div class="xpage">${pg > 0 ? `<button class="btn sm" data-rp="${pg - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${pg + 1} of ${num(pages)} · ${num(pts.length)} points</span>${pg + 1 < pages ? `<button class="btn sm" data-rp="${pg + 1}">Next →</button>` : '<span></span>'}</div>`;
+        <div class="xpage">${pg > 0 ? `<button class="btn sm" data-rp="${pg - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${pg + 1} of ${num(pages)} ·\u00a0${num(pts.length)} points</span>${pg + 1 < pages ? `<button class="btn sm" data-rp="${pg + 1}">Next →</button>` : '<span></span>'}</div>`;
       rawEl.querySelectorAll('[data-rp]').forEach((b) => b.onclick = () => { pg = +b.dataset.rp; renderRaw(); window.scrollTo({ top: rawEl.offsetTop - 80, behavior: 'smooth' }); });
     };
     renderRaw();
@@ -3568,8 +3588,8 @@
         const conditionDisplay = compactCondition(separateCondition);
         const titleParts = title.split(' · ');
         const eventDisplay = titleParts.length > 1 ? `<strong>${esc(titleParts[0])}</strong>` : esc(title);
-        const contractLink = `<a class="market-name single" href="/explore?m=${encodeURIComponent(m.t)}" aria-label="${esc(label === m.t ? label : label + ' · ' + m.t)}" title="${esc(m.t)}">${separateCondition ? `<span class="market-identity-line"><span class="market-event" title="${esc(title)}">${eventDisplay}</span><strong>${esc(conditionDisplay)}</strong></span>` : `<strong>${esc(title || condition || m.t)}</strong>`}<span class="market-ref">${esc(m.t)}</span></a>`;
-        return `<tr>${separateCondition ? `<td class="name market-contract">${contractLink}</td><td class="market-context-cell" data-lab="Context">${titleParts.length > 1 ? `<span class="market-context" title="${esc(title)}">${esc(titleParts.slice(1).join(' · '))}</span>` : '<span class="unavailable" title="No separate context in source title"><span aria-hidden="true">—</span><span class="vh">No separate context</span></span>'}</td>` : `<td class="name" colspan="2">${contractLink}</td>`}
+        const contractLink = `<a class="market-name single" href="/explore?m=${encodeURIComponent(m.t)}" aria-label="${esc(label === m.t ? label : label + ' ·\u00a0' + m.t)}" title="${esc(m.t)}">${separateCondition ? `<span class="market-identity-line"><span class="market-event" title="${esc(title)}">${eventDisplay}</span><strong>${esc(conditionDisplay)}</strong></span>` : `<strong>${esc(title || condition || m.t)}</strong>`}<span class="market-ref">${esc(m.t)}</span></a>`;
+        return `<tr>${separateCondition ? `<td class="name market-contract">${contractLink}</td><td class="market-context-cell" data-lab="Context">${titleParts.length > 1 ? `<span class="market-context" title="${esc(title)}">${esc(titleParts.slice(1).join(' ·\u00a0'))}</span>` : '<span class="unavailable" title="No separate context in source title"><span aria-hidden="true">—</span><span class="vh">No separate context</span></span>'}</td>` : `<td class="name" colspan="2">${contractLink}</td>`}
           <td class="num yes-price" data-lab="YES Price">${mid == null ? '—' : cents(mid)}</td><td class="num quote-side quote-bid" data-lab="YES Bid">${quoteSide(m.bid)}</td><td class="num quote-side quote-ask" data-lab="YES Ask">${quoteSide(m.ask)}</td><td class="num market-volume" data-lab="24h volume">${num(Math.round(+m.v24 || 0))}</td><td class="num market-interest" data-lab="Open interest">${num(Math.round(+m.oi || 0))}</td>
           <td class="num xlink"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`;
       }).join('');
@@ -3646,7 +3666,7 @@
   // One mode's closed trades as a CSV, offered only where that mode has some, so the reader can
   // check its P&L line by line. The server never mixes modes in one file.
   function tradesCsv(mode, b) {
-    return b && b.closed_trades > 0 ? ` \u00b7 <a class="csv-link" href="/api/trades.csv?mode=${mode}" download>Download trades (CSV)</a>` : '';
+    return b && b.closed_trades > 0 ? ` \u00b7\u00a0<a class="csv-link" href="/api/trades.csv?mode=${mode}" download>Download trades (CSV)</a>` : '';
   }
   // What demo is, for a reader who has never used it: real exchange fills, pretend money.
   const DEMO_WHAT = 'real fills on Kalshi’s sandbox, not real money';
@@ -3678,7 +3698,7 @@
     const cells = [
       d.live_running ? ['Live realized today (UTC)', money(d.today_live_pnl || 0)] : ['Paper P&amp;L, ' + paperSpan(S.dashPaper), pnl == null ? '—' : money(pnl)],
       ['Strategies running', running ? String(running) : 'None yet'],
-      d.week ? null : ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested · ${r.passed_7d || 0} passed`],
+      d.week ? null : ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested ·\u00a0${r.passed_7d || 0} passed`],
       prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${prog.trades} of ${prog.trades_needed} paper trades</a>`]
         : ['Last move', d.reviewing ? 'Reviewing now' : d.last_action && d.last_action.at ? sinceMin(d.last_action.at) : (d.last_review_at ? 'Reviewed ' + sinceMin(d.last_review_at) : 'Starting up')],
     ].filter(Boolean);
@@ -3739,9 +3759,9 @@
     const pnl = +w.paper_pnl || 0, trades = +w.paper_trades || 0;
     return `<section class="ap-week" aria-label="Autopilot, last 7 days"><h3>Last 7 days</h3><dl>
       <div><dt>Credits spent on research</dt><dd>${usd(w.research_credits || 0)} <small>real money</small></dd></div>
-      <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested · ${Number(w.passed || 0).toLocaleString('en-US')} passed</dd></div>
+      <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested ·\u00a0${Number(w.passed || 0).toLocaleString('en-US')} passed</dd></div>
       <div><dt>Started on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'}</dd></div>
-      <div><dt>Paper P&amp;L</dt><dd><span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money · ${trades} closed trade${trades === 1 ? '' : 's'}</small></dd></div>
+      <div><dt>Paper P&amp;L</dt><dd><span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money ·\u00a0${trades} closed trade${trades === 1 ? '' : 's'}</small></dd></div>
     </dl><p class="ap-week-note">Research counts every session, yours and the autopilot's. Paper counts only the strategies the autopilot put on paper itself.</p></section>`;
   }
   // What switching it on costs, said before the click: the agent's runs spend credits, and with
@@ -3806,9 +3826,9 @@
   const AP_PENDING_ON = { label: 'Autopilot on', cls: 'paper' };  // switch on, mode not read yet
   const AP_MODE = {
     off: { label: 'Autopilot off', cls: '' },
-    paper: { label: 'Autopilot · paper', cls: 'paper' },
-    'live-armed': { label: 'Autopilot · live armed', cls: 'live' },
-    live: { label: 'Autopilot · LIVE', cls: 'live' },
+    paper: { label: 'Autopilot ·\u00a0paper', cls: 'paper' },
+    'live-armed': { label: 'Autopilot ·\u00a0live armed', cls: 'live' },
+    live: { label: 'Autopilot ·\u00a0LIVE', cls: 'live' },
   };
   // The float is the single home for autopilot: the on/off toggle, live controls, and the agent
   // chat. The expanded shell is built ONCE; the 20s status poll updates only dynamic bits so it
@@ -3896,7 +3916,7 @@
   // available even if chat is slow), else a plain "on a schedule" line.
   function apIdleLine(box) {
     const la = S.ap && S.ap.last_action;
-    if (la && la.at) return 'Idle · last move ' + sinceMin(la.at);
+    if (la && la.at) return 'Idle ·\u00a0last move ' + sinceMin(la.at);
     return 'Idle';
   }
   function renderAutopilot(box, d) {
@@ -4066,7 +4086,7 @@
     // Short figures share a row (as many columns as there are figures, two on a phone, the odd
     // one out spanning); the sentence-length ones get full-width rows, so no cell sits empty.
     const short = [
-      `<dt>Running</dt><dd>${runTotal ? runParts.join(' · ') : 'None'}</dd>`,
+      `<dt>Running</dt><dd>${runTotal ? runParts.join(' ·\u00a0') : 'None'}</dd>`,
       `<dt>${liveInPlay ? 'Live' : 'Paper'} realized today (UTC)</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd>`,
     ].concat(liveInPlay ? [`<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`] : [])
       // A queued or running review is not a finished one: right after switching on, "Last reviewed just now" claimed a review that hadn't run.
@@ -4076,8 +4096,8 @@
       stats.dataset.cols = short.length;
       stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `
       ${liveInPlay ? `<div class="apf-wide apf-budget"><dt>Loss budget</dt><dd>Counts live losses booked since 00:00 UTC. Live also stops if your Kalshi account falls ${usd(d.daily_loss_limit)} in a day, open positions included.</dd></div>` : ''}
-      ${d.research && !(d.story || []).length ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc([...new Set(d.research.active)].join(' · ')) : 'Not researching right now'} · ${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested this week, ${d.research.passed_7d} passed${d.research.cost_7d ? ', $' + Number(d.research.cost_7d).toFixed(2) + ' spent' : ''}</dd></div>` : ''}
-      ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> · ${d.paper_progress.trades}/${d.paper_progress.trades_needed} paper trades · ${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}`;
+      ${d.research && !(d.story || []).length ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc([...new Set(d.research.active)].join(' ·\u00a0')) : 'Not researching right now'} ·\u00a0${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested this week, ${d.research.passed_7d} passed${d.research.cost_7d ? ', $' + Number(d.research.cost_7d).toFixed(2) + ' spent' : ''}</dd></div>` : ''}
+      ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> ·\u00a0${d.paper_progress.trades}/${d.paper_progress.trades_needed} paper trades ·\u00a0${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}`;
     }
     const staleEl = box.querySelector('#apf-stale'); if (staleEl) staleEl.textContent = apStale();
     const week = box.querySelector('#apf-week'); if (week) week.innerHTML = d.autopilot ? apWeek(d.week) : '';
@@ -4155,9 +4175,9 @@
     const compactName = catalog ? marketShort(catalog.key) : ((m.ti || '').trim() || m.t);
     const mid = midOf(m), h = m.h || [], delta = h.length >= 2 ? h[h.length - 1] - h[0] : 0;
     const dCents = Math.round(delta * 100), dir = dCents > 0 ? 'pos' : dCents < 0 ? 'neg' : '';
-    return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="${esc(mktLabel(m))} · ${esc(m.t)} · ${mid == null ? 'Quote unavailable' : cents(mid)}${dCents ? ` · ${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢ across available history` : ''} · ${kfmt(m.v24)} volume over 24 hours · Opens Kalshi in a new tab">
+    return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="${esc(mktLabel(m))} ·\u00a0${esc(m.t)} ·\u00a0${mid == null ? 'Quote unavailable' : cents(mid)}${dCents ? ` ·\u00a0${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢ across available history` : ''} ·\u00a0${kfmt(m.v24)} volume over 24 hours ·\u00a0Opens Kalshi in a new tab">
       <span class="hot-quote"><span class="hot-title" title="${esc(mktLabel(m))}"><strong>${esc(compactName)}</strong>${m.su && m.su.trim() !== (m.ti || '').trim() ? `<span>${esc(compactCondition(m.su))}</span>` : ''}</span><span class="hot-price" title="Midpoint quote"><b class="fig">${mid == null ? '—' : cents(mid)}</b>${dCents ? `<span class="hot-delta ${dir}" title="Change across available price history">${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢</span>` : ''}</span></span>
-      <span class="hot-foot"><span class="hot-meta"><span class="vh">${esc(m.s || '')}</span><span class="hot-vol" title="24-hour volume">${kfmt(m.v24)} · 24h</span></span><span class="vh">Opens Kalshi in a new tab</span></span></a>`;
+      <span class="hot-foot"><span class="hot-meta"><span class="vh">${esc(m.s || '')}</span><span class="hot-vol" title="24-hour volume">${kfmt(m.v24)} ·\u00a024h</span></span><span class="vh">Opens Kalshi in a new tab</span></span></a>`;
   }
   function renderHotRail() {
     const rail = document.getElementById('hotrail'); if (!rail) return;
@@ -4166,7 +4186,7 @@
     const snapshotAt = d && d.at ? Date.parse(d.at) : NaN;
     const snapshotAge = Number.isFinite(snapshotAt) ? Math.max(0, (Date.now() - snapshotAt) / 1000) : null;
     rail.classList.toggle('is-stale', !!d && (snapshotAge == null || snapshotAge > 180));
-    const freshness = d ? `<span class="hot-freshness${snapshotAge == null || snapshotAge > 180 ? ' is-old' : ''}" title="Market snapshot time${snapshotAge > 180 ? ' · More than 3 minutes old' : ''}">${snapshotAge == null ? 'Snapshot time unavailable' : `${snapshotAge > 180 ? 'Stale' : 'Snapshot'} · ${esc(sinceMin(d.at))}`}</span>` : '';
+    const freshness = d ? `<span class="hot-freshness${snapshotAge == null || snapshotAge > 180 ? ' is-old' : ''}" title="Market snapshot time${snapshotAge > 180 ? ' ·\u00a0More than 3 minutes old' : ''}">${snapshotAge == null ? 'Snapshot time unavailable' : `${snapshotAge > 180 ? 'Stale' : 'Snapshot'} ·\u00a0${esc(sinceMin(d.at))}`}</span>` : '';
     const rows = d && d.markets && d.markets.length ? d.markets.map(hotRowHtml).join('')
       : `<div class="hot-empty">${d ? 'Warming up — the live book fills in a minute.' : loading(120)}</div>`;
     const control = root.querySelector('.market-control');
@@ -4293,7 +4313,7 @@
         arSum.textContent = `Reload $${amount} at $${threshold}`;
         try {
           await api('/api/billing/auto-reload', { on: arBox.checked, amount, threshold });
-          if (gen === S.gen) flash('#autorel-flash', arBox.checked ? `On · reloads ${usd(amount)} at ${usd(threshold)}.` : 'Auto-reload off.', 'good');
+          if (gen === S.gen) flash('#autorel-flash', arBox.checked ? `On ·\u00a0reloads ${usd(amount)} at ${usd(threshold)}.` : 'Auto-reload off.', 'good');
         } catch (err) { arBox.checked = !arBox.checked; if (gen === S.gen) flash('#autorel-flash', err.message, 'bad'); }
       };
       arBox.onchange = saveAutoReload;
@@ -4424,14 +4444,14 @@
   const SYS_NODES = [
     { id: 'kalshi', x: 40, y: 40, w: 150, label: 'Kalshi API', sub: 'markets + order book', ext: 1 },
     { id: 'coinbase', x: 40, y: 150, w: 150, label: 'Coinbase', sub: 'BTC spot price', ext: 1 },
-    { id: 'bedrock', x: 40, y: 330, w: 150, label: 'Claude · Bedrock', sub: 'the research agent', ext: 1 },
+    { id: 'bedrock', x: 40, y: 330, w: 150, label: 'Claude ·\u00a0Bedrock', sub: 'the research agent', ext: 1 },
     { id: 'stripe', x: 40, y: 460, w: 150, label: 'Stripe', sub: 'cards + credits', ext: 1 },
     { id: 'forward', x: 250, y: 30, w: 158, label: 'Forward collector', sub: 'Kalshi book → DB' },
     { id: 'cb_coll', x: 250, y: 150, w: 158, label: 'Coinbase collector', sub: '1-minute candles' },
     { id: 'features', x: 250, y: 270, w: 158, label: 'Feature builder', sub: 'per-minute features' },
-    { id: 'web', x: 250, y: 455, w: 158, label: 'Web server', sub: 'app.server · SPA + API' },
+    { id: 'web', x: 250, y: 455, w: 158, label: 'Web server', sub: 'app.server ·\u00a0SPA + API' },
     { id: 'db', x: 490, y: 205, w: 150, label: 'Database', sub: 'RDS MySQL', big: 1 },
-    { id: 'agents', x: 720, y: 40, w: 158, label: 'Research agents', sub: 'app.worker · hypotheses' },
+    { id: 'agents', x: 720, y: 40, w: 158, label: 'Research agents', sub: 'app.worker ·\u00a0hypotheses' },
     { id: 'backtest', x: 720, y: 160, w: 158, label: 'Backtester', sub: 'honest, out-of-sample' },
     { id: 'sim_engine', x: 720, y: 300, w: 158, label: 'Paper engine', sub: 'simulated fills' },
     { id: 'live_engine', x: 720, y: 460, w: 158, label: 'Live engine', sub: 'real Kalshi orders' },
@@ -4512,7 +4532,7 @@
       return codePanel('component=' + encodeURIComponent(id), (d) =>
         crumbs([{ t: label, a: `data-detail="${esc(id)}"` }, { t: 'modules' }]) +
         `<h3>Modules</h3><ul class="sys-list">${d.modules.map((m) =>
-          `<li><a href="#" data-mod="${esc(m.path)}">${esc(m.name)}</a> <span class="sys-dim">${m.symbols} defs · ${m.lines} lines</span>${m.doc ? `<div class="hint">${esc(m.doc)}</div>` : ''}</li>`).join('')}</ul>`);
+          `<li><a href="#" data-mod="${esc(m.path)}">${esc(m.name)}</a> <span class="sys-dim">${m.symbols} defs ·\u00a0${m.lines} lines</span>${m.doc ? `<div class="hint">${esc(m.doc)}</div>` : ''}</li>`).join('')}</ul>`);
     };
     const openModule = (id, mod) => {
       codeState = { id, module: mod };
@@ -4534,7 +4554,7 @@
         `<li><a href="#" data-fn="${esc(r.qual)}" data-fnmod="${esc(r.module)}">${esc(r.qual)}</a> <span class="sys-dim">${esc(modName(r.module))}</span></li>`).join('')}</ul>` : '<p class="hint">None found in the mapped source.</p>';
       return codePanel('module=' + encodeURIComponent(mod) + '&func=' + encodeURIComponent(qual), (d) =>
         crumbs([{ t: label, a: `data-detail="${esc(id)}"` }, { t: 'modules', a: `data-code-open="${esc(id)}"` }, { t: modName(mod), a: `data-mod="${esc(mod)}"` }, { t: d.name }]) +
-        `<h3><code>${esc(d.qual)}</code></h3><p class="hint">${esc(modName(mod))} · line ${d.lineno}</p>` +
+        `<h3><code>${esc(d.qual)}</code></h3><p class="hint">${esc(modName(mod))} ·\u00a0line ${d.lineno}</p>` +
         `<pre class="sys-src"><code>${esc(d.source)}</code></pre>` +
         `<h3 style="margin-top:14px">Calls (callees)</h3>${refs(d.callees)}` +
         `<h3 style="margin-top:14px">Called by (callers)</h3>${refs(d.callers)}`);
@@ -4558,19 +4578,19 @@
       if (!L) return '';
       const n = sysNode(id);
       if (n && n.ext) {
-        if (id === 'kalshi' && L.markets) return `${num(L.markets)} markets · ${L.series} series`;
+        if (id === 'kalshi' && L.markets) return `${num(L.markets)} markets ·\u00a0${L.series} series`;
         return 'connected';
       }
-      if (id === 'db') return `${L.size_mb >= 1024 ? (L.size_mb / 1024).toFixed(0) + ' GB' : num(L.size_mb) + ' MB'} · ${compact(L.rows)} rows`;
-      if (id === 'web') return L.users != null ? `${num(L.users)} users · serving` : 'online · serving';
-      if (id === 'agents') return `${L.running} running · ${L.queued} queued · ${num(L.done)} done`;
+      if (id === 'db') return `${L.size_mb >= 1024 ? (L.size_mb / 1024).toFixed(0) + ' GB' : num(L.size_mb) + ' MB'} ·\u00a0${compact(L.rows)} rows`;
+      if (id === 'web') return L.users != null ? `${num(L.users)} users ·\u00a0serving` : 'online ·\u00a0serving';
+      if (id === 'agents') return `${L.running} running ·\u00a0${L.queued} queued ·\u00a0${num(L.done)} done`;
       if (id === 'backtest') return `${num(L.strategies)} strategies tested`;
       if (L.ext) return 'connected';
       const a = L.age == null ? '—' : L.age < 90 ? `${L.age}s ago` : L.age < 5400 ? `${Math.round(L.age / 60)}m ago` : 'stale';
-      if (id === 'forward') return `${num(L.rows)} ${L.unit} · ${a}`;
-      if (id === 'cb_coll' || id === 'features') return `${num(L.rows)} ${L.unit} · ${a}`;
-      if (id === 'sim_engine') return `${num(L.trades)} fills · ${a}`;
-      if (id === 'live_engine') return `${L.deployments} live · ${a}`;
+      if (id === 'forward') return `${num(L.rows)} ${L.unit} ·\u00a0${a}`;
+      if (id === 'cb_coll' || id === 'features') return `${num(L.rows)} ${L.unit} ·\u00a0${a}`;
+      if (id === 'sim_engine') return `${num(L.trades)} fills ·\u00a0${a}`;
+      if (id === 'live_engine') return `${L.deployments} live ·\u00a0${a}`;
       return a;
     }
     const load = async () => {

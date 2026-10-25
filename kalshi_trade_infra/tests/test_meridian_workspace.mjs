@@ -151,7 +151,7 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'if (globalThis.testStripeLoader) loadStripe = globalThis.testStripeLoader; globalThis.frontend = {S, api, render, viewSettings, viewBilling, viewSystem, viewAdmin, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, viewRun, viewResearch, viewFunds, viewDashboard, viewDeploy, viewCommunity, viewExplore, postSnapshot, replaceDeploymentContent, marketPicker, wireMarketPicker, hotOpen, renderHotRail, trackRecordPanel, paintDashAp, mountTrackRecord};'), context);
+  vm.runInContext(source.replace(boot, 'if (globalThis.testStripeLoader) loadStripe = globalThis.testStripeLoader; globalThis.frontend = {S, api, render, viewSettings, viewBilling, viewSystem, viewAdmin, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, tabEdges, viewRun, viewResearch, viewFunds, viewDashboard, viewDeploy, viewCommunity, viewExplore, postSnapshot, replaceDeploymentContent, marketPicker, wireMarketPicker, hotOpen, renderHotRail, trackRecordPanel, paintDashAp, mountTrackRecord};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -564,9 +564,9 @@ test('Overview offers each mode its own trades CSV only when that mode has close
 
 test('Overview demo account says what demo is and that its P&L restarts at a reload', async () => {
   for (const [demo, re] of [
-    [{equity: 1000, capital: 1000, realized_pnl: 0}, /\$1,000\.00 capital · No demo deployments · real fills on Kalshi’s sandbox, not real money/],
-    [{equity: 512, capital: 500, realized_pnl: 12, running: 1, before_reload: 40}, /\$500\.00 capital · 0 open · \+\$12\.00 P&amp;L since reload · real fills/],
-    [{equity: 1012, capital: 1000, realized_pnl: 12, running: 1, before_reload: 0}, /\+\$12\.00 P&amp;L all time · real fills/],
+    [{equity: 1000, capital: 1000, realized_pnl: 0}, /\$1,000\.00 capital ·\u00a0No demo deployments ·\u00a0real fills on Kalshi’s sandbox, not real money/],
+    [{equity: 512, capital: 500, realized_pnl: 12, running: 1, before_reload: 40}, /\$500\.00 capital ·\u00a00 open ·\u00a0\+\$12\.00 P&amp;L since reload ·\u00a0real fills/],
+    [{equity: 1012, capital: 1000, realized_pnl: 12, running: 1, before_reload: 0}, /\+\$12\.00 P&amp;L all time ·\u00a0real fills/],
   ]) {
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(dashboardData({demo})); }});
     await f.viewDashboard(); await flush();
@@ -583,7 +583,7 @@ test('Funds demo labels say "since reload" only after a reload, and that demo fi
     assert.match(main, before_reload ? /<dt>P&amp;L since reload<\/dt>/ : /<dt>P&amp;L all time<\/dt>/);
     assert.match(main, /fills and slippage are real; the money is simulated/);
     assert.match(main, /the track record still counts every closed demo trade/);
-    assert.match(f.root.querySelector('#ffigs').innerHTML, before_reload ? /capital at last reload · real fills on Kalshi’s sandbox/ : /starting capital · real fills on Kalshi’s sandbox/);
+    assert.match(f.root.querySelector('#ffigs').innerHTML, before_reload ? /capital at last reload ·\u00a0real fills on Kalshi’s sandbox/ : /starting capital ·\u00a0real fills on Kalshi’s sandbox/);
   }
 });
 
@@ -618,8 +618,8 @@ test('Deploy open positions say their cost includes the entry fee', async () => 
 
 test('Deploy realized says it counts only the strategies listed, never summing live with paper', async () => {
   const dep = (id, mode, pnl) => ({...dashboardDeployment(mode), id, strategy_id: id, realized_pnl: pnl});
-  for (const [deployments, re] of [[[dep(1, 'paper', 2)], /\+\$2\.00[\s\S]*paper money, not real · strategies listed below/],
-    [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized[\s\S]*\+\$5\.00[\s\S]*real money, strategies listed below · \+\$2\.00 on paper, counted apart/]]) {
+  for (const [deployments, re] of [[[dep(1, 'paper', 2)], /\+\$2\.00[\s\S]*paper money, not real ·\u00a0strategies listed below/],
+    [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized[\s\S]*\+\$5\.00[\s\S]*real money, strategies listed below ·\u00a0\+\$2\.00 on paper, counted apart/]]) {
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/deployments'); return response({deployments, open_positions: []}); }});
     await f.viewDeploy(); await flush();
     const figs = f.root.querySelector('#dfigs').innerHTML;
@@ -679,9 +679,9 @@ test('Overview deployment monitors preserve every mode, status, risk field and u
     assert.ok(state.textContent.endsWith(d.status === 'running' ? 'Running' : d.status === 'paused' ? 'Paused' : 'Stopped'));
     assert.equal(state.querySelector('.mk').textContent, d.mode === 'live' ? 'LIVE' : d.mode === 'demo' ? 'Demo' : 'Paper');
     assert.equal(monitor.classList.contains('live-row'), d.mode === 'live');
-    assert.match(monitor.querySelector('.monitor-setup').textContent, /BTC 15-min · \$12\.5 \/ trade/);
+    assert.match(monitor.querySelector('.monitor-setup').textContent, /BTC 15-min ·\u00a0\$12\.5 \/ trade/);
     assert.ok(monitor.querySelector('.monitor-limits').textContent.includes('Max 4 open'));
-    assert.ok(monitor.querySelector('.monitor-limits').textContent.startsWith(' · Max 4 open'), 'a space before the separator, so it never reads "trade· Max"');
+    assert.ok(monitor.querySelector('.monitor-limits').textContent.startsWith(' ·\u00a0Max 4 open'), 'a space before the separator, so it never reads "trade· Max"');
     assert.equal(monitor.querySelector('.monitor-limits').textContent.includes('Risk &lt;cap&gt; reached'), d.status !== 'running');
     assert.equal(field('Realized').textContent, d.status === 'running' ? '—' : d.status === 'paused' ? '$0.00' : '−$3.25');
     assert.equal(field('Unrealized').textContent.trim(), d.status === 'running' ? 'Unavailable' : d.status === 'paused' ? '$0.00' : '−$2.50');
@@ -810,9 +810,9 @@ test('Overview charts cumulative closed paper results separately from all-time P
         const date = new Date(daily[index].d + 'T12:00:00Z').toLocaleDateString(undefined, {month: 'short', day: 'numeric', timeZone: 'UTC'});
         assert.equal(sample.dataset.time, String(Date.parse(daily[index].d + 'T12:00:00Z') / 1000));
         assert.equal(sample.getAttribute('tabindex'), '0'); assert.equal(sample.getAttribute('role'), 'img');
-        assert.equal(sample.getAttribute('aria-label'), `${date} · ${amounts[index]}`);
+        assert.equal(sample.getAttribute('aria-label'), `${date} ·\u00a0${amounts[index]}`);
         assert.equal(sample.querySelector('.chart-reading').getAttribute('aria-hidden'), 'true');
-        assert.equal(sample.querySelector('.chart-reading text').textContent, `${date} · ${amounts[index]}`);
+        assert.equal(sample.querySelector('.chart-reading text').textContent, `${date} ·\u00a0${amounts[index]}`);
       });
       const points = chart.querySelector('polyline').getAttribute('points').split(' ').map(point => point.split(',').map(Number));
       assert.equal(points.length, daily.length); assert.ok(points.flat().every(Number.isFinite));
@@ -867,7 +867,7 @@ test('Overview paper performance preserves disclosure and focus on polls and red
   assert.equal(sample.isConnected, false); sample = f.document.activeElement;
   assert.equal(performance.open, true); assert.equal(performance.querySelectorAll('.chart-sample').length, 3);
   assert.equal(sample.dataset.time, focusedTime); assert.equal(sample.focusOptions.preventScroll, true);
-  assert.ok(sample.getAttribute('aria-label').endsWith(' · −$3.00'));
+  assert.ok(sample.getAttribute('aria-label').endsWith(' ·\u00a0−$3.00'));
   data = dashboardData({paper: {daily: [{d: '2026-10-16', pnl: -4}, {d: '2026-10-19', pnl: 2}]}});
   poll(); await flush(); performance = f.root.querySelector('#paper-performance');
   assert.equal(performance.open, true); assert.equal(performance.querySelectorAll('.chart-sample').length, 2);
@@ -1030,8 +1030,8 @@ test('Overview paper context follows the whole displayed book through mode chang
       assert.equal(mode.contains(state.querySelector('.deployment-state')), false, name + ' status stays independent from mode');
     });
     const performanceMode = dashboard.querySelector('.performance-mode');
-    assert.equal(performanceMode.textContent, 'Paper · cumulative', name + ' source performance scope remains available');
-    assert.equal(performanceMode.querySelector('.performance-mode-prefix').textContent, 'Paper · ', name);
+    assert.equal(performanceMode.textContent, 'Paper ·\u00a0cumulative', name + ' source performance scope remains available');
+    assert.equal(performanceMode.querySelector('.performance-mode-prefix').textContent, 'Paper ·\u00a0', name);
     assert.equal(performanceMode.getAttribute('aria-hidden'), null, name);
     assert.equal(JSON.stringify(data), before, name + ' source records are immutable');
     assert.equal(postRequests(f).length, 0, name);
@@ -1156,7 +1156,7 @@ test('Overview attribution groups require adjacent known deployments and keep ti
       assert.ok(detail.querySelector('summary').getAttribute('aria-label').includes(source.title === beta
         ? 'Beta &lt;script&gt;unsafe&lt;/script&gt;' : alpha));
       assert.ok(detail.querySelector('summary').getAttribute('aria-label')
-        .endsWith(source.mode === 'live' ? ' · LIVE' : ' · Paper'));
+        .endsWith(source.mode === 'live' ? ' ·\u00a0LIVE' : ' ·\u00a0Paper'));
     });
   });
   assert.doesNotMatch(table.innerHTML, /<script>/);
@@ -1204,7 +1204,7 @@ test('Overview separates open cost and unrealized marks from collapsed realized 
   assert.equal(closedRow.querySelector('.position-cost'), null);
   const closedDetail = closedRow.querySelector('.position-details');
   assert.equal(closedDetail.tag, 'details'); assert.equal(closedDetail.open, false); assert.equal(closedDetail.dataset.position, 'closed-4');
-  assert.ok(closedDetail.querySelector('.sub-fig').textContent.includes(settled.ticker + ' · ' + settled.title));
+  assert.ok(closedDetail.querySelector('.sub-fig').textContent.includes(settled.ticker + ' ·\u00a0' + settled.title));
   assert.match(closedDetail.querySelector('.position-opened').textContent, /^Closed /);
   assert.equal(closedDetail.querySelector('.position-absolute').textContent,
     'Expires ' + new Date(settled.market_close_time).toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'long', hourCycle: 'h23'}));
@@ -1650,11 +1650,11 @@ test('Research index shows the research loop scoreboard, escaped, and keeps it o
   const html = details.innerHTML;
   assert.match(html, /Is research getting better\?/); assert.match(html, /Improving/);
   assert.match(html, /8% <span class="rsi-arrow">→<\/span> 33%/);
-  assert.match(html, /v2<\/b> on trial · 2 of 6 ideas reached the gate · 81% likely better/);
+  assert.match(html, /v2<\/b> on trial ·\u00a02 of 6 ideas reached the gate ·\u00a081% likely better/);
   assert.match(html, /feature missing/); assert.match(html, /calibration &lt;4h/);
   assert.match(html, /On paper against the live book: 2 passed strategies, 1 trading, 12 round trips, net −\$1\.50, losing money where the backtest expected a profit/);
-  assert.match(html, /3 of 20 ideas reached the gate · on paper 12 trips, −\$1\.50/);
-  assert.match(html, /order-book feature · flow_imb_60s<\/b> · idea re-tested · <a href="\/research\/44">session<\/a>/);
+  assert.match(html, /3 of 20 ideas reached the gate ·\u00a0on paper 12 trips, −\$1\.50/);
+  assert.match(html, /order-book feature ·\u00a0flow_imb_60s<\/b> ·\u00a0idea re-tested ·\u00a0<a href="\/research\/44">session<\/a>/);
   assert.match(html, /For: Flow &lt;b&gt;leads&lt;\/b&gt;/);
   assert.ok(html.includes('&lt;script&gt;')); assert.doesNotMatch(html, /<script>/);
   details.open = true;
@@ -1908,13 +1908,13 @@ test('Explore keeps duplicate contracts distinct through row rotation while uniq
   const hostile = contract('KX"QUOTE"<ticker>&', ' Price "<img src=x>" & forecast ', ' Above <script>unsafe</script> ', {s: 'KX"QUOTE"<series>&', bid: .61, ask: .63, v24: 12, oi: 5});
   const renamed = Object.freeze({...b, su: 'Below $100,000'});
   const expected = new Map([
-    [a.t, ['Bitcoin price', 'Above $100,000', 'Bitcoin price · Above $100,000', ['52¢', '1,200', '4'], '&gt; $100,000']],
-    [b.t, ['Bitcoin price', 'Above $100,000', 'Bitcoin price · Above $100,000', ['68¢', '8', '2'], '&gt; $100,000']],
-    [unique.t, ['Rain in Seattle?', 'At least 1 inch', 'Rain in Seattle? · At least 1 inch', ['25¢', '0', '0']]],
+    [a.t, ['Bitcoin price', 'Above $100,000', 'Bitcoin price ·\u00a0Above $100,000', ['52¢', '1,200', '4'], '&gt; $100,000']],
+    [b.t, ['Bitcoin price', 'Above $100,000', 'Bitcoin price ·\u00a0Above $100,000', ['68¢', '8', '2'], '&gt; $100,000']],
+    [unique.t, ['Rain in Seattle?', 'At least 1 inch', 'Rain in Seattle? ·\u00a0At least 1 inch', ['25¢', '0', '0']]],
     [subtitle.t, ['Subtitle only', null, 'Subtitle only', ['—', '0', '8']]],
     [fallback.t, [fallback.t, null, fallback.t, ['12¢', '2', '9']]],
     [hostile.t, ['Price &quot;&lt;img src=x&gt;&quot; &amp; forecast', 'Above &lt;script&gt;unsafe&lt;/script&gt;',
-      'Price &quot;&lt;img src=x&gt;&quot; &amp; forecast · Above &lt;script&gt;unsafe&lt;/script&gt;', ['62¢', '12', '5']]],
+      'Price &quot;&lt;img src=x&gt;&quot; &amp; forecast ·\u00a0Above &lt;script&gt;unsafe&lt;/script&gt;', ['62¢', '12', '5']]],
   ]);
   let markets = Object.freeze([a, b, unique, subtitle, fallback, hostile]);
   const f = frontend({fetchImpl: path => {
@@ -1925,11 +1925,11 @@ test('Explore keeps duplicate contracts distinct through row rotation while uniq
     const rows = f.root.querySelectorAll('#xbody tbody tr'); assert.equal(rows.length, markets.length);
     rows.forEach((row, index) => {
       const m = markets[index], link = row.querySelector('a.market-name');
-      const [title, sub, label, amounts, display] = m === renamed ? ['Bitcoin price', 'Below $100,000', 'Bitcoin price · Below $100,000', ['68¢', '8', '2'], '&lt; $100,000'] : expected.get(m.t);
+      const [title, sub, label, amounts, display] = m === renamed ? ['Bitcoin price', 'Below $100,000', 'Bitcoin price ·\u00a0Below $100,000', ['68¢', '8', '2'], '&lt; $100,000'] : expected.get(m.t);
       const raw = m === hostile ? 'KX&quot;QUOTE&quot;&lt;ticker&gt;&amp;' : m.t;
       assert.equal(link.getAttribute('href'), '/explore?m=' + encodeURIComponent(m.t));
       assert.equal(link.getAttribute('title'), raw);
-      assert.equal(link.getAttribute('aria-label'), label === raw ? label : `${label} · ${raw}`);
+      assert.equal(link.getAttribute('aria-label'), label === raw ? label : `${label} ·\u00a0${raw}`);
       assert.equal(link.querySelector('strong').textContent, display || sub || title);
       if (sub) assert.equal(row.querySelector('.market-contract a'), link);
       else assert.equal(row.querySelector('.market-contract'), null);
@@ -1977,7 +1977,7 @@ test('Explore keeps every source event and contract independently legible when t
   assert.deepEqual(rows.map(row => row.querySelector('a.market-name').getAttribute('href')), markets.map(m => '/explore?m=' + encodeURIComponent(m.t)));
   assert.ok(rows.slice(0,5).every(row => !row.querySelector('.market-event').classList.contains('vh')));
   assert.equal(rows[1].querySelector('.market-event').textContent, 'Bitcoin 5pm');
-  assert.equal(rows[1].querySelector('a.market-name').getAttribute('aria-label'), 'Bitcoin 5pm · Above $91,000 · A-2');
+  assert.equal(rows[1].querySelector('a.market-name').getAttribute('aria-label'), 'Bitcoin 5pm ·\u00a0Above $91,000 ·\u00a0A-2');
   assert.equal(rows[3].querySelector('.market-event').classList.contains('vh'), false);
   assert.equal(rows[4].querySelector('.market-event').classList.contains('vh'), false);
   assert.equal(rows[5].querySelector('a.market-name strong').textContent, 'Bitcoin 5pm');
@@ -2000,10 +2000,10 @@ test('Explore keeps every source event and contract independently legible when t
   assert.equal(rows[6].querySelector('td').getAttribute('colspan'), '2');
   const contextual = rows[7].querySelectorAll('td'), hostile = rows[8].querySelectorAll('td');
   assert.equal(contextual.length, 8); assert.equal(hostile.length, 8);
-  assert.equal(contextual[1].textContent, 'Oct 19, 5pm ET · Source context', 'retain every actual context segment without inferring expiry');
+  assert.equal(contextual[1].textContent, 'Oct 19, 5pm ET ·\u00a0Source context', 'retain every actual context segment without inferring expiry');
   assert.equal(hostile[1].textContent, 'City &lt;script&gt;unsafe&lt;/script&gt; &amp; forecast');
   assert.equal(rows[7].querySelector('.market-event').getAttribute('title'), markets[7].ti);
-  assert.equal(rows[7].querySelector('a.market-name').getAttribute('aria-label'), markets[7].ti + ' · ' + markets[7].su + ' · F-1');
+  assert.equal(rows[7].querySelector('a.market-name').getAttribute('aria-label'), markets[7].ti + ' ·\u00a0' + markets[7].su + ' ·\u00a0F-1');
   assert.deepEqual(rows.slice(7).map(row => ['.yes-price', '.quote-bid', '.quote-ask', '.market-volume', '.market-interest'].map(selector => row.querySelector(selector).textContent)),
     [['41¢', '40¢', '42¢', '8', '2'], ['41¢', '40¢', '42¢', '8', '2']]);
   assert.doesNotMatch(f.root.querySelector('#xbody').innerHTML, /<script>|<unsafe>/);
@@ -2020,7 +2020,7 @@ test('Explore and Hot Markets compact conditions preserve strict versus inclusiv
   const links = f.root.querySelectorAll('a.market-name');
   assert.deepEqual(links.map(link => link.querySelector('strong').textContent), displays);
   links.forEach((link, index) => {
-    assert.equal(link.getAttribute('aria-label'), `Bitcoin · ${conditions[index]} · CONTRACT-${index}`);
+    assert.equal(link.getAttribute('aria-label'), `Bitcoin ·\u00a0${conditions[index]} ·\u00a0CONTRACT-${index}`);
     assert.equal(link.getAttribute('title'), `CONTRACT-${index}`);
     assert.equal(link.getAttribute('href'), `/explore?m=CONTRACT-${index}`);
   });
@@ -2030,8 +2030,8 @@ test('Explore and Hot Markets compact conditions preserve strict versus inclusiv
   const quotes = f.root.querySelectorAll('.hot-row');
   assert.deepEqual(quotes.map(row => row.querySelector('.hot-title > span').textContent), displays);
   quotes.forEach((row, index) => {
-    assert.equal(row.querySelector('.hot-title').getAttribute('title'), `Bitcoin · ${conditions[index]}`);
-    assert.ok(row.getAttribute('aria-label').startsWith(`Bitcoin · ${conditions[index]} · CONTRACT-${index} · 51¢`));
+    assert.equal(row.querySelector('.hot-title').getAttribute('title'), `Bitcoin ·\u00a0${conditions[index]}`);
+    assert.ok(row.getAttribute('aria-label').startsWith(`Bitcoin ·\u00a0${conditions[index]} ·\u00a0CONTRACT-${index} ·\u00a051¢`));
   });
   assert.equal(f.requests.length, requests, 'formatting source conditions performs no lookup');
   assert.equal(JSON.stringify(markets), before); assert.equal(postRequests(f).length, 0);
@@ -2198,11 +2198,11 @@ test('Hot Markets reports source snapshot age without changing quotes or perform
     s: 'KXBTC15M', bid: .51, ask: .53, last: .5, v24: 1200, h: Object.freeze([.48, .52])});
   const markets = Object.freeze([market]), cachedAt = f.S.hotAt, autopilot = f.S.ap;
   const cases = [
-    [new Date(Date.now() - 30000).toISOString(), false, /^Snapshot · just now$/],
-    [new Date(Date.now() - 240000).toISOString(), true, /^Stale · 4m ago$/],
+    [new Date(Date.now() - 30000).toISOString(), false, /^Snapshot ·\u00a0just now$/],
+    [new Date(Date.now() - 240000).toISOString(), true, /^Stale ·\u00a04m ago$/],
     [undefined, true, /^Snapshot time unavailable$/],
     ['not-a-timestamp', true, /^Snapshot time unavailable$/],
-    [new Date(Date.now() - 30000).toISOString(), false, /^Snapshot · just now$/],
+    [new Date(Date.now() - 30000).toISOString(), false, /^Snapshot ·\u00a0just now$/],
   ];
   for (const [at, old, label] of cases) {
     const snapshot = Object.freeze({markets, ...(at === undefined ? {} : {at})});
@@ -2215,7 +2215,7 @@ test('Hot Markets reports source snapshot age without changing quotes or perform
     assert.equal(freshness.getAttribute('title').includes('More than 3 minutes old'), Boolean(at && at !== 'not-a-timestamp' && old));
     assert.equal(rail.querySelector('.hot-price b').textContent, '52¢');
     assert.equal(rail.querySelector('.hot-delta').textContent, '+4¢');
-    assert.equal(rail.querySelector('.hot-vol').textContent, '1.2k · 24h');
+    assert.equal(rail.querySelector('.hot-vol').textContent, '1.2k ·\u00a024h');
     assert.equal(rail.querySelector('.hot-vol').getAttribute('title'), '24-hour volume');
     assert.equal(rail.querySelector('.hot-row').getAttribute('href'), 'https://kalshi.com/markets/kxbtc15m');
     assert.equal(f.S.hot, snapshot); assert.equal(JSON.stringify(snapshot), before);
@@ -2370,7 +2370,7 @@ test('deployment details hold realized P&L against the backtest pace for the sam
   await f.viewDashboard();
   const text = id => evidenceFor(f.root.querySelector('#dash-deps'), id).textContent;
   // $12 over 6 unseen trades = $2 a trade, so 5 closed trades -> +$10.00.
-  assert.ok(text(1).includes('Backtest pace +$10.00 for the same 5 trades · Unseen P&amp;L +$12.00'), text(1));
+  assert.ok(text(1).includes('Backtest pace +$10.00 for the same 5 trades ·\u00a0Unseen P&amp;L +$12.00'), text(1));
   assert.ok(!text(2).includes('Backtest pace')); assert.ok(!text(3).includes('Backtest pace'));
 });
 
@@ -2665,7 +2665,7 @@ test('the Overview autopilot card and panel show the last 7 days with real credi
   const card = f.root.querySelector('#dash-ap .ap-week').innerHTML;
   assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$0\.50 <small>real money<\/small><\/dd>/);
   assert.match(card, /<dt>Started on paper<\/dt><dd>3 strategies<\/dd>/);
-  assert.match(card, /<dt>Paper P&amp;L<\/dt><dd><span class="pos">\+\$1\.25<\/span> <small>paper, not real money · 1 closed trade<\/small><\/dd>/);
+  assert.match(card, /<dt>Paper P&amp;L<\/dt><dd><span class="pos">\+\$1\.25<\/span> <small>paper, not real money ·\u00a01 closed trade<\/small><\/dd>/);
   assert.doesNotMatch(card, /\$1\.75|\$0\.75/);  // never netted or summed
   await f.root.querySelector('#dash-ap [data-apcard="open"]').onclick(); await flush();
   const box = f.root.parent.querySelector('#autopilot-float');
@@ -2914,4 +2914,28 @@ test('the dead "Dig deeper" win card is gone, and phone tap targets stay 40px or
   assert.match(css, /\.research-ap button \{[^}]*padding: 10px 4px; margin: -10px -4px;/);
   assert.match(css, /\.ap-focus button \{[^}]*padding: 10px 4px; margin: -10px -4px -10px 0;/);
   assert.match(css, /\.rsidisc \.pipechev \{ position: absolute; right: 14px;/);
+});
+
+test('Meridian: separators wrap with the item after them, the phone tabs show which edge has more, stacked cells are named', () => {
+  const f = frontend();
+  // Every " · " in the bundle binds to the next item (" · "), so a wrapped line never ends on a dot.
+  // Only comments and the line that splits Kalshi's own titles on the plain separator keep it.
+  const loose = source.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l) && !l.includes('split(') && / · | \\u00b7 /.test(l.replace(/\s\/\/\s.*$/, '')));
+  assert.deepEqual(loose, []);
+  // The tab row marks the edges that have more tabs past them, and drops the mark once you reach the end.
+  const nav = new Element('nav', {class: 'services'}), tabs = new Element('div', {class: 'services-in'});
+  nav.appendChild(tabs);
+  Object.assign(tabs, {scrollWidth: 700, clientWidth: 390, scrollLeft: 0});
+  f.tabEdges(tabs);
+  assert.equal(nav.classes.has('more-r'), true); assert.equal(nav.classes.has('more-l'), false);
+  tabs.scrollLeft = 150; tabs.dispatchEvent({type: 'scroll'});
+  assert.equal(nav.classes.has('more-r'), true); assert.equal(nav.classes.has('more-l'), true);
+  tabs.scrollLeft = 310; tabs.dispatchEvent({type: 'scroll'});
+  assert.equal(nav.classes.has('more-r'), false); assert.equal(nav.classes.has('more-l'), true);
+  Object.assign(tabs, {scrollWidth: 390, scrollLeft: 0}); tabs.dispatchEvent({type: 'scroll'});  // a wide screen: no hint
+  assert.equal(nav.classes.has('more-r'), false); assert.equal(nav.classes.has('more-l'), false);
+  // A strategy card's status cell is labelled; the Funds paper ledger names its cells like the credits ledger.
+  assert.match(f.strategySlip({id: 1, title: 'T', thesis: '', market: 'btc15m', status: 'passed', out_of_sample: {pnl: 1, trades: 3, win_rate: .5}}, {}),
+    /<td class="act st" data-lab="Status">/);
+  assert.match(source, /<td class="hint lead-cell" data-lab="When">\$\{when\(r\.created_at\)\}<\/td><td class="name" data-lab="What">[^\n]*data-lab="Amount">/);
 });
