@@ -2178,6 +2178,9 @@
             if (n) n.status = d.status === 'passed' ? 'pass' : d.status === 'rejected' ? 'rej' : 'void';
           }
         });
+        // A finished run's last phase ("Recording the verdict") read as still working; the live
+        // badge already says Finished / Cancelled / Stopped, as on Meridian.
+        phaseEl.hidden = !['queued', 'running', 'paused'].includes(runState);
         paintStages(); paintLive(); tree();
       },
     };

@@ -514,6 +514,18 @@ test('the current research run renders a safe streaming log and its paused statu
   assert.ok(f.root.querySelector('#resume')); assert.match(f.root.querySelector('#runpulse').innerHTML, /resume/);
 });
 
+test('a finished run hides its last loop phase instead of reading as still working', async () => {
+  for (const [status, hidden] of [['succeeded', true], ['running', false]]) {
+    const run = {id: 9, prompt: 'Idea', status, market: 'btc15m', created_at: '2026-10-17T10:00:00Z'};
+    const events = [{id: 1, kind: 'verdict', message: 'REJECTED – Idea', data: {title: 'Idea', status: 'rejected'}, created_at: '2026-10-17T10:03:00Z'}];
+    const f = frontend({fetchImpl: path => { assert.ok(path.startsWith('/api/runs/9')); return response({run, events}); }});
+    await f.viewRun(9);
+    const phase = f.root.querySelector('#rsiobs').querySelector('[data-phase]');
+    assert.equal(phase.hidden, hidden, status);
+    f.clearTimers();
+  }
+});
+
 test('the grouped market picker keeps Agent choice visible while filters hide unmatched categories', () => {
   const f = frontend();
   f.S.me.markets = Array.from({length: 9}, (_, i) => ({key: i === 0 ? 'eth15m' : 'custom' + i,
