@@ -368,6 +368,20 @@ test('only the admin view shows backtest-history lag on the dashboard status lin
   assert.match(f.root.querySelector('#boardbody').innerHTML, /No backtest history yet/);
 });
 
+test('while autopilot is off, Turn on autopilot is the only primary button on the dashboard', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(emptyDashboard());
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  await f.viewDashboard(); await flush();
+  const head = () => f.root.querySelector('#boardbody .statusline').innerHTML;
+  assert.match(head(), /<a class="btn" href="\/research">New research<\/a>/);
+  f.S.me.user.autopilot = true;
+  await f.viewDashboard(); await flush();
+  assert.match(head(), /<a class="btn primary" href="\/research">New research<\/a>/);
+});
+
 test('the dashboard offers one-click autopilot, and once on shows what it is doing and the paper P&L', async () => {
   const f = frontend({fetchImpl: (path, options) => {
     if (path === '/api/dashboard') return response(emptyDashboard());
