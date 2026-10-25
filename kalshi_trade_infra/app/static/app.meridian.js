@@ -1477,10 +1477,7 @@
       const firstPaused = d.deployments.find((x) => x.status === 'paused');  // the status line's "paused, needs you" jumps here
       const deps = d.deployments.length
         ? `<div class="dep-register">${d.deployments.map((x) => deploymentMonitor(x, x === firstPaused)).join('')}</div>`
-        // Say what lands here; with autopilot on, "New session" asked for work it is already doing.
-        : (S.me.user && S.me.user.autopilot)
-          ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is researching. Strategies that pass every gate land here on paper first, with no real money.</p><a class="btn" href="/research">See its research</a></div>`
-          : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above and the strategies that pass every gate on data they never saw land here on their own, on paper first. Or start a session yourself.</p><a class="btn" href="/research?new=1">New session</a></div>`;
+        : `<div id="deps-empty" data-on="${S.me.user && S.me.user.autopilot ? 1 : 0}">${depsEmpty(S.me.user && S.me.user.autopilot)}</div>`;
       const positionMarket = r => (S.me.markets || []).find(m => m.series && r.ticker.startsWith(m.series + '-'));
       const positions = (rows, closed) => rows.map((r) => {
         const market = positionMarket(r);
@@ -3430,8 +3427,10 @@
   // (S.ap) plus the dashboard's paper book (S.dashPaper), so it never needs its own request.
   function paintDashAp() {
     const host = document.getElementById('dash-ap');
-    if (!host || !S.me || !S.me.user) return;
+    if (!S.me || !S.me.user) return;
     const d = S.ap, on = d ? d.autopilot : !!S.me.user.autopilot;
+    syncApCopy(on);
+    if (!host) return;
     if (!on) {
       host.className = 'apcard';
       host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>Autopilot off</span>
@@ -3470,6 +3469,20 @@
     if (box) renderAutopilot(box, S.ap);
   }
   // One-click autopilot line for empty states; the [data-research-ap] click handler turns it on.
+  // The empty Deployed box speaks to the autopilot switch; with autopilot on, its button asked for
+  // work the autopilot is already doing. It follows the switch live (syncApCopy).
+  function depsEmpty(on) {
+    return on
+      ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is researching. Strategies that pass every gate land here on paper first, with no real money.</p><a class="btn" href="/research">See its research</a></div>`
+      : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above and the strategies that pass every gate on data they never saw land here on their own, on paper first. Or start a session yourself.</p><a class="btn" href="/research?new=1">New session</a></div>`;
+  }
+  // Copy that depends on the switch follows it without a reload, so turning autopilot on doesn't leave
+  // "Turn on autopilot above" or a Turn on nudge under a card that already says it's on.
+  function syncApCopy(on) {
+    const box = document.getElementById('deps-empty');
+    if (box && box.dataset.on !== (on ? '1' : '0')) { box.dataset.on = on ? '1' : '0'; box.innerHTML = depsEmpty(on); }
+    if (document.body) document.body.querySelectorAll('.research-ap').forEach((p) => { p.hidden = on; });
+  }
   function apNudge(lead, rest) {
     return S.me && S.me.user && !S.me.user.autopilot ? `<p class="research-ap">${lead} <button type="button" data-research-ap>Turn on autopilot</button> ${rest}</p>` : '';
   }
@@ -3480,7 +3493,7 @@
     busy(b, async () => {
       await apTurnOn();
       const p = b.closest('.research-ap');
-      if (p && S.me.user.autopilot) p.textContent = 'Autopilot is on. Every idea it tries shows up in the autopilot panel.';
+      if (p && S.me.user.autopilot) { p.textContent = 'Autopilot is on. Every idea it tries shows up in the autopilot panel.'; p.hidden = false; }
     });
   });
   async function apTurnOn() {
