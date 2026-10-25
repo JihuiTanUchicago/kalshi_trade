@@ -196,3 +196,14 @@ def test_resume_count_at_cap_is_not_reclaimed():
     repo.fail_abandoned_runs(cur, timedelta(seconds=90), max_resumes=2)
     assert all("status='queued'" not in s for s, _ in cur.status_updates)   # at the cap -> not reclaimed
     assert any("status='stopped'" in s for s, _ in cur.status_updates)       # terminal = STOPPED, not failed
+
+
+def test_a_stopped_run_counts_its_dropped_theses_as_explored():
+    """Prod run 2908 developed 14 theses (all dropped) and its card said it was 'interrupted before it
+    explored a hypothesis'. Explored = developed survivors + drops, as run_research reports it."""
+    rows = [{"id": 1, "kind": "research", "resume_count": 3,
+             "checkpoint_json": json.dumps({"tried": [], "dropped_n": 14})}]
+    cur = _AbCur(rows)
+    repo.fail_abandoned_runs(cur, timedelta(seconds=90), max_resumes=3)
+    sql, params = next((s, p) for s, p in cur.status_updates if "status='stopped'" in s)
+    assert params[0].startswith("Explored 14 hypotheses") and params[1] == 14
