@@ -1719,6 +1719,7 @@ body.landing-body .apf { display: none; }
 .billing-pricing summary { cursor: pointer; }
 .billing-pricing p { margin-top: 8px; max-width: 65ch; }
 #bfigs.measure { align-items: end; }
+@media (max-width: 760px) { #bfigs.measure { align-items: start; } }  /* two columns on a phone: line the labels up, not the figures */
 #bfigs .fig { font-size: 20px; font-weight: 500; }
 #bfigs > .m:first-child .fig { font-size: 32px; font-weight: 600; letter-spacing: -.025em; }
 #sfigs { border: 0; margin: 0; }

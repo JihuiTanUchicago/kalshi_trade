@@ -293,6 +293,7 @@ test('Funds preserves account controls and history without mounting unavailable 
   const output = f.root.querySelector('main').innerHTML;
   assert.match(output, /funds-col funds-manage/); assert.match(output, /funds-col funds-history/);
   assert.match(output, /Paper history/); assert.match(output, /&lt;script&gt;ledger&lt;\/script&gt;/);
+  assert.match(output, /class="table stack t-ledger"/);  // statement rows on a phone, like the credit ledger
   assert.doesNotMatch(output, /<script>/);
   assert.equal(mounts.length, 0); assert.equal(f.root.querySelector('#broker-connections'), null);
   assert.ok(f.root.querySelector('#kalshi')); assert.ok(f.root.querySelector('#demo')); assert.ok(f.root.querySelector('#paper'));
