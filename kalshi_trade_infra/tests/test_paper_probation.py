@@ -18,7 +18,7 @@ def _patch(monkeypatch, cands, deps=(), candidates=(), on=True):
     monkeypatch.setattr(agent.rr, "underpowered_candidates", lambda cur, uid, n: [c for c in cands if c["p_value"] is None])
     monkeypatch.setattr(agent.repo, "list_deployments", lambda cur, uid, include_stopped=False: list(deps))
     monkeypatch.setattr(agent.repo, "get_strategy", lambda cur, uid, sid: {
-        "id": sid, "market": next(c["market"] for c in cands if c["strategy_id"] == sid),
+        "id": sid, "market": next(c.get("strat_market", c["market"]) for c in cands if c["strategy_id"] == sid),
         "title": "S%d" % sid, "spec": dict(SPEC), "status": "rejected",
         "result": {"out_of_sample": {"trades": 30, "pnl": 4.0 if sid % 2 else -1.0}}})
     monkeypatch.setattr(agent, "_is_deployment_candidate", lambda cur, sid: sid in candidates)
@@ -133,3 +133,13 @@ def test_probation_ignores_the_research_focus_and_takes_p_up_to_035(monkeypatch)
     agent.auto_paper_probation(None, dict(USER, autopilot_focus='["sports"]'))
     assert made == [(1, "sol_daily", "paper")]
     assert agent.PROBATION_MAX_P >= 0.34
+
+
+def test_a_pooled_near_miss_goes_to_paper_on_its_own_market(monkeypatch):
+    """A pooled rule's experiment is filed under its FDR stream ("btc_daily+eth_daily+..."), which is
+    no market; it still goes to paper, trading as the plain rule on the strategy's own market."""
+    pooled = "btc_daily+eth_daily+sol_daily+xrp_daily"
+    made, _ = _patch(monkeypatch, [dict(_cand(1, market=pooled, p=None), n_trades=40, strat_market="btc_daily"),
+                                   dict(_cand(3, market=pooled), strat_market="doge15m")])
+    agent.auto_paper_probation(None, USER)
+    assert made == [(1, "btc_daily", "paper")]   # #3's market is not in its experiment's stream
