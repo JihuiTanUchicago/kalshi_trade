@@ -153,6 +153,11 @@ RUN_STALL_SECONDS = max(30, int(os.getenv("TAU_RUN_STALL_SECONDS", "150")))
 # silent for minutes. Proposals went 240-310s without a token and the run was reaped mid-call while
 # healthy, so a call in flight counts as progress for up to this long.
 MODEL_CALL_GRACE_SECONDS = max(60, int(os.getenv("TAU_MODEL_CALL_GRACE_SECONDS", "900")))
+# Same for one research-fold test: a pooled code strategy loads a merged multi-market window and runs
+# the sandbox (fit + signals, each wall-killed at 120s) over it, silent for minutes. Prod run 2908 was
+# reaped at its resume cap mid-backtest on 2026-10-25 while healthy. Keyed by run id (see _busy).
+BACKTEST_GRACE_SECONDS = max(60, int(os.getenv("TAU_BACKTEST_GRACE_SECONDS", "600")))
+_BUSY_UNTIL: Dict[int, float] = {}
 # The slot-freeing guard is the ATTEMPT bound below (work done), NOT a wall clock: a research session
 # has no time limit — a long run that keeps making progress is fine, and being stopped is never a
 # "failure" (see the `stopped` terminal status), so there is deliberately no RUN_MAX_SECONDS here.
@@ -2297,7 +2302,8 @@ def _heartbeat_pump(run_id: int, progress: List[float], stop: threading.Event) -
         return
     try:
         while not stop.wait(RUN_HEARTBEAT_EVERY):
-            if time.monotonic() - progress[0] > RUN_STALL_SECONDS:
+            last = max(progress[0], _BUSY_UNTIL.get(run_id, 0.0) - RUN_STALL_SECONDS)
+            if time.monotonic() - last > RUN_STALL_SECONDS:
                 continue  # main thread silent too long -> stop beating so the watchdog reaps it
             try:
                 with hb_conn.cursor() as c:
@@ -2709,8 +2715,28 @@ def _span_words(ds: backtest.Dataset) -> str:
     return "%d days" % round(days)
 
 
+@contextmanager
+def _busy(run_id: Optional[int], seconds: float):
+    """The run's main thread is in a bounded long step: the heartbeat pump keeps beating up to
+    `seconds` without progress stamps (a wedge inside it is still reaped after that)."""
+    if run_id is None:
+        yield
+        return
+    _BUSY_UNTIL[run_id] = time.monotonic() + seconds
+    try:
+        yield
+    finally:
+        _BUSY_UNTIL.pop(run_id, None)
+
+
 def _test_in_sample(h: Dict, ds: backtest.Dataset, partition: Dict, log, round_no: int,
                     cur=None, merged_cache: Optional[Dict] = None, run_id: Optional[int] = None) -> Dict:
+    with _busy(run_id, BACKTEST_GRACE_SECONDS):
+        return _test_in_sample_inner(h, ds, partition, log, round_no, cur, merged_cache, run_id)
+
+
+def _test_in_sample_inner(h: Dict, ds: backtest.Dataset, partition: Dict, log, round_no: int,
+                          cur=None, merged_cache: Optional[Dict] = None, run_id: Optional[int] = None) -> Dict:
     # The in-research "OOS" the agent iterates on is a PURGED walk-forward research fold (fully
     # inside Research) — a leak-free sandbox it may look at freely, not the held-out validation
     # window. Purge/embargo come from the frozen partition's contract-duration horizon (§B.5).

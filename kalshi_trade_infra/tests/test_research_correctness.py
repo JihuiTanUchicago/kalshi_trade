@@ -224,6 +224,43 @@ def test_heartbeat_pump_beats_while_fresh_and_stops_when_stale(monkeypatch):
         th.join(1)
 
 
+def test_heartbeat_pump_keeps_beating_through_a_long_research_fold_test(monkeypatch):
+    """Prod 2026-10-25: run 2908 went silent >4 min inside one pooled code-strategy backtest and was
+    reaped while healthy. A research-fold test is bounded (sandbox wall kills), so it gets a grace."""
+    beats = []
+
+    class _Cur:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    class _Conn:
+        def cursor(self): return _Cur()
+        def commit(self): pass
+        def rollback(self): pass
+        def close(self): pass
+
+    import data_pipeline.common as dpc
+    monkeypatch.setattr(dpc, "get_db_conn", lambda: _Conn())
+    monkeypatch.setattr(agent.repo, "heartbeat", lambda c, rid: beats.append(rid))
+    monkeypatch.setattr(agent, "RUN_HEARTBEAT_EVERY", 0.02)
+    monkeypatch.setattr(agent, "RUN_STALL_SECONDS", 0.1)
+    progress = [time.monotonic() - 10]    # the main thread stamped nothing for a long while
+    stop = threading.Event()
+    th = threading.Thread(target=agent._heartbeat_pump, args=(8, progress, stop), daemon=True)
+    th.start()
+    try:
+        with agent._busy(8, 0.4):
+            time.sleep(0.25)
+            assert beats, "a run inside a bounded backtest must be beaten"
+        time.sleep(0.15)
+        mid = len(beats)
+        time.sleep(0.2)
+        assert len(beats) - mid <= 1 and 8 not in agent._BUSY_UNTIL   # grace over: a wedge is reaped again
+    finally:
+        stop.set()
+        th.join(1)
+
+
 def test_sports_profile_says_a_spread_or_total_price_is_still_a_probability():
     # Prod 2026-10-24: runs on NFL spread/total/prop ladders dropped ideas as "the mid is a point
     # handicap, not a probability" (the old profile called every sports market a moneyline), and a
