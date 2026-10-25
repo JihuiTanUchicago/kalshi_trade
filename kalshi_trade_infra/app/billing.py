@@ -3,8 +3,8 @@
 Model (OpenRouter-style):
   - Credits are real USD, separate from the paper trading balance. New users get
     a one-time FREE_BONUS of free credits.
-  - Agent usage (research + chat) is billed per token at Anthropic's published
-    list price for the model used (`PRICES`), deducted from the balance.
+  - Agent usage (research + chat) is billed per token at the model's published
+    list price (`PRICES`) times USAGE_MARGIN, deducted from the balance.
   - Topping up charges the card for the credits plus a TOPUP_FEE (our revenue).
   - When the balance falls to AUTORELOAD_THRESHOLD or below, a saved card is
     charged off-session to add AUTORELOAD_AMOUNT (if auto-reload is on).
