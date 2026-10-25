@@ -3312,7 +3312,11 @@
     shell('/explore', boardTitle('Market'), loading(300));
     let d;
     try { d = await api('/api/explore/market?ticker=' + encodeURIComponent(ticker)); }
-    catch (e) { root.querySelector('main').innerHTML = notice(e.message, 'bad') + `<p style="margin-top:12px"><a class="btn sm" href="/explore">← Back to Explore</a></p>`; return; }
+    catch (e) {
+      root.querySelector('main').innerHTML = notice(e.message, 'bad') + `<p style="margin-top:12px"><button class="btn sm" type="button" id="mk-retry">Try again</button> <a class="btn sm" href="/explore">← Back to Explore</a></p>`;
+      root.querySelector('#mk-retry').onclick = () => viewMarketDetail(ticker);
+      return;
+    }
     const mid = midOf({ bid: d.yes_bid, ask: d.yes_ask, last: d.last });
     const label = mktLabel({ ti: d.title, su: d.sub, t: d.ticker });
     const closes = d.close_time ? new Date(d.close_time).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';

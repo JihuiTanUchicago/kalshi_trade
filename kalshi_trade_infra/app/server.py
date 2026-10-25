@@ -2461,7 +2461,11 @@ def explore_market(ctx: Ctx):
         cs = api_get("/series/%s/markets/%s/candlesticks" % (series, ticker),
                      {"start_ts": start, "end_ts": end, "period_interval": period}).get("candlesticks") or []
     except Exception as e:
-        raise ApiError(502, "Couldn't load this market's history: %s" % e)
+        # The raw error named the proxy and Kalshi's host to the user; keep that in the log.
+        if " failed 404:" in str(e):  # api_get's RuntimeError carries the status in its text
+            raise ApiError(404, "Kalshi has no market %s." % ticker)
+        print("[explore] market %s history failed: %r" % (ticker, e), flush=True)
+        raise ApiError(502, "Kalshi didn't send this market's history just now. Try again in a minute.")
     points = []
     for c in cs:
         price = (c.get("price") or {})

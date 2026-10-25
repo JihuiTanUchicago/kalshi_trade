@@ -123,7 +123,7 @@ function frontend({fetchImpl, brokerMount} = {}) {
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, trCurve, trackRecordPanel};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, trCurve, trackRecordPanel, viewMarketDetail};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -588,6 +588,20 @@ test('Explore shows tenth-of-a-cent prices instead of rounding them to 0¢', asy
   await f.viewExplore(); await flush();
   const html = f.root.querySelector('#xbody').innerHTML;
   assert.match(html, />0\.1¢</); assert.match(html, />37¢</); assert.doesNotMatch(html, />0¢</);
+});
+
+test('a market Kalshi did not answer for offers Try again and loads on retry', async () => {
+  let calls = 0;
+  const f = frontend({fetchImpl: path => {
+    if (!path.startsWith('/api/explore/market?')) return response({});
+    return ++calls === 1 ? response({error: "Kalshi didn't send this market's history just now. Try again in a minute."}, 502)
+      : response({ticker: 'KXNBAGAME-X', title: 'Minnesota wins', points: [], yes_bid: .5, yes_ask: .51, last: .5});
+  }});
+  await f.viewMarketDetail('KXNBAGAME-X'); await flush();
+  assert.match(f.root.querySelector('main').innerHTML, /Try again in a minute/);
+  f.root.querySelector('#mk-retry').onclick(); await flush(); await flush();
+  assert.equal(calls, 2);
+  assert.doesNotMatch(f.root.querySelector('main').innerHTML, /mk-retry/);
 });
 
 test('a track record whose trades all closed in one minute spaces them one per trade', () => {
