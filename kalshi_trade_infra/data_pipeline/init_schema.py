@@ -130,7 +130,8 @@ DDL = [
       source_status VARCHAR(32) NOT NULL,
       raw_json JSON NOT NULL,
       UNIQUE KEY uq_tqf_market_minute (market_ticker, snapshot_minute_utc),
-      INDEX idx_feature1m_event (event_ticker, snapshot_minute_utc)
+      INDEX idx_feature1m_event (event_ticker, snapshot_minute_utc),
+      INDEX idx_tqf_minute (snapshot_minute_utc)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     """
@@ -195,7 +196,8 @@ DDL = [
       raw_json JSON NOT NULL,
       UNIQUE KEY uq_mf_market_minute (market_ticker, snapshot_minute_utc),
       INDEX idx_model_features_event (event_ticker, snapshot_minute_utc),
-      INDEX idx_model_features_guard (guard_status, snapshot_minute_utc)
+      INDEX idx_model_features_guard (guard_status, snapshot_minute_utc),
+      INDEX idx_model_features_eligible (model_eligible, snapshot_minute_utc)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     """
@@ -545,6 +547,11 @@ def main() -> None:
             # table, ~1M+ rows) on every /health and every "/" page load,
             # 10-14s each, part of the same 2026-09-13 incident.
             ("forward_quotes", "idx_fq_time_only", "ALTER TABLE forward_quotes ADD INDEX idx_fq_time_only (snapshot_time_utc)"),
+            # The per-minute builder and sim reads filter on the minute alone (or model_eligible),
+            # which the (market_ticker, minute) keys can't serve: ~5s full scans every minute
+            # (RDS slow log, 2026-10-25). app.schema adds these too, since it runs on every deploy.
+            ("trade_quote_features_1m", "idx_tqf_minute", "ALTER TABLE trade_quote_features_1m ADD INDEX idx_tqf_minute (snapshot_minute_utc)"),
+            ("model_features_1m", "idx_model_features_eligible", "ALTER TABLE model_features_1m ADD INDEX idx_model_features_eligible (model_eligible, snapshot_minute_utc)"),
         ):
             cur.execute(
                 """

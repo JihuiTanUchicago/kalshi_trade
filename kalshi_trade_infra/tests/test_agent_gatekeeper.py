@@ -366,13 +366,29 @@ def test_dropped_theses_reads_new_and_legacy_drop_events():
     out = repo.dropped_theses(cur, 1, "kxcopperd")
     # a spec the validator rejected was never tested, so it is not a dead end to warn about
     assert out == [{"title": "New", "why": "w"}, {"title": "Legacy FLB", "why": "loses in all bins"}]
-    assert cur.calls[1][1] == (9, 7, 20) and "IN (%s,%s)" in cur.calls[1][0]
-    assert "LIKE 'DROPPED %%'" in cur.calls[1][0]
+    assert tuple(cur.calls[1][1]) == (9, 7) and "IN (%s,%s)" in cur.calls[1][0]
+    assert "LIKE 'DROPPED %%'" in cur.calls[1][0] and "ORDER BY" not in cur.calls[1][0]
 
     class Empty(Cur):
         def fetchall(self):
             return []
     assert repo.dropped_theses(Empty(), 1, "m") == []
+
+
+def test_dropped_theses_newest_first_and_capped_without_sql_ordering():
+    """Sorting moved out of SQL (ORDER BY id DESC LIMIT made MySQL scan every event by PK)."""
+    from app import repository as repo
+
+    class Cur:
+        def __init__(self):
+            self.calls = []
+        def execute(self, sql, args):
+            self.calls.append((sql, args))
+        def fetchall(self):
+            if len(self.calls) == 1:
+                return [{"id": 9}]
+            return [{"id": i, "message": "x", "data_json": {"title": "T%d" % i, "why": "w"}} for i in (3, 11, 7)]
+    assert [d["title"] for d in repo.dropped_theses(Cur(), 1, "m", limit=2)] == ["T11", "T7"]
 
 
 def test_mechanism_buckets_put_renamed_ideas_together():
@@ -441,7 +457,7 @@ def test_sibling_dropped_theses_reads_runs_on_the_given_markets():
     assert repo.sibling_dropped_theses(cur, 1, ["eth15m", "xrp15m"]) == [
         {"market": "xrp15m", "title": "FLB", "why": "loses"}]
     assert cur.calls[0][1] == (1, "eth15m", "xrp15m", repo.SIBLING_RECENT_RUNS)
-    assert cur.calls[1][1] == (9, 7, 400)
+    assert tuple(cur.calls[1][1]) == (9, 7)
     assert repo.sibling_dropped_theses(cur, 1, []) == []
 
 
