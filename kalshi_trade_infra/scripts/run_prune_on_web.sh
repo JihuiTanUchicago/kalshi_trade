@@ -12,8 +12,11 @@
 # ahead of /opt/kalshi on PYTHONPATH, with the box's own env files. Full log: /tmp/prune-<sha>/<mode>.log
 set -euo pipefail
 
-AWS_PROFILE=${AWS_PROFILE-agent}
+AWS_PROFILE=${AWS_PROFILE-agent}   # local dev defaults to the `agent` profile; CI sets AWS_PROFILE="" to use env creds
 AWS_REGION=${AWS_REGION:-us-east-1}
+# The AWS CLI treats an empty AWS_PROFILE as a profile named "" and fails, so unset it in CI.
+if [[ -n "${AWS_PROFILE}" ]]; then export AWS_PROFILE; else unset AWS_PROFILE; fi
+DB_INSTANCE=${DB_INSTANCE:-kalshi-trade-mysql}
 INSTANCE_ID=${INSTANCE_ID:-i-077d6f7873e7836ba}
 BUCKET=${BUCKET:-kalshi-trade-artifacts-568386354218-us-east-1}
 BOX_DIR=${BOX_DIR:-/opt/kalshi}
@@ -34,6 +37,17 @@ case "$MODE" in
   *) echo "--mode must be dry-run, apply or drop-old"; exit 2 ;;
 esac
 [[ "$STOP_AT" =~ ^[0-9]{2}:[0-9]{2}$ ]] || { echo "--stop-at must be HH:MM"; exit 2; }
+
+# Never start while RDS is modifying/rebooting (e.g. an instance resize): a rebuild would fail
+# half way, or a reconnect would land on a restarting instance. If these keys can't describe RDS,
+# say so and carry on (the script's own DB connect still fails fast on a down instance).
+DB_STATUS=$(aws rds describe-db-instances --region "$AWS_REGION" --db-instance-identifier "$DB_INSTANCE" \
+  --query 'DBInstances[0].DBInstanceStatus' --output text 2>/dev/null || echo unknown)
+if [[ "$DB_STATUS" == unknown ]]; then
+  echo "[prune] could not read $DB_INSTANCE status; continuing"
+elif [[ "$DB_STATUS" != available ]]; then
+  echo "[prune] $DB_INSTANCE is '$DB_STATUS', not available; re-run once it is"; exit 1
+fi
 
 ROOT=$(git rev-parse --show-toplevel)
 SHA=$(git -C "$ROOT" rev-parse --short "$REF")
