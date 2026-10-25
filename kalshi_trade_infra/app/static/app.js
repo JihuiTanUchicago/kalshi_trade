@@ -3006,7 +3006,7 @@
     }
     if (snap.kind === 'deployment') {
       return `<div class="snap"><div class="snap-head"><b>${esc(snap.title)}</b>${mark(snap.mode === 'live' ? 'running' : 'running', snap.mode === 'live')}</div>
-        <div class="snap-meta">${esc(marketShort(snap.market))} · ${snap.mode === 'live' ? 'live' : 'paper'} · realized ${usd(snap.realized_pnl, true)} · ${snap.closed_trades} trades</div></div>`;
+        <div class="snap-meta">${esc(marketShort(snap.market))} · ${snap.mode === 'live' ? 'live' : snap.mode === 'demo' ? 'demo' : 'paper'} · realized ${usd(snap.realized_pnl, true)} · ${snap.closed_trades} trades</div></div>`;
     }
     return '';
   }
