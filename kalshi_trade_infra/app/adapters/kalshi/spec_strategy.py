@@ -23,7 +23,7 @@ from data_pipeline.architecture.execution_kernel import reservation_price
 from trading_core.domain import ExecutionReport, Instrument, InstrumentId, OrderIntent, Portfolio, Quote, Side
 from trading_core.engine import (CrossTheTouch, QuoteFillVenue, RiskChain, TradingLoop, max_open_positions,
                                  one_position_per_symbol, position_stop)
-from trading_core.ports import DecisionContext, FeeModel, FixedClock, Venue
+from trading_core.ports import DecisionContext, FeeModel, FixedClock, ScaledFees, Venue
 
 
 class SpecStrategy:
@@ -33,10 +33,14 @@ class SpecStrategy:
     ``next_bar=True`` emits for a fill on the next bar: exits carry no limit (they take that bar's
     bid), entries carry their stake and fair value for ``KalshiNextBarFill`` to size and cap at fill
     time, and the position count and one-per-ticker rules are enforced at fill time by the risk
-    chain instead of here, exactly where the legacy backtest enforces them."""
+    chain instead of here, exactly where the legacy backtest enforces them.
+
+    ``slippage`` (a backtest cost what-if) sizes same-bar entries at the price they will really pay,
+    the ask plus that much, as ``backtest.simulate`` does; the venue charges it on the fill."""
 
     def __init__(self, spec: Dict, contracts: Mapping[str, Contract], *, stake: Optional[float] = None,
-                 entry_until: float = float("inf"), strategy_id: str = "spec", next_bar: bool = False) -> None:
+                 entry_until: float = float("inf"), strategy_id: str = "spec", next_bar: bool = False,
+                 slippage: float = 0.0) -> None:
         if specmod.is_code_spec(spec) or spec.get("cross") or specmod.is_perpetual_spec(spec):
             raise ValueError("SpecStrategy runs single-contract DSL specs only")
         self.spec, self.contracts, self.strategy_id = spec, contracts, strategy_id
@@ -44,6 +48,7 @@ class SpecStrategy:
         self.max_positions = spec["sizing"]["max_positions"]
         self.entry_until = entry_until
         self.next_bar = next_bar
+        self.slippage = slippage
 
     def _snapshots(self, quotes: Mapping[InstrumentId, Quote]) -> Dict[str, Snapshot]:
         """The legacy YES snapshots, in feed order (entries breaks edge ties by input order)."""
@@ -82,7 +87,7 @@ class SpecStrategy:
             if ticker in held:
                 continue
             price = min(0.99, cand.price)
-            qty = specmod.contracts_for(self.stake, price)
+            qty = specmod.contracts_for(self.stake, min(0.99, cand.price + self.slippage))
             if qty < 1:
                 continue
             entries.append(OrderIntent(instrument_id(ticker, cand.side), Side.BUY, qty, limit_price=price,
@@ -100,12 +105,16 @@ class KalshiNextBarFill:
     top-of-book size, and only if the ask is within ``execution_kernel.reservation_price`` for its own
     fair value and the spec's ``min_edge`` (the cap live and paper enforce); otherwise it is missed.
     ``max_ask`` is the highest ask an entry may lift (``backtest.MAX_ENTRY_ASK``: a 99c buy can't
-    profit after the fee). Exits and stops take the touch through ``CrossTheTouch``."""
+    profit after the fee). ``slippage`` (a cost what-if) is added to the ask before sizing and the
+    reservation check, as the backtest does; the venue charges it on the fill. Exits and stops take
+    the touch through ``CrossTheTouch``."""
 
-    def __init__(self, min_edge: float, exits: Optional[CrossTheTouch] = None, max_ask: float = 0.99) -> None:
+    def __init__(self, min_edge: float, exits: Optional[CrossTheTouch] = None, max_ask: float = 0.99,
+                 slippage: float = 0.0) -> None:
         self.min_edge = min_edge
         self.exits = exits or CrossTheTouch(max_quote_age_seconds=0.0)
         self.max_ask = max_ask
+        self.slippage = slippage
 
     def execute(self, intent: OrderIntent, instrument: Instrument, quote: Optional[Quote], venue: Venue,
                 client_order_id: str, now: float) -> ExecutionReport:
@@ -114,7 +123,7 @@ class KalshiNextBarFill:
         ask = quote.ask if quote is not None else None
         if ask is None or not 0.0 < ask <= self.max_ask:
             return ExecutionReport(intent, "rejected", message="no ask at or below %.2f" % self.max_ask)
-        price = min(0.99, ask)
+        price = min(0.99, ask + self.slippage)
         qty = specmod.contracts_for(intent.meta["stake"], price)
         size = quote.features.get("yes_ask_size" if intent.instrument.outcome == "yes" else "yes_bid_size")
         if size is not None:
@@ -160,12 +169,19 @@ class _ResultSettlement:
 
 def simulate_on_loop(spec: Dict, ds, start_ts: int, end_ts: int, fees: Optional[FeeModel] = None,
                      stake: Optional[float] = None, fill_model: Optional[str] = None,
-                     position_stop_pct: Optional[float] = None) -> List:
+                     position_stop_pct: Optional[float] = None, what_if=None) -> List:
     """``backtest.simulate`` re-expressed as TradingLoop steps; returns the same ``backtest.Trade``
     records so the two can be compared row for row. ``fill_model`` defaults to the backtest's own
-    ``FILL_MODEL``; ``position_stop_pct`` to its ``POSITION_STOP_PCT`` (next-bar only, as there)."""
+    ``FILL_MODEL``; ``position_stop_pct`` to its ``POSITION_STOP_PCT`` (next-bar only, as there).
+    ``what_if`` is a ``backtest.WhatIf``: its stake and stop fill in the arguments left None, its
+    slippage goes to the fill model and its fee multiplier scales ``fees``."""
     from app import backtest
     from app.backtest import Trade, _first_frame
+
+    w = what_if or backtest.WhatIf()
+    stake = w.stake if stake is None else stake
+    position_stop_pct = w.position_stop_pct if position_stop_pct is None else position_stop_pct
+    slip = w.slippage_cents / 100.0
 
     next_bar = (fill_model or backtest.FILL_MODEL) == "next_bar"
     contracts = {s.contract.ticker: s.contract for _, snaps in ds.frames for s in snaps}
@@ -176,18 +192,22 @@ def simulate_on_loop(spec: Dict, ds, start_ts: int, end_ts: int, fees: Optional[
         instruments[yes.complement().id] = yes.complement()
     clock, feed, book = FixedClock(0.0), _FrameFeed(), Portfolio()
     fees = fees or KalshiBinaryFees()
-    strategy = SpecStrategy(spec, contracts, stake=stake, entry_until=end_ts, next_bar=next_bar)
+    if w.fee_multiplier != 1.0:
+        fees = ScaledFees(fees, w.fee_multiplier)
+    strategy = SpecStrategy(spec, contracts, stake=stake, entry_until=end_ts, next_bar=next_bar, slippage=slip)
     if next_bar:
         stop = backtest.POSITION_STOP_PCT if position_stop_pct is None else float(position_stop_pct)
         bar = max(int(getattr(ds.market, "decision_seconds", 60) or 60), 1)
-        extra = dict(execution=KalshiNextBarFill(float(spec["entry"]["min_edge"]), max_ask=backtest.MAX_ENTRY_ASK),
+        extra = dict(execution=KalshiNextBarFill(float(spec["entry"]["min_edge"]), max_ask=backtest.MAX_ENTRY_ASK,
+                                                 slippage=slip),
                      next_step_fills=True,
                      pending_ttl=backtest.FILL_MAX_DELAY_BARS * bar, exit_rules=[position_stop(stop)],
                      risk=RiskChain([max_open_positions(spec["sizing"]["max_positions"], book),
                                      one_position_per_symbol(book)]))
     else:
         extra = dict(execution=CrossTheTouch(max_quote_age_seconds=0.0))
-    loop = TradingLoop(strategy, instruments, feed, QuoteFillVenue(feed, fees, instruments), clock, book=book,
+    venue = QuoteFillVenue(feed, fees, instruments, slippage=slip)
+    loop = TradingLoop(strategy, instruments, feed, venue, clock, book=book,
                        settlement=_ResultSettlement(ds.results), universe=lambda now: list(feed.current), **extra)
     opened: Dict[InstrumentId, tuple] = {}     # iid -> (entry_ts, entry_price, entry_fee, edge)
     trades: List[Trade] = []

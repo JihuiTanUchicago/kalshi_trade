@@ -13,7 +13,7 @@ from the core and no import of it beyond the domain types it passes around.
 """
 from trading_core.ports.clock import Clock, FixedClock, SystemClock
 from trading_core.ports.features import FeatureProvider
-from trading_core.ports.fees import FeeModel, FeesByVenue, NotionalRateFees, ZeroFees
+from trading_core.ports.fees import FeeModel, FeesByVenue, NotionalRateFees, ScaledFees, ZeroFees
 from trading_core.ports.market_data import MarketDataFeed
 from trading_core.ports.settlement import SettlementSource
 from trading_core.ports.strategy import DecisionContext, Strategy
@@ -21,5 +21,5 @@ from trading_core.ports.venue import Venue, VenueCapabilities
 
 __all__ = [
     "Clock", "DecisionContext", "FeatureProvider", "FeeModel", "FeesByVenue", "FixedClock", "MarketDataFeed",
-    "NotionalRateFees", "SettlementSource", "Strategy", "SystemClock", "Venue", "VenueCapabilities", "ZeroFees",
+    "NotionalRateFees", "ScaledFees", "SettlementSource", "Strategy", "SystemClock", "Venue", "VenueCapabilities", "ZeroFees",
 ]

@@ -62,6 +62,12 @@ SPECS = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def _legacy_reference(monkeypatch):
+    """backtest.simulate is the reference here, so it must not itself route to the loop."""
+    monkeypatch.setattr(backtest, "ENGINE", "legacy")
+
+
 def _key(t):
     return (t.ticker, t.side, t.entry_ts)
 
@@ -93,6 +99,39 @@ def test_next_bar_fills_book_the_same_trades_on_the_loop(monkeypatch, seed, gaps
     legacy = sorted(backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1), key=_key)
     assert [_row(t) for t in sorted(simulate_on_loop(spec, ds, ds.start_ts, ds.end_ts + 1), key=_key)] == \
         [_row(t) for t in legacy]
+
+
+WHAT_IFS = [backtest.WhatIf(slippage_cents=2.0), backtest.WhatIf(fee_multiplier=1.5),
+            backtest.WhatIf(slippage_cents=3.0, fee_multiplier=2.0, stake=7.0, position_stop_pct=25.0)]
+
+
+@pytest.mark.parametrize("fill", ["next_bar", "signal_bar"])
+@pytest.mark.parametrize("what_if", WHAT_IFS)
+@pytest.mark.parametrize("raw", SPECS)
+def test_cost_stress_what_ifs_book_the_same_trades_on_the_loop(monkeypatch, fill, what_if, raw):
+    """The gate's cost stress (slippage, fee multiplier, stake, stop) moves onto the loop unchanged."""
+    monkeypatch.setattr(backtest, "FILL_MODEL", fill)
+    ds = _random_dataset(17, gaps=0.1, sizes=True)
+    spec = specmod.validate(raw)
+    legacy = sorted(backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1, what_if), key=_key)
+    loop = sorted(simulate_on_loop(spec, ds, ds.start_ts, ds.end_ts + 1, what_if=what_if), key=_key)
+    assert legacy and [_row(t) for t in loop] == [_row(t) for t in legacy]
+
+
+@pytest.mark.parametrize("fill", ["next_bar", "signal_bar"])
+def test_engine_flag_routes_dsl_specs_through_the_loop(monkeypatch, fill):
+    monkeypatch.setattr(backtest, "FILL_MODEL", fill)
+    ds = _random_dataset(18)
+    spec = specmod.validate(SPECS[3])
+    legacy = backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1, WHAT_IFS[2])
+    monkeypatch.setattr(backtest, "ENGINE", "loop")
+    calls = []
+    import app.adapters.kalshi.spec_strategy as ss
+    real = ss.simulate_on_loop
+    monkeypatch.setattr(ss, "simulate_on_loop", lambda *a, **k: calls.append(1) or real(*a, **k))
+    routed = backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1, WHAT_IFS[2])
+    assert calls == [1] and routed and [_row(t) for t in sorted(routed, key=_key)] == \
+        [_row(t) for t in sorted(legacy, key=_key)]
 
 
 def test_next_bar_entry_never_lifts_an_ask_above_the_backtest_cap():
@@ -162,7 +201,7 @@ def test_real_data_parity_script_reports_clean_and_dirty_runs(monkeypatch, capsy
     monkeypatch.setattr(backtest, "FILL_MODEL", backtest.FILL_MODEL)   # the script flips it; restore after
     assert loop_parity.main(["--markets", "btc15m"]) == 0
     out = json.loads(capsys.readouterr().out)
-    assert out["cases"] == 2 and out["diffs"] == [] and out["legacy_trades"] > 0
+    assert out["cases"] == 3 and out["diffs"] == [] and out["legacy_trades"] > 0
     import app.adapters.kalshi.spec_strategy as ss
     monkeypatch.setattr(ss, "simulate_on_loop", lambda *a, **k: [])
     assert loop_parity.main(["--markets", "btc15m"]) == 1
