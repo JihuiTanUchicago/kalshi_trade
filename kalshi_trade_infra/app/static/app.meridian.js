@@ -1416,7 +1416,9 @@
       const hasLive = d.deployments.some((x) => x.mode === 'live' && x.status !== 'stopped');
       const paperWorkspace = !hasLive && d.open_positions.concat(d.recent_closed, d.deployments).every(x => x.mode === 'paper');
       const sharedPaperRunning = d.deployments.length > 0 && d.deployments.every(x => x.mode === 'paper' && x.status === 'running');
-      const stale = d.freshness.btc == null || d.freshness.btc > 2700;
+      // Collector lag is the operator's to fix, so only the admin view shows it (red "needs you" told
+      // every user something was wrong that they couldn't act on).
+      const stale = adminViewOn() && (d.freshness.btc == null || d.freshness.btc > 2700);
       const agentsBusy = d.agents.research_running + d.agents.research_queued;
       const paused = d.deployments.filter((x) => x.status === 'paused').length;
       const needs = stale || paused > 0;

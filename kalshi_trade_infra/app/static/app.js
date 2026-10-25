@@ -1416,7 +1416,9 @@
       // zero line when the bucket has no activity so an empty card never looks broken.
       const mSub = (b, zero) => (b.open_positions || b.running || b.realized_pnl) ? `${b.open_positions} open · ${usd(b.realized_pnl, true)} all time · ${usd(b.today_pnl, true)} today` : zero;
       const hasLive = d.deployments.some((x) => x.mode === 'live' && x.status !== 'stopped');
-      const stale = d.freshness.btc == null || d.freshness.btc > 2700;
+      // Collector lag is the operator's to fix, so only the admin view shows it (red "needs you" told
+      // every user something was wrong that they couldn't act on).
+      const stale = adminViewOn() && (d.freshness.btc == null || d.freshness.btc > 2700);
       const agentsBusy = d.agents.research_running + d.agents.research_queued;
       const running = d.deployments.filter((x) => x.status === 'running').length;
       const paused = d.deployments.filter((x) => x.status === 'paused').length;
