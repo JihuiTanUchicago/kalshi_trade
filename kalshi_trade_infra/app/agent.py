@@ -49,6 +49,7 @@ from app.llm import LLMError, ModelFn, Usage, ask_json, claude, current_model
 from app.markets import MARKETS
 from app.services import markets as market_service
 from app.services import research_memory
+from app.services import research_screen
 from app.agent_market_data import AgentMarketData, DataScope
 from app.agent_knowledge import AgentKnowledge
 from app.agent_news import AgentNews
@@ -1971,7 +1972,7 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
 def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkpoint, budget, tried,
                       policy: exploration.ExplorationPolicy, conn=None, knowledge=None, news=None,
                       resume_chunk=None, resume_round=0, save_progress=None, mark_gated=None,
-                      dropped: Optional[List[Dict]] = None) -> Tuple[int, int]:
+                      dropped: Optional[List[Dict]] = None, screen=None) -> Tuple[int, int]:
     """Explore NEW hypotheses on the Research partition (small refining rounds the policy
     sizes), then hand the finalists to the challenger + gatekeeper. Appends to the shared
     `tried` so progress survives a cancel/error.
@@ -1982,7 +1983,9 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
     uninterrupted run would. `save_progress(chunk, round_no)` persists the in-progress chunk as each
     thesis is developed (so a crash doesn't discard that model work); `mark_gated` advances the
     checkpoint cursor atomically inside the gate transaction. `dropped` (newest first) seeds the
-    theses recent runs abandoned; this chunk's own drops are added as they happen."""
+    theses recent runs abandoned; this chunk's own drops are added as they happen. A `screen` that
+    is on (services.research_screen) writes the proposals and screens each thesis with its cheaper
+    model; the run's model develops the survivors and challenges the finalists."""
     market = run["market"]
     dropped = dropped if dropped is not None else []
     chunk: List[Dict] = list(resume_chunk) if resume_chunk else []
@@ -1997,6 +2000,13 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
         proposer = news.wrap(proposer, usage)
     if knowledge is not None:
         proposer = knowledge.wrap(proposer, usage)
+    screener = None
+    if screen is not None and screen.on:
+        screener = _stream_proposer(screen.model, _StreamSink(log))
+        if news is not None:
+            screener = news.wrap(screener, screen.usage)
+        if knowledge is not None:
+            screener = knowledge.wrap(screener, screen.usage)
     attempts = 0  # theses DEVELOPED this chunk (survivors + abandoned), the real cost
     streak = 0  # consecutive drops, reset by any survivor
     bad_rounds = 0  # proposing rounds whose every spec failed validation
@@ -2027,9 +2037,9 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
             {"phase": "proposing", "round": round_no, "width": want})
         check = _hypotheses_check(market, want)
         try:
-            batch = market_data.ask(proposer, _research_system(market),
+            batch = market_data.ask(screener or proposer, _research_system(market),
                                     [{"role": "user", "content": _round_prompt(run, ds, memory, want, chunk, dropped)}],
-                                    check, usage)
+                                    check, screen.usage if screener else usage)
         except LLMError as e:
             if "could not be used" not in str(e):
                 raise  # the model call itself failed (timeout, API): not a spec problem
@@ -2067,7 +2077,7 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
             # out per hypothesis, so finalist selection + pre-registration are unchanged.
             t = _develop_thesis(h, run, ds, partition, memory, proposer, market_data,
                                  usage, log, checkpoint, round_no, cur, run["user_id"], merged_cache,
-                                 dropped)
+                                 dropped, screen, screener)
             if t is None:
                 streak += 1
                 if EXPLORE_MAX_DROP_STREAK and streak >= EXPLORE_MAX_DROP_STREAK:
@@ -2297,6 +2307,9 @@ def run_research(
     # research run is stamped with the user's autopilot_model at creation (act); a manual run
     # carries the model the user picked; NULL resolves to the catalog default. Tests pass `model`.
     choice = catalog.resolve(run.get("model"))
+    # Model tiering A/B (services.research_screen): a screen-arm run proposes and screens on a
+    # cheaper model. An injected model (tests) always runs unscreened, on that one model.
+    screen_pick = research_screen.screen_choice(run_id, run.get("model")) if model is None else None
     if model is None:
         # on_delta=None keeps the ordinary (system, messages) calls working everywhere; the
         # proposer wraps this to pass a sink so its generation streams live into the feed.
@@ -2351,6 +2364,19 @@ def run_research(
     # beater knows the run is progressing (and a frozen main thread lets it go stale -> reaped).
     progress = [time.monotonic()]
     model = _alive_during_calls(model, progress)
+    screen = research_screen.Screen(run_id)
+    if screen_pick is not None:
+        screen.choice = screen_pick
+        screen.model = _alive_during_calls(
+            lambda system, messages, on_delta=None: claude(system, messages, screen_pick.model_id, on_delta),
+            progress)
+
+    def bill_screen() -> Tuple[int, int]:
+        """Bill the screen model's tokens at its own price; returns (input, output) for the totals."""
+        spent = screen.drain()
+        if screen_pick is not None:
+            _bill(conn, user_id, Usage(**spent), run_id, screen_pick.model_id)
+        return spent["input_tokens"], spent["output_tokens"]
 
     verdicts: Dict[str, int] = defaultdict(int)  # gatekeeper verdicts this run, for the outcome line
 
@@ -2408,7 +2434,8 @@ def run_research(
             % ("Resuming — re-using %d explored hypotheses, preparing" % len(tried) if resuming
                else "Research started — preparing",
                MARKETS[market].label if market in MARKETS else "the chosen market"),
-            {"phase": "start", "market": market or None, "resumed": resuming})
+            {"phase": "start", "market": market or None, "resumed": resuming,
+             "screen_model": screen_pick.key if screen_pick else None})
         if market and market not in MARKETS and run.get("brief") and not ckpt.get("market"):
             # The autopilot named a catalog market that dropped out of the universe before the run
             # started (catalog refresh / restart). Keep the angle and let the picker choose instead
@@ -2509,7 +2536,7 @@ def run_research(
                                           budget, tried, policy, conn, knowledge, news,
                                           resume_chunk=resume_chunk, resume_round=resume_round,
                                           save_progress=save_progress, mark_gated=mark_gated,
-                                          dropped=dropped)
+                                          dropped=dropped, screen=screen)
             resume_chunk, resume_round = [], 0  # only the first iteration continues a saved chunk
             # mark_gated advanced these atomically with the chunk's judging; read them back.
             total_passed, chunks = ckpt["total_passed"], ckpt["chunks_done"]
@@ -2528,6 +2555,8 @@ def run_research(
             tot_out += usage.output_tokens
             _bill(conn, user_id, usage, run_id, choice.model_id)
             usage.input_tokens = usage.output_tokens = 0
+            s_in, s_out = bill_screen()
+            tot_in, tot_out = tot_in + s_in, tot_out + s_out
             repo.update_run_progress(cur, run_id, explored(), total_passed)  # keep counts live
             conn.commit()
             if n == 0 or not forever:
@@ -2567,6 +2596,7 @@ def run_research(
                 usage.input_tokens = usage.output_tokens = 0
             conn.commit()
 
+        log("verdict", screen.message(), screen.summary())
         log("done", "%d of %d hypotheses passed every gate%s." % (
             total_passed, explored(), " (%d dropped on research data)" % ckpt["dropped_n"] if ckpt["dropped_n"] else ""),
             {"passed": total_passed, "tried": explored(), "dropped": ckpt["dropped_n"]})
@@ -2576,10 +2606,12 @@ def run_research(
     except Superseded:
         # No event and no finish_run: the run's new owner (or the reaper) holds its record now.
         _bill(conn, user_id, usage, run_id, choice.model_id)  # tokens this thread spent are still real
+        bill_screen()
         print("[research] run=%s superseded on worker %s; stopping this copy" % (run_id, run.get("worker_id")),
               flush=True)
     except Cancelled:
         _bill(conn, user_id, usage, run_id, choice.model_id)  # charge whatever was spent before the stop
+        bill_screen()
         log("step", "Cancelled.")
     except Exception as e:  # the run fails visibly; the worker keeps going
         # The user-facing msg below stays clean, but a bare str(e) (e.g. a KeyError prints just its
@@ -2606,6 +2638,7 @@ def run_research(
                                     usage.input_tokens, usage.output_tokens, choice.model_id, verdicts,
                                     type(e).__name__), flush=True)
         _bill(conn, user_id, usage, run_id, choice.model_id)  # charge for the work done regardless of the failure cause
+        bill_screen()
         if not isinstance(e, LLMError):
             raise
     finally:
@@ -2845,7 +2878,8 @@ def _develop_check(market: str) -> Callable[[Dict], Dict]:
 def _develop_thesis(h: Dict, run: Dict, ds: backtest.Dataset, partition: Dict, memory: List[Dict],
                     proposer: ModelFn, market_data, usage: Usage, log, checkpoint, round_no: int,
                     cur, user_id: int, merged_cache: Optional[Dict] = None,
-                    dropped: Optional[List[Dict]] = None) -> Optional[Dict]:
+                    dropped: Optional[List[Dict]] = None, screen=None,
+                    screener: Optional[ModelFn] = None) -> Optional[Dict]:
     """Pillar 2 — spend as long as THIS thesis needs on the RESEARCH FOLD before committing it, or
     ABANDON it early when it's dead on arrival for this market.
 
@@ -2867,20 +2901,57 @@ def _develop_thesis(h: Dict, run: Dict, ds: backtest.Dataset, partition: Dict, m
     t = _test_in_sample(h, ds, partition, log, round_no, cur, merged_cache, run.get("id"))
     market = run["market"]
     committed = developed = False
-    for step in range(THESIS_MAX_STEPS - 1):
+    limit = THESIS_MAX_STEPS - 1
+    # Model tiering (services.research_screen): on a screen-arm run the cheaper model walks this
+    # loop until it wants to commit (or reaches its own step cap), then the developer takes over
+    # with at least DEVELOPER_MIN_STEPS steps of its own. A screen abandon is final unless audited.
+    screening = screen is not None and screen.on
+    screen_limit = max(1, limit - research_screen.DEVELOPER_MIN_STEPS)
+    step = 0
+    while step < limit:
         checkpoint()
         if cur is not None and repo.credit_balance(cur, user_id) <= 0:
             break  # deeper thesis work stays inside the credit budget
+        if screening and step >= screen_limit:
+            screening = _hand_over(log, t, screen, "the screen used its steps")
         # Pillar 2 can spend up to THESIS_MAX_STEPS model calls on ONE thesis before the first
         # commit — surface the per-thesis step so that long, deep development is never silent.
         log("step", "Developing \"%s\" (step %d/%d)…" % (t["title"], step + 2, THESIS_MAX_STEPS),
             {"phase": "developing", "title": t["title"], "step": step + 2, "max_steps": THESIS_MAX_STEPS})
+        msgs = [{"role": "user", "content": _develop_prompt(run, t, memory, step, ds)}]
         try:
-            reply = market_data.ask(proposer, _research_system(market),
-                                    [{"role": "user", "content": _develop_prompt(run, t, memory, step, ds)}],
-                                    _develop_check(market), usage)
+            if screening:
+                reply = market_data.ask(screener, _research_system(market), msgs, _develop_check(market),
+                                        screen.usage)
+            else:
+                reply = market_data.ask(proposer, _research_system(market), msgs, _develop_check(market), usage)
         except LLMError:
+            if screening:  # a screen hiccup hands the thesis to the developer instead of committing it
+                screening = _hand_over(log, t, screen, "the screen call failed")
+                continue
             break  # fail-open: keep the spec we already have
+        if screening and reply.get("decision") == "abandon":
+            if not screen.audit(t["title"]):
+                screen.tally["screened_out"] += 1
+                return _abandon(log, t, reply.get("why"), dropped, {"screened": True})
+            # Audit: the developer re-judges the same prompt. Agreeing confirms the drop; disagreeing
+            # rescues the thesis, which goes on with the developer from the developer's own reply.
+            screen.tally["audits"] += 1
+            try:
+                second = market_data.ask(proposer, _research_system(market), msgs, _develop_check(market), usage)
+            except LLMError:
+                second = {"decision": "abandon", "why": reply.get("why")}
+            log("step", "Screen audit on \"%s\": screen abandoned, developer says %s."
+                % (t["title"], second.get("decision")),
+                {"phase": "screen_audit", "title": t["title"], "developer": second.get("decision"),
+                 "screen_why": (reply.get("why") or "")[:300]})
+            if second.get("decision") == "abandon":
+                return _abandon(log, t, reply.get("why"), dropped, {"screened": True, "audited": True})
+            screen.tally["rescued"] += 1
+            screening, reply = False, second
+        elif screening and (reply.get("decision") != "refine" or not reply.get("spec")):
+            screening = _hand_over(log, t, screen, "the screen would commit it")
+            continue  # the developer judges the same result before anything is committed
         if reply.get("decision") == "abandon":
             return _abandon(log, t, reply.get("why"), dropped)  # dead on arrival — no candidate, no trial
         if reply.get("decision") != "refine" or not reply.get("spec"):
@@ -2894,6 +2965,7 @@ def _develop_thesis(h: Dict, run: Dict, ds: backtest.Dataset, partition: Dict, m
         log("step", "Refining \"%s\": %s" % (t["title"], reply.get("change") or "sharpening the mechanism"))
         developed = True
         t = _test_in_sample(refined, ds, partition, log, round_no, cur, merged_cache, run.get("id"))
+        step += 1
     # Anti-grind backstop: if the agent REFINED this thesis (really worked it) yet never committed
     # and the spec still can't trade (unfit model / 0 research-fold trades), drop it as dead on
     # arrival rather than grind the rest of the step cap. The no-develop path (THESIS_MAX_STEPS=1)
@@ -2904,13 +2976,22 @@ def _develop_thesis(h: Dict, run: Dict, ds: backtest.Dataset, partition: Dict, m
     return t
 
 
-def _abandon(log, t: Dict, why: Optional[str], dropped: Optional[List[Dict]] = None) -> None:
+def _hand_over(log, t: Dict, screen, why: str) -> bool:
+    """The screen passes this thesis to the developer; returns the new `screening` flag (False)."""
+    screen.tally["handed_over"] += 1
+    log("step", "Handing \"%s\" to the developer model (%s)." % (t["title"], why),
+        {"phase": "screen_handover", "title": t["title"], "why": why})
+    return False
+
+
+def _abandon(log, t: Dict, why: Optional[str], dropped: Optional[List[Dict]] = None,
+             extra: Optional[Dict] = None) -> None:
     """Log a dropped thesis (no candidate reaches the chunk, so no statistical trial is spent), and
     remember it in `dropped` so later rounds don't re-propose the same dead idea."""
     why = why or "mechanism can't trade on this market"
     log("verdict", "DROPPED \"%s\" (no candidate) — %s" % (t["title"], why),
-        {"title": t["title"], "status": "abandoned", "why": why[:600],
-         "diagnosis": t.get("diagnosis") or None})
+        dict({"title": t["title"], "status": "abandoned", "why": why[:600],
+              "diagnosis": t.get("diagnosis") or None}, **(extra or {})))
     if dropped is not None:
         dropped.insert(0, {"title": t["title"], "why": why})
     return None
