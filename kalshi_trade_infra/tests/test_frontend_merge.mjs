@@ -372,6 +372,8 @@ test('the research status line links its "add an idea" ask to the form', async (
     await f.viewResearch(); await flush(); await flush();
     assert.ok(f.root.querySelector('form#dispatch'));
     assert.match(f.root.querySelector('#rstatus .said').innerHTML, new RegExp(`<a href="#dispatch">${ask}</a>`));
+    // The page paints its shell twice (instant switch, then content); the bell reads once.
+    assert.equal(f.requests.filter(({path}) => path === '/api/notifications').length, 1);
   }
 });
 
