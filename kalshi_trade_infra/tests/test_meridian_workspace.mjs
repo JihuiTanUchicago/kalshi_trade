@@ -2308,6 +2308,15 @@ for (const [label, stored, blocked, expected] of [['default', null, false, 'tau'
   });
 }
 
+test('a research session that does not exist links to the list instead of offering Try again', async () => {
+  const f = frontend({fetchImpl: path => (path.startsWith('/api/runs/9') ? {ok: false, status: 404, json: async () => ({error: 'No such research run.'})} : {ok: true, status: 200, json: async () => ({})})});
+  f.location.pathname = '/research/9';
+  await f.render(); await flush();
+  const html = f.root.innerHTML;
+  assert.match(html, /No such research run\./); assert.match(html, /href="\/research">All research sessions</);
+  assert.doesNotMatch(html, /data-retry/);
+});
+
 test('the legal pages load in Tau even for a Meridian user, since only Tau has them', () => {
   for (const [pathname, expected] of [['/terms', 'tau'], ['/privacy', 'tau'], ['/settings', 'meridian']]) {
     const scripts = [], css = {href: '/static/app.css?v=tau-css'};
