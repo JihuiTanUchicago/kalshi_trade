@@ -697,6 +697,34 @@ test('the empty Deployed box never says autopilot is researching while the card 
   }
 });
 
+test('the dashboard demo bucket and the autopilot card say plainly when demo can’t trade, with the action', async () => {
+  const health = {code: 'demo_funds', need: 'demo funds: your Kalshi demo account has $0.00',
+    line: "Demo isn't trading: your Kalshi demo account has $0.00. Add demo funds on Kalshi's demo site.",
+    action: {label: 'Open Kalshi demo', href: 'https://demo.kalshi.co'}};
+  const said = /Demo isn&#39;t trading: your Kalshi demo account has \$0\.00\. Add demo funds on Kalshi&#39;s demo site\. <a href="https:\/\/demo\.kalshi\.co" target="_blank" rel="noopener">Open Kalshi demo ↗<\/a>/;
+  const status = {...apOn, demo_running: 1, idle: health};
+  const board = async (demo, ap) => {
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/dashboard') return response({...emptyDashboard(), demo});
+      if (path === '/api/autopilot/status') return response(ap);
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me.user.autopilot = true;
+    await f.viewDashboard(); await flush();
+    f.S.ap = ap; f.paintDashAp();
+    return f;
+  };
+  const f = await board({equity: 1000, capital: 1000, running: 1, open_positions: 0, realized_pnl: 0, health}, status);
+  // The line leads the demo figure, ahead of the capital that made the book look healthy.
+  assert.match(f.root.querySelector('#boardbody').innerHTML, new RegExp('<span class="demo-health">' + said.source + '<\\/span><br>\\$1,000\\.00 capital'));
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, said);
+  // An app-page action still opens in place.
+  const k = await board({equity: 1000, capital: 1000, running: 1}, {...apOn, idle: {code: 'demo_key', line: 'Demo isn’t trading: no key.', action: {label: 'Add demo key', href: '/funds'}}});
+  assert.match(k.root.querySelector('#dash-ap').innerHTML, /no key\. <a href="\/funds">Add demo key<\/a>/);
+  const ok = await board({equity: 1000, capital: 1000, running: 1, open_positions: 0, realized_pnl: 0}, apOn);
+  assert.doesNotMatch(ok.root.querySelector('#boardbody').innerHTML, /demo-health/);
+});
+
 test('paper P&L reads "since reset" on the card and dashboard once the paper account was reset', async () => {
   for (const reset_at of [null, '2026-10-20T09:00:00Z']) {
     const f = frontend({fetchImpl: path => {

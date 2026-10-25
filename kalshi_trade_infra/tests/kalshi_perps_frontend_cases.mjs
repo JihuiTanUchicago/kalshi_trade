@@ -334,6 +334,61 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.equal(await ladder({research_only: true, deployments: [d(1, 'paper', 1, 1)]}, readiness), null);
   });
 
+  // The server's demo health: what stops the demo book, in one plain line, and the one thing to do.
+  const demoFunds = {code: 'demo_funds', need: 'demo funds: your Kalshi demo account has $0.00',
+    line: "Demo isn't trading: your Kalshi demo account has $0.00. Add demo funds on Kalshi's demo site.",
+    action: {label: 'Open Kalshi demo', href: 'https://demo.kalshi.co'}};
+  const demoKey = {code: 'demo_key', need: 'your Kalshi demo key',
+    line: "Demo isn't trading: your Kalshi demo key isn't connected. Add it on the Funds page.",
+    action: {label: 'Add demo key', href: '/funds'}};
+  const fundsLine = /<span class="demo-health">Demo isn&#39;t trading: your Kalshi demo account has \$0\.00\. Add demo funds on Kalshi&#39;s demo site\. <a href="https:\/\/demo\.kalshi\.co" target="_blank" rel="noopener">Open Kalshi demo ↗<\/a><\/span>/;
+
+  test(`${name}: the Deploy board says plainly when demo can't trade, and what to do`, async () => {
+    const dep = {id: 2, strategy_id: 2, title: 'Dep 2', market: 'btc15m', mode: 'demo', status: 'running', status_reason: null,
+      realized_pnl: 0, closed_trades: 0, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1, backtest: {}};
+    const board = async demo_health => {
+      const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [dep], open_positions: [], demo_health}) : response({})});
+      await f.viewDeploy(); await flush(); await flush();
+      const html = f.root.querySelector('#demo-health').innerHTML;
+      f.clearTimers && f.clearTimers();
+      return html;
+    };
+    const funds = await board(demoFunds);
+    assert.match(funds, /class="notice bad" role="status"/); assert.match(funds, fundsLine);
+    // An app page opens in place; only Kalshi's site opens a new tab.
+    assert.match(await board(demoKey), /Add it on the Funds page\. <a href="\/funds">Add demo key<\/a>/);
+    assert.equal(await board(null), '');
+    assert.equal(await board(undefined), '');  // an older server without the field
+  });
+
+  test(`${name}: the strategy ladder never calls a refused demo book running`, async () => {
+    const d = (id, mode, closed_trades, realized_pnl) => ({id, mode, status: 'running', closed_trades, realized_pnl, open_positions: 0, stake: 5, created_at: '2026-10-20T08:00:00Z'});
+    const ladder = async (overrides, me = {}) => {
+      const f = strategyFrontend(detailStrategy(overrides), () => response({error: 'down'}, 503));
+      Object.assign(f.S.me, me);
+      await f.viewStrategy(42); await flush(); await flush();
+      const el = f.root.querySelector('#ladder-body');
+      f.clearTimers && f.clearTimers();
+      return el ? el.innerHTML : null;
+    };
+    const both = [d(1, 'paper', 4, 1.9), d(2, 'demo', 0, 0)];
+    const refused = await ladder({deployments: both, demo_health: demoFunds});
+    // Demo keeps its own trades and P&L, then says why it isn't trading; paper still reads running.
+    assert.match(refused, /<span class="mk dep">Demo<\/span> 0 closed trades ·\u00a0(?:<span[^>]*>)?\+?\$0\.00(?:<\/span>)? realized ·\u00a0<span class="demo-health">/);
+    assert.match(refused, fundsLine);
+    assert.doesNotMatch(refused, /Demo<\/span> running/); assert.match(refused, /Paper<\/span> running ·\u00a04 closed trades/);
+    assert.match(await ladder({deployments: both, demo_health: demoKey}), /Demo<\/span> 0 closed trades[^<]*(?:<span[^>]*>[^<]*<\/span>)?[^<]* ·\u00a0<span class="demo-health">Demo isn&#39;t trading: your Kalshi demo key isn&#39;t connected\. Add it on the Funds page\. <a href="\/funds">Add demo key<\/a>/);
+    assert.match(await ladder({deployments: both, demo_health: null}), /Demo<\/span> running ·\u00a00 closed trades/);
+    // Only on paper, key saved, demo account empty: the next rung names the funds and where to add them.
+    const paperOnly = await ladder({deployments: [d(1, 'paper', 4, 1.9)], demo_health: demoFunds});
+    assert.match(paperOnly, /Next rung, demo: needs demo funds: your Kalshi demo account has \$0\.00\. <a href="https:\/\/demo\.kalshi\.co" target="_blank" rel="noopener">Open Kalshi demo ↗<\/a>/);
+    assert.doesNotMatch(paperOnly, /nothing needed/);
+    // No key: the page's own key check still reads as before.
+    assert.match(await ladder({deployments: [d(1, 'paper', 4, 1.9)], demo_health: null}, {kalshi_dev_connected: false}),
+      /Next rung, demo: needs your Kalshi demo \(sandbox\) key/);
+    assert.match(await ladder({deployments: [d(1, 'paper', 4, 1.9)], demo_health: null}), /Next rung, demo: nothing needed/);
+  });
+
   test(`${name}: Deploy lists paused deployments first, otherwise in server order`, async () => {
     const dep = (id, status) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode: 'paper', status, status_reason: status === 'paused' ? 'loss guard' : null,
       realized_pnl: 0, closed_trades: 0, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1, backtest: {}});

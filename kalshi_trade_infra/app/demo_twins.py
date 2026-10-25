@@ -10,7 +10,8 @@ running (and resumed with it). On by default (Todd, 2026-10-25); APP_DEMO_TWINS=
 from __future__ import annotations
 
 import os
-from typing import Callable, Dict, List, Optional
+import time
+from typing import Callable, Dict, List, Optional, Tuple
 
 from app import repository as repo
 from app import spec as specmod
@@ -35,6 +36,26 @@ def _read_balance(cur, user_id: int) -> Optional[float]:
     except Exception as e:
         print("[demo-twins] balance read failed for user %s: %r" % (user_id, e), flush=True)
         return None
+
+
+# Where a user adds play money to their demo account (the demo key steps on Funds name it too).
+KALSHI_DEMO_SITE = "https://demo.kalshi.co"
+# The pages that show demo poll; a short per-user memo keeps the demo cash read off every poll.
+# Values only (never the key or creds) are cached; a failed read is cached as None (unknown).
+BALANCE_TTL = 60.0
+_BALANCE_CACHE: Dict[int, Tuple[float, Optional[float]]] = {}
+
+
+def balance_cached(cur, user_id: int, ttl: float = BALANCE_TTL) -> Optional[float]:
+    """The user's demo cash in dollars, at most `ttl` seconds old, or None when it can't be read.
+    Read-only: one GET of the demo account's balance, the same read sync makes."""
+    now = time.monotonic()
+    hit = _BALANCE_CACHE.get(user_id)
+    if hit and now - hit[0] < ttl:
+        return hit[1]
+    value = _read_balance(cur, user_id)
+    _BALANCE_CACHE[user_id] = (now, value)
+    return value
 
 
 def sync(cur, user: Dict, balance: Callable[[object, int], Optional[float]] = _read_balance,
