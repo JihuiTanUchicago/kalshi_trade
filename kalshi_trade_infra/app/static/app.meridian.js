@@ -2816,10 +2816,11 @@
               <button class="btn danger" id="disconnect">Disconnect</button>
             </div>` : `
             <p class="lede" style="margin-bottom:12px">Connect your Kalshi account for live trading. Funds stay at Kalshi.</p>
-            <details class="connection-help"><summary>Key setup</summary><ol class="steps"><li>On Kalshi, open Account → API keys and create a key.</li><li>Copy the key ID and download the private key file.</li><li>Paste both below. We encrypt the private key and check it with Kalshi before saving.</li></ol></details>
+            <details class="connection-help"><summary>Key setup</summary><ol class="steps"><li>On Kalshi, open <a href="https://kalshi.com/account/profile" target="_blank" rel="noopener">your profile</a>, find API Keys and click Create New API Key.</li><li>Copy the key ID and download the private key file.</li><li>Paste the key ID below and choose the key file (or paste its text). We encrypt the private key and check it with Kalshi before saving.</li></ol></details>
             <form id="kalshi" style="display:grid;gap:12px">
               <label class="field"><span>Key ID</span><input class="input" name="key_id" autocomplete="off" spellcheck="false" required></label>
               <label class="field"><span>Private key</span><textarea class="input" name="private_key" spellcheck="false" required placeholder="-----BEGIN RSA PRIVATE KEY-----"></textarea></label>
+              <label class="key-file"><span>Or choose the downloaded key file</span><input type="file" accept=".key,.pem,.txt,text/plain" data-keyfile></label>
               <button class="btn" type="submit">Verify and connect</button>
             </form>`}
           <div id="kflash" style="margin-top:10px"></div>
@@ -2839,10 +2840,11 @@
             <p class="lede" style="margin-bottom:14px">Sandbox orders only. Demo and live keys are stored separately.</p>
             <button class="btn danger" id="dev-disconnect">Remove demo key</button>` : `
             <p class="lede" style="margin-bottom:12px">Connect a Kalshi <b>demo</b> key for sandbox orders. No real money.</p>
-            <details class="connection-help"><summary>Key setup</summary><ol class="steps"><li>Sign in at demo.kalshi.co and open Account → API keys.</li><li>Copy the key ID and download the private key file.</li><li>Paste both below. We encrypt the private key and check it against the demo exchange before saving.</li></ol></details>
+            <details class="connection-help"><summary>Key setup</summary><ol class="steps"><li>Sign in at demo.kalshi.co and open Account → API keys.</li><li>Copy the key ID and download the private key file.</li><li>Paste the key ID below and choose the key file (or paste its text). We encrypt the private key and check it against the demo exchange before saving.</li></ol></details>
             <form id="kalshi-dev" style="display:grid;gap:12px">
               <label class="field"><span>Demo key ID</span><input class="input" name="key_id" autocomplete="off" spellcheck="false" required></label>
               <label class="field"><span>Demo private key</span><textarea class="input" name="private_key" spellcheck="false" required placeholder="-----BEGIN RSA PRIVATE KEY-----"></textarea></label>
+              <label class="key-file"><span>Or choose the downloaded key file</span><input type="file" accept=".key,.pem,.txt,text/plain" data-keyfile></label>
               <button class="btn" type="submit">Verify and connect demo</button>
             </form>`}
           <div id="kdflash" style="margin-top:10px"></div>
@@ -2888,6 +2890,16 @@
           try { await api('/api/funds/paper', { kind, amount: +pf.amount.value }); if (gen !== S.gen) return; await load(); if (gen === S.gen) flash('#pflash', kind === 'deposit' ? 'Added to your paper account.' : kind === 'withdraw' ? 'Withdrawn from your paper account.' : 'Paper account reset.', 'good'); } catch (err) { if (gen === S.gen) flash('#pflash', err.message, 'bad'); }
         });
       };
+      // The downloaded .key file fills the box, so nobody has to open it in an editor (hard on a phone).
+      root.querySelectorAll('[data-keyfile]').forEach((inp) => (inp.onchange = async () => {
+        const f = inp.files && inp.files[0], box = inp.form && inp.form.private_key;
+        if (!f || !box) return;
+        const text = f.size <= 20000 ? (await f.text()).trim() : '';
+        const where = inp.form.id === 'kalshi' ? '#kflash' : '#kdflash';
+        if (!/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(text)) { inp.value = ''; flash(where, 'That file doesn\u2019t look like a private key. Choose the .key file Kalshi downloaded.', 'bad'); return; }
+        box.value = text;
+        const fl = root.querySelector(where); if (fl) fl.innerHTML = '';
+      }));
       const kf = root.querySelector('#kalshi');
       if (kf) kf.onsubmit = async (e) => {
         e.preventDefault();
