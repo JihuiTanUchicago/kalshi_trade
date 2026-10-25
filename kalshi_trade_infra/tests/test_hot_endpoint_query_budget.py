@@ -14,6 +14,8 @@ Measured 2026-10-25 on a copy of the dev DB filled to busy-autopilot size (6,000
 Then autopilot_status 177 -> 95ms of SQL on that copy with production indexes: the paper readouts
 start from the deployments (idx_pos_dep) and the deployment list drops its position totals. A paper
 deployment paused in the last 24h adds one read for its own totals, since the panel shows them.
+Then dashboard 15 -> 14 statements, 288 -> 197ms: the closed-trade counts ride the books' realized
+P&L pass (idx_pos_user), and the deployments sum their positions before joining their JSON.
 """
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -27,7 +29,7 @@ from app import billing, engine, server
 # A steady-state poll: the process-wide shared reads (series list, data freshness) and the run page's
 # dream line are warm, as they are for every request but one a minute. get_run's run is queued past
 # the overdue limit, so it also counts the queue ahead (5 for a run that is working normally).
-BUDGET = {"autopilot_status": 20, "me": 5, "get_run": 6, "dashboard": 15}  # dashboard +1 since: closed_trade_counts for the trades CSV links
+BUDGET = {"autopilot_status": 20, "me": 5, "get_run": 6, "dashboard": 14}  # dashboard: the trades CSV counts ride the realized-P&L pass
 
 # Statements that return one aggregate row; any other SELECT answers no rows unless listed below.
 AGGREGATE = ("SELECT COALESCE(", "SELECT COUNT(", "SELECT MAX(", "SELECT st.started")

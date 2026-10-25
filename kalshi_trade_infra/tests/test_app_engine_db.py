@@ -665,6 +665,79 @@ def test_the_autopilot_panels_reads_answer_as_the_position_scans_they_replace(co
     assert [r["table"] for r in plan] == ["d", "p"] and plan[1]["key"] == "idx_pos_dep"  # each deployment's own positions
 
 
+def test_the_dashboard_and_strategy_list_reads_answer_as_the_ones_they_replace(conn, user):
+    """The dashboard and the strategy list sum each deployment's positions before joining its row
+    (list_deployments_for_display), and the dashboard reads each book's realized P&L and closed
+    trades in one pass (closed_book_totals). Same rows, sums and counts as list_deployments,
+    realized_pnl and closed_trade_counts, which the engine and the gates keep using."""
+    from app import repository as repo
+
+    cur = conn.cursor()
+    uid = user["id"]
+    a, b, empty, stopped = (_deployment(conn, user) for _ in range(4))
+    demo = repo.create_deployment(cur, uid, a["strategy_id"], "btc15m", "demo")
+    close = (datetime.now(timezone.utc) - timedelta(minutes=1)).replace(tzinfo=None)
+    day = (datetime.now(timezone.utc) - timedelta(hours=1)).replace(tzinfo=None)
+
+    def position(dep_id, mode, pnl=None, ticker="KXBTC-26OCT25-B98"):
+        pid = repo.insert_position(cur, dep_id, uid, mode, ticker, "yes", 1, 0.40, 0.01, close, None)
+        if pnl is not None:
+            assert repo.close_position(cur, pid, 0.5, 0.01, pnl, "settled")
+
+    for pnl in (0.25, -0.10, 0.0, 1.05):
+        position(a["id"], "paper", pnl)
+    position(a["id"], "paper")  # still open
+    position(b["id"], "paper", -0.35)
+    position(demo, "demo", 0.60)
+    position(demo, "demo")
+    position(stopped["id"], "paper", 2.00)  # its book still counts; the stopped row is not listed
+    assert repo.set_deployment_status(cur, uid, stopped["id"], "stopped")
+    cur.execute("UPDATE app_positions SET closed_at=%s WHERE deployment_id=%s", (day - timedelta(days=2), b["id"]))
+
+    listed = repo.list_deployments_for_display(cur, uid)
+    assert listed == repo.list_deployments(cur, uid)
+    assert repr(listed) == repr(repo.list_deployments(cur, uid))  # the same types too (Decimal sums, int counts)
+    by_id = {d["id"]: d for d in listed}
+    assert stopped["id"] not in by_id and by_id[empty["id"]]["closed_trades"] == 0
+    assert (by_id[a["id"]]["closed_trades"], by_id[a["id"]]["wins"], by_id[a["id"]]["open_positions"]) == (4, 2, 1)
+
+    realized, counts = repo.closed_book_totals(cur, uid, day)
+    assert realized == {m: (repo.realized_pnl(cur, uid, m), repo.realized_pnl(cur, uid, m, day)) for m in ("paper", "demo", "live")}
+    assert counts == repo.closed_trade_counts(cur, uid) == {"paper": 6, "demo": 1}
+    assert realized["paper"] == (pytest.approx(2.85), pytest.approx(3.20))
+
+
+def test_the_run_pages_dream_line_reads_only_the_dream_lines(conn, user):
+    """latest_dream_event range-scans idx_events_message for its two prefixes and answers as the
+    scan over every event of every run did: the user's newest dream line, nobody else's."""
+    from app import repository as repo
+
+    cur = conn.cursor()
+    uid = user["id"]
+    every = ("SELECT e.message, e.created_at FROM app_agent_events e IGNORE INDEX (idx_events_message) "
+             "JOIN app_agent_runs r ON r.id=e.run_id WHERE r.user_id=%s AND (e.message LIKE 'Dreaming:%%' "
+             "OR e.message LIKE 'Research policy evolved%%') ORDER BY e.id DESC LIMIT 1")
+
+    def before():
+        cur.execute(every, (uid,))
+        return cur.fetchone()
+
+    assert repo.latest_dream_event(cur, uid) is None is before()
+    other = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "o@example.com", "O", None)
+    first = repo.create_run(cur, uid, "research", "btc15m", "momentum")
+    later = repo.create_run(cur, uid, "research", "btc15m", "momentum")
+    theirs = repo.create_run(cur, other["id"], "research", "btc15m", "momentum")
+    repo.add_event(cur, first, "step", "Dreaming: tested 4 candidate policies over 60 hypotheses")
+    repo.add_event(cur, later, "step", "Research policy evolved: dreamed over 61 hypotheses")
+    repo.add_event(cur, first, "step", "dreaming: lower case still matches, as LIKE did")
+    repo.add_event(cur, later, "agent", "Testing a fade of the open")
+    repo.add_event(cur, theirs, "step", "Dreaming: someone else's line")
+    got = repo.latest_dream_event(cur, uid)
+    assert got == before() and got["message"].startswith("dreaming: lower case")
+    cur.execute("SHOW INDEX FROM app_agent_events WHERE Key_name='idx_events_message'")
+    assert [(r["Column_name"], r["Sub_part"]) for r in cur.fetchall()] == [("message", 24)]  # schema.main added it
+
+
 def test_last_autopilot_action_looks_back_a_bounded_window_of_chat(conn, user, monkeypatch):
     """The 20s status poll used to scan a user's whole chat history for the last autopilot line
     whenever there was none. It now looks through the newest LAST_ACTION_WINDOW rows and answers
