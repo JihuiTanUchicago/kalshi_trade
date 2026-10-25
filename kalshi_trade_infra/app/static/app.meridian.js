@@ -384,6 +384,7 @@
     [/^\/(?:system|settings\/system)$/, viewSystem],
     [/^\/(?:funds|settings\/account)$/, viewFunds],
     [/^\/devlog$/, viewDevLog],
+    [/^\/track-record$/, viewTrackRecord],
     [/^\/settings(?:\/theme)?$/, viewSettings],
   ];
   const phone = () => !!(window.matchMedia && window.matchMedia('(max-width: 760px)').matches);
@@ -534,7 +535,7 @@
   }
 
   // ---------- shell ----------
-  const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/explore', 'Explore', 'explore'], ['/deploy', 'Deploy', 'deploy'], ['/community', 'Community', 'community'], ['/funds', 'Funds', 'funds'], ['/devlog', 'Dev Logs', 'devlog']];
+  const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/explore', 'Explore', 'explore'], ['/deploy', 'Deploy', 'deploy'], ['/track-record', 'Track record', 'record'], ['/community', 'Community', 'community'], ['/funds', 'Funds', 'funds'], ['/devlog', 'Dev Logs', 'devlog']];
   // The operator can flip into a plain-user view. Only their own account is an
   // admin at all (server decides); the toggle just hides the admin surface so
   // they can see what a normal user sees. Default: admin view on.
@@ -878,7 +879,7 @@
   function rpUnderwater(curve) {
     if (!curve || curve.length < 2) return `<div class="rp-empty">No equity curve to derive drawdown from.</div>`;
     let peak = -Infinity; const dd = curve.map(([t, v]) => { peak = Math.max(peak, v); return [t, v - peak]; });
-    const W = 340, H = 180, L = 44, R = 10, T = 14, B = 22;
+    const W = 340, H = 180, L = 54, R = 10, T = 14, B = 22;
     const t0 = curve[0][0], t1 = curve[curve.length - 1][0];
     const minDd = Math.min(0, ...dd.map((p) => p[1])), lo = minDd < 0 ? minDd : -0.5;
     const x = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R);
@@ -2671,6 +2672,97 @@
     poll(loadBoard, 10000);
   }
   const confirmAutopilot = { armed: false };
+
+  // ---------- track record ----------
+  // What an allocator would check: realized results from closed trades only, one money bucket at a
+  // time (live, demo and paper never mix), every figure next to the sample it rests on. All math is
+  // server-side (app/track_record.py); this only lays it out.
+  const TR_MODES = [['live', 'Live'], ['demo', 'Demo'], ['paper', 'Paper']];
+  const trFix = (v, dp = 2) => (v == null ? '—' : (+v).toFixed(dp));
+  const trDay = (ts) => (ts ? new Date(ts * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—');
+  const trMonth = (k) => { const [y, m] = k.split('-'); return new Date(Date.UTC(+y, +m - 1, 15)).toLocaleDateString(undefined, { year: 'numeric', month: 'short', timeZone: 'UTC' }); };
+  const trCi = (ci, f) => (ci ? `95%: ${f(ci[0])} to ${f(ci[1])}` : 'needs 2+ trades for a range');
+  const TR_EDGE = { positive: ['Edge', 'on'], negative: ['Losing', 'live'], unclear: ['Unproven', ''], thin: ['Too few', 'quiet'] };
+  function trackRecordPanel(m, key, th) {
+    const caveats = [];
+    if (m.excluded_instant_fills) caveats.push(`${num(m.excluded_instant_fills)} instant-fill paper trade${m.excluded_instant_fills === 1 ? '' : 's'} left out (fills real execution would not get).`);
+    if (m.open_trades) caveats.push(`${num(m.open_trades)} open trade${m.open_trades === 1 ? '' : 's'} (${usd(m.open_at_cost)} at cost) join the record when they close.`);
+    const cav = caveats.length ? `<p class="hint tr-caveat">${caveats.map(esc).join(' ')}</p>` : '';
+    if (!m.trades) {
+      const how = key === 'live' ? 'Deploy a strategy that has proven itself on paper to live money, and its closed trades show up here.'
+        : key === 'demo' ? 'Deploy a strategy to the Kalshi demo exchange to build a record with real fills and no real money.'
+        : 'Deploy a passed strategy on paper. Every closed trade is recorded here.';
+      return `<div class="empty"><h3>No closed ${esc(m.label.toLowerCase())} trades yet</h3><p>${how}</p><a class="btn" href="/deploy">Go to Deploy</a></div>${cav}`;
+    }
+    const s = m.sample;
+    const good = s.level === 'solid' && s.edge === 'positive';
+    const figs = `<dl class="figures measure tr-figs">
+      ${fig('Net P&amp;L', usd(m.net_pnl, true), { v: m.net_pnl, cls: 'lead', small: `after ${usd(m.fees)} in fees` })}
+      ${fig('Return', pct(m.return), { v: m.return, small: `on ${usd(m.capital)} capital required${m.annualized_return != null ? ` · ${pct(m.annualized_return)} a year` : ''}` })}
+      ${fig('Max drawdown', m.max_drawdown ? usd(-m.max_drawdown) : usd(0), { small: m.max_drawdown_pct != null ? `${pct(m.max_drawdown_pct, false)} of capital` : '' })}
+      ${fig('Sharpe', trFix(m.sharpe), { small: m.sharpe == null ? `shown after ${th.min_sharpe_days} days` : `PSR ${pct(m.psr, false)} · Sortino ${trFix(m.sortino)}` })}
+      ${fig('Win rate', pct(m.win_rate, false), { small: trCi(m.win_rate_ci, (v) => pct(v, false)) })}
+      ${fig('Trades', num(m.trades), { small: `${num(m.wins)} won · ${num(m.losses)} lost` })}
+      ${fig('Avg trade', usd(m.avg_trade, true), { v: m.avg_trade, small: trCi(m.avg_trade_ci, (v) => usd(v, true)) })}
+      ${fig('Profit factor', trFix(m.profit_factor), { small: 'gross wins ÷ gross losses' })}
+    </dl>`;
+    const risk = `<dl class="kv tr-kv">
+      <dt>Average win</dt><dd>${usd(m.avg_win, true)}</dd><dt>Average loss</dt><dd>${usd(m.avg_loss, true)}</dd>
+      <dt>Best trade</dt><dd>${usd(m.best, true)}</dd><dt>Worst trade</dt><dd>${usd(m.worst, true)}</dd>
+      <dt>Gross P&amp;L before fees</dt><dd>${usd(m.gross_pnl, true)}</dd><dt>Fees paid</dt><dd>${usd(m.fees)}</dd>
+      <dt>Current drawdown</dt><dd>${m.current_drawdown ? usd(-m.current_drawdown) : 'At a high'}</dd>
+      <dt>Longest drawdown</dt><dd>${trFix(m.longest_drawdown_days, 1)} days</dd>
+      <dt>First trade</dt><dd>${trDay(m.first_trade_at)}</dd><dt>Days of history</dt><dd>${num(m.days)}</dd>
+    </dl>`;
+    const months = m.monthly.map((r) => `<tr><td class="name" data-lab="Month">${esc(trMonth(r.month))}</td>
+      <td class="num" data-lab="Net P&amp;L">${money(r.pnl)}</td><td class="num" data-lab="Trades">${num(r.trades)}</td>
+      <td class="num" data-lab="Win rate">${pct(r.win_rate, false)}</td></tr>`).join('');
+    const strats = m.strategies.map((r) => {
+      const [tag, cls] = TR_EDGE[r.edge] || TR_EDGE.unclear;
+      return `<tr><td class="name" data-lab="Strategy"><a href="/strategies/${+r.strategy_id}">${esc(r.title)}</a></td>
+        <td data-lab="Read"><span class="mk ${cls}">${tag}</span></td>
+        <td class="num" data-lab="Trades">${num(r.trades)}${r.open_trades ? ` <span class="sub-fig">+${num(r.open_trades)} open</span>` : ''}</td>
+        <td class="num" data-lab="Net P&amp;L">${money(r.net_pnl)}</td>
+        <td class="num" data-lab="Win rate">${pct(r.win_rate, false)}</td>
+        <td class="num" data-lab="Avg trade">${usd(r.avg_trade, true)}</td>
+        <td class="num" data-lab="Max drawdown">${r.max_drawdown ? usd(-r.max_drawdown) : usd(0)}</td>
+        <td class="num" data-lab="Last trade">${trDay(r.last_trade_at)}</td></tr>`;
+    }).join('');
+    return `${notice(s.text, good ? 'good' : '')}${cav}${figs}
+      <div class="rp-figs">
+        <div class="rp-fig wide"><h5>Equity curve</h5>${equityChart(m.curve, null, null, { width: chartWidth() })}<div class="cap">Cumulative net P&amp;L, one point per closed trade.</div></div>
+        <div class="rp-fig"><h5>Drawdown (underwater)</h5>${rpUnderwater(m.curve)}</div>
+        <div class="rp-fig"><h5>Risk and trade detail</h5>${risk}</div>
+      </div>
+      <section class="section"><div class="section-head"><h2>By month</h2><p>UTC calendar months</p></div>
+        <div class="sheet"><table class="table stack"><thead><tr><th>Month</th><th class="num">Net P&amp;L</th><th class="num">Trades</th><th class="num">Win rate</th></tr></thead><tbody>${months}</tbody></table></div></section>
+      <section class="section"><div class="section-head"><h2>By strategy</h2><p>“Too few” means under ${th.min_trades} trades</p></div>
+        <div class="sheet"><table class="table stack"><thead><tr><th>Strategy</th><th>Read</th><th class="num">Trades</th><th class="num">Net P&amp;L</th><th class="num">Win rate</th><th class="num">Avg trade</th><th class="num">Max drawdown</th><th class="num">Last trade</th></tr></thead><tbody>${strats}</tbody></table></div></section>`;
+  }
+  async function viewTrackRecord() {
+    const gen = S.gen;
+    shell('/track-record', boardTitle('Track record', 'Realized results from every closed trade, with live, demo and paper money kept apart. Nothing here is a backtest.'), loading(420));
+    const d = await api('/api/track-record');
+    if (gen !== S.gen) return;
+    let tab; try { tab = localStorage.getItem('tau_tr_tab'); } catch (e) { /* private mode */ }
+    if (!d.modes[tab]) tab = d.default_mode;
+    const method = `<section class="section tr-method"><div class="section-head"><h2>How these numbers are computed</h2></div>
+      <ul>${d.method.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
+      <p class="hint">Updated ${esc(clock(new Date(d.generated_at * 1000).toISOString()))}. Past results do not predict future returns.</p></section>`;
+    root.querySelector('main').innerHTML = `
+      <div class="chips tr-tabs" role="group" aria-label="Money type">
+        ${TR_MODES.map(([k, label]) => `<button class="chip" type="button" data-trtab="${k}" aria-pressed="${k === tab}">${label} · ${num(d.modes[k].trades)}</button>`).join('')}
+      </div>
+      <div id="trpanel"></div>${method}`;
+    const setTab = (t) => {
+      tab = t;
+      root.querySelectorAll('[data-trtab]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.trtab === t)));
+      root.querySelector('#trpanel').innerHTML = trackRecordPanel(d.modes[t], t, d.thresholds);
+      try { localStorage.setItem('tau_tr_tab', t); } catch (e) { /* private mode */ }
+    };
+    root.querySelectorAll('[data-trtab]').forEach((b) => (b.onclick = () => setTab(b.dataset.trtab)));
+    setTab(tab);
+  }
 
   // ---------- funds ----------
   async function viewFunds() {
