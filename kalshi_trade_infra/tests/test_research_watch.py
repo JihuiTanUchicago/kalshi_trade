@@ -32,7 +32,8 @@ def test_the_report_flags_what_needs_attention(monkeypatch):
     events = {
         2: [{"kind": "step", "message": "x", "data": {"phase": "developing"}, "created_at": NOW - timedelta(minutes=35)}],
         3: [_drop("The GBM model is fundamentally incompatible with NFL outcome markets")] * 3
-           + [_drop("loses money")],
+           + [_drop("loses money"), {"kind": "verdict", "message": "underpowered", "data": {"power": 0.2},
+                                     "created_at": NOW}],
         5: [_drop("spec invalid: unknown field")] + [_drop("taker_yes_vol_60s is not populated")] * 4,
     }
     rep = rw.build_report(runs, events, NOW, 3)
@@ -47,6 +48,7 @@ def test_the_report_flags_what_needs_attention(monkeypatch):
     assert stalled["idle_min"] == 35.0 and stalled["phase"] == "developing"
     r3 = next(s for s in rep["runs"] if s["run_id"] == 3)
     assert [d["tag"] for d in r3["drops"]] == ["wrong_fit"] * 3 + ["loses"]
+    assert (r3["developed"], r3["underpowered"], r3["not_finalist"]) == (1, 1, 0)
     assert rep["status_counts"] == {"failed": 1, "running": 1, "succeeded": 2, "queued": 1}
     assert rep["totals"]["explored"] >= 9
 
