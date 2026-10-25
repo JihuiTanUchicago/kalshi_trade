@@ -370,7 +370,7 @@
     let data = {};
     try { data = await res.json(); } catch (e) { /* non-JSON error page */ }
     if (scoped && gen !== S.gen) return STALE();
-    if (res.status === 401 && path !== '/api/me') { S.me = null; go('/signin'); throw new ApiError(401, 'Please sign in.'); }
+    if (res.status === 401 && path !== '/api/me') { S.me = null; go(signinPath(), true); throw new ApiError(401, 'Please sign in.'); }
     if (!res.ok) throw new ApiError(res.status, data.error || 'Request failed (' + res.status + ').');
     return data;
   }
@@ -399,6 +399,10 @@
   // Public routes: viewable signed-OUT, so the boot guard must not force /api/me + a signin bounce.
   const PUBLIC = new Set(['/signin', '/terms', '/privacy']);
   const phone = () => !!(window.matchMedia && window.matchMedia('(max-width: 760px)').matches);
+  // Signed out on a deep link: carry the page through Google sign-in (/auth/google?next=, checked by
+  // the server) so the visitor lands back on it instead of on the dashboard.
+  const signinPath = () => /^\/(?:|signin|dashboard)$/.test(location.pathname) ? '/signin' : '/signin?next=' + encodeURIComponent(location.pathname + location.search);
+  const signinNext = () => { const n = new URLSearchParams(location.search).get('next'); return n && n[0] === '/' && n[1] !== '/' ? '?next=' + encodeURIComponent(n) : ''; };
   function go(path, replace) {
     if (replace) history.replaceState(null, '', path); else history.pushState(null, '', path);
     render();
@@ -459,7 +463,7 @@
       try { S.me = await api('/api/me', undefined, { timeoutMs: 12000 }); }
       catch (e) {
         if (splashTid) clearTimeout(splashTid);
-        if (e.status === 401) { S.signedOutAt = Date.now(); return go('/signin', true); }
+        if (e.status === 401) { S.signedOutAt = Date.now(); return go(signinPath(), true); }
         return bootFail();
       }
       if (splashTid) clearTimeout(splashTid);
@@ -1247,13 +1251,14 @@
     const q = new URLSearchParams(location.search);
     const err = q.get('error');
     const msg = { cancelled: 'Sign-in was cancelled.', expired: 'That sign-in link expired. Try again.', google: "Google couldn't confirm your account. Please try again." }[err];
+    const nextQ = signinNext();
     document.body.classList.add('landing-body');
     root.innerHTML = `
       <div class="landing">
         <header class="lnav">
           <a class="lbrand" href="/">${ICON.mark}<span>Tau</span></a>
           <div class="lnav-actions">
-            <a class="pill solid" href="/auth/google" data-native>Sign in</a>
+            <a class="pill solid" href="/auth/google${nextQ}" data-native>Sign in</a>
           </div>
         </header>
         <section class="lhero">
@@ -1262,7 +1267,7 @@
             <p class="lsub">Recursive self-improvement, pointed at the market: an agent researches strategies, tests each on data it never saw, learns from every result, and trades only the ones that pass — in your own Kalshi account.</p>
             ${msg ? `<div class="lnotice">${esc(msg)}</div>` : ''}
             <div class="lcta" id="lcta">
-              <a class="pill solid lg" href="/auth/google" data-native>${ICON.google}Continue with Google</a>
+              <a class="pill solid lg" href="/auth/google${nextQ}" data-native>${ICON.google}Continue with Google</a>
             </div>
             <p class="lfine">Free to start — you'll get $1,000 of paper money to research and test strategies. Live trading is optional and runs in your own Kalshi account.</p>
           </div>

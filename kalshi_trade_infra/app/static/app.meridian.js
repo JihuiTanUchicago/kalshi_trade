@@ -364,7 +364,7 @@
     let data = {};
     try { data = await res.json(); } catch (e) { /* non-JSON error page */ }
     if (scoped && gen !== S.gen) return STALE();
-    if (res.status === 401 && path !== '/api/me') { S.me = null; go('/signin'); throw new ApiError(401, 'Please sign in.'); }
+    if (res.status === 401 && path !== '/api/me') { S.me = null; go(signinPath(), true); throw new ApiError(401, 'Please sign in.'); }
     if (!res.ok) throw new ApiError(res.status, data.error || 'Request failed (' + res.status + ').');
     return data;
   }
@@ -389,6 +389,10 @@
     [/^\/settings(?:\/theme)?$/, viewSettings],
   ];
   const phone = () => !!(window.matchMedia && window.matchMedia('(max-width: 760px)').matches);
+  // Signed out on a deep link: carry the page through Google sign-in (/auth/google?next=, checked by
+  // the server) so the visitor lands back on it instead of on the dashboard.
+  const signinPath = () => /^\/(?:|signin|dashboard)$/.test(location.pathname) ? '/signin' : '/signin?next=' + encodeURIComponent(location.pathname + location.search);
+  const signinNext = () => { const n = new URLSearchParams(location.search).get('next'); return n && n[0] === '/' && n[1] !== '/' ? '?next=' + encodeURIComponent(n) : ''; };
   function go(path, replace) {
     if (replace) history.replaceState(null, '', path); else history.pushState(null, '', path);
     render();
@@ -424,7 +428,7 @@
     if (path === '/signin') { const f = document.getElementById('autopilot-float'); if (f) f.remove(); }
     const match = routes.map(([re, fn]) => [path.match(re), fn]).find(([m]) => m);
     if (!S.me && path !== '/signin') {
-      try { S.me = await api('/api/me'); } catch (e) { if (e.status === 401) S.signedOutAt = Date.now(); return go('/signin', true); }
+      try { S.me = await api('/api/me'); } catch (e) { if (e.status === 401) S.signedOutAt = Date.now(); return go(signinPath(), true); }
       // Adopt the account's saved theme on a fresh device (server wins), reloading once into it.
       const server = (S.me.user && S.me.user.ui_theme) || 'tau';
       let local = 'tau'; try { local = localStorage.getItem('tau_ui') || 'tau'; } catch (e) {}
@@ -1198,13 +1202,14 @@
     const msg = q.has('pending')
       ? "You're on the waitlist — we'll email you the moment you're approved. (Access is invite-only right now.)"
       : { cancelled: 'Sign-in was cancelled.', expired: 'That sign-in link expired. Try again.', google: "Google couldn't confirm your account. We may not have added you to the waitlist yet." }[err];
+    const nextQ = signinNext();
     document.body.classList.add('landing-body');
     root.innerHTML = `
       <div class="landing">
         <header class="lnav">
           <a class="lbrand" href="/">${ICON.mark}<span>Tau</span></a>
           <div class="lnav-actions">
-            <a class="pill" href="/auth/google" data-native>Sign in</a>
+            <a class="pill" href="/auth/google${nextQ}" data-native>Sign in</a>
             <button class="pill solid" data-action="waitlist-top">Join waitlist</button>
           </div>
         </header>
@@ -1214,7 +1219,7 @@
             <p class="lsub">Recursive self-improvement, pointed at the market: an agent researches strategies, tests each on data it never saw, learns from every result, and trades only the ones that pass — in your own Kalshi account.</p>
             ${msg ? `<div class="lnotice">${esc(msg)}</div>` : ''}
             <div class="lcta" id="lcta">
-              <a class="pill solid lg" href="/auth/google" data-native>${ICON.google}Continue with Google</a>
+              <a class="pill solid lg" href="/auth/google${nextQ}" data-native>${ICON.google}Continue with Google</a>
               <button class="pill lg" data-action="waitlist-open">Join waitlist</button>
             </div>
             <p class="lfine">Access is invite-only right now. Join the waitlist and we'll email you when a spot opens. You'll start with $1,000 of paper money; live trading is optional and runs in your own Kalshi account.</p>

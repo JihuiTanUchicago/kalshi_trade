@@ -102,9 +102,9 @@ function frontend({fetchImpl, brokerMount} = {}) {
   const intervals = new Map(), timeouts = new Map(), requests = [], navigations = [];
   let nextId = 0;
   const location = {pathname: '/strategies/42', search: '', origin: 'http://offline.invalid'};
-  const navigate = (_state, _title, path) => { navigations.push(path); location.pathname = path; };
+  const navigate = (_state, _title, path) => { navigations.push(path); const [p, q] = String(path).split('?'); location.pathname = p; location.search = q ? '?' + q : ''; };
   const context = vm.createContext({
-    Intl, URL, URLSearchParams,
+    Intl, URL, URLSearchParams, AbortController,
     document: {body, getElementById: id => body.querySelector('#' + id), addEventListener() {}, removeEventListener() {}, createElement: tag => new Element(tag)},
     window: {addEventListener() {}, scrollTo() {}, matchMedia: () => ({matches: false}),
       ...(brokerMount ? {TauBrokerConnections: {mount: brokerMount}} : {})},
@@ -174,6 +174,19 @@ test('road to live says plainly when paper is losing money against the backtest'
     assert.doesNotMatch(body.innerHTML, /-18%/);
     f.clearTimers();
   }
+});
+
+test('a signed-out deep link signs in back to the same page', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/me') return response({error: 'Please sign in.'}, 401);
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me = null;
+  await f.render(); await flush(); await flush();
+  assert.deepEqual(f.navigations, ['/signin?next=%2Fstrategies%2F42']);
+  const google = f.root.querySelectorAll('a[data-native]').map(a => a.getAttribute('href')).filter(h => h.startsWith('/auth/google'));
+  assert.ok(google.length >= 1);
+  assert.deepEqual([...new Set(google)], ['/auth/google?next=%2Fstrategies%2F42']);
 });
 
 test('the current strategy page renders an escaped research paper and a separate real demo curve', async () => {
