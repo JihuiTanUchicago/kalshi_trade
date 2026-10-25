@@ -3600,6 +3600,25 @@ def location_attestation_note(market_key: Optional[str]) -> str:
             "your location in the Kalshi mobile app before going live." % m.category)
 
 
+def pause_notice(cur, user: Dict, run: Dict) -> bool:
+    """Ring the bell when a deployment was paused automatically (the engine's loss guard and
+    force-close both queue a review carrying the deployment id). The chat line alone reaches only
+    someone who opens the autopilot panel, and a paused strategy is exactly what needs them.
+    Read-only toward trading. True when a notice was added."""
+    dep_id = run.get("deployment_id")
+    if not dep_id:
+        return False
+    d = repo.get_deployment(cur, user["id"], dep_id)
+    if not d or d.get("status") != "paused":
+        return False  # already resumed or stopped by the time the review ran
+    title = (d.get("title") or "Strategy %d" % d["strategy_id"])[:120]
+    why = (d.get("status_reason") or "").strip()
+    repo.add_notification(cur, user["id"], "paused",
+                          "“%s” was paused automatically.%s" % (title, (" " + why[:200]) if why else ""),
+                          "/strategies/%d" % d["strategy_id"])
+    return True
+
+
 def live_ready_notices(cur, user: Dict) -> List[str]:
     """Once per strategy, tell the user (chat line + email) when a running paper strategy first
     clears every `paper_evidence` check. Read-only toward trading: going live stays a separate step
@@ -4287,6 +4306,10 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
                 live_ready_notices(cur, user)  # adds its own chat lines
             except Exception as e:  # best-effort, like the funnel above
                 print("[agent] live-ready notice failed for user %s: %r" % (user["id"], e), flush=True)
+            try:
+                pause_notice(cur, user, run)
+            except Exception as e:  # best-effort, like the funnel above
+                print("[agent] pause notice failed for user %s: %r" % (user["id"], e), flush=True)
         transcript = "\n".join("%s: %s" % (m["role"], m["content"]) for m in history)
         if run["kind"] == "review":
             task = ("Scheduled autopilot review. Why: %s\n"
