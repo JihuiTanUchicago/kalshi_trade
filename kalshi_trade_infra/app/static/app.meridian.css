@@ -2366,3 +2366,16 @@ body.landing-body .apf { display: none; }
 @media (max-width: 560px) {
   .loop-list li { grid-template-columns: 1fr; gap: 2px; }
 }
+
+/* Track record (viewTrackRecord): realized results per money bucket, the figures an allocator checks. */
+.tr-tabs { margin-bottom: 4px; }
+.tr-caveat { margin: -4px 0 12px; max-width: 72ch; }
+.tr-figs { margin-top: 4px; }
+@media (min-width: 761px) {
+  .tr-figs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .tr-figs > .m:nth-child(4n+1) { border-left: 0; padding-left: 0; }
+  .tr-figs > .m:nth-child(n+5) { border-top: 1px solid var(--rule); }
+}
+.tr-kv { margin: 10px 0 0; }
+.tr-kv dd { font-variant-numeric: tabular-nums; }
+.tr-method ul { margin: 12px 0 10px; padding-left: 18px; display: grid; gap: 6px; max-width: 80ch; font-size: 13px; color: var(--ink-2); }
