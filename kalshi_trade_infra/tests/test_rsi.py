@@ -159,7 +159,8 @@ def test_paper_outcomes_score_families_and_playbooks_on_realistic_fills(monkeypa
     out = rsi.paper_outcomes(cur, 2)
     high = out["families"]["weather-high"]
     assert high == {"strategies": 2, "trading": 2, "round_trips": 50, "net_pnl": 3.0,
-                    "realization": round(3.0 / (40 * 1.0 + 10 * 2.0), 3), "live_ready": 1, "stuck_on": {}}
+                    "realization": round(3.0 / (40 * 1.0 + 10 * 2.0), 3), "live_ready": 1, "stuck_on": {},
+                    "behind_pace": []}
     assert out["families"]["crypto"]["stuck_on"] == {"ret_5m > 0": 1}
     assert out["families"]["crypto"]["trading"] == 0 and out["families"]["crypto"]["realization"] is None
     assert out["by_playbook"][7]["round_trips"] == 50 and out["by_playbook"][9]["strategies"] == 1
@@ -177,6 +178,29 @@ def test_paper_outcomes_skip_the_bootstrap_until_there_are_enough_trips(monkeypa
     monkeypatch.setattr(agent, "paper_evidence", lambda *a: (_ for _ in ()).throw(AssertionError("too early")))
     out = rsi.paper_outcomes(cur, 2)
     assert out["total"]["live_ready"] == 0 and out["by_playbook"] == {}
+
+
+def test_paper_pace_flags_a_running_strategy_far_below_its_research_rate(monkeypatch):
+    from datetime import datetime, timedelta
+    now = datetime(2026, 10, 25, 18, 0)
+
+    def dep(sid, per_day, hours, status="running"):
+        return dict(_dep(sid, "kxnfl1hspread"), status=status, created_at=now - timedelta(hours=hours),
+                    result={"in_sample": {"trades_per_day": per_day}})
+    # 16.7/day for 12h predicts ~8 trips: 0 is p~0.0002 (behind); 6 is ordinary.
+    assert rsi.paper_pace(dep(1, 16.7, 12), 0, now) == {"expected": 8.3, "hours": 12.0, "p": 0.0002, "behind": True}
+    assert rsi.paper_pace(dep(1, 16.7, 12), 6, now)["behind"] is False
+    # Too early to tell (expects ~0.8), paused, or no research pace: never flagged.
+    assert rsi.paper_pace(dep(2, 4.24, 4.6), 0, now)["behind"] is False
+    assert rsi.paper_pace(dep(3, 16.7, 12, status="paused"), 0, now)["behind"] is False
+    assert rsi.paper_pace(_dep(4, "btc15m"), 0, now) is None
+
+    monkeypatch.setattr(rsi, "paper_pace", lambda d, trips, now=None: {"expected": 8.3, "behind": not trips})
+    cur = _paper_setup(monkeypatch, [_dep(81, "kxnfl1hspread"), _dep(82, "kxnfl1hspread")], {82: (9, 1.0)}, {})
+    out = rsi.paper_outcomes(cur, 1)
+    assert out["total"]["behind_pace"] == [(81, 0, 8.3)]
+    assert rsi.paper_outcomes_lines(out)[0].endswith(
+        "FAR BELOW RESEARCH PACE (check the live book shows what research saw): #81 0 trips vs ~8 expected")
 
 
 def test_paper_outcomes_with_nothing_on_paper_is_empty(monkeypatch):

@@ -160,6 +160,12 @@
   #81 (NFL first-half spread, "0.2-24 hours from expiry") can enter at all. Strike markets and rain
   (expected after close) are unchanged. Next: record expected_expiration_time in hist_markets so
   research can use the same pre-close estimate instead of the actual close.
+- Paper pace check (2026-10-25): `rsi.paper_pace` compares a running paper strategy's realistic
+  trips with what its research pace (in_sample trades_per_day) predicts since the deployment was
+  created. Past 5 expected trips with Poisson p < 0.01, the review's paper line names it "FAR BELOW
+  RESEARCH PACE", since that is more often a live/research mismatch (like the sports close above)
+  than a rare setup. Also in the scoreboard's paper rollup (`behind_pace`). Calendar-day pace
+  overstates weekday rates for weekly sports, so treat a sports flag as a prompt to check.
 - Underpowered verdicts enter paper on their unseen trades (2026-10-25): a below-min-sample
   validation verdict now records its validation net P&L (no p-value, no alpha), and paper
   probation admits it only if that P&L is up. Older rows fall back to the research fold (#284).

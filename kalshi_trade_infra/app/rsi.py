@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 from collections import Counter, defaultdict
 from typing import Dict, Iterable, List, Optional, Tuple
@@ -339,6 +340,40 @@ def _playbook_of(cur, strategy_ids: List[int]) -> Dict[int, int]:
         return {}
 
 
+# Paper pace: a running paper strategy that trades far below the rate it traded at in research is
+# more often a live/research mismatch than a rare setup (KXNFL1HSPREAD #81 measured time to expiry
+# against a close two days late and could never enter, 2026-10-25). Flag it once its research pace
+# predicted PACE_MIN_EXPECTED+ trips by now and seeing this few has Poisson p < PACE_MAX_P.
+PACE_MIN_EXPECTED = 5.0
+PACE_MAX_P = 0.01
+
+
+def _poisson_cdf(k: int, lam: float) -> float:
+    """P(X <= k) for X ~ Poisson(lam)."""
+    term = total = math.exp(-lam)
+    for i in range(1, k + 1):
+        term *= lam / i
+        total += term
+    return min(1.0, total)
+
+
+def paper_pace(dep: Dict, trips: int, now=None) -> Optional[Dict]:
+    """Expected paper trips by now at the strategy's research pace (in_sample trades_per_day over
+    the hours since this deployment was created) and the chance of seeing `trips` or fewer.
+    `behind` only for a running deployment past both thresholds. None without a research pace."""
+    from datetime import datetime
+    per_day = ((dep.get("result") or {}).get("in_sample") or {}).get("trades_per_day")
+    created = dep.get("created_at")
+    if not per_day or not isinstance(created, datetime):
+        return None
+    now = now or datetime.utcnow()
+    hours = max(0.0, (now - created.replace(tzinfo=None)).total_seconds() / 3600.0)
+    expected = float(per_day) * hours / 24.0
+    p = _poisson_cdf(int(trips), expected)
+    behind = dep.get("status") == "running" and expected >= PACE_MIN_EXPECTED and p < PACE_MAX_P
+    return {"expected": round(expected, 1), "hours": round(hours, 1), "p": round(p, 4), "behind": behind}
+
+
 def _paper_rollup(rows: List[Dict]) -> Dict:
     trips = sum(r["round_trips"] for r in rows)
     net = sum(r["net_pnl"] for r in rows)
@@ -353,6 +388,9 @@ def _paper_rollup(rows: List[Dict]) -> Dict:
         # For strategies that never traded: the entry check the engine last saw no contract clear
         # (spec.entry_scan). Tells research which part of its specs the live book never reaches.
         "stuck_on": dict(Counter(r["stuck_on"] for r in rows if not r["round_trips"] and r.get("stuck_on"))),
+        # Running strategies trading far below their research pace (paper_pace): (id, trips, expected).
+        "behind_pace": [(r["strategy_id"], r["round_trips"], r["pace"]["expected"])
+                        for r in rows if (r.get("pace") or {}).get("behind")],
     }
 
 
@@ -389,7 +427,8 @@ def paper_outcomes(cur, user_id: int) -> Dict:
         rows.append({"strategy_id": sid, "family": family(d.get("market")), "playbook_id": playbooks.get(sid),
                      "round_trips": int(trips), "net_pnl": float(net),
                      "backtest_per_trade": float(oos.get("pnl") or 0) / n_bt if n_bt else None,
-                     "live_ready": ready, "stuck_on": (d.get("scan") or {}).get("blocked_at")})
+                     "live_ready": ready, "stuck_on": (d.get("scan") or {}).get("blocked_at"),
+                     "pace": paper_pace(d, trips)})
     fams: Dict[str, List[Dict]] = defaultdict(list)
     pbs: Dict[int, List[Dict]] = defaultdict(list)
     for r in rows:
@@ -418,6 +457,9 @@ def paper_outcomes_lines(outcomes: Dict) -> List[str]:
         if r.get("stuck_on"):
             line += "; untraded ones last stopped at: %s" % ", ".join(
                 "%s (%d)" % (k, n) for k, n in sorted(r["stuck_on"].items(), key=lambda kv: -kv[1]))
+        if r.get("behind_pace"):
+            line += "; FAR BELOW RESEARCH PACE (check the live book shows what research saw): %s" % ", ".join(
+                "#%d %d trips vs ~%.0f expected" % (sid, n, exp) for sid, n, exp in r["behind_pace"])
         out.append(line)
     return out
 
