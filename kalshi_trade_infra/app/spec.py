@@ -262,7 +262,11 @@ round-trips the same way; a few coefficients would skip the pickle and return nu
       # ...model.predict_proba(features) per frame; emit picks where it beats the mid net of fees.
 EVENT / NON-PRICE MARKETS (sports, weather, outcome-settled): the built-in `gbm` is a continuous-
 price model and does NOT apply — `code` + fit() is the first-class tool, NOT a last resort. There
-is no strike/spot; you have the contract's own price/book features and its result. A canonical
+is no spot or underlying feed; you have the contract's own price/book features and its result. LADDER
+series (totals, spreads, team totals, player yards/receptions, weather highs) DO carry each contract's
+real threshold in c["strike"] (e.g. over 41.5), and c["event"] groups one game's strikes, so ladder
+shape / monotonicity theses are computable; strike 0.0 means no published threshold
+(a pure outcome market such as who wins, or a weather "below X" cap). A canonical
 shape is a RECALIBRATION of the market's own mid (learn where the crowd is biased on the research
 fold, then bet that correction out of sample):
   import numpy as np

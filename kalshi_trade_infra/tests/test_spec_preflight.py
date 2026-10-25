@@ -201,3 +201,10 @@ def test_the_guide_says_pool_is_off_on_one_minute_event_series():
     sports = next(k for k, m in MARKETS.items() if m.kind == "binary" and not specmod._poolable(m))
     assert "POOL IS NOT AVAILABLE ON %s" % sports in specmod.research_guide(sports)
     assert "POOL IS NOT AVAILABLE" not in specmod.research_guide("btc15m")
+
+
+def test_the_code_guide_says_sports_ladders_carry_strikes():
+    """Prod hist_markets (2026-10-25): KXNFLTOTAL/SPREAD/RECYDS... carry real floor_strikes; the guide's
+    old "there is no strike" line made runs 2754/2761 drop ladder theses as missing_context."""
+    assert "There is no strike" not in specmod.CODE_STRATEGY_GUIDE
+    assert 'c["strike"]' in specmod.CODE_STRATEGY_GUIDE and "LADDER" in specmod.CODE_STRATEGY_GUIDE
