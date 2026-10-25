@@ -1478,7 +1478,7 @@
         // With autopilot on, "Dispatch your first agent" asked for work it is already doing.
         : (S.me.user && S.me.user.autopilot)
           ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is researching. Strategies that pass every gate land here on paper first, with no real money.</p><a class="btn" href="/research">See its research</a></div>`
-          : `<div class="empty"><h3>Nothing deployed yet</h3><p>Agents research strategies and test each one on data they never saw. The ones that pass every gate can be deployed here, on paper first.</p><a class="btn" href="/research">Dispatch your first agent</a></div>`;
+          : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above and the strategies that pass every gate on data they never saw land here on their own, on paper first. Or research an idea yourself.</p><a class="btn" href="/research">Dispatch your first agent</a></div>`;
       const stubs = (rows, closed) => rows.length
         ? rows.map((r) => `<div class="stub"><b>${esc(r.side.toUpperCase())} ${esc(r.qty)} × ${cents(+r.entry_price)}</b>
             <span>${closed ? money(+r.pnl) : (r.unrealized != null ? money(r.unrealized) : usd(r.qty * r.entry_price))}</span>
