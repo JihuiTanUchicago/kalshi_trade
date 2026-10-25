@@ -151,6 +151,15 @@
   deploy_collector.sh write the S3 markers it reads (bundle/markers/web_sha, web_full_sha,
   collector_sha). A run fails, and GitHub mails the owner, when merges wait more than 90 minutes.
   This replaced a session-only cron that lapsed twice on 2026-10-25 (10:30-13:16Z, 14:30-16:36Z).
+  GitHub never fired the schedule in its first hour, so it also runs after each CI run on main
+  (#334); a CI-triggered run waits until the last deploy is 25 minutes old, then ships (#336).
+- Live sports contracts count time to expiry the way research does (2026-10-25): an open
+  outcome-settled contract that can close early carries a backstop close_time (every open
+  KXNFL1HSPREAD contract said two days after its game), while research's settled markets carry the
+  actual close. `engine.decision_close_time` uses expected_expiration_time when it is earlier, so
+  #81 (NFL first-half spread, "0.2-24 hours from expiry") can enter at all. Strike markets and rain
+  (expected after close) are unchanged. Next: record expected_expiration_time in hist_markets so
+  research can use the same pre-close estimate instead of the actual close.
 - Underpowered verdicts enter paper on their unseen trades (2026-10-25): a below-min-sample
   validation verdict now records its validation net P&L (no p-value, no alpha), and paper
   probation admits it only if that P&L is up. Older rows fall back to the research fold (#284).
