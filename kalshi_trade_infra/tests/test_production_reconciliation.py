@@ -88,8 +88,9 @@ def test_fallback_catalog_retains_model_identity_and_exact_pricing_metadata(key)
     assert models_catalog.price_for_model_id(choice.model_id) == (choice.price_in, choice.price_out)
     assert choice.price_in > 0 and choice.price_out > 0
     if key in models_catalog.FALLBACK_ORDER:
-        assert chain == [models_catalog.MODELS[item].model_id for item in
-                         models_catalog.FALLBACK_ORDER[models_catalog.FALLBACK_ORDER.index(key):]]
+        assert chain == [mid for item in models_catalog.FALLBACK_ORDER[models_catalog.FALLBACK_ORDER.index(key):]
+                         for mid in (models_catalog.MODELS[item].model_id,
+                                     models_catalog.global_twin(models_catalog.MODELS[item].model_id))]
     else:
         assert chain == [choice.model_id]
     assert models_catalog.fallback_chain_from("private-unregistered-model") == ["private-unregistered-model"]

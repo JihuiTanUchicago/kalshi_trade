@@ -93,9 +93,17 @@ PENDING: List[ModelChoice] = [
                 "us.anthropic.claude-fable-5-1", Decimal("10"), Decimal("50"), available=False),
 ]
 
-# modelId -> price, for billing to resolve a run's chosen model exactly.
+def global_twin(model_id: str) -> Optional[str]:
+    """The global cross-region inference profile of a us.* profile, which draws on its own, larger
+    daily token quota (2026-10-25: us Opus 4.6 was out for the day while global served it)."""
+    return "global." + model_id[len("us."):] if model_id.startswith("us.anthropic.") else None
+
+
+# modelId -> price, for billing to resolve a run's chosen model exactly. A global twin bills at its
+# us profile's price (Bedrock's global profiles cost the same or less).
 _PRICE_BY_MODEL_ID: Dict[str, Tuple[Decimal, Decimal]] = {
-    m.model_id: (m.price_in, m.price_out) for m in MODELS.values()
+    mid: (m.price_in, m.price_out) for m in MODELS.values()
+    for mid in (m.model_id, global_twin(m.model_id)) if mid
 }
 
 
@@ -131,16 +139,18 @@ def catalog_json() -> List[Dict]:
 # then naturally recovers to the preferred one once it's free again (the chain is rebuilt per call).
 # Kept to the Claude family: the research/agent prompts and their strict JSON replies are tuned for
 # Claude, so a non-Claude fallback would trade one failure mode (throttle) for another (bad output).
-# Opus 4.6 and Sonnet 4.6 have no DAILY token cap on this account (only per-minute limits, checked
-# 2026-10-24), unlike Opus 4.5 (6.75M/day on the us profile) and Sonnet 4.5. Opus 4.5 comes next at
+# Every us profile has a DAILY token cap (Opus 4.6 ran out on 2026-10-25 despite looking uncapped on
+# 2026-10-24; Opus 4.5 is 6.75M/day on us, 13.5M on global). Opus 4.5 comes next at
 # the same price, so a per-minute throttle or a stall on 4.6 stays on Opus before dropping to Sonnet.
 FALLBACK_ORDER: List[str] = ["opus-4-6", "opus-4-5", "sonnet-4-6", "sonnet-4-5", "haiku-4-5"]
 
 
 def fallback_chain_from(model_id: str) -> List[str]:
     """The invokable modelIds to try in order, starting at `model_id`: itself, then each lower-tier
-    model in FALLBACK_ORDER. A model_id outside the chain yields just [model_id] (no fallback)."""
+    model in FALLBACK_ORDER, each followed by its global twin so an exhausted us quota overflows to
+    the same model before dropping a tier. A model_id outside the chain yields just [model_id]."""
     key = next((m.key for m in MODELS.values() if m.model_id == model_id), None)
     if key not in FALLBACK_ORDER:
         return [model_id]
-    return [MODELS[k].model_id for k in FALLBACK_ORDER[FALLBACK_ORDER.index(key):]]
+    return [mid for k in FALLBACK_ORDER[FALLBACK_ORDER.index(key):]
+            for mid in (MODELS[k].model_id, global_twin(MODELS[k].model_id)) if mid]

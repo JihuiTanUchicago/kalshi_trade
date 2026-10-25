@@ -147,11 +147,17 @@ def test_pending_models_are_listed_but_not_selectable(monkeypatch):
 def test_fallback_chain_stays_on_opus_before_sonnet():
     assert catalog.FALLBACK_ORDER[0] == catalog.DEFAULT_KEY == "opus-4-6"
     ids = {k: catalog.MODELS[k].model_id for k in catalog.FALLBACK_ORDER}
+    g = {k: catalog.global_twin(v) for k, v in ids.items()}
+    # each us profile overflows to its global twin (a separate daily quota) before dropping a tier
     assert catalog.fallback_chain_from(ids["opus-4-6"]) == [
-        ids["opus-4-6"], ids["opus-4-5"], ids["sonnet-4-6"], ids["sonnet-4-5"], ids["haiku-4-5"]]
+        ids["opus-4-6"], g["opus-4-6"], ids["opus-4-5"], g["opus-4-5"], ids["sonnet-4-6"], g["sonnet-4-6"],
+        ids["sonnet-4-5"], g["sonnet-4-5"], ids["haiku-4-5"], g["haiku-4-5"]]
+    assert g["opus-4-6"] == "global.anthropic.claude-opus-4-6-v1"
+    assert catalog.price_for_model_id(g["opus-4-6"]) == catalog.price_for_model_id(ids["opus-4-6"])
     # a user who picked Opus 4.5 explicitly never climbs UP to 4.6
-    assert catalog.fallback_chain_from(ids["opus-4-5"])[:2] == [ids["opus-4-5"], ids["sonnet-4-6"]]
-    assert catalog.fallback_chain_from(ids["sonnet-4-5"]) == [ids["sonnet-4-5"], ids["haiku-4-5"]]
+    assert catalog.fallback_chain_from(ids["opus-4-5"])[:3] == [ids["opus-4-5"], g["opus-4-5"], ids["sonnet-4-6"]]
+    assert catalog.fallback_chain_from(ids["sonnet-4-5"]) == [ids["sonnet-4-5"], g["sonnet-4-5"],
+                                                              ids["haiku-4-5"], g["haiku-4-5"]]
 
 
 @pytest.mark.parametrize("model,price", [
