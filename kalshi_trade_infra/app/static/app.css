@@ -960,6 +960,18 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   .t-dep.stack tbody td:not(.name):not(.act) { flex-direction: column; align-items: flex-start; flex-wrap: nowrap; gap: 1px; min-width: 0; }
   .t-dep.stack tbody td:not(.name):not(.act) .sub-fig { flex: none; }
   .t-dep.stack tbody td[data-lab="Market"], .t-dep.stack tbody td[data-lab="Status"], .t-dep.stack tbody td[data-lab="Since"] { order: 1; }  /* money first */
+  /* Strategy cards get the same figure grid: three figures across, the deploy box beside the name,
+     and an empty "tried" line dropped, so a phone shows three strategies a screen instead of one and a half. */
+  .t-strat.stack { min-width: 0; }
+  .t-strat.stack tbody tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 12px; position: relative; }
+  .t-strat.stack tbody td { grid-column: 1 / -1; }
+  .t-strat.stack tbody td.num { grid-column: auto; flex-direction: column; align-items: flex-start; flex-wrap: nowrap; gap: 1px; min-width: 0; }
+  .t-strat.stack tbody td.num .sub-fig { flex: none; }
+  .t-strat.stack tbody td.nil, .t-strat.stack tbody td.pickcol[data-lab=""] { display: none; }
+  .t-strat.stack tbody td.pickcol { position: absolute; top: 10px; right: 0; width: auto; flex-direction: column; align-items: center; gap: 4px; }
+  .t-strat.stack tbody td.pickcol input { width: 22px; height: 22px; margin: 0; }
+  .t-strat.stack tbody td.pickcol + td.name { padding-right: 60px; }
+  .t-strat.stack tbody td.name .sub-fig { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .lhero { padding-top: 24px; }
   .lnav { padding: 16px 0; }
   .pill { padding: 8px 14px; font-size: 14px; white-space: nowrap; }
