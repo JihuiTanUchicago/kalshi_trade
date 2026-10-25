@@ -117,3 +117,11 @@ one directory per venue, one `tick_recorder_spot` heartbeat. `kalshi-tick-archiv
 closed hours into S3 Parquet (`ticks/v1/...` in the datalake bucket) and a `tick_archive_hours`
 row, then deletes the local file. `scripts/deploy_collector.sh` installs and enables all five;
 see `data_pipeline/tick_store.py` for reading the archive.
+
+## Liquidity incentive programs (collector box)
+
+`kalshi-lip-programs.timer` snapshots Kalshi's public liquidity incentive program list
+(`GET /incentive_programs`, active and upcoming) every 15 minutes into
+`ticks/v1/lip_programs/date=.../HHMM.json.gz` plus `ticks/lip_programs/latest.json.gz`.
+`python -m data_pipeline.lip_programs summary` prints the latest pools by series.
+`scripts/deploy_collector.sh` installs and enables it.

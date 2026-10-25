@@ -1,0 +1,11 @@
+[Unit]
+Description=Kalshi Liquidity Incentive Program list (public /incentive_programs) -> S3 snapshot
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/kalshi
+Nice=10
+MemoryMax=256M
+TimeoutStartSec=120
+ExecStart=/bin/bash -c 'set -a; . /opt/kalshi/.env.aws; [ -f /opt/kalshi/.env ] && . /opt/kalshi/.env; set +a; unset AWS_PROFILE; exec /opt/kalshi/.venv313/bin/python -u -m data_pipeline.lip_programs snapshot >> /opt/kalshi/logs/kalshi-lip-programs.log 2>&1'
