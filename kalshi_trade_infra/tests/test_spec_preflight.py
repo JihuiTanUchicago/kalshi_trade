@@ -208,3 +208,11 @@ def test_the_code_guide_says_sports_ladders_carry_strikes():
     old "there is no strike" line made runs 2754/2761 drop ladder theses as missing_context."""
     assert "There is no strike" not in specmod.CODE_STRATEGY_GUIDE
     assert 'c["strike"]' in specmod.CODE_STRATEGY_GUIDE and "LADDER" in specmod.CODE_STRATEGY_GUIDE
+
+
+def test_a_null_exit_means_hold_to_settlement():
+    """Prod run 2847 lost three ideas to "exit must be an object": the proposer wrote "exit": null."""
+    spec = specmod.validate({"market": "btc15m", "side": "yes", "exit": None})
+    assert spec["exit"] == {"take_profit": None, "stop_loss": None, "min_edge_to_hold": None}
+    with pytest.raises(specmod.SpecError):
+        specmod.validate({"market": "btc15m", "side": "yes", "exit": "settle"})
