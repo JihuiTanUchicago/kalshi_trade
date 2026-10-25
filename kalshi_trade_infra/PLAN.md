@@ -123,6 +123,9 @@
 - 2026-10-25: the real-MySQL money-path tests (paper buy, settle, cash, NO-side payout) now run in CI
   as `money-path-mysql` against a throwaway MySQL 8 service. They used to skip in CI, and two had
   silently gone stale (the $5 default stake, and settlement now booking `closed` + `close_reason`).
+- 2026-10-25: the autopilot panel says when paper positions are open but unsettled ("4 positions are
+  open, waiting to settle; none has closed yet") instead of "none has traded yet", and its live line
+  names the 20 separate events. Todd's first four rain contracts were invisible in the story.
 
 ## Did the stop help? Early exits scored against holding (2026-10-24)
 

@@ -1598,7 +1598,7 @@
           fnode('<span class="mk on">Passed</span> Deployment candidate', 'An edge that survived every check on data it never saw.', { cls: 'pass-node' }),
         ])}
         ${fstage('Trade', [
-          fnode('Paper first', 'Proven on paper — at least 8 closed trades and non-negative P&amp;L — before anything touches real money.'),
+          fnode('Paper first', 'Proven on paper with realistic fills: 30+ closed trades from 20+ separate events over 48h+, net up, a statistically clear edge that is still working. Only then can anything touch real money.'),
           fnode('<span class="mk">Gated</span> Live money', 'Only in your own Kalshi account, and only when you explicitly arm it. Off by default.', { cls: 'live-node' }),
         ])}
         <div class="rsi-loopback">
