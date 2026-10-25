@@ -460,7 +460,7 @@ def dashboard(ctx: Ctx):
     demo = _mode_bucket(cur, ctx.uid, "demo", open_pos, deps, day)
     de = repo.demo_equity(cur, ctx.uid)
     demo.update(capital=de["capital"], equity=de["equity"], realized_pnl=de["realized"],
-                total_pnl=de["realized"], roi=de["roi"])
+                total_pnl=de["realized"], roi=de["roi"], before_reload=de["before_reload"])
     live = _mode_bucket(cur, ctx.uid, "live", open_pos, deps, day)
     live.update(_live_balance(cur, ctx.uid))
     return {
@@ -776,14 +776,14 @@ def list_strategies(ctx: Ctx):
 def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
     """Stamp each deployed card with what it has actually done since deploying (realized P&L and
     closed trades across its active deployments), so the list shows reality next to the backtest.
-    Real money is never summed with practice money: a strategy with a live deployment reports its
-    live deployments only (beside its Live badge), otherwise its paper/demo ones. One query, and
-    only when the page has a deployed strategy."""
+    Money books are never summed: a strategy with a live deployment reports its live deployments
+    only (beside its Live badge), otherwise its paper ones, with its demo (sandbox) book beside them
+    under "demo" rather than added in. One query, and only when the page has a deployed strategy."""
     if not any(c.get("deployed") for c in cards):
         return
-    real: Dict[int, Dict[bool, Dict]] = {}
+    real: Dict[int, Dict[str, Dict]] = {}
     for d in repo.list_deployments(cur, uid):
-        r = real.setdefault(d["strategy_id"], {}).setdefault(d["mode"] == "live", {"pnl": 0.0, "trades": 0, "open": 0, "paused": False})
+        r = real.setdefault(d["strategy_id"], {}).setdefault(d["mode"], {"pnl": 0.0, "trades": 0, "open": 0, "paused": False})
         r["paused"] = r["paused"] or d.get("status") == "paused"  # often auto-paused; the list flags it
         r["pnl"] += float(d["realized_pnl"] or 0)
         r["trades"] += int(d["closed_trades"] or 0)
@@ -791,9 +791,12 @@ def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
     for c in cards:
         books = real.get(c["id"]) if c.get("deployed") else None
         if books:
-            live = True in books
-            r = books[live]
-            c["real"] = {**r, "pnl": round(r["pnl"], 2), "live": live}
+            mode = next(m for m in ("live", "paper", "demo") if m in books)
+            r = books[mode]
+            c["real"] = {**r, "pnl": round(r["pnl"], 2), "live": mode == "live", "mode": mode}
+            if mode == "paper" and "demo" in books:
+                dm = books["demo"]
+                c["real"]["demo"] = {"pnl": round(dm["pnl"], 2), "trades": dm["trades"], "open": dm["open"]}
 
 
 def _owned_strategy(ctx: Ctx) -> Dict:
@@ -1594,7 +1597,8 @@ def funds(ctx: Ctx):
     de = repo.demo_equity(cur, ctx.uid)
     return {
         "paper": {"cash": round(repo.paper_balance(cur, ctx.uid), 2), "ledger": repo.ledger_rows(cur, ctx.uid)},
-        "demo": {"capital": de["capital"], "equity": de["equity"], "realized": de["realized"]},
+        "demo": {"capital": de["capital"], "equity": de["equity"], "realized": de["realized"],
+                 "before_reload": de["before_reload"]},
         "kalshi": kalshi,
         "kalshi_dev": kalshi_dev_key,
     }

@@ -642,6 +642,33 @@ test('paper P&L reads "since reset" on the card and dashboard once the paper acc
   }
 });
 
+test('the dashboard demo card says what demo is and that its P&L restarts at a reload', async () => {
+  for (const [demo, re] of [
+    [{equity: 1000, capital: 1000}, /\$1,000\.00 capital · no demo strategies yet · real fills on Kalshi’s sandbox, not real money/],
+    [{equity: 512, capital: 500, realized_pnl: 12, running: 1, open_positions: 0, before_reload: 40}, /\$500\.00 capital · 0 open · \+\$12\.00 P&amp;L since reload · real fills/],
+    [{equity: 1012, capital: 1000, realized_pnl: 12, running: 1, open_positions: 0, before_reload: 0}, /\+\$12\.00 P&amp;L all time · real fills/],
+  ]) {
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/dashboard') return response({...emptyDashboard(), demo});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    await f.viewDashboard(); await flush();
+    assert.match(f.root.querySelector('#boardbody').innerHTML, re);
+  }
+});
+
+test('Funds demo labels say "since reload" only after a reload, and that demo fills are real', async () => {
+  for (const before_reload of [0, 40]) {
+    const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds(); d.demo.before_reload = before_reload; return response(d); }});
+    await f.viewFunds();
+    const main = f.root.querySelector('main').innerHTML;
+    assert.match(main, before_reload ? /<dt>Capital at last reload<\/dt>/ : /<dt>Starting capital<\/dt>/);
+    assert.match(main, before_reload ? /<dt>P&amp;L since reload<\/dt>/ : /<dt>P&amp;L all time<\/dt>/);
+    assert.match(main, /the track record still counts every closed demo trade/);
+    assert.match(f.root.querySelector('#ffigs').innerHTML, /real fills on Kalshi’s sandbox, not real money/);
+  }
+});
+
 test('Deploy realized says it counts only the strategies listed, never summing live with paper', async () => {
   const dep = (id, mode, pnl) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode, status: 'running', status_reason: null,
     realized_pnl: pnl, closed_trades: 1, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1,

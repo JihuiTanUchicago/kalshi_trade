@@ -37,4 +37,7 @@ def demo_equity(cur, user_id: int) -> Dict:
         "realized": round(net, 2),
         "equity": round(capital + net, 2),
         "roi": round(net / capital, 4) if capital > 0 else None,
+        # Realized demo P&L from before the last reload, which `realized` leaves out. Nonzero means the
+        # shown P&L is "since reload", while the track record still counts every closed demo trade.
+        "before_reload": round(base, 2),
     }

@@ -503,6 +503,31 @@ test('Overview empty Deployed box never says autopilot is researching while the 
   }
 });
 
+test('Overview demo account says what demo is and that its P&L restarts at a reload', async () => {
+  for (const [demo, re] of [
+    [{equity: 1000, capital: 1000, realized_pnl: 0}, /\$1,000\.00 capital · No demo deployments · real fills on Kalshi’s sandbox, not real money/],
+    [{equity: 512, capital: 500, realized_pnl: 12, running: 1, before_reload: 40}, /\$500\.00 capital · 0 open · \+\$12\.00 P&amp;L since reload · real fills/],
+    [{equity: 1012, capital: 1000, realized_pnl: 12, running: 1, before_reload: 0}, /\+\$12\.00 P&amp;L all time · real fills/],
+  ]) {
+    const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(dashboardData({demo})); }});
+    await f.viewDashboard(); await flush();
+    assert.match(f.root.querySelector('#other-accounts').innerHTML, re);
+  }
+});
+
+test('Funds demo labels say "since reload" only after a reload, and that demo fills are real', async () => {
+  for (const before_reload of [0, 40]) {
+    const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds(); d.demo.before_reload = before_reload; return response(d); }});
+    await f.viewFunds(); await flush();
+    const main = f.root.querySelector('main').innerHTML;
+    assert.match(main, before_reload ? /<dt>Capital at last reload<\/dt>/ : /<dt>Starting capital<\/dt>/);
+    assert.match(main, before_reload ? /<dt>P&amp;L since reload<\/dt>/ : /<dt>P&amp;L all time<\/dt>/);
+    assert.match(main, /fills and slippage are real; the money is simulated/);
+    assert.match(main, /the track record still counts every closed demo trade/);
+    assert.match(f.root.querySelector('#ffigs').innerHTML, before_reload ? /capital at last reload · real fills on Kalshi’s sandbox/ : /starting capital · real fills on Kalshi’s sandbox/);
+  }
+});
+
 test('Deploy realized says it counts only the strategies listed, never summing live with paper', async () => {
   const dep = (id, mode, pnl) => ({...dashboardDeployment(mode), id, strategy_id: id, realized_pnl: pnl});
   for (const [deployments, re] of [[[dep(1, 'paper', 2)], /\+\$2\.00[\s\S]*paper money, not real · strategies listed below/],

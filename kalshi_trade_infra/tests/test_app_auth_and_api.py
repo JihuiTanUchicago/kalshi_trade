@@ -257,14 +257,17 @@ def test_dashboard_paper_book_carries_its_reset_so_all_time_labels_stay_true(mon
         "paper_balance": lambda cur, uid: 480.0, "paper_deposits": lambda cur, uid: 500.0,
         "realized_pnl": lambda cur, uid, mode, since=None: 0.0, "daily_pnl": lambda *a, **k: [],
         "paper_reset_at": lambda cur, uid: at,
-        "demo_equity": lambda cur, uid: {"capital": 0.0, "equity": 0.0, "realized": 0.0, "roi": None},
+        "demo_equity": lambda cur, uid: {"capital": 500.0, "equity": 512.0, "realized": 12.0, "roi": .024, "before_reload": 40.0},
         "get_kalshi_key": lambda cur, uid: None, "open_reconcile_rows": lambda cur, uid: [],
         "active_run_counts": lambda cur, uid: {},
     }.items():
         monkeypatch.setattr(server.repo, name, fn)
     monkeypatch.setattr(server, "_freshness", lambda cur: {})
-    paper = server.dashboard(ctx())["paper"]
+    out = server.dashboard(ctx())
+    paper, demo = out["paper"], out["demo"]
     assert paper["reset_at"] == at and paper["total_pnl"] == -20.0 and paper["equity"] == 480.0
+    # Demo P&L is since the last reload; before_reload lets the label say so (track record counts it all).
+    assert demo["realized_pnl"] == 12.0 and demo["before_reload"] == 40.0 and demo["equity"] == 512.0
 
 
 def test_demo_deploy_requires_dev_key(monkeypatch):
@@ -367,16 +370,22 @@ def test_strategies_list_attaches_real_record_to_deployed_cards(monkeypatch):
             {"strategy_id": 2, "mode": "paper", "realized_pnl": 9, "closed_trades": 9, "open_positions": 0}]
     monkeypatch.setattr(server.repo, "list_deployments", lambda cur, uid, **k: deps)
     cards = {c["id"]: c for c in server.list_strategies(ctx(query={}))["strategies"]}
-    assert cards[1]["real"] == {"pnl": 0.5, "trades": 5, "open": 1, "live": False, "paused": False}
+    # Paper is the book shown; the demo (sandbox) book rides beside it, never added in (1.004 - 0.5).
+    assert cards[1]["real"] == {"pnl": 1.0, "trades": 3, "open": 1, "live": False, "paused": False, "mode": "paper",
+                                "demo": {"pnl": -0.5, "trades": 2, "open": 0}}
     assert "real" not in cards[2] and "real" not in cards[3]  # not deployed / no active deployment rows
     # A live deployment reports live money only; the paper dollars are never added in.
     deps.append({"strategy_id": 1, "mode": "live", "realized_pnl": 0.25, "closed_trades": 1, "open_positions": 0})
     cards = {c["id"]: c for c in server.list_strategies(ctx(query={}))["strategies"]}
-    assert cards[1]["real"] == {"pnl": 0.25, "trades": 1, "open": 0, "live": True, "paused": False}
+    assert cards[1]["real"] == {"pnl": 0.25, "trades": 1, "open": 0, "live": True, "paused": False, "mode": "live"}
     # An auto-paused deployment flags its book, so the list can say it stopped.
     deps[-1]["status"] = "paused"
     cards = {c["id"]: c for c in server.list_strategies(ctx(query={}))["strategies"]}
     assert cards[1]["real"]["paused"] is True
+    # A demo-only strategy reports its demo book, marked as demo.
+    deps[:] = [{"strategy_id": 1, "mode": "demo", "realized_pnl": 2, "closed_trades": 1, "open_positions": 0}]
+    cards = {c["id"]: c for c in server.list_strategies(ctx(query={}))["strategies"]}
+    assert cards[1]["real"] == {"pnl": 2.0, "trades": 1, "open": 0, "live": False, "paused": False, "mode": "demo"}
 
 
 def test_strategies_list_skips_deployment_query_without_deployed_cards(monkeypatch):

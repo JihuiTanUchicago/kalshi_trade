@@ -144,6 +144,29 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.doesNotMatch(f.strategySlip(detail({deployed: true, real: {pnl: 3, trades: 2, open: 0}}), null, {}), /real-fig/);
   });
 
+  test(`${name}: a strategy row keeps its demo (sandbox) book beside paper, never added in`, async () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const row = real => f.strategySlip(detailStrategy({id: 48, title: 'Books fixture', deployed: true, real}), null, {});
+    const both = row({pnl: 1, trades: 3, open: 1, mode: 'paper', demo: {pnl: -0.5, trades: 2, open: 0}});
+    assert.match(both, /\+\$1\.00<\/span> since deploying · 3 trades/);
+    assert.match(both, /Demo: <span class="[^"]*">−\$0\.50<\/span> · 2 trades/);
+    assert.doesNotMatch(both, /\$0\.50<\/span> since deploying/);
+    assert.match(row({pnl: 2, trades: 1, open: 0, mode: 'demo'}), /\+\$2\.00<\/span> on demo since deploying · 1 trade</);
+    assert.match(row({pnl: 0, trades: 0, open: 1, mode: 'demo'}), /No closed demo trades yet/);
+    assert.match(row({pnl: 0, trades: 0, open: 1, mode: 'paper', demo: {pnl: 0, trades: 0, open: 1}}), /Demo: no closed trades yet/);
+  });
+
+  test(`${name}: the demo track record says it is real sandbox fills that a reload doesn't reset`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const m = {trades: 3, wins: 2, losses: 1, label: 'Kalshi demo', net_pnl: 4, fees: 0.2, monthly: [], strategies: [], curve: [],
+      sample: {level: 'thin', edge: 'unclear', text: 'Too early to judge.'}};
+    const th = {min_sharpe_days: 14, min_trades: 30};
+    const demo = f.trackRecordPanel(m, 'demo', th);
+    assert.match(demo, /real fills on Kalshi’s sandbox exchange with simulated money/);
+    assert.match(demo, /Reloading the demo account doesn’t reset this record/);
+    assert.doesNotMatch(f.trackRecordPanel({...m, label: 'Paper'}, 'paper', th), /sandbox/);
+  });
+
   test(`${name}: the Deploy board never adds paper dollars to real ones`, async () => {
     const dep = (id, mode, pnl) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode, status: 'running', status_reason: null,
       realized_pnl: pnl, closed_trades: 1, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1, backtest: {}});
@@ -157,7 +180,17 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     };
     const mixed = await board([dep(1, 'live', 2), dep(2, 'paper', 40), dep(3, 'demo', -10)]);
     assert.match(mixed, /Live realized/); assert.match(mixed, /\+\$2\.00/);
-    assert.match(mixed, /\+\$30\.00 on paper and demo, counted apart/); assert.doesNotMatch(mixed, /\$32/);
+    // Live, paper and demo each get their own figure: no $30 (paper + demo) and no $32 (all three).
+    assert.match(mixed, /\+\$40\.00 on paper, counted apart/);
+    assert.match(mixed, /Demo realized[\s\S]*−\$10\.00[\s\S]*real fills on Kalshi’s sandbox, not real money/);
+    assert.doesNotMatch(mixed, /\$30|\$32|paper and demo/);
+    const practice = await board([dep(2, 'paper', 40), dep(3, 'demo', -10)]);
+    assert.match(practice, /\+\$40\.00[\s\S]*paper money, not real/); assert.match(practice, /Demo realized[\s\S]*−\$10\.00/);
+    assert.doesNotMatch(practice, /\$30/);
+    assert.match(practice, /<span class="mk">Paper<\/span> <span class="mk dep">Demo<\/span>/);
+    const demoOnly = await board([dep(3, 'demo', -10)]);
+    assert.match(demoOnly, /Demo realized/); assert.doesNotMatch(demoOnly, /paper money/);
+    assert.match(demoOnly, /<span class="mk dep">Demo<\/span>/); assert.doesNotMatch(demoOnly, /mk">Paper/);
     const paper = await board([dep(2, 'paper', 40)]);
     assert.match(paper, /Realized/); assert.doesNotMatch(paper, /Live realized/); assert.match(paper, /paper money, not real/);
   });
@@ -188,14 +221,16 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     }
   });
 
-  test(`${name}: an empty strategy list with autopilot on says it is researching, not "start a session"`, async () => {
+  test(`${name}: an empty strategy list with autopilot on says it is on, not "start a session"`, async () => {
     for (const [on, total] of [[true, 2], [false, 2], [true, 0], [false, 0]]) {
       const f = frontend({fetchImpl: () => response({counts: {total, passed: 0, rejected: total}, matched: 0, pages: 1, strategies: []})});
       f.S.me.user.autopilot = on;
       await f.viewStrategies(); await flush();
       const html = f.root.querySelector('#slips').innerHTML;
       assert.equal(/See its research/.test(html), on, `autopilot ${on}, ${total} strategies`);
-      assert.equal(/Autopilot (keeps researching|is researching)/.test(html), on);
+      assert.equal(/Autopilot (keeps researching|is on\. The strategies it finds will land here)/.test(html), on);
+      // Not "is researching": the autopilot panel may be reporting a stale check-in or a billing pause.
+      assert.doesNotMatch(html, /is researching/);
       if (!on) assert.match(html, /Go to Research|New session/);
     }
   });
