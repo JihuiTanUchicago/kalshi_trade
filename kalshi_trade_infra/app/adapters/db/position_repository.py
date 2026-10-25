@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from app.adapters.db.sql import now_utc
 
@@ -232,3 +232,42 @@ def claim_position_close(cur, position_id: int, claimant: str, lease_seconds: in
         (claimant, now_utc(), position_id, claimant, cutoff),
     )
     return cur.rowcount == 1
+
+
+def realized_pnl(cur, user_id: int, mode: str, since: Optional[datetime] = None) -> float:
+    sql = "SELECT COALESCE(SUM(pnl),0) AS p FROM app_positions WHERE user_id=%s AND mode=%s AND status='closed'"
+    params: List[Any] = [user_id, mode]
+    if since is not None:
+        sql += " AND closed_at >= %s"
+        params.append(since)
+    cur.execute(sql, params)
+    return float(cur.fetchone()["p"])
+
+
+def user_open_exposure(cur, user_id: int, mode: Optional[str] = None) -> Dict:
+    """Live, cross-deployment open exposure for the per-user portfolio caps: how many open
+    positions the user holds and their total entry notional (qty * entry_price), in dollars.
+    `mode` narrows it to one mode's positions (paper entries count only paper); None counts all."""
+    if mode is None:
+        cur.execute(
+            "SELECT COUNT(*) AS n, COALESCE(SUM(qty*entry_price),0) AS notional "
+            "FROM app_positions WHERE user_id=%s AND status='open'",
+            (user_id,),
+        )
+    else:
+        cur.execute(
+            "SELECT COUNT(*) AS n, COALESCE(SUM(qty*entry_price),0) AS notional "
+            "FROM app_positions WHERE user_id=%s AND status='open' AND mode=%s",
+            (user_id, mode),
+        )
+    return cur.fetchone()
+
+
+def daily_pnl(cur, user_id: int, mode: str, days: int = 60) -> List[Dict]:
+    cur.execute(
+        """SELECT DATE(closed_at) AS d, SUM(pnl) AS pnl FROM app_positions
+           WHERE user_id=%s AND mode=%s AND status='closed' AND closed_at >= %s
+           GROUP BY DATE(closed_at) ORDER BY d""",
+        (user_id, mode, now_utc() - timedelta(days=days)),
+    )
+    return cur.fetchall()
