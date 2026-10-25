@@ -973,6 +973,13 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   .t-dep.stack tbody td.name, .t-dep.stack tbody td.act { grid-column: 1 / -1; }
   .t-dep.stack tbody td:not(.name):not(.act) { flex-direction: column; align-items: flex-start; flex-wrap: nowrap; gap: 1px; min-width: 0; }
   .t-dep.stack tbody td:not(.name):not(.act) .sub-fig { flex: none; }
+  /* Credit ledger reads like a bank statement on a phone: item left, amount right, date beneath,
+     so a month of usage is a short scroll instead of a labelled card per line. */
+  .t-ledger.stack tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 12px; padding: 10px 0; }
+  .t-ledger.stack tbody td.name { grid-column: 1; grid-row: 1; }
+  .t-ledger.stack tbody td.num { grid-column: 2; grid-row: 1; display: block; text-align: right; white-space: nowrap; }
+  .t-ledger.stack tbody td.hint { grid-column: 1; grid-row: 2; font-size: 12.5px; }
+  .t-ledger.stack tbody td.num::before, .t-ledger.stack tbody td.hint::before { content: none; }
   .t-dep.stack tbody td[data-lab="Market"], .t-dep.stack tbody td[data-lab="Status"], .t-dep.stack tbody td[data-lab="Since"] { order: 1; }  /* money first */
   /* Strategy cards get the same figure grid: three figures across, the deploy box beside the name,
      and an empty "tried" line dropped, so a phone shows three strategies a screen instead of one and a half. */
