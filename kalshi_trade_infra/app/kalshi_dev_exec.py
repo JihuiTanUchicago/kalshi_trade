@@ -151,6 +151,18 @@ def demo_fills(credentials: KalshiCredentials, ticker: Optional[str] = None,
     return resp.json()
 
 
+def demo_balance_dollars(credentials: KalshiCredentials, base_url: Optional[str] = None, timeout: int = 15) -> float:
+    """This account's demo (play-money) cash balance in dollars. Read-only, host-isolated."""
+    base = _require_demo_host(base_url or KALSHI_DEV_API_BASE)
+    creds = _require_creds(credentials)
+    endpoint = "/portfolio/balance"
+    headers = kalshi_auth_headers("GET", _signing_path(base, endpoint), creds)
+    resp = requests.get(base + endpoint, headers=headers, timeout=timeout)
+    if resp.status_code >= 400:
+        raise RuntimeError("demo GET %s failed %d: %s" % (endpoint, resp.status_code, resp.text[:400]))
+    return float(resp.json().get("balance") or 0) / 100.0
+
+
 def demo_orders(credentials: KalshiCredentials, ticker: Optional[str] = None,
                 base_url: Optional[str] = None, timeout: int = 20, params: Optional[Dict] = None) -> Dict:
     """Read this account's demo orders (optionally one ticker) — used by crash-recovery to find an

@@ -4324,6 +4324,12 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
             except Exception as e:  # best-effort, like the funnel above
                 print("[agent] tournament rebalance failed for user %s: %r" % (user["id"], e), flush=True)
             try:
+                from app import demo_twins
+                for line in demo_twins.sync(cur, user):
+                    repo.add_chat(cur, user["id"], "system", line)
+            except Exception as e:  # best-effort, like the funnel above
+                print("[agent] demo copies failed for user %s: %r" % (user["id"], e), flush=True)
+            try:
                 live_ready_notices(cur, user)  # adds its own chat lines
             except Exception as e:  # best-effort, like the funnel above
                 print("[agent] live-ready notice failed for user %s: %r" % (user["id"], e), flush=True)
