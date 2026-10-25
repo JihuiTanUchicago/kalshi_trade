@@ -1802,6 +1802,9 @@ body.landing-body .apf { display: none; }
 .research-ap { margin: 0 0 14px; color: var(--ink-2); font-size: 14px; line-height: 1.5; }
 .research-ap button { background: none; border: 0; padding: 10px 4px; margin: -10px -4px; font: inherit; color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .research-ap button.busy { opacity: .6; }
+.run-next { margin: 14px 0 20px; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+.run-next .btn { display: table; margin: 10px 0 0; }
+#dep-ap .research-ap { margin: 4px 0 14px; }
 #main > .research-ap:first-child, #main > .dispatch:first-child { margin-top: 18px; }  /* off the page deck */
 /* Phones, once there are sessions: the engine summary and your sessions come before the long new-session
    form, which used to push them two screens down. */

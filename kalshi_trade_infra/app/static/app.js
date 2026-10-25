@@ -2349,8 +2349,21 @@
     cancel.onclick = () => armed(cancel, 'Confirm cancel', () => busy(cancel, async () => { await api(`/api/runs/${id}/cancel`, {}).catch((er) => alert0(er.message)); await reload(); }));
   }
 
+  // What to do once a session ends. The example's log ended on "now describe a real idea" with no way
+  // to do it, and a session that passed something left it two screens down on a phone, under the log.
+  function runNext(r, strategies) {
+    if (r.example) return `<p class="run-next">That’s what a session looks like. <a class="btn primary" href="/research?new=1">Describe your own idea</a></p>`;
+    const passed = (strategies || []).filter((s) => s.status === 'passed');
+    if (passed.length) {
+      const links = passed.slice(0, 3).map((s) => `<a href="/strategies/${s.id}">${esc(s.title)}</a>`).join(', ');
+      const more = passed.length > 3 ? ` and <a href="/strategies?status=passed">${passed.length - 3} more</a>` : '';
+      return `<p class="run-next">${passed.length === 1 ? 'Passed' : passed.length + ' passed'}: ${links}${more}. Open ${passed.length === 1 ? 'it' : 'one'} to deploy it on paper.</p>`;
+    }
+    if (r.status === 'succeeded' || r.status === 'stopped') return `<p class="run-next">Nothing passed this time. Most ideas don’t. <a href="/research?new=1">Try another idea</a></p>`;
+    return '';
+  }
   async function viewRun(id) {
-    shell('/research', '<div id="runboard">' + boardTitle('Research run') + '</div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl><p class="stale-note" id="run-stale" role="status"></p>', `
+    shell('/research', '<div id="runboard">' + boardTitle('Research run') + '</div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl><div id="runnext"></div><p class="stale-note" id="run-stale" role="status"></p>', `
       <div id="rsibox"></div>
       <div id="rsiobs" class="rsiobs"></div>
       <section><div class="section-head"><h2>Agent log</h2><span id="runact"></span></div><div id="flash"></div>
@@ -2380,6 +2393,8 @@
         fig('Hypotheses', r.hypotheses_tried || tried) + fig('Passed', active ? '…' : r.strategies_passed) +
         fig('RSI policy', d.rsi && d.rsi.evolved ? 'Evolved' : 'Self-tuning',
             { small: d.rsi && d.rsi.evolved ? `generalization score ${d.rsi.score}` : 'dreams a better search each run' });
+      const next = root.querySelector('#runnext');
+      if (next) next.innerHTML = active ? '' : runNext(r, d.strategies);
       const rsibox = root.querySelector('#rsibox');
       if (rsibox && d.rsi) {
         const delta = (d.rsi.base_score != null && d.rsi.score != null)
@@ -2869,12 +2884,14 @@
     // so Deploy is just the board: what's trading and the open positions.
     shell('/deploy', boardTitle('Deploy', 'Your strategies trading now.') +
       '<dl class="figures measure" id="dfigs" style="margin-top:14px"></dl>', `
-      <div class="deploy-board"><div id="flash"></div><div id="demo-health"></div><div id="deps">${loading(260)}</div>
+      <div class="deploy-board"><div id="flash"></div><div id="demo-health"></div><div id="dep-ap"></div><div id="deps">${loading(260)}</div>
         <section class="section"><div class="section-head"><h2>Open positions</h2></div><div id="openpos"></div></section>
       </div>`);
     const loadBoard = async () => {
       const d = await api('/api/deployments');
       const running = d.deployments.filter((x) => x.status === 'running');
+      const depAp = root.querySelector('#dep-ap');
+      if (depAp) depAp.innerHTML = d.deployments.length ? apNudge('Want it to find and deploy more like this?', 'and it researches ideas and puts the ones that pass on paper by itself.') : '';
       // Live, paper and demo results are never summed into one figure: each book gets its own. Removed
       // deployments aren't listed, so their P&L isn't here (the dashboard and track record keep it).
       const sumPnl = (xs) => xs.reduce((a, x) => a + x.realized_pnl, 0);
@@ -4053,7 +4070,7 @@
     const copy = box.querySelector('#apf-ap-copy');
     if (copy) copy.innerHTML = on
       ? '<b>Autopilot</b>Researches, deploys and tunes paper strategies on its own, and adjusts your risk &amp; execution controls within safe bounds. It never touches live money without the step below.'
-      : '<b>Autopilot</b>Off — the agent only proposes (research, deploys, risk/execution/parameter changes); you approve each one.';
+      : '<b>Autopilot</b>Off: it only suggests ideas and changes, and you approve each one. Flip the switch to let it research and trade on paper by itself.';
     if (!d) return;
     // Plain-language summary from the server (what it's doing, why no trades yet, what live needs).
     const story = box.querySelector('#apf-story');
