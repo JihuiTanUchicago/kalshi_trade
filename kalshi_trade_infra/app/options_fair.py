@@ -57,7 +57,18 @@ class OptionsBook:
 
     def features(self, ticker: str, strike: float, ts: int, yes_bid: Optional[float], yes_ask: Optional[float],
                  frame_feats: Optional[Dict[str, float]] = None, close_ts: Optional[int] = None) -> Dict[str, float]:
+        cache = getattr(self, "_prefetched", None)
+        if cache:
+            hit = cache.get(_req_key(strike, ts, close_ts, yes_bid, yes_ask, frame_feats))
+            if hit is not None:
+                return dict(hit)
         return snapshot_features(self, strike, ts, close_ts, yes_bid, yes_ask, frame_feats)
+
+    def prefetch(self, reqs: List[tuple]) -> None:
+        """Price every (strike, ts, close_ts, yes_bid, yes_ask, frame_feats) request in a few
+        vectorized calls per surface, so the per-snapshot features() calls that follow are lookups.
+        A research load priced ~300k snapshots one numpy call at a time (~100s of btc15m's load)."""
+        self._prefetched = {_req_key(*r): f for r, f in zip(reqs, snapshot_features_batch(self, reqs))}
 
 
 def snapshot_features(book: Optional[OptionsBook], strike: float, ts: int, close_ts: Optional[int],
@@ -92,6 +103,64 @@ def snapshot_features(book: Optional[OptionsBook], strike: float, ts: int, close
         out["opt_edge"] = out["opt_p_yes"] - mid
         if "opt_rv_p_yes" in out:
             out["opt_rv_edge"] = out["opt_rv_p_yes"] - mid
+    return out
+
+
+def _req_key(strike, ts, close_ts, yes_bid, yes_ask, frame_feats) -> tuple:
+    ff = frame_feats or {}
+    return (strike, ts, close_ts, yes_bid, yes_ask, ff.get("spot"), ff.get("vol_60m"))
+
+
+def snapshot_features_batch(book: Optional[OptionsBook], reqs: List[tuple]) -> List[Dict[str, float]]:
+    """snapshot_features for many requests at once (same results), one price() call per surface
+    and quantity instead of three per request."""
+    import numpy as np
+    out: List[Dict[str, float]] = [{} for _ in reqs]
+    if book is None or not reqs:
+        return out
+    rows = []   # (request index, surface index) of requests snapshot_features would price
+    for n, (strike, ts, close_ts, _b, _a, ff) in enumerate(reqs):
+        spot = (ff or {}).get("spot")
+        if close_ts is None or not strike or strike <= 0 or not spot or spot <= 0:
+            continue
+        rows.append(n)
+    if not rows:
+        return out
+    surf = book.series.indexes(np.array([reqs[n][1] for n in rows]))
+    groups: Dict[int, List[int]] = {}
+    for n, si in zip(rows, surf):
+        if si >= 0:
+            groups.setdefault(int(si), []).append(n)
+    for si, ns in groups.items():
+        surface = book.series.surfaces[si]
+        ts = np.array([reqs[n][1] for n in ns], dtype=float)
+        k = np.array([reqs[n][0] for n in ns], dtype=float)
+        cl = np.array([reqs[n][2] for n in ns], dtype=float)
+        spot = np.array([reqs[n][5]["spot"] for n in ns], dtype=float)
+        p, iv = osf.price(surface, ts, k, cl, spot)
+        rv = np.array([float((reqs[n][5] or {}).get("vol_60m") or 0.0) for n in ns])
+        rv_ann = rv * MINUTES_PER_YEAR ** 0.5
+        _, iv_atm = osf.price(surface, ts, spot, cl, spot)
+        has_rv = (rv > 0) & (iv_atm == iv_atm) & (iv_atm > 0)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            scale = np.clip(np.where(has_rv, rv_ann / np.where(iv_atm > 0, iv_atm, 1.0), 1.0),
+                            RV_SCALE_MIN, RV_SCALE_MAX)
+        p_rv, _ = osf.price(surface, ts, k, cl, spot, vol_scale=scale) if has_rv.any() else (None, None)
+        for j, n in enumerate(ns):
+            if not (p[j] == p[j]):
+                continue
+            f = {"opt_p_yes": float(p[j]), "opt_iv": float(iv[j]), "opt_age_min": (reqs[n][1] - surface.snap_ts) / 60.0}
+            if has_rv[j]:
+                f["opt_iv_rv"] = float(iv_atm[j] / rv_ann[j])
+                if p_rv[j] == p_rv[j]:
+                    f["opt_rv_p_yes"] = float(p_rv[j])
+            b, a = reqs[n][3], reqs[n][4]
+            if b is not None and a is not None:
+                mid = (float(b) + float(a)) / 2.0
+                f["opt_edge"] = f["opt_p_yes"] - mid
+                if "opt_rv_p_yes" in f:
+                    f["opt_rv_edge"] = f["opt_rv_p_yes"] - mid
+            out[n] = f
     return out
 
 

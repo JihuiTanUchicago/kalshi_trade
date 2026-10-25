@@ -119,7 +119,7 @@ def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc:
             (contract, float(bid) if bid is not None else None, float(ask) if ask is not None else None)
         )
     joined = {name: freedata.asof_join(list(by_ts), obs) for name, obs in (frame_series or {}).items()}
-    frames = []
+    rows = []   # (ts, [(contract, bid, ask, frame features)]): built first so a book can batch-price
     for ts in sorted(by_ts):
         feats = series.features_at(ts) if has_underlying else {}
         if feats is None:
@@ -130,9 +130,16 @@ def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc:
                 feats = dict(feats, **xf)
         extra = {n: j[ts] for n, j in joined.items() if ts in j}
         with_extra = dict(feats, **extra) if extra else feats
+        rows.append((ts, [(ct, b, a, with_extra if extra and (frame_series_applies is None
+                                                          or frame_series_applies(ct.ticker, ts)) else feats)
+                          for ct, b, a in by_ts[ts]]))
+    if forecasts is not None and hasattr(forecasts, "prefetch"):
+        forecasts.prefetch([(ct.strike, ts, int(ct.close_time.timestamp()), b, a, cf)
+                            for ts, cs in rows for ct, b, a, cf in cs])
+    frames = []
+    for ts, cs in rows:
         snaps = []
-        for ct, b, a in by_ts[ts]:
-            cf = with_extra if extra and (frame_series_applies is None or frame_series_applies(ct.ticker, ts)) else feats
+        for ct, b, a, cf in cs:
             s = snapshot(cf, ct, ts, b, a,
                          weather_fcst.with_forecast(micro.get((ct.ticker, ts)), forecasts, ct, ts, b, a, cf))
             if s is not None:
