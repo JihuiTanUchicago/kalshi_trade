@@ -453,6 +453,15 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 .figures.measure { margin: 0; }
 
 .dash { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 28px; align-items: start; margin-top: 8px; }
+/* Two columns need room. With the hot-markets rail open, a 1400px laptop left the Deployed table
+   ~700px and its strategy names wrapped one word per line, so size by the dashboard's own width,
+   not the viewport. Stacked, the two side panels share a row while they fit. */
+.dash-wrap { container-type: inline-size; }
+@container (max-width: 1180px) {
+  .dash { grid-template-columns: minmax(0, 1fr); }
+  .dash > aside { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; align-items: start; }
+  .dash > aside .panel { margin-top: 0; }
+}
 .stub { display: grid; grid-template-columns: 1fr auto; gap: 1px 12px; padding: 9px 0; border-bottom: 1px solid var(--rule); font-size: 13px; }
 .stub:last-child { border-bottom: 0; }
 .stub small { color: var(--ink-3); font-size: 12px; grid-column: 1 / -1; }
@@ -1468,6 +1477,8 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 306px; 
 
 /* ---------- Floating autopilot window (bottom-right) ---------- */
 .apf { position: fixed; right: 16px; bottom: 16px; z-index: 60; font-family: var(--f-ui); }
+/* Room under the page so the pinned autopilot pill never sits on the last row's buttons. */
+body:not(.landing-body) { padding-bottom: 72px; }
 body.landing-body .apf { display: none; }
 .apf-pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--stock-raised); border: 1px solid var(--ink); border-radius: 999px; box-shadow: 0 6px 20px rgba(0,0,0,.14); font: inherit; font-size: 12.5px; color: var(--ink); cursor: pointer; }
 .apf-pill:hover { background: var(--stock-sunk); }
@@ -1628,10 +1639,6 @@ body.landing-body .apf { display: none; }
   .bell-trig { min-width: 34px; justify-content: center; }
   .apf-x { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; margin: -12px -14px -12px auto; }
   .pick, #pick-all { width: 22px; height: 22px; }
-}
-@media (max-width: 760px) {
-  /* Room to scroll the last row out from under the floating autopilot pill. */
-  body:not(.landing-body) { padding-bottom: 72px; }
 }
 @media (max-width: 600px) {
   /* Open autopilot is a full-screen sheet: one scroll for controls and session, composer pinned. */
