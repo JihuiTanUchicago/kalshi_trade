@@ -47,6 +47,17 @@ def test_prob_above_interpolates_on_logit_and_refuses_to_extrapolate():
     assert bc.prob_yes(c, None, None) is None
 
 
+def test_prob_above_refuses_a_gap_the_curve_falls_through():
+    # 2026-10-25 15:00Z: Polymarket's $2k ladder at 0.999 / 0.001 put Kalshi's 80,600 at 0.79 (Kalshi 0.47)
+    c = bc.monotone_survival([(78000, 0.999), (80000, 0.999), (82000, 0.001), (84000, 0.001)])
+    assert bc.prob_above(c, 80600) is None
+    assert bc.prob_yes(c, 80500, 80600) is None
+    assert bc.prob_above(c, 79999.99) == pytest.approx(0.999)   # on a strike: exact
+    assert bc.prob_above(c, 79000) == pytest.approx(0.999)      # flat on one side: fine
+    assert bc.prob_above(c, 83000) == pytest.approx(0.001)
+    assert bc.prob_above(bc.monotone_survival([(100, 0.9), (110, 0.3)]), 105) is not None   # step 3.0
+
+
 # --- classification ---------------------------------------------------------------------------
 
 def test_classify_daily_above_uses_the_rule_time_not_end_date():
