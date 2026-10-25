@@ -1460,7 +1460,8 @@
       const p = d.paper;
       // Realized P&L (all-time + today) and open count for one money bucket; a tasteful
       // zero line when the bucket has no activity so an empty card never looks broken.
-      const mSub = (b, zero) => (b.open_positions || b.running || b.realized_pnl) ? `${b.open_positions} open · ${usd(b.realized_pnl, true)} all time · ${usd(b.today_pnl, true)} today` : zero;
+      // The figure above it is Kalshi's cash for the whole account; this line is Tau's own trades.
+      const mSub = (b, zero) => (b.open_positions || b.running || b.realized_pnl) ? `Tau trades: ${b.open_positions} open${b.open_positions ? ' (not in cash)' : ''} · ${usd(b.realized_pnl, true)} realized all time · ${usd(b.today_pnl, true)} realized today` : zero;
       const hasLive = d.deployments.some((x) => x.mode === 'live' && x.status !== 'stopped');
       const paperWorkspace = !hasLive && d.open_positions.concat(d.recent_closed, d.deployments).every(x => x.mode === 'paper');
       const sharedPaperRunning = d.deployments.length > 0 && d.deployments.every(x => x.mode === 'paper' && x.status === 'running');
@@ -1479,12 +1480,12 @@
       const settlementsOpen = !!root.querySelector('#recent-settlements[open]');
       const settlementsFocused = !!root.querySelector('#recent-settlements > summary:focus');
       const said = [
-        hasLive ? `Live money on: ${usd(d.live.realized_pnl, true)} realized` : '',
+        hasLive ? `Live money on: ${usd(d.live.realized_pnl, true)} realized all time` : '',
         paused ? `<a class="needs-link" href="#dash-paused"><em>${paused} paused, needs you</em></a>` : '',
         stale ? `<em>${d.freshness.btc == null ? 'No backtest history yet' : 'Backtest history stale ' + age(d.freshness.btc)}</em>` : '',
       ].filter(Boolean).join('<span class="sep">/</span>');
-      const liveFigure = fig('Live account', d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected', { small: d.live.connected ? (d.live.balance == null ? 'Couldn\u2019t read your Kalshi balance just now' : mSub(d.live, 'Your Kalshi cash \u2014 real money untouched')) : '<a href="/funds">Connect Kalshi</a>' });
-      const liveSummary = `<div class="m live-summary"><dt class="lab vh">Live account · Kalshi</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Live account · Kalshi</span><strong class="fig${!d.live.connected || d.live.balance == null ? ' balance-state' : ''}">${d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected'}</strong><span class="portfolio-return">${d.live.connected ? (d.live.balance == null ? 'Couldn\u2019t read your Kalshi balance just now' : `${money(d.live.realized_pnl)} realized all time`) : '<a href="/funds">Connect Kalshi</a>'}</span></div><div class="portfolio-detail"><span class="lab">Realized today</span><strong>${money(d.live.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Open positions</span><strong>${esc(d.live.open_positions)}</strong></div><div class="portfolio-detail"><span class="lab">Open at cost</span><strong>${usd(d.live.open_at_cost)}</strong></div></div></dd></div>`;
+      const liveFigure = fig('Kalshi cash', d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected', { small: d.live.connected ? (d.live.balance == null ? 'Couldn\u2019t read your Kalshi balance just now' : mSub(d.live, 'Your Kalshi cash \u2014 real money untouched')) : '<a href="/funds">Connect Kalshi</a>' });
+      const liveSummary = `<div class="m live-summary"><dt class="lab vh">Kalshi cash</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Kalshi cash</span><strong class="fig${!d.live.connected || d.live.balance == null ? ' balance-state' : ''}">${d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected'}</strong><span class="portfolio-return">${d.live.connected ? (d.live.balance == null ? 'Couldn\u2019t read your Kalshi balance just now' : `${money(d.live.realized_pnl)} realized all time by Tau trades`) : '<a href="/funds">Connect Kalshi</a>'}</span></div><div class="portfolio-detail"><span class="lab">Realized today</span><strong>${money(d.live.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Open positions</span><strong>${esc(d.live.open_positions)}</strong></div><div class="portfolio-detail"><span class="lab">Open at cost, not in cash</span><strong>${usd(d.live.open_at_cost)}</strong></div></div></dd></div>`;
       const demoFigure = fig('Demo balance', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7 ${d.demo.open_positions} open \u00b7 ${usd(d.demo.realized_pnl, true)} P&amp;L ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital · No demo deployments`} \u00b7 ${DEMO_WHAT}` });
       const paperFigure = `<div class="m paper-summary"><dt class="lab vh">Paper portfolio</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Paper portfolio</span><strong class="fig">${usd(p.equity)}</strong><span class="portfolio-return">${p.reset_at ? 'P&amp;L since reset' : 'All-time P&amp;L'} ${money(p.total_pnl)}</span></div><div class="portfolio-detail"><span class="lab">Realized today</span><strong>${money(p.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Available cash</span><strong>${usd(p.cash)}</strong></div><div class="portfolio-detail"><span class="lab">Open at cost</span><strong>${usd(p.open_at_cost)}</strong></div></div></dd></div>`;
       const board = `
@@ -2172,6 +2173,7 @@
     const fired = new Set();
     let stage = null, lastAt = Date.now(), runState = 'queued', initialUpdate = true, wait = null, waitAt = 0;
     const waitEl = host.querySelector('[data-wait]');
+    let waitHidPhase = false;
     const waitNow = () => (wait ? { ...wait, seconds: wait.seconds + Math.round((Date.now() - waitAt) / 1000) } : null);
     const nodes = [], byId = new Map(), byTitle = new Map(); let hasLineage = false, lastCount = -1;
 
@@ -2189,6 +2191,9 @@
       const w = ['queued', 'running'].includes(runState) ? waitNow() : null, late = !!(w && w.overdue);
       waitEl.hidden = !late;
       if (late) waitEl.textContent = runWaitLine(w);
+      // An overdue queued run's wait line says what "Waiting for the agent to start." said, and more.
+      if (late && runState === 'queued') { phaseEl.hidden = true; waitHidPhase = true; }
+      else if (waitHidPhase) { waitHidPhase = false; phaseEl.hidden = !['queued', 'running', 'paused'].includes(runState); }
       if (late && runState === 'queued') { liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Waiting ' + waitSpan(w.seconds); return; }
       if (late) { host.classList.add('is-quiet'); liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Silent ' + waitSpan(w.seconds); return; }
       if (runState === 'paused') { liveWrap.className = 'rsiobs-live is-paused'; liveText.textContent = 'Paused'; return; }
@@ -2796,8 +2801,8 @@
       replaceDeploymentContent(root.querySelector('#deps'), d.deployments.length ? deploymentTable(pausedFirst(d.deployments).map((x) => deploymentSlip(x, true)).join(''), true)
         : `<div class="empty"><h3>Nothing deployed</h3>${S.me && S.me.user && S.me.user.autopilot ? '<p>Autopilot is on: strategies that pass every gate deploy here on their own, on paper.</p>' : ''}${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}<a class="btn" href="/strategies?status=passed">See passed strategies</a></div>`);
       bindDeploymentActions(root.querySelector('#deps'), loadBoard);
-      root.querySelector('#openpos').innerHTML = d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
-        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</td><td class="tick" data-lab="Contract">${esc(p.ticker)}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? '—' : money(p.unrealized)}</td><td class="num" data-lab="Settles">${clock(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
+      root.querySelector('#openpos').innerHTML = d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
+        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</td><td class="tick" data-lab="Contract">${esc(p.ticker)}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? '—' : money(p.unrealized)}</td><td class="num" data-lab="Settles">${clock(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
         : '<p class="hint">No open positions.</p>';
     };
     await loadBoard();
@@ -2822,6 +2827,7 @@
     const caveats = [];
     if (m.excluded_instant_fills) caveats.push(`${num(m.excluded_instant_fills)} instant-fill paper trade${m.excluded_instant_fills === 1 ? '' : 's'} left out (fills real execution would not get).`);
     if (m.open_trades) caveats.push(`${num(m.open_trades)} open trade${m.open_trades === 1 ? '' : 's'} (${usd(m.open_at_cost)} at cost) join the record when they close.`);
+    if (key === 'live' && m.trades) caveats.push('Live results count only the trades Tau placed, net of Kalshi fees. Your Kalshi cash also moves with deposits, withdrawals and anything you trade yourself.');
     if (key === 'demo' && m.trades) caveats.push('Demo trades are real fills on Kalshi’s sandbox exchange with simulated money. Reloading the demo account doesn’t reset this record, so it can differ from P&L since reload.');
     const cav = caveats.length ? `<p class="hint tr-caveat">${caveats.map(esc).join(' ')}</p>` : '';
     if (!m.trades) {
@@ -2939,7 +2945,7 @@
       const k = d.kalshi;
       const kd = d.kalshi_dev || { connected: false };
       const dm = d.demo || { capital: 0, equity: 0, realized: 0 };
-      root.querySelector('#ffigs').innerHTML = fig('Live money', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead' }) +
+      root.querySelector('#ffigs').innerHTML = fig('Kalshi cash', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: k.connected ? 'Real money at Kalshi, open positions not included' : '' }) +
         fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} ${dm.before_reload ? 'capital at last reload' : 'starting capital'} · ${DEMO_WHAT}` }) +
         fig('Paper cash', usd(d.paper.cash));
       root.querySelector('main').innerHTML = `<div id="flash"></div><div class="funds">
@@ -3551,7 +3557,7 @@
     const running = (d.live_running || 0) + (d.demo_running || 0) + (d.paper_running || 0);
     const pnl = S.dashPaper ? S.dashPaper.total_pnl : null;
     const cells = [
-      d.live_running ? ['Live P&amp;L today', money(d.today_live_pnl || 0)] : ['Paper P&amp;L, ' + paperSpan(S.dashPaper), pnl == null ? '—' : money(pnl)],
+      d.live_running ? ['Live realized today', money(d.today_live_pnl || 0)] : ['Paper P&amp;L, ' + paperSpan(S.dashPaper), pnl == null ? '—' : money(pnl)],
       ['Strategies running', running ? String(running) : 'None yet'],
       d.week ? null : ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested · ${r.passed_7d || 0} passed`],
       prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${prog.trades} of ${prog.trades_needed} paper trades</a>`]
@@ -3810,7 +3816,7 @@
         </form>
       </div>
       <div class="apf-session">
-        <div class="apf-session-head"><span class="say-kind">Live session</span></div>
+        <div class="apf-session-head"><span class="say-kind">Activity feed</span></div>
         <ol class="log stream apf-log" id="apf-messages" role="log" aria-label="Autopilot activity" aria-live="polite"></ol>
         <div class="runpulse apf-pulse-row" id="apf-pulse" aria-live="polite" hidden></div>
       </div>
@@ -3925,7 +3931,7 @@
     // one out spanning); the sentence-length ones get full-width rows, so no cell sits empty.
     const short = [
       `<dt>Running</dt><dd>${runTotal ? runParts.join(' · ') : 'None'}</dd>`,
-      `<dt>${liveInPlay ? 'Live' : 'Paper'} P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd>`,
+      `<dt>${liveInPlay ? 'Live' : 'Paper'} realized today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd>`,
     ].concat(liveInPlay ? [`<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`] : [])
       // A queued or running review is not a finished one: right after switching on, "Last reviewed just now" claimed a review that hadn't run.
       .concat(d.review_wait ? [`<dt>Review</dt><dd>${d.review_wait.state === 'queued' ? 'Waiting' : 'Silent'} ${waitSpan(d.review_wait.seconds)}</dd>`]
@@ -3933,6 +3939,7 @@
     if (stats) {
       stats.dataset.cols = short.length;
       stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `
+      ${liveInPlay ? `<div class="apf-wide apf-budget"><dt>Loss budget</dt><dd>Counts live losses booked since 00:00 UTC. Live also stops if your Kalshi account falls ${usd(d.daily_loss_limit)} in a day, open positions included.</dd></div>` : ''}
       ${d.research && !(d.story || []).length ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc([...new Set(d.research.active)].join(' · ')) : 'Not researching right now'} · ${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested this week, ${d.research.passed_7d} passed${d.research.cost_7d ? ', $' + Number(d.research.cost_7d).toFixed(2) + ' spent' : ''}</dd></div>` : ''}
       ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> · ${d.paper_progress.trades}/${d.paper_progress.trades_needed} paper trades · ${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}`;
     }
@@ -3961,7 +3968,7 @@
       // is armed or running, and the live step once autopilot is on (the gate line says why not yet).
       controls.innerHTML = `${d.autopilot_live
         ? `<button class="btn sm" data-ap="livetoggle" data-on="0">Turn off live</button>`
-        : d.autopilot ? `<button class="btn sm" data-ap="livearm" ${(d.live_enabled && d.kalshi_connected) ? '' : 'aria-disabled="true"'}>Enable live autopilot</button>` : ''}
+        : d.autopilot && d.live_enabled ? `<button class="btn sm" data-ap="livearm" ${d.kalshi_connected ? '' : 'aria-disabled="true"'}>Enable live autopilot</button>` : ''}
         ${d.autopilot_live || d.live_running ? '<button class="btn sm danger" data-ap="kill">Kill</button>' : ''}
         <a class="btn sm ghost" href="/deploy">Open board</a>`;
       controls.querySelectorAll('[data-ap]').forEach((b) => (b.onclick = (e) => apAction(box, b.dataset.ap, e)));
@@ -3973,7 +3980,7 @@
   function apLiveBlock(d) {
     if (!d) return '';
     if (!d.autopilot) return 'Turn on autopilot first — live autopilot builds on it. ';
-    if (!d.live_enabled) return 'Live trading is off on this server. ';
+    if (!d.live_enabled) return 'Live trading isn’t available on this server yet. ';  // no live button then, just this line
     if (!d.kalshi_connected) return 'Connect your Kalshi key on the Funds page first. ';
     return '';
   }

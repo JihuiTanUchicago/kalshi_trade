@@ -124,7 +124,7 @@ function frontend({fetchImpl, brokerMount, storage} = {}) {
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, trCurve, trackRecordPanel, mountTrackRecord, viewMarketDetail, render};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, apYield, trCurve, trackRecordPanel, mountTrackRecord, viewMarketDetail, render};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -542,12 +542,14 @@ test('the Deploy board puts realized P&L beside the backtest pace for the same t
   assert.doesNotMatch(html, /Backtest unseen/);
 });
 
-test('Deploy open positions label every cell so phone cards read Contract, Side, Cost', async () => {
+test('Deploy open positions label every cell so phone cards read Contract, Side, Cost + fee', async () => {
   const pos = {title: 'Rain fade', ticker: 'KXRAINNYC-T1', side: 'no', qty: 4, entry_price: .37, entry_fee: .02, unrealized: null, market_close_time: '2026-10-25T17:30:00Z', mode: 'paper'};
   const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [], open_positions: [pos]}) : response({})});
   await f.viewDeploy(); await flush(); await flush();
   const html = f.root.querySelector('#openpos').innerHTML;
-  for (const lab of ['Strategy', 'Contract', 'Side', 'Cost', 'Unrealized', 'Settles']) assert.match(html, new RegExp(`data-lab="${lab}"`), lab);
+  for (const lab of ['Strategy', 'Contract', 'Side', 'Cost \\+ fee', 'Unrealized', 'Settles']) assert.match(html, new RegExp(`data-lab="${lab}"`), lab);
+  // This Cost carries the entry fee ($1.48 + $0.02); the dashboard's Cost and "Open at cost" don't, so it says so.
+  assert.match(html, /<th class="num">Cost \+ fee<\/th>/); assert.match(html, /data-lab="Cost \+ fee">\$1\.50</);
   assert.match(html, /<td class="name" data-lab="Strategy">Rain fade/);
 });
 
@@ -724,6 +726,34 @@ test('Funds demo labels say "since reload" only after a reload, and that demo fi
   }
 });
 
+test('the live card says it is Kalshi cash, apart from what Tau trades realized', async () => {
+  const liveDep = {id: 9, strategy_id: 9, title: 'Live one', market: 'btc15m', mode: 'live', status: 'running', stake: 5, max_positions: 2,
+    realized_pnl: 17, unrealized_pnl: null, closed_trades: 3, open_positions: 2, created_at: '2026-10-25T08:00:00Z', curve: []};
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response({...emptyDashboard(), deployments: [liveDep],
+      live: {connected: true, balance: 250, open_positions: 2, running: 1, realized_pnl: 17, today_pnl: -2, open_at_cost: 1.2}});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  await f.viewDashboard(); await flush();
+  const board = f.root.querySelector('#boardbody').innerHTML;
+  // The balance is Kalshi's cash for the whole account; the line under it is Tau's own book.
+  assert.match(board, /<span class="mk live">Real<\/span> Kalshi cash/); assert.match(board, /\$250\.00/);
+  assert.match(board, /Tau trades: 2 open \(not in cash\) · \+\$17\.00 realized all time · −\$2\.00 realized today/);
+  assert.match(board, /Live money on: \+\$17\.00 realized all time/);
+  // The autopilot card's day figure is the same booked P&L, and says so.
+  f.S.me.user.autopilot = true; f.S.ap = {...apOn, live_running: 1, today_live_pnl: -2}; f.paintDashAp();
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Live realized today<\/dt><dd><span class="[^"]*">−\$2\.00/);
+});
+
+test('Funds names the live figure Kalshi cash, open positions not included', async () => {
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds();
+    d.kalshi = {connected: true, key_id: 'abcd-wxyz', balance: 120, funding_url: 'https://kalshi.com'}; return response(d); }});
+  await f.viewFunds();
+  const figs = f.root.querySelector('#ffigs').innerHTML;
+  assert.match(figs, /Kalshi cash/); assert.match(figs, /Your real cash at Kalshi, open positions not included/);
+  assert.doesNotMatch(figs, /Live money/);
+});
+
 test('Deploy realized says it counts only the strategies listed, never summing live with paper', async () => {
   const dep = (id, mode, pnl) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode, status: 'running', status_reason: null,
     realized_pnl: pnl, closed_trades: 1, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1,
@@ -781,6 +811,30 @@ test('right after switching on, the card says the first review is running, not t
   assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Last move<\/dt><dd>Reviewing now<\/dd>/);
   f.S.ap = {...f.S.ap, reviewing: false}; f.paintDashAp();
   assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Last move<\/dt><dd>just now<\/dd>/);
+});
+
+test('the floating autopilot pill steps aside while it would cover a primary or submit button', () => {
+  const f = frontend(), body = f.root.parent;
+  f.root.innerHTML = '<main id="main"><form id="dispatch"><button class="btn primary go" type="submit">Start session</button></form><a class="btn" href="/x">Other</a></main>';
+  const box = new Element('div', {id: 'autopilot-float', class: 'apf'}); body.appendChild(box);
+  box.innerHTML = '<button type="button" class="apf-pill" data-ap="toggle">Autopilot off</button>';
+  const rect = (l, t, r, b) => () => ({left: l, top: t, right: r, bottom: b, width: r - l, height: b - t});
+  const go = f.root.querySelector('#dispatch .go');
+  box.querySelector('.apf-pill').getBoundingClientRect = rect(1249, 848, 1384, 884);
+  go.getBoundingClientRect = rect(1170, 803, 1355, 841);  // Research at 1400x900: the row right above the pill
+  f.apYield(); assert.equal(box.classes.has('yield'), true);
+  go.getBoundingClientRect = rect(1170, 403, 1355, 441);  // scrolled up and away
+  f.apYield(); assert.equal(box.classes.has('yield'), false);
+  go.getBoundingClientRect = rect(31, 798, 359, 840);     // phone: a full-width button under the pill
+  box.querySelector('.apf-pill').getBoundingClientRect = rect(245, 798, 380, 834);
+  f.apYield(); assert.equal(box.classes.has('yield'), true);
+  go.getBoundingClientRect = rect(0, 0, 0, 0);            // not laid out (hidden): nothing to yield to
+  f.apYield(); assert.equal(box.classes.has('yield'), false);
+  // A plain link under the pill doesn't count, and the open panel (no pill) never yields.
+  f.root.querySelector('a.btn').getBoundingClientRect = rect(1249, 848, 1384, 884);
+  f.apYield(); assert.equal(box.classes.has('yield'), false);
+  box.classList.add('yield'); box.innerHTML = '<div class="apf-head"></div>';
+  f.apYield(); assert.equal(box.classes.has('yield'), false);
 });
 
 test('the autopilot panel shows Kill only once real money is armed or running', () => {
@@ -1008,6 +1062,7 @@ test('a queued run counts its wait from the server, and past the reaper limit sa
   [...f.intervals.values()].forEach(tick => tick());
   assert.match(f.root.querySelector('#runpulse [data-plabel]').textContent, /^Queued · 20\ds$/);
   assert.equal(f.root.querySelector('#rsiobs [data-wait]').hidden, true);
+  assert.equal(f.root.querySelector('#rsiobs [data-phase]').hidden, false);  // not overdue: the phase line stays
   f.clearTimers();
   // Past it: no spinner, how long, and how many sessions a worker takes first.
   f = at({state: 'queued', seconds: 360, overdue: true, ahead: 2});
@@ -1019,6 +1074,8 @@ test('a queued run counts its wait from the server, and past the reaper limit sa
   assert.doesNotMatch(f.root.querySelector('#runpulse').innerHTML, /class="working"/);
   const wait = f.root.querySelector('#rsiobs [data-wait]');
   assert.equal(wait.hidden, false); assert.equal(wait.textContent, line);
+  // The wait line replaces "Waiting for the agent to start." rather than sitting under it.
+  assert.equal(f.root.querySelector('#rsiobs [data-phase]').hidden, true);
   assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Waiting 6 min');
   f.clearTimers();
   f = at({state: 'queued', seconds: 300, overdue: true, ahead: 0});

@@ -554,6 +554,35 @@ test('Funds demo labels say "since reload" only after a reload, and that demo fi
   }
 });
 
+test('Overview live summary says it is Kalshi cash, apart from what Tau trades realized', async () => {
+  const status = {...apStatus, live_running: 1, today_live_pnl: -2};
+  const f = apDashboard(dashboardData({deployments: [dashboardDeployment('live')], live: {connected: true, balance: 3333, open_positions: 2}}), status);
+  await f.viewDashboard(); await flush();
+  f.S.ap = status; f.paintDashAp();
+  const live = f.root.querySelector('.live-summary');
+  assert.equal(live.querySelector('dt.lab').textContent, 'Kalshi cash');
+  assert.match(live.textContent, /\+\$17\.00 realized all time by Tau trades/);
+  assert.match(live.textContent, /Open at cost, not in cash\$50\.00/); assert.match(live.textContent, /Realized today−\$2\.00/);
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Live realized today<\/dt><dd><span class="[^"]*">−\$2\.00/);
+});
+
+test('Funds names the live figure Kalshi cash, open positions not included', async () => {
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds();
+    d.kalshi = {connected: true, key_id: 'abcd-wxyz', balance: 120, funding_url: 'https://kalshi.com'}; return response(d); }});
+  await f.viewFunds(); await flush();
+  const figs = f.root.querySelector('#ffigs').innerHTML;
+  assert.match(figs, /Kalshi cash/); assert.match(figs, /Real money at Kalshi, open positions not included/);
+  assert.doesNotMatch(figs, /Live money/);
+});
+
+test('Deploy open positions say their cost includes the entry fee', async () => {
+  const pos = {title: 'Rain fade', ticker: 'KXRAINNYC-T1', side: 'no', qty: 4, entry_price: .37, entry_fee: .02, unrealized: null, market_close_time: '2026-10-25T17:30:00Z', mode: 'live'};
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/deployments'); return response({deployments: [], open_positions: [pos]}); }});
+  await f.viewDeploy(); await flush();
+  const html = f.root.querySelector('#openpos').innerHTML;
+  assert.match(html, /<th class="num">Cost \+ fee<\/th>/); assert.match(html, /data-lab="Cost \+ fee">\$1\.50</);
+});
+
 test('Deploy realized says it counts only the strategies listed, never summing live with paper', async () => {
   const dep = (id, mode, pnl) => ({...dashboardDeployment(mode), id, strategy_id: id, realized_pnl: pnl});
   for (const [deployments, re] of [[[dep(1, 'paper', 2)], /\+\$2\.00[\s\S]*paper money, not real · strategies listed below/],
@@ -1201,11 +1230,11 @@ test('Overview chooses the correct primary money bucket and preserves disconnect
     await f.viewDashboard();
     const primary = f.root.querySelector('.dashboard-figures'), accounts = f.root.querySelector('#other-accounts');
     assert.equal(primary.classList.contains('live-primary'), livePrimary, label);
-    assert.equal(primary.querySelector('.lab').textContent, livePrimary ? 'Live account · Kalshi' : 'Paper portfolio', label);
+    assert.equal(primary.querySelector('.lab').textContent, livePrimary ? 'Kalshi cash' : 'Paper portfolio', label);
     assert.equal(primary.querySelector('.fig').textContent, primaryBalance, label);
     assert.equal(accounts.tag, 'details'); assert.equal(accounts.open, false);
     assert.deepEqual(accounts.querySelectorAll('dt.lab').map(lab => lab.textContent),
-      [livePrimary ? 'Paper portfolio' : 'Live account', 'Demo balance'], label);
+      [livePrimary ? 'Paper portfolio' : 'Kalshi cash', 'Demo balance'], label);
     assert.equal(accounts.contains(f.root.querySelector('.paper-summary')), livePrimary, label);
     if (!livePrimary) assert.equal(accounts.querySelector('.fig').textContent, secondaryLive, label);
     const paper = f.root.querySelector('.paper-summary');
@@ -1368,6 +1397,7 @@ test('a Research run queued or silent past the reaper limit says how long instea
   await f.viewRun(9);
   assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Queued');
   assert.equal(f.root.querySelector('#rsiobs [data-wait]').hidden, true);
+  assert.equal(f.root.querySelector('#rsiobs [data-phase]').hidden, false);
   f.clearTimers();
   f = at({state: 'queued', seconds: 540, overdue: true, ahead: 1});
   await f.viewRun(9);
@@ -1375,6 +1405,7 @@ test('a Research run queued or silent past the reaper limit says how long instea
   assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Waiting 9 min');
   const wait = f.root.querySelector('#rsiobs [data-wait]');
   assert.equal(wait.hidden, false);
+  assert.equal(f.root.querySelector('#rsiobs [data-phase]').hidden, true);  // no "Waiting for the agent to start." above it
   assert.equal(wait.textContent, 'Still waiting for a free research worker (9 min). 1 session is ahead of it; it starts when one frees up.');
   f.clearTimers();
   f = at({state: 'silent', seconds: 300, overdue: true}, 'running');

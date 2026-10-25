@@ -124,7 +124,7 @@ test('a failed model save restores the existing preference without changing trad
   assert.equal(f.S.ap.model, 'sonnet'); assert.equal(select.value, 'sonnet'); assert.equal(select.disabled, false);
   assert.deepEqual(f.alerts, ['Synthetic model preference rejection']);
   assert.deepEqual(posts(f).map(row => row.path), ['/api/autopilot/model']);
-  assert.equal(f.apLiveBlock(status()), 'Live trading is off on this server. ');
+  assert.equal(f.apLiveBlock(status()), 'Live trading isn’t available on this server yet. ');
 });
 
 test('catalog failure and a response after shell replacement cannot populate a stale picker', async () => {
@@ -149,17 +149,20 @@ test('a late preference response cannot rewrite a replaced or disconnected shell
   }
 });
 
-test('a paper-only panel shows paper P&L today and no live loss budget; live in play brings both back', async () => {
+test('a paper-only panel shows paper realized today and no live loss budget; live in play brings both back', async () => {
   const f = frontend(() => response(catalog)); f.apBuildShell(f.box); await flush();
   f.apUpdate(f.box, status({today_paper_pnl: 1.25, today_live_pnl: 0}));
   let html = f.box.querySelector('#apf-stats').innerHTML;
-  assert.match(html, /Paper P&amp;L today/); assert.match(html, /\+\$1\.25/);
-  assert.doesNotMatch(html, /Live P&amp;L today|Loss budget left/);
+  assert.match(html, /Paper realized today/); assert.match(html, /\+\$1\.25/);
+  assert.doesNotMatch(html, /Live realized today|Loss budget/);
   for (const live of [{live_running: 1}, {autopilot_live: true}]) {
-    f.apUpdate(f.box, status({today_paper_pnl: 1.25, today_live_pnl: -3, loss_headroom: 17, ...live}));
+    f.apUpdate(f.box, status({today_paper_pnl: 1.25, today_live_pnl: -3, loss_headroom: 17, daily_loss_limit: 20, ...live}));
     html = f.box.querySelector('#apf-stats').innerHTML;
-    assert.match(html, /Live P&amp;L today/); assert.match(html, /Loss budget left/);
-    assert.doesNotMatch(html, /Paper P&amp;L today/);
+    // The day figure is booked P&L (closed trades), and so is the budget; the account-equity stop
+    // (open positions included) is a separate check, so the panel says both.
+    assert.match(html, /Live realized today/); assert.match(html, /Loss budget left/);
+    assert.match(html, /Counts live losses booked since 00:00 UTC\. Live also stops if your Kalshi account falls \$20\.00 in a day, open positions included\./);
+    assert.doesNotMatch(html, /Paper realized today|P&amp;L today/);
   }
 });
 
@@ -210,7 +213,7 @@ test('status updates show last review and synchronize the model only when it is 
   f.apUpdate(f.box, status({model: 'sonnet'})); assert.equal(select.value, 'opus');
   select.disabled = false; f.apUpdate(f.box, status({model: 'sonnet'})); assert.equal(select.value, 'sonnet');
   assert.doesNotMatch(f.box.querySelector('#apf-stats').innerHTML, /Last reviewed/);
-  assert.match(f.box.querySelector('#apf-gates').textContent, /Live trading is off/);
+  assert.match(f.box.querySelector('#apf-gates').textContent, /Live trading isn’t available on this server yet\./);
   assert.equal(posts(f).length, 0);
 });
 
@@ -245,6 +248,32 @@ test('the autopilot pulse and Review figure say how long a run has waited once p
     assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Review<\/dt><dd>Silent 2 hr<\/dd>/);
     assert.doesNotMatch(f.box.querySelector('#apf-stats').innerHTML, /In progress/);
   } finally { chatReply = {messages: [], agent_busy: false}; }
+});
+
+test('with live trading off on the server, the panel says so in one line instead of a dead button', async () => {
+  const f = frontend(() => response(catalog)); f.apBuildShell(f.box); await flush();
+  const controls = () => f.box.querySelector('#apf-controls').innerHTML, gates = () => f.box.querySelector('#apf-gates').textContent;
+  f.apUpdate(f.box, status({live_enabled: false}));
+  assert.doesNotMatch(controls(), /livearm|Enable live autopilot/);
+  assert.equal(gates(), 'Live trading isn’t available on this server yet. ');
+  assert.match(controls(), /Open board/);
+  // Live available: the button is exactly as before, greyed until a Kalshi key is connected.
+  f.apUpdate(f.box, status({live_enabled: true, kalshi_connected: false}));
+  assert.match(controls(), /<button class="btn sm" data-ap="livearm" aria-disabled="true">Enable live autopilot<\/button>/);
+  assert.match(gates(), /Connect your Kalshi key on the Funds page first/);
+  f.apUpdate(f.box, status({live_enabled: true, kalshi_connected: true}));
+  assert.match(controls(), /<button class="btn sm" data-ap="livearm" >Enable live autopilot<\/button>/);
+  // Live already on (or running) keeps its off switch and Kill, whatever the flag says now.
+  f.apUpdate(f.box, status({live_enabled: false, autopilot_live: true}));
+  assert.match(controls(), /data-ap="livetoggle"/); assert.match(controls(), /data-ap="kill"/);
+  assert.equal(posts(f).length, 0);
+});
+
+test('the panel names its log Activity feed, as the dashboard card and the story do', async () => {
+  const f = frontend(() => response(catalog)); f.apBuildShell(f.box); await flush();
+  assert.match(f.box.querySelector('.apf-session-head').innerHTML, /<span class="say-kind">Activity feed<\/span>/);
+  assert.doesNotMatch(source, /Live session/);
+  assert.match(source, /Every move shows up in its activity feed\./);
 });
 
 test('the autopilot feed labels switch notes as switches, not reviews', () => {

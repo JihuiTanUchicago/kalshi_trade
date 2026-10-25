@@ -1533,6 +1533,8 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 306px; 
 
 /* ---------- Floating autopilot window (bottom-right) ---------- */
 .apf { position: fixed; right: 16px; bottom: 16px; z-index: 60; font-family: var(--f-ui); }
+.apf.yield { opacity: 0; pointer-events: none; }  /* stepping aside from a primary button (apYield) */
+.apf:not(.open) { transition: opacity .15s; }
 /* Room under the page so the pinned autopilot pill never sits on the last row's buttons. */
 body:not(.landing-body) { padding-bottom: 72px; }
 body.landing-body .apf { display: none; }
