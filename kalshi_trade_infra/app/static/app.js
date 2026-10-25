@@ -638,6 +638,9 @@
       };
     }
     wireBell();
+    // Phones scroll the section tabs in one row; bring the current one into view.
+    const tabs = root.querySelector('.services-in'), curTab = tabs && tabs.querySelector('[aria-current="page"]');
+    if (tabs && curTab && phone()) tabs.scrollLeft = Math.max(0, curTab.offsetLeft - 24);
     const at = root.querySelector('[data-action="admintoggle"]');
     if (at) at.onclick = () => {
       const turningOff = adminViewOn();
@@ -1426,6 +1429,7 @@
       ].filter(Boolean).join('<span class="sep">/</span>');
       const board = `
         <div class="statusline ${needs ? 'needs' : ''}"><p class="said">${said}</p><a class="btn primary" href="/research">New research</a></div>
+        <section id="dash-ap" class="apcard" aria-label="Autopilot"></section>
         <dl class="figures measure">
           ${fig('<span class="mk live">Real</span> Live money', d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected', { small: d.live.connected ? (d.live.balance == null ? 'Couldn\u2019t read your Kalshi balance just now' : mSub(d.live, 'Your Kalshi cash \u2014 real money untouched')) : 'Connect your Kalshi account on Funds to trade real money' })}
           ${fig('<span class="mk dep">Demo</span> Sandbox', usd(d.demo.equity), { v: d.demo.realized_pnl, small: (d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7 ${d.demo.open_positions} open \u00b7 ${usd(d.demo.realized_pnl, true)} P&amp;L` : `${usd(d.demo.capital)} capital \u00b7 no demo strategies yet` })}
@@ -1440,7 +1444,7 @@
             <span>${closed ? money(+r.pnl) : (r.unrealized != null ? money(r.unrealized) : usd(r.qty * r.entry_price))}</span>
             <small>${esc(r.title)} · <span class="tick">${esc(r.ticker)}</span> · ${r.mode === 'live' ? 'LIVE' : r.mode === 'demo' ? 'DEMO' : 'PAPER'} · ${when(closed ? r.closed_at : r.opened_at)}</small></div>`).join('')
         : `<p class="hint">${closed ? 'No settled trades yet.' : 'No open positions.'}</p>`;
-      const main = `<section id="dash-ap" class="apcard" aria-label="Autopilot"></section><div class="dash-wrap"><div class="dash">
+      const main = `<div class="dash-wrap"><div class="dash">
           <div>
             <section class="sect"><div class="sect-head"><h2>Deployed</h2></div><div id="dash-deps">${deps}</div></section>
           </div>

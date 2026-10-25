@@ -242,6 +242,13 @@ th .info { vertical-align: 0; }
 .svc-link { display: inline-block; padding: 9px 16px 8px; text-decoration: none; color: var(--ink-2); font-family: var(--f-nar); font-size: 12.5px; letter-spacing: .1em; text-transform: uppercase; border-bottom: 2px solid transparent; margin-bottom: -1px; }
 .svc-link:hover { color: var(--ink); background: var(--stock-raised); }
 .svc-link[aria-current="page"] { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
+/* Phones: one scrollable row of tabs instead of three wrapped rows (about 110px back on every page). */
+@media (max-width: 760px) {
+  .services-in { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-right: 32px;
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent); }
+  .services-in::-webkit-scrollbar { display: none; }
+  .svc-link { flex: none; padding: 13px 12px 11px; }
+}
 
 .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--gut) 72px; }
 .board-title { padding-top: 22px; }
