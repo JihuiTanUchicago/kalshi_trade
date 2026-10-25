@@ -3268,7 +3268,9 @@ PAPER_PROBATION = os.getenv("APP_PAPER_PROBATION", "0") == "1"
 # Autopilot may not pause a paper deployment younger than this (live pauses are never held back).
 REPEAT_NOTE_WINDOW = timedelta(hours=2)
 PAPER_MIN_AGE = timedelta(hours=int(os.getenv("APP_PAPER_MIN_AGE_HOURS", "24")))
-PROBATION_MAX_P = float(os.getenv("APP_PROBATION_MAX_P", "0.25"))
+# 0.35, not 0.25 (Todd 2026-10-25: "Yes" to near misses on paper only): his best near misses were
+# kxrain at p=0.30 and 0.34. Paper risks no money; live still needs a DEPLOYMENT_CANDIDATE.
+PROBATION_MAX_P = float(os.getenv("APP_PROBATION_MAX_P", "0.35"))
 PROBATION_MIN_TRADES = int(os.getenv("APP_PROBATION_MIN_TRADES", "20"))
 PROBATION_MAX_ACTIVE = int(os.getenv("APP_PROBATION_MAX_ACTIVE", "4"))
 
@@ -3289,7 +3291,9 @@ def auto_paper_probation(cur, user: Dict) -> List[str]:
             break
         sid = c["strategy_id"]
         mkt = MARKETS.get(c["market"])
-        if sid in tried or mkt is None or not mkt.deployable or not in_focus(c["market"], focus_tokens(user)):
+        # No autopilot_focus check: probation is paper only (no money), and Todd approved it for his
+        # out-of-focus kxrain near misses while his research stays on crypto.
+        if sid in tried or mkt is None or not mkt.deployable:
             continue
         strat = repo.get_strategy(cur, user["id"], sid)
         if strat is None or strat.get("market") != c["market"] or specmod.is_code_spec(strat["spec"]):

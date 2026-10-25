@@ -121,3 +121,13 @@ def test_review_context_shows_deployment_age():
     live = agent._deployment_age_text({"mode": "live", "created_at": now - timedelta(minutes=30)})
     assert "too new" not in live
     assert agent._deployment_age_text({"mode": "paper"}) == ""
+
+
+def test_probation_ignores_the_research_focus_and_takes_p_up_to_035(monkeypatch):
+    """Todd 2026-10-25: near misses go to paper even off his crypto focus (his were kxrain, p=0.30
+    and 0.34). Paper only: no money moves, and live still needs a DEPLOYMENT_CANDIDATE."""
+    made, _ = _patch(monkeypatch, [_cand(1, market="sol_daily", p=0.34)])
+    monkeypatch.setattr(agent, "focus_tokens", lambda user: ["sports"])
+    agent.auto_paper_probation(None, dict(USER, autopilot_focus='["sports"]'))
+    assert made == [(1, "sol_daily", "paper")]
+    assert agent.PROBATION_MAX_P >= 0.34
