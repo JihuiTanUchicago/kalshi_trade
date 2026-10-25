@@ -1,1 +1,2 @@
-"""Kalshi behind the trading_core ports: identity mapping, order-type conversion, the Venue."""
+"""Kalshi behind the trading_core ports: identity and instrument mapping, order-type conversion,
+fee schedules, the Venue."""
