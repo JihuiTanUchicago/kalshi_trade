@@ -123,3 +123,20 @@ def test_scorecard_grades_focus_adherence_and_spend_per_gated_idea():
     b["families"]["sports"]["gated"] = 0
     assert agent.autopilot_scorecard(b, [])["burning"] == ["sports"]
     assert agent.autopilot_scorecard_lines(agent.autopilot_scorecard({"cards": [], "total": {}}, [])) == []
+
+
+def test_story_says_when_the_last_check_in_is_late(monkeypatch):
+    from datetime import datetime, timedelta
+    now = datetime(2026, 10, 25, 16, 0)
+    monkeypatch.setattr(server.repo, "now_utc", lambda: now)
+    on_time = server._autopilot_story({"autopilot": True, "last_review_at": now - timedelta(minutes=20)})
+    assert "checks in about every" in on_time[0]
+    late = server._autopilot_story({"autopilot": True, "last_review_at": now - timedelta(minutes=57)})
+    assert "last check-in was 57 minutes ago" in late[0]
+    hours = server._autopilot_story({"autopilot": True, "last_review_at": now - timedelta(hours=5, minutes=10)})
+    assert "last check-in was 5 hours ago" in hours[0]
+    # Researching right now is its own answer, and no review yet means it's just starting.
+    busy = server._autopilot_story({"autopilot": True, "last_review_at": now - timedelta(hours=5),
+                                    "research": {"active": ["Bitcoin"]}})
+    assert busy[0] == "Right now it's researching Bitcoin."
+    assert "checks in about every" in server._autopilot_story({"autopilot": True, "last_review_at": None})[0]
