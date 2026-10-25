@@ -35,12 +35,18 @@ class SpecStrategy:
     time, and the position count and one-per-ticker rules are enforced at fill time by the risk
     chain instead of here, exactly where the legacy backtest enforces them.
 
+    ``sizing_at_fill=True`` is the paper/live engine's same-bar form: entries carry their signal
+    price as the limit plus their stake, the execution policy sizes them against the book and the
+    user's caps, and the risk chain enforces the position count and one-per-ticker at fill time,
+    after this step's exits have booked (a contract that just sold can be re-entered).
+
     ``slippage`` (a backtest cost what-if) sizes same-bar entries at the price they will really pay,
     the ask plus that much, as ``backtest.simulate`` does; the venue charges it on the fill."""
 
     def __init__(self, spec: Dict, contracts: Mapping[str, Contract], *, stake: Optional[float] = None,
                  entry_until: float = float("inf"), strategy_id: str = "spec", next_bar: bool = False,
-                 slippage: float = 0.0, frame: Optional[Callable[[], Mapping[str, Snapshot]]] = None) -> None:
+                 slippage: float = 0.0, frame: Optional[Callable[[], Mapping[str, Snapshot]]] = None,
+                 sizing_at_fill: bool = False) -> None:
         if specmod.is_code_spec(spec) or spec.get("cross") or specmod.is_perpetual_spec(spec):
             raise ValueError("SpecStrategy runs single-contract DSL specs only")
         self.spec, self.contracts, self.strategy_id = spec, contracts, strategy_id
@@ -50,6 +56,7 @@ class SpecStrategy:
         self.next_bar = next_bar
         self.slippage = slippage
         self.frame = frame
+        self.sizing_at_fill = sizing_at_fill or next_bar
 
     def _snapshots(self, quotes: Mapping[InstrumentId, Quote]) -> Dict[str, Snapshot]:
         """The legacy YES snapshots, in feed order (entries breaks edge ties by input order). A replay
@@ -78,10 +85,11 @@ class SpecStrategy:
         held = {iid.symbol for iid in ctx.positions if self.next_bar or iid not in exiting}
         entries = []
         for cand in specmod.entries(self.spec, list(snaps.values())):
-            if self.next_bar:
+            if self.sizing_at_fill:
                 if cand.snapshot.contract.ticker not in held:
                     entries.append(OrderIntent(instrument_id(cand.snapshot.contract.ticker, cand.side), Side.BUY,
                                                max(1, specmod.contracts_for(self.stake, cand.price)),
+                                               limit_price=None if self.next_bar else cand.price,
                                                strategy_id=self.strategy_id, reason="entry", fair_value=cand.fair,
                                                meta={"edge": cand.edge, "stake": self.stake,
                                                      "signal_price": cand.price}))

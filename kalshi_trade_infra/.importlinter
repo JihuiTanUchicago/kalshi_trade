@@ -51,6 +51,10 @@ ignore_imports =
     ; through the Kalshi TradingLoop adapter (step 8c). Services reach it via gatekeeper/partitions.
     ; Delete when the backtest itself moves under app.services with the adapter injected.
     app.backtest -> app.adapters.kalshi.spec_strategy
+    ; app.engine is the legacy paper/live engine: with TAU_ENGINE_LOOP=paper it runs a decision as a
+    ; TradingLoop step over the Kalshi and DB adapters (step 8, paper). Delete when the engine's
+    ; decision moves under app.services with its adapters injected by the bootstrap.
+    app.engine -> app.adapters.**
     ; The legacy backtest (forecast_book) and engine (run_forever, the live composition root until
     ; app.bootstrap exists) wire the Polymarket fair-value book in themselves; services reach them via
     ; gatekeeper/agent. Delete when step 5 injects FeatureProviders from app.bootstrap.
