@@ -182,6 +182,16 @@ test('the sidebar lists each holding with every figure instead of a clipped five
   assert.doesNotMatch(list, /<x>/); assert.doesNotMatch(output, /<th>Contract<\/th><th>Position<\/th>/);
 });
 
+test('the abstract says a strategy cleared the gate only when it passed', async () => {
+  for (const status of ['passed', 'rejected', 'failed']) {
+    const f = strategyFrontend(detailStrategy({status, hypotheses_tried: 2}));
+    await f.viewStrategy(42); await flush();
+    const text = f.root.querySelector('.paper-ab-result').innerHTML;
+    assert.equal(/cleared the gate/.test(text), status === 'passed', status);
+    assert.match(text, /of 2 ideas tested this run/);
+  }
+});
+
 test('what-if results change the results panel while the saved abstract and failed verdict remain intact', async () => {
   const detail = detailStrategy({status: 'failed', hypotheses_tried: 0, out_of_sample: metrics(-12), experiment: null});
   const result = {in_sample: metrics(50), out_of_sample: metrics(1000), equity: [[100, 0], [300, 1000]], gates: [], passed: true};

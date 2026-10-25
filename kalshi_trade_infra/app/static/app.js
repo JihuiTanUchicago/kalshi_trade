@@ -2467,7 +2467,7 @@
     const hasExp = !!s.experiment;
     const filed = (() => { try { return new Date(s.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); } catch (e) { return ''; } })();
     const abResult = oos
-      ? `On unseen data the agent never touched while iterating, it ${+oos.pnl >= 0 ? 'returned ' + usd(oos.pnl) : 'lost ' + usd(Math.abs(oos.pnl))} over ${num(oos.trades)} trade${oos.trades === 1 ? '' : 's'}${s.hypotheses_tried ? `, the one idea of ${num(s.hypotheses_tried)} tested this run that cleared the gate` : ''}.`
+      ? `On unseen data the agent never touched while iterating, it ${+oos.pnl >= 0 ? 'returned ' + usd(oos.pnl) : 'lost ' + usd(Math.abs(oos.pnl))} over ${num(oos.trades)} trade${oos.trades === 1 ? '' : 's'}${s.hypotheses_tried ? (s.status === 'passed' ? `, and cleared the gate as one of ${num(s.hypotheses_tried)} ideas tested this run` : `, one of ${num(s.hypotheses_tried)} ideas tested this run`) : ''}.`
       : `It was ${s.status === 'rejected' ? 'rejected before reaching' : 'not advanced to'} the unseen-data test${s.hypotheses_tried ? ` — one of ${num(s.hypotheses_tried)} ideas tried this run` : ''}.`;
     const dataBlock = s.dataset ? `<div class="paper-sub"><h4 class="paper-h">Data &amp; partitioning</h4>
           <dl class="rp-grid">
