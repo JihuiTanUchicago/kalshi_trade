@@ -171,6 +171,17 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.doesNotMatch(live, /sandbox/);
   });
 
+  test(`${name}: a thinned track record curve says how it was drawn, a full one says one point per trade`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const th = {min_sharpe_days: 14, min_trades: 30};
+    const m = (trades, points) => ({trades, wins: trades, losses: 0, label: 'Paper', net_pnl: trades, fees: 0, monthly: [], strategies: [],
+      curve: Array.from({length: points}, (_, i) => [1760000000 + i * 3600, i + 1]), sample: {level: 'solid', edge: 'positive', text: 'Solid.'}});
+    assert.match(f.trackRecordPanel(m(50, 50), 'paper', th), /Cumulative net P&amp;L, one point per closed trade\./);
+    const thinned = f.trackRecordPanel(m(5000, 400), 'paper', th);
+    assert.match(thinned, /over all 5,000 trades, drawn from each stretch’s lowest and highest point so no dip is skipped/);
+    assert.doesNotMatch(thinned, /one point per closed trade/);
+  });
+
   test(`${name}: the seeded example's strategies and session say the app ran them for free`, async () => {
     const f = frontend({fetchImpl: path => {
       assert.equal(path, '/api/runs/5?after=0');

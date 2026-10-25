@@ -185,6 +185,17 @@ const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false}
     {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},
   ]}});
 
+test('a strategy from the seeded example session carries the Example tag and note on its own page', async () => {
+  const note = 'An example Tau ran for you when you signed up. It cost you nothing.';
+  for (const example of [true, false]) {
+    const f = strategyFrontend(detailStrategy({example, direction: 'random_walk'})); await f.viewStrategy(42); await flush();
+    const head = f.root.querySelector('.board-title').outerHTML;
+    assert.equal(/<span class="mk quiet example-tag" title="[^"]*">Example<\/span>/.test(head), example);
+    assert.equal(head.includes(note), example);
+    f.clearTimers();
+  }
+});
+
 test('the current strategy page renders an escaped research paper and a separate real demo curve', async () => {
   const f = strategyFrontend(); await f.viewStrategy(42); await flush();
   const output = f.root.querySelector('main').innerHTML;
@@ -486,7 +497,7 @@ test('Overview paper P&L says "since reset" after a reset and its day figure say
     assert.match(paper, reset_at ? /P&amp;L since reset \+\$111\.25/ : /All-time P&amp;L \+\$111\.25/);
     if (reset_at) assert.doesNotMatch(paper, /All-time/);
     // Today is closed trades only (realized_pnl), unlike the equity P&L beside it; the live group says so too.
-    assert.match(paper, /Realized today−\$7\.50/);
+    assert.match(paper, /Realized today \(UTC\)−\$7\.50/);
     const card = f.root.querySelector('#dash-ap').innerHTML;
     assert.match(card, new RegExp(`<dt>Paper P&amp;L, ${reset_at ? 'since reset' : 'all time'}</dt><dd><span class="[^"]*">\\+\\$111\\.25`));
   }
@@ -529,6 +540,26 @@ test('Overview empty Deployed box never says autopilot is researching while the 
   }
 });
 
+test('Overview offers each mode its own trades CSV only when that mode has closed trades', async () => {
+  for (const [counts, connected, deployments] of [[{paper: 0, demo: 0, live: 0}, false, []], [{paper: 4, demo: 0, live: 0}, false, []],
+    [{paper: 1, demo: 2, live: 3}, true, [dashboardDeployment('live')]], [{paper: 0, demo: 0, live: 3}, false, []]]) {
+    const data = dashboardData({paper: {closed_trades: counts.paper}, demo: {closed_trades: counts.demo},
+      live: {connected, balance: connected ? 50 : null, closed_trades: counts.live}, deployments});
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/dashboard') return response(data);
+      if (path.startsWith('/api/deployments/')) return response({});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    await f.viewDashboard(); await flush();
+    // Paper (or live, once real money runs) sits in the account band; the other accounts in the menu.
+    const html = f.root.querySelector('#boardbody').innerHTML + f.root.querySelector('main').innerHTML;
+    for (const mode of ['paper', 'demo', 'live']) {
+      const link = `<a class="csv-link" href="/api/trades.csv?mode=${mode}" download>Download trades (CSV)</a>`;
+      assert.equal(html.includes(link), counts[mode] > 0, `${mode} ${JSON.stringify(counts)}`);
+    }
+  }
+});
+
 test('Overview demo account says what demo is and that its P&L restarts at a reload', async () => {
   for (const [demo, re] of [
     [{equity: 1000, capital: 1000, realized_pnl: 0}, /\$1,000\.00 capital · No demo deployments · real fills on Kalshi’s sandbox, not real money/],
@@ -562,8 +593,8 @@ test('Overview live summary says it is Kalshi cash, apart from what Tau trades r
   const live = f.root.querySelector('.live-summary');
   assert.equal(live.querySelector('dt.lab').textContent, 'Kalshi cash');
   assert.match(live.textContent, /\+\$17\.00 realized all time by Tau trades/);
-  assert.match(live.textContent, /Open at cost, not in cash\$50\.00/); assert.match(live.textContent, /Realized today−\$2\.00/);
-  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Live realized today<\/dt><dd><span class="[^"]*">−\$2\.00/);
+  assert.match(live.textContent, /Open at cost, not in cash\$50\.00/); assert.match(live.textContent, /Realized today \(UTC\)−\$2\.00/);
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Live realized today \(UTC\)<\/dt><dd><span class="[^"]*">−\$2\.00/);
 });
 
 test('Funds names the live figure Kalshi cash, open positions not included', async () => {
@@ -2523,6 +2554,23 @@ test('the legal pages load in Tau even for a Meridian user, since only Tau has t
     vm.runInNewContext(readFileSync(new URL('../app/static/boot.js', import.meta.url), 'utf8'), context);
     assert.equal(context.window.__TAU_UI__, expected, pathname);
     assert.equal(scripts[0].src, expected === 'meridian' ? dataset.merJs : dataset.tauJs);
+  }
+});
+
+test('a shell that already links its theme makes boot.js only record it, with no swap or second bundle', () => {
+  for (const [ui, stored, pathname, expected, saved] of [['meridian', null, '/', 'meridian', 'meridian'],
+    ['tau', 'meridian', '/', 'tau', 'tau'], ['tau', 'meridian', '/terms', 'tau', undefined]]) {
+    const scripts = [], css = {href: 'shell-linked'}, writes = {};
+    const dataset = {ui, tauJs: '/static/app.js?v=tau-js', tauVer: 'tau-js', merJs: '/static/app.meridian.js?v=mer-js', merVer: 'mer-js', merCss: '/static/app.meridian.css?v=mer-css'};
+    const context = {window: {}, location: {pathname},
+      localStorage: {getItem: () => stored, setItem: (k, v) => { writes[k] = v; }},
+      document: {getElementById: id => id === 'tau-boot' ? {dataset} : id === 'tau-css' ? css : null,
+        createElement: () => ({}), body: {appendChild: script => scripts.push(script)}}};
+    vm.runInNewContext(readFileSync(new URL('../app/static/boot.js', import.meta.url), 'utf8'), context);
+    assert.equal(context.window.__TAU_UI__, expected, ui + pathname);
+    assert.equal(context.window.__BUILD__, expected === 'meridian' ? dataset.merVer : dataset.tauVer);
+    assert.equal(scripts.length, 0); assert.equal(css.href, 'shell-linked');
+    assert.equal(writes.tau_ui, saved);  // a forced Tau legal page never overwrites a saved Meridian
   }
 });
 

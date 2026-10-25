@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.adapters.db.sql import now_utc
 
@@ -245,6 +245,51 @@ def realized_pnl(cur, user_id: int, mode: str, since: Optional[datetime] = None)
         params.append(since)
     cur.execute(sql, params)
     return float(cur.fetchone()["p"])
+
+
+BOOK_MODES = ("paper", "demo", "live")
+
+
+def realized_pnl_by_mode(cur, user_id: int, since: datetime) -> Dict[str, Tuple[float, float]]:
+    """{mode: (realized all time, realized since `since`)} for the three books, in one pass over the
+    user's closed positions. The dashboard read realized_pnl seven times (each mode twice, demo's
+    all-time sum a third time for its equity) and each all-time call walked every closed position.
+    The same sums realized_pnl makes; a display read only, the gates keep calling realized_pnl."""
+    cols = ", ".join(
+        "COALESCE(SUM(CASE WHEN mode='{m}' THEN pnl END),0) AS {m}_all, "
+        "COALESCE(SUM(CASE WHEN mode='{m}' AND closed_at >= %s THEN pnl END),0) AS {m}_since".format(m=m)
+        for m in BOOK_MODES)
+    cur.execute("SELECT " + cols + " FROM app_positions WHERE user_id=%s AND status='closed'",
+                tuple(since for _ in BOOK_MODES) + (user_id,))
+    r = cur.fetchone() or {}
+    return {m: (float(r.get(m + "_all") or 0), float(r.get(m + "_since") or 0)) for m in BOOK_MODES}
+
+
+def closed_trade_counts(cur, user_id: int) -> Dict[str, int]:
+    """{mode: closed position rows} for the user, in one grouped read (the dashboard shows a mode's
+    trades download only where it has some). The same rows `realized_pnl` sums."""
+    cur.execute("SELECT mode, COUNT(*) AS n FROM app_positions WHERE user_id=%s AND status='closed' GROUP BY mode",
+                (user_id,))
+    return {r["mode"]: int(r["n"]) for r in cur.fetchall()}
+
+
+def closed_trades_for_export(cur, user_id: int, mode: str, limit: int) -> List[Dict]:
+    """The user's closed trades in one mode, newest first, at most `limit`: the rows `realized_pnl`
+    sums, so the downloaded file adds up to the dashboard's realized figure. Not `user_positions`:
+    that one inner-joins the strategy, so a trade whose stopped strategy was since deleted would drop
+    out and the file would no longer add up. Reads idx_pos_user (user_id, status, closed_at);
+    it's a rare, user-clicked read, so it adds no index to the table the order path writes."""
+    cur.execute(
+        """SELECT p.id, p.mode, p.ticker, p.side, p.qty, p.entry_price, p.entry_fee, p.exit_price, p.exit_fee,
+                  p.pnl, p.close_reason, p.opened_at, p.closed_at, d.strategy_id, s.title
+           FROM app_positions p
+           LEFT JOIN app_deployments d ON d.id=p.deployment_id
+           LEFT JOIN app_strategies s ON s.id=d.strategy_id
+           WHERE p.user_id=%s AND p.mode=%s AND p.status='closed'
+           ORDER BY p.closed_at DESC, p.id DESC LIMIT %s""",
+        (user_id, mode, int(limit)),
+    )
+    return cur.fetchall()
 
 
 def user_open_exposure(cur, user_id: int, mode: Optional[str] = None) -> Dict:

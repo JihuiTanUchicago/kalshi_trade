@@ -192,6 +192,17 @@ test('a signed-out deep link signs in back to the same page', async () => {
   assert.deepEqual([...new Set(google)], ['/auth/google?next=%2Fstrategies%2F42']);
 });
 
+test('a strategy from the seeded example session carries the Example tag and note on its own page', async () => {
+  const note = 'An example Tau ran for you when you signed up. It cost you nothing.';
+  for (const example of [true, false]) {
+    const f = strategyFrontend(detailStrategy({example, direction: 'random_walk'})); await f.viewStrategy(42); await flush();
+    const head = f.root.querySelector('.board-title').outerHTML;
+    assert.equal(/<span class="mk quiet example-tag" title="[^"]*">Example<\/span>/.test(head), example);
+    assert.equal(head.includes(note), example);
+    f.clearTimers();
+  }
+});
+
 test('the current strategy page renders an escaped research paper and a separate real demo curve', async () => {
   const f = strategyFrontend(); await f.viewStrategy(42); await flush();
   const output = f.root.querySelector('main').innerHTML;
@@ -224,6 +235,8 @@ test('the abstract says a strategy cleared the gate only when it passed', async 
     const text = f.root.querySelector('.paper-ab-result').innerHTML;
     assert.equal(/cleared the gate/.test(text), status === 'passed', status);
     assert.match(text, /of 2 ideas tested this run/);
+    const figs = f.root.querySelector('#figs').innerHTML;
+    assert.equal(/the one that passed/.test(figs), status === 'passed', status);
   }
 });
 
@@ -714,6 +727,27 @@ test('the dashboard demo card says what demo is and that its P&L restarts at a r
   }
 });
 
+test('each dashboard money card offers its own trades CSV only when that mode has closed trades', async () => {
+  for (const [counts, connected] of [[{paper: 0, demo: 0, live: 0}, false], [{paper: 4, demo: 0, live: 0}, false],
+    [{paper: 0, demo: 2, live: 3}, true], [{paper: 0, demo: 0, live: 3}, false]]) {
+    const d = emptyDashboard();
+    d.paper.closed_trades = counts.paper;
+    d.demo = {...d.demo, closed_trades: counts.demo};
+    d.live = {connected, balance: connected ? 50 : null, realized_pnl: 0, today_pnl: 0, open_positions: 0, running: 0, closed_trades: counts.live};
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/dashboard') return response(d);
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    await f.viewDashboard(); await flush();
+    const html = f.root.querySelector('#boardbody').innerHTML;
+    for (const mode of ['paper', 'demo', 'live']) {
+      const link = `<a class="csv-link" href="/api/trades.csv?mode=${mode}" download>Download trades (CSV)</a>`;
+      assert.equal(html.includes(link), counts[mode] > 0, `${mode} ${JSON.stringify(counts)}`);
+    }
+    assert.equal((html.match(/csv-link/g) || []).length, Object.values(counts).filter(Boolean).length);
+  }
+});
+
 test('Funds demo labels say "since reload" only after a reload, and that demo fills are real', async () => {
   for (const before_reload of [0, 40]) {
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds(); d.demo.before_reload = before_reload; return response(d); }});
@@ -738,11 +772,11 @@ test('the live card says it is Kalshi cash, apart from what Tau trades realized'
   const board = f.root.querySelector('#boardbody').innerHTML;
   // The balance is Kalshi's cash for the whole account; the line under it is Tau's own book.
   assert.match(board, /<span class="mk live">Real<\/span> Kalshi cash/); assert.match(board, /\$250\.00/);
-  assert.match(board, /Tau trades: 2 open \(not in cash\) · \+\$17\.00 realized all time · −\$2\.00 realized today/);
+  assert.match(board, /Tau trades: 2 open \(not in cash\) · \+\$17\.00 realized all time · −\$2\.00 realized today \(UTC\)/);  // a day figure says which day: it resets at 00:00 UTC
   assert.match(board, /Live money on: \+\$17\.00 realized all time/);
   // The autopilot card's day figure is the same booked P&L, and says so.
   f.S.me.user.autopilot = true; f.S.ap = {...apOn, live_running: 1, today_live_pnl: -2}; f.paintDashAp();
-  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Live realized today<\/dt><dd><span class="[^"]*">−\$2\.00/);
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Live realized today \(UTC\)<\/dt><dd><span class="[^"]*">−\$2\.00/);
 });
 
 test('Funds names the live figure Kalshi cash, open positions not included', async () => {

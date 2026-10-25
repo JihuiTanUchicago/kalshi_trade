@@ -138,6 +138,39 @@ def test_curve_is_thinned_but_stats_use_every_trade():
     assert len(p["curve"]) == tr.CURVE_POINTS and p["curve"][-1][1] == 1000
 
 
+def test_a_one_trade_crash_survives_thinning_and_the_end_is_exact():
+    # A crash that recovers on the next trade. The old every-Nth thinner kept indexes 0, 2, 5, 7, ...
+    # and stepped over it: the drawn curve showed no drawdown while max_drawdown (full series) said $800.
+    start = NOW - timedelta(days=30)
+    pnls = [1.0] * 999
+    pnls[614], pnls[615] = -800.0, 800.0
+    assert 614 not in [int(i * 999 / 399) for i in range(399)]  # the old rule's picks
+    rows = [row("paper", p, closed=start + timedelta(minutes=i)) for i, p in enumerate(pnls)]
+    p = tr.build(rows, NOW)["modes"]["paper"]
+    curve = p["curve"]
+    assert len(curve) <= tr.CURVE_POINTS
+    bottom = [int((start + timedelta(minutes=614)).timestamp()), 614 - 800]
+    assert bottom in curve and min(v for _, v in curve) == 614 - 800  # the crash, as the real point
+    assert curve[-1] == [int((start + timedelta(minutes=998)).timestamp()), sum(pnls)]  # the end, exact
+    assert curve[0] == [int(start.timestamp()), 1.0]
+    assert [ts for ts, _ in curve] == sorted(ts for ts, _ in curve)  # still in time order
+    # The stats come from every trade, never the thinned curve.
+    assert p["max_drawdown"] == 800 and p["trades"] == 999 and p["net_pnl"] == sum(pnls)
+
+
+def test_thin_min_max_keeps_each_runs_low_and_high():
+    curve = [[i, v] for i, v in enumerate([0, 5, -3, 2, 9, 1, 4, -8, 6, 7])]
+    assert tr.thin_min_max(curve, 10) is curve  # under the cap: untouched
+    out = tr.thin_min_max(curve, 6)  # first, last, and 2 runs of 4 inner points: low + high each
+    assert out == [[0, 0], [2, -3], [4, 9], [7, -8], [8, 6], [9, 7]]
+    assert len(tr.thin_min_max([[i, 0.0] for i in range(1000)], 400)) <= 400  # a flat run gives one point
+    for cap in (4, 5, 401, 400):
+        out = tr.thin_min_max([[i, (i * 37) % 11] for i in range(1000)], cap)
+        assert len(out) <= cap and out[0] == [0, 0] and out[-1] == [999, (999 * 37) % 11]
+    with pytest.raises(ValueError):
+        tr.thin_min_max(curve, 3)
+
+
 def test_wilson_interval_is_bounded_and_sane():
     assert tr.wilson(0, 0) is None
     lo, hi = tr.wilson(0, 10)

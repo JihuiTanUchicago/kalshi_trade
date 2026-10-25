@@ -469,3 +469,60 @@ def test_code_paper_rows_keep_their_replayed_times_and_count_for_the_gate(conn, 
     assert repo.deployment_order_refs(cur, did, "sim:replay:") == {ref}
     got = repo.paper_fills_for_gate(cur, user["id"], sid)
     assert [(g["opened_at"], g["closed_at"], g["settled"], g["pnl"]) for g in got] == [(opened, closed, True, 2.95)]
+
+
+def _closed_trades(conn, user, dep_id, pnls, start):
+    rows = [(dep_id, user["id"], "paper", "TEST-CURVE-%d" % i, "yes", 1, 0.40, 0.01, start + timedelta(minutes=i),
+             start + timedelta(minutes=i) - timedelta(hours=1), "closed", start + timedelta(minutes=i), pnl)
+            for i, pnl in enumerate(pnls)]
+    conn.cursor().executemany(
+        """INSERT INTO app_positions (deployment_id, user_id, mode, ticker, side, qty, entry_price, entry_fee,
+           market_close_time, opened_at, status, closed_at, pnl) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", rows)
+
+
+def test_a_deployment_curve_stays_small_and_keeps_its_end_and_extremes(conn, user):
+    """The dashboard sends each deployment's cumulative P&L curve. At 20k closed trades that was 20k
+    points (433KB a load); it is now at most CURVE_MAX_POINTS, cut down in SQL, with the first and
+    last trade exact and each stretch's lowest and highest point kept, so a one-trade crash shows."""
+    import json
+    import random
+    from decimal import Decimal
+
+    from app import repository as repo, server
+
+    rng = random.Random(5)
+    big, small = _deployment(conn, user), _deployment(conn, user)
+    pnls = [Decimal(rng.randint(-100, 105)) / 100 for _ in range(20000)]
+    pnls[12345] = Decimal("-250.00")  # a single crash and recovery a stride sampler would step over
+    pnls[12346] = Decimal("250.00")
+    start = datetime(2026, 1, 1)
+    _closed_trades(conn, user, big["id"], pnls, start)
+    _closed_trades(conn, user, small["id"], [Decimal("1.25"), Decimal("-0.50"), Decimal("0.75")], start)
+
+    def ts(i):
+        return int((start + timedelta(minutes=i)).replace(tzinfo=timezone.utc).timestamp())
+
+    curves = repo.deployment_curves(conn.cursor(), user["id"])
+    full, cum = [], Decimal(0)
+    for i, p in enumerate(pnls):
+        cum += p
+        full.append([ts(i), float(cum)])
+    curve = curves[big["id"]]
+    assert len(curve) <= repo.CURVE_MAX_POINTS
+    assert curve[0] == full[0] and curve[-1] == full[-1]
+    assert curve[-1][1] == float(sum(pnls))  # ends on the deployment's realized P&L, to the cent
+    assert [p for p in full if p in curve] == curve  # real trades, in order
+    values = [v for _, v in curve]
+    assert min(values) == min(v for _, v in full) and max(values) == max(v for _, v in full)
+    assert full[12345] in curve  # the crash itself
+    # Every stretch keeps its own low and high.
+    n, buckets = len(full), (repo.CURVE_MAX_POINTS - 2) // 2
+    for b in range(buckets):
+        stretch = [v for i, (_, v) in enumerate(full[1:-1], start=2) if (i - 2) * buckets // (n - 2) == b]
+        assert min(stretch) in values and max(stretch) in values, b
+    # Under the cap a curve is every trade, unchanged.
+    assert curves[small["id"]] == [[ts(0), 1.25], [ts(1), 0.75], [ts(2), 1.5]]
+    # The dashboard payload no longer grows with the trade count.
+    body = json.dumps(server.dashboard(server.Ctx(conn, dict(user, autopilot=0), (), {}, {}, None)),
+                      default=server._json_default)
+    assert len(body) < 64_000, len(body)

@@ -139,6 +139,26 @@ def _start_session(ctx: Ctx, user_id: int) -> None:
     ctx.set_cookies.append(_session_cookie(token, int(auth.SESSION_TTL.total_seconds())))
 
 
+# The account's theme, mirrored on the device so the page shell can link the right stylesheet and
+# bundle without a database read. Not a secret, not a session: a stale value is corrected by /api/me.
+# Not HttpOnly: the Settings switch writes it too, so a switch whose save failed still applies here.
+UI_COOKIE = "tau_ui"
+UI_THEMES = ("tau", "meridian")
+UI_COOKIE_MAX_AGE = 400 * 86400
+
+
+def _ui_cookie(theme: str) -> str:
+    return "%s=%s; Path=/; SameSite=Lax; Max-Age=%d%s" % (
+        UI_COOKIE, theme, UI_COOKIE_MAX_AGE, "; Secure" if SECURE_COOKIES else "")
+
+
+def _sync_ui_cookie(ctx: "Ctx", theme: str) -> None:
+    """Set the device's tau_ui cookie to the account's theme when it differs."""
+    read = getattr(ctx.handler, "cookies", None)
+    if (read().get(UI_COOKIE) if callable(read) else None) != theme:
+        ctx.set_cookies.append(_ui_cookie(theme))
+
+
 NEXT_COOKIE = "tau_next"
 
 
@@ -368,6 +388,8 @@ def _researchable_markets(cur) -> List[Dict]:
 
 
 def me(ctx: Ctx):
+    _sync_ui_cookie(ctx, ctx.user.get("ui_theme") if ctx.user.get("ui_theme") in UI_THEMES else "tau")
+    reads = billing.Reads(ctx.cur, ctx.uid)  # needs_card, auto_reload and credit_balance share one read each
     return {
         "user": {
             "id": ctx.user["id"], "email": ctx.user["email"], "name": ctx.user["name"],
@@ -383,10 +405,10 @@ def me(ctx: Ctx):
         "no_side_live_enabled": engine.NO_SIDE_LIVE_ENABLED,
         "is_admin": (ctx.user["email"] or "").lower() == ADMIN_EMAIL.lower(),
         "billing_enabled": billing.configured(),
-        "needs_card": _needs_card(ctx),
-        "auto_reload": _auto_reload_terms(ctx),
+        "needs_card": _needs_card(ctx, reads),
+        "auto_reload": _auto_reload_terms(ctx, reads),
         "free_bonus": float(billing.FREE_BONUS),
-        "credit_balance": round(repo.credit_balance(ctx.cur, ctx.uid), 4),
+        "credit_balance": round(reads.balance(), 4),
         "min_run_balance": float(billing.MIN_RUN_BALANCE),  # the headroom a research run needs to start
         "perps_live_available": kalshi_perps_trading.enabled(),  # hide the Funds perps box when live perps are off
         "markets": _researchable_markets(ctx.cur),
@@ -398,16 +420,24 @@ def _start_of_day_utc() -> datetime:
     return repo.now_utc().replace(hour=0, minute=0, second=0)
 
 
-def _mode_bucket(cur, uid: int, mode: str, open_pos: List[Dict], deps: List[Dict], day) -> Dict:
+def _mode_bucket(cur, uid: int, mode: str, open_pos: List[Dict], deps: List[Dict], day,
+                 realized: Optional[Tuple[float, float]] = None,
+                 closed: Optional[Dict[str, int]] = None) -> Dict:
     """Money in one deployment-mode bucket (paper | demo | live), from that mode's own
-    positions and deployments only — so the three buckets never double-count each other."""
+    positions and deployments only — so the three buckets never double-count each other.
+    `realized` is (all time, since `day`) when the caller read every book's at once.
+    `closed` is repo.closed_trade_counts (read once for all three)."""
     pos = [p for p in open_pos if p["mode"] == mode]
+    if realized is None:
+        realized = (repo.realized_pnl(cur, uid, mode), repo.realized_pnl(cur, uid, mode, day))
+    total, today = realized
     return {
+        "closed_trades": int((closed or {}).get(mode, 0)),  # > 0: the dashboard offers /api/trades.csv
         "open_at_cost": round(sum(float(p["qty"]) * float(p["entry_price"]) for p in pos), 2),
         "open_positions": len(pos),
         "running": sum(1 for d in deps if d["mode"] == mode and d["status"] == "running"),
-        "realized_pnl": round(repo.realized_pnl(cur, uid, mode), 2),
-        "today_pnl": round(repo.realized_pnl(cur, uid, mode, day), 2),
+        "realized_pnl": round(total, 2),
+        "today_pnl": round(today, 2),
     }
 
 
@@ -440,10 +470,12 @@ def dashboard(ctx: Ctx):
     curves = repo.deployment_curves(cur, ctx.uid)
     balance = repo.paper_balance(cur, ctx.uid)
     deposited = repo.paper_deposits(cur, ctx.uid)
+    realized = repo.realized_pnl_by_mode(cur, ctx.uid, day)  # every book's realized P&L in one read
     # Three mode buckets, each self-contained (real / sandbox / simulation). Paper + demo both
     # carry an app-controlled cash layer on top of the shared fields; live carries the real
     # Kalshi balance (money we never hold).
-    paper = _mode_bucket(cur, ctx.uid, "paper", open_pos, deps, day)
+    closed = repo.closed_trade_counts(cur, ctx.uid)
+    paper = _mode_bucket(cur, ctx.uid, "paper", open_pos, deps, day, realized["paper"], closed)
     equity = balance + paper["open_at_cost"]
     paper.update(
         cash=round(balance, 2),
@@ -458,11 +490,11 @@ def dashboard(ctx: Ctx):
     )
     # Demo: real fills applied to the capital WE set. Equity = capital + realized-since-reload,
     # and the displayed realized P&L is net of the reload baseline (so a reload reads as $X flat).
-    demo = _mode_bucket(cur, ctx.uid, "demo", open_pos, deps, day)
-    de = repo.demo_equity(cur, ctx.uid)
+    demo = _mode_bucket(cur, ctx.uid, "demo", open_pos, deps, day, realized["demo"], closed)
+    de = repo.demo_equity(cur, ctx.uid, realized=realized["demo"][0])
     demo.update(capital=de["capital"], equity=de["equity"], realized_pnl=de["realized"],
                 total_pnl=de["realized"], roi=de["roi"], before_reload=de["before_reload"])
-    live = _mode_bucket(cur, ctx.uid, "live", open_pos, deps, day)
+    live = _mode_bucket(cur, ctx.uid, "live", open_pos, deps, day, realized["live"], closed)
     live.update(_live_balance(cur, ctx.uid))
     return {
         "paper": paper,
@@ -579,6 +611,22 @@ def _research_totals(cur, uid: int) -> Dict:
     return val
 
 
+LAST_DREAM_TTL = 60.0  # seconds; the run page polls every 2s and a dream lands at most once per run
+_LAST_DREAM: Dict[int, Tuple[float, Optional[Dict]]] = {}
+
+
+def _last_dream(cur, uid: int) -> Optional[Dict]:
+    """The run page's "Last check" line (repo.latest_dream_event), cached per user like the research
+    totals. That read walks every event of every run the user has (~1s at 6,000 runs and 600k events)
+    and the page asked for it on every 2s poll. The line can trail a new dream by up to a minute."""
+    hit = _LAST_DREAM.get(uid)
+    if hit and time.time() - hit[0] < LAST_DREAM_TTL:
+        return hit[1]
+    val = repo.latest_dream_event(cur, uid)
+    _LAST_DREAM[uid] = (time.time(), val)
+    return val
+
+
 def get_run(ctx: Ctx):
     run = repo.get_run(ctx.cur, ctx.uid, _int_param(ctx))
     if run is None or run["kind"] != "research":
@@ -588,7 +636,7 @@ def get_run(ctx: Ctx):
     # the gate (a run_forever run never reaches "succeeded", so we can't wait for it).
     strategies = repo.list_strategies(ctx.cur, ctx.uid, run_id=run["id"])
     pol = repo.get_policy(ctx.cur, ctx.uid)  # the self-evolving exploration policy (Tau-RSI)
-    dream = repo.latest_dream_event(ctx.cur, ctx.uid)
+    dream = _last_dream(ctx.cur, ctx.uid)
     _with_spent(ctx.cur, ctx.uid, [run])
     _mark_example([run])
     # How long it has waited for a research worker (or gone quiet), timed by the server so a reload
@@ -625,23 +673,23 @@ def _rsi_block(pol: Optional[Dict], dream: Optional[Dict]) -> Dict:
     }
 
 
-def _needs_card(ctx: Ctx) -> bool:
+def _needs_card(ctx: Ctx, reads: Optional[billing.Reads] = None) -> bool:
     """True when payments are live but the user has no card on file. Agent usage
     is metered per token, so we require a card before any run — the free credits
     unlock the moment one is saved."""
     if not billing.configured():
         return False
-    cust = repo.get_stripe_customer(ctx.cur, ctx.uid)
+    cust = (reads or billing.Reads(ctx.cur, ctx.uid)).customer()
     return not (cust and cust.get("default_pm_id"))
 
 
-def _auto_reload_terms(ctx: Ctx) -> Optional[Dict]:
+def _auto_reload_terms(ctx: Ctx, reads: Optional[billing.Reads] = None) -> Optional[Dict]:
     """What auto-reload will charge the saved card, for the autopilot card's cost line: the credits
     added, the card charge (credits plus the top-up fee) and the balance that triggers it. The same
     floors billing.auto_reload applies. None when payments are off, no card is saved, or it is off."""
     if not billing.configured():
         return None
-    cust = repo.get_stripe_customer(ctx.cur, ctx.uid)
+    cust = (reads or billing.Reads(ctx.cur, ctx.uid)).customer()
     if not (cust and cust.get("default_pm_id") and cust.get("auto_reload")):
         return None
     amount = max(billing.AUTORELOAD_AMOUNT, Decimal(str(cust.get("reload_amount") or billing.AUTORELOAD_AMOUNT)))
@@ -905,6 +953,7 @@ def set_ui_theme(ctx: Ctx):
     if theme not in ("tau", "meridian"):
         raise ApiError(400, "Unknown theme.")
     repo.set_ui_theme(ctx.cur, ctx.uid, theme)
+    _sync_ui_cookie(ctx, theme)  # the reload that follows gets the new theme's shell
     return {"ok": True, "theme": theme}
 
 
@@ -1455,7 +1504,8 @@ def _waiting_lines(waiting: List[Dict]) -> List[str]:
         checks = sum(int(w.get("checks_today") or 0) for w in ws)
         if checks:
             found = sum(int(w.get("qualified_today") or 0) for w in ws)
-            line += " Today %s of %d checks found a contract worth buying." % (found or "none", checks)
+            # scan_tally counts the UTC day, so the sentence names it (a US evening is already "tomorrow").
+            line += " Since 00:00 UTC, %s of %d checks found a contract worth buying." % (found or "none", checks)
         out.append(line)
     return out
 
@@ -1589,7 +1639,8 @@ def autopilot_status(ctx: Ctx):
     live_run = [d for d in deps if d["mode"] == "live" and d["status"] == "running"]
     paper_run = [d for d in deps if d["mode"] == "paper" and d["status"] == "running"]
     demo_run = [d for d in deps if d["mode"] == "demo" and d["status"] == "running"]
-    gates_ok = bool(engine.LIVE_TRADING_ENABLED and repo.get_kalshi_key(cur, ctx.uid) is not None)
+    kalshi_connected = repo.get_kalshi_key(cur, ctx.uid) is not None  # read once: the live gate and the badge
+    gates_ok = bool(engine.LIVE_TRADING_ENABLED and kalshi_connected)
     live_on = bool(u.get("autopilot_live")) and gates_ok and bool(u.get("autopilot"))
     mode = "live" if (live_on and live_run) else ("live-armed" if live_on else ("paper" if u.get("autopilot") else "off"))
     today_live = round(repo.realized_pnl(cur, ctx.uid, "live", _start_of_day_utc()), 2)
@@ -1597,7 +1648,8 @@ def autopilot_status(ctx: Ctx):
     # When autopilot is ON but can't spend (no card, or balance below the per-run floor), the worker
     # silently skips the user via billing.is_ready — the SAME gate, read here only to surface WHY the
     # panel is quiet so it doesn't look broken. Never changes the gate; purely a status readout.
-    billing_blocked = bool(u.get("autopilot")) and billing.configured() and not billing.is_ready(cur, ctx.uid)
+    reads = billing.Reads(cur, ctx.uid)  # the readout below reuses the gate's card and balance reads
+    billing_blocked = bool(u.get("autopilot")) and billing.configured() and not billing.is_ready(cur, ctx.uid, reads)
     review = repo.active_agent_run(cur, ctx.uid, "review") if u.get("autopilot") else None
     review_wait = _run_wait(review) or {"overdue": False}
     # Paper -> live progress: the running paper strategy closest to the realistic-trade gate, so a
@@ -1626,7 +1678,7 @@ def autopilot_status(ctx: Ctx):
         "autopilot": bool(u.get("autopilot")),
         "autopilot_live": bool(u.get("autopilot_live")),
         "live_enabled": bool(engine.LIVE_TRADING_ENABLED),
-        "kalshi_connected": repo.get_kalshi_key(cur, ctx.uid) is not None,
+        "kalshi_connected": kalshi_connected,
         "mode": mode,
         "live_running": len(live_run), "paper_running": len(paper_run), "demo_running": len(demo_run),
         "today_live_pnl": today_live,
@@ -1645,9 +1697,9 @@ def autopilot_status(ctx: Ctx):
         "model": u.get("autopilot_model") or catalog.DEFAULT_KEY,  # the model the autopilot's own runs use
         "focus": agent.focus_tokens(u),  # the user's binding market focus ([] = any market)
         "billing_blocked": billing_blocked,
-        "billing_reason": (("card" if _needs_card(ctx) else "credits") if billing_blocked else None),
+        "billing_reason": (("card" if _needs_card(ctx, reads) else "credits") if billing_blocked else None),
         # Warn before the pause, not after: days of credit left when that's under three.
-        "credits_low_days": (_credits_running_low(cur, ctx.uid)
+        "credits_low_days": (_credits_running_low(cur, ctx.uid, reads)
                              if u.get("autopilot") and billing.configured() and not billing_blocked else None),
         "paper_progress": paper_progress,
         "paper_open": int(repo.user_open_exposure(cur, ctx.uid, "paper")["n"]) if paper_run else 0,
@@ -2063,10 +2115,10 @@ def _customer_id(ctx: Ctx) -> str:
     return cid
 
 
-def _credit_runway(cur, uid: int):
+def _credit_runway(cur, uid: int, reads: Optional[billing.Reads] = None):
     """(balance, last-7-day usage spend, days the balance lasts at that pace). Research pauses at
     zero, so this is how long autopilot keeps working; None when there is no recent usage."""
-    balance = repo.credit_balance(cur, uid)
+    balance = (reads or billing.Reads(cur, uid)).balance()
     spent_7d = repo.credit_spent_total(cur, uid, repo.now_utc() - timedelta(days=7))
     runway = round(balance / (spent_7d / 7), 1) if spent_7d > 0 and balance > 0 else None
     return balance, spent_7d, runway
@@ -2075,13 +2127,14 @@ def _credit_runway(cur, uid: int):
 CREDIT_RUNWAY_WARN_DAYS = 3
 
 
-def _credits_running_low(cur, uid: int):
+def _credits_running_low(cur, uid: int, reads: Optional[billing.Reads] = None):
     """Days of credit left when autopilot will pause within CREDIT_RUNWAY_WARN_DAYS and auto-reload
     won't top it up; None otherwise. A readout for the panel, never a gate."""
-    cust = repo.get_stripe_customer(cur, uid)
+    reads = reads or billing.Reads(cur, uid)
+    cust = reads.customer()
     if cust and cust.get("auto_reload") and cust.get("default_pm_id"):
         return None
-    runway = _credit_runway(cur, uid)[2]
+    runway = _credit_runway(cur, uid, reads)[2]
     return runway if runway is not None and runway < CREDIT_RUNWAY_WARN_DAYS else None
 
 
@@ -2122,24 +2175,89 @@ def billing_state(ctx: Ctx):
     }
 
 
-def billing_receipt(ctx: Ctx):
-    """Full Credits & Usage history as a downloadable CSV receipt."""
+_PLAIN_NUMBER = re.compile(r"^[+-]?(?:\d+\.?\d*|\.\d+)$")
+
+
+def _csv_safe(value: Any) -> str:
+    """One CSV cell that a spreadsheet will show as text, never run as a formula. Strategy titles
+    are written by people and models; a cell that starts with = + - @ (or a tab or CR) and isn't a
+    plain number gets a leading apostrophe. Negative P&L stays a number."""
+    if value is None:
+        return ""
+    s = str(value)
+    if s and s[0] in "=+-@\t\r" and not _PLAIN_NUMBER.match(s):
+        return "'" + s
+    return s
+
+
+def _csv_rows(buf) -> Callable[[List[Any]], Any]:
+    """A csv writer for a user download whose every cell goes through _csv_safe: the one guard both
+    downloads (credits receipt, trades) share."""
     import csv
+    w = csv.writer(buf)
+    return lambda row: w.writerow([_csv_safe(c) for c in row])
+
+
+def billing_receipt(ctx: Ctx):
+    """Full Credits & Usage history as a downloadable CSV receipt. Memos can carry run and strategy
+    names, so every cell is formula-safe."""
     import io
     cur = ctx.cur
     user = repo.get_user(cur, ctx.uid) or {}
     buf = io.StringIO()
-    w = csv.writer(buf)
-    w.writerow(["Tau - Credits & Usage receipt"])
-    w.writerow(["Account", user.get("email", "")])
-    w.writerow(["Generated (UTC)", repo.now_utc().replace(microsecond=0).isoformat()])
-    w.writerow(["Current balance (USD)", "%.4f" % repo.credit_balance(cur, ctx.uid)])
-    w.writerow(["Total spent (USD)", "%.4f" % repo.credit_spent_total(cur, ctx.uid)])
-    w.writerow([])
-    w.writerow(["Date (UTC)", "Type", "Amount (USD)", "Memo"])
+    row = _csv_rows(buf)
+    row(["Tau - Credits & Usage receipt"])
+    row(["Account", user.get("email", "")])
+    row(["Generated (UTC)", repo.now_utc().replace(microsecond=0).isoformat()])
+    row(["Current balance (USD)", "%.4f" % repo.credit_balance(cur, ctx.uid)])
+    row(["Total spent (USD)", "%.4f" % repo.credit_spent_total(cur, ctx.uid)])
+    row([])
+    row(["Date (UTC)", "Type", "Amount (USD)", "Memo"])
     for r in repo.credit_rows(cur, ctx.uid, 100000):  # full history, newest first
-        w.writerow([r["created_at"], r["kind"], "%.4f" % float(r["amount_usd"]), r["memo"] or ""])
+        row([r["created_at"], r["kind"], "%.4f" % float(r["amount_usd"]), r["memo"] or ""])
     fname = "tau-credits-%s.csv" % repo.now_utc().strftime("%Y%m%d")
+    return ("download", fname, "text/csv; charset=utf-8", buf.getvalue())
+
+
+TRADE_MODES = ("paper", "demo", "live")
+TRADES_CSV_MAX_ROWS = 50000  # about 7MB; a cap, so one request can't read an unbounded book
+TRADES_CSV_HEADER = ["closed_at_utc", "opened_at_utc", "mode", "strategy", "strategy_title", "ticker", "side",
+                     "contracts", "entry_price", "exit_price", "entry_fee", "exit_fee", "realized_pnl",
+                     "close_reason", "position_id"]
+def _iso_utc(v: Any) -> str:
+    if not isinstance(v, datetime):
+        return "" if v is None else str(v)
+    v = v.astimezone(timezone.utc).replace(tzinfo=None) if v.tzinfo else v
+    return v.replace(microsecond=0).isoformat() + "Z"
+
+
+def _dec(v: Any, places: int = 4) -> str:
+    return "" if v is None else "%.*f" % (places, float(v))
+
+
+def trades_csv(ctx: Ctx):
+    """One mode's closed trades as a CSV the user can check the P&L from: realized_pnl summed over the
+    file is the mode's realized P&L on the dashboard (demo's is since the last reload, so it can
+    differ by what came before). Never mixes modes. Newest TRADES_CSV_MAX_ROWS at most, and says so."""
+    import io
+    mode = (ctx.query.get("mode") or "").strip().lower()
+    if mode not in TRADE_MODES:
+        raise ApiError(400, "Pick a mode: paper, demo or live.")
+    rows = repo.closed_trades_for_export(ctx.cur, ctx.uid, mode, TRADES_CSV_MAX_ROWS + 1)
+    cut = len(rows) > TRADES_CSV_MAX_ROWS
+    buf = io.StringIO()
+    row = _csv_rows(buf)
+    row(TRADES_CSV_HEADER)
+    for r in reversed(rows[:TRADES_CSV_MAX_ROWS]):  # oldest first, the order a reader checks a book in
+        sid = r.get("strategy_id")
+        row([
+            _iso_utc(r["closed_at"]), _iso_utc(r["opened_at"]), r["mode"],
+            "No. %05d" % sid if sid is not None else "", r.get("title") or "", r["ticker"], r["side"], int(r["qty"]),
+            _dec(r["entry_price"]), _dec(r["exit_price"]), _dec(r["entry_fee"]), _dec(r["exit_fee"]),
+            _dec(r["pnl"]), r.get("close_reason") or "", r["id"]])
+    if cut:
+        row(["# Only the newest %d trades are in this file; older ones are not." % TRADES_CSV_MAX_ROWS])
+    fname = "tau-trades-%s-%s.csv" % (mode, repo.now_utc().strftime("%Y%m%d"))
     return ("download", fname, "text/csv; charset=utf-8", buf.getvalue())
 
 
@@ -2774,6 +2892,7 @@ ROUTES: List[Route] = [
         ("POST", r"/api/community/(\d+)/comments", create_comment, True),
         ("GET", "/api/billing", billing_state, True),
         ("GET", "/api/billing/receipt", billing_receipt, True),
+        ("GET", r"/api/trades\.csv", trades_csv, True),
         ("POST", "/api/billing/setup-intent", billing_setup_intent, True),
         ("POST", "/api/billing/card-added", billing_card_added, True),
         ("POST", "/api/billing/topup", billing_topup, True),
@@ -2876,7 +2995,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def cookies(self) -> Dict[str, str]:
         out = {}
-        for part in (self.headers.get("Cookie") or "").split(";"):
+        headers = getattr(self, "headers", None)
+        for part in ((headers.get("Cookie") if headers else None) or "").split(";"):
             if "=" in part:
                 k, v = part.strip().split("=", 1)
                 out[k] = v
@@ -2917,6 +3037,35 @@ class Handler(BaseHTTPRequestHandler):
         extra = [("Cache-Control", "no-store")] + [("Set-Cookie", c) for c in cookies]
         self._send(status, "application/json; charset=utf-8", body, extra)
 
+    def _shell_theme(self, path: str) -> Tuple[Optional[str], List[str]]:
+        """The theme to link in the page shell, so a Meridian user never downloads Tau's stylesheet
+        and bundle first, and a fresh device never reloads into its account's theme. From the
+        tau_ui cookie (set by /api/me and /api/ui-theme), else, signed in on a device without it,
+        one session read (and the cookie is set). None = unknown: boot.js goes by localStorage.
+        Only Tau has the Terms and Privacy pages. Returns (theme, Set-Cookie headers)."""
+        if path in ("/terms", "/privacy"):
+            return "tau", []
+        cookies = self.cookies()
+        theme = cookies.get(UI_COOKIE)
+        if theme in UI_THEMES:
+            return theme, []
+        token = cookies.get(auth.SESSION_COOKIE)
+        if not token:
+            return None, []
+        conn = None
+        try:
+            conn = get_db_conn()
+            user = repo.session_user(conn.cursor(), auth.hash_token(token))
+        except Exception:  # noqa: BLE001 - the shell must never fail on this; boot.js falls back
+            return None, []
+        finally:
+            if conn is not None:
+                conn.close()
+        if user is None:
+            return None, []
+        theme = user.get("ui_theme") if user.get("ui_theme") in UI_THEMES else "tau"
+        return theme, [_ui_cookie(theme)]
+
     def _send_static(self, path: str) -> None:
         if path == "/.well-known/apple-developer-merchantid-domain-association":
             f = STATIC_DIR / "apple-developer-merchantid-domain-association"
@@ -2927,8 +3076,14 @@ class Handler(BaseHTTPRequestHandler):
                 return
         if SPA_ROUTES.match(path):
             versions = _static_versions()
+            theme, cookies = self._shell_theme(path)
+            css = ("/static/app.meridian.css?v=" + versions["app.meridian.css"] if theme == "meridian"
+                   else "/static/app.css?v=" + versions["app.css"])
+            bundle = ("" if theme is None else '\n<script src="/static/%s?v=%s" defer></script>' % (
+                ("app.meridian.js", versions["app.meridian.js"]) if theme == "meridian" else ("app.js", versions["app.js"])))
             html = (STATIC_DIR / "index.html").read_text("utf-8")
-            html = (html.replace("{{css_v}}", versions["app.css"])
+            html = (html.replace("{{ui_css}}", css).replace("{{ui}}", theme or "").replace("{{ui_bundle}}", bundle)
+                    .replace("{{css_v}}", versions["app.css"])
                     .replace("{{js_v}}", versions["app.js"])
                     .replace("{{session_v}}", versions["session-data.js"])
                     .replace("{{chat_v}}", versions["session-chat.js"])
@@ -2945,7 +3100,9 @@ class Handler(BaseHTTPRequestHandler):
                     .replace("{{boot_v}}", versions["boot.js"]))
             body = html.encode("utf-8")
             self._spa = True
-            self._send(200, "text/html; charset=utf-8", body, [("Cache-Control", "no-cache")])
+            # Vary: the shell links the theme from the cookies, so no cache may serve one user's to another.
+            self._send(200, "text/html; charset=utf-8", body,
+                       [("Cache-Control", "no-cache"), ("Vary", "Cookie")] + [("Set-Cookie", c) for c in cookies])
             return
         m = re.match(r"^/static/([a-z0-9_.-]+\.(css|js|svg|png|ico|woff2))$", path)
         f = STATIC_DIR / m.group(1) if m else None

@@ -240,7 +240,7 @@ def test_dashboard_mode_buckets_do_not_double_count(monkeypatch):
     live = server._mode_bucket(None, 1, "live", open_pos, deps, object())
     demo = server._mode_bucket(None, 1, "demo", open_pos, deps, object())
     paper = server._mode_bucket(None, 1, "paper", open_pos, deps, object())
-    assert live == {"open_at_cost": 1.2, "open_positions": 1, "running": 1, "realized_pnl": 7.0, "today_pnl": 7.0}
+    assert live == {"closed_trades": 0, "open_at_cost": 1.2, "open_positions": 1, "running": 1, "realized_pnl": 7.0, "today_pnl": 7.0}
     assert demo["open_positions"] == 2 and demo["open_at_cost"] == 3.5 and demo["running"] == 1
     assert paper["open_positions"] == 1 and paper["running"] == 0  # a stopped deployment isn't "running"
     # Every open position lands in exactly one bucket — the three never overlap.
@@ -255,11 +255,12 @@ def test_dashboard_paper_book_carries_its_reset_so_all_time_labels_stay_true(mon
     for name, fn in {
         "user_positions": lambda *a, **k: [], "list_deployments": lambda *a, **k: [], "deployment_curves": lambda *a, **k: {},
         "paper_balance": lambda cur, uid: 480.0, "paper_deposits": lambda cur, uid: 500.0,
-        "realized_pnl": lambda cur, uid, mode, since=None: 0.0, "daily_pnl": lambda *a, **k: [],
+        "realized_pnl_by_mode": lambda cur, uid, since: {m: (0.0, 0.0) for m in ("paper", "demo", "live")},
+        "daily_pnl": lambda *a, **k: [],
         "paper_reset_at": lambda cur, uid: at,
-        "demo_equity": lambda cur, uid: {"capital": 500.0, "equity": 512.0, "realized": 12.0, "roi": .024, "before_reload": 40.0},
+        "demo_equity": lambda cur, uid, realized=None: {"capital": 500.0, "equity": 512.0, "realized": 12.0, "roi": .024, "before_reload": 40.0},
         "get_kalshi_key": lambda cur, uid: None, "open_reconcile_rows": lambda cur, uid: [],
-        "active_run_counts": lambda cur, uid: {},
+        "active_run_counts": lambda cur, uid: {}, "closed_trade_counts": lambda cur, uid: {"demo": 3},
     }.items():
         monkeypatch.setattr(server.repo, name, fn)
     monkeypatch.setattr(server, "_freshness", lambda cur: {})
@@ -268,6 +269,8 @@ def test_dashboard_paper_book_carries_its_reset_so_all_time_labels_stay_true(mon
     assert paper["reset_at"] == at and paper["total_pnl"] == -20.0 and paper["equity"] == 480.0
     # Demo P&L is since the last reload; before_reload lets the label say so (track record counts it all).
     assert demo["realized_pnl"] == 12.0 and demo["before_reload"] == 40.0 and demo["equity"] == 512.0
+    # Each bucket says how many closed trades it has, so the page offers that mode's download only.
+    assert (paper["closed_trades"], demo["closed_trades"], out["live"]["closed_trades"]) == (0, 3, 0)
 
 
 def test_demo_deploy_requires_dev_key(monkeypatch):
@@ -360,6 +363,19 @@ def test_strategies_list_still_shows_the_example_rows_and_marks_them(monkeypatch
     out = server.list_strategies(ctx(query={"status": "rejected"}))
     assert out["matched"] == 2 and out["pages"] == 1 and out["counts"]["rejected"] == 0
     assert all(c["example"] for c in out["strategies"])
+
+
+def test_strategy_detail_marks_a_seeded_example_strategy(monkeypatch):
+    # The detail page shows the same Example tag and note as the lists, so its payload carries the flag.
+    row = {"id": 4, "run_id": 1, "parent_id": None, "market": "btc15m", "title": "Walk", "thesis": "t", "status": "rejected",
+           "created_at": None, "result": {}, "spec": {"sizing": {"stake": 5}, "side": "yes"}, "experiment_id": None}
+    monkeypatch.setattr(server.specmod, "describe", lambda spec: [])
+    monkeypatch.setattr(server, "_experiment_block", lambda *a: None)
+    monkeypatch.setattr(server.repo, "list_deployments", lambda *a: [])
+    monkeypatch.setattr(server.repo, "positions_for_strategy", lambda *a: [])
+    for direction, example in ((server.repo.DEMO_DIRECTION, True), ("momentum", False)):
+        monkeypatch.setattr(server.repo, "get_strategy", lambda cur, uid, sid, d=direction: {**row, "direction": d})
+        assert server.get_strategy(ctx(params=("4",)))["example"] is example
 
 
 def test_list_strategies_applies_limit_and_offset():

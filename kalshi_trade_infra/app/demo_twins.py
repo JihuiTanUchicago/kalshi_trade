@@ -5,7 +5,7 @@ reconciling) is exercised from a strategy's first day instead of after its paper
 Demo's play-money book is thin, so demo P&L is no evidence of an edge; paper keeps that job. A copy
 is made only while the user has a demo key and a funded demo account (an empty one refuses every
 order), and it is paused (the engine flattens it) once no paper deployment of its strategy is still
-running (and resumed with it). Behind APP_DEMO_TWINS=1; off by default.
+running (and resumed with it). On by default (Todd, 2026-10-25); APP_DEMO_TWINS=0 turns it off.
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from app import repository as repo
 from app import spec as specmod
 from app.markets import MARKETS
 
-DEMO_TWINS = os.getenv("APP_DEMO_TWINS") == "1"
+DEMO_TWINS = os.getenv("APP_DEMO_TWINS", "1") == "1"
 # Below this the account can't carry a few paper-sized stakes, and orders come back refused.
 DEMO_TWIN_MIN_BALANCE = float(os.getenv("APP_DEMO_TWIN_MIN_BALANCE", "100"))
 PAUSE_REASON = "Its paper strategy is no longer running, so the demo copy stopped too."
