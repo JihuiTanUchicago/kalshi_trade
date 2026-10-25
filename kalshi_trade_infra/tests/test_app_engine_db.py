@@ -738,6 +738,38 @@ def test_the_run_pages_dream_line_reads_only_the_dream_lines(conn, user):
     assert [(r["Column_name"], r["Sub_part"]) for r in cur.fetchall()] == [("message", 24)]  # schema.main added it
 
 
+def test_the_credit_balance_reads_its_covering_index_and_stays_exact(conn, user):
+    """credit_balance is the same SUM over the user's ledger rows. idx_credit_user_amount
+    (user_id, amount_usd) only lets it read them off the index; the total stays exact to the
+    micro-dollar, with nobody else's rows in it."""
+    import random
+    from decimal import Decimal
+    from app import repository as repo
+
+    cur = conn.cursor()
+    uid = user["id"]
+    other = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "o@example.com", "O", None)
+    rng = random.Random(5)
+    cur.execute("SELECT amount_usd FROM app_credit_ledger WHERE user_id=%s", (uid,))
+    welcome = sum((r["amount_usd"] for r in cur.fetchall()), Decimal(0))  # the sign-up bonus
+    amounts = [Decimal("20"), Decimal("0.000001"), Decimal("-0.000001"), Decimal("-12.345678"), Decimal("99999.999999")]
+    amounts += [Decimal(rng.randint(-5_000_000, 5_000_000)) / 1_000_000 for _ in range(400)]
+    for i, amount in enumerate(amounts):
+        repo.add_credit(cur, uid, "usage" if amount < 0 else "topup", amount, "t%d" % i)
+    repo.add_credit(cur, other["id"], "topup", Decimal("7.777777"), "someone else")
+    exact = sum(amounts, welcome)
+    cur.execute("SELECT COALESCE(SUM(amount_usd),0) AS b FROM app_credit_ledger IGNORE INDEX (idx_credit_user_amount) "
+                "WHERE user_id=%s", (uid,))
+    assert cur.fetchone()["b"] == exact
+    cur.execute("SELECT COALESCE(SUM(amount_usd),0) AS b FROM app_credit_ledger FORCE INDEX (idx_credit_user_amount) "
+                "WHERE user_id=%s", (uid,))
+    assert cur.fetchone()["b"] == exact
+    assert repo.credit_balance(cur, uid) == float(exact)
+    assert repo.credit_balance(cur, other["id"]) == float(welcome + Decimal("7.777777"))
+    cur.execute("SHOW INDEX FROM app_credit_ledger WHERE Key_name='idx_credit_user_amount'")
+    assert [r["Column_name"] for r in sorted(cur.fetchall(), key=lambda r: r["Seq_in_index"])] == ["user_id", "amount_usd"]
+
+
 def test_last_autopilot_action_looks_back_a_bounded_window_of_chat(conn, user, monkeypatch):
     """The 20s status poll used to scan a user's whole chat history for the last autopilot line
     whenever there was none. It now looks through the newest LAST_ACTION_WINDOW rows and answers
