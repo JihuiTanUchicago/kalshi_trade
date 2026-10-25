@@ -1367,7 +1367,7 @@ def _tournament_line(t: Optional[Dict]) -> str:
     else:
         where = "it has %d%% of its %s practice book on %s" % (
             round(100 * lead["weight"]), book, lead["title"] or "its leader")
-    return ("The paper tournament runs %s at once, with %d of the %d trades the research gate needs so far; %s." % (
+    return ("The paper tournament runs %s at once, with %d of the %d independent bets the research gate needs so far; %s." % (
         _plural(t["entrants"], "strategy", "strategies"), t["trips"], t["target"], where))
 
 

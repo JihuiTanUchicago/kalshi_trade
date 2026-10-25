@@ -4,15 +4,15 @@ The research gate needs roughly 400-800 trades to see a 6-10c edge (gate-power c
 and a single near miss forward-tests at a few trades a day. So paper runs every near miss in
 parallel (agent.auto_paper_probation fills the slots) and this module referees:
 
-  standings   per entrant, realistic paper round trips (live kernel over SimulatedVenue) turned into
-              a return per dollar staked, shrunk toward zero (the honest prior for a strategy the
+  standings   per entrant, realistic paper round trips (live kernel over SimulatedVenue) grouped into
+              events (five strikes of one 15m event are one bet) and turned into a return per dollar staked, shrunk toward zero (the honest prior for a strategy the
               gatekeeper rejected), and a Thompson draw of who is best. A cash arm (mean exactly 0)
               competes too, so the book sits in cash while nothing beats zero.
   book        a virtual TOURNAMENT_CAPITAL dollars split by those draws. Each round trip adds its
               P&L scaled from the entrant's own paper capital to the weight it held when the trip
               opened. Weights are snapshotted hourly (app_tournament_allocations), so the curve is
               forward-only: a trip never earns a weight chosen after it opened.
-  verdicts    an entrant is retired when the data says so: after TOURNAMENT_MIN_TRIPS round trips
+  verdicts    an entrant is retired when the data says so: after TOURNAMENT_MIN_TRIPS events
               with P(mean > 0) under ELIMINATE_P, or after DORMANT_DAYS with no trade at all (its
               entry rule never fires on the live book). Retiring frees a slot for the next near miss.
   pooled      all entrants' trips as one sample: does research's near-miss output earn money going
@@ -56,7 +56,7 @@ DDL = [
 
 TOURNAMENT_CAPITAL = float(os.getenv("APP_TOURNAMENT_CAPITAL", "10000"))
 REBALANCE_EVERY = timedelta(minutes=int(os.getenv("APP_TOURNAMENT_REBALANCE_MINUTES", "60")))
-# Shrinkage: the prior counts as PRIOR_TRIPS round trips at a mean of 0, so a lucky first few trades
+# Shrinkage: the prior counts as PRIOR_TRIPS events at a mean of 0, so a lucky first few trades
 # can't grab the book. Per-entrant sd is shrunk toward the pooled sd the same way, floored at SD_FLOOR
 # (a binary contract's return per dollar staked has sd near 1; a tiny early sample understates it).
 PRIOR_TRIPS = 10.0
@@ -106,7 +106,8 @@ def is_probation(cur, dep: Dict) -> bool:
 
 def entrants(cur, user_id: int) -> List[Dict]:
     """Every paper deployment that hasn't been stopped, one per strategy (newest wins), each with its
-    realistic round trips (oldest first) and their returns per dollar staked."""
+    realistic round trips (oldest first) and its per-event returns per dollar staked."""
+    from app import agent
     from app import repository as repo
     out, seen = [], set()
     for d in repo.list_deployments(cur, user_id, include_stopped=False):
@@ -115,7 +116,9 @@ def entrants(cur, user_id: int) -> List[Dict]:
         seen.add(d["strategy_id"])
         trips = repo.paper_round_trips(cur, user_id, d["strategy_id"])
         stake = _stake(d)
-        out.append(dict(d, trips=trips, returns=[t["pnl"] / stake for t in trips]))
+        # One return per EVENT, not per trip: five strikes of one 15m event are one bet (the live
+        # gate clusters the same way, #169), so correlated trips can't fake confidence.
+        out.append(dict(d, trips=trips, returns=[p / stake for p in agent._trip_events(trips)]))
     return out
 
 
@@ -219,7 +222,7 @@ def verdict(entry: Dict, arm: Dict, now) -> Optional[str]:
     dormancy (no trade at all after DORMANT_DAYS)."""
     n = arm["trips"]
     if n >= TOURNAMENT_MIN_TRIPS and arm["p_positive"] is not None and arm["p_positive"] < ELIMINATE_P:
-        return ("after %d paper round trips it is %.0f%% likely to be losing money per trade "
+        return ("after %d paper events it is %.0f%% likely to be losing money per event "
                 "(posterior mean %+.1f%% of stake)" % (n, 100 * (1 - arm["p_positive"]), 100 * arm["post_mean"]))
     created = entry.get("created_at")
     # Dormancy judges an entry rule, so only an entrant that is actually running can be dormant: a
@@ -231,10 +234,26 @@ def verdict(entry: Dict, arm: Dict, now) -> Optional[str]:
     return None
 
 
+def _events(trips: List[Dict]) -> List[Dict]:
+    """Trips grouped into events per strategy (agent._trip_event_key): summed return and P&L, closed
+    when the event's last trip closed. Oldest event first."""
+    from app import agent
+    groups: Dict[Tuple, Dict] = {}
+    for i, t in enumerate(trips):
+        key = (t.get("strategy_id"), agent._trip_event_key(t, i))
+        g = groups.setdefault(key, {"ret": 0.0, "pnl": 0.0, "closed_at": None})
+        g["ret"] += t["ret"]
+        g["pnl"] += t["pnl"]
+        if t.get("closed_at") and (g["closed_at"] is None or t["closed_at"] > g["closed_at"]):
+            g["closed_at"] = t["closed_at"]
+    return list(groups.values())
+
+
 def pooled(trips: List[Dict]) -> Dict:
-    """All paper trips as one sample: mean return per dollar staked, a normal-approximation one-sided
+    """All paper trips as one sample of EVENTS (`_events`): mean return per dollar staked, a normal-approx one-sided
     p that the mean is <= 0 (cheap enough for a polled panel; the gate itself bootstraps), the pace
     over the last 3 days and when the sample reaches POOLED_TARGET at that pace."""
+    trips = _events(trips)
     xs = [t["ret"] for t in trips]
     n = len(xs)
     out = {"trips": n, "target": POOLED_TARGET, "net_pnl": round(sum(t["pnl"] for t in trips), 4),
@@ -379,18 +398,18 @@ def context_lines(st: Dict, limit: int = 8) -> List[str]:
     out = ["Paper tournament (every paper entrant trades; a bandit splits a virtual $%.0f book by realized "
            "paper results; it retires losers itself, so do not pause entrants on a few bad trades):" % b["capital"]]
     for r in sorted(ents, key=lambda r: -r["weight"])[:limit]:
-        out.append("- #%d %s (%s): %.0f%% of the book, %d trips, net $%.2f, P(edge>0)=%.0f%%%s" % (
+        out.append("- #%d %s (%s): %.0f%% of the book, %d events, net $%.2f, P(edge>0)=%.0f%%%s" % (
             r["strategy_id"], r["title"], r["market"], 100 * r["weight"], r["trips"], r["net_pnl"],
             100 * (r["p_positive"] or 0), ("; retiring: " + r["verdict"]) if r.get("verdict") else ""))
     if cash:
         out.append("- cash: %.0f%% of the book" % (100 * cash["weight"]))
-    line = "Pooled forward sample: %d of %d trips" % (p["trips"], p["target"])
+    line = "Pooled forward sample: %d of %d independent events" % (p["trips"], p["target"])
     if p["mean_return"] is not None:
-        line += ", mean %+.1f%% of stake per trip" % (100 * p["mean_return"])
+        line += ", mean %+.1f%% of stake per event" % (100 * p["mean_return"])
     if p["p_value"] is not None:
         line += ", p=%.2f" % p["p_value"]
     if p["days_to_target"] is not None:
-        line += ", %.1f trips/day, ~%.0f days to target" % (p["per_day"], p["days_to_target"])
+        line += ", %.1f events/day, ~%.0f days to target" % (p["per_day"], p["days_to_target"])
     out.append(line + ". Book: $%.2f (%+.2f%%), max drawdown $%.2f over %d trips." % (
         b["pnl"], b["return_pct"], b["max_drawdown"], b["trips"]))
     return out
