@@ -36,11 +36,14 @@ def credit_rows(cur, user_id: int, limit: int = 50) -> List[Dict]:
     return cur.fetchall()
 
 
-def credit_spent_total(cur, user_id: int) -> float:
-    cur.execute(
-        "SELECT COALESCE(-SUM(amount_usd),0) AS s FROM app_credit_ledger WHERE user_id=%s AND kind='usage'",
-        (user_id,),
-    )
+def credit_spent_total(cur, user_id: int, since=None) -> float:
+    """Usage spend in dollars, all time or since `since` (the billing page's runway)."""
+    sql = "SELECT COALESCE(-SUM(amount_usd),0) AS s FROM app_credit_ledger WHERE user_id=%s AND kind='usage'"
+    params = (user_id,)
+    if since is not None:
+        sql += " AND created_at >= %s"
+        params = (user_id, since)
+    cur.execute(sql, params)
     return float(cur.fetchone()["s"])
 
 
