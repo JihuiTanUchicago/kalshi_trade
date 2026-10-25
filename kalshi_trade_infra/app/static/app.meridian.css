@@ -1022,6 +1022,7 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   .stack tbody td.act { order: -1; padding: 4px 0 6px; display: flex; gap: 6px; }
   .stack tbody td::before { content: attr(data-lab); font-family: var(--f-nar); font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); flex: none; }
   .stack tbody td.name::before, .stack tbody td.act::before { content: none; }
+  .stack tbody td.act.st::before { content: attr(data-lab); }
   .stack tbody td .sub-fig { flex: 1 0 100%; }
   .stack tbody td .spark { margin-left: 0; }  /* a stacked cell reads left-aligned */
   .stack tbody tr:hover td { background: transparent; }
@@ -2368,8 +2369,16 @@ body.landing-body .apf { display: none; }
   .pick, #pick-all { width: 22px; height: 22px; }
 }
 @media (max-width: 760px) {
-  /* The tabs scroll sideways; fade the right edge so it reads as "more this way". */
-  .masthead .services-in { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); padding-right: 24px; }
+  /* The tabs scroll sideways: fade, and point at, only the edges with more tabs past them
+     (tabEdges sets more-l / more-r). */
+  .masthead .services-in { padding-right: 24px; }
+  .masthead .services { position: relative; }
+  .masthead .services.more-r .services-in { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 64px), transparent calc(100% - 26px)); mask-image: linear-gradient(90deg, #000 calc(100% - 64px), transparent calc(100% - 26px)); }
+  .masthead .services.more-l .services-in { -webkit-mask-image: linear-gradient(90deg, transparent 26px, #000 64px); mask-image: linear-gradient(90deg, transparent 26px, #000 64px); }
+  .masthead .services.more-l.more-r .services-in { -webkit-mask-image: linear-gradient(90deg, transparent 26px, #000 64px, #000 calc(100% - 64px), transparent calc(100% - 26px)); mask-image: linear-gradient(90deg, transparent 26px, #000 64px, #000 calc(100% - 64px), transparent calc(100% - 26px)); }
+  .masthead .services.more-r::after, .masthead .services.more-l::before { position: absolute; top: 0; bottom: 1px; display: flex; align-items: center; font-size: 22px; line-height: 1; color: #D0D4C9; pointer-events: none; }
+  .masthead .services.more-r::after { content: "\203A"; right: 0; padding-right: 6px; }
+  .masthead .services.more-l::before { content: "\2039"; left: 0; padding-left: 6px; }
 }
 @media (max-width: 600px) {
   /* Open autopilot is a full-screen sheet: one scroll for controls and session, composer pinned. */
