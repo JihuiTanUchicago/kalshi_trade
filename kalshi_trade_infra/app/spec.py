@@ -64,6 +64,8 @@ CHOICES: Dict[str, Tuple] = {
     "model.drift_window": (0, 5, 15, 60),
 }
 NULLABLE = {"exit.take_profit", "exit.stop_loss", "exit.min_edge_to_hold"}
+# Run 2887 lost an idea to "exit.stop_loss=0.008 is outside 0.01..0.99".
+_CENT_SNAP = {"exit.take_profit", "exit.stop_loss"}
 
 DEFAULT_SPEC: Dict[str, Any] = {
     "market": "btc15m",
@@ -553,6 +555,8 @@ def validate(raw: Any) -> Dict[str, Any]:
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
             errors.append("%s must be a number" % path)
             continue
+        if path in _CENT_SNAP and 0 < value < lo:
+            value = lo  # prices move in whole cents, so a sub-cent exit fires exactly when a 1c one does
         if not lo <= value <= hi:
             errors.append("%s=%s is outside %s..%s" % (path, value, lo, hi))
             continue
