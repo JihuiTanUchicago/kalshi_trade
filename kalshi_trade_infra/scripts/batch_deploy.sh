@@ -5,7 +5,8 @@
 # Each run:
 #   1. reads the S3 markers deploy_web.sh / deploy_collector.sh write (bundle/markers/*)
 #   2. nothing new on main -> exit 0
-#   3. CI (test, money-path-mysql, isolated-staging) must be green on main's head; pending -> wait
+#   3. CI (test, money-path-mysql, and isolated-staging when its paths changed) must be green on
+#      main's head; pending -> wait
 #      for the next batch, red -> fail (GitHub mails the repo owner)
 #   4. a diff that only touches the UI/tests/docs restarts recursive-web alone; anything else is a
 #      full restart, which first requires 0 sent order intents (a restart mid-send loses the ack)
@@ -19,7 +20,10 @@ AWS_REGION=${AWS_REGION:-us-east-1}
 BUCKET=${BUCKET:-kalshi-trade-artifacts-568386354218-us-east-1}
 WEB_INSTANCE=${WEB_INSTANCE:-i-077d6f7873e7836ba}
 BOX_PY=${BOX_PY:-/opt/kalshi/.venv313/bin/python}
-REQUIRED_CHECKS=${REQUIRED_CHECKS-"test money-path-mysql isolated-staging"}
+REQUIRED_CHECKS=${REQUIRED_CHECKS-"test money-path-mysql"}
+# paper-staging.yml is path-filtered: required only when main's head commit touches its paths.
+STAGING_PATHS='^kalshi_trade_infra/(app|data_pipeline|trading_core|staging)/|^kalshi_trade_infra/requirements\.txt$|^kalshi_trade_infra/scripts/(paper|kalshi_perps)_staging_smoke\.py$|^kalshi_trade_infra/tests/test[^/]*staging|^\.github/workflows/paper-staging\.yml$'
+
 STALE_MINUTES=${STALE_MINUTES:-90}
 DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
@@ -61,6 +65,9 @@ if [[ "$NEED_WEB" == 0 && "$NEED_COLLECTOR" == 0 ]]; then
 fi
 
 # CI on main's head: every required check completed and successful.
+if [[ -n "$REQUIRED_CHECKS" ]] && git diff --name-only "$MAIN^" "$MAIN" 2>/dev/null | grep -qE "$STAGING_PATHS"; then
+  REQUIRED_CHECKS="$REQUIRED_CHECKS isolated-staging"
+fi
 API="https://api.github.com/repos/${GITHUB_REPOSITORY}/commits/${MAIN}/check-runs?per_page=100"
 RUNS='{"check_runs": []}'
 [[ -n "$REQUIRED_CHECKS" ]] && RUNS=$(curl -fsS -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" "$API")
