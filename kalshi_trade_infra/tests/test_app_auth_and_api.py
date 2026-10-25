@@ -247,6 +247,26 @@ def test_dashboard_mode_buckets_do_not_double_count(monkeypatch):
     assert live["open_positions"] + demo["open_positions"] + paper["open_positions"] == len(open_pos)
 
 
+def test_dashboard_paper_book_carries_its_reset_so_all_time_labels_stay_true(monkeypatch):
+    # total_pnl is equity minus deposits, and a reset wipes the ledger, so the client labels it
+    # "since reset" when reset_at is set. The money math itself is unchanged.
+    from datetime import datetime
+    at = datetime(2026, 10, 20, 9, 0)
+    for name, fn in {
+        "user_positions": lambda *a, **k: [], "list_deployments": lambda *a, **k: [], "deployment_curves": lambda *a, **k: {},
+        "paper_balance": lambda cur, uid: 480.0, "paper_deposits": lambda cur, uid: 500.0,
+        "realized_pnl": lambda cur, uid, mode, since=None: 0.0, "daily_pnl": lambda *a, **k: [],
+        "paper_reset_at": lambda cur, uid: at,
+        "demo_equity": lambda cur, uid: {"capital": 0.0, "equity": 0.0, "realized": 0.0, "roi": None},
+        "get_kalshi_key": lambda cur, uid: None, "open_reconcile_rows": lambda cur, uid: [],
+        "active_run_counts": lambda cur, uid: {},
+    }.items():
+        monkeypatch.setattr(server.repo, name, fn)
+    monkeypatch.setattr(server, "_freshness", lambda cur: {})
+    paper = server.dashboard(ctx())["paper"]
+    assert paper["reset_at"] == at and paper["total_pnl"] == -20.0 and paper["equity"] == 480.0
+
+
 def test_demo_deploy_requires_dev_key(monkeypatch):
     # Demo = sandbox; it needs the user's demo key on file, nothing else money-gated.
     strat = {"id": 6, "status": "passed", "market": "btc15m", "title": "D", "spec": {"side": "yes"}}

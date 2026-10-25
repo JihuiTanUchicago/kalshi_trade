@@ -451,6 +451,9 @@ def dashboard(ctx: Ctx):
         total_pnl=round(equity - deposited, 2),
         roi=round((equity - deposited) / deposited, 4) if deposited > 0 else None,
         daily=repo.daily_pnl(cur, ctx.uid, "paper"),
+        # total_pnl restarts at a reset (the ledger is wiped), so its label says "since reset", not
+        # "all time", while the track record still counts every closed trade.
+        reset_at=repo.paper_reset_at(cur, ctx.uid),
     )
     # Demo: real fills applied to the capital WE set. Equity = capital + realized-since-reload,
     # and the displayed realized P&L is net of the reload baseline (so a reload reads as $X flat).

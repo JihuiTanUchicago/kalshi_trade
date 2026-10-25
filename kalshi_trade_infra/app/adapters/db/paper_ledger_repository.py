@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 from app.adapters.db.sql import now_utc
 
 STARTING_PAPER_BALANCE = 1000.0
+RESET_MEMO = "Paper account reset"
 
 
 def lock_user(cur, user_id: int) -> None:
@@ -34,6 +35,17 @@ def paper_deposits(cur, user_id: int) -> float:
     return float(cur.fetchone()["b"])
 
 
+def paper_reset_at(cur, user_id: int):
+    """When the user last reset the paper account (None if never). A reset wipes the ledger, so
+    the account's equity P&L restarts there while closed trades (track record) keep their history."""
+    cur.execute(
+        "SELECT MAX(created_at) AS at FROM app_ledger WHERE user_id=%s AND kind='deposit' AND memo=%s",
+        (user_id, RESET_MEMO),
+    )
+    row = cur.fetchone() or {}
+    return row.get("at")
+
+
 def ledger_rows(cur, user_id: int, limit: int = 50) -> List[Dict]:
     cur.execute(
         "SELECT id, kind, amount, memo, created_at FROM app_ledger WHERE user_id=%s ORDER BY id DESC LIMIT %s",
@@ -46,4 +58,4 @@ def reset_paper_account(cur, user_id: int, amount: float) -> None:
     """Wipe the paper ledger and start fresh at `amount`. Only safe with no open paper
     positions (the caller guards this) — otherwise their debited cost would be orphaned."""
     cur.execute("DELETE FROM app_ledger WHERE user_id=%s", (user_id,))
-    add_ledger(cur, user_id, "deposit", amount, "Paper account reset")
+    add_ledger(cur, user_id, "deposit", amount, RESET_MEMO)

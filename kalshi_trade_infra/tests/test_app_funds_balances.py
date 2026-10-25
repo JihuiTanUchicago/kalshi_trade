@@ -27,8 +27,12 @@ class FakeFundsCursor:
         p = params or ()
         self._last = None
         if s.startswith("INSERT INTO app_ledger"):
-            uid, kind, amount, _pos, _memo, _ts = p
-            self.ledger.append({"user_id": uid, "kind": kind, "amount": float(amount)})
+            uid, kind, amount, _pos, memo, ts = p
+            self.ledger.append({"user_id": uid, "kind": kind, "amount": float(amount), "memo": memo, "created_at": ts})
+        elif s.startswith("SELECT MAX(created_at) AS at FROM app_ledger WHERE user_id=%s AND kind='deposit' AND memo=%s"):
+            uid, memo = p
+            ats = [r["created_at"] for r in self.ledger if r["user_id"] == uid and r["kind"] == "deposit" and r["memo"] == memo]
+            self._last = [{"at": max(ats) if ats else None}]
         elif s.startswith("SELECT COALESCE(SUM(amount),0) AS b FROM app_ledger WHERE user_id=%s AND kind IN"):
             uid = p[0]
             total = sum(r["amount"] for r in self.ledger if r["user_id"] == uid and r["kind"] in ("deposit", "withdrawal"))
@@ -74,6 +78,19 @@ def test_paper_add_then_reset_sets_the_balance():
     repo.reset_paper_account(cur, 1, 500.0)
     assert repo.paper_balance(cur, 1) == 500.0
     assert repo.paper_deposits(cur, 1) == 500.0  # ROI denominator resets too
+
+
+def test_paper_reset_at_marks_where_the_equity_pnl_restarts():
+    # The dashboard's paper total_pnl (equity - deposits) restarts at a reset, so its label reads
+    # "since reset" instead of "all time" once this is set; deposits and withdrawals don't set it.
+    cur = FakeFundsCursor()
+    repo.add_ledger(cur, 1, "deposit", repo.STARTING_PAPER_BALANCE, "Starting paper balance")
+    repo.add_ledger(cur, 1, "deposit", 250.0, "Paper deposit")
+    assert repo.paper_reset_at(cur, 1) is None
+    repo.reset_paper_account(cur, 1, 500.0)
+    at = repo.paper_reset_at(cur, 1)
+    assert at is not None and at == cur.ledger[-1]["created_at"]
+    assert repo.paper_reset_at(cur, 2) is None  # per user
 
 
 def test_paper_reset_is_isolated_per_user():

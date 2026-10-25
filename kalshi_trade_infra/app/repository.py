@@ -63,7 +63,7 @@ from app.adapters.db.position_repository import (  # noqa: F401
 )
 from app.adapters.db.paper_ledger_repository import (  # noqa: F401
     STARTING_PAPER_BALANCE, add_ledger, ledger_rows, lock_user, paper_balance, paper_deposits,
-    reset_paper_account,
+    paper_reset_at, reset_paper_account,
 )
 from app.adapters.db.demo_capital_repository import (  # noqa: F401
     demo_account, demo_equity, reload_demo,

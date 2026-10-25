@@ -569,7 +569,7 @@ test('an empty Deployed box asks for research only when autopilot is off; Funds 
     await f.viewDashboard(); await flush();
     const body = f.root.querySelector('#boardbody').innerHTML + f.root.querySelector('#dash-deps').innerHTML;
     assert.match(body, /on <a href="\/funds">Funds<\/a> to trade real money/);
-    assert.match(body, on ? /Autopilot is researching\./ : /Research an idea</);
+    assert.match(body, on ? /Autopilot is on\. Strategies that pass/ : /Research an idea</);
     assert.doesNotMatch(body, on ? /Research an idea</ : /See its research/);
     if (!on) assert.match(body, /Turn on autopilot above and the strategies that pass every gate/);  // points at the card's switch
   }
@@ -601,10 +601,58 @@ test('the empty Deployed box follows the autopilot switch without a reload', asy
   assert.match(deps(), /Turn on autopilot above/);
   f.S.me.user.autopilot = true; f.S.ap = {...apOn};
   f.paintDashAp();
-  assert.match(deps(), /Autopilot is researching\./); assert.doesNotMatch(deps(), /Turn on autopilot above/);
+  assert.match(deps(), /Autopilot is on\. Strategies that pass/); assert.doesNotMatch(deps(), /Turn on autopilot above/);
   f.S.me.user.autopilot = false; f.S.ap = {...apOn, autopilot: false, mode: 'off'};
   f.paintDashAp();
   assert.match(deps(), /Turn on autopilot above/);
+});
+
+test('the empty Deployed box never says autopilot is researching while the card says it is quiet or paused', async () => {
+  const quiet = {...apOn, story: ['Right now it’s between research runs. Its last check-in was 3 hours ago, longer than usual.']};
+  for (const status of [quiet, {...apOn, billing_blocked: true, billing_reason: 'credits', story: []}]) {
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/dashboard') return response(emptyDashboard());
+      if (path === '/api/autopilot/status') return response(status);
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me.user.autopilot = true;
+    await f.viewDashboard(); await flush();
+    f.S.ap = status; f.paintDashAp();
+    assert.match(f.root.querySelector('#dash-ap').innerHTML, status.billing_blocked ? /Paused: / : /longer than usual/);
+    const deps = f.root.querySelector('#deps-empty').innerHTML;
+    assert.match(deps, /Autopilot is on\./); assert.doesNotMatch(deps, /is researching/);
+  }
+});
+
+test('paper P&L reads "since reset" on the card and dashboard once the paper account was reset', async () => {
+  for (const reset_at of [null, '2026-10-20T09:00:00Z']) {
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/dashboard') { const d = emptyDashboard(); d.paper.reset_at = reset_at; return response(d); }
+      if (path === '/api/autopilot/status') return response(apOn);
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me.user.autopilot = true;
+    await f.viewDashboard(); await flush();
+    f.S.ap = apOn; f.paintDashAp();
+    const span = reset_at ? 'since reset' : 'all time';
+    // Both read total_pnl, which restarts at a reset; the track record keeps every closed trade.
+    assert.match(f.root.querySelector('#dash-ap').innerHTML, new RegExp(`<dt>Paper P&amp;L, ${span}</dt><dd><span class="[^"]*">\\+\\$12\\.50`));
+    assert.match(f.root.querySelector('#boardbody').innerHTML, new RegExp(`\\+\\$12\\.50 ${span}`));
+    if (reset_at) assert.doesNotMatch(f.root.querySelector('#boardbody').innerHTML, /all time/);
+  }
+});
+
+test('Deploy realized says it counts only the strategies listed, never summing live with paper', async () => {
+  const dep = (id, mode, pnl) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode, status: 'running', status_reason: null,
+    realized_pnl: pnl, closed_trades: 1, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1,
+    backtest: {out_of_sample: null}});
+  for (const [deployments, re] of [[[dep(1, 'paper', 2)], /\+\$2\.00[\s\S]*paper money, not real · strategies listed below/],
+    [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized[\s\S]*\+\$5\.00[\s\S]*real money, strategies listed below · \+\$2\.00 on paper, counted apart/]]) {
+    const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments, open_positions: []}) : response({})});
+    await f.viewDeploy(); await flush(); await flush();
+    const figs = f.root.querySelector('#dfigs').innerHTML;
+    assert.match(figs, re); assert.doesNotMatch(figs, /\$7\.00/);
+  }
 });
 
 test('a failed autopilot switch-on leaves the dashboard card off and says why', async () => {
