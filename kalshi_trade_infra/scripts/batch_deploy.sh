@@ -178,7 +178,12 @@ if [[ "$DRY_RUN" == 1 ]]; then
 fi
 # The deploy scripts default an UNSET AWS_PROFILE to the local `agent` profile; "" means env creds.
 PROFILE="${AWS_PROFILE-}"
-[[ "$NEED_WEB" == 1 ]] && AWS_PROFILE="$PROFILE" bash kalshi_trade_infra/scripts/deploy_web.sh --ref "$MAIN"
+# Run the deploy scripts as they are at $MAIN, not at the checkout: a newer merge can name a unit
+# file (UNITS) that the older green ref we ship does not have yet (runs 50/51 died on that).
+WT=$(mktemp -d)
+git worktree add -q --detach "$WT" "$MAIN"
+trap 'git worktree remove --force "$WT" 2>/dev/null || true' EXIT
+[[ "$NEED_WEB" == 1 ]] && (cd "$WT" && AWS_PROFILE="$PROFILE" bash kalshi_trade_infra/scripts/deploy_web.sh --ref "$MAIN")
 # An empty SERVICES gives deploy_collector.sh its own default, not the web's UI-only override.
-[[ "$NEED_COLLECTOR" == 1 ]] && AWS_PROFILE="$PROFILE" SERVICES= bash kalshi_trade_infra/scripts/deploy_collector.sh --ref "$MAIN"
+[[ "$NEED_COLLECTOR" == 1 ]] && (cd "$WT" && AWS_PROFILE="$PROFILE" SERVICES= bash kalshi_trade_infra/scripts/deploy_collector.sh --ref "$MAIN")
 echo "[batch] shipped ${MAIN:0:7}"

@@ -155,6 +155,9 @@
   (#334); a CI-triggered run waits until the last deploy is 15 minutes old (25 until Todd asked to
   ship faster, 19:12Z), then ships (#336). Research survives the restarts: all 37 research runs in
   the 8h before the cut succeeded, resuming from their checkpoint after up to 6 deploy yields each.
+  Runs 50/51 (21:00-21:20Z) failed: the batch ships the newest green commit, but it ran
+  deploy_web.sh from the main-head checkout, whose UNITS (#378 tau-code-paper) the older ref lacked
+  (`git archive` pathspec error). The deploy scripts now run from a worktree at the shipped ref.
 - Live sports contracts count time to expiry the way research does (2026-10-25): an open
   outcome-settled contract that can close early carries a backstop close_time (every open
   KXNFL1HSPREAD contract said two days after its game), while research's settled markets carry the
