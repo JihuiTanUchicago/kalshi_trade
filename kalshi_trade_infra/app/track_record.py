@@ -35,7 +35,7 @@ SOLID_TRADES = 100
 MIN_SHARPE_DAYS = 14     # a Sharpe on fewer calendar days is not shown
 SOLID_DAYS = 60
 MIN_ANNUALIZE_DAYS = 90  # annualizing a shorter record would multiply the luck
-CURVE_POINTS = 400       # payload cap; stats are computed on the full series first
+CURVE_POINTS = 400       # payload cap (thin_min_max keeps every dip); stats use the full series
 Z95 = 1.959964
 
 METHOD = [
@@ -157,12 +157,31 @@ def _drawdown_stats(curve: List[List], now_ts: int) -> Dict:
     }
 
 
-def _thin(curve: List[List], cap: int = CURVE_POINTS) -> List[List]:
-    if len(curve) <= cap:
+def thin_min_max(curve: List[List], cap: int = CURVE_POINTS) -> List[List]:
+    """At most `cap` points of a [[ts, value], ...] curve that still shows every dip and peak.
+
+    The first and last points are kept exactly, so the curve ends on the real total. The points
+    between them are split into (cap - 2) // 2 runs by count, and each run keeps its lowest and
+    highest point, in time order (one point when they are the same). Ties keep the earlier point.
+    Every point kept is a real one, never an average. Same rule as repo.deployment_curves applies
+    in SQL. Keeping every Nth point instead could step over a one-trade crash and hide a drawdown."""
+    if cap < 4:
+        raise ValueError("thin_min_max needs room for the ends and one run's low and high (cap >= 4)")
+    n = len(curve)
+    if n <= cap:
         return curve
-    step = len(curve) / (cap - 1)
-    out = [curve[int(i * step)] for i in range(cap - 1)]
-    return out + [curve[-1]]
+    buckets = (cap - 2) // 2
+    inner = n - 2
+    out = [curve[0]]
+    for b in range(buckets):
+        lo_i, hi_i = 1 + b * inner // buckets, 1 + (b + 1) * inner // buckets
+        if lo_i >= hi_i:
+            continue
+        lo = min(range(lo_i, hi_i), key=lambda i: (curve[i][1], i))
+        hi = min(range(lo_i, hi_i), key=lambda i: (-curve[i][1], i))
+        out.extend(curve[i] for i in sorted({lo, hi}))
+    out.append(curve[-1])
+    return out
 
 
 def edge_read(avg_ci: Optional[List[float]]) -> str:
@@ -261,7 +280,7 @@ def summarize(trades: List[Dict], open_trades: List[Dict], today: date, now_ts: 
         "open_trades": len(open_trades),
         "open_at_cost": round(sum(t["cost"] for t in open_trades), 2),
         "sample": sample_read(n, span_days, avg_ci),
-        "curve": _thin(curve),
+        "curve": thin_min_max(curve),  # display only: every stat above used the full curve
     }
 
 
