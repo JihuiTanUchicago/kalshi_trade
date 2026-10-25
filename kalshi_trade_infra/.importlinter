@@ -1,0 +1,104 @@
+; Import boundaries (ARCHITECTURE.md). CI runs `lint-imports` from kalshi_trade_infra/.
+; Contracts on the NEW layers are strict. Contracts on legacy modules freeze what already holds,
+; so the code can only get cleaner: when a migration removes an ignored import, delete its line.
+
+[importlinter]
+root_packages =
+    trading_core
+    app
+    data_pipeline
+include_external_packages = True
+
+[importlinter:contract:core-is-pure]
+name = trading_core imports no application code and no I/O library
+type = forbidden
+source_modules =
+    trading_core
+forbidden_modules =
+    app
+    data_pipeline
+    requests
+    pymysql
+    boto3
+    websockets
+    cryptography
+
+[importlinter:contract:core-layers]
+name = trading_core: ports may use the domain, the domain uses nothing above it
+type = layers
+layers =
+    trading_core.ports
+    trading_core.domain
+
+[importlinter:contract:app-layers]
+name = app: bootstrap > web > services | adapters (new subpackages, created as modules migrate)
+type = layers
+containers =
+    app
+layers =
+    (bootstrap)
+    (web)
+    (services) | (adapters)
+exhaustive = False
+; Add when app.web exists: a forbidden contract app.web -> app.adapters (web reaches adapters only
+; through services and the bootstrap wiring).
+
+[importlinter:contract:collector-tier-independent]
+name = data_pipeline (the collector box ships only this package) never imports app
+type = forbidden
+source_modules =
+    data_pipeline
+forbidden_modules =
+    app
+ignore_imports =
+    ; runs on the web box, not the collector (scripts/systemd). Move to app.adapters when migrated.
+    data_pipeline.taostats_collector -> app.markets
+    data_pipeline.taostats_collector -> app.tao_repository
+
+[importlinter:contract:server-is-top]
+name = nothing imports the web server module
+type = forbidden
+source_modules =
+    app.engine
+    app.backtest
+    app.spec
+    app.markets
+    app.gatekeeper
+    app.agent
+    app.repository
+    app.worker
+    data_pipeline
+forbidden_modules =
+    app.server
+ignore_imports =
+    ; known violation (lazy import of server._researchable_markets): fixed when market readiness
+    ; moves into app.services (migration step 4 in ARCHITECTURE.md)
+    app.agent -> app.server
+
+[importlinter:contract:live-path-no-research]
+name = the live engine never imports the research agent, LLM client or web server
+type = forbidden
+source_modules =
+    app.engine
+    app.execution
+    data_pipeline.architecture
+forbidden_modules =
+    app.agent
+    app.llm
+    app.server
+    app.dreaming
+
+[importlinter:contract:pure-math-stays-pure]
+name = quant/stats/fees/order contracts do no I/O
+type = forbidden
+source_modules =
+    app.quant
+    app.stats
+    data_pipeline.kalshi_fees
+    data_pipeline.architecture.contracts
+forbidden_modules =
+    app.repository
+    data_pipeline.common
+    requests
+    pymysql
+    boto3
