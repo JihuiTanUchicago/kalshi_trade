@@ -132,7 +132,11 @@ def fail_abandoned_runs(cur, stale_after: timedelta, max_resumes: int = MAX_RESU
     for r in cur.fetchall():
         ck = _loads(r["checkpoint_json"])
         progressed = r["kind"] == "research" and _has_progress(ck)
-        if progressed and int(r["resume_count"]) < max_resumes:
+        # A research run killed before its first checkpoint (most often the whole worker process
+        # dying under it) restarts from the top on the same budget: there is nothing to lose, and
+        # stopping it left the user a dead card for a crash that wasn't theirs. Reviews and chats
+        # still stop, since re-running one could repeat actions it already took.
+        if r["kind"] == "research" and int(r["resume_count"]) < max_resumes:
             cur.execute(
                 """UPDATE app_agent_runs SET status='queued', worker_id=NULL,
                      resume_count=resume_count+1, heartbeat_at=%s
@@ -141,8 +145,9 @@ def fail_abandoned_runs(cur, stale_after: timedelta, max_resumes: int = MAX_RESU
             )
             if cur.rowcount:
                 add_event(cur, r["id"], "step",
-                          "Session interrupted — reclaiming it to resume from the last checkpoint "
-                          "(attempt %d of %d)." % (int(r["resume_count"]) + 1, max_resumes))
+                          ("Session interrupted — reclaiming it to resume from the last checkpoint "
+                           if progressed else "Session interrupted before its first checkpoint — restarting it ")
+                          + "(attempt %d of %d)." % (int(r["resume_count"]) + 1, max_resumes))
                 reaped += 1
         else:
             # Being interrupted/abandoned is NOT a failure — it's a STOPPED run that reports how far it

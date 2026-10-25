@@ -140,23 +140,26 @@ def test_resumable_vs_stopped_and_retry_cap():
     rows = [
         {"id": 10, "kind": "research", "resume_count": 0, "checkpoint_json": progressed},   # -> resume
         {"id": 11, "kind": "research", "resume_count": 3, "checkpoint_json": progressed},   # -> STOPPED (cap)
-        {"id": 12, "kind": "research", "resume_count": 0, "checkpoint_json": None},          # -> STOPPED (no progress)
+        {"id": 12, "kind": "research", "resume_count": 0, "checkpoint_json": None},          # -> restart from the top
+        {"id": 14, "kind": "research", "resume_count": 3, "checkpoint_json": None},          # -> STOPPED (cap)
         {"id": 13, "kind": "review", "resume_count": 0, "checkpoint_json": progressed},      # -> STOPPED (not research)
     ]
     cur = _AbCur(rows)
     reaped = repo.fail_abandoned_runs(cur, timedelta(seconds=240), max_resumes=3)
-    assert reaped == 4
+    assert reaped == 5
 
     requeued = [p[1] for s, p in cur.status_updates if "status='queued'" in s]
     assert not any("status='failed'" in s for s, _ in cur.status_updates)  # never failed any more
     stopped = {p[4]: p for s, p in cur.status_updates if "status='stopped'" in s}
 
-    assert requeued == [10]                                  # only the one with progress + budget resumes
+    assert requeued == [10, 12]                              # research with budget comes back, progress or not
     assert "resume-check" not in stopped                       # sanity: keys are run ids
     assert stopped[11][1:3] == (1, 0)                           # out of retries -> clear reason
-    assert "before it explored" in stopped[12][0] and stopped[12][1:3] == (0, 0)   # no progress -> plain abandoned msg
+    assert "before it explored" in stopped[14][0] and stopped[14][1:3] == (0, 0)   # no progress, no budget
     assert "interrupted" in stopped[13][0]                              # non-research never resumes
-    assert 10 in [p[0] for p in cur.events]                   # the reclaim is announced on the resumed run
+    msgs = {p[0]: p for p in cur.events}
+    assert 10 in msgs and 12 in msgs                          # each reclaim is announced on its run
+    assert any("before its first checkpoint" in str(x) for x in msgs[12])
 
 
 def test_resume_count_at_cap_is_not_reclaimed():
