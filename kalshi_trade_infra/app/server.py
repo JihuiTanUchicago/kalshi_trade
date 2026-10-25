@@ -1504,7 +1504,8 @@ def _waiting_lines(waiting: List[Dict]) -> List[str]:
         checks = sum(int(w.get("checks_today") or 0) for w in ws)
         if checks:
             found = sum(int(w.get("qualified_today") or 0) for w in ws)
-            line += " Today %s of %d checks found a contract worth buying." % (found or "none", checks)
+            # scan_tally counts the UTC day, so the sentence names it (a US evening is already "tomorrow").
+            line += " Since 00:00 UTC, %s of %d checks found a contract worth buying." % (found or "none", checks)
         out.append(line)
     return out
 
@@ -2174,32 +2175,6 @@ def billing_state(ctx: Ctx):
     }
 
 
-def billing_receipt(ctx: Ctx):
-    """Full Credits & Usage history as a downloadable CSV receipt."""
-    import csv
-    import io
-    cur = ctx.cur
-    user = repo.get_user(cur, ctx.uid) or {}
-    buf = io.StringIO()
-    w = csv.writer(buf)
-    w.writerow(["Tau - Credits & Usage receipt"])
-    w.writerow(["Account", user.get("email", "")])
-    w.writerow(["Generated (UTC)", repo.now_utc().replace(microsecond=0).isoformat()])
-    w.writerow(["Current balance (USD)", "%.4f" % repo.credit_balance(cur, ctx.uid)])
-    w.writerow(["Total spent (USD)", "%.4f" % repo.credit_spent_total(cur, ctx.uid)])
-    w.writerow([])
-    w.writerow(["Date (UTC)", "Type", "Amount (USD)", "Memo"])
-    for r in repo.credit_rows(cur, ctx.uid, 100000):  # full history, newest first
-        w.writerow([r["created_at"], r["kind"], "%.4f" % float(r["amount_usd"]), r["memo"] or ""])
-    fname = "tau-credits-%s.csv" % repo.now_utc().strftime("%Y%m%d")
-    return ("download", fname, "text/csv; charset=utf-8", buf.getvalue())
-
-
-TRADE_MODES = ("paper", "demo", "live")
-TRADES_CSV_MAX_ROWS = 50000  # about 7MB; a cap, so one request can't read an unbounded book
-TRADES_CSV_HEADER = ["closed_at_utc", "opened_at_utc", "mode", "strategy", "strategy_title", "ticker", "side",
-                     "contracts", "entry_price", "exit_price", "entry_fee", "exit_fee", "realized_pnl",
-                     "close_reason", "position_id"]
 _PLAIN_NUMBER = re.compile(r"^[+-]?(?:\d+\.?\d*|\.\d+)$")
 
 
@@ -2215,6 +2190,40 @@ def _csv_safe(value: Any) -> str:
     return s
 
 
+def _csv_rows(buf) -> Callable[[List[Any]], Any]:
+    """A csv writer for a user download whose every cell goes through _csv_safe: the one guard both
+    downloads (credits receipt, trades) share."""
+    import csv
+    w = csv.writer(buf)
+    return lambda row: w.writerow([_csv_safe(c) for c in row])
+
+
+def billing_receipt(ctx: Ctx):
+    """Full Credits & Usage history as a downloadable CSV receipt. Memos can carry run and strategy
+    names, so every cell is formula-safe."""
+    import io
+    cur = ctx.cur
+    user = repo.get_user(cur, ctx.uid) or {}
+    buf = io.StringIO()
+    row = _csv_rows(buf)
+    row(["Tau - Credits & Usage receipt"])
+    row(["Account", user.get("email", "")])
+    row(["Generated (UTC)", repo.now_utc().replace(microsecond=0).isoformat()])
+    row(["Current balance (USD)", "%.4f" % repo.credit_balance(cur, ctx.uid)])
+    row(["Total spent (USD)", "%.4f" % repo.credit_spent_total(cur, ctx.uid)])
+    row([])
+    row(["Date (UTC)", "Type", "Amount (USD)", "Memo"])
+    for r in repo.credit_rows(cur, ctx.uid, 100000):  # full history, newest first
+        row([r["created_at"], r["kind"], "%.4f" % float(r["amount_usd"]), r["memo"] or ""])
+    fname = "tau-credits-%s.csv" % repo.now_utc().strftime("%Y%m%d")
+    return ("download", fname, "text/csv; charset=utf-8", buf.getvalue())
+
+
+TRADE_MODES = ("paper", "demo", "live")
+TRADES_CSV_MAX_ROWS = 50000  # about 7MB; a cap, so one request can't read an unbounded book
+TRADES_CSV_HEADER = ["closed_at_utc", "opened_at_utc", "mode", "strategy", "strategy_title", "ticker", "side",
+                     "contracts", "entry_price", "exit_price", "entry_fee", "exit_fee", "realized_pnl",
+                     "close_reason", "position_id"]
 def _iso_utc(v: Any) -> str:
     if not isinstance(v, datetime):
         return "" if v is None else str(v)
@@ -2230,7 +2239,6 @@ def trades_csv(ctx: Ctx):
     """One mode's closed trades as a CSV the user can check the P&L from: realized_pnl summed over the
     file is the mode's realized P&L on the dashboard (demo's is since the last reload, so it can
     differ by what came before). Never mixes modes. Newest TRADES_CSV_MAX_ROWS at most, and says so."""
-    import csv
     import io
     mode = (ctx.query.get("mode") or "").strip().lower()
     if mode not in TRADE_MODES:
@@ -2238,17 +2246,17 @@ def trades_csv(ctx: Ctx):
     rows = repo.closed_trades_for_export(ctx.cur, ctx.uid, mode, TRADES_CSV_MAX_ROWS + 1)
     cut = len(rows) > TRADES_CSV_MAX_ROWS
     buf = io.StringIO()
-    w = csv.writer(buf)
-    w.writerow(TRADES_CSV_HEADER)
+    row = _csv_rows(buf)
+    row(TRADES_CSV_HEADER)
     for r in reversed(rows[:TRADES_CSV_MAX_ROWS]):  # oldest first, the order a reader checks a book in
         sid = r.get("strategy_id")
-        w.writerow([_csv_safe(c) for c in (
+        row([
             _iso_utc(r["closed_at"]), _iso_utc(r["opened_at"]), r["mode"],
             "No. %05d" % sid if sid is not None else "", r.get("title") or "", r["ticker"], r["side"], int(r["qty"]),
             _dec(r["entry_price"]), _dec(r["exit_price"]), _dec(r["entry_fee"]), _dec(r["exit_fee"]),
-            _dec(r["pnl"]), r.get("close_reason") or "", r["id"])])
+            _dec(r["pnl"]), r.get("close_reason") or "", r["id"]])
     if cut:
-        w.writerow(["# Only the newest %d trades are in this file; older ones are not." % TRADES_CSV_MAX_ROWS])
+        row(["# Only the newest %d trades are in this file; older ones are not." % TRADES_CSV_MAX_ROWS])
     fname = "tau-trades-%s-%s.csv" % (mode, repo.now_utc().strftime("%Y%m%d"))
     return ("download", fname, "text/csv; charset=utf-8", buf.getvalue())
 
