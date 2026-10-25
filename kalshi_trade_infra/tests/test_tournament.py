@@ -163,7 +163,7 @@ def test_context_lines_tell_the_review_not_to_pause_entrants():
           "book": {"capital": 10000.0, "pnl": 120.0, "return_pct": 1.2, "max_drawdown": 30.0, "trips": 10}}
     text = "\n".join(tournament.context_lines(st))
     assert "do not pause entrants" in text and "60% of the book" in text and "cash: 40%" in text
-    assert "12 of 400 trips" in text and "~97 days" in text
+    assert "12 of 400 independent events" in text and "~97 days" in text
     assert tournament.context_lines({"entrants": [st["entrants"][1]], "pooled": dict(st["pooled"], trips=0),
                                      "book": st["book"]}) == []
 
@@ -176,14 +176,15 @@ def test_autopilot_cannot_pause_a_tournament_entrant_before_its_verdict(monkeypa
     monkeypatch.setattr(agent.repo, "create_proposal", lambda *a: 1)
     monkeypatch.setattr(agent.repo, "set_deployment_status", lambda cur, uid, did, st, why=None: statuses.append(st))
     monkeypatch.setattr(agent, "_is_deployment_candidate", lambda cur, sid: False)
-    monkeypatch.setattr(agent.repo, "paper_progress", lambda cur, uid, ids: {15964: (4, -2.0)})
+    trips = lambda n, pnl: [{"pnl": pnl, "ticker": "KXRAIN-%d-T1" % i} for i in range(n)]  # noqa: E731
+    monkeypatch.setattr(agent.repo, "paper_round_trips", lambda cur, uid, sid: trips(4, -0.5))
     text, pid = agent.act(None, {"id": 1, "autopilot": True}, {"type": "pause", "deployment_id": 77}, autopilot=True)
-    assert pid is None and statuses == [] and "4 of 30 round trips" in text
-    monkeypatch.setattr(agent.repo, "paper_progress", lambda cur, uid, ids: {15964: (31, -9.0)})
+    assert pid is None and statuses == [] and "4 of 30 independent events" in text
+    monkeypatch.setattr(agent.repo, "paper_round_trips", lambda cur, uid, sid: trips(31, -0.3))
     agent.act(None, {"id": 1, "autopilot": True}, {"type": "pause", "deployment_id": 77}, autopilot=True)
     assert statuses == ["paused"]
     statuses.clear()  # a gatekeeper candidate on paper is not held
-    monkeypatch.setattr(agent.repo, "paper_progress", lambda cur, uid, ids: {15964: (4, -2.0)})
+    monkeypatch.setattr(agent.repo, "paper_round_trips", lambda cur, uid, sid: trips(4, -0.5))
     monkeypatch.setattr(agent, "_is_deployment_candidate", lambda cur, sid: True)
     agent.act(None, {"id": 1, "autopilot": True}, {"type": "pause", "deployment_id": 77}, autopilot=True)
     assert statuses == ["paused"]
@@ -232,9 +233,25 @@ def test_panel_line_summarizes_the_tournament_in_one_sentence(monkeypatch):
     monkeypatch.setattr(tournament, "latest_snapshot", lambda cur, uid: rows)
     t = tournament.panel_summary(None, 1, {7: "Rain NYC"})
     line = server._tournament_line(t)
-    assert line == ("The paper tournament runs 2 strategies at once, with 15 of the 400 trades the research gate "
+    assert line == ("The paper tournament runs 2 strategies at once, with 15 of the 400 independent bets the research gate "
                     "needs so far; it has 50% of its $10,000 practice book on Rain NYC.")
     monkeypatch.setattr(tournament, "latest_snapshot", lambda cur, uid: [dict(rows[0], weight=0.2), dict(rows[2], weight=0.8)])
     assert "in cash until an entrant proves it beats zero" in server._tournament_line(tournament.panel_summary(None, 1, {}))
     monkeypatch.setattr(tournament, "latest_snapshot", lambda cur, uid: [])
     assert tournament.panel_summary(None, 1, {}) is None and server._tournament_line(None) == ""
+
+
+def test_strikes_of_one_event_count_as_one_bet(monkeypatch):
+    """Five strikes of one 15m event are one bet (#169): the posterior, verdicts and pooled sample
+    all run on per-event returns, so correlated trips can't fake confidence."""
+    from app import repository
+    trips = [{"pnl": -1.0, "ticker": "KXBTC15M-26OCT241515-%d" % k, "opened_at": NOW, "closed_at": NOW}
+             for k in range(5)] + [{"pnl": 2.0, "ticker": "KXBTC15M-26OCT241530-1", "opened_at": NOW, "closed_at": NOW}]
+    monkeypatch.setattr(repository, "list_deployments", lambda cur, uid, include_stopped=False: [
+        {"id": 9, "strategy_id": 1, "mode": "paper", "status": "running", "spec": SPEC, "result": {}}])
+    monkeypatch.setattr(repository, "paper_round_trips", lambda cur, uid, sid: trips)
+    [e] = tournament.entrants(None, 1)
+    assert e["returns"] == [-1.0, 0.4]  # two events: -$5 and +$2 on a $5 stake
+    monkeypatch.setattr(tournament, "_now", lambda: NOW)
+    p = tournament.pooled(tournament.all_paper_trips(None, 1))
+    assert p["trips"] == 2 and p["net_pnl"] == -3.0

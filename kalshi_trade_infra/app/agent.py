@@ -3014,14 +3014,18 @@ MAX_PAPER_EDGE_P_VALUE = 0.10     # one-sided stationary-bootstrap p that mean P
 MIN_PAPER_EVENTS = 20
 
 
+def _trip_event_key(trip: Dict, i: int) -> str:
+    """A trip's event: its ticker minus the last segment (KXBTC15M-26OCT241515-15 ->
+    KXBTC15M-26OCT241515); a trip with no ticker (index `i`) counts as its own event."""
+    tk = trip.get("ticker")
+    return tk.rsplit("-", 1)[0] if tk and "-" in tk else "trip:%d:%s" % (i, tk or "")
+
+
 def _trip_events(trips: List[Dict]) -> List[float]:
-    """Net P&L per event, in the order each event was first traded. A trip's event is its ticker
-    minus the last segment (KXBTC15M-26OCT241515-15 -> KXBTC15M-26OCT241515); a trip with no ticker
-    counts as its own event."""
+    """Net P&L per event (`_trip_event_key`), in the order each event was first traded."""
     sums: Dict[str, float] = {}
     for i, t in enumerate(trips):
-        tk = t.get("ticker")
-        key = tk.rsplit("-", 1)[0] if tk and "-" in tk else "trip:%d:%s" % (i, tk or "")
+        key = _trip_event_key(t, i)
         sums[key] = sums.get(key, 0.0) + float(t["pnl"])
     return list(sums.values())
 
@@ -3388,12 +3392,13 @@ def _tournament_hold(cur, user_id: int, dep: Dict) -> str:
     try:
         if _is_deployment_candidate(cur, dep["strategy_id"]):
             return ""
-        trips, net = repo.paper_progress(cur, user_id, [dep["strategy_id"]]).get(dep["strategy_id"], (0, 0.0))
+        events = _trip_events(repo.paper_round_trips(cur, user_id, dep["strategy_id"]))
     except Exception:
         return ""
+    trips, net = len(events), sum(events)
     if trips >= tournament.TOURNAMENT_MIN_TRIPS:
         return ""
-    return ("I left %s running: it is a paper tournament entrant with %d of %d round trips (net $%.2f), and "
+    return ("I left %s running: it is a paper tournament entrant with %d of %d independent events (net $%.2f), and "
             "the tournament retires it on its own once the data can judge it. Paper costs nothing; a pause now "
             "only shrinks the forward sample." % (dep["title"], trips, tournament.TOURNAMENT_MIN_TRIPS, net))
 
