@@ -504,7 +504,7 @@ def test_idle_reason_skips_the_engine_when_its_beat_cannot_be_read():
 
 def test_autopilot_status_carries_idle_and_reads_the_engine_only_with_something_running(monkeypatch):
     ctx = _ap_ctx(monkeypatch, autopilot=1)
-    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: True)
+    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid, reads=None: True)
     reads = []
     monkeypatch.setattr(server.repo, 'engine_last_tick_age_seconds', lambda cur: reads.append(1) or 900)
     monkeypatch.setattr(server.repo, 'list_strategies', lambda *a, **k: [])
