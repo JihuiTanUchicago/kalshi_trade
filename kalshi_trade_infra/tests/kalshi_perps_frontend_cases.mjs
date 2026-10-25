@@ -74,6 +74,24 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
       [['/api/deployments', {strategy_id: 43, mode: 'paper'}]]);
   });
 
+  test(`${name}: the strategy page shows what it has done since deploying, per mode`, async () => {
+    const deployments = [
+      {id: 1, mode: 'paper', status: 'stopped', realized_pnl: 2.5, closed_trades: 4, open_positions: 0, created_at: '2026-10-20T08:00:00Z'},
+      {id: 2, mode: 'paper', status: 'running', realized_pnl: -1.25, closed_trades: 3, open_positions: 2, created_at: '2026-10-24T08:00:00Z'},
+      {id: 3, mode: 'demo', status: 'running', realized_pnl: 0, closed_trades: 0, open_positions: 0, created_at: '2026-10-25T08:00:00Z'},
+    ];
+    const f = strategyFrontend(detailStrategy({deployments}));
+    await f.viewStrategy(42); await flush();
+    const html = f.root.querySelector('main').innerHTML;
+    assert.match(html, /Since deploying/);
+    assert.match(html, /Paper<\/span> <span class="[^"]*">\+\$1\.25<\/span> realized over 7 closed trades · 2 open/);
+    assert.match(html, /Demo<\/span> No closed trades yet/);
+    assert.ok(html.indexOf('>Demo<') < html.indexOf('>Paper<'), 'demo before paper');
+    const none = strategyFrontend(detailStrategy({deployments: []}));
+    await none.viewStrategy(42); await flush();
+    assert.doesNotMatch(none.root.querySelector('main').innerHTML, /Since deploying/);
+  });
+
   test(`${name}: bulk selection skips a strategy that is already deployed`, async () => {
     const list = [detailStrategy({id: 44, title: 'Running fixture', deployed: true}), detailStrategy({id: 45, title: 'Idle fixture'})];
     const f = frontend({fetchImpl: path => {

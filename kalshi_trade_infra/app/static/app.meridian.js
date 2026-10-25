@@ -2374,6 +2374,20 @@
     load();
   }
 
+  // What the strategy has actually done since it was deployed, per mode (live, demo, paper), from
+  // its deployments' realized P&L. The page otherwise shows only the backtest.
+  function realRecord(s) {
+    const order = ['live', 'demo', 'paper'], label = { live: 'Live', demo: 'Demo', paper: 'Paper' }, cls = { live: 'live', demo: 'dep', paper: '' };
+    const lines = order.map((mode) => {
+      const ds = (s.deployments || []).filter((d) => d.mode === mode);
+      if (!ds.length) return '';
+      const pnl = ds.reduce((a, d) => a + (+d.realized_pnl || 0), 0), n = ds.reduce((a, d) => a + (+d.closed_trades || 0), 0);
+      const open = ds.reduce((a, d) => a + (+d.open_positions || 0), 0);
+      const since = ds.map((d) => d.created_at).filter(Boolean).sort()[0];
+      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span> ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}` : 'No closed trades yet'}${open ? ` · ${open} open` : ''}${since ? ` · deployed ${when(since)}` : ''}</p>`;
+    }).join('');
+    return lines ? `<section class="real-record" aria-label="Since deploying"><h3 class="paper-h">Since deploying</h3>${lines}</section>` : '';
+  }
   async function viewStrategy(id) {
     shell('/strategies', boardTitle('Strategy'), loading(420));
     const s = await api('/api/strategies/' + id);
@@ -2477,6 +2491,7 @@
           <article class="sheet-doc paper">
             ${!hasExp ? `<div class="legacy-verdict">${verdictBody}</div>` : ''}
             <dl class="figures measure" id="figs">${figsFor(s)}</dl>
+            ${restricted ? '' : realRecord(s)}
             ${s.shared_from ? `<div class="paper-byline"><span class="mk shared">${ICON.share}Shared by ${esc(s.shared_from)}</span></div>` : ''}
             <section class="paper-abstract" aria-label="Strategy hypothesis">
               <p class="paper-ab">${mdLite(s.thesis)}</p>
