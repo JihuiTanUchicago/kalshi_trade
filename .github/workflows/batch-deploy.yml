@@ -5,12 +5,18 @@ name: Batch deploy main
 # CI green on main's head, 0 sent order intents before a full restart, recursive-web alone for a
 # UI-only diff, and a failed run (GitHub mails the repo owner) when merges wait > 90 min to ship.
 # Runs here rather than in a Claude session so a session ending can't silently stop deploys.
+# Also runs after each CI run on main: GitHub delays or drops scheduled runs under load (none fired
+# in the first hour), and the script holds a CI-triggered run until the last deploy is 25 min old.
 # Same deploy keys and production environment as deploy.yml / deploy-collector.yml.
 
 on:
   schedule:
     - cron: "20,50 * * * *"
   workflow_dispatch:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
 
 # Shares deploy.yml's group, so a manual deploy and a batch never run on the box at once.
 concurrency:
@@ -23,6 +29,8 @@ permissions:
 
 jobs:
   batch:
+    # Only CI runs for pushes to main, not a pull request whose branch happens to be named main.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 25
@@ -43,5 +51,6 @@ jobs:
       - name: Ship what main has merged
         env:
           AWS_PROFILE: ""
+          BATCH_EVENT: ${{ github.event_name }}
           GITHUB_TOKEN: ${{ github.token }}
         run: bash kalshi_trade_infra/scripts/batch_deploy.sh
