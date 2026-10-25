@@ -340,13 +340,17 @@ def test_strategies_list_attaches_real_record_to_deployed_cards(monkeypatch):
     monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [
         {"id": 1, "deployed": True}, {"id": 2, "deployed": False}, {"id": 3, "deployed": True}])
     monkeypatch.setattr(server, "_strategy_card", lambda s: dict(s))
-    deps = [{"strategy_id": 1, "realized_pnl": 1.004, "closed_trades": 3, "open_positions": 1},
-            {"strategy_id": 1, "realized_pnl": "-0.5", "closed_trades": 2, "open_positions": 0},
-            {"strategy_id": 2, "realized_pnl": 9, "closed_trades": 9, "open_positions": 0}]
+    deps = [{"strategy_id": 1, "mode": "paper", "realized_pnl": 1.004, "closed_trades": 3, "open_positions": 1},
+            {"strategy_id": 1, "mode": "demo", "realized_pnl": "-0.5", "closed_trades": 2, "open_positions": 0},
+            {"strategy_id": 2, "mode": "paper", "realized_pnl": 9, "closed_trades": 9, "open_positions": 0}]
     monkeypatch.setattr(server.repo, "list_deployments", lambda cur, uid, **k: deps)
     cards = {c["id"]: c for c in server.list_strategies(ctx(query={}))["strategies"]}
-    assert cards[1]["real"] == {"pnl": 0.5, "trades": 5, "open": 1}
+    assert cards[1]["real"] == {"pnl": 0.5, "trades": 5, "open": 1, "live": False}
     assert "real" not in cards[2] and "real" not in cards[3]  # not deployed / no active deployment rows
+    # A live deployment reports live money only; the paper dollars are never added in.
+    deps.append({"strategy_id": 1, "mode": "live", "realized_pnl": 0.25, "closed_trades": 1, "open_positions": 0})
+    cards = {c["id"]: c for c in server.list_strategies(ctx(query={}))["strategies"]}
+    assert cards[1]["real"] == {"pnl": 0.25, "trades": 1, "open": 0, "live": True}
 
 
 def test_strategies_list_skips_deployment_query_without_deployed_cards(monkeypatch):
