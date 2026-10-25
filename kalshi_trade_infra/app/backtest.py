@@ -1128,6 +1128,9 @@ def station_frame_series(market: Market) -> Tuple[Optional[Dict[str, List[Tuple[
             lambda ticker, ts: weather_obs_applies(market.series, ticker, ts))
 
 
+SLOW_BOOK_S = 30.0
+
+
 def forecast_book(market: Market, since: datetime):
     """The window's external fair-value book: issued NWS forecasts for a weather series, collected
     sportsbook odds for an NBA/NHL game series, the Deribit options surface and Polymarket's prices
@@ -1136,6 +1139,7 @@ def forecast_book(market: Market, since: datetime):
     if market.series in options_fair.SERIES:
         from app.adapters.polymarket import features as polymarket
         from app.fair_books import combine
+        t0 = time.time()
         try:
             opt = options_fair.book_for_series(market.series, lambda: options_fair.load_book(since))
         except Exception as e:  # noqa: BLE001 - S3 outage/no history: the opt_* features are absent
@@ -1146,6 +1150,8 @@ def forecast_book(market: Market, since: datetime):
         except Exception as e:  # noqa: BLE001 - S3 outage/no history: the pm_* features are absent
             print("[backtest] polymarket quotes unavailable for %s: %r" % (market.key, e), flush=True)
             pm = None
+        if time.time() - t0 > SLOW_BOOK_S:  # loads share DATA_LOAD_TIMEOUT; name the slow source in the log
+            print("[backtest] slow external books for %s: %.0fs" % (market.key, time.time() - t0), flush=True)
         return combine(opt, pm)
     if market.series not in WEATHER_STATIONS and market.series not in sports_odds.SPORTS:
         return None

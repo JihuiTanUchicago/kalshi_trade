@@ -145,10 +145,13 @@ def load_surfaces(since: datetime, until: Optional[datetime] = None, store=None,
     since = since if since.tzinfo else since.replace(tzinfo=timezone.utc)
     until = until or datetime.now(timezone.utc)
     day = (since - timedelta(seconds=osf.MAX_AGE_S)).replace(hour=0, minute=0, second=0, microsecond=0)
+    # Probe only days that have files (a missing hour is an S3 404 round trip; see TickStore.dates).
+    history, archived = store.dates(f"v1/{DAY_TABLE}"), store.dates("v1/deribit_surface")
     out: List[osf.Surface] = []
     while day < until:
-        rows = _day_rows(store, day)
-        if not rows:
+        d = f"{day:%Y-%m-%d}"
+        rows = _day_rows(store, day) if history is None or d in history else []
+        if not rows and (archived is None or d in archived):
             t = store.read("deribit_surface", day, min(day + timedelta(days=1), until))
             rows = t.to_pylist() if t is not None and t.num_rows else []
         chain_hours = {int(r["snap_ts"]) // 3600 for r in rows if r.get("method") == "chain"}
