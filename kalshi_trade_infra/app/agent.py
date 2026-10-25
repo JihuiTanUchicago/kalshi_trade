@@ -3591,6 +3591,10 @@ def live_ready_notices(cur, user: Dict) -> List[str]:
         if note:
             line += " " + note
         repo.add_chat(cur, user["id"], "system", line)
+        # The bell too: the chat line only reaches someone who opens the autopilot panel.
+        repo.add_notification(cur, user["id"], "live_ready",
+                              "“%s” is ready for live trading. Going live is your call." % title[:120],
+                              "/strategies/%d" % sid)
         out.append(line)
         if user.get("email"):
             notify.live_ready_notice(user["email"], user.get("name"), title, paper_evidence_line(ev),
