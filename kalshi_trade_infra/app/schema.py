@@ -712,6 +712,14 @@ def main() -> None:
         # index makes it a loose index scan in ms AND removes that repeated full scan from the DB's load.
         _add_index_if_missing(cur, "hist_markets", "idx_hist_candles_series",
                               "ALTER TABLE hist_markets ADD INDEX idx_hist_candles_series (candles_done, series_ticker)")
+        # history_freshness() (the dashboard's data-freshness badge) takes MAX(close_time) per series
+        # over candles_done=1. The index above finds the rows but not close_time, so it read every
+        # settled market (12-14s per /api/dashboard on 2026-10-24 after the history backfill).
+        # With close_time in the index it's a loose index scan: one probe per series. The backtest
+        # candle load (series_ticker=... AND close_time range AND candles_done=1) uses it too.
+        _add_index_if_missing(cur, "hist_markets", "idx_hist_done_series_close",
+                              "ALTER TABLE hist_markets ADD INDEX idx_hist_done_series_close "
+                              "(candles_done, series_ticker, close_time), ALGORITHM=INPLACE, LOCK=NONE")
         # Cross-day generalization breakdown (per-day/per-fold) the research-paper folds strip renders.
         _add_column_if_missing(cur, "app_experiment_results", "folds_json", "ALTER TABLE app_experiment_results ADD COLUMN folds_json JSON NULL AFTER equity_curve_json")
         # Cross-contract strategies spend from a SHARED FDR stream keyed on a combined key
