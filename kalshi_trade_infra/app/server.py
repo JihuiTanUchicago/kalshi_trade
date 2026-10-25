@@ -1244,6 +1244,9 @@ def _autopilot_story(d: Dict) -> List[str]:
     else:
         lines.append("%s on paper (pretend money), but none has traded yet. Each one waits for its own "
                      "setup, which can take hours." % _plural(paper, "strategy is", "strategies are"))
+    t_line = _tournament_line(d.get("tournament"))
+    if t_line:
+        lines.append(t_line)
     lines += _waiting_lines(d.get("paper_waiting") or []) if paper else []
     lines += _paused_lines(d.get("paused_recent") or [])
     stop_line = _stop_line(d.get("early_exits_7d") or {})
@@ -1326,6 +1329,29 @@ def _plain_pause_reason(why: str) -> str:
     if why.lower().startswith("lost $"):
         return "it hit its loss guard"
     return why.rstrip(".")[:120] or "it was paused"
+
+
+def _tournament_summary(cur, uid: int, deps: List[Dict]) -> Optional[Dict]:
+    from app import tournament
+    try:
+        return tournament.panel_summary(cur, uid, {int(d["strategy_id"]): _short_title(d.get("title")) for d in deps})
+    except Exception:  # noqa: BLE001 - a readout; the table may not exist before the first schema run
+        return None
+
+
+def _tournament_line(t: Optional[Dict]) -> str:
+    """One line for the whole paper tournament, instead of a line per entrant."""
+    if not t:
+        return ""
+    lead, book = t["leader"], "${:,.0f}".format(t["capital"])
+    if t["cash_weight"] >= lead["weight"]:
+        where = "it keeps %d%% of its %s practice book in cash until an entrant proves it beats zero" % (
+            round(100 * t["cash_weight"]), book)
+    else:
+        where = "it has %d%% of its %s practice book on %s" % (
+            round(100 * lead["weight"]), book, lead["title"] or "its leader")
+    return ("The paper tournament runs %s at once, with %d of the %d trades the research gate needs so far; %s." % (
+        _plural(t["entrants"], "strategy", "strategies"), t["trips"], t["target"], where))
 
 
 def _paused_recent(deps: List[Dict], hours: int = 24) -> List[Dict]:
@@ -1414,6 +1440,7 @@ def autopilot_status(ctx: Ctx):
         "paper_waiting": _paper_waiting(paper_run, _scan_tally(cur, paper_run)),
         "paused_recent": _paused_recent(deps),
         "early_exits_7d": _early_exits(cur, ctx.uid),
+        "tournament": _tournament_summary(cur, ctx.uid, deps),
     }
     out["story"] = _autopilot_story(out)
     return out
@@ -2302,6 +2329,11 @@ def _research_scoreboard(cur, uid: int, days: int) -> Dict:
         board["paper"] = rsi.paper_outcomes(cur, uid)
     except Exception:  # noqa: BLE001 - informational; the research half of the board still renders
         board["paper"] = None
+    from app import tournament
+    try:
+        board["tournament"] = tournament.standings(cur, uid)
+    except Exception:  # noqa: BLE001 - informational; the table may not exist before the first schema run
+        board["tournament"] = None
     try:
         board["early_exits"] = repo.early_exit_scorecard(cur, uid)
     except Exception:  # noqa: BLE001 - informational

@@ -3272,7 +3272,20 @@ PAPER_MIN_AGE = timedelta(hours=int(os.getenv("APP_PAPER_MIN_AGE_HOURS", "24")))
 # kxrain at p=0.30 and 0.34. Paper risks no money; live still needs a DEPLOYMENT_CANDIDATE.
 PROBATION_MAX_P = float(os.getenv("APP_PROBATION_MAX_P", "0.35"))
 PROBATION_MIN_TRADES = int(os.getenv("APP_PROBATION_MIN_TRADES", "20"))
-PROBATION_MAX_ACTIVE = int(os.getenv("APP_PROBATION_MAX_ACTIVE", "4"))
+# 20, not 4: the paper tournament (app/tournament.py) runs every near miss at once so the pooled
+# forward sample reaches the gate's 400+ trades in days, and it retires losers to free slots.
+PROBATION_MAX_ACTIVE = int(os.getenv("APP_PROBATION_MAX_ACTIVE", "20"))
+# Validation verdicts with no p-value (under the gate's min sample) are unmeasured, not rejected:
+# they enter too when their backtest made money on unseen data over at least this many trades.
+UNDERPOWERED_MIN_TRADES = int(os.getenv("APP_PROBATION_UNDERPOWERED_MIN_TRADES", "10"))
+
+
+def _backtest_net_positive(strat: Dict) -> bool:
+    oos = (strat.get("result") or {}).get("out_of_sample") or {}
+    try:
+        return int(oos.get("trades") or 0) >= UNDERPOWERED_MIN_TRADES and float(oos.get("pnl") or 0) > 0
+    except (TypeError, ValueError):
+        return False
 
 
 def auto_paper_probation(cur, user: Dict) -> List[str]:
@@ -3286,7 +3299,9 @@ def auto_paper_probation(cur, user: Dict) -> List[str]:
     active = sum(1 for d in deps if d["status"] != "stopped" and d["mode"] == "paper"
                  and not _is_deployment_candidate(cur, d["strategy_id"]))
     out: List[str] = []
-    for c in rr.probation_candidates(cur, user["id"], PROBATION_MAX_P, PROBATION_MIN_TRADES):
+    cands = list(rr.probation_candidates(cur, user["id"], PROBATION_MAX_P, PROBATION_MIN_TRADES))
+    cands += rr.underpowered_candidates(cur, user["id"], UNDERPOWERED_MIN_TRADES)
+    for c in cands:
         if active >= PROBATION_MAX_ACTIVE:
             break
         sid = c["strategy_id"]
@@ -3300,16 +3315,39 @@ def auto_paper_probation(cur, user: Dict) -> List[str]:
             continue
         if _engine.cross_deploy_block(strat["spec"], "paper"):
             continue
+        if c["p_value"] is None and not _backtest_net_positive(strat):
+            continue
         tried.add(sid)
-        repo.create_proposal(cur, user["id"], "deploy", "Paper probation: validation near miss "
-                             "(p=%.3f, $%.2f over %d unseen trades)." % (c["p_value"], c["net_pnl"], c["n_trades"]),
-                             None, sid, "applied")
+        if c["p_value"] is None:
+            why = "had too few validation trades to score (%d), and its backtest was up on unseen data" % c["n_trades"]
+        else:
+            why = "narrowly missed validation (p=%.3f, $%.2f over %d unseen trades)" % (
+                c["p_value"], c["net_pnl"], c["n_trades"])
+        repo.create_proposal(cur, user["id"], "deploy", "Paper probation: %s." % why, None, sid, "applied")
         repo.create_deployment(cur, user["id"], sid, strat["market"], "paper")
         active += 1
-        out.append("[probation #%d] Put “%s” on paper as a forward test: it narrowly missed validation "
-                   "(p=%.3f, $%.2f over %d unseen trades). Paper only; it can't go live unless the "
-                   "gatekeeper clears it." % (sid, strat["title"], c["p_value"], c["net_pnl"], c["n_trades"]))
+        out.append("[probation #%d] Put “%s” on paper as a forward test: it %s. Paper only; it can't go "
+                   "live unless the gatekeeper clears it." % (sid, strat["title"], why))
     return out
+
+
+def _tournament_hold(cur, user_id: int, dep: Dict) -> str:
+    """Why autopilot may not pause this paper tournament entrant yet, or ''. A probation entrant is
+    retired by the tournament's own rule (app/tournament.py) once it has enough round trips to judge;
+    a review pausing it on a few bad trades cuts the forward sample the gate needs. Any read error
+    allows the pause (pausing paper risks nothing)."""
+    from app import tournament
+    try:
+        if _is_deployment_candidate(cur, dep["strategy_id"]):
+            return ""
+        trips, net = repo.paper_progress(cur, user_id, [dep["strategy_id"]]).get(dep["strategy_id"], (0, 0.0))
+    except Exception:
+        return ""
+    if trips >= tournament.TOURNAMENT_MIN_TRIPS:
+        return ""
+    return ("I left %s running: it is a paper tournament entrant with %d of %d round trips (net $%.2f), and "
+            "the tournament retires it on its own once the data can judge it. Paper costs nothing; a pause now "
+            "only shrinks the forward sample." % (dep["title"], trips, tournament.TOURNAMENT_MIN_TRIPS, net))
 
 
 # Kalshi accepts orders in these categories only while the account's location verification is
@@ -3455,6 +3493,10 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
             return ("I left %s running: it has been on paper for only %.1f hours, and paper costs nothing "
                     "while it builds the record the live gate needs (at least %d hours before I pause it)."
                     % (dep["title"], age_h, PAPER_MIN_AGE.total_seconds() // 3600), None)
+        if autopilot and kind == "pause" and dep["mode"] == "paper":
+            held = _tournament_hold(cur, user_id, dep)
+            if held:
+                return held, None
         # Pausing only lowers risk, so autopilot may do it even on live money.
         auto = autopilot and (kind == "pause" or dep["mode"] == "paper")
         pid = repo.create_proposal(cur, user_id, kind, reason, dep["id"], None, "applied" if auto else "pending")
@@ -3771,6 +3813,13 @@ def _copilot_context(cur, user: Dict) -> str:
         lines += ["", "How research's passes did on paper, by market family (all paper deployments, including stopped):"]
         lines += paper_lines
     try:
+        from app import tournament
+        t_lines = tournament.context_lines(tournament.standings(cur, user["id"]))
+    except Exception:
+        t_lines = []
+    if t_lines:
+        lines += [""] + t_lines
+    try:
         from app import rsi
         lines += [""] + autopilot_scorecard_lines(autopilot_scorecard(
             rsi.load_scoreboard(cur, days=SCORECARD_DAYS, user_id=user["id"]), focus))
@@ -3979,6 +4028,12 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
                     repo.add_chat(cur, user["id"], "system", line)
             except Exception as e:  # best-effort, like the funnel above
                 print("[agent] paper probation failed for user %s: %r" % (user["id"], e), flush=True)
+            try:
+                from app import tournament
+                for line in tournament.rebalance(cur, user):
+                    repo.add_chat(cur, user["id"], "system", line)
+            except Exception as e:  # best-effort, like the funnel above
+                print("[agent] tournament rebalance failed for user %s: %r" % (user["id"], e), flush=True)
             try:
                 live_ready_notices(cur, user)  # adds its own chat lines
             except Exception as e:  # best-effort, like the funnel above

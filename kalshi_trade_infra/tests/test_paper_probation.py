@@ -14,11 +14,13 @@ def _cand(sid, market="sol_daily", p=0.15):
 def _patch(monkeypatch, cands, deps=(), candidates=(), on=True):
     made, props = [], []
     monkeypatch.setattr(agent, "PAPER_PROBATION", on)
-    monkeypatch.setattr(agent.rr, "probation_candidates", lambda cur, uid, p, n: list(cands))
+    monkeypatch.setattr(agent.rr, "probation_candidates", lambda cur, uid, p, n: [c for c in cands if c["p_value"] is not None])
+    monkeypatch.setattr(agent.rr, "underpowered_candidates", lambda cur, uid, n: [c for c in cands if c["p_value"] is None])
     monkeypatch.setattr(agent.repo, "list_deployments", lambda cur, uid, include_stopped=False: list(deps))
     monkeypatch.setattr(agent.repo, "get_strategy", lambda cur, uid, sid: {
         "id": sid, "market": next(c["market"] for c in cands if c["strategy_id"] == sid),
-        "title": "S%d" % sid, "spec": dict(SPEC), "status": "rejected"})
+        "title": "S%d" % sid, "spec": dict(SPEC), "status": "rejected",
+        "result": {"out_of_sample": {"trades": 30, "pnl": 4.0 if sid % 2 else -1.0}}})
     monkeypatch.setattr(agent, "_is_deployment_candidate", lambda cur, sid: sid in candidates)
     monkeypatch.setattr(agent.repo, "create_deployment", lambda cur, uid, sid, m, mode: made.append((sid, m, mode)) or 1)
     monkeypatch.setattr(agent.repo, "create_proposal", lambda cur, uid, kind, reason, a, sid, status: props.append((kind, sid, status)) or 1)

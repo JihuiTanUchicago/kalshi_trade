@@ -1,0 +1,220 @@
+"""Paper tournament: Thompson allocation of a virtual book across paper entrants (with a cash arm),
+statistical retirement, forward-only book curve, the wider probation funnel, and paper-only caps."""
+from datetime import datetime, timedelta
+
+from app import agent, engine, tournament
+
+NOW = datetime(2026, 10, 25, 12, 0, 0)
+SPEC = {"side": "yes", "sizing": {"stake": 5.0, "max_positions": 20}}
+
+
+def _entry(sid, returns, created=NOW - timedelta(days=1), **kw):
+    return dict({"id": 100 + sid, "strategy_id": sid, "returns": list(returns), "created_at": created,
+                 "title": "S%d" % sid, "market": "sol15m", "status": "running", "mode": "paper",
+                 "spec": SPEC, "trips": [{"pnl": 5.0 * r} for r in returns]}, **kw)
+
+
+def test_posterior_shrinks_a_lucky_start_toward_zero():
+    mu, sd = tournament.posterior([1.0, 1.0, 1.0], pooled_sd=1.0)
+    assert 0 < mu < 0.3 and sd > 0.2        # 3 wins at +100% of stake read as ~+23%, with wide doubt
+    mu0, _ = tournament.posterior([], pooled_sd=1.0)
+    assert mu0 == 0.0
+
+
+def test_cash_holds_the_book_when_nothing_beats_zero():
+    arms = tournament.allocate([_entry(1, [-0.3] * 40), _entry(2, [-0.2] * 40)], seed="t")
+    cash = arms[-1]
+    assert cash["strategy_id"] == 0 and cash["p_best"] > 0.95
+    assert abs(sum(a["weight"] for a in arms) - 1.0) < 1e-9
+    assert all(a["weight"] > 0 for a in arms)  # the exploration floor keeps every arm alive
+
+
+def test_a_clear_winner_takes_most_of_the_book():
+    arms = tournament.allocate([_entry(1, [0.25, 0.35] * 30), _entry(2, [0.3, -0.3] * 30), _entry(3, [])], seed="t")
+    by = {a["strategy_id"]: a for a in arms}
+    assert by[1]["weight"] > 0.6 and by[1]["p_positive"] > 0.99
+    assert by[1]["weight"] > by[2]["weight"] and by[1]["weight"] > by[0]["weight"]
+    assert tournament.allocate([_entry(1, [0.1, -0.1])], seed="x") == tournament.allocate([_entry(1, [0.1, -0.1])], seed="x")
+
+
+def test_verdicts_need_enough_trips_or_a_week_of_silence():
+    loser = _entry(1, [-0.4, -0.2, -0.3] * 12)
+    arm = tournament.allocate([loser], seed="t")[0]
+    assert "losing money" in tournament.verdict(loser, arm, NOW)
+    early = _entry(2, [-0.4] * 10)
+    assert tournament.verdict(early, tournament.allocate([early], seed="t")[0], NOW) is None
+    quiet = _entry(3, [], created=NOW - timedelta(days=8))
+    assert "never fires" in tournament.verdict(quiet, tournament.allocate([quiet], seed="t")[0], NOW)
+    fresh = _entry(4, [], created=NOW - timedelta(days=2))
+    assert tournament.verdict(fresh, tournament.allocate([fresh], seed="t")[0], NOW) is None
+
+
+def test_book_only_counts_trips_opened_after_a_weight_was_set():
+    trips = [
+        {"strategy_id": 1, "pnl": 10.0, "capital": 100.0, "opened_at": NOW - timedelta(hours=5), "closed_at": NOW - timedelta(hours=4)},
+        {"strategy_id": 1, "pnl": 10.0, "capital": 100.0, "opened_at": NOW - timedelta(hours=2), "closed_at": NOW - timedelta(hours=1)},
+        {"strategy_id": 2, "pnl": -4.0, "capital": 100.0, "opened_at": NOW - timedelta(hours=2), "closed_at": NOW - timedelta(minutes=30)},
+    ]
+    history = {1: [(NOW - timedelta(hours=3), 0.5)], 2: [(NOW - timedelta(hours=3), 0.25)]}
+    b = tournament.book(trips, history)
+    # trip 1 predates any weight: left out. $10 on a $100 entrant at 50% of $10k = +$500; -$4 at 25% = -$100.
+    assert b["trips"] == 2 and b["pnl"] == 400.0 and b["max_drawdown"] == 100.0
+    assert b["return_pct"] == 4.0
+
+
+def test_pooled_sample_reports_pace_and_eta(monkeypatch):
+    monkeypatch.setattr(tournament, "_now", lambda: NOW)
+    trips = [{"ret": 0.1 if i % 3 else -0.1, "pnl": 0.5, "closed_at": NOW - timedelta(hours=i)} for i in range(60)]
+    p = tournament.pooled(trips)
+    assert p["trips"] == 60 and p["per_day"] == 20.0 and p["days_to_target"] == 17.0
+    assert 0 < p["mean_return"] < 0.1 and p["p_value"] < 0.05
+    assert tournament.pooled([])["mean_return"] is None
+
+
+class _Repo:
+    def __init__(self, deps):
+        self.deps, self.status = deps, []
+
+    def list_deployments(self, cur, uid, include_stopped=False):
+        return [d for d in self.deps if include_stopped or d["status"] != "stopped"]
+
+    def set_deployment_status(self, cur, uid, did, status, why=None):
+        self.status.append((did, status, why))
+        return True
+
+    def paper_round_trips(self, cur, uid, sid):
+        d = next(d for d in self.deps if d["strategy_id"] == sid)
+        return [{"pnl": 5.0 * r, "opened_at": NOW, "closed_at": NOW} for r in d["rets"]]
+
+    def now_utc(self):
+        return NOW
+
+
+def _rebalance_patch(monkeypatch, deps, last=None, candidates=()):
+    from app import repository
+    fake = _Repo(deps)
+    for name in ("list_deployments", "set_deployment_status", "paper_round_trips"):
+        monkeypatch.setattr(repository, name, getattr(fake, name))
+    monkeypatch.setattr(tournament, "_now", lambda: NOW)
+    monkeypatch.setattr(tournament, "last_snapshot_ts", lambda cur, uid: last)
+    saved = []
+    monkeypatch.setattr(tournament, "save_snapshot", lambda cur, uid, ts, rows: saved.append(rows))
+    monkeypatch.setattr(agent, "_is_deployment_candidate", lambda cur, sid: sid in candidates)
+    return fake, saved
+
+
+def _dep(sid, rets, status="running", reason=None, updated=NOW - timedelta(hours=2), mode="paper"):
+    return {"id": 100 + sid, "strategy_id": sid, "title": "S%d" % sid, "market": "sol15m", "mode": mode,
+            "status": status, "status_reason": reason, "updated_at": updated, "created_at": NOW - timedelta(days=2),
+            "spec": SPEC, "rets": rets}
+
+
+def test_rebalance_retires_losing_probation_entrants_but_never_candidates(monkeypatch):
+    deps = [_dep(1, [-0.4, -0.2, -0.3] * 12), _dep(2, [-0.4, -0.2, -0.3] * 12), _dep(3, [0.2, 0.1] * 5)]
+    fake, saved = _rebalance_patch(monkeypatch, deps, candidates=(2,))
+    lines = tournament.rebalance(None, {"id": 1, "autopilot": True})
+    assert [(d, s) for d, s, _ in fake.status] == [(101, "stopped")]
+    assert "Retired paper entrant “S1”" in lines[0]
+    rows = saved[0]
+    assert {r["strategy_id"] for r in rows} == {2, 3, 0} and abs(sum(r["weight"] for r in rows) - 1) < 1e-9
+
+
+def test_rebalance_resumes_a_position_stop_pause_but_not_a_drawdown_pause(monkeypatch):
+    deps = [_dep(1, [-0.6], status="paused", reason="force-closed: position down 64.0% >= stop 40.0% of cost"),
+            _dep(2, [-0.6], status="paused", reason="force-closed: drawdown 28.6% >= limit 25.0%"),
+            _dep(3, [-0.6], status="paused", reason="force-closed: position down 50.0% >= stop 40.0% of cost",
+                 updated=NOW - timedelta(minutes=10)),
+            _dep(4, [-0.6], status="paused", reason="By you")]
+    fake, _ = _rebalance_patch(monkeypatch, deps)
+    lines = tournament.rebalance(None, {"id": 1, "autopilot": True})
+    assert [(d, s) for d, s, _ in fake.status] == [(101, "running")]
+    assert "Resumed paper entrant “S1”" in lines[0]
+
+
+def test_rebalance_is_hourly_and_autopilot_only(monkeypatch):
+    fake, saved = _rebalance_patch(monkeypatch, [_dep(1, [])], last=NOW - timedelta(minutes=20))
+    assert tournament.rebalance(None, {"id": 1, "autopilot": True}) == [] and saved == []
+    assert tournament.rebalance(None, {"id": 1, "autopilot": False}, force=True) == [] and saved == []
+    tournament.rebalance(None, {"id": 1, "autopilot": True}, force=True)
+    assert len(saved) == 1
+
+
+def test_context_lines_tell_the_review_not_to_pause_entrants():
+    st = {"entrants": [dict(strategy_id=1, title="S1", market="kxrain", weight=0.6, trips=12, net_pnl=3.5,
+                            p_positive=0.8, verdict=None),
+                       dict(strategy_id=0, title="Cash", market=None, weight=0.4, trips=0, net_pnl=0, p_positive=None)],
+          "pooled": {"trips": 12, "target": 400, "mean_return": 0.05, "p_value": 0.2, "per_day": 4.0, "days_to_target": 97.0},
+          "book": {"capital": 10000.0, "pnl": 120.0, "return_pct": 1.2, "max_drawdown": 30.0, "trips": 10}}
+    text = "\n".join(tournament.context_lines(st))
+    assert "do not pause entrants" in text and "60% of the book" in text and "cash: 40%" in text
+    assert "12 of 400 trips" in text and "~97 days" in text
+    assert tournament.context_lines({"entrants": [st["entrants"][1]], "pooled": dict(st["pooled"], trips=0),
+                                     "book": st["book"]}) == []
+
+
+def test_autopilot_cannot_pause_a_tournament_entrant_before_its_verdict(monkeypatch):
+    statuses = []
+    dep = {"id": 77, "strategy_id": 15964, "title": "Rain", "mode": "paper", "status": "running",
+           "market": "kxrain", "spec": SPEC, "created_at": NOW - timedelta(days=3)}
+    monkeypatch.setattr(agent.repo, "get_deployment", lambda cur, uid, did: dict(dep))
+    monkeypatch.setattr(agent.repo, "create_proposal", lambda *a: 1)
+    monkeypatch.setattr(agent.repo, "set_deployment_status", lambda cur, uid, did, st, why=None: statuses.append(st))
+    monkeypatch.setattr(agent, "_is_deployment_candidate", lambda cur, sid: False)
+    monkeypatch.setattr(agent.repo, "paper_progress", lambda cur, uid, ids: {15964: (4, -2.0)})
+    text, pid = agent.act(None, {"id": 1, "autopilot": True}, {"type": "pause", "deployment_id": 77}, autopilot=True)
+    assert pid is None and statuses == [] and "4 of 30 round trips" in text
+    monkeypatch.setattr(agent.repo, "paper_progress", lambda cur, uid, ids: {15964: (31, -9.0)})
+    agent.act(None, {"id": 1, "autopilot": True}, {"type": "pause", "deployment_id": 77}, autopilot=True)
+    assert statuses == ["paused"]
+    statuses.clear()  # a gatekeeper candidate on paper is not held
+    monkeypatch.setattr(agent.repo, "paper_progress", lambda cur, uid, ids: {15964: (4, -2.0)})
+    monkeypatch.setattr(agent, "_is_deployment_candidate", lambda cur, sid: True)
+    agent.act(None, {"id": 1, "autopilot": True}, {"type": "pause", "deployment_id": 77}, autopilot=True)
+    assert statuses == ["paused"]
+
+
+def test_underpowered_verdicts_enter_only_with_a_positive_backtest(monkeypatch):
+    made = []
+    monkeypatch.setattr(agent, "PAPER_PROBATION", True)
+    monkeypatch.setattr(agent.rr, "probation_candidates", lambda cur, uid, p, n: [])
+    monkeypatch.setattr(agent.rr, "underpowered_candidates", lambda cur, uid, n: [
+        {"strategy_id": s, "market": "sol_daily", "p_value": None, "net_pnl": None, "n_trades": 15} for s in (1, 2)])
+    monkeypatch.setattr(agent.repo, "list_deployments", lambda cur, uid, include_stopped=False: [])
+    pnl = {1: 3.0, 2: -1.0}
+    monkeypatch.setattr(agent.repo, "get_strategy", lambda cur, uid, sid: {
+        "id": sid, "market": "sol_daily", "title": "S%d" % sid, "spec": dict(SPEC), "status": "rejected",
+        "result": {"out_of_sample": {"trades": 25, "pnl": pnl[sid]}}})
+    monkeypatch.setattr(agent.repo, "create_deployment", lambda cur, uid, sid, m, mode: made.append((sid, mode)) or 1)
+    monkeypatch.setattr(agent.repo, "create_proposal", lambda *a: 1)
+    monkeypatch.setattr(engine, "cross_deploy_block", lambda spec, mode: "")
+    lines = agent.auto_paper_probation(None, {"id": 1, "autopilot": True})
+    assert made == [(1, "paper")] and "too few validation trades" in lines[0]
+    assert agent.PROBATION_MAX_ACTIVE >= 20
+
+
+def test_paper_entries_count_only_paper_positions_and_live_counts_everything(monkeypatch):
+    seen = []
+    monkeypatch.setattr(engine.repo, "user_open_exposure",
+                        lambda cur, uid, mode=None: seen.append(mode) or {"n": 5, "notional": 50.0})
+    risk = {"max_open_positions": 20, "max_open_notional": 1000.0}
+    assert engine._entry_caps(None, {"user_id": 1, "mode": "paper"}, risk) == (5, 50.0, 20, 1000.0)
+    assert engine._entry_caps(None, {"user_id": 1, "mode": "live"}, risk) == (5, 50.0, 20, 1000.0)
+    assert seen == ["paper", None]
+    monkeypatch.setattr(engine, "PAPER_CAP_MULTIPLE", 10.0)
+    assert engine._entry_caps(None, {"user_id": 1, "mode": "paper"}, risk) == (5, 50.0, 200, 10000.0)
+    assert engine._entry_caps(None, {"user_id": 1, "mode": "live"}, risk) == (5, 50.0, 20, 1000.0)
+
+
+def test_panel_line_summarizes_the_tournament_in_one_sentence(monkeypatch):
+    from app import server
+    rows = [{"strategy_id": 7, "weight": 0.5, "trips": 12}, {"strategy_id": 8, "weight": 0.2, "trips": 3},
+            {"strategy_id": 0, "weight": 0.3, "trips": 0}]
+    monkeypatch.setattr(tournament, "latest_snapshot", lambda cur, uid: rows)
+    t = tournament.panel_summary(None, 1, {7: "Rain NYC"})
+    line = server._tournament_line(t)
+    assert line == ("The paper tournament runs 2 strategies at once, with 15 of the 400 trades the research gate "
+                    "needs so far; it has 50% of its $10,000 practice book on Rain NYC.")
+    monkeypatch.setattr(tournament, "latest_snapshot", lambda cur, uid: [dict(rows[0], weight=0.2), dict(rows[2], weight=0.8)])
+    assert "in cash until an entrant proves it beats zero" in server._tournament_line(tournament.panel_summary(None, 1, {}))
+    monkeypatch.setattr(tournament, "latest_snapshot", lambda cur, uid: [])
+    assert tournament.panel_summary(None, 1, {}) is None and server._tournament_line(None) == ""

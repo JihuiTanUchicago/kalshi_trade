@@ -172,7 +172,7 @@ def test_demo_decide_executes_via_demo_kernel_not_live(monkeypatch):
                         lambda cur, dep_id, uid, mode, *a, **k: inserted.update(mode=mode) or 1)
     monkeypatch.setattr(engine.repo, "user_risk_config",
                         lambda cur, uid: {"drawdown_limit_pct": 25.0, "max_open_positions": 20, "max_open_notional": 1000.0})
-    monkeypatch.setattr(engine.repo, "user_open_exposure", lambda cur, uid: {"n": 0, "notional": 0.0})
+    monkeypatch.setattr(engine.repo, "user_open_exposure", lambda cur, uid, mode=None: {"n": 0, "notional": 0.0})
 
     demo_k, live_k = _Kernel("demo"), _Kernel("live")
     sources = engine.Sources(demo_kernel=lambda uid: demo_k,

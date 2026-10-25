@@ -71,6 +71,8 @@ These are NOT done. Completed items move to **## Done** below.
 
 ## Done
 
+- **2026-10-25 — Paper tournament:** every near miss trades on paper at once (20 slots, was 4), a Thompson bandit with a cash arm allocates a virtual $10k book from realized paper results, retires losers and dormant entrants, and reports the pooled forward sample against the gate's 400 trades. Paper-only; live gate untouched. See PLAN.md.
+
 - **2026-10-23 — Bitcoin perpetual source merged and production connectivity checked:** [PR #21](https://github.com/JihuiTanUchicago/kalshi_trade/pull/21) merged as 33bfc957; 1,899 Python /10 skipped, 196+8 frontend, CI and hosted full-schema MySQL/HTTP checks pass. The actual server returned native candles, funding and observations in five HTTP200 requests. Publication/preflight are complete; rollout and activation remain in the queue. No production source/schema/service/job/flag mutation. [Evidence](kalshi_trade_infra/results/kalshi_bitcoin_perps_2026-10-23/HANDOFF.md).
 
 - **2026-10-21 — Meridian compact theme deployed:** the retained workspace is available through Settings → Theme → Meridian. Tau default assets are unchanged. Whole-package rollout, full installed schema, public 200/hash/version checks and independent acceptance passed (run39463270100); no service restart, job mutation or provider/order call. [Handoff](kalshi_trade_infra/results/meridian_workspace_2026-10-21/HANDOFF.md).

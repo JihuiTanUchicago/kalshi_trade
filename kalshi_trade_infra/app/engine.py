@@ -661,11 +661,7 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict, sources: Sources
     # the user past their open-position count or open entry-notional cap. Read once, tracked locally
     # for the entries this call adds (another deployment's concurrent adds are seen next tick).
     risk = repo.user_risk_config(cur, dep["user_id"])
-    exposure = repo.user_open_exposure(cur, dep["user_id"])
-    open_count = int(exposure["n"])
-    open_notional = float(exposure["notional"])
-    cap_positions = int(risk["max_open_positions"])
-    cap_notional = float(risk["max_open_notional"])
+    open_count, open_notional, cap_positions, cap_notional = _entry_caps(cur, dep, risk)
     ramp = _live_ramp_scale(cur, dep) if mode == "live" and not halts else 1.0
     for entry in ([] if halts else specmod.entries(spec, snaps)):
         if slots <= 0 or open_count >= cap_positions:
@@ -757,11 +753,7 @@ def _decide_pairs(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict,
     open_pairs = len(positions) // 2
     max_pairs = spec["sizing"]["max_positions"]
     risk = repo.user_risk_config(cur, dep["user_id"])
-    exposure = repo.user_open_exposure(cur, dep["user_id"])
-    open_count = int(exposure["n"])
-    open_notional = float(exposure["notional"])
-    cap_positions = int(risk["max_open_positions"])
-    cap_notional = float(risk["max_open_notional"])
+    open_count, open_notional, cap_positions, cap_notional = _entry_caps(cur, dep, risk)
     for cand in specmod.pair_entries(spec, snaps):
         if open_pairs >= max_pairs or open_count + 2 > cap_positions:
             break  # pair slot cap, or the user-wide position cap has no room for two more legs
@@ -1051,6 +1043,25 @@ DRAWDOWN_LIMIT_PCT_DEFAULT = 25.0
 # range, and on a 79c entry triggers near 47c (a clearly broken position, not BTC-market noise).
 # A limit of 0 disables it for a user. Fallback if the column is unexpectedly NULL.
 POSITION_STOP_PCT_DEFAULT = 40.0
+
+
+# Paper entries are capped against the user's PAPER positions only, so the paper tournament's book
+# can't be blocked by live positions. Live entries keep counting every mode (unchanged, never looser).
+# The paper caps are the user's caps times PAPER_CAP_MULTIPLE (fake money; default 1 = same numbers).
+PAPER_CAP_MULTIPLE = max(1.0, float(os.getenv("APP_PAPER_CAP_MULTIPLE", "1")))
+
+
+def _entry_caps(cur, dep: Dict, risk: Dict) -> Tuple[int, float, int, float]:
+    """(open positions, open entry notional, position cap, notional cap) for a new entry by `dep`."""
+    cap_positions = int(risk["max_open_positions"])
+    cap_notional = float(risk["max_open_notional"])
+    if dep.get("mode") == "paper":
+        exposure = repo.user_open_exposure(cur, dep["user_id"], "paper")
+        cap_positions = int(cap_positions * PAPER_CAP_MULTIPLE)
+        cap_notional = cap_notional * PAPER_CAP_MULTIPLE
+    else:
+        exposure = repo.user_open_exposure(cur, dep["user_id"])
+    return int(exposure["n"]), float(exposure["notional"]), cap_positions, cap_notional
 
 
 def _deployment_capital(dep: Dict) -> float:
