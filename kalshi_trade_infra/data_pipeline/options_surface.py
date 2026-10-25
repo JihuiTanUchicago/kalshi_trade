@@ -305,7 +305,9 @@ def prob_yes(surface: Surface, ts, lo, hi, close_ts, spot) -> Tuple[np.ndarray, 
 
 class SurfaceSeries:
     """Snapshots in time order, for as-of lookups: at(ts) is the newest surface known by ts
-    (receive time before ts) and younger than MAX_AGE_S."""
+    (receive time at or before ts) and younger than MAX_AGE_S. A history trade fit snapped at T
+    uses only trades before T and is known at T, so a decision at T (research's hourly and
+    5-minute points land exactly on the fits' 15-minute grid) reads it rather than the one before."""
 
     def __init__(self, surfaces: Iterable[Surface]):
         ss = sorted(surfaces, key=lambda s: (s.known_ns or s.snap_ts * 1_000_000_000))
@@ -317,7 +319,7 @@ class SurfaceSeries:
 
     def index_at(self, ts: float) -> int:
         """Index of the surface for ts, or -1."""
-        i = bisect.bisect_left(self.known, int(ts * 1_000_000_000)) - 1
+        i = bisect.bisect_right(self.known, int(ts * 1_000_000_000)) - 1
         if i < 0 or ts - self.surfaces[i].snap_ts > MAX_AGE_S:
             return -1
         return i
@@ -332,6 +334,6 @@ class SurfaceSeries:
         snap = np.array([s.snap_ts for s in self.surfaces], dtype=float)
         if not len(known):
             return np.full(len(secs), -1)
-        i = np.searchsorted(known, np.asarray(secs, dtype=np.int64) * 1_000_000_000, side="left") - 1
+        i = np.searchsorted(known, np.asarray(secs, dtype=np.int64) * 1_000_000_000, side="right") - 1
         stale = (i < 0) | (np.asarray(secs, dtype=float) - snap[np.clip(i, 0, None)] > MAX_AGE_S)
         return np.where(stale, -1, i)
