@@ -23,7 +23,7 @@ from decimal import Decimal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from app import agent, auth, backtest, billing, devlog, dreaming, engine, kalshi_account, notify
 from app import kalshi_dev
@@ -139,11 +139,32 @@ def _start_session(ctx: Ctx, user_id: int) -> None:
     ctx.set_cookies.append(_session_cookie(token, int(auth.SESSION_TTL.total_seconds())))
 
 
+NEXT_COOKIE = "tau_next"
+
+
+def _safe_next(nxt: Optional[str]) -> Optional[str]:
+    """A post-sign-in destination, or None. Only an app page on this site (a SPA route, with an
+    optional plain query) passes, so the round-trip through Google can never become an open redirect."""
+    if not nxt or len(nxt) > 300 or not nxt.startswith("/") or nxt.startswith("//"):
+        return None
+    if any(c in nxt for c in "\\\r\n\t ") or any(ord(c) < 32 for c in nxt):
+        return None
+    u = urlparse(nxt)
+    if u.scheme or u.netloc or u.fragment or not SPA_ROUTES.match(u.path):
+        return None
+    return nxt
+
+
 def google_start(ctx: Ctx):
     if not auth.google_configured():
         raise ApiError(503, "Google sign-in is not configured on this server.")
     login = auth.new_login()
     repo.save_oauth_state(ctx.cur, login["state"], login["nonce"], login["verifier"])
+    # Remember the page a signed-out visitor was sent away from, for 10 minutes, so sign-in lands there.
+    nxt = _safe_next(ctx.query.get("next"))
+    if nxt:
+        ctx.set_cookies.append("%s=%s; Path=/auth; HttpOnly; SameSite=Lax; Max-Age=600%s" % (
+            NEXT_COOKIE, quote(nxt, safe=""), "; Secure" if SECURE_COOKIES else ""))
     return ("redirect", auth.authorize_url(login))
 
 
@@ -165,7 +186,11 @@ def google_callback(ctx: Ctx):
     if user is None:
         return ("redirect", "/signin?pending=1")  # request recorded; awaiting approval
     _start_session(ctx, user["id"])
-    return ("redirect", "/")
+    handler = getattr(ctx, "handler", None)
+    nxt = _safe_next(unquote(handler.cookies().get(NEXT_COOKIE, ""))) if handler is not None else None
+    if nxt:
+        ctx.set_cookies.append("%s=; Path=/auth; HttpOnly; SameSite=Lax; Max-Age=0" % NEXT_COOKIE)
+    return ("redirect", nxt or "/")
 
 
 def dev_login(ctx: Ctx):
@@ -174,8 +199,7 @@ def dev_login(ctx: Ctx):
     email = ctx.query.get("email") or "jonathan@example.com"
     user = repo.upsert_google_user(ctx.cur, "dev:" + email, email, email.split("@")[0].title(), None)
     _start_session(ctx, user["id"])
-    nxt = ctx.query.get("next") or "/"
-    return ("redirect", nxt if SPA_ROUTES.match(nxt) else "/")
+    return ("redirect", _safe_next(ctx.query.get("next")) or "/")
 
 
 def logout(ctx: Ctx):

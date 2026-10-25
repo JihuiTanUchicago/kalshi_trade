@@ -711,3 +711,51 @@ def test_explore_market_shows_the_market_when_only_its_history_failed(monkeypatc
     d = server.explore_market(c)  # the market call got through: its fresher record wins over the feed
     assert d["history_unavailable"] is True and d["title"] == "Minnesota wins (Kalshi)" and d["yes_bid"] == "0.52"
     assert d["close_time"] == "2026-10-26T03:00:00Z"
+
+
+@pytest.mark.parametrize("nxt,ok", [
+    ("/strategies/16", True), ("/explore?m=KXBTC-26OCT2507-T0", True), ("/research/6", True),
+    (None, False), ("", False), ("strategies/16", False), ("//evil.example/x", False),
+    ("https://evil.example/", False), ("/\\evil.example", False), ("/api/me", False),
+    ("/strategies/16#x", False), ("/research\r\nSet-Cookie: x=1", False), ("/" + "a" * 400, False),
+])
+def test_sign_in_destination_is_only_ever_an_app_page(nxt, ok):
+    assert (server._safe_next(nxt) is not None) is ok
+    if ok:
+        assert server._safe_next(nxt) == nxt
+
+
+def test_google_sign_in_returns_to_the_page_the_visitor_came_from(monkeypatch):
+    monkeypatch.setattr(server.auth, "google_configured", lambda: True)
+    monkeypatch.setattr(server.auth, "new_login", lambda: {"state": "s", "nonce": "n", "verifier": "v"})
+    monkeypatch.setattr(server.auth, "authorize_url", lambda login: "https://accounts.google.com/o")
+    monkeypatch.setattr(server.repo, "save_oauth_state", lambda *a: None)
+
+    class Start:
+        cur = None
+        query = {"next": "/strategies/16"}
+        set_cookies = []
+    assert server.google_start(Start()) == ("redirect", "https://accounts.google.com/o")
+    assert len(Start.set_cookies) == 1 and Start.set_cookies[0].startswith("tau_next=%2Fstrategies%2F16; Path=/auth; HttpOnly")
+
+    Start.query, Start.set_cookies = {"next": "//evil.example"}, []
+    server.google_start(Start())
+    assert Start.set_cookies == []  # an off-site destination is never remembered
+
+    monkeypatch.setattr(server.repo, "pop_oauth_state", lambda cur, s: {"code_verifier": "v", "nonce": "n"})
+    monkeypatch.setattr(server.auth, "exchange_code", lambda *a: {"email": "a@x.com", "sub": "s", "name": "A", "picture": None})
+    monkeypatch.setattr(server.repo, "is_waitlist_approved", lambda *a: True)
+    monkeypatch.setattr(server.repo, "upsert_google_user", lambda *a, **k: {"id": 7})
+    monkeypatch.setattr(server, "_start_session", lambda ctx, uid: None)
+
+    def callback(cookie):
+        class Cb:
+            cur = None
+            query = {"code": "c", "state": "s"}
+            set_cookies = []
+            handler = type("H", (), {"cookies": lambda self: cookie})()
+        return server.google_callback(Cb()), Cb.set_cookies
+    where, cookies = callback({"tau_next": "%2Fstrategies%2F16"})
+    assert where == ("redirect", "/strategies/16") and cookies[0].startswith("tau_next=; Path=/auth")
+    assert callback({"tau_next": "https%3A%2F%2Fevil.example"})[0] == ("redirect", "/")
+    assert callback({})[0] == ("redirect", "/")
