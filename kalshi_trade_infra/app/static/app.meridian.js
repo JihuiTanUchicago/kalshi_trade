@@ -429,7 +429,12 @@
     }
     if (!match) return go('/', true);
     root.setAttribute('aria-busy', 'true');
-    try { await match[1](...match[0].slice(1)); } catch (e) { if (gen === S.gen && e.status !== 401) shell('', boardTitle('Something went wrong'), notice(e.message, 'bad')); }
+    try { await match[1](...match[0].slice(1)); } catch (e) {
+      if (gen === S.gen && e.status !== 401) {
+        shell('', boardTitle('Something went wrong'), loadFail(e.message));
+        root.querySelector('[data-retry]').onclick = () => render();
+      }
+    }
     if (gen !== S.gen) return;  // the user moved on while this page loaded
     root.setAttribute('aria-busy', 'false');
     paymentGate().catch(() => {});
@@ -678,6 +683,8 @@
     `<div class="m ${opts.cls || ''}"><dt class="lab">${label}</dt><dd><span class="fig ${opts.v > 0 ? 'tint pos' : opts.v < 0 ? 'tint neg' : ''}">${value}</span></dd>${opts.small ? `<div class="sub-fig">${opts.small}</div>` : ''}</div>`;
   const dirTag = () => '';
   const notice = (msg, kind = '') => `<div class="notice ${kind}" role="${kind === 'bad' ? 'alert' : 'status'}">${kind === 'good' ? ICON.check : ICON.warn}<span>${esc(msg)}</span></div>`;
+  // A failed load says so and offers a retry, instead of leaving a skeleton up for good.
+  const loadFail = (msg) => `<div class="load-fail">${notice(msg, 'bad')}<button type="button" class="btn sm" data-retry>Try again</button></div>`;
   const loading = (h = 160) => `<div class="skeleton" style="height:${h}px" aria-label="Loading"></div>`;
 
   // arm-to-confirm: first click arms for 5s, second click fires
@@ -2323,7 +2330,13 @@
       slipsEl.innerHTML = loading(240);
       const p = new URLSearchParams(Object.entries(f).filter(([, v]) => v !== ''));
       p.set('page', sp);
-      const d = await api('/api/strategies?' + p.toString());
+      let d;
+      try { d = await api('/api/strategies?' + p.toString()); } catch (e) {
+        if (e.status === 401) throw e;
+        slipsEl.innerHTML = loadFail(e.message);
+        slipsEl.querySelector('[data-retry]').onclick = () => load();
+        return;
+      }
       const counts = d.counts || {}, total = counts.total || 0, c = (st) => counts[st] || 0;
       root.querySelector('#sfigs').innerHTML = fig('Passed' + glo('passed'), c('passed')) + fig('Void on unseen data' + glo('void'), c('failed')) + fig('Rejected in testing' + glo('rejected'), c('rejected')) +
         fig('Pass rate', total ? pct(c('passed') / total, false) : '—');

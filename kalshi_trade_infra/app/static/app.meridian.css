@@ -2460,3 +2460,6 @@ body.landing-body .apf { display: none; }
 .holdlist .tick { overflow-wrap: anywhere; }
 .holdlist-figs { display: flex; flex-wrap: wrap; gap: 3px 14px; margin-top: 4px; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .holdlist-figs b { color: var(--ink); font-weight: 600; }
+
+/* Failed load: the error plus a retry button, stacked. */
+.load-fail { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }

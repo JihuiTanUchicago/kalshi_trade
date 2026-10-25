@@ -134,6 +134,21 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.match(paper, /Realized/); assert.doesNotMatch(paper, /Live realized/); assert.match(paper, /paper money, not real/);
   });
 
+  test(`${name}: a failed strategies load offers a retry instead of a stuck skeleton`, async () => {
+    let down = true;
+    const f = frontend({fetchImpl: path => {
+      assert.ok(path.startsWith('/api/strategies?'));
+      if (down) return response({error: 'Tau is restarting. Try again in a moment.'}, 502);
+      return response({counts: {total: 1, passed: 1}, matched: 1, pages: 1, strategies: [detailStrategy({id: 47, title: 'Back fixture'})]});
+    }});
+    await f.viewStrategies(); await flush();
+    const slips = f.root.querySelector('#slips');
+    assert.match(slips.innerHTML, /Tau is restarting/); assert.match(slips.innerHTML, /Try again/);
+    down = false; await slips.querySelector('[data-retry]').onclick(); await flush();
+    assert.match(f.root.querySelector('#slips').innerHTML, /Back fixture/);
+    assert.doesNotMatch(f.root.querySelector('#slips').innerHTML, /Try again/);
+  });
+
   test(`${name}: a perpetual-only inventory has no bulk selection or false live status`, async () => {
     const list = [detail({deployed: true, deploy_live: true})];
     const f = frontend({fetchImpl: path => {
