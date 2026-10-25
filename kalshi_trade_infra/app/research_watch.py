@@ -144,9 +144,31 @@ def build_report(runs: List[Dict], events: Dict[int, List[Dict]], now: datetime,
         "models": {m: {"runs": len(v), "cost_usd": round(sum(s["cost_usd"] for s in v), 2),
                        "gated": sum(s["gated"] for s in v)}
                    for m, v in _group(finished, "model").items()},
+        "screen_ab": screen_ab(cards),
         "anomalies": anomalies(summaries),
         "runs": sorted(summaries, key=lambda s: -s["run_id"]),
     }
+
+
+def screen_ab(cards: List[Dict]) -> Dict[str, Dict]:
+    """The model-tiering A/B (services.research_screen) by arm: ideas tested per dollar, how many
+    reached the gate, and how often the developer overturned an audited screen drop."""
+    out: Dict[str, Dict] = {}
+    for arm, rows in _group([c for c in cards if c.get("arm")], "arm").items():
+        cost = sum(c["cost_usd"] for c in rows)
+        explored = sum(c["explored"] for c in rows)
+        gated = sum(c["gated"] for c in rows)
+        tally = Counter()
+        for c in rows:
+            tally.update({k: v or 0 for k, v in (c.get("screen") or {}).items() if k != "screen_model"})
+        out[arm] = {"runs": len(rows), "cost_usd": round(cost, 2), "explored": explored,
+                    "developed": sum(c["developed"] for c in rows), "gated": gated,
+                    "passed": sum(c["passed"] for c in rows),
+                    "ideas_per_usd": round(explored / cost, 2) if cost > 0 else None,
+                    "gate_reach_rate": round(gated / explored, 3) if explored else None,
+                    **({"screened_out": tally["screened_out"], "handed_over": tally["handed_over"],
+                        "audits": tally["audits"], "rescued": tally["rescued"]} if arm == "screen" else {})}
+    return out
 
 
 def _group(rows: List[Dict], key: str) -> Dict[str, List[Dict]]:
