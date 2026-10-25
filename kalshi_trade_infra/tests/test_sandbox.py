@@ -88,3 +88,18 @@ def test_unreadable_strategy_output_is_a_sandbox_error(monkeypatch, garbage):
     code = "def fit(window):\n    return {}\n\ndef signals(window):\n    return []\n"
     with pytest.raises(sandbox.SandboxError, match="unreadable"):
         sandbox.run_strategy_fit(code, {"frames": []})
+
+
+def test_sweep_stale_scratch_removes_only_old_strategy_dirs(tmp_path):
+    import os, time
+    old, fresh, other = tmp_path / "strat_old", tmp_path / "strat_new", tmp_path / "keep_me"
+    for d in (old, fresh, other):
+        d.mkdir()
+        (d / "in.json").write_text("{}")
+    past = time.time() - 3600
+    for d in (old, other):
+        os.utime(d, (past, past))
+    (tmp_path / "strat_file").write_text("not a dir")
+    assert sandbox.sweep_stale_scratch(max_age_s=600, root=str(tmp_path)) == 1
+    assert not old.exists() and fresh.exists() and other.exists()
+    assert (tmp_path / "strat_file").exists()
