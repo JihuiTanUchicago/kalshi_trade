@@ -6,6 +6,10 @@ from typing import Any, Dict, List, Optional
 
 from app.adapters.db.sql import _json, _loads, now_utc
 
+# The direction of the example session every new account is seeded with (repository.seed_demo_session).
+# The user never ran it, so headline counts leave it out; lists still show it, marked as an example.
+DEMO_DIRECTION = "random_walk"
+
 
 def strategies_passed_since(cur, user_id: int, since) -> int:
     """Strategies that cleared every gate (status 'passed') from research runs started since
@@ -108,17 +112,22 @@ def count_strategies(
     reflect the true total rather than a capped page. Keys are the status values plus
     "total" (their sum), plus "deployed" (how many have an active deployment). Narrowed by
     direction/market/search/deployed, matching list_strategies (status is left open so every
-    status bucket is counted)."""
+    status bucket is counted). The seeded example session's strategies are left out of every
+    count: a new account read "Rejected (2)" for research it never ran. They still list, so
+    "examples" holds them per status for the page's matched/pages math."""
     where, fparams = _strategy_filter_sql(direction, None, market, None, q, deployed)
     sql = ("SELECT s.status, COUNT(*) AS n, SUM(EXISTS (SELECT 1 FROM app_deployments d WHERE d.strategy_id=s.id"
-           " AND d.status<>'stopped')) AS dep FROM app_strategies s" + where + " GROUP BY s.status")
-    params: List[Any] = [user_id] + fparams
+           " AND d.status<>'stopped')) AS dep, SUM(CASE WHEN s.direction=%s THEN 1 ELSE 0 END) AS ex"
+           " FROM app_strategies s" + where + " GROUP BY s.status")
+    params: List[Any] = [DEMO_DIRECTION, user_id] + fparams
     cur.execute(sql, params)
     rows = cur.fetchall()
-    counts: Dict[str, int] = {r["status"]: int(r["n"]) for r in rows}
+    examples = {r["status"]: int(r.get("ex") or 0) for r in rows if int(r.get("ex") or 0)}
+    counts: Dict[str, Any] = {r["status"]: int(r["n"]) - examples.get(r["status"], 0) for r in rows}
     counts["total"] = sum(counts.values())
     # Strategies with an active deployment, for the Deployed chip (not a status, so not in total).
     counts["deployed"] = sum(int(r.get("dep") or 0) for r in rows)
+    counts["examples"] = examples
     return counts
 
 

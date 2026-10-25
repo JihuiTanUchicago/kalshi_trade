@@ -1106,6 +1106,10 @@
   // The server sends one book (live, else paper, else demo) and a paper strategy's demo book beside it
   // under r.demo, so sandbox dollars are never added to paper ones.
   const realTrades = (n) => `${n} trade${n === 1 ? '' : 's'}`;
+  // The example session (and its strategies) every account is seeded with: the server flags it
+  // `example`, leaves it out of every headline count, and the lists say the app ran it for free.
+  const EXAMPLE_NOTE = 'An example Tau ran for you when you signed up. It cost you nothing.';
+  const EXAMPLE_TAG = `<span class="mk quiet example-tag" title="${EXAMPLE_NOTE}">Example</span>`;
   const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : ''}since deploying \u00b7 ${realTrades(r.trades)}` : r.mode === 'demo' ? 'No closed demo trades yet' : 'No closed trades yet'}</div>${r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)} \u00b7 ${realTrades(r.demo.trades)}` : 'no closed trades yet'}</div>` : ''}` : '';
   function strategySlip(s, reg, opts = {}) {
     const oos = s.out_of_sample, ins = s.in_sample || {};
@@ -1116,7 +1120,7 @@
       ? `<td class="pickcol" data-lab="Deploy"><input type="checkbox" class="pick" data-id="${s.id}" aria-label="Select for deployment"></td>`
       : '<td class="pickcol" data-lab=""></td>') : '';
     return `<tr class="${opts.land ? 'washed' : ''}">${pickCell}
-      <td class="name" data-lab="">${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}<div class="sub-fig cellwrap">${esc(s.thesis)}</div></td>
+      <td class="name" data-lab="">${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}${s.example ? ' ' + EXAMPLE_TAG : ''}<div class="sub-fig cellwrap">${esc(s.thesis)}</div></td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(s.market))} \u00b7 ${esc(dirLabel(s.direction))}</span></td>
       <td class="num" data-lab="${oos ? 'Backtest P&amp;L (unseen)' : 'Backtest P&amp;L (tested)'}">${m.pnl == null ? '\u2014' : money(m.pnl)}${oos ? '' : '<div class="sub-fig">tested only</div>'}</td>
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
@@ -1764,8 +1768,10 @@
       root.querySelector('#rfigs').innerHTML = fig('Researching now', running) + fig('Waiting', queued) +
         fig('Hypotheses tested', tried) + fig('Passed every gate' + glo('gate'), passed, { small: tried ? `${pct(passed / tried, false)} pass rate` : '' });
       renderResearchLoop(root.querySelector('#rsimo'), d.policy, tried);
-      const mainEl = root.querySelector('#main'); if (mainEl) mainEl.classList.toggle('runs-first', d.runs.length > 0);  // phones: progress before the form
-      root.querySelector('#rcount').textContent = d.runs.length ? `${d.runs.length} run${d.runs.length > 1 ? 's' : ''}` : '';
+      // The seeded example is listed but isn't the user's: it doesn't count as a run of theirs.
+      const own = d.runs.filter((r) => !r.example).length, examples = d.runs.length - own;
+      const mainEl = root.querySelector('#main'); if (mainEl) mainEl.classList.toggle('runs-first', own > 0);  // phones: progress before the form
+      root.querySelector('#rcount').textContent = [own ? `${own} run${own > 1 ? 's' : ''}` : '', examples ? `${examples} example` : ''].filter(Boolean).join(' \u00b7 ');
       root.querySelector('#runs').innerHTML = d.runs.length ? d.runs.map(runRow).join('')
         : `<div class="empty"><h3>No sessions yet</h3><p>Describe an idea above. The agent will turn it into several strategies, test each one on data it never saw, and mark each Passed or Void.</p></div>`;
     };
@@ -1786,8 +1792,8 @@
     // interrupted, or capped) is neutral (void), NOT red — only a real error is `fail`.
     const band = r.status === 'succeeded' ? (r.strategies_passed ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : (r.status === 'cancelled' || r.status === 'stopped') ? 'void' : 'live';
     return `<a class="run-card ${band}" href="/research/${r.id}">
-      <span class="run-title"><b>${esc(sessionTitle(r))}</b></span>
-      <span class="run-meta">${esc(marketShort(r.market))}${r.spent_usd != null ? ' \u00b7 ' + runSpent(r) : ''}${r.error ? ' \u00b7 ' + esc(r.error) : ''}</span>
+      <span class="run-title"><b>${esc(sessionTitle(r))}</b>${r.example ? ' ' + EXAMPLE_TAG : ''}</span>
+      <span class="run-meta">${esc(marketShort(r.market))}${r.example ? ' \u00b7 ' + EXAMPLE_NOTE : r.spent_usd != null ? ' \u00b7 ' + runSpent(r) : ''}${r.error ? ' \u00b7 ' + esc(r.error) : ''}</span>
       <span class="run-foot"><span class="run-state">${state}</span><span class="run-when">${when(r.created_at)}</span></span></a>`;
   }
 
@@ -2269,7 +2275,7 @@
       const d = await api(`/api/runs/${id}?after=${after}`);
       const r = d.run;
       const active = r.status === 'running' || r.status === 'queued' || r.status === 'paused';
-      root.querySelector('#runboard').innerHTML = boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7 ${dirLabel(r.direction)}`);
+      root.querySelector('#runboard').innerHTML = boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7 ${dirLabel(r.direction)}${r.example ? ' \u00b7 ' + EXAMPLE_NOTE : ''}`);
       const started = r.started_at ? Date.parse(r.started_at) : null;
       const end = r.finished_at ? Date.parse(r.finished_at) : Date.now();
       const statusText = r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
@@ -2861,6 +2867,9 @@
     const setTab = (t) => {
       host.querySelectorAll('[data-trtab]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.trtab === t)));
       host.querySelector('.trpanel').innerHTML = trackRecordPanel(d.modes[t], t, d.thresholds);
+      // The empty paper record's copy depends on the autopilot switch; syncApCopy repaints it on a flip
+      // (the record itself only repaints when the server's 60s cache moves, so it kept "Go to Deploy").
+      trAp = { host, on: apSwitchOn(), repaint: () => setTab(t) };
       try { localStorage.setItem('tau_tr_tab', t); } catch (e) { /* private mode */ }
     };
     host.querySelectorAll('[data-trtab]').forEach((b) => (b.onclick = () => setTab(b.dataset.trtab)));
@@ -3433,7 +3442,13 @@
     // a refresh after a change always reads fresh.
     let req = share && apReq;
     if (!req) { req = apReq = api('/api/autopilot/status', undefined, { keep: true }); req.finally(() => { if (apReq === req) apReq = null; }).catch(() => {}); }
-    try { S.ap = await req; S.apAt = Date.now(); renderAutopilot(box, S.ap); paintDashAp(); }
+    try {
+      S.ap = await req; S.apAt = Date.now();
+      // The status read is the switch's truth (another tab or device may have flipped it); copy that
+      // reads S.me.user.autopilot, like the empty paper track record, follows it through syncApCopy.
+      if (S.me && S.me.user && typeof S.ap.autopilot === 'boolean') S.me.user.autopilot = S.ap.autopilot;
+      renderAutopilot(box, S.ap); paintDashAp();
+    }
     catch (e) { /* floating window is best-effort; never block the app */ }
   }
   // The paper book's equity P&L (dashboard total_pnl) restarts when the account is reset, so it reads
@@ -3541,10 +3556,13 @@
   }
   // Copy that depends on the switch follows it without a reload, so turning autopilot on doesn't leave
   // "Turn on autopilot above" or a Turn on nudge under a card that already says it's on.
+  let trAp = null;  // the mounted track record's tab, to repaint when the switch flips
+  const apSwitchOn = () => !!(S.me && S.me.user && S.me.user.autopilot);
   function syncApCopy(on) {
     const box = document.getElementById('deps-empty');
     if (box && box.dataset.on !== (on ? '1' : '0')) { box.dataset.on = on ? '1' : '0'; box.innerHTML = depsEmpty(on); }
     if (document.body) document.body.querySelectorAll('.research-ap').forEach((p) => { p.hidden = on; });
+    if (trAp && trAp.host.isConnected && trAp.on !== apSwitchOn()) trAp.repaint();
   }
   function apNudge(lead, rest) {
     return S.me && S.me.user && !S.me.user.autopilot ? `<p class="research-ap">${lead} <button type="button" data-research-ap>Turn on autopilot</button> ${rest}</p>` : '';
@@ -3726,6 +3744,8 @@
       try { await api('/api/settings', { autopilot: on }); S.me.user.autopilot = on; } catch (e) { sw.checked = !on; alert0(e.message); return; }
       // Right after switching on, show where it may trade, so the focus is a choice and not a default nobody saw.
       if (on) { const prefs = box.querySelector('.apf-prefs'); if (prefs) prefs.open = true; }
+      if (S.ap) S.ap = Object.assign({}, S.ap, { autopilot: on, mode: !on ? 'off' : S.ap.mode === 'off' ? 'paper' : S.ap.mode });
+      paintDashAp();  // copy that follows the switch flips now, not on the next status read
       refreshAutopilot(box);
     };
     const msgs = box.querySelector('#apf-messages');

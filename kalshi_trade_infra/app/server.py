@@ -537,8 +537,16 @@ def list_runs(ctx: Ctx):
               "evolved_at": pol["updated_at"] if pol else None}
     runs = repo.list_runs(ctx.cur, ctx.uid)
     _with_spent(ctx.cur, ctx.uid, runs)
+    _mark_example(runs)
     return {"runs": runs, "counts": repo.active_run_counts(ctx.cur, ctx.uid),
             "policy": policy, "totals": _research_totals(ctx.cur, ctx.uid)}
+
+
+def _mark_example(runs: List[Dict]) -> None:
+    """Flag the example session every account is seeded with: the app ran it, not the user, and
+    it cost them nothing, so the list marks it and the headline leaves it out."""
+    for r in runs:
+        r["example"] = r.get("direction") == repo.DEMO_DIRECTION
 
 
 def _with_spent(cur, uid: int, runs: List[Dict]) -> None:
@@ -558,13 +566,14 @@ def _research_totals(cur, uid: int) -> Dict:
     The page summed its 50 newest runs, so a busy autopilot (250+ runs a week) read a fraction of
     its real total, and the runs' strategies_passed counter overcounts (it once held 68
     backtest-only rows). Same sources as the autopilot panel's week: research_week and
-    strategies_passed_since, with the seeded demo counted because the page lists it (a headline
-    of 0 tested above a demo row reading 0/2 looked broken). Cached per user like the track record."""
+    strategies_passed_since. The seeded example session is left out: a new account read "Your engine
+    has tested 2 hypotheses" for research it never ran; the list marks that row as an example
+    instead. Cached per user like the track record."""
     hit = _RUN_TOTALS.get(uid)
     if hit and time.time() - hit[0] < RUN_TOTALS_TTL:
         return hit[1]
     since = repo.now_utc() - timedelta(days=365 * 50)
-    val = {"tried": sum(int(r.get("tried") or 0) for r in repo.research_week(cur, uid, since, include_demo=True)),
+    val = {"tried": sum(int(r.get("tried") or 0) for r in repo.research_week(cur, uid, since)),
            "passed": repo.strategies_passed_since(cur, uid, since)}
     _RUN_TOTALS[uid] = (time.time(), val)
     return val
@@ -581,6 +590,7 @@ def get_run(ctx: Ctx):
     pol = repo.get_policy(ctx.cur, ctx.uid)  # the self-evolving exploration policy (Tau-RSI)
     dream = repo.latest_dream_event(ctx.cur, ctx.uid)
     _with_spent(ctx.cur, ctx.uid, [run])
+    _mark_example([run])
     return {
         "run": run,
         "events": repo.run_events(ctx.cur, run["id"], after),
@@ -750,6 +760,7 @@ def _strategy_card(s: Dict) -> Dict:
         **({"kind": "perpetual", "research_only": True} if specmod.is_perpetual_spec(s["spec"]) else {}),
         "deployed": bool(s.get("active_deps")), "deploy_live": bool(s.get("live_deps")),
         "shared_from": s.get("shared_from_name") if s.get("shared_from_user_id") else None,
+        "example": s.get("direction") == repo.DEMO_DIRECTION,  # from the seeded example session
     }
 
 
@@ -790,7 +801,10 @@ def list_strategies(ctx: Ctx):
     # DB (the ledger counts them for DSR/FDR). An explicit status chip overrides and shows it.
     hide_noise = status is None
     noise = sum(counts.get(s, 0) for s in repo.NOISE_STATUSES)
-    matched = counts.get(status, 0) if status else counts["total"] - noise
+    # The seeded example's strategies are out of the counts but still listed (marked "example").
+    ex = counts.get("examples") or {}
+    shown_ex = ex.get(status, 0) if status else sum(n for s, n in ex.items() if s not in repo.NOISE_STATUSES)
+    matched = (counts.get(status, 0) if status else counts["total"] - noise) + shown_ex
     rows = repo.list_strategies(ctx.cur, ctx.uid, direction, status, market, limit=per, offset=page * per,
                                 q=search, deployed=deployed, hide_noise=hide_noise)
     cards = [_strategy_card(s) for s in rows]
