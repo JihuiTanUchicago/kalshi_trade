@@ -47,6 +47,12 @@ def test_verdicts_need_enough_trips_or_a_week_of_silence():
     assert "never fires" in tournament.verdict(quiet, tournament.allocate([quiet], seed="t")[0], NOW)
     fresh = _entry(4, [], created=NOW - timedelta(days=2))
     assert tournament.verdict(fresh, tournament.allocate([fresh], seed="t")[0], NOW) is None
+    # A paused entrant isn't trading, so it can't be dormant (prod 2026-10-25: a drawdown-paused
+    # deployment from 10-15 was retired as "never fires"); a resumed one gets a fresh week.
+    paused = _entry(5, [], created=NOW - timedelta(days=10), status="paused")
+    assert tournament.verdict(paused, tournament.allocate([paused], seed="t")[0], NOW) is None
+    resumed = _entry(6, [], created=NOW - timedelta(days=10), updated_at=NOW - timedelta(days=1))
+    assert tournament.verdict(resumed, tournament.allocate([resumed], seed="t")[0], NOW) is None
 
 
 def test_book_only_counts_trips_opened_after_a_weight_was_set():
@@ -118,6 +124,15 @@ def test_rebalance_retires_losing_probation_entrants_but_never_candidates(monkey
     assert "Retired paper entrant “S1”" in lines[0]
     rows = saved[0]
     assert {r["strategy_id"] for r in rows} == {2, 3, 0} and abs(sum(r["weight"] for r in rows) - 1) < 1e-9
+
+
+def test_rebalance_never_retires_a_paused_entrant(monkeypatch):
+    deps = [_dep(1, [-0.4, -0.2, -0.3] * 12, status="paused", reason="By you"),
+            dict(_dep(2, [], status="paused", reason="force-closed: drawdown 28.6% >= limit 25.0%"),
+                 created_at=NOW - timedelta(days=10))]
+    fake, saved = _rebalance_patch(monkeypatch, deps)
+    assert tournament.rebalance(None, {"id": 1, "autopilot": True}) == [] and fake.status == []
+    assert len(saved) == 1
 
 
 def test_rebalance_resumes_a_position_stop_pause_but_not_a_drawdown_pause(monkeypatch):
@@ -193,17 +208,21 @@ def test_underpowered_verdicts_enter_only_with_a_positive_backtest(monkeypatch):
     assert agent.PROBATION_MAX_ACTIVE >= 20
 
 
-def test_paper_entries_count_only_paper_positions_and_live_counts_everything(monkeypatch):
+def test_each_mode_counts_only_its_own_positions_and_paper_gets_10x(monkeypatch):
+    """Todd 2026-10-25 chose separate books: live limits count only live positions (same numbers),
+    paper gets 10x in fake money, so a full paper tournament never blocks a live entry."""
     seen = []
     monkeypatch.setattr(engine.repo, "user_open_exposure",
                         lambda cur, uid, mode=None: seen.append(mode) or {"n": 5, "notional": 50.0})
     risk = {"max_open_positions": 20, "max_open_notional": 1000.0}
-    assert engine._entry_caps(None, {"user_id": 1, "mode": "paper"}, risk) == (5, 50.0, 20, 1000.0)
-    assert engine._entry_caps(None, {"user_id": 1, "mode": "live"}, risk) == (5, 50.0, 20, 1000.0)
-    assert seen == ["paper", None]
-    monkeypatch.setattr(engine, "PAPER_CAP_MULTIPLE", 10.0)
+    assert engine.PAPER_CAP_MULTIPLE == 10.0
     assert engine._entry_caps(None, {"user_id": 1, "mode": "paper"}, risk) == (5, 50.0, 200, 10000.0)
     assert engine._entry_caps(None, {"user_id": 1, "mode": "live"}, risk) == (5, 50.0, 20, 1000.0)
+    assert engine._entry_caps(None, {"user_id": 1, "mode": "demo"}, risk) == (5, 50.0, 20, 1000.0)
+    assert seen == ["paper", "live", "demo"]
+    monkeypatch.setattr(engine, "PAPER_CAP_MULTIPLE", 1.0)
+    assert engine._entry_caps(None, {"user_id": 1, "mode": "paper"}, risk) == (5, 50.0, 20, 1000.0)
+
 
 
 def test_panel_line_summarizes_the_tournament_in_one_sentence(monkeypatch):

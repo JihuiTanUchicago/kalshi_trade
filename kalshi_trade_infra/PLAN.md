@@ -44,9 +44,9 @@
 - Funnel: PROBATION_MAX_ACTIVE 4 -> 20; underpowered validation verdicts (inconclusive, no p) enter
   when the backtest was up on unseen data over 10+ trades. Autopilot can't pause a probation entrant
   before 30 trips (the tournament judges it).
-- Caps: paper entries count only paper positions (`engine._entry_caps`), times APP_PAPER_CAP_MULTIPLE
-  (default 1). Live entries still count every mode, so a full paper book can block live entries; making
-  live count only live is Todd's call.
+- Caps: separate books (Todd chose "Separate paper and live books", 2026-10-25 02:02Z). Each new
+  entry counts only its own mode's open positions (`engine._entry_caps`). Live keeps the user's exact
+  limits; paper gets them x APP_PAPER_CAP_MULTIPLE (default 10, fake money).
 - Surfaces: review context, autopilot panel story line, research page "Paper tournament" section,
   `/api/research/scoreboard` -> `tournament`, `python -m app.tournament --user 1`.
 
