@@ -326,6 +326,22 @@ test('the dashboard offers one-click autopilot, and once on shows what it is doi
   assert.doesNotMatch(html, /undefined|NaN|<b>BTC/);
 });
 
+test('an empty Deployed box asks for research only when autopilot is off; Funds is a link', async () => {
+  for (const on of [false, true]) {
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/dashboard') return response(emptyDashboard());
+      if (path === '/api/autopilot/status') return response(apOn);
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me.user.autopilot = on;
+    await f.viewDashboard(); await flush();
+    const body = f.root.querySelector('#boardbody').innerHTML + f.root.querySelector('#dash-deps').innerHTML;
+    assert.match(body, /on <a href="\/funds">Funds<\/a> to trade real money/);
+    assert.match(body, on ? /Autopilot is researching\./ : /Dispatch your first agent/);
+    assert.doesNotMatch(body, on ? /Dispatch your first agent/ : /See its research/);
+  }
+});
+
 test('a failed autopilot switch-on leaves the dashboard card off and says why', async () => {
   const f = frontend({fetchImpl: path => {
     if (path === '/api/dashboard') return response(emptyDashboard());

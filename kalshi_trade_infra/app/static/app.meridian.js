@@ -1443,7 +1443,10 @@
         <div class="pagehead"><div class="overview-heading"><h1 class="page">Overview</h1></div><div class="page-actions"><details class="other-accounts" id="other-accounts"${accountsOpen ? ' open' : ''}><summary>Accounts ${ICON.chev}</summary><dl>${hasLive ? paperFigure : liveFigure}${demoFigure}</dl></details>${agentsBusy ? `<a class="research-activity" href="/research">${agentsBusy} agent${agentsBusy > 1 ? 's' : ''} researching</a>` : ''}</div></div>`;
       const deps = d.deployments.length
         ? `<div class="dep-register">${d.deployments.map(deploymentMonitor).join('')}</div>`
-        : `<div class="empty"><h3>Nothing deployed yet</h3><a class="btn" href="/research?new=1">New session</a></div>`;
+        // Say what lands here; with autopilot on, "New session" asked for work it is already doing.
+        : (S.me.user && S.me.user.autopilot)
+          ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is researching. Strategies that pass every gate land here on paper first, with no real money.</p><a class="btn" href="/research">See its research</a></div>`
+          : `<div class="empty"><h3>Nothing deployed yet</h3><p>Research sessions test strategies on data they never saw. The ones that pass every gate can be deployed here, on paper first.</p><a class="btn" href="/research?new=1">New session</a></div>`;
       const positionMarket = r => (S.me.markets || []).find(m => m.series && r.ticker.startsWith(m.series + '-'));
       const positions = (rows, closed) => rows.map((r) => {
         const market = positionMarket(r);
