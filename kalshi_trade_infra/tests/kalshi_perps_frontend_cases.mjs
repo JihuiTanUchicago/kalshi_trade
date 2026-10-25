@@ -149,6 +149,17 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.match(paper, /Realized/); assert.doesNotMatch(paper, /Live realized/); assert.match(paper, /paper money, not real/);
   });
 
+  test(`${name}: Deploy lists paused deployments first, otherwise in server order`, async () => {
+    const dep = (id, status) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode: 'paper', status, status_reason: status === 'paused' ? 'loss guard' : null,
+      realized_pnl: 0, closed_trades: 0, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1, backtest: {}});
+    const deployments = [dep(1, 'running'), dep(2, 'running'), dep(3, 'paused'), dep(4, 'running')];
+    const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments, open_positions: []}) : response({})});
+    await f.viewDeploy(); await flush(); await flush();
+    const order = [...f.root.querySelector('#deps').innerHTML.matchAll(/href="\/strategies\/(\d+)"/g)].map(m => m[1]).filter((v, i, a) => a.indexOf(v) === i);
+    assert.deepEqual(order, ['3', '1', '2', '4']);
+    assert.deepEqual(deployments.map(d => d.id), [1, 2, 3, 4]);  // the API payload itself is untouched
+  });
+
   test(`${name}: the Deployed chip counts strategies with an active deployment`, async () => {
     const f = frontend({fetchImpl: () => response({counts: {total: 3, passed: 3, deployed: 2}, matched: 3, pages: 1, strategies: [detailStrategy({id: 48})]})});
     await f.viewStrategies(); await flush();
