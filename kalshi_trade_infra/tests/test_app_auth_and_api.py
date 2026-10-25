@@ -335,6 +335,28 @@ def test_strategies_figures_come_from_count_not_the_page(monkeypatch):
     assert out["matched"] == 600 and out["pages"] == 12
 
 
+def test_strategies_list_attaches_real_record_to_deployed_cards(monkeypatch):
+    monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: {"passed": 3, "total": 3})
+    monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [
+        {"id": 1, "deployed": True}, {"id": 2, "deployed": False}, {"id": 3, "deployed": True}])
+    monkeypatch.setattr(server, "_strategy_card", lambda s: dict(s))
+    deps = [{"strategy_id": 1, "realized_pnl": 1.004, "closed_trades": 3, "open_positions": 1},
+            {"strategy_id": 1, "realized_pnl": "-0.5", "closed_trades": 2, "open_positions": 0},
+            {"strategy_id": 2, "realized_pnl": 9, "closed_trades": 9, "open_positions": 0}]
+    monkeypatch.setattr(server.repo, "list_deployments", lambda cur, uid, **k: deps)
+    cards = {c["id"]: c for c in server.list_strategies(ctx(query={}))["strategies"]}
+    assert cards[1]["real"] == {"pnl": 0.5, "trades": 5, "open": 1}
+    assert "real" not in cards[2] and "real" not in cards[3]  # not deployed / no active deployment rows
+
+
+def test_strategies_list_skips_deployment_query_without_deployed_cards(monkeypatch):
+    monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: {"passed": 1, "total": 1})
+    monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [{"id": 1, "deployed": False}])
+    monkeypatch.setattr(server, "_strategy_card", lambda s: dict(s))
+    monkeypatch.setattr(server.repo, "list_deployments", lambda *a, **k: pytest.fail("no deployed card, no query"))
+    assert "real" not in server.list_strategies(ctx(query={}))["strategies"][0]
+
+
 def test_strategies_page_param_maps_to_offset(monkeypatch):
     seen = {}
     monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: {"passed": 10, "total": 120})

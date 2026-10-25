@@ -105,6 +105,17 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.doesNotMatch(f.strategySlip(list[0], null, {pick: true}), /Select for deployment/);
   });
 
+  test(`${name}: a deployed strategy row shows its real P&L beside the backtest`, async () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const row = s => f.strategySlip(detailStrategy({id: 46, title: 'Row fixture', ...s}), null, {});
+    assert.match(row({deployed: true, real: {pnl: 1.67, trades: 5, open: 1}}), /\+\$1\.67<\/span> since deploying · 5 trades/);
+    assert.match(row({deployed: true, real: {pnl: 0, trades: 1, open: 0}}), /since deploying · 1 trade</);
+    assert.match(row({deployed: true, real: {pnl: 0, trades: 0, open: 2}}), /No closed trades yet/);
+    assert.doesNotMatch(row({}), /real-fig/);
+    // A research-only perpetual never shows a real record, even if one leaks in.
+    assert.doesNotMatch(f.strategySlip(detail({deployed: true, real: {pnl: 3, trades: 2, open: 0}}), null, {}), /real-fig/);
+  });
+
   test(`${name}: a perpetual-only inventory has no bulk selection or false live status`, async () => {
     const list = [detail({deployed: true, deploy_live: true})];
     const f = frontend({fetchImpl: path => {
