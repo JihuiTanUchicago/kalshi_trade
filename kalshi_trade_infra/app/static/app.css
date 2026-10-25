@@ -264,7 +264,8 @@ h1.page { font-size: clamp(23px, 3vw, 30px); font-weight: 600; letter-spacing: -
 .statusline.needs .said em { color: var(--signal); }
 .statusline .sep { color: var(--rule-2); margin: 0 .5em; }
 
-.measure { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 320px)); justify-content: space-between; border-bottom: 1px solid var(--rule); margin: 0; padding: 0; }
+/* 1fr, not a 320px cap: with the hot-markets rail open a fourth figure used to wrap onto a row alone. */
+.measure { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); border-bottom: 1px solid var(--rule); margin: 0; padding: 0; }
 .measure > .m { padding: 15px 18px 14px; border-left: 1px solid var(--rule); }
 .measure > .m:first-child { border-left: 0; padding-left: 0; }
 .m dt.lab, .lab { font-family: var(--f-nar); font-size: 11px; letter-spacing: .11em; text-transform: uppercase; color: var(--ink-3); display: block; margin: 0 0 5px; }
