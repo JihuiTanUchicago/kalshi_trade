@@ -10,8 +10,8 @@ TickStore (kalshi_book / kalshi_trades); fills from QueueReplayVenue's queue mod
 from the LIP snapshots data_pipeline.lip_programs writes (every snapshot overlapping the window),
 or from ``--pool-per-hour`` for a hypothetical pool on every contract.
 
-At the end every open position is marked at its contract's last mid (a contract that closed in the
-window sits at ~0 or ~1 by then). Reported: rewards, trading P&L, fills, peak collateral, and both
+At the end every open position is marked at its contract's settlement when ``results`` has it
+(fetch_results), else at its last mid (a contract that closed in the window sits near 0 or 1). Reported: rewards, trading P&L, fills, peak collateral, and both
 per contract.
 """
 from __future__ import annotations
@@ -88,8 +88,11 @@ def _in_series(ticker: str, series: Sequence[str]) -> bool:
 class MakerReplay:
     def __init__(self, series: Sequence[str], cfg: MakerConfig, programs: Sequence[dict] = (),
                  pool_per_hour: Optional[float] = None, target_size: float = 300.0,
-                 fees: Optional[MakerFees] = None, decide_every_s: int = 1) -> None:
+                 fees: Optional[MakerFees] = None, decide_every_s: int = 1, tickers_from_markets: bool = False) -> None:
+        """``tickers_from_markets``: read only the book rows of contracts kalshi_markets listed in the
+        two hours before each replayed hour (a fraction of the memory; fine for short-dated series)."""
         self.series, self.cfg = list(series), cfg
+        self.tickers_from_markets = tickers_from_markets
         self.pool_per_hour, self.target_size = pool_per_hour, target_size
         self.decide_every_s = max(1, int(decide_every_s))
         self.instruments: Dict[InstrumentId, Instrument] = {}
@@ -182,8 +185,13 @@ class MakerReplay:
                 for t, c in zip(mk["ticker"].to_pylist(), mk["close_ts"].to_pylist()):
                     if t and c and _in_series(t, self.series):
                         self.close_ts[t] = int(c)
-            book = store.read("kalshi_book", h, he)
-            trades = store.read("kalshi_trades", h, he)
+            want = None
+            if self.tickers_from_markets:
+                want = sorted(t for t in self.close_ts if self.close_ts[t] > h.timestamp())
+                if not want:
+                    continue
+            book = store.read("kalshi_book", h, he, tickers=want)
+            trades = store.read("kalshi_trades", h, he, tickers=want)
             book = _only_series(book, self.series)
             trades = _only_series(trades, self.series)
             if book is None:
@@ -238,12 +246,18 @@ class MakerReplay:
                                                                 sum(self.rewards.values())), flush=True)
         return self.report()
 
-    def report(self) -> dict:
+    def report(self, results: Optional[Dict[str, float]] = None) -> dict:
+        """``results``: YES settlement value (1.0 / 0.0) per settled ticker; those are marked at it,
+        the rest at their last mid."""
         late = self.loop.book_fills()
         self.fills += len(late)
         self.filled_qty += sum(f.qty for f in late)
         marks = {}
-        for t, m in self.last_mid.items():
+        results = results or {}
+        for t in set(self.last_mid) | set(results):
+            m = results.get(t, self.last_mid.get(t))
+            if m is None:
+                continue
             marks[InstrumentId("kalshi", t, "yes")] = m
             marks[InstrumentId("kalshi", t, "no")] = 1 - m
         pnl = self.book.equity(marks)            # starts from cash 0: trading P&L incl. maker fees
@@ -259,6 +273,7 @@ class MakerReplay:
         return {"rewards": round(rewards, 2), "trading_pnl": round(pnl, 2), "total": round(rewards + pnl, 2),
                 "fills": self.fills, "filled_qty": self.filled_qty, "peak_collateral": round(self.peak_collateral, 2),
                 "max_abs_inventory": self.max_abs_inventory, "stopped_contracts": len(self.loop.stopped),
+                "settled_marks": len([t for t in results if t in self.last_mid]),
                 "per_contract": {t: {k: round(v, 2) if isinstance(v, float) else v for k, v in d.items()}
                                  for t, d in sorted(per.items(), key=lambda kv: -(kv[1]["reward"] + kv[1]["pnl"]))}}
 
@@ -273,6 +288,22 @@ def _only_series(t, series: Sequence[str]):
         mask = m if mask is None else pc.or_(mask, m)
     t = t.filter(mask)
     return t if t.num_rows else None
+
+
+def fetch_results(tickers: Iterable[str], get=None) -> Dict[str, float]:
+    """YES settlement value of every settled ticker, from Kalshi's public GET /markets/{ticker}."""
+    if get is None:
+        from data_pipeline.common import api_get as get
+    out: Dict[str, float] = {}
+    for t in tickers:
+        try:
+            m = (get("/markets/%s" % t) or {}).get("market") or {}
+        except Exception as e:  # noqa: BLE001 - an unsettled or unknown market falls back to its mid
+            print("[maker_replay] result %s: %r" % (t, e), flush=True)
+            continue
+        if m.get("result") in ("yes", "no"):
+            out[t] = 1.0 if m["result"] == "yes" else 0.0
+    return out
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:  # pragma: no cover - thin CLI

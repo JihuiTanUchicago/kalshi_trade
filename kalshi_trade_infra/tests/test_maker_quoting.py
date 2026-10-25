@@ -1,6 +1,6 @@
 """Passive market making: the filed LIP scoring rule, the quoting policy, the queue-aware replay
 venue, and one end-to-end replay over a synthetic tick archive."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -228,3 +228,83 @@ def test_max_touch_size_skips_the_side_with_a_deep_queue():
     assert [d.instrument.outcome for d in out] == ["no"]
     wide = MakerConfig(quote_size=100, rewarded_only=False, max_touch_size=1000, improve_min_spread_ticks=2)
     assert len(maker_quotes(_inst(), q, None, 0.0, 600, wide)) == 2    # stepping inside starts a new level
+
+
+def _replay_inputs():
+    pa = pytest.importorskip("pyarrow")
+    h = datetime(2026, 10, 25, 12, tzinfo=timezone.utc)
+    t0 = int(h.timestamp())
+    tk = YES.symbol
+    ns = 1_000_000_000
+    book = pa.table({"rt": [t0 * ns, t0 * ns, t0 * ns], "ticker": [tk] * 3, "kind": [3, 3, 3],
+                     "side": [None, "yes", "no"], "price": [None, 0.40, 0.57], "qty": [None, 1500.0, 1200.0]})
+    trades = pa.table({"rt": [(t0 + 100) * ns], "ticker": [tk], "yes_price": [0.39], "count": [10.0],
+                       "taker_side": ["no"]})
+    markets = pa.table({"ticker": [tk], "close_ts": [t0 + 900]})
+    prog = {"id": "p1", "market_ticker": tk, "start_date": "2026-10-25T12:00:00Z", "end_date": "2026-10-25T12:15:00Z",
+            "period_reward": 200_000, "target_size_fp": "1000.00", "discount_factor_bps": 5000}
+    return h, tk, {"kalshi_book": book, "kalshi_trades": trades, "kalshi_markets": markets}, prog
+
+
+def test_settled_contracts_are_marked_at_their_result():
+    from app.adapters.sim.maker_replay import MakerReplay, fetch_results
+    h, tk, tables, prog = _replay_inputs()
+    rep = MakerReplay(["KXCRYPTOLEAD15M"], MakerConfig(quote_size=500, max_inventory=500), [prog],
+                      tickers_from_markets=True)
+    rep.run(_Store(tables), h, h.replace(minute=20))
+    res = fetch_results([tk, "KXCRYPTOLEAD15M-X"], get=lambda p: {"market": {"result": "no" if tk in p else ""}})
+    assert res == {tk: 0.0}
+    out = rep.report(res)
+    assert out["trading_pnl"] == pytest.approx(-500 * 0.40) and out["settled_marks"] == 1
+
+
+class _S3:
+    def __init__(self):
+        self.objs = {}
+
+    def head_object(self, Bucket, Key):
+        if Key not in self.objs:
+            raise KeyError(Key)
+
+    def put_object(self, Bucket, Key, Body, **kw):
+        self.objs[Key] = Body
+
+    def get_object(self, Bucket, Key):
+        import io
+        return {"Body": io.BytesIO(self.objs[Key])}
+
+    def get_paginator(self, name):
+        objs = self.objs
+
+        class P:
+            def paginate(self, Bucket, Prefix):
+                yield {"Contents": [{"Key": k} for k in sorted(objs) if k.startswith(Prefix)]}
+        return P()
+
+
+def test_paper_job_scores_each_archived_hour_once_and_sums_them(monkeypatch):
+    import gzip
+    import json
+    from app.adapters.sim import maker_paper as mp
+    h, tk, tables, prog = _replay_inputs()
+
+    class Store(_Store):
+        cache_dir, local_root = "/nonexistent", "/nonexistent"
+
+        def table_key(self, table, hour):
+            return "ticks/v1/%s/date=%s/hour=%s/part.parquet" % (table, hour.strftime("%Y-%m-%d"), hour.strftime("%H"))
+
+    s3 = _S3()
+    s3.objs["ticks/v1/kalshi_book/date=2026-10-25/hour=12/part.parquet"] = b""
+    s3.objs["ticks/v1/lip_programs/date=2026-10-25/1200.json.gz"] = gzip.compress(
+        json.dumps({"programs": {"active": [prog]}}).encode())
+    monkeypatch.setattr(mp, "SERIES", ["KXCRYPTOLEAD15M"])
+    now = h + timedelta(hours=1, minutes=20)
+    get = lambda p: {"market": {"result": "yes"}}
+    keys = mp.hourly(Store(tables), s3, "b", "ticks", now, lookback=3, get=get)
+    assert keys == ["ticks/v1/lip_maker_paper/date=2026-10-25/hour=12.json.gz"]   # 10 and 11 not archived
+    assert mp.hourly(Store(tables), s3, "b", "ticks", now, lookback=3, get=get) == []   # already scored
+    doc = json.loads(gzip.decompress(s3.objs[keys[0]]))
+    assert set(doc["configs"]) == {"q100", "q1000"} and doc["configs"]["q1000"]["settled_marks"] == 1
+    summ = mp.summary(s3, "b", "ticks", now, days=1)
+    assert summ["hours"] == 1 and summ["configs"]["q1000"]["total"] == doc["configs"]["q1000"]["total"]

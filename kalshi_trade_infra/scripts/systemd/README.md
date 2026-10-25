@@ -84,6 +84,18 @@ the boxes on 2026-10-24, so rebuilding a box no longer drops them.
 Both boxes run `kalshi-alerter.timer` today (checked 2026-10-24), each with its own
 `.alerter_state.json`, so every alert goes out twice. Keep it enabled on one box only.
 
+### Paper liquidity-reward maker (web box)
+
+`tau-lip-maker-paper.timer` runs `app.adapters.sim.maker_paper hourly` at :25. It replays every
+closed, archived tick hour of the last 6 that has no result yet, for KXCRYPTOLEAD15M
+(`TAU_LIP_PAPER_SERIES`), against the real pools from the LIP snapshots, and writes one JSON per
+hour to `ticks/v1/lip_maker_paper/`. Paper only: it places no orders. Tick files it downloads are
+deleted after each hour (`TAU_TICK_CACHE=/opt/kalshi/ticks-cache`). Read the running total with
+`python -m app.adapters.sim.maker_paper summary --days 7`.
+
+    sudo cp scripts/systemd/tau-lip-maker-paper.* /etc/systemd/system/
+    sudo systemctl daemon-reload && sudo systemctl enable --now tau-lip-maker-paper.timer
+
 ### Weather forecasts (web box)
 
 `kalshi-weather-fcst.timer` runs `app.weather_fcst_collect` hourly at :20, storing every issued
