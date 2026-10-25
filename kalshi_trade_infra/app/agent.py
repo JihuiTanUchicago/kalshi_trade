@@ -47,6 +47,7 @@ from app import spec as specmod
 from app import stats
 from app.llm import LLMError, ModelFn, Usage, ask_json, claude, current_model
 from app.markets import MARKETS
+from app.services import markets as market_service
 from app.agent_market_data import AgentMarketData, DataScope
 from app.agent_knowledge import AgentKnowledge
 from app.agent_news import AgentNews
@@ -749,11 +750,10 @@ def _researchable_keys(cur) -> List[str]:
     """Market keys the autopilot may pick for its OWN choice: only those with a real backtest
     surface (collected candle history / a live spot feed), so it stops picking data-less markets
     that just fail at load — the proactive complement to the reactive fail-fast/backoff. Reuses the
-    server picker's tested readiness logic (lazy import avoids the server->agent cycle). Empty ->
-    fail open (offer all), so a cold/edge DB never blocks research entirely."""
-    from app import server  # lazy: server imports agent at module load, so import it at call time
+    server picker's tested readiness logic (app.services.markets). Empty -> fail open (offer
+    all), so a cold/edge DB never blocks research entirely."""
     try:
-        ready = [m["key"] for m in server._researchable_markets(cur) if m["has_data"]]
+        ready = [m["key"] for m in market_service.researchable_markets(cur) if m["has_data"]]
     except Exception:  # noqa: BLE001 - a readiness-lookup hiccup must never block research
         return list(MARKETS)
     return ready or list(MARKETS)
