@@ -3522,6 +3522,16 @@ def _backtest_net_positive(strat: Dict) -> bool:
         return False
 
 
+def _underpowered_net_positive(cand: Dict, strat: Dict) -> bool:
+    """An underpowered verdict earns a paper forward test only if its unseen trades were up: the
+    validation P&L the gatekeeper recorded, or for older rows without one, the strategy's own
+    backtest (_backtest_net_positive: the research fold, since research strategies carry no
+    held-out numbers). Unseen trades outrank the research fold the idea was selected on."""
+    if cand.get("net_pnl") is not None:
+        return float(cand["net_pnl"]) > 0
+    return _backtest_net_positive(strat)
+
+
 def auto_paper_probation(cur, user: Dict) -> List[str]:
     """Put validation near misses that never ran on paper onto paper, at most PROBATION_MAX_ACTIVE
     running at once. Autopilot-on users only. Returns the chat lines for what it did."""
@@ -3553,10 +3563,12 @@ def auto_paper_probation(cur, user: Dict) -> List[str]:
             continue
         if _engine.cross_deploy_block(strat["spec"], "paper"):
             continue
-        if c["p_value"] is None and not _backtest_net_positive(strat):
+        if c["p_value"] is None and not _underpowered_net_positive(c, strat):
             continue
         tried.add(sid)
-        if c["p_value"] is None:
+        if c["p_value"] is None and c.get("net_pnl") is not None:
+            why = "had too few validation trades to score (%d), and they were up $%.2f" % (c["n_trades"], c["net_pnl"])
+        elif c["p_value"] is None:
             why = "had too few validation trades to score (%d), and its backtest was up on unseen data" % c["n_trades"]
         else:
             why = "narrowly missed validation (p=%.3f, $%.2f over %d unseen trades)" % (
