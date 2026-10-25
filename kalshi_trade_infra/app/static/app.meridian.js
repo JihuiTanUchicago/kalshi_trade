@@ -3332,18 +3332,22 @@
       '<dl class="figures measure" style="margin-top:14px">' +
         fig('Yes price', mid == null ? '—' : cents(mid)) + fig('24h volume', num(Math.round(+d.volume_24h || 0))) +
         fig('Open interest', num(Math.round(+d.open_interest || 0))) + fig('Closes', closes) + '</dl>', `
-      <section class="sect"><div class="sect-head"><h2>Price history</h2><p>Yes price · Kalshi ${gran} candles</p></div>
-        <div class="pchart-wrap">${priceChart(d.points)}</div></section>
-      <section class="sect"><div class="sect-head"><h2>Raw data</h2><p>${num(d.points.length)} ${gran} points${d.points.length ? ' · newest first' : ''}</p></div>
+      <section class="sect"><div class="sect-head"><h2>Price history</h2><p>Yes price${d.history_unavailable ? '' : ` · Kalshi ${gran} candles`}</p></div>
+        <div class="pchart-wrap">${d.history_unavailable
+          ? '<div class="empty"><h3>Price history didn’t load</h3><p>Kalshi didn’t send it just now. The figures above are from the latest market snapshot.</p><button class="btn sm" type="button" id="mk-retry">Try again</button></div>'
+          : priceChart(d.points)}</div></section>
+      <section class="sect"><div class="sect-head"><h2>Raw data</h2><p>${d.history_unavailable ? 'Not loaded' : `${num(d.points.length)} ${gran} points${d.points.length ? ' · newest first' : ''}`}</p></div>
         <div id="rawsect"></div></section>
       <div class="xpage"><a class="btn sm" href="/explore">← Back to Explore</a>
         <span><button class="btn sm" id="dl-csv" ${d.points.length ? '' : 'disabled'}>Download CSV</button>
         <a class="btn sm" href="https://kalshi.com/markets/${encodeURIComponent((d.series || '').toLowerCase())}" target="_blank" rel="noopener" style="margin-left:8px">View on Kalshi ↗</a></span></div>`);
+    const retry = root.querySelector('#mk-retry');
+    if (retry) retry.onclick = () => viewMarketDetail(ticker);
     const pts = d.points.slice().reverse();  // newest first
     const PER = 100; let pg = 0;
     const rawEl = root.querySelector('#rawsect');
     const renderRaw = () => {
-      if (!pts.length) { rawEl.innerHTML = '<div class="empty"><p>No candles recorded for this market yet.</p></div>'; return; }
+      if (!pts.length) { rawEl.innerHTML = `<div class="empty"><p>${d.history_unavailable ? 'Waiting on Kalshi for the candles.' : 'No candles recorded for this market yet.'}</p></div>`; return; }
       const pages = Math.max(1, Math.ceil(pts.length / PER));
       const rows = pts.slice(pg * PER, (pg + 1) * PER).map((p) => `<tr><td class="tick">${fmtT(p.t)}</td><td class="num">${cents(p.yes)}</td><td class="num">${num(Math.round(p.vol || 0))}</td></tr>`).join('');
       rawEl.innerHTML = `<div class="sheet"><table><thead><tr><th>Time (UTC)</th><th class="num">Yes price</th><th class="num">Volume</th></tr></thead><tbody>${rows}</tbody></table></div>

@@ -619,6 +619,22 @@ test('a market Kalshi did not answer for offers Try again and loads on retry', a
   assert.doesNotMatch(f.root.querySelector('main').innerHTML, /mk-retry/);
 });
 
+test('a market whose history did not load still shows its figures, with Try again on the chart', async () => {
+  let calls = 0;
+  const f = frontend({fetchImpl: path => {
+    if (!path.startsWith('/api/explore/market?')) return response({});
+    return ++calls === 1
+      ? response({ticker: 'KXNBAGAME-X', series: 'KXNBAGAME', title: 'Minnesota wins', points: [], yes_bid: '0.50', yes_ask: '0.51', last: '0.50', open_interest: '201649', history_unavailable: true})
+      : response({ticker: 'KXNBAGAME-X', series: 'KXNBAGAME', title: 'Minnesota wins', points: [{t: 1792900000, yes: .5, vol: 3}, {t: 1792900060, yes: .51, vol: 2}], period_min: 1, yes_bid: '0.50', yes_ask: '0.51'});
+  }});
+  await f.viewMarketDetail('KXNBAGAME-X'); await flush();
+  const main = f.root.querySelector('main').innerHTML;
+  assert.match(main, /Price history didn’t load/); assert.match(f.root.querySelector('#rawsect').innerHTML, /Waiting on Kalshi for the candles/);
+  assert.match(f.root.innerHTML, /201,649/);  // the snapshot's open interest still shows
+  f.root.querySelector('#mk-retry').onclick(); await flush(); await flush();
+  assert.equal(calls, 2); assert.doesNotMatch(f.root.querySelector('main').innerHTML, /didn’t load/);
+});
+
 // Every page the server serves the app shell for (app/server.py SPA_ROUTES). A path with no route
 // fell back to the dashboard, so Meridian's /settings/billing opened Tau's dashboard after a theme switch.
 const SPA_PATHS = ['/', '/dashboard', '/research', '/research/1', '/strategies', '/strategies/1', '/deploy', '/community',
