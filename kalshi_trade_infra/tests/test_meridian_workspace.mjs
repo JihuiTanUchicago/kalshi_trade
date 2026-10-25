@@ -2566,3 +2566,30 @@ test('the Overview autopilot card and panel say where it may trade, with a Chang
   assert.equal(f.S.me.user.autopilot, true); assert.equal(prefs.open, true);
   f.clearTimers();
 });
+
+test('the Overview autopilot card and panel show the last 7 days with real credits and paper P&L kept apart', async () => {
+  const week = {research_credits: 0.5, tested: 12, passed: 0, paper_started: 3, paper_pnl: 1.25, paper_trades: 1};
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(dashboardData());
+    if (path === '/api/autopilot/status') return response({...apStatus, week});
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path.startsWith('/api/chat')) return response({messages: []});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = true;
+  await f.viewDashboard(); await flush();
+  f.S.ap = {...apStatus, week}; f.paintDashAp();
+  const card = f.root.querySelector('#dash-ap .ap-week').innerHTML;
+  assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$0\.50 <small>real money<\/small><\/dd>/);
+  assert.match(card, /<dt>Started on paper<\/dt><dd>3 strategies<\/dd>/);
+  assert.match(card, /<dt>Paper P&amp;L<\/dt><dd><span class="pos">\+\$1\.25<\/span> <small>paper, not real money · 1 closed trade<\/small><\/dd>/);
+  assert.doesNotMatch(card, /\$1\.75|\$0\.75/);  // never netted or summed
+  await f.root.querySelector('#dash-ap [data-apcard="open"]').onclick(); await flush();
+  const box = f.root.parent.querySelector('#autopilot-float');
+  assert.match(box.querySelector('#apf-week').innerHTML, /Last 7 days[\s\S]*paper, not real money/);
+  // Before a week has been read the card shows its old ideas figure and no scorecard.
+  f.S.ap = {...apStatus}; f.paintDashAp();
+  assert.equal(f.root.querySelector('#dash-ap .ap-week'), null);
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, /Ideas this week/);
+  f.clearTimers();
+});

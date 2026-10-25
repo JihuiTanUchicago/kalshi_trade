@@ -3514,10 +3514,10 @@
     const cells = [
       d.live_running ? ['Live P&amp;L today', money(d.today_live_pnl || 0)] : ['Paper P&amp;L, ' + paperSpan(S.dashPaper), pnl == null ? '—' : money(pnl)],
       ['Strategies running', running ? String(running) : 'None yet'],
-      ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested · ${r.passed_7d || 0} passed`],
+      d.week ? null : ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested · ${r.passed_7d || 0} passed`],
       prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${prog.trades} of ${prog.trades_needed} paper trades</a>`]
         : ['Last move', d.reviewing ? 'Reviewing now' : d.last_action && d.last_action.at ? sinceMin(d.last_action.at) : (d.last_review_at ? 'Reviewed ' + sinceMin(d.last_review_at) : 'Starting up')],
-    ];
+    ].filter(Boolean);
     const now = d.billing_blocked
       ? `Paused: <a href="/billing">${d.billing_reason === 'card' ? 'add a payment method' : 'add credits'}</a> so it can keep researching.`
       : esc((d.story && d.story[0]) || 'Autopilot is on.');
@@ -3525,7 +3525,7 @@
     host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>${esc(m.label)}</span>
         <p class="apcard-now">${now}</p>${Array.isArray(d.focus) ? `
         <p class="ap-focus">${apFocusLine(d.focus, 'data-apcard="focus"')}</p>` : ''}
-        <dl class="apcard-figs">${cells.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl></div>
+        <dl class="apcard-figs">${cells.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>${apWeek(d.week)}</div>
       <div class="apcard-act"><button type="button" class="btn" data-apcard="open">Open autopilot</button></div>`;
     host.querySelector('[data-apcard="open"]').onclick = () => apOpen();
     apBindFocus(host);
@@ -3556,6 +3556,19 @@
     if (!box || !apExpanded()) return;
     const prefs = box.querySelector('.apf-prefs'); if (prefs) prefs.open = true;
     const sel = box.querySelector('#apf-focus'); if (sel && sel.focus) sel.focus();
+  }
+  // The autopilot's last 7 days (d.week). Credits are real money and paper P&L is not, so they are two
+  // labelled figures, never added together. Research counts every session; paper counts only the
+  // strategies the autopilot put on paper itself (the server attributes them by their deploy record).
+  function apWeek(w) {
+    if (!w) return '';
+    const pnl = +w.paper_pnl || 0, trades = +w.paper_trades || 0;
+    return `<section class="ap-week" aria-label="Autopilot, last 7 days"><h3>Last 7 days</h3><dl>
+      <div><dt>Credits spent on research</dt><dd>${usd(w.research_credits || 0)} <small>real money</small></dd></div>
+      <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested · ${Number(w.passed || 0).toLocaleString('en-US')} passed</dd></div>
+      <div><dt>Started on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'}</dd></div>
+      <div><dt>Paper P&amp;L</dt><dd><span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money · ${trades} closed trade${trades === 1 ? '' : 's'}</small></dd></div>
+    </dl><p class="ap-week-note">Research counts every session, yours and the autopilot's. Paper counts only the strategies the autopilot put on paper itself.</p></section>`;
   }
   // What switching it on costs, said before the click: the agent's runs spend credits, and with
   // auto-reload on the saved card is charged when they run low. Payments off on this server: no line.
@@ -3739,6 +3752,7 @@
           <label class="switch"><span class="vh">Autopilot</span><input type="checkbox" id="apf-apswitch"></label>
         </div>
         <dl class="apf-stats" id="apf-stats"></dl>
+        <div id="apf-week"></div>
         <div class="apf-story" id="apf-story" aria-live="polite"></div>
         <p class="ap-focus" id="apf-focusline" hidden></p>
         <details class="apf-prefs"><summary>Model and markets</summary>
@@ -3883,6 +3897,7 @@
       ${d.research && !(d.story || []).length ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc([...new Set(d.research.active)].join(' · ')) : 'Not researching right now'} · ${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested this week, ${d.research.passed_7d} passed${d.research.cost_7d ? ', $' + Number(d.research.cost_7d).toFixed(2) + ' spent' : ''}</dd></div>` : ''}
       ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> · ${d.paper_progress.trades}/${d.paper_progress.trades_needed} paper trades · ${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}`;
     }
+    const week = box.querySelector('#apf-week'); if (week) week.innerHTML = d.autopilot ? apWeek(d.week) : '';
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
     if (Array.isArray(d.focus)) apFocusPaint(box, d.focus);
     const fsel = box.querySelector('#apf-focus');

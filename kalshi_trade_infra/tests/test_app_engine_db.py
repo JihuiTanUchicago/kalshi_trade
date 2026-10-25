@@ -220,6 +220,48 @@ def test_runs_spent_sums_each_runs_usage_debits(conn, user):
     assert [r["Column_name"] for r in cur.fetchall()] == ["run_id", "kind"]
 
 
+def test_autopilot_paper_week_counts_only_what_the_autopilot_put_on_paper(conn, user):
+    """The scorecard's paper figures: strategies the autopilot deployed itself (an 'applied' deploy
+    proposal it never asked about), not ones the user approved or deployed by hand, nor demo."""
+    from app import repository as repo
+    from app import spec as specmod
+
+    cur = conn.cursor()
+    now = repo.now_utc()
+    since = now - timedelta(days=7)
+    spec = specmod.validate({"side": "yes", "entry": {"min_edge": 0.1}})
+
+    def strategy():
+        return repo.insert_strategy(cur, user["id"], None, None, "btc15m", "volatility", "T", "t", spec, "passed",
+                                    {"capital": 10})
+
+    def closed(dep, pnl, when):
+        pid = repo.insert_position(cur, dep, user["id"], "paper", "WK-" + uuid.uuid4().hex[:8], "yes", 1, 0.5, 0.0,
+                                   now)
+        cur.execute("UPDATE app_positions SET status='closed', pnl=%s, closed_at=%s WHERE id=%s", (pnl, when, pid))
+
+    auto_new, auto_old, approved, manual = strategy(), strategy(), strategy(), strategy()
+    for sid in (auto_new, auto_old):
+        repo.create_proposal(cur, user["id"], "deploy", "Autopilot", None, sid, "applied")
+    pid = repo.create_proposal(cur, user["id"], "deploy", "Asked", None, approved, "pending")
+    assert repo.decide_proposal(cur, pid, "applied")  # the user approved it: theirs, not the autopilot's
+    d_new = repo.create_deployment(cur, user["id"], auto_new, "btc15m", "paper")
+    d_old = repo.create_deployment(cur, user["id"], auto_old, "btc15m", "paper")
+    cur.execute("UPDATE app_deployments SET created_at=%s WHERE id=%s", (since - timedelta(days=3), d_old))
+    repo.create_deployment(cur, user["id"], auto_old, "eth15m", "paper")  # a new leg is not a new start
+    d_demo = repo.create_deployment(cur, user["id"], auto_new, "btc15m", "demo")
+    d_approved = repo.create_deployment(cur, user["id"], approved, "btc15m", "paper")
+    d_manual = repo.create_deployment(cur, user["id"], manual, "btc15m", "paper")
+    closed(d_new, 2.5, now - timedelta(days=1))
+    closed(d_old, -1.0, now - timedelta(hours=2))
+    closed(d_old, 9.0, since - timedelta(days=1))  # last week
+    closed(d_approved, 40.0, now - timedelta(hours=1))
+    closed(d_manual, 50.0, now - timedelta(hours=1))
+    cur.execute("UPDATE app_positions SET mode='demo' WHERE deployment_id=%s", (d_demo,))
+    week = repo.autopilot_paper_week(cur, user["id"], since)
+    assert week == {"started": 1, "pnl": pytest.approx(1.5), "trades": 2}
+
+
 def test_the_interactive_lane_skips_research(conn, user):
     from app import repository as repo
 

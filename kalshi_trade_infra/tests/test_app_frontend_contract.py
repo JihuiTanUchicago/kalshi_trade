@@ -152,6 +152,7 @@ def _ap_ctx(monkeypatch, autopilot=1):
     monkeypatch.setattr(server.repo, 'list_runs', lambda *a, **k: [])
     monkeypatch.setattr(server.repo, 'research_week', lambda *a, **k: [])
     monkeypatch.setattr(server.repo, 'research_spent_since', lambda *a, **k: 0.0)
+    monkeypatch.setattr(server.repo, 'autopilot_paper_week', lambda *a, **k: {'started': 0, 'pnl': 0.0, 'trades': 0})
     monkeypatch.setattr(server.repo, 'strategies_passed_since', lambda *a, **k: 0)
     monkeypatch.setattr(server.billing, 'configured', lambda: True)
     monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: None)
@@ -370,3 +371,22 @@ def test_run_page_and_research_list_carry_each_runs_ledger_spend(monkeypatch):
     runs = server.list_runs(context())['runs']
     assert [r['spent_usd'] for r in runs] == [1.8373, 0.0, 0.0]  # a run with no debit cost nothing
     assert calls == [(7, [9, 4, 2])]
+
+
+def test_autopilot_status_carries_a_weekly_scorecard_with_credits_and_paper_apart(monkeypatch):
+    # Real credits and paper P&L travel as separate fields; nothing adds them up.
+    ctx = _ap_ctx(monkeypatch, autopilot=1)
+    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: True)
+    monkeypatch.setattr(server.repo, 'research_week', lambda *a, **k: [{'model': None, 'runs': 3, 'tried': 41, 'passed': 0,
+                                                                        'input_tokens': 0, 'output_tokens': 0}])
+    monkeypatch.setattr(server.repo, 'strategies_passed_since', lambda *a, **k: 2)
+    monkeypatch.setattr(server.repo, 'research_spent_since', lambda *a, **k: 7.256)
+    seen = []
+    monkeypatch.setattr(server.repo, 'autopilot_paper_week',
+                        lambda cur, uid, since: seen.append((uid, since)) or {'started': 1, 'pnl': -3.456, 'trades': 4})
+    week = server.autopilot_status(ctx)['week']
+    assert week == {'research_credits': 7.26, 'tested': 41, 'passed': 2, 'paper_started': 1,
+                    'paper_pnl': -3.46, 'paper_trades': 4}
+    assert seen[0][0] == 7 and abs((server.repo.now_utc() - seen[0][1]).total_seconds() - 7 * 86400) < 5
+    off = server.autopilot_status(_ap_ctx(monkeypatch, autopilot=0))
+    assert 'week' not in off and len(seen) == 1  # an off autopilot reads nothing extra
