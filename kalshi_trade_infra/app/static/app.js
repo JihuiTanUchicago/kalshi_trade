@@ -386,13 +386,13 @@
     [/^\/deploy$/, viewDeploy],
     [/^\/community$/, viewCommunity],
     [/^\/explore$/, viewExplore],
-    [/^\/billing$/, viewBilling],
+    [/^\/(?:billing|settings\/billing)$/, viewBilling],
     [/^\/admin$/, viewAdmin],
-    [/^\/system$/, viewSystem],
+    [/^\/(?:system|settings\/system)$/, viewSystem],
     [/^\/(?:funds|settings\/account)$/, viewFunds],
     [/^\/devlog$/, viewDevLog],
     [/^\/track-record$/, () => go('/#track-record', true)],  // the record moved onto the dashboard
-    [/^\/settings$/, viewSettings],
+    [/^\/settings(?:\/theme)?$/, viewSettings],  // Meridian's settings URLs land on the same pages
     [/^\/terms$/, viewTerms],
     [/^\/privacy$/, viewPrivacy],
   ];
@@ -1182,9 +1182,11 @@
   function legalShell(title, bodyHtml) {
     clearTimers();
     document.body.classList.add('landing-body');
-    const away = S.me ? '<a href="/">Dashboard</a>' : '<a href="/signin">Sign in</a>';
+    // Links out of the legal pages load the app afresh: boot.js serves these pages in Tau for
+    // everyone, so a Meridian user has to reload to get their own theme back.
+    const away = S.me ? '<a href="/" data-native>Dashboard</a>' : '<a href="/signin" data-native>Sign in</a>';
     root.innerHTML = `<div class="legal-wrap">
-      <header class="legal-top"><a class="lbrand" href="/">${ICON.mark}<span>Tau</span></a>
+      <header class="legal-top"><a class="lbrand" href="/" data-native>${ICON.mark}<span>Tau</span></a>
         <nav class="legal-nav"><a href="/terms">Terms</a><a href="/privacy">Privacy</a>${away}</nav></header>
       <main class="legal" id="main">
         <h1>${title}</h1><p class="legal-updated">Last updated ${LEGAL_UPDATED}</p>
