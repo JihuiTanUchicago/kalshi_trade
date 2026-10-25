@@ -9,6 +9,11 @@ research spec in `RESEARCH_PIPELINE_DESIGN.md`. This file holds only what an age
 from the code: commands, non-obvious conventions, and the safety/rigor bars.
 
 ## Project Structure
+- **Target layering lives in `ARCHITECTURE.md`** (venue-agnostic core, ports/adapters, migration order).
+  `trading_core/`: the venue-agnostic domain (`Instrument`, `OrderIntent`, `Fill`, `Position`, ...) and
+  ports (`Venue`, `MarketDataFeed`, `FeatureProvider`, `Strategy`, `FeeModel`, `Clock`); stdlib only.
+  New venue/data code goes in `app/adapters/<venue>/`, new orchestration in `app/services/`.
+  `lint-imports` (CI) enforces the boundaries in `.importlinter`.
 - `app/`: Tau, the live product — research agent, backtester, gatekeeper, paper/live engine
   (`engine.py`, run by `recursive-engine`), autopilot, RSI loop (`rsi*.py`), server, SPA.
 - `data_pipeline/`: collectors (Kalshi books/trades/catalog, Coinbase, per-tick recorders),

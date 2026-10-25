@@ -41,7 +41,13 @@ jobs:
 
       - name: Byte-compile Python
         working-directory: kalshi_trade_infra
-        run: python -m py_compile app/*.py data_pipeline/*.py
+        run: python -m py_compile app/*.py data_pipeline/*.py trading_core/*.py trading_core/*/*.py
+
+      - name: Check import boundaries (ARCHITECTURE.md)
+        working-directory: kalshi_trade_infra
+        run: |
+          pip install import-linter==2.15
+          lint-imports
 
       - name: Check both frontend themes
         working-directory: kalshi_trade_infra
