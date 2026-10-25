@@ -164,7 +164,11 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const demo = f.trackRecordPanel(m, 'demo', th);
     assert.match(demo, /real fills on Kalshi’s sandbox exchange with simulated money/);
     assert.match(demo, /Reloading the demo account doesn’t reset this record/);
-    assert.doesNotMatch(f.trackRecordPanel({...m, label: 'Paper'}, 'paper', th), /sandbox/);
+    assert.doesNotMatch(f.trackRecordPanel({...m, label: 'Paper'}, 'paper', th), /sandbox|trades Tau placed/);
+    // The live tab is Tau's own book, which Kalshi cash is not.
+    const live = f.trackRecordPanel({...m, label: 'Live money'}, 'live', th);
+    assert.match(live, /Live results count only the trades Tau placed, net of Kalshi fees\. Your Kalshi cash also moves with deposits/);
+    assert.doesNotMatch(live, /sandbox/);
   });
 
   test(`${name}: the seeded example's strategies and session say the app ran them for free`, async () => {

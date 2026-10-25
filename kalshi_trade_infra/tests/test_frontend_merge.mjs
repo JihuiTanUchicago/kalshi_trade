@@ -542,12 +542,14 @@ test('the Deploy board puts realized P&L beside the backtest pace for the same t
   assert.doesNotMatch(html, /Backtest unseen/);
 });
 
-test('Deploy open positions label every cell so phone cards read Contract, Side, Cost', async () => {
+test('Deploy open positions label every cell so phone cards read Contract, Side, Cost + fee', async () => {
   const pos = {title: 'Rain fade', ticker: 'KXRAINNYC-T1', side: 'no', qty: 4, entry_price: .37, entry_fee: .02, unrealized: null, market_close_time: '2026-10-25T17:30:00Z', mode: 'paper'};
   const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [], open_positions: [pos]}) : response({})});
   await f.viewDeploy(); await flush(); await flush();
   const html = f.root.querySelector('#openpos').innerHTML;
-  for (const lab of ['Strategy', 'Contract', 'Side', 'Cost', 'Unrealized', 'Settles']) assert.match(html, new RegExp(`data-lab="${lab}"`), lab);
+  for (const lab of ['Strategy', 'Contract', 'Side', 'Cost \\+ fee', 'Unrealized', 'Settles']) assert.match(html, new RegExp(`data-lab="${lab}"`), lab);
+  // This Cost carries the entry fee ($1.48 + $0.02); the dashboard's Cost and "Open at cost" don't, so it says so.
+  assert.match(html, /<th class="num">Cost \+ fee<\/th>/); assert.match(html, /data-lab="Cost \+ fee">\$1\.50</);
   assert.match(html, /<td class="name" data-lab="Strategy">Rain fade/);
 });
 
@@ -722,6 +724,34 @@ test('Funds demo labels say "since reload" only after a reload, and that demo fi
     assert.match(main, /the track record still counts every closed demo trade/);
     assert.match(f.root.querySelector('#ffigs').innerHTML, /real fills on Kalshi’s sandbox, not real money/);
   }
+});
+
+test('the live card says it is Kalshi cash, apart from what Tau trades realized', async () => {
+  const liveDep = {id: 9, strategy_id: 9, title: 'Live one', market: 'btc15m', mode: 'live', status: 'running', stake: 5, max_positions: 2,
+    realized_pnl: 17, unrealized_pnl: null, closed_trades: 3, open_positions: 2, created_at: '2026-10-25T08:00:00Z', curve: []};
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response({...emptyDashboard(), deployments: [liveDep],
+      live: {connected: true, balance: 250, open_positions: 2, running: 1, realized_pnl: 17, today_pnl: -2, open_at_cost: 1.2}});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  await f.viewDashboard(); await flush();
+  const board = f.root.querySelector('#boardbody').innerHTML;
+  // The balance is Kalshi's cash for the whole account; the line under it is Tau's own book.
+  assert.match(board, /<span class="mk live">Real<\/span> Kalshi cash/); assert.match(board, /\$250\.00/);
+  assert.match(board, /Tau trades: 2 open \(not in cash\) · \+\$17\.00 realized all time · −\$2\.00 realized today/);
+  assert.match(board, /Live money on: \+\$17\.00 realized all time/);
+  // The autopilot card's day figure is the same booked P&L, and says so.
+  f.S.me.user.autopilot = true; f.S.ap = {...apOn, live_running: 1, today_live_pnl: -2}; f.paintDashAp();
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Live realized today<\/dt><dd><span class="[^"]*">−\$2\.00/);
+});
+
+test('Funds names the live figure Kalshi cash, open positions not included', async () => {
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds();
+    d.kalshi = {connected: true, key_id: 'abcd-wxyz', balance: 120, funding_url: 'https://kalshi.com'}; return response(d); }});
+  await f.viewFunds();
+  const figs = f.root.querySelector('#ffigs').innerHTML;
+  assert.match(figs, /Kalshi cash/); assert.match(figs, /Your real cash at Kalshi, open positions not included/);
+  assert.doesNotMatch(figs, /Live money/);
 });
 
 test('Deploy realized says it counts only the strategies listed, never summing live with paper', async () => {

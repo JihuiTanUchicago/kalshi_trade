@@ -149,17 +149,20 @@ test('a late preference response cannot rewrite a replaced or disconnected shell
   }
 });
 
-test('a paper-only panel shows paper P&L today and no live loss budget; live in play brings both back', async () => {
+test('a paper-only panel shows paper realized today and no live loss budget; live in play brings both back', async () => {
   const f = frontend(() => response(catalog)); f.apBuildShell(f.box); await flush();
   f.apUpdate(f.box, status({today_paper_pnl: 1.25, today_live_pnl: 0}));
   let html = f.box.querySelector('#apf-stats').innerHTML;
-  assert.match(html, /Paper P&amp;L today/); assert.match(html, /\+\$1\.25/);
-  assert.doesNotMatch(html, /Live P&amp;L today|Loss budget left/);
+  assert.match(html, /Paper realized today/); assert.match(html, /\+\$1\.25/);
+  assert.doesNotMatch(html, /Live realized today|Loss budget/);
   for (const live of [{live_running: 1}, {autopilot_live: true}]) {
-    f.apUpdate(f.box, status({today_paper_pnl: 1.25, today_live_pnl: -3, loss_headroom: 17, ...live}));
+    f.apUpdate(f.box, status({today_paper_pnl: 1.25, today_live_pnl: -3, loss_headroom: 17, daily_loss_limit: 20, ...live}));
     html = f.box.querySelector('#apf-stats').innerHTML;
-    assert.match(html, /Live P&amp;L today/); assert.match(html, /Loss budget left/);
-    assert.doesNotMatch(html, /Paper P&amp;L today/);
+    // The day figure is booked P&L (closed trades), and so is the budget; the account-equity stop
+    // (open positions included) is a separate check, so the panel says both.
+    assert.match(html, /Live realized today/); assert.match(html, /Loss budget left/);
+    assert.match(html, /Counts live losses booked since 00:00 UTC\. Live also stops if your Kalshi account falls \$20\.00 in a day, open positions included\./);
+    assert.doesNotMatch(html, /Paper realized today|P&amp;L today/);
   }
 });
 
