@@ -371,6 +371,12 @@ def _load_perpetual_window(market: str, partition: Dict, phase: str) -> backtest
         conn.close()
 
 
+def window_dataset(market: str, from_ts: int, to_ts: int, history_days: Optional[int] = None) -> backtest.Dataset:
+    """Contracts opening in [from_ts, to_ts), outside any frozen partition: the fresh data the code
+    paper replay (app/services/code_paper.py) trades on, all of it after the strategy went on paper."""
+    return _load_window(market, from_ts, to_ts, history_days)
+
+
 def _load_window(market: str, from_ts: int, to_ts: int, history_days: Optional[int]) -> backtest.Dataset:
     """Load the market's history, keep only contracts opening in [from_ts, to_ts) (at most
     RESEARCH_MAX_CANDLE_ROWS of their most recent events), and build a Dataset from them. Opens

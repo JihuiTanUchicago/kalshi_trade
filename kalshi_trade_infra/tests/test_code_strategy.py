@@ -167,7 +167,7 @@ def test_an_empty_book_at_99c_never_fills(monkeypatch):
     """KXNFLRECYDSPROT quotes were mostly yes_bid=0 / yes_ask=0.99: a code strategy "bought" at 99c,
     which can't profit after the fee, and lost ~80c a trade at a ~1% win rate (run 2815). Entries at
     an ask above backtest.MAX_ENTRY_ASK are now unfillable; a real two-sided book still fills."""
-    def buy_all(spec, ds, start_ts, end_ts):
+    def buy_all(spec, ds, start_ts, end_ts, warm_from=None):
         return {ts: {s.contract.ticker: ("yes", 1.0) for s in snaps} for ts, snaps in ds.frames}
     monkeypatch.setattr(backtest, "_code_book", buy_all)
     for fill_model in ("next_bar", "signal_bar"):

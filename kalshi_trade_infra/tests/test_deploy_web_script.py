@@ -39,7 +39,8 @@ def _dry_run(tmp_path: Path, *, missing: str = "", large: bool = False):
     script.parent.mkdir()
     shutil.copyfile(SCRIPT, script)
     (package / "scripts" / "systemd").mkdir()
-    for unit in ("tau-lip-maker-paper.service", "tau-lip-maker-paper.timer"):
+    for unit in ("tau-lip-maker-paper.service", "tau-lip-maker-paper.timer",
+                 "tau-code-paper.service", "tau-code-paper.timer"):
         (package / "scripts" / "systemd" / unit).write_text("[Unit]\n")
     git = ["git", "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false",
            "-c", "user.name=Tau Test", "-c", "user.email=tau-test@example.invalid"]
@@ -96,7 +97,8 @@ def test_owned_units_ship_in_the_bundle_and_are_installed_on_the_box(tmp_path):
     out = _dry_run(tmp_path).stdout
     assert "bundle ok" in out
     assert "cp scripts/systemd/$u /etc/systemd/system/$u" in out and "systemctl daemon-reload" in out
-    assert "for u in tau-lip-maker-paper.service tau-lip-maker-paper.timer" in out
+    assert ("for u in tau-lip-maker-paper.service tau-lip-maker-paper.timer tau-code-paper.service "
+            "tau-code-paper.timer") in out
     assert 'systemctl enable --now "$u"' in out
 
 

@@ -32,7 +32,7 @@ MEMORY_CAPS=${MEMORY_CAPS:-"recursive-agents=3G recursive-web=1G recursive-engin
 # Unit files this script owns on the box (same mechanism as deploy_collector.sh): shipped in the
 # bundle, copied to /etc/systemd/system when they differ, timers enabled --now. Older web-box timers
 # (tau-scout, tau-research-watch, ...) are still hand-installed and not listed here.
-UNITS=${UNITS:-"tau-lip-maker-paper.service tau-lip-maker-paper.timer"}
+UNITS=${UNITS:-"tau-lip-maker-paper.service tau-lip-maker-paper.timer tau-code-paper.service tau-code-paper.timer"}
 
 # Locally, use a named profile (the AWS CLI reads AWS_PROFILE from the env). In CI there is no
 # profile — the workflow provides env/OIDC creds — so unset it. (Env var, not a --profile flag.)

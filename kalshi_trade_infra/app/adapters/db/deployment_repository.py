@@ -171,6 +171,26 @@ def running_deployments(cur, market: str) -> List[Dict]:
     return [_strategy_row(r) for r in cur.fetchall()]
 
 
+def running_code_paper_deployments(cur) -> List[Dict]:
+    """Running paper deployments whose strategy may be agent-written code (its spec JSON names
+    "code"; the caller checks spec.is_code_spec). The engine never ticks these: the code paper
+    replay (app/services/code_paper.py) trades them."""
+    cur.execute(
+        """SELECT d.id, d.user_id, d.strategy_id, d.market, d.mode, d.last_decision_ts, d.created_at, s.spec_json
+           FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id
+           WHERE d.status='running' AND d.mode='paper' AND s.spec_json LIKE %s ORDER BY d.id""",
+        ('%"code"%',),
+    )
+    return [_strategy_row(r) for r in cur.fetchall()]
+
+
+def deployment_order_refs(cur, deployment_id: int, ref_prefix: str) -> set:
+    """The order_refs a deployment already booked under `ref_prefix` (a replay books each trade once)."""
+    cur.execute("SELECT DISTINCT order_ref FROM app_positions WHERE deployment_id=%s AND order_ref LIKE %s",
+                (deployment_id, ref_prefix + "%"))
+    return {r["order_ref"] for r in cur.fetchall()}
+
+
 def deployments_with_open_positions(cur, market: str) -> List[Dict]:
     """Paused deployments still need their open positions settled."""
     cur.execute(

@@ -165,3 +165,21 @@ def test_a_running_pooled_entrant_gets_its_missing_legs_once(monkeypatch):
     deps.extend({"strategy_id": 1, "status": "running", "mode": "paper", "market": m} for m in ("eth15m", "sol15m", "xrp15m"))
     made.clear()
     assert agent.auto_paper_probation(None, USER) == [] and made == []
+
+
+def test_a_code_near_miss_goes_to_paper_as_one_replayed_deployment(monkeypatch):
+    """Todd 2026-10-25 ("Paper only, in the sandbox"): agent-written code enters probation like any
+    near miss, as ONE deployment (the sandbox replay trades its whole pooled stream), and only while
+    the replay is on."""
+    from app.services import code_paper
+    cands = [_cand(7, market="btc_daily+eth_daily+sol_daily", p=0.2)]
+    for on, want in ((False, []), (True, [(7, "btc_daily", "paper")])):
+        made, _ = _patch(monkeypatch, cands)
+        monkeypatch.setattr(agent.repo, "get_strategy", lambda cur, uid, sid: {
+            "id": sid, "market": "btc_daily", "title": "Pooled last-4h", "status": "rejected",
+            "spec": {"market": "btc_daily", "pool": ["eth_daily", "sol_daily"], "code": "def signals(w): return []",
+                     "sizing": {"stake": 5, "max_positions": 1}}, "result": {}})
+        monkeypatch.setattr(code_paper, "ENABLED", on)
+        lines = agent.auto_paper_probation(None, USER)
+        assert made == want
+    assert "replaying each settled day in the research sandbox" in lines[0] and "never goes live" in lines[0]
