@@ -37,6 +37,7 @@ class Element {
       toggle: (x, force = !this.classes.has(x)) => { force ? this.classes.add(x) : this.classes.delete(x); return force; },
     };
   }
+  get options() { return this.children.filter(child => child.tag === 'option'); }
   get isConnected() { return !this.removed && (!this.parent || this.parent.isConnected); }
   get className() { return [...this.classes].join(' '); }
   set className(value) { this.classes = new Set(value.split(/\s+/)); }
@@ -2465,5 +2466,39 @@ test('Research history rows state each session\'s cost from the ledger', async (
   const html = f.root.querySelector('#runs').innerHTML;
   assert.match(html, /href="\/research\/3"[\s\S]*?Cost: \$2\.50/);
   assert.doesNotMatch(html.split('href="/research/4"')[1], /Cost:/);  // no figure from the server, no claim
+  f.clearTimers();
+});
+
+test('the Overview autopilot card and panel say where it may trade, with a Change that opens the focus control', async () => {
+  let status = {...apStatus, focus: ['crypto']};
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(dashboardData());
+    if (path === '/api/autopilot/status') return response(status);
+    if (path === '/api/settings') return response({ok: true});
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path.startsWith('/api/chat')) return response({messages: []});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = true;
+  await f.viewDashboard(); await flush();
+  f.S.ap = status; f.paintDashAp();
+  const card = f.root.querySelector('#dash-ap');
+  assert.match(card.querySelector('.ap-focus').innerHTML, /^Focus: Crypto <button type="button" data-apcard="focus">Change<\/button>$/);
+  await card.querySelector('[data-apcard="focus"]').onclick(); await flush();
+  const box = f.root.parent.querySelector('#autopilot-float'), prefs = box.querySelector('.apf-prefs');
+  assert.equal(prefs.open, true);  // the control sits in "Model and markets"
+  const line = box.querySelector('#apf-focusline');
+  assert.equal(line.hidden, false); assert.match(line.innerHTML, /^Focus: Crypto <button type="button" data-ap="focus">Change<\/button>$/);
+  prefs.open = false; line.querySelector('[data-ap="focus"]').onclick();
+  assert.equal(prefs.open, true);
+  for (const [focus, text] of [[[], 'any market'], [['sports'], 'Sports'], [['weather-low'], 'Weather low']]) {
+    f.S.ap = {...apStatus, focus}; f.paintDashAp();
+    assert.match(f.root.querySelector('#dash-ap .ap-focus').innerHTML, new RegExp(`^Focus: ${text} <button`), text);
+  }
+  // Switching on from the panel opens the focus control right away.
+  status = {...apStatus, autopilot: false, mode: 'off', focus: []};
+  f.S.me.user.autopilot = false; f.S.ap = status; prefs.open = false;
+  const sw = box.querySelector('#apf-apswitch'); sw.checked = true; await sw.onchange(); await flush();
+  assert.equal(f.S.me.user.autopilot, true); assert.equal(prefs.open, true);
   f.clearTimers();
 });

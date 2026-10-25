@@ -3456,11 +3456,12 @@
       host.className = 'apcard';
       host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>Autopilot off</span>
         <h2>Let the autopilot trade for you</h2>
-        <p>It picks markets, tests ideas on data it never saw, and runs the ones that pass on paper money. Every move shows up in its activity feed. Real money stays off until you turn it on separately.</p>${apCostLine()}</div>
+        <p>It picks markets, tests ideas on data it never saw, and runs the ones that pass on paper money. Every move shows up in its activity feed. Real money stays off until you turn it on separately.</p>${apCostLine()}${d && Array.isArray(d.focus) ? `<p class="ap-focus">${apFocusLine(d.focus, 'data-apcard="focus"')}</p>` : ''}</div>
         <div class="apcard-act"><button type="button" class="btn primary" data-apcard="on">Turn on autopilot</button><a class="apcard-alt" href="/research">or research by hand</a></div>
         <p class="apcard-err error-text" role="alert"></p>`;
       const b = host.querySelector('[data-apcard="on"]');
       b.onclick = () => busy(b, apTurnOn);
+      apBindFocus(host);
       return;
     }
     if (!d) { host.className = 'apcard on'; host.innerHTML = ''; return; }  // on, status still loading
@@ -3479,10 +3480,39 @@
       : esc((d.story && d.story[0]) || 'Autopilot is on.');
     host.className = 'apcard on' + (m.cls ? ' ' + m.cls : '') + (d.billing_blocked ? ' warn' : '');
     host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>${esc(m.label)}</span>
-        <p class="apcard-now">${now}</p>
+        <p class="apcard-now">${now}</p>${Array.isArray(d.focus) ? `
+        <p class="ap-focus">${apFocusLine(d.focus, 'data-apcard="focus"')}</p>` : ''}
         <dl class="apcard-figs">${cells.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl></div>
       <div class="apcard-act"><button type="button" class="btn" data-apcard="open">Open autopilot</button></div>`;
     host.querySelector('[data-apcard="open"]').onclick = () => apOpen();
+    apBindFocus(host);
+  }
+  // The market focus is binding on research, deploys and the picker, so it reads as a plain line on
+  // the card and the panel, with a Change that opens the control (it lives in "Model and markets").
+  function apFocusText(focus) {
+    const f = focus || [];
+    if (!f.length) return 'any market';
+    const preset = AP_FOCUS.find(([v]) => v && v === f.join(','));
+    if (preset) return preset[1].replace(/ only$/, '');
+    const keys = new Set(((S.me && S.me.markets) || []).map((m) => m.key));
+    return f.map((t) => keys.has(t) ? marketShort(t) : t.charAt(0).toUpperCase() + t.slice(1).replace(/-/g, ' ')).join(', ');
+  }
+  const apFocusLine = (focus, attr) => `Focus: ${esc(apFocusText(focus))} <button type="button" ${attr}>Change</button>`;
+  function apBindFocus(host) {
+    const b = host.querySelector('[data-apcard="focus"]');
+    if (b) b.onclick = () => { apOpen(); apShowFocus(document.getElementById('autopilot-float')); };
+  }
+  function apFocusPaint(box, focus) {
+    const fline = box.querySelector('#apf-focusline'); if (!fline) return;
+    const key = (focus || []).join(',');
+    if (fline.dataset.cur !== key) { fline.dataset.cur = key; fline.innerHTML = apFocusLine(focus, 'data-ap="focus"'); const b = fline.querySelector('[data-ap="focus"]'); if (b) b.onclick = () => apShowFocus(box); }
+    fline.hidden = false;
+  }
+  // Open "Model and markets" and put the reader on the focus select.
+  function apShowFocus(box) {
+    if (!box || !apExpanded()) return;
+    const prefs = box.querySelector('.apf-prefs'); if (prefs) prefs.open = true;
+    const sel = box.querySelector('#apf-focus'); if (sel && sel.focus) sel.focus();
   }
   // What switching it on costs, said before the click: the agent's runs spend credits, and with
   // auto-reload on the saved card is charged when they run low. Payments off on this server: no line.
@@ -3537,6 +3567,7 @@
     paintDashAp();
     if (!phone()) apOpen();  // on a phone the open panel fills the screen; the card already says it's on
     const box = document.getElementById('autopilot-float');
+    if (box && apExpanded()) { const prefs = box.querySelector('.apf-prefs'); if (prefs) prefs.open = true; }
     if (box) await refreshAutopilot(box);
   }
   const AP_PENDING_ON = { label: 'Autopilot on', cls: 'paper' };  // switch on, mode not read yet
@@ -3659,6 +3690,7 @@
         </div>
         <dl class="apf-stats" id="apf-stats"></dl>
         <div class="apf-story" id="apf-story" aria-live="polite"></div>
+        <p class="ap-focus" id="apf-focusline" hidden></p>
         <details class="apf-prefs"><summary>Model and markets</summary>
           <label class="field apf-model"><span>Autopilot model</span>
             <select class="input" id="apf-model" aria-label="Autopilot model"></select></label>
@@ -3692,6 +3724,8 @@
       // One flip, like the dashboard card and the empty-page nudges: paper-only and undone by flipping
       // back. Real money keeps its own typed LIVE AUTOPILOT confirm below.
       try { await api('/api/settings', { autopilot: on }); S.me.user.autopilot = on; } catch (e) { sw.checked = !on; alert0(e.message); return; }
+      // Right after switching on, show where it may trade, so the focus is a choice and not a default nobody saw.
+      if (on) { const prefs = box.querySelector('.apf-prefs'); if (prefs) prefs.open = true; }
       refreshAutopilot(box);
     };
     const msgs = box.querySelector('#apf-messages');
@@ -3721,7 +3755,8 @@
         try {
           const r = await api('/api/autopilot/focus', { focus: sel.value ? sel.value.split(',') : [] });
           if (S.ap) S.ap.focus = r.focus;
-          if (current()) { apFocusOptions(sel, r.focus); apLoadChat(box); }
+          if (current()) { apFocusOptions(sel, r.focus); apFocusPaint(box, r.focus); apLoadChat(box); }
+          paintDashAp();
         } catch (e) { if (current()) { sel.value = prev; alert0(e.message); } }
         finally { if (current()) sel.disabled = false; }
       };
@@ -3796,6 +3831,7 @@
       ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> · ${d.paper_progress.trades}/${d.paper_progress.trades_needed} paper trades · ${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}`;
     }
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
+    if (Array.isArray(d.focus)) apFocusPaint(box, d.focus);
     const fsel = box.querySelector('#apf-focus');
     if (fsel && Array.isArray(d.focus) && document.activeElement !== fsel && !fsel.disabled && fsel.dataset.cur !== d.focus.join(',')) apFocusOptions(fsel, d.focus);
     const gates = box.querySelector('#apf-gates');

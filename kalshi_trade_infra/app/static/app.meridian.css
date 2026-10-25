@@ -2485,3 +2485,8 @@ body.landing-body .apf { display: none; }
 
 /* Failed load: the error plus a retry button, stacked. */
 .load-fail { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+
+/* The autopilot's market focus, on the dashboard card and the panel: a plain line with a Change. */
+.ap-focus { margin: 0; font-size: 14px; line-height: 1.5; color: var(--ink-2); }
+.ap-focus button { background: none; border: 0; padding: 0; margin-left: 4px; font: inherit; color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.apf-top > .ap-focus { margin: 0 0 6px; }
