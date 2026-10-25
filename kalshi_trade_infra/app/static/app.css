@@ -1253,7 +1253,7 @@ body.landing-body { background: #FBFBFA; }
 
 /* ===================== COMMUNITY (Kursbuch) ===================== */
 .feedwrap { max-width: 680px; margin: 0 auto; }
-.feedwrap .feed-filter { margin: 0 2px 12px; }
+.feedwrap .feed-filter { margin: 18px 2px 12px; }
 #feed { padding-bottom: 6px; }
 /* Composer pinned to the bottom (chat-style): the feed scrolls above it, it floats
    over the last post with its own elevation. Sticky, so it drops into flow when the feed is short. */
@@ -1481,6 +1481,8 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 306px; 
 .xlink a { display: inline-flex; color: var(--ink-3); }
 .xlink a:hover { color: var(--ink); }
 .xlink svg { width: 16px; height: 16px; }
+/* Long market titles wrap, so the Kalshi link column stays on screen with the hot-markets rail open. */
+.t-explore td.name { white-space: normal; overflow-wrap: anywhere; }
 .xpage { display: flex; align-items: center; justify-content: space-between; margin-top: 18px; }
 .xpage .lab { margin: 0; }
 @media (max-width: 1080px) {
