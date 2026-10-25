@@ -1250,7 +1250,6 @@ def autopilot_kill(ctx: Ctx):
 def _research_activity(cur, uid: int) -> Dict:
     """What research is doing for the autopilot float: the markets being researched now and the
     last 7 days' tested/passed counts, so a quiet panel reads as working, not stuck. One bounded read."""
-    from app import rsi
     since = repo.now_utc() - timedelta(days=7)
     active = [r for r in repo.list_runs(cur, uid, limit=50) if r.get("status") in ("queued", "running", "paused")]
     # The week's totals come from one aggregate, not the 50 newest runs: a busy autopilot starts
@@ -1262,7 +1261,9 @@ def _research_activity(cur, uid: int) -> Dict:
             "tested_7d": sum(int(r.get("tried") or 0) for r in week),
             "passed_7d": repo.strategies_passed_since(cur, uid, since),
             "runs_7d": sum(int(r.get("runs") or 0) for r in week),
-            "cost_7d": round(sum(rsi.run_cost_usd(r) for r in week), 2)}
+            # What research actually debited this week (the credit ledger), not tokens re-priced:
+            # re-pricing billed a screen-arm run's screen tokens at the developer model's rate.
+            "cost_7d": round(repo.research_spent_since(cur, uid, since), 2)}
 
 
 def _plural(n: int, one: str, many: str = "") -> str:
