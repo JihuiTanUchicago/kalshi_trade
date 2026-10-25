@@ -145,16 +145,18 @@ def build_report(runs: List[Dict], events: Dict[int, List[Dict]], now: datetime,
                        "gated": sum(s["gated"] for s in v)}
                    for m, v in _group(finished, "model").items()},
         "screen_ab": screen_ab(cards),
+        "leads_ab": screen_ab(cards, "leads_arm"),
         "anomalies": anomalies(summaries),
         "runs": sorted(summaries, key=lambda s: -s["run_id"]),
     }
 
 
-def screen_ab(cards: List[Dict]) -> Dict[str, Dict]:
-    """The model-tiering A/B (services.research_screen) by arm: ideas tested per dollar, how many
-    reached the gate, and how often the developer overturned an audited screen drop."""
+def screen_ab(cards: List[Dict], key: str = "arm") -> Dict[str, Dict]:
+    """An A/B by arm: the model tiering (services.research_screen, key "arm") or the data-first
+    scan (services.research_leads, key "leads_arm"). Ideas tested per dollar, how many reached the
+    gate, and for the screen arm how often the developer overturned an audited screen drop."""
     out: Dict[str, Dict] = {}
-    for arm, rows in _group([c for c in cards if c.get("arm")], "arm").items():
+    for arm, rows in _group([c for c in cards if c.get(key)], key).items():
         cost = sum(c["cost_usd"] for c in rows)
         explored = sum(c["explored"] for c in rows)
         gated = sum(c["gated"] for c in rows)

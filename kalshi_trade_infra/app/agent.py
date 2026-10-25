@@ -49,6 +49,7 @@ from app.llm import LLMError, ModelFn, Usage, ask_json, claude, current_model
 from app.markets import MARKETS
 from app.services import markets as market_service
 from app.services import research_memory
+from app.services import research_leads
 from app.services import research_screen
 from app.agent_market_data import AgentMarketData, DataScope
 from app.agent_knowledge import AgentKnowledge
@@ -1378,7 +1379,9 @@ mechanism, falsification_criteria, negative_control, null/alt hypotheses, min_sa
         market=run["market"],
         summary=json.dumps(_in_sample_summary(ds)),
         detect=_detectability_block(ds),
-        calibration="\n".join(b for b in (_calibration_block(ds), _fair_value_block(ds)) if b),
+        calibration="\n".join(b for b in (_calibration_block(ds), _fair_value_block(ds), run.get("_leads"),
+                                          research_leads.COUNTERPARTY_RULE if run.get("_leads_arm") else "")
+                              if b),
         guide=specmod.research_guide(run["market"]),
         memory=_memory_block(memory),
         playbook=(run.get("_playbook") + "\n\n") if run.get("_playbook") else "",
@@ -2310,6 +2313,7 @@ def run_research(
     # Model tiering A/B (services.research_screen): a screen-arm run proposes and screens on a
     # cheaper model. An injected model (tests) always runs unscreened, on that one model.
     screen_pick = research_screen.screen_choice(run_id, run.get("model")) if model is None else None
+    leads_on = model is None and research_leads.in_leads_arm(run_id)  # data-first A/B, same rule
     if model is None:
         # on_delta=None keeps the ordinary (system, messages) calls working everywhere; the
         # proposer wraps this to pass a sink so its generation streams live into the feed.
@@ -2513,6 +2517,21 @@ def run_research(
         playbook = _rsi_choose(cur, user_id, market, run_id, log)
         if playbook:
             run = {**run, "_playbook": playbook}
+        # Data-first A/B (services.research_leads): a leads-arm run scans every feature cell for
+        # measured mispricing before the first proposal, and its prompts build on what it finds.
+        scan = None
+        if leads_on:
+            log("step", "Scanning every feature x life x price cell for measured mispricing…",
+                {"phase": "scanning"})
+            try:
+                scan = research_leads.scan_dataset(ds)
+                run = {**run, "_leads": research_leads.block(scan), "_leads_arm": True}
+            except Exception as e:  # noqa: BLE001 - the scan is an aid; the run goes on without it
+                _LOG.exception("lead scan failed on run %s", run_id)
+                log("step", "Lead scan skipped (%s)." % e)
+        log("verdict", ("Lead scan: %d of %d cells survive the false-discovery control."
+                        % (len(scan["leads"]), scan["tests"])) if scan else
+            "Lead scan: control arm, hypotheses first.", research_leads.summary(bool(scan), scan))
         budget = max(1, min(int(run.get("max_hypotheses") or DEFAULT_HYPOTHESES), MAX_BUDGET))
         knowledge = AgentKnowledge(DataScope.research(ds.start_ts, ds.cutoff_ts), log, checkpoint)
         news = AgentNews(DataScope.research(ds.start_ts, ds.cutoff_ts), log, checkpoint)
@@ -2813,6 +2832,8 @@ def _develop_prompt(run: Dict, t: Dict, memory: List[Dict], step: int, ds=None) 
     same leak-free surface the batch rounds use. Never a validation/holdout number."""
     attr = _attribution_line(t.get("attribution"))
     diag = t.get("diagnosis")
+    if t.get("power_line"):
+        attr = (attr + "\n" if attr else "") + t["power_line"]
     diag_line = ("\nWHY IT HAS NO EDGE YET: %s\nThis is the real reason — if it names a feature "
                  "that is null/unavailable on THIS market, do NOT loosen thresholds (they can never "
                  "fire): either rebuild the mechanism on features this market actually has, or "
@@ -2898,7 +2919,8 @@ def _develop_thesis(h: Dict, run: Dict, ds: backtest.Dataset, partition: Dict, m
     fail-OPEN — any bad/empty/unavailable reply keeps the spec we already have, so a reviewer hiccup
     can never halt research or spend unbounded. Each refine re-freezes via _test_in_sample, so the
     committed spec is always a fit-on-research-and-frozen model, never re-fit at gate time."""
-    t = _test_in_sample(h, ds, partition, log, round_no, cur, merged_cache, run.get("id"))
+    t = _with_power(_test_in_sample(h, ds, partition, log, round_no, cur, merged_cache, run.get("id")),
+                    run, ds, partition, cur, user_id)
     market = run["market"]
     committed = developed = False
     limit = THESIS_MAX_STEPS - 1
@@ -2964,7 +2986,8 @@ def _develop_thesis(h: Dict, run: Dict, ds: backtest.Dataset, partition: Dict, m
             refined["mechanism"] = reply["mechanism"]
         log("step", "Refining \"%s\": %s" % (t["title"], reply.get("change") or "sharpening the mechanism"))
         developed = True
-        t = _test_in_sample(refined, ds, partition, log, round_no, cur, merged_cache, run.get("id"))
+        t = _with_power(_test_in_sample(refined, ds, partition, log, round_no, cur, merged_cache, run.get("id")),
+                        run, ds, partition, cur, user_id)
         step += 1
     # Anti-grind backstop: if the agent REFINED this thesis (really worked it) yet never committed
     # and the spec still can't trade (unfit model / 0 research-fold trades), drop it as dead on
@@ -2974,6 +2997,19 @@ def _develop_thesis(h: Dict, run: Dict, ds: backtest.Dataset, partition: Dict, m
     if developed and not committed and not t["in_sample"].get("trades"):
         return _abandon(log, t, t.get("diagnosis"), dropped)
     return t
+
+
+def _with_power(t: Dict, run: Dict, ds, partition: Dict, cur, user_id: int) -> Dict:
+    """On a leads-arm run, attach the gate's projected validation power to the develop turn, so
+    the agent sees whether the gate could ever confirm this thesis before it spends a trial."""
+    if not run.get("_leads_arm") or cur is None or specmod.is_multi_market(t["spec"]):
+        return t
+    try:
+        p = gatekeeper.validation_power(cur, user_id, run["market"], t["spec"], ds, partition)
+    except Exception:  # noqa: BLE001 - an aid only; the turn goes on without it
+        _LOG.exception("validation power failed on run %s", run.get("id"))
+        return t
+    return dict(t, power_line=research_leads.power_line(p))
 
 
 def _hand_over(log, t: Dict, screen, why: str) -> bool:

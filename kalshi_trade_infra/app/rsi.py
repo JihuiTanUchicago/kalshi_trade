@@ -151,6 +151,7 @@ def run_card(run: Dict, events: Iterable[Dict]) -> Dict:
     kinds: Counter = Counter()
     pipeline: List[Dict] = []
     screen: Optional[Dict] = None
+    leads_arm: Optional[str] = None
     for ev in events:
         if ev.get("kind") != "verdict":
             continue
@@ -159,6 +160,8 @@ def run_card(run: Dict, events: Iterable[Dict]) -> Dict:
         phase = d.get("phase")
         if phase == "screen":
             screen = d
+        elif phase == "leads":
+            leads_arm = d.get("arm")
         elif d.get("status") == "abandoned":
             f["dropped"] += 1
             tag, kind = classify_drop(d.get("why") or msg)
@@ -198,6 +201,7 @@ def run_card(run: Dict, events: Iterable[Dict]) -> Dict:
         "pipeline_deaths": pipeline, "spec_failed_runs": f["spec_failed_runs"],
         # model-tiering A/B arm (None = the run predates it, or ended before logging it)
         "arm": screen.get("arm") if screen else None,
+        "leads_arm": leads_arm,  # data-first A/B arm (services.research_leads)
         "screen": {k: screen.get(k) for k in ("screen_model", "screened_out", "handed_over", "audits", "rescued")}
         if screen else None,
     }
