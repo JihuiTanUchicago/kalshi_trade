@@ -526,3 +526,97 @@ def test_a_deployment_curve_stays_small_and_keeps_its_end_and_extremes(conn, use
     body = json.dumps(server.dashboard(server.Ctx(conn, dict(user, autopilot=0), (), {}, {}, None)),
                       default=server._json_default)
     assert len(body) < 64_000, len(body)
+
+
+class _Counting:
+    """Counts the statements a repository call sends."""
+
+    def __init__(self, cur):
+        self.cur, self.n = cur, 0
+
+    def execute(self, sql, args=None):
+        self.n += 1
+        return self.cur.execute(sql, args)
+
+    def __getattr__(self, name):
+        return getattr(self.cur, name)
+
+
+def test_recent_closed_reads_only_the_newest_ids_and_answers_as_the_join_did(conn, user):
+    """The dashboard's recent_closed sorted all of a user's closed positions, with their deployments
+    and strategies, to send 12. Now the newest ids come from idx_pos_user and only those rows are
+    joined. The answer must not change. Positions close out of id order, a deleted strategy's
+    positions still drop out, and when more of the newest drop out than the slack covers, the
+    original join answers."""
+    import random
+    from decimal import Decimal
+
+    from app import repository as repo
+    from app.adapters.db import position_repository as pr
+
+    joined = ("SELECT p.*, s.title FROM app_positions p JOIN app_deployments d ON d.id=p.deployment_id "
+              "JOIN app_strategies s ON s.id=d.strategy_id WHERE p.user_id=%s AND p.status=%s ORDER BY p.id DESC LIMIT %s")
+    rng = random.Random(11)
+    kept, gone = _deployment(conn, user), _deployment(conn, user)
+    start = datetime(2026, 3, 1)
+
+    def trades(dep, n):  # closed out of order: id order is not close order
+        rows = [(dep["id"], user["id"], "paper", "TEST-RECENT-%d" % i, "yes", 1, 0.40, 0.01, start, start, "closed",
+                 start + timedelta(minutes=rng.randint(0, 10000)), Decimal(rng.randint(-100, 100)) / 100) for i in range(n)]
+        conn.cursor().executemany(
+            """INSERT INTO app_positions (deployment_id, user_id, mode, ticker, side, qty, entry_price, entry_fee,
+               market_close_time, opened_at, status, closed_at, pnl) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", rows)
+
+    def check(statements):
+        for limit in (12, 20):
+            cur = _Counting(conn.cursor())
+            got = repo.user_positions(cur, user["id"], "closed", limit)
+            ref = conn.cursor()
+            ref.execute(joined, (user["id"], "closed", limit))
+            assert got == ref.fetchall()
+            assert cur.n == statements, (limit, cur.n)
+        ref.execute(joined, (user["id"], "open", 100))
+        assert repo.user_positions(conn.cursor(), user["id"], "open") == ref.fetchall()
+
+    assert repo.user_positions(conn.cursor(), user["id"], "closed", 12) == []  # dormant: nothing, one statement
+    trades(kept, 60)
+    check(1)
+    trades(gone, pr.CLOSED_SLACK - 2)
+    conn.cursor().execute("DELETE FROM app_strategies WHERE id=%s", (gone["strategy_id"],))
+    check(1)  # a few of the newest belong to the deleted strategy: the slack covers them
+    trades(gone, 30)
+    check(2)  # most of the newest do: the original join answers
+    plan = conn.cursor()
+    plan.execute("EXPLAIN SELECT id FROM app_positions FORCE INDEX (idx_pos_user) WHERE user_id=%s AND status='closed' "
+                 "ORDER BY id DESC LIMIT 20", (user["id"],))
+    assert [r["key"] for r in plan.fetchall()] == ["idx_pos_user"]
+
+
+def test_last_autopilot_action_looks_back_a_bounded_window_of_chat(conn, user, monkeypatch):
+    """The 20s status poll used to scan a user's whole chat history for the last autopilot line
+    whenever there was none. It now looks through the newest LAST_ACTION_WINDOW rows and answers
+    as before for any line inside that window."""
+    from app import repository as repo
+    from app.adapters.db import chat_repository
+
+    old = ("SELECT content, created_at FROM app_chat_messages WHERE user_id=%s AND role='system' AND "
+           "(content LIKE '%%utopilot%%' OR content LIKE '%%LIVE%%' OR content LIKE '%%Kill%%') ORDER BY id DESC LIMIT 1")
+    uid, cur = user["id"], conn.cursor()
+
+    def before():
+        cur.execute(old, (uid,))
+        r = cur.fetchone()
+        return {"text": r["content"], "at": r["created_at"]} if r else None
+
+    assert repo.last_autopilot_action(cur, uid) is None is before()
+    repo.add_chat(cur, uid, "system", "Autopilot deployed Lean into the move on paper.")
+    repo.add_chat(cur, uid, "agent", "Autopilot is on; I'll keep an eye on it.")  # not a system line
+    repo.add_chat(cur, uid, "system", "Kill switch: live autopilot off, 0 live deployment(s) paused.")
+    for i in range(20):
+        repo.add_chat(cur, uid, "user" if i % 2 else "system", "Checked the markets; nothing to change.")
+    got = repo.last_autopilot_action(cur, uid)
+    assert got == before() and got["text"].startswith("Kill switch")
+    monkeypatch.setattr(chat_repository, "LAST_ACTION_WINDOW", 21)
+    assert repo.last_autopilot_action(cur, uid)["text"].startswith("Kill switch")  # 21 rows back: inside
+    monkeypatch.setattr(chat_repository, "LAST_ACTION_WINDOW", 20)
+    assert repo.last_autopilot_action(cur, uid) is None  # outside the window

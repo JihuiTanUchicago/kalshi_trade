@@ -6,14 +6,25 @@ from typing import Dict, List, Optional
 from app.adapters.db.sql import _json, _loads, now_utc
 
 
+LAST_ACTION_WINDOW = 1000  # chat rows back that last_autopilot_action looks
+
+
 def last_autopilot_action(cur, user_id: int) -> Optional[Dict]:
-    """Most recent agent/system line about autopilot, for the floating status window."""
+    """Most recent agent/system line about autopilot, for the floating status window.
+
+    It looks through the user's newest LAST_ACTION_WINDOW chat rows, taken from idx_chat_user
+    (user_id, id) alone. The status poll runs every 20s, and without the bound a user with no such
+    line scanned back through their whole chat history each time (20k rows, ~30ms on a busy account).
+    A line further back than that is not shown; the card then says when it last reviewed, and the
+    panel's idle line says reviews run on a schedule."""
     cur.execute(
-        """SELECT content, created_at FROM app_chat_messages
-           WHERE user_id=%s AND role='system'
-                 AND (content LIKE '%%utopilot%%' OR content LIKE '%%LIVE%%' OR content LIKE '%%Kill%%')
-           ORDER BY id DESC LIMIT 1""",
-        (user_id,),
+        """SELECT c.content, c.created_at FROM
+             (SELECT id FROM app_chat_messages WHERE user_id=%s ORDER BY id DESC LIMIT %s) recent
+           JOIN app_chat_messages c ON c.id=recent.id
+           WHERE c.role='system'
+                 AND (c.content LIKE '%%utopilot%%' OR c.content LIKE '%%LIVE%%' OR c.content LIKE '%%Kill%%')
+           ORDER BY c.id DESC LIMIT 1""",
+        (user_id, LAST_ACTION_WINDOW),
     )
     r = cur.fetchone()
     return {"text": r["content"], "at": r["created_at"]} if r else None

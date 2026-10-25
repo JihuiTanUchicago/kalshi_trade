@@ -53,13 +53,50 @@ def market_has_open_positions(cur, market: str) -> bool:
     return cur.fetchone() is not None
 
 
-def user_positions(cur, user_id: int, status: str = "open", limit: int = 100) -> List[Dict]:
-    cur.execute(
-        """SELECT p.*, s.title FROM app_positions p
+_USER_POSITIONS = """SELECT p.*, s.title FROM app_positions p
            JOIN app_deployments d ON d.id=p.deployment_id JOIN app_strategies s ON s.id=d.strategy_id
-           WHERE p.user_id=%s AND p.status=%s ORDER BY p.id DESC LIMIT %s""",
-        (user_id, status, limit),
+           WHERE p.user_id=%s AND p.status=%s ORDER BY p.id DESC LIMIT %s"""
+
+
+def user_positions(cur, user_id: int, status: str = "open", limit: int = 100) -> List[Dict]:
+    if status == "closed":
+        return _newest_closed(cur, user_id, limit)
+    cur.execute(_USER_POSITIONS, (user_id, status, limit))
+    return cur.fetchall()
+
+
+CLOSED_SLACK = 8  # extra newest ids read in case a few belong to deleted strategies
+
+
+def _newest_closed(cur, user_id: int, limit: int) -> List[Dict]:
+    """The user's `limit` newest closed positions (by id, newest first) with their strategy titles:
+    the rows user_positions' join returns, without sorting every closed row to get them.
+
+    That join sorted all of a user's closed rows together with their deployments and strategies (20k
+    rows for a busy trader). On a big table the optimizer could instead walk the primary key back
+    through every user's newer positions looking for this user's. Here the newest ids come from
+    idx_pos_user alone, which holds (user_id, status, closed_at, id); it is forced so neither MySQL nor
+    MariaDB picks that walk. Only those rows, plus CLOSED_SLACK more, are read and joined. A position
+    whose strategy has been deleted drops out of the join, as before, and the slack covers a few of
+    those. If more drop out, the original join runs instead, so the answer never changes and costs
+    little more than it used to. No index is added to app_positions, because the order path writes
+    it."""
+    limit = int(limit)
+    batch = limit + CLOSED_SLACK
+    cur.execute(
+        """SELECT p.*, s.title, s.id IS NOT NULL AS _listed FROM
+             (SELECT id FROM app_positions FORCE INDEX (idx_pos_user)
+              WHERE user_id=%s AND status='closed' ORDER BY id DESC LIMIT %s) newest
+           JOIN app_positions p ON p.id=newest.id
+           LEFT JOIN app_deployments d ON d.id=p.deployment_id LEFT JOIN app_strategies s ON s.id=d.strategy_id
+           ORDER BY p.id DESC""",
+        (user_id, batch),
     )
+    rows = cur.fetchall()
+    listed = [r for r in rows if r.pop("_listed")]
+    if len(listed) >= limit or len(rows) < batch:
+        return listed[:limit]
+    cur.execute(_USER_POSITIONS, (user_id, "closed", limit))
     return cur.fetchall()
 
 
