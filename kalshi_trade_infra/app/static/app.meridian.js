@@ -236,7 +236,7 @@
   // Short, consistent chip labels for every market; unknown keys fall back to the
   // server's full label, never the raw key (keeps the market chips uniform).
   const MKT_SHORT = {
-    btc15m: 'BTC 15-min', btc_daily: 'BTC 5pm', eth15m: 'ETH 15-min', eth_daily: 'ETH 5pm',
+    btc15m: 'BTC 15-min', btc15m_tick: 'BTC 15-min · per second', btc_perp: 'BTC perp', btc_daily: 'BTC 5pm', eth15m: 'ETH 15-min', eth_daily: 'ETH 5pm',
     sol15m: 'SOL 15-min', sol_daily: 'SOL 5pm', xrp15m: 'XRP 15-min', xrp_daily: 'XRP 5pm',
     doge15m: 'DOGE 15-min', near15m: 'NEAR 15-min', zec15m: 'ZEC 15-min', hype15m: 'HYPE 15-min',
     nba_game: 'NBA winner', nfl_game: 'NFL winner', nhl_game: 'NHL winner',
