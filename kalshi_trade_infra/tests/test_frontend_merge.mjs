@@ -295,6 +295,18 @@ test('the OAuth account return and Funds routes open the current funds page', ()
   assert.notEqual(route('/settings'), f.viewFunds);
 });
 
+test('paper account buttons name the amount they will move', async () => {
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); return response(funds()); }});
+  await f.viewFunds();
+  const form = f.root.querySelector('#paper'), amount = form.querySelector('input[name=amount]');
+  const labels = () => form.querySelectorAll('button').map(b => b.textContent);
+  assert.deepEqual(labels(), ['Add', 'Withdraw', 'Reset to amount']);
+  amount.value = '500'; amount.dispatchEvent({type: 'input'});
+  assert.deepEqual(labels(), ['Add $500.00', 'Withdraw $500.00', 'Reset to $500.00']);
+  amount.value = ''; amount.dispatchEvent({type: 'input'});
+  assert.deepEqual(labels(), ['Add', 'Withdraw', 'Reset to amount']);
+});
+
 test('Funds preserves account controls and history without mounting unavailable broker connections', async () => {
   const mounts = [];
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); return response(funds()); },
