@@ -90,8 +90,8 @@ def test_discovery_slugs_follow_the_series_formats():
     slugs = pmk.discovery_slugs(now)
     t0 = int(datetime(2026, 10, 25, 8, 0, tzinfo=timezone.utc).timestamp())
     assert f"btc-updown-15m-{t0}" in slugs and f"btc-updown-15m-{t0 + 900}" in slugs
-    assert "bitcoin-up-or-down-october-25-4am-et" in slugs
-    assert "bitcoin-above-on-october-25" in slugs and "bitcoin-price-on-october-27" in slugs
+    assert "bitcoin-up-or-down-october-25-2026-4am-et" in slugs and "bitcoin-up-or-down-october-25-4am-et" in slugs
+    assert "bitcoin-above-on-october-25-2026" in slugs and "bitcoin-price-on-october-27-2026" in slugs
 
 
 def test_wants_book_limits_polling_to_near_windows_and_daily_ladders():
@@ -241,7 +241,7 @@ def test_backfill_writes_versioned_day_files(tmp_path, monkeypatch):
             return [{"slug": slug, "markets": [dict(_gm("Bitcoin Up or Down - x", slug, tokens=("U", "D"),
                                                          outcomes=("Up", "Down"), id="u1"),
                                                      closed=True, outcomePrices='["1", "0"]')]}]
-        if slug == "bitcoin-above-on-october-24":
+        if slug == "bitcoin-above-on-october-24-2026":
             return [{"slug": slug, "markets": [_gm("Will the price of Bitcoin be above $110,000 on October 24?",
                                                    id="a1", description="12:00 PM ET")]}]
         return []
