@@ -551,6 +551,7 @@
   // they can see what a normal user sees. Default: admin view on.
   const isAdmin = () => !!(S.me && S.me.is_admin);
   const adminViewOn = () => isAdmin() && localStorage.getItem('tau_admin_off') !== '1';
+  let bellReq = null, bellReqAt = 0;
   async function wireBell() {
     const wrap = root.querySelector('.bell-wrap');
     if (!wrap) return;
@@ -565,7 +566,9 @@
         : '<p class="bell-empty">No notifications yet.</p>';
     };
     let data = { unread: 0, items: [] };
-    try { data = await api('/api/notifications', undefined, { keep: true }); paint(data); } catch (e) { return; }  // bell is best-effort
+    // The shell is often painted twice in a row (instant page switch, then content): one read serves both.
+    if (!bellReq || Date.now() - bellReqAt > 2000) { bellReq = api('/api/notifications', undefined, { keep: true }); bellReqAt = Date.now(); }
+    try { data = await bellReq; paint(data); } catch (e) { return; }  // bell is best-effort
     trig.onclick = async (e) => {
       e.stopPropagation();
       if (!menu.hidden) { close(); return; }
@@ -3390,7 +3393,7 @@
     return saved === '1';
   };
   let hotLoop = false;
-  let apLoop = false;
+  let apLoop = false, apReq = null;
 
   // ---------- floating autopilot window ----------
   const apExpanded = () => localStorage.getItem('tau_ap_open') === '1';
@@ -3401,11 +3404,15 @@
     root.querySelector('.masthead-in').appendChild(box);
     renderAutopilot(box, S.ap);
     const stale = !S.ap || !S.apAt || Date.now() - S.apAt > 18000;
-    if (stale) refreshAutopilot(box);
+    if (stale) refreshAutopilot(box, true);
     if (!apLoop) { apLoop = true; setInterval(() => { const b = document.getElementById('autopilot-float'); if (b) refreshAutopilot(b); }, 20000); }
   }
-  async function refreshAutopilot(box) {
-    try { S.ap = await api('/api/autopilot/status', undefined, { keep: true }); S.apAt = Date.now(); renderAutopilot(box, S.ap); paintDashAp(); }
+  async function refreshAutopilot(box, share = false) {
+    // Pages that paint the shell twice (instant switch, then content) share one in-flight read;
+    // a refresh after a change always reads fresh.
+    let req = share && apReq;
+    if (!req) { req = apReq = api('/api/autopilot/status', undefined, { keep: true }); req.finally(() => { if (apReq === req) apReq = null; }).catch(() => {}); }
+    try { S.ap = await req; S.apAt = Date.now(); renderAutopilot(box, S.ap); paintDashAp(); }
     catch (e) { /* floating window is best-effort; never block the app */ }
   }
   // Dashboard autopilot card: the one-click way in while autopilot is off, and once it's on a
