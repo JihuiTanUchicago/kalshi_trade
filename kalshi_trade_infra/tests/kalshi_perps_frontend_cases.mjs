@@ -118,6 +118,62 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.doesNotMatch(none.root.querySelector('main').innerHTML, /Since deploying/);
   });
 
+  // The server's per-book comparison with the backtest (services/backtest_check.py).
+  const btPaper = {mode: 'paper', trades: 34, verdict: 'within',
+    line: "On paper: 34 trades, +$0.12/trade vs backtest +$0.15/trade; won 56% vs 61%. Within the backtest's usual range."};
+  const btLive = {mode: 'live', trades: 40, verdict: 'behind',
+    line: 'Behind its backtest on live: 40 trades, −$0.10/trade vs backtest +$0.15/trade; won 41% vs 61%. Below the usual range for 40 trades (+$0.09 to +$0.21).'};
+  const btDemo = {mode: 'demo', trades: 3, verdict: 'early',
+    line: 'On demo: 3 completed trades so far, too early to tell against the backtest (it takes about 10).'};
+  const unAmt = (html) => html.replace(/<span class="amt">([^<]*)<\/span>/g, '$1');
+
+  test(`${name}: the strategy page gives each book one line against its backtest`, async () => {
+    const deployments = [
+      {id: 1, mode: 'paper', status: 'running', realized_pnl: 4.08, closed_trades: 34, open_positions: 0, created_at: '2026-10-20T08:00:00Z'},
+      {id: 2, mode: 'live', status: 'running', realized_pnl: -4, closed_trades: 40, open_positions: 0, created_at: '2026-10-22T08:00:00Z'},
+      {id: 3, mode: 'demo', status: 'running', realized_pnl: 1, closed_trades: 3, open_positions: 0, created_at: '2026-10-24T08:00:00Z'},
+    ];
+    const f = strategyFrontend(detailStrategy({deployments, backtest_checks: [btLive, btDemo, btPaper]}));
+    await f.viewStrategy(42); await flush();
+    const raw = f.root.querySelector('.real-record').innerHTML;
+    // Every signed amount is held on one line; the text reads the same without those spans.
+    assert.match(raw, /<span class="amt">−\$0\.10<\/span>\/trade vs backtest <span class="amt">\+\$0\.15<\/span>\/trade/);
+    const html = unAmt(raw);
+    const at = (re) => html.search(re);
+    // Each book's line sits under that book, live first; none is a sum of books.
+    assert.match(html, /<p class="sub-fig bt-check bt-behind">Behind its backtest on live: 40 trades, −\$0\.10\/trade vs backtest \+\$0\.15\/trade; won 41% vs 61%\. Below the usual range for 40 trades \(\+\$0\.09 to \+\$0\.21\)\.<\/p>/);
+    assert.match(html, /<p class="sub-fig bt-check bt-early">On demo: 3 completed trades so far, too early to tell against the backtest \(it takes about 10\)\.<\/p>/);
+    assert.match(html, /<p class="sub-fig bt-check bt-within">On paper: 34 trades, \+\$0\.12\/trade vs backtest \+\$0\.15\/trade; won 56% vs 61%\. Within the backtest&#39;s usual range\.<\/p>/);
+    assert.ok(at(/>Live</) < at(/Behind its backtest on live/) && at(/Behind its backtest on live/) < at(/>Demo</));
+    assert.ok(at(/>Demo</) < at(/On demo: 3/) && at(/On demo: 3/) < at(/>Paper</) && at(/>Paper</) < at(/On paper: 34/));
+    assert.equal((html.match(/bt-check/g) || []).length, 3);
+    assert.doesNotMatch(html, /real-pace/);  // the comparison replaces the pace line
+    // A book with no completed trade gets no line; an older server without the field keeps the pace line.
+    const noLine = strategyFrontend(detailStrategy({deployments, backtest_checks: [btPaper]}));
+    await noLine.viewStrategy(42); await flush();
+    assert.equal((noLine.root.querySelector('.real-record').innerHTML.match(/bt-check/g) || []).length, 1);
+    const older = strategyFrontend(detailStrategy({deployments}));
+    await older.viewStrategy(42); await flush();
+    assert.match(older.root.querySelector('.real-record').innerHTML, /real-pace/);
+    assert.doesNotMatch(older.root.querySelector('.real-record').innerHTML, /bt-check/);
+  });
+
+  test(`${name}: each Deploy board row carries its own book's line against the backtest`, async () => {
+    const dep = (id, mode, backtest_check) => ({id, strategy_id: 7, title: 'Dep ' + id, market: 'btc15m', mode, status: 'running', status_reason: null,
+      realized_pnl: 0, closed_trades: 34, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1,
+      backtest: {}, backtest_check});
+    const f = frontend({fetchImpl: path => path === '/api/deployments'
+      ? response({deployments: [dep(1, 'paper', btPaper), dep(2, 'live', btLive), dep(3, 'demo', null), dep(4, 'paper')], open_positions: []}) : response({})});
+    await f.viewDeploy(); await flush(); await flush();
+    const rows = [...f.root.querySelectorAll('#deps tbody tr')].map(r => unAmt(r.innerHTML));
+    f.clearTimers && f.clearTimers();
+    assert.equal(rows.length, 4);
+    assert.match(rows[0], /class="sub-fig bt-check bt-within">On paper: 34 trades, \+\$0\.12\/trade vs backtest \+\$0\.15\/trade; won 56% vs 61%\. Within the backtest&#39;s usual range\.</);
+    assert.match(rows[1], /class="sub-fig bt-check bt-behind">Behind its backtest on live: 40 trades/);
+    assert.doesNotMatch(rows[0], /on live/); assert.doesNotMatch(rows[1], /On paper/);
+    assert.doesNotMatch(rows[2], /bt-check/); assert.doesNotMatch(rows[3], /bt-check/);
+  });
+
   test(`${name}: bulk selection skips a strategy that is already deployed`, async () => {
     const list = [detailStrategy({id: 44, title: 'Running fixture', deployed: true}), detailStrategy({id: 45, title: 'Idle fixture'})];
     const f = frontend({fetchImpl: path => {
