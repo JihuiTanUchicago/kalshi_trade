@@ -99,7 +99,7 @@ class Element {
   remove() { this.removed = true; }
 }
 
-function frontend({fetchImpl, brokerMount, storage} = {}) {
+function frontend({fetchImpl, brokerMount, storage, matchMedia = () => ({matches: false})} = {}) {
   const root = new Element('div', {id: 'app'}), body = new Element('body'); body.appendChild(root);
   const intervals = new Map(), timeouts = new Map(), requests = [], navigations = [];
   let nextId = 0;
@@ -108,7 +108,7 @@ function frontend({fetchImpl, brokerMount, storage} = {}) {
   const context = vm.createContext({
     Intl, URL, URLSearchParams, AbortController,
     document: {body, getElementById: id => body.querySelector('#' + id), addEventListener() {}, removeEventListener() {}, createElement: tag => new Element(tag)},
-    window: {addEventListener() {}, scrollTo() {}, matchMedia: () => ({matches: false}),
+    window: {addEventListener() {}, scrollTo() {}, matchMedia,
       ...(brokerMount ? {TauBrokerConnections: {mount: brokerMount}} : {})},
     addEventListener() {}, location, history: {pushState: navigate, replaceState: navigate},
     localStorage: storage || {getItem: () => null, setItem() {}},
@@ -134,7 +134,7 @@ function frontend({fetchImpl, brokerMount, storage} = {}) {
   api.S.ap = {mode: 'off'}; api.S.apAt = Date.now();
   // Moves the page's clock (Date.now) forward, for checks on how old a figure is.
   const shiftClock = ms => vm.runInContext(`{ const now = Date.now; Date.now = () => now() + ${Number(ms)}; }`, context);
-  return {...api, root, intervals, timeouts, requests, navigations, shiftClock};
+  return {...api, root, location, intervals, timeouts, requests, navigations, shiftClock};
 }
 
 const strategy = {id: 42, status: 'passed', side: 'yes', stake: 5, deployments: []};
@@ -551,7 +551,7 @@ test('the Deploy board puts realized P&L beside the backtest pace for the same t
   }});
   await f.viewDeploy(); await flush(); await flush();
   const html = f.root.querySelector('#deps').innerHTML;
-  assert.match(html, />Backtest pace</);
+  assert.match(html, />Test expected<button type="button" class="info" data-glo="pace"/);
   // $12 over 6 unseen trades = $2 a trade, so 5 closed trades -> +$10.00.
   assert.match(html, /\+\$10\.00<div class="sub-fig">same 5 trades<\/div>/);
   assert.match(html, /no closed trades/);
@@ -910,7 +910,7 @@ test('the autopilot panel shows Kill only once real money is armed or running', 
     return box.querySelector('#apf-controls').innerHTML;
   };
   const off = controls({autopilot: false});
-  assert.doesNotMatch(off, /data-ap="kill"|data-ap="livearm"/); assert.match(off, /Open board/);
+  assert.doesNotMatch(off, /data-ap="kill"|data-ap="livearm"/); assert.match(off, /See what's trading/);
   const paper = controls({autopilot: true});
   assert.doesNotMatch(paper, /data-ap="kill"/); assert.match(paper, /data-ap="livearm" aria-disabled="true"/);
   assert.match(controls({autopilot: true, autopilot_live: true}), /data-ap="kill"/);
@@ -1315,9 +1315,9 @@ test('the autopilot card and panel show the last 7 days with real credits and pa
   assert.match(card, /<h3>Last 7 days<\/h3>/);
   assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$7\.26 <small>real money<\/small><\/dd>/);
   assert.match(card, /<dt>Ideas<\/dt><dd>1,234 tested ·\u00a02 passed<\/dd>/);
-  assert.match(card, /<dt>Started on paper<\/dt><dd>1 strategy<\/dd>/);
-  assert.match(card, /<dt>Paper P&amp;L<\/dt><dd><span class="neg">−\$3\.46<\/span> <small>paper, not real money ·\u00a04 closed trades<\/small><\/dd>/);
-  assert.match(card, /Paper counts only the strategies the autopilot put on paper itself/);
+  assert.match(card, /<dt>Autopilot put on paper<\/dt><dd>1 strategy <small>not counting yours<\/small><\/dd>/);
+  assert.match(card, /<dt>Autopilot's paper P&amp;L<\/dt><dd><span class="neg">−\$3\.46<\/span> <small>paper, not real money ·\u00a04 closed trades<\/small><\/dd>/);
+  assert.match(card, /The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here/);
   assert.doesNotMatch(card, /\$3\.80|\$10\.72/);  // never netted or summed
   assert.doesNotMatch(f.root.querySelector('#dash-ap').innerHTML, /Ideas this week/);  // the scorecard says it
   await f.root.querySelector('#dash-ap [data-apcard="open"]').onclick(); await flush();
@@ -1659,4 +1659,100 @@ test('Tau: after a deploy the Deploy page offers autopilot in words, and the pan
   assert.equal(none.root.querySelector('#dep-ap').innerHTML, '');  // the empty board already speaks to autopilot
   assert.ok(!source.includes('the agent only proposes'));
   assert.match(source, /Off: it only suggests ideas and changes, and you approve each one\. Flip the switch to let it research and trade on paper by itself\./);
+});
+
+test('a passed strategy not yet on paper puts Deploy on paper up top as well, the same call as the panel', async () => {
+  const pending = deferred();
+  const f = strategyFrontend(detailStrategy(), (path, options) => {
+    assert.equal(path, '/api/deployments');
+    return options.method === 'POST' ? pending.promise : response({deployments: [], open_positions: []});
+  });
+  await f.viewStrategy(42); await flush();
+  const quick = f.root.querySelector('#dep-paper-quick'), html = f.root.querySelector('main').innerHTML;
+  assert.ok(quick); assert.ok(f.root.querySelector('#dep-paper'));
+  assert.equal(quick.textContent, 'Deploy on paper'); assert.ok(quick.classList.contains('primary'));
+  assert.ok(html.indexOf('id="dep-paper-quick"') < html.indexOf('id="figs"') || html.indexOf('id="dep-paper-quick"') < html.indexOf('class="paper-abstract"'));
+  assert.ok(html.indexOf('id="dep-paper-quick"') < html.indexOf('id="dep-paper"'));
+  assert.match(f.root.querySelector('#strat-quick').textContent, /nothing real is at risk/);
+  quick.onclick();
+  assert.deepEqual(JSON.parse(postRequests(f)[0].options.body), {strategy_id: 42, mode: 'paper'});
+  pending.resolve(response({id: 9})); await flush();
+  assert.deepEqual(f.navigations, ['/deploy']);
+  // A refusal shows beside the button that was pressed.
+  const bad = strategyFrontend(detailStrategy(), () => response({error: 'Synthetic paper refusal'}, 400));
+  await bad.viewStrategy(42); await flush();
+  bad.root.querySelector('#dep-paper-quick').onclick(); await flush(); await flush();
+  assert.match(bad.root.querySelector('#depflash-quick').innerHTML, /Synthetic paper refusal/);
+  // Already on paper, not validated, or no gatekeeper record behind its "passed": only the panel's own button.
+  for (const detail of [detailStrategy({deployments: [{id: 3, mode: 'paper', status: 'running'}]}), detailStrategy({status: 'rejected'}), detailStrategy({experiment: null})]) {
+    const g = strategyFrontend(detail, () => response({deployments: [], open_positions: []}));
+    await g.viewStrategy(42); await flush();
+    assert.equal(g.root.querySelector('#dep-paper-quick'), null); assert.ok(g.root.querySelector('#dep-paper'));
+  }
+});
+
+test('Research folds model, depth and market behind Options on a phone, open on a wide screen, and says what will run', async () => {
+  const markets = [{key: 'btc15m', label: 'Bitcoin 15 min', category: 'Crypto', has_data: true}];
+  const research = (matchMedia) => frontend({matchMedia, fetchImpl: path => {
+    if (path === '/api/models') return response({models: [{key: 'opus', label: 'Opus'}, {key: 'haiku', label: 'Haiku'}], default: 'opus'});
+    if (path === '/api/research/context') return response({markets: []});
+    if (path === '/api/research/estimate') return response({yours: null, sessions: 0, typical: {}});
+    if (path === '/api/runs') return response({runs: [], counts: {research_running: 0, research_queued: 0}, policy: null});
+    if (path.startsWith('/api/research/scoreboard')) return response({total: {runs: 0}});
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  for (const [phone, open] of [[true, false], [false, true]]) {
+    const f = research(() => ({matches: phone}));
+    f.S.me.markets = markets;
+    await f.viewResearch(); await flush(); await flush();
+    const form = f.root.querySelector('#dispatch'), opts = form.querySelector('#ropts');
+    assert.equal(opts.tag, 'details'); assert.equal('open' in opts.attributes, open);
+    assert.equal(opts.querySelector('.dispatch-opts-t').textContent, 'Options');
+    for (const sel of ['#rmodel', '#maxhyp', '#runforever', '.mktpick']) assert.ok(opts.querySelector(sel), sel);
+    assert.equal(form.querySelector('#runforever').checked, true);  // run-forever stays the default
+    assert.equal(opts.contains(form.querySelector('textarea[name=prompt]')), false);
+    assert.equal(opts.contains(form.querySelector('button[type=submit]')), false);
+    const sum = () => form.querySelector('#ropts-sum').textContent;
+    const model = form.querySelector('#rmodel'); model.value = 'opus'; form.dispatchEvent({type: 'change'});  // the fake select has no default value
+    assert.equal(sum(), 'Opus · runs until you stop it · agent’s choice of market');
+    model.value = 'haiku';
+    form.querySelector('#runforever').checked = false; form.querySelector('#maxhyp').value = '25';
+    form.querySelectorAll('input[name=market]').forEach((r) => { r.checked = r.getAttribute('value') === 'btc15m'; });
+    form.dispatchEvent({type: 'change'});
+    const row = form.querySelector('.mktrow[data-key="btc15m"] .mktrow-name').textContent.trim();
+    assert.equal(sum(), 'Haiku · 25 strategies · ' + row); assert.doesNotMatch(row, /choice/);
+  }
+});
+
+test('a hypothesis in the log says its search-data result and verdict in plain words', async () => {
+  const run = {id: 9, status: 'succeeded', prompt: 'Session 9', market: 'btc15m', created_at: '2026-10-17T10:00:00Z', hypotheses_tried: 1, strategies_passed: 1};
+  const events = [
+    {id: 1, kind: 'hypothesis', message: 'Fade the spike', created_at: '2026-10-17T10:00:00Z', data: {in_sample: {pnl: 4.5, trades: 8}}},
+    {id: 2, kind: 'verdict', message: 'PASSED - Fade the spike: cleared every gate', created_at: '2026-10-17T10:01:00Z', data: {status: 'passed', title: 'Fade the spike', strategy_id: 42}},
+  ];
+  const f = frontend({fetchImpl: path => path.startsWith('/api/runs/9') ? response({run, events, strategies: []}) : response({})});
+  await f.viewRun(9); await flush();
+  const log = f.root.querySelectorAll('li').map((li) => li.innerHTML + (li.querySelector('[data-review]') || {innerHTML: ''}).innerHTML).join('');
+  assert.doesNotMatch(log, /Gatekeeper/);
+  assert.match(log, /class="hx-tag pass">Verdict/);
+  assert.match(log, /On the history it searched: \+\$4\.50 · 8 trades<button type="button" class="info" data-glo="insample"/);
+});
+
+test('on a phone, sessions come before the form, except when they came to start one (?new=1)', async () => {
+  const run = {id: 5, status: 'succeeded', prompt: 'Mine', market: 'btc15m', created_at: '2026-10-17T10:00:00Z', hypotheses_tried: 2, strategies_passed: 1};
+  for (const [search, first] of [['', true], ['?new=1', false]]) {
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path === '/api/research/context') return response({markets: []});
+      if (path === '/api/research/estimate') return response({yours: null, sessions: 0, typical: {}});
+      if (path === '/api/runs') return response({runs: [run], counts: {research_running: 0, research_queued: 0}, policy: null});
+      if (path.startsWith('/api/research/scoreboard')) return response({total: {runs: 1}});
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.location.pathname = '/research'; f.location.search = search;
+    await f.viewResearch(); await flush(); await flush();
+    assert.equal(f.root.querySelector('#main').classList.contains('runs-first'), first, search);
+  }
 });

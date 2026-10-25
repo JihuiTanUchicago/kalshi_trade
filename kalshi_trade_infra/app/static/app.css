@@ -1854,3 +1854,17 @@ body.landing-body .apf { display: none; }
 .stale-note { margin: 8px 0 0; font-family: var(--f-nar); font-size: 12px; letter-spacing: .02em; color: var(--ink-3); }
 .stale-note:empty { display: none; }
 #run-stale { margin-bottom: 14px; }  /* the run page puts a boxed panel right under it */
+
+/* Research: model, depth and market behind "Options" (closed on a phone while at their defaults). */
+.dispatch-opts > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-height: 44px; padding: 10px 0; font-size: 14px; letter-spacing: 0; color: var(--ink-2); }
+.dispatch-opts-t { color: var(--ink); font-weight: 600; }
+.dispatch-opts-sum { font-size: 13px; color: var(--ink-3); }
+.dispatch-opts[open] .dispatch-opts-sum { display: none; }
+.dispatch-opts-body { display: grid; gap: 16px; margin-top: 8px; }
+/* Strategy page: the primary action up top where the Deploy panel is far below (one column). */
+.strat-quick { display: none; }
+@media (max-width: 1080px) {
+  .strat-quick { display: grid; gap: 6px; justify-items: start; margin: 16px 0 4px; }
+  .strat-quick .hint { margin: 0; max-width: 46ch; }
+}
+@media (max-width: 560px) { .strat-quick .btn { width: 100%; } }

@@ -59,6 +59,7 @@
     unseen: ['Unseen data', 'A held-out slice of history the agent never looks at while searching, so the result can’t be curve-fit. This is the P&L that counts.'],
     insample: ['In-sample', 'The history the agent iterates on. Strong in-sample numbers are easy to overfit, so they only shortlist a strategy — they never pass it.'],
     gate: ['Gates', 'The pass/fail checks a strategy must clear on unseen data: it makes money, trades often enough to judge, and its wins outweigh losses after fees.'],
+    pace: ['Test expected', 'What these same closed trades would have made at the strategy’s average per trade on unseen data in its test. Hold the real result against it.'],
   };
   // One drawn marker; a single top-layer popover serves them all (no clipping in tables).
   const glo = (key) => `<button type="button" class="info" data-glo="${key}" aria-label="What does “${GLOSSARY[key][0]}” mean?">${ICON.info}</button>`;
@@ -1137,7 +1138,7 @@
     return `<span class="mk ${cls}">${esc(label)}</span>`;
   };
   const money = (v) => `<span class="${tone(v)}">${usd(v, true)}</span>`;
-  const STRAT_HEAD = (pick) => `<thead><tr>${pick ? '<th class="pickcol"><input type="checkbox" id="pick-all" aria-label="Select all deployable"></th>' : ''}<th>Strategy</th><th>Market</th><th class="num">Unseen P&amp;L${glo('unseen')}</th><th class="num">Trades</th><th class="num">Win</th><th class="num" title="Total hypotheses tested in this research run">Run trials</th><th>Status</th></tr></thead>`;
+  const STRAT_HEAD = (pick) => `<thead><tr>${pick ? '<th class="pickcol"><input type="checkbox" id="pick-all" aria-label="Select all deployable"></th>' : ''}<th>Strategy</th><th>Market</th><th class="num">Unseen P&amp;L${glo('unseen')}</th><th class="num">Trades</th><th class="num">Win</th><th class="num" title="Every idea this research session tested, the passing one included">Ideas tested</th><th>Status</th></tr></thead>`;
   const strategyTable = (rows, pick) => `<div class="sheet"><table class="stack t-strat">${STRAT_HEAD(pick)}<tbody>${rows}</tbody></table></div>`;
   // Bulk deploy offers only passed strategies that aren't already running: ticking one that is
   // would start a second deployment of the same rules and double its positions.
@@ -1165,7 +1166,7 @@
       <td class="num" data-lab="${oos ? 'Backtest P&amp;L (unseen)' : 'Backtest P&amp;L (tested)'}">${m.pnl == null ? '\u2014' : money(m.pnl)}${oos ? '' : '<div class="sub-fig">tested only</div>'}</td>
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
       <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>
-      <td class="num${tried === '\u2014' ? ' nil' : ''}" data-lab="Run trials">${esc(tried)}</td>
+      <td class="num${tried === '\u2014' ? ' nil' : ''}" data-lab="Ideas tested">${esc(tried)}</td>
       <td class="act st" data-lab="Status">${mark(s.status)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` <span class="mk ${s.deploy_live ? 'live' : 'dep'}">${s.deploy_live ? 'Live' : 'Deployed'}</span>${s.real && s.real.paused ? ' ' + mark('paused') : ''}${realFig(s.real)}` : ''}</td>
     </tr>`;
   }
@@ -1184,7 +1185,7 @@
   const backtestPace = (d) => {
     const oos = d.backtest && d.backtest.out_of_sample, n = +d.closed_trades || 0;
     if (!oos || !(+oos.trades > 0) || !n) return '';
-    return `Backtest pace ${usd((+oos.pnl || 0) / +oos.trades * n, true)} for the same ${n} trade${n === 1 ? '' : 's'} ·\u00a0`;
+    return `Test expected ${usd((+oos.pnl || 0) / +oos.trades * n, true)} for the same ${n} trade${n === 1 ? '' : 's'} ·\u00a0`;
   };
   const deploymentEvidence = (d, manage = false) => `<details class="dep-evidence" data-deployment="${esc(d.id)}"><summary aria-label="Backtest and deployment details">Details</summary><div>${backtestPace(d)}Unseen P&amp;L ${d.backtest && d.backtest.out_of_sample ? usd(d.backtest.out_of_sample.pnl, true) : '\u2014'} ·\u00a0Deployed ${when(d.created_at)}${manage ? `<div class="deployment-actions">${deploymentRemove(d)}</div>` : ''}</div></details>`;
   function deploymentSlip(d, controls, regs) {
@@ -1798,6 +1799,7 @@
         ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
         <label class="field"><span>Describe your idea</span>
           <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="Write your own — e.g. &quot;Sell overpriced tails in the last hour before the 5pm close.&quot;"></textarea></label>
+        <details class="dispatch-opts" id="ropts"${phone() ? '' : ' open'}><summary><span class="dispatch-opts-t">Options</span><span class="dispatch-opts-sum" id="ropts-sum"></span></summary><div class="dispatch-opts-body">
         <div class="dispatch-tune">
           ${modelOpts ? `<label class="field"><span>Model</span>
             <select class="input" name="model" id="rmodel">${modelOpts}</select></label>` : ''}
@@ -1808,6 +1810,7 @@
         <fieldset class="field mkt-field" style="border:0;padding:0;margin:0"><legend class="label" style="margin-bottom:8px">Market</legend>
           ${marketPicker(me.markets)}
         </fieldset>
+        </div></details>
         <div class="dispatch-go">
           <button type="button" class="chip ex" data-ex="${esc(DEMO_PROMPT)}" title="Todd's random walk: fills the idea without starting a session">Use demo idea</button>
           <button class="btn primary go" type="submit" ${me.needs_card ? 'aria-disabled="true"' : ''}>Start session</button>
@@ -1819,6 +1822,19 @@
         <div class="run-columns" aria-hidden="true"><span>Hypothesis / session</span><span>Market</span><span>Created</span><span>Outcome</span></div><div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div></section></div>`);
     const form = root.querySelector('#dispatch');
     wireMarketPicker(form);
+    // Model, depth and market fold behind "Options" on a phone (closed while at their defaults), so
+    // Start session sits right under the idea. The summary line says what will run.
+    const optsSum = form.querySelector('#ropts-sum');
+    const syncOpts = () => {
+      if (!optsSum) return;
+      const msel = form.querySelector('#rmodel'), rfx = form.querySelector('#runforever'), mhx = form.querySelector('#maxhyp');
+      const mo = msel ? [...msel.options].find((o) => o.value === msel.value) : null;
+      const pick = [...form.querySelectorAll('input[name=market]')].find((r) => r.checked);
+      const row = pick && pick.value ? pick.closest('.mktrow') : null, nm = row && row.querySelector('.mktrow-name');
+      optsSum.textContent = [mo ? mo.textContent.trim() : '', rfx && rfx.checked ? 'runs until you stop it' : `${(mhx && mhx.value) || 10} strategies`,
+        nm ? nm.textContent.trim() : 'agent\u2019s choice of market'].filter(Boolean).join(' \u00b7\u00a0');
+    };
+    form.addEventListener('change', syncOpts); syncOpts();
     const ta = form.querySelector('textarea[name=prompt]');
     root.querySelectorAll('[data-ex]').forEach((b) => (b.onclick = () => { ta.value = b.dataset.ex; ta.focus(); }));
     const rf = form.querySelector('#runforever'), mh = form.querySelector('#maxhyp');
@@ -2036,7 +2052,7 @@
     const li = document.createElement('li');
     li.className = 'ln lane-action hx';
     const stat = (ins && ins.trades != null)
-      ? `<span class="say-stat">In-sample ${usd(ins.pnl, true)} ·\u00a0${ins.trades} trade${ins.trades === 1 ? '' : 's'}</span>` : '';
+      ? `<span class="say-stat">On the history it searched: ${usd(ins.pnl, true)} ·\u00a0${ins.trades} trade${ins.trades === 1 ? '' : 's'}${glo('insample')}</span>` : '';
     const home = [mechHtml(d.mechanism), specHtml(d.spec),
       d.falsification ? `<p class="hx-fine"><b>Falsified if</b> ${esc(d.falsification)}</p>` : '',
       d.negative_control ? `<p class="hx-fine"><b>Placebo that should fail</b> ${esc(d.negative_control)}</p>` : ''].filter(Boolean).join('');
@@ -2073,7 +2089,7 @@
         const rest = strip(e2.message, /^(PASSED|VOID|FAILED|REJECTED)(\s*\(challenger\))?\s*[-–]\s*/);
         const tail = rest.indexOf(':') >= 0 ? rest.slice(rest.indexOf(':') + 1).trim() : '';
         reviewEl.hidden = false;
-        reviewEl.insertAdjacentHTML('beforeend', `<div class="hx-verdict"><span class="hx-tag ${cls}">Gatekeeper</span>${tail ? `<span class="hx-vtext">${esc(tail)}</span>` : ''}${statGrid(dd.stats)}</div>`);
+        reviewEl.insertAdjacentHTML('beforeend', `<div class="hx-verdict"><span class="hx-tag ${cls}">Verdict</span>${tail ? `<span class="hx-vtext">${esc(tail)}</span>` : ''}${statGrid(dd.stats)}</div>`);
       },
     };
   }
@@ -2195,7 +2211,7 @@
       inner = `<span class="say-kind">Challenger</span>${esc(ev.message.replace(/^Challenger\s+/, ''))}`;
     } else if (/^(Dreaming:|Research policy evolved:)/.test(ev.message)) {
       lane = 'rsi';
-      inner = `<b class="rsi-badge">RSI</b> ${esc(ev.message)}`;
+      inner = `<b class="rsi-badge">RSI</b> ${esc(plainDream(ev.message))}`;
     } else if (ev.kind === 'paused' || ev.kind === 'resumed') {
       inner = `<span class="say-kind">${ev.kind === 'paused' ? 'Paused' : 'Resumed'}</span>${esc(ev.message)}`;
     } else {
@@ -2225,8 +2241,10 @@
     'thinking': ['explore', 'Thinking it through'], 'step': ['explore', 'Working'],
     'hypothesis': ['backtest', 'Backtesting a hypothesis'], 'challenger': ['backtest', 'Challenging the result'],
     'gating': ['gate', 'Gating on unseen data'], 'verdict': ['gate', 'Recording the verdict'],
-    'dreaming': ['dream', 'Refining the search policy'],
+    'dreaming': ['dream', 'Tuning how it searches'],
   };
+  // The engine's own words for its self-tuning step ("Dreaming:", "Research policy evolved:"), said plainly.
+  const plainDream = (m) => String(m || '').replace(/^Dreaming:/, 'Tuning how it searches:').replace(/^Research policy evolved:/, 'Search improved:');
   const prettyKind = (k) => String(k || '').replace(/[-_]/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
   // Liberal id/parent extraction so the tree survives whatever the backend names its lineage fields.
   const hypId = (d) => d.hyp_id != null ? d.hyp_id : d.id != null ? d.id : d.node_id != null ? d.node_id : null;
@@ -2317,7 +2335,7 @@
           const d = ev.data || {};
           lastAt = Date.parse(ev.created_at) || Date.now();   // newest event's own clock drives liveness
           let ph = RSI_PHASE[ev.kind];
-          if (!ph && /^(Dreaming:|Research policy evolved:)/.test(ev.message || '')) ph = ['dream', ev.message.split(':')[0]];
+          if (!ph && /^(Dreaming:|Research policy evolved:)/.test(ev.message || '')) ph = ['dream', plainDream(ev.message).split(':')[0]];
           if (ph) { stage = ph[0]; fired.add(stage); phaseEl.textContent = ph[1]; phaseEl.hidden = ev.kind === 'step'; }
           else if (ev.kind && ev.kind !== 'done') { phaseEl.textContent = prettyKind(ev.kind); phaseEl.hidden = false; }  // unknown kind: keep stage lit, show a readable label
           if (ev.kind === 'hypothesis') {
@@ -2430,7 +2448,7 @@
             ? `<p>This agent <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
                ${d.rsi.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(d.rsi.summary)}</p>` : ''}
                <p class="rsi-last">Generalization score ${delta}${d.rsi.evolved_at ? ' ·\u00a0adopted ' + when(d.rsi.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
-            : `<p>The agent is <b>self-tuning</b>: after each research cycle it dreams up new search strategies and keeps one only if it beats the current policy on your own history (scored over shuffled orderings, so it can't overfit).</p>
+            : `<p>The agent is <b>self-tuning</b>: after each research cycle it tries new ways of choosing which ideas to test, and keeps one only if it would have found more real winners in your own history (scored over shuffled orderings, so it can't overfit).</p>
                ${d.rsi.last_dream ? `<p class="rsi-last"><b>Last check${d.rsi.last_dream_at ? ' ·\u00a0' + when(d.rsi.last_dream_at) : ''}:</b> ${esc(d.rsi.last_dream)}</p>` : `<p class="rsi-last">No check yet. The first one runs at the end of a session, once at least ${d.rsi.min_history || 12} ideas have been tested.</p>`}`}
           </div></details>`;
         if (focused) rsibox.querySelector('summary').focus({ preventScroll: true });
@@ -2606,9 +2624,9 @@
     const filed = (() => { try { return new Date(s.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); } catch (e) { return ''; } })();
     const ins = s.in_sample || {}, oos = s.out_of_sample;
     const figsFor = (r) => fig('Out-of-sample P&L', r.out_of_sample ? usd(r.out_of_sample.pnl, true) : '—', { v: r.out_of_sample && r.out_of_sample.pnl, small: r.out_of_sample ? `${r.out_of_sample.trades} trades` : 'Not tested out-of-sample' }) +
-      fig('In-sample P&L', usd(r.in_sample.pnl, true), { v: r.in_sample.pnl, small: `${r.in_sample.trades} trades` }) +
+      fig('In-sample P&L', usd(r.in_sample.pnl, true), { v: r.in_sample.pnl, small: `${r.in_sample.trades} trades on the history it searched` }) +
       fig('Return on capital', r.out_of_sample ? pct(r.out_of_sample.roi) : '—', { small: r.capital ? `$${fmt0.format(r.capital)} at risk at most` : '' }) +
-      fig('Run trials', s.hypotheses_tried != null ? num(s.hypotheses_tried) : '—', { small: s.hypotheses_tried == null ? 'Trial count unavailable.' : '' });
+      fig('Ideas tested', s.hypotheses_tried != null ? num(s.hypotheses_tried) : '—', { small: s.hypotheses_tried == null ? 'Count unavailable.' : 'in the session that found it' });
     // A strategy from the seeded example session says so here too, as the lists and its run page do.
     root.querySelector('.board-title').outerHTML = `<div class="board-title strategy-pagehead"><h1 class="page">${esc(s.title)}</h1><p class="deck"><span>${esc(serial(s.id))} ·\u00a0${esc(marketShort(s.market))} ·\u00a0${esc(dirLabel(s.direction))}</span>${filed ? `<span>Filed ${esc(filed)}</span>` : ''}${mark(s.status)}${researchBadge(s)}${s.example ? `${EXAMPLE_TAG}<span class="example-note">${EXAMPLE_NOTE}</span>` : ''}</p></div>`;
     const canDeploy = !restricted && ['passed', 'failed', 'rejected'].includes(s.status);
@@ -2696,6 +2714,11 @@
       verdictBody = `<div class="rp-verdict ${vt}"><span class="mk ${chip}">${esc(label)}</span><p>${esc(words)}</p></div>`;
     }
     const ladder = restricted ? '' : ladderLines(s, { canDeploy, demoWhy });
+    // On a phone the Deploy panel sits below the whole paper, screens down. A validated passed
+    // strategy (one with its gatekeeper record) that isn't on paper yet gets its primary action up
+    // top too; same call as #dep-paper. Wide screens hide it (the panel is beside the paper there).
+    const quickPaper = canDeploy && s.status === 'passed' && hasExp && !activeDeps.some((d) => d.mode === 'paper');
+    const quickHtml = quickPaper ? `<div class="strat-quick" id="strat-quick"><button class="btn primary" id="dep-paper-quick">Deploy on paper</button><p class="hint">Paper trades with pretend money against live prices, so nothing real is at risk. Demo and live are in Deploy, further down.</p><div id="depflash-quick"></div></div>` : '';
     const paperSec = (title, body) => body ? `<section class="paper-sec"><h3 class="paper-sec-t">${title}</h3><div class="paper-sec-body">${body}</div></section>` : '';
     root.querySelector('main').innerHTML = `
       <div id="flash"></div>
@@ -2703,12 +2726,13 @@
         <div>
           <article class="sheet-doc paper">
             ${!hasExp ? `<div class="legacy-verdict">${verdictBody}</div>` : ''}
+            ${quickHtml}
             <dl class="figures measure" id="figs">${figsFor(s)}</dl>
             ${restricted ? '' : realRecord(s)}
             ${s.shared_from ? `<div class="paper-byline"><span class="mk shared">${ICON.share}Shared by ${esc(s.shared_from)}</span></div>` : ''}
             <section class="paper-abstract" aria-label="Strategy hypothesis">
               <p class="paper-ab">${mdLite(s.thesis)}</p>
-              <details class="saved-result"><summary>Saved result</summary><p class="paper-ab-result">${abResult}</p>${s.hypotheses_tried != null ? '<p class="hint">More trials increase the chance of false positives.</p>' : ''}</details>
+              <details class="saved-result"><summary>Saved result</summary><p class="paper-ab-result">${abResult}</p>${s.hypotheses_tried != null ? '<p class="hint">The more ideas a session tests, the likelier one passes by luck.</p>' : ''}</details>
             </section>
             <div class="paper-body">
               ${paperSec('Mechanism &amp; hypothesis', rp.mechanism)}
@@ -2832,10 +2856,12 @@
         if (body) body.innerHTML = '<p class="hint">Live readiness is unavailable right now.</p>';
       }
     })();
-    const depPaper = root.querySelector('#dep-paper');
-    if (depPaper) depPaper.onclick = () => busy(depPaper, async () => {
-      try { await api('/api/deployments', { strategy_id: s.id, mode: 'paper' }); go('/deploy'); } catch (e) { flash('#depflash', e.message, 'bad'); }
-    });
+    for (const [sel, fl] of [['#dep-paper', '#depflash'], ['#dep-paper-quick', '#depflash-quick']]) {
+      const depPaper = root.querySelector(sel);
+      if (depPaper) depPaper.onclick = () => busy(depPaper, async () => {
+        try { await api('/api/deployments', { strategy_id: s.id, mode: 'paper' }); go('/deploy'); } catch (e) { flash(fl, e.message, 'bad'); }
+      });
+    }
     const depDemo = root.querySelector('#dep-demo');
     if (depDemo) depDemo.onclick = () => { if (demoWhy) return; busy(depDemo, async () => {
       try { await api('/api/deployments', { strategy_id: s.id, mode: 'demo' }); go('/deploy'); } catch (e) { flash('#depflash', e.message, 'bad'); }
@@ -3795,9 +3821,9 @@
     return `<section class="ap-week" aria-label="Autopilot, last 7 days"><h3>Last 7 days</h3><dl>
       <div><dt>Credits spent on research</dt><dd>${usd(w.research_credits || 0)} <small>real money</small></dd></div>
       <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested ·\u00a0${Number(w.passed || 0).toLocaleString('en-US')} passed</dd></div>
-      <div><dt>Started on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'}</dd></div>
-      <div><dt>Paper P&amp;L</dt><dd><span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money ·\u00a0${trades} closed trade${trades === 1 ? '' : 's'}</small></dd></div>
-    </dl><p class="ap-week-note">Research counts every session, yours and the autopilot's. Paper counts only the strategies the autopilot put on paper itself.</p></section>`;
+      <div><dt>Autopilot put on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'} <small>not counting yours</small></dd></div>
+      <div><dt>Autopilot's paper P&amp;L</dt><dd><span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money ·\u00a0${trades} closed trade${trades === 1 ? '' : 's'}</small></dd></div>
+    </dl><p class="ap-week-note">Research counts every session, yours and the autopilot's. The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here.</p></section>`;
   }
   // What switching it on costs, said before the click: the agent's runs spend credits, and with
   // auto-reload on the saved card is charged when they run low. Payments off on this server: no line.
@@ -4162,7 +4188,7 @@
         ? `<button class="btn sm" data-ap="livetoggle" data-on="0">Turn off live</button>`
         : d.autopilot && d.live_enabled ? `<button class="btn sm" data-ap="livearm" ${d.kalshi_connected ? '' : 'aria-disabled="true"'}>Enable live autopilot</button>` : ''}
         ${d.autopilot_live || d.live_running ? '<button class="btn sm danger" data-ap="kill">Kill</button>' : ''}
-        <a class="btn sm ghost" href="/deploy">Open board</a>`;
+        <a class="btn sm ghost" href="/deploy">See what's trading</a>`;
       controls.querySelectorAll('[data-ap]').forEach((b) => (b.onclick = (e) => apAction(box, b.dataset.ap, e)));
     }
   }
