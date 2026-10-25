@@ -4143,8 +4143,18 @@ Actions:
   {"type": "kalshi_perps_order", "side": "bid", "count": "1", "price": "7.00", "reduce_only": false, "reason": "..."} (Native Kalshi BTC perps REAL-MONEY order proposal only. Whole contracts; price is USD PER CONTRACT, not BTC spot price. Bid buys/longs, ask sells/shorts; reduce_only must only reduce the current position. Kalshi determines account/product margin and leverage; there is no order leverage field or Tau financial cap. Always requires the owner to review a fresh exact order ticket and explicitly confirm, even with autopilot on. Never submit, approve, retry or claim execution yourself. Do not infer fills, access, buying power or liquidation safety. Research-only perps strategies remain ineligible for automatic deployment.)
   {"type": "deploy_live", "strategy_id": N, "reason": "..."}  (REAL money; any side (YES or NO) that already proved itself on PAPER, and only when the user turned on live autopilot. If live autopilot is off or any safety gate fails it is refused and stays on paper. Never the first step for a new idea: research -> paper -> live.)
 Back your words with actions. If your reply says you ARE doing something — starting/launching research, tuning, pausing, promoting, deploying — you MUST include the matching action(s) in `actions`. A reply that merely DESCRIBES an action without emitting it does NOTHING (no research is launched, nothing changes) and is a failure: e.g. saying "I'll launch three research threads now" requires three `research` actions in this same response, not a promise to do it later. Conversely, never invent actions you have no concrete reason for — if the right move is to wait and watch, say so plainly and return an empty list. EXCEPTION: if the context says EMPTY DECK (zero deployments and zero research in flight), waiting is NOT allowed — you must emit at least one `research` action this turn.
+The host may REFUSE any action (a paper strategy younger than its minimum age can't be paused, the live gate, cooldowns, limits); each action's result is posted as its own line right after your reply. So write actions as what you are ASKING for ("asking to pause #78"), never as done ("paused #78", "released 8 positions"), and quote dollar amounts, trade counts and position counts exactly as the context above states them: never estimate, round or infer one.
 CLOSE THE LOOP: research only pays off when a proven edge reaches the book. If a passed strategy is a DEPLOYMENT-CANDIDATE, promoting it to paper (a `deploy` action) takes priority over opening a new exploratory research line — don't explore forever while a ready edge sits undeployed. And don't re-launch research on a market that is already running or just finished: that line is refused; hunt a DIFFERENT market from the list.
 """ + specmod.SPEC_GUIDE
+
+
+# Action kinds whose act() branch returns a proposal id whenever it did or proposed something,
+# so None means the host refused it. research and set_focus return None on success too.
+PROPOSAL_ACTIONS = frozenset({"adjust", "pause", "resume", "deploy", "deploy_live", "set_risk", "set_exec"})
+
+
+def _action_kind(action: Dict) -> str:
+    return str(action.get("type") or action.get("kind") or "").strip().lower()
 
 
 def _copilot_check(obj: Dict) -> Dict:
@@ -4252,12 +4262,15 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
         # updates its plan and bills, but posts nothing — otherwise every idle review drops a
         # "nothing to change" line that reads as noise and makes a working autopilot look idle. A
         # chat run (the user asked) always answers; an acting review posts its reply + action lines.
-        if run["kind"] != "review" or out["actions"]:
-            repo.add_chat(cur, user["id"], "agent", out["reply"])
         # Persist the updated operating plan so the next review reasons from it (coherent across
         # time). set_autopilot_plan bounds + sanitizes it, so a huge/garbage value can't bloat the row.
         if out.get("plan"):
             repo.set_autopilot_plan(cur, user["id"], out["plan"])
+        # The actions run BEFORE the reply posts, so a review whose every action the host refused
+        # can stay quiet: its reply narrates things that didn't happen. Todd's 04:03Z review said
+        # "Paused both paper deployments... Released 8 stuck positions" while both pauses were
+        # refused (too young) and 7 positions were still open (2026-10-25). The refusal lines say it.
+        notes, refused = [], 0
         for action in out["actions"]:
             checkpoint()
             if str(action.get("type") or action.get("kind") or "").strip().lower() == "set_focus":
@@ -4270,6 +4283,12 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
                     text, proposal_id = act(tx, user, action, bool(user.get("autopilot")), dataset_fn)
             else:
                 text, proposal_id = act(cur, user, action, bool(user.get("autopilot")), dataset_fn)
+            if proposal_id is None and _action_kind(action) in PROPOSAL_ACTIONS:
+                refused += 1  # these kinds return a proposal id whenever they did (or proposed) something
+            notes.append((text, proposal_id))
+        if run["kind"] != "review" or (out["actions"] and refused < len(out["actions"])):
+            repo.add_chat(cur, user["id"], "agent", out["reply"])
+        for text, proposal_id in notes:
             # A scheduled review that keeps hitting the same refusal ("you already have research
             # running") posted it every 10 minutes. Say it once per REPEAT_NOTE_WINDOW; anything
             # that did something (a proposal) or that the user asked for always posts.
