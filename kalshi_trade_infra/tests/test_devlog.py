@@ -17,3 +17,9 @@ def test_shipped_entries_are_dated_newest_first():
     dates = [d for d, _, _ in devlog.SHIPPED]
     assert all(re.fullmatch(r"\d{4}-\d{2}-\d{2}", d) for d in dates)
     assert dates == sorted(dates, reverse=True)
+
+
+def test_shipped_titles_are_features_not_engineering_logistics():
+    # It once listed "Main f8ff5e2 merged locally" and "[ops] Codified the web-box deploy".
+    for _, title, _ in devlog.SHIPPED:
+        assert not re.search(r"\bmerged?\b|\borigin\b|\bPR #\d+|\[ops\]|\b[0-9a-f]{7,40}\b", title, re.I), title
