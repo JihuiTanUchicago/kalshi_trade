@@ -458,7 +458,7 @@
       try { S.me = await api('/api/me', undefined, { timeoutMs: 12000 }); }
       catch (e) {
         if (splashTid) clearTimeout(splashTid);
-        if (e.status === 401) return go('/signin', true);
+        if (e.status === 401) { S.signedOutAt = Date.now(); return go('/signin', true); }
         return bootFail();
       }
       if (splashTid) clearTimeout(splashTid);
@@ -1227,7 +1227,9 @@
   async function viewSignin() {
     const hr = document.getElementById('hotrail'); if (hr) hr.remove();
     document.body.classList.remove('hot-open');
-    if (!S.me) { try { S.me = await api('/api/me'); } catch (e) { /* signed out: stay here */ } }
+    // Boot just got a 401 and redirected here: don't wait on a second /api/me before painting the landing page.
+    const justSignedOut = S.signedOutAt && Date.now() - S.signedOutAt < 5000;
+    if (!S.me && !justSignedOut) { try { S.me = await api('/api/me'); } catch (e) { /* signed out: stay here */ } }
     if (S.me) return go('/', true);
     const q = new URLSearchParams(location.search);
     const err = q.get('error');

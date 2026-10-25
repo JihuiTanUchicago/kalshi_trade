@@ -264,6 +264,20 @@ test('live deployment forwards the exact trimmed typed phrase and leaves rejecte
   }
 });
 
+test('the landing page paints without a second /api/me right after the boot 401', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/me') return response({error: 'signed out'}, 401);
+    return response({});
+  }});
+  const signin = f.routes.find(([pattern]) => pattern.test('/signin'))[1];
+  f.S.me = null; f.S.signedOutAt = Date.now();
+  await signin(); await flush();
+  assert.equal(f.requests.filter(({path}) => path === '/api/me').length, 0);
+  f.S.signedOutAt = Date.now() - 60000;  // a later visit still checks the session
+  await signin(); await flush();
+  assert.equal(f.requests.filter(({path}) => path === '/api/me').length, 1);
+});
+
 test('the OAuth account return and Funds routes open the current funds page', () => {
   const f = frontend();
   const route = path => f.routes.find(([pattern]) => pattern.test(path))?.[1];
