@@ -3874,14 +3874,14 @@
   // need this more than the one-time welcome credit.
   const runwayLabel = (days) => days < 1 ? 'Under a day' : days > 90 ? 'Over 3 months' : `About ${Math.round(days)} day${Math.round(days) === 1 ? '' : 's'}`;
   async function viewBilling() {
-    shell('/billing', boardTitle('Billing', 'Credits pay for agent research and chat, billed per token at model list price. Paper and live trading themselves are free.') +
+    shell('/billing', boardTitle('Billing', 'Credits pay for agent research and chat, billed per token for the model you pick. Paper and live trading themselves are free.') +
       '<dl class="figures measure" id="bfigs" style="margin-top:14px"></dl>', loading(360));
     let stripe = null, card = null;
     const load = async () => {
       const d = await api('/api/billing');
       root.querySelector('#bfigs').innerHTML =
         fig('Credit balance', usd(d.balance), { v: d.balance > 0 ? 1 : (d.balance < 0 ? -1 : 0) }) +
-        fig('Spent on usage', usd(d.spent), { small: 'at model list price' }) +
+        fig('Spent on usage', usd(d.spent), { small: 'research and chat' }) +
         (d.runway_days != null
           ? fig('Credits last', runwayLabel(d.runway_days), { v: d.runway_days < 3 ? -1 : 0, small: `at ${usd(d.spent_7d)} a week` })
           : fig('Welcome credit', usd(d.free_bonus), { small: 'one-time, free' }));
