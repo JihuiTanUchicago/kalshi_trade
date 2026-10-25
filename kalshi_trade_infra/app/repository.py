@@ -56,7 +56,8 @@ from app.adapters.db.user_config_repository import (  # noqa: F401
     user_risk_config,
 )
 from app.adapters.db.position_repository import (  # noqa: F401
-    STOP_EXIT_REASONS, book_partial_exit, claim_position_close, close_position, daily_pnl,
+    STOP_EXIT_REASONS, book_partial_exit, claim_position_close, close_position, closed_trade_counts,
+    closed_trades_for_export, daily_pnl,
     deployment_realized_series, early_exit_scorecard, insert_closed_position, insert_position,
     market_has_open_positions, open_positions, positions_for_strategy, realized_pnl,
     realized_pnl_by_mode, score_early_exit, unscored_early_exits, update_marks, user_open_exposure, user_positions,

@@ -421,15 +421,18 @@ def _start_of_day_utc() -> datetime:
 
 
 def _mode_bucket(cur, uid: int, mode: str, open_pos: List[Dict], deps: List[Dict], day,
-                 realized: Optional[Tuple[float, float]] = None) -> Dict:
+                 realized: Optional[Tuple[float, float]] = None,
+                 closed: Optional[Dict[str, int]] = None) -> Dict:
     """Money in one deployment-mode bucket (paper | demo | live), from that mode's own
     positions and deployments only — so the three buckets never double-count each other.
-    `realized` is (all time, since `day`) when the caller read every book's at once."""
+    `realized` is (all time, since `day`) when the caller read every book's at once.
+    `closed` is repo.closed_trade_counts (read once for all three)."""
     pos = [p for p in open_pos if p["mode"] == mode]
     if realized is None:
         realized = (repo.realized_pnl(cur, uid, mode), repo.realized_pnl(cur, uid, mode, day))
     total, today = realized
     return {
+        "closed_trades": int((closed or {}).get(mode, 0)),  # > 0: the dashboard offers /api/trades.csv
         "open_at_cost": round(sum(float(p["qty"]) * float(p["entry_price"]) for p in pos), 2),
         "open_positions": len(pos),
         "running": sum(1 for d in deps if d["mode"] == mode and d["status"] == "running"),
@@ -471,7 +474,8 @@ def dashboard(ctx: Ctx):
     # Three mode buckets, each self-contained (real / sandbox / simulation). Paper + demo both
     # carry an app-controlled cash layer on top of the shared fields; live carries the real
     # Kalshi balance (money we never hold).
-    paper = _mode_bucket(cur, ctx.uid, "paper", open_pos, deps, day, realized["paper"])
+    closed = repo.closed_trade_counts(cur, ctx.uid)
+    paper = _mode_bucket(cur, ctx.uid, "paper", open_pos, deps, day, realized["paper"], closed)
     equity = balance + paper["open_at_cost"]
     paper.update(
         cash=round(balance, 2),
@@ -486,11 +490,11 @@ def dashboard(ctx: Ctx):
     )
     # Demo: real fills applied to the capital WE set. Equity = capital + realized-since-reload,
     # and the displayed realized P&L is net of the reload baseline (so a reload reads as $X flat).
-    demo = _mode_bucket(cur, ctx.uid, "demo", open_pos, deps, day, realized["demo"])
+    demo = _mode_bucket(cur, ctx.uid, "demo", open_pos, deps, day, realized["demo"], closed)
     de = repo.demo_equity(cur, ctx.uid, realized=realized["demo"][0])
     demo.update(capital=de["capital"], equity=de["equity"], realized_pnl=de["realized"],
                 total_pnl=de["realized"], roi=de["roi"], before_reload=de["before_reload"])
-    live = _mode_bucket(cur, ctx.uid, "live", open_pos, deps, day, realized["live"])
+    live = _mode_bucket(cur, ctx.uid, "live", open_pos, deps, day, realized["live"], closed)
     live.update(_live_balance(cur, ctx.uid))
     return {
         "paper": paper,
@@ -2191,6 +2195,64 @@ def billing_receipt(ctx: Ctx):
     return ("download", fname, "text/csv; charset=utf-8", buf.getvalue())
 
 
+TRADE_MODES = ("paper", "demo", "live")
+TRADES_CSV_MAX_ROWS = 50000  # about 7MB; a cap, so one request can't read an unbounded book
+TRADES_CSV_HEADER = ["closed_at_utc", "opened_at_utc", "mode", "strategy", "strategy_title", "ticker", "side",
+                     "contracts", "entry_price", "exit_price", "entry_fee", "exit_fee", "realized_pnl",
+                     "close_reason", "position_id"]
+_PLAIN_NUMBER = re.compile(r"^[+-]?(?:\d+\.?\d*|\.\d+)$")
+
+
+def _csv_safe(value: Any) -> str:
+    """One CSV cell that a spreadsheet will show as text, never run as a formula. Strategy titles
+    are written by people and models; a cell that starts with = + - @ (or a tab or CR) and isn't a
+    plain number gets a leading apostrophe. Negative P&L stays a number."""
+    if value is None:
+        return ""
+    s = str(value)
+    if s and s[0] in "=+-@\t\r" and not _PLAIN_NUMBER.match(s):
+        return "'" + s
+    return s
+
+
+def _iso_utc(v: Any) -> str:
+    if not isinstance(v, datetime):
+        return "" if v is None else str(v)
+    v = v.astimezone(timezone.utc).replace(tzinfo=None) if v.tzinfo else v
+    return v.replace(microsecond=0).isoformat() + "Z"
+
+
+def _dec(v: Any, places: int = 4) -> str:
+    return "" if v is None else "%.*f" % (places, float(v))
+
+
+def trades_csv(ctx: Ctx):
+    """One mode's closed trades as a CSV the user can check the P&L from: realized_pnl summed over the
+    file is the mode's realized P&L on the dashboard (demo's is since the last reload, so it can
+    differ by what came before). Never mixes modes. Newest TRADES_CSV_MAX_ROWS at most, and says so."""
+    import csv
+    import io
+    mode = (ctx.query.get("mode") or "").strip().lower()
+    if mode not in TRADE_MODES:
+        raise ApiError(400, "Pick a mode: paper, demo or live.")
+    rows = repo.closed_trades_for_export(ctx.cur, ctx.uid, mode, TRADES_CSV_MAX_ROWS + 1)
+    cut = len(rows) > TRADES_CSV_MAX_ROWS
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(TRADES_CSV_HEADER)
+    for r in reversed(rows[:TRADES_CSV_MAX_ROWS]):  # oldest first, the order a reader checks a book in
+        sid = r.get("strategy_id")
+        w.writerow([_csv_safe(c) for c in (
+            _iso_utc(r["closed_at"]), _iso_utc(r["opened_at"]), r["mode"],
+            "No. %05d" % sid if sid is not None else "", r.get("title") or "", r["ticker"], r["side"], int(r["qty"]),
+            _dec(r["entry_price"]), _dec(r["exit_price"]), _dec(r["entry_fee"]), _dec(r["exit_fee"]),
+            _dec(r["pnl"]), r.get("close_reason") or "", r["id"])])
+    if cut:
+        w.writerow(["# Only the newest %d trades are in this file; older ones are not." % TRADES_CSV_MAX_ROWS])
+    fname = "tau-trades-%s-%s.csv" % (mode, repo.now_utc().strftime("%Y%m%d"))
+    return ("download", fname, "text/csv; charset=utf-8", buf.getvalue())
+
+
 def billing_setup_intent(ctx: Ctx):
     if not billing.configured():
         raise ApiError(503, "Payments aren't enabled yet.")
@@ -2822,6 +2884,7 @@ ROUTES: List[Route] = [
         ("POST", r"/api/community/(\d+)/comments", create_comment, True),
         ("GET", "/api/billing", billing_state, True),
         ("GET", "/api/billing/receipt", billing_receipt, True),
+        ("GET", r"/api/trades\.csv", trades_csv, True),
         ("POST", "/api/billing/setup-intent", billing_setup_intent, True),
         ("POST", "/api/billing/card-added", billing_card_added, True),
         ("POST", "/api/billing/topup", billing_topup, True),

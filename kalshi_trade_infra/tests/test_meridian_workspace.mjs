@@ -540,6 +540,26 @@ test('Overview empty Deployed box never says autopilot is researching while the 
   }
 });
 
+test('Overview offers each mode its own trades CSV only when that mode has closed trades', async () => {
+  for (const [counts, connected, deployments] of [[{paper: 0, demo: 0, live: 0}, false, []], [{paper: 4, demo: 0, live: 0}, false, []],
+    [{paper: 1, demo: 2, live: 3}, true, [dashboardDeployment('live')]], [{paper: 0, demo: 0, live: 3}, false, []]]) {
+    const data = dashboardData({paper: {closed_trades: counts.paper}, demo: {closed_trades: counts.demo},
+      live: {connected, balance: connected ? 50 : null, closed_trades: counts.live}, deployments});
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/dashboard') return response(data);
+      if (path.startsWith('/api/deployments/')) return response({});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    await f.viewDashboard(); await flush();
+    // Paper (or live, once real money runs) sits in the account band; the other accounts in the menu.
+    const html = f.root.querySelector('#boardbody').innerHTML + f.root.querySelector('main').innerHTML;
+    for (const mode of ['paper', 'demo', 'live']) {
+      const link = `<a class="csv-link" href="/api/trades.csv?mode=${mode}" download>Download trades (CSV)</a>`;
+      assert.equal(html.includes(link), counts[mode] > 0, `${mode} ${JSON.stringify(counts)}`);
+    }
+  }
+});
+
 test('Overview demo account says what demo is and that its P&L restarts at a reload', async () => {
   for (const [demo, re] of [
     [{equity: 1000, capital: 1000, realized_pnl: 0}, /\$1,000\.00 capital · No demo deployments · real fills on Kalshi’s sandbox, not real money/],
