@@ -2308,6 +2308,10 @@ def run_research(
     usage = Usage()
     tried: List[Dict] = []
     run_id, user_id, market = run["id"], run["user_id"], run["market"]
+    sim0, wall0 = backtest.sim_seconds(), time.monotonic()
+
+    def timing() -> Tuple[float, float]:
+        return backtest.sim_seconds() - sim0, time.monotonic() - wall0
     # The run's model drives every LLM call it makes and the price it's billed at. An autopilot
     # research run is stamped with the user's autopilot_model at creation (act); a manual run
     # carries the model the user picked; NULL resolves to the catalog default. Tests pass `model`.
@@ -2623,7 +2627,7 @@ def run_research(
             {"passed": total_passed, "tried": explored(), "dropped": ckpt["dropped_n"]})
         repo.finish_run(cur, run_id, "succeeded", None, explored(), total_passed, tot_in, tot_out)
         print(research_outcome_line(run_id, user_id, market, "succeeded", explored(), total_passed,
-                                    tot_in, tot_out, choice.model_id, verdicts), flush=True)
+                                    tot_in, tot_out, choice.model_id, verdicts, timing=timing()), flush=True)
     except Superseded:
         # No event and no finish_run: the run's new owner (or the reaper) holds its record now.
         _bill(conn, user_id, usage, run_id, choice.model_id)  # tokens this thread spent are still real
@@ -2657,7 +2661,7 @@ def run_research(
                         explored(), 0, usage.input_tokens, usage.output_tokens)
         print(research_outcome_line(run_id, user_id, market, "stopped" if no_data else "failed", explored(), 0,
                                     usage.input_tokens, usage.output_tokens, choice.model_id, verdicts,
-                                    type(e).__name__), flush=True)
+                                    type(e).__name__, timing=timing()), flush=True)
         _bill(conn, user_id, usage, run_id, choice.model_id)  # charge for the work done regardless of the failure cause
         bill_screen()
         if not isinstance(e, LLMError):
@@ -2667,14 +2671,17 @@ def run_research(
 
 
 def research_outcome_line(run_id, user_id, market, status: str, tried: int, passed: int, tokens_in: int,
-                          tokens_out: int, model_id: str, verdicts: Dict[str, int], error: str = "") -> str:
+                          tokens_out: int, model_id: str, verdicts: Dict[str, int], error: str = "",
+                          timing: Optional[Tuple[float, float]] = None) -> str:
     """One greppable process-log line per finished research run, so the funnel (hypotheses tried,
     gatekeeper verdicts, passes) and its token cost can be read from the worker log alone. The
-    tokens_in/out are what was billed at finish (a failed run's are the unbilled remainder)."""
+    tokens_in/out are what was billed at finish (a failed run's are the unbilled remainder).
+    ``timing`` is (seconds in backtest.simulate, run wall seconds), logged with the backtest engine."""
     v = ",".join("%s=%d" % (k, n) for k, n in sorted(verdicts.items())) or "none"
+    t = (" backtest_s=%.1f run_s=%.1f engine=%s" % (timing[0], timing[1], backtest.ENGINE)) if timing else ""
     return ("[research] run=%s user=%s market=%s status=%s tried=%d passed=%d tokens_in=%d tokens_out=%d "
-            "model=%s verdicts=%s%s" % (run_id, user_id, market, status, tried, passed, tokens_in, tokens_out,
-                                        model_id, v, (" error=%s" % error) if error else ""))
+            "model=%s verdicts=%s%s%s" % (run_id, user_id, market, status, tried, passed, tokens_in, tokens_out,
+                                          model_id, v, t, (" error=%s" % error) if error else ""))
 
 
 def _span_words(ds: backtest.Dataset) -> str:

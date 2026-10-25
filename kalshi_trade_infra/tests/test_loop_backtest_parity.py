@@ -205,3 +205,17 @@ def test_real_data_parity_script_reports_clean_and_dirty_runs(monkeypatch, capsy
     import app.adapters.kalshi.spec_strategy as ss
     monkeypatch.setattr(ss, "simulate_on_loop", lambda *a, **k: [])
     assert loop_parity.main(["--markets", "btc15m"]) == 1
+
+
+def test_simulate_clocks_its_own_thread_once_per_call(monkeypatch):
+    """backtest.sim_seconds is what a research run logs as its backtest share: every simulate call
+    adds its wall time once, even when it routes through the loop (which calls nothing back)."""
+    monkeypatch.setattr(backtest, "FILL_MODEL", "next_bar")
+    ds = _random_dataset(5)
+    spec = specmod.validate(SPECS[0])
+    before = backtest.sim_seconds()
+    backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1)
+    one = backtest.sim_seconds() - before
+    monkeypatch.setattr(backtest, "ENGINE", "loop")
+    backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1)
+    assert 0 < one < backtest.sim_seconds() - before

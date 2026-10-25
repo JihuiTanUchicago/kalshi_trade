@@ -238,6 +238,15 @@ def _stop_hit(pos, snap: Snapshot, stop_pct: float) -> Optional[float]:
     return bid if 100.0 * (cost - pos.qty * bid) / cost >= stop_pct else None
 
 
+# Seconds this thread has spent inside simulate(). A research run logs its share of wall time, which
+# is what decides whether TAU_BACKTEST_ENGINE=loop's extra CPU matters (runs are one thread each).
+_SIM_CLOCK = threading.local()
+
+
+def sim_seconds() -> float:
+    return getattr(_SIM_CLOCK, "seconds", 0.0)
+
+
 def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optional[WhatIf] = None) -> List[Trade]:
     """Trades for positions OPENED in [start_ts, end_ts). Positions settle on
     Kalshi's result even if that is after end_ts - the result was fixed by the
@@ -247,6 +256,17 @@ def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optio
     `code`) computes a per-frame target book in the sandbox once; the entry/exit/sizing/
     fee/settlement mechanics below are then IDENTICAL to a DSL spec. Everything else is the
     single-contract DSL path, unchanged."""
+    if getattr(_SIM_CLOCK, "depth", 0):
+        return _simulate(spec, ds, start_ts, end_ts, what_if)
+    _SIM_CLOCK.depth, t0 = 1, time.perf_counter()
+    try:
+        return _simulate(spec, ds, start_ts, end_ts, what_if)
+    finally:
+        _SIM_CLOCK.depth = 0
+        _SIM_CLOCK.seconds = sim_seconds() + time.perf_counter() - t0
+
+
+def _simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optional[WhatIf] = None) -> List[Trade]:
     if ds.market.kind == "perpetual" or specmod.is_perpetual_spec(spec):
         if ds.market.kind != "perpetual" or spec.get("market") != ds.market.key:
             raise ValueError("Perpetual research requires its own matching instrument dataset.")
