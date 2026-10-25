@@ -17,7 +17,7 @@ backtest, the database in paper and live. The venue's book is the exchange truth
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from trading_core.domain import ExecutionReport, Instrument, InstrumentId, OrderIntent, Portfolio, Quote, RiskDecision
 from trading_core.engine.execution import CrossTheTouch, ExecutionPolicy
@@ -81,8 +81,11 @@ class TradingLoop:
                 result.settled.append((iid, pos.qty, pos.avg_price, price))
                 self.book.settle(iid, price)
 
-    def _quotes(self, now: float) -> Dict[InstrumentId, Quote]:
-        live = list(self._universe(now)) if self._universe is not None else list(self.instruments)
+    def _quotes(self, now: float) -> Mapping[InstrumentId, Quote]:
+        live = self._universe(now) if self._universe is not None else list(self.instruments)
+        if not self.features:
+            return self.feed.quotes(live)  # read-only; a replay feed may build each quote on first use
+        live = list(live)
         quotes = dict(self.feed.quotes(live))
         for provider in self.features:
             extra = provider.features([self.instruments[i] for i in live], now)

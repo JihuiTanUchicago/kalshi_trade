@@ -141,25 +141,56 @@ class KalshiNextBarFill:
         return venue.submit(replace(intent, qty=qty, limit_price=price), price, client_order_id)
 
 
+class _FrameQuotes(Mapping):
+    """One dataset frame as {InstrumentId: Quote}, YES from each snapshot and NO derived. A quote is
+    built the first time something reads it: a bar with hundreds of contracts usually needs a few
+    (held positions, the orders it sends), and the strategy reads the snapshots themselves."""
+
+    def __init__(self, snaps: Mapping[str, Snapshot]) -> None:
+        self._snaps = snaps
+        self._built: Dict[InstrumentId, Quote] = {}
+
+    def __getitem__(self, iid: InstrumentId) -> Quote:
+        q = self._built.get(iid)
+        if q is None:
+            snap = self._snaps.get(iid.symbol) if iid.venue == ki.VENUE else None
+            if snap is None or iid.outcome not in ("yes", "no"):
+                raise KeyError(iid)
+            yes, no = ki.quotes(snap)
+            self._built[yes.instrument], self._built[no.instrument] = yes, no
+            q = yes if iid.outcome == "yes" else no
+        return q
+
+    def __iter__(self):
+        for ticker in self._snaps:
+            yield instrument_id(ticker, "yes")
+            yield instrument_id(ticker, "no")
+
+    def __len__(self) -> int:
+        return 2 * len(self._snaps)
+
+    def __contains__(self, iid) -> bool:
+        return isinstance(iid, InstrumentId) and iid.venue == ki.VENUE and iid.symbol in self._snaps \
+            and iid.outcome in ("yes", "no")
+
+
 class _FrameFeed:
-    """The current dataset frame as a MarketDataFeed: YES quotes from the snapshots, NO derived."""
+    """The current dataset frame as a MarketDataFeed."""
 
     def __init__(self) -> None:
-        self.current: Dict[InstrumentId, Quote] = {}
         self.snaps: Dict[str, Snapshot] = {}
+        self.current: _FrameQuotes = _FrameQuotes({})
 
     def load(self, snaps: Sequence[Snapshot]) -> None:
-        self.current, self.snaps = {}, {}
-        for snap in snaps:
-            yes, no = ki.quotes(snap)
-            self.current[yes.instrument] = yes
-            self.current[no.instrument] = no
-            self.snaps[snap.contract.ticker] = snap
+        self.snaps = {snap.contract.ticker: snap for snap in snaps}
+        self.current = _FrameQuotes(self.snaps)
 
     def quote(self, instrument: InstrumentId) -> Optional[Quote]:
         return self.current.get(instrument)
 
-    def quotes(self, instruments: Sequence[InstrumentId]) -> Dict[InstrumentId, Quote]:
+    def quotes(self, instruments) -> Mapping[InstrumentId, Quote]:
+        if instruments is self.current:
+            return self.current   # the whole frame (the replay's universe): stay lazy
         return {i: self.current[i] for i in instruments if i in self.current}
 
 
@@ -216,7 +247,7 @@ def simulate_on_loop(spec: Dict, ds, start_ts: int, end_ts: int, fees: Optional[
         extra = dict(execution=CrossTheTouch(max_quote_age_seconds=0.0))
     venue = QuoteFillVenue(feed, fees, instruments, slippage=slip)
     loop = TradingLoop(strategy, instruments, feed, venue, clock, book=book,
-                       settlement=_ResultSettlement(ds.results), universe=lambda now: list(feed.current), **extra)
+                       settlement=_ResultSettlement(ds.results), universe=lambda now: feed.current, **extra)
     opened: Dict[InstrumentId, tuple] = {}     # iid -> (entry_ts, entry_price, entry_fee, edge)
     trades: List[Trade] = []
 
