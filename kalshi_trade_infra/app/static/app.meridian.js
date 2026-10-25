@@ -2364,7 +2364,9 @@
       if (depChip && counts.deployed != null) depChip.textContent = `Deployed (${counts.deployed})`;
       if (!d.matched) {
         const noneKept = total && !kept && !f.status && !f.q && !f.market && !f.deployed;  // a new user's default view, not a filter miss
-        slipsEl.innerHTML = `<div class="empty"><h3>${noneKept ? 'No strategy has passed yet' : total ? 'No matching strategies' : 'No strategies yet'}</h3>${noneKept ? '<p>Most ideas fail their tests; the ones that pass land here.</p>' : ''}${total && !noneKept ? '' : `${apNudge('Rather not write ideas yourself?', 'and it researches on its own, on paper.')}<a class="btn" href="/research?new=1">New session</a>`}</div>`;
+        // With autopilot on, the empty list says it is already researching instead of asking for a session.
+        const apOn = !!(S.me && S.me.user && S.me.user.autopilot);
+        slipsEl.innerHTML = `<div class="empty"><h3>${noneKept ? 'No strategy has passed yet' : total ? 'No matching strategies' : 'No strategies yet'}</h3>${noneKept ? `<p>Most ideas fail their tests; the ones that pass land here.${apOn ? ' Autopilot keeps researching on its own.' : ''}</p>` : !total && apOn ? '<p>Autopilot is researching. The strategies it finds will land here.</p>' : ''}${total && !noneKept ? '' : `${apNudge('Rather not write ideas yourself?', 'and it researches on its own, on paper.')}${apOn ? '<a class="btn" href="/research">See its research</a>' : '<a class="btn" href="/research?new=1">New session</a>'}`}</div>`;
         return;
       }
       const list = d.strategies, reg = registry(list.map((s) => s.equity));

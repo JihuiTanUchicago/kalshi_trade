@@ -168,6 +168,18 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.equal(f.root.querySelector('[data-toggle="deployed"]').textContent, 'Deployed (2)');
   });
 
+  test(`${name}: an empty strategy list with autopilot on says it is researching, not "start a session"`, async () => {
+    for (const [on, total] of [[true, 2], [false, 2], [true, 0], [false, 0]]) {
+      const f = frontend({fetchImpl: () => response({counts: {total, passed: 0, rejected: total}, matched: 0, pages: 1, strategies: []})});
+      f.S.me.user.autopilot = on;
+      await f.viewStrategies(); await flush();
+      const html = f.root.querySelector('#slips').innerHTML;
+      assert.equal(/See its research/.test(html), on, `autopilot ${on}, ${total} strategies`);
+      assert.equal(/Autopilot (keeps researching|is researching)/.test(html), on);
+      if (!on) assert.match(html, /Go to Research|New session/);
+    }
+  });
+
   test(`${name}: a failed strategies load offers a retry instead of a stuck skeleton`, async () => {
     let down = true;
     const f = frontend({fetchImpl: path => {
