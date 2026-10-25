@@ -855,6 +855,13 @@ def main() -> None:
         _add_index_if_missing(cur, "app_credit_ledger", "idx_credit_run_kind",
                               "ALTER TABLE app_credit_ledger ADD INDEX idx_credit_run_kind (run_id, kind), "
                               "ALGORITHM=INPLACE, LOCK=NONE")
+        # /api/me, the billing gate and the admin list sum the user's whole ledger (credit_balance).
+        # Without amount_usd in an index that SUM reads every ledger row of the table; with it, the
+        # same SUM reads only the user's index entries. The value is unchanged: same rows, same
+        # DECIMAL(14,6) sum. The ledger is append-only (add_credit is its only write).
+        _add_index_if_missing(cur, "app_credit_ledger", "idx_credit_user_amount",
+                              "ALTER TABLE app_credit_ledger ADD INDEX idx_credit_user_amount (user_id, amount_usd), "
+                              "ALGORITHM=INPLACE, LOCK=NONE")
         # Same slow log: the collector box's per-minute reads of the legacy feature tables
         # (data_pipeline.init_schema owns them) full-scanned them, ~5s each, two every minute.
         # They are added here because only this migration runs on every deploy.
