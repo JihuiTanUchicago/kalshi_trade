@@ -2321,7 +2321,8 @@
       const kept = total - c('failed') - c('rejected');
       root.querySelectorAll('[data-f="status"]').forEach((b) => { const v = b.dataset.v; b.textContent = v ? `${CLABEL[v]} (${c(v)})` : `Kept (${kept})`; });
       if (!d.matched) {
-        slipsEl.innerHTML = `<div class="empty"><h3>${total ? 'No matching strategies' : 'No strategies yet'}</h3>${total ? '' : '<a class="btn" href="/research?new=1">New session</a>'}</div>`;
+        const noneKept = total && !kept && !f.status && !f.q && !f.market && !f.deployed;  // a new user's default view, not a filter miss
+        slipsEl.innerHTML = `<div class="empty"><h3>${noneKept ? 'No strategy has passed yet' : total ? 'No matching strategies' : 'No strategies yet'}</h3>${noneKept ? '<p>Most ideas fail their tests; the ones that pass land here.</p>' : ''}${total && !noneKept ? '' : `${apNudge('Rather not write ideas yourself?', 'and it researches on its own, on paper.')}<a class="btn" href="/research?new=1">New session</a>`}</div>`;
         return;
       }
       const list = d.strategies, reg = registry(list.map((s) => s.equity));
@@ -2672,7 +2673,7 @@
         fig('Open positions', d.open_positions.length) +
         fig('Money', live.length ? '<span class="mk live">Live</span>' : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : 'nothing on live money' });
       replaceDeploymentContent(root.querySelector('#deps'), d.deployments.length ? deploymentTable(d.deployments.map((x) => deploymentSlip(x, true)).join(''), true)
-        : `<div class="empty"><h3>Nothing deployed</h3><a class="btn" href="/strategies?status=passed">See passed strategies</a></div>`);
+        : `<div class="empty"><h3>Nothing deployed</h3>${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}<a class="btn" href="/strategies?status=passed">See passed strategies</a></div>`);
       bindDeploymentActions(root.querySelector('#deps'), loadBoard);
       root.querySelector('#openpos').innerHTML = d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
         ${d.open_positions.map((p) => `<tr><td>${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</td><td class="tick">${esc(p.ticker)}</td><td>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num">${p.unrealized == null ? '<span class="sub-fig">—</span>' : money(p.unrealized)}</td><td class="num">${clock(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
@@ -2706,7 +2707,7 @@
       const how = key === 'live' ? 'Deploy a strategy that has proven itself on paper to live money, and its closed trades show up here.'
         : key === 'demo' ? 'Deploy a strategy to the Kalshi demo exchange to build a record with real fills and no real money.'
         : 'Deploy a passed strategy on paper. Every closed trade is recorded here.';
-      return `<div class="empty"><h3>No closed ${esc(m.label.toLowerCase())} trades yet</h3><p>${how}</p><a class="btn" href="/deploy">Go to Deploy</a></div>${cav}`;
+      return `<div class="empty"><h3>No closed ${esc(m.label.toLowerCase())} trades yet</h3><p>${how}</p>${key === 'paper' ? apNudge('Rather not pick strategies yourself?', 'and it runs the ones that pass on paper. Their trades fill this record.') : ''}<a class="btn" href="/deploy">Go to Deploy</a></div>${cav}`;
     }
     const s = m.sample;
     const good = s.level === 'solid' && s.edge === 'positive';
@@ -3375,6 +3376,10 @@
     try { localStorage.setItem('tau_ap_open', '1'); } catch (e) { /* private mode */ }
     const box = document.getElementById('autopilot-float');
     if (box) renderAutopilot(box, S.ap);
+  }
+  // One-click autopilot line for empty states; the [data-research-ap] click handler turns it on.
+  function apNudge(lead, rest) {
+    return S.me && S.me.user && !S.me.user.autopilot ? `<p class="research-ap">${lead} <button type="button" data-research-ap>Turn on autopilot</button> ${rest}</p>` : '';
   }
   // Research page nudge: the same one-click switch as the dashboard card.
   document.addEventListener('click', (e) => {
