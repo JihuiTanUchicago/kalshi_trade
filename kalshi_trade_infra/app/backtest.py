@@ -29,6 +29,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from app import freedata
 from app import spec as specmod
+from app.track_record import thin_min_max
 from app import options_fair, sports_odds, weather_fcst
 from app.markets import (MARKETS, NEW_YORK, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot, snapshot,
                          cross_features, cross_product,
@@ -1026,10 +1027,11 @@ def attribution(trades: List[Trade]) -> Dict:
 
 
 def _downsample(curve: List[Tuple[int, float]], n: int = EQUITY_POINTS) -> List[Tuple[int, float]]:
-    if len(curve) <= n:
-        return curve
-    step = len(curve) / float(n)
-    return [curve[int(i * step)] for i in range(n - 1)] + [curve[-1]]
+    """The equity curve a strategy page draws, at most `n` points. Display only: the gates, metrics
+    and research scoring all read the full trades. Each run keeps its lowest and highest point and
+    the ends stay exact (track_record.thin_min_max), so a one-trade crash still shows; every Nth
+    point could step over it."""
+    return thin_min_max(curve, n)
 
 
 def evaluate(spec: Dict, ds: Dataset, what_if: Optional[WhatIf] = None, include_oos: bool = True) -> Dict:

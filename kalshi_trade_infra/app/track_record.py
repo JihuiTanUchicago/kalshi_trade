@@ -167,20 +167,49 @@ def thin_min_max(curve: List[List], cap: int = CURVE_POINTS) -> List[List]:
     in SQL. Keeping every Nth point instead could step over a one-trade crash and hide a drawdown."""
     if cap < 4:
         raise ValueError("thin_min_max needs room for the ends and one run's low and high (cap >= 4)")
-    n = len(curve)
-    if n <= cap:
+    if len(curve) <= cap:
         return curve
-    buckets = (cap - 2) // 2
-    inner = n - 2
     out = [curve[0]]
-    for b in range(buckets):
-        lo_i, hi_i = 1 + b * inner // buckets, 1 + (b + 1) * inner // buckets
-        if lo_i >= hi_i:
-            continue
+    for lo_i, hi_i in _runs(len(curve), (cap - 2) // 2):
         lo = min(range(lo_i, hi_i), key=lambda i: (curve[i][1], i))
         hi = min(range(lo_i, hi_i), key=lambda i: (-curve[i][1], i))
         out.extend(curve[i] for i in sorted({lo, hi}))
     out.append(curve[-1])
+    return out
+
+
+def thin_lows(series: List[List], cap: int = CURVE_POINTS) -> List[List]:
+    """At most `cap` points of a [[ts, value], ...] series, keeping the first and last points and
+    each run's lowest point (cap - 2 runs by count; ties keep the earlier point). For a drawdown
+    series, whose low points are the ones that matter: the deepest point always survives."""
+    if cap < 3:
+        raise ValueError("thin_lows needs room for the ends and one run's low (cap >= 3)")
+    if len(series) <= cap:
+        return series
+    return ([series[0]] + [series[min(range(lo_i, hi_i), key=lambda i: (series[i][1], i))]
+                           for lo_i, hi_i in _runs(len(series), cap - 2)] + [series[-1]])
+
+
+def _runs(n: int, buckets: int):
+    """(start, stop) index ranges splitting the inner points 1..n-2 into `buckets` runs by count."""
+    inner = n - 2
+    for b in range(buckets):
+        lo_i, hi_i = 1 + b * inner // buckets, 1 + (b + 1) * inner // buckets
+        if lo_i < hi_i:
+            yield lo_i, hi_i
+
+
+def underwater(curve: List[List]) -> List[List]:
+    """The drawdown at each point of a cumulative P&L curve: how far it sits below the highest it
+    has been, counting the 0 before the first trade (as _drawdown_stats does), in cents. Its lowest
+    value is minus the reported max_drawdown, to the cent. Built from the full curve: a curve thinned
+    first could lose the peak a drop started from."""
+    out, peak = [], 0.0
+    for ts, v in curve:
+        peak = max(peak, v)
+        # Rounded as max_drawdown then the payload round it (4 places, then cents), so the deepest
+        # point equals the figure exactly; 0.0 - x keeps a flat point 0.0, not -0.0.
+        out.append([ts, 0.0 - round(round(peak - v, 4), 2)])
     return out
 
 
@@ -281,6 +310,7 @@ def summarize(trades: List[Dict], open_trades: List[Dict], today: date, now_ts: 
         "open_at_cost": round(sum(t["cost"] for t in open_trades), 2),
         "sample": sample_read(n, span_days, avg_ci),
         "curve": thin_min_max(curve),  # display only: every stat above used the full curve
+        "underwater": thin_lows(underwater(curve)),  # from the full curve; its low is -max_drawdown
     }
 
 

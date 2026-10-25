@@ -930,11 +930,14 @@
   }
 
   // 3. underwater drawdown.
-  function rpUnderwater(curve) {
-    if (!curve || curve.length < 2) return `<div class="rp-empty">No equity curve to derive drawdown from.</div>`;
-    let peak = -Infinity; const dd = curve.map(([t, v]) => { peak = Math.max(peak, v); return [t, v - peak]; });
+  // `drawn`: a drawdown series the server already built from every trade (the track record sends
+  // one, since its equity curve is thinned and could have lost the peak a drop started from).
+  function rpUnderwater(curve, drawn) {
+    const src = drawn || curve;
+    if (!src || src.length < 2) return `<div class="rp-empty">No equity curve to derive drawdown from.</div>`;
+    let peak = -Infinity; const dd = drawn || curve.map(([t, v]) => { peak = Math.max(peak, v); return [t, v - peak]; });
     const W = 340, H = 180, L = 54, R = 10, T = 14, B = 22;
-    const t0 = curve[0][0], t1 = curve[curve.length - 1][0];
+    const t0 = src[0][0], t1 = src[src.length - 1][0];
     const minDd = Math.min(0, ...dd.map((p) => p[1])), lo = minDd < 0 ? minDd : -0.5;
     const x = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R);
     const y = (v) => T + (1 - (v - lo) / (0 - lo)) * (H - T - B);
@@ -2902,7 +2905,7 @@
     return `${notice(s.text, good ? 'good' : '')}${cav}${figs}
       <div class="rp-figs">
         <div class="rp-fig wide"><h5>Equity curve</h5>${equityChart(trCurve(m.curve), null, null, { width: chartWidth() })}<div class="cap">${trCurveCap(m)}</div></div>
-        <div class="rp-fig"><h5>Drawdown (underwater)</h5>${rpUnderwater(trCurve(m.curve))}</div>
+        <div class="rp-fig"><h5>Drawdown (underwater)</h5>${rpUnderwater(trCurve(m.curve), m.underwater && trCurve(m.underwater))}</div>
         <div class="rp-fig"><h5>Risk and trade detail</h5>${risk}</div>
       </div>
       <section class="section"><div class="section-head"><h2>By month</h2><p>UTC calendar months</p></div>

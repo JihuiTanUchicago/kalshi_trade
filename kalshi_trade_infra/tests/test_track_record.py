@@ -158,6 +158,53 @@ def test_a_one_trade_crash_survives_thinning_and_the_end_is_exact():
     assert p["max_drawdown"] == 800 and p["trades"] == 999 and p["net_pnl"] == sum(pnls)
 
 
+def test_the_underwater_series_comes_from_every_trade_and_bottoms_at_max_drawdown():
+    # A drop inside one run of the thinned equity curve: up $50, back down, then up $100. Thinning
+    # keeps that run's low (the flat start) and high ($100), losing the $50 peak, so an underwater
+    # chart derived from the thinned curve showed no drawdown at all. The server's series doesn't.
+    start = NOW - timedelta(days=60)
+    n, i0 = 5000, 1000
+    pnls = [0.0] * n
+    pnls[i0], pnls[i0 + 1], pnls[i0 + 2] = 50.0, -50.0, 100.0
+    run = next(r for r in tr._runs(n, (tr.CURVE_POINTS - 2) // 2) if r[0] <= i0 < r[1])
+    assert run[0] < i0 and i0 + 2 < run[1]  # all three trades sit inside one run
+    rows = [row("paper", p, closed=start + timedelta(minutes=i)) for i, p in enumerate(pnls)]
+    p = tr.build(rows, NOW)["modes"]["paper"]
+    assert p["max_drawdown"] == 50
+    peak, derived = float("-inf"), []
+    for _, v in p["curve"]:  # what the browser used to do with the thinned curve
+        peak = max(peak, v)
+        derived.append(v - peak)
+    assert min(derived) == 0  # the drawdown was invisible
+    uw = p["underwater"]
+    assert len(uw) <= tr.CURVE_POINTS
+    assert min(v for _, v in uw) == -p["max_drawdown"]  # exactly the figure beside it
+    assert [int((start + timedelta(minutes=i0 + 1)).timestamp()), -50.0] in uw
+    assert uw[0] == [int(start.timestamp()), 0.0]
+    assert uw[-1] == [int((start + timedelta(minutes=n - 1)).timestamp()), 0.0]
+
+
+@pytest.mark.parametrize("pnls", [
+    [-5.0, 2.0, 1.0],                          # under water from the first trade (the 0 before it counts)
+    [1.2345, -0.0050, -1.2299, 3.0, -0.0001],  # odd cents: the deepest point still rounds like the figure
+    [0.1] * 30 + [-0.3] * 7 + [0.2] * 900,     # a drawdown longer than one thinning run
+])
+def test_the_underwater_low_equals_max_drawdown_to_the_cent(pnls):
+    start = NOW - timedelta(days=30)
+    rows = [row("paper", p, closed=start + timedelta(minutes=i)) for i, p in enumerate(pnls)]
+    p = tr.build(rows, NOW)["modes"]["paper"]
+    assert min(v for _, v in p["underwater"]) == -p["max_drawdown"]
+    assert all(v <= 0 for _, v in p["underwater"]) and len(p["underwater"]) <= tr.CURVE_POINTS
+
+
+def test_thin_lows_keeps_the_ends_and_each_runs_lowest_point():
+    s = [[i, v] for i, v in enumerate([0, -1, -4, -2, 0, -3, -3, -9, 0, -2])]
+    assert tr.thin_lows(s, 10) is s
+    assert tr.thin_lows(s, 4) == [[0, 0], [2, -4], [7, -9], [9, -2]]  # 2 runs of 4: [-1,-4,-2,0], [-3,-3,-9,0]
+    with pytest.raises(ValueError):
+        tr.thin_lows(s, 2)
+
+
 def test_thin_min_max_keeps_each_runs_low_and_high():
     curve = [[i, v] for i, v in enumerate([0, 5, -3, 2, 9, 1, 4, -8, 6, 7])]
     assert tr.thin_min_max(curve, 10) is curve  # under the cap: untouched
