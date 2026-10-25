@@ -2404,6 +2404,11 @@
     // What the same trades would have made at the unseen-data backtest's average, scaled to each
     // deployment's stake, so "is it doing what the test said?" has an answer beside the real P&L.
     const oos = s.out_of_sample, stake = +s.stake;
+    // A paused deployment (often paused automatically, and the bell links here) says so and why.
+    const pausedLine = (ds) => {
+      const p = ds.find((d) => d.status === 'paused');
+      return p ? `<p class="real-paused"><b>Paused</b>${p.status_reason ? ' ' + esc(p.status_reason) : ''} <a href="/deploy">Resume or remove it on Deploy</a></p>` : '';
+    };
     const pace = (ds, n) => {
       if (!n || !oos || !(+oos.trades > 0) || !(stake > 0)) return '';
       const per = (+oos.pnl || 0) / +oos.trades;
@@ -2417,7 +2422,7 @@
       const pnl = ds.reduce((a, d) => a + (+d.realized_pnl || 0), 0), n = ds.reduce((a, d) => a + (+d.closed_trades || 0), 0);
       const open = ds.reduce((a, d) => a + (+d.open_positions || 0), 0);
       const since = ds.map((d) => d.created_at).filter(Boolean).sort()[0];
-      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span> ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}` : 'No closed trades yet'}${open ? ` · ${open} open` : ''}${since ? ` · deployed ${when(since)}` : ''}</p>${pace(ds, n)}`;
+      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span> ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}` : 'No closed trades yet'}${open ? ` · ${open} open` : ''}${since ? ` · deployed ${when(since)}` : ''}</p>${pace(ds, n)}${pausedLine(ds)}`;
     }).join('');
     return lines ? `<section class="real-record" aria-label="Since deploying"><h3 class="paper-h">Since deploying</h3>${lines}</section>` : '';
   }
