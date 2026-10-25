@@ -582,6 +582,19 @@ test('Explore tells same-titled markets from different events apart', async () =
   assert.match(html, /KXBTCD-26OCT2512</); assert.match(html, /KXBTCD-26OCT2517</);
 });
 
+test('Explore drops a yes subtitle that only repeats the title', async () => {
+  const row = (t, ti, su) => ({t, s: 'KXNBAGAME', ev: t, ti, su, last: '0.5', bid: '0.49', ask: '0.51', v24: '10', oi: '5', st: 'active'});
+  const f = frontend({fetchImpl: path => path.startsWith('/api/explore?')
+    ? response({at: '2026-10-25T16:15:00Z', total: 3, shown: 3, matched: 3, page: 0, per: 50, sort: 'v24', markets: [
+      row('A', 'Minnesota wins', 'Minnesota'), row('B', 'Will Bitcoin be above $200000 by Jan 1, 2027?', 'Above $200000'),
+      row('C', 'Bitcoin price on Oct 25, 2026?', '$80,500 or above')]})
+    : response({})});
+  await f.viewExplore(); await flush();
+  const html = f.root.querySelector('#xbody').innerHTML;
+  assert.match(html, />Minnesota wins</); assert.match(html, />Will Bitcoin be above \$200000 by Jan 1, 2027\?</);
+  assert.match(html, />Bitcoin price on Oct 25, 2026\? · \$80,500 or above</);
+});
+
 test('Explore shows tenth-of-a-cent prices instead of rounding them to 0¢', async () => {
   const row = (t, last) => ({t, s: 'KXBTC15M', ev: t, ti: 'BTC price up in next 15 mins?', su: 'Target', last, bid: '0', ask: last, v24: '10', oi: '5', st: 'active'});
   const f = frontend({fetchImpl: path => path.startsWith('/api/explore?')

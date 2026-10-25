@@ -3292,7 +3292,9 @@
   const midOf = (m) => { const b = +m.bid, a = +m.ask; if (b > 0 && a > 0) return (b + a) / 2; const l = +m.last; return l > 0 ? l : null; };
   // Many markets share one event title (every strike of "Bitcoin price on Oct 14?"), so the
   // strike sub-title is what tells them apart.
-  const mktLabel = (m) => { const t = (m.ti || '').trim(), s = (m.su || '').trim(); return s && s !== t ? (t ? `${t} · ${s}` : s) : (t || m.t); };
+  // The yes subtitle only when it adds something: "Minnesota wins · Minnesota" and "Will Bitcoin be
+  // above $200000 by Jan 1…? · Above $200000" repeated the title.
+  const mktLabel = (m) => { const t = (m.ti || '').trim(), s = (m.su || '').trim(); return s && !t.toLowerCase().includes(s.toLowerCase()) ? (t ? `${t} · ${s}` : s) : (t || m.t); };
   const compactCondition = label => label.replace(/^(\$[\d,]+(?:\.\d+)?) or above$/i, '≥ $1').replace(/^(\$[\d,]+(?:\.\d+)?) or below$/i, '≤ $1').replace(/^Above (\$[\d,]+(?:\.\d+)?)$/i, '> $1').replace(/^Below (\$[\d,]+(?:\.\d+)?)$/i, '< $1');
   const kalshiUrl = (m) => `https://kalshi.com/markets/${encodeURIComponent((m.s || '').toLowerCase())}`;
   const kfmt = (n) => { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n)); };
