@@ -3461,10 +3461,12 @@
         </div>
         <dl class="apf-stats" id="apf-stats"></dl>
         <div class="apf-story" id="apf-story" aria-live="polite"></div>
-        <label class="field apf-model"><span>Autopilot model</span>
-          <select class="input" id="apf-model" aria-label="Autopilot model"></select></label>
-        <label class="field apf-model"><span>Markets it may trade</span>
-          <select class="input" id="apf-focus" aria-label="Markets the autopilot may research and trade"></select></label>
+        <details class="apf-prefs"><summary>Model and markets</summary>
+          <label class="field apf-model"><span>Autopilot model</span>
+            <select class="input" id="apf-model" aria-label="Autopilot model"></select></label>
+          <label class="field apf-model"><span>Markets it may trade</span>
+            <select class="input" id="apf-focus" aria-label="Markets the autopilot may research and trade"></select></label>
+        </details>
         <div class="apf-gates hint" id="apf-gates"></div>
         <div id="apf-flash"></div>
         <div class="apf-controls" id="apf-controls"></div>
