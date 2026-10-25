@@ -23,7 +23,8 @@ def repo(monkeypatch):
 
 
 def _paper(trades):
-    return [gk.PaperTrade(t.ticker, t.qty, t.entry_ts, t.exit_ts, t.entry_price, t.exit_price, t.pnl, t.reason)
+    # one contract per event ("BTC-T<ts>-1" -> event "BTC-T<ts>")
+    return [gk.PaperTrade(t.ticker + "-1", t.qty, t.entry_ts, t.exit_ts, t.entry_price, t.exit_price, t.pnl, t.reason)
             for t in trades]
 
 
@@ -63,6 +64,22 @@ def test_a_short_record_is_not_a_look(repo):
     assert gk.judge_paper_forward(None, eid, _paper(_edge_trades(n=60)), n_trials=1) is None
     assert repo.results_for_experiment(None, eid, gk.PAPER_PHASE) == []
     assert repo.set_fdr_calls == 0
+
+
+def test_a_burst_on_few_events_is_not_a_look_until_the_event_floor(repo):
+    """15 NFL trips on 4 games, all force-closed together by the position stop (2026-10-25), must not
+    spend the one look: the judged sample is the shortest prefix with min_sample trips AND
+    PAPER_MIN_EVENTS events, counted without looking at P&L."""
+    eid = _probation_experiment(repo, min_sample=15)
+    burst = [gk.PaperTrade("KXNFLGAME-G%d-%d" % (i % 4, i), 1, 1_000_000 + i, 1_000_100, 0.5, 0.0, -0.5, "stop")
+             for i in range(15)]
+    assert gk.judge_paper_forward(None, eid, burst, n_trials=1) is None
+    assert repo.results_for_experiment(None, eid, gk.PAPER_PHASE) == []
+    later = _paper(_edge_trades(n=40))
+    want = gk.paper_judged_prefix(burst + later, 15)
+    assert len(want) == 15 + gk.PAPER_MIN_EVENTS - 4 and want[-1] == later[gk.PAPER_MIN_EVENTS - 5]
+    v = gk.judge_paper_forward(None, eid, burst + later, n_trials=1)
+    assert v["n_trades"] == len(want)
 
 
 def test_a_null_record_fails_and_is_not_judged_again(repo):
