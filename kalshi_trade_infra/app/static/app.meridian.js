@@ -2537,6 +2537,28 @@
     }).join('');
     return lines ? `<section class="real-record" aria-label="Since deploying"><h3 class="paper-h">Since deploying</h3>${lines}</section>` : '';
   }
+  // Where a strategy sits on the paper → demo → live ladder: one line per book it runs in now, each
+  // with its own closed trades and realized P&L (never added to another book's), then one line on what
+  // the next rung needs. The live rung's needs come from Road to live (live-readiness); until that data
+  // is in, or when there is none, that line is left out rather than guessed.
+  const LADDER = [['paper', 'Paper', ''], ['demo', 'Demo', 'dep'], ['live', 'Live', 'live']];
+  function ladderLines(s, { canDeploy, demoWhy, road }) {
+    const deps = s.deployments || [];
+    const running = LADDER.filter(([m]) => deps.some((d) => d.mode === m && d.status === 'running'));
+    const books = running.map(([m, label, cls]) => {
+      const ds = deps.filter((d) => d.mode === m);
+      const n = ds.reduce((a, d) => a + (+d.closed_trades || 0), 0), pnl = ds.reduce((a, d) => a + (+d.realized_pnl || 0), 0);
+      return `<p><span class="mk ${cls}">${label}</span> running · ${num(n)} closed trade${n === 1 ? '' : 's'} · ${money(pnl)} realized</p>`;
+    });
+    const next = LADDER[running.length ? LADDER.indexOf(running[running.length - 1]) + 1 : 0];
+    let need = '';
+    if (!next) need = 'Top rung: it trades live money.';
+    else if (!canDeploy) need = '';
+    else if (next[0] === 'paper') need = 'Next rung, paper: nothing needed. Deploy it on paper below.';
+    else if (next[0] === 'demo') need = demoWhy ? 'Next rung, demo: needs your Kalshi demo (sandbox) key on the <a href="/funds">Funds page</a>.' : 'Next rung, demo: nothing needed. Deploy it on demo below.';
+    else if (road) need = `Next rung, live: ${road.ready ? 'every gate is clear' : 'blocked because ' + esc(road.blocking)}.`;
+    return books.join('') + (need ? `<p class="hint">${need}</p>` : '');
+  }
   async function viewStrategy(id) {
     shell('/strategies', boardTitle('Strategy'), loading(420));
     const s = await api('/api/strategies/' + id);
@@ -2633,6 +2655,7 @@
       const [vt, chip, label, words] = vmap[s.status] || ['quiet', 'quiet', rpHuman(s.status), 'Awaiting a recorded verdict.'];
       verdictBody = `<div class="rp-verdict ${vt}"><span class="mk ${chip}">${esc(label)}</span><p>${esc(words)}</p></div>`;
     }
+    const ladder = restricted ? '' : ladderLines(s, { canDeploy, demoWhy });
     const paperSec = (title, body) => body ? `<section class="paper-sec"><h3 class="paper-sec-t">${title}</h3><div class="paper-sec-body">${body}</div></section>` : '';
     root.querySelector('main').innerHTML = `
       <div id="flash"></div>
@@ -2671,6 +2694,7 @@
               <div class="holdlist-figs"><b>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(p.entry_price)}</b><span>Cost ${usd(p.cost)}</span><span>Unreal. ${p.unrealized == null ? '—' : money(p.unrealized)}</span><span>Settles ${clock(p.market_close_time)}</span></div></li>`).join('')}</ul>
             <p class="hint" style="margin-top:8px">${books.map(bookLine).join('<br>')}</p></section>`;
           })() : ''}
+          ${ladder ? `<section class="panel" id="ladder"><h3>Paper → demo → live</h3><div class="rung-books" id="ladder-body">${ladder}</div></section>` : ''}
           <section class="panel"><h3>${restricted ? 'Research only' : 'Deploy'}</h3>
             ${!restricted && s.deployments.length ? `<div class="strategy-deployments"><p class="hint">${s.deployments.map((d) => `#${d.id} · ${esc(d.mode)} · ${esc(d.status)}`).join('<br>')}</p><a class="btn${activeDeps.length ? ' primary' : ''}" href="/deploy">View deployments</a></div>` : ''}
             ${canDeploy ? `<div style="display:grid;gap:10px">
@@ -2744,6 +2768,8 @@
     if (root.querySelector('#road-live-body')) (async () => {
       try {
         const r = await api('/api/strategies/' + s.id + '/live-readiness');
+        const lb = root.querySelector('#ladder-body');
+        if (lb) lb.innerHTML = ladderLines(s, { canDeploy, demoWhy, road: r });
         const p = r.paper, c = p.checks;
         const pv = p.p_value == null ? '—' : p.p_value.toFixed(2);
         const rows = [
@@ -2854,12 +2880,18 @@
       const liveRealized = sumPnl(liveDeps), paperRealized = sumPnl(paperDeps), demoRealized = sumPnl(demoDeps);
       const live = d.deployments.filter((x) => x.mode === 'live' && x.status === 'running');
       const runDemo = running.some((x) => x.mode === 'demo'), runPaper = running.some((x) => x.mode === 'paper');
+      // Open positions per book, never one count across books. A book with none is left out, except
+      // live while live trading is on (or a live deployment is listed), so "0 live" reads as a fact. A
+      // no-break space keeps each "3 paper" whole when the figure wraps on a phone.
+      const liveOn = !!(S.me && S.me.live_trading_available) || liveDeps.length > 0;
+      const openSplit = ['paper', 'demo', 'live'].map((m) => [m, d.open_positions.filter((p) => (p.mode || 'paper') === m).length])
+        .filter(([m, n]) => n || (m === 'live' && liveOn)).map(([m, n]) => `${num(n)}\u00a0${m}`).join(' · ') || 'None';
       root.querySelector('#dfigs').innerHTML = fig('Running', running.length, { small: `${d.deployments.length - running.length} paused` }) +
         (liveDeps.length
           ? fig('Live realized', usd(liveRealized, true), { v: liveRealized, small: paperDeps.length ? `real money, strategies listed below · ${usd(paperRealized, true)} on paper, counted apart` : 'real money, strategies listed below' })
           : paperDeps.length || !demoDeps.length ? fig('Realized', usd(paperRealized, true), { v: paperRealized, small: 'paper money, not real · strategies listed below' }) : '') +
         (demoDeps.length ? fig('Demo realized', usd(demoRealized, true), { v: demoRealized, small: `${DEMO_WHAT} · strategies listed below` }) : '') +
-        fig('Open positions', d.open_positions.length) +
+        fig('Open positions', openSplit) +
         fig('Money', live.length ? '<span class="mk live">Live</span>' : runDemo ? `${runPaper ? '<span class="mk">Paper</span> ' : ''}<span class="mk dep">Demo</span>` : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : 'nothing on live money' });
       const regs = curveRegs(d.deployments);
       replaceDeploymentContent(root.querySelector('#deps'), d.deployments.length ? deploymentTable(pausedFirst(d.deployments).map((x) => deploymentSlip(x, true, regs)).join(''), true)
