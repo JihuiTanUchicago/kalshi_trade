@@ -40,6 +40,11 @@ layers =
     (web)
     (services) | (adapters)
 exhaustive = False
+ignore_imports =
+    ; app.repository is the legacy DB facade: it re-exports the per-aggregate modules split into
+    ; app.adapters.db (step 6), and services still reach the DB through it until step 8 injects
+    ; repositories. A service importing app.adapters directly is still refused.
+    app.repository -> app.adapters.db.*
 ; Add when app.web exists: a forbidden contract app.web -> app.adapters (web reaches adapters only
 ; through services and the bootstrap wiring).
 
