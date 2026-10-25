@@ -3508,6 +3508,7 @@
     const box = document.getElementById('autopilot-float');
     if (box) await refreshAutopilot(box);
   }
+  const AP_PENDING_ON = { label: 'Autopilot on', cls: 'paper' };  // switch on, mode not read yet
   const AP_MODE = {
     off: { label: 'Autopilot off', cls: '' },
     paper: { label: 'Autopilot · paper', cls: 'paper' },
@@ -3599,7 +3600,9 @@
   function renderAutopilot(box, d) {
     if (!apExpanded()) {
       apStopChat();
-      const m = (d && AP_MODE[d.mode]) || AP_MODE.off;
+      // Before the first status read lands (or if it fails), go by the saved switch: an autopilot
+      // user's pill read "Autopilot off" on every page load until then.
+      const m = d ? (AP_MODE[d.mode] || AP_MODE.off) : (S.me && S.me.user && S.me.user.autopilot ? AP_PENDING_ON : AP_MODE.off);
       box.className = 'apf' + (m.cls ? ' ' + m.cls : '');
       box.dataset.shell = '';
       box.innerHTML = `<button type="button" class="apf-pill" data-ap="toggle" aria-expanded="false" title="Autonomous research and deployment. Existing strategies run independently.">

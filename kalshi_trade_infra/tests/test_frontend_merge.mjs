@@ -484,6 +484,20 @@ test('an empty Deployed box asks for research only when autopilot is off; Funds 
   }
 });
 
+test('the autopilot pill goes by the saved switch until its first status read lands', async () => {
+  for (const on of [true, false]) {
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/dashboard') return response(emptyDashboard());
+      if (path === '/api/autopilot/status') return new Promise(() => {});  // still in flight
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me.user.autopilot = on; f.S.ap = null; f.S.apAt = 0;  // a fresh page load: nothing read yet
+    await f.viewDashboard(); await flush();
+    const pill = f.root.parent.querySelector('#autopilot-float .apf-pill-label');
+    assert.equal(pill.textContent, on ? 'Autopilot on' : 'Autopilot off');
+  }
+});
+
 test('the empty Deployed box follows the autopilot switch without a reload', async () => {
   const f = frontend({fetchImpl: path => {
     if (path === '/api/dashboard') return response(emptyDashboard());
