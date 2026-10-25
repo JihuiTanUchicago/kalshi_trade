@@ -474,6 +474,24 @@ test('an empty Deployed box asks for research only when autopilot is off; Funds 
   }
 });
 
+test('the empty Deployed box follows the autopilot switch without a reload', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(emptyDashboard());
+    if (path === '/api/autopilot/status') return response({...apOn, autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = false;
+  await f.viewDashboard(); await flush();
+  const deps = () => f.root.querySelector('#deps-empty').innerHTML;
+  assert.match(deps(), /Turn on autopilot above/);
+  f.S.me.user.autopilot = true; f.S.ap = {...apOn};
+  f.paintDashAp();
+  assert.match(deps(), /Autopilot is researching\./); assert.doesNotMatch(deps(), /Turn on autopilot above/);
+  f.S.me.user.autopilot = false; f.S.ap = {...apOn, autopilot: false, mode: 'off'};
+  f.paintDashAp();
+  assert.match(deps(), /Turn on autopilot above/);
+});
+
 test('a failed autopilot switch-on leaves the dashboard card off and says why', async () => {
   const f = frontend({fetchImpl: path => {
     if (path === '/api/dashboard') return response(emptyDashboard());
