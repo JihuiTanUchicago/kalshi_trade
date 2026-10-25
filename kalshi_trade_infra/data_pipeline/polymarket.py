@@ -45,6 +45,7 @@ Run:  python -m data_pipeline.polymarket record        (unit polymarket-recorder
       python -m data_pipeline.polymarket backfill [days]
       python -m data_pipeline.polymarket probe
 """
+import bisect
 import json
 import math
 import os
@@ -477,18 +478,27 @@ class PmSeries:
             groups.setdefault(int(q.market.end_ts), {}).setdefault(int(q.ts), []).append(q)
         self.by_end = {e: sorted(d.items()) for e, d in groups.items()}
         self._ladders: Dict[Tuple[int, int], object] = {}
+        self._polls: Dict[int, Tuple[List[Tuple[int, int, List[PmQuote]]], List[int]]] = {}
 
     def __len__(self) -> int:
         return sum(len(v) for v in self.by_end.values())
 
+    def _polls_for(self, close_ts: int) -> Tuple[List[Tuple[int, int, List[PmQuote]]], List[int]]:
+        # research asks per contract per minute, so build each close time's poll list once
+        hit = self._polls.get(close_ts)
+        if hit is None:
+            out = []
+            for e, polls in self.by_end.items():
+                if abs(e - close_ts) <= END_TOL_S:
+                    out.extend((ts, e, qs) for ts, qs in polls)
+            out.sort(key=lambda x: x[0])
+            hit = self._polls[close_ts] = (out, [p[0] for p in out])
+        return hit
+
     def polls(self, close_ts: int) -> List[Tuple[int, int, List[PmQuote]]]:
-        """(poll ts, end_ts, quotes) of the settlement times within END_TOL_S of close_ts."""
-        out = []
-        for e, polls in self.by_end.items():
-            if abs(e - close_ts) <= END_TOL_S:
-                out.extend((ts, e, qs) for ts, qs in polls)
-        out.sort(key=lambda x: x[0])
-        return out
+        """(poll ts, end_ts, quotes) of the settlement times within END_TOL_S of close_ts.
+        Shared and cached: don't mutate."""
+        return self._polls_for(close_ts)[0]
 
     def prob(self, lo: Optional[float], hi: Optional[float], close_ts: int, open_ts: Optional[int],
              poll: Tuple[int, int, List[PmQuote]]) -> Optional[Dict[str, float]]:
@@ -502,13 +512,11 @@ class PmSeries:
            max_age_s: int) -> Optional[Dict[str, float]]:
         """The contract's pm_* features from the newest poll at or before ts (and no older than
         max_age_s), with pm_age_s."""
-        best = None
-        for poll in self.polls(close_ts):
-            if poll[0] > ts:
-                break
-            best = poll
-        if best is None or ts - best[0] > max_age_s:
+        polls, poll_ts = self._polls_for(close_ts)
+        i = bisect.bisect_right(poll_ts, ts) - 1
+        if i < 0 or ts - poll_ts[i] > max_age_s:
             return None
+        best = polls[i]
         out = self.prob(lo, hi, close_ts, open_ts, best)
         if out is not None:
             out["pm_age_s"] = float(ts - out["pm_ts"])
