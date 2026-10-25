@@ -162,6 +162,15 @@ test('a paper-only panel shows paper P&L today and no live loss budget; live in 
   }
 });
 
+test('the Research row only shows when there is no story to say it', async () => {
+  const f = frontend(() => response(catalog)); f.apBuildShell(f.box); await flush();
+  const research = {active: [], tested_7d: 4, passed_7d: 1, cost_7d: 0};
+  f.apUpdate(f.box, status({research, story: ['This week it tested 4 ideas and 1 passed.']}));
+  assert.doesNotMatch(f.box.querySelector('#apf-stats').innerHTML, /<dt>Research<\/dt>/);
+  f.apUpdate(f.box, status({research, story: []}));
+  assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Research<\/dt>/);
+});
+
 test('status updates show last review and synchronize the model only when it is not being edited', async () => {
   const f = frontend(() => response(catalog)); f.apBuildShell(f.box); await flush();
   const select = f.box.querySelector('#apf-model');
