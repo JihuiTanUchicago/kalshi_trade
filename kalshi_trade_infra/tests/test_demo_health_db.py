@@ -67,7 +67,7 @@ def offline(monkeypatch):
     monkeypatch.setattr(requests, "post", no_kalshi)
     monkeypatch.setattr(server, "_engine_age", lambda cur: 5)  # the engine ticked a moment ago
     cash = {}
-    monkeypatch.setattr(demo_twins, "_read_balance", lambda cur, uid: cash.get(uid))
+    monkeypatch.setattr(demo_twins, "_read_balance", lambda cur, uid, timeout=15: cash.get(uid))
     demo_twins._BALANCE_CACHE.clear()
 
     def set_cash(uid, value):
