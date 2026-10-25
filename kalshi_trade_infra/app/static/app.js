@@ -1443,8 +1443,9 @@
         agentsBusy ? `${agentsBusy} agent${agentsBusy > 1 ? 's' : ''} researching` : '',
         stale ? `<em>${d.freshness.btc == null ? 'No backtest history yet' : 'Backtest history stale ' + age(d.freshness.btc)}</em>` : '',
       ].filter(Boolean).join('<span class="sep">/</span>');
+      // While autopilot is off its card's "Turn on autopilot" is the one primary button on the page.
       const board = `
-        <div class="statusline ${needs ? 'needs' : ''}"><p class="said">${said}</p><a class="btn primary" href="/research">New research</a></div>
+        <div class="statusline ${needs ? 'needs' : ''}"><p class="said">${said}</p><a class="btn${S.me.user.autopilot ? ' primary' : ''}" href="/research">New research</a></div>
         <section id="dash-ap" class="apcard" aria-label="Autopilot"></section>
         <dl class="figures measure">
           ${fig('<span class="mk live">Real</span> Live money', d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected', { small: d.live.connected ? (d.live.balance == null ? 'Couldn\u2019t read your Kalshi balance just now' : mSub(d.live, 'Your Kalshi cash \u2014 real money untouched')) : 'Connect your Kalshi account on <a href="/funds">Funds</a> to trade real money' })}
