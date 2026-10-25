@@ -518,13 +518,14 @@ def _research_totals(cur, uid: int) -> Dict:
     """All-time ideas tested and strategies that passed every gate, for the Research headline.
     The page summed its 50 newest runs, so a busy autopilot (250+ runs a week) read a fraction of
     its real total, and the runs' strategies_passed counter overcounts (it once held 68
-    backtest-only rows). Same sources as the autopilot panel's week: research_week (seeded demo
-    left out) and strategies_passed_since. Cached per user like the track record."""
+    backtest-only rows). Same sources as the autopilot panel's week: research_week and
+    strategies_passed_since, with the seeded demo counted because the page lists it (a headline
+    of 0 tested above a demo row reading 0/2 looked broken). Cached per user like the track record."""
     hit = _RUN_TOTALS.get(uid)
     if hit and time.time() - hit[0] < RUN_TOTALS_TTL:
         return hit[1]
     since = repo.now_utc() - timedelta(days=365 * 50)
-    val = {"tried": sum(int(r.get("tried") or 0) for r in repo.research_week(cur, uid, since)),
+    val = {"tried": sum(int(r.get("tried") or 0) for r in repo.research_week(cur, uid, since, include_demo=True)),
            "passed": repo.strategies_passed_since(cur, uid, since)}
     _RUN_TOTALS[uid] = (time.time(), val)
     return val
