@@ -1683,4 +1683,8 @@ body.landing-body .apf { display: none; }
 }
 .tr-kv { margin: 10px 0 0; }
 .tr-kv dd { font-variant-numeric: tabular-nums; }
+.dash-track { margin-top: 40px; }
+.dash-track > .section-head { margin-bottom: 14px; }
+.tr-method { margin-top: 24px; }
+.tr-method summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink-2); }
 .tr-method ul { margin: 12px 0 10px; padding-left: 18px; display: grid; gap: 6px; max-width: 80ch; font-size: 13px; color: var(--ink-2); }

@@ -390,7 +390,7 @@
     [/^\/system$/, viewSystem],
     [/^\/(?:funds|settings\/account)$/, viewFunds],
     [/^\/devlog$/, viewDevLog],
-    [/^\/track-record$/, viewTrackRecord],
+    [/^\/track-record$/, () => go('/#track-record', true)],  // the record moved onto the dashboard
     [/^\/settings$/, viewSettings],
     [/^\/terms$/, viewTerms],
     [/^\/privacy$/, viewPrivacy],
@@ -573,7 +573,7 @@
   }
 
   // ---------- shell ----------
-  const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/explore', 'Explore', 'explore'], ['/deploy', 'Deploy', 'deploy'], ['/track-record', 'Track record', 'record'], ['/community', 'Community', 'community'], ['/funds', 'Funds', 'funds'], ['/devlog', 'Dev Logs', 'devlog']];
+  const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/explore', 'Explore', 'explore'], ['/deploy', 'Deploy', 'deploy'], ['/community', 'Community', 'community'], ['/funds', 'Funds', 'funds'], ['/devlog', 'Dev Logs', 'devlog']];
   // The operator can flip into a plain-user view. Only their own account is an
   // admin at all (server decides); the toggle just hides the admin surface so
   // they can see what a normal user sees. Default: admin view on.
@@ -1456,6 +1456,7 @@
     };
     await load();
     poll(load, 15000);
+    dashTrackRecord();
   }
 
   // ---------- research ----------
@@ -2706,29 +2707,41 @@
       <section class="section"><div class="section-head"><h2>By strategy</h2><p>“Too few” means under ${th.min_trades} trades</p></div>
         <div class="sheet"><table class="table stack"><thead><tr><th>Strategy</th><th>Read</th><th class="num">Trades</th><th class="num">Net P&amp;L</th><th class="num">Win rate</th><th class="num">Avg trade</th><th class="num">Max drawdown</th><th class="num">Last trade</th></tr></thead><tbody>${strats}</tbody></table></div></section>`;
   }
-  async function viewTrackRecord() {
-    const gen = S.gen;
-    shell('/track-record', boardTitle('Track record', 'Realized results from every closed trade, with live, demo and paper money kept apart. Nothing here is a backtest.'), loading(420));
-    const d = await api('/api/track-record');
-    if (gen !== S.gen) return;
+  // Lives on the dashboard (Todd, 2026-10-25): its own request below the live board, so the 15s
+  // dashboard poll never waits on it and never wipes it. The server caches it 60s per user.
+  async function mountTrackRecord(host, last) {
+    const d = await api('/api/track-record', undefined, { keep: true });
+    if (!host.isConnected || (last && last.at === d.generated_at)) return;
+    if (last) last.at = d.generated_at;
     let tab; try { tab = localStorage.getItem('tau_tr_tab'); } catch (e) { /* private mode */ }
     if (!d.modes[tab]) tab = d.default_mode;
-    const method = `<section class="section tr-method"><div class="section-head"><h2>How these numbers are computed</h2></div>
-      <ul>${d.method.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
-      <p class="hint">Updated ${esc(clock(new Date(d.generated_at * 1000).toISOString()))}. Past results do not predict future returns.</p></section>`;
-    root.querySelector('main').innerHTML = `
+    host.innerHTML = `<div class="section-head"><h2>Track record</h2><p>Realized results from closed trades. Nothing here is a backtest.</p></div>
       <div class="chips tr-tabs" role="group" aria-label="Money type">
         ${TR_MODES.map(([k, label]) => `<button class="chip" type="button" data-trtab="${k}" aria-pressed="${k === tab}">${label} · ${num(d.modes[k].trades)}</button>`).join('')}
       </div>
-      <div id="trpanel"></div>${method}`;
+      <div class="trpanel"></div>
+      <details class="tr-method"><summary>How these numbers are computed</summary>
+        <ul>${d.method.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
+        <p class="hint">Updated ${esc(clock(new Date(d.generated_at * 1000).toISOString()))}. Past results do not predict future returns.</p></details>`;
     const setTab = (t) => {
-      tab = t;
-      root.querySelectorAll('[data-trtab]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.trtab === t)));
-      root.querySelector('#trpanel').innerHTML = trackRecordPanel(d.modes[t], t, d.thresholds);
+      host.querySelectorAll('[data-trtab]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.trtab === t)));
+      host.querySelector('.trpanel').innerHTML = trackRecordPanel(d.modes[t], t, d.thresholds);
       try { localStorage.setItem('tau_tr_tab', t); } catch (e) { /* private mode */ }
     };
-    root.querySelectorAll('[data-trtab]').forEach((b) => (b.onclick = () => setTab(b.dataset.trtab)));
+    host.querySelectorAll('[data-trtab]').forEach((b) => (b.onclick = () => setTab(b.dataset.trtab)));
     setTab(tab);
+  }
+  async function dashTrackRecord() {
+    const gen = S.gen, mainEl = root.querySelector('main'), wrap = mainEl && mainEl.parentNode;
+    if (!wrap || !wrap.appendChild) return;
+    const host = document.createElement('section');
+    host.className = 'sect dash-track'; host.id = 'track-record'; host.innerHTML = loading(260);
+    wrap.appendChild(host);  // after <main>, its last child, so the board's repaint never touches it
+    const last = { at: null };
+    try { await mountTrackRecord(host, last); } catch (e) { if (gen === S.gen) host.innerHTML = notice(e.message, 'bad'); return; }
+    if (gen !== S.gen) return;
+    if (location.hash === '#track-record') host.scrollIntoView();
+    poll(() => mountTrackRecord(host, last), 60000);
   }
 
   // ---------- funds ----------
