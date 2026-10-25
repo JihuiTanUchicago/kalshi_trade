@@ -32,7 +32,7 @@ PREFIX = os.getenv("TAU_TICK_PREFIX", "ticks")
 LATEST_KEY = f"{PREFIX}/lip_programs/latest.json.gz"
 STATUSES = ("active", "upcoming")
 PAGE = 1000
-FEE_SERIES = [s for s in os.getenv("TAU_LIP_FEE_SERIES", "KXBTC15M,KXBTCD,KXBTC,KXETH15M,KXETHD").split(",") if s]
+FEE_SERIES = [s for s in os.getenv("TAU_LIP_FEE_SERIES", "KXBTC15M,KXBTCD,KXBTC,KXETH15M,KXETHD,KXCRYPTOLEAD15M").split(",") if s]
 MAX_PAGES = 50
 
 
