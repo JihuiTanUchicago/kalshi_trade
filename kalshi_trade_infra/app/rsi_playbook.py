@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import random
+import re
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional
 
@@ -208,6 +209,10 @@ Rewrite the playbook given the latest run. Rules:
 - A code strategy sees the full ascending frame sequence, so lagged and derived features (previous
   mid, changes, crossings, rolling stats, ratios) always exist. Never record "snapshot-only", "no
   history" or "only raw features" as a fact, and delete any such line already in the playbook.
+- A code window gives every contract its "strike" and its "event" (one game / day / window) beside the
+  features; the measured facts below say how many are nonzero. Never record that strikes, thresholds,
+  event / game ids or ladder grouping are missing, and delete any such line already in the playbook
+  (live game state such as the score IS missing; that limit stays).
 - PIPELINE FACTS must be facts about the data you were shown (feature coverage, measured numbers),
   never beliefs about how a contract works. Every Kalshi contract is a YES/NO binary whose price is
   the probability of YES, including spread, total and prop strikes: never record otherwise, and
@@ -274,10 +279,27 @@ def add_candidate(cur, user_id: int, family: str, parent: Dict, text: str, chang
     return version
 
 
+# A playbook line claiming the window lacks strikes or event grouping is false (the code window has
+# both since #149); runs 2761/2772/2775 dropped sports ladder theses citing such a line. Strip it from
+# what the proposer reads until the reflection rule above rewrites it away.
+_FALSE_FACT = re.compile(
+    r"\b(no|without|lacks?|missing|unavailable|absent)\b((?:\W+\w+){0,3}?)\W+"
+    r"(strikes?|thresholds?|event context|event ids?|event identifiers?|game ids?|game identifiers?|team ids?)\b",
+    re.I)
+_NOT_A_DATA_CLAIM = re.compile(r"\b(edge|signal|bias|mispricing|value at|pattern)\b", re.I)
+
+
+def _scrub(text: str) -> str:
+    def false_fact(line: str) -> bool:
+        return any(not _NOT_A_DATA_CLAIM.search(m.group(2)) for m in _FALSE_FACT.finditer(line))
+    return "\n".join(line for line in text.splitlines() if not false_fact(line))
+
+
 def prompt_block(pb: Optional[Dict], family: str) -> str:
     """The playbook as the proposer reads it ("" for the empty version 0)."""
     if not pb or not (pb.get("text") or "").strip():
         return ""
+    pb = dict(pb, text=_scrub(pb["text"]))
     return ("RESEARCH PLAYBOOK v%s for %s markets: lessons this research loop learned from its own earlier "
             "runs on this family. Treat DEAD ENDS as settled unless you name what is different now, trust "
             "PIPELINE FACTS over your assumptions about the data, and prefer NEXT ANGLES. Where a line "

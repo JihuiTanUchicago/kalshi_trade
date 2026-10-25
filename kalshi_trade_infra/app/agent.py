@@ -2742,8 +2742,34 @@ def _feature_block(ds) -> str:
     text = ("\nFeatures populated on THIS market (name, % of snapshots, [p10, p50, p90]) - anything "
             "listed IS available to filters/models/code; anything missing is not:\n" + "\n".join(rows)
             ) if rows else ""
+    if text:
+        text += _contract_fields_line(ds)
     _FEATURE_BLOCK.update(ds=ds, text=text)
     return text
+
+
+def _contract_fields_line(ds) -> str:
+    """The per-contract fields a code window carries beside the features, measured. Without it
+    "anything missing is not" read as "no strike, no game grouping": runs 2761/2772/2775 dropped
+    sports ladder theses as missing_context although every ladder row has a real strike."""
+    strikes, events = {}, {}
+    for _ts, snaps in ds.frames:
+        for sn in snaps:
+            t = sn.contract.ticker
+            if t not in strikes:
+                strikes[t] = float(sn.contract.strike or 0.0)
+                ev = t.rsplit("-", 1)[0]
+                events[ev] = events.get(ev, 0) + 1
+    if not strikes:
+        return ""
+    real = sorted(v for v in strikes.values() if v)
+    sizes = sorted(events.values())
+    strike_txt = ("strike (nonzero on %d%% of contracts, p10/p50/p90 %g/%g/%g)"
+                  % (100 * len(real) // len(strikes), real[len(real) // 10], real[len(real) // 2],
+                     real[9 * len(real) // 10]) if real else "strike (0.0 on every contract: no thresholds)")
+    return ("\nPer-contract fields in a code window (not features): ticker, %s, event (%d events, median "
+            "%d contracts each: contracts sharing an event are one ladder / one game), close_ts."
+            % (strike_txt, len(sizes), sizes[len(sizes) // 2]))
 
 
 def _develop_prompt(run: Dict, t: Dict, memory: List[Dict], step: int, ds=None) -> str:
