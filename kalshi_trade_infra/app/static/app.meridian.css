@@ -1726,7 +1726,7 @@ body.landing-body .apf { display: none; }
 #sfigs > .m { padding: 12px 0 18px; }
 #sfigs .fig, #runfigs .fig { font-size: 20px; }
 #runfigs.measure { display: flex; flex-wrap: wrap; gap: 12px 32px; border: 0; padding-bottom: 20px; }
-#runfigs.measure > .m { display: flex; align-items: baseline; gap: 8px; padding: 0; }
+#runfigs.measure > .m { display: flex; align-items: baseline; gap: 8px; padding: 0; border-left: 0; }  /* inline row: the flex gap separates, never the phone grid divider */
 #runfigs .lab { margin: 0; }
 #runfigs .fig { font-size: 14px; font-weight: 500; letter-spacing: 0; }
 .run-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
