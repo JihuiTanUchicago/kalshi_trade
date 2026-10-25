@@ -143,7 +143,7 @@ def _ap_ctx(monkeypatch, autopilot=1):
          'autopilot': autopilot, 'autopilot_live': 0, 'autopilot_daily_loss_limit': 50,
          'autopilot_model': None},
         (), {}, {}, SimpleNamespace())
-    monkeypatch.setattr(server.repo, 'list_deployments', lambda *a: [])
+    monkeypatch.setattr(server.repo, 'list_deployments_brief', lambda *a: [])
     monkeypatch.setattr(server.repo, 'get_kalshi_key', lambda *a: None)
     monkeypatch.setattr(server.repo, 'realized_pnl', lambda *a: 0.0)
     monkeypatch.setattr(server.repo, 'last_autopilot_action', lambda *a: None)
@@ -514,7 +514,7 @@ def test_autopilot_status_carries_idle_and_reads_the_engine_only_with_something_
     # drops "waits for its own setup", which read as healthy.
     dep = {'id': 3, 'strategy_id': 9, 'title': 'Fade tails', 'mode': 'paper', 'status': 'running', 'market': 'btc15m',
            'scan': None, 'updated_at': None}
-    monkeypatch.setattr(server.repo, 'list_deployments', lambda *a, **k: [dep])
+    monkeypatch.setattr(server.repo, 'list_deployments_brief', lambda *a, **k: [dep])
     monkeypatch.setattr(server.repo, 'paper_progress', lambda *a: {})
     monkeypatch.setattr(server.repo, 'paper_event_counts', lambda *a: {})
     monkeypatch.setattr(server.repo, 'user_open_exposure', lambda *a: {'n': 0})

@@ -304,7 +304,7 @@ def test_autopilot_status_reports_paper_strategy_closest_to_live(monkeypatch):
              "result": {"in_sample": {"trades_per_day": 0.5}}},
             {"mode": "paper", "status": "running", "strategy_id": 2, "title": "Fast"},
             {"mode": "live", "status": "running", "strategy_id": 3, "title": "Live"}]
-    monkeypatch.setattr(server.repo, "list_deployments", lambda *a: deps)
+    monkeypatch.setattr(server.repo, "list_deployments_brief", lambda *a: deps)
     monkeypatch.setattr(server.repo, "get_kalshi_key", lambda *a: None)
     monkeypatch.setattr(server.repo, "realized_pnl", lambda cur, uid, mode, since=None: {"live": -2.0, "paper": 1.234}[mode])
     monkeypatch.setattr(server.repo, "last_autopilot_action", lambda *a: None)

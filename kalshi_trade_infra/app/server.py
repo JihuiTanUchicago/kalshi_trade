@@ -1567,18 +1567,24 @@ def _tournament_line(t: Optional[Dict]) -> str:
         _plural(t["entrants"], "strategy", "strategies"), t["trips"], t["target"], where))
 
 
-def _paused_recent(deps: List[Dict], hours: int = 24) -> List[Dict]:
+def _paused_recent(deps: List[Dict], hours: int = 24, cur=None) -> List[Dict]:
     """Paper deployments paused in the last `hours`: they leave the 'running' count, so without
-    this a stopped-out strategy simply vanishes from the panel."""
+    this a stopped-out strategy simply vanishes from the panel. Deployments listed without their
+    position totals (list_deployments_brief) get them from one read of just these, through `cur`."""
     since = repo.now_utc() - timedelta(hours=hours)
+    picked = [d for d in deps if d["mode"] == "paper" and d["status"] == "paused"
+              and d.get("updated_at") is not None and d["updated_at"] >= since][:3]
+    totals = {}
+    if cur is not None and any("closed_trades" not in d for d in picked):
+        totals = repo.deployment_closed_totals(cur, [d["id"] for d in picked])
     out = []
-    for d in deps:
-        at = d.get("updated_at")
-        if d["mode"] == "paper" and d["status"] == "paused" and at is not None and at >= since:
-            out.append({"deployment_id": d["id"], "title": _short_title(d.get("title")),
-                        "trades": int(d.get("closed_trades") or 0), "pnl": round(float(d.get("realized_pnl") or 0), 2),
-                        "why": _plain_pause_reason(d.get("status_reason"))})
-    return out[:3]
+    for d in picked:
+        trades, pnl = ((d.get("closed_trades"), d.get("realized_pnl")) if "closed_trades" in d
+                       else totals.get(int(d["id"]), (0, 0)))
+        out.append({"deployment_id": d["id"], "title": _short_title(d.get("title")),
+                    "trades": int(trades or 0), "pnl": round(float(pnl or 0), 2),
+                    "why": _plain_pause_reason(d.get("status_reason"))})
+    return out
 
 
 def _paused_lines(paused: List[Dict]) -> List[str]:
@@ -1787,7 +1793,8 @@ def _idle_reason(d: Dict, paper_run: List[Dict], paused: List[Dict], engine_age,
 def autopilot_status(ctx: Ctx):
     """Lightweight status for the floating autopilot window."""
     cur, u = ctx.cur, ctx.user
-    deps = repo.list_deployments(cur, ctx.uid)
+    # Without the per-deployment position totals: this polls, and only _paused_recent needs them.
+    deps = repo.list_deployments_brief(cur, ctx.uid)
     live_run = [d for d in deps if d["mode"] == "live" and d["status"] == "running"]
     paper_run = [d for d in deps if d["mode"] == "paper" and d["status"] == "running"]
     demo_run = [d for d in deps if d["mode"] == "demo" and d["status"] == "running"]
@@ -1856,7 +1863,7 @@ def autopilot_status(ctx: Ctx):
         "paper_progress": paper_progress,
         "paper_open": int(repo.user_open_exposure(cur, ctx.uid, "paper")["n"]) if paper_run else 0,
         "paper_waiting": _paper_waiting(paper_run, _scan_tally(cur, paper_run)),
-        "paused_recent": _paused_recent(deps),
+        "paused_recent": _paused_recent(deps, cur=cur),
         "early_exits_7d": _early_exits(cur, ctx.uid),
         "tournament": _tournament_summary(cur, ctx.uid, deps),
     }
