@@ -2687,6 +2687,14 @@ class Handler(BaseHTTPRequestHandler):
     # body until the client's delayed ACK, adding ~40ms to every response after the first. TCP_NODELAY.
     disable_nagle_algorithm = True
 
+    def handle_one_request(self):
+        # A client that resets an idle keep-alive socket raises here, while reading the next request
+        # line; the stdlib only catches timeouts, so socketserver printed a traceback for it.
+        try:
+            super().handle_one_request()
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+
     def log_request(self, code="-", size="-"):
         self._status = code if isinstance(code, int) else int(getattr(code, "value", 0) or 0)
 

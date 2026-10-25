@@ -88,6 +88,9 @@ def run_summary(run: Dict, events: List[Dict], now: datetime) -> Dict:
         "ended_min_ago": _minutes(_naive(run.get("finished_at")), now),
         "phase": phase, "cost_usd": card["cost_usd"], "explored": card["explored"],
         "dropped": card["dropped"], "gated": card["gated"], "passed": card["passed"],
+        # where developed ideas stopped short of the gate (underpowered ones can enter paper probation)
+        "developed": card["developed"], "underpowered": card["underpowered"],
+        "challenger_rejected": card["challenger_rejected"], "not_finalist": card["not_finalist"],
         "deaths": card["deaths"], "death_kinds": card["death_kinds"], "drops": _kept_drops(drops),
     }
 

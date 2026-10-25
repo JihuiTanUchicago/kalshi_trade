@@ -2,6 +2,8 @@
 import gzip
 import http.client
 import json
+import socket
+import struct
 import time
 from http.server import ThreadingHTTPServer
 from threading import Thread
@@ -136,6 +138,18 @@ def test_a_client_that_hung_up_is_logged_499_not_a_server_error(web, monkeypatch
     assert line.split()[3] == "499" and "Traceback" not in captured
     route = [r for r in webperf.summary()["routes"] if r["route"] == "GET /api/version"][0]
     assert route["5xx"] == 0
+
+
+def test_a_client_that_resets_an_idle_keep_alive_socket_prints_no_traceback(web, capsys):
+    sock = socket.create_connection(("127.0.0.1", web), timeout=3)
+    sock.sendall(b"GET /healthz HTTP/1.1\r\nHost: x\r\n\r\n")
+    assert b"200" in sock.recv(4096)
+    # SO_LINGER 0: close() sends RST, so the server's read of the next request line raises
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+    sock.close()
+    time.sleep(0.2)
+    out = capsys.readouterr()
+    assert "Traceback" not in out.out + out.err
 
 
 def test_an_access_line_is_one_write_so_threads_cannot_glue_lines(monkeypatch):
