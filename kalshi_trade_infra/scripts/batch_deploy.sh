@@ -13,8 +13,9 @@
 #   6. alarm: fails the run when merges on main have waited longer than STALE_MINUTES to ship
 #
 # Runs on the :20/:50 schedule and after every CI run on main (GitHub drops or delays scheduled
-# runs under load). A CI-triggered run holds while the web box's last deploy is under
-# MIN_GAP_MINUTES old, so deploys stay batched however often main merges.
+# runs under load). A CI-triggered run first waits until the web box's last deploy is
+# MIN_GAP_MINUTES old, so deploys stay batched however often main merges, and then ships what main
+# has by then. The workflow's concurrency group keeps one waiter, plus at most one queued run.
 #
 # Usage: scripts/batch_deploy.sh [--dry-run]   (needs AWS creds, GITHUB_TOKEN and GITHUB_REPOSITORY)
 set -euo pipefail
@@ -35,22 +36,27 @@ DRY_RUN=0
 if [[ -n "${AWS_PROFILE:-}" ]]; then export AWS_PROFILE; else unset AWS_PROFILE; fi
 
 cd "$(git rev-parse --show-toplevel)"
-HEAD_SHA=$(git rev-parse HEAD)
-marker() { aws s3 cp "s3://${BUCKET}/bundle/markers/$1" - --region "$AWS_REGION" 2>/dev/null | tr -d '[:space:]' || true; }
-WEB=$(marker web_sha); WEB_FULL=$(marker web_full_sha); COLLECTOR=$(marker collector_sha)
-echo "[batch] main=${HEAD_SHA:0:7} web=${WEB:0:7} web_full=${WEB_FULL:0:7} collector=${COLLECTOR:0:7}"
 
-# A CI-triggered run waits out the batch gap; the schedule (and the next CI run) picks it up.
+# A CI-triggered run waits out the batch gap, then ships main as it is after the wait.
 if [[ "$BATCH_EVENT" == workflow_run ]]; then
   last=$(aws s3api head-object --bucket "$BUCKET" --key bundle/markers/web_sha --region "$AWS_REGION" \
          --query LastModified --output text 2>/dev/null || true)
   if [[ -n "$last" && "$last" != None ]]; then
-    age=$(( ( $(date +%s) - $(date -d "$last" +%s) ) / 60 ))
-    if (( age < MIN_GAP_MINUTES )); then
-      echo "[batch] last web deploy was ${age} min ago (gap ${MIN_GAP_MINUTES}); this CI run ships nothing"; exit 0
+    wait_s=$(( MIN_GAP_MINUTES * 60 - ( $(date +%s) - $(date -d "$last" +%s) ) ))
+    if (( wait_s > 0 )); then
+      echo "[batch] last web deploy was $(( MIN_GAP_MINUTES - wait_s / 60 )) min ago; waiting ${wait_s}s for the ${MIN_GAP_MINUTES}-min gap"
+      sleep "$wait_s"
+      # Rerun from main as it is now, so a deploy script merged during the wait is the one used.
+      # Safe mid-script: bash parsed this whole if-block before running it.
+      git fetch -q origin main && git checkout -q --detach FETCH_HEAD
+      BATCH_EVENT=waited exec bash kalshi_trade_infra/scripts/batch_deploy.sh "$@"
     fi
   fi
 fi
+HEAD_SHA=$(git rev-parse HEAD)
+marker() { aws s3 cp "s3://${BUCKET}/bundle/markers/$1" - --region "$AWS_REGION" 2>/dev/null | tr -d '[:space:]' || true; }
+WEB=$(marker web_sha); WEB_FULL=$(marker web_full_sha); COLLECTOR=$(marker collector_sha)
+echo "[batch] main=${HEAD_SHA:0:7} web=${WEB:0:7} web_full=${WEB_FULL:0:7} collector=${COLLECTOR:0:7}"
 
 known() { [[ -n "$1" ]] && git cat-file -e "$1^{commit}" 2>/dev/null; }
 
@@ -88,6 +94,8 @@ print("missing" if r is None else (r["conclusion"] or r["status"]))' "$check")
     case "$state" in
       success) ;;
       queued|in_progress|pending|missing|requested|waiting) echo pending; return;;
+      # A newer push to main cancels the older commit's CI; the newer commit carries its changes.
+      cancelled|skipped) echo superseded; return;;
       *) echo failed; return;;
     esac
   done
