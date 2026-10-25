@@ -3306,7 +3306,7 @@
       d.live_running ? ['Live P&amp;L today', money(d.today_live_pnl || 0)] : ['Paper P&amp;L, all time', pnl == null ? '—' : money(pnl)],
       ['Strategies running', running ? String(running) : 'None yet'],
       ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested · ${r.passed_7d || 0} passed`],
-      prog ? ['Closest to live', `${prog.trades} of ${prog.trades_needed} paper trades`]
+      prog ? ['Closest to live', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${prog.trades} of ${prog.trades_needed} paper trades</a>`]
         : ['Last move', d.last_action && d.last_action.at ? sinceMin(d.last_action.at) : (d.last_review_at ? 'Reviewed ' + sinceMin(d.last_review_at) : 'Starting up')],
     ];
     const now = d.billing_blocked
