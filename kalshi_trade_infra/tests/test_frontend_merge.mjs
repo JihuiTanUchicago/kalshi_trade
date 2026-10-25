@@ -124,7 +124,7 @@ function frontend({fetchImpl, brokerMount, storage} = {}) {
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, trCurve, trackRecordPanel, mountTrackRecord, viewMarketDetail, render};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, apYield, trCurve, trackRecordPanel, mountTrackRecord, viewMarketDetail, render};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -813,6 +813,30 @@ test('right after switching on, the card says the first review is running, not t
   assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Last move<\/dt><dd>just now<\/dd>/);
 });
 
+test('the floating autopilot pill steps aside while it would cover a primary or submit button', () => {
+  const f = frontend(), body = f.root.parent;
+  f.root.innerHTML = '<main id="main"><form id="dispatch"><button class="btn primary go" type="submit">Start session</button></form><a class="btn" href="/x">Other</a></main>';
+  const box = new Element('div', {id: 'autopilot-float', class: 'apf'}); body.appendChild(box);
+  box.innerHTML = '<button type="button" class="apf-pill" data-ap="toggle">Autopilot off</button>';
+  const rect = (l, t, r, b) => () => ({left: l, top: t, right: r, bottom: b, width: r - l, height: b - t});
+  const go = f.root.querySelector('#dispatch .go');
+  box.querySelector('.apf-pill').getBoundingClientRect = rect(1249, 848, 1384, 884);
+  go.getBoundingClientRect = rect(1170, 803, 1355, 841);  // Research at 1400x900: the row right above the pill
+  f.apYield(); assert.equal(box.classes.has('yield'), true);
+  go.getBoundingClientRect = rect(1170, 403, 1355, 441);  // scrolled up and away
+  f.apYield(); assert.equal(box.classes.has('yield'), false);
+  go.getBoundingClientRect = rect(31, 798, 359, 840);     // phone: a full-width button under the pill
+  box.querySelector('.apf-pill').getBoundingClientRect = rect(245, 798, 380, 834);
+  f.apYield(); assert.equal(box.classes.has('yield'), true);
+  go.getBoundingClientRect = rect(0, 0, 0, 0);            // not laid out (hidden): nothing to yield to
+  f.apYield(); assert.equal(box.classes.has('yield'), false);
+  // A plain link under the pill doesn't count, and the open panel (no pill) never yields.
+  f.root.querySelector('a.btn').getBoundingClientRect = rect(1249, 848, 1384, 884);
+  f.apYield(); assert.equal(box.classes.has('yield'), false);
+  box.classList.add('yield'); box.innerHTML = '<div class="apf-head"></div>';
+  f.apYield(); assert.equal(box.classes.has('yield'), false);
+});
+
 test('the autopilot panel shows Kill only once real money is armed or running', () => {
   const f = frontend();
   const controls = d => {
@@ -1038,6 +1062,7 @@ test('a queued run counts its wait from the server, and past the reaper limit sa
   [...f.intervals.values()].forEach(tick => tick());
   assert.match(f.root.querySelector('#runpulse [data-plabel]').textContent, /^Queued · 20\ds$/);
   assert.equal(f.root.querySelector('#rsiobs [data-wait]').hidden, true);
+  assert.equal(f.root.querySelector('#rsiobs [data-phase]').hidden, false);  // not overdue: the phase line stays
   f.clearTimers();
   // Past it: no spinner, how long, and how many sessions a worker takes first.
   f = at({state: 'queued', seconds: 360, overdue: true, ahead: 2});
@@ -1049,6 +1074,8 @@ test('a queued run counts its wait from the server, and past the reaper limit sa
   assert.doesNotMatch(f.root.querySelector('#runpulse').innerHTML, /class="working"/);
   const wait = f.root.querySelector('#rsiobs [data-wait]');
   assert.equal(wait.hidden, false); assert.equal(wait.textContent, line);
+  // The wait line replaces "Waiting for the agent to start." rather than sitting under it.
+  assert.equal(f.root.querySelector('#rsiobs [data-phase]').hidden, true);
   assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Waiting 6 min');
   f.clearTimers();
   f = at({state: 'queued', seconds: 300, overdue: true, ahead: 0});

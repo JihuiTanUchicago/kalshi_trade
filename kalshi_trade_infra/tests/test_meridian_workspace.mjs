@@ -1397,6 +1397,7 @@ test('a Research run queued or silent past the reaper limit says how long instea
   await f.viewRun(9);
   assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Queued');
   assert.equal(f.root.querySelector('#rsiobs [data-wait]').hidden, true);
+  assert.equal(f.root.querySelector('#rsiobs [data-phase]').hidden, false);
   f.clearTimers();
   f = at({state: 'queued', seconds: 540, overdue: true, ahead: 1});
   await f.viewRun(9);
@@ -1404,6 +1405,7 @@ test('a Research run queued or silent past the reaper limit says how long instea
   assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Waiting 9 min');
   const wait = f.root.querySelector('#rsiobs [data-wait]');
   assert.equal(wait.hidden, false);
+  assert.equal(f.root.querySelector('#rsiobs [data-phase]').hidden, true);  // no "Waiting for the agent to start." above it
   assert.equal(wait.textContent, 'Still waiting for a free research worker (9 min). 1 session is ahead of it; it starts when one frees up.');
   f.clearTimers();
   f = at({state: 'silent', seconds: 300, overdue: true}, 'running');

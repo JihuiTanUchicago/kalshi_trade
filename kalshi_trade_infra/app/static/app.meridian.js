@@ -2173,6 +2173,7 @@
     const fired = new Set();
     let stage = null, lastAt = Date.now(), runState = 'queued', initialUpdate = true, wait = null, waitAt = 0;
     const waitEl = host.querySelector('[data-wait]');
+    let waitHidPhase = false;
     const waitNow = () => (wait ? { ...wait, seconds: wait.seconds + Math.round((Date.now() - waitAt) / 1000) } : null);
     const nodes = [], byId = new Map(), byTitle = new Map(); let hasLineage = false, lastCount = -1;
 
@@ -2190,6 +2191,9 @@
       const w = ['queued', 'running'].includes(runState) ? waitNow() : null, late = !!(w && w.overdue);
       waitEl.hidden = !late;
       if (late) waitEl.textContent = runWaitLine(w);
+      // An overdue queued run's wait line says what "Waiting for the agent to start." said, and more.
+      if (late && runState === 'queued') { phaseEl.hidden = true; waitHidPhase = true; }
+      else if (waitHidPhase) { waitHidPhase = false; phaseEl.hidden = !['queued', 'running', 'paused'].includes(runState); }
       if (late && runState === 'queued') { liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Waiting ' + waitSpan(w.seconds); return; }
       if (late) { host.classList.add('is-quiet'); liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Silent ' + waitSpan(w.seconds); return; }
       if (runState === 'paused') { liveWrap.className = 'rsiobs-live is-paused'; liveText.textContent = 'Paused'; return; }
@@ -3812,7 +3816,7 @@
         </form>
       </div>
       <div class="apf-session">
-        <div class="apf-session-head"><span class="say-kind">Live session</span></div>
+        <div class="apf-session-head"><span class="say-kind">Activity feed</span></div>
         <ol class="log stream apf-log" id="apf-messages" role="log" aria-label="Autopilot activity" aria-live="polite"></ol>
         <div class="runpulse apf-pulse-row" id="apf-pulse" aria-live="polite" hidden></div>
       </div>
@@ -3964,7 +3968,7 @@
       // is armed or running, and the live step once autopilot is on (the gate line says why not yet).
       controls.innerHTML = `${d.autopilot_live
         ? `<button class="btn sm" data-ap="livetoggle" data-on="0">Turn off live</button>`
-        : d.autopilot ? `<button class="btn sm" data-ap="livearm" ${(d.live_enabled && d.kalshi_connected) ? '' : 'aria-disabled="true"'}>Enable live autopilot</button>` : ''}
+        : d.autopilot && d.live_enabled ? `<button class="btn sm" data-ap="livearm" ${d.kalshi_connected ? '' : 'aria-disabled="true"'}>Enable live autopilot</button>` : ''}
         ${d.autopilot_live || d.live_running ? '<button class="btn sm danger" data-ap="kill">Kill</button>' : ''}
         <a class="btn sm ghost" href="/deploy">Open board</a>`;
       controls.querySelectorAll('[data-ap]').forEach((b) => (b.onclick = (e) => apAction(box, b.dataset.ap, e)));
@@ -3976,7 +3980,7 @@
   function apLiveBlock(d) {
     if (!d) return '';
     if (!d.autopilot) return 'Turn on autopilot first — live autopilot builds on it. ';
-    if (!d.live_enabled) return 'Live trading is off on this server. ';
+    if (!d.live_enabled) return 'Live trading isn’t available on this server yet. ';  // no live button then, just this line
     if (!d.kalshi_connected) return 'Connect your Kalshi key on the Funds page first. ';
     return '';
   }

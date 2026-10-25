@@ -2170,6 +2170,7 @@
     const fired = new Set();
     let stage = null, lastAt = Date.now(), runState = 'queued', wait = null, waitAt = 0;
     const waitEl = host.querySelector('[data-wait]');
+    let waitHidPhase = false;
     const waitNow = () => (wait ? { ...wait, seconds: wait.seconds + Math.round((Date.now() - waitAt) / 1000) } : null);
     const nodes = [], byId = new Map(), byTitle = new Map(); let hasLineage = false, lastCount = -1;
 
@@ -2188,6 +2189,9 @@
       const w = ['queued', 'running'].includes(runState) ? waitNow() : null, late = !!(w && w.overdue);
       waitEl.hidden = !late;
       if (late) waitEl.textContent = runWaitLine(w);
+      // An overdue queued run's wait line says what "Waiting for the agent to start." said, and more.
+      if (late && runState === 'queued') { phaseEl.hidden = true; waitHidPhase = true; }
+      else if (waitHidPhase) { waitHidPhase = false; phaseEl.hidden = !['queued', 'running', 'paused'].includes(runState); }
       if (late && runState === 'queued') { liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Waiting ' + waitSpan(w.seconds); return; }
       if (late) { host.classList.add('is-quiet'); liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Silent ' + waitSpan(w.seconds); return; }
       if (runState === 'paused') { liveWrap.className = 'rsiobs-live is-paused'; liveText.textContent = 'Paused'; return; }
@@ -3465,6 +3469,11 @@
         const b = document.getElementById('autopilot-float');
         if (b && !document.hidden && (!S.apAt || Date.now() - S.apAt > 18000)) refreshAutopilot(b, true);
       });
+      // Re-check the pill against the page's buttons once a frame at most, as the page moves under it.
+      let yieldQueued = false;
+      const yieldSoon = () => { if (yieldQueued) return; yieldQueued = true; requestAnimationFrame(() => { yieldQueued = false; apYield(); }); };
+      addEventListener('scroll', yieldSoon, { passive: true }); addEventListener('resize', yieldSoon);
+      document.addEventListener('toggle', yieldSoon, true); document.addEventListener('input', yieldSoon, true);
     }
   }
   async function refreshAutopilot(box, share = false) {
@@ -3738,10 +3747,26 @@
       box.innerHTML = `<button type="button" class="apf-pill" data-ap="toggle" aria-expanded="false">
         <span class="apf-dot" aria-hidden="true"></span><span class="apf-pill-label">${esc(m.label)}</span>${ICON.chev || ''}</button>`;
       box.querySelector('[data-ap]').onclick = (e) => apAction(box, 'toggle', e);
+      apYield();
       return;
     }
     if (box.dataset.shell !== 'expanded') apBuildShell(box);
     apUpdate(box, d);
+  }
+  // The collapsed pill floats over the bottom-right corner, which is where pages put their primary
+  // action: on Research it sat on the Start session row (desktop) and covered the button (phone).
+  // While it would cover a primary or submit button on screen it fades and lets clicks through,
+  // and comes back once that button scrolls away. The open panel is left alone: the user opened it.
+  function apYield() {
+    const box = document.getElementById('autopilot-float'), pill = box && box.querySelector('.apf-pill');
+    if (!pill || !pill.getBoundingClientRect) { if (box) box.classList.remove('yield'); return; }
+    const p = pill.getBoundingClientRect(), pad = 8;
+    const q = (sel) => [...document.body.querySelectorAll(sel)];
+    const covers = q('main button[type="submit"]').concat(q('main .btn.primary')).some((el) => {
+      const r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+      return !!(r && r.width && r.right > p.left - pad && r.left < p.right + pad && r.bottom > p.top - pad && r.top < p.bottom + pad);
+    });
+    box.classList.toggle('yield', covers);
   }
   function apBuildShell(box) {
     box.dataset.shell = 'expanded';
@@ -3773,7 +3798,7 @@
         </form>
       </div>
       <div class="apf-session">
-        <div class="apf-session-head"><span class="say-kind">Live session</span><span class="apf-session-sub">everything the autopilot does, end to end</span></div>
+        <div class="apf-session-head"><span class="say-kind">Activity feed</span><span class="apf-session-sub">everything the autopilot does, end to end</span></div>
         <ol class="log stream apf-log" id="apf-messages" role="log" aria-label="Autopilot activity" aria-live="polite"></ol>
         <div class="runpulse apf-pulse-row" id="apf-pulse" aria-live="polite" hidden></div>
       </div>
@@ -3927,7 +3952,7 @@
       // is armed or running, and the live step once autopilot is on (the gate line says why not yet).
       controls.innerHTML = `${d.autopilot_live
         ? `<button class="btn sm" data-ap="livetoggle" data-on="0">Turn off live</button>`
-        : d.autopilot ? `<button class="btn sm" data-ap="livearm" ${(d.live_enabled && d.kalshi_connected) ? '' : 'aria-disabled="true"'}>Enable live autopilot</button>` : ''}
+        : d.autopilot && d.live_enabled ? `<button class="btn sm" data-ap="livearm" ${d.kalshi_connected ? '' : 'aria-disabled="true"'}>Enable live autopilot</button>` : ''}
         ${d.autopilot_live || d.live_running ? '<button class="btn sm danger" data-ap="kill">Kill</button>' : ''}
         <a class="btn sm ghost" href="/deploy">Open board</a>`;
       controls.querySelectorAll('[data-ap]').forEach((b) => (b.onclick = (e) => apAction(box, b.dataset.ap, e)));
@@ -3939,7 +3964,7 @@
   function apLiveBlock(d) {
     if (!d) return '';
     if (!d.autopilot) return 'Turn on autopilot first — live autopilot builds on it. ';
-    if (!d.live_enabled) return 'Live trading is off on this server. ';
+    if (!d.live_enabled) return 'Live trading isn’t available on this server yet. ';  // no live button then, just this line
     if (!d.kalshi_connected) return 'Connect your Kalshi key on the Funds page first. ';
     return '';
   }
