@@ -689,6 +689,8 @@
       if (key === current) return;
       busy(b, async () => {
         try { localStorage.setItem('tau_ui', key); } catch (e) { /* private mode */ }
+        // The shell links the theme from this cookie (the server sets it too, on the save below).
+        document.cookie = `tau_ui=${key}; Path=/; Max-Age=34560000; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}`;
         try { await api('/api/ui-theme', { theme: key }); } catch (e) { /* local still applies */ }
         location.reload();
       });

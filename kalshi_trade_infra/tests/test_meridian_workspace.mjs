@@ -2537,6 +2537,23 @@ test('the legal pages load in Tau even for a Meridian user, since only Tau has t
   }
 });
 
+test('a shell that already links its theme makes boot.js only record it, with no swap or second bundle', () => {
+  for (const [ui, stored, pathname, expected, saved] of [['meridian', null, '/', 'meridian', 'meridian'],
+    ['tau', 'meridian', '/', 'tau', 'tau'], ['tau', 'meridian', '/terms', 'tau', undefined]]) {
+    const scripts = [], css = {href: 'shell-linked'}, writes = {};
+    const dataset = {ui, tauJs: '/static/app.js?v=tau-js', tauVer: 'tau-js', merJs: '/static/app.meridian.js?v=mer-js', merVer: 'mer-js', merCss: '/static/app.meridian.css?v=mer-css'};
+    const context = {window: {}, location: {pathname},
+      localStorage: {getItem: () => stored, setItem: (k, v) => { writes[k] = v; }},
+      document: {getElementById: id => id === 'tau-boot' ? {dataset} : id === 'tau-css' ? css : null,
+        createElement: () => ({}), body: {appendChild: script => scripts.push(script)}}};
+    vm.runInNewContext(readFileSync(new URL('../app/static/boot.js', import.meta.url), 'utf8'), context);
+    assert.equal(context.window.__TAU_UI__, expected, ui + pathname);
+    assert.equal(context.window.__BUILD__, expected === 'meridian' ? dataset.merVer : dataset.tauVer);
+    assert.equal(scripts.length, 0); assert.equal(css.href, 'shell-linked');
+    assert.equal(writes.tau_ui, saved);  // a forced Tau legal page never overwrites a saved Meridian
+  }
+});
+
 test('Meridian has a page for every app path the server serves, bar the legal pages boot.js sends to Tau', () => {
   const f = frontend();
   for (const path of ['/', '/dashboard', '/research', '/research/1', '/strategies', '/strategies/1', '/deploy', '/community',
