@@ -166,7 +166,7 @@ def test_research_and_live_compute_identical_options_features():
     surface = do.surface_from_chain(_chain(), snap, 80_000.0, snap * S)
     rows = surface.rows()
     ts = snap + 300
-    btc = [(ts - 60 * (k + 1), 80_000.0 + k) for k in range(90)]
+    btc = [(ts - 60 * (k + 1), 80_000.0 + k + 15.0 * (-1) ** k) for k in range(90)]
     close = datetime.fromtimestamp(ts + 600, tz=timezone.utc)
     quotes = [engine.LiveQuote(Contract("KXBTC15M-X-00", 79_900.0, close, "KXBTC15M"), 0.55, 0.57, 5.0, 5.0)]
     markets = [{"ticker": "KXBTC15M-X-00", "strike": 79_900.0, "close_time": close, "result": "yes"}]
@@ -182,7 +182,7 @@ def test_research_and_live_compute_identical_options_features():
     src = engine.Sources(quotes=lambda m: quotes, spot=lambda m: BtcSeries(btc), options=options)
     snaps, _ = engine._cross_market_frame(["btc15m"], src, ts)
     live = snaps[0].features
-    keys = ("opt_p_yes", "opt_edge", "opt_iv", "opt_age_min")
+    keys = ("opt_p_yes", "opt_edge", "opt_iv", "opt_age_min", "opt_iv_rv", "opt_rv_p_yes", "opt_rv_edge")
     assert seen["as_of"] == ts and {k: research[k] for k in keys} == {k: live[k] for k in keys}
     assert research["opt_edge"] == pytest.approx(research["opt_p_yes"] - 0.56)
     assert research["opt_age_min"] == pytest.approx(5.0) and 0.5 < research["opt_p_yes"] < 1.0
@@ -194,8 +194,28 @@ def test_research_and_live_compute_identical_options_features():
 
 def test_only_bitcoin_strike_series_get_a_book_and_features_are_registered():
     assert options_fair.book_for_series("KXETH15M", lambda: 1 / 0) is None
-    for name in ("opt_p_yes", "opt_edge", "opt_iv", "opt_age_min"):
+    for name in ("opt_p_yes", "opt_edge", "opt_iv", "opt_age_min", "opt_iv_rv", "opt_rv_p_yes", "opt_rv_edge"):
         assert name in FEATURES
+
+
+def test_realized_vol_recalibration_reprices_the_smile_at_the_hours_realized_vol():
+    snap = EXP1 - 20 * 3600
+    surface = do.surface_from_chain(_chain(), snap, 80_000.0, snap * S)
+    book = options_fair.book_from_rows(surface.rows())
+    ts, close, spot = snap + 300, snap + 300 + 900, 80_000.0
+    _, (iv_atm,) = osf.price(surface, ts, spot, close, spot)
+
+    def feats(rv_ann, strike=80_150.0):
+        rv = rv_ann / options_fair.MINUTES_PER_YEAR ** 0.5
+        return options_fair.snapshot_features(book, strike, ts, close, 0.10, 0.12, {"spot": spot, "vol_60m": rv})
+    same = feats(iv_atm)                                  # realized = implied: nothing changes
+    assert same["opt_iv_rv"] == pytest.approx(1.0) and same["opt_rv_p_yes"] == pytest.approx(same["opt_p_yes"], abs=1e-9)
+    calm = feats(iv_atm / 2)                              # a quiet hour: the out-of-the-money YES gets cheaper
+    assert calm["opt_iv_rv"] == pytest.approx(2.0) and calm["opt_rv_p_yes"] < calm["opt_p_yes"] - 0.02
+    assert calm["opt_rv_edge"] == pytest.approx(calm["opt_rv_p_yes"] - 0.11)
+    assert feats(iv_atm / 50)["opt_rv_p_yes"] == pytest.approx(feats(iv_atm / 5)["opt_rv_p_yes"])   # scale floor 0.2
+    flat = options_fair.snapshot_features(book, 80_150.0, ts, close, 0.10, 0.12, {"spot": spot, "vol_60m": 0.0})
+    assert "opt_p_yes" in flat and not {"opt_iv_rv", "opt_rv_p_yes", "opt_rv_edge"} & set(flat)
 
 
 class _Cur:

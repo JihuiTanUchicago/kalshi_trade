@@ -232,10 +232,11 @@ def _grid_interp(grid: np.ndarray, z: np.ndarray) -> np.ndarray:
     return grid[r, idx - 1] * (1.0 - w) + grid[r, idx] * w
 
 
-def price(surface: Surface, ts, strike, close_ts, spot) -> Tuple[np.ndarray, np.ndarray]:
+def price(surface: Surface, ts, strike, close_ts, spot, vol_scale=1.0) -> Tuple[np.ndarray, np.ndarray]:
     """(P(settle > strike), implied vol at the strike and horizon) for arrays of contracts priced
     off ``surface`` at times ``ts`` with BTC at ``spot``. NaN where undefined (no expiry left,
-    contract closed, bad input)."""
+    contract closed, bad input). ``vol_scale`` multiplies the ATM level at the horizon, keeping
+    the smile's shape in standardized moneyness (a recalibrated level, such as realized vol)."""
     ts = np.atleast_1d(np.asarray(ts, dtype=float))
     n = len(ts)
     k_ = np.broadcast_to(np.asarray(strike, dtype=float), (n,))
@@ -262,7 +263,7 @@ def price(surface: Surface, ts, strike, close_ts, spot) -> Tuple[np.ndarray, np.
         a = np.where(single, 0.0, (t - t0) / np.where(t1 > t0, t1 - t0, 1.0))
         w_atm = np.where(single, e_atm[lo] ** 2 * t, (1 - a) * e_atm[lo] ** 2 * t0 + a * e_atm[hi] ** 2 * t1)
         basis = np.where(single, e_b[lo] * t / np.where(t0 > 0, t0, 1.0), (1 - a) * e_b[lo] + a * e_b[hi])
-        s_atm = np.sqrt(np.maximum(w_atm, 0.0) / t)
+        s_atm = np.sqrt(np.maximum(w_atm, 0.0) / t) * np.broadcast_to(np.asarray(vol_scale, dtype=float), (n,))
         fwd = sp * np.exp(basis)
         rt = np.sqrt(t)
 

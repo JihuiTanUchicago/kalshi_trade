@@ -17,6 +17,15 @@ sportsbook books), priced at the frame's BTC spot:
     opt_edge     opt_p_yes - mid (positive = YES looks cheap against the options market)
     opt_iv       implied vol at the contract's strike and horizon (annualized)
     opt_age_min  minutes since the surface snapshot was taken
+
+and, when the frame has the last hour's realized vol (vol_60m), the realized-vol recalibration.
+Option IV carries a variance risk premium: on short horizons it runs above the vol BTC actually
+realizes, which pulls opt_p_yes toward 0.5 and makes longshots look cheap. So:
+
+    opt_iv_rv      ATM implied vol at the horizon / realized vol of the last 60 minutes
+    opt_rv_p_yes   the same surface repriced with its ATM level set to that realized vol (the
+                   smile's skew and term shape kept)
+    opt_rv_edge    opt_rv_p_yes - mid
 """
 from __future__ import annotations
 
@@ -31,6 +40,10 @@ DAY_TABLE = "deribit_surface_day"
 # market prices contracts of a day or less); live reads the newest snapshot.
 RESEARCH_STEP_S = 300
 RESEARCH_MAX_EXPIRY_DAYS = 8.0
+# vol_60m is the stdev of 1-minute log returns; the recalibration scale is clamped so a dead-flat
+# or spiking hour can't send the repriced vol to zero or to a multiple of the market's.
+MINUTES_PER_YEAR = osf.YEAR_S / 60.0
+RV_SCALE_MIN, RV_SCALE_MAX = 0.2, 2.0
 
 
 class OptionsBook:
@@ -64,8 +77,21 @@ def snapshot_features(book: Optional[OptionsBook], strike: float, ts: int, close
     if not (p[0] == p[0]):
         return {}
     out = {"opt_p_yes": float(p[0]), "opt_iv": float(iv[0]), "opt_age_min": (ts - surface.snap_ts) / 60.0}
+    rv = (frame_feats or {}).get("vol_60m")
+    if rv and rv > 0:
+        rv_ann = float(rv) * MINUTES_PER_YEAR ** 0.5
+        _, (iv_atm,) = osf.price(surface, ts, spot, close_ts, spot)
+        if iv_atm == iv_atm and iv_atm > 0:
+            scale = min(max(rv_ann / iv_atm, RV_SCALE_MIN), RV_SCALE_MAX)
+            (p_rv,), _ = osf.price(surface, ts, strike, close_ts, spot, vol_scale=scale)
+            out["opt_iv_rv"] = float(iv_atm / rv_ann)
+            if p_rv == p_rv:
+                out["opt_rv_p_yes"] = float(p_rv)
     if yes_bid is not None and yes_ask is not None:
-        out["opt_edge"] = out["opt_p_yes"] - (float(yes_bid) + float(yes_ask)) / 2.0
+        mid = (float(yes_bid) + float(yes_ask)) / 2.0
+        out["opt_edge"] = out["opt_p_yes"] - mid
+        if "opt_rv_p_yes" in out:
+            out["opt_rv_edge"] = out["opt_rv_p_yes"] - mid
     return out
 
 
@@ -150,4 +176,10 @@ FEATURE_DOCS = {
     "opt_iv": "Bitcoin strike markets only: Deribit implied volatility (annualized, 0.5 = 50%) at the "
               "contract's strike and time to close",
     "opt_age_min": "Bitcoin strike markets only: minutes since the Deribit surface behind opt_p_yes was taken",
+    "opt_iv_rv": "Bitcoin strike markets only: Deribit ATM implied vol at the contract's horizon divided by BTC's "
+                 "realized vol over the last 60 minutes (above 1 = options price more movement than BTC just had)",
+    "opt_rv_p_yes": "Bitcoin strike markets only: opt_p_yes repriced with the options smile rescaled so its ATM vol "
+                    "equals the last 60 minutes' realized vol (removes the variance risk premium that pulls "
+                    "opt_p_yes toward 0.5 on short horizons; skew and term shape kept)",
+    "opt_rv_edge": "Bitcoin strike markets only: opt_rv_p_yes minus the contract's mid",
 }
