@@ -1262,3 +1262,36 @@ test('the autopilot card and panel show the last 7 days with real credits and pa
   assert.equal(box.querySelector('#apf-week').innerHTML, '');  // off: no scorecard
   f.clearTimers();
 });
+
+test('beside Start session the form says what a session usually costs, from ledger data', async () => {
+  const research = (estimate) => frontend({fetchImpl: path => {
+    if (path === '/api/models') return response({models: [{key: 'opus', label: 'Opus'}, {key: 'haiku', label: 'Haiku'}], default: 'opus'});
+    if (path === '/api/research/context') return response({markets: []});
+    if (path === '/api/research/estimate') return estimate ? response(estimate) : response({error: 'down'}, 503);
+    if (path === '/api/runs') return response({runs: [], counts: {research_running: 0, research_queued: 0}, policy: null});
+    if (path.startsWith('/api/research/scoreboard')) return response({});
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  // The user's own median, phrased per round while run-forever is on (the default), per session when off.
+  let f = research({yours: 1.8, sessions: 6, typical: {opus: 9, haiku: 0.4}});
+  await f.viewResearch(); await flush(); await flush();
+  const cost = () => f.root.querySelector('#rcost'), rf = f.root.querySelector('#runforever');
+  assert.equal(cost().hidden, false);
+  assert.equal(cost().textContent, 'Each round of ideas usually costs about $1.80 (your recent sessions); it keeps starting new rounds until you stop it.');
+  rf.checked = false; rf.dispatchEvent({type: 'change'});
+  assert.equal(cost().textContent, 'Usually about $1.80 (your recent sessions).');
+  assert.match(f.root.querySelector('#rf-hint').textContent, /A session takes a few minutes/);  // the hint still follows the switch
+  // Fewer than 3 of their own: the typical cost for the chosen model, following the model picker.
+  f = research({yours: null, sessions: 1, typical: {opus: 2.25}});
+  await f.viewResearch(); await flush(); await flush();
+  assert.match(cost().textContent, /^Each round of ideas usually costs about \$2\.25 \(recent sessions on this model\)/);
+  const model = f.root.querySelector('#rmodel'); model.value = 'haiku'; model.dispatchEvent({type: 'change'});
+  assert.equal(cost().hidden, true); assert.equal(cost().textContent, '');  // no data for this model: nothing
+  // No data at all, or the read failed: nothing.
+  for (const estimate of [{yours: null, sessions: 0, typical: {}}, null]) {
+    f = research(estimate);
+    await f.viewResearch(); await flush(); await flush();
+    assert.equal(cost().hidden, true); assert.equal(cost().textContent, '');
+  }
+});

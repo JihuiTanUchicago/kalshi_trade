@@ -2504,3 +2504,6 @@ body.landing-body .apf { display: none; }
 .apf .ap-week dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 #apf-week:empty { display: none; }
 @media (max-width: 760px) { .ap-week dl { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; } }
+
+/* What a research session usually costs, under Start session. */
+.go-cost { margin: 8px 0 0; }

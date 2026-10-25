@@ -1,7 +1,7 @@
 """Credits ledger and Stripe customer SQL (usage billing)."""
 from __future__ import annotations
 
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from app.adapters.db.sql import now_utc
 
@@ -73,6 +73,37 @@ def runs_spent(cur, user_id: int, run_ids: Iterable[int]) -> Dict[int, float]:
         tuple(ids) + (user_id,),
     )
     return {int(r["run_id"]): float(r["s"]) for r in cur.fetchall()}
+
+
+# A finished research session for the cost hint before Start: one that ran to its end on a set
+# number of ideas. A run-until-stopped session has no natural size, so it is never a sample.
+_FINISHED_SESSION = ("r.kind='research' AND r.status='succeeded' AND r.run_forever=0 "
+                     "AND (r.direction IS NULL OR r.direction <> 'random_walk')")
+_RUN_DEBITS = "(SELECT -SUM(l.amount_usd) FROM app_credit_ledger l WHERE l.run_id = r.id AND l.kind='usage')"
+
+
+def finished_session_costs(cur, user_id: int, limit: int = 10) -> List[float]:
+    """What the user's newest finished research sessions each took from credits (the usage rows
+    billed to the run), newest first. Sessions that debited nothing are left out."""
+    # The newest runs first (idx_runs_user), then each one's debits (idx_credit_run_kind): a busy
+    # autopilot account has thousands of runs, so never total them all before the LIMIT.
+    cur.execute(
+        "SELECT r.id, " + _RUN_DEBITS + " AS s FROM app_agent_runs r "
+        "WHERE r.user_id=%s AND " + _FINISHED_SESSION + " ORDER BY r.created_at DESC, r.id DESC LIMIT %s",
+        (user_id, int(limit)),
+    )
+    return [float(r["s"]) for r in cur.fetchall() if r["s"] is not None and float(r["s"]) > 0]
+
+
+def recent_session_costs(cur, since, limit: int = 2000) -> List[Tuple[Optional[str], float]]:
+    """(model, cost) for every user's finished research sessions created since `since`, newest
+    first, for the server-wide typical cost per model. Callers keep only the aggregate."""
+    cur.execute(
+        "SELECT r.id, r.model, " + _RUN_DEBITS + " AS s FROM app_agent_runs r "
+        "WHERE r.created_at >= %s AND " + _FINISHED_SESSION + " ORDER BY r.created_at DESC LIMIT %s",
+        (since, int(limit)),
+    )
+    return [(r["model"], float(r["s"])) for r in cur.fetchall() if r["s"] is not None and float(r["s"]) > 0]
 
 
 def get_stripe_customer(cur, user_id: int) -> Optional[Dict]:

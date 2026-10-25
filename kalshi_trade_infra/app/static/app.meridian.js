@@ -1726,6 +1726,14 @@
       <p class="rsi-loop"><span><b>How the loop learns.</b> After each cycle the engine re-scores and <b>rewrites its own exploration policy</b> from your history — graded on how well it generalizes to unseen data across many shuffled replays — then feeds the improved policy back to the Proposer, so the next batch explores smarter.</span></p>
     </details>`;
   }
+  // A run-until-stopped session is one session that keeps exploring a fresh round of ideas, so its
+  // figure is per round (a finished set-size session is about one round); a set-size one is per session.
+  function sessionCostLine(v, forever, own) {
+    const basis = own ? 'your recent sessions' : 'recent sessions on this model';
+    return forever
+      ? `Each round of ideas usually costs about ${usd(v)} (${basis}); it keeps starting new rounds until you stop it.`
+      : `Usually about ${usd(v)} (${basis}).`;
+  }
   async function viewResearch() {
     const me = S.me;
     const DEMO_PROMPT = "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances";
@@ -1752,6 +1760,7 @@
           <button type="button" class="chip ex" data-ex="${esc(DEMO_PROMPT)}" title="Todd's random walk: fills the idea without starting a session">Use demo idea</button>
           <button class="btn primary go" type="submit" ${me.needs_card ? 'aria-disabled="true"' : ''}>Start session</button>
         </div>
+        <p class="hint go-cost" id="rcost" hidden></p>
         <div id="dflash"></div>
         <p class="hint" id="rf-hint">A session takes a few minutes and keeps running if you leave this page.</p>
       </form>${pipelineFigure()}</div></details><section class="research-history sect"><div class="sect-head research-archive-heading"><h2>Recent sessions <span id="rcount"></span></h2><div class="rengine" id="rengine"><section class="research-total" aria-label="All sessions, including active"><h3>All sessions</h3><dl class="figures measure" id="rfigs"></dl><dl class="figures measure research-status" id="research-status"></dl></section></div></div>
@@ -1761,11 +1770,27 @@
     const ta = form.querySelector('textarea[name=prompt]');
     root.querySelectorAll('[data-ex]').forEach((b) => (b.onclick = () => { ta.value = b.dataset.ex; ta.focus(); }));
     const rf = form.querySelector('#runforever'), mh = form.querySelector('#maxhyp');
+    let syncCost = () => {};  // the cost line below follows the run-forever switch too
     if (rf && mh) {
       const rh = form.querySelector('#rf-hint');
       const syncRf = () => { mh.disabled = rf.checked; mh.style.opacity = rf.checked ? '.4' : ''; if (rh) rh.textContent = rf.checked ? 'Runs until you stop it, using credits as it goes. It keeps running if you leave this page.' : 'A session takes a few minutes and keeps running if you leave this page.'; };
-      rf.addEventListener('change', syncRf); syncRf();  // default on -> depth dimmed
+      rf.addEventListener('change', () => { syncRf(); syncCost(); }); syncRf();  // default on -> depth dimmed
     }
+    // What a session usually costs, beside Start: real ledger debits from /api/research/estimate,
+    // the user's own median or else the typical one for the chosen model. No data, no line.
+    (() => {
+      const rc = form.querySelector('#rcost'), msel = form.querySelector('#rmodel');
+      if (!rc) return;
+      let est = null;
+      const sync = syncCost = () => {
+        const own = !!est && est.yours != null;
+        const v = !est ? null : own ? est.yours : (est.typical || {})[(msel && msel.value) || mdl.default];
+        rc.hidden = v == null;
+        rc.textContent = v == null ? '' : sessionCostLine(+v, !!(rf && rf.checked), own);
+      };
+      if (msel) msel.addEventListener('change', sync);
+      api('/api/research/estimate').then((d) => { est = d; }, () => { est = null; }).then(sync);
+    })();
     form.onsubmit = async (e) => {
       e.preventDefault();
       if (me.needs_card) { flash('#dflash', 'Add a payment method on the Billing tab first.', 'bad'); go('/billing'); return; }
