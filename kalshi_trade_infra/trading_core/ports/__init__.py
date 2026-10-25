@@ -11,6 +11,7 @@ from the core and no import of it beyond the domain types it passes around.
     Clock             "now": wall clock live, the replay cursor in a backtest
     SettlementSource  what an expired instrument paid (venue result live, dataset in replay)
 """
+from trading_core.ports.book import Book
 from trading_core.ports.clock import Clock, FixedClock, SystemClock
 from trading_core.ports.features import FeatureProvider
 from trading_core.ports.fees import FeeModel, FeesByVenue, NotionalRateFees, ScaledFees, ZeroFees
@@ -20,6 +21,6 @@ from trading_core.ports.strategy import DecisionContext, Strategy
 from trading_core.ports.venue import Venue, VenueCapabilities
 
 __all__ = [
-    "Clock", "DecisionContext", "FeatureProvider", "FeeModel", "FeesByVenue", "FixedClock", "MarketDataFeed",
+    "Book", "Clock", "DecisionContext", "FeatureProvider", "FeeModel", "FeesByVenue", "FixedClock", "MarketDataFeed",
     "NotionalRateFees", "ScaledFees", "SettlementSource", "Strategy", "SystemClock", "Venue", "VenueCapabilities", "ZeroFees",
 ]

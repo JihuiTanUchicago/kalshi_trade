@@ -207,3 +207,32 @@ def test_one_position_per_symbol_blocks_the_other_outcome():
     no = InstrumentId("kalshi", YES.symbol, "no")
     assert one_position_per_symbol(book)(OrderIntent(no, Side.BUY, 1)).allowed is False
     assert one_position_per_symbol(book)(OrderIntent(AAPL, Side.BUY, 1)).allowed is True
+
+
+class JournalBook(Portfolio):
+    """A Book that also keeps every report it booked, as a DB-backed book would (with the intent's
+    reason for each fill). The loop must hand it whole reports, not bare fills."""
+
+    def __init__(self, cash):
+        super().__init__(cash=cash)
+        self.journal = []
+
+    def record(self, report, instruments):
+        self.journal.append((report.intent.reason or report.intent.side.value, [f.qty for f in report.fills]))
+        super().record(report, instruments)
+
+
+def test_any_book_behind_the_port_runs_the_same_loop():
+    from trading_core.ports import Book
+    assert isinstance(Portfolio(), Book)
+    clock = FixedClock(0.0)
+    feed = ReplayFeed(clock, BARS)
+    venue = QuoteFillVenue(feed, FEES, INSTRUMENTS, cash=10_000.0)
+    book = JournalBook(10_000.0)
+    loop = TradingLoop(BuyBelowSellAbove({YES: 0.50, AAPL: 200.0}), INSTRUMENTS, feed, venue, clock, book=book,
+                       execution=CrossTheTouch(max_quote_age_seconds=60))
+    for ts in sorted(BARS):
+        clock.ts = ts
+        loop.step()
+    assert [side for side, _ in book.journal] == ["buy", "buy", "sell", "sell"]
+    assert book.open_positions() == {} and book.cash == pytest.approx(venue.book.cash)

@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from typing import List, Mapping
 
-from trading_core.domain import InstrumentId, OrderIntent, Portfolio, Quote, Side
+from trading_core.domain import InstrumentId, OrderIntent, Quote, Side
+from trading_core.ports.book import Book
 
 
 def position_stop(pct: float, reason: str = "stop"):
@@ -13,7 +14,7 @@ def position_stop(pct: float, reason: str = "stop"):
     now, so it is left alone.
     ``pct <= 0`` disables the rule. This is the position stop paper and live enforce
     (``engine.force_sell_if_drawn_down``) and the backtest applies."""
-    def rule(book: Portfolio, quotes: Mapping[InstrumentId, Quote], now: float) -> List[OrderIntent]:
+    def rule(book: Book, quotes: Mapping[InstrumentId, Quote], now: float) -> List[OrderIntent]:
         if pct <= 0:
             return []
         out = []
