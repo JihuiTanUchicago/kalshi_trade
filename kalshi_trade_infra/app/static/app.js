@@ -2355,8 +2355,9 @@
       if (i.pnl != null && +i.pnl <= 0) return `it lost money in testing (${usd(i.pnl, true)}).`;
       return 'it ranked below the handful of finalists we tested on unseen data.';
     };
-    const liveWhy = !S.me.live_trading_available ? 'Live trading isn’t open yet.' : !S.me.kalshi_connected ? 'Connect Kalshi on the Funds page first.' : (s.side !== 'yes' && !S.me.no_side_live_enabled) ? 'NO-side live trading is still being validated on the demo sandbox — deploy this on demo or paper for now.' : '';
-    const demoWhy = !S.me.kalshi_dev_connected ? 'Add your Kalshi demo (sandbox) key on the Funds page first.' : '';
+    const liveWhy = !S.me.live_trading_available ? 'Live trading isn’t open yet.' : !S.me.kalshi_connected ? 'Connect Kalshi on the <a href="/funds">Funds page</a> first.' : (s.side !== 'yes' && !S.me.no_side_live_enabled) ? 'NO-side live trading is still being validated on the demo sandbox — deploy this on demo or paper for now.' : '';
+    // Both are fixed strings (no user data), so they render as HTML with a link to Funds.
+    const demoWhy = !S.me.kalshi_dev_connected ? 'Add your Kalshi demo (sandbox) key on the <a href="/funds">Funds page</a> first.' : '';
     // Overfit/luck tells on a raw backtest column: a tiny sample, a perfect win rate, no losing
     // trades (profit factor runs away), or an implausibly high daily Sharpe are the classic
     // signatures of a number too good to be real. Flag them inline so a raw backtest is never
@@ -2458,10 +2459,10 @@
           ${!restricted && s.holdings && s.holdings.length ? (() => {
             const marked = s.holdings.filter((p) => p.unrealized != null);
             const unreal = marked.reduce((a, p) => a + p.unrealized, 0);
+            // A list, not a five-column table: in the sidebar the table clipped everything after Position.
             return `<section class="panel"><h3>Holding right now</h3>
-            <div class="sheet"><table class="table stack t-dep"><thead><tr><th>Contract</th><th>Position</th><th class="num">Cost</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
-            ${s.holdings.map((p) => `<tr><td class="tick" data-lab="Contract">${esc(p.ticker)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</td><td data-lab="Position">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(p.entry_price)}</td><td class="num" data-lab="Cost">${usd(p.cost)}</td><td class="num" data-lab="Unreal.">${p.unrealized == null ? '<span class="sub-fig">—</span>' : money(p.unrealized)}</td><td class="num" data-lab="Settles">${clock(p.market_close_time)}</td></tr>`).join('')}
-            </tbody></table></div>
+            <ul class="holdlist">${s.holdings.map((p) => `<li><div class="tick">${esc(p.ticker)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</div>
+              <div class="holdlist-figs"><b>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(p.entry_price)}</b><span>Cost ${usd(p.cost)}</span><span>Unreal. ${p.unrealized == null ? '—' : money(p.unrealized)}</span><span>Settles ${clock(p.market_close_time)}</span></div></li>`).join('')}</ul>
             <p class="hint" style="margin-top:8px">${s.holdings.length} open position${s.holdings.length === 1 ? '' : 's'} at cost ${usd(s.holdings.reduce((a, p) => a + p.cost, 0))}${marked.length ? ` · unrealized ${money(unreal)} (est., mark-to-market on the current bid)` : ' · awaiting first mark'}.</p></section>`;
           })() : ''}
           <section class="panel"><h3>${restricted ? 'Research only' : 'Deploy'}</h3>
@@ -2469,9 +2470,9 @@
                 ${s.status !== 'passed' ? `<div class="notice bad">${ICON.warn}<span>${s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${rejectReason(s)}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
                 <button class="btn" id="dep-paper">Deploy on paper</button>
                 <button class="btn ghost" id="dep-demo" ${demoWhy ? 'aria-disabled="true"' : ''}>Deploy on demo (sandbox)</button>
-                ${demoWhy ? `<p class="hint">${esc(demoWhy)}</p>` : '<p class="hint">Trades Kalshi’s demo exchange with your own demo key — real order-book fills, no real money.</p>'}
+                ${demoWhy ? `<p class="hint">${demoWhy}</p>` : '<p class="hint">Trades Kalshi’s demo exchange with your own demo key — real order-book fills, no real money.</p>'}
                 <button class="btn ghost" id="dep-live" ${liveWhy ? 'aria-disabled="true"' : ''}>Deploy with live money</button>
-                ${liveWhy ? `<p class="hint">${esc(liveWhy)}</p>` : ''}
+                ${liveWhy ? `<p class="hint">${liveWhy}</p>` : ''}
                 <form id="live-confirm" hidden style="display:grid;gap:8px">
                   <p class="hint">This trades real money in your Kalshi account. Type <b>LIVE</b> to confirm.</p>
                   <input class="input" name="confirm" autocomplete="off" aria-label="Type LIVE to confirm">
