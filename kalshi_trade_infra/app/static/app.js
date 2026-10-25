@@ -59,6 +59,7 @@
     unseen: ['Unseen data', 'A held-out slice of history the agent never looks at while searching, so the result can’t be curve-fit. This is the P&L that counts.'],
     insample: ['In-sample', 'The history the agent iterates on. Strong in-sample numbers are easy to overfit, so they only shortlist a strategy — they never pass it.'],
     gate: ['Gates', 'The pass/fail checks a strategy must clear on unseen data: it makes money, trades often enough to judge, and its wins outweigh losses after fees.'],
+    pace: ['Test expected', 'What these same closed trades would have made at the strategy’s average per trade on unseen data in its test. Hold the real result against it.'],
   };
   // One drawn marker; a single top-layer popover serves them all (no clipping in tables).
   const glo = (key) => `<button type="button" class="info" data-glo="${key}" aria-label="What does “${GLOSSARY[key][0]}” mean?">${ICON.info}</button>`;
@@ -1185,7 +1186,7 @@
       <td class="act st" data-lab="Status">${mark(s.status)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` <span class="mk ${s.deploy_live ? 'live' : 'dep'}">${s.deploy_live ? 'Live' : 'Deployed'}</span>${s.real && s.real.paused ? ' ' + mark('paused') : ''}${realFig(s.real)}` : ''}</td>
     </tr>`;
   }
-  const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Market</th><th>Status</th><th class="num">Realized</th><th class="num">Unrealized</th><th class="num">Trades</th><th class="num" title="What the same closed trades would have made at the unseen-data backtest's average per trade">Backtest pace</th><th>Since</th>${controls ? '<th class="act"><span class="vh">Actions</span></th>' : ''}</tr></thead>`;
+  const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Market</th><th>Status</th><th class="num">Realized</th><th class="num">Unrealized</th><th class="num">Trades</th><th class="num" title="What the same closed trades would have made at the unseen-data backtest's average per trade">Test expected${glo('pace')}</th><th>Since</th>${controls ? '<th class="act"><span class="vh">Actions</span></th>' : ''}</tr></thead>`;
   // Paused deployments need the user ("Resume or remove it on Deploy" sends them here), so they lead.
   const pausedFirst = (ds) => [...ds].sort((a, b) => (b.status === 'paused') - (a.status === 'paused'));
   const deploymentTable = (rows, controls) => `<div class="sheet"><table class="stack t-dep">${DEP_HEAD(controls)}<tbody>${rows}</tbody></table></div>`;
@@ -1208,7 +1209,7 @@
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
       <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? '<span class="sub-fig">—</span>' : money(d.unrealized_pnl)}${d.unrealized_pnl != null && d.open_positions ? '<div class="sub-fig">est.</div>' : ''}</td>
       <td class="num" data-lab="Trades">${d.closed_trades}${d.open_positions ? `<div class="sub-fig">+${d.open_positions} open</div>` : ''}</td>
-      <td class="num" data-lab="Backtest pace">${pace == null ? '\u2014' : d.closed_trades ? `${usd(pace * d.closed_trades, true)}<div class="sub-fig">same ${d.closed_trades} trade${d.closed_trades === 1 ? '' : 's'}</div>` : '<span class="sub-fig">no closed trades</span>'}</td>
+      <td class="num" data-lab="Test expected">${pace == null ? '\u2014' : d.closed_trades ? `${usd(pace * d.closed_trades, true)}<div class="sub-fig">same ${d.closed_trades} trade${d.closed_trades === 1 ? '' : 's'}</div>` : '<span class="sub-fig">no closed trades</span>'}</td>
       <td data-lab="Since">${when(d.created_at)}</td>
       ${actions}
     </tr>`;
@@ -1598,7 +1599,7 @@
       ? `<p>The engine <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
          ${pol.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(pol.summary)}</p>` : ''}
          <p class="rsi-last">Generalization score ${delta}${pol.evolved_at ? ' ·\u00a0adopted ' + when(pol.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
-      : `<p>After each cycle the engine <b>dreams up new search strategies</b> and keeps one only if it beats the current policy on your own history — scored over shuffled orderings, so it can't overfit. It gets better the more you run it.</p>`;
+      : `<p>After each cycle the engine <b>tries new ways of choosing which ideas to test</b> and keeps one only if it would have found more real winners in your own history — scored over shuffled orderings, so it can't overfit. It gets better the more you run it.</p>`;
     // Demoted to a compact, collapsible line so the research page leads with the form, not panels.
     host.innerHTML = `<details class="rsidisc">
       <summary class="rsidisc-cap"><b class="rsi-badge">RSI</b><span class="rsidisc-t">Self-improving research engine</span>${tag}${pol.evolved && delta ? `<span class="rsidisc-delta">${delta}</span>` : ''}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
@@ -1745,6 +1746,7 @@
         ${(!me.needs_card && me.billing_enabled && me.credit_balance < me.min_run_balance) ? `<div class="notice" role="status">${ICON.warn}<span>You have $${me.credit_balance.toFixed(2)} in credits — a research session needs at least $${me.min_run_balance.toFixed(2)} to start. <a href="/billing">Add credits →</a></span></div>` : ''}
         <label class="field"><span>Describe your idea</span>
           <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="Write your own — e.g. &quot;Sell overpriced tails in the last hour before the 5pm close.&quot;"></textarea></label>
+        <details class="dispatch-opts" id="ropts"${phone() ? '' : ' open'}><summary><span class="dispatch-opts-t">Options</span><span class="dispatch-opts-sum" id="ropts-sum"></span></summary><div class="dispatch-opts-body">
         <div class="dispatch-tune">
           ${modelOpts ? `<label class="field"><span>Model</span>
             <select class="input" name="model" id="rmodel">${modelOpts}</select></label>` : ''}
@@ -1755,6 +1757,7 @@
         <fieldset class="field mkt-field" style="border:0;padding:0;margin:0"><legend class="label" style="margin-bottom:8px">Market</legend>
           ${marketPicker(me.markets)}
         </fieldset>
+        </div></details>
         <div class="dispatch-go">
           <button type="button" class="chip ex" data-ex="${esc(DEMO_PROMPT)}" title="Fill the box with a tiny runnable demo idea">Try the demo — Todd's random walk</button>
           <button class="btn primary go" type="submit" ${me.needs_card ? 'aria-disabled="true"' : ''}>${ICON.spark2}Start session</button>
@@ -1773,6 +1776,19 @@
         <div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div></section>`);
     const form = root.querySelector('#dispatch');
     wireMarketPicker(form);
+    // Model, depth and market fold behind "Options" on a phone (closed while at their defaults), so
+    // Start session sits right under the idea. The summary line says what will run.
+    const optsSum = form.querySelector('#ropts-sum');
+    const syncOpts = () => {
+      if (!optsSum) return;
+      const msel = form.querySelector('#rmodel'), rfx = form.querySelector('#runforever'), mhx = form.querySelector('#maxhyp');
+      const mo = msel ? [...msel.options].find((o) => o.value === msel.value) : null;
+      const pick = [...form.querySelectorAll('input[name=market]')].find((r) => r.checked);
+      const row = pick && pick.value ? pick.closest('.mktrow') : null, nm = row && row.querySelector('.mktrow-name');
+      optsSum.textContent = [mo ? mo.textContent.trim() : '', rfx && rfx.checked ? 'runs until you stop it' : `${(mhx && mhx.value) || 10} strategies`,
+        nm ? nm.textContent.trim() : 'agent\u2019s choice of market'].filter(Boolean).join(' \u00b7\u00a0');
+    };
+    form.addEventListener('change', syncOpts); syncOpts();
     const ta = form.querySelector('textarea[name=prompt]');
     root.querySelectorAll('[data-ex]').forEach((b) => (b.onclick = () => { ta.value = b.dataset.ex; ta.focus(); }));
     const rf = form.querySelector('#runforever'), mh = form.querySelector('#maxhyp');
@@ -1840,7 +1856,8 @@
       renderResearchLoop(root.querySelector('#rsimo'), d.policy, tried);
       // The seeded example is listed but isn't the user's: it doesn't count as a run of theirs.
       const own = d.runs.filter((r) => !r.example).length, examples = d.runs.length - own;
-      const mainEl = root.querySelector('#main'); if (mainEl) mainEl.classList.toggle('runs-first', own > 0);  // phones: progress before the form
+      // Phones: progress before the form, unless they came here to start one ("Try another idea", ?new=1).
+      const mainEl = root.querySelector('#main'); if (mainEl) mainEl.classList.toggle('runs-first', own > 0 && !/[?&]new=1\b/.test(location.search));
       root.querySelector('#rcount').textContent = [own ? `${own} run${own > 1 ? 's' : ''}` : '', examples ? `${examples} example` : ''].filter(Boolean).join(' \u00b7\u00a0');
       root.querySelector('#runs').innerHTML = d.runs.length ? d.runs.map(runRow).join('')
         : `<div class="empty"><h3>No sessions yet</h3><p>Describe an idea above. The agent will turn it into several strategies, test each one on data it never saw, and mark each Passed or Void.</p></div>`;
@@ -1992,7 +2009,7 @@
     const li = document.createElement('li');
     li.className = 'ln lane-action hx';
     const stat = (ins && ins.trades != null)
-      ? `<span class="say-stat">In-sample ${usd(ins.pnl, true)} ·\u00a0${ins.trades} trade${ins.trades === 1 ? '' : 's'}</span>` : '';
+      ? `<span class="say-stat">On the history it searched: ${usd(ins.pnl, true)} ·\u00a0${ins.trades} trade${ins.trades === 1 ? '' : 's'}${glo('insample')}</span>` : '';
     const home = [mechHtml(d.mechanism), specHtml(d.spec),
       d.falsification ? `<p class="hx-fine"><b>Falsified if</b> ${esc(d.falsification)}</p>` : '',
       d.negative_control ? `<p class="hx-fine"><b>Placebo that should fail</b> ${esc(d.negative_control)}</p>` : ''].filter(Boolean).join('');
@@ -2029,7 +2046,7 @@
         const rest = strip(e2.message, /^(PASSED|VOID|FAILED|REJECTED)(\s*\(challenger\))?\s*[-–]\s*/);
         const tail = rest.indexOf(':') >= 0 ? rest.slice(rest.indexOf(':') + 1).trim() : '';
         reviewEl.hidden = false;
-        reviewEl.insertAdjacentHTML('beforeend', `<div class="hx-verdict"><span class="hx-tag ${cls}">Gatekeeper ·\u00a0${label.toLowerCase()}</span>${tail ? `<span class="hx-vtext">${esc(tail)}</span>` : ''}${statGrid(dd.stats)}${href ? `<a class="hx-viewstrat" href="${href}">View strategy →</a>` : ''}</div>`);
+        reviewEl.insertAdjacentHTML('beforeend', `<div class="hx-verdict"><span class="hx-tag ${cls}">Verdict ·\u00a0${label.toLowerCase()}</span>${GLOSSARY[label.toLowerCase()] ? glo(label.toLowerCase()) : ''}${tail ? `<span class="hx-vtext">${esc(tail)}</span>` : ''}${statGrid(dd.stats)}${href ? `<a class="hx-viewstrat" href="${href}">View strategy →</a>` : ''}</div>`);
       },
     };
   }
@@ -2176,7 +2193,7 @@
       inner = `<span class="say-kind">Challenger</span>${esc(ev.message.replace(/^Challenger\s+/, ''))}`;
     } else if (/^(Dreaming:|Research policy evolved:)/.test(ev.message)) {
       lane = 'rsi';
-      inner = `<b class="rsi-badge">RSI</b> ${esc(ev.message)}`;
+      inner = `<b class="rsi-badge">RSI</b> ${esc(plainDream(ev.message))}`;
     } else if (ev.kind === 'paused' || ev.kind === 'resumed') {
       inner = `<span class="say-kind">${ev.kind === 'paused' ? 'Paused' : 'Resumed'}</span>${esc(ev.message)}`;
     } else {
@@ -2198,7 +2215,7 @@
   // know keeps the last stage lit and shows a humanised label, so the new
   // backend phase events never break it; it just gets richer as they land.
   // ======================================================================
-  const RSI_STAGES = [['explore', 'Explore'], ['backtest', 'Backtest'], ['gate', 'Gate'], ['dream', 'Dream']];
+  const RSI_STAGES = [['explore', 'Explore'], ['backtest', 'Backtest'], ['gate', 'Check'], ['dream', 'Improve']];
   // event kind -> [loop stage, human phase label]. New kinds the backend adds just fall through.
   const RSI_PHASE = {
     'run-start': ['explore', 'Starting up'], 'data-loaded': ['explore', 'Data loaded'],
@@ -2206,9 +2223,11 @@
     'thinking': ['explore', 'Thinking it through'], 'step': ['explore', 'Working'],
     'hypothesis': ['backtest', 'Backtesting a hypothesis'], 'challenger': ['backtest', 'Challenging the result'],
     'gating': ['gate', 'Gating on unseen data'], 'verdict': ['gate', 'Recording the verdict'],
-    'dreaming': ['dream', 'Dreaming a better search'],
+    'dreaming': ['dream', 'Tuning how it searches'],
   };
   const SX = { explore: 80, backtest: 240, gate: 400, dream: 560 };  // viewBox-x of each station (= flex-cell centres: 12.5/37.5/62.5/87.5% of 640)
+  // The engine's own words for its self-tuning step ("Dreaming:", "Research policy evolved:"), said plainly.
+  const plainDream = (m) => String(m || '').replace(/^Dreaming:/, 'Tuning how it searches:').replace(/^Research policy evolved:/, 'Search improved:');
   const prettyKind = (k) => String(k || '').replace(/[-_]/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
   // Liberal id/parent extraction so the tree survives whatever the backend names its lineage fields.
   const hypId = (d) => d.hyp_id != null ? d.hyp_id : d.id != null ? d.id : d.node_id != null ? d.node_id : null;
@@ -2218,10 +2237,10 @@
     const station = ([s]) => `<g class="rsi-st" data-stage="${s}"><circle class="rsi-ring" cx="${SX[s]}" cy="50" r="17"></circle><circle class="rsi-dot" cx="${SX[s]}" cy="50" r="7.5"></circle></g>`;
     const link = (a, b, into) => `<line class="rsi-link" data-into="${into}" x1="${SX[a] + 18}" y1="50" x2="${SX[b] - 18}" y2="50"></line>`;
     host.innerHTML = `
-      <div class="rsiobs-head"><h2>The RSI loop</h2>
+      <div class="rsiobs-head"><h2>The research loop</h2>
         <span class="rsiobs-live is-wait" data-live><span class="rsiobs-pdot"></span><span data-livetext>Spinning up…</span></span></div>
       <div class="rsiobs-loop">
-        <svg class="rsi-rail" viewBox="0 0 640 72" role="img" aria-label="The research loop: explore, backtest, gate, dream — and back again.">
+        <svg class="rsi-rail" viewBox="0 0 640 72" role="img" aria-label="The research loop: explore, backtest, check, improve — and back again.">
           <path class="rsi-arc" data-into="explore" d="M560 42 C 560 6, 80 6, 80 42"></path>
           ${link('explore', 'backtest', 'backtest')}${link('backtest', 'gate', 'gate')}${link('gate', 'dream', 'dream')}
           ${RSI_STAGES.map(station).join('')}</svg>
@@ -2304,7 +2323,7 @@
           const d = ev.data || {};
           lastAt = Date.parse(ev.created_at) || Date.now();   // newest event's own clock drives liveness
           let ph = RSI_PHASE[ev.kind];
-          if (!ph && /^(Dreaming:|Research policy evolved:)/.test(ev.message || '')) ph = ['dream', ev.message.split(':')[0]];
+          if (!ph && /^(Dreaming:|Research policy evolved:)/.test(ev.message || '')) ph = ['dream', plainDream(ev.message).split(':')[0]];
           if (ph) { stage = ph[0]; fired.add(stage); phaseEl.textContent = ph[1]; }
           else if (ev.kind && ev.kind !== 'done') phaseEl.textContent = prettyKind(ev.kind);  // unknown kind: keep stage lit, show a readable label
           if (ev.kind === 'hypothesis') {
@@ -2391,8 +2410,8 @@
         fig('Time', started ? Math.max(0, Math.round((end - started) / 60000)) + ' min' : '—') +
         (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', usd(r.spent_usd), { small: 'from your credits' }) : '') +
         fig('Hypotheses', r.hypotheses_tried || tried) + fig('Passed', active ? '…' : r.strategies_passed) +
-        fig('RSI policy', d.rsi && d.rsi.evolved ? 'Evolved' : 'Self-tuning',
-            { small: d.rsi && d.rsi.evolved ? `generalization score ${d.rsi.score}` : 'dreams a better search each run' });
+        fig('How it searches', d.rsi && d.rsi.evolved ? 'Improved' : 'Self-tuning',
+            { small: d.rsi && d.rsi.evolved ? `it found a better way to pick ideas (score ${d.rsi.score})` : 'it gets better at picking ideas after each session' });
       const next = root.querySelector('#runnext');
       if (next) next.innerHTML = active ? '' : runNext(r, d.strategies);
       const rsibox = root.querySelector('#rsibox');
@@ -2407,7 +2426,7 @@
             ? `<p>This agent <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
                ${d.rsi.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(d.rsi.summary)}</p>` : ''}
                <p class="rsi-last">Generalization score ${delta}${d.rsi.evolved_at ? ' ·\u00a0adopted ' + when(d.rsi.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
-            : `<p>The agent is <b>self-tuning</b>: after each research cycle it dreams up new search strategies and keeps one only if it beats the current policy on your own history (scored over shuffled orderings, so it can't overfit).</p>
+            : `<p>The agent is <b>self-tuning</b>: after each research cycle it tries new ways of choosing which ideas to test, and keeps one only if it would have found more real winners in your own history (scored over shuffled orderings, so it can't overfit).</p>
                ${d.rsi.last_dream ? `<p class="rsi-last"><b>Last check${d.rsi.last_dream_at ? ' ·\u00a0' + when(d.rsi.last_dream_at) : ''}:</b> ${esc(d.rsi.last_dream)}</p>` : `<p class="rsi-last">No check yet. The first one runs at the end of a session, once at least ${d.rsi.min_history || 12} ideas have been tested.</p>`}`}
           </div>`;
       }
@@ -2581,7 +2600,7 @@
     const perpetual = isPerpetual(s), restricted = researchOnly(s);
     const ins = s.in_sample || {}, oos = s.out_of_sample;
     const figsFor = (r) => fig('Unseen-data P&L', r.out_of_sample ? usd(r.out_of_sample.pnl, true) : '—', { v: r.out_of_sample && r.out_of_sample.pnl, small: r.out_of_sample ? `${r.out_of_sample.trades} trades the agent never saw` : 'Rejected before the unseen test' }) +
-      fig('In-sample P&L', usd(r.in_sample.pnl, true), { v: r.in_sample.pnl, small: `${r.in_sample.trades} trades` }) +
+      fig('In-sample P&L', usd(r.in_sample.pnl, true), { v: r.in_sample.pnl, small: `${r.in_sample.trades} trades on the history it searched` }) +
       fig('Return on capital', r.out_of_sample ? pct(r.out_of_sample.roi) : '—', { small: r.capital ? `$${fmt0.format(r.capital)} at risk at most` : '' }) +
       fig('Hypotheses tested', s.hypotheses_tried ? `1 of ${s.hypotheses_tried}` : '—', { small: s.hypotheses_tried ? `The agent tested ${num(s.hypotheses_tried)} distinct ideas this run${s.status === 'passed' ? '; this is the one that passed' : ''}. More tries → higher chance one passes by luck (multiple testing).` : 'How many ideas the agent tried to find this one.' });
     // A strategy from the seeded example session says so here too, as the lists and its run page do.
@@ -2674,6 +2693,11 @@
       verdictBody = `<div class="rp-verdict ${vt}"><span class="mk ${chip}">${esc(label)}</span><p>${esc(words)}</p></div>`;
     }
     const ladder = restricted ? '' : ladderLines(s, { canDeploy, demoWhy });
+    // On a phone the Deploy panel sits below the whole paper, screens down. A validated passed
+    // strategy (one with its gatekeeper record) that isn't on paper yet gets its primary action up
+    // top too; same call as #dep-paper. Wide screens hide it (the panel is beside the paper there).
+    const quickPaper = canDeploy && s.status === 'passed' && hasExp && !activeDeps.some((d) => d.mode === 'paper');
+    const quickHtml = quickPaper ? `<div class="strat-quick" id="strat-quick"><button class="btn primary" id="dep-paper-quick">Deploy on paper</button><p class="hint">Paper trades with pretend money against live prices, so nothing real is at risk. Demo and live are in Deploy, further down.</p><div id="depflash-quick"></div></div>` : '';
     const paperSec = (title, body) => body ? `<section class="paper-sec"><h3 class="paper-sec-t">${title}</h3><div class="paper-sec-body">${body}</div></section>` : '';
     root.querySelector('main').innerHTML = `
       <div id="flash"></div>
@@ -2685,6 +2709,7 @@
               <h2 class="paper-title">${esc(s.title)}</h2>
               <div class="paper-byline">${mark(s.status)}${researchBadge(s)}${s.shared_from ? ` <span class="mk shared">${ICON.share}Shared by ${esc(s.shared_from)}</span>` : ''}</div>
             </header>
+            ${quickHtml}
             <section class="paper-abstract">
               <h3 class="paper-h">Abstract</h3>
               <p class="paper-ab">${mdLite(s.thesis)}</p>
@@ -2731,7 +2756,7 @@
                 </form>
                 <div id="depflash"></div>
               </div>` : restricted ? '<p class="hint">Perpetual strategies stay in research, including after passing the statistical gates. Paper, demo and live deployment are unavailable.</p>' : '<p class="hint">This strategy isn’t ready to deploy yet.</p>'}
-            ${!restricted && s.deployments.length ? `<p class="hint" style="margin-top:12px">Already deployed: ${s.deployments.map((d) => `#${d.id} (${esc(d.mode)}, ${esc(d.status)})`).join(', ')}. <a href="/deploy">Open the board</a></p>` : ''}
+            ${!restricted && s.deployments.length ? `<p class="hint" style="margin-top:12px">Already deployed: ${s.deployments.map((d) => `#${d.id} (${esc(d.mode)}, ${esc(d.status)})`).join(', ')}. <a href="/deploy">See them on the Deploy page</a></p>` : ''}
             ${kUrl ? `<p class="hint" style="margin-top:12px"><a href="${kUrl}" target="_blank" rel="noopener">Open ${esc(marketShort(s.market))} on Kalshi ↗</a></p>` : ''}
           </section>
           ${!restricted && s.status === 'passed' ? `<section class="panel" id="road-live"><h3>Road to live</h3><div id="road-live-body"><p class="hint">Checking…</p></div></section>` : ''}
@@ -2809,10 +2834,12 @@
         if (body) body.innerHTML = '<p class="hint">Live readiness is unavailable right now.</p>';
       }
     })();
-    const depPaper = root.querySelector('#dep-paper');
-    if (depPaper) depPaper.onclick = () => busy(depPaper, async () => {
-      try { await api('/api/deployments', { strategy_id: s.id, mode: 'paper' }); go('/deploy'); } catch (e) { flash('#depflash', e.message, 'bad'); }
-    });
+    for (const [sel, fl] of [['#dep-paper', '#depflash'], ['#dep-paper-quick', '#depflash-quick']]) {
+      const depPaper = root.querySelector(sel);
+      if (depPaper) depPaper.onclick = () => busy(depPaper, async () => {
+        try { await api('/api/deployments', { strategy_id: s.id, mode: 'paper' }); go('/deploy'); } catch (e) { flash(fl, e.message, 'bad'); }
+      });
+    }
     const depDemo = root.querySelector('#dep-demo');
     if (depDemo) depDemo.onclick = () => { if (demoWhy) return; busy(depDemo, async () => {
       try { await api('/api/deployments', { strategy_id: s.id, mode: 'demo' }); go('/deploy'); } catch (e) { flash('#depflash', e.message, 'bad'); }
@@ -3755,9 +3782,9 @@
     return `<section class="ap-week" aria-label="Autopilot, last 7 days"><h3>Last 7 days</h3><dl>
       <div><dt>Credits spent on research</dt><dd>${usd(w.research_credits || 0)} <small>real money</small></dd></div>
       <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested ·\u00a0${Number(w.passed || 0).toLocaleString('en-US')} passed</dd></div>
-      <div><dt>Started on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'}</dd></div>
-      <div><dt>Paper P&amp;L</dt><dd><span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money ·\u00a0${trades} closed trade${trades === 1 ? '' : 's'}</small></dd></div>
-    </dl><p class="ap-week-note">Research counts every session, yours and the autopilot's. Paper counts only the strategies the autopilot put on paper itself.</p></section>`;
+      <div><dt>Autopilot put on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'} <small>not counting yours</small></dd></div>
+      <div><dt>Autopilot's paper P&amp;L</dt><dd><span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money ·\u00a0${trades} closed trade${trades === 1 ? '' : 's'}</small></dd></div>
+    </dl><p class="ap-week-note">Research counts every session, yours and the autopilot's. The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here.</p></section>`;
   }
   // What switching it on costs, said before the click: the agent's runs spend credits, and with
   // auto-reload on the saved card is charged when they run low. Payments off on this server: no line.
@@ -4142,7 +4169,7 @@
         ? `<button class="btn sm" data-ap="livetoggle" data-on="0">Turn off live</button>`
         : d.autopilot && d.live_enabled ? `<button class="btn sm" data-ap="livearm" ${d.kalshi_connected ? '' : 'aria-disabled="true"'}>Enable live autopilot</button>` : ''}
         ${d.autopilot_live || d.live_running ? '<button class="btn sm danger" data-ap="kill">Kill</button>' : ''}
-        <a class="btn sm ghost" href="/deploy">Open board</a>`;
+        <a class="btn sm ghost" href="/deploy">See what's trading</a>`;
       controls.querySelectorAll('[data-ap]').forEach((b) => (b.onclick = (e) => apAction(box, b.dataset.ap, e)));
     }
   }
