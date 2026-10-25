@@ -374,11 +374,12 @@ def paper_pace(dep: Dict, trips: int, now=None) -> Optional[Dict]:
     return {"expected": round(expected, 1), "hours": round(hours, 1), "p": round(p, 4), "behind": behind}
 
 
-def paper_eta_days(dep: Dict, trips: int, now=None) -> Optional[float]:
+def paper_eta_days(dep: Dict, trips: int, now=None, events: Optional[int] = None) -> Optional[float]:
     """Days until this paper strategy could have the record the live gate counts (enough realistic
-    trips and enough hours of record) at the pace it trades: its own paper pace once it has 3+
-    trips, else its research pace. Says nothing about whether it will be up by then. None without
-    a pace."""
+    trips, separate events and hours of record) at the pace it trades: its own paper pace once it
+    has 3+ trips, else its research pace. Events count only once it has traded (research has no
+    event pace), so before that this is a lower bound. Says nothing about whether it will be up by
+    then. None without a pace."""
     from datetime import datetime, timezone
     from app import agent
     created = dep.get("created_at")
@@ -393,6 +394,9 @@ def paper_eta_days(dep: Dict, trips: int, now=None) -> Optional[float]:
     if per_day <= 0:
         return None
     days = max(0, agent.MIN_REALISTIC_PAPER_TRADES - int(trips)) / per_day
+    if trips >= 3 and hours > 0 and events:
+        # Strikes of one event are one bet: Todd's rain #78 had 11 trips in 17.7h but 2 events.
+        days = max(days, max(0, agent.MIN_PAPER_EVENTS - int(events)) / (events / hours * 24.0))
     return round(max(days, max(0.0, agent.MIN_PAPER_SPAN_HOURS - hours) / 24.0), 1)
 
 

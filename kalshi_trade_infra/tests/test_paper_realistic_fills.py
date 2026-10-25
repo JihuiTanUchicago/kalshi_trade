@@ -318,6 +318,7 @@ def test_autopilot_status_reports_paper_strategy_closest_to_live(monkeypatch):
                         lambda cur, uid, sids: seen.setdefault("sids", sids) and {1: (4, 9.0), 2: (11, -1.0)})
     monkeypatch.setattr(server.repo, "user_open_exposure",
                         lambda cur, uid, mode=None: {"n": 4 if mode == "paper" else 9, "notional": 3.0})
+    monkeypatch.setattr(server.repo, "paper_event_counts", lambda cur, uid, sids: {1: 4, 2: 1})
     out = server.autopilot_status(ctx)
     assert out["paper_open"] == 4, "open PAPER positions only"
     assert (out["today_live_pnl"], out["today_paper_pnl"]) == (-2.0, 1.23), "each book's own day"
