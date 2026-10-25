@@ -117,6 +117,27 @@ def test_access_line_has_status_time_and_no_query(web, capsys):
     assert "private" not in out
 
 
+def test_a_client_that_hung_up_is_logged_499_not_a_server_error(web, monkeypatch, capsys):
+    def gone():
+        raise BrokenPipeError(32, "Broken pipe")
+    monkeypatch.setattr(server, "_static_versions", gone)
+    conn = http.client.HTTPConnection("127.0.0.1", web, timeout=3)
+    conn.request("GET", "/api/version")
+    with pytest.raises(http.client.RemoteDisconnected):
+        conn.getresponse()
+    captured = ""
+    for _ in range(100):
+        out = capsys.readouterr()
+        captured += out.out + out.err
+        if "[app] GET /api/version" in captured:
+            break
+        time.sleep(0.01)
+    line = [l for l in captured.splitlines() if l.startswith("[app] GET /api/version")][-1]
+    assert line.split()[3] == "499" and "Traceback" not in captured
+    route = [r for r in webperf.summary()["routes"] if r["route"] == "GET /api/version"][0]
+    assert route["5xx"] == 0
+
+
 def test_perf_endpoint_reports_routes_and_is_loopback_only(web):
     conn = http.client.HTTPConnection("127.0.0.1", web, timeout=3)
     for path in ("/api/runs/12", "/api/runs/13", "/wp-login.php"):

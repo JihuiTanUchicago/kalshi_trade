@@ -2871,6 +2871,11 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(e.status, {"error": e.message}, ctx.set_cookies if ctx else [])
         except json.JSONDecodeError:
             self._send_json(400, {"error": "Malformed JSON."}, [])
+        except (BrokenPipeError, ConnectionResetError):
+            # The browser left before the reply (a navigation, a closed tab). There is no one to send
+            # a 500 to, and it isn't a server failure: log it as 499 so /internal/perf's 5xx count
+            # only holds real errors, and skip the two tracebacks it used to print.
+            self._status, self.close_connection = 499, True
         except Exception:
             traceback.print_exc()
             self._send_json(500, {"error": "Something went wrong on our side. It's been logged."}, [])
