@@ -2574,6 +2574,9 @@ class Handler(BaseHTTPRequestHandler):
     # (one more edge-to-Virginia round trip) on every API call. Every response sets Content-Length.
     protocol_version = "HTTP/1.1"
     timeout = 75  # idle keep-alive sockets close after this; longer than CloudFront's origin keep-alive
+    # Headers and body go out as separate unbuffered writes; on a reused connection Nagle held the
+    # body until the client's delayed ACK, adding ~40ms to every response after the first. TCP_NODELAY.
+    disable_nagle_algorithm = True
 
     def log_request(self, code="-", size="-"):
         self._status = code if isinstance(code, int) else int(getattr(code, "value", 0) or 0)
