@@ -1513,7 +1513,8 @@ def autopilot_status(ctx: Ctx):
         # When the soonest one could have a full record for the live check, at the pace each trades.
         from app import rsi
         dep_of = {int(d["strategy_id"]): d for d in reversed(paper_run)}  # oldest deployment per strategy
-        etas = {s: rsi.paper_eta_days(dep_of[s], prog.get(s, (0, 0.0))[0]) for s in sids}
+        events = repo.paper_event_counts(cur, ctx.uid, sids)
+        etas = {s: rsi.paper_eta_days(dep_of[s], prog.get(s, (0, 0.0))[0], events=events.get(s)) for s in sids}
         etas = {s: v for s, v in etas.items() if v is not None}
         if etas:
             soon = min(etas, key=etas.get)

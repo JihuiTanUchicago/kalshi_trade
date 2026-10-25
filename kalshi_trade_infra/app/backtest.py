@@ -372,9 +372,11 @@ FILL_MODEL = os.getenv("TAU_BACKTEST_FILL_MODEL", "next_bar")
 FILL_MAX_DELAY_BARS = 2  # an order whose next quote is further away than this many bars expires
 # Which engine runs a single-contract DSL spec (ARCHITECTURE.md step 8c). "loop" replays it through
 # trading_core's TradingLoop, the engine paper and live will share; "legacy" is the loops below. They
-# book identical trades (tests/test_loop_backtest_parity.py, scripts/loop_parity.py on real data);
-# code strategies stay on the legacy loops until the loop runs their sandbox book.
-ENGINE = os.getenv("TAU_BACKTEST_ENGINE", "legacy")
+# book identical trades (tests/test_loop_backtest_parity.py, scripts/loop_parity.py on real data: 345
+# cases, ~47k trades, 0 differences) and the loop runs 2-4x faster. "loop" is the default (Todd,
+# 2026-10-25); TAU_BACKTEST_ENGINE=legacy reverts. Code strategies stay on the legacy loops until the
+# loop runs their sandbox book.
+ENGINE = os.getenv("TAU_BACKTEST_ENGINE", "loop")
 # Highest ask an entry may lift. A 99c contract pays at most 1c, which the taker fee eats, so a buy
 # there can never profit; on an empty book (no bid, 99c ask) it is the only "offer". Sports ladders
 # that went empty (KXNFLRECYDSPROT: 83% of quotes yes_ask >= 0.99) let code strategies "buy" at 99c

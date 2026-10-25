@@ -3475,7 +3475,7 @@
   function depsEmpty(on) {
     return on
       ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is researching. Strategies that pass every gate land here on paper first, with no real money.</p><a class="btn" href="/research">See its research</a></div>`
-      : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above and the strategies that pass every gate on data they never saw land here on their own, on paper first. Or research an idea yourself.</p><a class="btn" href="/research">Dispatch your first agent</a></div>`;
+      : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above and the strategies that pass every gate on data they never saw land here on their own, on paper first. Or research an idea yourself.</p><a class="btn" href="/research">Research an idea</a></div>`;
   }
   // Copy that depends on the switch follows it without a reload, so turning autopilot on doesn't leave
   // "Turn on autopilot above" or a Turn on nudge under a card that already says it's on.
@@ -3874,14 +3874,14 @@
   // need this more than the one-time welcome credit.
   const runwayLabel = (days) => days < 1 ? 'Under a day' : days > 90 ? 'Over 3 months' : `About ${Math.round(days)} day${Math.round(days) === 1 ? '' : 's'}`;
   async function viewBilling() {
-    shell('/billing', boardTitle('Billing', 'Credits pay for agent research and chat, billed per token at model list price. Paper and live trading themselves are free.') +
+    shell('/billing', boardTitle('Billing', 'Credits pay for agent research and chat, billed per token for the model you pick. Paper and live trading themselves are free.') +
       '<dl class="figures measure" id="bfigs" style="margin-top:14px"></dl>', loading(360));
     let stripe = null, card = null;
     const load = async () => {
       const d = await api('/api/billing');
       root.querySelector('#bfigs').innerHTML =
         fig('Credit balance', usd(d.balance), { v: d.balance > 0 ? 1 : (d.balance < 0 ? -1 : 0) }) +
-        fig('Spent on usage', usd(d.spent), { small: 'at model list price' }) +
+        fig('Spent on usage', usd(d.spent), { small: 'research and chat' }) +
         (d.runway_days != null
           ? fig('Credits last', runwayLabel(d.runway_days), { v: d.runway_days < 3 ? -1 : 0, small: `at ${usd(d.spent_7d)} a week` })
           : fig('Welcome credit', usd(d.free_bonus), { small: 'one-time, free' }));

@@ -124,3 +124,14 @@ def test_get_or_create_customer_recreates_stale_id(monkeypatch):
     monkeypatch.setattr(billing, "_stripe", fake)
     cid = billing.get_or_create_customer({"id": 1, "email": "a@b.co"}, "cus_test_old")
     assert cid == "cus_live_new"
+
+
+def test_billing_copy_does_not_promise_list_price_while_a_markup_applies():
+    # usage_cost bills list * USAGE_MARGIN, so customer copy must not say usage costs list price.
+    from pathlib import Path
+    static = Path(__file__).resolve().parents[1] / "app" / "static"
+    if billing.USAGE_MARGIN == 1:
+        pytest.skip("no markup configured")
+    for bundle in ("app.js", "app.meridian.js"):
+        src = (static / bundle).read_text()
+        assert "list price" not in src, bundle

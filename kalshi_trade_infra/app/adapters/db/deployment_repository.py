@@ -142,6 +142,25 @@ def paper_progress(cur, user_id: int, strategy_ids: List[int], ref_prefix: str =
     return {int(r["strategy_id"]): (int(r["trips"] or 0), float(r["pnl"] or 0)) for r in cur.fetchall()}
 
 
+def paper_event_counts(cur, user_id: int, strategy_ids: List[int], ref_prefix: str = "sim:") -> Dict[int, int]:
+    """{strategy_id: separate events among its closed realistic paper positions}, in one query. An
+    event is the ticker minus its last segment, as agent._trip_event_key groups the live gate's
+    events (every city's rain contract on one day is one event). A cheap panel readout."""
+    if not strategy_ids:
+        return {}
+    marks = ",".join(["%s"] * len(strategy_ids))
+    cur.execute(
+        """SELECT d.strategy_id,
+                  COUNT(DISTINCT SUBSTRING(p.ticker, 1, LENGTH(p.ticker) - LENGTH(SUBSTRING_INDEX(p.ticker, '-', -1)) - 1)) AS events
+           FROM app_positions p JOIN app_deployments d ON d.id=p.deployment_id
+           WHERE p.user_id=%s AND p.mode='paper' AND p.status='closed' AND p.order_ref LIKE %s
+             AND d.strategy_id IN (""" + marks + """)
+           GROUP BY d.strategy_id""",
+        (user_id, ref_prefix + "%", *strategy_ids),
+    )
+    return {int(r["strategy_id"]): int(r["events"] or 0) for r in cur.fetchall()}
+
+
 def running_deployments(cur, market: str) -> List[Dict]:
     cur.execute(
         """SELECT d.id, d.user_id, d.strategy_id, d.market, d.mode, d.last_decision_ts, s.spec_json, s.result_json
