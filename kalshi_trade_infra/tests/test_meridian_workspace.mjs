@@ -463,6 +463,17 @@ const dashboardPosition = (id, overrides = {}) => ({id, ticker: `KXBTC15M-26OCT1
   side: 'yes', qty: 10, entry_price: 0.35, mode: 'paper', unrealized: null, pnl: 4.25,
   market_close_time: '2026-10-18T12:30:00Z', opened_at: '2020-01-01T12:30:00Z', closed_at: '2020-01-02T12:30:00Z', ...overrides});
 
+test('Overview "paused, needs you" jumps to the first paused deployment', async () => {
+  const deployments = [{...dashboardDeployment('paper'), id: 91, strategy_id: 41},
+    {...dashboardDeployment('paper', 'paused'), id: 92, strategy_id: 42, status_reason: 'loss guard'},
+    {...dashboardDeployment('demo', 'paused'), id: 93, strategy_id: 43}];
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(dashboardData({deployments})); }});
+  await f.viewDashboard();
+  assert.match(f.root.querySelector('.statusline').innerHTML, /<a class="needs-link" href="#dash-paused"><em>2 paused, needs you<\/em><\/a>/);
+  const anchored = f.root.querySelectorAll('#dash-deps article#dash-paused');
+  assert.equal(anchored.length, 1); assert.equal(anchored[0].querySelector('header h3 a').getAttribute('href'), '/strategies/42');
+});
+
 test('Overview deployment monitors preserve every mode, status, risk field and unknown-versus-zero result', async () => {
   const deployments = Object.freeze(['paper', 'demo', 'live'].flatMap((mode, modeIndex) => ['running', 'paused', 'stopped'].map((status, index) =>
     Object.freeze({...dashboardDeployment(mode, status), id: 100 + modeIndex * 3 + index,

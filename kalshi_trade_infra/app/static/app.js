@@ -404,6 +404,11 @@
   }
   window.addEventListener('popstate', render);
   document.addEventListener('click', (e) => {
+    // In-page "#id" links scroll to their target: letting the hash navigate fires popstate, whose
+    // re-render dropped the reader back at the top of the page.
+    const h = e.target.closest('a[href^="#"]');
+    const to = h && h.getAttribute('href').length > 1 && document.getElementById(h.getAttribute('href').slice(1));
+    if (to) { e.preventDefault(); to.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
     const a = e.target.closest('a[href^="/"]');
     if (!a || a.target || e.metaKey || e.ctrlKey || e.shiftKey || a.hasAttribute('download') || a.dataset.native != null) return;
     e.preventDefault();
@@ -1442,7 +1447,7 @@
       const said = [
         hasLive ? `Live money on: ${usd(d.live.realized_pnl, true)} realized` : 'Paper money only',
         running ? `${running} strateg${running > 1 ? 'ies' : 'y'} running` : 'Nothing deployed',
-        paused ? `<em>${paused} paused, needs you</em>` : '',
+        paused ? `<a class="needs-link" href="#dash-deps"><em>${paused} paused, needs you</em></a>` : '',  // paused rows list first
         agentsBusy ? `${agentsBusy} agent${agentsBusy > 1 ? 's' : ''} researching` : '',
         stale ? `<em>${d.freshness.btc == null ? 'No backtest history yet' : 'Backtest history stale ' + age(d.freshness.btc)}</em>` : '',
       ].filter(Boolean).join('<span class="sep">/</span>');

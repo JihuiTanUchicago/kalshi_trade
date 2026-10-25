@@ -353,6 +353,7 @@ test('the dashboard lists five deployments and positions, paused first, and link
   const shown = [...deps.matchAll(/href="\/strategies\/(\d+)"/g)].map((m) => m[1]);
   assert.deepEqual(shown, ['7', '1', '2', '3', '4']);  // the paused one needs the user, so it leads
   assert.match(deps, /See all 7 deployments on Deploy/);
+  assert.match(f.root.querySelector('.statusline').innerHTML, /<a class="needs-link" href="#dash-deps"><em>1 paused, needs you<\/em><\/a>/);
   const html = f.root.querySelector('main').innerHTML;
   assert.equal((html.match(/class="stub"/g) || []).length, 5); assert.match(html, /See all 6 open positions on Deploy/);
 });
