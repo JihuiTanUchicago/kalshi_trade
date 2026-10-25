@@ -18,6 +18,7 @@ def _patch(monkeypatch, strategies, deps=(), candidates=None):
     monkeypatch.setattr(r, "create_proposal", lambda *a, **k: 1)
     monkeypatch.setattr(r, "create_deployment",
                         lambda cur, uid, sid, market, mode: created.append((sid, mode)) or 99)
+    monkeypatch.setattr(r, "add_notification", lambda *a, **k: 1)  # the bell for each new paper strategy
     return created
 
 

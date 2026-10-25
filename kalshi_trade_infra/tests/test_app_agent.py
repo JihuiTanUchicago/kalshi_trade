@@ -322,6 +322,23 @@ def test_adjustment_is_backtest_only_not_passed_and_cannot_be_deployed(monkeypat
     assert pid is None and "passed" in msg
 
 
+def test_an_autopilot_paper_deploy_rings_the_bell(monkeypatch):
+    r, made, notes = agent.repo, [], []
+    monkeypatch.setattr(r, "get_strategy", lambda cur, uid, sid: {
+        "id": sid, "status": "passed", "title": "Fade late spikes", "spec": agent.specmod.validate(WINNER), "market": "btc15m"})
+    monkeypatch.setattr(agent, "_is_deployment_candidate", lambda cur, sid: True)
+    monkeypatch.setattr(r, "create_proposal", lambda *a, **k: 5)
+    monkeypatch.setattr(r, "create_deployment", lambda cur, uid, sid, market, mode: made.append((sid, mode)))
+    monkeypatch.setattr(r, "add_notification", lambda cur, uid, kind, body, link=None: notes.append((uid, kind, body, link)))
+    msg, pid = agent.act(None, {"id": 1}, {"type": "deploy", "strategy_id": 42}, True, lambda m: _dataset(n_contracts=60))
+    assert made == [(42, "paper")] and pid == 5
+    assert notes == [(1, "deployed", "Autopilot put “Fade late spikes” on paper: it passed every research gate.", "/strategies/42")]
+    # A proposal the user still has to approve is theirs to see in the panel; no bell for it.
+    notes.clear()
+    agent.act(None, {"id": 1}, {"type": "deploy", "strategy_id": 42}, False, lambda m: _dataset(n_contracts=60))
+    assert notes == []
+
+
 def test_llm_error_type():
     assert issubclass(LLMError, RuntimeError)
 

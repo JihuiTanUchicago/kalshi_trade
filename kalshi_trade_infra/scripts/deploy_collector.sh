@@ -126,4 +126,7 @@ else
   [[ -n "$ERR" ]] && { echo "[deploy-collector] --- box stderr ---"; echo "$ERR" | tail -30; }
   echo "[deploy-collector] ON-BOX FAILED (status=$ST)"; exit 1
 fi
+# Marker for scripts/batch_deploy.sh: the ref the collector runs.
+git rev-parse "$REF" | aws s3 cp - "s3://${BUCKET}/bundle/markers/collector_sha" --region "$AWS_REGION" >/dev/null \
+  || echo "[deploy-collector] WARN: could not write the collector_sha marker"
 echo "[deploy-collector] DONE: $SHA on $INSTANCE_ID"

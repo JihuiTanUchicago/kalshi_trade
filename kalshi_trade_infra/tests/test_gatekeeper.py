@@ -275,6 +275,26 @@ def test_below_min_sample_is_inconclusive_and_spends_no_alpha(repo, monkeypatch)
     assert (7, "btc15m") not in repo.fdr
 
 
+def test_below_min_sample_records_its_net_pnl_but_no_test(repo, monkeypatch):
+    """Paper probation needs to know whether an unmeasured idea's unseen trades were up; the row
+    keeps that P&L while every test statistic stays empty, in both the single and batch paths."""
+    trades = _edge_trades(n=60)
+    _patch_sim(monkeypatch, lambda spec: trades)
+    want = round(sum(t.pnl for t in trades), 4)
+    e1 = gk.preregister(None, Prereg(user_id=7, run_id=1, market="btc15m",
+                                     spec={"kind": "edge"}, economic_rationale="m", min_sample=100))
+    gk.judge_validation(None, e1, _finalist({"kind": "edge"}, min_sample=100), _ds())
+    e2 = gk.preregister(None, Prereg(user_id=7, run_id=2, market="btc15m",
+                                     spec={"kind": "edge"}, economic_rationale="m2", min_sample=100))
+    gk.judge_batch(None, 2, [e2], [_finalist({"kind": "edge"}, min_sample=100)], _ds())
+    for eid in (e1, e2):
+        row = repo.results[eid][-1]
+        assert row["classification"] == Classification.INCONCLUSIVE.value
+        assert row["net_pnl"] == want and want > 0
+        assert all(row.get(k) is None for k in ("p_value", "mean_net_return", "dsr", "fdr_reject", "placebo_p"))
+    assert repo.set_fdr_calls == 0
+
+
 def test_null_strategy_is_not_stat_supported(repo, monkeypatch):
     _patch_sim(monkeypatch, lambda spec: _null_trades())
     eid = gk.preregister(None, Prereg(user_id=7, run_id=1, market="btc15m",

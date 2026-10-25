@@ -347,12 +347,16 @@ def test_strategies_list_attaches_real_record_to_deployed_cards(monkeypatch):
             {"strategy_id": 2, "mode": "paper", "realized_pnl": 9, "closed_trades": 9, "open_positions": 0}]
     monkeypatch.setattr(server.repo, "list_deployments", lambda cur, uid, **k: deps)
     cards = {c["id"]: c for c in server.list_strategies(ctx(query={}))["strategies"]}
-    assert cards[1]["real"] == {"pnl": 0.5, "trades": 5, "open": 1, "live": False}
+    assert cards[1]["real"] == {"pnl": 0.5, "trades": 5, "open": 1, "live": False, "paused": False}
     assert "real" not in cards[2] and "real" not in cards[3]  # not deployed / no active deployment rows
     # A live deployment reports live money only; the paper dollars are never added in.
     deps.append({"strategy_id": 1, "mode": "live", "realized_pnl": 0.25, "closed_trades": 1, "open_positions": 0})
     cards = {c["id"]: c for c in server.list_strategies(ctx(query={}))["strategies"]}
-    assert cards[1]["real"] == {"pnl": 0.25, "trades": 1, "open": 0, "live": True}
+    assert cards[1]["real"] == {"pnl": 0.25, "trades": 1, "open": 0, "live": True, "paused": False}
+    # An auto-paused deployment flags its book, so the list can say it stopped.
+    deps[-1]["status"] = "paused"
+    cards = {c["id"]: c for c in server.list_strategies(ctx(query={}))["strategies"]}
+    assert cards[1]["real"]["paused"] is True
 
 
 def test_strategies_list_skips_deployment_query_without_deployed_cards(monkeypatch):
@@ -649,3 +653,36 @@ def test_switching_autopilot_on_kicks_off_its_first_review(monkeypatch, was_on, 
     c = server.Ctx(FakeConn(), {"id": 1, "autopilot": was_on}, (), {}, body, None)
     assert server.settings(c) == {"ok": True}
     assert len(calls) == kicks
+
+
+def test_research_totals_are_all_time_and_cached(monkeypatch):
+    # The Research headline summed its 50 newest runs; the server now totals every research run.
+    calls = []
+    monkeypatch.setattr(server.repo, "research_week", lambda cur, uid, since, include_demo=False: calls.append((since, include_demo)) or [{"tried": 900}, {"tried": "340"}])
+    monkeypatch.setattr(server.repo, "strategies_passed_since", lambda cur, uid, since: 4)
+    server._RUN_TOTALS.clear()
+    assert server._research_totals(None, 77) == {"tried": 1240, "passed": 4}
+    assert server._research_totals(None, 77) == {"tried": 1240, "passed": 4} and len(calls) == 1  # cached
+    assert calls[0][0] < server.repo.now_utc() - server.timedelta(days=365 * 10)
+    assert calls[0][1] is True  # the page lists the seeded demo, so its headline counts it
+    server._RUN_TOTALS.clear()
+
+
+def test_explore_market_errors_never_show_the_raw_exception(monkeypatch, capsys):
+    import data_pipeline.common as common
+    c = server.Ctx(FakeConn(), {"id": 1}, (), {"ticker": "KXNBAGAME-26OCT25TORMIN-MIN"}, {}, None)
+
+    def proxy_down(path, params=None):
+        raise OSError("HTTPSConnectionPool(host='api.elections.kalshi.com'): Tunnel connection failed: 403 Forbidden")
+    monkeypatch.setattr(common, "api_get", proxy_down)
+    with pytest.raises(server.ApiError) as err:
+        server.explore_market(c)
+    assert err.value.status == 502 and "Try again in a minute" in str(err.value)
+    assert "HTTPSConnectionPool" not in str(err.value) and "HTTPSConnectionPool" in capsys.readouterr().out
+
+    def missing(path, params=None):
+        raise RuntimeError("GET https://api.elections.kalshi.com/trade-api/v2/markets/X failed 404: {}")
+    monkeypatch.setattr(common, "api_get", missing)
+    with pytest.raises(server.ApiError) as err:
+        server.explore_market(c)
+    assert err.value.status == 404 and "no market KXNBAGAME-26OCT25TORMIN-MIN" in str(err.value)

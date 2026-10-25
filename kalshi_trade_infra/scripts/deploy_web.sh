@@ -159,4 +159,13 @@ if [[ "$INVALIDATE" == 1 ]]; then
         --paths "/*" --query 'Invalidation.Id' --output text)
   echo "[deploy] CloudFront /* invalidation $INV"
 fi
+# Markers for scripts/batch_deploy.sh: what the box runs, and the last ref every service restarted on
+# (a SERVICES=recursive-web deploy leaves the agents and engine on older code).
+FULLSHA=$(git rev-parse "$REF")
+echo "$FULLSHA" | aws s3 cp - "s3://${BUCKET}/bundle/markers/web_sha" --region "$AWS_REGION" >/dev/null \
+  || echo "[deploy] WARN: could not write the web_sha marker"
+if [[ " $SERVICES " == *" recursive-agents "* && " $SERVICES " == *" recursive-engine "* ]]; then
+  echo "$FULLSHA" | aws s3 cp - "s3://${BUCKET}/bundle/markers/web_full_sha" --region "$AWS_REGION" >/dev/null \
+    || echo "[deploy] WARN: could not write the web_full_sha marker"
+fi
 echo "[deploy] DONE — $SHA live at $CF_URL"

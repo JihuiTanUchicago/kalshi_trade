@@ -38,6 +38,21 @@ def test_one_connection_serves_many_requests(web):
     conn.close()
 
 
+def test_reused_connection_is_not_stalled_by_nagle(web):
+    # Headers and body are separate writes; without TCP_NODELAY each response after the first on a
+    # kept-alive connection (CloudFront's origin pool) waited ~40ms for the client's delayed ACK.
+    assert server.Handler.disable_nagle_algorithm is True
+    conn = http.client.HTTPConnection("127.0.0.1", web, timeout=3)
+    took = []
+    for _ in range(9):
+        t = time.perf_counter()
+        conn.request("GET", "/healthz")
+        conn.getresponse().read()
+        took.append(time.perf_counter() - t)
+    conn.close()
+    assert sorted(took[1:])[4] < 0.02, took  # median of the reused-connection requests
+
+
 def test_post_rejected_before_reading_its_body_does_not_poison_the_next_request(web):
     conn = http.client.HTTPConnection("127.0.0.1", web, timeout=3)
     body = json.dumps({"x": "GET /healthz HTTP/1.1\r\n\r\n"})
@@ -100,6 +115,34 @@ def test_access_line_has_status_time_and_no_query(web, capsys):
     parts = line.split()
     assert parts[3] == "401" and parts[4].endswith("ms") and parts[5].endswith("Z")
     assert "private" not in out
+
+
+def test_a_client_that_hung_up_is_logged_499_not_a_server_error(web, monkeypatch, capsys):
+    def gone():
+        raise BrokenPipeError(32, "Broken pipe")
+    monkeypatch.setattr(server, "_static_versions", gone)
+    conn = http.client.HTTPConnection("127.0.0.1", web, timeout=3)
+    conn.request("GET", "/api/version")
+    with pytest.raises(http.client.RemoteDisconnected):
+        conn.getresponse()
+    captured = ""
+    for _ in range(100):
+        out = capsys.readouterr()
+        captured += out.out + out.err
+        if "[app] GET /api/version" in captured:
+            break
+        time.sleep(0.01)
+    line = [l for l in captured.splitlines() if l.startswith("[app] GET /api/version")][-1]
+    assert line.split()[3] == "499" and "Traceback" not in captured
+    route = [r for r in webperf.summary()["routes"] if r["route"] == "GET /api/version"][0]
+    assert route["5xx"] == 0
+
+
+def test_an_access_line_is_one_write_so_threads_cannot_glue_lines(monkeypatch):
+    writes = []
+    monkeypatch.setattr(server.sys, "stdout", SimpleNamespace(write=writes.append, flush=lambda: None))
+    server._log_line("[app] GET /api/me 200 3ms 2026-10-25T17:40:00Z")
+    assert writes == ["[app] GET /api/me 200 3ms 2026-10-25T17:40:00Z\n"]
 
 
 def test_perf_endpoint_reports_routes_and_is_loopback_only(web):

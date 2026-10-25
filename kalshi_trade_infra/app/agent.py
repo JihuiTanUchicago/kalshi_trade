@@ -3511,11 +3511,25 @@ UNDERPOWERED_MIN_TRADES = int(os.getenv("APP_PROBATION_UNDERPOWERED_MIN_TRADES",
 
 
 def _backtest_net_positive(strat: Dict) -> bool:
-    oos = (strat.get("result") or {}).get("out_of_sample") or {}
+    # A research-made strategy stores only its research-fold metrics (`in_sample`: the purged
+    # walk-forward TEST folds inside Research, never validation/holdout; see _result_block), so it
+    # had no `out_of_sample` and no underpowered verdict ever qualified (runs 2907 and 3002).
+    res = strat.get("result") or {}
+    oos = res.get("out_of_sample") or res.get("in_sample") or {}
     try:
         return int(oos.get("trades") or 0) >= UNDERPOWERED_MIN_TRADES and float(oos.get("pnl") or 0) > 0
     except (TypeError, ValueError):
         return False
+
+
+def _underpowered_net_positive(cand: Dict, strat: Dict) -> bool:
+    """An underpowered verdict earns a paper forward test only if its unseen trades were up: the
+    validation P&L the gatekeeper recorded, or for older rows without one, the strategy's own
+    backtest (_backtest_net_positive: the research fold, since research strategies carry no
+    held-out numbers). Unseen trades outrank the research fold the idea was selected on."""
+    if cand.get("net_pnl") is not None:
+        return float(cand["net_pnl"]) > 0
+    return _backtest_net_positive(strat)
 
 
 def auto_paper_probation(cur, user: Dict) -> List[str]:
@@ -3549,11 +3563,13 @@ def auto_paper_probation(cur, user: Dict) -> List[str]:
             continue
         if _engine.cross_deploy_block(strat["spec"], "paper"):
             continue
-        if c["p_value"] is None and not _backtest_net_positive(strat):
+        if c["p_value"] is None and not _underpowered_net_positive(c, strat):
             continue
         tried.add(sid)
-        if c["p_value"] is None:
-            why = "had too few validation trades to score (%d), and its backtest was up on unseen data" % c["n_trades"]
+        if c["p_value"] is None and c.get("net_pnl") is not None:
+            why = "had too few validation trades to score (%d), and they were up $%.2f" % (c["n_trades"], c["net_pnl"])
+        elif c["p_value"] is None:
+            why = "had too few validation trades to score (%d), and its research backtest was up (unseen trades not yet recorded)" % c["n_trades"]
         else:
             why = "narrowly missed validation (p=%.3f, $%.2f over %d unseen trades)" % (
                 c["p_value"], c["net_pnl"], c["n_trades"])
@@ -3786,6 +3802,11 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         pid = repo.create_proposal(cur, user_id, "deploy", reason, None, strat["id"], "applied" if autopilot else "pending")
         if autopilot:
             repo.create_deployment(cur, user_id, strat["id"], strat["market"], "paper")
+            # The bell too: the first strategy autopilot finds is the moment a user turned it on for,
+            # and the chat line only reaches someone who opens the panel.
+            repo.add_notification(cur, user_id, "deployed",
+                                  "Autopilot put “%s” on paper: it passed every research gate." % strat["title"][:120],
+                                  "/strategies/%d" % strat["id"])
             return "Autopilot deployed %s on paper." % strat["title"], pid
         return "Proposed deploying %s on paper." % strat["title"], pid
     if kind == "deploy_live":

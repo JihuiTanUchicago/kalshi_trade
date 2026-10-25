@@ -150,7 +150,7 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'if (globalThis.testStripeLoader) loadStripe = globalThis.testStripeLoader; globalThis.frontend = {S, api, render, viewSettings, viewBilling, viewSystem, viewAdmin, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, viewRun, viewResearch, viewFunds, viewDashboard, viewDeploy, viewCommunity, viewExplore, postSnapshot, replaceDeploymentContent, marketPicker, wireMarketPicker, hotOpen, renderHotRail};'), context);
+  vm.runInContext(source.replace(boot, 'if (globalThis.testStripeLoader) loadStripe = globalThis.testStripeLoader; globalThis.frontend = {S, api, render, viewSettings, viewBilling, viewSystem, viewAdmin, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, viewRun, viewResearch, viewFunds, viewDashboard, viewDeploy, viewCommunity, viewExplore, postSnapshot, replaceDeploymentContent, marketPicker, wireMarketPicker, hotOpen, renderHotRail, trackRecordPanel};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -462,6 +462,17 @@ const dashboardDeployment = (mode, status = 'running') => ({id: 91, strategy_id:
 const dashboardPosition = (id, overrides = {}) => ({id, ticker: `KXBTC15M-26OCT181230-${id}`, title: `Strategy ${id}`,
   side: 'yes', qty: 10, entry_price: 0.35, mode: 'paper', unrealized: null, pnl: 4.25,
   market_close_time: '2026-10-18T12:30:00Z', opened_at: '2020-01-01T12:30:00Z', closed_at: '2020-01-02T12:30:00Z', ...overrides});
+
+test('Overview "paused, needs you" jumps to the first paused deployment', async () => {
+  const deployments = [{...dashboardDeployment('paper'), id: 91, strategy_id: 41},
+    {...dashboardDeployment('paper', 'paused'), id: 92, strategy_id: 42, status_reason: 'loss guard'},
+    {...dashboardDeployment('demo', 'paused'), id: 93, strategy_id: 43}];
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(dashboardData({deployments})); }});
+  await f.viewDashboard();
+  assert.match(f.root.querySelector('.statusline').innerHTML, /<a class="needs-link" href="#dash-paused"><em>2 paused, needs you<\/em><\/a>/);
+  const anchored = f.root.querySelectorAll('#dash-deps article#dash-paused');
+  assert.equal(anchored.length, 1); assert.equal(anchored[0].querySelector('header h3 a').getAttribute('href'), '/strategies/42');
+});
 
 test('Overview deployment monitors preserve every mode, status, risk field and unknown-versus-zero result', async () => {
   const deployments = Object.freeze(['paper', 'demo', 'live'].flatMap((mode, modeIndex) => ['running', 'paused', 'stopped'].map((status, index) =>
@@ -1128,6 +1139,7 @@ test('Funds preserves account controls and history without mounting unavailable 
   const output = f.root.querySelector('main').innerHTML;
   assert.match(output, /funds-col funds-manage/); assert.match(output, /funds-col funds-history/);
   assert.match(output, /Paper history/); assert.match(output, /&lt;script&gt;ledger&lt;\/script&gt;/);
+  assert.match(output, /class="table stack t-ledger"/);  // statement rows on a phone, like the credit ledger
   assert.doesNotMatch(output, /<script>/);
   assert.equal(mounts.length, 0); assert.equal(f.root.querySelector('#broker-connections'), null);
   assert.ok(f.root.querySelector('#kalshi')); assert.ok(f.root.querySelector('#demo')); assert.ok(f.root.querySelector('#paper'));
@@ -2295,3 +2307,41 @@ for (const [label, stored, blocked, expected] of [['default', null, false, 'tau'
     assert.equal(css.href, expected === 'meridian' ? dataset.merCss : '/static/app.css?v=tau-css');
   });
 }
+
+test('a research session that does not exist links to the list instead of offering Try again', async () => {
+  const f = frontend({fetchImpl: path => (path.startsWith('/api/runs/9') ? {ok: false, status: 404, json: async () => ({error: 'No such research run.'})} : {ok: true, status: 200, json: async () => ({})})});
+  f.location.pathname = '/research/9';
+  await f.render(); await flush();
+  const html = f.root.innerHTML;
+  assert.match(html, /No such research run\./); assert.match(html, /href="\/research">All research sessions</);
+  assert.doesNotMatch(html, /data-retry/);
+});
+
+test('the legal pages load in Tau even for a Meridian user, since only Tau has them', () => {
+  for (const [pathname, expected] of [['/terms', 'tau'], ['/privacy', 'tau'], ['/settings', 'meridian']]) {
+    const scripts = [], css = {href: '/static/app.css?v=tau-css'};
+    const dataset = {tauJs: '/static/app.js?v=tau-js', tauVer: 'tau-js', merJs: '/static/app.meridian.js?v=mer-js', merVer: 'mer-js', merCss: '/static/app.meridian.css?v=mer-css'};
+    const context = {window: {}, location: {pathname}, localStorage: {getItem: () => 'meridian'},
+      document: {getElementById: id => id === 'tau-boot' ? {dataset} : id === 'tau-css' ? css : null,
+        createElement: () => ({}), body: {appendChild: script => scripts.push(script)}}};
+    vm.runInNewContext(readFileSync(new URL('../app/static/boot.js', import.meta.url), 'utf8'), context);
+    assert.equal(context.window.__TAU_UI__, expected, pathname);
+    assert.equal(scripts[0].src, expected === 'meridian' ? dataset.merJs : dataset.tauJs);
+  }
+});
+
+test('Meridian has a page for every app path the server serves, bar the legal pages boot.js sends to Tau', () => {
+  const f = frontend();
+  for (const path of ['/', '/dashboard', '/research', '/research/1', '/strategies', '/strategies/1', '/deploy', '/community',
+    '/billing', '/admin', '/system', '/funds', '/explore', '/devlog', '/track-record', '/settings', '/settings/account',
+    '/settings/billing', '/settings/system', '/settings/theme', '/signin']) assert.ok(f.routes.some(([re]) => re.test(path)), path);
+});
+
+test('Meridian empty paper track record points at autopilot when it is on', () => {
+  const f = frontend(), th = {min_sharpe_days: 30};
+  f.S.me = {user: {autopilot: true}};
+  const paper = f.trackRecordPanel({trades: 0, label: 'Paper'}, 'paper', th);
+  assert.match(paper, /Autopilot runs the strategies that pass every gate on paper/);
+  assert.match(paper, /See its research/); assert.doesNotMatch(paper, /Go to Deploy/);
+  assert.match(f.trackRecordPanel({trades: 0, label: 'Demo'}, 'demo', th), /Go to Deploy/);
+});

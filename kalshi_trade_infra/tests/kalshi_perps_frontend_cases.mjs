@@ -21,6 +21,17 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.equal(postRequests(f).length, 0);
   };
 
+  test(`${name}: return on capital names the capital only when the result has one`, async () => {
+    const figs = async (extra) => {
+      const f = strategyFrontend(detailStrategy({market: 'btc15m', kind: undefined, research_only: false, ...extra}));
+      await f.viewStrategy(42); await flush();
+      const el = f.root.querySelector('#figs') || f.root.querySelector('main');
+      return el.innerHTML;
+    };
+    assert.doesNotMatch(await figs({}), /\$0 at risk/);
+    assert.match(await figs({capital: 100}), /\$100 at risk at most/);
+  });
+
   test(`${name}: passed perpetual detail is research only with USD prices and fixed scenario costs`, async () => {
     const input = detail(), before = JSON.stringify(input);
     const f = strategyFrontend(input); await f.viewStrategy(42); await flush();
@@ -95,6 +106,10 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     await big.viewStrategy(42); await flush();
     const bigHtml = big.root.querySelector('main').innerHTML;
     assert.match(bigHtml, /10 trades would have made \+\$40\.00<\/p>/);
+    assert.doesNotMatch(html, /real-paused/);
+    const paused = strategyFrontend(detailStrategy({deployments: [{id: 5, mode: 'paper', status: 'paused', status_reason: 'Lost $12.00, more than the <guard>.', realized_pnl: -12, closed_trades: 9, open_positions: 0}]}));
+    await paused.viewStrategy(42); await flush();
+    assert.match(paused.root.querySelector('main').innerHTML, /<b>Paused<\/b> Lost \$12\.00, more than the &lt;guard&gt;\. <a href="\/deploy">Resume or remove it on Deploy<\/a>/);
     const untested = strategyFrontend(detailStrategy({out_of_sample: null, deployments}));
     await untested.viewStrategy(42); await flush();
     assert.doesNotMatch(untested.root.querySelector('main').innerHTML, /real-pace/);
@@ -123,6 +138,8 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.match(row({deployed: true, real: {pnl: 0, trades: 1, open: 0}}), /since deploying · 1 trade</);
     assert.match(row({deployed: true, real: {pnl: 0, trades: 0, open: 2}}), /No closed trades yet/);
     assert.doesNotMatch(row({}), /real-fig/);
+    assert.match(row({deployed: true, real: {pnl: -12, trades: 9, open: 0, paused: true}}), /Deployed<\/span> <span class="mk armed">Paused<\/span>/);
+    assert.doesNotMatch(row({deployed: true, real: {pnl: 1, trades: 1, open: 0, paused: false}}), />Paused</);
     // A research-only perpetual never shows a real record, even if one leaks in.
     assert.doesNotMatch(f.strategySlip(detail({deployed: true, real: {pnl: 3, trades: 2, open: 0}}), null, {}), /real-fig/);
   });
@@ -145,10 +162,42 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.match(paper, /Realized/); assert.doesNotMatch(paper, /Live realized/); assert.match(paper, /paper money, not real/);
   });
 
+  test(`${name}: Deploy lists paused deployments first, otherwise in server order`, async () => {
+    const dep = (id, status) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode: 'paper', status, status_reason: status === 'paused' ? 'loss guard' : null,
+      realized_pnl: 0, closed_trades: 0, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1, backtest: {}});
+    const deployments = [dep(1, 'running'), dep(2, 'running'), dep(3, 'paused'), dep(4, 'running')];
+    const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments, open_positions: []}) : response({})});
+    await f.viewDeploy(); await flush(); await flush();
+    const order = [...f.root.querySelector('#deps').innerHTML.matchAll(/href="\/strategies\/(\d+)"/g)].map(m => m[1]).filter((v, i, a) => a.indexOf(v) === i);
+    assert.deepEqual(order, ['3', '1', '2', '4']);
+    assert.deepEqual(deployments.map(d => d.id), [1, 2, 3, 4]);  // the API payload itself is untouched
+  });
+
   test(`${name}: the Deployed chip counts strategies with an active deployment`, async () => {
     const f = frontend({fetchImpl: () => response({counts: {total: 3, passed: 3, deployed: 2}, matched: 3, pages: 1, strategies: [detailStrategy({id: 48})]})});
     await f.viewStrategies(); await flush();
     assert.equal(f.root.querySelector('[data-toggle="deployed"]').textContent, 'Deployed (2)');
+  });
+
+  test(`${name}: an empty Deploy board with autopilot on says passed strategies deploy on their own`, async () => {
+    for (const on of [true, false]) {
+      const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [], open_positions: []}) : response({})});
+      f.S.me.user.autopilot = on;
+      await f.viewDeploy(); await flush(); await flush();
+      assert.equal(/deploy here on their own/.test(f.root.querySelector('#deps').innerHTML), on);
+    }
+  });
+
+  test(`${name}: an empty strategy list with autopilot on says it is researching, not "start a session"`, async () => {
+    for (const [on, total] of [[true, 2], [false, 2], [true, 0], [false, 0]]) {
+      const f = frontend({fetchImpl: () => response({counts: {total, passed: 0, rejected: total}, matched: 0, pages: 1, strategies: []})});
+      f.S.me.user.autopilot = on;
+      await f.viewStrategies(); await flush();
+      const html = f.root.querySelector('#slips').innerHTML;
+      assert.equal(/See its research/.test(html), on, `autopilot ${on}, ${total} strategies`);
+      assert.equal(/Autopilot (keeps researching|is researching)/.test(html), on);
+      if (!on) assert.match(html, /Go to Research|New session/);
+    }
   });
 
   test(`${name}: a failed strategies load offers a retry instead of a stuck skeleton`, async () => {

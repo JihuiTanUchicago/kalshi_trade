@@ -7,6 +7,12 @@ is made monotone first (pool-adjacent-violators, equal weights), then read at an
 interpolating on the logit scale, which keeps the tails sensible where linear interpolation in
 probability would not. Outside the quoted strikes there is no answer (None): extrapolating a
 distribution's tail from two points is a guess, and an absent feature beats a guessed one.
+
+Nor is there one inside a gap the curve falls through too steeply. Polymarket lists every $2,000
+and Kalshi every $100; in the last hour the ladder reads 0.999 at 80k and 0.001 at 82k, and
+interpolating that put "above 80,600" at 0.79 against Kalshi's 0.47 (2026-10-25). For a normal
+terminal price, logit interpolation across a gap of 2 sigma (a logit step of ~3.8) is off by
+at most ~3c; past MAX_LOGIT_STEP the shape inside the gap is unresolved and the answer is None.
 """
 from __future__ import annotations
 
@@ -14,6 +20,8 @@ import math
 from typing import Iterable, List, Optional, Sequence, Tuple
 
 EPS = 1e-4          # probabilities are clipped into [EPS, 1 - EPS] before taking logits
+MAX_LOGIT_STEP = 3.5   # widest logit drop between neighbouring strikes that is interpolated
+SNAP = 1e-3            # a strike within this fraction of the gap from a quoted one reads that one
 
 
 def monotone_survival(points: Iterable[Tuple[float, float]]) -> List[Tuple[float, float]]:
@@ -47,8 +55,10 @@ def _logit(p: float) -> float:
     return math.log(p / (1.0 - p))
 
 
-def prob_above(curve: Sequence[Tuple[float, float]], k: float) -> Optional[float]:
-    """P(S > k) from a monotone curve (monotone_survival output), or None outside its strikes."""
+def prob_above(curve: Sequence[Tuple[float, float]], k: float,
+               max_step: float = MAX_LOGIT_STEP) -> Optional[float]:
+    """P(S > k) from a monotone curve (monotone_survival output), or None outside its strikes or
+    between two strikes whose logits differ by more than ``max_step`` (k on a strike is exact)."""
     if not curve or k is None:
         return None
     if k < curve[0][0] or k > curve[-1][0]:
@@ -58,9 +68,14 @@ def prob_above(curve: Sequence[Tuple[float, float]], k: float) -> Optional[float
             if k1 == k0:
                 return p0
             w = (k - k0) / (k1 - k0)
+            if w <= SNAP or w >= 1.0 - SNAP:   # on a strike (Kalshi's 79,999.99 is Polymarket's 80k)
+                return p0 if w <= SNAP else p1
             if p0 == p1:
                 return p0
-            z = (1.0 - w) * _logit(p0) + w * _logit(p1)
+            z0, z1 = _logit(p0), _logit(p1)
+            if abs(z0 - z1) > max_step:
+                return None
+            z = (1.0 - w) * z0 + w * z1
             return 1.0 / (1.0 + math.exp(-z))
     return curve[0][1] if k == curve[0][0] else None
 

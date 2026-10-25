@@ -4,6 +4,14 @@
    - App (authed): Kursbuch, a station timetable. Ink on stock, hairline rules,
      tabular figures, one reserved signal red used only where you must act. */
 
+@font-face {
+  font-family: "Rubik";  /* landing type, self-hosted: no render-blocking third-party stylesheet */
+  src: url("/static/rubik-latin-691cd1d9b4.woff2") format("woff2");
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --stock: #E9EBE5;
   --stock-live: #EFE4E7;
@@ -819,6 +827,7 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 .real-record { margin-top: 14px; border: 1px solid var(--rule); padding: 12px 18px; font-size: 13.5px; line-height: 1.5; font-variant-numeric: tabular-nums; }
 .real-record .paper-h { color: var(--ink-3); margin-bottom: 8px; }
 .real-record p + p { margin-top: 6px; }
+.real-record .real-paused b { background: var(--neg); padding: 0 6px; border-radius: 3px; }
 .paper-abstract { margin-top: 22px; background: var(--stock); border: 1px solid var(--rule); padding: 16px 18px; }
 .paper-ab { font-size: clamp(15.5px, 1.5vw, 17px); line-height: 1.62; color: var(--ink); max-width: 68ch; }
 .paper-ab-result { margin-top: 10px; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); max-width: 68ch; font-variant-numeric: tabular-nums; }
@@ -964,6 +973,13 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   .t-dep.stack tbody td.name, .t-dep.stack tbody td.act { grid-column: 1 / -1; }
   .t-dep.stack tbody td:not(.name):not(.act) { flex-direction: column; align-items: flex-start; flex-wrap: nowrap; gap: 1px; min-width: 0; }
   .t-dep.stack tbody td:not(.name):not(.act) .sub-fig { flex: none; }
+  /* Credit ledger reads like a bank statement on a phone: item left, amount right, date beneath,
+     so a month of usage is a short scroll instead of a labelled card per line. */
+  .t-ledger.stack tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 12px; padding: 10px 0; }
+  .t-ledger.stack tbody td.name { grid-column: 1; grid-row: 1; }
+  .t-ledger.stack tbody td.num { grid-column: 2; grid-row: 1; display: block; text-align: right; white-space: nowrap; }
+  .t-ledger.stack tbody td.hint { grid-column: 1; grid-row: 2; font-size: 12.5px; }
+  .t-ledger.stack tbody td.num::before, .t-ledger.stack tbody td.hint::before { content: none; }
   .t-dep.stack tbody td[data-lab="Market"], .t-dep.stack tbody td[data-lab="Status"], .t-dep.stack tbody td[data-lab="Since"] { order: 1; }  /* money first */
   /* Strategy cards get the same figure grid: three figures across, the deploy box beside the name,
      and an empty "tried" line dropped, so a phone shows three strategies a screen instead of one and a half. */

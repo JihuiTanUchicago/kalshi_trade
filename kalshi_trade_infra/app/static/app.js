@@ -208,7 +208,8 @@
     return signed && n > 0 ? '+' + s : s;
   };
   const pct = (v, signed = true) => (v == null ? '—' : (v < 0 ? '−' : signed && v > 0 ? '+' : '') + Math.abs(v * 100).toFixed(1) + '%');
-  const cents = (v) => (v == null ? '—' : Math.round(v * 100) + '¢');
+  // Kalshi quotes some markets in tenths of a cent: 0.1¢ read as 0¢ and a 99.9¢ bid as 100¢.
+  const cents = (v) => (v == null ? '—' : Math.round(v * 1000) / 10 + '¢');
   const isPerpetual = (s) => s.kind === 'perpetual' || s.market === 'btc_perp' || s.key === 'btc_perp' || (s.spec && s.spec.market === 'btc_perp');
   const researchOnly = (s) => s.research_only === true || isPerpetual(s);
   const researchBadge = (s) => researchOnly(s) ? '<span class="mk quiet">Research only</span>' : '';
@@ -235,7 +236,7 @@
   // Short, consistent chip labels for every market; unknown keys fall back to the
   // server's full label, never the raw key (keeps the market chips uniform).
   const MKT_SHORT = {
-    btc15m: 'BTC 15-min', btc_daily: 'BTC 5pm', eth15m: 'ETH 15-min', eth_daily: 'ETH 5pm',
+    btc15m: 'BTC 15-min', btc15m_tick: 'BTC 15-min · per second', btc_perp: 'BTC perp', btc_daily: 'BTC 5pm', eth15m: 'ETH 15-min', eth_daily: 'ETH 5pm',
     sol15m: 'SOL 15-min', sol_daily: 'SOL 5pm', xrp15m: 'XRP 15-min', xrp_daily: 'XRP 5pm',
     doge15m: 'DOGE 15-min', near15m: 'NEAR 15-min', zec15m: 'ZEC 15-min', hype15m: 'HYPE 15-min',
     nba_game: 'NBA winner', nfl_game: 'NFL winner', nhl_game: 'NHL winner',
@@ -385,13 +386,13 @@
     [/^\/deploy$/, viewDeploy],
     [/^\/community$/, viewCommunity],
     [/^\/explore$/, viewExplore],
-    [/^\/billing$/, viewBilling],
+    [/^\/(?:billing|settings\/billing)$/, viewBilling],
     [/^\/admin$/, viewAdmin],
-    [/^\/system$/, viewSystem],
+    [/^\/(?:system|settings\/system)$/, viewSystem],
     [/^\/(?:funds|settings\/account)$/, viewFunds],
     [/^\/devlog$/, viewDevLog],
     [/^\/track-record$/, () => go('/#track-record', true)],  // the record moved onto the dashboard
-    [/^\/settings$/, viewSettings],
+    [/^\/settings(?:\/theme)?$/, viewSettings],  // Meridian's settings URLs land on the same pages
     [/^\/terms$/, viewTerms],
     [/^\/privacy$/, viewPrivacy],
   ];
@@ -404,6 +405,11 @@
   }
   window.addEventListener('popstate', render);
   document.addEventListener('click', (e) => {
+    // In-page "#id" links scroll to their target: letting the hash navigate fires popstate, whose
+    // re-render dropped the reader back at the top of the page.
+    const h = e.target.closest('a[href^="#"]');
+    const to = h && h.getAttribute('href').length > 1 && document.getElementById(h.getAttribute('href').slice(1));
+    if (to) { e.preventDefault(); to.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
     const a = e.target.closest('a[href^="/"]');
     if (!a || a.target || e.metaKey || e.ctrlKey || e.shiftKey || a.hasAttribute('download') || a.dataset.native != null) return;
     e.preventDefault();
@@ -453,7 +459,7 @@
       try { S.me = await api('/api/me', undefined, { timeoutMs: 12000 }); }
       catch (e) {
         if (splashTid) clearTimeout(splashTid);
-        if (e.status === 401) return go('/signin', true);
+        if (e.status === 401) { S.signedOutAt = Date.now(); return go('/signin', true); }
         return bootFail();
       }
       if (splashTid) clearTimeout(splashTid);
@@ -468,7 +474,11 @@
     if (!match) return go('/', true);
     root.setAttribute('aria-busy', 'true');
     try { await match[1](...match[0].slice(1)); } catch (e) {
-      if (gen === S.gen && e.status !== 401) {
+      if (gen === S.gen && e.status === 404) {
+        // A deleted or mistyped strategy or session: Try again can't bring it back, so offer its list.
+        const up = path.replace(/\/\d+$/, ''), label = { '/strategies': 'All strategies', '/research': 'All research sessions' }[up];
+        shell('', boardTitle('Not found'), `<div class="load-fail">${notice(e.message, 'bad')}<a class="btn sm" href="${label ? up : '/'}">${label || 'Dashboard'}</a></div>`);
+      } else if (gen === S.gen && e.status !== 401) {
         shell('', boardTitle('Something went wrong'), loadFail(e.message));
         root.querySelector('[data-retry]').onclick = () => render();
       }
@@ -584,6 +594,7 @@
   // they can see what a normal user sees. Default: admin view on.
   const isAdmin = () => !!(S.me && S.me.is_admin);
   const adminViewOn = () => isAdmin() && localStorage.getItem('tau_admin_off') !== '1';
+  let bellReq = null, bellReqAt = 0;
   async function wireBell() {
     const wrap = root.querySelector('.bell-wrap');
     if (!wrap) return;
@@ -598,7 +609,9 @@
         : '<p class="bell-empty">No notifications yet.</p>';
     };
     let data = { unread: 0, items: [] };
-    try { data = await api('/api/notifications', undefined, { keep: true }); paint(data); } catch (e) { return; }  // bell is best-effort
+    // The shell is often painted twice in a row (instant page switch, then content): one read serves both.
+    if (!bellReq || Date.now() - bellReqAt > 2000) { bellReq = api('/api/notifications', undefined, { keep: true }); bellReqAt = Date.now(); }
+    try { data = await bellReq; paint(data); } catch (e) { return; }  // bell is best-effort
     trig.onclick = async (e) => {
       e.stopPropagation();
       if (!menu.hidden) { close(); return; }
@@ -1102,10 +1115,12 @@
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
       <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>
       <td data-lab="Tried"${tried === '\u2014' ? ' class="nil"' : ''}>${esc(tried)}</td>
-      <td class="act" data-lab="">${mark(s.status)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` <span class="mk ${s.deploy_live ? 'live' : 'dep'}">${s.deploy_live ? 'Live' : 'Deployed'}</span>${realFig(s.real)}` : ''}</td>
+      <td class="act" data-lab="">${mark(s.status)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` <span class="mk ${s.deploy_live ? 'live' : 'dep'}">${s.deploy_live ? 'Live' : 'Deployed'}</span>${s.real && s.real.paused ? ' ' + mark('paused') : ''}${realFig(s.real)}` : ''}</td>
     </tr>`;
   }
   const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Market</th><th>Status</th><th class="num">Realized</th><th class="num">Unrealized</th><th class="num">Trades</th><th class="num" title="What the same closed trades would have made at the unseen-data backtest's average per trade">Backtest pace</th><th>Since</th>${controls ? '<th></th>' : ''}</tr></thead>`;
+  // Paused deployments need the user ("Resume or remove it on Deploy" sends them here), so they lead.
+  const pausedFirst = (ds) => [...ds].sort((a, b) => (b.status === 'paused') - (a.status === 'paused'));
   const deploymentTable = (rows, controls) => `<div class="sheet"><table class="stack t-dep">${DEP_HEAD(controls)}<tbody>${rows}</tbody></table></div>`;
   function deploymentSlip(d, reg, controls) {
     const exp = d.backtest && d.backtest.out_of_sample;
@@ -1171,15 +1186,23 @@
   function legalShell(title, bodyHtml) {
     clearTimers();
     document.body.classList.add('landing-body');
-    const away = S.me ? '<a href="/">Dashboard</a>' : '<a href="/signin">Sign in</a>';
+    // Links out of the legal pages load the app afresh: boot.js serves these pages in Tau for
+    // everyone, so a Meridian user has to reload to get their own theme back.
+    const away = S.me ? '<a class="legal-away" href="/" data-native>Dashboard</a>' : '<a class="legal-away" href="/signin" data-native>Sign in</a>';
     root.innerHTML = `<div class="legal-wrap">
-      <header class="legal-top"><a class="lbrand" href="/">${ICON.mark}<span>Tau</span></a>
+      <header class="legal-top"><a class="lbrand" href="/" data-native>${ICON.mark}<span>Tau</span></a>
         <nav class="legal-nav"><a href="/terms">Terms</a><a href="/privacy">Privacy</a>${away}</nav></header>
       <main class="legal" id="main">
         <h1>${title}</h1><p class="legal-updated">Last updated ${LEGAL_UPDATED}</p>
         ${bodyHtml}
         <footer class="legal-foot"><a href="/terms">Terms of Service</a> · <a href="/privacy">Privacy Policy</a> · <span>© 2026 Tau</span></footer>
       </main></div>`;
+    // Public pages skip the boot /api/me, so a signed-in reader was offered "Sign in". Ask quietly
+    // (a 401 here never redirects) and point the link at the dashboard when there is a session.
+    if (!S.me) api('/api/me').then((me) => {
+      const a = root.querySelector('.legal-away');
+      if (me && me.user && a) { a.setAttribute('href', '/'); a.textContent = 'Dashboard'; }
+    }).catch(() => {});
   }
   async function viewTerms() {
     legalShell('Terms of Service',
@@ -1217,7 +1240,9 @@
   async function viewSignin() {
     const hr = document.getElementById('hotrail'); if (hr) hr.remove();
     document.body.classList.remove('hot-open');
-    if (!S.me) { try { S.me = await api('/api/me'); } catch (e) { /* signed out: stay here */ } }
+    // Boot just got a 401 and redirected here: don't wait on a second /api/me before painting the landing page.
+    const justSignedOut = S.signedOutAt && Date.now() - S.signedOutAt < 5000;
+    if (!S.me && !justSignedOut) { try { S.me = await api('/api/me'); } catch (e) { /* signed out: stay here */ } }
     if (S.me) return go('/', true);
     const q = new URLSearchParams(location.search);
     const err = q.get('error');
@@ -1442,7 +1467,7 @@
       const said = [
         hasLive ? `Live money on: ${usd(d.live.realized_pnl, true)} realized` : 'Paper money only',
         running ? `${running} strateg${running > 1 ? 'ies' : 'y'} running` : 'Nothing deployed',
-        paused ? `<em>${paused} paused, needs you</em>` : '',
+        paused ? `<a class="needs-link" href="#dash-deps"><em>${paused} paused, needs you</em></a>` : '',  // paused rows list first
         agentsBusy ? `${agentsBusy} agent${agentsBusy > 1 ? 's' : ''} researching` : '',
         stale ? `<em>${d.freshness.btc == null ? 'No backtest history yet' : 'Backtest history stale ' + age(d.freshness.btc)}</em>` : '',
       ].filter(Boolean).join('<span class="sep">/</span>');
@@ -1463,10 +1488,7 @@
       const more = (n, what) => n > DASH_ROWS ? `<a class="stub-all" href="/deploy">See all ${n} ${what} on Deploy \u2192</a>` : '';
       const deps = d.deployments.length
         ? deploymentTable(dashDeps.map((x) => deploymentSlip(x, reg, true)).join(''), true) + more(d.deployments.length, 'deployments')  // same controls as Deploy
-        // With autopilot on, "Dispatch your first agent" asked for work it is already doing.
-        : (S.me.user && S.me.user.autopilot)
-          ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is researching. Strategies that pass every gate land here on paper first, with no real money.</p><a class="btn" href="/research">See its research</a></div>`
-          : `<div class="empty"><h3>Nothing deployed yet</h3><p>Agents research strategies and test each one on data they never saw. The ones that pass every gate can be deployed here, on paper first.</p><a class="btn" href="/research">Dispatch your first agent</a></div>`;
+        : `<div id="deps-empty" data-on="${S.me.user && S.me.user.autopilot ? 1 : 0}">${depsEmpty(S.me.user && S.me.user.autopilot)}</div>`;
       const stubs = (rows, closed) => rows.length
         ? rows.map((r) => `<div class="stub"><b>${esc(r.side.toUpperCase())} ${esc(r.qty)} × ${cents(+r.entry_price)}</b>
             <span>${closed ? money(+r.pnl) : (r.unrealized != null ? money(r.unrealized) : usd(r.qty * r.entry_price))}</span>
@@ -1720,14 +1742,15 @@
     })();
     const load = async () => {
       const d = await api('/api/runs');
-      const tried = d.runs.reduce((a, r) => a + (r.hypotheses_tried || 0), 0);
-      const passed = d.runs.reduce((a, r) => a + (r.strategies_passed || 0), 0);
+      // All-time totals from the server; the 50 newest runs undercount a busy autopilot.
+      const tried = d.totals ? d.totals.tried : d.runs.reduce((a, r) => a + (r.hypotheses_tried || 0), 0);
+      const passed = d.totals ? d.totals.passed : d.runs.reduce((a, r) => a + (r.strategies_passed || 0), 0);
       const running = d.counts.research_running, queued = d.counts.research_queued;
       const said = running
         ? `<em>${running}</em> agent${running > 1 ? 's' : ''} researching now${queued ? ` · <em>${queued}</em> waiting` : ''} — <em>${tried}</em> hypotheses tested, <em>${passed}</em> through every gate.`
         : tried
-          ? `Your engine has tested <em>${tried}</em> hypotheses and kept <em>${passed}</em> that beat every gate. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; add an idea below to steer it.' : 'Seed another idea to keep hunting.'}`
-          : `Describe an idea below — the engine turns it into strategies and tests each on data it never saw.`;
+          ? `Your engine has tested <em>${tried}</em> hypotheses and kept <em>${passed}</em> that beat every gate. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; <a href="#dispatch">add an idea below</a> to steer it.' : '<a href="#dispatch">Seed another idea</a> to keep hunting.'}`
+          : `<a href="#dispatch">Describe an idea below</a> — the engine turns it into strategies and tests each on data it never saw.`;
       root.querySelector('#rstatus .said').innerHTML = said;
       root.querySelector('#rfigs').innerHTML = fig('Researching now', running) + fig('Waiting', queued) +
         fig('Hypotheses tested', tried) + fig('Passed every gate' + glo('gate'), passed, { small: tried ? `${pct(passed / tried, false)} pass rate` : '' });
@@ -2326,7 +2349,9 @@
       if (depChip && counts.deployed != null) depChip.textContent = `Deployed (${counts.deployed})`;
       if (!d.matched) {
         const noneKept = total && !kept && !f.status && !f.q && !f.market && !f.deployed;  // a new user's default view, not a filter miss
-        slipsEl.innerHTML = `<div class="empty"><h3>Nothing here yet</h3><p>${noneKept ? 'None of your strategies has passed its tests yet. Most ideas fail; the ones that pass land here.' : total ? 'Try another filter.' : 'Start a research session and the strategies it finds will land here.'}</p>${total && !noneKept ? '' : `${apNudge('Rather not write ideas yourself?', 'and it researches on its own, on paper.')}<a class="btn" href="/research">Go to Research</a>`}</div>`;
+        // With autopilot on, the empty list says it is already researching instead of asking for a session.
+        const apOn = !!(S.me && S.me.user && S.me.user.autopilot);
+        slipsEl.innerHTML = `<div class="empty"><h3>Nothing here yet</h3><p>${noneKept ? 'None of your strategies has passed its tests yet. Most ideas fail; the ones that pass land here.' : total ? 'Try another filter.' : apOn ? 'Autopilot is researching. The strategies it finds will land here.' : 'Start a research session and the strategies it finds will land here.'}${noneKept && apOn ? ' Autopilot keeps researching on its own.' : ''}</p>${total && !noneKept ? '' : `${apNudge('Rather not write ideas yourself?', 'and it researches on its own, on paper.')}<a class="btn" href="/research">${apOn ? 'See its research' : 'Go to Research'}</a>`}</div>`;
         return;
       }
       const list = d.strategies, reg = registry(list.map((s) => s.equity));
@@ -2376,6 +2401,11 @@
     // What the same trades would have made at the unseen-data backtest's average, scaled to each
     // deployment's stake, so "is it doing what the test said?" has an answer beside the real P&L.
     const oos = s.out_of_sample, stake = +s.stake;
+    // A paused deployment (often paused automatically, and the bell links here) says so and why.
+    const pausedLine = (ds) => {
+      const p = ds.find((d) => d.status === 'paused');
+      return p ? `<p class="real-paused"><b>Paused</b>${p.status_reason ? ' ' + esc(p.status_reason) : ''} <a href="/deploy">Resume or remove it on Deploy</a></p>` : '';
+    };
     const pace = (ds, n) => {
       if (!n || !oos || !(+oos.trades > 0) || !(stake > 0)) return '';
       const per = (+oos.pnl || 0) / +oos.trades;
@@ -2389,7 +2419,7 @@
       const pnl = ds.reduce((a, d) => a + (+d.realized_pnl || 0), 0), n = ds.reduce((a, d) => a + (+d.closed_trades || 0), 0);
       const open = ds.reduce((a, d) => a + (+d.open_positions || 0), 0);
       const since = ds.map((d) => d.created_at).filter(Boolean).sort()[0];
-      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span> ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}` : 'No closed trades yet'}${open ? ` · ${open} open` : ''}${since ? ` · deployed ${when(since)}` : ''}</p>${pace(ds, n)}`;
+      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span> ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}` : 'No closed trades yet'}${open ? ` · ${open} open` : ''}${since ? ` · deployed ${when(since)}` : ''}</p>${pace(ds, n)}${pausedLine(ds)}`;
     }).join('');
     return lines ? `<section class="real-record" aria-label="Since deploying"><h3 class="paper-h">Since deploying</h3>${lines}</section>` : '';
   }
@@ -2400,7 +2430,7 @@
     const ins = s.in_sample || {}, oos = s.out_of_sample;
     const figsFor = (r) => fig('Unseen-data P&L', r.out_of_sample ? usd(r.out_of_sample.pnl, true) : '—', { v: r.out_of_sample && r.out_of_sample.pnl, small: r.out_of_sample ? `${r.out_of_sample.trades} trades the agent never saw` : 'Rejected before the unseen test' }) +
       fig('In-sample P&L', usd(r.in_sample.pnl, true), { v: r.in_sample.pnl, small: `${r.in_sample.trades} trades` }) +
-      fig('Return on capital', r.out_of_sample ? pct(r.out_of_sample.roi) : '—', { small: `$${fmt0.format(r.capital || 0)} at risk at most` }) +
+      fig('Return on capital', r.out_of_sample ? pct(r.out_of_sample.roi) : '—', { small: r.capital ? `$${fmt0.format(r.capital)} at risk at most` : '' }) +
       fig('Hypotheses tested', s.hypotheses_tried ? `1 of ${s.hypotheses_tried}` : '—', { small: s.hypotheses_tried ? `The agent tested ${num(s.hypotheses_tried)} distinct ideas this run; this is the one that passed. More tries → higher chance one passes by luck (multiple testing).` : 'How many ideas the agent tried to find this one.' });
     root.querySelector('.board-title').outerHTML = boardTitle(serial(s.id) + ' · ' + marketShort(s.market), esc(dirLabel(s.direction)));
     root.querySelector('#figs').innerHTML = figsFor(s);
@@ -2439,7 +2469,7 @@
         <dt>Sharpe (daily)</dt><dd>${m.sharpe == null ? '—' : m.sharpe}</dd></dl>${luckFlag(m)}` : `<p class="hint">Not tested on unseen data — ${rejectReason(s)}</p>`;
     const gatesHtml = (gs) => gs && gs.length ? `<ul class="gates">${gs.map((g) => `<li class="${g.ok ? 'ok' : 'no'}">${g.ok ? ICON.check : ICON.cross}<span>${esc(g.name)}<small>needs ${esc(g.threshold)}</small></span><span class="v">${typeof g.value === 'number' && /\$|drawdown|money/i.test(g.name + g.threshold) ? usd(g.value) : esc(g.value == null ? '—' : g.value)}</span></li>`).join('')}</ul>` : '<p class="hint">No gate results recorded for this strategy. Gates only run for finalists that made money in testing.</p>';
     const trades = (s.recent_trades || []).length ? `<table class="table stack"><thead><tr><th>Opened</th><th>Contract</th><th>Side</th><th class="num">Entry${perpetual ? ' (USD)' : ''}</th><th class="num">Exit${perpetual ? ' (USD)' : ''}</th><th class="num">P&amp;L</th></tr></thead><tbody>
-        ${s.recent_trades.map((t) => `<tr><td>${esc(new Date(t.opened.replace('Z', ':00Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}</td><td class="tick">${esc(t.ticker)}</td><td>${esc(t.side.toUpperCase())} ×${t.qty}</td><td class="num">${tradePrice(t.entry, perpetual)}</td><td class="num">${tradePrice(t.exit, perpetual)} <small class="hint">${esc(t.reason)}</small></td><td class="num ${tone(t.pnl)}">${usd(t.pnl, true)}</td></tr>`).join('')}
+        ${s.recent_trades.map((t) => `<tr><td data-lab="Opened">${esc(new Date(t.opened.replace('Z', ':00Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}</td><td class="tick" data-lab="Contract">${esc(t.ticker)}</td><td data-lab="Side">${esc(t.side.toUpperCase())} ×${t.qty}</td><td class="num" data-lab="Entry">${tradePrice(t.entry, perpetual)}</td><td class="num" data-lab="Exit">${tradePrice(t.exit, perpetual)} <small class="hint">${esc(t.reason)}</small></td><td class="num ${tone(t.pnl)}" data-lab="P&amp;L">${usd(t.pnl, true)}</td></tr>`).join('')}
       </tbody></table>` : '<p class="hint">No unseen-data trades to show.</p>';
     const activeDeps = restricted ? [] : s.deployments.filter((d) => d.status !== 'stopped');
     const kUrl = marketKalshiUrl(s.market);
@@ -2451,7 +2481,7 @@
     const hasExp = !!s.experiment;
     const filed = (() => { try { return new Date(s.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); } catch (e) { return ''; } })();
     const abResult = oos
-      ? `On unseen data the agent never touched while iterating, it ${+oos.pnl >= 0 ? 'returned ' + usd(oos.pnl) : 'lost ' + usd(Math.abs(oos.pnl))} over ${num(oos.trades)} trade${oos.trades === 1 ? '' : 's'}${s.hypotheses_tried ? `, the one idea of ${num(s.hypotheses_tried)} tested this run that cleared the gate` : ''}.`
+      ? `On unseen data the agent never touched while iterating, it ${+oos.pnl >= 0 ? 'returned ' + usd(oos.pnl) : 'lost ' + usd(Math.abs(oos.pnl))} over ${num(oos.trades)} trade${oos.trades === 1 ? '' : 's'}${s.hypotheses_tried ? (s.status === 'passed' ? `, and cleared the gate as one of ${num(s.hypotheses_tried)} ideas tested this run` : `, one of ${num(s.hypotheses_tried)} ideas tested this run`) : ''}.`
       : `It was ${s.status === 'rejected' ? 'rejected before reaching' : 'not advanced to'} the unseen-data test${s.hypotheses_tried ? ` — one of ${num(s.hypotheses_tried)} ideas tried this run` : ''}.`;
     const dataBlock = s.dataset ? `<div class="paper-sub"><h4 class="paper-h">Data &amp; partitioning</h4>
           <dl class="rp-grid">
@@ -2708,11 +2738,11 @@
         fig('Open positions', d.open_positions.length) +
         fig('Money', live.length ? '<span class="mk live">Live</span>' : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : 'nothing on live money' });
       const reg = registry(d.deployments.map((x) => x.curve));
-      root.querySelector('#deps').innerHTML = d.deployments.length ? deploymentTable(d.deployments.map((x) => deploymentSlip(x, reg, true)).join(''), true)
-        : `<div class="empty"><h3>Nothing deployed</h3><p>Open a passed strategy and post it to the board. Paper first: it trades the live market with paper money.</p>${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}<a class="btn" href="/strategies">See passed strategies</a></div>`;
+      root.querySelector('#deps').innerHTML = d.deployments.length ? deploymentTable(pausedFirst(d.deployments).map((x) => deploymentSlip(x, reg, true)).join(''), true)
+        : `<div class="empty"><h3>Nothing deployed</h3><p>Open a passed strategy and post it to the board. Paper first: it trades the live market with paper money.</p>${S.me && S.me.user && S.me.user.autopilot ? '<p>Autopilot is on: strategies that pass every gate deploy here on their own, on paper.</p>' : ''}${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}<a class="btn" href="/strategies">See passed strategies</a></div>`;
       bindDeploymentActions(root.querySelector('#deps'), loadBoard);
       root.querySelector('#openpos').innerHTML = d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
-        ${d.open_positions.map((p) => `<tr><td>${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</td><td class="tick">${esc(p.ticker)}</td><td>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num">${p.unrealized == null ? '<span class="sub-fig">—</span>' : money(p.unrealized)}</td><td class="num">${clock(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
+        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</td><td class="tick" data-lab="Contract">${esc(p.ticker)}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? '—' : money(p.unrealized)}</td><td class="num" data-lab="Settles">${clock(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
         : '<p class="hint">No open positions.</p>';
     };
     await loadBoard();
@@ -2739,10 +2769,14 @@
     if (m.open_trades) caveats.push(`${num(m.open_trades)} open trade${m.open_trades === 1 ? '' : 's'} (${usd(m.open_at_cost)} at cost) join the record when they close.`);
     const cav = caveats.length ? `<p class="hint tr-caveat">${caveats.map(esc).join(' ')}</p>` : '';
     if (!m.trades) {
+      // Paper only: the live and demo tabs keep their own copy.
+      const apOn = key === 'paper' && !!(S.me && S.me.user && S.me.user.autopilot);
       const how = key === 'live' ? 'Deploy a strategy that has proven itself on paper to live money, and its closed trades show up here.'
         : key === 'demo' ? 'Deploy a strategy to the Kalshi demo exchange to build a record with real fills and no real money.'
+        : apOn ? 'Autopilot runs the strategies that pass every gate on paper. Every closed trade is recorded here.'
         : 'Deploy a passed strategy on paper. Every closed trade is recorded here.';
-      return `<div class="empty"><h3>No closed ${esc(m.label.toLowerCase())} trades yet</h3><p>${how}</p>${key === 'paper' ? apNudge('Rather not pick strategies yourself?', 'and it runs the ones that pass on paper. Their trades fill this record.') : ''}<a class="btn" href="/deploy">Go to Deploy</a></div>${cav}`;
+      const go = apOn ? '<a class="btn" href="/research">See its research</a>' : '<a class="btn" href="/deploy">Go to Deploy</a>';
+      return `<div class="empty"><h3>No closed ${esc(m.label.toLowerCase())} trades yet</h3><p>${how}</p>${key === 'paper' ? apNudge('Rather not pick strategies yourself?', 'and it runs the ones that pass on paper. Their trades fill this record.') : ''}${go}</div>${cav}`;
     }
     const s = m.sample;
     const good = s.level === 'solid' && s.edge === 'positive';
@@ -2820,10 +2854,19 @@
     host.className = 'sect dash-track'; host.id = 'track-record'; host.innerHTML = loading(260);
     wrap.appendChild(host);  // after <main>, its last child, so the board's repaint never touches it
     const last = { at: null };
-    try { await mountTrackRecord(host, last); } catch (e) { if (gen === S.gen) host.innerHTML = notice(e.message, 'bad'); return; }
-    if (gen !== S.gen) return;
-    if (location.hash === '#track-record') host.scrollIntoView();
-    poll(() => mountTrackRecord(host, last), 60000);
+    // A failed first read offers a retry; before, the record stayed an error until a reload.
+    const first = async () => {
+      try { await mountTrackRecord(host, last); } catch (e) {
+        if (gen !== S.gen) return;
+        host.innerHTML = loadFail(e.message);
+        host.querySelector('[data-retry]').onclick = () => { host.innerHTML = loading(260); return first(); };
+        return;
+      }
+      if (gen !== S.gen) return;
+      if (location.hash === '#track-record') host.scrollIntoView();
+      poll(() => mountTrackRecord(host, last), 60000);
+    };
+    await first();
   }
 
   // ---------- funds ----------
@@ -2901,8 +2944,8 @@
         <div class="funds-col funds-history">
         <section class="panel">
           <h3>Paper history</h3>
-          <table class="table stack"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody>
-            ${d.paper.ledger.map((r) => `<tr><td class="hint lead-cell">${when(r.created_at)}</td><td>${esc(r.memo || r.kind)}</td><td class="num ${tone(+r.amount)}">${usd(r.amount, true)}</td></tr>`).join('')}
+          <table class="table stack t-ledger"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody>
+            ${d.paper.ledger.map((r) => `<tr><td class="hint lead-cell">${when(r.created_at)}</td><td class="name">${esc(r.memo || r.kind)}</td><td class="num ${tone(+r.amount)}">${usd(r.amount, true)}</td></tr>`).join('')}
           </tbody></table>
         </section>
         </div></div>`;
@@ -2975,7 +3018,7 @@
     }
     if (snap.kind === 'deployment') {
       return `<div class="snap"><div class="snap-head"><b>${esc(snap.title)}</b>${mark(snap.mode === 'live' ? 'running' : 'running', snap.mode === 'live')}</div>
-        <div class="snap-meta">${esc(marketShort(snap.market))} · ${snap.mode === 'live' ? 'live' : 'paper'} · realized ${usd(snap.realized_pnl, true)} · ${snap.closed_trades} trades</div></div>`;
+        <div class="snap-meta">${esc(marketShort(snap.market))} · ${snap.mode === 'live' ? 'live' : snap.mode === 'demo' ? 'demo' : 'paper'} · realized ${usd(snap.realized_pnl, true)} · ${snap.closed_trades} trades</div></div>`;
     }
     return '';
   }
@@ -3232,7 +3275,9 @@
   const midOf = (m) => { const b = +m.bid, a = +m.ask; if (b > 0 && a > 0) return (b + a) / 2; const l = +m.last; return l > 0 ? l : null; };
   // Many markets share one event title (every strike of "Bitcoin price on Oct 14?"), so the
   // strike sub-title is what tells them apart.
-  const mktLabel = (m) => { const t = (m.ti || '').trim(), s = (m.su || '').trim(); return s && s !== t ? (t ? `${t} · ${s}` : s) : (t || m.t); };
+  // The yes subtitle only when it adds something: "Minnesota wins · Minnesota" and "Will Bitcoin be
+  // above $200000 by Jan 1…? · Above $200000" repeated the title.
+  const mktLabel = (m) => { const t = (m.ti || '').trim(), s = (m.su || '').trim(); return s && !t.toLowerCase().includes(s.toLowerCase()) ? (t ? `${t} · ${s}` : s) : (t || m.t); };
   const kalshiUrl = (m) => `https://kalshi.com/markets/${encodeURIComponent((m.s || '').toLowerCase())}`;
   const kfmt = (n) => { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n)); };
   const sinceMin = (iso) => { if (!iso) return '—'; const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000); return s < 90 ? 'just now' : s < 5400 ? Math.round(s / 60) + 'm ago' : s < 172800 ? Math.round(s / 3600) + 'h ago' : Math.round(s / 86400) + 'd ago'; };
@@ -3251,7 +3296,11 @@
     shell('/explore', boardTitle('Market'), loading(300));
     let d;
     try { d = await api('/api/explore/market?ticker=' + encodeURIComponent(ticker)); }
-    catch (e) { root.querySelector('main').innerHTML = notice(e.message, 'bad') + `<p style="margin-top:12px"><a class="btn sm" href="/explore">← Back to Explore</a></p>`; return; }
+    catch (e) {
+      root.querySelector('main').innerHTML = notice(e.message, 'bad') + `<p style="margin-top:12px"><button class="btn sm" type="button" id="mk-retry">Try again</button> <a class="btn sm" href="/explore">← Back to Explore</a></p>`;
+      root.querySelector('#mk-retry').onclick = () => viewMarketDetail(ticker);
+      return;
+    }
     const mid = midOf({ bid: d.yes_bid, ask: d.yes_ask, last: d.last });
     const label = mktLabel({ ti: d.title, su: d.sub, t: d.ticker });
     const closes = d.close_time ? new Date(d.close_time).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
@@ -3309,7 +3358,7 @@
       if (!d.markets.length) { body.innerHTML = `<div class="empty"><h3>No markets match “${esc(f.q)}”</h3><p>Try a broader search, or clear it to see the hottest markets.</p></div>`; return; }
       const rows = d.markets.map((m) => {
         const mid = midOf(m);
-        return `<tr><td class="name"><a href="/explore?m=${encodeURIComponent(m.t)}">${esc(mktLabel(m))}</a>${m.s ? ` <span class="mk quiet">${esc(m.s)}</span>` : ''}</td>
+        return `<tr><td class="name"><a href="/explore?m=${encodeURIComponent(m.t)}">${esc(mktLabel(m))}</a>${m.ev || m.s ? ` <span class="mk quiet">${esc(m.ev || m.s)}</span>` : ''}</td>
           <td class="num" data-lab="Yes price">${mid == null ? '—' : cents(mid)}</td><td class="num" data-lab="24h volume">${num(Math.round(+m.v24 || 0))}</td><td class="num" data-lab="Open int.">${num(Math.round(+m.oi || 0))}</td>
           <td class="num xlink" data-lab="Kalshi"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`;
       }).join('');
@@ -3327,7 +3376,7 @@
   // On a phone the rail is hidden (Explore covers it): an open rail would cover the whole page.
   const hotOpen = () => !phone() && localStorage.getItem('tau_hotrail') !== '0';
   let hotLoop = false;
-  let apLoop = false;
+  let apLoop = false, apReq = null;
 
   // ---------- floating autopilot window ----------
   const apExpanded = () => localStorage.getItem('tau_ap_open') === '1';
@@ -3337,11 +3386,23 @@
     if (!box) { box = document.createElement('div'); box.id = 'autopilot-float'; box.className = 'apf'; document.body.appendChild(box); }
     renderAutopilot(box, S.ap);
     const stale = !S.ap || !S.apAt || Date.now() - S.apAt > 18000;
-    if (stale) refreshAutopilot(box);
-    if (!apLoop) { apLoop = true; setInterval(() => { const b = document.getElementById('autopilot-float'); if (b) refreshAutopilot(b); }, 20000); }
+    if (stale) refreshAutopilot(box, true);
+    if (!apLoop) {
+      // Background tabs don't poll (each status read is ~14 queries); coming back refreshes a stale one.
+      apLoop = true;
+      setInterval(() => { const b = document.getElementById('autopilot-float'); if (b && !document.hidden) refreshAutopilot(b); }, 20000);
+      document.addEventListener('visibilitychange', () => {
+        const b = document.getElementById('autopilot-float');
+        if (b && !document.hidden && (!S.apAt || Date.now() - S.apAt > 18000)) refreshAutopilot(b, true);
+      });
+    }
   }
-  async function refreshAutopilot(box) {
-    try { S.ap = await api('/api/autopilot/status', undefined, { keep: true }); S.apAt = Date.now(); renderAutopilot(box, S.ap); paintDashAp(); }
+  async function refreshAutopilot(box, share = false) {
+    // Pages that paint the shell twice (instant switch, then content) share one in-flight read;
+    // a refresh after a change always reads fresh.
+    let req = share && apReq;
+    if (!req) { req = apReq = api('/api/autopilot/status', undefined, { keep: true }); req.finally(() => { if (apReq === req) apReq = null; }).catch(() => {}); }
+    try { S.ap = await req; S.apAt = Date.now(); renderAutopilot(box, S.ap); paintDashAp(); }
     catch (e) { /* floating window is best-effort; never block the app */ }
   }
   // Dashboard autopilot card: the one-click way in while autopilot is off, and once it's on a
@@ -3349,8 +3410,10 @@
   // (S.ap) plus the dashboard's paper book (S.dashPaper), so it never needs its own request.
   function paintDashAp() {
     const host = document.getElementById('dash-ap');
-    if (!host || !S.me || !S.me.user) return;
+    if (!S.me || !S.me.user) return;
     const d = S.ap, on = d ? d.autopilot : !!S.me.user.autopilot;
+    syncApCopy(on);
+    if (!host) return;
     if (!on) {
       host.className = 'apcard';
       host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>Autopilot off</span>
@@ -3370,7 +3433,7 @@
       d.live_running ? ['Live P&amp;L today', money(d.today_live_pnl || 0)] : ['Paper P&amp;L, all time', pnl == null ? '—' : money(pnl)],
       ['Strategies running', running ? String(running) : 'None yet'],
       ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested · ${r.passed_7d || 0} passed`],
-      prog ? ['Closest to live', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${prog.trades} of ${prog.trades_needed} paper trades</a>`]
+      prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${prog.trades} of ${prog.trades_needed} paper trades</a>`]
         : ['Last move', d.last_action && d.last_action.at ? sinceMin(d.last_action.at) : (d.last_review_at ? 'Reviewed ' + sinceMin(d.last_review_at) : 'Starting up')],
     ];
     const now = d.billing_blocked
@@ -3389,6 +3452,20 @@
     if (box) renderAutopilot(box, S.ap);
   }
   // One-click autopilot line for empty states; the [data-research-ap] click handler turns it on.
+  // The empty Deployed box speaks to the autopilot switch; with autopilot on, its button asked for
+  // work the autopilot is already doing. It follows the switch live (syncApCopy).
+  function depsEmpty(on) {
+    return on
+      ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is researching. Strategies that pass every gate land here on paper first, with no real money.</p><a class="btn" href="/research">See its research</a></div>`
+      : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above and the strategies that pass every gate on data they never saw land here on their own, on paper first. Or research an idea yourself.</p><a class="btn" href="/research">Dispatch your first agent</a></div>`;
+  }
+  // Copy that depends on the switch follows it without a reload, so turning autopilot on doesn't leave
+  // "Turn on autopilot above" or a Turn on nudge under a card that already says it's on.
+  function syncApCopy(on) {
+    const box = document.getElementById('deps-empty');
+    if (box && box.dataset.on !== (on ? '1' : '0')) { box.dataset.on = on ? '1' : '0'; box.innerHTML = depsEmpty(on); }
+    if (document.body) document.body.querySelectorAll('.research-ap').forEach((p) => { p.hidden = on; });
+  }
   function apNudge(lead, rest) {
     return S.me && S.me.user && !S.me.user.autopilot ? `<p class="research-ap">${lead} <button type="button" data-research-ap>Turn on autopilot</button> ${rest}</p>` : '';
   }
@@ -3399,7 +3476,7 @@
     busy(b, async () => {
       await apTurnOn();
       const p = b.closest('.research-ap');
-      if (p && S.me.user.autopilot) p.textContent = 'Autopilot is on. Every idea it tries shows up in the autopilot panel.';
+      if (p && S.me.user.autopilot) { p.textContent = 'Autopilot is on. Every idea it tries shows up in the autopilot panel.'; p.hidden = false; }
     });
   });
   async function apTurnOn() {
@@ -3412,6 +3489,7 @@
     const box = document.getElementById('autopilot-float');
     if (box) await refreshAutopilot(box);
   }
+  const AP_PENDING_ON = { label: 'Autopilot on', cls: 'paper' };  // switch on, mode not read yet
   const AP_MODE = {
     off: { label: 'Autopilot off', cls: '' },
     paper: { label: 'Autopilot · paper', cls: 'paper' },
@@ -3503,7 +3581,9 @@
   function renderAutopilot(box, d) {
     if (!apExpanded()) {
       apStopChat();
-      const m = (d && AP_MODE[d.mode]) || AP_MODE.off;
+      // Before the first status read lands (or if it fails), go by the saved switch: an autopilot
+      // user's pill read "Autopilot off" on every page load until then.
+      const m = d ? (AP_MODE[d.mode] || AP_MODE.off) : (S.me && S.me.user && S.me.user.autopilot ? AP_PENDING_ON : AP_MODE.off);
       box.className = 'apf' + (m.cls ? ' ' + m.cls : '');
       box.dataset.shell = '';
       box.innerHTML = `<button type="button" class="apf-pill" data-ap="toggle" aria-expanded="false">
@@ -3576,7 +3656,7 @@
     };
     apLoadChat(box, true);
     apStopChat();
-    apChatTimer = setInterval(() => { const b = document.getElementById('autopilot-float'); if (b && apExpanded()) apLoadChat(b); else apStopChat(); }, 3000);
+    apChatTimer = setInterval(() => { const b = document.getElementById('autopilot-float'); if (b && apExpanded()) { if (!document.hidden) apLoadChat(b); } else apStopChat(); }, 3000);
     // Market focus: binding on research, deploys and the paper funnel (server enforces it).
     (() => {
       const sel = box.querySelector('#apf-focus'); if (!sel) return;
@@ -3658,7 +3738,7 @@
       stats.dataset.cols = short.length;
       stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `
       ${d.research && !(d.story || []).length ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc([...new Set(d.research.active)].join(' · ')) : 'Not researching right now'} · ${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested this week, ${d.research.passed_7d} passed${d.research.cost_7d ? ', $' + Number(d.research.cost_7d).toFixed(2) + ' spent' : ''}</dd></div>` : ''}
-      ${d.paper_progress ? `<div class="apf-wide"><dt>Closest to live</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> · ${d.paper_progress.trades}/${d.paper_progress.trades_needed} paper trades · ${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}`;
+      ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> · ${d.paper_progress.trades}/${d.paper_progress.trades_needed} paper trades · ${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}`;
     }
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
     const fsel = box.querySelector('#apf-focus');
@@ -3768,7 +3848,7 @@
     renderHotRail();
     const stale = !S.hot || !S.hotAt || Date.now() - S.hotAt > 55000;
     if (stale) refreshHot().then(() => { S.hotAt = Date.now(); });
-    if (!hotLoop) { hotLoop = true; setInterval(() => { if (document.getElementById('hotrail')) refreshHot().then(() => { S.hotAt = Date.now(); }); }, 60000); }
+    if (!hotLoop) { hotLoop = true; setInterval(() => { if (!document.hidden && document.getElementById('hotrail')) refreshHot().then(() => { S.hotAt = Date.now(); }); }, 60000); }
   }
 
   const KIND_LABEL = { bonus: 'Welcome credits', topup: 'Added credits', autoreload: 'Auto-reload', usage: 'Agent usage', admin_grant: 'Admin grant' };
@@ -3890,7 +3970,7 @@
   }
   function ledgerTable(rows) {
     if (!rows.length) return '<p class="hint">No credit activity yet.</p>';
-    return `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>When</th><th>Item</th><th class="num">Amount</th></tr></thead><tbody>${rows.map((r) => `<tr>
+    return `<div class="sheet"><table class="table stack t-dep t-ledger"><thead><tr><th>When</th><th>Item</th><th class="num">Amount</th></tr></thead><tbody>${rows.map((r) => `<tr>
       <td class="hint" data-lab="When">${when(r.created_at)}</td>
       <td class="name" data-lab="Item">${esc(KIND_LABEL[r.kind] || r.kind)}${r.memo && r.kind === 'usage' ? `<div class="sub-fig">${esc(r.memo)}</div>` : ''}</td>
       <td class="num" data-lab="Amount"><span class="${r.amount >= 0 ? 'gain' : ''}">${usd(r.amount, true)}</span></td></tr>`).join('')}</tbody></table></div>`;

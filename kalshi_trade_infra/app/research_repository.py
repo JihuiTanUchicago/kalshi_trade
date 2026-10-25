@@ -452,7 +452,9 @@ def experiment_records_for_replay(cur, user_id: int, market: str) -> List[Dict]:
     so the discovery tree is scored on gatekeeper-recorded validation outcomes,
     NOT the old reused OOS (closes Leak 2/5). One row per experiment that has a
     validation result: {experiment_id, strategy_id, parent_id, hypothesis_hash,
-    market, classification, n_trades, net_pnl, mean_net_return}.
+    market, classification, n_trades, net_pnl, mean_net_return}. An underpowered verdict (no
+    p-value) reads as net_pnl NULL here even though the row records its P&L for paper probation:
+    an unmeasured sample is not a validation outcome the optimizer should learn from.
 
     `strategy_id`/`parent_id` carry the DISCOVERY-TREE lineage (a refinement's strategy
     points back at the strategy it dug deeper on, via app_strategies.parent_id), so
@@ -460,7 +462,8 @@ def experiment_records_for_replay(cur, user_id: int, market: str) -> List[Dict]:
     LEFT JOIN: an experiment whose strategy row is gone just has parent_id NULL (a root)."""
     cur.execute(
         """SELECT e.id AS experiment_id, e.strategy_id, s.parent_id, e.hypothesis_hash, e.market,
-                  r.classification, r.n_trades, r.net_pnl, r.mean_net_return
+                  r.classification, r.n_trades,
+                  CASE WHEN r.p_value IS NULL THEN NULL ELSE r.net_pnl END AS net_pnl, r.mean_net_return
              FROM app_experiments e
              JOIN app_experiment_results r ON r.experiment_id=e.id
              JOIN (SELECT experiment_id, MAX(id) AS mx FROM app_experiment_results
@@ -507,9 +510,10 @@ def probation_candidates(cur, user_id: int, max_p: float, min_trades: int, limit
 def underpowered_candidates(cur, user_id: int, min_trades: int, limit: int = 20) -> List[Dict]:
     """Strategies whose LATEST validation verdict was inconclusive for lack of sample: no p-value
     (below the gate's min sample) over at least `min_trades` trades. Not rejected, just unmeasured,
-    so a forward paper test is the cheapest way to measure them. Newest first. Read-only."""
+    so a forward paper test is the cheapest way to measure them. `net_pnl` is the validation P&L
+    the gatekeeper recorded (None on rows written before it did). Newest first. Read-only."""
     cur.execute(
-        """SELECT e.strategy_id, e.market, r.n_trades
+        """SELECT e.strategy_id, e.market, r.n_trades, r.net_pnl
            FROM app_experiment_results r
            JOIN app_experiments e ON e.id = r.experiment_id
            WHERE e.user_id=%s AND e.strategy_id IS NOT NULL AND r.phase='validation'
@@ -520,7 +524,8 @@ def underpowered_candidates(cur, user_id: int, min_trades: int, limit: int = 20)
         (user_id, int(min_trades), int(limit)),
     )
     return [{"strategy_id": int(r["strategy_id"]), "market": r["market"], "p_value": None,
-             "net_pnl": None, "n_trades": int(r["n_trades"] or 0)} for r in cur.fetchall()]
+             "net_pnl": None if r["net_pnl"] is None else float(r["net_pnl"]),
+             "n_trades": int(r["n_trades"] or 0)} for r in cur.fetchall()]
 
 
 def experiments_for_strategy(cur, strategy_id: int, experiment_id: Optional[int] = None) -> Optional[Dict]:

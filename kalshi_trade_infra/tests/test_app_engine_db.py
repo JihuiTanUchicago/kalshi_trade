@@ -157,6 +157,24 @@ def test_two_workers_never_take_the_same_run(conn, user):
         other.close()
 
 
+def test_research_week_leaves_out_the_seeded_demo_session(conn, user):
+    """A brand-new account's autopilot panel read "2 tested" from the demo it never ran."""
+    from app import repository as repo
+
+    cur = conn.cursor()
+    since = repo.now_utc() - timedelta(days=7)
+    repo.seed_demo_session(cur, user["id"])
+    assert sum(int(r["tried"]) for r in repo.research_week(cur, user["id"], since)) == 0
+    rid = repo.create_run(cur, user["id"], "research", "btc15m", "momentum")
+    cur.execute("UPDATE app_agent_runs SET status='cancelled', hypotheses_tried=3 WHERE id=%s", (rid,))
+    week = repo.research_week(cur, user["id"], since)
+    assert sum(int(r["tried"]) for r in week) == 3 and sum(int(r["runs"]) for r in week) == 1
+    # The Research page lists the demo, so its all-time headline counts it.
+    cur.execute("UPDATE app_agent_runs SET hypotheses_tried=2 WHERE user_id=%s AND direction='random_walk'", (user["id"],))
+    every = repo.research_week(cur, user["id"], since, include_demo=True)
+    assert sum(int(r["tried"]) for r in every) == 5 and sum(int(r["runs"]) for r in every) == 2
+
+
 def test_the_interactive_lane_skips_research(conn, user):
     from app import repository as repo
 
@@ -260,3 +278,27 @@ def test_scorecard_separates_the_breacher_from_positions_flattened_alongside_it(
     card = repo.early_exit_scorecard(cur, user["id"], since=now - timedelta(days=1))
     assert card["stop"]["exits"] == 2
     assert card["stop"]["collateral"] == {"exits": 1, "scored": 1, "saved": -0.32}
+
+
+def test_underpowered_verdict_pnl_reaches_probation_but_not_replay(conn, user):
+    """A below-min-sample verdict records its validation P&L with no p-value. Paper probation's
+    candidate read returns that P&L; the replay optimizer's read masks it, so the research loop
+    learns from no more than it did before the P&L was recorded."""
+    from app import repository as repo
+    from app import research_repository as rr
+    from app import spec as specmod
+
+    cur = conn.cursor()
+    spec = specmod.validate({"side": "yes", "entry": {"min_edge": 0.1}})
+    sid = repo.insert_strategy(cur, user["id"], None, None, "btc15m", "volatility", "U", "t", spec, "rejected",
+                               {"capital": 10, "in_sample": {"trades": 300, "pnl": 40.0}})
+    eid = rr.preregister(cur, dict(
+        user_id=user["id"], run_id=None, strategy_id=sid, market="btc15m", hypothesis_hash=uuid.uuid4().hex,
+        spec=spec, economic_rationale="m", primary_metric="mean_net_return_per_trade", null_hypothesis="edge<=0",
+        alt_hypothesis="edge>0", planned_test="stationary_bootstrap", falsification_criteria="ci_lo<=0",
+        min_sample=150, cost_assumptions={}, research_partition_id=0, planned_n_tests=1, correction_method="BH"))
+    rr.append_result(cur, eid, "validation", "inconclusive", 56, metrics={"net_pnl": 7.25, "n_trials_audited": 3})
+    got = [c for c in rr.underpowered_candidates(cur, user["id"], 10) if c["strategy_id"] == sid]
+    assert got == [{"strategy_id": sid, "market": "btc15m", "p_value": None, "net_pnl": 7.25, "n_trades": 56}]
+    rec = [r for r in rr.experiment_records_for_replay(cur, user["id"], "btc15m") if r["experiment_id"] == eid]
+    assert len(rec) == 1 and rec[0]["net_pnl"] is None and rec[0]["classification"] == "inconclusive"

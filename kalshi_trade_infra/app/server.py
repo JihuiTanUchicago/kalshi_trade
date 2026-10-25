@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+import sys
 import threading
 import time
 import traceback
@@ -67,8 +68,8 @@ ADMIN_EMAIL = os.getenv("TAU_ADMIN_EMAIL", "tjhprivate0416@gmail.com")
 SPA_ROUTES = re.compile(r"^/(?:|dashboard|research(?:/\d+)?|strategies(?:/\d+)?|deploy|community|billing|admin|system|funds|explore|devlog|track-record|settings(?:/(?:account|billing|system|theme))?|signin|terms|privacy)$")
 
 CSP = (
-    "default-src 'self'; script-src 'self' https://js.stripe.com https://pay.google.com; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; "
-    "font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com https://*.stripe.com; "
+    "default-src 'self'; script-src 'self' https://js.stripe.com https://pay.google.com; style-src 'self'; style-src-attr 'unsafe-inline'; "
+    "font-src 'self'; img-src 'self' data: https://*.googleusercontent.com https://*.stripe.com; "
     "connect-src 'self' https://api.stripe.com https://*.stripe.com; frame-src https://js.stripe.com https://hooks.stripe.com https://*.stripe.com https://pay.google.com; "
     "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 )
@@ -507,7 +508,28 @@ def list_runs(ctx: Ctx):
               "summary": pol.get("summary") if pol else None,
               "evolved_at": pol["updated_at"] if pol else None}
     return {"runs": repo.list_runs(ctx.cur, ctx.uid), "counts": repo.active_run_counts(ctx.cur, ctx.uid),
-            "policy": policy}
+            "policy": policy, "totals": _research_totals(ctx.cur, ctx.uid)}
+
+
+RUN_TOTALS_TTL = 30.0  # seconds; the Research page polls /api/runs every 5s
+_RUN_TOTALS: Dict[int, Tuple[float, Dict]] = {}
+
+
+def _research_totals(cur, uid: int) -> Dict:
+    """All-time ideas tested and strategies that passed every gate, for the Research headline.
+    The page summed its 50 newest runs, so a busy autopilot (250+ runs a week) read a fraction of
+    its real total, and the runs' strategies_passed counter overcounts (it once held 68
+    backtest-only rows). Same sources as the autopilot panel's week: research_week and
+    strategies_passed_since, with the seeded demo counted because the page lists it (a headline
+    of 0 tested above a demo row reading 0/2 looked broken). Cached per user like the track record."""
+    hit = _RUN_TOTALS.get(uid)
+    if hit and time.time() - hit[0] < RUN_TOTALS_TTL:
+        return hit[1]
+    since = repo.now_utc() - timedelta(days=365 * 50)
+    val = {"tried": sum(int(r.get("tried") or 0) for r in repo.research_week(cur, uid, since, include_demo=True)),
+           "passed": repo.strategies_passed_since(cur, uid, since)}
+    _RUN_TOTALS[uid] = (time.time(), val)
+    return val
 
 
 def get_run(ctx: Ctx):
@@ -733,7 +755,8 @@ def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
         return
     real: Dict[int, Dict[bool, Dict]] = {}
     for d in repo.list_deployments(cur, uid):
-        r = real.setdefault(d["strategy_id"], {}).setdefault(d["mode"] == "live", {"pnl": 0.0, "trades": 0, "open": 0})
+        r = real.setdefault(d["strategy_id"], {}).setdefault(d["mode"] == "live", {"pnl": 0.0, "trades": 0, "open": 0, "paused": False})
+        r["paused"] = r["paused"] or d.get("status") == "paused"  # often auto-paused; the list flags it
         r["pnl"] += float(d["realized_pnl"] or 0)
         r["trades"] += int(d["closed_trades"] or 0)
         r["open"] += int(d["open_positions"] or 0)
@@ -1236,6 +1259,13 @@ def _autopilot_story(d: Dict) -> List[str]:
             else "Right now it's picking a market to research."
     else:
         now = "Right now it's between research runs. It checks in about every %d minutes." % max(1, COPILOT_REVIEW_MINUTES)
+        quiet = _quiet_minutes(d.get("last_review_at"))
+        if quiet:
+            # A stalled worker would leave "checks in every 10 minutes" on screen for hours; say how long it's been.
+            # Same steps as the "Last reviewed" figure beside it (sinceMin), so the two never disagree.
+            ago = (_plural(quiet, "minute") if quiet < 90 else _plural(int(quiet / 60 + .5), "hour") if quiet < 2880
+                   else _plural(int(quiet / 1440 + .5), "day"))
+            now = "Right now it's between research runs. Its last check-in was %s ago, longer than usual." % ago
     lines = [now]
     if d.get("focus"):
         lines.append("It sticks to the focus you set: %s." % ", ".join(d["focus"]))
@@ -1408,6 +1438,16 @@ def _stop_line(exits: Dict[str, Dict]) -> str:
 
 
 COPILOT_REVIEW_MINUTES = int(os.getenv("APP_COPILOT_REVIEW_SECONDS", "600")) // 60
+# The worker spaces idle reviews up to APP_IDLE_REVIEW_SECONDS apart, so only a gap well past that is late.
+QUIET_AFTER_MINUTES = max(COPILOT_REVIEW_MINUTES, int(os.getenv("APP_IDLE_REVIEW_SECONDS", "1800")) // 60) * 3 // 2
+
+
+def _quiet_minutes(last_review_at) -> int:
+    """Minutes since the last autopilot review when that's later than the worker's cadence, else 0."""
+    if not isinstance(last_review_at, datetime):
+        return 0
+    mins = int((repo.now_utc() - last_review_at).total_seconds() // 60)
+    return mins if mins > QUIET_AFTER_MINUTES else 0
 
 
 def autopilot_status(ctx: Ctx):
@@ -2424,7 +2464,11 @@ def explore_market(ctx: Ctx):
         cs = api_get("/series/%s/markets/%s/candlesticks" % (series, ticker),
                      {"start_ts": start, "end_ts": end, "period_interval": period}).get("candlesticks") or []
     except Exception as e:
-        raise ApiError(502, "Couldn't load this market's history: %s" % e)
+        # The raw error named the proxy and Kalshi's host to the user; keep that in the log.
+        if " failed 404:" in str(e):  # api_get's RuntimeError carries the status in its text
+            raise ApiError(404, "Kalshi has no market %s." % ticker)
+        print("[explore] market %s history failed: %r" % (ticker, e), flush=True)
+        raise ApiError(502, "Kalshi didn't send this market's history just now. Try again in a minute.")
     points = []
     for c in cs:
         price = (c.get("price") or {})
@@ -2566,6 +2610,13 @@ def _static_versions() -> Dict[str, str]:
     return out
 
 
+def _log_line(line: str) -> None:
+    """One write per access line. print() writes the text and its newline separately, so two request
+    threads finishing together glued their lines into one ("...404 12ms ...Z[app] GET /api/...")."""
+    sys.stdout.write(line + "\n")
+    sys.stdout.flush()
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "Tau"
     sys_version = ""
@@ -2573,14 +2624,17 @@ class Handler(BaseHTTPRequestHandler):
     # (one more edge-to-Virginia round trip) on every API call. Every response sets Content-Length.
     protocol_version = "HTTP/1.1"
     timeout = 75  # idle keep-alive sockets close after this; longer than CloudFront's origin keep-alive
+    # Headers and body go out as separate unbuffered writes; on a reused connection Nagle held the
+    # body until the client's delayed ACK, adding ~40ms to every response after the first. TCP_NODELAY.
+    disable_nagle_algorithm = True
 
     def log_request(self, code="-", size="-"):
         self._status = code if isinstance(code, int) else int(getattr(code, "value", 0) or 0)
 
     def log_message(self, fmt, *args):  # errors from the stdlib (bad request line, 501); no query strings
         # Also reached on an idle keep-alive timeout, before any request line set command/path.
-        print("[app] %s %s %s" % (getattr(self, "command", None) or "-", urlparse(getattr(self, "path", None) or "").path,
-                                  (fmt % args)[:120]), flush=True)
+        _log_line("[app] %s %s %s" % (getattr(self, "command", None) or "-", urlparse(getattr(self, "path", None) or "").path,
+                                      (fmt % args)[:120]))
 
     def _timed(self, method: str) -> None:
         """One access line per request, with its time: `[app] GET /api/x 200 12ms 2026-10-24T17:50:01Z`.
@@ -2593,8 +2647,8 @@ class Handler(BaseHTTPRequestHandler):
             ms = (time.perf_counter() - t0) * 1000
             path = urlparse(self.path).path
             webperf.record(webperf.route_key(method, path, self._spa), self._status, ms)
-            print("[app] %s %s %s %dms %s" % (method, path, self._status, ms,
-                                              datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")), flush=True)
+            _log_line("[app] %s %s %s %dms %s" % (method, path, self._status, ms,
+                                                  datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")))
 
     def cookies(self) -> Dict[str, str]:
         out = {}
@@ -2825,6 +2879,11 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(e.status, {"error": e.message}, ctx.set_cookies if ctx else [])
         except json.JSONDecodeError:
             self._send_json(400, {"error": "Malformed JSON."}, [])
+        except (BrokenPipeError, ConnectionResetError):
+            # The browser left before the reply (a navigation, a closed tab). There is no one to send
+            # a 500 to, and it isn't a server failure: log it as 499 so /internal/perf's 5xx count
+            # only holds real errors, and skip the two tracebacks it used to print.
+            self._status, self.close_connection = 499, True
         except Exception:
             traceback.print_exc()
             self._send_json(500, {"error": "Something went wrong on our side. It's been logged."}, [])

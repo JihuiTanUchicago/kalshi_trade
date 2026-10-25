@@ -80,3 +80,13 @@ def test_flags_of_a_run_that_ended_over_an_hour_ago_drop_to_low(monkeypatch):
     sev = {a["run_id"]: (a["severity"], a.get("stale", False)) for a in rep["anomalies"]}
     assert sev == {1: ("low", True), 2: ("high", False)}
     assert rep["anomalies"][0]["run_id"] == 2
+
+
+def test_a_spec_invalid_drop_stays_in_the_report_past_the_newest_twelve():
+    """bug_deaths is triaged from the drop's text; run 3081's spec_invalid drop was the 3rd of 15
+    and fell outside the newest-12 window, so the high flag arrived with nothing to read."""
+    drops = [{"tag": "loses", "title": "t%d" % i, "why": ""} for i in range(15)]
+    drops[2] = {"tag": "spec_invalid", "title": "bad", "why": "spec invalid: unknown field"}
+    kept = rw._kept_drops(drops)
+    assert kept[0]["title"] == "bad" and len(kept) == 13 and kept[1:] == drops[-12:]
+    assert rw._kept_drops(drops[:5]) == drops[:5]

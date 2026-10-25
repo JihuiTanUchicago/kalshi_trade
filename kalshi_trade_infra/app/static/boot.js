@@ -7,6 +7,8 @@
   if (!b) return;
   var mer = false;
   try { mer = localStorage.getItem('tau_ui') === 'meridian'; } catch (e) { /* private mode */ }
+  // Only Tau has the Terms and Privacy pages; Meridian used to bounce them to the dashboard.
+  try { if (/^\/(?:terms|privacy)$/.test(location.pathname)) mer = false; } catch (e) { /* no location */ }
   window.__TAU_UI__ = mer ? 'meridian' : 'tau';
   if (mer) {
     var link = document.getElementById('tau-css');
