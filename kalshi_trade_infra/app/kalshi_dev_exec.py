@@ -34,6 +34,7 @@ from urllib.parse import urlparse
 import requests
 
 from app import repository as repo
+from app.execution.refusal import OrderRefused, definite_refusal
 from data_pipeline.architecture.execution_kernel import order_wire_params
 from data_pipeline.common import KalshiCredentials, kalshi_auth_headers
 
@@ -121,7 +122,13 @@ def demo_place_limit_order(
     _t2 = time.perf_counter()
     timing = {"sign_ms": (_t1 - _t0) * 1000.0, "net_ms": (_t2 - _t1) * 1000.0, "http_status": resp.status_code}
     if resp.status_code >= 400:
-        raise RuntimeError("demo POST %s failed %d: %s" % (_ORDER_ENDPOINT, resp.status_code, resp.text[:400]))
+        message = "demo POST %s failed %d: %s" % (_ORDER_ENDPOINT, resp.status_code, resp.text[:400])
+        # A definite refusal (no order created, e.g. insufficient_balance) says so, so the engine can
+        # settle its intent as unfilled; anything else (5xx, 409, 429, ...) stays an unknown outcome.
+        refusal = definite_refusal(resp.status_code, resp.text, client_order_id)
+        if refusal is not None:
+            raise OrderRefused(message, refusal)
+        raise RuntimeError(message)
     return {"client_order_id": client_order_id, "body": body, "resp": resp.json(), "timing": timing}
 
 

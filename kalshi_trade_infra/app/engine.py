@@ -34,6 +34,7 @@ from app import options_fair, sports_odds, weather_fcst
 from app.markets import (MARKETS, WEATHER_OBS_FEATURES, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot,
                          cross_features, cross_product,
                          compatible_cadence, snapshot, weather_obs_applies)
+from app.execution.refusal import OrderRefused
 from data_pipeline.common import api_get, fetch_open_markets, parse_iso_to_dt
 from data_pipeline.market_data import ws_quote
 from data_pipeline.kalshi_fees import taker_fee_dollars
@@ -55,7 +56,8 @@ ENGINE_LOOP_MODES = frozenset(m.strip() for m in os.getenv("TAU_ENGINE_LOOP", "p
                               if m.strip()) & {"paper", "demo"}
 TICK_SECONDS = 15
 # An order whose outcome is unknown (intent still 'sent': a timeout, a crash, a lost response) may
-# already have filled. No new order goes out on that user's ticker until recovery reads the truth
+# already have filled. No new order of that mode goes out on that user's ticker (demo and live are
+# separate accounts, so neither holds the other) until recovery reads the truth
 # from the exchange, so a retry never stacks a second buy or a second sell on top of a fill we
 # cannot see yet (the oversell-into-a-short shape). Bounded: after this window the block lifts
 # even if recovery could not resolve it, so an exit is delayed, never trapped.
@@ -565,15 +567,36 @@ def _live_trade(cur, dep: Dict, kernel, action: str, side: str, ticker: str, qty
         meta["min_edge"] = float(min_edge or 0.0)
     intent = TradeIntent(action=action, side=side, ticker=ticker, qty_contracts=qty, limit_price_dollars=price,
                          model_name="app-dep-%d" % dep["id"], now_ts=datetime.now(timezone.utc), metadata=meta)
-    return kernel.execute(intent)
-
-
-def _order_in_flight(cur, user_id: int, ticker: str) -> bool:
-    """True while this user has an unresolved order on ``ticker`` (see INFLIGHT_BLOCK_SECONDS).
-    Fails open on a read error: the block is an extra layer over recovery + reconciliation, and a DB
-    blip must not freeze every order."""
+    if dep.get("mode") != "demo" or client_order_id_base is None:
+        return kernel.execute(intent)
     try:
-        return repo.ticker_has_inflight_intent(cur, user_id, ticker, INFLIGHT_BLOCK_SECONDS)
+        return kernel.execute(intent)
+    except OrderRefused as e:
+        _settle_refused_intent(cur, client_order_id_base, e)
+        raise
+
+
+def _settle_refused_intent(cur, intent_id: str, e: OrderRefused) -> None:
+    """A demo order the exchange refused outright (no order created) is settled 'unfilled' with the
+    refusal stored, instead of staying 'sent' for recovery to look for an order that never existed.
+    Only the intent's FIRST child counts: a refusal on a later retry child may follow a child that
+    filled, so that intent stays 'sent' and recovery sums its children as before. The error still
+    propagates unchanged; a failed mark only leaves the intent 'sent', as it was."""
+    if e.client_order_id != intent_id:
+        return
+    try:
+        repo.mark_order_intent(cur, intent_id, "unfilled", raw_json={"status": "refused", "refused": e.refusal})
+    except Exception as err:
+        print("[engine] could not settle refused intent %s: %r (left sent)" % (intent_id, err), flush=True)
+
+
+def _order_in_flight(cur, user_id: int, ticker: str, mode: str) -> bool:
+    """True while this user has an unresolved order on ``ticker`` in this mode (see
+    INFLIGHT_BLOCK_SECONDS). Demo and live are separate exchange accounts, so one never holds the
+    other's ticker. Fails open on a read error: the block is an extra layer over recovery +
+    reconciliation, and a DB blip must not freeze every order."""
+    try:
+        return repo.ticker_has_inflight_intent(cur, user_id, ticker, INFLIGHT_BLOCK_SECONDS, mode=mode)
     except Exception as e:
         print("[engine] in-flight check failed user %s %s: %r (proceeding)" % (user_id, ticker, e), flush=True)
         return False
@@ -626,7 +649,7 @@ def _close_position_at(conn, cur, dep: Dict, pos: Dict, kernel, via_kernel: bool
             return _paper_kernel_close(conn, cur, dep, pos, kernel, price, reason)
         _paper_sell(conn, pos, price, reason)
         return True
-    if _order_in_flight(cur, dep["user_id"], pos["ticker"]):
+    if _order_in_flight(cur, dep["user_id"], pos["ticker"], dep["mode"]):
         # An earlier order on this ticker may already have sold some or all of it. Selling the DB
         # quantity again could oversell into a short; wait for recovery to book the truth.
         print("[engine] exit deferred pos %d %s: an earlier order's outcome is still unknown"
@@ -789,7 +812,7 @@ class _IntentLog:
         self.conn, self.cur, self.dep, self.book, self.contracts = conn, cur, dep, book, contracts
 
     def in_flight(self, ticker: str) -> bool:
-        return _order_in_flight(self.cur, self.dep["user_id"], ticker)
+        return _order_in_flight(self.cur, self.dep["user_id"], ticker, self.dep["mode"])
 
     def log(self, intent, qty: int, price: float) -> Optional[str]:
         iid = intent.instrument
@@ -956,7 +979,7 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict, sources: Sources
         if qty < 1:
             continue
         if via_kernel:
-            if _order_in_flight(cur, dep["user_id"], ticker):
+            if _order_in_flight(cur, dep["user_id"], ticker, mode):
                 continue  # an earlier order here may have filled; never stack a second buy on it
             close_time = entry.snapshot.contract.close_time
             # Durable order-intent BEFORE the real order (P0-1). An entry is NOT sacrosanct: if the
@@ -1161,7 +1184,7 @@ def _kernel_buy_pair(conn, cur, dep: Dict, kernel, legs, qty: int, mode: str) ->
     l_side, l_ticker, l_buy, l_sell, l_close = legs[0]  # long YES leg
     s_side, s_ticker, s_buy, _s_sell, s_close = legs[1]  # short NO leg
     uid, dep_id = dep["user_id"], dep["id"]
-    if _order_in_flight(cur, uid, l_ticker) or _order_in_flight(cur, uid, s_ticker):
+    if _order_in_flight(cur, uid, l_ticker, mode) or _order_in_flight(cur, uid, s_ticker, mode):
         return False  # an earlier order on a leg is unresolved; never leg in on top of it
 
     # Leg 1 buy: intent BEFORE the POST (never place an untracked order).

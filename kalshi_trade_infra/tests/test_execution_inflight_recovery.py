@@ -107,7 +107,7 @@ def test_paper_exit_is_never_blocked_by_the_inflight_check(monkeypatch):
 
 def test_pair_entry_is_skipped_while_a_leg_is_unresolved(monkeypatch):
     monkeypatch.setattr(engine.repo, "ticker_has_inflight_intent",
-                        lambda cur, uid, ticker, within: ticker == "NO-LEG")
+                        lambda cur, uid, ticker, within, mode: ticker == "NO-LEG" and mode == "live")
     k = _RecordingKernel()
     legs = [("yes", "YES-LEG", 0.4, 0.39, None), ("no", "NO-LEG", 0.5, 0.49, None)]
     assert engine._kernel_buy_pair(None, None, {"id": 1, "user_id": 9}, k, legs, 5, "live") is False
@@ -118,10 +118,10 @@ def test_inflight_check_fails_open_on_a_read_error(monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("db blip")
     monkeypatch.setattr(engine.repo, "ticker_has_inflight_intent", boom)
-    assert engine._order_in_flight(None, 1, "T") is False
+    assert engine._order_in_flight(None, 1, "T", "live") is False
 
 
-def test_inflight_query_is_scoped_to_user_ticker_and_window():
+def test_inflight_query_is_scoped_to_user_ticker_mode_and_window():
     from app import repository as repo
 
     class Cur:
@@ -132,10 +132,10 @@ def test_inflight_query_is_scoped_to_user_ticker_and_window():
             return {"x": 1}
 
     c = Cur()
-    assert repo.ticker_has_inflight_intent(c, 9, "T", 180) is True
-    assert "status='sent'" in c.sql and "user_id=%s" in c.sql and "ticker=%s" in c.sql
-    assert c.params[0] == 9 and c.params[1] == "T"
-    assert c.params[2] > repo.now_utc() - timedelta(seconds=200)
+    assert repo.ticker_has_inflight_intent(c, 9, "T", 180, mode="demo") is True
+    assert "status='sent'" in c.sql and "user_id=%s" in c.sql and "ticker=%s" in c.sql and "mode=%s" in c.sql
+    assert c.params[0] == 9 and c.params[1] == "T" and c.params[2] == "demo"
+    assert c.params[3] > repo.now_utc() - timedelta(seconds=200)
 
 
 def test_intent_past_its_horizon_is_marked_unresolved_without_polling(monkeypatch):

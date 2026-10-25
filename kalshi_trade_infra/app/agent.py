@@ -3287,7 +3287,8 @@ def paper_evidence(cur, user_id: int, strategy_id: int) -> Dict:
         "backtest_mean_pnl": None if backtest_mean is None else round(backtest_mean, 4),
         "realization": None if realization is None else round(realization, 3),
         "demo_orders": demo["orders"], "demo_orders_needed": demo["orders_needed"],
-        "demo_unresolved": demo["unresolved"], "demo_mismatched_tickers": demo["mismatched_tickers"],
+        "demo_unresolved": demo["unresolved"], "demo_refused": demo.get("refused", 0),
+        "demo_mismatched_tickers": demo["mismatched_tickers"],
         "demo_last_check_at": demo["last_check_at"],
     }
 
