@@ -127,6 +127,8 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.match(row({deployed: true, real: {pnl: 0, trades: 1, open: 0}}), /since deploying · 1 trade</);
     assert.match(row({deployed: true, real: {pnl: 0, trades: 0, open: 2}}), /No closed trades yet/);
     assert.doesNotMatch(row({}), /real-fig/);
+    assert.match(row({deployed: true, real: {pnl: -12, trades: 9, open: 0, paused: true}}), /Deployed<\/span> <span class="mk armed">Paused<\/span>/);
+    assert.doesNotMatch(row({deployed: true, real: {pnl: 1, trades: 1, open: 0, paused: false}}), />Paused</);
     // A research-only perpetual never shows a real record, even if one leaks in.
     assert.doesNotMatch(f.strategySlip(detail({deployed: true, real: {pnl: 3, trades: 2, open: 0}}), null, {}), /real-fig/);
   });

@@ -1085,7 +1085,7 @@
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
       <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>
       <td class="num${tried === '\u2014' ? ' nil' : ''}" data-lab="Run trials">${esc(tried)}</td>
-      <td class="act" data-lab="">${mark(s.status)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` <span class="mk ${s.deploy_live ? 'live' : 'dep'}">${s.deploy_live ? 'Live' : 'Deployed'}</span>${realFig(s.real)}` : ''}</td>
+      <td class="act" data-lab="">${mark(s.status)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` <span class="mk ${s.deploy_live ? 'live' : 'dep'}">${s.deploy_live ? 'Live' : 'Deployed'}</span>${s.real && s.real.paused ? ' ' + mark('paused') : ''}${realFig(s.real)}` : ''}</td>
     </tr>`;
   }
   const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Status</th><th class="num">Realized P&amp;L</th><th class="num">Unrealized</th><th class="num">Trades</th>${controls ? '<th class="act"><span class="vh">Actions</span></th>' : ''}</tr></thead>`;

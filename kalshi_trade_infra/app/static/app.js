@@ -1107,7 +1107,7 @@
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
       <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>
       <td data-lab="Tried"${tried === '\u2014' ? ' class="nil"' : ''}>${esc(tried)}</td>
-      <td class="act" data-lab="">${mark(s.status)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` <span class="mk ${s.deploy_live ? 'live' : 'dep'}">${s.deploy_live ? 'Live' : 'Deployed'}</span>${realFig(s.real)}` : ''}</td>
+      <td class="act" data-lab="">${mark(s.status)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` <span class="mk ${s.deploy_live ? 'live' : 'dep'}">${s.deploy_live ? 'Live' : 'Deployed'}</span>${s.real && s.real.paused ? ' ' + mark('paused') : ''}${realFig(s.real)}` : ''}</td>
     </tr>`;
   }
   const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Market</th><th>Status</th><th class="num">Realized</th><th class="num">Unrealized</th><th class="num">Trades</th><th class="num" title="What the same closed trades would have made at the unseen-data backtest's average per trade">Backtest pace</th><th>Since</th>${controls ? '<th></th>' : ''}</tr></thead>`;
