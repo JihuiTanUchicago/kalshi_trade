@@ -67,7 +67,7 @@ def test_paper_buy_then_settle_balances_to_the_cent(conn, user):
     from app import engine
     from app import repository as repo
 
-    dep = _deployment(conn, user)
+    dep = _deployment(conn, user, {"sizing": {"stake": 10.0, "max_positions": 20}})  # $10 / 40c = 25 contracts
     ticker = "TEST-" + uuid.uuid4().hex[:8]
     out = engine.decide(conn, dep, [_snap(ticker)], {ticker: 1000.0}, engine.Sources())
     assert out["entries"] == 1
@@ -99,9 +99,9 @@ def test_no_position_settles_on_a_no_result(conn, user):
                                0.10, datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1))
     src = engine.Sources(result=lambda t: "no")  # BTC did NOT cross the strike -> NO wins
     assert engine.settle_due(conn, engine.MARKETS["btc15m"], src, datetime.now(timezone.utc)) >= 1
-    cur.execute("SELECT status, exit_price, pnl FROM app_positions WHERE id=%s", (pid,))
+    cur.execute("SELECT status, close_reason, exit_price, pnl FROM app_positions WHERE id=%s", (pid,))
     row = cur.fetchone()
-    assert row["status"] == "settled" and float(row["exit_price"]) == 1.0
+    assert (row["status"], row["close_reason"]) == ("closed", "settled") and float(row["exit_price"]) == 1.0
     # pnl = payout(=qty) - qty*entry - entry_fee = 10 - 10*0.60 - 0.10 = 3.90
     assert float(row["pnl"]) == pytest.approx(10 - 10 * 0.60 - 0.10)
 
