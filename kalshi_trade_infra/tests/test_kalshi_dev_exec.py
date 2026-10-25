@@ -164,6 +164,9 @@ def _demo_dep():
 def test_demo_decide_executes_via_demo_kernel_not_live(monkeypatch):
     from tests.conftest import patch_intent_passthrough
     patch_intent_passthrough(monkeypatch)  # P0-1 intent log transparent for this routing test
+    # Kernel choice happens in decide() before either path runs; this fakes entries for the legacy
+    # loops. Demo on the TradingLoop is covered against a real MySQL in test_engine_loop_parity_db.py.
+    monkeypatch.setattr(engine, "ENGINE_LOOP_MODES", frozenset())
     inserted = {}
     monkeypatch.setattr(engine.repo, "open_positions", lambda cur, dep_id: [])
     monkeypatch.setattr(engine.specmod, "entries", lambda spec, snaps: [_Entry("BTC-DEMO")])
