@@ -302,3 +302,27 @@ def test_underpowered_verdict_pnl_reaches_probation_but_not_replay(conn, user):
     assert got == [{"strategy_id": sid, "market": "btc15m", "p_value": None, "net_pnl": 7.25, "n_trades": 56}]
     rec = [r for r in rr.experiment_records_for_replay(cur, user["id"], "btc15m") if r["experiment_id"] == eid]
     assert len(rec) == 1 and rec[0]["net_pnl"] is None and rec[0]["classification"] == "inconclusive"
+
+
+def test_paper_fills_for_gate_sums_exit_slices_and_marks_settled_trips(conn, user):
+    """The forward gate's read: one trip per entry fill, exit slices weighted by quantity, and a
+    trip counts as settled only when every slice settled. Open trips and legacy fills stay out."""
+    from app import repository as repo
+
+    dep = _deployment(conn, user)
+    cur = conn.cursor()
+    close = (datetime.now(timezone.utc) - timedelta(minutes=1)).replace(tzinfo=None)
+    ref = "sim:" + uuid.uuid4().hex[:8]
+    a = repo.insert_position(cur, dep["id"], user["id"], "paper", "GATE-A-1", "yes", 6, 0.40, 0.06, close, ref)
+    b = repo.insert_position(cur, dep["id"], user["id"], "paper", "GATE-A-1", "yes", 4, 0.40, 0.04, close, ref)
+    assert repo.close_position(cur, a, 0.50, 0.03, 0.51, "take_profit")
+    assert repo.close_position(cur, b, 1.00, 0.0, 2.36, "settled")
+    s = repo.insert_position(cur, dep["id"], user["id"], "paper", "GATE-B-1", "no", 5, 0.70, 0.05, close, "sim:" + uuid.uuid4().hex[:8])
+    assert repo.close_position(cur, s, 1.00, 0.0, 1.45, "settled")
+    repo.insert_position(cur, dep["id"], user["id"], "paper", "GATE-C-1", "yes", 1, 0.5, 0.01, close, "sim:" + uuid.uuid4().hex[:8])
+    legacy = repo.insert_position(cur, dep["id"], user["id"], "paper", "GATE-D-1", "yes", 1, 0.5, 0.01, close, None)
+    assert repo.close_position(cur, legacy, 1.0, 0.0, 0.49, "settled")
+    got = sorted(repo.paper_fills_for_gate(cur, user["id"], dep["strategy_id"]), key=lambda r: r["ticker"])
+    assert [(r["ticker"], r["qty"], r["settled"]) for r in got] == [("GATE-A-1", 10, False), ("GATE-B-1", 5, True)]
+    assert got[0]["exit_price"] == pytest.approx(0.70) and got[0]["pnl"] == pytest.approx(2.87)
+    assert got[0]["fees"] == pytest.approx(0.13)

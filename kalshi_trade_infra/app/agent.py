@@ -4318,6 +4318,12 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
             except Exception as e:  # best-effort, like the funnel above
                 print("[agent] paper probation failed for user %s: %r" % (user["id"], e), flush=True)
             try:
+                from app.services import forward_gate
+                for line in forward_gate.run(cur, user):
+                    repo.add_chat(cur, user["id"], "system", line)
+            except Exception as e:  # best-effort, like the funnel above
+                print("[agent] paper forward gate failed for user %s: %r" % (user["id"], e), flush=True)
+            try:
                 from app import tournament
                 for line in tournament.rebalance(cur, user):
                     repo.add_chat(cur, user["id"], "system", line)
