@@ -726,19 +726,23 @@ def list_strategies(ctx: Ctx):
 def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
     """Stamp each deployed card with what it has actually done since deploying (realized P&L and
     closed trades across its active deployments), so the list shows reality next to the backtest.
-    One query, and only when the page has a deployed strategy."""
+    Real money is never summed with practice money: a strategy with a live deployment reports its
+    live deployments only (beside its Live badge), otherwise its paper/demo ones. One query, and
+    only when the page has a deployed strategy."""
     if not any(c.get("deployed") for c in cards):
         return
-    real: Dict[int, Dict] = {}
+    real: Dict[int, Dict[bool, Dict]] = {}
     for d in repo.list_deployments(cur, uid):
-        r = real.setdefault(d["strategy_id"], {"pnl": 0.0, "trades": 0, "open": 0})
+        r = real.setdefault(d["strategy_id"], {}).setdefault(d["mode"] == "live", {"pnl": 0.0, "trades": 0, "open": 0})
         r["pnl"] += float(d["realized_pnl"] or 0)
         r["trades"] += int(d["closed_trades"] or 0)
         r["open"] += int(d["open_positions"] or 0)
     for c in cards:
-        r = real.get(c["id"]) if c.get("deployed") else None
-        if r:
-            c["real"] = {**r, "pnl": round(r["pnl"], 2)}
+        books = real.get(c["id"]) if c.get("deployed") else None
+        if books:
+            live = True in books
+            r = books[live]
+            c["real"] = {**r, "pnl": round(r["pnl"], 2), "live": live}
 
 
 def _owned_strategy(ctx: Ctx) -> Dict:
