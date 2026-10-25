@@ -1729,8 +1729,9 @@
     })();
     const load = async () => {
       const d = await api('/api/runs');
-      const tried = d.runs.reduce((a, r) => a + (r.hypotheses_tried || 0), 0);
-      const passed = d.runs.reduce((a, r) => a + (r.strategies_passed || 0), 0);
+      // All-time totals from the server; the 50 newest runs undercount a busy autopilot.
+      const tried = d.totals ? d.totals.tried : d.runs.reduce((a, r) => a + (r.hypotheses_tried || 0), 0);
+      const passed = d.totals ? d.totals.passed : d.runs.reduce((a, r) => a + (r.strategies_passed || 0), 0);
       const running = d.counts.research_running, queued = d.counts.research_queued;
       const said = running
         ? `<em>${running}</em> agent${running > 1 ? 's' : ''} researching now${queued ? ` · <em>${queued}</em> waiting` : ''} — <em>${tried}</em> hypotheses tested, <em>${passed}</em> through every gate.`

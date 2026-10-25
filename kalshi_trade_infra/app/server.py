@@ -507,7 +507,27 @@ def list_runs(ctx: Ctx):
               "summary": pol.get("summary") if pol else None,
               "evolved_at": pol["updated_at"] if pol else None}
     return {"runs": repo.list_runs(ctx.cur, ctx.uid), "counts": repo.active_run_counts(ctx.cur, ctx.uid),
-            "policy": policy}
+            "policy": policy, "totals": _research_totals(ctx.cur, ctx.uid)}
+
+
+RUN_TOTALS_TTL = 30.0  # seconds; the Research page polls /api/runs every 5s
+_RUN_TOTALS: Dict[int, Tuple[float, Dict]] = {}
+
+
+def _research_totals(cur, uid: int) -> Dict:
+    """All-time ideas tested and strategies that passed every gate, for the Research headline.
+    The page summed its 50 newest runs, so a busy autopilot (250+ runs a week) read a fraction of
+    its real total, and the runs' strategies_passed counter overcounts (it once held 68
+    backtest-only rows). Same sources as the autopilot panel's week: research_week (seeded demo
+    left out) and strategies_passed_since. Cached per user like the track record."""
+    hit = _RUN_TOTALS.get(uid)
+    if hit and time.time() - hit[0] < RUN_TOTALS_TTL:
+        return hit[1]
+    since = repo.now_utc() - timedelta(days=365 * 50)
+    val = {"tried": sum(int(r.get("tried") or 0) for r in repo.research_week(cur, uid, since)),
+           "passed": repo.strategies_passed_since(cur, uid, since)}
+    _RUN_TOTALS[uid] = (time.time(), val)
+    return val
 
 
 def get_run(ctx: Ctx):
