@@ -5,7 +5,7 @@
 
 Series: data_pipeline.lip_programs.REWARD_SERIES (crypto lead plus the FX and commodity 15m books).
 Each run replays every closed, archived hour of the last ``--lookback`` hours that has no result yet
-(so a missed run backfills), for each config in CONFIGS, against the real reward programs from the
+(so a missed run backfills; an hour scored before a config was added is scored again), for each config in CONFIGS, against the real reward programs from the
 LIP snapshots, with positions marked at settlement where Kalshi has settled the contract. One JSON
 per hour lands at ``{prefix}/v1/lip_maker_paper/date=YYYY-MM-DD/hour=HH.json.gz``. Replayed tick
 files are removed from the local cache afterwards so the box's disk stays flat.
@@ -41,6 +41,15 @@ CONFIGS: Dict[str, MakerConfig] = {
 
 def result_key(prefix: str, hour: datetime) -> str:
     return f"{prefix}/v1/lip_maker_paper/date={hour:%Y-%m-%d}/hour={hour:%H}.json.gz"
+
+
+def _scored_configs(s3, bucket: str, key: str) -> Optional[set]:
+    """Config names already scored in the hour file at ``key``, or None when there is none."""
+    try:
+        doc = json.loads(gzip.decompress(s3.get_object(Bucket=bucket, Key=key)["Body"].read()))
+    except Exception:  # noqa: BLE001 - missing (or unreadable): score the hour
+        return None
+    return set(doc.get("configs") or {})
 
 
 def _exists(s3, bucket: str, key: str) -> bool:
@@ -87,6 +96,7 @@ def score_hour(store, s3, bucket: str, prefix: str, hour: datetime, get=None,
             return None
         if results is None:
             results = fetch_results(sorted(rep.last_mid), get=get)
+            out["results"] = results
         r = rep.report(results)
         out["configs"][name] = dict(r, config=asdict(cfg), by_series=by_series(r["per_contract"]))
     return out
@@ -99,7 +109,9 @@ def hourly(store, s3, bucket: str, prefix: str, now: datetime, lookback: int = 6
     for i in range(lookback - 1, -1, -1):
         hour = last - timedelta(hours=i)
         key = result_key(prefix, hour)
-        if _exists(s3, bucket, key) or not _exists(s3, bucket, store.table_key("kalshi_book", hour)):
+        done_cfgs = _scored_configs(s3, bucket, key)
+        if (done_cfgs is not None and set(CONFIGS) <= done_cfgs) \
+                or not _exists(s3, bucket, store.table_key("kalshi_book", hour)):
             continue
         doc = score_hour(store, s3, bucket, prefix, hour, get=get)
         _drop_cache(store, hour)
