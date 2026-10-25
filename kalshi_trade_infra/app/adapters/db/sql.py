@@ -1,4 +1,9 @@
-"""Helpers every repository module shares. Datetimes are stored as naive UTC."""
+"""Helpers every repository module shares. Datetimes are stored as naive UTC.
+
+Split modules bind ``now_utc`` from here at import time, so ``monkeypatch.setattr(repo,
+"now_utc", ...)`` does NOT reach a moved function (tests/test_repository_split.py refuses a test
+that does this and calls one directly). To freeze time in a test, patch ``now_utc`` on the module that defines the function
+under test, e.g. ``app.adapters.db.order_intent_repository``."""
 from __future__ import annotations
 
 import json
