@@ -1272,7 +1272,7 @@ test('Research results keep every returned status and source value with escaped 
   const rows = results.querySelectorAll('tbody tr'); assert.equal(rows.length, 5);
   assert.deepEqual(rows.map(row => row.querySelector('.act .mk').textContent), ['Passed', 'Void', 'Rejected', 'Backtest only', 'Testing']);
   assert.deepEqual(rows.map(row => row.querySelector('.num').textContent), ['+$12.00', '−$4.25', '−$7.50tested only', '$0.00tested only', '—tested only']);
-  assert.deepEqual(rows.map(row => row.querySelector('.num').getAttribute('data-lab')), ['Unseen P&amp;L', 'Unseen P&amp;L', 'Tested P&amp;L', 'Tested P&amp;L', 'Tested P&amp;L']);
+  assert.deepEqual(rows.map(row => row.querySelector('.num').getAttribute('data-lab')), ['Backtest P&amp;L (unseen)', 'Backtest P&amp;L (unseen)', 'Backtest P&amp;L (tested)', 'Backtest P&amp;L (tested)', 'Backtest P&amp;L (tested)']);
   assert.match(results.innerHTML, /Kept &lt;script&gt;unsafe&lt;\/script&gt;/); assert.match(results.innerHTML, /&lt;img src=x&gt;/);
   assert.doesNotMatch(results.innerHTML, /<script>|<img|data-dep|class="pick"/);
   const originalLink = results.querySelector('a[href="/strategies/12"]'); originalLink.focus();

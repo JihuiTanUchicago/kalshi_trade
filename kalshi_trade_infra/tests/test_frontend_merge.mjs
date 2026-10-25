@@ -788,6 +788,14 @@ test('the current research run renders a safe streaming log and its paused statu
   assert.ok(f.root.querySelector('#resume')); assert.match(f.root.querySelector('#runpulse').innerHTML, /resume/);
 });
 
+test('phone labels on strategy rows say the P&L is a backtest', () => {
+  const f = frontend({fetchImpl: path => { throw new Error('Unexpected offline request: ' + path); }});
+  const m = (pnl) => ({pnl, trades: 40, win_rate: 0.54});
+  const lab = (s) => f.strategySlip(s, {}).match(/<td class="num" data-lab="([^"]*)"/)[1];
+  assert.equal(lab({id: 1, status: 'passed', title: 'Kept', market: 'btc15m', out_of_sample: m(12), in_sample: m(3)}), 'Backtest P&amp;L (unseen)');
+  assert.equal(lab({id: 2, status: 'rejected', title: 'Dropped', market: 'btc15m', out_of_sample: null, in_sample: m(-7.5)}), 'Backtest P&amp;L (tested)');
+});
+
 test('a finished run hides its last loop phase instead of reading as still working', async () => {
   for (const [status, hidden] of [['succeeded', true], ['running', false]]) {
     const run = {id: 9, prompt: 'Idea', status, market: 'btc15m', created_at: '2026-10-17T10:00:00Z'};
