@@ -605,3 +605,19 @@ def test_open_signup_flag_controls_new_account_creation(monkeypatch):
     monkeypatch.setattr(server, "OPEN_SIGNUP", True)     # open signup
     server.google_callback(Ctx())
     assert captured["allow_new"] is True                # the same random email is now admitted
+
+
+@pytest.mark.parametrize("was_on,body,kicks", [
+    (0, {"autopilot": True}, 1),    # switched on: the first review starts now
+    (1, {"autopilot": True}, 0),    # already on: no extra review
+    (0, {"autopilot": False}, 0),   # off: nothing to start
+])
+def test_switching_autopilot_on_kicks_off_its_first_review(monkeypatch, was_on, body, kicks):
+    calls = []
+    monkeypatch.setattr(server.repo, "set_autopilot", lambda *a: None)
+    monkeypatch.setattr(server.repo, "set_autopilot_live", lambda *a: None)
+    monkeypatch.setattr(server.repo, "add_chat", lambda *a, **k: 1)
+    monkeypatch.setattr(server.worker, "enqueue_review_on_switch_on", lambda cur, uid: calls.append(uid))
+    c = server.Ctx(FakeConn(), {"id": 1, "autopilot": was_on}, (), {}, body, None)
+    assert server.settings(c) == {"ok": True}
+    assert len(calls) == kicks

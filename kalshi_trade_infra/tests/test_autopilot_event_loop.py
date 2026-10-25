@@ -80,3 +80,24 @@ if __name__ == "__main__":
     test_non_billing_ready_user_gets_none()
     test_hook_swallows_errors_without_raising()
     print("ok")
+
+
+def _run_switch_on(uid, *, ready=True, active=None, recent=None):
+    """Drive enqueue_review_on_switch_on with its repo/billing calls faked; return created runs."""
+    created = []
+    with patch.object(worker.repo, "count_runs", side_effect=_count_runs(active, recent)), \
+         patch.object(worker.billing, "is_ready", return_value=ready), \
+         patch.object(worker.repo, "create_run",
+                      side_effect=lambda cur, uid, kind, **kw: created.append((uid, kind))):
+        worker.enqueue_review_on_switch_on(None, uid)
+    return created
+
+
+def test_switching_autopilot_on_starts_a_review_now():
+    assert _run_switch_on(5) == [(5, "review")]
+
+
+def test_switch_on_never_stacks_on_a_recent_or_running_review_or_unbilled_user():
+    assert _run_switch_on(5, recent={(5, "review"): 1}) == []
+    assert _run_switch_on(5, active={(5, "review"): 1}) == []
+    assert _run_switch_on(5, ready=False) == []

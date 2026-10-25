@@ -179,6 +179,17 @@ def enqueue_review_after_research(conn, user_id: int) -> None:
         print("[agents] research-completion hook ERROR for user %s: %s" % (user_id, e), flush=True)
 
 
+def enqueue_review_on_switch_on(cur, user_id: int) -> bool:
+    """Autopilot was just switched on: start its first review now rather than on the next heartbeat,
+    up to COPILOT_REVIEW_SECONDS away, so the user sees it move while still looking. Same gate as
+    every autonomous review (dedup, pacing, billing) plus the heartbeat's recent-review check, so
+    flipping the switch repeatedly can't stack reviews. Runs in the caller's transaction."""
+    if autopilot_review_ok(cur, user_id) and not _recent_review(cur, user_id):
+        repo.create_run(cur, user_id, "review", prompt="autopilot: just switched on, review and get started")
+        return True
+    return False
+
+
 def autopilot_scheduler() -> None:
     """The autopilot heartbeat — now a FALLBACK floor, not the driver. The event hook
     (enqueue_review_after_research) keeps an active user moving continuously; this catches idle
