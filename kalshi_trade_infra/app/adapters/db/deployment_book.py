@@ -2,9 +2,10 @@
 
 The rows are the truth: they are read when the book is made and again after every booking, the
 way the engine re-reads them between its exits and its entries. Booking itself goes through a
-``Ledger`` the engine supplies (paper today: the same ``_paper_book_buy`` / ``_paper_sell``
-functions the legacy decision path calls), so a fill booked from the TradingLoop and one booked by
-the legacy path are the same rows and the same ledger lines by construction.
+``Ledger`` the engine supplies (paper: ``_paper_book_buy`` / ``_paper_book_exit``; demo and live:
+``_book_entry`` / ``_book_kernel_exit`` keyed to the order intent), the same functions the legacy
+decision path calls, so a fill booked from the TradingLoop and one booked by the legacy path are
+the same rows and the same ledger lines by construction.
 """
 from __future__ import annotations
 
@@ -24,12 +25,12 @@ class Ledger(Protocol):
     def cash(self) -> float:
         ...
 
-    def buy(self, ticker: str, side: str, qty: int, price: float, fee: float, order_id: Optional[str]) -> bool:
-        """Book an entry fill; False when there was not enough cash and nothing was booked."""
+    def buy(self, report: ExecutionReport) -> bool:
+        """Book an entry report's fills; False when there was not enough cash and nothing was booked."""
         ...
 
-    def sell(self, row: Dict, qty: int, price: float, fee: float, reason: str) -> bool:
-        """Book an exit fill of ``qty`` of ``row``; True only when it closed the whole row."""
+    def sell(self, row: Dict, report: ExecutionReport) -> bool:
+        """Book an exit report's fills against ``row``; True only when it closed the whole row."""
         ...
 
 
@@ -61,6 +62,10 @@ class DeploymentBook:
     def positions(self) -> Mapping[InstrumentId, Position]:
         return self.open_positions()
 
+    def row(self, instrument: InstrumentId) -> Dict:
+        """The open app_positions row behind a position."""
+        return self._rows[instrument]
+
     def open_positions(self) -> Dict[InstrumentId, Position]:
         return {iid: Position(iid, qty=float(row["qty"]), avg_price=float(row["entry_price"]))
                 for iid, row in self._rows.items()}
@@ -68,14 +73,11 @@ class DeploymentBook:
     def record(self, report: ExecutionReport, instruments: Mapping[InstrumentId, Instrument]) -> None:
         if not report.fills:
             return
-        iid, qty = report.intent.instrument, int(report.filled_qty)
-        price, fee = float(report.avg_price), float(report.fees)
         if report.intent.side is Side.SELL:
-            if self.ledger.sell(self._rows[iid], qty, price, fee, report.intent.reason):
+            if self.ledger.sell(self.row(report.intent.instrument), report):
                 self.exits += 1
         else:
-            order_id = next((f.order_id for f in report.fills if f.order_id), None)
-            if not self.ledger.buy(iid.symbol, iid.outcome, qty, price, fee, order_id):
+            if not self.ledger.buy(report):
                 self.out_of_cash = True
                 return
             self.entries += 1

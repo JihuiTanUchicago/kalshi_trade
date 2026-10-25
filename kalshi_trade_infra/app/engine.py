@@ -46,11 +46,12 @@ LIVE_TRADING_ENABLED = os.getenv("APP_LIVE_TRADING_ENABLED") == "1"
 # ponytail: temporary; remove once NO-side live is validated on the demo sandbox.
 NO_SIDE_LIVE_ENABLED = os.getenv("APP_NO_SIDE_LIVE_ENABLED") == "1"
 # Paper decisions as one trading_core TradingLoop step instead of the legacy entry/exit loops below
-# (ARCHITECTURE.md step 8: backtest, paper and live on one code path). Only "paper" is honoured; live
-# and demo move separately, each behind its own parity test. On for paper by default (Todd, 2026-10-25,
-# after the MySQL parity test tests/test_engine_loop_parity_db.py); TAU_ENGINE_LOOP=off puts paper back
-# on the legacy path.
-ENGINE_LOOP_MODES = frozenset(m.strip() for m in os.getenv("TAU_ENGINE_LOOP", "paper").split(",") if m.strip()) & {"paper"}
+# (ARCHITECTURE.md step 8: backtest, paper and live on one code path). "paper" and "demo" are honoured;
+# live moves separately (it adds the reconcile halts and the size ramp), behind its own parity test. On
+# for paper by default (Todd, 2026-10-25, after the MySQL parity test tests/test_engine_loop_parity_db.py);
+# TAU_ENGINE_LOOP=off puts paper back on the legacy path, TAU_ENGINE_LOOP=paper,demo adds the sandbox.
+ENGINE_LOOP_MODES = frozenset(m.strip() for m in os.getenv("TAU_ENGINE_LOOP", "paper").split(",")
+                              if m.strip()) & {"paper", "demo"}
 TICK_SECONDS = 15
 # An order whose outcome is unknown (intent still 'sent': a timeout, a crash, a lost response) may
 # already have filled. No new order goes out on that user's ticker until recovery reads the truth
@@ -628,6 +629,13 @@ def _close_position_at(conn, cur, dep: Dict, pos: Dict, kernel, via_kernel: bool
             except Exception:
                 pass
         return False  # nothing filled this slot; retry next slot
+    return _book_kernel_exit(conn, dep, pos, intent_id, rep, reason)
+
+
+def _book_kernel_exit(conn, dep: Dict, pos: Dict, intent_id: Optional[str], rep, reason: str) -> bool:
+    """Book a live/demo exit fill (``rep`` from the kernel, at least one contract) against its intent.
+    True only when the whole row closed."""
+    qty, filled = int(pos["qty"]), int(rep.fill_qty_contracts)
     if filled < qty:
         # Partial fill: contracts WERE sold on the exchange, so the fill must be recorded, not
         # dropped. Book the sold slice as realized P&L and shrink the open row to the remainder
@@ -718,21 +726,75 @@ class _PaperLedger:
     def cash(self) -> float:
         return repo.paper_balance(self.conn.cursor(), self.dep["user_id"])
 
-    def buy(self, ticker: str, side: str, qty: int, price: float, fee: float, order_id: Optional[str]) -> bool:
+    def buy(self, report) -> bool:
+        iid = report.intent.instrument
+        order_id = next((f.order_id for f in report.fills if f.order_id), None)
         ref = SIM_ORDER_REF_PREFIX + str(order_id or "") if self.sim else None
-        return _paper_book_buy(self.conn, self.dep, ticker, side, qty, price, fee,
-                               self.contracts[ticker].close_time, ref) is not None
+        return _paper_book_buy(self.conn, self.dep, iid.symbol, iid.outcome, int(report.filled_qty),
+                               float(report.avg_price), float(report.fees), self.contracts[iid.symbol].close_time,
+                               ref) is not None
 
-    def sell(self, row: Dict, qty: int, price: float, fee: float, reason: str) -> bool:
-        return _paper_book_exit(self.conn, row, qty, price, fee, reason)
+    def sell(self, row: Dict, report) -> bool:
+        return _paper_book_exit(self.conn, row, int(report.filled_qty), float(report.avg_price), float(report.fees),
+                                report.intent.reason)
 
 
-def _decide_paper_on_loop(conn, cur, dep: Dict, snaps: List[Snapshot], sizes: Dict, kernel) -> Optional[Dict]:
-    """One paper decision as a TradingLoop step: ``SpecStrategy`` decides, ``EntryBudget`` holds the
-    slot and user caps, ``KalshiEngineExecution`` sizes and sends through the paper kernel (or fills
-    at the limit without one), and ``DeploymentBook`` books into app_positions. Returns the same
-    counts as the legacy path, or None when this deployment must stay on it (a spec the strategy
-    adapter does not run, or two open rows on one contract)."""
+class _KernelLedger:
+    """Demo/live booking for ``DeploymentBook``: the kernel's own report, booked against its order
+    intent exactly as the legacy path books it (``_book_entry`` / ``_book_kernel_exit``). The money
+    sits at the exchange, so there is no cash to check here."""
+
+    def __init__(self, conn, dep: Dict, contracts: Dict[str, Contract]) -> None:
+        self.conn, self.dep, self.contracts = conn, dep, contracts
+
+    def cash(self) -> float:
+        return 0.0
+
+    def buy(self, report) -> bool:
+        iid, meta = report.intent.instrument, report.intent.meta
+        _book_entry(self.conn, meta["order_intent"], self.dep["id"], self.dep["user_id"], self.dep["mode"], iid.symbol,
+                    iid.outcome, meta["venue_report"], self.contracts[iid.symbol].close_time)
+        return True
+
+    def sell(self, row: Dict, report) -> bool:
+        meta = report.intent.meta
+        return _book_kernel_exit(self.conn, self.dep, row, meta["order_intent"], meta["venue_report"],
+                                 report.intent.reason)
+
+
+class _IntentLog:
+    """The engine's order-intent discipline for ``KalshiEngineExecution`` (demo/live): the in-flight
+    block, the durable intent written before the order (a sell carries its row's id and reason, a
+    buy its market's close time) and the unfilled mark."""
+
+    def __init__(self, conn, cur, dep: Dict, book, contracts: Dict[str, Contract]) -> None:
+        self.conn, self.cur, self.dep, self.book, self.contracts = conn, cur, dep, book, contracts
+
+    def in_flight(self, ticker: str) -> bool:
+        return _order_in_flight(self.cur, self.dep["user_id"], ticker)
+
+    def log(self, intent, qty: int, price: float) -> Optional[str]:
+        iid = intent.instrument
+        if intent.side.value == "sell":
+            return _log_order_intent(self.conn, self.dep, "sell", iid.outcome, iid.symbol, qty, price, self.dep["mode"],
+                                     position_id=self.book.row(iid)["id"], reason=intent.reason)
+        return _log_order_intent(self.conn, self.dep, "buy", iid.outcome, iid.symbol, qty, price, self.dep["mode"],
+                                 market_close_time=self.contracts[iid.symbol].close_time)
+
+    def unfilled(self, intent_id: str, report) -> None:
+        try:
+            repo.mark_order_intent(self.cur, intent_id, "unfilled", raw_json=getattr(report, "raw_json", None))
+        except Exception:
+            pass
+
+
+def _decide_on_loop(conn, cur, dep: Dict, snaps: List[Snapshot], sizes: Dict, kernel) -> Optional[Dict]:
+    """One decision as a TradingLoop step: ``SpecStrategy`` decides, ``EntryBudget`` holds the slot
+    and user caps, ``KalshiEngineExecution`` sizes and sends through the kernel (paper: the
+    simulated venue, or a fill at the limit without one; demo: the sandbox exchange, with the
+    order-intent log), and ``DeploymentBook`` books into app_positions. Returns the same counts as
+    the legacy path, or None when this deployment must stay on it (a spec the strategy adapter does
+    not run, or two open rows on one contract)."""
     from app.adapters.db.deployment_book import DeploymentBook, DuplicateRows
     from app.adapters.kalshi import instruments as ki
     from app.adapters.kalshi.engine_execution import EntryBudget, KalshiEngineExecution
@@ -740,15 +802,15 @@ def _decide_paper_on_loop(conn, cur, dep: Dict, snaps: List[Snapshot], sizes: Di
     from trading_core.engine import RiskChain, TradingLoop, one_position_per_symbol
     from trading_core.ports import FixedClock
 
-    spec = dep["spec"]
+    spec, real = dep["spec"], dep["mode"] in ("live", "demo")
     contracts = {s.contract.ticker: s.contract for s in snaps}
     feed = _FrameFeed()
     feed.load(snaps)
+    ledger = _KernelLedger(conn, dep, contracts) if real else _PaperLedger(conn, dep, contracts, sim=kernel is not None)
     try:
         strategy = SpecStrategy(spec, contracts, frame=lambda: feed.snaps, sizing_at_fill=True,
                                 strategy_id="app-dep-%d" % dep["id"])
-        book = DeploymentBook(cur, dep["id"], _PaperLedger(conn, dep, contracts, sim=kernel is not None),
-                              read_rows=repo.open_positions)
+        book = DeploymentBook(cur, dep["id"], ledger, read_rows=repo.open_positions)
     except (ValueError, DuplicateRows):
         return None
     instruments = {}
@@ -763,13 +825,15 @@ def _decide_paper_on_loop(conn, cur, dep: Dict, snaps: List[Snapshot], sizes: Di
     if kernel is not None:
         min_edge = (spec.get("entry") or {}).get("min_edge")
 
-        def _trade(action, side, ticker, qty, price, fair):
-            return _live_trade(cur, dep, kernel, action, side, ticker, qty, price, fair=fair, min_edge=min_edge)
+        def _trade(action, side, ticker, qty, price, fair, client_order_id):
+            return _live_trade(cur, dep, kernel, action, side, ticker, qty, price,
+                               client_order_id_base=client_order_id, fair=fair, min_edge=min_edge)
         trade = _trade
+    orders = _IntentLog(conn, cur, dep, book, contracts) if real else None
     # The kernel owns its venue, so the loop gets none. capital: SpecStrategy sizes from its stake, so
     # the ledger balance is not summed on every decision (cash is checked when an entry books).
     loop = TradingLoop(strategy, instruments, feed, None, FixedClock(time.time()),
-                       execution=KalshiEngineExecution(budget, trade),
+                       execution=KalshiEngineExecution(budget, trade, orders),
                        risk=RiskChain([budget.check, one_position_per_symbol(book)]),
                        book=book, capital=lambda: 0.0, universe=lambda now: feed.current)
     loop.step()
@@ -826,7 +890,7 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict, sources: Sources
             return {"halted": "position mismatch on %s" % ", ".join(h["ticker"] for h in halts)}
         return _decide_pairs(conn, dep, snaps, sizes, kernel, via_kernel, mode)
     if mode in ENGINE_LOOP_MODES:
-        out = _decide_paper_on_loop(conn, cur, dep, snaps, sizes, kernel)
+        out = _decide_on_loop(conn, cur, dep, snaps, sizes, kernel)
         if out is not None:
             _record_scan(cur, dep, snaps, out)
             loss_guard(cur, dep)

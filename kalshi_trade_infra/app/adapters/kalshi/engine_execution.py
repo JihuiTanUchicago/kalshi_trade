@@ -9,12 +9,18 @@ live size ramp and the depth the book showed. It is a risk check (``budget.check
 engine's MarketableLimitKernel call (paper over the simulated venue, demo and live over the real
 one), which keeps every guard it has. Without a kernel (legacy paper) an order fills in full at its
 limit price with the taker fee, exactly as ``engine._paper_buy`` / ``_paper_sell`` book it.
+
+With an ``OrderLog`` (demo and live: real orders) it keeps the engine's order-intent discipline: no
+order on a ticker whose earlier order is still unresolved, a durable intent written before the
+order goes out (an entry whose intent cannot be written is skipped; an exit still goes), and an
+unfilled order marked so. The report carries the intent id and the kernel's own report in its
+intent's meta, which is what the book keys its booking to.
 """
 from __future__ import annotations
 
 import time
 from dataclasses import replace
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, Protocol
 
 from app import spec as specmod
 from app.adapters.kalshi.convert import kalshi_order, to_domain_report
@@ -22,8 +28,22 @@ from data_pipeline.kalshi_fees import taker_fee_dollars
 from trading_core.domain import ExecutionReport, Fill, Instrument, OrderIntent, Quote, RiskDecision, Side
 from trading_core.ports import Book, Venue
 
-# (action, side, ticker, qty, price, fair) -> the kernel's own-side report (contracts.ExecutionReport)
-Trade = Callable[[str, str, str, int, float, Optional[float]], object]
+# (action, side, ticker, qty, price, fair, client_order_id) -> the kernel's own-side report
+# (contracts.ExecutionReport)
+Trade = Callable[[str, str, str, int, float, Optional[float], Optional[str]], object]
+
+
+class OrderLog(Protocol):
+    def in_flight(self, ticker: str) -> bool:
+        """An earlier order on this ticker may have filled and is not booked yet."""
+        ...
+
+    def log(self, intent: OrderIntent, qty: int, price: float) -> Optional[str]:
+        """Write the durable order intent; its id (the client_order_id), or None when it failed."""
+        ...
+
+    def unfilled(self, intent_id: str, report) -> None:
+        ...
 
 
 class EntryBudget:
@@ -80,8 +100,8 @@ class EntryBudget:
 
 
 class KalshiEngineExecution:
-    def __init__(self, budget: EntryBudget, trade: Optional[Trade] = None) -> None:
-        self.budget, self.trade = budget, trade
+    def __init__(self, budget: EntryBudget, trade: Optional[Trade] = None, orders: Optional[OrderLog] = None) -> None:
+        self.budget, self.trade, self.orders = budget, trade, orders
 
     def execute(self, intent: OrderIntent, instrument: Instrument, quote: Optional[Quote], venue: Venue,
                 client_order_id: str, now: float) -> ExecutionReport:
@@ -95,5 +115,15 @@ class KalshiEngineExecution:
         if self.trade is None:
             fill = Fill(intent.instrument, intent.side, qty, price, fee=taker_fee_dollars(qty, price), ts=now)
             return ExecutionReport(intent, "filled", [fill])
-        report = self.trade(intent.side.value, side, ticker, qty, price, intent.fair_value)
+        intent_id = None
+        if self.orders is not None:
+            if self.orders.in_flight(ticker):
+                return ExecutionReport(intent, "rejected", message="an earlier order on %s is unresolved" % ticker)
+            intent_id = self.orders.log(intent, qty, price)
+            if intent_id is None and intent.side is Side.BUY:
+                return ExecutionReport(intent, "rejected", message="order intent not written")
+        report = self.trade(intent.side.value, side, ticker, qty, price, intent.fair_value, intent_id)
+        if intent_id is not None and int(report.fill_qty_contracts) < 1:
+            self.orders.unfilled(intent_id, report)
+        intent = replace(intent, meta={**intent.meta, "order_intent": intent_id, "venue_report": report})
         return to_domain_report(report, intent, ts=time.time())
