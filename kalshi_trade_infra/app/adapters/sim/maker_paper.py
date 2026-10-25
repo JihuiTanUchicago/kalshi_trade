@@ -3,6 +3,7 @@
     python -m app.adapters.sim.maker_paper hourly            # replay closed hours not yet scored
     python -m app.adapters.sim.maker_paper summary --days 7  # cumulative result per config
 
+Series: data_pipeline.lip_programs.REWARD_SERIES (crypto lead plus the FX and commodity 15m books).
 Each run replays every closed, archived hour of the last ``--lookback`` hours that has no result yet
 (so a missed run backfills), for each config in CONFIGS, against the real reward programs from the
 LIP snapshots, with positions marked at settlement where Kalshi has settled the contract. One JSON
@@ -21,10 +22,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Sequence
 
 from app.adapters.sim.maker_replay import MakerFees, MakerReplay, fetch_results, load_programs
+from data_pipeline.lip_programs import REWARD_SERIES, load_latest
 from trading_core.engine.quoting import MakerConfig
 
-SERIES = [s for s in os.getenv("TAU_LIP_PAPER_SERIES", "KXCRYPTOLEAD15M").split(",") if s]
-# Series that charge makers (fee_type quadratic_with_maker_fees); none of the crypto ones do.
+SERIES = [s for s in os.getenv("TAU_LIP_PAPER_SERIES", ",".join(REWARD_SERIES)).split(",") if s]
+# Series that charge makers. Unset: every series whose fee_type in the latest LIP snapshot names maker
+# fees (quadratic_with_maker_fees); the crypto ones are plain quadratic, no maker fee.
 MAKER_FEE_SERIES = [s for s in os.getenv("TAU_LIP_PAPER_MAKER_FEE_SERIES", "").split(",") if s]
 CONFIGS: Dict[str, MakerConfig] = {
     "q100": MakerConfig(quote_size=100, max_inventory=500),
@@ -44,21 +47,44 @@ def _exists(s3, bucket: str, key: str) -> bool:
         return False
 
 
+def maker_fee_series(s3) -> List[str]:
+    if MAKER_FEE_SERIES:
+        return MAKER_FEE_SERIES
+    try:
+        fees = (load_latest(s3) or {}).get("series_fees") or {}
+    except Exception as e:  # noqa: BLE001 - no snapshot: charge nobody, as for the crypto series
+        print("[maker_paper] no fee snapshot: %r" % (e,), flush=True)
+        return []
+    return sorted(k for k, v in fees.items() if "maker" in str((v or {}).get("fee_type") or ""))
+
+
+def by_series(per_contract: Dict[str, dict]) -> Dict[str, dict]:
+    out: Dict[str, dict] = {}
+    for t, d in per_contract.items():
+        a = out.setdefault(t.split("-")[0], {"contracts": 0, "reward": 0.0, "pnl": 0.0})
+        a["contracts"] += 1
+        a["reward"] = round(a["reward"] + d.get("reward", 0.0), 2)
+        a["pnl"] = round(a["pnl"] + d.get("pnl", 0.0), 2)
+    return out
+
+
 def score_hour(store, s3, bucket: str, prefix: str, hour: datetime, get=None,
                configs: Optional[Dict[str, MakerConfig]] = None) -> Optional[dict]:
     """Replay one hour for every config. None when the hour has no book rows for SERIES."""
     end = hour + timedelta(hours=1)
     programs = load_programs(s3, bucket, prefix, hour, end)
-    out = {"hour": hour.isoformat(), "series": SERIES, "configs": {}}
+    charged = maker_fee_series(s3)
+    out = {"hour": hour.isoformat(), "series": SERIES, "maker_fee_series": charged, "configs": {}}
     results: Optional[Dict[str, float]] = None
     for name, cfg in (configs or CONFIGS).items():
-        rep = MakerReplay(SERIES, cfg, programs, fees=MakerFees(MAKER_FEE_SERIES), tickers_from_markets=True)
+        rep = MakerReplay(SERIES, cfg, programs, fees=MakerFees(charged), tickers_from_markets=True)
         rep.run(store, hour, end)
         if not rep.last_mid:
             return None
         if results is None:
             results = fetch_results(sorted(rep.last_mid), get=get)
-        out["configs"][name] = dict(rep.report(results), config=asdict(cfg))
+        r = rep.report(results)
+        out["configs"][name] = dict(r, config=asdict(cfg), by_series=by_series(r["per_contract"]))
     return out
 
 
@@ -104,7 +130,8 @@ def summary(s3, bucket: str, prefix: str, now: datetime, days: int = 7) -> dict:
                 hours += 1
                 for name, c in doc.get("configs", {}).items():
                     a = agg.setdefault(name, {"hours": 0, "rewards": 0.0, "trading_pnl": 0.0, "total": 0.0,
-                                              "fills": 0, "peak_collateral": 0.0, "worst_hour": None})
+                                              "fills": 0, "peak_collateral": 0.0, "worst_hour": None,
+                                              "by_series": {}})
                     a["hours"] += 1
                     for k in ("rewards", "trading_pnl", "total"):
                         a[k] = round(a[k] + c.get(k, 0.0), 2)
@@ -112,6 +139,11 @@ def summary(s3, bucket: str, prefix: str, now: datetime, days: int = 7) -> dict:
                     a["peak_collateral"] = max(a["peak_collateral"], c.get("peak_collateral", 0.0))
                     if a["worst_hour"] is None or c.get("total", 0.0) < a["worst_hour"]:
                         a["worst_hour"] = c.get("total", 0.0)
+                    for ser, v in (c.get("by_series") or {}).items():
+                        b = a["by_series"].setdefault(ser, {"reward": 0.0, "pnl": 0.0, "total": 0.0})
+                        b["reward"] = round(b["reward"] + v["reward"], 2)
+                        b["pnl"] = round(b["pnl"] + v["pnl"], 2)
+                        b["total"] = round(b["reward"] + b["pnl"], 2)
     return {"hours": hours, "configs": agg}
 
 

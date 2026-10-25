@@ -306,5 +306,28 @@ def test_paper_job_scores_each_archived_hour_once_and_sums_them(monkeypatch):
     assert mp.hourly(Store(tables), s3, "b", "ticks", now, lookback=3, get=get) == []   # already scored
     doc = json.loads(gzip.decompress(s3.objs[keys[0]]))
     assert set(doc["configs"]) == {"q100", "q1000"} and doc["configs"]["q1000"]["settled_marks"] == 1
+    q = doc["configs"]["q1000"]
+    assert q["by_series"]["KXCRYPTOLEAD15M"]["reward"] == pytest.approx(q["rewards"], abs=0.02)
+    assert doc["maker_fee_series"] == []                        # no fee snapshot: nobody charged
     summ = mp.summary(s3, "b", "ticks", now, days=1)
-    assert summ["hours"] == 1 and summ["configs"]["q1000"]["total"] == doc["configs"]["q1000"]["total"]
+    assert summ["hours"] == 1 and summ["configs"]["q1000"]["total"] == q["total"]
+    assert summ["configs"]["q1000"]["by_series"]["KXCRYPTOLEAD15M"]["total"] == pytest.approx(q["total"], abs=0.02)
+
+
+def test_maker_fee_series_come_from_the_fee_snapshot(monkeypatch):
+    import gzip
+    import json
+    from app.adapters.sim import maker_paper as mp
+    s3 = _S3()
+    s3.objs["ticks/lip_programs/latest.json.gz"] = gzip.compress(json.dumps({"series_fees": {
+        "KXBRENT15M": {"fee_type": "quadratic_with_maker_fees"}, "KXCRYPTOLEAD15M": {"fee_type": "quadratic"}}}).encode())
+    monkeypatch.setattr(mp, "MAKER_FEE_SERIES", [])
+    monkeypatch.setattr(mp, "load_latest", lambda c: json.loads(gzip.decompress(c.objs["ticks/lip_programs/latest.json.gz"])))
+    assert mp.maker_fee_series(s3) == ["KXBRENT15M"]
+
+
+def test_reward_series_cover_crypto_lead_and_the_fx_commodity_15m_books():
+    from data_pipeline import lip_programs, tick_recorder
+    assert {"KXCRYPTOLEAD15M", "KXEURUSD15M", "KXBRENT15M", "KXCOPPER15M"} <= set(lip_programs.REWARD_SERIES)
+    assert set(lip_programs.REWARD_SERIES) <= set(lip_programs.FEE_SERIES)
+    assert tick_recorder.LIP_SERIES == lip_programs.REWARD_SERIES

@@ -87,9 +87,10 @@ Both boxes run `kalshi-alerter.timer` today (checked 2026-10-24), each with its 
 ### Paper liquidity-reward maker (web box)
 
 `tau-lip-maker-paper.timer` runs `app.adapters.sim.maker_paper hourly` at :25. It replays every
-closed, archived tick hour of the last 6 that has no result yet, for KXCRYPTOLEAD15M
-(`TAU_LIP_PAPER_SERIES`), against the real pools from the LIP snapshots, and writes one JSON per
-hour to `ticks/v1/lip_maker_paper/`. Paper only: it places no orders. Tick files it downloads are
+closed, archived tick hour of the last 6 that has no result yet, for the reward series in
+`data_pipeline.lip_programs.REWARD_SERIES` (crypto lead plus the FX and commodity 15m books;
+override with `TAU_LIP_PAPER_SERIES`), against the real pools from the LIP snapshots, and writes one
+JSON per hour (totals per config and per series) to `ticks/v1/lip_maker_paper/`. Paper only: it places no orders. Tick files it downloads are
 deleted after each hour (`TAU_TICK_CACHE=/opt/kalshi/ticks-cache`). Read the running total with
 `python -m app.adapters.sim.maker_paper summary --days 7`.
 
