@@ -184,3 +184,13 @@ def test_the_code_window_names_each_contracts_event():
     w = backtest._binary_window("x", [(1, [snap])])
     assert w["frames"][0]["contracts"][0]["event"] == "KXNFLSPREAD-25OCT26KCWAS"
     assert '"event": str' in specmod.CODE_STRATEGY_GUIDE
+
+
+def test_a_cross_leg_with_extra_keys_says_how_to_repair_it():
+    # Prod 2026-10-24 run 2741: "cross.legs[0] must have exactly feature market" gave the repair
+    # round nothing to go on, and the idea died.
+    m = BINARY[0]
+    with pytest.raises(specmod.SpecError) as e:
+        specmod.validate({"market": m, "cross": {"pairing": "cross_strike",
+                                                  "legs": [{"market": m, "strike_offset": 1}]}})
+    assert 'must be exactly {"market": <key>}' in str(e.value) and "strike_offset" in str(e.value)
