@@ -1775,8 +1775,9 @@
     })();
     const load = async () => {
       const d = await api('/api/runs');
-      const tried = d.runs.reduce((a, r) => a + (r.hypotheses_tried || 0), 0);
-      const passed = d.runs.reduce((a, r) => a + (r.strategies_passed || 0), 0);
+      // All-time totals from the server; the 50 newest runs undercount a busy autopilot.
+      const tried = d.totals ? d.totals.tried : d.runs.reduce((a, r) => a + (r.hypotheses_tried || 0), 0);
+      const passed = d.totals ? d.totals.passed : d.runs.reduce((a, r) => a + (r.strategies_passed || 0), 0);
       const running = d.counts.research_running, queued = d.counts.research_queued;
       root.querySelector('#research-status').innerHTML = fig('Running', running) + fig('Queued', queued);
       root.querySelector('#rfigs').innerHTML = fig('Passed' + glo('gate'), passed) + fig('Tested', tried);

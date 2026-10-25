@@ -653,3 +653,15 @@ def test_switching_autopilot_on_kicks_off_its_first_review(monkeypatch, was_on, 
     c = server.Ctx(FakeConn(), {"id": 1, "autopilot": was_on}, (), {}, body, None)
     assert server.settings(c) == {"ok": True}
     assert len(calls) == kicks
+
+
+def test_research_totals_are_all_time_and_cached(monkeypatch):
+    # The Research headline summed its 50 newest runs; the server now totals every research run.
+    calls = []
+    monkeypatch.setattr(server.repo, "research_week", lambda cur, uid, since: calls.append(since) or [{"tried": 900}, {"tried": "340"}])
+    monkeypatch.setattr(server.repo, "strategies_passed_since", lambda cur, uid, since: 4)
+    server._RUN_TOTALS.clear()
+    assert server._research_totals(None, 77) == {"tried": 1240, "passed": 4}
+    assert server._research_totals(None, 77) == {"tried": 1240, "passed": 4} and len(calls) == 1  # cached
+    assert calls[0] < server.repo.now_utc() - server.timedelta(days=365 * 10)
+    server._RUN_TOTALS.clear()
