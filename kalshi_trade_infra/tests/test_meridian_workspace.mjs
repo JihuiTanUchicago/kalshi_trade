@@ -2737,3 +2737,38 @@ test('autopilot says why it is not trading: the card and the panel lead with one
   f.paintDashAp();
   assert.equal(card().innerHTML, 'Right now it’s between research runs.');
 });
+
+// Each deployment row draws its cumulative realized P&L: two points or more, a line coloured by its
+// last value and labelled with it and the trade count; one trade draws nothing. Each mode keeps its
+// own dollar axis, so a paper curve that peaked at $500 doesn't flatten a live one that lost $3.
+const sparkDeployment = (id, mode, closed, curve) => ({id, strategy_id: id, title: `Spark ${id}`, market: 'btc15m', mode,
+  status: 'running', stake: 5, max_positions: 2, backtest: {out_of_sample: null}, created_at: '2026-10-17T10:00:00Z',
+  realized_pnl: curve.length ? curve[curve.length - 1][1] : 0, unrealized_pnl: null, closed_trades: closed, open_positions: 0, curve});
+const sparkPayload = () => ({...dashboardData(), deployments: [
+  sparkDeployment(1, 'paper', 48, [[1760000000, 2], [1760003600, -1], [1760007200, 500], [1760010800, 12.4]]),
+  sparkDeployment(2, 'live', 2, [[1760000000, -1], [1760003600, -3]]),
+  sparkDeployment(3, 'paper', 1, [[1760000000, 1]]),
+]});
+for (const [label, view, endpoint, selector] of [['Overview', 'viewDashboard', '/api/dashboard', 'main'], ['Deploy', 'viewDeploy', '/api/deployments', '#deps']]) {
+  test(`${label} draws a cumulative P&L sparkline per deployment, by mode, with a labelled sign`, async () => {
+    const f = frontend({fetchImpl: path => {
+      if (path === endpoint) return response(sparkPayload());
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    await f[view](); await flush(); await flush();
+    const html = f.root.querySelector(selector).innerHTML;
+    const svgs = [...html.matchAll(/<svg class="spark (up|down|flat)"[^>]*aria-label="([^"]*)"[^>]*>.*?<\/svg>/g)];
+    assert.equal(svgs.length, 2, html);  // the one-trade deployment draws none
+    const [up, down] = [svgs.find((m) => m[1] === 'up'), svgs.find((m) => m[1] === 'down')];
+    assert.equal(up[2], 'Cumulative P&amp;L, +$12.40 over 48 trades');
+    assert.equal(down[2], 'Cumulative P&amp;L, −$3.00 over 2 trades');
+    for (const m of svgs) {
+      assert.match(m[0], /role="img"/); assert.match(m[0], /viewBox="0 0 80 24"/);
+      assert.match(m[0], /<line class="spark-zero"/);
+    }
+    // The live line uses live's own axis: its -$1 sits well above the bottom, not squashed by paper's $500.
+    const livePts = down[0].match(/points="([^"]+)"/)[1].split(' ').map((p) => +p.split(',')[1]);
+    assert.ok(livePts[0] < 12 && livePts[1] === 22, livePts.join(' '));
+  });
+}

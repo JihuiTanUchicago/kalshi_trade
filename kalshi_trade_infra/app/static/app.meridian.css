@@ -36,6 +36,8 @@
   --signal-wash: #F8E4E6;
   --pos: #D9E7D6;
   --neg: #F0DEDC;
+  --gain-ink: #365D3B;  /* a gain figure's colour (.t-strat .gain, #figs .fig.pos) */
+  --loss-ink: var(--signal);
   --radius: 3px;
   --gut: 24px;
   --maxw: 1600px;
@@ -347,7 +349,14 @@ tr.live-row td.name a { color: var(--signal); }
 .mk.dep { border-color: var(--ink); color: #F1F3ED; background: var(--ink); }
 .mk.quiet { color: var(--ink-3); }
 
-.spark { width: 108px; height: 26px; display: inline-block; vertical-align: middle; margin-left: 10px; }
+/* A deployment's cumulative-P&L sparkline: the line takes the colour this theme already gives a
+   gain or a loss figure, over a dotted zero line. */
+.spark { width: 80px; height: 24px; display: block; margin: 4px 0 0 auto; overflow: visible; }
+.spark polyline { fill: none; stroke: var(--ink-3); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.spark.up polyline { stroke: var(--gain-ink); }
+.spark.down polyline { stroke: var(--loss-ink); }
+.spark-zero { stroke: var(--rule-2); stroke-width: 1; stroke-dasharray: 2 3; }
+.monitor-metrics .spark { margin-left: 0; }
 
 /* ===================== BUTTONS / FORMS ===================== */
 
@@ -1026,7 +1035,7 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   .stack tbody td::before { content: attr(data-lab); font-family: var(--f-nar); font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); flex: none; }
   .stack tbody td.name::before, .stack tbody td.act::before { content: none; }
   .stack tbody td .sub-fig { flex: 1 0 100%; }
-  .stack tbody td .spark { display: none; }
+  .stack tbody td .spark { margin-left: 0; }  /* a stacked cell reads left-aligned */
   .stack tbody tr:hover td { background: transparent; }
   /* Strategy cards get the same figure grid: three figures across, the deploy box beside the name,
      and an empty "tried" line dropped, so a phone shows three strategies a screen instead of one and a half. */

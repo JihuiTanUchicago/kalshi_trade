@@ -731,20 +731,26 @@
     if (hi - lo < 1) { hi += 0.5; lo -= 0.5; }
     return { lo, hi };
   }
-  function spark(curve, reg, label) {
-    const W = 300, H = 46;
-    if (!curve || curve.length < 2) {
-      return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="No closed trades yet"><line x1="0" x2="${W}" y1="${H / 2}" y2="${H / 2}" stroke="var(--rule-2)" stroke-dasharray="3 4"/></svg>`;
-    }
-    const t0 = curve[0][0], t1 = curve[curve.length - 1][0] || t0 + 1;
-    const x = (t) => ((t - t0) / Math.max(1, t1 - t0)) * W;
-    const y = (v) => H - 3 - ((v - reg.lo) / (reg.hi - reg.lo)) * (H - 6);
-    const pts = curve.map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-    const last = curve[curve.length - 1][1];
-    const color = 'var(--ink)';
-    return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(label)}: ${usd(last, true)}">
-      <line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" stroke="var(--rule-2)" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/>
-      <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.8" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>`;
+  // Each mode's deployments share one axis, so paper's dollars never squash live's or demo's.
+  function curveRegs(deps) {
+    const by = {};
+    deps.forEach((d) => (by[d.mode] = by[d.mode] || []).push(d.curve));
+    return Object.fromEntries(Object.entries(by).map(([mode, curves]) => [mode, registry(curves)]));
+  }
+  // A deployment's cumulative realized P&L, oldest trade first: a zero baseline and a line coloured
+  // by where it ends. `trades` is the closed-trade count for the label: a long curve arrives cut down
+  // to 120 points that keep its ends and every dip and peak. Nothing under two points.
+  function spark(curve, reg, trades) {
+    if (!curve || curve.length < 2) return '';
+    const W = 80, H = 24;
+    reg = reg || registry([curve]);
+    const t0 = curve[0][0], t1 = curve[curve.length - 1][0];
+    const x = t1 > t0 ? (p) => ((p[0] - t0) / (t1 - t0)) * W : (p, i) => (i / (curve.length - 1)) * W;
+    const y = (v) => H - 2 - ((v - reg.lo) / (reg.hi - reg.lo)) * (H - 4);
+    const pts = curve.map((p, i) => `${x(p, i).toFixed(1)},${y(p[1]).toFixed(1)}`).join(' ');
+    const last = curve[curve.length - 1][1], n = trades == null ? curve.length : +trades;
+    const label = `Cumulative P&L, ${usd(last, true)} over ${n} trade${n === 1 ? '' : 's'}`;
+    return `<svg class="spark ${last > 0 ? 'up' : last < 0 ? 'down' : 'flat'}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" preserveAspectRatio="none" role="img" aria-label="${esc(label)}"><line class="spark-zero" x1="0" x2="${W}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" vector-effect="non-scaling-stroke"/><polyline points="${pts}" vector-effect="non-scaling-stroke"/></svg>`;
   }
   // devCurve (optional): a second, realized series replayed read-only against
   // the Kalshi demo environment. Drawn dashed in the accent colour with a legend
@@ -1127,7 +1133,7 @@
     return `Backtest pace ${usd((+oos.pnl || 0) / +oos.trades * n, true)} for the same ${n} trade${n === 1 ? '' : 's'} · `;
   };
   const deploymentEvidence = (d, manage = false) => `<details class="dep-evidence" data-deployment="${esc(d.id)}"><summary aria-label="Backtest and deployment details">Details</summary><div>${backtestPace(d)}Unseen P&amp;L ${d.backtest && d.backtest.out_of_sample ? usd(d.backtest.out_of_sample.pnl, true) : '\u2014'} · Deployed ${when(d.created_at)}${manage ? `<div class="deployment-actions">${deploymentRemove(d)}</div>` : ''}</div></details>`;
-  function deploymentSlip(d, controls) {
+  function deploymentSlip(d, controls, regs) {
     const live = d.mode === 'live';
     const modeTag = deploymentMode(d);
     const actions = controls ? `<td class="act" data-lab="">${deploymentActions(d)}</td>` : '';
@@ -1136,19 +1142,19 @@
         <div class="dep-meta"><span class="sub-fig">${esc(marketShort(d.market))} · $${esc(d.stake)} / trade · Max ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' \u00b7 ' + esc(d.status_reason) : ''}</span>
         ${deploymentEvidence(d)}</div></td>
       <td data-lab="Status">${d.status === 'running' ? '<span class="deployment-state">Running</span>' : mark(d.status, live)}<div class="sub-fig">${modeTag}</div></td>
-      <td class="num" data-lab="Realized">${money(d.realized_pnl)}</td>
+      <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
       <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? '<span class="sub-fig">—</span>' : money(d.unrealized_pnl)}${d.unrealized_pnl != null && d.open_positions ? ' <div class="sub-fig">est.</div>' : ''}</td>
       <td class="num" data-lab="Trades">${d.closed_trades} closed${d.open_positions ? ` <div class="sub-fig">${d.open_positions} open</div>` : ''}</td>
       ${actions}
     </tr>`;
   }
-  function deploymentMonitor(d, anchor = false) {
+  function deploymentMonitor(d, anchor = false, regs = null) {
     const live = d.mode === 'live';
     return `<article ${anchor ? 'id="dash-paused" ' : ''}class="dep-monitor${live ? ' live-row' : ''}">
       <header><h3><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a></h3><span class="monitor-state"><span class="monitor-mode">${deploymentMode(d)}</span><span aria-hidden="true">·</span>${d.status === 'running' ? '<span class="deployment-state">Running</span>' : mark(d.status, live)}</span></header>
       <div class="monitor-config"><div class="monitor-summary"><p class="monitor-setup">${esc(marketShort(d.market))} · $${esc(d.stake)} / trade</p><div class="monitor-limits"><span>· Max ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' · ' + esc(d.status_reason) : ''}</span></div></div></div>
       <dl class="monitor-metrics">
-        <div class="monitor-realized"><dt>Realized P&amp;L</dt><dd>${money(d.realized_pnl)}</dd></div>
+        <div class="monitor-realized"><dt>Realized P&amp;L</dt><dd>${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</dd></div>
         <div class="monitor-unrealized"><dt>${d.unrealized_pnl != null && d.open_positions ? 'Unrealized (est.)' : 'Unrealized P&amp;L'}</dt><dd>${d.unrealized_pnl == null ? '<span class="unavailable">Unavailable</span>' : money(d.unrealized_pnl)}</dd></div>
       </dl>
       <div class="monitor-footer"><dl class="monitor-counts"><div><dt>Closed / open</dt><dd aria-label="${esc(d.closed_trades)} closed trades, ${esc(d.open_positions || 0)} open positions">${esc(d.closed_trades)} / ${esc(d.open_positions || 0)}</dd></div></dl><div class="monitor-controls">${deploymentActions(d, false)}${deploymentEvidence(d, true)}</div></div>
@@ -1494,9 +1500,10 @@
         ${said ? `<div class="statusline dashboard-status ${needs ? 'needs' : ''}"><p class="said">${said}</p></div>` : ''}
         ${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? `\u26a0 ${d.reconcile.length} live position${d.reconcile.length === 1 ? '' : 's'} disagree with Kalshi \u2014 check your Portfolio` : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}
         <div class="pagehead"><div class="overview-heading"><h1 class="page">Overview</h1></div><div class="page-actions"><details class="other-accounts" id="other-accounts"${accountsOpen ? ' open' : ''}><summary>Accounts ${ICON.chev}</summary><dl>${hasLive ? paperFigure : liveFigure}${demoFigure}</dl></details>${agentsBusy ? `<a class="research-activity" href="/research">${agentsBusy} agent${agentsBusy > 1 ? 's' : ''} researching</a>` : ''}</div></div>`;
-      const firstPaused = d.deployments.find((x) => x.status === 'paused');  // the status line's "paused, needs you" jumps here
+      const firstPaused = d.deployments.find((x) => x.status === 'paused');
+      const depRegs = curveRegs(d.deployments);  // the status line's "paused, needs you" jumps here
       const deps = d.deployments.length
-        ? `<div class="dep-register">${d.deployments.map((x) => deploymentMonitor(x, x === firstPaused)).join('')}</div>`
+        ? `<div class="dep-register">${d.deployments.map((x) => deploymentMonitor(x, x === firstPaused, depRegs)).join('')}</div>`
         : `<div id="deps-empty" data-on="${S.me.user && S.me.user.autopilot ? 1 : 0}">${depsEmpty(S.me.user && S.me.user.autopilot)}</div>`;
       const positionMarket = r => (S.me.markets || []).find(m => m.series && r.ticker.startsWith(m.series + '-'));
       const positions = (rows, closed) => rows.map((r) => {
@@ -2826,7 +2833,8 @@
         (demoDeps.length ? fig('Demo realized', usd(demoRealized, true), { v: demoRealized, small: `${DEMO_WHAT} · strategies listed below` }) : '') +
         fig('Open positions', d.open_positions.length) +
         fig('Money', live.length ? '<span class="mk live">Live</span>' : runDemo ? `${runPaper ? '<span class="mk">Paper</span> ' : ''}<span class="mk dep">Demo</span>` : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : 'nothing on live money' });
-      replaceDeploymentContent(root.querySelector('#deps'), d.deployments.length ? deploymentTable(pausedFirst(d.deployments).map((x) => deploymentSlip(x, true)).join(''), true)
+      const regs = curveRegs(d.deployments);
+      replaceDeploymentContent(root.querySelector('#deps'), d.deployments.length ? deploymentTable(pausedFirst(d.deployments).map((x) => deploymentSlip(x, true, regs)).join(''), true)
         : `<div class="empty"><h3>Nothing deployed</h3>${S.me && S.me.user && S.me.user.autopilot ? '<p>Autopilot is on: strategies that pass every gate deploy here on their own, on paper.</p>' : ''}${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}<a class="btn" href="/strategies?status=passed">See passed strategies</a></div>`);
       bindDeploymentActions(root.querySelector('#deps'), loadBoard);
       root.querySelector('#openpos').innerHTML = d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
