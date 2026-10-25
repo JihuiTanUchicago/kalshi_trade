@@ -168,6 +168,15 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.equal(f.root.querySelector('[data-toggle="deployed"]').textContent, 'Deployed (2)');
   });
 
+  test(`${name}: an empty Deploy board with autopilot on says passed strategies deploy on their own`, async () => {
+    for (const on of [true, false]) {
+      const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [], open_positions: []}) : response({})});
+      f.S.me.user.autopilot = on;
+      await f.viewDeploy(); await flush(); await flush();
+      assert.equal(/deploy here on their own/.test(f.root.querySelector('#deps').innerHTML), on);
+    }
+  });
+
   test(`${name}: an empty strategy list with autopilot on says it is researching, not "start a session"`, async () => {
     for (const [on, total] of [[true, 2], [false, 2], [true, 0], [false, 0]]) {
       const f = frontend({fetchImpl: () => response({counts: {total, passed: 0, rejected: total}, matched: 0, pages: 1, strategies: []})});
