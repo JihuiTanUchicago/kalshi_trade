@@ -3471,7 +3471,7 @@
       d.live_running ? ['Live P&amp;L today', money(d.today_live_pnl || 0)] : ['Paper P&amp;L, all time', pnl == null ? '—' : money(pnl)],
       ['Strategies running', running ? String(running) : 'None yet'],
       ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested · ${r.passed_7d || 0} passed`],
-      prog ? ['Closest to live', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${prog.trades} of ${prog.trades_needed} paper trades</a>`]
+      prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${prog.trades} of ${prog.trades_needed} paper trades</a>`]
         : ['Last move', d.last_action && d.last_action.at ? sinceMin(d.last_action.at) : (d.last_review_at ? 'Reviewed ' + sinceMin(d.last_review_at) : 'Starting up')],
     ];
     const now = d.billing_blocked
@@ -3776,7 +3776,7 @@
       stats.dataset.cols = short.length;
       stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `
       ${d.research && !(d.story || []).length ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc([...new Set(d.research.active)].join(' · ')) : 'Not researching right now'} · ${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested this week, ${d.research.passed_7d} passed${d.research.cost_7d ? ', $' + Number(d.research.cost_7d).toFixed(2) + ' spent' : ''}</dd></div>` : ''}
-      ${d.paper_progress ? `<div class="apf-wide"><dt>Closest to live</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> · ${d.paper_progress.trades}/${d.paper_progress.trades_needed} paper trades · ${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}`;
+      ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> · ${d.paper_progress.trades}/${d.paper_progress.trades_needed} paper trades · ${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}`;
     }
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
     const fsel = box.querySelector('#apf-focus');

@@ -488,6 +488,8 @@ test('the dashboard offers one-click autopilot, and once on shows what it is doi
   const html = card().innerHTML;
   assert.match(html, /Autopilot · paper/); assert.match(html, /&lt;b&gt;BTC&lt;\/b&gt;/);
   assert.match(html, /\+\$12\.50/); assert.match(html, /1,234 tested · 0 passed/); assert.match(html, /<a href="\/strategies\/3"[^>]*>4 of 30 paper trades<\/a>/);
+  // The most trades on paper, which may be losing: 'Closest to live' overstated it.
+  assert.match(html, /Furthest on paper/); assert.doesNotMatch(html, /Closest to live/);
   assert.doesNotMatch(html, /undefined|NaN|<b>BTC/);
 });
 
