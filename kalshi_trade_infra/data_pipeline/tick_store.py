@@ -54,6 +54,7 @@ class TickStore:
         self.bucket, self.prefix, self.cache_dir = bucket, prefix, cache_dir
         self._s3 = s3
         self.local_root = local_root
+        self._dates: Dict[str, Optional[set]] = {}
 
     # --- files -----------------------------------------------------------------------------
     def _client(self):
@@ -80,6 +81,30 @@ class TickStore:
             raise
         os.replace(p + ".part", p)
         return p
+
+    def dates(self, table: str) -> Optional[set]:
+        """The ``YYYY-MM-DD`` days that have any file under ``{prefix}/{table}/date=``, listed once per
+        store (one LIST call), or None when the listing fails. Lets a reader skip the days a table
+        never had instead of paying a 404 per missing hour (a 90-day Polymarket read was ~4,500)."""
+        if table in self._dates:
+            return self._dates[table]
+        base = f"{self.prefix}/{table}/"
+        out: Optional[set] = set()
+        try:
+            if self.local_root is not None:
+                d = os.path.join(self.local_root, base)
+                names = os.listdir(d) if os.path.isdir(d) else []
+            else:
+                names = []
+                for page in self._client().get_paginator("list_objects_v2").paginate(
+                        Bucket=self.bucket, Prefix=base, Delimiter="/"):
+                    names += [c["Prefix"][len(base):].rstrip("/") for c in page.get("CommonPrefixes") or []]
+            out = {n[len("date="):] for n in names if n.startswith("date=")}
+        except Exception as e:  # noqa: BLE001 - unknown coverage: callers fall back to probing every key
+            print("[tick_store] could not list %s: %r" % (base, e), flush=True)
+            out = None
+        self._dates[table] = out
+        return out
 
     def table_key(self, table: str, hour: datetime) -> str:
         return f"{self.prefix}/v1/{table}/date={hour:%Y-%m-%d}/hour={hour:%H}/part.parquet"
