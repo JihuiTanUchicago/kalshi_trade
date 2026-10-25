@@ -329,13 +329,13 @@ class ComposeContractTests(unittest.TestCase):
         dockerfile = (HERE / "staging/Dockerfile").read_text()
         copies = [line for line in dockerfile.splitlines() if line.startswith("COPY ")]
         self.assertEqual(copies, ["COPY requirements.txt requirements.txt", "COPY app/ app/",
-                                 "COPY data_pipeline/ data_pipeline/",
+                                 "COPY data_pipeline/ data_pipeline/", "COPY trading_core/ trading_core/",
                                  "COPY staging/entrypoint.py /usr/local/lib/tau-staging/entrypoint.py",
                                  "COPY scripts/paper_staging_smoke.py scripts/paper_staging_smoke.py",
                                  "COPY scripts/kalshi_perps_staging_smoke.py scripts/kalshi_perps_staging_smoke.py"])
         ignored = (HERE / "staging/Dockerfile.dockerignore").read_text().splitlines()
         self.assertIn("**", ignored)
-        for expected in ("!app/**", "!data_pipeline/**", "**/.env*", "**/.state/**",
+        for expected in ("!app/**", "!data_pipeline/**", "!trading_core/**", "**/.env*", "**/.state/**",
                          "**/credentials/**", "**/*.pem", "**/*.key", "**/.aws/**"):
             self.assertIn(expected, ignored)
         self.assertGreater(ignored.index("**/.env*"), ignored.index("!app/**"))
