@@ -8,12 +8,14 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Sequence
 
 from data_pipeline import polymarket as pmk
 
 RESEARCH_STEP_S = 60          # the archive is thinned to one poll a minute, the history's fidelity
+FETCH_WORKERS = 8             # day files download in parallel (a 60-day read was ~59 serial GETs)
 
 
 def latest_snapshot(cur, as_of_ts: int) -> Optional[List[Dict]]:
@@ -28,10 +30,39 @@ def latest_snapshot(cur, as_of_ts: int) -> Optional[List[Dict]]:
     return rows or None
 
 
-def _day_rows(store, day: datetime) -> List[Dict]:
+def _day_quotes(path: Optional[str], kinds: Sequence[str], lo_ts: int, hi_ts: int) -> Optional[List[pmk.PmQuote]]:
+    """quotes_from_history of one day file's rows of ``kinds`` stamped within [lo_ts, hi_ts] (minus
+    up/down quotes before their window), or None when there is no file or it is empty. Filtered in
+    Arrow and built column-wise with one PmMarket per market: row dicts cost ~0.3s a day."""
+    if not path:
+        return None
+    import pyarrow as pa
+    import pyarrow.compute as pc
     import pyarrow.parquet as pq
-    p = store._fetch(pmk.day_key(day))
-    return pq.read_table(p).to_pylist() if p else []
+    tb = pq.read_table(path)
+    if not tb.num_rows:
+        return None
+    t = pc.cast(tb.column("t"), pa.int64())
+    ts = pc.multiply(pc.divide(pc.add(t, 59), 60), 60)      # end of its minute, as quotes_from_history
+    keep = pc.and_(pc.is_in(tb.column("kind"), value_set=pa.array(list(kinds), pa.string())),
+                   pc.and_(pc.greater_equal(ts, lo_ts), pc.less_equal(ts, hi_ts)))
+    # up/down quotes from before the window opened have no Kalshi twin (load_quotes drops them)
+    early = pc.and_(pc.equal(tb.column("kind"), "updown"), pc.less(ts, tb.column("start_ts")))
+    keep = pc.and_(keep, pc.invert(pc.fill_null(early, False)))
+    tb = tb.append_column("ts", ts).filter(keep)
+    cols = {c: tb.column(c).to_pylist() for c in ("market_id", "slug", "kind", "strike_lo", "strike_hi",
+                                                   "start_ts", "end_ts", "p", "ts")}
+    markets: Dict[str, pmk.PmMarket] = {}
+    out = []
+    for i, mid in enumerate(cols["market_id"]):
+        m = markets.get(mid)
+        if m is None:
+            m = markets[mid] = pmk.PmMarket(str(mid), str(cols["slug"][i] or ""), "", "", "", "", "", "Yes",
+                                            cols["kind"][i], cols["strike_lo"][i], cols["strike_hi"][i],
+                                            cols["start_ts"][i], cols["end_ts"][i])
+        p = cols["p"][i]
+        out.append(pmk.PmQuote(m, p, p, cols["ts"][i]))
+    return out
 
 
 def _thin(quotes: Iterable[pmk.PmQuote], step_s: int) -> List[pmk.PmQuote]:
@@ -58,16 +89,21 @@ def load_quotes(since: datetime, until: Optional[datetime] = None, store=None, k
     # window, and every missing hour cost a 404 round trip (prod btc15m loads timed out on it).
     history = store.dates(f"v1/{pmk.DAY_TABLE}/v={pmk.HIST_VERSION}")
     archived = store.dates("v1/polymarket_top")
-    out: List[pmk.PmQuote] = []
+    days = []
     while day < until:
-        d = f"{day:%Y-%m-%d}"
-        rows = _day_rows(store, day) if history is None or d in history else []
-        if not rows and archived is not None and d not in archived:
-            day += timedelta(days=1)
+        days.append(day)
+        day += timedelta(days=1)
+    wanted = [d for d in days if history is None or f"{d:%Y-%m-%d}" in history]
+    if wanted and getattr(store, "local_root", None) is None and hasattr(store, "_client"):
+        store._client()          # make the boto3 client once, before the threads share it
+    with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as ex:
+        paths = dict(zip(wanted, ex.map(lambda d: store._fetch(pmk.day_key(d)), wanted)))
+    out: List[pmk.PmQuote] = []
+    for day in days:
+        qs = _day_quotes(paths.get(day), kinds, lo_ts, hi_ts)
+        if qs is None and archived is not None and f"{day:%Y-%m-%d}" not in archived:
             continue
-        if rows:
-            qs = pmk.quotes_from_history(r for r in rows if r.get("kind") in kinds)
-        else:
+        if qs is None:
             end = min(day + timedelta(days=1), until)
             tops = store.read("polymarket_top", day, end)
             mk = store.read("polymarket_markets", day - timedelta(hours=1), end)
@@ -81,5 +117,4 @@ def load_quotes(since: datetime, until: Optional[datetime] = None, store=None, k
             if m.kind == "updown" and m.start_ts is not None and q.ts < m.start_ts:
                 continue
             out.append(q)
-        day += timedelta(days=1)
     return out
