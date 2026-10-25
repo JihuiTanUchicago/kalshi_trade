@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.adapters.db.sql import now_utc
 
@@ -242,6 +242,24 @@ def realized_pnl(cur, user_id: int, mode: str, since: Optional[datetime] = None)
         params.append(since)
     cur.execute(sql, params)
     return float(cur.fetchone()["p"])
+
+
+BOOK_MODES = ("paper", "demo", "live")
+
+
+def realized_pnl_by_mode(cur, user_id: int, since: datetime) -> Dict[str, Tuple[float, float]]:
+    """{mode: (realized all time, realized since `since`)} for the three books, in one pass over the
+    user's closed positions. The dashboard read realized_pnl seven times (each mode twice, demo's
+    all-time sum a third time for its equity) and each all-time call walked every closed position.
+    The same sums realized_pnl makes; a display read only, the gates keep calling realized_pnl."""
+    cols = ", ".join(
+        "COALESCE(SUM(CASE WHEN mode='{m}' THEN pnl END),0) AS {m}_all, "
+        "COALESCE(SUM(CASE WHEN mode='{m}' AND closed_at >= %s THEN pnl END),0) AS {m}_since".format(m=m)
+        for m in BOOK_MODES)
+    cur.execute("SELECT " + cols + " FROM app_positions WHERE user_id=%s AND status='closed'",
+                tuple(since for _ in BOOK_MODES) + (user_id,))
+    r = cur.fetchone() or {}
+    return {m: (float(r.get(m + "_all") or 0), float(r.get(m + "_since") or 0)) for m in BOOK_MODES}
 
 
 def user_open_exposure(cur, user_id: int, mode: Optional[str] = None) -> Dict:

@@ -2,7 +2,7 @@
 ours: P&L from those fills is applied to a capital we set, not the real demo-account balance."""
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, Optional
 
 from app.adapters.db.paper_ledger_repository import STARTING_PAPER_BALANCE
 from app.adapters.db.position_repository import realized_pnl
@@ -27,11 +27,12 @@ def reload_demo(cur, user_id: int, amount: float) -> None:
     )
 
 
-def demo_equity(cur, user_id: int) -> Dict:
+def demo_equity(cur, user_id: int, realized: Optional[float] = None) -> Dict:
     """Demo money as cost-basis equity: capital + realized P&L since the last reload. Mirrors
-    paper's equity convention (open positions valued at cost), so the three buckets line up."""
+    paper's equity convention (open positions valued at cost), so the three buckets line up.
+    `realized` is the all-time realized demo P&L when the caller has already read it."""
     capital, base = demo_account(cur, user_id)
-    net = realized_pnl(cur, user_id, "demo") - base
+    net = (realized_pnl(cur, user_id, "demo") if realized is None else realized) - base
     return {
         "capital": round(capital, 2),
         "realized": round(net, 2),

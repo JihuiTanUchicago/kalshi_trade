@@ -389,6 +389,7 @@ def _researchable_markets(cur) -> List[Dict]:
 
 def me(ctx: Ctx):
     _sync_ui_cookie(ctx, ctx.user.get("ui_theme") if ctx.user.get("ui_theme") in UI_THEMES else "tau")
+    reads = billing.Reads(ctx.cur, ctx.uid)  # needs_card, auto_reload and credit_balance share one read each
     return {
         "user": {
             "id": ctx.user["id"], "email": ctx.user["email"], "name": ctx.user["name"],
@@ -404,10 +405,10 @@ def me(ctx: Ctx):
         "no_side_live_enabled": engine.NO_SIDE_LIVE_ENABLED,
         "is_admin": (ctx.user["email"] or "").lower() == ADMIN_EMAIL.lower(),
         "billing_enabled": billing.configured(),
-        "needs_card": _needs_card(ctx),
-        "auto_reload": _auto_reload_terms(ctx),
+        "needs_card": _needs_card(ctx, reads),
+        "auto_reload": _auto_reload_terms(ctx, reads),
         "free_bonus": float(billing.FREE_BONUS),
-        "credit_balance": round(repo.credit_balance(ctx.cur, ctx.uid), 4),
+        "credit_balance": round(reads.balance(), 4),
         "min_run_balance": float(billing.MIN_RUN_BALANCE),  # the headroom a research run needs to start
         "perps_live_available": kalshi_perps_trading.enabled(),  # hide the Funds perps box when live perps are off
         "markets": _researchable_markets(ctx.cur),
@@ -419,16 +420,21 @@ def _start_of_day_utc() -> datetime:
     return repo.now_utc().replace(hour=0, minute=0, second=0)
 
 
-def _mode_bucket(cur, uid: int, mode: str, open_pos: List[Dict], deps: List[Dict], day) -> Dict:
+def _mode_bucket(cur, uid: int, mode: str, open_pos: List[Dict], deps: List[Dict], day,
+                 realized: Optional[Tuple[float, float]] = None) -> Dict:
     """Money in one deployment-mode bucket (paper | demo | live), from that mode's own
-    positions and deployments only — so the three buckets never double-count each other."""
+    positions and deployments only — so the three buckets never double-count each other.
+    `realized` is (all time, since `day`) when the caller read every book's at once."""
     pos = [p for p in open_pos if p["mode"] == mode]
+    if realized is None:
+        realized = (repo.realized_pnl(cur, uid, mode), repo.realized_pnl(cur, uid, mode, day))
+    total, today = realized
     return {
         "open_at_cost": round(sum(float(p["qty"]) * float(p["entry_price"]) for p in pos), 2),
         "open_positions": len(pos),
         "running": sum(1 for d in deps if d["mode"] == mode and d["status"] == "running"),
-        "realized_pnl": round(repo.realized_pnl(cur, uid, mode), 2),
-        "today_pnl": round(repo.realized_pnl(cur, uid, mode, day), 2),
+        "realized_pnl": round(total, 2),
+        "today_pnl": round(today, 2),
     }
 
 
@@ -461,10 +467,11 @@ def dashboard(ctx: Ctx):
     curves = repo.deployment_curves(cur, ctx.uid)
     balance = repo.paper_balance(cur, ctx.uid)
     deposited = repo.paper_deposits(cur, ctx.uid)
+    realized = repo.realized_pnl_by_mode(cur, ctx.uid, day)  # every book's realized P&L in one read
     # Three mode buckets, each self-contained (real / sandbox / simulation). Paper + demo both
     # carry an app-controlled cash layer on top of the shared fields; live carries the real
     # Kalshi balance (money we never hold).
-    paper = _mode_bucket(cur, ctx.uid, "paper", open_pos, deps, day)
+    paper = _mode_bucket(cur, ctx.uid, "paper", open_pos, deps, day, realized["paper"])
     equity = balance + paper["open_at_cost"]
     paper.update(
         cash=round(balance, 2),
@@ -479,11 +486,11 @@ def dashboard(ctx: Ctx):
     )
     # Demo: real fills applied to the capital WE set. Equity = capital + realized-since-reload,
     # and the displayed realized P&L is net of the reload baseline (so a reload reads as $X flat).
-    demo = _mode_bucket(cur, ctx.uid, "demo", open_pos, deps, day)
-    de = repo.demo_equity(cur, ctx.uid)
+    demo = _mode_bucket(cur, ctx.uid, "demo", open_pos, deps, day, realized["demo"])
+    de = repo.demo_equity(cur, ctx.uid, realized=realized["demo"][0])
     demo.update(capital=de["capital"], equity=de["equity"], realized_pnl=de["realized"],
                 total_pnl=de["realized"], roi=de["roi"], before_reload=de["before_reload"])
-    live = _mode_bucket(cur, ctx.uid, "live", open_pos, deps, day)
+    live = _mode_bucket(cur, ctx.uid, "live", open_pos, deps, day, realized["live"])
     live.update(_live_balance(cur, ctx.uid))
     return {
         "paper": paper,
@@ -600,6 +607,22 @@ def _research_totals(cur, uid: int) -> Dict:
     return val
 
 
+LAST_DREAM_TTL = 60.0  # seconds; the run page polls every 2s and a dream lands at most once per run
+_LAST_DREAM: Dict[int, Tuple[float, Optional[Dict]]] = {}
+
+
+def _last_dream(cur, uid: int) -> Optional[Dict]:
+    """The run page's "Last check" line (repo.latest_dream_event), cached per user like the research
+    totals. That read walks every event of every run the user has (~1s at 6,000 runs and 600k events)
+    and the page asked for it on every 2s poll. The line can trail a new dream by up to a minute."""
+    hit = _LAST_DREAM.get(uid)
+    if hit and time.time() - hit[0] < LAST_DREAM_TTL:
+        return hit[1]
+    val = repo.latest_dream_event(cur, uid)
+    _LAST_DREAM[uid] = (time.time(), val)
+    return val
+
+
 def get_run(ctx: Ctx):
     run = repo.get_run(ctx.cur, ctx.uid, _int_param(ctx))
     if run is None or run["kind"] != "research":
@@ -609,7 +632,7 @@ def get_run(ctx: Ctx):
     # the gate (a run_forever run never reaches "succeeded", so we can't wait for it).
     strategies = repo.list_strategies(ctx.cur, ctx.uid, run_id=run["id"])
     pol = repo.get_policy(ctx.cur, ctx.uid)  # the self-evolving exploration policy (Tau-RSI)
-    dream = repo.latest_dream_event(ctx.cur, ctx.uid)
+    dream = _last_dream(ctx.cur, ctx.uid)
     _with_spent(ctx.cur, ctx.uid, [run])
     _mark_example([run])
     # How long it has waited for a research worker (or gone quiet), timed by the server so a reload
@@ -646,23 +669,23 @@ def _rsi_block(pol: Optional[Dict], dream: Optional[Dict]) -> Dict:
     }
 
 
-def _needs_card(ctx: Ctx) -> bool:
+def _needs_card(ctx: Ctx, reads: Optional[billing.Reads] = None) -> bool:
     """True when payments are live but the user has no card on file. Agent usage
     is metered per token, so we require a card before any run — the free credits
     unlock the moment one is saved."""
     if not billing.configured():
         return False
-    cust = repo.get_stripe_customer(ctx.cur, ctx.uid)
+    cust = (reads or billing.Reads(ctx.cur, ctx.uid)).customer()
     return not (cust and cust.get("default_pm_id"))
 
 
-def _auto_reload_terms(ctx: Ctx) -> Optional[Dict]:
+def _auto_reload_terms(ctx: Ctx, reads: Optional[billing.Reads] = None) -> Optional[Dict]:
     """What auto-reload will charge the saved card, for the autopilot card's cost line: the credits
     added, the card charge (credits plus the top-up fee) and the balance that triggers it. The same
     floors billing.auto_reload applies. None when payments are off, no card is saved, or it is off."""
     if not billing.configured():
         return None
-    cust = repo.get_stripe_customer(ctx.cur, ctx.uid)
+    cust = (reads or billing.Reads(ctx.cur, ctx.uid)).customer()
     if not (cust and cust.get("default_pm_id") and cust.get("auto_reload")):
         return None
     amount = max(billing.AUTORELOAD_AMOUNT, Decimal(str(cust.get("reload_amount") or billing.AUTORELOAD_AMOUNT)))
@@ -1611,7 +1634,8 @@ def autopilot_status(ctx: Ctx):
     live_run = [d for d in deps if d["mode"] == "live" and d["status"] == "running"]
     paper_run = [d for d in deps if d["mode"] == "paper" and d["status"] == "running"]
     demo_run = [d for d in deps if d["mode"] == "demo" and d["status"] == "running"]
-    gates_ok = bool(engine.LIVE_TRADING_ENABLED and repo.get_kalshi_key(cur, ctx.uid) is not None)
+    kalshi_connected = repo.get_kalshi_key(cur, ctx.uid) is not None  # read once: the live gate and the badge
+    gates_ok = bool(engine.LIVE_TRADING_ENABLED and kalshi_connected)
     live_on = bool(u.get("autopilot_live")) and gates_ok and bool(u.get("autopilot"))
     mode = "live" if (live_on and live_run) else ("live-armed" if live_on else ("paper" if u.get("autopilot") else "off"))
     today_live = round(repo.realized_pnl(cur, ctx.uid, "live", _start_of_day_utc()), 2)
@@ -1619,7 +1643,8 @@ def autopilot_status(ctx: Ctx):
     # When autopilot is ON but can't spend (no card, or balance below the per-run floor), the worker
     # silently skips the user via billing.is_ready — the SAME gate, read here only to surface WHY the
     # panel is quiet so it doesn't look broken. Never changes the gate; purely a status readout.
-    billing_blocked = bool(u.get("autopilot")) and billing.configured() and not billing.is_ready(cur, ctx.uid)
+    reads = billing.Reads(cur, ctx.uid)  # the readout below reuses the gate's card and balance reads
+    billing_blocked = bool(u.get("autopilot")) and billing.configured() and not billing.is_ready(cur, ctx.uid, reads)
     review = repo.active_agent_run(cur, ctx.uid, "review") if u.get("autopilot") else None
     review_wait = _run_wait(review) or {"overdue": False}
     # Paper -> live progress: the running paper strategy closest to the realistic-trade gate, so a
@@ -1648,7 +1673,7 @@ def autopilot_status(ctx: Ctx):
         "autopilot": bool(u.get("autopilot")),
         "autopilot_live": bool(u.get("autopilot_live")),
         "live_enabled": bool(engine.LIVE_TRADING_ENABLED),
-        "kalshi_connected": repo.get_kalshi_key(cur, ctx.uid) is not None,
+        "kalshi_connected": kalshi_connected,
         "mode": mode,
         "live_running": len(live_run), "paper_running": len(paper_run), "demo_running": len(demo_run),
         "today_live_pnl": today_live,
@@ -1667,9 +1692,9 @@ def autopilot_status(ctx: Ctx):
         "model": u.get("autopilot_model") or catalog.DEFAULT_KEY,  # the model the autopilot's own runs use
         "focus": agent.focus_tokens(u),  # the user's binding market focus ([] = any market)
         "billing_blocked": billing_blocked,
-        "billing_reason": (("card" if _needs_card(ctx) else "credits") if billing_blocked else None),
+        "billing_reason": (("card" if _needs_card(ctx, reads) else "credits") if billing_blocked else None),
         # Warn before the pause, not after: days of credit left when that's under three.
-        "credits_low_days": (_credits_running_low(cur, ctx.uid)
+        "credits_low_days": (_credits_running_low(cur, ctx.uid, reads)
                              if u.get("autopilot") and billing.configured() and not billing_blocked else None),
         "paper_progress": paper_progress,
         "paper_open": int(repo.user_open_exposure(cur, ctx.uid, "paper")["n"]) if paper_run else 0,
@@ -2085,10 +2110,10 @@ def _customer_id(ctx: Ctx) -> str:
     return cid
 
 
-def _credit_runway(cur, uid: int):
+def _credit_runway(cur, uid: int, reads: Optional[billing.Reads] = None):
     """(balance, last-7-day usage spend, days the balance lasts at that pace). Research pauses at
     zero, so this is how long autopilot keeps working; None when there is no recent usage."""
-    balance = repo.credit_balance(cur, uid)
+    balance = (reads or billing.Reads(cur, uid)).balance()
     spent_7d = repo.credit_spent_total(cur, uid, repo.now_utc() - timedelta(days=7))
     runway = round(balance / (spent_7d / 7), 1) if spent_7d > 0 and balance > 0 else None
     return balance, spent_7d, runway
@@ -2097,13 +2122,14 @@ def _credit_runway(cur, uid: int):
 CREDIT_RUNWAY_WARN_DAYS = 3
 
 
-def _credits_running_low(cur, uid: int):
+def _credits_running_low(cur, uid: int, reads: Optional[billing.Reads] = None):
     """Days of credit left when autopilot will pause within CREDIT_RUNWAY_WARN_DAYS and auto-reload
     won't top it up; None otherwise. A readout for the panel, never a gate."""
-    cust = repo.get_stripe_customer(cur, uid)
+    reads = reads or billing.Reads(cur, uid)
+    cust = reads.customer()
     if cust and cust.get("auto_reload") and cust.get("default_pm_id"):
         return None
-    runway = _credit_runway(cur, uid)[2]
+    runway = _credit_runway(cur, uid, reads)[2]
     return runway if runway is not None and runway < CREDIT_RUNWAY_WARN_DAYS else None
 
 
