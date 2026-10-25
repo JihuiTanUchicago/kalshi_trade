@@ -1111,7 +1111,7 @@
     return `<tr class="${opts.land ? 'washed' : ''}">${pickCell}
       <td class="name" data-lab="">${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}<div class="sub-fig cellwrap">${esc(s.thesis)}</div></td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(s.market))} \u00b7 ${esc(dirLabel(s.direction))}</span></td>
-      <td class="num" data-lab="${oos ? 'Unseen P&amp;L' : 'Tested P&amp;L'}">${m.pnl == null ? '\u2014' : money(m.pnl)}${oos ? '' : '<div class="sub-fig">tested only</div>'}</td>
+      <td class="num" data-lab="${oos ? 'Backtest P&amp;L (unseen)' : 'Backtest P&amp;L (tested)'}">${m.pnl == null ? '\u2014' : money(m.pnl)}${oos ? '' : '<div class="sub-fig">tested only</div>'}</td>
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
       <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>
       <td data-lab="Tried"${tried === '\u2014' ? ' class="nil"' : ''}>${esc(tried)}</td>
@@ -1524,7 +1524,7 @@
       <a class="win-title" href="/strategies/${s.id}"><b>${esc(s.title)}</b></a>
       <span class="win-meta">${esc(marketShort(s.market))} · ${esc(dirLabel(s.direction))}</span>
       <div class="win-foot">
-        <span class="win-pnl"><span class="lab">Unseen P&amp;L</span><span class="fig sm ${pnl > 0 ? 'tint pos' : pnl < 0 ? 'tint neg' : ''}">${pnl == null ? '—' : usd(pnl, true)}</span></span>
+        <span class="win-pnl"><span class="lab">Backtest P&amp;L (unseen)</span><span class="fig sm ${pnl > 0 ? 'tint pos' : pnl < 0 ? 'tint neg' : ''}">${pnl == null ? '—' : usd(pnl, true)}</span></span>
         <span class="win-act"><a class="btn sm" href="/strategies/${s.id}">Open</a><button class="btn sm primary" type="button" data-dig="${s.id}">${ICON.spark2}Dig deeper</button></span>
       </div></div>`;
   }
