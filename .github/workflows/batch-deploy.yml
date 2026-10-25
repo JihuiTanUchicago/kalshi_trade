@@ -6,7 +6,7 @@ name: Batch deploy main
 # UI-only diff, and a failed run (GitHub mails the repo owner) when merges wait > 90 min to ship.
 # Runs here rather than in a Claude session so a session ending can't silently stop deploys.
 # Also runs after each CI run on main: GitHub delays or drops scheduled runs under load (none fired
-# in the first hour). A CI-triggered run waits until the last deploy is 25 min old, then ships.
+# in the first hour). A CI-triggered run waits until the last deploy is 15 min old, then ships.
 # Same deploy keys and production environment as deploy.yml / deploy-collector.yml.
 
 on:
@@ -33,7 +33,7 @@ jobs:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 50   # up to 25 min waiting out the batch gap, then the deploy
+    timeout-minutes: 40   # up to 15 min waiting out the batch gap, then the deploy
     steps:
       - name: Check out main
         uses: actions/checkout@v4
