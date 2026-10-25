@@ -230,3 +230,13 @@ def test_both_downloads_share_one_guard():
     for fn in (server.billing_receipt, server.trades_csv):
         src = inspect.getsource(fn)
         assert "_csv_rows(" in src and "csv.writer(" not in src, fn.__name__
+
+
+def test_receipt_amounts_round_half_up_from_the_exact_decimal():
+    from decimal import Decimal
+
+    from app import server
+
+    assert server._usd4(Decimal("-4.666650")) == "-4.6667"  # through a float this printed -4.6666
+    assert server._usd4(Decimal("20.000000")) == "20.0000"
+    assert server._usd4(13.7) == "13.7000"

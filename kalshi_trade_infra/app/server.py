@@ -19,7 +19,7 @@ import time
 import traceback
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -2360,6 +2360,12 @@ def _csv_rows(buf) -> Callable[[List[Any]], Any]:
     return lambda row: w.writerow([_csv_safe(c) for c in row])
 
 
+def _usd4(v) -> str:
+    """A ledger amount to 4 places, rounded half up from its exact decimal: through a float, -4.666650
+    printed -4.6666."""
+    return str(Decimal(str(v)).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
+
+
 def billing_receipt(ctx: Ctx):
     """Full Credits & Usage history as a downloadable CSV receipt. Memos can carry run and strategy
     names, so every cell is formula-safe."""
@@ -2371,12 +2377,12 @@ def billing_receipt(ctx: Ctx):
     row(["Tau - Credits & Usage receipt"])
     row(["Account", user.get("email", "")])
     row(["Generated (UTC)", repo.now_utc().replace(microsecond=0).isoformat()])
-    row(["Current balance (USD)", "%.4f" % repo.credit_balance(cur, ctx.uid)])
-    row(["Total spent (USD)", "%.4f" % repo.credit_spent_total(cur, ctx.uid)])
+    row(["Current balance (USD)", _usd4(repo.credit_balance(cur, ctx.uid))])
+    row(["Total spent (USD)", _usd4(repo.credit_spent_total(cur, ctx.uid))])
     row([])
     row(["Date (UTC)", "Type", "Amount (USD)", "Memo"])
     for r in repo.credit_rows(cur, ctx.uid, 100000):  # full history, newest first
-        row([r["created_at"], r["kind"], "%.4f" % float(r["amount_usd"]), r["memo"] or ""])
+        row([r["created_at"], r["kind"], _usd4(r["amount_usd"]), r["memo"] or ""])
     fname = "tau-credits-%s.csv" % repo.now_utc().strftime("%Y%m%d")
     return ("download", fname, "text/csv; charset=utf-8", buf.getvalue())
 
