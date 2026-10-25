@@ -206,6 +206,38 @@ def paper_progress(cur, user_id: int, strategy_ids: List[int], ref_prefix: str =
     return {int(r["strategy_id"]): (int(r["trips"] or 0), float(r["pnl"] or 0)) for r in cur.fetchall()}
 
 
+def book_trade_stats(cur, user_id: int, strategy_ids: List[int], ref_prefix: str = "sim:") -> Dict[int, Dict[str, Dict]]:
+    """{strategy_id: {mode: {trades, pnl, pnl_sq, wins, cost}}} over each strategy's completed round
+    trips, one book (mode) at a time and never summed across books, for the backtest comparison
+    (services.backtest_check). A trade is one entry fill: partial-exit slices share its order_ref and
+    are summed (a row with no order_ref is its own trade), and a trade with a slice still open is
+    left out until it closes. Paper counts only fills through the simulated venue (order_ref 'sim:'),
+    as the track record does. Every deployment of the strategy counts, stopped ones included. Read
+    through idx_pos_dep from the strategies' deployments, like the paper readouts above."""
+    if not strategy_ids:
+        return {}
+    marks = ",".join(["%s"] * len(strategy_ids))
+    cur.execute(
+        """SELECT t.strategy_id, t.mode, COUNT(*) AS trades, COALESCE(SUM(t.pnl),0) AS pnl,
+                  COALESCE(SUM(t.pnl * t.pnl),0) AS pnl_sq, SUM(CASE WHEN t.pnl > 0 THEN 1 ELSE 0 END) AS wins,
+                  COALESCE(SUM(t.cost),0) AS cost FROM (
+             SELECT d.strategy_id, p.mode, SUM(p.pnl) AS pnl, SUM(p.qty * p.entry_price) AS cost
+             FROM """ + _PAPER_SOURCE + """
+             WHERE d.user_id=%s AND d.strategy_id IN (""" + marks + """)
+               AND (p.mode <> 'paper' OR p.order_ref LIKE %s)
+             GROUP BY d.strategy_id, p.mode, p.deployment_id, COALESCE(p.order_ref, CONCAT('row:', p.id))
+             HAVING SUM(CASE WHEN p.status='open' THEN 1 ELSE 0 END)=0) t
+           GROUP BY t.strategy_id, t.mode""",
+        (user_id, *strategy_ids, ref_prefix + "%"),
+    )
+    out: Dict[int, Dict[str, Dict]] = {}
+    for r in cur.fetchall():
+        out.setdefault(int(r["strategy_id"]), {})[r["mode"]] = {
+            "trades": int(r["trades"] or 0), "pnl": float(r["pnl"] or 0), "pnl_sq": float(r["pnl_sq"] or 0),
+            "wins": int(r["wins"] or 0), "cost": float(r["cost"] or 0)}
+    return out
+
+
 def paper_event_counts(cur, user_id: int, strategy_ids: List[int], ref_prefix: str = "sim:") -> Dict[int, int]:
     """{strategy_id: separate events among its closed realistic paper positions}, in one query. An
     event is the ticker minus its last segment, as agent._trip_event_key groups the live gate's

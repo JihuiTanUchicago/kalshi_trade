@@ -1190,6 +1190,11 @@
   // Paused deployments need the user ("Resume or remove it on Deploy" sends them here), so they lead.
   const pausedFirst = (ds) => [...ds].sort((a, b) => (b.status === 'paused') - (a.status === 'paused'));
   const deploymentTable = (rows, controls) => `<div class="sheet"><table class="stack t-dep">${DEP_HEAD(controls)}<tbody>${rows}</tbody></table></div>`;
+  // One plain line on how a book is doing against its backtest, written by the server
+  // (services/backtest_check.py): that book's realized per-trade P&L and win rate against the
+  // backtest's, "too early to tell" under 10 trades. One book per line; books are never added up.
+  // Each signed amount stays on one line (a phone would otherwise break between the minus and the $).
+  const btCheckLine = (c, tag = 'div') => c && c.line ? `<${tag} class="sub-fig bt-check bt-${esc(c.verdict)}">${esc(c.line).replace(/[+\u2212]\$[\d,]+\.\d\d/g, (m) => `<span class="amt">${m}</span>`)}</${tag}>` : '';
   function deploymentSlip(d, regs, controls) {
     const exp = d.backtest && d.backtest.out_of_sample;
     // Realized beside what the backtest's unseen-data average per trade says the same trades should
@@ -1203,7 +1208,7 @@
         <button class="btn sm danger" data-dep="${d.id}" data-act="stop">Remove</button></td>` : '';
     return `<tr class="${live ? 'live-row' : ''}">
       <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
-        <div class="sub-fig">$${esc(d.stake)} a trade, up to ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' \u00b7\u00a0' + esc(d.status_reason) : ''}</div></td>
+        <div class="sub-fig">$${esc(d.stake)} a trade, up to ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' \u00b7\u00a0' + esc(d.status_reason) : ''}</div>${btCheckLine(d.backtest_check)}</td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(d.market))}</span></td>
       <td data-lab="Status">${d.status === 'running' ? modeTag : mark(d.status, live)}</td>
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
@@ -2560,6 +2565,8 @@
       const exp = ds.reduce((a, d) => a + (+d.closed_trades || 0) * per * ((+d.stake || stake) / stake), 0);
       return `<p class="sub-fig real-pace">At the backtest's unseen-data pace, ${n} trade${n === 1 ? '' : 's'} would have made ${usd(exp, true)}${n < 10 ? ' ·\u00a0too few trades to judge yet' : ''}</p>`;
     };
+    // A server that compares each book with the backtest sends backtest_checks; it replaces the pace line.
+    const checks = Array.isArray(s.backtest_checks) ? s.backtest_checks : null;
     const order = ['live', 'demo', 'paper'], label = { live: 'Live', demo: 'Demo', paper: 'Paper' }, cls = { live: 'live', demo: 'dep', paper: '' };
     const lines = order.map((mode) => {
       const ds = (s.deployments || []).filter((d) => d.mode === mode);
@@ -2567,7 +2574,7 @@
       const pnl = ds.reduce((a, d) => a + (+d.realized_pnl || 0), 0), n = ds.reduce((a, d) => a + (+d.closed_trades || 0), 0);
       const open = ds.reduce((a, d) => a + (+d.open_positions || 0), 0);
       const since = ds.map((d) => d.created_at).filter(Boolean).sort()[0];
-      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span> ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}` : 'No closed trades yet'}${open ? ` ·\u00a0${open} open` : ''}${since ? ` ·\u00a0deployed ${when(since)}` : ''}</p>${pace(ds, n)}${pausedLine(ds)}`;
+      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span> ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}` : 'No closed trades yet'}${open ? ` ·\u00a0${open} open` : ''}${since ? ` ·\u00a0deployed ${when(since)}` : ''}</p>${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
     }).join('');
     return lines ? `<section class="real-record" aria-label="Since deploying"><h3 class="paper-h">Since deploying</h3>${lines}</section>` : '';
   }

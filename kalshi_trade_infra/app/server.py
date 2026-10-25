@@ -33,6 +33,7 @@ from app import models_catalog as catalog
 from app import repository as repo
 from app import research_repository as research_repo
 from app import spec as specmod
+from app.services import backtest_check
 from app import track_record
 from app import webperf
 from app import worker
@@ -1169,8 +1170,36 @@ def get_strategy(ctx: Ctx):
         # The ladder's demo rung: why its demo book can't trade, or (not on demo yet) what demo needs.
         demo_health=None if specmod.has_perpetual_market(s["spec"], s.get("market")) else
         _demo_health(ctx.cur, ctx.uid, deps, stake=(s["spec"].get("sizing") or {}).get("stake")),
+        # Each book's realized per-trade P&L against the backtest's, one line per book (display only).
+        # The page shows them under its current deployments, so with none there is nothing to read.
+        backtest_checks=_backtest_checks(ctx.cur, ctx.uid, {s["id"]: s}).get(s["id"], []) if deps else [],
     )
     return out
+
+
+BACKTEST_CHECK_TTL = 60.0  # seconds; a book's figures move only when one of its trades closes
+_BACKTEST_CHECKS: Dict[Tuple[int, Tuple[int, ...]], Tuple[float, Dict[int, List[Dict]]]] = {}
+
+
+def _backtest_checks(cur, uid: int, strategies: Dict[int, Dict]) -> Dict[int, List[Dict]]:
+    """{strategy_id: [one comparison per book]} (services.backtest_check) for {strategy_id: a row with
+    the strategy's spec and result}: each book's realized per-trade P&L and win rate against the
+    strategy's backtest, never summed across books. A per-user TTL cache, since the Deploy board
+    polls; display only."""
+    if not strategies:
+        return {}
+    key = (uid, tuple(sorted(strategies)))
+    hit = _BACKTEST_CHECKS.get(key)
+    if hit and time.time() - hit[0] < BACKTEST_CHECK_TTL:
+        return hit[1]
+    stats = repo.book_trade_stats(cur, uid, list(strategies))
+    val = {sid: backtest_check.checks(stats.get(sid, {}), s.get("result"),
+                                      ((s.get("spec") or {}).get("sizing") or {}).get("stake"))
+           for sid, s in strategies.items()}
+    if len(_BACKTEST_CHECKS) > 5000:
+        _BACKTEST_CHECKS.clear()
+    _BACKTEST_CHECKS[key] = (time.time(), val)
+    return val
 
 
 def what_if(ctx: Ctx):
@@ -1218,8 +1247,12 @@ def strategy_dev_curve(ctx: Ctx):
 def list_deployments(ctx: Ctx):
     curves = repo.deployment_curves(ctx.cur, ctx.uid)
     deps = repo.list_deployments(ctx.cur, ctx.uid)
+    checks = _backtest_checks(ctx.cur, ctx.uid, {d["strategy_id"]: d for d in deps})
     return {
-        "deployments": [_deployment_out(d, curves.get(d["id"], [])) for d in deps],
+        # Each row carries its own book's backtest comparison (same strategy, same mode).
+        "deployments": [{**_deployment_out(d, curves.get(d["id"], [])),
+                         "backtest_check": next((c for c in checks.get(d["strategy_id"], []) if c["mode"] == d["mode"]), None)}
+                        for d in deps],
         "demo_health": _demo_health(ctx.cur, ctx.uid, deps),
         "open_positions": _with_marks(repo.user_positions(ctx.cur, ctx.uid, "open")),
         "recent_closed": repo.user_positions(ctx.cur, ctx.uid, "closed", 20),
