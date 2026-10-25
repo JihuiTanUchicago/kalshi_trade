@@ -3066,3 +3066,68 @@ test('a hypothesis in the log says its search-data result and verdict in plain w
   assert.match(log, /class="hx-tag pass">Verdict/);
   assert.match(log, /On the history it searched: \+\$4\.50 · 8 trades<button type="button" class="info" data-glo="insample"/);
 });
+
+test('a returning user reads what happened since the last visit at the top of the dashboard', async () => {
+  const since = {at: '2026-10-25T08:00:00+00:00', first: false,
+    books: {paper: {pnl: 2.42, trades: 3}, demo: {pnl: -1.1, trades: 1}, live: {pnl: 0, trades: 0}},
+    passed: {n: 4, items: [{id: 9, title: '<b>Rain</b>'}, {id: 8, title: 'Fade'}, {id: 7, title: 'Tails'}]},
+    autopilot: {deploy: 1, pause: 2, set_risk: 1}, runs: {succeeded: 2, failed: 1}};
+  const deployments = [{id: 3, strategy_id: 3, title: 'Paused one', market: 'btc15m', mode: 'paper', status: 'paused',
+    status_reason: 'Autopilot: lost $12.00', stake: 5, max_positions: 20, realized_pnl: 0, unrealized_pnl: null,
+    closed_trades: 0, open_positions: 0, curve: [], created_at: '2026-10-25T08:00:00Z'}];
+  const strip = async (extra) => {
+    const f = frontend({fetchImpl: path => {
+      if (path.startsWith('/api/dashboard')) return response({...dashboardData(), deployments, ...extra});
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me.user.autopilot = true;
+    await f.viewDashboard(); await flush();
+    return f;
+  };
+  const f = await strip({since});
+  const text = f.root.querySelector('#dash-since').innerHTML;
+  assert.match(text, /Since your last visit/);
+  // Each book on its own, never added together; a book with no trades and nothing deployed stays out.
+  assert.match(text, /<b>Demo<\/b> <span class="neg">−\$1\.10<\/span> on 1 trade<\/span>/);
+  assert.match(text, /<b>Paper<\/b> <span class="pos">\+\$2\.42<\/span> on 3 trades<\/span>/);
+  assert.doesNotMatch(text, /<b>Live<\/b>|\$1\.32/);
+  assert.match(text, /4 strategies passed: <a href="\/strategies\/9">&lt;b&gt;Rain&lt;\/b&gt;<\/a>, <a href="\/strategies\/8">Fade<\/a>, <a href="\/strategies\/7">Tails<\/a>, <a href="\/strategies">1 more<\/a>/);
+  assert.match(text, /3 research sessions started/);
+  assert.match(text, /It put 1 on paper, paused 2, 1 other change\./);
+  assert.match(text, /<a href="#dash-paused">Paused one<\/a> is paused<span class="since-sub">: lost \$12\.00<\/span>/);
+  assert.match(text, /<a href="\/research">1 research session failed<\/a>/);
+  const host = f.root.querySelector('main').innerHTML;
+  assert.ok(host.indexOf('id="dash-since"') >= 0 && host.indexOf('id="dash-since"') < host.indexOf('id="dash-ap"'));
+  // A quiet stretch says so plainly; no last visit known yet reads as the last 24 hours.
+  const quiet = await strip({deployments: [], since: {at: '2026-10-25T08:00:00+00:00', first: true, books: {paper: {pnl: 0, trades: 0}},
+    passed: {n: 0, items: []}, autopilot: {}, runs: {}}});
+  const q = quiet.root.querySelector('#dash-since').innerHTML;
+  assert.match(q, /Last 24 hours/); assert.doesNotMatch(q, /Since your last visit/);
+  for (const said of ['No trades closed.', 'Nothing new passed.', 'On. It made no changes.', 'Nothing.']) assert.ok(q.includes(said), said);
+  // An older server without the block: no strip.
+  assert.equal((await strip({})).root.querySelector('#dash-since'), null);
+});
+
+test('the last visit lives in a cookie: one visit until 30 minutes pass, then since that visit', async () => {
+  const paths = [];
+  const f = frontend({fetchImpl: path => {
+    paths.push(path);
+    if (path.startsWith('/api/dashboard')) return response({...dashboardData(), deployments: []});
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  const now = () => Math.floor(Date.now() / 1000);
+  await f.viewDashboard(); await flush();
+  assert.equal(paths.filter((p) => p.startsWith('/api/dashboard')).at(-1), '/api/dashboard');  // first visit: the server's last 24h
+  assert.match(f.document.cookie, /^tau_visit=0\.\d+; path=\/; max-age=7776000; SameSite=Lax$/);
+  await f.viewDashboard(); await flush();
+  assert.equal(paths.filter((p) => p.startsWith('/api/dashboard')).at(-1), '/api/dashboard');  // a reload is the same visit
+  const left = now() - 7200;
+  f.document.cookie = `tau_visit=0.${left}`;
+  await f.viewDashboard(); await flush();
+  assert.equal(paths.filter((p) => p.startsWith('/api/dashboard')).at(-1), '/api/dashboard?since=' + left);
+  assert.match(f.document.cookie, new RegExp('^tau_visit=' + left + '\\.\\d+;'));
+  await f.viewDashboard(); await flush();  // reloaded a minute later: still since that visit
+  assert.equal(paths.filter((p) => p.startsWith('/api/dashboard')).at(-1), '/api/dashboard?since=' + left);
+});

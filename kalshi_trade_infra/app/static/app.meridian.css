@@ -2540,3 +2540,23 @@ body.landing-body .apf { display: none; }
   .strat-quick .hint { margin: 0; max-width: 46ch; }
 }
 @media (max-width: 560px) { .strat-quick .btn { width: 100%; } }
+
+/* Dashboard: "Since your last visit" (or the last 24 hours), the first thing a returning user reads. */
+.since { margin: 14px 0 18px; padding: 12px 16px 10px; border: 1px solid var(--rule); background: var(--stock-raised); }
+.since-h { margin: 0 0 6px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; color: var(--ink-3); }
+.since-at { letter-spacing: 0; text-transform: none; font-weight: 400; }
+.since-list { margin: 0; display: grid; gap: 4px; }
+.since-row { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 3px 0; }
+.since-row dt { font-size: 13px; color: var(--ink-3); }
+.since-row dd { margin: 0; font-size: 14.5px; line-height: 1.45; color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
+.since-row.needs dd { color: var(--ink); }
+.since-row.needs dt { color: var(--signal, var(--ink-2)); font-weight: 600; }
+.since-book { white-space: nowrap; }
+.since .sep { margin: 0 8px; color: var(--ink-3); }
+.since-sub { color: var(--ink-3); }
+@media (max-width: 560px) {
+  .since { padding: 10px 12px 8px; }
+  .since-row { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .since-row dt { font-size: 12px; }
+  .since-book { white-space: normal; }
+}

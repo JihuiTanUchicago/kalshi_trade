@@ -22,6 +22,19 @@ def strategies_passed_since(cur, user_id: int, since) -> int:
     return int((cur.fetchone() or {}).get("n") or 0)
 
 
+def passed_since(cur, user_id: int, since, limit: int = 3) -> Dict:
+    """Strategies of the user's own that passed since `since`, newest first: {"n": all of them,
+    "items": [{"id", "title"}] the newest `limit`}. One read through idx_strat_user (user_id, status,
+    created_at). Leaves out the seeded example and copies friends shared, which aren't new results."""
+    cur.execute("""SELECT id, title, COUNT(*) OVER () AS n FROM app_strategies
+                   WHERE user_id=%s AND status='passed' AND created_at>=%s
+                   AND (direction IS NULL OR direction<>%s) AND shared_from_user_id IS NULL
+                   ORDER BY id DESC LIMIT %s""",
+                (user_id, since, DEMO_DIRECTION, int(limit)))
+    rows = cur.fetchall()
+    return {"n": int(rows[0]["n"]) if rows else 0, "items": [{"id": r["id"], "title": r["title"]} for r in rows]}
+
+
 def insert_strategy(
     cur, user_id: int, run_id: Optional[int], parent_id: Optional[int], market: str, direction: str,
     title: str, thesis: str, spec: Dict, status: str, result: Optional[Dict],

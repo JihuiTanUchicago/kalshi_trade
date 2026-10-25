@@ -39,7 +39,7 @@ from app.adapters.db.agent_run_repository import (  # noqa: F401
 )
 from app.adapters.db.strategy_repository import (  # noqa: F401
     DEMO_DIRECTION, NOISE_STATUSES, count_strategies, delete_strategy, get_strategy,
-    insert_strategy, list_strategies, set_strategy_outcome, share_strategy, strategies_passed_since,
+    insert_strategy, list_strategies, passed_since, set_strategy_outcome, share_strategy, strategies_passed_since,
     _strategy_filter_sql, strategy_records, _strategy_row,
 )
 from app.adapters.db.order_latency_repository import (  # noqa: F401
@@ -63,7 +63,7 @@ from app.adapters.db.position_repository import (  # noqa: F401
     score_early_exit, unscored_early_exits, update_marks, user_open_exposure, user_positions,
 )
 from app.adapters.db.paper_ledger_repository import (  # noqa: F401
-    STARTING_PAPER_BALANCE, add_ledger, ledger_rows, lock_user, paper_balance, paper_deposits,
+    STARTING_PAPER_BALANCE, add_ledger, ledger_rows, lock_user, paper_balance, paper_deposits, paper_ledger_summary,
     paper_reset_at, reset_paper_account,
 )
 from app.adapters.db.demo_capital_repository import (  # noqa: F401
@@ -74,7 +74,7 @@ from app.adapters.db.demo_record_repository import (  # noqa: F401
     insert_demo_sweep,
 )
 from app.adapters.db.deployment_repository import (  # noqa: F401
-    _DEPLOYMENT_SELECT, _PAPER_SOURCE, autopilot_paper_week, claim_decision, create_deployment, deployment_closed_stats,
+    _DEPLOYMENT_SELECT, _PAPER_SOURCE, activity_since, autopilot_paper_week, claim_decision, create_deployment, deployment_closed_stats,
     deployment_closed_totals, deployment_order_refs, deployments_with_open_positions, get_deployment, list_deployments,
     list_deployments_brief, list_deployments_for_display, paper_event_counts,
     paper_fills_for_gate, paper_progress, paper_round_trips, paused_deployments_with_open_positions,

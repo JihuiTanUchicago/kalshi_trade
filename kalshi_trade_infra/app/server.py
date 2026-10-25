@@ -513,10 +513,11 @@ def dashboard(ctx: Ctx):
             unreal_by_dep[p["deployment_id"]] = round(unreal_by_dep.get(p["deployment_id"], 0.0) + u, 2)
     deps = repo.list_deployments_for_display(cur, ctx.uid)
     curves = repo.deployment_curves(cur, ctx.uid)
-    balance = repo.paper_balance(cur, ctx.uid)
-    deposited = repo.paper_deposits(cur, ctx.uid)
-    # Every book's realized P&L and closed-trade count, in one read.
-    realized, closed = repo.closed_book_totals(cur, ctx.uid, day)
+    ledger = repo.paper_ledger_summary(cur, ctx.uid)  # balance, deposits and reset: one read
+    balance, deposited = ledger["balance"], ledger["deposited"]
+    visit, first = _visit_since(ctx.query.get("since"))
+    # Every book's realized P&L and closed-trade count (today and since the last visit), in one read.
+    realized, closed, recent = repo.closed_book_totals(cur, ctx.uid, day, visit)
     # Three mode buckets, each self-contained (real / sandbox / simulation). Paper + demo both
     # carry an app-controlled cash layer on top of the shared fields; live carries the real
     # Kalshi balance (money we never hold).
@@ -531,7 +532,7 @@ def dashboard(ctx: Ctx):
         daily=repo.daily_pnl(cur, ctx.uid, "paper"),
         # total_pnl restarts at a reset (the ledger is wiped), so its label says "since reset", not
         # "all time", while the track record still counts every closed trade.
-        reset_at=repo.paper_reset_at(cur, ctx.uid),
+        reset_at=ledger["reset_at"],
     )
     # Demo: real fills applied to the capital WE set. Equity = capital + realized-since-reload,
     # and the displayed realized P&L is net of the reload baseline (so a reload reads as $X flat).
@@ -554,7 +555,35 @@ def dashboard(ctx: Ctx):
         "deployments": [_deployment_out(d, curves.get(d["id"], []), unreal_by_dep.get(d["id"])) for d in deps],
         "agents": repo.active_run_counts(cur, ctx.uid),
         "freshness": _freshness(cur),
+        "since": _since_visit(cur, ctx.uid, visit, first, recent),
     }
+
+
+SINCE_MAX = timedelta(days=7)    # an older last visit reads as the last 7 days
+SINCE_FIRST = timedelta(hours=24)  # no last visit known (first visit on this device): the last 24h
+
+
+def _visit_since(raw) -> Tuple[datetime, bool]:
+    """The start of "since your last visit" from the dashboard's ?since= (epoch seconds, kept in a
+    cookie by the page), clamped to the last 7 days. Missing or unreadable: the last 24 hours, and
+    `first` is True so the strip says "Last 24 hours" instead."""
+    now = repo.now_utc()
+    try:
+        at = datetime.fromtimestamp(int(str(raw)), tz=timezone.utc).replace(tzinfo=None)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return now - SINCE_FIRST, True
+    return min(max(at, now - SINCE_MAX), now), False
+
+
+def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict) -> Dict:
+    """The dashboard's "since your last visit" strip: each book's realized P&L and closed trades
+    since then (from the books' one pass; books are never added together), the strategies that
+    passed, the autopilot's own changes and the research sessions started. Two reads."""
+    act = repo.activity_since(cur, uid, visit)
+    return {"at": visit, "first": first,
+            "books": {m: {"pnl": round(pnl, 2), "trades": n} for m, (pnl, n) in recent.items()},
+            "passed": repo.passed_since(cur, uid, visit),
+            "autopilot": act["autopilot"], "runs": act["runs"]}
 
 
 TRACK_RECORD_TTL = 60.0  # seconds; the record moves only when a trade closes

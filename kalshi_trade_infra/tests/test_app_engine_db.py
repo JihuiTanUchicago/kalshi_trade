@@ -701,10 +701,50 @@ def test_the_dashboard_and_strategy_list_reads_answer_as_the_ones_they_replace(c
     assert stopped["id"] not in by_id and by_id[empty["id"]]["closed_trades"] == 0
     assert (by_id[a["id"]]["closed_trades"], by_id[a["id"]]["wins"], by_id[a["id"]]["open_positions"]) == (4, 2, 1)
 
-    realized, counts = repo.closed_book_totals(cur, uid, day)
+    realized, counts, none = repo.closed_book_totals(cur, uid, day)
     assert realized == {m: (repo.realized_pnl(cur, uid, m), repo.realized_pnl(cur, uid, m, day)) for m in ("paper", "demo", "live")}
     assert counts == repo.closed_trade_counts(cur, uid) == {"paper": 6, "demo": 1}
     assert realized["paper"] == (pytest.approx(2.85), pytest.approx(3.20))
+    # With a last visit, the same pass also sums each book since then (the "since your last visit" strip).
+    assert none == {}
+    again, counts2, recent = repo.closed_book_totals(cur, uid, day, day - timedelta(days=3))
+    assert (again, counts2) == (realized, counts)
+    assert recent == {"paper": (pytest.approx(2.85), 6), "demo": (pytest.approx(0.60), 1), "live": (0.0, 0)}
+    assert repo.closed_book_totals(cur, uid, day, day)[2]["paper"] == (pytest.approx(3.20), 5)  # b's trade is older
+    # The paper ledger's balance, deposits and reset come back from one read as from the three.
+    assert repo.paper_ledger_summary(cur, uid) == {"balance": repo.paper_balance(cur, uid), "deposited": repo.paper_deposits(cur, uid),
+                                                   "reset_at": repo.paper_reset_at(cur, uid)}
+
+
+def test_since_your_last_visit_reads_new_passes_and_the_autopilots_own_changes(conn, user):
+    """passed_since lists the user's own strategies that passed since a time (not the seeded example,
+    not a friend's shared copy), newest first, with the full count; activity_since counts the
+    autopilot's applied, never-decided proposals by kind and the research sessions started."""
+    from app import repository as repo
+
+    cur = conn.cursor()
+    uid = user["id"]
+    since = (datetime.now(timezone.utc) - timedelta(hours=2)).replace(tzinfo=None)
+    old = _deployment(conn, user)  # a passed strategy (created now) that is already deployed
+    cur.execute("UPDATE app_strategies SET created_at=%s WHERE id=%s", (since - timedelta(days=1), old["strategy_id"]))
+    run = repo.create_run(cur, uid, "research", "btc15m", "momentum", "an idea")
+    ids = [repo.insert_strategy(cur, uid, run, None, "btc15m", "momentum", "Passed %d" % i, "t", {}, "passed", None)
+           for i in range(4)]
+    repo.insert_strategy(cur, uid, run, None, "btc15m", "momentum", "Rejected", "t", {}, "rejected", None)
+    repo.insert_strategy(cur, uid, None, None, "btc15m", repo.DEMO_DIRECTION, "Example", "t", {}, "passed", None)
+    got = repo.passed_since(cur, uid, since)
+    assert got == {"n": 4, "items": [{"id": i, "title": "Passed %d" % n} for n, i in reversed(list(enumerate(ids)))][:3]}
+    assert repo.passed_since(cur, uid, datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=5)) == {"n": 0, "items": []}
+
+    repo.create_proposal(cur, uid, "deploy", "auto", None, ids[0], "applied")
+    repo.create_proposal(cur, uid, "pause", "auto", old["id"], None, "applied")
+    repo.create_proposal(cur, uid, "pause", "auto", old["id"], None, "applied")
+    asked = repo.create_proposal(cur, uid, "resume", "asked", old["id"], None, "pending")
+    repo.decide_proposal(cur, asked, "applied")  # the user approved it: theirs, not the autopilot's
+    repo.create_proposal(cur, uid, "stop", "asked", old["id"], None, "pending")
+    act = repo.activity_since(cur, uid, since)
+    assert act["autopilot"] == {"deploy": 1, "pause": 2}
+    assert sum(act["runs"].values()) == 1
 
 
 def test_the_run_pages_dream_line_reads_only_the_dream_lines(conn, user):

@@ -46,6 +46,21 @@ def paper_reset_at(cur, user_id: int):
     return row.get("at")
 
 
+def paper_ledger_summary(cur, user_id: int) -> Dict:
+    """paper_balance, paper_deposits and paper_reset_at in one pass over the user's ledger, for the
+    dashboard (three reads there before, the room the "since your last visit" reads came from).
+    {"balance", "deposited", "reset_at"}: the same sums and MAX as the three functions above."""
+    cur.execute(
+        "SELECT COALESCE(SUM(amount),0) AS b, "
+        "COALESCE(SUM(CASE WHEN kind IN ('deposit','withdrawal') THEN amount END),0) AS dep, "
+        "MAX(CASE WHEN kind='deposit' AND memo=%s THEN created_at END) AS reset_at "
+        "FROM app_ledger WHERE user_id=%s",
+        (RESET_MEMO, user_id),
+    )
+    r = cur.fetchone() or {}
+    return {"balance": float(r.get("b") or 0), "deposited": float(r.get("dep") or 0), "reset_at": r.get("reset_at") or None}
+
+
 def ledger_rows(cur, user_id: int, limit: int = 50) -> List[Dict]:
     cur.execute(
         "SELECT id, kind, amount, memo, created_at FROM app_ledger WHERE user_id=%s ORDER BY id DESC LIMIT %s",

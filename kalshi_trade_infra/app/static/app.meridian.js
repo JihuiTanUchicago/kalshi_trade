@@ -1517,9 +1517,11 @@
   async function viewDashboard() {
     shell('/', loading(120), loading(320));
     const gen = S.gen;
+    const visitAt = visitStart();
     const load = async (cfg) => {
-      const d = await api('/api/dashboard', undefined, cfg);
+      const d = await api('/api/dashboard' + (visitAt ? '?since=' + visitAt : ''), undefined, cfg);
       if (gen !== S.gen) return;
+      setVisit(visitAt, Math.floor(Date.now() / 1000));  // still here: this visit's last-seen moves on
       const p = d.paper;
       // Realized P&L (all-time + today) and open count for one money bucket; a tasteful
       // zero line when the bucket has no activity so an empty card never looks broken.
@@ -1602,7 +1604,7 @@
       const paperPlot = (width) => equityChart(periodCurve, null, null, { width: Math.max(280, width || root.querySelector('main').clientWidth), height: 180, paper: true, endLabel: false, label: `Cumulative closed paper profit and loss from ${days[0].d} through ${days[days.length - 1].d}; ends at ${usd(periodPnl, true)}` });
       const periodLabel = days.length > 1 ? new Intl.DateTimeFormat(undefined, {month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC'}).formatRange(new Date(days[0].d + 'T12:00:00Z'), new Date(days[days.length - 1].d + 'T12:00:00Z')) : '';
       const performance = days.length > 1 ? `<details class="overview-performance" id="paper-performance"${performanceOpen ? ' open' : ''}><summary><span class="performance-heading"><span class="performance-caption"><h2>Closed P&amp;L</h2>${ICON.chev}</span><strong class="${tone(periodPnl)}" title="Cumulative closed P&L over this period">${usd(periodPnl, true)}</strong></span><span class="performance-meta"><span class="performance-mode"><span class="performance-mode-prefix">Paper ·\u00a0</span>cumulative</span><span class="sect-note" title="${esc(days[0].d)} – ${esc(days[days.length - 1].d)}">${esc(periodLabel)}</span></span></summary><div class="paper-plot">${paperPlot()}</div></details>` : '';
-      const main = `<section id="dash-ap" class="apcard" aria-label="Autopilot"></section><div class="dash${paperWorkspace ? ' paper-workspace' : ''}"><div class="dash-layout">
+      const main = `${sinceStrip(d, '#dash-paused')}<section id="dash-ap" class="apcard" aria-label="Autopilot"></section><div class="dash${paperWorkspace ? ' paper-workspace' : ''}"><div class="dash-layout">
         <section class="account-band"><dl class="figures measure dashboard-figures ${hasLive ? 'live-primary' : ''}">${hasLive ? liveSummary : paperFigure}</dl><p class="stale-note" id="dash-stale" role="status"></p></section>
         <section class="positions-ledger"><div class="sect-head"><h2>Open positions <span class="section-count">${d.open_positions.length}</span>${paperOnly(d.open_positions) ? ' <span class="position-group-mode">Paper</span>' : ''}</h2></div>
           ${d.open_positions.length ? positionTable(d.open_positions, false) : '<p class="hint">No open positions.</p>'}
@@ -3723,6 +3725,67 @@
   // Why the demo book can't trade (the server's demo health: no demo key, or a Kalshi demo account too
   // empty for one order), as one plain line and the one thing to do. A running demo book with capital
   // and a P&L looks healthy while Kalshi refuses every order it sends, so this goes where demo shows.
+  // "Since your last visit" on the dashboard. The boundary lives in a cookie, tau_visit=<since>.<seen>
+  // (epoch seconds): dashboard opens less than 30 minutes apart are one visit, and a new visit starts
+  // where the last one was last seen. No cookie yet (first visit on this device): since is 0 and the
+  // server answers for the last 24 hours.
+  const VISIT_GAP = 1800;
+  function visitCookie() {
+    try { const m = /(?:^|;\s*)tau_visit=(\d+)\.(\d+)/.exec(String(document.cookie || '')); return m ? [+m[1], +m[2]] : null; } catch (e) { return null; }
+  }
+  function setVisit(since, seen) {
+    try { document.cookie = `tau_visit=${since || 0}.${seen}; path=/; max-age=7776000; SameSite=Lax`; } catch (e) { /* cookies blocked */ }
+  }
+  function visitStart() {
+    const now = Math.floor(Date.now() / 1000), c = visitCookie();
+    const at = !c ? null : now - c[1] > VISIT_GAP ? c[1] : (c[0] || null);
+    setVisit(at, now);
+    return at;
+  }
+  // The strip itself, from /api/dashboard's `since` block and the page's own deployments: each book's
+  // realized P&L (never added together), what passed, what the autopilot changed, and what needs the
+  // user, linking to it. `pausedHref` is where this page lists its paused deployments.
+  const AP_DID = [['deploy', 'put %s on paper'], ['pause', 'paused %s'], ['resume', 'resumed %s'], ['stop', 'stopped %s'], ['adjust', 'adjusted %s']];
+  // A deployment's pause reason, short: no "Autopilot:" prefix, no closing period, cut at a word.
+  const shortReason = (r) => {
+    const s = String(r).replace(/^Autopilot:\s*/, '').replace(/\.\s*$/, '');
+    return s.length <= 110 ? s : s.slice(0, 110).replace(/\s+\S*$/, '') + '\u2026';
+  };
+  function sinceStrip(d, pausedHref) {
+    const s = d.since;
+    if (!s) return '';
+    const plural = (n, one, many) => `${num(n)} ${n === 1 ? one : many}`;
+    const books = [['live', 'Live'], ['demo', 'Demo'], ['paper', 'Paper']].filter(([m]) =>
+      ((s.books || {})[m] || {}).trades || d.deployments.some((x) => x.mode === m && x.status !== 'stopped'));
+    const money = books.length ? books.map(([m, label]) => {
+      const b = s.books[m] || { pnl: 0, trades: 0 };
+      return `<span class="since-book" data-book="${m}"><b>${label}</b> ${b.trades
+        ? `<span class="${b.pnl < 0 ? 'neg' : b.pnl > 0 ? 'pos' : ''}">${usd(b.pnl, true)}</span> on ${plural(b.trades, 'trade', 'trades')}${m === 'live' ? ' (real money)' : ''}`
+        : 'no trades closed'}</span>`;
+    }).join('<span class="sep">·</span>') : 'No trades closed.';
+    const pass = s.passed || { n: 0, items: [] }, runs = s.runs || {};
+    const started = Object.values(runs).reduce((a, n) => a + n, 0), failed = runs.failed || 0;
+    const found = (pass.n
+      ? `${plural(pass.n, 'strategy', 'strategies')} passed: ${pass.items.map((x) => `<a href="/strategies/${encodeURIComponent(x.id)}">${esc(x.title)}</a>`).join(', ')}${pass.n > pass.items.length ? `, <a href="/strategies">${num(pass.n - pass.items.length)} more</a>` : ''}`
+      : 'Nothing new passed') + (started ? ` <span class="since-sub">· ${plural(started, 'research session', 'research sessions')} started</span>` : '') + '.';
+    const ap = s.autopilot || {}, apOn = !!(S.me && S.me.user && S.me.user.autopilot);
+    const known = new Set(AP_DID.map(([k]) => k));
+    const did = AP_DID.filter(([k]) => ap[k]).map(([k, w]) => w.replace('%s', num(ap[k])));
+    const other = Object.entries(ap).filter(([k]) => !known.has(k)).reduce((a, [, n]) => a + n, 0);
+    if (other) did.push(plural(other, 'other change', 'other changes'));
+    const auto = did.length ? `It ${did.join(', ')}.` : apOn ? 'On. It made no changes.' : 'Off.';
+    const needs = d.deployments.filter((x) => x.status === 'paused').slice(0, 3)
+      .map((x) => `<a href="${pausedHref}">${esc(x.title)}</a> is paused${x.status_reason ? `<span class="since-sub">: ${esc(shortReason(x.status_reason))}</span>` : ''}`);
+    const pausedN = d.deployments.filter((x) => x.status === 'paused').length;
+    if (pausedN > needs.length) needs.push(`<a href="${pausedHref}">${num(pausedN - needs.length)} more paused</a>`);
+    if (d.demo && d.demo.health) needs.push(`Demo can’t trade: ${esc(d.demo.health.need || d.demo.health.line || '')}.${actionLink(d.demo.health)}`);
+    if (d.reconcile && d.reconcile.length) needs.push(`${plural(d.reconcile.length, 'live position disagrees', 'live positions disagree')} with Kalshi. <a href="/funds">Check Funds</a>`);
+    if (failed) needs.push(`<a href="/research">${plural(failed, 'research session', 'research sessions')} failed</a>`);
+    const row = (k, v, cls) => `<div class="since-row${cls ? ' ' + cls : ''}"><dt>${k}</dt><dd>${v}</dd></div>`;
+    return `<section class="since" id="dash-since" aria-label="${s.first ? 'Last 24 hours' : 'Since your last visit'}">
+      <h2 class="since-h">${s.first ? 'Last 24 hours' : `Since your last visit <span class="since-at">${esc(when(s.at))}</span>`}</h2>
+      <dl class="since-list">${row('Money', money)}${row('New results', found)}${row('Autopilot', auto)}${row('Needs you', needs.length ? needs.join('<br>') : 'Nothing.', needs.length ? 'needs' : '')}</dl></section>`;
+  }
   function demoHealthLine(h) { return h ? `<span class="demo-health">${esc(h.line)}${actionLink(h)}</span>` : ''; }
   // One mode's closed trades as a CSV, offered only where that mode has some, so the reader can
   // check its P&L line by line. The server never mixes modes in one file.

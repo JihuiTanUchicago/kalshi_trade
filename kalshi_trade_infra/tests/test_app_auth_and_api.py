@@ -254,10 +254,12 @@ def test_dashboard_paper_book_carries_its_reset_so_all_time_labels_stay_true(mon
     at = datetime(2026, 10, 20, 9, 0)
     for name, fn in {
         "user_positions": lambda *a, **k: [], "list_deployments_for_display": lambda *a, **k: [], "deployment_curves": lambda *a, **k: {},
-        "paper_balance": lambda cur, uid: 480.0, "paper_deposits": lambda cur, uid: 500.0,
-        "closed_book_totals": lambda cur, uid, since: ({m: (0.0, 0.0) for m in ("paper", "demo", "live")}, {"demo": 3}),
+        "paper_ledger_summary": lambda cur, uid: {"balance": 480.0, "deposited": 500.0, "reset_at": at},
+        "closed_book_totals": lambda cur, uid, since, visit=None: ({m: (0.0, 0.0) for m in ("paper", "demo", "live")}, {"demo": 3},
+                                                                     {m: (0.0, 0) for m in ("paper", "demo", "live")}),
         "daily_pnl": lambda *a, **k: [],
-        "paper_reset_at": lambda cur, uid: at,
+        "activity_since": lambda cur, uid, since: {"autopilot": {}, "runs": {}},
+        "passed_since": lambda cur, uid, since: {"n": 0, "items": []},
         "demo_equity": lambda cur, uid, realized=None: {"capital": 500.0, "equity": 512.0, "realized": 12.0, "roi": .024, "before_reload": 40.0},
         "get_kalshi_key": lambda cur, uid: None, "open_reconcile_rows": lambda cur, uid: [],
         "active_run_counts": lambda cur, uid: {},
@@ -838,3 +840,24 @@ def test_google_sign_in_returns_to_the_page_the_visitor_came_from(monkeypatch):
     assert where == ("redirect", "/strategies/16") and cookies[0].startswith("tau_next=; Path=/auth")
     assert callback({"tau_next": "https%3A%2F%2Fevil.example"})[0] == ("redirect", "/")
     assert callback({})[0] == ("redirect", "/")
+
+
+def test_since_your_last_visit_reads_the_cookies_time_clamped_to_a_week(monkeypatch):
+    # The page keeps the last visit in a cookie and sends it as ?since= (epoch seconds). Missing or
+    # unreadable: the last 24 hours, marked first. Older than a week: a week. In the future: now.
+    from datetime import datetime, timedelta, timezone
+    now = datetime(2026, 10, 25, 12, 0)
+    monkeypatch.setattr(server.repo, "now_utc", lambda: now)
+    epoch = lambda dt: str(int(dt.replace(tzinfo=timezone.utc).timestamp()))
+    assert server._visit_since(None) == (now - timedelta(hours=24), True)
+    assert server._visit_since("yesterday") == (now - timedelta(hours=24), True)
+    assert server._visit_since(epoch(now - timedelta(hours=9))) == (now - timedelta(hours=9), False)
+    assert server._visit_since(epoch(now - timedelta(days=30))) == (now - timedelta(days=7), False)
+    assert server._visit_since(epoch(now + timedelta(days=1))) == (now, False)
+    # The strip's block: the books' since-visit sums as read (never added up), passes, autopilot and runs.
+    monkeypatch.setattr(server.repo, "activity_since", lambda cur, uid, since: {"autopilot": {"deploy": 1}, "runs": {"failed": 1}})
+    monkeypatch.setattr(server.repo, "passed_since", lambda cur, uid, since: {"n": 1, "items": [{"id": 3, "title": "A"}]})
+    out = server._since_visit(None, 1, now, False, {"paper": (2.4249, 3), "demo": (-1.0, 1), "live": (0.0, 0)})
+    assert out == {"at": now, "first": False, "books": {"paper": {"pnl": 2.42, "trades": 3}, "demo": {"pnl": -1.0, "trades": 1},
+                                                         "live": {"pnl": 0.0, "trades": 0}},
+                   "passed": {"n": 1, "items": [{"id": 3, "title": "A"}]}, "autopilot": {"deploy": 1}, "runs": {"failed": 1}}
