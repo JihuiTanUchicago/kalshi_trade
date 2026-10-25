@@ -567,8 +567,8 @@ test('an empty Deployed box asks for research only when autopilot is off; Funds 
     await f.viewDashboard(); await flush();
     const body = f.root.querySelector('#boardbody').innerHTML + f.root.querySelector('#dash-deps').innerHTML;
     assert.match(body, /on <a href="\/funds">Funds<\/a> to trade real money/);
-    assert.match(body, on ? /Autopilot is researching\./ : /Dispatch your first agent/);
-    assert.doesNotMatch(body, on ? /Dispatch your first agent/ : /See its research/);
+    assert.match(body, on ? /Autopilot is researching\./ : /Research an idea</);
+    assert.doesNotMatch(body, on ? /Research an idea</ : /See its research/);
     if (!on) assert.match(body, /Turn on autopilot above and the strategies that pass every gate/);  // points at the card's switch
   }
 });
