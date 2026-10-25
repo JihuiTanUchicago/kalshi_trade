@@ -165,3 +165,45 @@ def test_paper_venue_will_not_sell_what_it_does_not_hold():
     rep = venue.submit(OrderIntent(AAPL, Side.SELL, 1, reduce_only=True), 160.0, "x")
     assert rep.status == "rejected" and venue.net_position(AAPL) == 0
     assert venue.submit(OrderIntent(AAPL, Side.BUY, 1), 160.0, "y").status == "unfilled"  # limit under the ask
+
+
+def test_position_stop_uses_the_current_holdings_fees_and_skips_unmarkable_books():
+    from trading_core.engine import position_stop
+    from trading_core.domain import Fill
+    book = Portfolio()
+    book.apply(Fill(YES, Side.BUY, 10, 0.50, fee=0.50))
+    book.apply(Fill(YES, Side.SELL, 10, 0.50, fee=0.50))           # round trip: lifetime fees 1.00
+    book.apply(Fill(YES, Side.BUY, 10, 0.50, fee=0.10))            # new holding: cost 5.10
+    pos = book.positions[YES]
+    assert pos.fees == pytest.approx(1.10) and pos.open_fees == pytest.approx(0.10)
+    rule = position_stop(40)
+    assert rule(book, {YES: Quote(YES, 0, 0.31, 0.33)}, 0) == []   # loss 1.99 / 5.10 = 39%
+    out = rule(book, {YES: Quote(YES, 0, 0.30, 0.33)}, 0)          # loss 2.10 / 5.10 = 41%
+    assert [(i.side, i.qty, i.reduce_only, i.reason) for i in out] == [(Side.SELL, 10, True, "stop")]
+    assert rule(book, {YES: Quote(YES, 0, None, 0.33)}, 0) == [] and rule(book, {}, 0) == []
+    assert position_stop(0)(book, {YES: Quote(YES, 0, 0.01, 0.33)}, 0) == []
+
+
+def test_next_step_fills_decide_now_and_fill_on_the_next_quote():
+    clock = FixedClock(60.0)
+    feed = ReplayFeed(clock, BARS)
+    venue = QuoteFillVenue(feed, FEES, INSTRUMENTS, cash=10_000.0)
+    loop = TradingLoop(BuyBelowSellAbove({YES: 0.50, AAPL: 200.0}), INSTRUMENTS, feed, venue, clock,
+                       execution=CrossTheTouch(max_quote_age_seconds=60), book=Portfolio(cash=10_000.0),
+                       next_step_fills=True, pending_ttl=90)
+    first = loop.step()
+    assert len(first.intents) == 2 and first.reports == []         # decided on the cheap bar, nothing sent
+    clock.ts = 120.0
+    second = loop.step()        # the next bar's asks ran past both limits: the latency cost, refused not chased
+    assert [r.status for r in second.reports] == ["rejected", "rejected"]
+    assert all("above limit" in r.message for r in second.reports) and loop.book.open_positions() == {}
+
+
+def test_one_position_per_symbol_blocks_the_other_outcome():
+    from trading_core.domain import Fill
+    from trading_core.engine import one_position_per_symbol
+    book = Portfolio()
+    book.apply(Fill(YES, Side.BUY, 1, 0.40))
+    no = InstrumentId("kalshi", YES.symbol, "no")
+    assert one_position_per_symbol(book)(OrderIntent(no, Side.BUY, 1)).allowed is False
+    assert one_position_per_symbol(book)(OrderIntent(AAPL, Side.BUY, 1)).allowed is True

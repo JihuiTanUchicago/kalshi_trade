@@ -15,6 +15,8 @@ class Position:
     """Signed net quantity (+ long, - short) at an average entry price.
 
     ``realized`` and ``fees`` accumulate across the position's life; a flat position keeps them.
+    ``open_fees`` is what the current holding cost in fees (reset when it opens from flat, prorated
+    as it is reduced), the fee part of its cost basis for a stop.
     ``multiplier`` is the instrument's value per unit price move (1 for a $1-payout binary).
     """
 
@@ -24,6 +26,7 @@ class Position:
     realized: float = 0.0
     fees: float = 0.0
     multiplier: float = 1.0
+    open_fees: float = 0.0
 
     @property
     def is_flat(self) -> bool:
@@ -35,9 +38,10 @@ class Position:
         self.fees += fill.fee
         delta = fill.signed_qty
         if self.is_flat:  # opening: the fill price exactly, not price*q/q with its float drift
-            self.qty, self.avg_price = delta, fill.price
+            self.qty, self.avg_price, self.open_fees = delta, fill.price, fill.fee
             return
         if (self.qty > 0) == (delta > 0):
+            self.open_fees += fill.fee
             new_qty = self.qty + delta
             self.avg_price = (self.avg_price * abs(self.qty) + fill.price * abs(delta)) / abs(new_qty)
             self.qty = new_qty
@@ -49,10 +53,12 @@ class Position:
         if remainder > _EPS:  # flipped through flat: the excess opens at the fill price
             self.qty = -direction * remainder
             self.avg_price = fill.price
+            self.open_fees = fill.fee * remainder / abs(delta)
         else:
+            self.open_fees *= 1.0 - closing / abs(self.qty)
             self.qty += delta
             if self.is_flat:
-                self.qty, self.avg_price = 0.0, 0.0
+                self.qty, self.avg_price, self.open_fees = 0.0, 0.0, 0.0
 
     def unrealized(self, mark: Optional[float]) -> float:
         if mark is None or self.is_flat:
@@ -63,7 +69,7 @@ class Position:
         """Close at a settlement price (a binary's 0 or payout), booking it as realized."""
         pnl = self.unrealized(price)
         self.realized += pnl
-        self.qty, self.avg_price = 0.0, 0.0
+        self.qty, self.avg_price, self.open_fees = 0.0, 0.0, 0.0
         return pnl
 
 

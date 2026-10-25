@@ -13,16 +13,17 @@ from app.markets import MARKETS
 T0 = 1_800_000_000 - 1_800_000_000 % 3600
 
 
-def _random_dataset(seed, n_events=30, minutes=15, strikes=(98.0, 100.0, 102.0)):
+def _random_dataset(seed, n_events=30, minutes=15, strikes=(98.0, 100.0, 102.0), gaps=0.0, sizes=False):
     """Overlapping strikes per 15-minute event, a random-walk spot and noisy books, so entries,
-    take-profits, stops, edge-gone exits and settlements all happen."""
+    take-profits, stops, edge-gone exits and settlements all happen. ``gaps`` drops that fraction of
+    quotes (orders rest, go stale, contracts vanish for a bar); ``sizes`` adds top-of-book sizes."""
     rng = random.Random(seed)
     spot, btc = 100.0, []
     for i in range(n_events * minutes + 200):
         spot *= 1.0 + rng.gauss(0, 0.002)
         btc.append((T0 - 7200 + 60 * i, spot))
     px = dict(btc)
-    markets, candles = [], []
+    markets, candles, micro = [], [], {}
     for k in range(n_events):
         open_ts = T0 + k * minutes * 60
         close_ts = open_ts + minutes * 60
@@ -38,9 +39,14 @@ def _random_dataset(seed, n_events=30, minutes=15, strikes=(98.0, 100.0, 102.0))
                 spread = rng.choice((0.01, 0.02, 0.03, 0.05))
                 bid = round(max(0.0, mid - spread / 2), 2)
                 ask = round(min(0.99, bid + spread), 2)
+                if rng.random() < gaps:
+                    continue
                 candles.append({"ticker": ticker, "end_period_ts": open_ts + m * 60,
                                 "yes_bid_close": bid, "yes_ask_close": ask})
-    return backtest.build_dataset(MARKETS["btc15m"], markets, candles, btc)
+                if sizes:
+                    micro[(ticker, open_ts + m * 60)] = {"yes_ask_size": float(rng.randint(0, 40)),
+                                                         "yes_bid_size": float(rng.randint(0, 40))}
+    return backtest.build_dataset(MARKETS["btc15m"], markets, candles, btc, micro or None)
 
 
 SPECS = [
@@ -50,6 +56,8 @@ SPECS = [
      "sizing": {"stake": 25.0, "max_positions": 3}},
     {"side": "either", "entry": {"min_edge": 0.02}, "exit": {"min_edge_to_hold": 0.0, "stop_loss": 0.2},
      "sizing": {"stake": 10.0, "max_positions": 5}},
+    {"side": "yes", "entry": {"min_edge": 0.1}, "exit": {"min_edge_to_hold": 0.05},
+     "sizing": {"stake": 5.0, "max_positions": 2}},
 ]
 
 
@@ -73,6 +81,29 @@ def test_loop_books_the_same_trades_as_the_legacy_backtest(monkeypatch, seed, ra
     assert [_row(t) for t in loop] == [_row(t) for t in legacy]
 
 
+@pytest.mark.parametrize("seed,gaps,sizes", [(11, 0.0, False), (12, 0.15, False), (13, 0.0, True), (14, 0.2, True)])
+@pytest.mark.parametrize("raw", SPECS)
+def test_next_bar_fills_book_the_same_trades_on_the_loop(monkeypatch, seed, gaps, sizes, raw):
+    """The default fill model: decide on bar t, fill on bar t+1 within the reservation price and the
+    displayed size, the position stop ahead of every exit, unfilled exits resting until stale."""
+    monkeypatch.setattr(backtest, "FILL_MODEL", "next_bar")
+    ds = _random_dataset(seed, gaps=gaps, sizes=sizes)
+    spec = specmod.validate(raw)
+    legacy = sorted(backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1), key=_key)
+    assert [_row(t) for t in sorted(simulate_on_loop(spec, ds, ds.start_ts, ds.end_ts + 1), key=_key)] == \
+        [_row(t) for t in legacy]
+
+
+def test_next_bar_position_stop_can_be_turned_off(monkeypatch):
+    monkeypatch.setattr(backtest, "FILL_MODEL", "next_bar")
+    ds = _random_dataset(15)
+    spec = specmod.validate(SPECS[0])
+    what_if = backtest.WhatIf(position_stop_pct=0)
+    legacy = sorted(backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1, what_if), key=_key)
+    loop = sorted(simulate_on_loop(spec, ds, ds.start_ts, ds.end_ts + 1, position_stop_pct=0), key=_key)
+    assert [_row(t) for t in loop] == [_row(t) for t in legacy] and "stop" not in {t.reason for t in loop}
+
+
 def test_parity_holds_on_a_sub_window(monkeypatch):
     monkeypatch.setattr(backtest, "FILL_MODEL", "signal_bar")
     ds = _random_dataset(7)
@@ -93,6 +124,10 @@ def test_reasons_cover_every_exit_path(monkeypatch):
             trades += simulate_on_loop(specmod.validate(raw), ds, ds.start_ts, ds.end_ts + 1)
     assert len(trades) >= 50 and {t.side for t in trades} == {"yes", "no"}
     assert {"settled", "take_profit", "stop_loss"} <= {t.reason for t in trades}
+    monkeypatch.setattr(backtest, "FILL_MODEL", "next_bar")
+    ds = _random_dataset(5, gaps=0.15, sizes=True)
+    nb = [t for raw in SPECS for t in simulate_on_loop(specmod.validate(raw), ds, ds.start_ts, ds.end_ts + 1)]
+    assert {"settled", "take_profit", "stop_loss", "stop", "edge_gone"} <= {t.reason for t in nb}
 
 
 def test_spec_strategy_refuses_what_it_does_not_model():

@@ -9,11 +9,14 @@ Backtest = TradingLoop(FixedClock, replay feed, QuoteFillVenue or SimulatedVenue
 loop with SystemClock, the live feed and the venue adapter. Only the plugged-in adapters differ.
 """
 from trading_core.engine.execution import CrossTheTouch, ExecutionPolicy
-from trading_core.engine.loop import StepResult, TradingLoop
+from trading_core.engine.loop import ExitRule, StepResult, TradingLoop
 from trading_core.engine.paper import QuoteFillVenue
-from trading_core.engine.risk import RiskChain, kill_switch, max_open_positions, max_order_notional, max_position
+from trading_core.engine.risk import (RiskChain, kill_switch, max_open_positions, max_order_notional, max_position,
+                                     one_position_per_symbol)
+from trading_core.engine.stops import position_stop
 
 __all__ = [
-    "CrossTheTouch", "ExecutionPolicy", "QuoteFillVenue", "RiskChain", "StepResult", "TradingLoop", "kill_switch",
-    "max_open_positions", "max_order_notional", "max_position",
+    "CrossTheTouch", "ExecutionPolicy", "ExitRule", "QuoteFillVenue", "RiskChain", "StepResult", "TradingLoop",
+    "kill_switch", "max_open_positions", "max_order_notional", "max_position", "one_position_per_symbol",
+    "position_stop",
 ]
