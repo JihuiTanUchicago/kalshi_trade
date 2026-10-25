@@ -167,3 +167,20 @@ def test_paper_evidence_line_names_the_blocker(monkeypatch):
     ev = agent.paper_evidence(None, 1, 7)
     assert ev["realization"] is None
     assert "not live-ready: it needs 30+" in agent.paper_evidence_line(ev)
+
+
+def test_refused_when_the_trades_come_from_too_few_separate_events(monkeypatch):
+    # 40 trades, but five strikes of each of 8 BTC 15-minute events: 8 bets, not 40.
+    trips = _trips()
+    for i, t in enumerate(trips):
+        t["ticker"] = "KXBTC15M-26OCT24%04d-%d" % (i // 5, 60000 + i % 5)
+    msg, created = _deploy_live(monkeypatch, trips=trips)
+    assert "mode" not in created and "come from only 8 separate events" in msg
+    ev = agent.paper_evidence(None, 1, 7)
+    assert ev["events"] == 8 and ev["p_value"] is None and not ev["checks"]["events"]
+
+
+def test_edge_is_tested_on_per_event_pnl():
+    trips = [{"pnl": 1.0, "ticker": "KXRAIN-26OCT24-MIA"}, {"pnl": -0.5, "ticker": "KXRAIN-26OCT24-DEN"},
+             {"pnl": 2.0, "ticker": "KXRAIN-26OCT25-MIA"}, {"pnl": 0.25, "ticker": None}, {"pnl": 0.25}]
+    assert agent._trip_events(trips) == [0.5, 2.0, 0.25, 0.25]

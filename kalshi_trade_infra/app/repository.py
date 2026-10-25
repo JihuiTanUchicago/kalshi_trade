@@ -1214,7 +1214,8 @@ def paper_round_trips(cur, user_id: int, strategy_id: int, ref_prefix: str = "si
     summed), so a single trade is never counted twice. Legacy instant fills (no order_ref) are
     excluded: they are not evidence of what live execution would earn."""
     cur.execute(
-        """SELECT p.order_ref, SUM(p.pnl) AS pnl, MIN(p.opened_at) AS opened_at, MAX(p.closed_at) AS closed_at
+        """SELECT p.order_ref, SUM(p.pnl) AS pnl, MIN(p.opened_at) AS opened_at, MAX(p.closed_at) AS closed_at,
+                  MAX(p.ticker) AS ticker
            FROM app_positions p JOIN app_deployments d ON d.id=p.deployment_id
            WHERE p.user_id=%s AND d.strategy_id=%s AND p.mode='paper' AND p.order_ref LIKE %s
            GROUP BY p.order_ref
@@ -1222,8 +1223,8 @@ def paper_round_trips(cur, user_id: int, strategy_id: int, ref_prefix: str = "si
            ORDER BY MIN(p.opened_at)""",
         (user_id, strategy_id, ref_prefix + "%"),
     )
-    return [{"pnl": float(r["pnl"] or 0), "opened_at": r["opened_at"], "closed_at": r["closed_at"]}
-            for r in cur.fetchall()]
+    return [{"pnl": float(r["pnl"] or 0), "opened_at": r["opened_at"], "closed_at": r["closed_at"],
+             "ticker": r.get("ticker")} for r in cur.fetchall()]
 
 
 def track_record_rows(cur, user_id: int) -> List[Dict]:
