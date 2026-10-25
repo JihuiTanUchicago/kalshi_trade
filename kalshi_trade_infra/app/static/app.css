@@ -944,6 +944,14 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   .stack tbody td .sub-fig { flex: 1 0 100%; }
   .stack tbody td .spark { display: none; }
   .stack tbody tr:hover td { background: transparent; }
+  /* A deployment card reads as a small figure grid (label over value, three across) instead of
+     seven label/value lines: half the height, so a phone shows two or three per screen. */
+  .t-dep.stack { min-width: 0; }
+  .t-dep.stack tbody tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 12px; }
+  .t-dep.stack tbody td.name, .t-dep.stack tbody td.act { grid-column: 1 / -1; }
+  .t-dep.stack tbody td:not(.name):not(.act) { flex-direction: column; align-items: flex-start; flex-wrap: nowrap; gap: 1px; min-width: 0; }
+  .t-dep.stack tbody td:not(.name):not(.act) .sub-fig { flex: none; }
+  .t-dep.stack tbody td[data-lab="Market"], .t-dep.stack tbody td[data-lab="Status"], .t-dep.stack tbody td[data-lab="Since"] { order: 1; }  /* money first */
   .lhero { padding-top: 24px; }
   .lnav { padding: 16px 0; }
   .pill { padding: 8px 14px; font-size: 14px; white-space: nowrap; }
