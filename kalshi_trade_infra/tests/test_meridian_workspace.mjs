@@ -185,6 +185,17 @@ const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false}
     {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},
   ]}});
 
+test('a strategy from the seeded example session carries the Example tag and note on its own page', async () => {
+  const note = 'An example Tau ran for you when you signed up. It cost you nothing.';
+  for (const example of [true, false]) {
+    const f = strategyFrontend(detailStrategy({example, direction: 'random_walk'})); await f.viewStrategy(42); await flush();
+    const head = f.root.querySelector('.board-title').outerHTML;
+    assert.equal(/<span class="mk quiet example-tag" title="[^"]*">Example<\/span>/.test(head), example);
+    assert.equal(head.includes(note), example);
+    f.clearTimers();
+  }
+});
+
 test('the current strategy page renders an escaped research paper and a separate real demo curve', async () => {
   const f = strategyFrontend(); await f.viewStrategy(42); await flush();
   const output = f.root.querySelector('main').innerHTML;

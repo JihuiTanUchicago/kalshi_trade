@@ -2499,7 +2499,9 @@
       fig('In-sample P&L', usd(r.in_sample.pnl, true), { v: r.in_sample.pnl, small: `${r.in_sample.trades} trades` }) +
       fig('Return on capital', r.out_of_sample ? pct(r.out_of_sample.roi) : '—', { small: r.capital ? `$${fmt0.format(r.capital)} at risk at most` : '' }) +
       fig('Hypotheses tested', s.hypotheses_tried ? `1 of ${s.hypotheses_tried}` : '—', { small: s.hypotheses_tried ? `The agent tested ${num(s.hypotheses_tried)} distinct ideas this run; this is the one that passed. More tries → higher chance one passes by luck (multiple testing).` : 'How many ideas the agent tried to find this one.' });
-    root.querySelector('.board-title').outerHTML = boardTitle(serial(s.id) + ' · ' + marketShort(s.market), esc(dirLabel(s.direction)));
+    // A strategy from the seeded example session says so here too, as the lists and its run page do.
+    root.querySelector('.board-title').outerHTML = boardTitle(serial(s.id) + ' · ' + marketShort(s.market),
+      `${s.example ? EXAMPLE_TAG + ' ' : ''}${esc(dirLabel(s.direction))}${s.example ? ' \u00b7 ' + EXAMPLE_NOTE : ''}`);
     root.querySelector('#figs').innerHTML = figsFor(s);
     const canDeploy = !restricted && ['passed', 'failed', 'rejected'].includes(s.status);
     // Why a strategy was rejected (never reached the unseen-data gate) — stated honestly: a
