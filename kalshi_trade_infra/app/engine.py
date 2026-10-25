@@ -45,6 +45,10 @@ LIVE_TRADING_ENABLED = os.getenv("APP_LIVE_TRADING_ENABLED") == "1"
 # path until this flag is set. Demo/paper NO always work (for sandbox validation; no real money).
 # ponytail: temporary; remove once NO-side live is validated on the demo sandbox.
 NO_SIDE_LIVE_ENABLED = os.getenv("APP_NO_SIDE_LIVE_ENABLED") == "1"
+# Paper decisions as one trading_core TradingLoop step instead of the legacy entry/exit loops below
+# (ARCHITECTURE.md step 8: backtest, paper and live on one code path). Only "paper" is honoured; live
+# and demo move separately, each behind its own parity test. Off by default.
+ENGINE_LOOP_MODES = frozenset(m.strip() for m in os.getenv("TAU_ENGINE_LOOP", "").split(",") if m.strip()) & {"paper"}
 TICK_SECONDS = 15
 # An order whose outcome is unknown (intent still 'sent': a timeout, a crash, a lost response) may
 # already have filled. No new order goes out on that user's ticker until recovery reads the truth
@@ -501,15 +505,22 @@ def _paper_kernel_close(conn, cur, dep: Dict, pos: Dict, kernel, price: float, r
     filled = int(rep.fill_qty_contracts)
     if filled <= 0:
         return False  # no fresh quote / no bid: the position stays open, as it would live
+    return _paper_book_exit(conn, pos, filled, rep.fill_price_dollars, rep.fee_dollars, reason)
+
+
+def _paper_book_exit(conn, pos: Dict, filled: int, price: float, fee: float, reason: str) -> bool:
+    """Book a paper exit fill of ``filled`` contracts: the whole row closes, or a part fill books the
+    sold slice and leaves the remainder open. True only when the row closed."""
+    qty = int(pos["qty"])
     if filled >= qty:
-        return _paper_sell(conn, pos, rep.fill_price_dollars, reason, fee=rep.fee_dollars)
+        return _paper_sell(conn, pos, price, reason, fee=fee)
     filled_entry_fee = float(pos["entry_fee"]) * filled / qty
-    pnl = filled * (rep.fill_price_dollars - float(pos["entry_price"])) - filled_entry_fee - rep.fee_dollars
+    pnl = filled * (price - float(pos["entry_price"])) - filled_entry_fee - fee
     with repo.transaction(conn) as tx:
-        if repo.book_partial_exit(tx, pos, filled, rep.fill_price_dollars, rep.fee_dollars, pnl, reason):
-            repo.add_ledger(tx, pos["user_id"], "trade", filled * rep.fill_price_dollars - rep.fee_dollars,
+        if repo.book_partial_exit(tx, pos, filled, price, fee, pnl, reason):
+            repo.add_ledger(tx, pos["user_id"], "trade", filled * price - fee,
                             "Sold %d/%d %s %s @ %.2f (%s, partial)" % (filled, qty, pos["side"].upper(), pos["ticker"],
-                                                                      rep.fill_price_dollars, reason), pos["id"])
+                                                                      price, reason), pos["id"])
     return False
 
 
@@ -694,6 +705,86 @@ def cross_deploy_block(spec: Dict, mode: str) -> Optional[str]:
     return None
 
 
+class _PaperLedger:
+    """Paper booking for ``DeploymentBook``: the same functions the legacy decision path books with,
+    so both paths write the same position rows and ledger lines. ``sim`` marks fills that came
+    through the simulated venue (their order_ref is what the live gate counts)."""
+
+    def __init__(self, conn, dep: Dict, contracts: Dict[str, Contract], sim: bool) -> None:
+        self.conn, self.dep, self.contracts, self.sim = conn, dep, contracts, sim
+
+    def cash(self) -> float:
+        return repo.paper_balance(self.conn.cursor(), self.dep["user_id"])
+
+    def buy(self, ticker: str, side: str, qty: int, price: float, fee: float, order_id: Optional[str]) -> bool:
+        ref = SIM_ORDER_REF_PREFIX + str(order_id or "") if self.sim else None
+        return _paper_book_buy(self.conn, self.dep, ticker, side, qty, price, fee,
+                               self.contracts[ticker].close_time, ref) is not None
+
+    def sell(self, row: Dict, qty: int, price: float, fee: float, reason: str) -> bool:
+        return _paper_book_exit(self.conn, row, qty, price, fee, reason)
+
+
+def _decide_paper_on_loop(conn, cur, dep: Dict, snaps: List[Snapshot], sizes: Dict, kernel) -> Optional[Dict]:
+    """One paper decision as a TradingLoop step: ``SpecStrategy`` decides, ``EntryBudget`` holds the
+    slot and user caps, ``KalshiEngineExecution`` sizes and sends through the paper kernel (or fills
+    at the limit without one), and ``DeploymentBook`` books into app_positions. Returns the same
+    counts as the legacy path, or None when this deployment must stay on it (a spec the strategy
+    adapter does not run, or two open rows on one contract)."""
+    from app.adapters.db.deployment_book import DeploymentBook, DuplicateRows
+    from app.adapters.kalshi import instruments as ki
+    from app.adapters.kalshi.engine_execution import EntryBudget, KalshiEngineExecution
+    from app.adapters.kalshi.spec_strategy import SpecStrategy, _FrameFeed
+    from trading_core.engine import RiskChain, TradingLoop, one_position_per_symbol
+    from trading_core.ports import FixedClock
+
+    spec = dep["spec"]
+    contracts = {s.contract.ticker: s.contract for s in snaps}
+    feed = _FrameFeed()
+    feed.load(snaps)
+    try:
+        strategy = SpecStrategy(spec, contracts, frame=lambda: feed.snaps, sizing_at_fill=True,
+                                strategy_id="app-dep-%d" % dep["id"])
+        book = DeploymentBook(cur, dep["id"], _PaperLedger(conn, dep, contracts, sim=kernel is not None),
+                              read_rows=repo.open_positions)
+    except (ValueError, DuplicateRows):
+        return None
+    instruments = {}
+    for c in contracts.values():
+        yes = ki.binary(c, "yes")
+        instruments[yes.id], instruments[yes.complement().id] = yes, yes.complement()
+    budget = EntryBudget(book, spec["sizing"]["max_positions"],
+                         load=lambda: _entry_caps(cur, dep, repo.user_risk_config(cur, dep["user_id"])),
+                         shown=lambda ticker, side: shown_size(sizes, ticker, side), stopped=lambda: book.out_of_cash)
+    book.on_entry = budget.took
+    trade = None
+    if kernel is not None:
+        min_edge = (spec.get("entry") or {}).get("min_edge")
+
+        def _trade(action, side, ticker, qty, price, fair):
+            return _live_trade(cur, dep, kernel, action, side, ticker, qty, price, fair=fair, min_edge=min_edge)
+        trade = _trade
+    # The kernel owns its venue, so the loop gets none. capital: SpecStrategy sizes from its stake, so
+    # the ledger balance is not summed on every decision (cash is checked when an entry books).
+    loop = TradingLoop(strategy, instruments, feed, None, FixedClock(time.time()),
+                       execution=KalshiEngineExecution(budget, trade),
+                       risk=RiskChain([budget.check, one_position_per_symbol(book)]),
+                       book=book, capital=lambda: 0.0, universe=lambda now: feed.current)
+    loop.step()
+    return {"exits": book.exits, "entries": book.entries}
+
+
+def _record_scan(cur, dep: Dict, snaps: List[Snapshot], out: Dict) -> None:
+    """What the entry rule saw this decision, so a quiet strategy can say why it isn't trading (the
+    autopilot panel and reviews read it). Best-effort: it never touches an order or a position."""
+    try:
+        scan = specmod.entry_scan(dep["spec"], snaps)
+        scan["entered"] = out["entries"]
+        repo.set_deployment_scan(cur, dep["id"], scan)
+    except Exception:
+        pass
+
+
 def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict, sources: Sources) -> Dict:
     spec = dep["spec"]
     perpetual_block = _perpetual_execution_block(spec, dep.get("market"))
@@ -732,6 +823,12 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict, sources: Sources
         if halts:
             return {"halted": "position mismatch on %s" % ", ".join(h["ticker"] for h in halts)}
         return _decide_pairs(conn, dep, snaps, sizes, kernel, via_kernel, mode)
+    if mode in ENGINE_LOOP_MODES:
+        out = _decide_paper_on_loop(conn, cur, dep, snaps, sizes, kernel)
+        if out is not None:
+            _record_scan(cur, dep, snaps, out)
+            loss_guard(cur, dep)
+            return out
     out = {"exits": 0, "entries": 0}
     if halts:
         out["halted"] = "position mismatch on %s" % ", ".join(h["ticker"] for h in halts)
@@ -815,14 +912,7 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict, sources: Sources
         open_count += 1
         open_notional += qty * entry.price  # requested qty; a short live fill only over-counts (safe for a cap)
         out["entries"] += 1
-    # What the entry rule saw this decision, so a quiet strategy can say why it isn't trading (the
-    # autopilot panel and reviews read it). Best-effort: it never touches an order or a position.
-    try:
-        scan = specmod.entry_scan(spec, snaps)
-        scan["entered"] = out["entries"]
-        repo.set_deployment_scan(cur, dep["id"], scan)
-    except Exception:
-        pass
+    _record_scan(cur, dep, snaps, out)
     loss_guard(cur, dep)
     return out
 
