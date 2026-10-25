@@ -24,9 +24,10 @@ forbidden_modules =
     cryptography
 
 [importlinter:contract:core-layers]
-name = trading_core: ports may use the domain, the domain uses nothing above it
+name = trading_core: engine > ports > domain; each layer uses only the ones below it
 type = layers
 layers =
+    trading_core.engine
     trading_core.ports
     trading_core.domain
 
