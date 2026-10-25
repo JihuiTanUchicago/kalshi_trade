@@ -338,6 +338,25 @@ const apOn = {autopilot: true, mode: 'paper', story: ['Right now it\u2019s resea
   research: {tested_7d: 1234, passed_7d: 0, active: []}, live_running: 0, demo_running: 0, paper_running: 2,
   paper_progress: {strategy_id: 3, trades: 4, trades_needed: 30, net_pnl: 1}};
 
+test('the dashboard lists five deployments and positions, paused first, and links to Deploy for the rest', async () => {
+  const dep = (id, extra = {}) => ({id, strategy_id: id, title: 'Strategy ' + id, market: 'btc15m', mode: 'paper', status: 'running',
+    stake: 5, max_positions: 20, realized_pnl: 0, unrealized_pnl: null, closed_trades: 0, open_positions: 0, created_at: '2026-10-25T08:00:00Z', ...extra});
+  const deployments = [1, 2, 3, 4, 5, 6].map((id) => dep(id)).concat([dep(7, {status: 'paused', status_reason: 'loss guard'})]);
+  const open_positions = [1, 2, 3, 4, 5, 6].map((i) => ({side: 'yes', qty: 1, entry_price: .4, title: 'Strategy ' + i, ticker: 'T-' + i, mode: 'paper', opened_at: '2026-10-25T08:00:00Z'}));
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response({...emptyDashboard(), deployments, open_positions});
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  await f.viewDashboard(); await flush();
+  const deps = f.root.querySelector('#dash-deps').innerHTML;
+  const shown = [...deps.matchAll(/href="\/strategies\/(\d+)"/g)].map((m) => m[1]);
+  assert.deepEqual(shown, ['7', '1', '2', '3', '4']);  // the paused one needs the user, so it leads
+  assert.match(deps, /See all 7 deployments on Deploy/);
+  const html = f.root.querySelector('main').innerHTML;
+  assert.equal((html.match(/class="stub"/g) || []).length, 5); assert.match(html, /See all 6 open positions on Deploy/);
+});
+
 test('only the admin view shows backtest-history lag on the dashboard status line', async () => {
   const f = frontend({fetchImpl: path => {
     if (path === '/api/dashboard') return response(emptyDashboard());

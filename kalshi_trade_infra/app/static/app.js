@@ -1410,6 +1410,7 @@
   }
 
   // ---------- dashboard ----------
+  const DASH_ROWS = 5;  // rows per dashboard list before it links to the full page
   async function viewDashboard() {
     shell('/', loading(120), loading(320));
     const load = async () => {
@@ -1442,8 +1443,13 @@
           ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.total_pnl, small: `${usd(p.cash)} cash \u00b7 ${usd(p.open_at_cost)} at cost \u00b7 ${usd(p.total_pnl, true)} all time` })}
         </dl>${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? `\u26a0 ${d.reconcile.length} live position${d.reconcile.length === 1 ? '' : 's'} disagree with Kalshi \u2014 check your Portfolio` : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}`;
       const reg = registry(d.deployments.map((x) => x.curve));
+      // The dashboard is a summary: the first few deployments (paused ones, which need the user, then
+      // real money, demo, paper) and a link to Deploy for the rest. Six phone cards ran ~1,400px.
+      const depRank = (x) => x.status === 'paused' ? 0 : x.mode === 'live' ? 1 : x.mode === 'demo' ? 2 : 3;
+      const dashDeps = [...d.deployments].sort((a, b) => depRank(a) - depRank(b)).slice(0, DASH_ROWS);
+      const more = (n, what) => n > DASH_ROWS ? `<a class="stub-all" href="/deploy">See all ${n} ${what} on Deploy \u2192</a>` : '';
       const deps = d.deployments.length
-        ? deploymentTable(d.deployments.map((x) => deploymentSlip(x, reg, true)).join(''), true)  // same controls as Deploy
+        ? deploymentTable(dashDeps.map((x) => deploymentSlip(x, reg, true)).join(''), true) + more(d.deployments.length, 'deployments')  // same controls as Deploy
         // With autopilot on, "Dispatch your first agent" asked for work it is already doing.
         : (S.me.user && S.me.user.autopilot)
           ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is researching. Strategies that pass every gate land here on paper first, with no real money.</p><a class="btn" href="/research">See its research</a></div>`
@@ -1458,8 +1464,8 @@
             <section class="sect"><div class="sect-head"><h2>Deployed</h2></div><div id="dash-deps">${deps}</div></section>
           </div>
           <aside>
-            <section class="panel"><h3>Open positions</h3>${stubs(d.open_positions, false)}</section>
-            <section class="panel"><h3>Settled lately</h3>${stubs(d.recent_closed.slice(0, 5), true)}${d.recent_closed.length ? '<a class="stub-all" href="#track-record">Every closed trade, with net P&amp;L, is in the track record \u2193</a>' : ''}</section>
+            <section class="panel"><h3>Open positions</h3>${stubs(d.open_positions.slice(0, DASH_ROWS), false)}${more(d.open_positions.length, 'open positions')}</section>
+            <section class="panel"><h3>Settled lately</h3>${stubs(d.recent_closed.slice(0, DASH_ROWS), true)}${d.recent_closed.length ? '<a class="stub-all" href="#track-record">Every closed trade, with net P&amp;L, is in the track record \u2193</a>' : ''}</section>
           </aside>
         </div></div>`;
       root.querySelector('#boardbody').innerHTML = board;
