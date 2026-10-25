@@ -749,6 +749,50 @@ def test_since_your_last_visit_reads_new_passes_and_the_autopilots_own_changes(c
     assert repo.activity_since(cur, -1, since) == {"autopilot": {}, "runs": {}, "own_sessions": False}
 
 
+def test_the_deploy_board_and_strategy_page_reads_answer_as_the_ones_they_replace(conn, user):
+    """The Deploy board reads curves only for the deployments it lists, with the timestamp computed in
+    SQL, and the strategy page sums only its own strategy's deployments. Each answers exactly as the
+    full read it replaces, filtered to what the page shows: same points, same integers, same rows."""
+    from decimal import Decimal
+
+    from app import repository as repo
+
+    cur = conn.cursor()
+    uid = user["id"]
+    big, small, stopped = (_deployment(conn, user) for _ in range(3))
+    demo = repo.create_deployment(cur, uid, big["strategy_id"], "btc15m", "demo")
+    start = datetime(2026, 3, 8, 1, 59, 30)  # across a DST change in New York: UTC throughout
+    _closed_trades(conn, user, big["id"], [Decimal(i % 7 - 3) / 4 for i in range(400)], start)
+    _closed_trades(conn, user, small["id"], [Decimal("0.25"), Decimal("-1.10")], start)
+    _closed_trades(conn, user, demo, [Decimal("0.60")], start + timedelta(days=1))
+    _closed_trades(conn, user, stopped["id"], [Decimal("2.00")] * 200, start)
+    assert repo.set_deployment_status(cur, uid, stopped["id"], "stopped")
+
+    listed = repo.list_deployments_for_display(cur, uid)
+    ids = [d["id"] for d in listed]
+    assert stopped["id"] not in ids and {big["id"], small["id"], demo} <= set(ids)
+    full = repo.deployment_curves(cur, uid)
+    shown = repo.deployment_curves(cur, uid, deployment_ids=ids)
+    assert repr(shown) == repr({k: v for k, v in full.items() if k in set(ids)})
+    assert stopped["id"] in full and stopped["id"] not in shown
+    assert len(shown[big["id"]]) <= repo.CURVE_MAX_POINTS
+    # The SQL timestamp is the integer the Python conversion of the naive-UTC DATETIME gave.
+    cur.execute("SELECT closed_at FROM app_positions WHERE deployment_id IN (%s, %s)", (big["id"], small["id"]))
+    stamps = {int(r["closed_at"].replace(tzinfo=timezone.utc).timestamp()) for r in cur.fetchall()}
+    assert {t for t, _ in shown[big["id"]] + shown[small["id"]]} <= stamps
+    assert shown[small["id"]] == [[int(start.replace(tzinfo=timezone.utc).timestamp()), 0.25],
+                                  [int((start + timedelta(minutes=1)).replace(tzinfo=timezone.utc).timestamp()), -0.85]]
+    counting = _Counting(cur)
+    assert repo.deployment_curves(counting, uid, deployment_ids=[]) == {} and counting.n == 0  # nothing listed, no read
+
+    # The strategy page's deployments: the same rows list_deployments gave, filtered to the strategy.
+    for sid in {big["strategy_id"], small["strategy_id"], stopped["strategy_id"]}:
+        mine = repo.list_deployments_for_display(cur, uid, strategy_id=sid)
+        want = [d for d in repo.list_deployments(cur, uid) if d["strategy_id"] == sid]
+        assert repr(mine) == repr(want), sid
+    assert [d["id"] for d in repo.list_deployments_for_display(cur, uid, strategy_id=big["strategy_id"])] == [demo, big["id"]]
+
+
 def test_the_run_pages_dream_line_reads_only_the_dream_lines(conn, user):
     """latest_dream_event range-scans idx_events_message for its two prefixes and answers as the
     scan over every event of every run did: the user's newest dream line, nobody else's."""

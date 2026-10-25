@@ -1155,7 +1155,7 @@ def get_strategy(ctx: Ctx):
     s = _owned_strategy(ctx)
     out = _strategy_card(s)
     res = s.get("result") or {}
-    deps = [d for d in repo.list_deployments(ctx.cur, ctx.uid) if d["strategy_id"] == s["id"]]
+    deps = repo.list_deployments_for_display(ctx.cur, ctx.uid, strategy_id=s["id"])
     out.update(
         spec=s["spec"], rules=specmod.describe(s["spec"]), gates=res.get("gates"), dataset=res.get("dataset"),
         recent_trades=res.get("recent_trades"),
@@ -1245,8 +1245,10 @@ def strategy_dev_curve(ctx: Ctx):
 
 
 def list_deployments(ctx: Ctx):
-    curves = repo.deployment_curves(ctx.cur, ctx.uid)
-    deps = repo.list_deployments(ctx.cur, ctx.uid)
+    # Display reads: the deployments' totals summed before their rows are joined, and curves only
+    # for the deployments listed (not every stopped one's history). Same payload as before.
+    deps = repo.list_deployments_for_display(ctx.cur, ctx.uid)
+    curves = repo.deployment_curves(ctx.cur, ctx.uid, deployment_ids=[d["id"] for d in deps])
     checks = _backtest_checks(ctx.cur, ctx.uid, {d["strategy_id"]: d for d in deps})
     return {
         # Each row carries its own book's backtest comparison (same strategy, same mode).

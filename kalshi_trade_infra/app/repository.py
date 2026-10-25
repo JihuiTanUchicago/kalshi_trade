@@ -871,7 +871,8 @@ def history_freshness(cur) -> Dict[str, Optional[int]]:
 CURVE_MAX_POINTS = 120  # per deployment: plenty for a sparkline
 
 
-def deployment_curves(cur, user_id: int, max_points: int = CURVE_MAX_POINTS) -> Dict[int, List[List]]:
+def deployment_curves(cur, user_id: int, max_points: int = CURVE_MAX_POINTS,
+                      deployment_ids: Optional[List[int]] = None) -> Dict[int, List[List]]:
     """Cumulative realized P&L per deployment, oldest first, for sparklines: [[unix_ts, cum], ...].
 
     A curve with more than `max_points` trades is cut down in SQL. The first and last points are
@@ -879,10 +880,24 @@ def deployment_curves(cur, user_id: int, max_points: int = CURVE_MAX_POINTS) -> 
     them are split into (max_points - 2) // 2 runs by trade count, and each run keeps its lowest and
     highest point, so every drawdown and peak still shows. Every point kept is a real trade's
     cumulative P&L. The dashboard used to receive one point per closed trade (433KB at 20k trades)
-    and spent ~150ms turning those rows into Python. Ties keep the earlier trade."""
+    and spent ~150ms turning those rows into Python. Ties keep the earlier trade.
+
+    `deployment_ids` limits the read to the deployments a page lists (the Deploy board shows only
+    the ones not stopped); each curve is its own deployment's, so a listed curve is the same either
+    way. A busy trader's stopped deployments hold much of their history, which the full read sorted
+    for curves nobody shows. The timestamp is computed in SQL from the naive-UTC DATETIME
+    (TIMESTAMPDIFF, which no session time zone touches), the same integer the Python conversion
+    gave, without decoding thousands of datetimes."""
     buckets = max(1, (max_points - 2) // 2)
+    ids: Tuple = ()
+    where = "user_id=%s AND status='closed'"
+    if deployment_ids is not None:
+        ids = tuple(sorted({int(i) for i in deployment_ids}))
+        if not ids:
+            return {}
+        where = "deployment_id IN (" + ",".join(["%s"] * len(ids)) + ") AND " + where
     cur.execute(
-        """SELECT deployment_id, closed_at, cum FROM (
+        """SELECT deployment_id, TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', closed_at) AS ts, cum FROM (
              SELECT deployment_id, closed_at, cum, rn,
                     ROW_NUMBER() OVER (PARTITION BY deployment_id, b ORDER BY cum, rn) AS lo,
                     ROW_NUMBER() OVER (PARTITION BY deployment_id, b ORDER BY cum DESC, rn) AS hi
@@ -895,18 +910,17 @@ def deployment_curves(cur, user_id: int, max_points: int = CURVE_MAX_POINTS) -> 
                         SUM(pnl) OVER (PARTITION BY deployment_id ORDER BY closed_at, id ROWS UNBOUNDED PRECEDING) AS cum,
                         CAST(ROW_NUMBER() OVER (PARTITION BY deployment_id ORDER BY closed_at, id) AS SIGNED) AS rn,
                         COUNT(*) OVER (PARTITION BY deployment_id) AS n
-                 FROM app_positions WHERE user_id=%s AND status='closed'
+                 FROM app_positions WHERE """ + where + """
                ) ordered
              ) bucketed
            ) ranked
            WHERE lo = 1 OR hi = 1
            ORDER BY deployment_id, rn""",
-        (max_points, buckets, buckets, user_id),
+        (max_points, buckets, buckets, *ids, user_id),
     )
     out: Dict[int, List[List]] = {}
     for r in cur.fetchall():
-        out.setdefault(r["deployment_id"], []).append(
-            [int(r["closed_at"].replace(tzinfo=timezone.utc).timestamp()), round(float(r["cum"]), 4)])
+        out.setdefault(r["deployment_id"], []).append([int(r["ts"]), round(float(r["cum"]), 4)])
     return out
 
 
