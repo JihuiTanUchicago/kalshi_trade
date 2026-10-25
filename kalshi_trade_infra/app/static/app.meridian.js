@@ -3930,7 +3930,7 @@
   const runwayLabel = (days) => days < 1 ? 'Under a day' : days > 90 ? 'Over 3 months' : `About ${Math.round(days)} day${Math.round(days) === 1 ? '' : 's'}`;
   async function viewBilling() {
     const gen = S.gen;
-    shell('/billing', boardTitle('Billing') + '<details class="billing-pricing"><summary>Credit pricing</summary><p>Credits pay for research and chat at model list price. Paper and live trading are free.</p></details>' +
+    shell('/billing', boardTitle('Billing') + '<details class="billing-pricing"><summary>Credit pricing</summary><p>Credits pay for research and chat, billed per token for the model you pick. Paper and live trading are free.</p></details>' +
       '<dl class="figures measure" id="bfigs" style="margin-top:14px"></dl>', loading(360));
     let stripe = null, card = null;
     const load = async () => {
