@@ -32,7 +32,15 @@ PREFIX = os.getenv("TAU_TICK_PREFIX", "ticks")
 LATEST_KEY = f"{PREFIX}/lip_programs/latest.json.gz"
 STATUSES = ("active", "upcoming")
 PAGE = 1000
-FEE_SERIES = [s for s in os.getenv("TAU_LIP_FEE_SERIES", "KXBTC15M,KXBTCD,KXBTC,KXETH15M,KXETHD,KXCRYPTOLEAD15M").split(",") if s]
+# Short-dated series with liquidity pools we record books for and paper-quote (Todd 2026-10-25: crypto
+# lead plus the FX and commodity 15m books, an exception to the sports/weather/crypto data rule).
+REWARD_SERIES = [s for s in os.getenv("TAU_LIP_SERIES", ",".join([
+    "KXCRYPTOLEAD15M",
+    "KXEURUSD15M", "KXGBPUSD15M", "KXUSDJPY15M", "KXAUDUSD15M", "KXUSDCAD15M",
+    "KXBRENT15M", "KXNATGAS15M", "KXCOPPER15M", "KXPLATINUM15M", "KXPALLADIUM15M",
+])).split(",") if s]
+FEE_SERIES = [s for s in os.getenv("TAU_LIP_FEE_SERIES", ",".join(
+    ["KXBTC15M", "KXBTCD", "KXBTC", "KXETH15M", "KXETHD"] + REWARD_SERIES)).split(",") if s]
 MAX_PAGES = 50
 
 

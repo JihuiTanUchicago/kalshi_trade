@@ -31,6 +31,7 @@ from typing import Dict, List, Optional, Set, Tuple
 import certifi
 
 from data_pipeline.common import api_get, fetch_open_markets, get_db_conn, parse_iso_to_dt, utc_now
+from data_pipeline.lip_programs import REWARD_SERIES
 
 TICK_DIR = os.getenv("TAU_TICK_DIR", "/opt/kalshi/ticks")
 # Explicit series list (comma separated). Unset: every Kalshi series whose ticker starts with one of
@@ -40,7 +41,7 @@ TICK_SERIES_PREFIXES = [s.strip() for s in os.getenv("TAU_TICK_SERIES_PREFIXES",
 CORE_SERIES = ["KXBTC15M", "KXBTCD", "KXBTC"]
 # Series recorded because Kalshi pays liquidity rewards on them (data_pipeline/lip_programs.py), so a
 # paper market maker can measure its share of the pool and its adverse selection there.
-LIP_SERIES = [s.strip() for s in os.getenv("TAU_TICK_LIP_SERIES", "KXCRYPTOLEAD15M").split(",") if s.strip()]
+LIP_SERIES = [s.strip() for s in os.getenv("TAU_TICK_LIP_SERIES", ",".join(REWARD_SERIES)).split(",") if s.strip()]
 KALSHI_CHANNELS = ["orderbook_delta", "trade", "ticker"]
 COINBASE_PRODUCTS = [s.strip() for s in os.getenv("TAU_TICK_COINBASE_PRODUCTS", "BTC-USD").split(",") if s.strip()]
 # matches = every print; ticker = best bid/ask (and sizes) at each print; heartbeat = 1/s liveness.
