@@ -1,0 +1,47 @@
+name: Batch deploy main
+
+# The :20/:50 batch: ship whatever main has merged since the last deploy, to the web box and, when
+# data_pipeline/ or trading_core/ changed, the collector. scripts/batch_deploy.sh holds the rules:
+# CI green on main's head, 0 sent order intents before a full restart, recursive-web alone for a
+# UI-only diff, and a failed run (GitHub mails the repo owner) when merges wait > 90 min to ship.
+# Runs here rather than in a Claude session so a session ending can't silently stop deploys.
+# Same deploy keys and production environment as deploy.yml / deploy-collector.yml.
+
+on:
+  schedule:
+    - cron: "20,50 * * * *"
+  workflow_dispatch:
+
+# Shares deploy.yml's group, so a manual deploy and a batch never run on the box at once.
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  checks: read
+
+jobs:
+  batch:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 25
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0   # the script diffs main against the deployed markers
+
+      - name: Configure AWS credentials (deploy IAM user keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Ship what main has merged
+        env:
+          AWS_PROFILE: ""
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash kalshi_trade_infra/scripts/batch_deploy.sh
