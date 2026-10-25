@@ -54,6 +54,13 @@ def _minutes(a: Optional[datetime], b: Optional[datetime]) -> Optional[float]:
     return round((b - a).total_seconds() / 60.0, 1) if a and b else None
 
 
+def _kept_drops(drops: List[Dict], last: int = 12) -> List[Dict]:
+    """The newest `last` drops, plus every spec_invalid one wherever it fell: a bug_deaths flag is
+    triaged from that drop's text, and run 3081's was cut off by the newest-12 window."""
+    tail = drops[-last:]
+    return [d for d in drops[:-last] if d["tag"] == "spec_invalid"] + tail
+
+
 def run_summary(run: Dict, events: List[Dict], now: datetime) -> Dict:
     """One run's line in the report: its funnel card, timing, last phase and tagged drops."""
     card = rsi.run_card(run, [e for e in events if e.get("kind") == "verdict"])
@@ -81,7 +88,7 @@ def run_summary(run: Dict, events: List[Dict], now: datetime) -> Dict:
         "ended_min_ago": _minutes(_naive(run.get("finished_at")), now),
         "phase": phase, "cost_usd": card["cost_usd"], "explored": card["explored"],
         "dropped": card["dropped"], "gated": card["gated"], "passed": card["passed"],
-        "deaths": card["deaths"], "death_kinds": card["death_kinds"], "drops": drops[-12:],
+        "deaths": card["deaths"], "death_kinds": card["death_kinds"], "drops": _kept_drops(drops),
     }
 
 
