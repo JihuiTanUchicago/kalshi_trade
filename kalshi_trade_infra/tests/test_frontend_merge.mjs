@@ -192,6 +192,17 @@ test('a signed-out deep link signs in back to the same page', async () => {
   assert.deepEqual([...new Set(google)], ['/auth/google?next=%2Fstrategies%2F42']);
 });
 
+test('a strategy from the seeded example session carries the Example tag and note on its own page', async () => {
+  const note = 'An example Tau ran for you when you signed up. It cost you nothing.';
+  for (const example of [true, false]) {
+    const f = strategyFrontend(detailStrategy({example, direction: 'random_walk'})); await f.viewStrategy(42); await flush();
+    const head = f.root.querySelector('.board-title').outerHTML;
+    assert.equal(/<span class="mk quiet example-tag" title="[^"]*">Example<\/span>/.test(head), example);
+    assert.equal(head.includes(note), example);
+    f.clearTimers();
+  }
+});
+
 test('the current strategy page renders an escaped research paper and a separate real demo curve', async () => {
   const f = strategyFrontend(); await f.viewStrategy(42); await flush();
   const output = f.root.querySelector('main').innerHTML;
@@ -224,6 +235,8 @@ test('the abstract says a strategy cleared the gate only when it passed', async 
     const text = f.root.querySelector('.paper-ab-result').innerHTML;
     assert.equal(/cleared the gate/.test(text), status === 'passed', status);
     assert.match(text, /of 2 ideas tested this run/);
+    const figs = f.root.querySelector('#figs').innerHTML;
+    assert.equal(/the one that passed/.test(figs), status === 'passed', status);
   }
 });
 

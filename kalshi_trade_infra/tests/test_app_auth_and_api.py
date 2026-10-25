@@ -362,6 +362,19 @@ def test_strategies_list_still_shows_the_example_rows_and_marks_them(monkeypatch
     assert all(c["example"] for c in out["strategies"])
 
 
+def test_strategy_detail_marks_a_seeded_example_strategy(monkeypatch):
+    # The detail page shows the same Example tag and note as the lists, so its payload carries the flag.
+    row = {"id": 4, "run_id": 1, "parent_id": None, "market": "btc15m", "title": "Walk", "thesis": "t", "status": "rejected",
+           "created_at": None, "result": {}, "spec": {"sizing": {"stake": 5}, "side": "yes"}, "experiment_id": None}
+    monkeypatch.setattr(server.specmod, "describe", lambda spec: [])
+    monkeypatch.setattr(server, "_experiment_block", lambda *a: None)
+    monkeypatch.setattr(server.repo, "list_deployments", lambda *a: [])
+    monkeypatch.setattr(server.repo, "positions_for_strategy", lambda *a: [])
+    for direction, example in ((server.repo.DEMO_DIRECTION, True), ("momentum", False)):
+        monkeypatch.setattr(server.repo, "get_strategy", lambda cur, uid, sid, d=direction: {**row, "direction": d})
+        assert server.get_strategy(ctx(params=("4",)))["example"] is example
+
+
 def test_list_strategies_applies_limit_and_offset():
     cur = StratCur()
     server.repo.list_strategies(cur, 1, limit=50, offset=100)
