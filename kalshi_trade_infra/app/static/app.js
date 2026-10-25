@@ -1565,18 +1565,6 @@
   }
 
   // ---------- research ----------
-  // "Build on what's worked": the user's best passed edges, one click from a deeper search line.
-  function winCard(s) {
-    const oos = s.out_of_sample;
-    const pnl = oos && oos.pnl != null ? oos.pnl : null;
-    return `<div class="win-card">
-      <a class="win-title" href="/strategies/${s.id}"><b>${esc(s.title)}</b></a>
-      <span class="win-meta">${esc(marketShort(s.market))} · ${esc(dirLabel(s.direction))}</span>
-      <div class="win-foot">
-        <span class="win-pnl"><span class="lab">Backtest P&amp;L (unseen)</span><span class="fig sm ${pnl > 0 ? 'tint pos' : pnl < 0 ? 'tint neg' : ''}">${pnl == null ? '—' : usd(pnl, true)}</span></span>
-        <span class="win-act"><a class="btn sm" href="/strategies/${s.id}">Open</a><button class="btn sm primary" type="button" data-dig="${s.id}">${ICON.spark2}Dig deeper</button></span>
-      </div></div>`;
-  }
   // The RSI loop made legible on the index: the engine rewrites its own search policy and keeps
   // the new one only if it beats the old on the user's own history. Same card language as the run
   // page. Hidden on a brand-new account (no history to evolve from yet).
