@@ -2450,6 +2450,7 @@ def explore_market(ctx: Ctx):
     if not ticker:
         raise ApiError(400, "No market given.")
     series = ticker.split("-", 1)[0]
+    m: Dict = {}
     try:
         m = (api_get("/markets/%s" % ticker) or {}).get("market") or {}
         open_ts = int(parse_iso_to_dt(m.get("open_time")).timestamp()) if m.get("open_time") else None
@@ -2468,7 +2469,20 @@ def explore_market(ctx: Ctx):
         if " failed 404:" in str(e):  # api_get's RuntimeError carries the status in its text
             raise ApiError(404, "Kalshi has no market %s." % ticker)
         print("[explore] market %s history failed: %r" % (ticker, e), flush=True)
-        raise ApiError(502, "Kalshi didn't send this market's history just now. Try again in a minute.")
+        # Still show the market: Kalshi's own record if that call got through, else the Explore
+        # feed's snapshot of it. Only the chart waits for Kalshi (history_unavailable).
+        snap = m and {"title": m.get("title"), "sub": m.get("yes_sub_title") or m.get("subtitle"), "yes_bid": m.get("yes_bid_dollars"),
+                      "yes_ask": m.get("yes_ask_dollars"), "last": m.get("last_price_dollars"), "volume_24h": m.get("volume_24h_fp"),
+                      "open_interest": m.get("open_interest_fp"), "status": m.get("status"), "close_time": m.get("close_time")}
+        if not snap:
+            f = next((x for x in (_explore_feed().get("markets") or []) if x.get("t") == ticker), None)
+            snap = f and {"title": f.get("ti"), "sub": f.get("su"), "yes_bid": f.get("bid"), "yes_ask": f.get("ask"),
+                          "last": f.get("last"), "volume_24h": f.get("v24"), "open_interest": f.get("oi"),
+                          "status": f.get("st"), "close_time": None}
+        if not snap:
+            raise ApiError(502, "Kalshi didn't send this market's history just now. Try again in a minute.")
+        return {**snap, "ticker": ticker, "series": series, "title": snap["title"] or ticker, "sub": snap["sub"] or "",
+                "period_min": None, "points": [], "history_unavailable": True}
     points = []
     for c in cs:
         price = (c.get("price") or {})

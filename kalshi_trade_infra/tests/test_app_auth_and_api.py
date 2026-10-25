@@ -675,6 +675,7 @@ def test_explore_market_errors_never_show_the_raw_exception(monkeypatch, capsys)
     def proxy_down(path, params=None):
         raise OSError("HTTPSConnectionPool(host='api.elections.kalshi.com'): Tunnel connection failed: 403 Forbidden")
     monkeypatch.setattr(common, "api_get", proxy_down)
+    monkeypatch.setattr(server, "_explore_feed", lambda: {"markets": []})  # not in the feed either
     with pytest.raises(server.ApiError) as err:
         server.explore_market(c)
     assert err.value.status == 502 and "Try again in a minute" in str(err.value)
@@ -686,3 +687,27 @@ def test_explore_market_errors_never_show_the_raw_exception(monkeypatch, capsys)
     with pytest.raises(server.ApiError) as err:
         server.explore_market(c)
     assert err.value.status == 404 and "no market KXNBAGAME-26OCT25TORMIN-MIN" in str(err.value)
+
+
+def test_explore_market_shows_the_market_when_only_its_history_failed(monkeypatch, capsys):
+    import data_pipeline.common as common
+    c = server.Ctx(FakeConn(), {"id": 1}, (), {"ticker": "KXNBAGAME-26OCT25TORMIN-MIN"}, {}, None)
+    feed = {"markets": [{"t": "KXNBAGAME-26OCT25TORMIN-MIN", "s": "KXNBAGAME", "ti": "Minnesota wins", "su": "Minnesota",
+                         "bid": "0.50", "ask": "0.51", "last": "0.50", "v24": "195732", "oi": "201649", "st": "active"}]}
+    monkeypatch.setattr(server, "_explore_feed", lambda: feed)
+
+    def down(path, params=None):
+        raise OSError("Tunnel connection failed: 403 Forbidden")
+    monkeypatch.setattr(common, "api_get", down)
+    d = server.explore_market(c)  # Kalshi unreachable: the Explore feed's snapshot stands in
+    assert d["history_unavailable"] is True and d["points"] == [] and d["title"] == "Minnesota wins"
+    assert d["yes_bid"] == "0.50" and d["open_interest"] == "201649" and d["series"] == "KXNBAGAME"
+
+    def candles_down(path, params=None):
+        if "/candlesticks" in path:
+            raise OSError("read timed out")
+        return {"market": {"title": "Minnesota wins (Kalshi)", "yes_bid_dollars": "0.52", "close_time": "2026-10-26T03:00:00Z"}}
+    monkeypatch.setattr(common, "api_get", candles_down)
+    d = server.explore_market(c)  # the market call got through: its fresher record wins over the feed
+    assert d["history_unavailable"] is True and d["title"] == "Minnesota wins (Kalshi)" and d["yes_bid"] == "0.52"
+    assert d["close_time"] == "2026-10-26T03:00:00Z"
