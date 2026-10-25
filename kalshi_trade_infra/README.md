@@ -37,7 +37,9 @@ unless the owner turns it on. Newest decisions and incident notes are at the top
    also run on paper, never live.
 4. **Live.** Only a `DEPLOYMENT_CANDIDATE` whose `agent.paper_evidence` passes: 8+ closed paper
    trades and not down, then on realistic fills 30+ round trips, net > 0 after fees, a 48h+
-   span, and a stationary-bootstrap p ≤ 0.10. Autopilot live also needs `agent.live_autopilot_ok`: the user's autopilot and
+   span, a stationary-bootstrap p ≤ 0.10, the newer half up, and last a clean demo record
+   (`services.demo_record`: 20+ settled demo orders, none lost, and the demo book matching the demo
+   exchange on the 15-minute sweeps). Autopilot live also needs `agent.live_autopilot_ok`: the user's autopilot and
    `autopilot_live` switches, `APP_LIVE_TRADING_ENABLED=1` on the server, a connected Kalshi key,
    and today's live loss inside `autopilot_daily_loss_limit`. A manual live deploy needs the
    server switch, a key and a typed `LIVE` confirmation; NO-side live also needs

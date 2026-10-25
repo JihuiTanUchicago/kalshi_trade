@@ -163,6 +163,31 @@ def demo_balance_dollars(credentials: KalshiCredentials, base_url: Optional[str]
     return float(resp.json().get("balance") or 0) / 100.0
 
 
+def demo_positions(credentials: KalshiCredentials, base_url: Optional[str] = None, timeout: int = 20) -> Dict[str, int]:
+    """This account's open demo positions: ticker -> signed net contracts (+ YES, - NO; buying NO is
+    a short YES leg on Kalshi). Read-only and host-isolated; follows the cursor across pages."""
+    base = _require_demo_host(base_url or KALSHI_DEV_API_BASE)
+    creds = _require_creds(credentials)
+    endpoint = "/portfolio/positions"
+    out: Dict[str, int] = {}
+    cursor = None
+    for _page in range(50):
+        params = {"limit": 1000, **({"cursor": cursor} if cursor else {})}
+        headers = kalshi_auth_headers("GET", _signing_path(base, endpoint), creds)
+        resp = requests.get(base + endpoint, params=params, headers=headers, timeout=timeout)
+        if resp.status_code >= 400:
+            raise RuntimeError("demo GET %s failed %d: %s" % (endpoint, resp.status_code, resp.text[:400]))
+        body = resp.json()
+        for p in body.get("market_positions") or []:
+            net = int(float(p.get("position_fp") or p.get("position") or 0))
+            if net:
+                out[p["ticker"]] = net
+        cursor = body.get("cursor")
+        if not cursor:
+            return out
+    raise RuntimeError("demo GET %s: too many pages" % endpoint)
+
+
 def demo_orders(credentials: KalshiCredentials, ticker: Optional[str] = None,
                 base_url: Optional[str] = None, timeout: int = 20, params: Optional[Dict] = None) -> Dict:
     """Read this account's demo orders (optionally one ticker) — used by crash-recovery to find an

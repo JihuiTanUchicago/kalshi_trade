@@ -432,6 +432,9 @@ def _readiness_ctx(monkeypatch, *, strategy=True, candidate=True, trips=(), live
         {"strategy_id": 7, "mode": "paper", "closed_trades": 40, "realized_pnl": 5.0}])
     monkeypatch.setattr(agent.repo, "paper_round_trips", lambda cur, uid, sid: list(trips))
     monkeypatch.setattr(agent, "live_autopilot_ok", lambda cur, user: live)
+    monkeypatch.setattr(agent.demo_record, "demo_evidence", lambda cur, uid, sid: {
+        "ok": False, "why": "no demo orders", "orders": 0, "orders_needed": 20, "unresolved": 0,
+        "mismatched_tickers": [], "last_check_at": None})
 
     class C:
         def cursor(self):
@@ -446,6 +449,7 @@ def test_readiness_reports_progress_and_the_first_blocker(monkeypatch):
     assert out["paper"]["trades"] == 0 and out["paper"]["trades_needed"] == 30
     assert "realistic fills" in out["blocking"]
     assert out["paper"]["p_value"] is None
+    assert out["paper"]["checks"]["demo"] is False and out["paper"]["demo_orders_needed"] == 20
 
 
 def test_readiness_names_the_gatekeeper_first(monkeypatch):
