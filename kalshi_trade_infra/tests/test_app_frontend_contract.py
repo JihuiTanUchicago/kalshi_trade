@@ -148,6 +148,7 @@ def _ap_ctx(monkeypatch, autopilot=1):
     monkeypatch.setattr(server.repo, 'realized_pnl', lambda *a: 0.0)
     monkeypatch.setattr(server.repo, 'last_autopilot_action', lambda *a: None)
     monkeypatch.setattr(server.repo, 'last_review_at', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'review_in_flight', lambda *a: False)
     monkeypatch.setattr(server.repo, 'list_runs', lambda *a, **k: [])
     monkeypatch.setattr(server.repo, 'research_week', lambda *a, **k: [])
     monkeypatch.setattr(server.repo, 'research_spent_since', lambda *a, **k: 0.0)
@@ -166,6 +167,34 @@ def test_autopilot_status_flags_billing_blocked(monkeypatch):
     monkeypatch.setattr(server, '_needs_card', lambda c: False)
     out = server.autopilot_status(ctx)
     assert out['billing_blocked'] is True and out['billing_reason'] == 'credits'
+
+
+def test_autopilot_status_says_when_a_review_is_in_flight(monkeypatch):
+    ctx = _ap_ctx(monkeypatch, autopilot=1)
+    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: True)
+    monkeypatch.setattr(server.repo, 'review_in_flight', lambda cur, uid: True)
+    out = server.autopilot_status(ctx)
+    assert out['reviewing'] is True
+    assert out['story'][0].startswith("Right now it's reviewing the markets")
+    off = server.autopilot_status(_ap_ctx(monkeypatch, autopilot=0))
+    assert off['reviewing'] is False  # an off autopilot reads nothing extra
+
+
+def test_me_states_what_auto_reload_will_charge_the_card(monkeypatch):
+    ctx = _ap_ctx(monkeypatch, autopilot=0)
+    monkeypatch.setattr(server.billing, 'TOPUP_FEE', server.Decimal('0.055'))
+    monkeypatch.setattr(server.repo, 'get_stripe_customer',
+                        lambda *a: {'default_pm_id': 'pm_1', 'auto_reload': 1, 'reload_amount': None, 'reload_threshold': None})
+    assert server._auto_reload_terms(ctx) == {'amount': 20.0, 'charge': 21.1, 'threshold': 5.0}
+    # Saved amounts below the floors charge the floors, as billing.auto_reload does.
+    monkeypatch.setattr(server.repo, 'get_stripe_customer',
+                        lambda *a: {'default_pm_id': 'pm_1', 'auto_reload': 1, 'reload_amount': 50, 'reload_threshold': 1})
+    assert server._auto_reload_terms(ctx) == {'amount': 50.0, 'charge': 52.75, 'threshold': 5.0}
+    for cust in (None, {'default_pm_id': None, 'auto_reload': 1}, {'default_pm_id': 'pm_1', 'auto_reload': 0}):
+        monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a, c=cust: c)
+        assert server._auto_reload_terms(ctx) is None
+    monkeypatch.setattr(server.billing, 'configured', lambda: False)
+    assert server._auto_reload_terms(ctx) is None
 
 
 def test_autopilot_status_not_blocked_when_ready(monkeypatch):

@@ -213,6 +213,27 @@ test('status updates show last review and synchronize the model only when it is 
   assert.equal(posts(f).length, 0);
 });
 
+test('a queued or running review reads as in progress, not as a review that already ran', async () => {
+  const f = frontend(() => response(catalog)); f.apBuildShell(f.box); await flush();
+  const at = new Date().toISOString();
+  f.apUpdate(f.box, status({reviewing: true, last_review_at: at}));
+  assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Review<\/dt><dd>In progress<\/dd>/);
+  assert.doesNotMatch(f.box.querySelector('#apf-stats').innerHTML, /Last reviewed/);
+  f.apUpdate(f.box, status({reviewing: false, last_review_at: at}));
+  assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Last reviewed<\/dt><dd>just now<\/dd>/);
+  assert.doesNotMatch(source, /Working the operation/);
+});
+
+test('the autopilot feed labels switch notes as switches, not reviews', () => {
+  const f = frontend();
+  const kind = content => f.apFeedLi({role: 'system', content, created_at: '2026-10-25T19:22:00Z'}).querySelector('.say-kind').innerHTML;
+  assert.equal(kind('Autopilot is ON: the agent may research, deploy and tune paper strategies.'), 'Autopilot on');
+  assert.equal(kind('Autopilot is OFF: the agent will only propose; you approve every change'), 'Autopilot off');
+  assert.equal(kind('LIVE autopilot is ON — the agent may promote proven strategies.'), 'Live autopilot on');
+  assert.equal(kind('LIVE autopilot is OFF.'), 'Live autopilot off');
+  assert.equal(kind('Holding: nothing cleared the gates this cycle.'), 'Reviewed');
+});
+
 test('billing continues to render the server-provided welcome credit instead of a UI constant', async () => {
   for (const free_bonus of [20, 37]) {
     const f = frontend(path => { assert.equal(path, '/api/billing'); return response({configured: false, cards: [], ledger: [], balance: free_bonus,

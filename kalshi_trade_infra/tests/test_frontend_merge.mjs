@@ -695,6 +695,39 @@ test('a failed autopilot switch-on leaves the dashboard card off and says why', 
   assert.match(f.root.querySelector('#dash-ap .apcard-err').innerHTML, /Add a payment method first\./);
 });
 
+test('the autopilot card says what switching it on costs before the click', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(emptyDashboard());
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  const cost = () => f.root.querySelector('#dash-ap .apcard-cost');
+  f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 18.4, auto_reload: {amount: 20, charge: 21.1, threshold: 5}};
+  await f.viewDashboard(); await flush();
+  assert.match(cost().innerHTML, /uses your credits while it's on \(\$18\.40 left\)/);
+  assert.match(cost().innerHTML, /When they fall to \$5\.00, auto-reload charges your card \$21\.10 for \$20\.00 more\./);
+  assert.match(cost().innerHTML, /<a href="\/billing">Billing<\/a>/);
+  f.S.me.auto_reload = null; f.paintDashAp();
+  assert.match(cost().innerHTML, /\(\$18\.40 left\) and pauses when they run out\. Turn it off any time\./);
+  assert.doesNotMatch(cost().innerHTML, /auto-reload/);
+  f.S.me.billing_enabled = false; f.paintDashAp();  // payments off on this server: nothing is spent
+  assert.equal(cost(), null);
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, /Turn on autopilot/);
+});
+
+test('right after switching on, the card says the first review is running, not that it already moved', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(emptyDashboard());
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = true;
+  const at = new Date().toISOString();
+  f.S.ap = {...apOn, paper_running: 0, paper_progress: null, reviewing: true, last_review_at: at, last_action: {at, text: 'Autopilot is ON: …'}};
+  await f.viewDashboard(); await flush();
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Last move<\/dt><dd>Reviewing now<\/dd>/);
+  f.S.ap = {...f.S.ap, reviewing: false}; f.paintDashAp();
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Last move<\/dt><dd>just now<\/dd>/);
+});
+
 test('the autopilot panel shows Kill only once real money is armed or running', () => {
   const f = frontend();
   const controls = d => {

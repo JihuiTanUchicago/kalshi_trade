@@ -384,6 +384,7 @@ def me(ctx: Ctx):
         "is_admin": (ctx.user["email"] or "").lower() == ADMIN_EMAIL.lower(),
         "billing_enabled": billing.configured(),
         "needs_card": _needs_card(ctx),
+        "auto_reload": _auto_reload_terms(ctx),
         "free_bonus": float(billing.FREE_BONUS),
         "credit_balance": round(repo.credit_balance(ctx.cur, ctx.uid), 4),
         "min_run_balance": float(billing.MIN_RUN_BALANCE),  # the headroom a research run needs to start
@@ -616,6 +617,20 @@ def _needs_card(ctx: Ctx) -> bool:
         return False
     cust = repo.get_stripe_customer(ctx.cur, ctx.uid)
     return not (cust and cust.get("default_pm_id"))
+
+
+def _auto_reload_terms(ctx: Ctx) -> Optional[Dict]:
+    """What auto-reload will charge the saved card, for the autopilot card's cost line: the credits
+    added, the card charge (credits plus the top-up fee) and the balance that triggers it. The same
+    floors billing.auto_reload applies. None when payments are off, no card is saved, or it is off."""
+    if not billing.configured():
+        return None
+    cust = repo.get_stripe_customer(ctx.cur, ctx.uid)
+    if not (cust and cust.get("default_pm_id") and cust.get("auto_reload")):
+        return None
+    amount = max(billing.AUTORELOAD_AMOUNT, Decimal(str(cust.get("reload_amount") or billing.AUTORELOAD_AMOUNT)))
+    threshold = max(billing.AUTORELOAD_THRESHOLD, Decimal(str(cust.get("reload_threshold") or billing.AUTORELOAD_THRESHOLD)))
+    return {"amount": float(amount), "charge": billing.topup_charge_cents(amount) / 100, "threshold": float(threshold)}
 
 
 def _require_billing_ready(ctx: Ctx, gerund: str) -> None:
@@ -1302,6 +1317,8 @@ def _autopilot_story(d: Dict) -> List[str]:
         now = ("Right now it's researching %s." % (
             names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1])) if names \
             else "Right now it's picking a market to research."
+    elif d.get("reviewing"):
+        now = "Right now it's reviewing the markets to pick its next move. Each move shows up in its activity feed."
     else:
         now = "Right now it's between research runs. It checks in about every %d minutes." % max(1, COPILOT_REVIEW_MINUTES)
         quiet = _quiet_minutes(d.get("last_review_at"))
@@ -1554,6 +1571,9 @@ def autopilot_status(ctx: Ctx):
         "loss_headroom": round(max(0.0, limit + min(0.0, today_live)), 2),  # how much loss budget is left today
         "last_action": repo.last_autopilot_action(cur, ctx.uid),
         "last_review_at": repo.last_review_at(cur, ctx.uid),  # liveness: a quiet review posts nothing, this still shows it ran
+        # A review queued or running now. Switching on queues the first one at once, and the panel said
+        # "between research runs, checks in every 10 minutes" over a "Working" pulse while it waited.
+        "reviewing": bool(u.get("autopilot")) and repo.review_in_flight(cur, ctx.uid),
         "model": u.get("autopilot_model") or catalog.DEFAULT_KEY,  # the model the autopilot's own runs use
         "focus": agent.focus_tokens(u),  # the user's binding market focus ([] = any market)
         "billing_blocked": billing_blocked,

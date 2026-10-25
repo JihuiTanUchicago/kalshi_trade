@@ -550,6 +550,28 @@ test('Overview "paused, needs you" jumps to the first paused deployment', async 
   assert.equal(anchored.length, 1); assert.equal(anchored[0].querySelector('header h3 a').getAttribute('href'), '/strategies/42');
 });
 
+test('Overview autopilot card says what switching it on costs, and a running first review reads as one', async () => {
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(dashboardData()); }});
+  const card = () => f.root.querySelector('#dash-ap'), cost = () => f.root.querySelector('#dash-ap .apcard-cost');
+  f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 18.4, auto_reload: {amount: 20, charge: 21.1, threshold: 5}};
+  await f.viewDashboard(); await flush();
+  assert.match(cost().innerHTML, /uses your credits while it's on \(\$18\.40 left\)\. When they fall to \$5\.00, auto-reload charges your card \$21\.10 for \$20\.00 more\./);
+  f.S.me.auto_reload = null;
+  await f.viewDashboard(); await flush();
+  assert.match(cost().innerHTML, /and pauses when they run out\. Turn it off any time\./);
+  f.S.me.billing_enabled = false;
+  await f.viewDashboard(); await flush();
+  assert.equal(cost(), null); assert.match(card().innerHTML, /Turn on autopilot/);
+  // Switched on, first review still queued: the card says so instead of "Last move just now".
+  const at = new Date().toISOString();
+  f.S.me.user.autopilot = true;
+  f.S.ap = {autopilot: true, mode: 'paper', story: ['Right now it’s reviewing the markets to pick its next move.'], research: {tested_7d: 0, passed_7d: 0, active: []},
+    live_running: 0, demo_running: 0, paper_running: 0, reviewing: true, last_review_at: at, last_action: {at, text: 'Autopilot is ON: …'}};
+  f.S.apAt = Date.now();
+  await f.viewDashboard(); await flush();
+  assert.match(card().innerHTML, /<dt>Last move<\/dt><dd>Reviewing now<\/dd>/);
+});
+
 test('Overview deployment monitors preserve every mode, status, risk field and unknown-versus-zero result', async () => {
   const deployments = Object.freeze(['paper', 'demo', 'live'].flatMap((mode, modeIndex) => ['running', 'paused', 'stopped'].map((status, index) =>
     Object.freeze({...dashboardDeployment(mode, status), id: 100 + modeIndex * 3 + index,

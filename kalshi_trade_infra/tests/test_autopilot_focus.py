@@ -143,3 +143,16 @@ def test_story_says_when_the_last_check_in_is_late(monkeypatch):
                                     "research": {"active": ["Bitcoin"]}})
     assert busy[0] == "Right now it's researching Bitcoin."
     assert "checks in about every" in server._autopilot_story({"autopilot": True, "last_review_at": None})[0]
+
+
+def test_story_says_a_queued_or_running_review_is_happening_now(monkeypatch):
+    # Switching on queues the first review at once; the panel said "between research runs, checks in
+    # about every 10 minutes" under a Working pulse while the user waited to see it move.
+    from datetime import datetime
+    now = datetime(2026, 10, 25, 16, 0)
+    monkeypatch.setattr(server.repo, "now_utc", lambda: now)
+    first = server._autopilot_story({"autopilot": True, "reviewing": True, "last_review_at": now})
+    assert first[0] == "Right now it's reviewing the markets to pick its next move. Each move shows up in its activity feed."
+    # Research already running is the more specific answer.
+    assert server._autopilot_story({"autopilot": True, "reviewing": True,
+                                    "research": {"active": ["Bitcoin"]}})[0] == "Right now it's researching Bitcoin."

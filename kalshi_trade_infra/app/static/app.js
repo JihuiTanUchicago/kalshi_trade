@@ -3456,7 +3456,7 @@
       host.className = 'apcard';
       host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>Autopilot off</span>
         <h2>Let the autopilot trade for you</h2>
-        <p>It picks markets, tests ideas on data it never saw, and runs the ones that pass on paper money. Every move shows up in its activity feed. Real money stays off until you turn it on separately.</p></div>
+        <p>It picks markets, tests ideas on data it never saw, and runs the ones that pass on paper money. Every move shows up in its activity feed. Real money stays off until you turn it on separately.</p>${apCostLine()}</div>
         <div class="apcard-act"><button type="button" class="btn primary" data-apcard="on">Turn on autopilot</button><a class="apcard-alt" href="/research">or research by hand</a></div>
         <p class="apcard-err error-text" role="alert"></p>`;
       const b = host.querySelector('[data-apcard="on"]');
@@ -3472,7 +3472,7 @@
       ['Strategies running', running ? String(running) : 'None yet'],
       ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested · ${r.passed_7d || 0} passed`],
       prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${prog.trades} of ${prog.trades_needed} paper trades</a>`]
-        : ['Last move', d.last_action && d.last_action.at ? sinceMin(d.last_action.at) : (d.last_review_at ? 'Reviewed ' + sinceMin(d.last_review_at) : 'Starting up')],
+        : ['Last move', d.reviewing ? 'Reviewing now' : d.last_action && d.last_action.at ? sinceMin(d.last_action.at) : (d.last_review_at ? 'Reviewed ' + sinceMin(d.last_review_at) : 'Starting up')],
     ];
     const now = d.billing_blocked
       ? `Paused: <a href="/billing">${d.billing_reason === 'card' ? 'add a payment method' : 'add credits'}</a> so it can keep researching.`
@@ -3483,6 +3483,16 @@
         <dl class="apcard-figs">${cells.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl></div>
       <div class="apcard-act"><button type="button" class="btn" data-apcard="open">Open autopilot</button></div>`;
     host.querySelector('[data-apcard="open"]').onclick = () => apOpen();
+  }
+  // What switching it on costs, said before the click: the agent's runs spend credits, and with
+  // auto-reload on the saved card is charged when they run low. Payments off on this server: no line.
+  function apCostLine() {
+    const me = S.me;
+    if (!me || !me.billing_enabled) return '';
+    const ar = me.auto_reload;
+    return `<p class="apcard-cost">It uses your credits while it's on (${usd(me.credit_balance)} left)${ar
+      ? `. When they fall to ${usd(ar.threshold)}, auto-reload charges your card ${usd(ar.charge)} for ${usd(ar.amount)} more. Turn it off any time, or change auto-reload on <a href="/billing">Billing</a>.`
+      : ' and pauses when they run out. Turn it off any time.'}</p>`;
   }
   function apOpen() {
     try { localStorage.setItem('tau_ap_open', '1'); } catch (e) { /* private mode */ }
@@ -3569,7 +3579,10 @@
       return li;
     }
     // A system line = an autopilot action (or a blocked/holding note).
-    const kind = AP_ACT[m.proposal_kind] || 'Reviewed';
+    // The switch notes ("Autopilot is ON: …") were labelled Reviewed, so a new user's first feed line
+    // said it had reviewed something seconds after the click, before any review ran.
+    const flip = !m.proposal_kind && /^(LIVE )?autopilot is (ON|OFF)\b/i.exec(m.content || '');
+    const kind = AP_ACT[m.proposal_kind] || (flip ? (flip[1] ? 'Live autopilot ' : 'Autopilot ') + (/on/i.test(flip[2]) ? 'on' : 'off') : 'Reviewed');
     const st = m.proposal_status;
     const lane = !m.proposal_id ? 'state' : st === 'pending' ? 'review' : st === 'applied' ? 'action' : 'void';
     const stamp = st === 'applied' ? `<span class="hx-stamp pass">${m.proposal_kind === 'alpaca_paper' ? 'Approved' : 'Applied'}</span>`
@@ -3606,7 +3619,7 @@
       pulse.hidden = false;
       pulse.className = 'runpulse apf-pulse-row';
       pulse.innerHTML = d.agent_busy
-        ? '<span class="working" aria-hidden="true"></span><span>Working the operation<span class="ell" aria-hidden="true"></span></span>'
+        ? '<span class="working" aria-hidden="true"></span><span>Working on its next move<span class="ell" aria-hidden="true"></span></span>'
         : `<span class="apf-idle-dot" aria-hidden="true"></span><span>${apIdleLine(box)}</span>`;
     }
     if (stick) msgs.scrollTop = msgs.scrollHeight;
@@ -3773,7 +3786,9 @@
     const short = [
       `<dt>Running</dt><dd>${runTotal ? runParts.join(' · ') : 'None'}</dd>`,
       `<dt>${liveInPlay ? 'Live' : 'Paper'} P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd>`,
-    ].concat(liveInPlay ? [`<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`] : []).concat(d.last_review_at ? [`<dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd>`] : []);
+    ].concat(liveInPlay ? [`<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`] : [])
+      // A queued or running review is not a finished one: right after switching on, "Last reviewed just now" claimed a review that hadn't run.
+      .concat(d.reviewing ? ['<dt>Review</dt><dd>In progress</dd>'] : d.last_review_at ? [`<dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd>`] : []);
     if (stats) {
       stats.dataset.cols = short.length;
       stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `
