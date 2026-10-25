@@ -44,7 +44,9 @@ HIST_API = os.getenv("TAU_DERIBIT_HIST_API", "https://history.deribit.com/api/v2
 CURRENCY = "BTC"
 POLL_S = float(os.getenv("TAU_DERIBIT_POLL_S", "60"))
 HIST_DAYS = int(os.getenv("TAU_DERIBIT_HIST_DAYS", "120"))
-HIST_DAYS_PER_PASS = int(os.getenv("TAU_DERIBIT_HIST_DAYS_PER_PASS", "20"))
+# A day takes ~4s to fetch and fit (measured on the collector box, 2026-10-25), so the first pass
+# fills the whole window in minutes; 20 a pass left research windows without features for 5 hours.
+HIST_DAYS_PER_PASS = int(os.getenv("TAU_DERIBIT_HIST_DAYS_PER_PASS", "200"))
 HIST_PASS_S = 3600
 HIST_STEP_S = 900
 HIST_WINDOW_S = 3600
