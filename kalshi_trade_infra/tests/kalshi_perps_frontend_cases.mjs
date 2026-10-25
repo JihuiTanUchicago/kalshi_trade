@@ -21,6 +21,17 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.equal(postRequests(f).length, 0);
   };
 
+  test(`${name}: return on capital names the capital only when the result has one`, async () => {
+    const figs = async (extra) => {
+      const f = strategyFrontend(detailStrategy({market: 'btc15m', kind: undefined, research_only: false, ...extra}));
+      await f.viewStrategy(42); await flush();
+      const el = f.root.querySelector('#figs') || f.root.querySelector('main');
+      return el.innerHTML;
+    };
+    assert.doesNotMatch(await figs({}), /\$0 at risk/);
+    assert.match(await figs({capital: 100}), /\$100 at risk at most/);
+  });
+
   test(`${name}: passed perpetual detail is research only with USD prices and fixed scenario costs`, async () => {
     const input = detail(), before = JSON.stringify(input);
     const f = strategyFrontend(input); await f.viewStrategy(42); await flush();
