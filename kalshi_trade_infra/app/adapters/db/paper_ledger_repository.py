@@ -5,6 +5,8 @@ from typing import Dict, List, Optional
 
 from app.adapters.db.sql import now_utc
 
+STARTING_PAPER_BALANCE = 1000.0
+
 
 def lock_user(cur, user_id: int) -> None:
     """Serialise every cash-moving write for one user (inside a transaction)."""

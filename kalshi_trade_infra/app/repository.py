@@ -23,9 +23,6 @@ from app.adapters.db.kalshi_keys_repository import (  # noqa: F401
 from app.adapters.db.kalshi_dev_keys_repository import (  # noqa: F401
     delete_kalshi_dev_key, get_kalshi_dev_key, set_kalshi_dev_key,
 )
-from app.adapters.db.paper_ledger_repository import (  # noqa: F401
-    add_ledger, ledger_rows, lock_user, paper_balance, paper_deposits, reset_paper_account,
-)
 from app.adapters.db.chat_repository import (  # noqa: F401
     add_chat, chat_contains, chat_messages, create_proposal, decide_proposal, get_proposal,
     last_autopilot_action, last_review_at, recent_chat_same,
@@ -33,10 +30,6 @@ from app.adapters.db.chat_repository import (  # noqa: F401
 from app.adapters.db.order_intent_repository import (  # noqa: F401
     _naive_utc, claim_intent_booking, insert_order_intent, mark_order_intent, open_sent_intents,
     order_intents_between, ticker_has_inflight_intent, yes_quote_at,
-)
-from app.adapters.db.reconcile_repository import (  # noqa: F401
-    RECONCILE_RECENT_DAYS, get_position, legacy_live_book_rows, live_book_by_ticker_side,
-    users_to_reconcile,
 )
 from app.adapters.db.agent_run_repository import (  # noqa: F401
     MAX_RESUMES, RUN_ACTIVE, _has_progress, add_event, cancel_run, claim_run, count_active_research,
@@ -49,18 +42,36 @@ from app.adapters.db.strategy_repository import (  # noqa: F401
     list_strategies, set_strategy_outcome, share_strategy, strategies_passed_since,
     _strategy_filter_sql, strategy_records, _strategy_row,
 )
+from app.adapters.db.order_latency_repository import (  # noqa: F401
+    _pct, insert_order_latency, order_latency_stats,
+)
+from app.adapters.db.reconcile_repository import (  # noqa: F401
+    RECONCILE_RECENT_DAYS, get_position, legacy_live_book_rows, live_book_by_ticker_side,
+    live_entry_halts, open_reconcile_rows, reconcile_deployment_id, resolve_reconcile_except,
+    upsert_reconcile, users_to_reconcile,
+)
+from app.adapters.db.user_config_repository import (  # noqa: F401
+    PLAN_KEYS, _PLAN_FIELD_MAX, autopilot_plan, set_autopilot_focus, set_autopilot_model,
+    set_autopilot_plan, set_user_execution_config, set_user_risk_config, user_execution_config,
+    user_risk_config,
+)
 from app.adapters.db.position_repository import (  # noqa: F401
-    STOP_EXIT_REASONS, book_partial_exit, claim_position_close, close_position,
+    STOP_EXIT_REASONS, book_partial_exit, claim_position_close, close_position, daily_pnl,
     deployment_realized_series, early_exit_scorecard, insert_closed_position, insert_position,
-    market_has_open_positions, open_positions, positions_for_strategy, score_early_exit,
-    unscored_early_exits, update_marks, user_positions,
+    market_has_open_positions, open_positions, positions_for_strategy, realized_pnl,
+    score_early_exit, unscored_early_exits, update_marks, user_open_exposure, user_positions,
+)
+from app.adapters.db.paper_ledger_repository import (  # noqa: F401
+    STARTING_PAPER_BALANCE, add_ledger, ledger_rows, lock_user, paper_balance, paper_deposits,
+    reset_paper_account,
+)
+from app.adapters.db.demo_capital_repository import (  # noqa: F401
+    demo_account, demo_equity, reload_demo,
 )
 from app.adapters.db.community_repository import (  # noqa: F401
     add_comment, create_post, edit_post, get_image, list_comments, list_posts, post_author, post_exists,
     reactions_for, recent_posts_count, store_image, toggle_like, toggle_reaction,
 )
-
-STARTING_PAPER_BALANCE = 1000.0
 
 
 # -- users & sessions ----------------------------------------------------------
@@ -306,41 +317,7 @@ def pop_oauth_state(cur, state: str) -> Optional[Dict]:
 # -- paper ledger: app/adapters/db/paper_ledger_repository.py (re-exported at the top) ----
 
 
-# -- demo (sandbox) app-controlled capital -------------------------------------
-# Demo places REAL orders on Kalshi's sandbox for real fills, but the money is ours: P&L from
-# those fills is applied to a capital we set, not the real demo-account balance.
-
-
-def demo_account(cur, user_id: int) -> tuple:
-    """(capital, pnl_base) for the user's app-controlled demo account."""
-    cur.execute("SELECT demo_capital, demo_pnl_base FROM app_users WHERE id=%s", (user_id,))
-    r = cur.fetchone()
-    if not r:
-        return (STARTING_PAPER_BALANCE, 0.0)
-    return (float(r["demo_capital"]), float(r["demo_pnl_base"]))
-
-
-def reload_demo(cur, user_id: int, amount: float) -> None:
-    """Set demo starting capital to `amount` and snapshot current realized P&L as the new
-    baseline, so demo P&L shown resets to 0 and future fills accrue from there."""
-    base = realized_pnl(cur, user_id, "demo")
-    cur.execute(
-        "UPDATE app_users SET demo_capital=%s, demo_pnl_base=%s WHERE id=%s",
-        (round(amount, 4), round(base, 4), user_id),
-    )
-
-
-def demo_equity(cur, user_id: int) -> Dict:
-    """Demo money as cost-basis equity: capital + realized P&L since the last reload. Mirrors
-    paper's equity convention (open positions valued at cost), so the three buckets line up."""
-    capital, base = demo_account(cur, user_id)
-    net = realized_pnl(cur, user_id, "demo") - base
-    return {
-        "capital": round(capital, 2),
-        "realized": round(net, 2),
-        "equity": round(capital + net, 2),
-        "roi": round(net / capital, 4) if capital > 0 else None,
-    }
+# -- demo (sandbox) capital: app/adapters/db/demo_capital_repository.py (re-exported at the top) ----
 
 
 # -- agent runs: app/adapters/db/agent_run_repository.py (re-exported at the top) ----
@@ -793,287 +770,8 @@ def claim_decision(cur, deployment_id: int, decision_ts: int) -> bool:
 # -- durable order-intent log: app/adapters/db/order_intent_repository.py (re-exported at the top) ----
 
 
-# -- execution latency / observability (Execution P2) --------------------------
-
-
-def insert_order_latency(
-    cur, mode: str, ticker: str, action: str, side: str, qty: int, fill_qty: int,
-    encode_sign_ms: Optional[float], roundtrip_ms: Optional[float], total_ms: float,
-    http_status: Optional[int], outcome: str,
-) -> None:
-    """One row per real exchange POST (live & demo). Written off the send path by the background
-    recorder — no secrets, no order body. Pure observability."""
-    cur.execute(
-        """INSERT INTO app_order_latency
-             (mode, ticker, action, side, qty, fill_qty, encode_sign_ms, roundtrip_ms, total_ms,
-              http_status, outcome, created_at)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-        (mode, ticker, action, side, int(qty), int(fill_qty), encode_sign_ms, roundtrip_ms,
-         float(total_ms), http_status, outcome, now_utc()),
-    )
-
-
-def _pct(values: List[float], q: float) -> Optional[float]:
-    """Nearest-rank percentile of a list (q in 0..1). None for an empty list. Stdlib only —
-    ponytail: the window holds tens/hundreds of orders, no numpy needed."""
-    if not values:
-        return None
-    s = sorted(values)
-    k = max(0, min(len(s) - 1, int(round(q * (len(s) - 1)))))
-    return round(s[k], 2)
-
-
-def order_latency_stats(cur, window_seconds: int = 3600, mode: Optional[str] = None) -> Dict:
-    """Lag + error observability over a trailing window: p50/p95/p99 of round-trip and total
-    latency, the encode+sign cost, error/fill rates by outcome, and feed/mark staleness (from the
-    marks the engine stamps from the same live book orders are priced against). All read-only."""
-    cutoff = now_utc() - timedelta(seconds=int(window_seconds))
-    where = "created_at >= %s" + ("" if mode is None else " AND mode=%s")
-    args = (cutoff,) if mode is None else (cutoff, mode)
-    cur.execute(
-        "SELECT outcome, roundtrip_ms, total_ms, encode_sign_ms FROM app_order_latency WHERE " + where,
-        args,
-    )
-    rows = cur.fetchall()
-    rt = [float(r["roundtrip_ms"]) for r in rows if r["roundtrip_ms"] is not None]
-    tot = [float(r["total_ms"]) for r in rows if r["total_ms"] is not None]
-    sign = [float(r["encode_sign_ms"]) for r in rows if r["encode_sign_ms"] is not None]
-    by_outcome: Dict[str, int] = {}
-    for r in rows:
-        by_outcome[r["outcome"]] = by_outcome.get(r["outcome"], 0) + 1
-    n = len(rows)
-    errors = by_outcome.get("error", 0)
-    filled = by_outcome.get("filled", 0) + by_outcome.get("partial", 0)
-
-    # Feed/mark staleness: how old are the live marks the engine stamps each tick (same book the
-    # kernel prices orders from), so a lagging feed shows up here as rising mark age.
-    cur.execute(
-        "SELECT TIMESTAMPDIFF(SECOND, mark_ts, UTC_TIMESTAMP()) AS age FROM app_positions "
-        "WHERE status='open' AND mark_ts IS NOT NULL"
-    )
-    ages = [float(r["age"]) for r in cur.fetchall() if r["age"] is not None]
-
-    return {
-        "window_seconds": int(window_seconds),
-        "mode": mode or "all",
-        "orders": {
-            "count": n,
-            "errors": errors,
-            "error_rate": round(errors / n, 4) if n else 0.0,
-            "fill_rate": round(filled / n, 4) if n else 0.0,
-            "by_outcome": by_outcome,
-        },
-        "roundtrip_ms": {"p50": _pct(rt, 0.50), "p95": _pct(rt, 0.95), "p99": _pct(rt, 0.99),
-                         "max": round(max(rt), 2) if rt else None},
-        "total_ms": {"p50": _pct(tot, 0.50), "p95": _pct(tot, 0.95), "p99": _pct(tot, 0.99)},
-        "encode_sign_ms": {"p50": _pct(sign, 0.50), "p95": _pct(sign, 0.95)},
-        "feed_staleness_s": {"p50": _pct(ages, 0.50), "p95": _pct(ages, 0.95),
-                             "max": round(max(ages), 2) if ages else None, "open_marks": len(ages)},
-    }
-
-
-def open_reconcile_rows(cur, user_id: int) -> List[Dict]:
-    cur.execute(
-        "SELECT ticker, kind, exchange_qty, book_qty, detected_at, updated_at FROM app_position_reconcile "
-        "WHERE user_id=%s AND status='open'",
-        (user_id,),
-    )
-    return cur.fetchall()
-
-
-def live_entry_halts(cur, user_id: int) -> List[Dict]:
-    """Open discrepancies that have survived at least one later sweep
-    (updated_at moved past detected_at). While any exist, the engine opens no new
-    LIVE position for this user. One sighting is not enough: a fill booked a beat
-    after the sweep, or a settlement Kalshi zeroes before we book it, looks like
-    a mismatch exactly once. The row resolving lifts the halt by itself."""
-    cur.execute(
-        "SELECT ticker, kind, exchange_qty, book_qty FROM app_position_reconcile "
-        "WHERE user_id=%s AND status='open' AND updated_at > detected_at ORDER BY ticker",
-        (user_id,),
-    )
-    return cur.fetchall()
-
-
-def upsert_reconcile(cur, user_id: int, ticker: str, kind: str, exchange_qty: int, book_qty: int) -> None:
-    """Record (or refresh) an open discrepancy. detected_at is preserved on an
-    existing open row so the audit shows when the divergence first appeared; a row
-    that had been marked resolved reopens with a fresh detected_at."""
-    now = now_utc()
-    cur.execute(
-        """INSERT INTO app_position_reconcile
-             (user_id, ticker, kind, exchange_qty, book_qty, status, detected_at, updated_at)
-           VALUES (%s,%s,%s,%s,%s,'open',%s,%s)
-           ON DUPLICATE KEY UPDATE
-             kind=VALUES(kind), exchange_qty=VALUES(exchange_qty), book_qty=VALUES(book_qty),
-             updated_at=VALUES(updated_at),
-             detected_at=IF(status='open', detected_at, VALUES(detected_at)),
-             status='open', resolved_at=NULL""",
-        (user_id, ticker, kind, int(exchange_qty), int(book_qty), now, now),
-    )
-
-
-def resolve_reconcile_except(cur, user_id: int, active_tickers: List[str]) -> int:
-    """Mark resolved any still-open discrepancy for this user whose ticker is no
-    longer divergent. Empty active set resolves them all."""
-    if active_tickers:
-        placeholders = ",".join(["%s"] * len(active_tickers))
-        sql = ("UPDATE app_position_reconcile SET status='resolved', resolved_at=%s, updated_at=%s "
-               "WHERE user_id=%s AND status='open' AND ticker NOT IN (" + placeholders + ")")
-        params = [now_utc(), now_utc(), user_id, *active_tickers]
-    else:
-        sql = ("UPDATE app_position_reconcile SET status='resolved', resolved_at=%s, updated_at=%s "
-               "WHERE user_id=%s AND status='open'")
-        params = [now_utc(), now_utc(), user_id]
-    cur.execute(sql, params)
-    return cur.rowcount
-
-
-def reconcile_deployment_id(cur, user_id: int, market: str) -> int:
-    """The user's dedicated, PAUSED reconciliation deployment for `market`, created
-    once on demand. Adopted orphans are booked under it so they appear in the user's
-    positions and settle at expiry. It is paused (not running) deliberately: the
-    engine's decision loop only trades running deployments, so an adopted orphan is
-    never acted on by a synthetic spec — adoption records a row, nothing more."""
-    cur.execute(
-        """SELECT d.id FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id
-           WHERE d.user_id=%s AND d.market=%s AND s.direction='reconcile' LIMIT 1""",
-        (user_id, market),
-    )
-    row = cur.fetchone()
-    if row:
-        return int(row["id"])
-    now = now_utc()
-    spec = {"sizing": {"stake": 0.0, "max_positions": 0}, "rules": {}}
-    cur.execute(
-        """INSERT INTO app_strategies
-             (user_id, market, direction, title, thesis, spec_json, status, created_at)
-           VALUES (%s,%s,'reconcile',%s,%s,%s,'archived',%s)""",
-        (user_id, market, "Reconciliation holdings",
-         "System container for adopted untracked exchange positions. Not a tradable strategy.",
-         _json(spec), now),
-    )
-    strategy_id = cur.lastrowid
-    cur.execute(
-        """INSERT INTO app_deployments (user_id, strategy_id, market, mode, status, status_reason, created_at, updated_at)
-           VALUES (%s,%s,%s,'live','paused','Reconciliation container (adopted orphans)',%s,%s)""",
-        (user_id, strategy_id, market, now, now),
-    )
-    return cur.lastrowid
-
-
-def realized_pnl(cur, user_id: int, mode: str, since: Optional[datetime] = None) -> float:
-    sql = "SELECT COALESCE(SUM(pnl),0) AS p FROM app_positions WHERE user_id=%s AND mode=%s AND status='closed'"
-    params: List[Any] = [user_id, mode]
-    if since is not None:
-        sql += " AND closed_at >= %s"
-        params.append(since)
-    cur.execute(sql, params)
-    return float(cur.fetchone()["p"])
-
-
-def user_risk_config(cur, user_id: int) -> Dict:
-    """Per-user risk limits for the force-sell / portfolio-cap layer (conservative DB defaults)."""
-    cur.execute(
-        "SELECT drawdown_limit_pct, position_stop_pct, max_open_positions, max_open_notional "
-        "FROM app_users WHERE id=%s",
-        (user_id,),
-    )
-    return cur.fetchone()
-
-
-def set_user_risk_config(cur, user_id: int, changes: Dict) -> None:
-    """Update a user's risk controls. Only the three enforced columns are writable; callers
-    (agent.act) pass already-clamped values, so this layer just persists them (DRY: one UPDATE,
-    no business logic). Unknown keys are ignored so a bad agent action can't touch other columns."""
-    cols = {k: changes[k] for k in ("drawdown_limit_pct", "max_open_positions", "max_open_notional") if k in changes}
-    if not cols:
-        return
-    sql = "UPDATE app_users SET " + ", ".join("%s=%%s" % k for k in cols) + " WHERE id=%s"
-    cur.execute(sql, [*cols.values(), user_id])
-
-
-PLAN_KEYS = ("goals", "agenda", "deployments", "posture")
-_PLAN_FIELD_MAX = 800   # chars per field; keeps the plan a bounded briefing, not a growing journal
-
-
-def autopilot_plan(cur, user_id: int) -> Dict:
-    """The autopilot's durable operating plan (goals/agenda/deployments/posture), or {} if none yet.
-    Read by _copilot_context each review so reviews are coherent across time."""
-    cur.execute("SELECT autopilot_plan FROM app_users WHERE id=%s", (user_id,))
-    row = cur.fetchone()
-    plan = _loads((row or {}).get("autopilot_plan")) if row else None
-    return plan if isinstance(plan, dict) else {}
-
-
-def set_autopilot_plan(cur, user_id: int, plan: Dict) -> None:
-    """Persist the review's updated operating plan. Only the four known string fields are kept and
-    each is truncated, so the stored plan stays a small bounded briefing no matter what the model
-    emits (a bad/huge value can't bloat the row or leak other keys)."""
-    if not isinstance(plan, dict):
-        return
-    kept = {k: str(plan[k])[:_PLAN_FIELD_MAX] for k in PLAN_KEYS if plan.get(k)}
-    cur.execute("UPDATE app_users SET autopilot_plan=%s WHERE id=%s", (_json(kept) if kept else None, user_id))
-
-
-def set_autopilot_model(cur, user_id: int, model_key: Optional[str]) -> None:
-    """Set the model the autopilot's own runs use (NULL = catalog default). The caller validates
-    model_key against models_catalog so only a known key (or None) is ever stored."""
-    cur.execute("UPDATE app_users SET autopilot_model=%s WHERE id=%s", (model_key or None, user_id))
-
-
-def set_autopilot_focus(cur, user_id: int, tokens: Optional[List[str]]) -> None:
-    """Store the user's market focus (validated by the caller); empty/None clears it."""
-    cur.execute("UPDATE app_users SET autopilot_focus=%s WHERE id=%s",
-                (json.dumps(tokens) if tokens else None, user_id))
-
-
-def user_execution_config(cur, user_id: int) -> Dict:
-    """Per-user execution-control overrides (NULL = use the global KALSHI_MAX_* env default).
-    The live kernel factory reads this and falls back to env when a column is NULL."""
-    cur.execute(
-        "SELECT exec_max_book_fraction, exec_max_entry_spread, exec_max_order_notional FROM app_users WHERE id=%s",
-        (user_id,),
-    )
-    return cur.fetchone() or {}
-
-
-def set_user_execution_config(cur, user_id: int, changes: Dict) -> None:
-    """Persist already-clamped per-user execution overrides (agent.act clamps to EXEC_BOUNDS)."""
-    cols = {k: changes[k] for k in ("exec_max_book_fraction", "exec_max_entry_spread", "exec_max_order_notional") if k in changes}
-    if not cols:
-        return
-    sql = "UPDATE app_users SET " + ", ".join("%s=%%s" % k for k in cols) + " WHERE id=%s"
-    cur.execute(sql, [*cols.values(), user_id])
-
-
-def user_open_exposure(cur, user_id: int, mode: Optional[str] = None) -> Dict:
-    """Live, cross-deployment open exposure for the per-user portfolio caps: how many open
-    positions the user holds and their total entry notional (qty * entry_price), in dollars.
-    `mode` narrows it to one mode's positions (paper entries count only paper); None counts all."""
-    if mode is None:
-        cur.execute(
-            "SELECT COUNT(*) AS n, COALESCE(SUM(qty*entry_price),0) AS notional "
-            "FROM app_positions WHERE user_id=%s AND status='open'",
-            (user_id,),
-        )
-    else:
-        cur.execute(
-            "SELECT COUNT(*) AS n, COALESCE(SUM(qty*entry_price),0) AS notional "
-            "FROM app_positions WHERE user_id=%s AND status='open' AND mode=%s",
-            (user_id, mode),
-        )
-    return cur.fetchone()
-
-
-def daily_pnl(cur, user_id: int, mode: str, days: int = 60) -> List[Dict]:
-    cur.execute(
-        """SELECT DATE(closed_at) AS d, SUM(pnl) AS pnl FROM app_positions
-           WHERE user_id=%s AND mode=%s AND status='closed' AND closed_at >= %s
-           GROUP BY DATE(closed_at) ORDER BY d""",
-        (user_id, mode, now_utc() - timedelta(days=days)),
-    )
-    return cur.fetchall()
+# -- execution latency: app/adapters/db/order_latency_repository.py; per-user risk, execution and autopilot
+# settings: user_config_repository.py; P&L reads: position_repository.py (all re-exported at the top) ----
 
 
 # -- chat & proposals: app/adapters/db/chat_repository.py (re-exported at the top) ----
