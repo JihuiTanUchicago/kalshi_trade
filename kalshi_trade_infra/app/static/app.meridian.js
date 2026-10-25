@@ -3407,7 +3407,15 @@
     renderAutopilot(box, S.ap);
     const stale = !S.ap || !S.apAt || Date.now() - S.apAt > 18000;
     if (stale) refreshAutopilot(box, true);
-    if (!apLoop) { apLoop = true; setInterval(() => { const b = document.getElementById('autopilot-float'); if (b) refreshAutopilot(b); }, 20000); }
+    if (!apLoop) {
+      // Background tabs don't poll (each status read is ~14 queries); coming back refreshes a stale one.
+      apLoop = true;
+      setInterval(() => { const b = document.getElementById('autopilot-float'); if (b && !document.hidden) refreshAutopilot(b); }, 20000);
+      document.addEventListener('visibilitychange', () => {
+        const b = document.getElementById('autopilot-float');
+        if (b && !document.hidden && (!S.apAt || Date.now() - S.apAt > 18000)) refreshAutopilot(b, true);
+      });
+    }
   }
   async function refreshAutopilot(box, share = false) {
     // Pages that paint the shell twice (instant switch, then content) share one in-flight read;
@@ -3649,7 +3657,7 @@
     };
     apLoadChat(box, true);
     apStopChat();
-    apChatTimer = setInterval(() => { const b = document.getElementById('autopilot-float'); if (b && apExpanded()) apLoadChat(b); else apStopChat(); }, 3000);
+    apChatTimer = setInterval(() => { const b = document.getElementById('autopilot-float'); if (b && apExpanded()) { if (!document.hidden) apLoadChat(b); } else apStopChat(); }, 3000);
     // Market focus: binding on research, deploys and the paper funnel (server enforces it).
     (() => {
       const sel = box.querySelector('#apf-focus'); if (!sel) return;
@@ -3852,7 +3860,7 @@
     renderHotRail();
     const stale = !S.hot || !S.hotAt || Date.now() - S.hotAt > 55000;
     if (stale) refreshHot().then(() => { S.hotAt = Date.now(); });
-    if (!hotLoop) { hotLoop = true; setInterval(() => { if (document.getElementById('hotrail')) refreshHot().then(() => { S.hotAt = Date.now(); }); }, 60000); }
+    if (!hotLoop) { hotLoop = true; setInterval(() => { if (!document.hidden && document.getElementById('hotrail')) refreshHot().then(() => { S.hotAt = Date.now(); }); }, 60000); }
   }
 
   const KIND_LABEL = { bonus: 'Welcome credits', topup: 'Added credits', autoreload: 'Auto-reload', usage: 'Agent usage', admin_grant: 'Admin grant' };
