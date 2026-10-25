@@ -5,9 +5,8 @@
 # Each run:
 #   1. reads the S3 markers deploy_web.sh / deploy_collector.sh write (bundle/markers/*)
 #   2. nothing new on main -> exit 0
-#   3. CI (test, money-path-mysql, and isolated-staging when its paths changed) must be green on
-#      main's head; pending -> wait
-#      for the next batch, red -> fail (GitHub mails the repo owner)
+#   3. picks the newest commit on main whose CI (test, money-path-mysql, and isolated-staging when
+#      its paths changed) is green; newer commits still in CI wait for the next batch
 #   4. a diff that only touches the UI/tests/docs restarts recursive-web alone; anything else is a
 #      full restart, which first requires 0 sent order intents (a restart mid-send loses the ack)
 #   5. deploy_collector.sh too when data_pipeline/ or trading_core/ changed since the collector's ref
@@ -30,25 +29,18 @@ DRY_RUN=0
 if [[ -n "${AWS_PROFILE:-}" ]]; then export AWS_PROFILE; else unset AWS_PROFILE; fi
 
 cd "$(git rev-parse --show-toplevel)"
-MAIN=$(git rev-parse HEAD)
+HEAD_SHA=$(git rev-parse HEAD)
 marker() { aws s3 cp "s3://${BUCKET}/bundle/markers/$1" - --region "$AWS_REGION" 2>/dev/null | tr -d '[:space:]' || true; }
 WEB=$(marker web_sha); WEB_FULL=$(marker web_full_sha); COLLECTOR=$(marker collector_sha)
-echo "[batch] main=${MAIN:0:7} web=${WEB:0:7} web_full=${WEB_FULL:0:7} collector=${COLLECTOR:0:7}"
+echo "[batch] main=${HEAD_SHA:0:7} web=${WEB:0:7} web_full=${WEB_FULL:0:7} collector=${COLLECTOR:0:7}"
 
 known() { [[ -n "$1" ]] && git cat-file -e "$1^{commit}" 2>/dev/null; }
-changed() {  # files changed between a marker and main; an unknown marker means everything
-  if known "$1"; then git diff --name-only "$1" "$MAIN"; else git ls-files; fi
-}
-WEB_FILES=$(changed "$WEB_FULL")
-COLLECTOR_FILES=$(changed "$COLLECTOR" | grep -E '^kalshi_trade_infra/(data_pipeline|trading_core)/' || true)
-NEED_WEB=0; [[ "$WEB" != "$MAIN" ]] && NEED_WEB=1
-NEED_COLLECTOR=0; [[ -n "$COLLECTOR_FILES" ]] && NEED_COLLECTOR=1
 
 # Oldest commit on main that the web box doesn't run yet, for the staleness alarm.
 stale_minutes() {
-  local base="$WEB" oldest
-  known "$base" || { echo 0; return; }
-  oldest=$(git log --reverse --format=%ct "$base..$MAIN" | head -1)
+  local oldest
+  known "$WEB" || { echo 0; return; }
+  oldest=$(git log --reverse --format=%ct "$WEB..$HEAD_SHA" | head -1)
   [[ -z "$oldest" ]] && { echo 0; return; }
   echo $(( ( $(date +%s) - oldest ) / 60 ))
 }
@@ -60,29 +52,56 @@ alarm_if_stale() {
   echo "[batch] holding: $1 (oldest unshipped merge is ${m} min old)"; exit 0
 }
 
-if [[ "$NEED_WEB" == 0 && "$NEED_COLLECTOR" == 0 ]]; then
-  echo "[batch] nothing new on main"; exit 0
-fi
-
-# CI on main's head: every required check completed and successful.
-if [[ -n "$REQUIRED_CHECKS" ]] && git diff --name-only "$MAIN^" "$MAIN" 2>/dev/null | grep -qE "$STAGING_PATHS"; then
-  REQUIRED_CHECKS="$REQUIRED_CHECKS isolated-staging"
-fi
-API="https://api.github.com/repos/${GITHUB_REPOSITORY}/commits/${MAIN}/check-runs?per_page=100"
-RUNS='{"check_runs": []}'
-[[ -n "$REQUIRED_CHECKS" ]] && RUNS=$(curl -fsS -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" "$API")
-for check in $REQUIRED_CHECKS; do
-  state=$(echo "$RUNS" | python3 -c '
+# CI state of one commit on main: success, pending or failed across its required checks.
+ci_state() {
+  local sha="$1" checks="$REQUIRED_CHECKS" runs check state
+  [[ -z "$checks" ]] && { echo success; return; }
+  if git diff --name-only "$sha^" "$sha" 2>/dev/null | grep -qE "$STAGING_PATHS"; then
+    checks="$checks isolated-staging"
+  fi
+  runs=$(curl -fsS -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" \
+    "https://api.github.com/repos/${GITHUB_REPOSITORY}/commits/${sha}/check-runs?per_page=100") || { echo pending; return; }
+  for check in $checks; do
+    state=$(echo "$runs" | python3 -c '
 import json, sys
 runs = [r for r in json.load(sys.stdin)["check_runs"] if r["name"] == sys.argv[1]]
 r = max(runs, key=lambda r: r["id"]) if runs else None
 print("missing" if r is None else (r["conclusion"] or r["status"]))' "$check")
-  case "$state" in
-    success) ;;
-    queued|in_progress|pending|missing|requested|waiting) alarm_if_stale "CI check $check is $state on ${MAIN:0:7}";;
-    *) echo "::error::CI check $check is $state on ${MAIN:0:7}; not deploying"; exit 1;;
+    case "$state" in
+      success) ;;
+      queued|in_progress|pending|missing|requested|waiting) echo pending; return;;
+      *) echo failed; return;;
+    esac
+  done
+  echo success
+}
+
+# Ship the newest commit on main whose CI is green: merges land every few minutes, so main's head
+# is often still in CI, and waiting for a green head could hold every batch.
+MAIN=""; FAILED=""
+for sha in $(git rev-list --first-parent -n 20 "$HEAD_SHA"); do
+  [[ "$sha" == "$WEB" ]] && { MAIN="$sha"; break; }
+  case "$(ci_state "$sha")" in
+    success) MAIN="$sha"; break;;
+    failed) FAILED="${FAILED:-$sha}";;
   esac
 done
+[[ -n "$FAILED" ]] && echo "::warning::CI failed on ${FAILED:0:7}; it stays undeployed"
+[[ -z "$MAIN" ]] && alarm_if_stale "no commit newer than the web box's ${WEB:0:7} has green CI yet"
+[[ "$MAIN" != "$HEAD_SHA" ]] && echo "[batch] newest green commit is ${MAIN:0:7}; newer merges wait for CI"
+
+changed() {  # files changed between a marker and the target; an unknown marker means everything
+  if known "$1"; then git diff --name-only "$1" "$MAIN"; else git ls-files; fi
+}
+WEB_FILES=$(changed "$WEB_FULL")
+COLLECTOR_FILES=$(changed "$COLLECTOR" | grep -E '^kalshi_trade_infra/(data_pipeline|trading_core)/' || true)
+NEED_WEB=0; [[ "$WEB" != "$MAIN" ]] && NEED_WEB=1
+NEED_COLLECTOR=0; [[ -n "$COLLECTOR_FILES" ]] && NEED_COLLECTOR=1
+
+if [[ "$NEED_WEB" == 0 && "$NEED_COLLECTOR" == 0 ]]; then
+  [[ "$MAIN" == "$HEAD_SHA" ]] && { echo "[batch] nothing new on main"; exit 0; }
+  alarm_if_stale "the web box already runs the newest green commit ${MAIN:0:7}"
+fi
 
 UI_ONLY=1
 while read -r f; do
