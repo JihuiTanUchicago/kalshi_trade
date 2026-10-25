@@ -187,7 +187,7 @@ class ForecastBook:
         return datetime.fromtimestamp(local - local % 86400, tz=timezone.utc).date(), local % 86400
 
     def features(self, ticker: str, strike: float, ts: int, yes_bid: Optional[float], yes_ask: Optional[float],
-                 frame_feats: Optional[Dict[str, float]] = None) -> Dict[str, float]:
+                 frame_feats: Optional[Dict[str, float]] = None, close_ts: Optional[int] = None) -> Dict[str, float]:
         return snapshot_features(self, ticker, strike, ts, yes_bid, yes_ask, frame_feats)
 
     def trailing_error(self, ts: int) -> Optional[Tuple[float, float, int]]:
@@ -355,9 +355,10 @@ def with_forecast(micro: Optional[Dict[str, float]], book, contract, ts: int,
                   yes_bid: Optional[float], yes_ask: Optional[float],
                   frame_feats: Optional[Dict[str, float]]) -> Optional[Dict[str, float]]:
     """A contract's per-snapshot extras for markets.snapshot(): its micro features plus the
-    features of an external fair-value book (a weather ForecastBook or a sports_odds.OddsBook,
-    anything with .features). `micro` is returned as is (no copy) when there is no book."""
+    features of an external fair-value book (a weather ForecastBook, a sports_odds.OddsBook or an
+    options_fair.OptionsBook, anything with .features). `micro` is returned as is (no copy) when there is no book."""
     if book is None:
         return micro
-    fc = book.features(contract.ticker, contract.strike, ts, yes_bid, yes_ask, frame_feats)
+    fc = book.features(contract.ticker, contract.strike, ts, yes_bid, yes_ask, frame_feats,
+                       close_ts=int(contract.close_time.timestamp()))
     return dict(micro, **fc) if micro else fc

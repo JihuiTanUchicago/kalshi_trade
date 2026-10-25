@@ -137,7 +137,7 @@ class OddsBook:
         return None
 
     def features(self, ticker: str, strike: float, ts: int, yes_bid: Optional[float], yes_ask: Optional[float],
-                 frame_feats: Optional[Dict[str, float]] = None) -> Dict[str, float]:
+                 frame_feats: Optional[Dict[str, float]] = None, close_ts: Optional[int] = None) -> Dict[str, float]:
         return snapshot_features(self, ticker, ts, yes_bid, yes_ask)
 
 

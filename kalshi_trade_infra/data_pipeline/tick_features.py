@@ -28,6 +28,11 @@ Columns (float32 unless noted):
   spot_comp, in basis points. dist_sigma_comp: dist_sigma with spot_comp in place of spot.
   Null for non-BTC series. Hours built before this change lack the four columns (the reader
   returns them as null); with only Coinbase quoting, spot_comp is Coinbase's mid, spot_comp_n 1.
+  opt_p_yes: the Deribit options-implied probability that the contract settles YES (floor, cap or
+  range; data_pipeline/options_surface.py), priced at spot_comp (Coinbase spot without it) off the
+  newest deribit_surface snapshot received before the second. opt_iv: the implied vol at the
+  contract's strike and horizon, annualized. Null off BTC, without a surface younger than
+  options_surface.MAX_AGE_S, and in hours built before the Deribit recorder (2026-10-25).
 """
 import math
 import os
@@ -47,7 +52,7 @@ F32 = ["strike_lo", "strike_hi", "yes_bid", "yes_ask", "yes_bid_size", "yes_ask_
        "updates", "mid", "spread", "microprice", "imbalance", "yes_taker_10s", "no_taker_10s", "yes_taker_60s",
        "no_taker_60s", "n_prints_60s", "last_yes", "spot", "spot_ret_1s", "spot_ret_10s", "spot_ret_60s",
        "spot_ret_300s", "rv_60s", "rv_300s", "spot_taker_imb_60s", "secs_to_close", "dist_sigma", "book_age_s",
-       "spot_comp", "spot_comp_n", "spot_cb_comp_bp", "dist_sigma_comp"]
+       "spot_comp", "spot_comp_n", "spot_cb_comp_bp", "dist_sigma_comp", "opt_p_yes", "opt_iv"]
 
 
 def schema():
@@ -196,7 +201,8 @@ def book_at_secs(rt, kind, side, price, qty, upd_rt, secs: np.ndarray) -> Dict[s
 
 
 def ticker_rows(ticker: str, meta: Dict, secs: np.ndarray, spot: Dict[str, np.ndarray],
-                book_rows: Optional[Dict[str, np.ndarray]], trade_rows: Optional[Dict[str, np.ndarray]]) -> Optional[Dict]:
+                book_rows: Optional[Dict[str, np.ndarray]], trade_rows: Optional[Dict[str, np.ndarray]],
+                surfaces=None) -> Optional[Dict]:
     open_ts, close_ts = meta.get("open_ts"), meta.get("close_ts")
     mask = np.ones(len(secs), dtype=bool)
     if open_ts is not None:
@@ -255,6 +261,10 @@ def ticker_rows(ticker: str, meta: Dict, secs: np.ndarray, spot: Dict[str, np.nd
     out["dist_sigma"] = _dist_sigma(spot["spot"], lo, hi, denom)
     comp = spot.get("spot_comp")
     out["dist_sigma_comp"] = _dist_sigma(comp, lo, hi, denom) if comp is not None else np.full(n, np.nan)
+    px = spot["spot"].astype(float)
+    if comp is not None:
+        px = np.where(np.isfinite(comp), comp, px)
+    out.update(option_cols(surfaces, secs, lo, hi, close_ts, px))
     out["strike_lo"] = np.full(n, np.nan if lo is None else lo)
     out["strike_hi"] = np.full(n, np.nan if hi is None else hi)
     rows = {k: v[mask] for k, v in out.items()}
@@ -278,6 +288,30 @@ def _dist_sigma(spot: np.ndarray, lo, hi, denom: np.ndarray) -> np.ndarray:
         else:
             num = np.full(len(s), np.nan)
         return np.where(denom > 0, num / denom, np.nan)
+
+
+def option_cols(surfaces, secs: np.ndarray, lo, hi, close_ts, spot: np.ndarray) -> Dict[str, np.ndarray]:
+    """opt_p_yes / opt_iv per second off the newest surface known before each second."""
+    from data_pipeline import options_surface as osf
+    n = len(secs)
+    p, v = np.full(n, np.nan), np.full(n, np.nan)
+    if surfaces is None or not len(surfaces) or close_ts is None or (lo is None and hi is None):
+        return {"opt_p_yes": p, "opt_iv": v}
+    idx = surfaces.indexes(secs)
+    ok = idx >= 0
+    for i in np.unique(idx[ok]):
+        m = idx == i
+        p[m], v[m] = osf.prob_yes(surfaces.surfaces[int(i)], secs[m].astype(float), lo, hi, float(close_ts), spot[m])
+    return {"opt_p_yes": p, "opt_iv": v}
+
+
+def load_surfaces(store, hour: datetime):
+    """The Deribit surfaces that can price this hour (received up to MAX_AGE_S before it), or None."""
+    from data_pipeline import options_surface as osf
+    t = store.read("deribit_surface", hour - timedelta(seconds=osf.MAX_AGE_S), hour + timedelta(hours=1))
+    if t is None or not t.num_rows:
+        return None
+    return osf.SurfaceSeries(osf.surfaces_from_rows(t.to_pylist()))
 
 
 def _latest_meta(t) -> Dict[str, Dict]:
@@ -325,15 +359,23 @@ def build_hour(store, hour: datetime, out_dir: str) -> Optional[Dict]:
 
     per_series: Dict[str, int] = {}
     total, nt = 0, 0
+    surfaces = False      # loaded on the first BTC contract
     try:
         for ticker in sorted(meta):
             bi, ti = bgroups.get(ticker), tgroups.get(ticker)
             product = spot_product(meta[ticker].get("series") or ticker) or "BTC-USD"
             if product not in spots:
                 spots[product] = spot_features(store, hour, product)
+            if product == "BTC-USD" and surfaces is False:
+                try:
+                    surfaces = load_surfaces(store, hour)
+                except Exception as e:  # noqa: BLE001 - the options columns are optional
+                    print(f"[WARN] deribit surfaces for {hour:%Y-%m-%d %H}: {e}", flush=True)
+                    surfaces = None
             rows = ticker_rows(ticker, meta[ticker], secs, spots[product],
                                {c: v[bi] for c, v in bcols.items()} if bi is not None else None,
-                               {c: v[ti] for c, v in tcols.items()} if ti is not None else None)
+                               {c: v[ti] for c, v in tcols.items()} if ti is not None else None,
+                               surfaces if product == "BTC-USD" else None)
             if rows is None:
                 continue
             arrays = []

@@ -30,7 +30,7 @@ import requests
 from app import freedata
 from app import repository as repo
 from app import spec as specmod
-from app import sports_odds, weather_fcst
+from app import options_fair, sports_odds, weather_fcst
 from app.markets import (MARKETS, WEATHER_OBS_FEATURES, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot,
                          cross_features, cross_product,
                          compatible_cadence, snapshot, weather_obs_applies)
@@ -298,6 +298,9 @@ class Sources:
     # (series, as_of_ts) -> settled daily values (repository.load_weather_actuals) for the trailing
     # forecast bias (fcst_bias_f / fcst_p_yes_cal). None = those two features are absent.
     weather_actuals: Optional[Callable[[str, int], List]] = None
+    # as_of_ts -> the newest Deribit surface rows (repository.latest_options_surface) for the
+    # opt_* features of a Bitcoin strike series. None = snapshots carry no options features.
+    options: Optional[Callable[[int], Optional[List[Dict]]]] = None
 
 
 def _micro_for(sources: Sources, tickers: List[str], now_ts: int) -> Dict[str, Dict[str, float]]:
@@ -314,10 +317,15 @@ def _micro_for(sources: Sources, tickers: List[str], now_ts: int) -> Dict[str, D
 
 def _forecast_book(market: Market, sources: Sources, now_ts: int):
     """This frame's external fair-value book (research builds the same one from the same table):
-    issued forecasts for a weather series, collected sportsbook odds for an NBA/NHL game series.
+    issued forecasts for a weather series, collected sportsbook odds for an NBA/NHL game series,
+    the Deribit options surface the collector last fitted for a Bitcoin strike series.
     None when unwired, not such a series, or unreadable: a rule that filters on one of its
     features then doesn't enter, as in research on a frame without them."""
     try:
+        if market.series in options_fair.SERIES:
+            if sources.options is None:
+                return None
+            return options_fair.book_for_series(market.series, lambda: options_fair.book_from_rows(sources.options(now_ts)))
         if market.series in sports_odds.SPORTS:
             if sources.odds is None:
                 return None
@@ -2021,6 +2029,7 @@ def run_forever() -> None:
                 odds=lambda sport, ts: repo.load_sports_odds(
                     conn.cursor(), sport, datetime.fromtimestamp(ts - int(sports_odds.MAX_AGE_MIN * 60), tz=timezone.utc)
                     .replace(tzinfo=None), ts),
+                options=lambda ts: repo.latest_options_surface(conn.cursor(), ts),
             )
             # Deterministic crash recovery (P0-1): before the loop (so it also runs on every
             # reconnect / box reboot), reconcile any order-intent left 'sent' by a prior crash
