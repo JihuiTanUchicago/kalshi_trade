@@ -74,6 +74,19 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
       [['/api/deployments', {strategy_id: 43, mode: 'paper'}]]);
   });
 
+  test(`${name}: bulk selection skips a strategy that is already deployed`, async () => {
+    const list = [detailStrategy({id: 44, title: 'Running fixture', deployed: true}), detailStrategy({id: 45, title: 'Idle fixture'})];
+    const f = frontend({fetchImpl: path => {
+      assert.ok(path.startsWith('/api/strategies?'));
+      return response({counts: {total: 2, passed: 2}, matched: 2, pages: 1, strategies: list});
+    }});
+    await f.viewStrategies(); await flush();
+    const picks = f.root.querySelectorAll('.pick');
+    assert.equal(picks.length, 1); assert.equal(picks[0].dataset.id, '45');
+    list[1].deployed = true;  // every strategy on the page running: no selection column at all
+    assert.doesNotMatch(f.strategySlip(list[0], null, {pick: true}), /Select for deployment/);
+  });
+
   test(`${name}: a perpetual-only inventory has no bulk selection or false live status`, async () => {
     const list = [detail({deployed: true, deploy_live: true})];
     const f = frontend({fetchImpl: path => {
