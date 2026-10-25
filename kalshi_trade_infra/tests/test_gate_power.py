@@ -60,3 +60,20 @@ def test_fairly_priced_market_does_not_pass():
     for s in range(3):
         cls, _v = _verdict(_market(0.40, seed=100 + s), seed=s)
         assert cls != gk.Classification.STAT_SUPPORTED
+
+
+def test_fixed_validation_alpha_replaces_lord_decay(monkeypatch):
+    """Todd 2026-10-25: validation clears at a fixed 0.05 per test, so a stream's 10th test faces the
+    same bar as its first. APP_VALIDATION_ALPHA=0 restores LORD++ as the gate."""
+    late = stats.lord_init(gk.ALPHA)
+    late["t"] = 9
+    assert gk._validation_level(late) == gk.VALIDATION_ALPHA == 0.05
+    ds = _market(0.48, n_contracts=400, seed=4)
+    trades = backtest.simulate(_SPEC, ds, ds.start_ts, ds.end_ts + 1)
+    v = gk._compute(trades, 1, dict(late), seed=4)
+    assert v["alpha_i"] == 0.05 and v["lord_reject"] == (v["p_value"] <= 0.05)
+    assert v["lord_state"]["t"] == 10  # the LORD++ stream still advances for the audit trail
+    monkeypatch.setattr(gk, "VALIDATION_ALPHA", 0.0)
+    assert gk._validation_level(late) == stats.lord_alpha(late) < 0.001
+    v = gk._compute(trades, 1, dict(late), seed=4)
+    assert v["alpha_i"] < 0.001
