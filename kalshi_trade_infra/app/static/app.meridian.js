@@ -208,7 +208,8 @@
     return signed && n > 0 ? '+' + s : s;
   };
   const pct = (v, signed = true) => (v == null ? '—' : (v < 0 ? '−' : signed && v > 0 ? '+' : '') + Math.abs(v * 100).toFixed(1) + '%');
-  const cents = (v) => (v == null ? '—' : Math.round(v * 100) + '¢');
+  // Kalshi quotes some markets in tenths of a cent: 0.1¢ read as 0¢ and a 99.9¢ bid as 100¢.
+  const cents = (v) => (v == null ? '—' : Math.round(v * 1000) / 10 + '¢');
   const isPerpetual = (s) => s.kind === 'perpetual' || s.market === 'btc_perp' || s.key === 'btc_perp' || (s.spec && s.spec.market === 'btc_perp');
   const researchOnly = (s) => s.research_only === true || isPerpetual(s);
   const researchBadge = (s) => researchOnly(s) ? '<span class="mk quiet">Research only</span>' : '';

@@ -580,6 +580,16 @@ test('Explore tells same-titled markets from different events apart', async () =
   assert.match(html, /KXBTCD-26OCT2512</); assert.match(html, /KXBTCD-26OCT2517</);
 });
 
+test('Explore shows tenth-of-a-cent prices instead of rounding them to 0¢', async () => {
+  const row = (t, last) => ({t, s: 'KXBTC15M', ev: t, ti: 'BTC price up in next 15 mins?', su: 'Target', last, bid: '0', ask: last, v24: '10', oi: '5', st: 'active'});
+  const f = frontend({fetchImpl: path => path.startsWith('/api/explore?')
+    ? response({at: '2026-10-25T16:15:00Z', total: 2, shown: 2, matched: 2, page: 0, per: 50, sort: 'v24', markets: [row('KXBTC15M-A', '0.0010'), row('KXBTC15M-B', '0.3700')]})
+    : response({})});
+  await f.viewExplore(); await flush();
+  const html = f.root.querySelector('#xbody').innerHTML;
+  assert.match(html, />0\.1¢</); assert.match(html, />37¢</); assert.doesNotMatch(html, />0¢</);
+});
+
 test('a track record whose trades all closed in one minute spaces them one per trade', () => {
   const f = frontend();
   assert.equal(JSON.stringify(f.trCurve([[1000, 1], [1000, -2], [1030, 3]])), '[[1000,1],[1001,-2],[1002,3]]');
