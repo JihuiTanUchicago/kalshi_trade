@@ -2686,3 +2686,54 @@ test('Research says what a session usually costs beside Start session, and nothi
   f = researchFrontend([]); await f.viewResearch(); await flush();
   assert.equal(cost().hidden, true); assert.equal(cost().textContent, '');
 });
+
+test('autopilot says why it is not trading: the card and the panel lead with one line and its action', async () => {
+  // One store both harnesses take: Tau's reads getItem/setItem, Meridian's a Map.
+  const stored = new Map(); stored.getItem = key => stored.get(key) ?? null; stored.setItem = (key, value) => stored.set(key, String(value));
+  const f = frontend({storage: stored,
+    fetchImpl: path => {
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path.startsWith('/api/chat')) return response({messages: []});
+      return response({});
+    }});
+  f.S.me.user.autopilot = true;
+  f.root.innerHTML = '<div id="dash-ap"></div>';
+  const box = new Element('div', {id: 'autopilot-float'}); f.root.parent.appendChild(box);
+  const base = {autopilot: true, mode: 'paper', research: {tested_7d: 0, passed_7d: 0, active: []}, live_running: 0, demo_running: 0,
+    paper_running: 0, paper_progress: null, focus: [], story: ['Right now it’s between research runs.', 'Nothing trades real money until...']};
+  const card = () => f.root.querySelector('#dash-ap .apcard-now');
+  const idleP = () => box.querySelector('#apf-story .apf-idle');
+  // Every paper strategy paused by its stop: the line and a link to Deploy, on the card and atop the panel.
+  f.S.ap = {...base, idle: {code: 'stopped', line: 'Nothing is trading: Fade <tails> is paused: it hit its loss guard.', action: {label: 'Open Deploy', href: '/deploy'}}};
+  f.paintDashAp();
+  assert.equal(card().innerHTML, 'Nothing is trading: Fade &lt;tails&gt; is paused: it hit its loss guard. <a href="/deploy">Open Deploy</a>');
+  f.root.querySelector('#dash-ap [data-apcard="open"]').onclick(); await flush();
+  assert.equal(idleP().innerHTML, 'Nothing is trading: Fade &lt;tails&gt; is paused: it hit its loss guard. <a href="/deploy">Open Deploy</a>');
+  const lines = box.querySelectorAll('#apf-story p').map(p => p.innerHTML);
+  assert.equal(lines.length, 3); assert.equal(lines[1], 'Right now it’s between research runs.');
+  // A stalled engine has no action: the line alone, in place of a healthy-looking "between research runs".
+  f.S.ap = {...base, paper_running: 1, idle: {code: 'engine', line: 'Nothing is trading right now: Tau’s trading engine isn’t running.', action: null}};
+  f.paintDashAp(); f.root.querySelector('#dash-ap [data-apcard="open"]').onclick(); await flush();
+  assert.equal(card().innerHTML, 'Nothing is trading right now: Tau’s trading engine isn’t running.');
+  assert.doesNotMatch(card().innerHTML, /between research runs/);
+  assert.equal(idleP().innerHTML, 'Nothing is trading right now: Tau’s trading engine isn’t running.');
+  // Focus with nothing inside it: Change focus opens the control, from the card and from the panel.
+  f.S.ap = {...base, focus: ['sports'], idle: {code: 'focus', line: 'Nothing is on paper: your focus is sports.', action: {label: 'Change focus', do: 'focus'}}};
+  f.paintDashAp();
+  assert.equal(card().innerHTML, 'Nothing is on paper: your focus is sports. <button type="button" data-apcard="idle-focus">Change focus</button>');
+  f.root.querySelector('#dash-ap [data-apcard="idle-focus"]').onclick(); await flush();
+  assert.equal(box.querySelector('.apf-prefs').open, true);
+  box.querySelector('.apf-prefs').open = false;
+  idleP().querySelector('[data-ap="idle-focus"]').onclick();
+  assert.equal(box.querySelector('.apf-prefs').open, true);
+  // Billing keeps its own lines (card and gates); the panel adds no idle line over them.
+  f.S.ap = {...base, billing_blocked: true, billing_reason: 'card', story: [],
+    idle: {code: 'billing', line: 'Nothing is on paper, and it can’t research.', action: {label: 'Add a payment method', href: '/billing'}}};
+  f.paintDashAp(); f.root.querySelector('#dash-ap [data-apcard="open"]').onclick(); await flush();
+  assert.match(card().innerHTML, /^Paused: <a href="\/billing">add a payment method<\/a>/);
+  assert.equal(idleP(), null);
+  // Trading (no idle): the card goes back to what it's doing.
+  f.S.ap = {...base, paper_running: 2, idle: null};
+  f.paintDashAp();
+  assert.equal(card().innerHTML, 'Right now it’s between research runs.');
+});

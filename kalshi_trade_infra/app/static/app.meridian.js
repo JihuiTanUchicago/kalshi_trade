@@ -3603,7 +3603,7 @@
     ].filter(Boolean);
     const now = d.billing_blocked
       ? `Paused: <a href="/billing">${d.billing_reason === 'card' ? 'add a payment method' : 'add credits'}</a> so it can keep researching.`
-      : esc((d.story && d.story[0]) || 'Autopilot is on.');
+      : d.idle ? apIdleHtml(d.idle, 'data-apcard="idle-focus"') : esc((d.story && d.story[0]) || 'Autopilot is on.');
     host.className = 'apcard on' + (m.cls ? ' ' + m.cls : '') + (d.billing_blocked ? ' warn' : '');
     host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>${esc(m.label)}</span>
         <p class="apcard-now">${now}</p>${Array.isArray(d.focus) ? `
@@ -3611,7 +3611,17 @@
         <dl class="apcard-figs">${cells.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>${apWeek(d.week)}</div>
       <div class="apcard-act"><button type="button" class="btn" data-apcard="open">Open autopilot</button></div>`;
     host.querySelector('[data-apcard="open"]').onclick = () => apOpen();
+    const idleFocus = host.querySelector('[data-apcard="idle-focus"]');
+    if (idleFocus) idleFocus.onclick = () => { apOpen(); apShowFocus(document.getElementById('autopilot-float')); };
     apBindFocus(host);
+  }
+  // Why autopilot isn't trading right now (the server's d.idle): one plain line, plus the action to
+  // take when there is one (a link, or the focus control). The card and the panel both lead with it.
+  function apIdleHtml(idle, focusAttr) {
+    const a = idle.action;
+    const act = !a ? '' : a.href ? ` <a href="${esc(a.href)}">${esc(a.label)}</a>`
+      : a.do === 'focus' ? ` <button type="button" ${focusAttr}>${esc(a.label)}</button>` : '';
+    return esc(idle.line) + act;
   }
   // The market focus is binding on research, deploys and the picker, so it reads as a plain line on
   // the card and the panel, with a Change that opens the control (it lives in "Model and markets").
@@ -3949,7 +3959,13 @@
     if (!d) return;
     // Plain-language summary from the server (what it's doing, why no trades yet, what live needs).
     const story = box.querySelector('#apf-story');
-    if (story) story.innerHTML = (d.story || []).map((line) => `<p>${esc(line)}</p>`).join('');
+    if (story) {
+      // The billing pause has its own line under the switch, so the idle line skips it.
+      story.innerHTML = (d.idle && !d.billing_blocked ? `<p class="apf-idle">${apIdleHtml(d.idle, 'data-ap="idle-focus"')}</p>` : '')
+        + (d.story || []).map((line) => `<p>${esc(line)}</p>`).join('');
+      const idleFocus = story.querySelector('[data-ap="idle-focus"]');
+      if (idleFocus) idleFocus.onclick = () => apShowFocus(box);
+    }
     // Live figures once real money is armed or running. A paper-only panel used to show "Live P&L
     // today $0.00" and a loss budget that can't apply to it, and nothing about the paper book it has.
     const liveInPlay = !!(d.autopilot_live || d.live_running);

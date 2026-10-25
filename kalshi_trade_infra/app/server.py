@@ -1384,29 +1384,8 @@ def _autopilot_story(d: Dict) -> List[str]:
     if d.get("billing_blocked"):
         return []  # the panel's billing warning already says why it's paused
     research = d.get("research") or {}
-    active = research.get("active") or []
-    if active:
-        names = [n for n in dict.fromkeys(active) if n != "a market it's still picking"]  # two runs on one market read as one
-        now = ("Right now it's researching %s." % (
-            names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1])) if names \
-            else "Right now it's picking a market to research."
-    elif d.get("reviewing"):
-        now = "Right now it's reviewing the markets to pick its next move. Each move shows up in its activity feed."
-    elif d.get("review_wait"):
-        w = d["review_wait"]
-        mins = max(1, int(w.get("seconds") or 0) // 60)
-        now = ("Its next review has waited %s for a free worker, longer than usual. It starts when one frees up."
-               % _span(mins)) if w.get("state") == "queued" else \
-              ("Its review hasn't checked in for %s. A review that quiet is normally stopped, and the next one "
-               "starts on schedule." % _span(mins))
-    else:
-        now = "Right now it's between research runs. It checks in about every %d minutes." % max(1, COPILOT_REVIEW_MINUTES)
-        quiet = _quiet_minutes(d.get("last_review_at"))
-        if quiet:
-            # A stalled worker would leave "checks in every 10 minutes" on screen for hours; say how long it's been.
-            # Same steps as the "Last reviewed" figure beside it (sinceMin), so the two never disagree.
-            now = "Right now it's between research runs. Its last check-in was %s ago, longer than usual." % _span(quiet)
-    lines = [now]
+    idle = (d.get("idle") or {}).get("code")
+    lines = [_autopilot_now(d)]
     if d.get("focus"):
         lines.append("It sticks to the focus you set: %s." % ", ".join(d["focus"]))
     tested, passed = int(research.get("tested_7d") or 0), int(research.get("passed_7d") or 0)
@@ -1416,7 +1395,9 @@ def _autopilot_story(d: Dict) -> List[str]:
             _plural(tested, "idea"), " for ${:,.2f}".format(cost) if cost >= 0.01 else "",
             "none has passed its tests yet. That's normal: most ideas fail" if not passed else "{:,} passed".format(passed)))
     paper, prog = int(d.get("paper_running") or 0), d.get("paper_progress")
-    if not paper:
+    if idle and (idle == "engine" or not paper):
+        pass  # the idle line (shown above the story) says why nothing trades; this one would repeat or contradict it
+    elif not paper:
         lines.append("Nothing is trading on paper yet. A strategy has to pass the research tests first.")
     elif prog and int(prog.get("trades") or 0) > 0:
         lines.append("%s on paper (pretend money). The furthest along has %d of %d trades and is %s." % (
@@ -1443,18 +1424,53 @@ def _autopilot_story(d: Dict) -> List[str]:
     t_line = _tournament_line(d.get("tournament"))
     if t_line:
         lines.append(t_line)
-    lines += _waiting_lines(d.get("paper_waiting") or []) if paper else []
+    # A stalled engine left last decision's waits on screen as if they were current.
+    lines += _waiting_lines(d.get("paper_waiting") or []) if paper and idle != "engine" else []
     lines += _paused_lines(d.get("paused_recent") or [])
     stop_line = _stop_line(d.get("early_exits_7d") or {})
     if stop_line:
         lines.append(stop_line)
+    limit = float(d.get("daily_loss_limit") or 0)
     if int(d.get("live_running") or 0):
         lines.append("%s trading real money." % _plural(int(d["live_running"]), "strategy is", "strategies are"))
+    elif limit > 0 and float(d.get("today_live_pnl") or 0) <= -limit:
+        # The kill switch turned live autopilot off and paused live deployments; the panel used to
+        # go back to "Nothing trades real money until..." as if live had never run.
+        lines.append("Live trading stopped for today: today's live loss of $%.2f reached your $%.2f daily limit, "
+                     "so live autopilot switched itself off and live strategies were paused. Paper keeps running."
+                     % (-float(d["today_live_pnl"]), limit))
     else:
         lines.append("Nothing trades real money until a strategy makes money on paper over at least %d trades "
                      "from %d separate events and %d hours, and you turn on live autopilot." % (
                          agent.MIN_REALISTIC_PAPER_TRADES, agent.MIN_PAPER_EVENTS, int(agent.MIN_PAPER_SPAN_HOURS)))
     return lines
+
+
+def _autopilot_now(d: Dict) -> str:
+    """The story's first line: what the autopilot is doing right now."""
+    active = (d.get("research") or {}).get("active") or []
+    if active:
+        names = [n for n in dict.fromkeys(active) if n != "a market it's still picking"]  # two runs on one market read as one
+        now = ("Right now it's researching %s." % (
+            names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1])) if names \
+            else "Right now it's picking a market to research."
+    elif d.get("reviewing"):
+        now = "Right now it's reviewing the markets to pick its next move. Each move shows up in its activity feed."
+    elif d.get("review_wait"):
+        w = d["review_wait"]
+        mins = max(1, int(w.get("seconds") or 0) // 60)
+        now = ("Its next review has waited %s for a free worker, longer than usual. It starts when one frees up."
+               % _span(mins)) if w.get("state") == "queued" else \
+              ("Its review hasn't checked in for %s. A review that quiet is normally stopped, and the next one "
+               "starts on schedule." % _span(mins))
+    else:
+        now = "Right now it's between research runs. It checks in about every %d minutes." % max(1, COPILOT_REVIEW_MINUTES)
+        quiet = _quiet_minutes(d.get("last_review_at"))
+        if quiet:
+            # A stalled worker would leave "checks in every 10 minutes" on screen for hours; say how long it's been.
+            # Same steps as the "Last reviewed" figure beside it (sinceMin), so the two never disagree.
+            now = "Right now it's between research runs. Its last check-in was %s ago, longer than usual." % _span(quiet)
+    return now
 
 
 def _scan_tally(cur, deps: List[Dict]) -> Dict[int, Dict[str, int]]:
@@ -1632,6 +1648,142 @@ def _quiet_minutes(last_review_at) -> int:
     return mins if mins > QUIET_AFTER_MINUTES else 0
 
 
+# The deployment engine beats every TICK_SECONDS (15s); a beat older than this means paper strategies
+# aren't being decided at all, whatever their own last scan said.
+ENGINE_STALE_SECONDS = int(os.getenv("TAU_ENGINE_STALE_SECONDS", "300"))
+_UNKNOWN = object()
+
+
+def _engine_age(cur):
+    """Seconds since the engine's last tick (None = it has never ticked), or _UNKNOWN when it can't be read."""
+    try:
+        return repo.engine_last_tick_age_seconds(cur)
+    except Exception:  # noqa: BLE001 - a readout; never fail the panel over it
+        return _UNKNOWN
+
+
+def _passed_undeployed(cur, uid: int, focus: List[str]) -> List[Dict]:
+    """The user's passed strategies that never ran on paper (the example left out), each with whether
+    it is inside the focus and, for the first few inside it, whether the gatekeeper made it a
+    deployment candidate: the same tests agent.auto_paper_candidates applies before it deploys one."""
+    try:
+        rows = repo.list_strategies(cur, uid, status="passed", limit=100)
+        tried = {d["strategy_id"] for d in repo.list_deployments(cur, uid, include_stopped=True)}
+    except Exception:  # noqa: BLE001 - a readout
+        return []
+    out = [{"id": r["id"], "market": r.get("market"), "title": _short_title(r.get("title")),
+            "in_focus": agent.in_focus(r.get("market"), focus), "candidate": False, "retired": r["id"] in tried}
+           for r in rows if r.get("direction") != repo.DEMO_DIRECTION]
+    for x in [x for x in out if x["in_focus"] and not x["retired"]][:5]:
+        try:
+            x["candidate"] = agent._is_deployment_candidate(cur, x["id"])
+        except Exception:  # noqa: BLE001 - a readout
+            pass
+    return out
+
+
+def _pause_clause(raw: Optional[str]) -> str:
+    """Why a deployment is paused, as the end of a sentence."""
+    raw = (raw or "").strip()
+    return {"By you": "you paused it", "Approved agent proposal": "you approved the agent's proposal to pause it",
+            "Kill switch": "you pressed Kill"}.get(raw) or _plain_pause_reason(raw)
+
+
+def _idle(code: str, line: str, action: Optional[Dict] = None) -> Dict:
+    return {"code": code, "line": line, "action": action}
+
+
+def _idle_reason(d: Dict, paper_run: List[Dict], paused: List[Dict], engine_age, passed: List[Dict]) -> Optional[Dict]:
+    """Why the autopilot places no paper trades right now, as one plain line plus the action to take
+    (if there is one): {"code", "line", "action": {"label", "href"} or {"label", "do"} or None}. None
+    when it's off or something is trading (an open position, or a contract that cleared every entry
+    check). Built from the status payload `d` and the reads passed in, so it can't disagree with them.
+    `paused` is every paused paper deployment, newest first; `passed` the passed strategies with no
+    deployment; `engine_age` the engine's last beat (None = never, _UNKNOWN = couldn't read)."""
+    if not d.get("autopilot"):
+        return None
+    running = sum(int(d.get(k) or 0) for k in ("paper_running", "demo_running", "live_running"))
+    if running and engine_age is not _UNKNOWN and (engine_age is None or engine_age > ENGINE_STALE_SECONDS):
+        when = ("isn't running" if engine_age is None
+                else "last checked the markets %s ago" % _span(max(1, int(engine_age) // 60)))
+        return _idle("engine", "Nothing is trading right now: Tau's trading engine %s, so %s. There's nothing for "
+                               "you to do; %s when it's back." % (
+                                   when, "your strategy can't buy or sell" if running == 1
+                                   else "your %d strategies can't buy or sell" % running,
+                                   "it carries on" if running == 1 else "they carry on"))
+    if running:
+        if not paper_run or int(d.get("paper_open") or 0):
+            return None
+        scans = [dep.get("scan") or {} for dep in paper_run]
+        if any(sc.get("entered") or sc.get("qualifying") for sc in scans):
+            return None
+        n = len(paper_run)
+        if not any(sc.get("why") for sc in scans):
+            line = ("No trades yet: %s went on paper and hasn't had its first look at the market. It checks at its "
+                    "market's next decision time." % _short_title(paper_run[0].get("title"))) if n == 1 else \
+                   ("No trades yet: your %d paper strategies haven't had their first look at the market. Each checks "
+                    "at its market's next decision time." % n)
+            return _idle("starting", line)
+        waiting = d.get("paper_waiting") or []
+        closed = [w for w in waiting if w["why"].startswith("no open contracts")]
+        if waiting and len(closed) == len(waiting):
+            who = "the market for %s has" % waiting[0]["title"] if n == 1 else "the markets for your %d paper strategies have" % n
+            return _idle("market_closed", "Nothing is trading right now: %s no open contracts (closed, or between "
+                                          "events). Trading picks up when new contracts list." % who)
+        if waiting:
+            w = next(w for w in waiting if w not in closed)
+            lead = ("%s is waiting for a contract that fits its entry rules" % w["title"]) if n == 1 else \
+                   ("none of your %d paper strategies has found a contract that fits its entry rules" % n)
+            return _idle("waiting", "No trades right now: %s. %s: %s." % (
+                lead, "Its last check" if n == 1 else "Last check for %s" % w["title"], w["why"]))
+        return None
+    card = d.get("billing_reason") == "card"
+    if d.get("billing_blocked"):
+        return _idle("billing", "Nothing is on paper, and it can't research new strategies until you %s." % (
+            "add a payment method" if card else "add credits"),
+            {"label": "Add a payment method" if card else "Add credits", "href": "/billing"})
+    now = _autopilot_now(d).split(". ")[0].rstrip(".") + "."  # its first sentence
+    doing = (now[len("Right now "):] if now.startswith("Right now ") else now)
+    doing = doing[0].upper() + doing[1:]
+    if paused:
+        p = paused[0]
+        lead = ("%s is paused" % _short_title(p.get("title")) if len(paused) == 1
+                else "your %d paper strategies are paused (the latest, %s" % (len(paused), _short_title(p.get("title"))))
+        why = _pause_clause(p.get("status_reason"))
+        line = ("Nothing is trading: %s: %s." % (lead, why)) if len(paused) == 1 else \
+               ("Nothing is trading: %s: %s)." % (lead, why))
+        return _idle("stopped", line + " Resume one, or let the autopilot find new ones.",
+                     {"label": "Open Deploy", "href": "/deploy"})
+    focus = d.get("focus") or []
+    retired = [x for x in passed if x["retired"]]
+    passed = [x for x in passed if not x["retired"]]
+    inside = [x for x in passed if x["in_focus"]]
+    if focus and passed and not inside:
+        k = len(passed)
+        return _idle("focus", "Nothing is on paper: your focus is %s, and %s outside it, so it won't deploy %s. "
+                              "It researches inside the focus to find new ones." % (
+                                  ", ".join(focus), ("your passed strategy, %s, is" % passed[0]["title"]) if k == 1
+                                  else "both your passed strategies are" if k == 2 else "all %d of your passed strategies are" % k, "it" if k == 1 else "them"),
+                     {"label": "Change focus", "do": "focus"})
+    ready = [x for x in inside if x["candidate"]]
+    if ready:
+        return _idle("to_deploy", "Nothing is on paper yet: %s cleared every check, and the next review puts %s on "
+                                  "paper. %s" % (ready[0]["title"] if len(ready) == 1 else "%d strategies" % len(ready),
+                                                 "it" if len(ready) == 1 else "them", doing))
+    if inside:
+        return _idle("no_candidate", "Nothing is on paper yet: %s passed the research tests, but %s cleared the last "
+                                     "check before paper (the holdout test). %s" % (
+                                         inside[0]["title"] if len(inside) == 1 else "%d strategies" % len(inside),
+                                         "it hasn't" if len(inside) == 1 else "none has", doing))
+    code = ("researching" if (d.get("research") or {}).get("active") else "reviewing" if d.get("reviewing")
+            else "review_wait" if d.get("review_wait") else "no_strategies")
+    if retired:
+        return _idle(code, "Nothing is on paper: %s that passed %s stopped on paper, and no new one has passed since. %s" % (
+            "the strategy" if len(retired) == 1 else "the %d strategies" % len(retired),
+            "was" if len(retired) == 1 else "were", doing))
+    return _idle(code, "Nothing is on paper yet: no strategy has passed its research tests. %s" % doing)
+
+
 def autopilot_status(ctx: Ctx):
     """Lightweight status for the floating autopilot window."""
     cur, u = ctx.cur, ctx.user
@@ -1710,6 +1862,16 @@ def autopilot_status(ctx: Ctx):
     }
     if u.get("autopilot"):
         out["week"] = _autopilot_week(cur, ctx.uid, out["research"])
+        # Why nothing is trading right now (None while something is). Each read is skipped unless
+        # its state can be the answer, since this endpoint polls.
+        running = len(paper_run) + len(demo_run) + len(live_run)
+        paused = sorted((d for d in deps if d["mode"] == "paper" and d["status"] == "paused"),
+                        key=lambda d: d.get("updated_at") or datetime.min, reverse=True)
+        out["idle"] = _idle_reason(out, paper_run, paused, _engine_age(cur) if running else _UNKNOWN,
+                                   _passed_undeployed(cur, ctx.uid, out["focus"]) if not running and not paused
+                                   and not billing_blocked else [])
+    else:
+        out["idle"] = None
     out["story"] = _autopilot_story(out)
     return out
 

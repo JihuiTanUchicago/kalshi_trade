@@ -1610,6 +1610,8 @@ body.landing-body .apf { display: none; }
 .apf-story:empty { display: none; }
 .apf-story p { margin: 0 0 6px; font-size: 14px; line-height: 1.45; color: var(--ink); }
 .apf-story p:last-child { margin-bottom: 0; }
+.apf-story p.apf-idle { font-weight: 600; }
+.apf-idle button, .apcard-now button { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .apf-gates { margin-top: 10px; }
 .apf-gates:empty { display: none; }
 .apf-gates.warn { color: var(--signal); font-weight: 500; }
