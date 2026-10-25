@@ -1091,7 +1091,14 @@
     ${d.status === 'running' ? `<button class="btn sm" data-dep="${d.id}" data-act="pause">Pause</button>` : ''}
     ${d.status === 'paused' ? `<button class="btn sm" data-dep="${d.id}" data-act="resume">Resume</button>` : ''}
     ${remove ? deploymentRemove(d) : ''}</div>`;
-  const deploymentEvidence = (d, manage = false) => `<details class="dep-evidence" data-deployment="${esc(d.id)}"><summary aria-label="Backtest and deployment details">Details</summary><div>Unseen P&amp;L ${d.backtest && d.backtest.out_of_sample ? usd(d.backtest.out_of_sample.pnl, true) : '\u2014'} · Deployed ${when(d.created_at)}${manage ? `<div class="deployment-actions">${deploymentRemove(d)}</div>` : ''}</div></details>`;
+  // What the deployment's closed trades would have made at the unseen-data backtest's average per
+  // trade: the number to hold realized P&L against (the backtest total covers a different trade count).
+  const backtestPace = (d) => {
+    const oos = d.backtest && d.backtest.out_of_sample, n = +d.closed_trades || 0;
+    if (!oos || !(+oos.trades > 0) || !n) return '';
+    return `Backtest pace ${usd((+oos.pnl || 0) / +oos.trades * n, true)} for the same ${n} trade${n === 1 ? '' : 's'} · `;
+  };
+  const deploymentEvidence = (d, manage = false) => `<details class="dep-evidence" data-deployment="${esc(d.id)}"><summary aria-label="Backtest and deployment details">Details</summary><div>${backtestPace(d)}Unseen P&amp;L ${d.backtest && d.backtest.out_of_sample ? usd(d.backtest.out_of_sample.pnl, true) : '\u2014'} · Deployed ${when(d.created_at)}${manage ? `<div class="deployment-actions">${deploymentRemove(d)}</div>` : ''}</div></details>`;
   function deploymentSlip(d, controls) {
     const live = d.mode === 'live';
     const modeTag = deploymentMode(d);
