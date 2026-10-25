@@ -17,6 +17,7 @@ from datetime import date, datetime, timezone
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from app.options_fair import FEATURE_DOCS as _OPTIONS_DOCS
+from data_pipeline.polymarket import FEATURE_DOCS as _POLYMARKET_DOCS
 from app.sports_odds import FEATURE_DOCS as _SPORTS_ODDS_DOCS
 from app.weather_fcst import FEATURE_DOCS as _WEATHER_FCST_DOCS
 
@@ -519,6 +520,9 @@ FEATURES.update(_SPORTS_ODDS_DOCS)
 # Per-contract Deribit options-implied fair value (app/options_fair.snapshot_features; the per-second
 # datasets carry opt_p_yes / opt_iv / opt_edge from features_1s instead).
 FEATURES.update(_OPTIONS_DOCS)
+# Per-contract Polymarket price for the same event (app/adapters/polymarket/features.py; the
+# per-second datasets carry pm_p_yes / pm_spread / pm_age_s from features_1s, pm_edge derived).
+FEATURES.update(_POLYMARKET_DOCS)
 
 
 @dataclass(frozen=True)

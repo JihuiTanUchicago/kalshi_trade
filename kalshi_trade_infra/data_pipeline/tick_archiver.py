@@ -26,6 +26,10 @@ Tables (rt = receive time, epoch ns, on every row):
                   underlying_price, index_price, open_interest (every BTC option, every poll)
   deribit_surface the implied-vol surface fitted from each poll: options_surface.SURFACE_FIELDS
                   (data_pipeline/deribit_options.py, which also writes the daily history files)
+  polymarket_markets  Polymarket BTC markets per catalog pass: market_id, slug, kind (updown/above/
+                  below/range/touch_*), strike_lo/hi, start_ts, end_ts, tokens, Gamma's best bid/ask
+  polymarket_top  top of book per outcome token per poll: bid, bid_size, ask, ask_size, depth within
+                  5c, level counts, exch_ms (data_pipeline/polymarket.py; depth stays in the raw gzip)
   tick_meta      source, event, detail (connects, disconnects, sequence gaps) for kalshi;
                   <source>_meta for every other source (one file per table-hour, so sources
                   cannot share a table)
@@ -52,7 +56,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 from data_pipeline.common import get_db_conn, utc_now
 from data_pipeline.init_schema import TICK_ARCHIVE_DDL as MANIFEST_DDL
-from data_pipeline import deribit_options, options_surface, tick_spot
+from data_pipeline import deribit_options, options_surface, polymarket, tick_spot
 from data_pipeline.tick_recorder import SPOT_RECORDERS, SPOT_VENUES, TICK_DIR, delta_fields, snapshot_levels, _num
 
 BUCKET = os.getenv("DATALAKE_BUCKET", "kalshi-trade-datalake-568386354218-us-east-1")
@@ -93,6 +97,7 @@ def _schemas():
                                       ("underlying_price", f), ("index_price", f), ("open_interest", f)]),
         "deribit_surface": pa.schema([rt] + [(c, i64 if c in ("snap_ts", "expiry_ts", "n_points") else
                                               s if c == "method" else f) for c in options_surface.SURFACE_FIELDS]),
+        **polymarket.archive_schemas(),
     }
 
 
@@ -178,6 +183,9 @@ def parse_line(source: str, line: str) -> Iterable[Tuple[str, tuple]]:
     data = rec.get("m") or {}
     if source == "deribit":
         yield from deribit_options.parse_record(rt, data)
+        return
+    if source == polymarket.SOURCE:
+        yield from polymarket.parse_record(rt, data)
         return
     if source in SPOT_RECORDERS:
         yield from tick_spot.parse(source, rt, data, getattr(SPOT_RECORDERS[source], "symbol", None))

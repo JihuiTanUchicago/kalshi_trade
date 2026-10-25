@@ -33,6 +33,12 @@ Columns (float32 unless noted):
   newest deribit_surface snapshot received before the second. opt_iv: the implied vol at the
   contract's strike and horizon, annualized. Null off BTC, without a surface younger than
   options_surface.MAX_AGE_S, and in hours built before the Deribit recorder (2026-10-25).
+  pm_p_yes: Polymarket's probability for the same event (data_pipeline/polymarket.py): the
+  15-minute up/down window with the contract's open and close for KXBTC15M, else the daily strike
+  ladder settling at the contract's close read as a curve at its strikes (KXBTCD/KXBTC at noon ET).
+  From the newest polymarket_top poll received before the second, at most PM_MAX_AGE_S old.
+  pm_age_s: seconds since that poll; pm_spread: the Polymarket YES spread behind it. Null where
+  Polymarket lists no twin, and in hours built before the Polymarket recorder (2026-10-25).
 """
 import math
 import os
@@ -52,7 +58,9 @@ F32 = ["strike_lo", "strike_hi", "yes_bid", "yes_ask", "yes_bid_size", "yes_ask_
        "updates", "mid", "spread", "microprice", "imbalance", "yes_taker_10s", "no_taker_10s", "yes_taker_60s",
        "no_taker_60s", "n_prints_60s", "last_yes", "spot", "spot_ret_1s", "spot_ret_10s", "spot_ret_60s",
        "spot_ret_300s", "rv_60s", "rv_300s", "spot_taker_imb_60s", "secs_to_close", "dist_sigma", "book_age_s",
-       "spot_comp", "spot_comp_n", "spot_cb_comp_bp", "dist_sigma_comp", "opt_p_yes", "opt_iv"]
+       "spot_comp", "spot_comp_n", "spot_cb_comp_bp", "dist_sigma_comp", "opt_p_yes", "opt_iv",
+       "pm_p_yes", "pm_age_s", "pm_spread"]
+PM_MAX_AGE_S = 30
 
 
 def schema():
@@ -202,7 +210,7 @@ def book_at_secs(rt, kind, side, price, qty, upd_rt, secs: np.ndarray) -> Dict[s
 
 def ticker_rows(ticker: str, meta: Dict, secs: np.ndarray, spot: Dict[str, np.ndarray],
                 book_rows: Optional[Dict[str, np.ndarray]], trade_rows: Optional[Dict[str, np.ndarray]],
-                surfaces=None) -> Optional[Dict]:
+                surfaces=None, pm=None) -> Optional[Dict]:
     open_ts, close_ts = meta.get("open_ts"), meta.get("close_ts")
     mask = np.ones(len(secs), dtype=bool)
     if open_ts is not None:
@@ -265,6 +273,9 @@ def ticker_rows(ticker: str, meta: Dict, secs: np.ndarray, spot: Dict[str, np.nd
     if comp is not None:
         px = np.where(np.isfinite(comp), comp, px)
     out.update(option_cols(surfaces, secs, lo, hi, close_ts, px))
+    from data_pipeline.polymarket import UPDOWN_SERIES
+    series = meta.get("series") or ticker.split("-")[0]
+    out.update(polymarket_cols(pm, secs, lo, hi, open_ts if series in UPDOWN_SERIES else None, close_ts))
     out["strike_lo"] = np.full(n, np.nan if lo is None else lo)
     out["strike_hi"] = np.full(n, np.nan if hi is None else hi)
     rows = {k: v[mask] for k, v in out.items()}
@@ -303,6 +314,44 @@ def option_cols(surfaces, secs: np.ndarray, lo, hi, close_ts, spot: np.ndarray) 
         m = idx == i
         p[m], v[m] = osf.prob_yes(surfaces.surfaces[int(i)], secs[m].astype(float), lo, hi, float(close_ts), spot[m])
     return {"opt_p_yes": p, "opt_iv": v}
+
+
+def polymarket_cols(pm, secs: np.ndarray, lo, hi, open_ts, close_ts) -> Dict[str, np.ndarray]:
+    """pm_p_yes / pm_age_s / pm_spread per second from the newest Polymarket poll before it."""
+    n = len(secs)
+    out = {k: np.full(n, np.nan) for k in ("pm_p_yes", "pm_age_s", "pm_spread")}
+    if pm is None or close_ts is None or (lo is None and hi is None):
+        return out
+    polls = pm.polls(int(close_ts))
+    if not polls:
+        return out
+    # each poll's value holds from the second after it was received until the next poll
+    for i, poll in enumerate(polls):
+        f = pm.prob(lo, hi, int(close_ts), open_ts, poll)
+        start = poll[0] + 1
+        stop = min(polls[i + 1][0] + 1 if i + 1 < len(polls) else start + PM_MAX_AGE_S, start + PM_MAX_AGE_S)
+        a, b = np.searchsorted(secs, start), np.searchsorted(secs, stop)
+        if a >= b:
+            continue
+        if f is None:
+            continue
+        out["pm_p_yes"][a:b] = f["pm_p_yes"]
+        out["pm_spread"][a:b] = f["pm_spread"]
+        out["pm_age_s"][a:b] = secs[a:b] - f["pm_ts"]
+    return out
+
+
+def load_polymarket(store, hour: datetime):
+    """The Polymarket polls that can price this hour (PmSeries), or None before the recorder."""
+    from data_pipeline import polymarket
+    tops = store.read("polymarket_top", hour - timedelta(seconds=PM_MAX_AGE_S), hour + timedelta(hours=1))
+    if tops is None or not tops.num_rows:
+        return None
+    mk = store.read("polymarket_markets", hour - timedelta(hours=1), hour + timedelta(hours=1))
+    if mk is None or not mk.num_rows:
+        return None
+    s = polymarket.PmSeries(polymarket.quotes_from_archive(mk.to_pylist(), tops.to_pylist()))
+    return s if len(s) else None
 
 
 def load_surfaces(store, hour: datetime):
@@ -360,6 +409,7 @@ def build_hour(store, hour: datetime, out_dir: str) -> Optional[Dict]:
     per_series: Dict[str, int] = {}
     total, nt = 0, 0
     surfaces = False      # loaded on the first BTC contract
+    pm = False
     try:
         for ticker in sorted(meta):
             bi, ti = bgroups.get(ticker), tgroups.get(ticker)
@@ -372,10 +422,17 @@ def build_hour(store, hour: datetime, out_dir: str) -> Optional[Dict]:
                 except Exception as e:  # noqa: BLE001 - the options columns are optional
                     print(f"[WARN] deribit surfaces for {hour:%Y-%m-%d %H}: {e}", flush=True)
                     surfaces = None
+            if product == "BTC-USD" and pm is False:
+                try:
+                    pm = load_polymarket(store, hour)
+                except Exception as e:  # noqa: BLE001 - the Polymarket columns are optional
+                    print(f"[WARN] polymarket quotes for {hour:%Y-%m-%d %H}: {e}", flush=True)
+                    pm = None
             rows = ticker_rows(ticker, meta[ticker], secs, spots[product],
                                {c: v[bi] for c, v in bcols.items()} if bi is not None else None,
                                {c: v[ti] for c, v in tcols.items()} if ti is not None else None,
-                               surfaces if product == "BTC-USD" else None)
+                               surfaces if product == "BTC-USD" else None,
+                               pm if product == "BTC-USD" else None)
             if rows is None:
                 continue
             arrays = []
