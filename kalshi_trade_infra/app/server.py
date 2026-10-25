@@ -534,8 +534,18 @@ def list_runs(ctx: Ctx):
               "base_score": round(pol["base_score"], 2) if (pol and pol.get("base_score") is not None) else None,
               "summary": pol.get("summary") if pol else None,
               "evolved_at": pol["updated_at"] if pol else None}
-    return {"runs": repo.list_runs(ctx.cur, ctx.uid), "counts": repo.active_run_counts(ctx.cur, ctx.uid),
+    runs = repo.list_runs(ctx.cur, ctx.uid)
+    _with_spent(ctx.cur, ctx.uid, runs)
+    return {"runs": runs, "counts": repo.active_run_counts(ctx.cur, ctx.uid),
             "policy": policy, "totals": _research_totals(ctx.cur, ctx.uid)}
+
+
+def _with_spent(cur, uid: int, runs: List[Dict]) -> None:
+    """Stamp each run with `spent_usd`: what its usage debits took from credits so far (the ledger
+    rows billed to that run), so a run-until-stopped session shows its running cost."""
+    spent = repo.runs_spent(cur, uid, [r["id"] for r in runs])
+    for r in runs:
+        r["spent_usd"] = round(spent.get(r["id"], 0.0), 4)
 
 
 RUN_TOTALS_TTL = 30.0  # seconds; the Research page polls /api/runs every 5s
@@ -569,6 +579,7 @@ def get_run(ctx: Ctx):
     strategies = repo.list_strategies(ctx.cur, ctx.uid, run_id=run["id"])
     pol = repo.get_policy(ctx.cur, ctx.uid)  # the self-evolving exploration policy (Tau-RSI)
     dream = repo.latest_dream_event(ctx.cur, ctx.uid)
+    _with_spent(ctx.cur, ctx.uid, [run])
     return {
         "run": run,
         "events": repo.run_events(ctx.cur, run["id"], after),

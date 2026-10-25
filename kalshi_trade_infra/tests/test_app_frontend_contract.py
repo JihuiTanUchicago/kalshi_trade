@@ -239,3 +239,26 @@ def test_every_market_has_a_short_label(bundle):
     block = src[src.index('const MKT_SHORT = {'):]
     keys = set(re.findall(r'(\w+):', block[:block.index('};')]))
     assert set(markets.MARKETS) - keys == set()
+
+
+def test_run_page_and_research_list_carry_each_runs_ledger_spend(monkeypatch):
+    # A run-until-stopped session shows what it has taken from credits: the ledger rows billed to
+    # the run, read once per response (one grouped query for the list, not one per row).
+    calls = []
+    monkeypatch.setattr(server.repo, 'runs_spent', lambda cur, uid, ids: calls.append((uid, list(ids))) or {9: 1.83725})
+    monkeypatch.setattr(server.repo, 'get_run', lambda cur, uid, rid: {'id': rid, 'kind': 'research', 'status': 'running'})
+    monkeypatch.setattr(server.repo, 'list_strategies', lambda *a, **k: [])
+    monkeypatch.setattr(server.repo, 'get_policy', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'latest_dream_event', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'run_events', lambda *a: [])
+    ctx = context()
+    ctx.params = ('9',)
+    assert server.get_run(ctx)['run']['spent_usd'] == 1.8373
+    assert calls == [(7, [9])]
+    calls.clear()
+    monkeypatch.setattr(server.repo, 'list_runs', lambda cur, uid: [{'id': 9}, {'id': 4}, {'id': 2}])
+    monkeypatch.setattr(server.repo, 'active_run_counts', lambda *a: {})
+    monkeypatch.setattr(server, '_research_totals', lambda *a: {})
+    runs = server.list_runs(context())['runs']
+    assert [r['spent_usd'] for r in runs] == [1.8373, 0.0, 0.0]  # a run with no debit cost nothing
+    assert calls == [(7, [9, 4, 2])]

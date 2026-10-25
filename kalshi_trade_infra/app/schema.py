@@ -830,6 +830,10 @@ def main() -> None:
         _add_index_if_missing(cur, "app_credit_ledger", "idx_credit_user_kind_time",
                               "ALTER TABLE app_credit_ledger ADD INDEX idx_credit_user_kind_time (user_id, kind, created_at), "
                               "ALGORITHM=INPLACE, LOCK=NONE")
+        # The run page (2s poll) and the research list sum each run's debits (runs_spent).
+        _add_index_if_missing(cur, "app_credit_ledger", "idx_credit_run_kind",
+                              "ALTER TABLE app_credit_ledger ADD INDEX idx_credit_run_kind (run_id, kind), "
+                              "ALGORITHM=INPLACE, LOCK=NONE")
         # Same slow log: the collector box's per-minute reads of the legacy feature tables
         # (data_pipeline.init_schema owns them) full-scanned them, ~5s each, two every minute.
         # They are added here because only this migration runs on every deploy.

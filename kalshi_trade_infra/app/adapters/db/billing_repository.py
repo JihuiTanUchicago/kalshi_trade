@@ -1,7 +1,7 @@
 """Credits ledger and Stripe customer SQL (usage billing)."""
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, Iterable, List, Optional
 
 from app.adapters.db.sql import now_utc
 
@@ -59,6 +59,20 @@ def research_spent_since(cur, user_id: int, since) -> float:
         (user_id, since),
     )
     return float(cur.fetchone()["s"])
+
+
+def runs_spent(cur, user_id: int, run_ids: Iterable[int]) -> Dict[int, float]:
+    """Dollars actually debited for each run so far ({run_id: usd}; a run with no debit is absent),
+    for the run page and the research list. One grouped read through idx_credit_run_kind."""
+    ids = sorted({int(i) for i in run_ids if i is not None})
+    if not ids:
+        return {}
+    cur.execute(
+        "SELECT run_id, COALESCE(-SUM(amount_usd),0) AS s FROM app_credit_ledger "
+        "WHERE run_id IN (" + ",".join(["%s"] * len(ids)) + ") AND kind='usage' AND user_id=%s GROUP BY run_id",
+        tuple(ids) + (user_id,),
+    )
+    return {int(r["run_id"]): float(r["s"]) for r in cur.fetchall()}
 
 
 def get_stripe_customer(cur, user_id: int) -> Optional[Dict]:

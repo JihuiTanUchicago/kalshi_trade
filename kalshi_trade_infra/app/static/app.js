@@ -1772,6 +1772,10 @@
     await load();
     poll(load, 5000);
   }
+  // What a run has taken from credits (the ledger rows billed to it, `spent_usd` from the server).
+  // A run still going says "so far"; a finished one states its cost.
+  const runLive = (r) => r.status === 'running' || r.status === 'queued' || r.status === 'paused';
+  const runSpent = (r) => r.spent_usd == null ? '' : `${runLive(r) ? 'Spent so far' : 'Cost'}: ${usd(r.spent_usd)}`;
   function runRow(r) {
     const state = r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
       : r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
@@ -1783,7 +1787,7 @@
     const band = r.status === 'succeeded' ? (r.strategies_passed ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : (r.status === 'cancelled' || r.status === 'stopped') ? 'void' : 'live';
     return `<a class="run-card ${band}" href="/research/${r.id}">
       <span class="run-title"><b>${esc(sessionTitle(r))}</b></span>
-      <span class="run-meta">${esc(marketShort(r.market))}${r.error ? ' \u00b7 ' + esc(r.error) : ''}</span>
+      <span class="run-meta">${esc(marketShort(r.market))}${r.spent_usd != null ? ' \u00b7 ' + runSpent(r) : ''}${r.error ? ' \u00b7 ' + esc(r.error) : ''}</span>
       <span class="run-foot"><span class="run-state">${state}</span><span class="run-when">${when(r.created_at)}</span></span></a>`;
   }
 
@@ -2276,6 +2280,7 @@
       root.querySelector('#runfigs').innerHTML =
         fig('Status', statusText) +
         fig('Time', started ? Math.max(0, Math.round((end - started) / 60000)) + ' min' : '—') +
+        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', usd(r.spent_usd), { small: 'from your credits' }) : '') +
         fig('Hypotheses', r.hypotheses_tried || tried) + fig('Passed', active ? '…' : r.strategies_passed) +
         fig('RSI policy', d.rsi && d.rsi.evolved ? 'Evolved' : 'Self-tuning',
             { small: d.rsi && d.rsi.evolved ? `generalization score ${d.rsi.score}` : 'dreams a better search each run' });

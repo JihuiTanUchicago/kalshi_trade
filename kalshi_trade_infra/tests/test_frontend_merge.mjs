@@ -963,3 +963,38 @@ test('feed markdown escapes model HTML and rejects non-http links', () => {
   assert.doesNotMatch(output, /<img|href="javascript:/);
   assert.match(output, /<b>complete<\/b>/); assert.match(output, /\*\*pending/);
 });
+
+test('a research run shows what it has cost so far from its ledger debits, and its cost once finished', async () => {
+  for (const [status, label] of [['running', 'Spent so far'], ['paused', 'Spent so far'], ['succeeded', 'Cost'], ['cancelled', 'Cost']]) {
+    const run = {id: 9, prompt: 'Idea', status, market: 'btc15m', created_at: '2026-10-17T10:00:00Z', spent_usd: 1.8372};
+    const f = frontend({fetchImpl: path => { assert.ok(path.startsWith('/api/runs/9')); return response({run, events: []}); }});
+    await f.viewRun(9);
+    assert.match(f.root.querySelector('#runfigs').innerHTML, new RegExp(`${label}</dt><dd><span class="fig ">\\$1\\.84</span>`), status);
+    f.clearTimers();
+  }
+  // An older server that sends no figure shows none, rather than a made-up $0.00.
+  const run = {id: 9, prompt: 'Idea', status: 'running', market: 'btc15m', created_at: '2026-10-17T10:00:00Z'};
+  const f = frontend({fetchImpl: () => response({run, events: []})});
+  await f.viewRun(9);
+  assert.doesNotMatch(f.root.querySelector('#runfigs').innerHTML, /Spent so far|Cost/);
+  f.clearTimers();
+});
+
+test('research list rows state each session\'s cost from the ledger', async () => {
+  const runs = [{id: 6, status: 'succeeded', market: 'btc15m', prompt: 'Done idea', hypotheses_tried: 3, strategies_passed: 0, created_at: '2026-10-25T08:00:00Z', spent_usd: 2.5},
+    {id: 7, status: 'running', market: 'btc15m', prompt: 'Live idea', hypotheses_tried: 1, strategies_passed: 0, created_at: '2026-10-25T09:00:00Z', spent_usd: 0.42}];
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path === '/api/research/context') return response({markets: []});
+    if (path === '/api/runs') return response({runs, counts: {research_running: 1, research_queued: 0}, policy: null});
+    if (path.startsWith('/api/research/scoreboard')) return response({});
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = false;
+  await f.viewResearch(); await flush(); await flush();
+  const html = f.root.querySelector('#runs').innerHTML;
+  assert.match(html, /href="\/research\/6"[\s\S]*?Cost: \$2\.50/);
+  assert.match(html, /href="\/research\/7"[\s\S]*?Spent so far: \$0\.42/);
+  f.clearTimers();
+});

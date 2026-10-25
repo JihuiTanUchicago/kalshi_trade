@@ -2422,3 +2422,26 @@ test('Meridian empty paper track record points at autopilot when it is on', () =
   assert.match(paper, /See its research/); assert.doesNotMatch(paper, /Go to Deploy/);
   assert.match(f.trackRecordPanel({trades: 0, label: 'Demo'}, 'demo', th), /Go to Deploy/);
 });
+
+test('a research run shows what it has cost so far from its ledger debits, and its cost once finished', async () => {
+  for (const [status, label] of [['running', 'Spent so far'], ['succeeded', 'Cost'], ['failed', 'Cost']]) {
+    const run = {...researchRun(9, status), spent_usd: 1.8372};
+    const f = frontend({fetchImpl: path => { assert.ok(path.startsWith('/api/runs/9')); return response({run, events: []}); }});
+    await f.viewRun(9);
+    assert.match(f.root.querySelector('#runfigs').innerHTML, new RegExp(`${label}</dt><dd><span class="fig ">\\$1\\.84</span>`), status);
+    f.clearTimers();
+  }
+  const f = frontend({fetchImpl: () => response({run: researchRun(9, 'running'), events: []})});
+  await f.viewRun(9);
+  assert.doesNotMatch(f.root.querySelector('#runfigs').innerHTML, /Spent so far|Cost/);
+  f.clearTimers();
+});
+
+test('Research history rows state each session\'s cost from the ledger', async () => {
+  const f = researchFrontend([{...researchRun(3, 'succeeded'), spent_usd: 2.5}, researchRun(4, 'failed')]);
+  await f.viewResearch(); await flush();
+  const html = f.root.querySelector('#runs').innerHTML;
+  assert.match(html, /href="\/research\/3"[\s\S]*?Cost: \$2\.50/);
+  assert.doesNotMatch(html.split('href="/research/4"')[1], /Cost:/);  // no figure from the server, no claim
+  f.clearTimers();
+});
