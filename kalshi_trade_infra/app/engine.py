@@ -45,12 +45,13 @@ LIVE_TRADING_ENABLED = os.getenv("APP_LIVE_TRADING_ENABLED") == "1"
 # path until this flag is set. Demo/paper NO always work (for sandbox validation; no real money).
 # ponytail: temporary; remove once NO-side live is validated on the demo sandbox.
 NO_SIDE_LIVE_ENABLED = os.getenv("APP_NO_SIDE_LIVE_ENABLED") == "1"
-# Paper decisions as one trading_core TradingLoop step instead of the legacy entry/exit loops below
-# (ARCHITECTURE.md step 8: backtest, paper and live on one code path). "paper" and "demo" are honoured;
-# live moves separately (it adds the reconcile halts and the size ramp), behind its own parity test. On
-# for paper by default (Todd, 2026-10-25, after the MySQL parity test tests/test_engine_loop_parity_db.py);
-# TAU_ENGINE_LOOP=off puts paper back on the legacy path, TAU_ENGINE_LOOP=paper,demo adds the sandbox.
-ENGINE_LOOP_MODES = frozenset(m.strip() for m in os.getenv("TAU_ENGINE_LOOP", "paper").split(",")
+# Paper and demo decisions as one trading_core TradingLoop step instead of the legacy entry/exit loops
+# below (ARCHITECTURE.md step 8: backtest, paper and live on one code path; only the venue differs).
+# "paper" and "demo" are honoured; live moves separately (it adds the reconcile halts and the size ramp),
+# behind its own parity test. Both on by default (Todd, 2026-10-25, after the MySQL parity test
+# tests/test_engine_loop_parity_db.py); TAU_ENGINE_LOOP=paper keeps demo on the legacy path,
+# TAU_ENGINE_LOOP=off puts both back.
+ENGINE_LOOP_MODES = frozenset(m.strip() for m in os.getenv("TAU_ENGINE_LOOP", "paper,demo").split(",")
                               if m.strip()) & {"paper", "demo"}
 TICK_SECONDS = 15
 # An order whose outcome is unknown (intent still 'sent': a timeout, a crash, a lost response) may
