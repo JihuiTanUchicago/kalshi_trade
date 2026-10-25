@@ -4,6 +4,7 @@ Each port is a ``typing.Protocol``: an adapter satisfies it structurally, with n
 from the core and no import of it beyond the domain types it passes around.
 
     Venue             submit orders, report net positions and cash (Kalshi, Alpaca, sim)
+    QuotingVenue      rest, cancel and list passive orders and collect their fills (market making)
     MarketDataFeed    the live top of book per instrument (REST poll, websocket, replay)
     FeatureProvider   point-in-time features keyed by name (Deribit surface, weather, odds)
     Strategy          quotes + positions + features in, order intents out
@@ -18,9 +19,9 @@ from trading_core.ports.fees import FeeModel, FeesByVenue, NotionalRateFees, Sca
 from trading_core.ports.market_data import MarketDataFeed
 from trading_core.ports.settlement import SettlementSource
 from trading_core.ports.strategy import DecisionContext, Strategy
-from trading_core.ports.venue import Venue, VenueCapabilities
+from trading_core.ports.venue import QuotingVenue, Venue, VenueCapabilities
 
 __all__ = [
     "Book", "Clock", "DecisionContext", "FeatureProvider", "FeeModel", "FeesByVenue", "FixedClock", "MarketDataFeed",
-    "NotionalRateFees", "ScaledFees", "SettlementSource", "Strategy", "SystemClock", "Venue", "VenueCapabilities", "ZeroFees",
+    "NotionalRateFees", "QuotingVenue", "ScaledFees", "SettlementSource", "Strategy", "SystemClock", "Venue", "VenueCapabilities", "ZeroFees",
 ]

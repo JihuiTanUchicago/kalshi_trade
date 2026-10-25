@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Mapping, Optional, Protocol, Sequence, runtime_checkable
 
 from trading_core.domain.instruments import InstrumentId, InstrumentKind
-from trading_core.domain.orders import ExecutionReport, OrderIntent
+from trading_core.domain.orders import ExecutionReport, Fill, OrderIntent, RestingOrder, Side
 
 
 @dataclass(frozen=True)
@@ -44,4 +44,29 @@ class Venue(Protocol):
 
     def lookup(self, client_order_ids: Sequence[str]) -> Mapping[str, ExecutionReport]:
         """Crash recovery: what became of orders we may have sent."""
+        ...
+
+
+@runtime_checkable
+class QuotingVenue(Protocol):
+    """A venue that rests passive orders: what a market maker needs beyond ``Venue.submit``'s
+    immediate-or-cancel. Fills arrive later, when others trade into the quote."""
+
+    name: str
+    capabilities: VenueCapabilities
+
+    def post(self, instrument: InstrumentId, side: Side, price: float, qty: float, client_order_id: str) -> str:
+        """Rest a post-only limit order; returns the venue order id. Never crosses the book."""
+        ...
+
+    def cancel(self, order_id: str) -> None:
+        """Cancel what is left of a resting order (a no-op if it already filled or was cancelled)."""
+        ...
+
+    def open_orders(self) -> Sequence[RestingOrder]:
+        """Our orders still working, with their remaining size."""
+        ...
+
+    def take_fills(self) -> Sequence[Fill]:
+        """Fills on our resting orders since the last call, each once."""
         ...
