@@ -2119,6 +2119,19 @@ test('System ignores an in-flight poll after navigation without replacing live s
   assert.equal(f.intervals.size, intervalCount); assert.equal(reads, 2);
 });
 
+test('deployment details hold realized P&L against the backtest pace for the same trades', async () => {
+  const dep = (id, closed, oos) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode: 'paper', status: 'running', status_reason: null,
+    realized_pnl: 1, closed_trades: closed, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1,
+    backtest: {out_of_sample: oos}});
+  const data = dashboardData({deployments: [dep(1, 5, {pnl: 12, trades: 6}), dep(2, 0, {pnl: 12, trades: 6}), dep(3, 1, {pnl: 3})]});
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(data); }});
+  await f.viewDashboard();
+  const text = id => evidenceFor(f.root.querySelector('#dash-deps'), id).textContent;
+  // $12 over 6 unseen trades = $2 a trade, so 5 closed trades -> +$10.00.
+  assert.ok(text(1).includes('Backtest pace +$10.00 for the same 5 trades · Unseen P&amp;L +$12.00'), text(1));
+  assert.ok(!text(2).includes('Backtest pace')); assert.ok(!text(3).includes('Backtest pace'));
+});
+
 test('Buying credits says how long the amount lasts at the user\'s own pace', async () => {
   const stripe = stripeFixture();
   let data = billingData({configured: true, spent_7d: 7, runway_days: 10});
