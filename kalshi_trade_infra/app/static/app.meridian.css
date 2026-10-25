@@ -1588,6 +1588,8 @@ body.landing-body .apf { display: none; }
 .apf-story p:last-child { margin-bottom: 0; }
 .apf-gates { margin-top: 10px; }
 .apf-gates:empty { display: none; }
+.apf-gates.warn { color: var(--signal); font-weight: 500; }
+.apf-gates.warn a { color: var(--signal); text-decoration: underline; }
 .apf-controls { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .apf-controls .btn { flex: 1 1 auto; }
 #apf-confirm { margin-top: 10px; display: grid; gap: 7px; }

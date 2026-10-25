@@ -1433,6 +1433,9 @@ def autopilot_status(ctx: Ctx):
         "focus": agent.focus_tokens(u),  # the user's binding market focus ([] = any market)
         "billing_blocked": billing_blocked,
         "billing_reason": (("card" if _needs_card(ctx) else "credits") if billing_blocked else None),
+        # Warn before the pause, not after: days of credit left when that's under three.
+        "credits_low_days": (_credits_running_low(cur, ctx.uid)
+                             if u.get("autopilot") and billing.configured() and not billing_blocked else None),
         "paper_progress": paper_progress,
         "paper_open": int(repo.user_open_exposure(cur, ctx.uid, "paper")["n"]) if paper_run else 0,
         "paper_waiting": _paper_waiting(paper_run, _scan_tally(cur, paper_run)),
@@ -1833,6 +1836,28 @@ def _customer_id(ctx: Ctx) -> str:
     return cid
 
 
+def _credit_runway(cur, uid: int):
+    """(balance, last-7-day usage spend, days the balance lasts at that pace). Research pauses at
+    zero, so this is how long autopilot keeps working; None when there is no recent usage."""
+    balance = repo.credit_balance(cur, uid)
+    spent_7d = repo.credit_spent_total(cur, uid, repo.now_utc() - timedelta(days=7))
+    runway = round(balance / (spent_7d / 7), 1) if spent_7d > 0 and balance > 0 else None
+    return balance, spent_7d, runway
+
+
+CREDIT_RUNWAY_WARN_DAYS = 3
+
+
+def _credits_running_low(cur, uid: int):
+    """Days of credit left when autopilot will pause within CREDIT_RUNWAY_WARN_DAYS and auto-reload
+    won't top it up; None otherwise. A readout for the panel, never a gate."""
+    cust = repo.get_stripe_customer(cur, uid)
+    if cust and cust.get("auto_reload") and cust.get("default_pm_id"):
+        return None
+    runway = _credit_runway(cur, uid)[2]
+    return runway if runway is not None and runway < CREDIT_RUNWAY_WARN_DAYS else None
+
+
 def billing_state(ctx: Ctx):
     cur = ctx.cur
     cust = repo.get_stripe_customer(cur, ctx.uid)
@@ -1849,16 +1874,14 @@ def billing_state(ctx: Ctx):
             reload_amount = float(cust["reload_amount"])
         if cust.get("reload_threshold") is not None:
             reload_threshold = float(cust["reload_threshold"])
-    balance = repo.credit_balance(cur, ctx.uid)
-    spent_7d = repo.credit_spent_total(cur, ctx.uid, repo.now_utc() - timedelta(days=7))
+    balance, spent_7d, runway = _credit_runway(cur, ctx.uid)
     return {
         "configured": billing.configured(),
         "publishable_key": billing.STRIPE_PUBLISHABLE_KEY,
         "balance": round(balance, 4),
         "spent": round(repo.credit_spent_total(cur, ctx.uid), 4),
         "spent_7d": round(spent_7d, 4),
-        # Days the balance lasts at last week's pace; research stops at zero.
-        "runway_days": round(balance / (spent_7d / 7), 1) if spent_7d > 0 and balance > 0 else None,
+        "runway_days": runway,
         "free_bonus": float(billing.FREE_BONUS),
         "topup_fee_pct": float(billing.TOPUP_FEE) * 100,
         "autoreload_threshold": reload_threshold,

@@ -152,6 +152,9 @@ def _ap_ctx(monkeypatch, autopilot=1):
     monkeypatch.setattr(server.repo, 'research_week', lambda *a, **k: [])
     monkeypatch.setattr(server.repo, 'strategies_passed_since', lambda *a, **k: 0)
     monkeypatch.setattr(server.billing, 'configured', lambda: True)
+    monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: 10.0)
+    monkeypatch.setattr(server.repo, 'credit_spent_total', lambda *a: 0.0)
     return ctx
 
 
@@ -169,6 +172,21 @@ def test_autopilot_status_not_blocked_when_ready(monkeypatch):
     monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: True)
     out = server.autopilot_status(ctx)
     assert out['billing_blocked'] is False and out['billing_reason'] is None
+
+
+def test_autopilot_status_warns_before_credits_run_out(monkeypatch):
+    ctx = _ap_ctx(monkeypatch, autopilot=1)
+    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: True)
+    assert server.autopilot_status(ctx)['credits_low_days'] is None  # no usage this week
+    monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: 2.0)
+    monkeypatch.setattr(server.repo, 'credit_spent_total', lambda cur, uid, since=None: 7.0)
+    assert server.autopilot_status(ctx)['credits_low_days'] == 2.0  # $2 at $1 a day
+    monkeypatch.setattr(server.repo, 'get_stripe_customer',
+                        lambda *a: {'auto_reload': 1, 'default_pm_id': 'pm_synthetic'})
+    assert server.autopilot_status(ctx)['credits_low_days'] is None  # auto-reload tops it up
+    monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: 70.0)
+    assert server.autopilot_status(ctx)['credits_low_days'] is None  # 70 days left
 
 
 def test_autopilot_status_not_blocked_when_autopilot_off(monkeypatch):

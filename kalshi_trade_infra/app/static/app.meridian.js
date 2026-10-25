@@ -3655,7 +3655,20 @@
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
     const fsel = box.querySelector('#apf-focus');
     if (fsel && Array.isArray(d.focus) && document.activeElement !== fsel && !fsel.disabled && fsel.dataset.cur !== d.focus.join(',')) apFocusOptions(fsel, d.focus);
-    const gates = box.querySelector('#apf-gates'); if (gates) gates.textContent = apLiveBlock(d) || apLiveArmed(d);
+    const gates = box.querySelector('#apf-gates');
+    if (gates) {
+      // Say why autopilot is quiet (or soon will be) here too, not only on the dashboard card.
+      if (d.billing_blocked) {
+        gates.innerHTML = `Autopilot is paused. <a href="/billing">${d.billing_reason === 'card' ? 'Add a payment method' : 'Add credits'}</a> to let it keep researching.`;
+        gates.classList.add('warn');
+      } else if (d.credits_low_days != null) {
+        gates.innerHTML = `Credits run out ${d.credits_low_days < 1 ? 'within a day' : 'in about ' + Math.round(d.credits_low_days) + ' day' + (Math.round(d.credits_low_days) === 1 ? '' : 's')} at this week's pace, then research pauses. <a href="/billing">Add credits or turn on auto-reload</a>.`;
+        gates.classList.add('warn');
+      } else {
+        gates.textContent = apLiveBlock(d) || apLiveArmed(d);
+        gates.classList.remove('warn');
+      }
+    }
     const controls = box.querySelector('#apf-controls');
     if (controls) {
       // A paper-only user sees no red Kill and no greyed live button: Kill appears once real money
