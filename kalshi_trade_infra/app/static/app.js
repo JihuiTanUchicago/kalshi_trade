@@ -2936,7 +2936,7 @@
             <label class="field"><span>Amount</span><input class="input" name="amount" type="number" min="1" max="100000" step="0.01" inputmode="decimal" required placeholder="500"></label>
             <button class="btn" data-kind="deposit" type="submit">Add</button>
             <button class="btn ghost" data-kind="withdraw" type="submit">Withdraw</button>
-            <button class="btn ghost" data-kind="reset" type="submit">Reset to</button>
+            <button class="btn ghost" data-kind="reset" type="submit">Reset to amount</button>
           </form>
           <div id="pflash" style="margin-top:10px"></div>
         </section>
@@ -2963,6 +2963,14 @@
       const pf = root.querySelector('#paper');
       let kind = 'deposit';
       pf.querySelectorAll('button').forEach((b) => (b.onclick = () => (kind = b.dataset.kind)));
+      // Each button names the amount it will move, so "Reset to" never reads as a dangling label.
+      const PAPER_VERB = { deposit: 'Add', withdraw: 'Withdraw', reset: 'Reset to' };
+      const amt = pf.querySelector('input[name=amount]');
+      const syncPaper = () => {
+        const v = +amt.value;
+        pf.querySelectorAll('button').forEach((b) => { b.textContent = v > 0 ? `${PAPER_VERB[b.dataset.kind]} ${usd(v)}` : b.dataset.kind === 'reset' ? 'Reset to amount' : PAPER_VERB[b.dataset.kind]; });
+      };
+      amt.addEventListener('input', syncPaper);
       pf.onsubmit = async (e) => {
         e.preventDefault();
         const btn = pf.querySelector(`[data-kind="${kind}"]`);
