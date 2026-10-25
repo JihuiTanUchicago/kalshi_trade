@@ -547,6 +547,20 @@ DDL = [
       INDEX idx_recon_status (status, updated_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
+    # One row per demo reconciliation sweep (app/services/demo_record.py): the user's open demo book
+    # against the demo exchange's positions, read-only. `mismatches` lists the disagreeing tickers;
+    # a ticker in two consecutive sweeps is a real mismatch and keeps every strategy of that user
+    # off live (the live gate's demo check). Append-only, so the record since any date is auditable.
+    """
+    CREATE TABLE IF NOT EXISTS app_demo_reconcile_sweeps (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      checked_at DATETIME NOT NULL,
+      tickers INT NOT NULL,                 -- tickers compared (non-flat in the book or on the exchange)
+      mismatches JSON NULL,                 -- [{ticker, kind, exchange_qty, book_qty}], signed nets
+      INDEX idx_demo_sweep_user (user_id, checked_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
     # Execution P2: per-order latency + outcome on the real-order path (live & demo). One row per
     # exchange POST, written off the send path by the background recorder. No secrets/payload — only
     # operational fields. Index on created_at drives the windowed p50/p95/p99 + error-rate read.

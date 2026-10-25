@@ -51,6 +51,7 @@ from app.services import markets as market_service
 from app.services import research_memory
 from app.services import research_leads
 from app.services import research_screen
+from app.services import demo_record
 from app.agent_market_data import AgentMarketData, DataScope
 from app.agent_knowledge import AgentKnowledge
 from app.agent_news import AgentNews
@@ -3210,8 +3211,9 @@ def paper_evidence(cur, user_id: int, strategy_id: int) -> Dict:
     The legacy check (8+ closed paper trades of any kind, not net negative) runs first and is kept
     unchanged. Then, on realistic fills only (the live kernel over SimulatedVenue): enough round
     trips, net up after fees, spread over time, a bootstrap test that rejects 'no edge', and the
-    newer half of the record up on its own (an edge that has faded stays on paper). Each
-    check can only refuse; none relaxes the one before it. Also feeds the app's Road-to-live view."""
+    newer half of the record up on its own (an edge that has faded stays on paper). Last, a clean
+    record on the demo exchange (services.demo_record). Each check can only refuse; none relaxes
+    the one before it. Also feeds the app's Road-to-live view."""
     paper = [d for d in repo.list_deployments(cur, user_id, include_stopped=True)
              if d["strategy_id"] == strategy_id and d["mode"] == "paper"]
     legacy_trades = sum(int(d.get("closed_trades") or 0) for d in paper)
@@ -3230,6 +3232,7 @@ def paper_evidence(cur, user_id: int, strategy_id: int) -> Dict:
     recent = pnls[len(pnls) // 2:]
     recent_net = sum(recent)
     events = _trip_events(trips)
+    demo = demo_record.demo_evidence(cur, user_id, strategy_id)
     p_value = None
     if len(pnls) >= MIN_REALISTIC_PAPER_TRADES and len(events) >= MIN_PAPER_EVENTS:
         from app import stats  # local: numpy-backed, only needed once there is enough evidence
@@ -3253,6 +3256,9 @@ def paper_evidence(cur, user_id: int, strategy_id: int) -> Dict:
         ("recent", bool(recent) and recent_net > 0,
          "its newer %d paper trades are %s, so the edge may be fading" % (
              len(recent), ("down $%.2f" % -recent_net) if recent_net < 0 else "flat")),
+        # Last, so nothing above moves: a clean record on Kalshi's demo exchange (real order path,
+        # book matches the exchange). Todd, 2026-10-25. Stricter only; see services.demo_record.
+        ("demo", demo["ok"], demo["why"]),
     ]
     failing = next((why for _k, ok, why in checks if not ok), "")
     # Realization: realistic paper P&L per trade as a fraction of the backtest's unseen-data P&L
@@ -3280,6 +3286,9 @@ def paper_evidence(cur, user_id: int, strategy_id: int) -> Dict:
         "paper_mean_pnl": None if paper_mean is None else round(paper_mean, 4),
         "backtest_mean_pnl": None if backtest_mean is None else round(backtest_mean, 4),
         "realization": None if realization is None else round(realization, 3),
+        "demo_orders": demo["orders"], "demo_orders_needed": demo["orders_needed"],
+        "demo_unresolved": demo["unresolved"], "demo_mismatched_tickers": demo["mismatched_tickers"],
+        "demo_last_check_at": demo["last_check_at"],
     }
 
 

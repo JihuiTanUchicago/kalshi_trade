@@ -21,7 +21,7 @@ PROVEN_NO_PAPER = [{"strategy_id": 8, "mode": "paper", "closed_trades": 12, "rea
 
 
 def _patch(monkeypatch, *, live_enabled=True, key=True, autopilot=True, ap_live=True, today_live=0.0,
-           strat=None, paper=None, deployment_candidate=True, no_side_live=True, trips=None):
+           strat=None, paper=None, deployment_candidate=True, no_side_live=True, trips=None, demo_ok=True):
     r = agent.repo
     created = {}
     monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", live_enabled)
@@ -40,6 +40,11 @@ def _patch(monkeypatch, *, live_enabled=True, key=True, autopilot=True, ap_live=
         paper if paper is not None else [{"strategy_id": 7, "mode": "paper", "closed_trades": 12, "realized_pnl": 8.0, "status": "stopped"}]))
     # Realistic-fill paper evidence for the strengthened gate; default = proven.
     monkeypatch.setattr(r, "paper_round_trips", lambda cur, uid, sid: (trips if trips is not None else _trips()))
+    # The demo record (last check of the paper -> live gate); default = clean.
+    monkeypatch.setattr(agent.demo_record, "demo_evidence", lambda cur, uid, sid: {
+        "ok": demo_ok, "why": "" if demo_ok else "it needs 20+ settled orders on the demo exchange first (has 4)",
+        "orders": 25 if demo_ok else 4, "orders_needed": 20, "unresolved": 0, "mismatched_tickers": [],
+        "last_check_at": None})
     monkeypatch.setattr(r, "create_proposal", lambda *a, **k: 1)
     monkeypatch.setattr(r, "create_deployment", lambda cur, uid, sid, market, mode: (created.__setitem__("mode", mode), 99)[1])
     user = {"id": 1, "autopilot": autopilot, "autopilot_live": ap_live, "autopilot_daily_loss_limit": 50}
@@ -148,6 +153,12 @@ def test_refused_when_the_newer_half_of_the_record_is_down(monkeypatch):
 def test_proven_on_realistic_fills_goes_live(monkeypatch):
     msg, created = _deploy_live(monkeypatch, trips=_trips())
     assert created.get("mode") == "live"
+
+
+def test_refused_without_a_clean_demo_record(monkeypatch):
+    # Every paper check clears, but the demo record doesn't: stays on paper, demo named as the reason.
+    msg, created = _deploy_live(monkeypatch, trips=_trips(), demo_ok=False)
+    assert "mode" not in created and "demo exchange" in msg
 
 
 def test_paper_evidence_reports_backtest_realization(monkeypatch):

@@ -69,6 +69,10 @@ from app.adapters.db.paper_ledger_repository import (  # noqa: F401
 from app.adapters.db.demo_capital_repository import (  # noqa: F401
     demo_account, demo_equity, reload_demo,
 )
+from app.adapters.db.demo_record_repository import (  # noqa: F401
+    demo_book_by_ticker_side, demo_key_users, demo_order_outcomes, demo_sweeps_since, has_demo_activity,
+    insert_demo_sweep,
+)
 from app.adapters.db.deployment_repository import (  # noqa: F401
     _DEPLOYMENT_SELECT, autopilot_paper_week, claim_decision, create_deployment, deployment_closed_stats,
     deployment_order_refs, deployments_with_open_positions, get_deployment, list_deployments, paper_event_counts,

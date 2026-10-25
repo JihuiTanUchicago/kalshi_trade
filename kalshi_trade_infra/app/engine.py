@@ -2186,6 +2186,9 @@ def run_forever() -> None:
     equity_every = float(os.getenv("APP_EQUITY_CHECK_EVERY_SECONDS", "60"))
     # How often to reconcile each user's live book against their real Kalshi account.
     reconcile_every = float(os.getenv("APP_RECONCILE_EVERY_SECONDS", "300"))
+    # How often to reconcile each user's demo book against the demo exchange (the live gate's demo check).
+    last_demo_reconcile = 0.0
+    demo_reconcile_every = float(os.getenv("APP_DEMO_RECONCILE_EVERY_SECONDS", "900"))
     last_perps_watch = 0.0
     perps_watch_every = float(os.getenv("TAU_KALSHI_PERPS_WATCH_EVERY_SECONDS", "60"))
     # One shared live-book websocket for the whole engine (P1-1): marks, PnL and order pricing all
@@ -2311,6 +2314,18 @@ def run_forever() -> None:
                         except Exception as e:
                             print("[engine] reconcile sweep failed: %r" % e, flush=True)
                         last_reconcile = time.time()
+                    # The demo twin of that sweep: the user's demo book vs the demo exchange, which
+                    # the live gate's demo check reads (services.demo_record). Read-only on the
+                    # sandbox, independent of the live switch, contained like the others.
+                    if time.time() - last_demo_reconcile > demo_reconcile_every:
+                        try:
+                            from app.services import demo_record
+                            summary = demo_record.sweep_all(conn)
+                            if summary.get("mismatches") or summary.get("errors"):
+                                print("[engine] demo reconcile %s" % summary, flush=True)
+                        except Exception as e:
+                            print("[engine] demo reconcile sweep failed: %r" % e, flush=True)
+                        last_demo_reconcile = time.time()
                     # Same idea for native Bitcoin perps: positions vs Tau's filled orders,
                     # plus liquidation and margin proximity. Read-only, contained.
                     if time.time() - last_perps_watch > perps_watch_every:

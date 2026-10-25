@@ -903,7 +903,8 @@ placebo, LORD++ FDR, Benjamini–Hochberg, purged walk-forward and a +1c cost st
 Validation, then the one-time holdout and a marginal-contribution check. Only a
 `DEPLOYMENT_CANDIDATE` may go live, manually or by autopilot, and the autopilot puts only
 candidates (or probation near misses) on paper. Going live also needs `agent.paper_evidence` (30+ realistic
-paper round trips, net > 0, 48h+ span, bootstrap p ≤ 0.10). Details:
+paper round trips, net > 0, 48h+ span, bootstrap p ≤ 0.10) and a clean demo record (20+ settled demo
+orders, none lost, demo book matching the demo exchange). Details:
 [`../README.md`](../README.md#research-gates).
 
 Agent adjustments (chat or autopilot) are re-backtested before they can be proposed or applied.
