@@ -162,6 +162,16 @@ test('a paper-only panel shows paper P&L today and no live loss budget; live in 
   }
 });
 
+test('one flip of the panel switch turns paper autopilot on', async () => {
+  const f = frontend(path => path === '/api/models' ? response(catalog) : path === '/api/settings' ? response({ok: true}) : response(status({autopilot: true})));
+  f.apBuildShell(f.box); await flush();
+  const sw = f.box.querySelector('#apf-apswitch'); sw.checked = true; await sw.onchange();
+  const settings = posts(f).filter(row => row.path === '/api/settings');
+  assert.equal(settings.length, 1); assert.deepEqual(JSON.parse(settings[0].options.body), {autopilot: true});
+  assert.equal(f.S.me.user.autopilot, true); assert.equal(sw.checked, true);
+  assert.doesNotMatch(f.box.querySelector('#apf-ap-copy').innerHTML, /Flip again/);
+});
+
 test('the Research row only shows when there is no story to say it', async () => {
   const f = frontend(() => response(catalog)); f.apBuildShell(f.box); await flush();
   const research = {active: [], tested_7d: 4, passed_7d: 1, cost_7d: 0};
