@@ -235,6 +235,8 @@ test('the abstract says a strategy cleared the gate only when it passed', async 
     const text = f.root.querySelector('.paper-ab-result').innerHTML;
     assert.equal(/cleared the gate/.test(text), status === 'passed', status);
     assert.match(text, /of 2 ideas tested this run/);
+    const figs = f.root.querySelector('#figs').innerHTML;
+    assert.equal(/the one that passed/.test(figs), status === 'passed', status);
   }
 });
 
