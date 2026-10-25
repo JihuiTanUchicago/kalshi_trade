@@ -122,8 +122,9 @@ class _PaperVenue:
         self.book.apply(fill)
         return ExecutionReport(intent, "filled", [fill], [client_order_id])
 
-    def positions(self):
-        return {i: p.qty for i, p in self.book.open_positions().items()}
+    def net_position(self, instrument):
+        pos = self.book.positions.get(instrument)
+        return pos.qty if pos else 0.0
 
     def cash(self):
         return self.book.cash
@@ -172,7 +173,7 @@ def test_ports_are_structural_and_compose_into_a_decision_loop():
     ctx = DecisionContext(now=clock.now(), instruments={}, quotes=feed.quotes([KALSHI_YES, poly]))
     for intent in strat.decide(ctx):
         venue.submit(intent, intent.limit_price, "c1")
-    assert venue.positions() == {KALSHI_YES: 1}
+    assert venue.net_position(KALSHI_YES) == 1 and venue.net_position(poly) == 0
     assert venue.cash() == pytest.approx(-0.42)
     clock.advance(60)
     assert clock.now() == 1_060.0

@@ -26,6 +26,9 @@ def _dry_run(tmp_path: Path, *, missing: str = "", large: bool = False):
     else:
         (package / "data_pipeline").mkdir()
         (package / "data_pipeline" / "__init__.py").write_text("")
+    (package / "trading_core").mkdir()
+    core = "__init__.py.backup" if missing == "trading_core/__init__.py" else "__init__.py"
+    (package / "trading_core" / core).write_text("")
     if large:
         assets = package / "app" / "static"
         assets.mkdir()
@@ -70,9 +73,17 @@ def test_large_valid_bundle_passes_without_contacting_aws(tmp_path):
     assert "DRY RUN" in result.stdout
 
 
-@pytest.mark.parametrize("missing", ["app/server.py", "app/schema.py", "data_pipeline/"])
+@pytest.mark.parametrize("missing", ["app/server.py", "app/schema.py", "data_pipeline/", "trading_core/__init__.py"])
 def test_missing_required_entry_rejects_prefix_decoys(tmp_path, missing):
     result = _dry_run(tmp_path, missing=missing)
     assert result.returncode != 0, result.stdout + result.stderr
     assert f"bundle missing {missing}" in result.stdout
     assert "DRY RUN" not in result.stdout
+
+
+def test_core_package_ships_with_its_own_backup_and_rollback(tmp_path):
+    out = _dry_run(tmp_path).stdout
+    assert "py_compile app/*.py data_pipeline/*.py trading_core/*.py" in out
+    assert "mkdir -p trading_core" in out and "trading_core.bak." in out
+    assert "mv trading_core.bak." in out  # rollback restores it with app/ and data_pipeline/
+

@@ -83,6 +83,23 @@ MIN_PRICE = 0.01
 MAX_PRICE = 0.99
 
 
+def own_side_fill(intent, res: dict, limit: float, qty: int) -> Tuple[ExecutionReport, float, float]:
+    """Parse one submitter response for an order sent at own-side ``limit`` for ``qty``.
+
+    The submitter sent a YES-leg order (see order_wire_params), so the fill it reports is a
+    YES price. Parse against the YES wire price so the "filled but unreadable price" fallback
+    is in the same (YES) space, then flip a NO fill back to its own cost basis (1 - yes_fill).
+    Returns (report, own-side fill price, wire price). Shared by MarketableLimitKernel and the
+    Venue adapter (app/adapters/kalshi/venue.py) so neither can drift on money direction.
+    """
+    _, wire_price = order_wire_params(intent.action, intent.side, limit)
+    report = DummyExecutionKernel(lambda *a, **k: res).execute(_RepricedIntent(intent, wire_price, qty))
+    fill_px = report.fill_price_dollars
+    if str(intent.side).lower() == "no" and fill_px > 0:
+        fill_px = round(1.0 - fill_px, 4)
+    return report, fill_px, wire_price
+
+
 def child_client_order_id(base: str, attempt: int) -> str:
     """The client_order_id of the ``attempt``-th child order of one intent: ``base`` for the first
     send, ``base-1``, ``base-2``, ... for each escalating retry. Crash recovery rebuilds the same ids
@@ -427,17 +444,7 @@ class MarketableLimitKernel:
             else:
                 coid = child_client_order_id(coid_base, attempt)
                 res = self._submitter(intent.ticker, intent.action, intent.side, child, limit, client_order_id=coid)
-            # The submitter sent a YES-leg order (see order_wire_params), so the
-            # fill it reports is a YES price. Parse against the YES wire price so
-            # the "filled but unreadable price" fallback is in the same (YES) space,
-            # then flip a NO fill back to its own cost basis (1 - yes_fill).
-            _, wire_price = order_wire_params(intent.action, intent.side, limit)
-            report = DummyExecutionKernel(lambda *a, **k: res).execute(
-                _RepricedIntent(intent, wire_price, child)
-            )
-            fill_px = report.fill_price_dollars
-            if str(intent.side).lower() == "no" and fill_px > 0:
-                fill_px = round(1.0 - fill_px, 4)
+            report, fill_px, wire_price = own_side_fill(intent, res, limit, child)
             f = int(report.fill_qty_contracts)
             attempts.append(
                 {

@@ -34,8 +34,8 @@ class Venue(Protocol):
         transport error the caller reconciles by ``client_order_id`` before doing anything else."""
         ...
 
-    def positions(self) -> Mapping[InstrumentId, float]:
-        """The venue's own signed net quantity per instrument: the truth position guards read."""
+    def net_position(self, instrument: InstrumentId) -> float:
+        """The venue's own signed net quantity in ``instrument``: the truth position guards read."""
         ...
 
     def cash(self) -> Optional[float]:

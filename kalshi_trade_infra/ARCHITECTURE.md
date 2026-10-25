@@ -60,7 +60,7 @@ Dependency rule: arrows point down only. `trading_core` imports nothing from `ap
 | What happened | `ExecutionReport(intent, status, fills)`, `Fill(qty, price, fee, ts)` | `contracts.ExecutionReport`, Kalshi response dicts |
 | Holdings | `Position` (signed qty, avg price, realized, fees, settle) and `Portfolio` (cash + positions, one per book) | position math spread across `repository`, `engine`, `backtest` |
 | Pre-trade risk | `RiskDecision`, `first_refusal(intent, checks)`: exits (`reduce_only`) skip every check, enforced once | the invariant re-implemented in `execution/guard.py`, `position_guard.py` |
-| Where orders go | `Venue` port: `submit`, `positions`, `cash`, `lookup` + `VenueCapabilities` (kinds, market orders, shorting, fractional qty, sends_real_orders) | Kalshi submitter callables, `SimulatedVenue`, perps client, Alpaca client |
+| Where orders go | `Venue` port: `submit`, `net_position`, `cash`, `lookup` + `VenueCapabilities` (kinds, market orders, shorting, fractional qty, sends_real_orders) | Kalshi submitter callables, `SimulatedVenue`, perps client, Alpaca client |
 | Live book | `MarketDataFeed` port: `quote`, `quotes` | `WsTickerFeed`, `engine.fetch_quotes` |
 | Extra data | `FeatureProvider` port: `feature_names`, `features(instruments, as_of)` (point-in-time, absent beats guessed) | `Sources.micro/forecasts/odds/weather_actuals/options`, backtest's own joins |
 | Decision logic | `Strategy` port: `decide(DecisionContext) -> [OrderIntent]`, no I/O, no clock reads | `spec.entries`/`exit_signal`/`pair_entries`, code strategies |
@@ -105,9 +105,9 @@ adapter and in `VenueCapabilities`, which the execution policy reads instead of 
 
 ## Deploy constraint
 
-`trading_core/` is a third top-level package next to `app/` and `data_pipeline/`. Nothing in
-production imports it yet. The first PR that does (step 2) also adds it to the
-`deploy_web.sh` and `deploy_collector.sh` tarballs, backups and compile checks, with tests.
+`trading_core/` is a third top-level package next to `app/` and `data_pipeline/`. Both
+`deploy_web.sh` and `deploy_collector.sh` ship it in the tarball, back it up, roll it back and
+byte-compile it (step 2), so any module on either box may import it.
 
 ## Migration order (ranked by payoff per unit of risk)
 
@@ -116,7 +116,7 @@ Each step is one or a few small PRs. "Proof" is what shows behaviour did not cha
 | # | Step | Payoff | Risk | Proof |
 |---|---|---|---|---|
 | 1 | `trading_core` domain + ports, `.importlinter` + CI, `app/adapters`, `app/services` landing zones, this doc | the target becomes concrete and enforced | none (additive) | new tests, 7 contracts kept |
-| 2 | Venues: `KalshiBinaryVenue` and `SimulatedVenue` implement `Venue` (adapters over today's submitters); converters between `contracts.TradeIntent/ExecutionReport` and the domain types; ship `trading_core` in both deploys | the paper=live seam becomes venue-neutral | low | existing kernel/venue tests unchanged + adapter tests |
+| 2 | Venues: `app/adapters/kalshi/venue.py` `KalshiBinaryVenue` (live, demo, and `.simulated(feed)` over `SimulatedVenue`) implements `Venue`; `convert.py` maps `contracts.TradeIntent/ExecutionReport` to the domain; `own_side_fill` is the one shared fill parser; ship `trading_core` in both deploys | the paper=live seam becomes venue-neutral | low | existing kernel/venue tests unchanged + adapter tests |
 | 3 | `FeeModel`: `KalshiFees` adapter over `kalshi_fees`; `quant`/`spec`/`backtest` take a FeeModel (default Kalshi) | fees stop being Kalshi-only | low | fee golden tests |
 | 4 | Market readiness out of `server` into `app.services.markets` | removes the `agent -> server` cycle (delete its ignore line) | low | existing picker tests |
 | 5 | FeatureProviders: options, weather forecast, sports odds, micro, cross-asset; `engine.Sources` takes `features: [FeatureProvider]`, backtest uses the same providers | one data source = one adapter, identical in backtest and live | medium | golden test: feature dicts identical before/after on a fixed fixture |
