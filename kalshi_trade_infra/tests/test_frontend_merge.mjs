@@ -606,6 +606,12 @@ test('a market Kalshi did not answer for offers Try again and loads on retry', a
   assert.doesNotMatch(f.root.querySelector('main').innerHTML, /mk-retry/);
 });
 
+test('a shared demo deployment says demo, not paper', () => {
+  const f = frontend();
+  const snap = (mode) => f.postSnapshot({kind: 'deployment', id: 1, title: 'Fade', market: 'btc15m', mode, realized_pnl: 1.5, closed_trades: 3});
+  assert.match(snap('demo'), /· demo ·/); assert.match(snap('paper'), /· paper ·/); assert.match(snap('live'), /· live ·/);
+});
+
 test('a track record whose trades all closed in one minute spaces them one per trade', () => {
   const f = frontend();
   assert.equal(JSON.stringify(f.trCurve([[1000, 1], [1000, -2], [1030, 3]])), '[[1000,1],[1001,-2],[1002,3]]');
