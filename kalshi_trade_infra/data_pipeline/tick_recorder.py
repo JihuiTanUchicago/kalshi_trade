@@ -38,6 +38,9 @@ TICK_DIR = os.getenv("TAU_TICK_DIR", "/opt/kalshi/ticks")
 TICK_SERIES = [s.strip() for s in os.getenv("TAU_TICK_SERIES", "").split(",") if s.strip()]
 TICK_SERIES_PREFIXES = [s.strip() for s in os.getenv("TAU_TICK_SERIES_PREFIXES", "KXBTC").split(",") if s.strip()]
 CORE_SERIES = ["KXBTC15M", "KXBTCD", "KXBTC"]
+# Series recorded because Kalshi pays liquidity rewards on them (data_pipeline/lip_programs.py), so a
+# paper market maker can measure its share of the pool and its adverse selection there.
+LIP_SERIES = [s.strip() for s in os.getenv("TAU_TICK_LIP_SERIES", "KXCRYPTOLEAD15M").split(",") if s.strip()]
 KALSHI_CHANNELS = ["orderbook_delta", "trade", "ticker"]
 COINBASE_PRODUCTS = [s.strip() for s in os.getenv("TAU_TICK_COINBASE_PRODUCTS", "BTC-USD").split(",") if s.strip()]
 # matches = every print; ticker = best bid/ask (and sizes) at each print; heartbeat = 1/s liveness.
@@ -245,8 +248,8 @@ def requested_tick_series(limit: int = REQUEST_LIMIT) -> List[str]:
 
 def discover_series() -> List[str]:
     if TICK_SERIES:
-        return sorted(set(TICK_SERIES) | set(requested_tick_series()))
-    found: Set[str] = set(requested_tick_series())
+        return sorted(set(TICK_SERIES) | set(LIP_SERIES) | set(requested_tick_series()))
+    found: Set[str] = set(requested_tick_series()) | set(LIP_SERIES)
     try:
         data = api_get("/series", {"category": "Crypto"})
         for s in data.get("series") or []:
