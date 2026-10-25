@@ -1450,7 +1450,7 @@
           </div>
           <aside>
             <section class="panel"><h3>Open positions</h3>${stubs(d.open_positions, false)}</section>
-            <section class="panel"><h3>Settled lately</h3>${stubs(d.recent_closed, true)}</section>
+            <section class="panel"><h3>Settled lately</h3>${stubs(d.recent_closed.slice(0, 5), true)}${d.recent_closed.length ? '<a class="stub-all" href="#track-record">Every closed trade, with net P&amp;L, is in the track record \u2193</a>' : ''}</section>
           </aside>
         </div></div>`;
       root.querySelector('#boardbody').innerHTML = board;
