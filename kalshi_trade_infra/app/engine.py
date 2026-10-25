@@ -141,10 +141,27 @@ def _opt_float(v) -> Optional[float]:
         return None
 
 
+def decision_close_time(market: Market, m: Dict) -> Optional[datetime]:
+    """The close time an open contract's time-to-expiry is measured against, matching research.
+
+    Research reads settled markets, whose close_time is when the market actually closed. An open
+    outcome-settled market that can close early (sports, weather) carries a later backstop
+    close_time instead: every open KXNFL1HSPREAD contract on 2026-10-25 said 2026-10-27 17:00Z for a
+    first half that ended the same afternoon, so live tte_min ran ~45h above research's and an
+    entry window like "0.2-24 hours from expiry" could never open. Kalshi's
+    expected_expiration_time is the scheduled resolution, the best pre-close estimate of that
+    actual close. Strike markets close on schedule and keep close_time."""
+    ct = parse_iso_to_dt(m.get("close_time"))
+    if ct is None or market.underlying is not None or not m.get("can_close_early"):
+        return ct
+    expected = parse_iso_to_dt(m.get("expected_expiration_time"))
+    return expected if expected is not None and expected < ct else ct
+
+
 def fetch_quotes(market: Market) -> List[LiveQuote]:
     out = []
     for m in fetch_open_markets(market.series, get=api_get):
-        ct = parse_iso_to_dt(m.get("close_time"))
+        ct = decision_close_time(market, m)
         if ct is None or not market.is_target_event(ct):
             continue
         strike = m.get("floor_strike")

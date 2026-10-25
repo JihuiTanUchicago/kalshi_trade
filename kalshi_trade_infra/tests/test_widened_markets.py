@@ -105,6 +105,31 @@ def test_fetch_quotes_keeps_strikeless_outcome_contract(monkeypatch):
     assert engine.fetch_quotes(MARKETS["sol15m"]) == []
 
 
+def test_early_closing_outcome_contract_measures_expiry_from_its_expected_resolution(monkeypatch):
+    # Shapes from the live KXNFL1HSPREAD book on 2026-10-25: a backstop close_time two days after the
+    # game, the half's scheduled end as expected_expiration_time. Research reads settled markets,
+    # whose close_time is when they actually closed, so live tte_min must count to the earlier time.
+    row = {"floor_strike": None, "yes_bid_dollars": 0.45, "yes_ask_dollars": 0.47,
+           "yes_bid_size_fp": 80.0, "yes_ask_size_fp": 90.0}
+    payload = {"markets": [
+        dict(row, ticker="KXNFLGAME-A", close_time="2030-01-03T17:00:00Z",
+             expected_expiration_time="2030-01-01T20:00:00Z", can_close_early=True),
+        # Can't close early, or the expected time is after the close: close_time stands.
+        dict(row, ticker="KXNFLGAME-B", close_time="2030-01-03T17:00:00Z",
+             expected_expiration_time="2030-01-01T20:00:00Z", can_close_early=False),
+        dict(row, ticker="KXNFLGAME-C", close_time="2030-01-03T17:00:00Z",
+             expected_expiration_time="2030-01-05T20:00:00Z", can_close_early=True),
+    ], "cursor": None}
+    monkeypatch.setattr(engine, "api_get", lambda *a, **k: payload)
+    closes = {q.contract.ticker: q.contract.close_time for q in engine.fetch_quotes(MARKETS["nfl_game"])}
+    assert closes == {"KXNFLGAME-A": datetime(2030, 1, 1, 20, tzinfo=timezone.utc),
+                      "KXNFLGAME-B": datetime(2030, 1, 3, 17, tzinfo=timezone.utc),
+                      "KXNFLGAME-C": datetime(2030, 1, 3, 17, tzinfo=timezone.utc)}
+    # A strike market closes on schedule: its close_time is kept even when it can close early.
+    strike = dict(payload["markets"][0], floor_strike=100.0)
+    assert engine.decision_close_time(MARKETS["sol15m"], strike) == datetime(2030, 1, 3, 17, tzinfo=timezone.utc)
+
+
 def test_outcome_snapshot_tradeable_without_spot():
     c = Contract("KXHIGHNY-26OCT16-T82", 0.0, datetime.fromtimestamp(T0 + 600, tz=timezone.utc), "KXHIGHNY")
     snap = snapshot({}, c, T0, 0.30, 0.33)
