@@ -855,9 +855,10 @@ def test_since_your_last_visit_reads_the_cookies_time_clamped_to_a_week(monkeypa
     assert server._visit_since(epoch(now - timedelta(days=30))) == (now - timedelta(days=7), False)
     assert server._visit_since(epoch(now + timedelta(days=1))) == (now, False)
     # The strip's block: the books' since-visit sums as read (never added up), passes, autopilot and runs.
-    monkeypatch.setattr(server.repo, "activity_since", lambda cur, uid, since: {"autopilot": {"deploy": 1}, "runs": {"failed": 1}})
+    monkeypatch.setattr(server.repo, "activity_since", lambda cur, uid, since: {"autopilot": {"deploy": 1}, "runs": {"failed": 1}, "own_sessions": True})
     monkeypatch.setattr(server.repo, "passed_since", lambda cur, uid, since: {"n": 1, "items": [{"id": 3, "title": "A"}]})
     out = server._since_visit(None, 1, now, False, {"paper": (2.4249, 3), "demo": (-1.0, 1), "live": (0.0, 0)})
     assert out == {"at": now, "first": False, "books": {"paper": {"pnl": 2.42, "trades": 3}, "demo": {"pnl": -1.0, "trades": 1},
                                                          "live": {"pnl": 0.0, "trades": 0}},
-                   "passed": {"n": 1, "items": [{"id": 3, "title": "A"}]}, "autopilot": {"deploy": 1}, "runs": {"failed": 1}}
+                   "passed": {"n": 1, "items": [{"id": 3, "title": "A"}]}, "autopilot": {"deploy": 1}, "runs": {"failed": 1},
+                   "own_sessions": True}

@@ -584,7 +584,7 @@ def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict) -> D
     return {"at": visit, "first": first,
             "books": {m: {"pnl": round(pnl, 2), "trades": n} for m, (pnl, n) in recent.items()},
             "passed": repo.passed_since(cur, uid, visit),
-            "autopilot": act["autopilot"], "runs": act["runs"]}
+            "autopilot": act["autopilot"], "runs": act["runs"], "own_sessions": bool(act.get("own_sessions"))}
 
 
 TRACK_RECORD_TTL = 60.0  # seconds; the record moves only when a trade closes

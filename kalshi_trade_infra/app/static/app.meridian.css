@@ -2564,3 +2564,20 @@ body.landing-body .apf { display: none; }
    in a phone card, and never splits a signed amount. */
 .t-dep tbody td.name .bt-check.sub-fig, .real-record .bt-check { white-space: normal; flex: 1 0 100%; }
 .bt-check .amt { white-space: nowrap; }
+
+/* New users: the finished example session, one tap from the dashboard and Research. */
+.research-ex { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 14px 0 16px; font-size: 14.5px; line-height: 1.45; color: var(--ink-2); }
+.research-ex span { flex: 1 1 260px; min-width: 0; }
+.empty .ex-cta { margin-top: 2px; }
+.dispatch-go .ex-run { font-size: 13px; }
+.ex-cost { margin-top: 6px; }
+/* Phone: secondary strategy-page sections fold behind their title. */
+.fold > summary.fold-h { display: none; }
+@media (max-width: 760px) {
+  .fold { margin: 0 0 12px; border: 1px solid var(--rule); background: var(--stock-raised); }
+  .fold > summary.fold-h { display: flex; align-items: center; min-height: 44px; padding: 10px 14px; font-size: 14px; letter-spacing: 0; text-transform: none; color: var(--ink); font-weight: 600; }
+  .fold[open] > summary.fold-h { border-bottom: 1px solid var(--rule); }
+  .fold > .panel, .fold > .paper-sec, .fold > .paper-sub { border: 0; margin: 0; box-shadow: none; }
+  .fold > .panel > h3:first-child, .fold > .paper-sec > .paper-sec-t, .fold > .paper-sub > .paper-h:first-child { display: none; }
+  .fold > .paper-sec, .fold > .paper-sub, .fold > .fold-body { padding: 12px 14px; }
+}

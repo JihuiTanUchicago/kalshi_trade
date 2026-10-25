@@ -382,6 +382,7 @@
     [/^\/(?:dashboard)?$/, viewDashboard],
     [/^\/research$/, viewResearch],
     [/^\/research\/(\d+)$/, viewRun],
+    [/^\/example$/, viewExample],  // the seeded example session, wherever it is
     [/^\/strategies$/, viewStrategies],
     [/^\/strategies\/(\d+)$/, viewStrategy],
     [/^\/deploy$/, viewDeploy],
@@ -1528,6 +1529,7 @@
     const load = async (cfg) => {
       const d = await api('/api/dashboard' + (visitAt ? '?since=' + visitAt : ''), undefined, cfg);
       setVisit(visitAt, Math.floor(Date.now() / 1000));  // still here: this visit's last-seen moves on
+      S.dashNoSessions = !!(d.since && d.since.own_sessions === false);
       const p = d.paper;
       // Realized P&L (all-time + today) and open count for one money bucket; a tasteful
       // zero line when the bucket has no activity so an empty card never looks broken.
@@ -1748,6 +1750,7 @@
     const modelOpts = (mdl.models || []).map((m) => `<option value="${esc(m.key)}"${m.key === mdl.default ? ' selected' : ''}${m.available === false ? ' disabled' : ''}>${esc(m.label)}${m.available === false ? ' (access pending)' : ''}</option>`).join('');
     shell('/research', boardTitle('Research', 'A self-improving research engine for Kalshi markets \u2014 describe an idea, it writes strategies and tests each on data it never saw.'), `
       ${S.me.user && !S.me.user.autopilot ? `<p class="research-ap">Rather not write ideas yourself? <button type="button" data-research-ap>Turn on autopilot</button> and it picks ideas and researches them on its own, on paper.</p>` : ''}
+      <div id="rexample"></div>
       <form class="panel dispatch" id="dispatch">
         <h3>${ICON.spark2}New research session</h3>
         ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
@@ -1767,9 +1770,11 @@
         </fieldset>
         </div></details>
         <div class="dispatch-go">
-          <button type="button" class="chip ex" data-ex="${esc(DEMO_PROMPT)}" title="Fill the box with a tiny runnable demo idea">Try the demo — Todd's random walk</button>
+          <a class="chip ex" href="/example" data-ex-open title="Opens the finished example session; nothing runs">See the demo — Todd's random walk</a>
+          <button type="button" class="linkish ex-run" data-ex="${esc(DEMO_PROMPT)}">or run it yourself</button>
           <button class="btn primary go" type="submit" ${me.needs_card ? 'aria-disabled="true"' : ''}>${ICON.spark2}Start session</button>
         </div>
+        <p class="hint ex-cost" id="ex-cost" hidden></p>
         <p class="hint go-cost" id="rcost" hidden></p>
         <div id="dflash"></div>
         <p class="hint" id="rf-hint">A session takes a few minutes and keeps running if you leave this page.</p>
@@ -1798,7 +1803,16 @@
     };
     form.addEventListener('change', syncOpts); syncOpts();
     const ta = form.querySelector('textarea[name=prompt]');
-    root.querySelectorAll('[data-ex]').forEach((b) => (b.onclick = () => { ta.value = b.dataset.ex; ta.focus(); }));
+    // "Run it yourself" fills the box with the example's idea and says plainly that it's a new, paid
+    // session (with the usual cost beside Start when there's one); the demo link opens the finished one.
+    root.querySelectorAll('[data-ex]').forEach((b) => (b.onclick = () => {
+      ta.value = b.dataset.ex; ta.focus();
+      const note = form.querySelector('#ex-cost'), rc = form.querySelector('#rcost');
+      if (!note) return;
+      note.hidden = false;
+      note.textContent = !me.billing_enabled ? 'This starts a new session from scratch. The example already shows how this idea ends.'
+        : `This starts a new session that uses your credits; the example already shows how this idea ends.${rc && !rc.hidden && rc.textContent ? ' ' + rc.textContent : ''}`;
+    }));
     const rf = form.querySelector('#runforever'), mh = form.querySelector('#maxhyp');
     let syncCost = () => {};  // the cost line below follows the run-forever switch too
     if (rf && mh) {
@@ -1864,6 +1878,10 @@
       renderResearchLoop(root.querySelector('#rsimo'), d.policy, tried);
       // The seeded example is listed but isn't the user's: it doesn't count as a run of theirs.
       const own = d.runs.filter((r) => !r.example).length, examples = d.runs.length - own;
+      const rex = root.querySelector('#rexample'), exHtml = exampleLine(d.runs);
+      if (rex && rex.dataset.h !== exHtml) { rex.dataset.h = exHtml; rex.innerHTML = exHtml; }
+      const exRun = d.runs.find((r) => r.example), exOpen = root.querySelector('[data-ex-open]');
+      if (exOpen) { exOpen.hidden = !exRun; if (exRun) exOpen.setAttribute('href', '/research/' + exRun.id); }
       // Phones: progress before the form, unless they came here to start one ("Try another idea", ?new=1).
       const mainEl = root.querySelector('#main'); if (mainEl) mainEl.classList.toggle('runs-first', own > 0 && !/[?&]new=1\b/.test(location.search));
       root.querySelector('#rcount').textContent = [own ? `${own} run${own > 1 ? 's' : ''}` : '', examples ? `${examples} example` : ''].filter(Boolean).join(' \u00b7\u00a0');
@@ -2685,7 +2703,7 @@
             <div id="equity-wrap">${s.equity ? equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from, null, { width: chartWidth() }) : ''}</div>
             <div class="split"><div><h4>Tested on (in-sample)</h4>${metricRows(ins)}</div><div><h4>Never seen (out-of-sample)</h4>${metricRows(oos)}</div></div>
           </div></div>`
-      + `<div class="paper-sub"><h4 class="paper-h">Most recent unseen trades</h4>${trades}</div>`;
+      + fold('Most recent unseen trades', `<div class="paper-sub"><h4 class="paper-h">Most recent unseen trades</h4>${trades}</div>`);
     let verdictBody = rp.verdict;
     if (!hasExp) {
       const btOnly = ['sig', 'armed', 'Backtest only', 'Backtest-only — never put through statistical validation (no pre-registration, one-time holdout, or multiple-testing control). These numbers come from a sample too small to separate skill from luck. ' + (restricted ? 'This market remains research only.' : 'Deploying it is your decision and your risk.')];
@@ -2728,7 +2746,7 @@
             ${restricted ? '' : realRecord(s)}
             <div class="paper-body">
               ${paperSec('Mechanism &amp; hypothesis', rp.mechanism)}
-              ${paperSec('Methodology', methodologyBody)}
+              ${fold('Methodology', paperSec('Methodology', methodologyBody))}
               ${paperSec('Results', resultsBody)}
               ${paperSec('Verdict', verdictBody)}
             </div>
@@ -2755,6 +2773,7 @@
             ${canDeploy ? `<div style="display:grid;gap:10px">
                 ${s.status !== 'passed' ? `<div class="notice bad">${ICON.warn}<span>${s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${rejectReason(s)}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
                 <button class="btn" id="dep-paper">Deploy on paper</button>
+                ${fold('Demo &amp; live', `<div class="fold-body" style="display:grid;gap:10px">
                 <button class="btn ghost" id="dep-demo" ${demoWhy ? 'aria-disabled="true"' : ''}>Deploy on demo (sandbox)</button>
                 ${demoWhy ? `<p class="hint">${demoWhy}</p>` : '<p class="hint">Trades Kalshi’s demo exchange with your own demo key — real order-book fills, no real money.</p>'}
                 <button class="btn ghost" id="dep-live" ${liveWhy ? 'aria-disabled="true"' : ''}>Deploy with live money</button>
@@ -2763,7 +2782,7 @@
                   <p class="hint">This trades real money in your Kalshi account. Type <b>LIVE</b> to confirm.</p>
                   <input class="input" name="confirm" autocomplete="off" aria-label="Type LIVE to confirm">
                   <button class="btn" type="submit">Confirm live deployment</button>
-                </form>
+                </form></div>`)}
                 <div id="depflash"></div>
               </div>` : restricted ? '<p class="hint">Perpetual strategies stay in research, including after passing the statistical gates. Paper, demo and live deployment are unavailable.</p>' : '<p class="hint">This strategy isn’t ready to deploy yet.</p>'}
             ${!restricted && s.deployments.length ? `<p class="hint" style="margin-top:12px">Already deployed: ${s.deployments.map((d) => `#${d.id} (${esc(d.mode)}, ${esc(d.status)})`).join(', ')}. <a href="/deploy">See them on the Deploy page</a></p>` : ''}
@@ -2771,27 +2790,27 @@
           </section>
           ${!restricted && s.status === 'passed' ? `<section class="panel" id="road-live"><h3>Road to live</h3><div id="road-live-body"><p class="hint">Checking…</p></div></section>` : ''}
           <section class="panel"><h3>Gates</h3><div id="gates">${gatesHtml(s.gates)}</div></section>
-          ${!perpetual && s.status !== 'rejected' ? `<section class="panel" id="whatif"><h3>What if…</h3>
+          ${!perpetual && s.status !== 'rejected' ? fold('What if…', `<section class="panel" id="whatif"><h3>What if…</h3>
             <p class="hint" style="margin-bottom:6px">Move a dial and the whole sheet re-runs.</p>
             <div class="dial"><div class="top"><label class="label" for="wf">Fees</label><output id="wfo">1.0×</output></div><input type="range" id="wf" min="0" max="3" step="0.25" value="1"></div>
             <div class="dial"><div class="top"><label class="label" for="ws">Slippage per fill</label><output id="wso">0.0¢</output></div><input type="range" id="ws" min="0" max="5" step="0.1" value="0"></div>
             <div class="dial"><div class="top"><label class="label" for="wk">Stake per trade</label><output id="wko">$${esc(s.stake)}</output></div><input type="range" id="wk" min="1" max="200" step="1" value="${Math.min(200, s.stake)}"></div>
             <div id="wflash" aria-live="polite"></div>
-          </section>` : ''}
-          <section class="panel"><h3>Share</h3>
+          </section>`) : ''}
+          ${fold('Share', `<section class="panel"><h3>Share</h3>
             <p class="hint" style="margin-bottom:8px">${restricted ? 'Share a research-only copy using their Tau sign-in email. It keeps the same simulation limits and cannot be deployed.' : "Send a copy to a friend by the email they sign in with. They can deploy it like their own — sharing can't be undone."}</p>
             <form id="share-form" style="display:grid;gap:8px">
               <input class="input" id="share-email" type="email" autocomplete="off" placeholder="friend@email.com" aria-label="Friend's email">
               <button class="btn sm" type="submit">Share strategy</button>
             </form><div id="shareflash"></div>
-          </section>
-          <section class="panel"><h3>Remove</h3>
+          </section>`)}
+          ${fold('Remove', `<section class="panel"><h3>Remove</h3>
             <p class="hint" style="margin-bottom:8px">Delete this strategy from your inventory. ${activeDeps.length ? 'Stop its deployment first — you can do it right here.' : 'This can’t be undone.'}</p>
             <div style="display:grid;gap:8px">
               ${activeDeps.length ? `<button class="btn sm danger" id="stop-dep">Stop deployment${activeDeps.length > 1 ? 's' : ''} (${activeDeps.map((d) => '#' + d.id).join(', ')})</button>` : ''}
               <button class="btn sm danger" id="del-strat" ${activeDeps.length ? 'aria-disabled="true"' : ''}>Delete strategy</button>
             </div><div id="delflash"></div>
-          </section>
+          </section>`)}
         </aside>
       </div>`;
     // Second equity line: the strategy's unseen window replayed read-only against
@@ -3734,9 +3753,10 @@
     }).join('<span class="sep">·</span>') : 'No trades closed.';
     const pass = s.passed || { n: 0, items: [] }, runs = s.runs || {};
     const started = Object.values(runs).reduce((a, n) => a + n, 0), failed = runs.failed || 0;
-    const found = (pass.n
+    // A brand-new account has nothing of its own to report yet: point at the finished example, up top.
+    const found = s.own_sessions === false && !pass.n ? `No sessions of your own yet. <a href="/example" data-example>See an example session first</a>` : ((pass.n
       ? `${plural(pass.n, 'strategy', 'strategies')} passed: ${pass.items.map((x) => `<a href="/strategies/${encodeURIComponent(x.id)}">${esc(x.title)}</a>`).join(', ')}${pass.n > pass.items.length ? `, <a href="/strategies">${num(pass.n - pass.items.length)} more</a>` : ''}`
-      : 'Nothing new passed') + (started ? ` <span class="since-sub">· ${plural(started, 'research session', 'research sessions')} started</span>` : '') + '.';
+      : 'Nothing new passed') + (started ? ` <span class="since-sub">· ${plural(started, 'research session', 'research sessions')} started</span>` : '') + '.');
     const ap = s.autopilot || {}, apOn = !!(S.me && S.me.user && S.me.user.autopilot);
     const known = new Set(AP_DID.map(([k]) => k));
     const did = AP_DID.filter(([k]) => ap[k]).map(([k, w]) => w.replace('%s', num(ap[k])));
@@ -3877,8 +3897,27 @@
   // work the autopilot is already doing. It follows the switch live (syncApCopy). It says only that
   // autopilot is on: the card above says what it is doing, and "is researching" contradicted a card
   // reporting a stale check-in or a billing pause.
+  // A brand-new user (no research session of their own) gets the finished example first: one tap,
+  // free. /example finds the seeded example session in /api/runs and opens it in place.
+  const EXAMPLE_CTA = `<a class="btn primary ex-cta" href="/example" data-example>See an example session first</a>`;
+  function exampleLine(runs) {
+    const ex = (runs || []).find((r) => r.example), own = (runs || []).filter((r) => !r.example).length;
+    return ex && !own ? `<p class="research-ex"><a class="btn primary ex-cta" href="/research/${encodeURIComponent(ex.id)}" data-example>See an example session first</a> <span>A finished session Tau ran for you when you signed up, from idea to verdict. It cost you nothing.</span></p>` : '';
+  }
+  async function viewExample() {
+    shell('/research', '', loading(200));
+    const d = await api('/api/runs').catch(() => null);
+    const ex = d && (d.runs || []).find((r) => r.example);
+    go(ex ? '/research/' + ex.id : '/research', true);
+  }
+  // On a phone, a secondary section (method, raw lists, what-if, share, remove) folds behind its
+  // title, closed; wider screens render it as before. Money figures and verdicts never fold.
+  const fold = (title, html) => html ? `<details class="fold"${phone() ? '' : ' open'}><summary class="fold-h">${title}</summary>${html}</details>` : '';
   function depsEmpty(on) {
-    return on
+    const ex = S.dashNoSessions ? `<p class="hint">New here? See what a finished session looks like first. It’s free.</p>${EXAMPLE_CTA}` : '';
+    return ex ? (on
+      ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is on. Strategies that pass every gate land here on paper first, with no real money.</p>${ex}</div>`
+      : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above, or research an idea yourself.</p>${ex}</div>`) : on
       ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is on. Strategies that pass every gate land here on paper first, with no real money.</p><a class="btn" href="/research">See its research</a></div>`
       : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above and the strategies that pass every gate on data they never saw land here on their own, on paper first. Or research an idea yourself.</p><a class="btn" href="/research">Research an idea</a></div>`;
   }
