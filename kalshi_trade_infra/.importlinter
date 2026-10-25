@@ -47,6 +47,10 @@ ignore_imports =
     ; app.adapters.db (step 6), and services still reach the DB through it until step 8 injects
     ; repositories. A service importing app.adapters directly is still refused.
     app.repository -> app.adapters.db.*
+    ; app.backtest is the legacy research backtest: with TAU_BACKTEST_ENGINE=loop it runs DSL specs
+    ; through the Kalshi TradingLoop adapter (step 8c). Services reach it via gatekeeper/partitions.
+    ; Delete when the backtest itself moves under app.services with the adapter injected.
+    app.backtest -> app.adapters.kalshi.spec_strategy
 ; Add when app.web exists: a forbidden contract app.web -> app.adapters (web reaches adapters only
 ; through services and the bootstrap wiring).
 

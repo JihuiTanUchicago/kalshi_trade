@@ -256,6 +256,9 @@ def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optio
         return simulate_pairs(spec, ds, start_ts, end_ts, what_if)
     if ds.market.kind == "spot":
         return simulate_spot(spec, ds, start_ts, end_ts, what_if)
+    if ENGINE == "loop" and not specmod.is_code_spec(spec):
+        from app.adapters.kalshi.spec_strategy import simulate_on_loop
+        return simulate_on_loop(spec, ds, start_ts, end_ts, what_if=what_if)
     if FILL_MODEL == "next_bar":
         return _simulate_next_bar(spec, ds, start_ts, end_ts, what_if)
     w = what_if or WhatIf()
@@ -340,6 +343,11 @@ def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optio
 # model that filled at the very quote that produced the signal; it is kept for comparison only.
 FILL_MODEL = os.getenv("TAU_BACKTEST_FILL_MODEL", "next_bar")
 FILL_MAX_DELAY_BARS = 2  # an order whose next quote is further away than this many bars expires
+# Which engine runs a single-contract DSL spec (ARCHITECTURE.md step 8c). "loop" replays it through
+# trading_core's TradingLoop, the engine paper and live will share; "legacy" is the loops below. They
+# book identical trades (tests/test_loop_backtest_parity.py, scripts/loop_parity.py on real data);
+# code strategies stay on the legacy loops until the loop runs their sandbox book.
+ENGINE = os.getenv("TAU_BACKTEST_ENGINE", "legacy")
 # Highest ask an entry may lift. A 99c contract pays at most 1c, which the taker fee eats, so a buy
 # there can never profit; on an empty book (no bid, 99c ask) it is the only "offer". Sports ladders
 # that went empty (KXNFLRECYDSPROT: 83% of quotes yes_ask >= 0.99) let code strategies "buy" at 99c

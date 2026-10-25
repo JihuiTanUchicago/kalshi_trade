@@ -4,7 +4,8 @@ differs. Read-only: it loads datasets and specs from the DB and writes nothing.
 
 Run on the web box (it needs the DB):
     python -m scripts.loop_parity --markets btc15m,eth15m --days 14 --limit 40
-Prints one JSON summary. Exit code 1 when any case differs.
+Each spec runs under both fill models and under the gate's 2c cost stress. Prints one JSON summary
+with both engines' run time. Exit code 1 when any case differs.
 """
 from __future__ import annotations
 
@@ -56,27 +57,37 @@ def main(argv=None) -> int:
     from app import backtest
     from app.adapters.kalshi.spec_strategy import simulate_on_loop
 
-    summary = {"cases": 0, "legacy_trades": 0, "diffs": [], "markets": {}}
+    backtest.ENGINE = "legacy"  # the reference side, whatever TAU_BACKTEST_ENGINE says
+    summary = {"cases": 0, "legacy_trades": 0, "legacy_s": 0.0, "loop_s": 0.0, "diffs": [], "markets": {}}
     for market in [m.strip() for m in args.markets.split(",") if m.strip()]:
         t0 = time.time()
         ds = backtest.dataset(market, args.days)
         specs = _specs(market, args.limit)
         summary["markets"][market] = {"frames": len(ds.frames), "specs": len(specs),
                                       "load_s": round(time.time() - t0, 1)}
-        for fill in ("next_bar", "signal_bar"):
+        # The gate's cost stress re-simulates every finalist with extra slippage, so check that too.
+        stress = backtest.WhatIf(slippage_cents=2.0)
+        for fill, what_if in (("next_bar", None), ("signal_bar", None), ("next_bar", stress)):
             backtest.FILL_MODEL = fill
             for sid, spec in specs:
-                legacy = sorted(backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1), key=_row)
-                loop = sorted(simulate_on_loop(spec, ds, ds.start_ts, ds.end_ts + 1, fill_model=fill), key=_row)
+                t1 = time.perf_counter()
+                legacy = sorted(backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1, what_if), key=_row)
+                t2 = time.perf_counter()
+                loop = sorted(simulate_on_loop(spec, ds, ds.start_ts, ds.end_ts + 1, fill_model=fill,
+                                               what_if=what_if), key=_row)
+                summary["legacy_s"] += t2 - t1
+                summary["loop_s"] += time.perf_counter() - t2
                 summary["cases"] += 1
                 summary["legacy_trades"] += len(legacy)
                 a, b = [_row(t) for t in legacy], [_row(t) for t in loop]
                 if a != b:
                     i = next((i for i, (x, y) in enumerate(zip(a, b)) if x != y), min(len(a), len(b)))
                     summary["diffs"].append({"market": market, "strategy_id": sid, "fill": fill,
+                                             "stress": what_if is not None,
                                              "legacy": len(a), "loop": len(b),
                                              "first": [a[i:i + 1], b[i:i + 1]]})
         summary["markets"][market]["total_s"] = round(time.time() - t0, 1)
+    summary["legacy_s"], summary["loop_s"] = round(summary["legacy_s"], 2), round(summary["loop_s"], 2)
     print(json.dumps(summary, default=str))
     return 1 if summary["diffs"] else 0
 

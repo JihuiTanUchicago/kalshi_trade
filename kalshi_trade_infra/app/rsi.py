@@ -128,16 +128,20 @@ def family(market: Optional[str]) -> str:
     return re.sub(r"[^a-z0-9]+", "-", cat).strip("-")
 
 
-def run_cost_usd(run: Dict) -> float:
-    """The run's model spend at list price (what the user is billed)."""
+def run_cost_usd(run: Dict, screen: Optional[Dict] = None) -> float:
+    """The run's model spend at list price (what the user is billed). `screen` is the run's
+    `screen` verdict payload: its tokens are part of the run's totals but priced at the screen
+    model's rate (services.research_screen)."""
     from app import billing
     from app import models_catalog as catalog
+    from app.services.research_screen import screen_cost_split
     try:
         model_id = catalog.resolve(run.get("model")).model_id
     except Exception:  # noqa: BLE001 - an unknown model prices at the default
         model_id = ""
-    return float(billing.usage_cost(model_id, int(run.get("input_tokens") or 0),
-                                    int(run.get("output_tokens") or 0)))
+    parts = screen_cost_split(model_id, int(run.get("input_tokens") or 0), int(run.get("output_tokens") or 0),
+                              screen)
+    return float(sum(billing.usage_cost(m, i, o) for m, i, o in parts))
 
 
 def run_card(run: Dict, events: Iterable[Dict]) -> Dict:
@@ -146,13 +150,19 @@ def run_card(run: Dict, events: Iterable[Dict]) -> Dict:
     deaths: Counter = Counter()
     kinds: Counter = Counter()
     pipeline: List[Dict] = []
+    screen: Optional[Dict] = None
+    leads_arm: Optional[str] = None
     for ev in events:
         if ev.get("kind") != "verdict":
             continue
         d = ev.get("data") or {}
         msg = ev.get("message") or ""
         phase = d.get("phase")
-        if d.get("status") == "abandoned":
+        if phase == "screen":
+            screen = d
+        elif phase == "leads":
+            leads_arm = d.get("arm")
+        elif d.get("status") == "abandoned":
             f["dropped"] += 1
             tag, kind = classify_drop(d.get("why") or msg)
             deaths[tag] += 1
@@ -178,7 +188,7 @@ def run_card(run: Dict, events: Iterable[Dict]) -> Dict:
         f["spec_failed_runs"] += 1
     developed = f["gated"] + f["underpowered"] + f["challenger_rejected"] + f["not_finalist"]
     explored = max(developed + f["dropped"], int(run.get("hypotheses_tried") or 0))
-    cost = run_cost_usd(run)
+    cost = run_cost_usd(run, screen) if screen else run_cost_usd(run)
     return {
         "run_id": run.get("id"), "user_id": run.get("user_id"), "market": run.get("market"),
         "family": family(run.get("market")), "status": run.get("status"),
@@ -189,6 +199,11 @@ def run_card(run: Dict, events: Iterable[Dict]) -> Dict:
         "holdout_passed": f["holdout_passed"], "deploy_candidates": f["deploy_candidates"],
         "deaths": dict(deaths), "death_kinds": {k: kinds[k] for k in KINDS if kinds[k]},
         "pipeline_deaths": pipeline, "spec_failed_runs": f["spec_failed_runs"],
+        # model-tiering A/B arm (None = the run predates it, or ended before logging it)
+        "arm": screen.get("arm") if screen else None,
+        "leads_arm": leads_arm,  # data-first A/B arm (services.research_leads)
+        "screen": {k: screen.get(k) for k in ("screen_model", "screened_out", "handed_over", "audits", "rescued")}
+        if screen else None,
     }
 
 

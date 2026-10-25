@@ -45,6 +45,16 @@ class NotionalRateFees:
         return self.rate(instrument, maker) * abs(qty) * price * instrument.multiplier
 
 
+class ScaledFees:
+    """Another model's fee times ``factor``: a cost-stress what-if (1.5 = fees 50% higher)."""
+
+    def __init__(self, base: FeeModel, factor: float) -> None:
+        self.base, self.factor = base, factor
+
+    def fee(self, instrument: Instrument, qty: float, price: float, maker: bool = False) -> float:
+        return self.base.fee(instrument, qty, price, maker) * self.factor
+
+
 class FeesByVenue:
     """Routes by ``instrument.id.venue``. An unknown venue raises instead of costing zero, so a
     newly plugged-in market can never backtest fee-free by omission."""

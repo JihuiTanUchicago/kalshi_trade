@@ -3,12 +3,16 @@
 It is the venue-neutral counterpart of ``SimulatedVenue`` (which stays the Kalshi paper venue, with
 its depth and YES/NO wire rules). Use it to backtest or paper-trade a market that has no venue
 adapter yet; it never sends anything anywhere.
+
+``slippage`` is a cost what-if: every fill lands that much worse than the touch (a buy above the
+ask, never past a binary's payout less one tick; a sell below the bid, never under zero).
 """
 from __future__ import annotations
 
 from typing import Mapping, Optional, Sequence
 
-from trading_core.domain import ExecutionReport, Fill, Instrument, InstrumentId, OrderIntent, Portfolio, Side
+from trading_core.domain import (ExecutionReport, Fill, Instrument, InstrumentId, InstrumentKind, OrderIntent,
+                                 Portfolio, Side)
 from trading_core.ports.fees import FeeModel
 from trading_core.ports.market_data import MarketDataFeed
 from trading_core.ports.venue import VenueCapabilities
@@ -16,12 +20,13 @@ from trading_core.ports.venue import VenueCapabilities
 
 class QuoteFillVenue:
     def __init__(self, feed: MarketDataFeed, fees: FeeModel, instruments: Mapping[InstrumentId, Instrument],
-                 cash: float = 0.0, name: str = "paper", shorting: bool = False) -> None:
+                 cash: float = 0.0, name: str = "paper", shorting: bool = False, slippage: float = 0.0) -> None:
         self.name = name
         self.capabilities = VenueCapabilities(kinds=frozenset(i.kind for i in instruments.values()),
                                               market_orders=False, shorting=shorting, fractional_qty=True,
                                               sends_real_orders=False)
         self._feed, self._fees, self._instruments = feed, fees, instruments
+        self.slippage = slippage
         self.book = Portfolio(cash=cash)
 
     def submit(self, intent: OrderIntent, limit_price: float, client_order_id: str) -> ExecutionReport:
@@ -36,10 +41,19 @@ class QuoteFillVenue:
         crosses = touch is not None and (touch <= limit_price if intent.side is Side.BUY else touch >= limit_price)
         if not crosses:
             return ExecutionReport(intent, "unfilled", order_ids=[client_order_id])
-        fee = self._fees.fee(inst, intent.qty, touch)
-        fill = Fill(intent.instrument, intent.side, intent.qty, touch, fee=fee, ts=q.ts, order_id=client_order_id)
+        price = self._slipped(inst, intent.side, touch) if self.slippage else touch
+        fee = self._fees.fee(inst, intent.qty, price)
+        fill = Fill(intent.instrument, intent.side, intent.qty, price, fee=fee, ts=q.ts, order_id=client_order_id)
         self.book.apply(fill, multiplier=inst.multiplier)
         return ExecutionReport(intent, "filled", [fill], [client_order_id])
+
+    def _slipped(self, inst: Instrument, side: Side, touch: float) -> float:
+        if side is Side.SELL:
+            return max(0.0, touch - self.slippage)
+        price = touch + self.slippage
+        if inst.kind is InstrumentKind.BINARY:
+            price = min(inst.terms.payout - inst.tick_size, price)
+        return price
 
     def net_position(self, instrument: InstrumentId) -> float:
         pos = self.book.positions.get(instrument)
