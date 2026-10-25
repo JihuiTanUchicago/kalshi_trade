@@ -131,7 +131,9 @@ function frontend({fetchImpl, brokerMount, storage} = {}) {
   // the offline transport above, including notifications and financial controls.
   api.S.hot = {markets: []}; api.S.hotAt = Date.now();
   api.S.ap = {mode: 'off'}; api.S.apAt = Date.now();
-  return {...api, root, intervals, timeouts, requests, navigations};
+  // Moves the page's clock (Date.now) forward, for checks on how old a figure is.
+  const shiftClock = ms => vm.runInContext(`{ const now = Date.now; Date.now = () => now() + ${Number(ms)}; }`, context);
+  return {...api, root, intervals, timeouts, requests, navigations, shiftClock};
 }
 
 const strategy = {id: 42, status: 'passed', side: 'yes', stake: 5, deployments: []};
@@ -1415,3 +1417,129 @@ for (const [label, view, endpoint, selector] of [['The dashboard', 'viewDashboar
     assert.ok(livePts[0] < 12 && livePts[1] === 22, livePts.join(' '));
   });
 }
+
+const staleDashboard = equity => ({...emptyDashboard(), paper: {...emptyDashboard().paper, equity}});
+
+// A poll that fails (no network, the edge's 5xx page, or a read that hangs until it is aborted) leaves
+// the last good figures up. Once they are older than about two polls a quiet note says how old, the
+// poll sits out more ticks after each failure instead of hammering the server, and the next good read
+// clears the note.
+const staleFail = {
+  'a network error': [() => Promise.reject(new TypeError('Failed to fetch')), 3],
+  'a 5xx page': [() => ({ok: false, status: 503, json: async () => { throw new SyntaxError('Unexpected token <'); }}), 3],
+  'a hung read': [options => new Promise((_, reject) => options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))), 1],
+};
+// Runs a read to its end: each step fires the newest timer (a retry's pause, or else the read's 15s abort).
+const settleRead = async f => {
+  for (let i = 0; i < 8; i++) {
+    await flush(); await flush();
+    const last = [...f.timeouts].at(-1); if (!last) break;
+    f.timeouts.delete(last[0]); last[1]();
+  }
+  await flush(); await flush();
+};
+const pollStep = async (f, tick, ms) => { f.shiftClock(ms); f.timeouts.clear(); tick(); await settleRead(f); };
+for (const [kind, [fail, perTry]] of Object.entries(staleFail)) {
+  test(`the dashboard keeps its figures through ${kind}, says how old they are, backs off and clears on recovery`, async () => {
+    let down = false, equity = 1000;
+    const f = frontend({fetchImpl: (path, options) => {
+      if (path === '/api/dashboard') return down ? fail(options) : response(staleDashboard(equity));
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    await f.viewDashboard(); await flush(); await flush();
+    const tick = f.intervals.get(f.S.timers[0]);
+    const note = () => f.root.querySelector('#dash-stale').textContent;
+    const figures = () => f.root.querySelector('#boardbody').innerHTML;
+    const reads = () => f.requests.filter(r => r.path === '/api/dashboard').length;
+    assert.equal(note(), '');
+    down = true;
+    let before = reads();
+    await pollStep(f, tick, 15000);  // one failed poll: 15s old is under two polls, so no note yet
+    assert.equal(reads() - before, perTry);  // api() retries a network error or an edge 5xx twice; an aborted hang once
+    assert.equal(note(), ''); assert.match(figures(), /\$1,000\.00/);
+    before = reads();
+    await pollStep(f, tick, 20000);  // it sits this tick out, and the 35s-old figures now say so
+    assert.equal(reads(), before);
+    assert.equal(note(), 'Last updated 35s ago, retrying'); assert.match(figures(), /\$1,000\.00/);
+    await pollStep(f, tick, 15000);  // the second try fails too, so it sits out the next three ticks
+    assert.equal(reads() - before, perTry); before = reads();
+    assert.equal(note(), 'Last updated 50s ago, retrying');
+    for (let i = 0; i < 3; i++) await pollStep(f, tick, 20000);
+    assert.equal(reads(), before);
+    assert.equal(note(), 'Last updated 2m ago, retrying'); assert.match(figures(), /\$1,000\.00/);
+    down = false; equity = 1234.5;
+    await pollStep(f, tick, 15000);
+    assert.equal(reads() - before, 1);
+    assert.equal(note(), ''); assert.match(figures(), /\$1,234\.50/);
+  });
+}
+
+test('a research run keeps its spend when its poll fails, notes the age, and clears on recovery', async () => {
+  let down = false, spent = 1.25;
+  const f = frontend({fetchImpl: path => {
+    assert.equal(path, '/api/runs/9?after=0');
+    if (down) return Promise.reject(new TypeError('Failed to fetch'));
+    return response({run: {id: 9, prompt: 'Idea', status: 'running', market: 'btc15m', created_at: '2026-10-17T10:00:00Z',
+      started_at: '2026-10-17T10:00:00Z', spent_usd: spent, hypotheses_tried: 2}, events: []});
+  }});
+  await f.viewRun(9);
+  const tick = f.intervals.get(f.S.timers.at(-1));
+  const note = () => f.root.querySelector('#run-stale').textContent;
+  assert.equal(note(), '');
+  down = true;
+  await pollStep(f, tick, 2000);  // a 2s poll waits 10s before it calls its figures old
+  assert.equal(note(), ''); assert.match(f.root.querySelector('#runfigs').innerHTML, /\$1\.25/);
+  const before = f.requests.length;
+  await pollStep(f, tick, 9000);
+  assert.equal(f.requests.length, before);  // backing off: no read this tick
+  assert.equal(note(), 'Last updated 11s ago, retrying'); assert.match(f.root.querySelector('#runfigs').innerHTML, /\$1\.25/);
+  down = false; spent = 1.5;
+  await pollStep(f, tick, 2000);
+  assert.equal(note(), ''); assert.match(f.root.querySelector('#runfigs').innerHTML, /\$1\.50/);
+});
+
+test('the autopilot card keeps its figures when the status poll fails, notes the age, and clears on recovery', async () => {
+  let down = false;
+  const status = {autopilot: true, mode: 'paper', story: ['Researching BTC 15m.'], research: {tested_7d: 3, passed_7d: 0, active: []},
+    live_running: 1, demo_running: 0, paper_running: 0, today_live_pnl: 4.5};
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(staleDashboard(1000));
+    if (path === '/api/autopilot/status') return down ? Promise.reject(new TypeError('Failed to fetch')) : response(status);
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = true; f.S.ap = status; f.S.apAt = Date.now();
+  await f.viewDashboard(); await flush(); await flush();
+  const tick = [...f.intervals.values()].find(cb => String(cb).includes("getElementById('autopilot-float') && !document.hidden) tick()"));
+  const note = () => f.root.querySelector('#dash-ap-stale').textContent;
+  const card = () => f.root.querySelector('#dash-ap').innerHTML;
+  const reads = () => f.requests.filter(r => r.path === '/api/autopilot/status').length;
+  assert.equal(note(), ''); assert.match(card(), /4\.50/);
+  down = true;
+  await pollStep(f, tick, 20000);
+  assert.equal(note(), ''); assert.match(card(), /4\.50/);
+  const before = reads();
+  await pollStep(f, tick, 25000);
+  assert.equal(reads(), before);  // backing off: no read this tick
+  assert.equal(note(), 'Last updated 45s ago, retrying');
+  f.paintDashAp();  // a repaint for another reason keeps the note
+  assert.equal(note(), 'Last updated 45s ago, retrying'); assert.match(card(), /4\.50/);
+  down = false;
+  await pollStep(f, tick, 20000);
+  assert.equal(reads(), before + 1);
+  assert.equal(note(), ''); assert.match(card(), /4\.50/);
+});
+
+
+test('a run poll never stacks a second read on one that is still hanging', async () => {
+  let hang = false;
+  const f = frontend({fetchImpl: (path, options) => hang
+    ? new Promise((_, reject) => options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))))
+    : response({run: {id: 9, prompt: 'Idea', status: 'running', market: 'btc15m', created_at: '2026-10-17T10:00:00Z'}, events: []})});
+  await f.viewRun(9);
+  const tick = f.intervals.get(f.S.timers.at(-1)), before = f.requests.length;
+  hang = true;
+  for (let i = 0; i < 7; i++) { f.shiftClock(2000); tick(); await flush(); }  // 14s of 2s ticks while one read hangs
+  assert.equal(f.requests.length, before + 1);  // it used to send seven
+  assert.equal(f.root.querySelector('#run-stale').textContent, 'Last updated 14s ago, retrying');
+});
