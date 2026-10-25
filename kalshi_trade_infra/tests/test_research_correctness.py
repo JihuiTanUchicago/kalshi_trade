@@ -151,11 +151,11 @@ def test_abandoned_run_message_is_informative():
         def execute(self, sql, params):
             captured["sql"], captured["params"] = sql, params  # last execute wins (the UPDATE)
         def fetchall(self):
-            # one stale run with no checkpointed progress -> the neutral stopped path (not resumable)
-            return [{"id": 1, "kind": "research", "resume_count": 0, "checkpoint_json": None}]
+            # one stale run with no checkpointed progress and no restarts left -> the neutral stopped path
+            return [{"id": 1, "kind": "research", "resume_count": 3, "checkpoint_json": None}]
 
     from app import repository as repo
-    repo.fail_abandoned_runs(_Cur(), timedelta(seconds=240))
+    repo.fail_abandoned_runs(_Cur(), timedelta(seconds=240), max_resumes=3)
     # An interrupted run is STOPPED, never failed, and says it was interrupted — not a scary error.
     assert "status='stopped'" in " ".join(captured["sql"].split())
     msg = captured["params"][0]
