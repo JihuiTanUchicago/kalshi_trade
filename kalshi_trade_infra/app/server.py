@@ -717,8 +717,28 @@ def list_strategies(ctx: Ctx):
     matched = counts.get(status, 0) if status else counts["total"] - noise
     rows = repo.list_strategies(ctx.cur, ctx.uid, direction, status, market, limit=per, offset=page * per,
                                 q=search, deployed=deployed, hide_noise=hide_noise)
-    return {"strategies": [_strategy_card(s) for s in rows], "counts": counts,
+    cards = [_strategy_card(s) for s in rows]
+    _attach_real_records(ctx.cur, ctx.uid, cards)
+    return {"strategies": cards, "counts": counts,
             "matched": matched, "page": page, "per": per, "pages": (matched + per - 1) // per}
+
+
+def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
+    """Stamp each deployed card with what it has actually done since deploying (realized P&L and
+    closed trades across its active deployments), so the list shows reality next to the backtest.
+    One query, and only when the page has a deployed strategy."""
+    if not any(c.get("deployed") for c in cards):
+        return
+    real: Dict[int, Dict] = {}
+    for d in repo.list_deployments(cur, uid):
+        r = real.setdefault(d["strategy_id"], {"pnl": 0.0, "trades": 0, "open": 0})
+        r["pnl"] += float(d["realized_pnl"] or 0)
+        r["trades"] += int(d["closed_trades"] or 0)
+        r["open"] += int(d["open_positions"] or 0)
+    for c in cards:
+        r = real.get(c["id"]) if c.get("deployed") else None
+        if r:
+            c["real"] = {**r, "pnl": round(r["pnl"], 2)}
 
 
 def _owned_strategy(ctx: Ctx) -> Dict:

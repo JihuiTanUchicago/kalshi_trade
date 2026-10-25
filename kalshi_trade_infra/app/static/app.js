@@ -1078,6 +1078,8 @@
   // Bulk deploy offers only passed strategies that aren't already running: ticking one that is
   // would start a second deployment of the same rules and double its positions.
   const bulkDeployable = (s) => s.status === 'passed' && !researchOnly(s) && !s.deployed;
+  // What a deployed strategy has actually done, beside its backtest columns.
+  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades ? `${money(r.pnl)} since deploying \u00b7 ${r.trades} trade${r.trades === 1 ? '' : 's'}` : 'No closed trades yet'}</div>` : '';
   function strategySlip(s, reg, opts = {}) {
     const oos = s.out_of_sample, ins = s.in_sample || {};
     const m = oos || ins;
@@ -1093,7 +1095,7 @@
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
       <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>
       <td data-lab="Tried"${tried === '\u2014' ? ' class="nil"' : ''}>${esc(tried)}</td>
-      <td class="act" data-lab="">${mark(s.status)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` <span class="mk ${s.deploy_live ? 'live' : 'dep'}">${s.deploy_live ? 'Live' : 'Deployed'}</span>` : ''}</td>
+      <td class="act" data-lab="">${mark(s.status)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` <span class="mk ${s.deploy_live ? 'live' : 'dep'}">${s.deploy_live ? 'Live' : 'Deployed'}</span>${realFig(s.real)}` : ''}</td>
     </tr>`;
   }
   const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Market</th><th>Status</th><th class="num">Realized</th><th class="num">Unrealized</th><th class="num">Trades</th><th class="num">Backtest unseen</th><th>Since</th>${controls ? '<th></th>' : ''}</tr></thead>`;
