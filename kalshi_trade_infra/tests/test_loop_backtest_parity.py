@@ -7,8 +7,9 @@ import pytest
 
 from app import backtest
 from app import spec as specmod
-from app.adapters.kalshi.spec_strategy import SpecStrategy, simulate_on_loop
+from app.adapters.kalshi.spec_strategy import KalshiNextBarFill, SpecStrategy, simulate_on_loop
 from app.markets import MARKETS
+from trading_core.domain import InstrumentId, OrderIntent, Quote, Side
 
 T0 = 1_800_000_000 - 1_800_000_000 % 3600
 
@@ -92,6 +93,23 @@ def test_next_bar_fills_book_the_same_trades_on_the_loop(monkeypatch, seed, gaps
     legacy = sorted(backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1), key=_key)
     assert [_row(t) for t in sorted(simulate_on_loop(spec, ds, ds.start_ts, ds.end_ts + 1), key=_key)] == \
         [_row(t) for t in legacy]
+
+
+def test_next_bar_entry_never_lifts_an_ask_above_the_backtest_cap():
+    """A 99c buy can't profit after the fee; backtest.MAX_ENTRY_ASK (#187) skips it and so must the loop."""
+    yes = InstrumentId("kalshi", "M", "yes")
+    intent = OrderIntent(yes, Side.BUY, 1, fair_value=1.0, meta={"stake": 10.0})
+    rejected = []
+
+    class _Venue:
+        def submit(self, intent, price, client_order_id):
+            raise AssertionError("must not submit at %s" % price)
+
+    for ask in (0.99, 1.0):
+        rep = KalshiNextBarFill(0.0, max_ask=backtest.MAX_ENTRY_ASK).execute(
+            intent, None, Quote(yes, 0.0, 0.97, ask), _Venue(), "c", 0.0)
+        rejected.append(rep.status == "rejected" and "0.98" in rep.message)
+    assert rejected == [True, True]
 
 
 def test_next_bar_position_stop_can_be_turned_off(monkeypatch):
