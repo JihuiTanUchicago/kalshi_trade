@@ -29,6 +29,10 @@ SERVICES=${SERVICES:-"recursive-web recursive-agents recursive-engine recursive-
 # The units on the box are hand-installed, so the repo's MemoryMax never reached them; the 400M/250M
 # caps sized for the old 2GB box OOM-killed every research run on the 16GB one (2026-10-24).
 MEMORY_CAPS=${MEMORY_CAPS:-"recursive-agents=3G recursive-web=1G recursive-engine=1G recursive-history=512M"}
+# Unit files this script owns on the box (same mechanism as deploy_collector.sh): shipped in the
+# bundle, copied to /etc/systemd/system when they differ, timers enabled --now. Older web-box timers
+# (tau-scout, tau-research-watch, ...) are still hand-installed and not listed here.
+UNITS=${UNITS:-"tau-lip-maker-paper.service tau-lip-maker-paper.timer"}
 
 # Locally, use a named profile (the AWS CLI reads AWS_PROFILE from the env). In CI there is no
 # profile — the workflow provides env/OIDC creds — so unset it. (Env var, not a --profile flag.)
@@ -59,7 +63,8 @@ SKEY="bundle/deploy_${TS}.sh"
 echo "[deploy] ref=$REF ($SHA) -> box=$INSTANCE_ID  invalidate=$INVALIDATE  dry_run=$DRY_RUN"
 
 # (1) whole-package tar from the git ref (never the dirty tree, never file-by-file)
-git archive --format=tar.gz -o "$BUNDLE" "$REF:kalshi_trade_infra" app data_pipeline trading_core
+UNIT_PATHS=""; for u in $UNITS; do UNIT_PATHS="$UNIT_PATHS scripts/systemd/$u"; done
+git archive --format=tar.gz -o "$BUNDLE" "$REF:kalshi_trade_infra" app data_pipeline trading_core $UNIT_PATHS
 # Consume tar's full listing before searching: grep -q can otherwise close the
 # pipe early and make a valid archive fail with SIGPIPE under `set -o pipefail`.
 CONTENTS="$TMPD/bundle.contents"
@@ -88,6 +93,14 @@ set -a; . ${BOX_DIR}/.env.aws; . ${BOX_DIR}/.env.app; set +a; unset AWS_PROFILE
 # as a bare "SCHEMA FAILED" with no cause. Fold stderr into stdout so the real error is in the log.
 ${BOX_PY} -m py_compile app/*.py data_pipeline/*.py trading_core/*.py trading_core/*/*.py 2>&1 || { rollback; echo "COMPILE FAILED"; exit 1; }
 ${BOX_PY} -m app.schema 2>&1 || { rollback; echo "SCHEMA FAILED"; exit 1; }
+RELOAD=0
+for u in ${UNITS}; do
+  cmp -s scripts/systemd/\$u /etc/systemd/system/\$u || { cp scripts/systemd/\$u /etc/systemd/system/\$u; RELOAD=1; echo "[box] installed unit \$u"; }
+done
+[ "\$RELOAD" = 1 ] && systemctl daemon-reload
+for u in ${UNITS}; do
+  case "\$u" in *.timer) systemctl enable --now "\$u" || echo "[box] WARN could not enable \$u" ;; esac
+done
 for cap in ${MEMORY_CAPS}; do systemctl set-property "\${cap%%=*}.service" "MemoryMax=\${cap#*=}" || echo "[box] WARN could not set \$cap"; done
 systemctl restart ${SERVICES}
 sleep 5

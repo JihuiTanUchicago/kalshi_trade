@@ -94,8 +94,7 @@ JSON per hour (totals per config and per series) to `ticks/v1/lip_maker_paper/`.
 deleted after each hour (`TAU_TICK_CACHE=/opt/kalshi/ticks-cache`). Read the running total with
 `python -m app.adapters.sim.maker_paper summary --days 7`.
 
-    sudo cp scripts/systemd/tau-lip-maker-paper.* /etc/systemd/system/
-    sudo systemctl daemon-reload && sudo systemctl enable --now tau-lip-maker-paper.timer
+`scripts/deploy_web.sh` installs and enables both units (its `UNITS` list), so no hand install.
 
 ### Weather forecasts (web box)
 

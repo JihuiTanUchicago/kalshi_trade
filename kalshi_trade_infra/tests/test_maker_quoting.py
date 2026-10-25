@@ -305,7 +305,7 @@ def test_paper_job_scores_each_archived_hour_once_and_sums_them(monkeypatch):
     assert keys == ["ticks/v1/lip_maker_paper/date=2026-10-25/hour=12.json.gz"]   # 10 and 11 not archived
     assert mp.hourly(Store(tables), s3, "b", "ticks", now, lookback=3, get=get) == []   # already scored
     doc = json.loads(gzip.decompress(s3.objs[keys[0]]))
-    assert set(doc["configs"]) == {"q100", "q1000"} and doc["configs"]["q1000"]["settled_marks"] == 1
+    assert set(doc["configs"]) == set(mp.CONFIGS) and doc["configs"]["q1000"]["settled_marks"] == 1
     q = doc["configs"]["q1000"]
     assert q["by_series"]["KXCRYPTOLEAD15M"]["reward"] == pytest.approx(q["rewards"], abs=0.02)
     assert doc["maker_fee_series"] == []                        # no fee snapshot: nobody charged

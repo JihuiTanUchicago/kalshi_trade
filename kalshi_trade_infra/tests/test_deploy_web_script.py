@@ -38,6 +38,9 @@ def _dry_run(tmp_path: Path, *, missing: str = "", large: bool = False):
     script = package / "scripts" / "deploy_web.sh"
     script.parent.mkdir()
     shutil.copyfile(SCRIPT, script)
+    (package / "scripts" / "systemd").mkdir()
+    for unit in ("tau-lip-maker-paper.service", "tau-lip-maker-paper.timer"):
+        (package / "scripts" / "systemd" / unit).write_text("[Unit]\n")
     git = ["git", "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false",
            "-c", "user.name=Tau Test", "-c", "user.email=tau-test@example.invalid"]
     for args in (["init", "-q"], ["add", "."], ["commit", "-qm", "fixture"]):
@@ -87,3 +90,17 @@ def test_core_package_ships_with_its_own_backup_and_rollback(tmp_path):
     assert "mkdir -p trading_core" in out and "trading_core.bak." in out
     assert "mv trading_core.bak." in out  # rollback restores it with app/ and data_pipeline/
 
+
+
+def test_owned_units_ship_in_the_bundle_and_are_installed_on_the_box(tmp_path):
+    out = _dry_run(tmp_path).stdout
+    assert "bundle ok" in out
+    assert "cp scripts/systemd/$u /etc/systemd/system/$u" in out and "systemctl daemon-reload" in out
+    assert "for u in tau-lip-maker-paper.service tau-lip-maker-paper.timer" in out
+    assert 'systemctl enable --now "$u"' in out
+
+
+def test_every_owned_unit_exists_in_the_repo():
+    import re
+    units = re.search(r'UNITS=\$\{UNITS:-"([^"]*)"\}', SCRIPT.read_text()).group(1).split()
+    assert units and all((SCRIPT.parent / "systemd" / u).is_file() for u in units)
