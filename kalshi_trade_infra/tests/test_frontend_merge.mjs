@@ -449,6 +449,15 @@ test('the Deploy board puts realized P&L beside the backtest pace for the same t
   assert.doesNotMatch(html, /Backtest unseen/);
 });
 
+test('Deploy open positions label every cell so phone cards read Contract, Side, Cost', async () => {
+  const pos = {title: 'Rain fade', ticker: 'KXRAINNYC-T1', side: 'no', qty: 4, entry_price: .37, entry_fee: .02, unrealized: null, market_close_time: '2026-10-25T17:30:00Z', mode: 'paper'};
+  const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [], open_positions: [pos]}) : response({})});
+  await f.viewDeploy(); await flush(); await flush();
+  const html = f.root.querySelector('#openpos').innerHTML;
+  for (const lab of ['Strategy', 'Contract', 'Side', 'Cost', 'Unrealized', 'Settles']) assert.match(html, new RegExp(`data-lab="${lab}"`), lab);
+  assert.match(html, /<td class="name" data-lab="Strategy">Rain fade/);
+});
+
 test('while autopilot is off, Turn on autopilot is the only primary button on the dashboard', async () => {
   const f = frontend({fetchImpl: path => {
     if (path === '/api/dashboard') return response(emptyDashboard());
