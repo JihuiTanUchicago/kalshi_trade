@@ -1,0 +1,7 @@
+[Unit]
+Description=Paper liquidity-reward maker, hourly after the tick archiver closes the hour
+[Timer]
+OnCalendar=*-*-* *:25:00
+Persistent=true
+[Install]
+WantedBy=timers.target
