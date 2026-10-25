@@ -8,7 +8,8 @@ refusal and records nothing from it: we do not work around it.
 What Polymarket lists that lines up with Kalshi (classify() below):
 
   updown   "Bitcoin Up or Down - October 25, 4:00AM-4:15AM ET": YES = BTC at the window's end is at
-           or above its start (Chainlink BTC/USD for the 15-minute windows, Binance for hourly).
+           or above its start (15-minute windows: Chainlink's BTC/USD 60-second TWAP stream, close to
+           Kalshi's 60-second BRTI average rule; hourly: the Binance BTC/USDT 1h candle).
            The 15-minute window is the same event as a KXBTC15M contract (open, close) = (start, end).
   above    "Will the price of Bitcoin be above $110,000 on October 25?" (daily, 12:00 PM ET, Binance
            BTC/USDT one-minute close). A ladder of strikes per day: a survival curve that prices a
@@ -88,7 +89,7 @@ BUCKET = os.getenv("DATALAKE_BUCKET", "kalshi-trade-datalake-568386354218-us-eas
 PREFIX = os.getenv("TAU_TICK_PREFIX", "ticks")
 HEARTBEAT_KEY = "tick_recorder_polymarket"
 DAY_TABLE = "polymarket_history_day"
-HIST_VERSION = 1                  # bump to rebuild every day file (a parser fix) without deleting the old ones
+HIST_VERSION = 2                  # bump to rebuild every day file (a parser fix) without deleting the old ones
 SOURCE = "polymarket"
 ET = ZoneInfo("America/New_York")
 UA = {"User-Agent": "kalshi-trade-research/1.0 (read-only market data)"}
@@ -585,9 +586,13 @@ def fetch_price_history(token: str, start_ts: int, end_ts: int, session=None) ->
 
 # --- discovery ---------------------------------------------------------------------------------
 
-def _hour_slug(t_et: datetime) -> str:
-    h = t_et.hour % 12 or 12
-    return f"bitcoin-up-or-down-{MONTHS[t_et.month - 1]}-{t_et.day}-{h}{'am' if t_et.hour < 12 else 'pm'}-et"
+def _hour_slugs(t_et: datetime) -> List[str]:
+    """Hourly up/down event slugs. Polymarket put the year in them from 2026
+    (bitcoin-up-or-down-october-25-2026-2am-et); the year-less slug is the 2025 event, kept for
+    the history backfill of older days."""
+    h = f"{t_et.hour % 12 or 12}{'am' if t_et.hour < 12 else 'pm'}"
+    md = f"{MONTHS[t_et.month - 1]}-{t_et.day}"
+    return [f"bitcoin-up-or-down-{md}-{t_et.year}-{h}-et", f"bitcoin-up-or-down-{md}-{h}-et"]
 
 
 def window_slugs(start_s: int, end_s: int) -> List[str]:
@@ -598,14 +603,16 @@ def window_slugs(start_s: int, end_s: int) -> List[str]:
         if t >= start_s:
             out.append(f"btc-updown-15m-{t}")
             if t % 3600 == 0:
-                out.append(_hour_slug(datetime.fromtimestamp(t, tz=ET)))
+                out += _hour_slugs(datetime.fromtimestamp(t, tz=ET))
         t += 900
     return out
 
 
 def day_slugs(d: date) -> List[str]:
+    """Daily ladder event slugs, with the year (2026 on) and without (2025)."""
     md = f"{MONTHS[d.month - 1]}-{d.day}"
-    return [f"bitcoin-above-on-{md}", f"bitcoin-price-on-{md}"]
+    return [f"bitcoin-above-on-{md}-{d.year}", f"bitcoin-price-on-{md}-{d.year}",
+            f"bitcoin-above-on-{md}", f"bitcoin-price-on-{md}"]
 
 
 def discovery_slugs(now_ts: int) -> List[str]:
