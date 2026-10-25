@@ -120,6 +120,9 @@
   edge. This matters more now that validation runs at a fixed 0.05 alpha (#167) and the tournament
   puts many near misses on paper: paper is the stricter filter before live. Road to live shows a
   "Separate events" row.
+- 2026-10-25: the real-MySQL money-path tests (paper buy, settle, cash, NO-side payout) now run in CI
+  as `money-path-mysql` against a throwaway MySQL 8 service. They used to skip in CI, and two had
+  silently gone stale (the $5 default stake, and settlement now booking `closed` + `close_reason`).
 
 ## Did the stop help? Early exits scored against holding (2026-10-24)
 

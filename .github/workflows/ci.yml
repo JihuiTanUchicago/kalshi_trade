@@ -2,7 +2,8 @@ name: CI
 
 # Quality gate on every push to main and every pull request: run the test suite and
 # byte-compile the Python + JS so a broken import or syntax error can't reach main.
-# No secrets, no live DB — tests use an in-process FakeCursor (see tests/conftest.py).
+# No secrets, no live DB: tests use an in-process FakeCursor (see tests/conftest.py). The money-path
+# job below runs the APP_TEST_MYSQL tests against a throwaway MySQL service container.
 # Deploys stay in deploy.yml (manual, OIDC); this workflow never touches the box.
 
 on:
@@ -50,3 +51,42 @@ jobs:
           node --check app/static/app.meridian.js
           node --test tests/*.mjs
           TAU_TEST_THEME=meridian node --test tests/test_production_ui_reconciliation.mjs
+
+  money-path-mysql:
+    # Settlement, cash and row-lock tests need a real MySQL; they skip in `test`, so they rotted
+    # unnoticed (two failed on main for a day after the $5 default stake and 'closed'+close_reason).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci
+          MYSQL_DATABASE: kalshi_trade
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pci" --health-interval=5s --health-timeout=5s --health-retries=30
+    env:
+      APP_TEST_MYSQL: "1"
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ci
+      MYSQL_DATABASE: kalshi_trade
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: kalshi_trade_infra/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r kalshi_trade_infra/requirements.txt
+
+      - name: Run the real-MySQL tests
+        working-directory: kalshi_trade_infra
+        run: python -m pytest -q tests/test_app_engine_db.py tests/test_rsi_scout.py tests/test_rsi_repair.py tests/test_rsi_playbook.py
