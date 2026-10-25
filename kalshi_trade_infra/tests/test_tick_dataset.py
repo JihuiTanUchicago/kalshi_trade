@@ -25,7 +25,7 @@ def _frame(n=1800, k_contracts=2, stale_at=None, walk=False):
         for sec in range(open_ts + 1, min(close_ts, T0 + n) + 1):
             row = dict(sec=sec, ticker=_ticker(k), close_ts=close_ts, strike_lo=100_000.0, strike_hi=np.nan,
                        yes_bid=0.40, yes_ask=0.43, secs_to_close=float(close_ts - sec), dist_sigma=0.5,
-                       spot_stale=False, spot=spot[sec - T0], spot_ret_1s=0.0, spot_ret_10s=0.0001,
+                       spot_stale=False, spot=spot[sec - T0], spot_comp=spot[sec - T0], spot_ret_1s=0.0, spot_ret_10s=0.0001,
                        spot_ret_60s=0.0002, spot_ret_300s=0.0003, rv_60s=1e-4, rv_300s=1e-4,
                        spot_taker_imb_60s=0.1, yes_bid_size=50.0, yes_ask_size=20.0, imbalance=0.43,
                        microprice=0.421, bid_depth=80.0, ask_depth=40.0, updates=3.0,
@@ -111,3 +111,16 @@ def test_the_per_second_twin_waits_for_enough_archive():
     assert MARKETS["btc15m"].tick_history_short(now_ts=T0) is None      # candle markets never wait
     if M.tick_history_short():                                          # before 2026-10-27 20:00Z
         assert agent.research_unavailable_reason("btc15m_tick") == M.tick_history_short()
+
+
+def test_rows_in_the_last_minute_carry_the_settlement_nowcast():
+    ds = tick_dataset.load_window(M, CONTRACTS, T0, T0 + 1800, read=lambda s, e, **k: _frame(walk=True))
+    last = [s for ts, snaps in ds.frames for s in snaps if s.contract.ticker == _ticker(1) and ts > T0 + 1800 - 60]
+    assert last
+    f = last[-1].features
+    assert 0.0 <= f["p_settle"] <= 1.0 and f["settle_sd"] > 0
+    assert set(f) <= set(specmod.FEATURES)
+    # A flat composite: the average is the spot, the only uncertainty is the proxy's error.
+    flat = tick_dataset.load_window(M, CONTRACTS, T0, T0 + 1800, read=lambda s, e, **k: _frame())
+    g = [s for ts, snaps in flat.frames for s in snaps if s.contract.ticker == _ticker(1)][-1].features
+    assert g["settle_sd"] == pytest.approx(4.0) and g["p_settle"] == pytest.approx(1.0)   # $100 above, sd $4
