@@ -619,6 +619,20 @@ test('a market Kalshi did not answer for offers Try again and loads on retry', a
   assert.doesNotMatch(f.root.querySelector('main').innerHTML, /mk-retry/);
 });
 
+// Every page the server serves the app shell for (app/server.py SPA_ROUTES). A path with no route
+// fell back to the dashboard, so Meridian's /settings/billing opened Tau's dashboard after a theme switch.
+const SPA_PATHS = ['/', '/dashboard', '/research', '/research/1', '/strategies', '/strategies/1', '/deploy', '/community',
+  '/billing', '/admin', '/system', '/funds', '/explore', '/devlog', '/track-record', '/settings', '/settings/account',
+  '/settings/billing', '/settings/system', '/settings/theme', '/signin', '/terms', '/privacy'];
+
+test('Tau has a page for every app path the server serves', () => {
+  const f = frontend();
+  for (const path of SPA_PATHS) assert.ok(f.routes.some(([re]) => re.test(path)), path);
+  const page = (path) => f.routes.find(([re]) => re.test(path))[1].name;
+  assert.equal(page('/settings/billing'), 'viewBilling'); assert.equal(page('/settings/system'), 'viewSystem');
+  assert.equal(page('/settings/theme'), 'viewSettings');
+});
+
 test('a shared demo deployment says demo, not paper', () => {
   const f = frontend();
   const snap = (mode) => f.postSnapshot({kind: 'deployment', id: 1, title: 'Fade', market: 'btc15m', mode, realized_pnl: 1.5, closed_trades: 3});

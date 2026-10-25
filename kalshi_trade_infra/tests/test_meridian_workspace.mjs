@@ -2308,6 +2308,26 @@ for (const [label, stored, blocked, expected] of [['default', null, false, 'tau'
   });
 }
 
+test('the legal pages load in Tau even for a Meridian user, since only Tau has them', () => {
+  for (const [pathname, expected] of [['/terms', 'tau'], ['/privacy', 'tau'], ['/settings', 'meridian']]) {
+    const scripts = [], css = {href: '/static/app.css?v=tau-css'};
+    const dataset = {tauJs: '/static/app.js?v=tau-js', tauVer: 'tau-js', merJs: '/static/app.meridian.js?v=mer-js', merVer: 'mer-js', merCss: '/static/app.meridian.css?v=mer-css'};
+    const context = {window: {}, location: {pathname}, localStorage: {getItem: () => 'meridian'},
+      document: {getElementById: id => id === 'tau-boot' ? {dataset} : id === 'tau-css' ? css : null,
+        createElement: () => ({}), body: {appendChild: script => scripts.push(script)}}};
+    vm.runInNewContext(readFileSync(new URL('../app/static/boot.js', import.meta.url), 'utf8'), context);
+    assert.equal(context.window.__TAU_UI__, expected, pathname);
+    assert.equal(scripts[0].src, expected === 'meridian' ? dataset.merJs : dataset.tauJs);
+  }
+});
+
+test('Meridian has a page for every app path the server serves, bar the legal pages boot.js sends to Tau', () => {
+  const f = frontend();
+  for (const path of ['/', '/dashboard', '/research', '/research/1', '/strategies', '/strategies/1', '/deploy', '/community',
+    '/billing', '/admin', '/system', '/funds', '/explore', '/devlog', '/track-record', '/settings', '/settings/account',
+    '/settings/billing', '/settings/system', '/settings/theme', '/signin']) assert.ok(f.routes.some(([re]) => re.test(path)), path);
+});
+
 test('Meridian empty paper track record points at autopilot when it is on', () => {
   const f = frontend(), th = {min_sharpe_days: 30};
   f.S.me = {user: {autopilot: true}};
