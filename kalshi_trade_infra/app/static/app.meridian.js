@@ -436,7 +436,11 @@
     if (!match) return go('/', true);
     root.setAttribute('aria-busy', 'true');
     try { await match[1](...match[0].slice(1)); } catch (e) {
-      if (gen === S.gen && e.status !== 401) {
+      if (gen === S.gen && e.status === 404) {
+        // A deleted or mistyped strategy or session: Try again can't bring it back, so offer its list.
+        const up = path.replace(/\/\d+$/, ''), label = { '/strategies': 'All strategies', '/research': 'All research sessions' }[up];
+        shell('', boardTitle('Not found'), `<div class="load-fail">${notice(e.message, 'bad')}<a class="btn sm" href="${label ? up : '/'}">${label || 'Dashboard'}</a></div>`);
+      } else if (gen === S.gen && e.status !== 401) {
         shell('', boardTitle('Something went wrong'), loadFail(e.message));
         root.querySelector('[data-retry]').onclick = () => render();
       }

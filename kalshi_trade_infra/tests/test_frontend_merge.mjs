@@ -123,7 +123,7 @@ function frontend({fetchImpl, brokerMount} = {}) {
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, trCurve, trackRecordPanel, viewMarketDetail};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, trCurve, trackRecordPanel, viewMarketDetail, render};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -642,6 +642,14 @@ test('the legal pages offer a signed-in reader the dashboard, not Sign in', asyn
     assert.equal(a.getAttribute('href'), href); assert.equal(a.textContent, label);
     assert.deepEqual(f.navigations, []);
   }
+});
+
+test('a strategy that does not exist links to the list instead of offering Try again', async () => {
+  const f = frontend({fetchImpl: path => (path.startsWith('/api/strategies/42') ? response({error: 'No such strategy.'}, 404) : response({}))});
+  await f.render(); await flush();
+  const html = f.root.innerHTML;
+  assert.match(html, /No such strategy\./); assert.match(html, /href="\/strategies">All strategies</);
+  assert.doesNotMatch(html, /data-retry/);
 });
 
 test('a shared demo deployment says demo, not paper', () => {
