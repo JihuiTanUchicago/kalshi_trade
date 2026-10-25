@@ -240,7 +240,7 @@ def test_dashboard_mode_buckets_do_not_double_count(monkeypatch):
     live = server._mode_bucket(None, 1, "live", open_pos, deps, object())
     demo = server._mode_bucket(None, 1, "demo", open_pos, deps, object())
     paper = server._mode_bucket(None, 1, "paper", open_pos, deps, object())
-    assert live == {"open_at_cost": 1.2, "open_positions": 1, "running": 1, "realized_pnl": 7.0, "today_pnl": 7.0}
+    assert live == {"closed_trades": 0, "open_at_cost": 1.2, "open_positions": 1, "running": 1, "realized_pnl": 7.0, "today_pnl": 7.0}
     assert demo["open_positions"] == 2 and demo["open_at_cost"] == 3.5 and demo["running"] == 1
     assert paper["open_positions"] == 1 and paper["running"] == 0  # a stopped deployment isn't "running"
     # Every open position lands in exactly one bucket — the three never overlap.
@@ -260,7 +260,7 @@ def test_dashboard_paper_book_carries_its_reset_so_all_time_labels_stay_true(mon
         "paper_reset_at": lambda cur, uid: at,
         "demo_equity": lambda cur, uid, realized=None: {"capital": 500.0, "equity": 512.0, "realized": 12.0, "roi": .024, "before_reload": 40.0},
         "get_kalshi_key": lambda cur, uid: None, "open_reconcile_rows": lambda cur, uid: [],
-        "active_run_counts": lambda cur, uid: {},
+        "active_run_counts": lambda cur, uid: {}, "closed_trade_counts": lambda cur, uid: {"demo": 3},
     }.items():
         monkeypatch.setattr(server.repo, name, fn)
     monkeypatch.setattr(server, "_freshness", lambda cur: {})
@@ -269,6 +269,8 @@ def test_dashboard_paper_book_carries_its_reset_so_all_time_labels_stay_true(mon
     assert paper["reset_at"] == at and paper["total_pnl"] == -20.0 and paper["equity"] == 480.0
     # Demo P&L is since the last reload; before_reload lets the label say so (track record counts it all).
     assert demo["realized_pnl"] == 12.0 and demo["before_reload"] == 40.0 and demo["equity"] == 512.0
+    # Each bucket says how many closed trades it has, so the page offers that mode's download only.
+    assert (paper["closed_trades"], demo["closed_trades"], out["live"]["closed_trades"]) == (0, 3, 0)
 
 
 def test_demo_deploy_requires_dev_key(monkeypatch):

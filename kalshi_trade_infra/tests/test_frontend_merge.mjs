@@ -727,6 +727,27 @@ test('the dashboard demo card says what demo is and that its P&L restarts at a r
   }
 });
 
+test('each dashboard money card offers its own trades CSV only when that mode has closed trades', async () => {
+  for (const [counts, connected] of [[{paper: 0, demo: 0, live: 0}, false], [{paper: 4, demo: 0, live: 0}, false],
+    [{paper: 0, demo: 2, live: 3}, true], [{paper: 0, demo: 0, live: 3}, false]]) {
+    const d = emptyDashboard();
+    d.paper.closed_trades = counts.paper;
+    d.demo = {...d.demo, closed_trades: counts.demo};
+    d.live = {connected, balance: connected ? 50 : null, realized_pnl: 0, today_pnl: 0, open_positions: 0, running: 0, closed_trades: counts.live};
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/dashboard') return response(d);
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    await f.viewDashboard(); await flush();
+    const html = f.root.querySelector('#boardbody').innerHTML;
+    for (const mode of ['paper', 'demo', 'live']) {
+      const link = `<a class="csv-link" href="/api/trades.csv?mode=${mode}" download>Download trades (CSV)</a>`;
+      assert.equal(html.includes(link), counts[mode] > 0, `${mode} ${JSON.stringify(counts)}`);
+    }
+    assert.equal((html.match(/csv-link/g) || []).length, Object.values(counts).filter(Boolean).length);
+  }
+});
+
 test('Funds demo labels say "since reload" only after a reload, and that demo fills are real', async () => {
   for (const before_reload of [0, 40]) {
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds(); d.demo.before_reload = before_reload; return response(d); }});
