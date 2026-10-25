@@ -31,8 +31,11 @@ IDLE_SECONDS = 2.0
 # ~15s through any legitimately long silent phase (a big backtest, one model call). So a run that
 # goes silent for minutes is genuinely stuck, and 20 min was far too slow to notice. Tight + env-
 # tunable; paired with agent.RUN_STALL_SECONDS (how long the beater tolerates a silent main thread),
-# total time-to-kill a wedged run ≈ RUN_STALL_SECONDS + ABANDONED_AFTER (~4 min by default).
-ABANDONED_AFTER = timedelta(seconds=int(os.getenv("TAU_RUN_ABANDONED_SECONDS", "90")))
+# total time-to-kill a wedged run ≈ RUN_STALL_SECONDS + ABANDONED_AFTER (~6.5 min by default).
+# 240s, not 90: on 2026-10-24/25 a swap-thrashing box stalled the whole process for 90s+ and the
+# reaper stopped ten LIVE runs (each beat again after its finished_at). Deploys yield on SIGTERM, so
+# the window only delays recovery from a real crash.
+ABANDONED_AFTER = timedelta(seconds=int(os.getenv("TAU_RUN_ABANDONED_SECONDS", "240")))
 # Autopilot heartbeat: how often each autopilot-on user gets a scheduled 'review' run (the only thing
 # that makes the co-pilot act on its own; without it the agent runs only when the user chats).
 COPILOT_REVIEW_SECONDS = int(os.getenv("APP_COPILOT_REVIEW_SECONDS", "600"))
