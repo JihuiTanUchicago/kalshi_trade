@@ -33,6 +33,10 @@ def taker_fee_dollars(qty_contracts: int, price_dollars: float) -> float:
     return _fee_dollars(TAKER_FEE_RATE, qty_contracts, price_dollars)
 
 
+def maker_fee_dollars(qty_contracts: int, price_dollars: float) -> float:
+    return _fee_dollars(MAKER_FEE_RATE, qty_contracts, price_dollars)
+
+
 def taker_fee_per_contract_dollars(qty_contracts: int, price_dollars: float) -> float:
     """Per-contract taker fee for an order of `qty_contracts` at `price_dollars` -
     the state-dependent cost the entry edge must clear, net-of-fee, so the system
