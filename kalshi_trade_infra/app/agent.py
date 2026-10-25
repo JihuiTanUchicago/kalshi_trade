@@ -129,7 +129,9 @@ DREAM_EVERY_RUNS = max(1, int(os.getenv("TAU_DREAM_EVERY_RUNS", "3")))
 # Fail-fast ceiling for the startup dataset load (history query + in-memory Dataset build). The
 # load runs before the first heartbeat/event, so a wedged query or a pathological build used to
 # sit silent until the 20-min watchdog; this bounds it to minutes with a CLEAR error instead.
-DATA_LOAD_TIMEOUT = max(30, int(os.getenv("TAU_DATA_LOAD_TIMEOUT", "180")))
+# 300s, not 180s: btc15m's history alone took 127s with one other load running (2026-10-25), so
+# two concurrent loads timed out a healthy run (2858) on the focus market.
+DATA_LOAD_TIMEOUT = max(30, int(os.getenv("TAU_DATA_LOAD_TIMEOUT", "300")))
 # Pillar 2 — per-thesis DEPTH: how many research-fold steps the agent may spend developing ONE
 # thesis (explore -> backtest -> read prior failures -> critique -> refine) BEFORE it commits the
 # single frozen spec that becomes exactly one candidate (= one pre-registration). 1 = legacy
