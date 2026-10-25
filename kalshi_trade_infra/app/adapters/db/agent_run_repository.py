@@ -263,12 +263,15 @@ def list_runs(cur, user_id: int, limit: int = 50) -> List[Dict]:
 
 def research_week(cur, user_id: int, since) -> List[Dict]:
     """The user's research runs created since `since`, totalled per model (for pricing): runs,
-    ideas tried, strategies passed, tokens. One indexed aggregate, cheap enough for the panel poll."""
+    ideas tried, strategies passed, tokens. One indexed aggregate, cheap enough for the panel poll.
+    The demo session every new account is seeded with (direction 'random_walk', see
+    repository.seed_demo_session) is left out: a brand-new autopilot read "2 tested" it never ran."""
     cur.execute(
         """SELECT model, COUNT(*) AS runs, COALESCE(SUM(hypotheses_tried),0) AS tried,
                   COALESCE(SUM(strategies_passed),0) AS passed, COALESCE(SUM(input_tokens),0) AS input_tokens,
                   COALESCE(SUM(output_tokens),0) AS output_tokens
-           FROM app_agent_runs WHERE user_id=%s AND kind='research' AND created_at>=%s GROUP BY model""",
+           FROM app_agent_runs WHERE user_id=%s AND kind='research' AND created_at>=%s
+                AND (direction IS NULL OR direction <> 'random_walk') GROUP BY model""",
         (user_id, since),
     )
     return cur.fetchall()

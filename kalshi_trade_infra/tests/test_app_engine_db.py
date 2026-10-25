@@ -157,6 +157,20 @@ def test_two_workers_never_take_the_same_run(conn, user):
         other.close()
 
 
+def test_research_week_leaves_out_the_seeded_demo_session(conn, user):
+    """A brand-new account's autopilot panel read "2 tested" from the demo it never ran."""
+    from app import repository as repo
+
+    cur = conn.cursor()
+    since = repo.now_utc() - timedelta(days=7)
+    repo.seed_demo_session(cur, user["id"])
+    assert sum(int(r["tried"]) for r in repo.research_week(cur, user["id"], since)) == 0
+    rid = repo.create_run(cur, user["id"], "research", "btc15m", "momentum")
+    cur.execute("UPDATE app_agent_runs SET status='cancelled', hypotheses_tried=3 WHERE id=%s", (rid,))
+    week = repo.research_week(cur, user["id"], since)
+    assert sum(int(r["tried"]) for r in week) == 3 and sum(int(r["runs"]) for r in week) == 1
+
+
 def test_the_interactive_lane_skips_research(conn, user):
     from app import repository as repo
 
