@@ -404,7 +404,7 @@ def test_autopilot_story_says_what_it_is_doing_in_plain_words():
                {"title": "SOL calm", "why": why, "checks_today": 14, "qualified_today": 0}]
     story = server._autopilot_story(dict(d, paper_waiting=waiting))
     assert ("SOL momentum and SOL calm are waiting: No open contract costs 85c to 95c (of 12; nearest is 3c outside). "
-            "Today none of 28 checks found a contract worth buying.") in story
+            "Since 00:00 UTC, none of 28 checks found a contract worth buying.") in story
 
 
 def test_paper_waiting_lists_strategies_whose_last_decision_bought_nothing():

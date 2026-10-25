@@ -497,7 +497,7 @@ test('Overview paper P&L says "since reset" after a reset and its day figure say
     assert.match(paper, reset_at ? /P&amp;L since reset \+\$111\.25/ : /All-time P&amp;L \+\$111\.25/);
     if (reset_at) assert.doesNotMatch(paper, /All-time/);
     // Today is closed trades only (realized_pnl), unlike the equity P&L beside it; the live group says so too.
-    assert.match(paper, /Realized today−\$7\.50/);
+    assert.match(paper, /Realized today \(UTC\)−\$7\.50/);
     const card = f.root.querySelector('#dash-ap').innerHTML;
     assert.match(card, new RegExp(`<dt>Paper P&amp;L, ${reset_at ? 'since reset' : 'all time'}</dt><dd><span class="[^"]*">\\+\\$111\\.25`));
   }
@@ -593,8 +593,8 @@ test('Overview live summary says it is Kalshi cash, apart from what Tau trades r
   const live = f.root.querySelector('.live-summary');
   assert.equal(live.querySelector('dt.lab').textContent, 'Kalshi cash');
   assert.match(live.textContent, /\+\$17\.00 realized all time by Tau trades/);
-  assert.match(live.textContent, /Open at cost, not in cash\$50\.00/); assert.match(live.textContent, /Realized today−\$2\.00/);
-  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Live realized today<\/dt><dd><span class="[^"]*">−\$2\.00/);
+  assert.match(live.textContent, /Open at cost, not in cash\$50\.00/); assert.match(live.textContent, /Realized today \(UTC\)−\$2\.00/);
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Live realized today \(UTC\)<\/dt><dd><span class="[^"]*">−\$2\.00/);
 });
 
 test('Funds names the live figure Kalshi cash, open positions not included', async () => {
