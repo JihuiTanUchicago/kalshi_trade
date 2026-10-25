@@ -187,6 +187,18 @@ def test_weekly_passed_count_only_counts_this_weeks_research_runs(conn, user):
     assert repo.strategies_passed_since(cur, user["id"], repo.now_utc() + timedelta(minutes=5)) == 0
 
 
+def test_strategy_counts_include_how_many_are_deployed(conn, user):
+    from app import repository as repo
+
+    cur = conn.cursor()
+    before = repo.count_strategies(cur, user["id"])  # the fixture user can carry other tests' rows
+    dep = _deployment(conn, user)
+    counts = repo.count_strategies(cur, user["id"])
+    assert counts["deployed"] == before["deployed"] + 1 and counts["total"] == before["total"] + 1
+    repo.set_deployment_status(cur, user["id"], dep["id"], "stopped")
+    assert repo.count_strategies(cur, user["id"])["deployed"] == before["deployed"]
+
+
 def test_loss_guard_pauses_and_asks_for_review(conn, user):
     from app import engine
     from app import repository as repo

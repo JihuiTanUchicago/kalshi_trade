@@ -145,6 +145,12 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.match(paper, /Realized/); assert.doesNotMatch(paper, /Live realized/); assert.match(paper, /paper money, not real/);
   });
 
+  test(`${name}: the Deployed chip counts strategies with an active deployment`, async () => {
+    const f = frontend({fetchImpl: () => response({counts: {total: 3, passed: 3, deployed: 2}, matched: 3, pages: 1, strategies: [detailStrategy({id: 48})]})});
+    await f.viewStrategies(); await flush();
+    assert.equal(f.root.querySelector('[data-toggle="deployed"]').textContent, 'Deployed (2)');
+  });
+
   test(`${name}: a failed strategies load offers a retry instead of a stuck skeleton`, async () => {
     let down = true;
     const f = frontend({fetchImpl: path => {

@@ -311,7 +311,9 @@ def test_count_strategies_uses_count_star_grouped():
     cur = StratCur([{"status": "passed", "n": 600}, {"status": "failed", "n": 500}, {"status": "rejected", "n": 133}])
     counts = server.repo.count_strategies(cur, 1)
     assert "COUNT(*)" in cur.sql and "GROUP BY s.status" in cur.sql
-    assert counts == {"passed": 600, "failed": 500, "rejected": 133, "total": 1233}
+    assert counts == {"passed": 600, "failed": 500, "rejected": 133, "total": 1233, "deployed": 0}
+    cur = StratCur([{"status": "passed", "n": 6, "dep": 4}, {"status": "rejected", "n": 2, "dep": None}])
+    assert server.repo.count_strategies(cur, 1) == {"passed": 6, "rejected": 2, "total": 8, "deployed": 4}
 
 
 def test_list_strategies_applies_limit_and_offset():

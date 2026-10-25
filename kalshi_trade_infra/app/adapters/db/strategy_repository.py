@@ -106,14 +106,19 @@ def count_strategies(
 ) -> Dict[str, int]:
     """Status histogram for the user's strategies via COUNT(*), so the headline figures
     reflect the true total rather than a capped page. Keys are the status values plus
-    "total" (their sum). Narrowed by direction/market/search/deployed, matching list_strategies
-    (status is left open so every status bucket is counted)."""
+    "total" (their sum), plus "deployed" (how many have an active deployment). Narrowed by
+    direction/market/search/deployed, matching list_strategies (status is left open so every
+    status bucket is counted)."""
     where, fparams = _strategy_filter_sql(direction, None, market, None, q, deployed)
-    sql = "SELECT s.status, COUNT(*) AS n FROM app_strategies s" + where + " GROUP BY s.status"
+    sql = ("SELECT s.status, COUNT(*) AS n, SUM(EXISTS (SELECT 1 FROM app_deployments d WHERE d.strategy_id=s.id"
+           " AND d.status<>'stopped')) AS dep FROM app_strategies s" + where + " GROUP BY s.status")
     params: List[Any] = [user_id] + fparams
     cur.execute(sql, params)
-    counts: Dict[str, int] = {r["status"]: int(r["n"]) for r in cur.fetchall()}
+    rows = cur.fetchall()
+    counts: Dict[str, int] = {r["status"]: int(r["n"]) for r in rows}
     counts["total"] = sum(counts.values())
+    # Strategies with an active deployment, for the Deployed chip (not a status, so not in total).
+    counts["deployed"] = sum(int(r.get("dep") or 0) for r in rows)
     return counts
 
 
