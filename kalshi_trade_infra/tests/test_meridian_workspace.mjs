@@ -505,6 +505,26 @@ test('Overview paper P&L says "since reset" after a reset and its day figure say
   }
 });
 
+test('Overview says plainly when demo can’t trade, on the page and in the autopilot card, with the action', async () => {
+  const health = {code: 'demo_funds', need: 'demo funds: your Kalshi demo account has $0.00',
+    line: "Demo isn't trading: your Kalshi demo account has $0.00. Add demo funds on Kalshi's demo site.",
+    action: {label: 'Open Kalshi demo', href: 'https://demo.kalshi.co'}};
+  const said = /Demo isn&#39;t trading: your Kalshi demo account has \$0\.00\. Add demo funds on Kalshi&#39;s demo site\. <a href="https:\/\/demo\.kalshi\.co" target="_blank" rel="noopener">Open Kalshi demo ↗<\/a>/;
+  const status = {...apStatus, demo_running: 1, idle: health};
+  const f = apDashboard(dashboardData({demo: {running: 1, health}}), status);
+  await f.viewDashboard(); await flush();
+  f.S.ap = status; f.paintDashAp();
+  const head = f.root.querySelector('#boardbody').innerHTML;
+  // Out in the open, not only inside the collapsed Accounts menu's demo figure (which says it too).
+  assert.match(head, new RegExp('<div class="notice bad" role="status">[\\s\\S]*?<span class="demo-health">' + said.source));
+  assert.match(f.root.querySelector('#other-accounts').innerHTML, new RegExp(said.source + '<\\/span><br>\\$2,200\\.00 capital'));
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, said);
+  // A healthy demo book reads as before.
+  const g = apDashboard(dashboardData({demo: {running: 1}}), apStatus);
+  await g.viewDashboard(); await flush();
+  assert.doesNotMatch(g.root.querySelector('#boardbody').innerHTML, /demo-health|isn&#39;t trading/);
+});
+
 test('Overview empty paper track record follows the autopilot switch when a status read flips it', async () => {
   let status = {autopilot: false, mode: 'off'};
   const empty = (label) => ({trades: 0, label});

@@ -455,6 +455,51 @@ def _live_balance(cur, uid: int) -> Dict:
     return out
 
 
+# The engine pauses a demo deployment with this in its reason when the user has no demo key.
+_DEMO_KEY_PAUSE = "demo (sandbox) key"
+
+
+def _demo_health(cur, uid: int, deps: List[Dict], stake: Optional[float] = None) -> Optional[Dict]:
+    """Why the demo book can't trade, as one plain line and the one thing to do, or None when nothing
+    known stops it. A demo deployment looks healthy (running, capital, a P&L) while every order it
+    sends is refused, so the pages that show demo say this instead:
+      - demo_key: a demo deployment is on (or the engine paused it for the key) and no demo key is saved;
+      - demo_funds: the Kalshi demo account holds less than one stake, so Kalshi refuses its orders.
+    `deps` are deployment rows (with spec). `stake` asks about a strategy that could go on demo but
+    isn't there yet (the strategy page's next rung), so funds are checked even with nothing running.
+    The balance read is the cached demo GET (demo_twins.balance_cached); unknown is never a problem."""
+    from app import demo_twins
+
+    demo = [d for d in deps if d["mode"] == "demo"]
+    active = [d for d in demo if d["status"] == "running"
+              or (d["status"] == "paused" and _DEMO_KEY_PAUSE in (d.get("status_reason") or ""))]
+    if not active and stake is None:
+        return None
+    if repo.get_kalshi_dev_key(cur, uid) is None:
+        if not active:
+            return None  # nothing on demo; the deploy button already says to add the key
+        return {"code": "demo_key", "need": "your Kalshi demo key",
+                "line": "Demo isn't trading: your Kalshi demo key isn't connected. Add it on the Funds page.",
+                "action": {"label": "Add demo key", "href": "/funds"}}
+    stakes = [float(d["spec"]["sizing"]["stake"]) for d in active if d["status"] == "running"]
+    if stake is not None:
+        stakes.append(float(stake))
+    if not stakes:
+        return None
+    cash = demo_twins.balance_cached(cur, uid)
+    least = min(stakes)
+    if cash is None or cash >= least:
+        return None
+    has = "has $0.00" if cash < 0.005 else "has %s, less than one %s stake" % (_usd(cash), _usd(least))
+    return {"code": "demo_funds", "need": "demo funds: your Kalshi demo account %s" % has,
+            "line": "Demo isn't trading: your Kalshi demo account %s. Add demo funds on Kalshi's demo site." % has,
+            "action": {"label": "Open Kalshi demo", "href": demo_twins.KALSHI_DEMO_SITE}}
+
+
+def _usd(v: float) -> str:
+    return "$%s" % format(round(float(v), 2), ",.2f")
+
+
 def dashboard(ctx: Ctx):
     cur = ctx.cur
     day = _start_of_day_utc()
@@ -493,7 +538,8 @@ def dashboard(ctx: Ctx):
     demo = _mode_bucket(cur, ctx.uid, "demo", open_pos, deps, day, realized["demo"], closed)
     de = repo.demo_equity(cur, ctx.uid, realized=realized["demo"][0])
     demo.update(capital=de["capital"], equity=de["equity"], realized_pnl=de["realized"],
-                total_pnl=de["realized"], roi=de["roi"], before_reload=de["before_reload"])
+                total_pnl=de["realized"], roi=de["roi"], before_reload=de["before_reload"],
+                health=_demo_health(cur, ctx.uid, deps))  # capital and P&L look fine while Kalshi refuses every order
     live = _mode_bucket(cur, ctx.uid, "live", open_pos, deps, day, realized["live"], closed)
     live.update(_live_balance(cur, ctx.uid))
     return {
@@ -1078,17 +1124,21 @@ def get_strategy(ctx: Ctx):
     s = _owned_strategy(ctx)
     out = _strategy_card(s)
     res = s.get("result") or {}
+    deps = [d for d in repo.list_deployments(ctx.cur, ctx.uid) if d["strategy_id"] == s["id"]]
     out.update(
         spec=s["spec"], rules=specmod.describe(s["spec"]), gates=res.get("gates"), dataset=res.get("dataset"),
         recent_trades=res.get("recent_trades"),
         experiment=_experiment_block(ctx.cur, s["id"], s.get("experiment_id")),
-        deployments=[_deployment_out(d, []) for d in repo.list_deployments(ctx.cur, ctx.uid) if d["strategy_id"] == s["id"]],
+        deployments=[_deployment_out(d, []) for d in deps],
         holdings=[{
             "ticker": p["ticker"], "side": p["side"], "qty": int(p["qty"]), "mode": p["mode"],
             "entry_price": float(p["entry_price"]),
             "cost": round(int(p["qty"]) * float(p["entry_price"]) + float(p["entry_fee"] or 0), 2),
             "market_close_time": p["market_close_time"], **_mark_fields(p),
         } for p in repo.positions_for_strategy(ctx.cur, ctx.uid, s["id"], "open")],
+        # The ladder's demo rung: why its demo book can't trade, or (not on demo yet) what demo needs.
+        demo_health=None if specmod.has_perpetual_market(s["spec"], s.get("market")) else
+        _demo_health(ctx.cur, ctx.uid, deps, stake=(s["spec"].get("sizing") or {}).get("stake")),
     )
     return out
 
@@ -1137,8 +1187,10 @@ def strategy_dev_curve(ctx: Ctx):
 
 def list_deployments(ctx: Ctx):
     curves = repo.deployment_curves(ctx.cur, ctx.uid)
+    deps = repo.list_deployments(ctx.cur, ctx.uid)
     return {
-        "deployments": [_deployment_out(d, curves.get(d["id"], [])) for d in repo.list_deployments(ctx.cur, ctx.uid)],
+        "deployments": [_deployment_out(d, curves.get(d["id"], [])) for d in deps],
+        "demo_health": _demo_health(ctx.cur, ctx.uid, deps),
         "open_positions": _with_marks(repo.user_positions(ctx.cur, ctx.uid, "open")),
         "recent_closed": repo.user_positions(ctx.cur, ctx.uid, "closed", 20),
     }
@@ -1877,6 +1929,11 @@ def autopilot_status(ctx: Ctx):
         out["idle"] = _idle_reason(out, paper_run, paused, _engine_age(cur) if running else _UNKNOWN,
                                    _passed_undeployed(cur, ctx.uid, out["focus"]) if not running and not paused
                                    and not billing_blocked else [])
+        # A demo copy whose every order Kalshi refuses is what isn't trading when paper is fine, and
+        # the truer line when nothing is on paper (only the engine or billing outrank it there).
+        idle = out["idle"]
+        if idle is None or (not paper_run and idle["code"] not in ("engine", "billing")):
+            out["idle"] = _demo_health(cur, ctx.uid, deps) or idle
     else:
         out["idle"] = None
     out["story"] = _autopilot_story(out)

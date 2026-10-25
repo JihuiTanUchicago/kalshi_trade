@@ -1546,7 +1546,7 @@
         <section id="dash-ap" class="apcard" aria-label="Autopilot"></section>
         <dl class="figures measure">
           ${fig('<span class="mk live">Real</span> Kalshi cash', d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected', { small: (d.live.connected ? (d.live.balance == null ? 'Couldn\u2019t read your Kalshi balance just now' : mSub(d.live, 'Your Kalshi cash \u2014 real money untouched')) : 'Connect your Kalshi account on <a href="/funds">Funds</a> to trade real money') + tradesCsv('live', d.live) })}
-          ${fig('<span class="mk dep">Demo</span> Sandbox', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} P&amp;L ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital \u00b7\u00a0no demo strategies yet`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` })}
+          ${fig('<span class="mk dep">Demo</span> Sandbox', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} P&amp;L ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital \u00b7\u00a0no demo strategies yet`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` })}
           ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.total_pnl, small: `${usd(p.cash)} cash \u00b7\u00a0${usd(p.open_at_cost)} at cost \u00b7\u00a0${usd(p.total_pnl, true)} ${paperSpan(p)}${tradesCsv('paper', p)}` })}
         </dl><p class="stale-note" id="dash-stale" role="status"></p>${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? `\u26a0 ${d.reconcile.length} live position${d.reconcile.length === 1 ? '' : 's'} disagree with Kalshi \u2014 check your Portfolio` : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}`;
       const regs = curveRegs(d.deployments);
@@ -2545,14 +2545,18 @@
     const books = running.map(([m, label, cls]) => {
       const ds = deps.filter((d) => d.mode === m);
       const n = ds.reduce((a, d) => a + (+d.closed_trades || 0), 0), pnl = ds.reduce((a, d) => a + (+d.realized_pnl || 0), 0);
-      return `<p><span class="mk ${cls}">${label}</span> running ·\u00a0${num(n)} closed trade${n === 1 ? '' : 's'} ·\u00a0${money(pnl)} realized</p>`;
+      const stats = `${num(n)} closed trade${n === 1 ? '' : 's'} ·\u00a0${money(pnl)} realized`;
+      // A demo book Kalshi refuses every order for is not "running": it says why, and what to do.
+      if (m === 'demo' && s.demo_health) return `<p><span class="mk ${cls}">${label}</span> ${stats} ·\u00a0${demoHealthLine(s.demo_health)}</p>`;
+      return `<p><span class="mk ${cls}">${label}</span> running ·\u00a0${stats}</p>`;
     });
     const next = LADDER[running.length ? LADDER.indexOf(running[running.length - 1]) + 1 : 0];
     let need = '';
     if (!next) need = 'Top rung: it trades live money.';
     else if (!canDeploy) need = '';
     else if (next[0] === 'paper') need = 'Next rung, paper: nothing needed. Deploy it on paper below.';
-    else if (next[0] === 'demo') need = demoWhy ? 'Next rung, demo: needs your Kalshi demo (sandbox) key on the <a href="/funds">Funds page</a>.' : 'Next rung, demo: nothing needed. Deploy it on demo below.';
+    else if (next[0] === 'demo') need = demoWhy ? 'Next rung, demo: needs your Kalshi demo (sandbox) key on the <a href="/funds">Funds page</a>.'
+      : s.demo_health ? `Next rung, demo: needs ${esc(s.demo_health.need)}.${actionLink(s.demo_health)}` : 'Next rung, demo: nothing needed. Deploy it on demo below.';
     else if (road) need = `Next rung, live: ${road.ready ? 'every gate is clear' : 'blocked because ' + esc(road.blocking)}.`;
     return books.join('') + (need ? `<p class="hint">${need}</p>` : '');
   }
@@ -2865,7 +2869,7 @@
     // so Deploy is just the board: what's trading and the open positions.
     shell('/deploy', boardTitle('Deploy', 'Your strategies trading now.') +
       '<dl class="figures measure" id="dfigs" style="margin-top:14px"></dl>', `
-      <div class="deploy-board"><div id="flash"></div><div id="deps">${loading(260)}</div>
+      <div class="deploy-board"><div id="flash"></div><div id="demo-health"></div><div id="deps">${loading(260)}</div>
         <section class="section"><div class="section-head"><h2>Open positions</h2></div><div id="openpos"></div></section>
       </div>`);
     const loadBoard = async () => {
@@ -2895,6 +2899,7 @@
       const regs = curveRegs(d.deployments);
       root.querySelector('#deps').innerHTML = d.deployments.length ? deploymentTable(pausedFirst(d.deployments).map((x) => deploymentSlip(x, regs, true)).join(''), true)
         : `<div class="empty"><h3>Nothing deployed</h3><p>Open a passed strategy and post it to the board. Paper first: it trades the live market with paper money.</p>${S.me && S.me.user && S.me.user.autopilot ? '<p>Autopilot is on: strategies that pass every gate deploy here on their own, on paper.</p>' : ''}${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}<a class="btn" href="/strategies">See passed strategies</a></div>`;
+      root.querySelector('#demo-health').innerHTML = d.demo_health ? `<div class="notice bad" role="status">${ICON.warn}<span>${demoHealthLine(d.demo_health)}</span></div>` : '';
       bindDeploymentActions(root.querySelector('#deps'), loadBoard);
       root.querySelector('#openpos').innerHTML = d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
         ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</td><td class="tick" data-lab="Contract">${esc(p.ticker)}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? '—' : money(p.unrealized)}</td><td class="num" data-lab="Settles">${clock(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
@@ -3624,6 +3629,18 @@
   function paperSpan(p) { return p && p.reset_at ? 'since reset' : 'all time'; }
   // Demo P&L restarts at a reload (before_reload holds what came before), unlike the track record.
   function demoSpan(dm) { return dm && dm.before_reload ? 'since reload' : 'all time'; }
+
+  // An action as a link: the server's {label, href}. One off the site opens in a new tab and says so.
+  function actionLink(h) {
+    const a = h && h.action;
+    if (!a || !a.href) return '';
+    const ext = /^https?:\/\//.test(a.href);
+    return ` <a href="${esc(a.href)}"${ext ? ' target="_blank" rel="noopener"' : ''}>${esc(a.label)}${ext ? ' \u2197' : ''}</a>`;
+  }
+  // Why the demo book can't trade (the server's demo health: no demo key, or a Kalshi demo account too
+  // empty for one order), as one plain line and the one thing to do. A running demo book with capital
+  // and a P&L looks healthy while Kalshi refuses every order it sends, so this goes where demo shows.
+  function demoHealthLine(h) { return h ? `<span class="demo-health">${esc(h.line)}${actionLink(h)}</span>` : ''; }
   // One mode's closed trades as a CSV, offered only where that mode has some, so the reader can
   // check its P&L line by line. The server never mixes modes in one file.
   function tradesCsv(mode, b) {
@@ -3681,7 +3698,7 @@
   // take when there is one (a link, or the focus control). The card and the panel both lead with it.
   function apIdleHtml(idle, focusAttr) {
     const a = idle.action;
-    const act = !a ? '' : a.href ? ` <a href="${esc(a.href)}">${esc(a.label)}</a>`
+    const act = !a ? '' : a.href ? actionLink(idle)
       : a.do === 'focus' ? ` <button type="button" ${focusAttr}>${esc(a.label)}</button>` : '';
     return esc(idle.line) + act;
   }
