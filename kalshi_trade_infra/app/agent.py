@@ -1008,13 +1008,14 @@ def _detectability_block(ds: backtest.Dataset) -> str:
     gatekeeper's public constants, never a held-out number.
 
     Validation spans VALIDATION_FRAC/RESEARCH_FRAC of the research window. A per-trade net return
-    is detectable at ~50% power when mean >= z * sd / sqrt(n_val), z the first-test LORD++ level
-    of a fresh stream and sd ~= 1 for a mid-priced binary (a $1/$0 payoff on a 50c stake)."""
+    is detectable at ~50% power when mean >= z * sd / sqrt(n_val), z the validation level
+    (gatekeeper._validation_level; LORD++'s first-test level if the fixed alpha is off) and sd ~= 1
+    for a mid-priced binary (a $1/$0 payoff on a 50c stake)."""
     research_days = max((ds.end_ts - ds.start_ts) / 86400.0, 0.0)
     if research_days <= 0:
         return ""
     val_days = research_days * partitions.VALIDATION_FRAC / partitions.RESEARCH_FRAC
-    z = stats.norm_ppf(1.0 - stats.lord_alpha(stats.lord_init(gatekeeper.ALPHA)))
+    z = stats.norm_ppf(1.0 - gatekeeper._validation_level(stats.lord_init(gatekeeper.ALPHA)))
     rows = []
     for per_day in _DETECT_TRADES_PER_DAY:
         n_val = per_day * val_days

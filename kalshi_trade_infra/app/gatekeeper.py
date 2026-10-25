@@ -11,8 +11,9 @@ never sees a p-value, a CI, or a held-out pnl.
 
 Verdicts are tests, not threshold point estimates: a stationary-bootstrap one-sided p-value
 (the PRIMARY validation p-value, autocorrelation-robust), PSR/DSR (Sharpe corrected for
-non-normality and for selection across the AUDITED number of competing trials), an online
-LORD++ alpha-wealth budget (cross-run stream) plus Benjamini-Hochberg within a chunk, and a
+non-normality and for selection across the AUDITED number of competing trials), a fixed
+per-test level VALIDATION_ALPHA (LORD++ is still tracked; it gates only if that is set to 0)
+plus Benjamini-Hochberg within a chunk, and a
 label-shuffle negative control. All stats math lives in app.stats; this module only wires it
 to the ledger and classifies.
 
@@ -25,6 +26,7 @@ import hashlib
 import json
 import logging
 import math
+import os
 import random
 from dataclasses import asdict, dataclass, field
 from enum import Enum
@@ -65,6 +67,19 @@ CROSS_DAY_MAX_DAY_SHARE = 0.90     # no single day may carry >90% of the positiv
 # decay the stream's alpha toward zero and starve the real candidates behind them.
 POWER_MIN = 0.20
 POWER_MIN_RESEARCH_TRADES = 10
+
+# Validation significance level per test (Todd's decision, 2026-10-25). LORD++'s decaying alpha
+# (~0.003 on a stream's first test, ~0.0002 by its tenth) roughly doubled the trades a real 5-8c
+# edge needs (an 8c edge at n=400 passed 33% of the time vs 92% at a fixed 0.05). Replication is
+# carried instead by the one-time holdout (p <= ALPHA), paper probation and the live switch; a null
+# idea clears validation x holdout at ~0.5% per test. The LORD++ stream is still advanced and
+# persisted for the audit trail. APP_VALIDATION_ALPHA=0 restores LORD++ as the gate.
+VALIDATION_ALPHA = float(os.getenv("APP_VALIDATION_ALPHA", "0.05"))
+
+
+def _validation_level(lord_state: Dict[str, Any]) -> float:
+    """The alpha a validation test must clear: fixed VALIDATION_ALPHA, or LORD++'s next level."""
+    return VALIDATION_ALPHA if VALIDATION_ALPHA > 0 else stats.lord_alpha(lord_state)
 
 
 class HoldoutConsumed(Exception):
@@ -340,6 +355,8 @@ def _compute(trades, n_trials: int, lord_state: Dict[str, Any], seed: int,
     placebo_p = _spot_placebo_pvalue(trades, seed) if kind in ("spot", "perpetual") else _placebo_pvalue(trades, seed)
     rec = stats.lord_record(lord_state, p_value)
     rec["state"]["epoch_to_ts"] = lord_state.get("epoch_to_ts")  # the epoch rides along with the stream
+    if VALIDATION_ALPHA > 0:  # fixed per-test level; LORD++ above is kept for the audit trail only
+        rec["reject"], rec["alpha_i"] = p_value <= VALIDATION_ALPHA, VALIDATION_ALPHA
     equity = _equity(trades)
     cross_day_ok, folds, day_share = _cross_day(trades)
     return {
@@ -613,7 +630,7 @@ def validation_power(cur, user_id: int, market: str, spec: dict, research_ds, pa
     Projection: the research-fold mean net return mu and its stationary-bootstrap SE over n fold
     trades; the validation window is expected to hold n_val = n * validation_days / fold_days
     trades, so its SE is se * sqrt(n / n_val). Power = Phi(mu / se_val - z_req), z_req the normal
-    quantile of the next LORD++ alpha. The research estimate is optimistic (it is also what the
+    quantile of the validation level (_validation_level). The research estimate is optimistic (it is also what the
     finalist was selected on), so this only screens out the hopeless; it never grants anything.
 
     Returns {"ok", "power", "mu", "n_research", "n_val_expected", "alpha_next", "reason"}."""
@@ -649,7 +666,7 @@ def validation_power(cur, user_id: int, market: str, spec: dict, research_ds, pa
         out["reason"] = ("validation window is expected to hold ~%.0f trades, below the pre-registered "
                          "min_sample %d" % (n_val, min_sample))
         return out
-    alpha_next = stats.lord_alpha(_lord_state(cur, user_id, market, val_from, val_to))
+    alpha_next = _validation_level(_lord_state(cur, user_id, market, val_from, val_to))
     out["alpha_next"] = alpha_next
     if se <= 0 or not math.isfinite(se):
         power = 1.0  # a zero-variance positive edge: nothing to project, let validation judge it
