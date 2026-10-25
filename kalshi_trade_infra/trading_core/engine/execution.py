@@ -12,6 +12,9 @@ from typing import Optional, Protocol, runtime_checkable
 from trading_core.domain import ExecutionReport, Instrument, OrderIntent, Quote, Side
 from trading_core.ports.venue import Venue
 
+# A limit snapped to the tick grid can sit a float ulp off the touch (1 - 0.7 = 0.30000000000000004).
+_PRICE_EPS = 1e-9
+
 
 @runtime_checkable
 class ExecutionPolicy(Protocol):
@@ -41,7 +44,9 @@ class CrossTheTouch:
             if intent.limit_price is not None:
                 px = min(px, intent.limit_price)
             if px < quote.ask:
-                return None, "ask %.4f above limit %.4f" % (quote.ask, px)
+                if quote.ask - px > _PRICE_EPS:
+                    return None, "ask %.4f above limit %.4f" % (quote.ask, px)
+                px = quote.ask
         else:
             if quote.bid is None:
                 return None, "no bid"
@@ -49,7 +54,9 @@ class CrossTheTouch:
             if intent.limit_price is not None:
                 px = max(px, intent.limit_price)
             if px > quote.bid:
-                return None, "bid %.4f below limit %.4f" % (quote.bid, px)
+                if px - quote.bid > _PRICE_EPS:
+                    return None, "bid %.4f below limit %.4f" % (quote.bid, px)
+                px = quote.bid
         return px, None
 
     def execute(self, intent: OrderIntent, instrument: Instrument, quote: Optional[Quote], venue: Venue,

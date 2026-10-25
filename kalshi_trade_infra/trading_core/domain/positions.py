@@ -34,7 +34,10 @@ class Position:
             raise ValueError("fill for %s applied to position in %s" % (fill.instrument, self.instrument))
         self.fees += fill.fee
         delta = fill.signed_qty
-        if self.is_flat or (self.qty > 0) == (delta > 0):
+        if self.is_flat:  # opening: the fill price exactly, not price*q/q with its float drift
+            self.qty, self.avg_price = delta, fill.price
+            return
+        if (self.qty > 0) == (delta > 0):
             new_qty = self.qty + delta
             self.avg_price = (self.avg_price * abs(self.qty) + fill.price * abs(delta)) / abs(new_qty)
             self.qty = new_qty
@@ -80,6 +83,15 @@ class Portfolio:
     def apply(self, fill: Fill, multiplier: float = 1.0) -> None:
         self.position(fill.instrument, multiplier).apply(fill)
         self.cash -= fill.signed_qty * fill.price * multiplier + fill.fee
+
+    def settle(self, instrument: InstrumentId, price: float) -> float:
+        """Settle a position at ``price`` (a binary's 0 or payout): the proceeds go to cash and the
+        position goes flat. Returns the realized P&L of the settlement (fees were paid on entry)."""
+        pos = self.positions.get(instrument)
+        if pos is None or pos.is_flat:
+            return 0.0
+        self.cash += pos.qty * price * pos.multiplier
+        return pos.settle(price)
 
     def apply_all(self, fills: Iterable[Fill]) -> None:
         for f in fills:
