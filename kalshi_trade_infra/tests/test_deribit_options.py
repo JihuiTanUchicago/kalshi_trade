@@ -273,3 +273,49 @@ def test_fetch_trades_pages_dedupes_and_retries(monkeypatch):
     got = do.fetch_trades(1000, 1006, session=sess)
     assert [t["trade_id"] for t in got] == ["0", "1", "2", "3", "4"]
     assert sess.calls[:2] == [1000, 1000]           # the 429 was retried
+
+
+def test_batched_options_features_equal_per_snapshot_features():
+    """build_dataset prefetches every snapshot's options features in a few vectorized calls; the
+    result must be exactly what snapshot_features gives one contract at a time."""
+    snap = EXP1 - 20 * 3600
+    s1 = do.surface_from_chain(_chain(), snap, 80_000.0, snap * S)
+    s2 = do.surface_from_chain(_chain(fwd1=80_500.0, fwd2=80_900.0), snap + 900, 80_500.0, (snap + 900) * S)
+    book = options_fair.book_from_rows(s1.rows() + s2.rows())
+    rng = np.random.default_rng(7)
+    reqs = []
+    for _ in range(400):
+        ts = int(snap - 600 + rng.integers(0, 3 * 3600))          # some before any surface, some stale
+        ff = {"spot": 0.0 if rng.random() < 0.1 else 79_000 + rng.random() * 2_000,
+              "vol_60m": 0.0 if rng.random() < 0.2 else rng.random() * 0.002}
+        bid = None if rng.random() < 0.1 else round(float(rng.random() * 0.9), 2)
+        reqs.append((0.0 if rng.random() < 0.1 else 78_000 + rng.random() * 4_000, ts,
+                     None if rng.random() < 0.05 else ts + int(rng.integers(-60, 3600)), bid,
+                     None if bid is None else bid + 0.02, ff))
+    one = [options_fair.snapshot_features(book, *r) for r in reqs]
+    assert options_fair.snapshot_features_batch(book, reqs) == one
+    assert sum(1 for f in one if "opt_rv_edge" in f) > 30 and sum(1 for f in one if not f) > 40
+    book.prefetch(reqs)
+    assert [book.features("T", r[0], r[1], r[3], r[4], r[5], close_ts=r[2]) for r in reqs] == one
+
+
+def test_build_dataset_prefetches_options_features_once(monkeypatch):
+    snap = EXP1 - 20 * 3600
+    rows = do.surface_from_chain(_chain(), snap, 80_000.0, snap * S).rows()
+    ts = snap + 300
+    btc = [(ts - 60 * (k + 1), 80_000.0 + k + 15.0 * (-1) ** k) for k in range(90)]
+    close = datetime.fromtimestamp(ts + 600, tz=timezone.utc)
+    markets = [{"ticker": f"KXBTC15M-X-{k:02d}", "strike": 79_800.0 + 50 * k, "close_time": close, "result": "yes"}
+               for k in range(5)]
+    candles = [(m["ticker"], t, 0.55, 0.57) for m in markets for t in (ts, ts + 60, ts + 120)]
+    book = options_fair.book_for_series("KXBTC15M", lambda: options_fair.book_from_rows(rows))
+    calls = []
+    real = osf.price
+    monkeypatch.setattr(osf, "price", lambda *a, **k: calls.append(1) or real(*a, **k))
+    ds = backtest.build_dataset(MARKETS["btc15m"], markets, candles, btc, forecasts=book)
+    batched = [s.features for _, snaps in ds.frames for s in snaps]
+    assert len(batched) == 15 and all("opt_p_yes" in f for f in batched) and len(calls) <= 3
+    monkeypatch.setattr(type(book), "prefetch", lambda self, reqs: None)
+    book._prefetched = {}
+    ref = backtest.build_dataset(MARKETS["btc15m"], markets, candles, btc, forecasts=book)
+    assert [s.features for _, snaps in ref.frames for s in snaps] == batched

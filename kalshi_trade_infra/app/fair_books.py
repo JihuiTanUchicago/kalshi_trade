@@ -27,6 +27,11 @@ class CombinedBook:
             out.update(b.features(ticker, strike, ts, yes_bid, yes_ask, frame_feats, close_ts=close_ts))
         return out
 
+    def prefetch(self, reqs) -> None:
+        for b in self.books:
+            if hasattr(b, "prefetch"):
+                b.prefetch(reqs)
+
 
 def combine(*books) -> Optional[object]:
     """None when no book, the book itself when one, else a CombinedBook."""
