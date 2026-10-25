@@ -3556,7 +3556,10 @@
     // Plain-language summary from the server (what it's doing, why no trades yet, what live needs).
     const story = box.querySelector('#apf-story');
     if (story) story.innerHTML = (d.story || []).map((line) => `<p>${esc(line)}</p>`).join('');
-    const pnl = d.today_live_pnl || 0;
+    // Live figures once real money is armed or running. A paper-only panel used to show "Live P&L
+    // today $0.00" and a loss budget that can't apply to it, and nothing about the paper book it has.
+    const liveInPlay = !!(d.autopilot_live || d.live_running);
+    const pnl = (liveInPlay ? d.today_live_pnl : d.today_paper_pnl) || 0;
     const stats = box.querySelector('#apf-stats');
     // Count running strategies across every mode, not just paper — a lone demo strategy
     // used to read as "0 paper", which looked like nothing was running. Match the dashboard.
@@ -3570,9 +3573,8 @@
     // one out spanning); the sentence-length ones get full-width rows, so no cell sits empty.
     const short = [
       `<dt>Running</dt><dd>${runTotal ? runParts.join(' · ') : 'None'}</dd>`,
-      `<dt>Live P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd>`,
-      `<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`,
-    ].concat(d.last_review_at ? [`<dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd>`] : []);
+      `<dt>${liveInPlay ? 'Live' : 'Paper'} P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd>`,
+    ].concat(liveInPlay ? [`<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`] : []).concat(d.last_review_at ? [`<dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd>`] : []);
     if (stats) {
       stats.dataset.cols = short.length;
       stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `

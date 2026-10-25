@@ -1423,6 +1423,8 @@ def autopilot_status(ctx: Ctx):
         "mode": mode,
         "live_running": len(live_run), "paper_running": len(paper_run), "demo_running": len(demo_run),
         "today_live_pnl": today_live,
+        # The paper book's day, so a paper-only panel shows its own money instead of a live $0.00.
+        "today_paper_pnl": round(repo.realized_pnl(cur, ctx.uid, "paper", _start_of_day_utc()), 2),
         "daily_loss_limit": limit,
         "loss_headroom": round(max(0.0, limit + min(0.0, today_live)), 2),  # how much loss budget is left today
         "last_action": repo.last_autopilot_action(cur, ctx.uid),

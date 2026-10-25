@@ -304,7 +304,7 @@ def test_autopilot_status_reports_paper_strategy_closest_to_live(monkeypatch):
             {"mode": "live", "status": "running", "strategy_id": 3, "title": "Live"}]
     monkeypatch.setattr(server.repo, "list_deployments", lambda *a: deps)
     monkeypatch.setattr(server.repo, "get_kalshi_key", lambda *a: None)
-    monkeypatch.setattr(server.repo, "realized_pnl", lambda *a: 0.0)
+    monkeypatch.setattr(server.repo, "realized_pnl", lambda cur, uid, mode, since=None: {"live": -2.0, "paper": 1.234}[mode])
     monkeypatch.setattr(server.repo, "last_autopilot_action", lambda *a: None)
     monkeypatch.setattr(server.repo, "last_review_at", lambda *a: None)
     monkeypatch.setattr(server.billing, "configured", lambda: False)
@@ -318,6 +318,7 @@ def test_autopilot_status_reports_paper_strategy_closest_to_live(monkeypatch):
                         lambda cur, uid, mode=None: {"n": 4 if mode == "paper" else 9, "notional": 3.0})
     out = server.autopilot_status(ctx)
     assert out["paper_open"] == 4, "open PAPER positions only"
+    assert (out["today_live_pnl"], out["today_paper_pnl"]) == (-2.0, 1.23), "each book's own day"
     assert seen["sids"] == [1, 2], "only running paper strategies are counted"
     assert out["paper_progress"] == {"strategy_id": 2, "title": "Fast", "trades": 11,
                                      "trades_needed": agent.MIN_REALISTIC_PAPER_TRADES,

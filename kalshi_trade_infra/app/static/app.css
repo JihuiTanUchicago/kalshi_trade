@@ -1533,6 +1533,7 @@ body.landing-body .apf { display: none; }
 .apf-x svg { width: 18px; height: 18px; }
 .apf-top { flex: none; padding: 14px 16px; border-bottom: 1px solid var(--rule); background: var(--stock); }
 .apf-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin: 0; border: 1px solid var(--rule); background: var(--rule); }
+.apf-stats[data-cols="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }  /* paper-only: no live loss budget */
 .apf-stats[data-cols="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .apf-stats > .apf-wide { grid-column: 1 / -1; }
 .apf-top .apf-model { margin-top: 12px; }
