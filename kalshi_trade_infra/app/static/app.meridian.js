@@ -2448,7 +2448,7 @@
     const ins = s.in_sample || {}, oos = s.out_of_sample;
     const figsFor = (r) => fig('Out-of-sample P&L', r.out_of_sample ? usd(r.out_of_sample.pnl, true) : '—', { v: r.out_of_sample && r.out_of_sample.pnl, small: r.out_of_sample ? `${r.out_of_sample.trades} trades` : 'Not tested out-of-sample' }) +
       fig('In-sample P&L', usd(r.in_sample.pnl, true), { v: r.in_sample.pnl, small: `${r.in_sample.trades} trades` }) +
-      fig('Return on capital', r.out_of_sample ? pct(r.out_of_sample.roi) : '—', { small: `$${fmt0.format(r.capital || 0)} at risk at most` }) +
+      fig('Return on capital', r.out_of_sample ? pct(r.out_of_sample.roi) : '—', { small: r.capital ? `$${fmt0.format(r.capital)} at risk at most` : '' }) +
       fig('Run trials', s.hypotheses_tried != null ? num(s.hypotheses_tried) : '—', { small: s.hypotheses_tried == null ? 'Trial count unavailable.' : '' });
     root.querySelector('.board-title').outerHTML = `<div class="board-title strategy-pagehead"><h1 class="page">${esc(s.title)}</h1><p class="deck"><span>${esc(serial(s.id))} · ${esc(marketShort(s.market))} · ${esc(dirLabel(s.direction))}</span>${filed ? `<span>Filed ${esc(filed)}</span>` : ''}${mark(s.status)}${researchBadge(s)}</p></div>`;
     const canDeploy = !restricted && ['passed', 'failed', 'rejected'].includes(s.status);

@@ -2418,7 +2418,7 @@
     const ins = s.in_sample || {}, oos = s.out_of_sample;
     const figsFor = (r) => fig('Unseen-data P&L', r.out_of_sample ? usd(r.out_of_sample.pnl, true) : '—', { v: r.out_of_sample && r.out_of_sample.pnl, small: r.out_of_sample ? `${r.out_of_sample.trades} trades the agent never saw` : 'Rejected before the unseen test' }) +
       fig('In-sample P&L', usd(r.in_sample.pnl, true), { v: r.in_sample.pnl, small: `${r.in_sample.trades} trades` }) +
-      fig('Return on capital', r.out_of_sample ? pct(r.out_of_sample.roi) : '—', { small: `$${fmt0.format(r.capital || 0)} at risk at most` }) +
+      fig('Return on capital', r.out_of_sample ? pct(r.out_of_sample.roi) : '—', { small: r.capital ? `$${fmt0.format(r.capital)} at risk at most` : '' }) +
       fig('Hypotheses tested', s.hypotheses_tried ? `1 of ${s.hypotheses_tried}` : '—', { small: s.hypotheses_tried ? `The agent tested ${num(s.hypotheses_tried)} distinct ideas this run; this is the one that passed. More tries → higher chance one passes by luck (multiple testing).` : 'How many ideas the agent tried to find this one.' });
     root.querySelector('.board-title').outerHTML = boardTitle(serial(s.id) + ' · ' + marketShort(s.market), esc(dirLabel(s.direction)));
     root.querySelector('#figs').innerHTML = figsFor(s);
