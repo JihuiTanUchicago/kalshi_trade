@@ -84,6 +84,16 @@ the boxes on 2026-10-24, so rebuilding a box no longer drops them.
 Both boxes run `kalshi-alerter.timer` today (checked 2026-10-24), each with its own
 `.alerter_state.json`, so every alert goes out twice. Keep it enabled on one box only.
 
+### Code paper replay (web box)
+
+`tau-code-paper.timer` runs `app.services.code_paper` at :40. Agent-written code strategies never
+run in the paper/live engine; when paper probation places one (one deployment for its whole pooled
+stream), this replays each UTC day after it ends and its contracts settle, in the research sandbox
+with the strategy's frozen params, and books the trips as closed paper rows (`sim:replay:` refs)
+that the tournament and the paper forward gate count. A strategy whose picks change when later
+frames are removed is stopped instead. `APP_CODE_PAPER=0` turns it off. Log:
+`/opt/kalshi/logs/code_paper.log`.
+
 ### Paper liquidity-reward maker (web box)
 
 `tau-lip-maker-paper.timer` runs `app.adapters.sim.maker_paper hourly` at :25. It replays every

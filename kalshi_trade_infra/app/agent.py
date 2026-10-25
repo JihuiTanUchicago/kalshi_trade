@@ -3555,12 +3555,17 @@ def auto_paper_probation(cur, user: Dict) -> List[str]:
         strat = repo.get_strategy(cur, user["id"], sid)
         # A pooled spec's experiment is filed under its whole stream ("btc_daily+eth_daily+..."); it
         # trades as the plain rule on its own market, which must be one of the stream's markets.
-        if strat is None or strat.get("market") not in c["market"].split("+") or specmod.is_code_spec(strat["spec"]):
+        if strat is None or strat.get("market") not in c["market"].split("+"):
+            continue
+        # Agent-written code paper-trades only through the sandbox replay (Todd, 2026-10-25), as one
+        # deployment that replays its whole pooled stream.
+        code = specmod.is_code_spec(strat["spec"])
+        if code and not _code_paper_enabled():
             continue
         mkt = MARKETS.get(strat["market"])
         # No autopilot_focus check: probation is paper only (no money), and Todd approved it for his
         # out-of-focus kxrain near misses while his research stays on crypto.
-        if mkt is None or not mkt.deployable:
+        if mkt is None or not (mkt.deployable or code):  # a replay needs history, not a live book
             continue
         if _engine.cross_deploy_block(strat["spec"], "paper"):
             continue
@@ -3575,14 +3580,21 @@ def auto_paper_probation(cur, user: Dict) -> List[str]:
             why = "narrowly missed validation (p=%.3f, $%.2f over %d unseen trades)" % (
                 c["p_value"], c["net_pnl"], c["n_trades"])
         repo.create_proposal(cur, user["id"], "deploy", "Paper probation: %s." % why, None, sid, "applied")
-        legs = _probation_legs(strat["market"], c["market"])
+        legs = [strat["market"]] if code else _probation_legs(strat["market"], c["market"])
         for leg in legs:
             repo.create_deployment(cur, user["id"], sid, leg, "paper")
         active += 1
         out.append("[probation #%d] Put “%s” on paper as a forward test%s: it %s. Paper only; it can't go "
-                   "live unless the gatekeeper clears it." % (
-                       sid, strat["title"], " on %s" % ", ".join(legs) if len(legs) > 1 else "", why))
+                   "live unless the gatekeeper clears it.%s" % (
+                       sid, strat["title"], " on %s" % ", ".join(legs) if len(legs) > 1 else "", why,
+                       " It is agent-written code, so it trades by replaying each settled day in the research "
+                       "sandbox, and code never goes live." if code else ""))
     return out
+
+
+def _code_paper_enabled() -> bool:
+    from app.services import code_paper
+    return code_paper.ENABLED
 
 
 def _probation_legs(market: str, stream: str) -> List[str]:

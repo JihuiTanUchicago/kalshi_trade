@@ -446,3 +446,26 @@ def test_paper_fills_for_gate_sums_exit_slices_and_marks_settled_trips(conn, use
     assert [(r["ticker"], r["qty"], r["settled"]) for r in got] == [("GATE-A-1", 10, False), ("GATE-B-1", 5, True)]
     assert got[0]["exit_price"] == pytest.approx(0.70) and got[0]["pnl"] == pytest.approx(2.87)
     assert got[0]["fees"] == pytest.approx(0.13)
+
+
+def test_code_paper_rows_keep_their_replayed_times_and_count_for_the_gate(conn, user):
+    """The code paper replay's reads and writes: only running paper code strategies are listed, a
+    replayed trip keeps its own open/close times, and the forward gate reads it as a sim: fill."""
+    from app import repository as repo
+    from app import spec as specmod
+
+    spec = specmod.validate({"market": "btc15m", "code": "def signals(window):\n    return []\n",
+                             "sizing": {"stake": 5, "max_positions": 1}})
+    sid = repo.insert_strategy(conn.cursor(), user["id"], None, None, "btc15m", "volatility", "C", "c", spec, "rejected", {})
+    did = repo.create_deployment(conn.cursor(), user["id"], sid, "btc15m", "paper")
+    dsl = _deployment(conn, user)
+    cur = conn.cursor()
+    listed = [d["id"] for d in repo.running_code_paper_deployments(cur)]
+    assert did in listed and dsl["id"] not in listed
+    opened, closed = datetime(2026, 10, 24, 18, 0), datetime(2026, 10, 24, 21, 0)
+    ref = "sim:replay:%d:KXBTC-REPLAY-1:%d" % (did, 1793210400)
+    repo.insert_closed_position(cur, did, user["id"], "paper", "KXBTC-REPLAY-1", "yes", 5, 0.40, 0.05, 1.0, 0.0,
+                                2.95, "settled", closed, ref, opened_at=opened, closed_at=closed)
+    assert repo.deployment_order_refs(cur, did, "sim:replay:") == {ref}
+    got = repo.paper_fills_for_gate(cur, user["id"], sid)
+    assert [(g["opened_at"], g["closed_at"], g["settled"], g["pnl"]) for g in got] == [(opened, closed, True, 2.95)]

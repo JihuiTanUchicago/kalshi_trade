@@ -200,8 +200,10 @@ def insert_closed_position(
     cur, deployment_id: int, user_id: int, mode: str, ticker: str, side: str, qty: int,
     entry_price: float, entry_fee: float, exit_price: float, exit_fee: float, pnl: float,
     reason: str, market_close_time: datetime, order_ref: Optional[str] = None,
+    opened_at: Optional[datetime] = None, closed_at: Optional[datetime] = None,
 ) -> int:
     """Record a round-trip (bought then immediately sold again) as a single CLOSED position row.
+    `opened_at`/`closed_at` (naive UTC) default to now; a replayed paper trade passes its own.
 
     ONE atomic INSERT, so an autocommit connection can never leave a phantom OPEN leg if it dies
     mid-write (an open-then-close pair of statements could). Used by the cross-pair unwind: the
@@ -215,7 +217,8 @@ def insert_closed_position(
              closed_at, order_ref)
            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'closed',%s,%s,%s,%s,%s,%s)""",
         (deployment_id, user_id, mode, ticker, side, qty, entry_price, round(entry_fee, 4), close,
-         now_utc(), exit_price, round(exit_fee, 4), round(pnl, 4), reason, now_utc(), order_ref),
+         opened_at or now_utc(), exit_price, round(exit_fee, 4), round(pnl, 4), reason, closed_at or now_utc(),
+         order_ref),
     )
     return cur.lastrowid
 

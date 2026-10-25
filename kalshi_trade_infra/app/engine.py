@@ -1821,8 +1821,11 @@ def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] 
     # A multi-market cross deployment is stored under its primary leg's market, so it surfaces here,
     # but it must decide on a SYNCHRONIZED frame of ALL its legs (tick_cross_markets owns it) — never
     # on this single market's snaps alone. Skip it here so it's decided in exactly one place.
+    # Agent-written code never runs here: its paper deployments are traded by the sandbox replay
+    # (app/services/code_paper.py), which owns their last_decision_ts.
     due = [d for d in repo.running_deployments(cur, market.key)
-           if d["last_decision_ts"] < slot and not _is_multi_market_cross(d["spec"])]
+           if d["last_decision_ts"] < slot and not _is_multi_market_cross(d["spec"])
+           and not specmod.is_code_spec(d["spec"])]
     late = now_ts - slot > max(60, market.decision_seconds * LATE_FRACTION)
     # Fetch the live book whenever there's a decision to make OR any open position to mark. Marking
     # runs EVERY tick (not only when a decision is due), so unrealized P&L — and the drawdown

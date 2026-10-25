@@ -1,0 +1,7 @@
+[Unit]
+Description=Code paper replay, hourly (a day is replayed once it has ended and its contracts settled)
+[Timer]
+OnCalendar=*-*-* *:40:00
+Persistent=true
+[Install]
+WantedBy=timers.target

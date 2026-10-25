@@ -254,7 +254,8 @@ def sim_seconds() -> float:
     return getattr(_SIM_CLOCK, "seconds", 0.0)
 
 
-def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optional[WhatIf] = None) -> List[Trade]:
+def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optional[WhatIf] = None,
+             warm_from: Optional[int] = None) -> List[Trade]:
     """Trades for positions OPENED in [start_ts, end_ts). Positions settle on
     Kalshi's result even if that is after end_ts - the result was fixed by the
     market, not chosen by the backtest.
@@ -262,18 +263,23 @@ def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optio
     A cross-contract (`cross`) spec routes to simulate_pairs. A code strategy (spec has
     `code`) computes a per-frame target book in the sandbox once; the entry/exit/sizing/
     fee/settlement mechanics below are then IDENTICAL to a DSL spec. Everything else is the
-    single-contract DSL path, unchanged."""
+    single-contract DSL path, unchanged.
+
+    `warm_from` (code strategies only) hands signals() the frames from that ts on, so a day-sized
+    window (app/services/code_paper.py) starts with the history a long fold would have had; it
+    never adds entries before start_ts."""
     if getattr(_SIM_CLOCK, "depth", 0):
-        return _simulate(spec, ds, start_ts, end_ts, what_if)
+        return _simulate(spec, ds, start_ts, end_ts, what_if, warm_from)
     _SIM_CLOCK.depth, t0 = 1, time.perf_counter()
     try:
-        return _simulate(spec, ds, start_ts, end_ts, what_if)
+        return _simulate(spec, ds, start_ts, end_ts, what_if, warm_from)
     finally:
         _SIM_CLOCK.depth = 0
         _SIM_CLOCK.seconds = sim_seconds() + time.perf_counter() - t0
 
 
-def _simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optional[WhatIf] = None) -> List[Trade]:
+def _simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optional[WhatIf] = None,
+              warm_from: Optional[int] = None) -> List[Trade]:
     if ds.market.kind == "perpetual" or specmod.is_perpetual_spec(spec):
         if ds.market.kind != "perpetual" or spec.get("market") != ds.market.key:
             raise ValueError("Perpetual research requires its own matching instrument dataset.")
@@ -287,12 +293,12 @@ def _simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Opti
         from app.adapters.kalshi.spec_strategy import simulate_on_loop
         return simulate_on_loop(spec, ds, start_ts, end_ts, what_if=what_if)
     if FILL_MODEL == "next_bar":
-        return _simulate_next_bar(spec, ds, start_ts, end_ts, what_if)
+        return _simulate_next_bar(spec, ds, start_ts, end_ts, what_if, warm_from)
     w = what_if or WhatIf()
     slip = w.slippage_cents / 100.0
     stake = w.stake if w.stake is not None else spec["sizing"]["stake"]
     max_pos = spec["sizing"]["max_positions"]
-    book = _code_book(spec, ds, start_ts, end_ts) if specmod.is_code_spec(spec) else None
+    book = _code_book(spec, ds, start_ts, end_ts, warm_from) if specmod.is_code_spec(spec) else None
     open_: List[_Open] = []
     trades: List[Trade] = []
 
@@ -392,7 +398,7 @@ def _top_size(snap: Snapshot, side: str) -> Optional[float]:
 
 
 def _simulate_next_bar(spec: Dict, ds: Dataset, start_ts: int, end_ts: int,
-                       what_if: Optional[WhatIf] = None) -> List[Trade]:
+                       what_if: Optional[WhatIf] = None, warm_from: Optional[int] = None) -> List[Trade]:
     """simulate() under FILL_MODEL="next_bar". Same sizing, fees, holding and settlement rules; the
     only difference is WHEN and AT WHAT PRICE an order fills:
 
@@ -410,7 +416,7 @@ def _simulate_next_bar(spec: Dict, ds: Dataset, start_ts: int, end_ts: int,
     slip = w.slippage_cents / 100.0
     stake = w.stake if w.stake is not None else spec["sizing"]["stake"]
     max_pos = spec["sizing"]["max_positions"]
-    book = _code_book(spec, ds, start_ts, end_ts) if specmod.is_code_spec(spec) else None
+    book = _code_book(spec, ds, start_ts, end_ts, warm_from) if specmod.is_code_spec(spec) else None
     min_edge = None if book is not None else float(spec["entry"]["min_edge"])
     max_delay = FILL_MAX_DELAY_BARS * max(int(getattr(ds.market, "decision_seconds", 60) or 60), 1)
     open_: List[_Open] = []
@@ -659,12 +665,15 @@ def _binary_window(market: str, frames: List[Tuple[int, List[Snapshot]]]) -> Dic
         for ts, snaps in frames]}
 
 
-def _code_book(spec: Dict, ds: Dataset, start_ts: int, end_ts: int) -> Dict[int, Dict[str, Tuple[str, float]]]:
+def _code_book(spec: Dict, ds: Dataset, start_ts: int, end_ts: int,
+               warm_from: Optional[int] = None) -> Dict[int, Dict[str, Tuple[str, float]]]:
     """Run the strategy and return {ts: {ticker: (side, score)}} for in-window decision frames.
+    With `warm_from` signals() also sees the frames from there to start_ts; their picks are dropped.
     # ponytail: serializes the window to JSON per simulate() call (O(frames x contracts)); fine
     # for current window sizes, switch to a binary channel if windows grow much larger."""
     from app import sandbox
-    frames = [(ts, snaps) for ts, snaps in ds.frames if start_ts <= ts < end_ts]
+    lo = start_ts if warm_from is None else min(warm_from, start_ts)
+    frames = [(ts, snaps) for ts, snaps in ds.frames if lo <= ts < end_ts]
     window = _binary_window(spec["market"], frames)
     freedata.enrich(spec, window)  # as-of join requested free external data into frame["external"]
     if spec.get("params") is not None:
@@ -676,7 +685,7 @@ def _code_book(spec: Dict, ds: Dataset, start_ts: int, end_ts: int) -> Dict[int,
     except sandbox.SandboxError as e:
         logging.getLogger(__name__).warning("code strategy sandbox failure: %s", e)
         return {}
-    return _parse_book(raw, frames)
+    return {ts: want for ts, want in _parse_book(raw, frames).items() if ts >= start_ts}
 
 
 def _fit_results(ds: Dataset, frames: List[Tuple[int, List[Snapshot]]]) -> Dict[str, str]:
