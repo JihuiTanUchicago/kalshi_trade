@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Dict, List, Optional, Sequence, Tuple
 
+from app.options_fair import FEATURE_DOCS as _OPTIONS_DOCS
 from app.sports_odds import FEATURE_DOCS as _SPORTS_ODDS_DOCS
 from app.weather_fcst import FEATURE_DOCS as _WEATHER_FCST_DOCS
 
@@ -515,6 +516,9 @@ FEATURES.update(TICK_FEATURES)
 FEATURES.update(_WEATHER_FCST_DOCS)
 # Per-contract sportsbook consensus (app/sports_odds.snapshot_features, research and live alike).
 FEATURES.update(_SPORTS_ODDS_DOCS)
+# Per-contract Deribit options-implied fair value (app/options_fair.snapshot_features; the per-second
+# datasets carry opt_p_yes / opt_iv / opt_edge from features_1s instead).
+FEATURES.update(_OPTIONS_DOCS)
 
 
 @dataclass(frozen=True)

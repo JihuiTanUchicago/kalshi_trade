@@ -2329,6 +2329,21 @@ def load_weather_actuals(cur, series: str, since: datetime) -> List[Tuple[int, A
             for e in events.values() if e["ok"]]
 
 
+def latest_options_surface(cur, as_of_ts: int) -> Optional[List[Dict[str, Any]]]:
+    """The newest Deribit surface rows (options_surface.SURFACE_FIELDS) the collector box's
+    recorder fitted, from its heartbeat (collector_state tick_recorder_deribit), or None. Rows
+    from after as_of_ts are dropped; the book's as-of lookup also drops a surface that is too old."""
+    import json
+    cur.execute("SELECT state_value FROM collector_state WHERE state_key='tick_recorder_deribit' LIMIT 1")
+    row = cur.fetchone() or {}
+    try:
+        state = json.loads(row.get("state_value") or "{}")
+    except (TypeError, ValueError):
+        return None
+    rows = [r for r in (state.get("surface") or []) if int(r.get("snap_ts") or 0) <= int(as_of_ts)]
+    return rows or None
+
+
 def load_sports_odds(cur, sport: str, since: datetime,
                      as_of_ts: Optional[int] = None) -> List[Tuple[int, int, str, str, str, float]]:
     """Collected sportsbook snapshots for one league since `since` (UTC naive), as the

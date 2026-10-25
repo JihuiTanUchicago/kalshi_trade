@@ -29,7 +29,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from app import freedata
 from app import spec as specmod
-from app import sports_odds, weather_fcst
+from app import options_fair, sports_odds, weather_fcst
 from app.markets import (MARKETS, NEW_YORK, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot, snapshot,
                          cross_features, cross_product,
                          weather_obs_applies)
@@ -1117,8 +1117,15 @@ def station_frame_series(market: Market) -> Tuple[Optional[Dict[str, List[Tuple[
 
 def forecast_book(market: Market, since: datetime):
     """The window's external fair-value book: issued NWS forecasts for a weather series, collected
-    sportsbook odds for an NBA/NHL game series, else None. None too if unreadable: the features
-    are then absent, and a rule needing them simply never enters."""
+    sportsbook odds for an NBA/NHL game series, the Deribit options surface for a Bitcoin strike
+    series, else None. None too if unreadable: the features are then absent, and a rule needing
+    them simply never enters."""
+    if market.series in options_fair.SERIES:
+        try:
+            return options_fair.book_for_series(market.series, lambda: options_fair.load_book(since))
+        except Exception as e:  # noqa: BLE001 - S3 outage/no history: the opt_* features are absent
+            print("[backtest] options surface unavailable for %s: %r" % (market.key, e), flush=True)
+            return None
     if market.series not in WEATHER_STATIONS and market.series not in sports_odds.SPORTS:
         return None
     from app import repository as repo

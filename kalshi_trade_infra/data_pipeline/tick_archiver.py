@@ -22,7 +22,11 @@ Tables (rt = receive time, epoch ns, on every row):
   <venue>_quotes  product, bid, bid_size, ask, ask_size, exch_ns          kraken, bitstamp, gemini,
                                                                           bullish, cryptocom, lmax;
                                                                           see data_pipeline/tick_spot.py)
-  tick_meta       source, event, detail (connects, disconnects, sequence gaps) for kalshi;
+  deribit_options instrument, expiry_ts, strike, cp, mark_iv, mark_price, bid_price, ask_price,
+                  underlying_price, index_price, open_interest (every BTC option, every poll)
+  deribit_surface the implied-vol surface fitted from each poll: options_surface.SURFACE_FIELDS
+                  (data_pipeline/deribit_options.py, which also writes the daily history files)
+  tick_meta      source, event, detail (connects, disconnects, sequence gaps) for kalshi;
                   <source>_meta for every other source (one file per table-hour, so sources
                   cannot share a table)
 
@@ -48,7 +52,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 from data_pipeline.common import get_db_conn, utc_now
 from data_pipeline.init_schema import TICK_ARCHIVE_DDL as MANIFEST_DDL
-from data_pipeline import tick_spot
+from data_pipeline import deribit_options, options_surface, tick_spot
 from data_pipeline.tick_recorder import SPOT_RECORDERS, SPOT_VENUES, TICK_DIR, delta_fields, snapshot_levels, _num
 
 BUCKET = os.getenv("DATALAKE_BUCKET", "kalshi-trade-datalake-568386354218-us-east-1")
@@ -84,6 +88,11 @@ def _schemas():
                                   ("taker_side", s), ("exch_ns", i64)]),
         "spot_quotes": pa.schema([rt, ("product", s), ("bid", f), ("bid_size", f), ("ask", f),
                                   ("ask_size", f), ("exch_ns", i64)]),
+        "deribit_options": pa.schema([rt, ("instrument", s), ("expiry_ts", i64), ("strike", f), ("cp", s),
+                                      ("mark_iv", f), ("mark_price", f), ("bid_price", f), ("ask_price", f),
+                                      ("underlying_price", f), ("index_price", f), ("open_interest", f)]),
+        "deribit_surface": pa.schema([rt] + [(c, i64 if c in ("snap_ts", "expiry_ts", "n_points") else
+                                              s if c == "method" else f) for c in options_surface.SURFACE_FIELDS]),
     }
 
 
@@ -167,6 +176,9 @@ def parse_line(source: str, line: str) -> Iterable[Tuple[str, tuple]]:
                 yield "kalshi_book", row
         return
     data = rec.get("m") or {}
+    if source == "deribit":
+        yield from deribit_options.parse_record(rt, data)
+        return
     if source in SPOT_RECORDERS:
         yield from tick_spot.parse(source, rt, data, getattr(SPOT_RECORDERS[source], "symbol", None))
         return
