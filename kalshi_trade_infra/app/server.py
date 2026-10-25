@@ -1294,6 +1294,13 @@ def _autopilot_story(d: Dict) -> List[str]:
     else:
         lines.append("%s on paper (pretend money), but none has traded yet. Each one waits for its own "
                      "setup, which can take hours." % _plural(paper, "strategy is", "strategies are"))
+    if paper and prog and prog.get("soonest_days") is not None:
+        # "When could this make real money?" is the question behind the panel; answer it with the
+        # pace each one actually trades at, and say it only counts if the record is up by then.
+        days = float(prog["soonest_days"])
+        when = "about a day" if days < 1.5 else "about %d days" % round(days)
+        lines.append("At the pace they trade, the soonest one could have enough for the live check is %s "
+                     "(%s), and only if it's up by then." % (when, _short_title(prog.get("soonest_title"))))
     t_line = _tournament_line(d.get("tournament"))
     if t_line:
         lines.append(t_line)
@@ -1479,6 +1486,14 @@ def autopilot_status(ctx: Ctx):
         paper_progress = {"strategy_id": best, "title": titles[best], "trades": trades,
                           "trades_needed": agent.MIN_REALISTIC_PAPER_TRADES, "net_pnl": round(net, 2),
                           "strategies": len(sids)}
+        # When the soonest one could have a full record for the live check, at the pace each trades.
+        from app import rsi
+        dep_of = {int(d["strategy_id"]): d for d in reversed(paper_run)}  # oldest deployment per strategy
+        etas = {s: rsi.paper_eta_days(dep_of[s], prog.get(s, (0, 0.0))[0]) for s in sids}
+        etas = {s: v for s, v in etas.items() if v is not None}
+        if etas:
+            soon = min(etas, key=etas.get)
+            paper_progress.update(soonest_days=etas[soon], soonest_title=titles[soon])
     out = {
         "research": _research_activity(cur, ctx.uid),
         "autopilot": bool(u.get("autopilot")),

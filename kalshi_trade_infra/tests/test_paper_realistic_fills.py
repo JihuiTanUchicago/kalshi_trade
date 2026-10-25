@@ -299,7 +299,9 @@ def test_autopilot_status_reports_paper_strategy_closest_to_live(monkeypatch):
                      {"id": 7, "email": "t@example.invalid", "name": "S", "picture_url": None,
                       "autopilot": 1, "autopilot_live": 0, "autopilot_daily_loss_limit": 50,
                       "autopilot_model": None}, (), {}, {}, SimpleNamespace())
-    deps = [{"mode": "paper", "status": "running", "strategy_id": 1, "title": "Slow"},
+    deps = [{"mode": "paper", "status": "running", "strategy_id": 1, "title": "Slow",
+             "created_at": server.repo.now_utc().replace(tzinfo=None) - __import__("datetime").timedelta(hours=72),
+             "result": {"in_sample": {"trades_per_day": 0.5}}},
             {"mode": "paper", "status": "running", "strategy_id": 2, "title": "Fast"},
             {"mode": "live", "status": "running", "strategy_id": 3, "title": "Live"}]
     monkeypatch.setattr(server.repo, "list_deployments", lambda *a: deps)
@@ -322,7 +324,9 @@ def test_autopilot_status_reports_paper_strategy_closest_to_live(monkeypatch):
     assert seen["sids"] == [1, 2], "only running paper strategies are counted"
     assert out["paper_progress"] == {"strategy_id": 2, "title": "Fast", "trades": 11,
                                      "trades_needed": agent.MIN_REALISTIC_PAPER_TRADES,
-                                     "net_pnl": -1.0, "strategies": 2}
+                                     "net_pnl": -1.0, "strategies": 2,
+                                     # Slow: 4 trips in 72h is 1.33/day -> 26 more in 19.5 days. Fast has no pace.
+                                     "soonest_days": 19.5, "soonest_title": "Slow"}
 
 
 def test_autopilot_status_reports_research_activity(monkeypatch):
@@ -370,6 +374,12 @@ def test_autopilot_story_says_what_it_is_doing_in_plain_words():
     assert story[0].startswith("Right now it's between research runs")
     assert "4 of 30 trades and is down $1.50" in story[1]
     assert "from %d separate events" % server.agent.MIN_PAPER_EVENTS in story[-1]
+    soon = server._autopilot_story(dict(d2, paper_progress=dict(d2["paper_progress"], soonest_days=6.6,
+                                                                soonest_title="Rain over NYC — v2")))
+    assert soon[2] == ("At the pace they trade, the soonest one could have enough for the live check is about 7 days "
+                       "(Rain over NYC), and only if it's up by then.")
+    assert "about a day" in server._autopilot_story(dict(d2, paper_progress=dict(
+        d2["paper_progress"], soonest_days=1.2, soonest_title="X")))[2]
     # Bought but not settled: it says so instead of "none has traded yet".
     story = server._autopilot_story(dict(d, paper_open=4))
     assert story[2] == "3 strategies are on paper (pretend money). 4 positions are open, waiting to settle; none has closed yet."
