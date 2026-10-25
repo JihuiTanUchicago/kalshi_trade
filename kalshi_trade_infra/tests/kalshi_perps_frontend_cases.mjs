@@ -95,6 +95,10 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     await big.viewStrategy(42); await flush();
     const bigHtml = big.root.querySelector('main').innerHTML;
     assert.match(bigHtml, /10 trades would have made \+\$40\.00<\/p>/);
+    assert.doesNotMatch(html, /real-paused/);
+    const paused = strategyFrontend(detailStrategy({deployments: [{id: 5, mode: 'paper', status: 'paused', status_reason: 'Lost $12.00, more than the <guard>.', realized_pnl: -12, closed_trades: 9, open_positions: 0}]}));
+    await paused.viewStrategy(42); await flush();
+    assert.match(paused.root.querySelector('main').innerHTML, /<b>Paused<\/b> Lost \$12\.00, more than the &lt;guard&gt;\. <a href="\/deploy">Resume or remove it on Deploy<\/a>/);
     const untested = strategyFrontend(detailStrategy({out_of_sample: null, deployments}));
     await untested.viewStrategy(42); await flush();
     assert.doesNotMatch(untested.root.querySelector('main').innerHTML, /real-pace/);
