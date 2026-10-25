@@ -126,6 +126,15 @@ def test_rebalance_retires_losing_probation_entrants_but_never_candidates(monkey
     assert {r["strategy_id"] for r in rows} == {2, 3, 0} and abs(sum(r["weight"] for r in rows) - 1) < 1e-9
 
 
+def test_retiring_a_pooled_entrant_stops_every_leg(monkeypatch):
+    legs = [dict(_dep(1, [-0.4, -0.2, -0.3] * 12), id=100 + i, market=m)
+            for i, m in enumerate(("btc15m", "eth15m", "sol15m"))]
+    legs[2]["rets"] = []  # the entrant's trips are read once per strategy
+    fake, _ = _rebalance_patch(monkeypatch, legs)
+    tournament.rebalance(None, {"id": 1, "autopilot": True})
+    assert sorted(d for d, s, _ in fake.status if s == "stopped") == [100, 101, 102]
+
+
 def test_rebalance_never_retires_a_paused_entrant(monkeypatch):
     deps = [_dep(1, [-0.4, -0.2, -0.3] * 12, status="paused", reason="By you"),
             dict(_dep(2, [], status="paused", reason="force-closed: drawdown 28.6% >= limit 25.0%"),
@@ -246,7 +255,7 @@ def test_underpowered_verdicts_use_the_validation_pnl_the_gatekeeper_recorded(mo
     monkeypatch.setattr(agent.repo, "create_proposal", lambda *a: 1)
     monkeypatch.setattr(engine, "cross_deploy_block", lambda spec, mode: "")
     lines = agent.auto_paper_probation(None, {"id": 1, "autopilot": True})
-    assert made == [(1, "paper")]
+    assert made == [(1, "paper"), (1, "paper")]  # one deployment per leg of the pooled stream
     assert "too few validation trades to score (56), and they were up $4.50" in lines[0]
 
 

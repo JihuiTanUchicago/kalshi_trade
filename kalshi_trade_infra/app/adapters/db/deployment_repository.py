@@ -76,6 +76,30 @@ def paper_round_trips(cur, user_id: int, strategy_id: int, ref_prefix: str = "si
              "ticker": r.get("ticker")} for r in cur.fetchall()]
 
 
+def paper_fills_for_gate(cur, user_id: int, strategy_id: int, ref_prefix: str = "sim:") -> List[Dict]:
+    """The same closed realistic paper round trips as `paper_round_trips`, with what the forward
+    gate scores: contracts, entry and exit price (quantity-weighted over exit slices), fees and how
+    the trip ended (`settled` only when every slice settled). Oldest entry first."""
+    cur.execute(
+        """SELECT p.order_ref, MAX(p.ticker) AS ticker, SUM(p.qty) AS qty,
+                  SUM(p.qty * p.entry_price) / NULLIF(SUM(p.qty), 0) AS entry_price,
+                  SUM(p.qty * p.exit_price) / NULLIF(SUM(p.qty), 0) AS exit_price,
+                  SUM(p.entry_fee + COALESCE(p.exit_fee, 0)) AS fees, SUM(p.pnl) AS pnl,
+                  MIN(CASE WHEN p.close_reason='settled' THEN 1 ELSE 0 END) AS settled,
+                  MIN(p.opened_at) AS opened_at, MAX(p.closed_at) AS closed_at
+           FROM app_positions p JOIN app_deployments d ON d.id=p.deployment_id
+           WHERE p.user_id=%s AND d.strategy_id=%s AND p.mode='paper' AND p.order_ref LIKE %s
+           GROUP BY p.order_ref
+           HAVING SUM(CASE WHEN p.status='open' THEN 1 ELSE 0 END)=0
+           ORDER BY MIN(p.opened_at)""",
+        (user_id, strategy_id, ref_prefix + "%"),
+    )
+    return [{"ticker": r.get("ticker"), "qty": int(r["qty"] or 0), "entry_price": float(r["entry_price"] or 0),
+             "exit_price": float(r["exit_price"] or 0), "fees": float(r["fees"] or 0), "pnl": float(r["pnl"] or 0),
+             "settled": bool(r["settled"]), "opened_at": r["opened_at"], "closed_at": r["closed_at"]}
+            for r in cur.fetchall()]
+
+
 def track_record_rows(cur, user_id: int) -> List[Dict]:
     """Every trade in the user's book for the track record page (app/track_record.py): one row per
     (mode, deployment, entry fill). Partial-exit slices share the entry's order_ref and are summed;

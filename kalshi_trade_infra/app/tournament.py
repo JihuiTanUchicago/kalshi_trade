@@ -355,6 +355,11 @@ def rebalance(cur, user: Dict, force: bool = False) -> List[str]:
         why = verdict(e, a, now) if e else None
         if why and e.get("status") == "running" and is_probation(cur, e) and repo.set_deployment_status(cur, user["id"], e["id"], "stopped",
                                                                         "Tournament: retired, " + why[:200]):
+            # A pooled entrant runs one deployment per leg; retire the whole entrant, not one leg.
+            for d in repo.list_deployments(cur, user["id"], include_stopped=False):
+                if d["strategy_id"] == e["strategy_id"] and d["mode"] == "paper" and d["id"] != e["id"] \
+                        and d.get("status") != "stopped":
+                    repo.set_deployment_status(cur, user["id"], d["id"], "stopped", "Tournament: retired, " + why[:200])
             lines.append("[tournament] Retired paper entrant “%s”: %s. Its slot goes to the next near miss."
                          % (e.get("title"), why))
             a["weight_retired"] = a["weight"]

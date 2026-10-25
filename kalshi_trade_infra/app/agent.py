@@ -3540,9 +3540,10 @@ def auto_paper_probation(cur, user: Dict) -> List[str]:
     from app import engine as _engine  # local import: engine imports agent (circular)
     deps = repo.list_deployments(cur, user["id"], include_stopped=True)
     tried = {d["strategy_id"] for d in deps}
-    active = sum(1 for d in deps if d["status"] != "stopped" and d["mode"] == "paper"
-                 and not _is_deployment_candidate(cur, d["strategy_id"]))
-    out: List[str] = []
+    # Slots count strategies, not deployments: a pooled entrant runs one deployment per leg.
+    active = len({d["strategy_id"] for d in deps if d["status"] != "stopped" and d["mode"] == "paper"
+                  and not _is_deployment_candidate(cur, d["strategy_id"])})
+    out: List[str] = _add_missing_probation_legs(cur, user, deps)
     cands = list(rr.probation_candidates(cur, user["id"], PROBATION_MAX_P, PROBATION_MIN_TRADES))
     cands += rr.underpowered_candidates(cur, user["id"], UNDERPOWERED_MIN_TRADES)
     for c in cands:
@@ -3574,10 +3575,49 @@ def auto_paper_probation(cur, user: Dict) -> List[str]:
             why = "narrowly missed validation (p=%.3f, $%.2f over %d unseen trades)" % (
                 c["p_value"], c["net_pnl"], c["n_trades"])
         repo.create_proposal(cur, user["id"], "deploy", "Paper probation: %s." % why, None, sid, "applied")
-        repo.create_deployment(cur, user["id"], sid, strat["market"], "paper")
+        legs = _probation_legs(strat["market"], c["market"])
+        for leg in legs:
+            repo.create_deployment(cur, user["id"], sid, leg, "paper")
         active += 1
-        out.append("[probation #%d] Put “%s” on paper as a forward test: it %s. Paper only; it can't go "
-                   "live unless the gatekeeper clears it." % (sid, strat["title"], why))
+        out.append("[probation #%d] Put “%s” on paper as a forward test%s: it %s. Paper only; it can't go "
+                   "live unless the gatekeeper clears it." % (
+                       sid, strat["title"], " on %s" % ", ".join(legs) if len(legs) > 1 else "", why))
+    return out
+
+
+def _probation_legs(market: str, stream: str) -> List[str]:
+    """The markets a probation entrant paper-trades: its own first, then every other deployable
+    market of a pooled stream ("btc15m+eth15m+..."). A pooled rule was judged on all of them, so its
+    forward test runs on all of them too: the same hypothesis, at the validation sample rate rather
+    than a fraction of it (the paper forward gate needs min_sample trips)."""
+    legs = [market] + [m for m in stream.split("+") if m and m != market]
+    return [m for m in dict.fromkeys(legs) if MARKETS.get(m) is not None and MARKETS[m].deployable]
+
+
+def _add_missing_probation_legs(cur, user: Dict, deps: List[Dict]) -> List[str]:
+    """Give a pooled probation entrant that is still in the tournament a paper deployment on every
+    leg of its stream (entrants placed before legs existed ran on their own market only). Legs are
+    added whatever the record so far looks like, so the forward sample is never chosen by outcome."""
+    out = []
+    by_sid: Dict[int, List[Dict]] = {}
+    for d in deps:
+        if d["mode"] == "paper":
+            by_sid.setdefault(d["strategy_id"], []).append(d)
+    for sid, ds in by_sid.items():
+        if all(d["status"] == "stopped" for d in ds) or _is_deployment_candidate(cur, sid):
+            continue
+        strat = repo.get_strategy(cur, user["id"], sid)
+        rec = rr.experiments_for_strategy(cur, sid, strat.get("experiment_id")) if strat else None
+        stream = str((rec or {}).get("experiment", {}).get("market") or "")
+        if "+" not in stream or specmod.is_code_spec(strat["spec"]):
+            continue
+        have = {d["market"] for d in ds}
+        new = [m for m in _probation_legs(strat["market"], stream) if m not in have]
+        for leg in new:
+            repo.create_deployment(cur, user["id"], sid, leg, "paper")
+        if new:
+            out.append("[probation #%d] “%s” now paper-trades every market it was validated on (added %s)."
+                       % (sid, strat["title"], ", ".join(new)))
     return out
 
 
@@ -4317,6 +4357,12 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
                     repo.add_chat(cur, user["id"], "system", line)
             except Exception as e:  # best-effort, like the funnel above
                 print("[agent] paper probation failed for user %s: %r" % (user["id"], e), flush=True)
+            try:
+                from app.services import forward_gate
+                for line in forward_gate.run(cur, user):
+                    repo.add_chat(cur, user["id"], "system", line)
+            except Exception as e:  # best-effort, like the funnel above
+                print("[agent] paper forward gate failed for user %s: %r" % (user["id"], e), flush=True)
             try:
                 from app import tournament
                 for line in tournament.rebalance(cur, user):

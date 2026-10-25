@@ -18,10 +18,11 @@ def _patch(monkeypatch, cands, deps=(), candidates=(), on=True):
     monkeypatch.setattr(agent.rr, "underpowered_candidates", lambda cur, uid, n: [c for c in cands if c["p_value"] is None])
     monkeypatch.setattr(agent.repo, "list_deployments", lambda cur, uid, include_stopped=False: list(deps))
     monkeypatch.setattr(agent.repo, "get_strategy", lambda cur, uid, sid: {
-        "id": sid, "market": next(c.get("strat_market", c["market"]) for c in cands if c["strategy_id"] == sid),
+        "id": sid, "market": next((c.get("strat_market", c["market"]) for c in cands if c["strategy_id"] == sid), "sol_daily"),
         "title": "S%d" % sid, "spec": dict(SPEC), "status": "rejected",
         "result": {"out_of_sample": {"trades": 30, "pnl": 4.0 if sid % 2 else -1.0}}})
     monkeypatch.setattr(agent, "_is_deployment_candidate", lambda cur, sid: sid in candidates)
+    monkeypatch.setattr(agent.rr, "experiments_for_strategy", lambda cur, sid, eid=None: None)
     monkeypatch.setattr(agent.repo, "create_deployment", lambda cur, uid, sid, m, mode: made.append((sid, m, mode)) or 1)
     monkeypatch.setattr(agent.repo, "create_proposal", lambda cur, uid, kind, reason, a, sid, status: props.append((kind, sid, status)) or 1)
     from app import engine
@@ -135,11 +136,32 @@ def test_probation_ignores_the_research_focus_and_takes_p_up_to_035(monkeypatch)
     assert agent.PROBATION_MAX_P >= 0.34
 
 
-def test_a_pooled_near_miss_goes_to_paper_on_its_own_market(monkeypatch):
+def test_a_pooled_near_miss_goes_to_paper_on_every_leg_it_was_judged_on(monkeypatch):
     """A pooled rule's experiment is filed under its FDR stream ("btc_daily+eth_daily+..."), which is
-    no market; it still goes to paper, trading as the plain rule on the strategy's own market."""
+    no market. It paper-trades as the plain rule on its own market first, then on every other leg,
+    so the forward test is the hypothesis validation judged, at the same sample rate."""
     pooled = "btc_daily+eth_daily+sol_daily+xrp_daily"
     made, _ = _patch(monkeypatch, [dict(_cand(1, market=pooled, p=None), n_trades=40, strat_market="btc_daily"),
                                    dict(_cand(3, market=pooled), strat_market="doge15m")])
-    agent.auto_paper_probation(None, USER)
-    assert made == [(1, "btc_daily", "paper")]   # #3's market is not in its experiment's stream
+    lines = agent.auto_paper_probation(None, USER)
+    # #3's market is not in its experiment's stream
+    assert made == [(1, m, "paper") for m in ("btc_daily", "eth_daily", "sol_daily", "xrp_daily")]
+    assert "on btc_daily, eth_daily, sol_daily, xrp_daily" in lines[0]
+
+
+def test_a_running_pooled_entrant_gets_its_missing_legs_once(monkeypatch):
+    """16140 went to paper on btc15m alone before legs existed; the next review adds the other three,
+    whatever its record looks like, and a stopped (retired) entrant gets none."""
+    deps = [{"strategy_id": 1, "status": "running", "mode": "paper", "market": "btc15m"},
+            {"strategy_id": 2, "status": "stopped", "mode": "paper", "market": "btc15m"}]
+    made, _ = _patch(monkeypatch, [], deps=deps)
+    monkeypatch.setattr(agent.repo, "get_strategy", lambda cur, uid, sid: {
+        "id": sid, "market": "btc15m", "title": "S%d" % sid, "spec": dict(SPEC), "experiment_id": 9})
+    monkeypatch.setattr(agent.rr, "experiments_for_strategy", lambda cur, sid, eid=None: {
+        "experiment": {"market": "btc15m+eth15m+sol15m+xrp15m"}})
+    lines = agent.auto_paper_probation(None, USER)
+    assert made == [(1, m, "paper") for m in ("eth15m", "sol15m", "xrp15m")]
+    assert "added eth15m, sol15m, xrp15m" in lines[0]
+    deps.extend({"strategy_id": 1, "status": "running", "mode": "paper", "market": m} for m in ("eth15m", "sol15m", "xrp15m"))
+    made.clear()
+    assert agent.auto_paper_probation(None, USER) == [] and made == []

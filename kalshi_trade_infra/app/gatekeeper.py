@@ -29,6 +29,7 @@ import math
 import os
 import random
 from dataclasses import asdict, dataclass, field
+from datetime import timezone
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -52,6 +53,7 @@ PLACEBO_SHUFFLES = 200  # label-shuffle negative-control resamples
 # ask moves 0.2c against us at 1s latency and 0.55c at 2s, p90 spread up to 2.4c, and there are no
 # live fills to calibrate against yet. Only ever makes STAT_SUPPORTED / FORWARD_VALIDATED harder.
 COST_STRESS_CENTS = 1.0
+_UTC = timezone.utc
 _BOOT_SEED = 12345      # base seed; per-experiment offset keeps verdicts deterministic
 
 # Cross-day generalization gate (§E.6 / beta-tester ask): a "passed" strategy must hold as a
@@ -802,9 +804,105 @@ def judge_holdout(cur, experiment_id: int, finalist: dict,
 # -- marginal contribution (pre-deploy diversification gate) -------------------
 
 
+# -- the paper forward gate (Todd's decision, 2026-10-25) --------------------------------------
+# A validation near miss on paper probation could never become a deployment candidate: its only
+# validation verdict is frozen (usually underpowered), and the holdout requires STAT_SUPPORTED. The
+# forward gate gives it ONE pre-registered judgment on its realistic paper fills, all of which
+# happened after everything the idea was selected on. Integrity rules, each enforced here:
+#   * one look: an experiment with a 'paper' row is never judged again, whatever the result;
+#   * fixed sample: the look happens once the record holds the experiment's own pre-registered
+#     min_sample trips and scores exactly the FIRST min_sample of them, so when the check runs
+#     cannot change the verdict (no optional stopping on a growing record);
+#   * the same validation bar (_compute + _classify: fixed VALIDATION_ALPHA, DSR over the audited
+#     paper trials, CI, placebo, cross-day and COST_STRESS_CENTS), so it is never an easier pass.
+# A pass is FORWARD_VALIDATED on phase 'paper'; marginal_contribution_ok then decides
+# DEPLOYMENT_CANDIDATE exactly as it does after the holdout. Live still needs the user's live switch
+# and paper_evidence. Caveat: the tournament retires clear losers (P(mean>0) < 0.05 after 30
+# events) before they reach min_sample, which can only remove failing records, never add a pass.
+PAPER_PHASE = "paper"
+
+
+@dataclass(frozen=True)
+class PaperTrade:
+    """One realistic paper round trip in the shape the verdict helpers read (Trade-compatible)."""
+    ticker: str
+    qty: int
+    entry_ts: int
+    exit_ts: int
+    entry_price: float
+    exit_price: float
+    pnl: float
+    reason: str
+
+
+def paper_trades(rows: List[Dict]) -> List[PaperTrade]:
+    """repository.paper_fills_for_gate rows -> PaperTrade, oldest entry first."""
+    out = []
+    for r in rows:
+        opened, closed = r.get("opened_at"), r.get("closed_at") or r.get("opened_at")
+        ets = int(opened.replace(tzinfo=opened.tzinfo or _UTC).timestamp())
+        xts = int(closed.replace(tzinfo=closed.tzinfo or _UTC).timestamp())
+        out.append(PaperTrade(ticker=r.get("ticker") or "", qty=int(r["qty"]), entry_ts=ets, exit_ts=xts,
+                              entry_price=float(r["entry_price"]), exit_price=float(r["exit_price"]),
+                              pnl=float(r["pnl"]), reason="settled" if r.get("settled") else "exit"))
+    return sorted(out, key=lambda t: t.entry_ts)
+
+
+def _paper_cost_stress(trades: List[PaperTrade]) -> Dict[str, Any]:
+    """COST_STRESS_CENTS more per contract on every paper fill: the entry, and the exit unless the
+    trip settled (a settlement is not a fill). The same bar as _cost_stress, applied to fills that
+    already happened instead of a re-simulation."""
+    if not trades or COST_STRESS_CENTS <= 0:
+        return {"cost_stress_ok": True, "cost_stress_mean": None, "cost_stress_trades": None}
+    slip = COST_STRESS_CENTS / 100.0
+    stressed = [PaperTrade(t.ticker, t.qty, t.entry_ts, t.exit_ts, t.entry_price, t.exit_price,
+                           t.pnl - slip * t.qty * (1 if t.reason == "settled" else 2), t.reason)
+                for t in trades]
+    rets = [r for _, r in _net_returns(stressed)]
+    mean = sum(rets) / len(rets) if rets else None
+    return {"cost_stress_ok": mean is not None and mean > 0, "cost_stress_mean": mean,
+            "cost_stress_trades": len(rets)}
+
+
+def judge_paper_forward(cur, experiment_id: int, trades: List[PaperTrade], n_trials: int) -> Optional[dict]:
+    """The ONE paper forward judgment of a probation experiment (see PAPER_PHASE above). Returns
+    None, writing nothing, while the record is short of min_sample or when the experiment is not
+    eligible (already judged on paper, already holdout-judged, or validation-supported, which has
+    the holdout path). Otherwise scores the first min_sample trips, appends one phase='paper' row
+    (FORWARD_VALIDATED, INCONCLUSIVE or REJECTED) and returns the full verdict."""
+    exp = rr.experiment_row_by_id(cur, experiment_id)
+    if not exp:
+        return None
+    if rr.results_for_experiment(cur, experiment_id, PAPER_PHASE) or \
+            rr.results_for_experiment(cur, experiment_id, "holdout"):
+        return None
+    if _latest_classification(cur, experiment_id, "validation") == Classification.STAT_SUPPORTED.value:
+        return None
+    min_sample = int(exp.get("min_sample") or 0)
+    if min_sample <= 0 or len(trades) < min_sample:
+        return None
+    judged = sorted(trades, key=lambda t: t.entry_ts)[:min_sample]
+    user_id, market = int(exp["user_id"]), PAPER_PHASE + ":" + str(exp["market"])
+    lord = _lord_state(cur, user_id, market, judged[0].entry_ts, judged[-1].exit_ts)  # its own audit stream
+    v = _compute(judged, n_trials, lord, seed=_BOOT_SEED + int(experiment_id))
+    rr.set_fdr_state(cur, user_id, market, v["lord_state"])
+    v.update(_paper_cost_stress(judged))
+    cls = _classify(v["lord_reject"], None, v["dsr"], v["ci_lo"], v["ci_hi"], v["placebo_passed"],
+                    v["cross_day_ok"], v["cost_stress_ok"])
+    if cls == Classification.STAT_SUPPORTED:
+        cls = Classification.FORWARD_VALIDATED
+    rr.append_result(cur, experiment_id, PAPER_PHASE, cls.value, len(judged),
+                     metrics=_result_metrics(v, n_trials), equity_curve=v["ret_series"], folds=v["folds"])
+    return _verdict_dict(v, cls, n_trials)
+
+
 def _latest_validation_series(cur, experiment_id: int) -> Optional[List[List[float]]]:
     rows = rr.results_for_experiment(cur, experiment_id, "validation")
-    return rows[-1].get("equity_curve") if rows else None
+    series = rows[-1].get("equity_curve") if rows else None
+    if not series:  # an underpowered validation records no series; a paper pass carries its own
+        paper = rr.results_for_experiment(cur, experiment_id, PAPER_PHASE)
+        series = paper[-1].get("equity_curve") if paper else None
+    return series
 
 
 def _bucketed(series: List[List[float]]) -> Dict[int, float]:
@@ -844,7 +942,9 @@ def marginal_contribution_ok(cur, user_id: int, experiment_id: int,
     if specmod.has_perpetual_market(finalist.get("spec") or {}, finalist.get("market")):
         return False, "Bitcoin perpetuals remain research-only; trading promotion is disabled."
     market = finalist["market"]
-    if _latest_classification(cur, experiment_id, "holdout") != Classification.FORWARD_VALIDATED.value:
+    fv = Classification.FORWARD_VALIDATED.value
+    if fv not in (_latest_classification(cur, experiment_id, "holdout"),
+                  _latest_classification(cur, experiment_id, PAPER_PHASE)):
         return False, "experiment is not forward_validated; nothing to promote"
     mine = _latest_validation_series(cur, experiment_id)
     if not mine:
