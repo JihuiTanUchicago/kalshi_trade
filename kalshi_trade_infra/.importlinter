@@ -24,11 +24,12 @@ forbidden_modules =
     cryptography
 
 [importlinter:contract:core-layers]
-name = trading_core: engine > ports > domain; each layer uses only the ones below it
+name = trading_core: engine > ports > pricing > domain; each layer uses only the ones below it
 type = layers
 layers =
     trading_core.engine
     trading_core.ports
+    trading_core.pricing
     trading_core.domain
 
 [importlinter:contract:app-layers]
@@ -50,6 +51,12 @@ ignore_imports =
     ; through the Kalshi TradingLoop adapter (step 8c). Services reach it via gatekeeper/partitions.
     ; Delete when the backtest itself moves under app.services with the adapter injected.
     app.backtest -> app.adapters.kalshi.spec_strategy
+    ; The legacy backtest (forecast_book) and engine (run_forever, the live composition root until
+    ; app.bootstrap exists) wire the Polymarket fair-value book in themselves; services reach them via
+    ; gatekeeper/agent. Delete when step 5 injects FeatureProviders from app.bootstrap.
+    app.backtest -> app.adapters.polymarket.features
+    app.engine -> app.adapters.polymarket.features
+    app.engine -> app.adapters.polymarket.store
 ; Add when app.web exists: a forbidden contract app.web -> app.adapters (web reaches adapters only
 ; through services and the bootstrap wiring).
 

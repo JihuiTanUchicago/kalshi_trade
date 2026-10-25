@@ -5,6 +5,8 @@
 !app/**
 !data_pipeline/
 !data_pipeline/**
+!trading_core/
+!trading_core/**
 !staging/
 !staging/entrypoint.py
 !scripts/

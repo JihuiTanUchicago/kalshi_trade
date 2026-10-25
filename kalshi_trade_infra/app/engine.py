@@ -301,6 +301,9 @@ class Sources:
     # as_of_ts -> the newest Deribit surface rows (repository.latest_options_surface) for the
     # opt_* features of a Bitcoin strike series. None = snapshots carry no options features.
     options: Optional[Callable[[int], Optional[List[Dict]]]] = None
+    # as_of_ts -> the Polymarket recorder's newest snapshot rows (app.adapters.polymarket.store
+    # .latest_snapshot) for the pm_* features of a Bitcoin strike series. None = no pm_* features.
+    polymarket: Optional[Callable[[int], Optional[List[Dict]]]] = None
 
 
 def _micro_for(sources: Sources, tickers: List[str], now_ts: int) -> Dict[str, Dict[str, float]]:
@@ -315,6 +318,24 @@ def _micro_for(sources: Sources, tickers: List[str], now_ts: int) -> Dict[str, D
         return {}
 
 
+def _btc_fair_books(market: Market, sources: Sources, now_ts: int):
+    """Deribit options + Polymarket for a Bitcoin strike series, each optional on its own."""
+    from app.adapters.polymarket import features as polymarket
+    from app.fair_books import combine
+    books = []
+    for src, build in ((sources.options, lambda rows: options_fair.book_for_series(
+                            market.series, lambda: options_fair.book_from_rows(rows))),
+                       (sources.polymarket, lambda rows: polymarket.book_for_series(
+                           market.series, lambda: polymarket.book_from_snapshot(rows)))):
+        if src is None:
+            continue
+        try:
+            books.append(build(src(now_ts)))
+        except Exception as e:  # one source down must not cost the other's features
+            print("[engine] fair-value source failed for %s: %r" % (market.key, e), flush=True)
+    return combine(*books)
+
+
 def _forecast_book(market: Market, sources: Sources, now_ts: int):
     """This frame's external fair-value book (research builds the same one from the same table):
     issued forecasts for a weather series, collected sportsbook odds for an NBA/NHL game series,
@@ -323,9 +344,7 @@ def _forecast_book(market: Market, sources: Sources, now_ts: int):
     features then doesn't enter, as in research on a frame without them."""
     try:
         if market.series in options_fair.SERIES:
-            if sources.options is None:
-                return None
-            return options_fair.book_for_series(market.series, lambda: options_fair.book_from_rows(sources.options(now_ts)))
+            return _btc_fair_books(market, sources, now_ts)
         if market.series in sports_odds.SPORTS:
             if sources.odds is None:
                 return None
@@ -1978,6 +1997,7 @@ def paper_fill_stats(paper_kernel) -> Optional[str]:
 
 
 def run_forever() -> None:
+    from app.adapters.polymarket import store as pm_store
     from data_pipeline.common import get_db_conn
 
     from app.kalshi_dev_exec import demo_kernel_factory
@@ -2030,6 +2050,7 @@ def run_forever() -> None:
                     conn.cursor(), sport, datetime.fromtimestamp(ts - int(sports_odds.MAX_AGE_MIN * 60), tz=timezone.utc)
                     .replace(tzinfo=None), ts),
                 options=lambda ts: repo.latest_options_surface(conn.cursor(), ts),
+                polymarket=lambda ts: pm_store.latest_snapshot(conn.cursor(), ts),
             )
             # Deterministic crash recovery (P0-1): before the loop (so it also runs on every
             # reconnect / box reboot), reconcile any order-intent left 'sent' by a prior crash

@@ -1130,15 +1130,23 @@ def station_frame_series(market: Market) -> Tuple[Optional[Dict[str, List[Tuple[
 
 def forecast_book(market: Market, since: datetime):
     """The window's external fair-value book: issued NWS forecasts for a weather series, collected
-    sportsbook odds for an NBA/NHL game series, the Deribit options surface for a Bitcoin strike
-    series, else None. None too if unreadable: the features are then absent, and a rule needing
+    sportsbook odds for an NBA/NHL game series, the Deribit options surface and Polymarket's prices
+    for a Bitcoin strike series (app.fair_books.combine), else None. None too if unreadable: the features are then absent, and a rule needing
     them simply never enters."""
     if market.series in options_fair.SERIES:
+        from app.adapters.polymarket import features as polymarket
+        from app.fair_books import combine
         try:
-            return options_fair.book_for_series(market.series, lambda: options_fair.load_book(since))
+            opt = options_fair.book_for_series(market.series, lambda: options_fair.load_book(since))
         except Exception as e:  # noqa: BLE001 - S3 outage/no history: the opt_* features are absent
             print("[backtest] options surface unavailable for %s: %r" % (market.key, e), flush=True)
-            return None
+            opt = None
+        try:
+            pm = polymarket.book_for_series(market.series, lambda: polymarket.load_book(market.series, since))
+        except Exception as e:  # noqa: BLE001 - S3 outage/no history: the pm_* features are absent
+            print("[backtest] polymarket quotes unavailable for %s: %r" % (market.key, e), flush=True)
+            pm = None
+        return combine(opt, pm)
     if market.series not in WEATHER_STATIONS and market.series not in sports_odds.SPORTS:
         return None
     from app import repository as repo

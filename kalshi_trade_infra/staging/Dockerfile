@@ -9,6 +9,7 @@ RUN python -m pip install --no-cache-dir -r requirements.txt
 # repository metadata. Keep the complete application packages together.
 COPY app/ app/
 COPY data_pipeline/ data_pipeline/
+COPY trading_core/ trading_core/
 COPY staging/entrypoint.py /usr/local/lib/tau-staging/entrypoint.py
 COPY scripts/paper_staging_smoke.py scripts/paper_staging_smoke.py
 COPY scripts/kalshi_perps_staging_smoke.py scripts/kalshi_perps_staging_smoke.py

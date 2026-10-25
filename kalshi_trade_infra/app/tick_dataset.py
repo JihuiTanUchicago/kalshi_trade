@@ -37,6 +37,7 @@ _DIRECT = {
     "yes_taker_60s": "taker_yes_vol_60s", "no_taker_60s": "taker_no_vol_60s",
     "yes_taker_10s": "taker_yes_vol_10s", "no_taker_10s": "taker_no_vol_10s",
     "opt_p_yes": "opt_p_yes", "opt_iv": "opt_iv",
+    "pm_p_yes": "pm_p_yes", "pm_spread": "pm_spread", "pm_age_s": "pm_age_s",
 }
 COLUMNS = ["sec", "ticker", "close_ts", "strike_lo", "strike_hi", "yes_bid", "yes_ask", "secs_to_close",
            "dist_sigma", "spot_stale", "spot_comp"] + sorted(set(_DIRECT) - {"spot"}) + ["spot"]
@@ -147,6 +148,8 @@ def build(market: Market, frame: Dict[str, np.ndarray], results: Dict[str, str],
         f["yes_bid"], f["yes_ask"], f["spread"], f["mid"] = b, a, a - b, (a + b) / 2.0
         if "opt_p_yes" in f:
             f["opt_edge"] = f["opt_p_yes"] - f["mid"]
+        if "pm_p_yes" in f:
+            f["pm_edge"] = f["pm_p_yes"] - f["mid"]
         f["hour_et"] = float(datetime.fromtimestamp(ts, tz=timezone.utc).astimezone(NEW_YORK).hour)
         snap = Snapshot(contract=c, ts=ts, yes_bid=b, yes_ask=a, features=f)
         if out and out[-1][0] == ts:

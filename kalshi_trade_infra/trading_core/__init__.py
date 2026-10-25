@@ -6,6 +6,7 @@ market (Polymarket, a crypto exchange, equities) needs a new adapter and no core
 
     trading_core.domain   entities and value objects (Instrument, Order, Fill, Position, ...)
                           and pure rules on them. Imports only the stdlib.
+    trading_core.pricing  pure pricing math any venue's adapters share (binary strike ladders)
     trading_core.ports    typing.Protocol interfaces the core needs from the outside world
                           (Venue, MarketDataFeed, FeatureProvider, Strategy, FeeModel, Clock).
 

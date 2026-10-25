@@ -18,10 +18,10 @@ INSTANCE_ID=${INSTANCE_ID:-i-0bd0683cc7e86243d}
 BUCKET=${BUCKET:-kalshi-trade-artifacts-568386354218-us-east-1}
 BOX_DIR=${BOX_DIR:-/opt/kalshi}
 BOX_PY=${BOX_PY:-/opt/kalshi/.venv313/bin/python}
-SERVICES=${SERVICES:-"kalshi-forward-collector kalshi-coinbase-collector kalshi-feature-1m kalshi-feature-builder kalshi-sim-engine tau-snapshot kalshi-tick-recorder coinbase-tick-recorder spot-tick-recorder deribit-options-recorder"}
+SERVICES=${SERVICES:-"kalshi-forward-collector kalshi-coinbase-collector kalshi-feature-1m kalshi-feature-builder kalshi-sim-engine tau-snapshot kalshi-tick-recorder coinbase-tick-recorder spot-tick-recorder deribit-options-recorder polymarket-recorder"}
 # Unit files this script owns on the box: copied from scripts/systemd when they differ, then
 # enabled. Timers are enabled --now; services start with the SERVICES restart below.
-UNITS=${UNITS:-"kalshi-tick-recorder.service coinbase-tick-recorder.service spot-tick-recorder.service deribit-options-recorder.service kalshi-tick-archiver.service kalshi-tick-archiver.timer"}
+UNITS=${UNITS:-"kalshi-tick-recorder.service coinbase-tick-recorder.service spot-tick-recorder.service deribit-options-recorder.service polymarket-recorder.service kalshi-tick-archiver.service kalshi-tick-archiver.timer"}
 
 if [[ -n "${AWS_PROFILE}" ]]; then export AWS_PROFILE; else unset AWS_PROFILE; fi
 
