@@ -1695,7 +1695,7 @@
           <button class="btn primary go" type="submit" ${me.needs_card ? 'aria-disabled="true"' : ''}>${ICON.spark2}Start session</button>
         </div>
         <div id="dflash"></div>
-        <p class="hint">A session takes a few minutes and keeps running if you leave this page.</p>
+        <p class="hint" id="rf-hint">A session takes a few minutes and keeps running if you leave this page.</p>
       </form>
       <div class="rengine" id="rengine">
         <div class="statusline" id="rstatus"><p class="said"></p></div>
@@ -1711,7 +1711,8 @@
     root.querySelectorAll('[data-ex]').forEach((b) => (b.onclick = () => { ta.value = b.dataset.ex; ta.focus(); }));
     const rf = form.querySelector('#runforever'), mh = form.querySelector('#maxhyp');
     if (rf && mh) {
-      const syncRf = () => { mh.disabled = rf.checked; mh.style.opacity = rf.checked ? '.4' : ''; };
+      const rh = form.querySelector('#rf-hint');
+      const syncRf = () => { mh.disabled = rf.checked; mh.style.opacity = rf.checked ? '.4' : ''; if (rh) rh.textContent = rf.checked ? 'Runs until you stop it, using credits as it goes. It keeps running if you leave this page.' : 'A session takes a few minutes and keeps running if you leave this page.'; };
       rf.addEventListener('change', syncRf); syncRf();  // default on -> depth dimmed
     }
     form.onsubmit = async (e) => {

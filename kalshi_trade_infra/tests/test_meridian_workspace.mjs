@@ -1479,6 +1479,7 @@ test('Research setup is a native closed disclosure unless requested and retains 
     assert.equal(create.tag, 'details'); assert.equal(create.open, initiallyOpen);
     assert.equal(create.querySelector('summary').textContent, 'New session'); assert.equal(create.contains(form), true);
     assert.ok(form.querySelector('#rmodel')); assert.ok(form.querySelector('#maxhyp')); assert.ok(form.querySelector('#runforever'));
+    assert.match(form.querySelector('#rf-hint').textContent, /Runs until you stop it, using credits as it goes/);
     create.open = true;
     const prompt = form.querySelector('textarea[name=prompt]'); prompt.value = 'Keep my unsent idea'; prompt.focus();
     f.intervals.get(f.S.timers.at(-1))(); await flush();

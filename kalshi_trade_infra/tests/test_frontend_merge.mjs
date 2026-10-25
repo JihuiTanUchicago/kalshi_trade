@@ -421,6 +421,25 @@ test('the research headline uses all-time totals, not the 50 newest runs', async
   assert.match(f.root.querySelector('#rstatus .said').innerHTML, /tested <em>1240<\/em> hypotheses and kept <em>4<\/em>/);
 });
 
+test('the research hint says a run-forever session keeps spending credits', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path === '/api/research/context') return response({markets: []});
+    if (path === '/api/runs') return response({runs: [], counts: {research_running: 0, research_queued: 0}, policy: null});
+    if (path.startsWith('/api/research/scoreboard')) return response({});
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = false;
+  await f.viewResearch(); await flush(); await flush();
+  const rf = f.root.querySelector('#runforever'), hint = () => f.root.querySelector('#rf-hint').textContent;
+  assert.equal(rf.checked, true);
+  assert.match(hint(), /Runs until you stop it, using credits as it goes/);
+  rf.checked = false; rf.dispatchEvent({type: 'change'});
+  assert.match(hint(), /A session takes a few minutes/);
+  assert.doesNotMatch(hint(), /until you stop it/);
+});
+
 test('only the admin view shows backtest-history lag on the dashboard status line', async () => {
   const f = frontend({fetchImpl: path => {
     if (path === '/api/dashboard') return response(emptyDashboard());

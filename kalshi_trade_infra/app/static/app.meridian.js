@@ -1740,7 +1740,7 @@
           <button class="btn primary go" type="submit" ${me.needs_card ? 'aria-disabled="true"' : ''}>Start session</button>
         </div>
         <div id="dflash"></div>
-
+        <p class="hint" id="rf-hint">A session takes a few minutes and keeps running if you leave this page.</p>
       </form>${pipelineFigure()}</div></details><section class="research-history sect"><div class="sect-head research-archive-heading"><h2>Recent sessions <span id="rcount"></span></h2><div class="rengine" id="rengine"><section class="research-total" aria-label="All sessions, including active"><h3>All sessions</h3><dl class="figures measure" id="rfigs"></dl><dl class="figures measure research-status" id="research-status"></dl></section></div></div>
         <div class="run-columns" aria-hidden="true"><span>Hypothesis / session</span><span>Market</span><span>Created</span><span>Outcome</span></div><div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div></section></div>`);
     const form = root.querySelector('#dispatch');
@@ -1749,7 +1749,8 @@
     root.querySelectorAll('[data-ex]').forEach((b) => (b.onclick = () => { ta.value = b.dataset.ex; ta.focus(); }));
     const rf = form.querySelector('#runforever'), mh = form.querySelector('#maxhyp');
     if (rf && mh) {
-      const syncRf = () => { mh.disabled = rf.checked; mh.style.opacity = rf.checked ? '.4' : ''; };
+      const rh = form.querySelector('#rf-hint');
+      const syncRf = () => { mh.disabled = rf.checked; mh.style.opacity = rf.checked ? '.4' : ''; if (rh) rh.textContent = rf.checked ? 'Runs until you stop it, using credits as it goes. It keeps running if you leave this page.' : 'A session takes a few minutes and keeps running if you leave this page.'; };
       rf.addEventListener('change', syncRf); syncRf();  // default on -> depth dimmed
     }
     form.onsubmit = async (e) => {
