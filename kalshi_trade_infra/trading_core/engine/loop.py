@@ -2,8 +2,13 @@
 
     settle   every held instrument past expiry whose settlement price is known
     quotes   = feed.quotes(universe), with every FeatureProvider's features merged onto each quote
+    exits    every exit rule (a position stop) sells at this step's quotes, ahead of the strategy
+    pending  with ``next_step_fills``, last step's intents execute now: exits, then entries
     intents  = strategy.decide(DecisionContext(now, instruments, quotes, positions, capital))
-    for each intent: risk.check (exits always pass) -> execution.execute -> book.apply(fills)
+    for each intent: risk.check (exits always pass) -> execution.execute -> book.apply(fills),
+             or, with ``next_step_fills``, queue it for the next step's quotes (decide on bar t,
+             fill on bar t+1: the latency a live order has). An unfilled exit keeps resting until
+             ``pending_ttl`` seconds; an entry gets one chance.
 
 The loop owns no I/O: the clock, feed, venue, providers and the ``on_report`` sink are adapters.
 The book here is the strategy's own view (its fills); the venue's book is the exchange truth.
@@ -23,6 +28,9 @@ from trading_core.ports.settlement import SettlementSource
 from trading_core.ports.strategy import DecisionContext, Strategy
 from trading_core.ports.venue import Venue
 
+# (book, quotes, now) -> exits to send now. Portfolio-level rules the strategy cannot opt out of.
+ExitRule = Callable[[Portfolio, Mapping[InstrumentId, Quote], float], Sequence[OrderIntent]]
+
 
 @dataclass
 class StepResult:
@@ -40,7 +48,9 @@ class TradingLoop:
                  book: Optional[Portfolio] = None, capital: Optional[Callable[[], float]] = None,
                  on_report: Optional[Callable[[ExecutionReport], None]] = None,
                  settlement: Optional[SettlementSource] = None,
-                 universe: Optional[Callable[[float], Iterable[InstrumentId]]] = None) -> None:
+                 universe: Optional[Callable[[float], Iterable[InstrumentId]]] = None,
+                 exit_rules: Sequence[ExitRule] = (), next_step_fills: bool = False,
+                 pending_ttl: float = float("inf")) -> None:
         self.strategy, self.instruments = strategy, dict(instruments)
         self.feed, self.venue, self.clock = feed, venue, clock
         self.execution = execution or CrossTheTouch()
@@ -51,6 +61,10 @@ class TradingLoop:
         self._on_report = on_report
         self.settlement = settlement
         self._universe = universe         # the instruments live at ``now`` (contracts roll); None = all
+        self.exit_rules = list(exit_rules)
+        self.next_step_fills = next_step_fills
+        self.pending_ttl = pending_ttl
+        self._pending: List[Tuple[float, OrderIntent]] = []   # (decided at, intent)
         self._seq = 0
 
     def _settle(self, now: float, result: StepResult) -> None:
@@ -79,26 +93,56 @@ class TradingLoop:
         self._seq += 1
         return "%s-%d-%d" % (self.strategy.strategy_id, int(now), self._seq)
 
+    def _execute(self, intent: OrderIntent, quotes: Mapping[InstrumentId, Quote], now: float,
+                 result: StepResult) -> Optional[ExecutionReport]:
+        refusal = self.risk.check(intent)
+        if refusal is not None:
+            result.refused.append((intent, refusal))
+            return None
+        inst = self.instruments[intent.instrument]
+        report = self.execution.execute(intent, inst, quotes.get(intent.instrument), self.venue,
+                                        self._client_order_id(now), now)
+        for fill in report.fills:
+            self.book.apply(fill, multiplier=self.instruments[fill.instrument].multiplier)
+        result.reports.append(report)
+        if self._on_report is not None:
+            self._on_report(report)
+        return report
+
+    def _held(self, iid: InstrumentId) -> bool:
+        pos = self.book.positions.get(iid)
+        return pos is not None and not pos.is_flat
+
+    def _run_pending(self, quotes: Mapping[InstrumentId, Quote], now: float, result: StepResult) -> None:
+        due = [p for p in self._pending if p[1].reduce_only] + [p for p in self._pending if not p[1].reduce_only]
+        self._pending = []
+        for decided, intent in due:
+            if now - decided > self.pending_ttl:
+                continue                                  # stale: the strategy decides afresh
+            if intent.reduce_only and not self._held(intent.instrument):
+                continue                                  # settled or stopped while resting
+            report = self._execute(intent, quotes, now, result)
+            if intent.reduce_only and (report is None or not report.fills):
+                self._pending.append((decided, intent))   # an exit rests until it fills or goes stale
+
     def step(self) -> StepResult:
         now = self.clock.now()
         result = StepResult(now)
         self._settle(now, result)
         quotes = self._quotes(now)
+        for rule in self.exit_rules:
+            for intent in rule(self.book, quotes, now):
+                self._execute(intent, quotes, now, result)
+        if self.next_step_fills:
+            self._run_pending(quotes, now, result)
         capital = self._capital() if self._capital is not None else self.book.cash
         ctx = DecisionContext(now=now, instruments=self.instruments, quotes=quotes,
                               positions=self.book.open_positions(), capital=capital)
-        result.intents = list(self.strategy.decide(ctx))
+        resting = {i.instrument for _, i in self._pending if i.reduce_only}
+        result.intents = [i for i in self.strategy.decide(ctx) if not (i.reduce_only and i.instrument in resting)]
         for intent in result.intents:
-            refusal = self.risk.check(intent)
-            if refusal is not None:
-                result.refused.append((intent, refusal))
-                continue
-            inst = self.instruments[intent.instrument]
-            report = self.execution.execute(intent, inst, quotes.get(intent.instrument), self.venue,
-                                            self._client_order_id(now), now)
-            for fill in report.fills:
-                self.book.apply(fill, multiplier=inst.multiplier)
-            result.reports.append(report)
-            if self._on_report is not None:
-                self._on_report(report)
+            if self.next_step_fills:
+                self._pending.append((now, intent))
+            else:
+                self._execute(intent, quotes, now, result)
         return result

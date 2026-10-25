@@ -60,3 +60,14 @@ def max_open_positions(limit: int, book: Portfolio) -> RiskCheck:
             return RiskDecision.refuse("max_open_positions", "%d open >= %d" % (len(held), limit))
         return RiskDecision.allow()
     return check
+
+
+def one_position_per_symbol(book: Portfolio) -> RiskCheck:
+    """Refuse an entry into a venue symbol already held on any outcome: one Kalshi ticker is one
+    position, YES or NO, never both and never stacked."""
+    def check(intent: OrderIntent) -> RiskDecision:
+        key = (intent.instrument.venue, intent.instrument.symbol)
+        if any((i.venue, i.symbol) == key for i in book.open_positions()):
+            return RiskDecision.refuse("one_position_per_symbol", "%s already held" % intent.instrument.symbol)
+        return RiskDecision.allow()
+    return check
