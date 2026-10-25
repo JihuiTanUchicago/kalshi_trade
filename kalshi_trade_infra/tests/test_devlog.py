@@ -23,3 +23,11 @@ def test_shipped_titles_are_features_not_engineering_logistics():
     # It once listed "Main f8ff5e2 merged locally" and "[ops] Codified the web-box deploy".
     for _, title, _ in devlog.SHIPPED:
         assert not re.search(r"\bmerged?\b|\borigin\b|\bPR #\d+|\[ops\]|\b[0-9a-f]{7,40}\b", title, re.I), title
+
+
+def test_shipped_details_do_not_map_credentials_or_cloud_accounts():
+    # It once said which provider keys sat in which secret store, named the deploy IAM user and
+    # role, and walked through a sandbox secret-read exploit step by step.
+    pat = r"AWS_[A-Z_]+|\bIAM\b|\bOIDC\b|\bSSM\b|Actions Secrets|tau-deploy|\bt4g\.|/etc/shadow|exfil|private `\.env`"
+    for _, title, detail in devlog.SHIPPED:
+        assert not re.search(pat, title + " " + detail), title
