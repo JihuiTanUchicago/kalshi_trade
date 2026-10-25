@@ -1705,6 +1705,7 @@
       root.querySelector('#rfigs').innerHTML = fig('Researching now', running) + fig('Waiting', queued) +
         fig('Hypotheses tested', tried) + fig('Passed every gate' + glo('gate'), passed, { small: tried ? `${pct(passed / tried, false)} pass rate` : '' });
       renderResearchLoop(root.querySelector('#rsimo'), d.policy, tried);
+      const mainEl = root.querySelector('#main'); if (mainEl) mainEl.classList.toggle('runs-first', d.runs.length > 0);  // phones: progress before the form
       root.querySelector('#rcount').textContent = d.runs.length ? `${d.runs.length} run${d.runs.length > 1 ? 's' : ''}` : '';
       root.querySelector('#runs').innerHTML = d.runs.length ? d.runs.map(runRow).join('')
         : `<div class="empty"><h3>No sessions yet</h3><p>Describe an idea above. The agent will turn it into several strategies, test each one on data it never saw, and mark each Passed or Void.</p></div>`;

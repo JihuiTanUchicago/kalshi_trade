@@ -1766,3 +1766,12 @@ body.landing-body .apf { display: none; }
 .research-ap button { background: none; border: 0; padding: 0; font: inherit; color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .research-ap button.busy { opacity: .6; }
 #main > .research-ap:first-child, #main > .dispatch:first-child { margin-top: 18px; }  /* off the page deck */
+/* Phones, once there are sessions: the engine summary and your sessions come before the long new-session
+   form, which used to push them two screens down. */
+@media (max-width: 760px) {
+  #main.runs-first { display: flex; flex-direction: column; }
+  #main.runs-first > .rengine { order: -2; margin-top: 18px; }
+  #main.runs-first > .sect { order: -1; }
+  #main.runs-first > .research-ap, #main.runs-first > .dispatch { margin-top: 28px; }
+  #main.runs-first > .research-ap + .dispatch { margin-top: 0; }
+}
