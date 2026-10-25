@@ -810,9 +810,12 @@ def judge_holdout(cur, experiment_id: int, finalist: dict,
 # forward gate gives it ONE pre-registered judgment on its realistic paper fills, all of which
 # happened after everything the idea was selected on. Integrity rules, each enforced here:
 #   * one look: an experiment with a 'paper' row is never judged again, whatever the result;
-#   * fixed sample: the look happens once the record holds the experiment's own pre-registered
-#     min_sample trips and scores exactly the FIRST min_sample of them, so when the check runs
-#     cannot change the verdict (no optional stopping on a growing record);
+#   * fixed sample: the look happens once the record's oldest trips hold the experiment's own
+#     pre-registered min_sample trips AND PAPER_MIN_EVENTS separate events, and scores exactly that
+#     shortest prefix, so when the check runs cannot change the verdict (no optional stopping on a
+#     growing record). Both counts ignore outcomes. The event floor keeps one correlated burst (15
+#     trips on 4 games force-closed together by the position stop, NFL #16094 on 2026-10-25) from
+#     spending the single look; dropping trips by how they closed would select on outcome instead;
 #   * the same validation bar (_compute + _classify: fixed VALIDATION_ALPHA, DSR over the audited
 #     paper trials, CI, placebo, cross-day and COST_STRESS_CENTS), so it is never an easier pass.
 # A pass is FORWARD_VALIDATED on phase 'paper'; marginal_contribution_ok then decides
@@ -820,6 +823,24 @@ def judge_holdout(cur, experiment_id: int, finalist: dict,
 # and paper_evidence. Caveat: the tournament retires clear losers (P(mean>0) < 0.05 after 30
 # events) before they reach min_sample, which can only remove failing records, never add a pass.
 PAPER_PHASE = "paper"
+PAPER_MIN_EVENTS = 20  # the live gate's own floor (agent.MIN_PAPER_EVENTS)
+
+
+def paper_event_key(ticker: Optional[str], i: int) -> str:
+    """A trip's event: its ticker minus the strike segment (KXBTC15M-26OCT241515-15 ->
+    KXBTC15M-26OCT241515), as agent._trip_event_key counts them for the live gate."""
+    return ticker.rsplit("-", 1)[0] if ticker and "-" in ticker else "trip:%d:%s" % (i, ticker or "")
+
+
+def paper_judged_prefix(trades: List["PaperTrade"], min_sample: int) -> Optional[List["PaperTrade"]]:
+    """The oldest trips up to the first point holding min_sample trips and PAPER_MIN_EVENTS events,
+    or None while the record is shorter. Depends on counts only, never on P&L."""
+    ordered, events = sorted(trades, key=lambda t: t.entry_ts), set()
+    for i, t in enumerate(ordered):
+        events.add(paper_event_key(t.ticker, i))
+        if i + 1 >= min_sample and len(events) >= PAPER_MIN_EVENTS:
+            return ordered[:i + 1]
+    return None
 
 
 @dataclass(frozen=True)
@@ -866,9 +887,9 @@ def _paper_cost_stress(trades: List[PaperTrade]) -> Dict[str, Any]:
 
 def judge_paper_forward(cur, experiment_id: int, trades: List[PaperTrade], n_trials: int) -> Optional[dict]:
     """The ONE paper forward judgment of a probation experiment (see PAPER_PHASE above). Returns
-    None, writing nothing, while the record is short of min_sample or when the experiment is not
-    eligible (already judged on paper, already holdout-judged, or validation-supported, which has
-    the holdout path). Otherwise scores the first min_sample trips, appends one phase='paper' row
+    None, writing nothing, while the record is short (paper_judged_prefix) or when the experiment is
+    not eligible (already judged on paper, already holdout-judged, or validation-supported, which
+    has the holdout path). Otherwise scores that prefix, appends one phase='paper' row
     (FORWARD_VALIDATED, INCONCLUSIVE or REJECTED) and returns the full verdict."""
     exp = rr.experiment_row_by_id(cur, experiment_id)
     if not exp:
@@ -879,9 +900,9 @@ def judge_paper_forward(cur, experiment_id: int, trades: List[PaperTrade], n_tri
     if _latest_classification(cur, experiment_id, "validation") == Classification.STAT_SUPPORTED.value:
         return None
     min_sample = int(exp.get("min_sample") or 0)
-    if min_sample <= 0 or len(trades) < min_sample:
+    judged = paper_judged_prefix(trades, min_sample) if min_sample > 0 else None
+    if judged is None:
         return None
-    judged = sorted(trades, key=lambda t: t.entry_ts)[:min_sample]
     user_id, market = int(exp["user_id"]), PAPER_PHASE + ":" + str(exp["market"])
     lord = _lord_state(cur, user_id, market, judged[0].entry_ts, judged[-1].exit_ts)  # its own audit stream
     v = _compute(judged, n_trials, lord, seed=_BOOT_SEED + int(experiment_id))
