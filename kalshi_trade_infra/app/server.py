@@ -791,7 +791,9 @@ def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
     for c in cards:
         books = real.get(c["id"]) if c.get("deployed") else None
         if books:
-            mode = next(m for m in ("live", "paper", "demo") if m in books)
+            mode = next((m for m in ("live", "paper", "demo") if m in books), None)
+            if mode is None:  # only a mode this list doesn't show
+                continue
             r = books[mode]
             c["real"] = {**r, "pnl": round(r["pnl"], 2), "live": mode == "live", "mode": mode}
             if mode == "paper" and "demo" in books:
