@@ -666,3 +666,23 @@ def test_research_totals_are_all_time_and_cached(monkeypatch):
     assert calls[0][0] < server.repo.now_utc() - server.timedelta(days=365 * 10)
     assert calls[0][1] is True  # the page lists the seeded demo, so its headline counts it
     server._RUN_TOTALS.clear()
+
+
+def test_explore_market_errors_never_show_the_raw_exception(monkeypatch, capsys):
+    import data_pipeline.common as common
+    c = server.Ctx(FakeConn(), {"id": 1}, (), {"ticker": "KXNBAGAME-26OCT25TORMIN-MIN"}, {}, None)
+
+    def proxy_down(path, params=None):
+        raise OSError("HTTPSConnectionPool(host='api.elections.kalshi.com'): Tunnel connection failed: 403 Forbidden")
+    monkeypatch.setattr(common, "api_get", proxy_down)
+    with pytest.raises(server.ApiError) as err:
+        server.explore_market(c)
+    assert err.value.status == 502 and "Try again in a minute" in str(err.value)
+    assert "HTTPSConnectionPool" not in str(err.value) and "HTTPSConnectionPool" in capsys.readouterr().out
+
+    def missing(path, params=None):
+        raise RuntimeError("GET https://api.elections.kalshi.com/trade-api/v2/markets/X failed 404: {}")
+    monkeypatch.setattr(common, "api_get", missing)
+    with pytest.raises(server.ApiError) as err:
+        server.explore_market(c)
+    assert err.value.status == 404 and "no market KXNBAGAME-26OCT25TORMIN-MIN" in str(err.value)
