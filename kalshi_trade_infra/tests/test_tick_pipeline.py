@@ -272,7 +272,7 @@ def test_requested_series_are_recorded_with_their_spot(monkeypatch):
     monkeypatch.setattr(tick_recorder, "api_get", lambda *a, **k: {"series": [{"ticker": "KXBTCD"}, {"ticker": "KXETHD"}]})
     assert tick_recorder.requested_tick_series() == ["KXETH15M", "KXSOLD"]
     got = tick_recorder.discover_series()
-    assert {"KXETH15M", "KXSOLD", "KXBTCD", "KXBTC15M"} <= set(got) and "KXETHD" not in got
+    assert {"KXETH15M", "KXSOLD", "KXBTCD", "KXBTC15M", "KXCRYPTOLEAD15M"} <= set(got) and "KXETHD" not in got
     rec = tick_recorder.CoinbaseRecorder()
     assert rec.wanted_products() == ["BTC-USD", "ETH-USD", "SOL-USD"]
     assert tick_recorder.spot_product("KXBNB15M") == "BNB-USD" and tick_recorder.spot_product("KXNBAGAME") is None
