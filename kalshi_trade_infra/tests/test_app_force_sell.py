@@ -281,6 +281,9 @@ def _entry(ticker="BTC-NEW", price=0.40):
 
 
 def test_portfolio_position_cap_blocks_a_new_entry(monkeypatch):
+    # The legacy decision path's cap code (it patches _paper_buy and fakes entries); the TradingLoop
+    # path binds the same caps in tests/test_engine_loop_parity_db.py against a real MySQL.
+    monkeypatch.setattr(engine, "ENGINE_LOOP_MODES", frozenset())
     monkeypatch.setattr(engine, "PAPER_CAP_MULTIPLE", 1.0)  # the cap mechanics, at the user's own numbers
     bought = []
     monkeypatch.setattr(engine.repo, "open_positions", lambda cur, dep_id: [])
@@ -298,6 +301,9 @@ def test_portfolio_position_cap_blocks_a_new_entry(monkeypatch):
 
 
 def test_portfolio_notional_cap_trims_a_new_entry(monkeypatch):
+    # The legacy decision path's cap code (it patches _paper_buy and fakes entries); the TradingLoop
+    # path binds the same caps in tests/test_engine_loop_parity_db.py against a real MySQL.
+    monkeypatch.setattr(engine, "ENGINE_LOOP_MODES", frozenset())
     monkeypatch.setattr(engine, "PAPER_CAP_MULTIPLE", 1.0)  # the cap mechanics, at the user's own numbers
     bought = []
     monkeypatch.setattr(engine.repo, "open_positions", lambda cur, dep_id: [])

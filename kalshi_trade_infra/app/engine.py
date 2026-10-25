@@ -47,8 +47,10 @@ LIVE_TRADING_ENABLED = os.getenv("APP_LIVE_TRADING_ENABLED") == "1"
 NO_SIDE_LIVE_ENABLED = os.getenv("APP_NO_SIDE_LIVE_ENABLED") == "1"
 # Paper decisions as one trading_core TradingLoop step instead of the legacy entry/exit loops below
 # (ARCHITECTURE.md step 8: backtest, paper and live on one code path). Only "paper" is honoured; live
-# and demo move separately, each behind its own parity test. Off by default.
-ENGINE_LOOP_MODES = frozenset(m.strip() for m in os.getenv("TAU_ENGINE_LOOP", "").split(",") if m.strip()) & {"paper"}
+# and demo move separately, each behind its own parity test. On for paper by default (Todd, 2026-10-25,
+# after the MySQL parity test tests/test_engine_loop_parity_db.py); TAU_ENGINE_LOOP=off puts paper back
+# on the legacy path.
+ENGINE_LOOP_MODES = frozenset(m.strip() for m in os.getenv("TAU_ENGINE_LOOP", "paper").split(",") if m.strip()) & {"paper"}
 TICK_SECONDS = 15
 # An order whose outcome is unknown (intent still 'sent': a timeout, a crash, a lost response) may
 # already have filled. No new order goes out on that user's ticker until recovery reads the truth
