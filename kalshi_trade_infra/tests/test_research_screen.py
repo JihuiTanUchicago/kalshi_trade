@@ -132,3 +132,4 @@ def test_the_run_card_prices_screen_tokens_at_the_screen_rate_and_the_watch_spli
     ab = screen_ab([card, control])
     assert ab["screen"]["ideas_per_usd"] > ab["control"]["ideas_per_usd"]
     assert ab["screen"]["rescued"] == 1 and "rescued" not in ab["control"]
+

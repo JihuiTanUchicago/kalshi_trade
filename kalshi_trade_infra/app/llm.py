@@ -366,12 +366,41 @@ def _anthropic_direct(system: str, messages: List[Dict[str, str]]) -> "tuple[str
 _FENCE = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.S)
 
 
+_LIST_KEY = re.compile(r'^\s*\{\s*"([A-Za-z_]+)"\s*:\s*\[')
+
+
+def _salvage_list(candidate: str) -> Optional[Dict[str, Any]]:
+    """A broken `{"key": [item, item, ...` reply (a stray quote or a clipped tail in item k, prod run
+    2830): keep the complete items before the break instead of re-generating the whole batch. Only
+    for a reply whose FIRST key holds a list; the caller's check still validates every kept item."""
+    m = _LIST_KEY.match(candidate)
+    if not m:
+        return None
+    dec, pos, items = json.JSONDecoder(), m.end(), []
+    while True:
+        while pos < len(candidate) and candidate[pos] in " \t\r\n,":
+            pos += 1
+        if pos >= len(candidate) or candidate[pos] == "]":
+            break
+        try:
+            item, pos = dec.raw_decode(candidate, pos)
+        except ValueError:
+            break
+        items.append(item)
+    return {m.group(1): items} if items else None
+
+
 def extract_json(text: str) -> Dict[str, Any]:
     m = _FENCE.search(text)
     candidate = m.group(1) if m else text[text.find("{"): text.rfind("}") + 1]
     if not candidate:
         raise ValueError("no JSON object in the reply")
-    value = json.loads(candidate)
+    try:
+        value = json.loads(candidate)
+    except ValueError:
+        value = _salvage_list(candidate)
+        if value is None:
+            raise
     if not isinstance(value, dict):
         raise ValueError("reply JSON must be an object")
     return value
