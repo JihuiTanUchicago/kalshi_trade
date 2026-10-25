@@ -123,7 +123,7 @@ function frontend({fetchImpl, brokerMount} = {}) {
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewDashboard, marketPicker, wireMarketPicker, paintDashAp, apUpdate};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewDashboard, marketPicker, wireMarketPicker, paintDashAp, apUpdate, trCurve};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -352,6 +352,14 @@ test('the autopilot panel shows Kill only once real money is armed or running', 
   assert.doesNotMatch(paper, /data-ap="kill"/); assert.match(paper, /data-ap="livearm" aria-disabled="true"/);
   assert.match(controls({autopilot: true, autopilot_live: true}), /data-ap="kill"/);
   assert.match(controls({autopilot: false, live_running: 1}), /data-ap="kill"/);
+});
+
+test('a track record whose trades all closed in one minute spaces them one per trade', () => {
+  const f = frontend();
+  assert.equal(JSON.stringify(f.trCurve([[1000, 1], [1000, -2], [1030, 3]])), '[[1000,1],[1001,-2],[1002,3]]');
+  const spread = [[1000, 1], [5000, 2]];
+  assert.equal(f.trCurve(spread), spread);
+  assert.equal(f.trCurve(null), null);
 });
 
 test('the retained broker module still rejects a late redirect after its owning view changes', async () => {

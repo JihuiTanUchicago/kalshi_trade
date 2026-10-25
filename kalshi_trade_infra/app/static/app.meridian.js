@@ -2693,6 +2693,10 @@
   const trMonth = (k) => { const [y, m] = k.split('-'); return new Date(Date.UTC(+y, +m - 1, 15)).toLocaleDateString(undefined, { year: 'numeric', month: 'short', timeZone: 'UTC' }); };
   const trCi = (ci, f) => (ci ? `95%: ${f(ci[0])} to ${f(ci[1])}` : 'needs 2+ trades for a range');
   const TR_EDGE = { positive: ['Edge', 'on'], negative: ['Losing', 'live'], unclear: ['Unproven', ''], thin: ['Too few', 'quiet'] };
+  // A first batch of trades often settles in the same second (one 15-minute close), which drew the
+  // whole record as a vertical line. When every close falls within a minute, space the points one
+  // per trade instead; the date labels stay true.
+  const trCurve = (c) => (c && c.length > 1 && c[c.length - 1][0] - c[0][0] < 60) ? c.map(([t, v], i) => [c[0][0] + i, v]) : c;
   function trackRecordPanel(m, key, th) {
     const caveats = [];
     if (m.excluded_instant_fills) caveats.push(`${num(m.excluded_instant_fills)} instant-fill paper trade${m.excluded_instant_fills === 1 ? '' : 's'} left out (fills real execution would not get).`);
@@ -2740,8 +2744,8 @@
     }).join('');
     return `${notice(s.text, good ? 'good' : '')}${cav}${figs}
       <div class="rp-figs">
-        <div class="rp-fig wide"><h5>Equity curve</h5>${equityChart(m.curve, null, null, { width: chartWidth() })}<div class="cap">Cumulative net P&amp;L, one point per closed trade.</div></div>
-        <div class="rp-fig"><h5>Drawdown (underwater)</h5>${rpUnderwater(m.curve)}</div>
+        <div class="rp-fig wide"><h5>Equity curve</h5>${equityChart(trCurve(m.curve), null, null, { width: chartWidth() })}<div class="cap">Cumulative net P&amp;L, one point per closed trade.</div></div>
+        <div class="rp-fig"><h5>Drawdown (underwater)</h5>${rpUnderwater(trCurve(m.curve))}</div>
         <div class="rp-fig"><h5>Risk and trade detail</h5>${risk}</div>
       </div>
       <section class="section"><div class="section-head"><h2>By month</h2><p>UTC calendar months</p></div>
