@@ -165,6 +165,15 @@
   Runs 50/51 (21:00-21:20Z) failed: the batch ships the newest green commit, but it ran
   deploy_web.sh from the main-head checkout, whose UNITS (#378 tau-code-paper) the older ref lacked
   (`git archive` pathspec error). The deploy scripts now run from a worktree at the shipped ref.
+- NO positions are marked at their own bid (2026-10-25): the engine stamped every open position with
+  the YES bid, so a NO position was valued at 1 - yes_bid, its ask. On a wide book that hid the
+  spread from the position stop, the drawdown guard and unrealized P&L (47 of 186 positions so far
+  were NO). `repo.update_marks` now takes (yes_bid, yes_ask) from one quote and marks YES rows with
+  the bid and NO rows with the ask (1 - yes_ask = NO bid); a side with no usable price keeps its
+  last mark, which then ages out of the risk triggers. Exits were already realistic (the kernel
+  sells into its own side of the book). Strictly stricter: a NO stop can only fire sooner.
+  #81's 15-position stop at 21:03:55Z was not a spread artifact: Kalshi's prints show GB-DET DET8
+  swept 0.34 -> 0.25 at 21:02:59, and the whole-deployment flatten sold the other 14 with it.
 - Live sports contracts count time to expiry the way research does (2026-10-25): an open
   outcome-settled contract that can close early carries a backstop close_time (every open
   KXNFL1HSPREAD contract said two days after its game), while research's settled markets carry the

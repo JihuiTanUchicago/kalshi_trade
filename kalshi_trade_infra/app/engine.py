@@ -1336,9 +1336,10 @@ def _deployment_capital(dep: Dict) -> float:
 
 
 def _liquidation_price(pos: Dict) -> Optional[float]:
-    """The price the position's OWN side could be sold at now, from the engine-stamped YES bid
-    (`mark_price`). YES liquidates ~yes_bid; NO ~1-yes_bid (matches server._mark_fields). None
-    until the first mark after entry — such a position is skipped (priced/retried next tick)."""
+    """The price the position's OWN side could be sold at now, from the engine-stamped `mark_price`:
+    the YES bid on a YES position, the YES ask on a NO position (repo.update_marks), so YES sells at
+    mark and NO at 1 - mark (matches server._mark_fields). None until the first mark after entry —
+    such a position is skipped (priced/retried next tick)."""
     mark = pos.get("mark_price")
     if mark is None:
         return None
@@ -1382,10 +1383,10 @@ def _subscribe_ws(ws_feed, tickers) -> None:
         pass
 
 
-def _ws_mark_bid(ws_feed, ticker: str, now: datetime) -> Optional[float]:
-    """Live websocket YES bid for `ticker` if it's fresh enough to mark against (≤MARK_WS_FRESH_
-    SECONDS), else None so the caller falls back to the REST quote (P1-1). Uses the shared ws_quote
-    parser — one place parses websocket messages. A silent/stale socket reads as None, not stale."""
+def _ws_mark(ws_feed, ticker: str, now: datetime) -> Optional[Tuple[Optional[float], Optional[float]]]:
+    """Live websocket (YES bid, YES ask) for `ticker` if it's fresh enough to mark against (≤MARK_WS_
+    FRESH_SECONDS), else None so the caller falls back to the REST quote (P1-1). Uses the shared
+    ws_quote parser — one place parses websocket messages. A silent/stale socket reads as None, not stale."""
     if ws_feed is None:
         return None
     try:
@@ -1394,7 +1395,7 @@ def _ws_mark_bid(ws_feed, ticker: str, now: datetime) -> Optional[float]:
         return None
     if q is None or q.yes_bid is None or q.yes_bid <= 0:
         return None
-    return q.yes_bid if q.age_seconds(now) <= MARK_WS_FRESH_SECONDS else None
+    return (q.yes_bid, q.yes_ask) if q.age_seconds(now) <= MARK_WS_FRESH_SECONDS else None
 
 
 def deployment_drawdown_pct(cur, dep: Dict) -> float:
@@ -1838,13 +1839,13 @@ def tick_market(conn, market: Market, sources: Sources, now: Optional[datetime] 
         # freshness backstop (P1-1). Subscribe the markets we're reading so the shared feed has
         # them next tick. No/stale socket => REST yes_bid, exactly as before — never a regression.
         _subscribe_ws(sources.ws_feed, [q.contract.ticker for q in quotes])
-        marks: Dict[str, float] = {}
+        # Bid and ask come from the same quote: a YES position marks at the YES bid, a NO position at
+        # the YES ask (its own bid is 1 - yes_ask), so a wide spread can't hide a NO position's loss.
+        marks: Dict[str, Tuple[Optional[float], Optional[float]]] = {}
         for q in quotes:
-            bid = _ws_mark_bid(sources.ws_feed, q.contract.ticker, now)
-            if bid is None:
-                bid = q.yes_bid
-            if bid is not None:
-                marks[q.contract.ticker] = bid
+            book = _ws_mark(sources.ws_feed, q.contract.ticker, now) or (q.yes_bid, q.yes_ask)
+            if book[0] is not None or book[1] is not None:
+                marks[q.contract.ticker] = book
         try:
             stats["marked"] = repo.update_marks(cur, market.key, marks, now)
         except Exception:
