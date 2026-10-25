@@ -1506,7 +1506,9 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 306px; 
 /* Long market titles wrap, so the Kalshi link column stays on screen with the hot-markets rail open. */
 .t-explore td.name { white-space: normal; overflow-wrap: anywhere; }
 .xpage { display: flex; align-items: center; justify-content: space-between; margin-top: 18px; }
+.xpage { flex-wrap: wrap; gap: 10px; }
 .xpage .lab { margin: 0; }
+.xpage-acts { display: inline-flex; flex-wrap: wrap; gap: 8px; }  /* wrapped buttons stack instead of overlapping */
 @media (max-width: 1080px) {
   body:not(.landing-body) { padding-left: 34px; }
   body.hot-open:not(.landing-body) { padding-left: 34px; }

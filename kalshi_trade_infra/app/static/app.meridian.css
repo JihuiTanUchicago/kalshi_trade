@@ -1537,7 +1537,9 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 100%; h
 .xlink a:hover { color: var(--ink); }
 .xlink svg { width: 16px; height: 16px; }
 .xpage { display: flex; align-items: center; justify-content: space-between; margin-top: 18px; }
+.xpage { flex-wrap: wrap; gap: 10px; }
 .xpage .lab { margin: 0; }
+.xpage-acts { display: inline-flex; flex-wrap: wrap; gap: 8px; }  /* wrapped buttons stack instead of overlapping */
 @container community-feed (max-width: 559px) {
   .post-tools { grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px 4px; }
   .post-tools > .field { grid-column: 1 / -1; grid-row: 1; }
