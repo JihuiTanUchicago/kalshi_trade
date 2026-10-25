@@ -116,23 +116,37 @@ def score_early_exit(cur, position_id: int, result: str, hold_pnl: float) -> boo
 def early_exit_scorecard(cur, user_id: int, mode: str = "paper", since: Optional[datetime] = None) -> Dict[str, Dict]:
     """Per close reason: how many positions exited before settlement, their realized P&L, and (for
     the ones whose contract has settled) what holding to the end would have made. `saved` > 0 means
-    selling early beat holding. This is the evidence for the stop setting, on the live book."""
-    sql = ("""SELECT close_reason AS reason, COUNT(*) AS exits, COUNT(hold_pnl) AS scored,
-                     COALESCE(SUM(pnl),0) AS pnl,
-                     COALESCE(SUM(CASE WHEN hold_pnl IS NOT NULL THEN pnl END),0) AS scored_pnl,
-                     COALESCE(SUM(hold_pnl),0) AS hold_pnl
-              FROM app_positions WHERE user_id=%s AND mode=%s AND status='closed' AND close_reason<>'settled'""")
+    selling early beat holding. This is the evidence for the stop setting, on the live book.
+
+    One position past the stop flattens the WHOLE deployment, so a 'stop' row mixes the breacher with
+    healthy positions sold alongside it. Those (exit above the user's stop line) also appear under
+    stop['collateral'], the evidence for whether the stop should close only the breaching position."""
+    collateral = ("p.close_reason='stop' AND p.entry_price>0 "
+                  "AND p.exit_price > p.entry_price * (1 - u.position_stop_pct / 100)")
+    sql = ("""SELECT p.close_reason AS reason, COUNT(*) AS exits, COUNT(p.hold_pnl) AS scored,
+                     COALESCE(SUM(p.pnl),0) AS pnl,
+                     COALESCE(SUM(CASE WHEN p.hold_pnl IS NOT NULL THEN p.pnl END),0) AS scored_pnl,
+                     COALESCE(SUM(p.hold_pnl),0) AS hold_pnl,
+                     COALESCE(SUM(CASE WHEN {c} THEN 1 END),0) AS c_exits,
+                     COALESCE(SUM(CASE WHEN {c} AND p.hold_pnl IS NOT NULL THEN 1 END),0) AS c_scored,
+                     COALESCE(SUM(CASE WHEN {c} AND p.hold_pnl IS NOT NULL THEN p.pnl - p.hold_pnl END),0) AS c_saved
+              FROM app_positions p JOIN app_users u ON u.id=p.user_id
+              WHERE p.user_id=%s AND p.mode=%s AND p.status='closed' AND p.close_reason<>'settled'""").format(c=collateral)
     args: List = [user_id, mode]
     if since is not None:
-        sql += " AND closed_at >= %s"
+        sql += " AND p.closed_at >= %s"
         args.append(since.replace(tzinfo=None))
-    cur.execute(sql + " GROUP BY close_reason", args)
+    cur.execute(sql + " GROUP BY p.close_reason", args)
     out = {}
     for r in cur.fetchall():
         scored_pnl, hold = float(r["scored_pnl"] or 0), float(r["hold_pnl"] or 0)
-        out[r["reason"] or "other"] = {"exits": int(r["exits"]), "scored": int(r["scored"]),
-                                       "pnl": round(float(r["pnl"] or 0), 2), "scored_pnl": round(scored_pnl, 2),
-                                       "hold_pnl": round(hold, 2), "saved": round(scored_pnl - hold, 2)}
+        row = {"exits": int(r["exits"]), "scored": int(r["scored"]),
+               "pnl": round(float(r["pnl"] or 0), 2), "scored_pnl": round(scored_pnl, 2),
+               "hold_pnl": round(hold, 2), "saved": round(scored_pnl - hold, 2)}
+        if int(r.get("c_exits") or 0):
+            row["collateral"] = {"exits": int(r["c_exits"]), "scored": int(r.get("c_scored") or 0),
+                                 "saved": round(float(r.get("c_saved") or 0), 2)}
+        out[r["reason"] or "other"] = row
     return out
 
 
