@@ -36,6 +36,7 @@ class Element {
       toggle: (x, force = !this.classes.has(x)) => { force ? this.classes.add(x) : this.classes.delete(x); return force; },
     };
   }
+  get options() { return this.children.filter(child => child.tag === 'option'); }
   get isConnected() { return !this.removed && (!this.parent || this.parent.isConnected); }
   get className() { return [...this.classes].join(' '); }
   set className(value) { this.classes = new Set(value.split(/\s+/)); }
@@ -97,7 +98,7 @@ class Element {
   remove() { this.removed = true; }
 }
 
-function frontend({fetchImpl, brokerMount} = {}) {
+function frontend({fetchImpl, brokerMount, storage} = {}) {
   const root = new Element('div', {id: 'app'}), body = new Element('body'); body.appendChild(root);
   const intervals = new Map(), timeouts = new Map(), requests = [], navigations = [];
   let nextId = 0;
@@ -109,7 +110,7 @@ function frontend({fetchImpl, brokerMount} = {}) {
     window: {addEventListener() {}, scrollTo() {}, matchMedia: () => ({matches: false}),
       ...(brokerMount ? {TauBrokerConnections: {mount: brokerMount}} : {})},
     addEventListener() {}, location, history: {pushState: navigate, replaceState: navigate},
-    localStorage: {getItem: () => null, setItem() {}},
+    localStorage: storage || {getItem: () => null, setItem() {}},
     setInterval: callback => { intervals.set(++nextId, callback); return nextId; },
     clearInterval: id => intervals.delete(id),
     setTimeout: callback => { timeouts.set(++nextId, callback); return nextId; },
@@ -1029,5 +1030,58 @@ test('research list rows state each session\'s cost from the ledger', async () =
   const html = f.root.querySelector('#runs').innerHTML;
   assert.match(html, /href="\/research\/6"[\s\S]*?Cost: \$2\.50/);
   assert.match(html, /href="\/research\/7"[\s\S]*?Spent so far: \$0\.42/);
+  f.clearTimers();
+});
+
+const memoryStorage = () => { const stored = new Map(); return {getItem: key => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, String(value))}; };
+
+test('the autopilot card and panel say where it may trade, with a Change that opens the focus control', async () => {
+  const f = frontend({storage: memoryStorage(), fetchImpl: path => {
+    if (path === '/api/dashboard') return response(emptyDashboard());
+    if (path === '/api/autopilot/status') return response({...apOn, focus: ['crypto']});
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path.startsWith('/api/chat')) return response({messages: []});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = true; f.S.ap = {...apOn, focus: ['crypto']};
+  await f.viewDashboard(); await flush();
+  const card = f.root.querySelector('#dash-ap');
+  assert.match(card.querySelector('.ap-focus').innerHTML, /^Focus: Crypto <button type="button" data-apcard="focus">Change<\/button>$/);
+  await card.querySelector('[data-apcard="focus"]').onclick(); await flush();
+  const box = f.root.parent.querySelector('#autopilot-float');
+  assert.equal(box.querySelector('.apf-prefs').open, true);  // the control sits in "Model and markets"
+  f.apUpdate(box, f.S.ap);
+  const line = box.querySelector('#apf-focusline');
+  assert.equal(line.hidden, false); assert.match(line.innerHTML, /^Focus: Crypto <button type="button" data-ap="focus">Change<\/button>$/);
+  box.querySelector('.apf-prefs').open = false;
+  line.querySelector('[data-ap="focus"]').onclick();
+  assert.equal(box.querySelector('.apf-prefs').open, true);
+  // No focus reads as any market; tokens the presets don't name are spelled out.
+  for (const [focus, text] of [[[], 'any market'], [['btc'], 'Bitcoin'], [['weather-high', 'sports'], 'Weather high, Sports']]) {
+    f.S.ap = {...apOn, focus}; f.paintDashAp();
+    assert.match(f.root.querySelector('#dash-ap .ap-focus').innerHTML, new RegExp(`^Focus: ${text} <button`), text);
+  }
+  // Before a status read has the focus, the card makes no claim about it.
+  f.S.ap = {...apOn}; delete f.S.ap.focus; f.paintDashAp();
+  assert.equal(f.root.querySelector('#dash-ap .ap-focus'), null);
+  f.clearTimers();
+});
+
+test('switching autopilot on in the panel opens the market focus control', async () => {
+  const f = frontend({storage: memoryStorage(), fetchImpl: path => {
+    if (path === '/api/dashboard') return response(emptyDashboard());
+    if (path === '/api/settings') return response({ok: true});
+    if (path === '/api/autopilot/status') return response({...apOn, focus: []});
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path.startsWith('/api/chat')) return response({messages: []});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = false; f.S.ap = {...apOn, autopilot: false, mode: 'off', focus: []};
+  await f.viewDashboard(); await flush();
+  await f.root.querySelector('#dash-ap [data-apcard="focus"]').onclick(); await flush();  // the off card offers it too
+  const box = f.root.parent.querySelector('#autopilot-float'), prefs = box.querySelector('.apf-prefs');
+  prefs.open = false;
+  const sw = box.querySelector('#apf-apswitch'); sw.checked = true; await sw.onchange(); await flush();
+  assert.equal(f.S.me.user.autopilot, true); assert.equal(prefs.open, true);
   f.clearTimers();
 });
