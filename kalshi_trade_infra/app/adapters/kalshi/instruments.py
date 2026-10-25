@@ -61,8 +61,8 @@ def quotes(snapshot) -> Tuple[Quote, Quote]:
     ticker, ts = snapshot.contract.ticker, float(snapshot.ts)
     yes_bid = snapshot.yes_bid if snapshot.yes_bid and snapshot.yes_bid > 0 else None
     yes_ask = snapshot.yes_ask if snapshot.yes_ask and snapshot.yes_ask < 1 else None
-    no_bid = round(1.0 - yes_ask, 10) if yes_ask is not None else None
-    no_ask = round(1.0 - yes_bid, 10) if yes_bid is not None else None
+    no_bid = 1.0 - yes_ask if yes_ask is not None else None     # exactly spec.side_prices, unrounded,
+    no_ask = 1.0 - yes_bid if yes_bid is not None else None     # so backtest fills match bit for bit
     features = dict(snapshot.features)
     return (Quote(instrument_id(ticker, "yes"), ts, yes_bid, yes_ask, features=features),
             Quote(instrument_id(ticker, "no"), ts, no_bid, no_ask, features=features))

@@ -9,15 +9,17 @@ from the core and no import of it beyond the domain types it passes around.
     Strategy          quotes + positions + features in, order intents out
     FeeModel          venue fee for a hypothetical fill
     Clock             "now": wall clock live, the replay cursor in a backtest
+    SettlementSource  what an expired instrument paid (venue result live, dataset in replay)
 """
 from trading_core.ports.clock import Clock, FixedClock, SystemClock
 from trading_core.ports.features import FeatureProvider
 from trading_core.ports.fees import FeeModel, FeesByVenue, NotionalRateFees, ZeroFees
 from trading_core.ports.market_data import MarketDataFeed
+from trading_core.ports.settlement import SettlementSource
 from trading_core.ports.strategy import DecisionContext, Strategy
 from trading_core.ports.venue import Venue, VenueCapabilities
 
 __all__ = [
     "Clock", "DecisionContext", "FeatureProvider", "FeeModel", "FeesByVenue", "FixedClock", "MarketDataFeed",
-    "NotionalRateFees", "Strategy", "SystemClock", "Venue", "VenueCapabilities", "ZeroFees",
+    "NotionalRateFees", "SettlementSource", "Strategy", "SystemClock", "Venue", "VenueCapabilities", "ZeroFees",
 ]
