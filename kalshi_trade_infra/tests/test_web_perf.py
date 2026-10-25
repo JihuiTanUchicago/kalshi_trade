@@ -2,6 +2,7 @@
 import gzip
 import http.client
 import json
+import re
 import socket
 import struct
 import time
@@ -274,3 +275,83 @@ def test_the_rsi_block_names_the_history_the_first_policy_check_needs():
     block = server._rsi_block(None, None)
     assert block["evolved"] is False and block["last_dream"] is None
     assert block["min_history"] == dreaming.MIN_TREE
+
+
+def _shell(port, cookie=None, path="/"):
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+    conn.request("GET", path, headers={"Cookie": cookie} if cookie else {})
+    r = conn.getresponse()
+    html = r.read().decode("utf-8")
+    conn.close()
+    assert r.status == 200 and "Cookie" in r.msg.get_all("Vary")  # no cache may hand one theme's shell to another
+    return html, r.msg.get_all("Set-Cookie") or []
+
+
+def _theme_assets(html):
+    css = re.findall(r'<link rel="stylesheet" href="/static/(app(?:\.meridian)?\.css)\?', html)
+    js = re.findall(r'<script src="/static/(app(?:\.meridian)?\.js)\?', html)
+    return css, js
+
+
+def test_a_meridian_device_gets_only_meridian_assets_in_the_shell(web):
+    # Before, every first load linked Tau's stylesheet and boot.js swapped it and fetched the bundle,
+    # so a Meridian user downloaded app.css they never used.
+    html, cookies = _shell(web, "tau_ui=meridian")
+    assert _theme_assets(html) == (["app.meridian.css"], ["app.meridian.js"])
+    assert 'data-ui="meridian"' in html and cookies == []
+    html, _ = _shell(web, "tau_ui=tau")
+    assert _theme_assets(html) == (["app.css"], ["app.js"])
+
+
+def test_an_unknown_device_keeps_the_boot_js_choice(web):
+    # Signed out with no cookie: Tau's stylesheet by default and no bundle tag; boot.js picks from
+    # localStorage, as before. An unknown cookie value is ignored, never echoed into the page.
+    for cookie in (None, "tau_ui=evil"):
+        html, cookies = _shell(web, cookie)
+        assert _theme_assets(html) == (["app.css"], []) and 'data-ui=""' in html and cookies == []
+        assert "evil" not in html
+
+
+def test_a_signed_in_device_without_the_cookie_gets_its_account_theme_and_the_cookie(web, monkeypatch):
+    # A fresh device used to load Tau, read /api/me, then reload into Meridian (two shells, both bundles).
+    seen = []
+    monkeypatch.setattr(server.repo, "session_user",
+                        lambda cur, token: seen.append(token) or {"id": 7, "ui_theme": "meridian"})
+    html, cookies = _shell(web, "rsid=abc")
+    assert _theme_assets(html) == (["app.meridian.css"], ["app.meridian.js"])
+    assert seen == [server.auth.hash_token("abc")]
+    assert len(cookies) == 1 and cookies[0].startswith("tau_ui=meridian; Path=/; SameSite=Lax")
+    # Once the cookie is there, later loads skip the database read.
+    seen.clear()
+    _shell(web, "rsid=abc; tau_ui=meridian")
+    assert seen == []
+
+
+def test_a_shell_whose_session_read_fails_still_serves(web, monkeypatch):
+    def boom(cur, token):
+        raise RuntimeError("db down")
+    monkeypatch.setattr(server.repo, "session_user", boom)
+    html, cookies = _shell(web, "rsid=abc")
+    assert _theme_assets(html) == (["app.css"], []) and cookies == []
+
+
+def test_the_legal_pages_ship_tau_even_to_a_meridian_device(web):
+    for path in ("/terms", "/privacy"):
+        html, cookies = _shell(web, "tau_ui=meridian", path)
+        assert _theme_assets(html) == (["app.css"], ["app.js"]) and cookies == []
+
+
+def test_me_and_the_theme_switch_keep_the_device_cookie_in_step(monkeypatch):
+    def ctx(cookie, theme):
+        return server.Ctx(conn=SimpleNamespace(cursor=lambda: None), user={"id": 1, "ui_theme": theme}, params=(),
+                          query={}, body={"theme": theme}, handler=SimpleNamespace(cookies=lambda: cookie))
+    c = ctx({"tau_ui": "meridian"}, "meridian")
+    server._sync_ui_cookie(c, "meridian")
+    assert c.set_cookies == []
+    c = ctx({}, "meridian")
+    server._sync_ui_cookie(c, "meridian")
+    assert len(c.set_cookies) == 1 and c.set_cookies[0].startswith("tau_ui=meridian;")
+    monkeypatch.setattr(server.repo, "set_ui_theme", lambda cur, uid, theme: None)
+    c = ctx({"tau_ui": "meridian"}, "tau")
+    assert server.set_ui_theme(c) == {"ok": True, "theme": "tau"}
+    assert len(c.set_cookies) == 1 and c.set_cookies[0].startswith("tau_ui=tau;")

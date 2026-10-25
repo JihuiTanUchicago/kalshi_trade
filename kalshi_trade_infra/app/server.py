@@ -139,6 +139,26 @@ def _start_session(ctx: Ctx, user_id: int) -> None:
     ctx.set_cookies.append(_session_cookie(token, int(auth.SESSION_TTL.total_seconds())))
 
 
+# The account's theme, mirrored on the device so the page shell can link the right stylesheet and
+# bundle without a database read. Not a secret, not a session: a stale value is corrected by /api/me.
+# Not HttpOnly: the Settings switch writes it too, so a switch whose save failed still applies here.
+UI_COOKIE = "tau_ui"
+UI_THEMES = ("tau", "meridian")
+UI_COOKIE_MAX_AGE = 400 * 86400
+
+
+def _ui_cookie(theme: str) -> str:
+    return "%s=%s; Path=/; SameSite=Lax; Max-Age=%d%s" % (
+        UI_COOKIE, theme, UI_COOKIE_MAX_AGE, "; Secure" if SECURE_COOKIES else "")
+
+
+def _sync_ui_cookie(ctx: "Ctx", theme: str) -> None:
+    """Set the device's tau_ui cookie to the account's theme when it differs."""
+    read = getattr(ctx.handler, "cookies", None)
+    if (read().get(UI_COOKIE) if callable(read) else None) != theme:
+        ctx.set_cookies.append(_ui_cookie(theme))
+
+
 NEXT_COOKIE = "tau_next"
 
 
@@ -368,6 +388,7 @@ def _researchable_markets(cur) -> List[Dict]:
 
 
 def me(ctx: Ctx):
+    _sync_ui_cookie(ctx, ctx.user.get("ui_theme") if ctx.user.get("ui_theme") in UI_THEMES else "tau")
     return {
         "user": {
             "id": ctx.user["id"], "email": ctx.user["email"], "name": ctx.user["name"],
@@ -905,6 +926,7 @@ def set_ui_theme(ctx: Ctx):
     if theme not in ("tau", "meridian"):
         raise ApiError(400, "Unknown theme.")
     repo.set_ui_theme(ctx.cur, ctx.uid, theme)
+    _sync_ui_cookie(ctx, theme)  # the reload that follows gets the new theme's shell
     return {"ok": True, "theme": theme}
 
 
@@ -2876,7 +2898,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def cookies(self) -> Dict[str, str]:
         out = {}
-        for part in (self.headers.get("Cookie") or "").split(";"):
+        headers = getattr(self, "headers", None)
+        for part in ((headers.get("Cookie") if headers else None) or "").split(";"):
             if "=" in part:
                 k, v = part.strip().split("=", 1)
                 out[k] = v
@@ -2917,6 +2940,35 @@ class Handler(BaseHTTPRequestHandler):
         extra = [("Cache-Control", "no-store")] + [("Set-Cookie", c) for c in cookies]
         self._send(status, "application/json; charset=utf-8", body, extra)
 
+    def _shell_theme(self, path: str) -> Tuple[Optional[str], List[str]]:
+        """The theme to link in the page shell, so a Meridian user never downloads Tau's stylesheet
+        and bundle first, and a fresh device never reloads into its account's theme. From the
+        tau_ui cookie (set by /api/me and /api/ui-theme), else, signed in on a device without it,
+        one session read (and the cookie is set). None = unknown: boot.js goes by localStorage.
+        Only Tau has the Terms and Privacy pages. Returns (theme, Set-Cookie headers)."""
+        if path in ("/terms", "/privacy"):
+            return "tau", []
+        cookies = self.cookies()
+        theme = cookies.get(UI_COOKIE)
+        if theme in UI_THEMES:
+            return theme, []
+        token = cookies.get(auth.SESSION_COOKIE)
+        if not token:
+            return None, []
+        conn = None
+        try:
+            conn = get_db_conn()
+            user = repo.session_user(conn.cursor(), auth.hash_token(token))
+        except Exception:  # noqa: BLE001 - the shell must never fail on this; boot.js falls back
+            return None, []
+        finally:
+            if conn is not None:
+                conn.close()
+        if user is None:
+            return None, []
+        theme = user.get("ui_theme") if user.get("ui_theme") in UI_THEMES else "tau"
+        return theme, [_ui_cookie(theme)]
+
     def _send_static(self, path: str) -> None:
         if path == "/.well-known/apple-developer-merchantid-domain-association":
             f = STATIC_DIR / "apple-developer-merchantid-domain-association"
@@ -2927,8 +2979,14 @@ class Handler(BaseHTTPRequestHandler):
                 return
         if SPA_ROUTES.match(path):
             versions = _static_versions()
+            theme, cookies = self._shell_theme(path)
+            css = ("/static/app.meridian.css?v=" + versions["app.meridian.css"] if theme == "meridian"
+                   else "/static/app.css?v=" + versions["app.css"])
+            bundle = ("" if theme is None else '\n<script src="/static/%s?v=%s" defer></script>' % (
+                ("app.meridian.js", versions["app.meridian.js"]) if theme == "meridian" else ("app.js", versions["app.js"])))
             html = (STATIC_DIR / "index.html").read_text("utf-8")
-            html = (html.replace("{{css_v}}", versions["app.css"])
+            html = (html.replace("{{ui_css}}", css).replace("{{ui}}", theme or "").replace("{{ui_bundle}}", bundle)
+                    .replace("{{css_v}}", versions["app.css"])
                     .replace("{{js_v}}", versions["app.js"])
                     .replace("{{session_v}}", versions["session-data.js"])
                     .replace("{{chat_v}}", versions["session-chat.js"])
@@ -2945,7 +3003,9 @@ class Handler(BaseHTTPRequestHandler):
                     .replace("{{boot_v}}", versions["boot.js"]))
             body = html.encode("utf-8")
             self._spa = True
-            self._send(200, "text/html; charset=utf-8", body, [("Cache-Control", "no-cache")])
+            # Vary: the shell links the theme from the cookies, so no cache may serve one user's to another.
+            self._send(200, "text/html; charset=utf-8", body,
+                       [("Cache-Control", "no-cache"), ("Vary", "Cookie")] + [("Set-Cookie", c) for c in cookies])
             return
         m = re.match(r"^/static/([a-z0-9_.-]+\.(css|js|svg|png|ico|woff2))$", path)
         f = STATIC_DIR / m.group(1) if m else None
