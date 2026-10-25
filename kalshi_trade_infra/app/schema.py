@@ -171,7 +171,8 @@ DDL = [
       message TEXT NOT NULL,
       data_json JSON NULL,
       created_at DATETIME NOT NULL,
-      INDEX idx_events_run (run_id, id)
+      INDEX idx_events_run (run_id, id),
+      INDEX idx_events_run_kind (run_id, kind, id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     """
@@ -625,6 +626,23 @@ def _add_column_if_missing(cur, table: str, column: str, ddl: str) -> None:
         cur.execute(ddl)
 
 
+LEGACY_FEATURE_INDEXES = (
+    # model_features_1m_builder: WHERE snapshot_minute_utc=%s AND source_status='ok'
+    ("trade_quote_features_1m", "idx_tqf_minute",
+     "ALTER TABLE trade_quote_features_1m ADD INDEX idx_tqf_minute (snapshot_minute_utc), ALGORITHM=INPLACE, LOCK=NONE"),
+    # sim_repository.latest_feature_row / load_feature_rows: WHERE model_eligible=1 ORDER BY minute DESC
+    ("model_features_1m", "idx_model_features_eligible",
+     "ALTER TABLE model_features_1m ADD INDEX idx_model_features_eligible (model_eligible, snapshot_minute_utc), "
+     "ALGORITHM=INPLACE, LOCK=NONE"),
+)
+
+
+def _table_exists(cur, table: str) -> bool:
+    cur.execute("SELECT COUNT(*) AS c FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s",
+                (table,))
+    return cur.fetchone()["c"] > 0
+
+
 def _add_index_if_missing(cur, table: str, index_name: str, ddl: str) -> None:
     """Idempotently add a secondary index (online, non-blocking on InnoDB). Checked via
     information_schema.STATISTICS so a re-run is a no-op, same contract as _add_column_if_missing."""
@@ -792,6 +810,18 @@ def main() -> None:
         # (deploy/adjust/pause/resume carry no payload). NULL for the older kinds.
         _add_column_if_missing(cur, "app_proposals", "payload", "ALTER TABLE app_proposals ADD COLUMN payload JSON NULL")
         _ensure_proposal_kind_width(cur)
+        # Slow log, 2026-10-25: the scoreboard's verdict read and the proposer's dropped-thesis
+        # reads (kind='verdict' AND run_id IN (...)) scanned all ~560k event rows, 3-8s each, since
+        # (run_id, id) can't filter on kind and a busy run logs thousands of events.
+        _add_index_if_missing(cur, "app_agent_events", "idx_events_run_kind",
+                              "ALTER TABLE app_agent_events ADD INDEX idx_events_run_kind (run_id, kind, id), "
+                              "ALGORITHM=INPLACE, LOCK=NONE")
+        # Same slow log: the collector box's per-minute reads of the legacy feature tables
+        # (data_pipeline.init_schema owns them) full-scanned them, ~5s each, two every minute.
+        # They are added here because only this migration runs on every deploy.
+        for table, index_name, ddl in LEGACY_FEATURE_INDEXES:
+            if _table_exists(cur, table):
+                _add_index_if_missing(cur, table, index_name, ddl)
         # Backfill any user still missing a handle (idempotent: only touches NULLs).
         from app import repository as _repo
         cur.execute("SELECT id, email, name FROM app_users WHERE username IS NULL OR username=''")

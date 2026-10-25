@@ -1033,6 +1033,13 @@ def strategy_memory(cur, user_id: int, market: str, limit: int = 40) -> List[Dic
 DROPPED_RECENT_RUNS = 10
 
 
+def _newest_events(rows, limit: int) -> List[Dict]:
+    """Newest-first slice of a few hundred verdict rows, sorted here rather than with ORDER BY id
+    DESC LIMIT in SQL: that ordering tempts MySQL into walking the whole event table backwards by
+    primary key (a 4s full scan in the 2026-10-25 slow log) instead of the (run_id, kind) index."""
+    return sorted(rows, key=lambda r: r.get("id") or 0, reverse=True)[:limit]
+
+
 def dropped_theses(cur, user_id: int, market: str, limit: int = 20) -> List[Dict]:
     """Theses this user's recent research on this market abandoned before they ever became a
     strategy (DOA: wrong mechanism, missing feed, 0 research-fold trades), newest first, as
@@ -1045,11 +1052,10 @@ def dropped_theses(cur, user_id: int, market: str, limit: int = 20) -> List[Dict
     if not ids:
         return []
     cur.execute(
-        "SELECT message, data_json FROM app_agent_events WHERE run_id IN (%s) AND kind='verdict' "
-        "AND message LIKE 'DROPPED %%%%' ORDER BY id DESC LIMIT %%s" % ",".join(["%s"] * len(ids)),
-        (*ids, limit))
+        "SELECT id, message, data_json FROM app_agent_events WHERE run_id IN (%s) AND kind='verdict' "
+        "AND message LIKE 'DROPPED %%%%'" % ",".join(["%s"] * len(ids)), ids)
     out = []
-    for r in cur.fetchall():
+    for r in _newest_events(cur.fetchall(), limit):
         data = _loads(r.get("data_json")) or {}
         title, why = data.get("title"), data.get("why")
         m = re.match(r'DROPPED "(.*)" \(no candidate\) \S* (.*)', r["message"] or "", re.S)
@@ -1076,11 +1082,10 @@ def sibling_dropped_theses(cur, user_id: int, markets: List[str], limit: int = 4
     if not runs:
         return []
     cur.execute(
-        "SELECT run_id, message, data_json FROM app_agent_events WHERE run_id IN (%s) AND kind='verdict' "
-        "AND message LIKE 'DROPPED %%%%' ORDER BY id DESC LIMIT %%s" % ",".join(["%s"] * len(runs)),
-        (*runs, limit))
+        "SELECT id, run_id, message, data_json FROM app_agent_events WHERE run_id IN (%s) AND kind='verdict' "
+        "AND message LIKE 'DROPPED %%%%'" % ",".join(["%s"] * len(runs)), tuple(runs))
     out = []
-    for r in cur.fetchall():
+    for r in _newest_events(cur.fetchall(), limit):
         data = _loads(r.get("data_json")) or {}
         title, why = data.get("title"), data.get("why")
         m = re.match(r'DROPPED "(.*)" \(no candidate\) \S* (.*)', r["message"] or "", re.S)
