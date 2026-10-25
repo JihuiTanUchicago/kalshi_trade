@@ -3513,8 +3513,8 @@
           <span id="apf-ap-copy"></span>
           <label class="switch"><span class="vh">Autopilot</span><input type="checkbox" id="apf-apswitch"></label>
         </div>
-        <div class="apf-story" id="apf-story" aria-live="polite"></div>
         <dl class="apf-stats" id="apf-stats"></dl>
+        <div class="apf-story" id="apf-story" aria-live="polite"></div>
         <label class="field apf-model"><span>Autopilot model</span>
           <select class="input" id="apf-model" aria-label="Autopilot model"></select></label>
         <label class="field apf-model"><span>Markets it may trade</span>
@@ -3633,6 +3633,8 @@
       d.paper_running ? `${d.paper_running} paper` : '',
     ].filter(Boolean);
     const runTotal = (d.live_running || 0) + (d.demo_running || 0) + (d.paper_running || 0);
+    // The figures sit above the story so "is it making money?" reads first, and the Research row only
+    // shows when there's no story (billing pause), since the story already says what research did.
     // Short figures share a row (as many columns as there are figures, two on a phone, the odd
     // one out spanning); the sentence-length ones get full-width rows, so no cell sits empty.
     const short = [
@@ -3642,7 +3644,7 @@
     if (stats) {
       stats.dataset.cols = short.length;
       stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `
-      ${d.research ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc([...new Set(d.research.active)].join(' · ')) : 'Not researching right now'} · ${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested this week, ${d.research.passed_7d} passed${d.research.cost_7d ? ', $' + Number(d.research.cost_7d).toFixed(2) + ' spent' : ''}</dd></div>` : ''}
+      ${d.research && !(d.story || []).length ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc([...new Set(d.research.active)].join(' · ')) : 'Not researching right now'} · ${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested this week, ${d.research.passed_7d} passed${d.research.cost_7d ? ', $' + Number(d.research.cost_7d).toFixed(2) + ' spent' : ''}</dd></div>` : ''}
       ${d.paper_progress ? `<div class="apf-wide"><dt>Closest to live</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> · ${d.paper_progress.trades}/${d.paper_progress.trades_needed} paper trades · ${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}`;
     }
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
