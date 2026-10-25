@@ -361,17 +361,39 @@ def paper_pace(dep: Dict, trips: int, now=None) -> Optional[Dict]:
     """Expected paper trips by now at the strategy's research pace (in_sample trades_per_day over
     the hours since this deployment was created) and the chance of seeing `trips` or fewer.
     `behind` only for a running deployment past both thresholds. None without a research pace."""
-    from datetime import datetime
+    from datetime import datetime, timezone
     per_day = ((dep.get("result") or {}).get("in_sample") or {}).get("trades_per_day")
     created = dep.get("created_at")
     if not per_day or not isinstance(created, datetime):
         return None
-    now = now or datetime.utcnow()
+    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
     hours = max(0.0, (now - created.replace(tzinfo=None)).total_seconds() / 3600.0)
     expected = float(per_day) * hours / 24.0
     p = _poisson_cdf(int(trips), expected)
     behind = dep.get("status") == "running" and expected >= PACE_MIN_EXPECTED and p < PACE_MAX_P
     return {"expected": round(expected, 1), "hours": round(hours, 1), "p": round(p, 4), "behind": behind}
+
+
+def paper_eta_days(dep: Dict, trips: int, now=None) -> Optional[float]:
+    """Days until this paper strategy could have the record the live gate counts (enough realistic
+    trips and enough hours of record) at the pace it trades: its own paper pace once it has 3+
+    trips, else its research pace. Says nothing about whether it will be up by then. None without
+    a pace."""
+    from datetime import datetime, timezone
+    from app import agent
+    created = dep.get("created_at")
+    if not isinstance(created, datetime):
+        return None
+    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    hours = max(0.0, (now - created.replace(tzinfo=None)).total_seconds() / 3600.0)
+    if trips >= 3 and hours > 0:
+        per_day = trips / hours * 24.0
+    else:
+        per_day = float(((dep.get("result") or {}).get("in_sample") or {}).get("trades_per_day") or 0)
+    if per_day <= 0:
+        return None
+    days = max(0, agent.MIN_REALISTIC_PAPER_TRADES - int(trips)) / per_day
+    return round(max(days, max(0.0, agent.MIN_PAPER_SPAN_HOURS - hours) / 24.0), 1)
 
 
 def _paper_rollup(rows: List[Dict]) -> Dict:

@@ -203,6 +203,22 @@ def test_paper_pace_flags_a_running_strategy_far_below_its_research_rate(monkeyp
         "FAR BELOW RESEARCH PACE (check the live book shows what research saw): #81 0 trips vs ~8 expected")
 
 
+def test_paper_eta_uses_its_own_pace_once_it_trades_and_never_beats_the_span():
+    from datetime import datetime, timedelta
+    now = datetime(2026, 10, 25, 18, 0)
+
+    def dep(per_day, hours):
+        return {"created_at": now - timedelta(hours=hours), "result": {"in_sample": {"trades_per_day": per_day}}}
+    # Research pace until 3 trips: 4.24/day, 30 to go -> 7.1 days.
+    assert rsi.paper_eta_days(dep(4.24, 5), 0, now) == 7.1
+    # Own pace: 11 trips in 17.7h is ~14.9/day -> 19 to go in 1.3 days.
+    assert rsi.paper_eta_days(dep(12.8, 17.7), 11, now) == 1.3
+    # Enough trips already, but the record must also span 48h: 48 - 30 = 18h more.
+    assert rsi.paper_eta_days(dep(50, 30), 40, now) == 0.8
+    assert rsi.paper_eta_days({"created_at": now}, 0, now) is None
+    assert rsi.paper_eta_days({}, 5, now) is None
+
+
 def test_paper_outcomes_with_nothing_on_paper_is_empty(monkeypatch):
     cur = _paper_setup(monkeypatch, [], {}, {})
     out = rsi.paper_outcomes(cur, 2)
