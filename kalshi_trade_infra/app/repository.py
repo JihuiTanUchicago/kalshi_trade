@@ -861,19 +861,45 @@ def history_freshness(cur) -> Dict[str, Optional[int]]:
     return out
 
 
-def deployment_curves(cur, user_id: int) -> Dict[int, List[List]]:
-    """Cumulative realized P&L per deployment, oldest first, for sparklines."""
+CURVE_MAX_POINTS = 120  # per deployment: plenty for a sparkline
+
+
+def deployment_curves(cur, user_id: int, max_points: int = CURVE_MAX_POINTS) -> Dict[int, List[List]]:
+    """Cumulative realized P&L per deployment, oldest first, for sparklines: [[unix_ts, cum], ...].
+
+    A curve with more than `max_points` trades is cut down in SQL. The first and last points are
+    kept exactly, so the curve ends on the deployment's realized P&L to the cent. The trades between
+    them are split into (max_points - 2) // 2 runs by trade count, and each run keeps its lowest and
+    highest point, so every drawdown and peak still shows. Every point kept is a real trade's
+    cumulative P&L. The dashboard used to receive one point per closed trade (433KB at 20k trades)
+    and spent ~150ms turning those rows into Python. Ties keep the earlier trade."""
+    buckets = max(1, (max_points - 2) // 2)
     cur.execute(
-        """SELECT deployment_id, closed_at, pnl FROM app_positions
-           WHERE user_id=%s AND status='closed' ORDER BY closed_at, id""",
-        (user_id,),
+        """SELECT deployment_id, closed_at, cum FROM (
+             SELECT deployment_id, closed_at, cum, rn,
+                    ROW_NUMBER() OVER (PARTITION BY deployment_id, b ORDER BY cum, rn) AS lo,
+                    ROW_NUMBER() OVER (PARTITION BY deployment_id, b ORDER BY cum DESC, rn) AS hi
+             FROM (
+               SELECT deployment_id, closed_at, cum, rn,
+                      CASE WHEN n <= %s THEN rn WHEN rn = 1 THEN -1 WHEN rn = n THEN %s
+                           ELSE FLOOR((rn - 2) * %s / (n - 2)) END AS b
+               FROM (
+                 SELECT deployment_id, closed_at,
+                        SUM(pnl) OVER (PARTITION BY deployment_id ORDER BY closed_at, id ROWS UNBOUNDED PRECEDING) AS cum,
+                        CAST(ROW_NUMBER() OVER (PARTITION BY deployment_id ORDER BY closed_at, id) AS SIGNED) AS rn,
+                        COUNT(*) OVER (PARTITION BY deployment_id) AS n
+                 FROM app_positions WHERE user_id=%s AND status='closed'
+               ) ordered
+             ) bucketed
+           ) ranked
+           WHERE lo = 1 OR hi = 1
+           ORDER BY deployment_id, rn""",
+        (max_points, buckets, buckets, user_id),
     )
     out: Dict[int, List[List]] = {}
-    totals: Dict[int, float] = {}
     for r in cur.fetchall():
-        dep = r["deployment_id"]
-        totals[dep] = totals.get(dep, 0.0) + float(r["pnl"])
-        out.setdefault(dep, []).append([int(r["closed_at"].replace(tzinfo=timezone.utc).timestamp()), round(totals[dep], 4)])
+        out.setdefault(r["deployment_id"], []).append(
+            [int(r["closed_at"].replace(tzinfo=timezone.utc).timestamp()), round(float(r["cum"]), 4)])
     return out
 
 
