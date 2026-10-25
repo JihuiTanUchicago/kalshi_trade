@@ -1,13 +1,14 @@
 """Leak-safe distillation of FAILED strategies (learn-from-failure).
 
 A small in-memory cursor backs repository.strategy_memory (reusing its real SQL),
-then repository.distill_failures collapses the failed rows into one compact signal
+then research_memory.distill_failures collapses the failed rows into one compact signal
 the generator consumes via agent._memory_block. The whole point is Leak 2: only
 classification LABELS + the hypotheses' own specs feed back — never a held-out number.
 """
 import json
 
 from app import agent, repository as repo
+from app.services import research_memory
 
 
 class StrategyCursor:
@@ -45,7 +46,7 @@ def test_distillation_summarizes_recurring_failures():
     cur.add("passed", side="yes", drift_beta=1.0, classification="statistically_supported", in_pnl=40, in_trades=30)
 
     memory = repo.strategy_memory(cur, user_id=1, market="btc15m", limit=40)
-    d = repo.distill_failures(memory)
+    d = research_memory.distill_failures(memory)
     assert d["n_failed"] == 3
     assert d["classifications"] == {"not_finalist": 1, "rejected": 1, "inconclusive": 1}
     pats = dict(d["patterns"])
@@ -70,9 +71,9 @@ def test_no_failures_is_a_no_op():
     cur = StrategyCursor()
     cur.add("passed", side="yes", classification="statistically_supported", in_pnl=40, in_trades=30)
     memory = repo.strategy_memory(cur, user_id=1, market="btc15m", limit=40)
-    assert repo.distill_failures(memory) is None
+    assert research_memory.distill_failures(memory) is None
     # Empty memory also yields None and leaves the loop's prompt untouched.
-    assert repo.distill_failures([]) is None
+    assert research_memory.distill_failures([]) is None
     block = agent._memory_block(memory)
     assert "repeatedly FAILED" not in block  # nothing failed → no steer injected
     assert "[passed] s1" in block

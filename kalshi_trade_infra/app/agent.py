@@ -48,6 +48,7 @@ from app import stats
 from app.llm import LLMError, ModelFn, Usage, ask_json, claude, current_model
 from app.markets import MARKETS
 from app.services import markets as market_service
+from app.services import research_memory
 from app.agent_market_data import AgentMarketData, DataScope
 from app.agent_knowledge import AgentKnowledge
 from app.agent_news import AgentNews
@@ -538,7 +539,7 @@ def _attribution_line(attr: Optional[Dict]) -> str:
 
 
 def _failure_digest_line(d: Dict) -> str:
-    """Render repo.distill_failures output as one skeptical steering line for the proposer."""
+    """Render research_memory.distill_failures output as one skeptical steering line for the proposer."""
     cls = ", ".join("%d %s" % (c, k)
                     for k, c in sorted(d["classifications"].items(), key=lambda kv: -kv[1]))
     regions = ("; ".join("%s (%d×)" % (dim, c) for dim, c in d["patterns"][:8])
@@ -558,7 +559,7 @@ def _memory_block(memory: List[Dict]) -> str:
     # numbers + classification LABELS — no held-out number ever appears (Leak 2 stays closed).
     lines = []
     for s in memory:
-        if s.get("status") in repo.FAILED_STATUSES:
+        if s.get("status") in research_memory.FAILED_STATUSES:
             continue
         ins = (s.get("result") or {}).get("in_sample") or {}
         lines.append(
@@ -566,7 +567,7 @@ def _memory_block(memory: List[Dict]) -> str:
             % (s["status"], s["title"], ins.get("pnl"), ins.get("trades"))
         )
     out = lines or ["(no strategies have passed yet)"]
-    digest = repo.distill_failures(memory)
+    digest = research_memory.distill_failures(memory)
     if digest:
         out.append(_failure_digest_line(digest))
     return "\n".join(out)
