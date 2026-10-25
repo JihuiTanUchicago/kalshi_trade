@@ -12,6 +12,14 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: "Rubik";  /* landing type, self-hosted: no render-blocking third-party stylesheet */
+  src: url("/static/rubik-latin-691cd1d9b4.woff2") format("woff2");
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --stock: #F6F3EC;
   --stock-live: #EFE4E7;

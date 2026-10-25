@@ -4,6 +4,14 @@
    - App (authed): Kursbuch, a station timetable. Ink on stock, hairline rules,
      tabular figures, one reserved signal red used only where you must act. */
 
+@font-face {
+  font-family: "Rubik";  /* landing type, self-hosted: no render-blocking third-party stylesheet */
+  src: url("/static/rubik-latin-691cd1d9b4.woff2") format("woff2");
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --stock: #E9EBE5;
   --stock-live: #EFE4E7;

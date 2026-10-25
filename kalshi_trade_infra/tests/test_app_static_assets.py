@@ -16,7 +16,7 @@ def static_response(path):
 
 
 def test_bundled_font_is_served_with_font_mime_and_immutable_cache():
-    # The default UI loads Rubik externally; this font remains a shipped static asset.
+    # Both shipped fonts (DM Sans, Rubik) are local static assets.
     name = 'dm-sans-latin-9fea608a94.woff2'
     headers, body = static_response('/static/' + name)
     assert headers[:3] == (200, 'font/woff2', len(body))
@@ -24,6 +24,17 @@ def test_bundled_font_is_served_with_font_mime_and_immutable_cache():
     assert body.startswith(b'wOF2')
     assert ('Cache-Control', 'public, max-age=31536000, immutable') in headers[3]
     assert "font-src 'self'" in server.CSP
+
+
+def test_landing_font_is_self_hosted_with_no_render_blocking_third_party_css():
+    name = 'rubik-latin-691cd1d9b4.woff2'
+    headers, body = static_response('/static/' + name)
+    assert headers[:2] == (200, 'font/woff2') and body.startswith(b'wOF2')
+    for css in ('app.css', 'app.meridian.css'):
+        assert '/static/' + name in (server.STATIC_DIR / css).read_text()
+    html = (server.STATIC_DIR / 'index.html').read_text()
+    assert 'fonts.googleapis.com' not in html and 'fonts.gstatic.com' not in html
+    assert 'googleapis' not in server.CSP and 'gstatic' not in server.CSP
 
 
 @pytest.mark.parametrize('path', [
