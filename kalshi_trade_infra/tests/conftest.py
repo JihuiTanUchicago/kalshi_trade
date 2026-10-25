@@ -172,4 +172,5 @@ def _fresh_server_shared_cache():
     server = sys.modules.get("app.server")
     if server is not None:
         server._SHARED.clear()
+        server._LAST_DREAM.clear()
     yield

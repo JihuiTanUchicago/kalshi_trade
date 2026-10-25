@@ -87,21 +87,48 @@ def configured() -> bool:
     return bool(STRIPE_SECRET_KEY)
 
 
-def is_ready(cur, user_id: int) -> bool:
+_UNREAD = object()
+
+
+class Reads:
+    """The user's saved Stripe customer row and credit balance, each read at most once. One request
+    derives several fields from them (/api/me: needs_card, auto_reload and credit_balance; the
+    autopilot poll: billing_blocked, billing_reason and credits_low_days), and each field used to
+    re-read them. Make one per request: it never sees a write made after its first read."""
+
+    def __init__(self, cur, user_id: int):
+        self.cur, self.user_id = cur, user_id
+        self._customer = self._balance = _UNREAD
+
+    def customer(self) -> Optional[Dict]:
+        if self._customer is _UNREAD:
+            from app import repository as repo  # local: billing <-> repository would be a circular import
+            self._customer = repo.get_stripe_customer(self.cur, self.user_id)
+        return self._customer
+
+    def balance(self) -> float:
+        if self._balance is _UNREAD:
+            from app import repository as repo
+            self._balance = repo.credit_balance(self.cur, self.user_id)
+        return self._balance
+
+
+def is_ready(cur, user_id: int, reads: Optional[Reads] = None) -> bool:
     """True when this user may be billed for an agent run: payments off (everything is free) OR a
     card is on file AND credits remain. The plain-predicate twin of server._require_billing_ready,
     for AUTONOMOUS paths (the autopilot heartbeat) that have no request to raise a 402 into — they
     skip a non-ready user instead of billing Opus runs into an uncollectable negative balance.
-    Strictly a spend GUARD: it only ever PREVENTS a run, never enables one."""
+    Strictly a spend GUARD: it only ever PREVENTS a run, never enables one. `reads` lets a request
+    that shows these figures share its reads with the check; the rule is the same either way."""
     if not configured():
         return True
-    from app import repository as repo  # local: billing <-> repository would be a circular import
-    cust = repo.get_stripe_customer(cur, user_id)
+    reads = reads or Reads(cur, user_id)
+    cust = reads.customer()
     if not (cust and cust.get("default_pm_id")):
         return False
     # Headroom, not just >0: an autonomous research/review run would otherwise overshoot a near-zero
     # balance into the negative (post-paid billing). Require one session's worth before acting.
-    return Decimal(str(repo.credit_balance(cur, user_id))) >= MIN_RUN_BALANCE
+    return Decimal(str(reads.balance())) >= MIN_RUN_BALANCE
 
 
 def _price_for(model: str) -> Tuple[Decimal, Decimal]:

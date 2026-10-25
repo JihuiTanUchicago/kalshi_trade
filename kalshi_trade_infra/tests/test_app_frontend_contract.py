@@ -164,8 +164,8 @@ def _ap_ctx(monkeypatch, autopilot=1):
 def test_autopilot_status_flags_billing_blocked(monkeypatch):
     # Autopilot ON but can't spend -> the panel is told WHY it's quiet (reason: credits, card on file).
     ctx = _ap_ctx(monkeypatch, autopilot=1)
-    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: False)
-    monkeypatch.setattr(server, '_needs_card', lambda c: False)
+    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid, reads=None: False)
+    monkeypatch.setattr(server, '_needs_card', lambda c, reads=None: False)
     out = server.autopilot_status(ctx)
     assert out['billing_blocked'] is True and out['billing_reason'] == 'credits'
 
@@ -175,7 +175,7 @@ def test_autopilot_status_says_when_a_review_is_in_flight(monkeypatch):
     now = datetime(2026, 10, 25, 16, 0)
     monkeypatch.setattr(server.repo, 'now_utc', lambda: now)
     ctx = _ap_ctx(monkeypatch, autopilot=1)
-    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: True)
+    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid, reads=None: True)
     review = {'status': 'queued', 'created_at': now - timedelta(seconds=30), 'heartbeat_at': None}
     monkeypatch.setattr(server.repo, 'active_agent_run', lambda cur, uid, kind=None: kind == 'review' and review)
     out = server.autopilot_status(ctx)
@@ -192,7 +192,7 @@ def test_a_review_queued_or_silent_past_the_reaper_limit_stops_reading_as_review
     assert server.RUN_OVERDUE_SECONDS == limit
     monkeypatch.setattr(server.repo, 'now_utc', lambda: now)
     ctx = _ap_ctx(monkeypatch, autopilot=1)
-    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: True)
+    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid, reads=None: True)
     review = {}
     monkeypatch.setattr(server.repo, 'active_agent_run', lambda cur, uid, kind=None: review)
     # Right at the limit it is still reviewing; one second past, it isn't.
@@ -279,14 +279,14 @@ def test_me_states_what_auto_reload_will_charge_the_card(monkeypatch):
 
 def test_autopilot_status_not_blocked_when_ready(monkeypatch):
     ctx = _ap_ctx(monkeypatch, autopilot=1)
-    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: True)
+    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid, reads=None: True)
     out = server.autopilot_status(ctx)
     assert out['billing_blocked'] is False and out['billing_reason'] is None
 
 
 def test_autopilot_status_warns_before_credits_run_out(monkeypatch):
     ctx = _ap_ctx(monkeypatch, autopilot=1)
-    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: True)
+    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid, reads=None: True)
     assert server.autopilot_status(ctx)['credits_low_days'] is None  # no usage this week
     monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: 2.0)
     monkeypatch.setattr(server.repo, 'credit_spent_total', lambda cur, uid, since=None: 7.0)
@@ -302,7 +302,7 @@ def test_autopilot_status_warns_before_credits_run_out(monkeypatch):
 def test_autopilot_status_not_blocked_when_autopilot_off(monkeypatch):
     # Even if the spend gate would fail, an OFF autopilot is not "blocked" — it's just off.
     ctx = _ap_ctx(monkeypatch, autopilot=0)
-    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: False)
+    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid, reads=None: False)
     out = server.autopilot_status(ctx)
     assert out['billing_blocked'] is False
 
@@ -376,7 +376,7 @@ def test_run_page_and_research_list_carry_each_runs_ledger_spend(monkeypatch):
 def test_autopilot_status_carries_a_weekly_scorecard_with_credits_and_paper_apart(monkeypatch):
     # Real credits and paper P&L travel as separate fields; nothing adds them up.
     ctx = _ap_ctx(monkeypatch, autopilot=1)
-    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: True)
+    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid, reads=None: True)
     monkeypatch.setattr(server.repo, 'research_week', lambda *a, **k: [{'model': None, 'runs': 3, 'tried': 41, 'passed': 0,
                                                                         'input_tokens': 0, 'output_tokens': 0}])
     monkeypatch.setattr(server.repo, 'strategies_passed_since', lambda *a, **k: 2)

@@ -255,9 +255,10 @@ def test_dashboard_paper_book_carries_its_reset_so_all_time_labels_stay_true(mon
     for name, fn in {
         "user_positions": lambda *a, **k: [], "list_deployments": lambda *a, **k: [], "deployment_curves": lambda *a, **k: {},
         "paper_balance": lambda cur, uid: 480.0, "paper_deposits": lambda cur, uid: 500.0,
-        "realized_pnl": lambda cur, uid, mode, since=None: 0.0, "daily_pnl": lambda *a, **k: [],
+        "realized_pnl_by_mode": lambda cur, uid, since: {m: (0.0, 0.0) for m in ("paper", "demo", "live")},
+        "daily_pnl": lambda *a, **k: [],
         "paper_reset_at": lambda cur, uid: at,
-        "demo_equity": lambda cur, uid: {"capital": 500.0, "equity": 512.0, "realized": 12.0, "roi": .024, "before_reload": 40.0},
+        "demo_equity": lambda cur, uid, realized=None: {"capital": 500.0, "equity": 512.0, "realized": 12.0, "roi": .024, "before_reload": 40.0},
         "get_kalshi_key": lambda cur, uid: None, "open_reconcile_rows": lambda cur, uid: [],
         "active_run_counts": lambda cur, uid: {},
     }.items():
