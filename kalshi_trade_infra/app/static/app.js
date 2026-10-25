@@ -3641,7 +3641,7 @@
       </div>
       <form class="composer apf-composer-row" id="apf-composer">
         <label class="vh" for="apf-msg">Message the agent</label>
-        <textarea class="input" id="apf-msg" rows="1" maxlength="2000" placeholder="Tell the autopilot what to focus on…"></textarea>
+        <textarea class="input" id="apf-msg" rows="1" maxlength="2000" placeholder="What should it focus on?" aria-label="Message the autopilot"></textarea>
         <button class="btn" type="submit" aria-label="Send">${ICON.send}</button>
       </form>`;
     box.querySelector('.apf-x').onclick = (e) => apAction(box, 'toggle', e);
