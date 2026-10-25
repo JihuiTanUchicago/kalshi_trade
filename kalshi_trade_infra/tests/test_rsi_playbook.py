@@ -158,3 +158,16 @@ def test_a_rewrite_whose_passes_lose_on_paper_is_not_promoted(conn):
     few = {cand["id"]: {"round_trips": 5, "net_pnl": -3.0}}              # too few trips to veto
     assert pb.decide(cur, uid, fam, paper_of=lambda: few).startswith("promoted v1 over v0")
     conn.rollback()
+
+
+def test_the_proposer_never_reads_a_no_strike_or_no_event_line():
+    """The code window carries strike and event (#149); a playbook claiming otherwise killed sports
+    ladder theses in runs 2761/2772/2775. Real lessons that merely mention strikes survive."""
+    from app import rsi_playbook
+    text = ("PIPELINE FACTS\n- The pipeline has NO game state, team IDs, or event context.\n"
+            "- features contain no strike/threshold values\n"
+            "- Totals ladders: no edge at high strikes\n- No game state: score is unavailable")
+    out = rsi_playbook.prompt_block({"version": 3, "text": text}, "sports")
+    assert "event context" not in out and "no strike/threshold" not in out
+    assert "no edge at high strikes" in out and "score is unavailable" in out
+    assert "never record that strikes" in rsi_playbook.REFLECT_SYSTEM.lower().replace("\n  ", " ")
