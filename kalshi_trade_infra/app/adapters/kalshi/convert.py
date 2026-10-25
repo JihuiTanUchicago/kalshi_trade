@@ -7,7 +7,7 @@ SELL is always an exit and maps to ``reduce_only=True``.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Dict, Optional
 
 from data_pipeline.architecture.contracts import ExecutionReport as KalshiReport
 from data_pipeline.architecture.contracts import TradeIntent
@@ -20,10 +20,22 @@ _STATUS = {"filled": "filled", "partially_filled": "partial", "unfilled": "unfil
 
 
 def instrument_id(ticker: str, side: str) -> InstrumentId:
-    side = str(side).lower()
-    if side not in ("yes", "no"):
+    try:
+        return _IDS[(ticker, side)]
+    except KeyError:
+        pass
+    norm = str(side).lower()
+    if norm not in ("yes", "no"):
         raise ValueError("Kalshi side must be yes or no, got %r" % side)
-    return InstrumentId(VENUE, ticker, side)
+    if len(_IDS) >= _IDS_MAX:
+        _IDS.clear()  # a long-running engine sees new contracts all day; start over, never grow
+    iid = _IDS[(ticker, side)] = InstrumentId(VENUE, ticker, norm)
+    return iid
+
+
+# Interned ids: a replay asks for the same (ticker, side) on every bar.
+_IDS: Dict[tuple, InstrumentId] = {}
+_IDS_MAX = 100_000
 
 
 def kalshi_order(instrument: InstrumentId) -> tuple:

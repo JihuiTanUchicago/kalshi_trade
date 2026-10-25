@@ -12,7 +12,7 @@ its own parity test before it moves).
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Dict, List, Mapping, Optional, Sequence
+from typing import Callable, Dict, List, Mapping, Optional, Sequence
 
 from app import spec as specmod
 from app.adapters.kalshi import instruments as ki
@@ -40,7 +40,7 @@ class SpecStrategy:
 
     def __init__(self, spec: Dict, contracts: Mapping[str, Contract], *, stake: Optional[float] = None,
                  entry_until: float = float("inf"), strategy_id: str = "spec", next_bar: bool = False,
-                 slippage: float = 0.0) -> None:
+                 slippage: float = 0.0, frame: Optional[Callable[[], Mapping[str, Snapshot]]] = None) -> None:
         if specmod.is_code_spec(spec) or spec.get("cross") or specmod.is_perpetual_spec(spec):
             raise ValueError("SpecStrategy runs single-contract DSL specs only")
         self.spec, self.contracts, self.strategy_id = spec, contracts, strategy_id
@@ -49,9 +49,14 @@ class SpecStrategy:
         self.entry_until = entry_until
         self.next_bar = next_bar
         self.slippage = slippage
+        self.frame = frame
 
     def _snapshots(self, quotes: Mapping[InstrumentId, Quote]) -> Dict[str, Snapshot]:
-        """The legacy YES snapshots, in feed order (entries breaks edge ties by input order)."""
+        """The legacy YES snapshots, in feed order (entries breaks edge ties by input order). A replay
+        that already holds them passes ``frame`` (the snapshots its quotes were made from, no feature
+        providers in between) and skips rebuilding them from the quotes on every bar."""
+        if self.frame is not None:
+            return self.frame()
         return {iid.symbol: Snapshot(self.contracts[iid.symbol], int(q.ts), q.bid or 0.0, q.ask, q.features)
                 for iid, q in quotes.items() if iid.outcome == "yes" and q.ask is not None}
 
@@ -141,13 +146,15 @@ class _FrameFeed:
 
     def __init__(self) -> None:
         self.current: Dict[InstrumentId, Quote] = {}
+        self.snaps: Dict[str, Snapshot] = {}
 
     def load(self, snaps: Sequence[Snapshot]) -> None:
-        self.current = {}
+        self.current, self.snaps = {}, {}
         for snap in snaps:
             yes, no = ki.quotes(snap)
             self.current[yes.instrument] = yes
             self.current[no.instrument] = no
+            self.snaps[snap.contract.ticker] = snap
 
     def quote(self, instrument: InstrumentId) -> Optional[Quote]:
         return self.current.get(instrument)
@@ -194,7 +201,8 @@ def simulate_on_loop(spec: Dict, ds, start_ts: int, end_ts: int, fees: Optional[
     fees = fees or KalshiBinaryFees()
     if w.fee_multiplier != 1.0:
         fees = ScaledFees(fees, w.fee_multiplier)
-    strategy = SpecStrategy(spec, contracts, stake=stake, entry_until=end_ts, next_bar=next_bar, slippage=slip)
+    strategy = SpecStrategy(spec, contracts, stake=stake, entry_until=end_ts, next_bar=next_bar, slippage=slip,
+                            frame=lambda: feed.snaps)
     if next_bar:
         stop = backtest.POSITION_STOP_PCT if position_stop_pct is None else float(position_stop_pct)
         bar = max(int(getattr(ds.market, "decision_seconds", 60) or 60), 1)
