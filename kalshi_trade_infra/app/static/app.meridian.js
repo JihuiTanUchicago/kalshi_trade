@@ -394,6 +394,11 @@
   }
   window.addEventListener('popstate', render);
   document.addEventListener('click', (e) => {
+    // In-page "#id" links scroll to their target: letting the hash navigate fires popstate, whose
+    // re-render dropped the reader back at the top of the page.
+    const h = e.target.closest('a[href^="#"]');
+    const to = h && h.getAttribute('href').length > 1 && document.getElementById(h.getAttribute('href').slice(1));
+    if (to) { e.preventDefault(); to.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
     const a = e.target.closest('a[href^="/"]');
     if (!a || a.target || e.metaKey || e.ctrlKey || e.shiftKey || a.hasAttribute('download') || a.dataset.native != null) return;
     e.preventDefault();
@@ -1114,9 +1119,9 @@
       ${actions}
     </tr>`;
   }
-  function deploymentMonitor(d) {
+  function deploymentMonitor(d, anchor = false) {
     const live = d.mode === 'live';
-    return `<article class="dep-monitor${live ? ' live-row' : ''}">
+    return `<article ${anchor ? 'id="dash-paused" ' : ''}class="dep-monitor${live ? ' live-row' : ''}">
       <header><h3><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a></h3><span class="monitor-state"><span class="monitor-mode">${deploymentMode(d)}</span><span aria-hidden="true">·</span>${d.status === 'running' ? '<span class="deployment-state">Running</span>' : mark(d.status, live)}</span></header>
       <div class="monitor-config"><div class="monitor-summary"><p class="monitor-setup">${esc(marketShort(d.market))} · $${esc(d.stake)} / trade</p><div class="monitor-limits"><span>· Max ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' · ' + esc(d.status_reason) : ''}</span></div></div></div>
       <dl class="monitor-metrics">
@@ -1451,7 +1456,7 @@
       const settlementsFocused = !!root.querySelector('#recent-settlements > summary:focus');
       const said = [
         hasLive ? `Live money on: ${usd(d.live.realized_pnl, true)} realized` : '',
-        paused ? `<em>${paused} paused, needs you</em>` : '',
+        paused ? `<a class="needs-link" href="#dash-paused"><em>${paused} paused, needs you</em></a>` : '',
         stale ? `<em>${d.freshness.btc == null ? 'No backtest history yet' : 'Backtest history stale ' + age(d.freshness.btc)}</em>` : '',
       ].filter(Boolean).join('<span class="sep">/</span>');
       const liveFigure = fig('Live account', d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected', { small: d.live.connected ? (d.live.balance == null ? 'Couldn\u2019t read your Kalshi balance just now' : mSub(d.live, 'Your Kalshi cash \u2014 real money untouched')) : '<a href="/funds">Connect Kalshi</a>' });
@@ -1462,8 +1467,9 @@
         ${said ? `<div class="statusline dashboard-status ${needs ? 'needs' : ''}"><p class="said">${said}</p></div>` : ''}
         ${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? `\u26a0 ${d.reconcile.length} live position${d.reconcile.length === 1 ? '' : 's'} disagree with Kalshi \u2014 check your Portfolio` : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}
         <div class="pagehead"><div class="overview-heading"><h1 class="page">Overview</h1></div><div class="page-actions"><details class="other-accounts" id="other-accounts"${accountsOpen ? ' open' : ''}><summary>Accounts ${ICON.chev}</summary><dl>${hasLive ? paperFigure : liveFigure}${demoFigure}</dl></details>${agentsBusy ? `<a class="research-activity" href="/research">${agentsBusy} agent${agentsBusy > 1 ? 's' : ''} researching</a>` : ''}</div></div>`;
+      const firstPaused = d.deployments.find((x) => x.status === 'paused');  // the status line's "paused, needs you" jumps here
       const deps = d.deployments.length
-        ? `<div class="dep-register">${d.deployments.map(deploymentMonitor).join('')}</div>`
+        ? `<div class="dep-register">${d.deployments.map((x) => deploymentMonitor(x, x === firstPaused)).join('')}</div>`
         // Say what lands here; with autopilot on, "New session" asked for work it is already doing.
         : (S.me.user && S.me.user.autopilot)
           ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is researching. Strategies that pass every gate land here on paper first, with no real money.</p><a class="btn" href="/research">See its research</a></div>`
