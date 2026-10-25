@@ -30,7 +30,8 @@ def _frame(n=1800, k_contracts=2, stale_at=None, walk=False):
                        spot_taker_imb_60s=0.1, yes_bid_size=50.0, yes_ask_size=20.0, imbalance=0.43,
                        microprice=0.421, bid_depth=80.0, ask_depth=40.0, updates=3.0,
                        book_age_s=999.0 if sec == stale_at else 1.0, n_prints_60s=4.0,
-                       yes_taker_60s=30.0, no_taker_60s=10.0, yes_taker_10s=0.0, no_taker_10s=0.0)
+                       yes_taker_60s=30.0, no_taker_60s=10.0, yes_taker_10s=0.0, no_taker_10s=0.0,
+                       opt_p_yes=0.47 if k == 0 else np.nan, opt_iv=0.45 if k == 0 else np.nan)
             for c in cols:
                 cols[c].append(row[c])
     out = {c: np.array(v) for c, v in cols.items()}
@@ -58,6 +59,9 @@ def test_frames_follow_the_cadence_and_carry_candle_compatible_features():
     assert f["moneyness"] == pytest.approx(math.log(100_100 / 100_000))
     assert f["z_score_5m"] == 0.5 and f["tte_min"] == pytest.approx((900 - 5) / 60)
     assert f["ret_1m"] == pytest.approx(0.0002) and f["ret_5m"] == pytest.approx(0.0003)
+    assert f["opt_p_yes"] == pytest.approx(0.47) and f["opt_iv"] == pytest.approx(0.45)
+    assert f["opt_edge"] == pytest.approx(0.47 - 0.415)
+    assert "opt_p_yes" not in ds.frames[-1][1][-1].features and "opt_edge" not in ds.frames[-1][1][-1].features
     assert f["ob_imbalance"] == pytest.approx(0.43) and f["flow_imb_60s"] == pytest.approx(0.5)
     assert "flow_imb_10s" not in f                       # no trades in 10s: absent, never 0
     assert "vol_60m" not in f and "z_score" not in f     # minute vols need an hour of data first

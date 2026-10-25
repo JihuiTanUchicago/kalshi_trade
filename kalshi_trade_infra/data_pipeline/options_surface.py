@@ -37,6 +37,7 @@ import bisect
 import math
 import os
 from dataclasses import dataclass
+from functools import cached_property
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -70,6 +71,14 @@ class Surface:
     expiries: Tuple[Expiry, ...]      # sorted by expiry_ts
     method: str = "chain"
     known_ns: int = 0                 # receive time (ns) of the data, for as-of joins; 0 = snap_ts
+
+    @cached_property
+    def arrays(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """(expiry_ts, basis, atm_iv, smile as a ratio to ATM) as arrays, built once per surface."""
+        e = self.expiries
+        atm = np.array([x.atm_iv for x in e])
+        return (np.array([x.expiry_ts for x in e], dtype=float), np.array([x.basis for x in e]), atm,
+                np.array([x.grid for x in e]) / atm[:, None])
 
     def rows(self) -> List[Dict]:
         out = []
@@ -216,9 +225,9 @@ def effective_secs(secs_left):
 
 def _grid_interp(grid: np.ndarray, z: np.ndarray) -> np.ndarray:
     """Row-wise linear interpolation of grid[i, :] (vols at Z_GRID) at z[i], flat outside."""
-    idx = np.clip(np.searchsorted(_ZG, z), 1, len(_ZG) - 1)
+    idx = np.minimum(np.maximum(np.searchsorted(_ZG, z), 1), len(_ZG) - 1)
     z0, z1 = _ZG[idx - 1], _ZG[idx]
-    w = np.clip((z - z0) / (z1 - z0), 0.0, 1.0)
+    w = np.minimum(np.maximum((z - z0) / (z1 - z0), 0.0), 1.0)
     r = np.arange(len(z))
     return grid[r, idx - 1] * (1.0 - w) + grid[r, idx] * w
 
@@ -236,10 +245,7 @@ def price(surface: Surface, ts, strike, close_ts, spot) -> Tuple[np.ndarray, np.
     exps = surface.expiries
     if not exps or n == 0:
         return nan, nan.copy()
-    e_ts = np.array([e.expiry_ts for e in exps], dtype=float)
-    e_b = np.array([e.basis for e in exps])
-    e_atm = np.array([e.atm_iv for e in exps])
-    e_grid = np.array([e.grid for e in exps]) / e_atm[:, None]       # smile as a ratio to ATM
+    e_ts, e_b, e_atm, e_grid = surface.arrays
     m = len(exps)
     t_s = effective_secs(cl - ts)
     t = t_s / YEAR_S
@@ -249,7 +255,7 @@ def price(surface: Surface, ts, strike, close_ts, spot) -> Tuple[np.ndarray, np.
     single = (i == j0) | (i >= m)
     lo = np.where(i >= m, m - 1, np.where(single, j0, i - 1))
     hi = np.where(i >= m, m - 1, np.where(single, j0, i))
-    lo, hi = np.clip(lo, 0, m - 1), np.clip(hi, 0, m - 1)
+    lo, hi = np.minimum(np.maximum(lo, 0), m - 1), np.minimum(np.maximum(hi, 0), m - 1)
     with np.errstate(invalid="ignore", divide="ignore"):
         t0 = (e_ts[lo] - ts) / YEAR_S
         t1 = (e_ts[hi] - ts) / YEAR_S
@@ -260,20 +266,21 @@ def price(surface: Surface, ts, strike, close_ts, spot) -> Tuple[np.ndarray, np.
         fwd = sp * np.exp(basis)
         rt = np.sqrt(t)
 
-        def vol(k):
-            z = np.log(k / fwd) / (s_atm * rt)
-            z = np.where(np.isfinite(z), z, 0.0)
-            ratio = (1 - a) * _grid_interp(e_grid[lo], z) + a * _grid_interp(e_grid[hi], z)
-            return s_atm * ratio
-
-        sig = vol(k_)
+        # vol at K, K(1+h), K(1-h) in one pass (dsigma/dK by central difference)
         h = 1e-3
-        dsig_dk = (vol(k_ * (1 + h)) - vol(k_ * (1 - h))) / (2 * h * k_)
+        k3 = np.concatenate([k_, k_ * (1 + h), k_ * (1 - h)])
+        z = np.log(k3 / np.tile(fwd, 3)) / np.tile(s_atm * rt, 3)
+        z = np.where(np.isfinite(z), z, 0.0)
+        a3 = np.tile(a, 3)
+        v3 = np.tile(s_atm, 3) * ((1 - a3) * _grid_interp(e_grid[np.tile(lo, 3)], z)
+                                  + a3 * _grid_interp(e_grid[np.tile(hi, 3)], z))
+        sig, v_up, v_dn = v3[:n], v3[n:2 * n], v3[2 * n:]
+        dsig_dk = (v_up - v_dn) / (2 * h * k_)
         sd = sig * rt
         d1 = (np.log(fwd / k_) + 0.5 * sd ** 2) / sd
         d2 = d1 - sd
         p = _ncdf(d2) - fwd * _npdf(d1) * rt * dsig_dk
-    p = np.where(ok & np.isfinite(p), np.clip(p, 0.0, 1.0), np.nan)
+    p = np.where(ok & np.isfinite(p), np.minimum(np.maximum(p, 0.0), 1.0), np.nan)
     sig = np.where(ok & np.isfinite(sig), sig, np.nan)
     return p, sig
 

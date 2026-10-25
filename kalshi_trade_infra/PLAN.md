@@ -1,5 +1,28 @@
 # PLAN
 
+## Deribit options-implied fair value for Kalshi BTC (2026-10-25)
+
+- Idea (coordinator proposal 1, Todd approved 00:56Z): Deribit's BTC options are the deepest market for
+  "BTC above K at T". The probability its implied-vol surface puts on that is a fair value for every
+  Kalshi BTC strike contract; research tests whether Kalshi's distance from it predicts settlement.
+- `data_pipeline/options_surface.py`: the surface (per Deribit expiry: basis, ATM vol, vol on a grid of
+  standardized moneyness), the fits (chain marks: interpolation; historical trades: weighted quadratic),
+  and the pricer: ATM total variance linear in T (flat before the first expiry, which is where every
+  15-minute/hourly contract sits), smile as a ratio to ATM, Black-76 digital WITH the skew term
+  (N(d2) - F phi(d1) sqrt(T) dsigma/dK), Kalshi's 60-second BRTI settlement average folded into T.
+- `data_pipeline/deribit_options.py` (unit `deribit-options-recorder`, collector box): one public REST
+  call per minute for every BTC option mark. Raw to the tick dir (source `deribit`); tick_archiver makes
+  `deribit_options` + `deribit_surface`; the latest fit goes in collector_state `tick_recorder_deribit`
+  (the live engine's source). An hourly pass writes `ticks/v1/deribit_surface_day/date=D/part.parquet`
+  for the last 120 days from history.deribit.com option trades (a surface every 15 min from the trailing
+  hour), plus that day's chain snapshots.
+- Features: `opt_p_yes`, `opt_edge` (= opt_p_yes - mid), `opt_iv`, `opt_age_min` on btc15m and btc_daily
+  (research via backtest.forecast_book, live via engine Sources.options, same call); `opt_p_yes`, `opt_iv`
+  in features_1s and `opt_edge` in the btc15m_tick twin.
+- Unverified until deploy: the sandbox cannot reach Deribit, so the formats are coded from Deribit's API
+  docs. Check after deploy: S3 ticks/raw/deribit/ and ticks/v1/deribit_surface_day/ appear, and the
+  heartbeat has no errors. If Deribit blocks US AWS IPs, the recorder keeps running with errors in its
+  heartbeat and every opt_* feature is simply absent.
 ## Paper tournament: every near miss trades, a bandit allocates a virtual book (2026-10-25)
 
 - Why: the gate needs ~400-800 trades to see a 6-10c edge; one near miss forward-tests at a few
