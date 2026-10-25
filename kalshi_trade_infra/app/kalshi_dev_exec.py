@@ -246,9 +246,10 @@ def demo_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
 
     `ws_feed` (the shared WsTickerFeed) makes pricing read the live websocket book first with REST
     as the freshness backstop (P1-1); None => REST-only, as before. Demo places REAL sandbox orders,
-    so it passes the SAME process-wide execution guards as live (P1-3) — the two must never drift."""
+    so it passes the same execution guards as live (P1-3), with the same limits and kill switch, on
+    an instance of its own: a refused demo order never opens live's circuit breaker."""
     from app import kalshi_account
-    from app.execution import guarded_submitter, timed_submitter
+    from app.execution import demo_guarded_submitter, timed_submitter
     from data_pipeline.architecture.execution_kernel import MarketableLimitKernel
     from data_pipeline.architecture.position_guard import position_guarded_submitter
     from data_pipeline.market_data import MarketFeed
@@ -262,7 +263,7 @@ def demo_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
             return None
         creds = kalshi_account.credentials_from_row(user_id, row)
         return MarketableLimitKernel(
-            timed_submitter(guarded_submitter(position_guarded_submitter(
+            timed_submitter(demo_guarded_submitter(position_guarded_submitter(
                 demo_order_submitter(creds), demo_net_reader(creds))), mode="demo"), feed,
             entry_cross_ticks=int(os.getenv("KALSHI_ENTRY_CROSS_TICKS", "2")),
             exit_cross_ticks=int(os.getenv("KALSHI_EXIT_CROSS_TICKS", "2")),
