@@ -3172,7 +3172,7 @@
           && Math.abs(new Date(prev.created_at) - new Date(p.created_at)) < GROUP_WINDOW;
         return postCard(p, grouped);
       }).join('')
-        : `<div class="empty"><h3>${mineOnly ? 'You haven’t posted yet' : 'No posts yet'}</h3></div>`;
+        : `<div class="empty"><h3>${mineOnly ? 'You haven’t posted yet' : 'No posts yet'}</h3><p>${mineOnly ? 'Share a strategy an agent found or how your book is doing. It shows up here.' : 'Be the first. Share a strategy an agent found, an idea worth researching, or how your paper book is doing.'}</p></div>`;
       if (html === lastFeed) return;  // nothing changed — don't re-render (avoids flicker)
       lastFeed = html;
       feed.innerHTML = html;
