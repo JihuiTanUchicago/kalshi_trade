@@ -38,6 +38,21 @@ def test_one_connection_serves_many_requests(web):
     conn.close()
 
 
+def test_reused_connection_is_not_stalled_by_nagle(web):
+    # Headers and body are separate writes; without TCP_NODELAY each response after the first on a
+    # kept-alive connection (CloudFront's origin pool) waited ~40ms for the client's delayed ACK.
+    assert server.Handler.disable_nagle_algorithm is True
+    conn = http.client.HTTPConnection("127.0.0.1", web, timeout=3)
+    took = []
+    for _ in range(9):
+        t = time.perf_counter()
+        conn.request("GET", "/healthz")
+        conn.getresponse().read()
+        took.append(time.perf_counter() - t)
+    conn.close()
+    assert sorted(took[1:])[4] < 0.02, took  # median of the reused-connection requests
+
+
 def test_post_rejected_before_reading_its_body_does_not_poison_the_next_request(web):
     conn = http.client.HTTPConnection("127.0.0.1", web, timeout=3)
     body = json.dumps({"x": "GET /healthz HTTP/1.1\r\n\r\n"})
