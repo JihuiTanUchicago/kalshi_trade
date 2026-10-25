@@ -512,6 +512,8 @@ def _merge_known(base: Dict, raw: Dict, prefix: str, errors: List[str]) -> None:
         if key not in base:
             errors.append("unknown field %s" % path)
         elif isinstance(base[key], dict):
+            if value is None and path == "exit":
+                continue  # "exit": null is how proposers write "hold to settlement" (all-null exit)
             if not isinstance(value, dict):
                 errors.append("%s must be an object" % path)
             else:
