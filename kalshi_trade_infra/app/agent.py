@@ -3489,13 +3489,17 @@ def auto_paper_probation(cur, user: Dict) -> List[str]:
         if active >= PROBATION_MAX_ACTIVE:
             break
         sid = c["strategy_id"]
-        mkt = MARKETS.get(c["market"])
-        # No autopilot_focus check: probation is paper only (no money), and Todd approved it for his
-        # out-of-focus kxrain near misses while his research stays on crypto.
-        if sid in tried or mkt is None or not mkt.deployable:
+        if sid in tried:
             continue
         strat = repo.get_strategy(cur, user["id"], sid)
-        if strat is None or strat.get("market") != c["market"] or specmod.is_code_spec(strat["spec"]):
+        # A pooled spec's experiment is filed under its whole stream ("btc_daily+eth_daily+..."); it
+        # trades as the plain rule on its own market, which must be one of the stream's markets.
+        if strat is None or strat.get("market") not in c["market"].split("+") or specmod.is_code_spec(strat["spec"]):
+            continue
+        mkt = MARKETS.get(strat["market"])
+        # No autopilot_focus check: probation is paper only (no money), and Todd approved it for his
+        # out-of-focus kxrain near misses while his research stays on crypto.
+        if mkt is None or not mkt.deployable:
             continue
         if _engine.cross_deploy_block(strat["spec"], "paper"):
             continue
