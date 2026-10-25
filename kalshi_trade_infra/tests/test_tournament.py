@@ -229,6 +229,27 @@ def test_a_research_saved_underpowered_strategy_enters_on_its_research_fold(monk
     assert made == [(1, "paper")]
 
 
+def test_underpowered_verdicts_use_the_validation_pnl_the_gatekeeper_recorded(monkeypatch):
+    """Research strategies carry no out_of_sample block (held-out numbers stay away from the
+    generator), so the recorded validation P&L decides: up enters paper, down or flat does not."""
+    made = []
+    monkeypatch.setattr(agent, "PAPER_PROBATION", True)
+    monkeypatch.setattr(agent.rr, "probation_candidates", lambda cur, uid, p, n: [])
+    monkeypatch.setattr(agent.rr, "underpowered_candidates", lambda cur, uid, n: [
+        {"strategy_id": s, "market": "btc15m+sol_daily", "p_value": None, "net_pnl": v, "n_trades": 56}
+        for s, v in ((1, 4.5), (2, -2.0), (3, 0.0))])
+    monkeypatch.setattr(agent.repo, "list_deployments", lambda cur, uid, include_stopped=False: [])
+    monkeypatch.setattr(agent.repo, "get_strategy", lambda cur, uid, sid: {
+        "id": sid, "market": "sol_daily", "title": "S%d" % sid, "spec": dict(SPEC), "status": "rejected",
+        "result": {"in_sample": {"trades": 300, "pnl": 50.0}, "classification": "inconclusive"}})
+    monkeypatch.setattr(agent.repo, "create_deployment", lambda cur, uid, sid, m, mode: made.append((sid, mode)) or 1)
+    monkeypatch.setattr(agent.repo, "create_proposal", lambda *a: 1)
+    monkeypatch.setattr(engine, "cross_deploy_block", lambda spec, mode: "")
+    lines = agent.auto_paper_probation(None, {"id": 1, "autopilot": True})
+    assert made == [(1, "paper")]
+    assert "too few validation trades to score (56), and they were up $4.50" in lines[0]
+
+
 def test_each_mode_counts_only_its_own_positions_and_paper_gets_10x(monkeypatch):
     """Todd 2026-10-25 chose separate books: live limits count only live positions (same numbers),
     paper gets 10x in fake money, so a full paper tournament never blocks a live entry."""

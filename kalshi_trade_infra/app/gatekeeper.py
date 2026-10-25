@@ -484,6 +484,14 @@ def _result_metrics(v: Dict[str, Any], n_trials: int, holdout_consumed: int = 0)
     }
 
 
+def _underpowered_metrics(trades: List, n_trials: int) -> Dict[str, Any]:
+    """Columns for a below-min-sample verdict: no test ran and no alpha was spent, so there is no
+    p-value, but the validation net P&L is still recorded. Paper probation reads it to decide
+    whether an unmeasured idea is worth a forward test; replay masks it (no p-value -> no signal),
+    and the generator never sees it (it gets only the classification)."""
+    return {"net_pnl": round(sum(t.pnl for t in trades), 4), "n_trials_audited": n_trials}
+
+
 def _verdict_dict(v: Dict[str, Any], cls: Classification, n_trials: int) -> Dict[str, Any]:
     """The FULL numeric verdict returned to the gatekeeper's caller. NOTE: the generator
     (agent.py) must receive ONLY `classification` out of this — never the p-value/CI/pnl."""
@@ -548,7 +556,7 @@ def judge_validation(cur, experiment_id: int, finalist: dict, val_ds) -> dict:
     if n_trades < min_sample:
         cls = Classification.INCONCLUSIVE
         rr.append_result(cur, experiment_id, "validation", cls.value, n_trades,
-                         metrics={"n_trials_audited": n_trials})
+                         metrics=_underpowered_metrics(trades, n_trials))
         return {"classification": cls.value, "n_trades": n_trades, "alpha_spent": False,
                 "n_trials_audited": n_trials}
 
@@ -584,7 +592,7 @@ def judge_batch(cur, run_id: int, experiment_ids: List[int], finalists: List[dic
         trades = backtest.simulate(fin["spec"], val_ds, val_ds.start_ts, val_ds.end_ts + 1)
         n = len(trades)
         if n < int(fin.get("min_sample", 0)):
-            computed.append({"exp_id": exp_id, "n_trades": n, "insufficient": True})
+            computed.append({"exp_id": exp_id, "n_trades": n, "insufficient": True, "trades": trades})
             continue
         v = _compute(trades, n_trials, lord_state, seed=_BOOT_SEED + int(exp_id), kind=getattr(val_ds.market, "kind", "binary"))
         lord_state = v["lord_state"]  # advance the stream
@@ -605,7 +613,7 @@ def judge_batch(cur, run_id: int, experiment_ids: List[int], finalists: List[dic
         if c["insufficient"]:
             cls = Classification.INCONCLUSIVE
             rr.append_result(cur, c["exp_id"], "validation", cls.value, c["n_trades"],
-                             metrics={"n_trials_audited": n_trials})
+                             metrics=_underpowered_metrics(c["trades"], n_trials))
             out.append({"classification": cls.value, "n_trades": c["n_trades"],
                         "alpha_spent": False, "n_trials_audited": n_trials})
             continue

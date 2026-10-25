@@ -144,6 +144,12 @@
   All-time read at 07:30Z: breachers saved $121.84 on 11 scored exits; collateral +$3.58 on 3,
   with Todd's #78 rain flatten (6 exits) unscored and provisionally about -$1.5. Too thin for a
   "close only the breacher" decision; bring it to Todd once collateral n >= 20.
+- Underpowered verdicts enter paper on their unseen trades (2026-10-25): a below-min-sample
+  validation verdict now records its validation net P&L (no p-value, no alpha), and paper
+  probation admits it only if that P&L is up. Older rows fall back to the research fold (#284).
+  Replay masks the P&L (no p-value -> no signal), so the optimizer learns nothing new from it.
+  Found while checking why only 2 of Todd's paper deployments run: all 7 underpowered candidates
+  were skipped because research strategies carry no out-of-sample block.
 
 ## Did the stop help? Early exits scored against holding (2026-10-24)
 
