@@ -182,6 +182,27 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.doesNotMatch(thinned, /one point per closed trade/);
   });
 
+  test(`${name}: a strategy holding on paper, demo and live sums each book apart, never all together`, async () => {
+    const h = (mode, cost, unrealized) => ({ticker: 'KXBTC15M-' + mode, side: 'yes', qty: 2, entry_price: 0.4, cost, unrealized, mode,
+      market_close_time: '2026-10-25T07:45:00Z'});
+    const holdings = [h('paper', 4, 1), h('paper', 2, null), h('demo', 8, -3), h('live', 0.8, 0.2)];
+    const f = strategyFrontend(detailStrategy({holdings, deployed: true, deployments: [{id: 1, mode: 'paper', status: 'running'},
+      {id: 2, mode: 'demo', status: 'running'}, {id: 3, mode: 'live', status: 'running'}]}));
+    await f.viewStrategy(42); await flush();
+    const main = f.root.querySelector('main').innerHTML;
+    const hint = main.slice(main.indexOf('<p class="hint" style="margin-top:8px">'), main.indexOf('</p>', main.indexOf('<p class="hint" style="margin-top:8px">')));
+    assert.match(hint, /Live: 1 open position at cost \$0\.80 · unrealized (?:<span[^>]*>)?\+\$0\.20/);
+    assert.match(hint, /Demo: 1 open position at cost \$8\.00 · unrealized (?:<span[^>]*>)?−\$3\.00/);
+    assert.match(hint, /Paper: 2 open positions at cost \$6\.00 · unrealized (?:<span[^>]*>)?\+\$1\.00/);
+    assert.doesNotMatch(hint, /4 open positions|\$14\.80|−\$1\.80/);  // the cross-book totals it used to print
+    f.clearTimers && f.clearTimers();
+    // One book alone reads as before, with no label.
+    const g = strategyFrontend(detailStrategy({holdings: [h('paper', 4, 1)], deployed: true, deployments: [{id: 1, mode: 'paper', status: 'running'}]}));
+    await g.viewStrategy(42); await flush();
+    assert.match(g.root.querySelector('main').innerHTML, />1 open position at cost \$4\.00 · unrealized (?:<span[^>]*>)?\+\$1\.00(?:<\/span>)? \(est\./);
+    g.clearTimers && g.clearTimers();
+  });
+
   test(`${name}: an open trade that is partly sold says what it already realized outside the record`, () => {
     const f = frontend({fetchImpl: () => response({})});
     const th = {min_sharpe_days: 14, min_trades: 30};

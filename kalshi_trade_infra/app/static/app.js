@@ -2651,13 +2651,19 @@
         </div>
         <aside>
           ${!restricted && s.holdings && s.holdings.length ? (() => {
-            const marked = s.holdings.filter((p) => p.unrealized != null);
-            const unreal = marked.reduce((a, p) => a + p.unrealized, 0);
+            // One summary per money book: a strategy can hold on paper and demo (or live) at once, and
+            // their cost and unrealized P&L are never added together. A single book reads as before.
+            const books = ['live', 'demo', 'paper'].map((m) => s.holdings.filter((p) => (p.mode || 'paper') === m)).filter((xs) => xs.length);
+            const bookLine = (xs) => {
+              const marked = xs.filter((p) => p.unrealized != null), unreal = marked.reduce((a, p) => a + p.unrealized, 0);
+              const lead = books.length > 1 ? ({ live: 'Live', demo: 'Demo', paper: 'Paper' })[xs[0].mode || 'paper'] + ': ' : '';
+              return `${lead}${xs.length} open position${xs.length === 1 ? '' : 's'} at cost ${usd(xs.reduce((a, p) => a + p.cost, 0))}${marked.length ? ` · unrealized ${money(unreal)} (est., mark-to-market on the current bid)` : ' · awaiting first mark'}.`;
+            };
             // A list, not a five-column table: in the sidebar the table clipped everything after Position.
             return `<section class="panel"><h3>Holding right now</h3>
             <ul class="holdlist">${s.holdings.map((p) => `<li><div class="tick">${esc(p.ticker)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</div>
               <div class="holdlist-figs"><b>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(p.entry_price)}</b><span>Cost ${usd(p.cost)}</span><span>Unreal. ${p.unrealized == null ? '—' : money(p.unrealized)}</span><span>Settles ${clock(p.market_close_time)}</span></div></li>`).join('')}</ul>
-            <p class="hint" style="margin-top:8px">${s.holdings.length} open position${s.holdings.length === 1 ? '' : 's'} at cost ${usd(s.holdings.reduce((a, p) => a + p.cost, 0))}${marked.length ? ` · unrealized ${money(unreal)} (est., mark-to-market on the current bid)` : ' · awaiting first mark'}.</p></section>`;
+            <p class="hint" style="margin-top:8px">${books.map(bookLine).join('<br>')}</p></section>`;
           })() : ''}
           <section class="panel"><h3>${restricted ? 'Research only' : 'Deploy'}</h3>
             ${canDeploy ? `<div style="display:grid;gap:10px">
