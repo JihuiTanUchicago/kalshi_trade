@@ -7,7 +7,7 @@ user actually ran. Prices are USD per 1,000,000 tokens (input, output) - the
 same unit as billing.PRICES - so metering stays consistent.
 
 Price sources (verified 2026-10-15):
-  - Claude models: Anthropic published list price (what we bill; our Bedrock
+  - Claude models: Anthropic published list price (billed x billing.USAGE_MARGIN; our Bedrock
     cost is covered by AWS credits - that gap is margin, same as the rest of
     billing.PRICES). https://www.anthropic.com/pricing
   - Nova / Llama models: AWS Bedrock on-demand base price via the AWS Pricing

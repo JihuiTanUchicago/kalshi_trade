@@ -6,7 +6,7 @@ gate verdict. This module turns that into a scorecard per run and a scoreboard a
 
   funnel     explored -> dropped on research data -> challenger/underpowered/not-finalist ->
              gated -> passed (+ holdout passes)
-  spend      the run's model tokens priced at its model's list price
+  spend      the run's model tokens as billed: its model's list price x billing.USAGE_MARGIN
   deaths     why each dropped idea died, classified as
                pipeline  the pipeline failed the idea (a feature it thought was missing, no data, a
                          load error, a spec the validator rejected): engineering work, not evidence
@@ -130,7 +130,7 @@ def family(market: Optional[str]) -> str:
 
 
 def run_cost_usd(run: Dict, screen: Optional[Dict] = None) -> float:
-    """The run's model spend at list price (what the user is billed). `screen` is the run's
+    """The run's model spend as debited from credits (billing.usage_cost: list price x USAGE_MARGIN). `screen` is the run's
     `screen` verdict payload: its tokens are part of the run's totals but priced at the screen
     model's rate (services.research_screen)."""
     from app import billing
