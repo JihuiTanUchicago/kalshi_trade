@@ -1377,7 +1377,7 @@ a.snap:hover { border-color: var(--ink-3); }
 .rsi-card p { font-size: 13px; line-height: 1.5; color: var(--ink-2); margin: 0 0 4px; overflow-wrap: anywhere; }
 .rsi-card .rsi-last { font-size: 12.5px; color: var(--ink-3); margin-top: 6px; }
 .rsi-card .rsi-what { color: var(--ink); background: var(--signal-wash); border-radius: 3px; padding: 7px 9px; }
-.rsi-tag { font-family: var(--f-nar); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #FDF2F3; background: var(--signal); padding: 1px 6px; border-radius: 3px; margin-left: 6px; }
+.rsi-tag { font-family: var(--f-nar); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #FDF2F3; background: var(--signal); padding: 1px 6px; border-radius: 3px; margin-left: 6px; white-space: nowrap; display: inline-block; }
 .rsi-tag.quiet { color: var(--ink-2); background: transparent; border: 1px solid var(--rule-2); }
 .rsi-score { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
 .rsi-arrow { color: var(--signal); }

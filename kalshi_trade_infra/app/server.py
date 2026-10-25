@@ -566,6 +566,7 @@ def _rsi_block(pol: Optional[Dict], dream: Optional[Dict]) -> Dict:
         "code": pol["code"] if pol else dreaming.DEFAULT_POLICY_SRC,
         "last_dream": dream["message"] if dream else None,
         "last_dream_at": dream["created_at"] if dream else None,
+        "min_history": dreaming.MIN_TREE,  # tested ideas the first policy check needs
     }
 
 

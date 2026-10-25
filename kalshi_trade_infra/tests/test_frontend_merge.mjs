@@ -796,6 +796,17 @@ test('phone labels on strategy rows say the P&L is a backtest', () => {
   assert.equal(lab({id: 2, status: 'rejected', title: 'Dropped', market: 'btc15m', out_of_sample: null, in_sample: m(-7.5)}), 'Backtest P&amp;L (tested)');
 });
 
+test('before its first policy check the run page says what the check needs', async () => {
+  const run = {id: 9, prompt: 'Idea', status: 'succeeded', market: 'btc15m', created_at: '2026-10-17T10:00:00Z'};
+  const rsi = {evolved: false, last_dream: null, min_history: 12};
+  const f = frontend({fetchImpl: path => { assert.ok(path.startsWith('/api/runs/9')); return response({run, events: [], rsi}); }});
+  await f.viewRun(9);
+  const box = f.root.querySelector('#rsibox').innerHTML;
+  assert.match(box, /No check yet\. The first one runs at the end of a session, once at least 12 ideas have been tested\./);
+  assert.doesNotMatch(box, /first result appears/);
+  f.clearTimers();
+});
+
 test('a finished run hides its last loop phase instead of reading as still working', async () => {
   for (const [status, hidden] of [['succeeded', true], ['running', false]]) {
     const run = {id: 9, prompt: 'Idea', status, market: 'btc15m', created_at: '2026-10-17T10:00:00Z'};
