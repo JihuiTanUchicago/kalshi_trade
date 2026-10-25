@@ -1575,6 +1575,7 @@ body.landing-body .apf { display: none; }
 .apf-stats > .apf-wide { grid-column: 1 / -1; }
 .apf-top .apf-model { margin-top: 12px; }
 .apf-top .apf-stats { margin-top: 12px; }
+.apf-top .apf-prefs { margin-top: 10px; }  /* model + markets tucked away so the activity feed keeps its room */
 .apf-stats > div { display: flex; flex-direction: column; gap: 3px; padding: 9px 11px; background: var(--stock-raised); }
 .apf-stats dt { font-family: var(--f-nar); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
 .apf-stats dd { margin: 0; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
