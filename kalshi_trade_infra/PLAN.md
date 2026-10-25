@@ -114,6 +114,12 @@
   paper trades are down $X, so the edge may be fading".
 - It can only refuse. Every earlier check is unchanged: 30 trips, net up, 48h, p <= 0.10.
 - Road to live shows a "Still working lately" row with the newer half's net, in both bundles.
+- 2026-10-25: `events` check. The 30 trips must come from 20+ separate events (ticker minus its last
+  segment), and the bootstrap edge test runs on per-event P&L. Five strikes of one 15-minute BTC event
+  settle on one outcome, so they are one bet, not five; counting them as five overstated the paper
+  edge. This matters more now that validation runs at a fixed 0.05 alpha (#167) and the tournament
+  puts many near misses on paper: paper is the stricter filter before live. Road to live shows a
+  "Separate events" row.
 
 ## Did the stop help? Early exits scored against holding (2026-10-24)
 

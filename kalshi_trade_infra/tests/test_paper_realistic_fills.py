@@ -260,11 +260,11 @@ def test_paper_round_trips_counts_only_closed_simulated_fills():
             self.sql, self.params = " ".join(sql.split()), params
 
         def fetchall(self):
-            return [{"order_ref": "sim:a", "pnl": "1.25", "opened_at": 1, "closed_at": 2}]
+            return [{"order_ref": "sim:a", "pnl": "1.25", "opened_at": 1, "closed_at": 2, "ticker": "KXSOL15M-A-1"}]
 
     cur = Rec()
     rows = repo.paper_round_trips(cur, 3, 7)
-    assert rows == [{"pnl": 1.25, "opened_at": 1, "closed_at": 2}]
+    assert rows == [{"pnl": 1.25, "opened_at": 1, "closed_at": 2, "ticker": "KXSOL15M-A-1"}]
     assert "p.mode='paper'" in cur.sql and "LIKE %s" in cur.sql and "GROUP BY p.order_ref" in cur.sql
     assert "status='open'" in cur.sql, "a trade with a slice still open is not a closed round trip"
     assert cur.params == (3, 7, engine.SIM_ORDER_REF_PREFIX + "%")

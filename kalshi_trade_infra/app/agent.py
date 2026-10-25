@@ -3008,6 +3008,22 @@ MIN_PAPER_TRADES_FOR_LIVE = 8
 MIN_REALISTIC_PAPER_TRADES = 30   # closed round trips: fewer cannot tell edge from luck
 MIN_PAPER_SPAN_HOURS = 48.0       # first entry to last exit: one quiet afternoon is not a track record
 MAX_PAPER_EDGE_P_VALUE = 0.10     # one-sided stationary-bootstrap p that mean P&L per trade <= 0
+# Separate events (contracts of one event settle on one outcome): five strikes of one 15-minute BTC
+# event are one bet, not five, so the record needs this many events and the edge test runs on
+# per-event P&L. Validation went to a fixed 0.05 alpha (#167), so paper is now the stricter filter.
+MIN_PAPER_EVENTS = 20
+
+
+def _trip_events(trips: List[Dict]) -> List[float]:
+    """Net P&L per event, in the order each event was first traded. A trip's event is its ticker
+    minus the last segment (KXBTC15M-26OCT241515-15 -> KXBTC15M-26OCT241515); a trip with no ticker
+    counts as its own event."""
+    sums: Dict[str, float] = {}
+    for i, t in enumerate(trips):
+        tk = t.get("ticker")
+        key = tk.rsplit("-", 1)[0] if tk and "-" in tk else "trip:%d:%s" % (i, tk or "")
+        sums[key] = sums.get(key, 0.0) + float(t["pnl"])
+    return list(sums.values())
 
 
 def paper_evidence(cur, user_id: int, strategy_id: int) -> Dict:
@@ -3036,16 +3052,20 @@ def paper_evidence(cur, user_id: int, strategy_id: int) -> Dict:
     # an early winning streak can't carry a strategy whose edge has since faded into live money.
     recent = pnls[len(pnls) // 2:]
     recent_net = sum(recent)
+    events = _trip_events(trips)
     p_value = None
-    if len(pnls) >= MIN_REALISTIC_PAPER_TRADES:
+    if len(pnls) >= MIN_REALISTIC_PAPER_TRADES and len(events) >= MIN_PAPER_EVENTS:
         from app import stats  # local: numpy-backed, only needed once there is enough evidence
-        p_value = float(stats.stationary_bootstrap_ci(pnls, stat="mean", alpha=0.10)["p_value"])
+        p_value = float(stats.stationary_bootstrap_ci(events, stat="mean", alpha=0.10)["p_value"])
     checks = [
         ("legacy_trades", legacy_trades >= MIN_PAPER_TRADES_FOR_LIVE,
          "it needs %d+ closed paper trades first (has %d)" % (MIN_PAPER_TRADES_FOR_LIVE, legacy_trades)),
         ("legacy_pnl", legacy_pnl >= 0, "it's still down $%.2f on paper" % (-legacy_pnl)),
         ("realistic_trades", len(trips) >= MIN_REALISTIC_PAPER_TRADES,
          "it needs %d+ closed paper trades on realistic fills first (has %d)" % (MIN_REALISTIC_PAPER_TRADES, len(trips))),
+        ("events", len(events) >= MIN_PAPER_EVENTS,
+         "its %d paper trades come from only %d separate events; it needs %d+ (strikes of one event are one bet)"
+         % (len(trips), len(events), MIN_PAPER_EVENTS)),
         ("net_pnl", net > 0, "it isn't up on realistic paper fills ($%.2f net after fees)" % net),
         ("span", span_h >= MIN_PAPER_SPAN_HOURS,
          "its paper record covers only %.0fh; it needs %.0fh+ so one market mood can't carry it"
@@ -3078,6 +3098,7 @@ def paper_evidence(cur, user_id: int, strategy_id: int) -> Dict:
         "net_pnl": round(net, 4), "span_hours": round(span_h, 1), "span_needed_hours": MIN_PAPER_SPAN_HOURS,
         "p_value": None if p_value is None else round(p_value, 4), "p_value_needed": MAX_PAPER_EDGE_P_VALUE,
         "recent_trades": len(recent), "recent_net_pnl": round(recent_net, 4),
+        "events": len(events), "events_needed": MIN_PAPER_EVENTS,
         "legacy_trades": legacy_trades, "legacy_pnl": round(legacy_pnl, 4),
         "paper_mean_pnl": None if paper_mean is None else round(paper_mean, 4),
         "backtest_mean_pnl": None if backtest_mean is None else round(backtest_mean, 4),
