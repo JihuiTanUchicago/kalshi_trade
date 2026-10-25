@@ -34,6 +34,7 @@ from app import research_repository as research_repo
 from app import spec as specmod
 from app import track_record
 from app import webperf
+from app import worker
 from app.markets import MARKETS
 from app.services import markets as market_service
 from data_pipeline.common import get_db_conn
@@ -1121,6 +1122,7 @@ def decide_proposal(ctx: Ctx):
 def settings(ctx: Ctx):
     if "autopilot" in ctx.body:
         on = ctx.body["autopilot"] is True
+        was_on = bool(ctx.user.get("autopilot"))
         repo.set_autopilot(ctx.cur, ctx.uid, on)
         repo.add_chat(ctx.cur, ctx.uid, "system",
                       "Autopilot is %s." % ("ON: the agent may research, deploy and tune paper strategies, pause anything, "
@@ -1128,6 +1130,8 @@ def settings(ctx: Ctx):
                                              if on else "OFF: the agent will only propose; you approve every change"))
         if not on:  # turning off autopilot also turns off live autopilot (it depends on it)
             repo.set_autopilot_live(ctx.cur, ctx.uid, False)
+        elif not was_on:  # first move now, not on the next heartbeat
+            worker.enqueue_review_on_switch_on(ctx.cur, ctx.uid)
     return {"ok": True}
 
 
