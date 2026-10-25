@@ -503,6 +503,12 @@ TICK_FEATURES: Dict[str, str] = {
                   "(ln(spot/strike) / (rv_300s * sqrt(seconds to close)))",
     "flow_imb_10s": "per-second data only: signed taker flow (yes - no)/(yes + no) over the last 10 seconds; "
                     "absent with no trades",
+    "p_settle": "per-second data only: nowcast P(YES) from the settlement rule itself. Kalshi BTC settles on the "
+                "average of the 60 one-second BRTI values before the close, so inside the last minute part of the "
+                "average is already fixed and the uncertainty shrinks like tau^1.5, not sqrt(tau). Uses the 7-venue "
+                "BRTI composite (data_pipeline/settle_nowcast.py); compare it to yes_ask / yes_bid",
+    "settle_sd": "per-second data only: stdev (dollars) of the nowcast settlement average, incl. ~$4 composite-vs-BRTI error",
+    "settle_z": "per-second data only: (nowcast settlement average - strike) / settle_sd",
 }
 FEATURES.update(TICK_FEATURES)
 # Per-contract forecast fair value (app/weather_fcst.snapshot_features, research and live alike).

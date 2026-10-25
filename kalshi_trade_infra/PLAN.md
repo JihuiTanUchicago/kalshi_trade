@@ -1,5 +1,29 @@
 # PLAN
 
+## Bitcoin settlement nowcast for the final seconds (2026-10-25)
+
+- Rule (Kalshi contract terms): KXBTC15M settles YES if the simple average of the 60 one-second
+  CF Benchmarks BRTI values before the close is at least the same average before the open. The
+  hourly KXBTCD / KXBTC use the same 60-second average. So every 15m contract's floor_strike is
+  the previous contract's settlement value, and the tick archive alone (kalshi_markets) gives
+  exact ground truth for every BTC contract closing on a quarter hour. No DB read needed.
+- `data_pipeline/settle_nowcast.py`: inside the window the observed seconds are fixed, so the
+  settlement's sd falls like tau^1.5 (tau = seconds to close), not sqrt(tau) as every spot-vs-strike
+  fair value in the repo assumes. Volatility comes from 30-second changes of the 7-venue composite
+  (its 1-second changes understate it by ~20%: venues update at different times). The composite's
+  error against official values (~$4 rmse on 13 opens) is added to the variance. CLI:
+  `python -m data_pipeline.settle_nowcast --start ... --end ...` scores nowcast vs book mid (Brier),
+  calibration z-scores, and a 1-contract taker sim (fill at the ask 1s later, Kalshi taker fee).
+- Research features (btc15m_tick): `p_settle`, `settle_sd`, `settle_z`, computed in
+  app/tick_dataset.py from the frame's spot_comp, so they exist for every archived hour with the
+  composite (from 2026-10-24 21:52Z).
+- First look, 22:00Z-01:00Z 2026-10-24 (12 closes, too few to trust): nowcast calibration z sd
+  0.7-1.0 at 10-60s; in the last 60s it beats the mid on Brier for the hourly KXBTC/KXBTCD
+  (0.03 vs 0.13), ties on 15m. Taker sim: 13 trades, +$0.58 total per contract, dominated by 3
+  hourly trades. Rerun at ~100 closes (about a day) before any claim. Open: per-venue weights for
+  the proxy (Gemini +14, Crypto.com +10, LMAX -10 $ biased vs official on 8 opens; median is
+  robust to them), and a live composite feed before paper can use p_settle.
+
 ## Autopilot obeys the user's market focus (2026-10-24)
 
 - Bug from Todd: he told the autopilot "Research and trade only crypto" (15:35Z) and "focus on crypto"

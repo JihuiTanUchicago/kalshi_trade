@@ -38,7 +38,7 @@ _DIRECT = {
     "yes_taker_10s": "taker_yes_vol_10s", "no_taker_10s": "taker_no_vol_10s",
 }
 COLUMNS = ["sec", "ticker", "close_ts", "strike_lo", "strike_hi", "yes_bid", "yes_ask", "secs_to_close",
-           "dist_sigma", "spot_stale"] + sorted(set(_DIRECT) - {"spot"}) + ["spot"]
+           "dist_sigma", "spot_stale", "spot_comp"] + sorted(set(_DIRECT) - {"spot"}) + ["spot"]
 
 
 def _flow_imb(yes: float, no: float) -> Optional[float]:
@@ -54,6 +54,31 @@ def _minute_series(sec: np.ndarray, spot: np.ndarray) -> BtcSeries:
     px = spot[ok][first]
     ends = u % 60 == 0
     return BtcSeries([(int(t) - 60, float(p)) for t, p in zip(u[ends], px[ends])])
+
+
+def _settle_nowcast(frame: Dict[str, np.ndarray], idx: np.ndarray) -> Dict[str, np.ndarray]:
+    """p_settle / settle_sd / settle_z for rows ``idx``, from the frame's BRTI composite
+    (data_pipeline/settle_nowcast.py). Empty when the frame has no composite (hours archived
+    before the venues were recorded)."""
+    if "spot_comp" not in frame or not len(idx):
+        return {}
+    from data_pipeline import settle_nowcast
+    sec = frame["sec"].astype(np.int64)
+    comp = frame["spot_comp"].astype(float)
+    have = np.isfinite(comp)
+    if not have.any():
+        return {}
+    s0, s1 = int(sec[have].min()), int(sec[have].max())
+    dense = np.full(s1 - s0 + 1, np.nan)
+    dense[sec[have] - s0] = comp[have]        # one value per second; every ticker's row carries the same one
+    mean, sd = settle_nowcast.nowcast_rows(sec[idx], frame["close_ts"].astype(np.int64)[idx],
+                                           np.arange(s0, s1 + 1), dense)
+    lo, hi = frame["strike_lo"].astype(float)[idx], frame["strike_hi"].astype(float)[idx]
+    p = settle_nowcast.p_yes_rows(mean, sd, lo, hi)
+    strike = np.where(np.isfinite(lo), lo, hi)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        z = (mean - strike) / sd
+    return {"p_settle": p, "settle_sd": sd, "settle_z": z}
 
 
 def build(market: Market, frame: Dict[str, np.ndarray], results: Dict[str, str],
@@ -78,7 +103,8 @@ def build(market: Market, frame: Dict[str, np.ndarray], results: Dict[str, str],
     contracts: Dict[str, Contract] = {}
     out: List[Tuple[int, List[Snapshot]]] = []
     cols = {c: frame[c] for c in _DIRECT if c in frame}
-    for i in idx:
+    nowcast = _settle_nowcast(frame, idx)
+    for row_n, i in enumerate(idx):
         t = str(tick[i])
         ts = int(sec[i])
         c = contracts.get(t)
@@ -113,6 +139,10 @@ def build(market: Market, frame: Dict[str, np.ndarray], results: Dict[str, str],
             fi = _flow_imb(f.get(y, 0.0), f.get(n, 0.0))
             if fi is not None:
                 f[name] = fi
+        for name, vals in nowcast.items():
+            v = float(vals[row_n])
+            if math.isfinite(v):
+                f[name] = v
         f["yes_bid"], f["yes_ask"], f["spread"], f["mid"] = b, a, a - b, (a + b) / 2.0
         f["hour_et"] = float(datetime.fromtimestamp(ts, tz=timezone.utc).astimezone(NEW_YORK).hour)
         snap = Snapshot(contract=c, ts=ts, yes_bid=b, yes_ask=a, features=f)
