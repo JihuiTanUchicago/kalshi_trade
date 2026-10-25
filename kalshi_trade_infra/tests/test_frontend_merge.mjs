@@ -123,7 +123,7 @@ function frontend({fetchImpl, brokerMount} = {}) {
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewDashboard, marketPicker, wireMarketPicker};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewDashboard, marketPicker, wireMarketPicker, paintDashAp};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -298,6 +298,45 @@ test('a late Dashboard read cannot paint over the page the user moved to or keep
   assert.equal(f.root.writes, writes); assert.equal(board.writes, 0); assert.equal(main.writes, 0);
   assert.equal(main.innerHTML, 'Deploy page'); assert.equal(f.S.timers.length, 0);
   void loading;
+});
+
+const emptyDashboard = () => ({paper: {equity: 1000, cash: 1000, open_at_cost: 0, total_pnl: 12.5},
+  live: {connected: false}, demo: {equity: 1000, capital: 1000}, deployments: [], open_positions: [], recent_closed: [],
+  freshness: {btc: null}, agents: {research_running: 0, research_queued: 0}});
+const apOn = {autopilot: true, mode: 'paper', story: ['Right now it\u2019s researching <b>BTC</b> 15m.'],
+  research: {tested_7d: 1234, passed_7d: 0, active: []}, live_running: 0, demo_running: 0, paper_running: 2,
+  paper_progress: {strategy_id: 3, trades: 4, trades_needed: 30, net_pnl: 1}};
+
+test('the dashboard offers one-click autopilot, and once on shows what it is doing and the paper P&L', async () => {
+  const f = frontend({fetchImpl: (path, options) => {
+    if (path === '/api/dashboard') return response(emptyDashboard());
+    if (path === '/api/settings') { assert.deepEqual(JSON.parse(options.body), {autopilot: true}); return response({ok: true}); }
+    if (path === '/api/autopilot/status') return response(apOn);
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  await f.viewDashboard(); await flush();
+  const card = () => f.root.querySelector('#dash-ap');
+  assert.match(card().innerHTML, /Let the autopilot trade for you/);
+  assert.match(f.root.querySelector('#boardbody').innerHTML, /No backtest history yet/);
+  await card().querySelector('[data-apcard="on"]').onclick(); await flush(); await flush();
+  assert.equal(f.S.me.user.autopilot, true);
+  const html = card().innerHTML;
+  assert.match(html, /Autopilot · paper/); assert.match(html, /&lt;b&gt;BTC&lt;\/b&gt;/);
+  assert.match(html, /\+\$12\.50/); assert.match(html, /1,234 tested · 0 passed/); assert.match(html, /4 of 30 paper trades/);
+  assert.doesNotMatch(html, /undefined|NaN|<b>BTC/);
+});
+
+test('a failed autopilot switch-on leaves the dashboard card off and says why', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(emptyDashboard());
+    if (path === '/api/settings') return response({error: 'Add a payment method first.'}, 400);
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  await f.viewDashboard(); await flush();
+  await f.root.querySelector('#dash-ap [data-apcard="on"]').onclick(); await flush();
+  assert.notEqual(f.S.me.user.autopilot, true);
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, /Turn on autopilot/);
+  assert.match(f.root.querySelector('#dash-ap .apcard-err').innerHTML, /Add a payment method first\./);
 });
 
 test('the retained broker module still rejects a late redirect after its owning view changes', async () => {

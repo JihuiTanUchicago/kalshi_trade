@@ -1431,7 +1431,7 @@
       const said = [
         hasLive ? `Live money on: ${usd(d.live.realized_pnl, true)} realized` : '',
         paused ? `<em>${paused} paused, needs you</em>` : '',
-        stale ? `<em>Backtest history stale ${age(d.freshness.btc)}</em>` : '',
+        stale ? `<em>${d.freshness.btc == null ? 'No backtest history yet' : 'Backtest history stale ' + age(d.freshness.btc)}</em>` : '',
       ].filter(Boolean).join('<span class="sep">/</span>');
       const liveFigure = fig('Live account', d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected', { small: d.live.connected ? (d.live.balance == null ? 'Couldn\u2019t read your Kalshi balance just now' : mSub(d.live, 'Your Kalshi cash \u2014 real money untouched')) : '<a href="/funds">Connect Kalshi</a>' });
       const liveSummary = `<div class="m live-summary"><dt class="lab vh">Live account · Kalshi</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Live account · Kalshi</span><strong class="fig${!d.live.connected || d.live.balance == null ? ' balance-state' : ''}">${d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected'}</strong><span class="portfolio-return">${d.live.connected ? (d.live.balance == null ? 'Couldn\u2019t read your Kalshi balance just now' : `${money(d.live.realized_pnl)} realized all time`) : '<a href="/funds">Connect Kalshi</a>'}</span></div><div class="portfolio-detail"><span class="lab">Realized today</span><strong>${money(d.live.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Open positions</span><strong>${esc(d.live.open_positions)}</strong></div><div class="portfolio-detail"><span class="lab">Open at cost</span><strong>${usd(d.live.open_at_cost)}</strong></div></div></dd></div>`;
@@ -1485,7 +1485,7 @@
       const paperPlot = (width) => equityChart(periodCurve, null, null, { width: Math.max(280, width || root.querySelector('main').clientWidth), height: 180, paper: true, endLabel: false, label: `Cumulative closed paper profit and loss from ${days[0].d} through ${days[days.length - 1].d}; ends at ${usd(periodPnl, true)}` });
       const periodLabel = days.length > 1 ? new Intl.DateTimeFormat(undefined, {month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC'}).formatRange(new Date(days[0].d + 'T12:00:00Z'), new Date(days[days.length - 1].d + 'T12:00:00Z')) : '';
       const performance = days.length > 1 ? `<details class="overview-performance" id="paper-performance"${performanceOpen ? ' open' : ''}><summary><span class="performance-heading"><span class="performance-caption"><h2>Closed P&amp;L</h2>${ICON.chev}</span><strong class="${tone(periodPnl)}" title="Cumulative closed P&L over this period">${usd(periodPnl, true)}</strong></span><span class="performance-meta"><span class="performance-mode"><span class="performance-mode-prefix">Paper · </span>cumulative</span><span class="sect-note" title="${esc(days[0].d)} – ${esc(days[days.length - 1].d)}">${esc(periodLabel)}</span></span></summary><div class="paper-plot">${paperPlot()}</div></details>` : '';
-      const main = `<div class="dash${paperWorkspace ? ' paper-workspace' : ''}"><div class="dash-layout">
+      const main = `<section id="dash-ap" class="apcard" aria-label="Autopilot"></section><div class="dash${paperWorkspace ? ' paper-workspace' : ''}"><div class="dash-layout">
         <section class="account-band"><dl class="figures measure dashboard-figures ${hasLive ? 'live-primary' : ''}">${hasLive ? liveSummary : paperFigure}</dl></section>
         <section class="positions-ledger"><div class="sect-head"><h2>Open positions <span class="section-count">${d.open_positions.length}</span>${paperOnly(d.open_positions) ? ' <span class="position-group-mode">Paper</span>' : ''}</h2></div>
           ${d.open_positions.length ? positionTable(d.open_positions, false) : '<p class="hint">No open positions.</p>'}
@@ -1494,6 +1494,8 @@
       root.querySelector('#boardbody').innerHTML = board;
       if (accountsFocused) root.querySelector('#other-accounts > summary').focus({ preventScroll: true });
       replaceDeploymentContent(root.querySelector('main'), main);
+      S.dashPaper = p;
+      paintDashAp();
       resizePaperChart = days.length > 1 ? () => {
         const plot = root.querySelector('.paper-plot');
         if (plot) {
@@ -3311,8 +3313,62 @@
     if (!apLoop) { apLoop = true; setInterval(() => { const b = document.getElementById('autopilot-float'); if (b) refreshAutopilot(b); }, 20000); }
   }
   async function refreshAutopilot(box) {
-    try { S.ap = await api('/api/autopilot/status', undefined, { keep: true }); S.apAt = Date.now(); renderAutopilot(box, S.ap); }
+    try { S.ap = await api('/api/autopilot/status', undefined, { keep: true }); S.apAt = Date.now(); renderAutopilot(box, S.ap); paintDashAp(); }
     catch (e) { /* floating window is best-effort; never block the app */ }
+  }
+  // Dashboard autopilot card: the one-click way in while autopilot is off, and once it's on a
+  // plain "what is it doing, is it making money" strip. Painted from the float's status poll
+  // (S.ap) plus the dashboard's paper book (S.dashPaper), so it never needs its own request.
+  function paintDashAp() {
+    const host = document.getElementById('dash-ap');
+    if (!host || !S.me || !S.me.user) return;
+    const d = S.ap, on = d ? d.autopilot : !!S.me.user.autopilot;
+    if (!on) {
+      host.className = 'apcard';
+      host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>Autopilot off</span>
+        <h2>Let the autopilot trade for you</h2>
+        <p>It picks markets, tests ideas on data it never saw, and runs the ones that pass on paper money. Every move shows up in its activity feed. Real money stays off until you turn it on separately.</p></div>
+        <div class="apcard-act"><button type="button" class="btn primary" data-apcard="on">Turn on autopilot</button><a class="apcard-alt" href="/research">or research by hand</a></div>
+        <p class="apcard-err error-text" role="alert"></p>`;
+      const b = host.querySelector('[data-apcard="on"]');
+      b.onclick = () => busy(b, apTurnOn);
+      return;
+    }
+    if (!d) { host.className = 'apcard on'; host.innerHTML = ''; return; }  // on, status still loading
+    const m = AP_MODE[d.mode] || AP_MODE.paper, r = d.research || {}, prog = d.paper_progress;
+    const running = (d.live_running || 0) + (d.demo_running || 0) + (d.paper_running || 0);
+    const pnl = S.dashPaper ? S.dashPaper.total_pnl : null;
+    const cells = [
+      d.live_running ? ['Live P&amp;L today', money(d.today_live_pnl || 0)] : ['Paper P&amp;L, all time', pnl == null ? '—' : money(pnl)],
+      ['Strategies running', running ? String(running) : 'None yet'],
+      ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested · ${r.passed_7d || 0} passed`],
+      prog ? ['Closest to live', `${prog.trades} of ${prog.trades_needed} paper trades`]
+        : ['Last move', d.last_action && d.last_action.at ? sinceMin(d.last_action.at) : (d.last_review_at ? 'Reviewed ' + sinceMin(d.last_review_at) : 'Starting up')],
+    ];
+    const now = d.billing_blocked
+      ? `Paused: <a href="/billing">${d.billing_reason === 'card' ? 'add a payment method' : 'add credits'}</a> so it can keep researching.`
+      : esc((d.story && d.story[0]) || 'Autopilot is on.');
+    host.className = 'apcard on' + (m.cls ? ' ' + m.cls : '') + (d.billing_blocked ? ' warn' : '');
+    host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>${esc(m.label)}</span>
+        <p class="apcard-now">${now}</p>
+        <dl class="apcard-figs">${cells.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl></div>
+      <div class="apcard-act"><button type="button" class="btn" data-apcard="open">Open autopilot</button></div>`;
+    host.querySelector('[data-apcard="open"]').onclick = () => apOpen();
+  }
+  function apOpen() {
+    try { localStorage.setItem('tau_ap_open', '1'); } catch (e) { /* private mode */ }
+    const box = document.getElementById('autopilot-float');
+    if (box) renderAutopilot(box, S.ap);
+  }
+  async function apTurnOn() {
+    try { await api('/api/settings', { autopilot: true }); }
+    catch (e) { const card = document.getElementById('dash-ap'), err = card && card.querySelector('.apcard-err'); if (err) err.innerHTML = esc(e.message); else alert0(e.message); return; }
+    S.me.user.autopilot = true;
+    if (S.ap) S.ap = Object.assign({}, S.ap, { autopilot: true, mode: S.ap.mode === 'off' ? 'paper' : S.ap.mode });
+    paintDashAp();
+    if (!phone()) apOpen();  // on a phone the open panel fills the screen; the card already says it's on
+    const box = document.getElementById('autopilot-float');
+    if (box) await refreshAutopilot(box);
   }
   const AP_MODE = {
     off: { label: 'Autopilot off', cls: '' },

@@ -1688,3 +1688,30 @@ body.landing-body .apf { display: none; }
 .tr-method { margin-top: 24px; }
 .tr-method summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink-2); }
 .tr-method ul { margin: 12px 0 10px; padding-left: 18px; display: grid; gap: 6px; max-width: 80ch; font-size: 13px; color: var(--ink-2); }
+
+/* Dashboard autopilot card: the one-click way in (off) and a what-is-it-doing strip (on). */
+.apcard { display: flex; align-items: center; justify-content: space-between; gap: 18px 28px; flex-wrap: wrap; margin: 18px 0 14px; padding: 18px 20px; border: 1px solid var(--ink); border-radius: var(--radius); background: var(--stock-raised); }
+.apcard:empty { display: none; }
+.apcard.on { border-color: var(--rule); padding: 14px 18px; }
+.apcard.warn { border-color: var(--signal); }
+.apcard-main { flex: 1 1 420px; min-width: 0; display: grid; gap: 8px; }
+.apcard-kick { display: inline-flex; align-items: center; gap: 8px; font-family: var(--f-nar); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; color: var(--ink-3); }
+.apcard.paper .apf-dot { background: var(--ink); }
+.apcard.live .apf-dot { background: var(--signal); }
+.apcard h2 { margin: 0; font-size: clamp(18px, 2.2vw, 22px); line-height: 1.25; font-weight: 600; color: var(--ink); letter-spacing: 0; text-transform: none; }
+.apcard-main > p { margin: 0; max-width: 68ch; color: var(--ink-2); line-height: 1.5; }
+.apcard-now { font-size: 15px; color: var(--ink) !important; }
+.apcard-figs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px 20px; margin: 2px 0 0; }
+.apcard-figs > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.apcard-figs dt { font-family: var(--f-nar); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
+.apcard-figs dd { margin: 0; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
+.apcard-act { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.apcard-alt { font-size: 13px; color: var(--ink-3); }
+.apcard-err { flex-basis: 100%; margin: 0; }
+.apcard-err:empty { display: none; }
+@media (max-width: 760px) {
+  .apcard { padding: 16px; margin-top: 14px; }
+  .apcard-main { flex-basis: 100%; }
+  .apcard-figs { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; }
+  .apcard-act .btn { flex: 1 1 auto; justify-content: center; }
+}
