@@ -1026,6 +1026,15 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   .t-strat.stack tbody td.pickcol + td.name { padding-right: 60px; }
   .t-strat.stack tbody td.name .sub-fig { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .section-head.stratfilters .searchwrap { flex: 1 1 100%; margin-left: 0; }  /* wrapped search sat pushed right */
+  /* Deployment cards: status on one line, then realized / unrealized / trades three across, instead
+     of eight label and value lines a card. */
+  .t-dep.stack { min-width: 0; }
+  .t-dep.stack tbody tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 12px; }
+  .t-dep.stack tbody td { grid-column: 1 / -1; min-width: 0; }
+  .t-dep.stack tbody td.name { width: auto; min-width: 0; }
+  .t-dep.stack tbody td.num { grid-column: auto; flex-direction: column; align-items: flex-start; flex-wrap: nowrap; gap: 1px; }
+  .t-dep.stack tbody td .sub-fig { flex: none; }
+  .t-dep.stack tbody td.name .dep-meta { flex: 1 0 100%; }
   .lhero { padding-top: 24px; }
   .lnav { padding: 16px 0; }
   .pill { padding: 8px 14px; font-size: 14px; white-space: nowrap; }
