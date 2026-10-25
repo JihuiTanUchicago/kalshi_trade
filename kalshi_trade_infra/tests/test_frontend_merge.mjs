@@ -338,6 +338,17 @@ const apOn = {autopilot: true, mode: 'paper', story: ['Right now it\u2019s resea
   research: {tested_7d: 1234, passed_7d: 0, active: []}, live_running: 0, demo_running: 0, paper_running: 2,
   paper_progress: {strategy_id: 3, trades: 4, trades_needed: 30, net_pnl: 1}};
 
+test('only the admin view shows backtest-history lag on the dashboard status line', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(emptyDashboard());
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.is_admin = true;
+  await f.viewDashboard(); await flush();
+  assert.match(f.root.querySelector('#boardbody').innerHTML, /No backtest history yet/);
+});
+
 test('the dashboard offers one-click autopilot, and once on shows what it is doing and the paper P&L', async () => {
   const f = frontend({fetchImpl: (path, options) => {
     if (path === '/api/dashboard') return response(emptyDashboard());
@@ -348,7 +359,7 @@ test('the dashboard offers one-click autopilot, and once on shows what it is doi
   await f.viewDashboard(); await flush();
   const card = () => f.root.querySelector('#dash-ap');
   assert.match(card().innerHTML, /Let the autopilot trade for you/);
-  assert.match(f.root.querySelector('#boardbody').innerHTML, /No backtest history yet/);
+  assert.doesNotMatch(f.root.querySelector('#boardbody').innerHTML, /backtest history/i);  // operator-only
   await card().querySelector('[data-apcard="on"]').onclick(); await flush(); await flush();
   assert.equal(f.S.me.user.autopilot, true);
   const html = card().innerHTML;
