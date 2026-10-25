@@ -123,7 +123,7 @@ function frontend({fetchImpl, brokerMount} = {}) {
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, trCurve};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, trCurve, trackRecordPanel};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -577,6 +577,18 @@ test('a track record whose trades all closed in one minute spaces them one per t
   const spread = [[1000, 1], [5000, 2]];
   assert.equal(f.trCurve(spread), spread);
   assert.equal(f.trCurve(null), null);
+});
+
+test('an empty paper track record points at autopilot when it is on, live and demo stay manual', () => {
+  const f = frontend(), th = {min_sharpe_days: 30};
+  f.S.me = {user: {autopilot: true}};
+  const paper = f.trackRecordPanel({trades: 0, label: 'Paper'}, 'paper', th);
+  assert.match(paper, /Autopilot runs the strategies that pass every gate on paper/);
+  assert.match(paper, /href="\/research">See its research/); assert.doesNotMatch(paper, /Turn on autopilot|Go to Deploy/);
+  assert.match(f.trackRecordPanel({trades: 0, label: 'Live'}, 'live', th), /Go to Deploy/);
+  f.S.me = {user: {autopilot: false}};
+  const off = f.trackRecordPanel({trades: 0, label: 'Paper'}, 'paper', th);
+  assert.match(off, /Deploy a passed strategy on paper/); assert.match(off, /Turn on autopilot/); assert.match(off, /Go to Deploy/);
 });
 
 test('the retained broker module still rejects a late redirect after its owning view changes', async () => {
