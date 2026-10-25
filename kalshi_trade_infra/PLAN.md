@@ -126,6 +126,12 @@
 - 2026-10-25: the autopilot panel says when paper positions are open but unsettled ("4 positions are
   open, waiting to settle; none has closed yet") instead of "none has traded yet", and its live line
   names the 20 separate events. Todd's first four rain contracts were invisible in the story.
+- 2026-10-25: autopilot reviews run their actions BEFORE posting the reply. A review whose every
+  action the host refused (pause of a too-young paper strategy, gates, already paused) posts only
+  the refusal lines, not a reply narrating them as done. Todd's 04:03Z review said "Paused both
+  paper deployments... Released 8 stuck positions" while both pauses were refused and 7 positions
+  were open. The prompt also says to write actions as requests and to quote dollar and trade counts
+  only as the context states them (a later reply invented "$3.54 gone" for a $0.91 paper loss).
 
 ## Did the stop help? Early exits scored against holding (2026-10-24)
 

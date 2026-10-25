@@ -296,3 +296,30 @@ def test_review_says_a_repeated_refusal_only_once(monkeypatch, provider):
     model, _ = scripted([reply])
     agent.run_copilot(Conn(), {"id": 2, "user_id": 7, "kind": "chat"}, model=model)
     assert any(a[2] == "system" and a[3] == "You already have research running." for a in records)
+
+
+def test_review_whose_every_action_was_refused_does_not_narrate_it(monkeypatch, provider):
+    # Todd's 04:03Z review said "Paused both paper deployments" while the host refused both pauses
+    # (too young). Actions now run first; a review whose every action was refused posts only the
+    # refusal lines, and the reply still posts when any action did something, ahead of its lines.
+    records = []
+    _copilot_mocks(monkeypatch, records)
+    monkeypatch.setattr(agent.repo, "recent_chat_same", lambda *a: False)
+    held = "I left X running: it has been on paper for only 3.2 hours."
+    monkeypatch.setattr(agent, "act", lambda *a, **k: (held, None))
+    both = ('{"reply":"Paused both paper deployments.","actions":[{"type":"pause","deployment_id":77},'
+            '{"type":"pause","deployment_id":78}]}')
+    model, _ = scripted([both])
+    agent.run_copilot(Conn(), {"id": 1, "user_id": 7, "kind": "review", "prompt": "scheduled"}, model=model)
+    assert [a[2:4] for a in records] == [("system", held), ("system", held)]
+
+    records.clear()
+    outcomes = iter([(held, None), ("Started a fresh research session on btc15m.", None)])
+    monkeypatch.setattr(agent, "act", lambda *a, **k: next(outcomes))
+    mixed = ('{"reply":"Asking to pause #78; researching btc15m.","actions":[{"type":"pause","deployment_id":78},'
+             '{"type":"research","market":"btc15m","idea":"x"}]}')
+    model, _ = scripted([mixed])
+    agent.run_copilot(Conn(), {"id": 2, "user_id": 7, "kind": "review", "prompt": "scheduled"}, model=model)
+    assert [a[2] for a in records] == ["agent", "system", "system"]
+    assert records[0][3] == "Asking to pause #78; researching btc15m."
+    assert "never as done" in agent.ACTIONS_GUIDE
