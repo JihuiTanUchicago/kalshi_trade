@@ -194,3 +194,10 @@ def test_a_cross_leg_with_extra_keys_says_how_to_repair_it():
         specmod.validate({"market": m, "cross": {"pairing": "cross_strike",
                                                   "legs": [{"market": m, "strike_offset": 1}]}})
     assert 'must be exactly {"market": <key>}' in str(e.value) and "strike_offset" in str(e.value)
+
+
+def test_the_guide_says_pool_is_off_on_one_minute_event_series():
+    from app.markets import MARKETS
+    sports = next(k for k, m in MARKETS.items() if m.kind == "binary" and not specmod._poolable(m))
+    assert "POOL IS NOT AVAILABLE ON %s" % sports in specmod.research_guide(sports)
+    assert "POOL IS NOT AVAILABLE" not in specmod.research_guide("btc15m")

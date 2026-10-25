@@ -354,7 +354,13 @@ def has_perpetual_market(spec: Dict, market: Optional[str] = None) -> bool:
 
 
 def research_guide(market: str) -> str:
-    return PERPETUAL_GUIDE if market in MARKETS and MARKETS[market].kind == "perpetual" else SPEC_GUIDE
+    if market in MARKETS and MARKETS[market].kind == "perpetual":
+        return PERPETUAL_GUIDE
+    if market in MARKETS and not _poolable(MARKETS[market]):
+        # Run 2728 (kxnflspread) spent a developed idea on a pool the validator must refuse.
+        return SPEC_GUIDE + ("\nPOOL IS NOT AVAILABLE ON %s (a 1-minute event series): omit \"pool\" "
+                             "entirely; it is refused here." % market)
+    return SPEC_GUIDE
 
 
 def _validate_perpetual_spec(raw: Dict) -> Dict[str, Any]:
