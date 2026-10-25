@@ -504,6 +504,25 @@ def probation_candidates(cur, user_id: int, max_p: float, min_trades: int, limit
              "net_pnl": float(r["net_pnl"]), "n_trades": int(r["n_trades"])} for r in cur.fetchall()]
 
 
+def underpowered_candidates(cur, user_id: int, min_trades: int, limit: int = 20) -> List[Dict]:
+    """Strategies whose LATEST validation verdict was inconclusive for lack of sample: no p-value
+    (below the gate's min sample) over at least `min_trades` trades. Not rejected, just unmeasured,
+    so a forward paper test is the cheapest way to measure them. Newest first. Read-only."""
+    cur.execute(
+        """SELECT e.strategy_id, e.market, r.n_trades
+           FROM app_experiment_results r
+           JOIN app_experiments e ON e.id = r.experiment_id
+           WHERE e.user_id=%s AND e.strategy_id IS NOT NULL AND r.phase='validation'
+             AND r.id = (SELECT MAX(r2.id) FROM app_experiment_results r2
+                         WHERE r2.experiment_id = r.experiment_id AND r2.phase='validation')
+             AND r.classification='inconclusive' AND r.p_value IS NULL AND r.n_trades >= %s
+           ORDER BY r.id DESC LIMIT %s""",
+        (user_id, int(min_trades), int(limit)),
+    )
+    return [{"strategy_id": int(r["strategy_id"]), "market": r["market"], "p_value": None,
+             "net_pnl": None, "n_trades": int(r["n_trades"] or 0)} for r in cur.fetchall()]
+
+
 def experiments_for_strategy(cur, strategy_id: int, experiment_id: Optional[int] = None) -> Optional[Dict]:
     """The experiment behind a strategy plus all its verdict rows, for the research-paper page
     (§D). {"experiment": {...}, "results": [...]} or None. Resolves by the strategy's stored

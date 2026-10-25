@@ -2008,14 +2008,22 @@ def set_user_execution_config(cur, user_id: int, changes: Dict) -> None:
     cur.execute(sql, [*cols.values(), user_id])
 
 
-def user_open_exposure(cur, user_id: int) -> Dict:
+def user_open_exposure(cur, user_id: int, mode: Optional[str] = None) -> Dict:
     """Live, cross-deployment open exposure for the per-user portfolio caps: how many open
-    positions the user holds and their total entry notional (qty * entry_price), in dollars."""
-    cur.execute(
-        "SELECT COUNT(*) AS n, COALESCE(SUM(qty*entry_price),0) AS notional "
-        "FROM app_positions WHERE user_id=%s AND status='open'",
-        (user_id,),
-    )
+    positions the user holds and their total entry notional (qty * entry_price), in dollars.
+    `mode` narrows it to one mode's positions (paper entries count only paper); None counts all."""
+    if mode is None:
+        cur.execute(
+            "SELECT COUNT(*) AS n, COALESCE(SUM(qty*entry_price),0) AS notional "
+            "FROM app_positions WHERE user_id=%s AND status='open'",
+            (user_id,),
+        )
+    else:
+        cur.execute(
+            "SELECT COUNT(*) AS n, COALESCE(SUM(qty*entry_price),0) AS notional "
+            "FROM app_positions WHERE user_id=%s AND status='open' AND mode=%s",
+            (user_id, mode),
+        )
     return cur.fetchone()
 
 

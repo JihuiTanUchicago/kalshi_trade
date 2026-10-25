@@ -1,5 +1,32 @@
 # PLAN
 
+## Paper tournament: every near miss trades, a bandit allocates a virtual book (2026-10-25)
+
+- Why: the gate needs ~400-800 trades to see a 6-10c edge; one near miss forward-tests at a few
+  trades a day. Production on 2026-10-25 had 11 probation-shaped near misses across all users, a cap
+  of 4 paper slots per user, and 2 realistic paper round trips ever. The best near miss (#16001 sol15m,
+  p=0.155) was paused for good after 2 trades by a single position stop.
+- `app/tournament.py` (Todd approved idea 2, 2026-10-25):
+  - Standings: realistic round trips per paper entrant as return per dollar staked, normal posterior
+    shrunk toward 0 (10 pseudo-trips), Thompson P(best) with a cash arm at exactly 0. Weight =
+    0.8 x P(best) + 0.2 / arms.
+  - Book: virtual $10k (APP_TOURNAMENT_CAPITAL). A trip adds pnl x (weight x capital / entrant
+    capital) at the weight snapshotted before it opened (`app_tournament_allocations`, hourly), so the
+    curve is forward-only. Engine sizing is unchanged on purpose.
+  - Verdicts: retire after 30 trips with P(mean > 0) < 0.05, or 7 days with no trade. Probation only;
+    gatekeeper candidates are never retired by it. Resume a probation entrant the engine paused for one
+    position stop (after 1h); drawdown pauses stay.
+  - Pooled: all entrants' trips as one sample (does research's near-miss output earn forward?), with
+    pace and ETA to 400.
+- Funnel: PROBATION_MAX_ACTIVE 4 -> 20; underpowered validation verdicts (inconclusive, no p) enter
+  when the backtest was up on unseen data over 10+ trades. Autopilot can't pause a probation entrant
+  before 30 trips (the tournament judges it).
+- Caps: paper entries count only paper positions (`engine._entry_caps`), times APP_PAPER_CAP_MULTIPLE
+  (default 1). Live entries still count every mode, so a full paper book can block live entries; making
+  live count only live is Todd's call.
+- Surfaces: review context, autopilot panel story line, research page "Paper tournament" section,
+  `/api/research/scoreboard` -> `tournament`, `python -m app.tournament --user 1`.
+
 ## Bitcoin settlement nowcast for the final seconds (2026-10-25)
 
 - Rule (Kalshi contract terms): KXBTC15M settles YES if the simple average of the 60 one-second

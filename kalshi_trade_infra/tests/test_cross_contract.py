@@ -99,7 +99,7 @@ def _wire(monkeypatch, *, balance=1000.0):
     monkeypatch.setattr(engine.repo, "user_risk_config",
                         lambda cur, uid: {"max_open_positions": 20, "max_open_notional": 1000.0,
                                           "drawdown_limit_pct": 25.0})
-    monkeypatch.setattr(engine.repo, "user_open_exposure", lambda cur, uid: {"n": 0, "notional": 0.0})
+    monkeypatch.setattr(engine.repo, "user_open_exposure", lambda cur, uid, mode=None: {"n": 0, "notional": 0.0})
     monkeypatch.setattr(engine.repo, "paper_balance", lambda cur, uid: balance)
     monkeypatch.setattr(engine.repo, "lock_user", lambda cur, uid: None)
     monkeypatch.setattr(engine.repo, "add_ledger",

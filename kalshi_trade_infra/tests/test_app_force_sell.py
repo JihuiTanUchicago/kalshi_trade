@@ -290,7 +290,7 @@ def test_portfolio_position_cap_blocks_a_new_entry(monkeypatch):
     monkeypatch.setattr(engine.repo, "user_risk_config",
                         lambda cur, uid: {"drawdown_limit_pct": 25.0, "max_open_positions": 3, "max_open_notional": 1000.0})
     # User already holds 3 open positions across deployments -> the per-user cap blocks any new entry.
-    monkeypatch.setattr(engine.repo, "user_open_exposure", lambda cur, uid: {"n": 3, "notional": 30.0})
+    monkeypatch.setattr(engine.repo, "user_open_exposure", lambda cur, uid, mode=None: {"n": 3, "notional": 30.0})
 
     out = engine.decide(_Conn(), _dep(mode="paper"), [], {}, engine.Sources())
     assert out["entries"] == 0 and bought == []
@@ -306,7 +306,7 @@ def test_portfolio_notional_cap_trims_a_new_entry(monkeypatch):
     monkeypatch.setattr(engine.repo, "user_risk_config",
                         lambda cur, uid: {"drawdown_limit_pct": 25.0, "max_open_positions": 20, "max_open_notional": 100.0})
     # $96 already open, $4 room, price 0.40 -> only 10 contracts fit under the $100 notional cap.
-    monkeypatch.setattr(engine.repo, "user_open_exposure", lambda cur, uid: {"n": 1, "notional": 96.0})
+    monkeypatch.setattr(engine.repo, "user_open_exposure", lambda cur, uid, mode=None: {"n": 1, "notional": 96.0})
 
     out = engine.decide(_Conn(), _dep(mode="paper"), [], {}, engine.Sources())
     assert out["entries"] == 1 and bought == [10]
@@ -321,7 +321,7 @@ def test_a_decision_records_why_it_bought_nothing(monkeypatch):
     monkeypatch.setattr(engine, "loss_guard", lambda cur, dep: False)
     monkeypatch.setattr(engine.repo, "user_risk_config",
                         lambda cur, uid: {"drawdown_limit_pct": 25.0, "max_open_positions": 20, "max_open_notional": 1000.0})
-    monkeypatch.setattr(engine.repo, "user_open_exposure", lambda cur, uid: {"n": 0, "notional": 0.0})
+    monkeypatch.setattr(engine.repo, "user_open_exposure", lambda cur, uid, mode=None: {"n": 0, "notional": 0.0})
     monkeypatch.setattr(engine.repo, "set_deployment_scan", lambda cur, dep_id, scan: scans.append((dep_id, scan)))
     ts = 1_800_000_000
     feats = {"spot": 100.0, "ret_1m": 0.0, "ret_5m": 0.0, "ret_15m": 0.0, "ret_60m": 0.0, "vol_15m": 0.001, "vol_60m": 0.001}
