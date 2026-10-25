@@ -281,6 +281,7 @@ def _entry(ticker="BTC-NEW", price=0.40):
 
 
 def test_portfolio_position_cap_blocks_a_new_entry(monkeypatch):
+    monkeypatch.setattr(engine, "PAPER_CAP_MULTIPLE", 1.0)  # the cap mechanics, at the user's own numbers
     bought = []
     monkeypatch.setattr(engine.repo, "open_positions", lambda cur, dep_id: [])
     monkeypatch.setattr(engine.specmod, "entries", lambda spec, snaps: [_entry()])
@@ -297,6 +298,7 @@ def test_portfolio_position_cap_blocks_a_new_entry(monkeypatch):
 
 
 def test_portfolio_notional_cap_trims_a_new_entry(monkeypatch):
+    monkeypatch.setattr(engine, "PAPER_CAP_MULTIPLE", 1.0)  # the cap mechanics, at the user's own numbers
     bought = []
     monkeypatch.setattr(engine.repo, "open_positions", lambda cur, dep_id: [])
     monkeypatch.setattr(engine.specmod, "entries", lambda spec, snaps: [_entry(price=0.40)])

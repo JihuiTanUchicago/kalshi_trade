@@ -193,17 +193,21 @@ def test_underpowered_verdicts_enter_only_with_a_positive_backtest(monkeypatch):
     assert agent.PROBATION_MAX_ACTIVE >= 20
 
 
-def test_paper_entries_count_only_paper_positions_and_live_counts_everything(monkeypatch):
+def test_each_mode_counts_only_its_own_positions_and_paper_gets_10x(monkeypatch):
+    """Todd 2026-10-25 chose separate books: live limits count only live positions (same numbers),
+    paper gets 10x in fake money, so a full paper tournament never blocks a live entry."""
     seen = []
     monkeypatch.setattr(engine.repo, "user_open_exposure",
                         lambda cur, uid, mode=None: seen.append(mode) or {"n": 5, "notional": 50.0})
     risk = {"max_open_positions": 20, "max_open_notional": 1000.0}
-    assert engine._entry_caps(None, {"user_id": 1, "mode": "paper"}, risk) == (5, 50.0, 20, 1000.0)
-    assert engine._entry_caps(None, {"user_id": 1, "mode": "live"}, risk) == (5, 50.0, 20, 1000.0)
-    assert seen == ["paper", None]
-    monkeypatch.setattr(engine, "PAPER_CAP_MULTIPLE", 10.0)
+    assert engine.PAPER_CAP_MULTIPLE == 10.0
     assert engine._entry_caps(None, {"user_id": 1, "mode": "paper"}, risk) == (5, 50.0, 200, 10000.0)
     assert engine._entry_caps(None, {"user_id": 1, "mode": "live"}, risk) == (5, 50.0, 20, 1000.0)
+    assert engine._entry_caps(None, {"user_id": 1, "mode": "demo"}, risk) == (5, 50.0, 20, 1000.0)
+    assert seen == ["paper", "live", "demo"]
+    monkeypatch.setattr(engine, "PAPER_CAP_MULTIPLE", 1.0)
+    assert engine._entry_caps(None, {"user_id": 1, "mode": "paper"}, risk) == (5, 50.0, 20, 1000.0)
+
 
 
 def test_panel_line_summarizes_the_tournament_in_one_sentence(monkeypatch):

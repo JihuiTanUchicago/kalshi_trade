@@ -1117,22 +1117,22 @@ DRAWDOWN_LIMIT_PCT_DEFAULT = 25.0
 POSITION_STOP_PCT_DEFAULT = 40.0
 
 
-# Paper entries are capped against the user's PAPER positions only, so the paper tournament's book
-# can't be blocked by live positions. Live entries keep counting every mode (unchanged, never looser).
-# The paper caps are the user's caps times PAPER_CAP_MULTIPLE (fake money; default 1 = same numbers).
-PAPER_CAP_MULTIPLE = max(1.0, float(os.getenv("APP_PAPER_CAP_MULTIPLE", "1")))
+# Separate books (Todd, 2026-10-25, "Separate paper and live books"): a new entry is capped against
+# the user's open positions IN ITS OWN MODE only, so paper tournament positions never block a live
+# entry and live positions never block paper. Live keeps the user's exact limits. Paper (fake money)
+# gets them times PAPER_CAP_MULTIPLE, so the tournament isn't throttled at 20 open positions.
+PAPER_CAP_MULTIPLE = max(1.0, float(os.getenv("APP_PAPER_CAP_MULTIPLE", "10")))
 
 
 def _entry_caps(cur, dep: Dict, risk: Dict) -> Tuple[int, float, int, float]:
     """(open positions, open entry notional, position cap, notional cap) for a new entry by `dep`."""
+    mode = dep.get("mode") or "paper"
     cap_positions = int(risk["max_open_positions"])
     cap_notional = float(risk["max_open_notional"])
-    if dep.get("mode") == "paper":
-        exposure = repo.user_open_exposure(cur, dep["user_id"], "paper")
+    if mode == "paper":
         cap_positions = int(cap_positions * PAPER_CAP_MULTIPLE)
         cap_notional = cap_notional * PAPER_CAP_MULTIPLE
-    else:
-        exposure = repo.user_open_exposure(cur, dep["user_id"])
+    exposure = repo.user_open_exposure(cur, dep["user_id"], mode)
     return int(exposure["n"]), float(exposure["notional"]), cap_positions, cap_notional
 
 
