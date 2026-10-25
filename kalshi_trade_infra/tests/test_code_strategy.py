@@ -161,3 +161,18 @@ def test_data_provenance_handles_a_code_spec():
     feats = specmod.features_used(spec)
     assert feats == sorted(specmod.FEATURES)  # a code strategy may read any exposed feature
     assert "model_features_1m" in specmod.data_sources_for(spec)
+
+
+def test_an_empty_book_at_99c_never_fills(monkeypatch):
+    """KXNFLRECYDSPROT quotes were mostly yes_bid=0 / yes_ask=0.99: a code strategy "bought" at 99c,
+    which can't profit after the fee, and lost ~80c a trade at a ~1% win rate (run 2815). Entries at
+    an ask above backtest.MAX_ENTRY_ASK are now unfillable; a real two-sided book still fills."""
+    def buy_all(spec, ds, start_ts, end_ts):
+        return {ts: {s.contract.ticker: ("yes", 1.0) for s in snaps} for ts, snaps in ds.frames}
+    monkeypatch.setattr(backtest, "_code_book", buy_all)
+    for fill_model in ("next_bar", "signal_bar"):
+        monkeypatch.setattr(backtest, "FILL_MODEL", fill_model)
+        empty = _dataset(result="no", ask=0.99, bid=0.0)
+        assert backtest.simulate(_code_spec(), empty, empty.start_ts, empty.end_ts + 1) == []
+        live = _dataset(result="no", ask=0.40, bid=0.38)
+        assert backtest.simulate(_code_spec(), live, live.start_ts, live.end_ts + 1)

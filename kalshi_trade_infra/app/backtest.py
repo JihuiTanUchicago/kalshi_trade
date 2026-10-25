@@ -340,6 +340,11 @@ def simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Optio
 # model that filled at the very quote that produced the signal; it is kept for comparison only.
 FILL_MODEL = os.getenv("TAU_BACKTEST_FILL_MODEL", "next_bar")
 FILL_MAX_DELAY_BARS = 2  # an order whose next quote is further away than this many bars expires
+# Highest ask an entry may lift. A 99c contract pays at most 1c, which the taker fee eats, so a buy
+# there can never profit; on an empty book (no bid, 99c ask) it is the only "offer". Sports ladders
+# that went empty (KXNFLRECYDSPROT: 83% of quotes yes_ask >= 0.99) let code strategies "buy" at 99c
+# and lose ~80c a trade at a ~1% win rate (run 2815), burying any real signal under phantom fills.
+MAX_ENTRY_ASK = 0.98
 
 
 def _top_size(snap: Snapshot, side: str) -> Optional[float]:
@@ -438,7 +443,7 @@ def _simulate_next_bar(spec: Dict, ds: Dataset, start_ts: int, end_ts: int,
             if ts - sig_ts > max_delay or ticker in held or snap is None:
                 continue
             ask = specmod.side_prices(snap)[cand.side][0]
-            if not 0.0 < ask < 1.0:
+            if not 0.0 < ask <= MAX_ENTRY_ASK:
                 continue
             price = min(0.99, ask + slip)
             qty = specmod.contracts_for(stake, price)
@@ -725,7 +730,7 @@ def _code_entries(book: Dict[int, Dict[str, Tuple[str, float]]], ts: int, snaps:
         if snap is None:
             continue
         price = specmod.side_prices(snap)[side][0]
-        if price <= 0 or price >= 1:
+        if price <= 0 or price > MAX_ENTRY_ASK:
             continue
         out.append(specmod.Entry(snap, side, price, price, score))
     out.sort(key=lambda e: e.edge, reverse=True)
