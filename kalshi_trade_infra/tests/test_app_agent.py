@@ -839,6 +839,8 @@ def test_finished_research_run_prints_one_outcome_line(monkeypatch, capsys):
     assert len(lines) == 1
     assert "status=succeeded tried=3" in lines[0] and "verdicts=" in lines[0]
     assert "validation:" in lines[0], "each gatekeeper verdict is tallied by phase"
+    timing = dict(kv.split("=") for kv in lines[0].split() if kv.startswith(("backtest_s=", "run_s=")))
+    assert 0 <= float(timing["backtest_s"]) <= float(timing["run_s"]), "the run logs its backtest share"
 
 
 def test_research_outcome_line_format():
@@ -846,6 +848,11 @@ def test_research_outcome_line_format():
                                        {"validation:rejected": 3}, "RuntimeError")
     assert line == ("[research] run=7 user=2 market=btc15m status=failed tried=4 passed=0 tokens_in=100 "
                     "tokens_out=20 model=m verdicts=validation:rejected=3 error=RuntimeError")
+
+
+def test_research_outcome_line_logs_backtest_time_and_engine():
+    line = agent.research_outcome_line(7, 2, "btc15m", "succeeded", 4, 1, 100, 20, "m", {}, timing=(12.34, 600.0))
+    assert line.endswith("verdicts=none backtest_s=12.3 run_s=600.0 engine=%s" % agent.backtest.ENGINE)
 
 
 def test_outcome_line_counts_theses_dropped_on_the_research_fold(monkeypatch, capsys):
