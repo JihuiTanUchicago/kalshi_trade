@@ -3511,7 +3511,11 @@ UNDERPOWERED_MIN_TRADES = int(os.getenv("APP_PROBATION_UNDERPOWERED_MIN_TRADES",
 
 
 def _backtest_net_positive(strat: Dict) -> bool:
-    oos = (strat.get("result") or {}).get("out_of_sample") or {}
+    # A research-made strategy stores only its research-fold metrics (`in_sample`: the purged
+    # walk-forward TEST folds inside Research, never validation/holdout; see _result_block), so it
+    # had no `out_of_sample` and no underpowered verdict ever qualified (runs 2907 and 3002).
+    res = strat.get("result") or {}
+    oos = res.get("out_of_sample") or res.get("in_sample") or {}
     try:
         return int(oos.get("trades") or 0) >= UNDERPOWERED_MIN_TRADES and float(oos.get("pnl") or 0) > 0
     except (TypeError, ValueError):
