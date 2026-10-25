@@ -1681,7 +1681,7 @@
     const mdl = await api('/api/models').catch(() => ({ models: [], default: '' }));
     const modelOpts = (mdl.models || []).map((m) => `<option value="${esc(m.key)}"${m.key === mdl.default ? ' selected' : ''}${m.available === false ? ' disabled' : ''}>${esc(m.label)}${m.available === false ? ' (access pending)' : ''}</option>`).join('');
     shell('/research', '', `
-      <div class="research-page"><h1 class="page">Research</h1><div class="research-work"><div id="active-research"></div><div id="rsimo"></div></div><details class="research-create" id="research-create"${new URLSearchParams(location.search).get('new') === '1' ? ' open' : ''}><summary class="btn primary">New session</summary><div class="research-compose"><form class="panel dispatch" id="dispatch">
+      <div class="research-page"><h1 class="page">Research</h1>${S.me.user && !S.me.user.autopilot ? `<p class="research-ap">Rather not write ideas yourself? <button type="button" data-research-ap>Turn on autopilot</button> and it picks ideas and researches them on its own, on paper.</p>` : ''}<div class="research-work"><div id="active-research"></div><div id="rsimo"></div></div><details class="research-create" id="research-create"${new URLSearchParams(location.search).get('new') === '1' ? ' open' : ''}><summary class="btn primary">New session</summary><div class="research-compose"><form class="panel dispatch" id="dispatch">
 
         ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
         <label class="field"><span>Describe your idea</span>
@@ -3376,6 +3376,16 @@
     const box = document.getElementById('autopilot-float');
     if (box) renderAutopilot(box, S.ap);
   }
+  // Research page nudge: the same one-click switch as the dashboard card.
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest && e.target.closest('[data-research-ap]');
+    if (!b) return;
+    busy(b, async () => {
+      await apTurnOn();
+      const p = b.closest('.research-ap');
+      if (p && S.me.user.autopilot) p.textContent = 'Autopilot is on. Every idea it tries shows up in the autopilot panel.';
+    });
+  });
   async function apTurnOn() {
     try { await api('/api/settings', { autopilot: true }); }
     catch (e) { const card = document.getElementById('dash-ap'), err = card && card.querySelector('.apcard-err'); if (err) err.innerHTML = esc(e.message); else alert0(e.message); return; }

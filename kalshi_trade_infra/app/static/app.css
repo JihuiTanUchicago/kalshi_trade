@@ -1734,3 +1734,8 @@ body.landing-body .apf { display: none; }
 /* Funds: pick the downloaded Kalshi .key file instead of pasting its text. */
 .key-file { display: grid; gap: 6px; font-size: 13px; color: var(--ink-2); }
 .key-file input { font: inherit; font-size: 12.5px; max-width: 100%; color: var(--ink-2); }
+
+/* Research page: one-click autopilot nudge for people who'd rather not write ideas. */
+.research-ap { margin: 0 0 14px; color: var(--ink-2); font-size: 14px; line-height: 1.5; }
+.research-ap button { background: none; border: 0; padding: 0; font: inherit; color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.research-ap button.busy { opacity: .6; }
