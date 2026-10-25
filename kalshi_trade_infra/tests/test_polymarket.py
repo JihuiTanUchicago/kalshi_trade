@@ -378,3 +378,21 @@ def test_engine_and_backtest_merge_options_and_polymarket(monkeypatch):
     monkeypatch.setattr(backtest.options_fair, "load_book", lambda since: None)
     monkeypatch.setattr(pmf, "load_book", lambda series, since: pmf.book_from_snapshot(_snap_rows()))
     assert isinstance(backtest.forecast_book(market, datetime(2026, 10, 1, tzinfo=timezone.utc)), pmf.PolymarketBook)
+
+
+def test_research_store_skips_days_with_no_files(tmp_path):
+    """A 90-day window with one archived day probes only that day (prod paid a 404 per missing hour)."""
+    day = datetime(2026, 10, 23, tzinfo=timezone.utc)
+    p = tmp_path / pmk.day_key(day)
+    p.parent.mkdir(parents=True)
+    o = int(day.timestamp()) + 3600
+    pmk.write_day([{"t": o + 60, "market_id": "u", "slug": "", "kind": "updown", "strike_lo": None,
+                    "strike_hi": None, "start_ts": o, "end_ts": o + 900, "p": 0.55, "resolved": 1.0}], str(p))
+    store = TickStore(local_root=str(tmp_path))
+    fetched = []
+    real = store._fetch
+    store._fetch = lambda key: fetched.append(key) or real(key)
+    qs = pms.load_quotes(day - timedelta(days=89), day + timedelta(days=1), store, kinds=("updown",))
+    assert [q.bid for q in qs] == [0.55]
+    assert fetched == [pmk.day_key(day)]
+    assert store.dates("v1/polymarket_top") == set()

@@ -54,9 +54,17 @@ def load_quotes(since: datetime, until: Optional[datetime] = None, store=None, k
     until = until or datetime.now(timezone.utc)
     lo_ts, hi_ts = int(since.timestamp()), int(until.timestamp())
     day = since.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Only probe days that have files: the history and archive tables cover a few days of a 90-day
+    # window, and every missing hour cost a 404 round trip (prod btc15m loads timed out on it).
+    history = store.dates(f"v1/{pmk.DAY_TABLE}/v={pmk.HIST_VERSION}")
+    archived = store.dates("v1/polymarket_top")
     out: List[pmk.PmQuote] = []
     while day < until:
-        rows = _day_rows(store, day)
+        d = f"{day:%Y-%m-%d}"
+        rows = _day_rows(store, day) if history is None or d in history else []
+        if not rows and archived is not None and d not in archived:
+            day += timedelta(days=1)
+            continue
         if rows:
             qs = pmk.quotes_from_history(r for r in rows if r.get("kind") in kinds)
         else:
