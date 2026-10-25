@@ -12,20 +12,17 @@ from typing import Dict, List
 # full markdown explanation (rendered via mdLite); '' for bare one-liners.
 PLANNED: List[tuple] = [
     ("Native Bitcoin perps orders with Kalshi's own margin/leverage limits and explicit owner confirmation for every order", ''),
-    ('Autonomous Tau improvement loop runs on a schedule; each round picks one aspect (execution / research rigor / risk / data / ML tooling / UX / engineering) and ships an improvement', ''),
-    ('Production-grade execution + risk hardening', ''),
-    ('Data infrastructure expansion', ''),
-    ('Data-API enablement (Databento/Exa/Massive/Alpaca)', ''),
-    ('Execution service: dedicated package + measure + harden. Consolidate the scattered money-path code (execution_kernel/live_trading_engine/kalshi_account + engine order/risk bits) into a behavior-identical app/execution/ package (security-reviewed); add latency instrumentation (local encode/sign vs network RTT vs exchange) + WebSocket/keep-alive/async order entry where it measurably helps; then a continuous robustness agent that hardens one execution/risk aspect per round (P1: circuit breaker, global kill switch, mark-staleness gate, ≤1s websocket PnL, observability)', ''),
-    ('Activate Alpaca stock/ETF agent data after secure worker configuration and entitlement checks, with a production canary before customer rollout', ''),
-    ('Integrate news digests, a local observation journal and agent monitoring tools; preserve attribution and historical cutoffs', ''),
-    ('All-markets collector', ''),
-    ('Email-all community digest', ''),
+    ('Faster, sturdier order execution: latency measured end to end, plus a circuit breaker, a global kill switch and stale-price checks', ''),
+    ('More data sources for research: Databento, Exa, Massive and Alpaca', ''),
+    ('Stock and ETF data for research agents, via Alpaca', ''),
+    ('News digests and an observation journal for research agents, with sources credited', ''),
+    ('Data for every Kalshi market', ''),
+    ('Community digest by email', ''),
     ('Premium model access', ''),
     ('Polymarket as a 2nd venue: data + API + real & simulation trading', ''),
-    ('NO-side (and side="either") LIVE execution', ''),
+    ('Live trading on the NO side', ''),
     ('Bittensor (TAO) subnet tokens', ''),
-    ('Onboard Opus 5.5 / Sonnet 5.5 / Haiku 5.5 / Fable 5.1 (listed as access pending; waiting on Bedrock account access) + surface model comparison', ''),
+    ('Newest Claude models (Opus 5.5, Sonnet 5.5, Haiku 5.5, Fable 5.1), with a side-by-side comparison', ''),
 ]
 
 # Shipped, newest first: (YYYY-MM-DD, title, detail). `detail` is the full
