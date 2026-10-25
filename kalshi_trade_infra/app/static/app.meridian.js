@@ -2707,7 +2707,7 @@
       const how = key === 'live' ? 'Deploy a strategy that has proven itself on paper to live money, and its closed trades show up here.'
         : key === 'demo' ? 'Deploy a strategy to the Kalshi demo exchange to build a record with real fills and no real money.'
         : 'Deploy a passed strategy on paper. Every closed trade is recorded here.';
-      return `<div class="empty"><h3>No closed ${esc(m.label.toLowerCase())} trades yet</h3><p>${how}</p><a class="btn" href="/deploy">Go to Deploy</a></div>${cav}`;
+      return `<div class="empty"><h3>No closed ${esc(m.label.toLowerCase())} trades yet</h3><p>${how}</p>${key === 'paper' ? apNudge('Rather not pick strategies yourself?', 'and it runs the ones that pass on paper. Their trades fill this record.') : ''}<a class="btn" href="/deploy">Go to Deploy</a></div>${cav}`;
     }
     const s = m.sample;
     const good = s.level === 'solid' && s.edge === 'positive';
@@ -3379,7 +3379,7 @@
   }
   // One-click autopilot line for empty states; the [data-research-ap] click handler turns it on.
   function apNudge(lead, rest) {
-    return S.me.user && !S.me.user.autopilot ? `<p class="research-ap">${lead} <button type="button" data-research-ap>Turn on autopilot</button> ${rest}</p>` : '';
+    return S.me && S.me.user && !S.me.user.autopilot ? `<p class="research-ap">${lead} <button type="button" data-research-ap>Turn on autopilot</button> ${rest}</p>` : '';
   }
   // Research page nudge: the same one-click switch as the dashboard card.
   document.addEventListener('click', (e) => {
