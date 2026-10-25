@@ -74,8 +74,9 @@ from app.adapters.db.demo_record_repository import (  # noqa: F401
     insert_demo_sweep,
 )
 from app.adapters.db.deployment_repository import (  # noqa: F401
-    _DEPLOYMENT_SELECT, autopilot_paper_week, claim_decision, create_deployment, deployment_closed_stats,
-    deployment_order_refs, deployments_with_open_positions, get_deployment, list_deployments, paper_event_counts,
+    _DEPLOYMENT_SELECT, _PAPER_SOURCE, autopilot_paper_week, claim_decision, create_deployment, deployment_closed_stats,
+    deployment_closed_totals, deployment_order_refs, deployments_with_open_positions, get_deployment, list_deployments,
+    list_deployments_brief, paper_event_counts,
     paper_fills_for_gate, paper_progress, paper_round_trips, paused_deployments_with_open_positions,
     running_code_paper_deployments, running_deployments, scan_outcome, scan_tally, set_deployment_scan, set_deployment_status,
     set_deployment_strategy,

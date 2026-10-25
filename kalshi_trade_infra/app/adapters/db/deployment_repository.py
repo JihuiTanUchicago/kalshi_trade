@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 from datetime import timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.adapters.db.sql import now_utc
 from app.adapters.db.strategy_repository import _strategy_row
@@ -39,6 +39,36 @@ def list_deployments(cur, user_id: int, include_stopped: bool = False) -> List[D
     sql += " GROUP BY d.id ORDER BY d.id DESC"
     cur.execute(sql, (user_id,))
     return [_strategy_row(r) for r in cur.fetchall()]
+
+
+def list_deployments_brief(cur, user_id: int) -> List[Dict]:
+    """The same deployments as list_deployments (not stopped, newest first), with the strategy fields
+    and without the position totals (realized_pnl, closed_trades, wins, open_positions). Those totals
+    read every position each deployment ever booked (20k for a busy trader), and the autopilot panel,
+    which polls every 20s, needs them only for a just-paused one (deployment_closed_totals)."""
+    cur.execute(
+        """SELECT d.id, d.user_id, d.strategy_id, d.market, d.mode, d.status, d.status_reason, d.last_decision_ts,
+                  d.created_at, d.updated_at, d.last_scan_json, d.last_scan_at, s.title, s.direction, s.spec_json, s.result_json
+           FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id
+           WHERE d.user_id=%s AND d.status <> 'stopped' ORDER BY d.id DESC""",
+        (user_id,),
+    )
+    return [_strategy_row(r) for r in cur.fetchall()]
+
+
+def deployment_closed_totals(cur, deployment_ids: List[int]) -> Dict[int, Tuple[int, Any]]:
+    """{deployment_id: (closed positions, their summed P&L)}, as list_deployments counts closed_trades
+    and realized_pnl, for the given deployments in one read over idx_pos_dep (deployment_id, status).
+    A deployment with no closed position is absent."""
+    ids = sorted({int(i) for i in deployment_ids})
+    if not ids:
+        return {}
+    cur.execute(
+        "SELECT deployment_id, COUNT(*) AS n, COALESCE(SUM(pnl),0) AS pnl FROM app_positions "
+        "WHERE deployment_id IN (" + ",".join(["%s"] * len(ids)) + ") AND status='closed' GROUP BY deployment_id",
+        tuple(ids),
+    )
+    return {int(r["deployment_id"]): (int(r["n"]), r["pnl"]) for r in cur.fetchall()}
 
 
 def get_deployment(cur, user_id: int, deployment_id: int) -> Optional[Dict]:
@@ -124,6 +154,12 @@ def track_record_rows(cur, user_id: int) -> List[Dict]:
     return cur.fetchall()
 
 
+# Both paper readouts below start from the strategies' deployments and read each one's positions
+# through idx_pos_dep, instead of scanning every position the user ever held (the autopilot panel
+# polls them). STRAIGHT_JOIN keeps that order; the WHERE clauses are unchanged, so are the counts.
+_PAPER_SOURCE = "app_deployments d STRAIGHT_JOIN app_positions p FORCE INDEX (idx_pos_dep) ON p.deployment_id=d.id"
+
+
 def paper_progress(cur, user_id: int, strategy_ids: List[int], ref_prefix: str = "sim:") -> Dict[int, Tuple[int, float]]:
     """{strategy_id: (closed realistic paper round trips, their net P&L)} for the given strategies,
     in one query. Same counting as `paper_round_trips` (one row per order_ref, still-open slices
@@ -134,7 +170,7 @@ def paper_progress(cur, user_id: int, strategy_ids: List[int], ref_prefix: str =
     cur.execute(
         """SELECT t.strategy_id, COUNT(*) AS trips, COALESCE(SUM(t.pnl),0) AS pnl FROM (
              SELECT d.strategy_id, p.order_ref, SUM(p.pnl) AS pnl
-             FROM app_positions p JOIN app_deployments d ON d.id=p.deployment_id
+             FROM """ + _PAPER_SOURCE + """
              WHERE p.user_id=%s AND p.mode='paper' AND p.order_ref LIKE %s AND d.strategy_id IN (""" + marks + """)
              GROUP BY d.strategy_id, p.order_ref
              HAVING SUM(CASE WHEN p.status='open' THEN 1 ELSE 0 END)=0) t
@@ -154,7 +190,7 @@ def paper_event_counts(cur, user_id: int, strategy_ids: List[int], ref_prefix: s
     cur.execute(
         """SELECT d.strategy_id,
                   COUNT(DISTINCT SUBSTRING(p.ticker, 1, LENGTH(p.ticker) - LENGTH(SUBSTRING_INDEX(p.ticker, '-', -1)) - 1)) AS events
-           FROM app_positions p JOIN app_deployments d ON d.id=p.deployment_id
+           FROM """ + _PAPER_SOURCE + """
            WHERE p.user_id=%s AND p.mode='paper' AND p.status='closed' AND p.order_ref LIKE %s
              AND d.strategy_id IN (""" + marks + """)
            GROUP BY d.strategy_id""",

@@ -11,6 +11,9 @@ Measured 2026-10-25 on a copy of the dev DB filled to busy-autopilot size (6,000
 60k credit rows, 20k closed positions per user):
   autopilot_status 22 -> 20 statements, me 6 -> 5, get_run 6 -> 5 (latest_dream_event was ~900ms of
   every 2s poll, now once a minute), dashboard 20 -> 14 (seven realized-P&L sums -> one pass).
+Then autopilot_status 177 -> 95ms of SQL on that copy with production indexes: the paper readouts
+start from the deployments (idx_pos_dep) and the deployment list drops its position totals. A paper
+deployment paused in the last 24h adds one read for its own totals, since the panel shows them.
 """
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -54,7 +57,7 @@ class CountingCursor:
         return list(self._out)
 
 
-def _ctx(log, balance, run_status="queued", query=None, params=()):
+def _ctx(log, balance, run_status="queued", query=None, params=(), extra=None):
     long_ago = datetime(2026, 10, 25) - timedelta(hours=2)
     rows = {
         "FROM app_stripe_customers": [{"user_id": 7, "stripe_customer_id": "cus_1", "default_pm_id": "pm_1",
@@ -65,6 +68,7 @@ def _ctx(log, balance, run_status="queued", query=None, params=()):
             "hypotheses_tried": 0, "strategies_passed": 0, "error": None, "max_hypotheses": 10, "run_forever": 0,
             "model": None, "created_at": long_ago, "started_at": None, "finished_at": None, "heartbeat_at": None}],
     }
+    rows.update(extra or {})
     user = {"id": 7, "email": "trader@example.invalid", "name": "T", "username": "t", "picture_url": None,
             "autopilot": 1, "autopilot_live": 1, "autopilot_daily_loss_limit": 50, "autopilot_model": None,
             "autopilot_focus": None, "ui_theme": "tau"}
@@ -105,6 +109,35 @@ def test_a_hot_request_stays_in_its_query_budget_and_never_repeats_a_read(produc
     assert not repeats, "%s read the same thing twice in one request: %s" % (name, repeats)
     assert len(log) <= BUDGET[name], "%s sent %d statements (budget %d):\n  %s" % (
         name, len(log), BUDGET[name], "\n  ".join(s for s, _ in log))
+
+
+def _deps(paused_at):
+    now = datetime(2026, 10, 25)
+    base = {"user_id": 7, "market": "btc15m", "mode": "paper", "last_decision_ts": None, "created_at": now - timedelta(days=3),
+            "last_scan_json": None, "last_scan_at": None, "direction": None, "spec_json": "{}", "result_json": None}
+    return [dict(base, id=5, strategy_id=9, status="running", status_reason=None, updated_at=now, title="Fade tails"),
+            dict(base, id=4, strategy_id=8, status="paused", status_reason="lost $6.00", updated_at=paused_at, title="Rain")]
+
+
+def test_the_autopilot_panel_reads_position_totals_only_for_a_paper_deployment_paused_today(production):
+    # The panel lists deployments without their position totals (every position each one ever booked);
+    # only a paper deployment paused in the last 24h shows its trades and P&L, read for it alone.
+    totals = {"AND status='closed' GROUP BY deployment_id": [{"deployment_id": 4, "n": 3, "pnl": -1.5}]}
+    runs = {}
+    for label, paused_at in (("today", datetime(2026, 10, 24, 20)), ("last week", datetime(2026, 10, 18))):
+        log = []
+        out = server.autopilot_status(_ctx(log, 10.0, extra=dict(totals, **{
+            "FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id WHERE d.user_id=%s": _deps(paused_at)})))
+        assert not sorted({s for s in log if log.count(s) > 1}), label
+        assert not any("LEFT JOIN app_positions" in s for s, _ in log), label
+        runs[label] = (out, log)
+    out, log = runs["today"]
+    assert [p for s, p in log if "AND status='closed' GROUP BY deployment_id" in s] == [(4,)]
+    assert out["paused_recent"] == [{"deployment_id": 4, "title": "Rain", "trades": 3, "pnl": -1.5,
+                                     "why": "it hit its loss guard"}]
+    out, log = runs["last week"]
+    assert out["paused_recent"] == [] and not any("AND status='closed' GROUP BY deployment_id" in s for s, _ in log)
+    assert len(runs["today"][1]) == len(log) + 1
 
 
 def test_the_run_page_reads_the_dream_line_once_a_minute_not_every_poll(production, monkeypatch):

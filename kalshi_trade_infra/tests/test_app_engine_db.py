@@ -601,6 +601,70 @@ def test_settled_lately_ranks_by_settle_time_and_reads_only_the_newest_index_ent
     assert [r["key"] for r in rows] == ["idx_pos_user"]
     assert "filesort" not in (rows[0]["Extra"] or "")  # read straight off the index, newest first
 
+def test_the_autopilot_panels_reads_answer_as_the_position_scans_they_replace(conn, user):
+    """/api/autopilot/status polls every 20s. Its deployment list leaves out the position totals
+    (read for a just-paused deployment alone), and its paper readouts start from the strategies'
+    deployments through idx_pos_dep instead of scanning every position the user holds. Same answers."""
+    from app import repository as repo
+
+    cur = conn.cursor()
+    uid = user["id"]
+    a, b, quiet = _deployment(conn, user), _deployment(conn, user), _deployment(conn, user)
+    a2 = repo.create_deployment(cur, uid, a["strategy_id"], "btc15m", "paper")  # a strategy redeployed
+    close = (datetime.now(timezone.utc) - timedelta(minutes=1)).replace(tzinfo=None)
+
+    def trip(dep_id, ticker, pnls, open_slice=False, ref="sim:"):
+        ref = ref and ref + uuid.uuid4().hex[:8]
+        for pnl in pnls:
+            pid = repo.insert_position(cur, dep_id, uid, "paper", ticker, "yes", 1, 0.40, 0.01, close, ref)
+            assert repo.close_position(cur, pid, 0.5, 0.01, pnl, "settled")
+        if open_slice:
+            repo.insert_position(cur, dep_id, uid, "paper", ticker, "yes", 1, 0.40, 0.01, close, ref)
+
+    trip(a["id"], "KXRAIN-26OCT25-NYC", [0.25, -0.10])  # one trip in two exit slices
+    trip(a["id"], "KXRAIN-26OCT25-CHI", [0.40])  # same event, another city
+    trip(a2, "KXRAIN-26OCT26-NYC", [-0.30])
+    trip(a2, "KXRAIN-26OCT27-NYC", [0.10], open_slice=True)  # still part open: not a trip yet
+    trip(b["id"], "KXBTC-26OCT25-B98", [1.10])
+    trip(b["id"], "KXBTC-26OCT25-B99", [0.20], ref=None)  # legacy instant fill: not realistic paper
+    assert repo.set_deployment_status(cur, uid, b["id"], "paused", "lost $6.00")
+
+    full = repo.list_deployments(cur, uid)
+    aggregates = ("realized_pnl", "closed_trades", "wins", "open_positions")
+    assert repo.list_deployments_brief(cur, uid) == [{k: v for k, v in d.items() if k not in aggregates} for d in full]
+    assert repo.deployment_closed_totals(cur, [d["id"] for d in full]) == {
+        d["id"]: (d["closed_trades"], d["realized_pnl"]) for d in full if d["closed_trades"]}
+    assert repo.deployment_closed_totals(cur, [quiet["id"]]) == {} == repo.deployment_closed_totals(cur, [])
+    from app import server
+    assert server._paused_recent(repo.list_deployments_brief(cur, uid), cur=cur) == server._paused_recent(full)
+    assert server._paused_recent(full)[0]["trades"] == 2
+
+    sids = sorted({a["strategy_id"], b["strategy_id"], quiet["strategy_id"]})
+    marks = ",".join(["%s"] * len(sids))
+    cur.execute("""SELECT t.strategy_id, COUNT(*) AS trips, COALESCE(SUM(t.pnl),0) AS pnl FROM (
+                     SELECT d.strategy_id, p.order_ref, SUM(p.pnl) AS pnl
+                     FROM app_positions p JOIN app_deployments d ON d.id=p.deployment_id
+                     WHERE p.user_id=%s AND p.mode='paper' AND p.order_ref LIKE %s AND d.strategy_id IN (""" + marks + """)
+                     GROUP BY d.strategy_id, p.order_ref
+                     HAVING SUM(CASE WHEN p.status='open' THEN 1 ELSE 0 END)=0) t
+                   GROUP BY t.strategy_id""", (uid, "sim:%", *sids))
+    before = {int(r["strategy_id"]): (int(r["trips"]), float(r["pnl"])) for r in cur.fetchall()}
+    assert repo.paper_progress(cur, uid, sids) == before
+    assert before[a["strategy_id"]] == (3, pytest.approx(0.25)) and before[b["strategy_id"]] == (1, pytest.approx(1.10))
+    cur.execute("""SELECT d.strategy_id,
+                     COUNT(DISTINCT SUBSTRING(p.ticker, 1, LENGTH(p.ticker) - LENGTH(SUBSTRING_INDEX(p.ticker, '-', -1)) - 1)) AS events
+                   FROM app_positions p JOIN app_deployments d ON d.id=p.deployment_id
+                   WHERE p.user_id=%s AND p.mode='paper' AND p.status='closed' AND p.order_ref LIKE %s
+                     AND d.strategy_id IN (""" + marks + """)
+                   GROUP BY d.strategy_id""", (uid, "sim:%", *sids))
+    events = {int(r["strategy_id"]): int(r["events"]) for r in cur.fetchall()}
+    assert repo.paper_event_counts(cur, uid, sids) == events == {a["strategy_id"]: 3, b["strategy_id"]: 1}
+    cur.execute("EXPLAIN SELECT d.strategy_id FROM " + repo._PAPER_SOURCE + " WHERE p.user_id=%s AND d.strategy_id IN ("
+                + marks + ")", (uid, *sids))
+    plan = cur.fetchall()
+    assert [r["table"] for r in plan] == ["d", "p"] and plan[1]["key"] == "idx_pos_dep"  # each deployment's own positions
+
+
 def test_last_autopilot_action_looks_back_a_bounded_window_of_chat(conn, user, monkeypatch):
     """The 20s status poll used to scan a user's whole chat history for the last autopilot line
     whenever there was none. It now looks through the newest LAST_ACTION_WINDOW rows and answers
