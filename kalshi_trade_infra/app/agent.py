@@ -3569,7 +3569,7 @@ def auto_paper_probation(cur, user: Dict) -> List[str]:
         if c["p_value"] is None and c.get("net_pnl") is not None:
             why = "had too few validation trades to score (%d), and they were up $%.2f" % (c["n_trades"], c["net_pnl"])
         elif c["p_value"] is None:
-            why = "had too few validation trades to score (%d), and its backtest was up on unseen data" % c["n_trades"]
+            why = "had too few validation trades to score (%d), and its research backtest was up (unseen trades not yet recorded)" % c["n_trades"]
         else:
             why = "narrowly missed validation (p=%.3f, $%.2f over %d unseen trades)" % (
                 c["p_value"], c["net_pnl"], c["n_trades"])
