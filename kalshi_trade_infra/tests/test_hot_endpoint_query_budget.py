@@ -16,6 +16,9 @@ start from the deployments (idx_pos_dep) and the deployment list drops its posit
 deployment paused in the last 24h adds one read for its own totals, since the panel shows them.
 Then dashboard 15 -> 14 statements, 288 -> 197ms: the closed-trade counts ride the books' realized
 P&L pass (idx_pos_user), and the deployments sum their positions before joining their JSON.
+Then the dashboard's "since your last visit" strip: its two reads (new passes; the autopilot's own
+changes and the sessions started) are paid for by reading the paper ledger once (balance, deposits
+and reset, 3 -> 1), and each book's since-visit sums ride the same realized-P&L pass. Still 14.
 """
 from datetime import datetime, timedelta
 from types import SimpleNamespace

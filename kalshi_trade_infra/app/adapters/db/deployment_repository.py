@@ -6,7 +6,7 @@ from datetime import timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.adapters.db.sql import now_utc
-from app.adapters.db.strategy_repository import _strategy_row
+from app.adapters.db.strategy_repository import DEMO_DIRECTION, _strategy_row
 
 
 def create_deployment(cur, user_id: int, strategy_id: int, market: str, mode: str) -> int:
@@ -343,6 +343,23 @@ def claim_decision(cur, deployment_id: int, decision_ts: int) -> bool:
 # approved went through decide_proposal, which stamps decided_at, and a manual deploy writes none.
 _AUTOPILOT_STRATEGIES = ("SELECT strategy_id FROM app_proposals WHERE user_id=%s AND kind='deploy' "
                          "AND status='applied' AND decided_at IS NULL AND strategy_id IS NOT NULL")
+
+
+def activity_since(cur, user_id: int, since) -> Dict:
+    """What happened since `since` besides trades, in one read: the changes the autopilot made on
+    its own ({kind: n} of its applied, never-decided proposals: deploy, pause, resume, adjust...)
+    and the research sessions started since then ({status: n}, the seeded example left out)."""
+    cur.execute(
+        "SELECT 'ap' AS src, kind AS k, COUNT(*) AS n FROM app_proposals "
+        "WHERE user_id=%s AND status='applied' AND decided_at IS NULL AND created_at>=%s GROUP BY kind "
+        "UNION ALL SELECT 'run' AS src, status AS k, COUNT(*) AS n FROM app_agent_runs "
+        "WHERE user_id=%s AND kind='research' AND created_at>=%s AND (direction IS NULL OR direction<>%s) GROUP BY status",
+        (user_id, since, user_id, since, DEMO_DIRECTION),
+    )
+    out: Dict[str, Dict[str, int]] = {"autopilot": {}, "runs": {}}
+    for r in cur.fetchall():
+        out["autopilot" if r["src"] == "ap" else "runs"][r["k"]] = int(r["n"])
+    return out
 
 
 def autopilot_paper_week(cur, user_id: int, since) -> Dict:
