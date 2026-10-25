@@ -29,7 +29,10 @@ from app import models_catalog as catalog
 from app.llm import ModelFn, Usage
 
 SCREEN_MODEL = os.getenv("APP_SCREEN_MODEL", "auto").strip().lower()
-SCREEN_SHARE = min(1.0, max(0.0, float(os.getenv("APP_SCREEN_SHARE", "0.5"))))
+# 0, not 0.5: stopped 2026-10-25 08:50Z. Over ~58 screen-arm ideas the screen developed none and
+# handed none over (control developed ~9%, P(0 of 41+) < 0.03), and the developer rescued ~25% of the
+# audited screen drops. It saved ~30% per idea, but research is judged on passes, not spend.
+SCREEN_SHARE = min(1.0, max(0.0, float(os.getenv("APP_SCREEN_SHARE", "0"))))
 AUDIT_SHARE = min(1.0, max(0.0, float(os.getenv("APP_SCREEN_AUDIT", "0.25"))))
 DEVELOPER_MIN_STEPS = 3
 
