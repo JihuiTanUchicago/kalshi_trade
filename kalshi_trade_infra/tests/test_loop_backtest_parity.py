@@ -133,3 +133,18 @@ def test_reasons_cover_every_exit_path(monkeypatch):
 def test_spec_strategy_refuses_what_it_does_not_model():
     with pytest.raises(ValueError):
         SpecStrategy({"code": "def signals(w): return {}", "sizing": {"stake": 1, "max_positions": 1}}, {})
+
+
+def test_real_data_parity_script_reports_clean_and_dirty_runs(monkeypatch, capsys):
+    import json
+    from scripts import loop_parity
+    ds = _random_dataset(21, n_events=10)
+    monkeypatch.setattr(backtest, "dataset", lambda market, days: ds)
+    monkeypatch.setattr(loop_parity, "_specs", lambda market, limit: [(1, specmod.validate(SPECS[2]))])
+    monkeypatch.setattr(backtest, "FILL_MODEL", backtest.FILL_MODEL)   # the script flips it; restore after
+    assert loop_parity.main(["--markets", "btc15m"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["cases"] == 2 and out["diffs"] == [] and out["legacy_trades"] > 0
+    import app.adapters.kalshi.spec_strategy as ss
+    monkeypatch.setattr(ss, "simulate_on_loop", lambda *a, **k: [])
+    assert loop_parity.main(["--markets", "btc15m"]) == 1
