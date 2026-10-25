@@ -6,6 +6,11 @@ from typing import Dict, List, Optional
 from app.adapters.db.sql import now_utc
 
 
+def lock_user(cur, user_id: int) -> None:
+    """Serialise every cash-moving write for one user (inside a transaction)."""
+    cur.execute("SELECT id FROM app_users WHERE id=%s FOR UPDATE", (user_id,))
+
+
 def add_ledger(cur, user_id: int, kind: str, amount: float, memo: str, position_id: Optional[int] = None) -> None:
     cur.execute(
         "INSERT INTO app_ledger (user_id, kind, amount, position_id, memo, created_at) VALUES (%s,%s,%s,%s,%s,%s)",
