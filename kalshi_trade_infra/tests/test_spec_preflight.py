@@ -226,3 +226,33 @@ def test_a_sub_cent_exit_snaps_to_one_cent():
     assert spec["exit"]["stop_loss"] == 0.01 and spec["exit"]["take_profit"] == 0.01
     with pytest.raises(specmod.SpecError):
         specmod.validate({"market": "btc15m", "side": "yes", "exit": {"stop_loss": -0.02}})
+
+
+def test_a_code_strategy_can_pool_and_trades_every_pooled_market():
+    """Prod run 2897 lost a pooled multi-feature model to "unknown field(s) for a code strategy:
+    pool". A pooled code spec is judged on the merged frames, like a pooled DSL rule."""
+    out = specmod.validate({"market": "btc15m", "code": RULE_CODE, "pool": ["eth15m", "btc15m"],
+                            "sizing": {"stake": 10, "max_positions": 4}})
+    assert out["pool"] == ["eth15m"] and specmod.is_multi_market(out)
+    assert specmod.involved_markets(out) == ["btc15m", "eth15m"]
+    with pytest.raises(specmod.SpecError, match="pool"):
+        specmod.validate({"market": "btc15m", "code": RULE_CODE, "pool": ["nba_game"]})
+    assert "pool" not in specmod.validate({"market": "btc15m", "code": RULE_CODE})
+
+
+def test_a_pooled_code_strategy_trades_every_pooled_market(monkeypatch):
+    from app import backtest, sandbox
+
+    def in_process(code, window, data_dir=None):   # this test's own trusted code; no confiner needed
+        ns = {}
+        exec(code, ns)
+        return ns["signals"](window)
+    monkeypatch.setattr(sandbox, "run_strategy_signals", in_process)
+    from tests.test_app_backtest import _dataset, _renamed
+    out = specmod.validate({"market": "btc15m", "code": RULE_CODE, "pool": ["eth15m"],
+                            "sizing": {"stake": 10, "max_positions": 4}})
+    a = _dataset(n_contracts=10)
+    merged = backtest.merge_datasets([a, _renamed(a, "E")], key="btc15m+eth15m")
+    every = RULE_CODE.replace('if c["yes_ask"] < 0.2:', 'if c["yes_ask"] < 0.99:')
+    trades = backtest.simulate(dict(out, code=every), merged, merged.start_ts, merged.end_ts + 1)
+    assert {t.ticker[0] for t in trades} == {"M", "E"}   # evidence from both pooled markets

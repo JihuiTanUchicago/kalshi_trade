@@ -195,6 +195,9 @@ As an ALTERNATIVE to the fields above, a strategy may be arbitrary Python you wr
   "market": "btc15m" | ...,
   "sizing": {"stake": 1..500, "max_positions": 1..50},
   "code": "<python source>"      // instead of model/entry/exit/side/filters
+  "pool": [<key>, ...]           // OPTIONAL, same rules as the DSL "pool": fit() and the gate see the
+                                 // merged frames of every pooled market (~N x the sample; contracts keep
+                                 // their own ticker); a passed strategy trades on "market" only
 }
 Your code defines ONE function:
   def signals(window):
@@ -409,7 +412,7 @@ def _validate_code_spec(raw: Dict) -> Dict[str, Any]:
     other unknown top-level field is an error. The returned spec is minimal: {market, sizing, code}."""
     from app import sandbox  # local import: sandbox pulls in exploration/dataclasses
     errors: List[str] = []
-    extra = set(raw) - CODE_SPEC_KEYS - set(CODE_SPEC_IGNORED)
+    extra = set(raw) - CODE_SPEC_KEYS - set(CODE_SPEC_IGNORED) - {"pool"}
     if extra:
         errors.append("unknown field(s) for a code strategy: %s" % ", ".join(sorted(extra)))
 
@@ -444,12 +447,18 @@ def _validate_code_spec(raw: Dict) -> Dict[str, Any]:
         errors.append("code: %s" % e)
 
     datasets = _validate_datasets(raw.get("datasets"), errors)
+    # A pooled code strategy is fit and judged on the merged frames of every pooled market, like a
+    # pooled DSL rule (run 2897 lost a pooled multi-feature model to "unknown field ... pool").
+    pooled = {"market": market}
+    _validate_pool(pooled, raw.get("pool"), errors)
 
     if errors:
         raise SpecError("; ".join(errors))
     out = {"market": market, "sizing": sizing, "code": code}
     if datasets:  # omit the key entirely when unused, so existing specs' hashes are unchanged
         out["datasets"] = datasets
+    if pooled.get("pool"):
+        out["pool"] = pooled["pool"]
     return out
 
 
