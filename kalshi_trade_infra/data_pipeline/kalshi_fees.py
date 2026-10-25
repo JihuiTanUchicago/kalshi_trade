@@ -17,12 +17,14 @@ an exact $1.75 up to $1.76 because 0.07 * 100 * 0.5 * 0.5 isn't exactly
 representable in binary floating point.
 """
 from decimal import ROUND_CEILING, Decimal
+from functools import lru_cache
 
 TAKER_FEE_RATE = Decimal("0.07")
 MAKER_FEE_RATE = Decimal("0.0175")
 _CENT = Decimal("0.01")
 
 
+@lru_cache(maxsize=1 << 16)  # pure; a backtest asks for the same (size, price) fee millions of times
 def _fee_dollars(rate: Decimal, qty_contracts: int, price_dollars: float) -> float:
     p = Decimal(str(price_dollars))
     raw = rate * Decimal(qty_contracts) * p * (Decimal(1) - p)

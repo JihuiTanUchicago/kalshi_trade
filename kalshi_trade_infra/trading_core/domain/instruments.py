@@ -38,6 +38,17 @@ class InstrumentId:
     symbol: str
     outcome: Optional[str] = None
 
+    def __post_init__(self) -> None:
+        # Hashed on every book, quote and risk lookup in a replay; computed once (it is immutable).
+        object.__setattr__(self, "_hash", hash((self.venue, self.symbol, self.outcome)))
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def __reduce__(self):
+        # Rebuild through __init__ so another process recomputes the (salted) string hash.
+        return (InstrumentId, (self.venue, self.symbol, self.outcome))
+
     def __str__(self) -> str:
         base = "%s:%s" % (self.venue, self.symbol)
         return "%s.%s" % (base, self.outcome) if self.outcome else base

@@ -190,3 +190,17 @@ def test_ports_are_structural_and_compose_into_a_decision_loop():
     assert venue.cash() == pytest.approx(-0.42)
     clock.advance(60)
     assert clock.now() == 1_060.0
+
+
+def test_instrument_id_hash_is_cached_but_stays_consistent_across_copies_and_processes():
+    import copy
+    import pickle
+    from dataclasses import replace
+    a = InstrumentId("kalshi", "KXBTCD-X", "yes")
+    b = InstrumentId("kalshi", "KXBTCD-X", "yes")
+    assert a == b and hash(a) == hash(b) and {a: 1}[b] == 1
+    no = replace(a, outcome="no")
+    assert no != a and hash(no) == hash(InstrumentId("kalshi", "KXBTCD-X", "no"))
+    for clone in (pickle.loads(pickle.dumps(a)), copy.deepcopy(a), copy.copy(a)):
+        assert clone == a and hash(clone) == hash(a)
+    assert sorted([no, a]) == [no, a]  # order=True still compares the fields
