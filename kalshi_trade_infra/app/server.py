@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+import sys
 import threading
 import time
 import traceback
@@ -2609,6 +2610,13 @@ def _static_versions() -> Dict[str, str]:
     return out
 
 
+def _log_line(line: str) -> None:
+    """One write per access line. print() writes the text and its newline separately, so two request
+    threads finishing together glued their lines into one ("...404 12ms ...Z[app] GET /api/...")."""
+    sys.stdout.write(line + "\n")
+    sys.stdout.flush()
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "Tau"
     sys_version = ""
@@ -2625,8 +2633,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):  # errors from the stdlib (bad request line, 501); no query strings
         # Also reached on an idle keep-alive timeout, before any request line set command/path.
-        print("[app] %s %s %s" % (getattr(self, "command", None) or "-", urlparse(getattr(self, "path", None) or "").path,
-                                  (fmt % args)[:120]), flush=True)
+        _log_line("[app] %s %s %s" % (getattr(self, "command", None) or "-", urlparse(getattr(self, "path", None) or "").path,
+                                      (fmt % args)[:120]))
 
     def _timed(self, method: str) -> None:
         """One access line per request, with its time: `[app] GET /api/x 200 12ms 2026-10-24T17:50:01Z`.
@@ -2639,8 +2647,8 @@ class Handler(BaseHTTPRequestHandler):
             ms = (time.perf_counter() - t0) * 1000
             path = urlparse(self.path).path
             webperf.record(webperf.route_key(method, path, self._spa), self._status, ms)
-            print("[app] %s %s %s %dms %s" % (method, path, self._status, ms,
-                                              datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")), flush=True)
+            _log_line("[app] %s %s %s %dms %s" % (method, path, self._status, ms,
+                                                  datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")))
 
     def cookies(self) -> Dict[str, str]:
         out = {}

@@ -138,6 +138,13 @@ def test_a_client_that_hung_up_is_logged_499_not_a_server_error(web, monkeypatch
     assert route["5xx"] == 0
 
 
+def test_an_access_line_is_one_write_so_threads_cannot_glue_lines(monkeypatch):
+    writes = []
+    monkeypatch.setattr(server.sys, "stdout", SimpleNamespace(write=writes.append, flush=lambda: None))
+    server._log_line("[app] GET /api/me 200 3ms 2026-10-25T17:40:00Z")
+    assert writes == ["[app] GET /api/me 200 3ms 2026-10-25T17:40:00Z\n"]
+
+
 def test_perf_endpoint_reports_routes_and_is_loopback_only(web):
     conn = http.client.HTTPConnection("127.0.0.1", web, timeout=3)
     for path in ("/api/runs/12", "/api/runs/13", "/wp-login.php"):
