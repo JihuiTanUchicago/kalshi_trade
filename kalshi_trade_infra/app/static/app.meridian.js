@@ -2692,10 +2692,16 @@
     const loadBoard = async () => {
       const d = await api('/api/deployments');
       const running = d.deployments.filter((x) => x.status === 'running');
-      const realized = d.deployments.reduce((a, x) => a + x.realized_pnl, 0);
+      // Real-money and practice (paper/demo) results are never summed into one figure.
+      const sumPnl = (xs) => xs.reduce((a, x) => a + x.realized_pnl, 0);
+      const liveDeps = d.deployments.filter((x) => x.mode === 'live'), practice = d.deployments.filter((x) => x.mode !== 'live');
+      const liveRealized = sumPnl(liveDeps), practiceRealized = sumPnl(practice);
+      const practiceKind = practice.some((x) => x.mode === 'demo') ? 'paper and demo' : 'paper';
       const live = d.deployments.filter((x) => x.mode === 'live' && x.status === 'running');
       root.querySelector('#dfigs').innerHTML = fig('Running', running.length, { small: `${d.deployments.length - running.length} paused` }) +
-        fig('Realized', usd(realized, true), { v: realized, small: 'all deployments, paper and live' }) +
+        (liveDeps.length
+          ? fig('Live realized', usd(liveRealized, true), { v: liveRealized, small: practice.length ? `real money · ${usd(practiceRealized, true)} on ${practiceKind}, counted apart` : 'real money' })
+          : fig('Realized', usd(practiceRealized, true), { v: practiceRealized, small: `${practiceKind} money, not real` })) +
         fig('Open positions', d.open_positions.length) +
         fig('Money', live.length ? '<span class="mk live">Live</span>' : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : 'nothing on live money' });
       replaceDeploymentContent(root.querySelector('#deps'), d.deployments.length ? deploymentTable(d.deployments.map((x) => deploymentSlip(x, true)).join(''), true)

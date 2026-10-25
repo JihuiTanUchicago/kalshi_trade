@@ -123,7 +123,7 @@ function frontend({fetchImpl, brokerMount} = {}) {
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, marketPicker, wireMarketPicker, paintDashAp, apUpdate, trCurve};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, marketPicker, wireMarketPicker, paintDashAp, apUpdate, trCurve};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
