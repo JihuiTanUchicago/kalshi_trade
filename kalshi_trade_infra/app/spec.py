@@ -757,7 +757,9 @@ def _validate_cross(spec: Dict, errors: List[str]) -> None:
     else:
         for i, leg in enumerate(legs):
             if not isinstance(leg, dict) or set(leg) != {"market"}:
-                errors.append("cross.legs[%d] must have exactly feature market" % i)
+                got = sorted(leg) if isinstance(leg, dict) else type(leg).__name__
+                errors.append('cross.legs[%d] must be exactly {"market": <key>} (got %s); `pairing` matches the '
+                              'strikes / settlements itself, so a leg names only its market' % (i, got))
             elif leg["market"] not in MARKETS:
                 errors.append("cross.legs[%d].market %r is not a known market" % (i, leg["market"]))
             else:
