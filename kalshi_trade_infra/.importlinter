@@ -70,10 +70,6 @@ source_modules =
     data_pipeline
 forbidden_modules =
     app.server
-ignore_imports =
-    ; known violation (lazy import of server._researchable_markets): fixed when market readiness
-    ; moves into app.services (migration step 4 in ARCHITECTURE.md)
-    app.agent -> app.server
 
 [importlinter:contract:live-path-no-research]
 name = the live engine never imports the research agent, LLM client or web server

@@ -13,6 +13,7 @@ from app import repository as repo
 from app import server
 from app.llm import LLMError, Usage
 from app.markets import MARKETS
+from app.services import markets as market_service
 
 
 def _insert_spot(cur, symbol, ts=1_800_000_000):
@@ -50,7 +51,7 @@ def test_spot_symbols_with_data_empty_input_runs_no_query(fake_cursor):
 # -- the autopilot's OWN market pick is steered to data-ready markets (proactive, not reactive) ----
 
 def test_researchable_keys_returns_only_data_ready(monkeypatch):
-    monkeypatch.setattr(server, "_researchable_markets",
+    monkeypatch.setattr(market_service, "researchable_markets",
                         lambda cur: [{"key": "btc15m", "has_data": True},
                                      {"key": "nba_game", "has_data": False}])
     assert agent._researchable_keys(None) == ["btc15m"]
@@ -58,7 +59,7 @@ def test_researchable_keys_returns_only_data_ready(monkeypatch):
 
 def test_researchable_keys_fail_open_when_nothing_ready(monkeypatch):
     # A cold/edge DB where nothing reads as ready must NOT block research — offer the whole universe.
-    monkeypatch.setattr(server, "_researchable_markets",
+    monkeypatch.setattr(market_service, "researchable_markets",
                         lambda cur: [{"key": "btc15m", "has_data": False}])
     assert agent._researchable_keys(None) == list(MARKETS)
 
