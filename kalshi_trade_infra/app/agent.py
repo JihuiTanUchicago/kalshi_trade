@@ -1977,7 +1977,8 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
 def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkpoint, budget, tried,
                       policy: exploration.ExplorationPolicy, conn=None, knowledge=None, news=None,
                       resume_chunk=None, resume_round=0, save_progress=None, mark_gated=None,
-                      dropped: Optional[List[Dict]] = None, screen=None) -> Tuple[int, int]:
+                      dropped: Optional[List[Dict]] = None, screen=None,
+                      resume_pending=None) -> Tuple[int, int]:
     """Explore NEW hypotheses on the Research partition (small refining rounds the policy
     sizes), then hand the finalists to the challenger + gatekeeper. Appends to the shared
     `tried` so progress survives a cancel/error.
@@ -1985,8 +1986,11 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
     On a RESUME, `resume_chunk` seeds the already-developed (not-yet-gated) theses and `resume_round`
     the round cursor, so this picks up proposing where it left off instead of re-developing them —
     the policy's `proposed=len(chunk)` then sizes the remaining batches toward `budget` exactly as an
-    uninterrupted run would. `save_progress(chunk, round_no)` persists the in-progress chunk as each
-    thesis is developed (so a crash doesn't discard that model work); `mark_gated` advances the
+    uninterrupted run would. `save_progress(chunk, round_no, pending)` persists the in-progress chunk
+    and the proposed-but-undeveloped rest of the round (`pending`) before each thesis is developed,
+    so a deploy restart or crash discards at most the thesis in flight; a resume develops
+    `resume_pending` before proposing anything new (about 9 in 10 theses are dropped, so a run used to
+    lose every proposal and drop of a chunk that had no survivor yet); `mark_gated` advances the
     checkpoint cursor atomically inside the gate transaction. `dropped` (newest first) seeds the
     theses recent runs abandoned; this chunk's own drops are added as they happen. A `screen` that
     is on (services.research_screen) writes the proposals and screens each thesis with its cheaper
@@ -1995,6 +1999,7 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
     dropped = dropped if dropped is not None else []
     chunk: List[Dict] = list(resume_chunk) if resume_chunk else []
     round_no = int(resume_round or 0)
+    pending: List[Dict] = list(resume_pending or [])
     merged_cache: Dict[str, Tuple] = {}  # stream_key -> (merged research ds, embargo) for cross specs
     market_data = AgentMarketData(DataScope.research(ds.start_ts, ds.cutoff_ts), log, checkpoint)
     # Stream the proposer's generation into the feed so the multi-minute call isn't a silent gap.
@@ -2019,53 +2024,61 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
     aside_rounds = 0  # proposing rounds whose every idea was a rationed repeat
     while True:
         checkpoint()
-        round_no += 1
-        state = exploration.PolicyState(proposed=len(chunk), budget=budget, round=round_no)
-        want = policy.next_batch(state).width
-        if want <= 0:
-            break  # policy decided to stop proposing this chunk
-        if attempts >= budget * EXPLORE_ATTEMPT_MULT:
-            # All-abandon backstop: survivors never reached `budget`, but we've already developed a
-            # generous multiple of it. Stop burning the slot on a market with no tradeable surface.
-            log("step", "No tradeable surface after %d attempts — stopping to free the worker." % attempts,
-                {"phase": "proposing", "attempts": attempts, "kept": len(chunk)})
-            break
-        if EXPLORE_MAX_DROP_STREAK and streak >= EXPLORE_MAX_DROP_STREAK:
-            log("step", "Last %d theses all dropped on the research fold. Stopping proposals; %d kept go "
-                "to the gate." % (streak, len(chunk)),
-                {"phase": "proposing", "attempts": attempts, "kept": len(chunk), "drop_streak": streak})
-            break
-        # Announce each proposing round so the (multi-minute, token-streamed) generation call is
-        # never a silent gap: the feed shows "Proposing round k" before the first token arrives.
-        log("step", "Proposing round %d — generating up to %d hypothes%s…"
-            % (round_no, want, "is" if want == 1 else "es"),
-            {"phase": "proposing", "round": round_no, "width": want})
-        check = _hypotheses_check(market, want)
-        try:
-            batch = market_data.ask(screener or proposer, _research_system(market),
-                                    [{"role": "user", "content": _round_prompt(run, ds, memory, want, chunk, dropped)}],
-                                    check, screen.usage if screener else usage)
-        except LLMError as e:
-            if "could not be used" not in str(e):
-                raise  # the model call itself failed (timeout, API): not a spec problem
-            # Every idea in the batch stayed invalid through the repair rounds. That is a proposer or
-            # schema bug, not evidence: log it as a dropped idea (the scoreboard counts it as
-            # spec_invalid) and try one fresh round before giving up on proposing.
-            bad_rounds += 1
-            _abandon(log, {"title": "Proposing round %d" % round_no}, "spec invalid: %s" % e, None)
-            if bad_rounds < 2:
-                continue
-            if chunk:
-                break  # gate what this chunk already developed
-            raise
-        for bad in check.invalid:
-            _abandon(log, bad, bad["why"], None)  # not added to `dropped`: the idea itself was never tested
-        if not batch:
-            break  # agent is out of fresh ideas this chunk
+        if pending:  # a resumed round: develop what was already proposed before proposing more
+            batch, pending = pending, []
+            log("step", "Resuming round %d with %d proposed hypothes%s not yet developed."
+                % (round_no, len(batch), "is" if len(batch) == 1 else "es"),
+                {"phase": "proposing", "round": round_no, "resumed": len(batch)})
+        else:
+            round_no += 1
+            state = exploration.PolicyState(proposed=len(chunk), budget=budget, round=round_no)
+            want = policy.next_batch(state).width
+            if want <= 0:
+                break  # policy decided to stop proposing this chunk
+            if attempts >= budget * EXPLORE_ATTEMPT_MULT:
+                # All-abandon backstop: survivors never reached `budget`, but we've already developed a
+                # generous multiple of it. Stop burning the slot on a market with no tradeable surface.
+                log("step", "No tradeable surface after %d attempts — stopping to free the worker." % attempts,
+                    {"phase": "proposing", "attempts": attempts, "kept": len(chunk)})
+                break
+            if EXPLORE_MAX_DROP_STREAK and streak >= EXPLORE_MAX_DROP_STREAK:
+                log("step", "Last %d theses all dropped on the research fold. Stopping proposals; %d kept go "
+                    "to the gate." % (streak, len(chunk)),
+                    {"phase": "proposing", "attempts": attempts, "kept": len(chunk), "drop_streak": streak})
+                break
+            # Announce each proposing round so the (multi-minute, token-streamed) generation call is
+            # never a silent gap: the feed shows "Proposing round k" before the first token arrives.
+            log("step", "Proposing round %d — generating up to %d hypothes%s…"
+                % (round_no, want, "is" if want == 1 else "es"),
+                {"phase": "proposing", "round": round_no, "width": want})
+            check = _hypotheses_check(market, want)
+            try:
+                batch = market_data.ask(screener or proposer, _research_system(market),
+                                        [{"role": "user", "content": _round_prompt(run, ds, memory, want, chunk, dropped)}],
+                                        check, screen.usage if screener else usage)
+            except LLMError as e:
+                if "could not be used" not in str(e):
+                    raise  # the model call itself failed (timeout, API): not a spec problem
+                # Every idea in the batch stayed invalid through the repair rounds. That is a proposer or
+                # schema bug, not evidence: log it as a dropped idea (the scoreboard counts it as
+                # spec_invalid) and try one fresh round before giving up on proposing.
+                bad_rounds += 1
+                _abandon(log, {"title": "Proposing round %d" % round_no}, "spec invalid: %s" % e, None)
+                if bad_rounds < 2:
+                    continue
+                if chunk:
+                    break  # gate what this chunk already developed
+                raise
+            for bad in check.invalid:
+                _abandon(log, bad, bad["why"], None)  # not added to `dropped`: the idea itself was never tested
+            if not batch:
+                break  # agent is out of fresh ideas this chunk
         rationed = _rationed_mechanisms(dropped, run)
         developed = attempts
-        for h in batch:
+        for i, h in enumerate(batch):
             checkpoint()
+            if save_progress is not None:
+                save_progress(chunk, round_no, batch[i:])  # this thesis and the rest, until each lands
             mech = _mechanism_of(h) if rationed else None
             if mech in rationed:
                 if mech in spent:
@@ -2084,6 +2097,8 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
                                  usage, log, checkpoint, round_no, cur, run["user_id"], merged_cache,
                                  dropped, screen, screener)
             if t is None:
+                if save_progress is not None:
+                    save_progress(chunk, round_no, batch[i + 1:])  # its drop is logged: never redevelop it
                 streak += 1
                 if EXPLORE_MAX_DROP_STREAK and streak >= EXPLORE_MAX_DROP_STREAK:
                     break  # don't develop the rest of this batch either
@@ -2095,7 +2110,9 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
             # Durable checkpoint: persist the developed theses + round cursor as they land, so a
             # reclaim re-uses this (expensive) model work instead of re-exploring from scratch.
             if save_progress is not None:
-                save_progress(chunk, round_no)
+                save_progress(chunk, round_no, batch[i + 1:])
+        if save_progress is not None:
+            save_progress(chunk, round_no, [])  # the round is done (or its rest deliberately skipped)
         if attempts == developed and batch:
             # Every idea this round was set aside: the proposer is stuck on rationed mechanisms.
             aside_rounds += 1
@@ -2345,18 +2362,20 @@ def run_research(
         "tried": tried, "chunk": resume_chunk, "round_no": resume_round,
         "market": (_ck or {}).get("market"), "lookback": (_ck or {}).get("lookback"),
         "dropped_n": int((_ck or {}).get("dropped_n") or 0),
+        "pending": list((_ck or {}).get("pending") or []),
     }
+    resume_pending = list(ckpt["pending"])
 
     def explored() -> int:
         """Every thesis the run worked on: developed ones (`tried`) plus those dropped on the research
         fold. The run's hypotheses_tried shows this, so an all-drop run reads "0 of 8", not "0 of 0"."""
         return len(tried) + ckpt["dropped_n"]
 
-    def save_progress(chunk: List[Dict], round_no: int) -> None:
+    def save_progress(chunk: List[Dict], round_no: int, pending: List[Dict] = ()) -> None:
         """Persist the in-progress (not-yet-gated) chunk as each thesis develops, so a reclaim
         re-uses that model work. An autocommit write OUTSIDE the gate transaction — ckpt["chunk"] is
         the 'un-gated work' marker that mark_gated clears atomically once the chunk is judged."""
-        ckpt["chunk"], ckpt["round_no"], ckpt["tried"] = chunk, round_no, tried
+        ckpt["chunk"], ckpt["round_no"], ckpt["tried"], ckpt["pending"] = chunk, round_no, tried, list(pending)
         repo.save_checkpoint(cur, run_id, ckpt)
 
     def mark_gated(gate_cur, passed: int) -> None:
@@ -2366,7 +2385,7 @@ def run_research(
         it can never re-judge, so no trial is double-counted and no FDR alpha double-spent."""
         ckpt["chunks_done"] += 1
         ckpt["total_passed"] += passed
-        ckpt["chunk"], ckpt["round_no"], ckpt["tried"] = [], 0, tried
+        ckpt["chunk"], ckpt["round_no"], ckpt["tried"], ckpt["pending"] = [], 0, tried, []
         repo.save_checkpoint(gate_cur, run_id, ckpt)
 
     paused_at = [0.0]  # when the current pause began (0 = not paused); list so the closure can mutate it
@@ -2503,6 +2522,7 @@ def run_research(
         else:
             lookback = _plan_lookback(run, market, model, usage, log)
         ckpt["lookback"] = lookback
+        repo.save_checkpoint(cur, run_id, ckpt)  # a restart reuses the market and lookback plan
         if lookback < MARKETS[market].history_days:
             # Drop the full set before loading the slice: holding both doubled the peak, and a
             # 1-minute sports market is ~0.5-1GB of snapshots on its own. A too-thin slice (rare)
@@ -2550,7 +2570,7 @@ def run_research(
         total_passed, tot_in, tot_out, chunks = ckpt["total_passed"], 0, 0, ckpt["chunks_done"]
         # A reclaimed BOUNDED run whose single chunk already gated (cursor moved, no in-progress
         # chunk) has nothing left to explore — go straight to finish so we never re-gate it.
-        already_complete = (not forever) and chunks >= 1 and not resume_chunk
+        already_complete = (not forever) and chunks >= 1 and not resume_chunk and not resume_pending
         while not already_complete:
             checkpoint()
             # Reload memory each chunk so a run_forever loop learns from the strategies it
@@ -2561,8 +2581,8 @@ def run_research(
                                           budget, tried, policy, conn, knowledge, news,
                                           resume_chunk=resume_chunk, resume_round=resume_round,
                                           save_progress=save_progress, mark_gated=mark_gated,
-                                          dropped=dropped, screen=screen)
-            resume_chunk, resume_round = [], 0  # only the first iteration continues a saved chunk
+                                          dropped=dropped, screen=screen, resume_pending=resume_pending)
+            resume_chunk, resume_round, resume_pending = [], 0, []  # only the first iteration resumes
             # mark_gated advanced these atomically with the chunk's judging; read them back.
             total_passed, chunks = ckpt["total_passed"], ckpt["chunks_done"]
             # Tau-RSI: dream periodically DURING a long session (not only at the end), so the

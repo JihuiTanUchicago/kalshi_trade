@@ -93,6 +93,32 @@ def test_resume_reuses_explored_theses_and_does_not_double_count(monkeypatch):
     assert store2.finished[2] == 2     # tried count = reused + newly explored, not re-counted
 
 
+def test_a_restart_mid_round_develops_the_saved_proposals_without_proposing_again(monkeypatch):
+    """Most theses die on the research fold, so a chunk often has no survivor to checkpoint for a
+    long time; a deploy restart then threw away the proposal call and every drop. The checkpoint
+    now carries the round's undeveloped proposals, and a resume develops them first."""
+    ds_fn = lambda m, h=None: _dataset(n_contracts=60)
+    store = Store(monkeypatch)
+    snaps = []
+    monkeypatch.setattr(agent.repo, "save_checkpoint", lambda cur, run_id, ck: snaps.append(copy.deepcopy(ck)))
+    develops = []
+    _count_develops(monkeypatch, develops)
+    agent.run_research(Conn(), {**RUN, "max_hypotheses": 2}, model=scripted([plan(), hyps(WINNER, LOSER)])[0],
+                       dataset_fn=ds_fn)
+    clean_trials = store._exp
+    assert snaps[0]["lookback"] is not None and snaps[0]["pending"] == []   # saved before any proposal
+    for at in (next(s for s in snaps if len(s["pending"]) == 2),           # proposed, nothing developed
+               next(s for s in snaps if len(s["chunk"]) == 1 and len(s["pending"]) == 1)):
+        store2 = Store(monkeypatch)
+        monkeypatch.setattr(agent.repo, "load_checkpoint", lambda cur, run_id, at=at: copy.deepcopy(at))
+        monkeypatch.setattr(agent.repo, "save_checkpoint", lambda cur, run_id, ck: None)
+        develops.clear()
+        model, prompts = scripted([])   # no plan call, no proposal call: everything comes from the checkpoint
+        agent.run_research(Conn(), {**RUN, "max_hypotheses": 2}, model=model, dataset_fn=ds_fn)
+        assert len(develops) == len(at["pending"]) and prompts == []
+        assert store2._exp == clean_trials and store2.finished[0] == "succeeded" and store2.finished[2] == 2
+
+
 def test_resume_of_already_gated_bounded_run_does_not_regate(monkeypatch):
     """A bounded run reaped AFTER its one chunk gated (cursor advanced, chunk cleared) resumes
     straight to 'succeeded' — it never re-pre-registers or re-judges anything."""
