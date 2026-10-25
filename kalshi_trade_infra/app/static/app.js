@@ -3606,6 +3606,9 @@
           ? 'Autopilot is paused — <a href="/billing">add a payment method</a> to let it run.'
           : 'Autopilot is paused — <a href="/billing">add credits</a> to let it keep researching.';
         gates.classList.add('warn');
+      } else if (d.credits_low_days != null) {
+        gates.innerHTML = `Credits run out ${d.credits_low_days < 1 ? 'within a day' : 'in about ' + Math.round(d.credits_low_days) + ' day' + (Math.round(d.credits_low_days) === 1 ? '' : 's')} at this week's pace, then research pauses. <a href="/billing">Add credits or turn on auto-reload</a>.`;
+        gates.classList.add('warn');
       } else {
         gates.textContent = apLiveBlock(d) || apLiveArmed(d);
         gates.classList.remove('warn');

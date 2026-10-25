@@ -172,6 +172,21 @@ test('one flip of the panel switch turns paper autopilot on', async () => {
   assert.doesNotMatch(f.box.querySelector('#apf-ap-copy').innerHTML, /Flip again/);
 });
 
+test('the panel warns before credits run out, and says why when autopilot is paused for billing', async () => {
+  const f = frontend(() => response(catalog)); f.apBuildShell(f.box); await flush();
+  const gates = f.box.querySelector('#apf-gates');
+  f.apUpdate(f.box, status({credits_low_days: 1.6}));
+  assert.match(gates.innerHTML, /Credits run out in about 2 days/); assert.match(gates.innerHTML, /href="\/billing"/);
+  assert.equal(gates.classes.has('warn'), true);
+  f.apUpdate(f.box, status({credits_low_days: 0.3}));
+  assert.match(gates.innerHTML, /within a day/);
+  f.apUpdate(f.box, status({billing_blocked: true, billing_reason: 'credits'}));
+  assert.match(gates.innerHTML, /paused/); assert.match(gates.innerHTML, /Add credits|add credits/);
+  f.apUpdate(f.box, status({}));
+  // Back to the live-readiness line (set as text) once billing is fine.
+  assert.doesNotMatch(gates.textContent, /Credits run out|paused/); assert.equal(gates.classes.has('warn'), false);
+});
+
 test('the Research row only shows when there is no story to say it', async () => {
   const f = frontend(() => response(catalog)); f.apBuildShell(f.box); await flush();
   const research = {active: [], tested_7d: 4, passed_7d: 1, cost_7d: 0};
