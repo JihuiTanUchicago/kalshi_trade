@@ -48,6 +48,11 @@ def test_partly_open_trade_is_open_not_closed():
     out = tr.build([row("paper", 4, open_slices=1), row("paper", 1)], NOW)
     p = out["modes"]["paper"]
     assert p["trades"] == 1 and p["open_trades"] == 1 and p["net_pnl"] == 1
+    # What its sold slice realized is reported beside the record, and only the held part is at cost.
+    part = dict(row("paper", 4, cost=10.0, open_slices=1), open_cost=6.0)
+    p = tr.build([part, row("paper", 1)], NOW)["modes"]["paper"]
+    assert p["open_realized_pnl"] == 4 and p["open_at_cost"] == 6
+    assert p["net_pnl"] + p["open_realized_pnl"] == 5  # every closed row's P&L
 
 
 def test_win_rate_drawdown_and_profit_factor():

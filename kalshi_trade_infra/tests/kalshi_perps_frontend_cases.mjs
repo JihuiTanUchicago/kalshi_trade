@@ -182,6 +182,16 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.doesNotMatch(thinned, /one point per closed trade/);
   });
 
+  test(`${name}: an open trade that is partly sold says what it already realized outside the record`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const th = {min_sharpe_days: 14, min_trades: 30};
+    const m = {trades: 4, wins: 2, losses: 2, label: 'Paper', net_pnl: 3, fees: 0, monthly: [], strategies: [], curve: [],
+      open_trades: 1, open_at_cost: 6, open_realized_pnl: -1.66, sample: {level: 'thin', edge: 'unclear', text: 'Too early.'}};
+    assert.match(f.trackRecordPanel(m, 'paper', th),
+      /1 open trade \(\$6\.00 at cost\) join the record when they close\. Part of it is already sold: −\$1\.66 realized, not yet in these figures\./);
+    assert.doesNotMatch(f.trackRecordPanel({...m, open_realized_pnl: 0}, 'paper', th), /already sold/);
+  });
+
   test(`${name}: the track record underwater chart draws the server's drawdown series, not one derived from the thinned curve`, () => {
     const f = frontend({fetchImpl: () => response({})});
     const th = {min_sharpe_days: 14, min_trades: 30};

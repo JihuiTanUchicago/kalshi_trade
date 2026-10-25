@@ -307,7 +307,11 @@ def summarize(trades: List[Dict], open_trades: List[Dict], today: date, now_ts: 
         "first_trade_at": first_ts,
         "last_trade_at": trades[-1]["closed_ts"] if trades else None,
         "open_trades": len(open_trades),
-        "open_at_cost": round(sum(t["cost"] for t in open_trades), 2),
+        # What is still held, at cost: a part-sold trade's sold slice is no longer at risk.
+        "open_at_cost": round(sum(t.get("open_cost", t["cost"]) for t in open_trades), 2),
+        # A part-sold trade joins the record when its remainder closes; until then this is what its
+        # sold slices already realized, so the record plus this is every closed row's P&L.
+        "open_realized_pnl": round(sum(t["pnl"] for t in open_trades), 2),
         "sample": sample_read(n, span_days, avg_ci),
         "curve": thin_min_max(curve),  # display only: every stat above used the full curve
         "underwater": thin_lows(underwater(curve)),  # from the full curve; its low is -max_drawdown
@@ -377,6 +381,7 @@ def build(rows: List[Dict], now: Optional[datetime] = None) -> Dict:
             "strategy_id": int(r.get("strategy_id") or 0), "title": r.get("title") or "Untitled strategy",
             "market": r.get("market") or "", "pnl": float(r.get("pnl") or 0), "fees": float(r.get("fees") or 0),
             "cost": float(r.get("cost") or 0), "opened_ts": _ts(r.get("opened_at")), "closed_ts": _ts(r.get("closed_at")),
+            "open_cost": float(r.get("open_cost") if r.get("open_cost") is not None else r.get("cost") or 0),
         }
         if int(r.get("open_slices") or 0) > 0:
             opened[mode].append(t)
