@@ -116,6 +116,24 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.doesNotMatch(f.strategySlip(detail({deployed: true, real: {pnl: 3, trades: 2, open: 0}}), null, {}), /real-fig/);
   });
 
+  test(`${name}: the Deploy board never adds paper dollars to real ones`, async () => {
+    const dep = (id, mode, pnl) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode, status: 'running', status_reason: null,
+      realized_pnl: pnl, closed_trades: 1, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1, backtest: {}});
+    const board = async deployments => {
+      const f = frontend({fetchImpl: path => {
+        if (path === '/api/deployments') return response({deployments, open_positions: []});
+        return response({});
+      }});
+      await f.viewDeploy(); await flush(); await flush();
+      return f.root.querySelector('#dfigs').innerHTML;
+    };
+    const mixed = await board([dep(1, 'live', 2), dep(2, 'paper', 40), dep(3, 'demo', -10)]);
+    assert.match(mixed, /Live realized/); assert.match(mixed, /\+\$2\.00/);
+    assert.match(mixed, /\+\$30\.00 on paper and demo, counted apart/); assert.doesNotMatch(mixed, /\$32/);
+    const paper = await board([dep(2, 'paper', 40)]);
+    assert.match(paper, /Realized/); assert.doesNotMatch(paper, /Live realized/); assert.match(paper, /paper money, not real/);
+  });
+
   test(`${name}: a perpetual-only inventory has no bulk selection or false live status`, async () => {
     const list = [detail({deployed: true, deploy_live: true})];
     const f = frontend({fetchImpl: path => {
