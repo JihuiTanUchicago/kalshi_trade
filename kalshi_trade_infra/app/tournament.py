@@ -222,7 +222,11 @@ def verdict(entry: Dict, arm: Dict, now) -> Optional[str]:
         return ("after %d paper round trips it is %.0f%% likely to be losing money per trade "
                 "(posterior mean %+.1f%% of stake)" % (n, 100 * (1 - arm["p_positive"]), 100 * arm["post_mean"]))
     created = entry.get("created_at")
-    if n == 0 and created and now - created >= timedelta(days=DORMANT_DAYS):
+    # Dormancy judges an entry rule, so only an entrant that is actually running can be dormant: a
+    # paused one (by its user or a guard) isn't trading at all. Its age counts from its last status
+    # change, so a resumed entrant gets a fresh week.
+    since = max(t for t in (created, entry.get("updated_at")) if t) if (created or entry.get("updated_at")) else None
+    if n == 0 and entry.get("status") == "running" and since and now - since >= timedelta(days=DORMANT_DAYS):
         return "no trade in %d days on paper: its entry rule never fires on the live book" % DORMANT_DAYS
     return None
 
@@ -330,7 +334,7 @@ def rebalance(cur, user: Dict, force: bool = False) -> List[str]:
     for a in arms:
         e = by_sid.get(a["strategy_id"])
         why = verdict(e, a, now) if e else None
-        if why and is_probation(cur, e) and repo.set_deployment_status(cur, user["id"], e["id"], "stopped",
+        if why and e.get("status") == "running" and is_probation(cur, e) and repo.set_deployment_status(cur, user["id"], e["id"], "stopped",
                                                                         "Tournament: retired, " + why[:200]):
             lines.append("[tournament] Retired paper entrant “%s”: %s. Its slot goes to the next near miss."
                          % (e.get("title"), why))
