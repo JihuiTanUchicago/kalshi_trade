@@ -123,7 +123,7 @@ function frontend({fetchImpl, brokerMount} = {}) {
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewDashboard, marketPicker, wireMarketPicker, paintDashAp};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewDashboard, marketPicker, wireMarketPicker, paintDashAp, apUpdate};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -337,6 +337,21 @@ test('a failed autopilot switch-on leaves the dashboard card off and says why', 
   assert.notEqual(f.S.me.user.autopilot, true);
   assert.match(f.root.querySelector('#dash-ap').innerHTML, /Turn on autopilot/);
   assert.match(f.root.querySelector('#dash-ap .apcard-err').innerHTML, /Add a payment method first\./);
+});
+
+test('the autopilot panel shows Kill only once real money is armed or running', () => {
+  const f = frontend();
+  const controls = d => {
+    const box = new Element('div'); box.innerHTML = '<div id="apf-controls"></div>';
+    f.apUpdate(box, {mode: 'paper', live_enabled: true, kalshi_connected: false, ...d});
+    return box.querySelector('#apf-controls').innerHTML;
+  };
+  const off = controls({autopilot: false});
+  assert.doesNotMatch(off, /data-ap="kill"|data-ap="livearm"/); assert.match(off, /Open board/);
+  const paper = controls({autopilot: true});
+  assert.doesNotMatch(paper, /data-ap="kill"/); assert.match(paper, /data-ap="livearm" aria-disabled="true"/);
+  assert.match(controls({autopilot: true, autopilot_live: true}), /data-ap="kill"/);
+  assert.match(controls({autopilot: false, live_running: 1}), /data-ap="kill"/);
 });
 
 test('the retained broker module still rejects a late redirect after its owning view changes', async () => {
